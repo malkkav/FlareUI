@@ -1,0 +1,782 @@
+local ADDON_NAME, ns = ...
+
+--------------------------------------------------
+-- 1. MODULE REGISTRATION
+--------------------------------------------------
+ns.DamageMeter = ns.DamageMeter or {}
+local DamageMeter = ns.DamageMeter
+ns.modules["DamageMeter"] = DamageMeter
+
+LibStub("AceEvent-3.0"):Embed(DamageMeter)
+
+--------------------------------------------------
+-- 2. UPVALUES
+--------------------------------------------------
+local _G = _G
+local pairs, ipairs = pairs, ipairs
+local pcall = pcall
+local math_max = math.max
+local math_min = math.min
+local InCombatLockdown = InCombatLockdown
+local C_Timer = C_Timer
+local LSM = LibStub("LibSharedMedia-3.0")
+
+-- The border picked in the options; a name LibSharedMedia no longer knows falls back to the default.
+local DEFAULT_BORDER = "Blizzard Tooltip"
+local function GetBorderFile(db)
+    local name = db and db.borderTexture
+    if not (name and LSM:IsValid("border", name)) then name = DEFAULT_BORDER end
+    return LSM:Fetch("border", name)
+end
+
+--------------------------------------------------
+-- 3. CONSTANTS
+--------------------------------------------------
+local SEPARATORS = {
+    ["Solid"] = nil,
+    ["Blizzard"] = "Interface\\Common\\UI-TooltipDivider-Transparent",
+}
+
+local ICON_SEGMENTS = "Interface\\AddOns\\FlareUI\\Media\\Icons\\DMSegments.tga"
+local ICON_SETTINGS = "Interface\\AddOns\\FlareUI\\Media\\Icons\\DMSettings.tga"
+
+-- Fixed look, mirrored from the chat frame so both headers read as one design:
+-- 24 px header band, separator 24-32 px below the top, content from 34 px, title and icons centred
+-- 15 px below the top, 13 px icons 15 px in from the right and 21 px apart, title 22 px from the left.
+local HEADER_HEIGHT   = 24
+local CONTENT_TOP     = 34
+local ROW_CENTER_Y    = -15
+local TITLE_LEFT      = 17   -- chat: 10 px tab-bar offset + 7 px button padding
+local ICON_SIZE       = 13   -- nominal box, used for layout maths
+-- Per-icon draw sizes so the *visible* glyph matches the chat header icons, which measure 9-11 px.
+-- The segment bars fill their whole 24x24 texture, so the draw size is the visible size. The gear
+-- only occupies rows 1.3-16.3 of its 24 (15/24 of the height), so 16 draws a ~10 px glyph.
+local ICON_DRAW_SIZE  = { settings = 16, segments = 11 }
+-- Because the gear sits high in its texture, centring its glyph on the button needs an offset of
+-- -0.13 * draw size; -2.5 is that plus a small nudge down so it settles against the bars icon.
+local ICON_DRAW_YOFS  = { settings = -2.5, segments = 0 }
+local ICON_RIGHT      = 15
+local ICON_SPACING    = 21
+local TITLE_COLOR     = { r = 0.80, g = 0.60, b = 0.34, a = 1 }   -- #CC9957 (chat active tab)
+local ICON_COLOR      = { r = 0.61, g = 0.48, b = 0.29, a = 1 }   -- #9C7A4A (chat header icons)
+local BORDER_TINT     = ns.BORDER_COLOR                            -- FlareUI's border bronze (as chat)
+local SEPARATOR_COLOR = { r = 1, g = 1, b = 1, a = 1 }
+
+local function LightenColor(r, g, b, factor)
+    return math_min(1, r + factor), math_min(1, g + factor), math_min(1, b + factor)
+end
+
+--------------------------------------------------
+-- 4. HELPERS
+-- Three hooks that look tempting are deliberately absent: SetSessionDuration (receives secret
+-- values), the session window's OnShow / SetMinimized (run inside the secure list init that
+-- handles Edit Mode preview data) and the entry Init / UpdateValue (run inside the secure scroll
+-- update). Styling from any of them taints a path that later compares secret values. Everything
+-- below is applied from our own Refresh() instead, out of combat and outside Edit Mode.
+--------------------------------------------------
+local function GetDb()
+    if not ns.db or not ns.db.profile or not ns.db.profile.damagemeter then
+        return nil
+    end
+    return ns.db.profile.damagemeter
+end
+
+local function SafeCall(fn, ...)
+    local ok = pcall(fn, ...)
+    return ok
+end
+
+local function GetFontData(fontDB)
+    if not fontDB then return "Fonts\\FRIZQT__.TTF", 12, "" end
+    local face = fontDB.face or "Friz Quadrata TT"
+    local size = fontDB.size or 12
+    local flags = fontDB.flags or "OUTLINE"
+    if flags == "NONE" then flags = "" end
+    local path = LSM:Fetch("font", face) or "Fonts\\FRIZQT__.TTF"
+    return path, size, flags
+end
+
+local function ApplyFontEffects(fontString, dbEntry)
+    if not fontString or not dbEntry then return end
+    if dbEntry.enableShadow then
+        fontString:SetShadowColor(0, 0, 0, 1)
+        fontString:SetShadowOffset(dbEntry.shadowX or 1, dbEntry.shadowY or -1)
+    else
+        fontString:SetShadowColor(0, 0, 0, 0)
+        fontString:SetShadowOffset(0, 0)
+    end
+    if dbEntry.useCustomColor and dbEntry.color then
+        local c = dbEntry.color
+        fontString:SetTextColor(c.r, c.g, c.b, c.a or 1)
+    end
+end
+
+local function IsEditModeActive()
+    return _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
+end
+
+-- Session window internals moved behind getter methods in newer API.
+-- Use getter-first access with legacy key fallbacks for cross-version compatibility.
+local function GetWindowPart(window, getterName, fallbackKey)
+    if not window then return nil end
+    local getter = window[getterName]
+    if type(getter) == "function" then
+        local ok, value = pcall(getter, window)
+        if ok and value then
+            return value
+        end
+    end
+    return window[fallbackKey]
+end
+
+local function GetWindowHeader(window) return GetWindowPart(window, "GetHeader", "Header") end
+local function GetWindowBackground(window) return GetWindowPart(window, "GetBackground", "Background") end
+local function GetWindowScrollBox(window) return GetWindowPart(window, "GetScrollBox", "ScrollBox") end
+local function GetWindowScrollBar(window) return GetWindowPart(window, "GetScrollBar", "ScrollBar") end
+local function GetWindowSourceWindow(window) return GetWindowPart(window, "GetSourceWindow", "SourceWindow") end
+local function GetWindowTypeDropdown(window) return GetWindowPart(window, "GetDamageMeterTypeDropdown", "DamageMeterTypeDropdown") end
+local function GetWindowSessionDropdown(window) return GetWindowPart(window, "GetSessionDropdown", "SessionDropdown") end
+local function GetWindowSettingsDropdown(window) return GetWindowPart(window, "GetSettingsDropdown", "SettingsDropdown") end
+local function GetWindowSessionTimer(window) return GetWindowPart(window, "GetSessionTimerFontString", "SessionTimer") end
+local function GetWindowMinimizeButton(window) return GetWindowPart(window, "GetMinimizeButton", "MinimizeButton") end
+
+local function ApplyMinimizeCompatibility(window)
+    local btn = GetWindowMinimizeButton(window)
+    if btn and not btn:IsForbidden() then
+        btn:Hide()
+        btn:SetAlpha(0)
+        btn:EnableMouse(false)
+        if not btn.FlareUI_HideHooked then
+            btn.FlareUI_HideHooked = true
+            btn:HookScript("OnShow", function(self)
+                self:Hide()
+                self:SetAlpha(0)
+                self:EnableMouse(false)
+            end)
+        end
+    end
+    -- Never call window:SetMinimized() from here: it writes window.isMinimized under our taint, and
+    -- every later Blizzard Refresh() that reads it runs tainted and trips over secret values in combat.
+end
+
+--------------------------------------------------
+-- 5. GET SESSION WINDOWS
+--------------------------------------------------
+local function GetSessionWindows()
+    local list = {}
+    for i = 1, 10 do
+        local w = _G["DamageMeterSessionWindow" .. i]
+        if w then list[#list + 1] = w end
+    end
+    if #list == 0 then
+        local dm = _G.DamageMeter
+        if dm then
+            for i = 1, dm:GetNumChildren() do
+                local w = select(i, dm:GetChildren())
+                if w and w.Header and w.DamageMeterTypeDropdown then
+                    list[#list + 1] = w
+                end
+            end
+        end
+    end
+    return list
+end
+
+--------------------------------------------------
+-- 6. SKIN FRAME (Backdrop + Border)
+-- Anchored to Background texture for equal padding on all sides.
+-- padding=0 => border exactly on Blizzard frame; padding>0 => extends outward evenly.
+--------------------------------------------------
+local function CreateOrGetSkinFrame(window, db)
+    local skin = window.FlareUI_DMSkin
+    if not skin then
+        skin = CreateFrame("Frame", nil, window, "BackdropTemplate")
+        window.FlareUI_DMSkin = skin
+    end
+    if not skin.Separator then
+        skin.Separator = skin:CreateTexture(nil, "OVERLAY")
+    end
+    return skin
+end
+
+local function UpdateSkinFrame(window, db)
+    if not window or window:IsForbidden() then return end
+    local skin = CreateOrGetSkinFrame(window, db)
+    local padding = db.textPadding or 0
+    local header = GetWindowHeader(window)
+
+    -- Anchor to the full window so the skin matches the bounds Edit Mode uses
+    skin:ClearAllPoints()
+    skin:SetPoint("BOTTOMLEFT", window, "BOTTOMLEFT", -padding, -padding)
+    skin:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", padding, -padding)
+    skin:SetPoint("TOPLEFT", window, "TOPLEFT", -padding, padding)
+    skin:SetPoint("TOPRIGHT", window, "TOPRIGHT", padding, padding)
+    skin:SetFrameStrata(window:GetFrameStrata())
+    skin:SetFrameLevel(math_max((window:GetFrameLevel() or 1) - 1, 0))
+
+    -- Same look as the chat frame: Blizzard's dark dialog background inside the border picked in the options
+    local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
+    local borderTexture = GetBorderFile(db)
+    skin:SetBackdrop({ bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = 16, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+    skin:SetBackdropColor(1, 1, 1, db.opacity or 0.85)
+    skin:SetBackdropBorderColor(BORDER_TINT.r, BORDER_TINT.g, BORDER_TINT.b, BORDER_TINT.a)
+
+    -- Blizzard draws its own background atlas (alpha from its "background transparency" setting)
+    -- and a header bar; the skin is the only background now, so keep both at zero.
+    local bg = GetWindowBackground(window)
+    if bg and bg.SetAlpha then bg:SetAlpha(0) end
+    if header and header.SetAlpha then header:SetAlpha(0) end
+    if window.UpdateBackground and not window.FlareUI_BgHooked then
+        window.FlareUI_BgHooked = true
+        hooksecurefunc(window, "UpdateBackground", function(w)
+            local d = GetDb()
+            if not d or not d.enabled then return end
+            local b = GetWindowBackground(w)
+            if b and b.SetAlpha then b:SetAlpha(0) end
+        end)
+    end
+
+    -- Separator: same texture and placement as the chat frame (24-32 px below the top edge)
+    if header and not db.hideHeader then
+        skin.Separator:Show()
+        skin.Separator:SetColorTexture(0, 0, 0, 0)
+        skin.Separator:SetTexture(SEPARATORS["Blizzard"])
+        skin.Separator:SetVertexColor(SEPARATOR_COLOR.r, SEPARATOR_COLOR.g, SEPARATOR_COLOR.b, SEPARATOR_COLOR.a)
+        skin.Separator:SetHeight(8)
+        skin.Separator:SetTexCoord(0, 1, 0, 1)
+        skin.Separator:ClearAllPoints()
+        skin.Separator:SetPoint("TOPLEFT", skin, "TOPLEFT", 3, -HEADER_HEIGHT)
+        skin.Separator:SetPoint("TOPRIGHT", skin, "TOPRIGHT", -3, -HEADER_HEIGHT)
+    else
+        skin.Separator:Hide()
+    end
+end
+
+--------------------------------------------------
+-- 7. SOURCE WINDOW SKIN
+-- Clicking a bar opens Blizzard's SourceWindow with the per-spell breakdown (Shift-click pins it).
+-- It is a sibling of the session window with its own dropdown-style background, so without this it
+-- pops out of the side of the meter in raw Blizzard grey. Same backdrop as the session window, no
+-- header band - the source window has no header.
+--------------------------------------------------
+local function UpdateSourceWindowSkin(window, db)
+    local sw = GetWindowSourceWindow(window)
+    if not sw or sw:IsForbidden() then return end
+
+    local skin = sw.FlareUI_DMSkin
+    if not skin then
+        skin = CreateFrame("Frame", nil, sw, "BackdropTemplate")
+        sw.FlareUI_DMSkin = skin
+    end
+
+    local padding = db.textPadding or 0
+    skin:ClearAllPoints()
+    skin:SetPoint("BOTTOMLEFT", sw, "BOTTOMLEFT", -padding, -padding)
+    skin:SetPoint("TOPRIGHT", sw, "TOPRIGHT", padding, padding)
+    skin:SetFrameStrata(sw:GetFrameStrata())
+    skin:SetFrameLevel(math_max((sw:GetFrameLevel() or 1) - 1, 0))
+
+    local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
+    local borderTexture = GetBorderFile(db)
+    skin:SetBackdrop({ bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = 16, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+    skin:SetBackdropColor(1, 1, 1, db.opacity or 0.85)
+    skin:SetBackdropBorderColor(BORDER_TINT.r, BORDER_TINT.g, BORDER_TINT.b, BORDER_TINT.a)
+
+    local bg = GetWindowBackground(sw)
+    if bg and bg.SetAlpha then bg:SetAlpha(0) end
+end
+
+--------------------------------------------------
+-- 8. HEADER
+--------------------------------------------------
+-- Forward declaration: ApplyHeader calls this, but the body belongs with the rest of the button
+-- styling in the next section. It must stay declared here - as a plain "local function" further
+-- down, the call below would resolve to a nil global.
+local AttachHeaderButtonHooks
+
+local function ApplyHeader(window, db)
+    if not window or window:IsForbidden() then return end
+    local header = GetWindowHeader(window)
+    if not header then return end
+
+    local hideHeader = db.hideHeader
+
+    if hideHeader then
+        header:Hide()
+        header:SetAlpha(0)
+        header:SetHeight(1)
+        -- Hide header elements so they don't overlap bars; prevent Blizzard from re-showing
+        local function ForceHide(frame)
+            if frame and not frame:IsForbidden() and GetDb() and GetDb().hideHeader then
+                frame:Hide()
+            end
+        end
+        for _, f in ipairs({ GetWindowSessionTimer(window), GetWindowTypeDropdown(window), GetWindowSessionDropdown(window), GetWindowSettingsDropdown(window) }) do
+            if f then
+                f:Hide()
+                if not f.FlareUI_HideHeaderHooked then
+                    f.FlareUI_HideHeaderHooked = true
+                    f:HookScript("OnShow", ForceHide)
+                end
+            end
+        end
+    else
+        header:Show()
+        header:SetAlpha(0)   -- the skin provides the header background; keep the frame for anchoring
+        header:SetHeight(HEADER_HEIGHT)
+        -- Session timer always hidden
+        local sessionTimer = GetWindowSessionTimer(window)
+        if sessionTimer then
+            sessionTimer:Hide()
+            if not sessionTimer.FlareUI_HideTimerHooked then
+                sessionTimer.FlareUI_HideTimerHooked = true
+                sessionTimer:HookScript("OnShow", function(self) self:Hide() end)
+            end
+        end
+        local typeDropdown = GetWindowTypeDropdown(window)
+        local sessionDropdown = GetWindowSessionDropdown(window)
+        local settingsDropdown = GetWindowSettingsDropdown(window)
+        if typeDropdown then typeDropdown:Show() end
+        if sessionDropdown then sessionDropdown:Show() end
+        if settingsDropdown then settingsDropdown:Show() end
+
+        -- Lay the header out like the chat header: icons 13 px, 15 px from the right, 21 px apart,
+        -- title 22 px from the left, everything centred 15 px below the top edge.
+        if not InCombatLockdown() then
+            SafeCall(function()
+                local dd = GetWindowTypeDropdown(window)
+                local sd = GetWindowSettingsDropdown(window)
+                local sdd = GetWindowSessionDropdown(window)
+                local box = ICON_SIZE + 9   -- click area a little larger than the icon
+                local ref = window.FlareUI_DMSkin or header   -- lay out against the skin, like the chat header
+                if sd and sd.ClearAllPoints then
+                    sd:SetSize(box, box)
+                    sd:ClearAllPoints()
+                    sd:SetPoint("CENTER", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE / 2), ROW_CENTER_Y)
+                end
+                if sdd and sdd.ClearAllPoints then
+                    sdd:SetSize(box, box)
+                    sdd:ClearAllPoints()
+                    sdd:SetPoint("CENTER", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE / 2 + ICON_SPACING), ROW_CENTER_Y)
+                end
+                if dd and dd.ClearAllPoints then
+                    dd:ClearAllPoints()
+                    dd:SetPoint("TOPLEFT", ref, "TOPLEFT", 0, 0)
+                    dd:SetPoint("BOTTOMRIGHT", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE + ICON_SPACING + 8), -HEADER_HEIGHT)
+                end
+                if dd and dd.TypeName and dd.TypeName.ClearAllPoints then
+                    dd.TypeName:ClearAllPoints()
+                    dd.TypeName:SetPoint("LEFT", ref, "TOPLEFT", TITLE_LEFT, ROW_CENTER_Y)
+                    dd.TypeName:SetPoint("RIGHT", dd, "RIGHT", -4, 0)
+                    dd.TypeName:SetJustifyH("LEFT")
+                end
+            end)
+        end
+    end
+
+    -- ScrollBox anchors: align with inner border (no clipping), full width within content area
+    local function ApplyScrollBoxAnchors()
+        local sb = GetWindowScrollBox(window)
+        local ref = header
+        if sb and ref and not InCombatLockdown() then
+            local d = GetDb()
+            if not d then return end
+            local skinRef = window.FlareUI_DMSkin or window
+            sb:ClearAllPoints()
+            sb:SetPoint("TOPLEFT", skinRef, "TOPLEFT", 6, -CONTENT_TOP)
+            sb:SetPoint("BOTTOMRIGHT", skinRef, "BOTTOMRIGHT", -6, 6)
+        end
+    end
+    if not InCombatLockdown() then
+        SafeCall(ApplyScrollBoxAnchors)
+    end
+    -- Re-apply when Blizzard's scrollbar visibility behavior overwrites our anchors
+    local scrollBar = GetWindowScrollBar(window)
+    if scrollBar and not scrollBar.FlareUI_ScrollBoxAnchorHooked then
+        scrollBar.FlareUI_ScrollBoxAnchorHooked = true
+        scrollBar:HookScript("OnShow", ApplyScrollBoxAnchors)
+        scrollBar:HookScript("OnHide", ApplyScrollBoxAnchors)
+    end
+
+    if not hideHeader then
+        AttachHeaderButtonHooks(window)
+    end
+end
+
+--------------------------------------------------
+-- 9. HEADER BUTTON STYLE (Color + Scale, or Custom Icons)
+--------------------------------------------------
+local function HideBlizzardButtonVisuals(btn, hideSessionName)
+    if not btn then return end
+    if btn.Arrow then btn.Arrow:SetAlpha(0) end
+    if btn.Icon and btn.Icon.SetAlpha then btn.Icon:SetAlpha(0) end
+    if btn.Background and btn.Background.SetAlpha then btn.Background:SetAlpha(0) end
+    if hideSessionName and btn.SessionName and btn.SessionName.SetAlpha then
+        btn.SessionName:SetAlpha(0)
+    end
+    local nr = btn.GetNumRegions and btn:GetNumRegions() or 0
+    for i = 1, nr do
+        local r = select(i, btn:GetRegions())
+        if r and r.IsObjectType and r:IsObjectType("Texture") and r.SetAlpha then
+            r:SetAlpha(0)
+        end
+    end
+end
+
+local function SetupCustomIcon(btn, iconPath, hideSessionName, drawSize, yOfs)
+    if not btn then return end
+    btn:Show()
+    HideBlizzardButtonVisuals(btn, hideSessionName)
+
+    if not btn.FlareUI_Icon then
+        btn.FlareUI_Icon = btn:CreateTexture(nil, "OVERLAY")
+        btn.FlareUI_Icon:SetDrawLayer("OVERLAY", 7)
+    end
+    btn.FlareUI_Icon:ClearAllPoints()
+    btn.FlareUI_Icon:SetPoint("CENTER", btn, "CENTER", 0, yOfs or 0)
+    btn.FlareUI_Icon:SetSize(drawSize or ICON_SIZE, drawSize or ICON_SIZE)
+    btn.FlareUI_Icon:SetTexture(iconPath)
+    local c = ICON_COLOR
+    btn.FlareUI_Icon:SetVertexColor(c.r, c.g, c.b, c.a or 1)
+    btn.FlareUI_Icon:Show()
+
+    if not btn.FlareUI_IconHoverHooked then
+        btn.FlareUI_IconHoverHooked = true
+        btn:HookScript("OnEnter", function(self)
+            local db = GetDb()
+            if not db or db.hideHeader then return end
+            local hR, hG, hB = LightenColor(ICON_COLOR.r, ICON_COLOR.g, ICON_COLOR.b, 0.3)
+            if self.FlareUI_Icon then self.FlareUI_Icon:SetVertexColor(hR, hG, hB, ICON_COLOR.a) end
+        end)
+        btn:HookScript("OnLeave", function(self)
+            local db = GetDb()
+            if not db or db.hideHeader then return end
+            if self.FlareUI_Icon then self.FlareUI_Icon:SetVertexColor(ICON_COLOR.r, ICON_COLOR.g, ICON_COLOR.b, ICON_COLOR.a) end
+        end)
+    end
+end
+
+local function ApplyHeaderButtonStyle(window, db)
+    if not window or window:IsForbidden() then return end
+    if not db or db.hideHeader then return end
+
+    -- The type dropdown is the title itself (clickable text, like a chat tab): no icon, Blizzard art off
+    local dd = GetWindowTypeDropdown(window)
+    if dd then HideBlizzardButtonVisuals(dd, false) end
+
+    local sdd = GetWindowSessionDropdown(window)
+    if sdd then SetupCustomIcon(sdd, ICON_SEGMENTS, true, ICON_DRAW_SIZE.segments, ICON_DRAW_YOFS.segments) end
+
+    local sd = GetWindowSettingsDropdown(window)
+    if sd then SetupCustomIcon(sd, ICON_SETTINGS, false, ICON_DRAW_SIZE.settings, ICON_DRAW_YOFS.settings) end
+end
+
+function AttachHeaderButtonHooks(window)
+    if not window or window.FlareUI_HeaderBtnHooked then return end
+    window.FlareUI_HeaderBtnHooked = true
+
+    local function Reapply()
+        local db = GetDb()
+        if db and db.enabled and not db.hideHeader then
+            SafeCall(ApplyHeaderButtonStyle, window, db)
+        end
+    end
+
+    window:HookScript("OnShow", function()
+        C_Timer.After(0, Reapply)
+    end)
+
+    for _, btn in ipairs({ GetWindowTypeDropdown(window), GetWindowSessionDropdown(window), GetWindowSettingsDropdown(window) }) do
+        if btn and not btn.FlareUI_BtnStyleHooked then
+            btn.FlareUI_BtnStyleHooked = true
+            btn:HookScript("OnShow", Reapply)
+        end
+    end
+end
+
+--------------------------------------------------
+-- 10. SCROLL BAR
+--------------------------------------------------
+local function ApplyScrollBarVisibility(window, db)
+    if not window or window:IsForbidden() then return end
+    local sb = GetWindowScrollBar(window)
+    if not sb then return end
+
+    sb:Hide()
+    sb:SetAlpha(0)
+    sb:EnableMouse(false)
+    if not sb.FlareUI_HideScrollBarHooked then
+        sb.FlareUI_HideScrollBarHooked = true
+        sb:HookScript("OnShow", function(self) self:Hide() end)
+    end
+    local scrollBox = GetWindowScrollBox(window)
+    if scrollBox and scrollBox.EnableMouseWheel then
+        scrollBox:EnableMouseWheel(true)
+    end
+
+    local sw = GetWindowSourceWindow(window)
+    if sw and sw.ScrollBar then
+        local srcSb = sw.ScrollBar
+        srcSb:Hide()
+        srcSb:SetAlpha(0)
+        srcSb:EnableMouse(false)
+        if not srcSb.FlareUI_HideScrollBarHooked then
+            srcSb.FlareUI_HideScrollBarHooked = true
+            srcSb:HookScript("OnShow", function(self) self:Hide() end)
+        end
+        if sw.ScrollBox and sw.ScrollBox.EnableMouseWheel then
+            sw.ScrollBox:EnableMouseWheel(true)
+        end
+    end
+end
+
+--------------------------------------------------
+-- 11. HEADER FONTS
+--------------------------------------------------
+local HEADER_FONT = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1, useCustomColor = true, color = TITLE_COLOR }
+
+local function ApplyHeaderFonts(window, db)
+    if not window or window:IsForbidden() then return end
+    local fontDb = HEADER_FONT
+
+    local path, size, flags = GetFontData(fontDb)
+
+    local function ApplyToFontString(fs)
+        if not fs or not fs.SetFont then return end
+        fs:SetFont(path, size, flags)
+        ApplyFontEffects(fs, fontDb)
+    end
+
+    local dd = GetWindowTypeDropdown(window)
+    if dd and dd.TypeName then
+        ApplyToFontString(dd.TypeName)
+    end
+
+    local sd = GetWindowSessionDropdown(window)
+    if sd and sd.SessionName then
+        ApplyToFontString(sd.SessionName)
+    end
+
+    local sessionTimer = GetWindowSessionTimer(window)
+    if sessionTimer then
+        ApplyToFontString(sessionTimer)
+    end
+
+    if dd and dd.GetRegions then
+        for _, region in pairs({ dd:GetRegions() }) do
+            if region and region.IsObjectType and region:IsObjectType("FontString") then
+                ApplyToFontString(region)
+            end
+        end
+    end
+end
+
+--------------------------------------------------
+-- 12. BAR FONTS
+--------------------------------------------------
+local function ApplyBarFont(entry, db)
+    if not entry or entry:IsForbidden() then return end
+    local fontDb = db.barFont
+    if not fontDb then return end
+
+    local path, size, flags = GetFontData(fontDb)
+    local statusBar = entry.GetStatusBar and entry:GetStatusBar() or entry.StatusBar
+    local nameFs = statusBar and statusBar.Name or entry.Name
+    local valueFs = statusBar and statusBar.Value or entry.Value
+
+    local function ApplyToFS(fs)
+        if fs and fs.SetFont then
+            fs:SetFont(path, size, flags)
+            ApplyFontEffects(fs, fontDb)
+        end
+    end
+
+    ApplyToFS(nameFs)
+    ApplyToFS(valueFs)
+
+    if entry.GetRegions then
+        for _, region in pairs({ entry:GetRegions() }) do
+            if region and region.IsObjectType and region:IsObjectType("FontString") then
+                ApplyToFS(region)
+            end
+        end
+    end
+end
+
+-- The bar fill: Blizzard's own atlas unless a texture is picked. Blizzard sets it once, from the entry
+-- template, and afterwards only tints it by class, so a texture set here stays put.
+local BLIZZARD_BAR_ATLAS = "UI-HUD-CoolDownManager-Bar"
+local texturedBars = setmetatable({}, { __mode = "k" })
+local function ApplyBarTexture(entry, db)
+    if not entry or entry:IsForbidden() then return end
+    local statusBar = entry.GetStatusBar and entry:GetStatusBar() or entry.StatusBar
+    if not statusBar then return end
+    local name = db.barTexture
+    if name and name ~= "" and LSM:IsValid("statusbar", name) then
+        statusBar:SetStatusBarTexture(LSM:Fetch("statusbar", name))
+        texturedBars[statusBar] = true
+    elseif texturedBars[statusBar] then
+        statusBar:SetStatusBarTexture(BLIZZARD_BAR_ATLAS)
+        texturedBars[statusBar] = nil
+    end
+end
+
+local function StyleEntry(entry, db)
+    ApplyBarFont(entry, db)
+    ApplyBarTexture(entry, db)
+end
+
+--------------------------------------------------
+-- 13. SCROLL BOX FONT REFRESH
+--------------------------------------------------
+-- Fonts and bar textures are applied only during explicit Refresh() passes (out of combat, outside Edit Mode).
+-- Hooking ScrollBox:Update or entry Init/UpdateValue instead would run inside Blizzard's secure
+-- list updates, where touching the entries taints them (secret preview/combat data).
+local function ApplyFontsToScrollBox(scrollBox, db)
+    if not scrollBox or not db then return end
+    if scrollBox.ForEachFrame then
+        scrollBox:ForEachFrame(function(frame)
+            StyleEntry(frame, db)
+        end)
+    elseif scrollBox.EnumerateFrames then
+        for frame in scrollBox:EnumerateFrames() do
+            StyleEntry(frame, db)
+        end
+    end
+end
+
+--------------------------------------------------
+-- 14. UNCLAMP
+--------------------------------------------------
+-- Let the window be dragged past the screen edge, like the chat frame. Blizzard's template clamps
+-- it, and on Forever something re-clamps it while Edit Mode is active (the window reports
+-- unclamped outside Edit Mode but still stops at the edge inside it), so besides unclamping once we
+-- undo any later SetClampedToScreen(true) and also unclamp the Edit Mode selection frame.
+local function Unclamp(frame)
+    if not frame or frame:IsForbidden() then return end
+    frame:SetClampedToScreen(false)
+    frame:SetClampRectInsets(-50, -50, -50, -50)
+    if not frame.FlareUI_ClampHooked then
+        frame.FlareUI_ClampHooked = true
+        hooksecurefunc(frame, "SetClampedToScreen", function(f, clamped)
+            if clamped and not f.FlareUI_Unclamping then
+                f.FlareUI_Unclamping = true
+                f:SetClampedToScreen(false)
+                f.FlareUI_Unclamping = nil
+            end
+        end)
+    end
+end
+
+local function ApplyUnclamp(window, db)
+    Unclamp(window)
+    Unclamp(window.Selection)
+end
+
+--------------------------------------------------
+-- 15. APPLY TO SINGLE WINDOW
+--------------------------------------------------
+function DamageMeter:ApplyToWindow(window)
+    local db = GetDb()
+    if not db or not db.enabled then return end
+
+    -- Never touch secure DamageMeter widgets while Edit Mode preview data is active.
+    if IsEditModeActive() then return end
+    SafeCall(ApplyUnclamp, window, db)
+    SafeCall(ApplyMinimizeCompatibility, window)
+    SafeCall(UpdateSkinFrame, window, db)
+    SafeCall(UpdateSourceWindowSkin, window, db)
+    SafeCall(ApplyHeader, window, db)
+    SafeCall(ApplyScrollBarVisibility, window, db)
+    SafeCall(ApplyHeaderFonts, window, db)
+    if not (db.hideHeader) then
+        SafeCall(ApplyHeaderButtonStyle, window, db)
+    end
+
+    local sb = GetWindowScrollBox(window)
+    if sb then
+        SafeCall(ApplyFontsToScrollBox, sb, db)
+    end
+    local localPlayerEntry = (window.GetLocalPlayerEntry and window:GetLocalPlayerEntry()) or window.LocalPlayerEntry
+    if localPlayerEntry then
+        SafeCall(StyleEntry, localPlayerEntry, db)
+    end
+
+    local sw = GetWindowSourceWindow(window)
+    local swScrollBox = sw and ((sw.GetScrollBox and sw:GetScrollBox()) or sw.ScrollBox)
+    if swScrollBox then
+        SafeCall(ApplyFontsToScrollBox, swScrollBox, db)
+    end
+end
+
+--------------------------------------------------
+-- 16. REFRESH ALL
+--------------------------------------------------
+function DamageMeter:Refresh()
+    if InCombatLockdown() then
+        self._pendingRefresh = true
+        return
+    end
+
+    local db = GetDb()
+    if not db or not db.enabled then return end
+
+    for _, window in ipairs(GetSessionWindows()) do
+        self:ApplyToWindow(window)
+    end
+
+    self._pendingRefresh = false
+    -- No delayed re-apply here any more: AttachHeaderButtonHooks now actually installs, so the
+    -- window's and the buttons' OnShow handlers re-style whenever Blizzard rebuilds them.
+end
+
+--------------------------------------------------
+-- 17. EVENT HANDLERS
+--------------------------------------------------
+function DamageMeter:PLAYER_REGEN_ENABLED()
+    if self._pendingRefresh then
+        C_Timer.After(0, function() self:Refresh() end)
+    end
+end
+
+function DamageMeter:EDIT_MODE_LAYOUTS_UPDATED()
+    C_Timer.After(0.25, function() self:Refresh() end)
+end
+
+function DamageMeter:ADDON_LOADED(event, addonName)
+    if addonName == "Blizzard_DamageMeter" or addonName == "Blizzard_CombatLog" or addonName == ADDON_NAME then
+        C_Timer.After(0, function() self:Refresh() end)
+        C_Timer.After(0.5, function() self:Refresh() end)
+    end
+end
+
+function DamageMeter:PLAYER_ENTERING_WORLD()
+    C_Timer.After(0.5, function() self:Refresh() end)
+end
+
+--------------------------------------------------
+-- 18. INIT
+--------------------------------------------------
+function DamageMeter:Init()
+    -- EDIT_MODE_LAYOUTS_UPDATED fires while the panel is still open, and ApplyToWindow refuses to
+    -- touch the secure widgets then, so that refresh does nothing. Re-run once the panel closes.
+    if _G.EditModeManagerFrame and not self._editModeHooked then
+        self._editModeHooked = true
+        _G.EditModeManagerFrame:HookScript("OnHide", function()
+            C_Timer.After(0, function() DamageMeter:Refresh() end)
+        end)
+    end
+
+    self:RegisterEvent("PLAYER_REGEN_ENABLED")
+    self:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
+    self:RegisterEvent("ADDON_LOADED")
+    self:RegisterEvent("PLAYER_ENTERING_WORLD")
+    self:RegisterEvent("VARIABLES_LOADED")
+
+    C_Timer.After(0, function() self:Refresh() end)
+    C_Timer.After(1, function() self:Refresh() end)
+end
+
+function DamageMeter:VARIABLES_LOADED()
+    C_Timer.After(0.5, function() self:Refresh() end)
+end

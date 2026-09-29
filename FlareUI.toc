@@ -1,0 +1,50 @@
+## Interface: 16001
+## Title: FlareUI
+## Version: 1.0
+## Author: Malkkav
+## Notes: Your friendly UI overhowl
+## SavedVariables: FlareUI_DB
+## IconTexture: Interface\AddOns\FlareUI\Media\Art\Icon.png
+## AddonCompartmentFunc: FlareUI_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: FlareUI_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: FlareUI_OnAddonCompartmentLeave
+
+# ----------------------------------------------------
+# Libraries
+# ----------------------------------------------------
+Libs\Libs.xml
+
+# ----------------------------------------------------
+# Addon Files
+# ----------------------------------------------------
+Core.lua
+Media.lua
+EditModeOverlays.lua
+
+# Modules (Logic)
+Modules\Chat.lua
+Modules\DamageMeter.lua
+Modules\ActionBars.lua
+Modules\XPBar.lua
+Modules\Visibility.lua
+Modules\UnitFrames.lua
+Modules\Minimap.lua
+Modules\TweaksCVars.lua
+Modules\Tweaks.lua
+Modules\Tooltips.lua
+Modules\RadialMenu.lua
+
+# Configuration (Interface)
+Options\BaseConfig.lua
+Options\ChatConfig.lua
+Options\DamageMeterConfig.lua
+Options\ActionBarsConfig.lua
+Options\VisibilityConfig.lua
+Options\UnitFramesConfig.lua
+Options\MinimapConfig.lua
+Options\TweaksConfig.lua
+Options\TooltipsConfig.lua
+Options\IconPicker.lua
+Options\RadialEditor.lua
+Options\RadialMenuConfig.lua
+Options\Welcome.lua

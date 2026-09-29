@@ -1,0 +1,71 @@
+local _, ns = ...
+
+--------------------------------------------------
+-- CVars mirrored by Tweaks > Sync Blizz UI. The list comes from Account Wide Interface Settings by
+-- ConineSpiritwolf, used under the MIT License (LICENSES/AccountWideInterfaceSettings.txt), minus
+-- the Retail-only systems Forever lacks. Names the client does not
+-- know are skipped at runtime, so the list can stay broad.
+-- From Options > Advanced Options only the two damage meter switches are synced; the rest are
+-- per-class choices (Diminishing Returns was dropped on purpose). Swing Timer is not here because
+-- Blizzard already stores it account-wide (WTF/Account/<acct>/config-cache.wtf).
+--------------------------------------------------
+ns.SYNC_CVARS = {
+    "ColorNameplateNameBySelection", "clampTargetNameplateToScreen", "NamePlateClassificationScale", "nameplateClassResourceTopInset",
+    "nameplateGameObjectMaxDistance", "nameplateGlobalScale", "nameplateHideHealthAndPower", "NamePlateHorizontalScale",
+    "nameplateLargeBottomInset", "nameplateLargerScale", "nameplateLargeTopInset", "nameplateMaxAlpha",
+    "nameplateMaxAlphaDistance", "nameplateMaxDistance", "NamePlateMaximumClassificationScale", "nameplateMaxScale",
+    "nameplateMaxScaleDistance", "nameplateMinAlpha", "nameplateMinAlphaDistance", "nameplateMinScale",
+    "nameplateMinScaleDistance", "nameplateMotion", "nameplateMotionSpeed", "nameplateOccludedAlphaMult",
+    "nameplateOtherBottomInset", "nameplateOtherTopInset", "NameplatePersonalClickThrough", "NameplatePersonalHideDelayAlpha",
+    "NameplatePersonalHideDelaySeconds", "NameplatePersonalShowAlways", "NameplatePersonalShowInCombat", "NameplatePersonalShowWithTarget",
+    "nameplatePlayerLargerScale", "nameplatePlayerMaxDistance", "nameplateResourceOnTarget", "nameplateSelectedAlpha",
+    "nameplateSelectedScale", "nameplateSelfAlpha", "nameplateSelfBottomInset", "nameplateSelfScale",
+    "nameplateSelfTopInset", "nameplateShowAll", "nameplateShowDebuffsOnFriendly", "nameplateShowEnemies",
+    "nameplateShowEnemyGuardians", "nameplateShowEnemyMinions", "nameplateShowEnemyMinus", "nameplateShowEnemyPets",
+    "nameplateShowEnemyTotems", "nameplateShowFriendlyBuffs", "nameplateShowFriendlyGuardians", "nameplateShowFriendlyMinions",
+    "nameplateShowFriendlyNPCs", "nameplateShowFriendlyPets", "nameplateShowFriendlyTotems", "nameplateShowFriends",
+    "nameplateShowPersonalCooldowns", "nameplateShowSelf", "nameplateTargetBehindMaxDistance", "NamePlateVerticalScale",
+    "ShowClassColorInFriendlyNameplate", "ShowClassColorInNameplate", "ShowNamePlateLoseAggroFlash", "nameplateShowOnlyNames",
+    "nameplateNotSelectedAlpha", "nameplateRemovalAnimation", "nameplateCommentatorMaxDistance", "showVKeyCastbarSpellName",
+    "showVKeyCastbarOnlyOnTarget", "nameplateShowCastBars", "nameplateSimplifiedScale", "nameplateUseClassColorForFriendlyPlayerUnitNames",
+    "nameplateShowAllPersonalAuras", "nameplatePlayRemovalAnimation", "nameplateForceShowUnitName", "nameplateCheckDistanceForTarget",
+    "raidFramesDisplayAggroHighlight", "raidFramesDisplayClassColor", "raidFramesDisplayDebuffs", "raidFramesDisplayIncomingHeals",
+    "raidFramesDisplayOnlyDispellableDebuffs", "raidFramesDisplayPowerBars", "raidFramesHealthText", "raidFramesHeight",
+    "raidFramesPosition", "raidFramesWidth", "showPartyPets", "raidOptionLocked",
+    "raidOptionIsShown", "raidOptionSortMode", "raidOptionDisplayPets", "raidOptionShowBorders",
+    "raidOptionKeepGroupsTogether", "raidOptionDisplayMainTankAndAssist", "raidFramesDisplayOnlyHealerPowerBars", "useCompactPartyFrames",
+    "fullSizeFocusFrame", "showDispelDebuffs", "showCastableBuffs", "threatWarning",
+    "noBuffDebuffFilterOnTarget", "raidFramesCenterBigDefensive", "raidFramesDispelIndicatorOverlayAnimation", "raidFramesDispelIndicatorOverlay",
+    "raidFramesDispelIndicatorType", "raidFramesDisplayLargerRoleSpecificDebuffs", "raidFramesHealthBarColor", "raidFramesHealthBarColorBG",
+    "showArenaEnemyCastbar", "showArenaEnemyFrames", "showArenaEnemyPets", "pvpOptionDisplayPets",
+    "pvpFramesHealthText", "pvpFramesDisplayPowerBars", "pvpFramesDisplayClassColor", "pvpFramesDisplayOnlyHealerPowerBars",
+    "damageMeterEnabled", "damageMeterResetOnNewInstance", "blockChannelInvites", "blockTrades",
+    "displaySpellActivationOverlays", "spellActivationOverlayOpacity", "autoLootDefault", "autoLootRate",
+    "lossOfControl", "lossOfControlDisarm", "lossOfControlFull", "lossOfControlInterrupt",
+    "lossOfControlRoot", "lossOfControlSilence", "SoftTargetEnemy", "SoftTargetEnemyArc",
+    "SoftTargetEnemyRange", "SoftTargetForce", "SoftTargetFriend", "SoftTargetFriendArc",
+    "SoftTargetFriendRange", "closedInfoFrames", "closedExtraAbiltyTutorials", "lastVoidStorageTutorial",
+    "covenantMissionTutorial", "orderHallMissionTutorial", "lastGarrisonMissionTutorial", "shipyardMissionTutorialAreaBuff",
+    "shipyardMissionTutorialBlockade", "shipyardMissionTutorialFirst", "dangerousShipyardMissionWarningAlreadyShown", "soulbindsActivatedTutorial",
+    "soulbindsLandingPageTutorial", "soulbindsViewedTutorial", "showBattlefieldMinimap", "enableMultiActionBars",
+    "multiBarRightVerticalLayout", "enableMouseoverCast", "autoSelfCast", "mapFade",
+    "miniWorldMap", "questLogOpen", "questPOI", "questPOILocalStory",
+    "questPOIWQ", "scrollToLogQuest", "showDelveEntrancesOnMap", "showQuestObjectivesInLog",
+    "showQuestObjectivesOnMap", "showDungeonEntrancesOnMap", "showTamers", "showTamersWQ",
+    "dragonRidingRacesFilter", "dragonRidingRacesFilterWQ", "worldQuestFilterAnima", "worldQuestFilterArtifactPower",
+    "worldQuestFilterEquipment", "worldQuestFilterGold", "worldQuestFilterProfessionMaterials", "worldQuestFilterReputation",
+    "worldQuestFilterResources", "primaryProfessionsFilter", "secondaryProfessionsFilter", "contentTrackingFilter",
+    "questHelper", "showBosses", "worldMapOpacity", "digSites",
+    "minimapInsideZoom", "minimapShowArchBlobs", "minimapShowQuestBlobs", "minimapZoom",
+    "minimapTrackingShowAll", "calendarShowBattlegrounds", "calendarShowDarkmoon", "calendarShowHolidays",
+    "calendarShowLockouts", "calendarShowResets", "calendarShowWeeklyHolidays", "cameraSavedDistance",
+    "cameraSavedPetBattleDistance", "cameraSavedPitch", "cameraSavedVehicleDistance", "cameraDistanceFixedValue",
+    "cameraBobbing", "assistAttack", "autoRangedCombat", "stopAutoAttackOnTargetChange",
+    "TargetAutoEnemy", "TargetAutoFriend", "TargetAutoLock", "TargetEnemyAttacker",
+    "characterFrameCollapsed", "equipmentManager", "AutoPushSpellToActionBar", "friendsSmallView",
+    "friendsViewButtons", "guildNewsFilter", "guildRewardsCategory", "guildRewardsUsable",
+    "guildRosterView", "miniCommunitiesFrame", "miniDressUpFrame", "consolidateBuffs",
+    "previewTalentsOption", "collapseExpandBuffs", "auctionSortByBuyoutPrice", "auctionSortByUnitPrice",
+    "showHonorAsExperience", "showCustomSetDetails", "pvpLocklistMaps0", "pvpLocklistMaps1",
+    "missingTransmogSourceInItemTooltips",
+}
