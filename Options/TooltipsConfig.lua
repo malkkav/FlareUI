@@ -93,6 +93,10 @@ ns.Options.args.tooltips = {
                         hidePvpLine = Toggle("hidePvpLine", "Hide PvP Line", 50, "Removes the \"PvP\" line from unit tooltips.", 1.2),
                         spacer3 = SP(51),
                         hideRightClick = Toggle("hideRightClick", "Hide Right Click Hint", 60, "Removes the \"<Right click for Frame Settings>\" line.", 1.2),
+                        break3 = { type = "description", name = " ", order = 65, width = "full" },
+                        showItemID = Toggle("showItemID", "Item IDs", 70, "Adds the item's ID at the bottom of item tooltips.", 1.2),
+                        spacer4 = SP(71),
+                        showSpellID = Toggle("showSpellID", "Spell IDs", 80, "Adds the spell's ID at the bottom of spell and buff tooltips.", 1.2),
                     }
                 },
             },

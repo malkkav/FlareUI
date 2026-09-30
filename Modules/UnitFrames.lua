@@ -35,8 +35,8 @@ local canaccessvalue = canaccessvalue or function() return true end
 local BORDER_FILE   = "Interface\\Tooltips\\UI-Tooltip-Border"
 local BACKDROP_FILE = "Interface\\Buttons\\WHITE8x8"
 -- Fixed look (not user-facing): the border art overlaps the bar edges by INSET, the backdrop is
--- fully transparent, the border band is 16 px. Bar textures and border art (a texture or the Blizzard
--- art rim, 4b) are per frame in Edit Mode; the border colour is FlareUI's fixed bronze.
+-- fully transparent, the border band is 16 px. Bar and border textures are per frame in Edit Mode;
+-- the border colour is FlareUI's fixed bronze.
 local INSET         = 4
 local BORDER_SIZE   = 16
 local BG_OPACITY    = 0
@@ -50,8 +50,9 @@ local TEXT_INSET    = 4
 local CAST_HEIGHT   = 18
 local CAST_GAP      = 4
 local CAST_ICON_GAP = 0     -- icon sits flush against the bar
-local RAID_ICON     = 18
-local RAID_ICON_BAR = 0.85   -- target / focus: the marker mid health bar, this share of its height
+local RAID_ICON     = 18     -- the smallest pet happiness face
+local RAID_ICON_SHARE = 0.5  -- raid marker: mid health bar, this share of the bar's height
+local HAPPINESS_SHARE = 0.7  -- pet happiness face: mid health bar, this share of the bar's height
 
 local DEAD_TEXT     = _G.DEAD or "Dead"
 local GHOST_TEXT    = _G.GHOST or "Ghost"
@@ -102,7 +103,7 @@ local UNITS = {
     },
     target = {
         mirrorable = true,
-        key = "Target", label = "Target", order = 2, auras = true, raidIconOnBar = true,
+        key = "Target", label = "Target", order = 2, auras = true,
         blizzard = { "TargetFrame" },
         driver = "[@target,exists] show; hide",
         globalEvents = { PLAYER_TARGET_CHANGED = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true, PLAYER_FLAGS_CHANGED = "target" },
@@ -117,7 +118,7 @@ local UNITS = {
     },
     focus = {
         mirrorable = true,
-        key = "Focus", label = "Focus", order = 4, auras = true, raidIconOnBar = true,
+        key = "Focus", label = "Focus", order = 4, auras = true,
         blizzard = { "FocusFrame", "TargetofFocusFrame" },
         driver = "[@focus,exists] show; hide",
         globalEvents = { PLAYER_FOCUS_CHANGED = true },
@@ -125,7 +126,7 @@ local UNITS = {
         indicators = { classification = true, threat = true, heals = true },
     },
     pet = {
-        key = "Pet", label = "Pet", order = 5,
+        key = "Pet", label = "Pet", order = 5, happiness = true, noRaidIcon = true,
         blizzard = { "PetFrame" },
         driver = "[@pet,exists] show; hide",
         indicators = { heals = true },
@@ -200,121 +201,17 @@ local function GetColor(c, fallback)
     return c.r or 1, c.g or 1, c.b or 1, c.a or 1
 end
 
---------------------------------------------------
--- 4b. BLIZZARD ART BORDER
--- The bronze rim of Forever's red menu buttons (the Game Menu's), cut at runtime out of the game's
--- own texture into a nine-slice with no centre. Everything comes from the right end cap of the long
--- button in 128redbuttonc60.blp (file 8063723, 512 x 2048): its top and bottom rims make the top and
--- bottom edges, its right rim the sides, its bevelled corners the corners, and the left side is the
--- right side mirrored. Inside each bevel the cap still holds the button's red fill, and outside it a
--- soft shadow; FlareUI's own masks (Media/Masks) cut both away. Rectangles are in file pixels.
---------------------------------------------------
-local ART_FILE        = 8063723
-local ART_FILE_W      = 512
-local ART_FILE_H      = 2048
-local ART_BAND        = 11                                  -- the rim (8) and its inner black line (3)
-local ART_THICKNESS   = 2.5                                 -- on-screen width of that band
-local ART_INDENT      = 1.5                                 -- how far in from the frame's edge it sits
-local ART_SCALE       = ART_THICKNESS / ART_BAND
-local ART_CORNER      = 32                                  -- the bevelled corner square
-local ART_CORNER_X    = 251
-local ART_CORNER_TOP  = 401                                 -- top-right corner; the rim starts here
-local ART_CORNER_BOT  = 477                                 -- bottom-right corner
-local ART_TOP_EDGE    = { x = 100, y = 401, w = 100, h = 11 }
-local ART_BOTTOM_EDGE = { x = 100, y = 499, w = 100, h = 10 }
-local ART_SIDE_EDGE   = { x = 272, y = 440, w = 11,  h = 30 }
-local ART_MASKS       = "Interface\\AddOns\\" .. ns.addonName .. "\\Media\\Masks\\ArtCorner"
-
--- a file rectangle on a texture, mirrored left to right for the left side
-local function SetArtRect(tex, x, y, w, h, mirror)
-    local left, right = x / ART_FILE_W, (x + w) / ART_FILE_W
-    if mirror then left, right = right, left end
-    tex:SetTexture(ART_FILE)
-    tex:SetTexCoord(left, right, y / ART_FILE_H, (y + h) / ART_FILE_H)
-end
-
-local function CreateArtBorder(border)
-    local art = {}
-    local function Piece(key, rect, mirror, point, x, y)
-        local t = border:CreateTexture(nil, "ARTWORK")
-        SetArtRect(t, rect.x, rect.y, rect.w, rect.h, mirror)
-        if point then
-            -- a corner: fixed size, masked to the rim, set in from the frame's edge
-            t:SetPoint(point, x, y)
-            local mask = border:CreateMaskTexture()
-            mask:SetTexture(ART_MASKS .. key, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-            mask:SetAllPoints(t)
-            t:AddMaskTexture(mask)
-        end
-        art[key] = t
-        return t
-    end
-    local topRight    = { x = ART_CORNER_X, y = ART_CORNER_TOP, w = ART_CORNER, h = ART_CORNER }
-    local bottomRight = { x = ART_CORNER_X, y = ART_CORNER_BOT, w = ART_CORNER, h = ART_CORNER }
-    local tl = Piece("TL", topRight, true, "TOPLEFT", ART_INDENT, -ART_INDENT)
-    local tr = Piece("TR", topRight, false, "TOPRIGHT", -ART_INDENT, -ART_INDENT)
-    local bl = Piece("BL", bottomRight, true, "BOTTOMLEFT", ART_INDENT, ART_INDENT)
-    local br = Piece("BR", bottomRight, false, "BOTTOMRIGHT", -ART_INDENT, ART_INDENT)
-
-    local top = Piece("Top", ART_TOP_EDGE)
-    top:SetPoint("TOPLEFT", tl, "TOPRIGHT")
-    top:SetPoint("TOPRIGHT", tr, "TOPLEFT")
-    top:SetHeight(ART_TOP_EDGE.h * ART_SCALE)
-    local bottom = Piece("Bottom", ART_BOTTOM_EDGE)
-    bottom:SetPoint("BOTTOMLEFT", bl, "BOTTOMRIGHT")
-    bottom:SetPoint("BOTTOMRIGHT", br, "BOTTOMLEFT")
-    bottom:SetHeight(ART_BOTTOM_EDGE.h * ART_SCALE)
-    local left = Piece("Left", ART_SIDE_EDGE, true)
-    left:SetPoint("TOPLEFT", tl, "BOTTOMLEFT")
-    left:SetPoint("BOTTOMLEFT", bl, "TOPLEFT")
-    left:SetWidth(ART_SIDE_EDGE.w * ART_SCALE)
-    local right = Piece("Right", ART_SIDE_EDGE)
-    right:SetPoint("TOPRIGHT", tr, "BOTTOMRIGHT")
-    right:SetPoint("BOTTOMRIGHT", br, "TOPRIGHT")
-    right:SetWidth(ART_SIDE_EDGE.w * ART_SCALE)
-    border.Art = art
-end
-
--- Back to the resting colour: the art's own bronze, or the fixed tint of the backdrop edge
+-- Border colour: FlareUI's fixed bronze at rest, a status colour (threat) when there is one
 local function ResetBorderTint(border)
-    if border.artShown then
-        for _, t in pairs(border.Art) do
-            t:SetDesaturated(false)
-            t:SetVertexColor(1, 1, 1, 1)
-        end
-    else
-        border:SetBackdropBorderColor(GetColor(nil))
-    end
+    border:SetBackdropBorderColor(GetColor(nil))
 end
 
--- A status colour (threat). The art is greyed first so the colour reads as itself, not bronze-tinted.
 local function SetBorderTint(border, r, g, b)
-    if border.artShown then
-        for _, t in pairs(border.Art) do
-            t:SetDesaturated(true)
-            t:SetVertexColor(r, g, b, 1)
-        end
-    else
-        border:SetBackdropBorderColor(r, g, b, 1)
-    end
+    border:SetBackdropBorderColor(r, g, b, 1)
 end
 
--- Draws `border` as the Blizzard art rim or as the backdrop edge picked in the dropdown. `height`
--- is the border's height: a frame too short for two full corners gets smaller ones.
-local function ApplyBorderStyle(border, useArt, edgeFile, height)
-    if useArt then
-        if not border.Art then CreateArtBorder(border) end
-        border:ClearBackdrop()
-        local corner = math.min(ART_CORNER * ART_SCALE, height / 2 - ART_INDENT)
-        for _, key in ipairs({ "TL", "TR", "BL", "BR" }) do border.Art[key]:SetSize(corner, corner) end
-        for _, t in pairs(border.Art) do t:Show() end
-    else
-        if border.Art then
-            for _, t in pairs(border.Art) do t:Hide() end
-        end
-        border:SetBackdrop({ edgeFile = edgeFile, edgeSize = BORDER_SIZE })
-    end
-    border.artShown = useArt and true or false
+local function ApplyBorderStyle(border, edgeFile)
+    border:SetBackdrop({ edgeFile = edgeFile, edgeSize = BORDER_SIZE })
     ResetBorderTint(border)
 end
 
@@ -460,6 +357,10 @@ end
 -- never nil, so it still means a marker is set, and SetRaidTargetIconTexture hands it straight to
 -- SetSpriteSheetCell, which takes secrets - no Lua ever looks at the number.
 local function UpdateRaidIcon(f)
+    if UNITS[f.unit].noRaidIcon then
+        f.RaidIcon:Hide()
+        return
+    end
     local index = GetRaidTargetIndex(f.unit)
     local show
     if not ElementOn("raidIcon") then
@@ -501,14 +402,14 @@ local function GetTimerFormatter()
     return timerFormatter or nil
 end
 
--- style: { height, icon, timer, name, texture, border, borderTexture, artBorder, width }
+-- style: { height, icon, timer, name, texture, border, borderTexture, width }
 local function GetCastStyle(udb, standalone)
     if standalone then
         return {
             width = udb.width or 292, height = udb.height or 26,
             icon = udb.icon ~= false, timer = udb.timer ~= false, name = udb.name ~= false,
             texture = udb.texture, border = true,
-            borderTexture = udb.borderTexture, artBorder = udb.artBorder,
+            borderTexture = udb.borderTexture,
         }
     end
     local castTexture = udb.castTexture
@@ -519,7 +420,7 @@ local function GetCastStyle(udb, standalone)
         height = udb.castHeight or CAST_HEIGHT,
         icon = udb.castIcon ~= false, timer = udb.castTimer ~= false, name = true,
         texture = castTexture, border = true,
-        borderTexture = castBorder, artBorder = udb.artBorder,   -- the frame's own choice
+        borderTexture = castBorder,
     }
 end
 
@@ -614,7 +515,7 @@ local function LayoutCastBar(cast, style, anchor, mode)
     cast.Border:ClearAllPoints()
     cast.Border:SetAllPoints(cast.Backdrop)
     if style.border then
-        ApplyBorderStyle(cast.Border, style.artBorder, edgeFile, height + 2 * PADDING)
+        ApplyBorderStyle(cast.Border, edgeFile)
         cast.Border:Show()
     else
         cast.Border:Hide()
@@ -727,6 +628,7 @@ local function SetCastPreview(enabled)
 end
 
 local UpdateComboPoints   -- defined in 5c (needs the layout helpers below)
+local UpdateHappiness     -- defined in 8c
 local UpdateIndicators, UpdateHealPrediction   -- defined in 5d
 
 local function UpdateAll(f)
@@ -738,6 +640,7 @@ local function UpdateAll(f)
     UpdateCast(f)
     if f.Combo then UpdateComboPoints(f) end
     UpdateIndicators(f)
+    UpdateHappiness(f)
 end
 
 local function OnUnitEvent(f, event, arg1)
@@ -1148,16 +1051,137 @@ local function ApplyComboMode(f)
 end
 
 --------------------------------------------------
+-- 8b. FIVE-SECOND RULE
+-- Forever keeps classic's rule: spirit regen stops when a spell that costs mana is cast and comes
+-- back five seconds later. A spark crosses the player's mana bar over those five seconds; another
+-- such cast starts it again. Mana itself is secret, so nothing here reads it: the cast event and
+-- the spell's cost type are the whole signal. A free cast (a zero cost, Clearcasting) does not
+-- count; a secret amount does. Hidden while the bar shows another power (a druid in a form) and
+-- picked up again, where the window has got to, on the way back to mana.
+--------------------------------------------------
+local FSR_SECONDS = 5
+local FSR_SPARK   = "Interface\\CastingBar\\UI-CastingBar-Spark"
+local fsrStart            -- GetTime() of the last mana cast while a window runs
+
+local function CostsMana(spellID)
+    if not (spellID and canaccessvalue(spellID)) then return false end
+    local costs = C_Spell.GetSpellPowerCost(spellID)
+    if not costs then return false end
+    for _, cost in ipairs(costs) do
+        if canaccessvalue(cost.type) and cost.type == Enum.PowerType.Mana then
+            local amount = cost.cost
+            return not canaccessvalue(amount) or (type(amount) == "number" and amount > 0)
+        end
+    end
+    return false
+end
+
+local function BarShowsMana()
+    local powerType = UnitPowerType("player")
+    return canaccessvalue(powerType) and powerType == Enum.PowerType.Mana
+end
+
+local function MoveFsrSpark(holder)
+    local elapsed = fsrStart and (GetTime() - fsrStart)
+    if not elapsed or elapsed >= FSR_SECONDS then
+        fsrStart = nil
+        holder:Hide()
+        return
+    end
+    local bar = holder:GetParent()
+    local width = bar:GetWidth()
+    local x = width * elapsed / FSR_SECONDS
+    if bar:GetReverseFill() then x = width - x end
+    holder.Spark:SetPoint("CENTER", bar, "LEFT", x, 0)
+end
+
+local function CreateFsrSpark(f)
+    local bar = f.Power
+    local holder = CreateFrame("Frame", nil, bar)
+    holder:SetAllPoints(bar)
+    holder:SetFrameLevel(bar:GetFrameLevel() + 1)
+    holder:Hide()
+    local spark = holder:CreateTexture(nil, "OVERLAY")
+    spark:SetTexture(FSR_SPARK)
+    spark:SetBlendMode("ADD")
+    holder.Spark = spark
+    -- the spark art is mostly glow, so it is drawn taller than the bar it crosses
+    holder:SetScript("OnShow", function(self)
+        local height = bar:GetHeight()
+        self.Spark:SetSize(math.max(height, 8), math.max(height * 2.2, 18))
+    end)
+    holder:SetScript("OnUpdate", MoveFsrSpark)
+    f.FsrSpark = holder
+end
+
+local function UpdateFsrSpark()
+    local f = frames.player
+    local holder = f and f.FsrSpark
+    if not holder then return end
+    if fsrStart and GetTime() - fsrStart >= FSR_SECONDS then fsrStart = nil end
+    holder:SetShown(fsrStart ~= nil and f.Power:IsShown() and BarShowsMana())
+end
+
+local function InitFsrSpark()
+    local events = CreateFrame("Frame")
+    events:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+    events:RegisterUnitEvent("UNIT_DISPLAYPOWER", "player")
+    events:SetScript("OnEvent", function(_, event, _, _, spellID)
+        if event == "UNIT_SPELLCAST_SUCCEEDED" then
+            if not CostsMana(spellID) then return end
+            fsrStart = GetTime()
+        end
+        UpdateFsrSpark()
+    end)
+end
+
+--------------------------------------------------
+-- 8c. PET HAPPINESS
+-- Blizzard's own indicator (PetFrameHappinessTemplate, PetHappiness.lua): the happy / content /
+-- unhappy face, its tooltip (damage, loyalty, diet), its events, and showing only for a hunter's
+-- pet. It sits in the middle of the pet frame's health bar, at HAPPINESS_SHARE of its height.
+-- Clicks pass through to the frame underneath, so the face does not get in the way of targeting
+-- the pet or opening its menu; only the hover stays with it, for the tooltip. In Edit Mode it shows
+-- the happy face whatever the pet, so it can be seen while the frame is placed.
+--------------------------------------------------
+local HAPPINESS_PREVIEW = "UI-PetHappiness"
+
+local function CreateHappiness(f)
+    local face = CreateFrame("Frame", nil, f.Overlay, "PetFrameHappinessTemplate")
+    face:Hide()
+    pcall(face.SetPropagateMouseClicks, face, true)
+    f.Happiness = face
+end
+
+function UpdateHappiness(f)
+    local face = f.Happiness
+    if not face then return end
+    local udb = GetUnitDb(f.unit)
+    if udb and udb.happiness ~= false then
+        face:RegisterEvent("UNIT_HAPPINESS")
+        face:RegisterEvent("UNIT_PET")
+        face:UpdateHappiness()
+        if LEM:IsInEditMode() and not face:IsShown() then
+            face.Texture:SetAtlas(HAPPINESS_PREVIEW)
+            face:Show()
+        end
+    else
+        face:UnregisterAllEvents()
+        face:Hide()
+    end
+end
+
+--------------------------------------------------
 -- 9. INDICATORS
 -- Fixed-position icons (rested, leader, PvP, classification, quest boss), the threat outline and
 -- the incoming-heal / absorb overlays. The icons can be switched off in Unit Frames > General >
 -- Elements (ElementOn). Art: Blizzard atlases with the classic textures as fallback.
 --------------------------------------------------
 local REST_SIZE       = 28
-local LEADER_SIZE     = 16
+local LEADER_SIZE     = 20
 local PVP_SIZE        = 24
 local CLASS_ICON_SIZE = 18
-local QUEST_SIZE      = 18
+local QUEST_SIZE      = 24
 -- Blizzard's own CUF_MY_HEAL_PREDICTION_COLOR (CompactUnitFrame.lua:7), opaque as it is there:
 -- both overlays are clipped to the EMPTY part of the health bar, so nothing needs to show through
 -- them, and any transparency only muddies the colour against the dark track.
@@ -1266,7 +1290,7 @@ local function LayoutIndicators(f)
     if f.LeaderIcon then
         f.LeaderIcon:ClearAllPoints()
         f.LeaderIcon:SetSize(LEADER_SIZE, LEADER_SIZE)
-        f.LeaderIcon:SetPoint("CENTER", f, "TOP", 0, -2)
+        f.LeaderIcon:SetPoint("CENTER", f, "TOPLEFT", 16, -2)
     end
     if f.PvPIcon then
         -- bottom-left on the player, bottom-right on a mirrored frame: symmetrical across the screen
@@ -1286,7 +1310,7 @@ local function LayoutIndicators(f)
     if f.QuestIcon then
         f.QuestIcon:ClearAllPoints()
         f.QuestIcon:SetSize(QUEST_SIZE, QUEST_SIZE)
-        f.QuestIcon:SetPoint("CENTER", f, "LEFT", 2, 0)
+        f.QuestIcon:SetPoint("CENTER", f, "TOP", 0, 0)   -- half above the frame's top edge
     end
     if f.HealClip then
         local health, clip, heal, absorb = f.Health, f.HealClip, f.HealBar, f.AbsorbBar
@@ -1412,11 +1436,6 @@ function UpdateIndicators(f)
             f.LeaderIcon:Show()
         else
             f.LeaderIcon:Hide()
-        end
-        -- the crown owns the top centre; a raid icon up there steps aside while it is up
-        if not UNITS[unit].raidIconOnBar then
-            f.RaidIcon:ClearAllPoints()
-            f.RaidIcon:SetPoint("CENTER", f, "TOP", f.LeaderIcon:IsShown() and (LEADER_SIZE + 2) or 0, 0)
         end
     end
     if f.PvPIcon then
@@ -1553,7 +1572,7 @@ local function LayoutFrame(f)
     f:SetBackdropColor(0, 0, 0, BG_OPACITY)
     -- the border sits on its own frame above the bars, so the art overlaps the bar edges and no
     -- backdrop shows through between them
-    ApplyBorderStyle(f.Border, udb.artBorder, edgeFile, height)
+    ApplyBorderStyle(f.Border, edgeFile)
 
     local texture = GetBarTexture(udb.texture)
     local health, power = f.Health, f.Power
@@ -1610,16 +1629,19 @@ local function LayoutFrame(f)
     end
     f.PowerText:SetShown(udb.powerText and powerHeight >= 10)
 
+    -- the raid marker and the pet's happiness face sit mid health bar, sized off its height; the
+    -- health bar runs from the top inset down to the power bar (or the bottom inset)
+    local healthHeight = height - 2 * PADDING - (powerHeight > 0 and powerHeight or 0)
+    local markerSize = math.max(8, healthHeight * RAID_ICON_SHARE)
     f.RaidIcon:ClearAllPoints()
-    if UNITS[f.unit].raidIconOnBar then
-        -- the health bar runs from the top inset down to the power bar (or the bottom inset)
-        local healthHeight = height - 2 * PADDING - (powerHeight > 0 and powerHeight or 0)
-        local size = math.max(RAID_ICON, healthHeight * RAID_ICON_BAR)
-        f.RaidIcon:SetSize(size, size)
-        f.RaidIcon:SetPoint("CENTER", f.Health, "CENTER", 0, 0)
-    else
-        f.RaidIcon:SetSize(RAID_ICON, RAID_ICON)
-        f.RaidIcon:SetPoint("CENTER", f, "TOP", 0, 0)
+    f.RaidIcon:SetSize(markerSize, markerSize)
+    f.RaidIcon:SetPoint("CENTER", f.Health, "CENTER", 0, 0)
+
+    if f.Happiness then
+        local size = math.max(RAID_ICON, healthHeight * HAPPINESS_SHARE)
+        f.Happiness:SetSize(size, size)
+        f.Happiness:ClearAllPoints()
+        f.Happiness:SetPoint("CENTER", f.Health, "CENTER", 0, 0)
     end
 
     -- cast bar hangs off the frame
@@ -1672,7 +1694,7 @@ local DEFAULT_POSITIONS = {
     target        = { point = "CENTER", x = 330,  y = -270 },
     targettarget  = { point = "BOTTOM", x = 270,  y = 248 },
     focus         = { point = "RIGHT",  x = -453, y = -258 },
-    pet           = { point = "BOTTOM", x = -270, y = 271 },
+    pet           = { point = "BOTTOM", x = -290, y = 271 },   -- its right edge lines up with the player frame's
     playercastbar = { point = "BOTTOM", x = 0,    y = 268 },
 }
 
@@ -1705,6 +1727,11 @@ local function ApplyPosition(f, layoutName)
     if f.unit == "playercastbar" then UpdateCastbarDefault() end
     local store = GetLayoutStore(layoutName)
     local pos = store and store[f.unit] or DEFAULT_POSITIONS[f.unit]
+    -- The pet frame grew from 120 to 160 px, its default moving left to keep the right edge on the
+    -- player frame's. A saved position still at the old default is that default, so it moves too.
+    if f.unit == "pet" and pos.point == "BOTTOM" and pos.x == -270 and pos.y == 271 then
+        pos.x = DEFAULT_POSITIONS.pet.x
+    end
     f:ClearAllPoints()
     f:SetPoint(pos.point or "CENTER", UIParent, pos.point or "CENTER", pos.x or 0, pos.y or 0)
 end
@@ -1903,6 +1930,8 @@ local function CreateUnitFrame(unit)
         ApplyComboMode(f)
     end
     CreateIndicators(f)
+    if unit == "player" then CreateFsrSpark(f) end
+    if info.happiness then CreateHappiness(f) end
     PrecreateAuraContainers(f)
 
     f:SetScript("OnEnter", OnEnter)
@@ -2025,10 +2054,7 @@ local function BuildPlayerCastSettings()
         { name = "Width", kind = LEM.SettingType.Slider, default = 292, minValue = 100, maxValue = 600, valueStep = 2, get = get("width", 292), set = set("width") },
         { name = "Height", kind = LEM.SettingType.Slider, default = 26, minValue = 8, maxValue = 48, valueStep = 1, get = get("height", 26), set = set("height") },
         { name = "Texture", kind = LEM.SettingType.Dropdown, default = "Armory", values = BuildTextureValues(true), get = get("texture", "Armory"), set = set("texture") },
-        { name = "Border Texture", kind = LEM.SettingType.Dropdown, default = DEFAULT_BORDER, values = BuildBorderValues(false), get = get("borderTexture", DEFAULT_BORDER), set = set("borderTexture"),
-          disabled = function() local c = GetPlayerCastDb(); return c and c.artBorder end },
-        { name = "Blizzard Art Border", kind = LEM.SettingType.Checkbox, default = false, get = get("artBorder", false), set = set("artBorder"),
-          desc = "The bronze rim of Blizzard's menu buttons instead of the border texture above." },
+        { name = "Border Texture", kind = LEM.SettingType.Dropdown, default = DEFAULT_BORDER, values = BuildBorderValues(false), get = get("borderTexture", DEFAULT_BORDER), set = set("borderTexture") },
         { name = "Icon", kind = LEM.SettingType.Checkbox, default = true, get = get("icon", true), set = set("icon") },
         { name = "Spell Name", kind = LEM.SettingType.Checkbox, default = true, get = get("name", true), set = set("name") },
         { name = "Timer", kind = LEM.SettingType.Checkbox, default = true, get = get("timer", true), set = set("timer") },
@@ -2063,16 +2089,17 @@ local function BuildSettings(unit)
         settings[#settings + 1] = { name = "Mirror", kind = LEM.SettingType.Checkbox, default = defaults.mirror or false, get = function() local u = GetUnitDb(unit); return u and u.mirror or false end,
             set = function(_, value) local u = GetUnitDb(unit); if not u then return end; u.mirror = value; local f = frames[unit]; if f then LayoutFrame(f); AttachExtras(f); UpdateAll(f) end end }
     end
+    if info.happiness then
+        settings[#settings + 1] = { name = "Happiness", kind = LEM.SettingType.Checkbox, default = true,
+            get = function() local u = GetUnitDb(unit); return not u or u.happiness ~= false end, set = set("happiness"),
+            desc = "Your hunter pet's happiness face in the middle of the health bar." }
+    end
     tAppendAll(settings, {
         { name = "Look", kind = LEM.SettingType.Divider },
         { name = "Bar Texture", kind = LEM.SettingType.Dropdown, default = defaults.texture or DEFAULT_TEXTURE, values = BuildTextureValues(false),
           get = function() local u = GetUnitDb(unit); return u and u.texture or DEFAULT_TEXTURE end, set = set("texture") },
         { name = "Border Texture", kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BORDER, values = BuildBorderValues(false),
-          get = function() local u = GetUnitDb(unit); return u and u.border or DEFAULT_BORDER end, set = set("border"),
-          disabled = function() local u = GetUnitDb(unit); return u and u.artBorder end },
-        { name = "Blizzard Art Border", kind = LEM.SettingType.Checkbox, default = defaults.artBorder or false,
-          get = function() local u = GetUnitDb(unit); return u and u.artBorder or false end, set = set("artBorder"),
-          desc = "The bronze rim of Blizzard's menu buttons, on the frame and its cast bar, instead of the border textures." },
+          get = function() local u = GetUnitDb(unit); return u and u.border or DEFAULT_BORDER end, set = set("border") },
     })
     if info.indicators and info.indicators.heals then
         settings[#settings + 1] = { name = "Absorbs", kind = LEM.SettingType.Divider }
@@ -2093,8 +2120,7 @@ local function BuildSettings(unit)
         settings[#settings + 1] = { name = "Cast Bar Height", kind = LEM.SettingType.Slider, default = defaults.castHeight or CAST_HEIGHT, minValue = 8, maxValue = 40, valueStep = 1, get = get("castHeight"), set = set("castHeight") }
         settings[#settings + 1] = { name = "Cast Bar Texture", kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(true), get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture") }
         settings[#settings + 1] = { name = "Cast Bar Border Texture", kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
-            get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture"),
-            disabled = function() local u = GetUnitDb(unit); return u and u.artBorder end }
+            get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture") }
         settings[#settings + 1] = { name = "Cast Icon", kind = LEM.SettingType.Checkbox, default = defaults.castIcon ~= false, get = function() local u = GetUnitDb(unit); return u and u.castIcon ~= false end, set = set("castIcon") }
         settings[#settings + 1] = { name = "Cast Timer", kind = LEM.SettingType.Checkbox, default = defaults.castTimer ~= false, get = function() local u = GetUnitDb(unit); return u and u.castTimer ~= false end, set = set("castTimer") }
     end
@@ -2214,6 +2240,7 @@ function UF:Init()
         HardHide("PlayerCastingBarFrame")
     end
     HookExtras()
+    if frames.player then InitFsrSpark() end
     self.initialized = true
 
     LEM:RegisterCallback("layout", function(layoutName)
@@ -2221,12 +2248,12 @@ function UF:Init()
         if playerCastHolder then ApplyPosition(playerCastHolder, layoutName) end
     end)
     LEM:RegisterCallback("enter", function()
-        for _, f in pairs(frames) do ApplyVisibility(f); f:SetAlpha(1); if f.Combo then UpdateComboPoints(f) end end
+        for _, f in pairs(frames) do ApplyVisibility(f); f:SetAlpha(1); if f.Combo then UpdateComboPoints(f) end; UpdateHappiness(f) end
         SetAuraPreview(true)
         SetCastPreview(true)
     end)
     LEM:RegisterCallback("exit", function()
-        for _, f in pairs(frames) do ApplyVisibility(f); if f.Combo then UpdateComboPoints(f) end end
+        for _, f in pairs(frames) do ApplyVisibility(f); if f.Combo then UpdateComboPoints(f) end; UpdateHappiness(f) end
         RefreshVisibilityFader()
         SetAuraPreview(false)
         SetCastPreview(false)

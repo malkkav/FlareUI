@@ -13,7 +13,6 @@ local AceConfigRegistry = LibStub("AceConfigRegistry-3.0")
 
 local function RM() return ns.RadialMenu end
 
-
 -- The library in its own order, read afresh each time so a radial added, renamed or removed in the
 -- editor shows up here straight away.
 local function RadialValues()

@@ -70,6 +70,12 @@ ns.Options.args.chat = {
                             get = function() return Get("hideCombatLog") end,
                             set = function(_, val) Set("hideCombatLog", val, true) end
                         },
+                        spacer6 = { type = "description", name = "", width = 0.1, order = 46 },
+                        hideBubblesInInstance = {
+                            type = "toggle", name = "No Bubbles in Instances", desc = "Turns chat bubbles off inside dungeons, raids and battlegrounds.", order = 50,
+                            get = function() return Get("hideBubblesInInstance") end,
+                            set = function(_, val) Set("hideBubblesInInstance", val); if ns.Chat and ns.Chat.UpdateInstanceBubbles then ns.Chat:UpdateInstanceBubbles() end end
+                        },
                         extendHistory = {
                             type = "toggle", name = "Extend Chat History", desc = "Increases chat history capacity to 4096 lines.", order = 30,
                             get = function() return Get("extendHistory") end,
@@ -105,6 +111,12 @@ ns.Options.args.chat = {
                             get = function() return Get("betterTimestamps") end,
                             set = function(_, val) Set("betterTimestamps", val) end
                         },
+                        spacer3 = { type = "description", name = "", width = 0.1, order = 31 },
+                        shortChannels = {
+                            type = "toggle", name = "Short Channel Names", desc = "Shortens channel names on new messages.\nExample: [2. Trade - City] becomes [2]", order = 40,
+                            get = function() return Get("shortChannels") end,
+                            set = function(_, val) Set("shortChannels", val) end
+                        },
                     }
                 },
 
@@ -123,6 +135,16 @@ ns.Options.args.chat = {
                     }
                 },
 
+                howToGroup = {
+                    type = "group", name = "How to Use", order = 90, inline = true,
+                    args = {
+                        text = {
+                            type = "description", fontSize = "medium", order = 10,
+                            name = "Right click a tab in the chat to open the options dropdown and create or close tabs.\n\n"
+                                .. "If you use a lot of tabs, use the mouse scroll wheel in the chat header to scroll between them.",
+                        },
+                    }
+                },
             }
         },
 

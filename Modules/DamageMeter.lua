@@ -82,7 +82,8 @@ local function GetDb()
 end
 
 local function SafeCall(fn, ...)
-    local ok = pcall(fn, ...)
+    local ok, err = pcall(fn, ...)
+    if not ok then geterrorhandler()(err) end
     return ok
 end
 
@@ -324,14 +325,18 @@ local function ApplyHeader(window, db)
         header:Show()
         header:SetAlpha(0)   -- the skin provides the header background; keep the frame for anchoring
         header:SetHeight(HEADER_HEIGHT)
-        -- Session timer always hidden
+        -- Session timer: Blizzard's own "[mm:ss]" (live in combat, fixed on a past segment) with Combat
+        -- Timer on; hidden otherwise
         local sessionTimer = GetWindowSessionTimer(window)
         if sessionTimer then
-            sessionTimer:Hide()
             if not sessionTimer.FlareUI_HideTimerHooked then
                 sessionTimer.FlareUI_HideTimerHooked = true
-                sessionTimer:HookScript("OnShow", function(self) self:Hide() end)
+                sessionTimer:HookScript("OnShow", function(self)
+                    local d = GetDb()
+                    if not (d and d.combatTimer) then self:Hide() end
+                end)
             end
+            sessionTimer:SetShown(db.combatTimer and true or false)
         end
         local typeDropdown = GetWindowTypeDropdown(window)
         local sessionDropdown = GetWindowSessionDropdown(window)
@@ -363,6 +368,13 @@ local function ApplyHeader(window, db)
                     dd:ClearAllPoints()
                     dd:SetPoint("TOPLEFT", ref, "TOPLEFT", 0, 0)
                     dd:SetPoint("BOTTOMRIGHT", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE + ICON_SPACING + 8), -HEADER_HEIGHT)
+                end
+                -- the timer sits at the right end of the title row, just left of the icons
+                local timer = GetWindowSessionTimer(window)
+                if timer and timer.ClearAllPoints then
+                    timer:ClearAllPoints()
+                    timer:SetPoint("RIGHT", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE + ICON_SPACING + 10), ROW_CENTER_Y)
+                    timer:SetJustifyH("RIGHT")
                 end
                 if dd and dd.TypeName and dd.TypeName.ClearAllPoints then
                     dd.TypeName:ClearAllPoints()
@@ -674,6 +686,382 @@ local function ApplyUnclamp(window, db)
 end
 
 --------------------------------------------------
+-- 14b. THREAT TAB
+-- A second view in each meter window, switched like the chat tabs: the title row holds Blizzard's
+-- meter type ("Damage Done") and "Threat" side by side, the one not shown in the chat's muted tab
+-- colour. Left-click picks a tab. Blizzard's type menu moves to the right button: a hit area over
+-- its title takes left-clicks for the tab and lets right-clicks through to Blizzard's own dropdown
+-- underneath (SetPassThroughButtons), which is registered for the right button as well, so the
+-- menu is still opened by Blizzard's untainted code and never by ours.
+-- The list is FlareUI's, as Blizzard's meter has no threat type and its list is secure code: the
+-- group sorted by threat on your target (or your friendly target's target), in rows made from
+-- Blizzard's own entry template at the window's bar height, spacing, style and text scale, with the
+-- meter's font and bar texture. The bar is threat against the top of the list, the text the threat
+-- and how close it is to pulling (the tank reads 100%). You are always in the list: past the last
+-- row, you take the last row. Threat is readable on Forever; where the client makes it secret the
+-- view says so rather than guess. Blizzard's list is only made invisible while Threat is up.
+--------------------------------------------------
+local TAB_GAP       = 14
+local TAB_INACTIVE  = { r = 0.56, g = 0.51, b = 0.46, a = 1 }   -- #8F8275, the chat's unselected tab
+local THREAT_TICK   = 0.2    -- seconds between redraws while threat events keep coming
+local THREAT_EVENTS = { "UNIT_THREAT_LIST_UPDATE", "UNIT_THREAT_SITUATION_UPDATE", "PLAYER_TARGET_CHANGED",
+    "UNIT_TARGET", "GROUP_ROSTER_UPDATE", "UNIT_PET", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }
+
+local views = {}                 -- session window -> its threat tab, hit area, list and state
+local UpdateThreatViews          -- defined below the list code
+
+local function Readable(value)
+    return value ~= nil and canaccessvalue(value)
+end
+
+-- The mob whose threat is shown: a hostile target, or the hostile target of a friendly one
+local function IsHostile(unit)
+    if not UnitExists(unit) or UnitIsDeadOrGhost(unit) then return false end
+    local attackable = UnitCanAttack("player", unit)
+    return Readable(attackable) and attackable
+end
+
+local function ThreatMob()
+    if IsHostile("target") then return "target" end
+    if UnitExists("target") and IsHostile("targettarget") then return "targettarget" end
+end
+
+-- The spec icon Blizzard's rows show for a player: our own spec, or an inspected one. nil falls back
+-- to the class icon, as Blizzard's rows do.
+local function SpecIcon(unit, isMe)
+    local ok, icon = pcall(function()
+        local specID
+        if isMe then
+            local index = GetSpecialization and GetSpecialization()
+            specID = index and GetSpecializationInfo(index)
+        else
+            specID = GetInspectSpecialization and GetInspectSpecialization(unit)
+        end
+        if specID and specID ~= 0 then return select(4, GetSpecializationInfoByID(specID)) end
+    end)
+    return ok and icon or nil
+end
+
+-- Every group member and pet with threat on the mob, highest first. secret = the client hid it.
+local function CollectThreat(mob)
+    local list, secret = {}, false
+    local function Add(unit)
+        if not UnitExists(unit) then return end
+        local isTanking, _, scaled, _, value = UnitDetailedThreatSituation(unit, mob)
+        if value == nil then return end
+        if not (Readable(value) and Readable(scaled)) then secret = true; return end
+        local name = UnitName(unit)
+        local _, class = UnitClass(unit)
+        local isMe = UnitIsUnit(unit, "player")
+        list[#list + 1] = {
+            unit = unit, value = value, scaled = scaled or 0,
+            tanking = Readable(isTanking) and isTanking,
+            name = Readable(name) and name or "?",
+            class = Readable(class) and class or nil,
+            isPlayer = Readable(isMe) and isMe or false,
+        }
+        list[#list].specIcon = UnitIsPlayer(unit) and SpecIcon(unit, list[#list].isPlayer) or nil
+    end
+    if IsInRaid() then
+        for i = 1, GetNumGroupMembers() do Add("raid" .. i); Add("raidpet" .. i) end
+    else
+        Add("player"); Add("pet")
+        for i = 1, GetNumSubgroupMembers() do Add("party" .. i); Add("partypet" .. i) end
+    end
+    table.sort(list, function(a, b) return a.value > b.value end)
+    for i, data in ipairs(list) do data.rank = i end
+    return list, secret
+end
+
+local function ColorTab(fontString, active)
+    local c = active and TITLE_COLOR or TAB_INACTIVE
+    fontString:SetTextColor(c.r, c.g, c.b, c.a or 1)
+end
+
+local function LayoutTabs(window, view)
+    local dd = GetWindowTypeDropdown(window)
+    local ref = window.FlareUI_DMSkin or GetWindowHeader(window)
+    if not (dd and dd.TypeName and ref) then return end
+    local path, size, flags = dd.TypeName:GetFont()
+    if path then view.tab.Text:SetFont(path, size, flags) end
+    view.tab.Text:SetShadowOffset(dd.TypeName:GetShadowOffset())
+    view.tab.Text:SetShadowColor(dd.TypeName:GetShadowColor())
+    view.tab:ClearAllPoints()
+    view.tab:SetPoint("LEFT", ref, "TOPLEFT", TITLE_LEFT + dd.TypeName:GetUnboundedStringWidth() + TAB_GAP - 4, ROW_CENTER_Y)
+    view.tab:SetSize(view.tab.Text:GetUnboundedStringWidth() + 8, HEADER_HEIGHT)
+    ColorTab(dd.TypeName, not view.showing)
+    ColorTab(view.tab.Text, view.showing)
+end
+
+-- Blizzard's list (and its pinned own-row) fades out while Threat is up; nothing else is touched
+local function SetBlizzardListShown(window, shown)
+    local alpha = shown and 1 or 0
+    local scrollBox = GetWindowScrollBox(window)
+    if scrollBox then scrollBox:SetAlpha(alpha) end
+    local own = window.GetLocalPlayerEntry and window:GetLocalPlayerEntry()
+    if own then own:SetAlpha(alpha) end
+end
+
+local function GetRow(view, index)
+    local row = view.rows[index]
+    if not row then
+        row = CreateFrame("Button", nil, view.frame, "DamageMeterEntryTemplate")
+        row:EnableMouse(false)
+        view.rows[index] = row
+    end
+    return row
+end
+
+local function FillRow(row, data, top, window, db, index, height, spacing)
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", row:GetParent(), "TOPLEFT", 0, -(index - 1) * (height + spacing))
+    row:SetPoint("TOPRIGHT", row:GetParent(), "TOPRIGHT", 0, -(index - 1) * (height + spacing))
+    row:SetBarHeight(height)
+    row:SetTextScale(window.GetTextScale and window:GetTextScale() or 1)
+    row:SetShowBarIcons(window.ShouldShowBarIcons and window:ShouldShowBarIcons() or false)
+    row:SetStyle(window.GetStyle and window:GetStyle() or Enum.DamageMeterStyle.Default)
+    StyleEntry(row, db)
+
+    local bar = row:GetStatusBar()
+    bar:SetMinMaxValues(0, top > 0 and top or 1)
+    bar:SetValue(data.value)
+    -- Blizzard's colour rule: the class colour when the window asks for it, else the ally colour
+    row.classFilename = data.class
+    row.sourceDisplayType = Enum.DamageMeterSourceDisplayType and Enum.DamageMeterSourceDisplayType.Ally
+    row:SetUseClassColor(window.ShouldUseClassColor and window:ShouldUseClassColor() or false)
+    local icon = row:GetIcon()
+    if data.specIcon then
+        icon:SetTexture(data.specIcon)
+    elseif data.class then
+        icon:SetAtlas(GetClassAtlas(data.class))
+    else
+        icon:SetTexture(nil)
+    end
+    row:GetName():SetText(("%d. %s"):format(data.rank, data.name))
+    row:GetValue():SetText(("%s  %d%%"):format(AbbreviateNumbers(data.value / 100), math.floor(data.scaled + 0.5)))
+    row:Show()
+end
+
+local function UpdateThreatView(window, view)
+    local db = GetDb()
+    if not db then return end
+    local frame = view.frame
+    local height = window.GetBarHeight and window:GetBarHeight() or 24
+    local spacing = window.GetBarSpacing and window:GetBarSpacing() or 2
+    local capacity = math_max(1, math.floor((frame:GetHeight() + spacing) / (height + spacing)))
+
+    local list, message = {}, nil
+    local mob = ThreatMob()
+    if not mob then
+        message = "No hostile target"
+    else
+        local secret
+        list, secret = CollectThreat(mob)
+        if secret then
+            message, list = "Threat is hidden here", {}
+        elseif #list == 0 then
+            message = "No threat yet"
+        end
+    end
+
+    -- you keep a row: if the list runs past the window, the last row is yours
+    local shown = {}
+    for i = 1, math_min(#list, capacity) do shown[i] = list[i] end
+    if #list > capacity then
+        local inView = false
+        for i = 1, capacity do if shown[i].isPlayer then inView = true end end
+        if not inView then
+            for i = capacity + 1, #list do
+                if list[i].isPlayer then shown[capacity] = list[i] end
+            end
+        end
+    end
+
+    local top = list[1] and list[1].value or 0
+    for i, data in ipairs(shown) do FillRow(GetRow(view, i), data, top, window, db, i, height, spacing) end
+    for i = #shown + 1, #view.rows do view.rows[i]:Hide() end
+    frame.Empty:SetText(message or "")
+    frame.Empty:SetShown(message ~= nil)
+end
+
+-- Redraws are batched: threat events arrive in bursts, the list is drawn at most every THREAT_TICK
+local threatDriver = CreateFrame("Frame")
+local threatDirty, threatElapsed, threatWatching = false, 0, false
+threatDriver:Hide()   -- runs only while a Threat tab is up; see WatchThreat
+threatDriver:SetScript("OnEvent", function() threatDirty = true end)
+threatDriver:SetScript("OnUpdate", function(_, elapsed)
+    threatElapsed = threatElapsed + elapsed
+    if threatElapsed < THREAT_TICK then return end
+    threatElapsed = 0
+    if threatDirty then
+        threatDirty = false
+        UpdateThreatViews()
+    end
+end)
+
+local function WatchThreat()
+    local any = false
+    for _, view in pairs(views) do if view.showing then any = true end end
+    if any == threatWatching then return end
+    threatWatching = any
+    for _, event in ipairs(THREAT_EVENTS) do
+        if any then threatDriver:RegisterEvent(event) else threatDriver:UnregisterEvent(event) end
+    end
+    threatDriver:SetShown(any)
+end
+
+function UpdateThreatViews()
+    for window, view in pairs(views) do
+        if view.showing then SafeCall(UpdateThreatView, window, view) end
+    end
+end
+
+local function SetView(window, showThreat)
+    local view = views[window]
+    if not view then return end
+    view.showing = showThreat and true or false
+    view.frame:SetShown(view.showing)
+    SetBlizzardListShown(window, not view.showing)
+    LayoutTabs(window, view)
+    if view.showing then UpdateThreatView(window, view) end
+    WatchThreat()
+end
+
+local function CreateThreatView(window)
+    local dd = GetWindowTypeDropdown(window)
+    local scrollBox = GetWindowScrollBox(window)
+    if not (dd and dd.TypeName and scrollBox) then return nil end
+    local view = { rows = {}, showing = false }
+
+    -- over Blizzard's title: left-click = this tab, right-click falls through to Blizzard's menu
+    local hit = CreateFrame("Button", nil, window)
+    hit:SetAllPoints(dd)
+    hit:SetFrameLevel(dd:GetFrameLevel() + 2)
+    hit:RegisterForClicks("LeftButtonUp")
+    hit:SetPassThroughButtons("RightButton")
+    hit:SetScript("OnClick", function() SetView(window, false) end)
+    view.hit = hit
+
+    local tab = CreateFrame("Button", nil, window)
+    tab:SetFrameLevel(dd:GetFrameLevel() + 3)
+    tab.Text = tab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tab.Text:SetPoint("LEFT", tab, "LEFT", 4, 0)
+    tab.Text:SetText("Threat")
+    tab:RegisterForClicks("LeftButtonUp")
+    tab:SetScript("OnClick", function() SetView(window, true) end)
+    -- the idle tab lifts a little under the mouse, like the chat's
+    tab:SetScript("OnEnter", function(self)
+        if view.showing then return end
+        local r, g, b = LightenColor(TAB_INACTIVE.r, TAB_INACTIVE.g, TAB_INACTIVE.b, 0.2)
+        self.Text:SetTextColor(r, g, b)
+    end)
+    tab:SetScript("OnLeave", function(self) ColorTab(self.Text, view.showing) end)
+    view.tab = tab
+
+    local frame = CreateFrame("Frame", nil, window)
+    frame:SetFrameLevel(scrollBox:GetFrameLevel() + 20)
+    frame:EnableMouse(true)                          -- Blizzard's invisible rows stay unclickable
+    frame:EnableMouseWheel(true)
+    frame:SetScript("OnMouseWheel", function() end)
+    frame.Empty = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    frame.Empty:SetPoint("CENTER")
+    frame:Hide()
+    view.frame = frame
+
+    -- a new meter type renames the title: the Threat tab follows the new width
+    hooksecurefunc(dd.TypeName, "SetText", function()
+        if view.tab:IsShown() then LayoutTabs(window, view) end
+    end)
+
+    views[window] = view
+    return view
+end
+
+--------------------------------------------------
+-- 14c. LIVE COMBAT TIMER
+-- Blizzard's session timer only moves when the meter's data refreshes, about every two seconds.
+-- In combat FlareUI counts the fight itself, from the moment combat started, in Blizzard's own
+-- "[mm:ss]" form and place; Blizzard's timer steps aside meanwhile and is back out of combat,
+-- where it shows the length of a past segment (a value FlareUI could not read anyway: it is secret).
+--------------------------------------------------
+local liveTimers = {}            -- session window -> FlareUI's timer text
+local combatStart
+local timerDriver = CreateFrame("Frame")
+timerDriver:Hide()
+local timerElapsed = 0
+timerDriver:SetScript("OnUpdate", function(_, elapsed)
+    timerElapsed = timerElapsed + elapsed
+    if timerElapsed < 0.1 then return end
+    timerElapsed = 0
+    local text = ("[%s] "):format(SecondsToClock(GetTime() - (combatStart or GetTime())))
+    for _, fs in pairs(liveTimers) do fs:SetText(text) end
+end)
+
+local function UpdateLiveTimers()
+    local db = GetDb()
+    local live = db and db.enabled and db.combatTimer and not db.hideHeader and combatStart ~= nil
+    for window, fs in pairs(liveTimers) do
+        local blizzard = GetWindowSessionTimer(window)
+        fs:SetShown(live)
+        if blizzard then blizzard:SetAlpha(live and 0 or 1) end
+    end
+    timerElapsed = 1
+    timerDriver:SetShown(live)
+end
+
+local timerEvents = CreateFrame("Frame")
+timerEvents:RegisterEvent("PLAYER_REGEN_DISABLED")
+timerEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
+timerEvents:SetScript("OnEvent", function(_, event)
+    combatStart = event == "PLAYER_REGEN_DISABLED" and GetTime() or nil
+    UpdateLiveTimers()
+end)
+
+local function ApplyLiveTimer(window, db)
+    local blizzard = GetWindowSessionTimer(window)
+    if not blizzard then return end
+    local fs = liveTimers[window]
+    if not fs then
+        fs = window:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        fs:SetJustifyH("RIGHT")
+        liveTimers[window] = fs
+    end
+    local path, size, flags = blizzard:GetFont()
+    if path then fs:SetFont(path, size, flags) end
+    fs:SetShadowOffset(blizzard:GetShadowOffset())
+    fs:SetShadowColor(blizzard:GetShadowColor())
+    fs:SetTextColor(TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, TITLE_COLOR.a or 1)
+    fs:ClearAllPoints()
+    fs:SetPoint("RIGHT", blizzard, "RIGHT", 0, 0)
+    if UnitAffectingCombat("player") and not combatStart then combatStart = GetTime() end
+    UpdateLiveTimers()
+end
+
+local function ApplyThreatTab(window, db)
+    local dd = GetWindowTypeDropdown(window)
+    if not dd then return end
+    local view = views[window]
+    if db.threatTab and not db.hideHeader then
+        view = view or CreateThreatView(window)
+        if not view then return end
+        dd:RegisterForMouse("LeftButtonDown", "LeftButtonUp", "RightButtonDown", "RightButtonUp")
+        local skin = window.FlareUI_DMSkin or window
+        view.frame:ClearAllPoints()
+        view.frame:SetPoint("TOPLEFT", skin, "TOPLEFT", 6, -CONTENT_TOP)
+        view.frame:SetPoint("BOTTOMRIGHT", skin, "BOTTOMRIGHT", -6, 6)
+        view.hit:Show()
+        view.tab:Show()
+        SetView(window, view.showing)
+    elseif view then
+        SetView(window, false)
+        view.hit:Hide()
+        view.tab:Hide()
+        dd:RegisterForMouse("LeftButtonDown", "LeftButtonUp")
+        if dd.TypeName then ColorTab(dd.TypeName, true) end
+    end
+end
+
+--------------------------------------------------
 -- 15. APPLY TO SINGLE WINDOW
 --------------------------------------------------
 function DamageMeter:ApplyToWindow(window)
@@ -692,6 +1080,8 @@ function DamageMeter:ApplyToWindow(window)
     if not (db.hideHeader) then
         SafeCall(ApplyHeaderButtonStyle, window, db)
     end
+    SafeCall(ApplyThreatTab, window, db)
+    SafeCall(ApplyLiveTimer, window, db)
 
     local sb = GetWindowScrollBox(window)
     if sb then

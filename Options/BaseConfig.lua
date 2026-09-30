@@ -201,28 +201,6 @@ do
     end
 end
 
--- "Inspired by": each addon, then who made it (authors as their TOCs name them)
-local INSPIRED_BY = {
-    { "AWI", "ConineSpiritwolf" },
-    { "BlizzMove", "Kiatra, zaCade and Numy" },
-    { "EnhanceQoL", "R41Z0R" },
-    { "Leatrix Plus", "Leatrix" },
-    { "LS: Minimap", "lightspark" },
-    { "LS: Monobrow", "lightspark" },
-    { "OPie", "foxlit" },
-    { "TipTac Reborn", "Frozn45 and Aezay" },
-}
-
--- entries first..last, one per line
-local function InspiredByText(first, last)
-    local lines = {}
-    for i = first, last do
-        local entry = INSPIRED_BY[i]
-        lines[#lines + 1] = ("|cffFFD100%s|r |cffFFFFFFby %s|r"):format(entry[1], entry[2])
-    end
-    return table.concat(lines, "\n") .. "\n"
-end
-
 -- refreshes (NotifyChange) re-run Open; re-apply the skin every time
 hooksecurefunc(AceConfigDialog, "Open", function(_, app)
     if app == "FlareUI" then ns.ForceOpacity() end
@@ -360,32 +338,6 @@ ns.Options = {
                     }
                 },
 
-                spacer5 = { type = "description", name = " ", order = 65 },
-
-                aboutGroup = {
-                    type = "group", name = "About FlareUI", order = 80, inline = true,
-                    args = {
-                        description = {
-                            type = "description",
-                            name = "|cffFFFFFFFlareUI is a personal addon I created after the Addonpocalypse. The goal was to improve and add functionalities to Blizzard's UI while preserving its original art style. It is made to be modular, so you only load what you will actually use.|r\n\n" ..
-                                   "|cffFFFFFFMy work was heavily inspired by a bunch of addons that do a way better job than FlareUI. I'll list all below and recommend their use instead of any of my modules. Those are amazing addons and their creators deserve your installation way more than FlareUI.|r\n\n" ..
-                                   "|cffFFFFFFThat said, I hope that my little addon may be as helpful to some players as it is for me. Send me a holler over Discord (|r|cff7289DAmalkkav|r|cffFFFFFF) if you have any bugs, questions or suggestions.|r\n",
-                            fontSize = "medium",
-                            order = 1,
-                        },
-                    },
-                },
-
-                spacer7 = { type = "description", name = " ", order = 85 },
-
-                inspiredGroup = {
-                    type = "group", name = "Inspired by", order = 90, inline = true,
-                    args = {
-                        left  = { type = "description", name = InspiredByText(1, 4), fontSize = "medium", order = 1, width = 1.6 },
-                        right = { type = "description", name = InspiredByText(5, 8), fontSize = "medium", order = 2, width = 1.6 },
-                    },
-                },
-
             },
         },
 
@@ -511,7 +463,7 @@ loader:SetScript("OnEvent", function()
     end
 
     function FlareUI_OnAddonCompartmentEnter(addonName, menuButtonFrame)
-        GameTooltip:SetOwner(menuButtonFrame, "ANCHOR_LEFT")
+        ns.OwnGameTooltip(menuButtonFrame, "ANCHOR_LEFT")
         GameTooltip:AddLine("FlareUI")
         GameTooltip:AddLine("Left-click: open settings", 1, 1, 1)
         GameTooltip:AddLine("Right-click: toggle Fake CM setup mode", 1, 1, 1)

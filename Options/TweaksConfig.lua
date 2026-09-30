@@ -87,14 +87,25 @@ ns.Options.args.tweaks = {
             }
         },
 
+        convenienceGroup = {
+            type = "group", name = "Convenience", order = 25, inline = true,
+            args = {
+                fasterLoot = Toggle("fasterLoot", "Faster Auto Loot", 5, nil, false, 1.2),
+                spacer0    = SP(6),
+                autoDelete = Toggle("autoDelete", "Auto-Type DELETE", 10,
+                    "Fills in DELETE when you try to destroy a rare or better item.", false, 1.2),
+                spacer1    = SP(11),
+                trainAll   = Toggle("trainAll", "Train All Button", 20,
+                    "Adds a Train All button to class and profession trainers.", false, 1.2),
+            }
+        },
+
         cameraGroup = {
-            type = "group", name = "Camera & Loot", order = 30, inline = true,
+            type = "group", name = "Camera", order = 30, inline = true,
             args = {
                 maxCameraZoom    = Toggle("maxCameraZoom", "Max Camera Zoom", 10, nil, false, 1.2),
                 spacer1          = SP(11),
                 fasterCameraZoom = Toggle("fasterCameraZoom", "Faster Camera Zoom", 20, nil, false, 1.2),
-                break1           = { type = "description", name = " ", order = 25, width = "full" },
-                fasterLoot       = Toggle("fasterLoot", "Faster Auto Loot", 30, nil, false, 1.2),
             }
         },
 
@@ -122,9 +133,12 @@ ns.Options.args.tweaks = {
                 spacer3             = SP(31),
                 hideTips            = Toggle("hideTips", "Contextual Tips", 40, nil, false, 1.2),
                 spacer4             = SP(41),
-                hideAddonDrawer     = Toggle("hideAddonDrawer", "Addon Drawer", 42, nil, false, 1.2),
+                hideTrackerInBoss   = Toggle("hideTrackerInBoss", "Quest Tracker in Boss Fights", 42,
+                    "Hides the quest tracker from the pull to the end of a boss encounter.", false, 1.2),
                 break2              = { type = "description", name = " ", order = 45, width = "full" },
                 hidePortraitNumbers = Toggle("hidePortraitNumbers", "Portrait Numbers", 50, nil, false, 1.2),
+                spacer5             = SP(51),
+                hideAddonDrawer     = Toggle("hideAddonDrawer", "Addon Drawer", 60, nil, false, 1.2),
             }
         },
     },
@@ -134,7 +148,7 @@ ns.Options.args.tweaks = {
 ns.Options.args.tweaks.args.hideGroup.args.hidePortraitNumbers.hidden = function()
     return ns.db.profile.unitframes and ns.db.profile.unitframes.enabled
 end
-ns.Options.args.tweaks.args.hideGroup.args.break2.hidden = ns.Options.args.tweaks.args.hideGroup.args.hidePortraitNumbers.hidden
+ns.Options.args.tweaks.args.hideGroup.args.spacer5.hidden = ns.Options.args.tweaks.args.hideGroup.args.hidePortraitNumbers.hidden
 
 -- the Minimap module hides the addon drawer itself while it is on
 ns.Options.args.tweaks.args.hideGroup.args.hideAddonDrawer.hidden = function()

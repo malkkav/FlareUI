@@ -260,6 +260,30 @@ end
 --------------------------------------------------
 -- 5. FILTERS
 --------------------------------------------------
+-- Shortened channel names: chat type -> the short tag and the channel link keyword Blizzard
+-- uses for it (raid warnings have no link). Numbered channels become just their number.
+local SHORT_TAGS = {
+    GUILD = { "G", "GUILD" },
+    OFFICER = { "O", "OFFICER" },
+    PARTY = { "P", "PARTY" },
+    PARTY_LEADER = { "PL", "PARTY" },
+    PARTY_GUIDE = { "PG", "PARTY" },
+    RAID = { "R", "RAID" },
+    RAID_LEADER = { "RL", "RAID" },
+    RAID_WARNING = { "RW" },
+    INSTANCE_CHAT = { "I", "INSTANCE_CHAT" },
+    INSTANCE_CHAT_LEADER = { "IL", "INSTANCE_CHAT" },
+}
+
+-- The tag Better Player Names puts in front of the name, or "" when Shortened Channel Names is off
+local function ShortTag(chatType)
+    local db = GetDb()
+    local tag = db and db.shortChannels and SHORT_TAGS[chatType]
+    if not tag then return "" end
+    if tag[2] then return string_format("|Hchannel:%s|h[%s]|h ", tag[2], tag[1]) end
+    return "[" .. tag[1] .. "] "
+end
+
 local function NPCFilter(self, event, msg, sender, ...)
     if sender and canaccessallvalues(msg, sender) then
         local timestamp = GetTimestamp()
@@ -301,9 +325,6 @@ local function PlayerFilter(self, event, msg, sender, ...)
 
         local displayName = string_gsub(sender, "%-[^|]+", "")
         local link = string_format("|Hplayer:%s:%s|h[%s]|h", sender, lineID or "0", displayName)
-        local timestamp = GetTimestamp()
-        local formatted = string_format("%s|c%s%s|r %s", timestamp, classColorHex, link, msg)
-
         local infoType = "SAY"
         if event == "CHAT_MSG_YELL" then infoType = "YELL"
         elseif event == "CHAT_MSG_GUILD" then infoType = "GUILD"
@@ -317,6 +338,7 @@ local function PlayerFilter(self, event, msg, sender, ...)
         elseif event == "CHAT_MSG_WHISPER_INFORM" then infoType = "WHISPER_INFORM"
         end
 
+        local formatted = string_format("%s%s|c%s%s|r %s", GetTimestamp(), ShortTag(infoType), classColorHex, link, msg)
         local info = ChatTypeInfo[infoType]
         if not info then info = { r=1, g=1, b=1 } end
         self:AddMessage(formatted, info.r, info.g, info.b)
@@ -327,6 +349,69 @@ end
 --------------------------------------------------
 -- 6. IMPROVEMENTS
 --------------------------------------------------
+-- Shortened channel names on the lines Blizzard formats itself: "[2. Trade - City]" -> "[2]",
+-- "[Guild]" -> "[G]". Blizzard adds the channel after the message filters run, so the line is
+-- changed once it is stored: a post-hook on AddMessage rewrites the newest history entry, the way
+-- ScrollingMessageFrame's own TransformMessages does. Replacing AddMessage or the CHAT_*_GET
+-- strings instead would taint Blizzard's handler and break whispers. Secret lines pass untouched.
+local function ShortenStoredLine(chatFrame, message, _, _, _, _, _, _, event)
+    local db = GetDb()
+    if not (db and db.shortChannels and event) or not canaccessallvalues(message) then return end
+    local chatType = event:sub(10)   -- after "CHAT_MSG_"
+    local short
+    if chatType == "CHANNEL" or chatType == "COMMUNITIES_CHANNEL" then
+        short = string_gsub(message, "(|Hchannel:channel:(%d+)|h)%[[^%]]*%]|h", "%1[%2]|h", 1)
+    elseif SHORT_TAGS[chatType] then
+        local tag = SHORT_TAGS[chatType][1]
+        if SHORT_TAGS[chatType][2] then
+            short = string_gsub(message, "(|Hchannel:[^|]+|h)%[[^%]]*%]|h", "%1[" .. tag .. "]|h", 1)
+        elseif CHAT_MSG_RAID_WARNING then
+            local long = "[" .. CHAT_MSG_RAID_WARNING .. "]"
+            local s, e = message:find(long, 1, true)
+            if s then short = message:sub(1, s - 1) .. "[" .. tag .. "]" .. message:sub(e + 1) end
+        end
+    end
+    if not short or short == message then return end
+
+    local entry = chatFrame.historyBuffer and chatFrame.historyBuffer:GetEntryAtIndex(1)
+    if entry and canaccessallvalues(entry.message) and entry.message == message then
+        entry.message = short
+        chatFrame:MarkDisplayDirty()
+    end
+end
+
+local shortHooked = {}   -- kept here, not as a field on Blizzard's frames
+local function HookChannelNames()
+    for i = 1, NUM_CHAT_WINDOWS do
+        local frame = _G["ChatFrame" .. i]
+        if frame and not shortHooked[frame] then
+            hooksecurefunc(frame, "AddMessage", ShortenStoredLine)
+            shortHooked[frame] = true
+        end
+    end
+end
+
+-- Chat bubbles off inside instances and back outside. The player's own values are kept in the
+-- account data while hidden, so a reload or logout inside the instance still restores them.
+local BUBBLE_CVARS = { "chatBubbles", "chatBubblesParty" }
+
+function Chat:UpdateInstanceBubbles()
+    local db, global = GetDb(), ns.db and ns.db.global
+    if not global then return end
+    local saved = global.hiddenBubbles
+    if db and db.hideBubblesInInstance and IsInInstance() then
+        if not saved then
+            saved = {}
+            for _, cvar in ipairs(BUBBLE_CVARS) do saved[cvar] = C_CVar.GetCVar(cvar) end
+            global.hiddenBubbles = saved
+        end
+        for _, cvar in ipairs(BUBBLE_CVARS) do C_CVar.SetCVar(cvar, "0") end
+    elseif saved then
+        for cvar, value in pairs(saved) do C_CVar.SetCVar(cvar, value) end
+        global.hiddenBubbles = nil
+    end
+end
+
 local function HandleCombatLog(db)
     local tab2 = _G.ChatFrame2Tab
     if not tab2 then return end
@@ -707,6 +792,8 @@ function Chat:SetupImprovements()
     end
 
     Chat:SetupCopyLinks()
+    HookChannelNames()
+    Chat:UpdateInstanceBubbles()
     Chat:StyleHeaderButtons()
     DisableQuickJoinToasts()
     if _G.TextToSpeechButton then _G.TextToSpeechButton:Hide(); _G.TextToSpeechButton:SetScript("OnShow", function(s) s:Hide() end) end
@@ -1249,7 +1336,7 @@ function Chat:SetupVolumeButton(chatFrame, db)
         btn:EnableMouseWheel(true)
 
         btn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            ns.OwnGameTooltip(self, "ANCHOR_TOP")
             local vol = tonumber(C_CVar.GetCVar("Sound_MasterVolume")) or 0
 
             -- Color Interpolation: Red -> Orange -> Green
@@ -1871,6 +1958,7 @@ function Chat:Init()
         self:RegisterEvent("GOSSIP_CLOSED", "OnNPCInteractionEnd")
         self:RegisterEvent("QUEST_FINISHED", "OnNPCInteractionEnd")
         self:RegisterEvent("QUEST_GREETING", "OnNPCInteractionEnd")
+        self:RegisterEvent("PLAYER_ENTERING_WORLD", "UpdateInstanceBubbles")
         Chat.npcEventsRegistered = true
     end
 

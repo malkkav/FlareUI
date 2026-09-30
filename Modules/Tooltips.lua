@@ -264,6 +264,16 @@ local function AddTargetLine(tip, unit)
     tip:AddLine((_G.TARGET or "Target") .. ": " .. label)
 end
 
+-- "Item ID 12345" / "Spell ID 678" in grey at the bottom right of item, spell and aura tooltips. The id
+-- comes from the tooltip's own data; a secret one is left out.
+local function AddIdLine(tip, key, label, data)
+    local db = GetDb()
+    local id = data and data.id
+    if not (db and db[key] and id and canaccessvalue(id) and type(id) == "number") then return end
+    tip:AddDoubleLine(" ", label .. " " .. id, nil, nil, nil, 0.5, 0.5, 0.5)
+    if tip:IsShown() then tip:Show() end   -- re-layout; never pop up a hidden (scanning) tooltip
+end
+
 --------------------------------------------------
 -- 8. VISIBILITY
 --------------------------------------------------
@@ -326,7 +336,7 @@ local function OnTooltipSetUnit(tip)
     tip:Show()   -- re-layout after the added line
 end
 
-local function OnTooltipSetItem(tip)
+local function OnTooltipSetItem(tip, data)
     if not SafeToTouch(tip) then return end
     if tip == GameTooltip and HideIfNeeded(tip, OwnerIsActionButton(tip) and CAT_ACTION or CAT_ITEM) then return end
 
@@ -343,18 +353,21 @@ local function OnTooltipSetItem(tip)
         end
     end
     ApplyColors(tip, color)
+    AddIdLine(tip, "showItemID", "Item ID", data)
 end
 
-local function OnTooltipSetSpell(tip)
+local function OnTooltipSetSpell(tip, data)
     if not SafeToTouch(tip) then return end
     if tip == GameTooltip and HideIfNeeded(tip, OwnerIsActionButton(tip) and CAT_ACTION or CAT_SPELL) then return end
     ApplyColors(tip, nil)
+    AddIdLine(tip, "showSpellID", "Spell ID", data)
 end
 
-local function OnTooltipSetAura(tip)
+local function OnTooltipSetAura(tip, data)
     if not SafeToTouch(tip) then return end
     if tip == GameTooltip and HideIfNeeded(tip, CAT_AURA) then return end
     ApplyColors(tip, nil)
+    AddIdLine(tip, "showSpellID", "Spell ID", data)
 end
 
 -- anything that is not a unit / item / spell / aura: world objects and plain UI frames

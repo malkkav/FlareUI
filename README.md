@@ -7,7 +7,7 @@ Chat, Damage Meter, Radial Menu, Unit Frames, Action Bars, Minimap, Tooltips and
 
 ## Install
 
-Download FlareUI from CurseForge (link coming soon), or copy this folder into
+Download FlareUI from [CurseForge](https://www.curseforge.com/wow/addons/flareui), or copy this folder into
 `World of Warcraft\_classic_beta_\Interface\AddOns\FlareUI`.
 In game, type `/fui` to open the settings.
 

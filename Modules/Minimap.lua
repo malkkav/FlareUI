@@ -166,17 +166,31 @@ local function StyleHeader()
     zoneText:SetJustifyH("LEFT")
     zoneText:SetWordWrap(false)
 
-    -- clock: the bar's right end, next to the calendar; Blizzard's white text
+    -- clock: the bar's right end, next to the calendar; Blizzard's white text. The whole button
+    -- answers the mouse (Blizzard's XML insets its hit area by 8/5/3/3 px, which on this small
+    -- button left a spot in the middle), and it grows with the time text ("12:00 PM" is wider than
+    -- CLOCK_WIDTH), taking the width from the zone text, so no part of the time sits over the zone
+    -- button and shows its tooltip instead.
     EventUtil.ContinueOnAddOnLoaded("Blizzard_TimeManager", function()
         local clock, ticker = _G.TimeManagerClockButton, _G.TimeManagerClockTicker
         if not clock then return end
         clock:ClearAllPoints()
         clock:SetPoint("TOPRIGHT", header, "TOPRIGHT", 0, 0)
         clock:SetSize(CLOCK_WIDTH, HEADER_HEIGHT)
+        clock:SetHitRectInsets(0, 0, 0, 0)
         Raise(clock)
         ticker:ClearAllPoints()
         ticker:SetPoint("RIGHT", clock, "RIGHT", 0, 0)
         ticker:SetFontObject("GameFontHighlight")
+
+        local function FitClock()
+            local width = math.max(CLOCK_WIDTH, math.ceil(ticker:GetUnboundedStringWidth()) + 2)
+            if width == clock:GetWidth() then return end
+            clock:SetWidth(width)
+            zoneButton:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -width, 0)
+        end
+        hooksecurefunc("TimeManagerClockButton_Update", FitClock)
+        FitClock()
     end)
 end
 
@@ -380,6 +394,21 @@ end
 --------------------------------------------------
 -- 11. PUBLIC
 --------------------------------------------------
+-- FPS and latency under the times in the clock's tooltip. Blizzard rebuilds that tooltip every second
+-- while it is up (TimeManagerClockButton_UpdateTooltip -> GameTime_UpdateTooltip), so the numbers stay
+-- live. GameTime_UpdateTooltip is shared, hence the owner check.
+local function AddClockStats()
+    local db = GetDb()
+    local clock = _G.TimeManagerClockButton
+    if not (db and db.enabled and db.clockStats and clock and GameTooltip:GetOwner() == clock) then return end
+    local _, _, latencyHome, latencyWorld = GetNetStats()
+    local label, value = NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR
+    GameTooltip:AddDoubleLine("Framerate", string.format("%.0f fps", GetFramerate()),
+        label.r, label.g, label.b, value.r, value.g, value.b)
+    GameTooltip:AddDoubleLine("Latency (Home)", latencyHome .. " ms", label.r, label.g, label.b, value.r, value.g, value.b)
+    GameTooltip:AddDoubleLine("Latency (World)", latencyWorld .. " ms", label.r, label.g, label.b, value.r, value.g, value.b)
+end
+
 function MM:Refresh()
     local db = GetDb()
     if not db or not db.enabled or not self.initialized then return end
@@ -389,6 +418,13 @@ end
 
 function MM:Init()
     if self.initialized then return end
+    hooksecurefunc("GameTime_UpdateTooltip", AddClockStats)
+    -- Blizzard's clock only takes the tooltip on enter and fills it on its next one-second tick, so it
+    -- came up to a second late; filling it on enter makes it instant like every other tooltip
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_TimeManager", function()
+        local clock = _G.TimeManagerClockButton
+        if clock then clock:HookScript("OnEnter", function() TimeManagerClockButton_UpdateTooltip() end) end
+    end)
     if not (MinimapFrame and Cluster and Cluster.BorderTop and Cluster.Tracking and Cluster.MinimapContainer) then
         print("|cffff0000FlareUI:|r Minimap module could not find the Blizzard minimap cluster.")
         return

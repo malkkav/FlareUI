@@ -1,0 +1,26 @@
+# Packages FlareUI and uploads it to CurseForge (and as a GitHub release) whenever a version tag
+# is pushed, e.g. "1.1". The BigWigs packager reads .pkgmeta, names the zip, attaches CHANGELOG.md
+# and maps Interface 16001 to CurseForge's WoW: Forever game version.
+name: Package and release
+
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # to create the GitHub release
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Package and upload
+        uses: BigWigsMods/packager@v2

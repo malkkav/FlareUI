@@ -86,6 +86,8 @@ local defaults = {
             formatNPC = true,
             formatPlayer = true,
             betterTimestamps = false,
+            shortChannels = true,
+            hideBubblesInInstance = false,
 
             -- Frame (Blizzard dark dialog background + the chosen border, tinted ns.BORDER_COLOR)
             borderTexture = "Blizzard Tooltip",
@@ -203,6 +205,8 @@ local defaults = {
             textPadding = 2,
             hideHeader = false,
             barFont = { face = "Friz Quadrata TT", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            threatTab = true,           -- Threat tab beside the meter title (right-click for Blizzard's types)
+            combatTimer = false,        -- Blizzard's "[mm:ss]" session timer in the title row
         },
 
         -- [[ MINIMAP MODULE ]]
@@ -211,6 +215,7 @@ local defaults = {
             autoZoom = 5,               -- seconds before zooming back out (0 = off)
             matchTrackerWidth = true,  -- objective tracker as wide as the minimap
             showDayNight = true,        -- Forever's day/night badge on the map's corner
+            clockStats = true,          -- FPS and latency in the clock tooltip
         },
 
         -- [[ UNIT FRAMES MODULE ]]
@@ -227,27 +232,27 @@ local defaults = {
             -- positions per Edit Mode layout: layouts[name][unit] = { point, x, y }
             layouts = {},
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
-            playerCastbar = { enabled = true, width = 292, height = 26, texture = "Armory", borderTexture = "Blizzard Tooltip", artBorder = false, icon = true, name = true, timer = true },
+            playerCastbar = { enabled = true, width = 292, height = 26, texture = "Armory", borderTexture = "Blizzard Tooltip", icon = true, name = true, timer = true },
             units = {
                 player       = { enabled = true, width = 240, height = 60, powerHeight = 14, healthText = "percent", powerText = true, showLevel = true,
-                                 texture = "Flat", border = "Blizzard Tooltip", artBorder = false,
+                                 texture = "Flat", border = "Blizzard Tooltip",
                                  absorbTexture = "Striped", absorbReverseFill = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 10, onlyMyDebuffs = true, hidePermanentBuffs = true },
                 target       = { enabled = true, width = 240, height = 60, powerHeight = 0, healthText = "percent", powerText = true, showLevel = true, mirror = true,
                                  classicCombo = false,
-                                 texture = "Flat", border = "Blizzard Tooltip", artBorder = false,
+                                 texture = "Flat", border = "Blizzard Tooltip",
                                  absorbTexture = "Striped", absorbReverseFill = true,
                                  castbarPosition = "BOTTOM", castHeight = 16, castTexture = "Armory", castBorderTexture = "Blizzard Tooltip", castIcon = true, castTimer = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 10, onlyMyDebuffs = true, hidePermanentBuffs = true },
                 targettarget = { enabled = false, width = 120, height = 28, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
-                                 texture = "Flat", border = "Blizzard Tooltip", artBorder = false },
+                                 texture = "Flat", border = "Blizzard Tooltip" },
                 focus        = { enabled = true, width = 160, height = 36, powerHeight = 0, healthText = "percent", powerText = false, showLevel = true, mirror = true,
-                                 texture = "Flat", border = "Blizzard Tooltip", artBorder = false,
+                                 texture = "Flat", border = "Blizzard Tooltip",
                                  absorbTexture = "Striped", absorbReverseFill = true,
                                  castbarPosition = "BOTTOM", castHeight = 16, castTexture = "Armory", castBorderTexture = "Blizzard Tooltip", castIcon = true, castTimer = true,
                                  buffs = "OFF", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 6, onlyMyDebuffs = true, hidePermanentBuffs = true },
-                pet          = { enabled = true, width = 120, height = 28, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
-                                 texture = "Flat", border = "Blizzard Tooltip", artBorder = false,
+                pet          = { enabled = true, width = 160, height = 28, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
+                                 texture = "Flat", border = "Blizzard Tooltip",
                                  absorbTexture = "Striped", absorbReverseFill = true },
             },
             -- icons and overlays, each switched for every frame that has it (Unit Frames > General > Elements)
@@ -292,6 +297,8 @@ local defaults = {
             showTarget = false,
             hidePvpLine = true,
             hideRightClick = true,
+            showItemID = false,
+            showSpellID = false,
 
             -- anchor: default | cursorOffset (shown as "Cursor")
             anchor = "cursorOffset",
@@ -341,6 +348,9 @@ local defaults = {
             hideTips = true,
             hideWorldRefresh = false,   -- close the "world around you will refresh" dialog as it opens
             hideAddonDrawer = false,    -- Blizzard's addon compartment button under the minimap calendar
+            hideTrackerInBoss = false,  -- quest tracker hidden from ENCOUNTER_START to ENCOUNTER_END
+            autoDelete = true,          -- DELETE typed into the destroy-item confirmation
+            trainAll = true,            -- Train All button at trainers
             frames = {},
         },
     },
@@ -360,6 +370,20 @@ local defaults = {
 --------------------------------------------------
 -- 3. SHARED UTILITIES
 --------------------------------------------------
+-- The GameTooltip for one of FlareUI's own buttons. A tooltip still up for something else (a unit,
+-- say) is hidden first: Blizzard clears the unit health bar, money and progress bars only when the
+-- tooltip hides (GameTooltip_OnHide), so taking it over with SetOwner alone kept that leftover bar.
+function ns.OwnGameTooltip(owner, anchor)
+    if GameTooltip:IsShown() and not GameTooltip:IsOwned(owner) then GameTooltip:Hide() end
+    GameTooltip:SetOwner(owner, anchor)
+    -- A unit tooltip hidden while Blizzard is still building it (the Tooltips module's visibility
+    -- rules hide it inside Blizzard's unit handler, which then starts the health bar) leaves the bar
+    -- flagged shown on a hidden tooltip, and the next tooltip opened without a hide in between shows
+    -- it. FlareUI's tooltips never show a unit, so the bar is hidden here (hide only: writing to this
+    -- bar is a documented taint path).
+    if GameTooltip.StatusBar then GameTooltip.StatusBar:Hide() end
+end
+
 -- Shared font path fetcher with LSM fallback
 function ns.GetFontPath(face)
     local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)

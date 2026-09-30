@@ -5,10 +5,11 @@ local _, ns = ...
 -- Small quality-of-life tweaks, each a toggle:
 --   Windows & Settings  Move Any Frame, Sync Blizz UI (account-wide settings)
 --   Vendor              Sell Junk Automatically, Repair Automatically, Durability Warning
---   Camera & Loot       Max Camera Zoom, Faster Camera Zoom, Faster Auto Loot
+--   Camera              Max Camera Zoom, Faster Camera Zoom
 --   Nameplates          Combo Points under the target's nameplate, Tag Quest Objectives
+--   Convenience         Faster Auto Loot, Auto-Type DELETE, Train All button
 --   Hide                Error Messages, Zone Text, Party Title, Portrait Numbers, Contextual Tips,
---                       World Refresh Dialog, Addon Drawer
+--                       World Refresh Dialog, Addon Drawer, Quest Tracker in Boss Fights
 --   Always on           Party frames unclamped from the screen edge, the world refresh toast in
 --                       FlareUI's border bronze (no toggles)
 -- Everything applies live except the ones that replace Blizzard scripts (those ask for a reload).
@@ -1214,6 +1215,123 @@ local function InitWorldRefresh()
 end
 
 --------------------------------------------------
+-- 11b. AUTO-TYPE DELETE
+-- Blizzard asks for the word DELETE before destroying a rare or better item. The word goes into the
+-- box as the dialog opens (Blizzard's own text handler then enables Yes), so Yes or Enter still
+-- has to be pressed: the dialog keeps asking, it just no longer needs the typing.
+--------------------------------------------------
+local DELETE_DIALOGS = { DELETE_GOOD_ITEM = true, DELETE_GOOD_QUEST_ITEM = true }
+
+local function InitAutoDelete()
+    hooksecurefunc("StaticPopup_Show", function(which)
+        local db = GetDb()
+        if not (db and db.autoDelete and DELETE_DIALOGS[which]) then return end
+        local dialog = StaticPopup_FindVisible(which)
+        local editBox = dialog and dialog:GetEditBox()
+        if editBox then editBox:SetText(DELETE_ITEM_CONFIRM_STRING) end
+    end)
+end
+
+--------------------------------------------------
+-- 11c. TRAIN ALL
+-- A "Train All" button beside the trainer's Train button: learns every skill the trainer lists as
+-- available, as far as the gold goes. Never a new profession (Blizzard asks before those, and the
+-- slots are limited), and not at pet trainers, which charge training points. The list is walked
+-- from the bottom because a purchase reindexes the entries below it, which are then already done.
+-- Skills that need a lower rank first become available after the click, so it can light up again.
+--------------------------------------------------
+local trainAll
+
+local function TrainableSkills()
+    local list, total, money = {}, 0, GetMoney()
+    for i = GetNumTrainerServices(), 1, -1 do
+        if select(2, GetTrainerServiceInfo(i)) == "available" then
+            local cost, isProfession = GetTrainerServiceCost(i)
+            cost = cost or 0
+            if not isProfession and total + cost <= money then
+                total = total + cost
+                list[#list + 1] = i
+            end
+        end
+    end
+    return list, total
+end
+
+local function UpdateTrainAll()
+    if not trainAll then return end
+    local db = GetDb()
+    local show = db and db.trainAll and C_Trainer.GetTrainerType() ~= Enum.TrainerType.Pet
+    trainAll:SetShown(show or false)
+    if show then trainAll:SetEnabled(#TrainableSkills() > 0) end
+end
+
+local function CreateTrainAll()
+    local train = _G.ClassTrainerTrainButton
+    if trainAll or not train then return end
+    trainAll = CreateFrame("Button", nil, train:GetParent(), "MagicButtonTemplate")
+    trainAll:SetText("Train All")
+    trainAll:SetSize(90, train:GetHeight())
+    trainAll:SetPoint("RIGHT", train, "LEFT", 0, 0)
+    trainAll:SetScript("OnClick", function()
+        for _, index in ipairs((TrainableSkills())) do BuyTrainerService(index) end
+    end)
+    trainAll:SetScript("OnEnter", function(self)
+        local list, total = TrainableSkills()
+        ns.OwnGameTooltip(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Train All", 1, 1, 1)
+        if #list == 0 then
+            GameTooltip:AddLine("Nothing you can afford to learn here.", nil, nil, nil, true)
+        else
+            GameTooltip:AddLine(string.format("Learns %d %s for %s.", #list, #list == 1 and "skill" or "skills",
+                GetMoneyString(total)), nil, nil, nil, true)
+        end
+        GameTooltip:Show()
+    end)
+    trainAll:SetScript("OnLeave", GameTooltip_Hide)
+    hooksecurefunc("ClassTrainerFrame_Update", UpdateTrainAll)
+    UpdateTrainAll()
+end
+
+local function InitTrainAll()
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_TrainerUI", CreateTrainAll)
+end
+
+--------------------------------------------------
+-- 11d. QUEST TRACKER IN BOSS FIGHTS
+-- Hidden from ENCOUNTER_START to ENCOUNTER_END. While the tracker shows a quest item button it is
+-- protected in combat, and a pull is always in combat: then ns.HideFrameSecurely holds the hide
+-- until combat ends and the tracker is only made invisible meanwhile (alpha 0).
+--------------------------------------------------
+local inEncounter, trackerHidden, trackerAlpha = false, false, 1
+
+local function ApplyTrackerHide()
+    local tracker = _G.ObjectiveTrackerFrame
+    local db = GetDb()
+    if not tracker then return end
+    local hide = (inEncounter and db and db.hideTrackerInBoss) or false
+    if hide == trackerHidden then return end
+    trackerHidden = hide
+    if hide then
+        trackerAlpha = tracker:GetAlpha()
+        tracker:SetAlpha(0)
+    else
+        tracker:SetAlpha(trackerAlpha)
+    end
+    ns.HideFrameSecurely(tracker, hide)
+end
+
+local function InitBossTracker()
+    local events = CreateFrame("Frame")
+    events:RegisterEvent("ENCOUNTER_START")
+    events:RegisterEvent("ENCOUNTER_END")
+    events:RegisterEvent("PLAYER_ENTERING_WORLD")   -- a missed ENCOUNTER_END (disconnect, reload)
+    events:SetScript("OnEvent", function(_, event)
+        inEncounter = event == "ENCOUNTER_START"
+        ApplyTrackerHide()
+    end)
+end
+
+--------------------------------------------------
 -- 12. PUBLIC
 --------------------------------------------------
 -- live re-apply for the options that need no reload
@@ -1226,6 +1344,8 @@ function Tweaks:Refresh()
     ApplyAddonDrawer()
     ApplyNameplateCombo()
     ApplyQuestTags()
+    UpdateTrainAll()
+    ApplyTrackerHide()
     if MerchantSellAllJunkButton and MerchantSellAllJunkButton:IsShown() then
         local db = GetDb()
         if db and db.sellJunk then MerchantSellAllJunkButton:Hide() else MerchantSellAllJunkButton:Show() end
@@ -1245,6 +1365,9 @@ function Tweaks:Init()
     InitCameraLoot()
     InitHide()
     InitWorldRefresh()
+    InitAutoDelete()
+    InitTrainAll()
+    InitBossTracker()
     ApplyNameplateCombo()
     ApplyQuestTags()
     UnclampPartyFrame()

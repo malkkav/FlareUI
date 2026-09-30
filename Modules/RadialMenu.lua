@@ -103,6 +103,14 @@ local BORDER_COLOR_ACTIVE  = { 0.98, 0.87, 0.26 }   -- #FADE42, the Radial_Wheel
 local ICON_SCALE_IDLE      = 0.88
 local ICON_GLOW_ALPHA      = 0.30 -- additive wash over the selected button's own art
 
+-- Unusable buttons are tinted the way Blizzard's action buttons are (ActionButton.lua): grey when
+-- the action cannot be used, blue when only the mana is missing. The cooldown swipe is cut to a
+-- circle by its texture, the portrait mask, so it stays inside the round icon.
+local TINT_USABLE   = { 1, 1, 1 }
+local TINT_UNUSABLE = { 0.4, 0.4, 0.4 }
+local TINT_NO_MANA  = { 0.5, 0.5, 1 }
+local SWIPE_TEXTURE = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
+
 local STUCK_OPEN_SECONDS = 20     -- see the guard in UpdateSelection
 
 local MAX_BUTTONS = 12             -- more than this and a radial stops being quicker than a bar
@@ -361,6 +369,13 @@ local function CreateRadialButton(index)
     button.RimArt:SetSize(ROUND_SIZE, ROUND_SIZE)
     button.RimArt:Hide()
 
+    -- the cooldown swipe over the icon; see ApplyButtonState
+    button.Cooldown = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
+    button.Cooldown:SetAllPoints(button.Icon)
+    button.Cooldown:SetSwipeTexture(SWIPE_TEXTURE)
+    button.Cooldown:SetDrawEdge(false)
+    button.Cooldown:SetDrawBling(false)
+
     button.index = index
     return button
 end
@@ -414,6 +429,61 @@ local function SetButtonSelected(button, selected)
     end
 end
 
+-- Cooldown swipe and usable tint for what a button fires now (a sub-radial's current child). Spells
+-- and mounts go through the spell API; the cooldown is handed over as Blizzard's duration object,
+-- which carries the timing even when cooldowns are secret, and the global cooldown is left out so a
+-- recent cast does not sweep every button. Items read their own cooldown. Markers, panels and
+-- macros have neither and stay as they are. Anything unreadable leaves the button looking usable.
+local function Readable(value)
+    return value ~= nil and canaccessvalue(value)
+end
+
+local function ApplyButtonState(button, info)
+    if not (button and info) then return end
+    local action = info.children and info.children[info.childIndex or 1] or info
+    local attributes, entry = action.attributes, action.entry
+    local cooldown = button.Cooldown
+    local usable, noMana = true, false
+
+    if attributes and attributes.type == "spell" and attributes.spell then
+        local id = attributes.spell
+        local cd = C_Spell.GetSpellCooldown(id)
+        local duration = cd and Readable(cd.isActive) and cd.isActive and C_Spell.GetSpellCooldownDuration(id, true)
+        if duration then cooldown:SetCooldownFromDurationObject(duration) else cooldown:Clear() end
+        local isUsable, isNoMana = C_Spell.IsSpellUsable(id)
+        if Readable(isUsable) then usable, noMana = isUsable, Readable(isNoMana) and isNoMana end
+    elseif attributes and attributes.type == "item" and entry and entry.id then
+        local start, duration, enabled = C_Item.GetItemCooldown(entry.id)
+        if Readable(start) and Readable(duration) and Readable(enabled) and enabled and duration > 0 then
+            cooldown:SetCooldown(start, duration)
+        else
+            cooldown:Clear()
+        end
+        local isUsable, isNoMana = C_Item.IsUsableItem(entry.id)
+        if Readable(isUsable) then usable, noMana = isUsable, Readable(isNoMana) and isNoMana end
+    else
+        cooldown:Clear()
+    end
+
+    local t = usable and TINT_USABLE or (noMana and TINT_NO_MANA or TINT_UNUSABLE)
+    button.Icon:SetVertexColor(t[1], t[2], t[3])
+end
+
+local function RefreshButtonStates()
+    for i, info in ipairs(resolved) do ApplyButtonState(buttons[i], info) end
+end
+
+-- While the radial is up, cooldowns starting or ending and power changing re-run the states
+local stateEvents = CreateFrame("Frame")
+stateEvents:SetScript("OnEvent", RefreshButtonStates)
+local STATE_EVENTS = { "SPELL_UPDATE_COOLDOWN", "SPELL_UPDATE_USABLE", "BAG_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_USABLE" }
+
+local function WatchButtonStates(watch)
+    for _, event in ipairs(STATE_EVENTS) do
+        if watch then stateEvents:RegisterEvent(event) else stateEvents:UnregisterEvent(event) end
+    end
+end
+
 -- Puts a sub-radial button on one of its children. Called back from the secure wheel handler, which
 -- owns the choice (section 9): the art only follows it, so what is shown is what the release fires.
 -- The radial itself is not rebuilt, so the sweep is never interrupted.
@@ -425,6 +495,7 @@ local function SetButtonChild(index, childIndex)
     info.childIndex = childIndex
     info.name, info.icon, info.attributes = child.name, child.icon, child.attributes
     SetButtonIcon(button, child.icon)
+    ApplyButtonState(button, info)
 end
 
 function RM:LayoutRadial()
@@ -476,6 +547,7 @@ function RM:LayoutRadial()
             end
         end
     end
+    RefreshButtonStates()
     SyncSecure()
 end
 
@@ -569,6 +641,8 @@ local function OpenRadial()
     if previewID then RM:LoadRadial(previewID) else RM:LoadActiveRadial() end
     RM:LayoutRadial()
     if #resolved == 0 then return end
+    RefreshButtonStates()   -- in combat LayoutRadial kept the old layout, but the states are current
+    WatchButtonStates(true)
     radial:SetScale(1)
 
     local x, y = CursorPosition()
@@ -589,6 +663,7 @@ function CloseRadial()
     if not isOpen then return end
     isOpen = false
     radial:SetScript("OnUpdate", nil)
+    WatchButtonStates(false)
     -- The secure release hides the wheel frame itself. This covers the radial closing any other way,
     -- such as the stuck-open guard; in combat that has to wait for PLAYER_REGEN_ENABLED.
     if wheel and not InCombatLockdown() then wheel:Hide() end
