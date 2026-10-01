@@ -179,7 +179,7 @@ ns.Options.args.tooltips = {
                     type = "group", name = "Override", order = 40, inline = true,
                     args = {
                         shiftReveal = Toggle("shiftReveal", "Show with Shift", 10,
-                            "Hold Shift to see tooltips that would otherwise be hidden.", nil, 1.6),
+                            "Hold Shift to see tooltips that would otherwise be hidden.", 1.6),
                     }
                 },
             },

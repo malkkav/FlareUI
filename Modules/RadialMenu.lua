@@ -11,6 +11,10 @@ local _, ns = ...
 --     and writes the caster's attributes - secure code may do that in combat, plain Lua may not
 -- The snippet layer needs Forever build 1.60.1.70009 or later: earlier builds could not compile
 -- snippets at all, and the radial kept only its panel buttons in a fight.
+-- Radial macros: "/click FUIRadial <radial name>" opens any radial in click mode, for macros with
+-- conditionals and for a radial button that opens another radial. A /click never delivers a key
+-- release, so a macro radial stays open: click the button you want (or press the macro again to fire
+-- the aimed one); right-click or Escape closes it. See section 9.
 --------------------------------------------------
 ns.RadialMenu = ns.RadialMenu or {}
 local RM = ns.RadialMenu
@@ -39,8 +43,10 @@ local GetTime = GetTime
 local TAU = math_pi * 2
 local QUARTER = math_pi / 2
 
-local CASTER_NAME = "FlareUI_RadialCaster"
-local WHEEL_NAME  = "FlareUI_RadialWheel"
+local CASTER_NAME  = "FlareUI_RadialCaster"
+local WHEEL_NAME   = "FlareUI_RadialWheel"
+local CATCHER_NAME = "FlareUI_RadialCatcher"
+local MACRO_NAME   = "FUIRadial"   -- the button macros /click; kept short, users type it
 
 -- Blizzard's ping wheel art. The pointer and the backdrop are independent of button count; only the
 -- wheel plate and wedge highlight are count-specific (Count_4 is the only one the client ships),
@@ -117,8 +123,14 @@ local MAX_BUTTONS = 12             -- more than this and a radial stops being qu
 local MAX_RADIAL_DEPTH = 4          -- a radial inside a radial inside a radial is already past useful
 
 local radial, caster, header, wheel, buttons = nil, nil, nil, nil, {}
+local catcher, macroButton          -- click mode's full-screen catcher, and the button macros click
 local isOpen, selectedIndex, currentRadial = false, nil, nil
+local currentID                     -- the radial id currentRadial belongs to
+local openMode                      -- "hold" (the keybind) or "click" (a macro); see section 8
 local resolved = {}               -- currentRadial resolved to names / icons / attributes
+local resolvedCache = {}          -- every radial resolved, as the secure layer holds them (SyncSecure)
+local syncedIDs = {}              -- radial ids written to the secure layer, to retire deleted ones
+local syncedTags = {}             -- macro tags written to the secure layer, to retire renamed ones
 local openedAt = 0
 local previewID, previewAnchor     -- set while the radial editor is open
 local CloseRadial                   -- defined in section 8, used by the guard in section 7
@@ -498,24 +510,40 @@ local function SetButtonChild(index, childIndex)
     ApplyButtonState(button, info)
 end
 
+-- Unavailable buttons are skipped, so the radial closes up around them.
+local function ResolveButtons(list)
+    local out = {}
+    for i = 1, #(list or {}) do
+        if #out >= MAX_BUTTONS then break end
+        local entry = ResolveEntry(list[i], 0, {})
+        if entry then out[#out + 1] = entry end
+    end
+    return out
+end
+
+-- Every radial in the library, since a macro may open any of them in combat
+local function ResolveAll()
+    wipe(resolvedCache)
+    for _, id in ipairs(RM:GetRadialOrder()) do
+        local data = RM:GetRadial(id)
+        if data then resolvedCache[id] = ResolveButtons(data.buttons) end
+    end
+end
+
 function RM:LayoutRadial()
     if not (radial and currentRadial) then return end
-    -- The secure layer holds a copy of this layout (SyncSecure), and that copy cannot be rewritten
-    -- in combat. Laying out afresh here would let the art drift from what a release actually fires,
-    -- so in combat the last layout stands and a new one is made on the way out.
+    -- The secure layer holds a copy of every radial's layout (SyncSecure), and that copy cannot be
+    -- rewritten in combat. Resolving afresh there would let the art drift from what a click actually
+    -- fires, so in combat the art draws the copy made out of combat, and a new one is made on the way
+    -- out. Resolving happens here rather than per frame; LayoutRadial runs whenever a radial opens or
+    -- is edited.
     if InCombatLockdown() then
         layoutPending = true
-        return
-    end
-    layoutPending = nil
-
-    -- Unavailable buttons are skipped, so the radial closes up around them. Resolving happens here
-    -- rather than per frame; LayoutRadial is called whenever the radial opens or is edited.
-    resolved = {}
-    for i = 1, #currentRadial do
-        if #resolved >= MAX_BUTTONS then break end
-        local entry = ResolveEntry(currentRadial[i], 0, {})
-        if entry then resolved[#resolved + 1] = entry end
+        resolved = (currentID and resolvedCache[currentID]) or resolved
+    else
+        layoutPending = nil
+        ResolveAll()
+        resolved = (currentID and resolvedCache[currentID]) or ResolveButtons(currentRadial)
     end
 
     local count = #resolved
@@ -595,7 +623,7 @@ local function UpdateSelection()
     -- Safety net for the one thing that cannot be checked outside the game: whether a CLICK binding
     -- really delivers the key-up as well as the key-down. If it does not, the radial would hang open
     -- with no way to dismiss it, so it closes itself instead of trapping the screen.
-    if GetTime() - openedAt > STUCK_OPEN_SECONDS then
+    if openMode == "hold" and GetTime() - openedAt > STUCK_OPEN_SECONDS then
         CloseRadial()
         print("|cffff9900FlareUI:|r radial menu timed out - the binding did not report a key release.")
         return
@@ -634,11 +662,20 @@ end
 --------------------------------------------------
 -- 8. OPEN / CLOSE
 --------------------------------------------------
-local function OpenRadial()
-    if isOpen then return end
+-- mode "hold" is the keybind (the assigned radial, or the one the editor previews); "click" is a
+-- macro, which names its radial. A radial already up gives way to the new one.
+local function OpenRadial(radialID, mode)
+    if isOpen then CloseRadial() end
+    openMode = mode or "hold"
     -- Laid out on every open so that availability (mounts, items, loaded panels) is current. In
-    -- combat LayoutRadial keeps the last layout, which is also the one the secure layer holds.
-    if previewID then RM:LoadRadial(previewID) else RM:LoadActiveRadial() end
+    -- combat LayoutRadial draws the copy the secure layer holds.
+    if radialID then
+        RM:LoadRadial(radialID)
+    elseif previewID then
+        RM:LoadRadial(previewID)
+    else
+        RM:LoadActiveRadial()
+    end
     RM:LayoutRadial()
     if #resolved == 0 then return end
     RefreshButtonStates()   -- in combat LayoutRadial kept the old layout, but the states are current
@@ -662,6 +699,7 @@ end
 function CloseRadial()
     if not isOpen then return end
     isOpen = false
+    openMode = nil
     radial:SetScript("OnUpdate", nil)
     WatchButtonStates(false)
     -- The secure release hides the wheel frame itself. This covers the radial closing any other way,
@@ -688,13 +726,21 @@ end
 -- The mouse wheel is caught by a full-screen secure frame, shown only while the radial is open. It
 -- steps a sub-radial button's child in secure state and tells the art through CallMethod, for the same
 -- reason: the choice has to live where the release can read it in combat.
+-- Every radial is copied, each under its own id ("<id>-count", "<id>-s<button>-<child>-<key>"), and
+-- ACTIVE names the one that is open: the keybind opens "flare-assigned", a macro names its own.
+-- Radial macros (click mode, OPie's model): the macro clicks MACRO_NAME with the radial's tag as
+-- the mouse button: its name without spaces or symbols, any case ("tag-<lower case>" holds the id;
+-- a bare id works too). A /click sends no key release, so the radial waits for a click on CATCHER_NAME, a
+-- full-screen SecureActionButton shown only meanwhile: left-click fires the aimed button, right-click
+-- or Escape (a binding the header holds while open) closes. The same macro pressed again fires the
+-- aimed button from MACRO_NAME itself, so tap - aim - tap works without the mouse buttons.
 --------------------------------------------------
 local ACTION_KEYS = "type spell item macro macrotext unit marker action"
 
 -- self is the header. Returns the button under the cursor, or nil in the dead zone. OPENX / OPENY are
 -- where the radial opened, recorded by the click snippet in the same restricted environment.
 local SELECT_SNIPPET = ([[
-    local count = self:GetAttribute("flare-count") or 0
+    local count = ACTIVE and self:GetAttribute(ACTIVE .. "-count") or 0
     if count == 0 or not OPENX then return nil end
     local screen = self:GetFrameRef("wheel")
     local x, y = screen:GetMousePosition()
@@ -707,12 +753,53 @@ local SELECT_SNIPPET = ([[
     return math.floor(((math.pi / 2 - angle) %% tau + interval / 2) / interval) %% count + 1
 ]]):format(DEAD_ZONE_SQ)
 
+-- self is the header. The attribute prefix of the button the cursor aims at in the open radial.
+local AIMED_SNIPPET = [[
+    local index = self:RunAttribute("flare-select")
+    if not (index and ACTIVE) then return nil end
+    local child = (CHILD[ACTIVE] and CHILD[ACTIVE][index]) or 1
+    return ACTIVE .. "-s" .. index .. "-" .. child .. "-"
+]]
+
+-- self is the header; ... = quiet. Ends click mode: catcher, wheel frame and Escape binding go. The
+-- art is told unless quiet (the keybind opening over a macro radial redraws the art itself).
+local CLOSE_CLICK_SNIPPET = [[
+    if MODE ~= "click" then return end
+    MODE = nil
+    OPENX, OPENY = nil, nil
+    self:GetFrameRef("catcher"):Hide()
+    self:GetFrameRef("wheel"):Hide()
+    self:ClearBindings()
+    if not ... then self:CallMethod("OnSecureClose") end
+]]
+
+-- self is the header; ... = the radial id. Opens that radial in click mode at the cursor.
+local OPEN_CLICK_SNIPPET = [[
+    local id = ...
+    if (self:GetAttribute(id .. "-count") or 0) == 0 then return false end
+    local screen = self:GetFrameRef("wheel")
+    ACTIVE, MODE = id, "click"
+    screen:Show()
+    local x, y = screen:GetMousePosition()
+    if x then
+        OPENX, OPENY = x * screen:GetWidth(), y * screen:GetHeight()
+    else
+        OPENX, OPENY = nil, nil
+    end
+    self:GetFrameRef("catcher"):Show()
+    self:SetBindingClick(true, "ESCAPE", "]] .. CATCHER_NAME .. [[", "RightButton")
+    self:CallMethod("OnSecureOpen", id)
+    return true
+]]
+
 -- self is the caster, control the header. Returning false cancels the button's own click, which is
 -- what stops a press on its own, or a release in the dead zone, from casting anything.
 local CLICK_SNIPPET = [[
     local screen = control:GetFrameRef("wheel")
     if down then
+        control:RunAttribute("flare-closeclick", true)
         for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do self:SetAttribute(key, nil) end
+        ACTIVE, MODE = control:GetAttribute("flare-assigned"), "hold"
         screen:Show()
         local x, y = screen:GetMousePosition()
         if x then
@@ -722,15 +809,57 @@ local CLICK_SNIPPET = [[
         end
         return false
     end
-    local index = control:RunAttribute("flare-select")
+    local prefix = MODE == "hold" and control:RunAttribute("flare-aimed") or nil
     screen:Hide()
+    MODE = nil
     OPENX, OPENY = nil, nil
-    if not index then return false end
-    local prefix = "s" .. index .. "-" .. ((CHILD and CHILD[index]) or 1) .. "-"
+    if not prefix then return false end
     for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
         self:SetAttribute(key, control:GetAttribute(prefix .. key))
     end
     return nil, "fired"
+]]
+
+-- self is the catcher, control the header: left-click fires the aimed button, right-click closes
+local CATCHER_SNIPPET = [[
+    if button ~= "LeftButton" then
+        control:RunAttribute("flare-closeclick")
+        return false
+    end
+    local prefix = control:RunAttribute("flare-aimed")
+    control:RunAttribute("flare-closeclick")
+    if not prefix then return false end
+    for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
+        self:SetAttribute(key, control:GetAttribute(prefix .. key))
+    end
+    return nil, "fired"
+]]
+
+-- self is the macro button, button the radial id the macro named (or a mouse button when it named
+-- none: the radial this character's keybind opens). The same radial again fires the aimed button.
+local MACRO_SNIPPET = [[
+    local id = control:GetAttribute("tag-" .. strlower(button)) or button
+    if (control:GetAttribute(id .. "-count") or -1) < 0 then
+        if id == "LeftButton" or id == "RightButton" then
+            id = control:GetAttribute("flare-assigned")
+        else
+            print("|cffff9900FlareUI:|r no radial called \"" .. tostring(id) .. "\". Copy its macro from the Radial Menu settings.")
+            return false
+        end
+        if not id then return false end
+    end
+    if MODE == "click" and ACTIVE == id then
+        local prefix = control:RunAttribute("flare-aimed")
+        control:RunAttribute("flare-closeclick")
+        if not prefix then return false end
+        for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
+            self:SetAttribute(key, control:GetAttribute(prefix .. key))
+        end
+        return nil, "fired"
+    end
+    control:RunAttribute("flare-closeclick", true)
+    control:RunAttribute("flare-openclick", id)
+    return false
 ]]
 
 -- After the action has run: the button is left empty between uses.
@@ -741,41 +870,81 @@ local CLEAR_SNIPPET = [[
 -- self is the wheel frame, offset the wheel delta. Scrolling up steps back through the children.
 local WHEEL_SNIPPET = [[
     local index = control:RunAttribute("flare-select")
-    if not index then return end
-    local n = control:GetAttribute("s" .. index .. "-n") or 1
+    if not (index and ACTIVE) then return end
+    local n = control:GetAttribute(ACTIVE .. "-s" .. index .. "-n") or 1
     if n < 2 then return end
-    CHILD = CHILD or newtable()
-    local child = ((CHILD[index] or 1) - 1 + (offset > 0 and -1 or 1)) % n + 1
-    CHILD[index] = child
+    CHILD[ACTIVE] = CHILD[ACTIVE] or newtable()
+    local children = CHILD[ACTIVE]
+    local child = ((children[index] or 1) - 1 + (offset > 0 and -1 or 1)) % n + 1
+    children[index] = child
     control:CallMethod("OnSecureChild", index, child)
 ]]
 
--- Copies the current layout onto the header. Out of combat only, which is enough: in combat
--- LayoutRadial does not change the layout either. Every key is written for every child, nil included,
--- so a slot that changed kind cannot keep a key from what it used to be.
-function SyncSecure()
-    if not header or InCombatLockdown() then return end
-    header:SetAttribute("flare-count", #resolved)
-    for i, info in ipairs(resolved) do
-        local children = info.children or { info }
-        header:SetAttribute("s" .. i .. "-n", #children)
-        for c, child in ipairs(children) do
-            local prefix = "s" .. i .. "-" .. c .. "-"
-            for key in ACTION_KEYS:gmatch("%S+") do
-                header:SetAttribute(prefix .. key, child.attributes[key])
-            end
+-- A radial's macro tag: its name with the spaces and symbols taken out ("Summon Minions" ->
+-- "SummonMinions"), since a /click passes one word. Matched in any case. When two radials come out
+-- the same, the first in the library keeps the tag and the other is opened by its id.
+local function MacroTags()
+    local byTag, tagOf = {}, {}
+    for _, id in ipairs(RM:GetRadialOrder()) do
+        local data = RM:GetRadial(id)
+        local tag = data and (data.name or ""):gsub("[^%w]", "") or ""
+        if tag ~= "" and not byTag[tag:lower()] then
+            byTag[tag:lower()], tagOf[id] = id, tag
         end
     end
+    return byTag, tagOf
+end
+
+-- Copies every radial's layout onto the header, and which radial the keybind opens. Out of combat
+-- only, which is enough: in combat LayoutRadial does not change the layouts either. Every key is
+-- written for every child, nil included, so a slot that changed kind cannot keep a key from what it
+-- used to be. A deleted radial is left with a count of 0, so a macro naming it opens nothing.
+function SyncSecure()
+    if not header or InCombatLockdown() then return end
+    for id in pairs(syncedIDs) do
+        if not resolvedCache[id] then
+            header:SetAttribute(id .. "-count", 0)
+            syncedIDs[id] = nil
+        end
+    end
+    for id, list in pairs(resolvedCache) do
+        header:SetAttribute(id .. "-count", #list)
+        for i, info in ipairs(list) do
+            local children = info.children or { info }
+            header:SetAttribute(id .. "-s" .. i .. "-n", #children)
+            for c, child in ipairs(children) do
+                local prefix = id .. "-s" .. i .. "-" .. c .. "-"
+                for key in ACTION_KEYS:gmatch("%S+") do
+                    header:SetAttribute(prefix .. key, child.attributes[key])
+                end
+            end
+        end
+        syncedIDs[id] = true
+    end
+    local byTag = MacroTags()
+    for tag in pairs(syncedTags) do
+        if not byTag[tag] then
+            header:SetAttribute("tag-" .. tag, nil)
+            syncedTags[tag] = nil
+        end
+    end
+    for tag, id in pairs(byTag) do
+        header:SetAttribute("tag-" .. tag, id)
+        syncedTags[tag] = true
+    end
+    header:SetAttribute("flare-assigned", previewID or RM:GetAssignedRadialID())
     -- sub-radial buttons start on their first child again, as the art does after a layout
     SecureHandlerExecute(header, "CHILD = newtable()")
 end
 
 local function OnPreClick(_, _, down)
-    if down then OpenRadial() end
+    if down then OpenRadial(nil, "hold") end
 end
 
+-- Only a radial the keybind opened: a button whose macro opens another radial (click mode) has
+-- already replaced it by the time this runs, and that one stays up for its click.
 local function OnPostClick(_, _, down)
-    if not down then CloseRadial() end
+    if not down and openMode == "hold" then CloseRadial() end
 end
 
 -- Frames, snippets and wraps all have to be set up out of combat; Init defers this if it is not.
@@ -794,7 +963,12 @@ local function CreateSecureLayer()
     header = CreateFrame("Frame", nil, UIParent, "SecureHandlerBaseTemplate")
     header:SetAttribute("flare-keys", ACTION_KEYS)
     header:SetAttribute("flare-select", SELECT_SNIPPET)
+    header:SetAttribute("flare-aimed", AIMED_SNIPPET)
+    header:SetAttribute("flare-openclick", OPEN_CLICK_SNIPPET)
+    header:SetAttribute("flare-closeclick", CLOSE_CLICK_SNIPPET)
     header.OnSecureChild = function(_, index, child) SetButtonChild(index, child) end
+    header.OnSecureOpen = function(_, radialID) OpenRadial(radialID, "click") end
+    header.OnSecureClose = function() if openMode == "click" then CloseRadial() end end
 
     -- Full screen so the wheel works wherever the cursor has swept to, and so it doubles as the
     -- coordinate frame for SELECT_SNIPPET: GetMousePosition answers nil outside the frame it is
@@ -807,8 +981,29 @@ local function CreateSecureLayer()
     wheel:Hide()
     SecureHandlerSetFrameRef(header, "wheel", wheel)
 
+    -- Click mode's catcher: above the wheel frame, so it takes the wheel too while it is up
+    catcher = CreateFrame("Button", CATCHER_NAME, UIParent, "SecureActionButtonTemplate")
+    catcher:SetAllPoints(UIParent)
+    catcher:SetFrameStrata("FULLSCREEN_DIALOG")
+    catcher:SetFrameLevel(wheel:GetFrameLevel() + 5)
+    catcher:RegisterForClicks("AnyUp")
+    catcher:SetAttribute("useOnKeyDown", false)
+    catcher:SetAttribute("pressAndHoldAction", false)
+    catcher:EnableMouseWheel(true)
+    catcher:Hide()
+    SecureHandlerSetFrameRef(header, "catcher", catcher)
+
+    -- what macros click; never shown, a /click needs no visible button
+    macroButton = CreateFrame("Button", MACRO_NAME, UIParent, "SecureActionButtonTemplate")
+    macroButton:RegisterForClicks("AnyUp", "AnyDown")
+    macroButton:SetAttribute("useOnKeyDown", false)
+    macroButton:SetAttribute("pressAndHoldAction", false)
+
     SecureHandlerWrapScript(caster, "OnClick", header, CLICK_SNIPPET, CLEAR_SNIPPET)
     SecureHandlerWrapScript(wheel, "OnMouseWheel", header, WHEEL_SNIPPET)
+    SecureHandlerWrapScript(catcher, "OnClick", header, CATCHER_SNIPPET, CLEAR_SNIPPET)
+    SecureHandlerWrapScript(catcher, "OnMouseWheel", header, WHEEL_SNIPPET)
+    SecureHandlerWrapScript(macroButton, "OnClick", header, MACRO_SNIPPET, CLEAR_SNIPPET)
     SecureHandlerExecute(header, "CHILD = newtable()")
 end
 
@@ -949,7 +1144,16 @@ end
 -- currentRadial points straight at the saved button list, so edits show up without copying
 function RM:LoadRadial(radialID)
     local data = self:GetRadial(radialID)
+    currentID = data and radialID or nil
     currentRadial = data and data.buttons or {}
+end
+
+-- The line a macro needs to open this radial (Radial Menu settings, "Radial Macros"): its tag, or
+-- its id when another radial already has the tag (see MacroTags)
+function RM:GetMacroText(radialID)
+    if not radialID then return "" end
+    local _, tagOf = MacroTags()
+    return "/click " .. MACRO_NAME .. " " .. (tagOf[radialID] or radialID)
 end
 
 function RM:LoadActiveRadial()
@@ -1020,6 +1224,7 @@ function RM:PLAYER_REGEN_ENABLED()
             if previewID then self:RefreshPreview() else self:LayoutRadial() end
         end
         if wheel then wheel:Hide() end
+        if catcher and catcher:IsShown() then SecureHandlerExecute(header, [[self:RunAttribute("flare-closeclick", true)]]) end
     end
 end
 

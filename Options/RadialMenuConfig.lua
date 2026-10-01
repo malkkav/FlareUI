@@ -34,6 +34,20 @@ local function RadialSorting()
     return order
 end
 
+-- the radial whose macro line the Radial Macros group shows; the character's own radial at first
+local macroRadial
+
+local function MacroRadialID()
+    local rm = RM()
+    if not rm then return nil end
+    if not (macroRadial and rm:GetRadial(macroRadial)) then macroRadial = rm:GetAssignedRadialID() end
+    return macroRadial
+end
+
+local MACRO_HELP = "You can use a radial macro from your action bars or from another radial, and it accepts any macro conditionals.\n\n"
+    .. "Pressing the macro opens the radial and keeps it open. Click a button, or press the macro again, to use the button you are pointing at. Right-click or Escape closes the radial.\n\n"
+    .. "Use the tool below to create a macro command for any of your radials:"
+
 ns.Options.args.radialmenu = {
     type = "group", name = "Radial Menu", order = 35,
     hidden = function() return not ns.db.profile.radialmenu.enabled end,
@@ -66,6 +80,36 @@ ns.Options.args.radialmenu = {
                     values = RadialValues, sorting = RadialSorting,
                     get = function() return RM() and RM():GetAssignedRadialID() or "" end,
                     set = function(_, val) if RM() then RM():SetAssignedRadialID(val ~= "" and val or nil) end end,
+                },
+            }
+        },
+
+        macroGroup = {
+            type = "group", name = "Radial Macros", order = 30, inline = true,
+            args = {
+                help = { type = "description", fontSize = "medium", order = 10, name = MACRO_HELP },
+                spacer1 = { type = "description", name = " ", order = 15 },
+                radial = {
+                    type = "select", name = "Radial", order = 20, width = 1.0,
+                    values = function()
+                        local values = RadialValues()
+                        values[""] = nil
+                        return values
+                    end,
+                    sorting = function()
+                        local order = RadialSorting()
+                        table.remove(order, 1)
+                        return order
+                    end,
+                    get = function() return MacroRadialID() end,
+                    set = function(_, val) macroRadial = val end,
+                },
+                spacer2 = { type = "description", name = "", width = 0.1, order = 21 },
+                macro = {
+                    type = "input", name = "Macro Line", order = 30, width = 1.6,
+                    desc = "Select it (Ctrl+A) and copy it (Ctrl+C) into a macro.",
+                    get = function() return RM() and RM():GetMacroText(MacroRadialID()) or "" end,
+                    set = function() end,
                 },
             }
         },

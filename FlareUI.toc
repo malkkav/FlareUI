@@ -1,8 +1,9 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 1.1
+## Version: 1.1.1
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
+## X-Wago-ID: O67bb0N3
 ## Notes: Your friendly UI overhowl
 ## SavedVariables: FlareUI_DB
 ## IconTexture: Interface\AddOns\FlareUI\Media\Art\Icon.png

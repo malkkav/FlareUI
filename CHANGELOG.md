@@ -1,3 +1,15 @@
+# FlareUI 1.1.1
+
+## New
+
+**Radial Menu**
+- Radial macros: `/click FUIRadial <RadialName>` (the name without spaces, any case) opens any radial at your cursor, so a radial can sit on an action bar, use macro conditionals ([pet], [mod:shift]...) or be opened by a button of another radial. A macro radial stays open: click a button to use it, or press the macro again to use the button you point at; right-click or Escape closes it. Works in combat.
+- Radial Macros group in the Radial Menu settings: how it works, and each radial's macro line to copy.
+
+## Fixed
+- Tooltips settings: the Show with Shift option had the wrong width.
+- Unit frame auras: the stack count and timer could sit under a debuff's dispel border.
+
 # FlareUI 1.1
 
 A big one: new features in almost every module.

@@ -735,12 +735,14 @@ local function InitAuraButton(button, size, isDebuff, unit, font)
         dispel:SetPoint("BOTTOMRIGHT", 1, -1)
         button.FlareUI_Dispel = dispel
 
-        local count = overlay:CreateFontString(nil, "OVERLAY", nil, 3)
+        local count = overlay:CreateFontString(nil, "OVERLAY")
+        count:SetDrawLayer("OVERLAY", 3)   -- above the dispel border
         count:SetPoint("BOTTOMRIGHT", -1, 1)
         count:SetJustifyH("RIGHT")
         button.FlareUI_Count = count
 
-        local duration = overlay:CreateFontString(nil, "OVERLAY", nil, 3)
+        local duration = overlay:CreateFontString(nil, "OVERLAY")
+        duration:SetDrawLayer("OVERLAY", 3)
         duration:SetPoint("CENTER", 0, 0)
         duration:SetJustifyH("CENTER")
         button.FlareUI_Duration = duration
