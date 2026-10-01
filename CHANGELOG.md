@@ -1,3 +1,17 @@
+# FlareUI 1.2
+
+## New
+
+**Unit Frames**
+- Portraits on the player, target and focus frames: pick None, 3D or Class Icon in each frame's Edit Mode settings. The portrait sits in a square on the frame's left, or on the right of a mirrored frame. On mirrored frames the 3D portrait turns to face the bars; class icons keep their orientation, and NPCs show the 3D portrait.
+
+**Radial Menu**
+- Extra keybinds: up to 5 more keys per character, each opening a radial of its own (Radial Menu settings > Extra Keybind). They work like the main keybind: hold, aim, release, in combat too. A key can only open one radial; giving it to another row takes it from the old one.
+
+## Fixed
+- Sync Blizz UI: chat tab message filters and channels were copied but only showed after a second reload. Sync now offers its reload when they change.
+- Damage Meter: a threat row could show the previous player's icon flipped or cropped.
+
 # FlareUI 1.1.2
 
 Urgent fixes for dungeons, raids and battlegrounds.

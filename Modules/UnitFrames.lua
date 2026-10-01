@@ -47,6 +47,7 @@ local SEPARATOR_TEXTURE = "Interface\\Common\\UI-TooltipDivider-Transparent"   -
 local SEPARATOR_HEIGHT  = 8
 local AURA_GAP      = 4     -- between the frame (or cast bar) and the aura rows
 local TEXT_INSET    = 4
+local PORTRAIT_GAP  = 0      -- room between the portrait square and the bars; the divider straddles the seam
 local CAST_HEIGHT   = 18
 local CAST_GAP      = 4
 local CAST_ICON_GAP = 0     -- icon sits flush against the bar
@@ -94,7 +95,7 @@ local POWER_FALLBACK = {
 -- Unit definitions. `driver` is the visibility condition; player is always shown.
 local UNITS = {
     player = {
-        key = "Player", label = "Player", order = 1, auras = true,
+        key = "Player", label = "Player", order = 1, auras = true, portrait = true,
         blizzard = { "PlayerFrame" },
         events = { "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE" },
         globalEvents = { PLAYER_UPDATE_RESTING = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true,
@@ -103,7 +104,7 @@ local UNITS = {
     },
     target = {
         mirrorable = true,
-        key = "Target", label = "Target", order = 2, auras = true,
+        key = "Target", label = "Target", order = 2, auras = true, portrait = true,
         blizzard = { "TargetFrame" },
         driver = "[@target,exists] show; hide",
         globalEvents = { PLAYER_TARGET_CHANGED = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true, PLAYER_FLAGS_CHANGED = "target",
@@ -119,7 +120,7 @@ local UNITS = {
     },
     focus = {
         mirrorable = true,
-        key = "Focus", label = "Focus", order = 4, auras = true,
+        key = "Focus", label = "Focus", order = 4, auras = true, portrait = true,
         blizzard = { "FocusFrame", "TargetofFocusFrame" },
         driver = "[@focus,exists] show; hide",
         globalEvents = { PLAYER_FOCUS_CHANGED = true },
@@ -174,6 +175,19 @@ end
 local function GetUnitDb(unit)
     local db = GetDb()
     return db and db.units and db.units[unit]
+end
+
+-- Portrait: "none", "3d" or "class" (Edit Mode, per frame); only frames that have one can say other
+-- than "none". It is a square as tall as the frame's inside, plus the divider, taken from the bars.
+local function PortraitMode(f)
+    local udb = GetUnitDb(f.unit)
+    return (f.Portrait and udb and udb.portrait) or "none"
+end
+
+local function PortraitSpace(f)
+    if PortraitMode(f) == "none" then return 0 end
+    local udb = GetUnitDb(f.unit)
+    return ((udb and udb.height) or 44) - 2 * INSET + PORTRAIT_GAP
 end
 
 -- an element switch from Unit Frames > General > Elements; anything not switched off is on
@@ -632,6 +646,63 @@ local UpdateComboPoints   -- defined in 5c (needs the layout helpers below)
 local UpdateHappiness     -- defined in 8c
 local UpdateIndicators, UpdateHealPrediction   -- defined in 5d
 
+-- Blizzard's portrait render faces right for players and friendly NPCs, and left for most neutral
+-- and hostile creatures (beasts, demons, monsters). A mirrored frame wants the face turned inward,
+-- so only the right-facing ones are flipped. Anything unreadable counts as right-facing.
+local function PortraitFacesRight(unit)
+    local isPlayer = UnitIsPlayer(unit)
+    if not canaccessvalue(isPlayer) or isPlayer then return true end
+    local reaction = UnitReaction("player", unit)
+    if not canaccessvalue(reaction) or not reaction then return true end
+    return reaction >= 5
+end
+
+local function KeepPortraitFlipped(portrait)
+    if portrait.Tex:GetTexCoord() ~= 1 then portrait.Tex:SetTexCoord(1, 0, 0, 1) end
+end
+
+-- 3D is Blizzard's static portrait render (SetPortraitTexture, unmasked, so it comes out square),
+-- turned to face the other way on a mirrored frame. The class icon keeps its orientation, and an NPC
+-- (or a class the client keeps hidden) falls back to 3D. In Edit Mode a frame with no unit shows the
+-- player, so the square can be seen while placing it.
+local function UpdatePortrait(f)
+    local portrait = f.Portrait
+    if not portrait then return end
+    local mode = PortraitMode(f)
+    if mode == "none" then
+        portrait:Hide()
+        return
+    end
+    local unit = UnitExists(f.unit) and f.unit or "player"
+    local tex = portrait.Tex
+    local class
+    if mode == "class" then
+        local isPlayer = UnitIsPlayer(unit)
+        if canaccessvalue(isPlayer) and isPlayer then
+            local _, classFile = UnitClass(unit)
+            if canaccessvalue(classFile) then class = classFile end
+        end
+    end
+    if class then
+        portrait:SetScript("OnUpdate", nil)
+        tex:SetAtlas(GetClassAtlas(class), false, nil, true)   -- reset coords: SetAtlas keeps a 3D flip otherwise
+    else
+        SetPortraitTexture(tex, unit, true)
+        local udb = GetUnitDb(f.unit)
+        if udb and udb.mirror and PortraitFacesRight(unit) then
+            -- Blizzard's render can land after this call (a unit whose model is not loaded yet, which
+            -- is most fresh enemies) and resets the texture's coordinates when it does, so while a
+            -- mirrored 3D portrait is up the flip is checked every frame and put back if lost
+            tex:SetTexCoord(1, 0, 0, 1)
+            portrait:SetScript("OnUpdate", KeepPortraitFlipped)
+        else
+            portrait:SetScript("OnUpdate", nil)
+            tex:SetTexCoord(0, 1, 0, 1)
+        end
+    end
+    portrait:Show()
+end
+
 local function UpdateAll(f)
     UpdateName(f)
     UpdateLevel(f)
@@ -642,6 +713,7 @@ local function UpdateAll(f)
     if f.Combo then UpdateComboPoints(f) end
     UpdateIndicators(f)
     UpdateHappiness(f)
+    UpdatePortrait(f)
 end
 
 local function OnUnitEvent(f, event, arg1)
@@ -670,6 +742,8 @@ local function OnUnitEvent(f, event, arg1)
         if f.Combo then UpdateComboPoints(f) end   -- a target can turn hostile (duels, mind control)
     elseif event == "RAID_TARGET_UPDATE" then
         UpdateRaidIcon(f)
+    elseif event == "UNIT_PORTRAIT_UPDATE" or event == "UNIT_MODEL_CHANGED" then
+        UpdatePortrait(f)
     elseif event:find("^UNIT_SPELLCAST") then
         UpdateCast(f)
     elseif event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE" then
@@ -972,7 +1046,7 @@ local function LayoutComboSegments(f)
     local combo, udb = f.Combo, GetUnitDb(f.unit)
     if not combo or combo.count == 0 then return end
     local n = combo.count
-    local width = (udb and udb.width or 220) - 2 * INSET
+    local width = (udb and udb.width or 220) - 2 * INSET - PortraitSpace(f)
     local segWidth = (width - (n - 1) * COMBO_SEGMENT_GAP) / n
     local texture = GetBarTexture(udb and udb.texture)
     for i = 1, n do
@@ -1323,7 +1397,7 @@ local function LayoutIndicators(f)
     if f.HealClip then
         local health, clip, heal, absorb = f.Health, f.HealClip, f.HealBar, f.AbsorbBar
         local fill = health:GetStatusBarTexture()
-        local width = (udb and udb.width or 220) - 2 * INSET
+        local width = (udb and udb.width or 220) - 2 * INSET - PortraitSpace(f)
         local reverse = (udb and udb.absorbReverseFill) and true or false
 
         clip:ClearAllPoints()
@@ -1518,10 +1592,37 @@ local function LayoutBars(f)
     local powerHeight = udb.powerHeight or 8
     local health, power = f.Health, f.Power
     local comboShown = IsComboShown(f)
+    -- the portrait square on the left, or on the right of a mirrored frame
+    local space, mirror = PortraitSpace(f), udb.mirror and true or false
+    local left, right = PADDING + (mirror and 0 or space), PADDING + (mirror and space or 0)
 
     health:ClearAllPoints()
     power:ClearAllPoints()
-    health:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING, -PADDING)
+    health:SetPoint("TOPLEFT", f, "TOPLEFT", left, -PADDING)
+
+    if f.Portrait then
+        local portrait, divider = f.Portrait, f.PortraitDivider
+        portrait:ClearAllPoints()
+        divider:ClearAllPoints()
+        if space > 0 then
+            local size = space - PORTRAIT_GAP
+            portrait:SetSize(size, size)
+            -- the divider is centred on the seam, as the health / power separator is on theirs
+            local edge = mirror and "LEFT" or "RIGHT"
+            if mirror then
+                portrait:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PADDING, -PADDING)
+            else
+                portrait:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING, -PADDING)
+            end
+            divider:SetPoint("TOP", portrait, "TOP" .. edge, 0, 0)
+            divider:SetPoint("BOTTOM", portrait, "BOTTOM" .. edge, 0, 0)
+            divider:SetWidth(SEPARATOR_HEIGHT)
+            divider:Show()
+        else
+            divider:Hide()
+        end
+        UpdatePortrait(f)
+    end
 
     if comboShown then
         local combo = f.Combo
@@ -1536,8 +1637,8 @@ local function LayoutBars(f)
     end
     if powerHeight > 0 then
         power:Show()
-        power:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", PADDING, PADDING)
-        power:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PADDING, PADDING)
+        power:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", left, PADDING)
+        power:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -right, PADDING)
         power:SetHeight(powerHeight)
         health:SetPoint("BOTTOMRIGHT", power, "TOPRIGHT", 0, 0)
         f.Separator:ClearAllPoints()
@@ -1548,7 +1649,7 @@ local function LayoutBars(f)
     else
         f.Separator:Hide()
         power:Hide()
-        health:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PADDING, PADDING)
+        health:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -right, PADDING)
     end
 end
 
@@ -1935,6 +2036,23 @@ local function CreateUnitFrame(unit)
     f.Separator:SetVertexColor(1, 1, 1, 1)
     f.Separator:Hide()
 
+    if info.portrait then
+        -- at the bars' level, under the border; the divider is the health / power separator's art
+        -- turned upright (its length runs down the seam), on the same text layer above the bars
+        f.Portrait = CreateFrame("Frame", nil, f)
+        f.Portrait:SetFrameLevel(level + 1)
+        f.Portrait.Tex = f.Portrait:CreateTexture(nil, "ARTWORK")
+        f.Portrait.Tex:SetAllPoints()
+        f.Portrait:Hide()
+        f.PortraitDivider = overlay:CreateTexture(nil, "ARTWORK")
+        f.PortraitDivider:SetTexture(SEPARATOR_TEXTURE)
+        f.PortraitDivider:SetTexCoord(0, 0, 1, 0, 0, 1, 1, 1)
+        f.PortraitDivider:SetVertexColor(1, 1, 1, 1)
+        f.PortraitDivider:Hide()
+        pcall(f.RegisterUnitEvent, f, "UNIT_PORTRAIT_UPDATE", unit)
+        pcall(f.RegisterUnitEvent, f, "UNIT_MODEL_CHANGED", unit)
+    end
+
     f.Highlight = overlay:CreateTexture(nil, "OVERLAY")
     f.Highlight:SetAllPoints(f.Health)
     f.Highlight:SetColorTexture(1, 1, 1, 0.08)
@@ -2100,6 +2218,16 @@ local function BuildSettings(unit)
         { name = "Power Text", kind = LEM.SettingType.Checkbox, default = defaults.powerText or false, get = get("powerText"), set = set("powerText") },
         { name = "Show Level", kind = LEM.SettingType.Checkbox, default = defaults.showLevel ~= false, get = get("showLevel"), set = set("showLevel") },
     }
+    if info.portrait then
+        settings[#settings + 1] = { name = "Portrait", kind = LEM.SettingType.Dropdown, default = "none",
+            values = {
+                { text = "None",       value = "none",  isRadio = true },
+                { text = "3D",         value = "3d",    isRadio = true },
+                { text = "Class Icon", value = "class", isRadio = true },
+            },
+            get = function() local u = GetUnitDb(unit); return u and u.portrait or "none" end, set = set("portrait"),
+            desc = "A square at the frame's left (right when mirrored). Class Icon shows the 3D portrait for NPCs." }
+    end
     if info.mirrorable then
         -- flips text order and bar fill so the frame faces the player frame
         settings[#settings + 1] = { name = "Mirror", kind = LEM.SettingType.Checkbox, default = defaults.mirror or false, get = function() local u = GetUnitDb(unit); return u and u.mirror or false end,

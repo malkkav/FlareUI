@@ -830,10 +830,13 @@ local function FillRow(row, data, top, window, db, index, height, spacing)
     row.sourceDisplayType = Enum.DamageMeterSourceDisplayType and Enum.DamageMeterSourceDisplayType.Ally
     row:SetUseClassColor(window.ShouldUseClassColor and window:ShouldUseClassColor() or false)
     local icon = row:GetIcon()
+    -- rows are reused for other players, so each kind of icon sets its own coordinates: the spec
+    -- texture gets the entry template's crop, the class atlas its own
     if data.specIcon then
         icon:SetTexture(data.specIcon)
+        icon:SetTexCoord(0.0625, 0.9, 0.0626, 0.9)
     elseif data.class then
-        icon:SetAtlas(GetClassAtlas(data.class))
+        icon:SetAtlas(GetClassAtlas(data.class), false, nil, true)
     else
         icon:SetTexture(nil)
     end

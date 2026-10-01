@@ -527,7 +527,29 @@ local function LoadSync()
         end
     end
 
-    -- Chat windows
+    -- Chat windows. The message filters and channels are written to the client's chat settings, but
+    -- a tab only reads those in Blizzard's UPDATE_CHAT_WINDOWS pass (login and reload): loading them
+    -- into the live tabs from here would mean writing their channel lists from our code, which the
+    -- chat message handler reads while it handles secret messages. So a change counts towards the
+    -- reload asked for below, and the reload loads them cleanly.
+    local chatChanged = false
+    local function Strings(list)
+        local out = {}
+        for _, v in ipairs(list or {}) do
+            if type(v) == "string" then out[#out + 1] = v end
+        end
+        return out
+    end
+    local function SameSet(a, b)
+        a, b = Strings(a), Strings(b)
+        if #a ~= #b then return false end
+        local seen = {}
+        for _, v in ipairs(a) do seen[v] = true end
+        for _, v in ipairs(b) do
+            if not seen[v] then return false end
+        end
+        return true
+    end
     if store.chat then
         for i, w in pairs(store.chat) do
             if w.name then pcall(SetChatWindowName, i, w.name) end
@@ -543,6 +565,7 @@ local function LoadSync()
             if w.messages then
                 local ok, current = pcall(function() return { GetChatWindowMessages(i) } end)
                 current = ok and current or {}
+                if not SameSet(current, w.messages) then chatChanged = true end
                 for _, group in ipairs(current) do pcall(RemoveChatWindowMessages, i, group) end
                 for _, group in ipairs(w.messages) do pcall(AddChatWindowMessages, i, group) end
             end
@@ -550,6 +573,7 @@ local function LoadSync()
             -- a tab, and joining channels on someone's behalf is not this feature's business.
             if w.channels then
                 local ok, current = pcall(function() return { GetChatWindowChannels(i) } end)
+                if not SameSet(ok and current or {}, w.channels) then chatChanged = true end
                 for _, name in ipairs(ok and current or {}) do
                     if type(name) == "string" then pcall(RemoveChatWindowChannel, i, name) end
                 end
@@ -602,8 +626,9 @@ local function LoadSync()
     -- exactly what the addon this feature is modelled on does. The values live in CVars by now, so
     -- the reload keeps every one of them and starts clean.
     -- Asked once, after the action bar pass above, and only when something actually changed.
-    -- A layout switch counts: it relays every system frame from our tainted call.
-    if changed > 0 or layoutChanged then
+    -- A layout switch counts: it relays every system frame from our tainted call. So do chat tab
+    -- filters and channels (see the chat windows above).
+    if changed > 0 or layoutChanged or chatChanged then
         C_Timer.After(6, function()
             if not InCombatLockdown() then
                 StaticPopup_Show("FLAREUI_SYNC_RELOAD", sourceName)

@@ -81,6 +81,18 @@ ns.Options.args.radialmenu = {
                     get = function() return RM() and RM():GetAssignedRadialID() or "" end,
                     set = function(_, val) if RM() then RM():SetAssignedRadialID(val ~= "" and val or nil) end end,
                 },
+                -- extra keybind rows are added below (ExtraKeybindRows)
+                addExtra = {
+                    type = "execute", name = "Extra Keybind", order = 900, width = 1.0,
+                    desc = "Add another keybind on this character, opening a radial of its own.",
+                    hidden = function()
+                        return not RM() or #RM():GetExtraBindings() >= RM().MAX_EXTRA_KEYS
+                    end,
+                    func = function()
+                        if RM() then RM():AddExtraBinding() end
+                        AceConfigRegistry:NotifyChange("FlareUI")
+                    end,
+                },
             }
         },
 
@@ -115,6 +127,61 @@ ns.Options.args.radialmenu = {
         },
     },
 }
+
+-- Extra keybind rows: [key] [radial] [Remove], one per extra keybind on this character, each shown
+-- only while it exists. The "Extra Keybind" button (order 900) follows the last one.
+local function ExtraValue(index, field)
+    local extra = RM() and RM():GetExtraBindings()[index]
+    return extra and extra[field]
+end
+
+local function NoExtra(index)
+    return not (RM() and RM():GetExtraBindings()[index])
+end
+
+local function ExtraKeybindRows(args)
+    local values = function()
+        local t = RadialValues()
+        t[""] = nil
+        return t
+    end
+    local sorting = function()
+        local order = RadialSorting()
+        table.remove(order, 1)
+        return order
+    end
+    for i = 1, (ns.RadialMenu and ns.RadialMenu.MAX_EXTRA_KEYS) or 5 do
+        local base = 100 + i * 10
+        local hidden = function() return NoExtra(i) end
+        args["extraBreak" .. i] = { type = "description", name = " ", order = base, width = "full", hidden = hidden }
+        args["extraKey" .. i] = {
+            type = "keybinding", name = "Extra Keybind", order = base + 1, width = 1.0, hidden = hidden,
+            desc = "Hold the bound key to open the radial chosen beside it.",
+            get = function() return ExtraValue(i, "key") or "" end,
+            set = function(_, val) if RM() then RM():SetExtraKey(i, val) end end,
+        }
+        args["extraSpacer" .. i] = { type = "description", name = "", width = 0.1, order = base + 2, hidden = hidden }
+        args["extraRadial" .. i] = {
+            type = "select", name = "Radial", order = base + 3, width = 1.0, hidden = hidden,
+            values = values, sorting = sorting,
+            get = function() return ExtraValue(i, "radial") end,
+            set = function(_, val) if RM() then RM():SetExtraRadial(i, val) end end,
+        }
+        args["extraSpacerB" .. i] = { type = "description", name = "", width = 0.1, order = base + 4, hidden = hidden }
+        args["extraRemove" .. i] = {
+            type = "execute", name = "Remove", order = base + 5, width = 0.5, hidden = hidden,
+            func = function()
+                if RM() then RM():RemoveExtraBinding(i) end
+                AceConfigRegistry:NotifyChange("FlareUI")
+            end,
+        }
+    end
+    args.addExtraBreak = {
+        type = "description", name = " ", order = 899, width = "full",
+        hidden = function() return not RM() or #RM():GetExtraBindings() >= RM().MAX_EXTRA_KEYS end,
+    }
+end
+ExtraKeybindRows(ns.Options.args.radialmenu.args.generalGroup.args)
 
 -- The radial editor calls this after the library changes, so an open settings page redraws the radial
 -- dropdown with the new names.

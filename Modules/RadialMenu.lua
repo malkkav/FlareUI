@@ -120,6 +120,7 @@ local SWIPE_TEXTURE = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 local STUCK_OPEN_SECONDS = 20     -- see the guard in UpdateSelection
 
 local MAX_BUTTONS = 12             -- more than this and a radial stops being quicker than a bar
+local MAX_EXTRA_KEYS = 5           -- extra keybinds per character, each opening its own radial
 local MAX_RADIAL_DEPTH = 4          -- a radial inside a radial inside a radial is already past useful
 
 local radial, caster, header, wheel, buttons = nil, nil, nil, nil, {}
@@ -799,7 +800,10 @@ local CLICK_SNIPPET = [[
     if down then
         control:RunAttribute("flare-closeclick", true)
         for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do self:SetAttribute(key, nil) end
-        ACTIVE, MODE = control:GetAttribute("flare-assigned"), "hold"
+        -- an extra keybind clicks with its radial's id as the button; the main one with LeftButton
+        local id = button
+        if (control:GetAttribute(id .. "-count") or 0) < 1 then id = control:GetAttribute("flare-assigned") end
+        ACTIVE, MODE = id, "hold"
         screen:Show()
         local x, y = screen:GetMousePosition()
         if x then
@@ -937,8 +941,8 @@ function SyncSecure()
     SecureHandlerExecute(header, "CHILD = newtable()")
 end
 
-local function OnPreClick(_, _, down)
-    if down then OpenRadial(nil, "hold") end
+local function OnPreClick(_, button, down)
+    if down then OpenRadial(RM:GetRadial(button) and button or nil, "hold") end
 end
 
 -- Only a radial the keybind opened: a button whose macro opens another radial (click mode) has
@@ -1118,6 +1122,7 @@ function RM:DeleteRadial(id)
     -- a character that chose it falls back to the first radial; see GetAssignedRadialID
     self:LoadActiveRadial()
     self:LayoutRadial()
+    self:ApplyBindings()
 end
 
 -- The radial this character opens, kept with the character's own state (ns.CharDB) rather than in a
@@ -1183,6 +1188,13 @@ end
 -- character, each opening that character's own radial.
 -- SetOverrideBindingClick is protected, so a change made during combat is applied on the way out.
 --------------------------------------------------
+-- Extra keybinds belong to the character, like its radial choice: { key = "F", radial = "r2" } each.
+local function ExtraBindings()
+    local charDB = ns.CharDB()
+    charDB.radialKeys = charDB.radialKeys or {}
+    return charDB.radialKeys
+end
+
 local function ApplyBinding()
     if not (radial and caster) then return end
     if InCombatLockdown() then
@@ -1196,6 +1208,61 @@ local function ApplyBinding()
     if key and key ~= "" then
         SetOverrideBindingClick(radial, true, key, CASTER_NAME, "LeftButton")
     end
+    -- each extra key clicks the caster with its radial's id as the mouse button (see CLICK_SNIPPET)
+    for _, extra in ipairs(ExtraBindings()) do
+        if extra.key and extra.key ~= "" and extra.radial and RM:GetRadial(extra.radial) then
+            SetOverrideBindingClick(radial, true, extra.key, CASTER_NAME, extra.radial)
+        end
+    end
+end
+
+function RM:ApplyBindings()
+    ApplyBinding()
+end
+
+-- One key opens one radial: whichever row takes a key, any other row holding it lets go (the
+-- account-wide main keybind included). index 0 is the main keybind.
+local function ReleaseKey(key, keepIndex)
+    if not key or key == "" then return end
+    local store = GetStore()
+    if keepIndex ~= 0 and store and store.key == key then store.key = nil end
+    for i, extra in ipairs(ExtraBindings()) do
+        if i ~= keepIndex and extra.key == key then extra.key = nil end
+    end
+end
+
+RM.MAX_EXTRA_KEYS = MAX_EXTRA_KEYS
+
+function RM:GetExtraBindings()
+    return ExtraBindings()
+end
+
+-- A new row starts on the character's own radial, with no key yet
+function RM:AddExtraBinding()
+    local list = ExtraBindings()
+    if #list >= MAX_EXTRA_KEYS then return end
+    list[#list + 1] = { radial = self:GetAssignedRadialID() or self:GetRadialOrder()[1] }
+end
+
+function RM:SetExtraKey(index, key)
+    local extra = ExtraBindings()[index]
+    if not extra then return end
+    key = (key ~= "" and key) or nil
+    ReleaseKey(key, index)
+    extra.key = key
+    ApplyBinding()
+end
+
+function RM:SetExtraRadial(index, radialID)
+    local extra = ExtraBindings()[index]
+    if not extra then return end
+    extra.radial = radialID
+    ApplyBinding()
+end
+
+function RM:RemoveExtraBinding(index)
+    table.remove(ExtraBindings(), index)
+    ApplyBinding()
 end
 
 function RM:GetKey()
@@ -1206,7 +1273,9 @@ end
 function RM:SetKey(key)
     local store = GetStore()
     if not store then return end
-    store.key = (key ~= "" and key) or nil
+    key = (key ~= "" and key) or nil
+    ReleaseKey(key, 0)
+    store.key = key
     ApplyBinding()
 end
 
