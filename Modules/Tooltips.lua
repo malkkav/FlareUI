@@ -304,7 +304,9 @@ local function ShouldHide(category)
     if mode == "always" then return false end
     if db.shiftReveal and IsShiftKeyDown() then return false end
     if mode == "never" then return true end
-    return UnitAffectingCombat("player") and true or false
+    local inCombat = UnitAffectingCombat("player")
+    if not canaccessvalue(inCombat) then inCombat = InCombatLockdown() end
+    return inCombat and true or false
 end
 
 local function HideIfNeeded(tip, category)
@@ -318,11 +320,32 @@ end
 --------------------------------------------------
 -- 9. TOOLTIP HOOKS
 --------------------------------------------------
-local function OnTooltipSetUnit(tip)
-    if tip ~= GameTooltip or not SafeToTouch(tip) then return end
+-- The unit a tooltip shows, as a token FlareUI may pass on. Under addon restrictions (instances,
+-- encounters, PvP, combat) the tooltip hands its unit back as a secret, and a secret may not be passed
+-- to UnitExists and the rest from addon code. A plain token is then taken from where the tooltip came
+-- from: the unit frame that owns it (its unit field or attribute), or "mouseover" over the world.
+-- Anything still unreadable leaves the tooltip as Blizzard drew it (visibility rules still apply).
+local function TooltipUnit(tip)
     local _, unit = TooltipUtil.GetDisplayedUnit(tip)
     if not unit then unit = select(2, tip:GetUnit()) end
-    if not unit or not UnitExists(unit) then return end
+    if unit and canaccessvalue(unit) then return unit end
+    local owner = tip:GetOwner()
+    if owner and not owner:IsForbidden() then
+        local ownerUnit = owner.unit
+        if ownerUnit == nil and owner.GetAttribute then ownerUnit = owner:GetAttribute("unit") end
+        if ownerUnit and canaccessvalue(ownerUnit) and type(ownerUnit) == "string" then return ownerUnit end
+    end
+    if MouseIsOverWorld() then return "mouseover" end
+end
+
+local function OnTooltipSetUnit(tip)
+    if tip ~= GameTooltip or not SafeToTouch(tip) then return end
+    local unit = TooltipUnit(tip)
+    if not unit then
+        HideIfNeeded(tip, MouseIsOverWorld() and CAT_WORLD_UNIT or CAT_FRAME_UNIT)
+        return
+    end
+    if not UnitExists(unit) then return end
 
     local category = MouseIsOverWorld() and CAT_WORLD_UNIT or CAT_FRAME_UNIT
     if HideIfNeeded(tip, category) then return end

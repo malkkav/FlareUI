@@ -92,7 +92,7 @@ ns.Options.args.chat = {
                 },
 
                 formattingGroup = {
-                    type = "group", name = "Message Formatting", order = 20, inline = true,
+                    type = "group", name = "Message Formatting (outside instances only)", order = 20, inline = true,
                     args = {
                         formatNPC = {
                             type = "toggle", name = "Better NPC Names", desc = "Removes the colon and colors NPC names.\nExample: '|cffFFB033[Thrall]|r Message'", order = 10,

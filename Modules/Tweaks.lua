@@ -1051,7 +1051,7 @@ end
 
 --------------------------------------------------
 -- 9b. NAMEPLATE QUEST TAGS
--- "Tag quest objectives": the unit frames' quest badge on the right end of an enemy nameplate whose
+-- "Tag quest objectives": a yellow exclamation mark on the right end of an enemy nameplate whose
 -- unit belongs to an active quest - a kill objective, or a mob that drops a quest item - as
 -- C_QuestLog.UnitIsRelatedToActiveQuest reports it (a plain boolean, not a secret). The badge is
 -- centred on the right edge of the plate's level box - half inside, half out - and a little shorter
@@ -1059,8 +1059,8 @@ end
 -- re-checked when a unit gets a plate, whenever the quest log changes and when a level box comes or
 -- goes.
 --------------------------------------------------
-local QUEST_TAG_ATLAS   = "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Quest"
-local QUEST_TAG_FILE    = "Interface\\TargetingFrame\\PortraitQuestBadge"
+local QUEST_TAG_ATLAS   = "QuestNormal"   -- the map's quest-offer "!", no shield
+local QUEST_TAG_FILE    = "Interface\\GossipFrame\\AvailableQuestIcon"
 local QUEST_TAG_SIZE    = 22     -- used when the box's height is not known yet
 local QUEST_TAG_HEIGHT  = 0.85   -- the badge's height as a share of the box it sits on
 local questTags = {}           -- plate -> tag
@@ -1068,6 +1068,16 @@ local questUnits = {}          -- nameplate unit tokens that currently have a pl
 local questLevelHooked = {}    -- level boxes whose show / hide already re-places the tag
 local questEvents
 local UpdateQuestTag
+
+-- width / height of the exclamation art, so the tag keeps its shape at any height
+local questTagAspect
+local function QuestTagAspect()
+    if not questTagAspect then
+        local info = C_Texture.GetAtlasInfo(QUEST_TAG_ATLAS)
+        questTagAspect = (info and info.width > 0 and info.height > 0) and (info.width / info.height) or 1
+    end
+    return questTagAspect
+end
 
 local function GetQuestTag(plate)
     local tag = questTags[plate]
@@ -1104,6 +1114,7 @@ local function QuestTagAnchor(plate)
 end
 
 function UpdateQuestTag(unit)
+    if not canaccessvalue(unit) then return end
     local plate = C_NamePlate.GetNamePlateForUnit(unit)
     if not plate or plate:IsForbidden() then return end
     local hostile = UnitCanAttack("player", unit)
@@ -1117,7 +1128,7 @@ function UpdateQuestTag(unit)
     -- the box's height in the tag's own units (the level box does not share the plate's scale)
     local size = anchor:GetHeight() * anchor:GetEffectiveScale() / tag:GetEffectiveScale() * QUEST_TAG_HEIGHT
     if not (size > 0) then size = QUEST_TAG_SIZE end
-    tag:SetSize(size, size)
+    tag:SetSize(size * QuestTagAspect(), size)
     tag:ClearAllPoints()
     tag:SetPoint("CENTER", anchor, "RIGHT", 0, 0)
     tag:SetFrameStrata(anchor:GetFrameStrata())   -- the level box draws at HIGH
@@ -1129,7 +1140,10 @@ local function UpdateAllQuestTags()
     for unit in pairs(questUnits) do UpdateQuestTag(unit) end
 end
 
+-- Under addon restrictions a unit token can arrive secret, and a secret can be neither passed to the
+-- unit APIs nor used as a table key from addon code: such a plate is simply left untagged.
 local function OnQuestTagEvent(_, event, unit)
+    if unit and not canaccessvalue(unit) then return end
     if event == "NAME_PLATE_UNIT_ADDED" then
         questUnits[unit] = true
         UpdateQuestTag(unit)
@@ -1165,7 +1179,7 @@ local function ApplyQuestTags()
     wipe(questUnits)
     for _, plate in ipairs(C_NamePlate.GetNamePlates()) do
         local unit = plate.unitToken
-        if unit then questUnits[unit] = true end
+        if unit and canaccessvalue(unit) then questUnits[unit] = true end
     end
     UpdateAllQuestTags()
 end

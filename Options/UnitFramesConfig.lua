@@ -112,7 +112,7 @@ ns.Options.args.unitframes = {
                     { "leader",         "Leader Crown" },
                     { "pvp",            "PvP Flag" },
                     { "classification", "Elite & Rare Icon" },
-                    { "questBoss",      "Quest Boss Icon" },
+                    { "questBoss",      "Quest Icon" },
                     { "raidIcon",       "Raid Target Icon" },
                 }),
             },

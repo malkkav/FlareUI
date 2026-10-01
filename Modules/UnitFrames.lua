@@ -106,7 +106,8 @@ local UNITS = {
         key = "Target", label = "Target", order = 2, auras = true,
         blizzard = { "TargetFrame" },
         driver = "[@target,exists] show; hide",
-        globalEvents = { PLAYER_TARGET_CHANGED = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true, PLAYER_FLAGS_CHANGED = "target" },
+        globalEvents = { PLAYER_TARGET_CHANGED = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true, PLAYER_FLAGS_CHANGED = "target",
+                         QUEST_LOG_UPDATE = true },
         castbar = true,
         comboPoints = true,
         indicators = { leader = true, pvp = true, classification = true, quest = true, threat = true, heals = true },
@@ -656,7 +657,8 @@ local function OnUnitEvent(f, event, arg1)
     elseif event == "UNIT_HEAL_PREDICTION" or event == "UNIT_ABSORB_AMOUNT_CHANGED" then
         UpdateHealPrediction(f)
     elseif event == "UNIT_THREAT_SITUATION_UPDATE" or event == "UNIT_THREAT_LIST_UPDATE"
-        or event == "PLAYER_UPDATE_RESTING" or event == "GROUP_ROSTER_UPDATE" or event == "PARTY_LEADER_CHANGED" or event == "PLAYER_FLAGS_CHANGED" then
+        or event == "PLAYER_UPDATE_RESTING" or event == "GROUP_ROSTER_UPDATE" or event == "PARTY_LEADER_CHANGED" or event == "PLAYER_FLAGS_CHANGED"
+        or event == "QUEST_LOG_UPDATE" then
         UpdateIndicators(f)
     elseif event == "UNIT_NAME_UPDATE" then
         UpdateName(f)
@@ -1183,7 +1185,9 @@ local REST_SIZE       = 28
 local LEADER_SIZE     = 20
 local PVP_SIZE        = 24
 local CLASS_ICON_SIZE = 18
-local QUEST_SIZE      = 24
+local QUEST_SIZE      = 24     -- the quest "!" height; its width follows the art
+local QUEST_ATLAS     = "QuestNormal"   -- the map's quest-offer "!", as on the nameplate quest tags
+local QUEST_FILE      = "Interface\\GossipFrame\\AvailableQuestIcon"
 -- Blizzard's own CUF_MY_HEAL_PREDICTION_COLOR (CompactUnitFrame.lua:7), opaque as it is there:
 -- both overlays are clipped to the EMPTY part of the health bar, so nothing needs to show through
 -- them, and any transparency only muddies the colour against the dark track.
@@ -1311,8 +1315,10 @@ local function LayoutIndicators(f)
     end
     if f.QuestIcon then
         f.QuestIcon:ClearAllPoints()
-        f.QuestIcon:SetSize(QUEST_SIZE, QUEST_SIZE)
-        f.QuestIcon:SetPoint("CENTER", f, "TOP", 0, 0)   -- half above the frame's top edge
+        local info = C_Texture.GetAtlasInfo(QUEST_ATLAS)
+        local aspect = (info and info.width > 0 and info.height > 0) and (info.width / info.height) or 1
+        f.QuestIcon:SetSize(QUEST_SIZE * aspect, QUEST_SIZE)
+        f.QuestIcon:SetPoint("CENTER", f, "RIGHT", -3, 0)   -- over the right border, mostly inside
     end
     if f.HealClip then
         local health, clip, heal, absorb = f.Health, f.HealClip, f.HealBar, f.AbsorbBar
@@ -1473,8 +1479,16 @@ function UpdateIndicators(f)
         end
     end
     if f.QuestIcon then
-        local show = ElementOn("questBoss") and readable(UnitIsQuestBoss(unit)) == true
-        if show then SetIconArt(f.QuestIcon, "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Quest", "Interface\\TargetingFrame\\PortraitQuestBadge") end
+        -- a quest boss, or a hostile unit tied to one of the player's active quests (kill or loot
+        -- objective), the same test as the nameplate quest tags
+        local show = false
+        if ElementOn("questBoss") then
+            show = readable(UnitIsQuestBoss(unit)) == true
+            if not show and readable(UnitCanAttack("player", unit)) then
+                show = readable(C_QuestLog.UnitIsRelatedToActiveQuest(unit)) == true
+            end
+        end
+        if show then SetIconArt(f.QuestIcon, QUEST_ATLAS, QUEST_FILE) end
         f.QuestIcon:SetShown(show)
     end
     if f.threatTint then

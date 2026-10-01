@@ -1,3 +1,16 @@
+# FlareUI 1.1.2
+
+Urgent fixes for dungeons, raids and battlegrounds.
+
+## Fixed
+- Tooltips: hovering any unit inside an instance (or in a PvP match) threw a Lua error. Blizzard hides the unit from addons there; FlareUI now finds it another way, or leaves the tooltip as Blizzard drew it.
+- Nameplate quest tags no longer error on nameplates whose unit is hidden from addons.
+- Unit frames: the quest icon never showed for normal quest mobs, only for the rare "quest bosses". It now shows when your target or focus is part of one of your active quests.
+
+## Changed
+- Quest icons are a simple yellow "!" instead of the shield, both on nameplates (Tweaks > Tag Quest Objectives) and on the target and focus frames, where it sits on the right edge. The unit frame element is now called Quest Icon.
+- Chat: the Message Formatting options say they work outside instances only, where Blizzard hides chat messages from addons.
+
 # FlareUI 1.1.1
 
 ## New
