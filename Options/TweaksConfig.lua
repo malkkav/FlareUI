@@ -126,8 +126,6 @@ ns.Options.args.tweaks = {
                 hideErrors          = Toggle("hideErrors", "Error Messages", 10, nil, true, 1.2),
                 spacer1             = SP(11),
                 hideZoneText        = Toggle("hideZoneText", "Zone Text", 20, nil, true, 1.2),
-                spacer2             = SP(21),
-                hideWorldRefresh    = Toggle("hideWorldRefresh", "World Refresh Dialog", 22, nil, false, 1.2),
                 break1              = { type = "description", name = " ", order = 25, width = "full" },
                 hidePartyTitle      = Toggle("hidePartyTitle", "Party Title", 30, nil, false, 1.2),
                 spacer3             = SP(31),

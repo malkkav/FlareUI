@@ -9,7 +9,7 @@ local _, ns = ...
 --   Nameplates          Combo Points under the target's nameplate, Tag Quest Objectives
 --   Convenience         Faster Auto Loot, Auto-Type DELETE, Train All button
 --   Hide                Error Messages, Zone Text, Party Title, Portrait Numbers, Contextual Tips,
---                       World Refresh Dialog, Addon Drawer, Quest Tracker in Boss Fights
+--                       Addon Drawer, Quest Tracker in Boss Fights
 --   Always on           Party frames unclamped from the screen edge, the world refresh toast in
 --                       FlareUI's border bronze (no toggles)
 -- Everything applies live except the ones that replace Blizzard scripts (those ask for a reload).
@@ -1234,17 +1234,12 @@ end
 
 --------------------------------------------------
 -- 11. WORLD REFRESH (shard transfer)
--- When the server is about to move the player to a fresh copy of the world, Blizzard opens the
--- SHARD_TRANSFER_IMMINENT_EVENT dialog ("Refresh Now" / "Okay") and a countdown toast above the chat.
--- "World Refresh Dialog" closes the dialog in the same frame it opens - before it is ever drawn -
--- which is all "Okay" does. Only the server's event is caught: clicking the toast still opens the
--- dialog, for "Refresh Now". The toast's grey border takes FlareUI's bronze (always on).
+-- When the server is about to move the player to a fresh copy of the world, Blizzard shows a
+-- countdown toast above the chat; clicking it opens the "Refresh Now" dialog. (Up to build 70009 the
+-- dialog also opened by itself, and a "World Refresh Dialog" option closed it; 70170 stopped that.)
+-- The toast's grey border takes FlareUI's bronze (always on).
 --------------------------------------------------
 local function InitWorldRefresh()
-    hooksecurefunc(GameEvent, "HandleShardTransferImminentEvent", function()
-        local db = GetDb()
-        if db and db.hideWorldRefresh then StaticPopup_Hide("SHARD_TRANSFER_IMMINENT_EVENT") end
-    end)
     EventUtil.ContinueOnAddOnLoaded("Blizzard_SocialToast", function()
         local c = ns.BORDER_COLOR
         for _, toast in ipairs({ _G.ShardTransferImminentFrame, _G.ShardTransferImminentMinimizeButton }) do

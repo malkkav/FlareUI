@@ -1,3 +1,14 @@
+# FlareUI 1.2.1
+
+Fix for WoW: Forever build 1.60.1.70170.
+
+## Fixed
+- A Lua error at login with the Tweaks module on. It also stopped Auto-Type DELETE, the Train All button and hiding the quest tracker in boss fights from working.
+
+## Changed
+- Tweaks: the World Refresh Dialog option is gone. Since this patch the game no longer opens that dialog by itself; it only opens when you click the refresh countdown above the chat.
+- The new combo point art from this patch shows on FlareUI's nameplate combo points and Classic Combo too.
+
 # FlareUI 1.2
 
 ## New

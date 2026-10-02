@@ -346,7 +346,6 @@ local defaults = {
             hidePartyTitle = true,
             hidePortraitNumbers = true,
             hideTips = true,
-            hideWorldRefresh = false,   -- close the "world around you will refresh" dialog as it opens
             hideAddonDrawer = false,    -- Blizzard's addon compartment button under the minimap calendar
             hideTrackerInBoss = false,  -- quest tracker hidden from ENCOUNTER_START to ENCOUNTER_END
             autoDelete = true,          -- DELETE typed into the destroy-item confirmation
