@@ -4,7 +4,6 @@ local _, ns = ...
 -- 1. UPVALUES
 --------------------------------------------------
 local InCombatLockdown = InCombatLockdown
-local StaticPopup_Show = StaticPopup_Show
 
 --------------------------------------------------
 -- 2. HELPERS
@@ -80,7 +79,7 @@ ns.Options.args.actionbars = {
                         enableRange = {
                             type = "toggle", name = "Enable Status Colors", order = 10, width = "full",
                             get = function() return ns.db.profile.actionbars.colors.enableRange end,
-                            set = function(_, val) ns.db.profile.actionbars.colors.enableRange = val; ns.ActionBars:Refresh(); StaticPopup_Show("FLAREUI_RELOAD") end
+                            set = function(_, val) ns.db.profile.actionbars.colors.enableRange = val; ns.ActionBars:Refresh(); ns.ShowDialog("FLAREUI_RELOAD") end
                         },
 
                         range    = { type = "color", name = "Out of Range", order = 20, hasAlpha = true, get = function() local c = ns.db.profile.actionbars.colors.range; return c.r, c.g, c.b, c.a or 1 end, set = function(_, r, g, b, a) ns.db.profile.actionbars.colors.range = {r=r, g=g, b=b, a=a}; ns.ActionBars:Refresh() end },
@@ -96,7 +95,7 @@ ns.Options.args.actionbars = {
                             type = "toggle", name = "Reskin", order = 10, width = 1.2,
                             desc = "Gives Blizzard's XP, honor and reputation bars the FlareUI look.",
                             get = function() return ns.db.profile.actionbars.xpbar.enabled end,
-                            set = function(_, val) ns.db.profile.actionbars.xpbar.enabled = val; StaticPopup_Show("FLAREUI_RELOAD") end,
+                            set = function(_, val) ns.db.profile.actionbars.xpbar.enabled = val; ns.ShowDialog("FLAREUI_RELOAD") end,
                         },
                     }
                 }
@@ -174,7 +173,7 @@ ns.Options.args.actionbars = {
                             set = function(_, val)
                                 ns.db.profile.fcm.hideUtilityCooldownViewer = val
                                 if ns.ActionBars then ns.ActionBars:Refresh() end
-                                StaticPopup_Show("FLAREUI_RELOAD")
+                                ns.ShowDialog("FLAREUI_RELOAD")
                             end
                         },
                         spacer1 = { type = "description", name = "", width = 0.1, order = 11 },
@@ -185,7 +184,7 @@ ns.Options.args.actionbars = {
                             set = function(_, val)
                                 ns.db.profile.fcm.hideEssentialCooldownViewer = val
                                 if ns.ActionBars then ns.ActionBars:Refresh() end
-                                StaticPopup_Show("FLAREUI_RELOAD")
+                                ns.ShowDialog("FLAREUI_RELOAD")
                             end
                         },
                     }

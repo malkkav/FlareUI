@@ -17,7 +17,7 @@ end
 local function SetReload(key)
     return function(_, val)
         ns.db.profile.tweaks[key] = val
-        StaticPopup_Show("FLAREUI_RELOAD")
+        ns.ShowDialog("FLAREUI_RELOAD")
     end
 end
 
@@ -33,6 +33,9 @@ end
 local function GamepadUI() return ns.IsGamepadUI() end
 
 local SP = function(order) return { type = "description", name = "", width = 0.1, order = order } end
+
+-- a nameplate addon (Platynator, Plater...) switches the Nameplates options off; see Modules/Tweaks.lua
+local function NameplateAddon() return ns.Tweaks and ns.Tweaks.GetNameplateAddon and ns.Tweaks:GetNameplateAddon() end
 
 ns.Options.args.tweaks = {
     type = "group", name = "Tweaks", order = 80,
@@ -65,7 +68,7 @@ ns.Options.args.tweaks = {
                     disabled = function()
                         return not Get("syncUI") or (ns.Tweaks and ns.Tweaks:IsSyncSource())
                     end,
-                    func = function() StaticPopup_Show("FLAREUI_SYNC_SOURCE") end,
+                    func = function() ns.ShowDialog("FLAREUI_SYNC_SOURCE") end,
                 },
             }
         },
@@ -97,6 +100,12 @@ ns.Options.args.tweaks = {
                 spacer1    = SP(11),
                 trainAll   = Toggle("trainAll", "Train All Button", 20,
                     "Adds a Train All button to class and profession trainers.", false, 1.2),
+                break1     = { type = "description", name = " ", order = 25, width = "full" },
+                layoutPerMode = Toggle("layoutPerMode", "Remember Layout per Mode", 30,
+                    "Switching Blizzard's Gamepad UI on or off resets Edit Mode to its default layout. With this on, each mode gets back the Edit Mode layout you last used in it.", false, 1.2),
+                spacer2    = SP(35),
+                offerGamepad = Toggle("offerGamepad", "Offer Gamepad Mode", 40,
+                    "With keyboard and mouse, the first press on a controller asks whether to switch to Gamepad mode (Blizzard's Gamepad UI). Type /fui pad to switch at any time.", false, 1.2),
             }
         },
 
@@ -113,10 +122,17 @@ ns.Options.args.tweaks = {
             type = "group", name = "Nameplates", order = 15, inline = true,
             args = {
                 nameplateCombo = Toggle("nameplateCombo", "Combo Points", 10,
-                    "Shows Blizzard's classic combo points under the middle of your target's nameplate.", false, 1.2),
+                    "Shows classic combo point gems under the middle of your target's nameplate.", false, 1.2, NameplateAddon),
                 spacer1        = SP(11),
                 nameplateQuest = Toggle("nameplateQuest", "Tag Quest Objectives", 20,
-                    "Show a small quest symbol on the nameplate of enemies that are quest objectives or drop quest objective items.", false, 1.2),
+                    "Show a small quest symbol on the nameplate of enemies that are quest objectives or drop quest objective items.", false, 1.2, NameplateAddon),
+                nameplateNote  = {
+                    type = "description", order = 30, width = "full", fontSize = "medium",
+                    name = function()
+                        return "|cffffd100Off while " .. (NameplateAddon() or "") .. " handles your nameplates.|r"
+                    end,
+                    hidden = function() return not NameplateAddon() end,
+                },
             }
         },
 
@@ -126,17 +142,17 @@ ns.Options.args.tweaks = {
                 hideErrors          = Toggle("hideErrors", "Error Messages", 10, nil, true, 1.2),
                 spacer1             = SP(11),
                 hideZoneText        = Toggle("hideZoneText", "Zone Text", 20, nil, true, 1.2),
+                spacer2             = SP(21),
+                hideTrackerInBoss   = Toggle("hideTrackerInBoss", "Quest Tracker in Boss Fights", 22,
+                    "Hides the quest tracker from the pull to the end of a boss encounter.", false, 1.2),
                 break1              = { type = "description", name = " ", order = 25, width = "full" },
                 hidePartyTitle      = Toggle("hidePartyTitle", "Party Title", 30, nil, false, 1.2),
                 spacer3             = SP(31),
                 hideTips            = Toggle("hideTips", "Contextual Tips", 40, nil, false, 1.2),
                 spacer4             = SP(41),
-                hideTrackerInBoss   = Toggle("hideTrackerInBoss", "Quest Tracker in Boss Fights", 42,
-                    "Hides the quest tracker from the pull to the end of a boss encounter.", false, 1.2),
+                hideAddonDrawer     = Toggle("hideAddonDrawer", "Addon Drawer", 42, nil, false, 1.2),
                 break2              = { type = "description", name = " ", order = 45, width = "full" },
                 hidePortraitNumbers = Toggle("hidePortraitNumbers", "Portrait Numbers", 50, nil, false, 1.2),
-                spacer5             = SP(51),
-                hideAddonDrawer     = Toggle("hideAddonDrawer", "Addon Drawer", 60, nil, false, 1.2),
             }
         },
     },
@@ -146,7 +162,7 @@ ns.Options.args.tweaks = {
 ns.Options.args.tweaks.args.hideGroup.args.hidePortraitNumbers.hidden = function()
     return ns.db.profile.unitframes and ns.db.profile.unitframes.enabled
 end
-ns.Options.args.tweaks.args.hideGroup.args.spacer5.hidden = ns.Options.args.tweaks.args.hideGroup.args.hidePortraitNumbers.hidden
+ns.Options.args.tweaks.args.hideGroup.args.break2.hidden = ns.Options.args.tweaks.args.hideGroup.args.hidePortraitNumbers.hidden
 
 -- the Minimap module hides the addon drawer itself while it is on
 ns.Options.args.tweaks.args.hideGroup.args.hideAddonDrawer.hidden = function()

@@ -48,6 +48,12 @@ local MACRO_HELP = "You can use a radial macro from your action bars or from ano
     .. "Pressing the macro opens the radial and keeps it open. Click a button, or press the macro again, to use the button you are pointing at. Right-click or Escape closes the radial.\n\n"
     .. "Use the tool below to create a macro command for any of your radials:"
 
+-- With controller support on in the Gamepad UI only the main radial is reachable (R3), so the extra
+-- keybind rows are greyed out there; with keyboard and mouse they work as ever.
+local function ControllerOnly()
+    return RM() and RM():IsControllerEnabled() and ns.IsGamepadUI() or false
+end
+
 ns.Options.args.radialmenu = {
     type = "group", name = "Radial Menu", order = 35,
     hidden = function() return not ns.db.profile.radialmenu.enabled end,
@@ -68,7 +74,7 @@ ns.Options.args.radialmenu = {
             type = "group", name = "General", order = 20, inline = true,
             args = {
                 key = {
-                    type = "keybinding", name = "Radial Menu Keybind", order = 10, width = 1.0,
+                    type = "keybinding", name = "Main Radial Keybind", order = 10, width = 1.0,
                     desc = "Hold the bound key to open the radial",
                     get = function() return RM() and RM():GetKey() or "" end,
                     set = function(_, val) if RM() then RM():SetKey(val) end end,
@@ -85,6 +91,7 @@ ns.Options.args.radialmenu = {
                 addExtra = {
                     type = "execute", name = "Extra Keybind", order = 900, width = 1.0,
                     desc = "Add another keybind on this character, opening a radial of its own.",
+                    disabled = ControllerOnly,
                     hidden = function()
                         return not RM() or #RM():GetExtraBindings() >= RM().MAX_EXTRA_KEYS
                     end,
@@ -94,6 +101,19 @@ ns.Options.args.radialmenu = {
                     end,
                 },
             }
+        },
+
+        padGroup = {
+            type = "group", name = "Controller", order = 25, inline = true,
+            args = {
+                help = { type = "description", fontSize = "medium", order = 10,
+                    name = "Press R3 to open the main radial menu and to select a radial button. The ping menu moves to L3." },
+                controller = {
+                    type = "toggle", name = "Enable Controller Support", order = 20, width = 1.4,
+                    get = function() return RM() and RM():IsControllerEnabled() or false end,
+                    set = function(_, val) if RM() then RM():SetControllerEnabled(val) end end,
+                },
+            },
         },
 
         macroGroup = {
@@ -155,21 +175,21 @@ local function ExtraKeybindRows(args)
         local hidden = function() return NoExtra(i) end
         args["extraBreak" .. i] = { type = "description", name = " ", order = base, width = "full", hidden = hidden }
         args["extraKey" .. i] = {
-            type = "keybinding", name = "Extra Keybind", order = base + 1, width = 1.0, hidden = hidden,
+            type = "keybinding", name = "Extra Keybind", order = base + 1, width = 1.0, hidden = hidden, disabled = ControllerOnly,
             desc = "Hold the bound key to open the radial chosen beside it.",
             get = function() return ExtraValue(i, "key") or "" end,
             set = function(_, val) if RM() then RM():SetExtraKey(i, val) end end,
         }
         args["extraSpacer" .. i] = { type = "description", name = "", width = 0.1, order = base + 2, hidden = hidden }
         args["extraRadial" .. i] = {
-            type = "select", name = "Radial", order = base + 3, width = 1.0, hidden = hidden,
+            type = "select", name = "Radial", order = base + 3, width = 1.0, hidden = hidden, disabled = ControllerOnly,
             values = values, sorting = sorting,
             get = function() return ExtraValue(i, "radial") end,
             set = function(_, val) if RM() then RM():SetExtraRadial(i, val) end end,
         }
         args["extraSpacerB" .. i] = { type = "description", name = "", width = 0.1, order = base + 4, hidden = hidden }
         args["extraRemove" .. i] = {
-            type = "execute", name = "Remove", order = base + 5, width = 0.5, hidden = hidden,
+            type = "execute", name = "Remove", order = base + 5, width = 0.5, hidden = hidden, disabled = ControllerOnly,
             func = function()
                 if RM() then RM():RemoveExtraBinding(i) end
                 AceConfigRegistry:NotifyChange("FlareUI")

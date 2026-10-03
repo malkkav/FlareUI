@@ -1,3 +1,59 @@
+# FlareUI 1.3
+
+**Grab your controller!** FlareUI now works with Blizzard's Gamepad UI on WoW: Forever, from the first button press to the last setting. Pick up a controller and FlareUI offers to switch; put it down and `/fui pad` brings the keyboard and mouse back.
+
+## New: Controller Support
+
+**Switching modes**
+- Press any button on a controller while playing with keyboard and mouse, and FlareUI asks whether to switch to Gamepad mode (Blizzard's Gamepad UI). Answer with A or B, or click. It asks once a session and never in combat; turn it off with Tweaks > Convenience > Offer Gamepad Mode.
+- `/fui pad` switches either way, at any time.
+- Chat tells you which mode you are in after every switch, whether FlareUI or Blizzard's own setting made it.
+- Remember Layout per Mode (Tweaks > Convenience, on by default): switching the Gamepad UI on or off resets Edit Mode to its default layout. FlareUI now brings back the layout you last used in each mode.
+
+**Radial Menu**
+- Press R3 to open your main radial, aim with the right stick, and press R3 again to use the button you point at. B closes it. The camera holds still while you aim, and the ping menu moves to L3. Turn it on with Radial Menu > Controller > Enable Controller Support.
+- The radial editor works with the controller too: move with the D-pad, switch categories with the shoulder buttons, X removes a button, Y picks one up to reorder it.
+- New radial buttons: FlareUI Settings, and Toggle Threat Meter (flips the Damage Meter between its own view and the threat view).
+
+**Settings**
+- The whole FlareUI settings window works with the controller. The D-pad moves between options and A uses them. Sliders and dropdowns are grabbed with A and changed with the D-pad. LB/RB switch tabs, LT/RT switch sections and B closes. Button icons show where each one leads.
+- Open them with `/fui`, the FlareUI Settings radial button, or a key of your choice (Blizzard's Keybindings > AddOns > FlareUI > Open Settings).
+
+**Chat**
+- The D-pad stays on the edit box instead of wandering into FlareUI's chat buttons.
+- Y opens the tab settings on every chat tab, and LB/RB icons show how to switch tabs.
+- The chat uses the IM style in Gamepad mode: the Classic style hangs the game when a slash command is typed. Your own style comes back in keyboard and mouse mode.
+
+**Unit Frames and more**
+- Y opens the target menu with FlareUI's unit frames, just as it does with Blizzard's.
+- Blizzard's gamepad cast bar steps aside when FlareUI's player cast bar is on.
+- Tooltips show in Gamepad mode, in Blizzard's default place (there is no cursor to follow there). Your placement settings come back with the mouse.
+
+## New
+- FlareUI's own dialogs replace Blizzard's popups, and **Reload Now finally reloads**: on Forever it never did, it only told you to type /reload.
+- A welcome line in chat at login.
+
+**Chat**
+- Header Buttons options (Chat > General): show or hide Social, Chat Channels, Chat Menu and Volume. The buttons line up from the right.
+
+**Damage Meter**
+- Match Chat Frame Size: the meter takes the size of your chat frame.
+- Threat Toggle Keybind: one key flips the meter between its own view and the threat view.
+
+**Unit Frames**
+- Classic Combo Points moved to the target frame's Edit Mode settings and now sit at the frame's bottom-right.
+
+## Changed
+- Combo points (Classic Combo and nameplate combo points) use Blizzard's high-resolution red gems with bronze rims and a shine when they fill.
+- Nameplate tweaks stand aside when a nameplate addon such as Platynator is running.
+- Tweaks: the Hide options are laid out in rows of three.
+- Chat and Damage Meter background opacity now default to 60%.
+- Damage Meter > Features: Combat Timer comes first, then Threat Meter Tab.
+
+## Fixed
+- A Lua error from the objective tracker after a reload in combat.
+- The 1.2.1 notes said FlareUI picked up new combo point art from that patch. The art was not in the game files; this release brings the new look instead.
+
 # FlareUI 1.2.1
 
 Fix for WoW: Forever build 1.60.1.70170.

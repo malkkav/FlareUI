@@ -7,6 +7,54 @@ ns.modules = {}
 -- deep enough to sit with the metal of Blizzard's action button frames
 ns.BORDER_COLOR = { r = 0.65, g = 0.49, b = 0.27, a = 1 }   -- #A67D45
 
+-- Combo point art, shared by the nameplate combo points (Tweaks) and Classic Combo (Unit Frames):
+-- retail's Legion player-frame sheet, the classic gem at four times the resolution of
+-- Interface\ComboFrame\ComboPoint. Parts are sheet pixels (left, right, top, bottom; the sheet is
+-- 128 square). The socket is drawn desaturated in a light bronze, the red gem sits in its hole and
+-- the star is the shine (drawn on black, so it needs the ADD blend). The rim art is dark (about 30%
+-- grey) and a tint can only darken, so AddComboRimBoost lays an additive copy over the socket.
+local COMBO_FILE  = "Interface\\PlayerFrame\\ClassOverlayComboPoints"
+local COMBO_SHEET = 128
+local COMBO_RIM   = { 0.80, 0.60, 0.34 }   -- #CC9957, the tooltip / XP bar border bronze
+local COMBO_PARTS = {
+    socket = { 28, 50, 65, 87 },
+    gem    = { 3, 19, 79, 95 },
+    shine  = { 0, 27, 49, 76 },
+}
+ns.COMBO_FILE      = COMBO_FILE
+ns.COMBO_SHEET     = COMBO_SHEET
+ns.COMBO_SOCKET_PX = COMBO_PARTS.socket[2] - COMBO_PARTS.socket[1]
+ns.COMBO_GEM_RISE  = 1   -- sheet px the rim's centre sits above the socket cell's (its shadow is below)
+
+function ns.ComboPartRect(part)
+    local p = COMBO_PARTS[part]
+    return p[1], p[2], p[3], p[4]
+end
+
+-- puts one part of the sheet on a texture; with a scale (screen px per sheet px) it also sizes it
+function ns.SetComboPart(tex, part, scale)
+    local l, r, t, b = ns.ComboPartRect(part)
+    tex:SetTexture(COMBO_FILE)
+    tex:SetTexCoord(l / COMBO_SHEET, r / COMBO_SHEET, t / COMBO_SHEET, b / COMBO_SHEET)
+    if scale then tex:SetSize((r - l) * scale, (b - t) * scale) end
+    if part == "socket" then
+        tex:SetDesaturated(true)
+        tex:SetVertexColor(COMBO_RIM[1], COMBO_RIM[2], COMBO_RIM[3])
+    elseif part == "shine" then
+        tex:SetBlendMode("ADD")
+    end
+end
+
+-- an additive copy of the socket on top of it, about doubling the rim's brightness (the dark
+-- interior barely changes)
+function ns.AddComboRimBoost(socket)
+    local boost = socket:GetParent():CreateTexture(nil, "BACKGROUND", nil, 1)
+    ns.SetComboPart(boost, "socket")
+    boost:SetBlendMode("ADD")
+    boost:SetAllPoints(socket)
+    return boost
+end
+
 --------------------------------------------------
 -- 1. UPVALUES
 --------------------------------------------------
@@ -91,7 +139,7 @@ local defaults = {
 
             -- Frame (Blizzard dark dialog background + the chosen border, tinted ns.BORDER_COLOR)
             borderTexture = "Blizzard Tooltip",
-            opacity = 0.5,
+            opacity = 0.6,
             textPadding = 10,
             borderSize = 16,
             borderInset = 3,
@@ -109,25 +157,21 @@ local defaults = {
 
             -- Header buttons (fixed icon color #9C7A4A)
             showVolume = true,
-            volumeX = -25,
             volumeY = -14,
             volumeScale = 0.6,
             volumeColor = { r = 0.61, g = 0.48, b = 0.29, a = 1 },
 
             socialHide = false,
-            socialX = -60,
             socialY = -14,
             socialScale = 0.6,
             socialColor = { r = 0.61, g = 0.48, b = 0.29, a = 1 },
 
             menuHide = false,
-            menuX = -95,
             menuY = -14,
             menuScale = 0.6,
             menuColor = { r = 0.61, g = 0.48, b = 0.29, a = 1 },
 
             channelHide = false,
-            channelX = -130,
             channelY = -14,
             channelScale = 0.6,
             channelColor = { r = 0.61, g = 0.48, b = 0.29, a = 1 },
@@ -199,7 +243,7 @@ local defaults = {
             enabled = false,
 
             -- Look shared with the chat frame: background opacity, border and bar texture are user-facing
-            opacity = 0.5,
+            opacity = 0.6,
             borderTexture = "Blizzard Tooltip",
             barTexture = "",            -- "" = Blizzard's own bar
             textPadding = 2,
@@ -207,6 +251,8 @@ local defaults = {
             barFont = { face = "Friz Quadrata TT", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             threatTab = true,           -- Threat tab beside the meter title (right-click for Blizzard's types)
             combatTimer = false,        -- Blizzard's "[mm:ss]" session timer in the title row
+            matchChatSize = false,      -- the meter takes the chat frame's size (Edit Mode's is overridden)
+            threatKey = nil,            -- a key that flips the meter between Blizzard's view and Threat
         },
 
         -- [[ MINIMAP MODULE ]]
@@ -350,6 +396,8 @@ local defaults = {
             hideTrackerInBoss = false,  -- quest tracker hidden from ENCOUNTER_START to ENCOUNTER_END
             autoDelete = true,          -- DELETE typed into the destroy-item confirmation
             trainAll = true,            -- Train All button at trainers
+            layoutPerMode = true,       -- the Edit Mode layout last used with keyboard / with the Gamepad UI comes back
+            offerGamepad = true,        -- a controller press with keyboard and mouse offers Gamepad mode (GamepadMode.lua)
             frames = {},
         },
     },
@@ -527,8 +575,10 @@ f:SetScript("OnEvent", function(self, event, ...)
             -- All three take the same handler. Passing the function itself rather than a method
             -- name keeps CallbackHandler from having to find ns.OnProfileChanged, which only ever
             -- existed for this lookup.
+            -- ResetDB (the Reset dialog) fires OnProfileChanged on its way to the reload it is
+            -- already making, so that one is not asked about again
             local function OnProfileChanged()
-                ns.Reload()
+                if not ns.reloading then ns.ShowDialog("FLAREUI_RELOAD") end
             end
 
             local callbackSuccess = pcall(function()
@@ -579,29 +629,6 @@ f:SetScript("OnEvent", function(self, event, ...)
     end
 end)
 
-function ns.ResetToDefaults()
-    ns.db:ResetDB("Default")
-    ns.Reload()
-end
-
--- StaticPopupBaseTemplate (GameDialog.xml:51) is toplevel but sets no frameStrata, so a popup sits
--- at UIParent's MEDIUM - underneath the options window, which AceGUI puts at FULLSCREEN_DIALOG.
--- Ours are raised for as long as they are shown and put back afterwards, because the popup frames
--- are a shared pool that every addon and Blizzard itself draw from.
--- shared, so any dialog this addon defines can sit above this addon's own windows
-function ns.LiftPopup(self)
-    self.flarePriorStrata = self.flarePriorStrata or self:GetFrameStrata()
-    self:SetFrameStrata("FULLSCREEN_DIALOG")
-    self:Raise()
-end
-
-function ns.DropPopup(self)
-    if self.flarePriorStrata then
-        self:SetFrameStrata(self.flarePriorStrata)
-        self.flarePriorStrata = nil
-    end
-end
-
 --------------------------------------------------
 -- WINDOW SOUNDS
 -- FlareUI's windows sound like the Game Menu (GameMenuFrame.lua): IG_MAINMENU_OPEN as one opens,
@@ -636,7 +663,8 @@ function ns.WindowCloseSound() WindowSound(SOUND_CLOSE) end
 --------------------------------------------------
 -- GAMEPAD UI
 -- True while Forever's gamepad UI is on - the test Blizzard's own InputUtil.IsGamepadUIEnabled
--- makes. It can change mid-session; INPUT_DEVICE_INTERFACE_TRANSITION reports the switch.
+-- makes. Switching the Gamepad UI setting reloads the whole UI (seen on build 70170, in and out of
+-- combat), so what this answers at load holds for the session.
 --------------------------------------------------
 function ns.IsGamepadUI()
     return C_InputInterfaceStyle ~= nil
@@ -688,7 +716,10 @@ function ns.IsLegacyKeyMine(key)
     return keyName == name or keyName:sub(1, #name + 1) == name .. " "
 end
 
-StaticPopupDialogs["FLAREUI_SYNC_SOURCE"] = {
+-- FlareUI's questions (Dialog.lua shows them; it loads after this file)
+ns.Dialogs = ns.Dialogs or {}
+
+ns.Dialogs["FLAREUI_SYNC_SOURCE"] = {
     text = "Make this character the Sync Blizz UI source?\n\n"
         .. "Every other character will copy this character's interface settings the next time it logs in.",
     button1 = "Make Source",
@@ -697,52 +728,33 @@ StaticPopupDialogs["FLAREUI_SYNC_SOURCE"] = {
         if ns.Tweaks then ns.Tweaks:MakeSyncSource() end
         LibStub("AceConfigRegistry-3.0"):NotifyChange("FlareUI")
     end,
-    OnShow = ns.LiftPopup,
-    OnHide = ns.DropPopup,
-    timeout = 0,
-    whileDead = true,
     hideOnEscape = true,
-    preferredIndex = 3,
 }
 
-StaticPopupDialogs["FLAREUI_RESET"] = {
+ns.Dialogs["FLAREUI_RESET"] = {
     text = "Reset every FlareUI setting back to its default?\n\nThis cannot be undone.",
     button1 = "Reset",
     button2 = "Cancel",
-    OnAccept = function() ns.ResetToDefaults() end,
-    OnShow = ns.LiftPopup,
-    OnHide = ns.DropPopup,
-    timeout = 0,
-    whileDead = true,
+    OnAccept = function() ns.db:ResetDB("Default") end,
+    reloads = true,
     hideOnEscape = true,
     showAlert = true,
-    preferredIndex = 3,
 }
 
-StaticPopupDialogs["FLAREUI_SYNC_RELOAD"] = {
+ns.Dialogs["FLAREUI_SYNC_RELOAD"] = {
     text = "FlareUI copied this character's interface settings from %s.\n\n"
         .. "Reload now to finish applying them. Until you do, some of Blizzard's own panels - "
         .. "Edit Mode in particular - can throw errors.",
     button1 = "Reload Now",
     button2 = "Later",
-    OnAccept = function() ns.Reload() end,
-    OnShow = ns.LiftPopup,
-    OnHide = ns.DropPopup,
-    timeout = 0,
-    whileDead = true,
+    reloads = true,
     hideOnEscape = true,
-    preferredIndex = 3,
 }
 
-StaticPopupDialogs["FLAREUI_RELOAD"] = {
+ns.Dialogs["FLAREUI_RELOAD"] = {
     text = "Changing this setting requires a UI Reload to prevent layout issues.",
     button1 = "Reload Now",
     button2 = "Cancel",
-    OnAccept = function() ns.Reload() end,
-    OnShow = ns.LiftPopup,
-    OnHide = ns.DropPopup,
-    timeout = 0,
-    whileDead = true,
+    reloads = true,
     hideOnEscape = true,
-    preferredIndex = 3,
 }

@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="FLAREUI_SETTINGS" header="FLAREUI" category="ADDONS">
+		FlareUI_ToggleSettings()
+	</Binding>
+</Bindings>

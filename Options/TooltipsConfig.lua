@@ -113,6 +113,7 @@ ns.Options.args.tooltips = {
                     args = {
                         anchor = {
                             type = "select", name = "World", order = 10, width = 1.2,
+                            disabled = function() return ns.IsGamepadUI() end,
                             values = { default = "Default", cursorOffset = "Cursor" },
                             sorting = { "default", "cursorOffset" },
                             get = function() return Get("anchor") end, set = Set("anchor"),
@@ -120,6 +121,7 @@ ns.Options.args.tooltips = {
                         spacer1 = SP(11),
                         anchorFrames = {
                             type = "select", name = "UI Frames", order = 20, width = 1.2,
+                            disabled = function() return ns.IsGamepadUI() end,
                             values = { default = "Default", cursorOffset = "Cursor" },
                             sorting = { "default", "cursorOffset" },
                             get = function() return Get("anchorFrames") end, set = Set("anchorFrames"),
@@ -127,13 +129,13 @@ ns.Options.args.tooltips = {
                         break1 = { type = "description", name = " ", order = 25, width = "full" },
                         anchorX = {
                             type = "range", name = "X Offset", min = -128, max = 128, step = 1, order = 30, width = 1.2,
-                            disabled = function() return Get("anchor") == "default" and Get("anchorFrames") == "default" end,
+                            disabled = function() return ns.IsGamepadUI() or (Get("anchor") == "default" and Get("anchorFrames") == "default") end,
                             get = function() return Get("anchorX") end, set = Set("anchorX"),
                         },
                         spacer2 = SP(31),
                         anchorY = {
                             type = "range", name = "Y Offset", min = -128, max = 128, step = 1, order = 40, width = 1.2,
-                            disabled = function() return Get("anchor") == "default" and Get("anchorFrames") == "default" end,
+                            disabled = function() return ns.IsGamepadUI() or (Get("anchor") == "default" and Get("anchorFrames") == "default") end,
                             get = function() return Get("anchorY") end, set = Set("anchorY"),
                         },
                     }

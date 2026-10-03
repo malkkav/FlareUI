@@ -3,7 +3,6 @@ local _, ns = ...
 --------------------------------------------------
 -- 1. UPVALUES
 --------------------------------------------------
-local StaticPopup_Show = StaticPopup_Show
 
 --------------------------------------------------
 -- 2. HELPERS
@@ -22,7 +21,7 @@ end
 local function Set(key, val, reload)
     ns.db.profile.chat[key] = val
     if reload then
-        StaticPopup_Show("FLAREUI_RELOAD")
+        ns.ShowDialog("FLAREUI_RELOAD")
     elseif ns.Chat and ns.Chat.RefreshAll then
         ns.Chat:RefreshAll()
     end
@@ -132,6 +131,34 @@ ns.Options.args.chat = {
                         editBoxX       = { type = "range", name = "Edit Box X Offset", min = -250, max = 250, step = 1, order = 30, get = function() return Get("editBoxX") end, set = function(_, val) Set("editBoxX", val) end },
                         spacer2        = { type = "description", name = "", width = 0.1, order = 31 },
                         editBoxY       = { type = "range", name = "Edit Box Y Offset", min = -250, max = 250, step = 1, order = 40, get = function() return Get("editBoxY") end, set = function(_, val) Set("editBoxY", val) end },
+                    }
+                },
+
+                headerGroup = {
+                    type = "group", name = "Header Buttons", order = 45, inline = true,
+                    args = {
+                        social = {
+                            type = "toggle", name = "Social", order = 10, desc = "The friends and Quick Join button.",
+                            get = function() return not Get("socialHide") end,
+                            set = function(_, val) Set("socialHide", not val) end
+                        },
+                        spacer1 = { type = "description", name = "", width = 0.1, order = 11 },
+                        channel = {
+                            type = "toggle", name = "Chat Channels", order = 20, desc = "Join and leave chat channels.",
+                            get = function() return not Get("channelHide") end,
+                            set = function(_, val) Set("channelHide", not val) end
+                        },
+                        spacer2 = { type = "description", name = "", width = 0.1, order = 21 },
+                        menu = {
+                            type = "toggle", name = "Chat Menu", order = 30, desc = "Emotes, languages and voice commands.",
+                            get = function() return not Get("menuHide") end,
+                            set = function(_, val) Set("menuHide", not val) end
+                        },
+                        volume = {
+                            type = "toggle", name = "Volume", order = 40, desc = "Master volume: click to mute, scroll to change.",
+                            get = function() return Get("showVolume") end,
+                            set = function(_, val) Set("showVolume", val) end
+                        },
                     }
                 },
 

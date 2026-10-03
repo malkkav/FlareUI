@@ -515,7 +515,7 @@ end
 -- stay in place while the question is open (they are already live), and Escape cannot answer it.
 local unsavedPending = false
 
-StaticPopupDialogs["FLAREUI_RADIAL_UNSAVED"] = {
+ns.Dialogs["FLAREUI_RADIAL_UNSAVED"] = {
     text = "You have unsaved changes to your radials.",
     button1 = "Save",
     button2 = "Discard",
@@ -526,12 +526,7 @@ StaticPopupDialogs["FLAREUI_RADIAL_UNSAVED"] = {
         unsavedPending = false
         RestoreSnapshot()
     end,
-    OnShow = ns.LiftPopup,
-    OnHide = ns.DropPopup,
-    timeout = 0,
-    whileDead = true,
     hideOnEscape = false,
-    preferredIndex = 3,
 }
 
 --------------------------------------------------
@@ -640,7 +635,7 @@ local function BuildWindow()
             -- a frame later, so the prompt is not caught up in the Escape that closed the window
             unsavedPending = true
             C_Timer.After(0, function()
-                if unsavedPending then StaticPopup_Show("FLAREUI_RADIAL_UNSAVED") end
+                if unsavedPending then ns.ShowDialog("FLAREUI_RADIAL_UNSAVED") end
             end)
         end
         self.confirmed, self.cancelled = nil, nil
@@ -698,6 +693,7 @@ local function BuildWindow()
 
     local newButton = RedButton(header, "New Radial", 90, function() ShowNamePopup(false) end)
     newButton:SetPoint("RIGHT", editor.deleteButton, "LEFT", -8, 0)
+    editor.newButton = newButton
 
     editor.renameButton = RedButton(header, "Rename", 80, function() ShowNamePopup(true) end)
     editor.renameButton:SetPoint("RIGHT", newButton, "LEFT", -8, 0)
@@ -925,7 +921,7 @@ function ns.ShowRadialEditor()
     if unsavedPending then
         -- back to the edits the prompt was asking about: carry on with them and the same snapshot
         unsavedPending = false
-        StaticPopup_Hide("FLAREUI_RADIAL_UNSAVED")
+        ns.HideDialog("FLAREUI_RADIAL_UNSAVED")
     else
         TakeSnapshot()
     end
@@ -944,3 +940,13 @@ end
 function ns.ToggleRadialEditor()
     if editor and editor:IsShown() then editor:Hide() else ns.ShowRadialEditor() end
 end
+
+-- For the controller navigation (ControllerNav.lua): the window and the two verbs a pad needs that
+-- the mouse gets from dragging and right-clicking.
+ns.RadialEditorPad = {
+    Frame = function() return editor end,
+    NamePopupShown = function() return popup ~= nil and popup:IsShown() end,
+    Move = function(from, to) MoveButton(from, to) end,
+    Remove = function(index) RemoveButton(index) end,
+    ActiveCategory = function() return activeCategory end,
+}

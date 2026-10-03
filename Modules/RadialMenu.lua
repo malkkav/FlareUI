@@ -47,6 +47,9 @@ local CASTER_NAME  = "FlareUI_RadialCaster"
 local WHEEL_NAME   = "FlareUI_RadialWheel"
 local CATCHER_NAME = "FlareUI_RadialCatcher"
 local MACRO_NAME   = "FUIRadial"   -- the button macros /click; kept short, users type it
+local PAD_NAME     = "FlareUI_RadialPad"   -- what the stick press clicks in controller mode
+local PAD_CANCEL   = GAMEPAD_FACE_RIGHT or "PAD2"   -- B / Circle closes a controller radial
+local PAD_DEAD_LEN = 0.5          -- a stick pushed less than this aims at nothing (the X)
 
 -- Blizzard's ping wheel art. The pointer and the backdrop are independent of button count; only the
 -- wheel plate and wedge highlight are count-specific (Count_4 is the only one the client ships),
@@ -125,9 +128,11 @@ local MAX_RADIAL_DEPTH = 4          -- a radial inside a radial inside a radial 
 
 local radial, caster, header, wheel, buttons = nil, nil, nil, nil, {}
 local catcher, macroButton          -- click mode's full-screen catcher, and the button macros click
+local padButton                     -- controller mode's button, clicked by the stick press
+local padStickIndex = 2             -- the right stick in C_GamePad's mapped state (RightStickIndex)
 local isOpen, selectedIndex, currentRadial = false, nil, nil
 local currentID                     -- the radial id currentRadial belongs to
-local openMode                      -- "hold" (the keybind) or "click" (a macro); see section 8
+local openMode                      -- "hold" (the keybind), "click" (a macro) or "pad"; see section 8
 local resolved = {}               -- currentRadial resolved to names / icons / attributes
 local resolvedCache = {}          -- every radial resolved, as the secure layer holds them (SyncSecure)
 local syncedIDs = {}              -- radial ids written to the secure layer, to retire deleted ones
@@ -201,6 +206,12 @@ local MICRO_PANELS = {
     quests      = { order = 8,  label = "Quest Log",    icon = 8197102, button = "QuestLogMicroButton" },
     spellbook   = { order = 9,  label = "Spellbook",    icon = 133741,  button = "SpellbookMicroButton" },
     talents     = { order = 10, label = "Talents",      icon = 132222,  button = "TalentMicroButton" },
+    -- FlareUI's own settings: with a controller, R3's way to them (Options/ControllerNav.lua)
+    flareui     = { order = 11, label = "FlareUI Settings", icon = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png",
+                    macrotext = "/run FlareUI_ToggleSettings()" },
+    -- flips the damage meter between Blizzard's view and FlareUI's threat view (Modules/DamageMeter.lua)
+    threat      = { order = 12, label = "Toggle Threat Meter", icon = "Interface\\Icons\\Ability_Physical_Taunt",
+                    macrotext = "/run FlareUI_ToggleThreatMeter()" },
 }
 RM.MICRO_PANELS = MICRO_PANELS
 
@@ -614,10 +625,17 @@ end
 
 --------------------------------------------------
 -- 7. SELECTION
--- The cursor angle picks the button. Button one sits at the top and the rest run clockwise, so the
--- offset from the top is measured backwards, and half an interval is added so that each button owns
--- the wedge centred on it rather than the one starting at it.
+-- The cursor angle picks the button - or, in controller mode, the stick's. Button one sits at the
+-- top and the rest run clockwise, so the offset from the top is measured backwards, and half an
+-- interval is added so that each button owns the wedge centred on it rather than the one starting
+-- at it.
 --------------------------------------------------
+-- the aiming stick, from the same table the secure snippet reads through GetGamePadState
+local function PadStick()
+    local state = C_GamePad.GetDeviceMappedState()
+    return state and state.sticks and state.sticks[padStickIndex]
+end
+
 local function UpdateSelection()
     if not (isOpen and currentRadial) then return end
 
@@ -633,13 +651,20 @@ local function UpdateSelection()
     local count = #resolved
     if count == 0 then return end
 
-    local cx, cy = CursorPosition()
-    local centerX, centerY = radial:GetCenter()
-    if not centerX then return end
-
-    local dx, dy = cx - centerX, cy - centerY
+    local dx, dy, aimed
+    if openMode == "pad" then
+        local stick = PadStick()
+        aimed = stick ~= nil and stick.len >= PAD_DEAD_LEN
+        if aimed then dx, dy = stick.x, stick.y end
+    else
+        local cx, cy = CursorPosition()
+        local centerX, centerY = radial:GetCenter()
+        if not centerX then return end
+        dx, dy = cx - centerX, cy - centerY
+        aimed = (dx * dx + dy * dy) > DEAD_ZONE_SQ
+    end
     local index
-    if (dx * dx + dy * dy) > DEAD_ZONE_SQ then
+    if aimed then
         local angle = math_atan2(dy, dx)
         radial.Pointer:SetRotation(angle + POINTER_ROTATION_OFFSET)
         radial.Pointer:Show()
@@ -663,8 +688,31 @@ end
 --------------------------------------------------
 -- 8. OPEN / CLOSE
 --------------------------------------------------
+-- While a controller radial is up the right stick aims instead of turning the camera: a frame taking
+-- stick input is shown, and its OnGamePadStick returns false - handled, as Blizzard's own
+-- inputBindingAxisListener does (InputAxisBinding.lua) - for the right stick and the camera it
+-- drives, true for the rest, so the left stick still walks. (Setting the gamepad turn-speed CVars
+-- to 0 does not stop the camera on Forever.) A plain frame's Show is not protected: fine in combat.
+local BLOCKED_STICKS = { Right = true, Camera = true }
+local stickBlocker
+local function SetPadFreeze(on)
+    if on then
+        if not stickBlocker then
+            stickBlocker = CreateFrame("Frame", nil, UIParent)
+            stickBlocker:EnableGamePadStick(true)
+            stickBlocker:SetScript("OnGamePadStick", function(_, stick)
+                return not BLOCKED_STICKS[stick]
+            end)
+        end
+        stickBlocker:Show()
+    elseif stickBlocker then
+        stickBlocker:Hide()
+    end
+end
+
 -- mode "hold" is the keybind (the assigned radial, or the one the editor previews); "click" is a
--- macro, which names its radial. A radial already up gives way to the new one.
+-- macro, which names its radial; "pad" is the controller's stick press. A radial already up gives
+-- way to the new one.
 local function OpenRadial(radialID, mode)
     if isOpen then CloseRadial() end
     openMode = mode or "hold"
@@ -683,7 +731,9 @@ local function OpenRadial(radialID, mode)
     WatchButtonStates(true)
     radial:SetScale(1)
 
-    local x, y = CursorPosition()
+    -- a controller radial opens mid-screen: there is no cursor to open it at
+    local x, y
+    if openMode == "pad" then x, y = UIParent:GetCenter() else x, y = CursorPosition() end
     radial:ClearAllPoints()
     radial:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
     radial.Pointer:Hide()
@@ -692,6 +742,7 @@ local function OpenRadial(radialID, mode)
     selectedIndex = nil
     isOpen = true
     openedAt = GetTime()
+    if openMode == "pad" then SetPadFreeze(true) end
     radial:Show()
     radial:SetScript("OnUpdate", UpdateSelection)
     UpdateSelection()
@@ -699,6 +750,7 @@ end
 
 function CloseRadial()
     if not isOpen then return end
+    SetPadFreeze(false)
     isOpen = false
     openMode = nil
     radial:SetScript("OnUpdate", nil)
@@ -735,6 +787,11 @@ end
 -- full-screen SecureActionButton shown only meanwhile: left-click fires the aimed button, right-click
 -- or Escape (a binding the header holds while open) closes. The same macro pressed again fires the
 -- aimed button from MACRO_NAME itself, so tap - aim - tap works without the mouse buttons.
+-- Controller support (MODE "pad"): R3 clicks PAD_NAME on its release. The first press opens the
+-- radial this character's keybind opens; the next fires the button the right stick aims at, read
+-- from GetGamePadState() right here in the restricted environment - so it works in combat - from
+-- the stick "flare-padstick" names. B and Escape are bound to PAD_NAME's RightButton meanwhile,
+-- which closes.
 --------------------------------------------------
 local ACTION_KEYS = "type spell item macro macrotext unit marker action"
 
@@ -742,17 +799,26 @@ local ACTION_KEYS = "type spell item macro macrotext unit marker action"
 -- where the radial opened, recorded by the click snippet in the same restricted environment.
 local SELECT_SNIPPET = ([[
     local count = ACTIVE and self:GetAttribute(ACTIVE .. "-count") or 0
-    if count == 0 or not OPENX then return nil end
-    local screen = self:GetFrameRef("wheel")
-    local x, y = screen:GetMousePosition()
-    if not x then return nil end
-    local dx, dy = x * screen:GetWidth() - OPENX, y * screen:GetHeight() - OPENY
-    if dx * dx + dy * dy <= %d then return nil end
+    if count == 0 then return nil end
+    local dx, dy
+    if MODE == "pad" then
+        local state = GetGamePadState()
+        local stick = state and state.sticks and state.sticks[self:GetAttribute("flare-padstick") or 2]
+        if not stick or stick.len < %s then return nil end
+        dx, dy = stick.x, stick.y
+    else
+        if not OPENX then return nil end
+        local screen = self:GetFrameRef("wheel")
+        local x, y = screen:GetMousePosition()
+        if not x then return nil end
+        dx, dy = x * screen:GetWidth() - OPENX, y * screen:GetHeight() - OPENY
+        if dx * dx + dy * dy <= %d then return nil end
+    end
     local tau = 2 * math.pi
     local interval = tau / count
     local angle = math.atan2(dy, dx)
     return math.floor(((math.pi / 2 - angle) %% tau + interval / 2) / interval) %% count + 1
-]]):format(DEAD_ZONE_SQ)
+]]):format(PAD_DEAD_LEN, DEAD_ZONE_SQ)
 
 -- self is the header. The attribute prefix of the button the cursor aims at in the open radial.
 local AIMED_SNIPPET = [[
@@ -793,12 +859,53 @@ local OPEN_CLICK_SNIPPET = [[
     return true
 ]]
 
+-- self is the header; ... = quiet. Ends controller mode (its B / Escape bindings go with the rest).
+local CLOSE_PAD_SNIPPET = [[
+    if MODE ~= "pad" then return end
+    MODE = nil
+    self:ClearBindings()
+    if not ... then self:CallMethod("OnSecureClose") end
+]]
+
+-- self is the header; ... = the radial id. Opens it in controller mode.
+local OPEN_PAD_SNIPPET = [[
+    local id = ...
+    ACTIVE, MODE = id, "pad"
+    self:SetBindingClick(true, "]] .. PAD_CANCEL .. [[", "]] .. PAD_NAME .. [[", "RightButton")
+    self:SetBindingClick(true, "ESCAPE", "]] .. PAD_NAME .. [[", "RightButton")
+    self:CallMethod("OnSecurePadOpen", id)
+]]
+
+-- self is the pad button, control the header. LeftButton is the stick press: open, or fire what the
+-- stick aims at. RightButton (B, Escape) closes.
+local PAD_SNIPPET = [[
+    if button ~= "LeftButton" then
+        control:RunAttribute("flare-closepad")
+        return false
+    end
+    if MODE == "pad" then
+        local prefix = control:RunAttribute("flare-aimed")
+        control:RunAttribute("flare-closepad")
+        if not prefix then return false end
+        for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
+            self:SetAttribute(key, control:GetAttribute(prefix .. key))
+        end
+        return nil, "fired"
+    end
+    local id = control:GetAttribute("flare-assigned")
+    if not id or (control:GetAttribute(id .. "-count") or 0) == 0 then return false end
+    control:RunAttribute("flare-closeclick", true)
+    control:RunAttribute("flare-openpad", id)
+    return false
+]]
+
 -- self is the caster, control the header. Returning false cancels the button's own click, which is
 -- what stops a press on its own, or a release in the dead zone, from casting anything.
 local CLICK_SNIPPET = [[
     local screen = control:GetFrameRef("wheel")
     if down then
         control:RunAttribute("flare-closeclick", true)
+        control:RunAttribute("flare-closepad", true)
         for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do self:SetAttribute(key, nil) end
         -- an extra keybind clicks with its radial's id as the button; the main one with LeftButton
         local id = button
@@ -862,6 +969,7 @@ local MACRO_SNIPPET = [[
         return nil, "fired"
     end
     control:RunAttribute("flare-closeclick", true)
+    control:RunAttribute("flare-closepad", true)
     control:RunAttribute("flare-openclick", id)
     return false
 ]]
@@ -972,7 +1080,10 @@ local function CreateSecureLayer()
     header:SetAttribute("flare-closeclick", CLOSE_CLICK_SNIPPET)
     header.OnSecureChild = function(_, index, child) SetButtonChild(index, child) end
     header.OnSecureOpen = function(_, radialID) OpenRadial(radialID, "click") end
-    header.OnSecureClose = function() if openMode == "click" then CloseRadial() end end
+    header.OnSecurePadOpen = function(_, radialID) OpenRadial(radialID, "pad") end
+    header.OnSecureClose = function() if openMode == "click" or openMode == "pad" then CloseRadial() end end
+    header:SetAttribute("flare-openpad", OPEN_PAD_SNIPPET)
+    header:SetAttribute("flare-closepad", CLOSE_PAD_SNIPPET)
 
     -- Full screen so the wheel works wherever the cursor has swept to, and so it doubles as the
     -- coordinate frame for SELECT_SNIPPET: GetMousePosition answers nil outside the frame it is
@@ -1008,6 +1119,13 @@ local function CreateSecureLayer()
     SecureHandlerWrapScript(catcher, "OnClick", header, CATCHER_SNIPPET, CLEAR_SNIPPET)
     SecureHandlerWrapScript(catcher, "OnMouseWheel", header, WHEEL_SNIPPET)
     SecureHandlerWrapScript(macroButton, "OnClick", header, MACRO_SNIPPET, CLEAR_SNIPPET)
+
+    -- controller mode: the stick press clicks this on its release (see PAD_SNIPPET)
+    padButton = CreateFrame("Button", PAD_NAME, UIParent, "SecureActionButtonTemplate")
+    padButton:RegisterForClicks("AnyUp")
+    padButton:SetAttribute("useOnKeyDown", false)
+    padButton:SetAttribute("pressAndHoldAction", false)
+    SecureHandlerWrapScript(padButton, "OnClick", header, PAD_SNIPPET, CLEAR_SNIPPET)
     SecureHandlerExecute(header, "CHILD = newtable()")
 end
 
@@ -1195,6 +1313,16 @@ local function ExtraBindings()
     return charDB.radialKeys
 end
 
+-- C_GamePad numbers sticks from 0 (StickIndexToConfigName), the mapped state lists them from 1. Seen
+-- on 70170: 0 Left, 1 Right, 2 Gyro, 3 Pad, 4 Movement, 5 Camera, 6 Look, 7 Cursor.
+local function RightStickIndex()
+    for i = 0, 7 do
+        local ok, configName = pcall(C_GamePad.StickIndexToConfigName, i)
+        if ok and configName == "Right" then return i + 1 end
+    end
+    return 2
+end
+
 local function ApplyBinding()
     if not (radial and caster) then return end
     if InCombatLockdown() then
@@ -1214,6 +1342,27 @@ local function ApplyBinding()
             SetOverrideBindingClick(radial, true, extra.key, CASTER_NAME, extra.radial)
         end
     end
+    -- Controller support, Gamepad UI only (switching it reloads the UI): R3 opens the radial and
+    -- fires the aimed button. Ping, R3's own, moves to L3 in place of Auto Run.
+    if ns.IsGamepadUI() and store and store.controller and padButton then
+        padStickIndex = RightStickIndex()
+        header:SetAttribute("flare-padstick", padStickIndex)
+        SetOverrideBindingClick(radial, true, "PADRSTICK", PAD_NAME, "LeftButton")
+        SetOverrideBinding(radial, true, "PADLSTICK", "TOGGLEPINGSYSTEM")
+    end
+end
+
+function RM:IsControllerEnabled()
+    local store = GetStore()
+    return store and store.controller or false
+end
+
+function RM:SetControllerEnabled(enabled)
+    local store = GetStore()
+    if not store then return end
+    store.controller = enabled and true or nil
+    store.padMode = nil   -- the setting before it became one toggle
+    ApplyBinding()
 end
 
 function RM:ApplyBindings()
@@ -1308,6 +1457,7 @@ end
 function RM:Init()
     if self.initialized then return end
     self.initialized = true
+
 
     CreateRadial()
     -- a /reload in combat: the secure frames and wraps wait for the fight to end

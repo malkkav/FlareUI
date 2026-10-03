@@ -930,6 +930,37 @@ local function SetView(window, showThreat)
     WatchThreat()
 end
 
+-- One key (Features > Threat Toggle Keybind) flips every window that has the Threat tab. A plain
+-- button the key clicks through an override binding; nothing about it is protected.
+local function ToggleThreatViews()
+    for window, view in pairs(views) do SetView(window, not view.showing) end
+end
+
+-- the "Toggle Threat Meter" radial panel (RadialMenu.lua MICRO_PANELS) runs this
+function FlareUI_ToggleThreatMeter()
+    if next(views) then
+        ToggleThreatViews()
+    else
+        print("|cff00ff00FlareUI:|r turn on Threat Meter Tab in the Damage Meter settings to use the threat view.")
+    end
+end
+
+local threatToggle
+local function ApplyThreatKey()
+    if InCombatLockdown() then return end   -- Refresh comes back after the fight
+    if not threatToggle then
+        threatToggle = CreateFrame("Button", "FlareUI_DamageMeterThreatToggle", UIParent)
+        threatToggle:SetSize(1, 1)
+        threatToggle:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -500, 500)
+        threatToggle:RegisterForClicks("AnyDown")
+        threatToggle:SetScript("OnClick", ToggleThreatViews)
+    end
+    ClearOverrideBindings(threatToggle)
+    local db = GetDb()
+    local key = db and db.enabled and db.threatTab and db.threatKey
+    if key and key ~= "" then SetOverrideBindingClick(threatToggle, true, key, threatToggle:GetName()) end
+end
+
 local function CreateThreatView(window)
     local dd = GetWindowTypeDropdown(window)
     local scrollBox = GetWindowScrollBox(window)
@@ -1103,6 +1134,56 @@ function DamageMeter:ApplyToWindow(window)
 end
 
 --------------------------------------------------
+-- 15b. MATCH CHAT FRAME SIZE
+-- The primary window fills Blizzard's DamageMeter frame, an Edit Mode system Edit Mode sizes with
+-- SetSize from its Frame Width / Height. With the option on, that frame takes the chat's size - its
+-- FlareUI skin when the Chat module is on, ChatFrame1 otherwise - again after every Edit Mode sizing
+-- and every chat resize. Out of combat only, like the rest of the meter's styling.
+--------------------------------------------------
+local matchSizing = false
+local hookedChatSource
+
+local function ChatSizeSource()
+    local chat = _G.ChatFrame1
+    return chat and (chat.FlareUI_Skin or chat)
+end
+
+local function MatchChatSize()
+    local db = GetDb()
+    local meter = _G.DamageMeter
+    if matchSizing or not (db and db.enabled and db.matchChatSize and meter) or InCombatLockdown() then return end
+    local source = ChatSizeSource()
+    local width, height = source and source:GetSize()
+    if not (width and height and width > 0 and height > 0) then return end
+    matchSizing = true
+    meter:SetSize(width, height)
+    matchSizing = false
+end
+
+local function HookChatSize()
+    local meter, source = _G.DamageMeter, ChatSizeSource()
+    if not (meter and source) then return end
+    if not meter.FlareUI_SizeHooked then
+        meter.FlareUI_SizeHooked = true
+        hooksecurefunc(meter, "SetSize", MatchChatSize)
+    end
+    -- the chat's skin arrives with the Chat module, after ChatFrame1 itself
+    if source ~= hookedChatSource then
+        hookedChatSource = source
+        source:HookScript("OnSizeChanged", MatchChatSize)
+    end
+end
+
+-- switched off: Edit Mode's own Frame Width / Height again
+function DamageMeter:RestoreEditModeSize()
+    local meter = _G.DamageMeter
+    if meter and not InCombatLockdown() and meter.UpdateSystemSettingFrameWidth then
+        meter:UpdateSystemSettingFrameWidth()
+        meter:UpdateSystemSettingFrameHeight()
+    end
+end
+
+--------------------------------------------------
 -- 16. REFRESH ALL
 --------------------------------------------------
 function DamageMeter:Refresh()
@@ -1117,6 +1198,9 @@ function DamageMeter:Refresh()
     for _, window in ipairs(GetSessionWindows()) do
         self:ApplyToWindow(window)
     end
+    HookChatSize()
+    MatchChatSize()
+    ApplyThreatKey()
 
     self._pendingRefresh = false
     -- No delayed re-apply here any more: AttachHeaderButtonHooks now actually installs, so the

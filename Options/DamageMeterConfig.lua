@@ -42,23 +42,45 @@ ns.Options.args.damagemeter = {
                     get = function() return ns.db.profile.damagemeter.barTexture or "" end,
                     set = function(_, val) ns.db.profile.damagemeter.barTexture = val; if ns.DamageMeter then ns.DamageMeter:Refresh() end end,
                 },
+                spacer3 = { type = "description", name = "", width = 0.1, order = 35 },
+                matchChatSize = {
+                    type = "toggle", name = "Match Chat Frame Size", order = 40, width = 1.2,
+                    desc = "The meter takes the size of the chat frame, in place of the size set in Edit Mode.",
+                    get = function() return ns.db.profile.damagemeter.matchChatSize end,
+                    set = function(_, val)
+                        ns.db.profile.damagemeter.matchChatSize = val
+                        if not val and ns.DamageMeter then ns.DamageMeter:RestoreEditModeSize() end
+                        if ns.DamageMeter then ns.DamageMeter:Refresh() end
+                    end,
+                },
             }
         },
         featuresGroup = {
             type = "group", name = "Features", order = 20, inline = true,
             args = {
                 threatTab = {
-                    type = "toggle", name = "Threat Meter Tab", order = 10, width = 1.2,
+                    type = "toggle", name = "Threat Meter Tab", order = 20, width = 1.2,
                     desc = "Adds a Threat tab next to the meter's title: your group's threat on your target. Left-click a tab to switch; right-click the title for Blizzard's meter types.",
                     get = function() return ns.db.profile.damagemeter.threatTab end,
                     set = function(_, val) ns.db.profile.damagemeter.threatTab = val; if ns.DamageMeter then ns.DamageMeter:Refresh() end end,
                 },
                 spacer1 = { type = "description", name = "", width = 0.1, order = 11 },
                 combatTimer = {
-                    type = "toggle", name = "Combat Timer", order = 20, width = 1.2,
+                    type = "toggle", name = "Combat Timer", order = 10, width = 1.2,
                     desc = "Shows how long the fight has lasted in the meter's title row.",
                     get = function() return ns.db.profile.damagemeter.combatTimer end,
                     set = function(_, val) ns.db.profile.damagemeter.combatTimer = val; if ns.DamageMeter then ns.DamageMeter:Refresh() end end,
+                },
+                spacer2 = { type = "description", name = "", width = 0.1, order = 21 },
+                threatKey = {
+                    type = "keybinding", name = "Threat Toggle Keybind", order = 30, width = 1.2,
+                    desc = "Press it to switch the meter between Blizzard's view and the Threat tab.",
+                    disabled = function() return not ns.db.profile.damagemeter.threatTab end,
+                    get = function() return ns.db.profile.damagemeter.threatKey or "" end,
+                    set = function(_, val)
+                        ns.db.profile.damagemeter.threatKey = (val ~= "" and val) or nil
+                        if ns.DamageMeter then ns.DamageMeter:Refresh() end
+                    end,
                 },
             }
         },

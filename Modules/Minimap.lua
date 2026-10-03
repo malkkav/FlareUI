@@ -379,10 +379,25 @@ local function FrameOuterWidth(tracker)
     return (right - left) * frame:GetEffectiveScale() / tracker:GetParent():GetEffectiveScale()
 end
 
+-- Edit Mode's SetScale makes the objective tracker lay itself out again, inside our call; in combat
+-- that layout reads auras (Blizzard_MawBuffs) that are secret to tainted code and errors. So in
+-- combat (a /reload or a Gamepad UI switch mid-fight) the scale waits for the fight to end.
+local trackerScaleWaiter
 function MM:UpdateTrackerScale()
     local tracker = _G.ObjectiveTrackerFrame
     local db = GetDb()
     if not (tracker and db) then return end
+    if InCombatLockdown() then
+        if not trackerScaleWaiter then
+            trackerScaleWaiter = CreateFrame("Frame")
+            trackerScaleWaiter:SetScript("OnEvent", function(waiter)
+                waiter:UnregisterEvent("PLAYER_REGEN_ENABLED")
+                self:UpdateTrackerScale()
+            end)
+        end
+        trackerScaleWaiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+        return
+    end
     local scale = 1
     if db.matchTrackerWidth then
         local width = FrameOuterWidth(tracker)

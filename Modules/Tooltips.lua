@@ -299,7 +299,9 @@ end
 -- category -> "always" (show) / "combat" (hide while in combat) / "never" (always hide)
 local function ShouldHide(category)
     local db = GetDb()
-    if not db then return false end
+    -- The categories tell world from UI by where the mouse is (MouseIsOverWorld), and with Blizzard's
+    -- Gamepad UI the hidden cursor always rests on the world: there every tooltip shows.
+    if not db or ns.IsGamepadUI() then return false end
     local mode = db.visibility and db.visibility[category] or "always"
     if mode == "always" then return false end
     if db.shiftReveal and IsShiftKeyDown() then return false end
@@ -411,7 +413,9 @@ local function ApplyAnchor(tooltip, parent)
     if not (db and tooltip and parent) then return end
     if tooltip ~= GameTooltip then return end
 
-    -- tooltips owned by a UI frame can keep Blizzard's placement
+    -- tooltips owned by a UI frame can keep Blizzard's placement. The Gamepad UI always does: with
+    -- the controller there is no cursor to follow (the setting itself stays for keyboard and mouse).
+    if ns.IsGamepadUI() then return end
     local overWorld = MouseIsOverWorld()
     local mode = overWorld and db.anchor or db.anchorFrames
     if mode == "default" then return end

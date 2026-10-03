@@ -3,7 +3,6 @@ local _, ns = ...
 --------------------------------------------------
 -- 1. UPVALUES
 --------------------------------------------------
-local StaticPopup_Show = StaticPopup_Show
 local wipe = wipe
 local table_insert = table.insert
 local ipairs = ipairs
@@ -65,7 +64,7 @@ local function SetAndReload(key, val)
     end
 
     RefreshVis()
-    StaticPopup_Show("FLAREUI_RELOAD")
+    ns.ShowDialog("FLAREUI_RELOAD")
 end
 
 local FADING_EXCLUDED = { player = true, petFrame = true, minimap = true, tracker = true }

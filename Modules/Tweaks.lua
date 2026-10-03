@@ -631,7 +631,7 @@ local function LoadSync()
     if changed > 0 or layoutChanged or chatChanged then
         C_Timer.After(6, function()
             if not InCombatLockdown() then
-                StaticPopup_Show("FLAREUI_SYNC_RELOAD", sourceName)
+                ns.ShowDialog("FLAREUI_SYNC_RELOAD", sourceName)
             end
         end)
     end
@@ -943,48 +943,97 @@ end
 
 --------------------------------------------------
 -- 9. NAMEPLATE COMBO POINTS
--- Blizzard's classic combo point gems, centred under the target nameplate's health bar. Forever has
--- no nameplate combo bar of its own (the Mainline class nameplate bars are excluded from Camelot),
--- so the row is drawn here with the ComboFrame art. The count can be secret in combat: each lit gem
--- is a StatusBar with range [i-1, i] fed the raw count and seen through a clip window the size of
--- the gem's highlight, so no Lua compares the number. When the count is readable the row hides at
--- zero, as Blizzard's does; when it is not, it stays up for rogues and cat-form druids on a hostile
--- target.
+-- Combo point gems (the shared art in Core.lua), centred under the target nameplate's health bar.
+-- Forever has no nameplate combo bar of its own (the Mainline class nameplate bars are excluded from
+-- Camelot), so the row is drawn here. The count can be secret in combat: each lit gem is a StatusBar
+-- with range [i-1, i] fed the raw count and seen through a clip window the size of the gem, so no
+-- Lua compares the number. A gained point flashes its shine only while the count is readable. When
+-- the count is readable the row hides at zero, as Blizzard's does; when it is not, it stays up for
+-- rogues and cat-form druids on a hostile target.
 --------------------------------------------------
-local COMBO_ART         = "Interface\\ComboFrame\\ComboPoint"
-local NP_COMBO_SPACING  = 13   -- the gems are 12 px wide
-local NP_COMBO_OFFSET_Y = -1   -- below the health bar (negative = down)
+local NP_COMBO_SIZE     = 16   -- the socket's side
+local NP_COMBO_SPACING  = 15   -- the rims nearly touch; the sockets' shadows overlap
+local NP_COMBO_OFFSET_Y = -5   -- below the health bar, clear of the aggro glow (negative = down)
 local NP_COMBO_SCALE    = 1.1  -- on top of the nameplate's own scale
 local NP_COMBO_MAX      = 10
 local NP_COMBO_FALLBACK = 5
 
--- The art file holds three parts side by side: socket (0-0.375), highlight (0.375-0.5625) and shine.
--- The socket is a plain texture; the highlight is the lit StatusBar, drawn with the whole file at
--- the scale that makes its highlight part 8 px wide and slid so that part sits in the window.
-local function CreateComboGem(parent, i)
-    local gem = CreateFrame("Frame", nil, parent)
-    gem:SetSize(12, 16)
-    local socket = gem:CreateTexture(nil, "BACKGROUND")
-    socket:SetTexture(COMBO_ART)
-    socket:SetTexCoord(0, 0.375, 0, 1)
-    socket:SetAllPoints()
+-- Blizzard's ComboFrame timings: the shine fades in, then out
+local function CreateShineFlash(shine)
+    local flash = shine:CreateAnimationGroup()
+    local fadeIn = flash:CreateAnimation("Alpha")
+    fadeIn:SetFromAlpha(0)
+    fadeIn:SetToAlpha(1)
+    fadeIn:SetDuration(0.3)
+    fadeIn:SetOrder(1)
+    local fadeOut = flash:CreateAnimation("Alpha")
+    fadeOut:SetFromAlpha(1)
+    fadeOut:SetToAlpha(0)
+    fadeOut:SetDuration(0.4)
+    fadeOut:SetOrder(2)
+    return flash
+end
 
+-- The socket is a plain texture. The lit gem is the StatusBar, drawn with the whole sheet at the
+-- gem's scale and slid so the red gem sits in the window, which is centred on the socket's rim.
+local function CreateComboGem(parent, i)
+    local scale = NP_COMBO_SIZE / ns.COMBO_SOCKET_PX
+    local gem = CreateFrame("Frame", nil, parent)
+    gem:SetSize(NP_COMBO_SIZE, NP_COMBO_SIZE)
+    local socket = gem:CreateTexture(nil, "BACKGROUND")
+    ns.SetComboPart(socket, "socket")
+    socket:SetAllPoints()
+    ns.AddComboRimBoost(socket)
+
+    local left, right, top, bottom = ns.ComboPartRect("gem")
     local window = CreateFrame("Frame", nil, gem)
     window:SetClipsChildren(true)
-    window:SetPoint("TOPLEFT", gem, "TOPLEFT", 2, 0)
-    window:SetSize(8, 16)
-    local fileWidth = 8 / 0.1875
+    window:SetSize((right - left) * scale, (bottom - top) * scale)
+    window:SetPoint("CENTER", gem, "CENTER", 0, ns.COMBO_GEM_RISE * scale)
     local lit = CreateFrame("StatusBar", nil, window)
-    lit:SetStatusBarTexture(COMBO_ART)
-    lit:SetSize(fileWidth, 16)
-    lit:SetPoint("TOPLEFT", window, "TOPLEFT", -0.375 * fileWidth, 0)
+    lit:SetStatusBarTexture(ns.COMBO_FILE)
+    lit:SetSize(ns.COMBO_SHEET * scale, ns.COMBO_SHEET * scale)
+    lit:SetPoint("TOPLEFT", window, "TOPLEFT", -left * scale, top * scale)
     lit:SetMinMaxValues(i - 1, i)
     lit:SetValue(i - 1)
     gem.lit = lit
+
+    -- the shine is bigger than the gem, so it sits above the lit bar outside the clip window
+    local shineHolder = CreateFrame("Frame", nil, gem)
+    shineHolder:SetAllPoints(window)
+    shineHolder:SetFrameLevel(lit:GetFrameLevel() + 1)
+    local shine = shineHolder:CreateTexture(nil, "OVERLAY")
+    ns.SetComboPart(shine, "shine", scale)
+    shine:SetPoint("CENTER", window, "CENTER")
+    shine:SetAlpha(0)
+    gem.flash = CreateShineFlash(shine)
     return gem
 end
 
 local npComboRow, npComboEvents
+
+-- Nameplate addons draw their own plates or rework Blizzard's (often with their own combo points and
+-- quest icons), so the combo points and quest tags stand down while one is loaded. Modules start
+-- at PLAYER_LOGIN, when every addon that loads at startup has.
+local NAMEPLATE_ADDONS = {
+    { "Platynator", "Platynator" }, { "Plater", "Plater" }, { "Kui_Nameplates", "KuiNameplates" },
+    { "TidyPlates_ThreatPlates", "Threat Plates" }, { "TidyPlates", "Tidy Plates" },
+    { "NeatPlates", "NeatPlates" }, { "BetterBlizzPlates", "BetterBlizzPlates" },
+    { "EllesmereUINameplates", "EllesmereUI Nameplates" }, { "nPlates", "nPlates" },
+}
+
+-- the name of the nameplate addon in charge, or nil
+function Tweaks:GetNameplateAddon()
+    for _, entry in ipairs(NAMEPLATE_ADDONS) do
+        if C_AddOns.IsAddOnLoaded(entry[1]) then return entry[2] end
+    end
+    -- ElvUI's nameplates are one of its modules and can be switched off
+    local E = C_AddOns.IsAddOnLoaded("ElvUI") and _G.ElvUI and _G.ElvUI[1]
+    if type(E) == "table" and type(E.private) == "table" and type(E.private.nameplates) == "table"
+        and E.private.nameplates.enable then
+        return "ElvUI"
+    end
+end
 
 local function LayoutComboRow(row, count)
     for i = 1, count do
@@ -998,7 +1047,7 @@ local function LayoutComboRow(row, count)
         gem:Show()
     end
     for i = count + 1, #row.gems do row.gems[i]:Hide() end
-    row:SetSize((count - 1) * NP_COMBO_SPACING + 12, 16)
+    row:SetSize((count - 1) * NP_COMBO_SPACING + NP_COMBO_SIZE, NP_COMBO_SIZE)
     row.count = count
 end
 
@@ -1021,11 +1070,15 @@ local function PlateAnchor(plate)
     return plate
 end
 
-local function UpdateNameplateCombo()
+local function UpdateNameplateCombo(_, event)
     local row = npComboRow
     if not row then return end
     local plate = C_NamePlate.GetNamePlateForUnit("target")
     local points = GetComboPoints("player", "target")
+    -- the points the shine compares against: none known after a target change or while secret
+    local last = row.lastPoints
+    if event == "PLAYER_TARGET_CHANGED" then last = nil end
+    row.lastPoints = canaccessvalue(points) and points or nil
     local show = plate ~= nil and PlayerBuildsComboPoints()
     if show and canaccessvalue(points) and points == 0 then show = false end
     if not show then
@@ -1044,13 +1097,16 @@ local function UpdateNameplateCombo()
     row:SetPoint("TOP", anchor, "BOTTOM", 0, NP_COMBO_OFFSET_Y)
     row:SetFrameLevel(anchor:GetFrameLevel() + 5)
     for i = 1, max do row.gems[i].lit:SetValue(points) end
+    if last and row.lastPoints and row.lastPoints > last then
+        for i = last + 1, math_min(row.lastPoints, max) do row.gems[i].flash:Restart() end
+    end
     row:Show()
 end
 
 -- switched on and off live from the options
 local function ApplyNameplateCombo()
     local db = GetDb()
-    if not (db and db.nameplateCombo) then
+    if not (db and db.nameplateCombo) or Tweaks:GetNameplateAddon() then
         if npComboEvents then npComboEvents:UnregisterAllEvents() end
         if npComboRow then npComboRow:Hide() end
         return
@@ -1186,7 +1242,7 @@ end
 -- switched on and off live from the options
 local function ApplyQuestTags()
     local db = GetDb()
-    if not (db and db.nameplateQuest) then
+    if not (db and db.nameplateQuest) or Tweaks:GetNameplateAddon() then
         if questEvents then questEvents:UnregisterAllEvents() end
         for _, tag in pairs(questTags) do tag:Hide() end
         wipe(questUnits)
@@ -1354,6 +1410,94 @@ local function ApplyTrackerHide()
     ns.HideFrameSecurely(tracker, hide)
 end
 
+--------------------------------------------------
+-- 11e. EDIT MODE LAYOUT PER MODE
+-- The client keeps one active Edit Mode layout for both input modes, and each layout belongs to a mode
+-- (its interfaceStyle), so switching the Gamepad UI - which reloads the UI - falls back to the new
+-- mode's preset ("Modern" / "Gamepad"). FlareUI remembers the layout last used in each mode, per
+-- character like the active layout itself, by type and name (indices shift as layouts come and go),
+-- and on the first layout update after login selects it again when the client has fallen back.
+-- The selection is the one call Blizzard's own dropdown makes (C_EditMode.SetActiveLayout); Edit
+-- Mode then applies the layout from its EDIT_MODE_LAYOUTS_UPDATED handler. Never in combat (a switch
+-- mid-fight reloads in combat): then it waits for the fight to end.
+--------------------------------------------------
+local function ModeKey()
+    return ns.IsGamepadUI() and "gamepad" or "keyboard"
+end
+
+-- the active layout of Edit Mode's own list (presets first, then the saved ones)
+local function ActiveLayout()
+    local manager = _G.EditModeManagerFrame
+    local info = manager and manager.layoutInfo
+    if not (info and info.layouts and info.activeLayout) then return nil end
+    return info.layouts[info.activeLayout], info
+end
+
+local function RememberLayout()
+    local db = GetDb()
+    if not (db and db.layoutPerMode) then return end
+    local layout = ActiveLayout()
+    if not (layout and layout.layoutName) then return end
+    local charDB = ns.CharDB()
+    charDB.layoutByMode = charDB.layoutByMode or {}
+    charDB.layoutByMode[ModeKey()] = { name = layout.layoutName, layoutType = layout.layoutType }
+end
+
+-- index of the remembered layout in Edit Mode's list, when it is not the active one already
+local function RememberedIndex()
+    local saved = ns.CharDB().layoutByMode
+    saved = saved and saved[ModeKey()]
+    local active, info = ActiveLayout()
+    if not (saved and active) then return nil end
+    if active.layoutName == saved.name and active.layoutType == saved.layoutType then return nil end
+    for index, layout in ipairs(info.layouts) do
+        if layout.layoutName == saved.name and layout.layoutType == saved.layoutType then return index, layout end
+    end
+end
+
+local function InitLayoutPerMode()
+    local restored = false
+    local events = CreateFrame("Frame")
+
+    local function Restore()
+        restored = true
+        local db = GetDb()
+        if not (db and db.layoutPerMode) then return end
+        local index, layout = RememberedIndex()
+        if index then
+            C_EditMode.SetActiveLayout(index)
+            Print("restored your " .. (ns.IsGamepadUI() and "gamepad" or "keyboard and mouse")
+                .. " Edit Mode layout, |cffffff00" .. layout.layoutName .. "|r.")
+        else
+            RememberLayout()
+        end
+    end
+
+    local function TryRestore()
+        if InCombatLockdown() then
+            events:RegisterEvent("PLAYER_REGEN_ENABLED")
+            return
+        end
+        -- a frame later: not from inside Edit Mode's own handling of the update
+        C_Timer.After(0, Restore)
+    end
+
+    events:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
+    events:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_ENABLED" then
+            events:UnregisterEvent("PLAYER_REGEN_ENABLED")
+            TryRestore()
+        elseif restored then
+            RememberLayout()   -- the player picked a layout (or the restore just landed)
+        else
+            TryRestore()
+        end
+    end)
+    -- Edit Mode may have had its layouts before Tweaks started
+    local manager = _G.EditModeManagerFrame
+    if manager and manager.IsInitialized and manager:IsInitialized() then TryRestore() end
+end
+
 local function InitBossTracker()
     local events = CreateFrame("Frame")
     events:RegisterEvent("ENCOUNTER_START")
@@ -1402,6 +1546,7 @@ function Tweaks:Init()
     InitAutoDelete()
     InitTrainAll()
     InitBossTracker()
+    InitLayoutPerMode()
     ApplyNameplateCombo()
     ApplyQuestTags()
     UnclampPartyFrame()

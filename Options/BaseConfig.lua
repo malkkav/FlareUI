@@ -8,7 +8,6 @@ local AceDBOptions = LibStub("AceDBOptions-3.0", true)
 -- 1. UPVALUES
 --------------------------------------------------
 local ipairs = ipairs
-local StaticPopup_Show = StaticPopup_Show
 local HideUIPanel = HideUIPanel
 local SettingsPanel = SettingsPanel
 local CreateFrame = CreateFrame
@@ -103,9 +102,10 @@ local function BuildChrome(widget, f)
         reset:SetPoint("BOTTOMRIGHT", -135, 17)
         reset:SetScript("OnClick", function()
             ns.ButtonSound()
-            StaticPopup_Show("FLAREUI_RESET")
+            ns.ShowDialog("FLAREUI_RESET")
         end)
         f.flareChrome[#f.flareChrome + 1] = reset
+        f.flareResetButton = reset   -- for the controller navigation (ControllerNav.lua)
 
         -- AceGUI's close button, found by its label since the widget does not expose it either
         for _, child in ipairs({ f:GetChildren() }) do
@@ -283,6 +283,7 @@ local function BuildCommandList()
     if ns.db and ns.db.profile.radialmenu and ns.db.profile.radialmenu.enabled then
         lines[#lines + 1] = "|cffffff00/fui re|r - Open the radial editor."
     end
+    lines[#lines + 1] = "|cffffff00/fui pad|r - Switch Gamepad mode on or off."
     local chat = ns.db and ns.db.profile.chat
     if chat and chat.enabled then
         if chat.enableTT then lines[#lines + 1] = "|cffffff00/tt|r <message> - Whisper your target." end
@@ -302,7 +303,7 @@ local function BuildModuleToggles()
             set = function(_, val)
                 ns.db.profile[key].enabled = val
                 RefreshConfig()
-                StaticPopup_Show("FLAREUI_RELOAD")
+                ns.ShowDialog("FLAREUI_RELOAD")
             end,
         }
         -- keeps two toggles per row instead of three
@@ -379,19 +380,24 @@ local function CreateBlizzardOptionsPanel()
     artCredit:SetText("Doggie art by Clari Turela")
     artCredit:SetTextColor(0.6, 0.6, 0.6)
 
-    local btn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    btn:SetSize(220, 40)
-    btn:SetPoint("TOP", artCredit, "BOTTOM", 0, -40)
-    btn:SetText("Open Configuration")
-    btn:GetFontString():SetFont(GameFontNormal:GetFont(), 14, "OUTLINE")
-
-    btn:SetScript("OnClick", function()
-        if SettingsPanel and SettingsPanel:IsShown() then
-            HideUIPanel(SettingsPanel)
-        end
-        AceConfigDialog:Open("FlareUI")
-        ns.ForceOpacity()
-    end)
+    -- With the Gamepad UI on, the pad's cursor cannot reach a button here, and a click through it would
+    -- run our code inside Blizzard's gamepad navigation: the page points to /fui instead.
+    if ns.IsGamepadUI() then
+        local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightMedium")
+        hint:SetPoint("TOP", artCredit, "BOTTOM", 0, -40)
+        hint:SetText("Type |cffffff00/fui|r in chat to access FlareUI settings while in gamepad mode")
+    else
+        local btn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        btn:SetSize(220, 40)
+        btn:SetPoint("TOP", artCredit, "BOTTOM", 0, -40)
+        btn:SetText("Open Configuration")
+        btn:GetFontString():SetFont(GameFontNormal:GetFont(), 14, "OUTLINE")
+        btn:SetScript("OnClick", function()
+            if SettingsPanel and SettingsPanel:IsShown() then HideUIPanel(SettingsPanel) end
+            AceConfigDialog:Open("FlareUI")
+            ns.ForceOpacity()
+        end)
+    end
 
     local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
     Settings.RegisterAddOnCategory(category)
@@ -447,6 +453,8 @@ loader:SetScript("OnEvent", function()
             end
         elseif msg == "re" or msg == "radialeditor" then
             ns.ToggleRadialEditor()
+        elseif msg == "pad" or msg == "gamepad" then
+            ns.ToggleGamepadMode()
         else
             print("|cff00ccffFlareUI:|r commands")
             for line in BuildCommandList():gmatch("[^\n]+") do print("  " .. line) end

@@ -465,6 +465,27 @@ local function VisibleSkinHost()
     return ChatFrame1
 end
 
+-- Header buttons sit right to left in this order, packed: a hidden one leaves no gap, so the tab bar
+-- (UpdateCustomTabsImmediate) gets its room. The Gamepad UI hides them all: Blizzard hides its own
+-- button bar there and its footer prompts replace them.
+local HEADER_ORDER = { "volume", "social", "menu", "channel" }
+local HEADER_FIRST_X, HEADER_STEP = -25, -35
+
+local function HeaderButtonShown(db, name)
+    if ns.IsGamepadUI() then return false end
+    if name == "volume" then return db.showVolume and true or false end
+    return not db[name .. "Hide"]
+end
+
+local function HeaderButtonX(db, name)
+    local slot = 0
+    for _, key in ipairs(HEADER_ORDER) do
+        if key == name then return HEADER_FIRST_X + slot * HEADER_STEP end
+        if HeaderButtonShown(db, key) then slot = slot + 1 end
+    end
+    return HEADER_FIRST_X
+end
+
 function Chat:StyleHeaderButtons(chatFrame)
     if self.isStyling then return end
     self.isStyling = true
@@ -585,9 +606,9 @@ function Chat:StyleHeaderButtons(chatFrame)
     local cChannel = db.channelColor or {r=1,g=1,b=1,a=1}
     local cMenu = db.menuColor or {r=1,g=1,b=1,a=1}
 
-    SetupBtn(_G.QuickJoinToastButton,     ICON_SOCIAL,   db.socialHide,  db.socialX,  db.socialY,  db.socialScale,  cSocial, true)
-    SetupBtn(_G.ChatFrameChannelButton,   ICON_CHANNELS, db.channelHide, db.channelX, db.channelY, db.channelScale, cChannel)
-    SetupBtn(_G.ChatFrameMenuButton,      ICON_MENU,     db.menuHide,    db.menuX,    db.menuY,    db.menuScale,    cMenu)
+    SetupBtn(_G.QuickJoinToastButton,   ICON_SOCIAL,   not HeaderButtonShown(db, "social"),  HeaderButtonX(db, "social"),  db.socialY,  db.socialScale,  cSocial, true)
+    SetupBtn(_G.ChatFrameChannelButton, ICON_CHANNELS, not HeaderButtonShown(db, "channel"), HeaderButtonX(db, "channel"), db.channelY, db.channelScale, cChannel)
+    SetupBtn(_G.ChatFrameMenuButton,    ICON_MENU,     not HeaderButtonShown(db, "menu"),    HeaderButtonX(db, "menu"),    db.menuY,    db.menuScale,    cMenu)
 
     -- The buttons are children of the skin, so their alpha (and their icons' and Flash glows') follows it.
     self.isStyling = false
@@ -800,16 +821,25 @@ function Chat:SetupImprovements()
 end
 
 function Chat:OpenContextMenu(tabButton, chatFrame)
+    -- With the Gamepad UI on, a menu opened from our code registers with Blizzard's gamepad focus
+    -- manager in a tainted call and hangs the client; Tab Settings (Y) has the same entries there.
+    if ns.IsGamepadUI() then return end
 
+    -- With the gamepad UI on, ShowUIPanel from FlareUI code registers the window with Blizzard's
+    -- gamepad focus manager in a tainted call and hangs the client (see Dialog.lua), so the two
+    -- entries that open Blizzard windows are left out there; the game menu has both.
+    local gamepad = ns.IsGamepadUI()
     MenuUtil.CreateContextMenu(tabButton, function(owner, rootDescription)
-        rootDescription:CreateButton(EDIT_MODE or "Edit Mode", function()
-            if EditModeManagerFrame then
-                ShowUIPanel(EditModeManagerFrame)
-            end
-        end)
+        if not gamepad then
+            rootDescription:CreateButton(EDIT_MODE or "Edit Mode", function()
+                if EditModeManagerFrame then
+                    ShowUIPanel(EditModeManagerFrame)
+                end
+            end)
+        end
 
         rootDescription:CreateButton(RENAME_CHAT_WINDOW, function()
-            StaticPopup_Show("FLAREUI_RENAME_CHAT", nil, nil, chatFrame)
+            ns.ShowDialog("FLAREUI_RENAME_CHAT", nil, chatFrame)
         end)
 
         rootDescription:CreateButton(NEW_CHAT_WINDOW, function()
@@ -841,9 +871,11 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
             end
         end)
 
-        rootDescription:CreateButton("Filter Settings", function()
-            if ChatConfigFrame then ShowUIPanel(ChatConfigFrame) end
-        end)
+        if not gamepad then
+            rootDescription:CreateButton("Filter Settings", function()
+                if ChatConfigFrame then ShowUIPanel(ChatConfigFrame) end
+            end)
+        end
 
         if chatFrame:GetID() ~= 1 then
             rootDescription:CreateDivider()
@@ -852,12 +884,37 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
     end)
 end
 
+-- Blizzard's tab dock stays alive but out of sight: our tab bar replaces it. Off screen with the
+-- mouse; in the gamepad UI Blizzard opens the tab settings menu (Y) on the real tab, so there it
+-- lies across the chat header instead, full size so Blizzard lays out every tab (the ones past
+-- General and Combat Log sit in its scroll strip), invisible and with its tabs deaf to the mouse.
+local function ParkDock(dock)
+    dock:ClearAllPoints()
+    local host = _G.ChatFrame1 and _G.ChatFrame1.FlareUI_Skin
+    if ns.IsGamepadUI() and host then
+        dock:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
+        dock:SetPoint("TOPRIGHT", host, "TOPRIGHT", 0, 0)
+        for i = 1, NUM_CHAT_WINDOWS do
+            local tab = _G["ChatFrame" .. i .. "Tab"]
+            if tab then tab:EnableMouse(false) end
+        end
+    else
+        dock:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", -10000, -10000)
+    end
+end
+
 function Chat:KillGeneralDockManager()
     local dock = _G.GeneralDockManager
     if dock then
-        dock:ClearAllPoints()
-        dock:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", -10000, -10000)
-        dock:SetWidth(1); dock:SetHeight(1); dock:SetAlpha(0)
+        dock.FlareUI_Moving = true
+        ParkDock(dock)
+        dock.FlareUI_Moving = false
+        if ns.IsGamepadUI() then
+            if dock.overflowButton then dock.overflowButton:EnableMouse(false) end
+        else
+            dock:SetWidth(1); dock:SetHeight(1)
+        end
+        dock:SetAlpha(0)
         dock:EnableMouse(false)
         dock:SetScript("OnUpdate", nil); dock:SetScript("OnEnter", nil); dock:SetScript("OnLeave", nil)
 
@@ -865,8 +922,7 @@ function Chat:KillGeneralDockManager()
             Chat:SecureHook(dock, "SetPoint", function(frameParam)
                 if not frameParam.FlareUI_Moving and not InCombatLockdown() then
                     frameParam.FlareUI_Moving = true
-                    frameParam:ClearAllPoints()
-                    frameParam:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", -10000, -10000)
+                    ParkDock(frameParam)
                     frameParam.FlareUI_Moving = false
                 end
             end)
@@ -875,7 +931,10 @@ function Chat:KillGeneralDockManager()
     end
 
     local scroll = _G.GeneralDockManagerScrollFrame
-    if scroll then scroll:SetWidth(1); scroll:SetHeight(1); scroll:EnableMouse(false) end
+    if scroll then
+        if not ns.IsGamepadUI() then scroll:SetWidth(1); scroll:SetHeight(1) end
+        scroll:EnableMouse(false)
+    end
 end
 
 function Chat:CreateCustomTabBar(chatFrame)
@@ -914,8 +973,39 @@ end
 -- Reordering tabs by drag. The header's tabs are drawn in the order of Blizzard's dock list
 -- (GeneralDockManager.DOCKED_CHAT_FRAMES), so a drop moves the window in that list and FCF_SaveDock
 -- stores every docked window's position in the game's chat settings - the order survives a reload.
--- The first window (General, the dock's primary) cannot move: Blizzard requires it to stay first.
+-- The fixed windows cannot move and nothing lands in front of them: General (the dock's primary),
+-- which Blizzard requires first, and while it is shown the Combat Log, second - immovable in
+-- Blizzard's own chat, whose order the Gamepad UI's LB / RB follow.
 local TAB_MARKER_WIDTH, TAB_MARKER_HEIGHT = 2, 16
+
+-- how many windows lead the dock list and stay put
+local function FixedWindowCount()
+    local db = GetDb()
+    local list = GeneralDockManager and GeneralDockManager.DOCKED_CHAT_FRAMES
+    local combatLog = _G.ChatFrame2
+    if combatLog and list and tIndexOf(list, combatLog) and not (db and db.hideCombatLog) then return 2 end
+    return 1
+end
+
+local function IsFixedWindow(frame)
+    if frame == GeneralDockManager.primary then return true end
+    return frame == _G.ChatFrame2 and FixedWindowCount() == 2
+end
+
+-- an order saved before the rule (a tab dragged in front of the Combat Log) is put right
+local function KeepCombatLogSecond()
+    local dock = GeneralDockManager
+    local list = dock and dock.DOCKED_CHAT_FRAMES
+    local combatLog = _G.ChatFrame2
+    if not (list and FixedWindowCount() == 2) then return end
+    local index = tIndexOf(list, combatLog)
+    if index == 2 or list[1] ~= dock.primary then return end
+    table.remove(list, index)
+    table.insert(list, 2, combatLog)
+    dock.isDirty = true
+    FCF_SaveDock()
+    FCFDock_UpdateTabs(dock)
+end
 -- an unselected tab's text at rest; hovering lifts it to 1
 local TAB_IDLE_ALPHA = 0.6
 
@@ -945,10 +1035,10 @@ local function UpdateTabMarker(scrollFrame)
     local marker, dragged = scrollFrame.dropMarker, scrollFrame.draggedTab
     if not (marker and dragged) then return end
     local target = TabDropTarget(scrollFrame, CursorX(scrollFrame))
-    if target and target.chatFrame == GeneralDockManager.primary then
+    if target and IsFixedWindow(target.chatFrame) then
         target = nil
         for _, btn in ipairs(scrollFrame.buttons) do
-            if btn:IsShown() and btn.chatFrame ~= GeneralDockManager.primary then target = btn break end
+            if btn:IsShown() and not IsFixedWindow(btn.chatFrame) then target = btn break end
         end
     end
     marker:ClearAllPoints()
@@ -964,12 +1054,13 @@ end
 local function MoveDockedWindow(frame, before)
     local dock = GeneralDockManager
     local list = dock and dock.DOCKED_CHAT_FRAMES
-    if not list or frame == dock.primary then return end
+    if not list or IsFixedWindow(frame) then return end
     local from = tIndexOf(list, frame)
     if not from then return end
+    local first = FixedWindowCount() + 1       -- never in front of a fixed window
     table.remove(list, from)
     local to = before and tIndexOf(list, before) or (#list + 1)
-    if to < 2 then to = 2 end                  -- never in front of the primary
+    if to < first then to = first end
     table.insert(list, to, frame)
     if to == from then return end
     dock.isDirty = true
@@ -979,7 +1070,7 @@ end
 
 local function OnTabDragStart(self)
     local scrollFrame = self.scrollFrame
-    if not scrollFrame or self.chatFrame == GeneralDockManager.primary then return end
+    if not scrollFrame or IsFixedWindow(self.chatFrame) then return end
     if not scrollFrame.dropMarker then
         local marker = scrollFrame.FlareUI_Child:CreateTexture(nil, "OVERLAY")
         marker:SetSize(TAB_MARKER_WIDTH, TAB_MARKER_HEIGHT)
@@ -1023,10 +1114,9 @@ function Chat:UpdateCustomTabsImmediate(chatFrame, db)
     -- Count visible buttons for margin calculation
     -- Don't call Show() here - SetupChatButtons handles visibility
     local btnCount = 0
-    if not db.socialHide then btnCount = btnCount + 1 end
-    if not db.channelHide then btnCount = btnCount + 1 end
-    if not db.menuHide then btnCount = btnCount + 1 end
-    if db.showVolume then btnCount = btnCount + 1 end
+    for _, key in ipairs(HEADER_ORDER) do
+        if HeaderButtonShown(db, key) then btnCount = btnCount + 1 end
+    end
 
     local margin = -20 - (btnCount * 30)
     scrollFrame:SetPoint("TOPRIGHT", chatFrame.FlareUI_Skin, "TOPRIGHT", margin, 0)
@@ -1172,10 +1262,12 @@ end
 function Chat:HideBlizzardTabs()
     if not NUM_CHAT_WINDOWS then return end
 
-    -- Hide Blizzard's tab scroll frame container
+    -- Hide Blizzard's tab scroll frame container. In the gamepad UI it stays shown: every tab past
+    -- General and Combat Log lives in it, and Tab Settings (Y) opens on the real tab (the dock itself
+    -- is invisible there, see ParkDock).
     local dock = _G.GeneralDockManager
     if dock and dock.scrollFrame then
-        dock.scrollFrame:Hide()
+        if not ns.IsGamepadUI() then dock.scrollFrame:Hide() end
         dock.scrollFrame:SetAlpha(0)
     end
 
@@ -1185,14 +1277,16 @@ function Chat:HideBlizzardTabs()
         dock.overflowButton:SetAlpha(0)
     end
 
-    -- Hide individual tabs
+    -- Hide individual tabs. In the gamepad UI they stay shown, only invisible and deaf to the mouse:
+    -- Blizzard opens the Tab Settings menu (Y) on the real tab, and a hidden one opens nothing.
+    local gamepad = ns.IsGamepadUI()
     for i = 1, NUM_CHAT_WINDOWS do
         local chatFrame = _G["ChatFrame"..i]
         local tab = _G["ChatFrame"..i.."Tab"]
         if tab and chatFrame then
             tab:SetAlpha(0)
             tab:EnableMouse(false)
-            if not tab.FlareUI_ModernKilled then
+            if not tab.FlareUI_ModernKilled and not gamepad then
                 tab:SetScript("OnShow", function(self)
                     self:Hide()
                 end)
@@ -1301,7 +1395,7 @@ end
 
 function Chat:SetupVolumeButton(chatFrame, db)
     if not chatFrame.FlareUI_Skin then return end
-    if not db.showVolume then
+    if not HeaderButtonShown(db, "volume") then
         if chatFrame.FlareUI_VolumeBtn then chatFrame.FlareUI_VolumeBtn:Hide() end
         return
     end
@@ -1388,7 +1482,7 @@ function Chat:SetupVolumeButton(chatFrame, db)
 
     btn:Show()
     btn:ClearAllPoints()
-    local x = db.volumeX or 0
+    local x = HeaderButtonX(db, "volume")
     local y = db.volumeY or 0
     local scale = db.volumeScale or 1.0
     btn:SetScale(scale)
@@ -1405,6 +1499,11 @@ local function CreateOrGetSkinFrame(chatFrame, db)
     if not skin then
         skin = CreateFrame("Frame", nil, chatFrame, "BackdropTemplate")
         chatFrame.FlareUI_Skin = skin
+        -- In the gamepad UI Blizzard's cursor would walk from the edit box onto our tabs and header
+        -- buttons, where it can click nothing (and a pad click would run our code inside its
+        -- navigation). Ignored here means ignored for everything inside the skin, so the D-pad
+        -- stays on the edit box, as it does in Blizzard's own chat. The UI reloads on a switch.
+        if ns.IsGamepadUI() then skin.smartNavigationIgnored = true end
     end
     if not skin.Separator then skin.Separator = skin:CreateTexture(nil, "OVERLAY") end
 
@@ -1821,6 +1920,7 @@ function Chat:Apply(db)
     end
 
     -- 2. Dock & Frame Styling
+    KeepCombatLogSecond()
     Chat:KillGeneralDockManager()
     StyleButtonFrame()
 
@@ -1831,6 +1931,8 @@ function Chat:Apply(db)
             Chat:StyleEditBox(frame, db)
         end
     end
+    -- the gamepad UI parks the dock at ChatFrame1's skin, which only now exists
+    if ns.IsGamepadUI() then Chat:KillGeneralDockManager() end
 
     Chat:SetupAutoHide(db)
 
@@ -1867,9 +1969,80 @@ local function AnchorShardNotice()
     Place()
 end
 
+-- Blizzard's gamepad chat only works in IM chat style: in Classic the edit box stays hidden until
+-- Enter, so FocusGamepad's SetFocus on it fails and the footer prompts tied to it (X channels, Y tab
+-- settings, A send) do nothing - with no addon loaded too. So while the gamepad UI is on, chat runs
+-- in IM style, and the player's own style is put back the next time the UI loads with keyboard and
+-- mouse (switching the Gamepad UI setting reloads the UI). The style is an account-wide CVar, so
+-- the one it replaced is kept account-wide too.
+function Chat:ApplyGamepadChatStyle()
+    local global = ns.db.global
+    local current = GetCVar("chatStyle")
+    if ns.IsGamepadUI() then
+        if current ~= "im" then
+            global.chatStyleBeforeGamepad = current
+            SetCVar("chatStyle", "im")
+        end
+    elseif global.chatStyleBeforeGamepad then
+        if current == "im" then SetCVar("chatStyle", global.chatStyleBeforeGamepad) end
+        global.chatStyleBeforeGamepad = nil
+    end
+end
+
+-- Gamepad UI: while a chat window has the pad (FloatingChatFrameMixin:HasGamepadFocus - its edit box
+-- focused), LB and RB icons sit above its header's ends, the way Blizzard's own tab bars show them.
+-- Polled rather than hooked: a hook on Blizzard's focus calls would run our code inside its gamepad
+-- focus manager (see Dialog.lua).
+local function SetupGamepadTabHints()
+    if not ns.IsGamepadUI() then return end
+    local function MakeIcon(key)
+        local icon = CreateFrame("Frame", nil, UIParent, "InputIconTextureFrameTemplate")
+        icon:SetSize(26, 26)
+        icon:SetFrameStrata("DIALOG")
+        if icon.EnableDropShadow then icon:EnableDropShadow() end
+        icon:SetInputKey(key)
+        icon:Hide()
+        return icon
+    end
+    local left = MakeIcon(GAMEPAD_SHOULDER_LEFT or "PADLSHOULDER")
+    local right = MakeIcon(GAMEPAD_SHOULDER_RIGHT or "PADRSHOULDER")
+    local shownFor, elapsed = nil, 0
+    local poll = CreateFrame("Frame")
+    poll:SetScript("OnUpdate", function(_, dt)
+        elapsed = elapsed + dt
+        if elapsed < 0.1 then return end
+        elapsed = 0
+        local focused
+        for i = 1, NUM_CHAT_WINDOWS do
+            local cf = _G["ChatFrame" .. i]
+            if cf and cf.HasGamepadFocus and cf:IsVisible() and cf:HasGamepadFocus() then
+                focused = cf
+                break
+            end
+        end
+        if focused == shownFor then return end
+        shownFor = focused
+        local skin = focused and ((focused.FlareUI_Skin and focused.FlareUI_Skin:IsVisible() and focused.FlareUI_Skin)
+            or (ChatFrame1 and ChatFrame1.FlareUI_Skin))
+        if skin then
+            left:ClearAllPoints()
+            left:SetPoint("BOTTOMLEFT", skin, "TOPLEFT", 0, 2)
+            right:ClearAllPoints()
+            right:SetPoint("BOTTOMRIGHT", skin, "TOPRIGHT", 0, 2)
+            left:Show()
+            right:Show()
+        else
+            left:Hide()
+            right:Hide()
+        end
+    end)
+end
+
 function Chat:Init()
     local db = ns.db.profile.chat
     AnchorShardNotice()
+    Chat:ApplyGamepadChatStyle()
+    SetupGamepadTabHints()
     -- Blizzard's chat fading is turned off per frame in StyleChatFrame (SetFading(false) and
     -- SetTimeVisible). Do not blank the FCF_Fade* globals for it: their callers would run our
     -- tainted code, and they are not what does the fading.
@@ -1899,15 +2072,14 @@ function Chat:Init()
 
     Chat:KillGeneralDockManager()
 
-    StaticPopupDialogs["FLAREUI_RENAME_CHAT"] = {
+    ns.Dialogs["FLAREUI_RENAME_CHAT"] = {
         text = "Rename Chat Window",
         button1 = ACCEPT,
         button2 = CANCEL,
         hasEditBox = true,
         maxLetters = 31,
-        OnAccept = function(self)
-            local text = self.EditBox:GetText()
-            local chatFrame = self.data
+        editText = function(chatFrame) return chatFrame and chatFrame.name or "" end,
+        OnAccept = function(chatFrame, text)
             if text and text ~= "" and chatFrame then
                 FCF_SetWindowName(chatFrame, text)
                 if ns.Chat and ns.Chat.UpdateCustomTabs then
@@ -1915,23 +2087,7 @@ function Chat:Init()
                 end
             end
         end,
-        OnShow = function(self)
-            ns.LiftPopup(self)
-            local chatFrame = self.data
-            if chatFrame then
-                self.EditBox:SetText(chatFrame.name or "")
-                self.EditBox:SetFocus()
-                self.EditBox:HighlightText()
-            end
-        end,
-        OnHide = ns.DropPopup,
-        EditBoxOnEnterPressed = function(self)
-            local parent = self:GetParent()
-            StaticPopupDialogs["FLAREUI_RENAME_CHAT"].OnAccept(parent)
-            parent:Hide()
-        end,
-        EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
-        timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+        hideOnEscape = true,
     }
 
     self:ScheduleTimer(function()

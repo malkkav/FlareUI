@@ -295,6 +295,53 @@ local function HardHide(name)
     hooksecurefunc(frame, "Show", function(f) if not InCombatLockdown() then f:Hide() end end)
 end
 
+-- Gamepad UI: TargetFrame cannot be parked. The controller bar's target-menu button opens Blizzard's
+-- menu on it (TargetFrame_OpenMenu), and a menu whose owner is not visible closes again at once
+-- (Menu.lua). So it stays shown - always: its own events, which would show and hide it with the
+-- target, go as in HardHide, and Blizzard only opens the menu when there is a target - but
+-- invisible, with the mouse off on it and everything in it, and pinned over our target frame (both
+-- are protected, so the anchor is allowed) so the menu opens beside ours. Edit Mode re-placing or
+-- hiding it is undone. Out of combat only: a reload mid-fight finishes after it.
+local function KeepAsMenuOwner(name, over)
+    local frame = _G[name]
+    if not frame or frame.FlareUI_Hidden then return end
+    if InCombatLockdown() then
+        local waiter = CreateFrame("Frame")
+        waiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+        waiter:SetScript("OnEvent", function(self)
+            self:UnregisterAllEvents()
+            KeepAsMenuOwner(name, over)
+        end)
+        return
+    end
+    frame.FlareUI_Hidden = true
+    pcall(frame.UnregisterAllEvents, frame)
+    for _, key in ipairs({ "healthbar", "manabar", "spellbar", "castBar", "totFrame", "petFrame", "powerBarAlt" }) do
+        local child = frame[key]
+        if child and child.UnregisterAllEvents then pcall(child.UnregisterAllEvents, child) end
+    end
+    frame:SetAlpha(0)
+    local function Deafen(f)
+        if f.IsMouseEnabled and f:IsMouseEnabled() then f:EnableMouse(false) end
+        if f.IsMouseClickEnabled and f:IsMouseClickEnabled() then f:SetMouseClickEnabled(false) end
+        for _, child in ipairs({ f:GetChildren() }) do Deafen(child) end
+    end
+    Deafen(frame)
+    local placing = false
+    local function Pin()
+        if placing or InCombatLockdown() then return end
+        placing = true
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", over, "TOPLEFT")
+        frame:SetPoint("BOTTOMRIGHT", over, "BOTTOMRIGHT")
+        placing = false
+    end
+    Pin()
+    hooksecurefunc(frame, "SetPoint", Pin)
+    frame:Show()
+    hooksecurefunc(frame, "Hide", function(f) if not InCombatLockdown() then f:Show() end end)
+end
+
 --------------------------------------------------
 -- 5. UPDATERS (all secret-safe: values go straight into widgets)
 --------------------------------------------------
@@ -991,15 +1038,13 @@ end
 -- so each segment is a StatusBar with range [i-1, i] fed the raw value: full when points >= i, empty
 -- otherwise. No Lua compares the number. Replaces Blizzard's ComboFrame, which is hidden.
 --------------------------------------------------
-local COMBO_HEIGHT = 5
-local COMBO_SEGMENT_GAP = 1
-local COMBO_MAX_SEGMENTS = 10
-local COMBO_FALLBACK_MAX = 5
-local COMBO_PREVIEW_POINTS = 3
--- cool teal -> cyan: the one hue no Forever class or power colour uses, so it reads against the
--- warm bronze / olive / orange around it
-local COMBO_COLOR_FIRST = { 0.10, 0.52, 0.58 }   -- teal on the left...
-local COMBO_COLOR_LAST  = { 0.40, 0.88, 0.95 }   -- ...to cyan on the right
+local COMBO = {
+    height = 5, segmentGap = 1, maxSegments = 10, fallbackMax = 5, previewPoints = 3,
+    -- cool teal -> cyan: the one hue no Forever class or power colour uses, so it reads against the
+    -- warm bronze / olive / orange around it
+    colorFirst = { 0.10, 0.52, 0.58 },   -- teal on the left...
+    colorLast  = { 0.40, 0.88, 0.95 },   -- ...to cyan on the right
+}
 
 local function PlayerClass()
     local _, class = UnitClass("player")
@@ -1041,13 +1086,13 @@ local function GetComboSegment(f, i)
     return seg
 end
 
--- distributes the segments across the strip; colours run from COMBO_COLOR_FIRST to COMBO_COLOR_LAST
+-- distributes the segments across the strip; colours run from COMBO.colorFirst to COMBO.colorLast
 local function LayoutComboSegments(f)
     local combo, udb = f.Combo, GetUnitDb(f.unit)
     if not combo or combo.count == 0 then return end
     local n = combo.count
     local width = (udb and udb.width or 220) - 2 * INSET - PortraitSpace(f)
-    local segWidth = (width - (n - 1) * COMBO_SEGMENT_GAP) / n
+    local segWidth = (width - (n - 1) * COMBO.segmentGap) / n
     local texture = GetBarTexture(udb and udb.texture)
     for i = 1, n do
         local seg = GetComboSegment(f, i)
@@ -1058,13 +1103,13 @@ local function LayoutComboSegments(f)
         -- colour still reads through the strip
         seg.bg:SetVertexColor(0, 0, 0, 0.45)
         seg:SetStatusBarColor(
-            COMBO_COLOR_FIRST[1] + (COMBO_COLOR_LAST[1] - COMBO_COLOR_FIRST[1]) * t,
-            COMBO_COLOR_FIRST[2] + (COMBO_COLOR_LAST[2] - COMBO_COLOR_FIRST[2]) * t,
-            COMBO_COLOR_FIRST[3] + (COMBO_COLOR_LAST[3] - COMBO_COLOR_FIRST[3]) * t)
+            COMBO.colorFirst[1] + (COMBO.colorLast[1] - COMBO.colorFirst[1]) * t,
+            COMBO.colorFirst[2] + (COMBO.colorLast[2] - COMBO.colorFirst[2]) * t,
+            COMBO.colorFirst[3] + (COMBO.colorLast[3] - COMBO.colorFirst[3]) * t)
         seg:ClearAllPoints()
         -- left to right even on a mirrored frame: the points are the player's, not the target's
-        seg:SetPoint("TOPLEFT", combo, "TOPLEFT", (i - 1) * (segWidth + COMBO_SEGMENT_GAP), 0)
-        seg:SetSize(segWidth, COMBO_HEIGHT)
+        seg:SetPoint("TOPLEFT", combo, "TOPLEFT", (i - 1) * (segWidth + COMBO.segmentGap), 0)
+        seg:SetSize(segWidth, COMBO.height)
         seg:Show()
     end
     for i = n + 1, #combo.segments do combo.segments[i]:Hide() end
@@ -1076,25 +1121,59 @@ local function IsComboShown(f)
 end
 
 -- Classic Combo Points (target frame option, off by default): Blizzard's own ComboFrame in place of
--- the strip, its points laid out in a row inside the top-left corner of the health bar, clear of the
+-- the strip, its points laid out in a row inside the bottom-right corner of the health bar, clear of the
 -- auras and the cast bar around the frame. Blizzard's code keeps driving it either way; with the
 -- option off it is parked on a hidden parent, where it still runs but never shows.
-local CLASSIC_COMBO_X       = 3    -- from the health bar's left edge
-local CLASSIC_COMBO_Y       = -3   -- from the health bar's top edge (negative = down)
-local CLASSIC_COMBO_SPACING = 13   -- the points are 12 px wide
-local classicComboHooked = false
+local CLASSIC_COMBO = {
+    x = -2,         -- from the health bar's right edge (negative = left)
+    y = 2,          -- from the health bar's bottom edge
+    size = 16,      -- the socket's side
+    spacing = 15,   -- the rims nearly touch
+    hooked = false, skinned = false,
+}
+
+-- Swaps the art of Blizzard's points for the shared high-resolution sheet (Core.lua): socket on the
+-- point's unnamed background, red gem on Highlight, star on Shine. Blizzard's code only fades
+-- Highlight and Shine and shows or hides the points, so the new textures stay.
+local function SkinClassicCombo(combo)
+    if CLASSIC_COMBO.skinned then return end
+    CLASSIC_COMBO.skinned = true
+    local scale = CLASSIC_COMBO.size / ns.COMBO_SOCKET_PX
+    for _, point in ipairs(combo.ComboPoints) do
+        point:SetSize(CLASSIC_COMBO.size, CLASSIC_COMBO.size)
+        for _, region in ipairs({ point:GetRegions() }) do
+            if region ~= point.Highlight and region ~= point.Shine and region:IsObjectType("Texture") then
+                ns.SetComboPart(region, "socket")
+                region:ClearAllPoints()
+                region:SetAllPoints(point)
+                ns.AddComboRimBoost(region)
+            end
+        end
+        ns.SetComboPart(point.Highlight, "gem", scale)
+        point.Highlight:ClearAllPoints()
+        point.Highlight:SetPoint("CENTER", point, "CENTER", 0, ns.COMBO_GEM_RISE * scale)
+        ns.SetComboPart(point.Shine, "shine", scale)
+        point.Shine:ClearAllPoints()
+        point.Shine:SetPoint("CENTER", point.Highlight, "CENTER")
+    end
+end
 
 -- ComboFrame_Update ends in ComboFrame_ApplyOverrides, which on Forever pins the frame back onto
 -- TargetFrame (Camelot ComboFrameOverrides.lua), so the placement is re-applied after it. Only
--- anchors are touched: the point count can be secret and is left to Blizzard's own code.
+-- anchors are touched: the point count can be secret and is left to Blizzard's own code. The row
+-- sits in the health bar's bottom-right corner, its last point (with the talent's extra points,
+-- the last of those) against the corner.
 local function PlaceClassicCombo(combo, f)
     combo:ClearAllPoints()
-    combo:SetPoint("TOPLEFT", f.Health, "TOPLEFT", CLASSIC_COMBO_X, CLASSIC_COMBO_Y)
+    combo:SetPoint("BOTTOMRIGHT", f.Health, "BOTTOMRIGHT", CLASSIC_COMBO.x, CLASSIC_COMBO.y)
     -- the XML arcs the points around the old portrait; the first one used depends on the max
     local first = combo.startComboPointIndex or 2
+    local max = combo.maxComboPoints
+    if not (canaccessvalue(max) and type(max) == "number" and max >= 1) then max = 5 end
+    local last = math.min(first + max - 1, #combo.ComboPoints)
     for i, point in ipairs(combo.ComboPoints) do
         point:ClearAllPoints()
-        point:SetPoint("TOPLEFT", combo, "TOPLEFT", (i - first) * CLASSIC_COMBO_SPACING, 0)
+        point:SetPoint("BOTTOMRIGHT", combo, "BOTTOMRIGHT", (i - last) * CLASSIC_COMBO.spacing, 0)
     end
 end
 
@@ -1118,12 +1197,13 @@ local function ApplyComboMode(f)
         combo:SetParent(hiddenParent)
         return
     end
+    SkinClassicCombo(combo)
     combo:SetParent(f)
     combo:SetFrameStrata(f:GetFrameStrata())
     combo:SetFrameLevel(f.Border:GetFrameLevel() + 2)
     PlaceClassicCombo(combo, f)
-    if not classicComboHooked then
-        classicComboHooked = true
+    if not CLASSIC_COMBO.hooked then
+        CLASSIC_COMBO.hooked = true
         hooksecurefunc("ComboFrame_ApplyOverrides", function(self) PlaceClassicCombo(self, f) end)
     end
 end
@@ -1255,11 +1335,10 @@ end
 -- the incoming-heal / absorb overlays. The icons can be switched off in Unit Frames > General >
 -- Elements (ElementOn). Art: Blizzard atlases with the classic textures as fallback.
 --------------------------------------------------
-local REST_SIZE       = 28
-local LEADER_SIZE     = 20
-local PVP_SIZE        = 24
-local CLASS_ICON_SIZE = 18
-local QUEST_SIZE      = 24     -- the quest "!" height; its width follows the art
+local ICON_SIZE = {
+    rest = 28, leader = 20, pvp = 24, class = 18,
+    quest = 24,   -- the quest "!" height; its width follows the art
+}
 local QUEST_ATLAS     = "QuestNormal"   -- the map's quest-offer "!", as on the nameplate quest tags
 local QUEST_FILE      = "Interface\\GossipFrame\\AvailableQuestIcon"
 -- Blizzard's own CUF_MY_HEAL_PREDICTION_COLOR (CompactUnitFrame.lua:7), opaque as it is there:
@@ -1294,7 +1373,7 @@ local function CreateIndicators(f)
 
     if ind.rest then
         local rest = CreateFrame("Frame", nil, overlay)
-        rest:SetSize(REST_SIZE, REST_SIZE)
+        rest:SetSize(ICON_SIZE.rest, ICON_SIZE.rest)
         local tex = rest:CreateTexture(nil, "OVERLAY")
         tex:SetAllPoints()
         if HasAtlas("UI-HUD-UnitFrame-Player-Rest-Flipbook") then
@@ -1369,13 +1448,13 @@ local function LayoutIndicators(f)
     end
     if f.LeaderIcon then
         f.LeaderIcon:ClearAllPoints()
-        f.LeaderIcon:SetSize(LEADER_SIZE, LEADER_SIZE)
+        f.LeaderIcon:SetSize(ICON_SIZE.leader, ICON_SIZE.leader)
         f.LeaderIcon:SetPoint("CENTER", f, "TOPLEFT", 16, -2)
     end
     if f.PvPIcon then
         -- bottom-left on the player, bottom-right on a mirrored frame: symmetrical across the screen
         f.PvPIcon:ClearAllPoints()
-        f.PvPIcon:SetSize(PVP_SIZE, PVP_SIZE)
+        f.PvPIcon:SetSize(ICON_SIZE.pvp, ICON_SIZE.pvp)
         if mirror then
             f.PvPIcon:SetPoint("CENTER", f, "BOTTOMRIGHT", -4, 2)
         else
@@ -1384,14 +1463,14 @@ local function LayoutIndicators(f)
     end
     if f.ClassIcon then
         f.ClassIcon:ClearAllPoints()
-        f.ClassIcon:SetSize(CLASS_ICON_SIZE, CLASS_ICON_SIZE)
+        f.ClassIcon:SetSize(ICON_SIZE.class, ICON_SIZE.class)
         f.ClassIcon:SetPoint("CENTER", f, "TOPRIGHT", -10, -4)
     end
     if f.QuestIcon then
         f.QuestIcon:ClearAllPoints()
         local info = C_Texture.GetAtlasInfo(QUEST_ATLAS)
         local aspect = (info and info.width > 0 and info.height > 0) and (info.width / info.height) or 1
-        f.QuestIcon:SetSize(QUEST_SIZE * aspect, QUEST_SIZE)
+        f.QuestIcon:SetSize(ICON_SIZE.quest * aspect, ICON_SIZE.quest)
         f.QuestIcon:SetPoint("CENTER", f, "RIGHT", -3, 0)   -- over the right border, mostly inside
     end
     if f.HealClip then
@@ -1629,7 +1708,7 @@ local function LayoutBars(f)
         combo:ClearAllPoints()
         combo:SetPoint("TOPLEFT", health, "TOPLEFT", 0, 0)
         combo:SetPoint("TOPRIGHT", health, "TOPRIGHT", 0, 0)
-        combo:SetHeight(COMBO_HEIGHT)
+        combo:SetHeight(COMBO.height)
         combo:Show()
         LayoutComboSegments(f)
     elseif f.Combo then
@@ -1661,15 +1740,15 @@ function UpdateComboPoints(f)
     local count = 0
     if not UsesClassicCombo(f) and ShouldShowComboPoints() then
         local max = UnitPowerMax("player", Enum.PowerType.ComboPoints)
-        if not (canaccessvalue(max) and max and max >= 1) then max = COMBO_FALLBACK_MAX end
-        count = math.min(max, COMBO_MAX_SEGMENTS)
+        if not (canaccessvalue(max) and max and max >= 1) then max = COMBO.fallbackMax end
+        count = math.min(max, COMBO.maxSegments)
     end
     if count ~= combo.count then
         combo.count = count
         LayoutBars(f)
     end
     if count > 0 then
-        local value = LEM:IsInEditMode() and COMBO_PREVIEW_POINTS or GetComboPoints("player", "target")
+        local value = LEM:IsInEditMode() and COMBO.previewPoints or GetComboPoints("player", "target")
         for i = 1, count do GetComboSegment(f, i):SetValue(value) end
     end
 end
@@ -2233,6 +2312,19 @@ local function BuildSettings(unit)
         settings[#settings + 1] = { name = "Mirror", kind = LEM.SettingType.Checkbox, default = defaults.mirror or false, get = function() local u = GetUnitDb(unit); return u and u.mirror or false end,
             set = function(_, value) local u = GetUnitDb(unit); if not u then return end; u.mirror = value; local f = frames[unit]; if f then LayoutFrame(f); AttachExtras(f); UpdateAll(f) end end }
     end
+    if info.comboPoints then
+        -- Blizzard's own combo points in the health bar's top-left corner instead of FlareUI's strip
+        settings[#settings + 1] = { name = "Classic Combo Points", kind = LEM.SettingType.Checkbox, default = false,
+            get = function() local u = GetUnitDb(unit); return u and u.classicCombo or false end,
+            set = function(_, value)
+                local u = GetUnitDb(unit)
+                if not u then return end
+                u.classicCombo = value
+                local f = frames[unit]
+                if f then ApplyComboMode(f); UpdateAll(f) end
+            end,
+            desc = "Classic combo point gems in the bottom-right corner of the health bar, instead of FlareUI's strip." }
+    end
     if info.happiness then
         settings[#settings + 1] = { name = "Happiness", kind = LEM.SettingType.Checkbox, default = true,
             get = function() local u = GetUnitDb(unit); return not u or u.happiness ~= false end, set = set("happiness"),
@@ -2346,25 +2438,10 @@ function UF:INPUT_DEVICE_INTERFACE_TRANSITION()
     if playerCastHolder then ApplyPosition(playerCastHolder) end
 end
 
--- Saves from before the release name the LS:Borders art FlareUI no longer ships. GetBorderFile
--- already draws the default for them; this makes the Edit Mode dropdowns show it too.
-local REMOVED_BORDERS = { Thick = true, Thin = true }
-local function MigrateRemovedBorders(db)
-    local function fix(t, key)
-        if t and REMOVED_BORDERS[t[key]] then t[key] = DEFAULT_BORDER end
-    end
-    fix(db.playerCastbar, "borderTexture")
-    for _, udb in pairs(db.units or {}) do
-        fix(udb, "border")
-        fix(udb, "castBorderTexture")
-    end
-end
-
 function UF:Init()
     if self.initialized then return end
     local db = GetDb()
     if not db then return end
-    MigrateRemovedBorders(db)
 
     for _, unit in ipairs(UNIT_ORDER) do
         local udb = db.units[unit]
@@ -2372,7 +2449,9 @@ function UF:Init()
             local f = CreateUnitFrame(unit)
             RegisterEditMode(f)
             if UNITS[unit].blizzard then
-                for _, name in ipairs(UNITS[unit].blizzard) do HardHide(name) end
+                for _, name in ipairs(UNITS[unit].blizzard) do
+                    if name == "TargetFrame" and ns.IsGamepadUI() then KeepAsMenuOwner(name, f) else HardHide(name) end
+                end
             end
         end
     end
@@ -2382,6 +2461,8 @@ function UF:Init()
         LEM:AddFrame(holder, OnFrameMoved, DEFAULT_POSITIONS.playercastbar, holder.editModeName)
         LEM:AddFrameSettings(holder, BuildPlayerCastSettings())
         HardHide("PlayerCastingBarFrame")
+        -- the Gamepad UI has a cast bar of its own, big and mid-screen
+        if _G.GamepadPlayerCastingBarFrame then HardHide("GamepadPlayerCastingBarFrame") end
     end
     HookExtras()
     if frames.player then InitFsrSpark() end

@@ -10,7 +10,7 @@ local function UnitToggle(unit, label, order)
     return {
         type = "toggle", name = label, order = order,
         get = function() return ns.db.profile.unitframes.units[unit].enabled end,
-        set = function(_, val) ns.db.profile.unitframes.units[unit].enabled = val; StaticPopup_Show("FLAREUI_RELOAD") end,
+        set = function(_, val) ns.db.profile.unitframes.units[unit].enabled = val; ns.ShowDialog("FLAREUI_RELOAD") end,
     }
 end
 
@@ -33,16 +33,6 @@ local function ElementsGroup(order, list)
         args[entry[1]] = ElementToggle(entry[1], entry[2], i * 10)
         if i % 3 ~= 0 then args["spacer" .. i] = { type = "description", name = "", width = 0.1, order = i * 10 + 1 } end
     end
-    args.break1 = { type = "description", name = " ", order = 900, width = "full" }
-    -- Blizzard's own combo points in the target frame's health bar corner instead of FlareUI's strip
-    args.classicCombo = {
-        type = "toggle", name = "Classic Combo Points", order = 910, width = 1.1,
-        get = function() return ns.db.profile.unitframes.units.target.classicCombo end,
-        set = function(_, val)
-            ns.db.profile.unitframes.units.target.classicCombo = val
-            if ns.UnitFrames then ns.UnitFrames:Refresh() end
-        end,
-    }
     return { type = "group", name = "Elements", order = order, inline = true, args = args }
 end
 
@@ -103,7 +93,7 @@ ns.Options.args.unitframes = {
                         playerCastbar = {
                             type = "toggle", name = "Player Cast Bar", order = 60,
                             get = function() return ns.db.profile.unitframes.playerCastbar.enabled end,
-                            set = function(_, val) ns.db.profile.unitframes.playerCastbar.enabled = val; StaticPopup_Show("FLAREUI_RELOAD") end,
+                            set = function(_, val) ns.db.profile.unitframes.playerCastbar.enabled = val; ns.ShowDialog("FLAREUI_RELOAD") end,
                         },
                     }
                 },
