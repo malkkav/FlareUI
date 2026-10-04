@@ -106,7 +106,7 @@ ns.Options.args.actionbars = {
         -- TAB 2: Scaling
         --------------------------------------------------
         scalingTab = {
-            type = "group", name = "Bar Scaling", order = 20,
+            type = "group", name = "Bar Scaling", order = 40,
             args = {
                 mainBars = {
                     type = "group", name = "Main Bars", order = 10, inline = true,
@@ -143,7 +143,7 @@ ns.Options.args.actionbars = {
         -- TAB 3: Fake Cooldown Manager (FCM)
         --------------------------------------------------
         fakeCMTab = {
-            type = "group", name = "Fake CM", order = 30,
+            type = "group", name = "Fake CM", order = 50,
             args = {
                 header = { type = "header", name = "Fake Cooldown Manager", order = 10 },
 
@@ -364,7 +364,7 @@ ns.Options.args.actionbars = {
         -- TAB 5: Typography
         --------------------------------------------------
         typoTab = {
-            type = "group", name = "Fonts", order = 50,
+            type = "group", name = "Fonts", order = 30,
             args = {
                 hotkey = ns.CreateFontOptions(10, "Keybind Text", "actionbars", "hotkeyFont", false, true),
                 count  = ns.CreateFontOptions(20, "Stack/Charges Count", "actionbars", "countFont", false, true),

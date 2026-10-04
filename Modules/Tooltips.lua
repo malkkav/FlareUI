@@ -425,8 +425,27 @@ end
 --------------------------------------------------
 -- 11. PUBLIC
 --------------------------------------------------
+-- Fonts tab: Blizzard's tooltip font objects, which every tooltip's lines are made from. Title is
+-- the first line (GameTooltipHeaderText); Content the rest (GameTooltipText), with the small lines
+-- (GameTooltipTextSmall) two points under it. Font objects only: no tooltip is touched.
+local function ApplyFonts()
+    local db = GetDb()
+    if not db then return end
+    local function Apply(fontObject, fontDb, sizeOffset)
+        if not (fontObject and fontDb) then return end
+        local flags = fontDb.flags or "NONE"
+        if flags == "NONE" then flags = "" end
+        fontObject:SetFont(ns.GetFontPath(fontDb.face or "Friz Quadrata TT"), (fontDb.size or 12) + (sizeOffset or 0), flags)
+        ns.ApplyShadow(fontObject, fontDb)
+    end
+    Apply(_G.GameTooltipHeaderText, db.titleFont)
+    Apply(_G.GameTooltipText, db.contentFont)
+    Apply(_G.GameTooltipTextSmall, db.contentFont, -2)
+end
+
 function TIP:Refresh()
     if not self.initialized then return end
+    ApplyFonts()
     ApplyScaleToAll()
     if GameTooltip and GameTooltip:IsShown() then
         ApplyColors(GameTooltip, nil)
@@ -460,5 +479,6 @@ function TIP:Init()
     end)
     hooksecurefunc("GameTooltip_SetDefaultAnchor", ApplyAnchor)
 
+    ApplyFonts()
     ApplyScaleToAll()
 end

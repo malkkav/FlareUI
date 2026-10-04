@@ -45,6 +45,14 @@ ns.Options.args.tooltips = {
         --------------------------------------------------
         -- TAB 1: General
         --------------------------------------------------
+        fontsTab = {
+            type = "group", name = "Fonts", order = 30,
+            args = {
+                title   = ns.CreateFontOptions(10, "Title", "tooltips", "titleFont"),
+                content = ns.CreateFontOptions(20, "Content", "tooltips", "contentFont"),
+            },
+        },
+
         generalTab = {
             type = "group", name = "General", order = 10,
             args = {
@@ -106,7 +114,7 @@ ns.Options.args.tooltips = {
         -- TAB 2: Anchor
         --------------------------------------------------
         anchorTab = {
-            type = "group", name = "Anchor", order = 20,
+            type = "group", name = "Anchor", order = 40,
             args = {
                 anchorGroup = {
                     type = "group", name = "Placement", order = 10, inline = true,
@@ -147,7 +155,7 @@ ns.Options.args.tooltips = {
         -- TAB 3: Visibility
         --------------------------------------------------
         visibilityTab = {
-            type = "group", name = "Visibility", order = 30,
+            type = "group", name = "Visibility", order = 20,
             args = {
                 worldGroup = {
                     type = "group", name = "World", order = 10, inline = true,

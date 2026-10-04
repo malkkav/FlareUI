@@ -1471,6 +1471,8 @@ function Chat:UpdateTabFonts()
     FCF_DockUpdate()
 end
 
+local EDIT_BOX_GAP = 1   -- px between the chat window's border and an edit box below / above it
+
 function Chat:StyleEditBox(chatFrame, db)
     if not chatFrame or chatFrame:IsForbidden() then return end
     local eb = chatFrame.editBox or _G[chatFrame:GetName() .. "EditBox"]
@@ -1506,13 +1508,22 @@ function Chat:StyleEditBox(chatFrame, db)
         end
     end
 
+    -- Chat > Frame > Edit Box Position. Outside the window the box is as wide as the window's
+    -- border and EDIT_BOX_GAP away from it (its backdrop reaches 2 px past the box itself).
     eb:ClearAllPoints()
-    local x = db.editBoxX or 0
-    local y = db.editBoxY or 0
-
-    -- Edit Box now defaults to bottom logic
-    eb:SetPoint("TOPLEFT", chatFrame, "BOTTOMLEFT", -2 + x, 30 + y)
-    eb:SetPoint("TOPRIGHT", chatFrame, "BOTTOMRIGHT", 2 + x, 30 + y)
+    local position = db.editBoxPosition or "inside"
+    local skin = chatFrame.FlareUI_Skin
+    if position == "below" and skin then
+        eb:SetPoint("TOPLEFT", skin, "BOTTOMLEFT", 2, -(EDIT_BOX_GAP + 2))
+        eb:SetPoint("TOPRIGHT", skin, "BOTTOMRIGHT", -2, -(EDIT_BOX_GAP + 2))
+    elseif position == "above" and skin then
+        eb:SetPoint("BOTTOMLEFT", skin, "TOPLEFT", 2, EDIT_BOX_GAP + 2)
+        eb:SetPoint("BOTTOMRIGHT", skin, "TOPRIGHT", -2, EDIT_BOX_GAP + 2)
+    else
+        -- over the window's last lines
+        eb:SetPoint("TOPLEFT", chatFrame, "BOTTOMLEFT", -2, 30)
+        eb:SetPoint("TOPRIGHT", chatFrame, "BOTTOMRIGHT", 2, 30)
+    end
 
     local bg = eb.FlareUI_Backdrop
     if not bg then

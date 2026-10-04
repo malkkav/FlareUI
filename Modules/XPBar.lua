@@ -25,7 +25,7 @@ local LSM = LibStub("LibSharedMedia-3.0")
 --------------------------------------------------
 -- 3. CONSTANTS
 --------------------------------------------------
-local TEXTURE_NAME  = "Flat"
+local TEXTURE_NAME  = "FlareUI Flat"
 local BORDER_NAME   = "FlareUI Thin"
 local BORDER_SIZE   = 16
 local BORDER_OUTSET = 4                            -- the border sits this far outside the fill

@@ -18,13 +18,10 @@ local MEDIA_PATH = "Interface/AddOns/" .. ADDON_NAME .. "/Media/"
 -- else the user has installed.
 --------------------------------------------------
 local ASSETS = {
+    -- FlareUI's bar textures: Flat for every bar, Striped for absorbs
     statusbar = {
-        ["Armory"]     = "Bars/Armory.tga",
-        ["Charcoal"]   = "Bars/Charcoal.tga",
-        ["Flat"]       = "Bars/Flat.tga",
-        ["Minimalist"] = "Bars/Minimalist.tga",
-        ["Smooth"]     = "Bars/Smooth.tga",
-        ["Striped"]    = "Bars/Striped.tga",
+        ["FlareUI Flat"]    = "Bars/FlareUI-Flat.tga",
+        ["FlareUI Striped"] = "Bars/FlareUI-Striped.tga",
     },
     -- FlareUI's frame borders (wtf-tools/buildframe.js), grey so each frame's border colour tints
     -- it; 16 px edge. Thick for the unit frames, Thin for chat and the damage meter.

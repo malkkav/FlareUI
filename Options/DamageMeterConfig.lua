@@ -32,17 +32,6 @@ ns.Options.args.damagemeter = {
                     set = function(_, val) ns.db.profile.damagemeter.borderTexture = val; if ns.DamageMeter then ns.DamageMeter:Refresh() end end,
                 },
                 spacer2 = { type = "description", name = "", width = 0.1, order = 25 },
-                barTexture = {
-                    type = "select", name = "Bar Texture", order = 30,
-                    values = function()
-                        local t = MediaList("statusbar")
-                        t[""] = "Blizzard"
-                        return t
-                    end,
-                    get = function() return ns.db.profile.damagemeter.barTexture or "" end,
-                    set = function(_, val) ns.db.profile.damagemeter.barTexture = val; if ns.DamageMeter then ns.DamageMeter:Refresh() end end,
-                },
-                spacer3 = { type = "description", name = "", width = 0.1, order = 35 },
                 matchChatSize = {
                     type = "toggle", name = "Match Chat Frame Size", order = 40, width = 1.2,
                     desc = "The meter takes the size of FlareUI's chat frame, in place of the size set in Edit Mode. Needs the Chat module.",
@@ -111,7 +100,8 @@ ns.Options.args.damagemeter = {
             args = {
                 text = {
                     type = "description", fontSize = "medium", order = 10,
-                    name = "Click between Blizzard's damage meter and Threat tabs in the header to select and show one of them.\n\n"
+                    name = "|cffff4040The Damage Meter only shows with \"Enable Damage Meter\" switched on in Blizzard's Settings, under Advanced Options.|r\n\n"
+                        .. "Click between Blizzard's damage meter and Threat tabs in the header to select and show one of them.\n\n"
                         .. "Right click the Damage Meter title in the header to select what to track (Damage Done, DPS, HPS etc).",
                 },
             }

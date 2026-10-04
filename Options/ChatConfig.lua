@@ -134,9 +134,10 @@ ns.Options.args.chat = {
                         break0         = { type = "description", name = " ", order = 17, width = "full" },
                         editBoxOpacity = { type = "range", name = "Edit Box Opacity", min = 0, max = 1, step = 0.05, order = 20, get = function() return Get("editBoxOpacity") end, set = function(_, val) Set("editBoxOpacity", val) end },
                         spacer3        = { type = "description", name = "", width = 0.1, order = 21 },
-                        editBoxX       = { type = "range", name = "Edit Box X Offset", min = -250, max = 250, step = 1, order = 30, get = function() return Get("editBoxX") end, set = function(_, val) Set("editBoxX", val) end },
-                        spacer2        = { type = "description", name = "", width = 0.1, order = 31 },
-                        editBoxY       = { type = "range", name = "Edit Box Y Offset", min = -250, max = 250, step = 1, order = 40, get = function() return Get("editBoxY") end, set = function(_, val) Set("editBoxY", val) end },
+                        editBoxPosition = { type = "select", name = "Edit Box Position", order = 30,
+                            values = { below = "Below the chat frame", above = "Above the chat frame", inside = "Inside the chat frame" },
+                            sorting = { "below", "above", "inside" },
+                            get = function() return Get("editBoxPosition") or "inside" end, set = function(_, val) Set("editBoxPosition", val) end },
                     }
                 },
 

@@ -198,6 +198,31 @@ do
                 end
             end
         end
+
+        -- Sliders tint themselves the same way: one built after the window opened (another tab) was
+        -- left grey, and AceGUI greys the value box again on every hover (AceGUIWidget-Slider.lua
+        -- EditBox_OnEnter / OnLeave), so the hover is bronze too while our window is open.
+        local sliderConstructor = AceGUI.WidgetRegistry.Slider
+        if sliderConstructor then
+            AceGUI.WidgetRegistry.Slider = function(...)
+                local widget = sliderConstructor(...)
+                local acquire = widget.OnAcquire
+                widget.OnAcquire = function(self, ...)
+                    if acquire then acquire(self, ...) end
+                    TintInnerBorders(self.frame, IsOptionsOpen() and INNER_BORDER or ACEGUI_DEFAULT_BORDER)
+                end
+                local box = widget.editbox
+                if box then
+                    box:HookScript("OnEnter", function(b)
+                        if IsOptionsOpen() then b:SetBackdropBorderColor(OUTER_BORDER[1], OUTER_BORDER[2], OUTER_BORDER[3], 1) end
+                    end)
+                    box:HookScript("OnLeave", function(b)
+                        if IsOptionsOpen() then b:SetBackdropBorderColor(INNER_BORDER[1], INNER_BORDER[2], INNER_BORDER[3], 1) end
+                    end)
+                end
+                return widget
+            end
+        end
     end
 end
 
@@ -530,6 +555,7 @@ function ns.CreateFontOptions(order, label, path, dbKey, showColor, showPos)
             elseif path == "actionbars" and ns.ActionBars then ns.ActionBars:Refresh()
             elseif path == "unitframes" and ns.UnitFrames then ns.UnitFrames:Refresh()
             elseif path == "auras" and ns.Auras then ns.Auras:Refresh()
+            elseif path == "tooltips" and ns.Tooltips then ns.Tooltips:Refresh()
             end
         end
     end

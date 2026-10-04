@@ -62,10 +62,9 @@ local SWIPE_DISC    = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 local WHITE         = "Interface\\Buttons\\WHITE8X8"
 local TEMPLATE      = "CustomAuraContainerTemplate"
 local TIMER_SPACE   = 13      -- room under the icon for a timer placed below it
-local SWIPE_ALPHA   = 0.4     -- how much the spent part of the border dims (Border swipe)
+local SWIPE_ALPHA   = 0.7     -- how much the spent part of the border dims (Border swipe)
 local ICON_SWIPE_ALPHA = 0.7  -- how dark the overlay over the icon is (Icon swipe)
 local SWIPE_EDGE    = MEDIA .. "Edge"   -- the sweeping edge line of the Icon swipe
-local EXPIRE_HIDE   = 0.4     -- seconds an expired button stays hidden while Blizzard removes it
 local PRIVATE_COUNT = 4       -- private aura anchors beside the debuffs
 
 -- the dispel type names Blizzard keys its colour maps by ("None" = no dispel type)
@@ -136,7 +135,7 @@ end
 --------------------------------------------------
 local function StyleButton(button, look)
     local size, round = look.size, look.style == "round"
-    button:SetSize(size, CellHeight(size))
+    button:SetSize(size, look.cellHeight or CellHeight(size))
 
     if not button.FlareUI_Area then
         local area = CreateFrame("Frame", nil, button)
@@ -171,16 +170,6 @@ local function StyleButton(button, look)
         cd:SetHideCountdownNumbers(true)
         cd:SetReverse(true)     -- the spent part grows as the aura runs out
         button.FlareUI_Cooldown = cd
-        -- The sweep ends a moment before Blizzard takes the aura away, and with the overlay gone the
-        -- icon flashed bright for that moment. So the button goes invisible as its sweep ends, and
-        -- comes back when a new sweep starts on it (a refreshed or reassigned aura) or, failing that,
-        -- shortly after (an aura with no duration that takes the button over). Our own frame only:
-        -- nothing handed to Blizzard is touched.
-        cd:SetScript("OnCooldownDone", function()
-            pcall(area.SetAlpha, area, 0)
-            C_Timer.After(EXPIRE_HIDE, function() pcall(area.SetAlpha, area, 1) end)
-        end)
-        cd:HookScript("OnShow", function() pcall(area.SetAlpha, area, 1) end)
 
         local overlay = CreateFrame("Frame", nil, area)
         overlay:SetAllPoints(area)
@@ -240,8 +229,15 @@ local function StyleButton(button, look)
         button.FlareUI_BorderFrame:SetFrameLevel(base + 2)
     end
     button.FlareUI_Overlay:SetFrameLevel(base + 4)
+    -- Square with the Icon swipe: the sweep covers the icon's opening only, in the opening's cut
+    -- shape (the mask art, cropped to the opening). Otherwise it covers the whole cell.
+    local fitIcon = look.swipe == "icon" and not round
     cd:ClearAllPoints()
-    cd:SetAllPoints(area)
+    cd:SetAllPoints(fitIcon and icon or area)
+    if CreateVector2D then
+        local edge = fitIcon and SQUARE_INSET or 0
+        cd:SetTexCoordRange(CreateVector2D(edge, edge), CreateVector2D(1 - edge, 1 - edge))
+    end
     cd:SetUseCircularEdge(round)
     if look.swipe == "none" then
         cd:SetDrawSwipe(false)
@@ -254,7 +250,7 @@ local function StyleButton(button, look)
     else
         -- over the icon: a darker overlay, with a bright sweeping edge (Media/Auras/Edge.tga)
         cd:SetDrawSwipe(true)
-        cd:SetSwipeTexture(round and SWIPE_DISC or WHITE)
+        cd:SetSwipeTexture(round and SWIPE_DISC or SQUARE_MASK)
         cd:SetSwipeColor(0, 0, 0, ICON_SWIPE_ALPHA)
         cd:SetDrawEdge(true)
         cd:SetEdgeTexture(SWIPE_EDGE)
@@ -274,9 +270,13 @@ local function StyleButton(button, look)
     durationText:ClearAllPoints()
     if look.timer == "below" then
         durationText:SetPoint("TOP", area, "BOTTOM", 0, -1)
+    elseif look.timer == "middle" then
+        durationText:SetPoint("CENTER", area, "CENTER", 0, 0)
     else
         durationText:SetPoint("BOTTOM", area, "BOTTOM", 0, 2)
     end
+    -- No Timer: Blizzard still shows and fills the text, so it is hidden by alpha
+    durationText:SetAlpha(look.timer == "none" and 0 or 1)
 end
 
 -- hands our regions to Blizzard's aura button, which then drives them from the aura it shows
@@ -302,7 +302,7 @@ local function HookButton(button, look)
         }
         pcall(button.AddDispelTypeTexture, button, border, options)
     end
-    if not look.isDebuff and button.SetCancelAuraButtons then
+    if not look.isDebuff and look.cancel ~= false and button.SetCancelAuraButtons then
         pcall(button.SetCancelAuraButtons, button, "RightButtonUp")
     end
 end
@@ -320,6 +320,32 @@ local function Look(kind)
         colors = ColorMap(KINDS[kind].isDebuff, db.style == "round"),
     }
 end
+
+-- The same buttons for the unit frames' auras (UnitFrames.lua ConfigureAuraCorner), whether or not
+-- this module is on, in each frame's own look (Edit Mode > Auras: shape, swipe, timer) and the unit
+-- frames' text font (Fonts > Aura Text), its size following the icon's. Cancel by right-click only
+-- on the player's own buffs.
+ns.AuraLook = {
+    Style = StyleButton,
+    Hook = HookButton,
+    ForUnit = function(size, isDebuff, canCancel, style, swipe, timer)
+        local uf = ns.db and ns.db.profile and ns.db.profile.unitframes or {}
+        style, timer = style or "square", timer or "below"
+        local fontSize = math_max(7, math_floor(size * 0.4 + 0.5))
+        local font = setmetatable({ size = fontSize }, { __index = uf.auraFont or {} })
+        return {
+            size = size,
+            style = style,
+            swipe = swipe or "icon",
+            timer = timer,
+            font = font,
+            isDebuff = isDebuff,
+            cancel = canCancel,
+            colors = ColorMap(isDebuff, style == "round"),
+            cellHeight = size + ((timer == "below") and (fontSize + 3) or 0),
+        }
+    end,
+}
 
 --------------------------------------------------
 -- 6. LAYOUT

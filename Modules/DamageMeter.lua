@@ -730,27 +730,9 @@ local function ApplyBarFont(entry, db)
     end
 end
 
--- The bar fill: Blizzard's own atlas unless a texture is picked. Blizzard sets it once, from the entry
--- template, and afterwards only tints it by class, so a texture set here stays put.
-local BLIZZARD_BAR_ATLAS = "UI-HUD-CoolDownManager-Bar"
-local texturedBars = setmetatable({}, { __mode = "k" })
-local function ApplyBarTexture(entry, db)
-    if not entry or entry:IsForbidden() then return end
-    local statusBar = entry.GetStatusBar and entry:GetStatusBar() or entry.StatusBar
-    if not statusBar then return end
-    local name = db.barTexture
-    if name and name ~= "" and LSM:IsValid("statusbar", name) then
-        statusBar:SetStatusBarTexture(LSM:Fetch("statusbar", name))
-        texturedBars[statusBar] = true
-    elseif texturedBars[statusBar] then
-        statusBar:SetStatusBarTexture(BLIZZARD_BAR_ATLAS)
-        texturedBars[statusBar] = nil
-    end
-end
-
+-- The bar fill stays Blizzard's own atlas; only the font is FlareUI's.
 local function StyleEntry(entry, db)
     ApplyBarFont(entry, db)
-    ApplyBarTexture(entry, db)
 end
 
 --------------------------------------------------

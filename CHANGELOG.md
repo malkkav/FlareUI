@@ -1,3 +1,40 @@
+# FlareUI 1.4.2
+
+The cooldown swipe is back on your buffs and debuffs, unit frames get FlareUI's aura icons, and a round of settings clean-up.
+
+## Fixed
+- **Buffs / Debuffs:** the cooldown swipe (Border or Icon) didn't show on real auras since 1.4, only on the Edit Mode samples. It's back.
+- **Buffs / Debuffs:** with Square icons, the Icon swipe now stays inside the icon's cut corners instead of darkening past them.
+- **Settings:** some sliders showed grey boxes instead of bronze ones, depending on the tab you opened and where you hovered. They're all bronze now.
+
+## New
+
+**Unit Frames**
+- The auras on your unit frames now use FlareUI's aura icons: the bronze bevel or round ring, debuffs coloured by type, and the cooldown swipe. Whether the Buffs / Debuffs module is on or not.
+- Each frame sets its own aura **Shape**, **Cooldown Swipe** and **Timer** in Edit Mode (Auras section). Timer has a **No Timer** choice, which replaces the Aura Timers checkbox (if you had it off, your auras start on No Timer).
+- **Fonts > Aura Text:** the font of the aura timers and stacks. Its size follows each frame's Aura Size.
+- **Class Color** checkbox per frame (Edit Mode > Look), on by default. Off, players' health bars are the classic health green. NPCs keep their friendly / hostile colours.
+- The Edit Mode settings fold into sections you open with a click: Frame, Look, Absorbs, Cast Bar, Auras and Icons, with the section names in gold.
+
+**Chat**
+- **Edit Box Position:** below the chat frame, above it, or inside it (as before). It replaces the Edit Box X / Y Offset sliders.
+
+**Buffs / Debuffs**
+- Timer: two more choices, **Middle of the Icon** and **No Timer**.
+
+**Tooltips**
+- **Fonts** tab: Title and Content font, size, outline and shadow. They start at Blizzard's tooltip fonts.
+
+## Changed
+- **Bar textures:** FlareUI now ships two, **FlareUI Flat** and **FlareUI Striped** (absorbs). Armory, Charcoal, Minimalist and Smooth are gone; every bar that used Armory by default is now FlareUI Flat, and a bar set to one of the removed textures switches to FlareUI Flat.
+- **Damage Meter:** the bars keep Blizzard's own texture (the Bar Texture option is gone). How to Use now starts by reminding you that the meter needs **Enable Damage Meter** on in Blizzard's Settings > Advanced Options.
+- **Unit Frames:** Value + Percent health reads `12.4K | 87%`. The Player Cast Bar's Texture setting is now called Bar Texture.
+- **Buffs / Debuffs:** new defaults are Round icons with the Icon swipe and the timer under the icon. The Border swipe darkens more (70%), so it's easier to see. Settings you picked yourself stay.
+- **Tweaks:** the page is split into two tabs, **Interface** and **Gameplay**. Remember Layout per Mode and Offer Gamepad Mode moved to Interface > Windows & Settings.
+- **Fonts:** every font setting now has Enable Shadow on by default.
+- **Tab order:** Action Bars is General / Visibility / Fonts / Bar Scaling / Fake CM; Tooltips is General / Visibility / Fonts / Anchor.
+- **Edit Mode:** no divider line between Reset To Default and Reset To Default Position.
+
 # FlareUI 1.4.1
 
 Your requests: totem timers, movable loot rolls and toasts, smoother fades, and threat in combat.

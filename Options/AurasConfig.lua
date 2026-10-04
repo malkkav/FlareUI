@@ -41,7 +41,8 @@ ns.Options.args.auras = {
                         spacer2 = SP(21),
                         timer = {
                             type = "select", name = "Timer", order = 30, width = 1.1,
-                            values = { below = "Under the Icon", bottom = "Bottom of the Icon" }, sorting = { "below", "bottom" },
+                            values = { below = "Under the Icon", bottom = "Bottom of the Icon", middle = "Middle of the Icon", none = "No Timer" },
+                            sorting = { "below", "bottom", "middle", "none" },
                             get = function() return Get("timer") end, set = Set("timer"),
                         },
                         break1 = { type = "description", name = " ", order = 35, width = "full" },
@@ -52,7 +53,7 @@ ns.Options.args.auras = {
                         },
                     },
                 },
-                font = ns.CreateFontOptions(20, "Timer & Stacks", "auras", "font"),
+                font = ns.CreateFontOptions(20, "Timer & Stacks Font", "auras", "font"),
             },
         },
     },

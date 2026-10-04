@@ -130,7 +130,7 @@ local hideToggle = function(key, label, order)
 end
 
 ns.Options.args.actionbars.args.visibilityTab = {
-    type = "group", name = "Visibility", order = 25,
+    type = "group", name = "Visibility", order = 20,
     args = {
         selector = {
             type = "select", name = "Select Frame to Edit",

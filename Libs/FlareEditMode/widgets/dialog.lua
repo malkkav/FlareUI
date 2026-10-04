@@ -272,6 +272,7 @@ function internal:CreateDialog()
 	local divider = dialogSettings:CreateTexture(nil, 'ARTWORK')
 	divider:SetSize(330, 16)
 	divider:SetTexture([[Interface\FriendsFrame\UI-FriendsFrame-OnlineDivider]])
+	divider:Hide() -- FlareUI: no line between Reset To Default and Reset To Default Position
 	dialogSettings.Divider = divider
 
 	local dialogButtons = CreateFrame('Frame', nil, dialog, 'VerticalLayoutFrame')

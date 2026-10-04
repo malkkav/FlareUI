@@ -153,8 +153,7 @@ local defaults = {
 
             -- Edit Box (fixed look: black background + tooltip border tinted ns.BORDER_COLOR)
             editBoxOpacity = 1.0,
-            editBoxX = 0,
-            editBoxY = 0,
+            editBoxPosition = "inside",  -- inside | below | above the chat window
 
             -- Header buttons (fixed icon color #9C7A4A)
             showVolume = true,
@@ -193,7 +192,7 @@ local defaults = {
             -- Typography
             chatFont = { face = "Arial Narrow", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             tabFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1, useCustomColor = true, color = { r = 0.80, g = 0.60, b = 0.34, a = 1 } },   -- fixed (no options); active tab #CC9957
-            editBoxFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = false, shadowX = 1, shadowY = -1 },
+            editBoxFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
         },
 
         -- [[ ACTION BARS MODULE ]]
@@ -246,7 +245,6 @@ local defaults = {
             -- Look shared with the chat frame: background opacity, border and bar texture are user-facing
             opacity = 0.6,
             borderTexture = "FlareUI Thin",
-            barTexture = "",            -- "" = Blizzard's own bar
             textPadding = 2,
             hideHeader = false,
             barFont = { face = "Friz Quadrata TT", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -283,29 +281,36 @@ local defaults = {
             layouts = {},
             -- Blizzard's totem frame on FlareUI Totems (Modules/Totems.lua): size in %, totems per row
             totems = { size = 95, perRow = 4 },
+            -- the auras' text (FlareUI's aura buttons, Auras.lua ns.AuraLook; their look is set per frame
+            -- in Edit Mode); the size follows the icon size, so auraFont.size is not used
+            auraFont = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            editSections = {},          -- Edit Mode sections left open (shared by every frame)
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
-            playerCastbar = { enabled = true, width = 292, height = 26, texture = "Armory", borderTexture = "FlareUI Thick", icon = true, name = true, timer = true },
+            playerCastbar = { enabled = true, width = 292, height = 26, texture = "FlareUI Flat", borderTexture = "FlareUI Thick", icon = true, name = true, timer = true },
             units = {
                 player       = { enabled = true, width = 240, height = 60, powerHeight = 14, healthText = "percent", powerText = true, showLevel = true,
-                                 texture = "Flat", border = "FlareUI Thick",
-                                 absorbTexture = "Striped", absorbReverseFill = true,
-                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 10, onlyMyDebuffs = true, hidePermanentBuffs = true },
+                                 texture = "FlareUI Flat", border = "FlareUI Thick",
+                                 absorbTexture = "FlareUI Striped", absorbReverseFill = true,
+                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 10, onlyMyDebuffs = true, hidePermanentBuffs = true,
+                                 auraStyle = "square", auraSwipe = "icon", auraTimer = "none" },
                 target       = { enabled = true, width = 240, height = 60, powerHeight = 0, healthText = "percent", powerText = true, showLevel = true, mirror = true,
                                  classicCombo = false,
-                                 texture = "Flat", border = "FlareUI Thick",
-                                 absorbTexture = "Striped", absorbReverseFill = true,
-                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "Armory", castBorderTexture = "FlareUI Thick", castIcon = true, castTimer = true,
-                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 10, onlyMyDebuffs = true, hidePermanentBuffs = true },
+                                 texture = "FlareUI Flat", border = "FlareUI Thick",
+                                 absorbTexture = "FlareUI Striped", absorbReverseFill = true,
+                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thick", castIcon = true, castTimer = true,
+                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 10, onlyMyDebuffs = true, hidePermanentBuffs = true,
+                                 auraStyle = "square", auraSwipe = "icon", auraTimer = "none" },
                 targettarget = { enabled = false, width = 120, height = 28, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
-                                 texture = "Flat", border = "FlareUI Thick" },
+                                 texture = "FlareUI Flat", border = "FlareUI Thick" },
                 focus        = { enabled = true, width = 160, height = 36, powerHeight = 0, healthText = "percent", powerText = false, showLevel = true, mirror = true,
-                                 texture = "Flat", border = "FlareUI Thick",
-                                 absorbTexture = "Striped", absorbReverseFill = true,
-                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "Armory", castBorderTexture = "FlareUI Thick", castIcon = true, castTimer = true,
-                                 buffs = "OFF", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 6, onlyMyDebuffs = true, hidePermanentBuffs = true },
+                                 texture = "FlareUI Flat", border = "FlareUI Thick",
+                                 absorbTexture = "FlareUI Striped", absorbReverseFill = true,
+                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thick", castIcon = true, castTimer = true,
+                                 buffs = "OFF", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 6, onlyMyDebuffs = true, hidePermanentBuffs = true,
+                                 auraStyle = "square", auraSwipe = "icon", auraTimer = "none" },
                 pet          = { enabled = true, width = 120, height = 28, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
-                                 texture = "Flat", border = "FlareUI Thick",
-                                 absorbTexture = "Striped", absorbReverseFill = true },
+                                 texture = "FlareUI Flat", border = "FlareUI Thick",
+                                 absorbTexture = "FlareUI Striped", absorbReverseFill = true },
             },
             -- icons and overlays, each switched for every frame that has it (Unit Frames > General > Elements)
             elements = {
@@ -333,11 +338,11 @@ local defaults = {
         -- [[ AURAS MODULE ]] the player's buffs and debuffs (Modules/Auras.lua)
         auras = {
             enabled = false,
-            style = "square",           -- square | round
+            style = "round",            -- square | round
             swipe = "icon",             -- border | icon | none
             timer = "below",            -- below (under the icon) | bottom (along its bottom edge)
             weaponEnchants = true,
-            font = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
+            font = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- per frame, set in Edit Mode
             buffs   = { size = 26, perRow = 9, max = 27, spacing = 4, grow = "LEFT", wrap = "DOWN" },
             debuffs = { size = 30, perRow = 8, max = 16, spacing = 4, grow = "LEFT", wrap = "UP" },
@@ -355,6 +360,9 @@ local defaults = {
             borderByClass = true,
             borderByQuality = true,
             hideHealthBar = true,
+            -- fonts: Blizzard's tooltip fonts (GameTooltipHeaderText / GameTooltipText), shadow on
+            titleFont   = { face = "Friz Quadrata TT", size = 14, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            contentFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
 
             -- content
             nameColor = "class",          -- none | reaction | class
@@ -570,6 +578,29 @@ f:SetScript("OnEvent", function(self, event, ...)
                 if p then
                     for k in pairs(DEPRECATED_PROFILE_KEYS) do
                         if p[k] ~= nil then p[k] = nil end
+                    end
+                end
+                -- 1.4.2: FlareUI's bar textures are FlareUI Flat and FlareUI Striped; Flat and Striped
+                -- were renamed and the other four removed. Saved texture names (texture, castTexture,
+                -- absorbTexture...) follow in every profile, once.
+                do
+                    local RENAMED_BARS = { Flat = "FlareUI Flat", Striped = "FlareUI Striped", Armory = "FlareUI Flat",
+                        Charcoal = "FlareUI Flat", Minimalist = "FlareUI Flat", Smooth = "FlareUI Flat" }
+                    local function RenameBars(t, depth)
+                        if depth > 8 then return end
+                        for k, v in pairs(t) do
+                            if type(v) == "table" then
+                                RenameBars(v, depth + 1)
+                            elseif type(k) == "string" and k:find("[Tt]exture$") and RENAMED_BARS[v] then
+                                t[k] = RENAMED_BARS[v]
+                            end
+                        end
+                    end
+                    if db.sv and type(db.sv.profiles) == "table" then RenameBars(db.sv.profiles, 0) end
+                    for _, profile in pairs(db.sv and db.sv.profiles or {}) do
+                        if type(profile) == "table" and type(profile.damagemeter) == "table" then
+                            profile.damagemeter.barTexture = nil   -- the meter keeps Blizzard's bar
+                        end
                     end
                 end
                 -- Moved to ns.CharDB (see CHARACTER IDENTITY): AceDB's per-character slots are

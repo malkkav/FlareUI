@@ -42,7 +42,7 @@ local BORDER_SIZE   = 16
 local BG_OPACITY    = 0
 local DEFAULT_BORDER_COLOR = ns.BORDER_COLOR   -- FlareUI's border bronze, fixed (no option)
 local DEFAULT_BORDER  = "FlareUI Thick"
-local DEFAULT_TEXTURE = "Flat"
+local DEFAULT_TEXTURE = "FlareUI Flat"
 local SEPARATOR_TEXTURE = "Interface\\Common\\UI-TooltipDivider-Transparent"   -- same as chat / damage meter
 local SEPARATOR_HEIGHT  = 8
 local AURA_GAP      = 4     -- between the frame (or cast bar) and the aura rows
@@ -274,9 +274,11 @@ end
 -- Percent curve (0..1 -> 0..100) so UnitHealthPercent's secret result can be shown directly
 local percentCurve = CurveConstants.ScaleTo100
 
+-- a name LibSharedMedia does not know (a removed texture, another addon's media gone) falls back
+-- to FlareUI Flat
 local function GetBarTexture(name)
-    if name == "" then name = nil end
-    return LSM:Fetch("statusbar", name or DEFAULT_TEXTURE) or "Interface\\TargetingFrame\\UI-StatusBar"
+    if not (name and name ~= "" and LSM:IsValid("statusbar", name)) then name = DEFAULT_TEXTURE end
+    return LSM:Fetch("statusbar", name) or "Interface\\TargetingFrame\\UI-StatusBar"
 end
 
 -- a name LibSharedMedia does not know (a removed media pack, an old save) falls back to the default
@@ -323,10 +325,12 @@ local function ApplyFont(fontString, fontDb)
     ns.ApplyShadow(fontString, fontDb)
 end
 
--- r, g, b for the health bar: class colour for players, reaction colour for NPCs. Class can be a
--- secret in restricted PvP; fall back to the reaction colour rather than inspect it.
-local function GetHealthColor(unit)
+-- r, g, b for the health bar: class colour for players (classic green with the frame's Class Color
+-- off), reaction colour for NPCs. Class can be a secret in restricted PvP; fall back to the
+-- reaction colour rather than inspect it.
+local function GetHealthColor(unit, classColor)
     if not UnitIsConnected(unit) then return GREY[1], GREY[2], GREY[3] end
+    if UnitIsPlayer(unit) and not classColor then return 0, 1, 0 end
     if UnitIsPlayer(unit) then
         local _, classFile = UnitClass(unit)
         if canaccessvalue(classFile) and classFile then
@@ -455,7 +459,7 @@ local function UpdateHealth(f)
 
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     bar:SetValue(UnitHealth(unit))
-    bar:SetStatusBarColor(GetHealthColor(unit))
+    bar:SetStatusBarColor(GetHealthColor(unit, not udb or udb.classColor ~= false))
 
     local mode = udb and udb.healthText or "percent"
     local text = f.HealthText
@@ -468,7 +472,7 @@ local function UpdateHealth(f)
     elseif mode == "value" then
         text:SetText(AbbreviateNumbers(UnitHealth(unit)))
     elseif mode == "both" then
-        text:SetFormattedText("%s  %.0f%%", AbbreviateNumbers(UnitHealth(unit)), UnitHealthPercent(unit, true, percentCurve))
+        text:SetFormattedText("%s | %.0f%%", AbbreviateNumbers(UnitHealth(unit)), UnitHealthPercent(unit, true, percentCurve))
     else
         text:SetText("")
     end
@@ -902,7 +906,13 @@ end
 
 -- initializeFrame: Blizzard calls this for every pooled aura button; we build the visuals once
 -- and register them so the (secure) button drives icon, cooldown, stacks, duration, dispel colour
-local function InitAuraButton(button, size, isDebuff, unit, font, showTimer)
+local function InitAuraButton(button, size, isDebuff, unit, font, showTimer, look)
+    -- the Buffs / Debuffs look (Auras.lua ns.AuraLook); the plain style below is the fallback
+    if look then
+        ns.AuraLook.Style(button, look)
+        ns.AuraLook.Hook(button, look)
+        return
+    end
     button:SetSize(size, size)
     if not button.FlareUI_Icon then
         local bg = button:CreateTexture(nil, "BACKGROUND")
@@ -1017,13 +1027,16 @@ local function ConfigureAuraCorner(f, corner, lanes)
     for index, lane in ipairs(lanes) do
         local key = lane.key .. gen
         local isDebuff, unit, font = lane.isDebuff, f.unit, db and db.font
-        local showTimer = udb.auraTimers ~= false
+        -- Edit Mode > Auras > Timer; the older Aura Timers checkbox left off reads as No Timer
+        local auraTimer = udb.auraTimer or (udb.auraTimers == false and "none") or "below"
+        local showTimer = auraTimer ~= "none"
+        local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, unit == "player", udb.auraStyle, udb.auraSwipe, auraTimer)
         local ok, err = pcall(container.AddAuraGroup, container, key, lane.filter, {
             maxFrameCount = max,
             candidateFilters = lane.candidates,
-            initializeFrame = function(button) InitAuraButton(button, size, isDebuff, unit, font, showTimer) end,
+            initializeFrame = function(button) InitAuraButton(button, size, isDebuff, unit, font, showTimer, look) end,
             layout = {
-                elementWidth = size, elementHeight = size,
+                elementWidth = size, elementHeight = look and look.cellHeight or size,
                 elementSpacing = AURA_SPACING, lineSpacing = AURA_SPACING,
                 groupSpacing = AURA_SPACING, groupLineSpacing = AURA_SPACING,
                 layoutIndex = index,
@@ -1425,8 +1438,8 @@ local HEAL_COLOR      = { 11/255, 136/255, 105/255, 1 }   -- #0B8869, incoming h
 -- Blizzard draws absorbs as the tiled raidframe-shield-fill atlas rather than a flat colour; this is
 -- our striped texture tinted to that art's pale steel blue.
 local ABSORB_COLOR    = { 0.67, 0.78, 0.92, 1 }           -- damage absorbs
-local HEAL_TEXTURE    = "Armory"
-local ABSORB_TEXTURE  = "Striped"
+local HEAL_TEXTURE    = "FlareUI Flat"
+local ABSORB_TEXTURE  = "FlareUI Striped"
 
 local function HasAtlas(name)
     return name ~= nil and C_Texture.GetAtlasInfo(name) ~= nil
@@ -2363,7 +2376,7 @@ local function BuildPlayerCastSettings()
     return {
         { name = "Width", kind = LEM.SettingType.Slider, default = 292, minValue = 100, maxValue = 600, valueStep = 2, get = get("width", 292), set = set("width") },
         { name = "Height", kind = LEM.SettingType.Slider, default = 26, minValue = 8, maxValue = 48, valueStep = 1, get = get("height", 26), set = set("height") },
-        { name = "Texture", kind = LEM.SettingType.Dropdown, default = "Armory", values = BuildTextureValues(true), get = get("texture", "Armory"), set = set("texture") },
+        { name = "Bar Texture", kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(true), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
         { name = "Border Texture", kind = LEM.SettingType.Dropdown, default = DEFAULT_BORDER, values = BuildBorderValues(false), get = get("borderTexture", DEFAULT_BORDER), set = set("borderTexture") },
         { name = "Icon", kind = LEM.SettingType.Checkbox, default = true, get = get("icon", true), set = set("icon") },
         { name = "Spell Name", kind = LEM.SettingType.Checkbox, default = true, get = get("name", true), set = set("name") },
@@ -2422,6 +2435,104 @@ local function BuildSettings(unit)
             end,
             desc = "Classic combo point gems in the bottom-right corner of the health bar, instead of FlareUI's strip." }
     end
+    -- The sections fold away: a click on a section's name opens or closes it (FlareEditMode
+    -- expander), and which are open is shared by every frame (unitframes.editSections).
+    local function SectionOpen(name)
+        local db = GetDb()
+        return db and db.editSections and db.editSections[name] or false
+    end
+    local function Section(name, items)
+        settings[#settings + 1] = { name = "|cffffd100" .. name .. "|r", kind = LEM.SettingType.Expander, default = false,
+            get = function() return SectionOpen(name) end,
+            set = function(_, value)
+                local db = GetDb()
+                if not db then return end
+                db.editSections = db.editSections or {}
+                db.editSections[name] = value and true or nil
+            end }
+        for _, item in ipairs(items) do
+            local own = item.hidden
+            item.hidden = function(...)
+                if not SectionOpen(name) then return true end
+                if type(own) == "function" then return own(...) end
+                return own
+            end
+            settings[#settings + 1] = item
+        end
+    end
+
+    -- everything above is the frame itself, and gets the first section
+    local frameItems = settings
+    settings = {}
+    Section("Frame", frameItems)
+
+    Section("Look", {
+        { name = "Bar Texture", kind = LEM.SettingType.Dropdown, default = defaults.texture or DEFAULT_TEXTURE, values = BuildTextureValues(false),
+          get = function() local u = GetUnitDb(unit); return u and u.texture or DEFAULT_TEXTURE end, set = set("texture") },
+        { name = "Border Texture", kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BORDER, values = BuildBorderValues(false),
+          get = function() local u = GetUnitDb(unit); return u and u.border or DEFAULT_BORDER end, set = set("border") },
+        { name = "Class Color", kind = LEM.SettingType.Checkbox, default = true,
+          desc = "Players' health bars in their class colour. Off: the classic health green. NPCs keep their friendly / hostile colours.",
+          get = function() local u = GetUnitDb(unit); return u == nil or u.classColor ~= false end, set = set("classColor") },
+    })
+    if info.indicators and info.indicators.heals then
+        Section("Absorbs", {
+            { name = "Absorb Texture", kind = LEM.SettingType.Dropdown,
+              default = defaults.absorbTexture or "", values = BuildTextureValues(true),
+              get = function() local u = GetUnitDb(unit); return u and u.absorbTexture or "" end,
+              set = set("absorbTexture") },
+            { name = "Absorb Reverse Fill", kind = LEM.SettingType.Checkbox,
+              default = defaults.absorbReverseFill ~= false,
+              get = function() local u = GetUnitDb(unit); return u and u.absorbReverseFill ~= false end,
+              set = set("absorbReverseFill") },
+        })
+    end
+    if info.castbar then
+        Section("Cast Bar", {
+            { name = "Cast Bar Position", kind = LEM.SettingType.Dropdown, default = defaults.castbarPosition or "BOTTOM",
+              values = { { text = "Above", value = "TOP", isRadio = true }, { text = "Below", value = "BOTTOM", isRadio = true } },
+              get = get("castbarPosition"), set = set("castbarPosition") },
+            { name = "Cast Bar Height", kind = LEM.SettingType.Slider, default = defaults.castHeight or CAST_HEIGHT, minValue = 8, maxValue = 40, valueStep = 1, get = get("castHeight"), set = set("castHeight") },
+            { name = "Cast Bar Texture", kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(true), get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture") },
+            { name = "Cast Bar Border Texture", kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
+              get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture") },
+            { name = "Cast Icon", kind = LEM.SettingType.Checkbox, default = defaults.castIcon ~= false, get = function() local u = GetUnitDb(unit); return u and u.castIcon ~= false end, set = set("castIcon") },
+            { name = "Cast Timer", kind = LEM.SettingType.Checkbox, default = defaults.castTimer ~= false, get = function() local u = GetUnitDb(unit); return u and u.castTimer ~= false end, set = set("castTimer") },
+        })
+    end
+    if info.auras then
+        local positions = {
+            { text = "Off",          value = "OFF",         isRadio = true },
+            { text = "Top Left",     value = "TOPLEFT",     isRadio = true },
+            { text = "Top Right",    value = "TOPRIGHT",    isRadio = true },
+            { text = "Bottom Left",  value = "BOTTOMLEFT",  isRadio = true },
+            { text = "Bottom Right", value = "BOTTOMRIGHT", isRadio = true },
+        }
+        Section("Auras", {
+            { name = "Buffs", kind = LEM.SettingType.Dropdown, default = defaults.buffs or "OFF", values = positions, get = get("buffs"), set = set("buffs") },
+            { name = "Debuffs", kind = LEM.SettingType.Dropdown, default = defaults.debuffs or "OFF", values = positions, get = get("debuffs"), set = set("debuffs") },
+            { name = "Aura Size", kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1, get = get("auraSize"), set = set("auraSize") },
+            { name = "Max Per Type", kind = LEM.SettingType.Slider, default = defaults.auraMax or 16, minValue = 1, maxValue = 40, valueStep = 1, get = get("auraMax"), set = set("auraMax") },
+            { name = "Only My Debuffs", kind = LEM.SettingType.Checkbox, default = defaults.onlyMyDebuffs or false, get = get("onlyMyDebuffs"), set = set("onlyMyDebuffs") },
+            { name = "Hide Permanent Buffs", kind = LEM.SettingType.Checkbox, default = defaults.hidePermanentBuffs or false, get = get("hidePermanentBuffs"), set = set("hidePermanentBuffs") },
+            { name = "Shape", kind = LEM.SettingType.Dropdown, default = defaults.auraStyle or "square",
+              values = { { text = "Square", value = "square", isRadio = true }, { text = "Round", value = "round", isRadio = true } },
+              get = function() local u = GetUnitDb(unit); return u and u.auraStyle or "square" end, set = set("auraStyle") },
+            { name = "Cooldown Swipe", kind = LEM.SettingType.Dropdown, default = defaults.auraSwipe or "icon",
+              values = { { text = "Border", value = "border", isRadio = true }, { text = "Icon", value = "icon", isRadio = true },
+                         { text = "None", value = "none", isRadio = true } },
+              get = function() local u = GetUnitDb(unit); return u and u.auraSwipe or "icon" end, set = set("auraSwipe") },
+            { name = "Timer", kind = LEM.SettingType.Dropdown, default = defaults.auraTimer or "none",
+              values = { { text = "Under the Icon", value = "below", isRadio = true }, { text = "Bottom of the Icon", value = "bottom", isRadio = true },
+                         { text = "Middle of the Icon", value = "middle", isRadio = true }, { text = "No Timer", value = "none", isRadio = true } },
+              get = function()
+                  local u = GetUnitDb(unit)
+                  if not u then return defaults.auraTimer or "none" end
+                  return u.auraTimer or (u.auraTimers == false and "none") or "below"
+              end, set = set("auraTimer") },
+        })
+    end
+
     local icons = ICON_UI.List(unit)
     if #icons > 0 then
         local values = {}
@@ -2449,8 +2560,7 @@ local function BuildSettings(unit)
             end
         end
         local function iconHidden() return not ICON_UI.Shown(unit, ICON_UI.Selected(unit)) end
-        tAppendAll(settings, {
-            { name = "Icons", kind = LEM.SettingType.Divider },
+        Section("Icons", {
             { name = "Icon", kind = LEM.SettingType.Dropdown, default = icons[1], values = values,
               desc = "Pick an icon to switch, move and size it. It shows on the frame while Edit Mode is open.",
               get = function() return ICON_UI.Selected(unit) end,
@@ -2470,54 +2580,6 @@ local function BuildSettings(unit)
               hidden = iconHidden, get = iconGet("scale", 100), set = iconSet("scale"),
               formatter = function(value) return value .. "%" end },
         })
-    end
-    tAppendAll(settings, {
-        { name = "Look", kind = LEM.SettingType.Divider },
-        { name = "Bar Texture", kind = LEM.SettingType.Dropdown, default = defaults.texture or DEFAULT_TEXTURE, values = BuildTextureValues(false),
-          get = function() local u = GetUnitDb(unit); return u and u.texture or DEFAULT_TEXTURE end, set = set("texture") },
-        { name = "Border Texture", kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BORDER, values = BuildBorderValues(false),
-          get = function() local u = GetUnitDb(unit); return u and u.border or DEFAULT_BORDER end, set = set("border") },
-    })
-    if info.indicators and info.indicators.heals then
-        settings[#settings + 1] = { name = "Absorbs", kind = LEM.SettingType.Divider }
-        settings[#settings + 1] = { name = "Absorb Texture", kind = LEM.SettingType.Dropdown,
-            default = defaults.absorbTexture or "", values = BuildTextureValues(true),
-            get = function() local u = GetUnitDb(unit); return u and u.absorbTexture or "" end,
-            set = set("absorbTexture") }
-        settings[#settings + 1] = { name = "Absorb Reverse Fill", kind = LEM.SettingType.Checkbox,
-            default = defaults.absorbReverseFill ~= false,
-            get = function() local u = GetUnitDb(unit); return u and u.absorbReverseFill ~= false end,
-            set = set("absorbReverseFill") }
-    end
-    if info.castbar then
-        settings[#settings + 1] = { name = "Cast Bar", kind = LEM.SettingType.Divider }
-        settings[#settings + 1] = { name = "Cast Bar Position", kind = LEM.SettingType.Dropdown, default = defaults.castbarPosition or "BOTTOM",
-            values = { { text = "Above", value = "TOP", isRadio = true }, { text = "Below", value = "BOTTOM", isRadio = true } },
-            get = get("castbarPosition"), set = set("castbarPosition") }
-        settings[#settings + 1] = { name = "Cast Bar Height", kind = LEM.SettingType.Slider, default = defaults.castHeight or CAST_HEIGHT, minValue = 8, maxValue = 40, valueStep = 1, get = get("castHeight"), set = set("castHeight") }
-        settings[#settings + 1] = { name = "Cast Bar Texture", kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(true), get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture") }
-        settings[#settings + 1] = { name = "Cast Bar Border Texture", kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
-            get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture") }
-        settings[#settings + 1] = { name = "Cast Icon", kind = LEM.SettingType.Checkbox, default = defaults.castIcon ~= false, get = function() local u = GetUnitDb(unit); return u and u.castIcon ~= false end, set = set("castIcon") }
-        settings[#settings + 1] = { name = "Cast Timer", kind = LEM.SettingType.Checkbox, default = defaults.castTimer ~= false, get = function() local u = GetUnitDb(unit); return u and u.castTimer ~= false end, set = set("castTimer") }
-    end
-    if info.auras then
-        local positions = {
-            { text = "Off",          value = "OFF",         isRadio = true },
-            { text = "Top Left",     value = "TOPLEFT",     isRadio = true },
-            { text = "Top Right",    value = "TOPRIGHT",    isRadio = true },
-            { text = "Bottom Left",  value = "BOTTOMLEFT",  isRadio = true },
-            { text = "Bottom Right", value = "BOTTOMRIGHT", isRadio = true },
-        }
-        settings[#settings + 1] = { name = "Auras", kind = LEM.SettingType.Divider }
-        settings[#settings + 1] = { name = "Buffs", kind = LEM.SettingType.Dropdown, default = defaults.buffs or "OFF", values = positions, get = get("buffs"), set = set("buffs") }
-        settings[#settings + 1] = { name = "Debuffs", kind = LEM.SettingType.Dropdown, default = defaults.debuffs or "OFF", values = positions, get = get("debuffs"), set = set("debuffs") }
-        settings[#settings + 1] = { name = "Aura Size", kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1, get = get("auraSize"), set = set("auraSize") }
-        settings[#settings + 1] = { name = "Max Per Type", kind = LEM.SettingType.Slider, default = defaults.auraMax or 16, minValue = 1, maxValue = 40, valueStep = 1, get = get("auraMax"), set = set("auraMax") }
-        settings[#settings + 1] = { name = "Only My Debuffs", kind = LEM.SettingType.Checkbox, default = defaults.onlyMyDebuffs or false, get = get("onlyMyDebuffs"), set = set("onlyMyDebuffs") }
-        settings[#settings + 1] = { name = "Hide Permanent Buffs", kind = LEM.SettingType.Checkbox, default = defaults.hidePermanentBuffs or false, get = get("hidePermanentBuffs"), set = set("hidePermanentBuffs") }
-        settings[#settings + 1] = { name = "Aura Timers", kind = LEM.SettingType.Checkbox, default = defaults.auraTimers ~= false,
-            get = function() local u = GetUnitDb(unit); return u ~= nil and u.auraTimers ~= false end, set = set("auraTimers") }
     end
     return settings
 end

@@ -6,6 +6,14 @@ local _, ns = ...
 -- Everything else (size, look, texts, cast bars, auras) is tuned per frame in Edit Mode (click a frame
 -- while Edit Mode is open); positions save per layout.
 --------------------------------------------------
+-- Fonts > Aura Text: face, outline and shadow; the size follows each frame's Aura Size
+local function AuraTextOptions(order)
+    local group = ns.CreateFontOptions(order, "Aura Text", "unitframes", "auraFont")
+    group.args.size = nil
+    group.args.spacerH = nil
+    return group
+end
+
 local function UnitToggle(unit, label, order)
     return {
         type = "toggle", name = label, order = order,
@@ -85,6 +93,7 @@ ns.Options.args.unitframes = {
                 main  = ns.CreateFontOptions(10, "Level / Name / Health", "unitframes", "font"),
                 power = ns.CreateFontOptions(20, "Power Text", "unitframes", "fontPower"),
                 cast  = ns.CreateFontOptions(30, "Spell Name / Timer", "unitframes", "fontCast"),
+                auraText = AuraTextOptions(40),
             },
         },
 
