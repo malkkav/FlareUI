@@ -96,6 +96,14 @@ ns.Options.args.damagemeter = {
                     get = function() return ns.db.profile.damagemeter.countdownButton ~= false end,
                     set = function(_, val) ns.db.profile.damagemeter.countdownButton = val; if ns.DamageMeter then ns.DamageMeter:Refresh() end end,
                 },
+                spacer4 = { type = "description", name = "", width = 0.1, order = 51 },
+                autoThreat = {
+                    type = "toggle", name = "Threat View in Combat", order = 60, width = 1.2,
+                    desc = "The meter switches to the Threat tab when combat starts and back to Blizzard's view when it ends.",
+                    disabled = function() return not ns.db.profile.damagemeter.threatTab end,
+                    get = function() return ns.db.profile.damagemeter.autoThreat end,
+                    set = function(_, val) ns.db.profile.damagemeter.autoThreat = val end,
+                },
             }
         },
         howToGroup = {

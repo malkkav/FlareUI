@@ -1,3 +1,18 @@
+# FlareUI 1.4.1
+
+Your requests: totem timers, movable loot rolls and toasts, smoother fades, and threat in combat.
+
+## New
+- **Totem timers:** with FlareUI's player frame on, shamans lost Blizzard's totem timers, which hang off the player frame FlareUI replaces. They are back on their own Edit Mode frame, FlareUI Totems, under the player frame. They are Blizzard's own timers, so right-click a totem to dismiss it as before. In Edit Mode, set the frame's Size and Totems per Row (4 for one row, 2 for a 2 x 2 grid); four sample totems show while you place it.
+- **Loot rolls and toasts you can move:** Need / Greed / Pass frames and Blizzard's pop-up toasts (new recipe learned, achievements, loot won) no longer sit stuck above the action bars. Place them in Edit Mode with FlareUI Loot Rolls and FlareUI Toasts, each with a sample to see while you place it. Toasts no longer climb over the loot rolls either. Part of Tweaks: Windows & Settings > Move Loot Rolls & Toasts.
+- **Damage Meter:** Features > Threat View in Combat. The meter switches to the Threat tab when combat starts and back to Blizzard's view when it ends. Off by default.
+
+## Fixed
+- Action bar fading: fades in and out were choppy, about ten steps a second. They now run smoothly at your frame rate.
+
+## Changed
+- Unit Frames: the pet frame is 120 wide again by default, with its right edge lined up with the player frame's. This only changes a size and position you never set yourself.
+
 # FlareUI 1.4
 
 A new module for your buffs and debuffs, and FlareUI's own frame borders.

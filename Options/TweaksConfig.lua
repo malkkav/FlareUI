@@ -70,6 +70,9 @@ ns.Options.args.tweaks = {
                     end,
                     func = function() ns.ShowDialog("FLAREUI_SYNC_SOURCE") end,
                 },
+                break1 = { type = "description", name = " ", order = 35, width = "full" },
+                moveLootToasts = Toggle("moveLootToasts", "Move Loot Rolls & Toasts", 40,
+                    "Adds FlareUI Loot Rolls and FlareUI Toasts to Edit Mode, to place the Need / Greed / Pass frames and Blizzard's pop-up toasts (new recipe learned, achievements, loot won).\n\nOff while the gamepad UI is on.", true, 1.2, GamepadUI),
             }
         },
 

@@ -256,6 +256,7 @@ local defaults = {
             countdownButton = true,     -- Countdown button in the header
             matchChatSize = false,      -- the meter takes the chat frame's size (Edit Mode's is overridden)
             threatKey = nil,            -- a key that flips the meter between Blizzard's view and Threat
+            autoThreat = false,         -- the Threat tab when combat starts, Blizzard's view when it ends
         },
 
         -- [[ MINIMAP MODULE ]]
@@ -280,6 +281,8 @@ local defaults = {
             fontCast  = { face = "Friz Quadrata TT", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- positions per Edit Mode layout: layouts[name][unit] = { point, x, y }
             layouts = {},
+            -- Blizzard's totem frame on FlareUI Totems (Modules/Totems.lua): size in %, totems per row
+            totems = { size = 95, perRow = 4 },
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
             playerCastbar = { enabled = true, width = 292, height = 26, texture = "Armory", borderTexture = "FlareUI Thick", icon = true, name = true, timer = true },
             units = {
@@ -300,7 +303,7 @@ local defaults = {
                                  absorbTexture = "Striped", absorbReverseFill = true,
                                  castbarPosition = "BOTTOM", castHeight = 16, castTexture = "Armory", castBorderTexture = "FlareUI Thick", castIcon = true, castTimer = true,
                                  buffs = "OFF", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 6, onlyMyDebuffs = true, hidePermanentBuffs = true },
-                pet          = { enabled = true, width = 160, height = 28, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
+                pet          = { enabled = true, width = 120, height = 28, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
                                  texture = "Flat", border = "FlareUI Thick",
                                  absorbTexture = "Striped", absorbReverseFill = true },
             },
@@ -415,6 +418,7 @@ local defaults = {
             trainAll = true,            -- Train All button at trainers
             layoutPerMode = true,       -- the Edit Mode layout last used with keyboard / with the Gamepad UI comes back
             offerGamepad = true,        -- a controller press with keyboard and mouse offers Gamepad mode (GamepadMode.lua)
+            moveLootToasts = true,      -- FlareUI Loot Rolls / FlareUI Toasts in Edit Mode (Modules/Movers.lua); positions in moverLayouts{}
             frames = {},
         },
     },

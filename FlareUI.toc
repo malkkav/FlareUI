@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 1.4
+## Version: 1.4.1
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -32,10 +32,12 @@ Modules\ActionBars.lua
 Modules\XPBar.lua
 Modules\Visibility.lua
 Modules\UnitFrames.lua
+Modules\Totems.lua
 Modules\Auras.lua
 Modules\Minimap.lua
 Modules\TweaksCVars.lua
 Modules\Tweaks.lua
+Modules\Movers.lua
 Modules\Tooltips.lua
 Modules\RadialMenu.lua
 

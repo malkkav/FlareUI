@@ -216,7 +216,7 @@ local function MarkAllDirty()
     end
     if next(Fader.dirty) then
         -- Run one tick immediately so fades react in same frame as the triggering event
-        Fader.UpdateScript(Fader, Fader.updateInterval)
+        Fader.UpdateScript(Fader, 0)
         if not Fader.updateEnabled then
             Fader:SetScript("OnUpdate", Fader.UpdateScript)
             Fader.updateEnabled = true
@@ -225,32 +225,40 @@ local function MarkAllDirty()
     end
 end
 
-Fader.updateInterval = 0.1  -- 0.2 when only mouseover (throttled)
+Fader.updateInterval = 0.1  -- condition checks; 0.2 when only mouseover (throttled)
+Fader.shows = {}            -- group -> whether it is fading in (from the last condition check)
+Fader.counting = {}         -- group -> its fade-out delay is running down
+-- Conditions (mouseover, combat, target...) are checked on the throttled tick or when an event marks a
+-- group dirty; the alpha itself steps every frame while anything is mid-fade, so fades run smoothly.
 Fader.UpdateScript = function(self, elapsed)
     self.updateTimer = self.updateTimer + elapsed
-    if self.updateTimer < self.updateInterval then return end
+    local check = self.updateTimer >= self.updateInterval or next(self.dirty) ~= nil
     local tick = self.updateTimer
-    self.updateTimer = 0
+    if check then self.updateTimer = 0 end
 
     local hasActiveFades = false
 
     for groupName, members in pairs(self.groups) do
-        local groupShouldShow = false
-        local delaySetting = 0
+        if check or self.shows[groupName] == nil then
+            local groupShouldShow = false
+            local delaySetting = 0
 
-        for _, data in ipairs(members) do
-            local cfg = GetVisConfig(data.key)
-            if cfg then
-                if CheckCondition(cfg, data.frame, data.key) then groupShouldShow = true end
-                if cfg.fadeOutDelay and cfg.fadeOutDelay > delaySetting then delaySetting = cfg.fadeOutDelay end
+            for _, data in ipairs(members) do
+                local cfg = GetVisConfig(data.key)
+                if cfg then
+                    if CheckCondition(cfg, data.frame, data.key) then groupShouldShow = true end
+                    if cfg.fadeOutDelay and cfg.fadeOutDelay > delaySetting then delaySetting = cfg.fadeOutDelay end
+                end
             end
+
+            if not self.delays[groupName] then self.delays[groupName] = 0 end
+            if groupShouldShow then self.delays[groupName] = delaySetting
+            else if self.delays[groupName] > 0 then self.delays[groupName] = self.delays[groupName] - tick end end
+
+            self.shows[groupName] = groupShouldShow or (self.delays[groupName] > 0)
+            self.counting[groupName] = (not groupShouldShow) and self.delays[groupName] > 0
         end
-
-        if not self.delays[groupName] then self.delays[groupName] = 0 end
-        if groupShouldShow then self.delays[groupName] = delaySetting
-        else if self.delays[groupName] > 0 then self.delays[groupName] = self.delays[groupName] - tick end end
-
-        local effectiveShow = groupShouldShow or (self.delays[groupName] > 0)
+        local effectiveShow = self.shows[groupName]
 
         for _, data in ipairs(members) do
             local cfg = GetVisConfig(data.key)
@@ -265,7 +273,7 @@ Fader.UpdateScript = function(self, elapsed)
                     if speed <= 0 then
                         frame.flareDesiredAlpha = targetAlpha; ApplyElementAlpha(frame, data.key, targetAlpha)
                     else
-                        local change = (1 / speed) * tick
+                        local change = (1 / speed) * elapsed
                         local newAlpha = (currentAlpha < targetAlpha) and math_min(targetAlpha, currentAlpha + change) or math_max(targetAlpha, currentAlpha - change)
                         frame.flareDesiredAlpha = newAlpha; ApplyElementAlpha(frame, data.key, newAlpha)
                     end
@@ -278,7 +286,13 @@ Fader.UpdateScript = function(self, elapsed)
         self.dirty[groupName] = nil
     end
 
-    local idle = not hasActiveFades and not next(self.dirty)
+    -- a fade still running, or a delay still counting down, keeps the frame-rate loop going
+    local delaying = next(self.counting) ~= nil
+    for groupName, on in pairs(self.counting) do
+        if not on then self.counting[groupName] = nil end
+    end
+    delaying = delaying and next(self.counting) ~= nil
+    local idle = not hasActiveFades and not next(self.dirty) and not delaying
     if idle and not self.watchesMouseover then
         self:SetScript("OnUpdate", nil)
         self.updateEnabled = false
@@ -346,6 +360,8 @@ function Visibility:Refresh()
     Fader.groups = {}
     Fader.delays = {}
     Fader.dirty = {}
+    Fader.shows = {}
+    Fader.counting = {}
     Fader.watchesMouseover = false
 
     for key, frameName in pairs(BAR_FRAMES) do

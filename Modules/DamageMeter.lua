@@ -1164,6 +1164,11 @@ timerEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
 timerEvents:SetScript("OnEvent", function(_, event)
     combatStart = event == "PLAYER_REGEN_DISABLED" and GetTime() or nil
     UpdateLiveTimers()
+    -- Features > Threat View in Combat: the Threat tab for the fight, Blizzard's view after it
+    local db = GetDb()
+    if db and db.enabled and db.threatTab and db.autoThreat then
+        for window in pairs(views) do SetView(window, combatStart ~= nil) end
+    end
 end)
 
 local function ApplyLiveTimer(window, db)

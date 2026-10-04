@@ -1987,7 +1987,7 @@ local DEFAULT_POSITIONS = {
     target        = { point = "CENTER", x = 330,  y = -270 },
     targettarget  = { point = "BOTTOM", x = 270,  y = 248 },
     focus         = { point = "RIGHT",  x = -453, y = -258 },
-    pet           = { point = "BOTTOM", x = -290, y = 271 },   -- its right edge lines up with the player frame's
+    pet           = { point = "BOTTOM", x = -270, y = 271 },   -- its right edge lines up with the player frame's
     playercastbar = { point = "BOTTOM", x = 0,    y = 268 },
 }
 
