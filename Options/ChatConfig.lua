@@ -173,7 +173,7 @@ ns.Options.args.chat = {
                     args = {
                         text = {
                             type = "description", fontSize = "medium", order = 10,
-                            name = "Right click a tab in the chat to open the options and create or close tabs.\n\n"
+                            name = "Right click a tab in the chat to open the options and create or close tabs. "
                                 .. "You can drag and drop tabs to reorder them. You can do the same with the header buttons.\n\n"
                                 .. "If you use a lot of tabs, use the mouse scroll wheel in the chat header to scroll between them.",
                         },

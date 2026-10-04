@@ -26,6 +26,12 @@ local ASSETS = {
         ["Smooth"]     = "Bars/Smooth.tga",
         ["Striped"]    = "Bars/Striped.tga",
     },
+    -- FlareUI's frame borders (wtf-tools/buildframe.js), grey so each frame's border colour tints
+    -- it; 16 px edge. Thick for the unit frames, Thin for chat and the damage meter.
+    border = {
+        ["FlareUI Thick"] = "Borders/FlareUI-Thick.tga",
+        ["FlareUI Thin"]  = "Borders/FlareUI-Thin.tga",
+    },
     font = {
         ["Asap Condensed"]   = "Fonts/AsapCondensed-Regular.ttf",
         ["Fira Condensed"]   = "Fonts/FiraSansExtraCondensed-Regular.ttf",

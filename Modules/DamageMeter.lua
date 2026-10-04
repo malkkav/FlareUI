@@ -22,7 +22,7 @@ local C_Timer = C_Timer
 local LSM = LibStub("LibSharedMedia-3.0")
 
 -- The border picked in the options; a name LibSharedMedia no longer knows falls back to the default.
-local DEFAULT_BORDER = "Blizzard Tooltip"
+local DEFAULT_BORDER = "FlareUI Thin"
 local function GetBorderFile(db)
     local name = db and db.borderTexture
     if not (name and LSM:IsValid("border", name)) then name = DEFAULT_BORDER end

@@ -256,6 +256,7 @@ local MODULE_TOGGLES = {
     { key = "radialmenu",  label = "Radial Menu" },
     { key = "unitframes",  label = "Unit Frames" },
     { key = "actionbars",  label = "Action Bars" },
+    { key = "auras",       label = "Buffs / Debuffs" },
     { key = "minimap",     label = "Minimap" },
     { key = "tooltips",    label = "Tooltips" },
     { key = "tweaks",      label = "Tweaks" },
@@ -528,6 +529,7 @@ function ns.CreateFontOptions(order, label, path, dbKey, showColor, showPos)
             elseif path == "damagemeter" and ns.DamageMeter then ns.DamageMeter:Refresh()
             elseif path == "actionbars" and ns.ActionBars then ns.ActionBars:Refresh()
             elseif path == "unitframes" and ns.UnitFrames then ns.UnitFrames:Refresh()
+            elseif path == "auras" and ns.Auras then ns.Auras:Refresh()
             end
         end
     end

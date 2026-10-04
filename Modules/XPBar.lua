@@ -26,7 +26,7 @@ local LSM = LibStub("LibSharedMedia-3.0")
 -- 3. CONSTANTS
 --------------------------------------------------
 local TEXTURE_NAME  = "Flat"
-local BORDER_NAME   = "Blizzard Tooltip"
+local BORDER_NAME   = "FlareUI Thin"
 local BORDER_SIZE   = 16
 local BORDER_OUTSET = 4                            -- the border sits this far outside the fill
 local BORDER_COLOR  = { 0.80, 0.60, 0.34 }         -- #CC9957
@@ -137,8 +137,19 @@ local function HideDividers(container)
     for divider in pool:EnumerateActive() do divider:Hide() end
 end
 
+-- Blizzard's frame art (on Forever a grey bevel with clipped corners) came back at full alpha some
+-- time after a single SetAlpha(0) - one of the container's animations, as no code touches it - and
+-- showed inside our border. It is hidden for good: hidden, at alpha 0, and put back if anything
+-- shows it or lifts its alpha.
+local function KeepHidden(texture)
+    texture:SetAlpha(0)
+    texture:Hide()
+    hooksecurefunc(texture, "Show", function(t) t:Hide() end)
+    hooksecurefunc(texture, "SetAlpha", function(t, alpha) if alpha ~= 0 then t:SetAlpha(0) end end)
+end
+
 local function SkinContainer(container)
-    if container.BarFrameTexture then container.BarFrameTexture:SetAlpha(0) end
+    if container.BarFrameTexture then KeepHidden(container.BarFrameTexture) end
     HideDividers(container)
     hooksecurefunc(container, "UpdateDividers", HideDividers)
 

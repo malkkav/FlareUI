@@ -1,3 +1,34 @@
+# FlareUI 1.4
+
+A new module for your buffs and debuffs, and FlareUI's own frame borders.
+
+## New: Buffs / Debuffs
+
+Your buffs and debuffs in FlareUI's style, in place of Blizzard's buff frame. Switch it on in General > Buffs / Debuffs.
+
+- Two frames you place in Edit Mode, FlareUI Buffs and FlareUI Debuffs, each with its own icon size, icons per row, maximum icons, spacing, and growth direction (left or right, wrapping up or down).
+- In Edit Mode, every slot fills with sample icons, so you can see how far each frame can grow before you place it.
+- Square icons in a bronze bevel with 45° corners, or round icons in the spellbook's passive ring.
+- Debuff borders take the colour of their type: Magic, Curse, Disease, Poison and the rest.
+- Cooldown swipe, three ways: a sweep over the icon with a bright edge, the border itself running out around the icon, or none.
+- The timer under the icon or along its bottom edge; stacks in the top right corner.
+- Weapon enchants (poisons, oils) show before your buffs.
+- Right-click a buff or a weapon enchant to cancel it.
+- Boss debuffs that Blizzard keeps private still show, just past the debuff frame.
+- Works in dungeons and in combat: Blizzard draws the auras into FlareUI's frames.
+- In Gamepad mode Blizzard's own buff frame stays, as part of its controller navigation.
+
+## New: FlareUI Borders
+
+- Two new borders in every border dropdown: FlareUI Thick and FlareUI Thin, a bronze bevel lit from above with soft 45° corners.
+- They are the new defaults: Thin for the chat, the damage meter and the XP bar, Thick for the unit frames and cast bars. A border you picked yourself stays as it is.
+
+## Fixed
+- XP bar: Blizzard's grey frame art could come back inside FlareUI's border.
+
+## Changed
+- Chat > How to Use is shorter.
+
 # FlareUI 1.3.1
 
 Fixes from your reports, and a handful of new options.

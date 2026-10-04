@@ -139,7 +139,7 @@ local defaults = {
             hideBubblesInInstance = false,
 
             -- Frame (Blizzard dark dialog background + the chosen border, tinted ns.BORDER_COLOR)
-            borderTexture = "Blizzard Tooltip",
+            borderTexture = "FlareUI Thin",
             opacity = 0.6,
             textPadding = 10,
             borderSize = 16,
@@ -245,7 +245,7 @@ local defaults = {
 
             -- Look shared with the chat frame: background opacity, border and bar texture are user-facing
             opacity = 0.6,
-            borderTexture = "Blizzard Tooltip",
+            borderTexture = "FlareUI Thin",
             barTexture = "",            -- "" = Blizzard's own bar
             textPadding = 2,
             hideHeader = false,
@@ -281,27 +281,27 @@ local defaults = {
             -- positions per Edit Mode layout: layouts[name][unit] = { point, x, y }
             layouts = {},
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
-            playerCastbar = { enabled = true, width = 292, height = 26, texture = "Armory", borderTexture = "Blizzard Tooltip", icon = true, name = true, timer = true },
+            playerCastbar = { enabled = true, width = 292, height = 26, texture = "Armory", borderTexture = "FlareUI Thick", icon = true, name = true, timer = true },
             units = {
                 player       = { enabled = true, width = 240, height = 60, powerHeight = 14, healthText = "percent", powerText = true, showLevel = true,
-                                 texture = "Flat", border = "Blizzard Tooltip",
+                                 texture = "Flat", border = "FlareUI Thick",
                                  absorbTexture = "Striped", absorbReverseFill = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 10, onlyMyDebuffs = true, hidePermanentBuffs = true },
                 target       = { enabled = true, width = 240, height = 60, powerHeight = 0, healthText = "percent", powerText = true, showLevel = true, mirror = true,
                                  classicCombo = false,
-                                 texture = "Flat", border = "Blizzard Tooltip",
+                                 texture = "Flat", border = "FlareUI Thick",
                                  absorbTexture = "Striped", absorbReverseFill = true,
-                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "Armory", castBorderTexture = "Blizzard Tooltip", castIcon = true, castTimer = true,
+                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "Armory", castBorderTexture = "FlareUI Thick", castIcon = true, castTimer = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 10, onlyMyDebuffs = true, hidePermanentBuffs = true },
                 targettarget = { enabled = false, width = 120, height = 28, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
-                                 texture = "Flat", border = "Blizzard Tooltip" },
+                                 texture = "Flat", border = "FlareUI Thick" },
                 focus        = { enabled = true, width = 160, height = 36, powerHeight = 0, healthText = "percent", powerText = false, showLevel = true, mirror = true,
-                                 texture = "Flat", border = "Blizzard Tooltip",
+                                 texture = "Flat", border = "FlareUI Thick",
                                  absorbTexture = "Striped", absorbReverseFill = true,
-                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "Armory", castBorderTexture = "Blizzard Tooltip", castIcon = true, castTimer = true,
+                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "Armory", castBorderTexture = "FlareUI Thick", castIcon = true, castTimer = true,
                                  buffs = "OFF", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 6, onlyMyDebuffs = true, hidePermanentBuffs = true },
                 pet          = { enabled = true, width = 160, height = 28, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
-                                 texture = "Flat", border = "Blizzard Tooltip",
+                                 texture = "Flat", border = "FlareUI Thick",
                                  absorbTexture = "Striped", absorbReverseFill = true },
             },
             -- icons and overlays, each switched for every frame that has it (Unit Frames > General > Elements)
@@ -326,6 +326,20 @@ local defaults = {
             hideRaidManager = false,
             hideEndCaps = false,
         }),
+
+        -- [[ AURAS MODULE ]] the player's buffs and debuffs (Modules/Auras.lua)
+        auras = {
+            enabled = false,
+            style = "square",           -- square | round
+            swipe = "icon",             -- border | icon | none
+            timer = "below",            -- below (under the icon) | bottom (along its bottom edge)
+            weaponEnchants = true,
+            font = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
+            -- per frame, set in Edit Mode
+            buffs   = { size = 26, perRow = 9, max = 27, spacing = 4, grow = "LEFT", wrap = "DOWN" },
+            debuffs = { size = 30, perRow = 8, max = 16, spacing = 4, grow = "LEFT", wrap = "UP" },
+            layouts = {},
+        },
 
         -- [[ TOOLTIPS MODULE ]]
         tooltips = {
