@@ -14,27 +14,6 @@ local function UnitToggle(unit, label, order)
     }
 end
 
--- one icon or overlay, switched for every frame that has it
-local function ElementToggle(key, label, order)
-    return {
-        type = "toggle", name = label, order = order, width = 1.1,
-        get = function() return ns.db.profile.unitframes.elements[key] end,
-        set = function(_, val)
-            ns.db.profile.unitframes.elements[key] = val
-            if ns.UnitFrames then ns.UnitFrames:Refresh() end
-        end,
-    }
-end
-
--- three to a row
-local function ElementsGroup(order, list)
-    local args = {}
-    for i, entry in ipairs(list) do
-        args[entry[1]] = ElementToggle(entry[1], entry[2], i * 10)
-        if i % 3 ~= 0 then args["spacer" .. i] = { type = "description", name = "", width = 0.1, order = i * 10 + 1 } end
-    end
-    return { type = "group", name = "Elements", order = order, inline = true, args = args }
-end
 
 --------------------------------------------------
 -- Visibility tab: one settings set per group of frames
@@ -97,14 +76,6 @@ ns.Options.args.unitframes = {
                         },
                     }
                 },
-                elementsGroup = ElementsGroup(20, {
-                    { "rest",           "Resting Indicator" },
-                    { "leader",         "Leader Crown" },
-                    { "pvp",            "PvP Flag" },
-                    { "classification", "Elite & Rare Icon" },
-                    { "questBoss",      "Quest Icon" },
-                    { "raidIcon",       "Raid Target Icon" },
-                }),
             },
         },
 

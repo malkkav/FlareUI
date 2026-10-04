@@ -190,11 +190,85 @@ local function PortraitSpace(f)
     return ((udb and udb.height) or 44) - 2 * INSET + PORTRAIT_GAP
 end
 
--- an element switch from Unit Frames > General > Elements; anything not switched off is on
+-- an element switch from the old Unit Frames > General > Elements (one switch for every frame);
+-- anything not switched off is on. Only read now as the fallback of a frame's own Show Icon.
 local function ElementOn(key)
     local db = GetDb()
     local elements = db and db.elements
     return not (elements and elements[key] == false)
+end
+
+-- The frame icons, placed per frame in Edit Mode (udb.icons[key] = { shown, x, y, scale }). x / y
+-- are offsets from FlareUI's own placement and scale is a percentage of its own size. Preview (in
+-- section 9) shows the icon picked in the dialog while Edit Mode is open.
+local ICON_UI = {
+    order = { "rest", "leader", "pvp", "classification", "quest", "raidIcon", "happiness" },
+    defs = {
+        rest           = { label = "Resting",          field = "RestIcon",  element = "rest" },
+        leader         = { label = "Leader",           field = "LeaderIcon", element = "leader" },
+        pvp            = { label = "PvP Flag",         field = "PvPIcon",   element = "pvp" },
+        classification = { label = "Elite & Rare",     field = "ClassIcon", element = "classification" },
+        quest          = { label = "Quest",            field = "QuestIcon", element = "questBoss" },
+        raidIcon       = { label = "Raid Target",      field = "RaidIcon",  element = "raidIcon" },
+        happiness      = { label = "Pet Happiness",    field = "Happiness" },
+    },
+    selected = {},   -- unit -> the icon picked in its Edit Mode dialog (not saved)
+}
+
+-- the icons a frame has, in dialog order
+function ICON_UI.List(unit)
+    local info, list = UNITS[unit], {}
+    local ind = info and info.indicators or {}
+    for _, key in ipairs(ICON_UI.order) do
+        local has
+        if key == "raidIcon" then has = not info.noRaidIcon
+        elseif key == "happiness" then has = info.happiness
+        elseif key == "quest" then has = ind.quest
+        else has = ind[key] end
+        if has then list[#list + 1] = key end
+    end
+    return list
+end
+
+function ICON_UI.Selected(unit)
+    local key = ICON_UI.selected[unit]
+    if key then return key end
+    return ICON_UI.List(unit)[1]
+end
+
+function ICON_UI.Store(unit, key, create)
+    local udb = GetUnitDb(unit)
+    if not udb then return nil end
+    if create then
+        udb.icons = udb.icons or {}
+        udb.icons[key] = udb.icons[key] or {}
+    end
+    return udb.icons and udb.icons[key]
+end
+
+function ICON_UI.Shown(unit, key)
+    local store = ICON_UI.Store(unit, key)
+    if store and store.shown ~= nil then return store.shown end
+    if key == "happiness" then
+        local udb = GetUnitDb(unit)
+        return not udb or udb.happiness ~= false
+    end
+    return ElementOn(ICON_UI.defs[key].element)
+end
+
+-- offset x, offset y, scale factor
+function ICON_UI.Offsets(unit, key)
+    local store = ICON_UI.Store(unit, key)
+    if not store then return 0, 0, 1 end
+    return store.x or 0, store.y or 0, (store.scale or 100) / 100
+end
+
+-- sizes and anchors an icon at FlareUI's placement plus the frame's own offsets and scale
+function ICON_UI.Place(f, key, region, width, height, point, relativeTo, relativePoint, x, y)
+    local dx, dy, scale = ICON_UI.Offsets(f.unit, key)
+    region:ClearAllPoints()
+    region:SetSize(width * scale, height * scale)
+    region:SetPoint(point, relativeTo, relativePoint, x + dx, y + dy)
 end
 
 -- Percent curve (0..1 -> 0..100) so UnitHealthPercent's secret result can be shown directly
@@ -425,7 +499,7 @@ local function UpdateRaidIcon(f)
     end
     local index = GetRaidTargetIndex(f.unit)
     local show
-    if not ElementOn("raidIcon") then
+    if not ICON_UI.Shown(f.unit, "raidIcon") then
         show = false
     elseif not canaccessvalue(index) then
         show = true
@@ -434,6 +508,7 @@ local function UpdateRaidIcon(f)
     end
     if show then SetRaidTargetIconTexture(f.RaidIcon, index) end
     f.RaidIcon:SetShown(show)
+    ICON_UI.Preview(f)
 end
 
 --------------------------------------------------
@@ -827,7 +902,7 @@ end
 
 -- initializeFrame: Blizzard calls this for every pooled aura button; we build the visuals once
 -- and register them so the (secure) button drives icon, cooldown, stacks, duration, dispel colour
-local function InitAuraButton(button, size, isDebuff, unit, font)
+local function InitAuraButton(button, size, isDebuff, unit, font, showTimer)
     button:SetSize(size, size)
     if not button.FlareUI_Icon then
         local bg = button:CreateTexture(nil, "BACKGROUND")
@@ -877,6 +952,8 @@ local function InitAuraButton(button, size, isDebuff, unit, font)
     button.FlareUI_Duration:SetFont(fontPath, math.max(8, textSize - 1), "OUTLINE")
     ns.ApplyShadow(button.FlareUI_Count, font)
     ns.ApplyShadow(button.FlareUI_Duration, font)
+    -- Blizzard shows and fills the duration text itself, so it is hidden by alpha
+    button.FlareUI_Duration:SetAlpha(showTimer and 1 or 0)
 
     pcall(button.SetIcon, button, button.FlareUI_Icon)
     pcall(button.SetDurationCooldown, button, button.FlareUI_Cooldown)
@@ -940,10 +1017,11 @@ local function ConfigureAuraCorner(f, corner, lanes)
     for index, lane in ipairs(lanes) do
         local key = lane.key .. gen
         local isDebuff, unit, font = lane.isDebuff, f.unit, db and db.font
+        local showTimer = udb.auraTimers ~= false
         local ok, err = pcall(container.AddAuraGroup, container, key, lane.filter, {
             maxFrameCount = max,
             candidateFilters = lane.candidates,
-            initializeFrame = function(button) InitAuraButton(button, size, isDebuff, unit, font) end,
+            initializeFrame = function(button) InitAuraButton(button, size, isDebuff, unit, font, showTimer) end,
             layout = {
                 elementWidth = size, elementHeight = size,
                 elementSpacing = AURA_SPACING, lineSpacing = AURA_SPACING,
@@ -1314,8 +1392,7 @@ end
 function UpdateHappiness(f)
     local face = f.Happiness
     if not face then return end
-    local udb = GetUnitDb(f.unit)
-    if udb and udb.happiness ~= false then
+    if ICON_UI.Shown(f.unit, "happiness") then
         face:RegisterEvent("UNIT_HAPPINESS")
         face:RegisterEvent("UNIT_PET")
         face:UpdateHappiness()
@@ -1410,7 +1487,8 @@ local function CreateIndicators(f)
         f.ClassIcon:Hide()
     end
     if ind.quest then
-        f.QuestIcon = overlay:CreateTexture(nil, "OVERLAY")
+        -- under the raid marker (sublevel 4), which shares its spot mid health bar
+        f.QuestIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 1)
         f.QuestIcon:Hide()
     end
     -- threat: the frame border itself is tinted (see UpdateIndicators); nothing to create
@@ -1442,36 +1520,29 @@ end
 local function LayoutIndicators(f)
     local udb = GetUnitDb(f.unit)
     local mirror = udb and udb.mirror and true or false
+    -- FlareUI's own placement; ICON_UI.Place adds the frame's Edit Mode offsets and scale
     if f.RestIcon then
-        f.RestIcon:ClearAllPoints()
-        f.RestIcon:SetPoint("CENTER", f, "TOPRIGHT", -2, 0)
+        ICON_UI.Place(f, "rest", f.RestIcon, ICON_SIZE.rest, ICON_SIZE.rest, "CENTER", f, "TOPRIGHT", -2, 0)
     end
     if f.LeaderIcon then
-        f.LeaderIcon:ClearAllPoints()
-        f.LeaderIcon:SetSize(ICON_SIZE.leader, ICON_SIZE.leader)
-        f.LeaderIcon:SetPoint("CENTER", f, "TOPLEFT", 16, -2)
+        ICON_UI.Place(f, "leader", f.LeaderIcon, ICON_SIZE.leader, ICON_SIZE.leader, "CENTER", f, "TOPLEFT", 16, -2)
     end
     if f.PvPIcon then
         -- bottom-left on the player, bottom-right on a mirrored frame: symmetrical across the screen
-        f.PvPIcon:ClearAllPoints()
-        f.PvPIcon:SetSize(ICON_SIZE.pvp, ICON_SIZE.pvp)
         if mirror then
-            f.PvPIcon:SetPoint("CENTER", f, "BOTTOMRIGHT", -4, 2)
+            ICON_UI.Place(f, "pvp", f.PvPIcon, ICON_SIZE.pvp, ICON_SIZE.pvp, "CENTER", f, "BOTTOMRIGHT", -4, 2)
         else
-            f.PvPIcon:SetPoint("CENTER", f, "BOTTOMLEFT", 4, 2)
+            ICON_UI.Place(f, "pvp", f.PvPIcon, ICON_SIZE.pvp, ICON_SIZE.pvp, "CENTER", f, "BOTTOMLEFT", 4, 2)
         end
     end
     if f.ClassIcon then
-        f.ClassIcon:ClearAllPoints()
-        f.ClassIcon:SetSize(ICON_SIZE.class, ICON_SIZE.class)
-        f.ClassIcon:SetPoint("CENTER", f, "TOPRIGHT", -10, -4)
+        ICON_UI.Place(f, "classification", f.ClassIcon, ICON_SIZE.class, ICON_SIZE.class, "CENTER", f, "TOPRIGHT", -10, -4)
     end
     if f.QuestIcon then
-        f.QuestIcon:ClearAllPoints()
         local info = C_Texture.GetAtlasInfo(QUEST_ATLAS)
         local aspect = (info and info.width > 0 and info.height > 0) and (info.width / info.height) or 1
-        f.QuestIcon:SetSize(ICON_SIZE.quest * aspect, ICON_SIZE.quest)
-        f.QuestIcon:SetPoint("CENTER", f, "RIGHT", -3, 0)   -- over the right border, mostly inside
+        -- mid health bar, under the raid marker
+        ICON_UI.Place(f, "quest", f.QuestIcon, ICON_SIZE.quest * aspect, ICON_SIZE.quest, "CENTER", f.Health, "CENTER", 0, 0)
     end
     if f.HealClip then
         local health, clip, heal, absorb = f.Health, f.HealClip, f.HealBar, f.AbsorbBar
@@ -1574,7 +1645,7 @@ function UpdateIndicators(f)
     local readable = function(v) return canaccessvalue(v) and v or nil end
 
     if f.RestIcon then
-        local show = ElementOn("rest") and IsResting()
+        local show = ICON_UI.Shown(unit, "rest") and IsResting()
         f.RestIcon:SetShown(show)
         if f.RestIcon.anim then
             if show then
@@ -1587,7 +1658,7 @@ function UpdateIndicators(f)
     if f.LeaderIcon then
         local leader = readable(UnitIsGroupLeader(unit))
         local assist = readable(UnitIsGroupAssistant(unit))
-        if not ElementOn("leader") then
+        if not ICON_UI.Shown(unit, "leader") then
             f.LeaderIcon:Hide()
         elseif leader then
             SetIconArt(f.LeaderIcon, "UI-HUD-UnitFrame-Player-Group-LeaderIcon", "Interface\\GroupFrame\\UI-Group-LeaderIcon")
@@ -1603,7 +1674,7 @@ function UpdateIndicators(f)
         local ffa = readable(UnitIsPVPFreeForAll(unit))
         local pvp = readable(UnitIsPVP(unit))
         local faction = readable(UnitFactionGroup(unit))
-        if not ElementOn("pvp") then
+        if not ICON_UI.Shown(unit, "pvp") then
             f.PvPIcon:Hide()
         elseif ffa then
             SetIconArt(f.PvPIcon, "UI-HUD-UnitFrame-Player-PVP-FFAIcon", "Interface\\TargetingFrame\\UI-PVP-FFA")
@@ -1624,7 +1695,7 @@ function UpdateIndicators(f)
         if c == "elite" or c == "worldboss" then atlas = "nameplates-icon-elite-gold"
         elseif c == "rareelite" then atlas = "nameplates-icon-elite-silver"
         elseif c == "rare" then atlas = "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Rare-Star" end
-        if atlas and HasAtlas(atlas) and ElementOn("classification") then
+        if atlas and HasAtlas(atlas) and ICON_UI.Shown(unit, "classification") then
             f.ClassIcon:SetAtlas(atlas, false)
             f.ClassIcon:Show()
         else
@@ -1635,7 +1706,7 @@ function UpdateIndicators(f)
         -- a quest boss, or a hostile unit tied to one of the player's active quests (kill or loot
         -- objective), the same test as the nameplate quest tags
         local show = false
-        if ElementOn("questBoss") then
+        if ICON_UI.Shown(unit, "quest") then
             show = readable(UnitIsQuestBoss(unit)) == true
             if not show and readable(UnitCanAttack("player", unit)) then
                 show = readable(C_QuestLog.UnitIsRelatedToActiveQuest(unit)) == true
@@ -1655,6 +1726,36 @@ function UpdateIndicators(f)
         end
     end
     UpdateHealPrediction(f)
+    ICON_UI.Preview(f)
+end
+
+-- Edit Mode: the icon picked in the frame's dialog shows with sample art, whatever the unit, so it
+-- can be seen while it is placed. Leaving Edit Mode runs the real update again (UpdateAll).
+function ICON_UI.Preview(f)
+    if not LEM:IsInEditMode() then return end
+    local key = ICON_UI.Selected(f.unit)
+    if not key or key == "happiness" or not ICON_UI.Shown(f.unit, key) then return end
+    local region = f[ICON_UI.defs[key].field]
+    if not region then return end
+    if key == "rest" then
+        if region.anim and not region.anim:IsPlaying() then region.anim:Play() end
+    elseif key == "leader" then
+        SetIconArt(region, "UI-HUD-UnitFrame-Player-Group-LeaderIcon", "Interface\\GroupFrame\\UI-Group-LeaderIcon")
+    elseif key == "pvp" then
+        if UnitFactionGroup("player") == "Horde" then
+            SetIconArt(region, "UI-HUD-UnitFrame-Player-PVP-HordeIcon", "Interface\\TargetingFrame\\UI-PVP-Horde")
+        else
+            SetIconArt(region, "UI-HUD-UnitFrame-Player-PVP-AllianceIcon", "Interface\\TargetingFrame\\UI-PVP-Alliance")
+        end
+    elseif key == "classification" then
+        if not HasAtlas("nameplates-icon-elite-gold") then return end
+        region:SetAtlas("nameplates-icon-elite-gold", false)
+    elseif key == "quest" then
+        SetIconArt(region, QUEST_ATLAS, QUEST_FILE)
+    elseif key == "raidIcon" then
+        SetRaidTargetIconTexture(region, 8)
+    end
+    region:Show()
 end
 
 --------------------------------------------------
@@ -1829,15 +1930,11 @@ local function LayoutFrame(f)
     -- health bar runs from the top inset down to the power bar (or the bottom inset)
     local healthHeight = height - 2 * PADDING - (powerHeight > 0 and powerHeight or 0)
     local markerSize = math.max(8, healthHeight * RAID_ICON_SHARE)
-    f.RaidIcon:ClearAllPoints()
-    f.RaidIcon:SetSize(markerSize, markerSize)
-    f.RaidIcon:SetPoint("CENTER", f.Health, "CENTER", 0, 0)
+    ICON_UI.Place(f, "raidIcon", f.RaidIcon, markerSize, markerSize, "CENTER", f.Health, "CENTER", 0, 0)
 
     if f.Happiness then
         local size = math.max(RAID_ICON, healthHeight * HAPPINESS_SHARE)
-        f.Happiness:SetSize(size, size)
-        f.Happiness:ClearAllPoints()
-        f.Happiness:SetPoint("CENTER", f.Health, "CENTER", 0, 0)
+        ICON_UI.Place(f, "happiness", f.Happiness, size, size, "CENTER", f.Health, "CENTER", 0, 0)
     end
 
     -- cast bar hangs off the frame
@@ -2106,7 +2203,7 @@ local function CreateUnitFrame(unit)
     f.PowerText = overlay:CreateFontString(nil, "OVERLAY")
     f.PowerText:SetJustifyH("RIGHT")
 
-    f.RaidIcon = overlay:CreateTexture(nil, "OVERLAY")
+    f.RaidIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 4)   -- above the quest "!" it shares a spot with
     f.RaidIcon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
     f.RaidIcon:Hide()
 
@@ -2325,10 +2422,54 @@ local function BuildSettings(unit)
             end,
             desc = "Classic combo point gems in the bottom-right corner of the health bar, instead of FlareUI's strip." }
     end
-    if info.happiness then
-        settings[#settings + 1] = { name = "Happiness", kind = LEM.SettingType.Checkbox, default = true,
-            get = function() local u = GetUnitDb(unit); return not u or u.happiness ~= false end, set = set("happiness"),
-            desc = "Your hunter pet's happiness face in the middle of the health bar." }
+    local icons = ICON_UI.List(unit)
+    if #icons > 0 then
+        local values = {}
+        for _, key in ipairs(icons) do
+            values[#values + 1] = { text = ICON_UI.defs[key].label, value = key, isRadio = true }
+        end
+        local function relayout()
+            local f = frames[unit]
+            if f then LayoutFrame(f); UpdateAll(f) end
+        end
+        local function iconSet(field)
+            return function(_, value)
+                local store = ICON_UI.Store(unit, ICON_UI.Selected(unit), true)
+                if not store then return end
+                store[field] = value
+                relayout()
+            end
+        end
+        local function iconGet(field, default)
+            return function()
+                local store = ICON_UI.Store(unit, ICON_UI.Selected(unit))
+                local value = store and store[field]
+                if value == nil then return default end
+                return value
+            end
+        end
+        local function iconHidden() return not ICON_UI.Shown(unit, ICON_UI.Selected(unit)) end
+        tAppendAll(settings, {
+            { name = "Icons", kind = LEM.SettingType.Divider },
+            { name = "Icon", kind = LEM.SettingType.Dropdown, default = icons[1], values = values,
+              desc = "Pick an icon to switch, move and size it. It shows on the frame while Edit Mode is open.",
+              get = function() return ICON_UI.Selected(unit) end,
+              set = function(_, value)
+                  ICON_UI.selected[unit] = value
+                  relayout()
+                  -- the settings below now belong to the new icon; rebuilt once this click is done
+                  C_Timer.After(0, function() if frames[unit] then LEM:RefreshFrameSettings(frames[unit]) end end)
+              end },
+            { name = "Show Icon", kind = LEM.SettingType.Checkbox, default = true,
+              get = function() return ICON_UI.Shown(unit, ICON_UI.Selected(unit)) end, set = iconSet("shown") },
+            { name = "Icon X", kind = LEM.SettingType.Slider, default = 0, minValue = -150, maxValue = 150, valueStep = 1,
+              hidden = iconHidden, get = iconGet("x", 0), set = iconSet("x") },
+            { name = "Icon Y", kind = LEM.SettingType.Slider, default = 0, minValue = -80, maxValue = 80, valueStep = 1,
+              hidden = iconHidden, get = iconGet("y", 0), set = iconSet("y") },
+            { name = "Icon Scale", kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
+              hidden = iconHidden, get = iconGet("scale", 100), set = iconSet("scale"),
+              formatter = function(value) return value .. "%" end },
+        })
     end
     tAppendAll(settings, {
         { name = "Look", kind = LEM.SettingType.Divider },
@@ -2375,6 +2516,8 @@ local function BuildSettings(unit)
         settings[#settings + 1] = { name = "Max Per Type", kind = LEM.SettingType.Slider, default = defaults.auraMax or 16, minValue = 1, maxValue = 40, valueStep = 1, get = get("auraMax"), set = set("auraMax") }
         settings[#settings + 1] = { name = "Only My Debuffs", kind = LEM.SettingType.Checkbox, default = defaults.onlyMyDebuffs or false, get = get("onlyMyDebuffs"), set = set("onlyMyDebuffs") }
         settings[#settings + 1] = { name = "Hide Permanent Buffs", kind = LEM.SettingType.Checkbox, default = defaults.hidePermanentBuffs or false, get = get("hidePermanentBuffs"), set = set("hidePermanentBuffs") }
+        settings[#settings + 1] = { name = "Aura Timers", kind = LEM.SettingType.Checkbox, default = defaults.auraTimers ~= false,
+            get = function() local u = GetUnitDb(unit); return u ~= nil and u.auraTimers ~= false end, set = set("auraTimers") }
     end
     return settings
 end
@@ -2473,12 +2616,12 @@ function UF:Init()
         if playerCastHolder then ApplyPosition(playerCastHolder, layoutName) end
     end)
     LEM:RegisterCallback("enter", function()
-        for _, f in pairs(frames) do ApplyVisibility(f); f:SetAlpha(1); if f.Combo then UpdateComboPoints(f) end; UpdateHappiness(f) end
+        for _, f in pairs(frames) do ApplyVisibility(f); f:SetAlpha(1); if f.Combo then UpdateComboPoints(f) end; UpdateHappiness(f); UpdateAll(f) end
         SetAuraPreview(true)
         SetCastPreview(true)
     end)
     LEM:RegisterCallback("exit", function()
-        for _, f in pairs(frames) do ApplyVisibility(f); if f.Combo then UpdateComboPoints(f) end; UpdateHappiness(f) end
+        for _, f in pairs(frames) do ApplyVisibility(f); if f.Combo then UpdateComboPoints(f) end; UpdateHappiness(f); UpdateAll(f) end
         RefreshVisibilityFader()
         SetAuraPreview(false)
         SetCastPreview(false)

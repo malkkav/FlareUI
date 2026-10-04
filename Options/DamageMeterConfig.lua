@@ -45,7 +45,8 @@ ns.Options.args.damagemeter = {
                 spacer3 = { type = "description", name = "", width = 0.1, order = 35 },
                 matchChatSize = {
                     type = "toggle", name = "Match Chat Frame Size", order = 40, width = 1.2,
-                    desc = "The meter takes the size of the chat frame, in place of the size set in Edit Mode.",
+                    desc = "The meter takes the size of FlareUI's chat frame, in place of the size set in Edit Mode. Needs the Chat module.",
+                    disabled = function() return not (ns.db.profile.chat and ns.db.profile.chat.enabled) end,
                     get = function() return ns.db.profile.damagemeter.matchChatSize end,
                     set = function(_, val)
                         ns.db.profile.damagemeter.matchChatSize = val
@@ -81,6 +82,19 @@ ns.Options.args.damagemeter = {
                         ns.db.profile.damagemeter.threatKey = (val ~= "" and val) or nil
                         if ns.DamageMeter then ns.DamageMeter:Refresh() end
                     end,
+                },
+                readyCheckButton = {
+                    type = "toggle", name = "Ready Check Button", order = 40, width = 1.2,
+                    desc = "A button in the meter's header that starts a ready check. It shows only when you lead or assist a group.",
+                    get = function() return ns.db.profile.damagemeter.readyCheckButton ~= false end,
+                    set = function(_, val) ns.db.profile.damagemeter.readyCheckButton = val; if ns.DamageMeter then ns.DamageMeter:Refresh() end end,
+                },
+                spacer3 = { type = "description", name = "", width = 0.1, order = 41 },
+                countdownButton = {
+                    type = "toggle", name = "Countdown Button", order = 50, width = 1.2,
+                    desc = "A button in the meter's header that starts a 10-second pull countdown; right-click it to cancel. It shows only while you are in a group.",
+                    get = function() return ns.db.profile.damagemeter.countdownButton ~= false end,
+                    set = function(_, val) ns.db.profile.damagemeter.countdownButton = val; if ns.DamageMeter then ns.DamageMeter:Refresh() end end,
                 },
             }
         },

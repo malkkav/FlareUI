@@ -1,3 +1,32 @@
+# FlareUI 1.3.1
+
+Fixes from your reports, and a handful of new options.
+
+## Fixed
+- Chat: clicking a quest or item link on the last line of the chat opened the chat box instead of the link.
+- Chat: shift-clicking a player's name invited them to your group. That's now an option, off by default: Chat > Improvements > Shift-Click to Invite.
+- Minimap: a Rotate Minimap setting switched on before FlareUI kept the map rotating with a round border, and the option is hidden. FlareUI now keeps the map still; turn the Minimap module off and your own setting comes back.
+- Tooltips: the defaults now match Blizzard's. Tooltips sit in the bottom-right corner, and ability tooltips on the action bars and unit tooltips on the frames show again, so hovering a group member shows their location. This only changes settings you never touched.
+
+## New
+
+**Unit Frames**
+- Move, size and switch off each frame's icons in Edit Mode: pick one in the new Icon dropdown, then set Show Icon, Icon X, Icon Y and Icon Scale. The picked icon shows on the frame while Edit Mode is open. These replace the Elements switches in the settings window; an icon you had switched off there stays off.
+- Aura Timers (Edit Mode, Auras): switch off the countdown numbers on buffs and debuffs.
+
+**Chat**
+- Drag the header buttons to change their order, the way you drag tabs.
+
+**Damage Meter**
+- Ready Check and Countdown buttons in the header. Ready Check shows when you lead or assist a group; Countdown shows while you're in a group, starts a 10-second pull timer and cancels it on a right-click. Each can be switched off in Damage Meter > Features.
+
+**Minimap**
+- Edit Mode's Size slider is back: it scales the whole minimap, frame, header and all.
+
+## Changed
+- The quest "!" on the target frame sits in the middle of the health bar, under the raid marker.
+- Damage Meter: Match Chat Frame Size needs the Chat module (it matches FlareUI's chat frame only).
+
 # FlareUI 1.3
 
 **Grab your controller!** FlareUI now works with Blizzard's Gamepad UI on WoW: Forever, from the first button press to the last setting. Pick up a controller and FlareUI offers to switch; put it down and `/fui pad` brings the keyboard and mouse back.

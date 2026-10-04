@@ -131,6 +131,7 @@ local defaults = {
             saveHistory = true,
 
             copyLinks = true,
+            shiftInvite = false,        -- shift-click a player name in chat to invite them
             formatNPC = true,
             formatPlayer = true,
             betterTimestamps = false,
@@ -251,6 +252,8 @@ local defaults = {
             barFont = { face = "Friz Quadrata TT", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             threatTab = true,           -- Threat tab beside the meter title (right-click for Blizzard's types)
             combatTimer = false,        -- Blizzard's "[mm:ss]" session timer in the title row
+            readyCheckButton = true,    -- Ready Check button in the header (Modules/DamageMeter.lua 7b)
+            countdownButton = true,     -- Countdown button in the header
             matchChatSize = false,      -- the meter takes the chat frame's size (Edit Mode's is overridden)
             threatKey = nil,            -- a key that flips the meter between Blizzard's view and Threat
         },
@@ -346,19 +349,19 @@ local defaults = {
             showItemID = false,
             showSpellID = false,
 
-            -- anchor: default | cursorOffset (shown as "Cursor")
-            anchor = "cursorOffset",
-            anchorFrames = "cursorOffset",
+            -- anchor: default | cursorOffset (shown as "Cursor"); Blizzard's corner by default
+            anchor = "default",
+            anchorFrames = "default",
             anchorX = 0,
             anchorY = 0,
 
-            -- visibility: always | combat | never
+            -- visibility: always | combat | never; every tooltip shows by default, as with Blizzard
             visibility = {
-                worldUnits = "combat",
-                worldObjects = "combat",
-                frameUnits = "never",
+                worldUnits = "always",
+                worldObjects = "always",
+                frameUnits = "always",
                 frameTips = "always",
-                actionBars = "never",
+                actionBars = "always",
                 items = "always",
                 spells = "always",
                 auras = "always",

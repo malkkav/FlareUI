@@ -75,6 +75,12 @@ ns.Options.args.chat = {
                             get = function() return Get("hideBubblesInInstance") end,
                             set = function(_, val) Set("hideBubblesInInstance", val); if ns.Chat and ns.Chat.UpdateInstanceBubbles then ns.Chat:UpdateInstanceBubbles() end end
                         },
+                        spacer7 = { type = "description", name = "", width = 0.1, order = 51 },
+                        shiftInvite = {
+                            type = "toggle", name = "Shift-Click to Invite", desc = "Shift-clicking a player's name in chat also invites them to your group (Blizzard's shift-click still looks them up).", order = 55,
+                            get = function() return Get("shiftInvite") end,
+                            set = function(_, val) Set("shiftInvite", val) end
+                        },
                         extendHistory = {
                             type = "toggle", name = "Extend Chat History", desc = "Increases chat history capacity to 4096 lines.", order = 30,
                             get = function() return Get("extendHistory") end,
@@ -167,7 +173,8 @@ ns.Options.args.chat = {
                     args = {
                         text = {
                             type = "description", fontSize = "medium", order = 10,
-                            name = "Right click a tab in the chat to open the options dropdown and create or close tabs.\n\n"
+                            name = "Right click a tab in the chat to open the options and create or close tabs.\n\n"
+                                .. "You can drag and drop tabs to reorder them. You can do the same with the header buttons.\n\n"
                                 .. "If you use a lot of tabs, use the mouse scroll wheel in the chat header to scroll between them.",
                         },
                     }

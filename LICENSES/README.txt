@@ -21,6 +21,10 @@ Code
       Account Wide Interface Settings by NinerBull (ConineSpiritwolf), MIT License
       https://github.com/NinerBull/AccWideUILayoutSelection . AccountWideInterfaceSettings.txt
 
+Icons (Media/Icons/)
+  DMCountdown.tga (stopwatch)
+      Icons8 ("stopwatch"), free licence with attribution .... https://icons8.com
+
 Fonts (Media/Fonts/)
   Asap Condensed, Barlow Condensed, Cabin Condensed, Fira Sans Extra Condensed
       SIL Open Font License 1.1 ............................ Fonts_OFL-1.1.txt

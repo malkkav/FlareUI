@@ -39,6 +39,8 @@ local SEPARATORS = {
 
 local ICON_SEGMENTS = "Interface\\AddOns\\FlareUI\\Media\\Icons\\DMSegments.tga"
 local ICON_SETTINGS = "Interface\\AddOns\\FlareUI\\Media\\Icons\\DMSettings.tga"
+local ICON_READY     = "Interface\\AddOns\\FlareUI\\Media\\Icons\\DMReadyCheck.tga"
+local ICON_COUNTDOWN = "Interface\\AddOns\\FlareUI\\Media\\Icons\\DMCountdown.tga"
 
 -- Fixed look, mirrored from the chat frame so both headers read as one design:
 -- 24 px header band, separator 24-32 px below the top, content from 34 px, title and icons centred
@@ -51,7 +53,8 @@ local ICON_SIZE       = 13   -- nominal box, used for layout maths
 -- Per-icon draw sizes so the *visible* glyph matches the chat header icons, which measure 9-11 px.
 -- The segment bars fill their whole 24x24 texture, so the draw size is the visible size. The gear
 -- only occupies rows 1.3-16.3 of its 24 (15/24 of the height), so 16 draws a ~10 px glyph.
-local ICON_DRAW_SIZE  = { settings = 16, segments = 11 }
+-- the checkmark fills 42 of its 64 rows and the stopwatch 92 of 100: 16 and 12 draw both ~11 px tall, as the bars
+local ICON_DRAW_SIZE  = { settings = 16, segments = 11, ready = 16, countdown = 12 }
 -- Because the gear sits high in its texture, centring its glyph on the button needs an offset of
 -- -0.13 * draw size; -2.5 is that plus a small nudge down so it settles against the bars icon.
 local ICON_DRAW_YOFS  = { settings = -2.5, segments = 0 }
@@ -288,6 +291,114 @@ local function UpdateSourceWindowSkin(window, db)
 end
 
 --------------------------------------------------
+-- 7b. GROUP BUTTONS
+-- Ready Check and Countdown, left of the segments icon: Blizzard's own C_PartyInfo calls, as its raid
+-- manager makes them from its buttons. Each shows only where it applies: Countdown in a group, Ready
+-- Check for a group's leader or assistants. The countdown starts a 10-second pull timer on a left-click
+-- and cancels it on a right-click.
+--------------------------------------------------
+local GROUP_BUTTONS = {
+    order = { "countdown", "ready" },   -- right to left, after the segments icon
+    ready = { option = "readyCheckButton", icon = ICON_READY },
+    countdown = { option = "countdownButton", icon = ICON_COUNTDOWN, seconds = 10 },
+    buttons = {},   -- window -> { key = button }
+}
+
+function GROUP_BUTTONS.CanReadyCheck()
+    if not IsInGroup() then return false end
+    local leader, assist = UnitIsGroupLeader("player"), UnitIsGroupAssistant("player")
+    if not canaccessvalue(leader) then leader = false end
+    if not canaccessvalue(assist) then assist = false end
+    return (leader or assist) and true or false
+end
+
+-- the keys switched on that apply right now, right to left
+function GROUP_BUTTONS.Shown(db)
+    local list = {}
+    local applies = { countdown = IsInGroup(), ready = GROUP_BUTTONS.CanReadyCheck() }
+    for _, key in ipairs(GROUP_BUTTONS.order) do
+        if db and db[GROUP_BUTTONS[key].option] ~= false and applies[key] then list[#list + 1] = key end
+    end
+    return list
+end
+
+function GROUP_BUTTONS.Paint(btn, hover)
+    local c = ICON_COLOR
+    local r, g, b = c.r, c.g, c.b
+    if hover then r, g, b = LightenColor(r, g, b, 0.3) end
+    btn.FlareUI_Icon:SetVertexColor(r, g, b, c.a or 1)
+end
+
+function GROUP_BUTTONS.Get(window, key)
+    local set = GROUP_BUTTONS.buttons[window]
+    if not set then set = {}; GROUP_BUTTONS.buttons[window] = set end
+    if set[key] then return set[key] end
+    local def = GROUP_BUTTONS[key]
+    local btn = CreateFrame("Button", nil, window)
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    local icon = btn:CreateTexture(nil, "OVERLAY", nil, 7)
+    icon:SetTexture(def.icon)
+    icon:SetSize(ICON_DRAW_SIZE[key], ICON_DRAW_SIZE[key])
+    icon:SetPoint("CENTER")
+    btn.FlareUI_Icon = icon
+    -- no tooltip, like the header's other icons: the settings' toggles explain them
+    btn:SetScript("OnEnter", function(self) GROUP_BUTTONS.Paint(self, true) end)
+    btn:SetScript("OnLeave", function(self) GROUP_BUTTONS.Paint(self, false) end)
+    btn:SetScript("OnMouseDown", function(self) self.FlareUI_Icon:SetPoint("CENTER", 1, -1) end)
+    btn:SetScript("OnMouseUp", function(self) self.FlareUI_Icon:SetPoint("CENTER", 0, 0) end)
+    btn:SetScript("OnClick", function(_, button)
+        if key == "ready" then
+            C_PartyInfo.DoReadyCheck()
+        elseif button == "RightButton" then
+            C_PartyInfo.DoCountdown(0)
+        else
+            C_PartyInfo.DoCountdown(def.seconds)
+        end
+    end)
+    GROUP_BUTTONS.Paint(btn, false)
+    set[key] = btn
+    return btn
+end
+
+-- joining, leaving, or a new leader or assistant: the header is laid out again (once per burst of
+-- events; Refresh itself waits for the end of combat)
+GROUP_BUTTONS.events = CreateFrame("Frame")
+GROUP_BUTTONS.events:RegisterEvent("GROUP_ROSTER_UPDATE")
+GROUP_BUTTONS.events:RegisterEvent("PARTY_LEADER_CHANGED")
+GROUP_BUTTONS.events:SetScript("OnEvent", function()
+    if GROUP_BUTTONS.pending then return end
+    GROUP_BUTTONS.pending = true
+    C_Timer.After(0.2, function()
+        GROUP_BUTTONS.pending = nil
+        local db = GetDb()
+        if db and db.enabled and DamageMeter.Refresh then DamageMeter:Refresh() end
+    end)
+end)
+
+-- lays the switched-on buttons out left of the segments icon, hides the rest; returns how many show
+function GROUP_BUTTONS.Layout(window, db, ref, box, levelOf)
+    local shown = (db and not db.hideHeader) and GROUP_BUTTONS.Shown(db) or {}
+    local isShown = {}
+    for slot, key in ipairs(shown) do
+        isShown[key] = true
+        local btn = GROUP_BUTTONS.Get(window, key)
+        btn:SetSize(box, box)
+        btn:ClearAllPoints()
+        -- slots 0 and 1 are the settings and segments icons
+        btn:SetPoint("CENTER", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE / 2 + (slot + 1) * ICON_SPACING), ROW_CENTER_Y)
+        if levelOf then
+            btn:SetFrameStrata(levelOf:GetFrameStrata())
+            btn:SetFrameLevel(levelOf:GetFrameLevel())
+        end
+        btn:Show()
+    end
+    for key, btn in pairs(GROUP_BUTTONS.buttons[window] or {}) do
+        if not isShown[key] then btn:Hide() end
+    end
+    return #shown
+end
+
+--------------------------------------------------
 -- 8. HEADER
 --------------------------------------------------
 -- Forward declaration: ApplyHeader calls this, but the body belongs with the rest of the button
@@ -312,6 +423,7 @@ local function ApplyHeader(window, db)
                 frame:Hide()
             end
         end
+        for _, btn in pairs(GROUP_BUTTONS.buttons[window] or {}) do btn:Hide() end
         for _, f in ipairs({ GetWindowSessionTimer(window), GetWindowTypeDropdown(window), GetWindowSessionDropdown(window), GetWindowSettingsDropdown(window) }) do
             if f then
                 f:Hide()
@@ -364,16 +476,19 @@ local function ApplyHeader(window, db)
                     sdd:ClearAllPoints()
                     sdd:SetPoint("CENTER", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE / 2 + ICON_SPACING), ROW_CENTER_Y)
                 end
+                -- Ready Check / Countdown left of the segments icon; the title and timer make room
+                local extra = GROUP_BUTTONS.Layout(window, db, ref, box, sdd or sd)
+                local iconsWidth = ICON_SIZE + (1 + extra) * ICON_SPACING
                 if dd and dd.ClearAllPoints then
                     dd:ClearAllPoints()
                     dd:SetPoint("TOPLEFT", ref, "TOPLEFT", 0, 0)
-                    dd:SetPoint("BOTTOMRIGHT", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE + ICON_SPACING + 8), -HEADER_HEIGHT)
+                    dd:SetPoint("BOTTOMRIGHT", ref, "TOPRIGHT", -(ICON_RIGHT + iconsWidth + 8), -HEADER_HEIGHT)
                 end
                 -- the timer sits at the right end of the title row, just left of the icons
                 local timer = GetWindowSessionTimer(window)
                 if timer and timer.ClearAllPoints then
                     timer:ClearAllPoints()
-                    timer:SetPoint("RIGHT", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE + ICON_SPACING + 10), ROW_CENTER_Y)
+                    timer:SetPoint("RIGHT", ref, "TOPRIGHT", -(ICON_RIGHT + iconsWidth + 10), ROW_CENTER_Y)
                     timer:SetJustifyH("RIGHT")
                 end
                 if dd and dd.TypeName and dd.TypeName.ClearAllPoints then
@@ -1148,10 +1263,17 @@ local function ChatSizeSource()
     return chat and (chat.FlareUI_Skin or chat)
 end
 
+-- FlareUI's chat only: matching Blizzard's own chat frame is not offered
+local function ChatModuleOn()
+    local chat = ns.db and ns.db.profile and ns.db.profile.chat
+    return chat ~= nil and chat.enabled == true
+end
+
 local function MatchChatSize()
     local db = GetDb()
     local meter = _G.DamageMeter
     if matchSizing or not (db and db.enabled and db.matchChatSize and meter) or InCombatLockdown() then return end
+    if not ChatModuleOn() then return end
     local source = ChatSizeSource()
     local width, height = source and source:GetSize()
     if not (width and height and width > 0 and height > 0) then return end

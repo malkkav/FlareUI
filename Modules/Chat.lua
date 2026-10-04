@@ -477,14 +477,153 @@ local function HeaderButtonShown(db, name)
     return not db[name .. "Hide"]
 end
 
+-- the player's order (dragged on the header), right to left; any key missing from it goes on the end
+local function HeaderOrder(db)
+    local saved = db and db.headerOrder
+    if type(saved) ~= "table" then return HEADER_ORDER end
+    local order, seen = {}, {}
+    for _, key in ipairs(saved) do
+        if tContains(HEADER_ORDER, key) and not seen[key] then
+            order[#order + 1] = key
+            seen[key] = true
+        end
+    end
+    for _, key in ipairs(HEADER_ORDER) do
+        if not seen[key] then order[#order + 1] = key end
+    end
+    return order
+end
+
 local function HeaderButtonX(db, name)
     local slot = 0
-    for _, key in ipairs(HEADER_ORDER) do
+    for _, key in ipairs(HeaderOrder(db)) do
         if key == name then return HEADER_FIRST_X + slot * HEADER_STEP end
         if HeaderButtonShown(db, key) then slot = slot + 1 end
     end
     return HEADER_FIRST_X
 end
+
+--------------------------------------------------
+-- HEADER BUTTON ORDER
+-- A header button is dragged to another's place, the way the tabs are: a bronze bar under the button
+-- it will take the place of follows the cursor, and the drop saves the new order. Blizzard's Chat
+-- Menu opens on mouse down, so that press closes it again as the drag starts.
+--------------------------------------------------
+local HEADER_BLIZZARD = { social = "QuickJoinToastButton", menu = "ChatFrameMenuButton", channel = "ChatFrameChannelButton" }
+local headerDrag = { key = nil, header = nil, button = nil, marker = nil, driver = CreateFrame("Frame") }
+
+-- the header's button for key: Blizzard's shared ones sit on the visible skin, the volume button is
+-- the skin's own
+local function HeaderButtonOf(header, key)
+    if key == "volume" then
+        for i = 1, NUM_CHAT_WINDOWS do
+            local cf = _G["ChatFrame" .. i]
+            if cf and cf.FlareUI_Skin == header then return cf.FlareUI_VolumeBtn end
+        end
+        return nil
+    end
+    local btn = _G[HEADER_BLIZZARD[key]]
+    if btn and btn:GetParent() == header then return btn end
+    return nil
+end
+
+-- the visible button nearest the cursor along the header
+local function HeaderDropTarget(header)
+    local x = GetCursorPosition() / header:GetEffectiveScale()
+    local best, bestDistance
+    for _, key in ipairs(HEADER_ORDER) do
+        local btn = HeaderButtonOf(header, key)
+        if btn and btn:IsVisible() then
+            local left, right = btn:GetLeft(), btn:GetRight()
+            if left and right then
+                local scale = btn:GetEffectiveScale() / header:GetEffectiveScale()
+                local distance = math_abs((left + right) / 2 * scale - x)
+                if not bestDistance or distance < bestDistance then best, bestDistance = key, distance end
+            end
+        end
+    end
+    return best
+end
+
+local function UpdateHeaderMarker()
+    local header = headerDrag.header
+    local target = header and HeaderDropTarget(header)
+    local btn = target and HeaderButtonOf(header, target)
+    local marker = headerDrag.marker
+    if not (btn and marker) then return end
+    marker:ClearAllPoints()
+    marker:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -1)
+    marker:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -1)
+    marker:SetShown(target ~= headerDrag.key)
+end
+
+local function StartHeaderDrag(key, header)
+    if headerDrag.key or not header then return end
+    local btn = HeaderButtonOf(header, key)
+    if not btn then return end
+    -- the press that began this drag opened Blizzard's chat menu
+    local menu = _G.ChatFrameMenuButton
+    if key == "menu" and menu and menu.IsMenuOpen and menu:IsMenuOpen() then pcall(menu.CloseMenu, menu) end
+    if not headerDrag.marker or headerDrag.marker:GetParent() ~= header then
+        if headerDrag.marker then headerDrag.marker:Hide() end
+        local holder = header.FlareUI_DragMarker
+        if not holder then
+            holder = CreateFrame("Frame", nil, header)
+            holder:SetAllPoints()
+            holder:SetFrameStrata("DIALOG")
+            holder:SetFrameLevel(230)
+            header.FlareUI_DragMarker = holder
+        end
+        local marker = holder.bar
+        if not marker then
+            marker = holder:CreateTexture(nil, "OVERLAY")
+            marker:SetHeight(2)
+            local c = ns.BORDER_COLOR
+            marker:SetColorTexture(c.r, c.g, c.b, 1)
+            holder.bar = marker
+        end
+        headerDrag.marker = marker
+    end
+    headerDrag.key, headerDrag.header, headerDrag.button = key, header, btn
+    btn:SetAlpha(0.5)
+    headerDrag.driver:SetScript("OnUpdate", UpdateHeaderMarker)
+end
+
+local function StopHeaderDrag()
+    local key, header, btn = headerDrag.key, headerDrag.header, headerDrag.button
+    if not key then return end
+    headerDrag.driver:SetScript("OnUpdate", nil)
+    if headerDrag.marker then headerDrag.marker:Hide() end
+    headerDrag.key, headerDrag.header, headerDrag.button = nil, nil, nil
+    btn:SetAlpha(1)
+    local target = HeaderDropTarget(header)
+    local db = GetDb()
+    if db and target and target ~= key then
+        -- the dragged button takes the target's slot; the ones between shift over by one
+        local old = HeaderOrder(db)
+        local from, to = tIndexOf(old, key), tIndexOf(old, target)
+        local order = {}
+        for _, k in ipairs(old) do if k ~= key then order[#order + 1] = k end end
+        local at = tIndexOf(order, target)
+        table.insert(order, from < to and at + 1 or at, key)
+        db.headerOrder = order
+        for i = 1, NUM_CHAT_WINDOWS do
+            local cf = _G["ChatFrame" .. i]
+            if cf and cf.FlareUI_Skin then Chat:SetupVolumeButton(cf, db) end
+        end
+        Chat:StyleHeaderButtons()
+    end
+end
+
+-- plain drag, on the button itself (done once per button)
+local function EnableHeaderDrag(btn, key)
+    if btn.FlareUI_DragKey then return end
+    btn.FlareUI_DragKey = key
+    btn:RegisterForDrag("LeftButton")
+    btn:SetScript("OnDragStart", function(self) StartHeaderDrag(self.FlareUI_DragKey, self:GetParent()) end)
+    btn:SetScript("OnDragStop", StopHeaderDrag)
+end
+
 
 function Chat:StyleHeaderButtons(chatFrame)
     if self.isStyling then return end
@@ -501,8 +640,9 @@ function Chat:StyleHeaderButtons(chatFrame)
     end
     local header = target.FlareUI_Skin
 
-    local function SetupBtn(btn, iconPath, hide, x, y, scale, color, isSocial)
+    local function SetupBtn(btn, iconPath, hide, x, y, scale, color, isSocial, key)
         if not btn then return end
+        EnableHeaderDrag(btn, key)
 
         -- Blizzard's own OnShow stays in place: the social button registers for clicks there (and drops
         -- them again in OnHide), so replacing it left the button dead after its first hide / show.
@@ -606,9 +746,9 @@ function Chat:StyleHeaderButtons(chatFrame)
     local cChannel = db.channelColor or {r=1,g=1,b=1,a=1}
     local cMenu = db.menuColor or {r=1,g=1,b=1,a=1}
 
-    SetupBtn(_G.QuickJoinToastButton,   ICON_SOCIAL,   not HeaderButtonShown(db, "social"),  HeaderButtonX(db, "social"),  db.socialY,  db.socialScale,  cSocial, true)
-    SetupBtn(_G.ChatFrameChannelButton, ICON_CHANNELS, not HeaderButtonShown(db, "channel"), HeaderButtonX(db, "channel"), db.channelY, db.channelScale, cChannel)
-    SetupBtn(_G.ChatFrameMenuButton,    ICON_MENU,     not HeaderButtonShown(db, "menu"),    HeaderButtonX(db, "menu"),    db.menuY,    db.menuScale,    cMenu)
+    SetupBtn(_G.QuickJoinToastButton,   ICON_SOCIAL,   not HeaderButtonShown(db, "social"),  HeaderButtonX(db, "social"),  db.socialY,  db.socialScale,  cSocial, true, "social")
+    SetupBtn(_G.ChatFrameChannelButton, ICON_CHANNELS, not HeaderButtonShown(db, "channel"), HeaderButtonX(db, "channel"), db.channelY, db.channelScale, cChannel, false, "channel")
+    SetupBtn(_G.ChatFrameMenuButton,    ICON_MENU,     not HeaderButtonShown(db, "menu"),    HeaderButtonX(db, "menu"),    db.menuY,    db.menuScale,    cMenu, false, "menu")
 
     -- The buttons are children of the skin, so their alpha (and their icons' and Flash glows') follows it.
     self.isStyling = false
@@ -1346,14 +1486,24 @@ function Chat:StyleEditBox(chatFrame, db)
     if eb.headerSuffix then eb.headerSuffix:Hide(); if eb.headerSuffix.SetAlpha then eb.headerSuffix:SetAlpha(0) end; if eb.headerSuffix.SetTexture then eb.headerSuffix:SetTexture(nil) end end
 
     -- IM style parks the edit box at 35% alpha between messages (ChatFrameEditBoxMixin:Deactivate);
-    -- keep it invisible instead. It still takes the click that opens it, and ActivateChat puts the
-    -- alpha back.
+    -- keep it invisible instead. It lies over the chat's last lines, so while idle it also goes
+    -- beneath the chat window (Blizzard parks it at LOW): a click on a link there reaches the link
+    -- instead of opening the chat. ActivateChat lifts it back to DIALOG and puts the alpha back.
+    -- Never touch its mouse or hook ActivateChat: both stopped Enter from opening the chat. The
+    -- Gamepad UI drives the edit box itself and is left alone.
     if not eb.FlareUI_IMHooked then
         eb.FlareUI_IMHooked = true
+        local gamepad = ns.IsGamepadUI()
         hooksecurefunc(eb, "Deactivate", function(self)
-            if GetCVar("chatStyle") == "im" and not self.isGM then self:SetAlpha(0) end
+            if GetCVar("chatStyle") == "im" and not self.isGM then
+                self:SetAlpha(0)
+                if not gamepad then self:SetFrameStrata("BACKGROUND") end
+            end
         end)
-        if GetCVar("chatStyle") == "im" and eb ~= ACTIVE_CHAT_EDIT_BOX then eb:SetAlpha(0) end
+        if GetCVar("chatStyle") == "im" and eb ~= ACTIVE_CHAT_EDIT_BOX then
+            eb:SetAlpha(0)
+            if not gamepad then eb:SetFrameStrata("BACKGROUND") end
+        end
     end
 
     eb:ClearAllPoints()
@@ -1368,7 +1518,8 @@ function Chat:StyleEditBox(chatFrame, db)
     if not bg then
         bg = CreateFrame("Frame", nil, eb, "BackdropTemplate")
         eb.FlareUI_Backdrop = bg
-        bg:SetFrameStrata(eb:GetFrameStrata() or "BACKGROUND")
+        -- DIALOG, where the opened box draws (ActivateChat), whatever strata the idle box is parked at
+        bg:SetFrameStrata("DIALOG")
         bg:SetFrameLevel(math_max((eb:GetFrameLevel() or 1) - 1, 0))
         bg:SetPoint("TOPLEFT", eb, "TOPLEFT", -2, 2)
         bg:SetPoint("BOTTOMRIGHT", eb, "BOTTOMRIGHT", 2, -2)
@@ -1379,8 +1530,10 @@ function Chat:StyleEditBox(chatFrame, db)
     local edgeFile = GetBorderFile(db)
     local opacity  = db.editBoxOpacity or 1
 
-    -- no insets: the opaque fill runs right up to the border line instead of leaving a gap
-    bg:SetBackdrop({ bgFile = bgFile, edgeFile = edgeFile, tile = true, tileSize = 16, edgeSize = 16, insets = { left = 0, right = 0, top = 0, bottom = 0 } })
+    -- the fill stops inside the border, as on the chat window's skin: the Blizzard Tooltip border's
+    -- line sits a few px in from the frame edge, and a fill to the edge showed square past it
+    local inset = db.borderInset or 4
+    bg:SetBackdrop({ bgFile = bgFile, edgeFile = edgeFile, tile = true, tileSize = 16, edgeSize = 16, insets = { left = inset, right = inset, top = inset, bottom = inset } })
     bg:SetBackdropColor(0, 0, 0, opacity)
     bg:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1)
 
@@ -1490,6 +1643,7 @@ function Chat:SetupVolumeButton(chatFrame, db)
 
     btn:SetFrameStrata("DIALOG")
     btn:SetFrameLevel(210)
+    EnableHeaderDrag(btn, "volume")
 
     UpdateIcon()
 end
@@ -2101,6 +2255,7 @@ function Chat:Init()
     -- URL linking lives in SetupCopyLinks (section "COPY CHAT LINKS"), behind the Copy Chat Links
     -- option; nothing here may filter URLs unconditionally, or the option could not turn it off.
     Chat:SecureHook("SetItemRef", function(link, text, button, chatFrame)
+        if not ns.db.profile.chat.shiftInvite then return end
         if IsShiftKeyDown() and button == "LeftButton" and link:sub(1, 6) == "player" then
             local name = link:match("player:([^:]+)")
             if name then C_PartyInfo.InviteUnit(name) end

@@ -5,7 +5,8 @@ local _, ns = ...
 -- A square minimap dressed in Blizzard's own art: the metal frame of the game's panels (the AddOn
 -- List's NineSlice layout) around it, Blizzard's instance difficulty banner and Forever's day/night
 -- badge. The header - tracking, zone text, clock and calendar - runs inside the map along its top,
--- and the day/night badge sits on the bottom-left corner. The size is fixed; Edit Mode still places it.
+-- and the day/night badge sits on the bottom-left corner. Edit Mode places it, and its Size setting
+-- scales the whole frame.
 --------------------------------------------------
 ns.Minimap = ns.Minimap or {}
 local MM = ns.Minimap
@@ -280,9 +281,10 @@ end
 --------------------------------------------------
 -- 7. LAYOUT
 --------------------------------------------------
--- Edit Mode sizes the cluster and scales the map container from its own Size setting; the size
--- here is fixed, so both are put back after Blizzard. The guard keeps the SetSize hook from
--- answering its own call.
+-- Edit Mode sizes the cluster and scales the map container (and, past 100%, the header) from its
+-- Size setting. Here the layout is built at one fixed size and the Size setting scales the whole
+-- cluster instead, so every piece keeps its place on the frame art. The guard keeps the SetSize hook
+-- from answering its own call.
 local sizingCluster = false
 local function SizeCluster()
     if sizingCluster then return end
@@ -291,12 +293,25 @@ local function SizeCluster()
     sizingCluster = false
 end
 
+-- Edit Mode's Size setting (50-200%), read from the active layout; 100% before Edit Mode has it
+local function EditModeSize()
+    if not (Cluster.HasSetting and Cluster.GetSettingValue) then return 1 end
+    local ok, has = pcall(Cluster.HasSetting, Cluster, Enum.EditModeMinimapSetting.Size)
+    if not (ok and has) then return 1 end
+    local ok2, value = pcall(Cluster.GetSettingValue, Cluster, Enum.EditModeMinimapSetting.Size)
+    if not (ok2 and type(value) == "number" and value > 0) then return 1 end
+    return value / 100
+end
+
 function MM:UpdateLayout()
     if not self.initialized then return end
     Cluster.MinimapContainer:SetScale(1)
     Cluster.BorderTop:SetScale(1)
     Cluster.ZoneTextButton:SetScale(1)
     SizeCluster()
+    -- Edit Mode's SetScale on a system frame moves it so it stays in place on screen
+    local scale = EditModeSize()
+    if math.abs(Cluster:GetScale() - scale) > 0.001 then Cluster:SetScale(scale) end
 
     MinimapFrame:SetSize(MAP_SIZE, MAP_SIZE)
     MinimapFrame:ClearAllPoints()
@@ -312,14 +327,13 @@ end
 
 --------------------------------------------------
 -- 8. EDIT MODE
--- Three of Blizzard's minimap settings do not apply to this map and are taken out of its dialog:
--- Size (the size is fixed), Rotate Minimap (a rotating map does not fit a square frame) and Header
--- Underneath (the header always runs along the top). A stored value of any of them is harmless -
+-- Two of Blizzard's minimap settings do not apply to this map and are taken out of its dialog:
+-- Rotate Minimap (a rotating map does not fit a square frame) and Header Underneath (the header
+-- always runs along the top). Size stays, applied by UpdateLayout as a scale of the whole cluster. A stored value of any of them is harmless -
 -- the layout above is re-applied after Blizzard's.
 --------------------------------------------------
 local function RemoveEditModeSettings()
     local removed = {
-        [Enum.EditModeMinimapSetting.Size] = true,
         [Enum.EditModeMinimapSetting.RotateMinimap] = true,
         [Enum.EditModeMinimapSetting.HeaderUnderneath] = true,
     }
@@ -331,6 +345,13 @@ local function RemoveEditModeSettings()
     for i = #displayInfo, 1, -1 do
         if removed[displayInfo[i].setting] then table_remove(displayInfo, i) end
     end
+end
+
+-- The square map cannot rotate. Blizzard applies Edit Mode's Rotate Minimap through the rotateMinimap
+-- CVar (MinimapClusterMixin:SetRotateMinimap); a rotation switched on before FlareUI is switched off
+-- here, at load and whenever a layout applies it. The saved layout keeps the player's choice.
+local function KeepMapUnrotated()
+    if GetCVarBool("rotateMinimap") then SetCVar("rotateMinimap", "0") end
 end
 
 --------------------------------------------------
@@ -350,7 +371,10 @@ local function InstallHooks()
     hooksecurefunc(Cluster, "SetSize", SizeCluster)
     -- Forever's own SetEditModeScale re-places the day/night badge, and SetHeaderUnderneath
     -- re-anchors the header and banner from a stored layout; the layout goes back on after both
-    hooksecurefunc(Cluster, "SetEditModeScale", function() MM:UpdateLayout() end)
+    hooksecurefunc(Cluster, "SetEditModeScale", function()
+        MM:UpdateLayout()
+        MM:UpdateTrackerScale()   -- Match Objective Tracker Width follows the new size
+    end)
     hooksecurefunc(Cluster, "SetHeaderUnderneath", function() MM:UpdateLayout() end)
     hooksecurefunc("MiniMapIndicatorFrame_UpdatePosition", PlaceIndicators)
     if Cluster.InstanceDifficulty then
@@ -446,6 +470,8 @@ function MM:Init()
     end
 
     RemoveEditModeSettings()
+    KeepMapUnrotated()
+    if Cluster.SetRotateMinimap then hooksecurefunc(Cluster, "SetRotateMinimap", KeepMapUnrotated) end
     -- free to be dragged partly off screen; the clamp only comes from Edit Mode's XML template
     Cluster:SetClampedToScreen(false)
     -- Blizzard's addon drawer has no place in this frame; Blizzard re-shows it from UpdateDisplay
