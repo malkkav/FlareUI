@@ -91,7 +91,8 @@ local function GetTimestamp()
     if format == "none" and not db.betterTimestamps then return "" end
     if format == "none" then format = "%H:%M" end
 
-    local timeStr = BetterDate(format, time())
+    -- Blizzard's formats end in a space ("%H:%M "), which belongs outside the brackets
+    local timeStr = string_gsub(BetterDate(format, time()), "%s+$", "")
 
     if db.betterTimestamps then
         return string_format("%s<%s>|r ", TIMESTAMP_COLOR, timeStr)
@@ -265,7 +266,20 @@ local function DisableQuickJoinToasts()
 end
 
 --------------------------------------------------
--- 5. FILTERS
+-- 5. LINE REWRITING
+-- Blizzard formats every chat line itself and FlareUI changes the finished line once it is stored:
+-- a post-hook on each window's AddMessage gets the line together with its event and the event's
+-- arguments, and rewrites the newest history entry in place - what ScrollingMessageFrame's own
+-- TransformMessages does, without walking the whole history for it. Nothing is suppressed and added
+-- again, so Blizzard's own line stays: its player link (with the line ID behind Report Player), its
+-- tab flash, its censor handling, whispers. Replacing AddMessage or the CHAT_*_GET strings instead
+-- would taint Blizzard's handler. Secret lines pass untouched.
+--   Short Channel Names   [2. Trade - City] -> [2], [Guild] -> [G]
+--   Better Player Names   "[Name] says:" -> the class-coloured [Name] without realm or "says:"
+--   Better NPC Names      "Thrall says:" -> an orange [Thrall]
+--   Level Before Names    "(42)" in front of a player's name
+--   Better Timestamps     Blizzard's timestamp in FlareUI's colour, or one added where it has none
+--   Copy Line             the timestamp is a link: shift-click puts the line in the chat box
 --------------------------------------------------
 -- Shortened channel names: chat type -> the short tag and the channel link keyword Blizzard
 -- uses for it (raid warnings have no link). Numbered channels become just their number.
@@ -282,121 +296,322 @@ local SHORT_TAGS = {
     INSTANCE_CHAT_LEADER = { "IL", "INSTANCE_CHAT" },
 }
 
--- The tag Better Player Names puts in front of the name, or "" when Shortened Channel Names is off
-local function ShortTag(chatType)
+-- Lines whose sender is a player. "full": Better Player Names drops the "says:" too; "name": only the
+-- name changes, because the wording carries the direction ("whispers:", "To ...:").
+local NAME_EVENTS = {
+    SAY = "full", YELL = "full", GUILD = "full", OFFICER = "full",
+    PARTY = "full", PARTY_LEADER = "full", PARTY_GUIDE = "full",
+    RAID = "full", RAID_LEADER = "full", RAID_WARNING = "full",
+    INSTANCE_CHAT = "full", INSTANCE_CHAT_LEADER = "full", CHANNEL = "full",
+    WHISPER = "name", WHISPER_INFORM = "name",
+}
+local NPC_EVENTS = { MONSTER_SAY = true, MONSTER_YELL = true, MONSTER_WHISPER = true }
+
+-- Links that survive into the chat box when a line is copied; the server refuses the others
+-- (player, channel, FlareUI's own), so those are reduced to their text.
+local KEEP_LINKS = {
+    item = true, spell = true, quest = true, achievement = true, enchant = true,
+    trade = true, talent = true, currency = true,
+}
+
+local Lines = {
+    copies = {},        -- copy link id -> the line as plain chat text, this session only
+    copySerial = 0,
+    COPY_KEEP = 500,    -- the newest this many lines can be copied
+    levels = {},        -- GUID or lower-case name -> level, this session only
+    hooked = {},        -- chat frames carrying the AddMessage post-hook (not a field on Blizzard's)
+}
+
+-- Blizzard puts its timestamp first (ChatFrameUtil.GetTimestampFormat). The line was formatted a
+-- moment ago, so the same format over this second, or the one before, reproduces it.
+function Lines.SplitStamp(message)
+    local fmt = ChatFrameUtil.GetTimestampFormat and ChatFrameUtil.GetTimestampFormat()
+    if not fmt then return "", message end
+    local now = time()
+    for t = now, now - 1, -1 do
+        local stamp = BetterDate(fmt, t)
+        if message:sub(1, #stamp) == stamp then return stamp, message:sub(#stamp + 1) end
+    end
+    return "", message
+end
+
+function Lines.ShortenChannel(body, chatType)
+    local short
+    if chatType == "CHANNEL" or chatType == "COMMUNITIES_CHANNEL" then
+        short = string_gsub(body, "(|Hchannel:channel:(%d+)|h)%[[^%]]*%]|h", "%1[%2]|h", 1)
+    elseif SHORT_TAGS[chatType] then
+        local tag = SHORT_TAGS[chatType][1]
+        if SHORT_TAGS[chatType][2] then
+            short = string_gsub(body, "(|Hchannel:[^|]+|h)%[[^%]]*%]|h", "%1[" .. tag .. "]|h", 1)
+        elseif CHAT_MSG_RAID_WARNING then
+            local long = "[" .. CHAT_MSG_RAID_WARNING .. "]"
+            local s, e = body:find(long, 1, true)
+            if s then short = body:sub(1, s - 1) .. "[" .. tag .. "]" .. body:sub(e + 1) end
+        end
+    end
+    return short or body
+end
+
+-- One event argument, or nil where it is secret or not the expected type
+local function Arg(args, index, kind)
+    local v = args[index]
+    if v ~= nil and canaccessvalue(v) and type(v) == kind then return v end
+    return nil
+end
+
+local function NameKey(name)
+    return name and (name:gsub("%-.*$", "")):lower() or nil
+end
+
+function Lines.Remember(guid, name, level)
+    if not (canaccessvalue(level) and type(level) == "number" and level > 0) then return end
+    if guid and canaccessvalue(guid) and type(guid) == "string" then Lines.levels[guid] = level end
+    if name and canaccessvalue(name) and type(name) == "string" then Lines.levels[NameKey(name)] = level end
+end
+
+function Lines.RememberUnit(unit)
+    local ok, exists = pcall(UnitExists, unit)
+    if not (ok and canaccessvalue(exists) and exists) then return end
+    local okP, isPlayer = pcall(UnitIsPlayer, unit)
+    if not (okP and canaccessvalue(isPlayer) and isPlayer) then return end
+    local okG, guid = pcall(UnitGUID, unit)
+    local okN, name = pcall(UnitName, unit)
+    local okL, level = pcall(UnitLevel, unit)
+    if okL then Lines.Remember(okG and guid or nil, okN and name or nil, level) end
+end
+
+-- The sender's level: from a unit token when the game has one for them (group, target, mouseover,
+-- nameplate), else from what was seen this session (units, guild roster, friends, /who). Unknown
+-- levels are left out rather than guessed.
+function Lines.LevelFor(guid, sender)
+    if guid then
+        local ok, unit = pcall(UnitTokenFromGUID, guid)
+        if ok and unit and canaccessvalue(unit) then Lines.RememberUnit(unit) end
+        if Lines.levels[guid] then return Lines.levels[guid] end
+    end
+    return sender and Lines.levels[NameKey(sender)] or nil
+end
+
+local function ColorCode(r, g, b)
+    return string_format("|cff%02x%02x%02x", (r or 1) * 255, (g or 1) * 255, (b or 1) * 255)
+end
+
+-- The sender's player link: Better Player Names replaces its text with the class-coloured name and
+-- drops Blizzard's "says:"; the level goes in front, inside the link so it clicks too.
+function Lines.RewriteSender(body, chatType, args, mode, db)
+    local s, e, open, display = body:find("(|Hplayer:[^|]*|h)(.-)|h")
+    if not s then return body end
+    local sender, guid = Arg(args, 2, "string"), Arg(args, 12, "string")
+    if not sender or sender == "" then return body end
+    if guid == "" then guid = nil end
+
+    local class
+    if guid then
+        local ok, _, classFile = pcall(GetPlayerInfoByGUID, guid)
+        if ok and canaccessvalue(classFile) and type(classFile) == "string" then class = classFile end
+    end
+
+    if db.formatPlayer then
+        local name = string_gsub(sender, "%-[^|]+", "")
+        local color = class and C_ClassColor.GetClassColor(class)
+        display = color and (color:GenerateHexColorMarkup() .. "[" .. name .. "]|r") or ("[" .. name .. "]")
+    end
+
+    local prefix = ""
+    if db.showLevel then
+        local level = Lines.LevelFor(guid, sender)
+        if level then
+            local c = GetQuestDifficultyColor and GetQuestDifficultyColor(level)
+            prefix = (c and ColorCode(c.r, c.g, c.b) or "|cffffffff") .. "(" .. level .. ")|r "
+        end
+    end
+
+    local after = body:sub(e + 1)
+    if db.formatPlayer and mode == "full" then
+        -- After the link Blizzard has written the rest of its CHAT_<type>_GET format (" says: ",
+        -- ": "), maybe behind the recent-ally icon.
+        local key = _G["CHAT_" .. chatType .. "_GET"]
+        local suffix = type(key) == "string" and key:match("%%s(.*)$")
+        local ally, rest = after:match("^( |A[^|]*|a)(.*)$")
+        local tail = rest or after
+        if suffix and suffix ~= "" and tail:sub(1, #suffix) == suffix then
+            after = (ally or "") .. " " .. tail:sub(#suffix + 1)
+        end
+    end
+    return body:sub(1, s - 1) .. open .. prefix .. display .. "|h" .. after
+end
+
+-- NPC lines have no link: Blizzard writes format(CHAT_MONSTER_<type>_GET, name, name) in front of
+-- the text, which is put back as the orange name (and "whispers", in the client's own words).
+function Lines.RewriteNPC(body, chatType, args)
+    local sender = Arg(args, 2, "string")
+    local key = _G["CHAT_" .. chatType .. "_GET"]
+    if not sender or sender == "" or type(key) ~= "string" then return body end
+    local ok, header = pcall(string_format, key, sender, sender)
+    if not ok or body:sub(1, #header) ~= header then return body end
+    local verb = chatType == "MONSTER_WHISPER" and key:match("%%s(.-):?%s*$") or ""
+    return NPC_COLOR .. "[" .. sender .. "]" .. verb .. "|r " .. body:sub(#header + 1)
+end
+
+-- The line as text the chat box accepts: textures and colours gone, links reduced to their text
+-- except the kinds the server lets through.
+function Lines.ChatSafeText(text)
+    local kept = {}
+    local function Keep(whole, kind)
+        if KEEP_LINKS[kind] then
+            kept[#kept + 1] = whole
+            return "\001" .. #kept .. "\002"
+        end
+    end
+    text = text:gsub("(|c%x%x%x%x%x%x%x%x|H(%w+):[^|]*|h.-|h|r)", Keep)
+    text = text:gsub("(|cn[^:|]*:|H(%w+):[^|]*|h.-|h|r)", Keep)
+    text = text:gsub("|T.-|t", ""):gsub("|A.-|a", "")
+    text = text:gsub("|H.-|h(.-)|h", "%1")
+    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[^:|]*:", ""):gsub("|r", "")
+    text = text:gsub("\001(%d+)\002", function(i) return kept[tonumber(i)] end)
+    return strtrim(text)
+end
+
+-- The copy is Blizzard's own line (without its timestamp), not the one with FlareUI's additions.
+function Lines.CopyStamp(stamp, original)
+    local shown = stamp:gsub("%s+$", "")
+    Lines.copySerial = Lines.copySerial + 1
+    local id = Lines.copySerial
+    Lines.copies[id] = (Lines.ChatSafeText(original):gsub("  +", " "))
+    Lines.copies[id - Lines.COPY_KEEP] = nil
+    -- A coloured stamp (Better Timestamps) keeps its colour outside the link, the way item links
+    -- are built: |cff...|H...|h<12:00>|h|r
+    local color, text = shown:match("^(|c%x%x%x%x%x%x%x%x)(.-)|r$")
+    if not color then color, text = "", shown end
+    return color .. "|Hflarecopy:" .. id .. "|h" .. text .. "|h" .. (color ~= "" and "|r" or "")
+        .. stamp:sub(#shown + 1)
+end
+
+-- Registered once for the session (LinkUtil asserts on a second registration). Only shift-click
+-- does anything: the line goes into the open chat box, or opens one; too long for a message, it
+-- goes to the copy box instead.
+function Lines.RegisterCopyHandler()
+    if LinkUtil.IsLinkHandlerRegistered("flarecopy") then return end
+    LinkUtil.RegisterLinkHandler("flarecopy", function(link)
+        if not IsShiftKeyDown() then return end
+        local id = tonumber(link and link:match("^flarecopy:(%d+)"))
+        local text = id and Lines.copies[id]
+        if not text or text == "" then return end
+        if #text > 255 then
+            Chat.ShowCopyText(text)
+            return
+        end
+        local editBox = ChatFrameUtil.GetActiveWindow()
+        if editBox then
+            editBox:Insert(text)
+        else
+            ChatFrameUtil.OpenChat(text)
+        end
+    end)
+end
+
+local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, eventArgs)
     local db = GetDb()
-    local tag = db and db.shortChannels and SHORT_TAGS[chatType]
-    if not tag then return "" end
-    if tag[2] then return string_format("|Hchannel:%s|h[%s]|h ", tag[2], tag[1]) end
-    return "[" .. tag[1] .. "] "
-end
+    if not (db and event) then return end
+    if not (db.shortChannels or db.formatPlayer or db.formatNPC or db.betterTimestamps
+            or db.copyLine or db.showLevel) then return end
+    if not canaccessallvalues(message, event) or type(message) ~= "string" or type(event) ~= "string"
+            or event:sub(1, 9) ~= "CHAT_MSG_" then return end
+    local args = type(eventArgs) == "table" and canaccesstable(eventArgs) and eventArgs or nil
+    local chatType = event:sub(10)
 
-local function NPCFilter(self, event, msg, sender, ...)
-    if sender and canaccessallvalues(msg, sender) then
-        local timestamp = GetTimestamp()
-        local formatted = string_format("%s" .. NPC_COLOR .. "[%s]|r %s", timestamp, sender, msg)
-        if event == "CHAT_MSG_MONSTER_WHISPER" then
-             formatted = string_format("%s" .. NPC_COLOR .. "[%s] whispers|r %s", timestamp, sender, msg)
+    local stamp, body = Lines.SplitStamp(message)
+    local original = body
+    if db.shortChannels then body = Lines.ShortenChannel(body, chatType) end
+    if args then
+        if NPC_EVENTS[chatType] then
+            if db.formatNPC then body = Lines.RewriteNPC(body, chatType, args) end
+        elseif NAME_EVENTS[chatType] and (db.formatPlayer or db.showLevel) then
+            body = Lines.RewriteSender(body, chatType, args, NAME_EVENTS[chatType], db)
         end
-        local info = ChatTypeInfo["MONSTER_SAY"]
-        if event == "CHAT_MSG_MONSTER_YELL" then info = ChatTypeInfo["MONSTER_YELL"] end
-        if event == "CHAT_MSG_MONSTER_WHISPER" then info = ChatTypeInfo["MONSTER_WHISPER"] end
-        self:AddMessage(formatted, info.r, info.g, info.b)
-        return true
+    end
+    if db.betterTimestamps then stamp = GetTimestamp() end
+    if db.copyLine and stamp ~= "" and not ns.IsGamepadUI() then
+        Lines.RegisterCopyHandler()
+        stamp = Lines.CopyStamp(stamp, original)
+    end
+
+    local line = stamp .. body
+    if line == message then return end
+    local entry = chatFrame.historyBuffer and chatFrame.historyBuffer:GetEntryAtIndex(1)
+    if entry and canaccessallvalues(entry.message) and entry.message == message then
+        entry.message = line
+        chatFrame:MarkDisplayDirty()
     end
 end
 
-local function PlayerFilter(self, event, msg, sender, ...)
-    -- Exclude whispers: WHISPER_INFORM uses recipient as sender, so our formatting shows wrong name.
-    if event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_WHISPER_INFORM" then
-        return false
+-- Every chat window, the temporary whisper windows included (CHAT_FRAMES lists them all).
+local function HookLineRewrite()
+    for _, name in ipairs(CHAT_FRAMES or {}) do
+        local frame = _G[name]
+        if frame and not Lines.hooked[frame] then
+            hooksecurefunc(frame, "AddMessage", RewriteStoredLine)
+            Lines.hooked[frame] = true
+        end
     end
-    if sender and canaccessallvalues(msg, sender) then
-        local lineID = select(9, ...)
-        local guid = select(10, ...)
-        local classColorHex = "ffffffff"
+    if not Lines.tempHooked and FCF_OpenTemporaryWindow then
+        Lines.tempHooked = true
+        hooksecurefunc("FCF_OpenTemporaryWindow", HookLineRewrite)
+    end
+end
 
-        -- Protected API call - may fail during Midnight beta restrictions
-        if guid then
-            local success, _, classFilename = pcall(GetPlayerInfoByGUID, guid)
-            if success and classFilename then
-                local c = C_ClassColor.GetClassColor(classFilename)
-                if c then
-                    local colorSuccess, hexColor = pcall(c.GenerateHexColor, c)
-                    if colorSuccess and hexColor then
-                        classColorHex = hexColor
-                    end
+-- Levels for the senders' names, collected while Level Before Names is on.
+function Lines.UpdateLevelEvents()
+    local db = GetDb()
+    local want = db and db.showLevel
+    if not Lines.events then
+        if not want then return end
+        local f = CreateFrame("Frame")
+        f:SetScript("OnEvent", function(_, event, unit)
+            if event == "GUILD_ROSTER_UPDATE" then
+                if not GetGuildRosterInfo then return end
+                for i = 1, GetNumGuildMembers() do
+                    local info = { pcall(GetGuildRosterInfo, i) }
+                    if info[1] then Lines.Remember(info[18], info[2], info[5]) end
                 end
+            elseif event == "FRIENDLIST_UPDATE" then
+                for i = 1, C_FriendList.GetNumFriends() do
+                    local info = C_FriendList.GetFriendInfoByIndex(i)
+                    if info then Lines.Remember(info.guid, info.name, info.level) end
+                end
+            elseif event == "WHO_LIST_UPDATE" then
+                for i = 1, C_FriendList.GetNumWhoResults() do
+                    local info = C_FriendList.GetWhoInfo(i)
+                    if info then Lines.Remember(nil, info.fullName, info.level) end
+                end
+            elseif event == "GROUP_ROSTER_UPDATE" then
+                local prefix = IsInRaid() and "raid" or "party"
+                for i = 1, IsInRaid() and 40 or 4 do Lines.RememberUnit(prefix .. i) end
+            elseif event == "PLAYER_TARGET_CHANGED" then
+                Lines.RememberUnit("target")
+            elseif event == "UPDATE_MOUSEOVER_UNIT" then
+                Lines.RememberUnit("mouseover")
+            elseif event == "NAME_PLATE_UNIT_ADDED" then
+                Lines.RememberUnit(unit)
             end
+        end)
+        Lines.events = f
+    end
+    local f = Lines.events
+    if want then
+        for _, event in ipairs({ "GUILD_ROSTER_UPDATE", "FRIENDLIST_UPDATE", "WHO_LIST_UPDATE",
+                "GROUP_ROSTER_UPDATE", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT", "NAME_PLATE_UNIT_ADDED" }) do
+            f:RegisterEvent(event)
         end
-
-        local displayName = string_gsub(sender, "%-[^|]+", "")
-        local link = string_format("|Hplayer:%s:%s|h[%s]|h", sender, lineID or "0", displayName)
-        local infoType = "SAY"
-        if event == "CHAT_MSG_YELL" then infoType = "YELL"
-        elseif event == "CHAT_MSG_GUILD" then infoType = "GUILD"
-        elseif event == "CHAT_MSG_OFFICER" then infoType = "OFFICER"
-        elseif event == "CHAT_MSG_PARTY" then infoType = "PARTY"
-        elseif event == "CHAT_MSG_PARTY_LEADER" then infoType = "PARTY_LEADER"
-        elseif event == "CHAT_MSG_RAID" then infoType = "RAID"
-        elseif event == "CHAT_MSG_RAID_LEADER" then infoType = "RAID_LEADER"
-        elseif event == "CHAT_MSG_RAID_WARNING" then infoType = "RAID_WARNING"
-        elseif event == "CHAT_MSG_WHISPER" then infoType = "WHISPER"
-        elseif event == "CHAT_MSG_WHISPER_INFORM" then infoType = "WHISPER_INFORM"
-        end
-
-        local formatted = string_format("%s%s|c%s%s|r %s", GetTimestamp(), ShortTag(infoType), classColorHex, link, msg)
-        local info = ChatTypeInfo[infoType]
-        if not info then info = { r=1, g=1, b=1 } end
-        self:AddMessage(formatted, info.r, info.g, info.b)
-        return true
+        if IsInGuild() and C_GuildInfo and C_GuildInfo.GuildRoster then C_GuildInfo.GuildRoster() end
+    else
+        f:UnregisterAllEvents()
     end
 end
 
 --------------------------------------------------
 -- 6. IMPROVEMENTS
 --------------------------------------------------
--- Shortened channel names on the lines Blizzard formats itself: "[2. Trade - City]" -> "[2]",
--- "[Guild]" -> "[G]". Blizzard adds the channel after the message filters run, so the line is
--- changed once it is stored: a post-hook on AddMessage rewrites the newest history entry, the way
--- ScrollingMessageFrame's own TransformMessages does. Replacing AddMessage or the CHAT_*_GET
--- strings instead would taint Blizzard's handler and break whispers. Secret lines pass untouched.
-local function ShortenStoredLine(chatFrame, message, _, _, _, _, _, _, event)
-    local db = GetDb()
-    if not (db and db.shortChannels and event) or not canaccessallvalues(message) then return end
-    local chatType = event:sub(10)   -- after "CHAT_MSG_"
-    local short
-    if chatType == "CHANNEL" or chatType == "COMMUNITIES_CHANNEL" then
-        short = string_gsub(message, "(|Hchannel:channel:(%d+)|h)%[[^%]]*%]|h", "%1[%2]|h", 1)
-    elseif SHORT_TAGS[chatType] then
-        local tag = SHORT_TAGS[chatType][1]
-        if SHORT_TAGS[chatType][2] then
-            short = string_gsub(message, "(|Hchannel:[^|]+|h)%[[^%]]*%]|h", "%1[" .. tag .. "]|h", 1)
-        elseif CHAT_MSG_RAID_WARNING then
-            local long = "[" .. CHAT_MSG_RAID_WARNING .. "]"
-            local s, e = message:find(long, 1, true)
-            if s then short = message:sub(1, s - 1) .. "[" .. tag .. "]" .. message:sub(e + 1) end
-        end
-    end
-    if not short or short == message then return end
-
-    local entry = chatFrame.historyBuffer and chatFrame.historyBuffer:GetEntryAtIndex(1)
-    if entry and canaccessallvalues(entry.message) and entry.message == message then
-        entry.message = short
-        chatFrame:MarkDisplayDirty()
-    end
-end
-
-local shortHooked = {}   -- kept here, not as a field on Blizzard's frames
-local function HookChannelNames()
-    for i = 1, NUM_CHAT_WINDOWS do
-        local frame = _G["ChatFrame" .. i]
-        if frame and not shortHooked[frame] then
-            hooksecurefunc(frame, "AddMessage", ShortenStoredLine)
-            shortHooked[frame] = true
-        end
-    end
-end
 
 -- Chat bubbles off inside instances and back outside. The player's own values are kept in the
 -- account data while hidden, so a reload or logout inside the instance still restores them.
@@ -894,6 +1109,9 @@ local function ShowCopyBox(url)
     copyFrame:Show()
 end
 
+-- Copy Line hands a line too long for a chat message to the same box (LINE REWRITING comes first)
+function Chat.ShowCopyText(text) ShowCopyBox(text) end
+
 -- Blizzard wraps every registered filter in "if canaccessvalue(...) then callback(...) end"
 -- (ChatFrameFilters.lua), so a secret message never reaches this function at all and no guard of our
 -- own is needed. A message that already carries a hyperlink is left alone.
@@ -961,7 +1179,7 @@ function Chat:SetupImprovements()
     end
 
     Chat:SetupCopyLinks()
-    HookChannelNames()
+    HookLineRewrite()
     Chat:UpdateInstanceBubbles()
     Chat:StyleHeaderButtons()
     DisableQuickJoinToasts()
@@ -2165,45 +2383,11 @@ function Chat:SetupAutoHide(db)
     end
 end
 
+-- Name, timestamp and channel formatting all live in the line rewriter (LINE REWRITING), which reads
+-- the options on every line; this only makes sure it is hooked and the level lookups run.
 function Chat:UpdateFilters()
-    local db = ns.db.profile.chat
-    if not db then return end
-
-    if db.formatNPC then
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_MONSTER_SAY", NPCFilter)
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_MONSTER_YELL", NPCFilter)
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_MONSTER_WHISPER", NPCFilter)
-    else
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_MONSTER_SAY", NPCFilter)
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_MONSTER_YELL", NPCFilter)
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_MONSTER_WHISPER", NPCFilter)
-    end
-
-    if db.formatPlayer then
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_SAY", PlayerFilter)
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_YELL", PlayerFilter)
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_GUILD", PlayerFilter)
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_OFFICER", PlayerFilter)
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_PARTY", PlayerFilter)
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_PARTY_LEADER", PlayerFilter)
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_RAID", PlayerFilter)
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_RAID_LEADER", PlayerFilter)
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_RAID_WARNING", PlayerFilter)
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_WHISPER", PlayerFilter)
-        ChatFrameUtil.AddMessageEventFilter("CHAT_MSG_WHISPER_INFORM", PlayerFilter)
-    else
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_SAY", PlayerFilter)
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_YELL", PlayerFilter)
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_GUILD", PlayerFilter)
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_OFFICER", PlayerFilter)
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_PARTY", PlayerFilter)
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_PARTY_LEADER", PlayerFilter)
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_RAID", PlayerFilter)
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_RAID_LEADER", PlayerFilter)
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_RAID_WARNING", PlayerFilter)
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_WHISPER", PlayerFilter)
-        ChatFrameUtil.RemoveMessageEventFilter("CHAT_MSG_WHISPER_INFORM", PlayerFilter)
-    end
+    HookLineRewrite()
+    Lines.UpdateLevelEvents()
 end
 
 function Chat:Apply(db)

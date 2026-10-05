@@ -83,15 +83,14 @@ local ROUND_BORDER = 3            -- rim thickness for the drawn fallback below
 local ROUND_ICON   = ROUND_SIZE - ROUND_BORDER * 2
 
 -- A round button is framed by the first of these the client actually has. The first is the rim the
--- spellbook puts round a passive ability (Blizzard_SpellBookItem.lua:694, the Circle art set) with
--- the gold rim of the same family for the selected button - one family, same geometry, so the two
--- swap cleanly with no tinting at all. The second is Blizzard's azerite rim, which carries its own
--- padding and so holds a smaller icon, and has to be tinted because it has no second state.
+-- spellbook puts round a passive ability (Blizzard_SpellBookItem.lua:694, the Circle art set); the
+-- second is Blizzard's azerite rim, which carries its own padding and so holds a smaller icon. The
+-- rim never changes with the selection: the lit slice marks that.
 -- None of these atlases are in the Forever API snapshot, so the choice is made in the client.
 local ROUND_STYLES = {
     {
         mask = "talents-node-circle-mask",
-        idle = "talents-node-circle-gray", active = "talents-node-circle-yellow",
+        idle = "talents-node-circle-gray",
         -- the silver is neutral, so a warm multiply pulls it towards the bronze of the rest of the
         -- UI without flattening the metal out of it
         idleTint = { 0.92, 0.76, 0.52 },
@@ -99,19 +98,15 @@ local ROUND_STYLES = {
     },
     {
         mask = "CircleMaskScalable",
-        idle = "Azerite-Trait-Ring", active = "Azerite-Trait-Ring", tint = true,
+        idle = "Azerite-Trait-Ring",
         iconFactor = 0.74,
     },
 }
 local RIM_TINT_NONE = { 1, 1, 1 }
--- Idle borders sit at the dark bronze of the action bar gryphons; the selected one jumps to the
--- yellow of Blizzard's own pointer art, so the border and the arrow read as one piece.
+-- the drawn fallback rim, in the dark bronze of the action bar gryphons
 local BORDER_COLOR         = { 0.45, 0.33, 0.19 }   -- #735430, the brown of the panel frames
-local BORDER_COLOR_ACTIVE  = { 0.98, 0.87, 0.26 }   -- #FADE42, the Radial_Wheel pointer yellow
--- Idle icons show their art as it is; the hovered one gets an additive white wash on top, which
--- lifts it above its own colours rather than just undoing a dim.
+-- the hovered button grows to full size; the rest sit a little smaller
 local ICON_SCALE_IDLE      = 0.88
-local ICON_GLOW_ALPHA      = 0.30 -- additive wash over the selected button's own art
 
 -- Unusable buttons are tinted the way Blizzard's action buttons are (ActionButton.lua): grey when
 -- the action cannot be used, blue when only the mana is missing. The cooldown swipe is cut to a
@@ -120,6 +115,39 @@ local TINT_USABLE   = { 1, 1, 1 }
 local TINT_UNUSABLE = { 0.4, 0.4, 0.4 }
 local TINT_NO_MANA  = { 0.5, 0.5, 1 }
 local SWIPE_TEXTURE = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
+
+-- The radial looks like Blizzard's ping wheel: its backdrop, a divider between every two slices,
+-- the hovered slice lit, and its open / close animation. Blizzard ships its dividers and slice light for four slices only
+-- (Radial_Wheel_Frame_Count_4, Radial_Wheel_Select_Wedge_Count_4), so FlareUI draws its own
+-- (wtf-tools/buildradial.js) and cuts the light to any slice width with two rotated half-plane masks.
+local MEDIA = "Interface\\AddOns\\FlareUI\\Media\\Radial\\"
+local PING = {
+    BG_ATLAS = "Radial_Wheel_BG",
+    DIVIDER = MEDIA .. "Divider.tga", RING = MEDIA .. "Ring.tga",
+    GLOW = MEDIA .. "SliceGlow.tga", MASK = MEDIA .. "HalfMask.tga",
+    BG_FACTOR = 3.1, BG_MIN = 300,      -- backdrop size against the button radius
+    RING_SIZE = 56, HUB = 24,           -- the hub ring, and where the dividers start
+    GLOW_SIZE = 400,                    -- the light's inner edge meets the hub ring at this size
+    DIVIDER_THICKNESS = 4,
+    DIVIDER_COLOR = { 0.32, 0.32, 0.32, 0.85 },
+    RING_COLOR = { 0.28, 0.28, 0.28, 1 },
+    LIT_COLOR = { 1, 0.80, 0.25 },      -- the Radial_Wheel pointer's yellow, a touch warmer
+    GLOW_ALPHA = 0.5,
+    LIT_DIVIDER_ALPHA = 0.7,
+    -- Blizzard_RadialWheel.lua: everything fades in over 0.2 s and out over 0.13 s while the icons
+    -- glide 20 px out from (in towards) the middle, eased InOutCubic
+    INTRO = 0.2, OUTRO = 0.13, SLIDE = 20,
+    LABEL_GAP = 4,
+    LABEL_WRAP = 16,                    -- a name of several words this long goes on two lines
+    -- Page dots under a button the mouse wheel steps through (a sub-radial): one per option, the
+    -- current one lit, spread along the bottom of the rim
+    DOT = MEDIA .. "Dot.tga",
+    DOT_SIZE = 6, DOT_SIZE_ON = 7,
+    DOT_STEP = math.rad(13),           -- between two dots, round the rim
+    DOT_GAP = 6,                       -- outside the rim
+    DOT_COLOR = { 0.85, 0.85, 0.85, 0.55 },
+    DOT_COLOR_ON = { 1, 0.80, 0.25, 1 },
+}
 
 local STUCK_OPEN_SECONDS = 20     -- see the guard in UpdateSelection
 
@@ -160,7 +188,7 @@ local function RoundStyle()
         or (C_Texture.GetAtlasInfo and function(name) return C_Texture.GetAtlasInfo(name) ~= nil end))
     if exists then
         for _, style in ipairs(ROUND_STYLES) do
-            if exists(style.mask) and exists(style.idle) and exists(style.active) then
+            if exists(style.mask) and exists(style.idle) then
                 roundStyle = style
                 return style
             end
@@ -168,6 +196,12 @@ local function RoundStyle()
     end
     roundStyle = false
     return nil
+end
+
+-- Show Button Names lives in the profile (the radials themselves are account-wide, in global)
+local function ShowNames()
+    local db = ns.db and ns.db.profile and ns.db.profile.radialmenu
+    return not (db and db.showNames == false)
 end
 
 local function CursorPosition()
@@ -383,15 +417,6 @@ local function CreateRadialButton(index)
     button.Mask:SetAtlas(style and style.mask or ATLAS_CIRCLE_MASK)
     button.Mask:SetAllPoints(button.Icon)
 
-    -- An additive white wash over the icon, so the selected button lifts its own art rather than
-    -- only its border. It tracks the icon, so one mask serves both.
-    button.Glow = button:CreateTexture(nil, "OVERLAY")
-    button.Glow:SetColorTexture(1, 1, 1)
-    button.Glow:SetBlendMode("ADD")
-    button.Glow:SetAllPoints(button.Icon)
-    button.Glow:SetAlpha(0)
-
-    -- above the wash, so the rim reads as a frame around the lit icon rather than under it
     button.RimArt = button:CreateTexture(nil, "OVERLAY", nil, 1)
     button.RimArt:SetPoint("CENTER")
     button.RimArt:SetSize(ROUND_SIZE, ROUND_SIZE)
@@ -404,8 +429,90 @@ local function CreateRadialButton(index)
     button.Cooldown:SetDrawEdge(false)
     button.Cooldown:SetDrawBling(false)
 
+    -- The name, shown only on the hovered button and on the outer side of it (see PlaceLabel). On
+    -- its own frame above the cooldown, so the swipe never covers it.
+    button.Front = CreateFrame("Frame", nil, button)
+    button.Front:SetAllPoints()
+    button.Front:SetFrameLevel(button.Cooldown:GetFrameLevel() + 2)
+    button.Label = button.Front:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+    button.Label:SetShadowColor(0, 0, 0, 1)
+    button.Label:SetShadowOffset(1, -1)
+    button.Label:Hide()
+
+    button.Dots = {}   -- a sub-radial's page dots; see SetPageDots
+
     button.index = index
     return button
+end
+
+-- Blizzard's rule (Blizzard_RadialWheel.lua): the name goes above a button in the top quarter of the
+-- wheel, left of one on the left, below one at the bottom and right of one on the right.
+local function PlaceLabel(button, angle)
+    local a = angle % TAU
+    local q, gap = math_pi / 4, PING.LABEL_GAP
+    local label = button.Label
+    label:ClearAllPoints()
+    -- a wrapped name lines up towards its button
+    if a > q and a <= math_pi - q then
+        label:SetPoint("BOTTOM", button, "TOP", 0, gap)
+        label:SetJustifyH("CENTER")
+    elseif a > math_pi - q and a <= math_pi + q then
+        label:SetPoint("RIGHT", button, "LEFT", -gap, 0)
+        label:SetJustifyH("RIGHT")
+    elseif a > math_pi + q and a <= TAU - q then
+        label:SetPoint("TOP", button, "BOTTOM", 0, -gap - 8)   -- clear of the page dots
+        label:SetJustifyH("CENTER")
+    else
+        label:SetPoint("LEFT", button, "RIGHT", gap, 0)
+        label:SetJustifyH("LEFT")
+    end
+end
+
+-- Sets the name. A long name of several words is split in two at the space that gives the most even
+-- lines ("Guild &" / "Communities"); a single word is never broken. Decided by length rather than
+-- by measuring the text: the first layout after a reload can run before the font is ready, and
+-- measured too narrow it squeezed and cut short names that fit perfectly well.
+local function SetLabelText(button, text)
+    text = text or ""
+    if #text >= PING.LABEL_WRAP then
+        local best, bestCost
+        for pos in text:gmatch("() ") do
+            local cost = math_max(pos - 1, #text - pos)
+            if not bestCost or cost < bestCost then best, bestCost = pos, cost end
+        end
+        if best then text = text:sub(1, best - 1) .. "\n" .. text:sub(best + 1) end
+    end
+    button.Label:SetText(text)
+end
+
+-- One dot per option of a sub-radial, centred under the button along the rim, the current one lit.
+-- count 0 or 1: no dots (nothing to scroll to).
+local function SetPageDots(button, count, current)
+    local dots = button.Dots
+    local shown = count and count > 1 and count or 0
+    local radius = ROUND_SIZE / 2 + PING.DOT_GAP
+    for i = 1, math_max(shown, #dots) do
+        local dot = dots[i]
+        if i <= shown then
+            if not dot then
+                dot = button.Front:CreateTexture(nil, "OVERLAY")
+                dot:SetTexture(PING.DOT)
+                dots[i] = dot
+            end
+            -- straight down is -90 degrees; the row runs left to right, so the angle falls
+            local a = -QUARTER - ((i - 1) - (shown - 1) / 2) * PING.DOT_STEP
+            local on = i == current
+            local c = on and PING.DOT_COLOR_ON or PING.DOT_COLOR
+            local size = on and PING.DOT_SIZE_ON or PING.DOT_SIZE
+            dot:ClearAllPoints()
+            dot:SetPoint("CENTER", button, "CENTER", math_cos(a) * radius, math_sin(a) * radius)
+            dot:SetSize(size, size)
+            dot:SetVertexColor(c[1], c[2], c[3], c[4])
+            dot:Show()
+        elseif dot then
+            dot:Hide()
+        end
+    end
 end
 
 local function ApplyButtonShape(button)
@@ -416,12 +523,18 @@ local function ApplyButtonShape(button)
     button.Icon:SetSize(size, size)
     if not button.masked then
         button.Icon:AddMaskTexture(button.Mask)
-        button.Glow:AddMaskTexture(button.Mask)
         button.masked = true
     end
     -- whichever of the two is in use; see ROUND_STYLES
     button.RimArt:SetShown(style ~= nil)
     button.Rim:SetShown(style == nil)
+    if style then
+        button.RimArt:SetAtlas(style.idle)
+        local t = style.idleTint or RIM_TINT_NONE
+        button.RimArt:SetVertexColor(t[1], t[2], t[3])
+    else
+        button.Rim:SetVertexColor(BORDER_COLOR[1], BORDER_COLOR[2], BORDER_COLOR[3])
+    end
 end
 
 -- Square icon files get the usual border crop; atlases carry their own coordinates and must not be
@@ -438,23 +551,8 @@ end
 
 local function SetButtonSelected(button, selected)
     button:SetScale(selected and 1 or ICON_SCALE_IDLE)
-    button.Glow:SetAlpha(selected and ICON_GLOW_ALPHA or 0)
-    if button.RimArt:IsShown() then
-        -- A style with two atlases changes art and needs no tint beyond its own cast; a style with
-        -- only one has to say "selected" in colour, so it borrows the pointer's yellow.
-        local style = RoundStyle()
-        button.RimArt:SetAtlas(selected and style.active or style.idle)
-        local t = RIM_TINT_NONE
-        if selected then
-            if style.tint then t = BORDER_COLOR_ACTIVE end
-        else
-            t = style.idleTint or RIM_TINT_NONE
-        end
-        button.RimArt:SetVertexColor(t[1], t[2], t[3])
-    else
-        local c = selected and BORDER_COLOR_ACTIVE or BORDER_COLOR
-        button.Rim:SetVertexColor(c[1], c[2], c[3])
-    end
+    -- the lit slice marks the choice; the button itself only grows and names its action
+    button.Label:SetShown(selected and ShowNames() and (button.Label:GetText() or "") ~= "")
 end
 
 -- Cooldown swipe and usable tint for what a button fires now (a sub-radial's current child). Spells
@@ -523,6 +621,8 @@ local function SetButtonChild(index, childIndex)
     info.childIndex = childIndex
     info.name, info.icon, info.attributes = child.name, child.icon, child.attributes
     SetButtonIcon(button, child.icon)
+    SetLabelText(button, child.name)
+    SetPageDots(button, #info.children, childIndex)
     ApplyButtonState(button, info)
 end
 
@@ -580,10 +680,15 @@ function RM:LayoutRadial()
             if entry then
                 -- button 1 at the top, the rest clockwise from it
                 local angle = QUARTER - (i - 1) * interval
+                button.angle = angle
+                button.baseX, button.baseY = math_cos(angle) * radius, math_sin(angle) * radius
                 button:ClearAllPoints()
-                button:SetPoint("CENTER", radial, "CENTER", math_cos(angle) * radius, math_sin(angle) * radius)
+                button:SetPoint("CENTER", radial, "CENTER", button.baseX, button.baseY)
                 ApplyButtonShape(button)
                 SetButtonIcon(button, entry.icon)
+                SetLabelText(button, entry.name)
+                PlaceLabel(button, angle)
+                SetPageDots(button, entry.children and #entry.children, entry.childIndex or 1)
                 SetButtonSelected(button, false)
                 button:Show()
             else
@@ -591,8 +696,68 @@ function RM:LayoutRadial()
             end
         end
     end
+    RM:LayoutPing(count, radius, interval)
     RefreshButtonStates()
     SyncSecure()
+end
+
+-- The Ping Wheel art for count buttons: the backdrop, the hub ring, and a divider half an interval
+-- clockwise of every button (so divider i runs between button i and button i + 1). One button has
+-- no slices to divide.
+function RM:LayoutPing(count, radius, interval)
+    local p = radial.Ping
+    p.count, p.interval = count, interval
+    local bg = math_max(PING.BG_MIN, radius * PING.BG_FACTOR)
+    p.Background:SetSize(bg, bg)
+    p.Background:SetShown(not previewID)   -- in the editor it would spill out of the box
+
+    local sliced = count >= 2
+    local outer = radius + ICON_SIZE * 0.9
+    for i = 1, math_max(count, #p.Dividers) do
+        local line = p.Dividers[i]
+        if sliced and i <= count then
+            if not line then
+                line = radial:CreateLine(nil, "BORDER")
+                line:SetTexture(PING.DIVIDER)
+                line:SetThickness(PING.DIVIDER_THICKNESS)
+                p.Dividers[i] = line
+            end
+            local a = QUARTER - (i - 1) * interval - interval / 2
+            local c, s = math_cos(a), math_sin(a)
+            line:SetStartPoint("CENTER", radial, c * PING.HUB, s * PING.HUB)
+            line:SetEndPoint("CENTER", radial, c * outer, s * outer)
+            line:Show()
+        elseif line then
+            line:Hide()
+        end
+    end
+    self:LightSlice(nil)
+end
+
+-- Lights the slice of button index (nil: none). The light is a full ring cut down to the slice by two
+-- half-plane masks: one keeps the half turn anticlockwise of the slice's clockwise edge, the other the
+-- half turn clockwise of its anticlockwise edge, and what both keep is the slice. Its two dividers
+-- light up with it.
+function RM:LightSlice(index)
+    local p = radial and radial.Ping
+    if not p then return end
+    local d = PING.DIVIDER_COLOR
+    for _, line in ipairs(p.Dividers) do line:SetVertexColor(d[1], d[2], d[3], d[4]) end
+    if not (index and p.count and p.count >= 2) then
+        p.Glow:Hide()
+        return
+    end
+    local interval = p.interval
+    local mid = QUARTER - (index - 1) * interval
+    local low, high = mid - interval / 2, mid + interval / 2
+    p.MaskLow:SetRotation(low + QUARTER)
+    p.MaskHigh:SetRotation(high - QUARTER)
+    p.Glow:Show()
+    local lit = PING.LIT_COLOR
+    local edgeLow, edgeHigh = p.Dividers[index], p.Dividers[(index - 2) % p.count + 1]
+    local a = PING.LIT_DIVIDER_ALPHA
+    if edgeLow then edgeLow:SetVertexColor(lit[1], lit[2], lit[3], a) end
+    if edgeHigh then edgeHigh:SetVertexColor(lit[1], lit[2], lit[3], a) end
 end
 
 local function CreateRadial()
@@ -620,6 +785,34 @@ local function CreateRadial()
     radial.Pointer:SetAtlas(ATLAS_POINTER)
     radial.Pointer:SetSize(POINTER_SIZE, POINTER_SIZE)
     radial.Pointer:SetPoint("CENTER")
+
+    -- Ping Wheel art (see PING), all under the buttons. The buttons are child frames, so anything
+    -- drawn on the radial itself sits beneath them.
+    local p = { Dividers = {} }
+    radial.Ping = p
+    p.Background = radial:CreateTexture(nil, "BACKGROUND", nil, 1)
+    p.Background:SetAtlas(PING.BG_ATLAS)
+    p.Background:SetPoint("CENTER")
+
+    p.Glow = radial:CreateTexture(nil, "BACKGROUND", nil, 3)
+    p.Glow:SetTexture(PING.GLOW)
+    p.Glow:SetSize(PING.GLOW_SIZE, PING.GLOW_SIZE)
+    p.Glow:SetPoint("CENTER")
+    p.Glow:SetVertexColor(PING.LIT_COLOR[1], PING.LIT_COLOR[2], PING.LIT_COLOR[3], PING.GLOW_ALPHA)
+    for _, key in ipairs({ "MaskLow", "MaskHigh" }) do
+        local mask = radial:CreateMaskTexture()
+        mask:SetTexture(PING.MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetAllPoints(p.Glow)
+        p.Glow:AddMaskTexture(mask)
+        p[key] = mask
+    end
+    p.Glow:Hide()
+
+    p.Ring = radial:CreateTexture(nil, "BORDER", nil, 2)
+    p.Ring:SetTexture(PING.RING)
+    p.Ring:SetSize(PING.RING_SIZE, PING.RING_SIZE)
+    p.Ring:SetPoint("CENTER")
+    p.Ring:SetVertexColor(unpack(PING.RING_COLOR))
 end
 
 local function SetCancelSelected(selected)
@@ -685,7 +878,63 @@ local function UpdateSelection()
         if selectedIndex and buttons[selectedIndex] then SetButtonSelected(buttons[selectedIndex], false) end
         if index and buttons[index] then SetButtonSelected(buttons[index], true) end
         selectedIndex = index
+        RM:LightSlice(index)
     end
+end
+
+--------------------------------------------------
+-- 7b. OPEN / CLOSE ANIMATION
+-- The ping wheel's (Blizzard_RadialWheel.lua): the radial fades in while every button glides out from
+-- PING.SLIDE px nearer the middle, and fades out while they glide back in. Plain art only - the
+-- secure layer never looks at where the buttons are drawn - so it runs in combat as well.
+--------------------------------------------------
+local animator = CreateFrame("Frame")
+animator:Hide()
+
+local function InOutCubic(t)
+    return t < 0.5 and 4 * t * t * t or 1 - ((-2 * t + 2) ^ 3) / 2
+end
+
+local function PlaceButtons(slide)
+    for i = 1, #resolved do
+        local button = buttons[i]
+        if button and button.angle then
+            button:ClearAllPoints()
+            button:SetPoint("CENTER", radial, "CENTER",
+                button.baseX - math_cos(button.angle) * slide, button.baseY - math_sin(button.angle) * slide)
+        end
+    end
+end
+
+local function StopAnimation()
+    if not animator:IsShown() then return end
+    animator:Hide()
+    radial:SetAlpha(1)
+    PlaceButtons(0)
+end
+
+animator:SetScript("OnUpdate", function(self)
+    local t = math_min(1, (GetTime() - self.started) / self.duration)
+    local eased = InOutCubic(t)
+    if self.outro then
+        radial:SetAlpha(1 - t)
+        PlaceButtons(PING.SLIDE * eased)
+    else
+        radial:SetAlpha(t)
+        PlaceButtons(PING.SLIDE * (1 - eased))
+    end
+    if t >= 1 then
+        local outro = self.outro
+        StopAnimation()
+        if outro then radial:Hide() end
+    end
+end)
+
+local function Animate(outro)
+    animator.outro = outro
+    animator.duration = outro and PING.OUTRO or PING.INTRO
+    animator.started = GetTime()
+    animator:Show()
 end
 
 --------------------------------------------------
@@ -718,6 +967,7 @@ end
 -- way to the new one.
 local function OpenRadial(radialID, mode)
     if isOpen then CloseRadial() end
+    StopAnimation()   -- a close still fading out gives way
     openMode = mode or "hold"
     -- Laid out on every open so that availability (mounts, items, loaded panels) is current. In
     -- combat LayoutRadial draws the copy the secure layer holds.
@@ -749,6 +999,9 @@ local function OpenRadial(radialID, mode)
     radial:Show()
     radial:SetScript("OnUpdate", UpdateSelection)
     UpdateSelection()
+    radial:SetAlpha(0)
+    PlaceButtons(PING.SLIDE)
+    Animate(false)
 end
 
 function CloseRadial()
@@ -761,10 +1014,25 @@ function CloseRadial()
     -- The secure release hides the wheel frame itself. This covers the radial closing any other way,
     -- such as the stuck-open guard; in combat that has to wait for PLAYER_REGEN_ENABLED.
     if wheel and not InCombatLockdown() then wheel:Hide() end
-    if selectedIndex and buttons[selectedIndex] then SetButtonSelected(buttons[selectedIndex], false) end
+    -- The released button keeps its light while the radial fades out, as the ping wheel's does; the
+    -- next layout clears it.
+    local fade = not previewID
+    if not fade then
+        if selectedIndex and buttons[selectedIndex] then SetButtonSelected(buttons[selectedIndex], false) end
+        RM:LightSlice(nil)
+    end
     selectedIndex = nil
+    radial.Pointer:Hide()
     -- the editor gets its preview back rather than an empty box
-    if previewID then RM:ShowPreview(previewID, previewAnchor) else radial:Hide() end
+    if previewID then
+        StopAnimation()
+        RM:ShowPreview(previewID, previewAnchor)
+    elseif fade then
+        StopAnimation()
+        Animate(true)
+    else
+        radial:Hide()
+    end
 end
 
 --------------------------------------------------
@@ -1142,6 +1410,7 @@ local PREVIEW_BOX = 270
 
 function RM:ShowPreview(radialID, anchor)
     if not radial then return end
+    StopAnimation()
     previewID, previewAnchor = radialID, anchor
     self:LoadRadial(radialID)
     self:LayoutRadial()

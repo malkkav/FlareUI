@@ -104,6 +104,18 @@ ns.Options.args.radialmenu = {
             }
         },
 
+        lookGroup = {
+            type = "group", name = L["Look"], order = 22, inline = true,
+            args = {
+                showNames = {
+                    type = "toggle", name = L["Show Button Names"], order = 20, width = 1.2,
+                    desc = L["The button you point at shows the name of its action."],
+                    get = function() return ns.db.profile.radialmenu.showNames ~= false end,
+                    set = function(_, val) ns.db.profile.radialmenu.showNames = val end,
+                },
+            }
+        },
+
         padGroup = {
             type = "group", name = L["Controller"], order = 25, inline = true,
             args = {

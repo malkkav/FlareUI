@@ -232,6 +232,8 @@ local defaults = {
             formatNPC = false,
             formatPlayer = false,
             betterTimestamps = false,
+            showLevel = false,          -- the sender's level in front of the name, when known
+            copyLine = false,           -- Copy Line: shift-click a timestamp to copy the line into the chat box
             shortChannels = false,
             hideBubblesInInstance = false,
 
@@ -548,6 +550,7 @@ local defaults = {
         -- each character needs its own radial without having to fork the rest of its settings.
         radialmenu = {
             enabled = false,
+            showNames = true,           -- the hovered button names its action
         },
 
         -- [[ TWEAKS MODULE ]]

@@ -1,3 +1,27 @@
+# FlareUI 1.5.1
+
+A new look for the radial menu, new chat options and more for Sync Blizz UI.
+
+## New
+
+**Radial Menu**
+- The radial now looks like Blizzard's ping wheel: a dark backdrop, a line between every two buttons, and the slice you point at lights up.
+- It fades in and out like the ping wheel, with the buttons gliding out from the middle.
+- **Button names:** the button you point at shows its name beside it. Long names go on two lines. Turn it off with **Show Button Names** (Radial Menu > Look).
+- A button that holds another radial shows a row of dots under it, one per option, with the current one lit. Scroll the mouse wheel to change it.
+
+**Chat** (Chat > Message Formatting, all off by default)
+- **Level Before Names:** a player's level in parentheses before their name, in difficulty colours, like "(42) [Name]". Known for your group, guild, friends, /who results and players you have targeted or seen nearby.
+- **Copy Line:** shift-click a message's timestamp to put that message in your chat box, ready to edit or send. Needs timestamps: Better Timestamps, or Blizzard's own.
+
+**Sync Blizz UI**
+- Now also copies the "Color Name by Class" boxes in the chat settings, Block Guild Invites, and your bags' settings (Assign To, Ignore This Bag, junk selling, and the backpack's sort setting).
+
+## Changed
+- **Chat:** Better Player Names, Better NPC Names, Short Channel Names and Better Timestamps now change Blizzard's own chat line instead of replacing it, so a formatted line keeps Blizzard's own player link and line data.
+- **Chat:** Better Player Names now also colours names in numbered channels (Trade, General...), instance chat and whispers. Whispers keep their "whispers:" and "To" wording.
+- **Chat:** Better Timestamps now applies to every chat message, not only player and NPC lines.
+
 # FlareUI 1.5
 
 The biggest update yet: party frames, resource bars, separate chat windows, and FlareUI can now be translated.

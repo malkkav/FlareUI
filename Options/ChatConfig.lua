@@ -123,6 +123,18 @@ ns.Options.args.chat = {
                             get = function() return Get("shortChannels") end,
                             set = function(_, val) Set("shortChannels", val) end
                         },
+                        spacer4 = { type = "description", name = "", width = 0.1, order = 41 },
+                        showLevel = {
+                            type = "toggle", name = L["Level Before Names"], desc = L["Shows a player's level in parentheses in front of their name, colored by difficulty. Known for your group, guild, friends, /who results and players you have targeted or seen nearby."], order = 50,
+                            get = function() return Get("showLevel") end,
+                            set = function(_, val) Set("showLevel", val) end
+                        },
+                        spacer5 = { type = "description", name = "", width = 0.1, order = 51 },
+                        copyLine = {
+                            type = "toggle", name = L["Copy Line"], desc = L["Shift-click the timestamp at the start of a message to copy that message into your chat box, ready to edit or send. Messages too long for the chat box open in a copy window instead (Ctrl+C to copy).\n\nNeeds timestamps: turn on Better Timestamps, or Blizzard's timestamps in Social settings."], order = 70,
+                            get = function() return Get("copyLine") end,
+                            set = function(_, val) Set("copyLine", val) end
+                        },
                     }
                 },
 

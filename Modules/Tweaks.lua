@@ -486,17 +486,39 @@ local function SaveSync()
         insertLeftToRight = C_Container.GetInsertItemsLeftToRight(),
         bankAutosortDisabled = C_Container.GetBankAutosortDisabled(),
         backpackSellJunkDisabled = C_Container.GetBackpackSellJunkDisabled(),
+        backpackAutosortDisabled = C_Container.GetBackpackAutosortDisabled(),
     }
+
+    -- Each bag slot's own flags (the bag menu's "Assign To", "Ignore This Bag" and junk-selling
+    -- choices). They belong to the slot, not the bag in it, so slot 1 copies onto slot 1.
+    store.bagFlags = {}
+    for bag = 1, NUM_BAG_SLOTS do
+        local flags = {}
+        for _, flag in pairs(Enum.BagSlotFlags) do
+            local ok, set = pcall(C_Container.GetBagSlotFlag, bag, flag)
+            if ok and type(set) == "boolean" then flags[flag] = set end
+        end
+        store.bagFlags[bag] = flags
+    end
+
+    -- Social > Block Guild Invites. Server-side, per character.
+    local okDecline, decline = pcall(GetAutoDeclineGuildInvites)
+    if okDecline and type(decline) == "boolean" then store.declineGuildInvites = decline end
 
     -- Which action bars are shown is NOT a CVar: it is server-mirrored state behind
     -- GetActionBarToggles, which is why syncing CVars alone left the bars off.
     store.actionBars = { GetActionBarToggles() }
 
-    -- The colour swatches in the chat config, one per message type.
+    -- The colour swatches in the chat config, one per message type, and the "Color Name by Class"
+    -- boxes beside them (Blizzard keeps the latter in ChatTypeInfo, filled from the server).
     store.chatColors = {}
-    for chatType in pairs(ChatTypeInfo) do
+    store.chatClassNames = {}
+    for chatType, info in pairs(ChatTypeInfo) do
         local ok, r, g, b = pcall(GetMessageTypeColor, chatType)
         if ok and r then store.chatColors[chatType] = { r, g, b } end
+        if type(info) == "table" and info.colorNameByClass ~= nil then
+            store.chatClassNames[chatType] = info.colorNameByClass and true or false
+        end
     end
 
     store.savedAt = GetServerTime()
@@ -627,11 +649,32 @@ local function LoadSync()
         if b.insertLeftToRight ~= nil then pcall(C_Container.SetInsertItemsLeftToRight, b.insertLeftToRight) end
         if b.bankAutosortDisabled ~= nil then pcall(C_Container.SetBankAutosortDisabled, b.bankAutosortDisabled) end
         if b.backpackSellJunkDisabled ~= nil then pcall(C_Container.SetBackpackSellJunkDisabled, b.backpackSellJunkDisabled) end
+        if b.backpackAutosortDisabled ~= nil then pcall(C_Container.SetBackpackAutosortDisabled, b.backpackAutosortDisabled) end
     end
 
-    -- Chat colours
+    -- Bag slot flags. Only the API: the bag frames drop their cached filter icons on
+    -- BAG_SLOT_FLAGS_UPDATED themselves, so Blizzard's ContainerFrameSettingsManager is never written.
+    for bag, flags in pairs(store.bagFlags or {}) do
+        for flag, set in pairs(flags) do
+            local ok, current = pcall(C_Container.GetBagSlotFlag, bag, flag)
+            if ok and current ~= set then pcall(C_Container.SetBagSlotFlag, bag, flag, set) end
+        end
+    end
+
+    local okDecline, decline = pcall(GetAutoDeclineGuildInvites)
+    if store.declineGuildInvites ~= nil and okDecline and decline ~= store.declineGuildInvites then
+        pcall(SetAutoDeclineGuildInvites, store.declineGuildInvites)
+    end
+
+    -- Chat colours and class-coloured names
     for chatType, c in pairs(store.chatColors or {}) do
         pcall(ChangeChatColor, chatType, c[1], c[2], c[3])
+    end
+    for chatType, byClass in pairs(store.chatClassNames or {}) do
+        local info = ChatTypeInfo[chatType]
+        if info and (info.colorNameByClass and true or false) ~= byClass then
+            pcall(SetChatColorNameByClass, chatType, byClass)
+        end
     end
 
     -- Action bars. Delayed because the server mirrors the toggles back asynchronously, and followed
