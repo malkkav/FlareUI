@@ -1,0 +1,37 @@
+# Uploads FlareUI's English phrases to CurseForge's localization tool whenever the phrase list changes,
+# so translators always see the current text and the release packager (release.yml) can fill the
+# Locales/<locale>.lua files with their translations.
+# The phrase list is Locales/enUS.lua, regenerated from every L["..."] in the code (it also holds the
+# Edit Mode section titles, which the code looks up as L[name]), so only that file is scanned.
+# Phrases dropped from the list are deleted on CurseForge unless someone has translated them.
+name: Upload localization phrases
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - Locales/enUS.lua
+  workflow_dispatch:       # run by hand from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Upload phrases
+        uses: p3lim/curseforge-localizations@v2
+        with:
+          handle_missing: DeleteIfNoTranslations
+          exclude: |
+            Libs/**
+            Modules/**
+            Options/**
+            *.lua
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
