@@ -21,7 +21,11 @@ local _, ns = ...
 --   padInput       reads the controller outside the gamepad UI too (the switch to Gamepad mode)
 --   reloads        yes reloads the UI after OnAccept (see Reloading below)
 --   macro          like reloads, but the secure button runs this macro instead of /reload, and its
---                  PreClick calls OnMacro (not OnAccept, which stays the pad's and combat's answer)
+--                  PreClick calls OnMacro (not OnAccept, which stays the pad's and combat's answer).
+--                  May be a function(data) returning the macro, built as the dialog opens.
+--   padSecure      with macro: the controller's yes / no are bound to the dialog's buttons instead of
+--                  read by our pad handler, so a pad yes also runs the macro from the secure button
+--                  (for answers that must never run from addon code, like an Edit Mode layout switch)
 --------------------------------------------------
 ns.Dialogs = ns.Dialogs or {}
 
@@ -83,13 +87,20 @@ local function GetReloadButton()
     reloadButton:RegisterForClicks("AnyUp", "AnyDown")
     reloadButton:SetAttribute("type", "macro")
     -- PreClick runs for both halves of a click, so OnAccept is guarded to run once
-    reloadButton:SetScript("PreClick", function()
+    reloadButton:SetScript("PreClick", function(self)
         if accepted or not current then return end
         accepted = true
-        ns.reloading = true
+        ns.reloading = (self:GetAttribute("macrotext") or ""):find("/reload", 1, true) ~= nil
         ns.ButtonSound()
         local onYes = current.macro and current.OnMacro or (not current.macro and current.OnAccept)
         if onYes then onYes(currentData) end
+    end)
+    -- after the macro has run: a macro that does not reload (a layout switch) leaves the UI up, so
+    -- the dialog closes here (both halves of a click arrive; the first one closes it)
+    reloadButton:SetScript("PostClick", function()
+        if not (accepted and current and frame and frame:IsShown()) then return end
+        current, currentData = nil, nil
+        frame:Hide()
     end)
     reloadButton:Hide()
     return reloadButton
@@ -189,6 +200,9 @@ local function Build()
 
     frame.Button1 = CreateDialogButton(frame, function() Answer(true) end)
     frame.Button2 = CreateDialogButton(frame, function() Answer(false) end)
+    -- a name, so a controller binding can click "no" (padSecure)
+    frame.PadNo = CreateFrame("Button", "FlareUIDialogPadNo", frame)
+    frame.PadNo:SetScript("OnClick", function() Answer(false) end)
 
     frame:SetScript("OnKeyDown", OnKeyDown)
     frame:SetScript("OnGamePadButtonDown", OnGamePadButtonDown)
@@ -252,7 +266,8 @@ function ns.ShowDialog(key, textArg, data)
 
     frame:EnableKeyboard(true)
     if not InCombatLockdown() then frame:SetPropagateKeyboardInput(true) end
-    frame:EnableGamePadButton(ns.IsGamepadUI() or def.padInput == true)
+    local padSecure = def.padSecure and def.macro and not InCombatLockdown()
+    frame:EnableGamePadButton(not padSecure and (ns.IsGamepadUI() or def.padInput == true))
 
     if def.hasEditBox then
         if def.maxLetters then frame.EditBox:SetMaxLetters(def.maxLetters) end
@@ -261,10 +276,16 @@ function ns.ShowDialog(key, textArg, data)
     ReleaseReloadButton()
     accepted = false
     if (def.reloads or def.macro) and not InCombatLockdown() then
-        GetReloadButton():SetAttribute("macrotext", def.macro or "/reload")
+        local macro = def.macro
+        if type(macro) == "function" then macro = macro(data) end
+        GetReloadButton():SetAttribute("macrotext", macro or "/reload")
         GetReloadButton():SetText(frame.Button1:GetText())
         secureReload = true
         SetOverrideBindingClick(frame, true, "ENTER", "FlareUIDialogReload", "LeftButton")
+        if padSecure then
+            SetOverrideBindingClick(frame, true, PAD_YES, "FlareUIDialogReload", "LeftButton")
+            SetOverrideBindingClick(frame, true, PAD_NO, "FlareUIDialogPadNo", "LeftButton")
+        end
     end
     frame:Show()
     frame:Raise()

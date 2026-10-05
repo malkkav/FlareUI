@@ -608,10 +608,10 @@ local function HideBlizzard(name)
     frame.FlareUI_Hidden = true
     pcall(frame.UnregisterAllEvents, frame)
     if not InCombatLockdown() then
-        pcall(frame.Hide, frame)
+        pcall(ns.RawHide, frame)
         pcall(frame.SetParent, frame, hiddenParent)
     end
-    hooksecurefunc(frame, "Show", function(f) if not InCombatLockdown() then f:Hide() end end)
+    hooksecurefunc(frame, "Show", function(f) if not InCombatLockdown() then ns.RawHide(f) end end)
 end
 
 --------------------------------------------------

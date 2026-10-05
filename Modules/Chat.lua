@@ -2105,35 +2105,6 @@ function Chat:Apply(db)
     self:UpdateTabFonts()
 end
 
---------------------------------------------------
--- SHARD TRANSFER NOTICE
--- Forever drops its "the world around you will refresh" banner in the middle of the screen, over
--- whatever is there. It is chat-adjacent text, so it moves to sit just above the chat frame.
--- The move is hooked on SetPoint rather than done once, because the frame re-anchors itself every
--- time it appears; the guard stops our own ClearAllPoints from re-entering the hook.
---------------------------------------------------
-local function AnchorShardNotice()
-    local frame = _G.ShardTransferImminentFrame
-    if not frame or frame.FlareUI_Anchored then return end
-    frame.FlareUI_Anchored = true
-
-    local placing
-    local function Place()
-        if placing then return end
-        local chat = _G.ChatFrame1
-        local anchor = (chat and chat.FlareUI_Skin) or chat
-        if not anchor then return end
-        placing = true
-        frame:ClearAllPoints()
-        frame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, 8)
-        placing = false
-    end
-
-    hooksecurefunc(frame, "SetPoint", Place)
-    frame:HookScript("OnShow", Place)
-    Place()
-end
-
 -- Blizzard's gamepad chat only works in IM chat style: in Classic the edit box stays hidden until
 -- Enter, so FocusGamepad's SetFocus on it fails and the footer prompts tied to it (X channels, Y tab
 -- settings, A send) do nothing - with no addon loaded too. So while the gamepad UI is on, chat runs
@@ -2205,7 +2176,6 @@ end
 
 function Chat:Init()
     local db = ns.db.profile.chat
-    AnchorShardNotice()
     Chat:ApplyGamepadChatStyle()
     SetupGamepadTabHints()
     -- Blizzard's chat fading is turned off per frame in StyleChatFrame (SetFading(false) and

@@ -51,6 +51,10 @@ local BAR_FRAMES = {
 }
 
 local function GetFrame(key)
+    -- the FlareUI XP bar replaces Blizzard's tracking bar when it is on
+    if key == "xp" and ns.XPBar and ns.XPBar.GetFrame and ns.XPBar:GetFrame() then
+        return ns.XPBar:GetFrame()
+    end
     local name = BAR_FRAMES[key]
     local f = _G[name]
 
@@ -136,7 +140,9 @@ end
 
 local function HideEditModeMover(key) ForEachFrameOfKey(key, HideMoverOfFrame) end
 local function RestoreEditModeMover(key) ForEachFrameOfKey(key, RestoreMoverOfFrame) end
-local function HideFrame(frame) frame:Hide() end
+-- the C hide: Edit Mode's HideOverride breaks the frame's snaps from our tainted call, re-anchoring
+-- whatever was snapped to it (the party frames then fail on secret health colours)
+local function HideFrame(frame) ns.RawHide(frame) end
 
 --------------------------------------------------
 -- 6. FADER ENGINE
@@ -421,7 +427,7 @@ function Visibility:Init()
         local db = ns.db and ns.db.profile and ns.db.profile.visibility
         if db and db.hideRaidManager and _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown() then
             local manager = _G.CompactRaidFrameManager
-            if manager and manager:IsShown() and not InCombatLockdown() then manager:Hide() end
+            if manager and manager:IsShown() and not InCombatLockdown() then ns.RawHide(manager) end
         end
     end)
 end

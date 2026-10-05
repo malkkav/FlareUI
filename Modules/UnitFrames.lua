@@ -367,10 +367,10 @@ local function HardHide(name)
         if child and child.UnregisterAllEvents then pcall(child.UnregisterAllEvents, child) end
     end
     if not InCombatLockdown() then
-        pcall(frame.Hide, frame)
+        pcall(ns.RawHide, frame)
         pcall(frame.SetParent, frame, hiddenParent)
     end
-    hooksecurefunc(frame, "Show", function(f) if not InCombatLockdown() then f:Hide() end end)
+    hooksecurefunc(frame, "Show", function(f) if not InCombatLockdown() then ns.RawHide(f) end end)
 end
 
 -- Gamepad UI: TargetFrame cannot be parked. The controller bar's target-menu button opens Blizzard's
@@ -409,9 +409,10 @@ local function KeepAsMenuOwner(name, over)
     local function Pin()
         if placing or InCombatLockdown() then return end
         placing = true
-        frame:ClearAllPoints()
-        frame:SetPoint("TOPLEFT", over, "TOPLEFT")
-        frame:SetPoint("BOTTOMRIGHT", over, "BOTTOMRIGHT")
+        local clear, setPoint = frame.ClearAllPointsBase or frame.ClearAllPoints, frame.SetPointBase or frame.SetPoint
+        clear(frame)
+        setPoint(frame, "TOPLEFT", over, "TOPLEFT")
+        setPoint(frame, "BOTTOMRIGHT", over, "BOTTOMRIGHT")
         placing = false
     end
     Pin()

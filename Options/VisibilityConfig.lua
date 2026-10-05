@@ -69,6 +69,11 @@ end
 
 local FADING_EXCLUDED = { player = true, petFrame = true, minimap = true, tracker = true }
 
+-- with the FlareUI XP bar on, Blizzard's XP / rep bars are gone: "xp" fades our bar, "rep" is moot
+local function XPBarActive()
+    return ns.XPBar and ns.XPBar.GetFrame and ns.XPBar:GetFrame() ~= nil
+end
+
 local function GetVisibleFrameList()
     local t = {}
     wipe(CURRENT_SORT_ORDER)
@@ -76,7 +81,7 @@ local function GetVisibleFrameList()
     local fcm = ns.db.profile.fcm
 
     for _, key in ipairs(MASTER_SORT_ORDER) do
-        if FADING_EXCLUDED[key] then
+        if FADING_EXCLUDED[key] or (key == "rep" and XPBarActive()) then
             -- Skip frames excluded from fading tab
         else
             local isFCMBar = fcm and fcm.bars[key] and fcm.bars[key].enabled

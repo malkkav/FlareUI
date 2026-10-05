@@ -1,3 +1,22 @@
+# FlareUI 1.4.3
+
+A new XP bar, and fixes for Lua errors around Edit Mode layouts and party frames.
+
+## Fixed
+- **Party frames / Edit Mode:** with **Hide Pet Bar** on, closing Edit Mode or switching layouts threw Lua errors from the party frames (CompactUnitFrame.lua). Hiding the pet bar in Edit Mode moved whatever was snapped to it. It no longer does. The raid manager hide had the same problem and is fixed too.
+- **Remember Layout per Mode:** switching the Gamepad UI on or off now asks **Restore your ... Edit Mode layout?** after the reload, instead of switching by itself. FlareUI switching the layout on its own caused the same party frame errors. Restore, Enter or the controller's A button switches the layout and closes the prompt.
+- **Remember Layout per Mode:** the prompt sometimes didn't show after turning the Gamepad UI on. FlareUI saved Blizzard's fallback layout as your gamepad layout during the switch. If you saw this, pick your gamepad layout once in Edit Mode.
+- **Sync Blizz UI:** the copied Edit Mode layout is now switched by the **Reload Now** button, not by FlareUI on its own (the same party frame errors). It is only copied for the input mode you're in, and not while Remember Layout per Mode is on.
+- **Lua errors from Blizzard_MawBuffs ("secret" auras)** after FlareUI scaled the minimap or the quest tracker, or hid Blizzard frames. FlareUI now scales and hides Edit Mode frames without running Edit Mode's own code.
+- FlareUI's prompts no longer show controller buttons while you play with keyboard and mouse.
+
+## New
+- **FlareUI XP Bar** (Action Bars > General > XP / Honor Bars > Style): one bar with XP and your watched reputation (or honor) side by side, placed and sized in Edit Mode. At max level it shows reputation and honor. **Show Text** (on mouseover or always) and **Text Format** options. **Blizzard Bars** keeps the previous reskin of Blizzard's bars. Visibility fades it as the XP bar. If you had **Reskin** on, you now get the FlareUI XP Bar: pick **Blizzard Bars** for the previous look.
+
+## Changed
+- **Buffs / Debuffs:** a note on the General tab explains that the module does not work in Gamepad mode. Blizzard keeps its own buff frame there for controller navigation.
+- **World refresh:** FlareUI no longer touches Blizzard's world refresh notice (it no longer moves it above the chat or recolours its border). Blizzard's own notice is back.
+
 # FlareUI 1.4.2
 
 The cooldown swipe is back on your buffs and debuffs, unit frames get FlareUI's aura icons, and a round of settings clean-up.

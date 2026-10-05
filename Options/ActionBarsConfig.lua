@@ -92,10 +92,38 @@ ns.Options.args.actionbars = {
                     type = "group", name = "XP / Honor Bars", order = 30, inline = true,
                     args = {
                         enabled = {
-                            type = "toggle", name = "Reskin", order = 10, width = 1.2,
-                            desc = "Gives Blizzard's XP, honor and reputation bars the FlareUI look.",
+                            type = "toggle", name = "Enable", order = 10, width = 1.2,
+                            desc = "FlareUI's XP, reputation and honor bar. Off: Blizzard's own bars, untouched.",
                             get = function() return ns.db.profile.actionbars.xpbar.enabled end,
                             set = function(_, val) ns.db.profile.actionbars.xpbar.enabled = val; ns.ShowDialog("FLAREUI_RELOAD") end,
+                        },
+                        spacer1 = { type = "description", name = "", width = 0.1, order = 11 },
+                        style = {
+                            type = "select", name = "Style", order = 20, width = 1.2,
+                            desc = "FlareUI XP Bar: one bar, XP and reputation (or honor) side by side, placed in Edit Mode.\n\nBlizzard Bars: Blizzard's two bars in the FlareUI look.",
+                            values = { flare = "FlareUI XP Bar", blizzard = "Blizzard Bars" }, sorting = { "flare", "blizzard" },
+                            disabled = function() return not ns.db.profile.actionbars.xpbar.enabled end,
+                            get = function() return ns.db.profile.actionbars.xpbar.style or "flare" end,
+                            set = function(_, val) ns.db.profile.actionbars.xpbar.style = val; ns.ShowDialog("FLAREUI_RELOAD") end,
+                        },
+                        break1 = { type = "description", name = " ", order = 25, width = "full" },
+                        textMode = {
+                            type = "select", name = "Show Text", order = 30, width = 1.2,
+                            values = { HOVER = "On Mouseover", ALWAYS = "Always" }, sorting = { "HOVER", "ALWAYS" },
+                            hidden = function() return (ns.db.profile.actionbars.xpbar.style or "flare") ~= "flare" end,
+                            disabled = function() return not ns.db.profile.actionbars.xpbar.enabled end,
+                            get = function() return ns.db.profile.actionbars.xpbar.textMode end,
+                            set = function(_, val) ns.db.profile.actionbars.xpbar.textMode = val; if ns.XPBar then ns.XPBar:Refresh() end end,
+                        },
+                        spacer2 = { type = "description", name = "", width = 0.1, order = 31 },
+                        textFormat = {
+                            type = "select", name = "Text Format", order = 40, width = 1.2,
+                            values = { NUM_PERC = "Current / Max (Percent)", NUM = "Current / Max", PERC = "Percent" },
+                            sorting = { "NUM_PERC", "NUM", "PERC" },
+                            hidden = function() return (ns.db.profile.actionbars.xpbar.style or "flare") ~= "flare" end,
+                            disabled = function() return not ns.db.profile.actionbars.xpbar.enabled end,
+                            get = function() return ns.db.profile.actionbars.xpbar.textFormat end,
+                            set = function(_, val) ns.db.profile.actionbars.xpbar.textFormat = val; if ns.XPBar then ns.XPBar:Refresh() end end,
                         },
                     }
                 }

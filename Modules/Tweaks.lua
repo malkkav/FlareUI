@@ -10,8 +10,7 @@ local _, ns = ...
 --   Convenience         Faster Auto Loot, Auto-Type DELETE, Train All button
 --   Hide                Error Messages, Zone Text, Party Title, Portrait Numbers, Contextual Tips,
 --                       Addon Drawer, Quest Tracker in Boss Fights
---   Always on           Party frames unclamped from the screen edge, the world refresh toast in
---                       FlareUI's border bronze (no toggles)
+--   Always on           Party frames unclamped from the screen edge (no toggle)
 -- Everything applies live except the ones that replace Blizzard scripts (those ask for a reload).
 --------------------------------------------------
 ns.Tweaks = ns.Tweaks or {}
@@ -511,16 +510,24 @@ local function LoadSync()
     -- Edit Mode layout. Matched on name AND kind, because a saved layout is free to be called
     -- "Modern" too, and searched over the manager's combined list so the index means what
     -- SetActiveLayout expects. Presets are in that list like anything else, so they carry over.
-    local layoutChanged = false
+    -- The switch is never made from here: Blizzard applies the whole layout inside SetActiveLayout,
+    -- so from our code every system (the party frames' shared options among them) would be laid out
+    -- tainted. It rides on the reload prompt's secure button instead (see FLAREUI_SYNC_RELOAD).
+    -- Only a layout of the current input mode is copied, and none while Remember Layout per Mode
+    -- picks the layouts (each character's own, per mode).
+    local layoutChanged, layoutIndex = false, nil
     local manager = EditModeManagerFrame
     local layoutInfo = manager and manager.layoutInfo
-    if store.editModeLayout and layoutInfo and layoutInfo.layouts then
+    local expected = ns.IsGamepadUI() and Enum.InputDeviceInterfaceType.Gamepad or Enum.InputDeviceInterfaceType.Mkb
+    if store.editModeLayout and layoutInfo and layoutInfo.layouts and not db.layoutPerMode then
         for index, layout in ipairs(layoutInfo.layouts) do
             local sameKind = store.editModeLayoutType == nil
                 or layout.layoutType == store.editModeLayoutType
             if layout.layoutName == store.editModeLayout and sameKind then
-                if index ~= layoutInfo.activeLayout and pcall(C_EditMode.SetActiveLayout, index) then
-                    layoutChanged = true
+                local style = layout.interfaceStyle
+                local sameMode = style == expected or (style == nil and expected == Enum.InputDeviceInterfaceType.Mkb)
+                if index ~= layoutInfo.activeLayout and sameMode then
+                    layoutChanged, layoutIndex = true, index
                 end
                 break
             end
@@ -631,7 +638,7 @@ local function LoadSync()
     if changed > 0 or layoutChanged or chatChanged then
         C_Timer.After(6, function()
             if not InCombatLockdown() then
-                ns.ShowDialog("FLAREUI_SYNC_RELOAD", sourceName)
+                ns.ShowDialog("FLAREUI_SYNC_RELOAD", sourceName, { layout = layoutIndex })
             end
         end)
     end
@@ -1289,22 +1296,6 @@ local function UnclampPartyFrame()
 end
 
 --------------------------------------------------
--- 11. WORLD REFRESH (shard transfer)
--- When the server is about to move the player to a fresh copy of the world, Blizzard shows a
--- countdown toast above the chat; clicking it opens the "Refresh Now" dialog. (Up to build 70009 the
--- dialog also opened by itself, and a "World Refresh Dialog" option closed it; 70170 stopped that.)
--- The toast's grey border takes FlareUI's bronze (always on).
---------------------------------------------------
-local function InitWorldRefresh()
-    EventUtil.ContinueOnAddOnLoaded("Blizzard_SocialToast", function()
-        local c = ns.BORDER_COLOR
-        for _, toast in ipairs({ _G.ShardTransferImminentFrame, _G.ShardTransferImminentMinimizeButton }) do
-            if toast then toast:SetBackdropBorderColor(c.r, c.g, c.b, 1) end
-        end
-    end)
-end
-
---------------------------------------------------
 -- 11b. AUTO-TYPE DELETE
 -- Blizzard asks for the word DELETE before destroying a rare or better item. The word goes into the
 -- box as the dialog opens (Blizzard's own text handler then enables Yes), so Yes or Enter still
@@ -1416,9 +1407,12 @@ end
 -- (its interfaceStyle), so switching the Gamepad UI - which reloads the UI - falls back to the new
 -- mode's preset ("Modern" / "Gamepad"). FlareUI remembers the layout last used in each mode, per
 -- character like the active layout itself, by type and name (indices shift as layouts come and go),
--- and on the first layout update after login selects it again when the client has fallen back.
--- The selection is the one call Blizzard's own dropdown makes (C_EditMode.SetActiveLayout); Edit
--- Mode then applies the layout from its EDIT_MODE_LAYOUTS_UPDATED handler. Never in combat (a switch
+-- and on the first layout update after login, when the client has fallen back, offers it again.
+-- The switch is Blizzard's own (C_EditMode.SetActiveLayout), and Blizzard applies the whole layout
+-- inside that call - so it must never be made from FlareUI code: everything it lays out (the compact
+-- party frames' shared option tables among it) would be tainted, and the next layout switch then
+-- fails on secret health values (CompactUnitFrame.lua). The dialog's yes runs it as a macro from a
+-- secure button (Dialog.lua padSecure: a controller yes goes the same way). Never in combat (a switch
 -- mid-fight reloads in combat): then it waits for the fight to end.
 --------------------------------------------------
 local function ModeKey()
@@ -1433,11 +1427,25 @@ local function ActiveLayout()
     return info.layouts[info.activeLayout], info
 end
 
+-- Not remembered: anything after the input mode changed this session (the client falls back to the new
+-- mode's preset before it reloads, and that must not overwrite the mode's layout), nor the fallback a
+-- restore was offered over, until the player picks another layout.
+local sessionMode, fallbackLayout
+
+local function SameLayout(a, b)
+    return a and b and a.layoutName == b.name and a.layoutType == b.layoutType
+end
+
 local function RememberLayout()
     local db = GetDb()
     if not (db and db.layoutPerMode) then return end
+    if sessionMode and ModeKey() ~= sessionMode then return end
     local layout = ActiveLayout()
     if not (layout and layout.layoutName) then return end
+    if fallbackLayout then
+        if SameLayout(layout, fallbackLayout) then return end
+        fallbackLayout = nil
+    end
     local charDB = ns.CharDB()
     charDB.layoutByMode = charDB.layoutByMode or {}
     charDB.layoutByMode[ModeKey()] = { name = layout.layoutName, layoutType = layout.layoutType }
@@ -1455,7 +1463,20 @@ local function RememberedIndex()
     end
 end
 
+ns.Dialogs["FLAREUI_RESTORE_LAYOUT"] = {
+    text = "Restore your %s Edit Mode layout?",
+    button1 = "Restore",
+    button2 = "Not Now",
+    macro = function(data) return "/run C_EditMode.SetActiveLayout(" .. data.index .. ")" end,
+    OnMacro = function(data)
+        Print("restored your " .. data.mode .. " Edit Mode layout, |cffffff00" .. data.name .. "|r.")
+    end,
+    hideOnEscape = true,
+    padSecure = true,
+}
+
 local function InitLayoutPerMode()
+    sessionMode = ModeKey()
     local restored = false
     local events = CreateFrame("Frame")
 
@@ -1465,9 +1486,11 @@ local function InitLayoutPerMode()
         if not (db and db.layoutPerMode) then return end
         local index, layout = RememberedIndex()
         if index then
-            C_EditMode.SetActiveLayout(index)
-            Print("restored your " .. (ns.IsGamepadUI() and "gamepad" or "keyboard and mouse")
-                .. " Edit Mode layout, |cffffff00" .. layout.layoutName .. "|r.")
+            local active = ActiveLayout()
+            fallbackLayout = active and { name = active.layoutName, layoutType = active.layoutType }
+            local mode = ns.IsGamepadUI() and "gamepad" or "keyboard and mouse"
+            ns.ShowDialog("FLAREUI_RESTORE_LAYOUT", mode .. " (|cffffff00" .. layout.layoutName .. "|r)",
+                { index = index, name = layout.layoutName, mode = mode })
         else
             RememberLayout()
         end
@@ -1542,7 +1565,6 @@ function Tweaks:Init()
     InitDurability()
     InitCameraLoot()
     InitHide()
-    InitWorldRefresh()
     InitAutoDelete()
     InitTrainAll()
     InitBossTracker()

@@ -218,7 +218,8 @@ local defaults = {
             scales = BarScales(1.06),
 
             -- reskin of Blizzard's XP / honor / reputation bars (Modules/XPBar.lua); placed in Edit Mode
-            xpbar = { enabled = true },
+            -- style: "flare" = FlareUI XP Bar (two sections, Edit Mode), "blizzard" = Blizzard's bars reskinned
+            xpbar = { enabled = true, style = "flare", width = 560, height = 14, textMode = "HOVER", textFormat = "NUM_PERC", layouts = {} },
 
             -- Typography
             hotkeyFont = { face = "Arial Narrow", size = 12, flags = "OUTLINE", x = -4, y = -4, enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -510,8 +511,33 @@ hideWatcher:SetScript("OnEvent", function()
     end
 end)
 
+-- Edit Mode system frames (unit frames, buff frames, bars, the tracker, the minimap...) have their
+-- Hide / SetShown / SetPoint / SetScale replaced with Edit Mode Lua (EditModeSystemMixin:*Override),
+-- which re-lays out other frames - the objective tracker, managed frames, snapped frames. Called
+-- from FlareUI that Lua runs tainted and leaves tainted state for Blizzard's next update (a player's
+-- "Auras cannot be accessed when secret while tainted" from Blizzard_MawBuffs, 10-05). These call the
+-- engine method Blizzard keeps on the frame instead, so nothing of Blizzard's runs inside our call.
+function ns.RawHide(frame)
+    local hide = frame.HideBase or frame.Hide
+    return hide(frame)
+end
+
+-- SetScale that keeps the frame where it is on screen (what Edit Mode's own override does), without
+-- Edit Mode's re-layout of the managed frames
+function ns.SetSystemScale(frame, scale)
+    local setScale = frame.SetScaleBase or frame.SetScale
+    local old = frame:GetScale()
+    setScale(frame, scale)
+    if not frame.SetScaleBase or math.abs(old - scale) < 0.0001 then return end
+    local setPoint = frame.SetPointBase or frame.SetPoint
+    for i = 1, frame:GetNumPoints() do
+        local point, relativeTo, relativePoint, x, y = frame:GetPoint(i)
+        setPoint(frame, point, relativeTo, relativePoint, x * old / scale, y * old / scale)
+    end
+end
+
 local function ReHideOnShow(self)
-    if self.FlareUI_Hidden and not InCombatLockdown() then self:Hide() end
+    if self.FlareUI_Hidden and not InCombatLockdown() then ns.RawHide(self) end
 end
 
 function ns.HideFrameSecurely(frame, shouldHide)
@@ -532,7 +558,7 @@ function ns.HideFrameSecurely(frame, shouldHide)
             frame.FlareUI_ReHideHooked = true
             frame:HookScript("OnShow", ReHideOnShow)
         end
-        frame:Hide()
+        ns.RawHide(frame)
     elseif frame.FlareUI_Hidden then
         -- Only frames we hid ourselves come back, and only if they were visible when we hid them:
         -- many of these (rep bar, raid manager, possess bar...) are hidden by Blizzard most of the
@@ -793,14 +819,20 @@ ns.Dialogs["FLAREUI_RESET"] = {
     showAlert = true,
 }
 
+-- The secure button switches the copied Edit Mode layout (when there is one) and reloads, both in
+-- Blizzard's own path: a layout switch from addon code would lay every system out tainted.
 ns.Dialogs["FLAREUI_SYNC_RELOAD"] = {
     text = "FlareUI copied this character's interface settings from %s.\n\n"
         .. "Reload now to finish applying them. Until you do, some of Blizzard's own panels - "
         .. "Edit Mode in particular - can throw errors.",
     button1 = "Reload Now",
     button2 = "Later",
-    reloads = true,
+    macro = function(data)
+        local layout = data and data.layout
+        return (layout and ("/run C_EditMode.SetActiveLayout(" .. layout .. ")\n") or "") .. "/reload"
+    end,
     hideOnEscape = true,
+    padSecure = true,
 }
 
 ns.Dialogs["FLAREUI_RELOAD"] = {

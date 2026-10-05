@@ -311,7 +311,7 @@ function MM:UpdateLayout()
     SizeCluster()
     -- Edit Mode's SetScale on a system frame moves it so it stays in place on screen
     local scale = EditModeSize()
-    if math.abs(Cluster:GetScale() - scale) > 0.001 then Cluster:SetScale(scale) end
+    if math.abs(Cluster:GetScale() - scale) > 0.001 then ns.SetSystemScale(Cluster, scale) end
 
     MinimapFrame:SetSize(MAP_SIZE, MAP_SIZE)
     MinimapFrame:ClearAllPoints()
@@ -403,9 +403,10 @@ local function FrameOuterWidth(tracker)
     return (right - left) * frame:GetEffectiveScale() / tracker:GetParent():GetEffectiveScale()
 end
 
--- Edit Mode's SetScale makes the objective tracker lay itself out again, inside our call; in combat
--- that layout reads auras (Blizzard_MawBuffs) that are secret to tainted code and errors. So in
--- combat (a /reload or a Gamepad UI switch mid-fight) the scale waits for the fight to end.
+-- Edit Mode's SetScale would make the objective tracker lay itself out again inside our call, and
+-- that layout reads auras (Blizzard_MawBuffs) that are secret to tainted code; ns.SetSystemScale
+-- only sets the scale (see Core.lua), and Blizzard lays the tracker out on its own. Still kept out of
+-- combat (a /reload or a Gamepad UI switch mid-fight): the scale waits for the fight to end.
 local trackerScaleWaiter
 function MM:UpdateTrackerScale()
     local tracker = _G.ObjectiveTrackerFrame
@@ -427,7 +428,7 @@ function MM:UpdateTrackerScale()
         local width = FrameOuterWidth(tracker)
         if width then scale = width / TRACKER_LINE_WIDTH end
     end
-    tracker:SetScale(scale)
+    ns.SetSystemScale(tracker, scale)
 end
 
 --------------------------------------------------
