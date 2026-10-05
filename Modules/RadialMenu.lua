@@ -204,13 +204,16 @@ local MICRO_PANELS = {
     legacy      = { order = 6,  label = "Legacy",       icon = 4279397, button = "LegacyMicroButton" },
     professions = { order = 7,  label = "Professions",  icon = 4202228, button = "ProfessionMicroButton" },
     quests      = { order = 8,  label = "Quest Log",    icon = 8197102, button = "QuestLogMicroButton" },
-    spellbook   = { order = 9,  label = "Spellbook",    icon = 133741,  button = "SpellbookMicroButton" },
-    talents     = { order = 10, label = "Talents",      icon = 132222,  button = "TalentMicroButton" },
+    -- the Friends window (Blizzard's TOGGLESOCIAL binding); no micro button of its own
+    social      = { order = 9,  label = "Social",       icon = "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend",
+                    macrotext = "/run ToggleFriendsFrame()" },
+    spellbook   = { order = 10, label = "Spellbook",    icon = 133741,  button = "SpellbookMicroButton" },
+    talents     = { order = 11, label = "Talents",      icon = 132222,  button = "TalentMicroButton" },
     -- FlareUI's own settings: with a controller, R3's way to them (Options/ControllerNav.lua)
-    flareui     = { order = 11, label = "FlareUI Settings", icon = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png",
+    flareui     = { order = 12, label = "FlareUI Settings", icon = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png",
                     macrotext = "/run FlareUI_ToggleSettings()" },
     -- flips the damage meter between Blizzard's view and FlareUI's threat view (Modules/DamageMeter.lua)
-    threat      = { order = 12, label = "Toggle Threat Meter", icon = "Interface\\Icons\\Ability_Physical_Taunt",
+    threat      = { order = 13, label = "Toggle Threat Meter", icon = "Interface\\Icons\\Ability_Physical_Taunt",
                     macrotext = "/run FlareUI_ToggleThreatMeter()" },
 }
 RM.MICRO_PANELS = MICRO_PANELS
@@ -641,10 +644,9 @@ local function UpdateSelection()
 
     -- Safety net for the one thing that cannot be checked outside the game: whether a CLICK binding
     -- really delivers the key-up as well as the key-down. If it does not, the radial would hang open
-    -- with no way to dismiss it, so it closes itself instead of trapping the screen.
+    -- with no way to dismiss it, so it closes itself instead of trapping the screen (quietly).
     if openMode == "hold" and GetTime() - openedAt > STUCK_OPEN_SECONDS then
         CloseRadial()
-        print("|cffff9900FlareUI:|r radial menu timed out - the binding did not report a key release.")
         return
     end
 

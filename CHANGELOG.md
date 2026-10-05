@@ -1,3 +1,21 @@
+# FlareUI 1.4.4
+
+Quieter defaults: most quality-of-life extras now start off, FlareUI says less in chat, and a few small additions.
+
+## Changed
+- **Defaults:** these now start **off** (turn them on in the settings if you want them):
+  - **Chat:** Extend Chat History, Save Chat History, Better NPC Names, Better Player Names, Short Channel Names.
+  - **Tweaks:** Auto-Type DELETE, Hide Error Messages, Hide Party Title, Hide Contextual Tips, Hide Portrait Numbers, Sell Junk Automatically, Repair Automatically, Durability Warning, Faster Auto Loot, Train All Button, Max Camera Zoom, Faster Camera Zoom.
+  - They switch off with this update even if you had them on: turn the ones you use back on.
+- **Damage Meter:** the **Combat Timer** now starts on (it turns on with this update; switch it off in the Damage Meter settings if you prefer).
+- **Tweaks:** with Max Camera Zoom, Faster Camera Zoom or Hide Contextual Tips off, FlareUI no longer resets Blizzard's own camera and tutorial settings. It only puts back what it changed itself. Hide Party Title and Hide Portrait Numbers work the same way.
+- **Less chat:** FlareUI no longer posts a line when you switch Gamepad mode, when Move Any Frame pauses in Gamepad mode, after Sync Blizz UI, after restoring your Edit Mode layout, or when a radial closes itself.
+- **Buffs / Debuffs:** the Gamepad mode note moved to a **Warning** section at the bottom of the settings.
+
+## New
+- **Radial Menu:** a **Social** panel button (the Friends window).
+- **Radial Menu:** deleting a radial now asks first.
+
 # FlareUI 1.4.3
 
 A new XP bar, and fixes for Lua errors around Edit Mode layouts and party frames.

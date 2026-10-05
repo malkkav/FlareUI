@@ -529,6 +529,22 @@ ns.Dialogs["FLAREUI_RADIAL_UNSAVED"] = {
     hideOnEscape = false,
 }
 
+-- Delete asks first. The answer acts on the radial the question named, even if the dropdown moved on.
+ns.Dialogs["FLAREUI_RADIAL_DELETE"] = {
+    text = "Delete the radial |cffffff00%s|r?",
+    button1 = "Delete",
+    button2 = "Cancel",
+    OnAccept = function(data)
+        if not (data and data.id and RM():GetRadial(data.id)) then return end
+        RM():DeleteRadial(data.id)
+        if editingID == data.id then editingID, selectedButton = nil, nil end
+        Changed()
+        Refresh()
+    end,
+    hideOnEscape = true,
+    showAlert = true,
+}
+
 --------------------------------------------------
 -- NAME POPUP
 -- The name is asked for up front rather than left in a box on the toolbar to be found. The same
@@ -683,11 +699,9 @@ local function BuildWindow()
     editor.radialDrop = radialDrop
 
     editor.deleteButton = RedButton(header, "Delete", 80, function()
-        if not editingID then return end
-        RM():DeleteRadial(editingID)
-        editingID, selectedButton = nil, nil
-        Changed()
-        Refresh()
+        local radial = editingID and RM():GetRadial(editingID)
+        if not radial then return end
+        ns.ShowDialog("FLAREUI_RADIAL_DELETE", radial.name or "", { id = editingID })
     end)
     editor.deleteButton:SetPoint("RIGHT", -12, 0)
 

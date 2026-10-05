@@ -24,10 +24,6 @@ ns.Options.args.auras = {
         generalTab = {
             type = "group", name = "General", order = 10,
             args = {
-                gamepadNote = {
-                    type = "description", order = 1, width = "full", fontSize = "medium",
-                    name = "|cffff4040Does not work in Gamepad mode: Blizzard restricts it, as its own buff frame is part of the controller navigation there. Gamepad mode keeps Blizzard's buffs and debuffs.|r\n",
-                },
                 lookGroup = {
                     type = "group", name = "Look", order = 10, inline = true,
                     args = {
@@ -58,6 +54,15 @@ ns.Options.args.auras = {
                     },
                 },
                 font = ns.CreateFontOptions(20, "Timer & Stacks Font", "auras", "font"),
+                warningGroup = {
+                    type = "group", name = "Warning", order = 100, inline = true,
+                    args = {
+                        gamepadNote = {
+                            type = "description", order = 10, width = "full", fontSize = "medium",
+                            name = "|cffff4040Does not work in Gamepad mode: Blizzard restricts it, as its own buff frame is part of the controller navigation there. Gamepad mode keeps Blizzard's buffs and debuffs.|r",
+                        },
+                    },
+                },
             },
         },
     },

@@ -91,14 +91,6 @@ local function Offer()
     ns.ShowDialog("FLAREUI_GAMEPAD_ON")
 end
 
-local function Announce(isGamepad)
-    if isGamepad then
-        print("|cff00ccffFlareUI:|r Gamepad mode |cff00ff00on|r. Type |cffffff00/fui pad|r to switch back to keyboard and mouse.")
-    else
-        print("|cff00ccffFlareUI:|r Gamepad mode |cffff0000off|r. Type |cffffff00/fui pad|r to switch back to the controller.")
-    end
-end
-
 local f = CreateFrame("Frame")
 f:RegisterEvent("PLAYER_ENTERING_WORLD")
 f:SetScript("OnEvent", function(self, event, arg1)
@@ -106,18 +98,14 @@ f:SetScript("OnEvent", function(self, event, arg1)
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
         local isInitialLogin = arg1
         armed = isInitialLogin and true or false
-        local global = ns.db and ns.db.global
         local isGamepad = ns.IsGamepadUI()
-        local changed = global and global.lastGamepadUI ~= nil and global.lastGamepadUI ~= isGamepad
-        if global then global.lastGamepadUI = isGamepad end
-        -- after Chat's history (restored a second after login), so these come last
-        C_Timer.After(2, function()
-            if isInitialLogin then
+        -- after Chat's history (restored a second after login), so it comes last
+        if isInitialLogin then
+            C_Timer.After(2, function()
                 local version = C_AddOns.GetAddOnMetadata(addonName, "Version") or ""
                 print(("|cff00ccffFlareUI|r %s by |cffb39ddbMalkkav|r. Type |cffffff00/fui|r for settings."):format(version))
-            end
-            if changed then Announce(isGamepad) end
-        end)
+            end)
+        end
         if not isGamepad then
             self:RegisterEvent("GAME_PAD_ACTIVE_CHANGED")
             self:RegisterEvent("PLAYER_REGEN_ENABLED")

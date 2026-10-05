@@ -294,7 +294,6 @@ local function OnInterfaceTransition()
     if ns.IsGamepadUI() then
         if moveStarted and not moveSuspended then
             moveSuspended = true
-            Print("Move Any Frame stands aside in gamepad mode - type |cffffff00/reload|r to finish switching.")
         end
     else
         moveSuspended = false
@@ -645,7 +644,6 @@ local function LoadSync()
 
     charDB.syncApplied = store.savedAt
     Tweaks.syncLoading = false
-    Print(("UI settings synced from %s (%d CVars changed)."):format(sourceName, changed))
 end
 
 -- A throw halfway through would leave the settings half applied and syncLoading stuck on, so it is
@@ -805,19 +803,39 @@ local origZoomIn, origZoomOut
 -- CameraZoomIn / Out are replaced rather than hooked: the mouse wheel bindings call the globals
 -- directly, so there is no hook point that can change the step size. The originals are kept and
 -- put back when the option is turned off.
+-- The CVars are Blizzard's settings too, so an option that is off leaves them alone: they go back
+-- to Blizzard's defaults only when FlareUI was the one that changed them (ForcedCVars remembers).
+local function ForcedCVars()
+    local global = ns.db and ns.db.global
+    if not global then return {} end
+    global.forcedCVars = global.forcedCVars or {}
+    return global.forcedCVars
+end
+
 local function ApplyCamera()
     local db = GetDb()
     if not db then return end
-    pcall(SetCVar, "cameraDistanceMaxZoomFactor", db.maxCameraZoom and 2.6 or 1.9)
+    local forced = ForcedCVars()
+    if db.maxCameraZoom then
+        pcall(SetCVar, "cameraDistanceMaxZoomFactor", 2.6)
+        forced.maxZoom = true
+    elseif forced.maxZoom then
+        pcall(SetCVar, "cameraDistanceMaxZoomFactor", 1.9)
+        forced.maxZoom = nil
+    end
     if db.fasterCameraZoom then
         origZoomIn = origZoomIn or _G.CameraZoomIn
         origZoomOut = origZoomOut or _G.CameraZoomOut
         _G.CameraZoomIn = function() origZoomIn(ZOOM_STEP) end
         _G.CameraZoomOut = function() origZoomOut(ZOOM_STEP) end
         pcall(SetCVar, "cameraZoomSpeed", 50)
-    elseif origZoomIn then
-        _G.CameraZoomIn, _G.CameraZoomOut = origZoomIn, origZoomOut
-        pcall(SetCVar, "cameraZoomSpeed", 20)
+        forced.zoomSpeed = true
+    else
+        if origZoomIn then _G.CameraZoomIn, _G.CameraZoomOut = origZoomIn, origZoomOut end
+        if forced.zoomSpeed then
+            pcall(SetCVar, "cameraZoomSpeed", 20)
+            forced.zoomSpeed = nil
+        end
     end
 end
 
@@ -873,11 +891,18 @@ local function InitHideZoneText()
     if SubZoneTextFrame then SubZoneTextFrame:SetScript("OnShow", SubZoneTextFrame.Hide) end
 end
 
+local partyTitleHidden = false
 local function ApplyPartyTitle()
     local db = GetDb()
     local title = _G.CompactPartyFrameTitle
     if not (db and title) then return end
-    if db.hidePartyTitle then title:Hide() else title:Show() end
+    if db.hidePartyTitle then
+        title:Hide()
+        partyTitleHidden = true
+    elseif partyTitleHidden then
+        title:Show()
+        partyTitleHidden = false
+    end
 end
 
 local function ApplyPortraitNumbers()
@@ -886,7 +911,10 @@ local function ApplyPortraitNumbers()
     local hide = db.hidePortraitNumbers
     local indicator = PlayerFrame and PlayerFrame.PlayerFrameContent and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain
         and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HitIndicator
-    if indicator then indicator:SetShown(not hide) end
+    if indicator and (hide or Tweaks.hitIndicatorHidden) then
+        indicator:SetShown(not hide)
+        Tweaks.hitIndicatorHidden = hide or nil
+    end
     if PetHitIndicator then
         if hide then
             if not Tweaks.petHitHooked then
@@ -901,13 +929,16 @@ end
 local function ApplyTips()
     local db = GetDb()
     if not db then return end
+    local forced = ForcedCVars()
     if db.hideTips then
         pcall(SetCVar, "showTutorials", 0)
         pcall(SetCVar, "showNPETutorials", 0)
         HelpTip:HideAllSystem()
-    else
+        forced.tips = true
+    elseif forced.tips then
         pcall(SetCVar, "showTutorials", 1)
         pcall(SetCVar, "showNPETutorials", 1)
+        forced.tips = nil
     end
 end
 
@@ -1468,9 +1499,6 @@ ns.Dialogs["FLAREUI_RESTORE_LAYOUT"] = {
     button1 = "Restore",
     button2 = "Not Now",
     macro = function(data) return "/run C_EditMode.SetActiveLayout(" .. data.index .. ")" end,
-    OnMacro = function(data)
-        Print("restored your " .. data.mode .. " Edit Mode layout, |cffffff00" .. data.name .. "|r.")
-    end,
     hideOnEscape = true,
     padSecure = true,
 }
