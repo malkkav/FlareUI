@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
@@ -34,7 +35,7 @@ local canaccessallvalues = canaccessallvalues
 local LSM = LibStub("LibSharedMedia-3.0")
 
 -- The border picked in the options; a name LibSharedMedia no longer knows falls back to the default.
-local DEFAULT_BORDER = "FlareUI Thin"
+local DEFAULT_BORDER = "FlareUI Frames"
 local function GetBorderFile(db)
     local name = db and db.borderTexture
     if not (name and LSM:IsValid("border", name)) then name = DEFAULT_BORDER end
@@ -74,6 +75,12 @@ local function GetDb()
         return nil
     end
     return ns.db.profile.chat
+end
+
+-- A window popped out of the dock (see POP-OUT WINDOWS): its own window, with only its own tab
+local function IsPopped(chatFrame)
+    local dock = _G.GeneralDockManager
+    return chatFrame ~= nil and dock ~= nil and chatFrame ~= dock.primary and not chatFrame.isDocked
 end
 
 local function GetTimestamp()
@@ -453,7 +460,7 @@ end
 -- and parenting the buttons to a hidden skin is what made them vanish until a tab was clicked.
 local function VisibleSkinHost()
     local function Usable(cf)
-        return cf and not cf:IsForbidden() and cf.FlareUI_Skin and cf:IsShown() and cf
+        return cf and not cf:IsForbidden() and cf.FlareUI_Skin and cf:IsShown() and not IsPopped(cf) and cf
     end
 
     local host = Usable(SELECTED_CHAT_FRAME) or Usable(ChatFrame1)
@@ -631,6 +638,7 @@ function Chat:StyleHeaderButtons(chatFrame)
 
     local db = GetDb()
     local target = chatFrame or VisibleSkinHost()
+    if target and IsPopped(target) then target = VisibleSkinHost() end   -- the buttons stay on the dock
     if not target or not target.FlareUI_Skin then
         target = ChatFrame1
     end
@@ -778,7 +786,7 @@ end
 local function HandleWay(msg)
     local db = GetDb()
     if not db or not db.enableWay then
-        print("|cffff0000FlareUI:|r /way is disabled in the chat options.")
+        print("|cffff0000FlareUI:|r " .. L["/way is disabled in the chat options."])
         return
     end
 
@@ -794,7 +802,7 @@ local function HandleWay(msg)
     local zonePart, xStr, yStr = msg:match("^(.*%S)%s+(%d+%.?%d*)%s*[,%s]%s*(%d+%.?%d*)$")
     if not zonePart then xStr, yStr = msg:match("^(%d+%.?%d*)%s*[,%s]%s*(%d+%.?%d*)$") end
     if not xStr or not yStr then
-        print("|cffff0000FlareUI:|r Invalid coordinates. Try |cffffff00/way|r for usage.")
+        print("|cffff0000FlareUI:|r " .. L["Invalid coordinates. Try |cffffff00/way|r for usage."])
         return
     end
 
@@ -804,26 +812,26 @@ local function HandleWay(msg)
             mapID = tonumber(zonePart:sub(2))
         else
             mapID = GetMapIDByName(zonePart)
-            if not mapID then print("|cffff0000FlareUI:|r Could not find a map named '" .. zonePart .. "'.") return end
+            if not mapID then print("|cffff0000FlareUI:|r " .. L["Could not find a map named '%s'."]:format(zonePart)) return end
         end
     else
         mapID = C_Map.GetBestMapForUnit("player")
     end
-    if not mapID then print("|cffff0000FlareUI:|r Could not determine the current map.") return end
+    if not mapID then print("|cffff0000FlareUI:|r " .. L["Could not determine the current map."]) return end
     if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(mapID) then
-        print("|cffff0000FlareUI:|r Map pins are not allowed on this map.")
+        print("|cffff0000FlareUI:|r " .. L["Map pins are not allowed on this map."])
         return
     end
 
     local x, y = tonumber(xStr) / 100, tonumber(yStr) / 100
-    if x > 1 or y > 1 then print("|cffff0000FlareUI:|r Coordinates must be between 0 and 100.") return end
+    if x > 1 or y > 1 then print("|cffff0000FlareUI:|r " .. L["Coordinates must be between 0 and 100."]) return end
 
     C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
     C_SuperTrack.SetSuperTrackedUserWaypoint(true)
 
     local mapInfo = C_Map.GetMapInfo(mapID)
     local mapName = mapInfo and mapInfo.name or ("Map #" .. mapID)
-    print(string_format("|cff00ff00FlareUI:|r Pin set for %s at %.1f, %.1f", mapName, tonumber(xStr), tonumber(yStr)))
+    print(string_format("|cff00ff00FlareUI:|r " .. L["Pin set for %s at %.1f, %.1f"], mapName, tonumber(xStr), tonumber(yStr)))
 end
 
 --------------------------------------------------
@@ -867,7 +875,7 @@ local function ShowCopyBox(url)
 
         local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         label:SetPoint("TOPLEFT", 14, -10)
-        label:SetText("Ctrl+C to copy, Esc to close")
+        label:SetText(L["Ctrl+C to copy, Esc to close"])
 
         local box = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
         box:SetPoint("BOTTOMLEFT", 16, 14)
@@ -1015,6 +1023,17 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
             rootDescription:CreateButton("Filter Settings", function()
                 if ChatConfigFrame then ShowUIPanel(ChatConfigFrame) end
             end)
+        end
+
+        if IsPopped(chatFrame) then
+            rootDescription:CreateDivider()
+            rootDescription:CreateButton(L["Dock"], function() Chat:DockWindow(chatFrame) end)
+            rootDescription:CreateButton(chatFrame.isLocked and UNLOCK_WINDOW or LOCK_WINDOW, function()
+                FCF_SetLocked(chatFrame, not chatFrame.isLocked)
+            end)
+        elseif chatFrame:GetID() ~= 1 and chatFrame ~= _G.ChatFrame2 then
+            rootDescription:CreateDivider()
+            rootDescription:CreateButton(L["Pop Out"], function() Chat:PopOutWindow(chatFrame) end)
         end
 
         if chatFrame:GetID() ~= 1 then
@@ -1210,6 +1229,11 @@ end
 
 local function OnTabDragStart(self)
     local scrollFrame = self.scrollFrame
+    -- a popped window's tab is its handle
+    if IsPopped(self.chatFrame) then
+        Chat:StartMovingWindow(self.chatFrame)
+        return
+    end
     if not scrollFrame or IsFixedWindow(self.chatFrame) then return end
     if not scrollFrame.dropMarker then
         local marker = scrollFrame.FlareUI_Child:CreateTexture(nil, "OVERLAY")
@@ -1224,6 +1248,13 @@ local function OnTabDragStart(self)
 end
 
 local function OnTabDragStop(self)
+    if self.chatFrame and self.chatFrame.FlareUI_Moving then
+        Chat:StopMovingWindow(self.chatFrame)
+        -- the release that ends a drag also clicks the tab
+        self.justDragged = true
+        C_Timer.After(0, function() self.justDragged = nil end)
+        return
+    end
     local scrollFrame = self.scrollFrame
     if not (scrollFrame and scrollFrame.draggedTab == self) then return end
     scrollFrame:SetScript("OnUpdate", nil)
@@ -1258,6 +1289,7 @@ function Chat:UpdateCustomTabsImmediate(chatFrame, db)
         if HeaderButtonShown(db, key) then btnCount = btnCount + 1 end
     end
 
+    if IsPopped(chatFrame) then btnCount = 0 end   -- the header buttons stay on the dock
     local margin = -20 - (btnCount * 30)
     scrollFrame:SetPoint("TOPRIGHT", chatFrame.FlareUI_Skin, "TOPRIGHT", margin, 0)
 
@@ -1266,6 +1298,8 @@ function Chat:UpdateCustomTabsImmediate(chatFrame, db)
     local dock = _G.GeneralDockManager
     local dockedFrames = dock and dock.DOCKED_CHAT_FRAMES
     if not dockedFrames then return end
+    local popped = IsPopped(chatFrame)
+    if popped then dockedFrames = { chatFrame } end
 
     local prevBtn = nil
     local fontPath, fontSize, fontFlags = GetFontData(db.tabFont)
@@ -1300,6 +1334,8 @@ function Chat:UpdateCustomTabsImmediate(chatFrame, db)
                     if not self.realTab or self.justDragged then return end
                     if button == "RightButton" then
                         Chat:OpenContextMenu(self, self.chatFrame)
+                    elseif IsPopped(self.chatFrame) then
+                        -- a popped window's only tab: nothing to switch to
                     else
                         -- Call Blizzard's tab click handler to switch frames
                         _G.FCF_Tab_OnClick(self.realTab, button)
@@ -1366,7 +1402,7 @@ function Chat:UpdateCustomTabsImmediate(chatFrame, db)
             -- Get the actual selected frame from the dock
             local dock = _G.GeneralDockManager
             local actualSelectedFrame = dock and FCFDock_GetSelectedWindow(dock)
-            local isSelected = (actualSelectedFrame == frame)
+            local isSelected = popped or (actualSelectedFrame == frame)
             btn.isSelected = isSelected
 
             if isSelected then
@@ -1544,7 +1580,7 @@ function Chat:StyleEditBox(chatFrame, db)
     -- the fill stops inside the border, as on the chat window's skin: the Blizzard Tooltip border's
     -- line sits a few px in from the frame edge, and a fill to the edge showed square past it
     local inset = db.borderInset or 4
-    bg:SetBackdrop({ bgFile = bgFile, edgeFile = edgeFile, tile = true, tileSize = 16, edgeSize = 16, insets = { left = inset, right = inset, top = inset, bottom = inset } })
+    bg:SetBackdrop({ bgFile = bgFile, edgeFile = edgeFile, tile = true, tileSize = 16, edgeSize = ns.BorderEdgeSize(edgeFile, 16), insets = { left = inset, right = inset, top = inset, bottom = inset } })
     bg:SetBackdropColor(0, 0, 0, opacity)
     bg:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1)
 
@@ -1559,7 +1595,7 @@ end
 
 function Chat:SetupVolumeButton(chatFrame, db)
     if not chatFrame.FlareUI_Skin then return end
-    if not HeaderButtonShown(db, "volume") then
+    if not HeaderButtonShown(db, "volume") or IsPopped(chatFrame) then
         if chatFrame.FlareUI_VolumeBtn then chatFrame.FlareUI_VolumeBtn:Hide() end
         return
     end
@@ -1750,7 +1786,7 @@ function Chat:StyleChatFrame(chatFrame, db)
     local borderSize    = db.borderSize or 16
     local inset         = db.borderInset or 4
     local opacity       = db.opacity or 1
-    local backdrop      = { bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = borderSize, insets = { left = inset, right = inset, top = inset, bottom = inset } }
+    local backdrop      = { bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = ns.BorderEdgeSize(borderTexture, borderSize), insets = { left = inset, right = inset, top = inset, bottom = inset } }
 
     if skin then
         skin:SetBackdrop(backdrop)
@@ -1809,7 +1845,104 @@ function Chat:StyleChatFrame(chatFrame, db)
     Chat:HideBlizzardTabs()
 
     Chat:SetupVolumeButton(chatFrame, db)
+    Chat:ApplyPopState(chatFrame)
     Chat:StyleHeaderButtons()
+end
+
+--------------------------------------------------
+-- POP-OUT WINDOWS
+-- FlareUI hides Blizzard's dock and its tabs, and dragging a tab out of the dock is how Blizzard
+-- undocks a window, so the tab menu does it instead: Pop Out undocks the window through Blizzard's
+-- own functions (FCF_UnDockFrame, FCF_SetLocked), which save its docked state, position and size in
+-- the game's chat settings - a popped window comes back where it was after a reload. A popped window
+-- keeps the FlareUI skin with only its own tab; its tab and header drag it, Blizzard's corner grip
+-- resizes it, and its menu docks it back or locks it. The shared header buttons stay on the dock.
+--------------------------------------------------
+local POPOUT_GAP = 8   -- px between the main chat's skin and a popped window's, as first placed
+
+function Chat:StartMovingWindow(chatFrame)
+    if chatFrame.isLocked or not IsPopped(chatFrame) then return end
+    chatFrame:SetMovable(true)
+    chatFrame:StartMoving()
+    chatFrame.FlareUI_Moving = true
+end
+
+function Chat:StopMovingWindow(chatFrame)
+    if not chatFrame.FlareUI_Moving then return end
+    chatFrame.FlareUI_Moving = nil
+    chatFrame:StopMovingOrSizing()
+    FCF_SavePositionAndDimensions(chatFrame)
+end
+
+-- the header of a popped window drags it; a docked window's skin takes no mouse
+function Chat:ApplyPopState(chatFrame)
+    local skin = chatFrame and chatFrame.FlareUI_Skin
+    if not skin then return end
+    local popped = IsPopped(chatFrame)
+    if not skin.FlareUI_DragSetup then
+        skin.FlareUI_DragSetup = true
+        skin:RegisterForDrag("LeftButton")
+        skin:SetScript("OnDragStart", function() Chat:StartMovingWindow(chatFrame) end)
+        skin:SetScript("OnDragStop", function() Chat:StopMovingWindow(chatFrame) end)
+    end
+    skin:EnableMouse(popped)
+end
+
+-- every window's tab bar, the header buttons and the drag state, after a window docks or pops out
+function Chat:RefreshWindows()
+    local db = GetDb()
+    if not db then return end
+    for i = 1, NUM_CHAT_WINDOWS do
+        local cf = _G["ChatFrame" .. i]
+        if cf and cf.FlareUI_Skin and not cf:IsForbidden() then
+            Chat:SetupVolumeButton(cf, db)
+            Chat:UpdateCustomTabs(cf, db)
+            Chat:ApplyPopState(cf)
+        end
+    end
+    Chat:HideBlizzardTabs()
+    Chat:StyleHeaderButtons()
+end
+
+-- Above the main chat at its size, the two skins POPOUT_GAP apart; beside it if that leaves the
+-- screen, in the middle if that does too.
+function Chat:PopOutWindow(chatFrame)
+    local db = GetDb()
+    local dock = _G.GeneralDockManager
+    local host = dock and dock.primary
+    if not (db and host) or not chatFrame.isDocked or chatFrame == host then return end
+    local pad, header = db.textPadding or 6, db.headerHeight or 24
+    -- the main chat in UIParent's units (Edit Mode can scale it)
+    local s = host:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    local left, bottom = (host:GetLeft() or 0) * s, (host:GetBottom() or 0) * s
+    local right, top = (host:GetRight() or 0) * s, (host:GetTop() or 0) * s
+    local width, height = right - left, top - bottom
+    local screenW, screenH = UIParent:GetWidth(), UIParent:GetHeight()
+
+    FCF_UnDockFrame(chatFrame)
+    chatFrame:ClearAllPoints()
+    local aboveY = top + pad + header + POPOUT_GAP + pad
+    local besideX = right + pad + POPOUT_GAP + pad
+    if aboveY + height + header + pad <= screenH then
+        chatFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left, aboveY)
+    elseif besideX + width + pad <= screenW then
+        chatFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", besideX, bottom)
+    else
+        chatFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
+    chatFrame:SetSize(width, height)
+    FCF_CheckShowChatFrame(chatFrame)
+    FCF_SetLocked(chatFrame, false)
+    FCF_SavePositionAndDimensions(chatFrame)
+    Chat:RefreshWindows()
+    Chat:ShowChatFrame(chatFrame, db)
+end
+
+function Chat:DockWindow(chatFrame)
+    local dock = _G.GeneralDockManager
+    if not (dock and IsPopped(chatFrame)) then return end
+    FCF_DockFrame(chatFrame, #dock.DOCKED_CHAT_FRAMES + 1, true)
+    Chat:RefreshWindows()
 end
 
 function Chat:SetChatFrameAlpha(chatFrame, alpha)
@@ -2208,7 +2341,7 @@ function Chat:Init()
     Chat:KillGeneralDockManager()
 
     ns.Dialogs["FLAREUI_RENAME_CHAT"] = {
-        text = "Rename Chat Window",
+        text = L["Rename Chat Window"],
         button1 = ACCEPT,
         button2 = CANCEL,
         hasEditBox = true,
@@ -2286,6 +2419,11 @@ function Chat:Init()
                 C_Timer.After(0.4, function() Chat:StyleHeaderButtons() end)
             end)
         end)
+
+        -- a window docked or undocked by Blizzard (at login, Reset Chat Windows) or by Pop Out / Dock
+        local function RefreshSoon() C_Timer.After(0, function() Chat:RefreshWindows() end) end
+        Chat:SecureHook("FCF_DockFrame", RefreshSoon)
+        Chat:SecureHook("FCF_UnDockFrame", RefreshSoon)
 
         -- Hook FCF_Close to handle chat window closure
         Chat:SecureHook("FCF_Close", function(frame, fallback)

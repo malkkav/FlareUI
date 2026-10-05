@@ -1,4 +1,5 @@
 local ADDON_NAME, ns = ...
+local L = ns.L
 FlareUI = ns
 ns.addonName = ADDON_NAME
 ns.modules = {}
@@ -55,6 +56,102 @@ function ns.AddComboRimBoost(socket)
     return boost
 end
 
+-- One physical screen pixel in a frame's own units, so a 1-pixel line stays one pixel at any UI scale
+function ns.PixelSize(frame)
+    local factor = PixelUtil and PixelUtil.GetPixelToUIUnitFactor and PixelUtil.GetPixelToUIUnitFactor()
+    local scale = frame:GetEffectiveScale()
+    if not (factor and scale and scale > 0) then return 1 end
+    return factor / scale
+end
+
+-- The one-pixel line between combo point segments: solid black (the health / power separator's
+-- grey was too faint on them)
+ns.SEGMENT_LINE_COLOR = { 0, 0, 0, 1 }
+
+-- Splits a width into n touching segments on whole screen pixels: segment i's left edge and width,
+-- and the pixel size, so a line laid on the last pixel of each segment is always one pixel wide
+function ns.SegmentSpan(frame, width, n, i)
+    local px = ns.PixelSize(frame)
+    local total = math.floor(width / px + 0.5)
+    local left = math.floor(total * (i - 1) / n + 0.5)
+    local right = math.floor(total * i / n + 0.5)
+    return left * px, (right - left) * px, px
+end
+
+-- The colour of a built combo point on the segmented bars (resource bar, target frame strip): a
+-- warm flame red, lighter and more orange than the hostile health red the target strip sits on
+ns.COMBO_COLOR = { 1.00, 0.30, 0.18 }
+
+-- Blizzard's ComboFrame timings: the shine fades in, then out
+local function CreateShineFlash(shine)
+    local flash = shine:CreateAnimationGroup()
+    local fadeIn = flash:CreateAnimation("Alpha")
+    fadeIn:SetFromAlpha(0)
+    fadeIn:SetToAlpha(1)
+    fadeIn:SetDuration(0.3)
+    fadeIn:SetOrder(1)
+    local fadeOut = flash:CreateAnimation("Alpha")
+    fadeOut:SetFromAlpha(1)
+    fadeOut:SetToAlpha(0)
+    fadeOut:SetDuration(0.4)
+    fadeOut:SetOrder(2)
+    return flash
+end
+
+-- One combo point gem (nameplates, Classic Combo Points on the resource bar). The socket is a plain
+-- texture. The lit gem is a StatusBar drawn with the whole sheet at the gem's scale and slid so the
+-- red gem sits in a clip window centred on the socket's rim; its range is [i-1, i], fed the raw
+-- count, so no Lua compares a secret one. black: the empty socket is filled black (the gem's shape).
+-- gem.flash plays the shine.
+function ns.CreateComboGem(parent, i, size, black)
+    local gem = CreateFrame("Frame", nil, parent)
+    local socket = gem:CreateTexture(nil, "BACKGROUND")
+    ns.SetComboPart(socket, "socket")
+    socket:SetAllPoints()
+    ns.AddComboRimBoost(socket)
+
+    local window = CreateFrame("Frame", nil, gem)
+    window:SetClipsChildren(true)
+    if black then
+        local fill = window:CreateTexture(nil, "BACKGROUND")
+        ns.SetComboPart(fill, "gem")
+        fill:SetDesaturated(true)
+        fill:SetVertexColor(0, 0, 0)
+        fill:SetAllPoints()
+    end
+    local lit = CreateFrame("StatusBar", nil, window)
+    lit:SetStatusBarTexture(COMBO_FILE)
+    lit:SetMinMaxValues(i - 1, i)
+    lit:SetValue(i - 1)
+
+    -- the shine is bigger than the gem, so it sits above the lit bar outside the clip window
+    local shineHolder = CreateFrame("Frame", nil, gem)
+    shineHolder:SetAllPoints(window)
+    shineHolder:SetFrameLevel(lit:GetFrameLevel() + 1)
+    local shine = shineHolder:CreateTexture(nil, "OVERLAY")
+    shine:SetAlpha(0)
+    gem.window, gem.lit, gem.shine = window, lit, shine
+    gem.flash = CreateShineFlash(shine)
+    ns.SizeComboGem(gem, size)
+    return gem
+end
+
+-- size: the socket's side
+function ns.SizeComboGem(gem, size)
+    local scale = size / ns.COMBO_SOCKET_PX
+    local left, right, top, bottom = ns.ComboPartRect("gem")
+    gem:SetSize(size, size)
+    gem.window:SetSize((right - left) * scale, (bottom - top) * scale)
+    gem.window:ClearAllPoints()
+    gem.window:SetPoint("CENTER", gem, "CENTER", 0, ns.COMBO_GEM_RISE * scale)
+    gem.lit:SetSize(COMBO_SHEET * scale, COMBO_SHEET * scale)
+    gem.lit:ClearAllPoints()
+    gem.lit:SetPoint("TOPLEFT", gem.window, "TOPLEFT", -left * scale, top * scale)
+    ns.SetComboPart(gem.shine, "shine", scale)
+    gem.shine:ClearAllPoints()
+    gem.shine:SetPoint("CENTER", gem.window, "CENTER")
+end
+
 --------------------------------------------------
 -- 1. UPVALUES
 --------------------------------------------------
@@ -99,7 +196,7 @@ local function WithFaders(target)
     return target
 end
 
-local BAR_KEYS = { "bar1", "bar2", "bar3", "bar4", "bar5", "bar6", "bar7", "bar8", "pet", "stance" }
+local BAR_KEYS = { "bar1", "bar2", "bar3", "bar4", "bar5", "bar6", "bar7", "bar8", "pet", "stance", "possess" }
 
 local function BarScales(scale)
     local t = {}
@@ -139,7 +236,7 @@ local defaults = {
             hideBubblesInInstance = false,
 
             -- Frame (Blizzard dark dialog background + the chosen border, tinted ns.BORDER_COLOR)
-            borderTexture = "FlareUI Thin",
+            borderTexture = "FlareUI Frames",
             opacity = 0.6,
             textPadding = 10,
             borderSize = 16,
@@ -217,6 +314,9 @@ local defaults = {
 
             scales = BarScales(1.06),
 
+            -- the bar that switches to the stance / form pages (Blizzard: bar 1)
+            autoPagingBar = 1,
+
             -- reskin of Blizzard's XP / honor / reputation bars (Modules/XPBar.lua); placed in Edit Mode
             -- style: "flare" = FlareUI XP Bar (two sections, Edit Mode), "blizzard" = Blizzard's bars reskinned
             xpbar = { enabled = true, style = "flare", width = 560, height = 14, textMode = "HOVER", textFormat = "NUM_PERC", layouts = {} },
@@ -245,7 +345,7 @@ local defaults = {
 
             -- Look shared with the chat frame: background opacity, border and bar texture are user-facing
             opacity = 0.6,
-            borderTexture = "FlareUI Thin",
+            borderTexture = "FlareUI Frames",
             textPadding = 2,
             hideHeader = false,
             barFont = { face = "Friz Quadrata TT", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -286,31 +386,78 @@ local defaults = {
             -- in Edit Mode); the size follows the icon size, so auraFont.size is not used
             auraFont = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             editSections = {},          -- Edit Mode sections left open (shared by every frame)
+            -- resource bars (Modules/ResourceBars.lua): each bar its own Edit Mode frame; positions in
+            -- layouts[layout][bar]
+            resource = {
+                layouts = {},
+                bars = {
+                    health      = { enabled = false, show = "combatTarget", width = 220, height = 16, text = "both", textAlign = "CENTER", textSize = 12, classColor = false },
+                    power       = { enabled = false, show = "combatTarget", width = 220, height = 16, textAlign = "CENTER", textSize = 12, fsr = true },
+                    mana        = { enabled = false, show = "combatTarget", width = 220, height = 16, textAlign = "CENTER", textSize = 12, fsr = true, onlyWhenSecondary = true },
+                    combo       = { enabled = false, show = "combatTarget", width = 220, height = 12, classic = false },
+                    swingMain   = { enabled = false, show = "combat",       width = 220, height = 12, textSize = 10, label = true, timer = true },
+                    swingOff    = { enabled = false, show = "combat",       width = 220, height = 12, textSize = 10, label = true, timer = true },
+                    swingRanged = { enabled = false, show = "combat",       width = 220, height = 12, textSize = 10, label = true, timer = true },
+                },
+            },
+            -- party frames (Modules/PartyFrames.lua): two styles, each with its own settings; the
+            -- frames are placed and tuned in Edit Mode ("FlareUI Party Frames"), positions in layouts{}
+            party = {
+                enabled = false,
+                style = "classic",          -- classic | raid
+                showPlayer = true, showInRaid = false, pets = false, sortByRole = true,
+                orientation = "VERTICAL",   -- VERTICAL | HORIZONTAL
+                layouts = {},
+                classic = {
+                    width = 240, height = 70, powerHeight = 12, spacing = 16, healthText = "percent", powerText = false,
+                    showLevel = true, portrait = "none", healersOnlyPower = false, rangeAlpha = 0.45,
+                    texture = "FlareUI Flat", border = "FlareUI Thick", classColor = true,
+                    absorbTexture = "FlareUI Striped", absorbReverseFill = true,
+                    debuffs = "INSIDE_TOPRIGHT", buffs = "INSIDE_TOPLEFT", dispels = "INSIDE_BOTTOMRIGHT",
+                    auraSize = 16, auraMax = 5, auraPerRow = 5, auraStyle = "square", auraSwipe = "icon", auraTimer = "none", bigBossDebuffs = false,
+                    bigDefensive = true, bigDefensiveSize = 30, dispelHighlight = "mine", privateAuras = false, privateAuraSize = 20,
+                    castbar = false, castHeight = 16, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                    petHeight = 19, petWidth = 120, petBorder = "FlareUI Thin", icons = {},
+                },
+                raid = {
+                    width = 200, height = 70, powerHeight = 6, spacing = 4, healthText = "none", powerText = false,
+                    showLevel = false, portrait = "none", healersOnlyPower = false, rangeAlpha = 0.45,
+                    texture = "FlareUI Flat", border = "FlareUI Thin", classColor = true,
+                    absorbTexture = "FlareUI Striped", absorbReverseFill = true,
+                    debuffs = "INSIDE_BOTTOMRIGHT", buffs = "INSIDE_BOTTOMLEFT", dispels = "INSIDE_TOPRIGHT",
+                    auraSize = 16, auraMax = 6, auraPerRow = 3, auraStyle = "square", auraSwipe = "icon", auraTimer = "none", bigBossDebuffs = true,
+                    bigDefensive = true, bigDefensiveSize = 30, dispelHighlight = "mine", privateAuras = true, privateAuraSize = 16,
+                    castbar = false, castHeight = 10, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thin", castIcon = false, castTimer = false,
+                    petHeight = 14, petWidth = 80, petBorder = "FlareUI Thin", icons = { role = { scale = 120 } },
+                },
+            },
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
-            playerCastbar = { enabled = true, width = 292, height = 26, texture = "FlareUI Flat", borderTexture = "FlareUI Thick", icon = true, name = true, timer = true },
+            playerCastbar = { enabled = true, width = 300, height = 25, texture = "FlareUI Flat", borderTexture = "FlareUI Thin", icon = true, name = true, timer = true },
             units = {
-                player       = { enabled = true, width = 240, height = 60, powerHeight = 14, healthText = "percent", powerText = true, showLevel = true,
+                player       = { enabled = true, width = 240, height = 70, powerHeight = 12, healthText = "percent", powerText = true, showLevel = true,
                                  texture = "FlareUI Flat", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped", absorbReverseFill = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 10, onlyMyDebuffs = true, hidePermanentBuffs = true,
                                  auraStyle = "square", auraSwipe = "icon", auraTimer = "none" },
-                target       = { enabled = true, width = 240, height = 60, powerHeight = 0, healthText = "percent", powerText = true, showLevel = true, mirror = true,
+                target       = { enabled = true, width = 240, height = 70, powerHeight = 12, healthText = "percent", powerText = true, showLevel = true, mirror = true,
                                  classicCombo = false,
                                  texture = "FlareUI Flat", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped", absorbReverseFill = true,
-                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thick", castIcon = true, castTimer = true,
+                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 10, onlyMyDebuffs = true, hidePermanentBuffs = true,
                                  auraStyle = "square", auraSwipe = "icon", auraTimer = "none" },
-                targettarget = { enabled = false, width = 120, height = 28, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
-                                 texture = "FlareUI Flat", border = "FlareUI Thick" },
-                focus        = { enabled = true, width = 160, height = 36, powerHeight = 0, healthText = "percent", powerText = false, showLevel = true, mirror = true,
+                targettarget = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
+                                 texture = "FlareUI Flat", border = "FlareUI Thin" },
+                focus        = { enabled = true, width = 160, height = 35, powerHeight = 0, healthText = "percent", powerText = false, showLevel = true, mirror = true,
                                  texture = "FlareUI Flat", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped", absorbReverseFill = true,
-                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thick", castIcon = true, castTimer = true,
+                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "OFF", debuffs = "TOPRIGHT", auraSize = 20, auraMax = 6, onlyMyDebuffs = true, hidePermanentBuffs = true,
                                  auraStyle = "square", auraSwipe = "icon", auraTimer = "none" },
+                focustarget  = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
+                                 texture = "FlareUI Flat", border = "FlareUI Thin" },
                 pet          = { enabled = true, width = 120, height = 28, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
-                                 texture = "FlareUI Flat", border = "FlareUI Thick",
+                                 texture = "FlareUI Flat", border = "FlareUI Thin",
                                  absorbTexture = "FlareUI Striped", absorbReverseFill = true },
             },
             -- icons and overlays, each switched for every frame that has it (Unit Frames > General > Elements)
@@ -333,6 +480,7 @@ local defaults = {
             hideStanceBar = false,
             hidePossessBar = false,
             hideRaidManager = false,
+            hideTotemBar = false,
             hideEndCaps = false,
         }),
 
@@ -461,6 +609,14 @@ function ns.OwnGameTooltip(owner, anchor)
     if GameTooltip.StatusBar then GameTooltip.StatusBar:Hide() end
 end
 
+-- The edge size to draw a border file at: FlareUI Thin's pieces are made for half the usual edge
+-- (Media.lua), every other border is drawn at the size asked for
+function ns.BorderEdgeSize(edgeFile, size)
+    size = size or 16
+    if type(edgeFile) == "string" and edgeFile:find("FlareUI%-Thin%.tga") then return size / 2 end
+    return size
+end
+
 -- Shared font path fetcher with LSM fallback
 function ns.GetFontPath(face)
     local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
@@ -490,7 +646,7 @@ end
 -- UI is gone before the timer fires and nothing is printed.
 function ns.Reload()
     C_Timer.After(0.5, function()
-        print("|cffff9900FlareUI:|r This client does not let addons reload the UI. Type |cffffff00/reload|r to apply the change.")
+        print("|cffff9900FlareUI:|r " .. L["This client does not let addons reload the UI. Type |cffffff00/reload|r to apply the change."])
     end)
     pcall(ReloadUI)
 end
@@ -628,6 +784,17 @@ f:SetScript("OnEvent", function(self, event, ...)
                             profile.damagemeter.barTexture = nil   -- the meter keeps Blizzard's bar
                         end
                     end
+                end
+                -- 1.4.5: FlareUI Slim became FlareUI Thin (the old Thin art is FlareUI Frames)
+                do
+                    local function RenameSlim(t, depth)
+                        if depth > 8 then return end
+                        for k, v in pairs(t) do
+                            if type(v) == "table" then RenameSlim(v, depth + 1)
+                            elseif v == "FlareUI Slim" then t[k] = "FlareUI Thin" end
+                        end
+                    end
+                    if db.sv and type(db.sv.profiles) == "table" then RenameSlim(db.sv.profiles, 0) end
                 end
                 -- Moved to ns.CharDB (see CHARACTER IDENTITY): AceDB's per-character slots are
                 -- keyed by name, and on a cold start by "Unknown", which every character shares.
@@ -798,10 +965,9 @@ end
 ns.Dialogs = ns.Dialogs or {}
 
 ns.Dialogs["FLAREUI_SYNC_SOURCE"] = {
-    text = "Make this character the Sync Blizz UI source?\n\n"
-        .. "Every other character will copy this character's interface settings the next time it logs in.",
-    button1 = "Make Source",
-    button2 = "Cancel",
+    text = L["Make this character the Sync Blizz UI source?\n\nEvery other character will copy this character's interface settings the next time it logs in."],
+    button1 = L["Make Source"],
+    button2 = L["Cancel"],
     OnAccept = function()
         if ns.Tweaks then ns.Tweaks:MakeSyncSource() end
         LibStub("AceConfigRegistry-3.0"):NotifyChange("FlareUI")
@@ -810,9 +976,9 @@ ns.Dialogs["FLAREUI_SYNC_SOURCE"] = {
 }
 
 ns.Dialogs["FLAREUI_RESET"] = {
-    text = "Reset every FlareUI setting back to its default?\n\nThis cannot be undone.",
-    button1 = "Reset",
-    button2 = "Cancel",
+    text = L["Reset every FlareUI setting back to its default?\n\nThis cannot be undone."],
+    button1 = L["Reset"],
+    button2 = L["Cancel"],
     OnAccept = function() ns.db:ResetDB("Default") end,
     reloads = true,
     hideOnEscape = true,
@@ -822,11 +988,9 @@ ns.Dialogs["FLAREUI_RESET"] = {
 -- The secure button switches the copied Edit Mode layout (when there is one) and reloads, both in
 -- Blizzard's own path: a layout switch from addon code would lay every system out tainted.
 ns.Dialogs["FLAREUI_SYNC_RELOAD"] = {
-    text = "FlareUI copied this character's interface settings from %s.\n\n"
-        .. "Reload now to finish applying them. Until you do, some of Blizzard's own panels - "
-        .. "Edit Mode in particular - can throw errors.",
-    button1 = "Reload Now",
-    button2 = "Later",
+    text = L["FlareUI copied this character's interface settings from %s.\n\nReload now to finish applying them. Until you do, some of Blizzard's own panels - Edit Mode in particular - can throw errors."],
+    button1 = L["Reload Now"],
+    button2 = L["Later"],
     macro = function(data)
         local layout = data and data.layout
         return (layout and ("/run C_EditMode.SetActiveLayout(" .. layout .. ")\n") or "") .. "/reload"
@@ -836,9 +1000,9 @@ ns.Dialogs["FLAREUI_SYNC_RELOAD"] = {
 }
 
 ns.Dialogs["FLAREUI_RELOAD"] = {
-    text = "Changing this setting requires a UI Reload to prevent layout issues.",
-    button1 = "Reload Now",
-    button2 = "Cancel",
+    text = L["Changing this setting requires a UI Reload to prevent layout issues."],
+    button1 = L["Reload Now"],
+    button2 = L["Cancel"],
     reloads = true,
     hideOnEscape = true,
 }

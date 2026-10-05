@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- EDIT MODE OVERLAYS
@@ -85,7 +86,7 @@ local function CreateEye()
     eyeButton:SetScript("OnClick", function() ns.ToggleEditModeOverlays() end)
     eyeButton:SetScript("OnEnter", function(self)
         ns.OwnGameTooltip(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Toggle Edit Mode Overlays")
+        GameTooltip:SetText(L["Toggle Edit Mode Overlays"])
         GameTooltip:Show()
     end)
     eyeButton:SetScript("OnLeave", GameTooltip_Hide)

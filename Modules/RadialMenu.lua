@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
@@ -196,24 +197,24 @@ local ResolveEntry                -- defined below; ACTIONS.subradial recurses t
 -- same after being rebuilt from panels. Forever keeps Spellbook, Talents and Legacy as separate
 -- micro buttons where retail merged or dropped them.
 local MICRO_PANELS = {
-    bags        = { order = 1,  label = "Bags",         icon = 133633,  macrotext = "/run ToggleAllBags()" },
-    character   = { order = 2,  label = "Character",    icon = 136047,  button = "CharacterMicroButton" },
-    collections = { order = 3,  label = "Collections",  icon = 132261,  button = "CollectionsMicroButton" },
-    groupfinder = { order = 4,  label = "Group Finder", icon = 132161,  button = "LFDMicroButton" },
-    guild       = { order = 5,  label = "Guild & Communities",          button = "GuildMicroButton" },
-    legacy      = { order = 6,  label = "Legacy",       icon = 4279397, button = "LegacyMicroButton" },
-    professions = { order = 7,  label = "Professions",  icon = 4202228, button = "ProfessionMicroButton" },
-    quests      = { order = 8,  label = "Quest Log",    icon = 8197102, button = "QuestLogMicroButton" },
+    bags        = { order = 1,  label = L["Bags"],         icon = 133633,  macrotext = "/run ToggleAllBags()" },
+    character   = { order = 2,  label = L["Character"],    icon = 136047,  button = "CharacterMicroButton" },
+    collections = { order = 3,  label = L["Collections"],  icon = 132261,  button = "CollectionsMicroButton" },
+    groupfinder = { order = 4,  label = L["Group Finder"], icon = 132161,  button = "LFDMicroButton" },
+    guild       = { order = 5,  label = L["Guild & Communities"],          button = "GuildMicroButton" },
+    legacy      = { order = 6,  label = L["Legacy"],       icon = 4279397, button = "LegacyMicroButton" },
+    professions = { order = 7,  label = L["Professions"],  icon = 4202228, button = "ProfessionMicroButton" },
+    quests      = { order = 8,  label = L["Quest Log"],    icon = 8197102, button = "QuestLogMicroButton" },
     -- the Friends window (Blizzard's TOGGLESOCIAL binding); no micro button of its own
-    social      = { order = 9,  label = "Social",       icon = "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend",
+    social      = { order = 9,  label = L["Social"],       icon = "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend",
                     macrotext = "/run ToggleFriendsFrame()" },
-    spellbook   = { order = 10, label = "Spellbook",    icon = 133741,  button = "SpellbookMicroButton" },
-    talents     = { order = 11, label = "Talents",      icon = 132222,  button = "TalentMicroButton" },
+    spellbook   = { order = 10, label = L["Spellbook"],    icon = 133741,  button = "SpellbookMicroButton" },
+    talents     = { order = 11, label = L["Talents"],      icon = 132222,  button = "TalentMicroButton" },
     -- FlareUI's own settings: with a controller, R3's way to them (Options/ControllerNav.lua)
-    flareui     = { order = 12, label = "FlareUI Settings", icon = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png",
+    flareui     = { order = 12, label = L["FlareUI Settings"], icon = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png",
                     macrotext = "/run FlareUI_ToggleSettings()" },
     -- flips the damage meter between Blizzard's view and FlareUI's threat view (Modules/DamageMeter.lua)
-    threat      = { order = 13, label = "Toggle Threat Meter", icon = "Interface\\Icons\\Ability_Physical_Taunt",
+    threat      = { order = 13, label = L["Toggle Threat Meter"], icon = "Interface\\Icons\\Ability_Physical_Taunt",
                     macrotext = "/run FlareUI_ToggleThreatMeter()" },
 }
 RM.MICRO_PANELS = MICRO_PANELS
@@ -956,7 +957,7 @@ local MACRO_SNIPPET = [[
         if id == "LeftButton" or id == "RightButton" then
             id = control:GetAttribute("flare-assigned")
         else
-            print("|cffff9900FlareUI:|r no radial called \"" .. tostring(id) .. "\". Copy its macro from the Radial Menu settings.")
+            print("|cffff9900FlareUI:|r " .. L["no radial called \"%s\". Copy its macro from the Radial Menu settings."]:format(tostring(id)))
             return false
         end
         if not id then return false end

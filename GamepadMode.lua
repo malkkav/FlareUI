@@ -1,4 +1,5 @@
 local addonName, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- GAMEPAD MODE
@@ -24,7 +25,7 @@ local function CheckSwitched(on)
     -- the switch reloads the UI; still here a moment later means it did not go through
     C_Timer.After(1, function()
         if ns.IsGamepadUI() ~= on then
-            print("|cffff9900FlareUI:|r The switch did not go through. Use Blizzard's Settings > Gamepad > Enable Gamepad UI.")
+            print("|cffff9900FlareUI:|r " .. L["The switch did not go through. Use Blizzard's Settings > Gamepad > Enable Gamepad UI."])
         end
     end)
 end
@@ -33,7 +34,7 @@ end
 -- controller press but blocks from a mouse click
 local function SetGamepadMode(on)
     if InCombatLockdown() then
-        print("|cffff9900FlareUI:|r Gamepad mode cannot be switched in combat.")
+        print("|cffff9900FlareUI:|r " .. L["Gamepad mode cannot be switched in combat."])
         return
     end
     SetCVar(CVAR, on and GAMEPAD or MKB)
@@ -48,10 +49,9 @@ end
 ns.Dialogs = ns.Dialogs or {}
 
 ns.Dialogs["FLAREUI_GAMEPAD_ON"] = {
-    text = "Switch to Gamepad mode?\n\n"
-        .. "The UI reloads into Blizzard's Gamepad UI. Type /fui pad to switch back.",
-    button1 = "Switch",
-    button2 = "Not Now",
+    text = L["Switch to Gamepad mode?\n\nThe UI reloads into Blizzard's Gamepad UI. Type /fui pad to switch back."],
+    button1 = L["Switch"],
+    button2 = L["Not Now"],
     OnAccept = function() SetGamepadMode(true) end,
     macro = SwitchMacro(true),
     OnMacro = function() CheckSwitched(true) end,
@@ -61,10 +61,9 @@ ns.Dialogs["FLAREUI_GAMEPAD_ON"] = {
 }
 
 ns.Dialogs["FLAREUI_GAMEPAD_OFF"] = {
-    text = "Switch to keyboard and mouse mode?\n\n"
-        .. "The UI reloads without Blizzard's Gamepad UI. Type /fui pad to switch back.",
-    button1 = "Switch",
-    button2 = "Cancel",
+    text = L["Switch to keyboard and mouse mode?\n\nThe UI reloads without Blizzard's Gamepad UI. Type /fui pad to switch back."],
+    button1 = L["Switch"],
+    button2 = L["Cancel"],
     OnAccept = function() SetGamepadMode(false) end,
     macro = SwitchMacro(false),
     OnMacro = function() CheckSwitched(false) end,
@@ -74,7 +73,7 @@ ns.Dialogs["FLAREUI_GAMEPAD_OFF"] = {
 -- /fui pad
 function ns.ToggleGamepadMode()
     if InCombatLockdown() then
-        print("|cffff9900FlareUI:|r Gamepad mode cannot be switched in combat.")
+        print("|cffff9900FlareUI:|r " .. L["Gamepad mode cannot be switched in combat."])
         return
     end
     ns.ShowDialog(ns.IsGamepadUI() and "FLAREUI_GAMEPAD_OFF" or "FLAREUI_GAMEPAD_ON")
@@ -103,7 +102,7 @@ f:SetScript("OnEvent", function(self, event, arg1)
         if isInitialLogin then
             C_Timer.After(2, function()
                 local version = C_AddOns.GetAddOnMetadata(addonName, "Version") or ""
-                print(("|cff00ccffFlareUI|r %s by |cffb39ddbMalkkav|r. Type |cffffff00/fui|r for settings."):format(version))
+                print(("|cff00ccffFlareUI|r " .. L["%s by |cffb39ddbMalkkav|r. Type |cffffff00/fui|r for settings."]):format(version))
             end)
         end
         if not isGamepad then

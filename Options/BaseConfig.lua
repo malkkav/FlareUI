@@ -1,4 +1,5 @@
 local ADDON_NAME, ns = ...
+local L = ns.L
 local LSM = LibStub("LibSharedMedia-3.0")
 local AceConfig = LibStub("AceConfig-3.0")
 local AceConfigDialog = LibStub("AceConfigDialog-3.0")
@@ -98,7 +99,7 @@ local function BuildChrome(widget, f)
         local reset = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
         reset:SetSize(140, 20)
         -- red on the label rather than the button art, so it survives the button's own state changes
-        reset:SetText("|cffff4040Reset to Defaults|r")
+        reset:SetText(L["|cffff4040Reset to Defaults|r"])
         reset:SetPoint("BOTTOMRIGHT", -135, 17)
         reset:SetScript("OnClick", function()
             ns.ButtonSound()
@@ -242,7 +243,7 @@ local function TidyProfileOptions(opts)
 
     a.choose.order,   a.choose.width   = 10, 1.0
     a.spacerChoose = { type = "description", name = "", width = 0.1, order = 11 }
-    a.new.order,      a.new.width, a.new.name = 20, 1.0, "New Profile"
+    a.new.order,      a.new.width, a.new.name = 20, 1.0, L["New Profile"]
     a.breakNew = { type = "description", name = " ", order = 25, width = "full" }
 
     a.copyfrom.order, a.copyfrom.width = 30, 1.0
@@ -276,15 +277,15 @@ end
 -- "enabled" flag and asks for a reload, because a module only ever loads at PLAYER_LOGIN.
 
 local MODULE_TOGGLES = {
-    { key = "chat",        label = "Chat" },
-    { key = "damagemeter", label = "Damage Meter" },
-    { key = "radialmenu",  label = "Radial Menu" },
-    { key = "unitframes",  label = "Unit Frames" },
-    { key = "actionbars",  label = "Action Bars" },
-    { key = "auras",       label = "Buffs / Debuffs" },
-    { key = "minimap",     label = "Minimap" },
-    { key = "tooltips",    label = "Tooltips" },
-    { key = "tweaks",      label = "Tweaks" },
+    { key = "chat",        label = L["Chat"] },
+    { key = "damagemeter", label = L["Damage Meter"] },
+    { key = "radialmenu",  label = L["Radial Menu"] },
+    { key = "unitframes",  label = L["Unit Frames"] },
+    { key = "actionbars",  label = L["Action Bars"] },
+    { key = "auras",       label = L["Buffs / Debuffs"] },
+    { key = "minimap",     label = L["Minimap"] },
+    { key = "tooltips",    label = L["Tooltips"] },
+    { key = "tweaks",      label = L["Tweaks"] },
 }
 -- the welcome reads it to tell a fresh install from one that already has modules on
 ns.MODULE_TOGGLES = MODULE_TOGGLES
@@ -340,21 +341,21 @@ end
 
 ns.Options = {
     type = "group",
-    name = "FlareUI",
+    name = L["FlareUI"],
     childGroups = "tree",
     args = {
         modules = {
-            type = "group", name = "Modules", order = 10,
+            type = "group", name = L["Modules"], order = 10,
             args = {
                 selectionGroup = {
-                    type = "group", name = "Module Selection", order = 10, inline = true,
+                    type = "group", name = L["Module Selection"], order = 10, inline = true,
                     args = BuildModuleToggles(),
                 },
 
                 spacer1 = { type = "description", name = " ", order = 25 },
 
                 cmdList = {
-                    type = "group", name = "Console Commands", order = 60, inline = true,
+                    type = "group", name = L["Console Commands"], order = 60, inline = true,
                     args = {
                         list = {
                             type = "description",
@@ -387,23 +388,23 @@ local function CreateBlizzardOptionsPanel()
 
     local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     title:SetPoint("TOP", banner, "BOTTOM", 0, -20)
-    title:SetText("FlareUI")
+    title:SetText(L["FlareUI"])
     title:SetTextColor(1, 0.82, 0)
 
     local subtitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightMedium")
     subtitle:SetPoint("TOP", title, "BOTTOM", 0, -5)
-    subtitle:SetText("Your friendly UI overhowl")
+    subtitle:SetText(L["Your friendly UI overhowl"])
     subtitle:SetTextColor(1, 1, 1)
 
     local versionText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightMedium")
     versionText:SetPoint("TOP", subtitle, "BOTTOM", 0, -10)
     local version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "Dev"
-    versionText:SetText("Version: " .. version)
+    versionText:SetText(L["Version: %s"]:format(version))
     versionText:SetTextColor(0.6, 0.6, 0.6)
 
     local artCredit = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightMedium")
     artCredit:SetPoint("TOP", versionText, "BOTTOM", 0, -6)
-    artCredit:SetText("Doggie art by Clari Turela")
+    artCredit:SetText(L["Doggie art by Clari Turela"])
     artCredit:SetTextColor(0.6, 0.6, 0.6)
 
     -- With the Gamepad UI on, the pad's cursor cannot reach a button here, and a click through it would
@@ -411,12 +412,12 @@ local function CreateBlizzardOptionsPanel()
     if ns.IsGamepadUI() then
         local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightMedium")
         hint:SetPoint("TOP", artCredit, "BOTTOM", 0, -40)
-        hint:SetText("Type |cffffff00/fui|r in chat to access FlareUI settings while in gamepad mode")
+        hint:SetText(L["Type |cffffff00/fui|r in chat to access FlareUI settings while in gamepad mode"])
     else
         local btn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
         btn:SetSize(220, 40)
         btn:SetPoint("TOP", artCredit, "BOTTOM", 0, -40)
-        btn:SetText("Open Configuration")
+        btn:SetText(L["Open Configuration"])
         btn:GetFontString():SetFont(GameFontNormal:GetFont(), 14, "OUTLINE")
         btn:SetScript("OnClick", function()
             if SettingsPanel and SettingsPanel:IsShown() then HideUIPanel(SettingsPanel) end
@@ -475,14 +476,14 @@ loader:SetScript("OnEvent", function()
                 print("|cff00ff00FlareUI:|r Fake CM setup mode " ..
                     (newState and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
             else
-                print("|cffff0000FlareUI:|r Cannot toggle setup mode in combat.")
+                print("|cffff0000FlareUI:|r " .. L["Cannot toggle setup mode in combat."])
             end
         elseif msg == "re" or msg == "radialeditor" then
             ns.ToggleRadialEditor()
         elseif msg == "pad" or msg == "gamepad" then
             ns.ToggleGamepadMode()
         else
-            print("|cff00ccffFlareUI:|r commands")
+            print("|cff00ccffFlareUI:|r " .. L["commands"])
             for line in BuildCommandList():gmatch("[^\n]+") do print("  " .. line) end
         end
     end
@@ -498,9 +499,9 @@ loader:SetScript("OnEvent", function()
 
     function FlareUI_OnAddonCompartmentEnter(addonName, menuButtonFrame)
         ns.OwnGameTooltip(menuButtonFrame, "ANCHOR_LEFT")
-        GameTooltip:AddLine("FlareUI")
-        GameTooltip:AddLine("Left-click: open settings", 1, 1, 1)
-        GameTooltip:AddLine("Right-click: toggle Fake CM setup mode", 1, 1, 1)
+        GameTooltip:AddLine(L["FlareUI"])
+        GameTooltip:AddLine(L["Left-click: open settings"], 1, 1, 1)
+        GameTooltip:AddLine(L["Right-click: toggle Fake CM setup mode"], 1, 1, 1)
         GameTooltip:Show()
     end
 
@@ -564,7 +565,7 @@ function ns.CreateFontOptions(order, label, path, dbKey, showColor, showPos)
         type = "group", name = label, order = order, inline = true,
         args = {
             face = {
-                type = "select", dialogControl = fontWidget, name = "Font Face", order = 10, width = 1.0,
+                type = "select", dialogControl = fontWidget, name = L["Font Face"], order = 10, width = 1.0,
                 values = GetFontList,
                 get = function() return GetDBVal("face") end,
                 set = function(_, val) SetDBVal("face", val) end,
@@ -573,7 +574,7 @@ function ns.CreateFontOptions(order, label, path, dbKey, showColor, showPos)
             spacerH = { type = "description", name = "", width = 0.1, order = 15 },
 
             size = {
-                type = "range", name = "Font Size", min = 8, max = 32, step = 1, order = 20, width = 1.0,
+                type = "range", name = L["Font Size"], min = 8, max = 32, step = 1, order = 20, width = 1.0,
                 get = function() return GetDBVal("size") end,
                 set = function(_, val) SetDBVal("size", val) end,
             },
@@ -581,8 +582,8 @@ function ns.CreateFontOptions(order, label, path, dbKey, showColor, showPos)
             break1 = { type = "description", name = " ", order = 25, width = "full" },
 
             flags = {
-                type = "select", name = "Font Outline", order = 30, width = 1.0,
-                values = { ["NONE"] = "None", ["OUTLINE"] = "Outline", ["THICKOUTLINE"] = "Thick Outline", ["MONOCHROME"] = "Monochrome" },
+                type = "select", name = L["Font Outline"], order = 30, width = 1.0,
+                values = { ["NONE"] = L["None"], ["OUTLINE"] = L["Outline"], ["THICKOUTLINE"] = L["Thick Outline"], ["MONOCHROME"] = L["Monochrome"] },
                 get = function() return GetDBVal("flags") end,
                 set = function(_, val) SetDBVal("flags", val) end,
             },
@@ -590,7 +591,7 @@ function ns.CreateFontOptions(order, label, path, dbKey, showColor, showPos)
             spacerH2 = { type = "description", name = "", width = 0.1, order = 35 },
 
             enableShadow = {
-                type = "toggle", name = "Enable Shadow", order = 40,
+                type = "toggle", name = L["Enable Shadow"], order = 40,
                 get = function() return GetDBVal("enableShadow") end,
                 set = function(_, val)
                     SetDBVal("enableShadow", val)
@@ -598,13 +599,13 @@ function ns.CreateFontOptions(order, label, path, dbKey, showColor, showPos)
                 end
             },
             shadowBreak1 = { type = "description", name = " ", order = 41, width = "full" },
-            shadowX = { type = "range", name = "Shadow X", min = -5, max = 5, step = 1, order = 42, width = 1.0,
+            shadowX = { type = "range", name = L["Shadow X"], min = -5, max = 5, step = 1, order = 42, width = 1.0,
                 disabled = function() return not GetDBVal("enableShadow") end,
                 get = function() return GetDBVal("shadowX") or 1 end,
                 set = function(_, val) SetDBVal("shadowX", val) end,
             },
             spacerShadow = { type = "description", name = "", width = 0.1, order = 42.5 },   -- lines Shadow Y up under Font Size
-            shadowY = { type = "range", name = "Shadow Y", min = -5, max = 5, step = 1, order = 43, width = 1.0,
+            shadowY = { type = "range", name = L["Shadow Y"], min = -5, max = 5, step = 1, order = 43, width = 1.0,
                 disabled = function() return not GetDBVal("enableShadow") end,
                 get = function() return GetDBVal("shadowY") or -1 end,
                 set = function(_, val) SetDBVal("shadowY", val) end,
@@ -615,16 +616,16 @@ function ns.CreateFontOptions(order, label, path, dbKey, showColor, showPos)
 
     if showPos then
         group.args.break2 = { type = "description", name = " ", order = 50, width = "full" }
-        group.args.offsetX = { type = "range", name = "X Offset", min = -20, max = 20, step = 1, order = 60, get = function() return GetDBVal("x") or 0 end, set = function(_, val) SetDBVal("x", val) end }
+        group.args.offsetX = { type = "range", name = L["X Offset"], min = -20, max = 20, step = 1, order = 60, get = function() return GetDBVal("x") or 0 end, set = function(_, val) SetDBVal("x", val) end }
         group.args.spacerPosH = { type = "description", name = "", width = 0.1, order = 65 }
-        group.args.offsetY = { type = "range", name = "Y Offset", min = -20, max = 20, step = 1, order = 70, get = function() return GetDBVal("y") or 0 end, set = function(_, val) SetDBVal("y", val) end }
+        group.args.offsetY = { type = "range", name = L["Y Offset"], min = -20, max = 20, step = 1, order = 70, get = function() return GetDBVal("y") or 0 end, set = function(_, val) SetDBVal("y", val) end }
     end
 
     if showColor then
         group.args.breakColor = { type = "description", name = " ", order = 80, width = "full" }
 
         group.args.useCustomColor = {
-            type = "toggle", name = "Override Text Color", order = 90, width = 1.0,
+            type = "toggle", name = L["Override Text Color"], order = 90, width = 1.0,
             get = function() return GetDBVal("useCustomColor") end,
             set = function(_, val) SetDBVal("useCustomColor", val) end
         }
@@ -632,7 +633,7 @@ function ns.CreateFontOptions(order, label, path, dbKey, showColor, showPos)
         group.args.spacerColorH = { type = "description", name = "", width = 0.1, order = 95 }
 
         group.args.mainColor = {
-            type = "color", name = "Text Color", order = 100, hasAlpha = false,
+            type = "color", name = L["Text Color"], order = 100, hasAlpha = false,
             disabled = function() return not GetDBVal("useCustomColor") end,
             get = function() local c = GetDBVal("color"); if c then return c.r, c.g, c.b else return 1, 1, 1 end end,
             set = function(_, r, g, b) SetDBVal("color", {r=r, g=g, b=b, a=1}) end

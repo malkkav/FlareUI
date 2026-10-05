@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
@@ -22,7 +23,7 @@ local math_floor, math_ceil, math_max, math_min = math.floor, math.ceil, math.ma
 local table_sort = table.sort
 
 -- under the left half of FlareUI's player frame, beside the pet frame (UnitFrames.lua DEFAULT_POSITIONS)
-local DEFAULT_POSITION = { point = "BOTTOM", x = -392, y = 261 }
+local DEFAULT_POSITION = { point = "BOTTOM", x = -392, y = 256 }
 local DEFAULT_SIZE, DEFAULT_PER_ROW = 95, 4
 -- Blizzard's totem button geometry (TotemFrame.xml TotemButtonTemplate): a 37 button, buttons 6
 -- apart from overlapping (spacing -6); the timer hangs 5 into the button and ~7 below it
@@ -222,9 +223,9 @@ local function BuildSettings()
         end
     end
     return {
-        { name = "Size", kind = LEM.SettingType.Slider, default = DEFAULT_SIZE, minValue = 50, maxValue = 200, valueStep = 5,
+        { name = L["Size"], kind = LEM.SettingType.Slider, default = DEFAULT_SIZE, minValue = 50, maxValue = 200, valueStep = 5,
           get = get("size", DEFAULT_SIZE), set = set("size") },
-        { name = "Totems per Row", kind = LEM.SettingType.Slider, default = DEFAULT_PER_ROW, minValue = 1, maxValue = MAX, valueStep = 1,
+        { name = L["Totems per Row"], kind = LEM.SettingType.Slider, default = DEFAULT_PER_ROW, minValue = 1, maxValue = MAX, valueStep = 1,
           get = get("perRow", DEFAULT_PER_ROW), set = set("perRow") },
     }
 end

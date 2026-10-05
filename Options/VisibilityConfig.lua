@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- 1. UPVALUES
@@ -135,10 +136,10 @@ local hideToggle = function(key, label, order)
 end
 
 ns.Options.args.actionbars.args.visibilityTab = {
-    type = "group", name = "Visibility", order = 20,
+    type = "group", name = L["Visibility"], order = 20,
     args = {
         selector = {
-            type = "select", name = "Select Frame to Edit",
+            type = "select", name = L["Select Frame to Edit"],
             order = 10,
             width = 1.5,
             style = "dropdown",
@@ -148,72 +149,74 @@ ns.Options.args.actionbars.args.visibilityTab = {
             set = function(_, val) CurrentFrame = val end,
         },
 
-        header = { type = "header", name = "Fading Rules", order = 20 },
+        header = { type = "header", name = L["Fading Rules"], order = 20 },
 
         enableFade = {
-            type = "toggle", name = "Enable Fading", order = 30, width = "full",
+            type = "toggle", name = L["Enable Fading"], order = 30, width = "full",
             disabled = IsToggleDisabled,
             get = GetVal, set = SetVal
         },
 
         condGroup = {
-            type = "group", name = "Show Conditions", order = 40, inline = true,
+            type = "group", name = L["Show Conditions"], order = 40, inline = true,
             disabled = IsOptionsDisabled,
             args = {
-                condMouseover = { type = "toggle", name = "Mouseover", width = 0.7, order = 10, get = GetVal, set = SetVal },
+                condMouseover = { type = "toggle", name = L["Mouseover"], width = 0.7, order = 10, get = GetVal, set = SetVal },
                 spacer1 = { type = "description", name = "", width = 0.1, order = 11 },
-                condCombat    = { type = "toggle", name = "Combat", width = 0.7, order = 20, get = GetVal, set = SetVal },
+                condCombat    = { type = "toggle", name = L["Combat"], width = 0.7, order = 20, get = GetVal, set = SetVal },
                 spacer2 = { type = "description", name = "", width = 0.1, order = 21 },
-                condTarget    = { type = "toggle", name = "Target", width = 0.6, order = 30, get = GetVal, set = SetVal },
+                condTarget    = { type = "toggle", name = L["Target"], width = 0.6, order = 30, get = GetVal, set = SetVal },
                 spacer3 = { type = "description", name = "", width = 0.1, order = 31 },
-                condHarm      = { type = "toggle", name = "Attackable", width = 0.7, order = 40, get = GetVal, set = SetVal },
+                condHarm      = { type = "toggle", name = L["Attackable"], width = 0.7, order = 40, get = GetVal, set = SetVal },
                 spacer4 = { type = "description", name = "", width = 0.1, order = 41 },
-                condVehicle   = { type = "toggle", name = "Mounted / Vehicle", width = 0.9, order = 50, get = GetVal, set = SetVal },
+                condVehicle   = { type = "toggle", name = L["Mounted / Vehicle"], width = 0.9, order = 50, get = GetVal, set = SetVal },
             }
         },
 
         settingsGroup = {
-            type = "group", name = "Animation Settings", order = 50, inline = true,
+            type = "group", name = L["Animation Settings"], order = 50, inline = true,
             disabled = IsOptionsDisabled,
             args = {
-                alphaMin      = { type = "range", name = "Min Alpha", min = 0, max = 1, step = 0.05, order = 10, get = GetVal, set = SetVal },
+                alphaMin      = { type = "range", name = L["Min Alpha"], min = 0, max = 1, step = 0.05, order = 10, get = GetVal, set = SetVal },
                 spacer1       = { type = "description", name = "", width = 0.1, order = 11 },
-                alphaMax      = { type = "range", name = "Max Alpha", min = 0, max = 1, step = 0.05, order = 20, get = GetVal, set = SetVal },
+                alphaMax      = { type = "range", name = L["Max Alpha"], min = 0, max = 1, step = 0.05, order = 20, get = GetVal, set = SetVal },
 
                 break1        = { type = "description", name = " ", order = 25, width = "full" },
 
-                fadeInSpeed   = { type = "range", name = "Fade In Speed", min = 0, max = 2, step = 0.1, order = 30, get = GetVal, set = SetVal },
+                fadeInSpeed   = { type = "range", name = L["Fade In Speed"], min = 0, max = 2, step = 0.1, order = 30, get = GetVal, set = SetVal },
                 spacer2       = { type = "description", name = "", width = 0.1, order = 31 },
-                fadeOutSpeed  = { type = "range", name = "Fade Out Speed", min = 0, max = 2, step = 0.1, order = 40, get = GetVal, set = SetVal },
+                fadeOutSpeed  = { type = "range", name = L["Fade Out Speed"], min = 0, max = 2, step = 0.1, order = 40, get = GetVal, set = SetVal },
                 spacer3       = { type = "description", name = "", width = 0.1, order = 41 },
-                fadeOutDelay  = { type = "range", name = "Fade Delay", min = 0, max = 5, step = 0.1, order = 50, get = GetVal, set = SetVal },
+                fadeOutDelay  = { type = "range", name = L["Fade Delay"], min = 0, max = 5, step = 0.1, order = 50, get = GetVal, set = SetVal },
             }
         },
 
         linkGroup = {
-            type = "group", name = "Advanced", order = 60, inline = true,
+            type = "group", name = L["Advanced"], order = 60, inline = true,
             disabled = IsOptionsDisabled,
             args = {
-                faderGroup    = { type = "input", name = "Link Group", desc = "Type a name here (e.g., 'MainBars'). Any frames sharing this name will fade together.", order = 10, get = GetVal, set = SetVal }
+                faderGroup    = { type = "input", name = L["Link Group"], desc = L["Type a name here (e.g., 'MainBars'). Any frames sharing this name will fade together."], order = 10, get = GetVal, set = SetVal }
             }
         },
 
         hidingGroup = {
-            type = "group", name = "Permanent Hiding", order = 70, inline = true,
+            type = "group", name = L["Permanent Hiding"], order = 70, inline = true,
             args = {
-                hideMicroMenu   = hideToggle("hideMicroMenu", "Micro Menu", 10),
+                hideMicroMenu   = hideToggle("hideMicroMenu", L["Micro Menu"], 10),
                 spacer1 = { type = "description", name = "", width = 0.1, order = 11 },
-                hideBagBar      = hideToggle("hideBagBar", "Bag Bar", 20),
+                hideBagBar      = hideToggle("hideBagBar", L["Bag Bar"], 20),
                 spacer2 = { type = "description", name = "", width = 0.1, order = 21 },
-                hidePetBar      = hideToggle("hidePetBar", "Pet Bar", 30),
+                hidePetBar      = hideToggle("hidePetBar", L["Pet Bar"], 30),
                 spacer3 = { type = "description", name = "", width = 0.1, order = 31 },
-                hideStanceBar   = hideToggle("hideStanceBar", "Stance Bar", 40),
+                hideStanceBar   = hideToggle("hideStanceBar", L["Stance Bar"], 40),
                 spacer4 = { type = "description", name = "", width = 0.1, order = 41 },
-                hidePossessBar  = hideToggle("hidePossessBar", "Possess Bar", 50),
+                hidePossessBar  = hideToggle("hidePossessBar", L["Possess Bar"], 50),
                 spacer5 = { type = "description", name = "", width = 0.1, order = 51 },
-                hideEndCaps     = hideToggle("hideEndCaps", "Gryphons", 60),
+                hideEndCaps     = hideToggle("hideEndCaps", L["Gryphons"], 60),
                 spacer6 = { type = "description", name = "", width = 0.1, order = 61 },
-                hideRaidManager = hideToggle("hideRaidManager", "Raid Manager", 70),
+                hideRaidManager = hideToggle("hideRaidManager", L["Raid Manager"], 70),
+                spacer7 = { type = "description", name = "", width = 0.1, order = 71 },
+                hideTotemBar    = hideToggle("hideTotemBar", L["Totem Bar"], 80),
             }
         },
     }

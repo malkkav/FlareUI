@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- RADIAL EDITOR
@@ -268,14 +269,14 @@ local function AddCategory(key, label, build, note)
     CATEGORIES[#CATEGORIES + 1] = { key = key, label = label, build = build, note = note }
 end
 
-AddCategory("panels", "Panels", function()
+AddCategory("panels", L["Panels"], function()
     local panels, out = RM().MICRO_PANELS, {}
     for key in pairs(panels) do out[#out + 1] = { kind = "micromenu", panel = key } end
     table.sort(out, function(a, b) return panels[a.panel].order < panels[b.panel].order end)
     return out
 end)
 
-AddCategory("spells", "Spells", function()
+AddCategory("spells", L["Spells"], function()
     local out = {}
     local bank = Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player
     for line = 1, C_SpellBook.GetNumSpellBookSkillLines() do
@@ -292,7 +293,7 @@ AddCategory("spells", "Spells", function()
     return out
 end)
 
-AddCategory("items", "Items", function()
+AddCategory("items", L["Items"], function()
     local out, seen = {}, {}
     if not C_Container then return out end
     for bag = 0, 5 do
@@ -308,7 +309,7 @@ AddCategory("items", "Items", function()
     return out
 end)
 
-AddCategory("macros", "Macros", function()
+AddCategory("macros", L["Macros"], function()
     local out = {}
     local global, perChar = GetNumMacros()
     -- per-character macros are indexed after the account block, whose size lives in Constants
@@ -324,7 +325,7 @@ AddCategory("macros", "Macros", function()
     return out
 end)
 
-AddCategory("markers", "Markers", function()
+AddCategory("markers", L["Markers"], function()
     local out = {}
     for i = 1, 8 do out[#out + 1] = { kind = "targetmarker", marker = i } end
     out[#out + 1] = { kind = "targetmarker", marker = 0 }
@@ -333,7 +334,7 @@ AddCategory("markers", "Markers", function()
     return out
 end)
 
-AddCategory("mounts", "Mounts", function()
+AddCategory("mounts", L["Mounts"], function()
     local out = {}
     for _, mountID in ipairs(C_MountJournal.GetMountIDs()) do
         local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
@@ -356,14 +357,13 @@ local function ContainsRadial(radialID, targetID, depth)
     return false
 end
 
-AddCategory("radials", "Radials", function()
+AddCategory("radials", L["Radials"], function()
     local out = {}
     for _, id in ipairs(RM():GetRadialOrder()) do
         if not ContainsRadial(id, editingID) then out[#out + 1] = { kind = "subradial", radial = id } end
     end
     return out
-end, "Creates sub-radials. Use the mouse wheel while hovering it in the radial menu to flip "
-    .. "through its buttons.")
+end, L["Creates sub-radials. Use the mouse wheel while hovering it in the radial menu to flip through its buttons."])
 
 --------------------------------------------------
 -- DRAG
@@ -419,7 +419,7 @@ local function InsertEntry(entry, atIndex)
     local radial = CurrentRadial()
     if not (radial and entry) then return end
     if #radial.buttons >= RM().MAX_BUTTONS then
-        print("|cffff9900FlareUI:|r that radial is full (" .. RM().MAX_BUTTONS .. " buttons).")
+        print("|cffff9900FlareUI:|r " .. L["that radial is full (%d buttons)."]:format(RM().MAX_BUTTONS))
         return
     end
     atIndex = atIndex or (#radial.buttons + 1)
@@ -516,9 +516,9 @@ end
 local unsavedPending = false
 
 ns.Dialogs["FLAREUI_RADIAL_UNSAVED"] = {
-    text = "You have unsaved changes to your radials.",
-    button1 = "Save",
-    button2 = "Discard",
+    text = L["You have unsaved changes to your radials."],
+    button1 = L["Save"],
+    button2 = L["Discard"],
     OnAccept = function()
         unsavedPending, dirty, snapshot = false, false, nil
     end,
@@ -531,9 +531,9 @@ ns.Dialogs["FLAREUI_RADIAL_UNSAVED"] = {
 
 -- Delete asks first. The answer acts on the radial the question named, even if the dropdown moved on.
 ns.Dialogs["FLAREUI_RADIAL_DELETE"] = {
-    text = "Delete the radial |cffffff00%s|r?",
-    button1 = "Delete",
-    button2 = "Cancel",
+    text = L["Delete the radial |cffffff00%s|r?"],
+    button1 = L["Delete"],
+    button2 = L["Cancel"],
     OnAccept = function(data)
         if not (data and data.id and RM():GetRadial(data.id)) then return end
         RM():DeleteRadial(data.id)
@@ -591,10 +591,10 @@ local function ShowNamePopup(renaming)
             Refresh()
         end
 
-        local accept = RedButton(popup, "Create", 90, Accept, false)
+        local accept = RedButton(popup, L["Create"], 90, Accept, false)
         accept:SetPoint("BOTTOMRIGHT", popup, "BOTTOM", -4, 14)
         popup.accept = accept
-        local cancel = RedButton(popup, "Cancel", 90, function() popup:Hide() end)
+        local cancel = RedButton(popup, L["Cancel"], 90, function() popup:Hide() end)
         cancel:SetPoint("BOTTOMLEFT", popup, "BOTTOM", 4, 14)
 
         box:SetScript("OnEnterPressed", Accept)
@@ -681,7 +681,7 @@ local function BuildWindow()
 
     local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("LEFT", 12, 0)
-    title:SetText("Radial Editor")
+    title:SetText(L["Radial Editor"])
 
     -- The controls sit at the right, so the header reads title on one side, controls on the other,
     -- and a long radial name grows away from the title rather than into it.
@@ -698,18 +698,18 @@ local function BuildWindow()
     end)
     editor.radialDrop = radialDrop
 
-    editor.deleteButton = RedButton(header, "Delete", 80, function()
+    editor.deleteButton = RedButton(header, L["Delete"], 80, function()
         local radial = editingID and RM():GetRadial(editingID)
         if not radial then return end
         ns.ShowDialog("FLAREUI_RADIAL_DELETE", radial.name or "", { id = editingID })
     end)
     editor.deleteButton:SetPoint("RIGHT", -12, 0)
 
-    local newButton = RedButton(header, "New Radial", 90, function() ShowNamePopup(false) end)
+    local newButton = RedButton(header, L["New Radial"], 90, function() ShowNamePopup(false) end)
     newButton:SetPoint("RIGHT", editor.deleteButton, "LEFT", -8, 0)
     editor.newButton = newButton
 
-    editor.renameButton = RedButton(header, "Rename", 80, function() ShowNamePopup(true) end)
+    editor.renameButton = RedButton(header, L["Rename"], 80, function() ShowNamePopup(true) end)
     editor.renameButton:SetPoint("RIGHT", newButton, "LEFT", -8, 0)
     radialDrop.frame:ClearAllPoints()
     radialDrop.frame:SetPoint("RIGHT", editor.renameButton, "LEFT", -8, 0)
@@ -772,7 +772,7 @@ local function BuildWindow()
 
     local previewLabel = previewPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     previewLabel:SetPoint("TOP", 0, -8)
-    previewLabel:SetText("Live Preview")
+    previewLabel:SetText(L["Live Preview"])
 
     -- the radial centres in what is left below the title, not in the panel as a whole
     local previewArea = CreateFrame("Frame", nil, previewPanel)
@@ -844,13 +844,13 @@ local function BuildWindow()
     search:HookScript("OnTextChanged", function() Refresh() end)
     editor.search = search
 
-    editor.confirmButton = RedButton(footer, "Confirm", 100, function()
+    editor.confirmButton = RedButton(footer, L["Confirm"], 100, function()
         editor.confirmed = true
         editor:Hide()
     end, SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
     editor.confirmButton:SetPoint("RIGHT", -12, 0)
 
-    editor.cancelButton = RedButton(footer, "Cancel", 100, function()
+    editor.cancelButton = RedButton(footer, L["Cancel"], 100, function()
         editor.cancelled = true
         editor:Hide()
     end)
@@ -881,7 +881,7 @@ function Refresh()
         editor.radialDrop:SetList(list, order)
     end
     editor.radialDrop:SetValue(radial and editingID or nil)
-    if not radial then editor.radialDrop:SetText("No radials") end
+    if not radial then editor.radialDrop:SetText(L["No radials"]) end
     editor.radialDrop:SetDisabled(radial == nil)
     editor.deleteButton:SetEnabled(radial ~= nil)
     editor.renameButton:SetEnabled(radial ~= nil)
@@ -927,7 +927,7 @@ end
 --------------------------------------------------
 function ns.ShowRadialEditor()
     if not RM() or not RM().initialized then
-        print("|cffff4040FlareUI:|r the Radial Menu module is not enabled.")
+        print("|cffff4040FlareUI:|r " .. L["the Radial Menu module is not enabled."])
         return
     end
     BuildWindow()

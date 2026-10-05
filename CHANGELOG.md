@@ -1,3 +1,54 @@
+# FlareUI 1.5
+
+The biggest update yet: party frames, resource bars, separate chat windows, and FlareUI can now be translated.
+
+## New
+
+**Party Frames** (Unit Frames > General > Frames > Party, off by default)
+- Party frames in the unit frames' look, placed and set up in Edit Mode ("FlareUI Party Frames"). FlareUI makes no raid frames.
+- Two styles, each with its own settings: **Classic** (larger frames, like the player frame) and **Raid Style** (compact frames with their auras inside).
+- Auras follow Blizzard's raid frame rules: buffs, debuffs, dispellable debuffs with a coloured highlight, bigger boss debuffs, big defensives and private auras. They can sit inside the frame, beside it, above or below it.
+- Cast bars, pet frames (only a frame with a pet makes room for it), leader, role, raid marker, ready check and status icons, each with its own size.
+- **Sort by Role** (on): tank, healer, then damage. **Show Player**, power bar for **Healers Only**, and out-of-range fading.
+- Edit Mode shows a sample party (warrior, priest, warlock with a pet, hunter with a pet, rogue) with sample auras.
+
+**Resource Bars** (Unit Frames > General > Resource Bars, all off by default)
+- Seven bars, each switched on by itself and placed in Edit Mode: **Health**, **Power**, **Mana**, **Combo Points**, **Main-Hand Swing**, **Off-Hand Swing** and **Ranged Swing**.
+- **Mana** shows when mana is not your main power: a druid's mana in Bear and Cat Form.
+- **Power** and **Mana** show the **Five-Second Rule** spark after a mana spell.
+- **Combo Points:** segments in a flame red, or **Classic Combo Points** (round gems that light up with a shine).
+- Swing timers turn red when the target is out of range.
+- A bar that is on hides Blizzard's own (the Personal Resource Display, the swing timers).
+
+**Chat**
+- **Pop Out:** right-click a chat tab to give that window its own frame (a trade or spam window beside your main chat). Drag it by its tab or header, resize it from the corner. Its tab menu has **Dock** and **Lock Window**. The game remembers where it is.
+
+**Unit Frames**
+- **Target of Focus** frame (off by default).
+- Frames with nothing to show in Edit Mode (pet, target of target, focus...) now show a sample there.
+
+**Action Bars**
+- **Auto-Paging** (General > Functionality): pick the bar that switches pages with your stance or form. Action Bar 1 by default, as Blizzard does.
+- **Bar Scaling:** the **Possess Bar**.
+
+**Visibility**
+- **Hide Totem Bar.**
+
+**Translations**
+- FlareUI can now be translated on CurseForge: https://legacy.curseforge.com/wow/addons/flareui/localization. Text with no translation yet shows in English.
+
+## Changed
+- **Borders:** a new **FlareUI Thin**, slimmer, with corners that stay neat on thin bars. It is now the default for the pet, target of target and target of focus frames, every cast bar, the resource bars and the XP bar. The previous Thin is now **FlareUI Frames**, still the default for chat and the damage meter. If you picked the old Thin yourself somewhere, pick FlareUI Frames to get it back.
+- **Unit frames, new default sizes and places** (only where you haven't moved or resized them): player and target 70 tall, focus 35, player cast bar 300 x 25 and higher up, target of target 100 x 25 under the target's cast bar.
+- **Target frame combo points:** flame red (was teal), with thin black lines between the points.
+- **Edit Mode:** a bar hidden by Visibility (stance bar, pet bar, totem bar) now stays hidden in Edit Mode too.
+
+## Fixed
+- **Move Any Frame:** a moved window no longer opens at Blizzard's spot and jumps to yours a moment later.
+- **Move Any Frame:** the **Map & Quest Log** can be moved (it couldn't be dragged at all).
+- **Pet action bar:** its button art was drawn full size.
+- **Edit Mode settings:** changing a dropdown no longer scrolls the settings window back to the top.
+
 # FlareUI 1.4.4
 
 Quieter defaults: most quality-of-life extras now start off, FlareUI says less in chat, and a few small additions.

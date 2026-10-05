@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- ICON PICKER
@@ -99,7 +100,7 @@ local function CreatePicker()
 
     local title = picker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOPLEFT", 14, -12)
-    title:SetText("Choose an Icon")
+    title:SetText(L["Choose an Icon"])
 
     picker.count = picker:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     picker.count:SetPoint("TOPRIGHT", -14, -13)
@@ -160,7 +161,7 @@ end
 function ns.ShowIconPicker(current, callback)
     CreatePicker()
     if not EnsureProvider() then
-        print("|cffff4040FlareUI:|r this client did not provide an icon list.")
+        print("|cffff4040FlareUI:|r " .. L["this client did not provide an icon list."])
         return
     end
     onPick = callback

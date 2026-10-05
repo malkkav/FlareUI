@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
@@ -69,8 +70,13 @@ local function CanTouch(frame)
     return not (InCombatLockdown() and frame:IsProtected())
 end
 
+-- a maximized world map fills the screen and stays where Blizzard puts it
+local function IsMaximized(frame)
+    return frame.IsMaximized and frame:IsMaximized() and true or false
+end
+
 local function ApplySavedPosition(frame)
-    if moveSuspended then return end
+    if moveSuspended or IsMaximized(frame) then return end
     local store = GetFrameStore(frame.moveName)
     if not store then return end
     if not CanTouch(frame) then movePending[frame] = true return end
@@ -83,15 +89,27 @@ local function ApplySavedPosition(frame)
     end
 end
 
+local function ApplyAll()
+    if moveSuspended then return end
+    for _, frame in pairs(moveFrames) do
+        if frame:IsShown() then ApplySavedPosition(frame) end
+    end
+end
+
+-- once more on the next frame, for anything that re-anchors a window after the hooks ran
 local function QueueApplyAll()
     if moveApplyQueued or moveSuspended then return end
     moveApplyQueued = true
     C_Timer.After(0, function()
         moveApplyQueued = false
-        for _, frame in pairs(moveFrames) do
-            if frame:IsShown() then ApplySavedPosition(frame) end
-        end
+        ApplyAll()
     end)
+end
+
+-- right after Blizzard has placed the windows, so a moved one never shows at Blizzard's spot first
+local function ApplyAllNowAndNext()
+    ApplyAll()
+    QueueApplyAll()
 end
 
 local function SavePosition(frame)
@@ -129,7 +147,7 @@ end
 
 local function OnDragStart(handle)
     local frame = handle.moveTarget or handle
-    if not CanTouch(frame) then return end
+    if not CanTouch(frame) or IsMaximized(frame) then return end
     frame:SetMovable(true)
     frame:StartMoving()
     frame.moveDragging = true
@@ -146,6 +164,7 @@ end
 local function OnMouseWheel(handle, delta)
     if not IsControlKeyDown() then return end
     local frame = handle.moveTarget or handle
+    if IsMaximized(frame) then return end
     SetFrameScale(frame, frame:GetScale() + SCALE_STEP * delta)
 end
 
@@ -198,10 +217,13 @@ local function SetupWheel(frame)
     frame:HookScript("OnMouseWheel", OnMouseWheel)
 end
 
--- the title bar if the frame has one, otherwise a strip across the top that sits below the
--- frame's own buttons and stops short of the close button
+-- the title bar if the frame has one (on the world map it belongs to the BorderFrame drawn over the
+-- whole map), otherwise a strip across the top that sits below the frame's own buttons and stops
+-- short of the close button
 local function GetHeaderHandle(frame)
     if frame.TitleContainer then return frame.TitleContainer end
+    local border = frame.BorderFrame
+    if type(border) == "table" and border.TitleContainer then return border.TitleContainer end
     if frame.moveStrip then return frame.moveStrip end
     local strip = CreateFrame("Frame", nil, frame)
     strip:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
@@ -222,7 +244,11 @@ local function SetupMovableFrame(name)
     frame:SetClampedToScreen(true)
     SetupHandle(frame, GetHeaderHandle(frame))
     SetupWheel(frame)
-    frame:HookScript("OnShow", function(f) C_Timer.After(0, function() ApplySavedPosition(f) end) end)
+    -- the panel manager has already placed the window when it shows: put ours back before it draws
+    frame:HookScript("OnShow", function(f)
+        ApplySavedPosition(f)
+        C_Timer.After(0, function() ApplySavedPosition(f) end)
+    end)
     if frame:IsShown() then ApplySavedPosition(frame) end
 end
 
@@ -268,12 +294,12 @@ local function InitMoveAnyFrame()
     local delegate = _G.FramePositionDelegate
     if delegate then
         for _, method in ipairs({ "SetUIPanel", "UpdateUIPanelPositions", "ShowUIPanel" }) do
-            if type(delegate[method]) == "function" then hooksecurefunc(delegate, method, QueueApplyAll) end
+            if type(delegate[method]) == "function" then hooksecurefunc(delegate, method, ApplyAllNowAndNext) end
         end
     end
-    hooksecurefunc("UpdateUIPanelPositions", QueueApplyAll)
+    hooksecurefunc("UpdateUIPanelPositions", ApplyAllNowAndNext)
     -- bags re-anchor (and re-scale) themselves every time they open or the layout changes
-    hooksecurefunc("UpdateContainerFrameAnchors", function() ScanBagFrames() QueueApplyAll() end)
+    hooksecurefunc("UpdateContainerFrameAnchors", function() ScanBagFrames() ApplyAllNowAndNext() end)
     Tweaks:RegisterEvent("BAG_UPDATE_DELAYED", ScanBagFrames)
     Tweaks:RegisterEvent("PLAYER_REGEN_ENABLED", function()
         for frame in pairs(movePending) do movePending[frame] = nil; if frame:IsShown() then ApplySavedPosition(frame) end end
@@ -652,7 +678,7 @@ local function RunLoadSync()
     local ok, err = pcall(LoadSync)
     if not ok then
         Tweaks.syncLoading = false
-        Print("|cffff4040Sync Blizz UI stopped partway:|r " .. tostring(err))
+        Print("|cffff4040" .. L["Sync Blizz UI stopped partway:"] .. "|r " .. tostring(err))
     end
 end
 
@@ -730,13 +756,13 @@ local function OnMerchantShow()
     if db.sellJunk and C_MerchantFrame.IsSellAllJunkEnabled() and C_MerchantFrame.GetNumJunkItems() > 0 then
         local value = JunkValue()
         C_MerchantFrame.SellAllJunkItems()
-        if value > 0 then Print("Sold junk for " .. C_CurrencyInfo.GetCoinText(value) .. ".") end
+        if value > 0 then Print(L["Sold junk for %s."]:format(C_CurrencyInfo.GetCoinText(value))) end
     end
     if db.autoRepair and CanMerchantRepair() then
         local cost, canRepair = GetRepairAllCost()
         if canRepair and cost and cost > 0 then
             RepairAllItems()
-            Print("Repaired for " .. C_CurrencyInfo.GetCoinText(cost) .. ".")
+            Print(L["Repaired for %s."]:format(C_CurrencyInfo.GetCoinText(cost)))
         end
     end
 end
@@ -781,7 +807,7 @@ local function CheckDurability()
     if lowest <= threshold then
         if not durabilityWarned then
             durabilityWarned = true
-            Print(("|cffff4040Durability at %d%%|r - time to repair."):format(math_floor(lowest + 0.5)))
+            Print(L["|cffff4040Durability at %d%%|r - time to repair."]:format(math_floor(lowest + 0.5)))
         end
     elseif lowest > threshold + 5 then
         durabilityWarned = false   -- re-arm once repaired
@@ -996,58 +1022,6 @@ local NP_COMBO_SCALE    = 1.1  -- on top of the nameplate's own scale
 local NP_COMBO_MAX      = 10
 local NP_COMBO_FALLBACK = 5
 
--- Blizzard's ComboFrame timings: the shine fades in, then out
-local function CreateShineFlash(shine)
-    local flash = shine:CreateAnimationGroup()
-    local fadeIn = flash:CreateAnimation("Alpha")
-    fadeIn:SetFromAlpha(0)
-    fadeIn:SetToAlpha(1)
-    fadeIn:SetDuration(0.3)
-    fadeIn:SetOrder(1)
-    local fadeOut = flash:CreateAnimation("Alpha")
-    fadeOut:SetFromAlpha(1)
-    fadeOut:SetToAlpha(0)
-    fadeOut:SetDuration(0.4)
-    fadeOut:SetOrder(2)
-    return flash
-end
-
--- The socket is a plain texture. The lit gem is the StatusBar, drawn with the whole sheet at the
--- gem's scale and slid so the red gem sits in the window, which is centred on the socket's rim.
-local function CreateComboGem(parent, i)
-    local scale = NP_COMBO_SIZE / ns.COMBO_SOCKET_PX
-    local gem = CreateFrame("Frame", nil, parent)
-    gem:SetSize(NP_COMBO_SIZE, NP_COMBO_SIZE)
-    local socket = gem:CreateTexture(nil, "BACKGROUND")
-    ns.SetComboPart(socket, "socket")
-    socket:SetAllPoints()
-    ns.AddComboRimBoost(socket)
-
-    local left, right, top, bottom = ns.ComboPartRect("gem")
-    local window = CreateFrame("Frame", nil, gem)
-    window:SetClipsChildren(true)
-    window:SetSize((right - left) * scale, (bottom - top) * scale)
-    window:SetPoint("CENTER", gem, "CENTER", 0, ns.COMBO_GEM_RISE * scale)
-    local lit = CreateFrame("StatusBar", nil, window)
-    lit:SetStatusBarTexture(ns.COMBO_FILE)
-    lit:SetSize(ns.COMBO_SHEET * scale, ns.COMBO_SHEET * scale)
-    lit:SetPoint("TOPLEFT", window, "TOPLEFT", -left * scale, top * scale)
-    lit:SetMinMaxValues(i - 1, i)
-    lit:SetValue(i - 1)
-    gem.lit = lit
-
-    -- the shine is bigger than the gem, so it sits above the lit bar outside the clip window
-    local shineHolder = CreateFrame("Frame", nil, gem)
-    shineHolder:SetAllPoints(window)
-    shineHolder:SetFrameLevel(lit:GetFrameLevel() + 1)
-    local shine = shineHolder:CreateTexture(nil, "OVERLAY")
-    ns.SetComboPart(shine, "shine", scale)
-    shine:SetPoint("CENTER", window, "CENTER")
-    shine:SetAlpha(0)
-    gem.flash = CreateShineFlash(shine)
-    return gem
-end
-
 local npComboRow, npComboEvents
 
 -- Nameplate addons draw their own plates or rework Blizzard's (often with their own combo points and
@@ -1077,7 +1051,7 @@ local function LayoutComboRow(row, count)
     for i = 1, count do
         local gem = row.gems[i]
         if not gem then
-            gem = CreateComboGem(row, i)
+            gem = ns.CreateComboGem(row, i, NP_COMBO_SIZE)
             row.gems[i] = gem
         end
         gem:ClearAllPoints()
@@ -1381,7 +1355,7 @@ local function CreateTrainAll()
     local train = _G.ClassTrainerTrainButton
     if trainAll or not train then return end
     trainAll = CreateFrame("Button", nil, train:GetParent(), "MagicButtonTemplate")
-    trainAll:SetText("Train All")
+    trainAll:SetText(L["Train All"])
     trainAll:SetSize(90, train:GetHeight())
     trainAll:SetPoint("RIGHT", train, "LEFT", 0, 0)
     trainAll:SetScript("OnClick", function()
@@ -1390,9 +1364,9 @@ local function CreateTrainAll()
     trainAll:SetScript("OnEnter", function(self)
         local list, total = TrainableSkills()
         ns.OwnGameTooltip(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Train All", 1, 1, 1)
+        GameTooltip:SetText(L["Train All"], 1, 1, 1)
         if #list == 0 then
-            GameTooltip:AddLine("Nothing you can afford to learn here.", nil, nil, nil, true)
+            GameTooltip:AddLine(L["Nothing you can afford to learn here."], nil, nil, nil, true)
         else
             GameTooltip:AddLine(string.format("Learns %d %s for %s.", #list, #list == 1 and "skill" or "skills",
                 GetMoneyString(total)), nil, nil, nil, true)
@@ -1495,9 +1469,9 @@ local function RememberedIndex()
 end
 
 ns.Dialogs["FLAREUI_RESTORE_LAYOUT"] = {
-    text = "Restore your %s Edit Mode layout?",
-    button1 = "Restore",
-    button2 = "Not Now",
+    text = L["Restore your %s Edit Mode layout?"],
+    button1 = L["Restore"],
+    button2 = L["Not Now"],
     macro = function(data) return "/run C_EditMode.SetActiveLayout(" .. data.index .. ")" end,
     hideOnEscape = true,
     padSecure = true,

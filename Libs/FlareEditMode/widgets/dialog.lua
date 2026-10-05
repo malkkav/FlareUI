@@ -26,7 +26,7 @@ function lib:SetDialogMaxHeight(height)
 	lib.dialogMaxHeight = height
 end
 
-function dialogMixin:UpdateScroll(resetScroll)
+function dialogMixin:UpdateScroll(resetScroll, offset)
 	local settings = self.Settings
 	settings:Layout()
 	local width, height = settings:GetSize()
@@ -39,7 +39,7 @@ function dialogMixin:UpdateScroll(resetScroll)
 	else
 		-- keep the user's place, clamped in case the list just got shorter
 		local range = math.max(0, height - maxHeight)
-		self.Scroll:SetVerticalScroll(math.min(self.Scroll:GetVerticalScroll(), range))
+		self.Scroll:SetVerticalScroll(math.min(offset or self.Scroll:GetVerticalScroll(), range))
 	end
 	if self.Scroll.ScrollBar then
 		self.Scroll.ScrollBar:SetShown(scrolling)
@@ -47,6 +47,12 @@ function dialogMixin:UpdateScroll(resetScroll)
 end
 
 function dialogMixin:Update(selection)
+	-- FlareUI: the same frame's dialog rebuilt (a setting that changes the list, a nudge) keeps its
+	-- scroll position; another frame's starts at the top
+	local sameFrame = self.selection == selection and self:IsShown()
+	-- read before the rebuild: releasing the widgets empties the list, and the scroll frame drops to
+	-- the top on its own before the new list is measured
+	local offset = sameFrame and self.Scroll:GetVerticalScroll() or nil
 	self.selection = selection
 
 	self.Title:SetText(selection.system:GetSystemName())
@@ -55,8 +61,14 @@ function dialogMixin:Update(selection)
 
 	-- show and update layout
 	self:Show()
-	self:UpdateScroll(true)
+	self:UpdateScroll(not sameFrame, offset)
 	self:Layout()
+	-- and once more next frame, when the scroll frame has taken the new list's height
+	if offset and offset > 0 then
+		C_Timer.After(0, function()
+			if self.selection == selection and self:IsShown() then self:UpdateScroll(false, offset) end
+		end)
+	end
 end
 
 function dialogMixin:RefreshWidgets()

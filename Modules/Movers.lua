@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
@@ -138,7 +139,7 @@ local function CreateLootPreview(holder)
     name:SetSize(125, 30)
     name:SetPoint("TOPLEFT", 60, -15)
     name:SetJustifyH("LEFT")
-    name:SetText("|cff1eff00Sample Item|r")
+    name:SetText(L["|cff1eff00Sample Item|r"])
 
     local need = p:CreateTexture(nil, "ARTWORK")
     need:SetAtlas("lootroll-toast-icon-need-up")
@@ -209,7 +210,7 @@ local function CreateToastPreview(holder)
     local name = p:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     name:SetPoint("TOPLEFT", 98, -34)
     name:SetPoint("BOTTOMRIGHT", -32, 17)
-    name:SetText("Sample Recipe")
+    name:SetText(L["Sample Recipe"])
 end
 
 --------------------------------------------------

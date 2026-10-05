@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 1.4.4
+## Version: 1.5
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -19,6 +19,19 @@ Libs\Libs.xml
 # ----------------------------------------------------
 # Addon Files
 # ----------------------------------------------------
+# Localization (first: option tables use it as they load)
+Locales\Locale.lua
+Locales\deDE.lua
+Locales\esES.lua
+Locales\esMX.lua
+Locales\frFR.lua
+Locales\itIT.lua
+Locales\koKR.lua
+Locales\ptBR.lua
+Locales\ruRU.lua
+Locales\zhCN.lua
+Locales\zhTW.lua
+
 Core.lua
 Dialog.lua
 GamepadMode.lua
@@ -32,6 +45,8 @@ Modules\ActionBars.lua
 Modules\XPBar.lua
 Modules\Visibility.lua
 Modules\UnitFrames.lua
+Modules\PartyFrames.lua
+Modules\ResourceBars.lua
 Modules\Totems.lua
 Modules\Auras.lua
 Modules\Minimap.lua

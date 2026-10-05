@@ -39,6 +39,7 @@ local BAR_FRAMES = {
 
     -- Command Bars
     pet = "PetActionBar", stance = "StanceBar", possess = "PossessActionBar",
+    totem = "MultiCastActionBarFrame",   -- the shaman totem bar: hide only, no fading
 
     -- Utility
     bags = "BagsBar", menu = "MicroMenuContainer",
@@ -143,6 +144,19 @@ local function RestoreEditModeMover(key) ForEachFrameOfKey(key, RestoreMoverOfFr
 -- the C hide: Edit Mode's HideOverride breaks the frame's snaps from our tainted call, re-anchoring
 -- whatever was snapped to it (the party frames then fail on secret health colours)
 local function HideFrame(frame) ns.RawHide(frame) end
+
+-- In Edit Mode a hidden bar must stay hidden, but Blizzard shows some of them again on its own (the
+-- stance bar's Update runs SetShown as Edit Mode opens): each such show is undone, with the C hide.
+local editHideHooked = {}
+local function KeepHiddenInEditMode(frame, settingKey)
+    if editHideHooked[frame] then return end
+    editHideHooked[frame] = settingKey
+    frame:HookScript("OnShow", function(f)
+        local db = ns.db and ns.db.profile and ns.db.profile.visibility
+        local editing = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
+        if db and db[editHideHooked[f]] and editing and not InCombatLockdown() then ns.RawHide(f) end
+    end)
+end
 
 --------------------------------------------------
 -- 6. FADER ENGINE
@@ -334,7 +348,8 @@ function Visibility:Refresh()
     --------------------------------------------------
     local inEditMode = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
 
-    local function UpdateHide(key, userSetting)
+    local function UpdateHide(key, settingKey)
+        local userSetting = db[settingKey]
         if inEditMode then
             -- 1. Unregister Secure Hide (Prevents Crash)
             ApplySecureHide(key, false)
@@ -342,6 +357,7 @@ function Visibility:Refresh()
             -- 2. Handle Visuals in Edit Mode
             if userSetting then
                 -- User wants it HIDDEN -> Force Hide frame + Hide Mover Overlay
+                ForEachFrameOfKey(key, KeepHiddenInEditMode, settingKey)
                 ForEachFrameOfKey(key, HideFrame)
                 HideEditModeMover(key)
             else
@@ -355,13 +371,14 @@ function Visibility:Refresh()
         end
     end
 
-    UpdateHide("menu", db.hideMicroMenu)
-    UpdateHide("bags", db.hideBagBar)
-    UpdateHide("pet", db.hidePetBar)
-    UpdateHide("stance", db.hideStanceBar)
-    UpdateHide("possess", db.hidePossessBar)
-    UpdateHide("raid", db.hideRaidManager)
-    UpdateHide("endcaps", db.hideEndCaps)
+    UpdateHide("menu", "hideMicroMenu")
+    UpdateHide("bags", "hideBagBar")
+    UpdateHide("pet", "hidePetBar")
+    UpdateHide("stance", "hideStanceBar")
+    UpdateHide("possess", "hidePossessBar")
+    UpdateHide("totem", "hideTotemBar")
+    UpdateHide("raid", "hideRaidManager")
+    UpdateHide("endcaps", "hideEndCaps")
 
     Fader.groups = {}
     Fader.delays = {}

@@ -42,6 +42,7 @@ local BAR_DATA = {
     { key = "bar8",    prefix = "MultiBar7Button",           count = 12 },
     { key = "pet",     prefix = "PetActionButton",           count = 10 },
     { key = "stance",  prefix = "StanceButton",              count = 10 },
+    { key = "possess", prefix = "PossessButton",             count = 2 },
 }
 
 --------------------------------------------------
@@ -146,7 +147,10 @@ local function ApplyButtonArt(button)
     button.SlotArt:Show()
     button.SlotBackground:Hide()
 
-    local small = SmallActionButtonMixin and button.UpdateButtonArt == SmallActionButtonMixin.UpdateButtonArt
+    -- read before our hook replaced UpdateButtonArt (UpdateButtonArtAll): after it the method is the
+    -- hook wrapper and the comparison always failed, giving the pet bar's small buttons the big frame
+    local small = button.FlareUI_Small
+    if small == nil then small = SmallActionButtonMixin and button.UpdateButtonArt == SmallActionButtonMixin.UpdateButtonArt or false end
     local w, h = 46, 45
     if small then w, h = 35, 35 end
     button:SetNormalAtlas("UI-HUD-ActionBar-IconFrame")
@@ -163,6 +167,7 @@ local function UpdateButtonArtAll()
     for _, button in ipairs(GetAllArtButtons()) do
         if not button.FlareUI_ArtHooked and button.UpdateButtonArt then
             button.FlareUI_ArtHooked = true
+            button.FlareUI_Small = SmallActionButtonMixin and button.UpdateButtonArt == SmallActionButtonMixin.UpdateButtonArt or false
             hooksecurefunc(button, "UpdateButtonArt", ApplyButtonArt)
         end
         if force then
@@ -545,6 +550,58 @@ function ActionBars:StopDragDetection()
 end
 
 --------------------------------------------------
+-- 11b. AUTO-PAGING
+-- Blizzard switches bar 1 to another page in a stance or form: bonus bars 1-4 are action pages 7-10
+-- (Cat Form, Bear Form, a warrior's stances, Stealth...). Here the player picks which of bars 1-8
+-- does it (one bar: those four pages are the only stance pages there are). A bar that pages gets a secure state driver; its snippet sets "actionpage" on each of
+-- the bar's buttons, which Blizzard's buttons read before their bar's own page
+-- (SecureActionButtonMixin:CalculateAction) and update on (OnAttributeChanged). It all runs in the
+-- restricted environment, in combat too, so Blizzard's buttons are never touched from our code.
+-- Bar 1 with paging off keeps its own page (the paging arrows, Shift+number) and leaves Blizzard's
+-- possess / override / vehicle pages to Blizzard. Switching a bar on or off waits for combat to end.
+--------------------------------------------------
+local PAGE_STANCES = "[bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10; default"
+local PAGE_BAR1_FIXED = "[possessbar][overridebar][vehicleui][bonusbar:5] default; [bar:2] 2; [bar:3] 3; [bar:4] 4; [bar:5] 5; [bar:6] 6; 1"
+local PAGE_SNIPPET = [[
+    local page = newstate ~= "default" and tonumber(newstate) or nil
+    for i = 1, 12 do
+        local button = self:GetFrameRef("b" .. i)
+        if button then button:SetAttribute("actionpage", page) end
+    end
+]]
+local pagers = {}
+
+local function ApplyAutoPaging()
+    if InCombatLockdown() then
+        ActionBars._pendingRefresh = true
+        return
+    end
+    local db = GetBarConfig()
+    local pagingBar = db and db.autoPagingBar or 1
+    for i = 1, 8 do
+        local key = "bar" .. i
+        local paging = i == pagingBar
+        local driver
+        if i == 1 then
+            if not paging then driver = PAGE_BAR1_FIXED end
+        elseif paging then
+            driver = PAGE_STANCES
+        end
+        local pager = pagers[key]
+        if driver and not pager then
+            pager = CreateFrame("Frame", nil, UIParent, "SecureHandlerStateTemplate")
+            for n, button in ipairs(GetButtonsForBarKey(key)) do pager:SetFrameRef("b" .. n, button) end
+            pager:SetAttribute("_onstate-page", PAGE_SNIPPET)
+            pagers[key] = pager
+        end
+        if pager then
+            -- off again: the driver hands the buttons back to their bar's own page ("default")
+            RegisterStateDriver(pager, "page", driver or "default")
+        end
+    end
+end
+
+--------------------------------------------------
 -- 12. PUBLIC API
 --------------------------------------------------
 
@@ -602,6 +659,7 @@ function ActionBars:Refresh()
 
     RefreshAllScales()
     SetupRangeColors()
+    ApplyAutoPaging()
 
     -- Update Extra button (fonts + clean keybinds)
     if _G.ExtraActionButton1 then UpdateButtonText(_G.ExtraActionButton1) end

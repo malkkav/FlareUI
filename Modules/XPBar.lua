@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
@@ -159,7 +160,8 @@ local function SkinContainer(container)
     border:SetPoint("TOPLEFT", container, "TOPLEFT", FILL_LEFT - BORDER_OUTSET, BORDER_OUTSET - FILL_TOP)
     border:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", BORDER_OUTSET - FILL_RIGHT, FILL_BOTTOM - BORDER_OUTSET)
     border:SetFrameLevel(container:GetFrameLevel() + 20)
-    border:SetBackdrop({ edgeFile = LSM:Fetch("border", BORDER_NAME), edgeSize = BORDER_SIZE })
+    local file = LSM:Fetch("border", BORDER_NAME)
+    border:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, BORDER_SIZE) })
     border:SetBackdropBorderColor(BORDER_COLOR[1], BORDER_COLOR[2], BORDER_COLOR[3], 1)
 
     for _, bar in pairs(container.bars or {}) do SkinBar(bar) end
@@ -322,7 +324,7 @@ end
 
 -- Edit Mode: samples in both sections, so the frame can be placed whatever is tracked
 local function SampleSections()
-    return { value = 6, max = 10, rested = 2, color = COLOR_RESTED, text = "XP" },
+    return { value = 6, max = 10, rested = 2, color = COLOR_RESTED, text = L["XP"] },
            { value = 4, max = 10, rested = 0, color = FACTION_GREEN_COLOR and { FACTION_GREEN_COLOR:GetRGB() } or COLOR_RESTED, text = REPUTATION }
 end
 
@@ -424,7 +426,8 @@ local function LayoutFlare()
     local db = GetDb()
     local texture = GetTexture()
     flare:SetSize((db.width or 560) + 2 * FLARE_INSET, (db.height or 14) + 2 * FLARE_INSET)
-    flare.Border:SetBackdrop({ edgeFile = LSM:Fetch("border", BORDER_NAME), edgeSize = BORDER_SIZE,
+    local file = LSM:Fetch("border", BORDER_NAME)
+    flare.Border:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, BORDER_SIZE),
         bgFile = "Interface\\Buttons\\WHITE8x8", insets = { left = FLARE_INSET, right = FLARE_INSET, top = FLARE_INSET, bottom = FLARE_INSET } })
     flare.Border:SetBackdropColor(0, 0, 0, 0.8)
     flare.Border:SetBackdropBorderColor(BORDER_COLOR[1], BORDER_COLOR[2], BORDER_COLOR[3], 1)
@@ -512,9 +515,9 @@ local function BuildFlare()
 
     LEM:AddFrame(flare, OnFlareMoved, FLARE_DEFAULT, FLARE_LABEL)
     LEM:AddFrameSettings(flare, {
-        { name = "Width", kind = LEM.SettingType.Slider, default = 560, minValue = 200, maxValue = 1200, valueStep = 2,
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = 560, minValue = 200, maxValue = 1200, valueStep = 2,
           get = function() return GetDb().width or 560 end, set = function(_, value) GetDb().width = value; LayoutFlare() end },
-        { name = "Height", kind = LEM.SettingType.Slider, default = 14, minValue = 6, maxValue = 30, valueStep = 1,
+        { name = L["Height"], kind = LEM.SettingType.Slider, default = 14, minValue = 6, maxValue = 30, valueStep = 1,
           get = function() return GetDb().height or 14 end, set = function(_, value) GetDb().height = value; LayoutFlare() end },
     })
     LEM:RegisterCallback("layout", function(layoutName) PlaceFlare(layoutName) end)

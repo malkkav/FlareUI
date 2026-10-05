@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
@@ -91,9 +92,9 @@ local PREVIEW_DEBUFF_TYPES = { "Magic", "Curse", "Disease", "Poison", "None" }
 local PREVIEW_TIMES = { "5m", "32s", "1h", "12s", "2m", "45m", "8s" }
 
 local KINDS = {
-    buffs   = { label = "FlareUI Buffs",   filter = "HELPFUL", isDebuff = false,
+    buffs   = { label = L["FlareUI Buffs"],   filter = "HELPFUL", isDebuff = false,
                 default = { point = "TOPRIGHT", x = -290, y = -12 } },
-    debuffs = { label = "FlareUI Debuffs", filter = "HARMFUL", isDebuff = true,
+    debuffs = { label = L["FlareUI Debuffs"], filter = "HARMFUL", isDebuff = true,
                 default = { point = "TOPRIGHT", x = -290, y = -150 } },
 }
 local KIND_ORDER = { "buffs", "debuffs" }
@@ -562,12 +563,12 @@ end
 -- 8. EDIT MODE SETTINGS
 --------------------------------------------------
 local GROW_VALUES = {
-    { text = "Left",  value = "LEFT",  isRadio = true },
-    { text = "Right", value = "RIGHT", isRadio = true },
+    { text = L["Left"],  value = "LEFT",  isRadio = true },
+    { text = L["Right"], value = "RIGHT", isRadio = true },
 }
 local WRAP_VALUES = {
-    { text = "Down", value = "DOWN", isRadio = true },
-    { text = "Up",   value = "UP",   isRadio = true },
+    { text = L["Down"], value = "DOWN", isRadio = true },
+    { text = L["Up"],   value = "UP",   isRadio = true },
 }
 
 local function BuildSettings(kind)
@@ -582,17 +583,17 @@ local function BuildSettings(kind)
         end
     end
     return {
-        { name = "Icon Size", kind = LEM.SettingType.Slider, default = defaults.size or 30, minValue = 16, maxValue = 64, valueStep = 1,
+        { name = L["Icon Size"], kind = LEM.SettingType.Slider, default = defaults.size or 30, minValue = 16, maxValue = 64, valueStep = 1,
           get = get("size"), set = set("size") },
-        { name = "Icons per Row", kind = LEM.SettingType.Slider, default = defaults.perRow or 12, minValue = 1, maxValue = 40, valueStep = 1,
+        { name = L["Icons per Row"], kind = LEM.SettingType.Slider, default = defaults.perRow or 12, minValue = 1, maxValue = 40, valueStep = 1,
           get = get("perRow"), set = set("perRow") },
-        { name = "Max Icons", kind = LEM.SettingType.Slider, default = defaults.max or 32, minValue = 1, maxValue = 40, valueStep = 1,
+        { name = L["Max Icons"], kind = LEM.SettingType.Slider, default = defaults.max or 32, minValue = 1, maxValue = 40, valueStep = 1,
           get = get("max"), set = set("max") },
-        { name = "Spacing", kind = LEM.SettingType.Slider, default = defaults.spacing or 6, minValue = 0, maxValue = 20, valueStep = 1,
+        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = defaults.spacing or 6, minValue = 0, maxValue = 20, valueStep = 1,
           get = get("spacing"), set = set("spacing") },
-        { name = "Grow", kind = LEM.SettingType.Dropdown, default = defaults.grow or "LEFT", values = GROW_VALUES,
+        { name = L["Grow"], kind = LEM.SettingType.Dropdown, default = defaults.grow or "LEFT", values = GROW_VALUES,
           get = get("grow"), set = set("grow") },
-        { name = "Wrap", kind = LEM.SettingType.Dropdown, default = defaults.wrap or "DOWN", values = WRAP_VALUES,
+        { name = L["Wrap"], kind = LEM.SettingType.Dropdown, default = defaults.wrap or "DOWN", values = WRAP_VALUES,
           get = get("wrap"), set = set("wrap") },
     }
 end

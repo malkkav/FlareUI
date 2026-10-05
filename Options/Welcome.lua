@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- WELCOME
@@ -11,9 +12,8 @@ local LSM = LibStub("LibSharedMedia-3.0")
 
 local WIDTH, HEIGHT = 400, 330
 local BANNER = "Interface\\AddOns\\FlareUI\\Media\\Art\\Banner.png"
-local SUBTITLE = "Your friendly UI overhowl"   -- the tagline from the TOC and the options page
-local TEXT = "Every module of this addon starts switched off.\nTo begin, open the settings and "
-    .. "enable the modules you want to use."
+local SUBTITLE = L["Your friendly UI overhowl"]   -- the tagline from the TOC and the options page
+local TEXT = L["Every module of this addon starts switched off.\nTo begin, open the settings and enable the modules you want to use."]
 
 local welcome
 
@@ -80,7 +80,7 @@ local function Build()
 
     local title = welcome:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", banner, "BOTTOM", 0, -14)
-    title:SetText("Welcome to FlareUI!")
+    title:SetText(L["Welcome to FlareUI!"])
 
     local subtitle = welcome:CreateFontString(nil, "OVERLAY", "GameFontHighlightMedium")
     subtitle:SetPoint("TOP", title, "BOTTOM", 0, -6)

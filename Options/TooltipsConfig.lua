@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- TOOLTIPS OPTIONS
@@ -36,36 +37,36 @@ local function Category(key, label, order)
 end
 
 ns.Options.args.tooltips = {
-    type = "group", name = "Tooltips", order = 70,
+    type = "group", name = L["Tooltips"], order = 70,
     hidden = function() return not ns.db.profile.tooltips.enabled end,
     childGroups = "tab",
     args = {
-        header = { type = "header", name = "Tooltip Settings", order = 0 },
+        header = { type = "header", name = L["Tooltip Settings"], order = 0 },
 
         --------------------------------------------------
         -- TAB 1: General
         --------------------------------------------------
         fontsTab = {
-            type = "group", name = "Fonts", order = 30,
+            type = "group", name = L["Fonts"], order = 30,
             args = {
-                title   = ns.CreateFontOptions(10, "Title", "tooltips", "titleFont"),
-                content = ns.CreateFontOptions(20, "Content", "tooltips", "contentFont"),
+                title   = ns.CreateFontOptions(10, L["Title"], "tooltips", "titleFont"),
+                content = ns.CreateFontOptions(20, L["Content"], "tooltips", "contentFont"),
             },
         },
 
         generalTab = {
-            type = "group", name = "General", order = 10,
+            type = "group", name = L["General"], order = 10,
             args = {
                 lookGroup = {
-                    type = "group", name = "Look", order = 10, inline = true,
+                    type = "group", name = L["Look"], order = 10, inline = true,
                     args = {
                         scale = {
-                            type = "range", name = "Scale", min = 0.5, max = 2, step = 0.05, order = 10, width = 1.2,
+                            type = "range", name = L["Scale"], min = 0.5, max = 2, step = 0.05, order = 10, width = 1.2,
                             get = function() return Get("scale") end, set = Set("scale"),
                         },
                         spacer1 = SP(11),
                         background = {
-                            type = "color", name = "Background Color", hasAlpha = true, order = 20,
+                            type = "color", name = L["Background Color"], hasAlpha = true, order = 20,
                             get = function() local c = Get("background"); return c.r, c.g, c.b, c.a or 1 end,
                             set = function(_, r, g, b, a)
                                 ns.db.profile.tooltips.background = { r = r, g = g, b = b, a = a }
@@ -73,38 +74,38 @@ ns.Options.args.tooltips = {
                             end,
                         },
                         break1 = { type = "description", name = " ", order = 25, width = "full" },
-                        borderByReaction = Toggle("borderByReaction", "Border by Reaction", 30, nil, 1.2),
+                        borderByReaction = Toggle("borderByReaction", L["Border by Reaction"], 30, nil, 1.2),
                         spacer2 = SP(31),
-                        borderByClass = Toggle("borderByClass", "Border by Class", 40, nil, 1.2),
+                        borderByClass = Toggle("borderByClass", L["Border by Class"], 40, nil, 1.2),
                         break2 = { type = "description", name = " ", order = 45, width = "full" },
-                        borderByQuality = Toggle("borderByQuality", "Border by Item Quality", 50, nil, 1.2),
+                        borderByQuality = Toggle("borderByQuality", L["Border by Item Quality"], 50, nil, 1.2),
                         spacer3 = SP(51),
-                        hideHealthBar = Toggle("hideHealthBar", "Hide Health Bar", 60, nil, 1.2),
+                        hideHealthBar = Toggle("hideHealthBar", L["Hide Health Bar"], 60, nil, 1.2),
                     }
                 },
                 contentGroup = {
-                    type = "group", name = "Content", order = 20, inline = true,
+                    type = "group", name = L["Content"], order = 20, inline = true,
                     args = {
                         nameColor = {
-                            type = "select", name = "Name Color", order = 10, width = 1.2,
-                            values = { none = "Default", reaction = "By Reaction", class = "By Class" },
+                            type = "select", name = L["Name Color"], order = 10, width = 1.2,
+                            values = { none = L["Default"], reaction = L["By Reaction"], class = L["By Class"] },
                             sorting = { "none", "reaction", "class" },
                             get = function() return Get("nameColor") end, set = Set("nameColor"),
                         },
                         spacer1 = SP(11),
-                        colorLevelLine = Toggle("colorLevelLine", "Color Level Line", 20, "Tints the \"Level X\" line by reaction.", 1.2),
+                        colorLevelLine = Toggle("colorLevelLine", L["Color Level Line"], 20, L["Tints the \"Level X\" line by reaction."], 1.2),
                         break1 = { type = "description", name = " ", order = 25, width = "full" },
-                        classification = Toggle("classification", "Classification Prefixes", 30, "Marks elites as +Name and adds (Rare) / (Boss).", 1.2),
+                        classification = Toggle("classification", L["Classification Prefixes"], 30, L["Marks elites as +Name and adds (Rare) / (Boss)."], 1.2),
                         spacer2 = SP(31),
-                        showTarget = Toggle("showTarget", "Show Unit's Target", 40, "Adds a line with whatever the unit is targeting.", 1.2),
+                        showTarget = Toggle("showTarget", L["Show Unit's Target"], 40, L["Adds a line with whatever the unit is targeting."], 1.2),
                         break2 = { type = "description", name = " ", order = 45, width = "full" },
-                        hidePvpLine = Toggle("hidePvpLine", "Hide PvP Line", 50, "Removes the \"PvP\" line from unit tooltips.", 1.2),
+                        hidePvpLine = Toggle("hidePvpLine", L["Hide PvP Line"], 50, L["Removes the \"PvP\" line from unit tooltips."], 1.2),
                         spacer3 = SP(51),
-                        hideRightClick = Toggle("hideRightClick", "Hide Right Click Hint", 60, "Removes the \"<Right click for Frame Settings>\" line.", 1.2),
+                        hideRightClick = Toggle("hideRightClick", L["Hide Right Click Hint"], 60, L["Removes the \"<Right click for Frame Settings>\" line."], 1.2),
                         break3 = { type = "description", name = " ", order = 65, width = "full" },
-                        showItemID = Toggle("showItemID", "Item IDs", 70, "Adds the item's ID at the bottom of item tooltips.", 1.2),
+                        showItemID = Toggle("showItemID", L["Item IDs"], 70, L["Adds the item's ID at the bottom of item tooltips."], 1.2),
                         spacer4 = SP(71),
-                        showSpellID = Toggle("showSpellID", "Spell IDs", 80, "Adds the spell's ID at the bottom of spell and buff tooltips.", 1.2),
+                        showSpellID = Toggle("showSpellID", L["Spell IDs"], 80, L["Adds the spell's ID at the bottom of spell and buff tooltips."], 1.2),
                     }
                 },
             },
@@ -114,35 +115,35 @@ ns.Options.args.tooltips = {
         -- TAB 2: Anchor
         --------------------------------------------------
         anchorTab = {
-            type = "group", name = "Anchor", order = 40,
+            type = "group", name = L["Anchor"], order = 40,
             args = {
                 anchorGroup = {
-                    type = "group", name = "Placement", order = 10, inline = true,
+                    type = "group", name = L["Placement"], order = 10, inline = true,
                     args = {
                         anchor = {
-                            type = "select", name = "World", order = 10, width = 1.2,
+                            type = "select", name = L["World"], order = 10, width = 1.2,
                             disabled = function() return ns.IsGamepadUI() end,
-                            values = { default = "Default", cursorOffset = "Cursor" },
+                            values = { default = L["Default"], cursorOffset = L["Cursor"] },
                             sorting = { "default", "cursorOffset" },
                             get = function() return Get("anchor") end, set = Set("anchor"),
                         },
                         spacer1 = SP(11),
                         anchorFrames = {
-                            type = "select", name = "UI Frames", order = 20, width = 1.2,
+                            type = "select", name = L["UI Frames"], order = 20, width = 1.2,
                             disabled = function() return ns.IsGamepadUI() end,
-                            values = { default = "Default", cursorOffset = "Cursor" },
+                            values = { default = L["Default"], cursorOffset = L["Cursor"] },
                             sorting = { "default", "cursorOffset" },
                             get = function() return Get("anchorFrames") end, set = Set("anchorFrames"),
                         },
                         break1 = { type = "description", name = " ", order = 25, width = "full" },
                         anchorX = {
-                            type = "range", name = "X Offset", min = -128, max = 128, step = 1, order = 30, width = 1.2,
+                            type = "range", name = L["X Offset"], min = -128, max = 128, step = 1, order = 30, width = 1.2,
                             disabled = function() return ns.IsGamepadUI() or (Get("anchor") == "default" and Get("anchorFrames") == "default") end,
                             get = function() return Get("anchorX") end, set = Set("anchorX"),
                         },
                         spacer2 = SP(31),
                         anchorY = {
-                            type = "range", name = "Y Offset", min = -128, max = 128, step = 1, order = 40, width = 1.2,
+                            type = "range", name = L["Y Offset"], min = -128, max = 128, step = 1, order = 40, width = 1.2,
                             disabled = function() return ns.IsGamepadUI() or (Get("anchor") == "default" and Get("anchorFrames") == "default") end,
                             get = function() return Get("anchorY") end, set = Set("anchorY"),
                         },
@@ -155,41 +156,41 @@ ns.Options.args.tooltips = {
         -- TAB 3: Visibility
         --------------------------------------------------
         visibilityTab = {
-            type = "group", name = "Visibility", order = 20,
+            type = "group", name = L["Visibility"], order = 20,
             args = {
                 worldGroup = {
-                    type = "group", name = "World", order = 10, inline = true,
+                    type = "group", name = L["World"], order = 10, inline = true,
                     args = {
-                        worldUnits   = Category("worldUnits", "Units", 10),
+                        worldUnits   = Category("worldUnits", L["Units"], 10),
                         spacer1      = SP(11),
-                        worldObjects = Category("worldObjects", "Objects", 20),
+                        worldObjects = Category("worldObjects", L["Objects"], 20),
                     }
                 },
                 frameGroup = {
-                    type = "group", name = "Interface", order = 20, inline = true,
+                    type = "group", name = L["Interface"], order = 20, inline = true,
                     args = {
-                        frameUnits = Category("frameUnits", "Unit Frames", 10),
+                        frameUnits = Category("frameUnits", L["Unit Frames"], 10),
                         spacer1    = SP(11),
-                        frameTips  = Category("frameTips", "Other Frames", 20),
+                        frameTips  = Category("frameTips", L["Other Frames"], 20),
                         spacer2    = SP(21),
-                        actionBars = Category("actionBars", "Action Bars & Keybinds", 30),
+                        actionBars = Category("actionBars", L["Action Bars & Keybinds"], 30),
                     }
                 },
                 contentGroup = {
-                    type = "group", name = "Content", order = 30, inline = true,
+                    type = "group", name = L["Content"], order = 30, inline = true,
                     args = {
-                        items  = Category("items", "Items", 10),
+                        items  = Category("items", L["Items"], 10),
                         spacer1 = SP(11),
-                        spells = Category("spells", "Spells", 20),
+                        spells = Category("spells", L["Spells"], 20),
                         spacer2 = SP(21),
-                        auras  = Category("auras", "Auras", 30),
+                        auras  = Category("auras", L["Auras"], 30),
                     }
                 },
                 overrideGroup = {
-                    type = "group", name = "Override", order = 40, inline = true,
+                    type = "group", name = L["Override"], order = 40, inline = true,
                     args = {
-                        shiftReveal = Toggle("shiftReveal", "Show with Shift", 10,
-                            "Hold Shift to see tooltips that would otherwise be hidden.", 1.6),
+                        shiftReveal = Toggle("shiftReveal", L["Show with Shift"], 10,
+                            L["Hold Shift to see tooltips that would otherwise be hidden."], 1.6),
                     }
                 },
             },

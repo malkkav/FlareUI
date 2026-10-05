@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
@@ -95,7 +96,7 @@ local POWER_FALLBACK = {
 -- Unit definitions. `driver` is the visibility condition; player is always shown.
 local UNITS = {
     player = {
-        key = "Player", label = "Player", order = 1, auras = true, portrait = true,
+        key = "Player", label = L["Player"], order = 1, auras = true, portrait = true,
         blizzard = { "PlayerFrame" },
         events = { "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE" },
         globalEvents = { PLAYER_UPDATE_RESTING = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true,
@@ -104,7 +105,7 @@ local UNITS = {
     },
     target = {
         mirrorable = true,
-        key = "Target", label = "Target", order = 2, auras = true, portrait = true,
+        key = "Target", label = L["Target"], order = 2, auras = true, portrait = true,
         blizzard = { "TargetFrame" },
         driver = "[@target,exists] show; hide",
         globalEvents = { PLAYER_TARGET_CHANGED = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true, PLAYER_FLAGS_CHANGED = "target",
@@ -114,28 +115,35 @@ local UNITS = {
         indicators = { leader = true, pvp = true, classification = true, quest = true, threat = true, heals = true },
     },
     targettarget = {
-        key = "TargetOfTarget", label = "Target of Target", order = 3,
+        key = "TargetOfTarget", label = L["Target of Target"], order = 3, noRaidIcon = true,
         driver = "[@targettarget,exists] show; hide",
         globalEvents = { PLAYER_TARGET_CHANGED = true, UNIT_TARGET = "target" },
     },
     focus = {
         mirrorable = true,
-        key = "Focus", label = "Focus", order = 4, auras = true, portrait = true,
+        key = "Focus", label = L["Focus"], order = 4, auras = true, portrait = true,
         blizzard = { "FocusFrame", "TargetofFocusFrame" },
         driver = "[@focus,exists] show; hide",
         globalEvents = { PLAYER_FOCUS_CHANGED = true },
         castbar = true,
         indicators = { classification = true, threat = true, heals = true },
     },
+    focustarget = {
+        key = "TargetOfFocus", label = L["Target of Focus"], order = 6, noRaidIcon = true,
+        driver = "[@focustarget,exists] show; hide",
+        globalEvents = { PLAYER_FOCUS_CHANGED = true, UNIT_TARGET = "focus" },
+        sample = { name = L["Target of Focus"] },
+    },
     pet = {
-        key = "Pet", label = "Pet", order = 5, happiness = true, noRaidIcon = true,
+        key = "Pet", label = L["Pet"], order = 5, happiness = true, noRaidIcon = true,
+        sample = { name = L["Pet"], powerToken = "FOCUS", health = 0.85, power = 0.7 },
         blizzard = { "PetFrame" },
         driver = "[@pet,exists] show; hide",
         indicators = { heals = true },
         globalEvents = { UNIT_PET = "player" },
     },
 }
-local UNIT_ORDER = { "player", "target", "targettarget", "focus", "pet" }
+local UNIT_ORDER = { "player", "target", "targettarget", "focus", "focustarget", "pet" }
 
 -- the player's power events the target frame also takes, for its combo strip
 local COMBO_EVENTS = { UNIT_POWER_FREQUENT = true, UNIT_MAXPOWER = true, UNIT_DISPLAYPOWER = true }
@@ -154,10 +162,10 @@ local CAST_EVENTS = {
 }
 
 local HEALTH_TEXT_MODES = {
-    { text = "None",            value = "none",    isRadio = true },
-    { text = "Percent",         value = "percent", isRadio = true },
-    { text = "Value",           value = "value",   isRadio = true },
-    { text = "Value + Percent", value = "both",    isRadio = true },
+    { text = L["None"],            value = "none",    isRadio = true },
+    { text = L["Percent"],         value = "percent", isRadio = true },
+    { text = L["Value"],           value = "value",   isRadio = true },
+    { text = L["Value + Percent"], value = "both",    isRadio = true },
 }
 
 --------------------------------------------------
@@ -204,13 +212,13 @@ end
 local ICON_UI = {
     order = { "rest", "leader", "pvp", "classification", "quest", "raidIcon", "happiness" },
     defs = {
-        rest           = { label = "Resting",          field = "RestIcon",  element = "rest" },
-        leader         = { label = "Leader",           field = "LeaderIcon", element = "leader" },
-        pvp            = { label = "PvP Flag",         field = "PvPIcon",   element = "pvp" },
-        classification = { label = "Elite & Rare",     field = "ClassIcon", element = "classification" },
-        quest          = { label = "Quest",            field = "QuestIcon", element = "questBoss" },
-        raidIcon       = { label = "Raid Target",      field = "RaidIcon",  element = "raidIcon" },
-        happiness      = { label = "Pet Happiness",    field = "Happiness" },
+        rest           = { label = L["Resting"],          field = "RestIcon",  element = "rest" },
+        leader         = { label = L["Leader"],           field = "LeaderIcon", element = "leader" },
+        pvp            = { label = L["PvP Flag"],         field = "PvPIcon",   element = "pvp" },
+        classification = { label = L["Elite & Rare"],     field = "ClassIcon", element = "classification" },
+        quest          = { label = L["Quest"],            field = "QuestIcon", element = "questBoss" },
+        raidIcon       = { label = L["Raid Target"],      field = "RaidIcon",  element = "raidIcon" },
+        happiness      = { label = L["Pet Happiness"],    field = "Happiness" },
     },
     selected = {},   -- unit -> the icon picked in its Edit Mode dialog (not saved)
 }
@@ -301,8 +309,29 @@ local function SetBorderTint(border, r, g, b)
     border:SetBackdropBorderColor(r, g, b, 1)
 end
 
-local function ApplyBorderStyle(border, edgeFile)
-    border:SetBackdrop({ edgeFile = edgeFile, edgeSize = BORDER_SIZE })
+-- The border edge and the bar's inset for a bar of this (inner) height. The 16 px corner art of the
+-- top and bottom edges overlaps and pokes out below 22 px in all, so a thin bar gets a smaller edge,
+-- and an inset shrunk with it so the art still meets the bar: the normal look, scaled down. FlareUI
+-- Thin's 8 px corners fit any bar: full inset.
+local function BorderFit(innerHeight, edgeFile)
+    if edgeFile and ns.BorderEdgeSize(edgeFile, BORDER_SIZE) ~= BORDER_SIZE then
+        return ns.BorderEdgeSize(edgeFile, BORDER_SIZE), INSET
+    end
+    local total = innerHeight + 2 * INSET
+    if total >= 22 then return BORDER_SIZE, INSET end
+    local edge = math.max(6, math_floor(total * 2 / 3))
+    return edge, INSET * edge / BORDER_SIZE
+end
+
+-- height: the bordered frame's height as laid out with the full inset (same rule as BorderFit)
+local function ApplyBorderStyle(border, edgeFile, height)
+    local edge = BORDER_SIZE
+    if ns.BorderEdgeSize(edgeFile, BORDER_SIZE) ~= BORDER_SIZE then
+        edge = ns.BorderEdgeSize(edgeFile, BORDER_SIZE)   -- FlareUI Thin is made for an 8 px edge (Media.lua)
+    elseif height and height < 22 then
+        edge = math.max(6, math_floor(height * 2 / 3))
+    end
+    border:SetBackdrop({ edgeFile = edgeFile, edgeSize = edge })
     ResetBorderTint(border)
 end
 
@@ -640,8 +669,9 @@ local function LayoutCastBar(cast, style, anchor, mode)
         cast:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", -PADDING, -CAST_GAP)
         cast:SetHeight(height)
     else
-        cast:SetPoint("TOPLEFT", anchor, "TOPLEFT", PADDING + iconOffset, -PADDING)
-        cast:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -PADDING, PADDING)
+        local _, pad = BorderFit(height, edgeFile)
+        cast:SetPoint("TOPLEFT", anchor, "TOPLEFT", pad + iconOffset, -pad)
+        cast:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -pad, pad)
     end
 
     cast.Icon:ClearAllPoints()
@@ -649,15 +679,17 @@ local function LayoutCastBar(cast, style, anchor, mode)
     cast.Icon:SetPoint("RIGHT", cast, "LEFT", -CAST_ICON_GAP, 0)
     cast.Icon:SetShown(style.icon)
 
+    -- the border wrap: the inset shrinks with the edge on a thin bar (BorderFit)
+    local _, wrap = BorderFit(height, style.border and edgeFile)
     cast.Backdrop:ClearAllPoints()
-    cast.Backdrop:SetPoint("TOPLEFT", style.icon and cast.Icon or cast, "TOPLEFT", -PADDING, PADDING)
-    cast.Backdrop:SetPoint("BOTTOMRIGHT", cast, "BOTTOMRIGHT", PADDING, -PADDING)
-    cast.Backdrop:SetBackdrop({ bgFile = BACKDROP_FILE, insets = { left = PADDING, right = PADDING, top = PADDING, bottom = PADDING } })
+    cast.Backdrop:SetPoint("TOPLEFT", style.icon and cast.Icon or cast, "TOPLEFT", -wrap, wrap)
+    cast.Backdrop:SetPoint("BOTTOMRIGHT", cast, "BOTTOMRIGHT", wrap, -wrap)
+    cast.Backdrop:SetBackdrop({ bgFile = BACKDROP_FILE, insets = { left = wrap, right = wrap, top = wrap, bottom = wrap } })
     cast.Backdrop:SetBackdropColor(0, 0, 0, BG_OPACITY)
     cast.Border:ClearAllPoints()
     cast.Border:SetAllPoints(cast.Backdrop)
     if style.border then
-        ApplyBorderStyle(cast.Border, edgeFile)
+        ApplyBorderStyle(cast.Border, edgeFile, height + 2 * PADDING)
         cast.Border:Show()
     else
         cast.Border:Hide()
@@ -684,7 +716,7 @@ local function ShowSampleCast(cast)
     duration:SetTimeFromStart(GetTime(), SAMPLE_CAST_SECONDS)
     cast:SetTimerDuration(duration, Enum.StatusBarInterpolation.Immediate, Enum.StatusBarTimerDirection.ElapsedTime)
     SetCastTimer(cast, duration)
-    cast.Text:SetText("Sample Cast")
+    cast.Text:SetText(L["Sample Cast"])
     cast.Icon:SetTexture(SAMPLE_CAST_ICON)
     local color = cast.standalone and PLAYER_CAST_COLOR or CAST_COLOR
     cast:SetStatusBarColor(color[1], color[2], color[3])
@@ -743,6 +775,7 @@ local function UpdateCastBar(cast, enabled)
 end
 
 local function IsCastEnabled(cast)
+    if cast.isEnabled then return cast.isEnabled() end
     if cast.standalone then
         local db = GetDb()
         return db and db.playerCastbar and db.playerCastbar.enabled
@@ -830,7 +863,53 @@ local function UpdatePortrait(f)
     portrait:Show()
 end
 
+-- Edit Mode with no unit behind the frame (no target, no focus, no pet): sample values, so the frame
+-- can be judged while it is placed. The texts follow the frame's own settings.
+local function ApplySample(f)
+    local info, udb = UNITS[f.unit], GetUnitDb(f.unit)
+    local s = info.sample or {}
+    local health, power = s.health or 0.75, s.power or 0.6
+    f.Name:SetText(s.name or info.label)
+    if udb and udb.showLevel then
+        f.Level:SetText(UnitLevel("player") or "")
+        f.Level:SetTextColor(1, 0.82, 0)
+    else
+        f.Level:SetText("")
+    end
+    f.Health:SetMinMaxValues(0, 1)
+    f.Health:SetValue(health)
+    local c = REACTION[5]
+    f.Health:SetStatusBarColor(c[1], c[2], c[3])
+    local mode = udb and udb.healthText or "percent"
+    local value = AbbreviateNumbers(math_floor(health * 24000))
+    if mode == "percent" then
+        f.HealthText:SetFormattedText("%.0f%%", health * 100)
+    elseif mode == "value" then
+        f.HealthText:SetText(value)
+    elseif mode == "both" then
+        f.HealthText:SetFormattedText("%s | %.0f%%", value, health * 100)
+    else
+        f.HealthText:SetText("")
+    end
+    f.Power:SetMinMaxValues(0, 1)
+    f.Power:SetValue(power)
+    local pc = _G.PowerBarColor and _G.PowerBarColor[s.powerToken or "MANA"]
+    if pc and pc.r then f.Power:SetStatusBarColor(pc.r, pc.g, pc.b) else f.Power:SetStatusBarColor(0, 0, 1) end
+    f.PowerText:SetText((udb and udb.powerText) and AbbreviateNumbers(math_floor(power * 3000)) or "")
+end
+
 local function UpdateAll(f)
+    if LEM:IsInEditMode() and not UnitExists(f.unit) then
+        ApplySample(f)
+        UpdateRaidIcon(f)
+        UpdateCast(f)
+        if f.Combo then UpdateComboPoints(f) end
+        UpdateIndicators(f)
+        if f.HealBar then f.HealBar:SetValue(0); f.AbsorbBar:SetValue(0) end
+        UpdateHappiness(f)
+        UpdatePortrait(f)
+        return
+    end
     UpdateName(f)
     UpdateLevel(f)
     UpdateHealth(f)
@@ -1131,11 +1210,8 @@ end
 -- otherwise. No Lua compares the number. Replaces Blizzard's ComboFrame, which is hidden.
 --------------------------------------------------
 local COMBO = {
-    height = 5, segmentGap = 1, maxSegments = 10, fallbackMax = 5, previewPoints = 3,
-    -- cool teal -> cyan: the one hue no Forever class or power colour uses, so it reads against the
-    -- warm bronze / olive / orange around it
-    colorFirst = { 0.10, 0.52, 0.58 },   -- teal on the left...
-    colorLast  = { 0.40, 0.88, 0.95 },   -- ...to cyan on the right
+    height = 5, maxSegments = 10, fallbackMax = 5, previewPoints = 3,
+    color = ns.COMBO_COLOR,   -- Core.lua: lighter and more orange than the hostile red under it
 }
 
 local function PlayerClass()
@@ -1162,8 +1238,18 @@ local function CreateComboPoints(f)
     local combo = CreateFrame("Frame", nil, f)
     -- above the health bar and the heal overlay it covers, still below the frame border
     combo:SetFrameLevel(f.Health:GetFrameLevel() + 2)
-    combo.segments = {}
+    combo.segments, combo.separators = {}, {}
     combo.count = 0
+    -- the one-pixel lines between segments sit over them
+    combo.Lines = CreateFrame("Frame", nil, combo)
+    combo.Lines:SetAllPoints()
+    combo.Lines:SetFrameLevel(combo:GetFrameLevel() + 1)
+    -- a dark line along the strip's bottom edge parts it from the health bar
+    combo.Shadow = combo:CreateTexture(nil, "BACKGROUND")
+    combo.Shadow:SetColorTexture(0, 0, 0, 0.8)
+    combo.Shadow:SetHeight(1)
+    combo.Shadow:SetPoint("TOPLEFT", combo, "TOPLEFT", 0, -COMBO.height)
+    combo.Shadow:SetPoint("TOPRIGHT", combo, "TOPRIGHT", 0, -COMBO.height)
     combo:Hide()
     f.Combo = combo
 end
@@ -1178,33 +1264,41 @@ local function GetComboSegment(f, i)
     return seg
 end
 
--- distributes the segments across the strip; colours run from COMBO.colorFirst to COMBO.colorLast
+-- distributes the segments across the strip on whole pixels, a one-pixel line between each
 local function LayoutComboSegments(f)
     local combo, udb = f.Combo, GetUnitDb(f.unit)
     if not combo or combo.count == 0 then return end
     local n = combo.count
     local width = (udb and udb.width or 220) - 2 * INSET - PortraitSpace(f)
-    local segWidth = (width - (n - 1) * COMBO.segmentGap) / n
     local texture = GetBarTexture(udb and udb.texture)
     for i = 1, n do
         local seg = GetComboSegment(f, i)
-        local t = n > 1 and (i - 1) / (n - 1) or 0
+        local x, segWidth, px = ns.SegmentSpan(combo, width, n, i)
         seg:SetStatusBarTexture(texture)
         seg.bg:SetTexture(texture)
         -- dark enough to show where the unspent points are, sheer enough that the health bar's own
         -- colour still reads through the strip
         seg.bg:SetVertexColor(0, 0, 0, 0.45)
-        seg:SetStatusBarColor(
-            COMBO.colorFirst[1] + (COMBO.colorLast[1] - COMBO.colorFirst[1]) * t,
-            COMBO.colorFirst[2] + (COMBO.colorLast[2] - COMBO.colorFirst[2]) * t,
-            COMBO.colorFirst[3] + (COMBO.colorLast[3] - COMBO.colorFirst[3]) * t)
+        seg:SetStatusBarColor(COMBO.color[1], COMBO.color[2], COMBO.color[3])
         seg:ClearAllPoints()
         -- left to right even on a mirrored frame: the points are the player's, not the target's
-        seg:SetPoint("TOPLEFT", combo, "TOPLEFT", (i - 1) * (segWidth + COMBO.segmentGap), 0)
+        seg:SetPoint("TOPLEFT", combo, "TOPLEFT", x, 0)
         seg:SetSize(segWidth, COMBO.height)
         seg:Show()
+        local sep = combo.separators[i]
+        if not sep then
+            sep = combo.Lines:CreateTexture(nil, "OVERLAY")
+            local c = ns.SEGMENT_LINE_COLOR
+            sep:SetColorTexture(c[1], c[2], c[3], c[4])
+            combo.separators[i] = sep
+        end
+        sep:ClearAllPoints()
+        sep:SetPoint("TOPLEFT", combo, "TOPLEFT", x + segWidth - px, 0)
+        sep:SetSize(px, COMBO.height)
+        sep:SetShown(i < n)
     end
     for i = n + 1, #combo.segments do combo.segments[i]:Hide() end
+    for i = n + 1, #combo.separators do combo.separators[i]:Hide() end
 end
 
 -- true when the strip is currently part of the frame (drives the bar layout)
@@ -1883,7 +1977,7 @@ local function LayoutFrame(f)
     f:SetBackdropColor(0, 0, 0, BG_OPACITY)
     -- the border sits on its own frame above the bars, so the art overlaps the bar edges and no
     -- backdrop shows through between them
-    ApplyBorderStyle(f.Border, edgeFile)
+    ApplyBorderStyle(f.Border, edgeFile, height)
 
     local texture = GetBarTexture(udb.texture)
     local health, power = f.Health, f.Power
@@ -1997,12 +2091,20 @@ end
 -- sits under the target's cast bar, and all three are pinned to the bottom edge so they keep their
 -- distance from the action bars. Focus is pinned to the right edge. Each point anchors to the same point on UIParent (ApplyPosition).
 local DEFAULT_POSITIONS = {
+    -- Player / target 240 x 70, centred: they span y -235 to -305. Below them everything keeps the
+    -- line it had with the 60 px frames, 5 px lower.
     player        = { point = "CENTER", x = -330, y = -270 },
     target        = { point = "CENTER", x = 330,  y = -270 },
-    targettarget  = { point = "BOTTOM", x = 270,  y = 248 },
-    focus         = { point = "RIGHT",  x = -453, y = -258 },
-    pet           = { point = "BOTTOM", x = -270, y = 271 },   -- its right edge lines up with the player frame's
-    playercastbar = { point = "BOTTOM", x = 0,    y = 268 },
+    -- 100 x 25, left edge on the target frame's (x 210), top just under the target cast bar's border
+    -- (frame bottom -305, gap 4, bar 16, border 4: -329), with a small overlap the borders hide
+    targettarget  = { point = "CENTER", x = 260,  y = -340.5 },
+    -- top edge level with the target frame's (-235): 35 tall, so its middle is at -252.5
+    focus         = { point = "RIGHT",  x = -453, y = -252.5 },
+    -- 100 x 25, left edge on the focus frame's (right edge -453 - 160), the same distance under its
+    -- cast bar as the target of target under the target's (frame bottom -270, cast border -294)
+    focustarget   = { point = "RIGHT",  x = -513, y = -305.5 },
+    pet           = { point = "BOTTOM", x = -270, y = 266 },   -- its right edge lines up with the player frame's
+    playercastbar = { point = "CENTER", x = 0,    y = -221 },  -- mid-screen above the action bars (both modes)
 }
 
 -- The cast bar's default follows the gamepad UI: its action bar stands taller than ours, so the cast
@@ -2010,7 +2112,7 @@ local DEFAULT_POSITIONS = {
 -- layout and still wins. The table is updated in place because FlareEditMode keeps a reference to it
 -- (lib.frameDefaults) for its own "reset position".
 local CASTBAR_DEFAULTS = {
-    keyboard = { point = "BOTTOM", x = 0, y = 268 },
+    keyboard = { point = "CENTER", x = 0, y = -221 },
     gamepad  = { point = "CENTER", x = 0, y = -221 },
 }
 
@@ -2306,7 +2408,7 @@ end
 -- LSM statusbar names for the Edit Mode dropdowns; "" = the frames' shared texture
 local function BuildTextureValues(withFrameDefault)
     local values = {}
-    if withFrameDefault then values[#values + 1] = { text = "Frame Texture", value = "", isRadio = true } end
+    if withFrameDefault then values[#values + 1] = { text = L["Frame Texture"], value = "", isRadio = true } end
     for _, name in ipairs(LSM:List("statusbar")) do
         values[#values + 1] = { text = name, value = name, isRadio = true }
     end
@@ -2315,7 +2417,7 @@ end
 
 local function BuildBorderValues(withFrameDefault)
     local values = {}
-    if withFrameDefault then values[#values + 1] = { text = "Frame Border", value = "", isRadio = true } end
+    if withFrameDefault then values[#values + 1] = { text = L["Frame Border"], value = "", isRadio = true } end
     for _, name in ipairs(LSM:List("border")) do
         values[#values + 1] = { text = name, value = name, isRadio = true }
     end
@@ -2339,7 +2441,7 @@ local function LayoutPlayerCastBar()
     if not holder or not cfg then return end
     if InCombatLockdown() then pendingLayout = true return end
     local style = GetCastStyle(cfg, true)
-    local PADDING = INSET
+    local _, PADDING = BorderFit(style.height, style.border and GetBorderFile(style.borderTexture))
     local iconOffset = style.icon and (style.height + CAST_ICON_GAP) or 0
     holder:SetSize(style.width + iconOffset + 2 * PADDING, style.height + 2 * PADDING)
     LayoutCastBar(holder.Cast, style, holder, "FILL")
@@ -2375,13 +2477,13 @@ local function BuildPlayerCastSettings()
         end
     end
     return {
-        { name = "Width", kind = LEM.SettingType.Slider, default = 292, minValue = 100, maxValue = 600, valueStep = 2, get = get("width", 292), set = set("width") },
-        { name = "Height", kind = LEM.SettingType.Slider, default = 26, minValue = 8, maxValue = 48, valueStep = 1, get = get("height", 26), set = set("height") },
-        { name = "Bar Texture", kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(true), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
-        { name = "Border Texture", kind = LEM.SettingType.Dropdown, default = DEFAULT_BORDER, values = BuildBorderValues(false), get = get("borderTexture", DEFAULT_BORDER), set = set("borderTexture") },
-        { name = "Icon", kind = LEM.SettingType.Checkbox, default = true, get = get("icon", true), set = set("icon") },
-        { name = "Spell Name", kind = LEM.SettingType.Checkbox, default = true, get = get("name", true), set = set("name") },
-        { name = "Timer", kind = LEM.SettingType.Checkbox, default = true, get = get("timer", true), set = set("timer") },
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = 300, minValue = 100, maxValue = 600, valueStep = 2, get = get("width", 300), set = set("width") },
+        { name = L["Height"], kind = LEM.SettingType.Slider, default = 25, minValue = 8, maxValue = 48, valueStep = 1, get = get("height", 25), set = set("height") },
+        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(true), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
+        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
+        { name = L["Icon"], kind = LEM.SettingType.Checkbox, default = true, get = get("icon", true), set = set("icon") },
+        { name = L["Spell Name"], kind = LEM.SettingType.Checkbox, default = true, get = get("name", true), set = set("name") },
+        { name = L["Timer"], kind = LEM.SettingType.Checkbox, default = true, get = get("timer", true), set = set("timer") },
     }
 end
 
@@ -2400,32 +2502,32 @@ local function BuildSettings(unit)
     local defaults = ns.defaults and ns.defaults.profile.unitframes.units[unit] or {}
 
     local settings = {
-        { name = "Width", kind = LEM.SettingType.Slider, default = defaults.width or 220, minValue = 60, maxValue = 500, valueStep = 2, get = get("width"), set = set("width") },
-        { name = "Height", kind = LEM.SettingType.Slider, default = defaults.height or 44, minValue = 16, maxValue = 120, valueStep = 1, get = get("height"), set = set("height") },
-        { name = "Power Bar Height", kind = LEM.SettingType.Slider, default = defaults.powerHeight or 8, minValue = 0, maxValue = 40, valueStep = 1, get = get("powerHeight"), set = set("powerHeight"),
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = defaults.width or 220, minValue = 60, maxValue = 500, valueStep = 2, get = get("width"), set = set("width") },
+        { name = L["Height"], kind = LEM.SettingType.Slider, default = defaults.height or 44, minValue = 16, maxValue = 120, valueStep = 1, get = get("height"), set = set("height") },
+        { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = defaults.powerHeight or 8, minValue = 0, maxValue = 40, valueStep = 1, get = get("powerHeight"), set = set("powerHeight"),
           formatter = function(value) return value == 0 and _G.OFF or value end },
-        { name = "Health Text", kind = LEM.SettingType.Dropdown, default = defaults.healthText or "percent", values = HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") },
-        { name = "Power Text", kind = LEM.SettingType.Checkbox, default = defaults.powerText or false, get = get("powerText"), set = set("powerText") },
-        { name = "Show Level", kind = LEM.SettingType.Checkbox, default = defaults.showLevel ~= false, get = get("showLevel"), set = set("showLevel") },
+        { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = defaults.healthText or "percent", values = HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") },
+        { name = L["Power Text"], kind = LEM.SettingType.Checkbox, default = defaults.powerText or false, get = get("powerText"), set = set("powerText") },
+        { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = defaults.showLevel ~= false, get = get("showLevel"), set = set("showLevel") },
     }
     if info.portrait then
-        settings[#settings + 1] = { name = "Portrait", kind = LEM.SettingType.Dropdown, default = "none",
+        settings[#settings + 1] = { name = L["Portrait"], kind = LEM.SettingType.Dropdown, default = "none",
             values = {
-                { text = "None",       value = "none",  isRadio = true },
-                { text = "3D",         value = "3d",    isRadio = true },
-                { text = "Class Icon", value = "class", isRadio = true },
+                { text = L["None"],       value = "none",  isRadio = true },
+                { text = L["3D"],         value = "3d",    isRadio = true },
+                { text = L["Class Icon"], value = "class", isRadio = true },
             },
             get = function() local u = GetUnitDb(unit); return u and u.portrait or "none" end, set = set("portrait"),
-            desc = "A square at the frame's left (right when mirrored). Class Icon shows the 3D portrait for NPCs." }
+            desc = L["A square at the frame's left (right when mirrored). Class Icon shows the 3D portrait for NPCs."] }
     end
     if info.mirrorable then
         -- flips text order and bar fill so the frame faces the player frame
-        settings[#settings + 1] = { name = "Mirror", kind = LEM.SettingType.Checkbox, default = defaults.mirror or false, get = function() local u = GetUnitDb(unit); return u and u.mirror or false end,
+        settings[#settings + 1] = { name = L["Mirror"], kind = LEM.SettingType.Checkbox, default = defaults.mirror or false, get = function() local u = GetUnitDb(unit); return u and u.mirror or false end,
             set = function(_, value) local u = GetUnitDb(unit); if not u then return end; u.mirror = value; local f = frames[unit]; if f then LayoutFrame(f); AttachExtras(f); UpdateAll(f) end end }
     end
     if info.comboPoints then
         -- Blizzard's own combo points in the health bar's top-left corner instead of FlareUI's strip
-        settings[#settings + 1] = { name = "Classic Combo Points", kind = LEM.SettingType.Checkbox, default = false,
+        settings[#settings + 1] = { name = L["Classic Combo Points"], kind = LEM.SettingType.Checkbox, default = false,
             get = function() local u = GetUnitDb(unit); return u and u.classicCombo or false end,
             set = function(_, value)
                 local u = GetUnitDb(unit)
@@ -2434,7 +2536,7 @@ local function BuildSettings(unit)
                 local f = frames[unit]
                 if f then ApplyComboMode(f); UpdateAll(f) end
             end,
-            desc = "Classic combo point gems in the bottom-right corner of the health bar, instead of FlareUI's strip." }
+            desc = L["Classic combo point gems in the bottom-right corner of the health bar, instead of FlareUI's strip."] }
     end
     -- The sections fold away: a click on a section's name opens or closes it (FlareEditMode
     -- expander), and which are open is shared by every frame (unitframes.editSections).
@@ -2443,7 +2545,7 @@ local function BuildSettings(unit)
         return db and db.editSections and db.editSections[name] or false
     end
     local function Section(name, items)
-        settings[#settings + 1] = { name = "|cffffd100" .. name .. "|r", kind = LEM.SettingType.Expander, default = false,
+        settings[#settings + 1] = { name = "|cffffd100" .. L[name] .. "|r", kind = LEM.SettingType.Expander, default = false,
             get = function() return SectionOpen(name) end,
             set = function(_, value)
                 local db = GetDb()
@@ -2468,21 +2570,21 @@ local function BuildSettings(unit)
     Section("Frame", frameItems)
 
     Section("Look", {
-        { name = "Bar Texture", kind = LEM.SettingType.Dropdown, default = defaults.texture or DEFAULT_TEXTURE, values = BuildTextureValues(false),
+        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.texture or DEFAULT_TEXTURE, values = BuildTextureValues(false),
           get = function() local u = GetUnitDb(unit); return u and u.texture or DEFAULT_TEXTURE end, set = set("texture") },
-        { name = "Border Texture", kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BORDER, values = BuildBorderValues(false),
+        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BORDER, values = BuildBorderValues(false),
           get = function() local u = GetUnitDb(unit); return u and u.border or DEFAULT_BORDER end, set = set("border") },
-        { name = "Class Color", kind = LEM.SettingType.Checkbox, default = true,
-          desc = "Players' health bars in their class colour. Off: the classic health green. NPCs keep their friendly / hostile colours.",
+        { name = L["Class Color"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["Players' health bars in their class colour. Off: the classic health green. NPCs keep their friendly / hostile colours."],
           get = function() local u = GetUnitDb(unit); return u == nil or u.classColor ~= false end, set = set("classColor") },
     })
     if info.indicators and info.indicators.heals then
         Section("Absorbs", {
-            { name = "Absorb Texture", kind = LEM.SettingType.Dropdown,
+            { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown,
               default = defaults.absorbTexture or "", values = BuildTextureValues(true),
               get = function() local u = GetUnitDb(unit); return u and u.absorbTexture or "" end,
               set = set("absorbTexture") },
-            { name = "Absorb Reverse Fill", kind = LEM.SettingType.Checkbox,
+            { name = L["Absorb Reverse Fill"], kind = LEM.SettingType.Checkbox,
               default = defaults.absorbReverseFill ~= false,
               get = function() local u = GetUnitDb(unit); return u and u.absorbReverseFill ~= false end,
               set = set("absorbReverseFill") },
@@ -2490,42 +2592,42 @@ local function BuildSettings(unit)
     end
     if info.castbar then
         Section("Cast Bar", {
-            { name = "Cast Bar Position", kind = LEM.SettingType.Dropdown, default = defaults.castbarPosition or "BOTTOM",
-              values = { { text = "Above", value = "TOP", isRadio = true }, { text = "Below", value = "BOTTOM", isRadio = true } },
+            { name = L["Cast Bar Position"], kind = LEM.SettingType.Dropdown, default = defaults.castbarPosition or "BOTTOM",
+              values = { { text = L["Above"], value = "TOP", isRadio = true }, { text = L["Below"], value = "BOTTOM", isRadio = true } },
               get = get("castbarPosition"), set = set("castbarPosition") },
-            { name = "Cast Bar Height", kind = LEM.SettingType.Slider, default = defaults.castHeight or CAST_HEIGHT, minValue = 8, maxValue = 40, valueStep = 1, get = get("castHeight"), set = set("castHeight") },
-            { name = "Cast Bar Texture", kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(true), get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture") },
-            { name = "Cast Bar Border Texture", kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
+            { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = defaults.castHeight or CAST_HEIGHT, minValue = 8, maxValue = 40, valueStep = 1, get = get("castHeight"), set = set("castHeight") },
+            { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(true), get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture") },
+            { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
               get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture") },
-            { name = "Cast Icon", kind = LEM.SettingType.Checkbox, default = defaults.castIcon ~= false, get = function() local u = GetUnitDb(unit); return u and u.castIcon ~= false end, set = set("castIcon") },
-            { name = "Cast Timer", kind = LEM.SettingType.Checkbox, default = defaults.castTimer ~= false, get = function() local u = GetUnitDb(unit); return u and u.castTimer ~= false end, set = set("castTimer") },
+            { name = L["Cast Icon"], kind = LEM.SettingType.Checkbox, default = defaults.castIcon ~= false, get = function() local u = GetUnitDb(unit); return u and u.castIcon ~= false end, set = set("castIcon") },
+            { name = L["Cast Timer"], kind = LEM.SettingType.Checkbox, default = defaults.castTimer ~= false, get = function() local u = GetUnitDb(unit); return u and u.castTimer ~= false end, set = set("castTimer") },
         })
     end
     if info.auras then
         local positions = {
-            { text = "Off",          value = "OFF",         isRadio = true },
-            { text = "Top Left",     value = "TOPLEFT",     isRadio = true },
-            { text = "Top Right",    value = "TOPRIGHT",    isRadio = true },
-            { text = "Bottom Left",  value = "BOTTOMLEFT",  isRadio = true },
-            { text = "Bottom Right", value = "BOTTOMRIGHT", isRadio = true },
+            { text = L["Off"],          value = "OFF",         isRadio = true },
+            { text = L["Top Left"],     value = "TOPLEFT",     isRadio = true },
+            { text = L["Top Right"],    value = "TOPRIGHT",    isRadio = true },
+            { text = L["Bottom Left"],  value = "BOTTOMLEFT",  isRadio = true },
+            { text = L["Bottom Right"], value = "BOTTOMRIGHT", isRadio = true },
         }
         Section("Auras", {
-            { name = "Buffs", kind = LEM.SettingType.Dropdown, default = defaults.buffs or "OFF", values = positions, get = get("buffs"), set = set("buffs") },
-            { name = "Debuffs", kind = LEM.SettingType.Dropdown, default = defaults.debuffs or "OFF", values = positions, get = get("debuffs"), set = set("debuffs") },
-            { name = "Aura Size", kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1, get = get("auraSize"), set = set("auraSize") },
-            { name = "Max Per Type", kind = LEM.SettingType.Slider, default = defaults.auraMax or 16, minValue = 1, maxValue = 40, valueStep = 1, get = get("auraMax"), set = set("auraMax") },
-            { name = "Only My Debuffs", kind = LEM.SettingType.Checkbox, default = defaults.onlyMyDebuffs or false, get = get("onlyMyDebuffs"), set = set("onlyMyDebuffs") },
-            { name = "Hide Permanent Buffs", kind = LEM.SettingType.Checkbox, default = defaults.hidePermanentBuffs or false, get = get("hidePermanentBuffs"), set = set("hidePermanentBuffs") },
-            { name = "Shape", kind = LEM.SettingType.Dropdown, default = defaults.auraStyle or "square",
-              values = { { text = "Square", value = "square", isRadio = true }, { text = "Round", value = "round", isRadio = true } },
+            { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = defaults.buffs or "OFF", values = positions, get = get("buffs"), set = set("buffs") },
+            { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = defaults.debuffs or "OFF", values = positions, get = get("debuffs"), set = set("debuffs") },
+            { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1, get = get("auraSize"), set = set("auraSize") },
+            { name = L["Max Per Type"], kind = LEM.SettingType.Slider, default = defaults.auraMax or 16, minValue = 1, maxValue = 40, valueStep = 1, get = get("auraMax"), set = set("auraMax") },
+            { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = defaults.onlyMyDebuffs or false, get = get("onlyMyDebuffs"), set = set("onlyMyDebuffs") },
+            { name = L["Hide Permanent Buffs"], kind = LEM.SettingType.Checkbox, default = defaults.hidePermanentBuffs or false, get = get("hidePermanentBuffs"), set = set("hidePermanentBuffs") },
+            { name = L["Shape"], kind = LEM.SettingType.Dropdown, default = defaults.auraStyle or "square",
+              values = { { text = L["Square"], value = "square", isRadio = true }, { text = L["Round"], value = "round", isRadio = true } },
               get = function() local u = GetUnitDb(unit); return u and u.auraStyle or "square" end, set = set("auraStyle") },
-            { name = "Cooldown Swipe", kind = LEM.SettingType.Dropdown, default = defaults.auraSwipe or "icon",
-              values = { { text = "Border", value = "border", isRadio = true }, { text = "Icon", value = "icon", isRadio = true },
-                         { text = "None", value = "none", isRadio = true } },
+            { name = L["Cooldown Swipe"], kind = LEM.SettingType.Dropdown, default = defaults.auraSwipe or "icon",
+              values = { { text = L["Border"], value = "border", isRadio = true }, { text = L["Icon"], value = "icon", isRadio = true },
+                         { text = L["None"], value = "none", isRadio = true } },
               get = function() local u = GetUnitDb(unit); return u and u.auraSwipe or "icon" end, set = set("auraSwipe") },
-            { name = "Timer", kind = LEM.SettingType.Dropdown, default = defaults.auraTimer or "none",
-              values = { { text = "Under the Icon", value = "below", isRadio = true }, { text = "Bottom of the Icon", value = "bottom", isRadio = true },
-                         { text = "Middle of the Icon", value = "middle", isRadio = true }, { text = "No Timer", value = "none", isRadio = true } },
+            { name = L["Timer"], kind = LEM.SettingType.Dropdown, default = defaults.auraTimer or "none",
+              values = { { text = L["Under the Icon"], value = "below", isRadio = true }, { text = L["Bottom of the Icon"], value = "bottom", isRadio = true },
+                         { text = L["Middle of the Icon"], value = "middle", isRadio = true }, { text = L["No Timer"], value = "none", isRadio = true } },
               get = function()
                   local u = GetUnitDb(unit)
                   if not u then return defaults.auraTimer or "none" end
@@ -2562,8 +2664,8 @@ local function BuildSettings(unit)
         end
         local function iconHidden() return not ICON_UI.Shown(unit, ICON_UI.Selected(unit)) end
         Section("Icons", {
-            { name = "Icon", kind = LEM.SettingType.Dropdown, default = icons[1], values = values,
-              desc = "Pick an icon to switch, move and size it. It shows on the frame while Edit Mode is open.",
+            { name = L["Icon"], kind = LEM.SettingType.Dropdown, default = icons[1], values = values,
+              desc = L["Pick an icon to switch, move and size it. It shows on the frame while Edit Mode is open."],
               get = function() return ICON_UI.Selected(unit) end,
               set = function(_, value)
                   ICON_UI.selected[unit] = value
@@ -2571,13 +2673,13 @@ local function BuildSettings(unit)
                   -- the settings below now belong to the new icon; rebuilt once this click is done
                   C_Timer.After(0, function() if frames[unit] then LEM:RefreshFrameSettings(frames[unit]) end end)
               end },
-            { name = "Show Icon", kind = LEM.SettingType.Checkbox, default = true,
+            { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true,
               get = function() return ICON_UI.Shown(unit, ICON_UI.Selected(unit)) end, set = iconSet("shown") },
-            { name = "Icon X", kind = LEM.SettingType.Slider, default = 0, minValue = -150, maxValue = 150, valueStep = 1,
+            { name = L["Icon X"], kind = LEM.SettingType.Slider, default = 0, minValue = -150, maxValue = 150, valueStep = 1,
               hidden = iconHidden, get = iconGet("x", 0), set = iconSet("x") },
-            { name = "Icon Y", kind = LEM.SettingType.Slider, default = 0, minValue = -80, maxValue = 80, valueStep = 1,
+            { name = L["Icon Y"], kind = LEM.SettingType.Slider, default = 0, minValue = -80, maxValue = 80, valueStep = 1,
               hidden = iconHidden, get = iconGet("y", 0), set = iconSet("y") },
-            { name = "Icon Scale", kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
+            { name = L["Icon Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
               hidden = iconHidden, get = iconGet("scale", 100), set = iconSet("scale"),
               formatter = function(value) return value .. "%" end },
         })
@@ -2593,6 +2695,29 @@ end
 --------------------------------------------------
 -- 18. PUBLIC
 --------------------------------------------------
+-- The building blocks the party frames (PartyFrames.lua) share with these frames, so both look and
+-- behave alike: bars, fonts, colours, borders, cast bars, aura buttons, the Edit Mode dropdowns.
+UF.Kit = {
+    INSET = INSET, BORDER_SIZE = BORDER_SIZE, BG_OPACITY = BG_OPACITY, BACKDROP_FILE = BACKDROP_FILE,
+    SEPARATOR_TEXTURE = SEPARATOR_TEXTURE, SEPARATOR_HEIGHT = SEPARATOR_HEIGHT, TEXT_INSET = TEXT_INSET,
+    CAST_GAP = CAST_GAP, CAST_ICON_GAP = CAST_ICON_GAP, AURA_GAP = AURA_GAP,
+    DEFAULT_TEXTURE = DEFAULT_TEXTURE, DEFAULT_BORDER = DEFAULT_BORDER,
+    HEAL_COLOR = HEAL_COLOR, ABSORB_COLOR = ABSORB_COLOR, HEAL_TEXTURE = HEAL_TEXTURE, ABSORB_TEXTURE = ABSORB_TEXTURE,
+    HEALTH_TEXT_MODES = HEALTH_TEXT_MODES, CAST_EVENTS = CAST_EVENTS, UNIT_EVENTS = UNIT_EVENTS,
+    DEAD_TEXT = DEAD_TEXT, GHOST_TEXT = GHOST_TEXT, OFFLINE_TEXT = OFFLINE_TEXT,
+    percentCurve = percentCurve,
+    GetDb = GetDb,
+    GetBarTexture = GetBarTexture, GetBorderFile = GetBorderFile, BorderFit = BorderFit,
+    ApplyBorderStyle = ApplyBorderStyle, ResetBorderTint = ResetBorderTint, SetBorderTint = SetBorderTint,
+    CreateBar = CreateBar, ApplyFont = ApplyFont,
+    GetHealthColor = GetHealthColor, GetPowerColor = GetPowerColor,
+    HardHide = HardHide, SetIconArt = SetIconArt, HasAtlas = HasAtlas,
+    CreateCastBar = CreateCastBar, LayoutCastBar = LayoutCastBar, UpdateCastBar = UpdateCastBar,
+    InitAuraButton = InitAuraButton, HasAuraSupport = HasAuraSupport,
+    BuildTextureValues = BuildTextureValues, BuildBorderValues = BuildBorderValues,
+    ThreatColor = ThreatColor,
+}
+
 function UF:Refresh()
     if not self.initialized then return end
     if InCombatLockdown() then pendingLayout = true return end
@@ -2613,6 +2738,9 @@ function UF:Refresh()
         end)
     end
     RefreshVisibilityFader()
+    -- the party frames share the fonts and textures set here
+    if ns.PartyFrames and ns.PartyFrames.initialized then guard("party frames", function() ns.PartyFrames:Refresh() end) end
+    if ns.ResourceBars and ns.ResourceBars.initialized then guard("resource bars", function() ns.ResourceBars:Refresh() end) end
     if playerCastHolder then
         guard("player cast bar", function()
             LayoutPlayerCastBar()

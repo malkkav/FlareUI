@@ -1,4 +1,5 @@
 local ADDON_NAME, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
@@ -22,7 +23,7 @@ local C_Timer = C_Timer
 local LSM = LibStub("LibSharedMedia-3.0")
 
 -- The border picked in the options; a name LibSharedMedia no longer knows falls back to the default.
-local DEFAULT_BORDER = "FlareUI Thin"
+local DEFAULT_BORDER = "FlareUI Frames"
 local function GetBorderFile(db)
     local name = db and db.borderTexture
     if not (name and LSM:IsValid("border", name)) then name = DEFAULT_BORDER end
@@ -221,7 +222,7 @@ local function UpdateSkinFrame(window, db)
     -- Same look as the chat frame: Blizzard's dark dialog background inside the border picked in the options
     local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
     local borderTexture = GetBorderFile(db)
-    skin:SetBackdrop({ bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = 16, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+    skin:SetBackdrop({ bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = ns.BorderEdgeSize(borderTexture, 16), insets = { left = 3, right = 3, top = 3, bottom = 3 } })
     skin:SetBackdropColor(1, 1, 1, db.opacity or 0.85)
     skin:SetBackdropBorderColor(BORDER_TINT.r, BORDER_TINT.g, BORDER_TINT.b, BORDER_TINT.a)
 
@@ -282,7 +283,7 @@ local function UpdateSourceWindowSkin(window, db)
 
     local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
     local borderTexture = GetBorderFile(db)
-    skin:SetBackdrop({ bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = 16, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+    skin:SetBackdrop({ bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = ns.BorderEdgeSize(borderTexture, 16), insets = { left = 3, right = 3, top = 3, bottom = 3 } })
     skin:SetBackdropColor(1, 1, 1, db.opacity or 0.85)
     skin:SetBackdropBorderColor(BORDER_TINT.r, BORDER_TINT.g, BORDER_TINT.b, BORDER_TINT.a)
 
@@ -1038,7 +1039,7 @@ function FlareUI_ToggleThreatMeter()
     if next(views) then
         ToggleThreatViews()
     else
-        print("|cff00ff00FlareUI:|r turn on Threat Meter Tab in the Damage Meter settings to use the threat view.")
+        print("|cff00ff00FlareUI:|r " .. L["turn on Threat Meter Tab in the Damage Meter settings to use the threat view."])
     end
 end
 
@@ -1077,7 +1078,7 @@ local function CreateThreatView(window)
     tab:SetFrameLevel(dd:GetFrameLevel() + 3)
     tab.Text = tab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     tab.Text:SetPoint("LEFT", tab, "LEFT", 4, 0)
-    tab.Text:SetText("Threat")
+    tab.Text:SetText(L["Threat"])
     tab:RegisterForClicks("LeftButtonUp")
     tab:SetScript("OnClick", function() SetView(window, true) end)
     -- the idle tab lifts a little under the mouse, like the chat's
