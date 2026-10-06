@@ -167,6 +167,17 @@ local function OnMouseWheel(handle, delta)
     SetFrameScale(frame, frame:GetScale() + SCALE_STEP * delta)
 end
 
+-- A bag window's portrait menu (Assign To, Ignore This Bag, sorting): opens, or closes when open
+local function ToggleBagMenu(frame)
+    local dropdown = frame.PortraitButton
+    if not (dropdown and dropdown.OpenMenu) then return end
+    if dropdown.IsMenuOpen and dropdown:IsMenuOpen() then
+        pcall(dropdown.CloseMenu, dropdown)
+    else
+        pcall(dropdown.OpenMenu, dropdown)
+    end
+end
+
 local function OnMouseUp(handle, button)
     if button ~= "RightButton" then return end
     local frame = handle.moveTarget or handle
@@ -178,16 +189,7 @@ local function OnMouseUp(handle, button)
         SavePosition(frame)
     end
     -- plain right-click on a bag window opens its sorting menu, wherever you click
-    if not IsShiftKeyDown() and not IsControlKeyDown() then
-        local dropdown = frame.PortraitButton
-        if dropdown and dropdown.OpenMenu then
-            if dropdown.IsMenuOpen and dropdown:IsMenuOpen() then
-                pcall(dropdown.CloseMenu, dropdown)
-            else
-                pcall(dropdown.OpenMenu, dropdown)
-            end
-        end
-    end
+    if not IsShiftKeyDown() and not IsControlKeyDown() then ToggleBagMenu(frame) end
 end
 
 -- Only the header drags: a mouse-enabled window would swallow every click inside it
@@ -253,18 +255,76 @@ local function ScanUIPanels()
     for name in pairs(windows) do SetupMovableFrame(name) end
 end
 
--- Bags are named, not UI panels. Their portrait router covers the title bar and swallows the drag,
--- so it is disabled; a plain right-click opens the sorting menu instead (OnMouseUp).
-local function UnrouteBagTitle(frame)
+-- Bags are named, not UI panels. Their portrait router covers the title bar and opens the portrait
+-- menu on mouse down, which would swallow the drag. The router becomes the drag handle instead: a
+-- left click (no drag) opens the menu as Blizzard's does, press and move drags the window, and a
+-- right-click still opens it too (OnMouseUp).
+local function BagRouterMouseDown(router)
+    router.bagDragged = nil
+end
+
+local function BagRouterDragStart(router)
+    router.bagDragged = true
+    local dropdown = router.moveTarget and router.moveTarget.PortraitButton
+    if dropdown and dropdown.IsMenuOpen and dropdown:IsMenuOpen() then pcall(dropdown.CloseMenu, dropdown) end
+end
+
+local function BagRouterMouseUp(router, button)
+    if button ~= "LeftButton" or router.bagDragged then return end
+    if router:IsMouseOver() then ToggleBagMenu(router.moveTarget) end
+end
+
+-- Right-click on the portrait opens the menu too, as it does on the title
+local function BagPortraitMouseUp(portrait, button)
+    if button == "RightButton" and portrait:IsMouseOver() then ToggleBagMenu(portrait:GetParent()) end
+end
+
+local function SetupBagTitle(frame)
     if frame.bagRouterFixed then return end
     for _, child in ipairs({ frame:GetChildren() }) do
-        if child.routeToSibling == "PortraitButton" and child.EnableMouse then
-            child:EnableMouse(false)
+        if child.routeToSibling == "PortraitButton" and child.SetScript then
+            child:SetScript("OnMouseDown", BagRouterMouseDown)
+            SetupHandle(frame, child)
+            child:HookScript("OnDragStart", BagRouterDragStart)
+            child:HookScript("OnMouseUp", BagRouterMouseUp)
             frame.bagRouterFixed = true
         end
     end
-    if frame.PortraitButton and frame.PortraitButton.EnableMouse then
-        frame.PortraitButton:EnableMouse(false)
+    if not frame.bagRouterFixed then return end
+    -- the title strip Move Any Frame set up lies over the router: the router is the handle now
+    local title = frame.TitleContainer
+    if title and title.EnableMouse then title:EnableMouse(false) end
+    local portrait = frame.PortraitButton
+    if portrait and portrait.HookScript and not portrait.FlareUI_RightHooked then
+        portrait.FlareUI_RightHooked = true
+        portrait:HookScript("OnMouseUp", BagPortraitMouseUp)
+    end
+end
+
+-- The bag header's "Backpack / <click for bag settings>" tooltip, from the portrait (the title's
+-- router shows it too): hidden unless Bag Header Tooltip is on
+local function HideBagTooltip(region)
+    local db = GetDb()
+    if db and db.bagTooltip then return end
+    local portrait = region.routeToSibling and region:GetParent()[region.routeToSibling] or region
+    if GameTooltip:IsOwned(portrait) then GameTooltip:Hide() end
+end
+
+local function InitBagTooltip()
+    local names = { "ContainerFrameCombinedBags" }
+    for i = 1, 13 do names[#names + 1] = "ContainerFrame" .. i end
+    for _, name in ipairs(names) do
+        local frame = _G[name]
+        if type(frame) == "table" and frame.GetChildren then
+            if frame.PortraitButton and frame.PortraitButton.HookScript then
+                frame.PortraitButton:HookScript("OnEnter", HideBagTooltip)
+            end
+            for _, child in ipairs({ frame:GetChildren() }) do
+                if child.routeToSibling == "PortraitButton" and child.HookScript then
+                    child:HookScript("OnEnter", HideBagTooltip)
+                end
+            end
+        end
     end
 end
 
@@ -274,7 +334,7 @@ local function ScanBagFrames()
     for _, name in ipairs(names) do
         SetupMovableFrame(name)
         local frame = moveFrames[name]
-        if frame then UnrouteBagTitle(frame) end
+        if frame then SetupBagTitle(frame) end
     end
 end
 
@@ -524,13 +584,15 @@ local function LoadSync()
     end
 
     -- Edit Mode layout, matched on name and kind. The switch rides on the reload dialog's secure
-    -- button (from our code it would taint every system). Only a layout of the current input mode,
-    -- and none while Remember Layout per Mode picks the layouts.
+    -- button (from our code it would taint every system). Only a layout of the current input mode.
+    -- While Remember Layout per Mode picks the layouts, once per character (syncLayoutTaken): the
+    -- layout then becomes the one remembered for this mode.
     local layoutChanged, layoutIndex = false, nil
     local manager = EditModeManagerFrame
     local layoutInfo = manager and manager.layoutInfo
     local expected = ns.IsGamepadUI() and Enum.InputDeviceInterfaceType.Gamepad or Enum.InputDeviceInterfaceType.Mkb
-    if store.editModeLayout and layoutInfo and layoutInfo.layouts and not db.layoutPerMode then
+    local takeLayout = not db.layoutPerMode or not charDB.syncLayoutTaken
+    if store.editModeLayout and layoutInfo and layoutInfo.layouts and takeLayout then
         for index, layout in ipairs(layoutInfo.layouts) do
             local sameKind = store.editModeLayoutType == nil
                 or layout.layoutType == store.editModeLayoutType
@@ -539,6 +601,8 @@ local function LoadSync()
                 local sameMode = style == expected or (style == nil and expected == Enum.InputDeviceInterfaceType.Mkb)
                 if index ~= layoutInfo.activeLayout and sameMode then
                     layoutChanged, layoutIndex = true, index
+                    charDB.syncLayoutTaken = true
+                    if Tweaks.AdoptSyncedLayout then Tweaks.AdoptSyncedLayout(layout) end
                 end
                 break
             end
@@ -1412,6 +1476,18 @@ local function RememberLayout()
     charDB.layoutByMode[ModeKey()] = { name = layout.layoutName, layoutType = layout.layoutType }
 end
 
+-- Sync Blizz UI is switching this character to the source's layout (after its reload): remember
+-- that one for this mode, and not the layout still active until the reload
+function Tweaks.AdoptSyncedLayout(layout)
+    local db = GetDb()
+    if not (db and db.layoutPerMode and layout and layout.layoutName) then return end
+    local active = ActiveLayout()
+    fallbackLayout = active and { name = active.layoutName, layoutType = active.layoutType }
+    local charDB = ns.CharDB()
+    charDB.layoutByMode = charDB.layoutByMode or {}
+    charDB.layoutByMode[ModeKey()] = { name = layout.layoutName, layoutType = layout.layoutType }
+end
+
 -- Index of the remembered layout, when it is not the active one
 local function RememberedIndex()
     local saved = ns.CharDB().layoutByMode
@@ -1526,6 +1602,7 @@ function Tweaks:Init()
     InitAutoDelete()
     InitTrainAll()
     InitBossTracker()
+    InitBagTooltip()
     InitLayoutPerMode()
     ApplyNameplateCombo()
     ApplyQuestTags()

@@ -85,6 +85,9 @@ ns.Options.args.tweaks = {
                         spacer4 = SP(51),
                         offerGamepad = Toggle("offerGamepad", L["Offer Gamepad Mode"], 60,
                             L["With keyboard and mouse, the first press on a controller asks whether to switch to Gamepad mode (Blizzard's Gamepad UI). Type /fui pad to switch at any time."], false, 1.2),
+                        spacer5 = SP(61),
+                        bagTooltip = Toggle("bagTooltip", L["Bag Header Tooltip"], 70,
+                            L["Shows Blizzard's tooltip (the bag's name and \"click for bag settings\") when you point at a bag window's header."], false, 1.2),
                     }
                 },
 

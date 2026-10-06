@@ -564,6 +564,28 @@ local function UpdateGryphonLayer()
     if caps:GetFrameLevel() ~= level then caps:SetFrameLevel(level) end
 end
 
+-- On Forever each gryphon is its own Edit Mode system with its own Hidden setting, but the main
+-- bar's OnShow still runs UpdateEndCaps(hideBarArt): with bar 1's Hide Bar Art on, the gryphons'
+-- container stayed hidden after the bar came back (Alt+Z, a cinematic). Shown again with the bar;
+-- each gryphon keeps its own visibility. Neutral characters have none, as Blizzard's.
+local function KeepEndCapsWithBar(bar)
+    local caps = bar and bar.EndCaps
+    if not caps or caps:IsShown() or not bar:IsVisible() then return end
+    local faction = UnitFactionGroup("player")
+    if not faction or faction == "Neutral" then return end
+    if InCombatLockdown() and caps:IsProtected() then return end
+    caps:Show()
+end
+
+local function HookEndCaps()
+    local bar = _G.MainActionBar
+    if not bar or bar.FlareUI_EndCapsHooked or type(bar.UpdateEndCaps) ~= "function" then return end
+    if _G.MAIN_ACTION_BAR_MANAGE_END_CAPS ~= false then return end   -- Retail-style bars manage them
+    bar.FlareUI_EndCapsHooked = true
+    hooksecurefunc(bar, "UpdateEndCaps", KeepEndCapsWithBar)
+    KeepEndCapsWithBar(bar)
+end
+
 -- Blizzard pushes newly learned spells onto the bars unless this CVar is off
 local function UpdateAutoPushSpells(db)
     C_CVar.SetCVar("AutoPushSpellToActionBar", db.stopAutoAddSpells and "0" or "1")
@@ -621,6 +643,7 @@ function ActionBars:Init()
     if ns.db.profile.fcm then ns.db.profile.fcm.setupModeEnabled = false end
 
     self:Refresh()
+    HookEndCaps()
 
     -- hooked per button: the mixin's functions are copied onto each frame
     for _, btn in ipairs(GetAllActionButtons()) do

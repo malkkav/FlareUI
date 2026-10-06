@@ -1,3 +1,15 @@
+# FlareUI 1.6.1
+
+Bug fixes for bag windows, Sync Blizz UI and the action bar gryphons.
+
+## New
+- **Bag Header Tooltip** (Tweaks > Windows & Settings, off by default): Blizzard's "Backpack / click for bag settings" tooltip on a bag window's header is now hidden unless you turn it on.
+
+## Fixed
+- **Bags (Move Any Frame):** left-click anywhere on a bag window's header opens its menu again (Assign To, Ignore This Bag, sorting), as in Blizzard's UI. Press and drag the title to move the window. Right-click on the header, or on the bag icon, opens the menu too.
+- **Sync Blizz UI:** a character copying from the source now switches to the source's Edit Mode layout again while Remember Layout per Mode is on. It happens once per character, and that layout becomes the one remembered for the mode.
+- **Action Bars:** the gryphons no longer disappear after hiding the interface with Alt+Z (with Hide Bar Art on for Action Bar 1).
+
 # FlareUI 1.6
 
 A quest tracker of FlareUI's own, a bag for every addon's minimap button, and a big clean-up that makes FlareUI lighter while you play.

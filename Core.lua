@@ -569,6 +569,7 @@ local defaults = {
         tweaks = {
             enabled = false,
             moveAnyFrame = true,        -- drag / Ctrl+wheel any Blizzard panel; positions in frames{}
+            bagTooltip = false,         -- Blizzard's "Backpack / click for bag settings" tooltip on the bag header
             syncUI = false,             -- account-wide copy of character-specific Blizzard settings
             sellJunk = false,
             autoRepair = false,
