@@ -55,6 +55,7 @@ local MOVE_EXCLUDED = {
 local moveFrames = {}          -- name -> frame (already set up)
 local moveApplyQueued = false
 local movePending = {}         -- frames whose saved position must be applied after combat
+local setupPending = {}        -- protected windows that loaded in combat: set up when it ends
 local moveSuspended = false    -- the gamepad UI came on mid-session; see StartMoveAnyFrame
 
 local function GetFrameStore(name, create)
@@ -235,6 +236,13 @@ local function SetupMovableFrame(name)
     if moveSuspended or moveFrames[name] or MOVE_EXCLUDED[name] then return end
     local frame = _G[name]
     if type(frame) ~= "table" or not frame.GetObjectType or not frame.StartMoving then return end
+    -- a protected window (the spellbook) can load in combat, when SetMovable / SetClampedToScreen
+    -- on it are blocked: it is set up once combat ends
+    if InCombatLockdown() and frame:IsProtected() then
+        setupPending[name] = true
+        return
+    end
+    setupPending[name] = nil
     frame.moveName = name
     moveFrames[name] = frame
     frame:SetMovable(true)
@@ -355,6 +363,10 @@ local function InitMoveAnyFrame()
     hooksecurefunc("UpdateContainerFrameAnchors", function() ScanBagFrames() ApplyAllNowAndNext() end)
     Tweaks:RegisterEvent("BAG_UPDATE_DELAYED", ScanBagFrames)
     Tweaks:RegisterEvent("PLAYER_REGEN_ENABLED", function()
+        if next(setupPending) then
+            for name in pairs(setupPending) do SetupMovableFrame(name) end
+            ScanBagFrames()   -- a bag window set up late still needs its title bar
+        end
         for frame in pairs(movePending) do movePending[frame] = nil; if frame:IsShown() then ApplySavedPosition(frame) end end
     end)
 end

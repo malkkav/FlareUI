@@ -1,3 +1,8 @@
+# FlareUI 1.6.2
+
+## Fixed
+- **Move Any Frame:** opening the spellbook (or another window Blizzard loads on first use) for the first time during combat no longer causes an "action blocked" error. The window becomes movable once combat ends.
+
 # FlareUI 1.6.1
 
 Bug fixes for bag windows, Sync Blizz UI and the action bar gryphons.
