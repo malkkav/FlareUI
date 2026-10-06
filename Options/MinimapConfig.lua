@@ -7,6 +7,12 @@ local L = ns.L
 -- user-facing. Player coordinates are Blizzard's own option.
 --------------------------------------------------
 local function Get(key) return ns.db.profile.minimap[key] end
+
+-- FlareUI's Quest Tracker module is on: Blizzard's tracker is parked, nothing to match
+local function OwnTrackerOn()
+    local own = ns.db.profile.objectivetracker
+    return own and own.enabled or false
+end
 local function Set(key, val)
     ns.db.profile.minimap[key] = val
     if ns.Minimap then ns.Minimap:Refresh() end
@@ -30,17 +36,31 @@ ns.Options.args.minimap = {
                 showDayNight = {
                     type = "toggle", name = L["Day/Night Badge"], order = 20, width = 1.2,
                     desc = L["Shows Blizzard's day/night badge on the map's bottom-left corner."],
+                    -- the badge is the Addon Button Bag's button, so it stays while the bag is on
+                    disabled = function() return Get("buttonBag") ~= false end,
                     get = function() return Get("showDayNight") end,
                     set = function(_, val) Set("showDayNight", val) end,
                 },
-                spacer2 = { type = "description", name = "", width = 0.1, order = 21 },
+                spacer2 = { type = "description", name = "", width = 0.1, order = 21, hidden = OwnTrackerOn },
                 matchTrackerWidth = {
                     type = "toggle", name = L["Match Objective Tracker Width"], order = 30, width = 1.5,
+                    -- only for Blizzard's tracker: with FlareUI's on, Blizzard's is parked
+                    hidden = OwnTrackerOn, disabled = OwnTrackerOn,
                     desc = L["Scales the whole objective tracker so its header bars are as wide as the minimap's frame."],
                     get = function() return Get("matchTrackerWidth") end,
                     set = function(_, val) Set("matchTrackerWidth", val) end,
                 },
                 break1 = { type = "description", name = " ", order = 35, width = "full" },
+                buttonBag = {
+                    type = "toggle", name = L["Addon Button Bag"], order = 37, width = 1.2,
+                    desc = L["Gathers every addon's minimap button, and the addons of Blizzard's addon compartment, into a bag: click the day/night badge to open it."],
+                    get = function() return Get("buttonBag") ~= false end,
+                    set = function(_, val)
+                        ns.db.profile.minimap.buttonBag = val
+                        ns.ShowDialog("FLAREUI_RELOAD")
+                    end,
+                },
+                spacer3 = { type = "description", name = "", width = 0.1, order = 38 },
                 autoZoom = {
                     type = "range", name = L["Auto Zoom Out"], min = 0, max = 30, step = 1, order = 40, width = 1.2,
                     desc = L["Seconds before the map zooms back out after you zoom in. 0 turns it off."],

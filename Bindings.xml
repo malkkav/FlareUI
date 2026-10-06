@@ -2,4 +2,7 @@
 	<Binding name="FLAREUI_SETTINGS" header="FLAREUI" category="ADDONS">
 		FlareUI_ToggleSettings()
 	</Binding>
+	<Binding name="FLAREUI_TRACKER" category="ADDONS">
+		FlareUI_ToggleObjectiveTracker()
+	</Binding>
 </Bindings>

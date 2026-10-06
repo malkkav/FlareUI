@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- CONTROLLER NAVIGATION FOR FLAREUI'S WINDOWS
@@ -795,7 +796,7 @@ hooksecurefunc(ns, "ShowRadialEditor", Start)
 -- Getting there: the keybinding (Bindings.xml) and the radial panel call this
 --------------------------------------------------
 BINDING_HEADER_FLAREUI = "FlareUI"
-BINDING_NAME_FLAREUI_SETTINGS = "Open Settings"
+BINDING_NAME_FLAREUI_SETTINGS = L["Open Settings"]
 
 function FlareUI_ToggleSettings()
     if Settings.IsOpen() then

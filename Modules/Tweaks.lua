@@ -11,7 +11,7 @@ local L = ns.L
 --   Convenience         Faster Auto Loot, Auto-Type DELETE, Train All button
 --   Hide                Error Messages, Zone Text, Party Title, Portrait Numbers, Contextual Tips,
 --                       Addon Drawer, Quest Tracker in Boss Fights
---   Always on           Party frames unclamped from the screen edge (no toggle)
+--   Always on           Party frames unclamped from the screen edge
 -- Everything applies live except the ones that replace Blizzard scripts (those ask for a reload).
 --------------------------------------------------
 ns.Tweaks = ns.Tweaks or {}
@@ -42,10 +42,9 @@ end
 
 --------------------------------------------------
 -- 3. MOVE ANY FRAME
--- Every panel Blizzard registers in UIPanelWindows (plus load-on-demand ones as their addon
--- loads) becomes draggable, Ctrl+wheel scales it, Shift+right-click resets the position and
--- Ctrl+right-click the scale. Positions / scales are stored per frame name in the profile and
--- re-applied after Blizzard's panel manager places the frame.
+-- Every UIPanelWindows panel (and bags) drags by its header; Ctrl+wheel scales, Shift+right-click
+-- resets the position, Ctrl+right-click the scale. Saved per frame name, re-applied after
+-- Blizzard's panel manager places the frame.
 --------------------------------------------------
 local MIN_SCALE, MAX_SCALE, SCALE_STEP = 0.5, 2.0, 0.1
 -- panels that must stay where Blizzard puts them
@@ -70,7 +69,7 @@ local function CanTouch(frame)
     return not (InCombatLockdown() and frame:IsProtected())
 end
 
--- a maximized world map fills the screen and stays where Blizzard puts it
+-- A maximized world map stays where Blizzard puts it
 local function IsMaximized(frame)
     return frame.IsMaximized and frame:IsMaximized() and true or false
 end
@@ -96,7 +95,7 @@ local function ApplyAll()
     end
 end
 
--- once more on the next frame, for anything that re-anchors a window after the hooks ran
+-- Once more on the next frame, for anything that re-anchors a window after the hooks ran
 local function QueueApplyAll()
     if moveApplyQueued or moveSuspended then return end
     moveApplyQueued = true
@@ -106,7 +105,7 @@ local function QueueApplyAll()
     end)
 end
 
--- right after Blizzard has placed the windows, so a moved one never shows at Blizzard's spot first
+-- Right after Blizzard places the windows, so a moved one never shows at Blizzard's spot first
 local function ApplyAllNowAndNext()
     ApplyAll()
     QueueApplyAll()
@@ -130,7 +129,7 @@ end
 local function SetFrameScale(frame, scale)
     scale = math_max(MIN_SCALE, math_min(MAX_SCALE, math_floor(scale * 100 + 0.5) / 100))
     if not CanTouch(frame) then return end
-    -- keep the top-left corner where it is so the frame does not jump while scaling
+    -- the top-left corner stays put
     local left, top = frame:GetLeft(), frame:GetTop()
     local oldScale = frame:GetScale()
     frame:SetScale(scale)
@@ -191,8 +190,7 @@ local function OnMouseUp(handle, button)
     end
 end
 
--- Only the header drags. Enabling the mouse on the window itself (or its NineSlice) would swallow
--- every click inside it, so those are never used as handles.
+-- Only the header drags: a mouse-enabled window would swallow every click inside it
 local HEADER_HEIGHT = 26
 local CLOSE_BUTTON_ROOM = 40
 
@@ -207,8 +205,7 @@ local function SetupHandle(frame, handle)
     handle:HookScript("OnMouseUp", OnMouseUp)
 end
 
--- Ctrl+wheel scales from anywhere over the window. EnableMouseWheel does not block clicks, and a
--- child that handles the wheel itself (scroll frames) still wins.
+-- Ctrl+wheel scales from anywhere over the window (scroll frames keep their own wheel)
 local function SetupWheel(frame)
     if frame.moveWheelHooked or not frame.EnableMouseWheel then return end
     frame.moveWheelHooked = true
@@ -217,9 +214,7 @@ local function SetupWheel(frame)
     frame:HookScript("OnMouseWheel", OnMouseWheel)
 end
 
--- the title bar if the frame has one (on the world map it belongs to the BorderFrame drawn over the
--- whole map), otherwise a strip across the top that sits below the frame's own buttons and stops
--- short of the close button
+-- The title bar if the frame has one, otherwise a strip across the top short of the close button
 local function GetHeaderHandle(frame)
     if frame.TitleContainer then return frame.TitleContainer end
     local border = frame.BorderFrame
@@ -244,7 +239,7 @@ local function SetupMovableFrame(name)
     frame:SetClampedToScreen(true)
     SetupHandle(frame, GetHeaderHandle(frame))
     SetupWheel(frame)
-    -- the panel manager has already placed the window when it shows: put ours back before it draws
+    -- the panel manager has placed the window by OnShow: put ours back before it draws
     frame:HookScript("OnShow", function(f)
         ApplySavedPosition(f)
         C_Timer.After(0, function() ApplySavedPosition(f) end)
@@ -258,10 +253,8 @@ local function ScanUIPanels()
     for name in pairs(windows) do SetupMovableFrame(name) end
 end
 
--- Bags are not UI panels, so they have to be named. Every container frame carries an invisible
--- "portrait button router" that covers the whole title bar and sends clicks to the sorting menu,
--- which also swallows the drag. Both it and the portrait button are disabled here; the sorting
--- menu is reached with a plain right-click anywhere on the window instead (see OnMouseUp).
+-- Bags are named, not UI panels. Their portrait router covers the title bar and swallows the drag,
+-- so it is disabled; a plain right-click opens the sorting menu instead (OnMouseUp).
 local function UnrouteBagTitle(frame)
     if frame.bagRouterFixed then return end
     for _, child in ipairs({ frame:GetChildren() }) do
@@ -306,14 +299,8 @@ local function InitMoveAnyFrame()
     end)
 end
 
--- Forever's gamepad UI drives these same windows and trips over what this feature does to them: the
--- fields written on Blizzard panels and the panel-manager hooks tainted the Character panel opened
--- from the gamepad radial, and opening bags or the quest log from the gamepad menu froze the client
--- (2026-09-25). Hooks cannot be taken back once set, so it only ever starts in keyboard mode - at
--- login, or on the switch back. A switch to the gamepad UI after it has started stops it placing
--- windows at once, but what is already hooked stays hooked until a reload, so it asks for one.
--- The saved positions live in the profile throughout.
--- A private frame for the event: an AceEvent object keeps one callback per event.
+-- The Gamepad UI trips over this feature (taint, client freezes), and hooks cannot be undone, so it
+-- only starts in keyboard mode. A switch to the Gamepad UI suspends it until the switch back.
 local moveStarted = false
 
 local function OnInterfaceTransition()
@@ -341,21 +328,15 @@ end
 
 --------------------------------------------------
 -- 4. SYNC BLIZZ UI
--- Snapshot of the character-specific Blizzard settings into the account-wide store
--- (ns.db.global.uiSync): CVars from the list below (filtered by what this client knows), the
--- active Edit Mode layout (by name), chat window setup and bag flags. Saved on logout and after
--- settings change; applied on login to any character whose applied stamp differs.
--- One character is the source and only its snapshot is kept. The source is chosen from that
--- character itself and named by GUID, so nothing lists characters: no roster to go stale when one
--- is deleted, and nothing to split in two when the client changes what UnitName returns.
+-- The source character's per-character Blizzard settings (CVars, Edit Mode layout by name, chat
+-- windows, bag flags...) are kept account-wide (db.global.uiSync), saved on logout and after
+-- changes, and applied at login to every other character once per snapshot. The source is named
+-- by GUID.
 --------------------------------------------------
 local SYNC_CVARS = ns.SYNC_CVARS or {}   -- filled in Modules/TweaksCVars.lua
 local syncSaveTimer
 
--- AceEvent keeps ONE callback per object per event, so two features registering the same event on
--- Tweaks silently replace each other. InitDurability registers PLAYER_ENTERING_WORLD after
--- InitSyncUI does, and was quietly taking the sync's handler away - which is why snapshots saved
--- (those ride other events) but nothing was ever loaded. The sync owns its own object now.
+-- AceEvent keeps one callback per object per event, so the sync has its own object
 local SyncEvents = {}
 LibStub("AceEvent-3.0"):Embed(SyncEvents)
 
@@ -381,8 +362,7 @@ local function SourceLabel(source)
     return realm and (name .. " - " .. realm) or name
 end
 
--- A source recorded by name becomes a real one when its character logs in. Its old name is kept
--- for display when it is the fuller one: until 70009 it carried the surname.
+-- A source recorded by name (before 70009) becomes a GUID record when its character logs in
 local function ClaimLegacySource(store)
     local source = store.source
     if type(source) ~= "table" or source.guid or not ns.IsLegacyKeyMine(source.legacy) then return end
@@ -398,7 +378,7 @@ local function GetSyncStore()
     local store = ns.db.global.uiSync or {}
     ns.db.global.uiSync = store
 
-    -- The oldest format: one flat snapshot and its writer's bare name.
+    -- older formats: one flat snapshot, then one snapshot per character
     if store.savedAt and not store.characters and not store.snapshot then
         -- editModeLayoutIndex is not carried over: it was an index into the wrong list
         store.snapshot = {
@@ -409,8 +389,6 @@ local function GetSyncStore()
         store.cvars, store.editModeLayout, store.editModeLayoutIndex = nil, nil, nil
         store.chat, store.bags, store.savedAt, store.savedBy = nil, nil, nil, nil
     end
-    -- The next format kept a snapshot for every character, keyed by name, and the source's name.
-    -- Only the source's snapshot was ever applied, so it is the one kept.
     if store.characters then
         local legacy = type(store.source) == "string" and store.source or nil
         store.snapshot = legacy and store.characters[legacy] or nil
@@ -434,8 +412,7 @@ local function SaveSync()
     if not account then return end
     if Tweaks.syncLoading then return end
 
-    -- Only the source writes. With no source yet the first character to save becomes it, so an
-    -- account with one character needs no setup at all.
+    -- only the source writes; with no source yet, the first character to save becomes it
     if not account.source then account.source = Me() end
     if not IsSource(account) then return end
     account.snapshot = account.snapshot or {}
@@ -450,12 +427,8 @@ local function SaveSync()
         end
     end
 
-    -- Edit Mode layout, by name and kind.
-    -- C_EditMode.GetLayouts returns only the SAVED layouts, while its activeLayout is an index into
-    -- the presets-then-saved list the manager assembles (EditModeManager.lua:947). Indexing one with
-    -- the other read the wrong entry entirely - and read nothing at all on a character using a
-    -- preset, which is why "Modern (preset)" never travelled. The manager holds the combined list,
-    -- so it is the only place the name and the index agree.
+    -- Edit Mode layout, by name and kind, from the manager's presets-then-saved list (the only place
+    -- where the active index and the names agree)
     local manager = EditModeManagerFrame
     if manager and manager.GetActiveLayoutInfo then
         local ok, active = pcall(manager.GetActiveLayoutInfo, manager)
@@ -489,8 +462,7 @@ local function SaveSync()
         backpackAutosortDisabled = C_Container.GetBackpackAutosortDisabled(),
     }
 
-    -- Each bag slot's own flags (the bag menu's "Assign To", "Ignore This Bag" and junk-selling
-    -- choices). They belong to the slot, not the bag in it, so slot 1 copies onto slot 1.
+    -- each bag slot's flags (Assign To, Ignore This Bag, junk selling), slot onto slot
     store.bagFlags = {}
     for bag = 1, NUM_BAG_SLOTS do
         local flags = {}
@@ -505,12 +477,10 @@ local function SaveSync()
     local okDecline, decline = pcall(GetAutoDeclineGuildInvites)
     if okDecline and type(decline) == "boolean" then store.declineGuildInvites = decline end
 
-    -- Which action bars are shown is NOT a CVar: it is server-mirrored state behind
-    -- GetActionBarToggles, which is why syncing CVars alone left the bars off.
+    -- which action bars show is server state, not a CVar
     store.actionBars = { GetActionBarToggles() }
 
-    -- The colour swatches in the chat config, one per message type, and the "Color Name by Class"
-    -- boxes beside them (Blizzard keeps the latter in ChatTypeInfo, filled from the server).
+    -- chat colours per message type, and Color Name by Class (kept in ChatTypeInfo)
     store.chatColors = {}
     store.chatClassNames = {}
     for chatType, info in pairs(ChatTypeInfo) do
@@ -522,7 +492,7 @@ local function SaveSync()
     end
 
     store.savedAt = GetServerTime()
-    store.savedBy = nil   -- older snapshots named their writer; the source record does that now
+    store.savedBy = nil
 end
 
 local function QueueSaveSync()
@@ -530,8 +500,7 @@ local function QueueSaveSync()
     syncSaveTimer = C_Timer.NewTimer(5, function() syncSaveTimer = nil; SaveSync() end)
 end
 
--- Copies the source's snapshot onto this character, once per snapshot. Nothing to do on the source
--- itself, which is where the settings came from.
+-- Copies the source's snapshot onto this character, once per snapshot
 local function LoadSync()
     local db = GetDb()
     local account = db and db.syncUI and GetSyncStore()
@@ -554,14 +523,9 @@ local function LoadSync()
         end
     end
 
-    -- Edit Mode layout. Matched on name AND kind, because a saved layout is free to be called
-    -- "Modern" too, and searched over the manager's combined list so the index means what
-    -- SetActiveLayout expects. Presets are in that list like anything else, so they carry over.
-    -- The switch is never made from here: Blizzard applies the whole layout inside SetActiveLayout,
-    -- so from our code every system (the party frames' shared options among them) would be laid out
-    -- tainted. It rides on the reload prompt's secure button instead (see FLAREUI_SYNC_RELOAD).
-    -- Only a layout of the current input mode is copied, and none while Remember Layout per Mode
-    -- picks the layouts (each character's own, per mode).
+    -- Edit Mode layout, matched on name and kind. The switch rides on the reload dialog's secure
+    -- button (from our code it would taint every system). Only a layout of the current input mode,
+    -- and none while Remember Layout per Mode picks the layouts.
     local layoutChanged, layoutIndex = false, nil
     local manager = EditModeManagerFrame
     local layoutInfo = manager and manager.layoutInfo
@@ -581,11 +545,8 @@ local function LoadSync()
         end
     end
 
-    -- Chat windows. The message filters and channels are written to the client's chat settings, but
-    -- a tab only reads those in Blizzard's UPDATE_CHAT_WINDOWS pass (login and reload): loading them
-    -- into the live tabs from here would mean writing their channel lists from our code, which the
-    -- chat message handler reads while it handles secret messages. So a change counts towards the
-    -- reload asked for below, and the reload loads them cleanly.
+    -- Chat windows. Tabs only read their filters and channels at login, and writing them live would
+    -- taint the chat handler, so a change asks for the reload below.
     local chatChanged = false
     local function Strings(list)
         local out = {}
@@ -623,8 +584,7 @@ local function LoadSync()
                 for _, group in ipairs(current) do pcall(RemoveChatWindowMessages, i, group) end
                 for _, group in ipairs(w.messages) do pcall(AddChatWindowMessages, i, group) end
             end
-            -- Only the window assignment: a channel this character has not joined cannot be put in
-            -- a tab, and joining channels on someone's behalf is not this feature's business.
+            -- only the window assignment; channels are never joined
             if w.channels then
                 local ok, current = pcall(function() return { GetChatWindowChannels(i) } end)
                 if not SameSet(ok and current or {}, w.channels) then chatChanged = true end
@@ -652,8 +612,7 @@ local function LoadSync()
         if b.backpackAutosortDisabled ~= nil then pcall(C_Container.SetBackpackAutosortDisabled, b.backpackAutosortDisabled) end
     end
 
-    -- Bag slot flags. Only the API: the bag frames drop their cached filter icons on
-    -- BAG_SLOT_FLAGS_UPDATED themselves, so Blizzard's ContainerFrameSettingsManager is never written.
+    -- bag slot flags, through the API only (the bag frames refresh themselves)
     for bag, flags in pairs(store.bagFlags or {}) do
         for flag, set in pairs(flags) do
             local ok, current = pcall(C_Container.GetBagSlotFlag, bag, flag)
@@ -677,9 +636,7 @@ local function LoadSync()
         end
     end
 
-    -- Action bars. Delayed because the server mirrors the toggles back asynchronously, and followed
-    -- by MultiActionBar_Update because SetActionBarToggles records the choice without redrawing
-    -- anything - which is why the options panel showed bars ticked that were not on screen.
+    -- action bars: delayed (the server mirrors the toggles back), then redrawn
     if store.actionBars then
         local toggles = store.actionBars
         C_Timer.After(4, function()
@@ -693,16 +650,9 @@ local function LoadSync()
         end)
     end
 
-    -- Applying a CVar that Blizzard watches runs its callback inside OUR call: the raid frame CVars
-    -- drive CompactUnitFrameProfiles:ApplyCurrentSettings, which writes the shared compact frame
-    -- option tables, and whatever reads them afterwards is tainted. Entering Edit Mode does, and
-    -- then fails to compare the secret health colours it finds (CompactUnitFrame.lua:699).
-    -- There is no way to launder that, so the settings are applied and the UI is reloaded - which is
-    -- exactly what the addon this feature is modelled on does. The values live in CVars by now, so
-    -- the reload keeps every one of them and starts clean.
-    -- Asked once, after the action bar pass above, and only when something actually changed.
-    -- A layout switch counts: it relays every system frame from our tainted call. So do chat tab
-    -- filters and channels (see the chat windows above).
+    -- A watched CVar runs Blizzard's callback inside our call and taints what it writes (the raid
+    -- frame options), so after any change the UI is reloaded clean. Asked once, after the action
+    -- bar pass.
     if changed > 0 or layoutChanged or chatChanged then
         C_Timer.After(6, function()
             if not InCombatLockdown() then
@@ -715,8 +665,7 @@ local function LoadSync()
     Tweaks.syncLoading = false
 end
 
--- A throw halfway through would leave the settings half applied and syncLoading stuck on, so it is
--- caught, the flag released and the failure said.
+-- A throw halfway releases syncLoading and says so
 local function RunLoadSync()
     local ok, err = pcall(LoadSync)
     if not ok then
@@ -744,8 +693,7 @@ local function InitSyncUI()
         end)
     end
 
-    -- Modules initialise at PLAYER_LOGIN, which comes before PLAYER_ENTERING_WORLD, so the event is
-    -- only a backstop. The first pass starts here as well, so it cannot depend on an event arriving.
+    -- PLAYER_ENTERING_WORLD is only a backstop
     SyncEvents:RegisterEvent("PLAYER_ENTERING_WORLD", Start)
     Start()
 end
@@ -762,8 +710,7 @@ function Tweaks:GetSyncSourceLabel()
     return store and SourceLabel(store.source) or nil
 end
 
--- The snapshot is taken straight away, so the other characters copy this one from their next login
--- rather than from whenever it next changes a setting.
+-- The snapshot is taken at once, for the other characters' next login
 function Tweaks:MakeSyncSource()
     local store, me = GetSyncStore(), Me()
     if not (store and me) then return end
@@ -775,9 +722,7 @@ end
 
 --------------------------------------------------
 -- 5. VENDOR: SELL JUNK / REPAIR
--- Junk is sold by Blizzard's own C_MerchantFrame.SellAllJunkItems, the call behind the merchant
--- window's "Sell All Junk" button, so Blizzard decides what counts as junk. The value is added up
--- from the bags first, while the items are still there to be counted.
+-- Junk is sold by Blizzard's C_MerchantFrame.SellAllJunkItems; the value is counted first.
 --------------------------------------------------
 local function JunkValue()
     local total = 0
@@ -823,8 +768,7 @@ end
 
 --------------------------------------------------
 -- 6. DURABILITY WARNING
--- Prints a chat warning when the worst equipped item drops to the threshold, once per dip; the
--- warning arms itself again after a repair brings the gear back above it.
+-- A chat warning when the worst equipped item drops to the threshold, once per dip
 --------------------------------------------------
 local DURABILITY_SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10, 16, 17, 18 }   -- armour and weapons
 local durabilityWarned = false
@@ -869,11 +813,9 @@ end
 local ZOOM_STEP = 4.0
 local origZoomIn, origZoomOut
 
--- CameraZoomIn / Out are replaced rather than hooked: the mouse wheel bindings call the globals
--- directly, so there is no hook point that can change the step size. The originals are kept and
--- put back when the option is turned off.
--- The CVars are Blizzard's settings too, so an option that is off leaves them alone: they go back
--- to Blizzard's defaults only when FlareUI was the one that changed them (ForcedCVars remembers).
+-- CameraZoomIn / Out are replaced (the wheel bindings call the globals; no hook can change the
+-- step); the originals come back when the option is off. CVars go back to Blizzard's defaults only
+-- when FlareUI changed them (ForcedCVars).
 local function ForcedCVars()
     local global = ns.db and ns.db.global
     if not global then return {} end
@@ -908,9 +850,7 @@ local function ApplyCamera()
     end
 end
 
--- LOOT_READY already says whether this loot is to be taken automatically (the auto-loot setting with
--- the modifier key applied), so every slot is taken at once instead of waiting on the loot window.
--- The event can fire more than once for the same window; only the first one takes the loot.
+-- LOOT_READY says whether to auto-loot: every slot is taken at once, on the first event only
 local lootTaken = false
 local function FastLoot(_, autoLoot)
     local db = GetDb()
@@ -928,9 +868,8 @@ end
 --------------------------------------------------
 -- 8. HIDE
 --------------------------------------------------
--- Hide Error Messages takes UI_ERROR_MESSAGE away from UIErrorsFrame and hands back only the errors
--- about something the player would otherwise miss: loot that did not fit, money, the quest log.
--- They go through Blizzard's own TryDisplayMessage, so throttling and the error sound stay its own.
+-- Hide Error Messages keeps only the errors the player would otherwise miss (loot, money, quest
+-- log), shown through Blizzard's TryDisplayMessage
 local KEPT_ERRORS = {
     "ERR_INV_FULL", "ERR_ITEM_MAX_COUNT", "ERR_LOOT_GONE",    -- loot that did not make it into the bags
     "ERR_NOT_ENOUGH_MONEY", "ERR_TOO_MUCH_GOLD",              -- money
@@ -1011,10 +950,7 @@ local function ApplyTips()
     end
 end
 
--- The addon drawer (AddonCompartmentFrame, under the minimap calendar). Blizzard shows it from its own
--- UpdateDisplay whenever an addon registers, so the hide is re-applied after that; switching the
--- option off lets UpdateDisplay decide again. While the Minimap module is on it hides the drawer
--- itself, and this option is out of the way.
+-- The addon drawer, re-hidden after Blizzard's UpdateDisplay (the Minimap module hides it itself)
 local drawerHooked = false
 local function ApplyAddonDrawer()
     local drawer = _G.AddonCompartmentFrame
@@ -1050,13 +986,9 @@ end
 
 --------------------------------------------------
 -- 9. NAMEPLATE COMBO POINTS
--- Combo point gems (the shared art in Core.lua), centred under the target nameplate's health bar.
--- Forever has no nameplate combo bar of its own (the Mainline class nameplate bars are excluded from
--- Camelot), so the row is drawn here. The count can be secret in combat: each lit gem is a StatusBar
--- with range [i-1, i] fed the raw count and seen through a clip window the size of the gem, so no
--- Lua compares the number. A gained point flashes its shine only while the count is readable. When
--- the count is readable the row hides at zero, as Blizzard's does; when it is not, it stays up for
--- rogues and cat-form druids on a hostile target.
+-- Combo point gems (Core.lua) under the target nameplate's health bar; Forever has no nameplate
+-- combo bar. The count can be secret: each gem is fed the raw count. A readable count hides the row
+-- at zero and flashes gained points.
 --------------------------------------------------
 local NP_COMBO_SIZE     = 16   -- the socket's side
 local NP_COMBO_SPACING  = 15   -- the rims nearly touch; the sockets' shadows overlap
@@ -1067,9 +999,7 @@ local NP_COMBO_FALLBACK = 5
 
 local npComboRow, npComboEvents
 
--- Nameplate addons draw their own plates or rework Blizzard's (often with their own combo points and
--- quest icons), so the combo points and quest tags stand down while one is loaded. Modules start
--- at PLAYER_LOGIN, when every addon that loads at startup has.
+-- The combo points and quest tags stand down while a nameplate addon is loaded
 local NAMEPLATE_ADDONS = {
     { "Platynator", "Platynator" }, { "Plater", "Plater" }, { "Kui_Nameplates", "KuiNameplates" },
     { "TidyPlates_ThreatPlates", "Threat Plates" }, { "TidyPlates", "Tidy Plates" },
@@ -1077,7 +1007,7 @@ local NAMEPLATE_ADDONS = {
     { "EllesmereUINameplates", "EllesmereUI Nameplates" }, { "nPlates", "nPlates" },
 }
 
--- the name of the nameplate addon in charge, or nil
+-- The name of the nameplate addon in charge, or nil
 function Tweaks:GetNameplateAddon()
     for _, entry in ipairs(NAMEPLATE_ADDONS) do
         if C_AddOns.IsAddOnLoaded(entry[1]) then return entry[2] end
@@ -1106,7 +1036,7 @@ local function LayoutComboRow(row, count)
     row.count = count
 end
 
--- rogues always, druids only in a form that runs on energy (cat), and only on a hostile target
+-- Rogues, and druids in cat form, on a hostile target
 local function PlayerBuildsComboPoints()
     local _, class = UnitClass("player")
     if not canaccessvalue(class) or (class ~= "ROGUE" and class ~= "DRUID") then return false end
@@ -1114,10 +1044,11 @@ local function PlayerBuildsComboPoints()
         local powerType = UnitPowerType("player")
         if not (canaccessvalue(powerType) and powerType == Enum.PowerType.Energy) then return false end
     end
-    return UnitCanAttack("player", "target") and true or false
+    local hostile = UnitCanAttack("player", "target")
+    return canaccessvalue(hostile) and hostile or false
 end
 
--- the plate's health bar, or the plate itself if its layout is not the one expected
+-- The plate's health bar, or the plate itself
 local function PlateAnchor(plate)
     local unitFrame = plate.UnitFrame
     local bar = unitFrame and unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar
@@ -1125,9 +1056,11 @@ local function PlateAnchor(plate)
     return plate
 end
 
-local function UpdateNameplateCombo(_, event)
+local function UpdateNameplateCombo(_, event, _, powerToken)
     local row = npComboRow
     if not row then return end
+    -- energy ticks are not combo point changes
+    if event == "UNIT_POWER_FREQUENT" and canaccessvalue(powerToken) and powerToken ~= "COMBO_POINTS" then return end
     local plate = C_NamePlate.GetNamePlateForUnit("target")
     local points = GetComboPoints("player", "target")
     -- the points the shine compares against: none known after a target change or while secret
@@ -1146,11 +1079,13 @@ local function UpdateNameplateCombo(_, event)
     max = math_min(max, NP_COMBO_MAX)
     if row.count ~= max then LayoutComboRow(row, max) end
 
-    local anchor = PlateAnchor(plate)
-    if row:GetParent() ~= plate then row:SetParent(plate) end
-    row:ClearAllPoints()
-    row:SetPoint("TOP", anchor, "BOTTOM", 0, NP_COMBO_OFFSET_Y)
-    row:SetFrameLevel(anchor:GetFrameLevel() + 5)
+    if row:GetParent() ~= plate or not row:IsShown() then
+        local anchor = PlateAnchor(plate)
+        row:SetParent(plate)
+        row:ClearAllPoints()
+        row:SetPoint("TOP", anchor, "BOTTOM", 0, NP_COMBO_OFFSET_Y)
+        row:SetFrameLevel(anchor:GetFrameLevel() + 5)
+    end
     for i = 1, max do row.gems[i].lit:SetValue(points) end
     if last and row.lastPoints and row.lastPoints > last then
         for i = last + 1, math_min(row.lastPoints, max) do row.gems[i].flash:Restart() end
@@ -1158,7 +1093,7 @@ local function UpdateNameplateCombo(_, event)
     row:Show()
 end
 
--- switched on and off live from the options
+-- Switched on and off live from the options
 local function ApplyNameplateCombo()
     local db = GetDb()
     if not (db and db.nameplateCombo) or Tweaks:GetNameplateAddon() then
@@ -1187,13 +1122,9 @@ end
 
 --------------------------------------------------
 -- 9b. NAMEPLATE QUEST TAGS
--- "Tag quest objectives": a yellow exclamation mark on the right end of an enemy nameplate whose
--- unit belongs to an active quest - a kill objective, or a mob that drops a quest item - as
--- C_QuestLog.UnitIsRelatedToActiveQuest reports it (a plain boolean, not a secret). The badge is
--- centred on the right edge of the plate's level box - half inside, half out - and a little shorter
--- than it; with no level box it does the same on the health bar. Plates are recycled, so a tag hangs off each plate and is
--- re-checked when a unit gets a plate, whenever the quest log changes and when a level box comes or
--- goes.
+-- A quest "!" on the right edge of an enemy nameplate's level box (or health bar) whose unit is
+-- related to an active quest. Plates are recycled: each plate has a tag, re-checked when a unit
+-- gets a plate, when the quest log changes, and when the level box comes or goes.
 --------------------------------------------------
 local QUEST_TAG_ATLAS   = "QuestNormal"   -- the map's quest-offer "!", no shield
 local QUEST_TAG_FILE    = "Interface\\GossipFrame\\AvailableQuestIcon"
@@ -1205,7 +1136,7 @@ local questLevelHooked = {}    -- level boxes whose show / hide already re-place
 local questEvents
 local UpdateQuestTag
 
--- width / height of the exclamation art, so the tag keeps its shape at any height
+-- Width / height of the art, so the tag keeps its shape at any height
 local questTagAspect
 local function QuestTagAspect()
     if not questTagAspect then
@@ -1228,7 +1159,7 @@ local function GetQuestTag(plate)
     return tag
 end
 
--- the plate's level box when it is showing, otherwise the health bar
+-- The plate's level box when it shows, otherwise the health bar
 local function QuestTagAnchor(plate)
     local unitFrame = plate.UnitFrame
     local level = unitFrame and unitFrame.PlayerLevelDiffFrame
@@ -1276,8 +1207,7 @@ local function UpdateAllQuestTags()
     for unit in pairs(questUnits) do UpdateQuestTag(unit) end
 end
 
--- Under addon restrictions a unit token can arrive secret, and a secret can be neither passed to the
--- unit APIs nor used as a table key from addon code: such a plate is simply left untagged.
+-- A secret unit token cannot be used, so such a plate stays untagged
 local function OnQuestTagEvent(_, event, unit)
     if unit and not canaccessvalue(unit) then return end
     if event == "NAME_PLATE_UNIT_ADDED" then
@@ -1294,7 +1224,7 @@ local function OnQuestTagEvent(_, event, unit)
     end
 end
 
--- switched on and off live from the options
+-- Switched on and off live from the options
 local function ApplyQuestTags()
     local db = GetDb()
     if not (db and db.nameplateQuest) or Tweaks:GetNameplateAddon() then
@@ -1322,11 +1252,8 @@ end
 
 --------------------------------------------------
 -- 10. PARTY FRAME UNCLAMP (always on)
--- Edit Mode clamps every system to the screen (EditModeSystemTemplate clampedToScreen="true", with the
--- clamp rect set to the selection box), which stops the party frames short of the left edge. Nothing
--- in Blizzard's code turns it back on, so switching it off once is enough. PartyFrame holds secure
--- unit buttons, so this waits for combat to end if it has to - on a frame of its own, because
--- Move Any Frame already owns the module's PLAYER_REGEN_ENABLED handler.
+-- Edit Mode's clamp stops the party frames short of the left edge; switched off once, after combat
+-- if need be.
 --------------------------------------------------
 local function UnclampPartyFrame()
     local party = _G.PartyFrame
@@ -1344,10 +1271,7 @@ local function UnclampPartyFrame()
 end
 
 --------------------------------------------------
--- 11b. AUTO-TYPE DELETE
--- Blizzard asks for the word DELETE before destroying a rare or better item. The word goes into the
--- box as the dialog opens (Blizzard's own text handler then enables Yes), so Yes or Enter still
--- has to be pressed: the dialog keeps asking, it just no longer needs the typing.
+-- 11b. AUTO-TYPE DELETE (the word goes into the box; Yes still has to be pressed)
 --------------------------------------------------
 local DELETE_DIALOGS = { DELETE_GOOD_ITEM = true, DELETE_GOOD_QUEST_ITEM = true }
 
@@ -1363,11 +1287,8 @@ end
 
 --------------------------------------------------
 -- 11c. TRAIN ALL
--- A "Train All" button beside the trainer's Train button: learns every skill the trainer lists as
--- available, as far as the gold goes. Never a new profession (Blizzard asks before those, and the
--- slots are limited), and not at pet trainers, which charge training points. The list is walked
--- from the bottom because a purchase reindexes the entries below it, which are then already done.
--- Skills that need a lower rank first become available after the click, so it can light up again.
+-- Learns every available skill as far as the gold goes; never a new profession, not at pet
+-- trainers. Walked from the bottom: a purchase reindexes the entries below it.
 --------------------------------------------------
 local trainAll
 
@@ -1411,8 +1332,9 @@ local function CreateTrainAll()
         if #list == 0 then
             GameTooltip:AddLine(L["Nothing you can afford to learn here."], nil, nil, nil, true)
         else
-            GameTooltip:AddLine(string.format("Learns %d %s for %s.", #list, #list == 1 and "skill" or "skills",
-                GetMoneyString(total)), nil, nil, nil, true)
+            local line = #list == 1 and L["Learns 1 skill for %s."]:format(GetMoneyString(total))
+                or L["Learns %d skills for %s."]:format(#list, GetMoneyString(total))
+            GameTooltip:AddLine(line, nil, nil, nil, true)
         end
         GameTooltip:Show()
     end)
@@ -1427,9 +1349,8 @@ end
 
 --------------------------------------------------
 -- 11d. QUEST TRACKER IN BOSS FIGHTS
--- Hidden from ENCOUNTER_START to ENCOUNTER_END. While the tracker shows a quest item button it is
--- protected in combat, and a pull is always in combat: then ns.HideFrameSecurely holds the hide
--- until combat ends and the tracker is only made invisible meanwhile (alpha 0).
+-- Hidden from ENCOUNTER_START to ENCOUNTER_END. A tracker with an item button is protected in combat,
+-- so it is made invisible at once and hidden when combat ends.
 --------------------------------------------------
 local inEncounter, trackerHidden, trackerAlpha = false, false, 1
 
@@ -1451,23 +1372,16 @@ end
 
 --------------------------------------------------
 -- 11e. EDIT MODE LAYOUT PER MODE
--- The client keeps one active Edit Mode layout for both input modes, and each layout belongs to a mode
--- (its interfaceStyle), so switching the Gamepad UI - which reloads the UI - falls back to the new
--- mode's preset ("Modern" / "Gamepad"). FlareUI remembers the layout last used in each mode, per
--- character like the active layout itself, by type and name (indices shift as layouts come and go),
--- and on the first layout update after login, when the client has fallen back, offers it again.
--- The switch is Blizzard's own (C_EditMode.SetActiveLayout), and Blizzard applies the whole layout
--- inside that call - so it must never be made from FlareUI code: everything it lays out (the compact
--- party frames' shared option tables among it) would be tainted, and the next layout switch then
--- fails on secret health values (CompactUnitFrame.lua). The dialog's yes runs it as a macro from a
--- secure button (Dialog.lua padSecure: a controller yes goes the same way). Never in combat (a switch
--- mid-fight reloads in combat): then it waits for the fight to end.
+-- Switching the Gamepad UI falls back to the new mode's preset layout. FlareUI remembers the layout
+-- last used in each mode (per character, by type and name) and offers it back after login. The
+-- switch runs from the dialog's secure button (from our code it would taint every system); never
+-- in combat.
 --------------------------------------------------
 local function ModeKey()
     return ns.IsGamepadUI() and "gamepad" or "keyboard"
 end
 
--- the active layout of Edit Mode's own list (presets first, then the saved ones)
+-- The active layout of Edit Mode's list (presets first, then the saved ones)
 local function ActiveLayout()
     local manager = _G.EditModeManagerFrame
     local info = manager and manager.layoutInfo
@@ -1475,9 +1389,8 @@ local function ActiveLayout()
     return info.layouts[info.activeLayout], info
 end
 
--- Not remembered: anything after the input mode changed this session (the client falls back to the new
--- mode's preset before it reloads, and that must not overwrite the mode's layout), nor the fallback a
--- restore was offered over, until the player picks another layout.
+-- Not remembered: anything after the input mode changed this session, nor the fallback a restore
+-- was offered over
 local sessionMode, fallbackLayout
 
 local function SameLayout(a, b)
@@ -1499,7 +1412,7 @@ local function RememberLayout()
     charDB.layoutByMode[ModeKey()] = { name = layout.layoutName, layoutType = layout.layoutType }
 end
 
--- index of the remembered layout in Edit Mode's list, when it is not the active one already
+-- Index of the remembered layout, when it is not the active one
 local function RememberedIndex()
     local saved = ns.CharDB().layoutByMode
     saved = saved and saved[ModeKey()]
@@ -1533,7 +1446,7 @@ local function InitLayoutPerMode()
         if index then
             local active = ActiveLayout()
             fallbackLayout = active and { name = active.layoutName, layoutType = active.layoutType }
-            local mode = ns.IsGamepadUI() and "gamepad" or "keyboard and mouse"
+            local mode = ns.IsGamepadUI() and L["gamepad"] or L["keyboard and mouse"]
             ns.ShowDialog("FLAREUI_RESTORE_LAYOUT", mode .. " (|cffffff00" .. layout.layoutName .. "|r)",
                 { index = index, name = layout.layoutName, mode = mode })
         else
@@ -1580,7 +1493,7 @@ end
 --------------------------------------------------
 -- 12. PUBLIC
 --------------------------------------------------
--- live re-apply for the options that need no reload
+-- Live re-apply for the options that need no reload
 function Tweaks:Refresh()
     if not self.initialized then return end
     ApplyCamera()

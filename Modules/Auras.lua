@@ -3,20 +3,14 @@ local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
--- The player's buffs and debuffs in FlareUI's look, in place of Blizzard's BuffFrame / DebuffFrame.
--- Two Edit Mode frames, FlareUI Buffs and FlareUI Debuffs, each holding one of Blizzard's
--- CustomAuraContainers (as the unit frames do): Blizzard picks, sorts and times the auras and drives
--- our textures with them, so it all works where aura data is secret (combat, instances), and the
--- container cancels a buff or weapon enchant on a right-click. FlareUI only draws:
---   * a square look (the action button frame) or a round one (the spellbook passive ring)
---   * borders tinted by Blizzard through a colour map: the art's own colour for buffs, dispel-type
---     colours for debuffs, so no Lua ever reads the dispel type
---   * the cooldown swipe on the border itself (a darkening sweep shaped like the border), on the
---     whole icon, or none
---   * the timer under the icon or along its bottom edge, stacks top right
--- Weapon enchants join the buffs (AddItemEnchantment). Private auras (boss debuffs no addon may read)
--- get their own anchors beside the debuffs, as Blizzard's DebuffFrame has. In the Gamepad UI the
--- module stands aside: Blizzard's frames are part of its controller navigation.
+-- The player's buffs and debuffs, in place of Blizzard's BuffFrame / DebuffFrame: two Edit Mode
+-- frames, each holding a CustomAuraContainer. Blizzard picks, sorts and times the auras and drives
+-- our textures, so it works with secret aura data; right-click cancels. FlareUI draws the look:
+--   * square (classic icon bevel) or round (the spellbook passive ring)
+--   * borders tinted by Blizzard through a colour map (dispel colours for debuffs, never read by Lua)
+--   * the cooldown swipe on the border, over the icon, or none; timer and stacks
+-- Weapon enchants join the buffs; private auras get anchors beside the debuffs. Stands aside in the
+-- Gamepad UI (Blizzard's frames are part of its navigation).
 --------------------------------------------------
 ns.Auras = ns.Auras or {}
 local AU = ns.Auras
@@ -39,28 +33,20 @@ end
 -- 3. CONSTANTS
 --------------------------------------------------
 local MEDIA         = "Interface\\AddOns\\FlareUI\\Media\\Auras\\"
--- Square: the classic spell icon border (the bevel Blizzard's icons carry), read from the icons
--- themselves and redrawn wider with clean clipped corners (Media/Auras/IconBorder.tga, grey, built
--- by wtf-tools/buildborder.js); buffs tint it the minimap frame's bronze. The icon fills its opening, cropped of its own
--- border. Round: the Radial Menu's rim - the spellbook passive ring, the icon its full size under
--- its mask - in the same bronze.
+-- Square: the classic icon bevel (grey, wtf-tools/buildborder.js), the icon in its opening. Round:
+-- the Radial Menu's rim, the icon under its mask. Both tinted bronze for buffs.
 local SQUARE_BORDER = MEDIA .. "IconBorder"
 local SQUARE_INSET  = 6 / 128     -- the icon starts this far in, under the bevel's inner line
 local SQUARE_MASK   = MEDIA .. "IconMask"   -- the icon clipped to the bevel's 45 degree corners
--- the bronze of the minimap frame's edge (its highlights measure about 147/115/78), lifted a little
--- as the tint multiplies the grey art
+-- the minimap frame's bronze, lifted a little as the tint multiplies the grey art
 local SQUARE_TINT   = { 0.72, 0.56, 0.38 }
 local ROUND_BORDER  = "talents-node-circle-gray"
 local ROUND_MASK    = "talents-node-circle-mask"
 local ROUND_TINT    = { 0.72, 0.56, 0.38 }   -- the same bronze on the silver ring
--- A swipe takes a texture file, not an atlas: these white shapes only give the border swipe its
--- outline; they are never drawn as art. The square one is the border itself in white (its exact
--- shape, clipped corners and all, so the dimming falls on the border and nowhere else); the round
--- one is a ring over the rim.
+-- White outlines for the Border swipe (a swipe takes a file, not an atlas); never drawn as art
 local SWIPE_SQUARE  = MEDIA .. "Border"
 local SWIPE_ROUND   = MEDIA .. "BorderRound"
 local SWIPE_DISC    = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
-local WHITE         = "Interface\\Buttons\\WHITE8X8"
 local TEMPLATE      = "CustomAuraContainerTemplate"
 local TIMER_SPACE   = 13      -- room under the icon for a timer placed below it
 local SWIPE_ALPHA   = 0.7     -- how much the spent part of the border dims (Border swipe)
@@ -68,10 +54,9 @@ local ICON_SWIPE_ALPHA = 0.7  -- how dark the overlay over the icon is (Icon swi
 local SWIPE_EDGE    = MEDIA .. "Edge"   -- the sweeping edge line of the Icon swipe
 local PRIVATE_COUNT = 4       -- private aura anchors beside the debuffs
 
--- the dispel type names Blizzard keys its colour maps by ("None" = no dispel type)
+-- The dispel type names Blizzard keys its colour maps by ("None" = no dispel type)
 local DISPEL_KEYS = { "None", "Magic", "Curse", "Disease", "Poison", "Bleed", "Enrage" }
--- Debuff borders by dispel type; the colour multiplies the grey art, so these sit brighter than the
--- flat threat colours. Buffs take the minimap frame's bronze, square or round.
+-- Debuff borders by dispel type (bright, as they multiply the grey art)
 local DEBUFF_COLORS = {
     None    = { 0.95, 0.32, 0.28 },
     Magic   = { 0.38, 0.65, 1.00 },
@@ -80,7 +65,7 @@ local DEBUFF_COLORS = {
     Poison  = { 0.45, 0.85, 0.38 },
 }
 
--- Edit Mode preview: sample icons for every slot, so the frame's full reach can be placed
+-- Edit Mode preview: sample icons for every slot
 local PREVIEW_ICONS = {
     buffs = { "Spell_Holy_WordFortitude", "Spell_Nature_Regeneration", "Spell_Holy_MagicalSentry",
               "Ability_Warrior_BattleShout", "Spell_Holy_GreaterBlessingofKings", "Spell_Nature_Rejuvenation",
@@ -113,17 +98,22 @@ local function KindDb(kind)
     return db and db[kind]
 end
 
--- Blizzard applies the colour map's ColorMixin with SetVertexColor(color:GetRGBA())
+-- Blizzard applies the map's colours with SetVertexColor(color:GetRGBA()). Four maps in all, cached.
+local colorMaps = {}
 local function ColorMap(isDebuff, round)
-    local map = {}
+    local cacheKey = (isDebuff and "d" or "b") .. (round and "r" or "s")
+    local map = colorMaps[cacheKey]
+    if map then return map end
+    map = {}
     for _, key in ipairs(DISPEL_KEYS) do
         local c = isDebuff and (DEBUFF_COLORS[key] or DEBUFF_COLORS.None) or (round and ROUND_TINT or SQUARE_TINT)
-        map[key] = c and CreateColor(c[1], c[2], c[3], 1) or CreateColor(1, 1, 1, 1)
+        map[key] = CreateColor(c[1], c[2], c[3], 1)
     end
+    colorMaps[cacheKey] = map
     return map
 end
 
--- the cell a frame's icons take: square icon, plus the timer's room when it sits under the icon
+-- The cell a frame's icons take: the icon, plus the timer's room when it sits under it
 local function CellHeight(size)
     local db = GetDb()
     return size + ((db and db.timer == "below") and TIMER_SPACE or 0)
@@ -163,7 +153,6 @@ local function StyleButton(button, look)
         local border = borderFrame:CreateTexture(nil, "OVERLAY", nil, 1)
         button.FlareUI_Border = border
 
-
         local cd = CreateFrame("Cooldown", nil, area, "CooldownFrameTemplate")
         cd:SetAllPoints(area)
         cd:SetDrawEdge(false)
@@ -193,9 +182,7 @@ local function StyleButton(button, look)
     area:SetPoint("TOP", button, "TOP", 0, 0)
     area:SetSize(size, size)
 
-    -- Square: the border over the whole cell, the icon in its opening, clipped to the border's cut
-    -- corners. Round: the ring over the whole cell, the icon the same size under the
-    -- ring's mask, as on the radial.
+    -- square: the icon in the border's opening, clipped to its cut corners; round: under the ring's mask
     icon:ClearAllPoints()
     mask:ClearAllPoints()
     border:ClearAllPoints()
@@ -230,8 +217,7 @@ local function StyleButton(button, look)
         button.FlareUI_BorderFrame:SetFrameLevel(base + 2)
     end
     button.FlareUI_Overlay:SetFrameLevel(base + 4)
-    -- Square with the Icon swipe: the sweep covers the icon's opening only, in the opening's cut
-    -- shape (the mask art, cropped to the opening). Otherwise it covers the whole cell.
+    -- square with the Icon swipe: the sweep covers only the opening, in its cut shape
     local fitIcon = look.swipe == "icon" and not round
     cd:ClearAllPoints()
     cd:SetAllPoints(fitIcon and icon or area)
@@ -280,7 +266,7 @@ local function StyleButton(button, look)
     durationText:SetAlpha(look.timer == "none" and 0 or 1)
 end
 
--- hands our regions to Blizzard's aura button, which then drives them from the aura it shows
+-- Hands our regions to Blizzard's aura button, which drives them from its aura
 local function HookButton(button, look)
     local icon, cd, border = button.FlareUI_Icon, button.FlareUI_Cooldown, button.FlareUI_Border
     local countText, durationText = button.FlareUI_Count, button.FlareUI_Duration
@@ -289,9 +275,8 @@ local function HookButton(button, look)
     pcall(button.SetApplicationCount, button, countText, {})
     pcall(button.SetDurationText, button, durationText, {})
     pcall(button.ClearDispelTypeTextures, button)
-    -- Blizzard tints our border from the colour map, whatever the (possibly secret) dispel type.
-    -- Once handed over the border is forbidden in combat: it is only restyled out of combat
-    -- (LayoutKind waits for the fight to end), and always before it is handed over again.
+    -- Blizzard tints the border from the colour map, whatever the (possibly secret) dispel type.
+    -- Once handed over it is only restyled out of combat, before being handed over again.
     if Enum.CustomAuraButtonDispelTypeTextureStyle then
         local options = {
             style = Enum.CustomAuraButtonDispelTypeTextureStyle.PreserveAsset,
@@ -308,7 +293,7 @@ local function HookButton(button, look)
     end
 end
 
--- a snapshot of the settings for one frame, handed to every button Blizzard initialises
+-- A snapshot of one frame's settings, handed to every button Blizzard initialises
 local function Look(kind)
     local db, kdb = GetDb(), KindDb(kind)
     return {
@@ -322,10 +307,8 @@ local function Look(kind)
     }
 end
 
--- The same buttons for the unit frames' auras (UnitFrames.lua ConfigureAuraCorner), whether or not
--- this module is on, in each frame's own look (Edit Mode > Auras: shape, swipe, timer) and the unit
--- frames' text font (Fonts > Aura Text), its size following the icon's. Cancel by right-click only
--- on the player's own buffs.
+-- The same buttons for the unit and party frames' auras (whether or not this module is on), in each
+-- frame's own look and the Aura Text font, sized to the icon
 ns.AuraLook = {
     Style = StyleButton,
     Hook = HookButton,
@@ -350,8 +333,8 @@ ns.AuraLook = {
 
 --------------------------------------------------
 -- 6. LAYOUT
--- The holder is as big as the grid can grow (icons per row x rows), so the Edit Mode box shows the
--- frame's full reach; the container sits in its starting corner and fills it from there.
+-- The holder is as big as the grid can grow, so the Edit Mode box shows the full reach; the
+-- container fills it from its starting corner.
 --------------------------------------------------
 local function GridSize(kdb)
     local size, spacing = kdb.size or 30, kdb.spacing or 6
@@ -366,9 +349,7 @@ local function StartCorner(kdb)
     return ((kdb.wrap == "UP") and "BOTTOM" or "TOP") .. ((kdb.grow == "RIGHT") and "LEFT" or "RIGHT")
 end
 
--- Edit Mode: the real auras step aside and every slot up to Max Icons shows a sample in the chosen
--- look - debuffs in each dispel colour, a few timers, stacks and running swipes - so the frame's
--- full reach can be placed. These are plain frames: nothing is handed to Blizzard.
+-- Edit Mode: samples in every slot up to Max Icons, in the chosen look (plain frames, not Blizzard's)
 function UpdatePreview(kind)
     local holder, kdb = frames[kind], KindDb(kind)
     if not (holder and kdb) then return end
@@ -410,7 +391,7 @@ function UpdatePreview(kind)
     end
 end
 
--- private auras: a row just outside the holder, on the side the grid wraps towards
+-- Private auras: a row just outside the holder, on the side the grid wraps towards
 local function LayoutPrivateAnchors(holder, kdb)
     if not (C_UnitAuras and C_UnitAuras.AddPrivateAuraAnchor) then return end
     holder.privateAnchors = holder.privateAnchors or {}
@@ -509,12 +490,14 @@ local function LayoutKind(kind)
         print("|cffff0000FlareUI:|r aura frame failed: " .. tostring(err))
     end
 
-    -- weapon enchants lead the buffs; their frames were made once, at login, and are restyled here
+    -- weapon enchants lead the buffs; their frames were made at login. While auras are secret Blizzard
+    -- refuses the restyle, which then waits for the restriction to lift (RetryEnchantStyle).
     if holder.enchantSlots then
         local db = GetDb()
+        holder.enchantPending = nil
         for slot, frame in pairs(holder.enchantSlots) do
-            StyleButton(frame, look)
-            HookButton(frame, look)
+            local styled = pcall(StyleButton, frame, look) and pcall(HookButton, frame, look)
+            if not styled then holder.enchantPending = look end
             pcall(container.SetItemEnchantmentEnabled, container, slot, db.weaponEnchants ~= false)
         end
         pcall(container.SetItemEnchantmentLayout, container, {
@@ -532,7 +515,7 @@ local function LayoutKind(kind)
 end
 
 --------------------------------------------------
--- 7. POSITION (per Edit Mode layout, like the unit frames)
+-- 7. POSITION (per Edit Mode layout)
 --------------------------------------------------
 local function GetLayoutStore(layoutName)
     local db = GetDb()
@@ -599,9 +582,7 @@ local function BuildSettings(kind)
 end
 
 --------------------------------------------------
--- 9. BLIZZARD'S FRAMES
--- Parked for the session, like the unit frames' Blizzard counterparts: events off, hidden under a
--- hidden parent, and hidden again if anything shows them.
+-- 9. BLIZZARD'S FRAMES (parked for the session)
 --------------------------------------------------
 local function HideBlizzard(name)
     local frame = _G[name]
@@ -701,10 +682,30 @@ function AU:Init()
     LEM:RegisterCallback("enter", SetPreview)
     LEM:RegisterCallback("exit", SetPreview)
 
+    -- weapon enchant frames refused their restyle in restricted content: again once that lifts
+    local function RetryEnchantStyle()
+        for _, kind in ipairs(KIND_ORDER) do
+            local holder = frames[kind]
+            local look = holder and holder.enchantPending
+            if look then
+                local styled = true
+                for _, frame in pairs(holder.enchantSlots or {}) do
+                    styled = (pcall(StyleButton, frame, look) and pcall(HookButton, frame, look)) and styled
+                end
+                if styled then holder.enchantPending = nil end
+            end
+        end
+    end
+
     local events = CreateFrame("Frame")
     events:RegisterEvent("PLAYER_REGEN_ENABLED")
-    events:SetScript("OnEvent", function()
-        if not pendingLayout then return end
+    events:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED")
+    events:SetScript("OnEvent", function(_, event)
+        -- the change arrives before it is enforced: retry a moment later
+        if (frames.buffs and frames.buffs.enchantPending) or (frames.debuffs and frames.debuffs.enchantPending) then
+            C_Timer.After(0.2, RetryEnchantStyle)
+        end
+        if event ~= "PLAYER_REGEN_ENABLED" or not pendingLayout then return end
         pendingLayout = false
         for _, kind in ipairs(KIND_ORDER) do
             ApplyPosition(kind)

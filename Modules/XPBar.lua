@@ -3,15 +3,10 @@ local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
--- The XP / Honor bars, in one of two styles (Action Bars > General > "XP / Honor Bars"):
---   FlareUI XP Bar (style "flare", section 6): one bar of our own, XP / reputation / honor in two
---     sections, placed in Edit Mode.
---   Blizzard Bars (style "blizzard", sections 4-5): Blizzard's two status tracking bars (Edit Mode
---     "Status Tracking Bar 1 / 2") reskinned in the FlareUI look - a flat fill in one colour per bar
---     type, a dark track, the FlareUI Thin border and the action bar font. Blizzard decides which
---     bars show and where they sit. Only widget calls and post-hooks: none of Blizzard's bar code
---     ever runs from ours, and nothing is written onto Blizzard's frames.
--- Lives under the Action Bars module: it loads with it.
+-- The XP / Honor bars, in one of two styles (loads with the Action Bars module):
+--   "flare" (section 6): FlareUI's own bar, XP / reputation / honor in two sections, in Edit Mode.
+--   "blizzard" (section 5): Blizzard's status tracking bars reskinned, through widget calls and
+--     post-hooks only.
 --------------------------------------------------
 ns.XPBar = ns.XPBar or {}
 local XPB = ns.XPBar
@@ -36,12 +31,10 @@ local BORDER_COLOR  = { 0.80, 0.60, 0.34 }         -- #CC9957
 local TRACK_COLOR   = { 0.15, 0.15, 0.15, 0.9 }
 local RESTED_ALPHA  = 0.4
 
--- Inside a container a bar sits at BOTTOMLEFT (1, 2), sized container - 3 (StatusTrackingBarContainer
--- InitializeBars, STATUS_BAR_SIZE_ADJUSTMENT = 3), so its edges are these far in from the container's.
+-- A bar's edges inside its container (StatusTrackingBarContainer: BOTTOMLEFT 1, 2, size - 3)
 local FILL_LEFT, FILL_RIGHT, FILL_TOP, FILL_BOTTOM = 1, 2, 1, 2
 
--- Blizzard picks a fill atlas per bar and state; each one maps to one of Blizzard's own colours.
--- Atlases not listed here keep Blizzard's art.
+-- Blizzard's fill atlases and the colour each one gets; others keep Blizzard's art
 local COLOR_XP     = { 0.58, 0.00, 0.55 }          -- #94008C, Blizzard's XP purple
 local COLOR_RESTED = { 0.00, 0.39, 0.88 }          -- #0063E0, Blizzard's rested blue
 local FIXED_COLORS = {
@@ -49,7 +42,7 @@ local FIXED_COLORS = {
     ["UI-HUD-ExperienceBar-Fill-Rested"]                  = COLOR_RESTED,
     ["UI-HUD-ExperienceBar-Fill-Reputation-Faction-Blue"] = COLOR_RESTED,
 }
--- the standing colours behind FACTION_BAR_COLORS, looked up by name when a bar is coloured
+-- standing colours, looked up by global name when a bar is coloured
 local STANDING_COLORS = {
     ["UI-HUD-ExperienceBar-Fill-Reputation-Faction-Red"]    = "FACTION_RED_COLOR",
     ["UI-HUD-ExperienceBar-Fill-Reputation-Faction-Orange"] = "FACTION_ORANGE_COLOR",
@@ -70,7 +63,7 @@ local function GetTexture()
     return LSM:Fetch("statusbar", TEXTURE_NAME) or "Interface\\Buttons\\WHITE8x8"
 end
 
--- r, g, b for a fill atlas, or nothing to leave Blizzard's art in place
+-- r, g, b for a fill atlas, or nothing to keep Blizzard's art
 local function ColorForAtlas(atlas)
     local fixed = FIXED_COLORS[atlas]
     if fixed then return fixed[1], fixed[2], fixed[3] end
@@ -95,8 +88,7 @@ end
 --------------------------------------------------
 -- 5. SKIN
 --------------------------------------------------
--- The flat fill replaces whichever atlas Blizzard just set. A texture deferred until the next level
--- comes back through SetBarTexture once the animation ends, and is handled then.
+-- The flat fill replaces whichever atlas Blizzard just set (a deferred one comes back later)
 local function ApplyFill(statusBar, atlas)
     local r, g, b = ColorForAtlas(atlas)
     if not r then return end
@@ -115,7 +107,7 @@ local function SkinBar(bar)
     if not statusBar then return end
     local texture = GetTexture()
 
-    -- whatever Blizzard set before we got here, then everything it sets from now on
+    -- what Blizzard set already, then everything it sets from now on
     local current = statusBar:GetStatusBarTexture()
     ApplyFill(statusBar, current and current:GetAtlas())
     hooksecurefunc(statusBar, "SetBarTexture", OnSetBarTexture)
@@ -133,17 +125,15 @@ local function SkinBar(bar)
     if bar.OverlayFrame and bar.OverlayFrame.Text then ApplyFont(bar.OverlayFrame.Text) end
 end
 
--- the divider pool is refilled on every layout change (gamepad switch, resize)
+-- The divider pool is refilled on every layout change
 local function HideDividers(container)
     local pool = container.HorizontalDividersPool
     if not pool then return end
     for divider in pool:EnumerateActive() do divider:Hide() end
 end
 
--- Blizzard's frame art (on Forever a grey bevel with clipped corners) came back at full alpha some
--- time after a single SetAlpha(0) - one of the container's animations, as no code touches it - and
--- showed inside our border. It is hidden for good: hidden, at alpha 0, and put back if anything
--- shows it or lifts its alpha.
+-- Blizzard's frame art comes back after a single SetAlpha(0) (an animation), so it is kept hidden
+-- and at alpha 0 for good
 local function KeepHidden(texture)
     texture:SetAlpha(0)
     texture:Hide()
@@ -169,20 +159,17 @@ end
 
 --------------------------------------------------
 -- 6. THE FLAREUI XP BAR (style "flare")
--- One bar of our own, in two sections side by side inside a single FlareUI Thin border (meeting
--- under Blizzard's rested XP pip), placed and
--- sized in Edit Mode as "FlareUI XP Bar". Blizzard's two bars are hidden while it is on.
+-- Two sections in one border, meeting under Blizzard's rested pip; Blizzard's bars are hidden.
 --   Below max level   left: XP              right: the watched reputation, or Honor without one
 --   At max level      left: the reputation   right: Honor
--- A section with nothing to show gives its room to the other; with nothing at all the bar hides.
--- The values are read the way Blizzard's own bars read them (Blizzard_StatusTrackingBar: ExpBar,
--- ReputationBar, HonorBar); the colours are the reskin's, so both styles look alike.
+-- An empty section gives its room to the other; with nothing to show the bar hides. Values are
+-- read as Blizzard_StatusTrackingBar reads them.
 --------------------------------------------------
 local FLARE_NAME    = "FlareUI_XPBar"
 local FLARE_LABEL   = "FlareUI XP Bar"
 local FLARE_INSET   = 4                        -- the fill starts this far in, inside the border's line
-local FLARE_DEFAULT = { point = "TOP", x = 0, y = -6 }  -- top centre of the screen
--- the two sections meet under Blizzard's rested XP pip (ExpBar.xml ExhaustionTick, 10 x 14)
+local FLARE_DEFAULT = { point = "TOP", x = 0, y = -6 }
+-- Blizzard's rested XP pip (10 x 14)
 local PIP_ATLAS, PIP_RATIO, PIP_OVERHANG = "UI-HUD-ExperienceBar-Frame-Pip", 10 / 14, 2
 local REST_ALPHA    = 0.4
 local COLOR_MAJOR   = COLOR_RESTED                      -- renown factions: Blizzard's blue bar
@@ -196,7 +183,7 @@ local function Percent(value, maxValue)
     return maxValue > 0 and value / maxValue * 100 or 0
 end
 
--- text on a section, in the chosen format
+-- A section's text, in the chosen format
 local function FormatValues(value, maxValue)
     local db = GetDb()
     local format = db and db.textFormat or "NUM_PERC"
@@ -208,7 +195,7 @@ local function FormatValues(value, maxValue)
     return ("%s / %s (%.0f%%)"):format(BreakUpLargeNumbers(value), BreakUpLargeNumbers(maxValue), Percent(value, maxValue))
 end
 
--- What each kind of section shows: value, max, rested bonus (XP only), colour, text and tooltip.
+-- Each kind of section: value, max, rested bonus (XP only), colour, text and tooltip
 local Read = {}
 
 function Read.xp()
@@ -295,7 +282,7 @@ function Read.honor()
     }
 end
 
--- the same tests Blizzard's bar manager makes (StatusTrackingManagerOverrides.lua CanShowBar)
+-- Blizzard's bar manager's tests (CanShowBar)
 local function WatchedReputation()
     local data = C_Reputation.GetWatchedFactionData()
     if data and data.name and data.name ~= "" and data.factionID and data.factionID ~= 0 then return data end
@@ -311,7 +298,7 @@ local function ShowsXP()
     return not IsXPUserDisabled() and not (GameRulesUtil and GameRulesUtil.IsPlayerAtEffectiveMaxLevel())
 end
 
--- the two sections' contents, by the rules above (nil = nothing to show there)
+-- The two sections' contents (nil = nothing to show there)
 local function PickSections()
     local rep, honor = WatchedReputation(), TracksHonor()
     if ShowsXP() then
@@ -322,7 +309,7 @@ local function PickSections()
     return left, right
 end
 
--- Edit Mode: samples in both sections, so the frame can be placed whatever is tracked
+-- Edit Mode samples, so the frame can be placed whatever is tracked
 local function SampleSections()
     return { value = 6, max = 10, rested = 2, color = COLOR_RESTED, text = L["XP"] },
            { value = 4, max = 10, rested = 0, color = FACTION_GREEN_COLOR and { FACTION_GREEN_COLOR:GetRGB() } or COLOR_RESTED, text = REPUTATION }
@@ -338,7 +325,7 @@ local function CreateSection(parent)
     track:SetAllPoints()
     section.Track = track
 
-    -- rested XP: from the left edge to where the bonus would take the fill, under the fill itself
+    -- rested XP: from the left edge to where the bonus would take the fill, under the fill
     local rested = section:CreateTexture(nil, "BORDER")
     rested:SetPoint("TOPLEFT")
     rested:SetPoint("BOTTOMLEFT")
@@ -357,7 +344,7 @@ local function CreateSection(parent)
     section:SetScript("OnEnter", function(self)
         local db = GetDb()
         if not (db and db.textMode == "ALWAYS") then self.Text:Show() end
-        if self.info and self.info.tooltip then
+        if self.info and self.info.tooltip and not (db and db.showTooltip == false) then
             GameTooltip:SetOwner(self, "ANCHOR_NONE")
             local _, y = self:GetCenter()
             if y and y > UIParent:GetHeight() / 2 then
@@ -442,7 +429,7 @@ local function LayoutFlare()
     UpdateFlare()
 end
 
--- position, per Edit Mode layout
+-- Position, per Edit Mode layout
 local function FlareStore(layoutName)
     local db = GetDb()
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
@@ -463,8 +450,7 @@ local function OnFlareMoved(_, layoutName, point, x, y)
     store.point, store.x, store.y = point, math.floor(x + 0.5), math.floor(y + 0.5)
 end
 
--- Blizzard's two bars step aside for good while ours is on. They keep their parent (the bar manager
--- calls into it); the visibility state driver re-hides them, and a Show hook catches Edit Mode.
+-- Blizzard's bars stay hidden while ours is on: a state driver, plus a Show hook for Edit Mode
 local function KeepBlizzardBarsHidden()
     for _, name in ipairs({ "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer" }) do
         local frame = _G[name]
@@ -502,7 +488,7 @@ local function BuildFlare()
     flare.Pip:SetPoint("CENTER", flare, "CENTER", 0, 0)
     flare.Pip:Hide()
 
-    -- events come in bursts (a kill: XP, reputation, rested); one update per frame
+    -- events come in bursts; one update per frame
     local queued = false
     flare:SetScript("OnEvent", function()
         if queued then return end
@@ -536,7 +522,7 @@ function XPB:ShouldLoad()
     return ab and ab.enabled and ab.xpbar and ab.xpbar.enabled or false
 end
 
--- the FlareUI XP Bar while it is the style in use (the Visibility module fades it as "XP Bar")
+-- The FlareUI XP Bar, for the Visibility module's fader
 function XPB:GetFrame()
     return flare
 end

@@ -3,21 +3,17 @@ local L = ns.L
 
 --------------------------------------------------
 -- GAMEPAD MODE
--- Blizzard's Gamepad UI is the CVar InputDeviceInterfaceStyle (Settings > Gamepad > Enable Gamepad
--- UI); changing it reloads the whole UI. Blizzard's own /console sets CVars from insecure code
--- (SlashCommands.lua: forceinsecure + ConsoleExec), so FlareUI can set it the same way.
---   * With keyboard and mouse, the first press on a controller (GAME_PAD_ACTIVE_CHANGED) offers the
---     switch, once a session, never in combat (Tweaks > Convenience > Offer Gamepad Mode).
+-- The Gamepad UI is the CVar InputDeviceInterfaceStyle; changing it reloads the UI.
+--   * With keyboard and mouse, the first controller press offers the switch, once a session,
+--     never in combat (Tweaks > Offer Gamepad Mode).
 --   * /fui pad asks to switch either way.
---   * After a switch, by FlareUI or by Blizzard's setting, chat says which mode is on.
--- Also the login line in chat.
+-- Also prints the login line.
 --------------------------------------------------
 local GAMEPAD, MKB = 1, 0           -- Enum.InputDeviceInterfaceType.Gamepad / .Mkb
 local CVAR = "InputDeviceInterfaceStyle"
 
 local declined, pendingOffer, padActive
--- After a reload the client reports the controller as the active device again if it was the last one
--- used (the switch back to keyboard is often confirmed with A), so the offer waits for one keyboard or
+-- After a reload the controller can still read as active, so the offer waits for one keyboard or
 -- mouse input first. A fresh login starts armed.
 local armed
 
@@ -30,8 +26,7 @@ local function CheckSwitched(on)
     end)
 end
 
--- the pad's A answer (and Answer in general): FlareUI's own call, which the client allows from a
--- controller press but blocks from a mouse click
+-- The pad's yes answer: the client allows this from a controller press, not from a mouse click
 local function SetGamepadMode(on)
     if InCombatLockdown() then
         print("|cffff9900FlareUI:|r " .. L["Gamepad mode cannot be switched in combat."])
@@ -41,7 +36,7 @@ local function SetGamepadMode(on)
     CheckSwitched(on)
 end
 
--- a click or Enter goes through the dialog's secure button, which runs this as Blizzard's /run
+-- A click or Enter runs this through the dialog's secure button
 local function SwitchMacro(on)
     return ('/run SetCVar("%s", %d)'):format(CVAR, on and GAMEPAD or MKB)
 end

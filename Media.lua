@@ -13,9 +13,7 @@ end
 local MEDIA_PATH = "Interface/AddOns/" .. ADDON_NAME .. "/Media/"
 
 --------------------------------------------------
--- 2. CUSTOM ASSETS
--- Registered with LibSharedMedia so they appear in the font / texture pickers alongside everything
--- else the user has installed.
+-- 2. CUSTOM ASSETS (registered with LibSharedMedia)
 --------------------------------------------------
 local ASSETS = {
     -- FlareUI's bar textures: Flat for every bar, Striped for absorbs
@@ -23,13 +21,11 @@ local ASSETS = {
         ["FlareUI Flat"]    = "Bars/FlareUI-Flat.tga",
         ["FlareUI Striped"] = "Bars/FlareUI-Striped.tga",
     },
-    -- FlareUI's frame borders (wtf-tools/buildframe.js), grey so each frame's border colour tints
-    -- it; 16 px edge. Frames for chat and the damage meter.
+    -- grey frame borders, tinted by each frame's border colour; 16 px edge
     border = {
         ["FlareUI Thick"]  = "Borders/FlareUI-Thick.tga",
         ["FlareUI Frames"] = "Borders/FlareUI-Frames.tga",
-        -- Frames cut to 16 px pieces (wtf-tools/buildslim.js), drawn at an 8 px edge (ns.BorderEdgeSize):
-        -- the same look with corners that stay apart down to 16 px of height. The default elsewhere.
+        -- Frames cut to 16 px pieces, drawn at an 8 px edge (ns.BorderEdgeSize)
         ["FlareUI Thin"]   = "Borders/FlareUI-Thin.tga",
     },
     font = {

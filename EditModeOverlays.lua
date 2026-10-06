@@ -3,10 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- EDIT MODE OVERLAYS
--- A global FlareUI convenience (no module, no option): an eye button next to the HUD Edit Mode
--- close button toggles the blue selection boxes on EVERY Edit Mode frame - Blizzard systems and
--- any addon frame built on EditModeSystemSelectionTemplate (LibEditMode, EnhanceQoL...). Boxes
--- keep working while invisible: frames still drag and click. The choice persists per profile.
+-- An eye button beside Edit Mode's close button hides the selection boxes of every Edit Mode frame
+-- (alpha 0: they still drag and click). Saved per profile.
 --------------------------------------------------
 local EYE_TEXTURE      = "Interface\\LFGFrame\\LFG-Eye"
 local EYE_FRAME_OPEN   = 0
@@ -27,8 +25,7 @@ local function SetEyeFrame(texture, index)
                         row * EYE_FRAME_SIZE / EYE_TEXTURE_H, (row + 1) * EYE_FRAME_SIZE / EYE_TEXTURE_H)
 end
 
--- Every selection overlay in existence: Blizzard's registered systems plus anything else that
--- carries the selection mixin (addon frames registered with LibEditMode-style libraries)
+-- Every selection overlay: Blizzard's systems plus addon frames with the selection mixin
 local function ForEachSelection(fn)
     local seen = {}
     local manager = EditModeManagerFrame
@@ -96,8 +93,8 @@ end
 local function OnEditModeShown()
     CreateEye()
     UpdateEye()
-    -- selections are (re)shown by Blizzard and the libraries as Edit Mode opens; apply after them
-    C_Timer.After(0, ApplyOverlays)
+    -- after Blizzard and the libraries show their selections; shown is every frame's own state
+    if IsHidden() then C_Timer.After(0, ApplyOverlays) end
 end
 
 local hooked = false
@@ -105,7 +102,7 @@ local function Hook()
     if hooked or not EditModeManagerFrame then return end
     hooked = true
     EditModeManagerFrame:HookScript("OnShow", OnEditModeShown)
-    -- a system selected later can be re-shown by Blizzard code; keep it invisible
+    -- a selected system can be re-shown by Blizzard; keep it invisible
     hooksecurefunc(EditModeManagerFrame, "SelectSystem", function()
         if IsHidden() then C_Timer.After(0, ApplyOverlays) end
     end)

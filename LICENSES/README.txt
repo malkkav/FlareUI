@@ -20,6 +20,10 @@ Code
   The CVar list in Modules/TweaksCVars.lua
       Account Wide Interface Settings by NinerBull (ConineSpiritwolf), MIT License
       https://github.com/NinerBull/AccWideUILayoutSelection . AccountWideInterfaceSettings.txt
+  Parts of Modules/ObjectiveTracker.lua (zone and distance ordering, quest item buttons,
+  party progress tooltip)
+      BetterQuestTracker by deface, MIT License
+      https://github.com/wouter-intveld/BetterQuestTracker .... BetterQuestTracker.txt
 
 Icons (Media/Icons/)
   DMCountdown.tga (stopwatch)

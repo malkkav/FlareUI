@@ -3,20 +3,14 @@ local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
--- FlareUI's resource bars: the player's health, power, mana, combo points and swing timers as
--- separate bars in the cast bar look (UnitFrames.lua cast bars: a flat fill inside the FlareUI
--- border), each its own Edit Mode frame - placed, sized and styled there, positions per layout.
+-- The player's resources as separate bars in the cast bar look, each its own Edit Mode frame:
 --   Health      health, incoming heals and absorbs
---   Power       the power the player uses now, whatever its type (mana, rage, energy, focus...),
---               in that type's colour; the five-second rule spark while it is mana
---   Mana        mana while another power is the main one: a druid in Bear or Cat Form (what
---               Blizzard's personal resource display adds as its third bar)
---   Combo       combo points on the target, for rogues and druids in Cat Form
---   Swing       main-hand, off-hand and ranged swing timers, from the client's own swing events
---               (PLAYER_SWING, the event Blizzard's swing timer runs on), with its range check
--- Part of the Unit Frames module; each bar is switched on in Unit Frames > General > Resource Bars and
--- replaces Blizzard's own (the Personal Resource Display, the swing timers). Secret-safe the same
--- way: values go straight into widgets, readable() guards every Lua test.
+--   Power       the current power in its colour; the five-second rule spark while it is mana
+--   Mana        mana while another power is the main one (a druid in Bear or Cat Form)
+--   Combo       combo points on the target (rogues, druids in Cat Form)
+--   Swing       main-hand, off-hand and ranged swing timers (PLAYER_SWING), with a range check
+-- Part of the Unit Frames module; replaces the Personal Resource Display and Blizzard's swing
+-- timers. Secret-safe: values go straight into widgets, readable() guards every Lua test.
 --------------------------------------------------
 ns.ResourceBars = ns.ResourceBars or {}
 local RB = ns.ResourceBars
@@ -28,7 +22,7 @@ LibStub("AceEvent-3.0"):Embed(RB)
 -- 2. UPVALUES / CONSTANTS
 --------------------------------------------------
 local _G = _G
-local pairs, ipairs, pcall, select = pairs, ipairs, pcall, select
+local pairs, ipairs, pcall = pairs, ipairs, pcall
 local math_floor, math_max, math_min = math.floor, math.max, math.min
 local CreateFrame, InCombatLockdown, GetTime = CreateFrame, InCombatLockdown, GetTime
 local LEM = LibStub("FlareEditMode")
@@ -45,10 +39,9 @@ local FSR_SECONDS = 5
 local FSR_SPARK = "Interface\\CastingBar\\UI-CastingBar-Spark"
 local SWING_SPARK = "Interface\\CastingBar\\UI-CastingBar-Spark"
 
--- FlareUI's tones, as on the cast bars
 local COLORS = {
-    combo      = ns.COMBO_COLOR,          -- Core.lua
-    swingMain  = { 0.86, 0.65, 0.39 },   -- the main hand a touch brighter than the off hand
+    combo      = ns.COMBO_COLOR,
+    swingMain  = { 0.86, 0.65, 0.39 },   -- a touch brighter than the off hand
     swingOff   = { 0.72, 0.54, 0.32 },
     swingRanged = { 0.45, 0.68, 0.40 },
     outOfRange = { 0.78, 0.28, 0.24 },
@@ -81,7 +74,6 @@ local TEXT_VALUES = {
 }
 
 local bars = {}            -- key -> holder
-local pendingLayout = false
 local fsrStart             -- GetTime() of the last mana cast while the five-second window runs
 
 --------------------------------------------------
@@ -110,15 +102,13 @@ local function ClassFile()
 end
 
 --------------------------------------------------
--- 4. AVAILABILITY
--- Whether a bar has anything to show for this character right now (Edit Mode shows every enabled
--- bar regardless).
+-- 4. AVAILABILITY (whether a bar has anything to show right now; Edit Mode shows them all)
 --------------------------------------------------
 local function PowerTypeNow()
     return readable(UnitPowerType("player"))
 end
 
--- a druid in Bear or Cat Form, or anyone whose main power is not mana but who has mana
+-- A druid in Bear or Cat Form, or anyone with mana whose main power is something else
 local function ManaIsSecondary()
     local now = PowerTypeNow()
     if now == nil or now == MANA then return false end
@@ -135,7 +125,7 @@ end
 
 local function HasSwingWeapon(swingType)
     if not (SWING and swingType) then return false end
-    local main, off, ranged = UnitAttackSpeed("player")
+    local _, off, ranged = UnitAttackSpeed("player")
     if swingType == SWING.OffHand then
         off = readable(off)
         return off ~= nil and off > 0
@@ -226,10 +216,10 @@ local function UpdateFsrSpark()
     if fsrStart and GetTime() - fsrStart >= FSR_SECONDS then fsrStart = nil end
     local onPower = PowerTypeNow() == MANA
     if power and power.FsrSpark then
-        power.FsrSpark:SetShown(fsrStart ~= nil and onPower and power:IsShown() and Cfg("power").fsr ~= false)
+        power.FsrSpark:SetShown(fsrStart ~= nil and onPower and power:IsShown() and Cfg("power").fsr == true)
     end
     if mana and mana.FsrSpark then
-        mana.FsrSpark:SetShown(fsrStart ~= nil and not onPower and mana:IsShown() and Cfg("mana").fsr ~= false)
+        mana.FsrSpark:SetShown(fsrStart ~= nil and not onPower and mana:IsShown() and Cfg("mana").fsr == true)
     end
 end
 
@@ -251,8 +241,7 @@ local function UpdateMana(holder)
     SetText(holder, "value", UnitPower("player", MANA))
 end
 
--- Each segment is a bar from (i - 1) to i fed the point count, so it fills once that many points are
--- built: no Lua ever compares the (possibly secret) count.
+-- How many segments: each is a bar from i - 1 to i fed the (possibly secret) point count
 local function ComboCount()
     local max = readable(UnitPowerMax("player", COMBO_POWER))
     if not (max and max >= 1) then max = COMBO_FALLBACK end
@@ -281,7 +270,7 @@ local function UpdateCombo(holder)
     end
 end
 
--- swing: the bar fills over the swing; the spark rides its edge, the time counts down
+-- Swing: the bar fills over the swing, the spark rides its edge, the time counts down
 local function SwingOnUpdate(holder)
     local remaining = holder.swingEnd - GetTime()
     if remaining <= 0 then
@@ -339,7 +328,7 @@ local function UpdateBar(holder)
     elseif kind == "swing" then UpdateSwing(holder) end
 end
 
--- Edit Mode: each bar shows a sample so it can be judged without fighting
+-- Edit Mode: each bar shows a sample
 local function ApplyPreview(holder)
     local kind = BARS[holder.key].kind
     local cfg = Cfg(holder.key)
@@ -408,8 +397,7 @@ local function ApplyFrameLook(holder, cfg)
     K.ApplyBorderStyle(holder.Border, K.GetBorderFile(cfg.border or DEFAULT_BAR_BORDER), height + 2 * K.INSET)
 end
 
--- Classic Combo Points: the nameplate gems in a row, the sockets twice the bar's height; the holder
--- shrinks to the row, with no backdrop or border of its own
+-- Classic Combo Points: the nameplate gems in a row, twice the bar's height, no backdrop or border
 local function LayoutClassicCombo(holder, cfg, count)
     local size = (cfg.height or 12) * 2
     local spacing = size * 15 / 16   -- the rims nearly touch, as on the nameplates
@@ -726,7 +714,7 @@ local function BuildSettings(key)
               desc = L["Shows in Bear and Cat Form (and whenever another power is on the power bar), hidden while mana is the main power."] })
     end
     if info.kind == "power" or info.kind == "mana" then
-        add({ name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = true, get = get("fsr", true), set = set("fsr"),
+        add({ name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false, get = get("fsr", false), set = set("fsr"),
               desc = L["A spark crosses the bar for five seconds after a spell that costs mana: spirit regen comes back when it ends."] })
     end
     if info.kind == "swing" then
@@ -756,7 +744,8 @@ function RB:OnEvent(event, arg1, arg2, arg3)
     elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT" or event == "UNIT_MAXPOWER" then
         if bars.power and bars.power:IsShown() then UpdatePower(bars.power) end
         if bars.mana and bars.mana:IsShown() then UpdateMana(bars.mana) end
-        if bars.combo and bars.combo:IsShown() then UpdateCombo(bars.combo) end
+        local comboChange = not (event == "UNIT_POWER_FREQUENT" and canaccessvalue(arg2) and arg2 ~= "COMBO_POINTS")
+        if comboChange and bars.combo and bars.combo:IsShown() then UpdateCombo(bars.combo) end
     elseif event == "UNIT_DISPLAYPOWER" then
         -- a shapeshift: the main power changes, the mana and combo bars come or go
         ApplyAllShown()
@@ -839,9 +828,8 @@ function RB:ShouldLoad()
     return false
 end
 
--- Blizzard's own versions step aside while ours are on (parked as the unit frames park theirs,
--- UnitFrames.lua HardHide; switching a bar off brings them back after a reload). Health, power and
--- mana are one Blizzard frame, the Personal Resource Display; each swing bar has its own.
+-- Blizzard's versions are parked while ours are on (back after a reload). Health, power and mana
+-- share the Personal Resource Display; each swing bar has its own.
 local BLIZZARD_COUNTERPARTS = {
     { addon = "Blizzard_PersonalResourceDisplay", frame = "PersonalResourceDisplayFrame", bars = { "health", "power", "mana" } },
     { addon = "Blizzard_SwingTimer", frame = "SwingTimerMainHandFrame", bars = { "swingMain" } },

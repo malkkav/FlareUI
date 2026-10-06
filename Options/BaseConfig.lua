@@ -45,17 +45,13 @@ local function TintInnerBorders(frame, color)
     end
 end
 
--- AceConfigDialog builds its own tooltip frame rather than using GameTooltip, and a plain
--- CreateFrame under UIParent inherits UIParent's MEDIUM strata - below the FULLSCREEN_DIALOG the
--- options window sits in, which is why option tooltips were coming up behind it. Both Ace tooltips
--- are pushed to the strata GameTooltip itself uses.
+-- The Ace tooltips are MEDIUM strata, below the options window: raised to GameTooltip's strata
 for _, name in ipairs({ "AceConfigDialogTooltip", "AceGUITooltip" }) do
     local tip = _G[name]
     if tip and tip.SetFrameStrata then tip:SetFrameStrata("TOOLTIP") end
 end
 
--- Fades from a warm dark at the top to near black at the bottom, the way Blizzard's own options
--- window does. The first colour is the bottom edge of a vertical gradient, the second the top.
+-- A vertical gradient from a warm dark at the top to near black at the bottom
 local function Fade(frame, inset, top, bottom)
     local bg = frame:CreateTexture(nil, "BACKGROUND")
     bg:SetPoint("TOPLEFT", inset, -inset)
@@ -71,14 +67,9 @@ local function Fade(frame, inset, top, bottom)
 end
 ns.Fade = Fade
 
--- AceGUI hands out frames from a shared pool, so anything added here could turn up in another
--- addon's window. Our pieces are therefore built once and shown only while this window is open:
--- ForceOpacity shows them, and the frame hiding takes them away again.
--- AceGUI's Frame widget keeps its status bar and close button as locals and puts neither on the
--- widget table (AceGUIContainer-Frame.lua:298), so neither can be asked for by name. The status bar
--- is reached through the one thing that is exposed - its font string is a child of it - and the
--- Reset button is placed by the same numbers the close button uses: 20 tall at y 17, right edge one
--- gap left of the close button's 100-wide slot at x -27.
+-- AceGUI's frames are pooled and shared with other addons, so our pieces show only while this
+-- window is open. The Frame widget hides its status bar and close button: the status bar is found
+-- through its font string, and the Reset button is placed by the close button's numbers.
 local function GetStatusBar(widget)
     local text = widget.statustext
     return text and text.GetParent and text:GetParent() or nil
@@ -108,7 +99,7 @@ local function BuildChrome(widget, f)
         f.flareChrome[#f.flareChrome + 1] = reset
         f.flareResetButton = reset   -- for the controller navigation (ControllerNav.lua)
 
-        -- AceGUI's close button, found by its label since the widget does not expose it either
+        -- AceGUI's close button, found by its label
         for _, child in ipairs({ f:GetChildren() }) do
             if child:GetObjectType() == "Button" and child.GetText and child:GetText() == CLOSE then
                 f.flareCloseButton, f.flareCloseOriginal = child, child:GetScript("OnClick")
@@ -136,11 +127,9 @@ local function BuildChrome(widget, f)
         f.flareSounded = true
         ns.WindowOpenSound()
     end
-    -- AceGUI's close button plays the title screen's exit sound (AceGUIContainer-Frame.lua:19);
-    -- ours clicks like every other red button. Its own handler goes back on hide, above.
+    -- the close button clicks like every red button (its own handler goes back on hide)
     if f.flareCloseButton then f.flareCloseButton:SetScript("OnClick", CloseClick) end
-    -- Nothing here ever writes a status message, and an empty bordered bar behind the buttons is
-    -- what made the Reset button look like it was floating on top of something.
+    -- the empty status bar is hidden
     local statusbg = GetStatusBar(widget)
     if statusbg then
         f.flareStatusBg = statusbg
@@ -167,15 +156,12 @@ function ns.ForceOpacity()
     end
 end
 
--- Widgets are rebuilt on every refresh and when tabs / tree nodes change, so the group containers
--- tint themselves as they are acquired while our window is open (and go back to AceGUI's grey when
--- another addon acquires them).
+-- Group containers and sliders tint themselves as they are acquired while our window is open (and
+-- go back to AceGUI's grey for another addon)
 do
     local AceGUI = LibStub("AceGUI-3.0", true)
     if AceGUI and AceGUI.WidgetRegistry then
-        -- AceGUI's buttons already play the Game Menu click (AceGUIWidget-Button.lua:21). Noting the
-        -- click first lets a window one of them opens or closes stay quiet (ns.WindowOpenSound).
-        -- It is only a timestamp, so it does nothing to another addon's buttons.
+        -- AceGUI's buttons play their own click; noting it keeps a window they open quiet
         local buttonConstructor = AceGUI.WidgetRegistry.Button
         if buttonConstructor then
             AceGUI.WidgetRegistry.Button = function(...)
@@ -200,9 +186,7 @@ do
             end
         end
 
-        -- Sliders tint themselves the same way: one built after the window opened (another tab) was
-        -- left grey, and AceGUI greys the value box again on every hover (AceGUIWidget-Slider.lua
-        -- EditBox_OnEnter / OnLeave), so the hover is bronze too while our window is open.
+        -- sliders too, and their value box's hover (AceGUI greys it again on every hover)
         local sliderConstructor = AceGUI.WidgetRegistry.Slider
         if sliderConstructor then
             AceGUI.WidgetRegistry.Slider = function(...)
@@ -232,8 +216,7 @@ hooksecurefunc(AceConfigDialog, "Open", function(_, app)
     if app == "FlareUI" then ns.ForceOpacity() end
 end)
 
--- AceDBOptions ships a page that is mostly prose. The four controls are kept and laid out on the
--- same 1.0 / 0.1 grid as the rest of the settings; the paragraphs explaining what a profile is go.
+-- AceDBOptions' page without its prose, on the settings' 1.0 / 0.1 grid
 local function TidyProfileOptions(opts)
     local a = opts and opts.args
     if not a then return end
@@ -273,9 +256,7 @@ end
 --------------------------------------------------
 -- 3. MAIN OPTIONS TABLE (Standalone Window)
 --------------------------------------------------
--- The module list, in the same order as the tree on the left. Each toggle flips its module's
--- "enabled" flag and asks for a reload, because a module only ever loads at PLAYER_LOGIN.
-
+-- The module list, in the tree's order. A module loads at PLAYER_LOGIN, so a toggle asks for a reload.
 local MODULE_TOGGLES = {
     { key = "chat",        label = L["Chat"] },
     { key = "damagemeter", label = L["Damage Meter"] },
@@ -283,6 +264,7 @@ local MODULE_TOGGLES = {
     { key = "unitframes",  label = L["Unit Frames"] },
     { key = "actionbars",  label = L["Action Bars"] },
     { key = "auras",       label = L["Buffs / Debuffs"] },
+    { key = "objectivetracker", label = L["Quest Tracker"] },
     { key = "minimap",     label = L["Minimap"] },
     { key = "tooltips",    label = L["Tooltips"] },
     { key = "tweaks",      label = L["Tweaks"] },
@@ -290,7 +272,7 @@ local MODULE_TOGGLES = {
 -- the welcome reads it to tell a fresh install from one that already has modules on
 ns.MODULE_TOGGLES = MODULE_TOGGLES
 
--- Fake CM has no switch of its own: it is on when at least one bar has been handed over to it.
+-- Fake CM is in use when at least one bar has been handed over to it
 local function FakeCMInUse()
     local bars = ns.db and ns.db.profile.fcm and ns.db.profile.fcm.bars
     if not bars then return false end
@@ -301,22 +283,33 @@ local function FakeCMInUse()
     return false
 end
 
--- Only the commands that currently do something, so the list never points at a disabled module.
+-- Fake CM Setup Mode: the FCM bars take clicks (session only)
+function ns.ToggleFCMSetupMode()
+    if InCombatLockdown() then
+        print("|cffff0000FlareUI:|r " .. L["Cannot toggle setup mode in combat."])
+        return
+    end
+    local fcm = ns.db.profile.fcm
+    fcm.setupModeEnabled = not fcm.setupModeEnabled
+    if ns.ActionBars then ns.ActionBars:SetFCM_UnlockMode(fcm.setupModeEnabled) end
+    print("|cff00ff00FlareUI:|r " .. (fcm.setupModeEnabled and L["Fake CM setup mode on."] or L["Fake CM setup mode off."]))
+end
+
+-- Only the commands that currently do something
 local function BuildCommandList()
-    local lines = { "|cffffff00/flareui|r, |cffffff00/fui|r - Open configuration." }
-    if FakeCMInUse() then
-        lines[#lines + 1] = "|cffffff00/fui cm|r - Toggle Fake CM setup mode."
-    end
+    local function Line(command, text) return "|cffffff00" .. command .. "|r - " .. text end
+    local lines = { Line("/flareui, /fui", L["Open configuration."]) }
+    if FakeCMInUse() then lines[#lines + 1] = Line("/fui cm", L["Toggle Fake CM setup mode."]) end
     if ns.db and ns.db.profile.radialmenu and ns.db.profile.radialmenu.enabled then
-        lines[#lines + 1] = "|cffffff00/fui re|r - Open the radial editor."
+        lines[#lines + 1] = Line("/fui re", L["Open the radial editor."])
     end
-    lines[#lines + 1] = "|cffffff00/fui pad|r - Switch Gamepad mode on or off."
+    lines[#lines + 1] = Line("/fui pad", L["Switch Gamepad mode on or off."])
     local chat = ns.db and ns.db.profile.chat
     if chat and chat.enabled then
-        if chat.enableTT then lines[#lines + 1] = "|cffffff00/tt|r <message> - Whisper your target." end
-        if chat.enableWay then lines[#lines + 1] = "|cffffff00/way|r - Place a map pin (type it alone for the formats)." end
+        if chat.enableTT then lines[#lines + 1] = Line("/tt", L["<message> - Whisper your target."]) end
+        if chat.enableWay then lines[#lines + 1] = Line("/way", L["Place a map pin (type it alone for the formats)."]) end
     end
-    lines[#lines + 1] = "|cffffff00/rl|r - Reload UI shortcut."
+    lines[#lines + 1] = Line("/rl", L["Reload UI shortcut."])
     return table.concat(lines, "\n") .. "\n"
 end
 
@@ -407,8 +400,7 @@ local function CreateBlizzardOptionsPanel()
     artCredit:SetText(L["Doggie art by Clari Turela"])
     artCredit:SetTextColor(0.6, 0.6, 0.6)
 
-    -- With the Gamepad UI on, the pad's cursor cannot reach a button here, and a click through it would
-    -- run our code inside Blizzard's gamepad navigation: the page points to /fui instead.
+    -- in the Gamepad UI a button here would run our code inside Blizzard's navigation: point to /fui
     if ns.IsGamepadUI() then
         local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightMedium")
         hint:SetPoint("TOP", artCredit, "BOTTOM", 0, -40)
@@ -467,17 +459,7 @@ loader:SetScript("OnEvent", function()
                 ns.ForceOpacity()
             end
         elseif msg == "cm" then
-            if not InCombatLockdown() then
-                local newState = not ns.db.profile.fcm.setupModeEnabled
-                ns.db.profile.fcm.setupModeEnabled = newState
-                if ns.ActionBars then
-                    ns.ActionBars:SetFCM_UnlockMode(newState)
-                end
-                print("|cff00ff00FlareUI:|r Fake CM setup mode " ..
-                    (newState and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
-            else
-                print("|cffff0000FlareUI:|r " .. L["Cannot toggle setup mode in combat."])
-            end
+            ns.ToggleFCMSetupMode()
         elseif msg == "re" or msg == "radialeditor" then
             ns.ToggleRadialEditor()
         elseif msg == "pad" or msg == "gamepad" then
@@ -557,6 +539,7 @@ function ns.CreateFontOptions(order, label, path, dbKey, showColor, showPos)
             elseif path == "unitframes" and ns.UnitFrames then ns.UnitFrames:Refresh()
             elseif path == "auras" and ns.Auras then ns.Auras:Refresh()
             elseif path == "tooltips" and ns.Tooltips then ns.Tooltips:Refresh()
+            elseif path == "objectivetracker" and ns.ObjectiveTracker then ns.ObjectiveTracker:Refresh()
             end
         end
     end

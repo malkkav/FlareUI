@@ -3,21 +3,12 @@ local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
--- FlareUI's party frames: you (optional) and up to four party members, in one of two styles that
--- keep their own settings:
---   Classic     the player frame's look - portrait, name, level, health text, power bar, the
---               auras beside the frame.
---   Raid-Style  compact tiles like Blizzard's raid-style party frames - name and role on top,
---               status in the middle, debuffs / buffs / dispel icons inside the tile.
--- Both carry what Blizzard's party frames carry: buffs and debuffs sorted by Blizzard's own raid
--- frame rules (AuraUtil.ProcessAura through the aura container's ProcessAura policy), dispel type
--- icons, the dispel highlight, the big defensive, private auras, role, leader, raid marker, ready
--- check, summon / resurrection / phase status, aggro, target highlight, range fade, incoming heals
--- and absorbs, optional cast bars and pets. Everything is secret-safe the way the unit frames are
--- (UnitFrames.lua): values go straight into widgets, readable() guards every Lua test.
--- Part of the Unit Frames module (Unit Frames > General > Frames > Party); tuned in Edit Mode on
--- "FlareUI Party Frames", positions per Edit Mode layout. Blizzard's party frames (both styles live
--- in PartyFrame) are parked while these are on.
+-- You (optional) and up to four party members, in one of two styles with their own settings:
+--   Classic     the player frame's look, auras beside the frame
+--   Raid-Style  compact tiles, auras inside
+-- Auras are sorted by Blizzard's raid frame rules (the containers' ProcessAura policy). Secret-safe
+-- as the unit frames are: values go straight into widgets, readable() guards every Lua test.
+-- Part of the Unit Frames module; tuned in Edit Mode. Blizzard's PartyFrame is parked.
 --------------------------------------------------
 ns.PartyFrames = ns.PartyFrames or {}
 local PF = ns.PartyFrames
@@ -49,7 +40,7 @@ local PRIVATE_AURA_COUNT = 2
 local READY_CHECK_HOLD = 6           -- seconds the result stays after a ready check ends
 local RANGE_INTERVAL = 0.5
 
--- where a lane of auras can go: beside / above / below the frame, or inside the health bar
+-- Where a lane of auras can go: beside / above / below the frame, or inside the health bar
 local AURA_POSITIONS = { "RIGHT", "LEFT", "ABOVE", "ABOVE_RIGHT", "BELOW", "BELOW_RIGHT",
                          "INSIDE_TOPLEFT", "INSIDE_TOPRIGHT", "INSIDE_BOTTOMLEFT", "INSIDE_BOTTOMRIGHT" }
 local AURA_POSITION_VALUES = {
@@ -80,18 +71,17 @@ local READY_ATLAS = {
     notready = _G.READY_CHECK_NOT_READY_TEXTURE or "UI-LFG-DeclineMark",
     waiting  = _G.READY_CHECK_WAITING_TEXTURE or "UI-LFG-PendingMark",
 }
--- the role icons Blizzard's unit frames use (TextureUtil.lua MicroLFGRoleIcons)
+-- Blizzard's unit frame role icons
 local ROLE_ATLAS = { TANK = "UI-LFG-RoleIcon-Tank-Micro-GroupFinder", HEALER = "UI-LFG-RoleIcon-Healer-Micro-GroupFinder",
                      DAMAGER = "UI-LFG-RoleIcon-DPS-Micro-GroupFinder" }
 
--- the frame icons, placed per style in Edit Mode (style.icons[key] = { shown, x, y, scale })
+-- The frame icons, per style in Edit Mode: style.icons[key] = { shown, x, y, scale }
 local ICON_ORDER  = { "role", "leader", "raidIcon", "readyCheck", "status" }
 local ICON_LABELS = { role = L["Role"], leader = L["Leader"], raidIcon = L["Raid Target"], readyCheck = L["Ready Check"], status = L["Summon / Resurrect / Phase"] }
 -- Icon Scale when the player has not set one (percent)
 local ICON_DEFAULT_SCALE = { raidIcon = 125, readyCheck = 125, status = 125 }
 
--- Edit Mode: a sample group so the frames can be placed and judged without one - a tank, a healer
--- and three damage dealers, in the order the frames show
+-- Edit Mode sample group: a tank, a healer and three damage dealers
 local PREVIEW = {
     { name = "Thalorien", class = "WARRIOR", role = "TANK",    health = 0.92, power = 0.35, leader = true },
     { name = "Elysande",  class = "PRIEST",  role = "HEALER",  health = 0.64, power = 0.85, ready = "ready" },
@@ -99,7 +89,7 @@ local PREVIEW = {
     { name = "Sylvara",   class = "HUNTER",  role = "DAMAGER", health = 0.81, power = 0.72, pet = "Wolf" },
     { name = "Kestrel",   class = "ROGUE",   role = "DAMAGER", health = 0.27, power = 0.90, status = "IncomingSummonPending" },
 }
--- class colours (RAID_CLASS_COLORS' values) and power types, so the samples never depend on the API
+-- sample class colours and power types, independent of the API
 local PREVIEW_CLASS_RGB = {
     WARRIOR = { 0.78, 0.61, 0.43 }, PRIEST = { 1, 1, 1 }, WARLOCK = { 0.53, 0.53, 0.93 },
     HUNTER = { 0.67, 0.83, 0.45 }, ROGUE = { 1, 0.96, 0.41 },
@@ -123,7 +113,7 @@ local function GetPartyDb()
     return db and db.party
 end
 
--- the settings of the style in use (each style keeps its own)
+-- The settings of the style in use
 local function S()
     local party = GetPartyDb()
     if not party then return nil end
@@ -255,7 +245,7 @@ local function UpdatePower(f)
     end
 end
 
--- incoming heals and absorbs, clipped to the empty part of the health bar (UnitFrames.lua 9)
+-- Incoming heals and absorbs, clipped to the empty part of the health bar (as UnitFrames.lua)
 local function UpdateHealPrediction(f)
     local heal, absorb = f.HealBar, f.AbsorbBar
     if not heal then return end
@@ -302,8 +292,8 @@ local function UpdateLeader(f)
     end
 end
 
--- Blizzard's own role icon routine (a secure delegate that keeps a secret role secret), handed a
--- stand-in for its frame; the plain role lookup is the fallback
+-- Blizzard's role icon routine (keeps a secret role secret), handed a stand-in frame; the plain
+-- role lookup is the fallback
 local function UpdateRole(f)
     local icon = f.RoleIcon
     if not IconShown("role") then icon:Hide() return end
@@ -382,7 +372,7 @@ local function UpdateRange(f)
     end
 end
 
--- the player's target: a bright outline inside the frame's border
+-- The player's target: a bright outline inside the border
 local function UpdateTarget(f)
     local hl = f.TargetHighlight
     if IsEditing() then hl:SetAlpha(0) return end
@@ -394,7 +384,7 @@ local function UpdateTarget(f)
     end
 end
 
--- aggro: the frame's border takes the threat colour (Blizzard's aggro highlight on raid frames)
+-- Aggro: the border takes the threat colour
 local function UpdateThreat(f)
     local status = readable(UnitThreatSituation(f.unit))
     if status and status >= 1 and not IsEditing() then
@@ -433,13 +423,11 @@ local function UpdateCast(f)
     if f.Cast then K.UpdateCastBar(f.Cast, f.Cast.isEnabled()) end
 end
 
-local ApplyPreview   -- section 9
-
-local HidePreviewExtras   -- section 9
+local ApplyPreview, HidePreviewExtras   -- section 9
 
 local function UpdateAll(f)
     if IsEditing() then ApplyPreview(f) return end
-    if HidePreviewExtras then HidePreviewExtras(f) end
+    HidePreviewExtras(f)
     if not UnitExists(f.unit) then return end
     UpdateName(f)
     UpdateLevel(f)
@@ -498,15 +486,10 @@ end
 
 --------------------------------------------------
 -- 5. AURAS
--- Blizzard's aura containers do the work, so aura data never has to be read (it is secret in
--- restricted content). Each frame has one container per place a lane can go (created at login:
--- containers created later are access-restricted and never show), all on the ProcessAura policy,
--- which sorts every aura into buff / debuff / dispel by Blizzard's own raid frame rules
--- (AuraUtil.ProcessAura). Lanes: buffs ("HELPFUL", processed as Buff), debuffs ("HARMFUL": the
--- policy leaves only debuffs and dispellables), dispel icons (dispellables, drawn as their dispel
--- type's symbol). A second container, without the policy, holds the two slots: the big defensive
--- ("HELPFUL|BIG_DEFENSIVE") and the dispel highlight (a dispellable debuff tints the health bar
--- and outlines it in its dispel colour). Private auras are Blizzard's own anchors.
+-- Blizzard's aura containers render everything (aura data can be secret). One container per place
+-- a lane can go, created at login, on the ProcessAura policy (buff / debuff / dispel by Blizzard's
+-- raid frame rules). Separate containers hold the big defensive slot and the dispel highlight.
+-- Private auras use Blizzard's own anchors.
 --------------------------------------------------
 local auraSupport
 local function HasAuraSupport()
@@ -536,7 +519,7 @@ local function PrecreateAuraContainers(f)
         slots:SetFrameLevel(f:GetFrameLevel() + 3)
         f.AuraSlots = { container = slots, keys = {}, generation = 0 }
     end
-    -- the dispel highlight: kept out of Edit Mode's sample data (ApplyPreview draws its own)
+    -- the dispel highlight, kept out of Edit Mode's sample data (ApplyPreview draws its own)
     local okH, hl = pcall(CreateFrame, "AuraContainer", nil, f, AURA_CONTAINER_TEMPLATE)
     if okH and hl then
         pcall(hl.SetUnit, hl, f.unit)
@@ -547,12 +530,12 @@ local function PrecreateAuraContainers(f)
     end
 end
 
--- aura buttons inside the frame let clicks through to it (targeting, menus) and keep the tooltip
+-- Aura buttons inside the frame pass clicks through to it and keep their tooltip
 local function PassClicks(button)
     if button.SetPropagateMouseClicks then pcall(button.SetPropagateMouseClicks, button, true) end
 end
 
--- a dispel type's symbol (Magic, Curse, Disease, Poison...), drawn by Blizzard from the aura
+-- A dispel type's symbol, drawn by Blizzard from the aura
 local function InitDispelIcon(button, size, inside)
     button:SetSize(size, size)
     if not button.FlareUI_DispelIcon then
@@ -573,7 +556,7 @@ local function LaneLook(st, size, isDebuff)
     return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, st.auraStyle, st.auraSwipe, st.auraTimer or "none")
 end
 
--- below a frame come its cast bar and its pet first, then any auras placed below it
+-- Below a frame come its cast bar and pet, then any auras placed below it
 local function BelowOffset()
     local st, party = S(), GetPartyDb()
     local y = 0
@@ -582,8 +565,7 @@ local function BelowOffset()
     return y
 end
 
--- where a place's auras start (point on rel at relPoint, offset x / y) and which way they grow;
--- the container's own anchor corner is the flow's starting corner
+-- Where a place's auras start and which way they grow
 local function AuraAnchor(f, pos)
     local gap, inset = K.AURA_GAP, 2
     local health = f.Health
@@ -613,7 +595,7 @@ local function AuraAnchor(f, pos)
     return point, rel, relPoint, x, y, growH, growV
 end
 
--- how a container at each position is anchored and which way it grows
+-- Anchors a container at its place and sets its flow
 local function PlaceAuraContainer(f, pos, container, size, perRow)
     local point, rel, relPoint, x, y, growH, growV = AuraAnchor(f, pos)
     local flowAnchor, V = point, growV
@@ -681,8 +663,7 @@ local function ConfigurePosition(f, pos, lanes)
         if ok then
             entry.groups[#entry.groups + 1] = key
         else
-            ns.Debug = ns.Debug or {}
-            ns.Debug.partyAuraError = tostring(err)
+            geterrorhandler()(err)
         end
     end
     PlaceAuraContainer(f, pos, container, size, perRow)
@@ -693,8 +674,8 @@ local function ConfigurePosition(f, pos, lanes)
     pcall(container.UpdateAllAuras, container)
 end
 
--- Rebuilding a lane makes new aura groups (and a slot makes a new frame), so it only happens when a
--- setting that shapes it changed; the signature is those settings in a string.
+-- Rebuilding makes new aura groups, so it only happens when a setting that shapes them changed (the
+-- signature is those settings in a string)
 local function Signature(...)
     local parts = {}
     for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end
@@ -715,8 +696,7 @@ local function ConfigureAuras(f)
     local function Add(pos, lane)
         if pos and perPos[pos] then perPos[pos][#perPos[pos] + 1] = lane end
     end
-    -- debuffs first: nearest the frame when lanes share a place. Boss and role debuffs lead, bigger
-    -- (Blizzard's "Display Larger Role-Specific Debuffs"), then the rest on the same row.
+    -- debuffs first, nearest the frame; boss and role debuffs lead, bigger, then the rest on their row
     if st.bigBossDebuffs ~= false then
         Add(st.debuffs, { key = "bossdebuffs", kind = "debuffs", filter = "HARMFUL", isDebuff = true, scale = 1.5, max = 2,
                           candidates = { isBossOrRoleAura = true } })
@@ -732,9 +712,8 @@ local function ConfigureAuras(f)
     for _, pos in ipairs(AURA_POSITIONS) do ConfigurePosition(f, pos, perPos[pos]) end
 end
 
--- the big defensive (centre of the health bar) and the dispel highlight (over it), each a slot that
--- shows the first aura of its filter. A slot's frame is placed as Blizzard creates it, so a change
--- of size or style makes a new pair (the old one is switched off).
+-- The big defensive (mid health bar) and the dispel highlight (over it): slots showing the first
+-- aura of their filter. A change of size or style makes new slots.
 local function ConfigureSlots(f)
     local slots = f.AuraSlots
     if not slots then return end
@@ -821,7 +800,7 @@ local function ConfigureSlots(f)
     pcall(hlContainer.UpdateAllAuras, hlContainer)
 end
 
--- Blizzard's private auras (boss mechanics addons cannot see) on Blizzard's own anchors
+-- Private auras (boss mechanics addons cannot see) on Blizzard's anchors
 local function ConfigurePrivateAuras(f)
     local api = C_UnitAuras
     if not (api and api.AddPrivateAuraAnchor) then return end
@@ -1031,8 +1010,7 @@ local function LayoutIcons(f)
         PlaceIcon("leader", f.LeaderIcon, 14, 14, "CENTER", f, "TOPLEFT", 8, -2)
         PlaceIcon("raidIcon", f.RaidIcon, 14, 14, "CENTER", f, "TOP", 0, -3)
     else
-        -- the leader crown where the player frame has it (UnitFrames.lua LayoutIndicators), the role
-        -- in the bottom-right corner, the PvP flag's size
+        -- leader where the player frame has it, role in the bottom-right corner
         PlaceIcon("leader", f.LeaderIcon, 20, 20, "CENTER", f, "TOPLEFT", 16, -2)
         PlaceIcon("role", f.RoleIcon, 24, 24, "CENTER", f, "BOTTOMRIGHT", -4, 2)
         PlaceIcon("raidIcon", f.RaidIcon, 16, 16, "CENTER", f, "TOP", 0, -2)
@@ -1095,13 +1073,13 @@ local function LayoutPet(p)
     p:SetPoint("TOPRIGHT", owner, "BOTTOMRIGHT", 0, y)
 end
 
--- an aura row's height: the icon, and its timer when that hangs under it (Auras.lua ForUnit)
+-- An aura row's height: the icon, plus its timer when that hangs under it
 local function CellHeight(st, size)
     if (st.auraTimer or "none") == "below" then return size + math_max(7, math_floor(size * 0.4 + 0.5)) + 3 end
     return size
 end
 
--- how far the lanes at any of these places reach out from the frame (the largest of them)
+-- How far the lanes at these places reach out from the frame
 local function LanesExtent(st, places, across)
     local size, max = st.auraSize or 18, st.auraMax or 4
     local perRow = math_max(1, st.auraPerRow or max)
@@ -1127,8 +1105,7 @@ local function LanesExtent(st, places, across)
     return best > 0 and (best + K.AURA_GAP) or 0
 end
 
--- one step from a frame to the next (the frame, its cast bar and pet, the auras above and below it,
--- and the spacing), and where the first frame starts in the holder
+-- One step from a frame to the next, and where the first frame starts in the holder
 local function Step()
     local st = S()
     local party = GetPartyDb()
@@ -1141,16 +1118,15 @@ local function Step()
     end
     local h = st.height or 46
     if st.castbar then h = h + (st.castHeight or 16) + K.CAST_GAP + K.INSET end
-    -- a pet's room is added per frame (LayoutHolder). Under a pet the gap is a little tighter than
-    -- the frames' spacing, but never closer than the pet sits to its owner (PET_GAP) plus 2, so a pet
-    -- always reads as its owner's
+    -- a pet's room is added per frame (LayoutHolder); under a pet the gap is tighter, but never
+    -- closer than the pet sits to its owner
     local spacing = st.spacing or 8
     local gapBelow = math_max(spacing - 4, PET_GAP + 2)
     local petRoom = PET_GAP + (st.petHeight or 19) + 2 * K.INSET + gapBelow - spacing
     return 0, -(above + h + below + spacing), 0, -above, petRoom
 end
 
--- whether this frame has a pet under it: the samples with one in Edit Mode, a pet that is out in game
+-- Whether this frame has a pet under it (in Edit Mode: the samples with one)
 local function HasPet(i)
     local party = GetPartyDb()
     if not party.pets then return false end
@@ -1167,8 +1143,8 @@ local function SlotsInUse()
     return first, MAX_MEMBERS
 end
 
--- the frames in the order they stand: party order, or by role with Sort by Role (a role that cannot
--- be read counts as none; members not there go last, so the ones shown stay together)
+-- The frames in order: party order, or by role (an unreadable role counts as none; absent members
+-- go last)
 local ROLE_RANK = { TANK = 1, HEALER = 2, DAMAGER = 3, NONE = 4 }
 local function SlotOrder(first)
     local order = {}
@@ -1250,9 +1226,8 @@ end
 
 --------------------------------------------------
 -- 8. VISIBILITY
--- The holder shows in a party (and, with Show in Raid, in a raid: the party tokens are then your
--- own raid group); each member frame follows its unit (RegisterUnitWatch), the player's frame and
--- the pets their settings. In Edit Mode everything shows, filled with samples.
+-- The holder shows in a party (with Show in Raid, also in a raid: your own group); member frames
+-- follow their units. In Edit Mode everything shows, with samples.
 --------------------------------------------------
 local function ApplyVisibility()
     if not holder then return end
@@ -1304,8 +1279,8 @@ local function PreviewColor(class)
     return 0, 1, 0
 end
 
--- the samples the aura containers cannot show in Edit Mode: dispel icons, private auras and the
--- dispel highlight; plain textures, hidden again outside Edit Mode
+-- Samples the aura containers cannot show in Edit Mode: dispel icons, private auras, the dispel
+-- highlight
 local function PreviewBit(f, used, size)
     f.previewBits = f.previewBits or {}
     local b = f.previewBits[used]
@@ -1673,10 +1648,7 @@ local function CreatePet(index)
 end
 
 --------------------------------------------------
--- 11. BLIZZARD'S PARTY FRAMES
--- Both of Blizzard's styles live in PartyFrame (CompactPartyFrame is its child), so parking it puts
--- both away: its events off, hidden, re-parented to a hidden frame (UnitFrames.lua HardHide, the
--- same as the player and target frames). Only C methods: nothing of Blizzard's runs from here.
+-- 11. BLIZZARD'S PARTY FRAMES (both styles live in PartyFrame; parked with HardHide)
 --------------------------------------------------
 local function HideBlizzardParty()
     if _G.PartyFrame then K.HardHide("PartyFrame") end
@@ -1687,14 +1659,14 @@ end
 --------------------------------------------------
 local Refresh   -- section 13
 
--- the defaults of the style in use, for the dialog's "reset" (Core.lua unitframes.party.classic / raid)
+-- The defaults of the style in use, for the dialog's reset
 local function StyleDefaults()
     local _, key = S()
     local d = ns.defaults and ns.defaults.profile.unitframes.party
     return (d and d[key or "classic"]) or {}
 end
 
-local RebuildSettings   -- below: the dialog is rebuilt when the style or the picked icon changes
+local RebuildSettings   -- the dialog is rebuilt when the style or the picked icon changes
 
 local function BuildSettings()
     local settings = {}
@@ -1928,7 +1900,7 @@ Refresh = function()
     for i = 0, MAX_MEMBERS do
         local f = members[i]
         local ok, err = pcall(LayoutMember, f)
-        if not ok then ns.Debug = ns.Debug or {}; ns.Debug.partyLayoutError = tostring(err) end
+        if not ok then geterrorhandler()(err) end
         if pets[i] then pcall(LayoutPet, pets[i]) end
     end
     LayoutHolder()
@@ -1949,7 +1921,7 @@ function PF:ShouldLoad()
     return db and db.enabled and db.party and db.party.enabled and true or false
 end
 
--- range has no event for every change; frames in a group re-check twice a second
+-- Range has no event for every change; frames in a group re-check twice a second
 local rangeTicker
 local function StartRangeTicker()
     if rangeTicker then return end
@@ -1968,7 +1940,7 @@ function PF:OnGlobalEvent(event, ...)
         return
     end
     if IsEditing() then return end
-    -- a new member or a new role: the frames take their places again (after the fight, in combat)
+    -- a new member or role: the frames take their places again (after the fight, in combat)
     local party = GetPartyDb()
     if ((event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ROLES_ASSIGNED") and party.sortByRole)
         or ((event == "GROUP_ROSTER_UPDATE" or event == "UNIT_PET") and party.pets) then

@@ -48,7 +48,6 @@ local BAR_DATA = {
 --------------------------------------------------
 -- 4. FAKE COOLDOWN MANAGER (FCM) STATE
 --------------------------------------------------
-
 ActionBars.fcm = {
     unlockMode = false,
     wasDragging = false,
@@ -93,11 +92,8 @@ end
 --------------------------------------------------
 -- 6. BUTTON ART (force Blizzard's slot art on every button)
 --------------------------------------------------
--- Action buttons inherit ActionButtonTemplate, which carries SlotArt (the recessed slot with the
--- wings) and SlotBackground (the plain square). Blizzard's BaseActionButtonMixin:UpdateButtonArt()
--- picks one from the bar's hideBarArt flag; we post-hook it per button so our choice wins, including
--- after Edit Mode's "Hide Bar Art" runs it. Limited to bars 1-8 and the pet bar: the stance, possess
--- and totem buttons render the forced art badly and aren't worth the trouble.
+-- Blizzard's UpdateButtonArt picks SlotArt or SlotBackground from the bar's hideBarArt flag; a
+-- post-hook per button makes ours win. Bars 1-8 and the pet bar only (the others render it badly).
 local ART_BAR_KEYS = { bar1 = true, bar2 = true, bar3 = true, bar4 = true, bar5 = true, bar6 = true, bar7 = true, bar8 = true, pet = true }
 
 local function GetAllArtButtons()
@@ -110,9 +106,8 @@ local function GetAllArtButtons()
     return all
 end
 
--- Remember how Blizzard left the button so disabling the option restores exactly that look
--- (Forever keeps bars 2-8 plain through logic we can't see, so re-running Blizzard's
--- UpdateButtonArt is not a reliable way back).
+-- Blizzard's look is remembered for the way back: re-running UpdateButtonArt does not restore it
+-- on Forever.
 local function SnapshotButtonArt(button)
     if button.FlareUI_ArtOrig then return end
     local nw, nh = button.NormalTexture:GetSize()
@@ -147,8 +142,7 @@ local function ApplyButtonArt(button)
     button.SlotArt:Show()
     button.SlotBackground:Hide()
 
-    -- read before our hook replaced UpdateButtonArt (UpdateButtonArtAll): after it the method is the
-    -- hook wrapper and the comparison always failed, giving the pet bar's small buttons the big frame
+    -- read before the hook replaces UpdateButtonArt (after it, the comparison always fails)
     local small = button.FlareUI_Small
     if small == nil then small = SmallActionButtonMixin and button.UpdateButtonArt == SmallActionButtonMixin.UpdateButtonArt or false end
     local w, h = 46, 45
@@ -198,11 +192,8 @@ end
 --------------------------------------------------
 -- 8. TYPOGRAPHY & TEXT
 --------------------------------------------------
--- Blizzard puts an already-localised, already-abbreviated string in HotKey (GetBindingText(key, 1)),
--- so shortening that text again is guesswork: the rules differ per language and a clamp turns
--- "BUTTON4" into "BUT". Work from the raw binding key instead - GetBindingKey returns things like
--- "SHIFT-BUTTON4" or "NUMPAD1", always uppercase and never localised. The rules run in order, which
--- is why NUMPAD comes before PLUS and SPACEBAR before SPACE.
+-- Shortened from the raw binding key ("SHIFT-BUTTON4"), which is never localised. The rules run in
+-- order: NUMPAD before PLUS, SPACEBAR before SPACE.
 local KEY_SHORT = {
     { "ALT%-", "A" }, { "CTRL%-", "C" }, { "SHIFT%-", "S" }, { "META%-", "M" },
     { "NUMPAD", "N" },
@@ -226,8 +217,7 @@ local function ShortenKey(key)
     return key
 end
 
--- bindingAction is what Blizzard's own UpdateHotkeys resolved; commandName is set by the bar when it
--- builds its buttons; the CLICK binding is the fallback Blizzard itself uses.
+-- Blizzard's resolved action, the bar's command name, or the CLICK binding (Blizzard's fallback)
 local function GetBindingKeyForButton(button)
     local action = button.bindingAction or button.commandName
     local key = action and GetBindingKey(action)
@@ -242,8 +232,7 @@ local function FontArgs(font)
     return ns.GetFontPath(font.face), font.size, (font.flags == "NONE" and "") or font.flags or "OUTLINE"
 end
 
--- Hotkey text and anchor. Blizzard's UpdateHotkeys re-anchors the hotkey and rewrites its text on
--- every binding or gamepad change, so this runs after it; nothing else it touches needs repeating.
+-- Hotkey text and anchor, after Blizzard's UpdateHotkeys (which rewrites both)
 local function UpdateHotkeyText(button)
     local hotkey = button and button.HotKey
     if not hotkey then return end
@@ -268,8 +257,7 @@ local function UpdateHotkeyText(button)
     hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", font.x or 0, font.y or 0)
 end
 
--- Fonts, count and macro-name placement. Blizzard sets none of these after the button is built, so
--- they are applied when the settings change rather than on every button update.
+-- Fonts, count and macro-name placement: applied when the settings change
 local function UpdateButtonText(button)
     if not button then return end
     local db = GetBarConfig()
@@ -307,12 +295,9 @@ end
 
 --------------------------------------------------
 -- 9. RANGE & STATUS COLORING
--- Blizzard already drives this from events: ACTION_USABLE_CHANGED lands in the button's UpdateUsable
--- and ACTION_RANGE_CHECK_UPDATE in ActionButton_UpdateRangeIndicator, and both are handed the values
--- the client just looked up. Post-hooking them and reusing those arguments means we never poll
--- IsUsableAction / IsActionInRange ourselves. Usable state and range state arrive separately, so each
--- is remembered on the button and the two are combined when either changes; the last colour applied
--- is remembered too, so a repeated update writes nothing.
+-- Post-hooks on Blizzard's UpdateUsable and ActionButton_UpdateRangeIndicator reuse the values they
+-- were handed, so nothing is polled. Usable and range state are kept on the button and combined;
+-- a repeated colour writes nothing.
 --------------------------------------------------
 local function ApplyStateColor(button, state)
     if button.FlareUI_ColorState == state then return end
@@ -335,21 +320,13 @@ local function ApplyStateColor(button, state)
         return
     end
 
-    -- Use alpha to blend between tint color and white (neutral)
-    -- This keeps the icon opaque while controlling tint intensity
+    -- the colour's alpha is the tint strength; the icon stays opaque
     local alpha = color.a or 1
     icon:SetVertexColor((color.r or 1) * alpha + (1 - alpha),
                         (color.g or 1) * alpha + (1 - alpha),
                         (color.b or 1) * alpha + (1 - alpha), 1)
 
-    -- Desaturate for out of range, out of mana, and unusable (if enabled)
-    if state == "range" or state == "mana" then
-        icon:SetDesaturated(true)
-    elseif state == "unusable" and color.desaturate then
-        icon:SetDesaturated(true)
-    else
-        icon:SetDesaturated(false)
-    end
+    icon:SetDesaturated(state == "range" or state == "mana" or (state == "unusable" and color.desaturate) or false)
 end
 
 local function RefreshButtonColor(button)
@@ -360,7 +337,7 @@ local function RefreshButtonColor(button)
     ApplyStateColor(button, usable)
 end
 
--- post-hook on the button's UpdateUsable; Blizzard passes what it just resolved
+-- Post-hook on the button's UpdateUsable
 local function OnUpdateUsable(button, action, isUsable, notEnoughMana)
     local slot = button.action
     if not slot then return end   -- pet bar has its own path; stance buttons keep Blizzard's look
@@ -393,8 +370,7 @@ local function OnUpdateRangeIndicator(button, checksRange, inRange)
     end
 end
 
--- The pet bar has no per-button usable callback, so it is refreshed as a whole when Blizzard updates
--- it. That is infrequent, and the per-button state cache keeps the writes down.
+-- The pet bar has no per-button usable callback: refreshed whole when Blizzard updates it
 local function UpdatePetColors()
     local db = GetBarConfig()
     if not db or not db.colors or not db.colors.enableRange then return end
@@ -426,27 +402,15 @@ end
 --------------------------------------------------
 -- 10. ZONE ABILITY BUTTONS
 --------------------------------------------------
-
 local function StyleZoneAbilityButtonFonts(container)
-    if not container then return end
-
     local db = GetBarConfig()
-    if not db then return end
-
+    local font = db and db.countFont
+    if not (container and font) then return end
     for _, button in ipairs({ container:GetChildren() }) do
-        if button and button:IsObjectType("Button") then
-            -- Zone ability buttons have Count fontstrings
-            local count = button.Count
-            if count then
-                local font = db.countFont
-                if font then
-                    local path = ns.GetFontPath(font.face)
-                    local flags = (font.flags == "NONE" and "") or font.flags or "OUTLINE"
-
-                    count:SetFont(path, font.size, flags)
-                    ns.ApplyShadow(count, font)
-                end
-            end
+        local count = button:IsObjectType("Button") and button.Count
+        if count then
+            count:SetFont(FontArgs(font))
+            ns.ApplyShadow(count, font)
         end
     end
 end
@@ -454,21 +418,10 @@ end
 --------------------------------------------------
 -- 11. FAKE COOLDOWN MANAGER (FCM) API
 --------------------------------------------------
-
--- Apply clickthrough to a single bar
+-- Click-through on one bar
 local function ApplyClickthroughToBar(key, enabled)
     if InCombatLockdown() then return false end
-
-    local buttons = GetButtonsForBarKey(key)
-    if #buttons == 0 then return false end
-
-    for _, btn in ipairs(buttons) do
-        if btn and btn.EnableMouse then
-            -- "stateful" was set here as well; it is not an attribute Blizzard reads anywhere, so it
-            -- did nothing and is gone.
-            btn:EnableMouse(not enabled)
-        end
-    end
+    for _, btn in ipairs(GetButtonsForBarKey(key)) do btn:EnableMouse(not enabled) end
     return true
 end
 
@@ -483,8 +436,7 @@ local function ForEachFCMBar(fn)
     end
 end
 
--- Drag detection was an OnUpdate polling GetCursorInfo ten times a second for as long as any FCM bar
--- was enabled. CURSOR_CHANGED reports the same transitions and costs nothing while idle.
+-- Dragging something onto the bars makes them clickable (CURSOR_CHANGED, only while FCM bars exist)
 local function OnCursorChanged()
     local isDragging = GetCursorInfo() ~= nil
     if isDragging == ActionBars.fcm.wasDragging then return end
@@ -492,12 +444,11 @@ local function OnCursorChanged()
     if isDragging then
         ActionBars.fcm.wasDragging = true
         ForEachFCMBar(function(key) ApplyClickthroughToBar(key, false) end)
-
-        -- Trigger visibility refresh - CheckCondition will see wasDragging=true and show bars
+        -- Visibility shows the bars while wasDragging
         if ns.Visibility then ns.Visibility:Refresh() end
     else
         ActionBars.fcm.wasDragging = false
-        -- Re-enable clickthrough after a short delay, and only when Setup Mode is OFF (it wins)
+        -- click-through again after a moment, unless Setup Mode is on
         ActionBars:ScheduleTimer(function()
             if ActionBars.fcm.wasDragging or ActionBars.fcm.unlockMode then return end
             ForEachFCMBar(function(key) ApplyClickthroughToBar(key, true) end)
@@ -506,19 +457,12 @@ local function OnCursorChanged()
     end
 end
 
--- Public FCM Methods
+-- Setup Mode: the FCM bars take clicks and show
 function ActionBars:SetFCM_UnlockMode(enabled)
     if InCombatLockdown() then return false end
     self.fcm.unlockMode = enabled
-    -- When Setup Mode is ON (enabled=true), DISABLE clickthrough (allow interaction)
-    -- When Setup Mode is OFF (enabled=false), ENABLE clickthrough (bars become non-interactive)
     self:ApplyClickthrough(not enabled)
-
-    -- Trigger visibility refresh to show/hide bars based on Setup Mode
-    if ns.Visibility then
-        ns.Visibility:Refresh()
-    end
-
+    if ns.Visibility then ns.Visibility:Refresh() end
     return true
 end
 
@@ -551,14 +495,10 @@ end
 
 --------------------------------------------------
 -- 11b. AUTO-PAGING
--- Blizzard switches bar 1 to another page in a stance or form: bonus bars 1-4 are action pages 7-10
--- (Cat Form, Bear Form, a warrior's stances, Stealth...). Here the player picks which of bars 1-8
--- does it (one bar: those four pages are the only stance pages there are). A bar that pages gets a secure state driver; its snippet sets "actionpage" on each of
--- the bar's buttons, which Blizzard's buttons read before their bar's own page
--- (SecureActionButtonMixin:CalculateAction) and update on (OnAttributeChanged). It all runs in the
--- restricted environment, in combat too, so Blizzard's buttons are never touched from our code.
--- Bar 1 with paging off keeps its own page (the paging arrows, Shift+number) and leaves Blizzard's
--- possess / override / vehicle pages to Blizzard. Switching a bar on or off waits for combat to end.
+-- The player picks which of bars 1-8 switches to the stance / form pages (bonus bars 1-4 = pages
+-- 7-10). That bar gets a secure state driver whose snippet sets "actionpage" on its buttons, in
+-- combat too. Bar 1 with paging off keeps its own page and Blizzard's possess / vehicle pages.
+-- Switching bars waits for combat to end.
 --------------------------------------------------
 local PAGE_STANCES = "[bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10; default"
 local PAGE_BAR1_FIXED = "[possessbar][overridebar][vehicleui][bonusbar:5] default; [bar:2] 2; [bar:3] 3; [bar:4] 4; [bar:5] 5; [bar:6] 6; 1"
@@ -605,28 +545,15 @@ end
 -- 12. PUBLIC API
 --------------------------------------------------
 
--- Hide/Show Cooldown Viewers (shared secure-hide helper, see Core.lua)
-local HideFrameSecurely = ns.HideFrameSecurely
-
 local function UpdateCooldownViewers()
     local fcm = ns.db.profile.fcm
     if not fcm then return end
-
-    -- Utility Cooldown Viewer
-    local utilityViewer = _G.UtilityCooldownViewer
-    HideFrameSecurely(utilityViewer, fcm.hideUtilityCooldownViewer)
-
-    -- Essential Cooldown Viewer
-    local essentialViewer = _G.EssentialCooldownViewer
-    HideFrameSecurely(essentialViewer, fcm.hideEssentialCooldownViewer)
+    ns.HideFrameSecurely(_G.UtilityCooldownViewer, fcm.hideUtilityCooldownViewer)
+    ns.HideFrameSecurely(_G.EssentialCooldownViewer, fcm.hideEssentialCooldownViewer)
 end
 
--- Blizzard draws hotkey/count/macro text in each button's TextOverlayContainer at frame level 500.
--- Raising the end-cap container (MainActionBar.EndCaps) past 500 puts the art over the outer buttons
--- and their text. On Retail the caps are textures in that container; on Forever they are child
--- frames with useParentLevel (own Edit Mode systems), so they follow the container and ignore a
--- level set directly on them - always raise the container. It is a child of the secure bar, so this
--- only runs out of combat (Refresh guarantees that). The original level is remembered for undo.
+-- Button text draws at frame level 500, so the end caps' container goes above that (the caps follow
+-- their container's level). Out of combat only; the original level is kept for the way back.
 local GRYPHON_LEVEL_ABOVE = 501
 local function UpdateGryphonLayer()
     local db = GetBarConfig()
@@ -656,15 +583,11 @@ function ActionBars:Refresh()
     UpdateCooldownViewers()
     UpdateGryphonLayer()
     UpdateButtonArtAll()
-
     RefreshAllScales()
     SetupRangeColors()
     ApplyAutoPaging()
 
-    -- Update Extra button (fonts + clean keybinds)
     if _G.ExtraActionButton1 then UpdateButtonText(_G.ExtraActionButton1) end
-
-    -- Update Zone Ability button fonts
     if _G.ZoneAbilityFrame and _G.ZoneAbilityFrame.SpellButtonContainer then
         StyleZoneAbilityButtonFonts(_G.ZoneAbilityFrame.SpellButtonContainer)
     end
@@ -678,22 +601,11 @@ function ActionBars:Refresh()
     end
     UpdatePetColors()
 
-    -- FCM Setup
+    -- FCM: click-through unless Setup Mode is on; drag detection while any FCM bar exists
     if ns.db.profile.fcm then
-        -- Apply clickthrough when Setup Mode is OFF (not unlockMode)
         self:ApplyClickthrough(not self.fcm.unlockMode)
-
-        -- Always start drag detection if any FCM bar is enabled
         local hasFCMBars = false
-        for _, data in ipairs(BAR_DATA) do
-            if data.key:match("^bar[1-8]$") then
-                if ns.db.profile.fcm.bars[data.key].enabled then
-                    hasFCMBars = true
-                    break
-                end
-            end
-        end
-
+        ForEachFCMBar(function() hasFCMBars = true end)
         if hasFCMBars then
             self:StartDragDetection()
         else
@@ -705,14 +617,12 @@ end
 function ActionBars:Init()
     local db = GetBarConfig()
     if not db or not db.enabled then return end
+    -- Setup Mode is for the session only
+    if ns.db.profile.fcm then ns.db.profile.fcm.setupModeEnabled = false end
 
     self:Refresh()
 
-    -- Hook each button rather than the mixin table. Blizzard applies ActionBarActionButtonMixin
-    -- through CreateFromMixins + the template's mixin= attribute, both of which COPY the functions
-    -- onto the frame, so a hook installed on the mixin table afterwards would never run. (The old
-    -- code branched on "ActionBarActionMixin", which does not exist on Forever at all, and so always
-    -- fell through to this path minus the Update hook.)
+    -- hooked per button: the mixin's functions are copied onto each frame
     for _, btn in ipairs(GetAllActionButtons()) do
         if not btn.FlareUI_ButtonHooked then
             btn.FlareUI_ButtonHooked = true
@@ -721,8 +631,7 @@ function ActionBars:Init()
         end
     end
 
-    -- The extra action button has its own code path and sets its hotkey when it appears, so it gets
-    -- the same hook plus a re-apply on UPDATE_EXTRA_ACTIONBAR / UPDATE_BINDINGS below.
+    -- the extra action button sets its hotkey when it appears (see OnExtraActionBarUpdate too)
     local extraBtn = _G.ExtraActionButton1
     if extraBtn and extraBtn.UpdateHotkeys then
         ActionBars:SecureHook(extraBtn, "UpdateHotkeys", UpdateHotkeyText)
@@ -738,23 +647,19 @@ end
 --------------------------------------------------
 -- 13. EVENT HANDLERS
 --------------------------------------------------
-
--- Event: Edit mode layouts updated or player entering world
 function ActionBars:OnLayoutUpdate()
     if not InCombatLockdown() then
         self:Refresh()
     end
 end
 
--- Event: combat ended - run a refresh that was requested during combat
 function ActionBars:OnCombatEnd()
     if self._pendingRefresh then
         self:Refresh()
     end
 end
 
--- Event: Extra Action Bar updated (button appears in instances/combat) or bindings changed.
--- Defer so our clean keybind runs after Blizzard's secure hotkey update.
+-- after Blizzard's own hotkey update
 function ActionBars:OnExtraActionBarUpdate()
     C_Timer.After(0, function()
         local db = GetBarConfig()

@@ -3,12 +3,9 @@ local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
--- Blizzard's totem frame (TotemFrame.lua: timers, a right-click on a totem dismisses it) is a child
--- of PlayerFrame, which FlareUI's unit frames hide - so with FlareUI's player frame on, a shaman lost
--- the totem timers. The frame is kept as Blizzard's own, running on Blizzard's code, and only given
--- a new home: FlareUI Totems, a frame placed in Edit Mode, with a size and a number of totems per
--- row (4 = Blizzard's single row, 2 = a 2 x 2 grid). In Edit Mode it shows four sample totems so it
--- can be seen while it is placed.
+-- Blizzard's TotemFrame lives in PlayerFrame, which the unit frames park, so it is moved onto
+-- FlareUI Totems: an Edit Mode frame with a size and totems per row. Blizzard's code still runs it.
+-- Edit Mode shows four sample totems.
 --------------------------------------------------
 ns.Totems = ns.Totems or {}
 local TOT = ns.Totems
@@ -22,11 +19,10 @@ local ipairs = ipairs
 local math_floor, math_ceil, math_max, math_min = math.floor, math.ceil, math.max, math.min
 local table_sort = table.sort
 
--- under the left half of FlareUI's player frame, beside the pet frame (UnitFrames.lua DEFAULT_POSITIONS)
+-- under the player frame, beside the pet frame
 local DEFAULT_POSITION = { point = "BOTTOM", x = -392, y = 256 }
 local DEFAULT_SIZE, DEFAULT_PER_ROW = 95, 4
--- Blizzard's totem button geometry (TotemFrame.xml TotemButtonTemplate): a 37 button, buttons 6
--- apart from overlapping (spacing -6); the timer hangs 5 into the button and ~7 below it
+-- Blizzard's totem button geometry (TotemButtonTemplate)
 local BUTTON, ICON, RING = 37, 22, 30
 local COL_STEP, ROW_STEP, TEXT_BELOW = 31, 42, 7
 local MAX = _G.MAX_TOTEMS or 4
@@ -50,7 +46,7 @@ local function GetSettings()
 end
 
 --------------------------------------------------
--- 3. POSITION (per Edit Mode layout, like the unit frames)
+-- 3. POSITION (per Edit Mode layout)
 --------------------------------------------------
 local function GetLayoutStore(layoutName)
     local db = GetDb()
@@ -76,9 +72,7 @@ local function OnFrameMoved(_, layoutName, point, x, y)
 end
 
 --------------------------------------------------
--- 4. GRID
--- Slot n (1-based, in Blizzard's totem order) goes perRow to a row, rows going down. Offsets are
--- in the scaled frame's own units, from its top-left corner.
+-- 4. GRID (slot n, perRow to a row, rows going down; offsets in the scaled frame's units)
 --------------------------------------------------
 local function SlotOffset(n, perRow)
     local col = (n - 1) % perRow
@@ -96,8 +90,7 @@ end
 
 local function ByLayoutIndex(a, b) return (a.layoutIndex or 0) < (b.layoutIndex or 0) end
 
--- Blizzard lays its buttons out in one row (TotemFrameMixin:Update -> Layout); each time, the
--- shown ones are put back in the grid
+-- After Blizzard's Layout, the shown buttons go back into the grid
 local active = {}
 local function ArrangeTotems()
     local frame = _G.TotemFrame
@@ -113,10 +106,8 @@ end
 
 --------------------------------------------------
 -- 5. BLIZZARD'S TOTEM FRAME, REHOMED
--- The totem frame is one of the player frame's managed frames: each time it shows, Blizzard
--- clears its anchors, parents it to PlayerBottomManagedFrameContainer (inside the parked
--- PlayerFrame, so never seen) and lays that out (ManagedFrameSystem.lua UpdateFrame). Each
--- time it comes straight back to the holder, parent and anchor. Nothing here is protected.
+-- A managed frame: on every show Blizzard re-parents it into the parked PlayerFrame, so it comes
+-- straight back to the holder.
 --------------------------------------------------
 local anchoring = false
 local function AnchorTotemFrame()
@@ -139,9 +130,7 @@ local function AdoptTotemFrame()
 end
 
 --------------------------------------------------
--- 6. EDIT MODE PREVIEW
--- Four sample totems in Blizzard's totem button look (round icon, ring, timer under it), in the
--- same grid and size as the real ones.
+-- 6. EDIT MODE PREVIEW (four sample totems in the same grid and size)
 --------------------------------------------------
 local function CreatePreview()
     local preview = CreateFrame("Frame", nil, holder)
@@ -184,9 +173,8 @@ local function SetPreview(shown)
 end
 
 --------------------------------------------------
--- 7. SIZE AND GRID (Edit Mode settings)
--- The holder is sized to the whole grid at the chosen scale; the totems and the samples are scaled
--- inside it, so its saved position never moves with the size.
+-- 7. SIZE AND GRID
+-- The holder is sized to the grid; the totems are scaled inside it, so its position stays put.
 --------------------------------------------------
 local function ApplyLayout()
     if not holder then return end
@@ -233,7 +221,7 @@ end
 --------------------------------------------------
 -- 8. SETUP
 --------------------------------------------------
--- only with FlareUI's player frame on: otherwise Blizzard's player frame keeps its own totems
+-- Only with FlareUI's player frame on
 function TOT:ShouldLoad()
     local db = GetDb()
     if not (db and db.enabled) then return false end

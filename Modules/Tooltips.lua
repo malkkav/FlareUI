@@ -1,9 +1,9 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
--- Tooltip customisation in the FlareUI style: scale, background / border colouring, health bar,
--- anchoring and per-category visibility. Written for 12.x secrets, which comes down to these rules:
+-- Tooltip scale, colours, health bar, anchoring and per-category visibility. Secret-safe rules:
 --   * only TooltipDataProcessor post-calls and post-hooks, never method replacement
 --   * never touch a tooltip that is forbidden, has a secret width, or has a child with a secret
 --     shownWidgetCount (a 12.0 Blizzard bug: SetBackdrop / SetPadding then poisons the layout)
@@ -18,7 +18,7 @@ ns.modules["Tooltips"] = TIP
 -- 2. UPVALUES
 --------------------------------------------------
 local _G = _G
-local ipairs, pairs, type, select = ipairs, pairs, type, select
+local ipairs, type, select = ipairs, type, select
 local pcall = pcall
 local UnitExists, UnitName, UnitClass, UnitReaction = UnitExists, UnitName, UnitClass, UnitReaction
 local UnitIsPlayer, UnitIsUnit, UnitClassification = UnitIsPlayer, UnitIsUnit, UnitClassification
@@ -64,12 +64,12 @@ local CAT_SPELL        = "spells"
 local CAT_AURA         = "auras"
 
 --------------------------------------------------
--- 4. SAFETY
--- One gate in front of everything that touches a tooltip's appearance.
+-- 4. SAFETY (one gate in front of everything that touches a tooltip's appearance)
 --------------------------------------------------
-local function HasTaintedWidgetContainer(tip)
-    for _, child in pairs({ tip:GetChildren() }) do
-        if issecretvalue(child.shownWidgetCount) then return true end
+-- runs on every tooltip shown, so the children are walked without building a table
+local function AnySecretWidgetCount(...)
+    for i = 1, select("#", ...) do
+        if issecretvalue((select(i, ...)).shownWidgetCount) then return true end
     end
     return false
 end
@@ -78,11 +78,10 @@ local function SafeToTouch(tip)
     if type(tip) ~= "table" or not tip.GetObjectType then return false end
     if tip:IsForbidden() then return false end
     if issecretvalue(tip:GetWidth()) then return false end
-    if HasTaintedWidgetContainer(tip) then return false end
-    return true
+    return not AnySecretWidgetCount(tip:GetChildren())
 end
 
--- readable value or nil, so a secret never reaches a comparison
+-- The value, or nil when it is secret
 local function Readable(value)
     if canaccessvalue(value) then return value end
     return nil
@@ -114,7 +113,7 @@ local function GetClassColor(unit)
     return { color.r, color.g, color.b }
 end
 
--- border colour for a unit tooltip, honouring the class / reaction toggles
+-- Border colour for a unit tooltip, by class or reaction as switched on
 local function GetUnitBorderColor(unit)
     local db = GetDb()
     if not db then return nil end
@@ -175,13 +174,13 @@ end
 --------------------------------------------------
 local CLASSIFICATION_FORMAT = {
     elite      = "+%s",
-    rareelite  = "+%s |cffe066ff(Rare)|r",
-    rare       = "%s |cffe066ff(Rare)|r",
-    worldboss  = "%s |cffff4040(Boss)|r",
+    rareelite  = "+%s |cffe066ff(" .. L["Rare"] .. ")|r",
+    rare       = "%s |cffe066ff(" .. L["Rare"] .. ")|r",
+    worldboss  = "%s |cffff4040(" .. L["Boss"] .. ")|r",
     minus      = "-%s",
 }
 
--- line scrubbing: drop the PvP and "right click for frame settings" lines
+-- Drops the PvP and "right click for frame settings" lines
 local function ScrubLines(tip)
     local db = GetDb()
     if not db then return end
@@ -228,7 +227,7 @@ local function ColorName(tip, unit)
     line:SetText(ColorToHex(color[1], color[2], color[3]) .. text .. "|r")
 end
 
--- the level line is the first line that starts with the level word
+-- The level line is the first line that starts with the level word
 local function ColorLevelLine(tip, unit)
     local db = GetDb()
     if not (db and db.colorLevelLine) then return end
@@ -264,8 +263,7 @@ local function AddTargetLine(tip, unit)
     tip:AddLine((_G.TARGET or "Target") .. ": " .. label)
 end
 
--- "Item ID 12345" / "Spell ID 678" in grey at the bottom right of item, spell and aura tooltips. The id
--- comes from the tooltip's own data; a secret one is left out.
+-- "Item ID 12345" / "Spell ID 678" in grey, from the tooltip's own data (a secret id is left out)
 local function AddIdLine(tip, key, label, data)
     local db = GetDb()
     local id = data and data.id
@@ -299,8 +297,7 @@ end
 -- category -> "always" (show) / "combat" (hide while in combat) / "never" (always hide)
 local function ShouldHide(category)
     local db = GetDb()
-    -- The categories tell world from UI by where the mouse is (MouseIsOverWorld), and with Blizzard's
-    -- Gamepad UI the hidden cursor always rests on the world: there every tooltip shows.
+    -- world and UI are told apart by the mouse, which the Gamepad UI keeps on the world: all show there
     if not db or ns.IsGamepadUI() then return false end
     local mode = db.visibility and db.visibility[category] or "always"
     if mode == "always" then return false end
@@ -322,11 +319,8 @@ end
 --------------------------------------------------
 -- 9. TOOLTIP HOOKS
 --------------------------------------------------
--- The unit a tooltip shows, as a token FlareUI may pass on. Under addon restrictions (instances,
--- encounters, PvP, combat) the tooltip hands its unit back as a secret, and a secret may not be passed
--- to UnitExists and the rest from addon code. A plain token is then taken from where the tooltip came
--- from: the unit frame that owns it (its unit field or attribute), or "mouseover" over the world.
--- Anything still unreadable leaves the tooltip as Blizzard drew it (visibility rules still apply).
+-- The tooltip's unit as a token addon code may use. A secret unit is replaced by the owner frame's
+-- unit, or "mouseover" over the world; failing that the tooltip is left as Blizzard drew it.
 local function TooltipUnit(tip)
     local _, unit = TooltipUtil.GetDisplayedUnit(tip)
     if not unit then unit = select(2, tip:GetUnit()) end
@@ -378,21 +372,21 @@ local function OnTooltipSetItem(tip, data)
         end
     end
     ApplyColors(tip, color)
-    AddIdLine(tip, "showItemID", "Item ID", data)
+    AddIdLine(tip, "showItemID", L["Item ID"], data)
 end
 
 local function OnTooltipSetSpell(tip, data)
     if not SafeToTouch(tip) then return end
     if tip == GameTooltip and HideIfNeeded(tip, OwnerIsActionButton(tip) and CAT_ACTION or CAT_SPELL) then return end
     ApplyColors(tip, nil)
-    AddIdLine(tip, "showSpellID", "Spell ID", data)
+    AddIdLine(tip, "showSpellID", L["Spell ID"], data)
 end
 
 local function OnTooltipSetAura(tip, data)
     if not SafeToTouch(tip) then return end
     if tip == GameTooltip and HideIfNeeded(tip, CAT_AURA) then return end
     ApplyColors(tip, nil)
-    AddIdLine(tip, "showSpellID", "Spell ID", data)
+    AddIdLine(tip, "showSpellID", L["Spell ID"], data)
 end
 
 -- anything that is not a unit / item / spell / aura: world objects and plain UI frames
@@ -413,8 +407,7 @@ local function ApplyAnchor(tooltip, parent)
     if not (db and tooltip and parent) then return end
     if tooltip ~= GameTooltip then return end
 
-    -- tooltips owned by a UI frame can keep Blizzard's placement. The Gamepad UI always does: with
-    -- the controller there is no cursor to follow (the setting itself stays for keyboard and mouse).
+    -- the Gamepad UI has no cursor to follow
     if ns.IsGamepadUI() then return end
     local overWorld = MouseIsOverWorld()
     local mode = overWorld and db.anchor or db.anchorFrames
@@ -425,9 +418,7 @@ end
 --------------------------------------------------
 -- 11. PUBLIC
 --------------------------------------------------
--- Fonts tab: Blizzard's tooltip font objects, which every tooltip's lines are made from. Title is
--- the first line (GameTooltipHeaderText); Content the rest (GameTooltipText), with the small lines
--- (GameTooltipTextSmall) two points under it. Font objects only: no tooltip is touched.
+-- Blizzard's tooltip font objects: title (first line), content, and small lines two points under it
 local function ApplyFonts()
     local db = GetDb()
     if not db then return end
@@ -458,7 +449,7 @@ function TIP:Init()
     local db = GetDb()
     if not db then return end
     self.initialized = true
-    -- the plain "cursor" mode was folded into the offset one, which the options now call "Cursor"
+    -- the old "cursor" mode is now "cursorOffset"
     if db.anchor == "cursor" then db.anchor = "cursorOffset" end
     if db.anchorFrames == "cursor" then db.anchorFrames = "cursorOffset" end
 

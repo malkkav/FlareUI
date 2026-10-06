@@ -2,15 +2,11 @@ local _, ns = ...
 
 --------------------------------------------------
 -- FLAREUI DIALOG
--- FlareUI's own yes / no questions (reload, reset, sync, rename a chat window, unsaved radials), in
--- place of Blizzard's StaticPopups. With Forever's gamepad UI on, a StaticPopup shown from addon code
--- hands itself to Blizzard's gamepad focus manager inside the addon's tainted call
--- (StaticPopupGamepad.lua > FrameControlsManager:HandlePopupShown); the gamepad binding stack then
--- runs until "script ran too long" and the client hangs. This window never touches that system: it
--- reads the pad itself while it is up (bottom face button answers yes, right face button no), the
--- way it reads Enter and Escape from the keyboard.
+-- FlareUI's yes / no questions, in place of StaticPopups. In the Gamepad UI a StaticPopup shown
+-- from addon code hangs the client (the gamepad focus manager runs tainted), so this window reads
+-- the pad itself: bottom face button yes, right face button no.
 --
--- A dialog is a table in ns.Dialogs, the StaticPopup fields FlareUI used:
+-- A dialog is a table in ns.Dialogs:
 --   text           shown as written; "%s" takes the text argument of ns.ShowDialog
 --   button1/2      the yes and no labels (button2 optional)
 --   OnAccept(data, text)  on yes; text is the edit box's when hasEditBox
@@ -20,12 +16,10 @@ local _, ns = ...
 --   showAlert      the exclamation mark beside the text
 --   padInput       reads the controller outside the gamepad UI too (the switch to Gamepad mode)
 --   reloads        yes reloads the UI after OnAccept (see Reloading below)
---   macro          like reloads, but the secure button runs this macro instead of /reload, and its
---                  PreClick calls OnMacro (not OnAccept, which stays the pad's and combat's answer).
---                  May be a function(data) returning the macro, built as the dialog opens.
---   padSecure      with macro: the controller's yes / no are bound to the dialog's buttons instead of
---                  read by our pad handler, so a pad yes also runs the macro from the secure button
---                  (for answers that must never run from addon code, like an Edit Mode layout switch)
+--   macro          like reloads, but the secure button runs this macro (or function(data) returning
+--                  it) and its PreClick calls OnMacro; OnAccept stays the pad's and combat's answer
+--   padSecure      with macro: the pad's yes / no are bound to the secure buttons, so a pad yes runs
+--                  the macro too
 --------------------------------------------------
 ns.Dialogs = ns.Dialogs or {}
 
@@ -37,7 +31,7 @@ local BUTTON_H  = 24
 local frame, current, currentData
 
 local function PadLabel(key, label, padInput)
-    -- in the gamepad UI the binding text of a pad button is its glyph (A, Cross...), as on the bars
+    -- in the gamepad UI a pad button's binding text is its glyph
     if not (ns.IsGamepadUI() or padInput) then return label end
     local glyph = GetBindingText(key, 1)
     if not glyph or glyph == "" or glyph == key then return label end
@@ -66,13 +60,9 @@ end
 
 --------------------------------------------------
 -- Reloading
--- ReloadUI is protected on Forever: from a click it is blocked ("Interface action failed because of
--- an AddOn") and ns.Reload can only print its /reload hint. So a dialog with reloads = true answers
--- yes with a secure button that runs Blizzard's own /reload as a macro: its PreClick (ours) runs
--- OnAccept first, then the macro reloads in Blizzard's secure path. Enter is bound to it while the
--- dialog is up; the pad's yes button keeps Answer, which reloads. Being protected, the button is
--- parented to UIParent - a protected child would make the dialog protected and unshowable in combat
--- - laid over the yes button, and only used out of combat; in combat yes falls back to the hint.
+-- ReloadUI is protected on Forever, so "yes" on a reloads dialog is a secure button running /reload
+-- as a macro (PreClick runs OnAccept first). It is parented to UIParent, laid over the yes button,
+-- so the dialog itself stays unprotected. In combat, yes falls back to the /reload hint.
 --------------------------------------------------
 local reloadButton, secureReload, accepted
 
@@ -80,10 +70,9 @@ local function GetReloadButton()
     if reloadButton then return reloadButton end
     reloadButton = CreateFrame("Button", "FlareUIDialogReload", UIParent, "SecureActionButtonTemplate, UIPanelButtonTemplate")
     reloadButton:SetSize(BUTTON_W, BUTTON_H)
-    -- one strata above the dialog: in the same one the toplevel dialog drew over it and took the click
+    -- above the dialog's strata, or the toplevel dialog takes the click
     reloadButton:SetFrameStrata("TOOLTIP")
-    -- a mouse click acts on release, a bound key on press (ActionButtonUseKeyDown); the other half
-    -- of each pair is ignored by the template
+    -- a mouse click acts on release, a bound key on press
     reloadButton:RegisterForClicks("AnyUp", "AnyDown")
     reloadButton:SetAttribute("type", "macro")
     -- PreClick runs for both halves of a click, so OnAccept is guarded to run once
@@ -95,8 +84,7 @@ local function GetReloadButton()
         local onYes = current.macro and current.OnMacro or (not current.macro and current.OnAccept)
         if onYes then onYes(currentData) end
     end)
-    -- after the macro has run: a macro that does not reload (a layout switch) leaves the UI up, so
-    -- the dialog closes here (both halves of a click arrive; the first one closes it)
+    -- a macro that does not reload leaves the UI up, so the dialog closes here
     reloadButton:SetScript("PostClick", function()
         if not (accepted and current and frame and frame:IsShown()) then return end
         current, currentData = nil, nil
@@ -106,7 +94,7 @@ local function GetReloadButton()
     return reloadButton
 end
 
--- hidden with the dialog; a protected frame cannot be hidden in combat, so then after it
+-- Hidden with the dialog, or after combat
 local releaseWaiter
 local function ReleaseReloadButton()
     if not secureReload then return end
@@ -126,9 +114,8 @@ local function ReleaseReloadButton()
     ClearOverrideBindings(frame)
 end
 
--- Escape and Enter are taken; every other key goes on to its binding, so the player can still move.
--- Propagation cannot change in combat, and none of these dialogs open in combat; the keys then fall
--- through, and the buttons still work.
+-- Escape and Enter are taken; every other key goes on to its binding. Propagation cannot change in
+-- combat, where the keys fall through and only the buttons work.
 local function OnKeyDown(self, key)
     -- with the secure reload button up, Enter goes on to its override binding
     local handled = (key == "ESCAPE" and current and current.hideOnEscape) or (key == "ENTER" and not secureReload)
@@ -145,7 +132,6 @@ local PAD_NO  = GAMEPAD_FACE_RIGHT or "PAD2"
 
 local function OnGamePadButtonDown(self, button)
     local yes = button == PAD_YES
-    -- the right face button answers no wherever there is a no to give: it wears B's glyph on it
     local no = button == PAD_NO and current and (current.hideOnEscape or current.button2)
     if not InCombatLockdown() then self:SetPropagateKeyboardInput(not (yes or no)) end
     if yes then
@@ -179,8 +165,7 @@ local function Build()
     frame:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
     frame:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1)
     frame:Hide()
-    -- Blizzard's gamepad cursor must not walk into it: a pad click would run FlareUI code inside
-    -- Blizzard's navigation, the trap this window exists to avoid. The pad is read directly instead.
+    -- keep Blizzard's gamepad cursor out: a pad click would run FlareUI code inside its navigation
     frame.smartNavigationIgnored = true
 
     frame.Alert = frame:CreateTexture(nil, "ARTWORK")
@@ -290,8 +275,7 @@ function ns.ShowDialog(key, textArg, data)
     frame:Show()
     frame:Raise()
     if secureReload then
-        -- a protected frame cannot be anchored to an insecure one, so it goes on UIParent at the
-        -- yes button's position (both share UIParent's scale)
+        -- a protected frame cannot anchor to an insecure one: place it on UIParent at the yes button
         local x, y = frame.Button1:GetCenter()
         reloadButton:ClearAllPoints()
         if x and y then
@@ -300,7 +284,6 @@ function ns.ShowDialog(key, textArg, data)
             reloadButton:SetPoint("TOP", UIParent, "TOP", 0, -135 - frame:GetHeight() + BUTTON_H)
         end
         reloadButton:Show()
-        -- the secure button stands in for it; nothing else may take the click
         frame.Button1:Hide()
     end
     if def.hasEditBox then
@@ -309,15 +292,11 @@ function ns.ShowDialog(key, textArg, data)
     end
 end
 
--- closes the dialog if it is showing key, without answering it
+-- Closes the dialog if it is showing key, without answering it
 function ns.HideDialog(key)
     if frame and frame:IsShown() and current == ns.Dialogs[key] then Close() end
 end
 
 function ns.AnyDialogShown()
     return frame ~= nil and frame:IsShown()
-end
-
-function ns.IsDialogShown(key)
-    return frame ~= nil and frame:IsShown() and current == ns.Dialogs[key]
 end

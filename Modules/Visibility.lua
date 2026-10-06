@@ -14,7 +14,7 @@ LibStub("AceHook-3.0"):Embed(Visibility)
 -- 2. UPVALUES
 --------------------------------------------------
 local _G = _G
-local pairs, ipairs = pairs, ipairs
+local pairs, ipairs, next = pairs, ipairs, next
 local table_insert = table.insert
 local math_abs = math.abs
 local math_min = math.min
@@ -65,9 +65,8 @@ local function GetFrame(key)
     return f
 end
 
--- The main bar's end caps (gryphons/wyverns). On Forever each cap is its own Edit Mode system
--- (MainActionBar.EndCaps.LeftEndCap / RightEndCap, from Blizzard_ActionBar/Camelot/MainMenuBarEndCaps.xml)
--- and ignores its parent's alpha, so bar 1's fade has to be applied to them explicitly.
+-- The main bar's end caps: on Forever each is its own Edit Mode system and ignores its parent's
+-- alpha, so bar 1's fade is applied to them too.
 local function ForEachEndCap(func, ...)
     local caps = _G.MainActionBar and _G.MainActionBar.EndCaps
     if not caps then return end
@@ -82,8 +81,7 @@ local function ApplyElementAlpha(frame, key, alpha)
     if key == "bar1" then ForEachEndCap(SetCapAlpha, alpha) end
 end
 
--- Runs func on every frame behind a hide/fade key. Most keys map to one frame; "endcaps" is the
--- two gryphon frames (Forever's Edit Mode hide setting for them does nothing, so we offer our own).
+-- Runs func on every frame behind a hide / fade key ("endcaps" is the two gryphon frames)
 local function ForEachFrameOfKey(key, func, ...)
     if key == "endcaps" then
         ForEachEndCap(func, ...)
@@ -101,27 +99,20 @@ local function GetVisConfig(key)
 end
 
 --------------------------------------------------
--- 4. SECURE HIDING (STATE DRIVER)
+-- 4. SECURE HIDING
 --------------------------------------------------
-local HideFrameSecurely = ns.HideFrameSecurely
-
 local function ApplySecureHide(key, shouldHide)
-    ForEachFrameOfKey(key, HideFrameSecurely, shouldHide)
+    ForEachFrameOfKey(key, ns.HideFrameSecurely, shouldHide)
 end
 
 --------------------------------------------------
--- 5. EDIT MODE MOVER HIDER
+-- 5. EDIT MODE SELECTIONS OF HIDDEN FRAMES (invisible and unclickable)
 --------------------------------------------------
--- Makes the blue "Mover" box invisible and unclickable without deleting the frame (preventing crashes)
 local function HideMoverOfFrame(frame)
     if frame and frame.Selection then
-        -- Tag the selection so other code can tell it was hidden by us
         frame.Selection.FlareUI_HiddenMover = true
-
         frame.Selection:SetAlpha(0)
         if frame.Selection.Label then frame.Selection.Label:SetAlpha(0) end
-
-        -- Disable mouse to prevent blocking
         frame:EnableMouse(false)
         frame.Selection:EnableMouse(false)
     end
@@ -141,12 +132,10 @@ end
 
 local function HideEditModeMover(key) ForEachFrameOfKey(key, HideMoverOfFrame) end
 local function RestoreEditModeMover(key) ForEachFrameOfKey(key, RestoreMoverOfFrame) end
--- the C hide: Edit Mode's HideOverride breaks the frame's snaps from our tainted call, re-anchoring
--- whatever was snapped to it (the party frames then fail on secret health colours)
+-- the engine hide: Edit Mode's HideOverride re-anchors snapped frames under our taint
 local function HideFrame(frame) ns.RawHide(frame) end
 
--- In Edit Mode a hidden bar must stay hidden, but Blizzard shows some of them again on its own (the
--- stance bar's Update runs SetShown as Edit Mode opens): each such show is undone, with the C hide.
+-- In Edit Mode Blizzard re-shows some hidden bars itself (the stance bar); each show is undone
 local editHideHooked = {}
 local function KeepHiddenInEditMode(frame, settingKey)
     if editHideHooked[frame] then return end
@@ -160,8 +149,9 @@ end
 
 --------------------------------------------------
 -- 6. FADER ENGINE
--- One OnUpdate for every faded element. It only runs while something is mid-fade, a group has been
--- marked dirty by an event, or some group fades on mouseover (the one condition no event reports).
+-- One OnUpdate for every faded element. It runs while something is mid-fade, a group is dirty, or a
+-- group fades on mouseover (the one condition no event reports). Conditions are checked on a
+-- throttled tick or when an event marks a group dirty; alpha steps every frame only mid-fade.
 --------------------------------------------------
 local Fader = CreateFrame("Frame")
 Fader.groups = {}
@@ -170,53 +160,36 @@ Fader.updateTimer = 0
 Fader.dirty = {}
 Fader.updateEnabled = false
 Fader.watchesMouseover = false   -- recomputed by Refresh(), not per tick
+Fader.fading = false             -- something was mid-fade on the last pass
 
-local function CheckCondition(cfg, frame, key)
-    -- Fake CM override wins over everything else
-    if ns.ActionBars and ns.ActionBars.fcm then
-        local fcm = ns.db.profile.fcm
-        if fcm and fcm.bars[key] and fcm.bars[key].enabled then
-            local barCfg = fcm.bars[key]
+-- true while the target is attackable (UnitCanAttack can be secret)
+local function TargetIsHostile()
+    if not UnitExists("target") then return false end
+    local canAttack = UnitCanAttack("player", "target")
+    return canaccessvalue(canAttack) and canAttack or false
+end
 
-            -- Edit Mode always shows
-            if _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown() then return true end
+local function CheckCondition(cfg, frame, key, isBar)
+    local editMode = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
+    local fcmState = ns.ActionBars and ns.ActionBars.fcm
 
-            -- Setup Mode always shows (for positioning and spell placement)
-            if ns.ActionBars.fcm.unlockMode then return true end
-
-            -- Show when dragging (for spell placement) - works even when Setup Mode is off
-            if ns.ActionBars.fcm.wasDragging then return true end
-
-            -- Always show overrides all other conditions
-            if barCfg.condAlways then return true end
-
-            -- Check FCM-specific conditions
-            if barCfg.condCombat and InCombatLockdown() then return true end
-            if barCfg.condTarget and UnitExists("target") then return true end
-            if barCfg.condHarm and UnitExists("target") and UnitCanAttack("player", "target") then return true end
-
-            return false -- FCM bar hidden (no conditions met)
-        end
+    -- an FCM bar follows its own conditions
+    local fcm = fcmState and isBar and ns.db.profile.fcm
+    local barCfg = fcm and fcm.bars[key]
+    if barCfg and barCfg.enabled then
+        if editMode or fcmState.unlockMode or fcmState.wasDragging or barCfg.condAlways then return true end
+        if barCfg.condCombat and InCombatLockdown() then return true end
+        if barCfg.condTarget and UnitExists("target") then return true end
+        if barCfg.condHarm and TargetIsHostile() then return true end
+        return false
     end
 
-    -- Normal visibility logic
-    if _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown() then return true end
-
-    -- Show all action bars when dragging (for easy spell/item organization)
-    if ns.ActionBars and ns.ActionBars.fcm and ns.ActionBars.fcm.wasDragging then
-        if key and key:match("^bar[1-8]$") then
-            return true
-        end
-    end
-
+    if editMode then return true end
+    -- every action bar shows while something is dragged onto them
+    if isBar and fcmState and fcmState.wasDragging then return true end
     if cfg.condCombat and InCombatLockdown() then return true end
     if cfg.condTarget and UnitExists("target") then return true end
-    if cfg.condHarm and UnitExists("target") then
-        -- UnitCanAttack can return a secret value under addon restrictions; a bare truth test would throw
-        local canAttack = UnitCanAttack("player", "target")
-        if canaccessvalue(canAttack) and canAttack then return true end
-    end
-    -- "Mounted / Vehicle" option
+    if cfg.condHarm and TargetIsHostile() then return true end
     if cfg.condVehicle and (UnitInVehicle("player") or UnitOnTaxi("player") or IsMounted()) then
         return true
     end
@@ -229,13 +202,12 @@ local function CheckCondition(cfg, frame, key)
     return false
 end
 
--- Mark groups dirty when conditions might have changed
+-- An event may have changed a condition: every group is checked again, this frame
 local function MarkAllDirty()
     for groupName in pairs(Fader.groups) do
         Fader.dirty[groupName] = true
     end
     if next(Fader.dirty) then
-        -- Run one tick immediately so fades react in same frame as the triggering event
         Fader.UpdateScript(Fader, 0)
         if not Fader.updateEnabled then
             Fader:SetScript("OnUpdate", Fader.UpdateScript)
@@ -245,14 +217,14 @@ local function MarkAllDirty()
     end
 end
 
-Fader.updateInterval = 0.1  -- condition checks; 0.2 when only mouseover (throttled)
+Fader.updateInterval = 0.1  -- condition checks; 0.2 when only mouseover keeps the loop running
 Fader.shows = {}            -- group -> whether it is fading in (from the last condition check)
 Fader.counting = {}         -- group -> its fade-out delay is running down
--- Conditions (mouseover, combat, target...) are checked on the throttled tick or when an event marks a
--- group dirty; the alpha itself steps every frame while anything is mid-fade, so fades run smoothly.
 Fader.UpdateScript = function(self, elapsed)
     self.updateTimer = self.updateTimer + elapsed
     local check = self.updateTimer >= self.updateInterval or next(self.dirty) ~= nil
+    -- between checks only a running fade has work to do
+    if not check and not self.fading then return end
     local tick = self.updateTimer
     if check then self.updateTimer = 0 end
 
@@ -264,11 +236,9 @@ Fader.UpdateScript = function(self, elapsed)
             local delaySetting = 0
 
             for _, data in ipairs(members) do
-                local cfg = GetVisConfig(data.key)
-                if cfg then
-                    if CheckCondition(cfg, data.frame, data.key) then groupShouldShow = true end
-                    if cfg.fadeOutDelay and cfg.fadeOutDelay > delaySetting then delaySetting = cfg.fadeOutDelay end
-                end
+                local cfg = data.cfg
+                if CheckCondition(cfg, data.frame, data.key, data.isBar) then groupShouldShow = true end
+                if cfg.fadeOutDelay and cfg.fadeOutDelay > delaySetting then delaySetting = cfg.fadeOutDelay end
             end
 
             if not self.delays[groupName] then self.delays[groupName] = 0 end
@@ -281,24 +251,18 @@ Fader.UpdateScript = function(self, elapsed)
         local effectiveShow = self.shows[groupName]
 
         for _, data in ipairs(members) do
-            local cfg = GetVisConfig(data.key)
-            local frame = data.frame
-            if cfg and frame then
-                local targetAlpha = effectiveShow and cfg.alphaMax or cfg.alphaMin
-                local currentAlpha = frame:GetAlpha()
-
-                if math_abs(currentAlpha - targetAlpha) > 0.005 then
-                    hasActiveFades = true
-                    local speed = effectiveShow and cfg.fadeInSpeed or cfg.fadeOutSpeed
-                    if speed <= 0 then
-                        frame.flareDesiredAlpha = targetAlpha; ApplyElementAlpha(frame, data.key, targetAlpha)
-                    else
-                        local change = (1 / speed) * elapsed
-                        local newAlpha = (currentAlpha < targetAlpha) and math_min(targetAlpha, currentAlpha + change) or math_max(targetAlpha, currentAlpha - change)
-                        frame.flareDesiredAlpha = newAlpha; ApplyElementAlpha(frame, data.key, newAlpha)
-                    end
+            local cfg, frame = data.cfg, data.frame
+            local targetAlpha = effectiveShow and cfg.alphaMax or cfg.alphaMin
+            local currentAlpha = frame:GetAlpha()
+            if math_abs(currentAlpha - targetAlpha) > 0.005 then
+                hasActiveFades = true
+                local speed = effectiveShow and cfg.fadeInSpeed or cfg.fadeOutSpeed
+                if speed <= 0 then
+                    ApplyElementAlpha(frame, data.key, targetAlpha)
                 else
-                    frame.flareDesiredAlpha = targetAlpha
+                    local change = (1 / speed) * elapsed
+                    local newAlpha = (currentAlpha < targetAlpha) and math_min(targetAlpha, currentAlpha + change) or math_max(targetAlpha, currentAlpha - change)
+                    ApplyElementAlpha(frame, data.key, newAlpha)
                 end
             end
         end
@@ -306,7 +270,8 @@ Fader.UpdateScript = function(self, elapsed)
         self.dirty[groupName] = nil
     end
 
-    -- a fade still running, or a delay still counting down, keeps the frame-rate loop going
+    self.fading = hasActiveFades
+    -- a fade still running, or a delay still counting down, keeps the loop going
     local delaying = next(self.counting) ~= nil
     for groupName, on in pairs(self.counting) do
         if not on then self.counting[groupName] = nil end
@@ -317,7 +282,6 @@ Fader.UpdateScript = function(self, elapsed)
         self:SetScript("OnUpdate", nil)
         self.updateEnabled = false
     else
-        -- half rate when only mouseover keeps us running
         self.updateInterval = idle and 0.2 or 0.1
     end
 end
@@ -325,8 +289,7 @@ end
 --------------------------------------------------
 -- 7. PUBLIC API
 --------------------------------------------------
--- Part of the Action Bars module: loads with it, no toggle of its own (settings stay in
--- profile.visibility so nothing moves).
+-- Part of the Action Bars module: loads with it (settings in profile.visibility)
 function Visibility:ShouldLoad()
     local ab = ns.db and ns.db.profile and ns.db.profile.actionbars
     return ab and ab.enabled or false
@@ -343,30 +306,22 @@ function Visibility:Refresh()
         return
     end
 
-    --------------------------------------------------
-    -- EDIT MODE SAFETY CHECK
-    --------------------------------------------------
+    -- In Edit Mode the secure hide is lifted (Edit Mode needs the frames); a frame set to hidden is
+    -- hidden plainly instead, its selection made invisible.
     local inEditMode = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
 
     local function UpdateHide(key, settingKey)
         local userSetting = db[settingKey]
         if inEditMode then
-            -- 1. Unregister Secure Hide (Prevents Crash)
             ApplySecureHide(key, false)
-
-            -- 2. Handle Visuals in Edit Mode
             if userSetting then
-                -- User wants it HIDDEN -> Force Hide frame + Hide Mover Overlay
                 ForEachFrameOfKey(key, KeepHiddenInEditMode, settingKey)
                 ForEachFrameOfKey(key, HideFrame)
                 HideEditModeMover(key)
             else
-                -- User wants it SHOWN -> ApplySecureHide above already restored it if we had hidden it;
-                -- never force-show frames Blizzard keeps hidden (rep bar, raid manager, possess bar...)
                 RestoreEditModeMover(key)
             end
         else
-            -- Normal Mode: Apply Secure Hiding via State Driver
             ApplySecureHide(key, userSetting)
         end
     end
@@ -386,17 +341,15 @@ function Visibility:Refresh()
     Fader.shows = {}
     Fader.counting = {}
     Fader.watchesMouseover = false
+    Fader.fading = false
 
-    for key, frameName in pairs(BAR_FRAMES) do
+    for key in pairs(BAR_FRAMES) do
         local cfg = GetVisConfig(key)
+        local isBar = key:match("^bar[1-8]$") ~= nil
+        local fcmBar = isBar and ns.db.profile.fcm and ns.db.profile.fcm.bars[key]
+        local isFCMBar = fcmBar and fcmBar.enabled or false
 
-        -- Check if this is an FCM-enabled bar
-        local isFCMBar = false
-        if key:match("^bar[1-8]$") and ns.db.profile.fcm and ns.db.profile.fcm.bars[key] then
-            isFCMBar = ns.db.profile.fcm.bars[key].enabled
-        end
-
-        -- Enable fading if either cfg.enableFade is true OR it's an FCM-enabled bar
+        -- an FCM bar always fades
         if cfg and (cfg.enableFade or isFCMBar) then
             local groupName = cfg.faderGroup
             if not groupName or groupName == "" then groupName = key end
@@ -404,12 +357,12 @@ function Visibility:Refresh()
 
             local frame = GetFrame(key)
             if frame and frame.GetAlpha then
-                table_insert(Fader.groups[groupName], { key = key, frame = frame })
+                table_insert(Fader.groups[groupName], { key = key, frame = frame, cfg = cfg, isBar = isBar })
                 if cfg.condMouseover then Fader.watchesMouseover = true end
             end
-        elseif cfg and not cfg.enableFade and not isFCMBar then
+        elseif cfg then
             local frame = GetFrame(key)
-            if frame and frame.SetAlpha then ApplyElementAlpha(frame, key, 1); frame.flareDesiredAlpha = nil end
+            if frame and frame.SetAlpha then ApplyElementAlpha(frame, key, 1) end
         end
     end
 
@@ -437,9 +390,7 @@ function Visibility:Init()
         _G.EditModeManagerFrame:HookScript("OnShow", function() Visibility:Refresh() end)
         _G.EditModeManagerFrame:HookScript("OnHide", function() Visibility:Refresh() end)
     end
-    -- In Edit Mode the state driver is off and the raid manager is hidden with a plain Hide();
-    -- toggling "Raid Frames" / "Party Frames" in the Edit Mode panel makes Blizzard SetShown() it
-    -- again, so re-apply our hide after its shown-state update.
+    -- In Edit Mode, toggling Raid / Party Frames makes Blizzard show the raid manager again
     hooksecurefunc("CompactRaidFrameManager_UpdateShown", function()
         local db = ns.db and ns.db.profile and ns.db.profile.visibility
         if db and db.hideRaidManager and _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown() then
@@ -452,8 +403,7 @@ end
 --------------------------------------------------
 -- 8. EVENT HANDLERS
 --------------------------------------------------
-
--- Event: Visibility state change (combat, target, vehicle, mount, etc.)
+-- combat, target, vehicle, mount...
 function Visibility:OnVisibilityStateChange()
     MarkAllDirty()
 end

@@ -10,8 +10,6 @@ local L = ns.L
 --   * ONE SecureActionButton (the caster) carries the action, and the binding clicks it on release
 --   * a secure snippet wrapped round the caster picks the radial button again, with the same maths,
 --     and writes the caster's attributes - secure code may do that in combat, plain Lua may not
--- The snippet layer needs Forever build 1.60.1.70009 or later: earlier builds could not compile
--- snippets at all, and the radial kept only its panel buttons in a fight.
 -- Radial macros: "/click FUIRadial <radial name>" opens any radial in click mode, for macros with
 -- conditionals and for a radial button that opens another radial. A /click never delivers a key
 -- release, so a macro radial stays open: click the button you want (or press the macro again to fire
@@ -129,8 +127,10 @@ local PING = {
     RING_SIZE = 56, HUB = 24,           -- the hub ring, and where the dividers start
     GLOW_SIZE = 400,                    -- the light's inner edge meets the hub ring at this size
     DIVIDER_THICKNESS = 4,
-    DIVIDER_COLOR = { 0.32, 0.32, 0.32, 0.85 },
-    RING_COLOR = { 0.28, 0.28, 0.28, 1 },
+    -- Forever's bronze rather than grey: the dividers in the frame bronze (ns.BORDER_COLOR, #A67D45)
+    -- a little dimmed, the hub ring in the darker panel-frame brown the buttons' rims sit next to
+    DIVIDER_COLOR = { 0.58, 0.44, 0.25, 0.85 },
+    RING_COLOR = { 0.45, 0.33, 0.19, 1 },
     LIT_COLOR = { 1, 0.80, 0.25 },      -- the Radial_Wheel pointer's yellow, a touch warmer
     GLOW_ALPHA = 0.5,
     LIT_DIVIDER_ALPHA = 0.7,
@@ -275,14 +275,15 @@ ACTIONS.mount = function(entry)
     return name, { texture = icon }, { type = "spell", spell = spellID }
 end
 
--- Blizzard's "item" action runs the attribute through SecureCmdItemParse, which reads it as an item
--- NAME or a "bag slot" pair - an item ID is parsed as a slot number and blows up downstream. So the
--- ID is only what we store; the name is what the button is given. A name the client has not cached
--- yet makes the button unavailable for the moment, and the request below fixes that for next time.
+-- Blizzard's "item" action reads an item NAME (an ID would parse as a bag slot), so the ID is
+-- stored and the name handed over. An uncached name makes the button unavailable until the item
+-- data arrives (ITEM_DATA_LOAD_RESULT, see Init).
+local awaitedItems = {}   -- item id -> true while a radial waits for its data
 ACTIONS.item = function(entry)
     if not entry.id then return nil end
     local name = C_Item.GetItemNameByID(entry.id)
     if not name then
+        awaitedItems[entry.id] = true
         C_Item.RequestLoadItemDataByID(entry.id)
         return nil
     end
@@ -291,7 +292,7 @@ ACTIONS.item = function(entry)
 end
 
 ACTIONS.macro = function(entry)
-    return entry.name or "Macro", { texture = entry.icon or 134400 },
+    return entry.name or L["Macro"], { texture = entry.icon or 134400 },
         { type = "macro", macrotext = entry.text or "" }
 end
 
@@ -1730,7 +1731,6 @@ function RM:Init()
     if self.initialized then return end
     self.initialized = true
 
-
     CreateRadial()
     -- a /reload in combat: the secure frames and wraps wait for the fight to end
     if InCombatLockdown() then
@@ -1744,7 +1744,7 @@ function RM:Init()
     -- library; as the first radial it is also what every character opens until it picks another
     local store = GetStore()
     if store and not next(store.radials) then
-        local id = self:CreateRadial("Markers")
+        local id = self:CreateRadial(L["Markers"])
         self:GetRadial(id).buttons = MarkerButtons()
     end
 
@@ -1753,9 +1753,18 @@ function RM:Init()
 
     ApplyBinding()
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
-    -- an item button resolves only once its name is cached; redraw when a request comes back
-    self:RegisterEvent("ITEM_DATA_LOAD_RESULT", function()
-        if previewID then self:RefreshPreview() else self:LayoutRadial() end
+    -- an item button resolves once its name is cached: redraw when one of ours comes back (the event
+    -- fires for every item anything loads)
+    local relayoutQueued = false
+    self:RegisterEvent("ITEM_DATA_LOAD_RESULT", function(_, itemID)
+        if not awaitedItems[itemID] then return end
+        awaitedItems[itemID] = nil
+        if relayoutQueued then return end
+        relayoutQueued = true
+        C_Timer.After(0.1, function()
+            relayoutQueued = false
+            if previewID then self:RefreshPreview() else self:LayoutRadial() end
+        end)
     end)
 end
 

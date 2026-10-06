@@ -2,11 +2,7 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- 1. UPVALUES
---------------------------------------------------
-
---------------------------------------------------
--- 2. HELPERS
+-- 1. HELPERS
 --------------------------------------------------
 local function Get(key)
     return ns.db.profile.chat[key]
@@ -29,7 +25,7 @@ local function Set(key, val, reload)
 end
 
 --------------------------------------------------
--- 3. CHAT OPTIONS
+-- 2. CHAT OPTIONS
 --------------------------------------------------
 ns.Options.args.chat = {
     type = "group", name = L["Chat"], order = 20,

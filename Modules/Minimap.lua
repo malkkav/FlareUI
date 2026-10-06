@@ -1,12 +1,11 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
--- A square minimap dressed in Blizzard's own art: the metal frame of the game's panels (the AddOn
--- List's NineSlice layout) around it, Blizzard's instance difficulty banner and Forever's day/night
--- badge. The header - tracking, zone text, clock and calendar - runs inside the map along its top,
--- and the day/night badge sits on the bottom-left corner. Edit Mode places it, and its Size setting
--- scales the whole frame.
+-- A square minimap in Blizzard's panel frame art (the AddOn List's NineSlice layout). The header
+-- (tracking, zone, clock, calendar) runs inside the map along its top; the day/night badge sits on
+-- the bottom-left corner. Edit Mode's Size setting scales the whole frame.
 --------------------------------------------------
 ns.Minimap = ns.Minimap or {}
 local MM = ns.Minimap
@@ -34,11 +33,10 @@ local MAP_SIZE      = 244                           -- the square map
 local FRAME_PAD     = 8                             -- room around the map for the frame art
 local CLUSTER_SIZE  = MAP_SIZE + 2 * FRAME_PAD      -- 260
 local BORDER_LAYOUT = "ButtonFrameTemplateNoPortrait"   -- Blizzard NineSlice layout (AddOn List frame)
-local LEFT_SHIFT    = -6     -- that layout sits further in on the left; pull its left side out to the map edge
+local LEFT_SHIFT    = -6     -- the layout sits further in on the left
 local SQUARE_MASK   = "Interface\\BUTTONS\\WHITE8X8"
 
--- The frame's top edge is a title band drawn over the top of the map; the header row is centred in
--- it, and anything hanging into the map starts below it.
+-- The frame's top edge is a title band over the map; the header row is centred in it
 local BAND_HEIGHT   = 22     -- how far the title band reaches down over the map
 local HEADER_HEIGHT = 17
 local HEADER_TOP    = 2      -- the header row's distance from the map's top edge
@@ -47,12 +45,17 @@ local HEADER_GAP    = 2      -- between the pieces of the header row
 local CLOCK_WIDTH   = 40
 local CALENDAR_DROP = 1      -- the calendar icon sits this much below the row's middle line
 local SUN_SCALE     = 0.9    -- Forever's day/night badge, a little under its own size
-local SUN_OVERHANG  = 6      -- how far the badge reaches past the map's bottom-left corner, onto the frame
+local SUN_OVERHANG  = 6      -- how far the badge reaches past the map's corner, onto the frame
 local MAIL_GAP      = 3      -- between the title band and the mail icon
-local COORDS_INSET  = 6      -- player coordinates, along the bottom edge
+-- Blizzard's player coordinates: a size up, in gold, clear of the frame art along the bottom edge
+local COORDS = {
+    GAP = 8,             -- map's bottom edge to the bottom of the text
+    FONT_STEP = 1,       -- points added to Blizzard's font
+    MAP_LIFT = 5,        -- the world map's coordinates, raised this much off its edge
+}
 local ROW_LEVEL     = 5      -- header row above the map and its frame
 
--- Difficulty banner colours by group size: muted, so the number on the banner stays readable
+-- Difficulty banner colours by group size, muted so the number stays readable
 local BANNER_COLORS = {
     { size = 5,  color = { 0.30, 0.62, 0.34 } },   -- dungeon: green
     { size = 10, color = { 0.30, 0.48, 0.78 } },   -- 10-man: blue
@@ -95,8 +98,7 @@ local function SquareHybridMinimap()
     hybrid.MapCanvas:SetMaskTexture(hybrid.CircleMask)
 end
 
--- Blizzard's layout as Camelot adjusted it (a copy, one level deep: pieces are flat tables), with
--- its left side moved out to the map's edge
+-- A copy of Blizzard's layout (pieces are flat tables), its left side moved out to the map's edge
 local function BorderLayout()
     local layout = {}
     for key, value in pairs(NineSliceUtil.GetLayout(BORDER_LAYOUT)) do
@@ -141,6 +143,8 @@ end
 --------------------------------------------------
 local function StyleHeader()
     _G.MinimapCompassTexture:SetAlpha(0)   -- Blizzard's round frame art
+    -- Forever's skin shows a round underlay whenever rotateMinimap is on
+    Remove(_G.MinimapCompassTextureUnderlay)
     Remove(MinimapFrame.ZoomIn)
     Remove(MinimapFrame.ZoomOut)
     Remove(MinimapFrame.ZoomHitArea)
@@ -167,11 +171,8 @@ local function StyleHeader()
     zoneText:SetJustifyH("LEFT")
     zoneText:SetWordWrap(false)
 
-    -- clock: the bar's right end, next to the calendar; Blizzard's white text. The whole button
-    -- answers the mouse (Blizzard's XML insets its hit area by 8/5/3/3 px, which on this small
-    -- button left a spot in the middle), and it grows with the time text ("12:00 PM" is wider than
-    -- CLOCK_WIDTH), taking the width from the zone text, so no part of the time sits over the zone
-    -- button and shows its tooltip instead.
+    -- clock: the bar's right end, its whole button answering the mouse; it grows with the time text,
+    -- taking the width from the zone text
     EventUtil.ContinueOnAddOnLoaded("Blizzard_TimeManager", function()
         local clock, ticker = _G.TimeManagerClockButton, _G.TimeManagerClockTicker
         if not clock then return end
@@ -195,9 +196,7 @@ local function StyleHeader()
     end)
 end
 
--- Tracking, the zone / clock bar and the calendar, left to right, in the title band. The bar is
--- centred on the tracking button and sized to fill what the two buttons leave, so the whole row
--- shares one middle line; the calendar sits a touch below it.
+-- Tracking, the zone / clock bar and the calendar, left to right on one middle line
 local function PlaceHeader()
     local tracking, calendar, header = Cluster.Tracking, _G.GameTimeFrame, Cluster.BorderTop
     tracking:ClearAllPoints()
@@ -244,8 +243,7 @@ local function BannerColor(groupSize)
     return BANNER_COLORS[#BANNER_COLORS].color
 end
 
--- After each of Blizzard's updates: the guild banner is swapped for the normal one, and the banner
--- cloth is tinted by group size
+-- After Blizzard's updates: the guild banner becomes the normal one, tinted by group size
 local function DressBanner(flag)
     local _, _, _, _, maxPlayers = GetInstanceInfo()
     local groupSize = maxPlayers or 5
@@ -255,22 +253,54 @@ local function DressBanner(flag)
     flag.Default.Background:SetVertexColor(color[1], color[2], color[3])
 end
 
--- Blizzard's player coordinates, along the bottom edge
+-- One size up and in Blizzard's gold, once per font string
+local function RestyleCoordText(text)
+    if not text or text.FlareUI_Styled then return end
+    text.FlareUI_Styled = true
+    local font, size, flags = text:GetFont()
+    if font and size then text:SetFont(font, size + COORDS.FONT_STEP, flags) end
+    local c = NORMAL_FONT_COLOR
+    text:SetTextColor(c.r, c.g, c.b)
+end
+
 local function PlaceCoords()
     local coords = Cluster.MinimapContainer and Cluster.MinimapContainer.PlayerCoords
     if not coords then return end
+    local text = coords.CoordText
     Raise(coords)
+    RestyleCoordText(text)
+    local size = text and select(2, text:GetFont()) or 10
+    coords:SetHeight(size + 2)
     coords:ClearAllPoints()
-    coords:SetPoint("BOTTOM", MinimapFrame, "BOTTOM", 0, COORDS_INSET)
+    coords:SetPoint("BOTTOM", MinimapFrame, "BOTTOM", 0, COORDS.GAP)
 end
 
--- Forever's day/night badge in the map's bottom-left corner, reaching a little onto the frame, or
--- hidden by the Day/Night Badge option. Blizzard never shows it again on its own.
+-- The world map's coordinates: the same font and gold, lifted off the map's edge. A single anchor
+-- per label, so the bigger font is not cut by its 100 px frame.
+local function RestyleWorldMapCoords()
+    local map = _G.WorldMapFrame
+    for _, frame in ipairs(map and map.overlayFrames or {}) do
+        if frame.PlayerCoords and frame.CursorCoords then
+            for _, key in ipairs({ "CursorCoords", "CrosshairCoords", "PlayerCoords" }) do
+                local row = frame[key]
+                local label = row and row.Label
+                if label and not label.FlareUI_Styled then
+                    RestyleCoordText(label)
+                    label:ClearAllPoints()
+                    label:SetPoint("LEFT", row, "LEFT", 0, COORDS.MAP_LIFT)
+                end
+            end
+        end
+    end
+end
+
+-- Forever's day/night badge in the map's bottom-left corner, unless switched off
 local function PlaceSun()
     local sun = Cluster.DielFrame
     if not sun then return end
     local db = GetDb()
-    sun:SetShown(not db or db.showDayNight)
+    -- always there while it is the Addon Button Bag's button (MinimapBag.lua)
+    sun:SetShown(not db or db.showDayNight or db.buttonBag ~= false)
     sun:SetScale(SUN_SCALE)
     sun:ClearAllPoints()
     local overhang = SUN_OVERHANG / SUN_SCALE   -- offsets are in the badge's own, scaled units
@@ -281,10 +311,8 @@ end
 --------------------------------------------------
 -- 7. LAYOUT
 --------------------------------------------------
--- Edit Mode sizes the cluster and scales the map container (and, past 100%, the header) from its
--- Size setting. Here the layout is built at one fixed size and the Size setting scales the whole
--- cluster instead, so every piece keeps its place on the frame art. The guard keeps the SetSize hook
--- from answering its own call.
+-- The layout is built at one fixed size and Edit Mode's Size scales the whole cluster, so every
+-- piece keeps its place on the frame art
 local sizingCluster = false
 local function SizeCluster()
     if sizingCluster then return end
@@ -293,7 +321,7 @@ local function SizeCluster()
     sizingCluster = false
 end
 
--- Edit Mode's Size setting (50-200%), read from the active layout; 100% before Edit Mode has it
+-- Edit Mode's Size setting (50-200%), 100% before Edit Mode has it
 local function EditModeSize()
     if not (Cluster.HasSetting and Cluster.GetSettingValue) then return 1 end
     local ok, has = pcall(Cluster.HasSetting, Cluster, Enum.EditModeMinimapSetting.Size)
@@ -327,18 +355,15 @@ end
 
 --------------------------------------------------
 -- 8. EDIT MODE
--- Two of Blizzard's minimap settings do not apply to this map and are taken out of its dialog:
--- Rotate Minimap (a rotating map does not fit a square frame) and Header Underneath (the header
--- always runs along the top). Size stays, applied by UpdateLayout as a scale of the whole cluster. A stored value of any of them is harmless -
--- the layout above is re-applied after Blizzard's.
+-- Rotate Minimap and Header Underneath do not apply and leave the dialog; a stored value is
+-- harmless, as the layout is re-applied after Blizzard's.
 --------------------------------------------------
 local function RemoveEditModeSettings()
     local removed = {
         [Enum.EditModeMinimapSetting.RotateMinimap] = true,
         [Enum.EditModeMinimapSetting.HeaderUnderneath] = true,
     }
-    -- Never rewrite saved layouts to pin these: a layout table written by addon code taints Edit
-    -- Mode's data (CompactUnitFrame.lua:699 then compares secret colours while tainted).
+    -- never rewrite saved layouts: addon-written layout tables taint Edit Mode's data
     local byId = EditModeSettingDisplayInfoManager and EditModeSettingDisplayInfoManager.systemSettingDisplayInfo
     local displayInfo = byId and byId[Enum.EditModeSystem.Minimap]
     if not displayInfo then return end
@@ -347,9 +372,7 @@ local function RemoveEditModeSettings()
     end
 end
 
--- The square map cannot rotate. Blizzard applies Edit Mode's Rotate Minimap through the rotateMinimap
--- CVar (MinimapClusterMixin:SetRotateMinimap); a rotation switched on before FlareUI is switched off
--- here, at load and whenever a layout applies it. The saved layout keeps the player's choice.
+-- The square map cannot rotate: the rotateMinimap CVar goes off at load and whenever a layout sets it
 local function KeepMapUnrotated()
     if GetCVarBool("rotateMinimap") then SetCVar("rotateMinimap", "0") end
 end
@@ -367,10 +390,19 @@ local function OnZoom(_, level)
     end
 end
 
+-- Forever's skin puts its round mask back each time rotateMinimap changes
+local maskGuard = false
+local function KeepSquareMask(_, texture)
+    if maskGuard or texture == SQUARE_MASK then return end
+    maskGuard = true
+    MinimapFrame:SetMaskTexture(SQUARE_MASK)
+    maskGuard = false
+end
+
 local function InstallHooks()
     hooksecurefunc(Cluster, "SetSize", SizeCluster)
-    -- Forever's own SetEditModeScale re-places the day/night badge, and SetHeaderUnderneath
-    -- re-anchors the header and banner from a stored layout; the layout goes back on after both
+    hooksecurefunc(MinimapFrame, "SetMaskTexture", KeepSquareMask)
+    -- both re-place pieces from Blizzard's layout; ours goes back on after them
     hooksecurefunc(Cluster, "SetEditModeScale", function()
         MM:UpdateLayout()
         MM:UpdateTrackerScale()   -- Match Objective Tracker Width follows the new size
@@ -388,13 +420,12 @@ end
 
 --------------------------------------------------
 -- 10. OBJECTIVE TRACKER SCALE
--- "Match Objective Tracker Width" scales the whole tracker, text and all, so the lines above and
--- below its header bars are as long as the minimap's frame is wide. The bars are Blizzard's 300 px
--- atlas art, whose lines fade out at the ends: about 288 px of line actually shows.
+-- Match Objective Tracker Width scales Blizzard's tracker so its header lines (about 288 px of the
+-- 300 px art shows) are as wide as the minimap frame.
 --------------------------------------------------
 local TRACKER_LINE_WIDTH = 288
 
--- the minimap frame's outer width, in the tracker's parent's units
+-- The minimap frame's outer width, in the tracker's parent's units
 local function FrameOuterWidth(tracker)
     local frame = MM.Frame
     local left = frame and frame.TopLeftCorner and frame.TopLeftCorner:GetLeft()
@@ -403,15 +434,15 @@ local function FrameOuterWidth(tracker)
     return (right - left) * frame:GetEffectiveScale() / tracker:GetParent():GetEffectiveScale()
 end
 
--- Edit Mode's SetScale would make the objective tracker lay itself out again inside our call, and
--- that layout reads auras (Blizzard_MawBuffs) that are secret to tainted code; ns.SetSystemScale
--- only sets the scale (see Core.lua), and Blizzard lays the tracker out on its own. Still kept out of
--- combat (a /reload or a Gamepad UI switch mid-fight): the scale waits for the fight to end.
+-- ns.SetSystemScale, not Edit Mode's SetScale (whose re-layout would run tainted); out of combat
 local trackerScaleWaiter
 function MM:UpdateTrackerScale()
     local tracker = _G.ObjectiveTrackerFrame
     local db = GetDb()
     if not (tracker and db) then return end
+    -- FlareUI's Quest Tracker parks Blizzard's
+    local own = ns.db.profile.objectivetracker
+    if own and own.enabled then return end
     if InCombatLockdown() then
         if not trackerScaleWaiter then
             trackerScaleWaiter = CreateFrame("Frame")
@@ -434,19 +465,18 @@ end
 --------------------------------------------------
 -- 11. PUBLIC
 --------------------------------------------------
--- FPS and latency under the times in the clock's tooltip. Blizzard rebuilds that tooltip every second
--- while it is up (TimeManagerClockButton_UpdateTooltip -> GameTime_UpdateTooltip), so the numbers stay
--- live. GameTime_UpdateTooltip is shared, hence the owner check.
+-- FPS and latency in the clock's tooltip (rebuilt by Blizzard every second; the function is shared,
+-- hence the owner check)
 local function AddClockStats()
     local db = GetDb()
     local clock = _G.TimeManagerClockButton
     if not (db and db.enabled and db.clockStats and clock and GameTooltip:GetOwner() == clock) then return end
     local _, _, latencyHome, latencyWorld = GetNetStats()
     local label, value = NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR
-    GameTooltip:AddDoubleLine("Framerate", string.format("%.0f fps", GetFramerate()),
+    GameTooltip:AddDoubleLine(L["Framerate"], string.format("%.0f fps", GetFramerate()),
         label.r, label.g, label.b, value.r, value.g, value.b)
-    GameTooltip:AddDoubleLine("Latency (Home)", latencyHome .. " ms", label.r, label.g, label.b, value.r, value.g, value.b)
-    GameTooltip:AddDoubleLine("Latency (World)", latencyWorld .. " ms", label.r, label.g, label.b, value.r, value.g, value.b)
+    GameTooltip:AddDoubleLine(L["Latency (Home)"], latencyHome .. " ms", label.r, label.g, label.b, value.r, value.g, value.b)
+    GameTooltip:AddDoubleLine(L["Latency (World)"], latencyWorld .. " ms", label.r, label.g, label.b, value.r, value.g, value.b)
 end
 
 function MM:Refresh()
@@ -459,8 +489,7 @@ end
 function MM:Init()
     if self.initialized then return end
     hooksecurefunc("GameTime_UpdateTooltip", AddClockStats)
-    -- Blizzard's clock only takes the tooltip on enter and fills it on its next one-second tick, so it
-    -- came up to a second late; filling it on enter makes it instant like every other tooltip
+    -- filled on enter, not on Blizzard's next one-second tick
     EventUtil.ContinueOnAddOnLoaded("Blizzard_TimeManager", function()
         local clock = _G.TimeManagerClockButton
         if clock then clock:HookScript("OnEnter", function() TimeManagerClockButton_UpdateTooltip() end) end
@@ -473,9 +502,9 @@ function MM:Init()
     RemoveEditModeSettings()
     KeepMapUnrotated()
     if Cluster.SetRotateMinimap then hooksecurefunc(Cluster, "SetRotateMinimap", KeepMapUnrotated) end
-    -- free to be dragged partly off screen; the clamp only comes from Edit Mode's XML template
+    -- may be dragged partly off screen
     Cluster:SetClampedToScreen(false)
-    -- Blizzard's addon drawer has no place in this frame; Blizzard re-shows it from UpdateDisplay
+    -- Blizzard's addon drawer has no place here (Blizzard re-shows it from UpdateDisplay)
     local drawer = _G.AddonCompartmentFrame
     if drawer then
         hooksecurefunc(drawer, "UpdateDisplay", drawer.Hide)
@@ -485,12 +514,14 @@ function MM:Init()
     StyleHeader()
     InstallHooks()
     self.initialized = true
+    if ns.MinimapBag then ns.MinimapBag:Init() end
 
     EventUtil.ContinueOnAddOnLoaded("Blizzard_ObjectiveTracker", function() self:UpdateTrackerScale() end)
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_WorldMap", RestyleWorldMapCoords)
     self:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", "Refresh")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "Refresh")
 
     self:Refresh()
-    -- the frame's corners only have positions once the first layout pass has run
+    -- the frame's corners only have positions after the first layout pass
     C_Timer.After(0, function() self:Refresh() end)
 end

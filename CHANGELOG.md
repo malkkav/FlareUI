@@ -1,3 +1,46 @@
+# FlareUI 1.6
+
+A quest tracker of FlareUI's own, a bag for every addon's minimap button, and a big clean-up that makes FlareUI lighter while you play.
+
+## New
+
+**Quest Tracker** (Modules, off by default)
+- FlareUI's own quest tracker in place of Blizzard's: your tracked quests and tracked recipes in a FlareUI window, placed and sized in Edit Mode ("FlareUI Quest Tracker").
+- **Current Zone First** and **Nearest First:** quests of the zone you are in go to the top, the rest follow by distance as you move. **Completed Last** sinks quests ready to turn in.
+- **Zone Headings** you can collapse, a **Zone / All** switch in the header, and an optional **Quest Count** ("Quests 14/25").
+- **Quest Level** and **Quest Tags** in front of the name (+ elite, g3 group of three, d dungeon, r raid, pvp), **Numbers Last** ("Boar Tusks: 3/8") and **Wrap Long Text**.
+- Quest item buttons beside their quest, usable in combat, with cooldowns and a red tint while out of range.
+- Hover a quest for its description, objectives and your party's progress. Click to open it in the quest log, shift-click to link it in chat (or untrack it), middle-click to collapse it, right-click for Focus, Share, Untrack and Abandon.
+- **Minimize** to the header, or to a single "+" button (**Minimize Style**). A keybind too: Key Bindings > AddOns > FlareUI.
+- **Auto-Minimize:** minimize or expand the tracker when you enter a dungeon, raid, battleground, arena, city or inn, the open world, or combat.
+- **Untrack High-Level Quests:** quests too far above your level are untracked when you accept them, and tracked again once you are close enough.
+- Its own fonts, border and background opacity. Thanks to BetterQuestTracker by deface (MIT) for parts of the quest ordering, item buttons and party progress.
+
+**Minimap**
+- **Addon Button Bag** (on): click the day/night badge to open a bag with every addon's minimap button and the addons of Blizzard's addon compartment. It closes on a second click, on Escape, on a click elsewhere or after you use a button.
+- The player coordinates under the map are now in Blizzard's gold, a size larger and clear of the frame. The world map's coordinates match.
+
+**Experience Bar**
+- **Show Tooltip** (Action Bars > General, FlareUI XP Bar): turn off the tooltip on the bar.
+
+## Changed
+- **Five-Second Rule** is now off by default, on the player frame (Edit Mode) and on the Power and Mana resource bars. Turn it on in Edit Mode where you want it.
+- **Radial Menu:** the dividers and the hub ring are now in FlareUI's bronze.
+- **Performance:** FlareUI does far less work while you play.
+  - Chat no longer runs its fading timers on every message (including every combat log line), and does nothing at all for them with Auto-Hide off.
+  - Faded bars no longer do work every frame while nothing is fading.
+  - Threat updates on the target and focus frames only re-colour the border.
+  - Combo points on the target frame, the Combo Points bar and the nameplates only update when your combo points change, not on every energy tick.
+  - The radial menu no longer rebuilds itself whenever any item is loaded by the game.
+- More of FlareUI's text can now be translated.
+
+## Fixed
+- **Minimap:** Blizzard's round frame art could show under the square map after logging in with Rotate Minimap on.
+- **Buffs / Debuffs:** an error in dungeons and raids (with Blizzard's addon restrictions active) while restyling the weapon enchant buttons. They now wait for the restrictions to lift.
+- **Chat:** Forever's "Refreshing your world" notice is placed just above the chat again.
+- **Tweaks:** Nameplate Combo Points could error on a target whose hostility the game keeps hidden.
+- **Fake CM:** the Setup Mode switch no longer stays "on" after a reload while the bars are locked.
+
 # FlareUI 1.5.1
 
 A new look for the radial menu, new chat options and more for Sync Blizz UI.

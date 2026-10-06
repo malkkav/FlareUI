@@ -29,12 +29,11 @@ local C_Timer = C_Timer
 local C_CVar = C_CVar
 local GetPlayerInfoByGUID = GetPlayerInfoByGUID
 local C_ClassColor = C_ClassColor
-local ChatTypeInfo = ChatTypeInfo
 local BetterDate = TimeUtil.BetterDate
 local canaccessallvalues = canaccessallvalues
 local LSM = LibStub("LibSharedMedia-3.0")
 
--- The border picked in the options; a name LibSharedMedia no longer knows falls back to the default.
+-- The border picked in the options, or the default when LibSharedMedia does not know it
 local DEFAULT_BORDER = "FlareUI Frames"
 local function GetBorderFile(db)
     local name = db and db.borderTexture
@@ -61,9 +60,9 @@ local ICON_CHANNELS = "Interface\\AddOns\\FlareUI\\Media\\Icons\\ChatChannels.tg
 local ICON_MENU     = "Interface\\AddOns\\FlareUI\\Media\\Icons\\ChatOptions.tga"
 local ICON_SOCIAL   = "Interface\\AddOns\\FlareUI\\Media\\Icons\\ChatSocial.tga"
 
+-- separator styles drawn with a texture; any other style is a solid line
 local SEPARATORS = {
-    ["Solid"]    = nil,
-    ["Blizzard"] = "Interface\\Common\\UI-TooltipDivider-Transparent",
+    Blizzard = "Interface\\Common\\UI-TooltipDivider-Transparent",
 }
 
 --------------------------------------------------
@@ -77,7 +76,7 @@ local function GetDb()
     return ns.db.profile.chat
 end
 
--- A window popped out of the dock (see POP-OUT WINDOWS): its own window, with only its own tab
+-- A window popped out of the dock (see POP-OUT WINDOWS)
 local function IsPopped(chatFrame)
     local dock = _G.GeneralDockManager
     return chatFrame ~= nil and dock ~= nil and chatFrame ~= dock.primary and not chatFrame.isDocked
@@ -91,7 +90,7 @@ local function GetTimestamp()
     if format == "none" and not db.betterTimestamps then return "" end
     if format == "none" then format = "%H:%M" end
 
-    -- Blizzard's formats end in a space ("%H:%M "), which belongs outside the brackets
+    -- Blizzard's formats end in a space, which belongs outside the brackets
     local timeStr = string_gsub(BetterDate(format, time()), "%s+$", "")
 
     if db.betterTimestamps then
@@ -112,13 +111,7 @@ end
 
 local function ApplyFontEffects(fontString, dbEntry)
     if not fontString then return end
-    if dbEntry.enableShadow then
-        fontString:SetShadowColor(0, 0, 0, 1)
-        fontString:SetShadowOffset(1, -1)
-    else
-        fontString:SetShadowColor(0, 0, 0, 0)
-        fontString:SetShadowOffset(0, 0)
-    end
+    ns.ApplyShadow(fontString, dbEntry)
     if dbEntry.useCustomColor and dbEntry.color then
         local c = dbEntry.color
         fontString:SetTextColor(c.r, c.g, c.b, c.a)
@@ -160,7 +153,7 @@ end
 local function HideButtonFrame(chatFrame)
     if not chatFrame or chatFrame:IsForbidden() then return end
 
-    -- Hide the ButtonFrame (contains minimize/close buttons on docked frames)
+    -- the ButtonFrame holds the minimize / close buttons of docked frames
     if chatFrame.buttonFrame then
         chatFrame.buttonFrame:Hide()
         chatFrame.buttonFrame:SetAlpha(0)
@@ -169,7 +162,6 @@ local function HideButtonFrame(chatFrame)
         end
     end
 
-    -- Also hide individual button frame textures
     local name = chatFrame:GetName()
     if name then
         local elements = {
@@ -199,12 +191,12 @@ local function UnclampChatFrame(chatFrame)
     chatFrame:SetClampRectInsets(-50, -50, -50, -50)
 end
 
+-- runs on every message (the AddMessage hook), so it only touches the button when it changes
 local function UpdateScrollToBottomVisibility(chatFrame)
-    if not chatFrame or chatFrame:IsForbidden() then return end
-    local btn = chatFrame.ScrollToBottomButton
-    if not btn then return end
-    local offset = chatFrame.GetScrollOffset and chatFrame:GetScrollOffset() or 0
-    if offset == 0 then btn:Hide() else btn:Show() end
+    local btn = chatFrame and chatFrame.ScrollToBottomButton
+    if not btn or chatFrame:IsForbidden() then return end
+    local shown = (chatFrame.GetScrollOffset and chatFrame:GetScrollOffset() or 0) ~= 0
+    if btn:IsShown() ~= shown then btn:SetShown(shown) end
 end
 
 local function RepositionScrollToBottomButton(chatFrame)
@@ -230,7 +222,6 @@ local function RepositionScrollToBottomButton(chatFrame)
         Chat:SecureHook(chatFrame, "SetScrollOffset", UpdateScrollToBottomVisibility)
         Chat:SecureHookScript(chatFrame, "OnMouseWheel", function(frameParam) UpdateScrollToBottomVisibility(frameParam) end)
     end
-    -- NOTE: AddMessage hook is in SetupAutoHide() to avoid double-hooking
     UpdateScrollToBottomVisibility(chatFrame)
 end
 
@@ -253,6 +244,33 @@ local function StyleButtonFrame()
     end
 end
 
+-- Forever's "Refreshing your world" notice sits just above the chat, its minimize button (5 px to
+-- its left) lined up with the chat's left edge. Re-placed on every SetPoint and show.
+local SHARD_GAP = 4   -- between the chat's top edge and the notice
+local function AnchorShardNotice()
+    local frame = _G.ShardTransferImminentFrame
+    if not frame or frame.FlareUI_Anchored then return end
+    frame.FlareUI_Anchored = true
+
+    local placing
+    local function Place()
+        if placing then return end
+        local chat = _G.ChatFrame1
+        local anchor = (chat and chat.FlareUI_Skin) or chat
+        if not anchor then return end
+        local button = _G.ShardTransferImminentMinimizeButton
+        local shift = button and (button:GetWidth() + 5) or 0
+        placing = true
+        frame:ClearAllPoints()
+        frame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", shift, SHARD_GAP)
+        placing = false
+    end
+
+    hooksecurefunc(frame, "SetPoint", Place)
+    frame:HookScript("OnShow", Place)
+    Place()
+end
+
 local function DisableQuickJoinToasts()
     if QuickJoinToastButton then
         QuickJoinToastButton:UnregisterAllEvents()
@@ -267,13 +285,9 @@ end
 
 --------------------------------------------------
 -- 5. LINE REWRITING
--- Blizzard formats every chat line itself and FlareUI changes the finished line once it is stored:
--- a post-hook on each window's AddMessage gets the line together with its event and the event's
--- arguments, and rewrites the newest history entry in place - what ScrollingMessageFrame's own
--- TransformMessages does, without walking the whole history for it. Nothing is suppressed and added
--- again, so Blizzard's own line stays: its player link (with the line ID behind Report Player), its
--- tab flash, its censor handling, whispers. Replacing AddMessage or the CHAT_*_GET strings instead
--- would taint Blizzard's handler. Secret lines pass untouched.
+-- A post-hook on each window's AddMessage rewrites the newest history entry in place, so Blizzard's
+-- own line (player link, report ID, flash, censoring) stays. Replacing AddMessage or the CHAT_*_GET
+-- strings would taint Blizzard's handler. Secret lines pass untouched.
 --   Short Channel Names   [2. Trade - City] -> [2], [Guild] -> [G]
 --   Better Player Names   "[Name] says:" -> the class-coloured [Name] without realm or "says:"
 --   Better NPC Names      "Thrall says:" -> an orange [Thrall]
@@ -281,8 +295,8 @@ end
 --   Better Timestamps     Blizzard's timestamp in FlareUI's colour, or one added where it has none
 --   Copy Line             the timestamp is a link: shift-click puts the line in the chat box
 --------------------------------------------------
--- Shortened channel names: chat type -> the short tag and the channel link keyword Blizzard
--- uses for it (raid warnings have no link). Numbered channels become just their number.
+-- Chat type -> short tag and Blizzard's channel link keyword (raid warnings have no link).
+-- Numbered channels become just their number.
 local SHORT_TAGS = {
     GUILD = { "G", "GUILD" },
     OFFICER = { "O", "OFFICER" },
@@ -297,7 +311,7 @@ local SHORT_TAGS = {
 }
 
 -- Lines whose sender is a player. "full": Better Player Names drops the "says:" too; "name": only the
--- name changes, because the wording carries the direction ("whispers:", "To ...:").
+-- name changes (whispers keep their direction).
 local NAME_EVENTS = {
     SAY = "full", YELL = "full", GUILD = "full", OFFICER = "full",
     PARTY = "full", PARTY_LEADER = "full", PARTY_GUIDE = "full",
@@ -307,8 +321,7 @@ local NAME_EVENTS = {
 }
 local NPC_EVENTS = { MONSTER_SAY = true, MONSTER_YELL = true, MONSTER_WHISPER = true }
 
--- Links that survive into the chat box when a line is copied; the server refuses the others
--- (player, channel, FlareUI's own), so those are reduced to their text.
+-- Links the server accepts in a sent message; Copy Line reduces any other link to its text
 local KEEP_LINKS = {
     item = true, spell = true, quest = true, achievement = true, enchant = true,
     trade = true, talent = true, currency = true,
@@ -322,8 +335,8 @@ local Lines = {
     hooked = {},        -- chat frames carrying the AddMessage post-hook (not a field on Blizzard's)
 }
 
--- Blizzard puts its timestamp first (ChatFrameUtil.GetTimestampFormat). The line was formatted a
--- moment ago, so the same format over this second, or the one before, reproduces it.
+-- Splits off Blizzard's timestamp: the line was just formatted, so this second or the one before
+-- reproduces it.
 function Lines.SplitStamp(message)
     local fmt = ChatFrameUtil.GetTimestampFormat and ChatFrameUtil.GetTimestampFormat()
     if not fmt then return "", message end
@@ -380,9 +393,7 @@ function Lines.RememberUnit(unit)
     if okL then Lines.Remember(okG and guid or nil, okN and name or nil, level) end
 end
 
--- The sender's level: from a unit token when the game has one for them (group, target, mouseover,
--- nameplate), else from what was seen this session (units, guild roster, friends, /who). Unknown
--- levels are left out rather than guessed.
+-- The sender's level, from a unit token or from what was seen this session; nil when unknown
 function Lines.LevelFor(guid, sender)
     if guid then
         local ok, unit = pcall(UnitTokenFromGUID, guid)
@@ -396,8 +407,8 @@ local function ColorCode(r, g, b)
     return string_format("|cff%02x%02x%02x", (r or 1) * 255, (g or 1) * 255, (b or 1) * 255)
 end
 
--- The sender's player link: Better Player Names replaces its text with the class-coloured name and
--- drops Blizzard's "says:"; the level goes in front, inside the link so it clicks too.
+-- Better Player Names: the link's text becomes the class-coloured name and "says:" goes.
+-- Level Before Names: the level goes inside the link, in front of the name.
 function Lines.RewriteSender(body, chatType, args, mode, db)
     local s, e, open, display = body:find("(|Hplayer:[^|]*|h)(.-)|h")
     if not s then return body end
@@ -428,8 +439,7 @@ function Lines.RewriteSender(body, chatType, args, mode, db)
 
     local after = body:sub(e + 1)
     if db.formatPlayer and mode == "full" then
-        -- After the link Blizzard has written the rest of its CHAT_<type>_GET format (" says: ",
-        -- ": "), maybe behind the recent-ally icon.
+        -- after the link comes the rest of CHAT_<type>_GET (" says: "), maybe behind an ally icon
         local key = _G["CHAT_" .. chatType .. "_GET"]
         local suffix = type(key) == "string" and key:match("%%s(.*)$")
         local ally, rest = after:match("^( |A[^|]*|a)(.*)$")
@@ -441,8 +451,7 @@ function Lines.RewriteSender(body, chatType, args, mode, db)
     return body:sub(1, s - 1) .. open .. prefix .. display .. "|h" .. after
 end
 
--- NPC lines have no link: Blizzard writes format(CHAT_MONSTER_<type>_GET, name, name) in front of
--- the text, which is put back as the orange name (and "whispers", in the client's own words).
+-- NPC lines have no link: the CHAT_MONSTER_<type>_GET header becomes the orange name
 function Lines.RewriteNPC(body, chatType, args)
     local sender = Arg(args, 2, "string")
     local key = _G["CHAT_" .. chatType .. "_GET"]
@@ -453,8 +462,8 @@ function Lines.RewriteNPC(body, chatType, args)
     return NPC_COLOR .. "[" .. sender .. "]" .. verb .. "|r " .. body:sub(#header + 1)
 end
 
--- The line as text the chat box accepts: textures and colours gone, links reduced to their text
--- except the kinds the server lets through.
+-- The line as text the chat box accepts: no textures or colours, links reduced to their text
+-- except KEEP_LINKS
 function Lines.ChatSafeText(text)
     local kept = {}
     local function Keep(whole, kind)
@@ -472,24 +481,22 @@ function Lines.ChatSafeText(text)
     return strtrim(text)
 end
 
--- The copy is Blizzard's own line (without its timestamp), not the one with FlareUI's additions.
+-- The copy is Blizzard's own line (without its timestamp), not FlareUI's rewrite
 function Lines.CopyStamp(stamp, original)
     local shown = stamp:gsub("%s+$", "")
     Lines.copySerial = Lines.copySerial + 1
     local id = Lines.copySerial
     Lines.copies[id] = (Lines.ChatSafeText(original):gsub("  +", " "))
     Lines.copies[id - Lines.COPY_KEEP] = nil
-    -- A coloured stamp (Better Timestamps) keeps its colour outside the link, the way item links
-    -- are built: |cff...|H...|h<12:00>|h|r
+    -- a coloured stamp keeps its colour outside the link, as item links do
     local color, text = shown:match("^(|c%x%x%x%x%x%x%x%x)(.-)|r$")
     if not color then color, text = "", shown end
     return color .. "|Hflarecopy:" .. id .. "|h" .. text .. "|h" .. (color ~= "" and "|r" or "")
         .. stamp:sub(#shown + 1)
 end
 
--- Registered once for the session (LinkUtil asserts on a second registration). Only shift-click
--- does anything: the line goes into the open chat box, or opens one; too long for a message, it
--- goes to the copy box instead.
+-- Registered once (LinkUtil asserts on a second registration). Shift-click puts the line in the chat
+-- box; a line too long for a message goes to the copy box.
 function Lines.RegisterCopyHandler()
     if LinkUtil.IsLinkHandlerRegistered("flarecopy") then return end
     LinkUtil.RegisterLinkHandler("flarecopy", function(link)
@@ -545,7 +552,7 @@ local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, ev
     end
 end
 
--- Every chat window, the temporary whisper windows included (CHAT_FRAMES lists them all).
+-- Every chat window, temporary whisper windows included
 local function HookLineRewrite()
     for _, name in ipairs(CHAT_FRAMES or {}) do
         local frame = _G[name]
@@ -560,7 +567,12 @@ local function HookLineRewrite()
     end
 end
 
--- Levels for the senders' names, collected while Level Before Names is on.
+-- GetGuildRosterInfo through pcall: name is its 1st return, level its 4th, GUID its 17th
+local function RememberGuildMember(ok, name, _, _, level, ...)
+    if ok then Lines.Remember(select(13, ...), name, level) end
+end
+
+-- Levels for the senders' names, collected while Level Before Names is on
 function Lines.UpdateLevelEvents()
     local db = GetDb()
     local want = db and db.showLevel
@@ -571,8 +583,7 @@ function Lines.UpdateLevelEvents()
             if event == "GUILD_ROSTER_UPDATE" then
                 if not GetGuildRosterInfo then return end
                 for i = 1, GetNumGuildMembers() do
-                    local info = { pcall(GetGuildRosterInfo, i) }
-                    if info[1] then Lines.Remember(info[18], info[2], info[5]) end
+                    RememberGuildMember(pcall(GetGuildRosterInfo, i))
                 end
             elseif event == "FRIENDLIST_UPDATE" then
                 for i = 1, C_FriendList.GetNumFriends() do
@@ -613,8 +624,8 @@ end
 -- 6. IMPROVEMENTS
 --------------------------------------------------
 
--- Chat bubbles off inside instances and back outside. The player's own values are kept in the
--- account data while hidden, so a reload or logout inside the instance still restores them.
+-- Chat bubbles off inside instances. The player's values are saved account-wide while hidden, so a
+-- reload or logout inside still restores them.
 local BUBBLE_CVARS = { "chatBubbles", "chatBubblesParty" }
 
 function Chat:UpdateInstanceBubbles()
@@ -643,9 +654,8 @@ local function HandleCombatLog(db)
     end
 end
 
--- Blizzard hides these three buttons together with ChatFrame1ButtonFrame, which we keep hidden. An
--- OnHide hook re-shows them. Never replace their Hide method instead: every Blizzard call to :Hide()
--- would then run addon code and carry our taint into whatever called it.
+-- Blizzard hides these buttons with ChatFrame1ButtonFrame, which we keep hidden, so an OnHide hook
+-- re-shows them. Never replace their Hide method: that taints every caller.
 local PROTECTED_BUTTONS = {
     { name = "ChatFrameMenuButton",    key = "menuHide" },
     { name = "ChatFrameChannelButton", key = "channelHide" },
@@ -660,8 +670,7 @@ function Chat:ProtectButtons()
             btn:HookScript("OnHide", function(self)
                 local db = GetDb()
                 if not db or not db.enabled then return end
-                if db[entry.key] then return end          -- the user asked for it to be hidden
-                if InCombatLockdown() then return end
+                if db[entry.key] or InCombatLockdown() then return end
                 self:Show()
             end)
         end
@@ -669,10 +678,8 @@ function Chat:ProtectButtons()
     DisableQuickJoinToasts()
 end
 
--- ChatFrameMenuButton, ChatFrameChannelButton and QuickJoinToastButton are one set of frames shared
--- by every chat window, so they can only ever sit on one skin: the one being looked at. The selected
--- frame is the usual answer, but a window that has just been opened is selected before it is shown,
--- and parenting the buttons to a hidden skin is what made them vanish until a tab was clicked.
+-- The shared header buttons sit on one skin: the visible one. A new window is selected before it is
+-- shown, so the selected frame alone is not enough.
 local function VisibleSkinHost()
     local function Usable(cf)
         return cf and not cf:IsForbidden() and cf.FlareUI_Skin and cf:IsShown() and not IsPopped(cf) and cf
@@ -687,9 +694,8 @@ local function VisibleSkinHost()
     return ChatFrame1
 end
 
--- Header buttons sit right to left in this order, packed: a hidden one leaves no gap, so the tab bar
--- (UpdateCustomTabsImmediate) gets its room. The Gamepad UI hides them all: Blizzard hides its own
--- button bar there and its footer prompts replace them.
+-- Header buttons sit right to left, packed: a hidden one leaves no gap. The Gamepad UI hides them
+-- all (its footer prompts replace them).
 local HEADER_ORDER = { "volume", "social", "menu", "channel" }
 local HEADER_FIRST_X, HEADER_STEP = -25, -35
 
@@ -699,7 +705,7 @@ local function HeaderButtonShown(db, name)
     return not db[name .. "Hide"]
 end
 
--- the player's order (dragged on the header), right to left; any key missing from it goes on the end
+-- The player's order (dragged on the header), right to left; missing keys go on the end
 local function HeaderOrder(db)
     local saved = db and db.headerOrder
     if type(saved) ~= "table" then return HEADER_ORDER end
@@ -727,15 +733,13 @@ end
 
 --------------------------------------------------
 -- HEADER BUTTON ORDER
--- A header button is dragged to another's place, the way the tabs are: a bronze bar under the button
--- it will take the place of follows the cursor, and the drop saves the new order. Blizzard's Chat
--- Menu opens on mouse down, so that press closes it again as the drag starts.
+-- A header button is dragged onto another's place; a bronze bar marks the target. Blizzard's Chat
+-- Menu opens on mouse down, so the drag closes it again.
 --------------------------------------------------
 local HEADER_BLIZZARD = { social = "QuickJoinToastButton", menu = "ChatFrameMenuButton", channel = "ChatFrameChannelButton" }
 local headerDrag = { key = nil, header = nil, button = nil, marker = nil, driver = CreateFrame("Frame") }
 
--- the header's button for key: Blizzard's shared ones sit on the visible skin, the volume button is
--- the skin's own
+-- The header's button for key (the volume button is each skin's own)
 local function HeaderButtonOf(header, key)
     if key == "volume" then
         for i = 1, NUM_CHAT_WINDOWS do
@@ -749,7 +753,7 @@ local function HeaderButtonOf(header, key)
     return nil
 end
 
--- the visible button nearest the cursor along the header
+-- The visible button nearest the cursor along the header
 local function HeaderDropTarget(header)
     local x = GetCursorPosition() / header:GetEffectiveScale()
     local best, bestDistance
@@ -837,15 +841,45 @@ local function StopHeaderDrag()
     end
 end
 
--- plain drag, on the button itself (done once per button)
+local function OnHeaderDragStart(self) StartHeaderDrag(self.FlareUI_DragKey, self:GetParent()) end
+
 local function EnableHeaderDrag(btn, key)
     if btn.FlareUI_DragKey then return end
     btn.FlareUI_DragKey = key
     btn:RegisterForDrag("LeftButton")
-    btn:SetScript("OnDragStart", function(self) StartHeaderDrag(self.FlareUI_DragKey, self:GetParent()) end)
+    btn:SetScript("OnDragStart", OnHeaderDragStart)
     btn:SetScript("OnDragStop", StopHeaderDrag)
 end
 
+-- a header button's hover fades the chat in; its icon lightens
+local function HeaderButtonEnter(btn)
+    local c = btn.FlareUI_Color
+    local r, g, b = LightenColor(c.r, c.g, c.b, 0.3)
+    btn.FlareUI_Icon:SetVertexColor(r, g, b, c.a)
+    GameTooltip:Hide()
+    local db = GetDb()
+    if db and db.showOnMouse ~= false then
+        Chat:ShowChatFrame(SELECTED_CHAT_FRAME or ChatFrame1, db)
+    end
+end
+
+local function HeaderButtonLeave(btn)
+    local c = btn.FlareUI_Color
+    btn.FlareUI_Icon:SetVertexColor(c.r, c.g, c.b, c.a)
+end
+
+local function HeaderButtonDown(btn) btn.FlareUI_Icon:SetPoint("TOPLEFT", 1, -1) end
+local function HeaderButtonUp(btn) btn.FlareUI_Icon:SetPoint("TOPLEFT", 0, 0) end
+
+-- a flashing button (a new invite, say) fades the chat in
+local function HeaderFlashShown()
+    local db = GetDb()
+    if db and db.showOnMessage ~= false then
+        Chat:ShowChatFrame(SELECTED_CHAT_FRAME or ChatFrame1, db)
+    end
+end
+
+local function KillTexture(tex) if tex then tex:SetAlpha(0) end end
 
 function Chat:StyleHeaderButtons(chatFrame)
     if self.isStyling then return end
@@ -867,9 +901,7 @@ function Chat:StyleHeaderButtons(chatFrame)
         if not btn then return end
         EnableHeaderDrag(btn, key)
 
-        -- Blizzard's own OnShow stays in place: the social button registers for clicks there (and drops
-        -- them again in OnHide), so replacing it left the button dead after its first hide / show.
-        -- "Hide" is a post-hook instead.
+        -- a post-hook: the social button registers for clicks in Blizzard's own OnShow
         if not btn.FlareUI_ShowHooked then
             btn.FlareUI_ShowHooked = true
             btn:HookScript("OnShow", function(s) if s.FlareUI_ForceHidden then s:Hide() end end)
@@ -881,9 +913,7 @@ function Chat:StyleHeaderButtons(chatFrame)
         end
 
         btn:Show()
-        -- Parented to the skin rather than UIParent so alpha is inherited: the skin is what
-        -- SetChatFrameAlpha fades, and a child follows its parent's effective alpha automatically.
-        -- Strata and level are still set explicitly, so this does not change what draws on top.
+        -- on the skin, so it fades with it
         btn:SetParent(header)
         btn:ClearAllPoints()
         btn:SetPoint("TOPRIGHT", header, "TOPRIGHT", x or 0, y or 0)
@@ -906,32 +936,20 @@ function Chat:StyleHeaderButtons(chatFrame)
             btn.FlareUI_Icon:SetAllPoints()
         end
 
+        btn.FlareUI_Color = color
         btn.FlareUI_Icon:SetTexture(iconPath)
         btn.FlareUI_Icon:SetVertexColor(color.r, color.g, color.b, color.a)
         btn.FlareUI_Icon:Show()
 
         if not btn.FlareUI_TextureHooked then
             btn.FlareUI_TextureHooked = true
-            local function KillTexture(tex) if tex then tex:SetAlpha(0) end end
             Chat:SecureHook(btn, "SetNormalTexture", function(frameParam) KillTexture(frameParam:GetNormalTexture()) end)
             Chat:SecureHook(btn, "SetPushedTexture", function(frameParam) KillTexture(frameParam:GetPushedTexture()) end)
             Chat:SecureHook(btn, "SetHighlightTexture", function(frameParam) KillTexture(frameParam:GetHighlightTexture()) end)
             KillTexture(btn:GetNormalTexture())
             KillTexture(btn:GetPushedTexture())
             KillTexture(btn:GetHighlightTexture())
-
-            -- Hook state changes (like flashing/glowing) to trigger chat fade-in
-            if btn.Flash then
-                Chat:SecureHookScript(btn.Flash, "OnShow", function()
-                    local db = GetDb()
-                    if db and db.showOnMessage ~= false then
-                        local frameWithButtons = SELECTED_CHAT_FRAME or ChatFrame1
-                        if frameWithButtons then
-                            Chat:ShowChatFrame(frameWithButtons, db)
-                        end
-                    end
-                end)
-            end
+            if btn.Flash then Chat:SecureHookScript(btn.Flash, "OnShow", HeaderFlashShown) end
         end
 
         if isSocial then
@@ -941,28 +959,10 @@ function Chat:StyleHeaderButtons(chatFrame)
             if count then count:SetAlpha(0) end
         end
 
-        -- Highlight Logic
-        local hR, hG, hB = LightenColor(color.r, color.g, color.b, 0.3)
-
-        btn:SetScript("OnEnter", function()
-            btn.FlareUI_Icon:SetVertexColor(hR, hG, hB, color.a)
-            if GameTooltip then GameTooltip:Hide() end
-            -- Trigger chat frame fade-in when hovering button
-            local db = GetDb()
-            if db and db.showOnMouse ~= false then
-                local frameWithButtons = SELECTED_CHAT_FRAME or ChatFrame1
-                if frameWithButtons then
-                    Chat:ShowChatFrame(frameWithButtons, db)
-                end
-            end
-        end)
-
-        btn:SetScript("OnLeave", function()
-            btn.FlareUI_Icon:SetVertexColor(color.r, color.g, color.b, color.a)
-        end)
-
-        btn:SetScript("OnMouseDown", function() btn.FlareUI_Icon:SetPoint("TOPLEFT", 1, -1) end)
-        btn:SetScript("OnMouseUp", function() btn.FlareUI_Icon:SetPoint("TOPLEFT", 0, 0) end)
+        btn:SetScript("OnEnter", HeaderButtonEnter)
+        btn:SetScript("OnLeave", HeaderButtonLeave)
+        btn:SetScript("OnMouseDown", HeaderButtonDown)
+        btn:SetScript("OnMouseUp", HeaderButtonUp)
     end
 
     local cSocial = db.socialColor or {r=1,g=1,b=1,a=1}
@@ -972,8 +972,6 @@ function Chat:StyleHeaderButtons(chatFrame)
     SetupBtn(_G.QuickJoinToastButton,   ICON_SOCIAL,   not HeaderButtonShown(db, "social"),  HeaderButtonX(db, "social"),  db.socialY,  db.socialScale,  cSocial, true, "social")
     SetupBtn(_G.ChatFrameChannelButton, ICON_CHANNELS, not HeaderButtonShown(db, "channel"), HeaderButtonX(db, "channel"), db.channelY, db.channelScale, cChannel, false, "channel")
     SetupBtn(_G.ChatFrameMenuButton,    ICON_MENU,     not HeaderButtonShown(db, "menu"),    HeaderButtonX(db, "menu"),    db.menuY,    db.menuScale,    cMenu, false, "menu")
-
-    -- The buttons are children of the skin, so their alpha (and their icons' and Flash glows') follows it.
     self.isStyling = false
 end
 
@@ -1007,10 +1005,10 @@ local function HandleWay(msg)
 
     msg = (msg or ""):match("^%s*(.-)%s*$")
     if msg == "" then
-        print("|cff00ff00FlareUI /way usage:|r")
-        print("  /way 50.5 40.2            (current zone)")
-        print("  /way Elwynn Forest 40 50   (named zone)")
-        print("  /way #1429 40 50           (map ID)")
+        print("|cff00ff00FlareUI:|r " .. L["/way usage:"])
+        print("  /way 50.5 40.2  " .. L["(current zone)"])
+        print("  /way Elwynn Forest 40 50  " .. L["(named zone)"])
+        print("  /way #1429 40 50  " .. L["(map ID)"])
         return
     end
 
@@ -1051,8 +1049,7 @@ end
 
 --------------------------------------------------
 -- 8. COPY CHAT LINKS
--- Web addresses in chat become clickable; clicking opens a small box with the link selected so it
--- can be copied. Chat text can be a secret value in 12.x, so the filter bails out when it is.
+-- Web addresses in chat become links that open a box to copy them from.
 --------------------------------------------------
 local URL_EVENTS = {
     "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_EMOTE", "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER",
@@ -1062,8 +1059,7 @@ local URL_EVENTS = {
     "CHAT_MSG_SYSTEM",
 }
 
--- %f[%S] is a frontier pattern: it only matches at a non-space boundary, so an address has to start
--- a word rather than being picked up out of the middle of one. Patterns are Chattynator's.
+-- %f[%S]: an address has to start a word. Patterns from Chattynator.
 local URL_PATTERNS = {
     "%f[%S](%a[%w+.-]+://%S+)",                  -- http://, https://, ftp://
     "%f[%S](www%.[-%w_%%]+%.%a%a+/%S+)",         -- www.domain.tld/path
@@ -1109,23 +1105,20 @@ local function ShowCopyBox(url)
     copyFrame:Show()
 end
 
--- Copy Line hands a line too long for a chat message to the same box (LINE REWRITING comes first)
+-- Copy Line's box for a line too long for a chat message
 function Chat.ShowCopyText(text) ShowCopyBox(text) end
 
--- Blizzard wraps every registered filter in "if canaccessvalue(...) then callback(...) end"
--- (ChatFrameFilters.lua), so a secret message never reaches this function at all and no guard of our
--- own is needed. A message that already carries a hyperlink is left alone.
+-- Blizzard only calls filters with accessible values, so no secret check is needed. A message that
+-- already carries a hyperlink is left alone.
 local function URLFilter(self, event, msg, ...)
     if type(msg) ~= "string" or msg:find("|H") then return false, msg, ... end
     for _, pattern in ipairs(URL_PATTERNS) do
-        local replaced = msg:gsub(pattern, "|cff00b2ff|Hflareurl:%1|h[%1]|h|r")
-        if replaced ~= msg then msg = replaced end
+        msg = msg:gsub(pattern, "|cff00b2ff|Hflareurl:%1|h[%1]|h|r")
     end
     return false, msg, ...
 end
 
--- LinkUtil.RegisterLinkHandler asserts if the same link type is registered twice, so this happens
--- once for the session rather than every time the option is switched back on.
+-- Registered once for the session (LinkUtil asserts on a second registration)
 local function RegisterURLHandler()
     if LinkUtil.IsLinkHandlerRegistered("flareurl") then return end
     LinkUtil.RegisterLinkHandler("flareurl", function(link, text)
@@ -1161,8 +1154,7 @@ function Chat:SetupImprovements()
         SlashCmdList["FLARETT"] = function(msg)
             if UnitExists("target") and (UnitIsPlayer("target") or UnitCanCooperate("player", "target")) then
                 local name, realm = UnitName("target")
-                -- Unit identity can be a secret value in restricted content; skip rather than error
-                if not canaccessvalue(name) or not name then return end
+                if not canaccessvalue(name) or not name then return end   -- secret in restricted content
                 if realm and canaccessvalue(realm) and realm ~= "" then name = name .. "-" .. realm end
                 ChatFrameUtil.OpenChat("/w " .. name .. " " .. msg)
             end
@@ -1183,26 +1175,18 @@ function Chat:SetupImprovements()
     Chat:UpdateInstanceBubbles()
     Chat:StyleHeaderButtons()
     DisableQuickJoinToasts()
+    AnchorShardNotice()
     if _G.TextToSpeechButton then _G.TextToSpeechButton:Hide(); _G.TextToSpeechButton:SetScript("OnShow", function(s) s:Hide() end) end
 end
 
 function Chat:OpenContextMenu(tabButton, chatFrame)
-    -- With the Gamepad UI on, a menu opened from our code registers with Blizzard's gamepad focus
-    -- manager in a tainted call and hangs the client; Tab Settings (Y) has the same entries there.
+    -- in the Gamepad UI a menu opened from addon code hangs the client; Tab Settings (Y) has these
     if ns.IsGamepadUI() then return end
 
-    -- With the gamepad UI on, ShowUIPanel from FlareUI code registers the window with Blizzard's
-    -- gamepad focus manager in a tainted call and hangs the client (see Dialog.lua), so the two
-    -- entries that open Blizzard windows are left out there; the game menu has both.
-    local gamepad = ns.IsGamepadUI()
     MenuUtil.CreateContextMenu(tabButton, function(owner, rootDescription)
-        if not gamepad then
-            rootDescription:CreateButton(EDIT_MODE or "Edit Mode", function()
-                if EditModeManagerFrame then
-                    ShowUIPanel(EditModeManagerFrame)
-                end
-            end)
-        end
+        rootDescription:CreateButton(EDIT_MODE or "Edit Mode", function()
+            if EditModeManagerFrame then ShowUIPanel(EditModeManagerFrame) end
+        end)
 
         rootDescription:CreateButton(RENAME_CHAT_WINDOW, function()
             ns.ShowDialog("FLAREUI_RENAME_CHAT", nil, chatFrame)
@@ -1229,7 +1213,7 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
 
         rootDescription:CreateDivider()
 
-        rootDescription:CreateButton("Chat Settings", function()
+        rootDescription:CreateButton(L["Chat Settings"], function()
             local ACD = LibStub("AceConfigDialog-3.0", true)
             if ACD then
                 ACD:SelectGroup("FlareUI", "chat")
@@ -1237,11 +1221,9 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
             end
         end)
 
-        if not gamepad then
-            rootDescription:CreateButton("Filter Settings", function()
-                if ChatConfigFrame then ShowUIPanel(ChatConfigFrame) end
-            end)
-        end
+        rootDescription:CreateButton(L["Filter Settings"], function()
+            if ChatConfigFrame then ShowUIPanel(ChatConfigFrame) end
+        end)
 
         if IsPopped(chatFrame) then
             rootDescription:CreateDivider()
@@ -1261,10 +1243,8 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
     end)
 end
 
--- Blizzard's tab dock stays alive but out of sight: our tab bar replaces it. Off screen with the
--- mouse; in the gamepad UI Blizzard opens the tab settings menu (Y) on the real tab, so there it
--- lies across the chat header instead, full size so Blizzard lays out every tab (the ones past
--- General and Combat Log sit in its scroll strip), invisible and with its tabs deaf to the mouse.
+-- Blizzard's tab dock stays alive but out of sight. In the Gamepad UI the tab menu (Y) opens on the
+-- real tab, so the dock lies invisible across the chat header, its tabs deaf to the mouse.
 local function ParkDock(dock)
     dock:ClearAllPoints()
     local host = _G.ChatFrame1 and _G.ChatFrame1.FlareUI_Skin
@@ -1347,15 +1327,11 @@ function Chat:CreateCustomTabBar(chatFrame)
     chatFrame.FlareUI_TabChild = scrollChild
 end
 
--- Reordering tabs by drag. The header's tabs are drawn in the order of Blizzard's dock list
--- (GeneralDockManager.DOCKED_CHAT_FRAMES), so a drop moves the window in that list and FCF_SaveDock
--- stores every docked window's position in the game's chat settings - the order survives a reload.
--- The fixed windows cannot move and nothing lands in front of them: General (the dock's primary),
--- which Blizzard requires first, and while it is shown the Combat Log, second - immovable in
--- Blizzard's own chat, whose order the Gamepad UI's LB / RB follow.
+-- Reordering tabs by drag: a drop moves the window in Blizzard's dock list and FCF_SaveDock keeps
+-- the order. General stays first and the shown Combat Log second, as in Blizzard's chat.
 local TAB_MARKER_WIDTH, TAB_MARKER_HEIGHT = 2, 16
 
--- how many windows lead the dock list and stay put
+-- How many windows lead the dock list and stay put
 local function FixedWindowCount()
     local db = GetDb()
     local list = GeneralDockManager and GeneralDockManager.DOCKED_CHAT_FRAMES
@@ -1369,7 +1345,7 @@ local function IsFixedWindow(frame)
     return frame == _G.ChatFrame2 and FixedWindowCount() == 2
 end
 
--- an order saved before the rule (a tab dragged in front of the Combat Log) is put right
+-- Puts a Combat Log dragged out of second place back
 local function KeepCombatLogSecond()
     local dock = GeneralDockManager
     local list = dock and dock.DOCKED_CHAT_FRAMES
@@ -1383,6 +1359,7 @@ local function KeepCombatLogSecond()
     FCF_SaveDock()
     FCFDock_UpdateTabs(dock)
 end
+
 -- an unselected tab's text at rest; hovering lifts it to 1
 local TAB_IDLE_ALPHA = 0.6
 
@@ -1427,7 +1404,7 @@ local function UpdateTabMarker(scrollFrame)
     marker:Show()
 end
 
--- moves a docked window in front of `before` (or to the end) and saves the new order
+-- Moves a docked window in front of `before` (or to the end) and saves the new order
 local function MoveDockedWindow(frame, before)
     local dock = GeneralDockManager
     local list = dock and dock.DOCKED_CHAT_FRAMES
@@ -1492,16 +1469,7 @@ function Chat:UpdateCustomTabs(chatFrame, db)
     local scrollChild = chatFrame.FlareUI_TabChild
     if not scrollFrame or not scrollChild then return end
 
-    Chat:UpdateCustomTabsImmediate(chatFrame, db)
-end
-
-function Chat:UpdateCustomTabsImmediate(chatFrame, db)
-    local scrollFrame = chatFrame.FlareUI_TabBar
-    local scrollChild = chatFrame.FlareUI_TabChild
-    if not scrollFrame or not scrollChild then return end
-
-    -- Count visible buttons for margin calculation
-    -- Don't call Show() here - SetupChatButtons handles visibility
+    -- room for the header buttons
     local btnCount = 0
     for _, key in ipairs(HEADER_ORDER) do
         if HeaderButtonShown(db, key) then btnCount = btnCount + 1 end
@@ -1526,11 +1494,8 @@ function Chat:UpdateCustomTabsImmediate(chatFrame, db)
     local totalWidth = 0
 
     local buttonIndex = 0
-    for i, frame in ipairs(dockedFrames) do
-        -- Skip combat log if hidden
-        if frame == _G.ChatFrame2 and db.hideCombatLog then
-            -- skip
-        else
+    for _, frame in ipairs(dockedFrames) do
+        if not (frame == _G.ChatFrame2 and db.hideCombatLog) then
             buttonIndex = buttonIndex + 1
             local tabID = frame:GetID()
             local realTab = _G["ChatFrame"..tabID.."Tab"]
@@ -1552,42 +1517,24 @@ function Chat:UpdateCustomTabsImmediate(chatFrame, db)
                     if not self.realTab or self.justDragged then return end
                     if button == "RightButton" then
                         Chat:OpenContextMenu(self, self.chatFrame)
-                    elseif IsPopped(self.chatFrame) then
-                        -- a popped window's only tab: nothing to switch to
-                    else
-                        -- Call Blizzard's tab click handler to switch frames
+                    elseif not IsPopped(self.chatFrame) then   -- a popped window has only its own tab
                         _G.FCF_Tab_OnClick(self.realTab, button)
-
-                        -- Update tabs and smart scroll to show selected tab
                         C_Timer.After(0.01, function()
                             Chat:UpdateCustomTabs(_G.ChatFrame1, db)
-
-                            -- Smart scroll: only adjust if tab is cut off
+                            -- scroll the selected tab into view if it is cut off
                             C_Timer.After(0.02, function()
-                                if not self:IsShown() or not scrollFrame then return end
-
-                                local left = self:GetLeft()
-                                local right = self:GetRight()
+                                if not self:IsShown() then return end
+                                local left, right = self:GetLeft(), self:GetRight()
                                 local scrollLeft = scrollFrame:GetLeft()
-                                local scrollRight = scrollFrame:GetRight()
-
-                                if left and right and scrollLeft and scrollRight then
-                                    local scroll = scrollFrame:GetHorizontalScroll()
-                                    local scrollWidth = scrollFrame:GetWidth()
-
-                                    -- Calculate tab position in scroll child coordinates
-                                    local tabLeft = left - scrollLeft + scroll
-                                    local tabRight = right - scrollLeft + scroll
-
-                                    -- Only scroll if tab is not fully visible
-                                    if tabRight > scroll + scrollWidth then
-                                        -- Tab cut off on right - scroll to show it
-                                        scrollFrame:SetHorizontalScroll(tabRight - scrollWidth + 10)
-                                    elseif tabLeft < scroll then
-                                        -- Tab cut off on left - scroll to show it
-                                        scrollFrame:SetHorizontalScroll(math.max(0, tabLeft - 10))
-                                    end
-                                    -- Otherwise keep current scroll position
+                                if not (left and right and scrollLeft) then return end
+                                local scroll = scrollFrame:GetHorizontalScroll()
+                                local scrollWidth = scrollFrame:GetWidth()
+                                local tabLeft = left - scrollLeft + scroll
+                                local tabRight = right - scrollLeft + scroll
+                                if tabRight > scroll + scrollWidth then
+                                    scrollFrame:SetHorizontalScroll(tabRight - scrollWidth + 10)
+                                elseif tabLeft < scroll then
+                                    scrollFrame:SetHorizontalScroll(math_max(0, tabLeft - 10))
                                 end
                             end)
                         end)
@@ -1596,7 +1543,7 @@ function Chat:UpdateCustomTabsImmediate(chatFrame, db)
 
                 btn:SetScript("OnEnter", function(self)
                     self.Text:SetAlpha(1)
-                    if GameTooltip then GameTooltip:Hide() end
+                    GameTooltip:Hide()
                     Chat:ShowChatFrame(chatFrame, db)
                 end)
 
@@ -1617,10 +1564,7 @@ function Chat:UpdateCustomTabsImmediate(chatFrame, db)
             btn.Text:ClearAllPoints()
             btn.Text:SetPoint("CENTER", btn, "CENTER", 0, yOffset)
 
-            -- Get the actual selected frame from the dock
-            local dock = _G.GeneralDockManager
-            local actualSelectedFrame = dock and FCFDock_GetSelectedWindow(dock)
-            local isSelected = popped or (actualSelectedFrame == frame)
+            local isSelected = popped or FCFDock_GetSelectedWindow(dock) == frame
             btn.isSelected = isSelected
 
             if isSelected then
@@ -1656,23 +1600,18 @@ end
 function Chat:HideBlizzardTabs()
     if not NUM_CHAT_WINDOWS then return end
 
-    -- Hide Blizzard's tab scroll frame container. In the gamepad UI it stays shown: every tab past
-    -- General and Combat Log lives in it, and Tab Settings (Y) opens on the real tab (the dock itself
-    -- is invisible there, see ParkDock).
+    -- In the Gamepad UI the dock's tabs stay shown but invisible: Tab Settings (Y) opens on them
     local dock = _G.GeneralDockManager
     if dock and dock.scrollFrame then
         if not ns.IsGamepadUI() then dock.scrollFrame:Hide() end
         dock.scrollFrame:SetAlpha(0)
     end
 
-    -- Hide overflow button
     if dock and dock.overflowButton then
         dock.overflowButton:Hide()
         dock.overflowButton:SetAlpha(0)
     end
 
-    -- Hide individual tabs. In the gamepad UI they stay shown, only invisible and deaf to the mouse:
-    -- Blizzard opens the Tab Settings menu (Y) on the real tab, and a hidden one opens nothing.
     local gamepad = ns.IsGamepadUI()
     for i = 1, NUM_CHAT_WINDOWS do
         local chatFrame = _G["ChatFrame"..i]
@@ -1703,25 +1642,11 @@ function Chat:UpdateTabFonts()
             local fs = tab:GetFontString()
             if fs then
                 fs:SetFont(fontPath, fontSize, fontFlags)
-                if font.enableShadow then
-                    fs:SetShadowColor(0, 0, 0, 1)
-                    fs:SetShadowOffset(font.shadowX, font.shadowY)
-                else
-                    fs:SetShadowColor(0, 0, 0, 0)
-                end
-
-                if font.useCustomColor then
-                    fs:SetTextColor(font.color.r, font.color.g, font.color.b, font.color.a)
-                end
+                ApplyFontEffects(fs, font)
             end
-
-            -- Force Resize & Layout
-            -- 10 is the padding value Blizzard typically uses
             PanelTemplates_TabResize(tab, 10)
         end
     end
-
-    -- Force Dock Update to rearrange tabs
     FCF_DockUpdate()
 end
 
@@ -1741,12 +1666,9 @@ function Chat:StyleEditBox(chatFrame, db)
     end
     if eb.headerSuffix then eb.headerSuffix:Hide(); if eb.headerSuffix.SetAlpha then eb.headerSuffix:SetAlpha(0) end; if eb.headerSuffix.SetTexture then eb.headerSuffix:SetTexture(nil) end end
 
-    -- IM style parks the edit box at 35% alpha between messages (ChatFrameEditBoxMixin:Deactivate);
-    -- keep it invisible instead. It lies over the chat's last lines, so while idle it also goes
-    -- beneath the chat window (Blizzard parks it at LOW): a click on a link there reaches the link
-    -- instead of opening the chat. ActivateChat lifts it back to DIALOG and puts the alpha back.
-    -- Never touch its mouse or hook ActivateChat: both stopped Enter from opening the chat. The
-    -- Gamepad UI drives the edit box itself and is left alone.
+    -- In IM style the idle edit box is invisible and below the chat window, so a click on a link
+    -- under it reaches the link; ActivateChat restores both. Never touch its mouse or hook
+    -- ActivateChat: both stopped Enter from opening the chat. The Gamepad UI keeps its strata.
     if not eb.FlareUI_IMHooked then
         eb.FlareUI_IMHooked = true
         local gamepad = ns.IsGamepadUI()
@@ -1762,8 +1684,8 @@ function Chat:StyleEditBox(chatFrame, db)
         end
     end
 
-    -- Chat > Frame > Edit Box Position. Outside the window the box is as wide as the window's
-    -- border and EDIT_BOX_GAP away from it (its backdrop reaches 2 px past the box itself).
+    -- Edit Box Position. Outside the window it is as wide as the border, EDIT_BOX_GAP away (its
+    -- backdrop reaches 2 px past the box).
     eb:ClearAllPoints()
     local position = db.editBoxPosition or "inside"
     local skin = chatFrame.FlareUI_Skin
@@ -1783,20 +1705,17 @@ function Chat:StyleEditBox(chatFrame, db)
     if not bg then
         bg = CreateFrame("Frame", nil, eb, "BackdropTemplate")
         eb.FlareUI_Backdrop = bg
-        -- DIALOG, where the opened box draws (ActivateChat), whatever strata the idle box is parked at
+        -- DIALOG, where the opened box draws
         bg:SetFrameStrata("DIALOG")
         bg:SetFrameLevel(math_max((eb:GetFrameLevel() or 1) - 1, 0))
         bg:SetPoint("TOPLEFT", eb, "TOPLEFT", -2, 2)
         bg:SetPoint("BOTTOMRIGHT", eb, "BOTTOMRIGHT", 2, -2)
     end
 
-    -- Black background inside the chat frame's border (the Border option), in FlareUI's border bronze
+    -- black fill inside the chat's border
     local bgFile   = "Interface\\Buttons\\WHITE8x8"
     local edgeFile = GetBorderFile(db)
     local opacity  = db.editBoxOpacity or 1
-
-    -- the fill stops inside the border, as on the chat window's skin: the Blizzard Tooltip border's
-    -- line sits a few px in from the frame edge, and a fill to the edge showed square past it
     local inset = db.borderInset or 4
     bg:SetBackdrop({ bgFile = bgFile, edgeFile = edgeFile, tile = true, tileSize = 16, edgeSize = ns.BorderEdgeSize(edgeFile, 16), insets = { left = inset, right = inset, top = inset, bottom = inset } })
     bg:SetBackdropColor(0, 0, 0, opacity)
@@ -1824,8 +1743,6 @@ function Chat:SetupVolumeButton(chatFrame, db)
         local color = db.volumeColor or { r=1, g=0.82, b=0, a=1 }
 
         local r, g, b, a = color.r, color.g, color.b, color.a
-
-        -- Highlighting logic:
         if btn and btn:IsMouseOver() then
             r, g, b = LightenColor(r, g, b, 0.3)
         end
@@ -1851,29 +1768,23 @@ function Chat:SetupVolumeButton(chatFrame, db)
             ns.OwnGameTooltip(self, "ANCHOR_TOP")
             local vol = tonumber(C_CVar.GetCVar("Sound_MasterVolume")) or 0
 
-            -- Color Interpolation: Red -> Orange -> Green
-            local r, g, b
+            -- red at 0%, orange at 50%, green at 100%
+            local r, g
             if vol <= 0.5 then
-                -- 0% to 50%: Red (1,0,0) -> Orange (1, 0.5, 0)
-                r = 1
-                g = vol -- 0 to 0.5
-                b = 0
+                r, g = 1, vol
             else
                 local t = (vol - 0.5) * 2
-                r = 1 - t             -- 1 down to 0
-                g = 0.5 + (0.5 * t)   -- 0.5 up to 1.0
-                b = 0
+                r, g = 1 - t, 0.5 + 0.5 * t
             end
-
-            GameTooltip:AddLine(string.format("%d%%", vol * 100), r, g, b)
+            GameTooltip:AddLine(string_format("%d%%", vol * 100), r, g, 0)
             GameTooltip:Show()
             if SELECTED_CHAT_FRAME then Chat:ShowChatFrame(SELECTED_CHAT_FRAME, db) end
-            UpdateIcon() -- Re-trigger to apply highlight color
+            UpdateIcon()
         end)
 
-        btn:SetScript("OnLeave", function(self)
+        btn:SetScript("OnLeave", function()
             GameTooltip:Hide()
-            UpdateIcon() -- Re-trigger to remove highlight
+            UpdateIcon()
         end)
 
         btn:RegisterEvent("CVAR_UPDATE")
@@ -1918,38 +1829,19 @@ local function CreateOrGetSkinFrame(chatFrame, db)
     if not skin then
         skin = CreateFrame("Frame", nil, chatFrame, "BackdropTemplate")
         chatFrame.FlareUI_Skin = skin
-        -- In the gamepad UI Blizzard's cursor would walk from the edit box onto our tabs and header
-        -- buttons, where it can click nothing (and a pad click would run our code inside its
-        -- navigation). Ignored here means ignored for everything inside the skin, so the D-pad
-        -- stays on the edit box, as it does in Blizzard's own chat. The UI reloads on a switch.
+        -- keeps Blizzard's gamepad cursor on the edit box, off our tabs and buttons
         if ns.IsGamepadUI() then skin.smartNavigationIgnored = true end
+        skin.Separator = skin:CreateTexture(nil, "OVERLAY")
     end
-    if not skin.Separator then skin.Separator = skin:CreateTexture(nil, "OVERLAY") end
 
     local padding = db.textPadding or 6
     local headerHeight = db.headerHeight or 24
-
     skin:ClearAllPoints()
     skin:SetPoint("BOTTOMLEFT", chatFrame, "BOTTOMLEFT", -padding, -padding)
-    skin:SetPoint("BOTTOMRIGHT", chatFrame, "BOTTOMRIGHT", padding, -padding)
-    skin:SetPoint("TOPLEFT", chatFrame, "TOPLEFT", -padding, padding + headerHeight)
     skin:SetPoint("TOPRIGHT", chatFrame, "TOPRIGHT", padding, padding + headerHeight)
     skin:SetFrameStrata(chatFrame:GetFrameStrata())
-    local level = chatFrame:GetFrameLevel() or 1
-    skin:SetFrameLevel(math_max(level - 1, 0))
+    skin:SetFrameLevel(math_max((chatFrame:GetFrameLevel() or 1) - 1, 0))
     return skin
-end
-
-local function UpdateSkinFramePoints(chatFrame, db)
-    local skin = chatFrame and chatFrame.FlareUI_Skin
-    if not skin then return end
-    local padding = db.textPadding or 6
-    local headerHeight = db.headerHeight or 24
-    skin:ClearAllPoints()
-    skin:SetPoint("BOTTOMLEFT", chatFrame, "BOTTOMLEFT", -padding, -padding)
-    skin:SetPoint("BOTTOMRIGHT", chatFrame, "BOTTOMRIGHT", padding, -padding)
-    skin:SetPoint("TOPLEFT", chatFrame, "TOPLEFT", -padding, padding + headerHeight)
-    skin:SetPoint("TOPRIGHT", chatFrame, "TOPRIGHT", padding, padding + headerHeight)
 end
 
 function Chat:StyleChatFrame(chatFrame, db)
@@ -1963,29 +1855,19 @@ function Chat:StyleChatFrame(chatFrame, db)
 
     if not chatFrame.FlareUI_ScriptHooked then
         chatFrame.FlareUI_ScriptHooked = true
-        -- Cleared once: nothing sets OnUpdate on the chat frame itself later (the dock and the tabs
-        -- use their own), so there is no need to intercept SetScript.
         chatFrame:SetScript("OnUpdate", nil)
     end
 
     chatFrame:SetFading(false)
     chatFrame:SetTimeVisible(9999)
 
+    -- Blizzard's own alpha changes are overruled by ours
     if not chatFrame.FlareUI_AlphaHooked then
         Chat:SecureHook(chatFrame, "SetAlpha", function(frameParam, alpha)
             if frameParam.FlareUI_IgnoreAlpha then return end
-
-            if ns.db.profile.chat.autoHideEnabled == false then
-               local target = ns.db.profile.chat.alphaMax or 1
-               if math_abs(alpha - target) > 0.05 then
-                   frameParam.FlareUI_IgnoreAlpha = true
-                   frameParam:SetAlpha(target)
-                   frameParam.FlareUI_IgnoreAlpha = false
-               end
-               return
-            end
-
-            local target = frameParam.FlareUI_TargetAlpha
+            local chatDb = GetDb()
+            local target = chatDb and not chatDb.autoHideEnabled and (chatDb.alphaMax or 1)
+                or frameParam.FlareUI_TargetAlpha
             if target and math_abs(alpha - target) > 0.05 then
                 frameParam.FlareUI_IgnoreAlpha = true
                 frameParam:SetAlpha(target)
@@ -1996,7 +1878,6 @@ function Chat:StyleChatFrame(chatFrame, db)
     end
 
     local skin = CreateOrGetSkinFrame(chatFrame, db)
-    UpdateSkinFramePoints(chatFrame, db)
 
     -- Blizzard's dialog background inside the border picked in the options
     local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
@@ -2009,13 +1890,13 @@ function Chat:StyleChatFrame(chatFrame, db)
     if skin then
         skin:SetBackdrop(backdrop)
         skin:SetBackdropColor(1, 1, 1, opacity)
-        local c = ns.BORDER_COLOR
-        skin:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
+        local border = ns.BORDER_COLOR
+        skin:SetBackdropBorderColor(border.r, border.g, border.b, border.a)
 
         if db.showSeparator then
             skin.Separator:Show()
             local c = db.separatorColor or {r=1, g=0.82, b=0, a=0.5}
-            local tex = SEPARATORS[db.separatorStyle] or SEPARATORS["Solid"]
+            local tex = SEPARATORS[db.separatorStyle]
             local yOffset = 6
             local pad = db.textPadding or 6
             if tex then
@@ -2038,17 +1919,16 @@ function Chat:StyleChatFrame(chatFrame, db)
     local path, size, flags = GetFontData(db.chatFont)
     if not chatFrame.FlareUI_FontHooked then
         chatFrame.FlareUI_FontHooked = true
-        Chat:SecureHook(chatFrame, "SetFont", function(frameParam, font, size, flags)
+        -- Blizzard's font size changes are overruled by the chat font option
+        Chat:SecureHook(chatFrame, "SetFont", function(frameParam, font, size)
             if frameParam.FlareUI_SettingFont then return end
-            local dbRoot = ns.db
-            if not dbRoot or not dbRoot.profile or not dbRoot.profile.chat then return end
-            local db = dbRoot.profile.chat
-            if not db.enabled then return end
-            local myPath, mySize, myFlags = GetFontData(db.chatFont)
+            local chatDb = GetDb()
+            if not (chatDb and chatDb.enabled) then return end
+            local myPath, mySize, myFlags = GetFontData(chatDb.chatFont)
             if math_abs(size - mySize) > 0.1 or font ~= myPath then
                 frameParam.FlareUI_SettingFont = true
                 frameParam:SetFont(myPath, mySize, myFlags)
-                ApplyFontEffects(frameParam, db.chatFont)
+                ApplyFontEffects(frameParam, chatDb.chatFont)
                 frameParam.FlareUI_SettingFont = false
             end
         end)
@@ -2069,12 +1949,9 @@ end
 
 --------------------------------------------------
 -- POP-OUT WINDOWS
--- FlareUI hides Blizzard's dock and its tabs, and dragging a tab out of the dock is how Blizzard
--- undocks a window, so the tab menu does it instead: Pop Out undocks the window through Blizzard's
--- own functions (FCF_UnDockFrame, FCF_SetLocked), which save its docked state, position and size in
--- the game's chat settings - a popped window comes back where it was after a reload. A popped window
--- keeps the FlareUI skin with only its own tab; its tab and header drag it, Blizzard's corner grip
--- resizes it, and its menu docks it back or locks it. The shared header buttons stay on the dock.
+-- With Blizzard's tabs hidden, the tab menu's Pop Out undocks a window through Blizzard's functions,
+-- which save its state, position and size. A popped window keeps the skin with only its own tab;
+-- its tab and header drag it. The shared header buttons stay on the dock.
 --------------------------------------------------
 local POPOUT_GAP = 8   -- px between the main chat's skin and a popped window's, as first placed
 
@@ -2092,7 +1969,7 @@ function Chat:StopMovingWindow(chatFrame)
     FCF_SavePositionAndDimensions(chatFrame)
 end
 
--- the header of a popped window drags it; a docked window's skin takes no mouse
+-- The header of a popped window drags it; a docked window's skin takes no mouse
 function Chat:ApplyPopState(chatFrame)
     local skin = chatFrame and chatFrame.FlareUI_Skin
     if not skin then return end
@@ -2106,7 +1983,7 @@ function Chat:ApplyPopState(chatFrame)
     skin:EnableMouse(popped)
 end
 
--- every window's tab bar, the header buttons and the drag state, after a window docks or pops out
+-- Every window's tab bar, header buttons and drag state, after a window docks or pops out
 function Chat:RefreshWindows()
     local db = GetDb()
     if not db then return end
@@ -2163,154 +2040,131 @@ function Chat:DockWindow(chatFrame)
     Chat:RefreshWindows()
 end
 
+--------------------------------------------------
+-- AUTO-HIDE
+-- A window stays up autoHideDelay seconds after the last message, hover, edit or combat, then fades
+-- to alphaMin. A message only moves hideAt; one timer per window waits for it. Fades run on one
+-- shared OnUpdate that stops when nothing is fading.
+--------------------------------------------------
+local autoHide = {}   -- chat frame -> { frame, hideAt, timer, expire, fadeFrom, fadeTo, fadeStart, fadeTime }
+local fadeDriver = CreateFrame("Frame")
+fadeDriver:Hide()
+
 function Chat:SetChatFrameAlpha(chatFrame, alpha)
     if not chatFrame or chatFrame:IsForbidden() then return end
-
+    if chatFrame.FlareUI_TargetAlpha == alpha and chatFrame:GetAlpha() == alpha then return end
     chatFrame.FlareUI_TargetAlpha = alpha
     chatFrame.FlareUI_IgnoreAlpha = true
     chatFrame:SetAlpha(alpha)
     chatFrame.FlareUI_IgnoreAlpha = false
-
-    -- The skin carries the volume button and the three header buttons, so one SetAlpha here fades
-    -- the whole header with the frame.
+    -- the skin carries the tabs and header buttons
     if chatFrame.FlareUI_Skin then chatFrame.FlareUI_Skin:SetAlpha(alpha) end
 end
 
+-- true while something keeps the window up: the mouse, a focused edit box, combat, Edit Mode
 function Chat:CheckChatVisibility(chatFrame, db)
-    local checkMouse = (db.showOnMouse ~= false)
-    local checkEdit  = (db.showOnEdit ~= false)
-
-    if checkMouse then
+    if db.showOnMouse ~= false then
         if chatFrame:IsMouseOver() then return true end
         if chatFrame.FlareUI_Skin and chatFrame.FlareUI_Skin:IsMouseOver() then return true end
-        if chatFrame.FlareUI_VolumeBtn and chatFrame.FlareUI_VolumeBtn:IsMouseOver() then return true end
-        if chatFrame.FlareUI_TabBar and chatFrame.FlareUI_TabBar:IsMouseOver() then return true end
-
-        -- Check if header buttons are being hovered (only for the selected chat frame)
-        local frameWithButtons = SELECTED_CHAT_FRAME or ChatFrame1
-        if chatFrame == frameWithButtons then
-            if _G.QuickJoinToastButton and _G.QuickJoinToastButton:IsMouseOver() then return true end
-            if _G.ChatFrameChannelButton and _G.ChatFrameChannelButton:IsMouseOver() then return true end
-            if _G.ChatFrameMenuButton and _G.ChatFrameMenuButton:IsMouseOver() then return true end
+        if chatFrame == (SELECTED_CHAT_FRAME or ChatFrame1) then
+            for _, name in pairs(HEADER_BLIZZARD) do
+                local btn = _G[name]
+                if btn and btn:IsMouseOver() then return true end
+            end
         end
     end
-
-    if checkEdit then
-        local editBox = _G[chatFrame:GetName().."EditBox"]
+    if db.showOnEdit ~= false then
+        local editBox = chatFrame.editBox
         if editBox and editBox:HasFocus() then return true end
     end
-
     if db.showOnCombat and InCombatLockdown() then return true end
-    return false
+    return _G.EditModeManagerFrame ~= nil and _G.EditModeManagerFrame:IsShown()
 end
 
-function Chat:ShowChatFrame(chatFrame, db)
-    if not chatFrame or chatFrame:IsForbidden() then return end
-    if not db then return end
-    self._autoHideState = self._autoHideState or {}
-    local state = self._autoHideState[chatFrame]
-    if not state then state = {}; self._autoHideState[chatFrame] = state end
-    if state.fadeTicker then self:CancelTimer(state.fadeTicker); state.fadeTicker = nil end
-    if state.delayTimer then self:CancelTimer(state.delayTimer); state.delayTimer = nil end
+local function FadeTo(state, alpha, duration)
+    local from = state.frame:GetAlpha()
+    if duration <= 0 or math_abs(alpha - from) <= 0.05 then
+        state.fadeTo = nil
+        Chat:SetChatFrameAlpha(state.frame, alpha)
+        return
+    end
+    state.fadeFrom, state.fadeTo, state.fadeStart, state.fadeTime = from, alpha, GetTime(), duration
+    fadeDriver:Show()
+end
 
-    local alphaMax = db.alphaMax or 1
-    local fadeInTime = db.fadeInSpeed or 0
-
-    if fadeInTime > 0 then
-        local currentAlpha = chatFrame:GetAlpha()
-        local steps = 10; local step = 0; local diff = alphaMax - currentAlpha
-        if math_abs(diff) > 0.05 then
-            state.fadeTicker = self:ScheduleRepeatingTimer(function()
-                step = step + 1
-                local newAlpha = currentAlpha + (diff * (step / steps))
-                if step >= steps then
-                    Chat:SetChatFrameAlpha(chatFrame, alphaMax)
-                    self:CancelTimer(state.fadeTicker); state.fadeTicker = nil
-                    if db.showOnCombat and InCombatLockdown() then return end
-                    Chat:StartHoldTimer(chatFrame, db)
-                    return
+fadeDriver:SetScript("OnUpdate", function(self)
+    local db, now, busy = GetDb(), GetTime(), false
+    for frame, state in pairs(autoHide) do
+        local to = state.fadeTo
+        if to then
+            if to < state.fadeFrom and db and Chat:CheckChatVisibility(frame, db) then
+                Chat:ShowChatFrame(frame, db)   -- a fade-out interrupted
+            else
+                local t = (now - state.fadeStart) / state.fadeTime
+                if t >= 1 then
+                    state.fadeTo = nil
+                    Chat:SetChatFrameAlpha(frame, to)
+                else
+                    Chat:SetChatFrameAlpha(frame, state.fadeFrom + (to - state.fadeFrom) * t)
                 end
-                Chat:SetChatFrameAlpha(chatFrame, newAlpha)
-            end, fadeInTime / steps)
-            return
+            end
+            busy = busy or state.fadeTo ~= nil
         end
     end
-    Chat:SetChatFrameAlpha(chatFrame, alphaMax)
-    if db.showOnCombat and InCombatLockdown() then return end
-    Chat:StartHoldTimer(chatFrame, db)
+    if not busy then self:Hide() end
+end)
+
+local function OnHoldExpired(state)
+    state.timer = nil
+    local db = GetDb()
+    if not (db and db.enabled and db.autoHideEnabled) then return end
+    local remaining = state.hideAt - GetTime()
+    if remaining <= 0 and Chat:CheckChatVisibility(state.frame, db) then
+        remaining = (db.autoHideDelay or 10) > 0.5 and 1 or 0.1
+    end
+    if remaining > 0 then
+        state.timer = C_Timer.NewTimer(remaining, state.expire)
+    else
+        FadeTo(state, db.alphaMin or 0, db.fadeOutSpeed or 0)
+    end
 end
 
-function Chat:StartHoldTimer(chatFrame, db)
-    -- In Edit Mode, always keep chat visible and do not start the hide timer.
-    if _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown() then
-        Chat:SetChatFrameAlpha(chatFrame, db.alphaMax or 1)
+local function AutoHideState(chatFrame)
+    local state = autoHide[chatFrame]
+    if not state then
+        state = { frame = chatFrame }
+        state.expire = function() OnHoldExpired(state) end
+        autoHide[chatFrame] = state
+    end
+    return state
+end
+
+-- Shows the window (fading in) and restarts its hold
+function Chat:ShowChatFrame(chatFrame, db)
+    if not (chatFrame and db) or chatFrame:IsForbidden() then return end
+    local alphaMax = db.alphaMax or 1
+    if not db.autoHideEnabled then
+        if autoHide[chatFrame] then autoHide[chatFrame].fadeTo = nil end
+        Chat:SetChatFrameAlpha(chatFrame, alphaMax)
         return
     end
-
-    local enabled = (db.autoHideEnabled ~= false)
-    if not enabled then
-        Chat:SetChatFrameAlpha(chatFrame, db.alphaMax or 1)
-        return
+    local state = AutoHideState(chatFrame)
+    if state.fadeTo ~= alphaMax and not (state.fadeTo == nil and chatFrame.FlareUI_TargetAlpha == alphaMax) then
+        FadeTo(state, alphaMax, db.fadeInSpeed or 0)
     end
-
-    local state = self._autoHideState[chatFrame]
-    local delay = db.autoHideDelay or 10
-    if Chat:CheckChatVisibility(chatFrame, db) then
-        -- Use a shorter retry delay when autoHideDelay is very short
-        local retryDelay = delay > 0.5 and 1 or 0.1
-        state.delayTimer = self:ScheduleTimer(function() Chat:StartHoldTimer(chatFrame, db) end, retryDelay)
-        return
-    end
-
-    -- Function to execute fade logic
-    local function ExecuteFade()
-        state.delayTimer = nil
-        if Chat:CheckChatVisibility(chatFrame, db) then Chat:ShowChatFrame(chatFrame, db); return end
-
-        local fadeOutTime = db.fadeOutSpeed or 1.0
-        local alphaMin = db.alphaMin or 0
-        if fadeOutTime <= 0 then Chat:SetChatFrameAlpha(chatFrame, alphaMin); return end
-
-        local startAlpha = chatFrame:GetAlpha()
-        local steps = 20; local step = 0
-        local tickTime = fadeOutTime / steps
-        if tickTime < 0.02 then tickTime = 0.02; steps = fadeOutTime / 0.02 end
-
-        state.fadeTicker = self:ScheduleRepeatingTimer(function()
-            step = step + 1
-            if Chat:CheckChatVisibility(chatFrame, db) then
-                self:CancelTimer(state.fadeTicker); state.fadeTicker = nil; Chat:ShowChatFrame(chatFrame, db); return
-            end
-            if steps <= 0 then steps = 1 end
-            local progress = step / steps
-            local newAlpha = startAlpha - ((startAlpha - alphaMin) * progress)
-            if step >= steps then
-                Chat:SetChatFrameAlpha(chatFrame, alphaMin); self:CancelTimer(state.fadeTicker); state.fadeTicker = nil; return
-            end
-            Chat:SetChatFrameAlpha(chatFrame, newAlpha)
-        end, tickTime)
-    end
-
-    -- If delay is 0, execute immediately without timer
-    if delay <= 0 then
-        ExecuteFade()
-    else
-        state.delayTimer = self:ScheduleTimer(ExecuteFade, delay)
+    local delay = math_max(0, db.autoHideDelay or 10)
+    state.hideAt = GetTime() + (state.fadeTo and state.fadeTime or 0) + delay
+    if not state.timer then
+        state.timer = C_Timer.NewTimer(state.hideAt - GetTime(), state.expire)
     end
 end
 
 --------------------------------------------------
 -- 9. EVENT HANDLERS
 --------------------------------------------------
-
--- Event: Combat state change (auto-hide visibility)
-function Chat:OnCombatStateChange(event)
-    local db = ns.db.profile.chat
-    if not db or not db.enabled or not db.autoHideEnabled then return end
-
-    -- If Combat Visibility is disabled, stop here
-    if not db.showOnCombat then return end
-
+function Chat:OnCombatStateChange()
+    local db = GetDb()
+    if not (db and db.enabled and db.autoHideEnabled and db.showOnCombat) then return end
     for i = 1, NUM_CHAT_WINDOWS do
         local cf = _G["ChatFrame" .. i]
         if cf and cf:IsShown() and not cf:IsForbidden() then
@@ -2320,37 +2174,38 @@ function Chat:OnCombatStateChange(event)
 end
 
 function Chat:RefreshForEditMode()
-    local db = ns.db.profile.chat
+    local db = GetDb()
     if not db or not db.enabled then return end
-
     for i = 1, NUM_CHAT_WINDOWS do
         local cf = _G["ChatFrame" .. i]
-        -- Check if the frame exists and has been styled by us
         if cf and cf.FlareUI_Skin and not cf:IsForbidden() then
             self:ShowChatFrame(cf, db)
         end
     end
 end
 
--- Event: NPC interaction end (show chat after quest/gossip)
+-- the chat comes back after a quest or gossip window
 function Chat:OnNPCInteractionEnd()
-    if SELECTED_CHAT_FRAME then
-        local db = ns.db.profile.chat
-        if db then
-            self:ShowChatFrame(SELECTED_CHAT_FRAME, db)
-        end
-    end
+    if SELECTED_CHAT_FRAME then self:ShowChatFrame(SELECTED_CHAT_FRAME, GetDb()) end
 end
 
 --------------------------------------------------
 -- 10. AUTO-HIDE SETUP
 --------------------------------------------------
+-- every message (combat log lines included) lands here, so it returns early when auto-hide is off
+local function OnChatMessage(chatFrame)
+    UpdateScrollToBottomVisibility(chatFrame)
+    local db = GetDb()
+    if db and db.autoHideEnabled and db.showOnMessage ~= false then Chat:ShowChatFrame(chatFrame, db) end
+end
+
+local function OnChatEnter(chatFrame)
+    local db = GetDb()
+    if db and db.showOnMouse ~= false then Chat:ShowChatFrame(chatFrame, db) end
+end
 
 function Chat:SetupAutoHide(db)
     if not NUM_CHAT_WINDOWS or not db then return end
-    self._autoHideState = self._autoHideState or {}
-
-    -- Register combat events with AceEvent (only once)
     if not Chat.autoHideEventsRegistered then
         self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatStateChange")
         self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatStateChange")
@@ -2360,31 +2215,25 @@ function Chat:SetupAutoHide(db)
     for i = 1, NUM_CHAT_WINDOWS do
         local frame = _G["ChatFrame" .. i]
         if frame and not frame:IsForbidden() then
-            self._autoHideState[frame] = self._autoHideState[frame] or {}
             if not frame.FlareUI_AutoHideHooked then
                 frame.FlareUI_AutoHideHooked = true
-                Chat:SecureHookScript(frame, "OnEnter", function(frameParam) if db.showOnMouse ~= false then Chat:ShowChatFrame(frameParam, db) end end)
-                -- Combined hook for both auto-hide and scroll-to-bottom button visibility
-                Chat:SecureHook(frame, "AddMessage", function(frameParam)
-                    UpdateScrollToBottomVisibility(frameParam)  -- Update scroll button
-                    if db.showOnMessage ~= false then Chat:ShowChatFrame(frameParam, db) end  -- Auto-hide logic
-                end)
-                local editBox = _G[frame:GetName() .. "EditBox"]
+                Chat:SecureHookScript(frame, "OnEnter", OnChatEnter)
+                Chat:SecureHook(frame, "AddMessage", OnChatMessage)
+                local editBox = frame.editBox
                 if editBox and not editBox.FlareUI_AutoHideHooked then
                     editBox.FlareUI_AutoHideHooked = true
-                    Chat:SecureHookScript(editBox, "OnEditFocusGained", function() if db.showOnEdit ~= false then Chat:ShowChatFrame(frame, db) end end)
+                    Chat:SecureHookScript(editBox, "OnEditFocusGained", function()
+                        local chatDb = GetDb()
+                        if chatDb and chatDb.showOnEdit ~= false then Chat:ShowChatFrame(frame, chatDb) end
+                    end)
                 end
             end
-            local a = db.alphaMax or 1
-            frame.FlareUI_TargetAlpha = a
-            frame:SetAlpha(a)
             Chat:ShowChatFrame(frame, db)
         end
     end
 end
 
--- Name, timestamp and channel formatting all live in the line rewriter (LINE REWRITING), which reads
--- the options on every line; this only makes sure it is hooked and the level lookups run.
+-- Formatting lives in the line rewriter, which reads the options on every line
 function Chat:UpdateFilters()
     HookLineRewrite()
     Lines.UpdateLevelEvents()
@@ -2393,15 +2242,11 @@ end
 function Chat:Apply(db)
     if not NUM_CHAT_WINDOWS or not db then return end
 
-    -- 1. General Settings (From the top function)
-    if db.hideCombatLog then
-        if ChatFrame2 then
-            ChatFrame2:UnregisterAllEvents()
-            ChatFrame2:SetScript("OnEvent", nil)
-        end
+    if db.hideCombatLog and ChatFrame2 then
+        ChatFrame2:UnregisterAllEvents()
+        ChatFrame2:SetScript("OnEvent", nil)
     end
 
-    -- 2. Dock & Frame Styling
     KeepCombatLogSecond()
     Chat:KillGeneralDockManager()
     StyleButtonFrame()
@@ -2417,17 +2262,11 @@ function Chat:Apply(db)
     if ns.IsGamepadUI() then Chat:KillGeneralDockManager() end
 
     Chat:SetupAutoHide(db)
-
-    -- 3. Update Fonts & Layout
     self:UpdateTabFonts()
 end
 
--- Blizzard's gamepad chat only works in IM chat style: in Classic the edit box stays hidden until
--- Enter, so FocusGamepad's SetFocus on it fails and the footer prompts tied to it (X channels, Y tab
--- settings, A send) do nothing - with no addon loaded too. So while the gamepad UI is on, chat runs
--- in IM style, and the player's own style is put back the next time the UI loads with keyboard and
--- mouse (switching the Gamepad UI setting reloads the UI). The style is an account-wide CVar, so
--- the one it replaced is kept account-wide too.
+-- Blizzard's gamepad chat only works in IM style, so the Gamepad UI switches to it; the player's
+-- style comes back in keyboard mode. The CVar is account-wide, so the saved style is too.
 function Chat:ApplyGamepadChatStyle()
     local global = ns.db.global
     local current = GetCVar("chatStyle")
@@ -2442,10 +2281,8 @@ function Chat:ApplyGamepadChatStyle()
     end
 end
 
--- Gamepad UI: while a chat window has the pad (FloatingChatFrameMixin:HasGamepadFocus - its edit box
--- focused), LB and RB icons sit above its header's ends, the way Blizzard's own tab bars show them.
--- Polled rather than hooked: a hook on Blizzard's focus calls would run our code inside its gamepad
--- focus manager (see Dialog.lua).
+-- Gamepad UI: LB / RB icons above the header of the chat window that has the pad. Polled: a hook on
+-- Blizzard's focus calls would run our code inside its gamepad focus manager.
 local function SetupGamepadTabHints()
     if not ns.IsGamepadUI() then return end
     local function MakeIcon(key)
@@ -2492,30 +2329,18 @@ local function SetupGamepadTabHints()
 end
 
 function Chat:Init()
-    local db = ns.db.profile.chat
     Chat:ApplyGamepadChatStyle()
     SetupGamepadTabHints()
-    -- Blizzard's chat fading is turned off per frame in StyleChatFrame (SetFading(false) and
-    -- SetTimeVisible). Do not blank the FCF_Fade* globals for it: their callers would run our
-    -- tainted code, and they are not what does the fading.
-
-    -- Protect buttons from being hidden
+    -- Blizzard's own fading is off per frame (StyleChatFrame); never blank the FCF_Fade* globals
     Chat:ProtectButtons()
 
     if QuickJoinToastButton then
-        Chat:SecureHook(QuickJoinToastButton, "SetPoint", function()
+        local function Restyle()
             if Chat.isStyling then return end
-            C_Timer.After(0.05, function()
-                Chat:StyleHeaderButtons()
-            end)
-        end)
-
-        Chat:SecureHook(QuickJoinToastButton, "Show", function(frameParam)
-            if Chat.isStyling then return end
-            C_Timer.After(0.05, function()
-                Chat:StyleHeaderButtons()
-            end)
-        end)
+            C_Timer.After(0.05, function() Chat:StyleHeaderButtons() end)
+        end
+        Chat:SecureHook(QuickJoinToastButton, "SetPoint", Restyle)
+        Chat:SecureHook(QuickJoinToastButton, "Show", Restyle)
     end
 
     Chat:SecureHook("FCF_SelectDockFrame", function(view)
@@ -2534,25 +2359,16 @@ function Chat:Init()
         OnAccept = function(chatFrame, text)
             if text and text ~= "" and chatFrame then
                 FCF_SetWindowName(chatFrame, text)
-                if ns.Chat and ns.Chat.UpdateCustomTabs then
-                    ns.Chat:UpdateCustomTabs(chatFrame, ns.db.profile.chat)
-                end
+                Chat:UpdateCustomTabs(chatFrame, GetDb())
             end
         end,
         hideOnEscape = true,
     }
 
-    self:ScheduleTimer(function()
-        Chat:Apply(db)
-        HandleCombatLog(db)
-        Chat:SetupImprovements()
-        Chat:UpdateFilters()
-        Chat:RefreshAll()
-    end, 0.2)
+    self:ScheduleTimer(function() Chat:RefreshAll() end, 0.2)
 
-    -- URL linking lives in SetupCopyLinks (section "COPY CHAT LINKS"), behind the Copy Chat Links
-    -- option; nothing here may filter URLs unconditionally, or the option could not turn it off.
-    Chat:SecureHook("SetItemRef", function(link, text, button, chatFrame)
+    -- Shift-Click to Invite
+    Chat:SecureHook("SetItemRef", function(link, text, button)
         if not ns.db.profile.chat.shiftInvite then return end
         if IsShiftKeyDown() and button == "LeftButton" and link:sub(1, 6) == "player" then
             local name = link:match("player:([^:]+)")
@@ -2562,7 +2378,6 @@ function Chat:Init()
 
     self:ScheduleTimer(function() Chat:RestoreHistory() end, 1)
 
-    -- Register NPC interaction events with AceEvent (only once)
     if not Chat.npcEventsRegistered then
         self:RegisterEvent("GOSSIP_CLOSED", "OnNPCInteractionEnd")
         self:RegisterEvent("QUEST_FINISHED", "OnNPCInteractionEnd")
@@ -2574,31 +2389,25 @@ function Chat:Init()
     if not Chat._tabsHooked then
         Chat._tabsHooked = true
 
-        -- Hook FCF_OpenNewWindow to handle new chat window creation
-        Chat:SecureHook("FCF_OpenNewWindow", function(name)
+        -- styles windows that do not have a skin yet
+        local function StyleNewWindows(db)
+            for i = 1, NUM_CHAT_WINDOWS do
+                local cf = _G["ChatFrame" .. i]
+                if cf and not cf:IsForbidden() and not cf.FlareUI_Skin then
+                    Chat:StyleChatFrame(cf, db)
+                    Chat:StyleEditBox(cf, db)
+                end
+            end
+            Chat:HideBlizzardTabs()
+        end
+
+        Chat:SecureHook("FCF_OpenNewWindow", function()
             C_Timer.After(0.2, function()
-                local db = ns.db.profile.chat
+                local db = GetDb()
                 if not db then return end
-
-                -- Style any new frames (same as whisper logic)
-                for i = 1, NUM_CHAT_WINDOWS do
-                    local cf = _G["ChatFrame"..i]
-                    if cf and not cf:IsForbidden() and not cf.FlareUI_Skin then
-                        Chat:StyleChatFrame(cf, db)
-                        Chat:StyleEditBox(cf, db)
-                    end
-                end
-
-                -- Hide Blizzard tabs for new frame
-                Chat:HideBlizzardTabs()
-
-                -- Update FlareUI custom tabs to include the new frame
-                if _G.ChatFrame1 then
-                    Chat:UpdateCustomTabs(_G.ChatFrame1, db)
-                end
-
-                -- Once when the frames exist, and again once the new window has been shown and
-                -- selected - the first pass can land while it is still neither.
+                StyleNewWindows(db)
+                if _G.ChatFrame1 then Chat:UpdateCustomTabs(_G.ChatFrame1, db) end
+                -- again once the new window has been shown and selected
                 Chat:StyleHeaderButtons()
                 C_Timer.After(0.4, function() Chat:StyleHeaderButtons() end)
             end)
@@ -2609,34 +2418,38 @@ function Chat:Init()
         Chat:SecureHook("FCF_DockFrame", RefreshSoon)
         Chat:SecureHook("FCF_UnDockFrame", RefreshSoon)
 
-        -- Hook FCF_Close to handle chat window closure
-        Chat:SecureHook("FCF_Close", function(frame, fallback)
+        Chat:SecureHook("FCF_Close", function()
             C_Timer.After(0.2, function()
-                local db = ns.db.profile.chat
+                local db = GetDb()
                 if not db then return end
-
-                -- Update tabs after closure
-                if _G.ChatFrame1 then
-                    Chat:UpdateCustomTabs(_G.ChatFrame1, db)
-                end
-
-                -- Force button refresh
+                if _G.ChatFrame1 then Chat:UpdateCustomTabs(_G.ChatFrame1, db) end
                 Chat:StyleHeaderButtons()
             end)
         end)
 
-        Chat:SecureHook("FCFDock_UpdateTabs", function()
-            if ns.db.profile.chat then HandleCombatLog(ns.db.profile.chat) end
-            -- Update custom tabs immediately (no delay)
-            C_Timer.After(0, function()
-                for i = 1, NUM_CHAT_WINDOWS do
-                    local cf = _G["ChatFrame"..i]
-                    if cf and cf.FlareUI_TabBar then
-                        Chat:UpdateCustomTabs(cf, ns.db.profile.chat)
-                    end
+        -- the tab bars follow the dock; the selected window stays shown (and styled, if temporary)
+        local function AfterDockTabs()
+            local db = GetDb()
+            if not db then return end
+            for i = 1, NUM_CHAT_WINDOWS do
+                local cf = _G["ChatFrame" .. i]
+                if cf and cf.FlareUI_TabBar then Chat:UpdateCustomTabs(cf, db) end
+            end
+            Chat:StyleHeaderButtons()
+            local dock = _G.GeneralDockManager
+            local selectedFrame = dock and FCFDock_GetSelectedWindow(dock)
+            if selectedFrame and not selectedFrame:IsForbidden() then
+                selectedFrame:Show()
+                if selectedFrame.isTemporary and not selectedFrame.FlareUI_Skin then
+                    Chat:StyleChatFrame(selectedFrame, db)
+                    Chat:StyleEditBox(selectedFrame, db)
                 end
-                Chat:StyleHeaderButtons()
-            end)
+            end
+        end
+        Chat:SecureHook("FCFDock_UpdateTabs", function()
+            local db = GetDb()
+            if db then HandleCombatLog(db) end
+            C_Timer.After(0, AfterDockTabs)
         end)
 
         Chat:SecureHook("FCFTab_UpdateAlpha", function(tab)
@@ -2644,75 +2457,30 @@ function Chat:Init()
             tab:SetAlpha(0)
         end)
 
-        -- Hook to prevent Blizzard from hiding the selected chat frame
-        hooksecurefunc("FCFDock_UpdateTabs", function()
-            C_Timer.After(0, function()
-                local dock = _G.GeneralDockManager
-                if not dock then return end
-
-                local selectedFrame = FCFDock_GetSelectedWindow(dock)
-                if selectedFrame and not selectedFrame:IsForbidden() then
-                    -- Only show the selected frame
-                    selectedFrame:Show()
-
-                    -- If it's a temporary frame without styling, style it now
-                    if selectedFrame.isTemporary and not selectedFrame.FlareUI_Skin then
-                        local db = ns.db.profile.chat
-                        if db then
-                            Chat:StyleChatFrame(selectedFrame, db)
-                            Chat:StyleEditBox(selectedFrame, db)
-                        end
-                    end
-                end
-            end)
-        end)
-
-        -- Hook temporary window creation (whispers)
+        -- A new whisper window does not take the selection from the window being read
         local preventAutoSelect = false
 
-        Chat:SecureHook("FCF_OpenTemporaryWindow", function(chatType, chatTarget, sourceChatFrame, selectWindow)
+        Chat:SecureHook("FCF_OpenTemporaryWindow", function()
             preventAutoSelect = true
-
-            -- Store current selection before whisper window is created
             local dock = _G.GeneralDockManager
             local currentSelected = dock and FCFDock_GetSelectedWindow(dock)
 
             C_Timer.After(0.15, function()
                 preventAutoSelect = false
-                local db = ns.db.profile.chat
+                local db = GetDb()
                 if not db then return end
-
-                -- Style any new frames
-                for i = 1, NUM_CHAT_WINDOWS do
-                    local cf = _G["ChatFrame"..i]
-                    if cf and not cf:IsForbidden() and not cf.FlareUI_Skin then
-                        Chat:StyleChatFrame(cf, db)
-                        Chat:StyleEditBox(cf, db)
-                    end
-                end
-
-                -- Hide all Blizzard tabs (including the new temporary one)
-                Chat:HideBlizzardTabs()
-
-                -- Restore previous selection (don't auto-switch to whisper)
+                StyleNewWindows(db)
                 if dock and currentSelected and not currentSelected:IsForbidden() then
                     FCFDock_SelectWindow(dock, currentSelected)
                     currentSelected:Show()
                     _G.SELECTED_CHAT_FRAME = currentSelected
                 end
-
-                -- Update FlareUI custom tabs to include the new temporary frame
-                if _G.ChatFrame1 then
-                    Chat:UpdateCustomTabs(_G.ChatFrame1, db)
-                end
+                if _G.ChatFrame1 then Chat:UpdateCustomTabs(_G.ChatFrame1, db) end
             end)
         end)
 
-        -- Hook FCFDock_SelectWindow to prevent auto-selection during whisper creation
         hooksecurefunc("FCFDock_SelectWindow", function(dock, chatFrame)
             if preventAutoSelect and chatFrame and chatFrame.isTemporary then
-                -- Prevent the temporary frame from being selected during creation
-                -- Restore to the previous selection immediately
                 C_Timer.After(0, function()
                     if dock then
                         local currentlySelected = FCFDock_GetSelectedWindow(dock)
@@ -2727,14 +2495,13 @@ function Chat:Init()
         end)
     end
 
-    -- Hook into Edit Mode to handle visibility
+    -- Edit Mode keeps the chat shown
     if _G.EditModeManagerFrame and not Chat.editModeHooksAttached then
         Chat:SecureHookScript(_G.EditModeManagerFrame, "OnShow", function() Chat:RefreshForEditMode() end)
         Chat:SecureHookScript(_G.EditModeManagerFrame, "OnHide", function() Chat:RefreshForEditMode() end)
         Chat.editModeHooksAttached = true
     end
 
-    -- Register history save events with AceEvent (only once)
     if not Chat.historyEventsRegistered then
         self:RegisterEvent("PLAYER_LOGOUT", "SaveHistory")
         self:RegisterEvent("PLAYER_LEAVING_WORLD", "SaveHistory")
@@ -2759,14 +2526,9 @@ function Chat:SaveHistory()
                 local start = math_max(1, num - 128)
                 for j = start, num do
                     local msg, r, g, b = cf:GetMessageInfo(j)
-                    -- a protected line cannot be read or written to SavedVariables; skip it.
-                    -- canaccessvalue comes first: nothing else may touch a secret, not even a
-                    -- truthiness test.
+                    -- secret lines are skipped; canaccessvalue first, before any other test
                     if canaccessvalue(msg) and type(msg) == "string" then
-                        local rHex = string_format("%02x", (r or 1)*255)
-                        local gHex = string_format("%02x", (g or 1)*255)
-                        local bHex = string_format("%02x", (b or 1)*255)
-                        table.insert(messages, "|cff" .. rHex .. gHex .. bHex .. msg .. "|r")
+                        messages[#messages + 1] = ColorCode(r, g, b) .. msg .. "|r"
                     end
                 end
                 if #messages > 0 then history[i] = messages end
@@ -2776,12 +2538,11 @@ function Chat:SaveHistory()
     end)
 
     if not success then
-        print(string.format("|cffff0000FlareUI Chat:|r Failed to save chat history: %s", tostring(err)))
+        print(string_format("|cffff0000FlareUI Chat:|r Failed to save chat history: %s", tostring(err)))
     end
 end
 
 function Chat:RestoreHistory()
-    -- kept with the character's own state; see CHARACTER IDENTITY in Core.lua
     local history = ns.CharDB().chatHistory
     if not ns.db.profile.chat.saveHistory or not history then return end
     for i, msgs in pairs(history) do
@@ -2799,12 +2560,7 @@ function Chat:RefreshAll()
     Chat:UpdateFilters()
 
     for i = 1, NUM_CHAT_WINDOWS do
-        local cf = _G["ChatFrame"..i]
-        if cf then
-            local a = db.alphaMax or 1
-            if cf.FlareUI_AlphaHooked then cf.FlareUI_TargetAlpha = a end
-            cf:SetAlpha(a)
-            Chat:ShowChatFrame(cf, db)
-        end
+        local cf = _G["ChatFrame" .. i]
+        if cf then Chat:ShowChatFrame(cf, db) end
     end
 end

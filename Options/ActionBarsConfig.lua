@@ -2,12 +2,7 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- 1. UPVALUES
---------------------------------------------------
-local InCombatLockdown = InCombatLockdown
-
---------------------------------------------------
--- 2. HELPERS
+-- 1. HELPERS
 --------------------------------------------------
 local function CreateScaleSlider(key, label, order)
     return {
@@ -19,7 +14,7 @@ local function CreateScaleSlider(key, label, order)
 end
 
 --------------------------------------------------
--- 3. ACTION BARS OPTIONS
+-- 2. ACTION BARS OPTIONS
 --------------------------------------------------
 ns.Options.args.actionbars = {
     type = "group", name = L["Action Bars"], order = 50,
@@ -138,6 +133,16 @@ ns.Options.args.actionbars = {
                             disabled = function() return not ns.db.profile.actionbars.xpbar.enabled end,
                             get = function() return ns.db.profile.actionbars.xpbar.textFormat end,
                             set = function(_, val) ns.db.profile.actionbars.xpbar.textFormat = val; if ns.XPBar then ns.XPBar:Refresh() end end,
+                        },
+                        tooltipBreak = { type = "description", name = " ", order = 45, width = "full",
+                            hidden = function() return (ns.db.profile.actionbars.xpbar.style or "flare") ~= "flare" end },
+                        showTooltip = {
+                            type = "toggle", name = L["Show Tooltip"], order = 50, width = 1.2,
+                            desc = L["Shows the experience, reputation or honor details when you point at the bar."],
+                            hidden = function() return (ns.db.profile.actionbars.xpbar.style or "flare") ~= "flare" end,
+                            disabled = function() return not ns.db.profile.actionbars.xpbar.enabled end,
+                            get = function() return ns.db.profile.actionbars.xpbar.showTooltip ~= false end,
+                            set = function(_, val) ns.db.profile.actionbars.xpbar.showTooltip = val end,
                         },
                     }
                 }
@@ -386,17 +391,7 @@ ns.Options.args.actionbars = {
                 setupMode = {
                     type = "execute", name = L["Setup Mode (|cffffff00/fui cm|r)"], order = 60, width = "full",
                     desc = L["When enabled, selected bars become interactible. Use it to reorder or remove spells."],
-                    func = function()
-                        if InCombatLockdown() then
-                            print("|cffff0000FlareUI:|r " .. L["Cannot toggle setup mode in combat!"])
-                            return
-                        end
-                        local newState = not ns.db.profile.fcm.setupModeEnabled
-                        ns.db.profile.fcm.setupModeEnabled = newState
-                        if ns.ActionBars then ns.ActionBars:SetFCM_UnlockMode(newState) end
-                        print("|cff00ff00FlareUI:|r FCM Setup Mode "
-                            .. (newState and "|cff00ff00ENABLED|r" or "|cffff0000DISABLED|r"))
-                    end,
+                    func = function() ns.ToggleFCMSetupMode() end,
                 },
             }
         },

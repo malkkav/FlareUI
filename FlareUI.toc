@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 1.5.1
+## Version: 1.6
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -50,10 +50,12 @@ Modules\ResourceBars.lua
 Modules\Totems.lua
 Modules\Auras.lua
 Modules\Minimap.lua
+Modules\MinimapBag.lua
 Modules\TweaksCVars.lua
 Modules\Tweaks.lua
 Modules\Movers.lua
 Modules\Tooltips.lua
+Modules\ObjectiveTracker.lua
 Modules\RadialMenu.lua
 
 # Configuration (Interface)
@@ -67,6 +69,7 @@ Options\AurasConfig.lua
 Options\MinimapConfig.lua
 Options\TweaksConfig.lua
 Options\TooltipsConfig.lua
+Options\ObjectiveTrackerConfig.lua
 Options\IconPicker.lua
 Options\RadialEditor.lua
 Options\RadialMenuConfig.lua

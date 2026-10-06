@@ -6,11 +6,9 @@ local L = ns.L
 -- Two Edit Mode frames for pop-ups Blizzard gives no place of their own:
 --   FlareUI Loot Rolls  the Need / Greed / Pass frames (GroupLootContainer)
 --   FlareUI Toasts      Blizzard's toast stack: new recipe learned, achievements, loot won...
--- Each shows a sample while Edit Mode is open. Part of Tweaks (Windows & Settings > Move Loot
--- Rolls & Toasts).
--- Hooks only: Blizzard's loot rolls share a layout with protected frames (the extra action
--- button), so nothing here writes onto Blizzard's frames or calls their layout code - the frames
--- are re-anchored after Blizzard has placed them.
+-- Each shows a sample in Edit Mode. Part of Tweaks (Move Loot Rolls & Toasts).
+-- Hooks only: the loot rolls share a layout with protected frames, so they are re-anchored after
+-- Blizzard places them and nothing is written onto Blizzard's frames.
 --------------------------------------------------
 ns.Movers = ns.Movers or {}
 local MOV = ns.Movers
@@ -25,10 +23,9 @@ local math_floor = math.floor
 local CreateFrame = CreateFrame
 local LEM = LibStub("FlareEditMode")
 
--- Blizzard: a roll frame (277 x 67) is centred reservedSize (100) * (i - 0.5) above the
--- container's bottom (GroupLootContainer_Update), so the first one sits 16.5 above it
+-- Blizzard's geometry: the first roll frame sits 16.5 above the container's bottom
 local ROLL_W, ROLL_H, ROLL_BOTTOM = 277, 67, 16.5
--- Blizzard: the first toast sits 10 above the top of AlertFrame (10 x 10), so 20 above its bottom
+-- ... and the first toast 20 above AlertFrame's bottom
 local TOAST_W, TOAST_H, TOAST_BOTTOM = 312, 89, 20
 
 local DEFAULTS = {
@@ -91,10 +88,8 @@ end
 
 --------------------------------------------------
 -- 4. LOOT ROLLS
--- Blizzard lays GroupLootContainer out with the bottom managed frames (above the action bars) and
--- the roll frames hang off it. After each placement it goes back on the holder; its height is kept
--- at 1 so the frames that share that layout (cast bar, extra button) do not leave room for rolls
--- that are now elsewhere.
+-- GroupLootContainer goes back on the holder after every placement; its height stays 1, so the
+-- bottom managed frames do not leave room for rolls that are now elsewhere.
 --------------------------------------------------
 local placingLoot = false
 local function PlaceLoot()
@@ -167,9 +162,8 @@ end
 
 --------------------------------------------------
 -- 5. TOASTS
--- AlertFrame is the base every toast stacks up from; Blizzard places it once and never again. The
--- loot rolls are part of the same stack (toasts climb over them), so while they are moved the
--- stack is walked again without them - as Blizzard does for a frame moved in Edit Mode.
+-- AlertFrame is the base every toast stacks from. The loot rolls are part of the stack, so while
+-- they are moved the stack is walked again without them.
 --------------------------------------------------
 local function PlaceToasts()
     local base, holder = _G.AlertFrame, holders.toast
@@ -216,7 +210,7 @@ end
 --------------------------------------------------
 -- 6. SETUP
 --------------------------------------------------
--- the Gamepad UI shows its own loot rolls and toasts (switching it reloads the UI)
+-- The Gamepad UI shows its own loot rolls and toasts
 function MOV:ShouldLoad()
     local db = GetDb()
     return db and db.enabled and db.moveLootToasts ~= false and not ns.IsGamepadUI() or false

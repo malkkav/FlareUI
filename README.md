@@ -3,7 +3,7 @@
 **Your friendly UI overhowl** for World of Warcraft: Forever.
 
 FlareUI improves and extends Blizzard's own interface without replacing its look. Everything is split into modules you switch on one by one, so you only load what you actually use:
-Chat, Damage Meter, Radial Menu, Unit Frames, Action Bars, Minimap, Tooltips and Tweaks.
+Chat, Damage Meter, Radial Menu, Unit Frames, Action Bars, Buffs / Debuffs, Quest Tracker, Minimap, Tooltips and Tweaks.
 
 ## Install
 

@@ -3,26 +3,15 @@ local L = ns.L
 
 --------------------------------------------------
 -- RADIAL EDITOR
--- A standalone window built around the two things that matter: the radial's
--- buttons in order down the left, a live preview beside them, and a browser along the bottom to drag
--- new buttons out of. Each of those is a bordered panel, the same way the settings window groups its
--- options, with a header above and a footer below.
---
--- Edits land on the saved radial as they are made, because the preview has to show them. The price is
--- that leaving has to mean something, so a copy of the radial library is taken when the window opens
--- and Cancel puts it back.
---
--- Two kinds of drag arrive here and they work differently:
---   * From Blizzard's windows (spellbook, bags, collections, macros) something is really on the
---     game's cursor, so OnReceiveDrag fires and GetCursorInfo says what it is. Blizzard's own
---     Blizzard_ClickBindingUI reads it the same way, including that a spell's ID is the FOURTH
---     return, not the second.
---   * Inside this window nothing is on the game's cursor - the floating icon is ours - so
---     OnReceiveDrag never fires. The drop is resolved in OnDragStop instead, by asking each row
---     whether the mouse is over it. That is why every row's OnDragStop routes through FinishDrag.
---
--- Lists are a fixed pool of cells over a scroll bar rather than Blizzard's ScrollBox: the same
--- pattern as the icon picker, with no data providers to wire up, and only visible cells ever exist.
+-- The radial's buttons down the left, a live preview beside them, and a browser along the bottom to
+-- drag new buttons from. Edits land on the saved radial as they are made (the preview shows them);
+-- a copy of the library taken on open lets Cancel put it back.
+-- Two kinds of drag:
+--   * from Blizzard's windows something is on the game's cursor: OnReceiveDrag and GetCursorInfo
+--     (a spell's ID is its FOURTH return)
+--   * inside this window the floating icon is ours, so the drop is resolved in OnDragStop by asking
+--     each row whether the mouse is over it (FinishDrag)
+-- Lists are a fixed pool of cells over a scroll bar, as in the icon picker.
 --------------------------------------------------
 local AceConfigDialog = LibStub("AceConfigDialog-3.0")
 local AceGUI = LibStub("AceGUI-3.0")
@@ -45,9 +34,7 @@ local BRONZE       = { 0.80, 0.60, 0.34 }
 local BRONZE_MUTED = { 0.61, 0.48, 0.29 }
 local FALLBACK_ICON = 134400
 
--- Blizzard's options window fades from a warm dark at the top to near black at the bottom rather
--- than filling flat, and the panels inside it do the same more faintly. Both stops are given as
--- exact colours on a white texture, so nothing depends on art that may not be in this client.
+-- the settings window's gradient, and a fainter one for the panels
 local BG_TOP       = { 0.085, 0.075, 0.060, 0.95 }
 local BG_BOTTOM    = { 0.015, 0.015, 0.015, 0.95 }
 local PANEL_TOP    = { 0.130, 0.110, 0.085, 0.55 }
@@ -65,22 +52,7 @@ end
 --------------------------------------------------
 -- PIECES
 --------------------------------------------------
--- Falls back to the darker stop as a flat fill if this client has no gradient support, which only
--- costs the fade, not the panel.
-local function Fade(frame, inset, top, bottom)
-    local bg = frame:CreateTexture(nil, "BACKGROUND")
-    bg:SetPoint("TOPLEFT", inset, -inset)
-    bg:SetPoint("BOTTOMRIGHT", -inset, inset)
-    if bg.SetGradient and CreateColor then
-        bg:SetColorTexture(1, 1, 1)
-        -- for a vertical gradient the first colour is the bottom edge and the second is the top
-        bg:SetGradient("VERTICAL", CreateColor(bottom[1], bottom[2], bottom[3], bottom[4]),
-                                   CreateColor(top[1], top[2], top[3], top[4]))
-    else
-        bg:SetColorTexture(bottom[1], bottom[2], bottom[3], bottom[4])
-    end
-    return bg
-end
+local Fade = ns.Fade   -- BaseConfig.lua
 
 -- A bordered box with an optional heading, matching the inline groups in the settings window.
 local function Panel(parent, heading)
