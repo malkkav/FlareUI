@@ -201,6 +201,7 @@ L["Edit Box Font"] = true
 L["Edit Box Opacity"] = true
 L["Edit Box Position"] = true
 L["Elite & Rare"] = true
+L["Emotes"] = true
 L["Emotes, languages and voice commands."] = true
 L["Enable"] = true
 L["Enable /tt Command"] = true
