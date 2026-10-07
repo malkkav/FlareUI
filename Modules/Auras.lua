@@ -9,7 +9,7 @@ local L = ns.L
 --   * square (classic icon bevel) or round (the spellbook passive ring)
 --   * borders tinted by Blizzard through a colour map (dispel colours for debuffs, never read by Lua)
 --   * the cooldown swipe on the border, over the icon, or none; timer and stacks
--- Weapon enchants join the buffs; private auras get anchors beside the debuffs. Stands aside in the
+-- Weapon enchants lead the buffs (FlareUI's own buttons); private auras get anchors beside the debuffs. Stands aside in the
 -- Gamepad UI (Blizzard's frames are part of its navigation).
 --------------------------------------------------
 ns.Auras = ns.Auras or {}
@@ -441,6 +441,139 @@ local function LayoutPrivateAnchors(holder, kdb)
     end
 end
 
+--------------------------------------------------
+-- WEAPON ENCHANTS
+-- Poisons, oils, stones and shaman imbues live on the weapon, not on the player, so no aura API
+-- returns them. Blizzard's aura container reads them from C_PaperDollInfo.GetTemporaryEnchantmentInfo,
+-- which Forever leaves empty; Forever's own buff frame reads C_Item.GetWeaponEnchantInfo, and so do
+-- these buttons. They are FlareUI's frames, in the buffs' look, at the start of the first row: the
+-- container is moved along by as many cells (out of combat; in combat a new enchant sits just
+-- before the first row until combat ends).
+--------------------------------------------------
+-- Enum.WeaponSlot (0 main hand, 1 off hand, 2 ranged) -> the inventory slot the tooltip shows
+local WEAPON_SLOTS = { { slot = 0, inv = 16 }, { slot = 1, inv = 17 }, { slot = 2, inv = 18 } }
+local enchantDurations = {}   -- "slot:type" -> the full duration, snapshot when the enchant is seen first
+
+-- the timed enchants on the weapons now, in slot order
+local function ActiveEnchants()
+    local list = {}
+    if not (C_Item and C_Item.GetWeaponEnchantInfo) then return list end
+    local db = GetDb()
+    if not db or db.weaponEnchants == false then return list end
+    local now = GetTime()
+    for _, weapon in ipairs(WEAPON_SLOTS) do
+        local ok, enchants = pcall(C_Item.GetWeaponEnchantInfo, weapon.slot)
+        for _, e in ipairs(ok and enchants or {}) do
+            -- a permanent enchant (no time left) is part of the item, not a buff
+            if e.hasEnchant and (e.timeLeft or 0) > 0 then
+                local left = e.timeLeft / 1000
+                local key = weapon.slot .. ":" .. (e.enchantType or 0)
+                local known = enchantDurations[key]
+                -- new, or refreshed: the time left is the full duration
+                if not known or known.id ~= e.enchantID or left > known.left + 1 then
+                    known = { id = e.enchantID, duration = left }
+                    enchantDurations[key] = known
+                end
+                known.left = left
+                list[#list + 1] = {
+                    weapon = weapon, type = e.enchantType or 0, charges = e.charges or 0,
+                    iconID = e.enchantIconID, expires = now + left, duration = known.duration,
+                }
+            end
+        end
+    end
+    return list
+end
+
+local function EnchantButton(holder, i)
+    holder.enchants = holder.enchants or {}
+    local b = holder.enchants[i]
+    if b then return b end
+    b = CreateFrame("Frame", nil, holder)
+    b:EnableMouse(true)
+    b:SetScript("OnEnter", function(self)
+        if not self.enchant then return end
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+        GameTooltip:SetInventoryItem("player", self.enchant.weapon.inv)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- no right-click cancel: removing a weapon enchant is a Blizzard-only action in Forever (blocked for
+    -- addons, and the secure cancelaura route reads a CANCELABLE_ITEMS table Forever never defines)
+    holder.enchants[i] = b
+    return b
+end
+
+local function EnchantTimer(holder)
+    local now = GetTime()
+    for _, b in ipairs(holder.enchants or {}) do
+        if b:IsShown() and b.enchant then
+            local left = math_max(0, b.enchant.expires - now)
+            b.FlareUI_Duration:SetFormattedText(SecondsToTimeAbbrev(left))
+        end
+    end
+end
+
+-- the cells the container is moved along by (set by LayoutKind, out of combat)
+local function PlaceContainer(holder, kdb, corner, width)
+    local container = holder.container
+    local n = (not LEM:IsInEditMode() and holder.activeEnchants) or 0
+    local step = (kdb.size or 30) + (kdb.spacing or 6)
+    holder.enchantShift = n
+    container:ClearAllPoints()
+    container:SetPoint(corner, holder, corner, n * step * ((kdb.grow == "RIGHT") and 1 or -1), 0)
+    pcall(container.SetFlowLayoutMaximumLineSize, container, math_max(step, width - n * step))
+end
+
+local function UpdateEnchants(kind)
+    local holder, kdb = frames[kind], KindDb(kind)
+    if not (holder and kdb) or KINDS[kind].isDebuff then return end
+    local list = LEM:IsInEditMode() and {} or ActiveEnchants()
+    local look = Look(kind)
+    local step = (kdb.size or 30) + (kdb.spacing or 6)
+    local corner = StartCorner(kdb)
+    local dir = (kdb.grow == "RIGHT") and 1 or -1
+    local shift = holder.enchantShift or 0
+    for i = 1, math_max(#list, #(holder.enchants or {})) do
+        local e = list[i]
+        local b = e and EnchantButton(holder, i) or holder.enchants[i]
+        if e then
+            StyleButton(b, look)
+            local icon = GetInventoryItemTexture("player", e.weapon.inv)
+            if GetCVarBool and GetCVarBool("displayTemporaryEnchantIcon") and (e.iconID or 0) > 0 then icon = e.iconID end
+            b.FlareUI_Icon:SetTexture(icon or 134400)
+            b.FlareUI_Border:SetVertexColor(look.colors.None:GetRGBA())
+            b.FlareUI_Count:SetText(e.charges > 1 and tostring(e.charges) or "")
+            b.FlareUI_Cooldown:SetCooldown(e.expires - e.duration, e.duration)
+            b.enchant = e
+            -- cells shift - n .. shift - 1: inside the room the container left, or just before it
+            b:ClearAllPoints()
+            b:SetPoint(corner, holder, corner, (shift - #list + i - 1) * step * dir, 0)
+            b:Show()
+        elseif b then
+            b.enchant = nil
+            b:Hide()
+        end
+    end
+    holder:SetScript("OnUpdate", #list > 0 and function(self, elapsed)
+        self.enchantTick = (self.enchantTick or 0) + elapsed
+        if self.enchantTick < 0.5 then return end
+        self.enchantTick = 0
+        EnchantTimer(self)
+    end or nil)
+    EnchantTimer(holder)
+    -- the container makes room for them once combat allows
+    if #list ~= (holder.activeEnchants or 0) then
+        holder.activeEnchants = #list
+        if InCombatLockdown() then
+            pendingLayout = true
+        else
+            PlaceContainer(holder, kdb, corner, (GridSize(kdb)))
+            UpdateEnchants(kind)
+        end
+    end
+end
+
 local function LayoutKind(kind)
     local holder, kdb = frames[kind], KindDb(kind)
     if not (holder and kdb) then return end
@@ -461,14 +594,12 @@ local function LayoutKind(kind)
     local look = Look(kind)
     local spacing = kdb.spacing or 6
     local corner = StartCorner(kdb)
-    container:ClearAllPoints()
-    container:SetPoint(corner, holder, corner, 0, 0)
     pcall(container.SetFlowLayoutAxis, container, AnchorUtil.FlowLayoutAxis.Horizontal)
     pcall(container.SetFlowLayoutAnchorPoint, container, corner)
     pcall(container.SetFlowLayoutGrowthDirection, container,
         kdb.grow == "RIGHT" and AnchorUtil.FlowDirection.Right or AnchorUtil.FlowDirection.Left,
         kdb.wrap == "UP" and AnchorUtil.FlowDirection.Up or AnchorUtil.FlowDirection.Down)
-    pcall(container.SetFlowLayoutMaximumLineSize, container, width)
+    PlaceContainer(holder, kdb, corner, width)
     pcall(container.SetFlowLayoutPadding, container, 0, 0, 0, 0)
 
     local layout = {
@@ -490,27 +621,11 @@ local function LayoutKind(kind)
         print("|cffff0000FlareUI:|r aura frame failed: " .. tostring(err))
     end
 
-    -- weapon enchants lead the buffs; their frames were made at login. While auras are secret Blizzard
-    -- refuses the restyle, which then waits for the restriction to lift (RetryEnchantStyle).
-    if holder.enchantSlots then
-        local db = GetDb()
-        holder.enchantPending = nil
-        for slot, frame in pairs(holder.enchantSlots) do
-            local styled = pcall(StyleButton, frame, look) and pcall(HookButton, frame, look)
-            if not styled then holder.enchantPending = look end
-            pcall(container.SetItemEnchantmentEnabled, container, slot, db.weaponEnchants ~= false)
-        end
-        pcall(container.SetItemEnchantmentLayout, container, {
-            placement = CustomAuraContainerItemEnchantmentPlacement and CustomAuraContainerItemEnchantmentPlacement.BeforeAuraGroups,
-            elementWidth = look.size, elementHeight = CellHeight(look.size),
-            elementSpacing = spacing, lineSpacing = spacing, groupSpacing = spacing, groupLineSpacing = spacing,
-        })
-    end
-
     if KINDS[kind].isDebuff then LayoutPrivateAnchors(holder, kdb) end
 
     pcall(container.SetEnabled, container, true)
     UpdatePreview(kind)
+    UpdateEnchants(kind)
     pcall(container.UpdateAllAuras, container)
 end
 
@@ -614,25 +729,6 @@ local function CreateHolder(kind)
     container:SetFrameLevel(holder:GetFrameLevel() + 2)
     holder.container = container
 
-    -- the weapon enchant frames are made with the container (frames made later never show)
-    if not info.isDebuff and container.AddItemEnchantment and AuraContainerItemEnchantmentSlot then
-        holder.enchantSlots = {}
-        for _, slotName in ipairs({ "MainHand", "OffHand", "Ranged" }) do
-            local slot = AuraContainerItemEnchantmentSlot[slotName]
-            if slot then
-                local okSlot, frame = pcall(container.AddItemEnchantment, container, slot, {
-                    hidePermanent = true,
-                    initializeFrame = function(button)
-                        local look = Look(kind)
-                        StyleButton(button, look)
-                        HookButton(button, look)
-                    end,
-                })
-                if okSlot and frame then holder.enchantSlots[slot] = frame end
-            end
-        end
-    end
-
     frames[kind] = holder
     LEM:AddFrame(holder, OnFrameMoved, info.default, info.label)
     LEM:AddFrameSettings(holder, BuildSettings(kind))
@@ -679,33 +775,21 @@ function AU:Init()
     LEM:RegisterCallback("layout", function(layoutName)
         for _, kind in ipairs(KIND_ORDER) do ApplyPosition(kind, layoutName) end
     end)
-    LEM:RegisterCallback("enter", SetPreview)
-    LEM:RegisterCallback("exit", SetPreview)
-
-    -- weapon enchant frames refused their restyle in restricted content: again once that lifts
-    local function RetryEnchantStyle()
-        for _, kind in ipairs(KIND_ORDER) do
-            local holder = frames[kind]
-            local look = holder and holder.enchantPending
-            if look then
-                local styled = true
-                for _, frame in pairs(holder.enchantSlots or {}) do
-                    styled = (pcall(StyleButton, frame, look) and pcall(HookButton, frame, look)) and styled
-                end
-                if styled then holder.enchantPending = nil end
-            end
-        end
-    end
+    LEM:RegisterCallback("enter", function() SetPreview() AU:Refresh() end)
+    LEM:RegisterCallback("exit", function() SetPreview() AU:Refresh() end)
 
     local events = CreateFrame("Frame")
     events:RegisterEvent("PLAYER_REGEN_ENABLED")
-    events:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED")
+    for _, event in ipairs({ "WEAPON_ENCHANT_CHANGED", "WEAPON_SLOT_CHANGED", "PLAYER_EQUIPMENT_CHANGED" }) do
+        pcall(events.RegisterEvent, events, event)
+    end
+    pcall(events.RegisterUnitEvent, events, "UNIT_INVENTORY_CHANGED", "player")
     events:SetScript("OnEvent", function(_, event)
-        -- the change arrives before it is enforced: retry a moment later
-        if (frames.buffs and frames.buffs.enchantPending) or (frames.debuffs and frames.debuffs.enchantPending) then
-            C_Timer.After(0.2, RetryEnchantStyle)
+        if event ~= "PLAYER_REGEN_ENABLED" then
+            UpdateEnchants("buffs")
+            return
         end
-        if event ~= "PLAYER_REGEN_ENABLED" or not pendingLayout then return end
+        if not pendingLayout then return end
         pendingLayout = false
         for _, kind in ipairs(KIND_ORDER) do
             ApplyPosition(kind)

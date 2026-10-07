@@ -1,3 +1,8 @@
+# FlareUI 1.6.3
+
+## Fixed
+- **Buffs / Debuffs:** weapon enchants (shaman imbues like Rockbiter Weapon, poisons, oils, sharpening stones) now show at the start of your buffs, with their timer and the weapon's tooltip. They never appeared before: the game data FlareUI read them from is empty in Forever. Right-click no longer removes a weapon enchant: Forever allows that only in Blizzard's own buff frame.
+
 # FlareUI 1.6.2
 
 ## Fixed
