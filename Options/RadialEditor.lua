@@ -28,7 +28,7 @@ local BODY_H    = 320
 local BROWSE_H  = 248
 local BUTTON_ROW_H, BUTTON_ROWS = 32, 9
 local BROWSE_ROW_H, BROWSE_ROWS, BROWSE_COLS = 28, 6, 3
-local TAB_W, TAB_GAP = 84, 3
+local TAB_W, TAB_GAP = 74, 3   -- eight categories across the browser
 
 local BRONZE       = { 0.80, 0.60, 0.34 }
 local BRONZE_MUTED = { 0.61, 0.48, 0.29 }
@@ -303,6 +303,12 @@ AddCategory("markers", L["Markers"], function()
     out[#out + 1] = { kind = "targetmarker", marker = 0 }
     for i = 1, 8 do out[#out + 1] = { kind = "worldmarker", marker = i } end
     out[#out + 1] = { kind = "worldmarker", marker = 0 }
+    return out
+end)
+
+AddCategory("emotes", L["Emotes"], function()
+    local out = {}
+    for _, e in ipairs(RM().EMOTES or {}) do out[#out + 1] = { kind = "emote", emote = e.token } end
     return out
 end)
 

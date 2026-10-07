@@ -334,6 +334,67 @@ ACTIONS.micromenu = function(entry)
     return panel.label, icon, { type = "macro", macrotext = "/click " .. panel.button }
 end
 
+-- Emotes: the animated ones of Blizzard's chat menu (EmoteList), each run as its slash command
+-- through the secure macro, like a radial's own macros, so they work in combat too. The name and
+-- command are the game's own (localised); Blizzard has no emote icons, so each has a picked one.
+local EMOTES = {
+    { token = "WAVE",    icon = "Achievement_Reputation_01" },
+    { token = "BOW",     icon = "Spell_Holy_PrayerofSpirit" },
+    { token = "DANCE",   icon = "Ability_Rogue_ShadowDance" },
+    { token = "APPLAUD", icon = "Achievement_BG_winWSG" },
+    { token = "BEG",     icon = "INV_Misc_Coin_02" },
+    { token = "CHICKEN", icon = "INV_Chicken2_Brown" },
+    { token = "CRY",     icon = "Spell_Misc_EmotionSad" },
+    { token = "EAT",     icon = "INV_Misc_Food_95_Grainbread" },
+    { token = "FLEX",    icon = "Ability_Warrior_StrengthOfArms" },
+    { token = "KISS",    icon = "Spell_Shadow_SoothingKiss" },
+    { token = "LAUGH",   icon = "Spell_Misc_EmotionHappy" },
+    { token = "POINT",   icon = "Ability_Hunter_SniperShot" },
+    { token = "ROAR",    icon = "Ability_Druid_ChallangingRoar" },
+    { token = "RUDE",    icon = "Spell_Misc_EmotionAngry" },
+    { token = "SALUTE",  icon = "Ability_Warrior_BattleShout" },
+    { token = "SHY",     icon = "Ability_Druid_Cower" },
+    { token = "TALK",    icon = "Spell_Holy_HolyGuidance" },
+    { token = "STAND",   icon = "Achievement_Character_Human_Male" },
+    { token = "SIT",     icon = "Spell_Misc_Drink" },
+    { token = "SLEEP",   icon = "Spell_Nature_Sleep" },
+    { token = "KNEEL",   icon = "Ability_Paladin_BlessedHands" },
+    { token = "LEAN",    icon = "Ability_Rogue_Disguise" },
+}
+RM.EMOTES = EMOTES
+local emoteByToken
+local function EmoteInfo(token)
+    if not emoteByToken then
+        emoteByToken = {}
+        for _, e in ipairs(EMOTES) do emoteByToken[e.token] = e end
+    end
+    return emoteByToken[token]
+end
+
+-- the game's slash command for an emote token ("/wave"), found as Blizzard's chat menu finds it
+local emoteCommands = {}
+local function EmoteCommand(token)
+    if emoteCommands[token] then return emoteCommands[token] end
+    local command
+    for i = 1, (MAXEMOTEINDEX or 1000) do
+        local t = _G["EMOTE" .. i .. "_TOKEN"]
+        if t == token then command = _G["EMOTE" .. i .. "_CMD1"] break end
+    end
+    command = command or ("/" .. token:lower())
+    emoteCommands[token] = command
+    return command
+end
+
+ACTIONS.emote = function(entry)
+    local info = entry.emote and EmoteInfo(entry.emote)
+    if not info then return nil end
+    local command = EmoteCommand(info.token)
+    -- "/wave" -> "Wave"
+    local name = command:gsub("^/", "")
+    name = name:sub(1, 1):upper() .. name:sub(2)
+    return name, { texture = "Interface\\Icons\\" .. info.icon }, { type = "macro", macrotext = command }
+end
+
 -- A button that stands for another radial. The sub-radial is never drawn: the button shows one of the
 -- nested actions at a time and the mouse wheel steps through them. The children are resolved here, so an unavailable one is skipped exactly as it would
 -- be in its own radial, and a radial whose children all fail is itself unavailable.

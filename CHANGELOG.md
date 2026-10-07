@@ -1,3 +1,10 @@
+# Unreleased
+
+## New
+- **Radial Menu:** an Emotes category in the radial editor: the 22 animated emotes (Wave, Dance, Salute, Sit and more), each with its own icon. They work in combat too.
+- **Chat:** Up and Down (with or without Shift or Alt) step through the last 50 lines you sent, kept across reloads. Down past the newest gives back what you were typing.
+- **Chat:** with the edit box inside the chat window, the newest lines move up above it while you type, and drop back when it closes.
+
 # FlareUI 1.6.3
 
 ## Fixed

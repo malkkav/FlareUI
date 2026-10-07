@@ -1652,6 +1652,97 @@ end
 
 local EDIT_BOX_GAP = 1   -- px between the chat window's border and an edit box below / above it
 
+--------------------------------------------------
+-- EDIT BOX EXTRAS (on, no options)
+-- * Sent history: the last lines you sent (all channels, kept per character). Up and Down, with or
+--   without Shift or Alt, step through them one at a time; Down past the newest gives back what
+--   you were typing. Blizzard's own list is emptied after each line, so Alt+Up doesn't fight ours.
+-- * Inside: while the box is open over the chat's last lines, the lines move up above it, and drop
+--   back when it closes. The chat lays its lines out from the bottom up; the first is moved.
+--------------------------------------------------
+local EditExtras = { SENT_MAX = 50, PUSH_GAP = 2 }
+
+function EditExtras.Sent()
+    local char = ns.CharDB()
+    char.sentHistory = char.sentHistory or {}
+    return char.sentHistory
+end
+
+function EditExtras.OnLineSent(eb, text)
+    if canaccessvalue(text) and type(text) == "string" and text ~= "" then
+        local list = EditExtras.Sent()
+        if list[#list] ~= text then
+            list[#list + 1] = text
+            while #list > EditExtras.SENT_MAX do table.remove(list, 1) end
+        end
+    end
+    eb.FlareUI_HistoryPos, eb.FlareUI_Draft = 0, nil
+    pcall(eb.ClearHistory, eb)
+end
+
+function EditExtras.OnKeyDown(eb, key)
+    if (key ~= "UP" and key ~= "DOWN") or IsControlKeyDown() then return end
+    -- the name list under a half-typed whisper uses the arrows itself
+    if AutoCompleteBox and AutoCompleteBox:IsShown() and AutoCompleteBox.parent == eb then return end
+    local list = EditExtras.Sent()
+    if #list == 0 then return end
+    local pos = eb.FlareUI_HistoryPos or 0
+    if key == "UP" then
+        if pos == 0 then eb.FlareUI_Draft = eb:GetText() end
+        pos = math_min(pos + 1, #list)
+    elseif pos == 0 then
+        return
+    else
+        pos = pos - 1
+    end
+    eb.FlareUI_HistoryPos = pos
+    local text = (pos == 0) and (eb.FlareUI_Draft or "") or list[#list - pos + 1]
+    eb:SetText(text)
+    eb:SetCursorPosition(#eb:GetText())
+end
+
+-- the chat's newest line sits this far up (0: in place)
+function EditExtras.PlaceLines(chatFrame)
+    local first = chatFrame.visibleLines and chatFrame.visibleLines[1]
+    if not first then return end
+    if chatFrame.GetInsertMode and SCROLLING_MESSAGE_FRAME_INSERT_MODE_TOP
+        and chatFrame:GetInsertMode() == SCROLLING_MESSAGE_FRAME_INSERT_MODE_TOP then return end
+    first:SetPoint("BOTTOMLEFT", chatFrame, "BOTTOMLEFT", 0, chatFrame.FlareUI_LinesUp or 0)
+end
+
+function EditExtras.Push(chatFrame, up)
+    if not chatFrame or chatFrame:IsForbidden() then return end
+    if not chatFrame.FlareUI_LinesHooked and chatFrame.RefreshLayout then
+        chatFrame.FlareUI_LinesHooked = true
+        hooksecurefunc(chatFrame, "RefreshLayout", EditExtras.PlaceLines)
+    end
+    chatFrame.FlareUI_LinesUp = up
+    EditExtras.PlaceLines(chatFrame)
+end
+
+function EditExtras.Setup(eb)
+    if eb.FlareUI_EditExtras then return end
+    eb.FlareUI_EditExtras = true
+    if eb.AddHistoryLine then hooksecurefunc(eb, "AddHistoryLine", EditExtras.OnLineSent) end
+    eb:HookScript("OnKeyDown", EditExtras.OnKeyDown)
+    eb:HookScript("OnEditFocusGained", function(self)
+        local db = GetDb()
+        if db and (db.editBoxPosition or "inside") == "inside" then
+            local frame = self.chatFrame
+            local top = select(5, self:GetPoint(1))
+            self.FlareUI_PushedFrame = frame
+            EditExtras.Push(frame, (top or 30) + EditExtras.PUSH_GAP)
+        end
+    end)
+    eb:HookScript("OnEditFocusLost", function(self)
+        self.FlareUI_HistoryPos, self.FlareUI_Draft = 0, nil
+        if self.FlareUI_PushedFrame then
+            EditExtras.Push(self.FlareUI_PushedFrame, 0)
+            self.FlareUI_PushedFrame = nil
+        end
+    end)
+end
+
 function Chat:StyleEditBox(chatFrame, db)
     if not chatFrame or chatFrame:IsForbidden() then return end
     local eb = chatFrame.editBox or _G[chatFrame:GetName() .. "EditBox"]
@@ -1723,6 +1814,7 @@ function Chat:StyleEditBox(chatFrame, db)
 
     eb:SetHistoryLines(100)
     eb:SetAltArrowKeyMode(false)
+    EditExtras.Setup(eb)
 
     local path, size, flags = GetFontData(db.editBoxFont)
     eb:SetFont(path, size, flags)
