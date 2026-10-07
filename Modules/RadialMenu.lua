@@ -1114,7 +1114,7 @@ end
 -- reason: the choice has to live where the release can read it in combat.
 -- Every radial is copied, each under its own id ("<id>-count", "<id>-s<button>-<child>-<key>"), and
 -- ACTIVE names the one that is open: the keybind opens "flare-assigned", a macro names its own.
--- Radial macros (click mode, OPie's model): the macro clicks MACRO_NAME with the radial's tag as
+-- Radial macros (click mode): the macro clicks MACRO_NAME with the radial's tag as
 -- the mouse button: its name without spaces or symbols, any case ("tag-<lower case>" holds the id;
 -- a bare id works too). A /click sends no key release, so the radial waits for a click on CATCHER_NAME, a
 -- full-screen SecureActionButton shown only meanwhile: left-click fires the aimed button, right-click

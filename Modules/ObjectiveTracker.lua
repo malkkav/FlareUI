@@ -10,8 +10,7 @@ local L = ns.L
 --   * Minimizes to its header or a lone "+" (also by keybind); each kind of place can minimize or
 --     expand it once on the way in.
 --   * Blizzard's tracker is parked while this one is on.
--- Adapted in part from BetterQuestTracker by deface (MIT License, LICENSES/BetterQuestTracker.txt):
--- the zone and distance ordering, the secure item buttons and the party progress tooltip.
+-- Third-party licence notices: LICENSES/.
 -- Stands aside in the Gamepad UI.
 --------------------------------------------------
 ns.ObjectiveTracker = ns.ObjectiveTracker or {}

@@ -306,7 +306,6 @@ local function BuildCommandList()
     lines[#lines + 1] = Line("/fui pad", L["Switch Gamepad mode on or off."])
     local chat = ns.db and ns.db.profile.chat
     if chat and chat.enabled then
-        if chat.enableTT then lines[#lines + 1] = Line("/tt", L["<message> - Whisper your target."]) end
         if chat.enableWay then lines[#lines + 1] = Line("/way", L["Place a map pin (type it alone for the formats)."]) end
     end
     lines[#lines + 1] = Line("/rl", L["Reload UI shortcut."])

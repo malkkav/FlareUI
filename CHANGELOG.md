@@ -5,6 +5,12 @@
 - **Chat:** Up and Down (with or without Shift or Alt) step through the last 50 lines you sent, kept across reloads. Down past the newest gives back what you were typing.
 - **Chat:** with the edit box inside the chat window, the newest lines move up above it while you type, and drop back when it closes.
 
+## Fixed
+- **Chat:** sharing a map pin in chat (shift-click) could be blocked with an error after using Copy Line. Copy Line now puts the line in the chat box only when it is already open, and in the copy box otherwise.
+
+## Removed
+- **Chat:** the /tt command (whisper your target).
+
 # FlareUI 1.6.3
 
 ## Fixed
@@ -341,7 +347,7 @@ Fixes from your reports, and a handful of new options.
 
 ## Changed
 - Combo points (Classic Combo and nameplate combo points) use Blizzard's high-resolution red gems with bronze rims and a shine when they fill.
-- Nameplate tweaks stand aside when a nameplate addon such as Platynator is running.
+- Nameplate tweaks stand aside when another nameplate addon is running.
 - Tweaks: the Hide options are laid out in rows of three.
 - Chat and Damage Meter background opacity now default to 60%.
 - Damage Meter > Features: Combat Timer comes first, then Threat Meter Tab.

@@ -495,8 +495,10 @@ function Lines.CopyStamp(stamp, original)
         .. stamp:sub(#shown + 1)
 end
 
--- Registered once (LinkUtil asserts on a second registration). Shift-click puts the line in the chat
--- box; a line too long for a message goes to the copy box.
+-- Registered once (LinkUtil asserts on a second registration). Shift-click puts the line in the open
+-- chat box; with none open, or a line too long for a message, it goes to the copy box. FlareUI never
+-- opens the chat box itself: one opened from addon code stays tainted while it is open, and
+-- Blizzard's own actions from it (sharing a map pin copies to the clipboard) are then blocked.
 function Lines.RegisterCopyHandler()
     if LinkUtil.IsLinkHandlerRegistered("flarecopy") then return end
     LinkUtil.RegisterLinkHandler("flarecopy", function(link)
@@ -504,15 +506,11 @@ function Lines.RegisterCopyHandler()
         local id = tonumber(link and link:match("^flarecopy:(%d+)"))
         local text = id and Lines.copies[id]
         if not text or text == "" then return end
-        if #text > 255 then
-            Chat.ShowCopyText(text)
-            return
-        end
         local editBox = ChatFrameUtil.GetActiveWindow()
-        if editBox then
+        if editBox and #text <= 255 then
             editBox:Insert(text)
         else
-            ChatFrameUtil.OpenChat(text)
+            Chat.ShowCopyText(text)
         end
     end)
 end
@@ -1059,12 +1057,14 @@ local URL_EVENTS = {
     "CHAT_MSG_SYSTEM",
 }
 
--- %f[%S]: an address has to start a word. Patterns from Chattynator.
-local URL_PATTERNS = {
-    "%f[%S](%a[%w+.-]+://%S+)",                  -- http://, https://, ftp://
-    "%f[%S](www%.[-%w_%%]+%.%a%a+/%S+)",         -- www.domain.tld/path
-    "%f[%S](www%.[-%w_%%]+%.%a%a+)",             -- www.domain.tld
-}
+-- A word is a web address when it starts with a scheme ("https://") or with "www." and a domain.
+-- Brackets and punctuation around it stay outside the link.
+local function LinkAddress(word)
+    local head, address, tail = word:match("^([%(%[]*)(.-)([%.,;:!%?%)%]]*)$")
+    if address:match("^%a%a+://%S") or address:match("^www%.[%w%-]+%.%a%a") then
+        return head .. "|cff00b2ff|Hflareurl:" .. address .. "|h[" .. address .. "]|h|r" .. tail
+    end
+end
 
 local copyFrame
 
@@ -1112,9 +1112,7 @@ function Chat.ShowCopyText(text) ShowCopyBox(text) end
 -- already carries a hyperlink is left alone.
 local function URLFilter(self, event, msg, ...)
     if type(msg) ~= "string" or msg:find("|H") then return false, msg, ... end
-    for _, pattern in ipairs(URL_PATTERNS) do
-        msg = msg:gsub(pattern, "|cff00b2ff|Hflareurl:%1|h[%1]|h|r")
-    end
+    msg = msg:gsub("%S+", LinkAddress)
     return false, msg, ...
 end
 
@@ -1148,18 +1146,6 @@ end
 function Chat:SetupImprovements()
     local db = GetDb()
     if not db then return end
-
-    if db.enableTT and not SLASH_FLARETT1 then
-        SLASH_FLARETT1 = "/tt"
-        SlashCmdList["FLARETT"] = function(msg)
-            if UnitExists("target") and (UnitIsPlayer("target") or UnitCanCooperate("player", "target")) then
-                local name, realm = UnitName("target")
-                if not canaccessvalue(name) or not name then return end   -- secret in restricted content
-                if realm and canaccessvalue(realm) and realm ~= "" then name = name .. "-" .. realm end
-                ChatFrameUtil.OpenChat("/w " .. name .. " " .. msg)
-            end
-        end
-    end
 
     if db.enableWay and not SLASH_FLAREWAY1 then
         SLASH_FLAREWAY1 = "/way"

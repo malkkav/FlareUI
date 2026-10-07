@@ -1088,7 +1088,7 @@ function Tweaks:GetNameplateAddon()
     for _, entry in ipairs(NAMEPLATE_ADDONS) do
         if C_AddOns.IsAddOnLoaded(entry[1]) then return entry[2] end
     end
-    -- ElvUI's nameplates are one of its modules and can be switched off
+    -- a UI suite whose nameplates are a module that can be switched off
     local E = C_AddOns.IsAddOnLoaded("ElvUI") and _G.ElvUI and _G.ElvUI[1]
     if type(E) == "table" and type(E.private) == "table" and type(E.private.nameplates) == "table"
         and E.private.nameplates.enable then

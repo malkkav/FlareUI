@@ -43,12 +43,6 @@ ns.Options.args.chat = {
                 improvementsGroup = {
                     type = "group", name = L["Improvements"], order = 10, inline = true,
                     args = {
-                        enableTT = {
-                            type = "toggle", name = L["Enable /tt Command"], desc = L["Allows you to use /tt to whisper your current target."], order = 10,
-                            get = function() return Get("enableTT") end,
-                            set = function(_, val) Set("enableTT", val, true) end
-                        },
-                        spacer1 = { type = "description", name = "", width = 0.1, order = 11 },
                         enableWay = {
                             type = "toggle", name = L["Enable /way Map Pins"], desc = L["/way <x> <y> or /way <zone> <x> <y> places a map pin and tracks it."], order = 15,
                             get = function() return Get("enableWay") end,

@@ -98,7 +98,7 @@ local function onDragStart(self)
 end
 
 local function normalizePosition(frame)
-	-- ripped out of LibWindow-1.1, which is Public Domain
+	-- the frame's position from its nearest screen edge or centre, on each axis
 	local parent = frame:GetParent()
 	if not parent then
 		return

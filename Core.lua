@@ -209,7 +209,6 @@ local defaults = {
             enabled = false,
 
             -- General
-            enableTT = true,
             enableWay = true,
             hideCombatLog = false,
             extendHistory = false,

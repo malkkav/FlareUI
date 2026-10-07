@@ -35,7 +35,7 @@ local function GamepadUI() return ns.IsGamepadUI() end
 
 local SP = function(order) return { type = "description", name = "", width = 0.1, order = order } end
 
--- a nameplate addon (Platynator, Plater...) switches the Nameplates options off; see Modules/Tweaks.lua
+-- another nameplate addon switches the Nameplates options off; see Modules/Tweaks.lua
 local function NameplateAddon() return ns.Tweaks and ns.Tweaks.GetNameplateAddon and ns.Tweaks:GetNameplateAddon() end
 
 ns.Options.args.tweaks = {
