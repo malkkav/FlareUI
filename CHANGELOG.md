@@ -1,4 +1,4 @@
-# Unreleased
+# FlareUI 1.6.4
 
 ## New
 - **Radial Menu:** an Emotes category in the radial editor: the 22 animated emotes (Wave, Dance, Salute, Sit and more), each with its own icon. They work in combat too.
