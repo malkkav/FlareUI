@@ -1294,12 +1294,19 @@ local CLASSIC_COMBO = {
     hooked = false, skinned = false,
 }
 
--- Swaps Blizzard's point art for the shared sheet (Core.lua): socket, gem on Highlight, star on
--- Shine. Blizzard only fades and shows them, so the new textures stay.
+-- Two kinds of points:
+--   Forever's since its October 2026 update (RogueComboPointTemplate, a 20 px widget with its own
+--   animations): kept as Blizzard draws them, only scaled to the gem size
+--   the old ones: their art swapped for the shared sheet (Core.lua): socket, gem on Highlight, star
+--   on Shine. Blizzard only fades and shows them, so the new textures stay.
 local function SkinClassicCombo(combo)
     if CLASSIC_COMBO.skinned then return end
     CLASSIC_COMBO.skinned = true
     local scale = CLASSIC_COMBO.size / ns.COMBO_SOCKET_PX
+    if combo.ComboPoints[1] and not combo.ComboPoints[1].Highlight then
+        for _, point in ipairs(combo.ComboPoints) do point:SetScale(CLASSIC_COMBO.size / 20) end
+        return
+    end
     for _, point in ipairs(combo.ComboPoints) do
         point:SetSize(CLASSIC_COMBO.size, CLASSIC_COMBO.size)
         for _, region in ipairs({ point:GetRegions() }) do
@@ -1324,14 +1331,19 @@ end
 local function PlaceClassicCombo(combo, f)
     combo:ClearAllPoints()
     combo:SetPoint("BOTTOMRIGHT", f.Health, "BOTTOMRIGHT", CLASSIC_COMBO.x, CLASSIC_COMBO.y)
-    -- the XML arcs the points around the old portrait; the first one used depends on the max
-    local first = combo.startComboPointIndex or 2
+    -- Blizzard arcs the points around its portrait. The old frame's first point used depends on
+    -- the max; the new one (it has a layout table) always starts at 1.
+    local first = combo.startComboPointIndex or (combo.layout and 1) or 2
     local max = combo.maxComboPoints
     if not (canaccessvalue(max) and type(max) == "number" and max >= 1) then max = 5 end
     local last = math.min(first + max - 1, #combo.ComboPoints)
     for i, point in ipairs(combo.ComboPoints) do
+        -- the row fills from the left: the new frame fills its last points first, so they go left
+        local steps = combo.layout and (last - i) or (i - first)
+        -- offsets are in the point's own scale
+        local s = point:GetScale() or 1
         point:ClearAllPoints()
-        point:SetPoint("BOTTOMRIGHT", combo, "BOTTOMRIGHT", (i - last) * CLASSIC_COMBO.spacing, 0)
+        point:SetPoint("BOTTOMRIGHT", combo, "BOTTOMRIGHT", (steps - (last - first)) * CLASSIC_COMBO.spacing / s, 0)
     end
 end
 
@@ -1361,7 +1373,13 @@ local function ApplyComboMode(f)
     PlaceClassicCombo(combo, f)
     if not CLASSIC_COMBO.hooked then
         CLASSIC_COMBO.hooked = true
-        hooksecurefunc("ComboFrame_ApplyOverrides", function(self) PlaceClassicCombo(self, f) end)
+        -- Blizzard puts the points back: the old frame in ComboFrame_ApplyOverrides, the new one in its
+        -- circle layout on every update
+        if type(_G.ComboFrame_ApplyOverrides) == "function" then
+            hooksecurefunc("ComboFrame_ApplyOverrides", function(self) PlaceClassicCombo(self, f) end)
+        elseif type(combo.LayoutPointsCircle) == "function" then
+            hooksecurefunc(combo, "LayoutPointsCircle", function(self) PlaceClassicCombo(self, f) end)
+        end
     end
 end
 

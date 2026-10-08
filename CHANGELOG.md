@@ -1,3 +1,8 @@
+# FlareUI 1.6.5
+
+## Fixed
+- **Unit Frames:** Classic Combo Points work again after Forever's October update, which rebuilt the game's combo points. They now use Blizzard's new combo point art and animations, still in a row on the target frame, filling from the left.
+
 # FlareUI 1.6.4
 
 ## New
