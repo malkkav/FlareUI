@@ -13,6 +13,64 @@ local EYE_FRAME_SIZE   = 64
 local EYE_TEXTURE_W, EYE_TEXTURE_H = 512, 256
 
 local eyeButton
+local LEM = LibStub("FlareEditMode")
+
+--------------------------------------------------
+-- HIDING OUR FRAMES IN EDIT MODE
+-- A frame can be hidden for a reason while editing (Blizzard's checkbox for it is off): it goes
+-- invisible and so does its selection box, which then cannot be clicked, until no reason is left. A
+-- frame never hidden is never touched (its own alpha stays its module's).
+--------------------------------------------------
+local hiddenFor = {}   -- frame -> { reason = true }
+
+function ns.EditModeHide(frame, reason, hide)
+    if not frame then return end
+    local reasons = hiddenFor[frame]
+    if not hide and not (reasons and reasons[reason]) then return end
+    reasons = reasons or {}
+    hiddenFor[frame] = reasons
+    reasons[reason] = hide and true or nil
+    local off = next(reasons) ~= nil
+    frame:SetAlpha(off and 0 or 1)
+    local selection = LEM.frameSelections and LEM.frameSelections[frame]
+    if not selection then return end
+    if not selection.FlareUI_HideHooked then
+        selection.FlareUI_HideHooked = true
+        hooksecurefunc(selection, "Show", function(s) if s.FlareUI_Hidden then s:Hide() end end)
+    end
+    selection.FlareUI_Hidden = off
+    if off then
+        selection:Hide()
+    elseif LEM:IsInEditMode() then
+        selection:Show()
+    end
+end
+
+-- Edit Mode's Frames checkboxes show and hide Blizzard's frames, which FlareUI keeps hidden; they
+-- show and hide FlareUI's own in their place (in Edit Mode only)
+local SWITCHES = {
+    { setter = "SetTargetAndFocusShown", setting = "ShowTargetAndFocus",
+      frames = { "FlareUI_UF_Target", "FlareUI_UF_Focus", "FlareUI_UF_TargetOfTarget", "FlareUI_UF_TargetOfFocus" } },
+    { setter = "SetPartyFramesShown", setting = "ShowPartyFrames", frames = { "FlareUI_Party" } },
+    { setter = "SetRaidFramesShown", setting = "ShowRaidFrames", frames = { "FlareUI_Raid", "FlareUI_RaidTanks" } },
+    { setter = "SetBossFramesShown", setting = "ShowBossFrames", frames = { "FlareUI_Boss" } },
+    { setter = "SetPetFrameShown", setting = "ShowPetFrame", frames = { "FlareUI_UF_Pet" } },
+    { setter = "SetCastBarShown", setting = "ShowCastBar", frames = { "FlareUI_UF_PlayerCastBar" } },
+    { setter = "SetBuffsAndDebuffsShown", setting = "ShowBuffsAndDebuffs", frames = { "FlareUI_Buffs", "FlareUI_Debuffs" } },
+}
+
+local function ApplySwitch(switch)
+    local manager = EditModeManagerFrame
+    local enum = Enum.EditModeAccountSetting and Enum.EditModeAccountSetting[switch.setting]
+    if not (manager and enum) then return end
+    local ok, shown = pcall(manager.GetAccountSettingValueBool, manager, enum)
+    local off = LEM:IsInEditMode() and ok and shown == false or false
+    for _, name in ipairs(switch.frames) do ns.EditModeHide(_G[name], "blizzard", off) end
+end
+
+local function ApplySwitches()
+    for _, switch in ipairs(SWITCHES) do ApplySwitch(switch) end
+end
 
 local function IsHidden()
     return ns.db and ns.db.profile and ns.db.profile.editModeOverlaysHidden
@@ -106,6 +164,16 @@ local function Hook()
     hooksecurefunc(EditModeManagerFrame, "SelectSystem", function()
         if IsHidden() then C_Timer.After(0, ApplyOverlays) end
     end)
+    -- the Frames checkboxes (a click, or Blizzard setting them as Edit Mode opens)
+    local account = EditModeManagerFrame.AccountSettings
+    for _, switch in ipairs(SWITCHES) do
+        if account and type(account[switch.setter]) == "function" then
+            hooksecurefunc(account, switch.setter, function() ApplySwitch(switch) end)
+        end
+    end
+    -- after the modules have shown their frames for Edit Mode; leaving it shows them all again
+    LEM:RegisterCallback("enter", function() C_Timer.After(0, ApplySwitches) end)
+    LEM:RegisterCallback("exit", ApplySwitches)
 end
 
 local loader = CreateFrame("Frame")

@@ -2,7 +2,7 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- 1. MODULE REGISTRATION
+-- RADIAL MENU
 -- A radial menu: hold the binding, sweep the mouse, release to fire the button you
 -- landed on. It works the same in combat as out of it:
 --   * the radial is ordinary art, so we can show / move / resize it whenever we like, and plain Lua
@@ -14,6 +14,10 @@ local L = ns.L
 -- conditionals and for a radial button that opens another radial. A /click never delivers a key
 -- release, so a macro radial stays open: click the button you want (or press the macro again to fire
 -- the aimed one); right-click or Escape closes it. See section 9.
+--------------------------------------------------
+
+--------------------------------------------------
+-- 1. MODULE REGISTRATION
 --------------------------------------------------
 ns.RadialMenu = ns.RadialMenu or {}
 local RM = ns.RadialMenu
@@ -244,7 +248,7 @@ local MICRO_PANELS = {
                     macrotext = "/run ToggleFriendsFrame()" },
     spellbook   = { order = 10, label = L["Spellbook"],    icon = 133741,  button = "SpellbookMicroButton" },
     talents     = { order = 11, label = L["Talents"],      icon = 132222,  button = "TalentMicroButton" },
-    -- FlareUI's own settings: with a controller, R3's way to them (Options/ControllerNav.lua)
+    -- FlareUI's own settings (FlareUI_ToggleSettings, Launcher.lua)
     flareui     = { order = 12, label = L["FlareUI Settings"], icon = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png",
                     macrotext = "/run FlareUI_ToggleSettings()" },
     -- flips the damage meter between Blizzard's view and FlareUI's threat view (Modules/DamageMeter.lua)
@@ -332,6 +336,67 @@ ACTIONS.micromenu = function(entry)
     -- (section 9), and a frame cannot travel that way. /click also puts Blizzard's own guards in front
     -- of the click (SlashCommands.lua:738), so a frame the client has fenced off is left alone.
     return panel.label, icon, { type = "macro", macrotext = "/click " .. panel.button }
+end
+
+-- Emotes: the animated ones of Blizzard's chat menu (EmoteList), each run as its slash command
+-- through the secure macro, like a radial's own macros, so they work in combat too. The name and
+-- command are the game's own (localised); Blizzard has no emote icons, so each has a picked one.
+local EMOTES = {
+    { token = "WAVE",    icon = "Achievement_Reputation_01" },
+    { token = "BOW",     icon = "Spell_Holy_PrayerofSpirit" },
+    { token = "DANCE",   icon = "Ability_Rogue_ShadowDance" },
+    { token = "APPLAUD", icon = "Achievement_BG_winWSG" },
+    { token = "BEG",     icon = "INV_Misc_Coin_02" },
+    { token = "CHICKEN", icon = "INV_Chicken2_Brown" },
+    { token = "CRY",     icon = "Spell_Misc_EmotionSad" },
+    { token = "EAT",     icon = "INV_Misc_Food_95_Grainbread" },
+    { token = "FLEX",    icon = "Ability_Warrior_StrengthOfArms" },
+    { token = "KISS",    icon = "Spell_Shadow_SoothingKiss" },
+    { token = "LAUGH",   icon = "Spell_Misc_EmotionHappy" },
+    { token = "POINT",   icon = "Ability_Hunter_SniperShot" },
+    { token = "ROAR",    icon = "Ability_Druid_ChallangingRoar" },
+    { token = "RUDE",    icon = "Spell_Misc_EmotionAngry" },
+    { token = "SALUTE",  icon = "Ability_Warrior_BattleShout" },
+    { token = "SHY",     icon = "Ability_Druid_Cower" },
+    { token = "TALK",    icon = "Spell_Holy_HolyGuidance" },
+    { token = "STAND",   icon = "Achievement_Character_Human_Male" },
+    { token = "SIT",     icon = "Spell_Misc_Drink" },
+    { token = "SLEEP",   icon = "Spell_Nature_Sleep" },
+    { token = "KNEEL",   icon = "Ability_Paladin_BlessedHands" },
+    { token = "LEAN",    icon = "Ability_Rogue_Disguise" },
+}
+RM.EMOTES = EMOTES
+local emoteByToken
+local function EmoteInfo(token)
+    if not emoteByToken then
+        emoteByToken = {}
+        for _, e in ipairs(EMOTES) do emoteByToken[e.token] = e end
+    end
+    return emoteByToken[token]
+end
+
+-- the game's slash command for an emote token ("/wave"), found as Blizzard's chat menu finds it
+local emoteCommands = {}
+local function EmoteCommand(token)
+    if emoteCommands[token] then return emoteCommands[token] end
+    local command
+    for i = 1, (MAXEMOTEINDEX or 1000) do
+        local t = _G["EMOTE" .. i .. "_TOKEN"]
+        if t == token then command = _G["EMOTE" .. i .. "_CMD1"] break end
+    end
+    command = command or ("/" .. token:lower())
+    emoteCommands[token] = command
+    return command
+end
+
+ACTIONS.emote = function(entry)
+    local info = entry.emote and EmoteInfo(entry.emote)
+    if not info then return nil end
+    local command = EmoteCommand(info.token)
+    -- "/wave" -> "Wave"
+    local name = command:gsub("^/", "")
+    name = name:sub(1, 1):upper() .. name:sub(2)
+    return name, { texture = "Interface\\Icons\\" .. info.icon }, { type = "macro", macrotext = command }
 end
 
 -- A button that stands for another radial. The sub-radial is never drawn: the button shows one of the
@@ -963,9 +1028,9 @@ local function SetPadFreeze(on)
     end
 end
 
--- mode "hold" is the keybind (the assigned radial, or the one the editor previews); "click" is a
--- macro, which names its radial; "pad" is the controller's stick press. A radial already up gives
--- way to the new one.
+-- mode "hold" is the keybind (the radial assigned to it, also while the editor previews another);
+-- "click" is a macro, which names its radial; "pad" is the controller's stick press. A radial
+-- already up gives way to the new one.
 local function OpenRadial(radialID, mode)
     if isOpen then CloseRadial() end
     StopAnimation()   -- a close still fading out gives way
@@ -974,8 +1039,6 @@ local function OpenRadial(radialID, mode)
     -- combat LayoutRadial draws the copy the secure layer holds.
     if radialID then
         RM:LoadRadial(radialID)
-    elseif previewID then
-        RM:LoadRadial(previewID)
     else
         RM:LoadActiveRadial()
     end
@@ -1053,7 +1116,7 @@ end
 -- reason: the choice has to live where the release can read it in combat.
 -- Every radial is copied, each under its own id ("<id>-count", "<id>-s<button>-<child>-<key>"), and
 -- ACTIVE names the one that is open: the keybind opens "flare-assigned", a macro names its own.
--- Radial macros (click mode, OPie's model): the macro clicks MACRO_NAME with the radial's tag as
+-- Radial macros (click mode): the macro clicks MACRO_NAME with the radial's tag as
 -- the mouse button: its name without spaces or symbols, any case ("tag-<lower case>" holds the id;
 -- a bare id works too). A /click sends no key release, so the radial waits for a click on CATCHER_NAME, a
 -- full-screen SecureActionButton shown only meanwhile: left-click fires the aimed button, right-click
@@ -1316,7 +1379,7 @@ function SyncSecure()
         header:SetAttribute("tag-" .. tag, id)
         syncedTags[tag] = true
     end
-    header:SetAttribute("flare-assigned", previewID or RM:GetAssignedRadialID())
+    header:SetAttribute("flare-assigned", RM:GetAssignedRadialID())
     -- sub-radial buttons start on their first child again, as the art does after a layout
     SecureHandlerExecute(header, "CHILD = newtable()")
 end
@@ -1407,7 +1470,7 @@ end
 -- it at a different radial, parking it in the editor's box and scaling it down if the radial is wider
 -- than the box.
 --------------------------------------------------
-local PREVIEW_BOX = 270
+local PREVIEW_BOX = 220   -- fits the settings panel's right column
 
 function RM:ShowPreview(radialID, anchor)
     if not radial then return end
@@ -1423,6 +1486,8 @@ function RM:ShowPreview(radialID, anchor)
     radial:SetScript("OnUpdate", nil)
     radial.Pointer:Hide()
     SetCancelSelected(false)
+    -- above the settings panel (DIALOG, raised to the top), whose right column it sits in
+    radial:SetFrameStrata("FULLSCREEN")
     radial:Show()
 end
 
@@ -1430,6 +1495,7 @@ function RM:HidePreview()
     previewID, previewAnchor = nil, nil
     if radial then
         radial:SetScale(1)
+        radial:SetFrameStrata("DIALOG")
         if not isOpen then radial:Hide() end
     end
     self:LoadActiveRadial()
@@ -1483,6 +1549,17 @@ function RM:GetRadialOrder()
     return store and store.radialOrder or {}
 end
 
+-- The radials by name (A to Z, any case), for the lists people pick from; creation order otherwise
+function RM:GetRadialsByName()
+    local ids = {}
+    for _, id in ipairs(self:GetRadialOrder()) do
+        if self:GetRadial(id) then ids[#ids + 1] = id end
+    end
+    local function name(id) return (self:GetRadial(id).name or ""):lower() end
+    table.sort(ids, function(a, b) return name(a) < name(b) end)
+    return ids
+end
+
 function RM:GetRadial(id)
     local store = GetStore()
     return store and store.radials[id]
@@ -1516,15 +1593,45 @@ function RM:DeleteRadial(id)
     self:ApplyBindings()
 end
 
--- The radial this character opens, kept with the character's own state (ns.CharDB) rather than in a
--- table of characters. nil means it never chose and gets the first radial in the library, so a new
--- character's key works straight away; "" means it chose none.
-function RM:GetAssignedRadialID()
+-- A character's radial setup: the radial its main key opens and its extra keybinds. The account keeps
+-- a copy of the last setup any character changed (store.lastSetup); a character that never set one up
+-- starts from that copy, so a new character opens the same radials as the one played before it.
+local function CopyKeys(list)
+    local out = {}
+    for i, extra in ipairs(list or {}) do out[i] = { key = extra.key, radial = extra.radial } end
+    return out
+end
+
+local function RememberSetup()
+    local store, charDB = GetStore(), ns.CharDB()
+    if not store then return end
+    store.lastSetup = { radial = charDB.radial, keys = CopyKeys(charDB.radialKeys) }
+end
+
+local function CharacterSetup()
     local charDB = ns.CharDB()
     if charDB.ring ~= nil then   -- saved before the rename
         if charDB.radial == nil then charDB.radial = charDB.ring end
         charDB.ring = nil
     end
+    local store = GetStore()
+    if charDB.radial == nil and charDB.radialKeys == nil then
+        local last = store and store.lastSetup
+        if last then
+            charDB.radial = last.radial
+            charDB.radialKeys = CopyKeys(last.keys)
+        end
+    elseif store and not store.lastSetup then
+        RememberSetup()   -- a character set up before the copy existed
+    end
+    return charDB
+end
+
+-- The radial this character opens, kept with the character's own state (ns.CharDB) rather than in a
+-- table of characters. nil means it never chose and gets the first radial in the library, so a new
+-- character's key works straight away; "" means it chose none.
+function RM:GetAssignedRadialID()
+    local charDB = CharacterSetup()
     local choice = charDB.radial
     if choice == "" then return nil end
     if choice and self:GetRadial(choice) then return choice end
@@ -1532,7 +1639,8 @@ function RM:GetAssignedRadialID()
 end
 
 function RM:SetAssignedRadialID(radialID)
-    ns.CharDB().radial = radialID or ""
+    CharacterSetup().radial = radialID or ""
+    RememberSetup()
     self:LoadActiveRadial()
     self:LayoutRadial()
 end
@@ -1556,22 +1664,6 @@ function RM:LoadActiveRadial()
     self:LoadRadial(self:GetAssignedRadialID())
 end
 
--- Older saves keep every character's choice in one account table keyed by name, which build 70009
--- broke (UnitName became the first name only). This character's entries move into its own state;
--- other characters' entries wait for them to log in, and a deleted character's is never claimed.
-local function MigrateLegacyAssignment()
-    local store = GetStore()
-    if not (store and store.assign and ns.PlayerGUID()) then return end
-    local charDB = ns.CharDB()
-    for key, radialID in pairs(store.assign) do
-        if ns.IsLegacyKeyMine(key) then
-            if charDB.radial == nil then charDB.radial = radialID end
-            store.assign[key] = nil
-        end
-    end
-    if not next(store.assign) then store.assign = nil end
-end
-
 --------------------------------------------------
 -- 12. BINDING
 -- The key is captured in FlareUI's own settings rather than Blizzard's Key Bindings panel, so
@@ -1581,13 +1673,13 @@ end
 --------------------------------------------------
 -- Extra keybinds belong to the character, like its radial choice: { key = "F", radial = "r2" } each.
 local function ExtraBindings()
-    local charDB = ns.CharDB()
+    local charDB = CharacterSetup()
     charDB.radialKeys = charDB.radialKeys or {}
     return charDB.radialKeys
 end
 
 -- C_GamePad numbers sticks from 0 (StickIndexToConfigName), the mapped state lists them from 1. Seen
--- on 70170: 0 Left, 1 Right, 2 Gyro, 3 Pad, 4 Movement, 5 Camera, 6 Look, 7 Cursor.
+-- on Forever: 0 Left, 1 Right, 2 Gyro, 3 Pad, 4 Movement, 5 Camera, 6 Look, 7 Cursor.
 local function RightStickIndex()
     for i = 0, 7 do
         local ok, configName = pcall(C_GamePad.StickIndexToConfigName, i)
@@ -1664,6 +1756,7 @@ function RM:AddExtraBinding()
     local list = ExtraBindings()
     if #list >= MAX_EXTRA_KEYS then return end
     list[#list + 1] = { radial = self:GetAssignedRadialID() or self:GetRadialOrder()[1] }
+    RememberSetup()
 end
 
 function RM:SetExtraKey(index, key)
@@ -1672,6 +1765,7 @@ function RM:SetExtraKey(index, key)
     key = (key ~= "" and key) or nil
     ReleaseKey(key, index)
     extra.key = key
+    RememberSetup()
     ApplyBinding()
 end
 
@@ -1679,11 +1773,13 @@ function RM:SetExtraRadial(index, radialID)
     local extra = ExtraBindings()[index]
     if not extra then return end
     extra.radial = radialID
+    RememberSetup()
     ApplyBinding()
 end
 
 function RM:RemoveExtraBinding(index)
     table.remove(ExtraBindings(), index)
+    RememberSetup()
     ApplyBinding()
 end
 
@@ -1738,7 +1834,6 @@ function RM:Init()
     else
         CreateSecureLayer()
     end
-    MigrateLegacyAssignment()
 
     -- first run: give the account one radial to edit, so the editor is never looking at an empty
     -- library; as the first radial it is also what every character opens until it picks another

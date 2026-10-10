@@ -2,13 +2,17 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- 1. MODULE REGISTRATION
+-- TOOLTIPS
 -- Tooltip scale, colours, health bar, anchoring and per-category visibility. Secret-safe rules:
 --   * only TooltipDataProcessor post-calls and post-hooks, never method replacement
 --   * never touch a tooltip that is forbidden, has a secret width, or has a child with a secret
 --     shownWidgetCount (a 12.0 Blizzard bug: SetBackdrop / SetPadding then poisons the layout)
 --   * every unit value is checked with canaccessvalue before it is compared or concatenated
 --   * the tooltip health bar is hidden, never written to (Blizzard flags it as a taint path)
+--------------------------------------------------
+
+--------------------------------------------------
+-- 1. MODULE REGISTRATION
 --------------------------------------------------
 ns.Tooltips = ns.Tooltips or {}
 local TIP = ns.Tooltips
@@ -449,9 +453,6 @@ function TIP:Init()
     local db = GetDb()
     if not db then return end
     self.initialized = true
-    -- the old "cursor" mode is now "cursorOffset"
-    if db.anchor == "cursor" then db.anchor = "cursorOffset" end
-    if db.anchorFrames == "cursor" then db.anchorFrames = "cursorOffset" end
 
     -- world object tooltips only fire mouse motion when the world frame tracks it
     WorldFrame:EnableMouseMotion(true)

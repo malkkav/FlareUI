@@ -2,13 +2,17 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- 1. MODULE REGISTRATION
+-- PARTY FRAMES
 -- You (optional) and up to four party members, in one of two styles with their own settings:
 --   Classic     the player frame's look, auras beside the frame
 --   Raid-Style  compact tiles, auras inside
 -- Auras are sorted by Blizzard's raid frame rules (the containers' ProcessAura policy). Secret-safe
 -- as the unit frames are: values go straight into widgets, readable() guards every Lua test.
 -- Part of the Unit Frames module; tuned in Edit Mode. Blizzard's PartyFrame is parked.
+--------------------------------------------------
+
+--------------------------------------------------
+-- 1. MODULE REGISTRATION
 --------------------------------------------------
 ns.PartyFrames = ns.PartyFrames or {}
 local PF = ns.PartyFrames
@@ -26,13 +30,21 @@ local CreateFrame, InCombatLockdown = CreateFrame, InCombatLockdown
 local LEM = LibStub("FlareEditMode")
 local K = ns.UnitFrames and ns.UnitFrames.Kit
 
+-- The aura look the party shares with the unit frames (Settings > Unit Frames: shape and timer)
+local function UFAura(field, default)
+    local db = K and K.GetDb and K.GetDb()
+    local value = db and db[field]
+    if value == nil then return default end
+    return value
+end
+
 local canaccessvalue = canaccessvalue or function() return true end
 local function readable(v) if canaccessvalue(v) then return v end end
 
 local MAX_MEMBERS = 4
 local SLOT_UNITS = { [0] = "player", "party1", "party2", "party3", "party4" }
 local PET_UNITS  = { [0] = "pet", "partypet1", "partypet2", "partypet3", "partypet4" }
-local DEFAULT_POSITION = { point = "LEFT", x = 40, y = 120 }
+local DEFAULT_POSITION = { point = "LEFT", x = 3, y = 0 }
 local PET_GAP = 2
 local AURA_SPACING = 2
 local AURA_CONTAINER_TEMPLATE = "CustomAuraContainerTemplate"
@@ -99,6 +111,9 @@ local PREVIEW_POWER_RGB = { MANA = { 0, 0, 1 }, RAGE = { 1, 0, 0 }, ENERGY = { 1
 local DISPEL_TYPES = { "Magic", "Curse", "Poison", "Disease" }
 local DISPEL_RGB = { Magic = { 0.20, 0.60, 1.00 }, Curse = { 0.60, 0.00, 1.00 }, Poison = { 0.00, 0.60, 0.00 }, Disease = { 0.60, 0.40, 0.00 } }
 local PRIVATE_SAMPLE_ICONS = { "Interface\\Icons\\Spell_Shadow_AntiShadow", "Interface\\Icons\\Ability_Creature_Cursed_02" }
+-- sample auras for tiles without aura containers (the raid frames' Edit Mode samples)
+local SAMPLE_BUFF_ICONS = { "Interface\\Icons\\Spell_Holy_Renew", "Interface\\Icons\\Spell_Nature_Rejuvenation", "Interface\\Icons\\Spell_Holy_PowerWordShield" }
+local SAMPLE_DEBUFF_ICONS = { "Interface\\Icons\\Spell_Shadow_ShadowWordPain", "Interface\\Icons\\Spell_Fire_Immolation", "Interface\\Icons\\Ability_Creature_Poison_02" }
 
 --------------------------------------------------
 -- 3. SETTINGS ACCESS
@@ -127,12 +142,38 @@ local function IsRaidStyle()
     return party and party.style == "raid"
 end
 
+-- A tile's settings: its owner's when it has one (f.ctx: the raid frames), else the party style's
+local function TS(f)
+    if f and f.ctx then return f.ctx.Settings() end
+    return S()
+end
+
+-- A Raid-Style tile: the party in raid style, or a tile with an owner of its own (unless the owner
+-- asks for the classic look: the boss frames)
+local function RaidTile(f)
+    if f and f.ctx then return not f.ctx.classic end
+    return IsRaidStyle()
+end
+
+-- A mirrored tile (the boss frames, as the target frame): portrait on the right, bars filling right
+-- to left, level and name on the right, the numbers on the left
+local function Mirrored(f)
+    local st = TS(f)
+    return st and st.mirror and true or false
+end
+
+-- A side and its opposite, swapped on a mirrored tile, and which way +x goes from the near side
+local function Sides(f)
+    if Mirrored(f) then return "RIGHT", "LEFT", -1 end
+    return "LEFT", "RIGHT", 1
+end
+
 local function IsEditing()
     return LEM:IsInEditMode()
 end
 
-local function IconStore(key, create)
-    local st = S()
+local function IconStore(key, create, f)
+    local st = TS(f)
     if not st then return nil end
     if create then
         st.icons = st.icons or {}
@@ -141,14 +182,14 @@ local function IconStore(key, create)
     return st.icons and st.icons[key]
 end
 
-local function IconShown(key)
-    local store = IconStore(key)
+local function IconShown(key, f)
+    local store = IconStore(key, nil, f)
     if store and store.shown ~= nil then return store.shown end
     return true
 end
 
-local function PlaceIcon(key, region, width, height, point, relativeTo, relativePoint, x, y)
-    local store = IconStore(key)
+local function PlaceIcon(f, key, region, width, height, point, relativeTo, relativePoint, x, y)
+    local store = IconStore(key, nil, f)
     local dx, dy, scale = 0, 0, (ICON_DEFAULT_SCALE[key] or 100) / 100
     if store then dx, dy, scale = store.x or 0, store.y or 0, (store.scale or ICON_DEFAULT_SCALE[key] or 100) / 100 end
     region:ClearAllPoints()
@@ -171,8 +212,8 @@ local function UpdateName(f)
 end
 
 local function UpdateLevel(f)
-    local st = S()
-    if IsRaidStyle() or not (st and st.showLevel) then f.Level:SetText("") return end
+    local st = TS(f)
+    if RaidTile(f) or not (st and st.showLevel) then f.Level:SetText("") return end
     local level = UnitLevel(f.unit)
     if canaccessvalue(level) and level then
         if level < 0 then
@@ -190,11 +231,11 @@ local function UpdateLevel(f)
 end
 
 local function UpdateHealth(f)
-    local unit, st = f.unit, S()
+    local unit, st = f.unit, TS(f)
     local bar = f.Health
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     bar:SetValue(UnitHealth(unit))
-    bar:SetStatusBarColor(K.GetHealthColor(unit, not st or st.classColor ~= false))
+    bar:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn()))
 
     local mode = st and st.healthText or "percent"
     local text = f.HealthText
@@ -217,7 +258,7 @@ local LayoutBars   -- section 6
 
 -- Healers Only: the power bar shows for healers alone (the role can be secret; then it shows)
 local function WantsPower(f)
-    local st = S()
+    local st = TS(f)
     if not st or (st.powerHeight or 0) <= 0 then return false end
     if not st.healersOnlyPower then return true end
     if IsEditing() then return (f.preview and f.preview.role) == "HEALER" end
@@ -226,7 +267,7 @@ local function WantsPower(f)
 end
 
 local function UpdatePower(f)
-    local unit, st = f.unit, S()
+    local unit, st = f.unit, TS(f)
     local want = WantsPower(f)
     if want ~= f.powerShown then
         f.powerShown = want
@@ -238,7 +279,7 @@ local function UpdatePower(f)
     bar:SetMinMaxValues(0, UnitPowerMax(unit, powerType))
     bar:SetValue(UnitPower(unit, powerType))
     bar:SetStatusBarColor(K.GetPowerColor(unit))
-    if st and st.powerText and not IsRaidStyle() and UnitIsConnected(unit) and not UnitIsDeadOrGhost(unit) then
+    if st and st.powerText and not RaidTile(f) and UnitIsConnected(unit) and not UnitIsDeadOrGhost(unit) then
         f.PowerText:SetText(AbbreviateNumbers(UnitPower(unit, powerType)))
     else
         f.PowerText:SetText("")
@@ -270,7 +311,7 @@ end
 -- GetRaidTargetIndex is secret to addon code; a secret is never nil, and the texture setter takes it
 local function UpdateRaidIcon(f)
     local icon = f.RaidIcon
-    if not IconShown("raidIcon") then icon:Hide() return end
+    if not IconShown("raidIcon", f) then icon:Hide() return end
     local index = GetRaidTargetIndex(f.unit)
     local show
     if not canaccessvalue(index) then show = true else show = index ~= nil and index > 0 end
@@ -280,7 +321,7 @@ end
 
 local function UpdateLeader(f)
     local icon = f.LeaderIcon
-    if not IconShown("leader") then icon:Hide() return end
+    if not IconShown("leader", f) then icon:Hide() return end
     if readable(UnitIsGroupLeader(f.unit)) then
         K.SetIconArt(icon, "UI-HUD-UnitFrame-Player-Group-LeaderIcon", "Interface\\GroupFrame\\UI-Group-LeaderIcon")
         icon:Show()
@@ -296,7 +337,7 @@ end
 -- role lookup is the fallback
 local function UpdateRole(f)
     local icon = f.RoleIcon
-    if not IconShown("role") then icon:Hide() return end
+    if not IconShown("role", f) then icon:Hide() return end
     local util = _G.UnitFrameUtil and _G.UnitFrameUtil.UpdateUnitFrameRoleIcon
     if util then
         f.roleProxy = f.roleProxy or { optionTable = { displayRoleIcon = true } }
@@ -315,13 +356,16 @@ end
 
 local function UpdateReadyCheck(f)
     local icon = f.ReadyIcon
-    if not IconShown("readyCheck") then icon:Hide() return end
+    if not IconShown("readyCheck", f) then icon:Hide() return end
+    -- the raid frames keep their own hold
+    local hold = readyCheckHold
+    if f.ctx then hold = f.ctx.ReadyHold() end
     local status = readable(GetReadyCheckStatus(f.unit))
-    if not status and readyCheckHold then status = f.lastReady end
+    if not status and hold then status = f.lastReady end
     -- a member who never answered was not ready (Blizzard's CompactUnitFrame_FinishReadyCheck)
-    if readyCheckHold and status == "waiting" then status = "notready" end
+    if hold and status == "waiting" then status = "notready" end
     if status and READY_ATLAS[status] then
-        if readyCheckHold == nil then f.lastReady = status end
+        if hold == nil then f.lastReady = status end
         icon:SetAtlas(READY_ATLAS[status], false)
         icon:Show()
     else
@@ -345,7 +389,7 @@ end
 
 local function UpdateStatus(f)
     local icon = f.StatusIcon
-    if not IconShown("status") then icon:Hide() return end
+    if not IconShown("status", f) then icon:Hide() return end
     local state = CenterStatus(f.unit)
     local atlas = state and STATUS_ATLAS[state]
     if atlas and K.HasAtlas(atlas) then
@@ -358,7 +402,7 @@ end
 
 -- Out of range: the whole frame fades (UnitInRange is secret, so the alpha is picked by the client)
 local function UpdateRange(f)
-    local st = S()
+    local st = TS(f)
     local alpha = st and st.rangeAlpha or 0.45
     if f.unit == "player" or alpha >= 1 or IsEditing() then
         f:SetAlpha(1)
@@ -384,9 +428,14 @@ local function UpdateTarget(f)
     end
 end
 
--- Aggro: the border takes the threat colour
+-- Aggro: the border takes the threat colour (on an enemy tile: the player's threat on that enemy)
 local function UpdateThreat(f)
-    local status = readable(UnitThreatSituation(f.unit))
+    local status
+    if f.ctx and f.ctx.hostile then
+        status = readable(UnitThreatSituation("player", f.unit))
+    else
+        status = readable(UnitThreatSituation(f.unit))
+    end
     if status and status >= 1 and not IsEditing() then
         K.SetBorderTint(f.Border, K.ThreatColor(status))
     else
@@ -396,8 +445,8 @@ end
 
 local function UpdatePortrait(f)
     local portrait = f.Portrait
-    local st = S()
-    local mode = (not IsRaidStyle() and st and st.portrait) or "none"
+    local st = TS(f)
+    local mode = (not RaidTile(f) and st and st.portrait) or "none"
     if mode == "none" then portrait:Hide() return end
     local unit = (UnitExists(f.unit) and not IsEditing()) and f.unit or "player"
     local tex = portrait.Tex
@@ -412,6 +461,9 @@ local function UpdatePortrait(f)
     end
     if class then
         tex:SetAtlas(GetClassAtlas(class), false, nil, true)
+    elseif IsEditing() and f.preview and f.preview.portrait then
+        tex:SetTexture(f.preview.portrait)
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     else
         SetPortraitTexture(tex, unit, true)
         tex:SetTexCoord(0, 1, 0, 1)
@@ -501,7 +553,8 @@ local function PrecreateAuraContainers(f)
     if not HasAuraSupport() then return end
     f.AuraPos = {}
     local policy = _G.CustomAuraContainerAuraProcessingPolicy
-    for _, pos in ipairs(AURA_POSITIONS) do
+    -- a tile may use fewer places (f.auraPositions: the raid frames keep theirs inside)
+    for _, pos in ipairs(f.auraPositions or AURA_POSITIONS) do
         local ok, container = pcall(CreateFrame, "AuraContainer", nil, f, AURA_CONTAINER_TEMPLATE)
         if ok and container then
             pcall(container.SetUnit, container, f.unit)
@@ -553,15 +606,15 @@ local function InitDispelIcon(button, size, inside)
 end
 
 local function LaneLook(st, size, isDebuff)
-    return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, st.auraStyle, st.auraSwipe, st.auraTimer or "none")
+    return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, UFAura("auraStyle", "square"), "icon", UFAura("auraTimer", "none"))
 end
 
 -- Below a frame come its cast bar and pet, then any auras placed below it
-local function BelowOffset()
-    local st, party = S(), GetPartyDb()
+local function BelowOffset(f)
+    local st = TS(f)
     local y = 0
     if st.castbar then y = y + (st.castHeight or 16) + K.CAST_GAP + K.INSET end
-    if party.pets then y = y + PET_GAP + (st.petHeight or 19) + 2 * K.INSET end
+    if not f.ctx and GetPartyDb().pets then y = y + PET_GAP + (st.petHeight or 19) + 2 * K.INSET end
     return y
 end
 
@@ -580,9 +633,9 @@ local function AuraAnchor(f, pos)
     elseif pos == "ABOVE_RIGHT" then
         point, rel, relPoint, x, y, growH, growV = "BOTTOMRIGHT", f, "TOPRIGHT", -K.INSET, gap, H.Left, H.Up
     elseif pos == "BELOW" then
-        point, rel, relPoint, x, y, growH, growV = "TOPLEFT", f, "BOTTOMLEFT", K.INSET, -gap - BelowOffset(), H.Right, H.Down
+        point, rel, relPoint, x, y, growH, growV = "TOPLEFT", f, "BOTTOMLEFT", K.INSET, -gap - BelowOffset(f), H.Right, H.Down
     elseif pos == "BELOW_RIGHT" then
-        point, rel, relPoint, x, y, growH, growV = "TOPRIGHT", f, "BOTTOMRIGHT", -K.INSET, -gap - BelowOffset(), H.Left, H.Down
+        point, rel, relPoint, x, y, growH, growV = "TOPRIGHT", f, "BOTTOMRIGHT", -K.INSET, -gap - BelowOffset(f), H.Left, H.Down
     elseif pos == "INSIDE_TOPLEFT" then
         point, rel, relPoint, x, y, growH, growV = "TOPLEFT", health, "TOPLEFT", inset, -inset, H.Right, H.Down
     elseif pos == "INSIDE_TOPRIGHT" then
@@ -624,7 +677,7 @@ local function ConfigurePosition(f, pos, lanes)
         return
     end
 
-    local st = S()
+    local st = TS(f)
     local db = K.GetDb()
     local size = st.auraSize or 18
     local max = st.auraMax or 4
@@ -637,7 +690,7 @@ local function ConfigurePosition(f, pos, lanes)
         local isDebuff, kind = lane.isDebuff, lane.kind
         local laneSize = lane.scale and math_floor(size * lane.scale + 0.5) or size
         local look = kind ~= "dispels" and LaneLook(st, laneSize, isDebuff) or nil
-        local showTimer = (st.auraTimer or "none") ~= "none"
+        local showTimer = UFAura("auraTimer", "none") ~= "none"
         local font = db and db.font
         local unit = f.unit
         local ok, err = pcall(container.AddAuraGroup, container, key, lane.filter, {
@@ -684,10 +737,10 @@ end
 
 local function ConfigureAuras(f)
     if not f.AuraPos then return end
-    local st = S()
+    local st = TS(f)
     if not st then return end
-    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.auraMax, st.auraPerRow, st.auraStyle,
-        st.auraSwipe, st.auraTimer, st.bigBossDebuffs, st.castbar, st.castHeight, st.petHeight, GetPartyDb().pets)
+    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.auraMax, st.auraPerRow, UFAura("auraStyle", "square"),
+        UFAura("auraTimer", "none"), st.bigBossDebuffs, st.castbar, st.castHeight, st.petHeight, (not f.ctx and GetPartyDb().pets))
     if f.auraSignature == sig then return end
     f.auraSignature = sig
     local processed = AuraUtil and AuraUtil.AuraUpdateChangedType
@@ -695,6 +748,13 @@ local function ConfigureAuras(f)
     for _, pos in ipairs(AURA_POSITIONS) do perPos[pos] = {} end
     local function Add(pos, lane)
         if pos and perPos[pos] then perPos[pos][#perPos[pos] + 1] = lane end
+    end
+    -- an enemy tile: every buff on it, and only the player's debuffs (damage over time, sunders)
+    if f.ctx and f.ctx.hostile then
+        Add(st.debuffs, { key = "debuffs", kind = "debuffs", filter = "HARMFUL|PLAYER", isDebuff = true })
+        Add(st.buffs,   { key = "buffs", kind = "buffs", filter = "HELPFUL", isDebuff = false })
+        for _, pos in ipairs(AURA_POSITIONS) do ConfigurePosition(f, pos, perPos[pos]) end
+        return
     end
     -- debuffs first, nearest the frame; boss and role debuffs lead, bigger, then the rest on their row
     if st.bigBossDebuffs ~= false then
@@ -717,8 +777,8 @@ end
 local function ConfigureSlots(f)
     local slots = f.AuraSlots
     if not slots then return end
-    local st = S()
-    local sig = Signature(st.bigDefensive, st.bigDefensiveSize, st.auraStyle, st.auraSwipe, st.dispelHighlight)
+    local st = TS(f)
+    local sig = Signature(st.bigDefensive, st.bigDefensiveSize, UFAura("auraStyle", "square"), st.dispelHighlight)
     if slots.signature == sig then
         pcall(slots.container.SetEditModePreviewEnabled, slots.container, IsEditing())
         return
@@ -804,25 +864,25 @@ end
 local function ConfigurePrivateAuras(f)
     local api = C_UnitAuras
     if not (api and api.AddPrivateAuraAnchor) then return end
-    local st0 = S()
-    local sig = Signature(st0 and st0.privateAuras, st0 and st0.privateAuraSize, IsRaidStyle())
+    local st0 = TS(f)
+    local sig = Signature(st0 and st0.privateAuras, st0 and st0.privateAuraSize, RaidTile(f), f.unit)
     if f.privateSignature == sig then return end
     f.privateSignature = sig
     if f.privateAnchors then
         for _, id in ipairs(f.privateAnchors) do pcall(api.RemovePrivateAuraAnchor, id) end
     end
     f.privateAnchors = {}
-    local st = S()
-    if not st or st.privateAuras == false then return end
+    local st = TS(f)
+    if not st or st.privateAuras == false or not f.unit then return end
     local size = st.privateAuraSize or 20
-    local raid = IsRaidStyle()
+    local raid = RaidTile(f)
     for i = 1, PRIVATE_AURA_COUNT do
         local x = (i - (PRIVATE_AURA_COUNT + 1) / 2) * (size + 2)
         local ok, id = pcall(api.AddPrivateAuraAnchor, {
             unitToken = f.unit,
             auraIndex = i,
             parent = f,
-            showCountdownFrame = true,
+            showCooldownFrame = true,   -- Forever's name for it (retail: showCountdownFrame)
             showCountdownNumbers = false,
             isContainer = false,
             iconInfo = {
@@ -855,35 +915,39 @@ end
 --------------------------------------------------
 -- 6. LAYOUT
 --------------------------------------------------
-local function PortraitSpace()
-    local st = S()
-    if IsRaidStyle() or not st or (st.portrait or "none") == "none" then return 0 end
+local function PortraitSpace(f)
+    local st = TS(f)
+    if RaidTile(f) or not st or (st.portrait or "none") == "none" then return 0 end
     return (st.height or 46) - 2 * K.INSET
 end
 
 LayoutBars = function(f)
-    local st = S()
+    local st = TS(f)
     if not st then return end
     local PADDING = K.INSET
     local health, power = f.Health, f.Power
-    local space = PortraitSpace()
+    local space = PortraitSpace(f)
     local left = PADDING + space
     local powerHeight = st.powerHeight or 0
     local showPower = f.powerShown ~= false and powerHeight > 0
     if f.powerShown == nil then showPower = WantsPower(f) end
 
+    -- near: the portrait's side (left, or right on a mirrored tile)
+    local near, far, sx = Sides(f)
     health:ClearAllPoints()
     power:ClearAllPoints()
-    health:SetPoint("TOPLEFT", f, "TOPLEFT", left, -PADDING)
+    health:SetPoint("TOP" .. near, f, "TOP" .. near, sx * left, -PADDING)
+    health:SetReverseFill(sx < 0)
+    power:SetReverseFill(sx < 0)
 
     local portrait, divider = f.Portrait, f.PortraitDivider
     portrait:ClearAllPoints()
     divider:ClearAllPoints()
     if space > 0 then
         portrait:SetSize(space, space)
-        portrait:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING, -PADDING)
-        divider:SetPoint("TOP", portrait, "TOPRIGHT", 0, 0)
-        divider:SetPoint("BOTTOM", portrait, "BOTTOMRIGHT", 0, 0)
+        portrait:SetPoint("TOP" .. near, f, "TOP" .. near, sx * PADDING, -PADDING)
+        divider:SetPoint("TOP", portrait, "TOP" .. far, 0, 0)
+        divider:SetPoint("BOTTOM", portrait, "BOTTOM" .. far, 0, 0)
         divider:SetWidth(K.SEPARATOR_HEIGHT)
         divider:Show()
     else
@@ -893,10 +957,10 @@ LayoutBars = function(f)
 
     if showPower then
         power:Show()
-        power:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", left, PADDING)
-        power:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PADDING, PADDING)
+        power:SetPoint("BOTTOM" .. near, f, "BOTTOM" .. near, sx * left, PADDING)
+        power:SetPoint("BOTTOM" .. far, f, "BOTTOM" .. far, -sx * PADDING, PADDING)
         power:SetHeight(powerHeight)
-        health:SetPoint("BOTTOMRIGHT", power, "TOPRIGHT", 0, 0)
+        health:SetPoint("BOTTOM" .. far, power, "TOP" .. far, 0, 0)
         f.Separator:ClearAllPoints()
         f.Separator:SetPoint("TOPLEFT", power, "TOPLEFT", 0, K.SEPARATOR_HEIGHT / 2)
         f.Separator:SetPoint("TOPRIGHT", power, "TOPRIGHT", 0, K.SEPARATOR_HEIGHT / 2)
@@ -905,35 +969,38 @@ LayoutBars = function(f)
     else
         power:Hide()
         f.Separator:Hide()
-        health:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PADDING, PADDING)
+        health:SetPoint("BOTTOM" .. far, f, "BOTTOM" .. far, -sx * PADDING, PADDING)
     end
-    f.PowerText:SetShown(not IsRaidStyle() and st.powerText and showPower and powerHeight >= 10)
+    f.PowerText:SetShown(not RaidTile(f) and st.powerText and showPower and powerHeight >= 10)
 end
 
 local function LayoutHealClip(f)
     if not f.HealClip then return end
-    local st = S()
+    local st = TS(f)
     local health, clip, heal, absorb = f.Health, f.HealClip, f.HealBar, f.AbsorbBar
     local fill = health:GetStatusBarTexture()
-    local width = (st.width or 200) - 2 * K.INSET - PortraitSpace()
+    local width = (st.width or 200) - 2 * K.INSET - PortraitSpace(f)
     local reverse = st.absorbReverseFill ~= false
     clip:ClearAllPoints()
     heal:ClearAllPoints()
     absorb:ClearAllPoints()
+    -- near: where the health fill starts (the right on a mirrored tile)
+    local near, far = Sides(f)
+    local mirror = near == "RIGHT"
     heal:SetWidth(width)
     absorb:SetWidth(width)
-    heal:SetReverseFill(false)
-    absorb:SetReverseFill(reverse)
-    clip:SetPoint("TOPLEFT", fill, "TOPRIGHT", 0, 0)
-    clip:SetPoint("BOTTOMRIGHT", health, "BOTTOMRIGHT", 0, 0)
-    heal:SetPoint("TOPLEFT", clip, "TOPLEFT", 0, 0)
-    heal:SetPoint("BOTTOMLEFT", clip, "BOTTOMLEFT", 0, 0)
+    heal:SetReverseFill(mirror)
+    absorb:SetReverseFill(reverse ~= mirror)
+    clip:SetPoint("TOP" .. near, fill, "TOP" .. far, 0, 0)
+    clip:SetPoint("BOTTOM" .. far, health, "BOTTOM" .. far, 0, 0)
+    heal:SetPoint("TOP" .. near, clip, "TOP" .. near, 0, 0)
+    heal:SetPoint("BOTTOM" .. near, clip, "BOTTOM" .. near, 0, 0)
     if reverse then
-        absorb:SetPoint("TOPRIGHT", clip, "TOPRIGHT", 0, 0)
-        absorb:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT", 0, 0)
+        absorb:SetPoint("TOP" .. far, clip, "TOP" .. far, 0, 0)
+        absorb:SetPoint("BOTTOM" .. far, clip, "BOTTOM" .. far, 0, 0)
     else
-        absorb:SetPoint("TOPLEFT", heal:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
-        absorb:SetPoint("BOTTOMLEFT", heal:GetStatusBarTexture(), "BOTTOMRIGHT", 0, 0)
+        absorb:SetPoint("TOP" .. near, heal:GetStatusBarTexture(), "TOP" .. far, 0, 0)
+        absorb:SetPoint("BOTTOM" .. near, heal:GetStatusBarTexture(), "BOTTOM" .. far, 0, 0)
     end
     local base = clip:GetFrameLevel()
     heal:SetFrameLevel(base + 1)
@@ -958,7 +1025,7 @@ local function CastStyle(st)
 end
 
 local function LayoutTexts(f)
-    local st, raid = S(), IsRaidStyle()
+    local st, raid = TS(f), RaidTile(f)
     local db = K.GetDb()
     local font = db and db.font
     K.ApplyFont(f.Name, font)
@@ -979,49 +1046,51 @@ local function LayoutTexts(f)
         f.HealthText:SetJustifyH("CENTER")
         f.HealthText:SetPoint("CENTER", health, "CENTER", 0, -4)
     else
+        -- level and name from the near side, the numbers on the far side (swapped when mirrored)
+        local near, far, sx = Sides(f)
         f.Level:Show()
-        f.Level:SetJustifyH("LEFT")
-        f.Name:SetJustifyH("LEFT")
-        f.HealthText:SetJustifyH("RIGHT")
-        f.Level:SetPoint("LEFT", health, "LEFT", T, 0)
+        f.Level:SetJustifyH(near)
+        f.Name:SetJustifyH(near)
+        f.HealthText:SetJustifyH(far)
+        f.Level:SetPoint(near, health, near, sx * T, 0)
         if st.showLevel then
-            f.Name:SetPoint("LEFT", f.Level, "RIGHT", 3, 0)
+            f.Name:SetPoint(near, f.Level, far, sx * 3, 0)
         else
-            f.Name:SetPoint("LEFT", health, "LEFT", T, 0)
+            f.Name:SetPoint(near, health, near, sx * T, 0)
         end
-        f.HealthText:SetPoint("RIGHT", health, "RIGHT", -T, 0)
-        f.Name:SetPoint("RIGHT", f.HealthText, "LEFT", -4, 0)
-        f.PowerText:SetJustifyH("RIGHT")
-        f.PowerText:SetPoint("RIGHT", power, "RIGHT", -T, 0)
+        f.HealthText:SetPoint(far, health, far, -sx * T, 0)
+        f.Name:SetPoint(far, f.HealthText, near, -sx * 4, 0)
+        f.PowerText:SetJustifyH(far)
+        f.PowerText:SetPoint(far, power, far, -sx * T, 0)
     end
 end
 
 local function LayoutIcons(f)
-    local st, raid = S(), IsRaidStyle()
+    local st, raid = TS(f), RaidTile(f)
     local health = f.Health
     local healthHeight = (st.height or 46) - 2 * K.INSET - (WantsPower(f) and (st.powerHeight or 0) or 0)
     local mid = math_max(12, math_min(24, healthHeight * 0.6))
     if raid then
-        PlaceIcon("role", f.RoleIcon, 12, 12, "TOPLEFT", health, "TOPLEFT", 2, -2)
+        PlaceIcon(f, "role", f.RoleIcon, 12, 12, "TOPLEFT", health, "TOPLEFT", 2, -2)
         -- the name moves over for the role icon
         f.Name:ClearAllPoints()
         f.Name:SetPoint("LEFT", f.RoleIcon, "RIGHT", 2, 0)
         f.Name:SetPoint("RIGHT", health, "RIGHT", -K.TEXT_INSET, 0)
-        PlaceIcon("leader", f.LeaderIcon, 14, 14, "CENTER", f, "TOPLEFT", 8, -2)
-        PlaceIcon("raidIcon", f.RaidIcon, 14, 14, "CENTER", f, "TOP", 0, -3)
+        PlaceIcon(f, "leader", f.LeaderIcon, 14, 14, "CENTER", f, "TOPLEFT", 8, -2)
+        PlaceIcon(f, "raidIcon", f.RaidIcon, 14, 14, "CENTER", f, "TOP", 0, -3)
     else
         -- leader where the player frame has it, role in the bottom-right corner
-        PlaceIcon("leader", f.LeaderIcon, 20, 20, "CENTER", f, "TOPLEFT", 16, -2)
-        PlaceIcon("role", f.RoleIcon, 24, 24, "CENTER", f, "BOTTOMRIGHT", -4, 2)
-        PlaceIcon("raidIcon", f.RaidIcon, 16, 16, "CENTER", f, "TOP", 0, -2)
+        PlaceIcon(f, "leader", f.LeaderIcon, 20, 20, "CENTER", f, "TOPLEFT", 16, -2)
+        PlaceIcon(f, "role", f.RoleIcon, 24, 24, "CENTER", f, "BOTTOMRIGHT", -4, 2)
+        PlaceIcon(f, "raidIcon", f.RaidIcon, 16, 16, "CENTER", f, "TOP", 0, -2)
     end
-    local readyAnchor = PortraitSpace() > 0 and f.Portrait or health
-    PlaceIcon("readyCheck", f.ReadyIcon, mid, mid, "CENTER", readyAnchor, "CENTER", 0, 0)
-    PlaceIcon("status", f.StatusIcon, mid, mid, "CENTER", health, "CENTER", 0, 0)
+    local readyAnchor = PortraitSpace(f) > 0 and f.Portrait or health
+    PlaceIcon(f, "readyCheck", f.ReadyIcon, mid, mid, "CENTER", readyAnchor, "CENTER", 0, 0)
+    PlaceIcon(f, "status", f.StatusIcon, mid, mid, "CENTER", health, "CENTER", 0, 0)
 end
 
 local function LayoutMember(f)
-    local st = S()
+    local st = TS(f)
     if not st then return end
     if InCombatLockdown() then pendingLayout = true return end
     local PADDING = K.INSET
@@ -1075,7 +1144,7 @@ end
 
 -- An aura row's height: the icon, plus its timer when that hangs under it
 local function CellHeight(st, size)
-    if (st.auraTimer or "none") == "below" then return size + math_max(7, math_floor(size * 0.4 + 0.5)) + 3 end
+    if UFAura("auraTimer", "none") == "below" then return size + math_max(7, math_floor(size * 0.4 + 0.5)) + 3 end
     return size
 end
 
@@ -1226,7 +1295,7 @@ end
 
 --------------------------------------------------
 -- 8. VISIBILITY
--- The holder shows in a party (with Show in Raid, also in a raid: your own group); member frames
+-- The holder shows in a party, never in a raid (the raid frames take over there); member frames
 -- follow their units. In Edit Mode everything shows, with samples.
 --------------------------------------------------
 local function ApplyVisibility()
@@ -1238,8 +1307,7 @@ local function ApplyVisibility()
         UnregisterStateDriver(holder, "visibility")
         holder:Show()
     else
-        local driver = party.showInRaid and "[group:party] show; hide" or "[group:raid] hide; [group:party] show; hide"
-        RegisterStateDriver(holder, "visibility", driver)
+        RegisterStateDriver(holder, "visibility", "[group:raid] hide; [group:party] show; hide")
     end
     for i = 0, MAX_MEMBERS do
         local f, p = members[i], pets[i]
@@ -1276,7 +1344,9 @@ end
 local function PreviewColor(class)
     local c = PREVIEW_CLASS_RGB[class]
     if c then return c[1], c[2], c[3] end
-    return 0, 1, 0
+    local cc = class and C_ClassColor and C_ClassColor.GetClassColor(class)
+    if cc then return cc:GetRGB() end
+    return ns.HEALTH_GREEN[1], ns.HEALTH_GREEN[2], ns.HEALTH_GREEN[3]
 end
 
 -- Samples the aura containers cannot show in Edit Mode: dispel icons, private auras, the dispel
@@ -1304,12 +1374,33 @@ end
 
 local function ApplyPreviewExtras(f, data)
     HidePreviewExtras(f)
-    local st = S()
+    local st = TS(f)
     local used = 0
     local size = st.auraSize or 18
+    -- buffs and debuffs drawn by hand where there are no containers to show Edit Mode's samples
+    if f.noAuras then
+        local function Row(place, count, icons, bossFirst)
+            if not place or place == "OFF" or (count or 0) <= 0 then return end
+            local point, rel, relPoint, x, y, growH = AuraAnchor(f, place)
+            local sx = growH == AnchorUtil.FlowDirection.Left and -1 or 1
+            local offset = 0
+            for i = 1, math_min(count, st.auraMax or 3) do
+                local s = (bossFirst and i == 1 and st.bigBossDebuffs ~= false) and math_floor(size * 1.5 + 0.5) or size
+                used = used + 1
+                local b = PreviewBit(f, used, s)
+                b.Icon:SetTexture(icons[(i - 1) % #icons + 1])
+                b.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                b:SetPoint(point, rel, relPoint, x + sx * offset, y)
+                offset = offset + s + AURA_SPACING
+            end
+        end
+        Row(st.buffs, data.buffs, SAMPLE_BUFF_ICONS)
+        Row(st.debuffs, (data.debuffs or 0) + (data.bossDebuff and 1 or 0), SAMPLE_DEBUFF_ICONS, data.bossDebuff)
+    end
     -- dispel icons, at their place (under the debuffs' rows when they share it)
     local pos = st.dispels
-    if pos and pos ~= "OFF" then
+    local sampled = not f.ctx or data.highlight
+    if pos and pos ~= "OFF" and sampled then
         local point, rel, relPoint, x, y, growH, growV = AuraAnchor(f, pos)
         local sx = growH == AnchorUtil.FlowDirection.Left and -1 or 1
         local sy = growV == AnchorUtil.FlowDirection.Up and 1 or -1
@@ -1332,9 +1423,9 @@ local function ApplyPreviewExtras(f, data)
         end
     end
     -- private auras, where Blizzard's anchors put them
-    if st.privateAuras ~= false then
+    if st.privateAuras ~= false and sampled then
         local psize = st.privateAuraSize or 20
-        local raid = IsRaidStyle()
+        local raid = RaidTile(f)
         for i = 1, PRIVATE_AURA_COUNT do
             used = used + 1
             local b = PreviewBit(f, used, psize)
@@ -1374,15 +1465,22 @@ local function ApplyPreviewExtras(f, data)
 end
 
 ApplyPreview = function(f)
-    local party = GetPartyDb()
-    local first = party.showPlayer and 0 or 1
-    local data = PREVIEW[f.index - first + 1] or PREVIEW[1]
+    local data
+    if f.ctx then
+        data = f.ctx.PreviewData(f)
+    else
+        local first = GetPartyDb().showPlayer and 0 or 1
+        data = PREVIEW[f.index - first + 1] or PREVIEW[1]
+    end
     f.preview = data
     f.powerShown = nil
-    local st = S()
+    local st = TS(f)
     local class = data.class
     f.Name:SetText(data.name)
-    if not IsRaidStyle() and st.showLevel then
+    if not RaidTile(f) and st.showLevel and data.level == -1 then
+        f.Level:SetText("??")
+        f.Level:SetTextColor(1, 0.1, 0.1)
+    elseif not RaidTile(f) and st.showLevel then
         f.Level:SetText(UnitLevel("player") or "")
         f.Level:SetTextColor(1, 0.82, 0)
     else
@@ -1390,7 +1488,13 @@ ApplyPreview = function(f)
     end
     f.Health:SetMinMaxValues(0, 1)
     f.Health:SetValue(data.health or 1)
-    if st.classColor ~= false then f.Health:SetStatusBarColor(PreviewColor(class)) else f.Health:SetStatusBarColor(0, 1, 0) end
+    if data.rgb then
+        f.Health:SetStatusBarColor(data.rgb[1], data.rgb[2], data.rgb[3])
+    elseif ns.ClassColorsOn() then
+        f.Health:SetStatusBarColor(PreviewColor(class))
+    else
+        f.Health:SetStatusBarColor(ns.HEALTH_GREEN[1], ns.HEALTH_GREEN[2], ns.HEALTH_GREEN[3])
+    end
     f.Health:SetAlpha(1)
     local mode = st.healthText or "percent"
     if data.dead then
@@ -1409,9 +1513,9 @@ ApplyPreview = function(f)
     f.Power:SetMinMaxValues(0, 1)
     f.Power:SetValue(data.power or 1)
     local powerToken = PREVIEW_POWER[class] or "MANA"
-    local c = _G.PowerBarColor and _G.PowerBarColor[powerToken]
-    if c and c.r then
-        f.Power:SetStatusBarColor(c.r, c.g, c.b)
+    local r, g, b = ns.PowerColor(powerToken)
+    if r then
+        f.Power:SetStatusBarColor(r, g, b)
     else
         local p = PREVIEW_POWER_RGB[powerToken]
         f.Power:SetStatusBarColor(p[1], p[2], p[3])
@@ -1419,8 +1523,11 @@ ApplyPreview = function(f)
     f.PowerText:SetText(st.powerText and AbbreviateNumbers(math_floor((data.power or 1) * 9000)) or "")
     if f.HealBar then f.HealBar:SetValue(0); f.AbsorbBar:SetValue(0) end
 
+    -- the icons at their size again (Blizzard's role routine narrows the role icon to 1 px when the
+    -- unit has no role)
+    LayoutIcons(f)
     local function ShowIcon(key, region, fn)
-        if IconShown(key) and fn() then region:Show() else region:Hide() end
+        if IconShown(key, f) and fn() then region:Show() else region:Hide() end
     end
     -- the icon picked in the dialog shows on every frame, so it can be placed
     local picked = selectedIcon
@@ -1460,7 +1567,7 @@ ApplyPreview = function(f)
     UpdateCast(f)
     ApplyPreviewExtras(f, data)
 
-    local p = pets[f.index]
+    local p = not f.ctx and pets[f.index]
     if p then
         p.Health:SetMinMaxValues(0, 1)
         p.Health:SetValue(0.8)
@@ -1474,7 +1581,7 @@ end
 --------------------------------------------------
 local function OnEnter(f)
     f.Highlight:Show()
-    if GameTooltip:IsForbidden() or IsEditing() then return end
+    if GameTooltip:IsForbidden() or IsEditing() or not f.unit then return end
     GameTooltip_SetDefaultAnchor(GameTooltip, f)
     GameTooltip:SetUnit(f.unit)
     GameTooltip:Show()
@@ -1509,11 +1616,9 @@ local MEMBER_UNIT_EVENTS = {
     "UNIT_PORTRAIT_UPDATE", "UNIT_MODEL_CHANGED",
 }
 
-local function CreateMember(index)
-    local unit = SLOT_UNITS[index]
-    local f = SecureUnitButton("FlareUI_Party" .. index, unit)
-    f.index = index
-    f:SetFrameStrata("LOW")
+-- Builds a tile on a unit button: bars, texts, icons, highlights, heal overlays, auras and events.
+-- f.ctx (set first) gives it an owner of its own; f.noAuras leaves out the aura containers (samples).
+local function BuildTile(f, unit)
     local level = f:GetFrameLevel()
 
     f.Health = K.CreateBar(f, level + 1)
@@ -1604,15 +1709,42 @@ local function CreateMember(index)
         if ok and calc then f.HealCalc = calc end
     end
 
-    f.Cast = K.CreateCastBar(f, unit)
-    f.Cast.isEnabled = function() local st = S(); return st and st.castbar and true or false end
+    if not f.ctx or f.ctx.castbar then
+        f.Cast = K.CreateCastBar(f, unit)
+        f.Cast.isEnabled = function() local st = TS(f); return st and st.castbar and true or false end
+    end
 
-    PrecreateAuraContainers(f)
+    if not f.noAuras then PrecreateAuraContainers(f) end
 
     f:SetScript("OnEvent", OnMemberEvent)
-    for _, event in ipairs(MEMBER_UNIT_EVENTS) do pcall(f.RegisterUnitEvent, f, event, unit) end
-    for _, event in ipairs(K.CAST_EVENTS) do pcall(f.RegisterUnitEvent, f, event, unit) end
+    if unit then
+        for _, event in ipairs(MEMBER_UNIT_EVENTS) do pcall(f.RegisterUnitEvent, f, event, unit) end
+        if f.Cast then for _, event in ipairs(K.CAST_EVENTS) do pcall(f.RegisterUnitEvent, f, event, unit) end end
+    end
     f:HookScript("OnShow", UpdateAll)
+end
+
+-- A raid header hands its tiles a new unit (in combat too: no protected calls here)
+local function SetTileUnit(f, unit)
+    if f.unit == unit then return end
+    f.unit = unit
+    for _, event in ipairs(MEMBER_UNIT_EVENTS) do pcall(f.UnregisterEvent, f, event) end
+    if unit then
+        for _, event in ipairs(MEMBER_UNIT_EVENTS) do pcall(f.RegisterUnitEvent, f, event, unit) end
+    end
+    local function Retarget(container) pcall(container.SetUnit, container, unit) end
+    if f.AuraPos then for _, entry in pairs(f.AuraPos) do Retarget(entry.container) end end
+    if f.AuraSlots then Retarget(f.AuraSlots.container) end
+    if f.AuraHighlight then Retarget(f.AuraHighlight.container) end
+    pcall(ConfigurePrivateAuras, f)
+    if unit and f:IsVisible() then UpdateAll(f) end
+end
+
+local function CreateMember(index)
+    local unit = SLOT_UNITS[index]
+    local f = SecureUnitButton("FlareUI_Party" .. index, unit)
+    f.index = index
+    BuildTile(f, unit)
     members[index] = f
     return f
 end
@@ -1622,7 +1754,6 @@ local function CreatePet(index)
     local p = SecureUnitButton("FlareUI_PartyPet" .. index, PET_UNITS[index])
     p.owner = owner
     p.index = index
-    p:SetFrameStrata("LOW")
     local level = p:GetFrameLevel()
     p.Health = K.CreateBar(p, level + 1)
     p.Border = CreateFrame("Frame", nil, p, "BackdropTemplate")
@@ -1743,8 +1874,6 @@ local function BuildSettings()
           end },
         { name = L["Show Player"], kind = LEM.SettingType.Checkbox, default = true, get = getP("showPlayer", true), set = setP("showPlayer"),
           desc = L["Your own frame first, with the party."] },
-        { name = L["Show in Raid"], kind = LEM.SettingType.Checkbox, default = false, get = getP("showInRaid", false), set = setP("showInRaid"),
-          desc = L["In a raid the party frames show your own raid group."] },
         { name = L["Pets"], kind = LEM.SettingType.Checkbox, default = false, get = getP("pets", false), set = setP("pets"),
           desc = L["A small frame for each pet, under its owner."] },
         { name = L["Sort by Role"], kind = LEM.SettingType.Checkbox, default = true, get = getP("sortByRole", true), set = setP("sortByRole"),
@@ -1752,8 +1881,6 @@ local function BuildSettings()
         { name = L["Orientation"], kind = LEM.SettingType.Dropdown, default = "VERTICAL",
           values = { { text = L["Vertical"], value = "VERTICAL", isRadio = true }, { text = L["Horizontal"], value = "HORIZONTAL", isRadio = true } },
           get = getP("orientation", "VERTICAL"), set = setP("orientation") },
-        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing, minValue = 0, maxValue = 80, valueStep = 1,
-          get = getS("spacing"), set = setS("spacing") },
     })
 
     Section("Frame", {
@@ -1768,119 +1895,66 @@ local function BuildSettings()
         { name = L["Portrait"], kind = LEM.SettingType.Dropdown, default = D.portrait or "none",
           values = { { text = L["None"], value = "none", isRadio = true }, { text = L["3D"], value = "3d", isRadio = true }, { text = L["Class Icon"], value = "class", isRadio = true } },
           get = getS("portrait"), set = setS("portrait"), hidden = classicOnly },
-        { name = L["Out of Range Alpha"], kind = LEM.SettingType.Slider, default = D.rangeAlpha, minValue = 0.1, maxValue = 1, valueStep = 0.05,
-          get = getS("rangeAlpha"), set = setS("rangeAlpha"),
-          formatter = function(value) return value >= 1 and _G.OFF or (math_floor(value * 100 + 0.5) .. "%") end },
     })
 
-    Section("Look", {
-        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.texture, values = K.BuildTextureValues(false),
-          get = getS("texture"), set = setS("texture") },
-        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = D.border, values = K.BuildBorderValues(false),
-          get = getS("border"), set = setS("border") },
-        { name = L["Class Color"], kind = LEM.SettingType.Checkbox, default = D.classColor ~= false,
-          desc = L["Health bars in the class colour. Off: the classic health green."],
-          get = getS("classColor"), set = setS("classColor") },
-        { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildTextureValues(true),
-          get = getS("absorbTexture"), set = setS("absorbTexture") },
-        { name = L["Absorb Reverse Fill"], kind = LEM.SettingType.Checkbox, default = D.absorbReverseFill ~= false, get = getS("absorbReverseFill"), set = setS("absorbReverseFill") },
-    })
-
+    -- debuffs, buffs and dispel icons never share a place: a place taken by one is greyed out on
+    -- the others
+    local AURA_FIELDS = { "buffs", "debuffs", "dispels" }
+    local function Place(field)
+        return function(_, rootDescription, data)
+            local st = S()
+            for _, p in ipairs(AURA_POSITION_VALUES) do
+                local radio = rootDescription:CreateRadio(p.text,
+                    function(value) local now = S(); return now and now[field] == value end,
+                    function(value) data.set(nil, value) end, p.value)
+                if st and p.value ~= "OFF" and radio.SetEnabled then
+                    for _, other in ipairs(AURA_FIELDS) do
+                        if other ~= field and st[other] == p.value then radio:SetEnabled(false) end
+                    end
+                end
+            end
+        end
+    end
     Section("Auras", {
-        { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = AURA_POSITION_VALUES, get = getS("debuffs"), set = setS("debuffs"),
-          desc = L["Debuffs as Blizzard's raid frames pick them: boss and role debuffs, priority debuffs, and the ones you can dispel."] },
-        { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = D.buffs, values = AURA_POSITION_VALUES, get = getS("buffs"), set = setS("buffs"),
+        { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = D.buffs, values = AURA_POSITION_VALUES, generator = Place("buffs"),
+          get = getS("buffs"), set = setS("buffs"),
           desc = L["Buffs as Blizzard's raid frames pick them: mostly your own heals over time and buffs."] },
-        { name = L["Dispel Icons"], kind = LEM.SettingType.Dropdown, default = D.dispels, values = AURA_POSITION_VALUES, get = getS("dispels"), set = setS("dispels"),
+        { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = AURA_POSITION_VALUES, generator = Place("debuffs"),
+          get = getS("debuffs"), set = setS("debuffs"),
+          desc = L["Debuffs as Blizzard's raid frames pick them: boss and role debuffs, priority debuffs, and the ones you can dispel."] },
+        { name = L["Dispel Icons"], kind = LEM.SettingType.Dropdown, default = D.dispels, values = AURA_POSITION_VALUES, generator = Place("dispels"),
+          get = getS("dispels"), set = setS("dispels"),
           desc = L["The symbol of each debuff type you can dispel (Magic, Curse, Disease, Poison)."] },
         { name = L["Bigger Boss Debuffs"], kind = LEM.SettingType.Checkbox, default = D.bigBossDebuffs ~= false, get = getS("bigBossDebuffs"), set = setS("bigBossDebuffs"),
           desc = L["Boss and role debuffs first and half again as big, as Blizzard's raid frames show them."] },
         { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1, get = getS("auraSize"), set = setS("auraSize") },
-        { name = L["Max Per Type"], kind = LEM.SettingType.Slider, default = D.auraMax, minValue = 1, maxValue = 12, valueStep = 1, get = getS("auraMax"), set = setS("auraMax") },
-        { name = L["Auras per Row"], kind = LEM.SettingType.Slider, default = D.auraPerRow, minValue = 1, maxValue = 12, valueStep = 1, get = getS("auraPerRow"), set = setS("auraPerRow") },
-        { name = L["Shape"], kind = LEM.SettingType.Dropdown, default = D.auraStyle,
-          values = { { text = L["Square"], value = "square", isRadio = true }, { text = L["Round"], value = "round", isRadio = true } },
-          get = getS("auraStyle"), set = setS("auraStyle") },
-        { name = L["Cooldown Swipe"], kind = LEM.SettingType.Dropdown, default = D.auraSwipe,
-          values = { { text = L["Border"], value = "border", isRadio = true }, { text = L["Icon"], value = "icon", isRadio = true }, { text = L["None"], value = "none", isRadio = true } },
-          get = getS("auraSwipe"), set = setS("auraSwipe") },
-        { name = L["Timer"], kind = LEM.SettingType.Dropdown, default = D.auraTimer,
-          values = { { text = L["Under the Icon"], value = "below", isRadio = true }, { text = L["Bottom of the Icon"], value = "bottom", isRadio = true },
-                     { text = L["Middle of the Icon"], value = "middle", isRadio = true }, { text = L["No Timer"], value = "none", isRadio = true } },
-          get = getS("auraTimer"), set = setS("auraTimer") },
     })
 
     Section("Important Auras", {
-        { name = L["Big Defensive"], kind = LEM.SettingType.Checkbox, default = D.bigDefensive ~= false, get = getS("bigDefensive"), set = setS("bigDefensive"),
-          desc = L["A big defensive cooldown on the member (Shield Wall, Divine Shield...) in the middle of the frame."] },
-        { name = L["Big Defensive Size"], kind = LEM.SettingType.Slider, default = D.bigDefensiveSize, minValue = 12, maxValue = 48, valueStep = 1,
-          get = getS("bigDefensiveSize"), set = setS("bigDefensiveSize") },
         { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = D.dispelHighlight,
           values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
                      { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
           desc = L["A dispellable debuff outlines the health bar in its type's colour."],
           get = getS("dispelHighlight"), set = setS("dispelHighlight") },
-        { name = L["Private Auras"], kind = LEM.SettingType.Checkbox, default = D.privateAuras ~= false, get = getS("privateAuras"), set = setS("privateAuras"),
-          desc = L["Blizzard's private auras: boss mechanics on the member that addons cannot otherwise see."] },
-        { name = L["Private Aura Size"], kind = LEM.SettingType.Slider, default = D.privateAuraSize, minValue = 12, maxValue = 40, valueStep = 1,
-          get = getS("privateAuraSize"), set = setS("privateAuraSize") },
     })
 
     Section("Cast Bar", {
         { name = L["Cast Bars"], kind = LEM.SettingType.Checkbox, default = D.castbar or false, get = getS("castbar"), set = setS("castbar") },
-        { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight, minValue = 8, maxValue = 30, valueStep = 1, get = getS("castHeight"), set = setS("castHeight") },
-        { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(true), get = getS("castTexture"), set = setS("castTexture") },
-        { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true), get = getS("castBorderTexture"), set = setS("castBorderTexture") },
-        { name = L["Cast Icon"], kind = LEM.SettingType.Checkbox, default = D.castIcon ~= false, get = getS("castIcon"), set = setS("castIcon") },
-        { name = L["Cast Timer"], kind = LEM.SettingType.Checkbox, default = D.castTimer ~= false, get = getS("castTimer"), set = setS("castTimer") },
     })
 
-    Section("Pets", {
-        { name = L["Pet Frame Width"], kind = LEM.SettingType.Slider, default = D.petWidth, minValue = 40, maxValue = 300, valueStep = 2,
-          get = getS("petWidth"), set = setS("petWidth") },
-        { name = L["Pet Frame Height"], kind = LEM.SettingType.Slider, default = D.petHeight, minValue = 10, maxValue = 40, valueStep = 1,
-          get = getS("petHeight"), set = setS("petHeight") },
-        { name = L["Pet Border Texture"], kind = LEM.SettingType.Dropdown, default = D.petBorder, values = K.BuildBorderValues(false),
-          get = getS("petBorder"), set = setS("petBorder") },
-    })
-
-    local iconValues = {}
-    for _, key in ipairs(ICON_ORDER) do iconValues[#iconValues + 1] = { text = ICON_LABELS[key], value = key, isRadio = true } end
-    local function iconSet(field)
-        return function(_, value)
-            local store = IconStore(selectedIcon, true)
-            if not store then return end
-            store[field] = value
-            Refresh()
-        end
+    -- one switch per icon; where they sit is fixed
+    local iconItems = {}
+    for _, key in ipairs(ICON_ORDER) do
+        iconItems[#iconItems + 1] = { name = ICON_LABELS[key], kind = LEM.SettingType.Checkbox, default = true,
+            get = function() return IconShown(key) end,
+            set = function(_, value)
+                local store = IconStore(key, true)
+                if not store then return end
+                store.shown = value
+                Refresh()
+            end }
     end
-    local function iconGet(field, default)
-        return function()
-            local store = IconStore(selectedIcon)
-            local value = store and store[field]
-            if value == nil then return default end
-            return value
-        end
-    end
-    local function iconHidden() return not IconShown(selectedIcon) end
-    -- a style can set its own icon scale (Raid-Style: the role icon at 120%)
-    local styleIcon = D.icons and D.icons[selectedIcon]
-    local scaleDefault = (styleIcon and styleIcon.scale) or ICON_DEFAULT_SCALE[selectedIcon] or 100
-    Section("Icons", {
-        { name = L["Icon"], kind = LEM.SettingType.Dropdown, default = ICON_ORDER[1], values = iconValues,
-          desc = L["Pick an icon to switch, move and size it. It shows on the frames while Edit Mode is open."],
-          get = function() return selectedIcon end,
-          set = function(_, value)
-              selectedIcon = value
-              Refresh()
-              RebuildSettings()
-          end },
-        { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true, get = function() return IconShown(selectedIcon) end, set = iconSet("shown") },
-        { name = L["Icon X"], kind = LEM.SettingType.Slider, default = 0, minValue = -100, maxValue = 100, valueStep = 1, hidden = iconHidden, get = iconGet("x", 0), set = iconSet("x") },
-        { name = L["Icon Y"], kind = LEM.SettingType.Slider, default = 0, minValue = -60, maxValue = 60, valueStep = 1, hidden = iconHidden, get = iconGet("y", 0), set = iconSet("y") },
-        { name = L["Icon Scale"], kind = LEM.SettingType.Slider, default = scaleDefault, minValue = 50, maxValue = 200, valueStep = 5, hidden = iconHidden,
-          get = iconGet("scale", scaleDefault), set = iconSet("scale"), formatter = function(value) return value .. "%" end },
-    })
+    Section("Icons", iconItems)
     return settings
 end
 
@@ -1915,6 +1989,21 @@ end
 function PF:Refresh()
     Refresh()
 end
+
+-- The tile kit (Modules/RaidFrames.lua builds its tiles with it). A tile's owner sets f.ctx:
+--   Settings()    the tile settings (the party style's keys)
+--   PreviewData(f) the sample shown in Edit Mode
+--   ReadyHold()   true while a finished ready check's results stay up
+PF.Tile = {
+    Build = BuildTile, SetUnit = SetTileUnit, Layout = LayoutMember, UpdateAll = UpdateAll,
+    UpdateRange = UpdateRange, UpdateTarget = UpdateTarget, UpdateRaidIcon = UpdateRaidIcon,
+    UpdateLeader = UpdateLeader, UpdateRole = UpdateRole, UpdatePower = UpdatePower,
+    UpdateReadyCheck = UpdateReadyCheck, UpdateStatus = UpdateStatus, UpdateThreat = UpdateThreat,
+    OnEnter = OnEnter, OnLeave = OnLeave,
+    AURA_POSITION_VALUES = AURA_POSITION_VALUES, ICON_ORDER = ICON_ORDER, ICON_LABELS = ICON_LABELS,
+    IconShown = IconShown, IconStore = IconStore, LanesExtent = LanesExtent,
+    PREVIEW_CLASS_RGB = PREVIEW_CLASS_RGB,
+}
 
 function PF:ShouldLoad()
     local db = K and K.GetDb()

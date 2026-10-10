@@ -1,3 +1,75 @@
+# FlareUI 2.0
+
+A new settings panel that explains every option, Forever-style unit frames, and raid and boss frames.
+
+This is the biggest update for this addon so far. The goal was to simplify, improve the UX, make it way more user friendly (especially for new players) and focus on the true core of FlareUI: improve, not replace, Forever's interface.
+
+**Your 1.x settings come along:** the first time you log in, FlareUI brings over your radial menus and keybinds, your profiles, every module's on/off switch, the options the new panel still offers, your frames' Edit Mode settings and positions, and each character's quest tracker, chat history and Sync Blizz UI data. Options that 2.0 no longer has (fonts, borders, textures, the old show rules) start from the new defaults. Unit frames start in the new Forever style; switch on Addon Style Frames to get your 1.x frames back as they were.
+
+## New
+
+**Settings panel**
+- One window for everything: modules on the left, each with its own on/off switch, the options in the middle, and an info panel on the right.
+- Hover any option to see a picture of what it does and a short explanation.
+- Search every setting by name.
+- Changes that need a reload are collected in a bar at the bottom, with one Reload button.
+- Profiles in Advanced: start a new one, duplicate the one in use, delete, or reset FlareUI.
+- Opens with /fui, from the minimap's addon button, from a key binding, or from Blizzard's Options > AddOns.
+
+**Unit Frames**
+- Forever style (the default): player, target and focus in the game's own bronze ring frames. Addon Style Frames switches to FlareUI's clean frames, and each style keeps its own setup.
+- Raid frames, with sizes per raid size and main tank frames.
+- Boss frames, mirrored like the target frame.
+- Main Frames: one switch for player, pet, target and focus.
+- Colour palette (FlareUI's softer tones or Blizzard's) and one Class Colours switch for every frame.
+
+**Damage Meter**
+- Visibility: always, in combat, in a group, or hidden, plus Show on Mouseover.
+
+**Quality of Life**
+- Hide Level on enemy nameplates, with the quest mark on the health bar's edge.
+
+**Radial Menu**
+- A new character starts with the radial setup of the last character you changed it on.
+- The radial editor is part of the Radial Menu page, with a live preview.
+
+## Changed
+- Fewer, clearer options: font, border and texture choices are gone, and each frame keeps its designed look.
+- The radial key always opens the radial chosen in the Keybinds tab.
+- Battle.net toasts appear above the chat, with a bronze border.
+- Mana cost preview on the mana bar is always on.
+
+## Removed
+- The old settings window.
+
+# FlareUI 1.6.5
+
+## Fixed
+- **Unit Frames:** Classic Combo Points work again after Forever's October update, which rebuilt the game's combo points. They now use Blizzard's new combo point art and animations, still in a row on the target frame, filling from the left.
+
+# FlareUI 1.6.4
+
+## New
+- **Radial Menu:** an Emotes category in the radial editor: the 22 animated emotes (Wave, Dance, Salute, Sit and more), each with its own icon. They work in combat too.
+- **Chat:** Up and Down (with or without Shift or Alt) step through the last 50 lines you sent, kept across reloads. Down past the newest gives back what you were typing.
+- **Chat:** with the edit box inside the chat window, the newest lines move up above it while you type, and drop back when it closes.
+
+## Fixed
+- **Chat:** sharing a map pin in chat (shift-click) could be blocked with an error after using Copy Line. Copy Line now puts the line in the chat box only when it is already open, and in the copy box otherwise.
+
+## Removed
+- **Chat:** the /tt command (whisper your target).
+
+# FlareUI 1.6.3
+
+## Fixed
+- **Buffs / Debuffs:** weapon enchants (shaman imbues like Rockbiter Weapon, poisons, oils, sharpening stones) now show at the start of your buffs, with their timer and the weapon's tooltip. They never appeared before: the game data FlareUI read them from is empty in Forever. Right-click no longer removes a weapon enchant: Forever allows that only in Blizzard's own buff frame.
+
+# FlareUI 1.6.2
+
+## Fixed
+- **Move Any Frame:** opening the spellbook (or another window Blizzard loads on first use) for the first time during combat no longer causes an "action blocked" error. The window becomes movable once combat ends.
+
 # FlareUI 1.6.1
 
 Bug fixes for bag windows, Sync Blizz UI and the action bar gryphons.
@@ -324,7 +396,7 @@ Fixes from your reports, and a handful of new options.
 
 ## Changed
 - Combo points (Classic Combo and nameplate combo points) use Blizzard's high-resolution red gems with bronze rims and a shine when they fill.
-- Nameplate tweaks stand aside when a nameplate addon such as Platynator is running.
+- Nameplate tweaks stand aside when another nameplate addon is running.
 - Tweaks: the Hide options are laid out in rows of three.
 - Chat and Damage Meter background opacity now default to 60%.
 - Damage Meter > Features: Combat Timer comes first, then Threat Meter Tab.

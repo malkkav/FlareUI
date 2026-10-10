@@ -2,17 +2,22 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- 1. MODULE REGISTRATION
+-- QUALITY OF LIFE (Tweaks)
 -- Small quality-of-life tweaks, each a toggle:
 --   Windows & Settings  Move Any Frame, Sync Blizz UI (account-wide settings)
 --   Vendor              Sell Junk Automatically, Repair Automatically, Durability Warning
 --   Camera              Max Camera Zoom, Faster Camera Zoom
---   Nameplates          Combo Points under the target's nameplate, Tag Quest Objectives
+--   Nameplates          Combo Points under the target's nameplate, Tag Quest Objectives, Hide Level
 --   Convenience         Faster Auto Loot, Auto-Type DELETE, Train All button
 --   Hide                Error Messages, Zone Text, Party Title, Portrait Numbers, Contextual Tips,
---                       Addon Drawer, Quest Tracker in Boss Fights
+--                       Addon Drawer
+--   Map pins            /way
 --   Always on           Party frames unclamped from the screen edge
 -- Everything applies live except the ones that replace Blizzard scripts (those ask for a reload).
+--------------------------------------------------
+
+--------------------------------------------------
+-- 1. MODULE REGISTRATION
 --------------------------------------------------
 ns.Tweaks = ns.Tweaks or {}
 local Tweaks = ns.Tweaks
@@ -26,10 +31,10 @@ LibStub("AceEvent-3.0"):Embed(Tweaks)
 local _G = _G
 local ipairs, pairs, type, tostring = ipairs, pairs, type, tostring
 local pcall = pcall
-local math_floor, math_max, math_min = math.floor, math.max, math.min
+local math_floor, math_min = math.floor, math.min
 local CreateFrame = CreateFrame
 local InCombatLockdown = InCombatLockdown
-local IsShiftKeyDown, IsControlKeyDown = IsShiftKeyDown, IsControlKeyDown
+local IsShiftKeyDown = IsShiftKeyDown
 local C_Timer = C_Timer
 
 local function GetDb()
@@ -42,11 +47,10 @@ end
 
 --------------------------------------------------
 -- 3. MOVE ANY FRAME
--- Every UIPanelWindows panel (and bags) drags by its header; Ctrl+wheel scales, Shift+right-click
--- resets the position, Ctrl+right-click the scale. Saved per frame name, re-applied after
+-- Every UIPanelWindows panel (and bags) drags by its header; Shift+right-click resets the position.
+-- Saved per frame name, re-applied after
 -- Blizzard's panel manager places the frame.
 --------------------------------------------------
-local MIN_SCALE, MAX_SCALE, SCALE_STEP = 0.5, 2.0, 0.1
 -- panels that must stay where Blizzard puts them
 local MOVE_EXCLUDED = {
     EditModeManagerFrame = true, GameMenuFrame = true, SettingsPanel = true, HelpFrame = true,
@@ -55,6 +59,7 @@ local MOVE_EXCLUDED = {
 local moveFrames = {}          -- name -> frame (already set up)
 local moveApplyQueued = false
 local movePending = {}         -- frames whose saved position must be applied after combat
+local setupPending = {}        -- protected windows that loaded in combat: set up when it ends
 local moveSuspended = false    -- the gamepad UI came on mid-session; see StartMoveAnyFrame
 
 local function GetFrameStore(name, create)
@@ -79,9 +84,6 @@ local function ApplySavedPosition(frame)
     local store = GetFrameStore(frame.moveName)
     if not store then return end
     if not CanTouch(frame) then movePending[frame] = true return end
-    if store.scale and frame:GetScale() ~= store.scale then
-        frame:SetScale(store.scale)
-    end
     if store.point then
         frame:ClearAllPoints()
         frame:SetPoint(store.point, UIParent, store.relativePoint or "BOTTOMLEFT", store.x or 0, store.y or 0)
@@ -126,24 +128,6 @@ local function ResetPosition(frame)
     if CanTouch(frame) and UpdateUIPanelPositions then pcall(UpdateUIPanelPositions, frame) end
 end
 
-local function SetFrameScale(frame, scale)
-    scale = math_max(MIN_SCALE, math_min(MAX_SCALE, math_floor(scale * 100 + 0.5) / 100))
-    if not CanTouch(frame) then return end
-    -- the top-left corner stays put
-    local left, top = frame:GetLeft(), frame:GetTop()
-    local oldScale = frame:GetScale()
-    frame:SetScale(scale)
-    if left and top then
-        frame:ClearAllPoints()
-        frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left * oldScale / scale, top * oldScale / scale)
-    end
-    local store = GetFrameStore(frame.moveName, true)
-    if store then
-        store.scale = scale ~= 1 and scale or nil
-        SavePosition(frame)
-    end
-end
-
 local function OnDragStart(handle)
     local frame = handle.moveTarget or handle
     if not CanTouch(frame) or IsMaximized(frame) then return end
@@ -160,13 +144,6 @@ local function OnDragStop(handle)
     SavePosition(frame)
 end
 
-local function OnMouseWheel(handle, delta)
-    if not IsControlKeyDown() then return end
-    local frame = handle.moveTarget or handle
-    if IsMaximized(frame) then return end
-    SetFrameScale(frame, frame:GetScale() + SCALE_STEP * delta)
-end
-
 -- A bag window's portrait menu (Assign To, Ignore This Bag, sorting): opens, or closes when open
 local function ToggleBagMenu(frame)
     local dropdown = frame.PortraitButton
@@ -181,15 +158,12 @@ end
 local function OnMouseUp(handle, button)
     if button ~= "RightButton" then return end
     local frame = handle.moveTarget or handle
-    if IsShiftKeyDown() then ResetPosition(frame) end
-    if IsControlKeyDown() then
-        local store = GetFrameStore(frame.moveName)
-        if store then store.scale = nil end
-        if CanTouch(frame) then frame:SetScale(1) end
-        SavePosition(frame)
+    if IsShiftKeyDown() then
+        ResetPosition(frame)
+    else
+        -- plain right-click on a bag window opens its sorting menu, wherever you click
+        ToggleBagMenu(frame)
     end
-    -- plain right-click on a bag window opens its sorting menu, wherever you click
-    if not IsShiftKeyDown() and not IsControlKeyDown() then ToggleBagMenu(frame) end
 end
 
 -- Only the header drags: a mouse-enabled window would swallow every click inside it
@@ -205,15 +179,6 @@ local function SetupHandle(frame, handle)
     handle:HookScript("OnDragStart", OnDragStart)
     handle:HookScript("OnDragStop", OnDragStop)
     handle:HookScript("OnMouseUp", OnMouseUp)
-end
-
--- Ctrl+wheel scales from anywhere over the window (scroll frames keep their own wheel)
-local function SetupWheel(frame)
-    if frame.moveWheelHooked or not frame.EnableMouseWheel then return end
-    frame.moveWheelHooked = true
-    frame.moveTarget = frame
-    frame:EnableMouseWheel(true)
-    frame:HookScript("OnMouseWheel", OnMouseWheel)
 end
 
 -- The title bar if the frame has one, otherwise a strip across the top short of the close button
@@ -235,12 +200,18 @@ local function SetupMovableFrame(name)
     if moveSuspended or moveFrames[name] or MOVE_EXCLUDED[name] then return end
     local frame = _G[name]
     if type(frame) ~= "table" or not frame.GetObjectType or not frame.StartMoving then return end
+    -- a protected window (the spellbook) can load in combat, when SetMovable / SetClampedToScreen
+    -- on it are blocked: it is set up once combat ends
+    if InCombatLockdown() and frame:IsProtected() then
+        setupPending[name] = true
+        return
+    end
+    setupPending[name] = nil
     frame.moveName = name
     moveFrames[name] = frame
     frame:SetMovable(true)
     frame:SetClampedToScreen(true)
     SetupHandle(frame, GetHeaderHandle(frame))
-    SetupWheel(frame)
     -- the panel manager has placed the window by OnShow: put ours back before it draws
     frame:HookScript("OnShow", function(f)
         ApplySavedPosition(f)
@@ -302,10 +273,8 @@ local function SetupBagTitle(frame)
 end
 
 -- The bag header's "Backpack / <click for bag settings>" tooltip, from the portrait (the title's
--- router shows it too): hidden unless Bag Header Tooltip is on
+-- router shows it too): always hidden
 local function HideBagTooltip(region)
-    local db = GetDb()
-    if db and db.bagTooltip then return end
     local portrait = region.routeToSibling and region:GetParent()[region.routeToSibling] or region
     if GameTooltip:IsOwned(portrait) then GameTooltip:Hide() end
 end
@@ -355,6 +324,10 @@ local function InitMoveAnyFrame()
     hooksecurefunc("UpdateContainerFrameAnchors", function() ScanBagFrames() ApplyAllNowAndNext() end)
     Tweaks:RegisterEvent("BAG_UPDATE_DELAYED", ScanBagFrames)
     Tweaks:RegisterEvent("PLAYER_REGEN_ENABLED", function()
+        if next(setupPending) then
+            for name in pairs(setupPending) do SetupMovableFrame(name) end
+            ScanBagFrames()   -- a bag window set up late still needs its title bar
+        end
         for frame in pairs(movePending) do movePending[frame] = nil; if frame:IsShown() then ApplySavedPosition(frame) end end
     end)
 end
@@ -413,50 +386,17 @@ local function IsSource(store)
     return type(source) == "table" and guid ~= nil and source.guid == guid
 end
 
--- "Name - Realm" for display. A source recorded before GUIDs only has its old name key.
+-- "Name - Realm" for display
 local function SourceLabel(source)
     if type(source) ~= "table" then return nil end
-    local legacy = source.legacy
-    local name = source.name or (legacy and (legacy:match("^(.-) %- ") or legacy)) or "?"
-    local realm = source.realm or (legacy and legacy:match(" %- (.+)$"))
-    return realm and (name .. " - " .. realm) or name
-end
-
--- A source recorded by name (before 70009) becomes a GUID record when its character logs in
-local function ClaimLegacySource(store)
-    local source = store.source
-    if type(source) ~= "table" or source.guid or not ns.IsLegacyKeyMine(source.legacy) then return end
-    local me = Me()
-    if not me then return end
-    local oldName = source.legacy:match("^(.-) %- ") or source.legacy
-    if oldName:sub(1, #me.name + 1) == me.name .. " " then me.name = oldName end
-    store.source = me
+    local name = source.name or "?"
+    return source.realm and (name .. " - " .. source.realm) or name
 end
 
 local function GetSyncStore()
     if not ns.db or not ns.db.global then return nil end
     local store = ns.db.global.uiSync or {}
     ns.db.global.uiSync = store
-
-    -- older formats: one flat snapshot, then one snapshot per character
-    if store.savedAt and not store.characters and not store.snapshot then
-        -- editModeLayoutIndex is not carried over: it was an index into the wrong list
-        store.snapshot = {
-            cvars = store.cvars, editModeLayout = store.editModeLayout,
-            chat = store.chat, bags = store.bags, savedAt = store.savedAt,
-        }
-        store.source = store.savedBy and { legacy = store.savedBy } or nil
-        store.cvars, store.editModeLayout, store.editModeLayoutIndex = nil, nil, nil
-        store.chat, store.bags, store.savedAt, store.savedBy = nil, nil, nil, nil
-    end
-    if store.characters then
-        local legacy = type(store.source) == "string" and store.source or nil
-        store.snapshot = legacy and store.characters[legacy] or nil
-        store.source = legacy and { legacy = legacy } or nil
-        store.characters = nil
-    end
-
-    ClaimLegacySource(store)
     return store
 end
 
@@ -854,7 +794,7 @@ local function CheckDurability()
     if not (db and db.durabilityWarning) then return end
     local lowest = LowestDurability()
     if not lowest then return end
-    local threshold = db.durabilityThreshold or 25
+    local threshold = db.durabilityThreshold or 50
     if lowest <= threshold then
         if not durabilityWarned then
             durabilityWarned = true
@@ -1050,12 +990,12 @@ end
 
 --------------------------------------------------
 -- 9. NAMEPLATE COMBO POINTS
--- Combo point gems (Core.lua) under the target nameplate's health bar; Forever has no nameplate
--- combo bar. The count can be secret: each gem is fed the raw count. A readable count hides the row
--- at zero and flashes gained points.
+-- Combo points (Core.lua: Blizzard's points, or FlareUI's gem while the count is secret) under the
+-- target nameplate's health bar; Forever loads no nameplate combo bar. A readable count hides the
+-- row at zero.
 --------------------------------------------------
-local NP_COMBO_SIZE     = 16   -- the socket's side
-local NP_COMBO_SPACING  = 15   -- the rims nearly touch; the sockets' shadows overlap
+local NP_COMBO_SIZE     = 14   -- the point's side
+local NP_COMBO_SPACING  = ns.ComboPointStep(NP_COMBO_SIZE)   -- Blizzard's art never touches its neighbour
 local NP_COMBO_OFFSET_Y = -5   -- below the health bar, clear of the aggro glow (negative = down)
 local NP_COMBO_SCALE    = 1.1  -- on top of the nameplate's own scale
 local NP_COMBO_MAX      = 10
@@ -1076,7 +1016,7 @@ function Tweaks:GetNameplateAddon()
     for _, entry in ipairs(NAMEPLATE_ADDONS) do
         if C_AddOns.IsAddOnLoaded(entry[1]) then return entry[2] end
     end
-    -- ElvUI's nameplates are one of its modules and can be switched off
+    -- a UI suite whose nameplates are a module that can be switched off
     local E = C_AddOns.IsAddOnLoaded("ElvUI") and _G.ElvUI and _G.ElvUI[1]
     if type(E) == "table" and type(E.private) == "table" and type(E.private.nameplates) == "table"
         and E.private.nameplates.enable then
@@ -1088,7 +1028,7 @@ local function LayoutComboRow(row, count)
     for i = 1, count do
         local gem = row.gems[i]
         if not gem then
-            gem = ns.CreateComboGem(row, i, NP_COMBO_SIZE)
+            gem = ns.CreateComboPoint(row, i, NP_COMBO_SIZE)
             row.gems[i] = gem
         end
         gem:ClearAllPoints()
@@ -1150,10 +1090,8 @@ local function UpdateNameplateCombo(_, event, _, powerToken)
         row:SetPoint("TOP", anchor, "BOTTOM", 0, NP_COMBO_OFFSET_Y)
         row:SetFrameLevel(anchor:GetFrameLevel() + 5)
     end
-    for i = 1, max do row.gems[i].lit:SetValue(points) end
-    if last and row.lastPoints and row.lastPoints > last then
-        for i = last + 1, math_min(row.lastPoints, max) do row.gems[i].flash:Restart() end
-    end
+    -- Blizzard's points (Core.lua), animated except right after a target change
+    for i = 1, max do ns.SetComboPoint(row.gems[i], points, last ~= nil) end
     row:Show()
 end
 
@@ -1223,10 +1161,18 @@ local function GetQuestTag(plate)
     return tag
 end
 
--- The plate's level box when it shows, otherwise the health bar
+-- Where the tag sits: the plate's level box when it shows, otherwise the health bar. The second
+-- return is what sizes and layers it: the level box whenever there is one (with Hide Level it is only
+-- invisible, so the tag keeps its usual size and stays above the plate), otherwise the health bar.
 local function QuestTagAnchor(plate)
     local unitFrame = plate.UnitFrame
     local level = unitFrame and unitFrame.PlayerLevelDiffFrame
+    local db = GetDb()
+    if db and db.nameplateHideLevel then
+        local bar = PlateAnchor(plate)
+        if level and not level:IsForbidden() then return bar, level end
+        return bar, bar
+    end
     if level and not level:IsForbidden() then
         if not questLevelHooked[level] then
             questLevelHooked[level] = true
@@ -1239,9 +1185,10 @@ local function QuestTagAnchor(plate)
             level:HookScript("OnShow", Replace)
             level:HookScript("OnHide", Replace)
         end
-        if level:IsShown() then return level end
+        if level:IsShown() then return level, level end
     end
-    return PlateAnchor(plate)
+    local bar = PlateAnchor(plate)
+    return bar, bar
 end
 
 function UpdateQuestTag(unit)
@@ -1255,15 +1202,16 @@ function UpdateQuestTag(unit)
         if questTags[plate] then questTags[plate]:Hide() end
         return
     end
-    local tag, anchor = GetQuestTag(plate), QuestTagAnchor(plate)
+    local tag = GetQuestTag(plate)
+    local anchor, look = QuestTagAnchor(plate)
     -- the box's height in the tag's own units (the level box does not share the plate's scale)
-    local size = anchor:GetHeight() * anchor:GetEffectiveScale() / tag:GetEffectiveScale() * QUEST_TAG_HEIGHT
+    local size = look:GetHeight() * look:GetEffectiveScale() / tag:GetEffectiveScale() * QUEST_TAG_HEIGHT
     if not (size > 0) then size = QUEST_TAG_SIZE end
     tag:SetSize(size * QuestTagAspect(), size)
     tag:ClearAllPoints()
     tag:SetPoint("CENTER", anchor, "RIGHT", 0, 0)
-    tag:SetFrameStrata(anchor:GetFrameStrata())   -- the level box draws at HIGH
-    tag:SetFrameLevel(anchor:GetFrameLevel() + 5)
+    ns.CopyStrata(tag, look)   -- the level box draws at HIGH
+    tag:SetFrameLevel(look:GetFrameLevel() + 5)
     tag:Show()
 end
 
@@ -1311,6 +1259,60 @@ local function ApplyQuestTags()
         local unit = plate.unitToken
         if unit and canaccessvalue(unit) then questUnits[unit] = true end
     end
+    UpdateAllQuestTags()
+end
+
+--------------------------------------------------
+-- 9c. HIDE LEVEL
+-- Blizzard's level box on the right of a nameplate goes invisible, and the health bar takes its room
+-- back after each of Blizzard's layouts. Blizzard's own check for the box is left alone (replacing it
+-- would taint the plates, whose values can be secret); the box only loses its alpha.
+--------------------------------------------------
+local levelHooked = {}   -- plate unit frames whose layout is followed
+local levelEvents
+
+-- the health bar back to the plate's right edge (Blizzard's NamePlateUnitFrameMixin:UpdateAnchors
+-- stops it short of the box)
+local function StretchHealthBar(unitFrame)
+    local db = GetDb()
+    if not (db and db.nameplateHideLevel) or unitFrame:IsForbidden() then return end
+    local container, cast = unitFrame.HealthBarsContainer, unitFrame.CastBarsContainer
+    if not (container and cast) or container:IsForbidden() then return end
+    local spacing = _G.NamePlateSetupOptions and _G.NamePlateSetupOptions.castBarToHealthBarSpacing or 0
+    pcall(container.SetPoint, container, "BOTTOMRIGHT", cast, "TOPRIGHT", 0, spacing)
+end
+
+local function ApplyHideLevel(plate)
+    local unitFrame = plate and plate.UnitFrame
+    if not unitFrame or unitFrame:IsForbidden() then return end
+    local level = unitFrame.PlayerLevelDiffFrame
+    if not level or level:IsForbidden() then return end
+    local db = GetDb()
+    local on = db and db.nameplateHideLevel and not Tweaks:GetNameplateAddon()
+    level:SetAlpha(on and 0 or 1)
+    if not levelHooked[unitFrame] and type(unitFrame.UpdateAnchors) == "function" then
+        levelHooked[unitFrame] = true
+        hooksecurefunc(unitFrame, "UpdateAnchors", StretchHealthBar)
+    end
+    if on then StretchHealthBar(unitFrame) end
+end
+
+local function ApplyHideLevelAll()
+    local db = GetDb()
+    local on = db and db.nameplateHideLevel and not Tweaks:GetNameplateAddon()
+    if on and not levelEvents then
+        levelEvents = CreateFrame("Frame")
+        levelEvents:SetScript("OnEvent", function(_, _, unit)
+            if not canaccessvalue(unit) then return end
+            ApplyHideLevel(C_NamePlate.GetNamePlateForUnit(unit))
+        end)
+    end
+    if levelEvents then
+        if on then levelEvents:RegisterEvent("NAME_PLATE_UNIT_ADDED") else levelEvents:UnregisterAllEvents() end
+    end
+    -- switched off, a plate gets the box's room back at Blizzard's next layout of it (calling that
+    -- layout from here would taint the plate)
+    for _, plate in ipairs(C_NamePlate.GetNamePlates()) do ApplyHideLevel(plate) end
     UpdateAllQuestTags()
 end
 
@@ -1409,29 +1411,6 @@ end
 
 local function InitTrainAll()
     EventUtil.ContinueOnAddOnLoaded("Blizzard_TrainerUI", CreateTrainAll)
-end
-
---------------------------------------------------
--- 11d. QUEST TRACKER IN BOSS FIGHTS
--- Hidden from ENCOUNTER_START to ENCOUNTER_END. A tracker with an item button is protected in combat,
--- so it is made invisible at once and hidden when combat ends.
---------------------------------------------------
-local inEncounter, trackerHidden, trackerAlpha = false, false, 1
-
-local function ApplyTrackerHide()
-    local tracker = _G.ObjectiveTrackerFrame
-    local db = GetDb()
-    if not tracker then return end
-    local hide = (inEncounter and db and db.hideTrackerInBoss) or false
-    if hide == trackerHidden then return end
-    trackerHidden = hide
-    if hide then
-        trackerAlpha = tracker:GetAlpha()
-        tracker:SetAlpha(0)
-    else
-        tracker:SetAlpha(trackerAlpha)
-    end
-    ns.HideFrameSecurely(tracker, hide)
 end
 
 --------------------------------------------------
@@ -1555,15 +1534,84 @@ local function InitLayoutPerMode()
     if manager and manager.IsInitialized and manager:IsInitialized() then TryRestore() end
 end
 
-local function InitBossTracker()
-    local events = CreateFrame("Frame")
-    events:RegisterEvent("ENCOUNTER_START")
-    events:RegisterEvent("ENCOUNTER_END")
-    events:RegisterEvent("PLAYER_ENTERING_WORLD")   -- a missed ENCOUNTER_END (disconnect, reload)
-    events:SetScript("OnEvent", function(_, event)
-        inEncounter = event == "ENCOUNTER_START"
-        ApplyTrackerHide()
-    end)
+--------------------------------------------------
+-- 11f. /way MAP PINS
+-- "/way 52.3 48.1 [note]" pins the current map; "/way Zone Name 52 48" looks the zone up by name.
+--------------------------------------------------
+local mapNameCache
+local function GetMapIDByName(targetName)
+    local target = targetName:lower():match("^%s*(.-)%s*$")
+    if target == "" then return nil end
+    if not mapNameCache then
+        mapNameCache = {}
+        for mapID = 1, 4000 do
+            local info = C_Map.GetMapInfo(mapID)
+            if info and info.name then
+                local key = info.name:lower()
+                if not mapNameCache[key] then mapNameCache[key] = mapID end
+            end
+        end
+    end
+    return mapNameCache[target]
+end
+
+local function HandleWay(msg)
+    local db = GetDb()
+    if not db or not db.way then
+        print("|cffff0000FlareUI:|r " .. L["/way is off in the Quality of Life settings."])
+        return
+    end
+
+    msg = (msg or ""):match("^%s*(.-)%s*$")
+    if msg == "" then
+        print("|cff00ff00FlareUI:|r " .. L["/way usage:"])
+        print("  /way 50.5 40.2  " .. L["(current zone)"])
+        print("  /way Elwynn Forest 40 50  " .. L["(named zone)"])
+        print("  /way #1429 40 50  " .. L["(map ID)"])
+        return
+    end
+
+    local zonePart, xStr, yStr = msg:match("^(.*%S)%s+(%d+%.?%d*)%s*[,%s]%s*(%d+%.?%d*)$")
+    if not zonePart then xStr, yStr = msg:match("^(%d+%.?%d*)%s*[,%s]%s*(%d+%.?%d*)$") end
+    if not xStr or not yStr then
+        print("|cffff0000FlareUI:|r " .. L["Invalid coordinates. Try |cffffff00/way|r for usage."])
+        return
+    end
+
+    local mapID
+    if zonePart then
+        if zonePart:match("^#%d+$") then
+            mapID = tonumber(zonePart:sub(2))
+        else
+            mapID = GetMapIDByName(zonePart)
+            if not mapID then print("|cffff0000FlareUI:|r " .. L["Could not find a map named '%s'."]:format(zonePart)) return end
+        end
+    else
+        mapID = C_Map.GetBestMapForUnit("player")
+    end
+    if not mapID then print("|cffff0000FlareUI:|r " .. L["Could not determine the current map."]) return end
+    if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(mapID) then
+        print("|cffff0000FlareUI:|r " .. L["Map pins are not allowed on this map."])
+        return
+    end
+
+    local x, y = tonumber(xStr) / 100, tonumber(yStr) / 100
+    if x > 1 or y > 1 then print("|cffff0000FlareUI:|r " .. L["Coordinates must be between 0 and 100."]) return end
+
+    C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
+    C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+
+    local mapInfo = C_Map.GetMapInfo(mapID)
+    local mapName = mapInfo and mapInfo.name or ("Map #" .. mapID)
+    print(string.format("|cff00ff00FlareUI:|r " .. L["Pin set for %s at %.1f, %.1f"], mapName, tonumber(xStr), tonumber(yStr)))
+end
+
+local function InitWay()
+    local db = GetDb()
+    if db and db.way and not SLASH_FLAREWAY1 then
+        SLASH_FLAREWAY1 = "/way"
+        SlashCmdList["FLAREWAY"] = HandleWay
+    end
 end
 
 --------------------------------------------------
@@ -1579,8 +1627,8 @@ function Tweaks:Refresh()
     ApplyAddonDrawer()
     ApplyNameplateCombo()
     ApplyQuestTags()
+    ApplyHideLevelAll()
     UpdateTrainAll()
-    ApplyTrackerHide()
     if MerchantSellAllJunkButton and MerchantSellAllJunkButton:IsShown() then
         local db = GetDb()
         if db and db.sellJunk then MerchantSellAllJunkButton:Hide() else MerchantSellAllJunkButton:Show() end
@@ -1601,10 +1649,11 @@ function Tweaks:Init()
     InitHide()
     InitAutoDelete()
     InitTrainAll()
-    InitBossTracker()
     InitBagTooltip()
+    InitWay()
     InitLayoutPerMode()
     ApplyNameplateCombo()
     ApplyQuestTags()
+    ApplyHideLevelAll()
     UnclampPartyFrame()
 end

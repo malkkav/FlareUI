@@ -2,6 +2,13 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
+-- DAMAGE METER
+-- Blizzard's damage meter in FlareUI's look: skinned windows, header and fonts, group buttons
+-- (ready check, countdown), a Threat tab, a live combat timer, the chat's size, and FlareUI's own
+-- visibility with show on mouseover.
+--------------------------------------------------
+
+--------------------------------------------------
 -- 1. MODULE REGISTRATION
 --------------------------------------------------
 ns.DamageMeter = ns.DamageMeter or {}
@@ -103,6 +110,27 @@ local function IsEditModeActive()
     return _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
 end
 
+-- Settings > Damage Meter open: the meter shows whatever its visibility (Frame Opacity can be seen).
+-- Blizzard re-checks its visibility on combat and group changes, so it is kept shown after each.
+function DamageMeter:SetSettingsPreview(on)
+    local meter = _G.DamageMeter
+    on = on and true or false
+    if not meter or self.settingsPreview == on then return end
+    self.settingsPreview = on
+    if not self.previewHooked and type(meter.UpdateShownState) == "function" then
+        self.previewHooked = true
+        hooksecurefunc(meter, "UpdateShownState", function(m)
+            if DamageMeter.settingsPreview and not InCombatLockdown() then m:Show() end
+        end)
+    end
+    if InCombatLockdown() then return end
+    if on then
+        meter:Show()
+    elseif type(meter.UpdateShownState) == "function" then
+        meter:UpdateShownState()
+    end
+end
+
 -- A session window part through its getter, or its key
 local function GetWindowPart(window, getterName, fallbackKey)
     if not window then return nil end
@@ -192,7 +220,7 @@ local function UpdateSkinFrame(window, db)
     skin:ClearAllPoints()
     skin:SetPoint("BOTTOMLEFT", window, "BOTTOMLEFT", -padding, -padding)
     skin:SetPoint("TOPRIGHT", window, "TOPRIGHT", padding, padding)
-    skin:SetFrameStrata(window:GetFrameStrata())
+    ns.CopyStrata(skin, window)
     skin:SetFrameLevel(math_max((window:GetFrameLevel() or 1) - 1, 0))
 
     -- the chat frame's look: Blizzard's dark dialog background inside the chosen border
@@ -248,7 +276,7 @@ local function UpdateSourceWindowSkin(window, db)
     skin:ClearAllPoints()
     skin:SetPoint("BOTTOMLEFT", sw, "BOTTOMLEFT", -padding, -padding)
     skin:SetPoint("TOPRIGHT", sw, "TOPRIGHT", padding, padding)
-    skin:SetFrameStrata(sw:GetFrameStrata())
+    ns.CopyStrata(skin, sw)
     skin:SetFrameLevel(math_max((sw:GetFrameLevel() or 1) - 1, 0))
 
     local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
@@ -292,10 +320,7 @@ function GROUP_BUTTONS.Shown(db)
 end
 
 function GROUP_BUTTONS.Paint(btn, hover)
-    local c = ICON_COLOR
-    local r, g, b = c.r, c.g, c.b
-    if hover then r, g, b = LightenColor(r, g, b, 0.3) end
-    btn.FlareUI_Icon:SetVertexColor(r, g, b, c.a or 1)
+    ns.BronzeIcon.Paint(btn.FlareUI_Icon, ICON_COLOR, hover)
 end
 
 function GROUP_BUTTONS.Get(window, key)
@@ -306,9 +331,9 @@ function GROUP_BUTTONS.Get(window, key)
     local btn = CreateFrame("Button", nil, window)
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     local icon = btn:CreateTexture(nil, "OVERLAY", nil, 7)
-    icon:SetTexture(def.icon)
     icon:SetSize(ICON_DRAW_SIZE[key], ICON_DRAW_SIZE[key])
     icon:SetPoint("CENTER")
+    ns.BronzeIcon.Apply(icon, def.icon, ICON_COLOR)
     btn.FlareUI_Icon = icon
     btn:SetScript("OnEnter", function(self) GROUP_BUTTONS.Paint(self, true) end)
     btn:SetScript("OnLeave", function(self) GROUP_BUTTONS.Paint(self, false) end)
@@ -352,7 +377,7 @@ function GROUP_BUTTONS.Layout(window, db, ref, box, levelOf)
         -- slots 0 and 1 are the settings and segments icons
         btn:SetPoint("CENTER", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE / 2 + (slot + 1) * ICON_SPACING), ROW_CENTER_Y)
         if levelOf then
-            btn:SetFrameStrata(levelOf:GetFrameStrata())
+            ns.CopyStrata(btn, levelOf)
             btn:SetFrameLevel(levelOf:GetFrameLevel())
         end
         btn:Show()
@@ -519,9 +544,7 @@ local function SetupCustomIcon(btn, iconPath, hideSessionName, drawSize, yOfs)
     btn.FlareUI_Icon:ClearAllPoints()
     btn.FlareUI_Icon:SetPoint("CENTER", btn, "CENTER", 0, yOfs or 0)
     btn.FlareUI_Icon:SetSize(drawSize or ICON_SIZE, drawSize or ICON_SIZE)
-    btn.FlareUI_Icon:SetTexture(iconPath)
-    local c = ICON_COLOR
-    btn.FlareUI_Icon:SetVertexColor(c.r, c.g, c.b, c.a or 1)
+    ns.BronzeIcon.Apply(btn.FlareUI_Icon, iconPath, ICON_COLOR)
     btn.FlareUI_Icon:Show()
 
     if not btn.FlareUI_IconHoverHooked then
@@ -529,13 +552,12 @@ local function SetupCustomIcon(btn, iconPath, hideSessionName, drawSize, yOfs)
         btn:HookScript("OnEnter", function(self)
             local db = GetDb()
             if not db or db.hideHeader then return end
-            local hR, hG, hB = LightenColor(ICON_COLOR.r, ICON_COLOR.g, ICON_COLOR.b, 0.3)
-            if self.FlareUI_Icon then self.FlareUI_Icon:SetVertexColor(hR, hG, hB, ICON_COLOR.a) end
+            if self.FlareUI_Icon then ns.BronzeIcon.Paint(self.FlareUI_Icon, ICON_COLOR, true) end
         end)
         btn:HookScript("OnLeave", function(self)
             local db = GetDb()
             if not db or db.hideHeader then return end
-            if self.FlareUI_Icon then self.FlareUI_Icon:SetVertexColor(ICON_COLOR.r, ICON_COLOR.g, ICON_COLOR.b, ICON_COLOR.a) end
+            if self.FlareUI_Icon then ns.BronzeIcon.Paint(self.FlareUI_Icon, ICON_COLOR, false) end
         end)
     end
 end
@@ -974,7 +996,8 @@ local function ToggleThreatViews()
     for window, view in pairs(views) do SetView(window, not view.showing) end
 end
 
--- The radial menu's "Toggle Threat Meter" runs this
+-- The radial menu's "Toggle Threat Meter" and the key binding (Bindings.xml) run this
+BINDING_NAME_FLAREUI_THREAT = L["Toggle Threat Meter"]
 function FlareUI_ToggleThreatMeter()
     if next(views) then
         ToggleThreatViews()
@@ -1238,6 +1261,7 @@ function DamageMeter:Refresh()
 
     local db = GetDb()
     if not db or not db.enabled then return end
+    self:SetupMouseover()
     -- several events can ask in the same frame
     local now = GetTime()
     if self._lastRefresh == now then return end
@@ -1247,7 +1271,14 @@ function DamageMeter:Refresh()
         self:ApplyToWindow(window)
     end
     HookChatSize()
-    MatchChatSize()
+    -- Match chat size switched off: Edit Mode's own Frame Width / Height again
+    if db.matchChatSize then
+        MatchChatSize()
+        self.sizeMatched = true
+    elseif self.sizeMatched then
+        self.sizeMatched = nil
+        self:RestoreEditModeSize()
+    end
     ApplyThreatKey()
 
     self._pendingRefresh = false
@@ -1275,6 +1306,98 @@ end
 
 function DamageMeter:PLAYER_ENTERING_WORLD()
     C_Timer.After(0.5, function() self:Refresh() end)
+end
+
+--------------------------------------------------
+-- 17b. VISIBILITY AND SHOW ON MOUSEOVER (Settings > Damage Meter)
+-- FlareUI's own visibility, applied after each of Blizzard's checks: it overrules the meter's Edit Mode
+-- dropdown (a preset layout, such as the one Blizzard picks when gamepad mode ends, cannot save that
+-- one). Show on Mouseover: while the visibility hides the meter, it stays up but invisible and shows
+-- at once under the mouse. Blizzard's own switch for the meter (off) still hides it.
+--------------------------------------------------
+local VISIBILITY = {
+    always = function() return true end,
+    combat = function(meter) return meter:IsPlayerInCombat() end,
+    hidden = function() return false end,
+    group  = function(meter) return meter:IsPlayerInGroup() end,
+}
+local mouseoverDriver = CreateFrame("Frame")
+mouseoverDriver:Hide()
+
+local function MeterUnderMouse(meter)
+    if meter:IsMouseOver() then return true end
+    local over = false
+    if type(meter.ForEachSessionWindow) == "function" then
+        meter:ForEachSessionWindow(function(window) if window:IsMouseOver() then over = true end end)
+    end
+    return over
+end
+
+-- The bags or the quest log (the world map on Forever) open over the meter's place: no reveal then
+local function PanelsInTheWay()
+    if _G.WorldMapFrame and _G.WorldMapFrame:IsShown() then return true end
+    if _G.ContainerFrameCombinedBags and _G.ContainerFrameCombinedBags:IsShown() then return true end
+    for i = 1, _G.NUM_CONTAINER_FRAMES or 0 do
+        local bag = _G["ContainerFrame" .. i]
+        if bag and bag:IsShown() then return true end
+    end
+    return false
+end
+
+mouseoverDriver:SetScript("OnUpdate", function(self)
+    local meter = _G.DamageMeter
+    if not (meter and meter.FlareUI_MouseHidden) then self:Hide() return end
+    meter:SetAlpha((MeterUnderMouse(meter) and not PanelsInTheWay()) and 1 or 0)
+end)
+
+-- Blizzard's switch for the meter is on and the meter can be used here
+local function MeterAllowed()
+    if C_CVar.GetCVarBool and not C_CVar.GetCVarBool("damageMeterEnabled") then return false end
+    if C_DamageMeter and C_DamageMeter.IsDamageMeterAvailable and not C_DamageMeter.IsDamageMeterAvailable() then return false end
+    return true
+end
+
+local applying = false
+local function ApplyVisibility(meter)
+    local db = GetDb()
+    if applying or not (db and db.enabled) then return end
+    applying = true
+    local mouseHidden = false
+    local editing = type(meter.IsEditing) == "function" and meter:IsEditing()
+    if editing or DamageMeter.settingsPreview then
+        meter:Show()
+    elseif not MeterAllowed() then
+        meter:Hide()
+    elseif (VISIBILITY[db.visibility] or VISIBILITY.always)(meter) then
+        meter:Show()
+    elseif db.showOnMouseover then
+        meter:Show()
+        mouseHidden = true
+    else
+        meter:Hide()
+    end
+    meter.FlareUI_MouseHidden = mouseHidden or nil
+    if mouseHidden then
+        meter:SetAlpha((MeterUnderMouse(meter) and not PanelsInTheWay()) and 1 or 0)
+        mouseoverDriver:Show()
+    else
+        meter:SetAlpha(1)
+    end
+    applying = false
+end
+
+function DamageMeter:SetupMouseover()
+    local meter = _G.DamageMeter
+    if not meter or self.mouseoverHooked or type(meter.UpdateShownState) ~= "function" then return end
+    self.mouseoverHooked = true
+    hooksecurefunc(meter, "UpdateShownState", ApplyVisibility)
+    meter:UpdateShownState()
+end
+
+-- the settings page changed the visibility or the mouseover
+function DamageMeter:ApplyVisibility()
+    local meter = _G.DamageMeter
+    if meter and type(meter.UpdateShownState) == "function" then meter:UpdateShownState() end
 end
 
 --------------------------------------------------

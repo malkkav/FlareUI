@@ -1,4 +1,12 @@
 local _, ns = ...
+local L = ns.L
+
+--------------------------------------------------
+-- ACTION BARS
+-- Blizzard's action bars in FlareUI's look: Blizzard's slot art on every button, scaling, hotkey
+-- and count text, range and mana colouring, and the zone ability buttons. Also the Fake Cooldown
+-- Manager (bars shown as click-through cooldown displays) and auto-paging by stance or form.
+--------------------------------------------------
 
 --------------------------------------------------
 -- 1. MODULE REGISTRATION
@@ -193,7 +201,7 @@ end
 -- 8. TYPOGRAPHY & TEXT
 --------------------------------------------------
 -- Shortened from the raw binding key ("SHIFT-BUTTON4"), which is never localised. The rules run in
--- order: NUMPAD before PLUS, SPACEBAR before SPACE.
+-- order: NUMPAD before PLUS, SPACEBAR before SPACE. Mouse buttons are M1-M5.
 local KEY_SHORT = {
     { "ALT%-", "A" }, { "CTRL%-", "C" }, { "SHIFT%-", "S" }, { "META%-", "M" },
     { "NUMPAD", "N" },
@@ -201,7 +209,7 @@ local KEY_SHORT = {
     { "BACKSPACE", "BS" }, { "CAPSLOCK", "Cp" }, { "CLEAR", "Cl" }, { "DELETE", "Del" },
     { "MOUSEWHEELDOWN", "WD" }, { "MOUSEWHEELUP", "WU" },
     { "NUMLOCK", "NL" }, { "PAGEDOWN", "PD" }, { "PAGEUP", "PU" },
-    { "SCROLLLOCK", "SL" }, { "SPACEBAR", "Sp" }, { "SPACE", "Sp" }, { "TAB", "Tb" },
+    { "SCROLLLOCK", "SL" }, { "SPACEBAR", "SP" }, { "SPACE", "SP" }, { "TAB", "Tb" },
     { "DOWNARROW", "Dn" }, { "LEFTARROW", "Lf" }, { "RIGHTARROW", "Rt" }, { "UPARROW", "Up" },
     { "INSERT", "Ins" }, { "HOME", "Hm" }, { "END", "En" },
 }
@@ -210,7 +218,7 @@ local function ShortenKey(key)
     if not key or key == "" then return key end
     key = key:upper()
     key = key:gsub(" ", "")
-    key = key:gsub("BUTTON(%d+)", "B%1")
+    key = key:gsub("BUTTON(%d+)", "M%1")
     for _, rule in ipairs(KEY_SHORT) do
         key = key:gsub(rule[1], rule[2])
     end
@@ -427,7 +435,7 @@ end
 
 local function ForEachFCMBar(fn)
     local fcm = ns.db.profile.fcm
-    if not fcm then return end
+    if not (fcm and fcm.enabled) then return end
     for _, data in ipairs(BAR_DATA) do
         if data.key:match("^bar[1-8]$") then
             local barConfig = fcm.bars[data.key]
@@ -458,6 +466,19 @@ local function OnCursorChanged()
 end
 
 -- Setup Mode: the FCM bars take clicks and show
+-- Fake CM Setup Mode: the FCM bars take clicks (session only). /fui cm, the addon compartment's right
+-- click and the Action Bars page.
+function ns.ToggleFCMSetupMode()
+    if InCombatLockdown() then
+        print("|cffff0000FlareUI:|r " .. L["Cannot toggle setup mode in combat."])
+        return
+    end
+    local fcm = ns.db.profile.fcm
+    fcm.setupModeEnabled = not fcm.setupModeEnabled
+    ActionBars:SetFCM_UnlockMode(fcm.setupModeEnabled)
+    print("|cff00ff00FlareUI:|r " .. (fcm.setupModeEnabled and L["Fake CM setup mode on."] or L["Fake CM setup mode off."]))
+end
+
 function ActionBars:SetFCM_UnlockMode(enabled)
     if InCombatLockdown() then return false end
     self.fcm.unlockMode = enabled
@@ -545,13 +566,6 @@ end
 -- 12. PUBLIC API
 --------------------------------------------------
 
-local function UpdateCooldownViewers()
-    local fcm = ns.db.profile.fcm
-    if not fcm then return end
-    ns.HideFrameSecurely(_G.UtilityCooldownViewer, fcm.hideUtilityCooldownViewer)
-    ns.HideFrameSecurely(_G.EssentialCooldownViewer, fcm.hideEssentialCooldownViewer)
-end
-
 -- Button text draws at frame level 500, so the end caps' container goes above that (the caps follow
 -- their container's level). Out of combat only; the original level is kept for the way back.
 local GRYPHON_LEVEL_ABOVE = 501
@@ -571,6 +585,8 @@ end
 local function KeepEndCapsWithBar(bar)
     local caps = bar and bar.EndCaps
     if not caps or caps:IsShown() or not bar:IsVisible() then return end
+    -- Blizzard keeps them hidden in the Gamepad UI
+    if ns.IsGamepadUI() then return end
     local faction = UnitFactionGroup("player")
     if not faction or faction == "Neutral" then return end
     if InCombatLockdown() and caps:IsProtected() then return end
@@ -602,7 +618,6 @@ function ActionBars:Refresh()
 
     UpdateAutoPushSpells(db)
 
-    UpdateCooldownViewers()
     UpdateGryphonLayer()
     UpdateButtonArtAll()
     RefreshAllScales()
@@ -622,6 +637,7 @@ function ActionBars:Refresh()
         OnUpdateUsable(btn)
     end
     UpdatePetColors()
+    if ns.ProcGlow then ns.ProcGlow:Refresh() end
 
     -- FCM: click-through unless Setup Mode is on; drag detection while any FCM bar exists
     if ns.db.profile.fcm then

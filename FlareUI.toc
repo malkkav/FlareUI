@@ -1,11 +1,11 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 1.6.1
+## Version: 2.0
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
 ## Notes: Your friendly UI overhowl
-## SavedVariables: FlareUI_DB
+## SavedVariables: FlareUI2_DB, FlareUI_DB
 ## IconTexture: Interface\AddOns\FlareUI\Media\Art\Icon.png
 ## AddonCompartmentFunc: FlareUI_OnAddonCompartmentClick
 ## AddonCompartmentFuncOnEnter: FlareUI_OnAddonCompartmentEnter
@@ -33,6 +33,7 @@ Locales\zhCN.lua
 Locales\zhTW.lua
 
 Core.lua
+Import.lua
 Dialog.lua
 GamepadMode.lua
 Media.lua
@@ -42,10 +43,14 @@ EditModeOverlays.lua
 Modules\Chat.lua
 Modules\DamageMeter.lua
 Modules\ActionBars.lua
+Modules\ProcGlow.lua
 Modules\XPBar.lua
 Modules\Visibility.lua
 Modules\UnitFrames.lua
+Modules\UnitFramesRing.lua
 Modules\PartyFrames.lua
+Modules\RaidFrames.lua
+Modules\BossFrames.lua
 Modules\ResourceBars.lua
 Modules\Totems.lua
 Modules\Auras.lua
@@ -58,20 +63,25 @@ Modules\Tooltips.lua
 Modules\ObjectiveTracker.lua
 Modules\RadialMenu.lua
 
-# Configuration (Interface)
-Options\BaseConfig.lua
-Options\ChatConfig.lua
-Options\DamageMeterConfig.lua
-Options\ActionBarsConfig.lua
-Options\VisibilityConfig.lua
-Options\UnitFramesConfig.lua
-Options\AurasConfig.lua
-Options\MinimapConfig.lua
-Options\TweaksConfig.lua
-Options\TooltipsConfig.lua
-Options\ObjectiveTrackerConfig.lua
-Options\IconPicker.lua
-Options\RadialEditor.lua
-Options\RadialMenuConfig.lua
-Options\ControllerNav.lua
-Options\Welcome.lua
+# Settings panel
+Launcher.lua
+Settings\Welcome.lua
+Settings\RadialEditor.lua
+Settings\Copy.lua
+Settings\WhatsNew.lua
+Settings\Registry.lua
+Settings\Pictures.lua
+Settings\Pages\About.lua
+Settings\Pages\ActionBars.lua
+Settings\Pages\UnitFrames.lua
+Settings\Pages\ResourceBars.lua
+Settings\Pages\Chat.lua
+Settings\Pages\DamageMeter.lua
+Settings\Pages\Tooltips.lua
+Settings\Pages\Auras.lua
+Settings\Pages\Minimap.lua
+Settings\Pages\QuestTracker.lua
+Settings\Pages\RadialMenu.lua
+Settings\Pages\QualityOfLife.lua
+Settings\Pages\Advanced.lua
+Settings\Panel.lua

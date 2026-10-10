@@ -2,7 +2,7 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- 1. MODULE REGISTRATION
+-- RESOURCE BARS
 -- The player's resources as separate bars in the cast bar look, each its own Edit Mode frame:
 --   Health      health, incoming heals and absorbs
 --   Power       the current power in its colour; the five-second rule spark while it is mana
@@ -11,6 +11,10 @@ local L = ns.L
 --   Swing       main-hand, off-hand and ranged swing timers (PLAYER_SWING), with a range check
 -- Part of the Unit Frames module; replaces the Personal Resource Display and Blizzard's swing
 -- timers. Secret-safe: values go straight into widgets, readable() guards every Lua test.
+--------------------------------------------------
+
+--------------------------------------------------
+-- 1. MODULE REGISTRATION
 --------------------------------------------------
 ns.ResourceBars = ns.ResourceBars or {}
 local RB = ns.ResourceBars
@@ -49,22 +53,24 @@ local COLORS = {
 
 local BAR_ORDER = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged" }
 local BARS = {
-    health      = { kind = "health", label = L["Health Bar"],      default = { point = "CENTER", x = 0, y = -132 } },
-    power       = { kind = "power",  label = L["Power Bar"],       default = { point = "CENTER", x = 0, y = -152 } },
-    mana        = { kind = "mana",   label = L["Mana Bar"],        default = { point = "CENTER", x = 0, y = -168 } },
-    combo       = { kind = "combo",  label = L["Combo Points"],    default = { point = "CENTER", x = 0, y = -114 } },
-    swingMain   = { kind = "swing",  label = L["Main-Hand Swing"], default = { point = "CENTER", x = 0, y = -190 },
+    health      = { kind = "health", label = L["Health Bar"],      default = { point = "CENTER", x = 0, y = -148 } },
+    power       = { kind = "power",  label = L["Power Bar"],       default = { point = "CENTER", x = 0, y = -170 } },
+    mana        = { kind = "mana",   label = L["Druid Mana"],        default = { point = "CENTER", x = 0, y = -192 } },
+    combo       = { kind = "combo",  label = L["Combo Points"],    default = { point = "CENTER", x = 0, y = -128 } },
+    swingMain   = { kind = "swing",  label = L["Main-Hand Swing"], default = { point = "CENTER", x = 0, y = -248 },
                     swingType = SWING and SWING.MainHand, text = _G.SWING_TIMER_MAIN_HAND or "Main Hand" },
-    swingOff    = { kind = "swing",  label = L["Off-Hand Swing"],  default = { point = "CENTER", x = 0, y = -206 },
+    swingOff    = { kind = "swing",  label = L["Off-Hand Swing"],  default = { point = "CENTER", x = 0, y = -266 },
                     swingType = SWING and SWING.OffHand, text = _G.SWING_TIMER_OFF_HAND or "Off Hand" },
-    swingRanged = { kind = "swing",  label = L["Ranged Swing"],    default = { point = "CENTER", x = 0, y = -222 },
+    swingRanged = { kind = "swing",  label = L["Ranged Swing"],    default = { point = "CENTER", x = 0, y = -284 },
                     swingType = SWING and SWING.Ranged, text = _G.SWING_TIMER_RANGED or "Ranged" },
 }
 
+-- the same choices as every other "when does it show" in FlareUI (no Mouseover: these bars only display)
 local SHOW_VALUES = {
-    { text = L["Always"],                   value = "always",       isRadio = true },
-    { text = L["In Combat"],                value = "combat",       isRadio = true },
-    { text = L["In Combat or with a Target"], value = "combatTarget", isRadio = true },
+    { text = L["Always"],                       value = "always", isRadio = true },
+    { text = L["Combat"],                       value = "combat", isRadio = true },
+    { text = L["Combat + Target"],              value = "target", isRadio = true },
+    { text = L["Combat + Attackable Target"],   value = "harm",   isRadio = true },
 }
 local TEXT_VALUES = {
     { text = L["None"],            value = "none",    isRadio = true },
@@ -138,11 +144,9 @@ end
 
 local function IsAvailable(holder)
     local info = BARS[holder.key]
-    local cfg = Cfg(holder.key)
     if info.kind == "mana" then
-        if cfg.onlyWhenSecondary ~= false then return ManaIsSecondary() end
-        local max = readable(UnitPowerMax("player", MANA))
-        return max == nil or max > 0
+        -- Druid mana: only while a form puts another power on the power bar
+        return ManaIsSecondary()
     elseif info.kind == "combo" then
         return BuildsComboPoints()
     elseif info.kind == "swing" then
@@ -159,7 +163,11 @@ local function ShouldShow(holder)
     local show = cfg.show or "always"
     if show == "always" then return true end
     if InCombatLockdown() or UnitAffectingCombat("player") then return true end
-    if show == "combatTarget" and UnitExists("target") then return true end
+    if (show == "target" or show == "combatTarget") and UnitExists("target") then return true end
+    if show == "harm" and UnitExists("target") then
+        local canAttack = UnitCanAttack("player", "target")
+        if canaccessvalue(canAttack) and canAttack then return true end
+    end
     return false
 end
 
@@ -202,7 +210,7 @@ local function UpdateHealth(holder)
     local bar = holder.Bar
     bar:SetMinMaxValues(0, UnitHealthMax("player"))
     bar:SetValue(UnitHealth("player"))
-    bar:SetStatusBarColor(K.GetHealthColor("player", cfg.classColor ~= false))
+    bar:SetStatusBarColor(K.GetHealthColor("player", ns.ClassColorsOn()))
     if UnitIsDeadOrGhost("player") then
         holder.Text:SetText(UnitIsGhost("player") and K.GHOST_TEXT or K.DEAD_TEXT)
     else
@@ -236,8 +244,7 @@ local function UpdateMana(holder)
     local bar = holder.Bar
     bar:SetMinMaxValues(0, UnitPowerMax("player", MANA))
     bar:SetValue(UnitPower("player", MANA))
-    local c = _G.PowerBarColor and _G.PowerBarColor.MANA
-    if c and c.r then bar:SetStatusBarColor(c.r, c.g, c.b) else bar:SetStatusBarColor(0, 0, 1) end
+    bar:SetStatusBarColor(ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3])
     SetText(holder, "value", UnitPower("player", MANA))
 end
 
@@ -250,7 +257,7 @@ end
 
 local LayoutCombo   -- section 6
 
--- Classic: a gained point flashes its shine, only while the count is readable (as on the nameplates)
+-- Classic: Blizzard's combo points (Core.lua), animated except right after a target change
 local function UpdateCombo(holder)
     local count = ComboCount()
     if count ~= holder.count then
@@ -262,12 +269,9 @@ local function UpdateCombo(holder)
         for i = 1, count do holder.segments[i]:SetValue(points) end
         return
     end
-    for i = 1, count do holder.gems[i].lit:SetValue(points) end
-    local last = holder.lastPoints
+    local animate = holder.lastPoints ~= nil and not IsEditing()
+    for i = 1, count do ns.SetComboPoint(holder.gems[i], points, animate) end
     holder.lastPoints = (not IsEditing() and readable(points)) or nil
-    if last and holder.lastPoints and holder.lastPoints > last then
-        for i = last + 1, math_min(holder.lastPoints, count) do holder.gems[i].flash:Restart() end
-    end
 end
 
 -- Swing: the bar fills over the swing, the spark rides its edge, the time counts down
@@ -340,7 +344,7 @@ local function ApplyPreview(holder)
     bar:SetMinMaxValues(0, 1)
     if kind == "health" then
         bar:SetValue(0.75)
-        bar:SetStatusBarColor(K.GetHealthColor("player", cfg.classColor ~= false))
+        bar:SetStatusBarColor(K.GetHealthColor("player", ns.ClassColorsOn()))
         SetText(holder, cfg.text or "both", 18000, 75)
         if holder.HealBar then holder.HealBar:SetValue(0); holder.AbsorbBar:SetValue(0) end
     elseif kind == "power" then
@@ -349,8 +353,7 @@ local function ApplyPreview(holder)
         SetText(holder, "value", 60)
     elseif kind == "mana" then
         bar:SetValue(0.4)
-        local c = _G.PowerBarColor and _G.PowerBarColor.MANA
-        if c and c.r then bar:SetStatusBarColor(c.r, c.g, c.b) end
+        bar:SetStatusBarColor(ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3])
         SetText(holder, "value", 1600)
     elseif kind == "swing" then
         holder:SetScript("OnUpdate", nil)
@@ -397,16 +400,16 @@ local function ApplyFrameLook(holder, cfg)
     K.ApplyBorderStyle(holder.Border, K.GetBorderFile(cfg.border or DEFAULT_BAR_BORDER), height + 2 * K.INSET)
 end
 
--- Classic Combo Points: the nameplate gems in a row, twice the bar's height, no backdrop or border
+-- Classic Combo Points: Blizzard's points in a row, twice the bar's height, no backdrop or border
 local function LayoutClassicCombo(holder, cfg, count)
-    local size = (cfg.height or 12) * 2
-    local spacing = size * 15 / 16   -- the rims nearly touch, as on the nameplates
+    local size = cfg.classicSize or (cfg.height or 12) * 2
+    local spacing = ns.ComboPointStep(size)   -- Blizzard's art never touches its neighbour
     for i = 1, count do
         local gem = holder.gems[i]
         if gem then
-            ns.SizeComboGem(gem, size)
+            ns.SizeComboPoint(gem, size)
         else
-            gem = ns.CreateComboGem(holder, i, size, true)
+            gem = ns.CreateComboPoint(holder, i, size, true)
             holder.gems[i] = gem
         end
         gem:ClearAllPoints()
@@ -541,6 +544,37 @@ local function ApplyPosition(holder, layoutName)
     holder:SetPoint(pos.point or "CENTER", UIParent, pos.point or "CENTER", pos.x or 0, pos.y or 0)
 end
 
+-- flush: the borders overlap by a pixel; a gentle pull, and the arrow keys stay free for the last pixel
+local SNAP_DISTANCE, SNAP_GAP, SNAP_ALIGN = 10, -1, 30
+
+-- The nearest other bar this one sits just above or below (edges within SNAP_DISTANCE, centres
+-- within SNAP_ALIGN sideways): the centre it lands on, centred on the other bar and flush with it.
+-- Edit Mode calls it while the bar is dragged (FlareEditMode SetFrameSnapper), and shows the spot.
+local function SnapTarget(holder)
+    local cx = holder:GetCenter()
+    local top, bottom = holder:GetTop(), holder:GetBottom()
+    if not (cx and top and bottom) then return nil end
+    local half = (top - bottom) / 2
+    local best, bestDistance
+    for _, other in pairs(bars) do
+        if other ~= holder and other:IsShown() then
+            local ox = other:GetCenter()
+            local otop, obottom = other:GetTop(), other:GetBottom()
+            if ox and otop and obottom and math.abs(ox - cx) <= SNAP_ALIGN then
+                local below = math.abs(bottom - otop)    -- this bar resting on the other
+                local above = math.abs(obottom - top)    -- this bar hanging under the other
+                if below <= SNAP_DISTANCE and (not bestDistance or below < bestDistance) then
+                    best, bestDistance = { x = ox, y = otop + SNAP_GAP + half }, below
+                end
+                if above <= SNAP_DISTANCE and (not bestDistance or above < bestDistance) then
+                    best, bestDistance = { x = ox, y = obottom - SNAP_GAP - half }, above
+                end
+            end
+        end
+    end
+    if best then return best.x, best.y end
+end
+
 local function OnFrameMoved(holder, layoutName, point, x, y)
     local store = GetLayoutStore(layoutName)
     if not store then return end
@@ -557,6 +591,9 @@ local function CreateHolder(key)
     holder:SetFrameStrata("MEDIUM")
     holder:SetClampedToScreen(true)
     holder.editModeName = "FlareUI " .. info.label
+    for index, k in ipairs(BAR_ORDER) do
+        if k == key then holder:SetFrameLevel(10 + (#BAR_ORDER - index) * 10) end
+    end
     local level = holder:GetFrameLevel()
 
     holder.Backdrop = CreateFrame("Frame", nil, holder, "BackdropTemplate")
@@ -681,45 +718,31 @@ local function BuildSettings(key)
             Relayout(key)
         end
     end
+    -- classic combo gems have one Size; the bar's width and height wait for the bar style
+    local function classicOn() local cfg = Cfg(key); return info.kind == "combo" and cfg and cfg.classic and true or false end
+    local function classicOff() return not classicOn() end
     local settings = {
         { name = L["Show"], kind = LEM.SettingType.Dropdown, default = defaults.show or "always", values = SHOW_VALUES, get = get("show", "always"), set = set("show") },
-        { name = L["Width"], kind = LEM.SettingType.Slider, default = defaults.width or 220, minValue = 40, maxValue = 600, valueStep = 2, get = get("width", 220), set = set("width") },
-        { name = L["Height"], kind = LEM.SettingType.Slider, default = defaults.height or 14, minValue = 4, maxValue = 48, valueStep = 1, get = get("height", defaults.height or 14), set = set("height") },
-        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = K.DEFAULT_TEXTURE, values = K.BuildTextureValues(false), get = get("texture", K.DEFAULT_TEXTURE), set = set("texture") },
-        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_BAR_BORDER, values = K.BuildBorderValues(false), get = get("border", DEFAULT_BAR_BORDER), set = set("border") },
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = defaults.width or 220, minValue = 40, maxValue = 600, valueStep = 2, get = get("width", 220), set = set("width"), hidden = classicOn },
+        { name = L["Height"], kind = LEM.SettingType.Slider, default = defaults.height or 14, minValue = 4, maxValue = 48, valueStep = 1, get = get("height", defaults.height or 14), set = set("height"), hidden = classicOn },
     }
     local function add(item) settings[#settings + 1] = item end
     -- power and mana always show the value: percentages of a (possibly secret) power are unreliable
     if info.kind == "health" then
         add({ name = L["Text"], kind = LEM.SettingType.Dropdown, default = defaults.text or "both", values = TEXT_VALUES, get = get("text", defaults.text or "both"), set = set("text") })
     end
-    if info.kind == "health" or info.kind == "power" or info.kind == "mana" then
-        add({ name = L["Text Position"], kind = LEM.SettingType.Dropdown, default = "CENTER",
-              values = { { text = L["Left"], value = "LEFT", isRadio = true }, { text = L["Centre"], value = "CENTER", isRadio = true }, { text = L["Right"], value = "RIGHT", isRadio = true } },
-              get = get("textAlign", "CENTER"), set = set("textAlign") })
-    end
     if info.kind == "combo" then
-        add({ name = L["Classic Combo Points"], kind = LEM.SettingType.Checkbox, default = false, get = get("classic", false), set = set("classic") })
-    end
-    if info.kind ~= "combo" then
-        add({ name = L["Text Size"], kind = LEM.SettingType.Slider, default = defaults.textSize or 11, minValue = 7, maxValue = 24, valueStep = 1, get = get("textSize", defaults.textSize or 11), set = set("textSize") })
-    end
-    if info.kind == "health" then
-        add({ name = L["Class Color"], kind = LEM.SettingType.Checkbox, default = defaults.classColor == true, get = get("classColor", defaults.classColor == true), set = set("classColor"),
-              desc = L["The bar in your class colour. Off: the classic health green."] })
-    end
-    if info.kind == "mana" then
-        add({ name = L["Only When Mana Is Not the Main Power"], kind = LEM.SettingType.Checkbox, default = true,
-              get = get("onlyWhenSecondary", true), set = set("onlyWhenSecondary"),
-              desc = L["Shows in Bear and Cat Form (and whenever another power is on the power bar), hidden while mana is the main power."] })
+        add({ name = L["Classic Combo Points"], kind = LEM.SettingType.Checkbox, default = false, get = get("classic", false),
+              set = function(layoutName, value)
+                  set("classic")(layoutName, value)
+                  if bars[key] then LEM:RefreshFrameSettings(bars[key]) end
+              end })
+        add({ name = L["Size"], kind = LEM.SettingType.Slider, default = 24, minValue = 12, maxValue = 48, valueStep = 1,
+              get = get("classicSize", 24), set = set("classicSize"), hidden = classicOff })
     end
     if info.kind == "power" or info.kind == "mana" then
         add({ name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false, get = get("fsr", false), set = set("fsr"),
               desc = L["A spark crosses the bar for five seconds after a spell that costs mana: spirit regen comes back when it ends."] })
-    end
-    if info.kind == "swing" then
-        add({ name = L["Label"], kind = LEM.SettingType.Checkbox, default = true, get = get("label", true), set = set("label") })
-        add({ name = L["Timer"], kind = LEM.SettingType.Checkbox, default = true, get = get("timer", true), set = set("timer") })
     end
     return settings
 end
@@ -779,7 +802,7 @@ function RB:OnEvent(event, arg1, arg2, arg3)
             end
         end
     elseif event == "PLAYER_TARGET_CHANGED" then
-        if bars.combo then bars.combo.lastPoints = nil end   -- the new target's points do not flash
+        if bars.combo then bars.combo.lastPoints = nil end   -- the new target's points do not animate
         ApplyAllShown()
     else
         -- combat in or out, gear, attack speed, entering the world: everything may come or go
@@ -813,25 +836,28 @@ function RB:Refresh()
     ApplyAllShown()
 end
 
+-- Druid mana is for druids only
 local function BarOn(key)
     local cfg = Cfg(key)
+    if key == "mana" and ClassFile() ~= "DRUID" then return false end
     return cfg and cfg.enabled and true or false
 end
 
 -- loads when any bar is on
 function RB:ShouldLoad()
     local db = K and K.GetDb()
-    if not (db and db.enabled and db.resource) then return false end
+    -- its own module in the 2.0 settings (unitframes.resource.enabled), apart from the unit frames
+    if not (db and db.resource and db.resource.enabled) then return false end
     for _, key in ipairs(BAR_ORDER) do
         if BarOn(key) then return true end
     end
     return false
 end
 
--- Blizzard's versions are parked while ours are on (back after a reload). Health, power and mana
--- share the Personal Resource Display; each swing bar has its own.
+-- Blizzard's versions are parked while ours are on (back after a reload). The Personal Resource
+-- Display goes whenever the module is on (it also shows combo points); each swing bar has its own.
 local BLIZZARD_COUNTERPARTS = {
-    { addon = "Blizzard_PersonalResourceDisplay", frame = "PersonalResourceDisplayFrame", bars = { "health", "power", "mana" } },
+    { addon = "Blizzard_PersonalResourceDisplay", frame = "PersonalResourceDisplayFrame", always = true },
     { addon = "Blizzard_SwingTimer", frame = "SwingTimerMainHandFrame", bars = { "swingMain" } },
     { addon = "Blizzard_SwingTimer", frame = "SwingTimerOffHandFrame",  bars = { "swingOff" } },
     { addon = "Blizzard_SwingTimer", frame = "SwingTimerRangedFrame",   bars = { "swingRanged" } },
@@ -839,8 +865,8 @@ local BLIZZARD_COUNTERPARTS = {
 
 local function HideBlizzardCounterparts()
     for _, entry in ipairs(BLIZZARD_COUNTERPARTS) do
-        local wanted = false
-        for _, key in ipairs(entry.bars) do if BarOn(key) then wanted = true end end
+        local wanted = entry.always or false
+        for _, key in ipairs(entry.bars or {}) do if BarOn(key) then wanted = true end end
         if wanted then
             local function hide() if _G[entry.frame] then K.HardHide(entry.frame) end end
             if _G[entry.frame] then
@@ -861,6 +887,7 @@ function RB:Init()
         if BarOn(key) and (info.kind ~= "swing" or info.swingType) then
             local holder = CreateHolder(key)
             LEM:AddFrame(holder, OnFrameMoved, info.default, holder.editModeName)
+            if LEM.SetFrameSnapper then LEM:SetFrameSnapper(holder, SnapTarget) end
             LEM:AddFrameSettings(holder, BuildSettings(key))
         end
     end

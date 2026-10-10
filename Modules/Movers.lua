@@ -2,13 +2,17 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- 1. MODULE REGISTRATION
+-- MOVERS
 -- Two Edit Mode frames for pop-ups Blizzard gives no place of their own:
 --   FlareUI Loot Rolls  the Need / Greed / Pass frames (GroupLootContainer)
 --   FlareUI Toasts      Blizzard's toast stack: new recipe learned, achievements, loot won...
 -- Each shows a sample in Edit Mode. Part of Tweaks (Move Loot Rolls & Toasts).
 -- Hooks only: the loot rolls share a layout with protected frames, so they are re-anchored after
 -- Blizzard places them and nothing is written onto Blizzard's frames.
+--------------------------------------------------
+
+--------------------------------------------------
+-- 1. MODULE REGISTRATION
 --------------------------------------------------
 ns.Movers = ns.Movers or {}
 local MOV = ns.Movers
@@ -73,6 +77,7 @@ end
 local function CreateHolder(key, globalName, label, width, height)
     local holder = CreateFrame("Frame", globalName, UIParent)
     holder:SetSize(width, height)
+    holder:SetClampedToScreen(true)
     -- MEDIUM (UIParent's), under Edit Mode's selection box, which is MEDIUM at level 1000
     holder.preview = CreateFrame("Frame", nil, holder)
     holder.preview:SetAllPoints()

@@ -2,11 +2,15 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- 1. MODULE REGISTRATION
+-- UNIT FRAMES
 -- Player / target / target-of-target / focus / pet frames. Health, power and name values may be
 -- secret: they go straight into widget setters and are never inspected. Placed and tuned in Edit
 -- Mode; Blizzard's frames are parked.
 -- Main-chunk locals are near Lua's limit of 200 (locals.js): new constants go into tables.
+--------------------------------------------------
+
+--------------------------------------------------
+-- 1. MODULE REGISTRATION
 --------------------------------------------------
 ns.UnitFrames = ns.UnitFrames or {}
 local UF = ns.UnitFrames
@@ -83,6 +87,44 @@ local CAST_CHANNEL          = { 0.30, 0.65, 0.90 }
 local PLAYER_CAST_COLOR     = { 0.36, 0.56, 0.78 }   -- #5C8FC7 steel blue
 local PLAYER_CAST_CHANNEL   = { 0.50, 0.75, 0.88 }   -- #80BFE0 lighter sky for channels
 
+-- Colour palettes (Unit Frames > Colour palette): FlareUI's tones, or Blizzard's original bright ones.
+-- ApplyPalette writes the chosen one into the colour tables above and the shared ns ones, in place.
+UF.PALETTES = {
+    flareui = {
+        health = { 0.15, 0.82, 0.15 }, mana = { 0.24, 0.34, 1.00 }, grey = { 0.55, 0.55, 0.55 },
+        hostile = { 0.87, 0.27, 0.27 }, neutral = { 0.93, 0.78, 0.25 }, friendly = { 0.30, 0.78, 0.30 },
+        cast = { 0.80, 0.60, 0.36 }, castNoInterrupt = { 0.55, 0.55, 0.55 }, castChannel = { 0.30, 0.65, 0.90 },
+        playerCast = { 0.36, 0.56, 0.78 }, playerChannel = { 0.50, 0.75, 0.88 },
+    },
+    -- Blizzard's own: health green, PowerBarColor's mana, UnitSelectionColor's reactions, the cast bar's
+    -- yellow / green channel / grey uninterruptible (the player's bar the same as everyone's)
+    blizzard = {
+        health = { 0, 1, 0 }, mana = { 0, 0, 1 }, grey = { 0.5, 0.5, 0.5 },
+        hostile = { 1, 0, 0 }, neutral = { 1, 1, 0 }, friendly = { 0, 1, 0 },
+        cast = { 1, 0.7, 0 }, castNoInterrupt = { 0.7, 0.7, 0.7 }, castChannel = { 0, 1, 0 },
+        playerCast = { 1, 0.7, 0 }, playerChannel = { 0, 1, 0 },
+        texture = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Flat-Bright",
+    },
+}
+
+function UF.ApplyPalette()
+    local db = ns.db and ns.db.profile and ns.db.profile.unitframes
+    UF.palette = (db and db.palette == "blizzard") and "blizzard" or "flareui"
+    local p = UF.PALETTES[UF.palette]
+    local function set(dst, src) dst[1], dst[2], dst[3] = src[1], src[2], src[3] end
+    set(ns.HEALTH_GREEN, p.health)
+    set(ns.MANA_BLUE, p.mana)
+    set(GREY, p.grey)
+    for reaction = 1, 8 do
+        set(REACTION[reaction], reaction <= 3 and p.hostile or reaction == 4 and p.neutral or p.friendly)
+    end
+    set(CAST_COLOR, p.cast)
+    set(CAST_NOINTERRUPT, p.castNoInterrupt)
+    set(CAST_CHANNEL, p.castChannel)
+    set(PLAYER_CAST_COLOR, p.playerCast)
+    set(PLAYER_CAST_CHANNEL, p.playerChannel)
+end
+
 -- Power colours when PowerBarColor lacks one
 local POWER_FALLBACK = {
     MANA        = { 0.00, 0.00, 1.00 },
@@ -105,7 +147,8 @@ local UNITS = {
         events = { "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE" },
         globalEvents = { PLAYER_UPDATE_RESTING = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true,
                          PLAYER_FLAGS_CHANGED = "player" },
-        indicators = { rest = true, leader = true, pvp = true, heals = true },
+        indicators = { rest = true, leader = true, pvp = true, threat = true, heals = true, readyCheck = true,
+                       pvpTimer = true, statusGlow = true, threatGlow = true },
     },
     target = {
         mirrorable = true,
@@ -116,7 +159,8 @@ local UNITS = {
                          QUEST_LOG_UPDATE = true },
         castbar = true,
         comboPoints = true,
-        indicators = { leader = true, pvp = true, classification = true, quest = true, threat = true, heals = true },
+        indicators = { leader = true, pvp = true, classification = true, quest = true, threat = true, heals = true,
+                       readyCheck = true, threatGlow = true },
     },
     targettarget = {
         key = "TargetOfTarget", label = L["Target of Target"], order = 3, noRaidIcon = true,
@@ -130,7 +174,7 @@ local UNITS = {
         driver = "[@focus,exists] show; hide",
         globalEvents = { PLAYER_FOCUS_CHANGED = true },
         castbar = true,
-        indicators = { classification = true, threat = true, heals = true },
+        indicators = { classification = true, threat = true, heals = true, readyCheck = true, threatGlow = true },
     },
     focustarget = {
         key = "TargetOfFocus", label = L["Target of Focus"], order = 6, noRaidIcon = true,
@@ -190,12 +234,17 @@ local function GetUnitDb(unit)
 end
 
 -- Portrait: "none", "3d" or "class". A square as tall as the frame's inside, taken from the bars.
+-- Forever style (UnitFramesRing.lua): always a portrait, in the ring beside the frame; the bars give
+-- up only the strip the ring covers.
 local function PortraitMode(f)
     local udb = GetUnitDb(f.unit)
-    return (f.Portrait and udb and udb.portrait) or "none"
+    local mode = (f.Portrait and udb and udb.portrait) or "none"
+    if mode == "none" and ns.UFRing and ns.UFRing.Applies(f) then mode = "3d" end
+    return mode
 end
 
 local function PortraitSpace(f)
+    if ns.UFRing and ns.UFRing.Applies(f) then return ns.UFRing.BarSpace(f, INSET) end
     if PortraitMode(f) == "none" then return 0 end
     local udb = GetUnitDb(f.unit)
     return ((udb and udb.height) or 44) - 2 * INSET + PORTRAIT_GAP
@@ -209,19 +258,34 @@ local function ElementOn(key)
 end
 
 -- The frame icons, per frame in Edit Mode: udb.icons[key] = { shown, x, y, scale }. x / y offset
--- FlareUI's placement, scale is a percentage. Preview (section 9) shows the picked icon in Edit Mode.
+-- FlareUI's placement, scale is a percentage. Preview (section 9) shows every shown icon in Edit Mode.
 local ICON_UI = {
-    order = { "rest", "leader", "pvp", "classification", "quest", "raidIcon", "happiness" },
+    order = { "rest", "leader", "pvp", "pvpTimer", "classification", "quest", "raidIcon", "readyCheck",
+              "statusGlow", "threatGlow", "happiness" },
     defs = {
         rest           = { label = L["Resting"],          field = "RestIcon",  element = "rest" },
         leader         = { label = L["Leader"],           field = "LeaderIcon", element = "leader" },
         pvp            = { label = L["PvP Flag"],         field = "PvPIcon",   element = "pvp" },
-        classification = { label = L["Elite & Rare"],     field = "ClassIcon", element = "classification" },
-        quest          = { label = L["Quest"],            field = "QuestIcon", element = "questBoss" },
+        classification = { label = L["Elite & Rare"],     field = "ClassIcon", element = "classification", noRing = true },
+        quest          = { label = L["Quest Objective"],  field = "QuestIcon", element = "questBoss" },
         raidIcon       = { label = L["Raid Target"],      field = "RaidIcon",  element = "raidIcon" },
         happiness      = { label = L["Pet Happiness"],    field = "Happiness" },
+        -- noRing = not in the Forever style (its dragon frame shows elites and rares)
+        -- ring = only in the Forever style (UnitFramesRing.lua draws them)
+        readyCheck     = { label = L["Ready Check"],      field = "ReadyIcon", default = true },
+        pvpTimer       = { label = L["PvP Timer"],        ring = true, default = false },
+        -- the glows: the Forever style's resting / combat glow, and threat (the ring's glow, or the
+        -- usual frames' border colour)
+        statusGlow     = { label = L["Rest & Combat Glow"], ring = true, default = true },
+        threatGlow     = { label = L["Threat Glow"],      default = true },
     },
-    selected = {},   -- unit -> the icon picked in its Edit Mode dialog (not saved)
+    -- Blizzard's ready check marks
+    READY = {
+        ready    = _G.READY_CHECK_READY_TEXTURE or "UI-LFG-ReadyMark",
+        notready = _G.READY_CHECK_NOT_READY_TEXTURE or "UI-LFG-DeclineMark",
+        waiting  = _G.READY_CHECK_WAITING_TEXTURE or "UI-LFG-PendingMark",
+    },
+    READY_HOLD = 6,   -- seconds a finished check's results stay up
 }
 
 -- The icons a frame has, in dialog order
@@ -237,12 +301,6 @@ function ICON_UI.List(unit)
         if has then list[#list + 1] = key end
     end
     return list
-end
-
-function ICON_UI.Selected(unit)
-    local key = ICON_UI.selected[unit]
-    if key then return key end
-    return ICON_UI.List(unit)[1]
 end
 
 function ICON_UI.Store(unit, key, create)
@@ -262,7 +320,9 @@ function ICON_UI.Shown(unit, key)
         local udb = GetUnitDb(unit)
         return not udb or udb.happiness ~= false
     end
-    return ElementOn(ICON_UI.defs[key].element)
+    local def = ICON_UI.defs[key]
+    if def.default ~= nil then return def.default end
+    return ElementOn(def.element)
 end
 
 -- offset x, offset y, scale factor
@@ -286,6 +346,7 @@ local percentCurve = CurveConstants.ScaleTo100
 -- An unknown texture name falls back to FlareUI Flat
 local function GetBarTexture(name)
     if not (name and name ~= "" and LSM:IsValid("statusbar", name)) then name = DEFAULT_TEXTURE end
+    if name == DEFAULT_TEXTURE and UF.palette == "blizzard" then return UF.PALETTES.blizzard.texture end
     return LSM:Fetch("statusbar", name) or "Interface\\TargetingFrame\\UI-StatusBar"
 end
 
@@ -322,13 +383,22 @@ local function BorderFit(innerHeight, edgeFile)
 end
 
 -- height: the bordered frame's height with the full inset (BorderFit's rule)
+-- The thick edge's inner side is a soft fade that ends where the bars start, so a see-through seam
+-- showed between the line and the bars: that border sits a pixel in (scaled with the edge), its line
+-- overlapping the bars' edges. It keeps whatever frame it was anchored to.
 local function ApplyBorderStyle(border, edgeFile, height)
-    local edge = BORDER_SIZE
+    local edge, thick = BORDER_SIZE, true
     if ns.BorderEdgeSize(edgeFile, BORDER_SIZE) ~= BORDER_SIZE then
-        edge = ns.BorderEdgeSize(edgeFile, BORDER_SIZE)   -- FlareUI Thin
+        edge, thick = ns.BorderEdgeSize(edgeFile, BORDER_SIZE), false   -- FlareUI Thin
     elseif height and height < 22 then
         edge = math.max(6, math_floor(height * 2 / 3))
     end
+    local _, rel = border:GetPoint(1)
+    rel = rel or border:GetParent()
+    local d = thick and edge / BORDER_SIZE or 0
+    border:ClearAllPoints()
+    border:SetPoint("TOPLEFT", rel, "TOPLEFT", d, -d)
+    border:SetPoint("BOTTOMRIGHT", rel, "BOTTOMRIGHT", -d, d)
     border:SetBackdrop({ edgeFile = edgeFile, edgeSize = edge })
     ResetBorderTint(border)
 end
@@ -344,11 +414,11 @@ local function CreateBar(parent, level)
     return bar
 end
 
-local function ApplyFont(fontString, fontDb)
+local function ApplyFont(fontString, fontDb, sizeDelta)
     local path = ns.GetFontPath(fontDb and fontDb.face or "Friz Quadrata TT")
     local flags = fontDb and fontDb.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end
-    fontString:SetFont(path, fontDb and fontDb.size or 12, flags)
+    fontString:SetFont(path, (fontDb and fontDb.size or 12) + (sizeDelta or 0), flags)
     ns.ApplyShadow(fontString, fontDb)
 end
 
@@ -356,7 +426,7 @@ end
 -- NPCs. A secret class falls back to the reaction colour.
 local function GetHealthColor(unit, classColor)
     if not UnitIsConnected(unit) then return GREY[1], GREY[2], GREY[3] end
-    if UnitIsPlayer(unit) and not classColor then return 0, 1, 0 end
+    if UnitIsPlayer(unit) and not classColor then return ns.HEALTH_GREEN[1], ns.HEALTH_GREEN[2], ns.HEALTH_GREEN[3] end
     if UnitIsPlayer(unit) then
         local _, classFile = UnitClass(unit)
         if canaccessvalue(classFile) and classFile then
@@ -372,10 +442,9 @@ end
 
 local function GetPowerColor(unit)
     local powerType, powerToken = UnitPowerType(unit)
-    local tbl = _G.PowerBarColor
-    local c = tbl and (tbl[powerToken] or tbl[powerType])
-    if c and c.r then return c.r, c.g, c.b end
-    c = POWER_FALLBACK[powerToken] or POWER_FALLBACK.MANA
+    local r, g, b = ns.PowerColor(powerToken, powerType)
+    if r then return r, g, b end
+    local c = POWER_FALLBACK[powerToken] or POWER_FALLBACK.MANA
     return c[1], c[2], c[3]
 end
 
@@ -454,7 +523,8 @@ end
 local function UpdateLevel(f)
     local unit = f.unit
     local udb = GetUnitDb(unit)
-    if not (udb and udb.showLevel) then f.Level:SetText("") return end
+    local ringOn = ns.UFRing and ns.UFRing.Applies(f)
+    if not (udb and (udb.showLevel or ringOn)) then f.Level:SetText("") return end
     local level = UnitLevel(unit)
     local classification = UnitClassification(unit)
     local suffix = ""
@@ -473,6 +543,8 @@ local function UpdateLevel(f)
         f.Level:SetText(level)
         f.Level:SetTextColor(1, 1, 1)
     end
+    -- Forever style: the player's level is white, as on Blizzard's frame
+    if ringOn and unit == "player" then f.Level:SetTextColor(1, 1, 1) end
 end
 
 local function UpdateHealth(f)
@@ -482,7 +554,7 @@ local function UpdateHealth(f)
 
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     bar:SetValue(UnitHealth(unit))
-    bar:SetStatusBarColor(GetHealthColor(unit, not udb or udb.classColor ~= false))
+    bar:SetStatusBarColor(GetHealthColor(unit, UF:ClassColorsOn()))
 
     local mode = udb and udb.healthText or "percent"
     local text = f.HealthText
@@ -509,6 +581,7 @@ local function UpdatePower(f)
     bar:SetMinMaxValues(0, UnitPowerMax(unit, powerType))
     bar:SetValue(UnitPower(unit, powerType))
     bar:SetStatusBarColor(GetPowerColor(unit))
+    if f.ManaCost then f.ManaCost:Refresh(powerType) end
     if udb and udb.powerText and UnitIsConnected(unit) and not UnitIsDeadOrGhost(unit) then
         f.PowerText:SetText(AbbreviateNumbers(UnitPower(unit, powerType)))
     else
@@ -635,10 +708,12 @@ end
 
 -- mode "TOP" / "BOTTOM" hangs the bar off a unit frame; "FILL" fills the standalone holder. The
 -- icon sits left of the bar; the border wraps both.
-local function LayoutCastBar(cast, style, anchor, mode)
+-- leftExtra / rightExtra: more room from the anchor's edges (the Forever style's ring)
+local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
     local db = GetDb()
     if not db then return end
     local PADDING = INSET
+    leftExtra, rightExtra = leftExtra or 0, rightExtra or 0
     local edgeFile = GetBorderFile(style.borderTexture)
     local texture = GetBarTexture(style.texture)
     local height = style.height
@@ -649,12 +724,12 @@ local function LayoutCastBar(cast, style, anchor, mode)
     cast.bg:SetTexture(texture)
     cast:ClearAllPoints()
     if mode == "TOP" then
-        cast:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", PADDING + iconOffset, CAST_GAP)
-        cast:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -PADDING, CAST_GAP)
+        cast:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", PADDING + iconOffset + leftExtra, CAST_GAP)
+        cast:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -PADDING - rightExtra, CAST_GAP)
         cast:SetHeight(height)
     elseif mode == "BOTTOM" then
-        cast:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", PADDING + iconOffset, -CAST_GAP)
-        cast:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", -PADDING, -CAST_GAP)
+        cast:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", PADDING + iconOffset + leftExtra, -CAST_GAP)
+        cast:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", -PADDING - rightExtra, -CAST_GAP)
         cast:SetHeight(height)
     else
         local _, pad = BorderFit(height, edgeFile)
@@ -804,8 +879,11 @@ local function PortraitFacesRight(unit)
     return reaction >= 5
 end
 
+-- Blizzard's render can land a moment after SetPortraitTexture and reset the coordinates: the flip
+-- is kept up for a second after each portrait change (UNIT_PORTRAIT_UPDATE starts it again)
 local function KeepPortraitFlipped(portrait)
     if portrait.Tex:GetTexCoord() ~= 1 then portrait.Tex:SetTexCoord(1, 0, 0, 1) end
+    if GetTime() > portrait.flipUntil then portrait:SetScript("OnUpdate", nil) end
 end
 
 -- 3D is Blizzard's static portrait (square, unmasked). Class Icon falls back to 3D for NPCs and
@@ -835,8 +913,8 @@ local function UpdatePortrait(f)
         SetPortraitTexture(tex, unit, true)
         local udb = GetUnitDb(f.unit)
         if udb and udb.mirror and PortraitFacesRight(unit) then
-            -- Blizzard's render can land later and reset the coordinates, so the flip is kept up
             tex:SetTexCoord(1, 0, 0, 1)
+            portrait.flipUntil = GetTime() + 1
             portrait:SetScript("OnUpdate", KeepPortraitFlipped)
         else
             portrait:SetScript("OnUpdate", nil)
@@ -875,8 +953,8 @@ local function ApplySample(f)
     end
     f.Power:SetMinMaxValues(0, 1)
     f.Power:SetValue(power)
-    local pc = _G.PowerBarColor and _G.PowerBarColor[s.powerToken or "MANA"]
-    if pc and pc.r then f.Power:SetStatusBarColor(pc.r, pc.g, pc.b) else f.Power:SetStatusBarColor(0, 0, 1) end
+    local r, g, b = ns.PowerColor(s.powerToken or "MANA")
+    f.Power:SetStatusBarColor(r or ns.MANA_BLUE[1], g or ns.MANA_BLUE[2], b or ns.MANA_BLUE[3])
     f.PowerText:SetText((udb and udb.powerText) and AbbreviateNumbers(math_floor(power * 3000)) or "")
 end
 
@@ -937,6 +1015,8 @@ local function OnUnitEvent(f, event, arg1, arg2)
         if f.Combo then UpdateComboPoints(f) end   -- a target can turn hostile (duels, mind control)
     elseif event == "RAID_TARGET_UPDATE" then
         UpdateRaidIcon(f)
+    elseif event == "READY_CHECK" or event == "READY_CHECK_CONFIRM" or event == "READY_CHECK_FINISHED" then
+        ICON_UI.UpdateReady(f, event)
     elseif event == "UNIT_PORTRAIT_UPDATE" or event == "UNIT_MODEL_CHANGED" then
         UpdatePortrait(f)
     elseif event:find("^UNIT_SPELLCAST") then
@@ -1086,17 +1166,21 @@ local function ConfigureAuraCorner(f, corner, lanes)
         return
     end
 
-    local size = udb.auraSize or 22
-    local max = udb.auraMax or 16
+    local size = udb.auraSize or 20
+    -- each corner wraps a little before the middle of the frame; at most two full rows of the
+    -- chosen size (so an even count, 4 or more): bigger icons, fewer of them
+    local lineSize = math.max(size, math_floor(f:GetWidth() / 2) - INSET - 4)
+    local max = 2 * math.max(2, math_floor((lineSize + AURA_SPACING) / (size + AURA_SPACING)))
     entry.generation = entry.generation + 1
     local gen = entry.generation
     for index, lane in ipairs(lanes) do
         local key = lane.key .. gen
         local isDebuff, unit, font = lane.isDebuff, f.unit, db and db.font
         -- the older Aura Timers checkbox left off reads as No Timer
-        local auraTimer = udb.auraTimer or (udb.auraTimers == false and "none") or "below"
+        local db = GetDb()
+        local auraTimer = db and db.auraTimer or "none"
         local showTimer = auraTimer ~= "none"
-        local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, unit == "player", udb.auraStyle, udb.auraSwipe, auraTimer)
+        local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, unit == "player", db and db.auraStyle or "square", "icon", auraTimer)
         local ok, err = pcall(container.AddAuraGroup, container, key, lane.filter, {
             maxFrameCount = max,
             candidateFilters = lane.candidates,
@@ -1119,8 +1203,6 @@ local function ConfigureAuraCorner(f, corner, lanes)
     -- grow away from the corner: right/left along the edge, up from the top, down from the bottom;
     -- wrap a little before the middle of the frame so two corners on one edge never meet
     local isTop, isLeft = corner:find("^TOP") ~= nil, corner:find("LEFT$") ~= nil
-    local inset = INSET
-    local lineSize = math.max(size, math_floor(f:GetWidth() / 2) - inset - 4)
     pcall(container.SetFlowLayoutAxis, container, AnchorUtil.FlowLayoutAxis.Horizontal)
     pcall(container.SetFlowLayoutAnchorPoint, container, (isTop and "BOTTOM" or "TOP") .. (isLeft and "LEFT" or "RIGHT"))
     pcall(container.SetFlowLayoutGrowthDirection, container,
@@ -1142,6 +1224,17 @@ local function PositionAuraContainers(f)
         local isTop, isLeft = corner:find("^TOP") ~= nil, corner:find("LEFT$") ~= nil
         local x = isLeft and inset or -inset
         local y = isTop and AURA_GAP or -AURA_GAP
+        -- beyond the cast bar when it sits on this side
+        local udb = GetUnitDb(f.unit)
+        if f.Cast and udb and UNITS[f.unit].castbar and (udb.castbarPosition == "TOP") == isTop then
+            local castRoom = (udb.castHeight or CAST_HEIGHT) + CAST_GAP
+            y = y + (isTop and castRoom or -castRoom)
+        end
+        -- Forever style: a corner on the ring's side starts where the ring ends at that height
+        if ns.UFRing and ns.UFRing.Applies(f) and (ns.UFRing.Side(f) == "LEFT") == isLeft then
+            local clear = ns.UFRing.Clearance(f, math.abs(y))
+            x = x + (isLeft and clear or -clear)
+        end
         c:ClearAllPoints()
         -- container's own corner nearest the frame sits on the frame's corner, a few px out
         c:SetPoint((isTop and "BOTTOM" or "TOP") .. (isLeft and "LEFT" or "RIGHT"), f, corner, x, y)
@@ -1159,8 +1252,9 @@ LayoutAuras = function(f)
         local list = corner and perCorner[corner]
         if list then list[#list + 1] = { key = key, filter = filter, isDebuff = isDebuff, candidates = candidates } end
     end
+    -- Edit Mode's sample buffs have no duration: the permanent-buff filter would hide them all
     local buffCandidates
-    if udb.hidePermanentBuffs then buffCandidates = { maxDuration = 999999 } end
+    if udb.hidePermanentBuffs and not LEM:IsInEditMode() then buffCandidates = { maxDuration = 999999 } end
     local debuffCandidates
     if udb.onlyMyDebuffs then debuffCandidates = { isFromPlayerOrPlayerPet = true } end
     -- debuffs first: closest to the frame when both share a corner
@@ -1294,44 +1388,31 @@ local CLASSIC_COMBO = {
     hooked = false, skinned = false,
 }
 
--- Swaps Blizzard's point art for the shared sheet (Core.lua): socket, gem on Highlight, star on
--- Shine. Blizzard only fades and shows them, so the new textures stay.
+-- Blizzard's points (RogueComboPointTemplate, a 20 px widget with its own animations) are kept as
+-- Blizzard draws them, only scaled to the gem size
 local function SkinClassicCombo(combo)
     if CLASSIC_COMBO.skinned then return end
     CLASSIC_COMBO.skinned = true
-    local scale = CLASSIC_COMBO.size / ns.COMBO_SOCKET_PX
-    for _, point in ipairs(combo.ComboPoints) do
-        point:SetSize(CLASSIC_COMBO.size, CLASSIC_COMBO.size)
-        for _, region in ipairs({ point:GetRegions() }) do
-            if region ~= point.Highlight and region ~= point.Shine and region:IsObjectType("Texture") then
-                ns.SetComboPart(region, "socket")
-                region:ClearAllPoints()
-                region:SetAllPoints(point)
-                ns.AddComboRimBoost(region)
-            end
-        end
-        ns.SetComboPart(point.Highlight, "gem", scale)
-        point.Highlight:ClearAllPoints()
-        point.Highlight:SetPoint("CENTER", point, "CENTER", 0, ns.COMBO_GEM_RISE * scale)
-        ns.SetComboPart(point.Shine, "shine", scale)
-        point.Shine:ClearAllPoints()
-        point.Shine:SetPoint("CENTER", point.Highlight, "CENTER")
-    end
+    for _, point in ipairs(combo.ComboPoints) do point:SetScale(CLASSIC_COMBO.size / 20) end
 end
 
--- Re-applied after ComboFrame_ApplyOverrides, which pins the frame back onto TargetFrame. Anchors
--- only: the count can be secret. The last point sits against the corner.
+-- Re-applied after Blizzard's circle layout, which runs on every update. Anchors only: the count can
+-- be secret. The last point sits against the corner.
 local function PlaceClassicCombo(combo, f)
+    if ns.UFRing and ns.UFRing.Applies(f) and f.RingFrame and ns.UFRing.PlaceCombo(combo, f) then return end
     combo:ClearAllPoints()
     combo:SetPoint("BOTTOMRIGHT", f.Health, "BOTTOMRIGHT", CLASSIC_COMBO.x, CLASSIC_COMBO.y)
-    -- the XML arcs the points around the old portrait; the first one used depends on the max
-    local first = combo.startComboPointIndex or 2
+    -- Blizzard arcs the points around its portrait, starting at 1
     local max = combo.maxComboPoints
     if not (canaccessvalue(max) and type(max) == "number" and max >= 1) then max = 5 end
-    local last = math.min(first + max - 1, #combo.ComboPoints)
+    local first, last = 1, math.min(max, #combo.ComboPoints)
     for i, point in ipairs(combo.ComboPoints) do
+        -- the row fills from the left: Blizzard fills its last points first, so they go left
+        local steps = last - i
+        -- offsets are in the point's own scale
+        local s = point:GetScale() or 1
         point:ClearAllPoints()
-        point:SetPoint("BOTTOMRIGHT", combo, "BOTTOMRIGHT", (i - last) * CLASSIC_COMBO.spacing, 0)
+        point:SetPoint("BOTTOMRIGHT", combo, "BOTTOMRIGHT", (steps - (last - first)) * CLASSIC_COMBO.spacing / s, 0)
     end
 end
 
@@ -1343,7 +1424,8 @@ end
 
 local function UsesClassicCombo(f)
     local udb = GetUnitDb(f.unit)
-    return (udb and udb.classicCombo and GetClassicCombo()) and true or false
+    local ringOn = ns.UFRing and ns.UFRing.Applies(f)
+    return (udb and (udb.classicCombo or ringOn) and GetClassicCombo()) and true or false
 end
 
 -- Puts Blizzard's ComboFrame on our frame, or parks it
@@ -1356,12 +1438,15 @@ local function ApplyComboMode(f)
     end
     SkinClassicCombo(combo)
     combo:SetParent(f)
-    combo:SetFrameStrata(f:GetFrameStrata())
+    ns.CopyStrata(combo, f)
     combo:SetFrameLevel(f.Border:GetFrameLevel() + 2)
     PlaceClassicCombo(combo, f)
     if not CLASSIC_COMBO.hooked then
         CLASSIC_COMBO.hooked = true
-        hooksecurefunc("ComboFrame_ApplyOverrides", function(self) PlaceClassicCombo(self, f) end)
+        -- Blizzard puts the points back in its circle layout on every update
+        if type(combo.LayoutPointsCircle) == "function" then
+            hooksecurefunc(combo, "LayoutPointsCircle", function(self) PlaceClassicCombo(self, f) end)
+        end
     end
 end
 
@@ -1370,6 +1455,8 @@ end
 -- A spark crosses the player's mana bar for five seconds after a spell that costs mana (spirit
 -- regen stops meanwhile). Mana can be secret, so the cast event and the spell's cost type are the
 -- signal; a free cast does not count, a secret amount does. Hidden while the bar shows another power.
+-- The same events drive the mana cost preview: while a spell with a mana cost is cast, the mana it
+-- will spend shows darker at the end of the bar, as on Blizzard's player frame.
 --------------------------------------------------
 local FSR_SECONDS = 5
 local FSR_SPARK   = "Interface\\CastingBar\\UI-CastingBar-Spark"
@@ -1382,7 +1469,8 @@ local function CostsMana(spellID)
     for _, cost in ipairs(costs) do
         if canaccessvalue(cost.type) and cost.type == Enum.PowerType.Mana then
             local amount = cost.cost
-            return not canaccessvalue(amount) or (type(amount) == "number" and amount > 0)
+            if canaccessvalue(amount) and not (type(amount) == "number" and amount > 0) then return false end
+            return true, amount
         end
     end
     return false
@@ -1409,9 +1497,50 @@ end
 
 local function CreateFsrSpark(f)
     local bar = f.Power
+    -- Mana cost preview. Mana can be secret, so no arithmetic: a clip runs from the bar's start to the
+    -- end of its fill, and a bar of the same width filling from the other end shows the cost in it.
+    local clip = CreateFrame("Frame", nil, bar)
+    clip:SetFrameLevel(bar:GetFrameLevel() + 1)
+    clip:SetClipsChildren(true)
+    clip:Hide()
+    local cost = CreateFrame("StatusBar", nil, clip)
+    cost:SetMinMaxValues(0, 1)
+    cost:SetValue(0)
+    function cost:Refresh(powerType)
+        local amount = f.manaCost
+        if amount == nil or not (canaccessvalue(powerType) and powerType == Enum.PowerType.Mana) then
+            clip:Hide()
+            return
+        end
+        local fill = bar:GetStatusBarTexture()
+        local reverse = bar:GetReverseFill()
+        clip:ClearAllPoints()
+        self:ClearAllPoints()
+        if reverse then
+            clip:SetPoint("TOPLEFT", fill, "TOPLEFT")
+            clip:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT")
+            self:SetPoint("TOPLEFT", clip, "TOPLEFT")
+            self:SetPoint("BOTTOMLEFT", clip, "BOTTOMLEFT")
+        else
+            clip:SetPoint("TOPLEFT", bar, "TOPLEFT")
+            clip:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT")
+            self:SetPoint("TOPRIGHT", clip, "TOPRIGHT")
+            self:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT")
+        end
+        self:SetWidth(bar:GetWidth())
+        self:SetReverseFill(not reverse)
+        self:SetStatusBarTexture(fill:GetTexture())
+        local r, g, b = GetPowerColor("player")
+        self:SetStatusBarColor(r * 0.6, g * 0.6, b * 0.6)
+        self:SetMinMaxValues(bar:GetMinMaxValues())
+        self:SetValue(amount)
+        clip:Show()
+    end
+    f.ManaCost = cost
+
     local holder = CreateFrame("Frame", nil, bar)
     holder:SetAllPoints(bar)
-    holder:SetFrameLevel(bar:GetFrameLevel() + 1)
+    holder:SetFrameLevel(bar:GetFrameLevel() + 2)
     holder:Hide()
     local spark = holder:CreateTexture(nil, "OVERLAY")
     spark:SetTexture(FSR_SPARK)
@@ -1440,7 +1569,23 @@ local function InitFsrSpark()
     local events = CreateFrame("Frame")
     events:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
     events:RegisterUnitEvent("UNIT_DISPLAYPOWER", "player")
+    for _, event in ipairs({ "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED" }) do
+        events:RegisterUnitEvent(event, "player")
+    end
     events:SetScript("OnEvent", function(_, event, _, _, spellID)
+        -- the mana cost preview: set when a cast starts, cleared when it ends (a spell allowed during
+        -- the cast, off the global cooldown, leaves it)
+        local f = frames.player
+        if f and f.ManaCost and event ~= "UNIT_DISPLAYPOWER" then
+            if event == "UNIT_SPELLCAST_START" then
+                local costs, amount = CostsMana(spellID)
+                f.manaCost = costs and amount or nil
+            elseif select(9, UnitCastingInfo("player")) == nil then
+                f.manaCost = nil
+            end
+            UpdatePower(f)
+            if event ~= "UNIT_SPELLCAST_SUCCEEDED" then return end
+        end
         if event == "UNIT_SPELLCAST_SUCCEEDED" then
             if not CostsMana(spellID) then return end
             fsrStart = GetTime()
@@ -1486,7 +1631,7 @@ end
 -- / absorb overlays. Art: Blizzard atlases, with the classic textures as fallback.
 --------------------------------------------------
 local ICON_SIZE = {
-    rest = 28, leader = 20, pvp = 24, class = 18,
+    rest = 28, leader = 20, pvp = 24,   -- the Elite & Rare skull takes the PvP crest's size
     quest = 24,   -- the quest "!" height; its width follows the art
 }
 local QUEST_ATLAS     = "QuestNormal"   -- the map's quest-offer "!", as on the nameplate quest tags
@@ -1555,6 +1700,10 @@ local function CreateIndicators(f)
         f.ClassIcon = overlay:CreateTexture(nil, "OVERLAY")
         f.ClassIcon:Hide()
     end
+    if ind.readyCheck then
+        f.ReadyIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 6)
+        f.ReadyIcon:Hide()
+    end
     if ind.quest then
         -- under the raid marker (sublevel 4), which shares its spot mid health bar
         f.QuestIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 1)
@@ -1588,14 +1737,25 @@ end
 local function LayoutIndicators(f)
     local udb = GetUnitDb(f.unit)
     local mirror = udb and udb.mirror and true or false
+    -- Forever style: the icons with a home on the ring go there (offsets and scale still apply)
+    local ring = ns.UFRing and ns.UFRing.Applies(f) and ns.UFRing
+    if ring then
+        for _, key in ipairs({ "rest", "leader", "pvp", "classification", "quest", "readyCheck" }) do
+            local region = f[ICON_UI.defs[key].field]
+            if region then
+                local point, rel, relPoint, x, y, w, h = ring.IconSpot(f, key)
+                if point then ICON_UI.Place(f, key, region, w, h, point, rel, relPoint, x, y) end
+            end
+        end
+    end
     -- FlareUI's own placement; ICON_UI.Place adds the frame's Edit Mode offsets and scale
-    if f.RestIcon then
+    if f.RestIcon and not (ring and ring.IconSpot(f, "rest")) then
         ICON_UI.Place(f, "rest", f.RestIcon, ICON_SIZE.rest, ICON_SIZE.rest, "CENTER", f, "TOPRIGHT", -2, 0)
     end
-    if f.LeaderIcon then
+    if f.LeaderIcon and not (ring and ring.IconSpot(f, "leader")) then
         ICON_UI.Place(f, "leader", f.LeaderIcon, ICON_SIZE.leader, ICON_SIZE.leader, "CENTER", f, "TOPLEFT", 16, -2)
     end
-    if f.PvPIcon then
+    if f.PvPIcon and not (ring and ring.IconSpot(f, "pvp")) then
         -- bottom-left on the player, bottom-right on a mirrored frame: symmetrical across the screen
         if mirror then
             ICON_UI.Place(f, "pvp", f.PvPIcon, ICON_SIZE.pvp, ICON_SIZE.pvp, "CENTER", f, "BOTTOMRIGHT", -4, 2)
@@ -1603,14 +1763,27 @@ local function LayoutIndicators(f)
             ICON_UI.Place(f, "pvp", f.PvPIcon, ICON_SIZE.pvp, ICON_SIZE.pvp, "CENTER", f, "BOTTOMLEFT", 4, 2)
         end
     end
-    if f.ClassIcon then
-        ICON_UI.Place(f, "classification", f.ClassIcon, ICON_SIZE.class, ICON_SIZE.class, "CENTER", f, "TOPRIGHT", -10, -4)
+    if f.ClassIcon and not (ring and ring.IconSpot(f, "classification")) then
+        local info = C_Texture.GetAtlasInfo(ICON_UI.CLASS_SKULL)
+        local aspect = (info and info.width > 0 and info.height > 0) and (info.width / info.height) or 1
+        -- above the PvP crest, in its column and at its size (top-right on a mirrored frame, top-left otherwise)
+        local size = ICON_SIZE.pvp
+        if mirror then
+            ICON_UI.Place(f, "classification", f.ClassIcon, size * aspect, size, "CENTER", f, "TOPRIGHT", -4, -2)
+        else
+            ICON_UI.Place(f, "classification", f.ClassIcon, size * aspect, size, "CENTER", f, "TOPLEFT", 4, -2)
+        end
     end
-    if f.QuestIcon then
+    if f.QuestIcon and not (ring and ring.IconSpot(f, "quest")) then
         local info = C_Texture.GetAtlasInfo(QUEST_ATLAS)
         local aspect = (info and info.width > 0 and info.height > 0) and (info.width / info.height) or 1
         -- mid health bar, under the raid marker
         ICON_UI.Place(f, "quest", f.QuestIcon, ICON_SIZE.quest * aspect, ICON_SIZE.quest, "CENTER", f.Health, "CENTER", 0, 0)
+    end
+    if f.ReadyIcon and not (ring and ring.IconSpot(f, "readyCheck")) then
+        -- mid-frame, over the raid marker
+        local size = math.min(32, math.max(16, ((udb and udb.height) or 44) - 12))
+        ICON_UI.Place(f, "readyCheck", f.ReadyIcon, size, size, "CENTER", f, "CENTER", 0, 0)
     end
     if f.HealClip then
         local health, clip, heal, absorb = f.Health, f.HealClip, f.HealBar, f.AbsorbBar
@@ -1702,14 +1875,49 @@ local function ThreatColor(status)
     return c[1], c[2], c[3]
 end
 
--- the frame border takes the threat colour, and its fixed colour when clear
+-- the frame border takes the threat colour, and its fixed colour when clear (the player's: its
+-- highest threat on anything)
 function UpdateThreat(f)
     if not f.threatTint then return end
-    local status = Readable(UnitThreatSituation("player", f.unit))
+    if not ICON_UI.Shown(f.unit, "threatGlow") then ResetBorderTint(f.Border) return end
+    local status
+    if f.unit == "player" then
+        status = Readable(UnitThreatSituation("player"))
+    else
+        status = Readable(UnitThreatSituation("player", f.unit))
+    end
     if status and status >= 1 then
         SetBorderTint(f.Border, ThreatColor(status))
     else
         ResetBorderTint(f.Border)
+    end
+end
+
+-- The ready check mark: during a check, and its result for a few seconds after (a member who never
+-- answered was not ready, as on Blizzard's frames)
+function ICON_UI.UpdateReady(f, event)
+    local icon = f.ReadyIcon
+    if not icon then return end
+    if event == "READY_CHECK" then
+        if f.readyHold then f.readyHold:Cancel(); f.readyHold = nil end
+    elseif event == "READY_CHECK_FINISHED" then
+        if f.readyHold then f.readyHold:Cancel() end
+        f.readyHold = C_Timer.NewTimer(ICON_UI.READY_HOLD, function()
+            f.readyHold, f.lastReady = nil, nil
+            ICON_UI.UpdateReady(f)
+        end)
+    end
+    if not ICON_UI.Shown(f.unit, "readyCheck") then icon:Hide() return end
+    local status = Readable(GetReadyCheckStatus(f.unit))
+    if not status and f.readyHold then status = f.lastReady end
+    if f.readyHold and status == "waiting" then status = "notready" end
+    local atlas = status and ICON_UI.READY[status]
+    if atlas then
+        if not f.readyHold then f.lastReady = status end
+        icon:SetAtlas(atlas, false)
+        icon:Show()
+    elseif not LEM:IsInEditMode() then
+        icon:Hide()
     end
 end
 
@@ -1753,23 +1961,20 @@ function UpdateIndicators(f)
             SetIconArt(f.PvPIcon, "UI-HUD-UnitFrame-Player-PVP-FFAIcon", "Interface\\TargetingFrame\\UI-PVP-FFA")
             f.PvPIcon:Show()
         elseif pvp and faction == "Horde" then
-            SetIconArt(f.PvPIcon, "UI-HUD-UnitFrame-Player-PVP-HordeIcon", "Interface\\TargetingFrame\\UI-PVP-Horde")
+            SetIconArt(f.PvPIcon, "UI-HUD-UnitFrame-SmallCircle-Horde", "Interface\\TargetingFrame\\UI-PVP-Horde")
             f.PvPIcon:Show()
         elseif pvp and faction == "Alliance" then
-            SetIconArt(f.PvPIcon, "UI-HUD-UnitFrame-Player-PVP-AllianceIcon", "Interface\\TargetingFrame\\UI-PVP-Alliance")
+            SetIconArt(f.PvPIcon, "UI-HUD-UnitFrame-SmallCircle-Alliance", "Interface\\TargetingFrame\\UI-PVP-Alliance")
             f.PvPIcon:Show()
         else
             f.PvPIcon:Hide()
         end
     end
     if f.ClassIcon then
+        -- the level disc's skull: as it is for rares, gold for elites and bosses
         local c = readable(UnitClassification(unit))
-        local atlas
-        if c == "elite" or c == "worldboss" then atlas = "nameplates-icon-elite-gold"
-        elseif c == "rareelite" then atlas = "nameplates-icon-elite-silver"
-        elseif c == "rare" then atlas = "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Rare-Star" end
-        if atlas and HasAtlas(atlas) and ICON_UI.Shown(unit, "classification") then
-            f.ClassIcon:SetAtlas(atlas, false)
+        local kind = (c == "elite" or c == "worldboss") and "elite" or (c == "rare" or c == "rareelite") and "rare" or nil
+        if kind and ICON_UI.Shown(unit, "classification") and ICON_UI.ClassArt(f.ClassIcon, kind) then
             f.ClassIcon:Show()
         else
             f.ClassIcon:Hide()
@@ -1787,14 +1992,48 @@ function UpdateIndicators(f)
         if show then SetIconArt(f.QuestIcon, QUEST_ATLAS, QUEST_FILE) end
         f.QuestIcon:SetShown(show)
     end
+    ICON_UI.UpdateReady(f)
     ICON_UI.Preview(f)
+    if ns.UFRing and ns.UFRing.Applies(f) then
+        -- Forever style: Blizzard's art; elites get the dragon frame instead of the small icon, and the
+        -- quest mark sits where the rare star would
+        if f.QuestIcon and f.QuestIcon:IsShown() then
+            SetIconArt(f.QuestIcon, "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Quest", QUEST_FILE)
+            if f.ClassIcon then f.ClassIcon:Hide() end
+        elseif f.ClassIcon then
+            local c = readable(UnitClassification(unit))
+            if c == "rare" or c == "rareelite" then
+                SetIconArt(f.ClassIcon, "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Rare-Star", nil)
+                f.ClassIcon:SetVertexColor(1, 1, 1)
+                f.ClassIcon:Show()
+            elseif not LEM:IsInEditMode() then
+                f.ClassIcon:Hide()
+            end
+        end
+        ns.UFRing.Update(f)
+    end
 end
 
--- Edit Mode: the icon picked in the frame's dialog shows with sample art
+-- The Elite & Rare icon: Blizzard's high-level skull, gold for an elite (false without the art)
+ICON_UI.CLASS_SKULL = "UI-HUD-UnitFrame-Target-HighLevelTarget_Icon"
+ICON_UI.ELITE_GOLD = { 1, 0.82, 0.25 }
+function ICON_UI.ClassArt(tex, kind)
+    if not HasAtlas(ICON_UI.CLASS_SKULL) then return false end
+    tex:SetAtlas(ICON_UI.CLASS_SKULL, false)
+    local gold = ICON_UI.ELITE_GOLD
+    if kind == "elite" then tex:SetVertexColor(gold[1], gold[2], gold[3]) else tex:SetVertexColor(1, 1, 1) end
+    return true
+end
+
+-- Edit Mode: every icon the frame shows appears with sample art
 function ICON_UI.Preview(f)
     if not LEM:IsInEditMode() then return end
-    local key = ICON_UI.Selected(f.unit)
-    if not key or key == "happiness" or not ICON_UI.Shown(f.unit, key) then return end
+    for _, key in ipairs(ICON_UI.List(f.unit)) do
+        if key ~= "happiness" and ICON_UI.defs[key].field and not ICON_UI.defs[key].ring and ICON_UI.Shown(f.unit, key) then ICON_UI.PreviewIcon(f, key) end
+    end
+end
+
+function ICON_UI.PreviewIcon(f, key)
     local region = f[ICON_UI.defs[key].field]
     if not region then return end
     if key == "rest" then
@@ -1803,17 +2042,18 @@ function ICON_UI.Preview(f)
         SetIconArt(region, "UI-HUD-UnitFrame-Player-Group-LeaderIcon", "Interface\\GroupFrame\\UI-Group-LeaderIcon")
     elseif key == "pvp" then
         if UnitFactionGroup("player") == "Horde" then
-            SetIconArt(region, "UI-HUD-UnitFrame-Player-PVP-HordeIcon", "Interface\\TargetingFrame\\UI-PVP-Horde")
+            SetIconArt(region, "UI-HUD-UnitFrame-SmallCircle-Horde", "Interface\\TargetingFrame\\UI-PVP-Horde")
         else
-            SetIconArt(region, "UI-HUD-UnitFrame-Player-PVP-AllianceIcon", "Interface\\TargetingFrame\\UI-PVP-Alliance")
+            SetIconArt(region, "UI-HUD-UnitFrame-SmallCircle-Alliance", "Interface\\TargetingFrame\\UI-PVP-Alliance")
         end
     elseif key == "classification" then
-        if not HasAtlas("nameplates-icon-elite-gold") then return end
-        region:SetAtlas("nameplates-icon-elite-gold", false)
+        if not ICON_UI.ClassArt(region, "elite") then return end
     elseif key == "quest" then
         SetIconArt(region, QUEST_ATLAS, QUEST_FILE)
     elseif key == "raidIcon" then
         SetRaidTargetIconTexture(region, 8)
+    elseif key == "readyCheck" then
+        region:SetAtlas(ICON_UI.READY.ready, false)
     end
     region:Show()
 end
@@ -1838,7 +2078,11 @@ local function LayoutBars(f)
     power:ClearAllPoints()
     health:SetPoint("TOPLEFT", f, "TOPLEFT", left, -PADDING)
 
-    if f.Portrait then
+    if f.Portrait and ns.UFRing and ns.UFRing.Applies(f) then
+        ns.UFRing.Layout(f, PADDING)
+        UpdatePortrait(f)
+    elseif f.Portrait then
+        if ns.UFRing then ns.UFRing.Reset(f) end
         local portrait, divider = f.Portrait, f.PortraitDivider
         portrait:ClearAllPoints()
         divider:ClearAllPoints()
@@ -1941,25 +2185,32 @@ local function LayoutFrame(f)
     LayoutBars(f)
 
     -- texts
-    ApplyFont(f.Name, db.font)
-    ApplyFont(f.Level, db.font)
-    ApplyFont(f.HealthText, db.font)
-    ApplyFont(f.PowerText, db.fontPower or db.font)
+    -- Forever style: one point smaller on the slimmer frames
+    local fontDelta = (ns.UFRing and ns.UFRing.Applies(f)) and -1 or 0
+    ApplyFont(f.Name, db.font, fontDelta)
+    ApplyFont(f.Level, db.font, fontDelta)
+    ApplyFont(f.HealthText, db.font, fontDelta)
+    ApplyFont(f.PowerText, db.fontPower or db.font, fontDelta)
 
     f.Level:ClearAllPoints()
     f.Name:ClearAllPoints()
     f.HealthText:ClearAllPoints()
     f.PowerText:ClearAllPoints()
+    -- Forever style: the level is in the ring's disc, so the name starts at the bar's edge
+    local ringOn = ns.UFRing and ns.UFRing.Applies(f)
+    local levelInRow = udb.showLevel and not ringOn
+    -- the name is always on the ring's side: it starts past the portrait
+    local namePad = ringOn and ns.UFRing.TextPad(f) or 0
     if mirror then
         f.Level:SetJustifyH("RIGHT")
         f.Name:SetJustifyH("RIGHT")
         f.HealthText:SetJustifyH("LEFT")
         f.PowerText:SetJustifyH("LEFT")
         f.Level:SetPoint("RIGHT", health, "RIGHT", -TEXT_INSET, 0)
-        if udb.showLevel then
+        if levelInRow then
             f.Name:SetPoint("RIGHT", f.Level, "LEFT", -3, 0)
         else
-            f.Name:SetPoint("RIGHT", health, "RIGHT", -TEXT_INSET, 0)
+            f.Name:SetPoint("RIGHT", health, "RIGHT", -TEXT_INSET - namePad, 0)
         end
         f.HealthText:SetPoint("LEFT", health, "LEFT", TEXT_INSET, 0)
         f.Name:SetPoint("LEFT", f.HealthText, "RIGHT", 4, 0)
@@ -1970,21 +2221,32 @@ local function LayoutFrame(f)
         f.HealthText:SetJustifyH("RIGHT")
         f.PowerText:SetJustifyH("RIGHT")
         f.Level:SetPoint("LEFT", health, "LEFT", TEXT_INSET, 0)
-        if udb.showLevel then
+        if levelInRow then
             f.Name:SetPoint("LEFT", f.Level, "RIGHT", 3, 0)
         else
-            f.Name:SetPoint("LEFT", health, "LEFT", TEXT_INSET, 0)
+            f.Name:SetPoint("LEFT", health, "LEFT", TEXT_INSET + namePad, 0)
         end
         f.HealthText:SetPoint("RIGHT", health, "RIGHT", -TEXT_INSET, 0)
         f.Name:SetPoint("RIGHT", f.HealthText, "LEFT", -4, 0)
         f.PowerText:SetPoint("RIGHT", power, "RIGHT", -TEXT_INSET, 0)
     end
     f.PowerText:SetShown(udb.powerText and powerHeight >= 10)
+    if ringOn then
+        ns.UFRing.LayoutLevel(f)
+        -- the classic gems follow the ring's size and side
+        if f.Combo then ApplyComboMode(f) end
+    end
 
     -- the raid marker and the happiness face sit mid health bar, sized off its height
     local healthHeight = height - 2 * PADDING - (powerHeight > 0 and powerHeight or 0)
     local markerSize = math.max(8, healthHeight * RAID_ICON_SHARE)
-    ICON_UI.Place(f, "raidIcon", f.RaidIcon, markerSize, markerSize, "CENTER", f.Health, "CENTER", 0, 0)
+    local rp, rrel, rrelPoint, rx, ry, rw, rh
+    if ringOn then rp, rrel, rrelPoint, rx, ry, rw, rh = ns.UFRing.IconSpot(f, "raidIcon") end
+    if rp then
+        ICON_UI.Place(f, "raidIcon", f.RaidIcon, rw, rh, rp, rrel, rrelPoint, rx, ry)
+    else
+        ICON_UI.Place(f, "raidIcon", f.RaidIcon, markerSize - 2, markerSize - 2, "CENTER", f, "TOP", 0, -2)
+    end
 
     if f.Happiness then
         local size = math.max(RAID_ICON, healthHeight * HAPPINESS_SHARE)
@@ -1993,7 +2255,13 @@ local function LayoutFrame(f)
 
     -- cast bar hangs off the frame
     if f.Cast then
-        LayoutCastBar(f.Cast, GetCastStyle(udb, false), f, udb.castbarPosition == "TOP" and "TOP" or "BOTTOM")
+        local leftExtra, rightExtra
+        if ringOn then
+            -- ends where the ring starts at the cast bar's height
+            local clear = ns.UFRing.Clearance(f, CAST_GAP)
+            if ns.UFRing.Side(f) == "LEFT" then leftExtra = clear else rightExtra = clear end
+        end
+        LayoutCastBar(f.Cast, GetCastStyle(udb, false), f, udb.castbarPosition == "TOP" and "TOP" or "BOTTOM", leftExtra, rightExtra)
     end
 
     LayoutAuras(f)
@@ -2036,10 +2304,10 @@ end
 local DEFAULT_POSITIONS = {
     player        = { point = "CENTER", x = -330, y = -270 },
     target        = { point = "CENTER", x = 330,  y = -270 },
-    targettarget  = { point = "CENTER", x = 260,  y = -340.5 },
-    focus         = { point = "RIGHT",  x = -453, y = -252.5 },
-    focustarget   = { point = "RIGHT",  x = -513, y = -305.5 },
-    pet           = { point = "BOTTOM", x = -270, y = 266 },   -- its right edge lines up with the player frame's
+    targettarget  = { point = "BOTTOM", x = 260,  y = 252 },
+    focus         = { point = "RIGHT",  x = -453, y = -257 },
+    focustarget   = { point = "BOTTOM", x = 504,  y = 277 },
+    pet           = { point = "BOTTOM", x = -270, y = 271 },   -- its right edge lines up with the player frame's
     playercastbar = { point = "CENTER", x = 0,    y = -221 },  -- mid-screen above the action bars
 }
 
@@ -2207,6 +2475,9 @@ local function CreateUnitFrame(unit)
     _G.ClickCastFrames[f] = true
     f:SetClampedToScreen(true)
     f.editModeName = "FlareUI " .. info.label
+    -- stack order: the frames higher in the list draw above the ones after them, so two frames
+    -- that touch never mix their borders
+    f:SetFrameLevel(10 + (10 - (info.order or 9)) * 20)
 
     local level = f:GetFrameLevel()
     f.Health = CreateBar(f, level + 1)
@@ -2292,6 +2563,11 @@ local function CreateUnitFrame(unit)
         if info.indicators.heals then
             pcall(f.RegisterUnitEvent, f, "UNIT_HEAL_PREDICTION", unit)
             pcall(f.RegisterUnitEvent, f, "UNIT_ABSORB_AMOUNT_CHANGED", unit)
+        end
+        if info.indicators.readyCheck then
+            for _, event in ipairs({ "READY_CHECK", "READY_CHECK_CONFIRM", "READY_CHECK_FINISHED" }) do
+                pcall(f.RegisterEvent, f, event)
+            end
         end
         if info.indicators.threat then
             pcall(f.RegisterUnitEvent, f, "UNIT_THREAT_LIST_UPDATE", unit)
@@ -2388,13 +2664,8 @@ local function BuildPlayerCastSettings()
         end
     end
     return {
-        { name = L["Width"], kind = LEM.SettingType.Slider, default = 300, minValue = 100, maxValue = 600, valueStep = 2, get = get("width", 300), set = set("width") },
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = 250, minValue = 100, maxValue = 600, valueStep = 2, get = get("width", 250), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 25, minValue = 8, maxValue = 48, valueStep = 1, get = get("height", 25), set = set("height") },
-        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(true), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
-        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
-        { name = L["Icon"], kind = LEM.SettingType.Checkbox, default = true, get = get("icon", true), set = set("icon") },
-        { name = L["Spell Name"], kind = LEM.SettingType.Checkbox, default = true, get = get("name", true), set = set("name") },
-        { name = L["Timer"], kind = LEM.SettingType.Checkbox, default = true, get = get("timer", true), set = set("timer") },
     }
 end
 
@@ -2419,17 +2690,36 @@ local function BuildSettings(unit)
           formatter = function(value) return value == 0 and _G.OFF or value end },
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = defaults.healthText or "percent", values = HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") },
         { name = L["Power Text"], kind = LEM.SettingType.Checkbox, default = defaults.powerText or false, get = get("powerText"), set = set("powerText") },
-        { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = defaults.showLevel ~= false, get = get("showLevel"), set = set("showLevel") },
+        { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = defaults.showLevel ~= false, get = get("showLevel"), set = set("showLevel"),
+          hidden = function() return info.portrait and ns.UFRing and ns.UFRing.On() or false end },
     }
     if info.portrait then
+        local portraitValues = {
+            { text = L["None"],       value = "none",  isRadio = true },
+            { text = L["3D"],         value = "3d",    isRadio = true },
+            { text = L["Class Icon"], value = "class", isRadio = true },
+        }
         settings[#settings + 1] = { name = L["Portrait"], kind = LEM.SettingType.Dropdown, default = "none",
-            values = {
-                { text = L["None"],       value = "none",  isRadio = true },
-                { text = L["3D"],         value = "3d",    isRadio = true },
-                { text = L["Class Icon"], value = "class", isRadio = true },
-            },
-            get = function() local u = GetUnitDb(unit); return u and u.portrait or "none" end, set = set("portrait"),
-            desc = L["A square at the frame's left (right when mirrored). Class Icon shows the 3D portrait for NPCs."] }
+            values = portraitValues,
+            -- the Forever style always has a portrait: None is left out there
+            generator = function(_, rootDescription, data)
+                local ring = ns.UFRing and ns.UFRing.On()
+                for _, p in ipairs(portraitValues) do
+                    if not (ring and p.value == "none") then
+                        rootDescription:CreateRadio(p.text,
+                            function(value) local u = GetUnitDb(unit); local cur = u and u.portrait or "none"; if ring and cur == "none" then cur = "3d" end; return cur == value end,
+                            function(value) data.set(nil, value) end, p.value)
+                    end
+                end
+            end,
+            get = function() local u = GetUnitDb(unit); return u and u.portrait or "none" end, set = set("portrait") }
+    end
+    if info.portrait and ns.UFRing then
+        settings[#settings + 1] = { name = L["Ring Size"], kind = LEM.SettingType.Slider, default = ns.UFRing.DefaultSize(unit),
+            minValue = 36, maxValue = 120, valueStep = 1,
+            get = function() local u = GetUnitDb(unit); return u and u.ringSize or ns.UFRing.DefaultSize(unit) end,
+            set = set("ringSize"),
+            hidden = function() return not ns.UFRing.On() end }
     end
     if info.mirrorable then
         -- flips text order and bar fill so the frame faces the player frame
@@ -2446,7 +2736,8 @@ local function BuildSettings(unit)
                 local f = frames[unit]
                 if f then ApplyComboMode(f); UpdateAll(f) end
             end,
-            desc = L["Classic combo point gems in the bottom-right corner of the health bar, instead of FlareUI's strip."] }
+            desc = L["Classic combo point gems in the bottom-right corner of the health bar, instead of FlareUI's strip."],
+            hidden = function() return ns.UFRing and ns.UFRing.On() or false end }
     end
     if unit == "player" then
         settings[#settings + 1] = { name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false,
@@ -2479,125 +2770,76 @@ local function BuildSettings(unit)
         end
     end
 
+    -- the player frame: always shown, or faded out of combat (back in combat, with a target,
+    -- missing health, or under the mouse)
+    if unit == "player" then
+        settings[#settings + 1] = { name = L["Show"], kind = LEM.SettingType.Dropdown, default = "always",
+            values = { { text = L["Always"], value = "always", isRadio = true },
+                       { text = L["Fade Out of Combat"], value = "fade", isRadio = true } },
+            get = function() return UF:GetPlayerShow() end,
+            set = function(_, value) UF:SetPlayerShow(value) end }
+    end
+
     -- everything above is the frame itself, and gets the first section
     local frameItems = settings
     settings = {}
     Section("Frame", frameItems)
 
-    Section("Look", {
-        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.texture or DEFAULT_TEXTURE, values = BuildTextureValues(false),
-          get = function() local u = GetUnitDb(unit); return u and u.texture or DEFAULT_TEXTURE end, set = set("texture") },
-        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BORDER, values = BuildBorderValues(false),
-          get = function() local u = GetUnitDb(unit); return u and u.border or DEFAULT_BORDER end, set = set("border") },
-        { name = L["Class Color"], kind = LEM.SettingType.Checkbox, default = true,
-          desc = L["Players' health bars in their class colour. Off: the classic health green. NPCs keep their friendly / hostile colours."],
-          get = function() local u = GetUnitDb(unit); return u == nil or u.classColor ~= false end, set = set("classColor") },
-    })
-    if info.indicators and info.indicators.heals then
-        Section("Absorbs", {
-            { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown,
-              default = defaults.absorbTexture or "", values = BuildTextureValues(true),
-              get = function() local u = GetUnitDb(unit); return u and u.absorbTexture or "" end,
-              set = set("absorbTexture") },
-            { name = L["Absorb Reverse Fill"], kind = LEM.SettingType.Checkbox,
-              default = defaults.absorbReverseFill ~= false,
-              get = function() local u = GetUnitDb(unit); return u and u.absorbReverseFill ~= false end,
-              set = set("absorbReverseFill") },
-        })
-    end
     if info.castbar then
         Section("Cast Bar", {
             { name = L["Cast Bar Position"], kind = LEM.SettingType.Dropdown, default = defaults.castbarPosition or "BOTTOM",
               values = { { text = L["Above"], value = "TOP", isRadio = true }, { text = L["Below"], value = "BOTTOM", isRadio = true } },
               get = get("castbarPosition"), set = set("castbarPosition") },
-            { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = defaults.castHeight or CAST_HEIGHT, minValue = 8, maxValue = 40, valueStep = 1, get = get("castHeight"), set = set("castHeight") },
-            { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(true), get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture") },
-            { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
-              get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture") },
-            { name = L["Cast Icon"], kind = LEM.SettingType.Checkbox, default = defaults.castIcon ~= false, get = function() local u = GetUnitDb(unit); return u and u.castIcon ~= false end, set = set("castIcon") },
-            { name = L["Cast Timer"], kind = LEM.SettingType.Checkbox, default = defaults.castTimer ~= false, get = function() local u = GetUnitDb(unit); return u and u.castTimer ~= false end, set = set("castTimer") },
         })
     end
     if info.auras then
         local positions = {
-            { text = L["Off"],          value = "OFF",         isRadio = true },
-            { text = L["Top Left"],     value = "TOPLEFT",     isRadio = true },
-            { text = L["Top Right"],    value = "TOPRIGHT",    isRadio = true },
-            { text = L["Bottom Left"],  value = "BOTTOMLEFT",  isRadio = true },
-            { text = L["Bottom Right"], value = "BOTTOMRIGHT", isRadio = true },
+            { text = L["Off"],          value = "OFF" },
+            { text = L["Top Left"],     value = "TOPLEFT" },
+            { text = L["Top Right"],    value = "TOPRIGHT" },
+            { text = L["Bottom Left"],  value = "BOTTOMLEFT" },
+            { text = L["Bottom Right"], value = "BOTTOMRIGHT" },
         }
+        -- buffs and debuffs never share a corner: the other kind's corner is greyed out
+        local function Corner(field, other)
+            return function(_, rootDescription, data)
+                for _, p in ipairs(positions) do
+                    local radio = rootDescription:CreateRadio(p.text,
+                        function(value) return (get(field)() or "OFF") == value end,
+                        function(value) data.set(nil, value) end, p.value)
+                    if p.value ~= "OFF" and get(other)() == p.value and radio.SetEnabled then radio:SetEnabled(false) end
+                end
+            end
+        end
         Section("Auras", {
-            { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = defaults.buffs or "OFF", values = positions, get = get("buffs"), set = set("buffs") },
-            { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = defaults.debuffs or "OFF", values = positions, get = get("debuffs"), set = set("debuffs") },
+            { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = defaults.buffs or "OFF", values = positions,
+              generator = Corner("buffs", "debuffs"), get = get("buffs"), set = set("buffs") },
+            { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = defaults.debuffs or "OFF", values = positions,
+              generator = Corner("debuffs", "buffs"), get = get("debuffs"), set = set("debuffs") },
             { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1, get = get("auraSize"), set = set("auraSize") },
-            { name = L["Max Per Type"], kind = LEM.SettingType.Slider, default = defaults.auraMax or 16, minValue = 1, maxValue = 40, valueStep = 1, get = get("auraMax"), set = set("auraMax") },
             { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = defaults.onlyMyDebuffs or false, get = get("onlyMyDebuffs"), set = set("onlyMyDebuffs") },
-            { name = L["Hide Permanent Buffs"], kind = LEM.SettingType.Checkbox, default = defaults.hidePermanentBuffs or false, get = get("hidePermanentBuffs"), set = set("hidePermanentBuffs") },
-            { name = L["Shape"], kind = LEM.SettingType.Dropdown, default = defaults.auraStyle or "square",
-              values = { { text = L["Square"], value = "square", isRadio = true }, { text = L["Round"], value = "round", isRadio = true } },
-              get = function() local u = GetUnitDb(unit); return u and u.auraStyle or "square" end, set = set("auraStyle") },
-            { name = L["Cooldown Swipe"], kind = LEM.SettingType.Dropdown, default = defaults.auraSwipe or "icon",
-              values = { { text = L["Border"], value = "border", isRadio = true }, { text = L["Icon"], value = "icon", isRadio = true },
-                         { text = L["None"], value = "none", isRadio = true } },
-              get = function() local u = GetUnitDb(unit); return u and u.auraSwipe or "icon" end, set = set("auraSwipe") },
-            { name = L["Timer"], kind = LEM.SettingType.Dropdown, default = defaults.auraTimer or "none",
-              values = { { text = L["Under the Icon"], value = "below", isRadio = true }, { text = L["Bottom of the Icon"], value = "bottom", isRadio = true },
-                         { text = L["Middle of the Icon"], value = "middle", isRadio = true }, { text = L["No Timer"], value = "none", isRadio = true } },
-              get = function()
-                  local u = GetUnitDb(unit)
-                  if not u then return defaults.auraTimer or "none" end
-                  return u.auraTimer or (u.auraTimers == false and "none") or "below"
-              end, set = set("auraTimer") },
         })
     end
 
+    -- one switch per icon; where they sit is fixed
     local icons = ICON_UI.List(unit)
     if #icons > 0 then
-        local values = {}
+        local items = {}
         for _, key in ipairs(icons) do
-            values[#values + 1] = { text = ICON_UI.defs[key].label, value = key, isRadio = true }
+            local def = ICON_UI.defs[key]
+            items[#items + 1] = { name = def.label, kind = LEM.SettingType.Checkbox, default = def.default ~= false,
+                hidden = (def.ring and function() return not (ns.UFRing and ns.UFRing.On()) end)
+                    or (def.noRing and function() return ns.UFRing and ns.UFRing.On() or false end) or nil,
+                get = function() return ICON_UI.Shown(unit, key) end,
+                set = function(_, value)
+                    local store = ICON_UI.Store(unit, key, true)
+                    if not store then return end
+                    store.shown = value
+                    local f = frames[unit]
+                    if f then LayoutFrame(f); UpdateAll(f) end
+                end }
         end
-        local function relayout()
-            local f = frames[unit]
-            if f then LayoutFrame(f); UpdateAll(f) end
-        end
-        local function iconSet(field)
-            return function(_, value)
-                local store = ICON_UI.Store(unit, ICON_UI.Selected(unit), true)
-                if not store then return end
-                store[field] = value
-                relayout()
-            end
-        end
-        local function iconGet(field, default)
-            return function()
-                local store = ICON_UI.Store(unit, ICON_UI.Selected(unit))
-                local value = store and store[field]
-                if value == nil then return default end
-                return value
-            end
-        end
-        local function iconHidden() return not ICON_UI.Shown(unit, ICON_UI.Selected(unit)) end
-        Section("Icons", {
-            { name = L["Icon"], kind = LEM.SettingType.Dropdown, default = icons[1], values = values,
-              desc = L["Pick an icon to switch, move and size it. It shows on the frame while Edit Mode is open."],
-              get = function() return ICON_UI.Selected(unit) end,
-              set = function(_, value)
-                  ICON_UI.selected[unit] = value
-                  relayout()
-                  -- the settings below now belong to the new icon
-                  C_Timer.After(0, function() if frames[unit] then LEM:RefreshFrameSettings(frames[unit]) end end)
-              end },
-            { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true,
-              get = function() return ICON_UI.Shown(unit, ICON_UI.Selected(unit)) end, set = iconSet("shown") },
-            { name = L["Icon X"], kind = LEM.SettingType.Slider, default = 0, minValue = -150, maxValue = 150, valueStep = 1,
-              hidden = iconHidden, get = iconGet("x", 0), set = iconSet("x") },
-            { name = L["Icon Y"], kind = LEM.SettingType.Slider, default = 0, minValue = -80, maxValue = 80, valueStep = 1,
-              hidden = iconHidden, get = iconGet("y", 0), set = iconSet("y") },
-            { name = L["Icon Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
-              hidden = iconHidden, get = iconGet("scale", 100), set = iconSet("scale"),
-              formatter = function(value) return value .. "%" end },
-        })
+        Section("Icons", items)
     end
     return settings
 end
@@ -2664,6 +2906,28 @@ function UF:Refresh()
     end
 end
 
+-- Class colours: one switch for every frame (Settings > Unit Frames)
+function UF:ClassColorsOn()
+    return ns.ClassColorsOn()
+end
+
+-- The player frame's Show choice: "always", or "fade" (out of combat; back in combat, with a
+-- target, with health missing, or under the mouse)
+UF.PLAYER_FADE = { condMouseover = true, condCombat = true, condTarget = true, condHealth = true, condHarm = false }
+function UF:GetPlayerShow()
+    local db = GetDb()
+    local v = db and db.visibility and db.visibility.player
+    return v and (v.condCombat or v.condMouseover or v.condTarget or v.condHealth) and "fade" or "always"
+end
+
+function UF:SetPlayerShow(mode)
+    local db = GetDb()
+    local v = db and db.visibility and db.visibility.player
+    if not v then return end
+    for key, on in pairs(UF.PLAYER_FADE) do v[key] = (mode == "fade") and on or false end
+    self:RefreshVisibility()
+end
+
 function UF:RefreshVisibility()
     if not self.initialized then return end
     RefreshVisibilityFader()
@@ -2682,6 +2946,11 @@ function UF:Init()
     if self.initialized then return end
     local db = GetDb()
     if not db then return end
+    UF.ApplyPalette()
+    -- the Forever style has its own default positions (a style switch reloads)
+    if ns.UFRing and ns.UFRing.On() then
+        for key, pos in pairs(ns.UFRing.POSITIONS) do DEFAULT_POSITIONS[key] = pos end
+    end
 
     for _, unit in ipairs(UNIT_ORDER) do
         local udb = db.units[unit]
@@ -2713,12 +2982,14 @@ function UF:Init()
     end)
     LEM:RegisterCallback("enter", function()
         for _, f in pairs(frames) do ApplyVisibility(f); f:SetAlpha(1); if f.Combo then UpdateComboPoints(f) end; UpdateHappiness(f); UpdateAll(f) end
+        for _, f in pairs(frames) do LayoutAuras(f) end
         SetAuraPreview(true)
         SetCastPreview(true)
     end)
     LEM:RegisterCallback("exit", function()
         for _, f in pairs(frames) do ApplyVisibility(f); if f.Combo then UpdateComboPoints(f) end; UpdateHappiness(f); UpdateAll(f) end
         RefreshVisibilityFader()
+        for _, f in pairs(frames) do LayoutAuras(f) end
         SetAuraPreview(false)
         SetCastPreview(false)
     end)

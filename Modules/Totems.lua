@@ -2,10 +2,14 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- 1. MODULE REGISTRATION
+-- TOTEMS
 -- Blizzard's TotemFrame lives in PlayerFrame, which the unit frames park, so it is moved onto
 -- FlareUI Totems: an Edit Mode frame with a size and totems per row. Blizzard's code still runs it.
 -- Edit Mode shows four sample totems.
+--------------------------------------------------
+
+--------------------------------------------------
+-- 1. MODULE REGISTRATION
 --------------------------------------------------
 ns.Totems = ns.Totems or {}
 local TOT = ns.Totems
@@ -20,7 +24,7 @@ local math_floor, math_ceil, math_max, math_min = math.floor, math.ceil, math.ma
 local table_sort = table.sort
 
 -- under the player frame, beside the pet frame
-local DEFAULT_POSITION = { point = "BOTTOM", x = -392, y = 256 }
+local DEFAULT_POSITION = { point = "BOTTOM", x = -392, y = 261 }
 local DEFAULT_SIZE, DEFAULT_PER_ROW = 95, 4
 -- Blizzard's totem button geometry (TotemButtonTemplate)
 local BUTTON, ICON, RING = 37, 22, 30
@@ -233,8 +237,13 @@ function TOT:Init()
     if self.initialized or not _G.TotemFrame then return end
     self.initialized = true
 
+    -- the Forever style has its own default position (a style switch reloads)
+    if ns.UFRing and ns.UFRing.On() then
+        for key, value in pairs(ns.UFRing.TOTEM_POSITION) do DEFAULT_POSITION[key] = value end
+    end
     holder = CreateFrame("Frame", "FlareUI_Totems", UIParent)
     holder:SetFrameStrata("LOW")
+    holder:SetClampedToScreen(true)
     CreatePreview()
     ApplyPosition()
     LEM:AddFrame(holder, OnFrameMoved, DEFAULT_POSITION, "FlareUI Totems")

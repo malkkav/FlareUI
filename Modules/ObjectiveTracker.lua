@@ -2,7 +2,7 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- 1. MODULE REGISTRATION
+-- QUEST TRACKER
 -- The Quest Tracker, in place of Blizzard's: the tracked quests (current zone first, nearest
 -- first) and tracked recipes, in a FlareUI window placed in Edit Mode.
 --   * It grows away from the screen edge it sits on; quest item buttons sit outside the edge facing
@@ -10,9 +10,12 @@ local L = ns.L
 --   * Minimizes to its header or a lone "+" (also by keybind); each kind of place can minimize or
 --     expand it once on the way in.
 --   * Blizzard's tracker is parked while this one is on.
--- Adapted in part from BetterQuestTracker by deface (MIT License, LICENSES/BetterQuestTracker.txt):
--- the zone and distance ordering, the secure item buttons and the party progress tooltip.
+-- Third-party licence notices: LICENSES/.
 -- Stands aside in the Gamepad UI.
+--------------------------------------------------
+
+--------------------------------------------------
+-- 1. MODULE REGISTRATION
 --------------------------------------------------
 ns.ObjectiveTracker = ns.ObjectiveTracker or {}
 local OT = ns.ObjectiveTracker
@@ -30,9 +33,9 @@ local C_QuestLog, C_SuperTrack = C_QuestLog, C_SuperTrack
 local InCombatLockdown = InCombatLockdown
 
 local C = {
-    DEFAULT_POSITION = { point = "TOPRIGHT", x = -60, y = -300 },
+    DEFAULT_POSITION = { point = "TOPLEFT", x = 2, y = -2 },
     DEFAULT_BORDER = "FlareUI Frames",
-    WIDTH = 260, MAX_HEIGHT = 500,
+    WIDTH = 260, MAX_HEIGHT = 300,
     HEADER = 30,            -- header band
     HEADER_INSET = 8,       -- header contents from the frame edges
     PAD = 14,               -- text inset from the frame edges
@@ -77,7 +80,7 @@ local TEXT = {
 }
 
 -- Key Bindings > AddOns > FlareUI
-BINDING_NAME_FLAREUI_TRACKER = L["Minimize / Expand Quest Tracker"]
+BINDING_NAME_FLAREUI_TRACKER = L["Minimize/Expand Tracker"]
 
 local holder, header, scroll, content, divider, miniButton
 local lines, itemButtons, titleLines = {}, {}, {}
@@ -124,13 +127,19 @@ local function GetLayoutStore(layoutName)
     return db.layouts[layoutName]
 end
 
--- right: the frame's centre is on the right half of the screen; top: the top half
+-- right: the frame's centre is on the right half of the screen; top: the top half, unless Edit Mode's
+-- Anchor picks top or bottom
 function OT:Side()
-    if not holder then return true, true end
-    local x, y = holder:GetCenter()
-    local w, h = UIParent:GetSize()
-    if not x then return true, true end
-    return x > w / 2, y > h / 2
+    local db = GetDb()
+    local anchor = db and db.anchor
+    local right, top = true, true
+    if holder then
+        local x, y = holder:GetCenter()
+        local w, h = UIParent:GetSize()
+        if x then right, top = x > w / 2, y > h / 2 end
+    end
+    if anchor == "TOP" then top = true elseif anchor == "BOTTOM" then top = false end
+    return right, top
 end
 
 local function CornerOf(right, top)
@@ -159,6 +168,12 @@ local function ApplyPosition(layoutName)
         local p = C.DEFAULT_POSITION
         holder:SetPoint(p.point, UIParent, p.point, p.x, p.y)
     end
+end
+
+-- The list sits at the bottom of the frame when it is held by a bottom corner
+function OT:ListBottom()
+    local _, top = self:Side()
+    return not top
 end
 
 local function OnFrameMoved(_, layoutName)
@@ -233,6 +248,8 @@ end
 local function ByOrder(a, b)
     if a.ftRank ~= b.ftRank then return a.ftRank < b.ftRank end
     if a.ftDone ~= b.ftDone then return not a.ftDone end
+    -- by level: the lowest first (0 for every quest in the other orders)
+    if a.ftLevel ~= b.ftLevel then return a.ftLevel < b.ftLevel end
     if a.ftDistance ~= b.ftDistance then return a.ftDistance < b.ftDistance end
     return a.ftIndex < b.ftIndex
 end
@@ -256,6 +273,7 @@ local function CollectQuests(db)
                     info.ftHere = here and true or false
                     info.ftDone = db.completedLast and C_QuestLog.IsComplete(info.questID) or false
                     info.ftDistance = db.sortByDistance and Distance(info.questID) or 0
+                    info.ftLevel = db.sortByLevel and info.level or 0
                     questBuf[#questBuf + 1] = info
                 end
             end
@@ -281,9 +299,14 @@ local function CollectQuests(db)
         return a.g.index < b.g.index
     end)
     for rank, entry in ipairs(order) do groupRank[entry.name] = rank end
-    -- without zone headers a current-zone quest under another header still goes first
+    -- without zone headers a current-zone quest under another header still goes first; by level,
+    -- zones play no part
     for _, q in ipairs(questBuf) do
-        q.ftRank = (db.zoneHeaders or not db.zoneFirst) and groupRank[q.ftHeader] or (q.ftHere and 0 or 1)
+        if db.sortByLevel then
+            q.ftRank = 0
+        else
+            q.ftRank = (db.zoneHeaders or not db.zoneFirst) and groupRank[q.ftHeader] or (q.ftHere and 0 or 1)
+        end
     end
     table.sort(questBuf, ByOrder)
     return questBuf
@@ -518,7 +541,6 @@ local function GetLine(i)
     if line then return line end
     line = CreateFrame("Button", nil, content)
     line.text = line:CreateFontString(nil, "OVERLAY")
-    line.text:SetAllPoints()
     line:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
     line:SetScript("OnClick", OnLineClick)
     line:SetScript("OnEnter", function(self)
@@ -738,13 +760,18 @@ function OT:Render()
         line.text:SetText(text)
         SetColor(line.text, color)
         line:SetWidth(w)
+        line.text:ClearAllPoints()
+        line.text:SetPoint("TOPLEFT", line, "TOPLEFT")
         line.text:SetWidth(w)
         local h = math_max(FontHeight(cfg, 12), math_floor(line.text:GetStringHeight() + 0.5))
         line:SetHeight(h)
+        line.text:SetHeight(h)
         line:ClearAllPoints()
-        line:SetPoint("TOPLEFT", content, "TOPLEFT", C.PAD + (indent or 0), y)
+        line.ftY = y
         -- the mouse area reaches the band's edges and the gap to the next line
+        line.ftX = C.PAD + (indent or 0)
         line:SetHitRectInsets(-(C.PAD + (indent or 0) - 4), -(C.PAD - 4), -1, -(C.LINE_GAP - 1))
+        line:SetPoint("TOPLEFT", content, "TOPLEFT", line.ftX, y)
         line.questID, line.zone, line.recipeID, line.recipeName, line.logIndex = nil, nil, nil, nil, nil
         line.group, line.sampleItem = nil, nil
         line:Show()
@@ -764,7 +791,7 @@ function OT:Render()
 
     local empty = true
     if not minimized then
-        if state.editMode and self:CountTracked() == 0 then
+        if (state.editMode or state.preview) and self:CountTracked() == 0 then
             for _, s in ipairs(PREVIEW) do
                 if s.zone then
                     if db.zoneHeaders then
@@ -791,13 +818,15 @@ function OT:Render()
             local lastHeader
             local zoneCounts = {}
             for _, q in ipairs(quests) do zoneCounts[q.ftHeader] = (zoneCounts[q.ftHeader] or 0) + 1 end
+            -- zone headings, except by level (the zones are mixed there)
+            local headings = db.zoneHeaders and not db.sortByLevel
             local order = state.order
             wipe(order)
             for _, q in ipairs(quests) do
                 empty = false
                 order[#order + 1] = q.questID
-                local zoneCollapsed = db.zoneHeaders and char.collapsedZones[q.ftHeader]
-                if db.zoneHeaders and q.ftHeader ~= lastHeader then
+                local zoneCollapsed = headings and char.collapsedZones[q.ftHeader]
+                if headings and q.ftHeader ~= lastHeader then
                     lastHeader = q.ftHeader
                     if n > 0 then y = y - C.GROUP_GAP end
                     local text = zoneCollapsed and string_format("%s  %s(%d)|r", q.ftHeader, ColorCode(C.DIM), zoneCounts[q.ftHeader]) or q.ftHeader
@@ -891,8 +920,17 @@ function OT:Render()
     holder:SetWidth(db.width or C.WIDTH)
     -- in Edit Mode the frame takes its maximum height, so the selection shows its full reach
     if state.editMode then listHeight = maxHeight end
+    -- on a bottom corner the lines sit at the bottom of the room they have
+    local drop = (self:ListBottom() and listHeight > contentHeight) and (listHeight - contentHeight) or 0
+    if drop > 0 then content:SetHeight(listHeight) end
+    for i = 1, n do
+        local line = lines[i]
+        line:ClearAllPoints()
+        line:SetPoint("TOPLEFT", content, "TOPLEFT", line.ftX, line.ftY - drop)
+    end
     scroll:SetHeight(math_max(1, listHeight))
-    holder:SetHeight(C.HEADER + (showList and (C.LIST_TOP + listHeight + C.LIST_BOTTOM) or 0))
+    -- minimized, the header keeps the same 3 px below it as above it
+    holder:SetHeight(C.HEADER + (showList and (C.LIST_TOP + listHeight + C.LIST_BOTTOM) or 3))
     state.contentHeight, state.listHeight = contentHeight, listHeight
     self:UpdateScrollBar()
 
@@ -902,7 +940,7 @@ function OT:Render()
     local tracked = self:CountTracked() > 0
         or (db.showRecipes and C_TradeSkillUI and C_TradeSkillUI.GetRecipesTracked
             and #C_TradeSkillUI.GetRecipesTracked(false) > 0)
-    local hide = not tracked and db.hideEmpty and not state.editMode
+    local hide = not tracked and db.hideEmpty and not state.editMode and not state.preview
     holder:SetShown(not lone and not hide)
     if miniButton then
         miniButton:ClearAllPoints()
@@ -980,6 +1018,15 @@ end
 --------------------------------------------------
 -- 11. MINIMIZE AND AUTO-MINIMIZE
 --------------------------------------------------
+-- Settings > Quest Tracker open: the tracker shows, with Edit Mode's sample quests when nothing is
+-- tracked (Frame Opacity can be seen)
+function OT:SetSettingsPreview(on)
+    on = on and true or false
+    if state.preview == on then return end
+    state.preview = on
+    if holder then self:Render() end
+end
+
 function OT:SetMinimized(minimized)
     Char().minimized = minimized and true or false
     self:Render()
@@ -1057,6 +1104,24 @@ local function BuildSettings()
           get = get("width", C.WIDTH), set = set("width") },
         { name = L["Max Height"], kind = LEM.SettingType.Slider, default = C.MAX_HEIGHT, minValue = 150, maxValue = 1000, valueStep = 10,
           get = get("maxHeight", C.MAX_HEIGHT), set = set("maxHeight") },
+        -- the edge it is held by (it grows away from it); Automatic: the one nearest the screen edge
+        { name = L["Anchor"], kind = LEM.SettingType.Dropdown, default = "auto",
+          values = { { text = L["Automatic"], value = "auto", isRadio = true },
+                     { text = L["Top"], value = "TOP", isRadio = true }, { text = L["Bottom"], value = "BOTTOM", isRadio = true } },
+          desc = L["The edge the tracker is held by: Top grows it downward, Bottom upward. Automatic picks the edge nearest the screen's."],
+          get = function()
+              local db = GetDb()
+              local anchor = db and db.anchor
+              return (anchor == "TOP" or anchor == "BOTTOM") and anchor or "auto"
+          end,
+          set = function(_, value)
+              local db = GetDb()
+              if not db then return end
+              db.anchor = value
+              -- held by the new corner where it stands now
+              OnFrameMoved(nil, LEM:GetActiveLayoutName())
+              OT:Render()
+          end },
     }
 end
 

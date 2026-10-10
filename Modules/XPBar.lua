@@ -2,11 +2,13 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
+-- XP BAR
+-- FlareUI's XP bar in place of Blizzard's status tracking bars: XP, reputation or honor in two
+-- sections, placed in Edit Mode. Loads with the Action Bars module.
+--------------------------------------------------
+
+--------------------------------------------------
 -- 1. MODULE REGISTRATION
--- The XP / Honor bars, in one of two styles (loads with the Action Bars module):
---   "flare" (section 6): FlareUI's own bar, XP / reputation / honor in two sections, in Edit Mode.
---   "blizzard" (section 5): Blizzard's status tracking bars reskinned, through widget calls and
---     post-hooks only.
 --------------------------------------------------
 ns.XPBar = ns.XPBar or {}
 local XPB = ns.XPBar
@@ -16,7 +18,7 @@ ns.modules["XPBar"] = XPB
 -- 2. UPVALUES
 --------------------------------------------------
 local _G = _G
-local ipairs, pairs = ipairs, pairs
+local ipairs = ipairs
 local CreateFrame = CreateFrame
 local LSM = LibStub("LibSharedMedia-3.0")
 
@@ -26,30 +28,12 @@ local LSM = LibStub("LibSharedMedia-3.0")
 local TEXTURE_NAME  = "FlareUI Flat"
 local BORDER_NAME   = "FlareUI Thin"
 local BORDER_SIZE   = 16
-local BORDER_OUTSET = 4                            -- the border sits this far outside the fill
 local BORDER_COLOR  = { 0.80, 0.60, 0.34 }         -- #CC9957
 local TRACK_COLOR   = { 0.15, 0.15, 0.15, 0.9 }
-local RESTED_ALPHA  = 0.4
 
--- A bar's edges inside its container (StatusTrackingBarContainer: BOTTOMLEFT 1, 2, size - 3)
-local FILL_LEFT, FILL_RIGHT, FILL_TOP, FILL_BOTTOM = 1, 2, 1, 2
-
--- Blizzard's fill atlases and the colour each one gets; others keep Blizzard's art
-local COLOR_XP     = { 0.58, 0.00, 0.55 }          -- #94008C, Blizzard's XP purple
-local COLOR_RESTED = { 0.00, 0.39, 0.88 }          -- #0063E0, Blizzard's rested blue
-local FIXED_COLORS = {
-    ["UI-HUD-ExperienceBar-Fill-Experience"]              = COLOR_XP,
-    ["UI-HUD-ExperienceBar-Fill-Rested"]                  = COLOR_RESTED,
-    ["UI-HUD-ExperienceBar-Fill-Reputation-Faction-Blue"] = COLOR_RESTED,
-}
--- standing colours, looked up by global name when a bar is coloured
-local STANDING_COLORS = {
-    ["UI-HUD-ExperienceBar-Fill-Reputation-Faction-Red"]    = "FACTION_RED_COLOR",
-    ["UI-HUD-ExperienceBar-Fill-Reputation-Faction-Orange"] = "FACTION_ORANGE_COLOR",
-    ["UI-HUD-ExperienceBar-Fill-Reputation-Faction-Yellow"] = "FACTION_YELLOW_COLOR",
-    ["UI-HUD-ExperienceBar-Fill-Reputation-Faction-Green"]  = "FACTION_GREEN_COLOR",
-}
-local HONOR_ATLAS = "UI-HUD-ExperienceBar-Fill-Honor"
+-- Blizzard's XP purple and rested blue
+local COLOR_XP     = { 0.58, 0.00, 0.55 }          -- #94008C
+local COLOR_RESTED = { 0.00, 0.39, 0.88 }          -- #0063E0
 
 --------------------------------------------------
 -- 4. HELPERS
@@ -63,20 +47,6 @@ local function GetTexture()
     return LSM:Fetch("statusbar", TEXTURE_NAME) or "Interface\\Buttons\\WHITE8x8"
 end
 
--- r, g, b for a fill atlas, or nothing to keep Blizzard's art
-local function ColorForAtlas(atlas)
-    local fixed = FIXED_COLORS[atlas]
-    if fixed then return fixed[1], fixed[2], fixed[3] end
-    local color
-    if atlas == HONOR_ATLAS then
-        local faction = UnitFactionGroup("player")
-        color = (faction == "Alliance" and PLAYER_FACTION_COLOR_ALLIANCE) or (faction == "Horde" and PLAYER_FACTION_COLOR_HORDE)
-    else
-        color = STANDING_COLORS[atlas] and _G[STANDING_COLORS[atlas]]
-    end
-    if color then return color:GetRGB() end
-end
-
 local function ApplyFont(fontString)
     local fontDb = ns.db and ns.db.profile.actionbars and ns.db.profile.actionbars.hotkeyFont
     local flags = fontDb and fontDb.flags or "OUTLINE"
@@ -86,79 +56,7 @@ local function ApplyFont(fontString)
 end
 
 --------------------------------------------------
--- 5. SKIN
---------------------------------------------------
--- The flat fill replaces whichever atlas Blizzard just set (a deferred one comes back later)
-local function ApplyFill(statusBar, atlas)
-    local r, g, b = ColorForAtlas(atlas)
-    if not r then return end
-    statusBar:SetStatusBarTexture(GetTexture())
-    statusBar:GetStatusBarTexture():SetDrawLayer("BORDER")   -- where GradualAnimatedStatusBar keeps it
-    statusBar:SetStatusBarColor(r, g, b, 1)
-end
-
-local function OnSetBarTexture(statusBar, atlas, deferUntilNextLevel)
-    if deferUntilNextLevel then return end
-    ApplyFill(statusBar, atlas)
-end
-
-local function SkinBar(bar)
-    local statusBar = bar.StatusBar
-    if not statusBar then return end
-    local texture = GetTexture()
-
-    -- what Blizzard set already, then everything it sets from now on
-    local current = statusBar:GetStatusBarTexture()
-    ApplyFill(statusBar, current and current:GetAtlas())
-    hooksecurefunc(statusBar, "SetBarTexture", OnSetBarTexture)
-
-    if statusBar.Background then
-        statusBar.Background:SetTexture(texture)
-        statusBar.Background:SetVertexColor(TRACK_COLOR[1], TRACK_COLOR[2], TRACK_COLOR[3], TRACK_COLOR[4])
-    end
-    -- the rested XP still to come, drawn after the fill (the XP bar only)
-    local rested = bar.ExhaustionLevelFillBar or statusBar.ExhaustionLevelFillBar
-    if rested then
-        rested:SetTexture(texture)
-        rested:SetVertexColor(COLOR_RESTED[1], COLOR_RESTED[2], COLOR_RESTED[3], RESTED_ALPHA)
-    end
-    if bar.OverlayFrame and bar.OverlayFrame.Text then ApplyFont(bar.OverlayFrame.Text) end
-end
-
--- The divider pool is refilled on every layout change
-local function HideDividers(container)
-    local pool = container.HorizontalDividersPool
-    if not pool then return end
-    for divider in pool:EnumerateActive() do divider:Hide() end
-end
-
--- Blizzard's frame art comes back after a single SetAlpha(0) (an animation), so it is kept hidden
--- and at alpha 0 for good
-local function KeepHidden(texture)
-    texture:SetAlpha(0)
-    texture:Hide()
-    hooksecurefunc(texture, "Show", function(t) t:Hide() end)
-    hooksecurefunc(texture, "SetAlpha", function(t, alpha) if alpha ~= 0 then t:SetAlpha(0) end end)
-end
-
-local function SkinContainer(container)
-    if container.BarFrameTexture then KeepHidden(container.BarFrameTexture) end
-    HideDividers(container)
-    hooksecurefunc(container, "UpdateDividers", HideDividers)
-
-    local border = CreateFrame("Frame", nil, container, "BackdropTemplate")
-    border:SetPoint("TOPLEFT", container, "TOPLEFT", FILL_LEFT - BORDER_OUTSET, BORDER_OUTSET - FILL_TOP)
-    border:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", BORDER_OUTSET - FILL_RIGHT, FILL_BOTTOM - BORDER_OUTSET)
-    border:SetFrameLevel(container:GetFrameLevel() + 20)
-    local file = LSM:Fetch("border", BORDER_NAME)
-    border:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, BORDER_SIZE) })
-    border:SetBackdropBorderColor(BORDER_COLOR[1], BORDER_COLOR[2], BORDER_COLOR[3], 1)
-
-    for _, bar in pairs(container.bars or {}) do SkinBar(bar) end
-end
-
---------------------------------------------------
--- 6. THE FLAREUI XP BAR (style "flare")
+-- 5. THE FLAREUI XP BAR
 -- Two sections in one border, meeting under Blizzard's rested pip; Blizzard's bars are hidden.
 --   Below max level   left: XP              right: the watched reputation, or Honor without one
 --   At max level      left: the reputation   right: Honor
@@ -168,7 +66,7 @@ end
 local FLARE_NAME    = "FlareUI_XPBar"
 local FLARE_LABEL   = "FlareUI XP Bar"
 local FLARE_INSET   = 4                        -- the fill starts this far in, inside the border's line
-local FLARE_DEFAULT = { point = "TOP", x = 0, y = -6 }
+local FLARE_DEFAULT = { point = "TOP", x = 0, y = -1 }
 -- Blizzard's rested XP pip (10 x 14)
 local PIP_ATLAS, PIP_RATIO, PIP_OVERHANG = "UI-HUD-ExperienceBar-Frame-Pip", 10 / 14, 2
 local REST_ALPHA    = 0.4
@@ -176,23 +74,16 @@ local COLOR_MAJOR   = COLOR_RESTED                      -- renown factions: Bliz
 local STANDING_BY_REACTION = { "FACTION_RED_COLOR", "FACTION_RED_COLOR", "FACTION_ORANGE_COLOR",
     "FACTION_YELLOW_COLOR", "FACTION_GREEN_COLOR", "FACTION_GREEN_COLOR", "FACTION_GREEN_COLOR", "FACTION_GREEN_COLOR" }
 
-local flare                                    -- the bar frame (nil in the reskin style)
+local flare                                    -- the bar frame
 local LEM
 
 local function Percent(value, maxValue)
     return maxValue > 0 and value / maxValue * 100 or 0
 end
 
--- A section's text, in the chosen format
+-- A section's text: current / max, as Blizzard's bars show it (shown on mouseover)
 local function FormatValues(value, maxValue)
-    local db = GetDb()
-    local format = db and db.textFormat or "NUM_PERC"
-    if format == "PERC" then
-        return ("%.0f%%"):format(Percent(value, maxValue))
-    elseif format == "NUM" then
-        return ("%s / %s"):format(BreakUpLargeNumbers(value), BreakUpLargeNumbers(maxValue))
-    end
-    return ("%s / %s (%.0f%%)"):format(BreakUpLargeNumbers(value), BreakUpLargeNumbers(maxValue), Percent(value, maxValue))
+    return ("%s / %s"):format(BreakUpLargeNumbers(value), BreakUpLargeNumbers(maxValue))
 end
 
 -- Each kind of section: value, max, rested bonus (XP only), colour, text and tooltip
@@ -205,7 +96,8 @@ function Read.xp()
     local color = rested > 0 and COLOR_RESTED or COLOR_XP
     return {
         value = value, max = maxValue, rested = rested, color = color,
-        text = FormatValues(value, maxValue),
+        -- Blizzard's own experience bar text ("XP: 1234/5000")
+        text = XP_STATUS_BAR_TEXT and XP_STATUS_BAR_TEXT:format(value, maxValue) or FormatValues(value, maxValue),
         tooltip = function(tip)
             GameTooltip_SetTitle(tip, XP_TEXT:format(BreakUpLargeNumbers(value), BreakUpLargeNumbers(maxValue), math.ceil(Percent(value, maxValue))))
             local stateID, stateName, multiplier = GetRestState()
@@ -515,7 +407,7 @@ local function BuildFlare()
 end
 
 --------------------------------------------------
--- 7. PUBLIC
+-- 6. PUBLIC
 --------------------------------------------------
 function XPB:ShouldLoad()
     local ab = ns.db and ns.db.profile and ns.db.profile.actionbars
@@ -537,15 +429,8 @@ end
 function XPB:Init()
     if self.initialized or not GetDb() then return end
     self.initialized = true
-    if (GetDb().style or "flare") == "flare" then
-        BuildFlare()
-        C_Timer.After(0, function()
-            if ns.Visibility and ns.Visibility.Refresh then ns.Visibility:Refresh() end
-        end)
-        return
-    end
-    for _, name in ipairs({ "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer" }) do
-        local container = _G[name]
-        if container then SkinContainer(container) end
-    end
+    BuildFlare()
+    C_Timer.After(0, function()
+        if ns.Visibility and ns.Visibility.Refresh then ns.Visibility:Refresh() end
+    end)
 end

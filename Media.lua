@@ -1,6 +1,11 @@
 local ADDON_NAME = ...
 
 --------------------------------------------------
+-- MEDIA
+-- FlareUI's fonts, bar textures and borders, registered with LibSharedMedia.
+--------------------------------------------------
+
+--------------------------------------------------
 -- 1. LIBRARY
 --------------------------------------------------
 local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)

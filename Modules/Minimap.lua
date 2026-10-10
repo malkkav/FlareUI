@@ -2,10 +2,14 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- 1. MODULE REGISTRATION
+-- MINIMAP
 -- A square minimap in Blizzard's panel frame art (the AddOn List's NineSlice layout). The header
 -- (tracking, zone, clock, calendar) runs inside the map along its top; the day/night badge sits on
 -- the bottom-left corner. Edit Mode's Size setting scales the whole frame.
+--------------------------------------------------
+
+--------------------------------------------------
+-- 1. MODULE REGISTRATION
 --------------------------------------------------
 ns.Minimap = ns.Minimap or {}
 local MM = ns.Minimap
@@ -34,6 +38,8 @@ local FRAME_PAD     = 8                             -- room around the map for t
 local CLUSTER_SIZE  = MAP_SIZE + 2 * FRAME_PAD      -- 260
 local BORDER_LAYOUT = "ButtonFrameTemplateNoPortrait"   -- Blizzard NineSlice layout (AddOn List frame)
 local LEFT_SHIFT    = -6     -- the layout sits further in on the left
+-- the border art's transparent shadow outside its gold line, per side (measured in game)
+local BORDER_SHADOW = { left = 10, top = 11, right = 4, bottom = 5 }
 local SQUARE_MASK   = "Interface\\BUTTONS\\WHITE8X8"
 
 -- The frame's top edge is a title band over the map; the header row is centred in it
@@ -298,9 +304,7 @@ end
 local function PlaceSun()
     local sun = Cluster.DielFrame
     if not sun then return end
-    local db = GetDb()
-    -- always there while it is the Addon Button Bag's button (MinimapBag.lua)
-    sun:SetShown(not db or db.showDayNight or db.buttonBag ~= false)
+    sun:Show()   -- always on; also the Addon Button Bag's button (MinimapBag.lua)
     sun:SetScale(SUN_SCALE)
     sun:ClearAllPoints()
     local overhang = SUN_OVERHANG / SUN_SCALE   -- offsets are in the badge's own, scaled units
@@ -470,7 +474,7 @@ end
 local function AddClockStats()
     local db = GetDb()
     local clock = _G.TimeManagerClockButton
-    if not (db and db.enabled and db.clockStats and clock and GameTooltip:GetOwner() == clock) then return end
+    if not (db and db.enabled and clock and GameTooltip:GetOwner() == clock) then return end
     local _, _, latencyHome, latencyWorld = GetNetStats()
     local label, value = NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR
     GameTooltip:AddDoubleLine(L["Framerate"], string.format("%.0f fps", GetFramerate()),
@@ -502,8 +506,6 @@ function MM:Init()
     RemoveEditModeSettings()
     KeepMapUnrotated()
     if Cluster.SetRotateMinimap then hooksecurefunc(Cluster, "SetRotateMinimap", KeepMapUnrotated) end
-    -- may be dragged partly off screen
-    Cluster:SetClampedToScreen(false)
     -- Blizzard's addon drawer has no place here (Blizzard re-shows it from UpdateDisplay)
     local drawer = _G.AddonCompartmentFrame
     if drawer then
@@ -513,6 +515,16 @@ function MM:Init()
     CreateMapArt()
     StyleHeader()
     InstallHooks()
+    -- Edit Mode's box on the border art, which keeps it on screen and lets it sit flush with the
+    -- edges: the art's four edge strips, less the transparent shadow they carry outside the gold line
+    ns.FitEditModeBox(Cluster, function()
+        local art = MM.Frame
+        local leftEdge, rightEdge, topEdge, bottomEdge = art and art.LeftEdge, art and art.RightEdge, art and art.TopEdge, art and art.BottomEdge
+        if not (art and art:GetLeft() and leftEdge and rightEdge and topEdge and bottomEdge and leftEdge:GetLeft()) then return nil end
+        local cut = BORDER_SHADOW
+        return art, leftEdge:GetLeft() + cut.left - art:GetLeft(), topEdge:GetTop() - cut.top - art:GetTop(),
+            rightEdge:GetRight() - cut.right - art:GetRight(), bottomEdge:GetBottom() + cut.bottom - art:GetBottom()
+    end)
     self.initialized = true
     if ns.MinimapBag then ns.MinimapBag:Init() end
 

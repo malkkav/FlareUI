@@ -15,8 +15,10 @@ local function showTooltip(self)
 		SettingsTooltip:SetOwner(self, 'ANCHOR_NONE')
 		SettingsTooltip:SetPoint('BOTTOMRIGHT', self, 'TOPLEFT')
 		SettingsTooltip:SetText(self.setting.name, 1, 1, 1)
-		SettingsTooltip:AddLine(self.setting.desc)
+		SettingsTooltip:AddLine(self.setting.desc, nil, nil, nil, true) -- FlareUI: wrapped
 		SettingsTooltip:Show()
+		-- FlareUI: an opaque background, easier to read over the game world
+		if SettingsTooltip.NineSlice and SettingsTooltip.NineSlice.SetCenterColor then SettingsTooltip.NineSlice:SetCenterColor(0, 0, 0, 1) end
 	end
 end
 
@@ -116,6 +118,7 @@ lib.internal:CreatePool(lib.SettingType.Slider, function()
 	local frame = CreateFrame('Frame', nil, UIParent, 'EditModeSettingSliderTemplate')
 	frame:SetScript('OnLeave', DefaultTooltipMixin.OnLeave)
 	frame:SetScript('OnEnter', showTooltip)
+	frame.FlareUI_DarkTooltips = true -- FlareUI: opaque tooltip (Settings/Panel.lua)
 	Mixin(frame, sliderMixin)
 
 	frame:SetHeight(32)

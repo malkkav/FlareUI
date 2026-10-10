@@ -37,6 +37,7 @@ lib.anonCallbacksLayout = lib.anonCallbacksLayout or {}
 lib.anonCallbacksCreate = lib.anonCallbacksCreate or {}
 lib.anonCallbacksRename = lib.anonCallbacksRename or {}
 lib.anonCallbacksDelete = lib.anonCallbacksDelete or {}
+lib.anonCallbacksSelect = lib.anonCallbacksSelect or {}   -- FlareUI: a frame picked (nil: none)
 
 lib.systemSettings = lib.systemSettings or {}
 lib.subSystemSettings = lib.subSystemSettings or {}
@@ -45,19 +46,26 @@ lib.subSystemButtons = lib.subSystemButtons or {}
 
 lib.layoutCache = lib.layoutCache or {}
 
-local layoutNames = setmetatable({'Modern', 'Classic'}, {
+-- FlareUI: the preset layouts come first: Modern and Classic, and Gamepad on clients that have it
+-- (Forever). Their count comes from the client instead of being taken as 2.
+local function numPresets()
+	local meta = Enum and Enum.EditModePresetLayoutsMeta
+	return meta and meta.NumValues or 2
+end
+
+local PRESET_NAMES = {'Modern', 'Classic', 'Gamepad'}
+local layoutNames = setmetatable({}, {
 	__index = function(t, key)
-		if key > 2 then
-			-- the first 2 indices are reserved for 'Modern' and 'Classic' layouts, and anything
-			-- else are custom ones, although GetLayouts() doesn't return data for the 'Modern'
-			-- and 'Classic' layouts, so we'll have to substract and check
+		local presets = numPresets()
+		if key > presets then
+			-- the first indices are the preset layouts, anything else are custom ones, although
+			-- GetLayouts() doesn't return data for the presets, so we'll have to substract and check
 			local layouts = lib.layoutCache
-			if (key - 2) <= #layouts then
-				return layouts[key - 2].layoutName
+			if (key - presets) <= #layouts then
+				return layouts[key - presets].layoutName
 			end
 		else
-			-- also work for 'Modern' and 'Classic'
-			rawget(t, key)
+			return PRESET_NAMES[key]
 		end
 	end
 })
@@ -72,7 +80,15 @@ local function resetDialogs()
 	end
 end
 
+-- FlareUI: tells the 'select' callbacks which frame is picked (nil: none)
+local function fireSelect(frame)
+	for _, callback in next, lib.anonCallbacksSelect do
+		securecallfunction(callback, frame)
+	end
+end
+
 local function resetSelection()
+	fireSelect(nil)
 	for frame, selection in next, lib.frameSelections do
 		if selection.isSelected then
 			frame:SetMovable(false)
@@ -87,6 +103,53 @@ local function resetSelection()
 	end
 end
 
+-- FlareUI: a frame's own snapper (lib:SetFrameSnapper) runs while it is dragged: a ghost shows
+-- where it will land, and dropping it there places it. Nudging with the arrow keys never snaps.
+local snapPreview
+local function SnapPreview()
+	if snapPreview then return snapPreview end
+	snapPreview = CreateFrame('Frame', nil, UIParent)
+	snapPreview:SetFrameStrata('TOOLTIP')
+	snapPreview:Hide()
+	local fill = snapPreview:CreateTexture(nil, 'BACKGROUND')
+	fill:SetAllPoints()
+	fill:SetColorTexture(1, 0.82, 0, 0.18)
+	local edges = {
+		{ 'TOPLEFT', 'TOPRIGHT', true }, { 'BOTTOMLEFT', 'BOTTOMRIGHT', true },
+		{ 'TOPLEFT', 'BOTTOMLEFT', false }, { 'TOPRIGHT', 'BOTTOMRIGHT', false },
+	}
+	for _, e in ipairs(edges) do
+		local line = snapPreview:CreateTexture(nil, 'BORDER')
+		line:SetColorTexture(1, 0.82, 0, 0.9)
+		line:SetPoint(e[1])
+		line:SetPoint(e[2])
+		if e[3] then line:SetHeight(2) else line:SetWidth(2) end
+	end
+	return snapPreview
+end
+
+-- the snapper's target: the centre the frame would land on (in its own coordinates, as GetCenter), or nil
+local function snapTarget(frame)
+	local snapper = lib.frameSnappers and lib.frameSnappers[frame]
+	if not snapper then return nil end
+	local ok, x, y = pcall(snapper, frame)
+	if ok and x and y then return x, y end
+end
+
+local function onDragUpdate(self)
+	local preview = SnapPreview()
+	local x, y = snapTarget(self.parent)
+	if x then
+		local scale = self.parent:GetEffectiveScale() / UIParent:GetEffectiveScale()
+		preview:SetSize(self.parent:GetWidth() * scale, self.parent:GetHeight() * scale)
+		preview:ClearAllPoints()
+		preview:SetPoint('CENTER', UIParent, 'BOTTOMLEFT', x * scale, y * scale)
+		preview:Show()
+	else
+		preview:Hide()
+	end
+end
+
 local function onDragStart(self)
 	if InCombatLockdown() then
 		-- TODO: maybe add a warning?
@@ -95,10 +158,13 @@ local function onDragStart(self)
 
 	self:RegisterEvent('PLAYER_REGEN_DISABLED')
 	self.parent:StartMoving()
+	if lib.frameSnappers and lib.frameSnappers[self.parent] then
+		self:SetScript('OnUpdate', onDragUpdate)
+	end
 end
 
 local function normalizePosition(frame)
-	-- ripped out of LibWindow-1.1, which is Public Domain
+	-- the frame's position from its nearest screen edge or centre, on each axis
 	local parent = frame:GetParent()
 	if not parent then
 		return
@@ -261,8 +327,17 @@ local function onDragStop(self)
 	local parent = self.parent
 	parent:StopMovingOrSizing()
 	self:UnregisterEvent('PLAYER_REGEN_DISABLED')
+	self:SetScript('OnUpdate', nil)
+	if snapPreview then snapPreview:Hide() end
 
-	pcall(snapToGrid, parent)
+	-- the frame's own snapper wins over the grid
+	local x, y = snapTarget(parent)
+	if x then
+		parent:ClearAllPoints()
+		parent:SetPoint('CENTER', UIParent, 'BOTTOMLEFT', x, y)
+	else
+		pcall(snapToGrid, parent)
+	end
 
 	updatePosition(self)
 end
@@ -285,6 +360,7 @@ local function onMouseDown(self) -- replacement for EditModeSystemMixin:SelectSy
 		end
 
 		internal.dialog:Update(self)
+		fireSelect(self.parent)
 	end
 end
 
@@ -386,7 +462,7 @@ local function onEditModeLayoutChanged()
 					securecallfunction(callback, lib.layoutCache[index].layoutName, layout.layoutName, index)
 				end
 
-				if index == (lib.activeLayout - 2) then
+				if index == (lib.activeLayout - numPresets()) then
 					-- the currently active layout was renamed, we trigger a layout update
 					lib.activeLayout = nil
 					onEditModeChanged(nil, layoutInfo)
@@ -487,6 +563,15 @@ The `default` table must contain the following entries:
 * `x`: horizontal offset from the anchor point _(number)_
 * `y`: vertical offset from the anchor point _(number)_
 --]]
+--[[ FlareEditMode:SetFrameSnapper(frame, snapper)
+FlareUI: snapper(frame) returns the centre x, y (the frame's own coordinates, as GetCenter) the frame snaps to while
+dragged, or nil. A ghost shows the spot during the drag; the arrow keys never snap.
+--]]
+function lib:SetFrameSnapper(frame, snapper)
+	lib.frameSnappers = lib.frameSnappers or {}
+	lib.frameSnappers[frame] = snapper
+end
+
 function lib:AddFrame(frame, callback, default, name)
 	local selection = CreateFrame('Frame', nil, frame, 'EditModeSystemSelectionTemplate')
 	selection:SetAllPoints()
@@ -759,6 +844,9 @@ Possible events:
         * `oldLayoutName`: name of the layout that got renamed
         * `newLayoutName`: new name of the layout
         * `layoutIndex`: index of the layout
+* `select`: (FlareUI) triggered when a frame is picked, or with nil when none is
+    * signature:
+        * `frame`: the frame picked, or nil
 * `delete`: triggered when a Edit Mode layout has been deleted
     * signature:
         * `layoutName`: name of the layout that got deleted
@@ -792,6 +880,8 @@ function lib:RegisterCallback(event, callback)
 		table.insert(lib.anonCallbacksRename, callback)
 	elseif event == 'delete' then
 		table.insert(lib.anonCallbacksDelete, callback)
+	elseif event == 'select' then
+		table.insert(lib.anonCallbacksSelect, callback)
 	else
 		error('invalid callback event "' .. event .. '"')
 	end
@@ -815,6 +905,54 @@ Data will be available for the ["layout" callback](#libeditmoderegistercallbacke
 --]]
 function lib:GetActiveLayoutName()
 	return lib.activeLayout and layoutNames[lib.activeLayout]
+end
+
+--[[ FlareEditMode:SelectFrame(_frame_) ![](https://img.shields.io/badge/function-blue)
+FlareUI addition. Opens Edit Mode if it is closed and selects the frame, showing its dialog, as a
+click on it would. Returns false in combat, when Edit Mode cannot open, or for an unknown frame.
+
+* `frame`: frame widget already registered with [AddFrame](#libeditmodeaddframeframe-callback-default-)
+--]]
+function lib:SelectFrame(frame)
+	local selection = lib.frameSelections[frame]
+	if not selection or InCombatLockdown() then
+		return false
+	end
+
+	local function select()
+		if lib.isEditing and not InCombatLockdown() and selection:IsShown() and not selection.isSelected then
+			onMouseDown(selection)
+		end
+	end
+
+	if lib.isEditing then
+		select()
+		return true
+	end
+
+	local manager = EditModeManagerFrame
+	if manager.CanEnterEditMode and not manager:CanEnterEditMode() then
+		return false
+	end
+	ShowUIPanel(manager)
+	-- the selections show as Edit Mode opens; select once they have
+	C_Timer.After(0.1, select)
+	return true
+end
+
+--[[ FlareEditMode:GetFrameName(_frame_) ![](https://img.shields.io/badge/function-blue)
+FlareUI addition. The name the frame shows in Edit Mode, or nil for an unknown frame.
+--]]
+function lib:GetFrameName(frame)
+	local selection = lib.frameSelections[frame]
+	return selection and selection.system and selection.system.GetSystemName()
+end
+
+--[[ FlareEditMode:GetFrameSettings(_frame_) ![](https://img.shields.io/badge/function-blue)
+FlareUI addition. The settings registered for the frame with AddFrameSettings, or nil.
+--]]
+function lib:GetFrameSettings(frame)
+	return lib.frameSettings[frame]
 end
 
 --[[ FlareEditMode:IsInEditMode() ![](https://img.shields.io/badge/function-blue)

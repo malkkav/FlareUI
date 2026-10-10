@@ -1,8 +1,11 @@
 <Bindings>
-	<Binding name="FLAREUI_SETTINGS" header="FLAREUI" category="ADDONS">
+	<Binding name="FLAREUI_SETTINGS" category="BINDING_HEADER_FLAREUI">
 		FlareUI_ToggleSettings()
 	</Binding>
-	<Binding name="FLAREUI_TRACKER" category="ADDONS">
+	<Binding name="FLAREUI_THREAT" category="BINDING_HEADER_FLAREUI">
+		FlareUI_ToggleThreatMeter()
+	</Binding>
+	<Binding name="FLAREUI_TRACKER" category="BINDING_HEADER_FLAREUI">
 		FlareUI_ToggleObjectiveTracker()
 	</Binding>
 </Bindings>
