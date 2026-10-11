@@ -26,7 +26,7 @@ local C = {
     OPACITY = 0.9,
     -- names of minimap children that are Blizzard's (or ours) and never go in the bag
     SKIP = { "^Minimap", "^MiniMap", "^GameTime", "^TimeManager", "^QueueStatus", "^Expansion",
-             "^GarrisonLandingPage", "^AddonCompartment", "^FlareUI", "^HybridMinimap", "^LibDBIcon10_" },
+             "^GarrisonLandingPage", "^AddonCompartment", "^FlareUI", "^HybridMinimap" },
 }
 
 local panel, badgeButton
@@ -70,18 +70,35 @@ local function ParkAllIcons()
     for _, name in ipairs(lib:GetButtonList() or {}) do ParkIcon(lib:GetMinimapButton(name)) end
 end
 
+-- A button LibDBIcon really made (the bag shows those from their data objects). Some addons name
+-- their own button the LibDBIcon way without the library: those count as any other addon's button.
+local function IsLibDBIconButton(frame, name)
+    local lib = LibDBIcon()
+    local id = name:match("^LibDBIcon10_(.+)$")
+    return id ~= nil and lib ~= nil and lib:GetMinimapButton(id) == frame
+end
+
 -- Children of the minimap that look like an addon's button: a named, unprotected, small Button that
 -- is not Blizzard's, LibDBIcon's or FlareUI's
 local function IsForeignButton(frame)
     if not (frame and frame.IsObjectType and frame:IsObjectType("Button")) then return false end
     if frame:IsForbidden() or frame:IsProtected() then return false end
     local name = frame:GetName()
-    if not name then return false end
+    if not name or IsLibDBIconButton(frame, name) then return false end
     for _, pattern in ipairs(C.SKIP) do
         if name:find(pattern) then return false end
     end
     local w, h = frame:GetSize()
     return (w or 0) > 8 and (w or 0) <= 48 and (h or 0) > 8 and (h or 0) <= 48
+end
+
+-- An adopted button's name in the bag: its data object's text when it has one (a LibDBIcon-style
+-- button), else its frame name without the LibDBIcon prefix
+local function FrameLabel(frame)
+    local object = type(frame.dataObject) == "table" and frame.dataObject or nil
+    local label = object and StripText(object.label or object.text) or ""
+    if label ~= "" then return label end
+    return (frame:GetName():gsub("^LibDBIcon10_", ""))
 end
 
 local function CollectEntries()
@@ -107,13 +124,13 @@ local function CollectEntries()
 
     -- other addons' buttons on the minimap
     for frame in pairs(adopted) do
-        entries[#entries + 1] = { kind = "frame", name = frame:GetName(), label = frame:GetName(), frame = frame }
+        entries[#entries + 1] = { kind = "frame", name = frame:GetName(), label = FrameLabel(frame), frame = frame }
     end
     for _, parent in ipairs({ Minimap, MinimapCluster }) do
         for _, child in ipairs({ parent:GetChildren() }) do
             if not adopted[child] and IsForeignButton(child) then
                 adopted[child] = true
-                entries[#entries + 1] = { kind = "frame", name = child:GetName(), label = child:GetName(), frame = child }
+                entries[#entries + 1] = { kind = "frame", name = child:GetName(), label = FrameLabel(child), frame = child }
             end
         end
     end
@@ -273,6 +290,9 @@ function Bag:Layout()
             -- the addon's own button, moved into the cell (its own look and scripts)
             frame = e.frame
             frame:SetParent(panel)
+            -- a button with its own strata (or a level below the panel's) would sit under the panel
+            frame:SetFrameStrata(panel:GetFrameStrata())
+            frame:SetFrameLevel(panel:GetFrameLevel() + 2)
             frame:ClearAllPoints()
             frame:SetPoint("CENTER", panel, "TOPLEFT", x + C.BUTTON / 2, y - C.BUTTON / 2)
             frame:Show()

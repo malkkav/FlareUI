@@ -13,11 +13,9 @@ local function Refresh()
     if ns.Visibility and ns.Visibility.Refresh then ns.Visibility:Refresh() end
 end
 
-local function FCMOff() return not S:GetPath("fcm.enabled") end
-
 S:Module{
     key = "ab", group = "HUD", order = 10, enabled = "actionbars.enabled",
-    tabs = { { key = "settings" }, { key = "fonts" } },
+    tabs = { { key = "settings" }, { key = "fcm" }, { key = "fonts" } },
     -- Blizzard's bars: the button opens Edit Mode itself (no FlareUI frame to select)
     editMode = function() return nil end,
 }
@@ -35,24 +33,27 @@ S:Row{ key = "ab.procGlow", path = "actionbars.procGlow", half = true,
     apply = function() if ns.ProcGlow then ns.ProcGlow:Refresh() end end }
 S:Row{ key = "ab.hideMacroText", path = "actionbars.hideMacroText", apply = Refresh, half = true }
 S:Row{ key = "ab.hideKeybinds", path = "actionbars.hideHotkeys", apply = Refresh, half = true }
+S:Row{ key = "ab.autoRanks", path = "actionbars.autoRanks", half = true }
 
 
--- Experience
+-- XP Bar
 S:Row{ key = "ab.xpBar", path = "actionbars.xpbar.enabled", reload = true }
 -- its numbers: under the mouse, or always
 S:Row{ key = "ab.xpText", kind = "choice", path = "actionbars.xpbar.textMode", choices = { "HOVER", "ALWAYS" },
     parent = "ab.xpBar", apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
 
--- Hiding (also gone from Edit Mode)
-S:Row{
-    key = "ab.hideBlizzardElements", kind = "chips", apply = Refresh,
-    items = {
-        { path = "visibility.hideMicroMenu" }, { path = "visibility.hideBagBar" },
-        { path = "visibility.hidePetBar" }, { path = "visibility.hideStanceBar" },
-        { path = "visibility.hideTotemBar" }, { path = "visibility.hidePossessBar" },
-        { path = "visibility.hideEndCaps" }, { path = "visibility.hideRaidManager" },
-    },
-}
+-- Hide Bars (also gone from Edit Mode), two to a line
+local function Hide(key, path)
+    S:Row{ key = "ab." .. key, path = "visibility." .. path, apply = Refresh, section = "ab.hideBlizzardElements", half = true }
+end
+Hide("hideMicroMenu", "hideMicroMenu")
+Hide("hideBagBar", "hideBagBar")
+Hide("hidePetBar", "hidePetBar")
+Hide("hideStanceBar", "hideStanceBar")
+Hide("hideTotemBar", "hideTotemBar")
+Hide("hidePossessBar", "hidePossessBar")
+Hide("hideGryphons", "hideEndCaps")
+Hide("hideRaidManager", "hideRaidManager")
 
 -- Fade Options: set per bar in Edit Mode; the row opens it
 S:Row{ key = "ab.fade", kind = "editmode", section = "ab.fadeOptions", sectionTitle = L["Fade Options"] }
@@ -60,17 +61,18 @@ S:Row{ key = "ab.fade", kind = "editmode", section = "ab.fadeOptions", sectionTi
 S:Row{ key = "ab.fadeSpeed", kind = "choice", path = "visibility.fadeSpeed", choices = { "instant", "fast", "slow" },
     section = "ab.fadeOptions", apply = function() if ns.Visibility and ns.Visibility.Refresh then ns.Visibility:Refresh() end end }
 
--- Fake Cooldown Manager: its options show once it is on
-S:Row{ key = "ab.fcmEnable", path = "fcm.enabled", apply = Refresh, section = "ab.fakeCooldownManager" }
-local fcmBars = {}
-for i = 1, 8 do fcmBars[i] = { path = "fcm.bars.bar" .. i .. ".enabled", text = L["Action Bar %d"]:format(i) } end
-S:Row{ key = "ab.fcmBars", kind = "chips", items = fcmBars, apply = Refresh, hidden = FCMOff, section = "ab.fakeCooldownManager" }
+-- FakeCM tab: no switch, it is on while a bar is picked (ns.FCMActive)
+-- the bars it takes over, two to a line
+for i = 1, 8 do
+    S:Row{ key = "ab.fcmBar" .. i, tab = "fcm", path = "fcm.bars.bar" .. i .. ".enabled", apply = Refresh,
+        section = "ab.fakeCooldownManager", half = true }
+end
 S:Row{
-    key = "ab.fcmShow", kind = "choice", path = "fcm.show", hidden = FCMOff, section = "ab.fakeCooldownManager",
+    key = "ab.fcmShow", kind = "choice", tab = "fcm", path = "fcm.show", section = "ab.fakeCooldownManager",
     choices = { "combat", "target", "harm", "always" }, apply = Refresh,
 }
 S:Row{
-    key = "ab.fcmSetup", kind = "button", center = true, hidden = FCMOff, section = "ab.fakeCooldownManager",
+    key = "ab.fcmSetup", kind = "button", tab = "fcm", center = true, section = "ab.fakeCooldownManager",
     apply = function() if ns.ToggleFCMSetupMode then ns.ToggleFCMSetupMode() end end,
 }
 

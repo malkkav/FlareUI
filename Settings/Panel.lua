@@ -16,8 +16,8 @@ local ROW_H, SECTION_H = 26, 30
 local INDENT = 18
 -- the scrolling page: window minus borders, both side columns, their padding and the scroll bar
 local CONTENT_W = WIDTH - 12 - LEFT_W - RIGHT_W - 2 * PAD - 14
-local PICTURE_DIR = "Interface\\AddOns\\FlareUI\\Media\\Settings\\"
-local FALLBACK_PICTURE = "Interface\\AddOns\\FlareUI\\Media\\Art\\Banner.png"
+-- the dog at the top of the info panel, for every option
+local PICTURE = "Interface\\AddOns\\FlareUI\\Media\\Art\\Banner.png"
 
 local BRONZE_MUTED = { 0.61, 0.48, 0.29 }
 
@@ -173,25 +173,15 @@ local function Text(parent, font, justify)
     return fs
 end
 
--- the picture for a row: Settings/Pictures.lua lists the files that exist; otherwise the module's,
--- otherwise FlareUI's banner
-local function PictureFor(rowKey, moduleKey)
-    local have = ns.SettingsPictures or {}
-    if rowKey and have[rowKey] then return PICTURE_DIR .. rowKey .. ".png", have[rowKey] end
-    if moduleKey and have[moduleKey] then return PICTURE_DIR .. moduleKey .. ".png", have[moduleKey] end
-    return FALLBACK_PICTURE, 1
-end
-
 --------------------------------------------------
 -- 2. RIGHT COLUMN: picture and text
 --------------------------------------------------
 local preview = {}
 
-local function ShowPreview(title, desc, tip, rowKey, moduleKey)
-    local file, ratio = PictureFor(rowKey, moduleKey)
-    preview.picture:SetTexture(file)
+local function ShowPreview(title, desc, tip)
+    preview.picture:SetTexture(PICTURE)
     local w = RIGHT_W - 2 * PAD
-    preview.picture:SetSize(w, ratio == 2 and w / 2 or w)
+    preview.picture:SetSize(w, w)
     preview.title:SetText(title or "")
     preview.desc:SetText(S:Format(desc) or "")
     preview.tip:SetText(tip and (L["Tip:"] .. " " .. S:Format(tip)) or "")
@@ -213,12 +203,12 @@ local function ShowRowPreview(row)
     if (not title or title == "") and section then title = section end
     local desc = row:Description()
     if not desc and row.kind == "text" then desc = S:Text(row.key, "text") end
-    ShowPreview(title, desc, row:Tip(), row.key, row.module)
+    ShowPreview(title, desc, row:Tip())
 end
 
 -- for custom tabs: their own controls fill the right column on hover, and give it back after
-function Panel:ShowPreview(title, desc, tip, rowKey, moduleKey)
-    if preview.picture then ShowPreview(title, desc, tip, rowKey, moduleKey) end
+function Panel:ShowPreview(title, desc, tip)
+    if preview.picture then ShowPreview(title, desc, tip) end
 end
 function Panel:ShowModulePreview()
     if preview.picture then ShowModulePreview() end

@@ -3,8 +3,8 @@ local L = ns.L
 local S = ns.Settings
 
 --------------------------------------------------
--- QUALITY OF LIFE (Modules/Tweaks.lua), in three tabs: Gameplay (vendor, looting, convenience,
--- camera), Interface (nameplates, hide clutter), Advanced (Sync Blizz UI, windows). Options
+-- QUALITY OF LIFE (Modules/Tweaks.lua), in three tabs: Gameplay (looting, camera, convenience),
+-- Interface (nameplates, vendor, hide clutter) and Advanced (Sync Blizz UI, windows). Options
 -- that replace Blizzard scripts ask for a reload; the rest apply live through Tweaks:Refresh().
 --------------------------------------------------
 local function Refresh()
@@ -46,13 +46,8 @@ S:Row{
 }
 
 -- GAMEPLAY ---------------------------------------
-S:Row{ key = "qol.sellJunk", tab = "gameplay", path = "tweaks.sellJunk", apply = Refresh }
-S:Row{ key = "qol.repair", tab = "gameplay", path = "tweaks.autoRepair", apply = Refresh }
-S:Row{ key = "qol.durability", tab = "gameplay", path = "tweaks.durabilityWarning", apply = Refresh }
+-- (sections in this order: Looting, Camera, Convenience)
 S:Row{ key = "qol.fastLoot", tab = "gameplay", path = "tweaks.fasterLoot", apply = Refresh }
-S:Row{ key = "qol.delete", tab = "gameplay", path = "tweaks.autoDelete", apply = Refresh }
-S:Row{ key = "qol.trainAll", tab = "gameplay", path = "tweaks.trainAll", apply = Refresh }
-S:Row{ key = "qol.way", tab = "gameplay", path = "tweaks.way", reload = true }
 -- Camera: further and faster zoom are one option now
 S:Row{
     key = "qol.camera", tab = "gameplay",
@@ -63,8 +58,16 @@ S:Row{
     end,
     apply = Refresh,
 }
+S:Row{ key = "qol.delete", tab = "gameplay", path = "tweaks.autoDelete", apply = Refresh }
+S:Row{ key = "qol.trainAll", tab = "gameplay", path = "tweaks.trainAll", apply = Refresh }
+S:Row{ key = "qol.way", tab = "gameplay", path = "tweaks.way", reload = true }
+S:Row{ key = "qol.mailBook", tab = "gameplay", path = "tweaks.mailBook", apply = Refresh }
+S:Row{ key = "qol.alerts", tab = "gameplay", path = "tweaks.alertSounds" }
+S:Row{ key = "qol.petFood", tab = "gameplay", path = "tweaks.petFood", apply = Refresh }
+S:Row{ key = "qol.skipLoot", tab = "gameplay", path = "tweaks.skipLootConfirm" }
 
 -- INTERFACE --------------------------------------
+-- (sections in this order: Nameplates, Vendor, Hide clutter)
 S:Row{ key = "qol.npCombo", tab = "interface", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon }
 S:Row{ key = "qol.npQuest", tab = "interface", path = "tweaks.nameplateQuest", apply = Refresh, disabled = NameplateAddon }
 -- live when switched on; switched off, plates on screen keep the full-width bar until Blizzard lays
@@ -74,12 +77,17 @@ S:Row{ key = "qol.npLevel", tab = "interface", path = "tweaks.nameplateHideLevel
         Refresh()
         S:TrackReload("qol.npLevel", on and "on" or "off", "on")
     end }
-S:Row{
-    key = "qol.hideClutter", kind = "chips", tab = "interface", apply = Refresh,
-    items = {
-        { path = "tweaks.hideErrors", reload = true },
-        { path = "tweaks.hideZoneText", reload = true },
-        { path = "tweaks.hidePartyTitle" },
-        { path = "tweaks.hideTips" },
-    },
-}
+-- Blizzard's own enemy nameplates, so another nameplate addon does not grey it out
+S:Row{ key = "qol.npCombat", tab = "interface", path = "tweaks.combatPlates", apply = Refresh }
+
+S:Row{ key = "qol.sellJunk", tab = "interface", path = "tweaks.sellJunk", apply = Refresh }
+S:Row{ key = "qol.repair", tab = "interface", path = "tweaks.autoRepair", apply = Refresh }
+S:Row{ key = "qol.durability", tab = "interface", path = "tweaks.durabilityWarning", apply = Refresh }
+S:Row{ key = "qol.merchantKnown", tab = "interface", path = "tweaks.merchantKnown", apply = Refresh }
+
+-- Hide clutter: one per line
+S:Row{ key = "qol.hideErrors", tab = "interface", path = "tweaks.hideErrors", reload = true }
+S:Row{ key = "qol.hideZoneText", tab = "interface", path = "tweaks.hideZoneText", reload = true }
+S:Row{ key = "qol.hidePartyTitle", tab = "interface", path = "tweaks.hidePartyTitle", apply = Refresh }
+S:Row{ key = "qol.hideTips", tab = "interface", path = "tweaks.hideTips", apply = Refresh }
+S:Row{ key = "qol.hideFrameNumbers", tab = "interface", path = "tweaks.hidePortraitNumbers", apply = Refresh }

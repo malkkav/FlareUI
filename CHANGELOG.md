@@ -1,3 +1,36 @@
+# FlareUI 2.0.4
+
+New Quality of Life helpers, your chat formatting back, and a settings panel that explains every option on its own.
+
+## New
+**Quality of Life** (all off until you switch them on)
+- **Gray out known items:** recipes and items you already know are greyed out at vendors.
+- **Mail address book:** a button beside Send Mail's "To:" lists your other characters and the last one you mailed.
+- **Alert sounds:** ready checks, summons, resurrections, group invites and dungeon queues flash the taskbar and play a sound, even with sound effects off.
+- **Pet food marker:** a paw marks the food in your bags your hunter pet eats.
+- **Skip loot confirmations:** no "will bind to you" question when you loot or roll.
+- **Combat enemy plates:** enemy nameplates show only during fights.
+- **Frame numbers:** hides the damage numbers on your portrait and the health and power numbers on Blizzard's frames.
+
+**More options**
+- Action Bars: **Update spell ranks**: a newly learned rank replaces the old one on your bars (lower ranks you placed on purpose stay).
+- Chat, Damage Meter and Quest Tracker: **Frame Border**, with None to hide it.
+- Move any window: **Ctrl + mouse wheel** resizes a window again; Ctrl + right-click resets it.
+
+## Changed
+- Chat: the **Formatting** options are back (better NPC and player names, timestamps, short channel names, level before names).
+- Settings panel: every option has its own explanation, with lists where it helps, and the dog is back in the info panel.
+- Chat has Frame, Tweaks and Fonts tabs; Quality of Life has Gameplay, Interface and Advanced tabs; Tooltips has Look and Tweaks sections; Quest Tracker has a Frame section, with Display above Minimize.
+- Action Bars: Fake Cooldown Manager has its own **FakeCM** tab and no on/off switch: it's on while a bar is picked.
+- A few options have clearer names, like **Train all skills** and **Hide level box**.
+- Translations: the dots and bullets that kept some phrases from translating are gone.
+- FlareUI is about 7 MB smaller.
+
+## Fixed
+- Dungeon Journal's minimap button goes in the addon drawer and can be clicked.
+- Legacy Forever's tracker section no longer disappears when FlareUI's quest tracker is on.
+- Clicking a link in the settings opens the copy box in front of the panel, with a sound.
+
 # FlareUI 2.0.3
 
 ## Fixed

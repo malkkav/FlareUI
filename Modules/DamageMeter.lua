@@ -33,6 +33,7 @@ local LSM = LibStub("LibSharedMedia-3.0")
 local DEFAULT_BORDER = "FlareUI Frames"
 local function GetBorderFile(db)
     local name = db and db.borderTexture
+    if name == "None" then return nil end   -- Frame Border: None
     if not (name and LSM:IsValid("border", name)) then name = DEFAULT_BORDER end
     return LSM:Fetch("border", name)
 end

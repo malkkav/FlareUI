@@ -4,7 +4,7 @@ local S = ns.Settings
 --------------------------------------------------
 -- QUEST TRACKER (Modules/ObjectiveTracker.lua). Fixed, no option: quest count, hide when empty, zone
 -- headings, completed last, quest level, long text wrapped, tracked recipes; no quest tags; no
--- change in the open world or in cities. The border.
+-- change in the open world or in cities.
 --------------------------------------------------
 local function Refresh()
     if ns.ObjectiveTracker and ns.ObjectiveTracker.Refresh then ns.ObjectiveTracker:Refresh() end
@@ -22,6 +22,8 @@ end)
 
 -- how dark the background is (0.5 by default)
 S:Row{ key = "qt.opacity", kind = "choice", path = "objectivetracker.opacity", choices = S:OpacityChoices(), apply = Refresh }
+S:Row{ key = "qt.border", kind = "choice", path = "objectivetracker.borderTexture", choices = S.BorderChoices,
+    apply = Refresh }
 
 -- By zone: the zone you are in first, the other zones by their nearest quest.
 -- By distance: the nearest quest first, whatever its zone.
@@ -38,6 +40,18 @@ S:Row{
         S:SetPath("objectivetracker.sortByDistance", mode ~= "level")
     end,
 }
+
+-- Display: what the tracker shows, two to a line
+local function Display(key, path)
+    S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, apply = Refresh, section = "qt.display", half = true }
+end
+Display("zoneHeaders", "zoneHeaders")
+Display("completedLast", "completedLast")
+Display("tags", "showTags")
+Display("wrap", "wrapText")
+Display("recipes", "showRecipes")
+Display("count", "showCount")
+Display("hideEmpty", "hideEmpty")
 
 -- Minimize: to a lone + button, in instances (dungeon, raid, battleground, arena), and in combat
 local INSTANCES = { "dungeon", "raid", "pvp", "arena" }
@@ -64,17 +78,6 @@ S:Row{
 -- the key that minimizes and expands it (Bindings.xml), last in the section
 local trackerKey = S:BindingAccessors("FLAREUI_TRACKER")
 S:Row{ key = "qt.minimizeKey", kind = "keybind", get = trackerKey.get, set = trackerKey.set, section = "qt.minimizeIn" }
-
--- Display: what the tracker shows, in two columns
-S:Row{
-    key = "qt.display", kind = "chips", apply = Refresh,
-    items = {
-        { path = "objectivetracker.zoneHeaders" }, { path = "objectivetracker.completedLast" },
-        { path = "objectivetracker.showTags" }, { path = "objectivetracker.wrapText" },
-        { path = "objectivetracker.showRecipes" }, { path = "objectivetracker.showCount" },
-        { path = "objectivetracker.hideEmpty" },
-    },
-}
 
 S:FontRows{ module = "qt", tab = "fonts", section = "qt.fonts", apply = Refresh, fonts = {
     { key = "header", path = "objectivetracker.headerFont" },

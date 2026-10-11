@@ -201,6 +201,7 @@ end
 
 local function GetBorderFile(db)
     local name = db and db.borderTexture
+    if name == "None" then return nil end   -- Frame Border: None
     if not (name and LSM:IsValid("border", name)) then name = C.DEFAULT_BORDER end
     return LSM:Fetch("border", name)
 end
@@ -1066,7 +1067,8 @@ end
 -- Parked under a hidden frame (Hide is blocked in combat, and Blizzard re-shows it), re-parented
 -- whenever Blizzard moves it. It keeps running, so new quests are still tracked automatically.
 --------------------------------------------------
-local parking = CreateFrame("Frame")
+-- under UIParent, so the parked tracker keeps its usual scale for anyone measuring it
+local parking = CreateFrame("Frame", nil, UIParent)
 parking:Hide()
 
 local function ParkBlizzardTracker()
@@ -1079,6 +1081,34 @@ local function ParkBlizzardTracker()
         end)
     end
     if tracker:GetParent() ~= parking then tracker:SetParent(parking) end
+end
+
+-- Sections other addons stack under Blizzard's tracker through the shared ForeverTrackerHost would
+-- go with it: while this tracker is on they are switched to their own movable column, once (a
+-- player who attaches them again keeps that), and attached back when this tracker is turned off.
+local function DetachCompanionSections()
+    local host, db = _G.ForeverTrackerHost, GetDb()
+    if type(host) ~= "table" or not (host.IsAttachedToQuestTracker and host.SetAttached) or not db then return end
+    local on = db.enabled
+    if on and not db.companionDetached then
+        if host.IsAttachedToQuestTracker() then
+            host.SetAttached(false)
+            db.companionDetached = true
+        end
+    elseif not on and db.companionDetached then
+        if not host.IsAttachedToQuestTracker() then host.SetAttached(true) end
+        db.companionDetached = nil
+    end
+end
+
+do
+    local watcher = CreateFrame("Frame")
+    watcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+    watcher:SetScript("OnEvent", function(self)
+        self:UnregisterAllEvents()
+        -- after the other addons' own first layout (they settle on PLAYER_ENTERING_WORLD too)
+        C_Timer.After(0, DetachCompanionSections)
+    end)
 end
 
 --------------------------------------------------

@@ -20,7 +20,7 @@ end
 
 S:Module{ key = "tt", group = "Info", order = 30, enabled = "tooltips.enabled", tabs = { { key = "settings" }, { key = "fonts" } } }
 
--- size of every tooltip, 50% to 150%
+-- Look: size of every tooltip (50% to 150%), where it appears, the health bar
 local SCALES = {}
 for i = 5, 15 do SCALES[#SCALES + 1] = { i / 10, (i * 10) .. "%" } end
 S:Row{ key = "tt.scale", kind = "choice", path = "tooltips.scale", choices = SCALES, apply = Refresh }
@@ -29,6 +29,12 @@ local anchor = Both({ "tooltips.anchor", "tooltips.anchorFrames" })
 S:Row{ key = "tt.anchor", kind = "choice", choices = { "default", "cursorOffset" },
     get = anchor.get, set = anchor.set, apply = Refresh }
 
+-- the health bar under a unit's tooltip (hidden by default)
+S:Row{ key = "tt.healthBar", apply = Refresh,
+    get = function() return not S:GetPath("tooltips.hideHealthBar") end,
+    set = function(on) S:SetPath("tooltips.hideHealthBar", not on) end }
+
+-- Tweaks
 local borders = Both({ "tooltips.borderByReaction", "tooltips.borderByClass", "tooltips.borderByQuality" })
 S:Row{ key = "tt.borders", get = borders.get, set = borders.set, apply = Refresh }
 
@@ -42,10 +48,6 @@ S:Row{ key = "tt.showTarget", path = "tooltips.showTarget", apply = Refresh }
 
 local ids = Both({ "tooltips.showItemID", "tooltips.showSpellID" })
 S:Row{ key = "tt.ids", get = ids.get, set = ids.set, apply = Refresh }
--- the health bar under a unit's tooltip (hidden by default)
-S:Row{ key = "tt.healthBar", apply = Refresh,
-    get = function() return not S:GetPath("tooltips.hideHealthBar") end,
-    set = function(on) S:SetPath("tooltips.hideHealthBar", not on) end }
 
 -- Show tooltips: in the world (units and objects), on unit frames, on action bars
 local SHOW = { "always", "combat", "never" }

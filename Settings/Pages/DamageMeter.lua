@@ -3,7 +3,7 @@ local S = ns.Settings
 
 --------------------------------------------------
 -- DAMAGE METER (Modules/DamageMeter.lua). Always on, with no switch: combat timer, Threat
--- tab, Ready Check and Countdown buttons; the border. The threat toggle
+-- tab, Ready Check and Countdown buttons. The threat toggle
 -- key is a key binding (Bindings.xml), bound here or in Blizzard's Key Bindings.
 --------------------------------------------------
 local function Refresh()
@@ -44,6 +44,8 @@ S:Row{ key = "dm.visibility", kind = "choice", path = "damagemeter.visibility",
 local function AlwaysVisible() return (S:GetPath("damagemeter.visibility") or "always") == "always" end
 S:Row{ key = "dm.fadeSpeed", kind = "choice", path = "damagemeter.fadeSpeed", choices = { "instant", "fast", "slow" },
     apply = ApplyVisibility, disabled = AlwaysVisible, section = "dm.frame" }
+S:Row{ key = "dm.border", kind = "choice", path = "damagemeter.borderTexture", choices = S.BorderChoices,
+    apply = Refresh, section = "dm.frame" }
 
 -- Tweaks, two to a line; the threat key on a line of its own below
 S:Row{ key = "dm.mouseover", path = "damagemeter.showOnMouseover", apply = ApplyVisibility,

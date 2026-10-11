@@ -445,7 +445,7 @@ function Visibility:Refresh()
         local frame = GetFrame(key)
         if frame and frame.GetAlpha then
             local isBar = key:match("^bar[1-8]$") ~= nil
-            local fcmBar = isBar and fcm and fcm.enabled and fcm.bars and fcm.bars[key]
+            local fcmBar = isBar and fcm and fcm.bars and fcm.bars[key]
             if fcmBar and fcmBar.enabled then
                 -- Fake CM bars: their own rule, together, no mouse
                 AddMember("fcm", { key = key, frame = frame, isBar = true, fcm = true, show = fcm.show or "combat" })

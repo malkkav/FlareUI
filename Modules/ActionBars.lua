@@ -435,7 +435,7 @@ end
 
 local function ForEachFCMBar(fn)
     local fcm = ns.db.profile.fcm
-    if not (fcm and fcm.enabled) then return end
+    if not (fcm and ns.FCMActive()) then return end
     for _, data in ipairs(BAR_DATA) do
         if data.key:match("^bar[1-8]$") then
             local barConfig = fcm.bars[data.key]
@@ -563,6 +563,48 @@ local function ApplyAutoPaging()
 end
 
 --------------------------------------------------
+-- 11b. UPDATE SPELL RANKS
+-- A newly learned rank takes the place of the rank just below it on every bar. Lower ranks placed
+-- on purpose (for mana) stay. Bars are changed out of combat, with nothing on the cursor.
+--------------------------------------------------
+local MAX_ACTION_SLOT = 180
+local pendingRanks = {}
+
+local function RankOf(spellID)
+    local subtext = C_Spell.GetSpellSubtext(spellID)
+    return subtext and tonumber(subtext:match("(%d+)"))
+end
+
+local function UpgradeRank(newID)
+    local name, rank = C_Spell.GetSpellName(newID), RankOf(newID)
+    if not (name and rank and rank > 1) then return end
+    for slot = 1, MAX_ACTION_SLOT do
+        local kind, id = GetActionInfo(slot)
+        if kind == "spell" and id and id ~= newID and C_Spell.GetSpellName(id) == name and RankOf(id) == rank - 1 then
+            C_Spell.PickupSpell(newID)
+            PlaceAction(slot)
+            ClearCursor()
+        end
+    end
+end
+
+local function FlushRanks()
+    if InCombatLockdown() then return end   -- OnCombatEnd tries again
+    if GetCursorInfo() then C_Timer.After(1, FlushRanks) return end
+    -- in the order learned: Train All teaches several ranks in a row
+    for _, spellID in ipairs(pendingRanks) do UpgradeRank(spellID) end
+    wipe(pendingRanks)
+end
+
+function ActionBars:OnSpellLearned(_, spellID)
+    local db = GetBarConfig()
+    if not (db and db.autoRanks and spellID) then return end
+    pendingRanks[#pendingRanks + 1] = spellID
+    -- after Blizzard's own handling of the new spell
+    C_Timer.After(0.2, FlushRanks)
+end
+
+--------------------------------------------------
 -- 12. PUBLIC API
 --------------------------------------------------
 
@@ -681,6 +723,7 @@ function ActionBars:Init()
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatEnd")
     self:RegisterEvent("UPDATE_EXTRA_ACTIONBAR", "OnExtraActionBarUpdate")
     self:RegisterEvent("UPDATE_BINDINGS", "OnExtraActionBarUpdate")
+    self:RegisterEvent("LEARNED_SPELL_IN_SKILL_LINE", "OnSpellLearned")
 end
 
 --------------------------------------------------
@@ -696,6 +739,7 @@ function ActionBars:OnCombatEnd()
     if self._pendingRefresh then
         self:Refresh()
     end
+    if #pendingRanks > 0 then FlushRanks() end
 end
 
 -- after Blizzard's own hotkey update

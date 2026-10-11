@@ -8,24 +8,12 @@ local L = ns.L
 -- Blizzard's Options > AddOns. Also /rl.
 --------------------------------------------------
 
--- Fake CM is in use when at least one bar has been handed over to it
-local function FakeCMInUse()
-    local fcm = ns.db and ns.db.profile.fcm
-    local bars = fcm and fcm.enabled and fcm.bars
-    if not bars then return false end
-    for i = 1, 8 do
-        local bar = bars["bar" .. i]
-        if bar and bar.enabled then return true end
-    end
-    return false
-end
-
 -- Only the commands that currently do something
 local function PrintCommands()
     local function Line(command, text) print("  |cffffff00" .. command .. "|r - " .. text) end
     print("|cff00ccffFlareUI:|r " .. L["commands"])
     Line("/flareui, /fui", L["Open configuration."])
-    if FakeCMInUse() then Line("/fui cm", L["Toggle Fake CM setup mode."]) end
+    if ns.FCMActive() then Line("/fui cm", L["Toggle Fake CM setup mode."]) end
     Line("/fui pad", L["Switch Gamepad mode on or off."])
     local qol = ns.db and ns.db.profile.tweaks
     if qol and qol.enabled and qol.way then Line("/way", L["Place a map pin (type it alone for the formats)."]) end

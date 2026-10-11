@@ -66,7 +66,7 @@ local KEY_ROW_H, MAX_KEY_ROWS = 32, 6
 local function KeyHover(control)
     control:HookScript("OnEnter", function()
         ns.SettingsPanel:ShowPreview(S:Text("rm.keys", "label") or L["Keybinds"], S:Text("rm.keys", "desc"),
-            S:Text("rm.keys", "tip"), "rm.keys", "rm")
+            S:Text("rm.keys", "tip"))
     end)
     control:HookScript("OnLeave", function() ns.SettingsPanel:ShowModulePreview() end)
 end

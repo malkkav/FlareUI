@@ -224,6 +224,15 @@ local function BarScales(scale)
     return t
 end
 
+-- Fake CM is on while at least one bar is picked
+function ns.FCMActive()
+    local fcm = ns.db and ns.db.profile and ns.db.profile.fcm
+    for _, bar in pairs(fcm and fcm.bars or {}) do
+        if bar.enabled then return true end
+    end
+    return false
+end
+
 local function FCMBars()
     local t = {}
     for i = 1, 8 do
@@ -246,6 +255,12 @@ local defaults = {
 
             copyLinks = true,
             shiftInvite = false,        -- shift-click a player name in chat to invite them
+            formatNPC = false,
+            formatPlayer = false,
+            betterTimestamps = false,
+            showLevel = false,          -- the sender's level in front of the name, when known
+            copyLine = false,           -- Copy Line: shift-click a timestamp to copy the line into the chat box
+            shortChannels = false,
             hideBubblesInInstance = false,
 
             -- Frame (Blizzard dark dialog background + the chosen border, tinted ns.BORDER_COLOR)
@@ -316,6 +331,7 @@ local defaults = {
             gryphonsAboveButtons = true,
             buttonArt = true,
             stopAutoAddSpells = true,
+            autoRanks = false,          -- Update Spell Ranks: a new rank replaces the old one on your bars
 
             colors = {
                 enableRange = true,
@@ -342,7 +358,7 @@ local defaults = {
 
         -- [[ FAKE COOLDOWN MANAGER (FCM) ]]
         fcm = {
-            enabled = false,            -- the Fake Cooldown Manager (Settings: its options show once on)
+            enabled = false,            -- the old on/off switch: read once by the PLAYER_LOGIN clean-up below
             bars = FCMBars(),
             show = "combat",            -- always | combat | target | harm (Modules/Visibility.lua)
 
@@ -646,6 +662,12 @@ local defaults = {
             hideZoneText = false,
             hidePartyTitle = false,
             hidePortraitNumbers = false,
+            mailBook = false,           -- Mail Address Book: your characters beside Send Mail's "To:"
+            merchantKnown = false,      -- Gray Out Known Items: known items greyed out at merchants
+            petFood = false,            -- Pet Food in Bags: a paw on food your hunter pet eats
+            skipLootConfirm = false,    -- Skip Loot Confirmations: bind-on-loot and roll dialogs
+            alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
+            combatPlates = false,       -- Enemy Nameplates in Combat Only
             hideTips = false,
             hideAddonDrawer = false,    -- Blizzard's addon compartment button under the minimap calendar
             autoDelete = false,         -- DELETE typed into the destroy-item confirmation
@@ -985,6 +1007,16 @@ f:SetScript("OnEvent", function(self, event, ...)
         if not ns.db or not ns.db.profile then
             DEFAULT_CHAT_FRAME:AddMessage("|cffff0000FlareUI Error:|r Database not initialized! Addon disabled.")
             return
+        end
+
+        -- Fake CM lost its switch: it is on while a bar is picked. A profile that had it off forgets
+        -- its bar picks once, so nothing turns on by itself.
+        local fcm = ns.db.profile.fcm
+        if fcm and not fcm.switchGone then
+            if not fcm.enabled then
+                for _, bar in pairs(fcm.bars or {}) do bar.enabled = false end
+            end
+            fcm.switchGone = true
         end
 
         for name, module in pairs(ns.modules) do

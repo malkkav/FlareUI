@@ -260,6 +260,16 @@ function Row:SetItem(i, value)
 end
 
 -- Frame Opacity's steps (chat, damage meter, quest tracker): 0% to 100% in tens, stored as 0..1
+-- Frame Border: None first, then every border LibSharedMedia knows (FlareUI's, the game's, other addons')
+function Settings:BorderChoices()
+    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+    local list = { { "None", L["None"] } }
+    for _, name in ipairs(LSM and LSM:List("border") or {}) do
+        if name ~= "None" then list[#list + 1] = { name, name } end
+    end
+    return list
+end
+
 function Settings:OpacityChoices()
     local list = {}
     for i = 0, 10 do list[#list + 1] = { i / 10, (i * 10) .. "%" } end

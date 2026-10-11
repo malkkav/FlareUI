@@ -5,11 +5,14 @@ local L = ns.L
 -- QUALITY OF LIFE (Tweaks)
 -- Small quality-of-life tweaks, each a toggle:
 --   Windows & Settings  Move Any Frame, Sync Blizz UI (account-wide settings)
---   Vendor              Sell Junk Automatically, Repair Automatically, Durability Warning
+--   Vendor              Sell Junk Automatically, Repair Automatically, Durability Warning, Gray Out
+--                       Known Items
 --   Camera              Max Camera Zoom, Faster Camera Zoom
---   Nameplates          Combo Points under the target's nameplate, Tag Quest Objectives, Hide Level
---   Convenience         Faster Auto Loot, Auto-Type DELETE, Train All button
---   Hide                Error Messages, Zone Text, Party Title, Portrait Numbers, Contextual Tips,
+--   Nameplates          Combo Points under the target's nameplate, Tag Quest Objectives, Hide Level,
+--                       Enemy Nameplates in Combat Only
+--   Convenience         Faster Auto Loot, Auto-Type DELETE, Train All button, Mail Address Book,
+--                       Alert Sounds, Pet Food in Bags, Skip Loot Confirmations
+--   Hide                Error Messages, Zone Text, Party Title, Frame Numbers, Contextual Tips,
 --                       Addon Drawer
 --   Map pins            /way
 --   Always on           Party frames unclamped from the screen edge
@@ -31,10 +34,10 @@ LibStub("AceEvent-3.0"):Embed(Tweaks)
 local _G = _G
 local ipairs, pairs, type, tostring = ipairs, pairs, type, tostring
 local pcall = pcall
-local math_floor, math_min = math.floor, math.min
+local math_floor, math_max, math_min = math.floor, math.max, math.min
 local CreateFrame = CreateFrame
 local InCombatLockdown = InCombatLockdown
-local IsShiftKeyDown = IsShiftKeyDown
+local IsShiftKeyDown, IsControlKeyDown = IsShiftKeyDown, IsControlKeyDown
 local C_Timer = C_Timer
 
 local function GetDb()
@@ -47,10 +50,11 @@ end
 
 --------------------------------------------------
 -- 3. MOVE ANY FRAME
--- Every UIPanelWindows panel (plus bags and a few other windows) drags by its header; Shift+right-click resets the position.
--- Saved per frame name, re-applied after
--- Blizzard's panel manager places the frame.
+-- Every UIPanelWindows panel (plus bags and a few other windows) drags by its header; Ctrl+wheel
+-- scales, Shift+right-click resets the position, Ctrl+right-click the scale. Saved per frame name,
+-- re-applied after Blizzard's panel manager places the frame.
 --------------------------------------------------
+local MIN_SCALE, MAX_SCALE, SCALE_STEP = 0.5, 2.0, 0.1
 -- panels that must stay where Blizzard puts them
 local MOVE_EXCLUDED = {
     EditModeManagerFrame = true, GameMenuFrame = true, SettingsPanel = true, HelpFrame = true,
@@ -84,6 +88,9 @@ local function ApplySavedPosition(frame)
     local store = GetFrameStore(frame.moveName)
     if not store then return end
     if not CanTouch(frame) then movePending[frame] = true return end
+    if store.scale and frame:GetScale() ~= store.scale then
+        frame:SetScale(store.scale)
+    end
     if store.point then
         frame:ClearAllPoints()
         frame:SetPoint(store.point, UIParent, store.relativePoint or "BOTTOMLEFT", store.x or 0, store.y or 0)
@@ -128,6 +135,24 @@ local function ResetPosition(frame)
     if CanTouch(frame) and UpdateUIPanelPositions then pcall(UpdateUIPanelPositions, frame) end
 end
 
+local function SetFrameScale(frame, scale)
+    scale = math_max(MIN_SCALE, math_min(MAX_SCALE, math_floor(scale * 100 + 0.5) / 100))
+    if not CanTouch(frame) then return end
+    -- the top-left corner stays put
+    local left, top = frame:GetLeft(), frame:GetTop()
+    local oldScale = frame:GetScale()
+    frame:SetScale(scale)
+    if left and top then
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left * oldScale / scale, top * oldScale / scale)
+    end
+    local store = GetFrameStore(frame.moveName, true)
+    if store then
+        store.scale = scale ~= 1 and scale or nil
+        SavePosition(frame)
+    end
+end
+
 local function OnDragStart(handle)
     local frame = handle.moveTarget or handle
     if not CanTouch(frame) or IsMaximized(frame) then return end
@@ -144,6 +169,13 @@ local function OnDragStop(handle)
     SavePosition(frame)
 end
 
+local function OnMouseWheel(handle, delta)
+    if not IsControlKeyDown() then return end
+    local frame = handle.moveTarget or handle
+    if IsMaximized(frame) then return end
+    SetFrameScale(frame, frame:GetScale() + SCALE_STEP * delta)
+end
+
 -- A bag window's portrait menu (Assign To, Ignore This Bag, sorting): opens, or closes when open
 local function ToggleBagMenu(frame)
     local dropdown = frame.PortraitButton
@@ -158,12 +190,15 @@ end
 local function OnMouseUp(handle, button)
     if button ~= "RightButton" then return end
     local frame = handle.moveTarget or handle
-    if IsShiftKeyDown() then
-        ResetPosition(frame)
-    else
-        -- plain right-click on a bag window opens its sorting menu, wherever you click
-        ToggleBagMenu(frame)
+    if IsShiftKeyDown() then ResetPosition(frame) end
+    if IsControlKeyDown() then
+        local store = GetFrameStore(frame.moveName)
+        if store then store.scale = nil end
+        if CanTouch(frame) then frame:SetScale(1) end
+        SavePosition(frame)
     end
+    -- plain right-click on a bag window opens its sorting menu, wherever you click
+    if not IsShiftKeyDown() and not IsControlKeyDown() then ToggleBagMenu(frame) end
 end
 
 -- Only the header drags: a mouse-enabled window would swallow every click inside it
@@ -179,6 +214,15 @@ local function SetupHandle(frame, handle)
     handle:HookScript("OnDragStart", OnDragStart)
     handle:HookScript("OnDragStop", OnDragStop)
     handle:HookScript("OnMouseUp", OnMouseUp)
+end
+
+-- Ctrl+wheel scales from anywhere over the window (scroll frames keep their own wheel)
+local function SetupWheel(frame)
+    if frame.moveWheelHooked or not frame.EnableMouseWheel then return end
+    frame.moveWheelHooked = true
+    frame.moveTarget = frame
+    frame:EnableMouseWheel(true)
+    frame:HookScript("OnMouseWheel", OnMouseWheel)
 end
 
 -- The title bar if the frame has one, otherwise a strip across the top short of the close button
@@ -213,6 +257,7 @@ local function SetupMovableFrame(name)
     frame:SetMovable(true)
     frame:SetClampedToScreen(true)
     SetupHandle(frame, GetHeaderHandle(frame))
+    SetupWheel(frame)
     -- the panel manager has placed the window by OnShow: put ours back before it draws
     frame:HookScript("OnShow", function(f)
         ApplySavedPosition(f)
@@ -928,10 +973,40 @@ local function ApplyPartyTitle()
     end
 end
 
+-- Frame Numbers: the damage and healing numbers on the player and pet portraits, and the status text
+-- (health and power numbers) on Blizzard's player, pet, target and focus frames. The texts fade to
+-- nothing rather than hide: Blizzard shows and hides them on its own.
+local function StatusBars()
+    local bars = {}
+    local function Add(bar) if bar then bars[#bars + 1] = bar end end
+    if PlayerFrame_GetHealthBar then Add(PlayerFrame_GetHealthBar()) end
+    if PlayerFrame_GetManaBar then Add(PlayerFrame_GetManaBar()) end
+    Add(_G.PetFrameHealthBar)
+    Add(_G.PetFrameManaBar)
+    for _, frame in ipairs({ _G.TargetFrame, _G.FocusFrame }) do
+        local main = frame and frame.TargetFrameContent and frame.TargetFrameContent.TargetFrameContentMain
+        local container = main and main.HealthBarsContainer
+        Add(container and container.HealthBar)
+        Add(main and main.ManaBar)
+    end
+    return bars
+end
+
+local function ApplyStatusText(hide)
+    if not (hide or Tweaks.statusTextHidden) then return end
+    for _, bar in ipairs(StatusBars()) do
+        for _, text in ipairs({ bar.TextString, bar.LeftText, bar.RightText }) do
+            if text and text.SetAlpha then text:SetAlpha(hide and 0 or 1) end
+        end
+    end
+    Tweaks.statusTextHidden = hide or nil
+end
+
 local function ApplyPortraitNumbers()
     local db = GetDb()
     if not db then return end
     local hide = db.hidePortraitNumbers
+    ApplyStatusText(hide)
     local indicator = PlayerFrame and PlayerFrame.PlayerFrameContent and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain
         and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HitIndicator
     if indicator and (hide or Tweaks.hitIndicatorHidden) then
@@ -1626,7 +1701,231 @@ local function InitWay()
 end
 
 --------------------------------------------------
--- 12. PUBLIC
+-- 12. MAIL, MERCHANT, ALERTS, PET FOOD, LOOT CONFIRMATIONS, COMBAT NAMEPLATES
+--------------------------------------------------
+-- Every character is noted (name, realm, faction, class) for the Mail Address Book, whether the
+-- option is on or not, so the list is full the day it is switched on
+local function NoteCharacter()
+    local me = ns.CharDB and ns.CharDB()
+    if not me then return end
+    me.mailName = UnitName("player")
+    me.realm = GetRealmName()
+    me.faction = UnitFactionGroup("player")
+    me.class = select(2, UnitClass("player"))
+end
+
+-- Mail Address Book: a button beside Send Mail's "To:" box lists your other characters on this realm
+-- and faction, and the last one you mailed from this character
+local function MailMenu(owner)
+    local box = _G.SendMailNameEditBox
+    if not box then return end
+    MenuUtil.CreateContextMenu(owner, function(_, root)
+        local me = ns.CharDB and ns.CharDB() or {}
+        local function Pick(name) return function() box:SetText(name); box:SetCursorPosition(#name) end end
+        if me.lastMailTo then
+            root:CreateTitle(L["Last sent to"])
+            root:CreateButton(me.lastMailTo, Pick(me.lastMailTo))
+        end
+        local list = {}
+        for _, char in pairs(ns.db.global.characters or {}) do
+            if char ~= me and char.mailName and char.realm == me.realm and char.faction == me.faction then
+                list[#list + 1] = char
+            end
+        end
+        table.sort(list, function(a, b) return a.mailName < b.mailName end)
+        root:CreateTitle(L["Your characters"])
+        if #list == 0 then root:CreateTitle(L["Log in on your other characters to list them."]) end
+        for _, char in ipairs(list) do
+            local color = char.class and C_ClassColor.GetClassColor(char.class)
+            local text = color and color:WrapTextInColorCode(char.mailName) or char.mailName
+            root:CreateButton(text, Pick(char.mailName))
+        end
+    end)
+end
+
+local function InitMailBook()
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_MailFrame", function()
+        local box = _G.SendMailNameEditBox
+        if not box or Tweaks.mailButton then return end
+        local button = CreateFrame("Button", nil, box)
+        button:SetSize(22, 22)
+        button:SetPoint("LEFT", box, "RIGHT", 2, 0)
+        button:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
+        button:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Down")
+        button:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+        button:SetScript("OnClick", MailMenu)
+        button:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L["Mail Address Book"])
+            GameTooltip:Show()
+        end)
+        button:SetScript("OnLeave", GameTooltip_Hide)
+        Tweaks.mailButton = button
+        local db = GetDb()
+        button:SetShown(db and db.mailBook or false)
+        -- the last recipient, once the mail has gone
+        hooksecurefunc("SendMailFrame_SendMail", function() Tweaks.mailPending = box:GetText() end)
+        Tweaks:RegisterEvent("MAIL_SEND_SUCCESS", function()
+            local me = ns.CharDB and ns.CharDB()
+            local to = Tweaks.mailPending
+            if me and to and to ~= "" then me.lastMailTo = to end
+            Tweaks.mailPending = nil
+        end)
+    end)
+end
+
+local function ApplyMailBook()
+    local db = GetDb()
+    if Tweaks.mailButton then Tweaks.mailButton:SetShown(db and db.mailBook or false) end
+end
+
+-- Gray Out Known Items: a recipe (or any item) you already know is greyed out at merchants
+local knownMarked = {}
+local function MarkKnownItems()
+    local db = GetDb()
+    for button in pairs(knownMarked) do
+        SetItemButtonDesaturated(button, false)
+        knownMarked[button] = nil
+    end
+    if not (db and db.merchantKnown) or not (MerchantFrame and MerchantFrame.selectedTab == 1) then return end
+    local perPage = MERCHANT_ITEMS_PER_PAGE or 10
+    for i = 1, perPage do
+        local index = (MerchantFrame.page - 1) * perPage + i
+        local button = _G["MerchantItem" .. i .. "ItemButton"]
+        local data = button and button:IsShown() and C_TooltipInfo.GetMerchantItem(index)
+        for _, line in ipairs(data and data.lines or {}) do
+            if line.leftText == ITEM_SPELL_KNOWN then
+                SetItemButtonDesaturated(button, true)
+                SetItemButtonTextureVertexColor(button, 0.6, 0.6, 0.6)
+                SetItemButtonNameFrameVertexColor(_G["MerchantItem" .. i], 0.5, 0.5, 0.5)
+                knownMarked[button] = true
+                break
+            end
+        end
+    end
+end
+
+local function InitMerchantKnown()
+    if MerchantFrame_UpdateMerchantInfo then hooksecurefunc("MerchantFrame_UpdateMerchantInfo", MarkKnownItems) end
+end
+
+-- Alert Sounds: flashes the game's taskbar icon and plays an alert on the Master channel, so it is
+-- heard with sound effects off or the game in the background
+local ALERT_EVENTS = { "READY_CHECK", "CONFIRM_SUMMON", "RESURRECT_REQUEST", "PARTY_INVITE_REQUEST", "LFG_PROPOSAL_SHOW" }
+local function OnAlert()
+    local db = GetDb()
+    if not (db and db.alertSounds) then return end
+    if FlashClientIcon then FlashClientIcon() end
+    PlaySound(SOUNDKIT.READY_CHECK, "Master")
+end
+
+local function InitAlerts()
+    local frame = CreateFrame("Frame")
+    for _, event in ipairs(ALERT_EVENTS) do frame:RegisterEvent(event) end
+    frame:SetScript("OnEvent", OnAlert)
+end
+
+-- Pet Food in Bags: a paw on the food your hunter pet eats (its diet, C_PetInfo.CanPetEatItem)
+local PAW = "Interface\\Icons\\Ability_Hunter_BeastTraining"
+local function MarkPetFood(container)
+    local db = GetDb()
+    local hasPet = db and db.petFood and UnitExists("pet") and select(2, UnitClass("player")) == "HUNTER"
+    for _, button in container:EnumerateValidItems() do
+        local mark = button.FlareUI_PetFood
+        local itemID = hasPet and C_Container.GetContainerItemID(button:GetBagID(), button:GetID())
+        local food = itemID and C_PetInfo.CanPetEatItem(itemID)
+        if food and not mark then
+            mark = button:CreateTexture(nil, "OVERLAY", nil, 2)
+            mark:SetSize(14, 14)
+            mark:SetPoint("TOPLEFT", 2, -2)
+            mark:SetTexture(PAW)
+            mark:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            button.FlareUI_PetFood = mark
+        end
+        if mark then mark:SetShown(food and true or false) end
+    end
+end
+
+local function UpdatePetFood()
+    for _, container in ipairs(Tweaks.petFoodBags or {}) do
+        if container:IsShown() then MarkPetFood(container) end
+    end
+end
+
+local function InitPetFood()
+    Tweaks.petFoodBags = {}
+    local names = { "ContainerFrameCombinedBags" }
+    for i = 1, NUM_CONTAINER_FRAMES or 13 do names[#names + 1] = "ContainerFrame" .. i end
+    for _, name in ipairs(names) do
+        local container = _G[name]
+        if type(container) == "table" and container.UpdateItems and container.EnumerateValidItems then
+            hooksecurefunc(container, "UpdateItems", MarkPetFood)
+            Tweaks.petFoodBags[#Tweaks.petFoodBags + 1] = container
+        end
+    end
+    local frame = CreateFrame("Frame")
+    frame:RegisterUnitEvent("UNIT_PET", "player")
+    frame:SetScript("OnEvent", UpdatePetFood)
+end
+
+-- Skip Loot Confirmations: "will bind to you" when looting, and when rolling Need or Greed
+local function InitLootConfirm()
+    local frame = CreateFrame("Frame")
+    frame:RegisterEvent("LOOT_BIND_CONFIRM")
+    frame:RegisterEvent("CONFIRM_LOOT_ROLL")
+    frame:SetScript("OnEvent", function(_, event, id, rollType)
+        local db = GetDb()
+        if not (db and db.skipLootConfirm) then return end
+        -- after Blizzard's own dialog is up, so it can be closed
+        C_Timer.After(0, function()
+            if event == "LOOT_BIND_CONFIRM" then
+                ConfirmLootSlot(id)
+                StaticPopup_Hide("LOOT_BIND")
+            else
+                ConfirmLootRoll(id, rollType)
+                StaticPopup_Hide("CONFIRM_LOOT_ROLL")
+            end
+        end)
+    end)
+end
+
+-- Enemy Nameplates in Combat Only: shown when a fight starts, hidden after. The player's own setting
+-- is kept and put back when the option goes off.
+local function SetEnemyPlates(on)
+    pcall(SetCVar, "nameplateShowEnemies", on and 1 or 0)
+end
+
+local function ApplyCombatPlates()
+    local db = GetDb()
+    local forced = ForcedCVars()
+    if InCombatLockdown() then return end
+    if db and db.combatPlates then
+        if forced.combatPlates == nil then forced.combatPlates = GetCVar("nameplateShowEnemies") or "1" end
+        SetEnemyPlates(false)
+    elseif forced.combatPlates ~= nil then
+        pcall(SetCVar, "nameplateShowEnemies", forced.combatPlates)
+        forced.combatPlates = nil
+    end
+end
+
+local function InitCombatPlates()
+    local frame = CreateFrame("Frame")
+    frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    frame:SetScript("OnEvent", function(_, event)
+        local db = GetDb()
+        if event == "PLAYER_REGEN_DISABLED" then
+            -- still allowed: combat lockdown begins right after this event
+            if db and db.combatPlates then SetEnemyPlates(true) end
+        else
+            ApplyCombatPlates()
+        end
+    end)
+    ApplyCombatPlates()
+end
+
+--------------------------------------------------
+-- 13. PUBLIC
 --------------------------------------------------
 -- Live re-apply for the options that need no reload
 function Tweaks:Refresh()
@@ -1640,6 +1939,10 @@ function Tweaks:Refresh()
     ApplyQuestTags()
     ApplyHideLevelAll()
     UpdateTrainAll()
+    ApplyMailBook()
+    ApplyCombatPlates()
+    UpdatePetFood()
+    if MerchantFrame and MerchantFrame:IsShown() and MerchantFrame_UpdateMerchantInfo then MarkKnownItems() end
     if MerchantSellAllJunkButton and MerchantSellAllJunkButton:IsShown() then
         local db = GetDb()
         if db and db.sellJunk then MerchantSellAllJunkButton:Hide() else MerchantSellAllJunkButton:Show() end
@@ -1663,6 +1966,13 @@ function Tweaks:Init()
     InitBagTooltip()
     InitWay()
     InitLayoutPerMode()
+    NoteCharacter()
+    InitMailBook()
+    InitMerchantKnown()
+    InitAlerts()
+    InitPetFood()
+    InitLootConfirm()
+    InitCombatPlates()
     ApplyNameplateCombo()
     ApplyQuestTags()
     ApplyHideLevelAll()

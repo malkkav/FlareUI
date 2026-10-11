@@ -4,7 +4,8 @@ local L = ns.L
 --------------------------------------------------
 -- CHAT
 -- Blizzard's chat windows in FlareUI's look: a skin per window with its tabs and header buttons,
--- copyable links, saved history, pop-out windows, and the chat's visibility and fading.
+-- rewritten lines (short channel names, class-coloured names, timestamps, copy line), copyable
+-- links, saved history, pop-out windows, and the chat's visibility and fading.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -25,6 +26,7 @@ local _G = _G
 local pairs, ipairs, select = pairs, ipairs, select
 local pcall = pcall
 local string_format = string.format
+local string_gsub = string.gsub
 local math_max = math.max
 local math_min = math.min
 local math_abs = math.abs
@@ -32,12 +34,17 @@ local tonumber = tonumber
 local InCombatLockdown = InCombatLockdown
 local C_Timer = C_Timer
 local C_CVar = C_CVar
+local GetPlayerInfoByGUID = GetPlayerInfoByGUID
+local C_ClassColor = C_ClassColor
+local BetterDate = TimeUtil.BetterDate
+local canaccessallvalues = canaccessallvalues
 local LSM = LibStub("LibSharedMedia-3.0")
 
 -- The border picked in the options, or the default when LibSharedMedia does not know it
 local DEFAULT_BORDER = "FlareUI Frames"
 local function GetBorderFile(db)
     local name = db and db.borderTexture
+    if name == "None" then return nil end   -- Frame Border: None
     if not (name and LSM:IsValid("border", name)) then name = DEFAULT_BORDER end
     return LSM:Fetch("border", name)
 end
@@ -49,6 +56,8 @@ local PanelTemplates_TabResize = PanelTemplates_TabResize
 -- 3. CONSTANTS & ASSETS
 --------------------------------------------------
 local NUM_CHAT_WINDOWS = Constants.ChatFrameConstants.MaxChatWindows
+local NPC_COLOR = "|cffFFB033"
+local TIMESTAMP_COLOR = "|cff00B2FF"
 
 local ICON_MUTE   = "Interface\\AddOns\\FlareUI\\Media\\Icons\\Volume-Speaker-Mute.tga"
 local ICON_LOW    = "Interface\\AddOns\\FlareUI\\Media\\Icons\\Volume-Speaker-Low.tga"
@@ -79,6 +88,24 @@ end
 local function IsPopped(chatFrame)
     local dock = _G.GeneralDockManager
     return chatFrame ~= nil and dock ~= nil and chatFrame ~= dock.primary and not chatFrame.isDocked
+end
+
+local function GetTimestamp()
+    local db = GetDb()
+    if not db then return "" end
+    local format = C_CVar.GetCVar("showTimestamps")
+
+    if format == "none" and not db.betterTimestamps then return "" end
+    if format == "none" then format = "%H:%M" end
+
+    -- Blizzard's formats end in a space, which belongs outside the brackets
+    local timeStr = string_gsub(BetterDate(format, time()), "%s+$", "")
+
+    if db.betterTimestamps then
+        return string_format("%s<%s>|r ", TIMESTAMP_COLOR, timeStr)
+    else
+        return string_format("[%s] ", timeStr)
+    end
 end
 
 local function GetFontData(fontDB)
@@ -309,12 +336,358 @@ local function DisableQuickJoinToasts()
     end
 end
 
+--------------------------------------------------
+-- 5. LINE REWRITING
+-- A post-hook on each window's AddMessage rewrites the newest history entry in place, so Blizzard's
+-- own line (player link, report ID, flash, censoring) stays. Replacing AddMessage or the CHAT_*_GET
+-- strings would taint Blizzard's handler. Secret lines pass untouched.
+--   Short Channel Names   [2. Trade - City] -> [2], [Guild] -> [G]
+--   Better Player Names   "[Name] says:" -> the class-coloured [Name] without realm or "says:"
+--   Better NPC Names      "Thrall says:" -> an orange [Thrall]
+--   Level Before Names    "(42)" in front of a player's name
+--   Better Timestamps     Blizzard's timestamp in FlareUI's colour, or one added where it has none
+--   Copy Line             the timestamp is a link: shift-click puts the line in the chat box
+--------------------------------------------------
+-- Chat type -> short tag and Blizzard's channel link keyword (raid warnings have no link).
+-- Numbered channels become just their number.
+local SHORT_TAGS = {
+    GUILD = { "G", "GUILD" },
+    OFFICER = { "O", "OFFICER" },
+    PARTY = { "P", "PARTY" },
+    PARTY_LEADER = { "PL", "PARTY" },
+    PARTY_GUIDE = { "PG", "PARTY" },
+    RAID = { "R", "RAID" },
+    RAID_LEADER = { "RL", "RAID" },
+    RAID_WARNING = { "RW" },
+    INSTANCE_CHAT = { "I", "INSTANCE_CHAT" },
+    INSTANCE_CHAT_LEADER = { "IL", "INSTANCE_CHAT" },
+}
+
+-- Lines whose sender is a player. "full": Better Player Names drops the "says:" too; "name": only the
+-- name changes (whispers keep their direction).
+local NAME_EVENTS = {
+    SAY = "full", YELL = "full", GUILD = "full", OFFICER = "full",
+    PARTY = "full", PARTY_LEADER = "full", PARTY_GUIDE = "full",
+    RAID = "full", RAID_LEADER = "full", RAID_WARNING = "full",
+    INSTANCE_CHAT = "full", INSTANCE_CHAT_LEADER = "full", CHANNEL = "full",
+    WHISPER = "name", WHISPER_INFORM = "name",
+}
+local NPC_EVENTS = { MONSTER_SAY = true, MONSTER_YELL = true, MONSTER_WHISPER = true }
+
+-- Links the server accepts in a sent message; Copy Line reduces any other link to its text
+local KEEP_LINKS = {
+    item = true, spell = true, quest = true, achievement = true, enchant = true,
+    trade = true, talent = true, currency = true,
+}
+
+local Lines = {
+    copies = {},        -- copy link id -> the line as plain chat text, this session only
+    copySerial = 0,
+    COPY_KEEP = 500,    -- the newest this many lines can be copied
+    levels = {},        -- GUID or lower-case name -> level, this session only
+    hooked = {},        -- chat frames carrying the AddMessage post-hook (not a field on Blizzard's)
+}
+
+-- Splits off Blizzard's timestamp: the line was just formatted, so this second or the one before
+-- reproduces it.
+function Lines.SplitStamp(message)
+    local fmt = ChatFrameUtil.GetTimestampFormat and ChatFrameUtil.GetTimestampFormat()
+    if not fmt then return "", message end
+    local now = time()
+    for t = now, now - 1, -1 do
+        local stamp = BetterDate(fmt, t)
+        if message:sub(1, #stamp) == stamp then return stamp, message:sub(#stamp + 1) end
+    end
+    return "", message
+end
+
+function Lines.ShortenChannel(body, chatType)
+    local short
+    if chatType == "CHANNEL" or chatType == "COMMUNITIES_CHANNEL" then
+        short = string_gsub(body, "(|Hchannel:channel:(%d+)|h)%[[^%]]*%]|h", "%1[%2]|h", 1)
+    elseif SHORT_TAGS[chatType] then
+        local tag = SHORT_TAGS[chatType][1]
+        if SHORT_TAGS[chatType][2] then
+            short = string_gsub(body, "(|Hchannel:[^|]+|h)%[[^%]]*%]|h", "%1[" .. tag .. "]|h", 1)
+        elseif CHAT_MSG_RAID_WARNING then
+            local long = "[" .. CHAT_MSG_RAID_WARNING .. "]"
+            local s, e = body:find(long, 1, true)
+            if s then short = body:sub(1, s - 1) .. "[" .. tag .. "]" .. body:sub(e + 1) end
+        end
+    end
+    return short or body
+end
+
+-- One event argument, or nil where it is secret or not the expected type
+local function Arg(args, index, kind)
+    local v = args[index]
+    if v ~= nil and canaccessvalue(v) and type(v) == kind then return v end
+    return nil
+end
+
+local function NameKey(name)
+    return name and (name:gsub("%-.*$", "")):lower() or nil
+end
+
+-- A long session in a city sees thousands of players: past LEVELS_KEEP entries the list starts over
+-- (levels are learned again as players are seen)
+local LEVELS_KEEP = 4000
+local function Store(key, level)
+    local levels = Lines.levels
+    if levels[key] == nil then
+        Lines.levelCount = (Lines.levelCount or 0) + 1
+        if Lines.levelCount > LEVELS_KEEP then
+            wipe(levels)
+            Lines.levelCount = 1
+        end
+    end
+    levels[key] = level
+end
+
+function Lines.Remember(guid, name, level)
+    if not (canaccessvalue(level) and type(level) == "number" and level > 0) then return end
+    if guid and canaccessvalue(guid) and type(guid) == "string" then Store(guid, level) end
+    if name and canaccessvalue(name) and type(name) == "string" then Store(NameKey(name), level) end
+end
+
+function Lines.RememberUnit(unit)
+    local ok, exists = pcall(UnitExists, unit)
+    if not (ok and canaccessvalue(exists) and exists) then return end
+    local okP, isPlayer = pcall(UnitIsPlayer, unit)
+    if not (okP and canaccessvalue(isPlayer) and isPlayer) then return end
+    local okG, guid = pcall(UnitGUID, unit)
+    local okN, name = pcall(UnitName, unit)
+    local okL, level = pcall(UnitLevel, unit)
+    if okL then Lines.Remember(okG and guid or nil, okN and name or nil, level) end
+end
+
+-- The sender's level, from a unit token or from what was seen this session; nil when unknown
+function Lines.LevelFor(guid, sender)
+    if guid then
+        local ok, unit = pcall(UnitTokenFromGUID, guid)
+        if ok and unit and canaccessvalue(unit) then Lines.RememberUnit(unit) end
+        if Lines.levels[guid] then return Lines.levels[guid] end
+    end
+    return sender and Lines.levels[NameKey(sender)] or nil
+end
+
 local function ColorCode(r, g, b)
     return string_format("|cff%02x%02x%02x", (r or 1) * 255, (g or 1) * 255, (b or 1) * 255)
 end
 
+-- Better Player Names: the link's text becomes the class-coloured name and "says:" goes.
+-- Level Before Names: the level goes inside the link, in front of the name.
+function Lines.RewriteSender(body, chatType, args, mode, db)
+    local s, e, open, display = body:find("(|Hplayer:[^|]*|h)(.-)|h")
+    if not s then return body end
+    local sender, guid = Arg(args, 2, "string"), Arg(args, 12, "string")
+    if not sender or sender == "" then return body end
+    if guid == "" then guid = nil end
+
+    local class
+    if guid then
+        local ok, _, classFile = pcall(GetPlayerInfoByGUID, guid)
+        if ok and canaccessvalue(classFile) and type(classFile) == "string" then class = classFile end
+    end
+
+    if db.formatPlayer then
+        local name = string_gsub(sender, "%-[^|]+", "")
+        local color = class and C_ClassColor.GetClassColor(class)
+        display = color and (color:GenerateHexColorMarkup() .. "[" .. name .. "]|r") or ("[" .. name .. "]")
+    end
+
+    local prefix = ""
+    if db.showLevel then
+        local level = Lines.LevelFor(guid, sender)
+        if level then
+            local c = GetQuestDifficultyColor and GetQuestDifficultyColor(level)
+            prefix = (c and ColorCode(c.r, c.g, c.b) or "|cffffffff") .. "(" .. level .. ")|r "
+        end
+    end
+
+    local after = body:sub(e + 1)
+    if db.formatPlayer and mode == "full" then
+        -- after the link comes the rest of CHAT_<type>_GET (" says: "), maybe behind an ally icon
+        local key = _G["CHAT_" .. chatType .. "_GET"]
+        local suffix = type(key) == "string" and key:match("%%s(.*)$")
+        local ally, rest = after:match("^( |A[^|]*|a)(.*)$")
+        local tail = rest or after
+        if suffix and suffix ~= "" and tail:sub(1, #suffix) == suffix then
+            after = (ally or "") .. " " .. tail:sub(#suffix + 1)
+        end
+    end
+    return body:sub(1, s - 1) .. open .. prefix .. display .. "|h" .. after
+end
+
+-- NPC lines have no link: the CHAT_MONSTER_<type>_GET header becomes the orange name
+function Lines.RewriteNPC(body, chatType, args)
+    local sender = Arg(args, 2, "string")
+    local key = _G["CHAT_" .. chatType .. "_GET"]
+    if not sender or sender == "" or type(key) ~= "string" then return body end
+    local ok, header = pcall(string_format, key, sender, sender)
+    if not ok or body:sub(1, #header) ~= header then return body end
+    local verb = chatType == "MONSTER_WHISPER" and key:match("%%s(.-):?%s*$") or ""
+    return NPC_COLOR .. "[" .. sender .. "]" .. verb .. "|r " .. body:sub(#header + 1)
+end
+
+-- The line as text the chat box accepts: no textures or colours, links reduced to their text
+-- except KEEP_LINKS
+function Lines.ChatSafeText(text)
+    local kept = {}
+    local function Keep(whole, kind)
+        if KEEP_LINKS[kind] then
+            kept[#kept + 1] = whole
+            return "\001" .. #kept .. "\002"
+        end
+    end
+    text = text:gsub("(|c%x%x%x%x%x%x%x%x|H(%w+):[^|]*|h.-|h|r)", Keep)
+    text = text:gsub("(|cn[^:|]*:|H(%w+):[^|]*|h.-|h|r)", Keep)
+    text = text:gsub("|T.-|t", ""):gsub("|A.-|a", "")
+    text = text:gsub("|H.-|h(.-)|h", "%1")
+    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[^:|]*:", ""):gsub("|r", "")
+    text = text:gsub("\001(%d+)\002", function(i) return kept[tonumber(i)] end)
+    return strtrim(text)
+end
+
+-- The copy is Blizzard's own line (without its timestamp), not FlareUI's rewrite
+function Lines.CopyStamp(stamp, original)
+    local shown = stamp:gsub("%s+$", "")
+    Lines.copySerial = Lines.copySerial + 1
+    local id = Lines.copySerial
+    Lines.copies[id] = (Lines.ChatSafeText(original):gsub("  +", " "))
+    Lines.copies[id - Lines.COPY_KEEP] = nil
+    -- a coloured stamp keeps its colour outside the link, as item links do
+    local color, text = shown:match("^(|c%x%x%x%x%x%x%x%x)(.-)|r$")
+    if not color then color, text = "", shown end
+    return color .. "|Hflarecopy:" .. id .. "|h" .. text .. "|h" .. (color ~= "" and "|r" or "")
+        .. stamp:sub(#shown + 1)
+end
+
+-- Registered once (LinkUtil asserts on a second registration). Shift-click puts the line in the open
+-- chat box; with none open, or a line too long for a message, it goes to the copy box. FlareUI never
+-- opens the chat box itself: one opened from addon code stays tainted while it is open, and
+-- Blizzard's own actions from it (sharing a map pin copies to the clipboard) are then blocked.
+function Lines.RegisterCopyHandler()
+    if LinkUtil.IsLinkHandlerRegistered("flarecopy") then return end
+    LinkUtil.RegisterLinkHandler("flarecopy", function(link)
+        if not IsShiftKeyDown() then return end
+        local id = tonumber(link and link:match("^flarecopy:(%d+)"))
+        local text = id and Lines.copies[id]
+        if not text or text == "" then return end
+        local editBox = ChatFrameUtil.GetActiveWindow()
+        if editBox and #text <= 255 then
+            editBox:Insert(text)
+        else
+            Chat.ShowCopyText(text)
+        end
+    end)
+end
+
+local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, eventArgs)
+    local db = GetDb()
+    if not (db and event) then return end
+    if not (db.shortChannels or db.formatPlayer or db.formatNPC or db.betterTimestamps
+            or db.copyLine or db.showLevel) then return end
+    if not canaccessallvalues(message, event) or type(message) ~= "string" or type(event) ~= "string"
+            or event:sub(1, 9) ~= "CHAT_MSG_" then return end
+    local args = type(eventArgs) == "table" and canaccesstable(eventArgs) and eventArgs or nil
+    local chatType = event:sub(10)
+
+    local stamp, body = Lines.SplitStamp(message)
+    local original = body
+    if db.shortChannels then body = Lines.ShortenChannel(body, chatType) end
+    if args then
+        if NPC_EVENTS[chatType] then
+            if db.formatNPC then body = Lines.RewriteNPC(body, chatType, args) end
+        elseif NAME_EVENTS[chatType] and (db.formatPlayer or db.showLevel) then
+            body = Lines.RewriteSender(body, chatType, args, NAME_EVENTS[chatType], db)
+        end
+    end
+    if db.betterTimestamps then stamp = GetTimestamp() end
+    if db.copyLine and stamp ~= "" and not ns.IsGamepadUI() then
+        Lines.RegisterCopyHandler()
+        stamp = Lines.CopyStamp(stamp, original)
+    end
+
+    local line = stamp .. body
+    if line == message then return end
+    local entry = chatFrame.historyBuffer and chatFrame.historyBuffer:GetEntryAtIndex(1)
+    if entry and canaccessallvalues(entry.message) and entry.message == message then
+        entry.message = line
+        chatFrame:MarkDisplayDirty()
+    end
+end
+
+-- Every chat window, temporary whisper windows included
+local function HookLineRewrite()
+    for _, name in ipairs(CHAT_FRAMES or {}) do
+        local frame = _G[name]
+        if frame and not Lines.hooked[frame] then
+            hooksecurefunc(frame, "AddMessage", RewriteStoredLine)
+            Lines.hooked[frame] = true
+        end
+    end
+    if not Lines.tempHooked and FCF_OpenTemporaryWindow then
+        Lines.tempHooked = true
+        hooksecurefunc("FCF_OpenTemporaryWindow", HookLineRewrite)
+    end
+end
+
+-- GetGuildRosterInfo through pcall: name is its 1st return, level its 4th, GUID its 17th
+local function RememberGuildMember(ok, name, _, _, level, ...)
+    if ok then Lines.Remember(select(13, ...), name, level) end
+end
+
+-- Levels for the senders' names, collected while Level Before Names is on
+function Lines.UpdateLevelEvents()
+    local db = GetDb()
+    local want = db and db.showLevel
+    if not Lines.events then
+        if not want then return end
+        local f = CreateFrame("Frame")
+        f:SetScript("OnEvent", function(_, event, unit)
+            if event == "GUILD_ROSTER_UPDATE" then
+                if not GetGuildRosterInfo then return end
+                for i = 1, GetNumGuildMembers() do
+                    RememberGuildMember(pcall(GetGuildRosterInfo, i))
+                end
+            elseif event == "FRIENDLIST_UPDATE" then
+                for i = 1, C_FriendList.GetNumFriends() do
+                    local info = C_FriendList.GetFriendInfoByIndex(i)
+                    if info then Lines.Remember(info.guid, info.name, info.level) end
+                end
+            elseif event == "WHO_LIST_UPDATE" then
+                for i = 1, C_FriendList.GetNumWhoResults() do
+                    local info = C_FriendList.GetWhoInfo(i)
+                    if info then Lines.Remember(nil, info.fullName, info.level) end
+                end
+            elseif event == "GROUP_ROSTER_UPDATE" then
+                local prefix = IsInRaid() and "raid" or "party"
+                for i = 1, IsInRaid() and 40 or 4 do Lines.RememberUnit(prefix .. i) end
+            elseif event == "PLAYER_TARGET_CHANGED" then
+                Lines.RememberUnit("target")
+            elseif event == "UPDATE_MOUSEOVER_UNIT" then
+                Lines.RememberUnit("mouseover")
+            elseif event == "NAME_PLATE_UNIT_ADDED" then
+                Lines.RememberUnit(unit)
+            end
+        end)
+        Lines.events = f
+    end
+    local f = Lines.events
+    if want then
+        for _, event in ipairs({ "GUILD_ROSTER_UPDATE", "FRIENDLIST_UPDATE", "WHO_LIST_UPDATE",
+                "GROUP_ROSTER_UPDATE", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT", "NAME_PLATE_UNIT_ADDED" }) do
+            f:RegisterEvent(event)
+        end
+        if IsInGuild() and C_GuildInfo and C_GuildInfo.GuildRoster then C_GuildInfo.GuildRoster() end
+    else
+        f:UnregisterAllEvents()
+    end
+end
+
 --------------------------------------------------
--- 5. IMPROVEMENTS
+-- 6. IMPROVEMENTS
 --------------------------------------------------
 
 -- Chat bubbles off inside instances. The player's values are saved account-wide while hidden, so a
@@ -666,7 +1039,7 @@ function Chat:StyleHeaderButtons(chatFrame)
 end
 
 --------------------------------------------------
--- 6. COPY CHAT LINKS
+-- 7. COPY CHAT LINKS
 -- Web addresses in chat become links that open a box to copy them from.
 --------------------------------------------------
 local URL_EVENTS = {
@@ -693,7 +1066,10 @@ local function ShowCopyBox(url)
         local f = CreateFrame("Frame", "FlareUI_CopyLink", UIParent, "BackdropTemplate")
         f:SetSize(420, 70)
         f:SetPoint("CENTER")
-        f:SetFrameStrata("DIALOG")
+        -- above the settings panel (DIALOG, raised to the top when clicked), which opens it from its links
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetToplevel(true)
+        f:SetScript("OnHide", function() PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE) end)
         f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = LSM:Fetch("border", "Blizzard Tooltip"),
                         edgeSize = 16, insets = { left = 4, right = 4, top = 4, bottom = 4 } })
         f:SetBackdropColor(0, 0, 0, 0.95)
@@ -722,7 +1098,9 @@ local function ShowCopyBox(url)
     copyFrame.box:SetText(url)
     copyFrame.box:HighlightText()
     copyFrame.box:SetFocus()
+    if not copyFrame:IsShown() then PlaySound(SOUNDKIT.IG_MAINMENU_OPEN) end
     copyFrame:Show()
+    copyFrame:Raise()
 end
 
 -- Copy Line's box for a line too long for a chat message
@@ -768,6 +1146,7 @@ function Chat:SetupImprovements()
     if not db then return end
 
     Chat:SetupCopyLinks()
+    HookLineRewrite()
     Chat:UpdateInstanceBubbles()
     Chat:StyleHeaderButtons()
     DisableQuickJoinToasts()
@@ -1893,7 +2272,7 @@ function Chat:TakeOverFromDock(chatFrame)
 end
 
 --------------------------------------------------
--- 7. EVENT HANDLERS
+-- 8. EVENT HANDLERS
 --------------------------------------------------
 function Chat:OnCombatStateChange()
     local db = GetDb()
@@ -1932,7 +2311,7 @@ function Chat:OnNPCInteractionEnd()
 end
 
 --------------------------------------------------
--- 8. AUTO-HIDE SETUP
+-- 9. AUTO-HIDE SETUP
 --------------------------------------------------
 -- every message (combat log lines included) lands here, so it returns early when auto-hide is off
 local function OnChatMessage(chatFrame)
@@ -1973,6 +2352,12 @@ function Chat:SetupAutoHide(db)
             Chat:ShowChatFrame(frame, db)
         end
     end
+end
+
+-- Formatting lives in the line rewriter, which reads the options on every line
+function Chat:UpdateFilters()
+    HookLineRewrite()
+    Lines.UpdateLevelEvents()
 end
 
 function Chat:Apply(db)
@@ -2298,6 +2683,7 @@ function Chat:RefreshAll()
     Chat:Apply(db)
     HandleCombatLog(db)
     Chat:SetupImprovements()
+    Chat:UpdateFilters()
 
     for i = 1, NUM_CHAT_WINDOWS do
         local cf = _G["ChatFrame" .. i]
