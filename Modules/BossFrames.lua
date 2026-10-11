@@ -276,6 +276,13 @@ local function BuildSettings()
         { name = L["Raid Target"], kind = LEM.SettingType.Checkbox, default = D.raidIcon ~= false, get = get("raidIcon"), set = set("raidIcon") },
     })
 
+    Section("Look", {
+        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.texture, values = K.BuildTextureValues(false),
+          get = get("texture"), set = set("texture") },
+        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = D.border, values = K.BuildBorderValues(false),
+          get = get("border"), set = set("border") },
+    })
+
     Section("Auras", {
         { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = D.buffs, values = Tile.AURA_POSITION_VALUES,
           get = get("buffs"), set = set("buffs"), desc = L["Every buff on the boss, such as enrages and shields."] },

@@ -13,7 +13,7 @@ local L = ns.L
 --   Settings:Row{ key = "module.row", kind, path = "db.path" | get/set, choices, parent,
 --                 reload, apply, hidden, disabled, picture, ratio, tags }
 --
--- kinds: toggle | choice | dropdown | keybind | button | chips | frame | text | custom
+-- kinds: toggle | choice | dropdown | keybind | button | chips | frame | text | expander | custom
 --------------------------------------------------
 local Settings = {
     modules = {},       -- key -> module
@@ -41,6 +41,11 @@ function Settings:Text(key, field, optional)
     if not (row and row[field]) then
         local wild = key:gsub("^([^.]+)%.[^.]+%.", "%1.*.")
         row = CopyRow(wild)
+    end
+    -- a font's controls ("ch.font.text.size") share one text per control ("font.size")
+    if not (row and row[field]) then
+        local control = key:match("%.font%.[^.]+%.(%w+)$")
+        if control then row = CopyRow("font." .. control) end
     end
     local text = row and row[field]
     if text == nil and field == "label" and not optional then
@@ -130,7 +135,8 @@ function Module:Sections(tabKey)
     for _, section in ipairs(self.sections) do
         local rows = {}
         for _, row in ipairs(section.rows) do
-            if not row:IsHidden() and (not self.tabs or row.tab == tabKey) then rows[#rows + 1] = row end
+            -- a row with no tab of its own is on the first one
+            if not row:IsHidden() and (not self.tabs or (row.tab or self.tabs[1].key) == tabKey) then rows[#rows + 1] = row end
         end
         if #rows > 0 then list[#list + 1] = { key = section.key, title = section.title, rows = rows } end
     end

@@ -17,27 +17,31 @@ local function FCMOff() return not S:GetPath("fcm.enabled") end
 
 S:Module{
     key = "ab", group = "HUD", order = 10, enabled = "actionbars.enabled",
+    tabs = { { key = "settings" }, { key = "fonts" } },
     -- Blizzard's bars: the button opens Edit Mode itself (no FlareUI frame to select)
     editMode = function() return nil end,
 }
 
--- Buttons
+-- Buttons, two to a line
 S:Row{
-    key = "ab.statusColours", apply = Refresh,
+    key = "ab.statusColours", apply = Refresh, half = true,
     get = function() return S:GetPath("actionbars.colors.enableRange") end,
     set = function(on)
         S:SetPath("actionbars.colors.enableRange", on)
         S:SetPath("actionbars.colors.unusable.desaturate", on)
     end,
 }
-S:Row{ key = "ab.procGlow", path = "actionbars.procGlow",
+S:Row{ key = "ab.procGlow", path = "actionbars.procGlow", half = true,
     apply = function() if ns.ProcGlow then ns.ProcGlow:Refresh() end end }
-S:Row{ key = "ab.hideMacroText", path = "actionbars.hideMacroText", apply = Refresh }
-S:Row{ key = "ab.hideKeybinds", path = "actionbars.hideHotkeys", apply = Refresh }
+S:Row{ key = "ab.hideMacroText", path = "actionbars.hideMacroText", apply = Refresh, half = true }
+S:Row{ key = "ab.hideKeybinds", path = "actionbars.hideHotkeys", apply = Refresh, half = true }
 
 
 -- Experience
 S:Row{ key = "ab.xpBar", path = "actionbars.xpbar.enabled", reload = true }
+-- its numbers: under the mouse, or always
+S:Row{ key = "ab.xpText", kind = "choice", path = "actionbars.xpbar.textMode", choices = { "HOVER", "ALWAYS" },
+    parent = "ab.xpBar", apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
 
 -- Hiding (also gone from Edit Mode)
 S:Row{
@@ -52,6 +56,9 @@ S:Row{
 
 -- Fade Options: set per bar in Edit Mode; the row opens it
 S:Row{ key = "ab.fade", kind = "editmode", section = "ab.fadeOptions", sectionTitle = L["Fade Options"] }
+-- how fast the bars fade in and out (Modules/Visibility.lua)
+S:Row{ key = "ab.fadeSpeed", kind = "choice", path = "visibility.fadeSpeed", choices = { "instant", "fast", "slow" },
+    section = "ab.fadeOptions", apply = function() if ns.Visibility and ns.Visibility.Refresh then ns.Visibility:Refresh() end end }
 
 -- Fake Cooldown Manager: its options show once it is on
 S:Row{ key = "ab.fcmEnable", path = "fcm.enabled", apply = Refresh, section = "ab.fakeCooldownManager" }
@@ -66,3 +73,9 @@ S:Row{
     key = "ab.fcmSetup", kind = "button", center = true, hidden = FCMOff, section = "ab.fakeCooldownManager",
     apply = function() if ns.ToggleFCMSetupMode then ns.ToggleFCMSetupMode() end end,
 }
+
+S:FontRows{ module = "ab", tab = "fonts", section = "ab.fonts", apply = Refresh, fonts = {
+    { key = "keybinds", path = "actionbars.hotkeyFont" },
+    { key = "count", path = "actionbars.countFont" },
+    { key = "macro", path = "actionbars.macroFont" },
+} }

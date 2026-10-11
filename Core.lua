@@ -246,12 +246,6 @@ local defaults = {
 
             copyLinks = true,
             shiftInvite = false,        -- shift-click a player name in chat to invite them
-            formatNPC = false,
-            formatPlayer = false,
-            betterTimestamps = false,
-            showLevel = false,          -- the sender's level in front of the name, when known
-            copyLine = false,           -- Copy Line: shift-click a timestamp to copy the line into the chat box
-            shortChannels = false,
             hideBubblesInInstance = false,
 
             -- Frame (Blizzard dark dialog background + the chosen border, tinted ns.BORDER_COLOR)
@@ -292,16 +286,17 @@ local defaults = {
             channelScale = 0.6,
             channelColor = { r = 0.61, g = 0.48, b = 0.29, a = 1 },
 
-            -- Visibility
-            autoHideEnabled = false,
-            autoHideDelay = 6,
+            -- Visibility: always | interactions (new messages, typing) | combat (interactions and combat);
+            -- pointing at the chat always shows it. fadeSpeed: instant | fast | slow
+            visibility = "always",
+            fadeSpeed = "instant",
+            autoHideDelay = 5,          -- Fade Delay: seconds the chat stays after showing (0 = at once)
             alphaMin = 0,
             alphaMax = 1,
 
             showOnMessage = true,
             showOnEdit = true,
             showOnMouse = true,
-            showOnCombat = false,
 
             -- Typography
             chatFont = { face = "Arial Narrow", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -358,6 +353,7 @@ local defaults = {
         -- [[ DAMAGE METER MODULE ]]
         damagemeter = {
             enabled = false,
+            fadeSpeed = "instant",      -- instant | fast | slow: every show and hide (Visibility, mouseover)
 
             -- Look shared with the chat frame (fixed, no option)
             opacity = 0.5,
@@ -382,6 +378,7 @@ local defaults = {
             autoZoom = 5,               -- seconds before zooming back out (0 = off)
             matchTrackerWidth = true,  -- objective tracker as wide as the minimap (no option)
             buttonBag = true,           -- the badge opens a bag with every addon's minimap button (MinimapBag.lua)
+            clockStats = true,          -- framerate and latency in the clock's tooltip
         },
 
         -- [[ UNIT FRAMES MODULE ]]
@@ -407,6 +404,7 @@ local defaults = {
             -- resource bars (Modules/ResourceBars.lua); positions in layouts[layout][bar]
             resource = {
                 enabled = false,        -- the Resource Bars module (Settings: its own page)
+                font = { face = "Friz Quadrata TT", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
                 layouts = {},
                 bars = {
                     health      = { enabled = false, show = "target", width = 220, height = 16, text = "both", textAlign = "CENTER", textSize = 12, classColor = false },
@@ -518,7 +516,8 @@ local defaults = {
         -- show: always | mouseover | combat | target | harm. A group (1-3) owns its members' show.
         visibility = {
             elements = VisibilityElements(),
-            groups = { { show = "combat" }, { show = "combat" }, { show = "combat" } },
+            groups = { { show = "combat" }, { show = "combat" }, { show = "combat" }, { show = "combat" }, { show = "combat" } },
+            fadeSpeed = "instant",      -- instant | fast | slow (ns.FADE_TIMES)
             hideBagBar = false,
             hideMicroMenu = false,
             hidePetBar = false,
@@ -612,7 +611,7 @@ local defaults = {
             anchor = "auto",            -- auto | TOP | BOTTOM (Edit Mode); left / right follows the frame's half
             completedLast = true,
             showLevel = true,
-            showTags = false,           -- no option
+            showTags = true,
             numbersLast = false,        -- "Boar Tusks: 3/8" instead of Forever's "3/8 Boar Tusks"
             wrapText = true,
             showRecipes = true,
@@ -1042,6 +1041,10 @@ local function WindowSound(sound)
     lastWindowSound = now
     PlaySound(sound)
 end
+
+-- Fade Speed choices (action bars, chat, damage meter): seconds for a fade in or out; instant is 0
+ns.FADE_TIMES = { instant = 0, fast = 0.2, slow = 0.4 }
+function ns.FadeTime(speed) return ns.FADE_TIMES[speed] or 0 end
 
 function ns.WindowOpenSound() WindowSound(SOUND_OPEN) end
 function ns.WindowCloseSound() WindowSound(SOUND_CLOSE) end

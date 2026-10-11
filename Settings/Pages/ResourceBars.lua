@@ -8,7 +8,7 @@ local S = ns.Settings
 --------------------------------------------------
 local function Bar(key, extra)
     local row = {
-        key = "rb." .. key, kind = "frame", reload = true,
+        key = "rb." .. key, kind = "frame", reload = true, half = true,
         path = "unitframes.resource.bars." .. key .. ".enabled",
         frame = function() return _G["FlareUI_Resource_" .. key] end,
     }
@@ -26,6 +26,7 @@ local BARS = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swi
 -- the header button opens Edit Mode on the first bar that is on
 S:Module{
     key = "rb", group = "HUD", order = 30, enabled = "unitframes.resource.enabled",
+    tabs = { { key = "settings" }, { key = "fonts" } },
     editMode = function()
         for _, key in ipairs(BARS) do
             if _G["FlareUI_Resource_" .. key] then return _G["FlareUI_Resource_" .. key] end
@@ -40,3 +41,11 @@ Bar("combo")
 Bar("swingMain", { key = "rb.swingMain" })
 Bar("swingOff", { key = "rb.swingOff" })
 Bar("swingRanged", { key = "rb.swingRanged" })
+
+local function Refresh()
+    if ns.ResourceBars and ns.ResourceBars.Refresh then ns.ResourceBars:Refresh() end
+end
+
+S:FontRows{ module = "rb", tab = "fonts", section = "rb.fonts", apply = Refresh, fonts = {
+    { key = "text", path = "unitframes.resource.font" },
+} }

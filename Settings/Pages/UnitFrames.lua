@@ -14,13 +14,14 @@ end
 
 local function Frame(key, path, frameName)
     S:Row{
-        key = "uf." .. key, kind = "frame", reload = true, path = path,
+        key = "uf." .. key, kind = "frame", reload = true, path = path, half = true,
         frame = function() return _G[frameName] end,
     }
 end
 
 S:Module{
     key = "uf", group = "HUD", order = 20, enabled = "unitframes.enabled",
+    tabs = { { key = "settings" }, { key = "fonts" } },
     editFrames = { function() return _G.FlareUI_UF_Player end },
     -- the header button opens Edit Mode on the first frame that is on
     editMode = function()
@@ -34,7 +35,7 @@ S:Module{
 -- player frame)
 local MAIN_UNITS = { "player", "pet", "target", "focus" }
 S:Row{
-    key = "uf.main", kind = "frame", reload = true,
+    key = "uf.main", kind = "frame", reload = true, half = true,
     get = function() return S:GetPath("unitframes.units.player.enabled") and true or false end,
     set = function(on)
         for _, unit in ipairs(MAIN_UNITS) do S:SetPath("unitframes.units." .. unit .. ".enabled", on and true or false) end
@@ -58,6 +59,12 @@ S:Row{
         if ns.UFRing then ns.UFRing.SetOn(not on) end
     end,
 }
+-- the player and pet frames show in combat, or while the mouse is over either of them
+S:Row{
+    key = "uf.hidePlayer", apply = Refresh,
+    get = function() return ns.UnitFrames and ns.UnitFrames.GetPlayerShow and ns.UnitFrames:GetPlayerShow() == "fade" or false end,
+    set = function(on) if ns.UnitFrames and ns.UnitFrames.SetPlayerShow then ns.UnitFrames:SetPlayerShow(on and "fade" or "always") end end,
+}
 S:Row{ key = "uf.classColours", path = "unitframes.classColor", apply = Refresh }
 -- the bars' colours: FlareUI's tones or Blizzard's bright originals
 S:Row{
@@ -69,3 +76,10 @@ S:Row{
 }
 S:Row{ key = "uf.auraShape", kind = "choice", path = "unitframes.auraStyle", choices = { "square", "round" }, apply = Refresh }
 S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }
+
+S:FontRows{ module = "uf", tab = "fonts", section = "uf.fonts", apply = Refresh, fonts = {
+    { key = "names", path = "unitframes.font" },
+    { key = "power", path = "unitframes.fontPower" },
+    { key = "castBar", path = "unitframes.fontCast" },
+    { key = "auras", path = "unitframes.auraFont" },
+} }

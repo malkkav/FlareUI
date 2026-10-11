@@ -8,7 +8,7 @@ local L = ns.L
 --   * each element has a Show choice: always | mouseover | combat | target | harm
 --     (Combat + Target, Combat + Attackable Target); with any choice but always, pointing at the
 --     element shows it too
---   * an element can join fade group 1-3: the group owns the Show choice and its members fade in
+--   * an element can join fade group 1-5: the group owns the Show choice and its members fade in
 --     and out together (point at one, they all appear)
 --   * Fake CM bars follow profile.fcm.show, never the mouse (they are click-through), and always
 --     show in Fake CM setup mode, in Edit Mode, and while something is dragged
@@ -42,8 +42,9 @@ local UnitExists = UnitExists
 local UnitCanAttack = UnitCanAttack
 local canaccessvalue = canaccessvalue
 
--- fixed, no option (seconds): fade in, fade out, and how long a faded element waits before fading out
-local FADE_IN, FADE_OUT, FADE_DELAY = 0.15, 0.3, 0.5
+-- seconds a faded element waits before fading out: covers the gap between the bars of a group (the
+-- fade itself takes the Fade Speed, ns.FADE_TIMES)
+local FADE_DELAY = 0.08
 
 --------------------------------------------------
 -- 3. ELEMENTS
@@ -261,7 +262,7 @@ local function MarkAllDirty()
     end
 end
 
-Fader.updateInterval = 0.1  -- condition checks; 0.2 when only mouseover keeps the loop running
+Fader.updateInterval = 0.05 -- condition checks (the mouse leaving a bar is noticed within this)
 Fader.shows = {}            -- group -> whether it is fading in (from the last condition check)
 Fader.counting = {}         -- group -> its fade-out delay is running down
 Fader.UpdateScript = function(self, elapsed)
@@ -296,8 +297,9 @@ Fader.UpdateScript = function(self, elapsed)
             local currentAlpha = frame:GetAlpha()
             if math_abs(currentAlpha - targetAlpha) > 0.005 then
                 hasActiveFades = true
-                local speed = effectiveShow and FADE_IN or FADE_OUT
-                local change = (1 / speed) * elapsed
+                local db = GetDb()
+                local speed = ns.FadeTime(db and db.fadeSpeed)
+                local change = speed > 0 and (1 / speed) * elapsed or 1
                 local newAlpha = (currentAlpha < targetAlpha) and math_min(targetAlpha, currentAlpha + change) or math_max(targetAlpha, currentAlpha - change)
                 ApplyElementAlpha(frame, data.key, newAlpha)
             end
@@ -318,7 +320,7 @@ Fader.UpdateScript = function(self, elapsed)
         self:SetScript("OnUpdate", nil)
         self.updateEnabled = false
     else
-        self.updateInterval = idle and 0.2 or 0.1
+        self.updateInterval = 0.05
     end
 end
 
@@ -326,7 +328,7 @@ end
 -- 7. EDIT MODE SETTINGS (Show and Fade group in each element's dialog)
 --------------------------------------------------
 local SHOW_VALUES = { "always", "mouseover", "combat", "target", "harm" }
-local GROUP_VALUES = { 0, 1, 2, 3 }
+local GROUP_VALUES = { 0, 1, 2, 3, 4, 5 }
 
 local function Values(copyKey, list, fallback)
     local names = ns.Settings and ns.Settings:Text(copyKey, "choices") or {}

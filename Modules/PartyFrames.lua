@@ -1915,6 +1915,13 @@ local function BuildSettings()
             end
         end
     end
+    Section("Look", {
+        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.texture, values = K.BuildTextureValues(false),
+          get = getS("texture"), set = setS("texture") },
+        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = D.border, values = K.BuildBorderValues(false),
+          get = getS("border"), set = setS("border") },
+    })
+
     Section("Auras", {
         { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = D.buffs, values = AURA_POSITION_VALUES, generator = Place("buffs"),
           get = getS("buffs"), set = setS("buffs"),

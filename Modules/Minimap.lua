@@ -474,7 +474,7 @@ end
 local function AddClockStats()
     local db = GetDb()
     local clock = _G.TimeManagerClockButton
-    if not (db and db.enabled and clock and GameTooltip:GetOwner() == clock) then return end
+    if not (db and db.enabled and db.clockStats and clock and GameTooltip:GetOwner() == clock) then return end
     local _, _, latencyHome, latencyWorld = GetNetStats()
     local label, value = NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR
     GameTooltip:AddDoubleLine(L["Framerate"], string.format("%.0f fps", GetFramerate()),

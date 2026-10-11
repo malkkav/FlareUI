@@ -512,6 +512,29 @@ local function KeepAsMenuOwner(name, over)
     hooksecurefunc(frame, "Hide", function(f) if not InCombatLockdown() then f:Show() end end)
 end
 
+-- Blizzard's target frame plays the sound of picking a target (enemy, friend, neutral) from its own
+-- events, which it loses once parked: the same sound is played here instead
+do
+    local function Readable(value)
+        return (not canaccessvalue or canaccessvalue(value)) and value
+    end
+    local listener = CreateFrame("Frame")
+    listener:RegisterEvent("PLAYER_TARGET_CHANGED")
+    listener:SetScript("OnEvent", function()
+        local blizzard = _G.TargetFrame
+        if not (blizzard and blizzard.FlareUI_Hidden) or not UnitExists("target") then return end
+        local interaction = C_PlayerInteractionManager
+        if interaction and interaction.IsReplacingUnit and interaction.IsReplacingUnit() then return end
+        if Readable(UnitIsEnemy("target", "player")) then
+            PlaySound(SOUNDKIT.IG_CREATURE_AGGRO_SELECT)
+        elseif Readable(UnitIsFriend("player", "target")) then
+            PlaySound(SOUNDKIT.IG_CHARACTER_NPC_SELECT)
+        else
+            PlaySound(SOUNDKIT.IG_CREATURE_NEUTRAL_SELECT)
+        end
+    end)
+end
+
 --------------------------------------------------
 -- 5. UPDATERS (all secret-safe: values go straight into widgets)
 --------------------------------------------------
@@ -2666,6 +2689,8 @@ local function BuildPlayerCastSettings()
     return {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = 250, minValue = 100, maxValue = 600, valueStep = 2, get = get("width", 250), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 25, minValue = 8, maxValue = 48, valueStep = 1, get = get("height", 25), set = set("height") },
+        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(false), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
+        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
     }
 end
 
@@ -2770,20 +2795,19 @@ local function BuildSettings(unit)
         end
     end
 
-    -- the player frame: always shown, or faded out of combat (back in combat, with a target,
-    -- missing health, or under the mouse)
-    if unit == "player" then
-        settings[#settings + 1] = { name = L["Show"], kind = LEM.SettingType.Dropdown, default = "always",
-            values = { { text = L["Always"], value = "always", isRadio = true },
-                       { text = L["Fade Out of Combat"], value = "fade", isRadio = true } },
-            get = function() return UF:GetPlayerShow() end,
-            set = function(_, value) UF:SetPlayerShow(value) end }
-    end
-
     -- everything above is the frame itself, and gets the first section
     local frameItems = settings
     settings = {}
     Section("Frame", frameItems)
+
+    -- the bars' texture and the border; the Forever style's ring frames keep their own border
+    Section("Look", {
+        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.texture or DEFAULT_TEXTURE, values = BuildTextureValues(false),
+          get = function() local u = GetUnitDb(unit); return u and u.texture or DEFAULT_TEXTURE end, set = set("texture") },
+        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BORDER, values = BuildBorderValues(false),
+          get = function() local u = GetUnitDb(unit); return u and u.border or DEFAULT_BORDER end, set = set("border"),
+          hidden = function() return ns.UFRing and ns.UFRing.Applies(frames[unit]) or false end },
+    })
 
     if info.castbar then
         Section("Cast Bar", {
@@ -2911,9 +2935,9 @@ function UF:ClassColorsOn()
     return ns.ClassColorsOn()
 end
 
--- The player frame's Show choice: "always", or "fade" (out of combat; back in combat, with a
--- target, with health missing, or under the mouse)
-UF.PLAYER_FADE = { condMouseover = true, condCombat = true, condTarget = true, condHealth = true, condHarm = false }
+-- Hide Player and Pet out of combat (Settings > Unit Frames): "always", or "fade" (hidden out of
+-- combat; back in combat, or while the mouse is over the player or the pet frame, which show together)
+UF.PLAYER_FADE = { condMouseover = true, condCombat = true, condTarget = false, condHealth = false, condHarm = false }
 function UF:GetPlayerShow()
     local db = GetDb()
     local v = db and db.visibility and db.visibility.player

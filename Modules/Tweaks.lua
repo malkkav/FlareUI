@@ -47,7 +47,7 @@ end
 
 --------------------------------------------------
 -- 3. MOVE ANY FRAME
--- Every UIPanelWindows panel (and bags) drags by its header; Shift+right-click resets the position.
+-- Every UIPanelWindows panel (plus bags and a few other windows) drags by its header; Shift+right-click resets the position.
 -- Saved per frame name, re-applied after
 -- Blizzard's panel manager places the frame.
 --------------------------------------------------
@@ -191,7 +191,8 @@ local function GetHeaderHandle(frame)
     strip:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
     strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -CLOSE_BUTTON_ROOM, 0)
     strip:SetHeight(HEADER_HEIGHT)
-    strip:SetFrameLevel(frame:GetFrameLevel())
+    -- above the window itself: at its level the window (mouse-enabled) took the press, and nothing dragged
+    strip:SetFrameLevel(frame:GetFrameLevel() + 2)
     frame.moveStrip = strip
     return strip
 end
@@ -220,10 +221,20 @@ local function SetupMovableFrame(name)
     if frame:IsShown() then ApplySavedPosition(frame) end
 end
 
+-- windows Blizzard shows without registering them as panels (the clock, opened mail, the stable,
+-- loot history, the group finder's lists, the dressing preview): each one once it exists
+local EXTRA_WINDOWS = {
+    "TimeManagerFrame", "OpenMailFrame", "StableFrame", "PetStableFrame", "GroupLootHistoryFrame",
+    "LFGListingFrame", "LFGBrowseFrame", "LFGWhoListFrame", "ModelPreviewFrame", "CinematicsMenu",
+    "CooldownViewerSettings",
+}
+
 local function ScanUIPanels()
     local windows = _G.UIPanelWindows
-    if type(windows) ~= "table" then return end
-    for name in pairs(windows) do SetupMovableFrame(name) end
+    if type(windows) == "table" then
+        for name in pairs(windows) do SetupMovableFrame(name) end
+    end
+    for _, name in ipairs(EXTRA_WINDOWS) do SetupMovableFrame(name) end
 end
 
 -- Bags are named, not UI panels. Their portrait router covers the title bar and opens the portrait

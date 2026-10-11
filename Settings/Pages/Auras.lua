@@ -15,9 +15,14 @@ end
 
 S:Module{
     key = "au", group = "HUD", order = 50, enabled = "auras.enabled",
+    tabs = { { key = "settings" }, { key = "fonts" } },
     editMode = Holder("buffs"),
     editFrames = { Holder("buffs"), Holder("debuffs") },
 }
 
 S:Row{ key = "au.shape", kind = "choice", path = "auras.style", choices = { "round", "square" }, apply = Refresh }
 S:Row{ key = "au.timer", kind = "choice", path = "auras.timer", choices = { "below", "bottom", "middle", "none" }, apply = Refresh }
+
+S:FontRows{ module = "au", tab = "fonts", section = "au.fonts", apply = Refresh, fonts = {
+    { key = "timer", path = "auras.font" },
+} }

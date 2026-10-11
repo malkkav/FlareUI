@@ -12,7 +12,7 @@ end
 
 local function Holder() return _G.FlareUI_ObjectiveTracker end
 
-S:Module{ key = "qt", group = "Info", order = 25, enabled = "objectivetracker.enabled", editMode = Holder }
+S:Module{ key = "qt", group = "Info", order = 25, enabled = "objectivetracker.enabled", editMode = Holder, tabs = { { key = "settings" }, { key = "fonts" } } }
 
 -- on this page the tracker shows (Edit Mode's sample quests when nothing is tracked), so Frame
 -- Opacity can be seen
@@ -39,8 +39,13 @@ S:Row{
     end,
 }
 
--- Minimize in: instances (dungeon, raid, battleground, arena) and combat
+-- Minimize: to a lone + button, in instances (dungeon, raid, battleground, arena), and in combat
 local INSTANCES = { "dungeon", "raid", "pvp", "arena" }
+S:Row{
+    key = "qt.minimizeButton", apply = Refresh,
+    get = function() return S:GetPath("objectivetracker.minimizeStyle") == "button" end,
+    set = function(on) S:SetPath("objectivetracker.minimizeStyle", on and "button" or "header") end,
+}
 S:Row{
     key = "qt.minInstances", apply = Refresh,
     get = function() return S:GetPath("objectivetracker.autoMinimize.dungeon") == "minimize" end,
@@ -56,6 +61,23 @@ S:Row{
     set = function(on) S:SetPath("objectivetracker.autoMinimize.combat", on and "minimize" or "none") end,
 }
 
--- the key that minimizes and expands it (Bindings.xml), under Combat
+-- the key that minimizes and expands it (Bindings.xml), last in the section
 local trackerKey = S:BindingAccessors("FLAREUI_TRACKER")
 S:Row{ key = "qt.minimizeKey", kind = "keybind", get = trackerKey.get, set = trackerKey.set, section = "qt.minimizeIn" }
+
+-- Display: what the tracker shows, in two columns
+S:Row{
+    key = "qt.display", kind = "chips", apply = Refresh,
+    items = {
+        { path = "objectivetracker.zoneHeaders" }, { path = "objectivetracker.completedLast" },
+        { path = "objectivetracker.showTags" }, { path = "objectivetracker.wrapText" },
+        { path = "objectivetracker.showRecipes" }, { path = "objectivetracker.showCount" },
+        { path = "objectivetracker.hideEmpty" },
+    },
+}
+
+S:FontRows{ module = "qt", tab = "fonts", section = "qt.fonts", apply = Refresh, fonts = {
+    { key = "header", path = "objectivetracker.headerFont" },
+    { key = "titles", path = "objectivetracker.titleFont" },
+    { key = "objectives", path = "objectivetracker.objectiveFont" },
+} }

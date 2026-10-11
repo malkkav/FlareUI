@@ -19,21 +19,25 @@ local _, ns = ...
 local PATHS = {}
 for _, path in ipairs({
     "actionbars.colors.enableRange", "actionbars.colors.unusable.desaturate", "actionbars.enabled",
-    "actionbars.hideHotkeys", "actionbars.hideMacroText", "actionbars.procGlow", "actionbars.xpbar.enabled",
+    "actionbars.hideHotkeys", "actionbars.hideMacroText", "actionbars.procGlow", "actionbars.xpbar.enabled", "actionbars.xpbar.textMode",
     "auras.enabled", "auras.style", "auras.timer",
-    "chat.autoHideEnabled", "chat.channelHide", "chat.copyLinks", "chat.editBoxPosition", "chat.enabled",
+    "chat.editBoxOpacity", "chat.channelHide", "chat.copyLinks", "chat.editBoxPosition", "chat.enabled",
     "chat.hideBubblesInInstance", "chat.hideCombatLog", "chat.menuHide", "chat.opacity", "chat.saveHistory",
     "chat.showVolume", "chat.socialHide",
+    "damagemeter.combatTimer", "damagemeter.readyCheckButton", "damagemeter.countdownButton", "chat.autoHideDelay",
     "damagemeter.autoThreat", "damagemeter.enabled", "damagemeter.matchChatSize", "damagemeter.opacity",
     "damagemeter.showOnMouseover", "damagemeter.visibility",
     "fcm.enabled", "fcm.show",
     "minimap.autoZoom", "minimap.buttonBag", "minimap.enabled",
     "objectivetracker.autoMinimize.dungeon", "objectivetracker.autoMinimize.raid", "objectivetracker.autoMinimize.pvp",
     "objectivetracker.autoMinimize.arena", "objectivetracker.autoMinimize.combat",
-    "objectivetracker.enabled", "objectivetracker.opacity", "objectivetracker.sortByDistance",
+    "objectivetracker.zoneHeaders", "objectivetracker.completedLast", "objectivetracker.showTags",
+    "objectivetracker.wrapText", "objectivetracker.showRecipes",
+    "objectivetracker.showCount", "objectivetracker.hideEmpty",
+    "objectivetracker.enabled", "objectivetracker.minimizeStyle", "objectivetracker.opacity", "objectivetracker.sortByDistance",
     "objectivetracker.sortByLevel", "objectivetracker.zoneFirst",
     "radialmenu.enabled", "radialmenu.showNames",
-    "tooltips.anchor", "tooltips.anchorFrames", "tooltips.borderByClass", "tooltips.borderByQuality",
+    "tooltips.hideHealthBar", "tooltips.showTarget", "tooltips.scale", "tooltips.anchor", "tooltips.anchorFrames", "tooltips.borderByClass", "tooltips.borderByQuality",
     "tooltips.borderByReaction", "tooltips.enabled", "tooltips.nameColor", "tooltips.showItemID",
     "tooltips.showSpellID", "tooltips.visibility.actionBars", "tooltips.visibility.frameUnits",
     "tooltips.visibility.worldObjects", "tooltips.visibility.worldUnits",
@@ -43,7 +47,7 @@ for _, path in ipairs({
     "tweaks.moveLootToasts", "tweaks.nameplateCombo", "tweaks.nameplateHideLevel", "tweaks.nameplateQuest",
     "tweaks.sellJunk", "tweaks.syncUI", "tweaks.trainAll", "tweaks.way",
     "unitframes.auraStyle", "unitframes.auraTimer", "unitframes.classColor", "unitframes.enabled",
-    "unitframes.palette",
+    "unitframes.palette", "unitframes.visibility.player.condCombat", "unitframes.visibility.player.condMouseover",
     "visibility.hideBagBar", "visibility.hideEndCaps", "visibility.hideMicroMenu", "visibility.hidePetBar",
     "visibility.hidePossessBar", "visibility.hideRaidManager", "visibility.hideStanceBar", "visibility.hideTotemBar",
 }) do PATHS[path] = true end
@@ -59,7 +63,7 @@ for _, key in ipairs({
     "debuffs", "dispelHighlight", "dispels", "fsr", "groupNumbers", "groupSpacing", "grow", "healersOnlyPower",
     "healthText", "height", "max", "maxHeight", "missingBuffs", "onlyMyDebuffs", "orientation", "perRow",
     "portrait", "powerHeight", "powerText", "raidIcon", "ringSize", "show", "showLevel", "size", "sort",
-    "spacing", "text", "width", "wrap", "mirror", "style",
+    "spacing", "text", "width", "wrap", "mirror", "style", "texture", "border", "borderTexture",
 }) do EDIT_KEYS[key] = true end
 
 -- positions per Edit Mode layout, and Move Any Frame's window positions: copied whole
@@ -86,8 +90,8 @@ local function StartsWith(s, prefix) return s:sub(1, #prefix) == prefix end
 
 local function Wanted(path, key)
     if PATHS[path] then return true end
-    -- fonts are fixed in this version
-    if path:find("[Ff]ont") then return false end
+    -- every font's face, size, outline and shadow (each Fonts tab)
+    if path:find("[Ff]ont%a*%.%a+$") then return true end
     for _, prefix in ipairs(PREFIXES) do
         if StartsWith(path, prefix) and key == "enabled" then return true end
     end
@@ -152,6 +156,25 @@ local function ImportProfile(old, defaults)
         end
     end
     Walk(old)
+
+    -- 1.x's chat fading (on / off, with or without combat, its fade-out time) is Visibility and
+    -- Fade chat now
+    local oldChat = old.chat
+    if type(oldChat) == "table" and oldChat.autoHideEnabled then
+        new.chat = new.chat or {}
+        new.chat.visibility = oldChat.showOnCombat and "combat" or "interactions"
+        local out = tonumber(oldChat.fadeOutSpeed) or 0
+        new.chat.fadeSpeed = out <= 0 and "instant" or (out <= 0.3 and "fast" or "slow")
+    end
+    -- Fade Delay offers 0, 5, 10, 15 or 30 seconds: the nearest
+    local delay = new.chat and new.chat.autoHideDelay
+    if type(delay) == "number" then
+        local best = 0
+        for _, choice in ipairs({ 0, 5, 10, 15, 30 }) do
+            if math.abs(choice - delay) < math.abs(best - delay) then best = choice end
+        end
+        new.chat.autoHideDelay = best
+    end
 
     -- 1.x frames were the Addon style: that setup is also kept as the Addon style's own, so switching
     -- to it brings the frames back as they were. The Forever style (the default) starts from its preset.

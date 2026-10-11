@@ -8,7 +8,7 @@ local S = ns.Settings
 -- rows in the middle, a picture and the hovered row's text on the right, the reload footer along
 -- the bottom. Built on first open; Blizzard's own templates and textures, in FlareUI's bronze.
 --------------------------------------------------
-local WIDTH, HEIGHT = 960, 611   -- the reload bar hangs below the window when it shows
+local WIDTH, HEIGHT = 960, 680   -- the reload bar hangs below the window when it shows
 local HEADER_H, FOOTER_H = 34, 34
 local LEFT_W, RIGHT_W = 190, 250
 local PAD = 12
@@ -326,6 +326,8 @@ Build.choice = function(f)
     f.control = stepper
 end
 Fill.choice = function(f, row)
+    -- narrower two to a line
+    f.stepper.Dropdown:SetWidth(row.half and 96 or 180)
     f.stepper.Dropdown:SetupMenu(function(_, root)
         for _, c in ipairs(row:Choices()) do
             root:CreateRadio(c.text, function() return row:Get() == c.value end, function() row:Set(c.value) end)
@@ -556,8 +558,29 @@ Build.frame = function(f)
     f.control:SetPoint("RIGHT", f.edit, "LEFT", -8, 0)
 end
 Fill.frame = function(f, row)
+    f.edit:SetWidth(row.half and 60 or 80)
     f.control:SetChecked(row:Get() and true or false)
     f.edit:SetEnabled(S:CanEditFrames() and row:Get() and row.frame and row.frame() ~= nil or false)
+end
+
+-- expander: a heading that opens and closes the rows under it (each font's controls)
+Build.expander = function(f)
+    local b = CreateFrame("Button", nil, f)
+    b:SetAllPoints()
+    b.sign = Text(b, "GameFontNormal")
+    b.sign:SetPoint("RIGHT", -10, 0)
+    b:SetScript("OnClick", function()
+        ns.ButtonSound()
+        local row = f.row
+        if row and row.toggle then row.toggle() end
+        Panel:Refresh()
+    end)
+    ForwardHover(b, f)
+    f.control = b
+end
+Fill.expander = function(f, row)
+    local open = row.isOpen and row.isOpen()
+    f.control.sign:SetText(open and "-" or "+")
 end
 
 -- an Edit Mode setting found by search: Edit takes you to it
@@ -632,7 +655,8 @@ end
 
 -- enable / disable the control with the row
 local function SetRowEnabled(f, enabled)
-    local color = enabled and HIGHLIGHT_FONT_COLOR or GRAY_FONT_COLOR
+    -- a heading that opens rows (each font) is gold, like the section titles
+    local color = enabled and (f.kind == "expander" and NORMAL_FONT_COLOR or HIGHLIGHT_FONT_COLOR) or GRAY_FONT_COLOR
     f.label:SetTextColor(color:GetRGB())
     local controls = { f.control, f.prev, f.next }
     -- the Edit button follows combat and the frame, not the row (Fill set it)
@@ -656,7 +680,18 @@ end
 --------------------------------------------------
 local page = {}
 
-local function SectionHeader(parent, text, y)
+-- A section's heading closes and opens it (a click); every section starts open, and what is
+-- closed is kept for the session
+local closedSections = {}   -- section key -> closed
+
+local function SectionClick(h)
+    if not h.sectionKey then return end
+    ns.ButtonSound()
+    closedSections[h.sectionKey] = not closedSections[h.sectionKey] or nil
+    Panel:Refresh()
+end
+
+local function SectionHeader(parent, text, y, sectionKey)
     local key = "section"
     pools[key] = pools[key] or {}
     local h = table.remove(pools[key])
@@ -666,11 +701,23 @@ local function SectionHeader(parent, text, y)
         h.kind = key
         h.text = Text(h, "GameFontNormal")
         h.text:SetPoint("BOTTOMLEFT", 6, 6)
+        h.sign = Text(h, "GameFontNormal")
+        h.sign:SetPoint("BOTTOMRIGHT", -10, 6)
         h.line = Line(h)
         h.line:SetPoint("BOTTOMLEFT", 0, 2)
         h.line:SetPoint("BOTTOMRIGHT", 0, 2)
+        h.hover = h:CreateTexture(nil, "BACKGROUND")
+        h.hover:SetAllPoints()
+        h.hover:SetColorTexture(1, 0.82, 0, 0.06)
+        h.hover:Hide()
+        h:EnableMouse(true)
+        h:SetScript("OnEnter", function(self) self.hover:Show() end)
+        h:SetScript("OnLeave", function(self) self.hover:Hide() end)
+        h:SetScript("OnMouseUp", SectionClick)
     end
     h:SetParent(parent)
+    h.sectionKey = sectionKey
+    h.sign:SetText(sectionKey and (closedSections[sectionKey] and "+" or "-") or "")
     h.text:SetText(text)
     h:ClearAllPoints()
     h:SetPoint("TOPLEFT", 0, y)
@@ -680,18 +727,33 @@ local function SectionHeader(parent, text, y)
     return SECTION_H
 end
 
--- lays rows out from y downwards; returns the new y
+-- lays rows out from y downwards; returns the new y. Rows marked half go two to a line (not in
+-- search results, which show each row's place above it)
 local function PlaceRows(parent, rows, y, crumbOf)
+    local col, lineH = 0, 0
     for _, row in ipairs(rows) do
         local f = Acquire(parent, row.kind)
         f:ClearAllPoints()
-        local indent = row.parent and INDENT or 0
-        f:SetPoint("TOPLEFT", indent, y)
-        f.width = CONTENT_W - indent
-        f:SetWidth(f.width)
-        FillRow(f, row, crumbOf and crumbOf(row))
-        y = y - f:GetHeight()
+        if row.half and not crumbOf then
+            local indent = row.parent and INDENT or 0
+            local w = math.floor((CONTENT_W - indent) / 2)
+            f:SetPoint("TOPLEFT", indent + col * w, y)
+            f.width = w - (col == 0 and 8 or 0)
+            f:SetWidth(f.width)
+            FillRow(f, row)
+            lineH = math.max(lineH, f:GetHeight())
+            if col == 1 then y, col, lineH = y - lineH, 0, 0 else col = 1 end
+        else
+            if col == 1 then y, col, lineH = y - lineH, 0, 0 end
+            local indent = row.parent and INDENT or 0
+            f:SetPoint("TOPLEFT", indent, y)
+            f.width = CONTENT_W - indent
+            f:SetWidth(f.width)
+            FillRow(f, row, crumbOf and crumbOf(row))
+            y = y - f:GetHeight()
+        end
     end
+    if col == 1 then y = y - lineH end
     return y
 end
 
@@ -826,8 +888,10 @@ function Panel:Refresh()
             page.offCard:Hide()
             local tab = self:ActiveTab(module) or module.custom
             for _, section in ipairs(module:Sections(tab and tab.key)) do
-                if section.title then y = y - SectionHeader(content, section.title, y) end
-                y = PlaceRows(content, section.rows, y)
+                if section.title then y = y - SectionHeader(content, section.title, y, section.key) end
+                if not (section.title and closedSections[section.key]) then
+                    y = PlaceRows(content, section.rows, y)
+                end
                 y = y - 6
             end
             ShowModulePreview()

@@ -463,7 +463,7 @@ local function LayoutBar(holder)
     local PADDING = BarPadding(cfg, cfg.height or 14)
     ApplyFrameLook(holder, cfg)
     local db = K.GetDb()
-    local font = db and (db.fontPower or db.font)
+    local font = db and (db.resource and db.resource.font or db.fontPower or db.font)
     if cfg.textSize then font = setmetatable({ size = cfg.textSize }, { __index = font or {} }) end
 
     if kind == "combo" then
@@ -740,6 +740,24 @@ local function BuildSettings(key)
         add({ name = L["Size"], kind = LEM.SettingType.Slider, default = 24, minValue = 12, maxValue = 48, valueStep = 1,
               get = get("classicSize", 24), set = set("classicSize"), hidden = classicOff })
     end
+    -- Look (a section that opens and closes, shared with the unit frames' Look): texture and border
+    local function LookOpen()
+        local db = K.GetDb()
+        return db and db.editSections and db.editSections.Look or false
+    end
+    local function LookHidden() return not LookOpen() or classicOn() end
+    add({ name = "|cffffd100" .. L["Look"] .. "|r", kind = LEM.SettingType.Expander, default = false, hidden = classicOn,
+          get = LookOpen,
+          set = function(_, value)
+              local db = K.GetDb()
+              if not db then return end
+              db.editSections = db.editSections or {}
+              db.editSections.Look = value and true or nil
+          end })
+    add({ name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.texture or K.DEFAULT_TEXTURE,
+          values = K.BuildTextureValues(false), get = get("texture", defaults.texture or K.DEFAULT_TEXTURE), set = set("texture"), hidden = LookHidden })
+    add({ name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BAR_BORDER,
+          values = K.BuildBorderValues(false), get = get("border", defaults.border or DEFAULT_BAR_BORDER), set = set("border"), hidden = LookHidden })
     if info.kind == "power" or info.kind == "mana" then
         add({ name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false, get = get("fsr", false), set = set("fsr"),
               desc = L["A spark crosses the bar for five seconds after a spell that costs mana: spirit regen comes back when it ends."] })

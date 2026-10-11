@@ -1,3 +1,46 @@
+# FlareUI 2.0.1
+
+You asked for your options back: fonts, textures, fade speeds and more are in. The settings are easier to scan too.
+
+## New
+**Fonts**
+- A Fonts tab on Action Bars, Unit Frames, Resource Bars, Buffs & Debuffs, Chat, Damage Meter, Quest Tracker and Tooltips: font, size, outline and shadow for each text.
+
+**Look**
+- **Bar Texture** and **Border Texture** for each unit frame (player, target, focus, pet, their targets, party, raid, boss, cast bar) and each resource bar, in a Look section of its Edit Mode dialog. The Forever style's bronze frames keep their own border.
+
+**Fading**
+- **Fade Speed** (Instant, Fast, Slow) for action bars, chat and the damage meter.
+- Action bars: five fade groups instead of three.
+- Chat: **Visibility** (Always visible, Chat interactions, Combat + chat interactions) and **Fade Delay** (how long the chat stays after showing).
+- Damage meter: every show and hide fades, whether combat, a group or the mouse brings it.
+
+**More options**
+- Unit Frames: **Hide Player and Pet out of combat**. Pointing at either one shows both.
+- Action Bars: **XP Bar Text**, on mouseover or always.
+- Chat: **Edit Box Opacity**.
+- Damage Meter: switches for the **Combat timer**, the **Ready check button** and the **Countdown button**.
+- Quest Tracker: a **Display** section (zone headings, completed last, quest tags, wrap long text, tracked recipes, quest count, hide when empty) and **Minimize to a button**.
+- Tooltips: **Tooltip Scale**, **Health bar** and **Show target**.
+- Minimap: **FPS and Latency on Clock** can be turned off.
+
+**Settings panel**
+- Click a section's title to fold it away.
+- Shorter, clearer explanations in the info panel, with lists where it helps.
+- Two columns for switches, and a taller window.
+
+## Changed
+- The player frame's Show option moved from Edit Mode to the Unit Frames page (Hide Player and Pet out of combat).
+- Chat: the tab menu's Font Size is gone. Set the chat's size in Settings > Chat > Fonts.
+- Damage meter: with Threat view in combat, the meter switches back to damage only once it has faded out after a fight.
+- Action bars fade out a moment sooner after the mouse leaves.
+
+## Fixed
+- The sound of picking a target is back.
+- The flight path window can be moved again. The clock, opened mail, the stable, loot history, the group finder lists and the dressing room can be moved too.
+- Unit frame and party, raid and boss borders sit flush against the bars, with no gap.
+- Your 1.x settings brought over by the import now include fonts, textures, the new options and the tooltip scale.
+
 # FlareUI 2.0
 
 A new settings panel that explains every option, Forever-style unit frames, and raid and boss frames.
