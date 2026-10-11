@@ -1,3 +1,8 @@
+# FlareUI 2.0.2
+
+## Fixed
+- Unit Frames: **Hide Player and Pet** (was Hide Player and Pet out of combat) hid your frames too often. They now hide only while you're out of combat, have no target and are at full health. Pointing at either frame still shows both.
+
 # FlareUI 2.0.1
 
 You asked for your options back: fonts, textures, fade speeds and more are in. The settings are easier to scan too.

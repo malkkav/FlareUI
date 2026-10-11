@@ -798,10 +798,10 @@ ns.Copy = {
             label = L["Power"],
         },
         ["uf.hidePlayer"] = {
-            desc = L["Your player and pet frames hide out of combat."],
-            label = L["Hide Player and Pet out of combat"],
+            desc = L["Your player and pet frames hide while all of these are true:\n• You're out of combat\n• You have no target\n• You're at full health"],
+            label = L["Hide Player and Pet"],
             section = "uf.look",
-            tip = L["They come back in combat, or when you point at either one."],
+            tip = L["Pointing at either frame shows both."],
         },
         ["uf.main"] = {
             desc = L["Your player, pet, target and focus frames."],

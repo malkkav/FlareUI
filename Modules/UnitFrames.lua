@@ -2935,9 +2935,9 @@ function UF:ClassColorsOn()
     return ns.ClassColorsOn()
 end
 
--- Hide Player and Pet out of combat (Settings > Unit Frames): "always", or "fade" (hidden out of
--- combat; back in combat, or while the mouse is over the player or the pet frame, which show together)
-UF.PLAYER_FADE = { condMouseover = true, condCombat = true, condTarget = false, condHealth = false, condHarm = false }
+-- Hide Player and Pet (Settings > Unit Frames): "always", or "fade": hidden only out of combat, with no
+-- target and at full health; the mouse over the player or the pet frame shows both
+UF.PLAYER_FADE = { condMouseover = true, condCombat = true, condTarget = true, condHealth = true, condHarm = false }
 function UF:GetPlayerShow()
     local db = GetDb()
     local v = db and db.visibility and db.visibility.player
@@ -2970,6 +2970,8 @@ function UF:Init()
     if self.initialized then return end
     local db = GetDb()
     if not db then return end
+    -- 2.0.1 saved the hiding without its target and health conditions: the full set again
+    if self:GetPlayerShow() == "fade" then self:SetPlayerShow("fade") end
     UF.ApplyPalette()
     -- the Forever style has its own default positions (a style switch reloads)
     if ns.UFRing and ns.UFRing.On() then
