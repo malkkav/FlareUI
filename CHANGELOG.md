@@ -1,3 +1,15 @@
+# FlareUI 2.0.5
+
+## Changed
+- Move any window: the mouse wheel over a window zooms the camera again; only Ctrl + mouse wheel resizes the window.
+- Chat: Copy Line is gone.
+
+## Fixed
+- Fake CM: a bar you take off the cooldown display can be clicked again right away, without a reload.
+- Move any window: Ctrl + right-click to reset a window's size no longer pins a window you never moved, and does nothing in combat on windows the game locks.
+- Gray out known items: turning it off clears the grey from the vendor page at once.
+- Chat Formatting: the explanations now match what each option does.
+
 # FlareUI 2.0.4
 
 New Quality of Life helpers, your chat formatting back, and a settings panel that explains every option on its own.

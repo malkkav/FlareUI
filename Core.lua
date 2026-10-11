@@ -259,7 +259,6 @@ local defaults = {
             formatPlayer = false,
             betterTimestamps = false,
             showLevel = false,          -- the sender's level in front of the name, when known
-            copyLine = false,           -- Copy Line: shift-click a timestamp to copy the line into the chat box
             shortChannels = false,
             hideBubblesInInstance = false,
 

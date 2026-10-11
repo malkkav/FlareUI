@@ -191,11 +191,12 @@ local function OnMouseUp(handle, button)
     if button ~= "RightButton" then return end
     local frame = handle.moveTarget or handle
     if IsShiftKeyDown() then ResetPosition(frame) end
-    if IsControlKeyDown() then
+    if IsControlKeyDown() and CanTouch(frame) then
         local store = GetFrameStore(frame.moveName)
         if store then store.scale = nil end
-        if CanTouch(frame) then frame:SetScale(1) end
-        SavePosition(frame)
+        frame:SetScale(1)
+        -- a window that was never moved stays where Blizzard's panel layout puts it
+        if store and store.point then SavePosition(frame) end
     end
     -- plain right-click on a bag window opens its sorting menu, wherever you click
     if not IsShiftKeyDown() and not IsControlKeyDown() then ToggleBagMenu(frame) end
@@ -217,12 +218,32 @@ local function SetupHandle(frame, handle)
 end
 
 -- Ctrl+wheel scales from anywhere over the window (scroll frames keep their own wheel)
+-- A window that takes no wheel of its own takes it only while Ctrl is down, so a plain wheel over it
+-- still zooms the camera
+local wheelOnCtrl = {}
+local wheelWatcher
+
+local function UpdateWheels()
+    local ctrl = IsControlKeyDown()
+    for frame in pairs(wheelOnCtrl) do
+        if CanTouch(frame) then frame:EnableMouseWheel(ctrl) end
+    end
+end
+
 local function SetupWheel(frame)
     if frame.moveWheelHooked or not frame.EnableMouseWheel then return end
     frame.moveWheelHooked = true
     frame.moveTarget = frame
-    frame:EnableMouseWheel(true)
     frame:HookScript("OnMouseWheel", OnMouseWheel)
+    if frame:IsMouseWheelEnabled() then return end
+    wheelOnCtrl[frame] = true
+    if not wheelWatcher then
+        wheelWatcher = CreateFrame("Frame")
+        wheelWatcher:RegisterEvent("MODIFIER_STATE_CHANGED")
+        wheelWatcher:SetScript("OnEvent", function(_, _, key)
+            if key == "LCTRL" or key == "RCTRL" then UpdateWheels() end
+        end)
+    end
 end
 
 -- The title bar if the frame has one, otherwise a strip across the top short of the close button
@@ -1942,7 +1963,7 @@ function Tweaks:Refresh()
     ApplyMailBook()
     ApplyCombatPlates()
     UpdatePetFood()
-    if MerchantFrame and MerchantFrame:IsShown() and MerchantFrame_UpdateMerchantInfo then MarkKnownItems() end
+    if MerchantFrame and MerchantFrame:IsShown() and MerchantFrame_UpdateMerchantInfo then MerchantFrame_UpdateMerchantInfo() end
     if MerchantSellAllJunkButton and MerchantSellAllJunkButton:IsShown() then
         local db = GetDb()
         if db and db.sellJunk then MerchantSellAllJunkButton:Hide() else MerchantSellAllJunkButton:Show() end

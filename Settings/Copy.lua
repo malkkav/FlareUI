@@ -379,13 +379,13 @@ ns.Copy = {
             label = L["Chat text"],
         },
         ["ch.formatNPC"] = {
-            desc = L["NPC speech reads \"Name: text\", in the NPC's colour."],
+            desc = L["NPC speech starts with an orange [Name] instead of \"Name says:\"."],
             label = L["Better NPC names"],
             section = "ch.formatting",
             tip = L["Off in dungeons, raids and battlegrounds: Blizzard locks chat there."],
         },
         ["ch.formatPlayer"] = {
-            desc = L["Player names in class colours, without brackets."],
+            desc = L["Player names in their class colour, without the realm."],
             label = L["Better player names"],
             section = "ch.formatting",
             tip = L["Off in dungeons, raids and battlegrounds: Blizzard locks chat there."],
@@ -428,7 +428,7 @@ ns.Copy = {
             section = "ch.header",
         },
         ["ch.timestamps"] = {
-            desc = L["A short, dimmed time before each message."],
+            desc = L["A short time in blue before each message, like <12:30>."],
             label = L["Better timestamps"],
             section = "ch.formatting",
             tip = L["Off in dungeons, raids and battlegrounds: Blizzard locks chat there."],
@@ -610,7 +610,7 @@ ns.Copy = {
             section = "qol.vendor",
         },
         ["qol.move"] = {
-            desc = L["Move and resize any Blizzard window:\n* Drag the header: move\n* Ctrl + mouse wheel: resize\n* Shift + right-click: reset the position\n* Ctrl + right-click: reset the size"],
+            desc = L["Move and resize any Blizzard window:\n* Drag the header: move\n* Ctrl + mouse wheel: resize (a plain wheel still zooms the camera)\n* Shift + right-click: reset the position\n* Ctrl + right-click: reset the size"],
             label = L["Move any window"],
             section = "qol.windows",
             tip = L["Loot rolls and toasts move in Edit Mode."],

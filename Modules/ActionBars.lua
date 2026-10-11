@@ -683,6 +683,15 @@ function ActionBars:Refresh()
 
     -- FCM: click-through unless Setup Mode is on; drag detection while any FCM bar exists
     if ns.db.profile.fcm then
+        local fcm = ns.db.profile.fcm
+        for i = 1, 8 do
+            local bar = fcm.bars and fcm.bars["bar" .. i]
+            if not (bar and bar.enabled) then ApplyClickthroughToBar("bar" .. i, false) end
+        end
+        if not ns.FCMActive() and self.fcm.unlockMode then
+            fcm.setupModeEnabled = false
+            self.fcm.unlockMode = false
+        end
         self:ApplyClickthrough(not self.fcm.unlockMode)
         local hasFCMBars = false
         ForEachFCMBar(function() hasFCMBars = true end)

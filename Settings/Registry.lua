@@ -259,7 +259,6 @@ function Row:SetItem(i, value)
     Settings:Fire("RowChanged", self)
 end
 
--- Frame Opacity's steps (chat, damage meter, quest tracker): 0% to 100% in tens, stored as 0..1
 -- Frame Border: None first, then every border LibSharedMedia knows (FlareUI's, the game's, other addons')
 function Settings:BorderChoices()
     local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
@@ -270,6 +269,7 @@ function Settings:BorderChoices()
     return list
 end
 
+-- Frame Opacity's steps (chat, damage meter, quest tracker): 0% to 100% in tens, stored as 0..1
 function Settings:OpacityChoices()
     local list = {}
     for i = 0, 10 do list[#list + 1] = { i / 10, (i * 10) .. "%" } end

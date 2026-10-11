@@ -4,7 +4,7 @@ local L = ns.L
 --------------------------------------------------
 -- CHAT
 -- Blizzard's chat windows in FlareUI's look: a skin per window with its tabs and header buttons,
--- rewritten lines (short channel names, class-coloured names, timestamps, copy line), copyable
+-- rewritten lines (short channel names, class-coloured names, timestamps), copyable
 -- links, saved history, pop-out windows, and the chat's visibility and fading.
 --------------------------------------------------
 
@@ -346,7 +346,6 @@ end
 --   Better NPC Names      "Thrall says:" -> an orange [Thrall]
 --   Level Before Names    "(42)" in front of a player's name
 --   Better Timestamps     Blizzard's timestamp in FlareUI's colour, or one added where it has none
---   Copy Line             the timestamp is a link: shift-click puts the line in the chat box
 --------------------------------------------------
 -- Chat type -> short tag and Blizzard's channel link keyword (raid warnings have no link).
 -- Numbered channels become just their number.
@@ -374,16 +373,7 @@ local NAME_EVENTS = {
 }
 local NPC_EVENTS = { MONSTER_SAY = true, MONSTER_YELL = true, MONSTER_WHISPER = true }
 
--- Links the server accepts in a sent message; Copy Line reduces any other link to its text
-local KEEP_LINKS = {
-    item = true, spell = true, quest = true, achievement = true, enchant = true,
-    trade = true, talent = true, currency = true,
-}
-
 local Lines = {
-    copies = {},        -- copy link id -> the line as plain chat text, this session only
-    copySerial = 0,
-    COPY_KEEP = 500,    -- the newest this many lines can be copied
     levels = {},        -- GUID or lower-case name -> level, this session only
     hooked = {},        -- chat frames carrying the AddMessage post-hook (not a field on Blizzard's)
 }
@@ -530,71 +520,17 @@ function Lines.RewriteNPC(body, chatType, args)
     return NPC_COLOR .. "[" .. sender .. "]" .. verb .. "|r " .. body:sub(#header + 1)
 end
 
--- The line as text the chat box accepts: no textures or colours, links reduced to their text
--- except KEEP_LINKS
-function Lines.ChatSafeText(text)
-    local kept = {}
-    local function Keep(whole, kind)
-        if KEEP_LINKS[kind] then
-            kept[#kept + 1] = whole
-            return "\001" .. #kept .. "\002"
-        end
-    end
-    text = text:gsub("(|c%x%x%x%x%x%x%x%x|H(%w+):[^|]*|h.-|h|r)", Keep)
-    text = text:gsub("(|cn[^:|]*:|H(%w+):[^|]*|h.-|h|r)", Keep)
-    text = text:gsub("|T.-|t", ""):gsub("|A.-|a", "")
-    text = text:gsub("|H.-|h(.-)|h", "%1")
-    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[^:|]*:", ""):gsub("|r", "")
-    text = text:gsub("\001(%d+)\002", function(i) return kept[tonumber(i)] end)
-    return strtrim(text)
-end
-
--- The copy is Blizzard's own line (without its timestamp), not FlareUI's rewrite
-function Lines.CopyStamp(stamp, original)
-    local shown = stamp:gsub("%s+$", "")
-    Lines.copySerial = Lines.copySerial + 1
-    local id = Lines.copySerial
-    Lines.copies[id] = (Lines.ChatSafeText(original):gsub("  +", " "))
-    Lines.copies[id - Lines.COPY_KEEP] = nil
-    -- a coloured stamp keeps its colour outside the link, as item links do
-    local color, text = shown:match("^(|c%x%x%x%x%x%x%x%x)(.-)|r$")
-    if not color then color, text = "", shown end
-    return color .. "|Hflarecopy:" .. id .. "|h" .. text .. "|h" .. (color ~= "" and "|r" or "")
-        .. stamp:sub(#shown + 1)
-end
-
--- Registered once (LinkUtil asserts on a second registration). Shift-click puts the line in the open
--- chat box; with none open, or a line too long for a message, it goes to the copy box. FlareUI never
--- opens the chat box itself: one opened from addon code stays tainted while it is open, and
--- Blizzard's own actions from it (sharing a map pin copies to the clipboard) are then blocked.
-function Lines.RegisterCopyHandler()
-    if LinkUtil.IsLinkHandlerRegistered("flarecopy") then return end
-    LinkUtil.RegisterLinkHandler("flarecopy", function(link)
-        if not IsShiftKeyDown() then return end
-        local id = tonumber(link and link:match("^flarecopy:(%d+)"))
-        local text = id and Lines.copies[id]
-        if not text or text == "" then return end
-        local editBox = ChatFrameUtil.GetActiveWindow()
-        if editBox and #text <= 255 then
-            editBox:Insert(text)
-        else
-            Chat.ShowCopyText(text)
-        end
-    end)
-end
-
 local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, eventArgs)
     local db = GetDb()
     if not (db and event) then return end
     if not (db.shortChannels or db.formatPlayer or db.formatNPC or db.betterTimestamps
-            or db.copyLine or db.showLevel) then return end
+            or db.showLevel) then return end
     if not canaccessallvalues(message, event) or type(message) ~= "string" or type(event) ~= "string"
             or event:sub(1, 9) ~= "CHAT_MSG_" then return end
     local args = type(eventArgs) == "table" and canaccesstable(eventArgs) and eventArgs or nil
     local chatType = event:sub(10)
 
     local stamp, body = Lines.SplitStamp(message)
-    local original = body
     if db.shortChannels then body = Lines.ShortenChannel(body, chatType) end
     if args then
         if NPC_EVENTS[chatType] then
@@ -604,10 +540,6 @@ local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, ev
         end
     end
     if db.betterTimestamps then stamp = GetTimestamp() end
-    if db.copyLine and stamp ~= "" and not ns.IsGamepadUI() then
-        Lines.RegisterCopyHandler()
-        stamp = Lines.CopyStamp(stamp, original)
-    end
 
     local line = stamp .. body
     if line == message then return end
@@ -1103,7 +1035,7 @@ local function ShowCopyBox(url)
     copyFrame:Raise()
 end
 
--- Copy Line's box for a line too long for a chat message
+-- The copy box, for other modules and the settings panel's links
 function Chat.ShowCopyText(text) ShowCopyBox(text) end
 
 -- Blizzard only calls filters with accessible values, so no secret check is needed. A message that
