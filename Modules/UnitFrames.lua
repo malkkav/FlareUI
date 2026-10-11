@@ -2468,6 +2468,18 @@ local function RefreshVisibilityFader()
     end
 end
 
+-- Target, combat-end and health changes decide at once instead of on the next tick, so the player
+-- frame shows together with the target frame; the tick still covers the mouse and combat start
+-- (InCombatLockdown is still false during PLAYER_REGEN_DISABLED)
+fader:RegisterEvent("PLAYER_TARGET_CHANGED")
+fader:RegisterEvent("PLAYER_REGEN_ENABLED")
+fader:RegisterUnitEvent("UNIT_HEALTH", "player")
+fader:SetScript("OnEvent", function(self)
+    if not self:GetScript("OnUpdate") then return end
+    self.elapsed = FADE_INTERVAL
+    FadeTick(self, 0)
+end)
+
 --------------------------------------------------
 -- 15. FRAME CREATION
 --------------------------------------------------

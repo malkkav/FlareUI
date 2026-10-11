@@ -1,3 +1,8 @@
+# FlareUI 2.0.3
+
+## Fixed
+- Unit Frames: with **Hide Player and Pet** on, your player and pet frames now show at the same moment as the target frame when you pick a target, instead of a moment later.
+
 # FlareUI 2.0.2
 
 ## Fixed
