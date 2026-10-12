@@ -1,3 +1,8 @@
+# FlareUI 2.0.6
+
+## Fixed
+- Tooltips: **Health bar** and **Show target** now work on players' tooltips too, not only NPCs and pets. The Show tooltips rules (like Hide in combat) apply to players as well.
+
 # FlareUI 2.0.5
 
 ## Changed

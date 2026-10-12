@@ -253,18 +253,23 @@ local function AddTargetLine(tip, unit)
     local db = GetDb()
     if not (db and db.showTarget) then return end
     local target = unit .. "target"
-    if not UnitExists(target) then return end
-    local name = UnitName(target)
-    if not (name and canaccessvalue(name) and name ~= "") then return end
-
-    local label
+    -- a bare truth test or comparison on a secret value throws: everything is asked through Readable
+    if not Readable(UnitExists(target)) then return end
+    local prefix = (_G.TARGET or "Target") .. ": "
     if Readable(UnitIsUnit(target, "player")) then
-        label = "|cffff4040" .. (_G.YOU or "You") .. "|r"
-    else
-        local color = GetClassColor(target) or GetReactionColor(target) or DEFAULT_BORDER_COLOR
-        label = ColorToHex(color[1], color[2], color[3]) .. name .. "|r"
+        tip:AddLine(prefix .. "|cffff4040" .. (_G.YOU or "You") .. "|r")
+        return
     end
-    tip:AddLine((_G.TARGET or "Target") .. ": " .. label)
+    local color = GetClassColor(target) or GetReactionColor(target) or DEFAULT_BORDER_COLOR
+    local name = UnitName(target)
+    if not canaccessvalue(name) then
+        -- another player's name can be secret: the tooltip still shows it, in the unit's colour
+        local ok, text = pcall(function() return prefix .. name end)
+        if ok then tip:AddLine(text, color[1], color[2], color[3]) end
+        return
+    end
+    if not name or name == "" then return end
+    tip:AddLine(prefix .. ColorToHex(color[1], color[2], color[3]) .. name .. "|r")
 end
 
 -- "Item ID 12345" / "Spell ID 678" in grey, from the tooltip's own data (a secret id is left out)
@@ -338,8 +343,11 @@ local function TooltipUnit(tip)
     if MouseIsOverWorld() then return "mouseover" end
 end
 
+-- Runs inside Blizzard's tooltip processing, which shows (and lays out) the tooltip right after.
+-- A player's tooltip carries secret text (SafeToTouch fails): it still gets the visibility rule, the
+-- target line and the health bar; only the appearance changes need the gate.
 local function OnTooltipSetUnit(tip)
-    if tip ~= GameTooltip or not SafeToTouch(tip) then return end
+    if tip ~= GameTooltip or tip:IsForbidden() then return end
     local unit = TooltipUnit(tip)
     if not unit then
         HideIfNeeded(tip, MouseIsOverWorld() and CAT_WORLD_UNIT or CAT_FRAME_UNIT)
@@ -350,13 +358,13 @@ local function OnTooltipSetUnit(tip)
     local category = MouseIsOverWorld() and CAT_WORLD_UNIT or CAT_FRAME_UNIT
     if HideIfNeeded(tip, category) then return end
 
+    AddTargetLine(tip, unit)
+    HideHealthBar()
+    if not SafeToTouch(tip) then return end
     ScrubLines(tip)
     ColorName(tip, unit)
     ColorLevelLine(tip, unit)
-    AddTargetLine(tip, unit)
     ApplyColors(tip, GetUnitBorderColor(unit))
-    HideHealthBar()
-    tip:Show()   -- re-layout after the added line
 end
 
 local function OnTooltipSetItem(tip, data)
