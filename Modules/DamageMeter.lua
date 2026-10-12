@@ -121,7 +121,7 @@ function DamageMeter:SetSettingsPreview(on)
     if not self.previewHooked and type(meter.UpdateShownState) == "function" then
         self.previewHooked = true
         hooksecurefunc(meter, "UpdateShownState", function(m)
-            if DamageMeter.settingsPreview and not InCombatLockdown() then m:Show() end
+            if DamageMeter.settingsPreview and not InCombatLockdown() and not m:IsShown() then m:Show() end
         end)
     end
     if InCombatLockdown() then return end
@@ -1368,6 +1368,36 @@ end
 
 local applying = false
 
+-- Showing the meter runs Blizzard's window refresh at once, and in a fight that compares the
+-- session's secret duration: from FlareUI's code that throws. So FlareUI only shows it out of
+-- combat; during a fight Blizzard's own visibility check shows it, and FlareUI's rule is applied
+-- again when the fight ends.
+local showPending = false
+local function InFight()
+    if InCombatLockdown() then return true end
+    local busy = UnitAffectingCombat("player")
+    return not canaccessvalue(busy) or busy and true or false
+end
+
+local function ShowMeter(meter)
+    if meter:IsShown() then return true end
+    if InFight() then
+        showPending = true
+        return false
+    end
+    meter:Show()
+    return true
+end
+
+local showRetry = CreateFrame("Frame")
+showRetry:RegisterEvent("PLAYER_REGEN_ENABLED")
+showRetry:SetScript("OnEvent", function()
+    if not showPending then return end
+    showPending = false
+    -- a moment after the fight, once the session's values are readable again
+    C_Timer.After(0.5, function() DamageMeter:ApplyVisibility() end)
+end)
+
 local function FadeStep(self, meter, elapsed)
     local target = fadeTarget
     if meter.FlareUI_MouseHidden then target = (MeterUnderMouse(meter) and not PanelsInTheWay()) and 1 or 0 end
@@ -1434,7 +1464,7 @@ local function ApplyVisibility(meter)
     meter.FlareUI_MouseHidden = nil
     if editing or DamageMeter.settingsPreview then
         hideWhenFaded = false
-        meter:Show()
+        ShowMeter(meter)
         meter:SetAlpha(1)
         meter.FlareUI_Up = true
     elseif not MeterAllowed() then
@@ -1445,20 +1475,25 @@ local function ApplyVisibility(meter)
     elseif (VISIBILITY[db.visibility] or VISIBILITY.always)(meter) then
         -- from where a fade out left it, or from nothing when it was hidden
         if not wasUp and not meter:IsShown() then meter:SetAlpha(0) end
-        meter:Show()
-        meter.FlareUI_Up = true
-        FadeMeter(meter, 1)
+        -- held back in a fight (ShowMeter): it stays down, and comes up with its fade after it
+        local shown = ShowMeter(meter)
+        meter.FlareUI_Up = shown
+        if shown then FadeMeter(meter, 1) end
     elseif db.showOnMouseover then
         if not wasUp and not meter:IsShown() then meter:SetAlpha(0) end
-        meter:Show()
-        meter.FlareUI_MouseHidden = true
+        if ShowMeter(meter) then
+            meter.FlareUI_MouseHidden = true
+            FadeMeter(meter, 0)
+        end
         meter.FlareUI_Up = false
-        FadeMeter(meter, 0)
     elseif wasUp then
-        -- it was up: back on screen for its fade out, hidden at the end
-        meter:Show()
+        -- it was up: on screen for its fade out, hidden at the end (already hidden: nothing to fade)
         meter.FlareUI_Up = false
-        FadeMeter(meter, 0, true)
+        if meter:IsShown() then
+            FadeMeter(meter, 0, true)
+        else
+            hideWhenFaded = false
+        end
     else
         hideWhenFaded = false
         meter:Hide()

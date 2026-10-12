@@ -1,3 +1,8 @@
+# FlareUI 2.0.7
+
+## Fixed
+- Damage Meter: no more Lua error about `durationSeconds` during fights. FlareUI no longer brings the meter up itself in combat: Blizzard does when the fight starts, and FlareUI's Visibility catches up when it ends.
+
 # FlareUI 2.0.6
 
 ## Fixed
