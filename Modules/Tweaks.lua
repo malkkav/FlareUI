@@ -1231,7 +1231,7 @@ end
 
 --------------------------------------------------
 -- 9b. NAMEPLATE QUEST TAGS
--- A quest "!" on the right edge of an enemy nameplate's level box (or health bar) whose unit is
+-- A quest "!" just right of an enemy nameplate's level box (or health bar) whose unit is
 -- related to an active quest. Plates are recycled: each plate has a tag, re-checked when a unit
 -- gets a plate, when the quest log changes, and when the level box comes or goes.
 --------------------------------------------------
@@ -1316,7 +1316,8 @@ function UpdateQuestTag(unit)
     if not (size > 0) then size = QUEST_TAG_SIZE end
     tag:SetSize(size * QuestTagAspect(), size)
     tag:ClearAllPoints()
-    tag:SetPoint("CENTER", anchor, "RIGHT", 0, 0)
+    -- beside the box, clear of its edge (the art has its own margin, so no gap is added)
+    tag:SetPoint("LEFT", anchor, "RIGHT", 0, 0)
     ns.CopyStrata(tag, look)   -- the level box draws at HIGH
     tag:SetFrameLevel(look:GetFrameLevel() + 5)
     tag:Show()

@@ -1,3 +1,9 @@
+# FlareUI 2.0.8
+
+## Changed
+- Quest Tracker: **Shift + click** or **Ctrl + click** a quest to focus it, and again to unfocus it. While you're typing in chat, Shift + click still links the quest. Untrack Quest is in the right-click menu.
+- Nameplates: the quest "!" sits just beside the nameplate instead of over its edge.
+
 # FlareUI 2.0.7
 
 ## Fixed
