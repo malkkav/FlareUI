@@ -273,7 +273,7 @@ local ACTION_OWNER_PATTERNS = { "^ActionButton", "^MultiBar", "^PetActionButton"
 
 local function OwnerIsActionButton(tip)
     local owner = tip:GetOwner()
-    if not owner then return false end
+    if not owner or owner:IsForbidden() then return false end
     if owner.action ~= nil then return true end
     local name = owner.GetName and owner:GetName()
     if not name then return false end

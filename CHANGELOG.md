@@ -1,3 +1,8 @@
+# FlareUI 2.0.10
+
+## Fixed
+- Tooltips: no more Lua error about a forbidden object when hovering a buff or debuff on an enemy nameplate.
+
 # FlareUI 2.0.9
 
 Tidier Edit Mode dialogs, more options back for your frames, and a big clean-up under the hood.

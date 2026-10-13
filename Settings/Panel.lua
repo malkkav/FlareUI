@@ -125,6 +125,8 @@ end
 local function WantsDark(owner)
     local panel = _G.FlareUI_SettingsPanel
     while owner do
+        -- Nameplates are forbidden: no method but IsForbidden may be called on them.
+        if owner.IsForbidden and owner:IsForbidden() then return false end
         if owner == panel or owner.FlareUI_DarkTooltips then return true end
         owner = owner.GetParent and owner:GetParent()
     end
