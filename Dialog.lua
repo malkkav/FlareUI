@@ -23,6 +23,9 @@ local _, ns = ...
 --------------------------------------------------
 ns.Dialogs = ns.Dialogs or {}
 
+--------------------------------------------------
+-- 1. ANSWERS
+--------------------------------------------------
 local WIDTH     = 360
 local PADDING   = 18
 local BUTTON_W  = 130
@@ -59,7 +62,7 @@ local function Answer(yes)
 end
 
 --------------------------------------------------
--- Reloading
+-- 2. RELOADING
 -- ReloadUI is protected on Forever, so "yes" on a reloads dialog is a secure button running /reload
 -- as a macro (PreClick runs OnAccept first). It is parented to UIParent, laid over the yes button,
 -- so the dialog itself stays unprotected. In combat, yes falls back to the /reload hint.
@@ -114,6 +117,9 @@ local function ReleaseReloadButton()
     ClearOverrideBindings(frame)
 end
 
+--------------------------------------------------
+-- 3. KEYS AND CONTROLLER
+--------------------------------------------------
 -- Escape and Enter are taken; every other key goes on to its binding. Propagation cannot change in
 -- combat, where the keys fall through and only the buttons work.
 local function OnKeyDown(self, key)
@@ -141,6 +147,9 @@ local function OnGamePadButtonDown(self, button)
     end
 end
 
+--------------------------------------------------
+-- 4. THE WINDOW
+--------------------------------------------------
 local function CreateDialogButton(parent, onClick)
     local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     button:SetSize(BUTTON_W, BUTTON_H)
@@ -239,6 +248,9 @@ local function Layout(def, text)
     frame:SetHeight(height + 16 + BUTTON_H + PADDING)
 end
 
+--------------------------------------------------
+-- 5. SHOWING
+--------------------------------------------------
 -- key: the ns.Dialogs entry; textArg fills "%s"; data is handed to OnAccept / OnCancel
 function ns.ShowDialog(key, textArg, data)
     local def = ns.Dialogs[key]
@@ -255,7 +267,7 @@ function ns.ShowDialog(key, textArg, data)
     frame:EnableGamePadButton(not padSecure and (ns.IsGamepadUI() or def.padInput == true))
 
     if def.hasEditBox then
-        if def.maxLetters then frame.EditBox:SetMaxLetters(def.maxLetters) end
+        frame.EditBox:SetMaxLetters(def.maxLetters or 0)
         frame.EditBox:SetText(def.editText and def.editText(data) or "")
     end
     ReleaseReloadButton()

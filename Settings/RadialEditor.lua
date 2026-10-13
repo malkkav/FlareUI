@@ -30,12 +30,8 @@ local snapshot, dirty
 
 local function RM() return ns.RadialMenu end
 
-local function Sound(key)
-    if SOUNDKIT and SOUNDKIT[key] then PlaySound(SOUNDKIT[key]) end
-end
-
 --------------------------------------------------
--- PIECES
+-- 1. PIECES
 --------------------------------------------------
 local Fade = ns.Fade   -- Core.lua
 
@@ -53,16 +49,11 @@ local function RedButton(parent, text, width, onClick, sound)
 end
 
 --------------------------------------------------
--- SCROLLING LIST (1 or more columns)
+-- 2. SCROLLING LIST (1 or more columns, the settings panel's thin scroll line)
 --------------------------------------------------
--- UIPanelScrollBarTemplate names its two arrow buttons after the bar, so the bars are numbered.
-local scrollBars = 0
-
--- minimal: the settings panel's thin scroll line instead of the classic slider (the Gamepad UI's
--- window)
-local function CreateList(parent, width, columns, rows, cellHeight, buildCell, fillCell, minimal)
+local function CreateList(parent, width, columns, rows, cellHeight, buildCell, fillCell)
     local list = CreateFrame("Frame", nil, parent)
-    local cellWidth = (width - (minimal and 12 or 22)) / columns
+    local cellWidth = (width - 12) / columns
     list.cells, list.data, list.columns = {}, {}, columns
     list:SetSize(width, rows * cellHeight)
 
@@ -113,8 +104,7 @@ local function CreateList(parent, width, columns, rows, cellHeight, buildCell, f
         end
     end
 
-    local bar, slider
-    -- the scroll bar follows list.offset (rows scrolled), and moves it when dragged
+    -- the scroll line follows list.offset (rows scrolled), and moves it when dragged
     local function SetOffset(offset)
         offset = math.max(0, math.min(list.maxOffset, math.floor(offset + 0.5)))
         if offset == list.offset then return end
@@ -122,47 +112,17 @@ local function CreateList(parent, width, columns, rows, cellHeight, buildCell, f
         list:Update()
     end
 
-    if minimal then
-        bar = ns.SettingsPanel.ScrollLine(list)
-        bar:SetPoint("TOPRIGHT", 0, 0)
-        bar:SetPoint("BOTTOMRIGHT", 0, 0)
-        bar.onScroll = function(position)
-            SetOffset(position * list.maxOffset)
-            bar:SetValues(bar.visible, list.maxOffset > 0 and list.offset / list.maxOffset or 0)
-        end
-    else
-        scrollBars = scrollBars + 1
-        slider = CreateFrame("Slider", "FlareUI_RadialEditorScroll" .. scrollBars, list, "UIPanelScrollBarTemplate")
-        slider:SetOrientation("VERTICAL")
-        -- the arrow buttons sit outside the track, so the track is inset to leave room for them
-        slider:SetPoint("TOPRIGHT", 0, -18)
-        slider:SetPoint("BOTTOMRIGHT", 0, 18)
-        slider:SetWidth(16)
-        slider:SetValueStep(1)
-        slider:SetObeyStepOnDrag(true)
-        -- the template's own handlers drive a ScrollFrame parent, which this is not
-        slider:SetScript("OnValueChanged", function(_, value) SetOffset(value or 0) end)
-        local function Step(delta)
-            slider:SetValue((slider:GetValue() or 0) + delta)
-            Sound("U_CHAT_SCROLL_BUTTON")
-        end
-        -- the arrows come from the template, so they are not assumed to be there
-        if slider.ScrollUpButton then
-            slider.ScrollUpButton:SetScript("OnClick", function() Step(-1) end)
-            slider.ScrollDownButton:SetScript("OnClick", function() Step(1) end)
-        end
+    local bar = ns.SettingsPanel.ScrollLine(list)
+    bar:SetPoint("TOPRIGHT", 0, 0)
+    bar:SetPoint("BOTTOMRIGHT", 0, 0)
+    bar.onScroll = function(position)
+        SetOffset(position * list.maxOffset)
+        bar:SetValues(bar.visible, list.maxOffset > 0 and list.offset / list.maxOffset or 0)
     end
-    list.slider = slider
 
     local function SyncBar()
-        if bar then
-            local total = math.max(rows, math.ceil(#list.data / columns))
-            bar:SetValues(rows / total, list.maxOffset > 0 and list.offset / list.maxOffset or 0)
-        else
-            slider:SetMinMaxValues(0, list.maxOffset)
-            slider:SetValue(list.offset)
-            slider:SetShown(list.maxOffset > 0)
-        end
+        local total = math.max(rows, math.ceil(#list.data / columns))
+        bar:SetValues(rows / total, list.maxOffset > 0 and list.offset / list.maxOffset or 0)
     end
 
     function list:SetData(data)
@@ -182,7 +142,7 @@ local function CreateList(parent, width, columns, rows, cellHeight, buildCell, f
 end
 
 --------------------------------------------------
--- ENTRIES
+-- 3. ENTRIES
 --------------------------------------------------
 local function EntryFromCursor()
     local cursorType, info1, _, info3 = GetCursorInfo()
@@ -220,7 +180,7 @@ local function EntryDisplay(entry)
         end
     end
     if info then return info.name, info.icon end
-    return "|cff808080unavailable|r", { texture = FALLBACK_ICON }
+    return "|cff808080" .. L["unavailable"] .. "|r", { texture = FALLBACK_ICON }
 end
 
 local function ApplyIcon(owner, icon)
@@ -234,7 +194,7 @@ local function ApplyIcon(owner, icon)
 end
 
 --------------------------------------------------
--- CATEGORY BROWSERS
+-- 4. CATEGORY BROWSERS
 -- Listed in the order they are declared, which is the order they appear along the bottom.
 --------------------------------------------------
 local CATEGORIES = {}
@@ -316,6 +276,7 @@ end)
 
 AddCategory("mounts", L["Mounts"], function()
     local out = {}
+    if not C_MountJournal then return out end
     for _, mountID in ipairs(C_MountJournal.GetMountIDs()) do
         local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
         if isCollected then out[#out + 1] = { kind = "mount", id = mountID } end
@@ -346,7 +307,7 @@ AddCategory("radials", L["Radials"], function()
 end, L["Creates sub-radials. Use the mouse wheel while hovering it in the radial menu to flip through its buttons."])
 
 --------------------------------------------------
--- DRAG
+-- 5. DRAG
 --------------------------------------------------
 local ghost
 
@@ -376,7 +337,7 @@ local function StartDrag(payload)
 end
 
 --------------------------------------------------
--- EDITING
+-- 6. EDITING
 --------------------------------------------------
 local Refresh   -- forward declaration; rebuilds every part of the window
 
@@ -471,9 +432,9 @@ local function FinishDrag()
 end
 
 --------------------------------------------------
--- UNDOING CHANGES
--- Only the four fields the editor can touch are copied; the key binding and the character roster
--- are not its business and are left alone.
+-- 7. UNDOING CHANGES
+-- Only the three fields the editor can touch are copied; the keybinds and each character's radial
+-- choice are not its business and are left alone.
 --------------------------------------------------
 local function TakeSnapshot()
     local store = RM().GetStore()
@@ -514,7 +475,7 @@ ns.Dialogs["FLAREUI_RADIAL_DELETE"] = {
 }
 
 --------------------------------------------------
--- NAME POPUP
+-- 8. NAME POPUP
 -- The name is asked for up front rather than left in a box on the toolbar to be found. The same
 -- popup names a new radial and renames the current one; popup.renaming says which.
 --------------------------------------------------
@@ -572,22 +533,22 @@ local function ShowNamePopup(renaming)
     local radial = renaming and editingID and RM():GetRadial(editingID)
     if renaming and not radial then return end
     popup.renaming = renaming and true or nil
-    popup.label:SetText(renaming and "Rename the radial" or "Name the new radial")
-    popup.accept:SetText(renaming and "Rename" or "Create")
+    popup.label:SetText(renaming and L["Rename the radial"] or L["Name the new radial"])
+    popup.accept:SetText(renaming and L["Rename"] or L["Create"])
 
     popup:ClearAllPoints()
     popup:SetPoint("CENTER", editor or UIParent, "CENTER", 0, 60)
-    popup.box:SetText(renaming and radial.name or "New Radial")
+    popup.box:SetText(renaming and radial.name or L["New Radial"])
     popup.box:HighlightText()
     popup:Show()
     popup.box:SetFocus()
 end
 
 --------------------------------------------------
--- BUILD, INSIDE THE SETTINGS PANEL
+-- 9. BUILD, INSIDE THE SETTINGS PANEL
 -- The Radial Menu page's Buttons tab: the radial picker along the top, the radial's buttons, then
--- the browser; the live preview takes the panel's right column. Edits are live, as in the window;
--- Undo changes puts back what the radials were when the tab was opened.
+-- the browser; the live preview takes the panel's right column. Edits are live; Undo changes puts
+-- back what the radials were when the tab was opened.
 --------------------------------------------------
 local EMBED_WIDTH = 484          -- the panel's middle column
 local EMBED_LIST_W = 70          -- the radial's buttons: a column of icons and numbers down the left
@@ -596,7 +557,6 @@ local EMBED_ROW_H = 26
 
 local function BuildEmbedded(host, previewHost)
     editor = host
-    host.embedded = true
     local height = host:GetHeight() > 0 and host:GetHeight() or 390
 
     -- the radial picker and its buttons, across the top
@@ -682,7 +642,7 @@ local function BuildEmbedded(host, previewHost)
             ApplyIcon(cell, icon)
             cell.Text:SetText(index)
             cell.Highlight:SetShown(index == selectedButton)
-        end, true)
+        end)
     buttonList:SetPoint("TOPLEFT", 0, -listTop)
     host.buttonList = buttonList
 
@@ -746,7 +706,7 @@ local function BuildEmbedded(host, previewHost)
             local name, icon = EntryDisplay(entry)
             ApplyIcon(cell, icon)
             cell.Text:SetText(name)
-        end, true)
+        end)
     browseList:SetPoint("TOPLEFT", rightX, -top - 46)
     host.browseList = browseList
     host.undoButton = RedButton(host, L["Undo changes"], 140, function()
@@ -756,8 +716,6 @@ local function BuildEmbedded(host, previewHost)
         RemindKeybinds()
     end)
     host.undoButton:SetPoint("BOTTOMRIGHT", -2, 6)
-    -- the embedded editor picks its category from the menu, not from tab buttons
-    host.tabs = {}
     host.UpdateCategory = function()
         category:SetupMenu(function(_, root)
             for _, c in ipairs(CATEGORIES) do
@@ -806,22 +764,18 @@ local function BuildEmbedded(host, previewHost)
 end
 
 --------------------------------------------------
--- REFRESH
+-- 10. REFRESH
 --------------------------------------------------
-
 function Refresh()
     if not (editor and editor:IsShown()) then return end
     local rm = RM()
     local radial = CurrentRadial()
 
-    -- the list is rebuilt only when a radial was added, renamed or removed
-    local list, order, signature = {}, {}, ""
+    -- the radial picker, A to Z
+    local list, order = {}, {}
     for _, id in ipairs(rm:GetRadialsByName()) do
         local data = rm:GetRadial(id)
-        if data then
-            list[id], order[#order + 1] = data.name, id
-            signature = signature .. id .. "=" .. data.name .. ";"
-        end
+        if data then list[id], order[#order + 1] = data.name, id end
     end
     editor.UpdatePicker(list, order, radial and editingID or nil)
     editor.deleteButton:SetEnabled(radial ~= nil)
@@ -836,10 +790,7 @@ function Refresh()
     for _, c in ipairs(CATEGORIES) do
         if c.key == activeCategory then category = c end
     end
-    for _, tab in ipairs(editor.tabs) do
-        tab:SetEnabled(tab.category.key ~= activeCategory)
-    end
-    if editor.UpdateCategory then editor.UpdateCategory() end
+    editor.UpdateCategory()
     editor.note:SetText((category and category.note) or "")
 
     -- The cache is not cleared per refresh: enumerating the spellbook on every click would be
@@ -866,7 +817,7 @@ function Refresh()
 end
 
 --------------------------------------------------
--- PUBLIC
+-- 11. PUBLIC
 --------------------------------------------------
 -- The settings panel's Radial Menu page (Settings/Pages/RadialMenu.lua)
 ns.RadialEditorEmbed = {

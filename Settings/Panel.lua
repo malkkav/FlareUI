@@ -179,9 +179,6 @@ end
 local preview = {}
 
 local function ShowPreview(title, desc, tip)
-    preview.picture:SetTexture(PICTURE)
-    local w = RIGHT_W - 2 * PAD
-    preview.picture:SetSize(w, w)
     preview.title:SetText(title or "")
     preview.desc:SetText(S:Format(desc) or "")
     preview.tip:SetText(tip and (L["Tip:"] .. " " .. S:Format(tip)) or "")
@@ -193,17 +190,14 @@ local function ShowModulePreview()
         S:WindowText("infoPanelNothingHovered2", L["Hover any option to see how it works!"]))
 end
 
--- The title: the row's own info title, else its label; a text block or a chip set (no label of
--- its own) takes its section's title. A text block with no description shows its text.
+-- The title: the row's own info title, else its label, else its section's title
 local function ShowRowPreview(row)
     local title = S:Text(row.key, "info")
-    local section = row.section and ns.Copy and ns.Copy.sections and ns.Copy.sections[row.section]
-    if not title and (row.kind == "text" or row.kind == "chips") then title = section end
     if not title or title == "" then title = row:Label() end
-    if (not title or title == "") and section then title = section end
-    local desc = row:Description()
-    if not desc and row.kind == "text" then desc = S:Text(row.key, "text") end
-    ShowPreview(title, desc, row:Tip())
+    if not title or title == "" then
+        title = row.section and ns.Copy and ns.Copy.sections and ns.Copy.sections[row.section]
+    end
+    ShowPreview(title, row:Description(), row:Tip())
 end
 
 -- for custom tabs: their own controls fill the right column on hover, and give it back after
@@ -276,6 +270,20 @@ local function ForwardHover(control, rowFrame)
     control:HookScript("OnLeave", function() RowLeave(rowFrame) end)
 end
 
+-- The choice and dropdown menus: made once per row frame, filled from the row it shows
+local function IsChoice(c) return c.row:Get() == c.value end
+local function PickChoice(c) c.row:Set(c.value) end
+local function SetupChoiceMenu(dropdown, f)
+    dropdown:SetupMenu(function(_, root)
+        local row = f.row
+        if not row then return end
+        for _, c in ipairs(row:Choices()) do
+            c.row = row
+            root:CreateRadio(c.text, IsChoice, PickChoice, c)
+        end
+    end)
+end
+
 -- toggle
 Build.toggle = function(f)
     local check = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
@@ -314,15 +322,12 @@ Build.choice = function(f)
     f:SetHeight(ROW_H + 8)
     f.stepper = stepper
     f.control = stepper
+    SetupChoiceMenu(stepper.Dropdown, f)
 end
 Fill.choice = function(f, row)
     -- narrower two to a line
     f.stepper.Dropdown:SetWidth(row.half and 96 or 180)
-    f.stepper.Dropdown:SetupMenu(function(_, root)
-        for _, c in ipairs(row:Choices()) do
-            root:CreateRadio(c.text, function() return row:Get() == c.value end, function() row:Set(c.value) end)
-        end
-    end)
+    f.stepper.Dropdown:GenerateMenu()
     f:SetHeight(ROW_H + 8)
 end
 
@@ -350,6 +355,7 @@ Build.dropdown = function(f)
     dd:SetPoint("RIGHT", -4, 0)
     ForwardHover(dd, f)
     f.control = dd
+    SetupChoiceMenu(dd, f)
 end
 local function PlaceSideButtons(f, row)
     local sides = row.sideButtons or {}
@@ -379,11 +385,7 @@ local function PlaceSideButtons(f, row)
 end
 Fill.dropdown = function(f, row)
     PlaceSideButtons(f, row)
-    f.control:SetupMenu(function(_, root)
-        for _, c in ipairs(row:Choices()) do
-            root:CreateRadio(c.text, function() return row:Get() == c.value end, function() row:Set(c.value) end)
-        end
-    end)
+    f.control:GenerateMenu()
 end
 
 -- button
@@ -483,7 +485,7 @@ Fill.keybind = function(f, row)
     if not f.control.waiting then f.control:ShowKey(row:Get()) end
 end
 
--- buttons: several side by side on the right (row.buttons = { { text, onClick(button) } })
+-- buttons: several side by side on the right (row.buttons = { { text, width, onClick(button), disabled() } })
 Build.buttons = function(f)
     f.buttons = {}
 end
@@ -509,7 +511,7 @@ Fill.buttons = function(f, row)
         b:SetText(def.text)
         b:SetWidth(def.width or 140)
         b:ClearAllPoints()
-        b:SetPoint("RIGHT", previous or f, previous and "LEFT" or "RIGHT", previous and -(row.buttonGap or 6) or -4, 0)
+        b:SetPoint("RIGHT", previous or f, previous and "LEFT" or "RIGHT", previous and -6 or -4, 0)
         b:SetEnabled(not (def.disabled and def.disabled()))
         b:Show()
         previous = b
@@ -584,76 +586,14 @@ Fill.editmode = function(f, row)
     f.edit:SetEnabled(S:CanEditFrames() and true or false)
 end
 
--- text block
-Build.text = function(f)
-    f.body = Text(f, "GameFontHighlight")
-    f.body:SetPoint("TOPLEFT", 6, -4)
-    f.body:SetSpacing(3)
-end
-Fill.text = function(f, row)
-    f.label:SetText("")
-    f.body:SetWidth(f.width - 12)
-    f.body:SetText(S:Format(S:Text(row.key, "text") or S:Text(row.key, "intro") or ""))
-    f:SetHeight(math.max(ROW_H, (f.body:GetStringHeight() or 0) + 10))
-end
-
--- chips: a grid of check boxes, two per line
-local CHIP_W, CHIP_H = 0.5, 24
-Build.chips = function(f)
-    f.chips = {}
-end
-Fill.chips = function(f, row)
-    f.label:SetText("")
-    local items = row:Items()
-    local width = f.width
-    for i, item in ipairs(items) do
-        local chip = f.chips[i]
-        if not chip then
-            chip = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-            chip:SetSize(24, 24)
-            chip.Text:SetFontObject("GameFontHighlight")
-            chip:SetScript("OnClick", function(self)
-                local on = self:GetChecked() and true or false
-                PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-                f.row:SetItem(self.index, on)
-            end)
-            ForwardHover(chip, f)
-            f.chips[i] = chip
-        end
-        chip.index = item.index
-        chip.Text:SetText(item.text)
-        chip:SetChecked(row:GetItem(item.index))
-        chip:Show()
-    end
-    for i = #items + 1, #f.chips do f.chips[i]:Hide() end
-    -- two columns, each centred in its half of the row
-    local colWidth = { 0, 0 }
-    for i = 1, #items do
-        local col = (i - 1) % 2 + 1
-        local w = 28 + (f.chips[i].Text:GetStringWidth() or 100)
-        if w > colWidth[col] then colWidth[col] = w end
-    end
-    local half = width * CHIP_W
-    for i = 1, #items do
-        local col, line = (i - 1) % 2, math.floor((i - 1) / 2)
-        local x = col * half + math.max(0, (half - colWidth[col + 1]) / 2)
-        f.chips[i]:ClearAllPoints()
-        f.chips[i]:SetPoint("TOPLEFT", x, -2 - line * CHIP_H)
-    end
-    f:SetHeight(math.ceil(#items / 2) * CHIP_H + 6)
-end
-
 -- enable / disable the control with the row
 local function SetRowEnabled(f, enabled)
     -- a heading that opens rows (each font) is gold, like the section titles
     local color = enabled and (f.kind == "expander" and NORMAL_FONT_COLOR or HIGHLIGHT_FONT_COLOR) or GRAY_FONT_COLOR
     f.label:SetTextColor(color:GetRGB())
-    local controls = { f.control, f.prev, f.next }
     -- the Edit button follows combat and the frame, not the row (Fill set it)
-    for _, chip in ipairs(f.chips or {}) do controls[#controls + 1] = chip end
-    for _, c in ipairs(controls) do
-        if c and c.SetEnabled then c:SetEnabled(enabled) end
-    end
+    local control = f.control
+    if control and control.SetEnabled then control:SetEnabled(enabled) end
 end
 
 local function FillRow(f, row, crumb)
@@ -758,13 +698,13 @@ local function UpdateHeader(module)
     else
         page.title:SetPoint("TOPLEFT", 4, -4)
     end
-    -- a header button: Edit Mode, or the module's own
-    local editText = (module.editMode or module.headerButton) and module:IsOn() and S:ModuleText(module.key, "editButton")
+    -- the Edit Mode button
+    local editText = module.editMode and module:IsOn() and S:ModuleText(module.key, "editButton")
     page.editMode:SetShown(editText and true or false)
     if editText then
         page.editMode:SetText(editText)
         page.editMode:SetWidth((page.editMode:GetTextWidth() or 120) + 30)
-        page.editMode:SetEnabled(module.headerButton ~= nil or S:CanEditFrames() and true or false)
+        page.editMode:SetEnabled(S:CanEditFrames() and true or false)
     end
     page.banner:Hide()
     local height = 64
@@ -877,17 +817,19 @@ function Panel:Refresh()
         else
             page.offCard:Hide()
             local tab = self:ActiveTab(module) or module.custom
-            for _, section in ipairs(module:Sections(tab and tab.key)) do
-                if section.title then y = y - SectionHeader(content, section.title, y, section.key) end
-                if not (section.title and closedSections[section.key]) then
-                    y = PlaceRows(content, section.rows, y)
-                end
-                y = y - 6
-            end
             ShowModulePreview()
             if tab and tab.custom then
+                -- a custom tab draws its own page: its rows are only there for search
                 page.scroll:Hide()
                 ShowCustom(module, tab)
+            else
+                for _, section in ipairs(module:Sections(tab and tab.key)) do
+                    if section.title then y = y - SectionHeader(content, section.title, y, section.key) end
+                    if not (section.title and closedSections[section.key]) then
+                        y = PlaceRows(content, section.rows, y)
+                    end
+                    y = y - 6
+                end
             end
             content:SetHeight(math.max(1, -y + 8))
             return
@@ -1229,7 +1171,6 @@ local function BuildWindow()
     page.editMode:SetScript("OnClick", function()
         ns.ButtonSound()
         local module = S.modules[current]
-        if module.headerButton then module.headerButton() return end
         local target = module.editMode and module.editMode()
         if target then
             S:EditFrame(target, module.key)
@@ -1324,6 +1265,8 @@ local function BuildWindow()
     preview.host:Hide()
     preview.picture = right:CreateTexture(nil, "ARTWORK")
     preview.picture:SetPoint("TOP", 0, -PAD)
+    preview.picture:SetTexture(PICTURE)
+    preview.picture:SetSize(RIGHT_W - 2 * PAD, RIGHT_W - 2 * PAD)
     preview.title = Text(right, "GameFontNormalLarge")
     preview.title:SetPoint("TOPLEFT", preview.picture, "BOTTOMLEFT", 0, -12)
     preview.title:SetPoint("RIGHT", -PAD, 0)

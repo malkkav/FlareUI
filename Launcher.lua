@@ -8,7 +8,10 @@ local L = ns.L
 -- Blizzard's Options > AddOns. Also /rl.
 --------------------------------------------------
 
--- Only the commands that currently do something
+--------------------------------------------------
+-- 1. SLASH COMMANDS
+--------------------------------------------------
+-- Only the commands that do something right now
 local function PrintCommands()
     local function Line(command, text) print("  |cffffff00" .. command .. "|r - " .. text) end
     print("|cff00ccffFlareUI:|r " .. L["commands"])
@@ -20,6 +23,9 @@ local function PrintCommands()
     Line("/rl", L["Reload UI shortcut."])
 end
 
+--------------------------------------------------
+-- 2. KEY BINDING
+--------------------------------------------------
 -- the key binding (Bindings.xml) and the radial menu's FlareUI Settings panel
 BINDING_HEADER_FLAREUI = "FlareUI"
 BINDING_NAME_FLAREUI_SETTINGS = L["Open Settings"]
@@ -27,7 +33,10 @@ function FlareUI_ToggleSettings()
     if ns.SettingsPanel then ns.SettingsPanel:Toggle() end
 end
 
--- FlareUI's page in Blizzard's Options > AddOns: the banner and a way into the panel
+--------------------------------------------------
+-- 3. BLIZZARD'S OPTIONS > ADDONS
+--------------------------------------------------
+-- FlareUI's page there: the banner and a way into the panel
 local function RegisterOptionsPage()
     local panel = CreateFrame("Frame", "FlareUI_BlizzOptionsPanel", UIParent)
     panel.name = "FlareUI"
@@ -76,6 +85,9 @@ local function RegisterOptionsPage()
     Settings.RegisterAddOnCategory(Settings.RegisterCanvasLayoutCategory(panel, panel.name))
 end
 
+--------------------------------------------------
+-- 4. LOGIN
+--------------------------------------------------
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("PLAYER_LOGIN")
 loader:SetScript("OnEvent", function(self)
@@ -101,7 +113,9 @@ loader:SetScript("OnEvent", function(self)
     end
 end)
 
--- The minimap's addon compartment (## AddonCompartmentFunc* in the TOC)
+--------------------------------------------------
+-- 5. ADDON COMPARTMENT (## AddonCompartmentFunc* in the TOC)
+--------------------------------------------------
 function FlareUI_OnAddonCompartmentClick(_, buttonName)
     if buttonName == "RightButton" then ns.ToggleFCMSetupMode() else ns.SettingsPanel:Toggle() end
 end

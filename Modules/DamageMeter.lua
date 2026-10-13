@@ -29,19 +29,11 @@ local InCombatLockdown = InCombatLockdown
 local C_Timer = C_Timer
 local LSM = LibStub("LibSharedMedia-3.0")
 
--- The border picked in the options, or the default when LibSharedMedia does not know it
-local DEFAULT_BORDER = "FlareUI Frames"
-local function GetBorderFile(db)
-    local name = db and db.borderTexture
-    if name == "None" then return nil end   -- Frame Border: None
-    if not (name and LSM:IsValid("border", name)) then name = DEFAULT_BORDER end
-    return LSM:Fetch("border", name)
-end
-
 --------------------------------------------------
 -- 3. CONSTANTS
 --------------------------------------------------
 local SEPARATOR = "Interface\\Common\\UI-TooltipDivider-Transparent"
+local DEFAULT_BORDER = "FlareUI Frames"
 
 local ICON_SEGMENTS = "Interface\\AddOns\\FlareUI\\Media\\Icons\\DMSegments.tga"
 local ICON_SETTINGS = "Interface\\AddOns\\FlareUI\\Media\\Icons\\DMSettings.tga"
@@ -49,6 +41,7 @@ local ICON_READY     = "Interface\\AddOns\\FlareUI\\Media\\Icons\\DMReadyCheck.t
 local ICON_COUNTDOWN = "Interface\\AddOns\\FlareUI\\Media\\Icons\\DMCountdown.tga"
 
 -- Fixed look, matching the chat header
+local SKIN_PADDING    = 2    -- the skin reaches this far past the window
 local HEADER_HEIGHT   = 24
 local CONTENT_TOP     = 34
 local ROW_CENTER_Y    = -15
@@ -63,7 +56,6 @@ local ICON_SPACING    = 21
 local TITLE_COLOR     = { r = 0.80, g = 0.60, b = 0.34, a = 1 }   -- #CC9957 (chat active tab)
 local ICON_COLOR      = { r = 0.61, g = 0.48, b = 0.29, a = 1 }   -- #9C7A4A (chat header icons)
 local BORDER_TINT     = ns.BORDER_COLOR
-local SEPARATOR_COLOR = { r = 1, g = 1, b = 1, a = 1 }
 
 local function LightenColor(r, g, b, factor)
     return math_min(1, r + factor), math_min(1, g + factor), math_min(1, b + factor)
@@ -80,6 +72,14 @@ local function GetDb()
         return nil
     end
     return ns.db.profile.damagemeter
+end
+
+-- The border picked in the options, or the default when LibSharedMedia does not know it
+local function GetBorderFile(db)
+    local name = db and db.borderTexture
+    if name == "None" then return nil end   -- Frame Border: None
+    if not (name and LSM:IsValid("border", name)) then name = DEFAULT_BORDER end
+    return LSM:Fetch("border", name)
 end
 
 local function SafeCall(fn, ...)
@@ -198,16 +198,19 @@ local function GetSessionWindows()
 end
 
 --------------------------------------------------
--- 6. SKIN FRAME (backdrop and border, textPadding outside the window)
+-- 6. SKIN FRAME (backdrop, border and the line under the header)
 --------------------------------------------------
 local function CreateOrGetSkinFrame(window)
     local skin = window.FlareUI_DMSkin
     if not skin then
         skin = CreateFrame("Frame", nil, window, "BackdropTemplate")
         window.FlareUI_DMSkin = skin
-    end
-    if not skin.Separator then
-        skin.Separator = skin:CreateTexture(nil, "OVERLAY")
+        local line = skin:CreateTexture(nil, "OVERLAY")
+        line:SetTexture(SEPARATOR)
+        line:SetHeight(8)
+        line:SetPoint("TOPLEFT", skin, "TOPLEFT", 3, -HEADER_HEIGHT)
+        line:SetPoint("TOPRIGHT", skin, "TOPRIGHT", -3, -HEADER_HEIGHT)
+        skin.Separator = line
     end
     return skin
 end
@@ -215,12 +218,11 @@ end
 local function UpdateSkinFrame(window, db)
     if not window or window:IsForbidden() then return end
     local skin = CreateOrGetSkinFrame(window)
-    local padding = db.textPadding or 0
     local header = GetWindowHeader(window)
 
     skin:ClearAllPoints()
-    skin:SetPoint("BOTTOMLEFT", window, "BOTTOMLEFT", -padding, -padding)
-    skin:SetPoint("TOPRIGHT", window, "TOPRIGHT", padding, padding)
+    skin:SetPoint("BOTTOMLEFT", window, "BOTTOMLEFT", -SKIN_PADDING, -SKIN_PADDING)
+    skin:SetPoint("TOPRIGHT", window, "TOPRIGHT", SKIN_PADDING, SKIN_PADDING)
     ns.CopyStrata(skin, window)
     skin:SetFrameLevel(math_max((window:GetFrameLevel() or 1) - 1, 0))
 
@@ -245,19 +247,7 @@ local function UpdateSkinFrame(window, db)
         end)
     end
 
-    if header and not db.hideHeader then
-        skin.Separator:Show()
-        skin.Separator:SetColorTexture(0, 0, 0, 0)
-        skin.Separator:SetTexture(SEPARATOR)
-        skin.Separator:SetVertexColor(SEPARATOR_COLOR.r, SEPARATOR_COLOR.g, SEPARATOR_COLOR.b, SEPARATOR_COLOR.a)
-        skin.Separator:SetHeight(8)
-        skin.Separator:SetTexCoord(0, 1, 0, 1)
-        skin.Separator:ClearAllPoints()
-        skin.Separator:SetPoint("TOPLEFT", skin, "TOPLEFT", 3, -HEADER_HEIGHT)
-        skin.Separator:SetPoint("TOPRIGHT", skin, "TOPRIGHT", -3, -HEADER_HEIGHT)
-    else
-        skin.Separator:Hide()
-    end
+    skin.Separator:SetShown(header ~= nil)
 end
 
 --------------------------------------------------
@@ -273,10 +263,9 @@ local function UpdateSourceWindowSkin(window, db)
         sw.FlareUI_DMSkin = skin
     end
 
-    local padding = db.textPadding or 0
     skin:ClearAllPoints()
-    skin:SetPoint("BOTTOMLEFT", sw, "BOTTOMLEFT", -padding, -padding)
-    skin:SetPoint("TOPRIGHT", sw, "TOPRIGHT", padding, padding)
+    skin:SetPoint("BOTTOMLEFT", sw, "BOTTOMLEFT", -SKIN_PADDING, -SKIN_PADDING)
+    skin:SetPoint("TOPRIGHT", sw, "TOPRIGHT", SKIN_PADDING, SKIN_PADDING)
     ns.CopyStrata(skin, sw)
     skin:SetFrameLevel(math_max((sw:GetFrameLevel() or 1) - 1, 0))
 
@@ -291,7 +280,7 @@ local function UpdateSourceWindowSkin(window, db)
 end
 
 --------------------------------------------------
--- 7b. GROUP BUTTONS
+-- 8. GROUP BUTTONS
 -- Ready Check (group leader or assistant) and Countdown (in a group; right-click cancels), left of
 -- the segments icon.
 --------------------------------------------------
@@ -368,7 +357,7 @@ end)
 
 -- Lays out the buttons that show, left of the segments icon; returns how many show
 function GROUP_BUTTONS.Layout(window, db, ref, box, levelOf)
-    local shown = (db and not db.hideHeader) and GROUP_BUTTONS.Shown(db) or {}
+    local shown = GROUP_BUTTONS.Shown(db)
     local isShown = {}
     for slot, key in ipairs(shown) do
         isShown[key] = true
@@ -390,101 +379,77 @@ function GROUP_BUTTONS.Layout(window, db, ref, box, levelOf)
 end
 
 --------------------------------------------------
--- 8. HEADER
+-- 9. HEADER
 --------------------------------------------------
-local AttachHeaderButtonHooks   -- defined in section 9
+local AttachHeaderButtonHooks   -- defined in section 10
 
 local function ApplyHeader(window, db)
     if not window or window:IsForbidden() then return end
     local header = GetWindowHeader(window)
     if not header then return end
 
-    local hideHeader = db.hideHeader
-
-    if hideHeader then
-        header:Hide()
-        header:SetAlpha(0)
-        header:SetHeight(1)
-        -- the header's parts stay hidden when Blizzard shows them
-        local function ForceHide(frame)
-            if frame and not frame:IsForbidden() and GetDb() and GetDb().hideHeader then
-                frame:Hide()
-            end
-        end
-        for _, btn in pairs(GROUP_BUTTONS.buttons[window] or {}) do btn:Hide() end
-        for _, f in ipairs({ GetWindowSessionTimer(window), GetWindowTypeDropdown(window), GetWindowSessionDropdown(window), GetWindowSettingsDropdown(window) }) do
-            if f then
-                f:Hide()
-                if not f.FlareUI_HideHeaderHooked then
-                    f.FlareUI_HideHeaderHooked = true
-                    f:HookScript("OnShow", ForceHide)
-                end
-            end
-        end
-    else
-        header:Show()
-        header:SetAlpha(0)   -- the skin is the header background; the frame stays for anchoring
-        header:SetHeight(HEADER_HEIGHT)
-        -- Blizzard's "[mm:ss]" session timer, with Combat Timer on
-        local sessionTimer = GetWindowSessionTimer(window)
-        if sessionTimer then
-            if not sessionTimer.FlareUI_HideTimerHooked then
-                sessionTimer.FlareUI_HideTimerHooked = true
-                sessionTimer:HookScript("OnShow", function(self)
-                    local d = GetDb()
-                    if not (d and d.combatTimer) then self:Hide() end
-                end)
-            end
-            sessionTimer:SetShown(db.combatTimer and true or false)
-        end
-        local typeDropdown = GetWindowTypeDropdown(window)
-        local sessionDropdown = GetWindowSessionDropdown(window)
-        local settingsDropdown = GetWindowSettingsDropdown(window)
-        if typeDropdown then typeDropdown:Show() end
-        if sessionDropdown then sessionDropdown:Show() end
-        if settingsDropdown then settingsDropdown:Show() end
-
-        -- laid out like the chat header
-        if not InCombatLockdown() then
-            SafeCall(function()
-                local dd = GetWindowTypeDropdown(window)
-                local sd = GetWindowSettingsDropdown(window)
-                local sdd = GetWindowSessionDropdown(window)
-                local box = ICON_SIZE + 9   -- click area a little larger than the icon
-                local ref = window.FlareUI_DMSkin or header   -- lay out against the skin, like the chat header
-                if sd and sd.ClearAllPoints then
-                    sd:SetSize(box, box)
-                    sd:ClearAllPoints()
-                    sd:SetPoint("CENTER", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE / 2), ROW_CENTER_Y)
-                end
-                if sdd and sdd.ClearAllPoints then
-                    sdd:SetSize(box, box)
-                    sdd:ClearAllPoints()
-                    sdd:SetPoint("CENTER", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE / 2 + ICON_SPACING), ROW_CENTER_Y)
-                end
-                -- Ready Check / Countdown left of the segments icon; the title and timer make room
-                local extra = GROUP_BUTTONS.Layout(window, db, ref, box, sdd or sd)
-                local iconsWidth = ICON_SIZE + (1 + extra) * ICON_SPACING
-                if dd and dd.ClearAllPoints then
-                    dd:ClearAllPoints()
-                    dd:SetPoint("TOPLEFT", ref, "TOPLEFT", 0, 0)
-                    dd:SetPoint("BOTTOMRIGHT", ref, "TOPRIGHT", -(ICON_RIGHT + iconsWidth + 8), -HEADER_HEIGHT)
-                end
-                -- the timer sits at the right end of the title row, just left of the icons
-                local timer = GetWindowSessionTimer(window)
-                if timer and timer.ClearAllPoints then
-                    timer:ClearAllPoints()
-                    timer:SetPoint("RIGHT", ref, "TOPRIGHT", -(ICON_RIGHT + iconsWidth + 10), ROW_CENTER_Y)
-                    timer:SetJustifyH("RIGHT")
-                end
-                if dd and dd.TypeName and dd.TypeName.ClearAllPoints then
-                    dd.TypeName:ClearAllPoints()
-                    dd.TypeName:SetPoint("LEFT", ref, "TOPLEFT", TITLE_LEFT, ROW_CENTER_Y)
-                    dd.TypeName:SetPoint("RIGHT", dd, "RIGHT", -4, 0)
-                    dd.TypeName:SetJustifyH("LEFT")
-                end
+    header:Show()
+    header:SetAlpha(0)   -- the skin is the header background; the frame stays for anchoring
+    header:SetHeight(HEADER_HEIGHT)
+    -- Blizzard's "[mm:ss]" session timer, with Combat Timer on
+    local sessionTimer = GetWindowSessionTimer(window)
+    if sessionTimer then
+        if not sessionTimer.FlareUI_HideTimerHooked then
+            sessionTimer.FlareUI_HideTimerHooked = true
+            sessionTimer:HookScript("OnShow", function(self)
+                local d = GetDb()
+                if not (d and d.combatTimer) then self:Hide() end
             end)
         end
+        sessionTimer:SetShown(db.combatTimer and true or false)
+    end
+    local typeDropdown = GetWindowTypeDropdown(window)
+    local sessionDropdown = GetWindowSessionDropdown(window)
+    local settingsDropdown = GetWindowSettingsDropdown(window)
+    if typeDropdown then typeDropdown:Show() end
+    if sessionDropdown then sessionDropdown:Show() end
+    if settingsDropdown then settingsDropdown:Show() end
+
+    -- laid out like the chat header
+    if not InCombatLockdown() then
+        SafeCall(function()
+            local dd = GetWindowTypeDropdown(window)
+            local sd = GetWindowSettingsDropdown(window)
+            local sdd = GetWindowSessionDropdown(window)
+            local box = ICON_SIZE + 9   -- click area a little larger than the icon
+            local ref = window.FlareUI_DMSkin or header   -- lay out against the skin, like the chat header
+            if sd and sd.ClearAllPoints then
+                sd:SetSize(box, box)
+                sd:ClearAllPoints()
+                sd:SetPoint("CENTER", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE / 2), ROW_CENTER_Y)
+            end
+            if sdd and sdd.ClearAllPoints then
+                sdd:SetSize(box, box)
+                sdd:ClearAllPoints()
+                sdd:SetPoint("CENTER", ref, "TOPRIGHT", -(ICON_RIGHT + ICON_SIZE / 2 + ICON_SPACING), ROW_CENTER_Y)
+            end
+            -- Ready Check / Countdown left of the segments icon; the title and timer make room
+            local extra = GROUP_BUTTONS.Layout(window, db, ref, box, sdd or sd)
+            local iconsWidth = ICON_SIZE + (1 + extra) * ICON_SPACING
+            if dd and dd.ClearAllPoints then
+                dd:ClearAllPoints()
+                dd:SetPoint("TOPLEFT", ref, "TOPLEFT", 0, 0)
+                dd:SetPoint("BOTTOMRIGHT", ref, "TOPRIGHT", -(ICON_RIGHT + iconsWidth + 8), -HEADER_HEIGHT)
+            end
+            -- the timer sits at the right end of the title row, just left of the icons
+            local timer = GetWindowSessionTimer(window)
+            if timer and timer.ClearAllPoints then
+                timer:ClearAllPoints()
+                timer:SetPoint("RIGHT", ref, "TOPRIGHT", -(ICON_RIGHT + iconsWidth + 10), ROW_CENTER_Y)
+                timer:SetJustifyH("RIGHT")
+            end
+            if dd and dd.TypeName and dd.TypeName.ClearAllPoints then
+                dd.TypeName:ClearAllPoints()
+                dd.TypeName:SetPoint("LEFT", ref, "TOPLEFT", TITLE_LEFT, ROW_CENTER_Y)
+                dd.TypeName:SetPoint("RIGHT", dd, "RIGHT", -4, 0)
+                dd.TypeName:SetJustifyH("LEFT")
+            end
+        end)
     end
 
     -- the list fills the skin below the header
@@ -508,13 +473,11 @@ local function ApplyHeader(window, db)
         scrollBar:HookScript("OnHide", ApplyScrollBoxAnchors)
     end
 
-    if not hideHeader then
-        AttachHeaderButtonHooks(window)
-    end
+    AttachHeaderButtonHooks(window)
 end
 
 --------------------------------------------------
--- 9. HEADER BUTTON STYLE
+-- 10. HEADER BUTTON STYLE
 --------------------------------------------------
 local function HideBlizzardButtonVisuals(btn, hideSessionName)
     if not btn then return end
@@ -551,21 +514,16 @@ local function SetupCustomIcon(btn, iconPath, hideSessionName, drawSize, yOfs)
     if not btn.FlareUI_IconHoverHooked then
         btn.FlareUI_IconHoverHooked = true
         btn:HookScript("OnEnter", function(self)
-            local db = GetDb()
-            if not db or db.hideHeader then return end
             if self.FlareUI_Icon then ns.BronzeIcon.Paint(self.FlareUI_Icon, ICON_COLOR, true) end
         end)
         btn:HookScript("OnLeave", function(self)
-            local db = GetDb()
-            if not db or db.hideHeader then return end
             if self.FlareUI_Icon then ns.BronzeIcon.Paint(self.FlareUI_Icon, ICON_COLOR, false) end
         end)
     end
 end
 
-local function ApplyHeaderButtonStyle(window, db)
+local function ApplyHeaderButtonStyle(window)
     if not window or window:IsForbidden() then return end
-    if not db or db.hideHeader then return end
 
     -- the type dropdown is the title itself, like a chat tab
     local dd = GetWindowTypeDropdown(window)
@@ -584,8 +542,8 @@ function AttachHeaderButtonHooks(window)
 
     local function Reapply()
         local db = GetDb()
-        if db and db.enabled and not db.hideHeader then
-            SafeCall(ApplyHeaderButtonStyle, window, db)
+        if db and db.enabled then
+            SafeCall(ApplyHeaderButtonStyle, window)
         end
     end
 
@@ -602,9 +560,9 @@ function AttachHeaderButtonHooks(window)
 end
 
 --------------------------------------------------
--- 10. SCROLL BAR
+-- 11. SCROLL BAR
 --------------------------------------------------
-local function ApplyScrollBarVisibility(window, db)
+local function ApplyScrollBarVisibility(window)
     if not window or window:IsForbidden() then return end
     local sb = GetWindowScrollBar(window)
     if not sb then return end
@@ -638,20 +596,18 @@ local function ApplyScrollBarVisibility(window, db)
 end
 
 --------------------------------------------------
--- 11. HEADER FONTS
+-- 12. HEADER FONTS
 --------------------------------------------------
 local HEADER_FONT = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1, useCustomColor = true, color = TITLE_COLOR }
 
-local function ApplyHeaderFonts(window, db)
+local function ApplyHeaderFonts(window)
     if not window or window:IsForbidden() then return end
-    local fontDb = HEADER_FONT
-
-    local path, size, flags = GetFontData(fontDb)
+    local path, size, flags = GetFontData(HEADER_FONT)
 
     local function ApplyToFontString(fs)
         if not fs or not fs.SetFont then return end
         fs:SetFont(path, size, flags)
-        ApplyFontEffects(fs, fontDb)
+        ApplyFontEffects(fs, HEADER_FONT)
     end
 
     local dd = GetWindowTypeDropdown(window)
@@ -679,8 +635,9 @@ local function ApplyHeaderFonts(window, db)
 end
 
 --------------------------------------------------
--- 12. BAR FONTS
+-- 13. BAR FONTS
 --------------------------------------------------
+-- the bar fill stays Blizzard's; only the font is FlareUI's
 local function ApplyBarFont(entry, db)
     if not entry or entry:IsForbidden() then return end
     local fontDb = db.barFont
@@ -710,27 +667,24 @@ local function ApplyBarFont(entry, db)
     end
 end
 
--- the bar fill stays Blizzard's; only the font is FlareUI's
-local StyleEntry = ApplyBarFont
-
 --------------------------------------------------
--- 13. SCROLL BOX FONT REFRESH (Refresh only: see HELPERS)
+-- 14. SCROLL BOX FONT REFRESH (Refresh only: see HELPERS)
 --------------------------------------------------
 local function ApplyFontsToScrollBox(scrollBox, db)
     if not scrollBox or not db then return end
     if scrollBox.ForEachFrame then
         scrollBox:ForEachFrame(function(frame)
-            StyleEntry(frame, db)
+            ApplyBarFont(frame, db)
         end)
     elseif scrollBox.EnumerateFrames then
         for frame in scrollBox:EnumerateFrames() do
-            StyleEntry(frame, db)
+            ApplyBarFont(frame, db)
         end
     end
 end
 
 --------------------------------------------------
--- 14. UNCLAMP
+-- 15. UNCLAMP
 --------------------------------------------------
 -- The window can be dragged past the screen edge, like the chat. Something re-clamps it in Edit
 -- Mode, so later clamps are undone, and the Edit Mode selection is unclamped too.
@@ -756,7 +710,7 @@ local function ApplyUnclamp(window)
 end
 
 --------------------------------------------------
--- 14b. THREAT TAB
+-- 16. THREAT TAB
 -- A second view beside Blizzard's meter type in the title row. Left-click picks a tab; a hit area
 -- over Blizzard's title passes right-clicks through, so Blizzard's own code opens its type menu.
 -- The list is FlareUI's (Blizzard's is secure code): the group sorted by threat on your target, in
@@ -772,13 +726,16 @@ local THREAT_EVENTS = { "UNIT_THREAT_LIST_UPDATE", "UNIT_THREAT_SITUATION_UPDATE
 local views = {}                 -- session window -> its threat tab, hit area, list and state
 local UpdateThreatViews          -- defined below the list code
 
+-- canaccessvalue first: a secret is never compared, not even with nil
 local function Readable(value)
-    return value ~= nil and canaccessvalue(value)
+    return canaccessvalue(value) and value ~= nil
 end
 
 -- The mob whose threat is shown: a hostile target, or the hostile target of a friendly one
 local function IsHostile(unit)
-    if not UnitExists(unit) or UnitIsDeadOrGhost(unit) then return false end
+    if not UnitExists(unit) then return false end
+    local dead = UnitIsDeadOrGhost(unit)
+    if Readable(dead) and dead then return false end
     local attackable = UnitCanAttack("player", unit)
     return Readable(attackable) and attackable
 end
@@ -810,20 +767,20 @@ local function CollectThreat(mob)
     local list, secret = {}, false
     local function Add(unit)
         if not UnitExists(unit) then return end
-        local isTanking, _, scaled, _, value = UnitDetailedThreatSituation(unit, mob)
+        local _, _, scaled, _, value = UnitDetailedThreatSituation(unit, mob)
+        if not canaccessallvalues(value, scaled) then secret = true; return end
         if value == nil then return end
-        if not (Readable(value) and Readable(scaled)) then secret = true; return end
         local name = UnitName(unit)
         local _, class = UnitClass(unit)
         local isMe = UnitIsUnit(unit, "player")
         list[#list + 1] = {
             unit = unit, value = value, scaled = scaled or 0,
-            tanking = Readable(isTanking) and isTanking,
             name = Readable(name) and name or "?",
             class = Readable(class) and class or nil,
             isPlayer = Readable(isMe) and isMe or false,
         }
-        list[#list].specIcon = UnitIsPlayer(unit) and SpecIcon(unit, list[#list].isPlayer) or nil
+        local isPlayer = UnitIsPlayer(unit)
+        if Readable(isPlayer) and isPlayer then list[#list].specIcon = SpecIcon(unit, list[#list].isPlayer) end
     end
     if IsInRaid() then
         for i = 1, GetNumGroupMembers() do Add("raid" .. i); Add("raidpet" .. i) end
@@ -883,7 +840,7 @@ local function FillRow(row, data, top, window, db, index, height, spacing)
     row:SetTextScale(window.GetTextScale and window:GetTextScale() or 1)
     row:SetShowBarIcons(window.ShouldShowBarIcons and window:ShouldShowBarIcons() or false)
     row:SetStyle(window.GetStyle and window:GetStyle() or Enum.DamageMeterStyle.Default)
-    StyleEntry(row, db)
+    ApplyBarFont(row, db)
 
     local bar = row:GetStatusBar()
     bar:SetMinMaxValues(0, top > 0 and top or 1)
@@ -929,7 +886,7 @@ local function UpdateThreatView(window, view)
         end
     end
 
-        -- past the last row, the last row is yours
+    -- past the last row, the last row is yours
     local shown = {}
     for i = 1, math_min(#list, capacity) do shown[i] = list[i] end
     if #list > capacity then
@@ -992,9 +949,26 @@ local function SetView(window, showThreat)
     WatchThreat()
 end
 
--- The Threat Toggle Keybind flips every window (an override binding clicks a plain button)
+-- The player's pick (the Threat tab, the meter's title or the toggle key) is kept in the profile:
+-- the meter stays on it, after a reload too, until the player picks the other. Only Threat View in
+-- Combat switches on its own, and after the fight it goes back to the pick.
+local function ThreatPicked()
+    local db = GetDb()
+    return db and db.threatView and true or false
+end
+
+local function PickView(window, showThreat)
+    local db = GetDb()
+    if db then db.threatView = showThreat and true or nil end
+    SetView(window, showThreat)
+end
+
+-- The threat key flips every window: what is on screen (Threat View in Combat may be showing threat
+-- over a damage pick)
 local function ToggleThreatViews()
-    for window, view in pairs(views) do SetView(window, not view.showing) end
+    local showing = false
+    for _, view in pairs(views) do if view.showing then showing = true end end
+    for window in pairs(views) do PickView(window, not showing) end
 end
 
 -- The radial menu's "Toggle Threat Meter" and the key binding (Bindings.xml) run this
@@ -1003,31 +977,15 @@ function FlareUI_ToggleThreatMeter()
     if next(views) then
         ToggleThreatViews()
     else
-        print("|cff00ff00FlareUI:|r " .. L["turn on Threat Meter Tab in the Damage Meter settings to use the threat view."])
+        print("|cff00ff00FlareUI:|r " .. L["turn on the Damage Meter in the FlareUI settings (and Blizzard's damage meter) to use the threat view."])
     end
-end
-
-local threatToggle
-local function ApplyThreatKey()
-    if InCombatLockdown() then return end   -- Refresh comes back after the fight
-    if not threatToggle then
-        threatToggle = CreateFrame("Button", "FlareUI_DamageMeterThreatToggle", UIParent)
-        threatToggle:SetSize(1, 1)
-        threatToggle:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -500, 500)
-        threatToggle:RegisterForClicks("AnyDown")
-        threatToggle:SetScript("OnClick", ToggleThreatViews)
-    end
-    ClearOverrideBindings(threatToggle)
-    local db = GetDb()
-    local key = db and db.enabled and db.threatTab and db.threatKey
-    if key and key ~= "" then SetOverrideBindingClick(threatToggle, true, key, threatToggle:GetName()) end
 end
 
 local function CreateThreatView(window)
     local dd = GetWindowTypeDropdown(window)
     local scrollBox = GetWindowScrollBox(window)
     if not (dd and dd.TypeName and scrollBox) then return nil end
-    local view = { rows = {}, showing = false }
+    local view = { rows = {}, showing = ThreatPicked() }
 
     -- over Blizzard's title: left-click picks its tab, right-click reaches Blizzard's menu
     local hit = CreateFrame("Button", nil, window)
@@ -1035,7 +993,7 @@ local function CreateThreatView(window)
     hit:SetFrameLevel(dd:GetFrameLevel() + 2)
     hit:RegisterForClicks("LeftButtonUp")
     hit:SetPassThroughButtons("RightButton")
-    hit:SetScript("OnClick", function() SetView(window, false) end)
+    hit:SetScript("OnClick", function() PickView(window, false) end)
     view.hit = hit
 
     local tab = CreateFrame("Button", nil, window)
@@ -1044,7 +1002,7 @@ local function CreateThreatView(window)
     tab.Text:SetPoint("LEFT", tab, "LEFT", 4, 0)
     tab.Text:SetText(L["Threat"])
     tab:RegisterForClicks("LeftButtonUp")
-    tab:SetScript("OnClick", function() SetView(window, true) end)
+    tab:SetScript("OnClick", function() PickView(window, true) end)
     -- the idle tab lifts a little under the mouse, like the chat's
     tab:SetScript("OnEnter", function(self)
         if view.showing then return end
@@ -1065,16 +1023,14 @@ local function CreateThreatView(window)
     view.frame = frame
 
     -- a new meter type renames the title: the Threat tab follows the new width
-    hooksecurefunc(dd.TypeName, "SetText", function()
-        if view.tab:IsShown() then LayoutTabs(window, view) end
-    end)
+    hooksecurefunc(dd.TypeName, "SetText", function() LayoutTabs(window, view) end)
 
     views[window] = view
     return view
 end
 
 --------------------------------------------------
--- 14c. LIVE COMBAT TIMER
+-- 17. LIVE COMBAT TIMER
 -- Blizzard's session timer only moves every two seconds or so, so in combat FlareUI counts the
 -- fight in its place. Out of combat Blizzard's timer shows a past segment's (secret) length.
 --------------------------------------------------
@@ -1093,7 +1049,7 @@ end)
 
 local function UpdateLiveTimers()
     local db = GetDb()
-    local live = db and db.enabled and db.combatTimer and not db.hideHeader and combatStart ~= nil
+    local live = db and db.enabled and db.combatTimer and combatStart ~= nil
     for window, fs in pairs(liveTimers) do
         local blizzard = GetWindowSessionTimer(window)
         fs:SetShown(live)
@@ -1111,7 +1067,7 @@ timerEvents:SetScript("OnEvent", function(_, event)
     -- Threat View in Combat. Back to the damage view after a fight: if the meter is fading out by
     -- then, only once it has faded (the emptied threat view fades, not a flash of damage bars)
     local db = GetDb()
-    if not (db and db.enabled and db.threatTab and db.autoThreat) then return end
+    if not (db and db.enabled and db.autoThreat) then return end
     DamageMeter.viewBackPending = nil
     if combatStart then
         for window in pairs(views) do SetView(window, true) end
@@ -1128,12 +1084,14 @@ timerEvents:SetScript("OnEvent", function(_, event)
     end)
 end)
 
+-- after a fight (Threat View in Combat): back to the player's pick
 function DamageMeter.ShowDamageViews()
     DamageMeter.viewBackPending = nil
-    for window in pairs(views) do SetView(window, false) end
+    local threat = ThreatPicked()
+    for window in pairs(views) do SetView(window, threat) end
 end
 
-local function ApplyLiveTimer(window, db)
+local function ApplyLiveTimer(window)
     local blizzard = GetWindowSessionTimer(window)
     if not blizzard then return end
     local fs = liveTimers[window]
@@ -1149,36 +1107,26 @@ local function ApplyLiveTimer(window, db)
     fs:SetTextColor(TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, TITLE_COLOR.a or 1)
     fs:ClearAllPoints()
     fs:SetPoint("RIGHT", blizzard, "RIGHT", 0, 0)
-    if UnitAffectingCombat("player") and not combatStart then combatStart = GetTime() end
+    local inCombat = UnitAffectingCombat("player")
+    if canaccessvalue(inCombat) and inCombat and not combatStart then combatStart = GetTime() end
     UpdateLiveTimers()
 end
 
-local function ApplyThreatTab(window, db)
+local function ApplyThreatTab(window)
     local dd = GetWindowTypeDropdown(window)
     if not dd then return end
-    local view = views[window]
-    if db.threatTab and not db.hideHeader then
-        view = view or CreateThreatView(window)
-        if not view then return end
-        dd:RegisterForMouse("LeftButtonDown", "LeftButtonUp", "RightButtonDown", "RightButtonUp")
-        local skin = window.FlareUI_DMSkin or window
-        view.frame:ClearAllPoints()
-        view.frame:SetPoint("TOPLEFT", skin, "TOPLEFT", 6, -CONTENT_TOP)
-        view.frame:SetPoint("BOTTOMRIGHT", skin, "BOTTOMRIGHT", -6, 6)
-        view.hit:Show()
-        view.tab:Show()
-        SetView(window, view.showing)
-    elseif view then
-        SetView(window, false)
-        view.hit:Hide()
-        view.tab:Hide()
-        dd:RegisterForMouse("LeftButtonDown", "LeftButtonUp")
-        if dd.TypeName then ColorTab(dd.TypeName, true) end
-    end
+    local view = views[window] or CreateThreatView(window)
+    if not view then return end
+    dd:RegisterForMouse("LeftButtonDown", "LeftButtonUp", "RightButtonDown", "RightButtonUp")
+    local skin = window.FlareUI_DMSkin or window
+    view.frame:ClearAllPoints()
+    view.frame:SetPoint("TOPLEFT", skin, "TOPLEFT", 6, -CONTENT_TOP)
+    view.frame:SetPoint("BOTTOMRIGHT", skin, "BOTTOMRIGHT", -6, 6)
+    SetView(window, view.showing)
 end
 
 --------------------------------------------------
--- 15. APPLY TO SINGLE WINDOW
+-- 18. APPLY TO SINGLE WINDOW
 --------------------------------------------------
 function DamageMeter:ApplyToWindow(window)
     local db = GetDb()
@@ -1191,13 +1139,11 @@ function DamageMeter:ApplyToWindow(window)
     SafeCall(UpdateSkinFrame, window, db)
     SafeCall(UpdateSourceWindowSkin, window, db)
     SafeCall(ApplyHeader, window, db)
-    SafeCall(ApplyScrollBarVisibility, window, db)
-    SafeCall(ApplyHeaderFonts, window, db)
-    if not (db.hideHeader) then
-        SafeCall(ApplyHeaderButtonStyle, window, db)
-    end
-    SafeCall(ApplyThreatTab, window, db)
-    SafeCall(ApplyLiveTimer, window, db)
+    SafeCall(ApplyScrollBarVisibility, window)
+    SafeCall(ApplyHeaderFonts, window)
+    SafeCall(ApplyHeaderButtonStyle, window)
+    SafeCall(ApplyThreatTab, window)
+    SafeCall(ApplyLiveTimer, window)
 
     local sb = GetWindowScrollBox(window)
     if sb then
@@ -1205,7 +1151,7 @@ function DamageMeter:ApplyToWindow(window)
     end
     local localPlayerEntry = (window.GetLocalPlayerEntry and window:GetLocalPlayerEntry()) or window.LocalPlayerEntry
     if localPlayerEntry then
-        SafeCall(StyleEntry, localPlayerEntry, db)
+        SafeCall(ApplyBarFont, localPlayerEntry, db)
     end
 
     local sw = GetWindowSourceWindow(window)
@@ -1216,7 +1162,7 @@ function DamageMeter:ApplyToWindow(window)
 end
 
 --------------------------------------------------
--- 15b. MATCH CHAT FRAME SIZE
+-- 19. MATCH CHAT FRAME SIZE
 -- Blizzard's DamageMeter frame takes the chat skin's size, again after every Edit Mode sizing and
 -- every chat resize. FlareUI's chat only; out of combat only.
 --------------------------------------------------
@@ -1270,7 +1216,7 @@ function DamageMeter:RestoreEditModeSize()
 end
 
 --------------------------------------------------
--- 16. REFRESH ALL
+-- 20. REFRESH ALL
 --------------------------------------------------
 function DamageMeter:Refresh()
     if InCombatLockdown() then
@@ -1298,13 +1244,12 @@ function DamageMeter:Refresh()
         self.sizeMatched = nil
         self:RestoreEditModeSize()
     end
-    ApplyThreatKey()
 
     self._pendingRefresh = false
 end
 
 --------------------------------------------------
--- 17. EVENT HANDLERS
+-- 21. EVENT HANDLERS
 --------------------------------------------------
 function DamageMeter:PLAYER_REGEN_ENABLED()
     if self._pendingRefresh then
@@ -1328,7 +1273,7 @@ function DamageMeter:PLAYER_ENTERING_WORLD()
 end
 
 --------------------------------------------------
--- 17b. VISIBILITY AND SHOW ON MOUSEOVER (Settings > Damage Meter)
+-- 22. VISIBILITY AND SHOW ON MOUSEOVER (Settings > Damage Meter)
 -- FlareUI's own visibility, applied after each of Blizzard's checks: it overrules the meter's Edit Mode
 -- dropdown (a preset layout, such as the one Blizzard picks when gamepad mode ends, cannot save that
 -- one). Show on Mouseover: while the visibility hides the meter, it stays up but invisible and shows
@@ -1460,10 +1405,14 @@ local function ApplyVisibility(meter)
     applying = true
     -- whether the meter was up (shown, not faded out) before Blizzard's check: a fade starts from there
     local wasUp = meter.FlareUI_Up
-    local editing = type(meter.IsEditing) == "function" and meter:IsEditing()
+    -- Edit Mode open: always up, whether or not Blizzard's own "Damage Meter" box there is ticked
+    -- (only a ticked box puts the meter in its editing state); Blizzard's meter switched off stays off
+    local editing = (type(meter.IsEditing) == "function" and meter:IsEditing()) or (IsEditModeActive() and MeterAllowed())
     meter.FlareUI_MouseHidden = nil
     if editing or DamageMeter.settingsPreview then
-        hideWhenFaded = false
+        -- a fade under way (or Show on Mouseover's driver) would take it down again
+        fadeTarget, hideWhenFaded = 1, false
+        fadeDriver:Hide()
         ShowMeter(meter)
         meter:SetAlpha(1)
         meter.FlareUI_Up = true
@@ -1506,6 +1455,9 @@ function DamageMeter:SetupMouseover()
     if not meter or self.mouseoverHooked or type(meter.UpdateShownState) ~= "function" then return end
     self.mouseoverHooked = true
     hooksecurefunc(meter, "UpdateShownState", ApplyVisibility)
+    -- Blizzard re-checks the meter on entering Edit Mode only when its "Damage Meter" box is ticked
+    EventRegistry:RegisterCallback("EditMode.Enter", function() DamageMeter:ApplyVisibility() end, DamageMeter)
+    EventRegistry:RegisterCallback("EditMode.Exit", function() C_Timer.After(0, function() DamageMeter:ApplyVisibility() end) end, DamageMeter)
     meter:UpdateShownState()
 end
 
@@ -1516,7 +1468,7 @@ function DamageMeter:ApplyVisibility()
 end
 
 --------------------------------------------------
--- 18. INIT
+-- 23. INIT
 --------------------------------------------------
 function DamageMeter:Init()
     -- EDIT_MODE_LAYOUTS_UPDATED fires while Edit Mode is open, where Refresh does nothing

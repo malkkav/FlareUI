@@ -7,15 +7,15 @@ local L = ns.L
 --   Windows & Settings  Move Any Frame, Sync Blizz UI (account-wide settings)
 --   Vendor              Sell Junk Automatically, Repair Automatically, Durability Warning, Gray Out
 --                       Known Items
---   Camera              Max Camera Zoom, Faster Camera Zoom
+--   Camera              Max and faster camera zoom
 --   Nameplates          Combo Points under the target's nameplate, Tag Quest Objectives, Hide Level,
 --                       Enemy Nameplates in Combat Only
 --   Convenience         Faster Auto Loot, Auto-Type DELETE, Train All button, Mail Address Book,
 --                       Alert Sounds, Pet Food in Bags, Skip Loot Confirmations
---   Hide                Error Messages, Zone Text, Party Title, Frame Numbers, Contextual Tips,
---                       Addon Drawer
+--   Hide                Error Messages, Zone Text, Party Title, Frame Numbers, Contextual Tips
 --   Map pins            /way
---   Always on           Party frames unclamped from the screen edge
+--   Always on           Party frames unclamped from the screen edge; the Edit Mode layout of each
+--                       input mode remembered
 -- Everything applies live except the ones that replace Blizzard scripts (those ask for a reload).
 --------------------------------------------------
 
@@ -256,7 +256,7 @@ local function GetHeaderHandle(frame)
     strip:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
     strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -CLOSE_BUTTON_ROOM, 0)
     strip:SetHeight(HEADER_HEIGHT)
-    -- above the window itself: at its level the window (mouse-enabled) took the press, and nothing dragged
+    -- above the window itself: at its level the window (mouse-enabled) would take the press
     strip:SetFrameLevel(frame:GetFrameLevel() + 2)
     frame.moveStrip = strip
     return strip
@@ -339,7 +339,7 @@ local function SetupBagTitle(frame)
         end
     end
     if not frame.bagRouterFixed then return end
-    -- the title strip Move Any Frame set up lies over the router: the router is the handle now
+    -- the title strip Move Any Frame set up lies over the router, which is the handle instead
     local title = frame.TitleContainer
     if title and title.EnableMouse then title:EnableMouse(false) end
     local portrait = frame.PortraitButton
@@ -356,11 +356,10 @@ local function HideBagTooltip(region)
     if GameTooltip:IsOwned(portrait) then GameTooltip:Hide() end
 end
 
+-- index 0 is the combined bag, 1-13 the single bag windows
 local function InitBagTooltip()
-    local names = { "ContainerFrameCombinedBags" }
-    for i = 1, 13 do names[#names + 1] = "ContainerFrame" .. i end
-    for _, name in ipairs(names) do
-        local frame = _G[name]
+    for i = 0, 13 do
+        local frame = _G[i == 0 and "ContainerFrameCombinedBags" or "ContainerFrame" .. i]
         if type(frame) == "table" and frame.GetChildren then
             if frame.PortraitButton and frame.PortraitButton.HookScript then
                 frame.PortraitButton:HookScript("OnEnter", HideBagTooltip)
@@ -374,10 +373,10 @@ local function InitBagTooltip()
     end
 end
 
+-- runs on every bag update, so no list is built
 local function ScanBagFrames()
-    local names = { "ContainerFrameCombinedBags" }
-    for i = 1, 13 do names[#names + 1] = "ContainerFrame" .. i end
-    for _, name in ipairs(names) do
+    for i = 0, 13 do
+        local name = i == 0 and "ContainerFrameCombinedBags" or "ContainerFrame" .. i
         SetupMovableFrame(name)
         local frame = moveFrames[name]
         if frame then SetupBagTitle(frame) end
@@ -569,7 +568,6 @@ local function SaveSync()
     end
 
     store.savedAt = GetServerTime()
-    store.savedBy = nil
 end
 
 local function QueueSaveSync()
@@ -601,15 +599,14 @@ local function LoadSync()
     end
 
     -- Edit Mode layout, matched on name and kind. The switch rides on the reload dialog's secure
-    -- button (from our code it would taint every system). Only a layout of the current input mode.
-    -- While Remember Layout per Mode picks the layouts, once per character (syncLayoutTaken): the
-    -- layout then becomes the one remembered for this mode.
+    -- button (from our code it would taint every system). Only a layout of the current input mode,
+    -- and once per character (syncLayoutTaken), as each mode's layout is remembered (section 15):
+    -- the layout then becomes the one remembered for this mode.
     local layoutChanged, layoutIndex = false, nil
     local manager = EditModeManagerFrame
     local layoutInfo = manager and manager.layoutInfo
     local expected = ns.IsGamepadUI() and Enum.InputDeviceInterfaceType.Gamepad or Enum.InputDeviceInterfaceType.Mkb
-    local takeLayout = not db.layoutPerMode or not charDB.syncLayoutTaken
-    if store.editModeLayout and layoutInfo and layoutInfo.layouts and takeLayout then
+    if store.editModeLayout and layoutInfo and layoutInfo.layouts and not charDB.syncLayoutTaken then
         for index, layout in ipairs(layoutInfo.layouts) do
             local sameKind = store.editModeLayoutType == nil
                 or layout.layoutType == store.editModeLayoutType
@@ -619,7 +616,7 @@ local function LoadSync()
                 if index ~= layoutInfo.activeLayout and sameMode then
                     layoutChanged, layoutIndex = true, index
                     charDB.syncLayoutTaken = true
-                    if Tweaks.AdoptSyncedLayout then Tweaks.AdoptSyncedLayout(layout) end
+                    Tweaks.AdoptSyncedLayout(layout)
                 end
                 break
             end
@@ -779,9 +776,7 @@ local function InitSyncUI()
     Start()
 end
 
---------------------------------------------------
--- Read by the source button in the options.
---------------------------------------------------
+-- Read by the source button in the options
 function Tweaks:IsSyncSource()
     return IsSource(GetSyncStore())
 end
@@ -849,16 +844,17 @@ end
 
 --------------------------------------------------
 -- 6. DURABILITY WARNING
--- A chat warning when the worst equipped item drops to the threshold, once per dip
+-- A chat warning when the worst equipped item drops to 50%, once per dip
 --------------------------------------------------
 local DURABILITY_SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10, 16, 17, 18 }   -- armour and weapons
+local DURABILITY_THRESHOLD = 50
 local durabilityWarned = false
 
 local function LowestDurability()
     local lowest
     for _, slot in ipairs(DURABILITY_SLOTS) do
         local current, max = GetInventoryItemDurability(slot)
-        if current and max and max > 0 and canaccessvalue(current) and canaccessvalue(max) then
+        if canaccessvalue(current) and canaccessvalue(max) and current and max and max > 0 then
             local percent = current / max * 100
             if not lowest or percent < lowest then lowest = percent end
         end
@@ -871,7 +867,7 @@ local function CheckDurability()
     if not (db and db.durabilityWarning) then return end
     local lowest = LowestDurability()
     if not lowest then return end
-    local threshold = db.durabilityThreshold or 50
+    local threshold = DURABILITY_THRESHOLD
     if lowest <= threshold then
         if not durabilityWarned then
             durabilityWarned = true
@@ -1061,28 +1057,6 @@ local function ApplyTips()
     end
 end
 
--- The addon drawer, re-hidden after Blizzard's UpdateDisplay (the Minimap module hides it itself)
-local drawerHooked = false
-local function ApplyAddonDrawer()
-    local drawer = _G.AddonCompartmentFrame
-    local db = GetDb()
-    if not (drawer and db) then return end
-    local minimap = ns.db.profile.minimap
-    if minimap and minimap.enabled then return end
-    if db.hideAddonDrawer then
-        if not drawerHooked then
-            drawerHooked = true
-            hooksecurefunc(drawer, "UpdateDisplay", function(self)
-                local current = GetDb()
-                if current and current.hideAddonDrawer then self:Hide() end
-            end)
-        end
-        drawer:Hide()
-    elseif drawerHooked then
-        drawer:UpdateDisplay()
-    end
-end
-
 local function InitHide()
     local db = GetDb()
     if not db then return end
@@ -1092,7 +1066,6 @@ local function InitHide()
     Tweaks:RegisterEvent("GROUP_ROSTER_UPDATE", ApplyPartyTitle)
     ApplyPortraitNumbers()
     ApplyTips()
-    ApplyAddonDrawer()
 end
 
 --------------------------------------------------
@@ -1230,7 +1203,7 @@ local function ApplyNameplateCombo()
 end
 
 --------------------------------------------------
--- 9b. NAMEPLATE QUEST TAGS
+-- 10. NAMEPLATE QUEST TAGS
 -- A quest "!" just right of an enemy nameplate's level box (or health bar) whose unit is
 -- related to an active quest. Plates are recycled: each plate has a tag, re-checked when a unit
 -- gets a plate, when the quest log changes, and when the level box comes or goes.
@@ -1371,7 +1344,7 @@ local function ApplyQuestTags()
 end
 
 --------------------------------------------------
--- 9c. HIDE LEVEL
+-- 11. HIDE LEVEL
 -- Blizzard's level box on the right of a nameplate goes invisible, and the health bar takes its room
 -- back after each of Blizzard's layouts. Blizzard's own check for the box is left alone (replacing it
 -- would taint the plates, whose values can be secret); the box only loses its alpha.
@@ -1425,7 +1398,7 @@ local function ApplyHideLevelAll()
 end
 
 --------------------------------------------------
--- 10. PARTY FRAME UNCLAMP (always on)
+-- 12. PARTY FRAME UNCLAMP (always on)
 -- Edit Mode's clamp stops the party frames short of the left edge; switched off once, after combat
 -- if need be.
 --------------------------------------------------
@@ -1445,7 +1418,7 @@ local function UnclampPartyFrame()
 end
 
 --------------------------------------------------
--- 11b. AUTO-TYPE DELETE (the word goes into the box; Yes still has to be pressed)
+-- 13. AUTO-TYPE DELETE (the word goes into the box; Yes still has to be pressed)
 --------------------------------------------------
 local DELETE_DIALOGS = { DELETE_GOOD_ITEM = true, DELETE_GOOD_QUEST_ITEM = true }
 
@@ -1460,7 +1433,7 @@ local function InitAutoDelete()
 end
 
 --------------------------------------------------
--- 11c. TRAIN ALL
+-- 14. TRAIN ALL
 -- Learns every available skill as far as the gold goes; never a new profession, not at pet
 -- trainers. Walked from the bottom: a purchase reindexes the entries below it.
 --------------------------------------------------
@@ -1522,7 +1495,7 @@ local function InitTrainAll()
 end
 
 --------------------------------------------------
--- 11e. EDIT MODE LAYOUT PER MODE
+-- 15. EDIT MODE LAYOUT PER MODE
 -- Switching the Gamepad UI falls back to the new mode's preset layout. FlareUI remembers the layout
 -- last used in each mode (per character, by type and name) and offers it back after login. The
 -- switch runs from the dialog's secure button (from our code it would taint every system); never
@@ -1549,8 +1522,6 @@ local function SameLayout(a, b)
 end
 
 local function RememberLayout()
-    local db = GetDb()
-    if not (db and db.layoutPerMode) then return end
     if sessionMode and ModeKey() ~= sessionMode then return end
     local layout = ActiveLayout()
     if not (layout and layout.layoutName) then return end
@@ -1566,8 +1537,7 @@ end
 -- Sync Blizz UI is switching this character to the source's layout (after its reload): remember
 -- that one for this mode, and not the layout still active until the reload
 function Tweaks.AdoptSyncedLayout(layout)
-    local db = GetDb()
-    if not (db and db.layoutPerMode and layout and layout.layoutName) then return end
+    if not (layout and layout.layoutName) then return end
     local active = ActiveLayout()
     fallbackLayout = active and { name = active.layoutName, layoutType = active.layoutType }
     local charDB = ns.CharDB()
@@ -1603,8 +1573,6 @@ local function InitLayoutPerMode()
 
     local function Restore()
         restored = true
-        local db = GetDb()
-        if not (db and db.layoutPerMode) then return end
         local index, layout = RememberedIndex()
         if index then
             local active = ActiveLayout()
@@ -1643,7 +1611,7 @@ local function InitLayoutPerMode()
 end
 
 --------------------------------------------------
--- 11f. /way MAP PINS
+-- 16. /way MAP PINS
 -- "/way 52.3 48.1 [note]" pins the current map; "/way Zone Name 52 48" looks the zone up by name.
 --------------------------------------------------
 local mapNameCache
@@ -1723,7 +1691,7 @@ local function InitWay()
 end
 
 --------------------------------------------------
--- 12. MAIL, MERCHANT, ALERTS, PET FOOD, LOOT CONFIRMATIONS, COMBAT NAMEPLATES
+-- 17. MAIL, MERCHANT, ALERTS, PET FOOD, LOOT CONFIRMATIONS, COMBAT NAMEPLATES
 --------------------------------------------------
 -- Every character is noted (name, realm, faction, class) for the Mail Address Book, whether the
 -- option is on or not, so the list is full the day it is switched on
@@ -1947,7 +1915,7 @@ local function InitCombatPlates()
 end
 
 --------------------------------------------------
--- 13. PUBLIC
+-- 18. PUBLIC
 --------------------------------------------------
 -- Live re-apply for the options that need no reload
 function Tweaks:Refresh()
@@ -1956,7 +1924,6 @@ function Tweaks:Refresh()
     ApplyPartyTitle()
     ApplyPortraitNumbers()
     ApplyTips()
-    ApplyAddonDrawer()
     ApplyNameplateCombo()
     ApplyQuestTags()
     ApplyHideLevelAll()

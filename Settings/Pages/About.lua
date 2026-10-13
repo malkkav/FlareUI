@@ -3,8 +3,8 @@ local S = ns.Settings
 
 --------------------------------------------------
 -- ABOUT: top of the list. A page of its own (module.custom): the thank-you and the links, the
--- credits, and the slash commands in a box at the bottom. The header button runs the welcome
--- guide again. The rows below are not drawn; they keep the text findable in search.
+-- credits, and the slash commands in a box at the bottom. The rows below are never drawn (search
+-- skips text rows); the page reads their texts from the copy.
 --------------------------------------------------
 local CREDIT_LINKS = {
     clari = "https://clariturela.itch.io/",

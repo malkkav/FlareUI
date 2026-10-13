@@ -2,14 +2,13 @@ local _, ns = ...
 local S = ns.Settings
 
 --------------------------------------------------
--- UNIT FRAMES (Modules/UnitFrames.lua, PartyFrames.lua). Each frame is a row with its switch and
+-- UNIT FRAMES (Modules/UnitFrames.lua, PartyFrames.lua, RaidFrames.lua, BossFrames.lua). Each frame is a row with its switch and
 -- Edit; size, texts, portrait, auras and icons are set in Edit Mode. Frames are made at login, so
 -- switching one asks for a reload. Class colours and the aura look apply to every frame.
 --------------------------------------------------
+-- UnitFrames:Refresh passes the change on to the party, raid and boss frames and the resource bars
 local function Refresh()
     if ns.UnitFrames and ns.UnitFrames.Refresh then ns.UnitFrames:Refresh() end
-    if ns.PartyFrames and ns.PartyFrames.Refresh then ns.PartyFrames:Refresh() end
-    if ns.ResourceBars and ns.ResourceBars.Refresh then ns.ResourceBars:Refresh() end
 end
 
 local function Frame(key, path, frameName)

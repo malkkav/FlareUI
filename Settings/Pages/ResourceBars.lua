@@ -2,8 +2,7 @@ local _, ns = ...
 local S = ns.Settings
 
 --------------------------------------------------
--- RESOURCE BARS (Modules/ResourceBars.lua). Each bar is a row with its
--- switch and Edit; Show, size, text and the rest are in Edit Mode. Druid mana is offered to druids
+-- RESOURCE BARS (Modules/ResourceBars.lua). Each bar is a row with its switch and Edit; Show, size, text and the rest are in Edit Mode. Druid mana is offered to druids
 -- only. A bar is made at login, so switching one asks for a reload.
 --------------------------------------------------
 local function Bar(key, extra)
@@ -38,9 +37,9 @@ Bar("health")
 Bar("power")
 Bar("mana", { hidden = NotDruid })
 Bar("combo")
-Bar("swingMain", { key = "rb.swingMain" })
-Bar("swingOff", { key = "rb.swingOff" })
-Bar("swingRanged", { key = "rb.swingRanged" })
+Bar("swingMain")
+Bar("swingOff")
+Bar("swingRanged")
 
 local function Refresh()
     if ns.ResourceBars and ns.ResourceBars.Refresh then ns.ResourceBars:Refresh() end

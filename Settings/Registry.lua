@@ -8,12 +8,15 @@ local L = ns.L
 -- tips, section and choice names come from ns.Copy (Settings/Copy.lua, generated from the copy
 -- document), by row key.
 --
---   Settings:Module{ key, group, order, enabled = "db.path", editMode = fn, banner = fn,
+--   Settings:Module{ key, group, order, enabled = "db.path", editMode = fn, editFrames = { fn },
+--                    banner = fn, navIcon, navIconRound, custom = tab,
 --                    tabs = { { key, custom = build(host, previewHost), refresh = fn(host), preview = true }, ... } }
---   Settings:Row{ key = "module.row", kind, path = "db.path" | get/set, choices, parent,
---                 reload, apply, hidden, disabled, picture, ratio, tags }
+--   Settings:Row{ key = "module.row", kind, path = "db.path" | get/set, choices, parent, tab, section,
+--                 half, reload, apply, hidden, disabled }
 --
--- kinds: toggle | choice | dropdown | keybind | button | chips | frame | text | expander | custom
+-- kinds: toggle | choice | dropdown | keybind | button | buttons | frame | expander | editmode (each
+-- kind's own fields are with its builder in Settings/Panel.lua), and text: copy for a custom page,
+-- never drawn and never searched
 --------------------------------------------------
 local Settings = {
     modules = {},       -- key -> module
@@ -25,7 +28,6 @@ local Settings = {
 ns.Settings = Settings
 
 local GROUPS = { "top", "HUD", "Info", "Tools", "bottom" }
-Settings.GROUPS = GROUPS
 
 --------------------------------------------------
 -- 1. TEXT
@@ -188,7 +190,7 @@ Row.__index = Row
 
 function Row:Label()
     if self.labelFn then return self.labelFn() end   -- a label that changes (the macro line)
-    if self.kind == "text" or self.kind == "chips" then return Settings:Text(self.key, "label", true) or "" end
+    if self.kind == "text" then return Settings:Text(self.key, "label", true) or "" end
     return Settings:Text(self.key, "label")
 end
 function Row:Description() return Settings:Text(self.key, "desc") end
@@ -229,36 +231,6 @@ function Row:Set(value)
     Settings:Fire("RowChanged", self)
 end
 
--- Chips: row.items = { { path = "db.path", reload = true }, ... }, names from the copy's "Chips:"
--- list in the same order. Each chip is its own on/off value.
-function Row:Items()
-    local names = Settings:Text(self.key, "chips") or {}
-    local list = {}
-    for i, item in ipairs(self.items or {}) do
-        list[i] = { index = i, text = item.text or names[i] or item.path }
-    end
-    return list
-end
-
-function Row:GetItem(i)
-    local item = self.items[i]
-    if item.get then return item.get() end
-    return Settings:GetPath(item.path) and true or false
-end
-
-function Row:SetItem(i, value)
-    local item = self.items[i]
-    if item.reload and not item.started then item.started, item.startValue = true, self:GetItem(i) end
-    if item.set then item.set(value) else Settings:SetPath(item.path, value) end
-    if item.reload then
-        Settings:TrackReload(self.key .. "#" .. i, value, item.startValue)
-    elseif self.apply then
-        local ok, err = pcall(self.apply, value)
-        if not ok then geterrorhandler()(err) end
-    end
-    Settings:Fire("RowChanged", self)
-end
-
 -- Frame Border: None first, then every border LibSharedMedia knows (FlareUI's, the game's, other addons')
 function Settings:BorderChoices()
     local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
@@ -290,13 +262,11 @@ function Row:Choices()
     return list
 end
 
--- Words search matches beyond the label and the description
+-- What search reads: the label, the description, the tip and the copy's tags
 function Row:SearchText()
     if not self.searchText then
         local parts = { self:Label() or "", self:Description() or "", self:Tip() or "" }
         for _, tag in ipairs(Settings:Text(self.key, "tags") or {}) do parts[#parts + 1] = tag end
-        for _, tag in ipairs(self.tags or {}) do parts[#parts + 1] = tag end
-        for _, chip in ipairs(Settings:Text(self.key, "chips") or {}) do parts[#parts + 1] = chip end
         self.searchText = table.concat(parts, " "):lower()
     end
     return self.searchText
@@ -310,7 +280,7 @@ function Settings:Row(def)
     local row = setmetatable(def, Row)
     row.module = moduleKey
     row.kind = row.kind or "toggle"
-    -- a chip row is its own section in the copy ("Hiding"): it keeps that title
+    -- a row that is a section of its own in the copy keeps that title
     local copySections = ns.Copy and ns.Copy.sections or {}
     local sectionKey = row.section or Settings:Text(row.key, "section")
         or (copySections[row.key] and row.key) or (moduleKey .. ".main")
@@ -350,7 +320,17 @@ end
 --------------------------------------------------
 -- 6. SEARCH
 --------------------------------------------------
--- Rows (and Edit Mode stubs) whose label, description, tip, tags or chips contain every word
+-- a row matches when its text holds every word
+local function Matches(row, words, moduleTitle)
+    if row:IsHidden() or row.kind == "text" then return false end
+    local haystack = row:SearchText() .. " " .. moduleTitle
+    for _, word in ipairs(words) do
+        if not haystack:find(word) then return false end
+    end
+    return true
+end
+
+-- Rows (and Edit Mode stubs) whose label, description, tip or tags contain every word
 function Settings:Search(text)
     -- each word must start a word of the row ("ids" finds "Show IDs", not "raids")
     local words = {}
@@ -362,20 +342,16 @@ function Settings:Search(text)
     for _, key in ipairs(self.order) do
         local module = self.modules[key]
         local moduleTitle = (module:Title() or ""):lower()
-        local function Try(row)
-            if row:IsHidden() or row.kind == "text" then return end
-            local haystack = row:SearchText() .. " " .. moduleTitle
-            for _, word in ipairs(words) do
-                if not haystack:find(word) then return end
-            end
-            results[#results + 1] = row
-        end
         for _, section in ipairs(module.sections) do
-            for _, row in ipairs(section.rows) do Try(row) end
+            for _, row in ipairs(section.rows) do
+                if Matches(row, words, moduleTitle) then results[#results + 1] = row end
+            end
         end
         -- a module that is off has no frames, so no Edit Mode settings to find
-        if module:IsOn() and module.EditModeRows then
-            for _, row in ipairs(module:EditModeRows()) do Try(row) end
+        if module:IsOn() then
+            for _, row in ipairs(module:EditModeRows()) do
+                if Matches(row, words, moduleTitle) then results[#results + 1] = row end
+            end
         end
     end
     return results
@@ -551,4 +527,3 @@ function Settings:Format(text)
     return (text:gsub("`([^`]+)`", "|cffffd100%1|r"))
 end
 
-Settings.L = L

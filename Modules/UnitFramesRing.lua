@@ -3,10 +3,17 @@ local _, ns = ...
 --------------------------------------------------
 -- FOREVER STYLE UNIT FRAMES
 -- The default look of the player, target and focus frames: Forever's own bronze portrait ring beside
--- them instead of the square portrait (Unit Frames > Addon style frames switches to the plain look). The ring is the game's atlas (UI-HUD-UnitFrame-*-PortraitOn), cropped to the
--- ring and masked to its outline, so the frame plate it is painted with stays out; FlareUI ships no
--- Blizzard art. UnitFrames.lua asks this file at its layout points (bars, texts, cast bar, auras,
--- icons, classic combo points); everything else is the frames' own code.
+-- them instead of the square portrait (Unit Frames > Addon style frames switches to the plain look).
+-- UnitFrames.lua asks this file at its layout points (bars, texts, cast bar, auras, icons, classic
+-- combo points); everything else is the frames' own code.
+--------------------------------------------------
+local Ring = {}
+ns.UFRing = Ring
+
+--------------------------------------------------
+-- 1. ART AND PLACEMENT
+-- The ring is the game's atlas (UI-HUD-UnitFrame-*-PortraitOn), cropped to the ring and masked to its
+-- outline, so the frame plate it is painted with stays out; FlareUI ships no Blizzard art.
 --
 -- Everything around the ring is placed as Blizzard places it: each element's anchor on Blizzard's
 -- own frame (PlayerFrame.xml / TargetFrame.xml, a 232 x 100 frame), taken relative to Blizzard's ring
@@ -27,9 +34,6 @@ local _, ns = ...
 -- start where their corners meet the rim). The ring is 1.5 x the frame's height unless Ring Size says
 -- otherwise.
 --------------------------------------------------
-local Ring = {}
-ns.UFRing = Ring
-
 local RING_UNITS = { player = true, target = true, focus = true }
 
 -- the art: the atlas, and where its ring is inside it (fractions of the atlas, measured on the sheet
@@ -47,8 +51,8 @@ local DROP_MASK     = "Interface\\AddOns\\FlareUI\\Media\\Masks\\RingDrop"
 local SMALL_CIRCLE  = "UI-HUD-UnitFrame-SmallCircle"
 local PORTRAIT_SHARE = 0.86   -- the portrait inside the ring, of its diameter
 local GEM_GAP       = 0.30    -- combo gems sit this share of their size outside the rim
--- Blizzard's combo points on the ring (Forever's October 2026 art): a little smaller than on the
--- row, spaced by their art's reach (Core.lua ns.ComboPointStep)
+-- Blizzard's combo points on the ring: a little smaller than on the row, spaced by their art's reach
+-- (Core.lua ns.ComboPointStep)
 local RING_COMBO = { size = 14 }
 local RING_SHARE    = 1.5     -- the ring's default diameter, of the frame's height
 local BAR_INSET     = 4       -- UnitFrames' INSET: the bars start this far in from the frame's edge
@@ -87,7 +91,7 @@ local BLIZZ = {
         readyCheck = { size = 40, point = "CENTER", x = 176.9, y = -47.9 },  -- on the portrait, as the player's
     },
 }
--- the target's level disc is the player's, mirrored (Marcus's call: the pair looks better matched)
+-- the target's level disc is the player's, mirrored, so the pair matches
 BLIZZ.target.level = BLIZZ.player.level
 BLIZZ.focus = {
     centre = BLIZZ.target.centre, D = BLIZZ.target.D, side = "RIGHT", boss = true,
@@ -139,6 +143,10 @@ local RING_ICONS = { "RestIcon", "LeaderIcon", "PvPIcon", "ClassIcon", "QuestIco
 -- UnitFrames' icon keys -> the BLIZZ entry they use
 local ICON_KEYS = { rest = "rest", leader = "leader", pvp = "pvp", classification = "classification",
                     quest = "quest", raidIcon = "raidIcon", readyCheck = "readyCheck" }
+
+--------------------------------------------------
+-- 2. HELPERS
+--------------------------------------------------
 local LEM = LibStub("FlareEditMode")
 
 local frames = {}   -- the frames laid out in this style (for the state events)
@@ -184,6 +192,9 @@ function Ring.Side(f)
     return (udb and udb.mirror) and natural or (natural == "LEFT" and "RIGHT" or "LEFT")
 end
 
+--------------------------------------------------
+-- 3. GEOMETRY
+--------------------------------------------------
 -- The ring's default size for a frame of height h
 local function DefaultDiameter(h)
     return math.floor((h or 44) * RING_SHARE + 0.5)
@@ -191,7 +202,7 @@ end
 
 -- D, R, H, the ring's side, its centre from the frame's edge (positive: inside), and the scale from
 -- Blizzard's ring to ours
-function Ring.Geometry(f)
+local function Geometry(f)
     local udb = UnitDb(f.unit) or {}
     local H = udb.height or 44
     local D = udb.ringSize or DefaultDiameter(H)
@@ -208,20 +219,15 @@ local function ReachAt(g, dy)
     return math.max(0, g.centre + math.sqrt(g.R * g.R - dy * dy))
 end
 
--- the bars start at the frame's usual inset: the ring covers their first px instead
-function Ring.BarSpace()
-    return 0
-end
-
 -- room an aura row or the cast bar needs on the ring's side, at `gap` beyond the frame's edge
 function Ring.Clearance(f, gap)
-    local g = Ring.Geometry(f)
+    local g = Geometry(f)
     return math.ceil(ReachAt(g, g.H / 2 + gap)) + 3
 end
 
 -- the name's extra inset on the ring's side, from the health bar's edge: clear of the portrait
 function Ring.TextPad(f)
-    local g = Ring.Geometry(f)
+    local g = Geometry(f)
     return math.max(0, math.ceil(g.centre + g.R) - BAR_INSET + 3)
 end
 
@@ -262,6 +268,9 @@ local function PvPSpot(f, g)
     return lx + sign * e.dx * lw, ly + e.dy * lw, lw * e.share, lw * e.share
 end
 
+--------------------------------------------------
+-- 4. BUILD
+--------------------------------------------------
 local function Crop(tex, artInfo)
     local info = C_Texture.GetAtlasInfo(artInfo.atlas)
     if not info then return false end
@@ -365,6 +374,9 @@ local function Build(f)
 end
 
 -- places a region at a BLIZZ element (or hides it without one)
+--------------------------------------------------
+-- 5. LAYOUT
+--------------------------------------------------
 local function PlaceRegion(f, g, region, e, atlas)
     local dx, dy, w, h = Place(f, g, e, atlas)
     region:ClearAllPoints()
@@ -377,7 +389,7 @@ end
 -- Lays out the ring, portrait, discs and extras (called from UnitFrames' LayoutBars)
 function Ring.Layout(f)
     local ring = Build(f)
-    local g = Ring.Geometry(f)
+    local g = Geometry(f)
     local level = f:GetFrameLevel()
     local left = g.side == "LEFT"
     local blizz = BLIZZ[f.unit]
@@ -432,7 +444,6 @@ function Ring.Layout(f)
         ring.PvPDisc:SetPoint("CENTER", ring, "CENTER", px, py)
     end
 
-
     Ring.LayoutLevel(f, g)
     Ring.Update(f)
 end
@@ -441,7 +452,7 @@ end
 function Ring.LayoutLevel(f, g)
     local ring = f.RingFrame
     if not ring then return end
-    g = g or Ring.Geometry(f)
+    g = g or Geometry(f)
     local e = BLIZZ[f.unit].level
     PlaceRegion(f, g, ring.Disc, e)
     -- the skull and the number at the disc's own scale
@@ -486,7 +497,7 @@ function Ring.IconSpot(f, key)
     local entryKey = ICON_KEYS[key]
     local e = entryKey and BLIZZ[f.unit] and BLIZZ[f.unit][entryKey]
     if not e or not f.RingFrame then return nil end
-    local g = Ring.Geometry(f)
+    local g = Geometry(f)
     local dx, dy, w, h
     if key == "pvp" then
         -- the crest: on its disc's centre, its atlas's size against the disc's
@@ -505,6 +516,9 @@ function Ring.IconSpot(f, key)
     return "CENTER", f.RingFrame, "CENTER", dx, dy, w, h
 end
 
+--------------------------------------------------
+-- 6. STATE ART
+--------------------------------------------------
 -- the Ticker: the PvP countdown
 local function Tick(ticker, elapsed)
     local ring = ticker:GetParent()
@@ -531,7 +545,7 @@ local function StartTicker(ring)
 end
 
 -- the PvP timer, and its Edit Mode sample
-function Ring.UpdateExtras(f, g)
+local function UpdateExtras(f)
     local ring = f.RingFrame
     local editing = LEM:IsInEditMode()
     if ring.PvPTimer then
@@ -558,7 +572,7 @@ end
 function Ring.Update(f)
     local ring = f.RingFrame
     if not ring or not Ring.Applies(f) then return end
-    local unit, g, blizz = f.unit, Ring.Geometry(f), BLIZZ[f.unit]
+    local unit, g, blizz = f.unit, Geometry(f), BLIZZ[f.unit]
     local exists = Readable(UnitExists(unit))
 
     -- PvP: Forever's faction crest on its own disc (the frame's PvP icon, re-arted)
@@ -618,7 +632,7 @@ function Ring.Update(f)
         ring.Attack:SetShown((combat and not resting) and true or false)
     end
 
-    Ring.UpdateExtras(f, g)
+    UpdateExtras(f)
 
     -- threat: the flash in Blizzard's threat colours
     do
@@ -639,25 +653,33 @@ function Ring.Update(f)
 end
 
 -- the state art follows combat, resting and threat without a full layout
+-- Unit events only for the ring frames' units: threat updates fire for every group member.
+-- RegisterUnitEvent takes two units, so focus has a frame of its own.
 do
-    local events = CreateFrame("Frame")
-    for _, event in ipairs({ "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_UPDATE_RESTING",
-            "UNIT_THREAT_SITUATION_UPDATE", "UNIT_THREAT_LIST_UPDATE", "UNIT_CLASSIFICATION_CHANGED", "UNIT_FACTION" }) do
-        pcall(events.RegisterEvent, events, event)
-    end
-    events:SetScript("OnEvent", function()
+    local function OnEvent()
         for f in pairs(frames) do Ring.Update(f) end
-    end)
-    for _, event in ipairs({ "PVP_TIMER_UPDATE", "PLAYER_FLAGS_CHANGED" }) do
+    end
+    local events, focusEvents = CreateFrame("Frame"), CreateFrame("Frame")
+    for _, event in ipairs({ "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_UPDATE_RESTING", "PVP_TIMER_UPDATE" }) do
         pcall(events.RegisterEvent, events, event)
     end
+    for _, event in ipairs({ "UNIT_THREAT_SITUATION_UPDATE", "UNIT_THREAT_LIST_UPDATE", "UNIT_CLASSIFICATION_CHANGED",
+            "UNIT_FACTION", "PLAYER_FLAGS_CHANGED" }) do
+        pcall(events.RegisterUnitEvent, events, event, "player", "target")
+        pcall(focusEvents.RegisterUnitEvent, focusEvents, event, "focus")
+    end
+    events:SetScript("OnEvent", OnEvent)
+    focusEvents:SetScript("OnEvent", OnEvent)
 end
 
+--------------------------------------------------
+-- 7. CLASSIC COMBO POINTS
+--------------------------------------------------
 -- Classic combo points along the ring's top arc (clockwise from just right of 12 o'clock on a ring
 -- at the right, mirrored on a ring at the left). Anchors only: the count may be secret.
 function Ring.PlaceCombo(combo, f)
     if f.unit ~= "target" then return false end
-    local g = Ring.Geometry(f)
+    local g = Geometry(f)
     local max = combo.maxComboPoints
     if not (canaccessvalue(max) and type(max) == "number" and max >= 1) then max = 5 end
     local last = math.min(max, #combo.ComboPoints)
@@ -685,6 +707,9 @@ function Ring.PlaceCombo(combo, f)
     return true
 end
 
+--------------------------------------------------
+-- 8. STYLE SWITCH
+--------------------------------------------------
 -- a table's own values, deep (AceDB's defaults stay behind their metatables)
 local function CopyRaw(v)
     if type(v) ~= "table" then return v end
@@ -795,6 +820,9 @@ function Ring.SetOn(on)
     db.foreverStyle = on and true or false
 end
 
+--------------------------------------------------
+-- 9. EDIT MODE
+--------------------------------------------------
 -- Edit Mode's Ring Size default: from the frame's current height
 function Ring.DefaultSize(unit)
     local udb = UnitDb(unit)

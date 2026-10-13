@@ -3,8 +3,9 @@ local L = ns.L
 local S = ns.Settings
 
 --------------------------------------------------
--- PROFILES (under About, at the top of the list): switch, make, duplicate or delete a profile; reset FlareUI. A switch
--- reloads the UI (Core.lua OnProfileChanged). Sync Blizz UI lives in Quality of Life.
+-- PROFILES (under About, at the top of the list): switch, make, duplicate or delete a profile;
+-- reset FlareUI. A switch reloads the UI (Core.lua OnProfileChanged). Sync Blizz UI lives in
+-- Quality of Life.
 --------------------------------------------------
 -- a new profile's name: trimmed, not empty and not one already in use (SetProfile would switch to it)
 local function FreeName(text)

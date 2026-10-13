@@ -300,11 +300,11 @@ local function RestyleWorldMapCoords()
     end
 end
 
--- Forever's day/night badge in the map's bottom-left corner, unless switched off
+-- Forever's day/night badge in the map's bottom-left corner, always shown
 local function PlaceSun()
     local sun = Cluster.DielFrame
     if not sun then return end
-    sun:Show()   -- always on; also the Addon Button Bag's button (MinimapBag.lua)
+    sun:Show()   -- also the Addon Button Bag's button (MinimapBag.lua)
     sun:SetScale(SUN_SCALE)
     sun:ClearAllPoints()
     local overhang = SUN_OVERHANG / SUN_SCALE   -- offsets are in the badge's own, scaled units
@@ -409,7 +409,7 @@ local function InstallHooks()
     -- both re-place pieces from Blizzard's layout; ours goes back on after them
     hooksecurefunc(Cluster, "SetEditModeScale", function()
         MM:UpdateLayout()
-        MM:UpdateTrackerScale()   -- Match Objective Tracker Width follows the new size
+        MM:UpdateTrackerScale()   -- Blizzard's tracker follows the new width
     end)
     hooksecurefunc(Cluster, "SetHeaderUnderneath", function() MM:UpdateLayout() end)
     hooksecurefunc("MiniMapIndicatorFrame_UpdatePosition", PlaceIndicators)
@@ -424,8 +424,8 @@ end
 
 --------------------------------------------------
 -- 10. OBJECTIVE TRACKER SCALE
--- Match Objective Tracker Width scales Blizzard's tracker so its header lines (about 288 px of the
--- 300 px art shows) are as wide as the minimap frame.
+-- Blizzard's tracker is scaled so its header lines (about 288 px of the 300 px art shows) are as
+-- wide as the minimap frame.
 --------------------------------------------------
 local TRACKER_LINE_WIDTH = 288
 
@@ -442,8 +442,7 @@ end
 local trackerScaleWaiter
 function MM:UpdateTrackerScale()
     local tracker = _G.ObjectiveTrackerFrame
-    local db = GetDb()
-    if not (tracker and db) then return end
+    if not (tracker and GetDb()) then return end
     -- FlareUI's Quest Tracker parks Blizzard's
     local own = ns.db.profile.objectivetracker
     if own and own.enabled then return end
@@ -458,12 +457,8 @@ function MM:UpdateTrackerScale()
         trackerScaleWaiter:RegisterEvent("PLAYER_REGEN_ENABLED")
         return
     end
-    local scale = 1
-    if db.matchTrackerWidth then
-        local width = FrameOuterWidth(tracker)
-        if width then scale = width / TRACKER_LINE_WIDTH end
-    end
-    ns.SetSystemScale(tracker, scale)
+    local width = FrameOuterWidth(tracker)
+    ns.SetSystemScale(tracker, width and width / TRACKER_LINE_WIDTH or 1)
 end
 
 --------------------------------------------------

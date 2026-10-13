@@ -1,3 +1,35 @@
+# FlareUI 2.0.9
+
+Tidier Edit Mode dialogs, more options back for your frames, and a big clean-up under the hood.
+
+## New
+- Party Frames: **Missing Buffs** (under Auras, off by default): out of combat, the group buffs a member lacks that you can cast show in the corner across from the buffs.
+- Party Frames: a **Pet** section for the pet frames' width, height and border, shown while Pets is on.
+- Boss Frames: a **Boss** section with Growth and a new **Spacing** slider.
+
+## Back again
+- Cast bars (Player Cast Bar, target, focus, party and boss): **Hide Icon** and **Hide Spell Timer**; target, focus, party and boss also get **Cast Bar Height**, **Texture** and **Border Texture**.
+- Unit Frames and Party Frames: **Absorb Texture** and **Absorb Reverse Fill** in the Look section.
+- Party and Raid Frames: **Big Defensive** and its size; Party Frames: **Spacing**.
+- Action Bars: **Clean keybind text**, **Button art** and **Stop auto-add spells**.
+
+## Changed
+- Edit Mode: every FlareUI frame's dialog uses the same sections in the same order: Frame (Width and Height first), Look (textures), Cast Bar, Auras, Icons. Resource bars have Frame and Look sections too.
+- Damage Meter: it remembers whether you picked Threat or damage, even after a reload. Threat View in Combat goes back to your pick after the fight.
+- Damage Meter: it always shows in Edit Mode, whatever its visibility.
+- Quest Tracker: the default width is 250.
+
+## Fixed
+- Ability Proc glow: Overpower, Revenge, Execute and the other reaction abilities glow again.
+- Resource Bars: the Fonts tab's text size now changes the bars' text.
+- Tooltips, Damage Meter, Unit Frames and the durability warning: fewer chances of Lua errors from hidden combat values.
+- Status colouring: switching it off clears the grey from your buttons at once.
+- Clean keybind text: switching it off brings Blizzard's labels back without a reload.
+- Chat: the header buttons can no longer flicker between shown and hidden.
+- Addon bag: an addon with both a minimap button and an addon-drawer entry shows once.
+- Radial macros: a macro naming a radial that doesn't exist prints a message instead of an error.
+- Changing unit frame fonts or colours updates raid and boss frames right away.
+
 # FlareUI 2.0.8
 
 ## Changed

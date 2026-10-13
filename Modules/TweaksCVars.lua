@@ -1,13 +1,18 @@
 local _, ns = ...
 
 --------------------------------------------------
--- CVars mirrored by Tweaks > Sync Blizz UI. The list comes from Account Wide Interface Settings by
--- ConineSpiritwolf, used under the MIT License (LICENSES/AccountWideInterfaceSettings.txt), minus
--- the Retail-only systems Forever lacks. Names the client does not
--- know are skipped at runtime, so the list can stay broad.
--- From Options > Advanced Options only the two damage meter switches are synced; the rest are
--- per-class choices (Diminishing Returns was dropped on purpose). Swing Timer is not here because
--- Blizzard already stores it account-wide (WTF/Account/<acct>/config-cache.wtf).
+-- SYNC CVARS
+-- CVars mirrored by Quality of Life > Sync Blizz UI. The list comes from Account Wide Interface
+-- Settings by ConineSpiritwolf, used under the MIT License (LICENSES/AccountWideInterfaceSettings.txt),
+-- minus the Retail-only systems Forever lacks. Names the client does not know are skipped at
+-- runtime, so the list can stay broad.
+-- From Options > Advanced Options only the two damage meter switches are synced; the rest
+-- (Diminishing Returns among them) are per-class choices. Swing Timer is not here because Blizzard
+-- already stores it account-wide (WTF/Account/<acct>/config-cache.wtf).
+--------------------------------------------------
+
+--------------------------------------------------
+-- 1. THE LIST
 --------------------------------------------------
 ns.SYNC_CVARS = {
     "ColorNameplateNameBySelection", "clampTargetNameplateToScreen", "NamePlateClassificationScale", "nameplateClassResourceTopInset",

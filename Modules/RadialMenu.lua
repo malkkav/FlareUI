@@ -54,23 +54,16 @@ local PAD_NAME     = "FlareUI_RadialPad"   -- what the stick press clicks in con
 local PAD_CANCEL   = GAMEPAD_FACE_RIGHT or "PAD2"   -- B / Circle closes a controller radial
 local PAD_DEAD_LEN = 0.5          -- a stick pushed less than this aims at nothing (the X)
 
--- Blizzard's ping wheel art. The pointer and the backdrop are independent of button count; only the
--- wheel plate and wedge highlight are count-specific (Count_4 is the only one the client ships),
--- so the selection is shown by scaling the icon up and brightening it past its own colours.
+-- Blizzard's ping wheel art: the pointer, and the X in the middle with the circle that lights up
+-- behind it
 local ATLAS_POINTER       = "Radial_Wheel_Select_Pointer"
--- Blizzard's wheel plate (Radial_Wheel_BG) is deliberately not used: it darkens whatever is behind
--- the radial, and the radial reads better floating over the world.
 local ATLAS_CIRCLE_MASK   = "CircleMaskScalable"
--- the X in the middle of the ping wheel, and the circle that lights up behind it
 local ATLAS_CANCEL_ICON   = "Radial_Wheel_Icon_Close"
 local ATLAS_CANCEL_SELECT = "Radial_Wheel_Select_Close"
 local CANCEL_ICON_SIZE    = 24
 local CANCEL_SELECT_SIZE  = 48
 local CANCEL_ALPHA_IDLE   = 0.5
--- Blizzard calls Pointer:SetRotation(angle) with the raw atan2 result; if the art turns out to
--- rest pointing up rather than right, this is the one value to change.
-local POINTER_ROTATION_OFFSET = 0
-local POINTER_SIZE = 84
+local POINTER_SIZE = 84   -- turned to the raw atan2 angle, as Blizzard's
 
 local DEAD_ZONE_SQ = 500          -- cursor closer than this to the centre selects nothing
 local ICON_SIZE    = 46
@@ -105,8 +98,7 @@ local ROUND_STYLES = {
     },
 }
 local RIM_TINT_NONE = { 1, 1, 1 }
--- the drawn fallback rim, in the dark bronze of the action bar gryphons
-local BORDER_COLOR         = { 0.45, 0.33, 0.19 }   -- #735430, the brown of the panel frames
+local BORDER_COLOR         = { 0.45, 0.33, 0.19 }   -- the drawn fallback rim: #735430, the panel frames' brown
 -- the hovered button grows to full size; the rest sit a little smaller
 local ICON_SCALE_IDLE      = 0.88
 
@@ -119,9 +111,10 @@ local TINT_NO_MANA  = { 0.5, 0.5, 1 }
 local SWIPE_TEXTURE = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 
 -- The radial looks like Blizzard's ping wheel: its backdrop, a divider between every two slices,
--- the hovered slice lit, and its open / close animation. Blizzard ships its dividers and slice light for four slices only
--- (Radial_Wheel_Frame_Count_4, Radial_Wheel_Select_Wedge_Count_4), so FlareUI draws its own
--- (wtf-tools/buildradial.js) and cuts the light to any slice width with two rotated half-plane masks.
+-- the hovered slice lit, and its open / close animation. Blizzard ships its dividers and slice
+-- light for four slices only (Radial_Wheel_Frame_Count_4, Radial_Wheel_Select_Wedge_Count_4), so
+-- FlareUI draws its own (wtf-tools/buildradial.js) and cuts the light to any slice width with two
+-- rotated half-plane masks.
 local MEDIA = "Interface\\AddOns\\FlareUI\\Media\\Radial\\"
 local PING = {
     BG_ATLAS = "Radial_Wheel_BG",
@@ -231,9 +224,7 @@ local ResolveEntry                -- defined below; ACTIONS.subradial recurses t
 -- code. That matters: a panel opened from our tainted call leaves taint on every frame it touches,
 -- and the client then refuses to compare the secret numbers it finds there (TextStatusBar.lua:110
 -- reading player health as the Character panel opens).
--- Icons and names match the macro set these replaced, so a radial built from those macros looks the
--- same after being rebuilt from panels. Forever keeps Spellbook, Talents and Legacy as separate
--- micro buttons where retail merged or dropped them.
+-- Forever keeps Spellbook, Talents and Legacy as separate micro buttons.
 local MICRO_PANELS = {
     bags        = { order = 1,  label = L["Bags"],         icon = 133633,  macrotext = "/run ToggleAllBags()" },
     character   = { order = 2,  label = L["Character"],    icon = 136047,  button = "CharacterMicroButton" },
@@ -400,9 +391,10 @@ ACTIONS.emote = function(entry)
 end
 
 -- A button that stands for another radial. The sub-radial is never drawn: the button shows one of the
--- nested actions at a time and the mouse wheel steps through them. The children are resolved here, so an unavailable one is skipped exactly as it would
--- be in its own radial, and a radial whose children all fail is itself unavailable.
--- seen holds the radials on the current path, so a radial cannot contain itself however long the chain.
+-- nested actions at a time and the mouse wheel steps through them. The children are resolved here,
+-- so an unavailable one is skipped exactly as it would be in its own radial, and a radial whose
+-- children all fail is itself unavailable. seen holds the radials on the current path, so a radial
+-- cannot contain itself however long the chain.
 ACTIONS.subradial = function(entry, depth, seen)
     local id = entry.radial
     if not id or depth >= MAX_RADIAL_DEPTH or seen[id] then return nil end
@@ -536,8 +528,7 @@ end
 
 -- Sets the name. A long name of several words is split in two at the space that gives the most even
 -- lines ("Guild &" / "Communities"); a single word is never broken. Decided by length rather than
--- by measuring the text: the first layout after a reload can run before the font is ready, and
--- measured too narrow it squeezed and cut short names that fit perfectly well.
+-- by measuring the text: the first layout after a reload can run before the font is ready.
 local function SetLabelText(button, text)
     text = text or ""
     if #text >= PING.LABEL_WRAP then
@@ -928,7 +919,7 @@ local function UpdateSelection()
     local index
     if aimed then
         local angle = math_atan2(dy, dx)
-        radial.Pointer:SetRotation(angle + POINTER_ROTATION_OFFSET)
+        radial.Pointer:SetRotation(angle)
         radial.Pointer:Show()
 
         local interval = TAU / count
@@ -1042,9 +1033,8 @@ local function OpenRadial(radialID, mode)
     else
         RM:LoadActiveRadial()
     end
-    RM:LayoutRadial()
+    RM:LayoutRadial()   -- also refreshes the button states, in combat too
     if #resolved == 0 then return end
-    RefreshButtonStates()   -- in combat LayoutRadial kept the old layout, but the states are current
     WatchButtonStates(true)
     radial:SetScale(1)
 
@@ -1283,13 +1273,14 @@ local CATCHER_SNIPPET = [[
 
 -- self is the macro button, button the radial id the macro named (or a mouse button when it named
 -- none: the radial this character's keybind opens). The same radial again fires the aimed button.
+-- The restricted environment has no L: the translated message is written into the snippet.
 local MACRO_SNIPPET = [[
     local id = control:GetAttribute("tag-" .. strlower(button)) or button
     if (control:GetAttribute(id .. "-count") or -1) < 0 then
         if id == "LeftButton" or id == "RightButton" then
             id = control:GetAttribute("flare-assigned")
         else
-            print("|cffff9900FlareUI:|r " .. L["no radial called \"%s\". Copy its macro from the Radial Menu settings."]:format(tostring(id)))
+            print(format(]] .. ("%q"):format("|cffff9900FlareUI:|r " .. L["no radial called \"%s\". Copy its macro from the Radial Menu settings."]) .. [[, tostring(id)))
             return false
         end
         if not id then return false end
@@ -1512,13 +1503,14 @@ end
 -- reach every character, while a radial is meant to belong to one. Radials are keyed by a stable id so
 -- that renaming one does not orphan the characters using it, with a separate order list for display.
 -- Which radial a character opens is kept by that character (GetAssignedRadialID):
--- nothing here lists characters, so there is no roster to go stale when one is deleted.
+-- nothing here lists characters.
 --------------------------------------------------
 local function GetStore()
     if not (ns.db and ns.db.global) then return nil end
     local store = ns.db.global.radialmenu or {}
     ns.db.global.radialmenu = store
-    -- Saves from before the rename (rings of slices, nested rings) move to the new keys once
+    -- a save in the ring names (rings of slices, nested rings), as an imported one can be, moves to
+    -- the radial names once
     if store.rings then
         store.radials = store.radials or store.rings
         store.radialOrder = store.radialOrder or store.ringOrder
@@ -1539,7 +1531,6 @@ local function GetStore()
     store.radials = store.radials or {}
     store.radialOrder = store.radialOrder or {}
     store.nextRadialID = store.nextRadialID or 1
-    store.roster = nil   -- leftover from an earlier per-character settings table
     return store
 end
 RM.GetStore = function() return GetStore() end
@@ -1610,7 +1601,7 @@ end
 
 local function CharacterSetup()
     local charDB = ns.CharDB()
-    if charDB.ring ~= nil then   -- saved before the rename
+    if charDB.ring ~= nil then   -- the ring name, as in GetStore
         if charDB.radial == nil then charDB.radial = charDB.ring end
         charDB.ring = nil
     end
@@ -1622,7 +1613,7 @@ local function CharacterSetup()
             charDB.radialKeys = CopyKeys(last.keys)
         end
     elseif store and not store.lastSetup then
-        RememberSetup()   -- a character set up before the copy existed
+        RememberSetup()   -- a set-up character, but no account copy yet
     end
     return charDB
 end
@@ -1726,7 +1717,6 @@ function RM:SetControllerEnabled(enabled)
     local store = GetStore()
     if not store then return end
     store.controller = enabled and true or nil
-    store.padMode = nil   -- the setting before it became one toggle
     ApplyBinding()
 end
 

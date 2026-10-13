@@ -5,8 +5,9 @@ local S = ns.Settings
 -- FONT ROWS
 -- A module's Fonts tab: one heading per font that opens its controls, two lines of two: face and
 -- size, outline and shadow (None, Soft or Strong). Headings start closed, so the page stays short;
--- what is open is remembered for the session. Each module gives its fonts and the function that re-applies them.
--- The controls' texts are shared ("font.size" in the copy serves every "*.font.*.size").
+-- what is open is remembered for the session. Each module gives its fonts and the function that
+-- re-applies them. The controls' texts are shared ("font.size" in the copy serves every
+-- "*.font.*.size").
 --------------------------------------------------
 local LSM = LibStub("LibSharedMedia-3.0")
 

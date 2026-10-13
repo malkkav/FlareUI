@@ -3,9 +3,9 @@ local L = ns.L
 
 --------------------------------------------------
 -- ACTION BARS
--- Blizzard's action bars in FlareUI's look: Blizzard's slot art on every button, scaling, hotkey
--- and count text, range and mana colouring, and the zone ability buttons. Also the Fake Cooldown
--- Manager (bars shown as click-through cooldown displays) and auto-paging by stance or form.
+-- Blizzard's action bars in FlareUI's look: Blizzard's slot art on every button, one button scale,
+-- hotkey and count text, range and mana colouring, and the zone ability buttons. Also the Fake
+-- Cooldown Manager (bars shown as click-through cooldown displays) and spell rank updates.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -33,11 +33,18 @@ local GetPetActionInfo = GetPetActionInfo
 local GetPetActionSlotUsable = GetPetActionSlotUsable
 local C_Spell = C_Spell
 local C_Timer = C_Timer
+local canaccessvalue = canaccessvalue
 
 --------------------------------------------------
 -- 3. CONSTANTS & DATA
 --------------------------------------------------
 local RANGE_INDICATOR = _G.RANGE_INDICATOR
+local BUTTON_SCALE = 1.06
+
+-- text offsets from the button's corner: hotkey top right, count bottom right, macro name bottom
+local HOTKEY_X, HOTKEY_Y = -4, -4
+local COUNT_X, COUNT_Y = -4, 4
+local MACRO_X, MACRO_Y = -6, 4
 
 local BAR_DATA = {
     { key = "bar1",    prefix = "ActionButton",              count = 12 },
@@ -72,28 +79,33 @@ local function GetBarConfig()
     return ns.db.profile.actionbars
 end
 
+-- Blizzard creates the buttons before any addon loads, so each list is built once
+local buttonsByKey = {}
 local function GetButtonsForBarKey(key)
-    local data
-    for _, d in ipairs(BAR_DATA) do
-        if d.key == key then data = d; break end
+    local buttons = buttonsByKey[key]
+    if buttons then return buttons end
+    for _, data in ipairs(BAR_DATA) do
+        if data.key == key then
+            buttons = {}
+            for i = 1, data.count do
+                local btn = _G[data.prefix .. i]
+                if btn then table_insert(buttons, btn) end
+            end
+            if #buttons > 0 then buttonsByKey[key] = buttons end
+            return buttons
+        end
     end
-    if not data then return {} end
-
-    local buttons = {}
-    local count = data.count or 12
-    for i = 1, count do
-        local btn = _G[data.prefix .. i]
-        if btn then table_insert(buttons, btn) end
-    end
-    return buttons
+    return {}
 end
 
+local allButtons
 local function GetAllActionButtons()
+    if allButtons then return allButtons end
     local all = {}
     for _, data in ipairs(BAR_DATA) do
-        local btns = GetButtonsForBarKey(data.key)
-        for _, b in ipairs(btns) do table_insert(all, b) end
+        for _, b in ipairs(GetButtonsForBarKey(data.key)) do table_insert(all, b) end
     end
+    if #all > 0 then allButtons = all end
     return all
 end
 
@@ -104,13 +116,16 @@ end
 -- post-hook per button makes ours win. Bars 1-8 and the pet bar only (the others render it badly).
 local ART_BAR_KEYS = { bar1 = true, bar2 = true, bar3 = true, bar4 = true, bar5 = true, bar6 = true, bar7 = true, bar8 = true, pet = true }
 
+local artButtons
 local function GetAllArtButtons()
+    if artButtons then return artButtons end
     local all = {}
     for _, data in ipairs(BAR_DATA) do
         if ART_BAR_KEYS[data.key] then
             for _, b in ipairs(GetButtonsForBarKey(data.key)) do table_insert(all, b) end
         end
     end
+    if #all > 0 then artButtons = all end
     return all
 end
 
@@ -182,23 +197,7 @@ local function UpdateButtonArtAll()
 end
 
 --------------------------------------------------
--- 7. SCALING ENGINE
---------------------------------------------------
-local function ApplyBarScale(key)
-    local db = GetBarConfig()
-    if not db then return end
-
-    local scale = db.scales[key] or 1.0
-    local buttons = GetButtonsForBarKey(key)
-    for _, btn in ipairs(buttons) do btn:SetScale(scale) end
-end
-
-local function RefreshAllScales()
-    for _, data in ipairs(BAR_DATA) do ApplyBarScale(data.key) end
-end
-
---------------------------------------------------
--- 8. TYPOGRAPHY & TEXT
+-- 7. TYPOGRAPHY & TEXT
 --------------------------------------------------
 -- Shortened from the raw binding key ("SHIFT-BUTTON4"), which is never localised. The rules run in
 -- order: NUMPAD before PLUS, SPACEBAR before SPACE. Mouse buttons are M1-M5.
@@ -257,12 +256,11 @@ local function UpdateHotkeyText(button)
         hotkey:Hide()
         return
     end
-    -- when the option is off, leave Blizzard's own text alone
-    if db.cleanKeybinds then hotkey:SetText(ShortenKey(key)) end
+    -- off: Blizzard's own text (as its UpdateHotkeys writes it), so switching off needs no reload
+    if db.cleanKeybinds then hotkey:SetText(ShortenKey(key)) else hotkey:SetText(GetBindingText(key, 1)) end
     hotkey:Show()
-    local font = db.hotkeyFont
     hotkey:ClearAllPoints()
-    hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", font.x or 0, font.y or 0)
+    hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", HOTKEY_X, HOTKEY_Y)
 end
 
 -- Fonts, count and macro-name placement: applied when the settings change
@@ -282,7 +280,7 @@ local function UpdateButtonText(button)
         local font = db.countFont
         count:SetFont(FontArgs(font))
         count:ClearAllPoints()
-        count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", font.x or 0, font.y or 0)
+        count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", COUNT_X, COUNT_Y)
         ns.ApplyShadow(count, font)
     end
 
@@ -295,18 +293,26 @@ local function UpdateButtonText(button)
             local font = db.macroFont
             name:SetFont(FontArgs(font))
             name:ClearAllPoints()
-            name:SetPoint("BOTTOM", button, "BOTTOM", font.x or 0, font.y or 0)
+            name:SetPoint("BOTTOM", button, "BOTTOM", MACRO_X, MACRO_Y)
             ns.ApplyShadow(name, font)
         end
     end
 end
 
 --------------------------------------------------
--- 9. RANGE & STATUS COLORING
+-- 8. RANGE & STATUS COLORING
 -- Post-hooks on Blizzard's UpdateUsable and ActionButton_UpdateRangeIndicator reuse the values they
 -- were handed, so nothing is polled. Usable and range state are kept on the button and combined;
 -- a repeated colour writes nothing.
 --------------------------------------------------
+-- the tint per state, already blended (red and blue at 75%, a plain grey); range and mana desaturate
+local STATE_TINT = {
+    normal   = { 1, 1, 1 },
+    range    = { 1, 0.25, 0.25 },
+    mana     = { 0.25, 0.25, 1 },
+    unusable = { 0.5, 0.5, 0.5 },
+}
+
 local function ApplyStateColor(button, state)
     if button.FlareUI_ColorState == state then return end
     button.FlareUI_ColorState = state
@@ -320,26 +326,27 @@ local function ApplyStateColor(button, state)
         return
     end
 
-    local db = GetBarConfig()
-    local color = db and db.colors and db.colors[state]
-    if not color then
-        icon:SetVertexColor(1, 1, 1, 1)
-        icon:SetDesaturated(false)
-        return
+    local tint = STATE_TINT[state] or STATE_TINT.normal
+    icon:SetVertexColor(tint[1], tint[2], tint[3], 1)
+
+    local desaturate = state == "range" or state == "mana"
+    if state == "unusable" then
+        local db = GetBarConfig()
+        desaturate = db and db.colors and db.colors.unusable and db.colors.unusable.desaturate or false
     end
-
-    -- the colour's alpha is the tint strength; the icon stays opaque
-    local alpha = color.a or 1
-    icon:SetVertexColor((color.r or 1) * alpha + (1 - alpha),
-                        (color.g or 1) * alpha + (1 - alpha),
-                        (color.b or 1) * alpha + (1 - alpha), 1)
-
-    icon:SetDesaturated(state == "range" or state == "mana" or (state == "unusable" and color.desaturate) or false)
+    icon:SetDesaturated(desaturate)
 end
 
 local function RefreshButtonColor(button)
     local db = GetBarConfig()
-    if not db or not db.colors or not db.colors.enableRange then return end
+    if not db or not db.colors or not db.colors.enableRange then
+        -- switched off: our desaturation goes (Blizzard rewrites the tint itself)
+        if button.FlareUI_ColorState then
+            if button.FlareUI_ColorState ~= "locked" and button.icon then button.icon:SetDesaturated(false) end
+            button.FlareUI_ColorState = nil
+        end
+        return
+    end
     local usable = button.FlareUI_Usable or "normal"
     if usable == "normal" and button.FlareUI_OutOfRange then usable = "range" end
     ApplyStateColor(button, usable)
@@ -364,14 +371,21 @@ local function OnUpdateUsable(button, action, isUsable, notEnoughMana)
                 if spellID then isUsable, notEnoughMana = C_Spell.IsSpellUsable(spellID) end
             end
         end
+        -- an answer the client hides is left to Blizzard's own tint
+        if not (canaccessvalue(isUsable) and canaccessvalue(notEnoughMana)) then
+            button.FlareUI_ColorState = nil
+            return
+        end
         button.FlareUI_Usable = isUsable and "normal" or (notEnoughMana and "mana" or "unusable")
     end
     RefreshButtonColor(button)
 end
 
 local function OnUpdateRangeIndicator(button, checksRange, inRange)
-    button.FlareUI_OutOfRange = (checksRange and not inRange) or false
-    RefreshButtonColor(button)
+    if canaccessvalue(checksRange) and canaccessvalue(inRange) then
+        button.FlareUI_OutOfRange = (checksRange and not inRange) or false
+        RefreshButtonColor(button)
+    end
     if button.HotKey then
         local db = GetBarConfig()
         if db and db.hideHotkeys then button.HotKey:Hide() end
@@ -381,7 +395,10 @@ end
 -- The pet bar has no per-button usable callback: refreshed whole when Blizzard updates it
 local function UpdatePetColors()
     local db = GetBarConfig()
-    if not db or not db.colors or not db.colors.enableRange then return end
+    if not db or not db.colors or not db.colors.enableRange then
+        for _, button in ipairs(GetButtonsForBarKey("pet")) do RefreshButtonColor(button) end
+        return
+    end
     for index, button in ipairs(GetButtonsForBarKey("pet")) do
         local _, _, _, _, _, _, spellID, checksRange, inRange = GetPetActionInfo(index)
         local usable, notEnoughMana
@@ -390,9 +407,11 @@ local function UpdatePetColors()
         else
             usable = GetPetActionSlotUsable(index)
         end
-        button.FlareUI_Usable = usable and "normal" or (notEnoughMana and "mana" or "unusable")
-        button.FlareUI_OutOfRange = (checksRange and not inRange) or false
-        RefreshButtonColor(button)
+        if canaccessvalue(usable) and canaccessvalue(notEnoughMana) and canaccessvalue(checksRange) and canaccessvalue(inRange) then
+            button.FlareUI_Usable = usable and "normal" or (notEnoughMana and "mana" or "unusable")
+            button.FlareUI_OutOfRange = (checksRange and not inRange) or false
+            RefreshButtonColor(button)
+        end
     end
 end
 
@@ -408,7 +427,7 @@ local function SetupRangeColors()
 end
 
 --------------------------------------------------
--- 10. ZONE ABILITY BUTTONS
+-- 9. ZONE ABILITY BUTTONS
 --------------------------------------------------
 local function StyleZoneAbilityButtonFonts(container)
     local db = GetBarConfig()
@@ -424,7 +443,7 @@ local function StyleZoneAbilityButtonFonts(container)
 end
 
 --------------------------------------------------
--- 11. FAKE COOLDOWN MANAGER (FCM) API
+-- 10. FAKE COOLDOWN MANAGER (FCM) API
 --------------------------------------------------
 -- Click-through on one bar
 local function ApplyClickthroughToBar(key, enabled)
@@ -436,11 +455,9 @@ end
 local function ForEachFCMBar(fn)
     local fcm = ns.db.profile.fcm
     if not (fcm and ns.FCMActive()) then return end
-    for _, data in ipairs(BAR_DATA) do
-        if data.key:match("^bar[1-8]$") then
-            local barConfig = fcm.bars[data.key]
-            if barConfig and barConfig.enabled then fn(data.key) end
-        end
+    for i = 1, 8 do
+        local barConfig = fcm.bars["bar" .. i]
+        if barConfig and barConfig.enabled then fn("bar" .. i) end
     end
 end
 
@@ -465,9 +482,8 @@ local function OnCursorChanged()
     end
 end
 
--- Setup Mode: the FCM bars take clicks and show
--- Fake CM Setup Mode: the FCM bars take clicks (session only). /fui cm, the addon compartment's right
--- click and the Action Bars page.
+-- Fake CM Setup Mode: the FCM bars take clicks and show (session only). /fui cm, the addon
+-- compartment's right click and the Action Bars page.
 function ns.ToggleFCMSetupMode()
     if InCombatLockdown() then
         print("|cffff0000FlareUI:|r " .. L["Cannot toggle setup mode in combat."])
@@ -515,55 +531,7 @@ function ActionBars:StopDragDetection()
 end
 
 --------------------------------------------------
--- 11b. AUTO-PAGING
--- The player picks which of bars 1-8 switches to the stance / form pages (bonus bars 1-4 = pages
--- 7-10). That bar gets a secure state driver whose snippet sets "actionpage" on its buttons, in
--- combat too. Bar 1 with paging off keeps its own page and Blizzard's possess / vehicle pages.
--- Switching bars waits for combat to end.
---------------------------------------------------
-local PAGE_STANCES = "[bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10; default"
-local PAGE_BAR1_FIXED = "[possessbar][overridebar][vehicleui][bonusbar:5] default; [bar:2] 2; [bar:3] 3; [bar:4] 4; [bar:5] 5; [bar:6] 6; 1"
-local PAGE_SNIPPET = [[
-    local page = newstate ~= "default" and tonumber(newstate) or nil
-    for i = 1, 12 do
-        local button = self:GetFrameRef("b" .. i)
-        if button then button:SetAttribute("actionpage", page) end
-    end
-]]
-local pagers = {}
-
-local function ApplyAutoPaging()
-    if InCombatLockdown() then
-        ActionBars._pendingRefresh = true
-        return
-    end
-    local db = GetBarConfig()
-    local pagingBar = db and db.autoPagingBar or 1
-    for i = 1, 8 do
-        local key = "bar" .. i
-        local paging = i == pagingBar
-        local driver
-        if i == 1 then
-            if not paging then driver = PAGE_BAR1_FIXED end
-        elseif paging then
-            driver = PAGE_STANCES
-        end
-        local pager = pagers[key]
-        if driver and not pager then
-            pager = CreateFrame("Frame", nil, UIParent, "SecureHandlerStateTemplate")
-            for n, button in ipairs(GetButtonsForBarKey(key)) do pager:SetFrameRef("b" .. n, button) end
-            pager:SetAttribute("_onstate-page", PAGE_SNIPPET)
-            pagers[key] = pager
-        end
-        if pager then
-            -- off again: the driver hands the buttons back to their bar's own page ("default")
-            RegisterStateDriver(pager, "page", driver or "default")
-        end
-    end
-end
-
---------------------------------------------------
--- 11b. UPDATE SPELL RANKS
+-- 11. UPDATE SPELL RANKS
 -- A newly learned rank takes the place of the rank just below it on every bar. Lower ranks placed
 -- on purpose (for mana) stay. Bars are changed out of combat, with nothing on the cursor.
 --------------------------------------------------
@@ -607,23 +575,19 @@ end
 --------------------------------------------------
 -- 12. PUBLIC API
 --------------------------------------------------
-
 -- Button text draws at frame level 500, so the end caps' container goes above that (the caps follow
--- their container's level). Out of combat only; the original level is kept for the way back.
+-- their container's level). Out of combat only.
 local GRYPHON_LEVEL_ABOVE = 501
 local function UpdateGryphonLayer()
-    local db = GetBarConfig()
     local caps = _G.MainActionBar and _G.MainActionBar.EndCaps
     if not caps or not caps.SetFrameLevel then return end
-    if caps.FlareUI_OrigLevel == nil then caps.FlareUI_OrigLevel = caps:GetFrameLevel() end
-    local level = (db and db.gryphonsAboveButtons) and math.max(GRYPHON_LEVEL_ABOVE, caps.FlareUI_OrigLevel) or caps.FlareUI_OrigLevel
-    if caps:GetFrameLevel() ~= level then caps:SetFrameLevel(level) end
+    if caps:GetFrameLevel() < GRYPHON_LEVEL_ABOVE then caps:SetFrameLevel(GRYPHON_LEVEL_ABOVE) end
 end
 
 -- On Forever each gryphon is its own Edit Mode system with its own Hidden setting, but the main
 -- bar's OnShow still runs UpdateEndCaps(hideBarArt): with bar 1's Hide Bar Art on, the gryphons'
--- container stayed hidden after the bar came back (Alt+Z, a cinematic). Shown again with the bar;
--- each gryphon keeps its own visibility. Neutral characters have none, as Blizzard's.
+-- container would stay hidden after the bar comes back (Alt+Z, a cinematic). Shown again with the
+-- bar; each gryphon keeps its own visibility. Neutral characters have none, as Blizzard's.
 local function KeepEndCapsWithBar(bar)
     local caps = bar and bar.EndCaps
     if not caps or caps:IsShown() or not bar:IsVisible() then return end
@@ -644,9 +608,16 @@ local function HookEndCaps()
     KeepEndCapsWithBar(bar)
 end
 
--- Blizzard pushes newly learned spells onto the bars unless this CVar is off
+-- Blizzard pushes newly learned spells onto the bars unless this CVar is off. Switching the option
+-- off gives the CVar back once (to Blizzard's default) and then leaves it to the player.
 local function UpdateAutoPushSpells(db)
-    C_CVar.SetCVar("AutoPushSpellToActionBar", db.stopAutoAddSpells and "0" or "1")
+    if db.stopAutoAddSpells then
+        C_CVar.SetCVar("AutoPushSpellToActionBar", "0")
+        ActionBars.autoPushSet = true
+    elseif ActionBars.autoPushSet then
+        C_CVar.SetCVar("AutoPushSpellToActionBar", "1")
+        ActionBars.autoPushSet = nil
+    end
 end
 
 function ActionBars:Refresh()
@@ -662,9 +633,7 @@ function ActionBars:Refresh()
 
     UpdateGryphonLayer()
     UpdateButtonArtAll()
-    RefreshAllScales()
     SetupRangeColors()
-    ApplyAutoPaging()
 
     if _G.ExtraActionButton1 then UpdateButtonText(_G.ExtraActionButton1) end
     if _G.ZoneAbilityFrame and _G.ZoneAbilityFrame.SpellButtonContainer then
@@ -673,6 +642,7 @@ function ActionBars:Refresh()
 
     local buttons = GetAllActionButtons()
     for _, btn in ipairs(buttons) do
+        btn:SetScale(BUTTON_SCALE)
         UpdateButtonText(btn)
         -- one-off repaint: after this the hooks keep the colour current
         btn.FlareUI_ColorState = nil

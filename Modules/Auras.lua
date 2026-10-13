@@ -8,7 +8,8 @@ local L = ns.L
 -- our textures, so it works with secret aura data; right-click cancels. FlareUI draws the look:
 --   * square (classic icon bevel) or round (the spellbook passive ring)
 --   * borders tinted by Blizzard through a colour map (dispel colours for debuffs, never read by Lua)
---   * the cooldown swipe on the border, over the icon, or none; timer and stacks
+--   * the cooldown swipe over the icon (the unit frames may also use the border or none); timer
+--     and stacks
 -- Weapon enchants lead the buffs (FlareUI's own buttons); private auras get anchors beside the
 -- debuffs. Stands aside in the Gamepad UI (Blizzard's frames are part of its navigation).
 --------------------------------------------------
@@ -305,7 +306,7 @@ local function Look(kind)
     return {
         size = kdb.size or 30,
         style = db.style or "square",
-        swipe = db.swipe or "border",
+        swipe = "icon",
         timer = db.timer or "below",
         font = db.font,
         isDebuff = KINDS[kind].isDebuff,
@@ -448,7 +449,7 @@ local function LayoutPrivateAnchors(holder, kdb)
 end
 
 --------------------------------------------------
--- WEAPON ENCHANTS
+-- 6b. WEAPON ENCHANTS
 -- Poisons, oils, stones and shaman imbues live on the weapon, not on the player, so no aura API
 -- returns them. Blizzard's aura container reads them from C_PaperDollInfo.GetTemporaryEnchantmentInfo,
 -- which Forever leaves empty; Forever's own buff frame reads C_Item.GetWeaponEnchantInfo, and so do
@@ -464,8 +465,6 @@ local enchantDurations = {}   -- "slot:type" -> the full duration, snapshot when
 local function ActiveEnchants()
     local list = {}
     if not (C_Item and C_Item.GetWeaponEnchantInfo) then return list end
-    local db = GetDb()
-    if not db or db.weaponEnchants == false then return list end
     local now = GetTime()
     for _, weapon in ipairs(WEAPON_SLOTS) do
         local ok, enchants = pcall(C_Item.GetWeaponEnchantInfo, weapon.slot)

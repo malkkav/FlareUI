@@ -77,16 +77,12 @@ local STANDING_BY_REACTION = { "FACTION_RED_COLOR", "FACTION_RED_COLOR", "FACTIO
 local flare                                    -- the bar frame
 local LEM
 
-local function Percent(value, maxValue)
-    return maxValue > 0 and value / maxValue * 100 or 0
-end
-
 -- A section's text: current / max, as Blizzard's bars show it (shown on mouseover)
 local function FormatValues(value, maxValue)
     return ("%s / %s"):format(BreakUpLargeNumbers(value), BreakUpLargeNumbers(maxValue))
 end
 
--- Each kind of section: value, max, rested bonus (XP only), colour, text and tooltip
+-- Each kind of section: value, max, rested bonus (XP only), colour and text
 local Read = {}
 
 function Read.xp()
@@ -98,13 +94,6 @@ function Read.xp()
         value = value, max = maxValue, rested = rested, color = color,
         -- Blizzard's own experience bar text ("XP: 1234/5000")
         text = XP_STATUS_BAR_TEXT and XP_STATUS_BAR_TEXT:format(value, maxValue) or FormatValues(value, maxValue),
-        tooltip = function(tip)
-            GameTooltip_SetTitle(tip, XP_TEXT:format(BreakUpLargeNumbers(value), BreakUpLargeNumbers(maxValue), math.ceil(Percent(value, maxValue))))
-            local stateID, stateName, multiplier = GetRestState()
-            if stateID and stateName and multiplier then
-                GameTooltip_AddHighlightLine(tip, EXHAUST_TOOLTIP1:format(stateName, multiplier * 100))
-            end
-        end,
     }
 end
 
@@ -112,7 +101,6 @@ function Read.rep(data)
     local factionID = data.factionID
     local low, high, value = data.currentReactionThreshold or 0, data.nextReactionThreshold or 1, data.currentStanding or 0
     local reaction, color = data.reaction or 4, nil
-    local standing = GetText("FACTION_STANDING_LABEL" .. reaction, UnitSex("player"))
     local capped = false
     if C_Reputation.IsFactionParagonForCurrentPlayer and C_Reputation.IsFactionParagonForCurrentPlayer(factionID) then
         local current, threshold, _, rewardPending = C_Reputation.GetFactionParagonInfo(factionID)
@@ -122,12 +110,10 @@ function Read.rep(data)
         local major = C_MajorFactions.GetMajorFactionData(factionID)
         low, high, value = 0, major and major.renownLevelThreshold or 1, major and major.renownReputationEarned or 0
         color = COLOR_MAJOR
-        if major then standing = RENOWN_LEVEL_LABEL and RENOWN_LEVEL_LABEL:format(major.renownLevel) or standing end
     else
         local friend = C_GossipInfo.GetFriendshipReputation(factionID)
         if friend and friend.friendshipFactionID and friend.friendshipFactionID > 0 then
             reaction = 5
-            standing = friend.reaction or standing
             if friend.nextThreshold then
                 low, high, value = friend.reactionThreshold, friend.nextThreshold, friend.standing
             else
@@ -147,11 +133,6 @@ function Read.rep(data)
     return {
         value = value, max = maxValue, rested = 0, color = color,
         text = capped and data.name or (data.name .. "  " .. FormatValues(value, maxValue)),
-        tooltip = function(tip)
-            GameTooltip_SetTitle(tip, data.name)
-            GameTooltip_AddNormalLine(tip, standing)
-            if not capped then GameTooltip_AddHighlightLine(tip, FormatValues(value, maxValue)) end
-        end,
     }
 end
 
@@ -164,13 +145,6 @@ function Read.honor()
     return {
         value = value, max = maxValue, rested = 0, color = color,
         text = HONOR .. "  " .. FormatValues(value, maxValue),
-        tooltip = function(tip)
-            GameTooltip_SetTitle(tip, HONOR)
-            if UnitHonorLevel and HONOR_LEVEL_LABEL then
-                GameTooltip_AddNormalLine(tip, HONOR_LEVEL_LABEL:format(UnitHonorLevel("player")))
-            end
-            GameTooltip_AddHighlightLine(tip, FormatValues(value, maxValue))
-        end,
     }
 end
 
@@ -233,25 +207,14 @@ local function CreateSection(parent)
     text:SetWordWrap(false)
     section.Text = text
 
+    -- the numbers on mouseover (no tooltip)
     section:SetScript("OnEnter", function(self)
         local db = GetDb()
         if not (db and db.textMode == "ALWAYS") then self.Text:Show() end
-        if self.info and self.info.tooltip and not (db and db.showTooltip == false) then
-            GameTooltip:SetOwner(self, "ANCHOR_NONE")
-            local _, y = self:GetCenter()
-            if y and y > UIParent:GetHeight() / 2 then
-                GameTooltip:SetPoint("TOP", self, "BOTTOM", 0, -FLARE_INSET - 2)
-            else
-                GameTooltip:SetPoint("BOTTOM", self, "TOP", 0, FLARE_INSET + 2)
-            end
-            self.info.tooltip(GameTooltip)
-            GameTooltip:Show()
-        end
     end)
     section:SetScript("OnLeave", function(self)
         local db = GetDb()
         if not (db and db.textMode == "ALWAYS") then self.Text:Hide() end
-        GameTooltip:Hide()
     end)
     return section
 end
@@ -332,7 +295,8 @@ end
 
 local function PlaceFlare(layoutName)
     if not flare then return end
-    local pos = FlareStore(layoutName).point and FlareStore(layoutName) or FLARE_DEFAULT
+    local store = FlareStore(layoutName)
+    local pos = store.point and store or FLARE_DEFAULT
     flare:ClearAllPoints()
     flare:SetPoint(pos.point, UIParent, pos.point, pos.x or 0, pos.y or 0)
 end

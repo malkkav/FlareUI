@@ -7,6 +7,10 @@ local L = ns.L
 -- player would otherwise see nothing change and not know where to begin. Built like the other
 -- FlareUI windows: bronze edge, the settings panel's gradient, red buttons, Game Menu sounds.
 --------------------------------------------------
+
+--------------------------------------------------
+-- 1. THE WINDOW
+--------------------------------------------------
 local LSM = LibStub("LibSharedMedia-3.0")
 
 local WIDTH, HEIGHT = 400, 330
@@ -16,8 +20,7 @@ local TEXT = L["Every module of this addon starts switched off.\nTo begin, open 
 
 local welcome
 
--- An account with a module already switched on is past the point this is for: most likely an
--- install that predates the welcome, updating to the version that added it.
+-- An account with a module already switched on is past the point this is for
 local MODULES = { "chat", "damagemeter", "radialmenu", "unitframes", "actionbars", "auras",
                   "objectivetracker", "minimap", "tooltips", "tweaks" }
 local function AnyModuleEnabled()
@@ -90,12 +93,15 @@ local function Build()
     body:SetSpacing(2)
     body:SetText(TEXT)
 
-    local open = RedButton("Open Settings", 140, OpenSettings)
+    local open = RedButton(L["Open Settings"], 140, OpenSettings)
     open:SetPoint("BOTTOMRIGHT", welcome, "BOTTOM", -4, 20)
-    local close = RedButton("Close", 140, function() welcome:Hide() end)
+    local close = RedButton(CLOSE or "Close", 140, function() welcome:Hide() end)
     close:SetPoint("BOTTOMLEFT", welcome, "BOTTOM", 4, 20)
 end
 
+--------------------------------------------------
+-- 2. FIRST LOGIN
+--------------------------------------------------
 local function ShowWelcome()
     if not welcome then Build() end
     welcome:Show()

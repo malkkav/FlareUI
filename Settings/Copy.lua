@@ -95,6 +95,17 @@ ns.Copy = {
             label = L["Show Condition"],
             tip = L["Pointing at the bar always shows it."],
         },
+        ["ab.buttonArt"] = {
+            desc = L["Blizzard's framed slot on every button of bars 1 to 8 and the pet bar, even on bars set to hide their art."],
+            label = L["Button art"],
+            section = "ab.buttons",
+        },
+        ["ab.cleanKeybinds"] = {
+            desc = L["Shorter key labels on your buttons: SM4 for Shift + Mouse Button 4, SP for Spacebar, WU for Mouse Wheel Up."],
+            label = L["Clean keybind text"],
+            section = "ab.buttons",
+            tip = L["Off shows Blizzard's own labels."],
+        },
         ["ab.fade"] = {
             desc = L["Set in each bar's Edit Mode dialog:\n* Show: when the bar appears\n* Fade group: bars that fade together"],
             info = L["Fade Options"],
@@ -242,6 +253,12 @@ ns.Copy = {
             desc = L["Buttons change colour when you can't use them:\n* Red: target out of range\n* Blue: not enough mana or energy\n* Grey: unusable right now"],
             label = L["Status colouring"],
             section = "ab.buttons",
+        },
+        ["ab.stopAutoAdd"] = {
+            desc = L["New spells you learn are not placed on your bars by themselves."],
+            label = L["Stop auto-add spells"],
+            section = "ab.buttons",
+            tip = L["Find them in your spellbook and drag them where you want."],
         },
         ["ab.xpBar"] = {
             desc = L["One slim bar for:\n* Experience\n* Your watched reputation, or honor"],

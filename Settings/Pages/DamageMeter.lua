@@ -2,9 +2,8 @@ local _, ns = ...
 local S = ns.Settings
 
 --------------------------------------------------
--- DAMAGE METER (Modules/DamageMeter.lua). Always on, with no switch: combat timer, Threat
--- tab, Ready Check and Countdown buttons. The threat toggle
--- key is a key binding (Bindings.xml), bound here or in Blizzard's Key Bindings.
+-- DAMAGE METER (Modules/DamageMeter.lua). Fixed, no option: the Threat tab. The threat toggle key is
+-- a key binding (Bindings.xml), bound here or in Blizzard's Key Bindings.
 --------------------------------------------------
 local function Refresh()
     if ns.DamageMeter and ns.DamageMeter.Refresh then ns.DamageMeter:Refresh() end

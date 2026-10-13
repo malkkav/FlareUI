@@ -10,6 +10,10 @@ local L = ns.L
 --   * Blizzard's addon compartment entries, called as Blizzard's menu calls them
 -- An addon in two lists shows once. Closes on the badge, Escape, a click elsewhere, or after use.
 --------------------------------------------------
+
+--------------------------------------------------
+-- 1. MODULE AND CONSTANTS
+--------------------------------------------------
 local Bag = {}
 ns.MinimapBag = Bag
 
@@ -52,7 +56,7 @@ local function StripText(text)
 end
 
 --------------------------------------------------
--- SOURCES
+-- 2. SOURCES
 --------------------------------------------------
 local function LibDBIcon() return LibStub and LibStub("LibDBIcon-1.0", true) end
 local function LibDataBroker() return LibStub and LibStub("LibDataBroker-1.1", true) end
@@ -123,16 +127,15 @@ local function CollectEntries()
     end
 
     -- other addons' buttons on the minimap
-    for frame in pairs(adopted) do
-        entries[#entries + 1] = { kind = "frame", name = frame:GetName(), label = FrameLabel(frame), frame = frame }
-    end
     for _, parent in ipairs({ Minimap, MinimapCluster }) do
         for _, child in ipairs({ parent:GetChildren() }) do
-            if not adopted[child] and IsForeignButton(child) then
-                adopted[child] = true
-                entries[#entries + 1] = { kind = "frame", name = child:GetName(), label = FrameLabel(child), frame = child }
-            end
+            if not adopted[child] and IsForeignButton(child) then adopted[child] = true end
         end
+    end
+    for frame in pairs(adopted) do
+        local label = FrameLabel(frame)
+        entries[#entries + 1] = { kind = "frame", name = frame:GetName(), label = label, frame = frame }
+        seen[label:lower()] = true
     end
 
     -- Blizzard's addon compartment
@@ -149,7 +152,7 @@ local function CollectEntries()
 end
 
 --------------------------------------------------
--- THE PANEL
+-- 3. THE PANEL
 --------------------------------------------------
 function Bag:Close()
     if panel then panel:Hide() end
@@ -348,6 +351,9 @@ local function CreatePanel()
     end)
 end
 
+--------------------------------------------------
+-- 4. BADGE AND SETUP
+--------------------------------------------------
 -- The click area over the badge (Blizzard's badge takes no mouse)
 local function CreateBadgeButton()
     local badge = MinimapCluster and MinimapCluster.DielFrame

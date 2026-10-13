@@ -7,8 +7,8 @@ local L = ns.L
 -- first) and tracked recipes, in a FlareUI window placed in Edit Mode.
 --   * It grows away from the screen edge it sits on; quest item buttons sit outside the edge facing
 --     the middle of the screen.
---   * Minimizes to its header or a lone "+" (also by keybind); each kind of place can minimize or
---     expand it once on the way in.
+--   * Minimizes to its header or a lone "+" (also by keybind), and once on the way into an instance
+--     or combat when asked to.
 --   * Blizzard's tracker is parked while this one is on.
 -- Third-party licence notices: LICENSES/.
 -- Stands aside in the Gamepad UI.
@@ -35,7 +35,7 @@ local InCombatLockdown = InCombatLockdown
 local C = {
     DEFAULT_POSITION = { point = "TOPLEFT", x = 2, y = -2 },
     DEFAULT_BORDER = "FlareUI Frames",
-    WIDTH = 260, MAX_HEIGHT = 300,
+    WIDTH = 250, MAX_HEIGHT = 300,
     HEADER = 30,            -- header band
     HEADER_INSET = 8,       -- header contents from the frame edges
     PAD = 14,               -- text inset from the frame edges
@@ -61,9 +61,7 @@ local C = {
     OBJECTIVE = { 0.85, 0.85, 0.85 },
     OBJECTIVE_DONE = { 0.55, 0.55, 0.55 },
     DIM = { 0.55, 0.55, 0.55 },
-    CONTEXTS = { "world", "resting", "dungeon", "raid", "pvp", "arena", "combat" },
 }
-OT.CONTEXTS = C.CONTEXTS
 
 -- Blizzard's strings where it has them
 local TEXT = {
@@ -94,14 +92,13 @@ local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.objectivetracker
 end
 
--- The character's own state: minimized, collapsed quests and zones, quests this module untracked
+-- The character's own state: minimized, collapsed quests and zones
 local function Char()
     local c = ns.CharDB()
     c.objectiveTracker = c.objectiveTracker or {}
     local t = c.objectiveTracker
     t.collapsedQuests = t.collapsedQuests or {}
     t.collapsedZones = t.collapsedZones or {}
-    t.autoUntracked = t.autoUntracked or {}
     return t
 end
 
@@ -222,13 +219,18 @@ end
 -- Tracked quests under the log's zone headers: the current zone's groups first, the rest by their
 -- nearest quest, quests by distance; completed quests sink to the bottom of their group.
 --------------------------------------------------
-local zoneNames, questBuf, groupRank, groupBest = {}, {}, {}, {}
+-- reused on every pass (the distance check runs every few seconds)
+local zoneNames, questBuf, groupRank, groupBest, groupOrder = {}, {}, {}, {}, {}
+
+local function AddZoneName(z)
+    if z and z ~= "" then zoneNames[z] = true end
+end
 
 local function CurrentZoneNames()
     wipe(zoneNames)
-    for _, z in ipairs({ GetRealZoneText(), GetZoneText(), GetSubZoneText() }) do
-        if z and z ~= "" then zoneNames[z] = true end
-    end
+    AddZoneName(GetRealZoneText())
+    AddZoneName(GetZoneText())
+    AddZoneName(GetSubZoneText())
 end
 
 local function Distance(questID)
@@ -292,14 +294,16 @@ local function CollectQuests(db)
             best.here = true
         end
     end
-    local order = {}
-    for name, g in pairs(groupBest) do order[#order + 1] = { name = name, g = g } end
-    table.sort(order, function(a, b)
-        if db.zoneFirst and a.g.here ~= b.g.here then return a.g.here end
-        if a.g.distance ~= b.g.distance then return a.g.distance < b.g.distance end
-        return a.g.index < b.g.index
+    wipe(groupOrder)
+    for name in pairs(groupBest) do groupOrder[#groupOrder + 1] = name end
+    local zoneFirst = db.zoneFirst
+    table.sort(groupOrder, function(a, b)
+        local ga, gb = groupBest[a], groupBest[b]
+        if zoneFirst and ga.here ~= gb.here then return ga.here end
+        if ga.distance ~= gb.distance then return ga.distance < gb.distance end
+        return ga.index < gb.index
     end)
-    for rank, entry in ipairs(order) do groupRank[entry.name] = rank end
+    for rank, name in ipairs(groupOrder) do groupRank[name] = rank end
     -- without zone headers a current-zone quest under another header still goes first; by level,
     -- zones play no part
     for _, q in ipairs(questBuf) do
@@ -333,55 +337,8 @@ local function QuestTags(q)
     return tags
 end
 
--- Forever writes the count first ("3/8 Boar Tusks"); Numbers Last turns it into "Boar Tusks: 3/8"
-local function NumbersLast(text)
-    local count, name = text:match("^(%d+%s*/%s*%d+)%s+(.+)$")
-    if count then return name .. ": " .. count end
-    return text
-end
-
 --------------------------------------------------
--- 6. HIGH-LEVEL QUESTS
--- Quests too far above you are untracked when accepted and tracked again once close enough (or
--- when the option goes off). Only quests this module untracked are tracked again.
---------------------------------------------------
-local function UntrackIfTooHigh(questID)
-    local db = GetDb()
-    if not (db and db.untrackHighLevel) then return end
-    local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
-    local info = logIndex and C_QuestLog.GetInfo(logIndex)
-    if not (info and info.level) then return end
-    if info.level - UnitLevel("player") < (db.highLevelDiff or 3) then return end
-    if C_QuestLog.GetQuestWatchType(questID) == nil then return end
-    C_QuestLog.RemoveQuestWatch(questID)
-    Char().autoUntracked[questID] = true
-end
-
-function OT:CheckHighLevel(newLevel)
-    local db = GetDb()
-    if not db then return end
-    local char = Char()
-    local level = newLevel or UnitLevel("player")
-    for questID in pairs(char.autoUntracked) do
-        local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
-        local info = logIndex and C_QuestLog.GetInfo(logIndex)
-        if not info then
-            char.autoUntracked[questID] = nil
-        elseif not db.untrackHighLevel or (info.level or 0) - level < (db.highLevelDiff or 3) then
-            char.autoUntracked[questID] = nil
-            C_QuestLog.AddQuestWatch(questID)
-        end
-    end
-    if db.untrackHighLevel then
-        for i = 1, C_QuestLog.GetNumQuestLogEntries() do
-            local info = C_QuestLog.GetInfo(i)
-            if info and not info.isHeader and info.questID and info.questID > 0 then UntrackIfTooHigh(info.questID) end
-        end
-    end
-end
-
---------------------------------------------------
--- 7. CLICKS, MENU AND TOOLTIP
+-- 6. CLICKS, MENU AND TOOLTIP
 --------------------------------------------------
 local function OpenQuest(questID)
     if QuestMapFrame_OpenToQuestDetails then QuestMapFrame_OpenToQuestDetails(questID) end
@@ -525,7 +482,7 @@ local function OnLineClick(self, button)
 end
 
 --------------------------------------------------
--- 8. LINES (one pooled button per text line)
+-- 7. LINES (one pooled button per text line)
 --------------------------------------------------
 -- Moving between two lines of a quest leaves one and enters the other in the same frame, so the
 -- band and the tooltip go a frame after the mouse has left the quest: nothing blinks.
@@ -561,7 +518,7 @@ local function GetLine(i)
 end
 
 --------------------------------------------------
--- 9. QUEST ITEM BUTTONS
+-- 8. QUEST ITEM BUTTONS
 -- Secure buttons, on UIParent by screen position (a protected frame may only anchor to UIParent),
 -- beside their quest's title. In combat they stay put and work; the layout catches up after.
 --------------------------------------------------
@@ -698,7 +655,7 @@ function OT:UpdateItemButtons()
 end
 
 --------------------------------------------------
--- 10. RENDER
+-- 9. RENDER
 --------------------------------------------------
 -- Sample quests, in Edit Mode while nothing is tracked; one has a sample item button
 local PREVIEW = {
@@ -783,7 +740,7 @@ function OT:Render()
 
     local function TitleText(level, tags, title, collapsed)
         local prefix = ""
-        if db.showLevel and level then
+        if level then
             local c = GetQuestDifficultyColor(level)
             prefix = ColorCode({ c.r, c.g, c.b }) .. "[" .. level .. (db.showTags and tags or "") .. "]|r "
         end
@@ -807,7 +764,7 @@ function OT:Render()
                         titleLines[#titleLines + 1] = line
                     end
                     for _, o in ipairs(s.objectives) do
-                        AddLine(db.numbersLast and NumbersLast(o.text) or o.text, "objective", o.finished and C.OBJECTIVE_DONE or C.OBJECTIVE, C.INDENT)
+                        AddLine(o.text, "objective", o.finished and C.OBJECTIVE_DONE or C.OBJECTIVE, C.INDENT)
                     end
                     y = y - C.QUEST_GAP
                 end
@@ -847,8 +804,7 @@ function OT:Render()
                         else
                             for _, obj in ipairs(C_QuestLog.GetQuestObjectives(q.questID) or {}) do
                                 if obj.text and obj.text ~= "" then
-                                    local text = db.numbersLast and NumbersLast(obj.text) or obj.text
-                                    AddLine(text, "objective", obj.finished and C.OBJECTIVE_DONE or C.OBJECTIVE, C.INDENT).questID = q.questID
+                                    AddLine(obj.text, "objective", obj.finished and C.OBJECTIVE_DONE or C.OBJECTIVE, C.INDENT).questID = q.questID
                                 end
                             end
                         end
@@ -880,7 +836,6 @@ function OT:Render()
                                 local have = C_Item.GetItemCount(reagent.itemID)
                                 local itemName = C_Item.GetItemNameByID(reagent.itemID) or "..."
                                 local text = string_format("%d/%d %s", have, slot.quantityRequired, itemName)
-                                if db.numbersLast then text = string_format("%s: %d/%d", itemName, have, slot.quantityRequired) end
                                 local r = AddLine(text, "objective", have >= slot.quantityRequired and C.OBJECTIVE_DONE or C.OBJECTIVE, C.INDENT)
                                 r.recipeID, r.recipeName = recipeID, name
                             end
@@ -1017,7 +972,7 @@ local function OnSortTick()
 end
 
 --------------------------------------------------
--- 11. MINIMIZE AND AUTO-MINIMIZE
+-- 10. MINIMIZE AND AUTO-MINIMIZE
 --------------------------------------------------
 -- Settings > Quest Tracker open: the tracker shows, with Edit Mode's sample quests when nothing is
 -- tracked (Frame Opacity can be seen)
@@ -1037,33 +992,29 @@ function OT:ToggleMinimized()
     self:SetMinimized(not Char().minimized)
 end
 
--- The kind of place you are in; combat counts while it lasts (when it has a rule)
-local function CurrentContext(db)
-    local rules = db.autoMinimize or {}
-    if InCombatLockdown() and rules.combat and rules.combat ~= "none" then return "combat" end
+-- The kind of place you are in; combat counts while it lasts (when it has a rule). The open world
+-- never has one.
+local INSTANCE_CONTEXT = { party = "dungeon", raid = "raid", pvp = "pvp", arena = "arena" }
+
+local function CurrentContext(rules)
+    if rules.combat == "minimize" and InCombatLockdown() then return "combat" end
     local _, instanceType = IsInInstance()
-    if instanceType == "party" then return "dungeon" end
-    if instanceType == "raid" then return "raid" end
-    if instanceType == "pvp" then return "pvp" end
-    if instanceType == "arena" then return "arena" end
-    if IsResting() then return "resting" end
-    return "world"
+    return INSTANCE_CONTEXT[instanceType] or "world"
 end
 
 -- Each rule applies once, on the way in
 function OT:CheckContext()
     local db = GetDb()
-    if not db then return end
-    local context = CurrentContext(db)
+    local rules = db and db.autoMinimize
+    if not rules then return end
+    local context = CurrentContext(rules)
     if context == state.context then return end
     state.context = context
-    local rule = db.autoMinimize and db.autoMinimize[context]
-    if rule == "minimize" then self:SetMinimized(true)
-    elseif rule == "expand" then self:SetMinimized(false) end
+    if context ~= "world" and rules[context] == "minimize" then self:SetMinimized(true) end
 end
 
 --------------------------------------------------
--- 12. BLIZZARD'S TRACKER
+-- 11. BLIZZARD'S TRACKER
 -- Parked under a hidden frame (Hide is blocked in combat, and Blizzard re-shows it), re-parented
 -- whenever Blizzard moves it. It keeps running, so new quests are still tracked automatically.
 --------------------------------------------------
@@ -1112,7 +1063,7 @@ do
 end
 
 --------------------------------------------------
--- 13. EDIT MODE SETTINGS
+-- 12. EDIT MODE SETTINGS
 --------------------------------------------------
 local function BuildSettings()
     local function get(key, default)
@@ -1156,7 +1107,7 @@ local function BuildSettings()
 end
 
 --------------------------------------------------
--- 14. SETUP
+-- 13. SETUP
 --------------------------------------------------
 -- A small square button: a one-pixel bronze outline with chamfered corners (2 px, 3 on the big
 -- one), a dark fill and a two-pixel minus or plus, on whole screen pixels (re-laid on each show)
@@ -1350,7 +1301,6 @@ end
 function OT:Refresh()
     if not holder then return end
     self:ApplyLook()
-    self:CheckHighLevel()
     self:Render()
 end
 
@@ -1375,11 +1325,11 @@ function OT:Init()
     for _, e in ipairs({
         "PLAYER_ENTERING_WORLD", "QUEST_LOG_UPDATE", "QUEST_WATCH_LIST_CHANGED", "QUEST_ACCEPTED", "QUEST_REMOVED",
         "ZONE_CHANGED", "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED_INDOORS", "SUPER_TRACKING_CHANGED",
-        "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_UPDATE_RESTING", "BAG_UPDATE_COOLDOWN",
+        "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "BAG_UPDATE_COOLDOWN",
         "PLAYER_LEVEL_UP", "PLAYER_TARGET_CHANGED", "TRACKED_RECIPE_UPDATE", "BAG_UPDATE_DELAYED",
         "GET_ITEM_INFO_RECEIVED", "UNIT_QUEST_LOG_CHANGED",
     }) do events:RegisterEvent(e) end
-    events:SetScript("OnEvent", function(_, event, arg1, arg2)
+    events:SetScript("OnEvent", function(_, event, arg1)
         if event == "PLAYER_ENTERING_WORLD" then
             ParkBlizzardTracker()
             OT:CheckContext()
@@ -1390,7 +1340,7 @@ function OT:Init()
             OT:CheckContext()
             if state.itemsDirty then OT:UpdateItemButtons() end
             return
-        elseif event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_UPDATE_RESTING" then
+        elseif event == "PLAYER_REGEN_DISABLED" then
             OT:CheckContext()
             return
         elseif event == "BAG_UPDATE_COOLDOWN" then
@@ -1405,27 +1355,14 @@ function OT:Init()
             return
         elseif event == "ZONE_CHANGED_NEW_AREA" then
             OT:CheckContext()
-        elseif event == "PLAYER_LEVEL_UP" then
-            -- UnitLevel can still answer the old level here; the event has the new one
-            OT:CheckHighLevel(arg1)
         elseif event == "QUEST_REMOVED" and arg1 then
-            local char = Char()
-            char.collapsedQuests[arg1] = nil
-            char.autoUntracked[arg1] = nil
-        elseif event == "QUEST_WATCH_LIST_CHANGED" and arg1 and arg2 then
-            -- ticked by hand: no longer one of ours to re-tick
-            Char().autoUntracked[arg1] = nil
-        elseif event == "QUEST_ACCEPTED" then
-            -- Blizzard ticks a new quest just after this event, so the check waits a moment
-            local questID = arg2 or arg1
-            C_Timer.After(0.5, function() UntrackIfTooHigh(questID) end)
+            Char().collapsedQuests[arg1] = nil
         end
         OT:RequestRender()
     end)
     C_Timer.NewTicker(C.SORT_TICK, OnSortTick)
 
     self:ApplyLook()
-    self:CheckHighLevel()
     self:Render()
 end
 

@@ -51,17 +51,19 @@ local COLORS = {
     outOfRange = { 0.78, 0.28, 0.24 },
 }
 
+-- textSize: the bar text size, added to the Fonts tab size (centred; on a swing bar the name on the
+-- left and the time on the right)
 local BAR_ORDER = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged" }
 local BARS = {
-    health      = { kind = "health", label = L["Health Bar"],      default = { point = "CENTER", x = 0, y = -148 } },
-    power       = { kind = "power",  label = L["Power Bar"],       default = { point = "CENTER", x = 0, y = -170 } },
-    mana        = { kind = "mana",   label = L["Druid Mana"],        default = { point = "CENTER", x = 0, y = -192 } },
+    health      = { kind = "health", label = L["Health Bar"],      default = { point = "CENTER", x = 0, y = -148 }, textSize = 2 },
+    power       = { kind = "power",  label = L["Power Bar"],       default = { point = "CENTER", x = 0, y = -170 }, textSize = 2 },
+    mana        = { kind = "mana",   label = L["Druid Mana"],      default = { point = "CENTER", x = 0, y = -192 }, textSize = 2 },
     combo       = { kind = "combo",  label = L["Combo Points"],    default = { point = "CENTER", x = 0, y = -128 } },
-    swingMain   = { kind = "swing",  label = L["Main-Hand Swing"], default = { point = "CENTER", x = 0, y = -248 },
+    swingMain   = { kind = "swing",  label = L["Main-Hand Swing"], default = { point = "CENTER", x = 0, y = -248 }, textSize = 0,
                     swingType = SWING and SWING.MainHand, text = _G.SWING_TIMER_MAIN_HAND or "Main Hand" },
-    swingOff    = { kind = "swing",  label = L["Off-Hand Swing"],  default = { point = "CENTER", x = 0, y = -266 },
+    swingOff    = { kind = "swing",  label = L["Off-Hand Swing"],  default = { point = "CENTER", x = 0, y = -266 }, textSize = 0,
                     swingType = SWING and SWING.OffHand, text = _G.SWING_TIMER_OFF_HAND or "Off Hand" },
-    swingRanged = { kind = "swing",  label = L["Ranged Swing"],    default = { point = "CENTER", x = 0, y = -284 },
+    swingRanged = { kind = "swing",  label = L["Ranged Swing"],    default = { point = "CENTER", x = 0, y = -284 }, textSize = 0,
                     swingType = SWING and SWING.Ranged, text = _G.SWING_TIMER_RANGED or "Ranged" },
 }
 
@@ -163,7 +165,7 @@ local function ShouldShow(holder)
     local show = cfg.show or "always"
     if show == "always" then return true end
     if InCombatLockdown() or UnitAffectingCombat("player") then return true end
-    if (show == "target" or show == "combatTarget") and UnitExists("target") then return true end
+    if show == "target" and UnitExists("target") then return true end
     if show == "harm" and UnitExists("target") then
         local canAttack = UnitCanAttack("player", "target")
         if canaccessvalue(canAttack) and canAttack then return true end
@@ -214,7 +216,7 @@ local function UpdateHealth(holder)
     if UnitIsDeadOrGhost("player") then
         holder.Text:SetText(UnitIsGhost("player") and K.GHOST_TEXT or K.DEAD_TEXT)
     else
-        SetText(holder, cfg.text or "percent", UnitHealth("player"), UnitHealthPercent("player", true, K.percentCurve))
+        SetText(holder, cfg.text or "both", UnitHealth("player"), UnitHealthPercent("player", true, K.percentCurve))
     end
     UpdateHealPrediction(holder)
 end
@@ -286,7 +288,7 @@ local function SwingOnUpdate(holder)
         return
     end
     holder.Bar:SetValue((holder.swingDuration - remaining) / holder.swingDuration)
-    if Cfg(holder.key).timer ~= false then holder.Text:SetFormattedText("%.1f", remaining) end
+    holder.Text:SetFormattedText("%.1f", remaining)
 end
 
 local function StartSwing(holder, duration)
@@ -314,7 +316,7 @@ local function UpdateSwing(holder)
         holder.Text:SetText("")
         holder.Spark:Hide()
     end
-    holder.Label:SetText(Cfg(holder.key).label ~= false and info.text or "")
+    holder.Label:SetText(info.text)
     if C_SwingTimer and info.swingType and not IsEditing() then
         local inRange = readable(C_SwingTimer.IsTargetWithinSwingRange(info.swingType))
         SetSwingRange(holder, inRange == false)
@@ -361,8 +363,8 @@ local function ApplyPreview(holder)
         bar:SetValue(0.6)
         SetSwingRange(holder, false)
         holder.Spark:Show()
-        holder.Text:SetText(cfg.timer ~= false and "1.4" or "")
-        holder.Label:SetText(cfg.label ~= false and BARS[holder.key].text or "")
+        holder.Text:SetText("1.4")
+        holder.Label:SetText(BARS[holder.key].text)
     end
 end
 
@@ -459,12 +461,14 @@ end
 local function LayoutBar(holder)
     local cfg = Cfg(holder.key)
     if not cfg then return end
-    local kind = BARS[holder.key].kind
+    local info = BARS[holder.key]
+    local kind = info.kind
     local PADDING = BarPadding(cfg, cfg.height or 14)
     ApplyFrameLook(holder, cfg)
-    local db = K.GetDb()
-    local font = db and (db.resource and db.resource.font or db.fontPower or db.font)
-    if cfg.textSize then font = setmetatable({ size = cfg.textSize }, { __index = font or {} }) end
+    local rdb = GetResourceDb()
+    local font = rdb and rdb.font
+    -- the Fonts tab size; health, power and mana a little larger (textSize: the offset from it)
+    if info.textSize and font then font = setmetatable({ size = (font.size or 10) + info.textSize }, { __index = font }) end
 
     if kind == "combo" then
         holder.count = ComboCount()
@@ -493,15 +497,8 @@ local function LayoutBar(holder)
         spark:SetSize(math_max(8, (cfg.height or 10)), math_max(18, (cfg.height or 10) * 2.2))
         spark:SetPoint("CENTER", bar:GetStatusBarTexture(), "RIGHT", 0, 0)
     else
-        local align = cfg.textAlign or "CENTER"
-        holder.Text:SetJustifyH(align)
-        if align == "LEFT" then
-            holder.Text:SetPoint("LEFT", bar, "LEFT", K.TEXT_INSET, 0)
-        elseif align == "RIGHT" then
-            holder.Text:SetPoint("RIGHT", bar, "RIGHT", -K.TEXT_INSET, 0)
-        else
-            holder.Text:SetPoint("CENTER", bar, "CENTER", 0, 0)
-        end
+        holder.Text:SetJustifyH("CENTER")
+        holder.Text:SetPoint("CENTER", bar, "CENTER", 0, 0)
     end
 
     if holder.HealClip then
@@ -721,12 +718,16 @@ local function BuildSettings(key)
     -- classic combo gems have one Size; the bar's width and height wait for the bar style
     local function classicOn() local cfg = Cfg(key); return info.kind == "combo" and cfg and cfg.classic and true or false end
     local function classicOff() return not classicOn() end
-    local settings = {
-        { name = L["Show"], kind = LEM.SettingType.Dropdown, default = defaults.show or "always", values = SHOW_VALUES, get = get("show", "always"), set = set("show") },
+    local frameItems = {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = defaults.width or 220, minValue = 40, maxValue = 600, valueStep = 2, get = get("width", 220), set = set("width"), hidden = classicOn },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = defaults.height or 14, minValue = 4, maxValue = 48, valueStep = 1, get = get("height", defaults.height or 14), set = set("height"), hidden = classicOn },
     }
-    local function add(item) settings[#settings + 1] = item end
+    local function add(item) frameItems[#frameItems + 1] = item end
+    if info.kind == "combo" then
+        add({ name = L["Size"], kind = LEM.SettingType.Slider, default = 24, minValue = 12, maxValue = 48, valueStep = 1,
+              get = get("classicSize", 24), set = set("classicSize"), hidden = classicOff })
+    end
+    add({ name = L["Show"], kind = LEM.SettingType.Dropdown, default = defaults.show or "always", values = SHOW_VALUES, get = get("show", "always"), set = set("show") })
     -- power and mana always show the value: percentages of a (possibly secret) power are unreliable
     if info.kind == "health" then
         add({ name = L["Text"], kind = LEM.SettingType.Dropdown, default = defaults.text or "both", values = TEXT_VALUES, get = get("text", defaults.text or "both"), set = set("text") })
@@ -737,31 +738,20 @@ local function BuildSettings(key)
                   set("classic")(layoutName, value)
                   if bars[key] then LEM:RefreshFrameSettings(bars[key]) end
               end })
-        add({ name = L["Size"], kind = LEM.SettingType.Slider, default = 24, minValue = 12, maxValue = 48, valueStep = 1,
-              get = get("classicSize", 24), set = set("classicSize"), hidden = classicOff })
     end
-    -- Look (a section that opens and closes, shared with the unit frames' Look): texture and border
-    local function LookOpen()
-        local db = K.GetDb()
-        return db and db.editSections and db.editSections.Look or false
-    end
-    local function LookHidden() return not LookOpen() or classicOn() end
-    add({ name = "|cffffd100" .. L["Look"] .. "|r", kind = LEM.SettingType.Expander, default = false, hidden = classicOn,
-          get = LookOpen,
-          set = function(_, value)
-              local db = K.GetDb()
-              if not db then return end
-              db.editSections = db.editSections or {}
-              db.editSections.Look = value and true or nil
-          end })
-    add({ name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.texture or K.DEFAULT_TEXTURE,
-          values = K.BuildTextureValues(false), get = get("texture", defaults.texture or K.DEFAULT_TEXTURE), set = set("texture"), hidden = LookHidden })
-    add({ name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BAR_BORDER,
-          values = K.BuildBorderValues(false), get = get("border", defaults.border or DEFAULT_BAR_BORDER), set = set("border"), hidden = LookHidden })
     if info.kind == "power" or info.kind == "mana" then
         add({ name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false, get = get("fsr", false), set = set("fsr"),
               desc = L["A spark crosses the bar for five seconds after a spell that costs mana: spirit regen comes back when it ends."] })
     end
+    -- the sections every FlareUI frame uses (UnitFrames.lua EditSections); classic gems have no Look
+    local Section, settings = K.EditSections()
+    Section("Frame", frameItems)
+    Section("Look", {
+        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.texture or K.DEFAULT_TEXTURE,
+          values = K.BuildTextureValues(false), get = get("texture", defaults.texture or K.DEFAULT_TEXTURE), set = set("texture"), hidden = classicOn },
+        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BAR_BORDER,
+          values = K.BuildBorderValues(false), get = get("border", defaults.border or DEFAULT_BAR_BORDER), set = set("border"), hidden = classicOn },
+    })
     return settings
 end
 
@@ -864,7 +854,7 @@ end
 -- loads when any bar is on
 function RB:ShouldLoad()
     local db = K and K.GetDb()
-    -- its own module in the 2.0 settings (unitframes.resource.enabled), apart from the unit frames
+    -- its own module in the settings (unitframes.resource.enabled), apart from the unit frames
     if not (db and db.resource and db.resource.enabled) then return false end
     for _, key in ipairs(BAR_ORDER) do
         if BarOn(key) then return true end

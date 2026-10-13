@@ -5,9 +5,13 @@ local L = ns.L
 -- GAMEPAD MODE
 -- The Gamepad UI is the CVar InputDeviceInterfaceStyle; changing it reloads the UI.
 --   * With keyboard and mouse, the first controller press offers the switch, once a session,
---     never in combat (Tweaks > Offer Gamepad Mode).
+--     never in combat.
 --   * /fui pad asks to switch either way.
 -- Also prints the login line.
+--------------------------------------------------
+
+--------------------------------------------------
+-- 1. SWITCHING
 --------------------------------------------------
 local GAMEPAD, MKB = 1, 0           -- Enum.InputDeviceInterfaceType.Gamepad / .Mkb
 local CVAR = "InputDeviceInterfaceStyle"
@@ -74,17 +78,18 @@ function ns.ToggleGamepadMode()
     ns.ShowDialog(ns.IsGamepadUI() and "FLAREUI_GAMEPAD_OFF" or "FLAREUI_GAMEPAD_ON")
 end
 
-local function OfferEnabled()
-    local tweaks = ns.db and ns.db.profile and ns.db.profile.tweaks
-    return not tweaks or tweaks.offerGamepad ~= false
-end
-
+--------------------------------------------------
+-- 2. THE OFFER
+--------------------------------------------------
 local function Offer()
-    if declined or ns.IsGamepadUI() or not OfferEnabled() or ns.AnyDialogShown() then return end
+    if declined or ns.IsGamepadUI() or ns.AnyDialogShown() then return end
     if InCombatLockdown() then pendingOffer = true return end
     ns.ShowDialog("FLAREUI_GAMEPAD_ON")
 end
 
+--------------------------------------------------
+-- 3. EVENTS
+--------------------------------------------------
 local f = CreateFrame("Frame")
 f:RegisterEvent("PLAYER_ENTERING_WORLD")
 f:SetScript("OnEvent", function(self, event, arg1)
@@ -92,7 +97,6 @@ f:SetScript("OnEvent", function(self, event, arg1)
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
         local isInitialLogin = arg1
         armed = isInitialLogin and true or false
-        local isGamepad = ns.IsGamepadUI()
         -- after Chat's history (restored a second after login), so it comes last
         if isInitialLogin then
             C_Timer.After(2, function()
@@ -100,7 +104,7 @@ f:SetScript("OnEvent", function(self, event, arg1)
                 print(("|cff00ccffFlareUI|r " .. L["%s by |cffb39ddbMalkkav|r. Type |cffffff00/fui|r for settings."]):format(version))
             end)
         end
-        if not isGamepad then
+        if not ns.IsGamepadUI() then
             self:RegisterEvent("GAME_PAD_ACTIVE_CHANGED")
             self:RegisterEvent("PLAYER_REGEN_ENABLED")
         end

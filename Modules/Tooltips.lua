@@ -6,8 +6,9 @@ local L = ns.L
 -- Tooltip scale, colours, health bar, anchoring and per-category visibility. Secret-safe rules:
 --   * only TooltipDataProcessor post-calls and post-hooks, never method replacement
 --   * never touch a tooltip that is forbidden, has a secret width, or has a child with a secret
---     shownWidgetCount (a 12.0 Blizzard bug: SetBackdrop / SetPadding then poisons the layout)
---   * every unit value is checked with canaccessvalue before it is compared or concatenated
+--     shownWidgetCount (a Blizzard bug: SetBackdrop / SetPadding then poisons the layout)
+--   * every unit or tooltip value is checked with canaccessvalue before it is tested, compared or
+--     concatenated
 --   * the tooltip health bar is hidden, never written to (Blizzard flags it as a taint path)
 --------------------------------------------------
 
@@ -49,6 +50,7 @@ local REACTION_COLORS = {
     [8] = { 0.35, 0.65, 0.38 },   -- exalted
 }
 local DEFAULT_BORDER_COLOR = { 0.80, 0.60, 0.34 }   -- #CC9957
+local BACKGROUND = { 0.05, 0.05, 0.06, 0.9 }
 local MUTE = 0.85                                   -- class / quality colours are toned down by this
 
 -- tooltips that follow the main one's scale and colours
@@ -57,15 +59,11 @@ local SATELLITES = {
     "FriendsTooltip", "ReputationParagonTooltip",
 }
 
--- visibility categories
+-- visibility categories (items, spells, auras and plain UI tips always show)
 local CAT_WORLD_UNIT   = "worldUnits"
 local CAT_WORLD_OBJECT = "worldObjects"
 local CAT_FRAME_UNIT   = "frameUnits"
-local CAT_FRAME_TIP    = "frameTips"
 local CAT_ACTION       = "actionBars"
-local CAT_ITEM         = "items"
-local CAT_SPELL        = "spells"
-local CAT_AURA         = "auras"
 
 --------------------------------------------------
 -- 4. SAFETY (one gate in front of everything that touches a tooltip's appearance)
@@ -137,13 +135,11 @@ end
 local applyingBackdrop = false
 
 local function ApplyColors(tip, borderColor)
-    local db = GetDb()
-    if not db or not SafeToTouch(tip) or not tip.NineSlice then return end
-    if applyingBackdrop then return end
+    if applyingBackdrop or not SafeToTouch(tip) or not tip.NineSlice then return end
     applyingBackdrop = true
 
-    local bg = db.background or { r = 0.05, g = 0.05, b = 0.06, a = 0.9 }
-    pcall(tip.NineSlice.SetCenterColor, tip.NineSlice, bg.r, bg.g, bg.b, bg.a)
+    local bg = BACKGROUND
+    pcall(tip.NineSlice.SetCenterColor, tip.NineSlice, bg[1], bg[2], bg[3], bg[4])
 
     local c = borderColor or DEFAULT_BORDER_COLOR
     pcall(tip.NineSlice.SetBorderColor, tip.NineSlice, c[1], c[2], c[3], 1)
@@ -169,7 +165,7 @@ local function HideHealthBar()
     local db = GetDb()
     local bar = _G.GameTooltipStatusBar
     if not (db and bar) then return end
-    -- hide only: writing to this bar is a documented taint path in 12.x
+    -- hide only: writing to this bar is a documented taint path
     if db.hideHealthBar then bar:Hide() end
 end
 
@@ -186,55 +182,43 @@ local CLASSIFICATION_FORMAT = {
 
 -- Drops the PvP and "right click for frame settings" lines
 local function ScrubLines(tip)
-    local db = GetDb()
-    if not db then return end
-    local rightClick = _G.UNIT_POPUP_RIGHT_CLICK
+    local rightClick, pvp = _G.UNIT_POPUP_RIGHT_CLICK, _G.PVP_ENABLED
     for i = 2, tip:NumLines() do
         local line = _G["GameTooltipTextLeft" .. i]
         local text = line and line:GetText()
-        if text and canaccessvalue(text) and type(text) == "string" then
-            local drop = false
-            if db.hideRightClick and rightClick and text == rightClick then
-                drop = true
-                -- the instruction line is preceded by a blank spacer line
-                local previous = _G["GameTooltipTextLeft" .. (i - 1)]
-                if previous and i > 1 then previous:SetText(nil) end
-            elseif db.hidePvpLine and _G.PVP_ENABLED and text == _G.PVP_ENABLED then
-                drop = true
+        if canaccessvalue(text) and type(text) == "string" then
+            if rightClick and text == rightClick then
+                line:SetText(nil)
+                -- the instruction line is preceded by a blank spacer line (never the name line)
+                local previous = i > 2 and _G["GameTooltipTextLeft" .. (i - 1)]
+                if previous then previous:SetText(nil) end
+            elseif pvp and text == pvp then
+                line:SetText(nil)
             end
-            if drop then line:SetText(nil) end
         end
     end
 end
 
+-- While switched on: the name in its class colour (reaction colour for NPCs), with the
+-- classification on the same line
 local function ColorName(tip, unit)
     local db = GetDb()
-    if not db or db.nameColor == "none" then return end
+    if not db or db.nameColor ~= "class" then return end
     local line = _G.GameTooltipTextLeft1
     local text = line and line:GetText()
-    if not (text and canaccessvalue(text) and type(text) == "string") then return end
+    if not (canaccessvalue(text) and type(text) == "string") then return end
 
-    local color
-    if db.nameColor == "class" then
-        color = GetClassColor(unit) or GetReactionColor(unit)
-    else
-        color = GetReactionColor(unit)
-    end
+    local color = GetClassColor(unit) or GetReactionColor(unit)
     if not color then return end
 
-    -- classification prefix goes on the same line as the name
-    if db.classification then
-        local class = Readable(UnitClassification(unit))
-        local format = class and CLASSIFICATION_FORMAT[class]
-        if format then text = format:format(text) end
-    end
+    local class = Readable(UnitClassification(unit))
+    local format = class and CLASSIFICATION_FORMAT[class]
+    if format then text = format:format(text) end
     line:SetText(ColorToHex(color[1], color[2], color[3]) .. text .. "|r")
 end
 
 -- The level line is the first line that starts with the level word
 local function ColorLevelLine(tip, unit)
-    local db = GetDb()
-    if not (db and db.colorLevelLine) then return end
     local color = GetReactionColor(unit)
     if not color then return end
     local levelWord = _G.LEVEL
@@ -242,7 +226,7 @@ local function ColorLevelLine(tip, unit)
     for i = 2, tip:NumLines() do
         local line = _G["GameTooltipTextLeft" .. i]
         local text = line and line:GetText()
-        if text and canaccessvalue(text) and type(text) == "string" and text:find("^" .. levelWord) then
+        if canaccessvalue(text) and type(text) == "string" and text:find("^" .. levelWord) then
             line:SetText(ColorToHex(color[1], color[2], color[3]) .. text .. "|r")
             return
         end
@@ -276,7 +260,7 @@ end
 local function AddIdLine(tip, key, label, data)
     local db = GetDb()
     local id = data and data.id
-    if not (db and db[key] and id and canaccessvalue(id) and type(id) == "number") then return end
+    if not (db and db[key] and canaccessvalue(id) and type(id) == "number") then return end
     tip:AddDoubleLine(" ", label .. " " .. id, nil, nil, nil, 0.5, 0.5, 0.5)
     if tip:IsShown() then tip:Show() end   -- re-layout; never pop up a hidden (scanning) tooltip
 end
@@ -310,7 +294,7 @@ local function ShouldHide(category)
     if not db or ns.IsGamepadUI() then return false end
     local mode = db.visibility and db.visibility[category] or "always"
     if mode == "always" then return false end
-    if db.shiftReveal and IsShiftKeyDown() then return false end
+    if IsShiftKeyDown() then return false end
     if mode == "never" then return true end
     local inCombat = UnitAffectingCombat("player")
     if not canaccessvalue(inCombat) then inCombat = InCombatLockdown() end
@@ -332,8 +316,8 @@ end
 -- unit, or "mouseover" over the world; failing that the tooltip is left as Blizzard drew it.
 local function TooltipUnit(tip)
     local _, unit = TooltipUtil.GetDisplayedUnit(tip)
-    if not unit then unit = select(2, tip:GetUnit()) end
-    if unit and canaccessvalue(unit) then return unit end
+    if canaccessvalue(unit) and unit == nil then unit = select(2, tip:GetUnit()) end
+    if canaccessvalue(unit) and type(unit) == "string" then return unit end
     local owner = tip:GetOwner()
     if owner and not owner:IsForbidden() then
         local ownerUnit = owner.unit
@@ -349,13 +333,12 @@ end
 local function OnTooltipSetUnit(tip)
     if tip ~= GameTooltip or tip:IsForbidden() then return end
     local unit = TooltipUnit(tip)
+    local category = MouseIsOverWorld() and CAT_WORLD_UNIT or CAT_FRAME_UNIT
     if not unit then
-        HideIfNeeded(tip, MouseIsOverWorld() and CAT_WORLD_UNIT or CAT_FRAME_UNIT)
+        HideIfNeeded(tip, category)
         return
     end
-    if not UnitExists(unit) then return end
-
-    local category = MouseIsOverWorld() and CAT_WORLD_UNIT or CAT_FRAME_UNIT
+    if not Readable(UnitExists(unit)) then return end
     if HideIfNeeded(tip, category) then return end
 
     AddTargetLine(tip, unit)
@@ -369,15 +352,15 @@ end
 
 local function OnTooltipSetItem(tip, data)
     if not SafeToTouch(tip) then return end
-    if tip == GameTooltip and HideIfNeeded(tip, OwnerIsActionButton(tip) and CAT_ACTION or CAT_ITEM) then return end
+    if tip == GameTooltip and OwnerIsActionButton(tip) and HideIfNeeded(tip, CAT_ACTION) then return end
 
     local db = GetDb()
     local color
     if db and db.borderByQuality then
         local _, link = TooltipUtil.GetDisplayedItem(tip)
-        if link and canaccessvalue(link) then
+        if canaccessvalue(link) and link then
             local quality = select(3, C_Item.GetItemInfo(link))
-            if quality and canaccessvalue(quality) then
+            if canaccessvalue(quality) and quality then
                 local r, g, b = C_Item.GetItemQualityColor(quality)
                 if r then color = { Mute(r, g, b) } end
             end
@@ -389,14 +372,13 @@ end
 
 local function OnTooltipSetSpell(tip, data)
     if not SafeToTouch(tip) then return end
-    if tip == GameTooltip and HideIfNeeded(tip, OwnerIsActionButton(tip) and CAT_ACTION or CAT_SPELL) then return end
+    if tip == GameTooltip and OwnerIsActionButton(tip) and HideIfNeeded(tip, CAT_ACTION) then return end
     ApplyColors(tip, nil)
     AddIdLine(tip, "showSpellID", L["Spell ID"], data)
 end
 
 local function OnTooltipSetAura(tip, data)
     if not SafeToTouch(tip) then return end
-    if tip == GameTooltip and HideIfNeeded(tip, CAT_AURA) then return end
     ApplyColors(tip, nil)
     AddIdLine(tip, "showSpellID", L["Spell ID"], data)
 end
@@ -404,9 +386,10 @@ end
 -- anything that is not a unit / item / spell / aura: world objects and plain UI frames
 local function OnTooltipShow(tip)
     if tip ~= GameTooltip or not SafeToTouch(tip) then return end
-    if tip:GetUnit() then return end            -- units are handled in their own post-call
-    local category = MouseIsOverWorld() and CAT_WORLD_OBJECT or CAT_FRAME_TIP
-    if HideIfNeeded(tip, category) then return end
+    -- units are handled in their own post-call (a secret name still means a unit)
+    local unitName = tip:GetUnit()
+    if issecretvalue(unitName) or unitName then return end
+    if MouseIsOverWorld() and HideIfNeeded(tip, CAT_WORLD_OBJECT) then return end
     ApplyColors(tip, nil)
     HideHealthBar()
 end
@@ -424,7 +407,7 @@ local function ApplyAnchor(tooltip, parent)
     local overWorld = MouseIsOverWorld()
     local mode = overWorld and db.anchor or db.anchorFrames
     if mode == "default" then return end
-    tooltip:SetOwner(parent, "ANCHOR_CURSOR_RIGHT", db.anchorX or 0, db.anchorY or 0)
+    tooltip:SetOwner(parent, "ANCHOR_CURSOR_RIGHT", 0, 0)
 end
 
 --------------------------------------------------

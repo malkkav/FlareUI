@@ -3,8 +3,7 @@ local S = ns.Settings
 
 --------------------------------------------------
 -- CHAT (Modules/Chat.lua). Fixed, no option: what brings chat back (new message, typing, mouse).
--- Extend Chat History is gone. Tabs: Frame (Frame, Edit Box, Header Buttons), Tweaks (Tweaks,
--- Formatting), Fonts.
+-- Tabs: Frame (Frame, Edit Box, Header Buttons), Tweaks (Tweaks, Formatting), Fonts.
 --------------------------------------------------
 local function Refresh()
     if ns.Chat and ns.Chat.RefreshAll then ns.Chat:RefreshAll() end
@@ -52,7 +51,6 @@ Format("formatPlayer", "formatPlayer")
 Format("timestamps", "betterTimestamps")
 Format("shortChannels", "shortChannels")
 Format("levels", "showLevel")
-
 
 -- Fonts tab
 S:FontRows{ module = "ch", tab = "fonts", section = "ch.fonts", apply = Refresh, fonts = {

@@ -2,9 +2,9 @@ local _, ns = ...
 local S = ns.Settings
 
 --------------------------------------------------
--- TOOLTIPS (Modules/Tooltips.lua). Fixed, no option: background colour, level
--- line colour, classification prefixes, the PvP line and right-click hint hidden, the health bar
--- hidden, Shift to reveal.
+-- TOOLTIPS (Modules/Tooltips.lua). Fixed, no option: background colour, level line colour,
+-- classification prefix, PvP line and right-click hint hidden, Shift to reveal, no anchor offset;
+-- items, spells, auras and interface tips always show; names in class colour or none.
 --------------------------------------------------
 local function Refresh()
     if ns.Tooltips and ns.Tooltips.Refresh then ns.Tooltips:Refresh() end

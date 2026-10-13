@@ -71,8 +71,15 @@ local function KeyHover(control)
     control:HookScript("OnLeave", function() ns.SettingsPanel:ShowModulePreview() end)
 end
 
+-- a radial choice in a key's menu: { id, entry }
+local function IsKeyRadial(choice) return choice.entry.radial == choice.id end
+local function PickKeyRadial(choice)
+    choice.entry.setRadial(choice.id)
+    ns.SettingsPanel:Refresh()
+end
+
 local function BuildKeys(host)
-    host.rows = {}
+    host.rows, host.radials = {}, {}
     for i = 1, MAX_KEY_ROWS do
         local row = CreateFrame("Frame", nil, host)
         row:SetSize(470, KEY_ROW_H)
@@ -83,6 +90,12 @@ local function BuildKeys(host)
         row.radial = CreateFrame("DropdownButton", nil, row, "WowStyle1DropdownTemplate")
         row.radial:SetWidth(180)
         row.radial:SetPoint("LEFT", row.key, "RIGHT", 10, 0)
+        row.radial:SetupMenu(function(_, root)
+            if not row.entry then return end
+            for _, r in ipairs(host.radials) do
+                root:CreateRadio(r[2], IsKeyRadial, PickKeyRadial, { id = r[1], entry = row.entry })
+            end
+        end)
         KeyHover(row.radial)
         row.remove = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
         row.remove:SetSize(80, 22)
@@ -104,7 +117,7 @@ end
 
 local function RefreshKeys(host)
     local keys = Ready() and Keys() or {}
-    local radials = RadialChoices()
+    host.radials = RadialChoices()
     local shown = 0
     for i, row in ipairs(host.rows) do
         local entry = keys[i]
@@ -113,14 +126,7 @@ local function RefreshKeys(host)
             shown = i
             row.entry = entry
             if not row.key.waiting then row.key:ShowKey(entry.key) end
-            row.radial:SetupMenu(function(_, root)
-                for _, r in ipairs(radials) do
-                    root:CreateRadio(r[2], function() return entry.radial == r[1] end, function()
-                        entry.setRadial(r[1])
-                        ns.SettingsPanel:Refresh()
-                    end)
-                end
-            end)
+            row.radial:GenerateMenu()
             row.remove:SetEnabled(entry.key ~= "" or i > 1)
         end
     end

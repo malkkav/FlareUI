@@ -35,7 +35,7 @@ S:Row{
     apply = function() ns.ShowDialog("FLAREUI_SYNC_SOURCE") end,
 }
 
--- Windows: moving windows and placing loot rolls / toasts are one feature now
+-- Windows: moving windows and placing loot rolls / toasts are one switch
 S:Row{
     key = "qol.move", tab = "advanced", reload = true,
     get = function() return S:GetPath("tweaks.moveAnyFrame") end,
@@ -48,7 +48,7 @@ S:Row{
 -- GAMEPLAY ---------------------------------------
 -- (sections in this order: Looting, Camera, Convenience)
 S:Row{ key = "qol.fastLoot", tab = "gameplay", path = "tweaks.fasterLoot", apply = Refresh }
--- Camera: further and faster zoom are one option now
+-- Camera: further and faster zoom are one switch
 S:Row{
     key = "qol.camera", tab = "gameplay",
     get = function() return S:GetPath("tweaks.maxCameraZoom") end,

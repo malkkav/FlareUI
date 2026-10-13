@@ -4,7 +4,8 @@ local L = ns.L
 --------------------------------------------------
 -- EDIT MODE OVERLAYS
 -- An eye button beside Edit Mode's close button hides the selection boxes of every Edit Mode frame
--- (alpha 0: they still drag and click). Saved per profile.
+-- (alpha 0: they still drag and click). Saved per profile. Edit Mode's Frames checkboxes also show
+-- and hide FlareUI's frames.
 --------------------------------------------------
 local EYE_TEXTURE      = "Interface\\LFGFrame\\LFG-Eye"
 local EYE_FRAME_OPEN   = 0
@@ -16,7 +17,7 @@ local eyeButton
 local LEM = LibStub("FlareEditMode")
 
 --------------------------------------------------
--- HIDING OUR FRAMES IN EDIT MODE
+-- 1. HIDING FLAREUI'S FRAMES IN EDIT MODE
 -- A frame can be hidden for a reason while editing (Blizzard's checkbox for it is off): it goes
 -- invisible and so does its selection box, which then cannot be clicked, until no reason is left. A
 -- frame never hidden is never touched (its own alpha stays its module's).
@@ -46,6 +47,9 @@ function ns.EditModeHide(frame, reason, hide)
     end
 end
 
+--------------------------------------------------
+-- 2. THE FRAMES CHECKBOXES
+--------------------------------------------------
 -- Edit Mode's Frames checkboxes show and hide Blizzard's frames, which FlareUI keeps hidden; they
 -- show and hide FlareUI's own in their place (in Edit Mode only)
 local SWITCHES = {
@@ -72,6 +76,9 @@ local function ApplySwitches()
     for _, switch in ipairs(SWITCHES) do ApplySwitch(switch) end
 end
 
+--------------------------------------------------
+-- 3. THE EYE BUTTON
+--------------------------------------------------
 local function IsHidden()
     return ns.db and ns.db.profile and ns.db.profile.editModeOverlaysHidden
 end
@@ -148,6 +155,9 @@ local function CreateEye()
     UpdateEye()
 end
 
+--------------------------------------------------
+-- 4. HOOKS
+--------------------------------------------------
 local function OnEditModeShown()
     CreateEye()
     UpdateEye()

@@ -43,7 +43,7 @@ local UnitCanAttack = UnitCanAttack
 local canaccessvalue = canaccessvalue
 
 -- seconds a faded element waits before fading out: covers the gap between the bars of a group (the
--- fade itself takes the Fade Speed, ns.FADE_TIMES)
+-- fade itself takes the Fade Speed, ns.FadeTime)
 local FADE_DELAY = 0.08
 
 --------------------------------------------------
@@ -65,7 +65,6 @@ local ELEMENTS = {
     { key = "menu", frame = "MicroMenuContainer", system = "MicroMenu" },
     { key = "xp" },   -- the FlareUI XP bar (its own Edit Mode frame)
 }
-Visibility.ELEMENTS = ELEMENTS
 local ELEMENT_BY_KEY = {}
 for _, e in ipairs(ELEMENTS) do ELEMENT_BY_KEY[e.key] = e end
 
@@ -165,7 +164,10 @@ end
 
 local function HideMoverOfFrame(frame)
     if frame and frame.Selection then
-        frame.Selection.FlareUI_HiddenMover = true
+        if not frame.Selection.FlareUI_HiddenMover then
+            frame.Selection.FlareUI_HiddenMover = true
+            frame.FlareUI_MouseWas = frame:IsMouseEnabled()
+        end
         frame.Selection:SetAlpha(0)
         if frame.Selection.Label then frame.Selection.Label:SetAlpha(0) end
         frame:EnableMouse(false)
@@ -173,15 +175,15 @@ local function HideMoverOfFrame(frame)
     end
 end
 
+-- only a selection hidden above is given back, with the frame's own mouse setting
 local function RestoreMoverOfFrame(frame)
-    if frame and frame.Selection then
+    if frame and frame.Selection and frame.Selection.FlareUI_HiddenMover then
         frame.Selection.FlareUI_HiddenMover = nil
-
         frame.Selection:SetAlpha(1)
         if frame.Selection.Label then frame.Selection.Label:SetAlpha(1) end
-
-        if frame.EnableMouse then frame:EnableMouse(true) end
-        if frame.Selection.EnableMouse then frame.Selection:EnableMouse(true) end
+        frame:EnableMouse(frame.FlareUI_MouseWas ~= false)
+        frame.FlareUI_MouseWas = nil
+        frame.Selection:EnableMouse(true)
     end
 end
 
@@ -262,18 +264,21 @@ local function MarkAllDirty()
     end
 end
 
-Fader.updateInterval = 0.05 -- condition checks (the mouse leaving a bar is noticed within this)
+local CHECK_INTERVAL = 0.05  -- condition checks (the mouse leaving a bar is noticed within this)
 Fader.shows = {}            -- group -> whether it is fading in (from the last condition check)
 Fader.counting = {}         -- group -> its fade-out delay is running down
 Fader.UpdateScript = function(self, elapsed)
     self.updateTimer = self.updateTimer + elapsed
-    local check = self.updateTimer >= self.updateInterval or next(self.dirty) ~= nil
+    local check = self.updateTimer >= CHECK_INTERVAL or next(self.dirty) ~= nil
     -- between checks only a running fade has work to do
     if not check and not self.fading then return end
     local tick = self.updateTimer
     if check then self.updateTimer = 0 end
 
     local hasActiveFades = false
+    local db = GetDb()
+    local speed = ns.FadeTime(db and db.fadeSpeed)
+    local change = speed > 0 and (1 / speed) * elapsed or 1
 
     for groupName, members in pairs(self.groups) do
         if check or self.shows[groupName] == nil then
@@ -297,9 +302,6 @@ Fader.UpdateScript = function(self, elapsed)
             local currentAlpha = frame:GetAlpha()
             if math_abs(currentAlpha - targetAlpha) > 0.005 then
                 hasActiveFades = true
-                local db = GetDb()
-                local speed = ns.FadeTime(db and db.fadeSpeed)
-                local change = speed > 0 and (1 / speed) * elapsed or 1
                 local newAlpha = (currentAlpha < targetAlpha) and math_min(targetAlpha, currentAlpha + change) or math_max(targetAlpha, currentAlpha - change)
                 ApplyElementAlpha(frame, data.key, newAlpha)
             end
@@ -310,17 +312,13 @@ Fader.UpdateScript = function(self, elapsed)
 
     self.fading = hasActiveFades
     -- a fade still running, or a delay still counting down, keeps the loop going
-    local delaying = next(self.counting) ~= nil
     for groupName, on in pairs(self.counting) do
         if not on then self.counting[groupName] = nil end
     end
-    delaying = delaying and next(self.counting) ~= nil
-    local idle = not hasActiveFades and not next(self.dirty) and not delaying
+    local idle = not hasActiveFades and not next(self.dirty) and not next(self.counting)
     if idle and not self.watchesMouseover then
         self:SetScript("OnUpdate", nil)
         self.updateEnabled = false
-    else
-        self.updateInterval = 0.05
     end
 end
 

@@ -3,10 +3,9 @@ local L = ns.L
 local S = ns.Settings
 
 --------------------------------------------------
--- ACTION BARS (Modules/ActionBars.lua, Visibility.lua, XPBar.lua). Fixed, no option: clean keybind
--- text, gryphons above the text, button art, no spells added to the bars, one button scale (1.06),
--- the status colours themselves; the XP bar's text on mouseover and no tooltip. When each bar
--- shows and its fade group are set per bar in Edit Mode.
+-- ACTION BARS (Modules/ActionBars.lua, Visibility.lua, XPBar.lua). Fixed, no option: gryphons above
+-- the buttons, one button scale (1.06), the status colours themselves, no XP bar tooltip. When each
+-- bar shows and its fade group are set per bar in Edit Mode.
 --------------------------------------------------
 local function Refresh()
     if ns.ActionBars and ns.ActionBars.Refresh then ns.ActionBars:Refresh() end
@@ -34,7 +33,9 @@ S:Row{ key = "ab.procGlow", path = "actionbars.procGlow", half = true,
 S:Row{ key = "ab.hideMacroText", path = "actionbars.hideMacroText", apply = Refresh, half = true }
 S:Row{ key = "ab.hideKeybinds", path = "actionbars.hideHotkeys", apply = Refresh, half = true }
 S:Row{ key = "ab.autoRanks", path = "actionbars.autoRanks", half = true }
-
+S:Row{ key = "ab.cleanKeybinds", path = "actionbars.cleanKeybinds", apply = Refresh, half = true }
+S:Row{ key = "ab.buttonArt", path = "actionbars.buttonArt", apply = Refresh, half = true }
+S:Row{ key = "ab.stopAutoAdd", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
 
 -- XP Bar
 S:Row{ key = "ab.xpBar", path = "actionbars.xpbar.enabled", reload = true }

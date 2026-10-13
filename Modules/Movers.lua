@@ -6,7 +6,7 @@ local L = ns.L
 -- Two Edit Mode frames for pop-ups Blizzard gives no place of their own:
 --   FlareUI Loot Rolls  the Need / Greed / Pass frames (GroupLootContainer)
 --   FlareUI Toasts      Blizzard's toast stack: new recipe learned, achievements, loot won...
--- Each shows a sample in Edit Mode. Part of Tweaks (Move Loot Rolls & Toasts).
+-- Each shows a sample in Edit Mode. Part of Quality of Life, with the window mover (one option).
 -- Hooks only: the loot rolls share a layout with protected frames, so they are re-anchored after
 -- Blizzard places them and nothing is written onto Blizzard's frames.
 --------------------------------------------------

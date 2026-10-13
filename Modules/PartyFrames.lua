@@ -48,9 +48,11 @@ local DEFAULT_POSITION = { point = "LEFT", x = 3, y = 0 }
 local PET_GAP = 2
 local AURA_SPACING = 2
 local AURA_CONTAINER_TEMPLATE = "CustomAuraContainerTemplate"
-local PRIVATE_AURA_COUNT = 2
 local READY_CHECK_HOLD = 6           -- seconds the result stays after a ready check ends
 local RANGE_INTERVAL = 0.5
+local RANGE_ALPHA = 0.45             -- a member out of range
+-- auras per lane and per row, by party style (an owner's view gives its own: auraMax, auraPerRow)
+local PARTY_AURA_GRID = { classic = { 5, 5 }, raid = { 6, 3 } }
 
 -- Where a lane of auras can go: beside / above / below the frame, or inside the health bar
 local AURA_POSITIONS = { "RIGHT", "LEFT", "ABOVE", "ABOVE_RIGHT", "BELOW", "BELOW_RIGHT",
@@ -87,18 +89,19 @@ local READY_ATLAS = {
 local ROLE_ATLAS = { TANK = "UI-LFG-RoleIcon-Tank-Micro-GroupFinder", HEALER = "UI-LFG-RoleIcon-Healer-Micro-GroupFinder",
                      DAMAGER = "UI-LFG-RoleIcon-DPS-Micro-GroupFinder" }
 
--- The frame icons, per style in Edit Mode: style.icons[key] = { shown, x, y, scale }
+-- The frame icons, switched per style in Edit Mode: style.icons[key] = { shown }
 local ICON_ORDER  = { "role", "leader", "raidIcon", "readyCheck", "status" }
 local ICON_LABELS = { role = L["Role"], leader = L["Leader"], raidIcon = L["Raid Target"], readyCheck = L["Ready Check"], status = L["Summon / Resurrect / Phase"] }
--- Icon Scale when the player has not set one (percent)
-local ICON_DEFAULT_SCALE = { raidIcon = 125, readyCheck = 125, status = 125 }
+-- the icons drawn larger than their base size (the role icon also on Raid-Style tiles: RAID_ROLE_SCALE)
+local ICON_SCALE = { raidIcon = 1.25, readyCheck = 1.25, status = 1.25 }
+local RAID_ROLE_SCALE = 1.2
 
 -- Edit Mode sample group: a tank, a healer and three damage dealers
 local PREVIEW = {
     { name = "Thalorien", class = "WARRIOR", role = "TANK",    health = 0.92, power = 0.35, leader = true },
     { name = "Elysande",  class = "PRIEST",  role = "HEALER",  health = 0.64, power = 0.85, ready = "ready" },
-    { name = "Morwen",    class = "WARLOCK", role = "DAMAGER", health = 0.48, power = 0.60, marker = 8, highlight = "Magic", pet = "Voidwalker" },
-    { name = "Sylvara",   class = "HUNTER",  role = "DAMAGER", health = 0.81, power = 0.72, pet = "Wolf" },
+    { name = "Morwen",    class = "WARLOCK", role = "DAMAGER", health = 0.48, power = 0.60, marker = 8, highlight = "Magic", pet = "Voidwalker", missing = { "int" } },
+    { name = "Sylvara",   class = "HUNTER",  role = "DAMAGER", health = 0.81, power = 0.72, pet = "Wolf", missing = { "fort", "mark" } },
     { name = "Kestrel",   class = "ROGUE",   role = "DAMAGER", health = 0.27, power = 0.90, status = "IncomingSummonPending" },
 }
 -- sample class colours and power types, independent of the API
@@ -110,7 +113,6 @@ local PREVIEW_POWER = { WARRIOR = "RAGE", PRIEST = "MANA", WARLOCK = "MANA", HUN
 local PREVIEW_POWER_RGB = { MANA = { 0, 0, 1 }, RAGE = { 1, 0, 0 }, ENERGY = { 1, 1, 0 } }
 local DISPEL_TYPES = { "Magic", "Curse", "Poison", "Disease" }
 local DISPEL_RGB = { Magic = { 0.20, 0.60, 1.00 }, Curse = { 0.60, 0.00, 1.00 }, Poison = { 0.00, 0.60, 0.00 }, Disease = { 0.60, 0.40, 0.00 } }
-local PRIVATE_SAMPLE_ICONS = { "Interface\\Icons\\Spell_Shadow_AntiShadow", "Interface\\Icons\\Ability_Creature_Cursed_02" }
 -- sample auras for tiles without aura containers (the raid frames' Edit Mode samples)
 local SAMPLE_BUFF_ICONS = { "Interface\\Icons\\Spell_Holy_Renew", "Interface\\Icons\\Spell_Nature_Rejuvenation", "Interface\\Icons\\Spell_Holy_PowerWordShield" }
 local SAMPLE_DEBUFF_ICONS = { "Interface\\Icons\\Spell_Shadow_ShadowWordPain", "Interface\\Icons\\Spell_Fire_Immolation", "Interface\\Icons\\Ability_Creature_Poison_02" }
@@ -142,7 +144,7 @@ local function IsRaidStyle()
     return party and party.style == "raid"
 end
 
--- A tile's settings: its owner's when it has one (f.ctx: the raid frames), else the party style's
+-- A tile's settings: its owner's when it has one (f.ctx: the raid and boss frames), else the party style's
 local function TS(f)
     if f and f.ctx then return f.ctx.Settings() end
     return S()
@@ -158,8 +160,15 @@ end
 -- A mirrored tile (the boss frames, as the target frame): portrait on the right, bars filling right
 -- to left, level and name on the right, the numbers on the left
 local function Mirrored(f)
-    local st = TS(f)
-    return st and st.mirror and true or false
+    return f and f.ctx and f.ctx.mirror and true or false
+end
+
+-- How many auras a lane holds, and how many to a row
+local function AuraGrid(st)
+    local party = GetPartyDb()
+    local grid = party and (st == party.raid and PARTY_AURA_GRID.raid or st == party.classic and PARTY_AURA_GRID.classic)
+    if grid then return grid[1], grid[2] end
+    return st.auraMax, st.auraPerRow
 end
 
 -- A side and its opposite, swapped on a mirrored tile, and which way +x goes from the near side
@@ -189,15 +198,12 @@ local function IconShown(key, f)
 end
 
 local function PlaceIcon(f, key, region, width, height, point, relativeTo, relativePoint, x, y)
-    local store = IconStore(key, nil, f)
-    local dx, dy, scale = 0, 0, (ICON_DEFAULT_SCALE[key] or 100) / 100
-    if store then dx, dy, scale = store.x or 0, store.y or 0, (store.scale or ICON_DEFAULT_SCALE[key] or 100) / 100 end
+    local scale = ICON_SCALE[key] or 1
+    if key == "role" and RaidTile(f) then scale = RAID_ROLE_SCALE end
     region:ClearAllPoints()
     region:SetSize(width * scale, height * scale)
-    region:SetPoint(point, relativeTo, relativePoint, x + dx, y + dy)
+    region:SetPoint(point, relativeTo, relativePoint, x, y)
 end
-
-local selectedIcon = ICON_ORDER[1]   -- the icon picked in the Edit Mode dialog (not saved)
 
 local function ScaledFont(base, size)
     if not size then return base end
@@ -400,19 +406,18 @@ local function UpdateStatus(f)
     end
 end
 
--- Out of range: the whole frame fades (UnitInRange is secret, so the alpha is picked by the client)
+-- Out of range: the whole frame fades (UnitInRange is secret, so the alpha is picked by the client).
+-- Your own frame and enemy tiles never fade.
 local function UpdateRange(f)
-    local st = TS(f)
-    local alpha = st and st.rangeAlpha or 0.45
-    if f.unit == "player" or alpha >= 1 or IsEditing() then
+    if f.unit == "player" or (f.ctx and f.ctx.hostile) or IsEditing() then
         f:SetAlpha(1)
         return
     end
     local inRange = UnitInRange(f.unit)
     if f.SetAlphaFromBoolean then
-        if not pcall(f.SetAlphaFromBoolean, f, inRange, 1, alpha) then f:SetAlpha(1) end
+        if not pcall(f.SetAlphaFromBoolean, f, inRange, 1, RANGE_ALPHA) then f:SetAlpha(1) end
     elseif canaccessvalue(inRange) then
-        f:SetAlpha(inRange and 1 or alpha)
+        f:SetAlpha(inRange and 1 or RANGE_ALPHA)
     end
 end
 
@@ -541,7 +546,6 @@ end
 -- Blizzard's aura containers render everything (aura data can be secret). One container per place
 -- a lane can go, created at login, on the ProcessAura policy (buff / debuff / dispel by Blizzard's
 -- raid frame rules). Separate containers hold the big defensive slot and the dispel highlight.
--- Private auras use Blizzard's own anchors.
 --------------------------------------------------
 local auraSupport
 local function HasAuraSupport()
@@ -605,7 +609,7 @@ local function InitDispelIcon(button, size, inside)
     if inside then PassClicks(button) end
 end
 
-local function LaneLook(st, size, isDebuff)
+local function LaneLook(size, isDebuff)
     return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, UFAura("auraStyle", "square"), "icon", UFAura("auraTimer", "none"))
 end
 
@@ -680,19 +684,18 @@ local function ConfigurePosition(f, pos, lanes)
     local st = TS(f)
     local db = K.GetDb()
     local size = st.auraSize or 18
-    local max = st.auraMax or 4
-    local perRow = math_max(1, st.auraPerRow or max)
+    local max, perRow = AuraGrid(st)
     local inside = pos:find("^INSIDE") ~= nil
+    local showTimer = UFAura("auraTimer", "none") ~= "none"
+    local font = db and db.font
+    local unit = f.unit
     entry.generation = entry.generation + 1
     local gen = entry.generation
     for index, lane in ipairs(lanes) do
         local key = lane.key .. gen
         local isDebuff, kind = lane.isDebuff, lane.kind
         local laneSize = lane.scale and math_floor(size * lane.scale + 0.5) or size
-        local look = kind ~= "dispels" and LaneLook(st, laneSize, isDebuff) or nil
-        local showTimer = UFAura("auraTimer", "none") ~= "none"
-        local font = db and db.font
-        local unit = f.unit
+        local look = kind ~= "dispels" and LaneLook(laneSize, isDebuff) or nil
         local ok, err = pcall(container.AddAuraGroup, container, key, lane.filter, {
             maxFrameCount = lane.max or (kind == "dispels" and math_min(max, 3) or max),
             candidateFilters = lane.candidates,
@@ -739,7 +742,7 @@ local function ConfigureAuras(f)
     if not f.AuraPos then return end
     local st = TS(f)
     if not st then return end
-    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.auraMax, st.auraPerRow, UFAura("auraStyle", "square"),
+    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, AuraGrid(st), UFAura("auraStyle", "square"),
         UFAura("auraTimer", "none"), st.bigBossDebuffs, st.castbar, st.castHeight, st.petHeight, (not f.ctx and GetPartyDb().pets))
     if f.auraSignature == sig then return end
     f.auraSignature = sig
@@ -795,7 +798,7 @@ local function ConfigureSlots(f)
 
     if st.bigDefensive ~= false then
         local size = st.bigDefensiveSize or 22
-        local look = LaneLook(st, size, false)
+        local look = LaneLook(size, false)
         local key = "bigdef" .. gen
         local ok = pcall(container.AddAuraSlot, container, key, "HELPFUL|BIG_DEFENSIVE", {
             initializeFrame = function(button)
@@ -858,46 +861,6 @@ local function ConfigureSlots(f)
     hlContainer:Show()
     pcall(hlContainer.SetEditModePreviewEnabled, hlContainer, false)
     pcall(hlContainer.UpdateAllAuras, hlContainer)
-end
-
--- Private auras (boss mechanics addons cannot see) on Blizzard's anchors
-local function ConfigurePrivateAuras(f)
-    local api = C_UnitAuras
-    if not (api and api.AddPrivateAuraAnchor) then return end
-    local st0 = TS(f)
-    local sig = Signature(st0 and st0.privateAuras, st0 and st0.privateAuraSize, RaidTile(f), f.unit)
-    if f.privateSignature == sig then return end
-    f.privateSignature = sig
-    if f.privateAnchors then
-        for _, id in ipairs(f.privateAnchors) do pcall(api.RemovePrivateAuraAnchor, id) end
-    end
-    f.privateAnchors = {}
-    local st = TS(f)
-    if not st or st.privateAuras == false or not f.unit then return end
-    local size = st.privateAuraSize or 20
-    local raid = RaidTile(f)
-    for i = 1, PRIVATE_AURA_COUNT do
-        local x = (i - (PRIVATE_AURA_COUNT + 1) / 2) * (size + 2)
-        local ok, id = pcall(api.AddPrivateAuraAnchor, {
-            unitToken = f.unit,
-            auraIndex = i,
-            parent = f,
-            showCooldownFrame = true,   -- Forever's name for it (retail: showCountdownFrame)
-            showCountdownNumbers = false,
-            isContainer = false,
-            iconInfo = {
-                iconAnchor = {
-                    point = raid and "BOTTOM" or "CENTER",
-                    relativeTo = f.Health,
-                    relativePoint = raid and "BOTTOM" or "CENTER",
-                    offsetX = x, offsetY = raid and 2 or 0,
-                },
-                iconWidth = size,
-                iconHeight = size,
-            },
-        })
-        if ok and id then f.privateAnchors[#f.privateAnchors + 1] = id end
-    end
 end
 
 local function SetAuraPreview(enabled)
@@ -1112,7 +1075,6 @@ local function LayoutMember(f)
     if f.Cast then K.LayoutCastBar(f.Cast, CastStyle(st), f, "BOTTOM") end
     ConfigureAuras(f)
     ConfigureSlots(f)
-    ConfigurePrivateAuras(f)
 end
 
 local function LayoutPet(p)
@@ -1143,15 +1105,15 @@ local function LayoutPet(p)
 end
 
 -- An aura row's height: the icon, plus its timer when that hangs under it
-local function CellHeight(st, size)
+local function CellHeight(size)
     if UFAura("auraTimer", "none") == "below" then return size + math_max(7, math_floor(size * 0.4 + 0.5)) + 3 end
     return size
 end
 
 -- How far the lanes at these places reach out from the frame
 local function LanesExtent(st, places, across)
-    local size, max = st.auraSize or 18, st.auraMax or 4
-    local perRow = math_max(1, st.auraPerRow or max)
+    local size = st.auraSize or 18
+    local max, perRow = AuraGrid(st)
     local best = 0
     for _, pos in ipairs(places) do
         local reach = 0
@@ -1163,11 +1125,11 @@ local function LanesExtent(st, places, across)
             end
         else
             if st.debuffs == pos then
-                reach = reach + math.ceil(max / perRow) * (CellHeight(st, size) + AURA_SPACING)
+                reach = reach + math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING)
                 if st.bigBossDebuffs ~= false then reach = reach + math_floor(size * 0.5 + 0.5) end
             end
             if st.dispels == pos then reach = reach + math.ceil(math_min(max, 3) / perRow) * (size + AURA_SPACING) end
-            if st.buffs == pos then reach = reach + math.ceil(max / perRow) * (CellHeight(st, size) + AURA_SPACING) end
+            if st.buffs == pos then reach = reach + math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING) end
         end
         if reach > best then best = reach end
     end
@@ -1349,8 +1311,7 @@ local function PreviewColor(class)
     return ns.HEALTH_GREEN[1], ns.HEALTH_GREEN[2], ns.HEALTH_GREEN[3]
 end
 
--- Samples the aura containers cannot show in Edit Mode: dispel icons, private auras, the dispel
--- highlight
+-- Samples the aura containers cannot show in Edit Mode: dispel icons and the dispel highlight
 local function PreviewBit(f, used, size)
     f.previewBits = f.previewBits or {}
     local b = f.previewBits[used]
@@ -1377,6 +1338,7 @@ local function ApplyPreviewExtras(f, data)
     local st = TS(f)
     local used = 0
     local size = st.auraSize or 18
+    local max, perRow = AuraGrid(st)
     -- buffs and debuffs drawn by hand where there are no containers to show Edit Mode's samples
     if f.noAuras then
         local function Row(place, count, icons, bossFirst)
@@ -1384,7 +1346,7 @@ local function ApplyPreviewExtras(f, data)
             local point, rel, relPoint, x, y, growH = AuraAnchor(f, place)
             local sx = growH == AnchorUtil.FlowDirection.Left and -1 or 1
             local offset = 0
-            for i = 1, math_min(count, st.auraMax or 3) do
+            for i = 1, math_min(count, max) do
                 local s = (bossFirst and i == 1 and st.bigBossDebuffs ~= false) and math_floor(size * 1.5 + 0.5) or size
                 used = used + 1
                 local b = PreviewBit(f, used, s)
@@ -1406,10 +1368,9 @@ local function ApplyPreviewExtras(f, data)
         local sy = growV == AnchorUtil.FlowDirection.Up and 1 or -1
         local skip = 0
         if st.debuffs == pos then
-            local perRow = math_max(1, st.auraPerRow or st.auraMax or 4)
-            skip = math.ceil((st.auraMax or 4) / perRow) * (CellHeight(st, size) + AURA_SPACING)
+            skip = math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING)
         end
-        for i = 1, math_min(st.auraMax or 3, 3) do
+        for i = 1, math_min(max, 3) do
             used = used + 1
             local b = PreviewBit(f, used, size)
             local atlas = "RaidFrame-Icon-Debuff" .. DISPEL_TYPES[i]
@@ -1420,23 +1381,6 @@ local function ApplyPreviewExtras(f, data)
                 b.Icon:SetColorTexture(c[1], c[2], c[3], 1)
             end
             b:SetPoint(point, rel, relPoint, x + sx * (i - 1) * (size + AURA_SPACING), y + sy * skip)
-        end
-    end
-    -- private auras, where Blizzard's anchors put them
-    if st.privateAuras ~= false and sampled then
-        local psize = st.privateAuraSize or 20
-        local raid = RaidTile(f)
-        for i = 1, PRIVATE_AURA_COUNT do
-            used = used + 1
-            local b = PreviewBit(f, used, psize)
-            b.Icon:SetTexture(PRIVATE_SAMPLE_ICONS[i])
-            b.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            local x = (i - (PRIVATE_AURA_COUNT + 1) / 2) * (psize + 2)
-            if raid then
-                b:SetPoint("BOTTOM", f.Health, "BOTTOM", x, 2)
-            else
-                b:SetPoint("CENTER", f.Health, "CENTER", x, 0)
-            end
         end
     end
     -- the dispel highlight, on one sample member
@@ -1520,7 +1464,7 @@ ApplyPreview = function(f)
         local p = PREVIEW_POWER_RGB[powerToken]
         f.Power:SetStatusBarColor(p[1], p[2], p[3])
     end
-    f.PowerText:SetText(st.powerText and AbbreviateNumbers(math_floor((data.power or 1) * 9000)) or "")
+    f.PowerText:SetText(not RaidTile(f) and st.powerText and AbbreviateNumbers(math_floor((data.power or 1) * 9000)) or "")
     if f.HealBar then f.HealBar:SetValue(0); f.AbsorbBar:SetValue(0) end
 
     -- the icons at their size again (Blizzard's role routine narrows the role icon to 1 px when the
@@ -1529,8 +1473,6 @@ ApplyPreview = function(f)
     local function ShowIcon(key, region, fn)
         if IconShown(key, f) and fn() then region:Show() else region:Hide() end
     end
-    -- the icon picked in the dialog shows on every frame, so it can be placed
-    local picked = selectedIcon
     ShowIcon("role", f.RoleIcon, function()
         local atlas = ROLE_ATLAS[data.role or "DAMAGER"]
         if not (atlas and K.HasAtlas(atlas)) then return false end
@@ -1538,23 +1480,23 @@ ApplyPreview = function(f)
         return true
     end)
     ShowIcon("leader", f.LeaderIcon, function()
-        if not (data.leader or picked == "leader") then return false end
+        if not data.leader then return false end
         K.SetIconArt(f.LeaderIcon, "UI-HUD-UnitFrame-Player-Group-LeaderIcon", "Interface\\GroupFrame\\UI-Group-LeaderIcon")
         return true
     end)
     ShowIcon("raidIcon", f.RaidIcon, function()
-        if not (data.marker or picked == "raidIcon") then return false end
-        SetRaidTargetIconTexture(f.RaidIcon, data.marker or 8)
+        if not data.marker then return false end
+        SetRaidTargetIconTexture(f.RaidIcon, data.marker)
         return true
     end)
     ShowIcon("readyCheck", f.ReadyIcon, function()
-        local status = data.ready or (picked == "readyCheck" and "ready")
+        local status = data.ready
         if not status then return false end
         f.ReadyIcon:SetAtlas(READY_ATLAS[status], false)
         return true
     end)
     ShowIcon("status", f.StatusIcon, function()
-        local state = data.status or (picked == "status" and "IncomingSummonPending")
+        local state = data.status
         local atlas = state and STATUS_ATLAS[state]
         if not (atlas and K.HasAtlas(atlas)) then return false end
         f.StatusIcon:SetAtlas(atlas, false)
@@ -1736,7 +1678,6 @@ local function SetTileUnit(f, unit)
     if f.AuraPos then for _, entry in pairs(f.AuraPos) do Retarget(entry.container) end end
     if f.AuraSlots then Retarget(f.AuraSlots.container) end
     if f.AuraHighlight then Retarget(f.AuraHighlight.container) end
-    pcall(ConfigurePrivateAuras, f)
     if unit and f:IsVisible() then UpdateAll(f) end
 end
 
@@ -1746,6 +1687,8 @@ local function CreateMember(index)
     f.index = index
     BuildTile(f, unit)
     members[index] = f
+    -- a member can get its unit before the frame shows (UpdateMissing is in section 12b)
+    f:HookScript("OnShow", function(self) if PF.UpdateMissing then PF.UpdateMissing(self) end end)
     return f
 end
 
@@ -1797,10 +1740,9 @@ local function StyleDefaults()
     return (d and d[key or "classic"]) or {}
 end
 
-local RebuildSettings   -- the dialog is rebuilt when the style or the picked icon changes
+local RebuildSettings   -- the dialog is rebuilt when the style changes
 
 local function BuildSettings()
-    local settings = {}
     local D = StyleDefaults()
     local function getS(key)
         return function()
@@ -1836,29 +1778,7 @@ local function BuildSettings()
     end
     local function classicOnly() return IsRaidStyle() end
 
-    local function SectionOpen(name)
-        local db = K.GetDb()
-        return db and db.editSections and db.editSections[name] or false
-    end
-    local function Section(name, items)
-        settings[#settings + 1] = { name = "|cffffd100" .. L[name] .. "|r", kind = LEM.SettingType.Expander, default = false,
-            get = function() return SectionOpen(name) end,
-            set = function(_, value)
-                local db = K.GetDb()
-                if not db then return end
-                db.editSections = db.editSections or {}
-                db.editSections[name] = value and true or nil
-            end }
-        for _, item in ipairs(items) do
-            local own = item.hidden
-            item.hidden = function(...)
-                if not SectionOpen(name) then return true end
-                if type(own) == "function" then return own(...) end
-                return own
-            end
-            settings[#settings + 1] = item
-        end
-    end
+    local Section, settings = K.EditSections()
 
     Section("Party", {
         { name = L["Style"], kind = LEM.SettingType.Dropdown, default = "classic",
@@ -1874,13 +1794,17 @@ local function BuildSettings()
           end },
         { name = L["Show Player"], kind = LEM.SettingType.Checkbox, default = true, get = getP("showPlayer", true), set = setP("showPlayer"),
           desc = L["Your own frame first, with the party."] },
-        { name = L["Pets"], kind = LEM.SettingType.Checkbox, default = false, get = getP("pets", false), set = setP("pets"),
-          desc = L["A small frame for each pet, under its owner."] },
+        { name = L["Pets"], kind = LEM.SettingType.Checkbox, default = false, get = getP("pets", false),
+          set = function(layoutName, value) setP("pets")(layoutName, value); LEM:RefreshFrameSettings(holder) end,
+          desc = L["A small frame for each pet, under its owner. Its size is in the Pet section."] },
         { name = L["Sort by Role"], kind = LEM.SettingType.Checkbox, default = true, get = getP("sortByRole", true), set = setP("sortByRole"),
           desc = L["Tanks first, then healers, then damage dealers. A change during combat is applied when the fight ends."] },
         { name = L["Orientation"], kind = LEM.SettingType.Dropdown, default = "VERTICAL",
           values = { { text = L["Vertical"], value = "VERTICAL", isRadio = true }, { text = L["Horizontal"], value = "HORIZONTAL", isRadio = true } },
           get = getP("orientation", "VERTICAL"), set = setP("orientation") },
+        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing, minValue = 0, maxValue = 80, valueStep = 1,
+          get = getS("spacing"), set = setS("spacing"),
+          desc = L["The gap between the frames. Each style keeps its own."] },
     })
 
     Section("Frame", {
@@ -1920,6 +1844,36 @@ local function BuildSettings()
           get = getS("texture"), set = setS("texture") },
         { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = D.border, values = K.BuildBorderValues(false),
           get = getS("border"), set = setS("border") },
+        { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildTextureValues(true),
+          get = getS("absorbTexture"), set = setS("absorbTexture"),
+          desc = L["The texture of the shield (absorb) over the health bar. Frame Texture uses the bar's own."] },
+        { name = L["Absorb Reverse Fill"], kind = LEM.SettingType.Checkbox, default = D.absorbReverseFill ~= false,
+          get = function() return getS("absorbReverseFill")() ~= false end, set = setS("absorbReverseFill"),
+          desc = L["Shields grow back from the end of the bar, so they show even at full health."] },
+    })
+
+    local function noCast() return not getS("castbar")() end
+    Section("Cast Bar", {
+        { name = L["Cast Bars"], kind = LEM.SettingType.Checkbox, default = D.castbar or false, get = getS("castbar"),
+          set = function(layoutName, value) setS("castbar")(layoutName, value); LEM:RefreshFrameSettings(holder) end },
+        { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight, minValue = 8, maxValue = 30, valueStep = 1,
+          get = getS("castHeight"), set = setS("castHeight"), hidden = noCast },
+        { name = L["Hide Icon"], kind = LEM.SettingType.Checkbox, default = false,
+          get = function() return getS("castIcon")() == false end,
+          set = function(layoutName, value) setS("castIcon")(layoutName, not value) end,
+          hidden = noCast,
+          desc = L["No spell icon left of the bar."] },
+        { name = L["Hide Spell Timer"], kind = LEM.SettingType.Checkbox, default = false,
+          get = function() return getS("castTimer")() == false end,
+          set = function(layoutName, value) setS("castTimer")(layoutName, not value) end,
+          hidden = noCast,
+          desc = L["No time left at the right end of the bar."] },
+        { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(true),
+          get = getS("castTexture"), set = setS("castTexture"), hidden = noCast,
+          desc = L["Frame Texture uses the frame's own bar texture."] },
+        { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
+          get = getS("castBorderTexture"), set = setS("castBorderTexture"), hidden = noCast,
+          desc = L["Frame Border uses the frame's own border."] },
     })
 
     Section("Auras", {
@@ -1934,19 +1888,22 @@ local function BuildSettings()
           desc = L["The symbol of each debuff type you can dispel (Magic, Curse, Disease, Poison)."] },
         { name = L["Bigger Boss Debuffs"], kind = LEM.SettingType.Checkbox, default = D.bigBossDebuffs ~= false, get = getS("bigBossDebuffs"), set = setS("bigBossDebuffs"),
           desc = L["Boss and role debuffs first and half again as big, as Blizzard's raid frames show them."] },
+        { name = L["Missing Buffs"], kind = LEM.SettingType.Checkbox, default = D.missingBuffs or false,
+          get = function() return getS("missingBuffs")() and true or false end, set = setS("missingBuffs"),
+          desc = L["Out of combat, the group buffs a member lacks that you can cast show in the corner across from the buffs."] },
         { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1, get = getS("auraSize"), set = setS("auraSize") },
-    })
-
-    Section("Important Auras", {
+        { name = L["Big Defensive"], kind = LEM.SettingType.Checkbox, default = D.bigDefensive ~= false,
+          get = function() return getS("bigDefensive")() ~= false end,
+          set = function(layoutName, value) setS("bigDefensive")(layoutName, value); LEM:RefreshFrameSettings(holder) end,
+          desc = L["A big defensive cooldown on the member (Shield Wall, Divine Shield...) in the middle of the frame."] },
+        { name = L["Big Defensive Size"], kind = LEM.SettingType.Slider, default = D.bigDefensiveSize, minValue = 12, maxValue = 48, valueStep = 1,
+          get = getS("bigDefensiveSize"), set = setS("bigDefensiveSize"),
+          hidden = function() return getS("bigDefensive")() == false end },
         { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = D.dispelHighlight,
           values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
                      { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
           desc = L["A dispellable debuff outlines the health bar in its type's colour."],
           get = getS("dispelHighlight"), set = setS("dispelHighlight") },
-    })
-
-    Section("Cast Bar", {
-        { name = L["Cast Bars"], kind = LEM.SettingType.Checkbox, default = D.castbar or false, get = getS("castbar"), set = setS("castbar") },
     })
 
     -- one switch per icon; where they sit is fixed
@@ -1962,6 +1919,17 @@ local function BuildSettings()
             end }
     end
     Section("Icons", iconItems)
+
+    -- the pets' frames, under their owners: only while Pets (Party section) is on
+    local function noPets() return not getP("pets", false)() end
+    Section("Pet", {
+        { name = L["Pet Frame Width"], kind = LEM.SettingType.Slider, default = D.petWidth, minValue = 40, maxValue = 300, valueStep = 2,
+          get = getS("petWidth"), set = setS("petWidth"), hidden = noPets },
+        { name = L["Pet Frame Height"], kind = LEM.SettingType.Slider, default = D.petHeight, minValue = 10, maxValue = 40, valueStep = 1,
+          get = getS("petHeight"), set = setS("petHeight"), hidden = noPets },
+        { name = L["Pet Border Texture"], kind = LEM.SettingType.Dropdown, default = D.petBorder, values = K.BuildBorderValues(false),
+          get = getS("petBorder"), set = setS("petBorder"), hidden = noPets },
+    })
     return settings
 end
 
@@ -1969,6 +1937,60 @@ RebuildSettings = function()
     if not holder then return end
     LEM:AddFrameSettings(holder, BuildSettings())
     C_Timer.After(0, function() if holder then LEM:RefreshFrameSettings(holder) end end)
+end
+
+--------------------------------------------------
+-- 12b. MISSING BUFFS (Auras > Missing Buffs)
+-- The raid frames' reminder (RaidFrames.lua section 8, shared as ns.MissingBuffs): the group buffs
+-- a member lacks that you can cast, out of a fight only. They sit in the corner across from the
+-- buffs (buffs top left: bottom left), at the aura size.
+--------------------------------------------------
+local MIRROR = { INSIDE_TOPLEFT = "INSIDE_BOTTOMLEFT", INSIDE_BOTTOMLEFT = "INSIDE_TOPLEFT",
+                 INSIDE_TOPRIGHT = "INSIDE_BOTTOMRIGHT", INSIDE_BOTTOMRIGHT = "INSIDE_TOPRIGHT" }
+
+local function UpdateMissing(f)
+    local MB = ns.MissingBuffs
+    if not (f and MB) then return end
+    local st = S()
+    if not (st and st.missingBuffs) then
+        if f.MissingBuffs then MB.Show(f) end
+        return
+    end
+    if not f.MissingBuffs then MB.Attach(f) end
+    f.MissingBuffs.place = MIRROR[st.buffs] or "INSIDE_BOTTOMLEFT"
+    f.MissingBuffs.size = st.auraSize or 16
+    if IsEditing() then
+        MB.Show(f, MB.SampleIcons(f.preview and f.preview.missing))
+        return
+    end
+    if InCombatLockdown() or not (f.unit and f:IsVisible() and UnitExists(f.unit)) then MB.Show(f) return end
+    if not MB.Learned() then MB.Learn() end
+    MB.Show(f, MB.Icons(f.unit))
+end
+
+local function UpdateMissingAll()
+    for i = 0, MAX_MEMBERS do UpdateMissing(members[i]) end
+end
+
+-- aura changes come in bursts: looked at once, a moment later
+local missingDirty, missingScheduled = {}, false
+local function OnMissingAura(unit)
+    if not (holder and holder:IsShown()) then return end   -- every unit's auras come through here
+    local st = S()
+    if not (st and st.missingBuffs) or InCombatLockdown() then return end
+    unit = readable(unit)
+    if not unit then return end
+    for i = 0, MAX_MEMBERS do
+        local f = members[i]
+        if f and f.unit == unit then missingDirty[f] = true end
+    end
+    if missingScheduled or not next(missingDirty) then return end
+    missingScheduled = true
+    C_Timer.After(0.3, function()
+        missingScheduled = false
+        for f in pairs(missingDirty) do UpdateMissing(f) end
+        wipe(missingDirty)
+    end)
 end
 
 --------------------------------------------------
@@ -1991,16 +2013,22 @@ Refresh = function()
         UpdateAll(members[i])
         if pets[i] then UpdatePet(pets[i]) end
     end
+    UpdateMissingAll()
 end
 
 function PF:Refresh()
     Refresh()
 end
 
--- The tile kit (Modules/RaidFrames.lua builds its tiles with it). A tile's owner sets f.ctx:
---   Settings()    the tile settings (the party style's keys)
+PF.UpdateMissing = UpdateMissing
+
+-- The tile kit (RaidFrames.lua and BossFrames.lua build their tiles with it). A tile's owner sets f.ctx:
+--   Settings()     the tile settings (the party style's keys, plus auraMax and auraPerRow)
 --   PreviewData(f) the sample shown in Edit Mode
---   ReadyHold()   true while a finished ready check's results stay up
+--   ReadyHold()    true while a finished ready check's results stay up
+--   classic        the classic look (else Raid-Style); mirror: laid out as the target frame
+--   hostile        enemy units: their buffs and the player's debuffs, no range fading
+--   castbar        the tile has a cast bar
 PF.Tile = {
     Build = BuildTile, SetUnit = SetTileUnit, Layout = LayoutMember, UpdateAll = UpdateAll,
     UpdateRange = UpdateRange, UpdateTarget = UpdateTarget, UpdateRaidIcon = UpdateRaidIcon,
@@ -2009,7 +2037,6 @@ PF.Tile = {
     OnEnter = OnEnter, OnLeave = OnLeave,
     AURA_POSITION_VALUES = AURA_POSITION_VALUES, ICON_ORDER = ICON_ORDER, ICON_LABELS = ICON_LABELS,
     IconShown = IconShown, IconStore = IconStore, LanesExtent = LanesExtent,
-    PREVIEW_CLASS_RGB = PREVIEW_CLASS_RGB,
 }
 
 function PF:ShouldLoad()
@@ -2033,6 +2060,16 @@ end
 function PF:OnGlobalEvent(event, ...)
     if event == "PLAYER_REGEN_ENABLED" then
         if pendingLayout then Refresh() end
+        UpdateMissingAll()
+        return
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        UpdateMissingAll()   -- hidden in a fight
+        return
+    elseif event == "UNIT_AURA" then
+        OnMissingAura(...)
+        return
+    elseif event == "SPELLS_CHANGED" then
+        if ns.MissingBuffs and S() and S().missingBuffs then ns.MissingBuffs.Learn(); UpdateMissingAll() end
         return
     end
     if IsEditing() then return end
@@ -2076,13 +2113,14 @@ function PF:OnGlobalEvent(event, ...)
             UpdatePet(p)
         end
     end
+    if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then UpdateMissingAll() end
 end
 
 local GLOBAL_EVENTS = {
     "GROUP_ROSTER_UPDATE", "PARTY_LEADER_CHANGED", "RAID_TARGET_UPDATE", "PLAYER_TARGET_CHANGED",
     "PLAYER_ROLES_ASSIGNED", "READY_CHECK", "READY_CHECK_CONFIRM", "READY_CHECK_FINISHED",
     "INCOMING_SUMMON_CHANGED", "INCOMING_RESURRECT_CHANGED", "PLAYER_ENTERING_WORLD", "UNIT_PET",
-    "PLAYER_REGEN_ENABLED",
+    "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "UNIT_AURA", "SPELLS_CHANGED",
 }
 
 function PF:Init()
@@ -2117,6 +2155,7 @@ function PF:Init()
         LayoutHolder()   -- the sample pets take their room
         SetAuraPreview(true)
         for i = 0, MAX_MEMBERS do UpdateAll(members[i]) end
+        UpdateMissingAll()
     end)
     LEM:RegisterCallback("exit", function()
         ApplyVisibility()

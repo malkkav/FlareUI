@@ -2,9 +2,8 @@ local _, ns = ...
 local S = ns.Settings
 
 --------------------------------------------------
--- QUEST TRACKER (Modules/ObjectiveTracker.lua). Fixed, no option: quest count, hide when empty, zone
--- headings, completed last, quest level, long text wrapped, tracked recipes; no quest tags; no
--- change in the open world or in cities.
+-- QUEST TRACKER (Modules/ObjectiveTracker.lua). Fixed, no option: quest levels shown; no
+-- auto-minimize in the open world or in cities.
 --------------------------------------------------
 local function Refresh()
     if ns.ObjectiveTracker and ns.ObjectiveTracker.Refresh then ns.ObjectiveTracker:Refresh() end

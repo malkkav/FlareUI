@@ -6,7 +6,7 @@ local L = ns.L
 -- Boss frames: boss1 to boss5, on the party frames' classic tile (PartyFrames.lua's tile kit),
 -- mirrored as the target frame is. A boss can show up mid fight, so each frame keeps a fixed place
 -- and Blizzard's unit watch shows it. Auras: every buff on the boss and only the player's debuffs.
--- The frames sit as far apart as the party frames. Blizzard's boss frames are parked.
+-- Blizzard's boss frames are parked.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -21,8 +21,8 @@ LibStub("AceEvent-3.0"):Embed(BF)
 --------------------------------------------------
 -- 2. UPVALUES / CONSTANTS
 --------------------------------------------------
-local ipairs, pcall = ipairs, pcall
-local math_floor = math.floor
+local pairs, ipairs, pcall, type = pairs, ipairs, pcall, type
+local math_floor, math_max = math.floor, math.max
 local CreateFrame, InCombatLockdown = CreateFrame, InCombatLockdown
 local LEM = LibStub("FlareEditMode")
 local K = ns.UnitFrames and ns.UnitFrames.Kit
@@ -66,21 +66,18 @@ local function IsEditing()
     return LEM:IsInEditMode()
 end
 
--- What a tile reads: the boss settings, plus what the boss frames never have (a mirrored look, no
--- range fading, no party icons, no dispel or defensive auras) and the party frames' spacing
+-- What a tile reads: the boss settings, plus what the boss frames never have (no party icons, no
+-- dispel or defensive auras) and what never changes (five auras to a lane in one row, shields on the
+-- bar's own absorb look)
 local ICONS = { role = { shown = false }, leader = { shown = false }, readyCheck = { shown = false },
                 status = { shown = false }, raidIcon = {} }
-local FIXED = { mirror = true, rangeAlpha = 1, healersOnlyPower = false, bigBossDebuffs = false,
-                bigDefensive = false, privateAuras = false, dispelHighlight = "off", dispels = "OFF" }
+local FIXED = { healersOnlyPower = false, bigBossDebuffs = false, bigDefensive = false, dispelHighlight = "off",
+                dispels = "OFF", auraMax = 5, auraPerRow = 5, absorbTexture = "FlareUI Striped", absorbReverseFill = true }
 local view = setmetatable({}, { __index = function(_, key)
     local db = GetDb()
     if not db then return nil end
     if FIXED[key] ~= nil then return FIXED[key] end
     if key == "portrait" then return db.portrait and "3d" or "none" end
-    if key == "spacing" then
-        local party = ns.defaults and ns.defaults.profile.unitframes.party
-        return party and party.classic and party.classic.spacing or 16
-    end
     if key == "icons" then
         ICONS.raidIcon.shown = db.raidIcon ~= false
         return ICONS
@@ -92,7 +89,7 @@ local ctx = {
     Settings = function() return view end,
     PreviewData = function(f) return f.sample or SAMPLES[1] end,
     ReadyHold = function() return nil end,
-    classic = true, hostile = true, castbar = true,
+    classic = true, mirror = true, hostile = true, castbar = true,
 }
 
 --------------------------------------------------
@@ -127,7 +124,7 @@ local function Step()
     local below = Tile.LanesExtent(view, { "BELOW", "BELOW_RIGHT" })
     local h = view.height or 50
     if view.castbar then h = h + (view.castHeight or 14) + K.CAST_GAP + K.INSET end
-    return above, above + h + below + (view.spacing or 24)
+    return above, above + h + below + (view.spacing or 16)
 end
 
 -- Fixed places (a boss can show up in a fight, when nothing may move): boss 1 at the top, or at the
@@ -141,7 +138,7 @@ local function LayoutHolder()
         f:ClearAllPoints()
         f:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -(above + slot * step))
     end
-    holder:SetSize(view.width or 200, math.max(1, MAX_BOSSES * step - (view.spacing or 24)))
+    holder:SetSize(view.width or 200, math_max(1, MAX_BOSSES * step - (view.spacing or 16)))
 end
 
 --------------------------------------------------
@@ -198,10 +195,6 @@ local function SetAuraPreview(enabled)
     end
 end
 
-local function UpdateTile(f)
-    Tile.UpdateAll(f)
-end
-
 local function Refresh()
     if not holder then return end
     if InCombatLockdown() then pendingLayout = true return end
@@ -214,7 +207,7 @@ local function Refresh()
     ApplyPosition()
     ApplyVisibility()
     for _, f in ipairs(tiles) do
-        if f:IsShown() then UpdateTile(f) end
+        if f:IsShown() then Tile.UpdateAll(f) end
     end
 end
 
@@ -222,7 +215,6 @@ end
 -- 7. EDIT MODE SETTINGS
 --------------------------------------------------
 local function BuildSettings()
-    local settings = {}
     local D = (ns.defaults and ns.defaults.profile.unitframes.boss) or {}
     local function get(key)
         return function()
@@ -241,39 +233,28 @@ local function BuildSettings()
         end
     end
 
-    local function SectionOpen(name)
-        local db = K.GetDb()
-        return db and db.editSections and db.editSections[name] or false
-    end
-    local function Section(name, items)
-        settings[#settings + 1] = { name = "|cffffd100" .. L[name] .. "|r", kind = LEM.SettingType.Expander, default = false,
-            get = function() return SectionOpen(name) end,
-            set = function(_, value)
-                local db = K.GetDb()
-                if not db then return end
-                db.editSections = db.editSections or {}
-                db.editSections[name] = value and true or nil
-            end }
-        for _, item in ipairs(items) do
-            item.hidden = function() return not SectionOpen(name) end
-            settings[#settings + 1] = item
-        end
-    end
+    local Section, settings = K.EditSections()
+
+    -- the boss frames as a group, as the Party and Raid sections are for theirs
+    Section("Boss", {
+        { name = L["Growth"], kind = LEM.SettingType.Dropdown, default = D.grow,
+          values = { { text = L["Down"], value = "DOWN", isRadio = true }, { text = L["Up"], value = "UP", isRadio = true } },
+          desc = L["Which way the frames go from the first boss."],
+          get = get("grow"), set = set("grow") },
+        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing or 16, minValue = 0, maxValue = 80, valueStep = 1,
+          get = get("spacing"), set = set("spacing"),
+          desc = L["The gap between the boss frames."] },
+    })
 
     Section("Frame", {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = D.width, minValue = 80, maxValue = 400, valueStep = 2, get = get("width"), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = get("height"), set = set("height") },
         { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
           get = get("powerHeight"), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
-        { name = L["Growth"], kind = LEM.SettingType.Dropdown, default = D.grow,
-          values = { { text = L["Down"], value = "DOWN", isRadio = true }, { text = L["Up"], value = "UP", isRadio = true } },
-          desc = L["Which way the frames go from the first boss."],
-          get = get("grow"), set = set("grow") },
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") },
         { name = L["Power Text"], kind = LEM.SettingType.Checkbox, default = D.powerText or false, get = get("powerText"), set = set("powerText") },
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = get("showLevel"), set = set("showLevel") },
         { name = L["Portrait"], kind = LEM.SettingType.Checkbox, default = D.portrait or false, get = get("portrait"), set = set("portrait") },
-        { name = L["Raid Target"], kind = LEM.SettingType.Checkbox, default = D.raidIcon ~= false, get = get("raidIcon"), set = set("raidIcon") },
     })
 
     Section("Look", {
@@ -281,6 +262,30 @@ local function BuildSettings()
           get = get("texture"), set = set("texture") },
         { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = D.border, values = K.BuildBorderValues(false),
           get = get("border"), set = set("border") },
+    })
+
+    local function noCast() return get("castbar")() == false end
+    Section("Cast Bar", {
+        { name = L["Cast Bars"], kind = LEM.SettingType.Checkbox, default = D.castbar ~= false, get = get("castbar"),
+          set = function(layoutName, value) set("castbar")(layoutName, value); if holder then LEM:RefreshFrameSettings(holder) end end },
+        { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight or 14, minValue = 8, maxValue = 30, valueStep = 1,
+          get = get("castHeight"), set = set("castHeight"), hidden = noCast },
+        { name = L["Hide Icon"], kind = LEM.SettingType.Checkbox, default = false,
+          get = function() return get("castIcon")() == false end,
+          set = function(layoutName, value) set("castIcon")(layoutName, not value) end,
+          hidden = noCast,
+          desc = L["No spell icon left of the bar."] },
+        { name = L["Hide Spell Timer"], kind = LEM.SettingType.Checkbox, default = false,
+          get = function() return get("castTimer")() == false end,
+          set = function(layoutName, value) set("castTimer")(layoutName, not value) end,
+          hidden = noCast,
+          desc = L["No time left at the right end of the bar."] },
+        { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(true),
+          get = get("castTexture"), set = set("castTexture"), hidden = noCast,
+          desc = L["Frame Texture uses the frame's own bar texture."] },
+        { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
+          get = get("castBorderTexture"), set = set("castBorderTexture"), hidden = noCast,
+          desc = L["Frame Border uses the frame's own border."] },
     })
 
     Section("Auras", {
@@ -291,8 +296,8 @@ local function BuildSettings()
         { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1, get = get("auraSize"), set = set("auraSize") },
     })
 
-    Section("Cast Bar", {
-        { name = L["Cast Bars"], kind = LEM.SettingType.Checkbox, default = D.castbar ~= false, get = get("castbar"), set = set("castbar") },
+    Section("Icons", {
+        { name = L["Raid Target"], kind = LEM.SettingType.Checkbox, default = D.raidIcon ~= false, get = get("raidIcon"), set = set("raidIcon") },
     })
     return settings
 end
@@ -334,7 +339,7 @@ function BF:OnGlobalEvent(event, unit)
             elseif event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_THREAT_SITUATION_UPDATE" then
                 Tile.UpdateThreat(f)
             else
-                UpdateTile(f)   -- the bosses changed (an encounter, a phase)
+                Tile.UpdateAll(f)   -- the bosses changed (an encounter, a phase)
             end
         end
     end
@@ -374,7 +379,7 @@ function BF:Init()
     LEM:RegisterCallback("enter", function()
         ApplyVisibility()
         SetAuraPreview(true)
-        for _, f in ipairs(tiles) do UpdateTile(f) end
+        for _, f in ipairs(tiles) do Tile.UpdateAll(f) end
     end)
     LEM:RegisterCallback("exit", function()
         SetAuraPreview(false)

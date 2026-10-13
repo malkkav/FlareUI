@@ -2,14 +2,13 @@ local _, ns = ...
 
 --------------------------------------------------
 -- IMPORT
--- Brings a 1.x account's saved settings (FlareUI_DB) into FlareUI's settings (FlareUI2_DB), once,
--- before the database opens. Only what this version still offers comes along, so nothing arrives
--- that the settings can't change back:
+-- Brings the settings saved as FlareUI_DB into FlareUI2_DB, once, before the database opens. Only
+-- what the settings offer comes along, so nothing arrives that the settings can't change back:
 --   * account-wide: the radials, every character's own state (radial choice and keys, tracker,
 --     chat history), the Sync Blizz UI data, and which character uses which profile
 --   * per profile: the settings panel's options, every frame's Edit Mode settings and switches, and
 --     the positions stored per Edit Mode layout
--- The 1.x file itself is left as it is.
+-- FlareUI_DB itself is left as it is.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -20,6 +19,7 @@ local PATHS = {}
 for _, path in ipairs({
     "actionbars.colors.enableRange", "actionbars.colors.unusable.desaturate", "actionbars.enabled",
     "actionbars.hideHotkeys", "actionbars.hideMacroText", "actionbars.procGlow", "actionbars.xpbar.enabled", "actionbars.xpbar.textMode",
+    "actionbars.cleanKeybinds", "actionbars.buttonArt", "actionbars.stopAutoAddSpells",
     "auras.enabled", "auras.style", "auras.timer",
     "chat.borderTexture", "damagemeter.borderTexture", "objectivetracker.borderTexture",
     "tweaks.hidePortraitNumbers",
@@ -30,7 +30,7 @@ for _, path in ipairs({
     "damagemeter.combatTimer", "damagemeter.readyCheckButton", "damagemeter.countdownButton", "chat.autoHideDelay",
     "damagemeter.autoThreat", "damagemeter.enabled", "damagemeter.matchChatSize", "damagemeter.opacity",
     "damagemeter.showOnMouseover", "damagemeter.visibility",
-    "fcm.enabled", "fcm.show",
+    "fcm.show",
     "minimap.autoZoom", "minimap.buttonBag", "minimap.enabled",
     "objectivetracker.autoMinimize.dungeon", "objectivetracker.autoMinimize.raid", "objectivetracker.autoMinimize.pvp",
     "objectivetracker.autoMinimize.arena", "objectivetracker.autoMinimize.combat",
@@ -55,8 +55,11 @@ for _, path in ipairs({
     "visibility.hidePossessBar", "visibility.hideRaidManager", "visibility.hideStanceBar", "visibility.hideTotemBar",
 }) do PATHS[path] = true end
 
--- the Fake Cooldown Manager bar switches
+-- the Fake Cooldown Manager bar switches (only from a profile that had Fake CM on)
 local PREFIXES = { "fcm.bars." }
+
+-- a font's controls on the Fonts tabs
+local FONT_FIELDS = { face = true, size = true, flags = true, enableShadow = true, shadowX = true, shadowY = true }
 
 -- Edit Mode dialog settings (and the frames' switches) under these roots
 local EDIT_ROOTS = { "unitframes.", "auras.", "objectivetracker.", "actionbars.xpbar." }
@@ -94,7 +97,7 @@ local function StartsWith(s, prefix) return s:sub(1, #prefix) == prefix end
 local function Wanted(path, key)
     if PATHS[path] then return true end
     -- every font's face, size, outline and shadow (each Fonts tab)
-    if path:find("[Ff]ont%a*%.%a+$") then return true end
+    if FONT_FIELDS[key] and path:find("[Ff]ont%a*%.%a+$") then return true end
     for _, prefix in ipairs(PREFIXES) do
         if StartsWith(path, prefix) and key == "enabled" then return true end
     end
@@ -106,7 +109,7 @@ local function Wanted(path, key)
     return false
 end
 
--- the default at the same place: nil when this version has no such table (the setting is gone)
+-- the default at the same place: nil when the defaults have no such table
 local function DefaultAt(defaults, keys)
     local t = defaults
     for i = 1, #keys do
@@ -138,7 +141,7 @@ local function ImportProfile(old, defaults)
                 local path = table.concat(keys, ".")
                 if type(v) == "table" then
                     if STORES[k] then
-                        -- only where this version keeps such a store
+                        -- only where the defaults keep such a store
                         local parentKeys = { unpack(keys, 1, #keys - 1) }
                         local parent = DefaultAt(defaults, parentKeys)
                         if type(parent) == "table" then Set(new, keys, Copy(v)) end
@@ -146,8 +149,8 @@ local function ImportProfile(old, defaults)
                         Walk(v)
                     end
                 elseif Wanted(path, k) then
-                    -- a value of the same kind as this version's default (none: a per-unit or per-bar
-                    -- setting whose table exists)
+                    -- a value of the same kind as the default (none: a per-unit or per-bar setting
+                    -- whose table exists)
                     local default = DefaultAt(defaults, keys)
                     local parent = DefaultAt(defaults, { unpack(keys, 1, #keys - 1) })
                     if (default ~= nil and type(default) == type(v)) or (default == nil and type(parent) == "table") then
@@ -160,8 +163,12 @@ local function ImportProfile(old, defaults)
     end
     Walk(old)
 
-    -- 1.x's chat fading (on / off, with or without combat, its fade-out time) is Visibility and
-    -- Fade chat now
+    -- Fake CM has no switch of its own: it is on while a bar is picked
+    local oldFCM = old.fcm
+    if new.fcm and not (type(oldFCM) == "table" and oldFCM.enabled) then new.fcm.bars = nil end
+
+    -- the saved chat fading (on / off, with or without combat, its fade-out time) becomes Visibility
+    -- and Fade Speed
     local oldChat = old.chat
     if type(oldChat) == "table" and oldChat.autoHideEnabled then
         new.chat = new.chat or {}
@@ -179,8 +186,9 @@ local function ImportProfile(old, defaults)
         new.chat.autoHideDelay = best
     end
 
-    -- 1.x frames were the Addon style: that setup is also kept as the Addon style's own, so switching
-    -- to it brings the frames back as they were. The Forever style (the default) starts from its preset.
+    -- The imported frames are the Addon style: that setup is also kept as the Addon style's own, so
+    -- switching to it brings the frames back as they were. The Forever style (the default) starts
+    -- from its preset.
     local uf = new.unitframes
     if uf then
         local usual = {}
@@ -221,5 +229,4 @@ function ns.ImportOldSettings(defaults)
         end
     end)
     db.imported = ok and "1.x" or ("failed: " .. tostring(err))
-    ns.importedOldSettings = ok
 end

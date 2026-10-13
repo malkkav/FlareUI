@@ -7,7 +7,8 @@ local L = ns.L
 -- with settings of their own. Blizzard's secure group headers hand out the units, so the roster can
 -- change in a fight. The raid stays centred on the frame's position as it grows: a small restricted
 -- snippet places the groups around the middle whenever a group gains or loses its first member.
--- Also: main tank frames and the missing-buff reminder (the classic group buffs you can cast). Party frames show in a party, these in a raid.
+-- Also: main tank frames and the missing-buff reminder (the group buffs you can cast). Party frames
+-- show in a party, these in a raid.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -163,14 +164,16 @@ local function TankSize()
     return mt.w or 182, mt.h or 55
 end
 
--- What a tile reads: the raid settings, at the size in use, without a cast bar
+-- What a tile reads: the raid settings at the size in use, and what never changes (no cast bar,
+-- three auras to a lane in one row, shields on the bar's own absorb look)
+local FIXED = { castbar = false, auraMax = 3, auraPerRow = 3, absorbTexture = "FlareUI Striped", absorbReverseFill = true }
 local function View(sizeFn)
     return setmetatable({}, { __index = function(_, key)
         local db = GetDb()
         if not db then return nil end
         if key == "width" then return (sizeFn()) end
         if key == "height" then return (select(2, sizeFn())) end
-        if key == "castbar" then return false end
+        if FIXED[key] ~= nil then return FIXED[key] end
         return db[key]
     end })
 end
@@ -251,8 +254,8 @@ local function NewHeader(name, parent, ctx, count)
     return h
 end
 
--- makes all of a header's tiles now (out of a fight): the header is shown with a start far before
--- its first unit, then set back
+-- makes all of a header's tiles up front (out of a fight): the header is shown with a start far
+-- before its first unit, then set back
 local function Precreate(h)
     if h.precreated then return end
     h.precreated = true
@@ -352,12 +355,12 @@ local function LayoutGroups()
     holder:SetAttribute("tileH", hh)
     holder:SetAttribute("gap", gap)
     holder:SetAttribute("groupGap", ggap)
+    local font = K.GetDb() and K.GetDb().font
     for k = 1, MAX_GROUPS do
         local h = headers[k]
         if h then
             ConfigureHeader(h, w, hh, gap, ggap)
             h:SetShown(mode == "group" and not IsEditing())
-            local font = K.GetDb() and K.GetDb().font
             K.ApplyFont(h.Label, font)
             h.Label:ClearAllPoints()
             if Rows() then h.Label:SetPoint("RIGHT", h, "LEFT", -4, 0) else h.Label:SetPoint("BOTTOM", h, "TOP", 0, 3) end
@@ -708,10 +711,12 @@ function MB.Attach(f)
     f.MissingBuffs = frame
 end
 
+-- frame.place: nil, a row in the middle of the health bar (raid tiles); or an INSIDE_ corner, the
+-- row growing away from it, inset as the auras are (party frames). frame.size: the icon size there.
 local function ShowIcons(f, icons)
     local frame = f.MissingBuffs
-    local size = math_max(10, math_min(16, math_floor((f:GetHeight() or 40) * 0.3)))
-    -- a row in the middle of the health bar
+    local place = frame.place
+    local size = frame.size or math_max(10, math_min(16, math_floor((f:GetHeight() or 40) * 0.3)))
     local count = icons and math_min(#icons, #frame.icons) or 0
     local start = -(count * size + (count - 1)) / 2
     for i, t in ipairs(frame.icons) do
@@ -720,7 +725,13 @@ local function ShowIcons(f, icons)
             t:SetTexture(icon)
             t:SetSize(size, size)
             t:ClearAllPoints()
-            t:SetPoint("LEFT", frame, "CENTER", start + (i - 1) * (size + 1), 0)
+            if place then
+                local left, top = place:find("LEFT") ~= nil, place:find("TOP") ~= nil
+                local corner = (top and "TOP" or "BOTTOM") .. (left and "LEFT" or "RIGHT")
+                t:SetPoint(corner, frame, corner, (left and 1 or -1) * (2 + (i - 1) * (size + 1)), top and -2 or 2)
+            else
+                t:SetPoint("LEFT", frame, "CENTER", start + (i - 1) * (size + 1), 0)
+            end
             t:Show()
         else
             t:Hide()
@@ -728,19 +739,30 @@ local function ShowIcons(f, icons)
     end
 end
 
--- sample icons for Edit Mode
+-- sample icons for Edit Mode, from a sample's missing keys
 local SAMPLE_ICON_IDS = { fort = 1243, mark = 1126, int = 1459 }
+local function SampleIcons(keys)
+    local icons = {}
+    for _, key in ipairs(keys or {}) do icons[#icons + 1] = C_Spell.GetSpellTexture(SAMPLE_ICON_IDS[key]) end
+    return icons
+end
+
+-- Shared with the party frames (PartyFrames.lua), which keep their own switch and events
+ns.MissingBuffs = {
+    Learn = MB.Learn,
+    Learned = function() return known ~= nil end,
+    Attach = MB.Attach,
+    Show = ShowIcons,
+    Icons = MissingIcons,
+    SampleIcons = SampleIcons,
+}
 
 function MB.Update(f)
     if not f.MissingBuffs then return end
     local db = GetDb()
     if not (db and db.missingBuffs ~= false) then ShowIcons(f) return end
     if IsEditing() then
-        local icons = {}
-        for _, key in ipairs(f.sample and f.sample.missing or {}) do
-            icons[#icons + 1] = C_Spell.GetSpellTexture(SAMPLE_ICON_IDS[key])
-        end
-        ShowIcons(f, icons)
+        ShowIcons(f, SampleIcons(f.sample and f.sample.missing))
         return
     end
     if InCombatLockdown() or not f.unit or not f:IsVisible() then ShowIcons(f) return end
@@ -754,7 +776,10 @@ end
 -- aura changes come in bursts: the tiles touched are looked at once, a moment later
 local dirty, scheduled = {}, false
 function MB.OnAura(unit)
-    if InCombatLockdown() then return end
+    -- every unit's auras come through here: only raid members, out of a fight, with the switch on
+    if InCombatLockdown() or not (holder and holder:IsShown()) then return end
+    local db = GetDb()
+    if not (db and db.missingBuffs ~= false) then return end
     unit = readable(unit)
     if not (unit and unit:find("^raid")) then return end
     for _, f in ipairs(tiles) do if f.unit == unit then dirty[f] = true end end
@@ -773,7 +798,6 @@ end
 local RebuildSettings
 
 local function BuildSettings()
-    local settings = {}
     local d = ns.defaults and ns.defaults.profile.unitframes.raid or {}
     local function get(key, default)
         return function()
@@ -791,30 +815,8 @@ local function BuildSettings()
             Refresh()
         end
     end
-    local function SectionOpen(name)
-        local db = K.GetDb()
-        return db and db.editSections and db.editSections[name] or false
-    end
-    local function Section(key, title, items)
-        settings[#settings + 1] = { name = "|cffffd100" .. title .. "|r", kind = LEM.SettingType.Expander, default = false,
-            get = function() return SectionOpen(key) end,
-            set = function(_, value)
-                local db = K.GetDb()
-                if not db then return end
-                db.editSections = db.editSections or {}
-                db.editSections[key] = value and true or nil
-            end }
-        for _, item in ipairs(items) do
-            local own = item.hidden
-            item.hidden = function(...)
-                if not SectionOpen(key) then return true end
-                if type(own) == "function" then return own(...) end
-                return own
-            end
-            settings[#settings + 1] = item
-        end
-    end
-    Section("Raid", L["Raid"], {
+    local Section, settings = K.EditSections()
+    Section("Raid", {
         { name = L["Sample Raid"], kind = LEM.SettingType.Dropdown, default = "medium",
           values = { { text = L["10 Players"], value = "small", isRadio = true }, { text = L["25 Players"], value = "medium", isRadio = true },
                      { text = L["40 Players"], value = "large", isRadio = true } },
@@ -846,7 +848,7 @@ local function BuildSettings()
           desc = L["The raid's main tanks in a small frame of their own (set by the raid leader)."] },
     })
 
-    Section("Frame", L["Frame"], {
+    Section("Frame", {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = DEFAULT_W, minValue = 40, maxValue = 200, valueStep = 1,
           get = get("width", DEFAULT_W), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = DEFAULT_H, minValue = 20, maxValue = 100, valueStep = 1,
@@ -884,29 +886,41 @@ local function BuildSettings()
             end
         end
     end
-    Section("Look", L["Look"], {
+    Section("Look", {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = d.texture, values = K.BuildTextureValues(false),
           get = get("texture", d.texture), set = set("texture") },
         { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = d.border, values = K.BuildBorderValues(false),
           get = get("border", d.border), set = set("border") },
     })
 
-    Section("Auras", L["Auras"], {
+    Section("Auras", {
         { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = d.buffs, values = places, generator = Place("buffs"),
-          get = get("buffs"), set = set("buffs") },
+          get = get("buffs"), set = set("buffs"),
+          desc = L["Buffs as Blizzard's raid frames pick them: mostly your own heals over time and buffs."] },
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = d.debuffs, values = places, generator = Place("debuffs"),
-          get = get("debuffs"), set = set("debuffs") },
+          get = get("debuffs"), set = set("debuffs"),
+          desc = L["Debuffs as Blizzard's raid frames pick them: boss and role debuffs, priority debuffs, and the ones you can dispel."] },
         { name = L["Dispel Icons"], kind = LEM.SettingType.Dropdown, default = d.dispels, values = places, generator = Place("dispels"),
-          get = get("dispels"), set = set("dispels") },
+          get = get("dispels"), set = set("dispels"),
+          desc = L["The symbol of each debuff type you can dispel (Magic, Curse, Disease, Poison)."] },
         { name = L["Bigger Boss Debuffs"], kind = LEM.SettingType.Checkbox, default = d.bigBossDebuffs ~= false,
-          get = get("bigBossDebuffs", true), set = set("bigBossDebuffs") },
+          get = get("bigBossDebuffs", true), set = set("bigBossDebuffs"),
+          desc = L["Boss and role debuffs first and half again as big, as Blizzard's raid frames show them."] },
         { name = L["Missing Buffs"], kind = LEM.SettingType.Checkbox, default = true, get = get("missingBuffs", true), set = set("missingBuffs"),
           desc = L["Out of combat, the group buffs a player lacks that you can cast show on their frame."] },
         { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = d.auraSize or 14, minValue = 8, maxValue = 30, valueStep = 1,
           get = get("auraSize", 14), set = set("auraSize") },
+        { name = L["Big Defensive"], kind = LEM.SettingType.Checkbox, default = d.bigDefensive ~= false,
+          get = function() return get("bigDefensive", true)() ~= false end,
+          set = function(layoutName, value) set("bigDefensive")(layoutName, value); if holder then LEM:RefreshFrameSettings(holder) end end,
+          desc = L["A big defensive cooldown on the member (Shield Wall, Divine Shield...) in the middle of the frame."] },
+        { name = L["Big Defensive Size"], kind = LEM.SettingType.Slider, default = d.bigDefensiveSize or 22, minValue = 10, maxValue = 48, valueStep = 1,
+          get = get("bigDefensiveSize", 22), set = set("bigDefensiveSize"),
+          hidden = function() return get("bigDefensive", true)() == false end },
         { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = d.dispelHighlight or "mine",
           values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
                      { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
+          desc = L["A dispellable debuff outlines the health bar in its type's colour."],
           get = get("dispelHighlight", "mine"), set = set("dispelHighlight") },
     })
 
@@ -922,7 +936,7 @@ local function BuildSettings()
                 Refresh()
             end }
     end
-    Section("Icons", L["Icons"], iconItems)
+    Section("Icons", iconItems)
     return settings
 end
 

@@ -16,6 +16,9 @@ local _, ns = ...
 -- Each glow is Blizzard's own (ActionButtonSpellAlertTemplate), on a frame of FlareUI's: Blizzard's
 -- alert manager is never touched, so the buttons stay untainted.
 --------------------------------------------------
+--------------------------------------------------
+-- 1. MODULE AND DATA
+--------------------------------------------------
 local PG = {}
 ns.ProcGlow = PG
 
@@ -70,6 +73,9 @@ local function ButtonSpell(button)
     end
 end
 
+--------------------------------------------------
+-- 2. GLOWS
+--------------------------------------------------
 local function Glow(button)
     local glow = button.FlareUI_ProcGlow
     if not glow then
@@ -110,14 +116,17 @@ local function ShowGlow(button, on)
     end
 end
 
+--------------------------------------------------
+-- 3. UPDATES
+--------------------------------------------------
 -- on a real cooldown (not just the global one); both flags are always readable
 local function OnCooldown(id)
     local ok, info = pcall(C_Spell.GetSpellCooldown, id)
     return ok and type(info) == "table" and info.isActive and not info.isOnGCD or false
 end
 
-local function UpdateButton(button)
-    if not Enabled() then HideGlow(button) return end
+local function UpdateButton(button, enabled)
+    if not enabled then HideGlow(button) return end
     local id, name, slot = ButtonSpell(button)
     if not id then HideGlow(button) return end
     -- Blizzard already glows this one (same rank): its glow is enough
@@ -128,7 +137,7 @@ local function UpdateButton(button)
         ShowGlow(button, true)
     elseif reactive[name] then
         if OnCooldown(id) then HideGlow(button) return end
-        local ok, usable = pcall(IsUsableAction, slot)
+        local ok, usable = pcall(C_ActionBar.IsUsableAction, slot)
         if not ok then HideGlow(button) return end
         ShowGlow(button, usable)
     else
@@ -138,7 +147,8 @@ end
 
 local function UpdateAll()
     pending = false
-    for _, button in ipairs(buttons) do UpdateButton(button) end
+    local enabled = Enabled()
+    for _, button in ipairs(buttons) do UpdateButton(button, enabled) end
 end
 
 -- many events arrive together: one pass on the next frame
@@ -163,6 +173,9 @@ local EVENTS = {
     "UPDATE_SHAPESHIFT_FORM", "PLAYER_TARGET_CHANGED", "PLAYER_ENTERING_WORLD", "SPELLS_CHANGED",
 }
 
+--------------------------------------------------
+-- 4. PUBLIC
+--------------------------------------------------
 -- the buttons, the reaction abilities by name, and the event frame: once
 local function Setup()
     if events then return end
