@@ -254,6 +254,7 @@ local function StyleButton(button, look)
     local fontPath = ns.GetFontPath(look.font and look.font.face or "Friz Quadrata TT")
     local fontSize = (look.font and look.font.size) or 11
     local flags = (look.font and look.font.flags) or "OUTLINE"
+    if flags == "NONE" then flags = "" end   -- the font settings' "None"; the client knows no such flag
     local countText, durationText = button.FlareUI_Count, button.FlareUI_Duration
     countText:SetFont(fontPath, fontSize, flags)
     durationText:SetFont(fontPath, math_max(8, fontSize - 1), flags)

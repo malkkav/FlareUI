@@ -1,3 +1,8 @@
+# FlareUI 2.0.13
+
+## Fixed
+- Auras: setting the aura text outline to **None** no longer causes a Lua error.
+
 # FlareUI 2.0.12
 
 ## Fixed
