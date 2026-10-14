@@ -1,3 +1,8 @@
+# FlareUI 2.0.12
+
+## Fixed
+- Damage Meter: no more Lua error about `durationSeconds` when a fight starts or ends. FlareUI no longer runs Blizzard's own visibility check for the meter; it reads Blizzard's answer instead.
+
 # FlareUI 2.0.11
 
 See what your party is targeting, and a fix for the ranged swing timer.

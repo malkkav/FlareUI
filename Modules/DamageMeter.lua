@@ -127,8 +127,8 @@ function DamageMeter:SetSettingsPreview(on)
     if InCombatLockdown() then return end
     if on then
         meter:Show()
-    elseif type(meter.UpdateShownState) == "function" then
-        meter:UpdateShownState()
+    else
+        DamageMeter:ApplyVisibility()
     end
 end
 
@@ -1458,13 +1458,21 @@ function DamageMeter:SetupMouseover()
     -- Blizzard re-checks the meter on entering Edit Mode only when its "Damage Meter" box is ticked
     EventRegistry:RegisterCallback("EditMode.Enter", function() DamageMeter:ApplyVisibility() end, DamageMeter)
     EventRegistry:RegisterCallback("EditMode.Exit", function() C_Timer.After(0, function() DamageMeter:ApplyVisibility() end) end, DamageMeter)
-    meter:UpdateShownState()
+    DamageMeter:ApplyVisibility()
 end
 
--- the settings page changed the visibility or the mouseover
+-- Blizzard's verdict on the meter, then FlareUI's (the settings page changed the visibility or the
+-- mouseover, the preview ended). Never meter:UpdateShownState() from here: run by FlareUI, it marks
+-- the session timer's state as FlareUI's, and Blizzard's next combat check then trips over the
+-- secret fight length (DamageMeterSessionWindow SetSessionDuration).
 function DamageMeter:ApplyVisibility()
     local meter = _G.DamageMeter
-    if meter and type(meter.UpdateShownState) == "function" then meter:UpdateShownState() end
+    if not meter then return end
+    if not InCombatLockdown() and type(meter.ShouldBeShown) == "function" then
+        local ok, should = pcall(meter.ShouldBeShown, meter)
+        if ok then meter:SetShown(should and true or false) end
+    end
+    ApplyVisibility(meter)
 end
 
 --------------------------------------------------
