@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 2.0.10
+## Version: 2.0.11
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3

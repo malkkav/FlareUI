@@ -12,7 +12,7 @@ const files = [];
   }
 })(ROOT);
 // Edit Mode section titles are looked up as L[name] at display (UnitFrames.lua, PartyFrames.lua Section)
-const keys = new Set(["Party", "Frame", "Look", "Absorbs", "Auras", "Important Auras", "Cast Bar", "Pets", "Icons"]);
+const keys = new Set(["Party", "Frame", "Look", "Absorbs", "Auras", "Important Auras", "Cast Bar", "Pets", "Pet", "Target", "Icons"]);
 const re = /\bL\["((?:[^"\\]|\\.)*)"\]/g;
 for (const f of files) {
   const src = fs.readFileSync(f, 'utf8');

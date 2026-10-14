@@ -131,17 +131,17 @@ local function BuildsComboPoints()
     return false
 end
 
+-- Attack speeds are secret while unit stats are restricted: the last readable answer stands in,
+-- and with none yet the bar shows (an empty bar beats a missing one).
+local hasWeapon = {}
 local function HasSwingWeapon(swingType)
     if not (SWING and swingType) then return false end
+    if swingType ~= SWING.OffHand and swingType ~= SWING.Ranged then return true end
     local _, off, ranged = UnitAttackSpeed("player")
-    if swingType == SWING.OffHand then
-        off = readable(off)
-        return off ~= nil and off > 0
-    elseif swingType == SWING.Ranged then
-        ranged = readable(ranged)
-        return ranged ~= nil and ranged > 0
-    end
-    return true
+    local speed = swingType == SWING.OffHand and off or ranged
+    if canaccessvalue(speed) then hasWeapon[swingType] = speed ~= nil and speed > 0 end
+    if hasWeapon[swingType] == nil then return true end
+    return hasWeapon[swingType]
 end
 
 local function IsAvailable(holder)

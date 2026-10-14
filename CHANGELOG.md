@@ -1,7 +1,16 @@
-# FlareUI 2.0.10
+# FlareUI 2.0.11
+
+See what your party is targeting, and a fix for the ranged swing timer.
+
+## New
+- Party Frames: **Party Targets** (in the Party section, off by default): a small frame beside each member shows what they are targeting (under each member when the party is horizontal). Click one to target it too. **Target Gap** sets the space between them, and the **Target** section has the width, height and border.
+
+## Changed
+- Party Frames: the Party section is reordered: Style, Orientation, Sort by Role, Show Player, Pets, Party Targets, then Spacing.
 
 ## Fixed
-- Tooltips: no more Lua error about a forbidden object when hovering a buff or debuff on an enemy nameplate.
+- Resource Bars: the **Ranged Swing** bar (and the off-hand one) no longer stays hidden when the game hides your attack speed.
+- Tooltips: no more Lua error about a forbidden object when hovering a buff or debuff on an enemy nameplate (fixed in 2.0.10).
 
 # FlareUI 2.0.9
 

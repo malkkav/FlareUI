@@ -398,6 +398,7 @@ local defaults = {
                 enabled = false,
                 style = "classic",          -- classic | raid
                 showPlayer = true, pets = false, sortByRole = true,
+                targets = false, targetGap = 6,  -- Party Targets: each member's target beside its frame
                 orientation = "VERTICAL",   -- VERTICAL | HORIZONTAL
                 layouts = {},
                 classic = {
@@ -410,6 +411,7 @@ local defaults = {
                     bigDefensive = true, bigDefensiveSize = 30, dispelHighlight = "mine",
                     castbar = false, castHeight = 16, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                     petHeight = 19, petWidth = 120, petBorder = "FlareUI Thin", icons = {},
+                    targetWidth = 100, targetHeight = 25, targetBorder = "FlareUI Thin",
                 },
                 raid = {
                     width = 200, height = 70, powerHeight = 6, spacing = 4, healthText = "none", healersOnlyPower = false,
@@ -420,6 +422,7 @@ local defaults = {
                     bigDefensive = true, bigDefensiveSize = 30, dispelHighlight = "mine",
                     castbar = false, castHeight = 10, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thin", castIcon = false, castTimer = false,
                     petHeight = 14, petWidth = 80, petBorder = "FlareUI Thin", icons = {},
+                    targetWidth = 100, targetHeight = 25, targetBorder = "FlareUI Thin",
                 },
             },
             -- raid frames (Modules/RaidFrames.lua): the Raid-Style tile for everyone in a raid, main tank

@@ -44,8 +44,12 @@ local function readable(v) if canaccessvalue(v) then return v end end
 local MAX_MEMBERS = 4
 local SLOT_UNITS = { [0] = "player", "party1", "party2", "party3", "party4" }
 local PET_UNITS  = { [0] = "pet", "partypet1", "partypet2", "partypet3", "partypet4" }
+local TARGET_UNITS = { [0] = "target", "party1target", "party2target", "party3target", "party4target" }
 local DEFAULT_POSITION = { point = "LEFT", x = 3, y = 0 }
 local PET_GAP = 2
+local TARGET_GAP = 6                 -- Party > Target Gap, by default
+local TARGET_INTERVAL = 0.2          -- a member's target sends no health events: re-read this often
+local PREVIEW_HOSTILE_RGB = { 0.87, 0.27, 0.27 }
 local AURA_SPACING = 2
 local AURA_CONTAINER_TEMPLATE = "CustomAuraContainerTemplate"
 local READY_CHECK_HOLD = 6           -- seconds the result stays after a ready check ends
@@ -104,6 +108,14 @@ local PREVIEW = {
     { name = "Sylvara",   class = "HUNTER",  role = "DAMAGER", health = 0.81, power = 0.72, pet = "Wolf", missing = { "fort", "mark" } },
     { name = "Kestrel",   class = "ROGUE",   role = "DAMAGER", health = 0.27, power = 0.90, status = "IncomingSummonPending" },
 }
+-- their targets (Party > Party Targets): the healer on the tank, everyone else on the enemy
+local PREVIEW_TARGETS = {
+    { name = "Defias Pillager", health = 0.58 },
+    { name = "Thalorien", class = "WARRIOR", health = 0.92 },
+    { name = "Defias Pillager", health = 0.58 },
+    { name = "Defias Pillager", health = 0.58 },
+    { name = "Defias Pillager", health = 0.58 },
+}
 -- sample class colours and power types, independent of the API
 local PREVIEW_CLASS_RGB = {
     WARRIOR = { 0.78, 0.61, 0.43 }, PRIEST = { 1, 1, 1 }, WARLOCK = { 0.53, 0.53, 0.93 },
@@ -121,7 +133,7 @@ local SAMPLE_DEBUFF_ICONS = { "Interface\\Icons\\Spell_Shadow_ShadowWordPain", "
 -- 3. SETTINGS ACCESS
 --------------------------------------------------
 local holder
-local members, pets = {}, {}    -- [0..4] -> frame
+local members, pets, targets = {}, {}, {}    -- [0..4] -> frame
 local pendingLayout = false
 local readyCheckHold            -- C_Timer handle while a finished check's results stay up
 
@@ -513,6 +525,16 @@ local function UpdatePet(p)
     p.Name:SetText(UnitName(unit) or "")
 end
 
+local function UpdatePartyTarget(t)
+    if IsEditing() then return end
+    local unit = t.unit
+    if not UnitExists(unit) then return end
+    t.Health:SetMinMaxValues(0, UnitHealthMax(unit))
+    t.Health:SetValue(UnitHealth(unit))
+    t.Health:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn()))
+    t.Name:SetText(UnitName(unit) or "")
+end
+
 local function OnMemberEvent(f, event, arg1)
     if IsEditing() then return end
     if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
@@ -618,7 +640,13 @@ local function BelowOffset(f)
     local st = TS(f)
     local y = 0
     if st.castbar then y = y + (st.castHeight or 16) + K.CAST_GAP + K.INSET end
-    if not f.ctx and GetPartyDb().pets then y = y + PET_GAP + (st.petHeight or 19) + 2 * K.INSET end
+    if f.ctx then return y end
+    local party = GetPartyDb()
+    if party.pets then y = y + PET_GAP + (st.petHeight or 19) + 2 * K.INSET end
+    -- a horizontal party's targets sit under the frames too
+    if party.targets and party.orientation == "HORIZONTAL" then
+        y = y + (party.targetGap or TARGET_GAP) + (st.targetHeight or 25)
+    end
     return y
 end
 
@@ -1104,6 +1132,41 @@ local function LayoutPet(p)
     p:SetPoint("TOPRIGHT", owner, "BOTTOMRIGHT", 0, y)
 end
 
+-- A member's target: beside the frame and centred on it, or, in a horizontal party, under the
+-- frame, its cast bar and its pet's place, right edges lined up
+local function LayoutTarget(t)
+    local st = S()
+    if not st then return end
+    if InCombatLockdown() then pendingLayout = true return end
+    local party = GetPartyDb()
+    local PADDING = K.INSET
+    local owner = t.owner
+    local height = st.targetHeight or 25
+    t:SetSize(st.targetWidth or 100, height)
+    K.ApplyBorderStyle(t.Border, K.GetBorderFile(st.targetBorder or "FlareUI Thin"), height)
+    local texture = K.GetBarTexture(st.texture)
+    t.Health:SetStatusBarTexture(texture)
+    t.Health.bg:SetTexture(texture)
+    t.Health:ClearAllPoints()
+    t.Health:SetPoint("TOPLEFT", t, "TOPLEFT", PADDING, -PADDING)
+    t.Health:SetPoint("BOTTOMRIGHT", t, "BOTTOMRIGHT", -PADDING, PADDING)
+    local db = K.GetDb()
+    K.ApplyFont(t.Name, ScaledFont(db and db.font, math_max(8, math_min((db and db.font and db.font.size) or 12, height - 2 * PADDING - 4))))
+    t.Name:ClearAllPoints()
+    t.Name:SetPoint("LEFT", t.Health, "LEFT", K.TEXT_INSET, 0)
+    t.Name:SetPoint("RIGHT", t.Health, "RIGHT", -K.TEXT_INSET, 0)
+    local gap = party.targetGap or TARGET_GAP
+    t:ClearAllPoints()
+    if party.orientation == "HORIZONTAL" then
+        local y = -gap
+        if owner.Cast and owner.Cast.isEnabled() then y = y - (st.castHeight or 16) - K.CAST_GAP - PADDING end
+        if party.pets then y = y - PET_GAP - (st.petHeight or 19) - 2 * PADDING end
+        t:SetPoint("TOPRIGHT", owner, "BOTTOMRIGHT", 0, y)
+    else
+        t:SetPoint("LEFT", owner, "RIGHT", gap, 0)
+    end
+end
+
 -- An aura row's height: the icon, plus its timer when that hangs under it
 local function CellHeight(size)
     if UFAura("auraTimer", "none") == "below" then return size + math_max(7, math_floor(size * 0.4 + 0.5)) + 3 end
@@ -1295,6 +1358,18 @@ local function ApplyVisibility()
             else
                 UnregisterUnitWatch(p)
                 p:Hide()
+            end
+        end
+        local t = targets[i]
+        if t then
+            if editing then
+                UnregisterUnitWatch(t)
+                t:SetShown(wanted and party.targets and true or false)
+            elseif wanted and party.targets then
+                RegisterUnitWatch(t)
+            else
+                UnregisterUnitWatch(t)
+                t:Hide()
             end
         end
     end
@@ -1516,6 +1591,22 @@ ApplyPreview = function(f)
         p.Health:SetStatusBarColor(0, 0.8, 0)
         p.Name:SetText(data.pet or "")
     end
+
+    local t = not f.ctx and targets[f.index]
+    if t then
+        local first = GetPartyDb().showPlayer and 0 or 1
+        local sample = PREVIEW_TARGETS[f.index - first + 1] or PREVIEW_TARGETS[1]
+        local r, g, b
+        if sample.class then
+            r, g, b = PreviewColor(sample.class)
+        else
+            r, g, b = PREVIEW_HOSTILE_RGB[1], PREVIEW_HOSTILE_RGB[2], PREVIEW_HOSTILE_RGB[3]
+        end
+        t.Health:SetMinMaxValues(0, 1)
+        t.Health:SetValue(sample.health)
+        t.Health:SetStatusBarColor(r, g, b)
+        t.Name:SetText(sample.name)
+    end
 end
 
 --------------------------------------------------
@@ -1721,6 +1812,34 @@ local function CreatePet(index)
     return p
 end
 
+-- Clicking a member's target targets it too (the frame is a unit button like the others)
+local function CreatePartyTarget(index)
+    local t = SecureUnitButton("FlareUI_PartyTarget" .. index, TARGET_UNITS[index])
+    t.owner = members[index]
+    t.index = index
+    local level = t:GetFrameLevel()
+    t.Health = K.CreateBar(t, level + 1)
+    t.Border = CreateFrame("Frame", nil, t, "BackdropTemplate")
+    t.Border:SetAllPoints()
+    t.Border:SetFrameLevel(level + 4)
+    local overlay = CreateFrame("Frame", nil, t)
+    overlay:SetAllPoints()
+    overlay:SetFrameLevel(level + 5)
+    t.Name = overlay:CreateFontString(nil, "OVERLAY")
+    t.Name:SetJustifyH("LEFT")
+    t.Name:SetWordWrap(false)
+    t.Highlight = overlay:CreateTexture(nil, "OVERLAY")
+    t.Highlight:SetAllPoints(t.Health)
+    t.Highlight:SetColorTexture(1, 1, 1, 0.08)
+    t.Highlight:Hide()
+    -- the member picks a new target (your own: PLAYER_TARGET_CHANGED, in OnGlobalEvent)
+    t:SetScript("OnEvent", function(self) UpdatePartyTarget(self) end)
+    if index > 0 then pcall(t.RegisterUnitEvent, t, "UNIT_TARGET", SLOT_UNITS[index]) end
+    t:HookScript("OnShow", UpdatePartyTarget)
+    targets[index] = t
+    return t
+end
+
 --------------------------------------------------
 -- 11. BLIZZARD'S PARTY FRAMES (both styles live in PartyFrame; parked with HardHide)
 --------------------------------------------------
@@ -1792,16 +1911,22 @@ local function BuildSettings()
               Refresh()
               RebuildSettings()
           end },
+        { name = L["Orientation"], kind = LEM.SettingType.Dropdown, default = "VERTICAL",
+          values = { { text = L["Vertical"], value = "VERTICAL", isRadio = true }, { text = L["Horizontal"], value = "HORIZONTAL", isRadio = true } },
+          get = getP("orientation", "VERTICAL"), set = setP("orientation") },
+        { name = L["Sort by Role"], kind = LEM.SettingType.Checkbox, default = true, get = getP("sortByRole", true), set = setP("sortByRole"),
+          desc = L["Tanks first, then healers, then damage dealers. A change during combat is applied when the fight ends."] },
         { name = L["Show Player"], kind = LEM.SettingType.Checkbox, default = true, get = getP("showPlayer", true), set = setP("showPlayer"),
           desc = L["Your own frame first, with the party."] },
         { name = L["Pets"], kind = LEM.SettingType.Checkbox, default = false, get = getP("pets", false),
           set = function(layoutName, value) setP("pets")(layoutName, value); LEM:RefreshFrameSettings(holder) end,
           desc = L["A small frame for each pet, under its owner. Its size is in the Pet section."] },
-        { name = L["Sort by Role"], kind = LEM.SettingType.Checkbox, default = true, get = getP("sortByRole", true), set = setP("sortByRole"),
-          desc = L["Tanks first, then healers, then damage dealers. A change during combat is applied when the fight ends."] },
-        { name = L["Orientation"], kind = LEM.SettingType.Dropdown, default = "VERTICAL",
-          values = { { text = L["Vertical"], value = "VERTICAL", isRadio = true }, { text = L["Horizontal"], value = "HORIZONTAL", isRadio = true } },
-          get = getP("orientation", "VERTICAL"), set = setP("orientation") },
+        { name = L["Party Targets"], kind = LEM.SettingType.Checkbox, default = false, get = getP("targets", false),
+          set = function(layoutName, value) setP("targets")(layoutName, value); LEM:RefreshFrameSettings(holder) end,
+          desc = L["What each member is targeting, in a small frame beside theirs (under it in a horizontal party). Click one to target it too. Its size is in the Target section."] },
+        { name = L["Target Gap"], kind = LEM.SettingType.Slider, default = TARGET_GAP, minValue = 0, maxValue = 150, valueStep = 1,
+          get = getP("targetGap", TARGET_GAP), set = setP("targetGap"), disabled = function() return not getP("targets", false)() end,
+          desc = L["The space between a frame and its target. Widen it to clear auras on that side."] },
         { name = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing, minValue = 0, maxValue = 80, valueStep = 1,
           get = getS("spacing"), set = setS("spacing"),
           desc = L["The gap between the frames. Each style keeps its own."] },
@@ -1930,6 +2055,17 @@ local function BuildSettings()
         { name = L["Pet Border Texture"], kind = LEM.SettingType.Dropdown, default = D.petBorder, values = K.BuildBorderValues(false),
           get = getS("petBorder"), set = setS("petBorder"), hidden = noPets },
     })
+
+    -- the members' targets: only while Party Targets (Party section) is on
+    local function noTargets() return not getP("targets", false)() end
+    Section("Target", {
+        { name = L["Target Frame Width"], kind = LEM.SettingType.Slider, default = D.targetWidth, minValue = 40, maxValue = 300, valueStep = 2,
+          get = getS("targetWidth"), set = setS("targetWidth"), hidden = noTargets },
+        { name = L["Target Frame Height"], kind = LEM.SettingType.Slider, default = D.targetHeight, minValue = 12, maxValue = 60, valueStep = 1,
+          get = getS("targetHeight"), set = setS("targetHeight"), hidden = noTargets },
+        { name = L["Target Border Texture"], kind = LEM.SettingType.Dropdown, default = D.targetBorder, values = K.BuildBorderValues(false),
+          get = getS("targetBorder"), set = setS("targetBorder"), hidden = noTargets },
+    })
     return settings
 end
 
@@ -1996,6 +2132,24 @@ end
 --------------------------------------------------
 -- 13. PUBLIC
 --------------------------------------------------
+-- A member's target sends no health events: the shown ones are re-read while Party Targets is on
+local targetTicker
+local function UpdateTargetTicker()
+    local on = GetPartyDb().targets
+    if on and not targetTicker then
+        targetTicker = C_Timer.NewTicker(TARGET_INTERVAL, function()
+            if not (holder and holder:IsShown()) or IsEditing() then return end
+            for i = 0, MAX_MEMBERS do
+                local t = targets[i]
+                if t and t:IsShown() then UpdatePartyTarget(t) end
+            end
+        end)
+    elseif not on and targetTicker then
+        targetTicker:Cancel()
+        targetTicker = nil
+    end
+end
+
 Refresh = function()
     if not holder then return end
     if InCombatLockdown() then pendingLayout = true return end
@@ -2005,6 +2159,7 @@ Refresh = function()
         local ok, err = pcall(LayoutMember, f)
         if not ok then geterrorhandler()(err) end
         if pets[i] then pcall(LayoutPet, pets[i]) end
+        if targets[i] then pcall(LayoutTarget, targets[i]) end
     end
     LayoutHolder()
     ApplyPosition()
@@ -2012,7 +2167,9 @@ Refresh = function()
     for i = 0, MAX_MEMBERS do
         UpdateAll(members[i])
         if pets[i] then UpdatePet(pets[i]) end
+        if targets[i] and targets[i]:IsShown() then UpdatePartyTarget(targets[i]) end
     end
+    UpdateTargetTicker()
     UpdateMissingAll()
 end
 
@@ -2088,6 +2245,8 @@ function PF:OnGlobalEvent(event, ...)
     elseif event == "READY_CHECK" then
         if readyCheckHold then readyCheckHold:Cancel(); readyCheckHold = nil end
     end
+    local own = targets[0]
+    if event == "PLAYER_TARGET_CHANGED" and own and own:IsShown() then UpdatePartyTarget(own) end
     for i = 0, MAX_MEMBERS do
         local f = members[i]
         if f and f:IsShown() then
@@ -2142,6 +2301,7 @@ function PF:Init()
     holder.editModeName = "FlareUI Party Frames"
     for i = 0, MAX_MEMBERS do CreateMember(i) end
     for i = 0, MAX_MEMBERS do CreatePet(i) end
+    for i = 0, MAX_MEMBERS do CreatePartyTarget(i) end
 
     LEM:AddFrame(holder, OnFrameMoved, DEFAULT_POSITION, "FlareUI Party Frames")
     LEM:AddFrameSettings(holder, BuildSettings())
