@@ -573,6 +573,86 @@ function ActionBars:OnSpellLearned(_, spellID)
 end
 
 --------------------------------------------------
+-- 11b. AUTO-PAGING
+-- Forever never sets a bonus bar (C_ActionBar.GetBonusBarIndex stays 0 in Stealth or a form), so
+-- Blizzard's bar 1 never switches to a stance page. The bar the player picks (Settings > Tweaks > Allow Auto-paging,
+-- bar 1 by default) does it here, with Classic's pages (action pages 7-10): a secure state driver on
+-- the forms the character knows sets "actionpage" on the bar's buttons, which Blizzard's buttons
+-- read before their bar's own page. It runs in the restricted environment, in combat too. Possess,
+-- override and vehicle bars come first, and a real bonus bar if the game ever sends one. The forms
+-- are read again out of combat when they change (forms are learned out of combat).
+--------------------------------------------------
+-- a form -> its page, by its spell (Classic's IDs) or, should Forever's differ, its icon
+local FORM_PAGES = {
+    { spells = { 768 },          icon = 132115, page = 7 },    -- Cat Form
+    { spells = { 5487, 9634 },   icon = 132276, page = 9 },    -- Bear Form, Dire Bear Form
+    { spells = { 24858 },        icon = 136036, page = 10 },   -- Moonkin Form
+    { spells = { 2457 },         icon = 132349, page = 7 },    -- Battle Stance
+    { spells = { 71 },           icon = 132341, page = 8 },    -- Defensive Stance
+    { spells = { 2458 },         icon = 132275, page = 9 },    -- Berserker Stance
+    { spells = { 15473 },        icon = 136200, page = 7 },    -- Shadowform
+}
+local PAGE_FIRST = "[possessbar][overridebar][vehicleui] default; [bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10"
+local PAGE_SNIPPET = [[
+    local page = newstate ~= "default" and tonumber(newstate) or nil
+    for i = 1, 12 do
+        local button = self:GetFrameRef("b" .. i)
+        if button then button:SetAttribute("actionpage", page) end
+    end
+]]
+local pagers = {}
+
+local function FormPage(icon, spellID)
+    for _, entry in ipairs(FORM_PAGES) do
+        if icon and icon == entry.icon then return entry.page end
+        for _, id in ipairs(entry.spells) do
+            if spellID == id then return entry.page end
+        end
+    end
+end
+
+-- The driver for the forms this character has: Stealth (rogues; a druid's Prowl is Cat Form's
+-- second page), then each form with a page, by its place on the stance bar
+local function PagingDriver()
+    local parts = { PAGE_FIRST }
+    local _, class = UnitClass("player")
+    if class == "ROGUE" then parts[#parts + 1] = "[stealth] 7" end
+    for i = 1, GetNumShapeshiftForms() or 0 do
+        local icon, _, _, spellID = GetShapeshiftFormInfo(i)
+        local page = FormPage(icon, spellID)
+        if page then
+            if class == "DRUID" and page == 7 then parts[#parts + 1] = "[stance:" .. i .. ",stealth] 8" end
+            parts[#parts + 1] = "[stance:" .. i .. "] " .. page
+        end
+    end
+    parts[#parts + 1] = "default"
+    return table.concat(parts, "; ")
+end
+
+-- the picked bar pages, the others go back to their own page; out of combat (secure frames)
+local function ApplyAutoPaging()
+    if InCombatLockdown() then
+        ActionBars._pendingRefresh = true
+        return
+    end
+    local db = GetBarConfig()
+    local picked = db and db.enabled and tonumber(db.autoPagingBar) or 0
+    local driver = PagingDriver()
+    for i = 1, 8 do
+        local key = "bar" .. i
+        local pager = pagers[key]
+        if i == picked and not pager then
+            pager = CreateFrame("Frame", nil, UIParent, "SecureHandlerStateTemplate")
+            for n, button in ipairs(GetButtonsForBarKey(key)) do pager:SetFrameRef("b" .. n, button) end
+            pager:SetAttribute("_onstate-page", PAGE_SNIPPET)
+            pagers[key] = pager
+        end
+        -- off again: "default" hands the buttons back to their bar's own page
+        if pager then RegisterStateDriver(pager, "page", i == picked and driver or "default") end
+    end
+end
+
+--------------------------------------------------
 -- 12. PUBLIC API
 --------------------------------------------------
 -- Button text draws at frame level 500, so the end caps' container goes above that (the caps follow
@@ -630,6 +710,7 @@ function ActionBars:Refresh()
     if not db or not db.enabled then return end
 
     UpdateAutoPushSpells(db)
+    ApplyAutoPaging()
 
     UpdateGryphonLayer()
     UpdateButtonArtAll()
@@ -703,6 +784,8 @@ function ActionBars:Init()
     self:RegisterEvent("UPDATE_EXTRA_ACTIONBAR", "OnExtraActionBarUpdate")
     self:RegisterEvent("UPDATE_BINDINGS", "OnExtraActionBarUpdate")
     self:RegisterEvent("LEARNED_SPELL_IN_SKILL_LINE", "OnSpellLearned")
+    -- Auto-Paging follows the forms the character knows
+    self:RegisterEvent("UPDATE_SHAPESHIFT_FORMS", "OnFormsChanged")
 end
 
 --------------------------------------------------
@@ -712,6 +795,10 @@ function ActionBars:OnLayoutUpdate()
     if not InCombatLockdown() then
         self:Refresh()
     end
+end
+
+function ActionBars:OnFormsChanged()
+    ApplyAutoPaging()
 end
 
 function ActionBars:OnCombatEnd()

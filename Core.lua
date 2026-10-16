@@ -308,6 +308,7 @@ local defaults = {
             buttonArt = true,
             stopAutoAddSpells = true,
             autoRanks = false,          -- Update Spell Ranks: a new rank replaces the old one on your bars
+            autoPagingBar = 1,          -- Auto-Paging: the bar that switches to the Stealth / form page (0 = none)
 
             -- Status colouring (one row sets both)
             colors = {

@@ -8,7 +8,7 @@ local S = ns.Settings
 -- rows in the middle, a picture and the hovered row's text on the right, the reload footer along
 -- the bottom. Built on first open; Blizzard's own templates and textures, in FlareUI's bronze.
 --------------------------------------------------
-local WIDTH, HEIGHT = 960, 680   -- the reload bar hangs below the window when it shows
+local WIDTH, HEIGHT = 960, 700   -- the reload bar hangs below the window when it shows (both fit 768 units: UI scale 1)
 local HEADER_H, FOOTER_H = 34, 34
 local LEFT_W, RIGHT_W = 190, 250
 local PAD = 12

@@ -37,6 +37,10 @@ S:Row{ key = "ab.cleanKeybinds", path = "actionbars.cleanKeybinds", apply = Refr
 S:Row{ key = "ab.buttonArt", path = "actionbars.buttonArt", apply = Refresh, half = true }
 S:Row{ key = "ab.stopAutoAdd", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
 
+-- Auto-paging, last in Tweaks: the bar that switches to the Stealth / form page (Forever's bar 1 doesn't by itself)
+S:Row{ key = "ab.autoPagingBar", kind = "choice", path = "actionbars.autoPagingBar",
+    choices = { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, apply = Refresh }
+
 -- XP Bar
 S:Row{ key = "ab.xpBar", path = "actionbars.xpbar.enabled", reload = true }
 -- its numbers: under the mouse, or always

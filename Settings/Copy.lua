@@ -77,6 +77,13 @@ ns.Copy = {
         },
     },
     rows = {
+        ["ab.autoPagingBar"] = {
+            choices = { L["No Auto-Paging"], L["Action Bar 1"], L["Action Bar 2"], L["Action Bar 3"], L["Action Bar 4"], L["Action Bar 5"], L["Action Bar 6"], L["Action Bar 7"], L["Action Bar 8"] },
+            desc = L["The bar that switches to its own page in Stealth, a druid form or a warrior stance."],
+            label = L["Allow Auto-paging"],
+            section = "ab.buttons",
+            tip = L["The new page starts empty: fill it while in that form."],
+        },
         ["ab.autoRanks"] = {
             desc = L["A newly learned rank replaces the rank below it on your bars."],
             label = L["Update spell ranks"],

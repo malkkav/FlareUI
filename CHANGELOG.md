@@ -1,3 +1,12 @@
+# FlareUI 2.0.15
+
+## New
+- Action Bars: **Allow Auto-paging** (last in Tweaks, Action Bar 1 by default): the bar switches to its own page in Stealth, a druid form or a warrior stance. Forever doesn't switch any bar by itself. The new page starts empty: fill it while in that form.
+
+## Changed
+- Unit Frames: the Frame section of the player, target and focus dialogs is reordered: Width, Height, Power Bar Height, Portrait Size (was Ring Size), Portrait, Health Text, Power Text.
+- Settings: the window is a little taller.
+
 # FlareUI 2.0.14
 
 Ready for Forever's new client build: the minimap and the Forever style frames follow Blizzard's new look.
