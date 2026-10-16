@@ -1,3 +1,21 @@
+# FlareUI 2.0.14
+
+Ready for Forever's new client build: the minimap and the Forever style frames follow Blizzard's new look.
+
+## Changed
+- Minimap: the header uses Forever's new buttons: the bronze zone plate under the zone name and clock, and the new tracking and calendar buttons.
+- Forever style frames: the player's portrait has the round ring, mirroring the target's, as Blizzard's player frame now does.
+- Forever style frames: the PvP crest sits where Blizzard's new frames put it, without a disc and in front of the level disc. The level disc and number are a little smaller, as on Blizzard's frames.
+- Forever style frames: the combo points around the target's portrait are placed and sized as Blizzard's, clear of the ring and above the PvP crest.
+- Forever style frames: fighting in a rested area, the player's ring shows the combat glow and swords, as Blizzard's frame now does.
+
+## Removed
+- Minimap: the group size flag. Forever's minimap no longer has an instance difficulty banner.
+
+## Fixed
+- Minimap: works again after Forever's client update (it stopped with "could not find the Blizzard minimap cluster").
+- Minimap: the addon button bag no longer shows an addon twice when it has its own minimap button and an entry in Blizzard's addon menu.
+
 # FlareUI 2.0.13
 
 ## Fixed

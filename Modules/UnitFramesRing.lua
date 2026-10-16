@@ -21,7 +21,7 @@ ns.UFRing = Ring
 -- the same way. A frame whose ring is on its other side mirrors them. Everything on the portrait is
 -- Blizzard's, in Blizzard's proportions: the level always shows, and combo points are always the gems.
 --   * the level in Forever's dark disc, with the elite skull there for "??" units
---   * the PvP / faction disc (player, target)
+--   * the PvP / faction crest beside the level disc (player, target)
 --   * the leader crown, the raid marker on the portrait's top edge, the rare star or quest mark on its
 --     bottom edge, the resting "zzz", the corner embellishment while resting and the swords in combat
 --   * the status glow (yellow resting, red in combat), the threat flash, and the elite / rare frame
@@ -37,43 +37,42 @@ ns.UFRing = Ring
 local RING_UNITS = { player = true, target = true, focus = true }
 
 -- the art: the atlas, and where its ring is inside it (fractions of the atlas, measured on the sheet
--- against its backing: the outer edge of the ring's soft shadow, the same on every side)
+-- against its backing: the outer edge of the ring's soft shadow, the same on every side). The ring
+-- is on the atlas's right; on the left it is mirrored. Since Forever's build of 2026-10-16 the
+-- player's frame has the target's round ring too (the teardrop is gone), so all three share it.
 local ART = {
-    player = { atlas = "UI-HUD-UnitFrame-Player-PortraitOn", drop = true,
-               box = { 9.44 / 396, 137.78 / 396, 6.11 / 142, 134.44 / 142 } },
-    target = { atlas = "UI-HUD-UnitFrame-Target-PortraitOn", drop = false,
+    target = { atlas = "UI-HUD-UnitFrame-Target-PortraitOn", side = "RIGHT",
                box = { 252.78 / 384, 375.0 / 384, 1.67 / 134, 123.89 / 134 } },
 }
+ART.player = ART.target
 ART.focus = ART.target
 local CIRCLE_MASK   = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
--- FlareUI's own teardrop: a circle plus the square bottom-right quadrant, edge to edge
-local DROP_MASK     = "Interface\\AddOns\\FlareUI\\Media\\Masks\\RingDrop"
 local SMALL_CIRCLE  = "UI-HUD-UnitFrame-SmallCircle"
 local PORTRAIT_SHARE = 0.86   -- the portrait inside the ring, of its diameter
-local GEM_GAP       = 0.30    -- combo gems sit this share of their size outside the rim
--- Blizzard's combo points on the ring: a little smaller than on the row, spaced by their art's reach
--- (Core.lua ns.ComboPointStep)
-local RING_COMBO = { size = 14 }
+-- Blizzard's combo points around its target ring (Camelot ComboFrame.lua POINT_LAYOUT_DATA, in its
+-- 61.1 px ring's units): an arc from just under 3 o'clock upwards, started higher while the PvP crest
+-- shows; radius in the points' own scale, shift from the portrait's centre
+local RING_COMBO = { radius = 66, start = -10, pvpStart = 2, step = 21, scale = 0.6, shift = { 2, 2 } }
 local RING_SHARE    = 1.5     -- the ring's default diameter, of the frame's height
 local BAR_INSET     = 4       -- UnitFrames' INSET: the bars start this far in from the frame's edge
 local GLOW_SHARE    = 1.35    -- the glow textures' size, of the ring's diameter
 -- the glows: FlareUI's own line over the ring's rim (white, tinted, a little transparent). Drawn for
 -- GLOW_SHARE 1.35: change both together.
-local GLOW_FILES = {
-    drop   = "Interface\\AddOns\\FlareUI\\Media\\Masks\\RingHaloDrop",
-    circle = "Interface\\AddOns\\FlareUI\\Media\\Masks\\RingHaloCircle",
-}
+local GLOW_FILE = "Interface\\AddOns\\FlareUI\\Media\\Masks\\RingHaloCircle"
 
 -- Blizzard's frames (1x, origin at the frame's top-left, y down negative): the ring's centre and
 -- diameter as measured on the atlas, and every element's anchor. scale = the template's scale (the
 -- art's size only; the anchor's offsets are the parent's). size = a fixed size where there is one.
--- pvp: the faction disc, placed off the level disc (centre offset and size in the level disc's
--- texture widths), as measured on Forever's own frames. The player's and target's aren't mirror images.
+-- pvp: the faction crest, placed off the level disc (centre offset and size in the level disc's
+-- texture widths, as measured on Forever's frames when the crest had a disc), then moved as Blizzard
+-- moved it (move, see PvPSpot). The player's and target's aren't mirror images.
 local BLIZZ = {
     player = {
-        centre = { 53.8, -49.6 }, D = 64.17, side = "LEFT",
-        level   = { atlas = SMALL_CIRCLE, point = "BOTTOMLEFT", x = 13, y = -93, frame = "player" },
-        pvp     = { dx = -0.435, dy = 0.46, share = 0.8 },
+        -- the target's ring, mirrored (the 2026-10-16 player frame)
+        centre = { 232 - 176.9, -47.9 }, D = 61.1, side = "LEFT",
+        -- 1.5 px in from Blizzard's anchor (13, -93): matched to screenshots of the 2026-10-16 frames
+        level   = { atlas = SMALL_CIRCLE, point = "BOTTOMLEFT", x = 14.5, y = -91.5, frame = "player" },
+        pvp     = { dx = -0.435, dy = 0.46, share = 0.8, move = { 6, -11.6 } },   -- the target's, mirrored
         leader  = { atlas = "UI-HUD-UnitFrame-Player-Group-LeaderIcon", point = "TOPLEFT", x = 86, y = -10 },
         rest    = { size = 20, point = "TOPLEFT", x = 64, y = -6 },
         raidIcon = { size = 26, point = "CENTER", x = 53.8, y = -19 },   -- the target's spot, mirrored
@@ -83,7 +82,7 @@ local BLIZZ = {
     },
     target = {
         centre = { 176.9, -47.9 }, D = 61.1, side = "RIGHT", boss = true,
-        pvp     = { dx = 0.435, dy = 0.46, share = 0.8 },   -- the player's, mirrored
+        pvp     = { dx = 0.435, dy = 0.46, share = 0.8, move = { -6, -11.6 } },   -- the player's, mirrored
         leader  = { atlas = "UI-HUD-UnitFrame-Player-Group-LeaderIcon", point = "TOPRIGHT", x = 147, y = -8 },
         raidIcon = { size = 26, point = "CENTER", x = 177, y = -19 },
         classification = { atlas = "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Rare-Star", point = "CENTER", x = 177, y = -77 },
@@ -110,6 +109,8 @@ local STATUS_COMBAT  = { 1.0, 0.0, 0.0 }
 local STATUS_PULSE   = { 55 / 255, 1, 0.5 }   -- Blizzard's status glow: alpha low, high, seconds each way
 -- Blizzard's level text: Friz Quadrata 14 with a shadow (WhiteLargeNumberFont), at 1x
 local LEVEL_FONT, LEVEL_FONT_SIZE = "Fonts\\FRIZQT__.TTF", 14
+-- the level disc, number and skull, of the atlas size (as Blizzard's 2026-10-16 frames show them)
+local LEVEL_SCALE = 0.94
 
 -- Each style is a whole unit frames setup of its own: every frame's settings and positions, the totem
 -- bar and the cast bar, swapped on the switch (a reload follows). Shared between the two: the party,
@@ -265,20 +266,35 @@ local function PvPSpot(f, g)
     local lx, ly, lw = Place(f, g, blizz.level)
     if not lx then return nil end
     local sign = (g.side ~= blizz.side) and -1 or 1
-    return lx + sign * e.dx * lw, ly + e.dy * lw, lw * e.share, lw * e.share
+    local x, y = lx + sign * e.dx * lw, ly + e.dy * lw
+    -- Forever's build of 2026-10-16 dropped the crest's dark disc and moved the crest: its top now
+    -- sits where the disc's top was, moved by e.move (Blizzard pixels, from Blizzard's anchors, then
+    -- matched to screenshots of its frames), so its centre drops by half the crest's extra height too.
+    -- (The dx / dy above were measured on the disc.)
+    local crest, disc = C_Texture.GetAtlasInfo(PVP_ICONS.Horde), C_Texture.GetAtlasInfo(SMALL_CIRCLE)
+    if e.move and disc and disc.width and disc.width > 0 and disc.height then
+        local k = lw / disc.width
+        local grow = (crest and crest.height) and (crest.height - disc.height) * e.share / 2 or 0
+        x = x + sign * e.move[1] * k
+        y = y + (e.move[2] - grow) * k
+    end
+    return x, y, lw * e.share, lw * e.share
 end
 
 --------------------------------------------------
 -- 4. BUILD
 --------------------------------------------------
-local function Crop(tex, artInfo)
+-- the ring out of its atlas, mirrored on the other side from the atlas's
+local function Crop(tex, artInfo, side)
     local info = C_Texture.GetAtlasInfo(artInfo.atlas)
     if not info then return false end
     local l, r, t, b = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
     if not (l and r and t and b and info.file) then return false end
     local box = artInfo.box
+    local x1, x2 = l + box[1] * (r - l), l + box[2] * (r - l)
+    if side and side ~= artInfo.side then x1, x2 = x2, x1 end
     tex:SetTexture(info.file)
-    tex:SetTexCoord(l + box[1] * (r - l), l + box[2] * (r - l), t + box[3] * (b - t), t + box[4] * (b - t))
+    tex:SetTexCoord(x1, x2, t + box[3] * (b - t), t + box[4] * (b - t))
     return true
 end
 
@@ -301,20 +317,18 @@ end
 -- the ring, its masks, the discs, glows and extras: made once
 local function Build(f)
     if f.RingFrame then return f.RingFrame end
-    local art = ART[f.unit]
-    local maskFile = art.drop and DROP_MASK or CIRCLE_MASK
     local ring = CreateFrame("Frame", nil, f)
+    -- the art itself is cropped at each layout (mirrored with the ring's side)
     ring.Art = ring:CreateTexture(nil, "ARTWORK")
     ring.Art:SetAllPoints()
     ring.Mask = ring:CreateMaskTexture()
     ring.Mask:SetAllPoints(ring.Art)
-    ring.Mask:SetTexture(maskFile, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    ring.Mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     ring.Art:AddMaskTexture(ring.Mask)
-    ring.hasArt = Crop(ring.Art, art)
 
     -- the portrait's mask, the same shape
     ring.PortraitMask = f.Portrait:CreateMaskTexture()
-    ring.PortraitMask:SetTexture(maskFile, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    ring.PortraitMask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     ring.PortraitMask:SetAllPoints(f.Portrait)
 
     -- the glows: resting / combat status (player) and the threat flash
@@ -353,11 +367,12 @@ local function Build(f)
     ring.Skull:SetPoint("CENTER")
     ring.Skull:Hide()
 
-    -- the PvP / faction disc: its own dark disc under the frame's PvP icon, above the dragon frame
+    -- the PvP / faction crest's layer, above the dragon frame. PvPDisc is the crest's spot, never
+    -- drawn (Forever's frames have shown the crest without a disc since the 2026-10-16 build); the
+    -- PvP timer hangs off it
     ring.PvP = CreateFrame("Frame", nil, ring)
     ring.PvP:SetAllPoints(f)
     ring.PvPDisc = ring.PvP:CreateTexture(nil, "ARTWORK")
-    if not SetAtlasSafe(ring.PvPDisc, SMALL_CIRCLE) then ring.PvPDisc:SetColorTexture(0, 0, 0, 0.8) end
     ring.PvPDisc:Hide()
 
     -- Blizzard's PvP timer (player), beside the PvP disc
@@ -396,13 +411,13 @@ function Ring.Layout(f)
     frames[f] = true
 
     -- bottom to top: bars, border, texts and the bars' divider (the frame's own levels), then the
-    -- portrait, the ring (with its glows), the icons on it, the PvP disc, the level disc (the combo
-    -- gems go above all of it)
+    -- portrait, the ring (with its glows), the icons on it, the level disc, the PvP crest over its
+    -- edge (the combo gems go above all of it)
     f.Portrait:SetFrameLevel(level + 9)
     ring:SetFrameLevel(level + 10)
     ring.Icons:SetFrameLevel(level + 11)
-    ring.PvP:SetFrameLevel(level + 12)
-    ring.Disc:SetFrameLevel(level + 13)
+    ring.Disc:SetFrameLevel(level + 12)
+    ring.PvP:SetFrameLevel(level + 13)
     for _, key in ipairs(RING_ICONS) do
         local region = f[key]
         if region then region:SetParent(key == "PvPIcon" and ring.PvP or ring.Icons) end
@@ -411,7 +426,7 @@ function Ring.Layout(f)
     ring:ClearAllPoints()
     ring:SetSize(g.D, g.D)
     ring:SetPoint("CENTER", f, left and "LEFT" or "RIGHT", left and g.centre or -g.centre, 0)
-    -- (the player's teardrop is always on the left, its point into the frame: never flipped)
+    ring.hasArt = Crop(ring.Art, ART[f.unit], g.side)
     ring:SetShown(ring.hasArt)
 
     local size = g.D * PORTRAIT_SHARE
@@ -425,11 +440,10 @@ function Ring.Layout(f)
     if f.PortraitDivider then f.PortraitDivider:Hide() end
 
     -- the glows: a line over the ring's rim
-    local drop = ART[f.unit].drop
     for _, glow in ipairs({ ring.Status, ring.Flash }) do
-        glow:SetTexture(drop and GLOW_FILES.drop or GLOW_FILES.circle)
+        glow:SetTexture(GLOW_FILE)
         glow:SetSize(g.D * GLOW_SHARE, g.D * GLOW_SHARE)
-        if not drop and left then glow:SetTexCoord(1, 0, 0, 1) else glow:SetTexCoord(0, 1, 0, 1) end
+        if left then glow:SetTexCoord(1, 0, 0, 1) else glow:SetTexCoord(0, 1, 0, 1) end
     end
     if blizz.corner then
         SetAtlasSafe(ring.Corner, blizz.corner.atlas)
@@ -455,8 +469,11 @@ function Ring.LayoutLevel(f, g)
     g = g or Geometry(f)
     local e = BLIZZ[f.unit].level
     PlaceRegion(f, g, ring.Disc, e)
+    -- Blizzard's 2026-10-16 frames draw it a little under its atlas size: around the same centre
+    local w, h = ring.Disc:GetSize()
+    ring.Disc:SetSize(w * LEVEL_SCALE, h * LEVEL_SCALE)
     -- the skull and the number at the disc's own scale
-    local k = g.D / BLIZZ[e.frame or f.unit].D
+    local k = g.D / BLIZZ[e.frame or f.unit].D * LEVEL_SCALE
     if SetAtlasSafe(ring.Skull, SKULL) then
         local info = C_Texture.GetAtlasInfo(SKULL)
         ring.Skull:SetSize(info.width * k, info.height * k)
@@ -584,7 +601,12 @@ function Ring.Update(f)
             local atlas = ffa and PVP_ICONS.FFA or PVP_ICONS[faction or ""]
             if atlas then SetAtlasSafe(f.PvPIcon, atlas) end
         end
-        ring.PvPDisc:SetShown(shown)
+        -- the combo arc starts higher while the crest shows (Blizzard's alternate start)
+        local combo = _G.ComboFrame
+        if unit == "target" and ring.comboPvP ~= nil and ring.comboPvP ~= (shown and true or false)
+            and combo and combo:GetParent() == f then
+            Ring.PlaceCombo(combo, f)
+        end
     end
 
     -- the elite / rare frame, as Forever picks it (gold elite, silver rare, winged gold boss)
@@ -613,11 +635,12 @@ function Ring.Update(f)
     ring.Skull:SetShown(skull and ring.Disc:IsShown())
     f.Level:SetAlpha(skull and 0 or 1)
 
-    -- the player: yellow glow and corner piece resting, red glow and swords in combat
+    -- the player: red glow and swords in combat, else yellow glow and corner piece resting (combat
+    -- first, as Blizzard's frame since the 2026-10-16 build)
     if unit == "player" then
-        local resting = Readable(IsResting())
         local combat = Readable(UnitAffectingCombat("player"))
-        local color = resting and STATUS_RESTING or combat and STATUS_COMBAT or nil
+        local resting = not combat and Readable(IsResting())
+        local color = combat and STATUS_COMBAT or resting and STATUS_RESTING or nil
         if color and IconOn(f, "statusGlow", true) then
             ring.Status:SetVertexColor(color[1], color[2], color[3], 1)
             ring.Status:Show()
@@ -629,7 +652,7 @@ function Ring.Update(f)
         -- the player's level is white, as on Blizzard's frame
         f.Level:SetTextColor(1, 1, 1)
         ring.Corner:SetShown(resting and true or false)
-        ring.Attack:SetShown((combat and not resting) and true or false)
+        ring.Attack:SetShown(combat and true or false)
     end
 
     UpdateExtras(f)
@@ -675,34 +698,30 @@ end
 --------------------------------------------------
 -- 7. CLASSIC COMBO POINTS
 --------------------------------------------------
--- Classic combo points along the ring's top arc (clockwise from just right of 12 o'clock on a ring
--- at the right, mirrored on a ring at the left). Anchors only: the count may be secret.
+-- Classic combo points as Blizzard lays them around its target ring, scaled to ours (mirrored on a
+-- ring at the left). Anchors only: the count may be secret.
 function Ring.PlaceCombo(combo, f)
-    if f.unit ~= "target" then return false end
+    if f.unit ~= "target" or not f.RingFrame then return false end
     local g = Geometry(f)
-    local max = combo.maxComboPoints
-    if not (canaccessvalue(max) and type(max) == "number" and max >= 1) then max = 5 end
-    local last = math.min(max, #combo.ComboPoints)
-    -- Blizzard's points, smaller here: their art's whole reach plus a gap per step
-    local gemSize = RING_COMBO.size
-    local reach = ns.ComboPointStep(gemSize)
-    local radius = g.R + gemSize * GEM_GAP
-    -- one step along the arc per point; the first just right of 12 o'clock
-    local step = math.deg(reach / radius)
-    local start = 90 - step * 0.6
+    local c = RING_COMBO
+    local k = g.D / BLIZZ.target.D
+    local pvp = f.PvPIcon and f.PvPIcon:IsShown()
+    local start = pvp and c.pvpStart or c.start
+    f.RingFrame.comboPvP = pvp and true or false
     combo:ClearAllPoints()
     combo:SetAllPoints(f.RingFrame)
-    -- over the ring: the gems overlap its rim
-    combo:SetFrameLevel(f:GetFrameLevel() + 14)
+    -- above everything on the ring, the PvP crest included
+    combo:SetFrameLevel(f.RingFrame.PvP:GetFrameLevel() + 1)
     for i, point in ipairs(combo.ComboPoints) do
-        -- the arc fills from the top: Blizzard fills its last points first, so they go first
-        local a = math.rad(start - (last - i) * step)
-        point:SetScale(RING_COMBO.size / 20)
+        -- Blizzard's arc: point 1 lowest; it fills its last points first, so the top ones light first
+        local a = math.rad(start + (i - 1) * c.step)
+        point:SetScale(c.scale * k)
         local s = point:GetScale() or 1   -- offsets are in the point's own scale
-        local x, y = math.cos(a) * radius / s, math.sin(a) * radius / s
+        local x = (math.cos(a) * c.radius * c.scale + c.shift[1]) * k
+        local y = (math.sin(a) * c.radius * c.scale + c.shift[2]) * k
         if g.side == "LEFT" then x = -x end
         point:ClearAllPoints()
-        point:SetPoint("CENTER", f.RingFrame, "CENTER", x, y)
+        point:SetPoint("CENTER", f.RingFrame, "CENTER", x / s, y / s)
     end
     return true
 end

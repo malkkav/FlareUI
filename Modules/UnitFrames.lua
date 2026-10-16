@@ -3001,9 +3001,8 @@ function UF:Init()
         local holder = CreatePlayerCastBar()
         LEM:AddFrame(holder, OnFrameMoved, DEFAULT_POSITIONS.playercastbar, holder.editModeName)
         LEM:AddFrameSettings(holder, BuildPlayerCastSettings())
+        -- also the Gamepad UI's bar (its own GamepadPlayerCastingBarFrame is gone since 2026-10-16)
         HardHide("PlayerCastingBarFrame")
-        -- the Gamepad UI has a cast bar of its own, big and mid-screen
-        if _G.GamepadPlayerCastingBarFrame then HardHide("GamepadPlayerCastingBarFrame") end
     end
     HookExtras()
     if frames.player then InitFsrSpark() end

@@ -44,12 +44,15 @@ local SQUARE_MASK   = "Interface\\BUTTONS\\WHITE8X8"
 
 -- The frame's top edge is a title band over the map; the header row is centred in it
 local BAND_HEIGHT   = 22     -- how far the title band reaches down over the map
-local HEADER_HEIGHT = 17
+local HEADER_HEIGHT = 19     -- Forever's header buttons (23 px art) drawn a little smaller
 local HEADER_TOP    = 2      -- the header row's distance from the map's top edge
 local HEADER_SIDE   = 6      -- ... and from its side edges
 local HEADER_GAP    = 2      -- between the pieces of the header row
 local CLOCK_WIDTH   = 40
-local CALENDAR_DROP = 1      -- the calendar icon sits this much below the row's middle line
+-- Forever's zone plate, stretched along the whole bar: its rounded ends keep their size
+local PLATE_ATLAS   = "ui-hud-minimap-header-button"
+local PLATE_SLICE   = 12     -- the ends, in the art's pixels
+local PLATE_INSET   = 6      -- zone text and clock, in from the plate's ends
 local SUN_SCALE     = 0.9    -- Forever's day/night badge, a little under its own size
 local SUN_OVERHANG  = 6      -- how far the badge reaches past the map's corner, onto the frame
 local MAIL_GAP      = 3      -- between the title band and the mail icon
@@ -60,14 +63,6 @@ local COORDS = {
     MAP_LIFT = 5,        -- the world map's coordinates, raised this much off its edge
 }
 local ROW_LEVEL     = 5      -- header row above the map and its frame
-
--- Difficulty banner colours by group size, muted so the number stays readable
-local BANNER_COLORS = {
-    { size = 5,  color = { 0.30, 0.62, 0.34 } },   -- dungeon: green
-    { size = 10, color = { 0.30, 0.48, 0.78 } },   -- 10-man: blue
-    { size = 25, color = { 0.56, 0.38, 0.76 } },   -- 25-man: purple
-    { size = 40, color = { 0.76, 0.30, 0.28 } },   -- 40-man: red
-}
 
 --------------------------------------------------
 -- 4. HELPERS
@@ -147,6 +142,51 @@ end
 --------------------------------------------------
 -- 6. HEADER, INDICATORS AND BADGES
 --------------------------------------------------
+-- Forever's header buttons (since the 2026-10-16 build) draw their own art at its atlas size, again
+-- on every mouse state: fitted to the button instead (two anchors outrank the size)
+local function FitButtonArt(button)
+    for _, key in ipairs({ "StateTexture", "AddTexture" }) do
+        local texture = button and button[key]
+        if texture then
+            texture:ClearAllPoints()
+            texture:SetAllPoints(button)
+        end
+    end
+end
+
+-- A texture stretched over a frame with Forever's zone plate, its ends kept whole
+local function Plate(texture, frame)
+    texture:SetAtlas(PLATE_ATLAS)
+    texture:ClearAllPoints()
+    texture:SetAllPoints(frame)
+    if texture.SetTextureSliceMargins then
+        texture:SetTextureSliceMargins(PLATE_SLICE, PLATE_SLICE, PLATE_SLICE, PLATE_SLICE)
+        if Enum.UITextureSliceMode then texture:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched) end
+    end
+end
+
+-- The bar behind the zone text and clock: Forever's zone plate, one level under the text. (Blizzard's
+-- BorderTop is gone from Forever's cluster, and the zone button's own plate is a fixed width.)
+local function CreateHeader()
+    local header = CreateFrame("Frame", nil, Cluster)
+    header:SetHeight(HEADER_HEIGHT)
+    header.Plate = header:CreateTexture(nil, "BACKGROUND")
+    Plate(header.Plate, header)
+    MM.Header = header
+    return header
+end
+
+-- The zone text button: the bar up to the clock. Forever's cluster re-places it itself (header
+-- underneath, Edit Mode), so every layout pass puts it back.
+local clockWidth = CLOCK_WIDTH
+local function PlaceZone()
+    local zoneButton, header = Cluster.ZoneTextButton, MM.Header
+    zoneButton:ClearAllPoints()
+    zoneButton:SetPoint("TOPLEFT", header, "TOPLEFT", HEADER_GAP, 0)
+    zoneButton:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -clockWidth, 0)
+    Raise(zoneButton)
+end
+
 local function StyleHeader()
     _G.MinimapCompassTexture:SetAlpha(0)   -- Blizzard's round frame art
     -- Forever's skin shows a round underlay whenever rotateMinimap is on
@@ -156,24 +196,30 @@ local function StyleHeader()
     Remove(MinimapFrame.ZoomHitArea)
     if _G.MinimapBackdrop then Remove(_G.MinimapBackdrop.StaticOverlayTexture) end
 
-    local header = Cluster.BorderTop
-    header:SetHeight(HEADER_HEIGHT)
-    for _, frame in ipairs({ header, Cluster.ZoneTextButton, Cluster.Tracking, _G.GameTimeFrame }) do Raise(frame) end
+    local header = CreateHeader()
+    for _, frame in ipairs({ Cluster.ZoneTextButton, Cluster.Tracking, _G.GameTimeFrame }) do Raise(frame) end
+    Raise(header, -1)
 
-    -- tracking: a square as tall as the header, its icon centred in it
+    -- tracking and calendar: Forever's own buttons, squares as tall as the header
     local tracking = Cluster.Tracking
     tracking:SetSize(HEADER_HEIGHT, HEADER_HEIGHT)
+    if tracking.Background then tracking.Background:Hide() end   -- the button art has its own frame
     tracking.Button:ClearAllPoints()
-    tracking.Button:SetPoint("CENTER", tracking, "CENTER", 0, 0)
-    tracking.Button:SetSize(HEADER_HEIGHT - 2, HEADER_HEIGHT - 2)
+    tracking.Button:SetAllPoints(tracking)
+    FitButtonArt(tracking.Button)
+    local calendar = _G.GameTimeFrame
+    calendar:SetSize(HEADER_HEIGHT, HEADER_HEIGHT)
+    FitButtonArt(calendar)
 
-    -- zone text: the bar up to the clock at its right end
+    -- zone text: the bar up to the clock. Its plate is the header's; the button's mouse-over glow
+    -- spreads over the whole plate
     local zoneButton, zoneText = Cluster.ZoneTextButton, _G.MinimapZoneText
-    zoneButton:ClearAllPoints()
-    zoneButton:SetPoint("TOPLEFT", header, "TOPLEFT", HEADER_GAP, 0)
-    zoneButton:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -CLOCK_WIDTH, 0)
+    if zoneButton.StateTexture then zoneButton.StateTexture:SetParent(hiddenParent) end
+    if zoneButton.AddTexture then Plate(zoneButton.AddTexture, header) end
+    PlaceZone()
     zoneText:ClearAllPoints()
-    zoneText:SetAllPoints(zoneButton)
+    zoneText:SetPoint("TOPLEFT", zoneButton, "TOPLEFT", PLATE_INSET, 0)
+    zoneText:SetPoint("BOTTOMRIGHT", zoneButton, "BOTTOMRIGHT", 0, 0)
     zoneText:SetJustifyH("LEFT")
     zoneText:SetWordWrap(false)
 
@@ -188,14 +234,15 @@ local function StyleHeader()
         clock:SetHitRectInsets(0, 0, 0, 0)
         Raise(clock)
         ticker:ClearAllPoints()
-        ticker:SetPoint("RIGHT", clock, "RIGHT", 0, 0)
+        ticker:SetPoint("RIGHT", clock, "RIGHT", -PLATE_INSET, 0)
         ticker:SetFontObject("GameFontHighlight")
 
         local function FitClock()
-            local width = math.max(CLOCK_WIDTH, math.ceil(ticker:GetUnboundedStringWidth()) + 2)
+            local width = math.max(CLOCK_WIDTH, math.ceil(ticker:GetUnboundedStringWidth() or 0) + 2 + PLATE_INSET)
             if width == clock:GetWidth() then return end
             clock:SetWidth(width)
-            zoneButton:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -width, 0)
+            clockWidth = width
+            PlaceZone()
         end
         hooksecurefunc("TimeManagerClockButton_Update", FitClock)
         FitClock()
@@ -204,24 +251,15 @@ end
 
 -- Tracking, the zone / clock bar and the calendar, left to right on one middle line
 local function PlaceHeader()
-    local tracking, calendar, header = Cluster.Tracking, _G.GameTimeFrame, Cluster.BorderTop
+    local tracking, calendar, header = Cluster.Tracking, _G.GameTimeFrame, MM.Header
     tracking:ClearAllPoints()
     calendar:ClearAllPoints()
     header:ClearAllPoints()
     tracking:SetPoint("TOPLEFT", MinimapFrame, "TOPLEFT", HEADER_SIDE, -HEADER_TOP)
     header:SetPoint("LEFT", tracking, "RIGHT", HEADER_GAP, 0)
     header:SetWidth(MAP_SIZE - 2 * HEADER_SIDE - tracking:GetWidth() - calendar:GetWidth() - 2 * HEADER_GAP)
-    calendar:SetPoint("LEFT", header, "RIGHT", HEADER_GAP, -CALENDAR_DROP)
-end
-
--- Blizzard's difficulty banner, in the map's top-right corner just below the title band
-local function PlaceFlag()
-    local flag = Cluster.InstanceDifficulty
-    if not flag then return end
-    flag:SetFlipped(false)
-    flag:ClearAllPoints()
-    flag:SetPoint("TOPRIGHT", MinimapFrame, "TOPRIGHT", -HEADER_SIDE, -BAND_HEIGHT)
-    Raise(flag)
+    calendar:SetPoint("LEFT", header, "RIGHT", HEADER_GAP, 0)
+    PlaceZone()
 end
 
 -- Mail and similar indicators: the map's top-left corner, a little below the title band
@@ -230,33 +268,6 @@ local function PlaceIndicators()
     Raise(indicators)
     indicators:ClearAllPoints()
     indicators:SetPoint("TOPLEFT", MinimapFrame, "TOPLEFT", HEADER_SIDE, -(BAND_HEIGHT + MAIL_GAP))
-end
-
--- The normal banner filled in for a group size - what Blizzard shows outside guild groups
-local function FillDefaultBanner(flag, groupSize)
-    local banner = flag.Default
-    flag:SetInstanceFrameText(banner, groupSize, groupSize)
-    local texture = flag:GetDifficultyTexture(banner, false, false, false, false)
-    for _, t in ipairs(banner.DifficultyTextures) do t:SetShown(t == texture) end
-    banner:Layout()
-    for _, frame in ipairs(flag.ContentModes) do frame:SetShown(frame == banner) end
-end
-
-local function BannerColor(groupSize)
-    for _, entry in ipairs(BANNER_COLORS) do
-        if groupSize <= entry.size then return entry.color end
-    end
-    return BANNER_COLORS[#BANNER_COLORS].color
-end
-
--- After Blizzard's updates: the guild banner becomes the normal one, tinted by group size
-local function DressBanner(flag)
-    local _, _, _, _, maxPlayers = GetInstanceInfo()
-    local groupSize = maxPlayers or 5
-    if flag.Guild:IsShown() then FillDefaultBanner(flag, groupSize) end
-    local color = BannerColor(groupSize)
-    flag.Default.Background:SetDesaturated(true)
-    flag.Default.Background:SetVertexColor(color[1], color[2], color[3])
 end
 
 -- One size up and in Blizzard's gold, once per font string
@@ -338,7 +349,6 @@ end
 function MM:UpdateLayout()
     if not self.initialized then return end
     Cluster.MinimapContainer:SetScale(1)
-    Cluster.BorderTop:SetScale(1)
     Cluster.ZoneTextButton:SetScale(1)
     SizeCluster()
     -- Edit Mode's SetScale on a system frame moves it so it stays in place on screen
@@ -351,7 +361,6 @@ function MM:UpdateLayout()
     ApplySquareMap()
 
     PlaceHeader()
-    PlaceFlag()
     PlaceIndicators()
     PlaceCoords()
     PlaceSun()
@@ -412,10 +421,9 @@ local function InstallHooks()
         MM:UpdateTrackerScale()   -- Blizzard's tracker follows the new width
     end)
     hooksecurefunc(Cluster, "SetHeaderUnderneath", function() MM:UpdateLayout() end)
+    -- Forever's config pass (rotateMinimap, layout) drops the zone button to its own frame level
+    if Cluster.UpdateMinimapConfig then hooksecurefunc(Cluster, "UpdateMinimapConfig", PlaceZone) end
     hooksecurefunc("MiniMapIndicatorFrame_UpdatePosition", PlaceIndicators)
-    if Cluster.InstanceDifficulty then
-        hooksecurefunc(Cluster.InstanceDifficulty, "Update", DressBanner)
-    end
     hooksecurefunc(MinimapFrame, "SetZoom", OnZoom)
     if not _G.HybridMinimap then
         EventUtil.ContinueOnAddOnLoaded("Blizzard_HybridMinimap", SquareHybridMinimap)
@@ -493,7 +501,7 @@ function MM:Init()
         local clock = _G.TimeManagerClockButton
         if clock then clock:HookScript("OnEnter", function() TimeManagerClockButton_UpdateTooltip() end) end
     end)
-    if not (MinimapFrame and Cluster and Cluster.BorderTop and Cluster.Tracking and Cluster.MinimapContainer) then
+    if not (MinimapFrame and Cluster and Cluster.ZoneTextButton and Cluster.Tracking and Cluster.MinimapContainer and _G.GameTimeFrame) then
         print("|cffff0000FlareUI:|r Minimap module could not find the Blizzard minimap cluster.")
         return
     end

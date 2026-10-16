@@ -105,6 +105,70 @@ local function FrameLabel(frame)
     return (frame:GetName():gsub("^LibDBIcon10_", ""))
 end
 
+-- An addon with its own minimap button often lists itself in Blizzard's compartment too, under its
+-- title ("Lorever") where its button has a frame name ("LoreverMinimapButton"). Names are compared
+-- loosely: lower case, letters and digits only, the usual button words dropped.
+local NAME_NOISE = { "libdbicon10", "minimapbutton", "minimap", "button", "btn", "icon", "ldb", "broker" }
+local function NameKey(text)
+    local key = StripText(text):lower():gsub("[^%w]", "")
+    for _, word in ipairs(NAME_NOISE) do key = key:gsub(word, "") end
+    return key
+end
+
+-- "Graphics Enhanced Forever" -> "gef", for buttons named by the initials
+local function Initials(text)
+    local letters = {}
+    for word in StripText(text):gmatch("%a+") do letters[#letters + 1] = word:sub(1, 1):lower() end
+    return table.concat(letters)
+end
+
+local function SameName(title, other)
+    local a, b = NameKey(title), NameKey(other)
+    if a == "" or b == "" then return false end
+    if a == b then return true end
+    if #a >= 4 and #b >= 4 and (a:find(b, 1, true) or b:find(a, 1, true)) then return true end
+    local initials = Initials(title)
+    return #initials >= 2 and b == initials
+end
+
+-- The textures a minimap button shows: file IDs and atlases
+local function FrameArt(frame)
+    local art = {}
+    local function add(region)
+        if not (region and region.IsObjectType and region:IsObjectType("Texture")) then return end
+        local ok, id = pcall(region.GetTextureFileID, region)
+        if ok and type(id) == "number" and id > 0 then art[id] = true end
+        local atlas = region.GetAtlas and region:GetAtlas()
+        if type(atlas) == "string" and atlas ~= "" then art[atlas:lower()] = true end
+    end
+    for _, region in ipairs({ frame:GetRegions() }) do add(region) end
+    add(frame.icon or frame.Icon)
+    return art
+end
+
+local function SameIcon(icon, art)
+    if type(icon) == "number" then return art[icon] or false end
+    if type(icon) ~= "string" or icon == "" then return false end
+    if art[icon:lower()] then return true end
+    local ok, id = pcall(GetFileIDFromPath, icon)
+    return ok and type(id) == "number" and id > 0 and art[id] or false
+end
+
+-- A compartment entry for an addon already in the bag as a button (by name or by icon). Two
+-- compartment entries are always two addons.
+local function AlreadyListed(data, label)
+    for _, e in ipairs(entries) do
+        if e.kind ~= "compartment" and (SameName(label, e.label) or SameName(label, e.name)) then return true end
+        if e.kind == "frame" then
+            e.art = e.art or FrameArt(e.frame)
+            if SameIcon(data.icon, e.art) then return true end
+        elseif e.kind == "ldb" and data.icon ~= nil and data.icon == e.object.icon then
+            return true
+        end
+    end
+    return false
+end
+
 local function CollectEntries()
     wipe(entries)
     local seen = {}
@@ -142,7 +206,7 @@ local function CollectEntries()
     local compartment = AddonCompartmentFrame
     for _, data in ipairs(compartment and compartment.registeredAddons or {}) do
         local label = StripText(data.text)
-        if label ~= "" and not seen[label:lower()] then
+        if label ~= "" and not seen[label:lower()] and not AlreadyListed(data, label) then
             seen[label:lower()] = true
             entries[#entries + 1] = { kind = "compartment", name = label, label = label, data = data }
         end
