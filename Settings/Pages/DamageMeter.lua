@@ -59,6 +59,7 @@ local threatKey = S:BindingAccessors("FLAREUI_THREAT")
 S:Row{ key = "dm.threatKey", kind = "keybind", get = threatKey.get, set = threatKey.set, section = "dm.tweaks" }
 
 S:FontRows{ module = "dm", tab = "fonts", section = "dm.fonts", apply = Refresh, fonts = {
+    { key = "header", path = "damagemeter.headerFont" },
     { key = "bars", path = "damagemeter.barFont" },
 } }
 

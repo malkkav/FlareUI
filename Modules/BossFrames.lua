@@ -30,6 +30,8 @@ local PF = ns.PartyFrames
 local Tile = PF and PF.Tile
 
 local MAX_BOSSES = 5
+local BASE_POSITION = { point = "RIGHT", x = -3, y = -11 }
+-- the default in use (FlareUI Style's has its own); Edit Mode's reset keeps this table
 local DEFAULT_POSITION = { point = "RIGHT", x = -3, y = -11 }
 local TILE_TEMPLATE = "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate"
 
@@ -67,12 +69,11 @@ local function IsEditing()
 end
 
 -- What a tile reads: the boss settings, plus what the boss frames never have (no party icons, no
--- dispel or defensive auras) and what never changes (five auras to a lane in one row, shields on the
--- bar's own absorb look)
+-- dispel or defensive auras) and what never changes (five auras to a lane in one row)
 local ICONS = { role = { shown = false }, leader = { shown = false }, readyCheck = { shown = false },
                 status = { shown = false }, raidIcon = {} }
-local FIXED = { healersOnlyPower = false, bigBossDebuffs = false, bigDefensive = false, dispelHighlight = "off",
-                dispels = "OFF", auraMax = 5, auraPerRow = 5, absorbTexture = "FlareUI Striped", absorbReverseFill = true }
+local FIXED = { bigBossDebuffs = false, bigDefensive = false, dispelHighlight = "off",
+                dispels = "OFF", auraMax = 5, auraPerRow = 5 }
 local view = setmetatable({}, { __index = function(_, key)
     local db = GetDb()
     if not db then return nil end
@@ -90,7 +91,13 @@ local ctx = {
     PreviewData = function(f) return f.sample or SAMPLES[1] end,
     ReadyHold = function() return nil end,
     classic = true, mirror = true, hostile = true, castbar = true,
+    ringKind = "boss",   -- FlareUI Style: the target frame's portrait ring (PartyFrames.lua RingKind)
 }
+
+-- FlareUI Style's boss frames have the ring
+local function RingStyle()
+    return ns.UFRing and ns.UFRing.Style() == "flareui" or false
+end
 
 --------------------------------------------------
 -- 4. TILES AND LAYOUT
@@ -156,6 +163,9 @@ end
 local function ApplyPosition(layoutName)
     if not holder then return end
     if InCombatLockdown() then pendingLayout = true return end
+    -- the default: FlareUI Style's own, past the ring
+    local base = RingStyle() and ns.UFRing.TILE_POSITIONS.boss or BASE_POSITION
+    for k, v in pairs(base) do DEFAULT_POSITION[k] = v end
     local store = LayoutStore(layoutName)
     local pos = (store and store.point) and store or DEFAULT_POSITION
     holder:ClearAllPoints()
@@ -199,6 +209,9 @@ local function Refresh()
     if not holder then return end
     if InCombatLockdown() then pendingLayout = true return end
     pendingLayout = false
+    -- Mirror (on by default): laid out as the target frame
+    local db = GetDb()
+    ctx.mirror = not (db and db.mirror == false)
     for _, f in ipairs(tiles) do
         local ok, err = pcall(Tile.Layout, f)
         if not ok then geterrorhandler()(err) end
@@ -215,7 +228,13 @@ end
 -- 7. EDIT MODE SETTINGS
 --------------------------------------------------
 local function BuildSettings()
-    local D = (ns.defaults and ns.defaults.profile.unitframes.boss) or {}
+    local base = (ns.defaults and ns.defaults.profile.unitframes.boss) or {}
+    -- FlareUI Style's boss frames: its look
+    local ring = ns.UFRing and ns.UFRing.TileDefaults("boss")
+    local D = ring and setmetatable({}, { __index = function(_, k)
+        if ring[k] ~= nil then return ring[k] end
+        return base[k]
+    end }) or base
     local function get(key)
         return function()
             local db = GetDb()
@@ -251,10 +270,20 @@ local function BuildSettings()
         { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = get("height"), set = set("height") },
         { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
           get = get("powerHeight"), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
+        -- FlareUI Style: the ring's size, as the target frame's
+        { name = L["Portrait Size"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.DefaultSize("boss") or 80,
+          minValue = 36, maxValue = 120, valueStep = 1,
+          get = function() local db = GetDb(); return db and db.ringSize or (ns.UFRing and ns.UFRing.DefaultSize("boss")) or 80 end,
+          set = set("ringSize"), hidden = function() return not RingStyle() end },
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") },
         { name = L["Power Text"], kind = LEM.SettingType.Checkbox, default = D.powerText or false, get = get("powerText"), set = set("powerText") },
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = get("showLevel"), set = set("showLevel") },
-        { name = L["Portrait"], kind = LEM.SettingType.Checkbox, default = D.portrait or false, get = get("portrait"), set = set("portrait") },
+        { name = L["Mirror"], kind = LEM.SettingType.Checkbox, default = D.mirror ~= false,
+          get = function() return get("mirror")() ~= false end, set = set("mirror"),
+          desc = L["Laid out as the target frame: portrait on the right, bars filling from the right."] },
+        -- (FlareUI Style: always, in the ring)
+        { name = L["Portrait"], kind = LEM.SettingType.Checkbox, default = D.portrait or false, get = get("portrait"), set = set("portrait"),
+          hidden = RingStyle },
     })
 
     Section("Look", {
@@ -262,6 +291,10 @@ local function BuildSettings()
           get = get("texture"), set = set("texture") },
         { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = D.border, values = K.BuildBorderValues(false),
           get = get("border"), set = set("border") },
+        -- shields on a boss: none yet on Forever, but a boss could bring them
+        { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildTextureValues(true),
+          get = get("absorbTexture"), set = set("absorbTexture"),
+          desc = L["The texture of the shield (absorb) over the health bar. Frame Texture uses the bar's own."] },
     })
 
     local function noCast() return get("castbar")() == false end
@@ -292,12 +325,14 @@ local function BuildSettings()
         { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = D.buffs, values = Tile.AURA_POSITION_VALUES,
           get = get("buffs"), set = set("buffs"), desc = L["Every buff on the boss, such as enrages and shields."] },
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = Tile.AURA_POSITION_VALUES,
-          get = get("debuffs"), set = set("debuffs"), desc = L["Only your own debuffs on the boss."] },
+          get = get("debuffs"), set = set("debuffs"), desc = L["Debuffs on the boss: only your own with Only My Debuffs."] },
         { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1, get = get("auraSize"), set = set("auraSize") },
+        { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = D.onlyMyDebuffs ~= false,
+          get = function() return get("onlyMyDebuffs")() ~= false end, set = set("onlyMyDebuffs") },
     })
 
     Section("Icons", {
-        { name = L["Raid Target"], kind = LEM.SettingType.Checkbox, default = D.raidIcon ~= false, get = get("raidIcon"), set = set("raidIcon") },
+        { name = L["Raid Markers"], kind = LEM.SettingType.Checkbox, default = D.raidIcon ~= false, get = get("raidIcon"), set = set("raidIcon") },
     })
     return settings
 end

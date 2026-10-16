@@ -21,10 +21,12 @@ local MEDIA_PATH = "Interface/AddOns/" .. ADDON_NAME .. "/Media/"
 -- 2. CUSTOM ASSETS (registered with LibSharedMedia)
 --------------------------------------------------
 local ASSETS = {
-    -- FlareUI's bar textures: Flat for every bar, Striped for absorbs
+    -- FlareUI's bar textures: Flat for every bar, Striped for absorbs, Forever: Blizzard's Forever
+    -- health bar art (its gradient and grain), greyed so the bars' colours tint it
     statusbar = {
         ["FlareUI Flat"]    = "Bars/FlareUI-Flat.tga",
         ["FlareUI Striped"] = "Bars/FlareUI-Striped.tga",
+        ["FlareUI Forever"] = "Bars/FlareUI-Forever.tga",
     },
     -- grey frame borders, tinted by each frame's border colour; 16 px edge
     border = {

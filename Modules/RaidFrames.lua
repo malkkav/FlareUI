@@ -166,7 +166,7 @@ end
 
 -- What a tile reads: the raid settings at the size in use, and what never changes (no cast bar,
 -- three auras to a lane in one row, shields on the bar's own absorb look)
-local FIXED = { castbar = false, auraMax = 3, auraPerRow = 3, absorbTexture = "FlareUI Striped", absorbReverseFill = true }
+local FIXED = { castbar = false, auraMax = 3, auraPerRow = 3, absorbTexture = "FlareUI Striped" }
 local function View(sizeFn)
     return setmetatable({}, { __index = function(_, key)
         local db = GetDb()
@@ -834,6 +834,10 @@ local function BuildSettings()
         { name = L["Groups"], kind = LEM.SettingType.Dropdown, default = "ROWS",
           values = { { text = L["Rows"], value = "ROWS", isRadio = true }, { text = L["Columns"], value = "COLUMNS", isRadio = true } },
           get = get("orientation", "ROWS"), set = set("orientation") },
+        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = d.spacing or 4, minValue = 0, maxValue = 20, valueStep = 1,
+          get = get("spacing", 4), set = set("spacing") },
+        { name = L["Group Spacing"], kind = LEM.SettingType.Slider, default = d.groupSpacing or 10, minValue = 0, maxValue = 40, valueStep = 1,
+          get = get("groupSpacing", 10), set = set("groupSpacing") },
         { name = L["Group Numbers"], kind = LEM.SettingType.Checkbox, default = false, get = get("groupNumbers", false), set = set("groupNumbers"),
           hidden = function() return Mode() ~= "group" end },
         { name = L["Main Tank Frames"], kind = LEM.SettingType.Checkbox, default = false,
@@ -853,14 +857,8 @@ local function BuildSettings()
           get = get("width", DEFAULT_W), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = DEFAULT_H, minValue = 20, maxValue = 100, valueStep = 1,
           get = get("height", DEFAULT_H), set = set("height") },
-        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = d.spacing or 4, minValue = 0, maxValue = 20, valueStep = 1,
-          get = get("spacing", 4), set = set("spacing") },
-        { name = L["Group Spacing"], kind = LEM.SettingType.Slider, default = d.groupSpacing or 10, minValue = 0, maxValue = 40, valueStep = 1,
-          get = get("groupSpacing", 10), set = set("groupSpacing") },
         { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = d.powerHeight or 4, minValue = 0, maxValue = 15, valueStep = 1,
           get = get("powerHeight", 4), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
-        { name = L["Power Bar for Healers Only"], kind = LEM.SettingType.Checkbox, default = d.healersOnlyPower ~= false,
-          get = get("healersOnlyPower", true), set = set("healersOnlyPower") },
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = d.healthText or "none", values = K.HEALTH_TEXT_MODES,
           get = get("healthText", "none"), set = set("healthText") },
     })
@@ -900,16 +898,21 @@ local function BuildSettings()
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = d.debuffs, values = places, generator = Place("debuffs"),
           get = get("debuffs"), set = set("debuffs"),
           desc = L["Debuffs as Blizzard's raid frames pick them: boss and role debuffs, priority debuffs, and the ones you can dispel."] },
+        { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = d.dispelHighlight or "mine",
+          values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
+                     { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
+          desc = L["A dispellable debuff colours the frame's border in its type's colour."],
+          get = get("dispelHighlight", "mine"), set = set("dispelHighlight") },
         { name = L["Dispel Icons"], kind = LEM.SettingType.Dropdown, default = d.dispels, values = places, generator = Place("dispels"),
           get = get("dispels"), set = set("dispels"),
           desc = L["The symbol of each debuff type you can dispel (Magic, Curse, Disease, Poison)."] },
+        { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = d.auraSize or 14, minValue = 8, maxValue = 30, valueStep = 1,
+          get = get("auraSize", 14), set = set("auraSize") },
+        { name = L["Missing Buffs"], kind = LEM.SettingType.Checkbox, default = true, get = get("missingBuffs", true), set = set("missingBuffs"),
+          desc = L["Out of combat, the group buffs a player lacks that you can cast show on their frame."] },
         { name = L["Bigger Boss Debuffs"], kind = LEM.SettingType.Checkbox, default = d.bigBossDebuffs ~= false,
           get = get("bigBossDebuffs", true), set = set("bigBossDebuffs"),
           desc = L["Boss and role debuffs first and half again as big, as Blizzard's raid frames show them."] },
-        { name = L["Missing Buffs"], kind = LEM.SettingType.Checkbox, default = true, get = get("missingBuffs", true), set = set("missingBuffs"),
-          desc = L["Out of combat, the group buffs a player lacks that you can cast show on their frame."] },
-        { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = d.auraSize or 14, minValue = 8, maxValue = 30, valueStep = 1,
-          get = get("auraSize", 14), set = set("auraSize") },
         { name = L["Big Defensive"], kind = LEM.SettingType.Checkbox, default = d.bigDefensive ~= false,
           get = function() return get("bigDefensive", true)() ~= false end,
           set = function(layoutName, value) set("bigDefensive")(layoutName, value); if holder then LEM:RefreshFrameSettings(holder) end end,
@@ -917,11 +920,6 @@ local function BuildSettings()
         { name = L["Big Defensive Size"], kind = LEM.SettingType.Slider, default = d.bigDefensiveSize or 22, minValue = 10, maxValue = 48, valueStep = 1,
           get = get("bigDefensiveSize", 22), set = set("bigDefensiveSize"),
           hidden = function() return get("bigDefensive", true)() == false end },
-        { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = d.dispelHighlight or "mine",
-          values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
-                     { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
-          desc = L["A dispellable debuff outlines the health bar in its type's colour."],
-          get = get("dispelHighlight", "mine"), set = set("dispelHighlight") },
     })
 
     local iconItems = {}

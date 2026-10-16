@@ -130,8 +130,22 @@ end
 -- initializeFrame: Blizzard calls it for every pooled button; the look is built once and restyled
 -- on later calls (a new group generation passes the new settings).
 --------------------------------------------------
+-- Edit Mode: Blizzard's sample auras have no duration, so a sample timer stands in for the timer
+-- text (the same place, font and colour), while a timer is shown; every styled button, for the switch
+local SAMPLE_TIMERS = { "9s", "24s", "1m", "3s", "45s", "2m", "17s", "6s" }
+local styledButtons = setmetatable({}, { __mode = "k" })
+
+local function ApplyPreviewTimer(button)
+    local text, preview = button.FlareUI_Duration, button.FlareUI_PreviewTimer
+    if not (text and preview) then return end
+    local on = LEM:IsInEditMode() and button.FlareUI_TimerShown
+    preview:SetShown(on and true or false)
+    text:SetAlpha((button.FlareUI_TimerShown and not on) and 1 or 0)
+end
+
 local function StyleButton(button, look)
     local size, round = look.size, look.style == "round"
+    styledButtons[button] = true
     button:SetSize(size, look.cellHeight or CellHeight(size))
 
     if not button.FlareUI_Area then
@@ -271,8 +285,30 @@ local function StyleButton(button, look)
         durationText:SetPoint("BOTTOM", area, "BOTTOM", 0, 2)
     end
     -- No Timer: Blizzard still shows and fills the text, so it is hidden by alpha
-    durationText:SetAlpha(look.timer == "none" and 0 or 1)
+    button.FlareUI_TimerShown = look.timer ~= "none"
+    -- the Edit Mode sample timer, in the timer's place and look
+    local preview = button.FlareUI_PreviewTimer
+    if not preview then
+        preview = durationText:GetParent():CreateFontString(nil, "OVERLAY")
+        preview:SetDrawLayer("OVERLAY", 3)
+        button.FlareUI_PreviewTimer = preview
+        SAMPLE_TIMERS.next = (SAMPLE_TIMERS.next or 0) % #SAMPLE_TIMERS + 1
+        preview.sample = SAMPLE_TIMERS[SAMPLE_TIMERS.next]
+    end
+    -- the font first: a font string takes no text without one
+    preview:SetFont(durationText:GetFont())
+    preview:SetText(preview.sample)
+    local r, g, b, alpha = durationText:GetTextColor()
+    if r then preview:SetTextColor(r, g, b, alpha or 1) end
+    ns.ApplyShadow(preview, look.font)
+    preview:ClearAllPoints()
+    for i = 1, durationText:GetNumPoints() do preview:SetPoint(durationText:GetPoint(i)) end
+    ApplyPreviewTimer(button)
 end
+
+-- entering and leaving Edit Mode (every styled button, whichever frame it is on)
+LEM:RegisterCallback("enter", function() for button in pairs(styledButtons) do ApplyPreviewTimer(button) end end)
+LEM:RegisterCallback("exit", function() for button in pairs(styledButtons) do ApplyPreviewTimer(button) end end)
 
 -- Hands our regions to Blizzard's aura button, which drives them from its aura
 local function HookButton(button, look)

@@ -317,7 +317,7 @@ local defaults = {
             },
 
             -- the FlareUI XP Bar (Modules/XPBar.lua), placed in Edit Mode; off = Blizzard's bars untouched
-            xpbar = { enabled = true, width = 560, height = 14, textMode = "HOVER", layouts = {} },
+            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Forever", textMode = "HOVER", layouts = {} },
 
             -- Typography
             hotkeyFont = { face = "Arial Narrow", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -342,6 +342,8 @@ local defaults = {
             opacity = 0.5,
             borderTexture = "FlareUI Frames",
             barFont = { face = "Friz Quadrata TT", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            -- the title row: Damage Meter / Threat, the session and its timer (in the header's gold)
+            headerFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             combatTimer = true,         -- Blizzard's "[mm:ss]" session timer in the title row
             readyCheckButton = true,    -- Ready Check button in the header
             countdownButton = true,     -- Countdown button in the header
@@ -375,7 +377,7 @@ local defaults = {
             -- positions per Edit Mode layout: layouts[name][unit] = { point, x, y }
             layouts = {},
             -- Blizzard's totem frame on FlareUI Totems (Modules/Totems.lua): size in %, totems per row
-            totems = { size = 95, perRow = 4 },
+            totems = { size = 90, perRow = 4 },
             -- aura text; its size follows the icon size, so auraFont.size is not used
             auraFont = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             editSections = {},          -- Edit Mode sections left open (shared by every frame)
@@ -388,7 +390,7 @@ local defaults = {
                     health      = { enabled = false, show = "target", width = 220, height = 16, text = "both" },
                     power       = { enabled = false, show = "target", width = 220, height = 16, fsr = false },
                     mana        = { enabled = false, show = "target", width = 220, height = 16, fsr = false },
-                    combo       = { enabled = false, show = "target", width = 220, height = 12, classic = false },
+                    combo       = { enabled = false, show = "target", width = 220, height = 12 },
                     swingMain   = { enabled = false, show = "combat",       width = 220, height = 12 },
                     swingOff    = { enabled = false, show = "combat",       width = 220, height = 12 },
                     swingRanged = { enabled = false, show = "combat",       width = 220, height = 12 },
@@ -399,29 +401,29 @@ local defaults = {
                 enabled = false,
                 style = "classic",          -- classic | raid
                 showPlayer = true, pets = false, sortByRole = true,
-                targets = false, targetGap = 6,  -- Party Targets: each member's target beside its frame
+                targets = false,                 -- Show Party Targets: each member's target beside its frame
                 orientation = "VERTICAL",   -- VERTICAL | HORIZONTAL
                 layouts = {},
                 classic = {
                     width = 240, height = 70, powerHeight = 12, spacing = 16, healthText = "percent", powerText = false,
-                    showLevel = true, portrait = "none", healersOnlyPower = false,
-                    texture = "FlareUI Flat", border = "FlareUI Thick",
-                    absorbTexture = "FlareUI Striped", absorbReverseFill = true,
-                    debuffs = "INSIDE_TOPRIGHT", buffs = "INSIDE_TOPLEFT", dispels = "INSIDE_BOTTOMRIGHT",
+                    showLevel = true, portrait = "none",
+                    texture = "FlareUI Forever", border = "FlareUI Thick",
+                    absorbTexture = "FlareUI Striped",
+                    debuffs = "INSIDE_TOPRIGHT", buffs = "INSIDE_TOPLEFT", dispels = "PORTRAIT",
                     auraSize = 16, bigBossDebuffs = false,
                     bigDefensive = true, bigDefensiveSize = 30, dispelHighlight = "mine",
-                    castbar = false, castHeight = 16, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                    castbar = false, castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                     petHeight = 19, petWidth = 120, petBorder = "FlareUI Thin", icons = {},
                     targetWidth = 100, targetHeight = 25, targetBorder = "FlareUI Thin",
                 },
                 raid = {
-                    width = 200, height = 70, powerHeight = 6, spacing = 4, healthText = "none", healersOnlyPower = false,
-                    texture = "FlareUI Flat", border = "FlareUI Thin",
-                    absorbTexture = "FlareUI Striped", absorbReverseFill = true,
-                    debuffs = "INSIDE_BOTTOMRIGHT", buffs = "INSIDE_BOTTOMLEFT", dispels = "INSIDE_TOPRIGHT",
+                    width = 200, height = 70, powerHeight = 6, spacing = 4, healthText = "none",
+                    texture = "FlareUI Forever", border = "FlareUI Thin",
+                    absorbTexture = "FlareUI Striped",
+                    debuffs = "INSIDE_BOTTOMRIGHT", buffs = "INSIDE_BOTTOMLEFT", dispels = "PORTRAIT",
                     auraSize = 16, bigBossDebuffs = true,
                     bigDefensive = true, bigDefensiveSize = 30, dispelHighlight = "mine",
-                    castbar = false, castHeight = 10, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thin", castIcon = false, castTimer = false,
+                    castbar = false, castHeight = 10, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = false, castTimer = false,
                     petHeight = 14, petWidth = 80, petBorder = "FlareUI Thin", icons = {},
                     targetWidth = 100, targetHeight = 25, targetBorder = "FlareUI Thin",
                 },
@@ -436,7 +438,7 @@ local defaults = {
                 spacing = 2, groupSpacing = 2, groupNumbers = false, missingBuffs = true,
                 width = 90, height = 55,
                 mainTanks = { enabled = false, w = 182, h = 55, spacing = 2 },
-                powerHeight = 5, healersOnlyPower = true, healthText = "none", texture = "FlareUI Flat", border = "FlareUI Thin",
+                powerHeight = 5, healthText = "none", texture = "FlareUI Forever", border = "FlareUI Thin",
                 debuffs = "INSIDE_TOPRIGHT", buffs = "INSIDE_TOPLEFT", dispels = "INSIDE_BOTTOMRIGHT",
                 auraSize = 10, bigBossDebuffs = true,
                 bigDefensive = true, bigDefensiveSize = 22, dispelHighlight = "mine",
@@ -448,37 +450,37 @@ local defaults = {
                 layouts = {},
                 width = 240, height = 70, powerHeight = 12, grow = "DOWN", spacing = 16,
                 healthText = "percent", powerText = false, showLevel = true, portrait = false, raidIcon = true,
-                texture = "FlareUI Flat", border = "FlareUI Thick",
+                mirror = true, onlyMyDebuffs = true, absorbTexture = "FlareUI Striped",
+                texture = "FlareUI Forever", border = "FlareUI Thick",
                 debuffs = "INSIDE_TOPRIGHT", buffs = "INSIDE_TOPLEFT", auraSize = 16,
-                castbar = true, castHeight = 14, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                castbar = true, castHeight = 14, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
             },
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
-            playerCastbar = { enabled = true, width = 250, height = 25, texture = "FlareUI Flat", borderTexture = "FlareUI Thin", icon = true, timer = true },
+            playerCastbar = { enabled = true, width = 250, height = 25, texture = "FlareUI Forever", borderTexture = "FlareUI Thin", icon = true, timer = true },
             units = {
                 player       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = true, showLevel = true,
-                                 texture = "FlareUI Flat", border = "FlareUI Thick",
-                                 absorbTexture = "FlareUI Striped", absorbReverseFill = true,
-                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 20, onlyMyDebuffs = true },
+                                 texture = "FlareUI Forever", border = "FlareUI Thick",
+                                 absorbTexture = "FlareUI Striped",
+                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24 },
                 target       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = true, showLevel = true, mirror = true,
-                                 classicCombo = false,
-                                 texture = "FlareUI Flat", border = "FlareUI Thick",
-                                 absorbTexture = "FlareUI Striped", absorbReverseFill = true,
-                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
-                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 20, onlyMyDebuffs = true },
+                                 texture = "FlareUI Forever", border = "FlareUI Thick",
+                                 absorbTexture = "FlareUI Striped",
+                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24, onlyMyDebuffs = true },
                 targettarget = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
-                                 texture = "FlareUI Flat", border = "FlareUI Thin" },
+                                 texture = "FlareUI Forever", border = "FlareUI Thin" },
                 focus        = { enabled = true, width = 160, height = 35, powerHeight = 0, healthText = "percent", powerText = false, showLevel = true, mirror = true,
-                                 texture = "FlareUI Flat", border = "FlareUI Thick",
-                                 absorbTexture = "FlareUI Striped", absorbReverseFill = true,
-                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Flat", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
-                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 20, onlyMyDebuffs = true },
+                                 texture = "FlareUI Forever", border = "FlareUI Thick",
+                                 absorbTexture = "FlareUI Striped",
+                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 18, onlyMyDebuffs = true },
                 focustarget  = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
-                                 texture = "FlareUI Flat", border = "FlareUI Thin" },
+                                 texture = "FlareUI Forever", border = "FlareUI Thin" },
                 pet          = { enabled = true, width = 120, height = 30, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
-                                 texture = "FlareUI Flat", border = "FlareUI Thin",
-                                 absorbTexture = "FlareUI Striped", absorbReverseFill = true },
+                                 texture = "FlareUI Forever", border = "FlareUI Thin",
+                                 absorbTexture = "FlareUI Striped" },
             },
-            -- Hide Player and Pet: all off = always shown ("fade" turns the set on)
+            -- Fade Player and Pet: all off = always shown ("fade" turns the set on)
             visibility = {
                 player = { condMouseover = false, condCombat = false, condTarget = false, condHealth = false },
             },

@@ -25,7 +25,7 @@ local LSM = LibStub("LibSharedMedia-3.0")
 --------------------------------------------------
 -- 3. CONSTANTS
 --------------------------------------------------
-local TEXTURE_NAME  = "FlareUI Flat"
+local TEXTURE_NAME  = "FlareUI Forever"   -- Bar Texture's default
 local BORDER_NAME   = "FlareUI Thin"
 local BORDER_SIZE   = 16
 local BORDER_COLOR  = { 0.80, 0.60, 0.34 }         -- #CC9957
@@ -44,7 +44,17 @@ local function GetDb()
 end
 
 local function GetTexture()
-    return LSM:Fetch("statusbar", TEXTURE_NAME) or "Interface\\Buttons\\WHITE8x8"
+    local db = GetDb()
+    local name = db and db.texture
+    if not (name and LSM:IsValid("statusbar", name)) then name = TEXTURE_NAME end
+    return LSM:Fetch("statusbar", name) or "Interface\\Buttons\\WHITE8x8"
+end
+
+-- Bar Texture's choices: every LibSharedMedia bar texture
+local function TextureValues()
+    local values = {}
+    for _, name in ipairs(LSM:List("statusbar")) do values[#values + 1] = { text = name, value = name, isRadio = true } end
+    return values
 end
 
 local function ApplyFont(fontString)
@@ -361,6 +371,8 @@ local function BuildFlare()
           get = function() return GetDb().width or 560 end, set = function(_, value) GetDb().width = value; LayoutFlare() end },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 14, minValue = 6, maxValue = 30, valueStep = 1,
           get = function() return GetDb().height or 14 end, set = function(_, value) GetDb().height = value; LayoutFlare() end },
+        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = TEXTURE_NAME, values = TextureValues(),
+          get = function() return GetDb().texture or TEXTURE_NAME end, set = function(_, value) GetDb().texture = value; LayoutFlare() end },
     })
     LEM:RegisterCallback("layout", function(layoutName) PlaceFlare(layoutName) end)
     LEM:RegisterCallback("enter", UpdateFlare)

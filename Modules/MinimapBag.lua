@@ -31,6 +31,12 @@ local C = {
     -- names of minimap children that are Blizzard's (or ours) and never go in the bag
     SKIP = { "^Minimap", "^MiniMap", "^GameTime", "^TimeManager", "^QueueStatus", "^Expansion",
              "^GarrisonLandingPage", "^AddonCompartment", "^FlareUI", "^HybridMinimap" },
+    -- map pins and markers other addons draw on the minimap (quests, nodes, waypoints): small named
+    -- buttons too, but never shortcuts (as ElvUI's and MinimapButtonButton's ignore lists)
+    PINS = { "^Questie", "^HandyNotes", "^GatherMate", "^GatherNote", "^TomTom", "^Archy", "^ZGV",
+             "^DugisArrow", "^poiMinimap", "^Spy_Map", "^RareTracker", "^Routes", "^WestPointer",
+             "^MapNote", "^Carbonite", "^NxMinimap", "Pin%d*$", "^HereBeDragons" },
+    MAX_FOREIGN = 40,         -- more than this many "buttons" means something is drawing pins
 }
 
 local panel, badgeButton
@@ -82,8 +88,20 @@ local function IsLibDBIconButton(frame, name)
     return id ~= nil and lib ~= nil and lib:GetMinimapButton(id) == frame
 end
 
+-- A pin another addon keeps on the minimap through HereBeDragons (Questie's quest markers, gathering
+-- nodes, waypoints): the library's own list of them
+local function IsMapPin(frame)
+    for _, major in ipairs({ "HereBeDragons-Pins-2.0", "HereBeDragons-Pins-1.0" }) do
+        local pins = LibStub and LibStub(major, true)
+        if pins and ((pins.minimapPins and pins.minimapPins[frame]) or (pins.activeMinimapPins and pins.activeMinimapPins[frame])) then
+            return true
+        end
+    end
+    return false
+end
+
 -- Children of the minimap that look like an addon's button: a named, unprotected, small Button that
--- is not Blizzard's, LibDBIcon's or FlareUI's
+-- is not Blizzard's, LibDBIcon's or FlareUI's, not a map pin, and does something when clicked
 local function IsForeignButton(frame)
     if not (frame and frame.IsObjectType and frame:IsObjectType("Button")) then return false end
     if frame:IsForbidden() or frame:IsProtected() then return false end
@@ -92,6 +110,11 @@ local function IsForeignButton(frame)
     for _, pattern in ipairs(C.SKIP) do
         if name:find(pattern) then return false end
     end
+    for _, pattern in ipairs(C.PINS) do
+        if name:find(pattern) then return false end
+    end
+    if IsMapPin(frame) then return false end
+    if not (frame:GetScript("OnClick") or frame:GetScript("OnMouseUp")) then return false end
     local w, h = frame:GetSize()
     return (w or 0) > 8 and (w or 0) <= 48 and (h or 0) > 8 and (h or 0) <= 48
 end
@@ -190,11 +213,15 @@ local function CollectEntries()
         end
     end
 
-    -- other addons' buttons on the minimap
+    -- other addons' buttons on the minimap (a flood of them is some addon's pins: none are taken)
+    local found = {}
     for _, parent in ipairs({ Minimap, MinimapCluster }) do
         for _, child in ipairs({ parent:GetChildren() }) do
-            if not adopted[child] and IsForeignButton(child) then adopted[child] = true end
+            if not adopted[child] and IsForeignButton(child) then found[#found + 1] = child end
         end
+    end
+    if #found <= C.MAX_FOREIGN then
+        for _, child in ipairs(found) do adopted[child] = true end
     end
     for frame in pairs(adopted) do
         local label = FrameLabel(frame)

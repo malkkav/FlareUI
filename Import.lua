@@ -66,7 +66,7 @@ local EDIT_ROOTS = { "unitframes.", "auras.", "objectivetracker.", "actionbars.x
 local EDIT_KEYS = {}
 for _, key in ipairs({
     "enabled", "auraSize", "bigBossDebuffs", "buffs", "castbar", "castbarPosition", "classic", "classicSize",
-    "debuffs", "dispelHighlight", "dispels", "fsr", "groupNumbers", "groupSpacing", "grow", "healersOnlyPower",
+    "debuffs", "dispelHighlight", "dispels", "fsr", "groupNumbers", "groupSpacing", "grow",
     "healthText", "height", "max", "maxHeight", "missingBuffs", "onlyMyDebuffs", "orientation", "perRow",
     "portrait", "powerHeight", "powerText", "raidIcon", "ringSize", "show", "showLevel", "size", "sort",
     "spacing", "text", "width", "wrap", "mirror", "style", "texture", "border", "borderTexture",
@@ -79,8 +79,8 @@ local STORES = { layouts = true, totemLayouts = true, tankLayouts = true, moverL
 local GLOBAL_KEYS = { "radialmenu", "characters", "uiSync" }
 
 -- the unit frames keys both styles share (UnitFramesRing.lua SHARED_KEYS); the rest is a style's own
-local SHARED_KEYS = { enabled = true, foreverStyle = true, styleProfiles = true, editSections = true,
-                      party = true, raid = true, boss = true, resource = true, styleStart = true }
+local SHARED_KEYS = { enabled = true, foreverStyle = true, plateStyle = true, styleProfiles = true, editSections = true,
+                      raid = true, resource = true, styleStart = true, tileStyle = true }
 
 --------------------------------------------------
 -- 2. HELPERS

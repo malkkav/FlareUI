@@ -24,6 +24,12 @@ Code
       BetterQuestTracker by deface, MIT License
       https://github.com/wouter-intveld/BetterQuestTracker .... BetterQuestTracker.txt
 
+Art (Media/Bars/)
+  FlareUI-Forever.tga, FlareUI-Forever-Mirrored.tga (the FlareUI Forever bar texture),
+  FlareUI-Forever-Mana.tga, FlareUI-Forever-Mana-Mirrored.tga (Forever Style's power bar)
+      Blizzard Entertainment's World of Warcraft: Forever health bar art, greyed and resized;
+      World of Warcraft (c) Blizzard Entertainment, Inc.
+
 Icons (Media/Icons/)
   DMCountdown.tga (stopwatch)
       Icons8 ("stopwatch"), free licence with attribution .... https://icons8.com

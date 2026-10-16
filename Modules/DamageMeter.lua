@@ -598,16 +598,20 @@ end
 --------------------------------------------------
 -- 12. HEADER FONTS
 --------------------------------------------------
-local HEADER_FONT = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1, useCustomColor = true, color = TITLE_COLOR }
+-- Settings > Damage Meter > Fonts > Header, always in the header's gold
+local HEADER_FONT = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 }
 
 local function ApplyHeaderFonts(window)
     if not window or window:IsForbidden() then return end
-    local path, size, flags = GetFontData(HEADER_FONT)
+    local db = GetDb()
+    local fontDb = setmetatable({ useCustomColor = true, color = TITLE_COLOR },
+        { __index = (db and db.headerFont) or HEADER_FONT })
+    local path, size, flags = GetFontData(fontDb)
 
     local function ApplyToFontString(fs)
         if not fs or not fs.SetFont then return end
         fs:SetFont(path, size, flags)
-        ApplyFontEffects(fs, HEADER_FONT)
+        ApplyFontEffects(fs, fontDb)
     end
 
     local dd = GetWindowTypeDropdown(window)
@@ -667,6 +671,30 @@ local function ApplyBarFont(entry, db)
     end
 end
 
+-- Blizzard makes and sets up a row for each new name on the meter (a group member joining, a new
+-- spell) and calls its SetTextScale each time: the bar font follows there, so rows made after the
+-- last refresh have it too. Hooked on Blizzard's row mixin (rows made from now on) and on each row
+-- styled before.
+local function RestyleEntry(entry)
+    local db = GetDb()
+    if db and db.enabled and db.barFont then ApplyBarFont(entry, db) end
+end
+
+local function HookEntryFonts()
+    local mixin = _G.DamageMeterEntryMixin
+    if mixin and not DamageMeter.FlareUI_EntryHooked and type(mixin.SetTextScale) == "function" then
+        DamageMeter.FlareUI_EntryHooked = true
+        hooksecurefunc(mixin, "SetTextScale", RestyleEntry)
+    end
+end
+
+local function HookEntry(entry)
+    if entry and not entry.FlareUI_FontHooked and type(entry.SetTextScale) == "function" then
+        entry.FlareUI_FontHooked = true
+        hooksecurefunc(entry, "SetTextScale", RestyleEntry)
+    end
+end
+
 --------------------------------------------------
 -- 14. SCROLL BOX FONT REFRESH (Refresh only: see HELPERS)
 --------------------------------------------------
@@ -674,10 +702,12 @@ local function ApplyFontsToScrollBox(scrollBox, db)
     if not scrollBox or not db then return end
     if scrollBox.ForEachFrame then
         scrollBox:ForEachFrame(function(frame)
+            HookEntry(frame)
             ApplyBarFont(frame, db)
         end)
     elseif scrollBox.EnumerateFrames then
         for frame in scrollBox:EnumerateFrames() do
+            HookEntry(frame)
             ApplyBarFont(frame, db)
         end
     end
@@ -1151,6 +1181,7 @@ function DamageMeter:ApplyToWindow(window)
     end
     local localPlayerEntry = (window.GetLocalPlayerEntry and window:GetLocalPlayerEntry()) or window.LocalPlayerEntry
     if localPlayerEntry then
+        HookEntry(localPlayerEntry)
         SafeCall(ApplyBarFont, localPlayerEntry, db)
     end
 
@@ -1263,6 +1294,7 @@ end
 
 function DamageMeter:ADDON_LOADED(event, addonName)
     if addonName == "Blizzard_DamageMeter" then
+        HookEntryFonts()
         C_Timer.After(0, function() self:Refresh() end)
         C_Timer.After(0.5, function() self:Refresh() end)
     end
@@ -1487,6 +1519,7 @@ function DamageMeter:Init()
         end)
     end
 
+    HookEntryFonts()
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
     self:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
     self:RegisterEvent("ADDON_LOADED")

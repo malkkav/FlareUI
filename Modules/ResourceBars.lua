@@ -92,6 +92,11 @@ local function GetResourceDb()
     return db and db.resource
 end
 
+-- the combo bar's classic gems: on in the unit frames' ring styles, off in Addon Style
+local function ClassicCombo()
+    return ns.UFRing and ns.UFRing.On() and true or false
+end
+
 local function Cfg(key)
     local rdb = GetResourceDb()
     if not rdb then return nil end
@@ -267,7 +272,7 @@ local function UpdateCombo(holder)
         LayoutCombo(holder)
     end
     local points = IsEditing() and 3 or GetComboPoints("player", "target")
-    if not Cfg(holder.key).classic then
+    if not ClassicCombo() then
         for i = 1, count do holder.segments[i]:SetValue(points) end
         return
     end
@@ -423,7 +428,7 @@ end
 LayoutCombo = function(holder)
     local cfg = Cfg(holder.key)
     local count = holder.count or COMBO_FALLBACK
-    local classic = cfg.classic and true or false
+    local classic = ClassicCombo()
     holder.Backdrop:SetShown(not classic)
     holder.Border:SetShown(not classic)
     for i = 1, COMBO_MAX do
@@ -512,6 +517,8 @@ local function LayoutBar(holder)
         heal:SetWidth(width)
         heal:SetPoint("TOPLEFT", clip, "TOPLEFT", 0, 0)
         heal:SetPoint("BOTTOMLEFT", clip, "BOTTOMLEFT", 0, 0)
+        -- incoming heals in the bar's own texture
+        heal:SetStatusBarTexture(texture)
         absorb:ClearAllPoints()
         absorb:SetWidth(width)
         absorb:SetReverseFill(true)
@@ -716,7 +723,7 @@ local function BuildSettings(key)
         end
     end
     -- classic combo gems have one Size; the bar's width and height wait for the bar style
-    local function classicOn() local cfg = Cfg(key); return info.kind == "combo" and cfg and cfg.classic and true or false end
+    local function classicOn() return info.kind == "combo" and ClassicCombo() end
     local function classicOff() return not classicOn() end
     local frameItems = {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = defaults.width or 220, minValue = 40, maxValue = 600, valueStep = 2, get = get("width", 220), set = set("width"), hidden = classicOn },
@@ -731,13 +738,6 @@ local function BuildSettings(key)
     -- power and mana always show the value: percentages of a (possibly secret) power are unreliable
     if info.kind == "health" then
         add({ name = L["Text"], kind = LEM.SettingType.Dropdown, default = defaults.text or "both", values = TEXT_VALUES, get = get("text", defaults.text or "both"), set = set("text") })
-    end
-    if info.kind == "combo" then
-        add({ name = L["Classic Combo Points"], kind = LEM.SettingType.Checkbox, default = false, get = get("classic", false),
-              set = function(layoutName, value)
-                  set("classic")(layoutName, value)
-                  if bars[key] then LEM:RefreshFrameSettings(bars[key]) end
-              end })
     end
     if info.kind == "power" or info.kind == "mana" then
         add({ name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false, get = get("fsr", false), set = set("fsr"),

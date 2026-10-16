@@ -45,9 +45,11 @@ local MAX_MEMBERS = 4
 local SLOT_UNITS = { [0] = "player", "party1", "party2", "party3", "party4" }
 local PET_UNITS  = { [0] = "pet", "partypet1", "partypet2", "partypet3", "partypet4" }
 local TARGET_UNITS = { [0] = "target", "party1target", "party2target", "party3target", "party4target" }
+local BASE_POSITION = { point = "LEFT", x = 3, y = 0 }
+-- the default in use (FlareUI Style's party has its own); Edit Mode's reset keeps this table
 local DEFAULT_POSITION = { point = "LEFT", x = 3, y = 0 }
 local PET_GAP = 2
-local TARGET_GAP = 6                 -- Party > Target Gap, by default
+local TARGET_GAP = 6                 -- gap between a party frame and its target
 local TARGET_INTERVAL = 0.2          -- a member's target sends no health events: re-read this often
 local PREVIEW_HOSTILE_RGB = { 0.87, 0.27, 0.27 }
 local AURA_SPACING = 2
@@ -58,9 +60,10 @@ local RANGE_ALPHA = 0.45             -- a member out of range
 -- auras per lane and per row, by party style (an owner's view gives its own: auraMax, auraPerRow)
 local PARTY_AURA_GRID = { classic = { 5, 5 }, raid = { 6, 3 } }
 
--- Where a lane of auras can go: beside / above / below the frame, or inside the health bar
+-- Where a lane of auras can go: beside / above / below the frame, or inside the health bar (and
+-- PORTRAIT: the party frames' dispel icon, big in the portrait's middle, or the health bar's)
 local AURA_POSITIONS = { "RIGHT", "LEFT", "ABOVE", "ABOVE_RIGHT", "BELOW", "BELOW_RIGHT",
-                         "INSIDE_TOPLEFT", "INSIDE_TOPRIGHT", "INSIDE_BOTTOMLEFT", "INSIDE_BOTTOMRIGHT" }
+                         "INSIDE_TOPLEFT", "INSIDE_TOPRIGHT", "INSIDE_BOTTOMLEFT", "INSIDE_BOTTOMRIGHT", "PORTRAIT" }
 local AURA_POSITION_VALUES = {
     { text = L["Off"],                 value = "OFF",                isRadio = true },
     { text = L["Right of the Frame"],  value = "RIGHT",              isRadio = true },
@@ -95,20 +98,26 @@ local ROLE_ATLAS = { TANK = "UI-LFG-RoleIcon-Tank-Micro-GroupFinder", HEALER = "
 
 -- The frame icons, switched per style in Edit Mode: style.icons[key] = { shown }
 local ICON_ORDER  = { "role", "leader", "raidIcon", "readyCheck", "status" }
-local ICON_LABELS = { role = L["Role"], leader = L["Leader"], raidIcon = L["Raid Target"], readyCheck = L["Ready Check"], status = L["Summon / Resurrect / Phase"] }
+local ICON_LABELS = { role = L["Role"], leader = L["Leader"], raidIcon = L["Raid Markers"], readyCheck = L["Ready Check"], status = L["Summon / Resurrect / Phase"] }
 -- the icons drawn larger than their base size (the role icon also on Raid-Style tiles: RAID_ROLE_SCALE)
 local ICON_SCALE = { raidIcon = 1.25, readyCheck = 1.25, status = 1.25 }
 local RAID_ROLE_SCALE = 1.2
 
--- Edit Mode sample group: a tank, a healer and three damage dealers
+-- Edit Mode sample group: a tank, a healer and three damage dealers (portrait: a face for the 3D
+-- portrait's place)
 local PREVIEW = {
-    { name = "Thalorien", class = "WARRIOR", role = "TANK",    health = 0.92, power = 0.35, leader = true },
-    { name = "Elysande",  class = "PRIEST",  role = "HEALER",  health = 0.64, power = 0.85, ready = "ready" },
-    { name = "Morwen",    class = "WARLOCK", role = "DAMAGER", health = 0.48, power = 0.60, marker = 8, highlight = "Magic", pet = "Voidwalker", missing = { "int" } },
-    { name = "Sylvara",   class = "HUNTER",  role = "DAMAGER", health = 0.81, power = 0.72, pet = "Wolf", missing = { "fort", "mark" } },
-    { name = "Kestrel",   class = "ROGUE",   role = "DAMAGER", health = 0.27, power = 0.90, status = "IncomingSummonPending" },
+    { name = "Thalorien", class = "WARRIOR", role = "TANK",    health = 0.92, power = 0.35, leader = true,
+      portrait = "Interface\\Icons\\INV_Misc_Head_Human_01" },
+    { name = "Elysande",  class = "PRIEST",  role = "HEALER",  health = 0.64, power = 0.85, ready = "ready",
+      portrait = "Interface\\Icons\\INV_Misc_Head_Elf_02" },
+    { name = "Morwen",    class = "WARLOCK", role = "DAMAGER", health = 0.48, power = 0.60, marker = 8, highlight = "Magic", pet = "Voidwalker", missing = { "int" },
+      portrait = "Interface\\Icons\\INV_Misc_Head_Undead_02" },
+    { name = "Sylvara",   class = "HUNTER",  role = "DAMAGER", health = 0.81, power = 0.72, pet = "Wolf", missing = { "fort", "mark" }, status = "IncomingResurrection",
+      portrait = "Interface\\Icons\\INV_Misc_Head_Troll_02" },
+    { name = "Kestrel",   class = "ROGUE",   role = "DAMAGER", health = 0.27, power = 0.90, status = "IncomingSummonPending",
+      portrait = "Interface\\Icons\\INV_Misc_Head_Gnome_01" },
 }
--- their targets (Party > Party Targets): the healer on the tank, everyone else on the enemy
+-- their targets (Party > Show Party Targets): the healer on the tank, everyone else on the enemy
 local PREVIEW_TARGETS = {
     { name = "Defias Pillager", health = 0.58 },
     { name = "Thalorien", class = "WARRIOR", health = 0.92 },
@@ -183,10 +192,57 @@ local function AuraGrid(st)
     return st.auraMax, st.auraPerRow
 end
 
+-- Above or below the frame, as on the unit frames: each lane wraps a little before the frame's
+-- middle, two rows at most, so the frame's width and the aura size set how many fit (elsewhere: the
+-- fixed grid)
+local EDGE_PLACES = { ABOVE = true, ABOVE_RIGHT = true, BELOW = true, BELOW_RIGHT = true }
+local function AuraFit(st, pos)
+    if not EDGE_PLACES[pos] then return AuraGrid(st) end
+    local size = st.auraSize or 18
+    local lineSize = math_max(size, math_floor((st.width or 200) / 2) - K.INSET - 4)
+    local perRow = math_max(2, math_floor((lineSize + AURA_SPACING) / (size + AURA_SPACING)))
+    return 2 * perRow, perRow
+end
+
 -- A side and its opposite, swapped on a mirrored tile, and which way +x goes from the near side
 local function Sides(f)
     if Mirrored(f) then return "RIGHT", "LEFT", -1 end
     return "LEFT", "RIGHT", 1
+end
+
+-- FlareUI Style: the party frames (not Raid-Style) and the boss frames (ctx.ringKind) take the unit
+-- frames' portrait ring (UnitFramesRing.lua). Set on the tile at its layout as f.ringKind.
+local function RingKind(f)
+    if RaidTile(f) or not (ns.UFRing and ns.UFRing.Style() == "flareui") then return nil end
+    if f.ctx then return f.ctx.ringKind end
+    return "party"
+end
+
+-- The party frames' Dispel Icons (a switch): up to four, two to a row, in the portrait's middle (the
+-- health bar's without a portrait). Any older place counts as on. Other tiles keep theirs.
+local function DispelPlace(f, st)
+    if f.ctx then return st.dispels end
+    return (st.dispels and st.dispels ~= "OFF") and "PORTRAIT" or nil
+end
+
+-- the portrait's middle (the ring's, or the square's), else the health bar's
+local function PortraitCentre(f)
+    local st = TS(f)
+    if f.ringKind or (not RaidTile(f) and st and (st.portrait or "none") ~= "none") then return f.Portrait end
+    return f.Health
+end
+
+-- the dispel grid on the portrait: the ready check's size, split two by two (a cell, and the whole)
+local function DispelGrid(f)
+    local whole = math_max(20, math_floor(f.ReadyIcon:GetWidth() + 0.5))
+    local cell = math_floor((whole - AURA_SPACING) / 2)
+    return cell, 2 * cell + AURA_SPACING
+end
+
+-- room a row beside the ring needs: on the ring's side, where the ring ends at that distance out
+local function RingClear(f, isLeft, gap)
+    if not f.ringKind or (f.ringSide == "LEFT") ~= isLeft then return 0 end
+    return ns.UFRing.Clearance(f, gap)
 end
 
 local function IsEditing()
@@ -231,7 +287,7 @@ end
 
 local function UpdateLevel(f)
     local st = TS(f)
-    if RaidTile(f) or not (st and st.showLevel) then f.Level:SetText("") return end
+    if not (st and st.showLevel) then f.Level:SetText("") return end
     local level = UnitLevel(f.unit)
     if canaccessvalue(level) and level then
         if level < 0 then
@@ -274,14 +330,10 @@ end
 
 local LayoutBars   -- section 6
 
--- Healers Only: the power bar shows for healers alone (the role can be secret; then it shows)
+-- the power bar: on every tile with a power bar height
 local function WantsPower(f)
     local st = TS(f)
-    if not st or (st.powerHeight or 0) <= 0 then return false end
-    if not st.healersOnlyPower then return true end
-    if IsEditing() then return (f.preview and f.preview.role) == "HEALER" end
-    local role = readable(UnitGroupRolesAssigned(f.unit))
-    return role == nil or role == "HEALER" or role == "NONE"
+    return st and (st.powerHeight or 0) > 0 or false
 end
 
 local function UpdatePower(f)
@@ -464,6 +516,8 @@ local function UpdatePortrait(f)
     local portrait = f.Portrait
     local st = TS(f)
     local mode = (not RaidTile(f) and st and st.portrait) or "none"
+    -- the ring always holds a portrait
+    if f.ringKind and mode == "none" then mode = "3d" end
     if mode == "none" then portrait:Hide() return end
     local unit = (UnitExists(f.unit) and not IsEditing()) and f.unit or "player"
     local tex = portrait.Tex
@@ -494,8 +548,17 @@ end
 
 local ApplyPreview, HidePreviewExtras   -- section 9
 
+-- FlareUI Style's ring: the boss frame's elite art, the level skull
+local function UpdateRing(f)
+    if f.ringKind and ns.UFRing then ns.UFRing.Update(f) end
+end
+
 local function UpdateAll(f)
-    if IsEditing() then ApplyPreview(f) return end
+    if IsEditing() then
+        ApplyPreview(f)
+        UpdateRing(f)
+        return
+    end
     HidePreviewExtras(f)
     if not UnitExists(f.unit) then return end
     UpdateName(f)
@@ -513,6 +576,7 @@ local function UpdateAll(f)
     UpdateThreat(f)
     UpdatePortrait(f)
     UpdateCast(f)
+    UpdateRing(f)
 end
 
 local function UpdatePet(p)
@@ -631,8 +695,10 @@ local function InitDispelIcon(button, size, inside)
     if inside then PassClicks(button) end
 end
 
-local function LaneLook(size, isDebuff)
-    return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, UFAura("auraStyle", "square"), "icon", UFAura("auraTimer", "none"))
+-- inside the frame: no timer, whatever the Aura Timer setting (it would cover the bars and names)
+local function LaneLook(size, isDebuff, inside)
+    local timer = inside and "none" or UFAura("auraTimer", "none")
+    return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, UFAura("auraStyle", "square"), "icon", timer)
 end
 
 -- Below a frame come its cast bar and pet, then any auras placed below it
@@ -645,14 +711,17 @@ local function BelowOffset(f)
     if party.pets then y = y + PET_GAP + (st.petHeight or 19) + 2 * K.INSET end
     -- a horizontal party's targets sit under the frames too
     if party.targets and party.orientation == "HORIZONTAL" then
-        y = y + (party.targetGap or TARGET_GAP) + (st.targetHeight or 25)
+        y = y + TARGET_GAP + (st.targetHeight or 25)
     end
     return y
 end
 
 -- Where a place's auras start and which way they grow
+local SIDE_GAP = 4   -- beside the frame
+local EDGE_GAP = K and K.AURA_GAP or 2   -- above and below it, as on the unit frames
 local function AuraAnchor(f, pos)
-    local gap, inset = K.AURA_GAP, 2
+    local gap, inset = SIDE_GAP, 2
+    if EDGE_PLACES[pos] then gap = EDGE_GAP end
     local health = f.Health
     local H = AnchorUtil.FlowDirection
     local point, rel, relPoint, x, y, growH, growV
@@ -661,19 +730,25 @@ local function AuraAnchor(f, pos)
     elseif pos == "LEFT" then
         point, rel, relPoint, x, y, growH, growV = "TOPRIGHT", f, "TOPLEFT", -gap, -K.INSET, H.Left, H.Down
     elseif pos == "ABOVE" then
-        point, rel, relPoint, x, y, growH, growV = "BOTTOMLEFT", f, "TOPLEFT", K.INSET, gap, H.Right, H.Up
+        point, rel, relPoint, x, y, growH, growV = "BOTTOMLEFT", f, "TOPLEFT", K.INSET + RingClear(f, true, gap), gap, H.Right, H.Up
     elseif pos == "ABOVE_RIGHT" then
-        point, rel, relPoint, x, y, growH, growV = "BOTTOMRIGHT", f, "TOPRIGHT", -K.INSET, gap, H.Left, H.Up
+        point, rel, relPoint, x, y, growH, growV = "BOTTOMRIGHT", f, "TOPRIGHT", -K.INSET - RingClear(f, false, gap), gap, H.Left, H.Up
     elseif pos == "BELOW" then
-        point, rel, relPoint, x, y, growH, growV = "TOPLEFT", f, "BOTTOMLEFT", K.INSET, -gap - BelowOffset(f), H.Right, H.Down
+        local below = gap + BelowOffset(f)
+        point, rel, relPoint, x, y, growH, growV = "TOPLEFT", f, "BOTTOMLEFT", K.INSET + RingClear(f, true, below), -below, H.Right, H.Down
     elseif pos == "BELOW_RIGHT" then
-        point, rel, relPoint, x, y, growH, growV = "TOPRIGHT", f, "BOTTOMRIGHT", -K.INSET, -gap - BelowOffset(f), H.Left, H.Down
+        local below = gap + BelowOffset(f)
+        point, rel, relPoint, x, y, growH, growV = "TOPRIGHT", f, "BOTTOMRIGHT", -K.INSET - RingClear(f, false, below), -below, H.Left, H.Down
     elseif pos == "INSIDE_TOPLEFT" then
         point, rel, relPoint, x, y, growH, growV = "TOPLEFT", health, "TOPLEFT", inset, -inset, H.Right, H.Down
     elseif pos == "INSIDE_TOPRIGHT" then
         point, rel, relPoint, x, y, growH, growV = "TOPRIGHT", health, "TOPRIGHT", -inset, -inset, H.Left, H.Down
     elseif pos == "INSIDE_BOTTOMLEFT" then
         point, rel, relPoint, x, y, growH, growV = "BOTTOMLEFT", health, "BOTTOMLEFT", inset, inset, H.Right, H.Up
+    elseif pos == "PORTRAIT" then
+        -- the dispel grid, centred on the portrait: from its top-left, two to a row
+        local _, whole = DispelGrid(f)
+        point, rel, relPoint, x, y, growH, growV = "TOPLEFT", PortraitCentre(f), "CENTER", -whole / 2, whole / 2, H.Right, H.Down
     else -- INSIDE_BOTTOMRIGHT
         point, rel, relPoint, x, y, growH, growV = "BOTTOMRIGHT", health, "BOTTOMRIGHT", -inset, inset, H.Left, H.Up
     end
@@ -711,10 +786,12 @@ local function ConfigurePosition(f, pos, lanes)
 
     local st = TS(f)
     local db = K.GetDb()
-    local size = st.auraSize or 18
-    local max, perRow = AuraGrid(st)
-    local inside = pos:find("^INSIDE") ~= nil
-    local showTimer = UFAura("auraTimer", "none") ~= "none"
+    local portrait = pos == "PORTRAIT"
+    local size = portrait and DispelGrid(f) or st.auraSize or 18
+    local max, perRow = AuraFit(st, pos)
+    if portrait then max, perRow = 4, 2 end
+    local inside = portrait or pos:find("^INSIDE") ~= nil
+    local showTimer = not inside and UFAura("auraTimer", "none") ~= "none"
     local font = db and db.font
     local unit = f.unit
     entry.generation = entry.generation + 1
@@ -723,7 +800,7 @@ local function ConfigurePosition(f, pos, lanes)
         local key = lane.key .. gen
         local isDebuff, kind = lane.isDebuff, lane.kind
         local laneSize = lane.scale and math_floor(size * lane.scale + 0.5) or size
-        local look = kind ~= "dispels" and LaneLook(laneSize, isDebuff) or nil
+        local look = kind ~= "dispels" and LaneLook(laneSize, isDebuff, inside) or nil
         local ok, err = pcall(container.AddAuraGroup, container, key, lane.filter, {
             maxFrameCount = lane.max or (kind == "dispels" and math_min(max, 3) or max),
             candidateFilters = lane.candidates,
@@ -752,6 +829,8 @@ local function ConfigurePosition(f, pos, lanes)
     end
     PlaceAuraContainer(f, pos, container, size, perRow)
     container:SetFrameLevel(f:GetFrameLevel() + 6)
+    -- the portrait's grid: over it and under the ready check (the ring's icons: +11)
+    if portrait then container:SetFrameLevel(f:GetFrameLevel() + (f.ringKind and 10 or 7)) end
     pcall(container.SetEnabled, container, true)
     pcall(container.SetEditModePreviewEnabled, container, IsEditing())
     container:Show()
@@ -770,7 +849,7 @@ local function ConfigureAuras(f)
     if not f.AuraPos then return end
     local st = TS(f)
     if not st then return end
-    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, AuraGrid(st), UFAura("auraStyle", "square"),
+    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.width, st.portrait, (DispelGrid(f)), f.ringKind, AuraGrid(st), UFAura("auraStyle", "square"),
         UFAura("auraTimer", "none"), st.bigBossDebuffs, st.castbar, st.castHeight, st.petHeight, (not f.ctx and GetPartyDb().pets))
     if f.auraSignature == sig then return end
     f.auraSignature = sig
@@ -782,7 +861,8 @@ local function ConfigureAuras(f)
     end
     -- an enemy tile: every buff on it, and only the player's debuffs (damage over time, sunders)
     if f.ctx and f.ctx.hostile then
-        Add(st.debuffs, { key = "debuffs", kind = "debuffs", filter = "HARMFUL|PLAYER", isDebuff = true })
+        -- (Only My Debuffs, boss frames: on by default)
+        Add(st.debuffs, { key = "debuffs", kind = "debuffs", filter = st.onlyMyDebuffs == false and "HARMFUL" or "HARMFUL|PLAYER", isDebuff = true })
         Add(st.buffs,   { key = "buffs", kind = "buffs", filter = "HELPFUL", isDebuff = false })
         for _, pos in ipairs(AURA_POSITIONS) do ConfigurePosition(f, pos, perPos[pos]) end
         return
@@ -796,7 +876,7 @@ local function ConfigureAuras(f)
     else
         Add(st.debuffs, { key = "debuffs", kind = "debuffs", filter = "HARMFUL", isDebuff = true })
     end
-    Add(st.dispels, { key = "dispels", kind = "dispels", filter = "HARMFUL", isDebuff = true,
+    Add(DispelPlace(f, st), { key = "dispels", kind = "dispels", filter = "HARMFUL", isDebuff = true,
                       candidates = processed and { processedAuraType = processed.Dispel } })
     Add(st.buffs,   { key = "buffs", kind = "buffs", filter = "HELPFUL", isDebuff = false,
                       candidates = processed and { processedAuraType = processed.Buff } })
@@ -826,7 +906,7 @@ local function ConfigureSlots(f)
 
     if st.bigDefensive ~= false then
         local size = st.bigDefensiveSize or 22
-        local look = LaneLook(size, false)
+        local look = LaneLook(size, false, true)   -- mid-frame: inside, no timer
         local key = "bigdef" .. gen
         local ok = pcall(container.AddAuraSlot, container, key, "HELPFUL|BIG_DEFENSIVE", {
             initializeFrame = function(button)
@@ -859,28 +939,28 @@ local function ConfigureSlots(f)
         local filter = highlight == "all" and "HARMFUL|RAID_PLAYER_DISPELLABLE" or "HARMFUL|RAID"
         local key = "dispelhl" .. hlEntry.generation
         local ok = pcall(hlContainer.AddAuraSlot, hlContainer, key, filter, {
+            -- the frame's own border again, just over it, in the debuff type's colour: Blizzard
+            -- shows and tints its pieces for a dispellable debuff (the type may be secret)
             initializeFrame = function(button)
                 button:ClearAllPoints()
-                button:SetAllPoints(health)
-                button:SetFrameLevel(health:GetFrameLevel() + 2)
+                button:SetAllPoints(f.Border)
+                button:SetFrameLevel(f.Border:GetFrameLevel() + 1)
                 if button.EnableMouse then pcall(button.EnableMouse, button, false) end
-                local function AddTexture(tex)
-                    tex:Hide()   -- until Blizzard shows it for a dispellable debuff
-                    pcall(button.AddDispelTypeTexture, button, tex, {
-                        style = styles.PreserveAsset, showWhenHarmful = true, showWhenHelpful = false,
-                    })
+                local ring = button.FlareUI_HighlightBorder
+                if not ring then
+                    ring = CreateFrame("Frame", nil, button, "BackdropTemplate")
+                    ring:SetAllPoints(button)
+                    button.FlareUI_HighlightBorder = ring
                 end
-                local edges = {
-                    { "TOPLEFT", "TOPRIGHT", nil, 2 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 2 },
-                    { "TOPLEFT", "BOTTOMLEFT", 2, nil }, { "TOPRIGHT", "BOTTOMRIGHT", 2, nil },
-                }
-                for _, e in ipairs(edges) do
-                    local line = button:CreateTexture(nil, "OVERLAY")
-                    line:SetTexture("Interface\\Buttons\\WHITE8x8")
-                    line:SetPoint(e[1])
-                    line:SetPoint(e[2])
-                    if e[3] then line:SetWidth(e[3]) else line:SetHeight(e[4]) end
-                    AddTexture(line)
+                ring:SetBackdrop(f.Border:GetBackdrop())
+                pcall(button.ClearDispelTypeTextures, button)
+                for _, region in ipairs({ ring:GetRegions() }) do
+                    if region:IsObjectType("Texture") then
+                        region:Hide()   -- until Blizzard shows it for a dispellable debuff
+                        pcall(button.AddDispelTypeTexture, button, region, {
+                            style = styles.PreserveAsset, showWhenHarmful = true, showWhenHelpful = false,
+                        })
+                    end
                 end
             end,
         })
@@ -908,7 +988,8 @@ end
 --------------------------------------------------
 local function PortraitSpace(f)
     local st = TS(f)
-    if RaidTile(f) or not st or (st.portrait or "none") == "none" then return 0 end
+    -- (the ring's portrait stands beside the bars, over the frame's end)
+    if RaidTile(f) or f.ringKind or not st or (st.portrait or "none") == "none" then return 0 end
     return (st.height or 46) - 2 * K.INSET
 end
 
@@ -932,7 +1013,8 @@ LayoutBars = function(f)
     power:SetReverseFill(sx < 0)
 
     local portrait, divider = f.Portrait, f.PortraitDivider
-    portrait:ClearAllPoints()
+    -- (FlareUI Style: the ring places the portrait; the Edit Mode preview runs this again)
+    if not f.ringKind then portrait:ClearAllPoints() end
     divider:ClearAllPoints()
     if space > 0 then
         portrait:SetSize(space, space)
@@ -943,7 +1025,7 @@ LayoutBars = function(f)
         divider:Show()
     else
         divider:Hide()
-        portrait:Hide()
+        if not f.ringKind then portrait:Hide() end
     end
 
     if showPower then
@@ -971,7 +1053,8 @@ local function LayoutHealClip(f)
     local health, clip, heal, absorb = f.Health, f.HealClip, f.HealBar, f.AbsorbBar
     local fill = health:GetStatusBarTexture()
     local width = (st.width or 200) - 2 * K.INSET - PortraitSpace(f)
-    local reverse = st.absorbReverseFill ~= false
+    -- shields grow back from the end of the bar, so they show at full health too
+    local reverse = true
     clip:ClearAllPoints()
     heal:ClearAllPoints()
     absorb:ClearAllPoints()
@@ -982,6 +1065,8 @@ local function LayoutHealClip(f)
     absorb:SetWidth(width)
     heal:SetReverseFill(mirror)
     absorb:SetReverseFill(reverse ~= mirror)
+    -- incoming heals in the tile's own bar texture
+    heal:SetStatusBarTexture(K.GetBarTexture(st.texture, mirror))
     clip:SetPoint("TOP" .. near, fill, "TOP" .. far, 0, 0)
     clip:SetPoint("BOTTOM" .. far, health, "BOTTOM" .. far, 0, 0)
     heal:SetPoint("TOP" .. near, clip, "TOP" .. near, 0, 0)
@@ -1019,14 +1104,16 @@ local function LayoutTexts(f)
     local st, raid = TS(f), RaidTile(f)
     local db = K.GetDb()
     local font = db and db.font
+    -- FlareUI Style: the level is in the ring's disc (UnitFramesRing.lua lays it out)
+    local levelOnRing = f.ringKind ~= nil
     K.ApplyFont(f.Name, font)
-    K.ApplyFont(f.Level, font)
+    if not levelOnRing then K.ApplyFont(f.Level, font) end
     K.ApplyFont(f.HealthText, font)
     K.ApplyFont(f.PowerText, db and (db.fontPower or db.font))
     local health, power = f.Health, f.Power
     local T = K.TEXT_INSET
     f.Name:ClearAllPoints()
-    f.Level:ClearAllPoints()
+    if not levelOnRing then f.Level:ClearAllPoints() end
     f.HealthText:ClearAllPoints()
     f.PowerText:ClearAllPoints()
     if raid then
@@ -1039,15 +1126,19 @@ local function LayoutTexts(f)
     else
         -- level and name from the near side, the numbers on the far side (swapped when mirrored)
         local near, far, sx = Sides(f)
-        f.Level:Show()
-        f.Level:SetJustifyH(near)
+        -- FlareUI Style: the texts start past the ring's portrait
+        local pad = f.ringKind and ns.UFRing.TextPad(f) or 0
         f.Name:SetJustifyH(near)
         f.HealthText:SetJustifyH(far)
-        f.Level:SetPoint(near, health, near, sx * T, 0)
-        if st.showLevel then
+        if not levelOnRing then
+            f.Level:Show()
+            f.Level:SetJustifyH(near)
+            f.Level:SetPoint(near, health, near, sx * (T + pad), 0)
+        end
+        if st.showLevel and not levelOnRing then
             f.Name:SetPoint(near, f.Level, far, sx * 3, 0)
         else
-            f.Name:SetPoint(near, health, near, sx * T, 0)
+            f.Name:SetPoint(near, health, near, sx * (T + pad), 0)
         end
         f.HealthText:SetPoint(far, health, far, -sx * T, 0)
         f.Name:SetPoint(far, f.HealthText, near, -sx * 4, 0)
@@ -1067,6 +1158,16 @@ local function LayoutIcons(f)
         f.Name:ClearAllPoints()
         f.Name:SetPoint("LEFT", f.RoleIcon, "RIGHT", 2, 0)
         f.Name:SetPoint("RIGHT", health, "RIGHT", -K.TEXT_INSET, 0)
+        -- Show Level: the level just before the name
+        if st.showLevel then
+            f.Level:Show()
+            f.Level:ClearAllPoints()
+            f.Level:SetJustifyH("LEFT")
+            f.Level:SetPoint("LEFT", f.RoleIcon, "RIGHT", 2, 0)
+            f.Name:ClearAllPoints()
+            f.Name:SetPoint("LEFT", f.Level, "RIGHT", 3, 0)
+            f.Name:SetPoint("RIGHT", health, "RIGHT", -K.TEXT_INSET, 0)
+        end
         PlaceIcon(f, "leader", f.LeaderIcon, 14, 14, "CENTER", f, "TOPLEFT", 8, -2)
         PlaceIcon(f, "raidIcon", f.RaidIcon, 14, 14, "CENTER", f, "TOP", 0, -3)
     else
@@ -1078,29 +1179,61 @@ local function LayoutIcons(f)
     local readyAnchor = PortraitSpace(f) > 0 and f.Portrait or health
     PlaceIcon(f, "readyCheck", f.ReadyIcon, mid, mid, "CENTER", readyAnchor, "CENTER", 0, 0)
     PlaceIcon(f, "status", f.StatusIcon, mid, mid, "CENTER", health, "CENTER", 0, 0)
+    -- FlareUI Style: where the player frame has them, on the ring (the role icon in the level disc's
+    -- spot, the ready check and summon / resurrect / phase on the portrait)
+    if f.ringKind and f.RingFrame then
+        for key, region in pairs({ leader = f.LeaderIcon, role = f.RoleIcon, raidIcon = f.RaidIcon,
+                                   readyCheck = f.ReadyIcon, status = f.StatusIcon }) do
+            local point, rel, relPoint, x, y, w, h = ns.UFRing.IconSpot(f, key)
+            if point then
+                region:ClearAllPoints()
+                region:SetSize(w, h)
+                region:SetPoint(point, rel, relPoint, x, y)
+            end
+        end
+    end
 end
 
 local function LayoutMember(f)
     local st = TS(f)
     if not st then return end
     if InCombatLockdown() then pendingLayout = true return end
+    -- FlareUI Style's ring, or back to the plain tile
+    local kind = RingKind(f)
+    if kind then
+        f.ringKind, f.ringSide = kind, (Sides(f))
+        f.ringDb = f.ringDb or function() return TS(f) end
+    elseif f.ringKind then
+        f.ringKind = nil
+        ns.UFRing.Reset(f)
+    end
     local PADDING = K.INSET
     f:SetSize(st.width or 200, st.height or 46)
     f:SetBackdrop({ bgFile = K.BACKDROP_FILE, insets = { left = PADDING, right = PADDING, top = PADDING, bottom = PADDING } })
     f:SetBackdropColor(0, 0, 0, K.BG_OPACITY)
     K.ApplyBorderStyle(f.Border, K.GetBorderFile(st.border), st.height or 46)
 
-    local texture = K.GetBarTexture(st.texture)
+    -- (a mirrored tile, as the boss frames: FlareUI Forever's gradient turns with the fill)
+    local texture = K.GetBarTexture(st.texture, Mirrored(f))
     f.Health:SetStatusBarTexture(texture)
     f.Power:SetStatusBarTexture(texture)
     f.Health.bg:SetTexture(texture)
     f.Power.bg:SetTexture(texture)
     f.powerShown = WantsPower(f)
     LayoutBars(f)
+    if f.ringKind then ns.UFRing.Layout(f) end
     LayoutHealClip(f)
     LayoutTexts(f)
     LayoutIcons(f)
-    if f.Cast then K.LayoutCastBar(f.Cast, CastStyle(st), f, "BOTTOM") end
+    if f.Cast then
+        -- FlareUI Style: the cast bar ends where the ring starts at its height
+        local leftExtra, rightExtra
+        if f.ringKind then
+            local clear = ns.UFRing.Clearance(f, K.CAST_GAP)
+            if f.ringSide == "LEFT" then leftExtra = clear else rightExtra = clear end
+        end
+        K.LayoutCastBar(f.Cast, CastStyle(st), f, "BOTTOM", leftExtra, rightExtra)
+    end
     ConfigureAuras(f)
     ConfigureSlots(f)
 end
@@ -1155,7 +1288,7 @@ local function LayoutTarget(t)
     t.Name:ClearAllPoints()
     t.Name:SetPoint("LEFT", t.Health, "LEFT", K.TEXT_INSET, 0)
     t.Name:SetPoint("RIGHT", t.Health, "RIGHT", -K.TEXT_INSET, 0)
-    local gap = party.targetGap or TARGET_GAP
+    local gap = TARGET_GAP
     t:ClearAllPoints()
     if party.orientation == "HORIZONTAL" then
         local y = -gap
@@ -1176,9 +1309,9 @@ end
 -- How far the lanes at these places reach out from the frame
 local function LanesExtent(st, places, across)
     local size = st.auraSize or 18
-    local max, perRow = AuraGrid(st)
     local best = 0
     for _, pos in ipairs(places) do
+        local max, perRow = AuraFit(st, pos)
         local reach = 0
         if across then
             -- beside the frame: a row's width
@@ -1196,7 +1329,7 @@ local function LanesExtent(st, places, across)
         end
         if reach > best then best = reach end
     end
-    return best > 0 and (best + K.AURA_GAP) or 0
+    return best > 0 and (best + (EDGE_PLACES[places[1]] and EDGE_GAP or SIDE_GAP)) or 0
 end
 
 -- One step from a frame to the next, and where the first frame starts in the holder
@@ -1306,6 +1439,9 @@ end
 local function ApplyPosition(layoutName)
     if not holder then return end
     if InCombatLockdown() then pendingLayout = true return end
+    -- the default: FlareUI Style's own for the party frames (not Raid-Style), past the ring
+    local base = (RingKind({}) and ns.UFRing.TILE_POSITIONS.party) or BASE_POSITION
+    for k, v in pairs(base) do DEFAULT_POSITION[k] = v end
     local store = GetLayoutStore(layoutName)
     local pos = (store and store.point) and store or DEFAULT_POSITION
     holder:ClearAllPoints()
@@ -1413,11 +1549,11 @@ local function ApplyPreviewExtras(f, data)
     local st = TS(f)
     local used = 0
     local size = st.auraSize or 18
-    local max, perRow = AuraGrid(st)
     -- buffs and debuffs drawn by hand where there are no containers to show Edit Mode's samples
     if f.noAuras then
         local function Row(place, count, icons, bossFirst)
             if not place or place == "OFF" or (count or 0) <= 0 then return end
+            local max, perRow = AuraFit(st, place)
             local point, rel, relPoint, x, y, growH = AuraAnchor(f, place)
             local sx = growH == AnchorUtil.FlowDirection.Left and -1 or 1
             local offset = 0
@@ -1434,13 +1570,35 @@ local function ApplyPreviewExtras(f, data)
         Row(st.buffs, data.buffs, SAMPLE_BUFF_ICONS)
         Row(st.debuffs, (data.debuffs or 0) + (data.bossDebuff and 1 or 0), SAMPLE_DEBUFF_ICONS, data.bossDebuff)
     end
-    -- dispel icons, at their place (under the debuffs' rows when they share it)
-    local pos = st.dispels
+    -- dispel icons, at their place (under the debuffs' rows when they share it); the party's: one,
+    -- big on the portrait, on the member with a dispellable debuff
+    local pos = DispelPlace(f, st)
     local sampled = not f.ctx or data.highlight
-    if pos and pos ~= "OFF" and sampled then
+    if pos == "PORTRAIT" then
+        -- three types on the member with a dispellable debuff: the grid's first row and a half
+        if data.highlight then
+            local cell = DispelGrid(f)
+            local point, rel, relPoint, x, y = AuraAnchor(f, pos)
+            for i = 1, 3 do
+                used = used + 1
+                local b = PreviewBit(f, used, cell)
+                local atlas = "RaidFrame-Icon-Debuff" .. DISPEL_TYPES[i]
+                if K.HasAtlas(atlas) then
+                    b.Icon:SetAtlas(atlas, false)
+                else
+                    local c = DISPEL_RGB[DISPEL_TYPES[i]]
+                    b.Icon:SetColorTexture(c[1], c[2], c[3], 1)
+                end
+                b:SetFrameLevel(f:GetFrameLevel() + (f.ringKind and 10 or 7))
+                local col, row = (i - 1) % 2, math_floor((i - 1) / 2)
+                b:SetPoint(point, rel, relPoint, x + col * (cell + AURA_SPACING), y - row * (cell + AURA_SPACING))
+            end
+        end
+    elseif pos and pos ~= "OFF" and sampled then
         local point, rel, relPoint, x, y, growH, growV = AuraAnchor(f, pos)
         local sx = growH == AnchorUtil.FlowDirection.Left and -1 or 1
         local sy = growV == AnchorUtil.FlowDirection.Up and 1 or -1
+        local max, perRow = AuraFit(st, pos)
         local skip = 0
         if st.debuffs == pos then
             skip = math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING)
@@ -1460,25 +1618,18 @@ local function ApplyPreviewExtras(f, data)
     end
     -- the dispel highlight, on one sample member
     if data.highlight and (st.dispelHighlight or "mine") ~= "off" then
+        -- the frame's border again, in the debuff type's colour (as the real one)
         local hl = f.HighlightSample
         if not hl then
-            hl = CreateFrame("Frame", nil, f)
-            hl.lines = {}
-            for _, e in ipairs({ { "TOPLEFT", "TOPRIGHT", nil, 2 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 2 },
-                                 { "TOPLEFT", "BOTTOMLEFT", 2, nil }, { "TOPRIGHT", "BOTTOMRIGHT", 2, nil } }) do
-                local line = hl:CreateTexture(nil, "OVERLAY")
-                line:SetTexture("Interface\\Buttons\\WHITE8x8")
-                line:SetPoint(e[1])
-                line:SetPoint(e[2])
-                if e[3] then line:SetWidth(e[3]) else line:SetHeight(e[4]) end
-                hl.lines[#hl.lines + 1] = line
-            end
+            hl = CreateFrame("Frame", nil, f, "BackdropTemplate")
             f.HighlightSample = hl
         end
-        hl:SetAllPoints(f.Health)
-        hl:SetFrameLevel(f.Health:GetFrameLevel() + 2)
+        hl:ClearAllPoints()
+        hl:SetAllPoints(f.Border)
+        hl:SetFrameLevel(f.Border:GetFrameLevel() + 1)
+        hl:SetBackdrop(f.Border:GetBackdrop())
         local c = DISPEL_RGB[data.highlight] or DISPEL_RGB.Magic
-        for _, line in ipairs(hl.lines) do line:SetVertexColor(c[1], c[2], c[3], 1) end
+        hl:SetBackdropBorderColor(c[1], c[2], c[3], 1)
         hl:Show()
     end
 end
@@ -1496,10 +1647,10 @@ ApplyPreview = function(f)
     local st = TS(f)
     local class = data.class
     f.Name:SetText(data.name)
-    if not RaidTile(f) and st.showLevel and data.level == -1 then
+    if st.showLevel and data.level == -1 then
         f.Level:SetText("??")
         f.Level:SetTextColor(1, 0.1, 0.1)
-    elseif not RaidTile(f) and st.showLevel then
+    elseif st.showLevel then
         f.Level:SetText(UnitLevel("player") or "")
         f.Level:SetTextColor(1, 0.82, 0)
     else
@@ -1852,11 +2003,17 @@ end
 --------------------------------------------------
 local Refresh   -- section 13
 
--- The defaults of the style in use, for the dialog's reset
+-- The defaults of the style in use, for the dialog's reset (FlareUI Style's party frames: its look)
 local function StyleDefaults()
     local _, key = S()
     local d = ns.defaults and ns.defaults.profile.unitframes.party
-    return (d and d[key or "classic"]) or {}
+    local base = (d and d[key or "classic"]) or {}
+    local ring = key ~= "raid" and ns.UFRing and ns.UFRing.TileDefaults("party")
+    if not ring then return base end
+    return setmetatable({}, { __index = function(_, k)
+        if ring[k] ~= nil then return ring[k] end
+        return base[k]
+    end })
 end
 
 local RebuildSettings   -- the dialog is rebuilt when the style changes
@@ -1896,6 +2053,11 @@ local function BuildSettings()
         end
     end
     local function classicOnly() return IsRaidStyle() end
+    local ringPortrait = ns.UFRing and ns.UFRing.Style() == "flareui"
+    -- Show Player: FlareUI Style's party leaves you out by default
+    local group = ns.UFRing and ns.UFRing.TileDefaults("partyGroup")
+    local showPlayerDefault = true
+    if group and group.showPlayer ~= nil then showPlayerDefault = group.showPlayer end
 
     local Section, settings = K.EditSections()
 
@@ -1914,22 +2076,19 @@ local function BuildSettings()
         { name = L["Orientation"], kind = LEM.SettingType.Dropdown, default = "VERTICAL",
           values = { { text = L["Vertical"], value = "VERTICAL", isRadio = true }, { text = L["Horizontal"], value = "HORIZONTAL", isRadio = true } },
           get = getP("orientation", "VERTICAL"), set = setP("orientation") },
-        { name = L["Sort by Role"], kind = LEM.SettingType.Checkbox, default = true, get = getP("sortByRole", true), set = setP("sortByRole"),
-          desc = L["Tanks first, then healers, then damage dealers. A change during combat is applied when the fight ends."] },
-        { name = L["Show Player"], kind = LEM.SettingType.Checkbox, default = true, get = getP("showPlayer", true), set = setP("showPlayer"),
-          desc = L["Your own frame first, with the party."] },
-        { name = L["Pets"], kind = LEM.SettingType.Checkbox, default = false, get = getP("pets", false),
-          set = function(layoutName, value) setP("pets")(layoutName, value); LEM:RefreshFrameSettings(holder) end,
-          desc = L["A small frame for each pet, under its owner. Its size is in the Pet section."] },
-        { name = L["Party Targets"], kind = LEM.SettingType.Checkbox, default = false, get = getP("targets", false),
-          set = function(layoutName, value) setP("targets")(layoutName, value); LEM:RefreshFrameSettings(holder) end,
-          desc = L["What each member is targeting, in a small frame beside theirs (under it in a horizontal party). Click one to target it too. Its size is in the Target section."] },
-        { name = L["Target Gap"], kind = LEM.SettingType.Slider, default = TARGET_GAP, minValue = 0, maxValue = 150, valueStep = 1,
-          get = getP("targetGap", TARGET_GAP), set = setP("targetGap"), disabled = function() return not getP("targets", false)() end,
-          desc = L["The space between a frame and its target. Widen it to clear auras on that side."] },
         { name = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing, minValue = 0, maxValue = 80, valueStep = 1,
           get = getS("spacing"), set = setS("spacing"),
           desc = L["The gap between the frames. Each style keeps its own."] },
+        { name = L["Sort by Role"], kind = LEM.SettingType.Checkbox, default = true, get = getP("sortByRole", true), set = setP("sortByRole"),
+          desc = L["Tanks first, then healers, then damage dealers. A change during combat is applied when the fight ends."] },
+        { name = L["Show Player"], kind = LEM.SettingType.Checkbox, default = showPlayerDefault, get = getP("showPlayer", showPlayerDefault), set = setP("showPlayer"),
+          desc = L["Your own frame first, with the party."] },
+        { name = L["Show Pets"], kind = LEM.SettingType.Checkbox, default = false, get = getP("pets", false),
+          set = function(layoutName, value) setP("pets")(layoutName, value); LEM:RefreshFrameSettings(holder) end,
+          desc = L["A small frame for each pet, under its owner. Its size is in the Pet section."] },
+        { name = L["Show Party Targets"], kind = LEM.SettingType.Checkbox, default = false, get = getP("targets", false),
+          set = function(layoutName, value) setP("targets")(layoutName, value); LEM:RefreshFrameSettings(holder) end,
+          desc = L["What each member is targeting, in a small frame beside theirs (under it in a horizontal party). Click one to target it too. Its size is in the Target section."] },
     })
 
     Section("Frame", {
@@ -1937,13 +2096,24 @@ local function BuildSettings()
         { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = getS("height"), set = setS("height") },
         { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
           get = getS("powerHeight"), set = setS("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
-        { name = L["Power Bar for Healers Only"], kind = LEM.SettingType.Checkbox, default = D.healersOnlyPower or false, get = getS("healersOnlyPower"), set = setS("healersOnlyPower") },
+        -- FlareUI Style: the ring's size, as the player frame's
+        { name = L["Portrait Size"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.DefaultSize("party") or 80,
+          minValue = 36, maxValue = 120, valueStep = 1,
+          get = function() local st = S(); return st and st.ringSize or (ns.UFRing and ns.UFRing.DefaultSize("party")) or 80 end,
+          set = setS("ringSize"), hidden = function() return not RingKind({}) end },
+        -- FlareUI Style: the ring always holds a portrait (no None; 3D by default)
+        { name = L["Portrait"], kind = LEM.SettingType.Dropdown, default = ringPortrait and "3d" or D.portrait or "none",
+          values = ringPortrait and { { text = L["3D"], value = "3d", isRadio = true }, { text = L["Class Icon"], value = "class", isRadio = true } }
+              or { { text = L["None"], value = "none", isRadio = true }, { text = L["3D"], value = "3d", isRadio = true }, { text = L["Class Icon"], value = "class", isRadio = true } },
+          get = function()
+              local v = getS("portrait")()
+              if ringPortrait and (v == nil or v == "none") then return "3d" end
+              return v
+          end,
+          set = setS("portrait"), hidden = classicOnly },
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = getS("healthText"), set = setS("healthText") },
         { name = L["Power Text"], kind = LEM.SettingType.Checkbox, default = D.powerText or false, get = getS("powerText"), set = setS("powerText"), hidden = classicOnly },
-        { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = getS("showLevel"), set = setS("showLevel"), hidden = classicOnly },
-        { name = L["Portrait"], kind = LEM.SettingType.Dropdown, default = D.portrait or "none",
-          values = { { text = L["None"], value = "none", isRadio = true }, { text = L["3D"], value = "3d", isRadio = true }, { text = L["Class Icon"], value = "class", isRadio = true } },
-          get = getS("portrait"), set = setS("portrait"), hidden = classicOnly },
+        { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = getS("showLevel"), set = setS("showLevel") },
     })
 
     -- debuffs, buffs and dispel icons never share a place: a place taken by one is greyed out on
@@ -1972,9 +2142,6 @@ local function BuildSettings()
         { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildTextureValues(true),
           get = getS("absorbTexture"), set = setS("absorbTexture"),
           desc = L["The texture of the shield (absorb) over the health bar. Frame Texture uses the bar's own."] },
-        { name = L["Absorb Reverse Fill"], kind = LEM.SettingType.Checkbox, default = D.absorbReverseFill ~= false,
-          get = function() return getS("absorbReverseFill")() ~= false end, set = setS("absorbReverseFill"),
-          desc = L["Shields grow back from the end of the bar, so they show even at full health."] },
     })
 
     local function noCast() return not getS("castbar")() end
@@ -2008,15 +2175,22 @@ local function BuildSettings()
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = AURA_POSITION_VALUES, generator = Place("debuffs"),
           get = getS("debuffs"), set = setS("debuffs"),
           desc = L["Debuffs as Blizzard's raid frames pick them: boss and role debuffs, priority debuffs, and the ones you can dispel."] },
-        { name = L["Dispel Icons"], kind = LEM.SettingType.Dropdown, default = D.dispels, values = AURA_POSITION_VALUES, generator = Place("dispels"),
-          get = getS("dispels"), set = setS("dispels"),
-          desc = L["The symbol of each debuff type you can dispel (Magic, Curse, Disease, Poison)."] },
-        { name = L["Bigger Boss Debuffs"], kind = LEM.SettingType.Checkbox, default = D.bigBossDebuffs ~= false, get = getS("bigBossDebuffs"), set = setS("bigBossDebuffs"),
-          desc = L["Boss and role debuffs first and half again as big, as Blizzard's raid frames show them."] },
+        { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = D.dispelHighlight,
+          values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
+                     { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
+          desc = L["A dispellable debuff colours the frame's border in its type's colour."],
+          get = getS("dispelHighlight"), set = setS("dispelHighlight") },
+        -- one dispel icon, big on the portrait (or the health bar's middle)
+        { name = L["Dispel Icons"], kind = LEM.SettingType.Checkbox, default = D.dispels ~= "OFF",
+          get = function() local st = S(); local v = st and st.dispels; if v == nil then v = D.dispels end; return v ~= "OFF" end,
+          set = function(_, value) setS("dispels")(nil, value and "PORTRAIT" or "OFF") end,
+          desc = L["The debuffs you can dispel, up to four, two to a row in the middle of the portrait (or of the health bar without one)."] },
+        { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1, get = getS("auraSize"), set = setS("auraSize") },
         { name = L["Missing Buffs"], kind = LEM.SettingType.Checkbox, default = D.missingBuffs or false,
           get = function() return getS("missingBuffs")() and true or false end, set = setS("missingBuffs"),
           desc = L["Out of combat, the group buffs a member lacks that you can cast show in the corner across from the buffs."] },
-        { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1, get = getS("auraSize"), set = setS("auraSize") },
+        { name = L["Bigger Boss Debuffs"], kind = LEM.SettingType.Checkbox, default = D.bigBossDebuffs ~= false, get = getS("bigBossDebuffs"), set = setS("bigBossDebuffs"),
+          desc = L["Boss and role debuffs first and half again as big, as Blizzard's raid frames show them."] },
         { name = L["Big Defensive"], kind = LEM.SettingType.Checkbox, default = D.bigDefensive ~= false,
           get = function() return getS("bigDefensive")() ~= false end,
           set = function(layoutName, value) setS("bigDefensive")(layoutName, value); LEM:RefreshFrameSettings(holder) end,
@@ -2024,11 +2198,6 @@ local function BuildSettings()
         { name = L["Big Defensive Size"], kind = LEM.SettingType.Slider, default = D.bigDefensiveSize, minValue = 12, maxValue = 48, valueStep = 1,
           get = getS("bigDefensiveSize"), set = setS("bigDefensiveSize"),
           hidden = function() return getS("bigDefensive")() == false end },
-        { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = D.dispelHighlight,
-          values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
-                     { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
-          desc = L["A dispellable debuff outlines the health bar in its type's colour."],
-          get = getS("dispelHighlight"), set = setS("dispelHighlight") },
     })
 
     -- one switch per icon; where they sit is fixed
@@ -2056,7 +2225,7 @@ local function BuildSettings()
           get = getS("petBorder"), set = setS("petBorder"), hidden = noPets },
     })
 
-    -- the members' targets: only while Party Targets (Party section) is on
+    -- the members' targets: only while Show Party Targets (Party section) is on
     local function noTargets() return not getP("targets", false)() end
     Section("Target", {
         { name = L["Target Frame Width"], kind = LEM.SettingType.Slider, default = D.targetWidth, minValue = 40, maxValue = 300, valueStep = 2,
@@ -2132,7 +2301,7 @@ end
 --------------------------------------------------
 -- 13. PUBLIC
 --------------------------------------------------
--- A member's target sends no health events: the shown ones are re-read while Party Targets is on
+-- A member's target sends no health events: the shown ones are re-read while Show Party Targets is on
 local targetTicker
 local function UpdateTargetTicker()
     local on = GetPartyDb().targets

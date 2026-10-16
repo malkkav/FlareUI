@@ -1,3 +1,39 @@
+# FlareUI 2.1.0
+
+Two new looks: Forever Style unit frames on Blizzard's own frame plate, and FlareUI Style party and boss frames with the portrait ring.
+
+## New
+- Unit Frames: **Frame style** (Unit Frames > Look) has three choices: **FlareUI** (the bronze ring beside FlareUI's bars, the default), **Forever** (new) and **Addon** (plain frames). Each style keeps its own setup: sizes, positions, totems, and the party and boss frames.
+- Forever Style: the player, target and focus frames on Blizzard's Forever frame plate, with its name box, health and power slots and the bronze ring. **Scale** in Edit Mode sizes the frame in Blizzard's proportions, Width stretches it. The name sits in the name box, the health and power texts in the middle of their bars.
+- FlareUI Style: the **party and boss frames get the portrait ring**. Party frames: the player frame's ring and level disc, the role icon where the PvP crest sits, the leader crown and raid marker on the ring, the ready check and summon / resurrect / phase icons on the portrait. Boss frames: the target frame's ring and level disc (a skull for ?? bosses) with Blizzard's elite, boss and rare frames. Both have **Portrait Size**. Raid-Style party frames stay as they are.
+- **FlareUI Forever** bar texture: Blizzard's Forever health bar art, now the default for every bar (unit, party, raid, boss and resource bars, every cast bar, the XP bar). Absorbs keep FlareUI Striped.
+- Party Frames: **Dispel Icons** is a switch and sits on the portrait: up to four, two to a row (in the middle of the health bar on frames without a portrait).
+- Damage Meter: a **Header** font in the Fonts tab, for the title row (Damage Meter or Threat, the session and its timer).
+- XP Bar: **Bar Texture**.
+- Unit Frames: **PvP Timer** in Addon Style too, **Show Level** on every frame, **Hide Auras** on the focus frame.
+- Boss Frames: **Mirror** and **Only My Debuffs** (both on by default), and **Absorb Texture**.
+- Edit Mode: sample incoming heals and shields on the unit frames, sample aura timers, and portraits on the party and boss samples.
+- The Target, Focus and Pet Edit Mode dialogs have the "FlareUI settings" button too.
+
+## Changed
+- Each style has its own defaults for the player, target, focus, pet, totems, party and boss frames: sizes and positions to fit its look.
+- Classic combo points follow the style: always on in FlareUI and Forever Style, off in Addon Style (the option is gone).
+- Party and boss auras above or below the frame fit as many to a row as the frame's width allows, as the unit frames' auras do. Auras above or below any frame sit closer to it.
+- Aura size: 18 on the focus frame, 24 on the player and target frames, by default.
+- Incoming heals use the frame's bar texture. Shields always grow back from the end of the bar (Absorb Reverse Fill is gone).
+- The dispel highlight colours the frame's own border.
+- Party, boss and raid frames show no timers on auras inside the frame.
+- Unit Frames page: Colour palette sits under Frame style; Hide Player and Pet is now **Fade Player and Pet**.
+- Party Frames: Party Targets is now **Show Party Targets** and Pets **Show Pets**; Spacing sits under Orientation; Target Gap is gone (fixed); Portrait sits above Health Text; Dispel Highlight above Dispel Icons (raid frames too).
+- Raid Frames: Spacing and Group Spacing moved to the Raid section, under Groups.
+- Icons: Raid Target is now **Raid Markers**.
+- Only My Debuffs is no longer on the player frame. Power Bar for Healers Only is gone: party and raid frames show everyone's power when Power Bar Height is above 0.
+- The PvP timer sits right beside the PvP crest.
+
+## Fixed
+- Minimap: the addon button bag no longer takes in Questie's quest markers (or other addons' map pins), which stretched it down the screen.
+- Damage Meter: the bar font reaches every row, group members joining later included.
+
 # FlareUI 2.0.15
 
 ## New

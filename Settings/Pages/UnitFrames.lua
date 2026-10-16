@@ -21,7 +21,11 @@ end
 S:Module{
     key = "uf", group = "HUD", order = 20, enabled = "unitframes.enabled",
     tabs = { { key = "settings" }, { key = "fonts" } },
-    editFrames = { function() return _G.FlareUI_UF_Player end },
+    -- the frames of the one Player / Pet / Target / Focus row: each dialog gets the FlareUI settings button
+    editFrames = {
+        function() return _G.FlareUI_UF_Player end, function() return _G.FlareUI_UF_Target end,
+        function() return _G.FlareUI_UF_Focus end, function() return _G.FlareUI_UF_Pet end,
+    },
     -- the header button opens Edit Mode on the first frame that is on
     editMode = function()
         for _, name in ipairs({ "FlareUI_UF_Player", "FlareUI_UF_Target", "FlareUI_UF_Focus", "FlareUI_Party", "FlareUI_Boss" }) do
@@ -53,10 +57,18 @@ Frame("boss", "unitframes.boss.enabled", "FlareUI_Boss")
 -- plate), FlareUI Style (the ring beside FlareUI's bars, the default) or Addon Style (no ring). Each
 -- style keeps its own whole unit frames setup (UnitFramesRing.lua), loaded on the reload.
 S:Row{
-    key = "uf.frameStyle", kind = "choice", reload = true, choices = { "forever", "flareui", "addon" },
+    key = "uf.frameStyle", kind = "choice", reload = true, choices = { "flareui", "forever", "addon" },
     get = function() return ns.UFRing and ns.UFRing.Style() or "addon" end,
     set = function(value)
         if ns.UFRing then ns.UFRing.SetStyle(value) end
+    end,
+}
+-- the bars' colours: FlareUI's tones or Blizzard's bright originals
+S:Row{
+    key = "uf.palette", kind = "choice", path = "unitframes.palette", choices = { "flareui", "blizzard" },
+    apply = function()
+        if ns.UnitFrames and ns.UnitFrames.ApplyPalette then ns.UnitFrames.ApplyPalette() end
+        Refresh()
     end,
 }
 -- the player and pet frames show in combat, or while the mouse is over either of them
@@ -66,14 +78,6 @@ S:Row{
     set = function(on) if ns.UnitFrames and ns.UnitFrames.SetPlayerShow then ns.UnitFrames:SetPlayerShow(on and "fade" or "always") end end,
 }
 S:Row{ key = "uf.classColours", path = "unitframes.classColor", apply = Refresh }
--- the bars' colours: FlareUI's tones or Blizzard's bright originals
-S:Row{
-    key = "uf.palette", kind = "choice", path = "unitframes.palette", choices = { "flareui", "blizzard" },
-    apply = function()
-        if ns.UnitFrames and ns.UnitFrames.ApplyPalette then ns.UnitFrames.ApplyPalette() end
-        Refresh()
-    end,
-}
 S:Row{ key = "uf.auraShape", kind = "choice", path = "unitframes.auraStyle", choices = { "square", "round" }, apply = Refresh }
 S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }
 

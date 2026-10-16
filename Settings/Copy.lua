@@ -496,6 +496,10 @@ ns.Copy = {
             desc = L["Names and numbers on the bars."],
             label = L["Bars"],
         },
+        ["dm.font.header"] = {
+            desc = L["The title row: Damage Meter or Threat, the session and its timer."],
+            label = L["Header"],
+        },
         ["dm.matchChat"] = {
             desc = L["The meter takes the chat's width and height."],
             label = L["Match chat size"],
@@ -813,10 +817,6 @@ ns.Copy = {
             label = L["Combo points"],
             section = "rb.bars",
         },
-        ["rb.combo.classic"] = {
-            desc = L["Blizzard's combo point gems instead of FlareUI's strip."],
-            label = L["Classic combo points"],
-        },
         ["rb.font.text"] = {
             desc = L["Numbers and labels on the resource bars."],
             label = L["Bar text"],
@@ -1061,15 +1061,15 @@ ns.Copy = {
             label = L["Power"],
         },
         ["uf.frameStyle"] = {
-            choices = { L["Forever"], L["FlareUI"], L["Addon"] },
-            desc = L["The look of the player, target and focus frames.\n* Forever: Blizzard's bronze frame and portrait ring\n* FlareUI: the bronze ring beside FlareUI's bars\n* Addon: plain frames, the most options"],
+            choices = { L["FlareUI"], L["Forever"], L["Addon"] },
+            desc = L["The look of the player, target and focus frames.\n* FlareUI: the bronze ring beside FlareUI's bars\n* Forever: Blizzard's bronze frame and portrait ring\n* Addon: plain frames, the most options"],
             label = L["Frame style"],
             section = "uf.look",
             tip = L["Each style keeps its own setup."],
         },
         ["uf.hidePlayer"] = {
-            desc = L["Your player and pet frames hide while:\n* You're out of combat\n* You have no target\n* You're at full health"],
-            label = L["Hide Player and Pet"],
+            desc = L["Your player and pet frames fade out while:\n* You're out of combat\n* You have no target\n* You're at full health"],
+            label = L["Fade Player and Pet"],
             section = "uf.look",
             tip = L["Pointing at either frame shows both."],
         },
@@ -1134,7 +1134,7 @@ ns.Copy = {
         },
         ["uf.party.pets"] = {
             desc = L["A small frame for each pet, under its owner."],
-            label = L["Pets"],
+            label = L["Show Pets"],
         },
         ["uf.party.showPlayer"] = {
             desc = L["Adds your own frame to the party frames."],
@@ -1159,10 +1159,6 @@ ns.Copy = {
             label = L["Raid frames"],
             section = "uf.frames",
             tip = L["Each raid size can have its own tile size."],
-        },
-        ["uf.target.classicCombo"] = {
-            desc = L["Blizzard's combo point gems instead of FlareUI's strip."],
-            label = L["Classic combo points"],
         },
         ["uf.tof"] = {
             desc = L["Who your focus is targeting."],
