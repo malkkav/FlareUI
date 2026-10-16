@@ -31,7 +31,7 @@ ns.UFRing = Ring
 --
 -- Geometry, from the ring's diameter D and the frame's height H: the ring sits on the portrait side,
 -- centred on the frame's middle; the frame's end tucks under it as Blizzard's plate does (the bars
--- start where their corners meet the rim). The ring is 1.5 x the frame's height unless Ring Size says
+-- start where their corners meet the rim). The ring is 1.5 x the frame's height unless Portrait Size says
 -- otherwise.
 --------------------------------------------------
 local RING_UNITS = { player = true, target = true, focus = true }
@@ -842,7 +842,7 @@ end
 --------------------------------------------------
 -- 9. EDIT MODE
 --------------------------------------------------
--- Edit Mode's Ring Size default: from the frame's current height
+-- Edit Mode's Portrait Size default: from the frame's current height
 function Ring.DefaultSize(unit)
     local udb = UnitDb(unit)
     return DefaultDiameter(udb and udb.height)

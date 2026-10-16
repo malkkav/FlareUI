@@ -2715,16 +2715,21 @@ local function BuildSettings(unit)
     end
     local defaults = ns.defaults and ns.defaults.profile.unitframes.units[unit] or {}
 
+    -- sizes first (the portrait's with them), then the portrait's look, then the texts
     local settings = {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = defaults.width or 220, minValue = 60, maxValue = 500, valueStep = 2, get = get("width"), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = defaults.height or 44, minValue = 16, maxValue = 120, valueStep = 1, get = get("height"), set = set("height") },
         { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = defaults.powerHeight or 8, minValue = 0, maxValue = 40, valueStep = 1, get = get("powerHeight"), set = set("powerHeight"),
           formatter = function(value) return value == 0 and _G.OFF or value end },
-        { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = defaults.healthText or "percent", values = HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") },
-        { name = L["Power Text"], kind = LEM.SettingType.Checkbox, default = defaults.powerText or false, get = get("powerText"), set = set("powerText") },
-        { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = defaults.showLevel ~= false, get = get("showLevel"), set = set("showLevel"),
-          hidden = function() return info.portrait and ns.UFRing and ns.UFRing.On() or false end },
     }
+    if info.portrait and ns.UFRing then
+        -- the Forever style's ring (and the portrait in it)
+        settings[#settings + 1] = { name = L["Portrait Size"], kind = LEM.SettingType.Slider, default = ns.UFRing.DefaultSize(unit),
+            minValue = 36, maxValue = 120, valueStep = 1,
+            get = function() local u = GetUnitDb(unit); return u and u.ringSize or ns.UFRing.DefaultSize(unit) end,
+            set = set("ringSize"),
+            hidden = function() return not ns.UFRing.On() end }
+    end
     if info.portrait then
         local portraitValues = {
             { text = L["None"],       value = "none",  isRadio = true },
@@ -2746,13 +2751,10 @@ local function BuildSettings(unit)
             end,
             get = function() local u = GetUnitDb(unit); return u and u.portrait or "none" end, set = set("portrait") }
     end
-    if info.portrait and ns.UFRing then
-        settings[#settings + 1] = { name = L["Ring Size"], kind = LEM.SettingType.Slider, default = ns.UFRing.DefaultSize(unit),
-            minValue = 36, maxValue = 120, valueStep = 1,
-            get = function() local u = GetUnitDb(unit); return u and u.ringSize or ns.UFRing.DefaultSize(unit) end,
-            set = set("ringSize"),
-            hidden = function() return not ns.UFRing.On() end }
-    end
+    settings[#settings + 1] = { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = defaults.healthText or "percent", values = HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") }
+    settings[#settings + 1] = { name = L["Power Text"], kind = LEM.SettingType.Checkbox, default = defaults.powerText or false, get = get("powerText"), set = set("powerText") }
+    settings[#settings + 1] = { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = defaults.showLevel ~= false, get = get("showLevel"), set = set("showLevel"),
+        hidden = function() return info.portrait and ns.UFRing and ns.UFRing.On() or false end }
     if info.mirrorable then
         -- flips text order and bar fill so the frame faces the player frame
         settings[#settings + 1] = { name = L["Mirror"], kind = LEM.SettingType.Checkbox, default = defaults.mirror or false, get = function() local u = GetUnitDb(unit); return u and u.mirror or false end,
