@@ -49,13 +49,14 @@ Frame("raid", "unitframes.raid.enabled", "FlareUI_Raid")
 Frame("boss", "unitframes.boss.enabled", "FlareUI_Boss")
 
 -- Look: every frame, party frames and the resource health bar included
--- Addon style: the player, target and focus frames without the Forever style's bronze ring (the
--- default). Each style keeps its own whole unit frames setup (UnitFramesRing.lua), loaded on the reload.
+-- The player, target and focus frames' look: Forever Style (the bronze ring on Forever's frame
+-- plate), FlareUI Style (the ring beside FlareUI's bars, the default) or Addon Style (no ring). Each
+-- style keeps its own whole unit frames setup (UnitFramesRing.lua), loaded on the reload.
 S:Row{
-    key = "uf.addonStyle", reload = true,
-    get = function() return not (ns.UFRing and ns.UFRing.On()) end,
-    set = function(on)
-        if ns.UFRing then ns.UFRing.SetOn(not on) end
+    key = "uf.frameStyle", kind = "choice", reload = true, choices = { "forever", "flareui", "addon" },
+    get = function() return ns.UFRing and ns.UFRing.Style() or "addon" end,
+    set = function(value)
+        if ns.UFRing then ns.UFRing.SetStyle(value) end
     end,
 }
 -- the player and pet frames show in combat, or while the mouse is over either of them

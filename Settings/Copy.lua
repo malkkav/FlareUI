@@ -1009,12 +1009,6 @@ ns.Copy = {
             desc = L["The frame's size."],
             label = L["Width / Height"],
         },
-        ["uf.addonStyle"] = {
-            desc = L["Player, target and focus frames without Blizzard's bronze art:\n* More options\n* Less Forever-like"],
-            label = L["Addon style frames"],
-            section = "uf.look",
-            tip = L["Each style keeps its own setup."],
-        },
         ["uf.auraShape"] = {
             choices = { L["Square"], L["Round"] },
             desc = L["The shape of buff and debuff icons on unit frames."],
@@ -1058,6 +1052,13 @@ ns.Copy = {
         ["uf.font.power"] = {
             desc = L["Power bar text."],
             label = L["Power"],
+        },
+        ["uf.frameStyle"] = {
+            choices = { L["Forever"], L["FlareUI"], L["Addon"] },
+            desc = L["The look of the player, target and focus frames.\n* Forever: Blizzard's bronze frame and portrait ring\n* FlareUI: the bronze ring beside FlareUI's bars\n* Addon: plain frames, the most options"],
+            label = L["Frame style"],
+            section = "uf.look",
+            tip = L["Each style keeps its own setup."],
         },
         ["uf.hidePlayer"] = {
             desc = L["Your player and pet frames hide while:\n* You're out of combat\n* You have no target\n* You're at full health"],

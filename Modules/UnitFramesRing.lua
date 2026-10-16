@@ -115,8 +115,25 @@ local LEVEL_SCALE = 0.94
 -- Each style is a whole unit frames setup of its own: every frame's settings and positions, the totem
 -- bar and the cast bar, swapped on the switch (a reload follows). Shared between the two: the party,
 -- raid and boss frames, the resource bars (a module of their own), and what is switched on.
-local SHARED_KEYS = { enabled = true, foreverStyle = true, styleProfiles = true, editSections = true,
+local SHARED_KEYS = { enabled = true, foreverStyle = true, plateStyle = true, styleProfiles = true, editSections = true,
                       party = true, raid = true, boss = true, resource = true, styleStart = true }
+
+-- Forever's frame plate (Forever Style): the left part of the target's atlas (194 x 68 art pixels),
+-- name box, health and power slots, as measured on the art. The frame's own rect is x0..x1, y0..y1
+-- (rim to rim, the joining piece under the ring included); the art is cut into ends that keep their
+-- size and middles that stretch (cutX / cutY: the piece edges, the stretching piece in the middle).
+-- The bars' atlases have margins round their colour: the bars are made that much bigger (inner).
+local PLATE = {
+    atlas = "UI-HUD-UnitFrame-Target-PortraitOn", artW = 194, artH = 68,
+    x0 = 1, x1 = 131, y0 = 8, y1 = 57,
+    cutX = { 0, 8, 120, 131 }, cutY = { 6, 14, 24, 59 },
+    ringD = 61.8, ringX = 158.6,           -- Blizzard's ring on this art: its diameter and centre
+    name   = { 4, 125, 11, 26 },           -- x from, x to, y from, y to
+    health = { 4, 125, 29, 42, atlas = "UI-HUD-UnitFrame-Target-PortraitOn-Bar-Health", w = 126, h = 20, innerW = 120, innerH = 12 },
+    power  = { 4, 125, 45, 53, atlas = "UI-HUD-UnitFrame-Target-PortraitOn-Bar-Mana", w = 134, h = 10, innerW = 120, innerH = 8 },
+    strip  = "UI-HUD-UnitFrame-Target-PortraitOn-Type",   -- the name box's reaction glow
+}
+Ring.PLATE_UNITS = { player = true, target = true, focus = true }
 -- The Forever preset: a new profile starts with it (the Forever style is the default), as does the
 -- first switch to this style: these frame settings, the totems', and the default positions below
 -- (stored positions are dropped, so the defaults apply). Party frames are left as they are.
@@ -180,9 +197,27 @@ function Ring.On()
     return db.foreverStyle and true or false
 end
 
--- this frame is drawn in the Forever style
+-- this frame is drawn in a ring style (FlareUI Style or Forever Style)
 function Ring.Applies(f)
     return f and f.Portrait ~= nil and RING_UNITS[f.unit] and Ring.On() or false
+end
+
+-- The style in use: "forever" (the ring on Forever's frame plate), "flareui" (the ring beside
+-- FlareUI's bars) or "addon" (no ring)
+function Ring.Style()
+    if not Ring.On() then return "addon" end
+    local db = GetDb()
+    return db.plateStyle and "forever" or "flareui"
+end
+
+-- Forever Style is in use
+function Ring.PlateOn()
+    return Ring.Style() == "forever"
+end
+
+-- this frame is drawn on Forever's frame plate
+function Ring.Plate(f)
+    return Ring.Applies(f) and Ring.PLATE_UNITS[f.unit] and Ring.PlateOn() or false
 end
 
 -- the ring's side: its natural one, or the other on a frame mirrored away from it
@@ -203,15 +238,37 @@ end
 
 -- D, R, H, the ring's side, its centre from the frame's edge (positive: inside), and the scale from
 -- Blizzard's ring to ours
+-- Forever Style: the plate's scale (screen pixels per art pixel) for a ring of diameter D, and the
+-- least height and width its fixed rows and ends take
+local function PlateScale(D) return D / PLATE.ringD end
+function Ring.PlateMinSize(f)
+    local udb = UnitDb(f.unit) or {}
+    local s = PlateScale(udb.ringSize or DefaultDiameter(udb.height))
+    local fixedH = (PLATE.y1 - PLATE.y0) - (PLATE.cutY[3] - PLATE.cutY[2])
+    local fixedW = (PLATE.x1 - PLATE.x0) - (PLATE.cutX[3] - PLATE.cutX[2])
+    -- a few pixels of name box, and of middle, at the least
+    return math.ceil((fixedW + 12) * s), math.ceil((fixedH + 4) * s)
+end
+
 local function Geometry(f)
     local udb = UnitDb(f.unit) or {}
     local H = udb.height or 44
     local D = udb.ringSize or DefaultDiameter(H)
     local R = D / 2
+    local g = { D = D, R = R, side = Ring.Side(f), k = D / BLIZZ[f.unit].D }
+    if Ring.Plate(f) then
+        -- on the plate: the ring stands where Blizzard's art has it, past the plate's end
+        g.s = PlateScale(D)
+        local _, minH = Ring.PlateMinSize(f)
+        g.H = math.max(H, minH)
+        g.centre = -(PLATE.ringX - PLATE.x1) * g.s
+        return g
+    end
     local half = H / 2
     -- the bars' corners meet the rim: the frame's edge is a bar inset outside that point
     local chord = half < R and math.sqrt(R * R - half * half) or 0
-    return { D = D, R = R, H = H, side = Ring.Side(f), centre = BAR_INSET - chord, k = D / BLIZZ[f.unit].D }
+    g.H, g.centre = H, BAR_INSET - chord
+    return g
 end
 
 -- how far into the frame (from its edge) the ring reaches at `dy` above / below the middle
@@ -405,6 +462,8 @@ end
 function Ring.Layout(f)
     local ring = Build(f)
     local g = Geometry(f)
+    -- FlareUI Style: no plate (Forever Style lays it out from LayoutBars)
+    if not Ring.Plate(f) then Ring.HidePlate(f) end
     local level = f:GetFrameLevel()
     local left = g.side == "LEFT"
     local blizz = BLIZZ[f.unit]
@@ -488,8 +547,136 @@ function Ring.LayoutLevel(f, g)
     f.Level:SetShadowColor(0, 0, 0, 1)
 end
 
+--------------------------------------------------
+-- 5b. FOREVER STYLE: THE FRAME PLATE
+-- Forever's plate behind the bars (name box, health and power slots), cut from the target's atlas
+-- into nine pieces: the corners and ends keep their art size, the middle column stretches with the
+-- width and the name box's middle row with the height, so the bars stay in Blizzard's proportions.
+-- A frame whose ring is on its left (the player) gets the art mirrored.
+--------------------------------------------------
+-- an edge in art pixels -> its anchor on the frame: the side it hangs from and the offset
+local function EdgeX(x, s)
+    if x <= PLATE.cutX[2] then return "LEFT", (x - PLATE.x0) * s end
+    return "RIGHT", (x - PLATE.x1) * s
+end
+local function EdgeY(y, s)
+    if y <= PLATE.cutY[2] then return "TOP", (PLATE.y0 - y) * s end
+    return "BOTTOM", (PLATE.y1 - y) * s
+end
+
+-- Puts a region over art rect x1..x2, y1..y2 of the plate (the ring on the art's right; flip: on the
+-- frame's left, mirrored). xs / ys: the art edge's side, for edges of the stretching pieces.
+local function PlaceOnPlate(region, f, s, flip, x1, x2, y1, y2)
+    local lSide, lx = EdgeX(x1, s)
+    local rSide, rx = EdgeX(x2, s)
+    local tSide, ty = EdgeY(y1, s)
+    local bSide, by = EdgeY(y2, s)
+    if flip then
+        -- the art's left edge becomes the frame's right edge
+        local function other(side) return side == "LEFT" and "RIGHT" or "LEFT" end
+        lSide, lx, rSide, rx = other(rSide), -rx, other(lSide), -lx
+    end
+    region:ClearAllPoints()
+    region:SetPoint("TOPLEFT", f, tSide .. lSide, lx, ty)
+    region:SetPoint("BOTTOMRIGHT", f, bSide .. rSide, rx, by)
+end
+
+local function BuildPlate(f)
+    if f.PlateFrame then return f.PlateFrame end
+    local plate = CreateFrame("Frame", nil, f)
+    plate:SetAllPoints(f)
+    plate.pieces = {}
+    for i = 1, 9 do plate.pieces[i] = plate:CreateTexture(nil, "BACKGROUND") end
+    -- the name box's reaction glow, and an anchor for the name
+    plate.Strip = plate:CreateTexture(nil, "BORDER")
+    plate.NameBox = CreateFrame("Frame", nil, plate)
+    f.PlateFrame = plate
+    return plate
+end
+
+-- A bar over its slot: the bar's atlas has margins round its colour, so the bar is that much bigger
+local function PlaceBar(bar, f, s, flip, slot)
+    local w = ((slot[2] - slot[1]) * slot.w / slot.innerW - (slot[2] - slot[1])) / 2
+    local h = ((slot[4] - slot[3]) * slot.h / slot.innerH - (slot[4] - slot[3])) / 2
+    PlaceOnPlate(bar, f, s, flip, slot[1] - w, slot[2] + w, slot[3] - h, slot[4] + h)
+    bar:SetStatusBarTexture(slot.atlas)
+    local tex = bar:GetStatusBarTexture()
+    -- Blizzard's art greyed, then FlareUI's colours (class, reaction, power) tint it
+    if tex then tex:SetDesaturated(true) end
+    if bar.bg then bar.bg:SetAlpha(0) end   -- the slot is the background
+end
+
+-- Lays out the plate and puts the bars in its slots (UnitFrames' LayoutBars, Forever Style)
+function Ring.LayoutPlate(f)
+    local g = Geometry(f)
+    local s, flip = g.s, g.side == "LEFT"
+    local plate = BuildPlate(f)
+    plate:SetFrameLevel(f:GetFrameLevel())
+    plate:Show()
+    local info = C_Texture.GetAtlasInfo(PLATE.atlas)
+    if info and info.file then
+        local du, dv = info.rightTexCoord - info.leftTexCoord, info.bottomTexCoord - info.topTexCoord
+        local cx, cy, i = PLATE.cutX, PLATE.cutY, 0
+        for row = 1, 3 do
+            for col = 1, 3 do
+                i = i + 1
+                local tex = plate.pieces[i]
+                local x1, x2, y1, y2 = cx[col], cx[col + 1], cy[row], cy[row + 1]
+                local u1 = info.leftTexCoord + x1 / PLATE.artW * du
+                local u2 = info.leftTexCoord + x2 / PLATE.artW * du
+                if flip then u1, u2 = u2, u1 end
+                tex:SetTexture(info.file)
+                tex:SetTexCoord(u1, u2, info.topTexCoord + y1 / PLATE.artH * dv, info.topTexCoord + y2 / PLATE.artH * dv)
+                PlaceOnPlate(tex, f, s, flip, x1, x2, y1, y2)
+                tex:Show()
+            end
+        end
+    end
+    local n = PLATE.name
+    PlaceOnPlate(plate.NameBox, f, s, flip, n[1], n[2], n[3], n[4])
+    PlaceOnPlate(plate.Strip, f, s, flip, n[1], n[2], n[3], n[4])
+    if not SetAtlasSafe(plate.Strip, PLATE.strip) then plate.Strip:Hide() end
+    PlaceBar(f.Health, f, s, flip, PLATE.health)
+    PlaceBar(f.Power, f, s, flip, PLATE.power)
+    f.Power:Show()
+    Ring.UpdatePlate(f)
+end
+
+-- the name box's glow in the unit's reaction colour, as on Blizzard's target and focus frames (the
+-- player's has none)
+function Ring.UpdatePlate(f)
+    local plate = f.PlateFrame
+    if not (plate and plate:IsShown()) then return end
+    local unit = f.unit
+    if unit == "player" or not UnitExists(unit) then
+        plate.Strip:Hide()
+        return
+    end
+    local r, g, b = UnitSelectionColor(unit)
+    plate.Strip:SetVertexColor(r, g, b, 1)
+    plate.Strip:Show()
+end
+
+-- the name box, for the name to sit in (nil off the plate)
+function Ring.NameBox(f)
+    return f.PlateFrame and f.PlateFrame:IsShown() and f.PlateFrame.NameBox or nil
+end
+
+local function HidePlate(f)
+    if not f.PlateFrame then return end
+    f.PlateFrame:Hide()
+    if f.Health.bg then f.Health.bg:SetAlpha(1) end
+    if f.Power.bg then f.Power.bg:SetAlpha(1) end
+    for _, bar in ipairs({ f.Health, f.Power }) do
+        local tex = bar:GetStatusBarTexture()
+        if tex then tex:SetDesaturated(false) end
+    end
+end
+Ring.HidePlate = HidePlate
+
 -- back to the usual style: levels, parents and masks as UnitFrames made them
 function Ring.Reset(f)
+    HidePlate(f)
     local ring = f.RingFrame
     if not ring then return end
     frames[f] = nil
@@ -589,6 +776,7 @@ end
 function Ring.Update(f)
     local ring = f.RingFrame
     if not ring or not Ring.Applies(f) then return end
+    Ring.UpdatePlate(f)
     local unit, g, blizz = f.unit, Geometry(f), BLIZZ[f.unit]
     local exists = Readable(UnitExists(unit))
 
@@ -801,28 +989,54 @@ local function RestoreSwitches(db, switches)
     end
 end
 
--- Switches the style: the setup in use is kept for its style, and the other style's comes back (the
--- first time: the Forever preset, or the Addon style's defaults). What is switched on stays.
-function Ring.SetOn(on)
+-- Forever Style's first time: the frames take the plate's proportions for their ring (the name box
+-- as Blizzard's), the ring keeping its size
+local function ApplyPlatePreset(db)
+    for unit in pairs(Ring.PLATE_UNITS) do
+        local udb = db.units and db.units[unit]
+        if udb then
+            local D = udb.ringSize or DefaultDiameter(udb.height)
+            udb.ringSize = math.floor(D + 0.5)
+            udb.height = math.floor((PLATE.y1 - PLATE.y0) * PlateScale(D) + 0.5)
+        end
+    end
+end
+
+-- each style's stored setup (styleProfiles keys: "usual" and "forever" are the older names)
+local STYLE_SLOT = { addon = "usual", flareui = "forever", forever = "plate" }
+
+-- Switches the style: the setup in use is kept for its style, and the new style's comes back (the
+-- first time: Forever Style starts from the FlareUI Style setup with the plate's proportions,
+-- FlareUI Style from its preset, Addon Style from the defaults). What is switched on stays.
+function Ring.SetStyle(style)
     local db = GetDb()
-    if not db or (db.foreverStyle and true or false) == on then return end
+    local current = Ring.Style()
+    if not db or not STYLE_SLOT[style] or current == style then return end
     local switches = CaptureSwitches(db, {}, {})
     db.styleProfiles = db.styleProfiles or {}
-    local leaving, coming = on and "usual" or "forever", on and "forever" or "usual"
     local saved = {}
     for k, v in pairs(db) do
         if not SHARED_KEYS[k] then saved[k] = CopyRaw(v) end
     end
-    db.styleProfiles[leaving] = saved
-    local back = db.styleProfiles[coming]
-    if back then
+    db.styleProfiles[STYLE_SLOT[current]] = saved
+    local function Restore(back)
         for k, v in pairs(db) do
             if not SHARED_KEYS[k] then
                 if type(v) == "table" and getmetatable(v) then Clear(v) else db[k] = nil end
             end
         end
         Fill(db, back, true)
-    elseif on then
+    end
+    local back = db.styleProfiles[STYLE_SLOT[style]]
+    if back then
+        Restore(back)
+    elseif style == "forever" then
+        -- from FlareUI Style's setup: the one in use, or the stored one, or its preset
+        if current ~= "flareui" then
+            if db.styleProfiles.forever then Restore(db.styleProfiles.forever) else ApplyForeverPreset(db) end
+        end
+        ApplyPlatePreset(db)
+    elseif style == "flareui" then
         -- the preset's positions: none stored, so the style's defaults apply (party frames keep theirs)
         ApplyForeverPreset(db)
     else
@@ -836,7 +1050,8 @@ function Ring.SetOn(on)
         db.totemLayouts = {}
     end
     RestoreSwitches(db, switches)
-    db.foreverStyle = on and true or false
+    db.foreverStyle = style ~= "addon"
+    db.plateStyle = style == "forever"
 end
 
 --------------------------------------------------

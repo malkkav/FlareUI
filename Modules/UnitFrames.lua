@@ -2070,6 +2070,16 @@ local function LayoutBars(f)
     local space, mirror = PortraitSpace(f), udb.mirror and true or false
     local left, right = PADDING + (mirror and 0 or space), PADDING + (mirror and space or 0)
 
+    if f.Portrait and ns.UFRing and ns.UFRing.Plate(f) then
+        -- Forever Style: the bars sit in the frame plate's slots, the ring beside it
+        f.Separator:Hide()
+        if f.Combo then f.Combo:Hide() end
+        ns.UFRing.LayoutPlate(f)
+        ns.UFRing.Layout(f)
+        UpdatePortrait(f)
+        return
+    end
+
     health:ClearAllPoints()
     power:ClearAllPoints()
     health:SetPoint("TOPLEFT", f, "TOPLEFT", left, -PADDING)
@@ -2159,13 +2169,25 @@ local function LayoutFrame(f)
     local width, height = udb.width or 220, udb.height or 44
     local powerHeight = udb.powerHeight or 8
     local PADDING = INSET
+    -- Forever Style: the frame plate is the background and the border, and has a least size
+    local plate = ns.UFRing and ns.UFRing.Plate(f)
+    if plate then
+        local minW, minH = ns.UFRing.PlateMinSize(f)
+        width, height = math.max(width, minW), math.max(height, minH)
+    end
     f:SetSize(width, height)
 
-    local edgeFile = GetBorderFile(udb.border)
-    f:SetBackdrop({ bgFile = BACKDROP_FILE, insets = { left = PADDING, right = PADDING, top = PADDING, bottom = PADDING } })
-    f:SetBackdropColor(0, 0, 0, BG_OPACITY)
-    -- the border's own frame sits above the bars
-    ApplyBorderStyle(f.Border, edgeFile, height)
+    if plate then
+        f:SetBackdrop(nil)
+        f.Border:Hide()
+    else
+        local edgeFile = GetBorderFile(udb.border)
+        f:SetBackdrop({ bgFile = BACKDROP_FILE, insets = { left = PADDING, right = PADDING, top = PADDING, bottom = PADDING } })
+        f:SetBackdropColor(0, 0, 0, BG_OPACITY)
+        -- the border's own frame sits above the bars
+        ApplyBorderStyle(f.Border, edgeFile, height)
+        f.Border:Show()
+    end
 
     local texture = GetBarTexture(udb.texture)
     local health, power = f.Health, f.Power
@@ -2226,7 +2248,22 @@ local function LayoutFrame(f)
         f.Name:SetPoint("RIGHT", f.HealthText, "LEFT", -4, 0)
         f.PowerText:SetPoint("RIGHT", power, "RIGHT", -TEXT_INSET, 0)
     end
-    f.PowerText:SetShown(udb.powerText and powerHeight >= 10)
+    -- Forever Style: the name centred in the plate's name box, the numbers centred in their bars
+    local nameBox = ringOn and ns.UFRing.NameBox(f)
+    if nameBox then
+        f.Name:ClearAllPoints()
+        f.Name:SetPoint("LEFT", nameBox, "LEFT", TEXT_INSET, 0)
+        f.Name:SetPoint("RIGHT", nameBox, "RIGHT", -TEXT_INSET, 0)
+        f.Name:SetJustifyH("CENTER")
+        f.HealthText:ClearAllPoints()
+        f.HealthText:SetPoint("CENTER", health, "CENTER", 0, 0)
+        f.HealthText:SetJustifyH("CENTER")
+        f.PowerText:ClearAllPoints()
+        f.PowerText:SetPoint("CENTER", power, "CENTER", 0, 0)
+        f.PowerText:SetJustifyH("CENTER")
+    end
+    -- (the plate's power bar is always tall enough for its number)
+    f.PowerText:SetShown(udb.powerText and (nameBox or powerHeight >= 10) and true or false)
     if ringOn then
         ns.UFRing.LayoutLevel(f)
         -- the classic gems follow the ring's size and side
@@ -2720,7 +2757,9 @@ local function BuildSettings(unit)
         { name = L["Width"], kind = LEM.SettingType.Slider, default = defaults.width or 220, minValue = 60, maxValue = 500, valueStep = 2, get = get("width"), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = defaults.height or 44, minValue = 16, maxValue = 120, valueStep = 1, get = get("height"), set = set("height") },
         { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = defaults.powerHeight or 8, minValue = 0, maxValue = 40, valueStep = 1, get = get("powerHeight"), set = set("powerHeight"),
-          formatter = function(value) return value == 0 and _G.OFF or value end },
+          formatter = function(value) return value == 0 and _G.OFF or value end,
+          -- Forever Style: the plate has its own power slot
+          hidden = function() return ns.UFRing and ns.UFRing.Plate(frames[unit]) or false end },
     }
     if info.portrait and ns.UFRing then
         -- the Forever style's ring (and the portrait in it)
@@ -2785,10 +2824,12 @@ local function BuildSettings(unit)
     Section, settings = EditSections()
     Section("Frame", frameItems)
 
-    -- the bars' texture and the border; the Forever style's ring frames keep their own border
+    -- the bars' texture and the border; the ring styles keep their own border
     local lookItems = {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.texture or DEFAULT_TEXTURE, values = BuildTextureValues(false),
-          get = function() local u = GetUnitDb(unit); return u and u.texture or DEFAULT_TEXTURE end, set = set("texture") },
+          get = function() local u = GetUnitDb(unit); return u and u.texture or DEFAULT_TEXTURE end, set = set("texture"),
+          -- Forever Style: the bars are Blizzard's
+          hidden = function() return ns.UFRing and ns.UFRing.Plate(frames[unit]) or false end },
         { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BORDER, values = BuildBorderValues(false),
           get = function() local u = GetUnitDb(unit); return u and u.border or DEFAULT_BORDER end, set = set("border"),
           hidden = function() return ns.UFRing and ns.UFRing.Applies(frames[unit]) or false end },
