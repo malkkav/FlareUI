@@ -1,4 +1,4 @@
-local ADDON_NAME = ...
+local ADDON_NAME, ns = ...
 
 --------------------------------------------------
 -- MEDIA
@@ -52,3 +52,9 @@ for mediaType, entries in pairs(ASSETS) do
         end
     end
 end
+
+-- LibSharedMedia's own bar textures (it adds them in every addon's copy, and they can't be taken
+-- out): FlareUI's dropdowns leave them out. A frame already set to one keeps it.
+ns.HIDDEN_STATUSBARS = {
+    ["Blizzard"] = true, ["Blizzard Character Skills Bar"] = true, ["Blizzard Raid Bar"] = true, ["Solid"] = true,
+}

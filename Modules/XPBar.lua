@@ -50,10 +50,12 @@ local function GetTexture()
     return LSM:Fetch("statusbar", name) or "Interface\\Buttons\\WHITE8x8"
 end
 
--- Bar Texture's choices: every LibSharedMedia bar texture
+-- Bar Texture's choices: every LibSharedMedia bar texture but its own Blizzard ones
 local function TextureValues()
     local values = {}
-    for _, name in ipairs(LSM:List("statusbar")) do values[#values + 1] = { text = name, value = name, isRadio = true } end
+    for _, name in ipairs(LSM:List("statusbar")) do
+        if not (ns.HIDDEN_STATUSBARS and ns.HIDDEN_STATUSBARS[name]) then values[#values + 1] = { text = name, value = name, isRadio = true } end
+    end
     return values
 end
 

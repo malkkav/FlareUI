@@ -1,3 +1,9 @@
+# FlareUI 2.1.1
+
+## Changed
+- Bar texture dropdowns (bars, absorbs, cast bars, the XP bar) no longer list LibSharedMedia's built-in Blizzard textures (Blizzard, Blizzard Character Skills Bar, Blizzard Raid Bar, Solid). A frame already set to one keeps it. Textures from other media addons still show.
+- Libraries updated: LibSharedMedia-3.0 (latest) and AceDB-3.0 (Ace3's WoW Forever character names). Your settings are kept.
+
 # FlareUI 2.1.0
 
 Two new looks: Forever Style unit frames on Blizzard's own frame plate, and FlareUI Style party and boss frames with the portrait ring.

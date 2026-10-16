@@ -2682,12 +2682,14 @@ end
 --------------------------------------------------
 -- 16. EDIT MODE SETTINGS
 --------------------------------------------------
--- LibSharedMedia names for the Edit Mode dropdowns; "" = the frame's own texture
+-- LibSharedMedia names for the Edit Mode dropdowns (not its own Blizzard ones); "" = the frame's own texture
 local function BuildTextureValues(withFrameDefault)
     local values = {}
     if withFrameDefault then values[#values + 1] = { text = L["Frame Texture"], value = "", isRadio = true } end
     for _, name in ipairs(LSM:List("statusbar")) do
-        values[#values + 1] = { text = name, value = name, isRadio = true }
+        if not (ns.HIDDEN_STATUSBARS and ns.HIDDEN_STATUSBARS[name]) then
+            values[#values + 1] = { text = name, value = name, isRadio = true }
+        end
     end
     return values
 end
