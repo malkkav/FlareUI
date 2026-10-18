@@ -866,7 +866,8 @@ local function BuildSettings()
     -- inside the tile only; a place taken by one kind is greyed out on the others
     local places = {}
     for _, p in ipairs(Tile.AURA_POSITION_VALUES) do
-        if p.value == "OFF" or p.value:find("^INSIDE") then places[#places + 1] = p end
+        -- (the corners only: the whole-width inside places are the party and boss frames')
+        if p.value == "OFF" or (p.value:find("^INSIDE") and not Tile.WIDE_PLACES[p.value]) then places[#places + 1] = p end
     end
     local AURA_FIELDS = { "buffs", "debuffs", "dispels" }
     local function Place(field)

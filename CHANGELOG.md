@@ -1,3 +1,17 @@
+# FlareUI 2.2.0
+
+Improvements from your feedback: whole-width aura rows, cast bars that make room for auras, tooltip level colours and a tidier minimap.
+
+## New
+- Unit Frames: buffs and debuffs can go **Top** or **Bottom**, across the frame's whole width. Party and boss frames get **Above the Frame**, **Below the Frame**, **Inside, Top** and **Inside, Bottom**. A whole-width place greys out the other places on that edge for the other kind of aura.
+- Tooltips: the target's level is coloured by difficulty against yours (grey, green, yellow, orange, red), as quests are.
+- Minimap: a **Fonts** tab for the zone name and the clock.
+- Minimap: drag and drop the buttons in the addon button drawer to reorder them. The order is kept, and new addons go last.
+
+## Changed
+- Target, focus, party and boss frames: auras sit right against the frame. The cast bar shows next to the frame and, while it shows, pushes the auras on its side out past it; they come back when the cast ends.
+- Party frames: **Left of the Frame** is gone from the aura places, and boss frames lose **Right of the Frame**. Auras set there move to the other side.
+
 # FlareUI 2.1.1
 
 ## Changed

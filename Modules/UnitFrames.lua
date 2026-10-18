@@ -717,6 +717,11 @@ local function CreateCastBar(parent, unit)
         cast.TimerBinding = binding
     end
 
+    -- shown / hidden: the owner moves the auras on the cast bar's side (cast.onShownChanged)
+    local function ShownChanged(self) if self.onShownChanged then self.onShownChanged(self) end end
+    cast:HookScript("OnShow", ShownChanged)
+    cast:HookScript("OnHide", ShownChanged)
+
     castBars[#castBars + 1] = cast
     return cast
 end
@@ -1040,7 +1045,9 @@ end
 -- are access-restricted and never show).
 --------------------------------------------------
 local AURA_CONTAINER_TEMPLATE = "CustomAuraContainerTemplate"
-local AURA_CORNERS = { "TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT" }
+-- (TOP and BOTTOM: the whole width of the frame)
+local AURA_CORNERS = { "TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT", "TOP", "BOTTOM" }
+local AURA = { FULL = { TOP = true, BOTTOM = true } }
 local AURA_SPACING = 2
 local auraSupport   -- nil = unknown, true / false after the first probe
 
@@ -1175,8 +1182,15 @@ local function ConfigureAuraCorner(f, corner, lanes)
 
     local size = udb.auraSize or 20
     -- each corner wraps a little before the middle of the frame; at most two full rows of the
-    -- chosen size (so an even count, 4 or more): bigger icons, fewer of them
-    local lineSize = math.max(size, math_floor(f:GetWidth() / 2) - INSET - 4)
+    -- chosen size (so an even count, 4 or more): bigger icons, fewer of them. Top / Bottom: the
+    -- frame's whole width, less the ring's room on its side
+    local lineSize
+    if AURA.FULL[corner] then
+        local clear = (ns.UFRing and ns.UFRing.Applies(f)) and ns.UFRing.Clearance(f, AURA_GAP) or 0
+        lineSize = math.max(size, f:GetWidth() - 2 * INSET - clear)
+    else
+        lineSize = math.max(size, math_floor(f:GetWidth() / 2) - INSET - 4)
+    end
     local max = 2 * math.max(2, math_floor((lineSize + AURA_SPACING) / (size + AURA_SPACING)))
     entry.generation = entry.generation + 1
     local gen = entry.generation
@@ -1207,8 +1221,9 @@ local function ConfigureAuraCorner(f, corner, lanes)
     end
 
     -- grow away from the corner: right/left along the edge, up from the top, down from the bottom;
-    -- wrap a little before the middle of the frame so two corners on one edge never meet
-    local isTop, isLeft = corner:find("^TOP") ~= nil, corner:find("LEFT$") ~= nil
+    -- wrap a little before the middle of the frame so two corners on one edge never meet (Top /
+    -- Bottom: from the left, across)
+    local isTop, isLeft = corner:find("^TOP") ~= nil, AURA.FULL[corner] or corner:find("LEFT$") ~= nil
     pcall(container.SetFlowLayoutAxis, container, AnchorUtil.FlowLayoutAxis.Horizontal)
     pcall(container.SetFlowLayoutAnchorPoint, container, (isTop and "BOTTOM" or "TOP") .. (isLeft and "LEFT" or "RIGHT"))
     pcall(container.SetFlowLayoutGrowthDirection, container,
@@ -1222,28 +1237,44 @@ local function ConfigureAuraCorner(f, corner, lanes)
     pcall(container.UpdateAllAuras, container)
 end
 
+-- Where a place's container sits: on the frame's corner a few px out; Top / Bottom from the left
+-- corner. On the cast bar's side, past the cast bar while it shows (it pushes them out, and they come
+-- back when it hides). In the ring styles a corner on the ring's side starts where the ring ends at
+-- that height.
+function AURA.Placement(f, corner)
+    local isTop = corner:find("^TOP") ~= nil
+    local isLeft = AURA.FULL[corner] or corner:find("LEFT$") ~= nil
+    local x = isLeft and INSET or -INSET
+    local y = isTop and AURA_GAP or -AURA_GAP
+    local udb = GetUnitDb(f.unit)
+    if f.Cast and f.Cast:IsShown() and udb and UNITS[f.unit].castbar and (udb.castbarPosition == "TOP") == isTop then
+        -- the cast bar's gap from the frame, the bar, and the same gap again before the auras
+        local reach = (udb.castHeight or CAST_HEIGHT) + 2 * CAST_GAP
+        y = isTop and reach or -reach
+    end
+    if ns.UFRing and ns.UFRing.Applies(f) and (ns.UFRing.Side(f) == "LEFT") == isLeft then
+        local clear = ns.UFRing.Clearance(f, math.abs(y))
+        x = x + (isLeft and clear or -clear)
+    end
+    return isTop, isLeft, x, y
+end
+
+-- Two places clash: the same one, or a whole-width one and anything on its edge
+function AURA.Clash(a, b)
+    if not a or not b or a == "OFF" or b == "OFF" then return false end
+    if a == b then return true end
+    return (a:find("^TOP") ~= nil) == (b:find("^TOP") ~= nil) and (AURA.FULL[a] or AURA.FULL[b]) or false
+end
+
 local function PositionAuraContainers(f)
     if not f.Auras then return end
-    local inset = INSET
     for corner, entry in pairs(f.Auras) do
         local c = entry.container
-        local isTop, isLeft = corner:find("^TOP") ~= nil, corner:find("LEFT$") ~= nil
-        local x = isLeft and inset or -inset
-        local y = isTop and AURA_GAP or -AURA_GAP
-        -- beyond the cast bar when it sits on this side
-        local udb = GetUnitDb(f.unit)
-        if f.Cast and udb and UNITS[f.unit].castbar and (udb.castbarPosition == "TOP") == isTop then
-            local castRoom = (udb.castHeight or CAST_HEIGHT) + CAST_GAP
-            y = y + (isTop and castRoom or -castRoom)
-        end
-        -- Forever style: a corner on the ring's side starts where the ring ends at that height
-        if ns.UFRing and ns.UFRing.Applies(f) and (ns.UFRing.Side(f) == "LEFT") == isLeft then
-            local clear = ns.UFRing.Clearance(f, math.abs(y))
-            x = x + (isLeft and clear or -clear)
-        end
+        local isTop, isLeft, x, y = AURA.Placement(f, corner)
         c:ClearAllPoints()
         -- container's own corner nearest the frame sits on the frame's corner, a few px out
-        c:SetPoint((isTop and "BOTTOM" or "TOP") .. (isLeft and "LEFT" or "RIGHT"), f, corner, x, y)
+        c:SetPoint((isTop and "BOTTOM" or "TOP") .. (isLeft and "LEFT" or "RIGHT"), f,
+            (isTop and "TOP" or "BOTTOM") .. (isLeft and "LEFT" or "RIGHT"), x, y)
         c:SetFrameLevel(f:GetFrameLevel() + 4)
     end
 end
@@ -2382,6 +2413,8 @@ local function LayoutFrame(f)
             if ns.UFRing.Side(f) == "LEFT" then leftExtra = clear else rightExtra = clear end
         end
         LayoutCastBar(f.Cast, GetCastStyle(udb, false), f, udb.castbarPosition == "TOP" and "TOP" or "BOTTOM", leftExtra, rightExtra)
+        -- the auras on its side move out while it shows (in a fight too: they are not protected)
+        f.Cast.onShownChanged = function() PositionAuraContainers(f) end
     end
 
     LayoutAuras(f)
@@ -2963,19 +2996,22 @@ local function BuildSettings(unit)
     if info.auras then
         local positions = {
             { text = L["Off"],          value = "OFF" },
+            { text = L["Top"],          value = "TOP" },
             { text = L["Top Left"],     value = "TOPLEFT" },
             { text = L["Top Right"],    value = "TOPRIGHT" },
+            { text = L["Bottom"],       value = "BOTTOM" },
             { text = L["Bottom Left"],  value = "BOTTOMLEFT" },
             { text = L["Bottom Right"], value = "BOTTOMRIGHT" },
         }
-        -- buffs and debuffs never share a corner: the other kind's corner is greyed out
+        -- buffs and debuffs never share a place: one that clashes with the other kind's (the same
+        -- corner, or Top / Bottom and anything on that edge) is greyed out
         local function Corner(field, other)
             return function(_, rootDescription, data)
                 for _, p in ipairs(positions) do
                     local radio = rootDescription:CreateRadio(p.text,
                         function(value) return (get(field)() or "OFF") == value end,
                         function(value) data.set(nil, value) end, p.value)
-                    if p.value ~= "OFF" and get(other)() == p.value and radio.SetEnabled then radio:SetEnabled(false) end
+                    if AURA.Clash(p.value, get(other)()) and radio.SetEnabled then radio:SetEnabled(false) end
                 end
             end
         end

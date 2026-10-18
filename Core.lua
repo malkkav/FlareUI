@@ -359,6 +359,9 @@ local defaults = {
             autoZoom = 5,               -- seconds before zooming back out (0 = off)
             buttonBag = true,           -- the badge opens a bag with every addon's minimap button (MinimapBag.lua)
             clockStats = true,          -- framerate and latency in the clock's tooltip
+            -- Fonts tab: the zone name and the clock (Forever's own look by default)
+            zoneFont  = { face = "Friz Quadrata TT", size = 10, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            clockFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
         },
 
         -- [[ UNIT FRAMES MODULE ]]

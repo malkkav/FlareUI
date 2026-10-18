@@ -39,6 +39,7 @@ ns.Copy = {
         },
         mm = {
             desc = L["A square minimap with some tricks under the hood."],
+            tabs = { L["Settings"], L["Fonts"] },
             title = L["Minimap"],
         },
         qol = {
@@ -559,13 +560,21 @@ ns.Copy = {
             label = L["Size"],
         },
         ["mm.bag"] = {
-            desc = L["Every addon's minimap button in one drawer."],
+            desc = L["Every addon's minimap button in one drawer. Click the day/night badge to open it."],
             label = L["Addon button drawer"],
-            tip = L["Click the day/night badge to open it."],
+            tip = L["Drag and drop buttons to reorder them."],
         },
         ["mm.clockStats"] = {
             desc = L["Your framerate and latency in the clock's tooltip."],
             label = L["FPS and Latency on Clock"],
+        },
+        ["mm.font.clock"] = {
+            desc = L["The time at the right end of the bar."],
+            label = L["Clock"],
+        },
+        ["mm.font.zone"] = {
+            desc = L["The zone's name along the top of the minimap."],
+            label = L["Zone name"],
         },
         ["mm.zoom"] = {
             choices = { L["Off"], L["5 s"], L["10 s"], L["30 s"] },

@@ -60,23 +60,44 @@ local RANGE_ALPHA = 0.45             -- a member out of range
 -- auras per lane and per row, by party style (an owner's view gives its own: auraMax, auraPerRow)
 local PARTY_AURA_GRID = { classic = { 5, 5 }, raid = { 6, 3 } }
 
--- Where a lane of auras can go: beside / above / below the frame, or inside the health bar (and
--- PORTRAIT: the party frames' dispel icon, big in the portrait's middle, or the health bar's)
-local AURA_POSITIONS = { "RIGHT", "LEFT", "ABOVE", "ABOVE_RIGHT", "BELOW", "BELOW_RIGHT",
-                         "INSIDE_TOPLEFT", "INSIDE_TOPRIGHT", "INSIDE_BOTTOMLEFT", "INSIDE_BOTTOMRIGHT", "PORTRAIT" }
+-- Where a lane of auras can go: beside / above / below the frame, or inside the health bar; the
+-- *_WIDE and INSIDE_TOP / INSIDE_BOTTOM places take the whole width (and PORTRAIT: the party frames'
+-- dispel icons, on the portrait or the health bar's middle)
+local AURA_POSITIONS = { "RIGHT", "LEFT", "ABOVE", "ABOVE_RIGHT", "ABOVE_WIDE", "BELOW", "BELOW_RIGHT", "BELOW_WIDE",
+                         "INSIDE_TOPLEFT", "INSIDE_TOPRIGHT", "INSIDE_TOP", "INSIDE_BOTTOMLEFT", "INSIDE_BOTTOMRIGHT",
+                         "INSIDE_BOTTOM", "PORTRAIT" }
 local AURA_POSITION_VALUES = {
     { text = L["Off"],                 value = "OFF",                isRadio = true },
     { text = L["Right of the Frame"],  value = "RIGHT",              isRadio = true },
     { text = L["Left of the Frame"],   value = "LEFT",               isRadio = true },
+    { text = L["Above the Frame"],        value = "ABOVE_WIDE",   isRadio = true },
     { text = L["Above the Frame, Left"],  value = "ABOVE",        isRadio = true },
     { text = L["Above the Frame, Right"], value = "ABOVE_RIGHT",  isRadio = true },
+    { text = L["Below the Frame"],        value = "BELOW_WIDE",   isRadio = true },
     { text = L["Below the Frame, Left"],  value = "BELOW",        isRadio = true },
     { text = L["Below the Frame, Right"], value = "BELOW_RIGHT",  isRadio = true },
+    { text = L["Inside, Top"],          value = "INSIDE_TOP",         isRadio = true },
     { text = L["Inside, Top Left"],     value = "INSIDE_TOPLEFT",     isRadio = true },
     { text = L["Inside, Top Right"],    value = "INSIDE_TOPRIGHT",    isRadio = true },
+    { text = L["Inside, Bottom"],       value = "INSIDE_BOTTOM",      isRadio = true },
     { text = L["Inside, Bottom Left"],  value = "INSIDE_BOTTOMLEFT",  isRadio = true },
     { text = L["Inside, Bottom Right"], value = "INSIDE_BOTTOMRIGHT", isRadio = true },
 }
+-- the places along one edge, and the whole-width ones: a whole-width place shares its edge with
+-- nothing, so it greys out the others on that edge (and they grey it out)
+local PLACE_EDGE = { ABOVE = "above", ABOVE_RIGHT = "above", ABOVE_WIDE = "above",
+                     BELOW = "below", BELOW_RIGHT = "below", BELOW_WIDE = "below",
+                     INSIDE_TOPLEFT = "insideTop", INSIDE_TOPRIGHT = "insideTop", INSIDE_TOP = "insideTop",
+                     INSIDE_BOTTOMLEFT = "insideBottom", INSIDE_BOTTOMRIGHT = "insideBottom", INSIDE_BOTTOM = "insideBottom" }
+local WIDE_PLACES = { ABOVE_WIDE = true, BELOW_WIDE = true, INSIDE_TOP = true, INSIDE_BOTTOM = true }
+local function PlacesClash(a, b)
+    if not a or not b or a == "OFF" or b == "OFF" then return false end
+    if a == b then return true end
+    return PLACE_EDGE[a] ~= nil and PLACE_EDGE[a] == PLACE_EDGE[b] and (WIDE_PLACES[a] or WIDE_PLACES[b]) or false
+end
+-- the places below the frame (the cast bar goes past the auras there)
+local BELOW_PLACES = { "BELOW", "BELOW_RIGHT", "BELOW_WIDE" }
+local ABOVE_PLACES = { "ABOVE", "ABOVE_RIGHT", "ABOVE_WIDE" }
 
 -- Blizzard's raid frame center status (CompactUnitFrame.lua centerStatusSetupData)
 local STATUS_ATLAS = {
@@ -195,12 +216,30 @@ end
 -- Above or below the frame, as on the unit frames: each lane wraps a little before the frame's
 -- middle, two rows at most, so the frame's width and the aura size set how many fit (elsewhere: the
 -- fixed grid)
-local EDGE_PLACES = { ABOVE = true, ABOVE_RIGHT = true, BELOW = true, BELOW_RIGHT = true }
-local function AuraFit(st, pos)
-    if not EDGE_PLACES[pos] then return AuraGrid(st) end
+-- The whole-width places fill the frame's width (inside: the health bar's, in as many rows as the
+-- fixed grid has), less the portrait ring's room on its side (f: the tile, when there is one).
+local EDGE_PLACES = { ABOVE = true, ABOVE_RIGHT = true, ABOVE_WIDE = true, BELOW = true, BELOW_RIGHT = true, BELOW_WIDE = true }
+local function AuraFit(st, pos, f)
     local size = st.auraSize or 18
-    local lineSize = math_max(size, math_floor((st.width or 200) / 2) - K.INSET - 4)
-    local perRow = math_max(2, math_floor((lineSize + AURA_SPACING) / (size + AURA_SPACING)))
+    local function PerRow(lineSize)
+        return math_max(2, math_floor((math_max(size, lineSize) + AURA_SPACING) / (size + AURA_SPACING)))
+    end
+    if pos == "INSIDE_TOP" or pos == "INSIDE_BOTTOM" then
+        local gridMax, gridPerRow = AuraGrid(st)
+        local rows = math.ceil((gridMax or 5) / math_max(1, gridPerRow or 5))
+        local width = (f and f.Health and f.Health:GetWidth()) or ((st.width or 200) - 2 * K.INSET)
+        local perRow = PerRow(width - 4)
+        return rows * perRow, perRow
+    end
+    if not EDGE_PLACES[pos] then return AuraGrid(st) end
+    local lineSize
+    if WIDE_PLACES[pos] then
+        local clear = (f and f.ringKind and ns.UFRing) and ns.UFRing.Clearance(f, K.AURA_GAP) or 0
+        lineSize = (st.width or 200) - 2 * K.INSET - clear
+    else
+        lineSize = math_floor((st.width or 200) / 2) - K.INSET - 4
+    end
+    local perRow = PerRow(lineSize)
     return 2 * perRow, perRow
 end
 
@@ -701,21 +740,6 @@ local function LaneLook(size, isDebuff, inside)
     return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, UFAura("auraStyle", "square"), "icon", timer)
 end
 
--- Below a frame come its cast bar and pet, then any auras placed below it
-local function BelowOffset(f)
-    local st = TS(f)
-    local y = 0
-    if st.castbar then y = y + (st.castHeight or 16) + K.CAST_GAP + K.INSET end
-    if f.ctx then return y end
-    local party = GetPartyDb()
-    if party.pets then y = y + PET_GAP + (st.petHeight or 19) + 2 * K.INSET end
-    -- a horizontal party's targets sit under the frames too
-    if party.targets and party.orientation == "HORIZONTAL" then
-        y = y + TARGET_GAP + (st.targetHeight or 25)
-    end
-    return y
-end
-
 -- Where a place's auras start and which way they grow
 local SIDE_GAP = 4   -- beside the frame
 local EDGE_GAP = K and K.AURA_GAP or 2   -- above and below it, as on the unit frames
@@ -733,12 +757,27 @@ local function AuraAnchor(f, pos)
         point, rel, relPoint, x, y, growH, growV = "BOTTOMLEFT", f, "TOPLEFT", K.INSET + RingClear(f, true, gap), gap, H.Right, H.Up
     elseif pos == "ABOVE_RIGHT" then
         point, rel, relPoint, x, y, growH, growV = "BOTTOMRIGHT", f, "TOPRIGHT", -K.INSET - RingClear(f, false, gap), gap, H.Left, H.Up
-    elseif pos == "BELOW" then
-        local below = gap + BelowOffset(f)
-        point, rel, relPoint, x, y, growH, growV = "TOPLEFT", f, "BOTTOMLEFT", K.INSET + RingClear(f, true, below), -below, H.Right, H.Down
-    elseif pos == "BELOW_RIGHT" then
-        local below = gap + BelowOffset(f)
-        point, rel, relPoint, x, y, growH, growV = "TOPRIGHT", f, "BOTTOMRIGHT", -K.INSET - RingClear(f, false, below), -below, H.Left, H.Down
+    elseif pos == "ABOVE_WIDE" then
+        -- the whole width, from the left (past the ring when it is on the left)
+        point, rel, relPoint, x, y, growH, growV = "BOTTOMLEFT", f, "TOPLEFT", K.INSET + RingClear(f, true, gap), gap, H.Right, H.Up
+    elseif pos == "BELOW" or pos == "BELOW_RIGHT" or pos == "BELOW_WIDE" then
+        -- under the frame; past the cast bar while it shows (it pushes them down, and they come back
+        -- up when it hides)
+        local below = gap
+        if f.Cast and f.Cast:IsShown() and f.Cast.isEnabled() then
+            local st = TS(f)
+            -- the cast bar's gap from the frame, the bar, and the same gap again before the auras
+            below = (st.castHeight or 16) + 2 * K.CAST_GAP
+        end
+        if pos == "BELOW_RIGHT" then
+            point, rel, relPoint, x, y, growH, growV = "TOPRIGHT", f, "BOTTOMRIGHT", -K.INSET - RingClear(f, false, below), -below, H.Left, H.Down
+        else
+            point, rel, relPoint, x, y, growH, growV = "TOPLEFT", f, "BOTTOMLEFT", K.INSET + RingClear(f, true, below), -below, H.Right, H.Down
+        end
+    elseif pos == "INSIDE_TOP" then
+        point, rel, relPoint, x, y, growH, growV = "TOPLEFT", health, "TOPLEFT", inset, -inset, H.Right, H.Down
+    elseif pos == "INSIDE_BOTTOM" then
+        point, rel, relPoint, x, y, growH, growV = "BOTTOMLEFT", health, "BOTTOMLEFT", inset, inset, H.Right, H.Up
     elseif pos == "INSIDE_TOPLEFT" then
         point, rel, relPoint, x, y, growH, growV = "TOPLEFT", health, "TOPLEFT", inset, -inset, H.Right, H.Down
     elseif pos == "INSIDE_TOPRIGHT" then
@@ -788,7 +827,7 @@ local function ConfigurePosition(f, pos, lanes)
     local db = K.GetDb()
     local portrait = pos == "PORTRAIT"
     local size = portrait and DispelGrid(f) or st.auraSize or 18
-    local max, perRow = AuraFit(st, pos)
+    local max, perRow = AuraFit(st, pos, f)
     if portrait then max, perRow = 4, 2 end
     local inside = portrait or pos:find("^INSIDE") ~= nil
     local showTimer = not inside and UFAura("auraTimer", "none") ~= "none"
@@ -849,7 +888,7 @@ local function ConfigureAuras(f)
     if not f.AuraPos then return end
     local st = TS(f)
     if not st then return end
-    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.width, st.portrait, (DispelGrid(f)), f.ringKind, AuraGrid(st), UFAura("auraStyle", "square"),
+    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.width, st.height, st.powerHeight, st.portrait, (DispelGrid(f)), f.ringKind, AuraGrid(st), UFAura("auraStyle", "square"),
         UFAura("auraTimer", "none"), st.bigBossDebuffs, st.castbar, st.castHeight, st.petHeight, (not f.ctx and GetPartyDb().pets))
     if f.auraSignature == sig then return end
     f.auraSignature = sig
@@ -1194,6 +1233,38 @@ local function LayoutIcons(f)
     end
 end
 
+-- An aura row's height: the icon, plus its timer when that hangs under it
+local function CellHeight(size)
+    if UFAura("auraTimer", "none") == "below" then return size + math_max(7, math_floor(size * 0.4 + 0.5)) + 3 end
+    return size
+end
+
+-- How far the lanes at these places reach out from the frame
+local function LanesExtent(st, places, across)
+    local size = st.auraSize or 18
+    local best = 0
+    for _, pos in ipairs(places) do
+        local max, perRow = AuraFit(st, pos)
+        local reach = 0
+        if across then
+            -- beside the frame: a row's width
+            if st.debuffs == pos or st.buffs == pos or st.dispels == pos then
+                local boss = (st.debuffs == pos and st.bigBossDebuffs ~= false) and math_floor(size * 0.5 + 0.5) * 2 or 0
+                reach = perRow * (size + AURA_SPACING) + boss
+            end
+        else
+            if st.debuffs == pos then
+                reach = reach + math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING)
+                if st.bigBossDebuffs ~= false then reach = reach + math_floor(size * 0.5 + 0.5) end
+            end
+            if st.dispels == pos then reach = reach + math.ceil(math_min(max, 3) / perRow) * (size + AURA_SPACING) end
+            if st.buffs == pos then reach = reach + math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING) end
+        end
+        if reach > best then best = reach end
+    end
+    return best > 0 and (best + (EDGE_PLACES[places[1]] and EDGE_GAP or SIDE_GAP)) or 0
+end
+
 local function LayoutMember(f)
     local st = TS(f)
     if not st then return end
@@ -1233,6 +1304,17 @@ local function LayoutMember(f)
             if f.ringSide == "LEFT" then leftExtra = clear else rightExtra = clear end
         end
         K.LayoutCastBar(f.Cast, CastStyle(st), f, "BOTTOM", leftExtra, rightExtra)
+        -- the auras below move down while it shows (in a fight too: they are not protected)
+        f.Cast.onShownChanged = function()
+            for _, pos in ipairs(BELOW_PLACES) do
+                local entry = f.AuraPos and f.AuraPos[pos]
+                if entry and entry.container:IsShown() then
+                    local point, rel, relPoint, x, y = AuraAnchor(f, pos)
+                    entry.container:ClearAllPoints()
+                    entry.container:SetPoint(point, rel, relPoint, x, y)
+                end
+            end
+        end
     end
     ConfigureAuras(f)
     ConfigureSlots(f)
@@ -1258,8 +1340,9 @@ local function LayoutPet(p)
     p.Name:ClearAllPoints()
     p.Name:SetPoint("LEFT", p.Health, "LEFT", K.TEXT_INSET, 0)
     p.Name:SetPoint("RIGHT", p.Health, "RIGHT", -K.TEXT_INSET, 0)
-    -- under the owner and its cast bar, right edges lined up
-    local y = -PET_GAP
+    -- under the owner, the room its auras below can take and its cast bar, right edges lined up (a
+    -- pet is a secure frame: it keeps this place in a fight, so the room is the most the auras take)
+    local y = -PET_GAP - LanesExtent(st, BELOW_PLACES)
     if owner.Cast and owner.Cast.isEnabled() then y = y - (st.castHeight or 16) - K.CAST_GAP - PADDING end
     p:ClearAllPoints()
     p:SetPoint("TOPRIGHT", owner, "BOTTOMRIGHT", 0, y)
@@ -1291,7 +1374,7 @@ local function LayoutTarget(t)
     local gap = TARGET_GAP
     t:ClearAllPoints()
     if party.orientation == "HORIZONTAL" then
-        local y = -gap
+        local y = -gap - LanesExtent(st, BELOW_PLACES)
         if owner.Cast and owner.Cast.isEnabled() then y = y - (st.castHeight or 16) - K.CAST_GAP - PADDING end
         if party.pets then y = y - PET_GAP - (st.petHeight or 19) - 2 * PADDING end
         t:SetPoint("TOPRIGHT", owner, "BOTTOMRIGHT", 0, y)
@@ -1300,44 +1383,12 @@ local function LayoutTarget(t)
     end
 end
 
--- An aura row's height: the icon, plus its timer when that hangs under it
-local function CellHeight(size)
-    if UFAura("auraTimer", "none") == "below" then return size + math_max(7, math_floor(size * 0.4 + 0.5)) + 3 end
-    return size
-end
-
--- How far the lanes at these places reach out from the frame
-local function LanesExtent(st, places, across)
-    local size = st.auraSize or 18
-    local best = 0
-    for _, pos in ipairs(places) do
-        local max, perRow = AuraFit(st, pos)
-        local reach = 0
-        if across then
-            -- beside the frame: a row's width
-            if st.debuffs == pos or st.buffs == pos or st.dispels == pos then
-                local boss = (st.debuffs == pos and st.bigBossDebuffs ~= false) and math_floor(size * 0.5 + 0.5) * 2 or 0
-                reach = perRow * (size + AURA_SPACING) + boss
-            end
-        else
-            if st.debuffs == pos then
-                reach = reach + math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING)
-                if st.bigBossDebuffs ~= false then reach = reach + math_floor(size * 0.5 + 0.5) end
-            end
-            if st.dispels == pos then reach = reach + math.ceil(math_min(max, 3) / perRow) * (size + AURA_SPACING) end
-            if st.buffs == pos then reach = reach + math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING) end
-        end
-        if reach > best then best = reach end
-    end
-    return best > 0 and (best + (EDGE_PLACES[places[1]] and EDGE_GAP or SIDE_GAP)) or 0
-end
-
 -- One step from a frame to the next, and where the first frame starts in the holder
 local function Step()
     local st = S()
     local party = GetPartyDb()
-    local above = LanesExtent(st, { "ABOVE", "ABOVE_RIGHT" })
-    local below = LanesExtent(st, { "BELOW", "BELOW_RIGHT" })
+    local above = LanesExtent(st, ABOVE_PLACES)
+    local below = LanesExtent(st, BELOW_PLACES)
     if party.orientation == "HORIZONTAL" then
         local left = LanesExtent(st, { "LEFT" }, true)
         local right = LanesExtent(st, { "RIGHT" }, true)
@@ -1553,7 +1604,7 @@ local function ApplyPreviewExtras(f, data)
     if f.noAuras then
         local function Row(place, count, icons, bossFirst)
             if not place or place == "OFF" or (count or 0) <= 0 then return end
-            local max, perRow = AuraFit(st, place)
+            local max, perRow = AuraFit(st, place, f)
             local point, rel, relPoint, x, y, growH = AuraAnchor(f, place)
             local sx = growH == AnchorUtil.FlowDirection.Left and -1 or 1
             local offset = 0
@@ -1598,7 +1649,7 @@ local function ApplyPreviewExtras(f, data)
         local point, rel, relPoint, x, y, growH, growV = AuraAnchor(f, pos)
         local sx = growH == AnchorUtil.FlowDirection.Left and -1 or 1
         local sy = growV == AnchorUtil.FlowDirection.Up and 1 or -1
-        local max, perRow = AuraFit(st, pos)
+        local max, perRow = AuraFit(st, pos, f)
         local skip = 0
         if st.debuffs == pos then
             skip = math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING)
@@ -2119,16 +2170,17 @@ local function BuildSettings()
     -- debuffs, buffs and dispel icons never share a place: a place taken by one is greyed out on
     -- the others
     local AURA_FIELDS = { "buffs", "debuffs", "dispels" }
+    local PARTY_PLACES = PF.AuraPlaces("LEFT")
     local function Place(field)
         return function(_, rootDescription, data)
             local st = S()
-            for _, p in ipairs(AURA_POSITION_VALUES) do
+            for _, p in ipairs(PARTY_PLACES) do
                 local radio = rootDescription:CreateRadio(p.text,
                     function(value) local now = S(); return now and now[field] == value end,
                     function(value) data.set(nil, value) end, p.value)
-                if st and p.value ~= "OFF" and radio.SetEnabled then
+                if st and radio.SetEnabled then
                     for _, other in ipairs(AURA_FIELDS) do
-                        if other ~= field and st[other] == p.value then radio:SetEnabled(false) end
+                        if other ~= field and PlacesClash(p.value, st[other]) then radio:SetEnabled(false) end
                     end
                 end
             end
@@ -2169,10 +2221,10 @@ local function BuildSettings()
     })
 
     Section("Auras", {
-        { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = D.buffs, values = AURA_POSITION_VALUES, generator = Place("buffs"),
+        { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = D.buffs, values = PARTY_PLACES, generator = Place("buffs"),
           get = getS("buffs"), set = setS("buffs"),
           desc = L["Buffs as Blizzard's raid frames pick them: mostly your own heals over time and buffs."] },
-        { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = AURA_POSITION_VALUES, generator = Place("debuffs"),
+        { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = PARTY_PLACES, generator = Place("debuffs"),
           get = getS("debuffs"), set = setS("debuffs"),
           desc = L["Debuffs as Blizzard's raid frames pick them: boss and role debuffs, priority debuffs, and the ones you can dispel."] },
         { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = D.dispelHighlight,
@@ -2362,8 +2414,19 @@ PF.Tile = {
     UpdateReadyCheck = UpdateReadyCheck, UpdateStatus = UpdateStatus, UpdateThreat = UpdateThreat,
     OnEnter = OnEnter, OnLeave = OnLeave,
     AURA_POSITION_VALUES = AURA_POSITION_VALUES, ICON_ORDER = ICON_ORDER, ICON_LABELS = ICON_LABELS,
+    PlacesClash = PlacesClash, ABOVE_PLACES = ABOVE_PLACES, BELOW_PLACES = BELOW_PLACES, WIDE_PLACES = WIDE_PLACES,
     IconShown = IconShown, IconStore = IconStore, LanesExtent = LanesExtent,
 }
+
+-- The aura places for a dropdown, without one (the party frames have no Left of the Frame, the
+-- boss frames no Right of the Frame: that side faces the screen's edge)
+function PF.AuraPlaces(without)
+    local list = {}
+    for _, p in ipairs(AURA_POSITION_VALUES) do
+        if p.value ~= without then list[#list + 1] = p end
+    end
+    return list
+end
 
 function PF:ShouldLoad()
     local db = K and K.GetDb()
@@ -2462,6 +2525,20 @@ function PF:Init()
         return
     end
     self.initialized = true
+
+    -- Left of the Frame is gone: auras set there move to the right (off when that is taken)
+    local party = GetPartyDb()
+    for _, key in ipairs({ "classic", "raid" }) do
+        local st = party and party[key]
+        if st then
+            for _, field in ipairs({ "buffs", "debuffs" }) do
+                if st[field] == "LEFT" then
+                    local other = field == "buffs" and "debuffs" or "buffs"
+                    st[field] = st[other] == "RIGHT" and "OFF" or "RIGHT"
+                end
+            end
+        end
+    end
 
     holder = CreateFrame("Frame", "FlareUI_Party", UIParent)
     holder:SetFrameStrata("LOW")

@@ -217,17 +217,54 @@ local function ColorName(tip, unit)
     line:SetText(ColorToHex(color[1], color[2], color[3]) .. text .. "|r")
 end
 
--- The level line is the first line that starts with the level word
+-- A unit's level against yours, in Blizzard's quest difficulty colours (grey, green, yellow,
+-- orange, red), by Blizzard's own steps (DifficultyUtil.GetRelativeDifficultyColor, which Forever
+-- doesn't load); "??" is red. nil when a level is unreadable.
+local DIFFICULTY_FALLBACK = {
+    impossible = { r = 1, g = 0.1, b = 0.1 }, verydifficult = { r = 1, g = 0.5, b = 0.25 },
+    difficult = { r = 1, g = 0.82, b = 0 }, standard = { r = 0.25, g = 0.75, b = 0.25 },
+    trivial = { r = 0.5, g = 0.5, b = 0.5 },
+}
+local function LevelColor(level)
+    local key
+    if level < 0 then
+        key = "impossible"
+    else
+        local mine = Readable(UnitEffectiveLevel and UnitEffectiveLevel("player")) or Readable(UnitLevel("player"))
+        if not mine then return nil end
+        local diff = level - mine
+        local green = (UnitQuestTrivialLevelRange and Readable(UnitQuestTrivialLevelRange("player")))
+            or (GetQuestGreenRange and Readable(GetQuestGreenRange())) or 8
+        if diff >= 5 then key = "impossible"
+        elseif diff >= 3 then key = "verydifficult"
+        elseif diff >= -4 then key = "difficult"
+        elseif -diff <= green then key = "standard"
+        else key = "trivial" end
+    end
+    local colors = _G.QuestDifficultyColors
+    return (colors and colors[key]) or DIFFICULTY_FALLBACK[key]
+end
+
+-- The level line is the first line that starts with the level word: "Level N" in the difficulty
+-- colour, the rest in the unit's reaction colour
 local function ColorLevelLine(tip, unit)
     local color = GetReactionColor(unit)
     if not color then return end
     local levelWord = _G.LEVEL
     if not levelWord then return end
+    local level = Readable(UnitLevel(unit))
+    local difficulty = level and LevelColor(level)
     for i = 2, tip:NumLines() do
         local line = _G["GameTooltipTextLeft" .. i]
         local text = line and line:GetText()
         if canaccessvalue(text) and type(text) == "string" and text:find("^" .. levelWord) then
-            line:SetText(ColorToHex(color[1], color[2], color[3]) .. text .. "|r")
+            local reaction = ColorToHex(color[1], color[2], color[3])
+            local head, rest = text:match("^(" .. levelWord .. "%s+%S+)(.*)$")
+            if difficulty and head then
+                line:SetText(ColorToHex(difficulty.r, difficulty.g, difficulty.b) .. head .. "|r" .. reaction .. rest .. "|r")
+            else
+                line:SetText(reaction .. text .. "|r")
+            end
             return
         end
     end

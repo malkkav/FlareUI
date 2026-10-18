@@ -9,6 +9,7 @@ local L = ns.L
 --   * other addons' minimap buttons, moved into the bag as they are
 --   * Blizzard's addon compartment entries, called as Blizzard's menu calls them
 -- An addon in two lists shows once. Closes on the badge, Escape, a click elsewhere, or after use.
+-- Icons can be dragged to a new place in the bag (the order is saved; new addons go last, A to Z).
 --------------------------------------------------
 
 --------------------------------------------------
@@ -46,6 +47,9 @@ local entries = {}            -- what the bag shows, rebuilt on every open
 local buttons = {}            -- the bag's own icon buttons (pool)
 local adopted = {}            -- other addons' minimap buttons moved into the bag: frame -> true
 local parked = {}             -- LibDBIcon buttons parked out of sight: frame -> their old parent
+local cells = {}              -- what each cell of the open bag shows: index -> frame
+local catchers = {}           -- the drag handles over the cells (pool)
+local drag                    -- the icon being dragged: { from = index, frame = frame }
 
 local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.minimap
@@ -239,8 +243,26 @@ local function CollectEntries()
         end
     end
 
+    -- A to Z, then the order the player dragged them into (minimap.bagOrder: entry ids); entries
+    -- not in it yet keep their place after the ordered ones
     table.sort(entries, function(a, b) return a.label:lower() < b.label:lower() end)
+    local db = GetDb()
+    local order = db and db.bagOrder
+    if type(order) == "table" and #order > 0 then
+        local rank = {}
+        for i, id in ipairs(order) do rank[id] = i end
+        for i, e in ipairs(entries) do e.alpha = i end
+        table.sort(entries, function(a, b)
+            local ra, rb = rank[a.kind .. ":" .. a.name], rank[b.kind .. ":" .. b.name]
+            if ra and rb then return ra < rb end
+            if ra or rb then return ra ~= nil end
+            return a.alpha < b.alpha
+        end)
+    end
 end
+
+-- the entry's id in the saved order
+local function EntryId(e) return e.kind .. ":" .. e.name end
 
 --------------------------------------------------
 -- 3. THE PANEL
@@ -295,7 +317,7 @@ end
 
 local function OnIconClick(self, mouseButton)
     local e = self.entry
-    if not e then return end
+    if not e or Bag.justDragged then return end
     GameTooltip:Hide()
     Bag:Close()
     if e.kind == "ldb" then
@@ -397,11 +419,107 @@ function Bag:Layout()
             SetIcon(frame.icon, e.kind == "ldb" and e.object.icon or e.data.icon, e.kind == "ldb" and e.object or nil)
             frame:ClearAllPoints()
             frame:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y)
+            -- under the drag handles again (a dragged icon is lifted over everything)
+            frame:SetFrameLevel(panel:GetFrameLevel() + 2)
             frame:Show()
         end
     end
     for i = used + 1, #buttons do buttons[i]:Hide(); buttons[i].entry = nil end
+    -- a drag handle over each cell (clicks and the mouse-over still reach the icon under it)
+    wipe(cells)
+    for i, e in ipairs(entries) do cells[i] = e.kind == "frame" and e.frame or nil end
+    local iconIndex = 0
+    for i, e in ipairs(entries) do
+        if e.kind ~= "frame" then iconIndex = iconIndex + 1; cells[i] = buttons[iconIndex] end
+    end
+    for i = 1, count do
+        local catcher = Bag.GetCatcher(i)
+        local col, row = (i - 1) % columns, math.floor((i - 1) / columns)
+        catcher:ClearAllPoints()
+        catcher:SetPoint("TOPLEFT", panel, "TOPLEFT", C.PAD + col * step, -(C.PAD + row * step))
+        catcher:SetSize(C.BUTTON, C.BUTTON)
+        catcher:SetFrameLevel(panel:GetFrameLevel() + 10)
+        catcher:Show()
+    end
+    for i = count + 1, #catchers do catchers[i]:Hide() end
+    Bag.columns = columns
     AnchorPanel()
+end
+
+--------------------------------------------------
+-- 3b. DRAG TO REORDER
+-- The icon follows the cursor; dropped on a cell, it takes that place and the rest shift. The new
+-- order is saved by entry (kind and name), so it holds when addons come and go.
+--------------------------------------------------
+local function CursorInUI()
+    local x, y = GetCursorPosition()
+    local scale = UIParent:GetEffectiveScale()
+    return x / scale, y / scale
+end
+
+local function FollowCursor()
+    if not drag then return end
+    local x, y = CursorInUI()
+    local frame = drag.frame
+    local k = UIParent:GetEffectiveScale() / frame:GetEffectiveScale()
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x * k, y * k)
+end
+
+local function OnDragStart(self)
+    local frame = cells[self.index]
+    if not frame then return end
+    drag = { from = self.index, frame = frame }
+    -- the drop on any mouse-up (the drag's own stop may never come, as when the cursor leaves the
+    -- game window)
+    panel:RegisterEvent("GLOBAL_MOUSE_UP")
+    -- (the icon's own click, which the mouse-up may still bring, is skipped)
+    Bag.justDragged = true
+    GameTooltip:Hide()
+    frame:SetFrameLevel(panel:GetFrameLevel() + 20)
+    panel:SetScript("OnUpdate", FollowCursor)
+end
+
+local function OnDragStop()
+    if not drag then return end
+    panel:SetScript("OnUpdate", nil)
+    panel:UnregisterEvent("GLOBAL_MOUSE_UP")
+    local from = drag.from
+    drag = nil
+    -- the cell under the cursor (outside the bag: the nearest end)
+    local x, y = CursorInUI()
+    local left, top = panel:GetLeft(), panel:GetTop()
+    local step = C.BUTTON + C.SPACING
+    local columns = Bag.columns or 1
+    local col = math.max(0, math.min(columns - 1, math.floor((x - left - C.PAD) / step)))
+    local row = math.max(0, math.floor((top - y - C.PAD) / step))
+    local to = math.max(1, math.min(#entries, row * columns + col + 1))
+    if to ~= from then
+        local moved = table.remove(entries, from)
+        table.insert(entries, to, moved)
+        local db = GetDb()
+        if db then
+            db.bagOrder = {}
+            for i, e in ipairs(entries) do db.bagOrder[i] = EntryId(e) end
+        end
+    end
+    C_Timer.After(0, function() Bag.justDragged = nil end)
+    Bag:Layout()
+end
+
+function Bag.GetCatcher(i)
+    local catcher = catchers[i]
+    if catcher then catcher.index = i; return catcher end
+    catcher = CreateFrame("Frame", nil, panel)
+    catcher:EnableMouse(true)
+    catcher:RegisterForDrag("LeftButton")
+    if catcher.SetPropagateMouseClicks then catcher:SetPropagateMouseClicks(true) end
+    if catcher.SetPropagateMouseMotion then catcher:SetPropagateMouseMotion(true) end
+    catcher:SetScript("OnDragStart", OnDragStart)
+    catcher:SetScript("OnDragStop", OnDragStop)
+    catcher.index = i
+    catchers[i] = catcher
+    return catcher
 end
 
 function Bag:Toggle()
@@ -435,8 +553,13 @@ local function CreatePanel()
     -- closes on Escape, and on a click anywhere that is not the bag or the badge
     tinsert(UISpecialFrames, "FlareUI_MinimapBag")
     panel:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
-    panel:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
-    panel:SetScript("OnEvent", function(self)
+    panel:SetScript("OnHide", function(self)
+        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+        -- closed mid-drag: the icon goes back to its cell next time
+        if drag then drag = nil; self:SetScript("OnUpdate", nil); self:UnregisterEvent("GLOBAL_MOUSE_UP") end
+    end)
+    panel:SetScript("OnEvent", function(self, event)
+        if event == "GLOBAL_MOUSE_UP" then OnDragStop() return end
         if self:IsMouseOver() or (badgeButton and badgeButton:IsMouseOver()) then return end
         self:Hide()
     end)

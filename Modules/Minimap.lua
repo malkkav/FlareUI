@@ -71,6 +71,24 @@ local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.minimap
 end
 
+-- Settings > Minimap > Fonts: the zone name and the clock
+local function ApplyFont(fontString, font)
+    if not (fontString and font) then return end
+    local flags = font.flags or ""
+    if flags == "NONE" then flags = "" end
+    fontString:SetFont(ns.GetFontPath(font.face or "Friz Quadrata TT"), font.size or 12, flags)
+    ns.ApplyShadow(fontString, font)
+end
+
+function MM:ApplyFonts()
+    local db = GetDb()
+    if not db then return end
+    ApplyFont(_G.MinimapZoneText, db.zoneFont)
+    ApplyFont(_G.TimeManagerClockTicker, db.clockFont)
+    -- the clock's width follows its text
+    if self.FitClock then self.FitClock() end
+end
+
 local hiddenParent = CreateFrame("Frame", nil, UIParent)
 hiddenParent:Hide()
 
@@ -245,8 +263,10 @@ local function StyleHeader()
             PlaceZone()
         end
         hooksecurefunc("TimeManagerClockButton_Update", FitClock)
-        FitClock()
+        MM.FitClock = FitClock
+        MM:ApplyFonts()
     end)
+    MM:ApplyFonts()
 end
 
 -- Tracking, the zone / clock bar and the calendar, left to right on one middle line
@@ -491,6 +511,7 @@ function MM:Refresh()
     if not db or not db.enabled or not self.initialized then return end
     self:UpdateLayout()
     self:UpdateTrackerScale()
+    self:ApplyFonts()
 end
 
 function MM:Init()

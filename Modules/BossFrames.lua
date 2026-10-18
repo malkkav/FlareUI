@@ -127,8 +127,8 @@ end
 
 -- One frame to the next: the frame, its cast bar, the auras above and below it, and the spacing
 local function Step()
-    local above = Tile.LanesExtent(view, { "ABOVE", "ABOVE_RIGHT" })
-    local below = Tile.LanesExtent(view, { "BELOW", "BELOW_RIGHT" })
+    local above = Tile.LanesExtent(view, Tile.ABOVE_PLACES)
+    local below = Tile.LanesExtent(view, Tile.BELOW_PLACES)
     local h = view.height or 50
     if view.castbar then h = h + (view.castHeight or 14) + K.CAST_GAP + K.INSET end
     return above, above + h + below + (view.spacing or 16)
@@ -321,10 +321,23 @@ local function BuildSettings()
           desc = L["Frame Border uses the frame's own border."] },
     })
 
+    -- no Right of the Frame (the frames sit at the screen's right edge); a place that clashes with
+    -- the other kind's (the same one, or a whole-width one on the same edge) is greyed out
+    local places = PF.AuraPlaces("RIGHT")
+    local function Place(field, other)
+        return function(_, rootDescription, data)
+            for _, p in ipairs(places) do
+                local radio = rootDescription:CreateRadio(p.text,
+                    function(value) return get(field)() == value end,
+                    function(value) data.set(nil, value) end, p.value)
+                if radio.SetEnabled and Tile.PlacesClash(p.value, get(other)()) then radio:SetEnabled(false) end
+            end
+        end
+    end
     Section("Auras", {
-        { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = D.buffs, values = Tile.AURA_POSITION_VALUES,
+        { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = D.buffs, values = places, generator = Place("buffs", "debuffs"),
           get = get("buffs"), set = set("buffs"), desc = L["Every buff on the boss, such as enrages and shields."] },
-        { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = Tile.AURA_POSITION_VALUES,
+        { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = places, generator = Place("debuffs", "buffs"),
           get = get("debuffs"), set = set("debuffs"), desc = L["Debuffs on the boss: only your own with Only My Debuffs."] },
         { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1, get = get("auraSize"), set = set("auraSize") },
         { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = D.onlyMyDebuffs ~= false,
@@ -396,6 +409,17 @@ function BF:Init()
         return
     end
     self.initialized = true
+
+    -- Right of the Frame is gone: auras set there move to the left (off when that is taken)
+    local db = GetDb()
+    if db then
+        for _, field in ipairs({ "buffs", "debuffs" }) do
+            if db[field] == "RIGHT" then
+                local other = field == "buffs" and "debuffs" or "buffs"
+                db[field] = db[other] == "LEFT" and "OFF" or "LEFT"
+            end
+        end
+    end
 
     holder = CreateFrame("Frame", "FlareUI_Boss", UIParent)
     holder:SetFrameStrata("LOW")
