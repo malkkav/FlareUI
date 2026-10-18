@@ -160,7 +160,10 @@ S:Row{
     apply = function() ns.SettingsPanel:Open("rm", "keys") end,
 }
 
--- Options: look and controller
+-- Options: opening, look and controller
+local function ApplyOpening() if RM() and RM().ApplyOpening then RM():ApplyOpening() end end
+S:Row{ key = "rm.position", kind = "choice", tab = "options", path = "radialmenu.position", choices = { "cursor", "center" }, apply = ApplyOpening }
+S:Row{ key = "rm.activation", kind = "choice", tab = "options", path = "radialmenu.activation", choices = { "hold", "toggle" }, apply = ApplyOpening }
 S:Row{ key = "rm.names", tab = "options", path = "radialmenu.showNames" }
 S:Row{
     key = "rm.pad", tab = "options",

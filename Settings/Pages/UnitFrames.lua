@@ -78,6 +78,7 @@ S:Row{
     set = function(on) if ns.UnitFrames and ns.UnitFrames.SetPlayerShow then ns.UnitFrames:SetPlayerShow(on and "fade" or "always") end end,
 }
 S:Row{ key = "uf.classColours", path = "unitframes.classColor", apply = Refresh }
+S:Row{ key = "uf.fullNames", path = "unitframes.fullNames", apply = Refresh }
 S:Row{ key = "uf.auraShape", kind = "choice", path = "unitframes.auraStyle", choices = { "square", "round" }, apply = Refresh }
 S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }
 

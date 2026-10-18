@@ -50,11 +50,16 @@ local function GetTexture()
     return LSM:Fetch("statusbar", name) or "Interface\\Buttons\\WHITE8x8"
 end
 
--- Bar Texture's choices: every LibSharedMedia bar texture but its own Blizzard ones
+-- Bar Texture's choices: FlareUI's bars, then a divider and other addons' (as every FlareUI frame)
 local function TextureValues()
     local values = {}
-    for _, name in ipairs(LSM:List("statusbar")) do
-        if not (ns.HIDDEN_STATUSBARS and ns.HIDDEN_STATUSBARS[name]) then values[#values + 1] = { text = name, value = name, isRadio = true } end
+    for _, name in ipairs({ "FlareUI Flat", "FlareUI Forever", "FlareUI Striped" }) do
+        if LSM:IsValid("statusbar", name) then values[#values + 1] = { text = name, value = name, isRadio = true } end
+    end
+    local others = ns.AddonMedia("statusbar")
+    if #others > 0 then
+        values[#values + 1] = { isDivider = true }
+        for _, name in ipairs(others) do values[#values + 1] = { text = name, value = name, isRadio = true } end
     end
     return values
 end

@@ -68,7 +68,10 @@ function dropdownMixin:Setup(data)
 			end
 
 			for _, value in next, values do
-				if data.multiple then
+				if value.isDivider then
+					-- FlareUI: { isDivider = true } draws a line between groups of choices
+					rootDescription:CreateDivider()
+				elseif data.multiple then
 					rootDescription:CreateCheckbox(value.text, get, set, {
 						get = data.get,
 						set = data.set,

@@ -231,12 +231,14 @@ function Row:Set(value)
     Settings:Fire("RowChanged", self)
 end
 
--- Frame Border: None first, then every border LibSharedMedia knows (FlareUI's, the game's, other addons')
+-- Frame Border (chat, damage meter, quest tracker): None and FlareUI's frame border, then a divider
+-- and other addons' borders (ns.AddonMedia). Built each time the menu opens.
 function Settings:BorderChoices()
-    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
-    local list = { { "None", L["None"] } }
-    for _, name in ipairs(LSM and LSM:List("border") or {}) do
-        if name ~= "None" then list[#list + 1] = { name, name } end
+    local list = { { "None", L["None"] }, { "FlareUI Frames", "FlareUI Frames" } }
+    local others = ns.AddonMedia("border")
+    if #others > 0 then
+        list[#list + 1] = { divider = true }
+        for _, name in ipairs(others) do list[#list + 1] = { name, name } end
     end
     return list
 end
@@ -255,9 +257,13 @@ function Row:Choices()
     local choices = self.choices
     if type(choices) == "function" then choices = choices() end   -- choices that change (the radials)
     for i, choice in ipairs(choices or {}) do
-        local value, text = choice, nil
-        if type(choice) == "table" then value, text = choice[1], choice[2] end
-        list[i] = { value = value, text = text or (names and names[i]) or tostring(value) }
+        if type(choice) == "table" and choice.divider then
+            list[i] = { divider = true }   -- a line in the menu (BorderChoices)
+        else
+            local value, text = choice, nil
+            if type(choice) == "table" then value, text = choice[1], choice[2] end
+            list[i] = { value = value, text = text or (names and names[i]) or tostring(value) }
+        end
     end
     return list
 end

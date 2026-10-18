@@ -46,6 +46,21 @@ function ns.PowerColor(token, powerType)
 end
 
 -- Class colours on FlareUI's health bars: one switch for every frame (Unit Frames page)
+-- A unit's name on the frames. Forever's UnitName returns the first name and the surname apart; with
+-- Full Player Names on (unitframes.fullNames) they are joined as Blizzard joins them
+-- (NameUtil.FormatUnitNameForDisplay). A name or surname that is a secret value is left as it is:
+-- the first name alone.
+function ns.UnitDisplayName(unit)
+    local name, surname = UnitName(unit)
+    local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
+    if uf and uf.fullNames == false then return name end
+    if not (canaccessvalue(name) and canaccessvalue(surname)) then return name end
+    if type(name) ~= "string" or type(surname) ~= "string" or surname == "" then return name end
+    local consts = Constants and Constants.CharacterNameSeparatorConsts
+    local sep = consts and consts.CHARACTERNAME_SURNAME_SEPARATOR
+    return name .. (type(sep) == "string" and sep or " ") .. surname
+end
+
 function ns.ClassColorsOn()
     local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
     return not uf or uf.classColor ~= false
@@ -263,6 +278,7 @@ local defaults = {
             saveHistory = true,
 
             copyLinks = true,
+            hoverTooltips = true,       -- pointing at a chat link shows its tooltip
             formatNPC = false,
             formatPlayer = false,
             betterTimestamps = false,
@@ -368,6 +384,7 @@ local defaults = {
         unitframes = {
             enabled = false,
             classColor = true,          -- class colours on every FlareUI health bar (one switch for every frame)
+            fullNames = true,           -- Full Player Names: "First Surname" on every frame, not the first name only
             palette = "flareui",        -- the bars' colours: flareui (FlareUI's softer tones) | blizzard (UnitFrames' ApplyPalette)
             foreverStyle = true,        -- Forever's bronze portrait ring on player / target / focus; off = Addon style (UnitFramesRing.lua)
             auraStyle = "square",       -- the unit frames' aura icons: square | round
@@ -554,6 +571,8 @@ local defaults = {
         radialmenu = {
             enabled = false,
             showNames = true,           -- the hovered button names its action
+            position = "cursor",        -- cursor | center: where a mouse radial opens
+            activation = "hold",        -- hold (release to use) | toggle (press to open, click to use)
         },
 
         -- [[ QUEST TRACKER MODULE ]] minimized and collapsed state per character (CharDB().objectiveTracker)

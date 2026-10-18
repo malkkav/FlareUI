@@ -387,8 +387,31 @@ local function CreateBar(parent, level)
     bar:SetValue(0)
     bar.bg = bar:CreateTexture(nil, "BACKGROUND")
     bar.bg:SetAllPoints()
-    bar.bg:SetVertexColor(0.15, 0.15, 0.15, 0.9)
+    bar.bg:SetVertexColor(0.15, 0.15, 0.15, UF.BAR_BG_OPACITY / 100)
     return bar
+end
+
+-- Background Opacity (Edit Mode, Look): the bars' empty part, in percent. 90 is the dark grey every
+-- bar has always had; on Forever's frame plate the plate's own slot shows there, so 0 by default.
+UF.BAR_BG_OPACITY = 90
+function UF.DefaultBgOpacity(unit)
+    local plate = ns.UFRing and ns.UFRing.PlateOn() and ns.UFRing.PLATE_UNITS[unit] and ns.UFRing.Applies(frames[unit])
+    return plate and 0 or UF.BAR_BG_OPACITY
+end
+
+function UF.SetBarBackground(bar, percent)
+    if not bar.bg then return end
+    if percent == nil then percent = UF.BAR_BG_OPACITY end
+    bar.bg:SetAlpha(1)
+    bar.bg:SetVertexColor(0.15, 0.15, 0.15, math.max(0, math.min(100, percent)) / 100)
+end
+
+function UF.BgOpacitySetting(default, get, set)
+    return { name = L["Background Opacity"], kind = LEM.SettingType.Slider, default = default,
+        minValue = 0, maxValue = 100, valueStep = 5,
+        formatter = function(value) return value .. "%" end,
+        get = get, set = set,
+        desc = L["How dark the empty part of the bars is."] }
 end
 
 local function ApplyFont(fontString, fontDb, sizeDelta)
@@ -513,7 +536,7 @@ end
 -- 5. UPDATERS (all secret-safe: values go straight into widgets)
 --------------------------------------------------
 local function UpdateName(f)
-    f.Name:SetText(UnitName(f.unit) or "")
+    f.Name:SetText(ns.UnitDisplayName(f.unit) or "")
 end
 
 local function UpdateLevel(f)
@@ -531,8 +554,11 @@ local function UpdateLevel(f)
             f.Level:SetTextColor(1, 0.1, 0.1)
         else
             f.Level:SetFormattedText("%d%s", level, suffix)
+            -- friendly (nothing you can attack): Blizzard's gold; the rest by difficulty
             local color = GetQuestDifficultyColor and GetQuestDifficultyColor(level)
-            if color then f.Level:SetTextColor(color.r, color.g, color.b) else f.Level:SetTextColor(1, 1, 1) end
+            if Readable(UnitCanAttack("player", unit)) == false then
+                f.Level:SetTextColor(1, 0.82, 0)
+            elseif color then f.Level:SetTextColor(color.r, color.g, color.b) else f.Level:SetTextColor(1, 1, 1) end
         end
     else
         f.Level:SetText(level)
@@ -665,7 +691,8 @@ local function GetCastStyle(udb, standalone)
             width = udb.width or 250, height = udb.height or 25,
             icon = udb.icon ~= false, timer = udb.timer ~= false, name = true,
             texture = udb.texture, border = true,
-            borderTexture = udb.borderTexture,
+            borderTexture = ns.UFRing and ns.UFRing.Border(udb.borderTexture) or udb.borderTexture,
+            bgOpacity = udb.bgOpacity,
         }
     end
     local castTexture = udb.castTexture
@@ -676,7 +703,8 @@ local function GetCastStyle(udb, standalone)
         height = udb.castHeight or CAST_HEIGHT,
         icon = udb.castIcon ~= false, timer = udb.castTimer ~= false, name = true,
         texture = castTexture, border = true,
-        borderTexture = castBorder,
+        borderTexture = ns.UFRing and ns.UFRing.Border(castBorder) or castBorder,
+        bgOpacity = udb.bgOpacity,
     }
 end
 
@@ -748,6 +776,7 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
     cast.style = style
     cast:SetStatusBarTexture(texture)
     cast.bg:SetTexture(texture)
+    UF.SetBarBackground(cast, style.bgOpacity)
     cast:ClearAllPoints()
     if mode == "TOP" then
         cast:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", PADDING + iconOffset + leftExtra, CAST_GAP)
@@ -2308,7 +2337,7 @@ local function LayoutFrame(f)
         f:SetBackdrop(nil)
         f.Border:Hide()
     else
-        local edgeFile = GetBorderFile(udb.border)
+        local edgeFile = GetBorderFile(ns.UFRing and ns.UFRing.Border(udb.border) or udb.border)
         f:SetBackdrop({ bgFile = BACKDROP_FILE, insets = { left = PADDING, right = PADDING, top = PADDING, bottom = PADDING } })
         f:SetBackdropColor(0, 0, 0, BG_OPACITY)
         -- the border's own frame sits above the bars
@@ -2328,6 +2357,11 @@ local function LayoutFrame(f)
     power:SetReverseFill(mirror)
 
     LayoutBars(f)
+    -- the bars' empty part (Background Opacity; after LayoutBars, which hides it on the plate)
+    local bgOpacity = udb.bgOpacity
+    if bgOpacity == nil then bgOpacity = UF.DefaultBgOpacity(f.unit) end
+    UF.SetBarBackground(health, bgOpacity)
+    UF.SetBarBackground(power, bgOpacity)
 
     -- texts
     -- Forever style: one point smaller on the slimmer frames
@@ -2725,24 +2759,41 @@ end
 -- 16. EDIT MODE SETTINGS
 --------------------------------------------------
 -- LibSharedMedia names for the Edit Mode dropdowns (not its own Blizzard ones); "" = the frame's own texture
-local function BuildTextureValues(withFrameDefault)
-    local values = {}
-    if withFrameDefault then values[#values + 1] = { text = L["Frame Texture"], value = "", isRadio = true } end
-    for _, name in ipairs(LSM:List("statusbar")) do
-        if not (ns.HIDDEN_STATUSBARS and ns.HIDDEN_STATUSBARS[name]) then
-            values[#values + 1] = { text = name, value = name, isRadio = true }
+-- Media dropdowns (Edit Mode): FlareUI's own first, then a divider and other addons' bars or borders
+-- (ns.AddonMedia). A function: FlareEditMode builds the menu from it each time it opens, so media an
+-- addon registers later is there too. first: an entry before FlareUI's (the cast bars' Frame Border).
+-- A frame set to something no longer listed keeps it.
+function UF.MediaValues(mediaType, base, first)
+    return function()
+        local values = {}
+        if first then values[1] = first end
+        for _, name in ipairs(base) do
+            if LSM:IsValid(mediaType, name) then values[#values + 1] = { text = name, value = name, isRadio = true } end
         end
+        local others = ns.AddonMedia(mediaType)
+        if #others > 0 then
+            values[#values + 1] = { isDivider = true }
+            for _, name in ipairs(others) do values[#values + 1] = { text = name, value = name, isRadio = true } end
+        end
+        return values
     end
-    return values
+end
+UF.FLAREUI_BARS = { "FlareUI Flat", "FlareUI Forever", "FlareUI Striped" }
+
+-- Bar, Cast Bar and Absorb Texture: FlareUI's three bars (no Frame Texture), then other addons'
+local function BuildTextureValues()
+    return UF.MediaValues("statusbar", UF.FLAREUI_BARS)
 end
 
+function UF.BuildAbsorbValues()
+    return UF.MediaValues("statusbar", UF.FLAREUI_BARS)
+end
+
+-- Border Texture (every unit frame, party, raid and boss frame, resource bar): FlareUI's two bar
+-- borders, then other addons'; Frame Border first on the cast bars
 local function BuildBorderValues(withFrameDefault)
-    local values = {}
-    if withFrameDefault then values[#values + 1] = { text = L["Frame Border"], value = "", isRadio = true } end
-    for _, name in ipairs(LSM:List("border")) do
-        values[#values + 1] = { text = name, value = name, isRadio = true }
-    end
-    return values
+    return UF.MediaValues("border", { "FlareUI Thick", "FlareUI Thin" },
+        withFrameDefault and { text = L["Frame Border"], value = "", isRadio = true } or nil)
 end
 
 -- Edit Mode dialogs in sections that open and close. Every FlareUI frame uses the same names and
@@ -2863,8 +2914,10 @@ local function BuildPlayerCastSettings()
           desc = L["No time left at the right end of the bar."] },
     })
     Section("Look", {
-        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(false), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
-        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
+        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
+        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture"),
+          hidden = function() return ns.UFRing and ns.UFRing.PlateOn() or false end },
+        UF.BgOpacitySetting(UF.BAR_BG_OPACITY, get("bgOpacity", UF.BAR_BG_OPACITY), set("bgOpacity")),
     })
     return settings
 end
@@ -2963,20 +3016,26 @@ local function BuildSettings(unit)
 
     -- the bars' texture and the border; the ring styles keep their own border
     local lookItems = {
-        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.texture or DEFAULT_TEXTURE, values = BuildTextureValues(false),
+        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.texture or DEFAULT_TEXTURE, values = BuildTextureValues(),
           get = function() local u = GetUnitDb(unit); return u and u.texture or DEFAULT_TEXTURE end, set = set("texture") },
         { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BORDER, values = BuildBorderValues(false),
           get = function() local u = GetUnitDb(unit); return u and u.border or DEFAULT_BORDER end, set = set("border"),
-          hidden = function() return ns.UFRing and ns.UFRing.Applies(frames[unit]) or false end },
+          -- Forever Style: one fixed border (the plate's own on its frames)
+          hidden = function() return ns.UFRing and ns.UFRing.PlateOn() or false end },
     }
     -- the absorb overlay, on frames with heal prediction; "" is the frame's own texture
     if info.indicators and info.indicators.heals then
         lookItems[#lookItems + 1] = { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = defaults.absorbTexture or ABSORB_TEXTURE,
-            values = BuildTextureValues(true),
+            values = UF.BuildAbsorbValues(),
             get = function() local u = GetUnitDb(unit); local v = u and u.absorbTexture; if v == nil then return ABSORB_TEXTURE end; return v end,
             set = set("absorbTexture"),
-            desc = L["The texture of the shield (absorb) over the health bar. Frame Texture uses the bar's own."] }
+            desc = L["The texture of the shield (absorb) over the health bar."] }
     end
+    -- last in Look: how dark the bars' empty part is
+    local bgDefault = UF.DefaultBgOpacity(unit)
+    lookItems[#lookItems + 1] = UF.BgOpacitySetting(bgDefault,
+        function() local u = GetUnitDb(unit); local v = u and u.bgOpacity; if v == nil then return bgDefault end; return v end,
+        set("bgOpacity"))
     Section("Look", lookItems)
 
     if info.castbar then
@@ -2994,12 +3053,12 @@ local function BuildSettings(unit)
               get = function() local u = GetUnitDb(unit); return u and u.castTimer == false or false end,
               set = function(layoutName, value) set("castTimer")(layoutName, not value) end,
               desc = L["No time left at the right end of the bar."] },
-            { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(true),
-              get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture"),
-              desc = L["Frame Texture uses the frame's own bar texture."] },
+            { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(),
+              get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture") },
             { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
               get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture"),
-              desc = L["Frame Border uses the frame's own border."] },
+              desc = L["Frame Border uses the frame's own border."],
+              hidden = function() return ns.UFRing and ns.UFRing.PlateOn() or false end },
         })
     end
     if info.auras then
@@ -3076,6 +3135,11 @@ end
 --------------------------------------------------
 -- Building blocks the party, raid and boss frames and the resource bars share with these frames
 UF.Kit = {
+    -- Forever Style's fixed border, and whether border options are hidden (Forever Style: always);
+    -- Background Opacity's bar background and its Edit Mode slider
+    Border = function(name) return ns.UFRing and ns.UFRing.Border(name) or name end,
+    NoBorderOptions = function() return ns.UFRing and ns.UFRing.PlateOn() or false end,
+    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting,
     INSET = INSET, BG_OPACITY = BG_OPACITY, BACKDROP_FILE = BACKDROP_FILE,
     SEPARATOR_TEXTURE = SEPARATOR_TEXTURE, SEPARATOR_HEIGHT = SEPARATOR_HEIGHT, TEXT_INSET = TEXT_INSET,
     CAST_GAP = CAST_GAP, AURA_GAP = AURA_GAP,
@@ -3092,7 +3156,7 @@ UF.Kit = {
     HardHide = HardHide, SetIconArt = SetIconArt, HasAtlas = HasAtlas,
     CreateCastBar = CreateCastBar, LayoutCastBar = LayoutCastBar, UpdateCastBar = UpdateCastBar,
     InitAuraButton = InitAuraButton, HasAuraSupport = HasAuraSupport,
-    BuildTextureValues = BuildTextureValues, BuildBorderValues = BuildBorderValues, EditSections = EditSections,
+    BuildTextureValues = BuildTextureValues, BuildBorderValues = BuildBorderValues, BuildAbsorbValues = UF.BuildAbsorbValues, MediaValues = UF.MediaValues, EditSections = EditSections,
     ThreatColor = ThreatColor,
 }
 

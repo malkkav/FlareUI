@@ -1066,6 +1066,48 @@ function Chat:SetupCopyLinks()
 end
 
 --------------------------------------------------
+-- 8b. HOVER TOOLTIPS
+-- Pointing at a link in chat shows its tooltip, gone again when the mouse leaves (a click still
+-- opens Blizzard's own window). Blizzard's chat frames announce link hovers through EventRegistry
+-- ("ChatFrame.OnHyperlinkEnter" / "Leave"), so no frame script is touched. Only links the game
+-- tooltip can draw; players, channels and FlareUI's URLs keep just their click. A link that is a
+-- secret value is left alone.
+--------------------------------------------------
+local HOVER_LINKS = {
+    item = true, spell = true, enchant = true, quest = true, talent = true,
+    achievement = true, currency = true, instancelock = true,
+}
+local hover = { owner = nil, registered = false }
+
+function hover.Enter(_, chatFrame, link)
+    local db = GetDb()
+    if not (db and db.enabled and db.hoverTooltips) then return end
+    if not (canaccessvalue(link) and type(link) == "string") then return end
+    local kind = link:match("^(%a+):")
+    if not (kind and HOVER_LINKS[kind]) then return end
+    GameTooltip:SetOwner(chatFrame, "ANCHOR_CURSOR")
+    if pcall(GameTooltip.SetHyperlink, GameTooltip, link) then
+        GameTooltip:Show()
+        hover.owner = chatFrame
+    else
+        GameTooltip:Hide()
+    end
+end
+
+function hover.Leave()
+    if hover.owner and GameTooltip:IsOwned(hover.owner) then GameTooltip:Hide() end
+    hover.owner = nil
+end
+
+-- Registered once for the session; the setting is read on every hover
+function Chat:SetupHoverTooltips()
+    if hover.registered or not (EventRegistry and EventRegistry.RegisterCallback) then return end
+    hover.registered = true
+    EventRegistry:RegisterCallback("ChatFrame.OnHyperlinkEnter", hover.Enter, hover)
+    EventRegistry:RegisterCallback("ChatFrame.OnHyperlinkLeave", hover.Leave, hover)
+end
+
+--------------------------------------------------
 -- 9. TAB MENU AND DOCK
 --------------------------------------------------
 function Chat:SetupImprovements()
@@ -1073,6 +1115,7 @@ function Chat:SetupImprovements()
     if not db then return end
 
     Chat:SetupCopyLinks()
+    Chat:SetupHoverTooltips()
     HookLineRewrite()
     Chat:UpdateInstanceBubbles()
     Chat:StyleHeaderButtons()

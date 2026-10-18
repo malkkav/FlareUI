@@ -287,14 +287,17 @@ local function BuildSettings()
     })
 
     Section("Look", {
-        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.texture, values = K.BuildTextureValues(false),
+        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.texture, values = K.BuildTextureValues(),
           get = get("texture"), set = set("texture") },
         { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = D.border, values = K.BuildBorderValues(false),
-          get = get("border"), set = set("border") },
+          get = get("border"), set = set("border"), hidden = K.NoBorderOptions },
         -- shields on a boss: none yet on Forever, but a boss could bring them
-        { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildTextureValues(true),
+        { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildAbsorbValues(),
           get = get("absorbTexture"), set = set("absorbTexture"),
-          desc = L["The texture of the shield (absorb) over the health bar. Frame Texture uses the bar's own."] },
+          desc = L["The texture of the shield (absorb) over the health bar."] },
+        K.BgOpacitySetting(K.BAR_BG_OPACITY,
+            function() local v = get("bgOpacity")(); if v == nil then return K.BAR_BG_OPACITY end; return v end,
+            set("bgOpacity")),
     })
 
     local function noCast() return get("castbar")() == false end
@@ -313,11 +316,11 @@ local function BuildSettings()
           set = function(layoutName, value) set("castTimer")(layoutName, not value) end,
           hidden = noCast,
           desc = L["No time left at the right end of the bar."] },
-        { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(true),
-          get = get("castTexture"), set = set("castTexture"), hidden = noCast,
-          desc = L["Frame Texture uses the frame's own bar texture."] },
+        { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
+          get = get("castTexture"), set = set("castTexture"), hidden = noCast, },
         { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
-          get = get("castBorderTexture"), set = set("castBorderTexture"), hidden = noCast,
+          get = get("castBorderTexture"), set = set("castBorderTexture"),
+          hidden = function() return noCast() or K.NoBorderOptions() end,
           desc = L["Frame Border uses the frame's own border."] },
     })
 

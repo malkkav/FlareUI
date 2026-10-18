@@ -420,6 +420,11 @@ ns.Copy = {
             label = L["Save history"],
             section = "ch.tweaks",
         },
+        ["ch.hoverTooltips"] = {
+            desc = L["Point at an item, spell or quest link in chat to see its tooltip."],
+            label = L["Link tooltips on hover"],
+            section = "ch.tweaks",
+        },
         ["ch.levels"] = {
             desc = L["The sender's level before their name, when known."],
             label = L["Level before names"],
@@ -866,6 +871,13 @@ ns.Copy = {
             label = L["Ranged swing"],
             section = "rb.bars",
         },
+        ["rm.activation"] = {
+            choices = { L["Hold"], L["Toggle"] },
+            desc = L["How a keybind opens the radial.\n* Hold: hold the key, point, release to use\n* Toggle: press to open, then left-click or press again to use; right-click goes back or closes"],
+            label = L["Activation"],
+            section = "rm.opening",
+            tip = L["Toggle: middle-click a nested radial to open it in place. The mouse wheel still steps through it."],
+        },
         ["rm.keys"] = {
             desc = L["Each key opens a radial on this character."],
             empty = L["No keybinds yet. Add one to open a radial."],
@@ -897,6 +909,13 @@ ns.Copy = {
             label = L["Controller support"],
             section = "rm.controller",
             tip = L["The ping menu moves to L3."],
+        },
+        ["rm.position"] = {
+            choices = { L["Mouse cursor"], L["Screen centre"] },
+            desc = L["Where the radial opens.\n* Mouse cursor: where your mouse is\n* Screen centre: the middle of the screen"],
+            label = L["Menu position"],
+            section = "rm.opening",
+            tip = L["Radial macros open there too. The controller always opens it in the middle."],
         },
         ["tt.anchor"] = {
             choices = { L["Default"], L["Cursor"] },
@@ -1076,6 +1095,12 @@ ns.Copy = {
             section = "uf.look",
             tip = L["Each style keeps its own setup."],
         },
+        ["uf.fullNames"] = {
+            desc = L["Players' first names and surnames on every unit frame."],
+            label = L["Full Player Names"],
+            section = "uf.look",
+            tip = L["Off: the first name only."],
+        },
         ["uf.hidePlayer"] = {
             desc = L["Your player and pet frames fade out while:\n* You're out of combat\n* You have no target\n* You're at full health"],
             label = L["Fade Player and Pet"],
@@ -1210,6 +1235,7 @@ ns.Copy = {
         ["rb.bars"] = L["Bars"],
         ["rm.controller"] = L["Controller"],
         ["rm.look"] = L["Look"],
+        ["rm.opening"] = L["Opening"],
         ["rm.radialMacros"] = L["Radial macros"],
         ["tt.look"] = L["Look"],
         ["tt.showTooltips"] = L["Show tooltips"],

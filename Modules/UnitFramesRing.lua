@@ -349,6 +349,14 @@ function Ring.PlateOn()
     return Ring.Style() == "forever"
 end
 
+-- Forever Style keeps one border on every frame that has one (the plate is its own): the border
+-- options are gone there. Other styles: the frame's own choice.
+local PLATE_BORDER = "FlareUI Thin"
+function Ring.Border(name)
+    if Ring.PlateOn() then return PLATE_BORDER end
+    return name
+end
+
 -- this frame is drawn on Forever's frame plate
 function Ring.Plate(f)
     return Ring.Applies(f) and Ring.PLATE_UNITS[Kind(f)] and Ring.PlateOn() or false

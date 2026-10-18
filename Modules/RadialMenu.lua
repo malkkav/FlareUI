@@ -201,6 +201,15 @@ local function ShowNames()
     return not (db and db.showNames == false)
 end
 
+-- Menu Position (cursor | center) and Activation (hold | toggle), in the profile. The secure layer
+-- reads its own copy (header attributes "flare-center" / "flare-toggle", set by SyncSecure).
+local function Option(key, default)
+    local db = ns.db and ns.db.profile and ns.db.profile.radialmenu
+    local value = db and db[key]
+    if value == nil then return default end
+    return value
+end
+
 local function CursorPosition()
     local scale = UIParent:GetEffectiveScale()
     local x, y = GetCursorPosition()
@@ -703,14 +712,18 @@ local function ResolveAll()
     end
 end
 
-function RM:LayoutRadial()
+-- fromCache: draw the copy the secure layer holds without resolving or syncing again (a nested radial
+-- opened in place: the secure side is mid-snippet and keeps its wheel choices)
+function RM:LayoutRadial(fromCache)
     if not (radial and currentRadial) then return end
     -- The secure layer holds a copy of every radial's layout (SyncSecure), and that copy cannot be
     -- rewritten in combat. Resolving afresh there would let the art drift from what a click actually
     -- fires, so in combat the art draws the copy made out of combat, and a new one is made on the way
     -- out. Resolving happens here rather than per frame; LayoutRadial runs whenever a radial opens or
     -- is edited.
-    if InCombatLockdown() then
+    if fromCache and currentID and resolvedCache[currentID] then
+        resolved = resolvedCache[currentID]
+    elseif InCombatLockdown() then
         layoutPending = true
         resolved = (currentID and resolvedCache[currentID]) or resolved
     else
@@ -755,7 +768,7 @@ function RM:LayoutRadial()
     end
     RM:LayoutPing(count, radius, interval)
     RefreshButtonStates()
-    SyncSecure()
+    if not fromCache then SyncSecure() end
 end
 
 -- The Ping Wheel art for count buttons: the backdrop, the hub ring, and a divider half an interval
@@ -1038,9 +1051,14 @@ local function OpenRadial(radialID, mode)
     WatchButtonStates(true)
     radial:SetScale(1)
 
-    -- a controller radial opens mid-screen: there is no cursor to open it at
+    -- mid-screen with Menu Position "Screen centre", and always for a controller (no cursor to open
+    -- it at); the secure layer measures from the same point
     local x, y
-    if openMode == "pad" then x, y = UIParent:GetCenter() else x, y = CursorPosition() end
+    if openMode == "pad" or Option("position", "cursor") == "center" then
+        x, y = UIParent:GetCenter()
+    else
+        x, y = CursorPosition()
+    end
     radial:ClearAllPoints()
     radial:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
     radial.Pointer:Hide()
@@ -1089,6 +1107,22 @@ function CloseRadial()
     end
 end
 
+-- Toggle activation: a nested radial opened in place of the open one (middle-click), or the one
+-- before it back (right-click). Called from the secure catcher, which owns the switch; the art
+-- follows on the same spot, from the secure layer's copy.
+local function ShowNestedRadial(radialID)
+    if not (isOpen and radialID) then return end
+    StopAnimation()
+    if selectedIndex and buttons[selectedIndex] then SetButtonSelected(buttons[selectedIndex], false) end
+    selectedIndex = nil
+    RM:LoadRadial(radialID)
+    RM:LayoutRadial(true)
+    UpdateSelection()
+    radial:SetAlpha(0)
+    PlaceButtons(PING.SLIDE)
+    Animate(false)
+end
+
 --------------------------------------------------
 -- 9. THE SECURE LAYER
 -- One SecureActionButton, the caster, carries every action and the binding clicks it: down on the press, up on
@@ -1117,6 +1151,12 @@ end
 -- from GetGamePadState() right here in the restricted environment - so it works in combat - from
 -- the stick "flare-padstick" names. B and Escape are bound to PAD_NAME's RightButton meanwhile,
 -- which closes.
+-- Menu Position: with "flare-center" set, OPENX / OPENY are the screen's middle rather than the cursor
+-- (the art opens there too). Activation "Toggle" ("flare-toggle"): the keybind opens click mode, as a
+-- macro does, and pressing it again fires the aimed button. In click mode a middle-click on a
+-- sub-radial button opens that radial in place (ACTIVE becomes its id; STACK / DEPTH remember the way
+-- back), right-click goes back a level or closes, Escape closes. ROOT is the radial click mode
+-- opened, whatever is nested on top of it.
 --------------------------------------------------
 local ACTION_KEYS = "type spell item macro macrotext unit marker action"
 
@@ -1153,11 +1193,27 @@ local AIMED_SNIPPET = [[
     return ACTIVE .. "-s" .. index .. "-" .. child .. "-"
 ]]
 
+-- self is the header. Where the radial opened, in the wheel frame's units: the cursor, or the middle
+-- of the screen with Menu Position "Screen centre". The wheel frame has to be showing.
+local OPEN_POINT_SNIPPET = [[
+    local screen = self:GetFrameRef("wheel")
+    if self:GetAttribute("flare-center") then
+        OPENX, OPENY = screen:GetWidth() / 2, screen:GetHeight() / 2
+        return
+    end
+    local x, y = screen:GetMousePosition()
+    if x then
+        OPENX, OPENY = x * screen:GetWidth(), y * screen:GetHeight()
+    else
+        OPENX, OPENY = nil, nil
+    end
+]]
+
 -- self is the header; ... = quiet. Ends click mode: catcher, wheel frame and Escape binding go. The
 -- art is told unless quiet (the keybind opening over a macro radial redraws the art itself).
 local CLOSE_CLICK_SNIPPET = [[
     if MODE ~= "click" then return end
-    MODE = nil
+    MODE, ROOT, DEPTH = nil, nil, 0
     OPENX, OPENY = nil, nil
     self:GetFrameRef("catcher"):Hide()
     self:GetFrameRef("wheel"):Hide()
@@ -1169,17 +1225,11 @@ local CLOSE_CLICK_SNIPPET = [[
 local OPEN_CLICK_SNIPPET = [[
     local id = ...
     if (self:GetAttribute(id .. "-count") or 0) == 0 then return false end
-    local screen = self:GetFrameRef("wheel")
-    ACTIVE, MODE = id, "click"
-    screen:Show()
-    local x, y = screen:GetMousePosition()
-    if x then
-        OPENX, OPENY = x * screen:GetWidth(), y * screen:GetHeight()
-    else
-        OPENX, OPENY = nil, nil
-    end
+    ACTIVE, MODE, ROOT, DEPTH = id, "click", id, 0
+    self:GetFrameRef("wheel"):Show()
+    self:RunAttribute("flare-openpoint")
     self:GetFrameRef("catcher"):Show()
-    self:SetBindingClick(true, "ESCAPE", "]] .. CATCHER_NAME .. [[", "RightButton")
+    self:SetBindingClick(true, "ESCAPE", "]] .. CATCHER_NAME .. [[", "Escape")
     self:CallMethod("OnSecureOpen", id)
     return true
 ]]
@@ -1225,26 +1275,44 @@ local PAD_SNIPPET = [[
 ]]
 
 -- self is the caster, control the header. Returning false cancels the button's own click, which is
--- what stops a press on its own, or a release in the dead zone, from casting anything.
+-- what stops a press on its own, or a release in the dead zone, from casting anything. Actions run on
+-- the release (useOnKeyDown false), so Toggle's second press picks the button on the press (FIRE)
+-- and fires it on the release.
 local CLICK_SNIPPET = [[
     local screen = control:GetFrameRef("wheel")
     if down then
-        control:RunAttribute("flare-closeclick", true)
-        control:RunAttribute("flare-closepad", true)
-        for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do self:SetAttribute(key, nil) end
         -- an extra keybind clicks with its radial's id as the button; the main one with LeftButton
         local id = button
         if (control:GetAttribute(id .. "-count") or 0) < 1 then id = control:GetAttribute("flare-assigned") end
+        local toggle = control:GetAttribute("flare-toggle")
+        if toggle and MODE == "click" and ROOT == id then
+            FIRE = control:RunAttribute("flare-aimed")
+            control:RunAttribute("flare-closeclick")
+            return false
+        end
+        FIRE = nil
+        control:RunAttribute("flare-closeclick", true)
+        control:RunAttribute("flare-closepad", true)
+        for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do self:SetAttribute(key, nil) end
+        if toggle then
+            control:RunAttribute("flare-openclick", id)
+            return false
+        end
         ACTIVE, MODE = id, "hold"
         screen:Show()
-        local x, y = screen:GetMousePosition()
-        if x then
-            OPENX, OPENY = x * screen:GetWidth(), y * screen:GetHeight()
-        else
-            OPENX, OPENY = nil, nil
-        end
+        control:RunAttribute("flare-openpoint")
         return false
     end
+    if FIRE then
+        local prefix = FIRE
+        FIRE = nil
+        for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
+            self:SetAttribute(key, control:GetAttribute(prefix .. key))
+        end
+        return nil, "fired"
+    end
+    -- Toggle's release after opening: the radial stays up for its click
+    if MODE == "click" then return false end
     local prefix = MODE == "hold" and control:RunAttribute("flare-aimed") or nil
     screen:Hide()
     MODE = nil
@@ -1256,8 +1324,28 @@ local CLICK_SNIPPET = [[
     return nil, "fired"
 ]]
 
--- self is the catcher, control the header: left-click fires the aimed button, right-click closes
+-- self is the catcher, control the header: left-click fires the aimed button, middle-click opens an
+-- aimed sub-radial in place, right-click goes back a level or closes, Escape closes
 local CATCHER_SNIPPET = [[
+    if button == "MiddleButton" then
+        local index = control:RunAttribute("flare-select")
+        local sub = index and ACTIVE and control:GetAttribute(ACTIVE .. "-s" .. index .. "-sub")
+        if sub and (control:GetAttribute(sub .. "-count") or 0) > 0 then
+            STACK = STACK or newtable()
+            DEPTH = (DEPTH or 0) + 1
+            STACK[DEPTH] = ACTIVE
+            ACTIVE = sub
+            control:CallMethod("OnSecureNested", sub)
+        end
+        return false
+    end
+    if button == "RightButton" and (DEPTH or 0) > 0 then
+        ACTIVE = STACK[DEPTH]
+        STACK[DEPTH] = nil
+        DEPTH = DEPTH - 1
+        control:CallMethod("OnSecureNested", ACTIVE)
+        return false
+    end
     if button ~= "LeftButton" then
         control:RunAttribute("flare-closeclick")
         return false
@@ -1285,7 +1373,7 @@ local MACRO_SNIPPET = [[
         end
         if not id then return false end
     end
-    if MODE == "click" and ACTIVE == id then
+    if MODE == "click" and ROOT == id then
         local prefix = control:RunAttribute("flare-aimed")
         control:RunAttribute("flare-closeclick")
         if not prefix then return false end
@@ -1350,6 +1438,7 @@ function SyncSecure()
         for i, info in ipairs(list) do
             local children = info.children or { info }
             header:SetAttribute(id .. "-s" .. i .. "-n", #children)
+            header:SetAttribute(id .. "-s" .. i .. "-sub", info.radialID)
             for c, child in ipairs(children) do
                 local prefix = id .. "-s" .. i .. "-" .. c .. "-"
                 for key in ACTION_KEYS:gmatch("%S+") do
@@ -1371,12 +1460,15 @@ function SyncSecure()
         syncedTags[tag] = true
     end
     header:SetAttribute("flare-assigned", RM:GetAssignedRadialID())
+    header:SetAttribute("flare-center", Option("position", "cursor") == "center")
+    header:SetAttribute("flare-toggle", Option("activation", "hold") == "toggle")
     -- sub-radial buttons start on their first child again, as the art does after a layout
     SecureHandlerExecute(header, "CHILD = newtable()")
 end
 
+-- Toggle: the secure snippet opens (OnSecureOpen) or fires and closes, so the art waits for it
 local function OnPreClick(_, button, down)
-    if down then OpenRadial(RM:GetRadial(button) and button or nil, "hold") end
+    if down and not header:GetAttribute("flare-toggle") then OpenRadial(RM:GetRadial(button) and button or nil, "hold") end
 end
 
 -- Only a radial the keybind opened: a button whose macro opens another radial (click mode) has
@@ -1404,6 +1496,8 @@ local function CreateSecureLayer()
     header:SetAttribute("flare-aimed", AIMED_SNIPPET)
     header:SetAttribute("flare-openclick", OPEN_CLICK_SNIPPET)
     header:SetAttribute("flare-closeclick", CLOSE_CLICK_SNIPPET)
+    header:SetAttribute("flare-openpoint", OPEN_POINT_SNIPPET)
+    header.OnSecureNested = function(_, radialID) ShowNestedRadial(radialID) end
     header.OnSecureChild = function(_, index, child) SetButtonChild(index, child) end
     header.OnSecureOpen = function(_, radialID) OpenRadial(radialID, "click") end
     header.OnSecurePadOpen = function(_, radialID) OpenRadial(radialID, "pad") end
@@ -1452,7 +1546,7 @@ local function CreateSecureLayer()
     padButton:SetAttribute("useOnKeyDown", false)
     padButton:SetAttribute("pressAndHoldAction", false)
     SecureHandlerWrapScript(padButton, "OnClick", header, PAD_SNIPPET, CLEAR_SNIPPET)
-    SecureHandlerExecute(header, "CHILD = newtable()")
+    SecureHandlerExecute(header, "CHILD = newtable(); STACK = newtable(); DEPTH = 0")
 end
 
 --------------------------------------------------
@@ -1808,6 +1902,13 @@ end
 --------------------------------------------------
 -- 13. PUBLIC
 --------------------------------------------------
+-- Menu Position / Activation changed: the secure layer takes its copy now, or after the fight
+function RM:ApplyOpening()
+    if not header then return end
+    if InCombatLockdown() then layoutPending = true return end
+    SyncSecure()
+end
+
 function RM:Refresh()
     if not radial then return end
     self:LayoutRadial()

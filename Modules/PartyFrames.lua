@@ -321,7 +321,7 @@ end
 -- 4. UPDATERS (secret-safe, as in UnitFrames.lua)
 --------------------------------------------------
 local function UpdateName(f)
-    f.Name:SetText(UnitName(f.unit) or "")
+    f.Name:SetText(ns.UnitDisplayName(f.unit) or "")
 end
 
 local function UpdateLevel(f)
@@ -334,8 +334,11 @@ local function UpdateLevel(f)
             f.Level:SetTextColor(1, 0.1, 0.1)
         else
             f.Level:SetFormattedText("%d", level)
+            -- friendly (nothing you can attack): Blizzard's gold; the rest by difficulty
             local color = GetQuestDifficultyColor and GetQuestDifficultyColor(level)
-            if color then f.Level:SetTextColor(color.r, color.g, color.b) else f.Level:SetTextColor(1, 1, 1) end
+            if readable(UnitCanAttack("player", f.unit)) == false then
+                f.Level:SetTextColor(1, 0.82, 0)
+            elseif color then f.Level:SetTextColor(color.r, color.g, color.b) else f.Level:SetTextColor(1, 1, 1) end
         end
     else
         f.Level:SetText(level)
@@ -643,7 +646,7 @@ local function UpdatePet(p)
     p.Health:SetMinMaxValues(0, UnitHealthMax(unit))
     p.Health:SetValue(UnitHealth(unit))
     p.Health:SetStatusBarColor(K.GetHealthColor(unit, false))
-    p.Name:SetText(UnitName(unit) or "")
+    p.Name:SetText(ns.UnitDisplayName(unit) or "")
 end
 
 local function UpdatePartyTarget(t)
@@ -653,7 +656,7 @@ local function UpdatePartyTarget(t)
     t.Health:SetMinMaxValues(0, UnitHealthMax(unit))
     t.Health:SetValue(UnitHealth(unit))
     t.Health:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn()))
-    t.Name:SetText(UnitName(unit) or "")
+    t.Name:SetText(ns.UnitDisplayName(unit) or "")
 end
 
 local function OnMemberEvent(f, event, arg1)
@@ -1153,7 +1156,8 @@ local function CastStyle(st)
     return {
         height = st.castHeight or 14,
         icon = st.castIcon ~= false, timer = st.castTimer ~= false, name = true,
-        texture = castTexture, border = true, borderTexture = castBorder,
+        texture = castTexture, border = true, borderTexture = K.Border(castBorder),
+        bgOpacity = st.bgOpacity,
     }
 end
 
@@ -1300,7 +1304,7 @@ local function LayoutMember(f)
     f:SetSize(st.width or 200, st.height or 46)
     f:SetBackdrop({ bgFile = K.BACKDROP_FILE, insets = { left = PADDING, right = PADDING, top = PADDING, bottom = PADDING } })
     f:SetBackdropColor(0, 0, 0, K.BG_OPACITY)
-    K.ApplyBorderStyle(f.Border, K.GetBorderFile(st.border), st.height or 46)
+    K.ApplyBorderStyle(f.Border, K.GetBorderFile(K.Border(st.border)), st.height or 46)
 
     -- (a mirrored tile, as the boss frames: FlareUI Forever's gradient turns with the fill)
     local texture = K.GetBarTexture(st.texture, Mirrored(f))
@@ -1311,6 +1315,9 @@ local function LayoutMember(f)
     f.powerShown = WantsPower(f)
     LayoutBars(f)
     if f.ringKind then ns.UFRing.Layout(f) end
+    -- the bars' empty part (Background Opacity)
+    K.SetBarBackground(f.Health, st.bgOpacity)
+    K.SetBarBackground(f.Power, st.bgOpacity)
     LayoutHealClip(f)
     LayoutTexts(f)
     LayoutIcons(f)
@@ -1346,10 +1353,11 @@ local function LayoutPet(p)
     local owner = p.owner
     local height = st.petHeight or 19
     p:SetSize(st.petWidth or 120, height + 2 * PADDING)
-    K.ApplyBorderStyle(p.Border, K.GetBorderFile(st.petBorder or "FlareUI Thin"), height + 2 * PADDING)
+    K.ApplyBorderStyle(p.Border, K.GetBorderFile(K.Border(st.petBorder or "FlareUI Thin")), height + 2 * PADDING)
     local texture = K.GetBarTexture(st.texture)
     p.Health:SetStatusBarTexture(texture)
     p.Health.bg:SetTexture(texture)
+    K.SetBarBackground(p.Health, st.bgOpacity)
     p.Health:ClearAllPoints()
     p.Health:SetPoint("TOPLEFT", p, "TOPLEFT", PADDING, -PADDING)
     p.Health:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -PADDING, PADDING)
@@ -1377,10 +1385,11 @@ local function LayoutTarget(t)
     local owner = t.owner
     local height = st.targetHeight or 25
     t:SetSize(st.targetWidth or 100, height)
-    K.ApplyBorderStyle(t.Border, K.GetBorderFile(st.targetBorder or "FlareUI Thin"), height)
+    K.ApplyBorderStyle(t.Border, K.GetBorderFile(K.Border(st.targetBorder or "FlareUI Thin")), height)
     local texture = K.GetBarTexture(st.texture)
     t.Health:SetStatusBarTexture(texture)
     t.Health.bg:SetTexture(texture)
+    K.SetBarBackground(t.Health, st.bgOpacity)
     t.Health:ClearAllPoints()
     t.Health:SetPoint("TOPLEFT", t, "TOPLEFT", PADDING, -PADDING)
     t.Health:SetPoint("BOTTOMRIGHT", t, "BOTTOMRIGHT", -PADDING, PADDING)
@@ -2205,13 +2214,16 @@ local function BuildSettings()
         end
     end
     Section("Look", {
-        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.texture, values = K.BuildTextureValues(false),
+        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.texture, values = K.BuildTextureValues(),
           get = getS("texture"), set = setS("texture") },
         { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = D.border, values = K.BuildBorderValues(false),
-          get = getS("border"), set = setS("border") },
-        { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildTextureValues(true),
+          get = getS("border"), set = setS("border"), hidden = K.NoBorderOptions },
+        { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildAbsorbValues(),
           get = getS("absorbTexture"), set = setS("absorbTexture"),
-          desc = L["The texture of the shield (absorb) over the health bar. Frame Texture uses the bar's own."] },
+          desc = L["The texture of the shield (absorb) over the health bar."] },
+        K.BgOpacitySetting(K.BAR_BG_OPACITY,
+            function() local v = getS("bgOpacity")(); if v == nil then return K.BAR_BG_OPACITY end; return v end,
+            setS("bgOpacity")),
     })
 
     local function noCast() return not getS("castbar")() end
@@ -2230,11 +2242,11 @@ local function BuildSettings()
           set = function(layoutName, value) setS("castTimer")(layoutName, not value) end,
           hidden = noCast,
           desc = L["No time left at the right end of the bar."] },
-        { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(true),
-          get = getS("castTexture"), set = setS("castTexture"), hidden = noCast,
-          desc = L["Frame Texture uses the frame's own bar texture."] },
+        { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
+          get = getS("castTexture"), set = setS("castTexture"), hidden = noCast, },
         { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
-          get = getS("castBorderTexture"), set = setS("castBorderTexture"), hidden = noCast,
+          get = getS("castBorderTexture"), set = setS("castBorderTexture"),
+          hidden = function() return noCast() or K.NoBorderOptions() end,
           desc = L["Frame Border uses the frame's own border."] },
     })
 
@@ -2292,7 +2304,7 @@ local function BuildSettings()
         { name = L["Pet Frame Height"], kind = LEM.SettingType.Slider, default = D.petHeight, minValue = 10, maxValue = 40, valueStep = 1,
           get = getS("petHeight"), set = setS("petHeight"), hidden = noPets },
         { name = L["Pet Border Texture"], kind = LEM.SettingType.Dropdown, default = D.petBorder, values = K.BuildBorderValues(false),
-          get = getS("petBorder"), set = setS("petBorder"), hidden = noPets },
+          get = getS("petBorder"), set = setS("petBorder"), hidden = function() return noPets() or K.NoBorderOptions() end },
     })
 
     -- the members' targets: only while Show Party Targets (Party section) is on
@@ -2303,7 +2315,7 @@ local function BuildSettings()
         { name = L["Target Frame Height"], kind = LEM.SettingType.Slider, default = D.targetHeight, minValue = 12, maxValue = 60, valueStep = 1,
           get = getS("targetHeight"), set = setS("targetHeight"), hidden = noTargets },
         { name = L["Target Border Texture"], kind = LEM.SettingType.Dropdown, default = D.targetBorder, values = K.BuildBorderValues(false),
-          get = getS("targetBorder"), set = setS("targetBorder"), hidden = noTargets },
+          get = getS("targetBorder"), set = setS("targetBorder"), hidden = function() return noTargets() or K.NoBorderOptions() end },
     })
     return settings
 end

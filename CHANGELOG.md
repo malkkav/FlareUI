@@ -1,3 +1,21 @@
+# FlareUI 2.3.0
+
+Radial Menu opening options, chat link tooltips, and more control over how every unit frame looks.
+
+## New
+- Radial Menu: **Menu position** (Options tab): open radials at your mouse cursor (the default) or in the middle of the screen. Radial macros open there too.
+- Radial Menu: **Activation** (Options tab): **Hold** (as before: hold the key, point, release) or **Toggle**: press the key to open the radial and keep it open. Left-click or press the key again uses the slice you point at, right-click goes back a level or closes, Escape closes. Middle-click a nested radial to open it in place of the current one; the mouse wheel still steps through it.
+- Chat: **Link tooltips on hover** (Tweaks, on by default): point at an item, spell or quest link in chat to see its tooltip, without clicking.
+- Unit Frames: **Background Opacity** at the end of Look in Edit Mode, on every unit frame (player, target, focus, pet, player cast bar, target of target, target of focus, party, raid and boss): how dark the empty part of the bars is, from 0% to 100%. Cast bars follow their frame's setting.
+- Unit Frames: **Full Player Names** (Look, on by default): players' first names and surnames on every unit frame. Off shows the first name only.
+
+## Changed
+- Unit Frames: **Border Texture** is now on every frame in FlareUI Style and Addon Style, the player, target and focus frames included. Forever Style has no border options at all: its border is fixed on every frame.
+- Unit Frames: the level of a friendly unit (anything you can't attack) shows in Blizzard's gold, in every style. Enemies keep the difficulty colours.
+- Bar and border dropdowns: FlareUI's own options come first, then a line and the bars or borders other addons add, A-Z. LibSharedMedia's built-in Blizzard bars and borders are no longer listed.
+- FlareUI's options in those dropdowns: FlareUI Thick and FlareUI Thin for Border Texture; None and FlareUI Frames for the Chat, Damage Meter and Quest Tracker borders; FlareUI Flat, FlareUI Forever and FlareUI Striped for Bar, Cast Bar and Absorb Texture. A frame already set to something no longer listed keeps it.
+- **Frame Texture** is gone from Cast Bar Texture and Absorb Texture.
+
 # FlareUI 2.2.1
 
 ## Fixed

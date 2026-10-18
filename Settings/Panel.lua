@@ -280,8 +280,12 @@ local function SetupChoiceMenu(dropdown, f)
         local row = f.row
         if not row then return end
         for _, c in ipairs(row:Choices()) do
-            c.row = row
-            root:CreateRadio(c.text, IsChoice, PickChoice, c)
+            if c.divider then
+                root:CreateDivider()
+            else
+                c.row = row
+                root:CreateRadio(c.text, IsChoice, PickChoice, c)
+            end
         end
     end)
 end

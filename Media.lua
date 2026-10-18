@@ -55,6 +55,27 @@ end
 
 -- LibSharedMedia's own bar textures (it adds them in every addon's copy, and they can't be taken
 -- out): FlareUI's dropdowns leave them out. A frame already set to one keeps it.
+-- LibSharedMedia's own border list (the game's art and None), hidden the same way; the chat, damage
+-- meter and quest tracker keep None as their own first choice
+ns.HIDDEN_BORDERS = {
+    ["None"] = true, ["Blizzard Achievement Wood"] = true, ["Blizzard Chat Bubble"] = true, ["Blizzard Dialog"] = true,
+    ["Blizzard Dialog Gold"] = true, ["Blizzard Party"] = true, ["Blizzard Tooltip"] = true,
+}
+
+-- What a media dropdown offers: FlareUI's own (base, in that order), then a divider and every bar or
+-- border other addons registered with LibSharedMedia, A-Z. LibSharedMedia's own Blizzard entries
+-- and FlareUI's other media stay out. Returns the names after the divider.
+function ns.AddonMedia(mediaType)
+    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+    local hidden = (mediaType == "border" and ns.HIDDEN_BORDERS) or (mediaType == "statusbar" and ns.HIDDEN_STATUSBARS) or {}
+    local list = {}
+    for _, name in ipairs(LSM and LSM:List(mediaType) or {}) do
+        if not hidden[name] and not name:find("^FlareUI ") then list[#list + 1] = name end
+    end
+    table.sort(list, function(a, b) return a:lower() < b:lower() end)
+    return list
+end
+
 ns.HIDDEN_STATUSBARS = {
     ["Blizzard"] = true, ["Blizzard Character Skills Bar"] = true, ["Blizzard Raid Bar"] = true, ["Solid"] = true,
 }
