@@ -1,3 +1,9 @@
+# FlareUI 2.2.1
+
+## Fixed
+- Target and focus frames: switching straight from one target to another no longer leaves the last target's debuffs on the frame. They showed up as duplicates, and their timers sat at 0 or were missing (reported in a dungeon). Party, boss and raid frames get the same fix when a new unit takes a frame (a new boss, a roster change).
+- Target and focus frames: **Only My Debuffs** now shows only the debuffs you cast. Before, it showed every player's debuffs.
+
 # FlareUI 2.2.0
 
 Improvements from your feedback: whole-width aura rows, cast bars that make room for auras, tooltip level colours and a tidier minimap.

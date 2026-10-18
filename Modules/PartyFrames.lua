@@ -592,6 +592,23 @@ local function UpdateRing(f)
     if f.ringKind and ns.UFRing then ns.UFRing.Update(f) end
 end
 
+-- Blizzard's aura containers only follow UNIT_AURA for their token: when someone else takes it (a
+-- roster change, a new boss in boss1) the last unit's auras would stay beside the new ones, their
+-- removals never coming. They rebuild when the unit behind the token changes (every time when its
+-- GUID is secret). Not protected: fine in combat.
+local function RefreshAurasOnNewUnit(f)
+    local guid = UnitGUID(f.unit)
+    if not canaccessvalue(guid) then guid = nil end
+    if guid and guid == f.auraGUID then return end
+    f.auraGUID = guid
+    local function Refresh(entry)
+        if entry and entry.container:IsShown() then pcall(entry.container.UpdateAllAuras, entry.container) end
+    end
+    if f.AuraPos then for _, entry in pairs(f.AuraPos) do Refresh(entry) end end
+    Refresh(f.AuraSlots)
+    Refresh(f.AuraHighlight)
+end
+
 local function UpdateAll(f)
     if IsEditing() then
         ApplyPreview(f)
@@ -600,6 +617,7 @@ local function UpdateAll(f)
     end
     HidePreviewExtras(f)
     if not UnitExists(f.unit) then return end
+    RefreshAurasOnNewUnit(f)
     UpdateName(f)
     UpdateLevel(f)
     UpdateHealth(f)

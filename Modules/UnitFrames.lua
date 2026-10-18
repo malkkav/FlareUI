@@ -1035,6 +1035,14 @@ local function OnUnitEvent(f, event, arg1, arg2)
         UpdateCast(f)
     else
         UpdateAll(f)   -- the unit behind the token changed
+        -- Blizzard's aura containers only follow UNIT_AURA for the token: a new target or focus
+        -- would keep the old unit's auras (their removals never come) next to the new ones, so
+        -- they rebuild here, as Blizzard's TargetFrame does (not protected: fine in combat)
+        if f.Auras then
+            for _, entry in pairs(f.Auras) do
+                if entry.container:IsShown() then pcall(entry.container.UpdateAllAuras, entry.container) end
+            end
+        end
     end
 end
 
@@ -1292,12 +1300,13 @@ LayoutAuras = function(f)
     -- permanent buffs are left out; Edit Mode's sample buffs have no duration, so not there
     local buffCandidates
     if not LEM:IsInEditMode() then buffCandidates = { maxDuration = 999999 } end
-    local debuffCandidates
-    -- (every debuff on yourself is yours to see: Only My Debuffs is for other units)
-    if udb.onlyMyDebuffs and f.unit ~= "player" then debuffCandidates = { isFromPlayerOrPlayerPet = true } end
+    -- Only My Debuffs: the PLAYER filter (cast by you). Not the isFromPlayerOrPlayerPet candidate: that
+    -- is any player, so in a group it showed every party member's debuffs (same spell twice, and
+    -- their timers unknown). Every debuff on yourself is yours to see: it is for other units.
+    local debuffFilter = (udb.onlyMyDebuffs and f.unit ~= "player") and "HARMFUL|PLAYER" or "HARMFUL"
     -- debuffs first: closest to the frame when both share a corner; none with Hide Auras (focus)
     if not udb.hideAuras then
-        AddLane(udb.debuffs, "debuffs", "HARMFUL", true, debuffCandidates)
+        AddLane(udb.debuffs, "debuffs", debuffFilter, true, nil)
         AddLane(udb.buffs, "buffs", "HELPFUL", false, buffCandidates)
     end
     for _, corner in ipairs(AURA_CORNERS) do
