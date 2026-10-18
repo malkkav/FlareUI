@@ -977,6 +977,11 @@ ns.Copy = {
             label = L["Show target"],
             section = "tt.tweaks",
         },
+        ["tt.showThreat"] = {
+            desc = L["Your threat on an enemy, as a percentage, on its tooltip."],
+            label = L["Show threat"],
+            section = "tt.tweaks",
+        },
         ["tt.showWorld"] = {
             choices = { L["Always"], L["Hide in combat"], L["Never"] },
             desc = L["When tooltips appear for what you point at."],

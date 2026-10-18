@@ -713,6 +713,7 @@ L["Show Pets"] = true
 L["Show player"] = true
 L["Show Player"] = true
 L["Show target"] = true
+L["Show threat"] = true
 L["Show tooltips"] = true
 L["Showing all tracked quests"] = true
 L["Showing the quests of this zone"] = true
@@ -923,6 +924,7 @@ L["Your party, in one of two styles:\n* Classic: like the player frame\n* Raid: 
 L["Your player and pet frames fade out while:\n* You're out of combat\n* You have no target\n* You're at full health"] = true
 L["Your player, pet, target and focus frames."] = true
 L["Your rage, energy, mana or focus."] = true
+L["Your threat on an enemy, as a percentage, on its tooltip."] = true
 L["Zone"] = true
 L["Zone headings"] = true
 L["Zone name"] = true

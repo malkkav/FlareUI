@@ -491,6 +491,15 @@ function TIP:Init()
     add(Enum.TooltipDataType.Spell, OnTooltipSetSpell)
     add(Enum.TooltipDataType.UnitAura, OnTooltipSetAura)
 
+    -- Show threat off: Blizzard's threat line on an enemy's tooltip ("Threat: 85%") is consumed
+    -- before it is added (a line pre-call returning true), so no empty line is left
+    if Enum.TooltipDataLineType and Enum.TooltipDataLineType.UnitThreat and TooltipDataProcessor.AddLinePreCall then
+        TooltipDataProcessor.AddLinePreCall(Enum.TooltipDataLineType.UnitThreat, function()
+            local now = GetDb()
+            if now and now.showThreat == false then return true end
+        end)
+    end
+
     GameTooltip:HookScript("OnShow", OnTooltipShow)
 
     -- Blizzard restyles tooltips constantly; put our colours back afterwards

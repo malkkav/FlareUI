@@ -1,3 +1,8 @@
+# FlareUI 2.3.1
+
+## New
+- Tooltips: **Show threat** (on by default, above Show target): turn it off to hide your threat percentage on enemy tooltips.
+
 # FlareUI 2.3.0
 
 Radial Menu opening options, chat link tooltips, and more control over how every unit frame looks.

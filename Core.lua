@@ -550,6 +550,7 @@ local defaults = {
 
             -- content
             nameColor = "class",          -- none | class
+            showThreat = true,          -- Blizzard's threat line on enemy tooltips
             showTarget = false,
             showItemID = false,
             showSpellID = false,

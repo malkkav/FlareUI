@@ -43,6 +43,8 @@ S:Row{
     get = function() return S:GetPath("tooltips.nameColor") == "class" end,
     set = function(on) S:SetPath("tooltips.nameColor", on and "class" or "none") end,
 }
+-- Blizzard's threat line ("Threat: 85%") on an enemy's tooltip
+S:Row{ key = "tt.showThreat", path = "tooltips.showThreat" }
 -- "Target: <name>" on a unit's tooltip
 S:Row{ key = "tt.showTarget", path = "tooltips.showTarget", apply = Refresh }
 
