@@ -3,18 +3,14 @@ local L = ns.L
 local S = ns.Settings
 
 --------------------------------------------------
--- RADIAL MENU (Modules/RadialMenu.lua). Three tabs:
---   Buttons   the radial editor (Settings/RadialEditor.lua, BuildEmbedded), its live preview in
---             the right column
---   Keybinds  one list of keys, each opening a radial on this character. The first is the
---             module's main key (and the radial the controller opens), the rest its extra keys;
---             the player sees no difference.
---   Options   button names, controller support, and the radial macro maker
+-- RADIAL MENU
+-- Tabs: Buttons (the embedded radial editor with its preview), Keybinds (the main key plus extra
+-- keys shown as one list) and Options.
 --------------------------------------------------
 local function RM() return ns.RadialMenu end
 local function Ready() return RM() and RM().initialized end
 
--- the radials, in the library's order, as { id, name } choices
+-- the radials as { id, name } choices, by name
 local function RadialChoices()
     local list, rm = {}, RM()
     if not rm then return list end
@@ -26,9 +22,9 @@ local function RadialChoices()
 end
 
 --------------------------------------------------
--- KEYBINDS TAB
+-- 1. KEYBINDS TAB
 --------------------------------------------------
--- the keys as one list: { key, radial, set key, set radial, remove }
+-- entries { key, radial, setKey, setRadial, remove }; the first is the main key
 local function Keys()
     local rm = RM()
     local list = {}
@@ -37,7 +33,7 @@ local function Keys()
         key = rm:GetKey() or "", radial = rm:GetAssignedRadialID(),
         setKey = function(k) rm:SetKey(k) end,
         setRadial = function(id) rm:SetAssignedRadialID(id) end,
-        -- the first key goes: the next one takes its place
+        -- removing the main key promotes the first extra one
         remove = function()
             local extra = rm:GetExtraBindings()[1]
             if extra then
@@ -62,7 +58,6 @@ end
 
 local KEY_ROW_H, MAX_KEY_ROWS = 32, 6
 
--- hovering a key fills the right column with what the keys do; leaving gives the module back
 local function KeyHover(control)
     control:HookScript("OnEnter", function()
         ns.SettingsPanel:ShowPreview(S:Text("rm.keys", "label") or L["Keybinds"], S:Text("rm.keys", "desc"),
@@ -71,7 +66,7 @@ local function KeyHover(control)
     control:HookScript("OnLeave", function() ns.SettingsPanel:ShowModulePreview() end)
 end
 
--- a radial choice in a key's menu: { id, entry }
+-- menu choice: { id, entry }
 local function IsKeyRadial(choice) return choice.entry.radial == choice.id end
 local function PickKeyRadial(choice)
     choice.entry.setRadial(choice.id)
@@ -136,7 +131,7 @@ local function RefreshKeys(host)
 end
 
 --------------------------------------------------
--- MODULE AND TABS
+-- 2. MODULE AND TABS
 --------------------------------------------------
 S:Module{
     key = "rm", group = "Tools", order = 10, enabled = "radialmenu.enabled",
@@ -153,14 +148,12 @@ S:Module{
     },
 }
 
--- the keybind list as a row, for search: its button opens the Keybinds tab (the tab itself draws
--- the list, so the row never shows on the page)
+-- a search-only row (the tab draws the list) whose button opens the Keybinds tab
 S:Row{
     key = "rm.keys", kind = "button", tab = "keys", buttonText = L["Open"],
     apply = function() ns.SettingsPanel:Open("rm", "keys") end,
 }
 
--- Options: opening, look and controller
 local function ApplyOpening() if RM() and RM().ApplyOpening then RM():ApplyOpening() end end
 S:Row{ key = "rm.position", kind = "choice", tab = "options", path = "radialmenu.position", choices = { "cursor", "center" }, apply = ApplyOpening }
 S:Row{ key = "rm.activation", kind = "choice", tab = "options", path = "radialmenu.activation", choices = { "hold", "toggle" }, apply = ApplyOpening }
@@ -171,7 +164,7 @@ S:Row{
     set = function(on) if RM() then RM():SetControllerEnabled(on) end end,
 }
 
--- Options: radial macros
+-- radial macro maker
 local macroRadial
 local function MacroRadial()
     local rm = RM()
@@ -184,7 +177,6 @@ local function MacroLine()
     return id and RM():GetMacroText(id) or ""
 end
 
--- one line: the radial, and Create macro beside it
 local function CreateRadialMacro()
     local id = MacroRadial()
     local data = id and RM():GetRadial(id)

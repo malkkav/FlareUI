@@ -3,9 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- CHAT
--- Blizzard's chat windows in FlareUI's look: a skin per window with its tabs and header buttons,
--- rewritten lines (short channel names, class-coloured names, timestamps), copyable
--- links, saved history, pop-out windows, and the chat's visibility and fading.
+-- Blizzard's chat windows in FlareUI's look: a skin per window with tabs and header buttons,
+-- rewritten lines, copyable links, hover tooltips, saved history, pop-out windows and fading.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -98,6 +97,22 @@ local function IsPopped(chatFrame)
     return chatFrame ~= nil and dock ~= nil and chatFrame ~= dock.primary and not chatFrame.isDocked
 end
 
+-- BetterDate for one format, kept for the last two seconds: every chat line formats a timestamp
+local stampCache = {}
+local function CachedDate(fmt, t)
+    local c = stampCache
+    if c.fmt == fmt then
+        if c.t1 == t then return c.s1 end
+        if c.t2 == t then return c.s2 end
+    else
+        c.fmt, c.t1, c.t2 = fmt, nil, nil
+    end
+    local s = BetterDate(fmt, t)
+    c.t2, c.s2 = c.t1, c.s1
+    c.t1, c.s1 = t, s
+    return s
+end
+
 local function GetTimestamp()
     local db = GetDb()
     if not db then return "" end
@@ -107,7 +122,7 @@ local function GetTimestamp()
     if format == "none" then format = "%H:%M" end
 
     -- Blizzard's formats end in a space, which belongs outside the brackets
-    local timeStr = string_gsub(BetterDate(format, time()), "%s+$", "")
+    local timeStr = string_gsub(CachedDate(format, time()), "%s+$", "")
 
     if db.betterTimestamps then
         return string_format("%s<%s>|r ", TIMESTAMP_COLOR, timeStr)
@@ -250,8 +265,7 @@ end
 -- Forever's "Refreshing your world" notice sits just above the chat, its minimize button (to its
 -- left) lined up with the chat's left edge. Re-placed on every SetPoint and show.
 local SHARD_GAP = 4   -- between the chat's top edge and the notice
--- the toasts above the chat: their silver border in FlareUI bronze (the backdrop keeps the colour
--- when Blizzard re-applies it)
+-- the toasts' silver border in FlareUI bronze, kept when Blizzard re-applies the backdrop
 local function TintToastBorder(frame)
     if not frame.SetBackdropBorderColor then return end
     local c = ns.BORDER_COLOR
@@ -284,9 +298,8 @@ local function AnchorShardNotice()
     Place()
 end
 
--- Battle.net toasts (friend online, whispers): Blizzard's chat alert system never moves them on
--- Forever, so they stay at their default spot mid screen. They go just above the chat, lined up with
--- its left edge. Re-placed on every SetPoint and show. Blizzard_BNet can load after FlareUI.
+-- Battle.net toasts: Forever never moves them from mid screen, so they go just above the chat.
+-- Re-placed on every SetPoint and show; Blizzard_BNet can load after FlareUI.
 local BN_TOAST_GAP = 4   -- between the chat's top edge and the toast
 local function AnchorBNToast()
     local frame = _G.BNToastFrame
@@ -330,7 +343,10 @@ local function DisableQuickJoinToasts()
             QuickJoinToastButton.Toast:Hide()
             QuickJoinToastButton.Toast:SetAlpha(0)
             QuickJoinToastButton.Toast:EnableMouse(false)
-            hooksecurefunc(QuickJoinToastButton, "ShowToast", function(self) self.Toast:Hide() end)
+            if not QuickJoinToastButton.FlareUI_ToastHooked then
+                QuickJoinToastButton.FlareUI_ToastHooked = true
+                hooksecurefunc(QuickJoinToastButton, "ShowToast", function(self) self.Toast:Hide() end)
+            end
         end
     end
 end
@@ -375,6 +391,12 @@ local NPC_EVENTS = { MONSTER_SAY = true, MONSTER_YELL = true, MONSTER_WHISPER = 
 local Lines = {
     levels = {},        -- GUID or lower-case name -> level, this session only
     hooked = {},        -- chat frames carrying the AddMessage post-hook (not a field on Blizzard's)
+    -- chat type -> its CHAT_<type>_GET global's name, built once per type
+    getKeys = setmetatable({}, { __index = function(t, chatType)
+        local key = "CHAT_" .. chatType .. "_GET"
+        t[chatType] = key
+        return key
+    end }),
 }
 
 -- Splits off Blizzard's timestamp: the line was just formatted, so this second or the one before
@@ -384,7 +406,7 @@ function Lines.SplitStamp(message)
     if not fmt then return "", message end
     local now = time()
     for t = now, now - 1, -1 do
-        local stamp = BetterDate(fmt, t)
+        local stamp = CachedDate(fmt, t)
         if message:sub(1, #stamp) == stamp then return stamp, message:sub(#stamp + 1) end
     end
     return "", message
@@ -418,8 +440,7 @@ local function NameKey(name)
     return name and (name:gsub("%-.*$", "")):lower() or nil
 end
 
--- A long session in a city sees thousands of players: past LEVELS_KEEP entries the list starts over
--- (levels are learned again as players are seen)
+-- Past LEVELS_KEEP entries the list starts over (a long city session sees thousands of players)
 local LEVELS_KEEP = 4000
 local function Store(key, level)
     local levels = Lines.levels
@@ -497,7 +518,7 @@ function Lines.RewriteSender(body, chatType, args, mode, db)
     local after = body:sub(e + 1)
     if db.formatPlayer and mode == "full" then
         -- after the link comes the rest of CHAT_<type>_GET (" says: "), maybe behind an ally icon
-        local key = _G["CHAT_" .. chatType .. "_GET"]
+        local key = _G[Lines.getKeys[chatType]]
         local suffix = type(key) == "string" and key:match("%%s(.*)$")
         local ally, rest = after:match("^( |A[^|]*|a)(.*)$")
         local tail = rest or after
@@ -511,7 +532,7 @@ end
 -- NPC lines have no link: the CHAT_MONSTER_<type>_GET header becomes the orange name
 function Lines.RewriteNPC(body, chatType, args)
     local sender = Arg(args, 2, "string")
-    local key = _G["CHAT_" .. chatType .. "_GET"]
+    local key = _G[Lines.getKeys[chatType]]
     if not sender or sender == "" or type(key) ~= "string" then return body end
     local ok, header = pcall(string_format, key, sender, sender)
     if not ok or body:sub(1, #header) ~= header then return body end
@@ -651,10 +672,9 @@ local function HandleCombatLog(db)
     end
 end
 
--- Blizzard hides these buttons with ChatFrame1ButtonFrame, which we keep hidden, so an OnHide hook
+-- Blizzard hides these buttons with ChatFrame1ButtonFrame, which stays hidden, so an OnHide hook
 -- re-shows them. Never replace their Hide method: that taints every caller. A button FlareUI hides
--- itself (switched off, or the Gamepad UI) stays hidden: re-showing it would bounce between its
--- OnShow and OnHide hooks.
+-- itself stays hidden, or it would bounce between its OnShow and OnHide hooks.
 local PROTECTED_BUTTONS = {
     { name = "ChatFrameMenuButton",    key = "menuHide" },
     { name = "ChatFrameChannelButton", key = "channelHide" },
@@ -1033,7 +1053,9 @@ function Chat.ShowCopyText(text) ShowCopyBox(text) end
 -- Blizzard only calls filters with accessible values, so no secret check is needed. A message that
 -- already carries a hyperlink is left alone.
 local function URLFilter(self, event, msg, ...)
-    if type(msg) ~= "string" or msg:find("|H") then return false, msg, ... end
+    if type(msg) ~= "string" or msg:find("|H", 1, true) then return false, msg, ... end
+    -- most lines hold no address: skip the per-word scan
+    if not (msg:find("://", 1, true) or msg:find("www.", 1, true)) then return false, msg, ... end
     msg = msg:gsub("%S+", LinkAddress)
     return false, msg, ...
 end
@@ -1066,12 +1088,10 @@ function Chat:SetupCopyLinks()
 end
 
 --------------------------------------------------
--- 8b. HOVER TOOLTIPS
--- Pointing at a link in chat shows its tooltip, gone again when the mouse leaves (a click still
--- opens Blizzard's own window). Blizzard's chat frames announce link hovers through EventRegistry
--- ("ChatFrame.OnHyperlinkEnter" / "Leave"), so no frame script is touched. Only links the game
--- tooltip can draw; players, channels and FlareUI's URLs keep just their click. A link that is a
--- secret value is left alone.
+-- 9. HOVER TOOLTIPS
+-- Hovering a chat link shows its tooltip until the mouse leaves. Blizzard's chat frames announce
+-- link hovers through EventRegistry, so no frame script is touched. Only links the game tooltip can
+-- draw; secret links are left alone.
 --------------------------------------------------
 local HOVER_LINKS = {
     item = true, spell = true, enchant = true, quest = true, talent = true,
@@ -1108,7 +1128,7 @@ function Chat:SetupHoverTooltips()
 end
 
 --------------------------------------------------
--- 9. TAB MENU AND DOCK
+-- 10. TAB MENU AND DOCK
 --------------------------------------------------
 function Chat:SetupImprovements()
     local db = GetDb()
@@ -1237,7 +1257,7 @@ function Chat:KillGeneralDockManager()
 end
 
 --------------------------------------------------
--- 10. TAB BAR
+-- 11. TAB BAR
 -- FlareUI's own tabs on the skin, one per docked window (a popped window has only its own).
 --------------------------------------------------
 function Chat:CreateCustomTabBar(chatFrame)
@@ -1598,12 +1618,12 @@ function Chat:UpdateTabFonts(db)
 end
 
 --------------------------------------------------
--- 11. EDIT BOX
--- * Sent history: the last lines you sent (all channels, kept per character). Up and Down, with or
---   without Shift or Alt, step through them one at a time; Down past the newest gives back what
---   you were typing. Blizzard's own list is emptied after each line, so Alt+Up doesn't fight ours.
--- * Inside: while the box is open over the chat's last lines, the lines move up above it, and drop
---   back when it closes. The chat lays its lines out from the bottom up; the first is moved.
+-- 12. EDIT BOX
+-- * Sent history: the last lines sent (all channels, per character). Up / Down, with or without
+--   Shift or Alt, step through them; Down past the newest restores the draft. Blizzard's own list
+--   is emptied after each line so Alt+Up does not fight this one.
+-- * Inside: while the box is open over the chat's last lines, the lines move up above it. The chat
+--   lays its lines out from the bottom up, so only the first is moved.
 --------------------------------------------------
 local EDIT_BOX_GAP = 1   -- px between the chat window's border and an edit box below / above it
 local EditExtras = { SENT_MAX = 50, PUSH_GAP = 2 }
@@ -1767,7 +1787,7 @@ function Chat:StyleEditBox(chatFrame, db)
 end
 
 --------------------------------------------------
--- 12. WINDOW SKIN
+-- 13. WINDOW SKIN
 --------------------------------------------------
 
 function Chat:SetupVolumeButton(chatFrame, db)
@@ -1785,7 +1805,7 @@ function Chat:SetupVolumeButton(chatFrame, db)
         local tex
         if vol <= 0 then tex = ICON_MUTE elseif vol <= 0.3 then tex = ICON_LOW elseif vol <= 0.7 then tex = ICON_MEDIUM else tex = ICON_HIGH end
         if btn then
-            -- struck bronze, like the other header icons (the speaker changes with the volume)
+            -- struck bronze, like the other header icons
             if not btn.FlareUI_Icon then
                 btn.FlareUI_Icon = btn:CreateTexture(nil, "ARTWORK")
                 btn.FlareUI_Icon:SetAllPoints()
@@ -1866,7 +1886,7 @@ local function CreateOrGetSkinFrame(chatFrame)
     if not skin then
         skin = CreateFrame("Frame", nil, chatFrame, "BackdropTemplate")
         chatFrame.FlareUI_Skin = skin
-        -- keeps Blizzard's gamepad cursor on the edit box, off our tabs and buttons
+        -- keeps Blizzard's gamepad cursor on the edit box, off FlareUI's tabs and buttons
         if ns.IsGamepadUI() then skin.smartNavigationIgnored = true end
         -- the line under the tab row
         local line = skin:CreateTexture(nil, "OVERLAY")
@@ -1927,7 +1947,7 @@ function Chat:StyleChatFrame(chatFrame, db)
     chatFrame:SetFading(false)
     chatFrame:SetTimeVisible(9999)
 
-    -- Blizzard's own alpha changes are overruled by ours
+    -- Blizzard's own alpha changes are overruled by FlareUI's target alpha
     if not chatFrame.FlareUI_AlphaHooked then
         Chat:SecureHook(chatFrame, "SetAlpha", function(frameParam, alpha)
             if frameParam.FlareUI_IgnoreAlpha then return end
@@ -1942,7 +1962,6 @@ function Chat:StyleChatFrame(chatFrame, db)
         chatFrame.FlareUI_AlphaHooked = true
     end
 
-    -- Blizzard's dialog background inside the border picked in the options
     local skin = CreateOrGetSkinFrame(chatFrame)
     local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
     local borderTexture = GetBorderFile(db)
@@ -1960,7 +1979,7 @@ function Chat:StyleChatFrame(chatFrame, db)
             local chatDb = GetDb()
             if not (chatDb and chatDb.enabled) then return end
             local myPath, mySize = Chat:MessageFont(frameParam, chatDb)
-            if math_abs(size - mySize) > 0.1 or font ~= myPath then Chat:ApplyMessageFont(frameParam, chatDb) end
+            if not size or math_abs(size - mySize) > 0.1 or font ~= myPath then Chat:ApplyMessageFont(frameParam, chatDb) end
         end)
     end
     Chat:ApplyMessageFont(chatFrame, db)
@@ -1975,7 +1994,7 @@ function Chat:StyleChatFrame(chatFrame, db)
 end
 
 --------------------------------------------------
--- 13. POP-OUT WINDOWS
+-- 14. POP-OUT WINDOWS
 -- With Blizzard's tabs hidden, the tab menu's Pop Out undocks a window through Blizzard's functions,
 -- which save its state, position and size. A popped window keeps the skin with only its own tab;
 -- its tab and header drag it. The shared header buttons stay on the dock.
@@ -2068,7 +2087,7 @@ function Chat:DockWindow(chatFrame)
 end
 
 --------------------------------------------------
--- 14. AUTO-HIDE
+-- 15. AUTO-HIDE
 -- With a Visibility other than Always, a window stays up autoHideDelay seconds (Fade Delay) after
 -- the last message, hover, edit (or combat), then fades out at the Fade Speed. A message only
 -- moves hideAt; one timer per window waits for it. Fades run on one shared OnUpdate that stops when
@@ -2214,7 +2233,7 @@ function Chat:TakeOverFromDock(chatFrame)
 end
 
 --------------------------------------------------
--- 15. EVENT HANDLERS
+-- 16. EVENT HANDLERS
 --------------------------------------------------
 function Chat:OnCombatStateChange()
     local db = GetDb()
@@ -2253,7 +2272,7 @@ function Chat:OnNPCInteractionEnd()
 end
 
 --------------------------------------------------
--- 16. APPLY
+-- 17. APPLY
 --------------------------------------------------
 -- every message (combat log lines included) lands here, so it returns early when auto-hide is off
 local function OnChatMessage(chatFrame)
@@ -2327,7 +2346,7 @@ function Chat:Apply(db)
 end
 
 --------------------------------------------------
--- 17. INIT
+-- 18. INIT
 --------------------------------------------------
 -- Blizzard's gamepad chat only works in IM style, so the Gamepad UI switches to it; the player's
 -- style comes back in keyboard mode. The CVar is account-wide, so the saved style is too.
@@ -2346,7 +2365,7 @@ function Chat:ApplyGamepadChatStyle()
 end
 
 -- Gamepad UI: LB / RB icons above the header of the chat window that has the pad. Polled: a hook on
--- Blizzard's focus calls would run our code inside its gamepad focus manager.
+-- Blizzard's focus calls would run addon code inside its gamepad focus manager.
 local function SetupGamepadTabHints()
     if not ns.IsGamepadUI() then return end
     local function MakeIcon(key)
@@ -2569,7 +2588,7 @@ function Chat:Init()
 end
 
 --------------------------------------------------
--- 18. SAVED HISTORY AND REFRESH
+-- 19. SAVED HISTORY AND REFRESH
 --------------------------------------------------
 function Chat:SaveHistory()
     local db = GetDb()

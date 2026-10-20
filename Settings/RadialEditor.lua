@@ -3,16 +3,9 @@ local L = ns.L
 
 --------------------------------------------------
 -- RADIAL EDITOR
--- The radial's buttons down the left, a live preview beside them, and a browser along the bottom to
--- drag new buttons from. Edits land on the saved radial as they are made (the preview shows them);
--- a copy of the library taken on open lets Cancel put it back.
--- Two kinds of drag:
---   * from Blizzard's windows something is on the game's cursor: OnReceiveDrag and GetCursorInfo
---     (a spell's ID is its FOURTH return)
---   * inside this window the floating icon is ours, so the drop is resolved in OnDragStop by asking
---     each row whether the mouse is over it (FinishDrag)
--- Lists are a fixed pool of cells over a scroll bar, as in the icon picker.
--- It lives in the settings panel's Radial Menu page (BuildEmbedded).
+-- The Radial Menu page's Buttons tab: the radial's buttons, a Catalog to drag from and a live
+-- preview. Edits are live; a snapshot taken on open backs "Undo changes". Drags from Blizzard's
+-- windows use the game cursor (OnReceiveDrag); internal drags are resolved in FinishDrag.
 --------------------------------------------------
 local LSM = LibStub("LibSharedMedia-3.0")
 
@@ -33,10 +26,9 @@ local function RM() return ns.RadialMenu end
 --------------------------------------------------
 -- 1. PIECES
 --------------------------------------------------
-local Fade = ns.Fade   -- Core.lua
+local Fade = ns.Fade
 
--- Every red button clicks like the Game Menu's. sound replaces that click where a button has a sound
--- of its own, such as the confirm; false leaves the sound to onClick.
+-- sound replaces the Game Menu click; false leaves the sound to onClick
 local function RedButton(parent, text, width, onClick, sound)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetSize(width, 22)
@@ -79,7 +71,7 @@ local function CreateList(parent, width, columns, rows, cellHeight, buildCell, f
         cell.Text:SetJustifyH("LEFT")
         cell.Text:SetWordWrap(false)
 
-        -- a quiet bronze wash, rather than Blizzard's blue square, which fought everything here
+        -- a bronze wash instead of Blizzard's blue square
         cell:SetHighlightTexture("Interface\\Buttons\\WHITE8x8")
         cell:GetHighlightTexture():SetColorTexture(BRONZE[1], BRONZE[2], BRONZE[3], 0.18)
 
@@ -104,7 +96,7 @@ local function CreateList(parent, width, columns, rows, cellHeight, buildCell, f
         end
     end
 
-    -- the scroll line follows list.offset (rows scrolled), and moves it when dragged
+    -- list.offset is in rows
     local function SetOffset(offset)
         offset = math.max(0, math.min(list.maxOffset, math.floor(offset + 0.5)))
         if offset == list.offset then return end
@@ -144,6 +136,7 @@ end
 --------------------------------------------------
 -- 3. ENTRIES
 --------------------------------------------------
+-- a spell's ID is GetCursorInfo's fourth return
 local function EntryFromCursor()
     local cursorType, info1, _, info3 = GetCursorInfo()
     local entry
@@ -157,7 +150,7 @@ local function EntryFromCursor()
         local name, icon, body = GetMacroInfo(info1)
         entry = { kind = "macro", name = name, icon = icon, text = body }
     end
-    -- only accept it if it actually resolves, so nothing unusable reaches the radial
+    -- only what resolves reaches the radial
     if entry and RM():ResolveEntry(entry) then
         ClearCursor()
         return entry
@@ -165,14 +158,12 @@ local function EntryFromCursor()
     return nil
 end
 
--- the guillemet that marks a sub-radial in every list, written as bytes so the file stays ASCII
+-- the guillemet marking a sub-radial, as bytes so the file stays ASCII
 local CHEVRON = "\194\187 "
 
 local function EntryDisplay(entry)
     local info = entry and RM():ResolveEntry(entry)
-    -- A sub-radial reads as the radial, so the list stays stable whichever child happens to be armed.
-    -- It keeps its name even when it resolves to nothing, otherwise an empty radial would look broken
-    -- rather than simply empty.
+    -- a sub-radial shows the radial's name, even when it resolves to nothing
     if entry and entry.kind == "subradial" then
         local data = RM():GetRadial(entry.radial)
         if data then
@@ -194,8 +185,7 @@ local function ApplyIcon(owner, icon)
 end
 
 --------------------------------------------------
--- 4. CATEGORY BROWSERS
--- Listed in the order they are declared, which is the order they appear along the bottom.
+-- 4. CATEGORY BROWSERS (menu order = declaration order)
 --------------------------------------------------
 local CATEGORIES = {}
 
@@ -246,7 +236,7 @@ end)
 AddCategory("macros", L["Macros"], function()
     local out = {}
     local global, perChar = GetNumMacros()
-    -- per-character macros are indexed after the account block, whose size lives in Constants
+    -- per-character macros are indexed after the account block
     local accountMax = Constants.MacroConsts.MAX_ACCOUNT_MACROS
     for i = 1, (global or 0) do
         local name, icon, body = GetMacroInfo(i)
@@ -284,8 +274,7 @@ AddCategory("mounts", L["Mounts"], function()
     return out
 end)
 
--- A radial must never end up inside itself, directly or through a chain. Resolution already refuses
--- to follow the loop, but a radial that could only ever be a dead end is better left out of the list.
+-- a radial that contains the edited one, at any depth, is left out of the list
 local function ContainsRadial(radialID, targetID, depth)
     depth = depth or 0
     if radialID == targetID then return true end
@@ -339,7 +328,7 @@ end
 --------------------------------------------------
 -- 6. EDITING
 --------------------------------------------------
-local Refresh   -- forward declaration; rebuilds every part of the window
+local Refresh, RefreshBrowse   -- rebuild the whole window, or the Catalog alone
 
 local function CurrentRadial()
     local rm = RM()
@@ -350,8 +339,7 @@ local function CurrentRadial()
     return editingID and rm:GetRadial(editingID) or nil
 end
 
--- Picking a radial here only chooses what is edited: the bar under the panel says where the key's
--- radial is chosen
+-- picking a radial here only chooses what is edited; the notice points at the Keybinds tab
 local function RemindKeybinds()
     if ns.SettingsPanel and ns.SettingsPanel.SetNotice then
         ns.SettingsPanel:SetNotice(L["Make sure to select what radial you want to use in the Keybind tab!"])
@@ -398,8 +386,7 @@ local function RemoveButton(index)
     Refresh()
 end
 
--- The drop target is worked out here rather than in OnReceiveDrag, because nothing is on the game's
--- cursor during an internal drag and so OnReceiveDrag never fires.
+-- nothing is on the game cursor during an internal drag, so OnReceiveDrag never fires
 local function FinishDrag()
     local payload = dragging
     StopDrag()
@@ -433,8 +420,7 @@ end
 
 --------------------------------------------------
 -- 7. UNDOING CHANGES
--- Only the three fields the editor can touch are copied; the keybinds and each character's radial
--- choice are not its business and are left alone.
+-- Only the fields the editor touches are copied; keybinds and radial choices are left alone.
 --------------------------------------------------
 local function TakeSnapshot()
     local store = RM().GetStore()
@@ -450,15 +436,17 @@ end
 local function RestoreSnapshot()
     local store = RM().GetStore()
     if not (store and snapshot and dirty) then return end
-    -- the store table itself is kept, because other things hold a reference to it
+    -- the store table itself is kept: others hold a reference to it
     store.radials      = CopyTable(snapshot.radials)
     store.radialOrder  = CopyTable(snapshot.radialOrder)
     store.nextRadialID = snapshot.nextRadialID
     dirty = false
     RM():RadialChanged()
+    -- extra keybinds on a radial deleted and now restored are bound again
+    RM():ApplyBindings()
 end
 
--- Delete asks first. The answer acts on the radial the question named, even if the dropdown moved on.
+-- acts on the radial the question named, even if the dropdown moved on
 ns.Dialogs["FLAREUI_RADIAL_DELETE"] = {
     text = L["Delete the radial |cffffff00%s|r?"],
     button1 = L["Delete"],
@@ -475,9 +463,7 @@ ns.Dialogs["FLAREUI_RADIAL_DELETE"] = {
 }
 
 --------------------------------------------------
--- 8. NAME POPUP
--- The name is asked for up front rather than left in a box on the toolbar to be found. The same
--- popup names a new radial and renames the current one; popup.renaming says which.
+-- 8. NAME POPUP (new radial, or rename: popup.renaming)
 --------------------------------------------------
 local popup
 
@@ -545,13 +531,12 @@ local function ShowNamePopup(renaming)
 end
 
 --------------------------------------------------
--- 9. BUILD, INSIDE THE SETTINGS PANEL
--- The Radial Menu page's Buttons tab: the radial picker along the top, the radial's buttons, then
--- the browser; the live preview takes the panel's right column. Edits are live; Undo changes puts
--- back what the radials were when the tab was opened.
+-- 9. BUILD
+-- Radial picker on top, buttons down the left, Catalog beside them; the preview takes the panel's
+-- right column.
 --------------------------------------------------
 local EMBED_WIDTH = 484          -- the panel's middle column
-local EMBED_LIST_W = 70          -- the radial's buttons: a column of icons and numbers down the left
+local EMBED_LIST_W = 70          -- the radial's buttons column
 local EMBED_ICON_ROW_H = 40      -- its rows (icons 32 px)
 local EMBED_ROW_H = 26
 
@@ -559,7 +544,6 @@ local function BuildEmbedded(host, previewHost)
     editor = host
     local height = host:GetHeight() > 0 and host:GetHeight() or 390
 
-    -- the radial picker and its buttons, across the top
     local pickerLabel = host:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     pickerLabel:SetPoint("TOPLEFT", 4, -12)
     pickerLabel:SetText(L["Radial"])
@@ -590,14 +574,13 @@ local function BuildEmbedded(host, previewHost)
     host.newButton = RedButton(host, L["New"], 60, function() ShowNamePopup(false) end)
     host.newButton:SetPoint("RIGHT", host.renameButton, "LEFT", -4, 0)
 
-    local top = 54   -- below the picker row and its line, with room on both sides of the line
+    local top = 54   -- below the picker row and its line
     local line = host:CreateTexture(nil, "ARTWORK")
     line:SetColorTexture(BRONZE_MUTED[1], BRONZE_MUTED[2], BRONZE_MUTED[3], 0.6)
     line:SetHeight(1)
     line:SetPoint("TOPLEFT", 0, -top + 12)
     line:SetPoint("TOPRIGHT", 0, -top + 12)
 
-    -- the radial's buttons: a narrow list to the bottom, Undo changes under it
     local buttonsTitle = host:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     buttonsTitle:SetPoint("TOPLEFT", 4, -top - 4)
     buttonsTitle:SetText(L["Buttons"])
@@ -613,7 +596,6 @@ local function BuildEmbedded(host, previewHost)
                 GameTooltip:Show()
             end)
             cell.Text:SetFontObject("GameFontHighlight")
-            -- the number first, then the icon
             cell.Text:ClearAllPoints()
             cell.Text:SetPoint("LEFT", 0, 0)
             cell.Text:SetWidth(16)
@@ -668,10 +650,9 @@ local function BuildEmbedded(host, previewHost)
     divider:SetPoint("TOPLEFT", EMBED_LIST_W + 8, -top - 4)
     divider:SetPoint("BOTTOMLEFT", EMBED_LIST_W + 8, 4)
 
-    -- the browser: a category menu and search, then two columns of things to drag, to the bottom
+    -- the Catalog: category menu on top, two columns, search at the bottom beside Undo
     local rightX = EMBED_LIST_W + 18
     local rightW = EMBED_WIDTH - rightX
-    -- "Catalog" and its category menu across the top; the search sits at the bottom, beside Undo
     local catalogTitle = host:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     catalogTitle:SetPoint("TOPLEFT", rightX + 4, -top - 4)
     catalogTitle:SetText(L["Catalog"])
@@ -683,7 +664,7 @@ local function BuildEmbedded(host, previewHost)
     search:SetHeight(20)
     search:SetPoint("BOTTOMLEFT", rightX + 8, 8)
     search:SetPoint("RIGHT", host, "RIGHT", -152, 0)
-    search:HookScript("OnTextChanged", function() Refresh() end)
+    search:HookScript("OnTextChanged", function() if host:IsShown() then RefreshBrowse() end end)
     host.search = search
     local note = host:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     note:SetPoint("TOPLEFT", rightX, -top - 32)
@@ -721,13 +702,12 @@ local function BuildEmbedded(host, previewHost)
             for _, c in ipairs(CATEGORIES) do
                 root:CreateRadio(c.label, function() return activeCategory == c.key end, function()
                     activeCategory = c.key
-                    Refresh()
+                    RefreshBrowse()
                 end)
             end
         end)
     end
 
-    -- the live preview, in the right column
     local previewLabel = previewHost:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     previewLabel:SetPoint("TOP", 0, -14)
     previewLabel:SetText(L["Live Preview"])
@@ -748,7 +728,7 @@ local function BuildEmbedded(host, previewHost)
     tip:SetJustifyH("LEFT")
     tip:SetText(L["Tip:"] .. " " .. L["Set a binding for your radial on the Keybinds tab."])
 
-    -- the tab opening takes the snapshot Undo goes back to; leaving it keeps the edits
+    -- opening takes the Undo snapshot; leaving keeps the edits
     host:SetScript("OnShow", function()
         browseCache = {}
         if not dirty then TakeSnapshot() end
@@ -766,25 +746,8 @@ end
 --------------------------------------------------
 -- 10. REFRESH
 --------------------------------------------------
-function Refresh()
-    if not (editor and editor:IsShown()) then return end
-    local rm = RM()
-    local radial = CurrentRadial()
-
-    -- the radial picker, A to Z
-    local list, order = {}, {}
-    for _, id in ipairs(rm:GetRadialsByName()) do
-        local data = rm:GetRadial(id)
-        if data then list[id], order[#order + 1] = data.name, id end
-    end
-    editor.UpdatePicker(list, order, radial and editingID or nil)
-    editor.deleteButton:SetEnabled(radial ~= nil)
-    editor.renameButton:SetEnabled(radial ~= nil)
-    editor.buttonList:SetData(radial and radial.buttons or {})
-
-    -- nothing to keep and nothing to throw away until something has actually been edited
-    editor.undoButton:SetEnabled(dirty == true)
-
+-- the Catalog alone (category note and filtered list)
+function RefreshBrowse()
     activeCategory = activeCategory or CATEGORIES[1].key
     local category
     for _, c in ipairs(CATEGORIES) do
@@ -793,9 +756,7 @@ function Refresh()
     editor.UpdateCategory()
     editor.note:SetText((category and category.note) or "")
 
-    -- The cache is not cleared per refresh: enumerating the spellbook on every click would be
-    -- wasteful. It is cleared when the window opens, which is often enough - except for Radials,
-    -- which depends on which radial is being edited and so is rebuilt each time.
+    -- cached per opening; Radials depends on the edited radial and is rebuilt each time
     if activeCategory == "radials" then browseCache.radials = nil end
     local entries = browseCache[activeCategory]
     if not entries then
@@ -812,6 +773,27 @@ function Refresh()
         entries = shown
     end
     editor.browseList:SetData(entries)
+end
+
+function Refresh()
+    if not (editor and editor:IsShown()) then return end
+    local rm = RM()
+    local radial = CurrentRadial()
+
+    -- the radial picker, A to Z
+    local list, order = {}, {}
+    for _, id in ipairs(rm:GetRadialsByName()) do
+        local data = rm:GetRadial(id)
+        if data then list[id], order[#order + 1] = data.name, id end
+    end
+    editor.UpdatePicker(list, order, radial and editingID or nil)
+    editor.deleteButton:SetEnabled(radial ~= nil)
+    editor.renameButton:SetEnabled(radial ~= nil)
+    editor.buttonList:SetData(radial and radial.buttons or {})
+
+    editor.undoButton:SetEnabled(dirty == true)
+
+    RefreshBrowse()
 
     if rm and editingID then rm:ShowPreview(editingID, editor.previewArea) end
 end
@@ -819,7 +801,7 @@ end
 --------------------------------------------------
 -- 11. PUBLIC
 --------------------------------------------------
--- The settings panel's Radial Menu page (Settings/Pages/RadialMenu.lua)
+-- used by Settings/Pages/RadialMenu.lua
 ns.RadialEditorEmbed = {
     Build = BuildEmbedded,
     Refresh = function() if editor then Refresh() end end,

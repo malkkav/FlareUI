@@ -3,9 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- ACTION BARS
--- Blizzard's action bars in FlareUI's look: Blizzard's slot art on every button, one button scale,
--- hotkey and count text, range and mana colouring, and the zone ability buttons. Also the Fake
--- Cooldown Manager (bars shown as click-through cooldown displays) and spell rank updates.
+-- Styles Blizzard's action bars (slot art, scale, hotkey/count text, range and mana colouring) and
+-- runs the Fake Cooldown Manager (click-through bars), spell rank updates and Auto-Paging.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -110,10 +109,10 @@ local function GetAllActionButtons()
 end
 
 --------------------------------------------------
--- 6. BUTTON ART (force Blizzard's slot art on every button)
+-- 6. BUTTON ART
 --------------------------------------------------
 -- Blizzard's UpdateButtonArt picks SlotArt or SlotBackground from the bar's hideBarArt flag; a
--- post-hook per button makes ours win. Bars 1-8 and the pet bar only (the others render it badly).
+-- post-hook per button forces slot art. Bars 1-8 and pet only (the others render it badly).
 local ART_BAR_KEYS = { bar1 = true, bar2 = true, bar3 = true, bar4 = true, bar5 = true, bar6 = true, bar7 = true, bar8 = true, pet = true }
 
 local artButtons
@@ -129,8 +128,7 @@ local function GetAllArtButtons()
     return all
 end
 
--- Blizzard's look is remembered for the way back: re-running UpdateButtonArt does not restore it
--- on Forever.
+-- remembered for switching off: re-running UpdateButtonArt does not restore it on Forever
 local function SnapshotButtonArt(button)
     if button.FlareUI_ArtOrig then return end
     local nw, nh = button.NormalTexture:GetSize()
@@ -199,8 +197,7 @@ end
 --------------------------------------------------
 -- 7. TYPOGRAPHY & TEXT
 --------------------------------------------------
--- Shortened from the raw binding key ("SHIFT-BUTTON4"), which is never localised. The rules run in
--- order: NUMPAD before PLUS, SPACEBAR before SPACE. Mouse buttons are M1-M5.
+-- Applied in order to the raw (never localised) binding key: NUMPAD before PLUS, SPACEBAR before SPACE
 local KEY_SHORT = {
     { "ALT%-", "A" }, { "CTRL%-", "C" }, { "SHIFT%-", "S" }, { "META%-", "M" },
     { "NUMPAD", "N" },
@@ -239,7 +236,7 @@ local function FontArgs(font)
     return ns.GetFontPath(font.face), font.size, (font.flags == "NONE" and "") or font.flags or "OUTLINE"
 end
 
--- Hotkey text and anchor, after Blizzard's UpdateHotkeys (which rewrites both)
+-- after Blizzard's UpdateHotkeys, which rewrites text and anchor
 local function UpdateHotkeyText(button)
     local hotkey = button and button.HotKey
     if not hotkey then return end
@@ -256,14 +253,13 @@ local function UpdateHotkeyText(button)
         hotkey:Hide()
         return
     end
-    -- off: Blizzard's own text (as its UpdateHotkeys writes it), so switching off needs no reload
+    -- off: Blizzard's own text, so switching off needs no reload
     if db.cleanKeybinds then hotkey:SetText(ShortenKey(key)) else hotkey:SetText(GetBindingText(key, 1)) end
     hotkey:Show()
     hotkey:ClearAllPoints()
     hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", HOTKEY_X, HOTKEY_Y)
 end
 
--- Fonts, count and macro-name placement: applied when the settings change
 local function UpdateButtonText(button)
     if not button then return end
     local db = GetBarConfig()
@@ -301,11 +297,10 @@ end
 
 --------------------------------------------------
 -- 8. RANGE & STATUS COLORING
--- Post-hooks on Blizzard's UpdateUsable and ActionButton_UpdateRangeIndicator reuse the values they
--- were handed, so nothing is polled. Usable and range state are kept on the button and combined;
--- a repeated colour writes nothing.
+-- Post-hooks on UpdateUsable and ActionButton_UpdateRangeIndicator reuse the values Blizzard passed,
+-- so nothing is polled; a repeated colour writes nothing.
 --------------------------------------------------
--- the tint per state, already blended (red and blue at 75%, a plain grey); range and mana desaturate
+-- range and mana also desaturate
 local STATE_TINT = {
     normal   = { 1, 1, 1 },
     range    = { 1, 0.25, 0.25 },
@@ -320,7 +315,7 @@ local function ApplyStateColor(button, state)
     local icon = button.icon
     if not icon then return end
 
-    -- Blizzard desaturates level-linked actions itself; only undo its grey tint and leave the rest
+    -- Blizzard desaturates level-linked actions itself; only its grey tint is undone
     if state == "locked" then
         icon:SetVertexColor(1, 1, 1, 1)
         return
@@ -340,7 +335,7 @@ end
 local function RefreshButtonColor(button)
     local db = GetBarConfig()
     if not db or not db.colors or not db.colors.enableRange then
-        -- switched off: our desaturation goes (Blizzard rewrites the tint itself)
+        -- switched off: drop the desaturation (Blizzard rewrites the tint itself)
         if button.FlareUI_ColorState then
             if button.FlareUI_ColorState ~= "locked" and button.icon then button.icon:SetDesaturated(false) end
             button.FlareUI_ColorState = nil
@@ -352,7 +347,6 @@ local function RefreshButtonColor(button)
     ApplyStateColor(button, usable)
 end
 
--- Post-hook on the button's UpdateUsable
 local function OnUpdateUsable(button, action, isUsable, notEnoughMana)
     local slot = button.action
     if not slot then return end   -- pet bar has its own path; stance buttons keep Blizzard's look
@@ -392,7 +386,7 @@ local function OnUpdateRangeIndicator(button, checksRange, inRange)
     end
 end
 
--- The pet bar has no per-button usable callback: refreshed whole when Blizzard updates it
+-- the pet bar has no per-button usable callback: refreshed whole when Blizzard updates it
 local function UpdatePetColors()
     local db = GetBarConfig()
     if not db or not db.colors or not db.colors.enableRange then
@@ -445,7 +439,6 @@ end
 --------------------------------------------------
 -- 10. FAKE COOLDOWN MANAGER (FCM) API
 --------------------------------------------------
--- Click-through on one bar
 local function ApplyClickthroughToBar(key, enabled)
     if InCombatLockdown() then return false end
     for _, btn in ipairs(GetButtonsForBarKey(key)) do btn:EnableMouse(not enabled) end
@@ -461,7 +454,7 @@ local function ForEachFCMBar(fn)
     end
 end
 
--- Dragging something onto the bars makes them clickable (CURSOR_CHANGED, only while FCM bars exist)
+-- dragging something makes the FCM bars clickable (CURSOR_CHANGED, only while FCM bars exist)
 local function OnCursorChanged()
     local isDragging = GetCursorInfo() ~= nil
     if isDragging == ActionBars.fcm.wasDragging then return end
@@ -482,8 +475,7 @@ local function OnCursorChanged()
     end
 end
 
--- Fake CM Setup Mode: the FCM bars take clicks and show (session only). /fui cm, the addon
--- compartment's right click and the Action Bars page.
+-- Fake CM Setup Mode (session only): the FCM bars take clicks and show
 function ns.ToggleFCMSetupMode()
     if InCombatLockdown() then
         print("|cffff0000FlareUI:|r " .. L["Cannot toggle setup mode in combat."])
@@ -532,8 +524,8 @@ end
 
 --------------------------------------------------
 -- 11. UPDATE SPELL RANKS
--- A newly learned rank takes the place of the rank just below it on every bar. Lower ranks placed
--- on purpose (for mana) stay. Bars are changed out of combat, with nothing on the cursor.
+-- A newly learned rank replaces the rank just below it on every bar; older ranks placed on purpose
+-- stay. Out of combat, with nothing on the cursor.
 --------------------------------------------------
 local MAX_ACTION_SLOT = 180
 local pendingRanks = {}
@@ -568,21 +560,16 @@ function ActionBars:OnSpellLearned(_, spellID)
     local db = GetBarConfig()
     if not (db and db.autoRanks and spellID) then return end
     pendingRanks[#pendingRanks + 1] = spellID
-    -- after Blizzard's own handling of the new spell
     C_Timer.After(0.2, FlushRanks)
 end
 
 --------------------------------------------------
--- 11b. AUTO-PAGING
--- Forever never sets a bonus bar (C_ActionBar.GetBonusBarIndex stays 0 in Stealth or a form), so
--- Blizzard's bar 1 never switches to a stance page. The bar the player picks (Settings > Tweaks > Allow Auto-paging,
--- bar 1 by default) does it here, with Classic's pages (action pages 7-10): a secure state driver on
--- the forms the character knows sets "actionpage" on the bar's buttons, which Blizzard's buttons
--- read before their bar's own page. It runs in the restricted environment, in combat too. Possess,
--- override and vehicle bars come first, and a real bonus bar if the game ever sends one. The forms
--- are read again out of combat when they change (forms are learned out of combat).
+-- 12. AUTO-PAGING
+-- Forever never sets a bonus bar (GetBonusBarIndex stays 0 in Stealth or a form), so bar 1 never
+-- pages. A secure state driver on the character's forms sets "actionpage" (Classic pages 7-10) on
+-- the picked bar's buttons, which Blizzard's buttons read before their bar's page; works in combat.
 --------------------------------------------------
--- a form -> its page, by its spell (Classic's IDs) or, should Forever's differ, its icon
+-- a form -> its page, by Classic spell ID or, should Forever's differ, its icon
 local FORM_PAGES = {
     { spells = { 768 },          icon = 132115, page = 7 },    -- Cat Form
     { spells = { 5487, 9634 },   icon = 132276, page = 9 },    -- Bear Form, Dire Bear Form
@@ -611,8 +598,7 @@ local function FormPage(icon, spellID)
     end
 end
 
--- The driver for the forms this character has: Stealth (rogues; a druid's Prowl is Cat Form's
--- second page), then each form with a page, by its place on the stance bar
+-- Stealth (rogues; a druid's Prowl is Cat Form's second page), then each form by its stance index
 local function PagingDriver()
     local parts = { PAGE_FIRST }
     local _, class = UnitClass("player")
@@ -629,7 +615,7 @@ local function PagingDriver()
     return table.concat(parts, "; ")
 end
 
--- the picked bar pages, the others go back to their own page; out of combat (secure frames)
+-- the picked bar pages, the others keep their own page; out of combat (secure frames)
 local function ApplyAutoPaging()
     if InCombatLockdown() then
         ActionBars._pendingRefresh = true
@@ -653,10 +639,9 @@ local function ApplyAutoPaging()
 end
 
 --------------------------------------------------
--- 12. PUBLIC API
+-- 13. PUBLIC API
 --------------------------------------------------
--- Button text draws at frame level 500, so the end caps' container goes above that (the caps follow
--- their container's level). Out of combat only.
+-- button text draws at frame level 500: the end caps' container goes above it
 local GRYPHON_LEVEL_ABOVE = 501
 local function UpdateGryphonLayer()
     local caps = _G.MainActionBar and _G.MainActionBar.EndCaps
@@ -664,10 +649,9 @@ local function UpdateGryphonLayer()
     if caps:GetFrameLevel() < GRYPHON_LEVEL_ABOVE then caps:SetFrameLevel(GRYPHON_LEVEL_ABOVE) end
 end
 
--- On Forever each gryphon is its own Edit Mode system with its own Hidden setting, but the main
--- bar's OnShow still runs UpdateEndCaps(hideBarArt): with bar 1's Hide Bar Art on, the gryphons'
--- container would stay hidden after the bar comes back (Alt+Z, a cinematic). Shown again with the
--- bar; each gryphon keeps its own visibility. Neutral characters have none, as Blizzard's.
+-- On Forever each gryphon is its own Edit Mode system, but the main bar's OnShow still runs
+-- UpdateEndCaps(hideBarArt): with Hide Bar Art on, the container stayed hidden after Alt+Z or a
+-- cinematic. Shown again with the bar; each gryphon keeps its own visibility.
 local function KeepEndCapsWithBar(bar)
     local caps = bar and bar.EndCaps
     if not caps or caps:IsShown() or not bar:IsVisible() then return end
@@ -688,8 +672,7 @@ local function HookEndCaps()
     KeepEndCapsWithBar(bar)
 end
 
--- Blizzard pushes newly learned spells onto the bars unless this CVar is off. Switching the option
--- off gives the CVar back once (to Blizzard's default) and then leaves it to the player.
+-- switching the option off restores Blizzard's default once, then leaves the CVar to the player
 local function UpdateAutoPushSpells(db)
     if db.stopAutoAddSpells then
         C_CVar.SetCVar("AutoPushSpellToActionBar", "0")
@@ -725,7 +708,7 @@ function ActionBars:Refresh()
     for _, btn in ipairs(buttons) do
         btn:SetScale(BUTTON_SCALE)
         UpdateButtonText(btn)
-        -- one-off repaint: after this the hooks keep the colour current
+        -- one-off repaint; the hooks keep it current
         btn.FlareUI_ColorState = nil
         OnUpdateUsable(btn)
     end
@@ -772,7 +755,7 @@ function ActionBars:Init()
         end
     end
 
-    -- the extra action button sets its hotkey when it appears (see OnExtraActionBarUpdate too)
+    -- the extra action button sets its hotkey when it appears
     local extraBtn = _G.ExtraActionButton1
     if extraBtn and extraBtn.UpdateHotkeys then
         ActionBars:SecureHook(extraBtn, "UpdateHotkeys", UpdateHotkeyText)
@@ -784,12 +767,11 @@ function ActionBars:Init()
     self:RegisterEvent("UPDATE_EXTRA_ACTIONBAR", "OnExtraActionBarUpdate")
     self:RegisterEvent("UPDATE_BINDINGS", "OnExtraActionBarUpdate")
     self:RegisterEvent("LEARNED_SPELL_IN_SKILL_LINE", "OnSpellLearned")
-    -- Auto-Paging follows the forms the character knows
     self:RegisterEvent("UPDATE_SHAPESHIFT_FORMS", "OnFormsChanged")
 end
 
 --------------------------------------------------
--- 13. EVENT HANDLERS
+-- 14. EVENT HANDLERS
 --------------------------------------------------
 function ActionBars:OnLayoutUpdate()
     if not InCombatLockdown() then

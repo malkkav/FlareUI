@@ -2,45 +2,26 @@ local _, ns = ...
 
 --------------------------------------------------
 -- FOREVER STYLE UNIT FRAMES
--- The default look of the player, target and focus frames: Forever's own bronze portrait ring beside
--- them instead of the square portrait (Unit Frames > Addon style frames switches to the plain look).
--- UnitFrames.lua asks this file at its layout points (bars, texts, cast bar, auras, icons, classic
--- combo points); everything else is the frames' own code.
+-- The ring styles: Forever's bronze portrait ring beside the player, target, focus, party and boss
+-- frames (FlareUI Style), or on Forever's frame plate (Forever Style). UnitFrames.lua and the tile
+-- modules call in at their layout points; the style switch lives here too.
 --------------------------------------------------
 local Ring = {}
 ns.UFRing = Ring
 
 --------------------------------------------------
 -- 1. ART AND PLACEMENT
--- The ring is the game's atlas (UI-HUD-UnitFrame-*-PortraitOn), cropped to the ring and masked to its
--- outline, so the frame plate it is painted with stays out; the ring and plate are drawn from the game's
--- own art, not copied into FlareUI (only the FlareUI Forever bar texture is, LICENSES/README.txt).
---
--- Everything around the ring is placed as Blizzard places it: each element's anchor on Blizzard's
--- own frame (PlayerFrame.xml / TargetFrame.xml, a 232 x 100 frame), taken relative to Blizzard's ring
--- centre and scaled by our ring's size over Blizzard's; sizes are the game's atlas sizes, scaled
--- the same way. A frame whose ring is on its other side mirrors them. Everything on the portrait is
--- Blizzard's, in Blizzard's proportions: the level always shows, and combo points are always the gems.
---   * the level in Forever's dark disc, with the elite skull there for "??" units
---   * the PvP / faction crest beside the level disc (player, target)
---   * the leader crown, the raid marker on the portrait's top edge, the rare star or quest mark on its
---     bottom edge, the resting "zzz", the corner embellishment while resting and the swords in combat
---   * the status glow (yellow resting, red in combat), the threat flash, and the elite / rare frame
---
--- Each style keeps a whole unit frames setup of its own (SHARED_KEYS: what the two share); the switch
--- puts one away and brings the other back, then reloads.
---
--- Geometry, from the ring's diameter D and the frame's height H: the ring sits on the portrait side,
--- centred on the frame's middle; the frame's end tucks under it as Blizzard's plate does (the bars
--- start where their corners meet the rim). The ring is 1.5 x the frame's height unless Portrait Size says
--- otherwise.
+-- The ring is the game's atlas (UI-HUD-UnitFrame-*-PortraitOn), cropped and masked to the ring; the
+-- art is drawn from the game, not copied into FlareUI (LICENSES/README.txt).
+-- Everything round the ring sits where Blizzard puts it: each anchor on Blizzard's 232 x 100 frame,
+-- taken from Blizzard's ring centre and scaled by ring size over Blizzard's; mirrored on the other side.
+-- The ring is centred on the frame's middle, its end tucked under it so the bars start where their
+-- corners meet the rim.
 --------------------------------------------------
 local RING_UNITS = { player = true, target = true, focus = true }
 
--- the art: the atlas, and where its ring is inside it (fractions of the atlas, measured on the sheet
--- against its backing: the outer edge of the ring's soft shadow, the same on every side). The ring
--- is on the atlas's right; on the left it is mirrored. Since Forever's build of 2026-10-16 the
--- player's frame has the target's round ring too (the teardrop is gone), so all three share it.
+-- the art: the atlas and the ring's box in it (fractions, to the outer edge of its shadow). The ring
+-- is on the atlas's right; on the left it is mirrored. Every frame shares the target's ring.
 local ART = {
     target = { atlas = "UI-HUD-UnitFrame-Target-PortraitOn", side = "RIGHT",
                box = { 252.78 / 384, 375.0 / 384, 1.67 / 134, 123.89 / 134 } },
@@ -52,28 +33,23 @@ ART.boss = ART.target
 local CIRCLE_MASK   = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 local SMALL_CIRCLE  = "UI-HUD-UnitFrame-SmallCircle"
 local PORTRAIT_SHARE = 0.86   -- the portrait inside the ring, of its diameter
--- Blizzard's combo points around its target ring (Camelot ComboFrame.lua POINT_LAYOUT_DATA, in its
--- 61.1 px ring's units): an arc from just under 3 o'clock upwards, started higher while the PvP crest
--- shows; radius in the points' own scale, shift from the portrait's centre
+-- Blizzard's combo arc round its 61.1 px target ring (Camelot ComboFrame.lua POINT_LAYOUT_DATA),
+-- started higher while the PvP crest shows; radius in the points' scale, shift from the centre
 local RING_COMBO = { radius = 66, start = -10, pvpStart = 2, step = 21, scale = 0.6, shift = { 2, 2 } }
 local RING_SHARE    = 1.5     -- the ring's default diameter, of the frame's height
-local BAR_INSET     = 4       -- UnitFrames' INSET: the bars start this far in from the frame's edge
+local BAR_INSET     = 4       -- UnitFrames' INSET
 local GLOW_SHARE    = 1.35    -- the glow textures' size, of the ring's diameter
--- the glows: FlareUI's own line over the ring's rim (white, tinted, a little transparent). Drawn for
--- GLOW_SHARE 1.35: change both together.
+-- the glows' rim line art, drawn for GLOW_SHARE 1.35: change both together
 local GLOW_FILE = "Interface\\AddOns\\FlareUI\\Media\\Masks\\RingHaloCircle"
 
--- Blizzard's frames (1x, origin at the frame's top-left, y down negative): the ring's centre and
--- diameter as measured on the atlas, and every element's anchor. scale = the template's scale (the
--- art's size only; the anchor's offsets are the parent's). size = a fixed size where there is one.
--- pvp: the faction crest, placed off the level disc (centre offset and size in the level disc's
--- texture widths, as measured on Forever's frames when the crest had a disc), then moved as Blizzard
--- moved it (move, see PvPSpot). The player's and target's aren't mirror images.
+-- Blizzard's frames (1x, origin top-left, y negative down): the ring's centre and diameter, and each
+-- element's anchor. scale: the art's scale only; size: a fixed size. pvp: placed off the level disc
+-- (in disc widths), then shifted by move (PvPSpot).
 local BLIZZ = {
     player = {
-        -- the target's ring, mirrored (the 2026-10-16 player frame)
+        -- the target's ring, mirrored
         centre = { 232 - 176.9, -47.9 }, D = 61.1, side = "LEFT",
-        -- 1.5 px in from Blizzard's anchor (13, -93): matched to screenshots of the 2026-10-16 frames
+        -- 1.5 px in from Blizzard's anchor (13, -93), matched to the game
         level   = { atlas = SMALL_CIRCLE, point = "BOTTOMLEFT", x = 14.5, y = -91.5, frame = "player" },
         pvp     = { dx = -0.435, dy = 0.46, share = 0.8, move = { 6, -11.6 } },   -- the target's, mirrored
         leader  = { atlas = "UI-HUD-UnitFrame-Player-Group-LeaderIcon", point = "TOPLEFT", x = 86, y = -10 },
@@ -100,10 +76,8 @@ BLIZZ.focus = {
     level = BLIZZ.target.level, raidIcon = BLIZZ.target.raidIcon,
     classification = BLIZZ.target.classification, readyCheck = BLIZZ.target.readyCheck,
 }
--- FlareUI Style's party and boss frames (PartyFrames.lua tiles, f.ringKind): the party as the player
--- frame (ring on the left, the level disc; the role icon where its PvP crest is), the boss as the
--- target frame (the level disc and the elite / boss / rare frame); the ready check and the summon /
--- resurrect / phase icon on the portrait
+-- The party and boss tiles (f.ringKind): the party as the player frame (role icon at the PvP crest),
+-- the boss as the target frame
 BLIZZ.party = {
     centre = BLIZZ.player.centre, D = BLIZZ.player.D, side = "LEFT",
     level = BLIZZ.player.level, pvp = BLIZZ.player.pvp, leader = BLIZZ.player.leader,
@@ -115,8 +89,7 @@ BLIZZ.boss = {
 }
 -- the tiles' Portrait Size default (FlareUI Style's party and boss look)
 local TILE_RING_D = 66
--- the boss frames' Edit Mode samples (BossFrames.lua): three bosses, an elite and a rare, with the art
--- and offsets GetBossPortraitFrameData gives each
+-- the boss frames' Edit Mode samples, with GetBossPortraitFrameData's art and offsets
 local SAMPLE_BOSS_ART = {
     { "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Gold-Winged", 11, -4 },
     { "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Gold-Winged", 11, -4 },
@@ -138,46 +111,40 @@ local PVP_ICONS = {
 local STATUS_RESTING = { 1.0, 0.88, 0.25 }
 local STATUS_COMBAT  = { 1.0, 0.0, 0.0 }
 local STATUS_PULSE   = { 55 / 255, 1, 0.5 }   -- Blizzard's status glow: alpha low, high, seconds each way
--- Blizzard's level text: Friz Quadrata 14 with a shadow (WhiteLargeNumberFont), at 1x
+-- Blizzard's level text (WhiteLargeNumberFont) at 1x
 local LEVEL_FONT, LEVEL_FONT_SIZE = "Fonts\\FRIZQT__.TTF", 14
--- the level disc, number and skull, of the atlas size (as Blizzard's 2026-10-16 frames show them)
+-- the level disc, number and skull, of the atlas size (as Blizzard draws them)
 local LEVEL_SCALE = 0.94
 
--- Each style is a whole unit frames setup of its own: every frame's settings and positions, the party
--- and boss frames', the totem bar and the cast bar, swapped on the switch (a reload follows). Shared:
--- the raid frames, the resource bars (a module of their own), and what is switched on.
+-- Each style keeps a whole unit frames setup, swapped on the switch (a reload follows); these keys
+-- are shared
 local SHARED_KEYS = { enabled = true, foreverStyle = true, plateStyle = true, styleProfiles = true, editSections = true,
-                      raid = true, resource = true, styleStart = true, tileStyle = true }
--- the party and boss frames joined the style setups later: a setup stored before has none of theirs
+                      raid = true, resource = true, styleStart = true, tileStyle = true, plateTiles = true }
+-- a stored setup may lack these
 local TILE_KEYS = { party = true, boss = true }
 
--- Forever's frame plate (Forever Style): the left part of the target's atlas (194 x 68 art pixels),
--- name box, health and power slots, as measured on the art. The frame's own rect is x0..x1, y0..y1
--- (rim to rim, up to the joining block's start); the art is cut into ends that keep their size and
--- middles that stretch (cutX / cutY: the piece edges, the stretching piece in the middle). The last
--- piece runs on past the frame's edge, under the ring, so the joining block meets it as on
--- Blizzard's frame (the ring is drawn over it at the art's own place and scale).
--- The bars' atlases have margins round their colour: the bars are made that much bigger (inner).
--- Its size is fixed in Blizzard's proportions: Scale sets it, with the ring (1 = Blizzard's size).
+-- Forever's frame plate: the left part of the target's atlas (194 x 68 art px) with its name box and
+-- bar slots. The frame is x0..x1, y0..y1; cutX / cutY are the piece edges (ends keep their size, the
+-- middles stretch). The last piece runs on under the ring. Scale sets its size, with the ring.
 local PLATE = {
     atlas = "UI-HUD-UnitFrame-Target-PortraitOn", artW = 194, artH = 68,
     x0 = 1, x1 = 131, y0 = 8, y1 = 57,
-    -- the art's rows: the second (the name box's middle) stretches with the height; rowDelta squeezes
-    -- or stretches a row by that many art pixels (the name box 3 shorter, the bars 2 and 1 taller)
+    -- the second row stretches with the height; rowDelta resizes a row by that many art pixels
     cutX = { 0, 8, 120, 145 }, cutY = { 6, 14, 24, 32, 39, 47, 51, 59 },
     rowDelta = { 0, -3, 0, 2, 0, 1, 0 },
-    defaultScale = { player = 130, target = 130, focus = 100 },   -- Scale's defaults, percent of Blizzard's size
+    defaultScale = { player = 130, target = 130, focus = 100, party = 100, boss = 100 },   -- percent of Blizzard's size
     ringD = 61.8, ringX = 158.6,           -- Blizzard's ring on this art: its diameter and centre
     name   = { 4, 125, 11, 26 },           -- x from, x to, y from, y to
-    -- the bars: Blizzard's bar art, its colour only (FlareUI Forever), mirrored for a bar filling
-    -- from the right (a status bar crops an atlas from its left end even then)
+    -- the bars' art; mirrored files for right-to-left fill (a status bar crops an atlas from the left)
     health = { 4, 125, 29, 42, tex = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever.tga",
                mirrored = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mirrored.tga" },
     power  = { 4, 125, 45, 53, tex = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mana.tga",
                mirrored = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mana-Mirrored.tga" },
     strip  = "UI-HUD-UnitFrame-Target-PortraitOn-Type",   -- the name box's reaction glow
 }
-Ring.PLATE_UNITS = { player = true, target = true, focus = true }
+-- (party and boss: the tiles' ring kinds)
+Ring.PLATE_UNITS = { player = true, target = true, focus = true, party = true, boss = true }
+Ring.STRIP_ATLAS = PLATE.strip
 -- an art y -> where it lands once the rows are squeezed or stretched (rowDelta)
 local function RowY(y)
     local cy, out = PLATE.cutY, PLATE.cutY[1]
@@ -188,9 +155,8 @@ local function RowY(y)
         out = out + length
     end
 end
--- The FlareUI Style preset: a new profile starts with it (FlareUI Style is the default), as does the
--- first switch to this style: these frame settings, the totems', and the default positions below
--- (stored positions are dropped, so the defaults apply). Party frames are left as they are.
+-- The FlareUI Style preset: a new profile's and a first switch's frame settings, totems and default
+-- positions (stored positions are dropped)
 local FOREVER = {
     player = { border = "FlareUI Thin", portrait = "3d", width = 200, height = 60, powerHeight = 15, ringSize = 80 },
     target = { border = "FlareUI Thin", portrait = "3d", width = 200, height = 60, powerHeight = 15, ringSize = 80 },
@@ -198,8 +164,7 @@ local FOREVER = {
     pet    = { height = 30 },
 }
 local FOREVER_TOTEMS = { size = 90, perRow = 3 }
--- the party frames' FlareUI look (Party Style: the frames, not Raid-Style) and the boss frames': the
--- player frame's size, auras above, a slimmer cast bar
+-- the party (Party Style) and boss frames' FlareUI Style look
 local FOREVER_TILES = {
     party = {
         showPlayer = false,
@@ -210,20 +175,28 @@ local FOREVER_TILES = {
               buffs = "ABOVE", debuffs = "ABOVE_RIGHT", auraSize = 18 },
 }
 
--- Edit Mode's defaults for the party (Party Style) or boss frames: FlareUI Style's look, nil in the
--- other styles
+-- Edit Mode's defaults for the party or boss frames in the ring styles; nil in Addon Style
 function Ring.TileDefaults(kind)
-    if Ring.Style() ~= "flareui" then return nil end
-    -- (partyGroup: the party frames' own switches, such as Show Player)
+    if Ring.Style() == "addon" then return nil end
+    -- partyGroup: the party frames' own switches
     if kind == "partyGroup" then return FOREVER_TILES.party end
     return kind == "party" and FOREVER_TILES.party.classic or FOREVER_TILES.boss
 end
--- their default positions in this style: the ring stands out past the frames' outer side
+-- their default positions (the ring stands out past the outer side)
 Ring.TILE_POSITIONS = {
     party = { point = "LEFT",  x = 65,  y = 0 },
     boss  = { point = "RIGHT", x = -88, y = 10 },
 }
--- the default positions in this style (UnitFrames' and Totems' DEFAULT_POSITIONS)
+-- Forever Style's
+Ring.PLATE_TILE_POSITIONS = {
+    party = { point = "LEFT",  x = 71,  y = 0 },
+    boss  = { point = "RIGHT", x = -93, y = 10 },
+}
+function Ring.TilePosition(kind)
+    if Ring.PlateOn() then return Ring.PLATE_TILE_POSITIONS[kind] end
+    return Ring.TILE_POSITIONS[kind]
+end
+-- this style's default positions (UnitFrames' and Totems' DEFAULT_POSITIONS)
 Ring.POSITIONS = {
     player        = { point = "CENTER",      x = -286, y = -270 },
     target        = { point = "CENTER",      x = 286,  y = -270 },
@@ -235,8 +208,7 @@ Ring.POSITIONS = {
 }
 Ring.TOTEM_POSITION = { point = "BOTTOM", x = -347, y = 225 }
 
--- The Forever Style preset, on top of the FlareUI Style setup it starts from (its Scale is
--- PLATE.defaultScale), its totems and its own default positions
+-- The Forever Style preset, on top of the FlareUI Style setup it starts from
 local PLATE_PRESET = {
     player = { portrait = "class" },
     target = { portrait = "class" },
@@ -254,7 +226,7 @@ Ring.PLATE_POSITIONS = {
 }
 Ring.PLATE_TOTEM_POSITION = { point = "BOTTOM", x = -352, y = 220 }
 
--- a FlareUI Style preset value (Forever Style starts from that setup), for Edit Mode's defaults
+-- a FlareUI Style preset value, for Edit Mode's defaults
 function Ring.PresetValue(unit, key)
     return FOREVER[unit] and FOREVER[unit][key]
 end
@@ -270,12 +242,10 @@ function Ring.DefaultTotems()
     return Ring.PlateOn() and PLATE_TOTEMS or FOREVER_TOTEMS
 end
 
--- the frame's icon regions that move onto the ring's layer (UnitFrames' field names)
--- (and the party tiles': RoleIcon, StatusIcon)
+-- the icon regions that move onto the ring's layer (UnitFrames' and the tiles' field names)
 local RING_ICONS = { "RestIcon", "LeaderIcon", "PvPIcon", "ClassIcon", "QuestIcon", "RaidIcon", "ReadyIcon",
                      "RoleIcon", "StatusIcon" }
--- UnitFrames' icon keys -> the BLIZZ entry they use (the tiles': role takes the PvP crest's spot,
--- status the portrait's middle)
+-- icon keys -> the BLIZZ entry they use (role: the PvP crest's spot; status: the portrait's middle)
 local ICON_KEYS = { rest = "rest", leader = "leader", pvp = "pvp", classification = "classification",
                     quest = "quest", raidIcon = "raidIcon", readyCheck = "readyCheck",
                     role = "pvp", status = "readyCheck" }
@@ -286,7 +256,7 @@ local ICON_KEYS = { rest = "rest", leader = "leader", pvp = "pvp", classificatio
 local LEM = LibStub("FlareEditMode")
 local LSM = LibStub("LibSharedMedia-3.0")
 
-local frames = {}   -- the frames laid out in this style (for the state events)
+local frames = {}   -- the ring frames, for the state events
 
 local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.unitframes
@@ -312,7 +282,7 @@ local function Db(f)
     return UnitDb(f.unit)
 end
 
--- an Icons switch of the frame (UnitFrames' udb.icons): the PvP timer starts off, the glows on
+-- an Icons switch of the frame (udb.icons)
 local function IconOn(f, key, default)
     local udb = Db(f)
     local store = udb and udb.icons and udb.icons[key]
@@ -325,14 +295,15 @@ function Ring.On()
     if not db then return false end
     if not db.styleStart then Ring.StartStyle(db) end
     if not db.tileStyle then Ring.StartTileStyle(db) end
+    if not db.plateTiles then Ring.StartPlateTiles(db) end
     return db.foreverStyle and true or false
 end
 
 -- this frame is drawn in a ring style (FlareUI Style or Forever Style)
 function Ring.Applies(f)
     if not (f and f.Portrait) then return false end
-    -- the party and boss tiles: FlareUI Style only
-    if f.ringKind then return Ring.Style() == "flareui" end
+    -- the tiles: both ring styles
+    if f.ringKind then return Ring.Style() ~= "addon" end
     return RING_UNITS[f.unit] and Ring.On() or false
 end
 
@@ -349,8 +320,7 @@ function Ring.PlateOn()
     return Ring.Style() == "forever"
 end
 
--- Forever Style keeps one border on every frame that has one (the plate is its own): the border
--- options are gone there. Other styles: the frame's own choice.
+-- Forever Style has one fixed border (its border options are hidden)
 local PLATE_BORDER = "FlareUI Thin"
 function Ring.Border(name)
     if Ring.PlateOn() then return PLATE_BORDER end
@@ -362,11 +332,11 @@ function Ring.Plate(f)
     return Ring.Applies(f) and Ring.PLATE_UNITS[Kind(f)] and Ring.PlateOn() or false
 end
 
--- the ring's side: its natural one, or the other on a frame mirrored away from it (a tile: its
--- portrait's side, f.ringSide)
+-- the ring's side (a tile: f.ringSide); Mirror only turns target's and focus's bars here
 function Ring.Side(f)
     if f.ringKind then return f.ringSide or "LEFT" end
     if f.unit == "player" then return "LEFT" end
+    if f.unit == "target" or f.unit == "focus" then return BLIZZ[f.unit].side end
     local udb = UnitDb(f.unit)
     local natural = BLIZZ[f.unit].side
     return (udb and udb.mirror) and natural or (natural == "LEFT" and "RIGHT" or "LEFT")
@@ -380,13 +350,9 @@ local function DefaultDiameter(h)
     return math.floor((h or 44) * RING_SHARE + 0.5)
 end
 
--- D, R, H, the ring's side, its centre from the frame's edge (positive: inside), and the scale from
--- Blizzard's ring to ours
--- Forever Style: the plate's scale (screen pixels per art pixel) for a ring of diameter D, and the
--- least height and width its fixed rows and ends take
+-- the plate's screen pixels per art pixel for a ring of diameter D
 local function PlateScale(D) return D / PLATE.ringD end
--- Forever Style's Scale (percent of Blizzard's size): the ring and the plate's height follow it, so
--- the frame keeps Blizzard's proportions; the ring size and height are written from it
+-- Forever Style's Scale (percent of Blizzard's size) writes the ring size and the height
 local function ApplyPlateScale(udb, percent)
     local s = percent / 100
     udb.plateScale = math.floor(percent + 0.5)
@@ -396,6 +362,11 @@ end
 
 function Ring.PlateDefaultScale(unit)
     return PLATE.defaultScale[unit] or 100
+end
+
+-- a tile's Scale, on its own settings
+function Ring.ApplyPlateScale(settings, percent)
+    if settings then ApplyPlateScale(settings, percent) end
 end
 
 function Ring.GetPlateScale(unit)
@@ -409,14 +380,15 @@ function Ring.SetPlateScale(unit, percent)
 end
 
 function Ring.PlateMinSize(f)
-    local udb = UnitDb(f.unit) or {}
+    local udb = Db(f) or {}
     local s = PlateScale(udb.ringSize or DefaultDiameter(udb.height))
     local fixedH = (RowY(PLATE.y1) - RowY(PLATE.y0)) - (RowY(PLATE.cutY[3]) - RowY(PLATE.cutY[2]))
     local fixedW = (PLATE.x1 - PLATE.x0) - (PLATE.cutX[3] - PLATE.cutX[2])
-    -- a few pixels of name box, and of middle, at the least
+    -- a few pixels of name box and middle at least
     return math.ceil((fixedW + 12) * s), math.ceil((fixedH + 4) * s)
 end
 
+-- D, R, H, side, centre (from the frame's edge, positive inside), k (Blizzard's ring to this one)
 local function Geometry(f)
     local udb = Db(f) or {}
     local H = udb.height or 44
@@ -456,10 +428,10 @@ function Ring.TextPad(f)
     return math.max(0, math.ceil(g.centre + g.R) - BAR_INSET + 3)
 end
 
--- An element's centre (from our ring's centre) and size, from its BLIZZ entry; nil without one
+-- An element's centre (from the ring's centre) and size, from its BLIZZ entry; nil without one
 local function Place(f, g, e, atlasOverride)
     if not e then return nil end
-    -- frame: the entry is in another frame's coordinates (mirrored to ours like everything else)
+    -- e.frame: the entry is in another frame's coordinates
     local blizz = BLIZZ[e.frame or Kind(f)]
     local k = g.D / blizz.D
     local s = e.scale or 1
@@ -482,7 +454,7 @@ local function Place(f, g, e, atlasOverride)
     return dx, dy, w * k, h * k
 end
 
--- The PvP disc's centre (from our ring's centre) and size: off the level disc, mirrored with it
+-- The PvP crest's centre (from the ring's centre) and size: off the level disc, mirrored with it
 local function PvPSpot(f, g)
     local blizz = BLIZZ[Kind(f)]
     local e = blizz.pvp
@@ -491,10 +463,7 @@ local function PvPSpot(f, g)
     if not lx then return nil end
     local sign = (g.side ~= blizz.side) and -1 or 1
     local x, y = lx + sign * e.dx * lw, ly + e.dy * lw
-    -- Forever's build of 2026-10-16 dropped the crest's dark disc and moved the crest: its top now
-    -- sits where the disc's top was, moved by e.move (Blizzard pixels, from Blizzard's anchors, then
-    -- matched to screenshots of its frames), so its centre drops by half the crest's extra height too.
-    -- (The dx / dy above were measured on the disc.)
+    -- the crest has no disc: its top sits where the disc's top would be, moved by e.move (Blizzard px)
     local crest, disc = C_Texture.GetAtlasInfo(PVP_ICONS.Horde), C_Texture.GetAtlasInfo(SMALL_CIRCLE)
     if e.move and disc and disc.width and disc.width > 0 and disc.height then
         local k = lw / disc.width
@@ -591,15 +560,13 @@ local function Build(f)
     ring.Skull:SetPoint("CENTER")
     ring.Skull:Hide()
 
-    -- the PvP / faction crest's layer, above the dragon frame. PvPDisc is the crest's spot, never
-    -- drawn (Forever's frames have shown the crest without a disc since the 2026-10-16 build); the
-    -- PvP timer hangs off it
+    -- the PvP crest's layer, above the dragon frame; PvPDisc only marks the crest's spot (never drawn)
     ring.PvP = CreateFrame("Frame", nil, ring)
     ring.PvP:SetAllPoints(f)
     ring.PvPDisc = ring.PvP:CreateTexture(nil, "ARTWORK")
     ring.PvPDisc:Hide()
 
-    -- Blizzard's PvP timer (player), right beside the crest itself (its disc's spot is wider)
+    -- the player's PvP timer, beside the crest
     if Kind(f) == "player" then
         ring.PvPTimer = ring.PvP:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         ring.PvPTimer:SetPoint("RIGHT", f.PvPIcon or ring.PvPDisc, "LEFT", 0, 0)
@@ -612,10 +579,10 @@ local function Build(f)
     return ring
 end
 
--- places a region at a BLIZZ element (or hides it without one)
 --------------------------------------------------
 -- 5. LAYOUT
 --------------------------------------------------
+-- places a region at a BLIZZ element; false without one
 local function PlaceRegion(f, g, region, e, atlas)
     local dx, dy, w, h = Place(f, g, e, atlas)
     region:ClearAllPoints()
@@ -636,9 +603,8 @@ function Ring.Layout(f)
     local blizz = BLIZZ[Kind(f)]
     frames[f] = true
 
-    -- bottom to top: bars, border, texts and the bars' divider (the frame's own levels), then the
-    -- portrait, the ring (with its glows), the icons on it, the level disc, the PvP crest over its
-    -- edge (the combo gems go above all of it)
+    -- bottom to top above the frame's own levels: portrait, ring, icons, level disc, PvP crest (the
+    -- combo gems above all)
     f.Portrait:SetFrameLevel(level + 9)
     ring:SetFrameLevel(level + 10)
     ring.Icons:SetFrameLevel(level + 11)
@@ -700,7 +666,7 @@ function Ring.LayoutLevel(f, g)
     g = g or Geometry(f)
     local e = BLIZZ[Kind(f)].level
     PlaceRegion(f, g, ring.Disc, e)
-    -- Blizzard's 2026-10-16 frames draw it a little under its atlas size: around the same centre
+    -- a little under its atlas size, round the same centre
     local w, h = ring.Disc:GetSize()
     ring.Disc:SetSize(w * LEVEL_SCALE, h * LEVEL_SCALE)
     -- the skull and the number at the disc's own scale
@@ -723,10 +689,8 @@ end
 
 --------------------------------------------------
 -- 5b. FOREVER STYLE: THE FRAME PLATE
--- Forever's plate behind the bars (name box, health and power slots), cut from the target's atlas
--- into nine pieces: the corners and ends keep their art size, the middle column stretches with the
--- width and the name box's middle row with the height, so the bars stay in Blizzard's proportions.
--- A frame whose ring is on its left (the player) gets the art mirrored.
+-- Forever's plate behind the bars, cut from the target's atlas: ends keep their art size, middles
+-- stretch. Mirrored when the ring is on the left.
 --------------------------------------------------
 -- an edge in art pixels -> its anchor on the frame: the side it hangs from and the offset
 local function EdgeX(x, s)
@@ -738,8 +702,7 @@ local function EdgeY(y, s)
     return "BOTTOM", (RowY(PLATE.y1) - RowY(y)) * s
 end
 
--- Puts a region over art rect x1..x2, y1..y2 of the plate (the ring on the art's right; flip: on the
--- frame's left, mirrored). xs / ys: the art edge's side, for edges of the stretching pieces.
+-- Puts a region over art rect x1..x2, y1..y2 of the plate (flip: mirrored, ring on the left)
 local function PlaceOnPlate(region, f, s, flip, x1, x2, y1, y2)
     local lSide, lx = EdgeX(x1, s)
     local rSide, rx = EdgeX(x2, s)
@@ -768,16 +731,14 @@ local function BuildPlate(f)
     return plate
 end
 
--- A bar over its slot, in the frame's Bar Texture: FlareUI Forever (the default) is Blizzard's bar
--- art, the power bar's its own mana art (greyed: FlareUI's colours, class, reaction, power, tint it);
--- UnitFrames set the fill direction first
+-- A bar over its slot in the frame's Bar Texture (FlareUI Forever: the plate's own bar art); the
+-- fill direction must be set first
 local function PlaceBar(bar, f, s, flip, slot)
     PlaceOnPlate(bar, f, s, flip, slot[1], slot[2], slot[3], slot[4])
-    -- for the heal and absorb overlays (UnitFrames' LayoutIndicators): the colour's insets in the
-    -- bar (none, the art is the colour only) and the bar's length, in screen pixels
+    -- for the heal and absorb overlays (LayoutIndicators): the colour's insets and the bar's length
     local length = (f:GetWidth() or 0) - ((slot[1] - PLATE.x0) + (PLATE.x1 - slot[2])) * s
     bar.FlareUI_PlateInset = { x = 0, y = 0, length = length }
-    local udb = UnitDb(f.unit)
+    local udb = Db(f)
     local name = udb and udb.texture
     if name and name ~= "" and name ~= "FlareUI Forever" and LSM:IsValid("statusbar", name) then
         bar:SetStatusBarTexture(LSM:Fetch("statusbar", name))
@@ -787,7 +748,7 @@ local function PlaceBar(bar, f, s, flip, slot)
     if bar.bg then bar.bg:SetAlpha(0) end   -- the slot is the background
 end
 
--- Lays out the plate and puts the bars in its slots (UnitFrames' LayoutBars, Forever Style)
+-- Lays out the plate and puts the bars in its slots (Forever Style)
 function Ring.LayoutPlate(f)
     local g = Geometry(f)
     local s, flip = g.s, g.side == "LEFT"
@@ -823,8 +784,7 @@ function Ring.LayoutPlate(f)
     Ring.UpdatePlate(f)
 end
 
--- the name box's glow in the unit's reaction colour, as on Blizzard's target and focus frames (the
--- player's has none)
+-- the name box's glow in the unit's reaction colour (none on the player's)
 function Ring.UpdatePlate(f)
     local plate = f.PlateFrame
     if not (plate and plate:IsShown()) then return end
@@ -856,7 +816,7 @@ local function HidePlate(f)
 end
 Ring.HidePlate = HidePlate
 
--- back to the usual style: levels, parents and masks as UnitFrames made them
+-- back to Addon Style: levels, parents and masks as UnitFrames made them
 function Ring.Reset(f)
     HidePlate(f)
     local ring = f.RingFrame
@@ -887,7 +847,7 @@ function Ring.IconSpot(f, key)
     local g = Geometry(f)
     local dx, dy, w, h
     if key == "pvp" or key == "role" then
-        -- the crest: on its disc's centre, its atlas's size against the disc's
+        -- the crest's atlas size against the disc's
         dx, dy, w, h = PvPSpot(f, g)
         local crest, disc = C_Texture.GetAtlasInfo(PVP_ICONS.Horde), C_Texture.GetAtlasInfo(SMALL_CIRCLE)
         if dx and crest and disc and crest.width and disc.width and disc.width > 0 then
@@ -899,8 +859,7 @@ function Ring.IconSpot(f, key)
         dx, dy, w, h = Place(f, g, e)
     end
     if not dx then return nil end
-    -- the crown: Blizzard's spot along the frame, at the usual frame's height (its centre 2 px under
-    -- the top edge), so it stays clear of the auras above
+    -- the crown: 2 px under the frame's top edge, clear of the auras above
     if key == "leader" then dy = g.H / 2 - 2 end
     return "CENTER", f.RingFrame, "CENTER", dx, dy, w, h
 end
@@ -956,18 +915,19 @@ local function UpdateExtras(f)
     end
 end
 
--- The state art: PvP disc and crest, elite / rare frame, skull, resting / combat glow, corner
--- embellishment, combat swords and the threat flash. Readable values only; secret ones hide the art.
+-- The state art: PvP crest, elite / rare frame, skull, status glow, corner piece, combat swords and
+-- the threat flash. Secret values hide the art.
 function Ring.Update(f)
     local ring = f.RingFrame
     if not ring or not Ring.Applies(f) then return end
     Ring.UpdatePlate(f)
-    local unit, kind, g, blizz = f.unit, Kind(f), Geometry(f), BLIZZ[Kind(f)]
+    local unit, kind = f.unit, Kind(f)
+    local blizz = BLIZZ[kind]
     local exists = Readable(UnitExists(unit))
     -- a boss tile's Edit Mode sample (f.sample): its art as a live boss would have it
     local sample = LEM:IsInEditMode() and f.ringKind and f.sample
 
-    -- PvP: Forever's faction crest on its own disc (the frame's PvP icon, re-arted)
+    -- PvP: the frame's PvP icon, re-arted as Forever's crest
     if blizz.pvp and f.PvPIcon then
         local shown = f.PvPIcon:IsShown()
         if shown then
@@ -995,6 +955,7 @@ function Ring.Update(f)
             ok, atlas, ox, oy = pcall(GetBossPortraitFrameData, unit, classification)
         end
         if ok and atlas and SetAtlasSafe(ring.Boss, atlas) then
+            local g = Geometry(f)
             local info = C_Texture.GetAtlasInfo(atlas)
             -- TOPRIGHT at Blizzard's frame's top-right corner plus Forever's offsets
             local e = { point = "TOPRIGHT", x = BLIZZ_FRAME_W + (ox or 0), y = oy or 0 }
@@ -1009,15 +970,15 @@ function Ring.Update(f)
         end
     end
 
-    -- the skull in the level disc for a unit far above you ("??")
+    -- the level disc's skull for a "??" unit (10+ levels higher): target and focus with "High Level
+    -- Skull" on; a red "??" everywhere else
     local level = Readable(UnitLevel(unit))
-    local skull = exists and level and level < 0 or false
-    if sample then skull = sample.level == -1 end
+    local skull = exists and level and level < 0 and (f.unit == "target" or f.unit == "focus")
+        and IconOn(f, "highSkull", true) or false
     ring.Skull:SetShown(skull and ring.Disc:IsShown())
     f.Level:SetAlpha(skull and 0 or 1)
 
-    -- the player: red glow and swords in combat, else yellow glow and corner piece resting (combat
-    -- first, as Blizzard's frame since the 2026-10-16 build)
+    -- the player: red glow and swords in combat, else yellow glow and corner piece resting
     if kind == "player" then
         local combat = Readable(UnitAffectingCombat("player"))
         local resting = not combat and Readable(IsResting())
@@ -1038,29 +999,37 @@ function Ring.Update(f)
 
     UpdateExtras(f)
 
-    -- threat: the flash in Blizzard's threat colours (the tiles show it on their border)
-    if f.ringKind then
-        ring.Flash:Hide()
+    Ring.UpdateThreat(f)
+end
+
+-- Threat: the ring's flash in Blizzard's colours. Tiles off the plate use their border instead; on
+-- it a party member flashes for its own aggro, a boss for the player's threat on it.
+function Ring.UpdateThreat(f)
+    local ring = f.RingFrame
+    if not ring then return end
+    if f.ringKind and not Ring.Plate(f) then ring.Flash:Hide() return end
+    local unit, kind = f.unit, Kind(f)
+    local exists = unit and Readable(UnitExists(unit))
+    local status
+    if kind == "player" then
+        status = Readable(UnitThreatSituation("player"))
+    elseif kind == "party" then
+        status = exists and Readable(UnitThreatSituation(unit)) or nil
+    elseif exists then
+        status = Readable(UnitThreatSituation("player", unit))
+    end
+    if status and status > 0 and GetThreatStatusColor and not LEM:IsInEditMode() and IconOn(f, "threatGlow", true) then
+        local r, gg, b = GetThreatStatusColor(status)
+        ring.Flash:SetVertexColor(r, gg, b, 1)
+        ring.Flash:Show()
     else
-        local status
-        if kind == "player" then
-            status = Readable(UnitThreatSituation("player"))
-        elseif exists then
-            status = Readable(UnitThreatSituation("player", unit))
-        end
-        if status and status > 0 and GetThreatStatusColor and IconOn(f, "threatGlow", true) then
-            local r, gg, b = GetThreatStatusColor(status)
-            ring.Flash:SetVertexColor(r, gg, b, 1)
-            ring.Flash:Show()
-        else
-            ring.Flash:Hide()
-        end
+        ring.Flash:Hide()
     end
 end
 
--- the state art follows combat, resting and threat without a full layout
--- Unit events only for the ring frames' units: threat updates fire for every group member.
--- RegisterUnitEvent takes two units, so focus has a frame of its own.
+-- The state art follows combat, resting and threat without a full layout. Unit events only for the
+-- ring units (threat fires for every group member); RegisterUnitEvent takes two units, so focus has
+-- a frame of its own.
 do
     local function OnEvent()
         for f in pairs(frames) do Ring.Update(f) end
@@ -1081,8 +1050,8 @@ end
 --------------------------------------------------
 -- 7. CLASSIC COMBO POINTS
 --------------------------------------------------
--- Classic combo points as Blizzard lays them around its target ring, scaled to ours (mirrored on a
--- ring at the left). Anchors only: the count may be secret.
+-- Blizzard's combo arc round its target ring, scaled to this one (mirrored on the left). Anchors
+-- only: the count may be secret.
 function Ring.PlaceCombo(combo, f)
     if Kind(f) ~= "target" or not f.RingFrame then return false end
     local g = Geometry(f)
@@ -1112,7 +1081,7 @@ end
 --------------------------------------------------
 -- 8. STYLE SWITCH
 --------------------------------------------------
--- a table's own values, deep (AceDB's defaults stay behind their metatables)
+-- deep copy of a table's own values (AceDB's defaults stay behind their metatables)
 local function CopyRaw(v)
     if type(v) ~= "table" then return v end
     local t = {}
@@ -1120,7 +1089,7 @@ local function CopyRaw(v)
     return t
 end
 
--- empties a table's own values; tables AceDB made (they carry its defaults) are kept, emptied
+-- empties a table; AceDB's tables (with metatables) are kept, emptied
 local function Clear(t)
     for k, v in pairs(t) do
         if type(v) == "table" and getmetatable(v) then Clear(v) else t[k] = nil end
@@ -1136,8 +1105,8 @@ local function Fill(dst, src, top)
     end
 end
 
--- FlareUI Style's party and boss look on the setup in use. untouched: only where nothing is set (the
--- first time for a profile already in this style); clear: back to the defaults (leaving the style)
+-- FlareUI Style's party and boss look on the setup in use. untouched: only where nothing is set;
+-- clear: back to the defaults
 local function ApplyTilePreset(db, mode)
     local function Apply(dst, values)
         for field, value in pairs(values) do
@@ -1172,8 +1141,26 @@ local function ApplyForeverPreset(db)
     db.totemLayouts = {}
 end
 
--- Once (db.tileStyle): a profile already in FlareUI Style gets its party and boss look where it never
--- set those values
+-- Once (db.plateTiles): a Forever Style setup without ring tiles takes FlareUI Style's party and boss setup
+local function CopyTiles(dst, src)
+    if not (dst and src) then return end
+    for key in pairs(TILE_KEYS) do
+        if src[key] then dst[key] = CopyRaw(src[key]) end
+    end
+end
+function Ring.StartPlateTiles(db)
+    db.plateTiles = true
+    local slots = db.styleProfiles
+    if not slots then return end
+    local flareui = (db.foreverStyle and not db.plateStyle) and db or slots.forever
+    if db.foreverStyle and db.plateStyle then
+        CopyTiles(db, flareui)
+    elseif slots.plate then
+        CopyTiles(slots.plate, flareui)
+    end
+end
+
+-- Once (db.tileStyle): a FlareUI Style profile gets the party and boss look where nothing is set
 function Ring.StartTileStyle(db)
     db.tileStyle = true
     if db.foreverStyle and not db.plateStyle then ApplyTilePreset(db, "untouched") end
@@ -1187,8 +1174,7 @@ function Ring.StartStyle(db)
     db.foreverStyle = true
 end
 
--- What is switched on (each frame, the resource bars and each bar, the cast bar, the totems) is the
--- player's choice in both styles: every "enabled" below the unit frames table survives a switch
+-- Every "enabled" below the unit frames table survives a switch
 local SWITCH_SKIP = { layouts = true, totemLayouts = true, tankLayouts = true }
 local function CaptureSwitches(t, keys, out)
     if t.enabled ~= nil and #keys > 0 then
@@ -1233,12 +1219,11 @@ local function ApplyPlatePreset(db)
     db.totemLayouts = {}
 end
 
--- each style's stored setup (styleProfiles keys: "usual" and "forever" are the older names)
+-- each style's styleProfiles slot (saved names: never rename)
 local STYLE_SLOT = { addon = "usual", flareui = "forever", forever = "plate" }
 
--- Switches the style: the setup in use is kept for its style, and the new style's comes back (the
--- first time: Forever Style starts from the FlareUI Style setup with the plate's proportions,
--- FlareUI Style from its preset, Addon Style from the defaults). What is switched on stays.
+-- Switches the style: the setup in use is stored and the new style's restored. First time: Forever
+-- Style starts from FlareUI Style's setup, FlareUI Style from its preset, Addon Style from defaults.
 function Ring.SetStyle(style)
     local db = GetDb()
     local current = Ring.Style()
@@ -1250,8 +1235,7 @@ function Ring.SetStyle(style)
         if not SHARED_KEYS[k] then saved[k] = CopyRaw(v) end
     end
     db.styleProfiles[STYLE_SLOT[current]] = saved
-    -- a setup stored before the party and boss frames joined: theirs stay as they are, without
-    -- FlareUI Style's look
+    -- a stored setup without party / boss entries leaves theirs as they are
     local function Restore(back)
         local keepTiles = {}
         for k in pairs(TILE_KEYS) do keepTiles[k] = back[k] == nil end
@@ -1261,9 +1245,9 @@ function Ring.SetStyle(style)
             end
         end
         Fill(db, back, true)
-        if current == "flareui" and (keepTiles.party or keepTiles.boss) then ApplyTilePreset(db, "clear") end
-        -- into FlareUI Style: its party and boss look where nothing is set
-        if style == "flareui" and (keepTiles.party or keepTiles.boss) then ApplyTilePreset(db, "untouched") end
+        if style == "addon" and current ~= "addon" and (keepTiles.party or keepTiles.boss) then ApplyTilePreset(db, "clear") end
+        -- into FlareUI or Forever Style: the ring tiles' look where nothing is set
+        if style ~= "addon" and (keepTiles.party or keepTiles.boss) then ApplyTilePreset(db, "untouched") end
     end
     local back = db.styleProfiles[STYLE_SLOT[style]]
     if back then
@@ -1273,14 +1257,11 @@ function Ring.SetStyle(style)
         if current ~= "flareui" then
             if db.styleProfiles.forever then Restore(db.styleProfiles.forever) else ApplyForeverPreset(db) end
         end
-        -- its party and boss frames: the plain ones
-        ApplyTilePreset(db, "clear")
         ApplyPlatePreset(db)
     elseif style == "flareui" then
-        -- the preset's positions: none stored, so the style's defaults apply (party frames keep theirs)
         ApplyForeverPreset(db)
     else
-        -- the Addon style's first time: the preset's settings and positions back to the defaults
+        -- Addon Style's first time: the presets' values and positions back to the defaults
         for _, preset in ipairs({ FOREVER, PLATE_PRESET }) do
             for unit, keys in pairs(preset) do
                 local udb = db.units and db.units[unit]
@@ -1304,10 +1285,8 @@ end
 --------------------------------------------------
 -- 9. EDIT MODE
 --------------------------------------------------
--- Edit Mode's Portrait Size default: FlareUI Style's preset (80 player and target, 47 focus), else
--- from the frame's height
+-- Edit Mode's Portrait Size default: the preset's, else from the frame's height
 function Ring.DefaultSize(unit, height)
-    -- the party and boss tiles: the player frame's
     if unit == "party" or unit == "boss" then return TILE_RING_D end
     local preset = FOREVER[unit] and FOREVER[unit].ringSize
     if preset then return preset end

@@ -3,13 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- TOOLTIPS
--- Tooltip scale, colours, health bar, anchoring and per-category visibility. Secret-safe rules:
---   * only TooltipDataProcessor post-calls and post-hooks, never method replacement
---   * never touch a tooltip that is forbidden, has a secret width, or has a child with a secret
---     shownWidgetCount (a Blizzard bug: SetBackdrop / SetPadding then poisons the layout)
---   * every unit or tooltip value is checked with canaccessvalue before it is tested, compared or
---     concatenated
---   * the tooltip health bar is hidden, never written to (Blizzard flags it as a taint path)
+-- Tooltip scale, colours, fonts, unit lines, anchoring and per-category visibility, through
+-- TooltipDataProcessor post-calls and post-hooks only (never method replacement).
 --------------------------------------------------
 
 --------------------------------------------------
@@ -38,7 +33,7 @@ end
 --------------------------------------------------
 -- 3. CONSTANTS
 --------------------------------------------------
--- muted palette, same family as the unit frame threat tint
+-- muted, as the unit frame threat tint
 local REACTION_COLORS = {
     [1] = { 0.78, 0.28, 0.24 },   -- hated
     [2] = { 0.78, 0.28, 0.24 },   -- hostile
@@ -51,7 +46,7 @@ local REACTION_COLORS = {
 }
 local DEFAULT_BORDER_COLOR = { 0.80, 0.60, 0.34 }   -- #CC9957
 local BACKGROUND = { 0.05, 0.05, 0.06, 0.9 }
-local MUTE = 0.85                                   -- class / quality colours are toned down by this
+local MUTE = 0.85                                   -- class / quality colour multiplier
 
 -- tooltips that follow the main one's scale and colours
 local SATELLITES = {
@@ -66,9 +61,12 @@ local CAT_FRAME_UNIT   = "frameUnits"
 local CAT_ACTION       = "actionBars"
 
 --------------------------------------------------
--- 4. SAFETY (one gate in front of everything that touches a tooltip's appearance)
+-- 4. SAFETY
+-- A forbidden tooltip, a secret width or a child with a secret shownWidgetCount is never restyled
+-- (SetBackdrop / SetPadding would poison Blizzard's layout). Every value passes canaccessvalue
+-- before it is tested, compared or concatenated.
 --------------------------------------------------
--- runs on every tooltip shown, so the children are walked without building a table
+-- no table: runs on every tooltip shown
 local function AnySecretWidgetCount(...)
     for i = 1, select("#", ...) do
         if issecretvalue((select(i, ...)).shownWidgetCount) then return true end
@@ -87,6 +85,17 @@ end
 local function Readable(value)
     if canaccessvalue(value) then return value end
     return nil
+end
+
+-- "GameTooltipTextLeft<i>" names built once: the line walks run on every unit tooltip
+local LEFT_LINE_NAMES = setmetatable({}, { __index = function(t, i)
+    local name = "GameTooltipTextLeft" .. i
+    t[i] = name
+    return name
+end })
+
+local function LeftLine(i)
+    return _G[LEFT_LINE_NAMES[i]]
 end
 
 local function ColorToHex(r, g, b)
@@ -115,7 +124,6 @@ local function GetClassColor(unit)
     return { color.r, color.g, color.b }
 end
 
--- Border colour for a unit tooltip, by class or reaction as switched on
 local function GetUnitBorderColor(unit)
     local db = GetDb()
     if not db then return nil end
@@ -165,32 +173,39 @@ local function HideHealthBar()
     local db = GetDb()
     local bar = _G.GameTooltipStatusBar
     if not (db and bar) then return end
-    -- hide only: writing to this bar is a documented taint path
+    -- hide only: writing to this bar taints
     if db.hideHealthBar then bar:Hide() end
 end
 
 --------------------------------------------------
 -- 7. UNIT TOOLTIP CONTENT
 --------------------------------------------------
-local CLASSIFICATION_FORMAT = {
-    elite      = "+%s",
-    rareelite  = "+%s |cffe066ff(" .. L["Rare"] .. ")|r",
-    rare       = "%s |cffe066ff(" .. L["Rare"] .. ")|r",
-    worldboss  = "%s |cffff4040(" .. L["Boss"] .. ")|r",
-    minus      = "-%s",
+-- Level line tag: a rare elite counts as rare, a "??" elite as a boss (as Blizzard shows them)
+local CLASS_TAGS = {
+    boss  = "|cffff4040(" .. L["Boss"] .. ")|r",
+    elite = "|cffffd100(" .. L["Elite"] .. ")|r",
+    rare  = "|cffffd100(" .. L["Rare"] .. ")|r",
 }
+local function ClassTag(unit, level)
+    local class = Readable(UnitClassification(unit))
+    if class == "worldboss" then return CLASS_TAGS.boss end
+    if (class == "elite" or class == "rareelite") and level and level < 0 then return CLASS_TAGS.boss end
+    if class == "rare" or class == "rareelite" then return CLASS_TAGS.rare end
+    if class == "elite" then return CLASS_TAGS.elite end
+    return nil
+end
 
 -- Drops the PvP and "right click for frame settings" lines
 local function ScrubLines(tip)
     local rightClick, pvp = _G.UNIT_POPUP_RIGHT_CLICK, _G.PVP_ENABLED
     for i = 2, tip:NumLines() do
-        local line = _G["GameTooltipTextLeft" .. i]
+        local line = LeftLine(i)
         local text = line and line:GetText()
         if canaccessvalue(text) and type(text) == "string" then
             if rightClick and text == rightClick then
                 line:SetText(nil)
-                -- the instruction line is preceded by a blank spacer line (never the name line)
-                local previous = i > 2 and _G["GameTooltipTextLeft" .. (i - 1)]
+                -- with the blank spacer line above it (never the name line)
+                local previous = i > 2 and LeftLine(i - 1)
                 if previous then previous:SetText(nil) end
             elseif pvp and text == pvp then
                 line:SetText(nil)
@@ -199,27 +214,20 @@ local function ScrubLines(tip)
     end
 end
 
--- While switched on: the name in its class colour (reaction colour for NPCs), with the
--- classification on the same line
+-- Name in class colour (reaction colour for NPCs)
 local function ColorName(tip, unit)
     local db = GetDb()
     if not db or db.nameColor ~= "class" then return end
     local line = _G.GameTooltipTextLeft1
     local text = line and line:GetText()
     if not (canaccessvalue(text) and type(text) == "string") then return end
-
     local color = GetClassColor(unit) or GetReactionColor(unit)
     if not color then return end
-
-    local class = Readable(UnitClassification(unit))
-    local format = class and CLASSIFICATION_FORMAT[class]
-    if format then text = format:format(text) end
     line:SetText(ColorToHex(color[1], color[2], color[3]) .. text .. "|r")
 end
 
--- A unit's level against yours, in Blizzard's quest difficulty colours (grey, green, yellow,
--- orange, red), by Blizzard's own steps (DifficultyUtil.GetRelativeDifficultyColor, which Forever
--- doesn't load); "??" is red. nil when a level is unreadable.
+-- Quest difficulty colour of a level, by Blizzard's steps (Forever does not load
+-- DifficultyUtil.GetRelativeDifficultyColor); nil when the player's level is unreadable
 local DIFFICULTY_FALLBACK = {
     impossible = { r = 1, g = 0.1, b = 0.1 }, verydifficult = { r = 1, g = 0.5, b = 0.25 },
     difficult = { r = 1, g = 0.82, b = 0 }, standard = { r = 0.25, g = 0.75, b = 0.25 },
@@ -233,8 +241,7 @@ local function LevelColor(level)
         local mine = Readable(UnitEffectiveLevel and UnitEffectiveLevel("player")) or Readable(UnitLevel("player"))
         if not mine then return nil end
         local diff = level - mine
-        local green = (UnitQuestTrivialLevelRange and Readable(UnitQuestTrivialLevelRange("player")))
-            or (GetQuestGreenRange and Readable(GetQuestGreenRange())) or 8
+        local green = (UnitQuestTrivialLevelRange and Readable(UnitQuestTrivialLevelRange("player"))) or 8
         if diff >= 5 then key = "impossible"
         elseif diff >= 3 then key = "verydifficult"
         elseif diff >= -4 then key = "difficult"
@@ -245,27 +252,79 @@ local function LevelColor(level)
     return (colors and colors[key]) or DIFFICULTY_FALLBACK[key]
 end
 
--- The level line is the first line that starts with the level word: "Level N" in the difficulty
--- colour, the rest in the unit's reaction colour
+local function PlayerClassName(unit)
+    if not Readable(UnitIsPlayer(unit)) then return nil end
+    local name = UnitClass(unit)
+    if canaccessvalue(name) and type(name) == "string" and name ~= "" then return name end
+    return nil
+end
+
+-- "Level N" in the difficulty colour, the rest in the reaction colour (white plus the class name for
+-- players); Blizzard's bracketed tags give way to the one ClassTag
 local function ColorLevelLine(tip, unit)
-    local color = GetReactionColor(unit)
+    local className = PlayerClassName(unit)
+    local color = className and { 1, 1, 1 } or GetReactionColor(unit)
     if not color then return end
     local levelWord = _G.LEVEL
     if not levelWord then return end
     local level = Readable(UnitLevel(unit))
-    local difficulty = level and LevelColor(level)
+    local difficulty = level and ((not Readable(UnitIsFriend("player", unit)) and ns.LevelDifficultyColor(unit, level))
+        or LevelColor(level))
+    local tag = ClassTag(unit, level)
     for i = 2, tip:NumLines() do
-        local line = _G["GameTooltipTextLeft" .. i]
+        local line = LeftLine(i)
         local text = line and line:GetText()
         if canaccessvalue(text) and type(text) == "string" and text:find("^" .. levelWord) then
             local reaction = ColorToHex(color[1], color[2], color[3])
             local head, rest = text:match("^(" .. levelWord .. "%s+%S+)(.*)$")
+            if not head then head, rest = nil, text end
+            if tag or className then rest = rest:gsub("%s*%b()", "") end
+            if className then rest = rest .. " " .. className end
+            local out
             if difficulty and head then
-                line:SetText(ColorToHex(difficulty.r, difficulty.g, difficulty.b) .. head .. "|r" .. reaction .. rest .. "|r")
+                out = ColorToHex(difficulty.r, difficulty.g, difficulty.b) .. head .. "|r"
             else
-                line:SetText(reaction .. text .. "|r")
+                out = reaction .. (head or "") .. "|r"
             end
+            if rest ~= "" then out = out .. reaction .. rest .. "|r" end
+            if tag then out = out .. " " .. tag end
+            line:SetText(out)
             return
+        end
+    end
+end
+
+-- A player's class line; ColorLevelLine puts the class on the level line
+local function RemoveClassLine(tip, unit)
+    local className = PlayerClassName(unit)
+    if not className then return end
+    for i = 2, tip:NumLines() do
+        local line = LeftLine(i)
+        local text = line and line:GetText()
+        if canaccessvalue(text) and text == className then
+            line:SetText(nil)
+            return
+        end
+    end
+end
+
+-- Faction line in Blizzard's faction colours
+local FACTION_LINE_COLORS = {
+    { word = "FACTION_HORDE",    hex = "|cffe60d12" },
+    { word = "FACTION_ALLIANCE", hex = "|cff4a9eff" },
+}
+local function ColorFactionLine(tip)
+    for i = 2, tip:NumLines() do
+        local line = LeftLine(i)
+        local text = line and line:GetText()
+        if canaccessvalue(text) and type(text) == "string" then
+            for _, f in ipairs(FACTION_LINE_COLORS) do
+                local word = _G[f.word]
+                if word and text == word then
+                    line:SetText(f.hex .. text .. "|r")
+                    return
+                end
+            end
         end
     end
 end
@@ -274,7 +333,7 @@ local function AddTargetLine(tip, unit)
     local db = GetDb()
     if not (db and db.showTarget) then return end
     local target = unit .. "target"
-    -- a bare truth test or comparison on a secret value throws: everything is asked through Readable
+    -- a truth test or comparison on a secret throws
     if not Readable(UnitExists(target)) then return end
     local prefix = (_G.TARGET or "Target") .. ": "
     if Readable(UnitIsUnit(target, "player")) then
@@ -284,7 +343,7 @@ local function AddTargetLine(tip, unit)
     local color = GetClassColor(target) or GetReactionColor(target) or DEFAULT_BORDER_COLOR
     local name = UnitName(target)
     if not canaccessvalue(name) then
-        -- another player's name can be secret: the tooltip still shows it, in the unit's colour
+        -- a secret name can still be concatenated and shown
         local ok, text = pcall(function() return prefix .. name end)
         if ok then tip:AddLine(text, color[1], color[2], color[3]) end
         return
@@ -293,7 +352,7 @@ local function AddTargetLine(tip, unit)
     tip:AddLine(prefix .. ColorToHex(color[1], color[2], color[3]) .. name .. "|r")
 end
 
--- "Item ID 12345" / "Spell ID 678" in grey, from the tooltip's own data (a secret id is left out)
+-- "Item ID 12345" / "Spell ID 678" in grey; a secret id is left out
 local function AddIdLine(tip, key, label, data)
     local db = GetDb()
     local id = data and data.id
@@ -324,10 +383,10 @@ local function MouseIsOverWorld()
     return WorldFrame:IsMouseMotionFocus()
 end
 
--- category -> "always" (show) / "combat" (hide while in combat) / "never" (always hide)
+-- per category: "always" shows, "combat" hides in combat, "never" hides
 local function ShouldHide(category)
     local db = GetDb()
-    -- world and UI are told apart by the mouse, which the Gamepad UI keeps on the world: all show there
+    -- the Gamepad UI keeps the mouse on the world, so world and UI cannot be told apart
     if not db or ns.IsGamepadUI() then return false end
     local mode = db.visibility and db.visibility[category] or "always"
     if mode == "always" then return false end
@@ -349,8 +408,8 @@ end
 --------------------------------------------------
 -- 9. TOOLTIP HOOKS
 --------------------------------------------------
--- The tooltip's unit as a token addon code may use. A secret unit is replaced by the owner frame's
--- unit, or "mouseover" over the world; failing that the tooltip is left as Blizzard drew it.
+-- A usable unit token: a secret one falls back to the owner frame's unit, or "mouseover" over the
+-- world; nil leaves the tooltip as Blizzard drew it
 local function TooltipUnit(tip)
     local _, unit = TooltipUtil.GetDisplayedUnit(tip)
     if canaccessvalue(unit) and unit == nil then unit = select(2, tip:GetUnit()) end
@@ -364,9 +423,7 @@ local function TooltipUnit(tip)
     if MouseIsOverWorld() then return "mouseover" end
 end
 
--- Runs inside Blizzard's tooltip processing, which shows (and lays out) the tooltip right after.
--- A player's tooltip carries secret text (SafeToTouch fails): it still gets the visibility rule, the
--- target line and the health bar; only the appearance changes need the gate.
+-- A player's tooltip carries secret text and fails SafeToTouch: only the restyling is gated
 local function OnTooltipSetUnit(tip)
     if tip ~= GameTooltip or tip:IsForbidden() then return end
     local unit = TooltipUnit(tip)
@@ -384,6 +441,8 @@ local function OnTooltipSetUnit(tip)
     ScrubLines(tip)
     ColorName(tip, unit)
     ColorLevelLine(tip, unit)
+    RemoveClassLine(tip, unit)
+    ColorFactionLine(tip)
     ApplyColors(tip, GetUnitBorderColor(unit))
 end
 
@@ -420,10 +479,10 @@ local function OnTooltipSetAura(tip, data)
     AddIdLine(tip, "showSpellID", L["Spell ID"], data)
 end
 
--- anything that is not a unit / item / spell / aura: world objects and plain UI frames
+-- Anything not a unit / item / spell / aura: world objects and plain UI frames
 local function OnTooltipShow(tip)
     if tip ~= GameTooltip or not SafeToTouch(tip) then return end
-    -- units are handled in their own post-call (a secret name still means a unit)
+    -- a secret name still means a unit, handled in its own post-call
     local unitName = tip:GetUnit()
     if issecretvalue(unitName) or unitName then return end
     if MouseIsOverWorld() and HideIfNeeded(tip, CAT_WORLD_OBJECT) then return end
@@ -450,7 +509,7 @@ end
 --------------------------------------------------
 -- 11. PUBLIC
 --------------------------------------------------
--- Blizzard's tooltip font objects: title (first line), content, and small lines two points under it
+-- Blizzard's tooltip font objects; small lines two points under the content size
 local function ApplyFonts()
     local db = GetDb()
     if not db then return end
@@ -491,8 +550,7 @@ function TIP:Init()
     add(Enum.TooltipDataType.Spell, OnTooltipSetSpell)
     add(Enum.TooltipDataType.UnitAura, OnTooltipSetAura)
 
-    -- Show threat off: Blizzard's threat line on an enemy's tooltip ("Threat: 85%") is consumed
-    -- before it is added (a line pre-call returning true), so no empty line is left
+    -- "Show threat" off: a line pre-call returning true drops the threat line without a gap
     if Enum.TooltipDataLineType and Enum.TooltipDataLineType.UnitThreat and TooltipDataProcessor.AddLinePreCall then
         TooltipDataProcessor.AddLinePreCall(Enum.TooltipDataLineType.UnitThreat, function()
             local now = GetDb()
@@ -502,7 +560,7 @@ function TIP:Init()
 
     GameTooltip:HookScript("OnShow", OnTooltipShow)
 
-    -- Blizzard restyles tooltips constantly; put our colours back afterwards
+    -- Blizzard restyles tooltips often: the colours go back on after each restyle
     hooksecurefunc("SharedTooltip_SetBackdropStyle", function(tip)
         if tip == GameTooltip or tip == _G.ItemRefTooltip then ApplyColors(tip, nil) end
     end)

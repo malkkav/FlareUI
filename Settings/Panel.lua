@@ -4,19 +4,17 @@ local S = ns.Settings
 
 --------------------------------------------------
 -- SETTINGS PANEL
--- The window built from the registry (Settings/Registry.lua): modules down the left, the page's
--- rows in the middle, a picture and the hovered row's text on the right, the reload footer along
--- the bottom. Built on first open; Blizzard's own templates and textures, in FlareUI's bronze.
+-- The window built from the registry: modules on the left, the page's rows in the middle, the
+-- hovered row's text on the right, the reload bar below. Built on first open.
 --------------------------------------------------
-local WIDTH, HEIGHT = 960, 700   -- the reload bar hangs below the window when it shows (both fit 768 units: UI scale 1)
+local WIDTH, HEIGHT = 960, 700   -- with the reload bar below, fits 768 units (UI scale 1)
 local HEADER_H, FOOTER_H = 34, 34
 local LEFT_W, RIGHT_W = 190, 250
 local PAD = 12
 local ROW_H, SECTION_H = 26, 30
 local INDENT = 18
--- the scrolling page: window minus borders, both side columns, their padding and the scroll bar
+-- window minus borders, both side columns, their padding and the scroll line
 local CONTENT_W = WIDTH - 12 - LEFT_W - RIGHT_W - 2 * PAD - 14
--- the dog at the top of the info panel, for every option
 local PICTURE = "Interface\\AddOns\\FlareUI\\Media\\Art\\Banner.png"
 
 local BRONZE_MUTED = { 0.61, 0.48, 0.29 }
@@ -25,21 +23,19 @@ local Panel = {}
 ns.SettingsPanel = Panel
 
 local frame             -- the window
-local current           -- module key on show
+local current           -- module key shown
 local searchText = ""
 local navButtons = {}   -- module key -> left list button
 local pools = {}        -- row kind -> list of row frames
-local used = {}         -- row frames on the page now
-local currentTab = {}   -- module key -> its tab on show
-local customHosts = {}  -- "module.tab" -> the frame a custom tab drew into
+local used = {}         -- row frames on the page
+local currentTab = {}   -- module key -> tab key shown
+local customHosts = {}  -- "module.tab" -> a custom tab's frame
 
 --------------------------------------------------
 -- 1. SMALL HELPERS
 --------------------------------------------------
--- A thin scroll line, like the quest tracker's: a faint track and a bronze thumb, shown only when
--- there is something to scroll. Drag the thumb or click the track; the wheel scrolls the list.
--- line:SetValues(visible, position): the share in view and the scroll position, both 0..1.
--- line.onScroll(position) is called when the player drags it.
+-- A thin track and bronze thumb, shown only when there is something to scroll.
+-- line:SetValues(visible, position) takes 0..1 shares; line.onScroll(position) fires on drag.
 function Panel.ScrollLine(parent)
     local line = CreateFrame("Frame", nil, parent)
     line:SetWidth(10)
@@ -48,7 +44,7 @@ function Panel.ScrollLine(parent)
     line.track:SetWidth(2)
     line.track:SetPoint("TOP")
     line.track:SetPoint("BOTTOM")
-    line.track:SetColorTexture(0.61, 0.48, 0.29, 0.25)
+    line.track:SetColorTexture(BRONZE_MUTED[1], BRONZE_MUTED[2], BRONZE_MUTED[3], 0.25)
     line.thumb = line:CreateTexture(nil, "OVERLAY")
     line.thumb:SetWidth(2)
     line.thumb:SetColorTexture(0.80, 0.60, 0.34, 1)
@@ -63,7 +59,7 @@ function Panel.ScrollLine(parent)
         self.thumb:ClearAllPoints()
         self.thumb:SetPoint("TOP", self, "TOP", 0, -(h - th) * self.position)
     end
-    -- the cursor's place on the track, as a scroll position
+    -- cursor position on the track as a scroll position
     local function CursorPosition(self)
         local _, y = GetCursorPosition()
         y = y / self:GetEffectiveScale()
@@ -72,25 +68,32 @@ function Panel.ScrollLine(parent)
         if not (top and h and h > th) then return 0 end
         return (top - y - th / 2) / (h - th)
     end
+    -- OnUpdate runs only while the thumb is dragged
+    local function Drag(self)
+        if self.onScroll then self.onScroll(math.max(0, math.min(1, CursorPosition(self)))) end
+    end
+    local function StopDrag(self)
+        self.dragging = nil
+        self:SetScript("OnUpdate", nil)
+    end
     line:SetScript("OnMouseDown", function(self)
         self.dragging = true
         self.thumb:SetWidth(4)
-        if self.onScroll then self.onScroll(math.max(0, math.min(1, CursorPosition(self)))) end
+        Drag(self)
+        self:SetScript("OnUpdate", Drag)
     end)
     line:SetScript("OnMouseUp", function(self)
-        self.dragging = nil
+        StopDrag(self)
         self.thumb:SetWidth(self:IsMouseOver() and 4 or 2)
     end)
+    line:SetScript("OnHide", StopDrag)
     line:SetScript("OnEnter", function(self) self.thumb:SetWidth(4) end)
     line:SetScript("OnLeave", function(self) if not self.dragging then self.thumb:SetWidth(2) end end)
-    line:SetScript("OnUpdate", function(self)
-        if self.dragging and self.onScroll then self.onScroll(math.max(0, math.min(1, CursorPosition(self)))) end
-    end)
     line:SetScript("OnSizeChanged", function(self) self:SetValues(self.visible, self.position) end)
     return line
 end
 
--- A scroll line beside a ScrollFrame, in the gutter on its right, with mouse wheel scrolling
+-- A scroll line in a ScrollFrame's right gutter, plus mouse wheel scrolling
 function Panel.AttachScrollLine(scroll, parent, step)
     local line = Panel.ScrollLine(parent)
     line:SetPoint("TOPLEFT", scroll, "TOPRIGHT", 2, 0)
@@ -119,13 +122,12 @@ function Panel.AttachScrollLine(scroll, parent, step)
     return line
 end
 
--- Tooltips over the settings panel and over FlareUI's Edit Mode settings are opaque black, with
--- the Tooltips module on or off: whatever paints the background afterwards (Blizzard's layout, the
--- Tooltips module) is painted over again. Other tooltips get the game's colour back.
+-- Tooltips over the panel and FlareUI's Edit Mode settings stay opaque black: later background
+-- paints (Blizzard, the Tooltips module) are painted over. Other tooltips get the default colour back.
 local function WantsDark(owner)
     local panel = _G.FlareUI_SettingsPanel
     while owner do
-        -- Nameplates are forbidden: no method but IsForbidden may be called on them.
+        -- forbidden frames (nameplates) allow no method but IsForbidden
         if owner.IsForbidden and owner:IsForbidden() then return false end
         if owner == panel or owner.FlareUI_DarkTooltips then return true end
         owner = owner.GetParent and owner:GetParent()
@@ -176,7 +178,7 @@ local function Text(parent, font, justify)
 end
 
 --------------------------------------------------
--- 2. RIGHT COLUMN: picture and text
+-- 2. RIGHT COLUMN
 --------------------------------------------------
 local preview = {}
 
@@ -186,13 +188,13 @@ local function ShowPreview(title, desc, tip)
     preview.tip:SetText(tip and (L["Tip:"] .. " " .. S:Format(tip)) or "")
 end
 
--- Nothing hovered: the dog and a hint (the module's own text is in its header already)
+-- nothing hovered: the picture and a hint
 local function ShowModulePreview()
     ShowPreview(S:WindowText("infoPanelNothingHovered", L["Info Panel"]),
         S:WindowText("infoPanelNothingHovered2", L["Hover any option to see how it works!"]))
 end
 
--- The title: the row's own info title, else its label, else its section's title
+-- title: the row's info text, else its label, else its section title
 local function ShowRowPreview(row)
     local title = S:Text(row.key, "info")
     if not title or title == "" then title = row:Label() end
@@ -202,7 +204,7 @@ local function ShowRowPreview(row)
     ShowPreview(title, row:Description(), row:Tip())
 end
 
--- for custom tabs: their own controls fill the right column on hover, and give it back after
+-- for custom tabs' own controls
 function Panel:ShowPreview(title, desc, tip)
     if preview.picture then ShowPreview(title, desc, tip) end
 end
@@ -212,11 +214,10 @@ end
 
 --------------------------------------------------
 -- 3. ROWS
--- One pool per kind. A row frame spans the page width: label on the left, its control on the
--- right. Hovering it fills the right column.
+-- One frame pool per kind: label on the left, control on the right.
 --------------------------------------------------
-local Build = {}     -- kind -> function(row frame) adds the control once
-local Fill = {}      -- kind -> function(row frame, row) shows the row's values
+local Build = {}     -- kind -> function(f): adds the control once
+local Fill = {}      -- kind -> function(f, row): shows the row's values
 
 local function RowEnter(self)
     if self.row then ShowRowPreview(self.row) end
@@ -266,13 +267,13 @@ local function ReleaseAll()
     wipe(used)
 end
 
--- a control's mouse-over also fills the preview
+-- the control's hover also fills the right column
 local function ForwardHover(control, rowFrame)
     control:HookScript("OnEnter", function() RowEnter(rowFrame) end)
     control:HookScript("OnLeave", function() RowLeave(rowFrame) end)
 end
 
--- The choice and dropdown menus: made once per row frame, filled from the row it shows
+-- choice and dropdown menus: set up once per frame, filled from the row it shows
 local function IsChoice(c) return c.row:Get() == c.value end
 local function PickChoice(c) c.row:Set(c.value) end
 local function SetupChoiceMenu(dropdown, f)
@@ -307,15 +308,13 @@ Fill.toggle = function(f, row)
     f.control:SetChecked(row:Get() and true or false)
 end
 
--- choice: Blizzard's stepper from its Settings (a dark box in the middle, arrows each side);
--- the box opens the list, the arrows step through it
+-- choice: Blizzard's Settings stepper (dropdown with arrows)
 Build.choice = function(f)
     local stepper = CreateFrame("Frame", nil, f, "SettingsDropdownWithButtonsTemplate")
     stepper:SetPoint("RIGHT", 4, 0)
     if stepper.Label then stepper.Label:Hide() end
     stepper.Dropdown:SetWidth(180)
-    -- the template lays its arrows out past its own right edge: they are placed from the row's
-    -- right edge instead, so the right arrow is never clipped
+    -- the template places its arrows past its right edge; anchor them to the row so none is clipped
     stepper.IncrementButton:ClearAllPoints()
     stepper.IncrementButton:SetPoint("RIGHT", f, "RIGHT", -6, 0)
     stepper.Dropdown:ClearAllPoints()
@@ -331,15 +330,14 @@ Build.choice = function(f)
     SetupChoiceMenu(stepper.Dropdown, f)
 end
 Fill.choice = function(f, row)
-    -- narrower two to a line
+    -- narrower on half rows
     f.stepper.Dropdown:SetWidth(row.half and 96 or 180)
     f.stepper.Dropdown:GenerateMenu()
     f:SetHeight(ROW_H + 8)
 end
 
--- dropdown (long lists)
--- row.sideButtons = { left = def, right = def }, def = { text, width, onClick(button), disabled() }:
--- buttons on one line with the dropdown (Profiles: New | profiles | Delete; Create macro)
+-- dropdown (long lists). row.sideButtons = { left = def, right = def } puts buttons beside it,
+-- def = { text, width, onClick(button), disabled() }
 local function SideButton(f, side)
     local key = side .. "Button"
     if not f[key] then
@@ -407,11 +405,11 @@ Build.button = function(f)
     ForwardHover(b, f)
     f.control = b
 end
--- the label is the button text, unless the row has its own (then the label stays on the left)
+-- without row.buttonText the label becomes the button text
 Fill.button = function(f, row)
     f.control:ClearAllPoints()
     if row.center then
-        -- alone in the middle of the page (Reset FlareUI, FCM Setup Mode)
+        -- centred alone on the line
         f.control:SetPoint("CENTER")
         f.control:SetWidth(row.buttonWidth or 260)
         f.control:SetText(row.buttonText or row:Label())
@@ -429,8 +427,7 @@ Fill.button = function(f, row)
     end
 end
 
--- Click, then press a key (Alt, Ctrl and Shift combinations too). Escape cancels; right-click
--- clears. The button is Blizzard's Key Bindings one. onSet(key) gets "" for cleared.
+-- Click, then press a key (with modifiers); Escape cancels, right-click clears (onSet gets "")
 local MOD_KEYS = { LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true, LMETA = true, RMETA = true }
 local MOUSE_KEYS = { MiddleButton = "BUTTON3", Button4 = "BUTTON4", Button5 = "BUTTON5" }
 
@@ -459,7 +456,7 @@ function Panel.KeyButton(parent, onSet)
         self:SetText(L["Press a key"])
         self:LockHighlight()
         self:EnableKeyboard(true)
-        if self.SetPropagateKeyboardInput then self:SetPropagateKeyboardInput(false) end
+        if self.SetPropagateKeyboardInput and not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
     end)
     b:SetScript("OnKeyDown", function(self, key)
         if not self.waiting or MOD_KEYS[key] then return end
@@ -470,7 +467,6 @@ function Panel.KeyButton(parent, onSet)
         if self.waiting and MOUSE_KEYS[mouse] then Finish(MOUSE_KEYS[mouse]) end
     end)
     b:SetScript("OnHide", Stop)
-    -- the key as the game names it ("Shift-V"), or Not Bound
     function b:ShowKey(key)
         if key and key ~= "" then
             self:SetText(GetBindingText and GetBindingText(key) or key)
@@ -481,7 +477,7 @@ function Panel.KeyButton(parent, onSet)
     return b
 end
 
--- keybind row: get() returns the key ("" for none), set(key)
+-- keybind: get() returns the key ("" for none)
 Build.keybind = function(f)
     f.control = Panel.KeyButton(f, function(key) f.row:Set(key) end)
     f.control:SetPoint("RIGHT", -4, 0)
@@ -491,7 +487,7 @@ Fill.keybind = function(f, row)
     if not f.control.waiting then f.control:ShowKey(row:Get()) end
 end
 
--- buttons: several side by side on the right (row.buttons = { { text, width, onClick(button), disabled() } })
+-- buttons: row.buttons = { { text, width, onClick(button), disabled() } }, right-aligned
 Build.buttons = function(f)
     f.buttons = {}
 end
@@ -525,7 +521,7 @@ Fill.buttons = function(f, row)
     for i = #(row.buttons or {}) + 1, #f.buttons do f.buttons[i]:Hide() end
 end
 
--- Edit: opens Edit Mode on the row's frame (greyed in combat)
+-- Edit button, greyed in combat
 local function EditButton(f, onClick)
     local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     b:SetSize(80, 22)
@@ -547,7 +543,7 @@ local function EditButton(f, onClick)
     return b
 end
 
--- frame: on/off switch and Edit (unit frames, resource bars)
+-- frame: a switch and Edit
 Build.frame = function(f)
     f.edit = EditButton(f, function(row) S:EditFrame(row.frame and row.frame(), row.module) end)
     f.edit:SetPoint("RIGHT", -4, 0)
@@ -561,7 +557,7 @@ Fill.frame = function(f, row)
     f.edit:SetEnabled(S:CanEditFrames() and row:Get() and row.frame and row.frame() ~= nil or false)
 end
 
--- expander: a heading that opens and closes the rows under it (each font's controls)
+-- expander: a heading that opens and closes the rows under it
 Build.expander = function(f)
     local b = CreateFrame("Button", nil, f)
     b:SetAllPoints()
@@ -581,7 +577,7 @@ Fill.expander = function(f, row)
     f.control.sign:SetText(open and "-" or "+")
 end
 
--- an Edit Mode setting found by search: Edit takes you to it
+-- editmode: an Edit Mode setting found by search
 Build.editmode = function(f)
     f.edit = EditButton(f, function(row)
         if row.frame then S:EditFrame(row.frame, row.module) else S:OpenEditMode(row.module) end
@@ -592,12 +588,11 @@ Fill.editmode = function(f, row)
     f.edit:SetEnabled(S:CanEditFrames() and true or false)
 end
 
--- enable / disable the control with the row
 local function SetRowEnabled(f, enabled)
-    -- a heading that opens rows (each font) is gold, like the section titles
+    -- expanders are gold, like section titles
     local color = enabled and (f.kind == "expander" and NORMAL_FONT_COLOR or HIGHLIGHT_FONT_COLOR) or GRAY_FONT_COLOR
     f.label:SetTextColor(color:GetRGB())
-    -- the Edit button follows combat and the frame, not the row (Fill set it)
+    -- the Edit button is set by Fill (combat and frame), not by the row
     local control = f.control
     if control and control.SetEnabled then control:SetEnabled(enabled) end
 end
@@ -612,13 +607,12 @@ local function FillRow(f, row, crumb)
 end
 
 --------------------------------------------------
--- 4. MIDDLE COLUMN: the page
+-- 4. MIDDLE COLUMN
 --------------------------------------------------
 local page = {}
 
--- A section's heading closes and opens it (a click); every section starts open, and what is
--- closed is kept for the session
-local closedSections = {}   -- section key -> closed
+-- clicking a section heading folds it; kept for the session
+local closedSections = {}   -- section key -> true
 
 local function SectionClick(h)
     if not h.sectionKey then return end
@@ -663,8 +657,7 @@ local function SectionHeader(parent, text, y, sectionKey)
     return SECTION_H
 end
 
--- lays rows out from y downwards; returns the new y. Rows marked half go two to a line (not in
--- search results, which show each row's place above it)
+-- lays rows out from y down and returns the new y; half rows pair up except in search results
 local function PlaceRows(parent, rows, y, crumbOf)
     local col, lineH = 0, 0
     for _, row in ipairs(rows) do
@@ -704,7 +697,6 @@ local function UpdateHeader(module)
     else
         page.title:SetPoint("TOPLEFT", 4, -4)
     end
-    -- the Edit Mode button
     local editText = module.editMode and module:IsOn() and S:ModuleText(module.key, "editButton")
     page.editMode:SetShown(editText and true or false)
     if editText then
@@ -725,7 +717,7 @@ local function UpdateHeader(module)
             height = height + 36
         end
     end
-    -- the module's tabs, along the bottom of the header
+    -- tabs along the bottom of the header
     local names = module.tabs and S:ModuleText(module.key, "tabs") or {}
     local active = Panel:ActiveTab(module)
     for i, b in ipairs(page.tabButtons) do
@@ -744,7 +736,7 @@ local function UpdateHeader(module)
     page.header:SetHeight(height)
 end
 
--- The tab a module shows: the last one picked, or its first
+-- the last tab picked, or the first
 function Panel:ActiveTab(module)
     if not module.tabs then return nil end
     local key = currentTab[module.key]
@@ -760,8 +752,7 @@ local function HideCustom()
     for _, region in ipairs({ preview.picture, preview.title, preview.desc, preview.tip }) do region:Show() end
 end
 
--- A custom tab draws into its own frame, made once, below the header; with tab.preview it also
--- takes the right column
+-- a custom tab draws once into its own frame below the header; tab.preview also takes the right column
 local function ShowCustom(module, tab)
     local id = module.key .. "." .. tab.key
     local host = customHosts[id]
@@ -784,6 +775,7 @@ function Panel:Refresh()
     if not frame or not frame:IsShown() then return end
     ReleaseAll()
     HideCustom()
+    page.offCard:Hide()
     page.scroll:Show()
     local content = page.content
     content:SetWidth(CONTENT_W)
@@ -821,11 +813,10 @@ function Panel:Refresh()
             page.offCard.text:SetText((S:WindowText("moduleOffCard", L["{Module} is off. Its settings appear here once it's on."])):gsub("{Module}", module:Title()))
             page.offCard:Show()
         else
-            page.offCard:Hide()
             local tab = self:ActiveTab(module) or module.custom
             ShowModulePreview()
             if tab and tab.custom then
-                -- a custom tab draws its own page: its rows are only there for search
+                -- a custom tab's rows exist only for search
                 page.scroll:Hide()
                 ShowCustom(module, tab)
             else
@@ -846,7 +837,7 @@ function Panel:Refresh()
 end
 
 --------------------------------------------------
--- 5. LEFT COLUMN: search and modules
+-- 5. LEFT COLUMN
 --------------------------------------------------
 local function UpdateNav()
     for key, b in pairs(navButtons) do
@@ -855,7 +846,7 @@ local function UpdateNav()
         b.selected:SetShown(key == current and searchText == "")
         if module.navIcon then
             b.dot:SetTexture(module.navIcon)
-            -- a game icon: cropped to a circle, its own border gone
+            -- game icon cropped to a circle
             if module.navIconRound and not b.dotMask then
                 b.dotMask = b:CreateMaskTexture()
                 b.dotMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
@@ -877,7 +868,7 @@ end
 function Panel:Select(key)
     if not S.modules[key] then return end
     current = key
-    -- the module of the page shown can preview itself (chat, damage meter, quest tracker)
+    -- lets the shown module preview itself
     S:Fire("PageShown", key)
     if ns.db and ns.db.global then ns.db.global.settingsPage = key end
     if searchText ~= "" then
@@ -930,11 +921,10 @@ local function BuildNav(left)
 end
 
 --------------------------------------------------
--- 6. FOOTER: reload
+-- 6. RELOAD BAR
 --------------------------------------------------
--- "Reload now" reloads at once. ReloadUI is protected on Forever, so the click lands on a secure
--- /reload button laid over it: parented to UIParent (the window stays unprotected) and placed by
--- screen position, out of combat only. In combat the plain button asks, as the dialog shows /reload.
+-- ReloadUI is protected on Forever: "Reload now" is covered by a secure /reload button on UIParent
+-- (keeps the window unprotected), placed out of combat only; in combat the plain button opens the dialog.
 local secureReload
 local function PlaceSecureReload()
     if not frame or InCombatLockdown() then return end
@@ -966,8 +956,7 @@ local function PlaceSecureReload()
     end
 end
 
--- The red bar under the window: changes that need a reload (with the button), or else a page's
--- notice (Panel:SetNotice), which stays until another page shows or the window closes
+-- pending reloads (with the button), else a page notice that lasts until another page shows
 local notice, noticePage
 local function UpdateFooter()
     if not frame then return end
@@ -1024,7 +1013,7 @@ local function BuildWindow()
     end)
     frame:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16 })
     frame:SetBackdropBorderColor(style.border[1], style.border[2], style.border[3], 1)
-    -- Blizzard's Collections tile under a black wash (picked in game)
+    -- Collections tile under a black wash
     local art = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
     art:SetPoint("TOPLEFT", 5, -5)
     art:SetPoint("BOTTOMRIGHT", -5, 5)
@@ -1068,7 +1057,7 @@ local function BuildWindow()
     body:SetPoint("BOTTOMRIGHT", -6, 6)
     frame.body = body
 
-    -- Settings | What's new, along the top
+    -- Settings | What's new
     frame.topTabs = {}
     for i, mode in ipairs({ "settings", "whatsnew" }) do
         local b = CreateFrame("Button", nil, frame, "MinimalTabTemplate")
@@ -1085,7 +1074,7 @@ local function BuildWindow()
     frame.topTabs[2]:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -40, -HEADER_H)
     frame.topTabs[1]:SetPoint("BOTTOMRIGHT", frame.topTabs[2], "BOTTOMLEFT", -5, 0)
 
-    -- What's new: every kept version's notes, newest first, in one scrolling column
+    -- What's new: every version's notes, newest first
     local news = CreateFrame("Frame", nil, frame)
     news:SetAllPoints(body)
     news:Hide()
@@ -1152,7 +1141,7 @@ local function BuildWindow()
     frame.search = search
     BuildNav(left)
 
-    -- page header: title, switch, description, banner
+    -- page header
     local header = CreateFrame("Frame", nil, middle)
     header:SetPoint("TOPLEFT")
     header:SetPoint("TOPRIGHT")
@@ -1170,7 +1159,7 @@ local function BuildWindow()
         UpdateNav()
         Panel:Refresh()
     end)
-    -- "Edit in Edit Mode": the module's main frame, or Edit Mode itself for Blizzard's bars
+    -- Edit Mode button: the module's main frame, or plain Edit Mode for Blizzard's bars
     page.editMode = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
     page.editMode:SetHeight(22)
     page.editMode:SetPoint("TOPRIGHT", 0, -2)
@@ -1209,7 +1198,7 @@ local function BuildWindow()
     banner:Hide()
     page.banner = banner
 
-    -- module tabs (Radial Menu: Buttons, Keybinds, Options)
+    -- module tabs
     page.tabButtons = {}
     for i = 1, 4 do
         local b = CreateFrame("Button", nil, header, "MinimalTabTemplate")
@@ -1265,7 +1254,7 @@ local function BuildWindow()
     off:Hide()
     page.offCard = off
 
-    -- right column: a custom tab (the radial's live preview) can take it over
+    -- right column; a custom tab with preview takes it over
     preview.host = CreateFrame("Frame", nil, right)
     preview.host:SetAllPoints()
     preview.host:Hide()
@@ -1286,7 +1275,7 @@ local function BuildWindow()
     preview.tip:SetPoint("RIGHT", -PAD, 0)
     preview.tip:SetSpacing(2)
 
-    -- the reload bar: hangs below the window, in a red wash, only while a change waits for a reload
+    -- reload bar, hanging below the window
     local footer = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     footer:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, 4)
     footer:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, 4)
@@ -1296,7 +1285,7 @@ local function BuildWindow()
     ns.Fade(footer, 4, { 0.42, 0.09, 0.06, 0.97 }, { 0.24, 0.04, 0.03, 0.97 })
     footer:Hide()
     frame.footer = footer
-    -- the window stays on screen with its bar
+    -- clamps the window with its bar
     frame:SetClampRectInsets(0, 0, 0, -(FOOTER_H + 4))
     frame.footerText = Text(footer, "GameFontHighlight")
     frame.footerText:SetPoint("LEFT", PAD + 4, -1)
@@ -1316,7 +1305,7 @@ end
 --------------------------------------------------
 -- 8. OPENING
 --------------------------------------------------
--- "settings" (the pages) or "whatsnew"
+-- mode: "settings" or "whatsnew"
 function Panel:SetMode(mode)
     if not frame then return end
     local news = mode == "whatsnew"
@@ -1344,7 +1333,7 @@ function Panel:OpenWhatsNew()
     self:SetMode("whatsnew")
 end
 
--- What's new opens by itself once after an update (a fresh install gets the welcome instead)
+-- What's new opens once after an update (a fresh install gets the welcome instead)
 do
     local loader = CreateFrame("Frame")
     loader:RegisterEvent("PLAYER_LOGIN")
@@ -1366,7 +1355,7 @@ function Panel:Toggle(key)
     if frame and frame:IsShown() then frame:Hide() else self:Open(key) end
 end
 
--- Going to Edit Mode closes the panel without the reload reminder: it comes back afterwards
+-- closes without the reload reminder (for Edit Mode, which reopens the panel)
 function Panel:Hide()
     if not frame then return end
     Panel.quietHide = true

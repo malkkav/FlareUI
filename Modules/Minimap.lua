@@ -3,9 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- MINIMAP
--- A square minimap in Blizzard's panel frame art (the AddOn List's NineSlice layout). The header
--- (tracking, zone, clock, calendar) runs inside the map along its top; the day/night badge sits on
--- the bottom-left corner. Edit Mode's Size setting scales the whole frame.
+-- A square minimap in Blizzard's panel frame art, the header (tracking, zone, clock, calendar)
+-- inside its top edge and the day/night badge on its bottom-left corner. Edit Mode's Size scales it.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -36,31 +35,31 @@ local Cluster = _G.MinimapCluster
 local MAP_SIZE      = 244                           -- the square map
 local FRAME_PAD     = 8                             -- room around the map for the frame art
 local CLUSTER_SIZE  = MAP_SIZE + 2 * FRAME_PAD      -- 260
-local BORDER_LAYOUT = "ButtonFrameTemplateNoPortrait"   -- Blizzard NineSlice layout (AddOn List frame)
+local BORDER_LAYOUT = "ButtonFrameTemplateNoPortrait"   -- Blizzard NineSlice layout
 local LEFT_SHIFT    = -6     -- the layout sits further in on the left
 -- the border art's transparent shadow outside its gold line, per side (measured in game)
 local BORDER_SHADOW = { left = 10, top = 11, right = 4, bottom = 5 }
 local SQUARE_MASK   = "Interface\\BUTTONS\\WHITE8X8"
 
 -- The frame's top edge is a title band over the map; the header row is centred in it
-local BAND_HEIGHT   = 22     -- how far the title band reaches down over the map
-local HEADER_HEIGHT = 19     -- Forever's header buttons (23 px art) drawn a little smaller
-local HEADER_TOP    = 2      -- the header row's distance from the map's top edge
-local HEADER_SIDE   = 6      -- ... and from its side edges
-local HEADER_GAP    = 2      -- between the pieces of the header row
+local BAND_HEIGHT   = 22     -- title band depth over the map
+local HEADER_HEIGHT = 19     -- Forever's header buttons (23 px art), a little smaller
+local HEADER_TOP    = 2      -- header row inset from the map's top edge
+local HEADER_SIDE   = 6      -- ... and from its sides
+local HEADER_GAP    = 2
 local CLOCK_WIDTH   = 40
--- Forever's zone plate, stretched along the whole bar: its rounded ends keep their size
+-- Forever's zone plate, stretched along the whole bar with its ends kept whole
 local PLATE_ATLAS   = "ui-hud-minimap-header-button"
-local PLATE_SLICE   = 12     -- the ends, in the art's pixels
-local PLATE_INSET   = 6      -- zone text and clock, in from the plate's ends
-local SUN_SCALE     = 0.9    -- Forever's day/night badge, a little under its own size
-local SUN_OVERHANG  = 6      -- how far the badge reaches past the map's corner, onto the frame
-local MAIL_GAP      = 3      -- between the title band and the mail icon
--- Blizzard's player coordinates: a size up, in gold, clear of the frame art along the bottom edge
+local PLATE_SLICE   = 12     -- end size, in art pixels
+local PLATE_INSET   = 6      -- zone text and clock inset from the plate's ends
+local SUN_SCALE     = 0.9    -- day/night badge scale
+local SUN_OVERHANG  = 6      -- badge overhang past the map's corner
+local MAIL_GAP      = 3      -- title band to mail icon
+-- Player coordinates: a size up, in gold, clear of the frame art
 local COORDS = {
-    GAP = 8,             -- map's bottom edge to the bottom of the text
+    GAP = 8,             -- map's bottom edge to the text's bottom
     FONT_STEP = 1,       -- points added to Blizzard's font
-    MAP_LIFT = 5,        -- the world map's coordinates, raised this much off its edge
+    MAP_LIFT = 5,        -- world map coordinates lifted off its edge
 }
 local ROW_LEVEL     = 5      -- header row above the map and its frame
 
@@ -85,7 +84,6 @@ function MM:ApplyFonts()
     if not db then return end
     ApplyFont(_G.MinimapZoneText, db.zoneFont)
     ApplyFont(_G.TimeManagerClockTicker, db.clockFont)
-    -- the clock's width follows its text
     if self.FitClock then self.FitClock() end
 end
 
@@ -107,7 +105,7 @@ end
 --------------------------------------------------
 -- 5. THE SQUARE MAP
 --------------------------------------------------
--- Other addons (LibDBIcon buttons, for one) ask this global which shape to follow
+-- Other addons' minimap buttons read the GetMinimapShape global
 local function MinimapShape() return "SQUARE" end
 
 local function SquareHybridMinimap()
@@ -117,7 +115,7 @@ local function SquareHybridMinimap()
     hybrid.MapCanvas:SetMaskTexture(hybrid.CircleMask)
 end
 
--- A copy of Blizzard's layout (pieces are flat tables), its left side moved out to the map's edge
+-- A copy of Blizzard's layout with its left side moved out to the map's edge
 local function BorderLayout()
     local layout = {}
     for key, value in pairs(NineSliceUtil.GetLayout(BORDER_LAYOUT)) do
@@ -135,14 +133,13 @@ local function BorderLayout()
 end
 
 local function CreateMapArt()
-    -- Blizzard's panel frame, built from its NineSlice layout, just above the map
     local frame = CreateFrame("Frame", nil, MinimapFrame)
     frame:SetAllPoints(MinimapFrame)
     frame:SetFrameLevel(MinimapFrame:GetFrameLevel() + 2)
     NineSliceUtil.ApplyLayout(frame, BorderLayout())
     MM.Frame = frame
 
-    -- black under the map, for wherever the map texture has no data
+    -- black where the map texture has no data
     local back = Cluster:CreateTexture(nil, "BACKGROUND")
     back:SetAllPoints(MinimapFrame)
     back:SetColorTexture(0, 0, 0, 1)
@@ -160,8 +157,8 @@ end
 --------------------------------------------------
 -- 6. HEADER, INDICATORS AND BADGES
 --------------------------------------------------
--- Forever's header buttons (since the 2026-10-16 build) draw their own art at its atlas size, again
--- on every mouse state: fitted to the button instead (two anchors outrank the size)
+-- Forever's header buttons draw their art at atlas size on every mouse state: two anchors fit it to
+-- the button (anchors outrank the size)
 local function FitButtonArt(button)
     for _, key in ipairs({ "StateTexture", "AddTexture" }) do
         local texture = button and button[key]
@@ -172,7 +169,7 @@ local function FitButtonArt(button)
     end
 end
 
--- A texture stretched over a frame with Forever's zone plate, its ends kept whole
+-- Forever's zone plate stretched over a frame, its ends kept whole
 local function Plate(texture, frame)
     texture:SetAtlas(PLATE_ATLAS)
     texture:ClearAllPoints()
@@ -183,8 +180,8 @@ local function Plate(texture, frame)
     end
 end
 
--- The bar behind the zone text and clock: Forever's zone plate, one level under the text. (Blizzard's
--- BorderTop is gone from Forever's cluster, and the zone button's own plate is a fixed width.)
+-- The bar behind the zone text and clock: Forever's cluster has no BorderTop, and the zone button's
+-- own plate is a fixed width
 local function CreateHeader()
     local header = CreateFrame("Frame", nil, Cluster)
     header:SetHeight(HEADER_HEIGHT)
@@ -194,8 +191,8 @@ local function CreateHeader()
     return header
 end
 
--- The zone text button: the bar up to the clock. Forever's cluster re-places it itself (header
--- underneath, Edit Mode), so every layout pass puts it back.
+-- The zone button spans the bar up to the clock; Forever's cluster re-places it, so every layout
+-- pass puts it back
 local clockWidth = CLOCK_WIDTH
 local function PlaceZone()
     local zoneButton, header = Cluster.ZoneTextButton, MM.Header
@@ -206,7 +203,7 @@ local function PlaceZone()
 end
 
 local function StyleHeader()
-    _G.MinimapCompassTexture:SetAlpha(0)   -- Blizzard's round frame art
+    _G.MinimapCompassTexture:SetAlpha(0)
     -- Forever's skin shows a round underlay whenever rotateMinimap is on
     Remove(_G.MinimapCompassTextureUnderlay)
     Remove(MinimapFrame.ZoomIn)
@@ -218,7 +215,7 @@ local function StyleHeader()
     for _, frame in ipairs({ Cluster.ZoneTextButton, Cluster.Tracking, _G.GameTimeFrame }) do Raise(frame) end
     Raise(header, -1)
 
-    -- tracking and calendar: Forever's own buttons, squares as tall as the header
+    -- tracking and calendar: squares as tall as the header
     local tracking = Cluster.Tracking
     tracking:SetSize(HEADER_HEIGHT, HEADER_HEIGHT)
     if tracking.Background then tracking.Background:Hide() end   -- the button art has its own frame
@@ -229,8 +226,7 @@ local function StyleHeader()
     calendar:SetSize(HEADER_HEIGHT, HEADER_HEIGHT)
     FitButtonArt(calendar)
 
-    -- zone text: the bar up to the clock. Its plate is the header's; the button's mouse-over glow
-    -- spreads over the whole plate
+    -- the plate is the header's; the zone button's mouse-over glow spreads over all of it
     local zoneButton, zoneText = Cluster.ZoneTextButton, _G.MinimapZoneText
     if zoneButton.StateTexture then zoneButton.StateTexture:SetParent(hiddenParent) end
     if zoneButton.AddTexture then Plate(zoneButton.AddTexture, header) end
@@ -241,8 +237,7 @@ local function StyleHeader()
     zoneText:SetJustifyH("LEFT")
     zoneText:SetWordWrap(false)
 
-    -- clock: the bar's right end, its whole button answering the mouse; it grows with the time text,
-    -- taking the width from the zone text
+    -- clock: the bar's right end; grows with the time text, taking width from the zone text
     EventUtil.ContinueOnAddOnLoaded("Blizzard_TimeManager", function()
         local clock, ticker = _G.TimeManagerClockButton, _G.TimeManagerClockTicker
         if not clock then return end
@@ -269,7 +264,7 @@ local function StyleHeader()
     MM:ApplyFonts()
 end
 
--- Tracking, the zone / clock bar and the calendar, left to right on one middle line
+-- Tracking, the zone / clock bar and the calendar, left to right
 local function PlaceHeader()
     local tracking, calendar, header = Cluster.Tracking, _G.GameTimeFrame, MM.Header
     tracking:ClearAllPoints()
@@ -282,7 +277,7 @@ local function PlaceHeader()
     PlaceZone()
 end
 
--- Mail and similar indicators: the map's top-left corner, a little below the title band
+-- Mail and similar indicators: top-left, just below the title band
 local function PlaceIndicators()
     local indicators = Cluster.IndicatorFrame
     Raise(indicators)
@@ -312,8 +307,8 @@ local function PlaceCoords()
     coords:SetPoint("BOTTOM", MinimapFrame, "BOTTOM", 0, COORDS.GAP)
 end
 
--- The world map's coordinates: the same font and gold, lifted off the map's edge. A single anchor
--- per label, so the bigger font is not cut by its 100 px frame.
+-- The world map's coordinates in the same style; one anchor per label so the bigger font is not cut
+-- by its 100 px frame
 local function RestyleWorldMapCoords()
     local map = _G.WorldMapFrame
     for _, frame in ipairs(map and map.overlayFrames or {}) do
@@ -346,8 +341,7 @@ end
 --------------------------------------------------
 -- 7. LAYOUT
 --------------------------------------------------
--- The layout is built at one fixed size and Edit Mode's Size scales the whole cluster, so every
--- piece keeps its place on the frame art
+-- Built at one fixed size; Edit Mode's Size scales the whole cluster
 local sizingCluster = false
 local function SizeCluster()
     if sizingCluster then return end
@@ -356,7 +350,7 @@ local function SizeCluster()
     sizingCluster = false
 end
 
--- Edit Mode's Size setting (50-200%), 100% before Edit Mode has it
+-- Edit Mode's Size setting as a scale; 1 until Edit Mode has it
 local function EditModeSize()
     if not (Cluster.HasSetting and Cluster.GetSettingValue) then return 1 end
     local ok, has = pcall(Cluster.HasSetting, Cluster, Enum.EditModeMinimapSetting.Size)
@@ -371,7 +365,6 @@ function MM:UpdateLayout()
     Cluster.MinimapContainer:SetScale(1)
     Cluster.ZoneTextButton:SetScale(1)
     SizeCluster()
-    -- Edit Mode's SetScale on a system frame moves it so it stays in place on screen
     local scale = EditModeSize()
     if math.abs(Cluster:GetScale() - scale) > 0.001 then ns.SetSystemScale(Cluster, scale) end
 
@@ -388,8 +381,8 @@ end
 
 --------------------------------------------------
 -- 8. EDIT MODE
--- Rotate Minimap and Header Underneath do not apply and leave the dialog; a stored value is
--- harmless, as the layout is re-applied after Blizzard's.
+-- "Rotate Minimap" and "Header Underneath" leave the dialog; stored values are harmless, as the
+-- layout is re-applied after Blizzard's
 --------------------------------------------------
 local function RemoveEditModeSettings()
     local removed = {
@@ -405,7 +398,7 @@ local function RemoveEditModeSettings()
     end
 end
 
--- The square map cannot rotate: the rotateMinimap CVar goes off at load and whenever a layout sets it
+-- The square map can't rotate: rotateMinimap goes off at load and whenever a layout sets it
 local function KeepMapUnrotated()
     if GetCVarBool("rotateMinimap") then SetCVar("rotateMinimap", "0") end
 end
@@ -435,7 +428,7 @@ end
 local function InstallHooks()
     hooksecurefunc(Cluster, "SetSize", SizeCluster)
     hooksecurefunc(MinimapFrame, "SetMaskTexture", KeepSquareMask)
-    -- both re-place pieces from Blizzard's layout; ours goes back on after them
+    -- both re-place pieces from Blizzard's layout
     hooksecurefunc(Cluster, "SetEditModeScale", function()
         MM:UpdateLayout()
         MM:UpdateTrackerScale()   -- Blizzard's tracker follows the new width
@@ -452,12 +445,11 @@ end
 
 --------------------------------------------------
 -- 10. OBJECTIVE TRACKER SCALE
--- Blizzard's tracker is scaled so its header lines (about 288 px of the 300 px art shows) are as
--- wide as the minimap frame.
+-- Blizzard's tracker is scaled so its header lines (about 288 px visible) match the minimap's width
 --------------------------------------------------
 local TRACKER_LINE_WIDTH = 288
 
--- The minimap frame's outer width, in the tracker's parent's units
+-- The minimap frame's outer width in the tracker's parent's units
 local function FrameOuterWidth(tracker)
     local frame = MM.Frame
     local left = frame and frame.TopLeftCorner and frame.TopLeftCorner:GetLeft()
@@ -466,7 +458,7 @@ local function FrameOuterWidth(tracker)
     return (right - left) * frame:GetEffectiveScale() / tracker:GetParent():GetEffectiveScale()
 end
 
--- ns.SetSystemScale, not Edit Mode's SetScale (whose re-layout would run tainted); out of combat
+-- ns.SetSystemScale, not Edit Mode's SetScale (its re-layout would run tainted); out of combat only
 local trackerScaleWaiter
 function MM:UpdateTrackerScale()
     local tracker = _G.ObjectiveTrackerFrame
@@ -492,7 +484,7 @@ end
 --------------------------------------------------
 -- 11. PUBLIC
 --------------------------------------------------
--- FPS and latency in the clock's tooltip (rebuilt by Blizzard every second; the function is shared,
+-- FPS and latency in the clock's tooltip (Blizzard rebuilds it every second; the function is shared,
 -- hence the owner check)
 local function AddClockStats()
     local db = GetDb()
@@ -517,7 +509,7 @@ end
 function MM:Init()
     if self.initialized then return end
     hooksecurefunc("GameTime_UpdateTooltip", AddClockStats)
-    -- filled on enter, not on Blizzard's next one-second tick
+    -- filled on enter, not on Blizzard's next tick
     EventUtil.ContinueOnAddOnLoaded("Blizzard_TimeManager", function()
         local clock = _G.TimeManagerClockButton
         if clock then clock:HookScript("OnEnter", function() TimeManagerClockButton_UpdateTooltip() end) end
@@ -530,7 +522,7 @@ function MM:Init()
     RemoveEditModeSettings()
     KeepMapUnrotated()
     if Cluster.SetRotateMinimap then hooksecurefunc(Cluster, "SetRotateMinimap", KeepMapUnrotated) end
-    -- Blizzard's addon drawer has no place here (Blizzard re-shows it from UpdateDisplay)
+    -- Blizzard's addon drawer stays hidden (UpdateDisplay re-shows it)
     local drawer = _G.AddonCompartmentFrame
     if drawer then
         hooksecurefunc(drawer, "UpdateDisplay", drawer.Hide)
@@ -539,8 +531,7 @@ function MM:Init()
     CreateMapArt()
     StyleHeader()
     InstallHooks()
-    -- Edit Mode's box on the border art, which keeps it on screen and lets it sit flush with the
-    -- edges: the art's four edge strips, less the transparent shadow they carry outside the gold line
+    -- Edit Mode's box on the border art's edge strips, less their shadow outside the gold line
     ns.FitEditModeBox(Cluster, function()
         local art = MM.Frame
         local leftEdge, rightEdge, topEdge, bottomEdge = art and art.LeftEdge, art and art.RightEdge, art and art.TopEdge, art and art.BottomEdge
@@ -558,6 +549,6 @@ function MM:Init()
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "Refresh")
 
     self:Refresh()
-    -- the frame's corners only have positions after the first layout pass
+    -- the frame's corners have positions only after the first layout pass
     C_Timer.After(0, function() self:Refresh() end)
 end

@@ -3,27 +3,15 @@ local L = ns.L
 
 --------------------------------------------------
 -- SETTINGS REGISTRY
--- Every page and row of the settings panel, described once as data. The panel, its search, the
--- reload footer and the Edit Mode links all read this. No text lives here: labels, descriptions,
--- tips, section and choice names come from ns.Copy (Settings/Copy.lua, generated from the copy
--- document), by row key.
---
---   Settings:Module{ key, group, order, enabled = "db.path", editMode = fn, editFrames = { fn },
---                    banner = fn, navIcon, navIconRound, custom = tab,
---                    tabs = { { key, custom = build(host, previewHost), refresh = fn(host), preview = true }, ... } }
---   Settings:Row{ key = "module.row", kind, path = "db.path" | get/set, choices, parent, tab, section,
---                 half, reload, apply, hidden, disabled }
---
--- kinds: toggle | choice | dropdown | keybind | button | buttons | frame | expander | editmode (each
--- kind's own fields are with its builder in Settings/Panel.lua), and text: copy for a custom page,
--- never drawn and never searched
+-- Every settings page and row as data, read by the panel, its search, the reload footer and the
+-- Edit Mode links. All text comes from ns.Copy (Settings/Copy.lua) by row key.
 --------------------------------------------------
 local Settings = {
     modules = {},       -- key -> module
     order = {},         -- module keys, in list order
     rows = {},          -- key -> row
-    pending = {},       -- row key -> the value it had when the session started (reload rows)
-    missing = {},       -- copy keys asked for and not found (the harness lists them)
+    pending = {},       -- row key -> true while its value differs from the session start
+    missing = {},       -- copy keys asked for and not found (listed by the harness)
 }
 ns.Settings = Settings
 
@@ -36,15 +24,14 @@ local function CopyRow(key)
     return ns.Copy and ns.Copy.rows and ns.Copy.rows[key]
 end
 
--- A text of a row (label, desc, tip...). Rows of one Edit Mode kind share a wildcard entry
--- ("uf.*.healthText" serves "uf.target.healthText").
+-- A row's text field; falls back to a wildcard entry ("uf.*.healthText" serves "uf.target.healthText")
 function Settings:Text(key, field, optional)
     local row = CopyRow(key)
     if not (row and row[field]) then
         local wild = key:gsub("^([^.]+)%.[^.]+%.", "%1.*.")
         row = CopyRow(wild)
     end
-    -- a font's controls ("ch.font.text.size") share one text per control ("font.size")
+    -- font controls ("ch.font.text.size") share one entry per control ("font.size")
     if not (row and row[field]) then
         local control = key:match("%.font%.[^.]+%.(%w+)$")
         if control then row = CopyRow("font." .. control) end
@@ -79,7 +66,8 @@ function Settings:WindowText(key, fallback)
 end
 
 --------------------------------------------------
--- 2. SAVED VALUES (dot paths into the profile: "actionbars.statusColours")
+-- 2. SAVED VALUES
+-- Dot paths into the profile ("actionbars.procGlow").
 --------------------------------------------------
 local function Walk(path, create)
     local node = ns.db and ns.db.profile
@@ -117,7 +105,7 @@ Module.__index = Module
 function Module:Title() return Settings:ModuleText(self.key, "title") end
 function Module:Description() return Settings:ModuleText(self.key, "desc") end
 
--- Pages without a master switch (About, Advanced) count as on
+-- Pages without a master switch count as on
 function Module:IsOn()
     if not self.enabled then return true end
     return Settings:GetPath(self.enabled) and true or false
@@ -126,18 +114,18 @@ end
 -- Modules start at login, so switching one asks for a reload
 function Module:SetOn(on)
     if not self.enabled then return end
-    if self.startedOn == nil then self.startedOn = self:IsOn() end   -- before the first change
+    if self.startedOn == nil then self.startedOn = self:IsOn() end
     Settings:SetPath(self.enabled, on and true or false)
     Settings:TrackReload("module:" .. self.key, on and true or false, self.startedOn)
 end
 
--- Sections in order, each with its visible rows (only the rows of one tab when the module has tabs)
+-- Sections in order with their visible rows, limited to one tab when the module has tabs
 function Module:Sections(tabKey)
     local list = {}
     for _, section in ipairs(self.sections) do
         local rows = {}
         for _, row in ipairs(section.rows) do
-            -- a row with no tab of its own is on the first one
+            -- a row without a tab belongs to the first one
             if not row:IsHidden() and (not self.tabs or (row.tab or self.tabs[1].key) == tabKey) then rows[#rows + 1] = row end
         end
         if #rows > 0 then list[#list + 1] = { key = section.key, title = section.title, rows = rows } end
@@ -145,6 +133,8 @@ function Module:Sections(tabKey)
     return list
 end
 
+-- def: key, group, order, enabled ("db.path"), editMode, editFrames, banner, navIcon, navIconRound,
+-- custom, tabs ({ key, custom = build(host, previewHost), refresh, preview })
 function Settings:Module(def)
     assert(type(def.key) == "string", "Settings:Module needs a key")
     local module = setmetatable(def, Module)
@@ -158,7 +148,7 @@ function Settings:Module(def)
     return module
 end
 
--- Modules grouped for the left list: { { group = "HUD", modules = {...} }, ... }
+-- Modules grouped for the left list: { { group = "HUD", modules = { ... } }, ... }
 function Settings:Groups()
     if not self.sorted then
         local byGroup = {}
@@ -189,7 +179,7 @@ local Row = {}
 Row.__index = Row
 
 function Row:Label()
-    if self.labelFn then return self.labelFn() end   -- a label that changes (the macro line)
+    if self.labelFn then return self.labelFn() end
     if self.kind == "text" then return Settings:Text(self.key, "label", true) or "" end
     return Settings:Text(self.key, "label")
 end
@@ -200,7 +190,7 @@ function Row:IsHidden()
     return self.hidden and self.hidden() or false
 end
 
--- Greyed: the parent row is off, or the row says so
+-- Greyed when its own check says so or its parent row is off
 function Row:IsDisabled()
     if self.disabled and self.disabled() then return true end
     local parent = self.parent and Settings.rows[self.parent]
@@ -214,7 +204,7 @@ function Row:Get()
 end
 
 function Row:Set(value)
-    if self.reload and not self.started then   -- the session value, before the first change
+    if self.reload and not self.started then
         self.started, self.startValue = true, self:Get()
     end
     if self.set then
@@ -231,8 +221,7 @@ function Row:Set(value)
     Settings:Fire("RowChanged", self)
 end
 
--- Frame Border (chat, damage meter, quest tracker): None and FlareUI's frame border, then a divider
--- and other addons' borders (ns.AddonMedia). Built each time the menu opens.
+-- Frame Border choices: None, FlareUI's border, then other addons' borders; rebuilt on each open
 function Settings:BorderChoices()
     local list = { { "None", L["None"] }, { "FlareUI Frames", "FlareUI Frames" } }
     local others = ns.AddonMedia("border")
@@ -243,22 +232,22 @@ function Settings:BorderChoices()
     return list
 end
 
--- Frame Opacity's steps (chat, damage meter, quest tracker): 0% to 100% in tens, stored as 0..1
+-- Frame Opacity choices: 0% to 100% in tens, stored as 0..1
 function Settings:OpacityChoices()
     local list = {}
     for i = 0, 10 do list[#list + 1] = { i / 10, (i * 10) .. "%" } end
     return list
 end
 
--- Choice names: from the copy (in order), or the row's own labels ({ value, "text" })
+-- Choice names come from the row's own { value, "text" } pairs, else the copy (in order)
 function Row:Choices()
     local list = {}
     local names = Settings:Text(self.key, "choices")
     local choices = self.choices
-    if type(choices) == "function" then choices = choices() end   -- choices that change (the radials)
+    if type(choices) == "function" then choices = choices() end
     for i, choice in ipairs(choices or {}) do
         if type(choice) == "table" and choice.divider then
-            list[i] = { divider = true }   -- a line in the menu (BorderChoices)
+            list[i] = { divider = true }
         else
             local value, text = choice, nil
             if type(choice) == "table" then value, text = choice[1], choice[2] end
@@ -268,7 +257,7 @@ function Row:Choices()
     return list
 end
 
--- What search reads: the label, the description, the tip and the copy's tags
+-- Label, description, tip and copy tags, lowercased and cached
 function Row:SearchText()
     if not self.searchText then
         local parts = { self:Label() or "", self:Description() or "", self:Tip() or "" }
@@ -278,6 +267,9 @@ function Row:SearchText()
     return self.searchText
 end
 
+-- def: key ("module.row"), kind, path ("db.path") or get/set, choices, parent, tab, section, half,
+-- reload, apply, hidden, disabled. Kinds: toggle, choice, dropdown, keybind, button, buttons, frame,
+-- expander, editmode (built in Settings/Panel.lua), text (custom-page copy, never drawn or searched)
 function Settings:Row(def)
     assert(type(def.key) == "string", "Settings:Row needs a key")
     local moduleKey = def.module or def.key:match("^([^.]+)")
@@ -286,7 +278,7 @@ function Settings:Row(def)
     local row = setmetatable(def, Row)
     row.module = moduleKey
     row.kind = row.kind or "toggle"
-    -- a row that is a section of its own in the copy keeps that title
+    -- a row that is a section of its own in the copy uses that section
     local copySections = ns.Copy and ns.Copy.sections or {}
     local sectionKey = row.section or Settings:Text(row.key, "section")
         or (copySections[row.key] and row.key) or (moduleKey .. ".main")
@@ -305,8 +297,7 @@ end
 
 --------------------------------------------------
 -- 5. RELOAD FOOTER
--- A reload row (or a module switch) is pending while its value differs from the one the session
--- started with; switching it back clears it.
+-- A reload row or module switch is pending while its value differs from the session start.
 --------------------------------------------------
 function Settings:TrackReload(key, value, startValue)
     if value == startValue then
@@ -326,7 +317,6 @@ end
 --------------------------------------------------
 -- 6. SEARCH
 --------------------------------------------------
--- a row matches when its text holds every word
 local function Matches(row, words, moduleTitle)
     if row:IsHidden() or row.kind == "text" then return false end
     local haystack = row:SearchText() .. " " .. moduleTitle
@@ -336,9 +326,9 @@ local function Matches(row, words, moduleTitle)
     return true
 end
 
--- Rows (and Edit Mode stubs) whose label, description, tip or tags contain every word
+-- Rows and Edit Mode stubs whose text holds every word
 function Settings:Search(text)
-    -- each word must start a word of the row ("ids" finds "Show IDs", not "raids")
+    -- each word must start a word ("ids" finds "Show IDs", not "raids")
     local words = {}
     for word in text:lower():gmatch("%S+") do
         words[#words + 1] = "%f[%w]" .. word:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")
@@ -353,7 +343,7 @@ function Settings:Search(text)
                 if Matches(row, words, moduleTitle) then results[#results + 1] = row end
             end
         end
-        -- a module that is off has no frames, so no Edit Mode settings to find
+        -- a module that is off has no frames to search
         if module:IsOn() then
             for _, row in ipairs(module:EditModeRows()) do
                 if Matches(row, words, moduleTitle) then results[#results + 1] = row end
@@ -364,7 +354,7 @@ function Settings:Search(text)
 end
 
 --------------------------------------------------
--- 7. CALLBACKS (the panel listens)
+-- 7. CALLBACKS
 --------------------------------------------------
 local listeners = {}
 function Settings:On(event, func)
@@ -381,12 +371,9 @@ end
 
 --------------------------------------------------
 -- 8. EDIT MODE
--- Rows of kind "frame" (and a module's editFrames) name FlareUI frames that live in Edit Mode:
---   * "Edit" opens Edit Mode with the frame selected (FlareEditMode:SelectFrame)
---   * every such frame's dialog gets a "FlareUI settings" button back to the page
---   * the frame's Edit Mode settings are searchable: one stub row per setting, its description
---     found in the copy by label within the module ("uf.*.healthText" for "Health Text")
--- Leaving Edit Mode that the panel opened brings the panel back on the same page.
+-- Frame rows and module.editFrames name FlareUI frames in Edit Mode: Edit selects the frame, each
+-- frame's dialog links back to its page, and its settings are searchable as stub rows. Leaving Edit
+-- Mode opened from the panel reopens the panel on the same page.
 --------------------------------------------------
 local LEM = LibStub and LibStub("FlareEditMode", true)
 Settings.editModeReturn = nil   -- module key to reopen when Edit Mode closes
@@ -405,7 +392,7 @@ function Settings:EditFrame(frame, moduleKey)
     return opened
 end
 
--- Edit Mode with nothing selected (Blizzard's bars, whose dialogs FlareUI extends)
+-- Edit Mode with nothing selected (for Blizzard's bars)
 function Settings:OpenEditMode(moduleKey)
     if not (self:CanEditFrames() and EditModeManagerFrame) then return false end
     if EditModeManagerFrame.CanEnterEditMode and not EditModeManagerFrame:CanEnterEditMode() then return false end
@@ -415,7 +402,7 @@ function Settings:OpenEditMode(moduleKey)
     return true
 end
 
--- the frames of a module: its frame rows plus module.editFrames (functions returning frames)
+-- a module's frames: its frame rows plus module.editFrames getters
 local function ModuleFrames(module)
     local frames, seen = {}, {}
     local function Add(frame)
@@ -451,7 +438,7 @@ function EditRow:IsHidden() return false end
 function EditRow:IsDisabled() return not Settings:CanEditFrames() end
 function EditRow:Get() return nil end
 
--- One stub row per Edit Mode setting of the module's frames (built when first searched)
+-- One stub row per Edit Mode setting of the module's frames, built on first search
 function Module:EditModeRows()
     if self.editRows then return self.editRows end
     local rows = {}
@@ -474,8 +461,7 @@ function Module:EditModeRows()
     return rows
 end
 
--- After login, when the modules have made their frames: the back button in each dialog, and
--- the return to the panel when Edit Mode closes
+-- After the modules made their frames: the back button in each dialog, and the return on exit
 function Settings:LinkEditMode()
     if not (LEM and LEM.AddFrameSettingsButton) or self.linked then return end
     self.linked = true
@@ -506,13 +492,15 @@ do
     local loader = CreateFrame("Frame")
     loader:RegisterEvent("PLAYER_LOGIN")
     loader:SetScript("OnEvent", function()
-        -- one frame later, after Core has started the modules
+        -- one frame later, after Core started the modules
         C_Timer.After(0, function() Settings:LinkEditMode() end)
     end)
 end
 
--- A keybind row for one of FlareUI's key bindings (Bindings.xml): the key it has, and binding a
--- new one (the old key is cleared). Saved in the binding set in use, as Blizzard's Key Bindings do.
+--------------------------------------------------
+-- 9. HELPERS
+--------------------------------------------------
+-- get/set for a Bindings.xml action; a new key replaces the old ones, saved to the current binding set
 function Settings:BindingAccessors(action)
     return {
         get = function() return GetBindingKey(action) or "" end,
@@ -527,7 +515,7 @@ function Settings:BindingAccessors(action)
     }
 end
 
--- Formats `code` spans of the copy (slash commands) in Blizzard's gold
+-- Colours `code` spans of the copy in Blizzard's gold
 function Settings:Format(text)
     if not text then return text end
     return (text:gsub("`([^`]+)`", "|cffffd100%1|r"))

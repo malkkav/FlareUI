@@ -1,3 +1,49 @@
+# FlareUI 2.4.0
+
+New aura filters, party and boss frames on Forever Style's frame plate, Growth for party and raid frames, a reworked controller radial, and a full clean-up pass.
+
+## New
+- Party and boss frames in **Forever Style** now sit on the frame plate like the player and target frames, with a **Scale** slider. The name box glows for your target and for dispellable debuffs, and the ring flashes on aggro. Forever Style now also uses the ring party and boss frames.
+- Party frames: **Growth** (Down or Up), right below Style.
+- Raid frames: **Growth** (From the Middle, Down or Up), right below Sample Raid, for groups in rows. The main tank frames follow it.
+- Party frames: **Pets** and **Party Targets** dropdowns (Off, Bottom of the Frame, Right of the Frame) above Spacing. They replace the Show Pets and Show Party Targets checkboxes. Both on the right stack, both at the bottom share a row.
+- **Hide Buffs** on the player, party and raid frames (right below Debuffs): hide permanent buffs (the default), or buffs longer than 15, 10, 5 or 1 minutes. Off shows every buff.
+- **Only My Buffs** on party and raid frames: only the buffs you cast.
+- **Dispellable Debuffs Only** on party and raid frames: only the debuffs you can dispel.
+- **Focus Boss Debuffs** on the player, party and raid frames: in a boss fight, only the boss and role debuffs show. Every debuff shows elsewhere.
+- Main tank frames have their own Power Bar Height, aura places, Aura Size and aura filters, in Frame and Auras sections.
+- Raid frames: new inside aura places (Centre, Centre Left, Centre Right); the places drop the "Inside," text.
+- Raid frames: **Group Numbers** are now "Group N" headings above each group. Edit Mode samples follow Sort By and show a sample big defensive.
+- Target and focus frames (FlareUI and Forever Style): **High Level Skull** in Icons (on by default). It shows the skull for mobs whose level reads "??". Off shows a red "??".
+- Pet frame: **Happiness Position** (Centre, Right of the Frame, Left of the Frame) under Pet Happiness.
+- Radial Menu: **Game Menu** and **Macros** in the Panels library.
+- Radial Menu: right-click closes an open radial in Hold activation.
+- Radial Menu, controller: LB and RB switch the aimed button's sub-radial choice. The centre shows the right stick icon in the Gamepad UI.
+- Quest Tracker: now works in the Gamepad UI too.
+
+## Changed
+- Radial Menu, controller: **L3** opens the radial, the right stick aims, **R3** uses the button, and B or L3 closes it. The camera holds still while it is open and you can keep walking. R3 is the ping again whenever the radial is closed.
+- Enemy and neutral levels use Blizzard's own difficulty colours (green, yellow, orange, red, grey) on every frame and tooltip, in every style. Friendly levels stay gold.
+- **Mirror** on target, focus and boss frames, in FlareUI and Forever Style, only turns the bars' direction now. The portrait and icons keep their places.
+- Party frames: the **Orientation** option is gone; party frames are always vertical.
+- Party and boss frames: auras above or below the frame take one row, so the frames sit closer together.
+- Party, raid and main tank frames: the big defensive is a fixed size (larger on the Forever Style plate). Missing buffs sit centred under it. Every aura sample in Edit Mode has its border.
+- Raid and main tank defaults: new aura places and sizes, height 60, and a main tank position at the bottom left.
+- Party and focus frames show first names only outside Forever Style (Full Player Names still decides elsewhere).
+- Tooltips: the name line shows the name only. One tag at the end of the level line: (Boss) in red, (Elite) and (Rare) in gold; the elite "+" is gone. Players read "Level N Race Class" in white, and the faction line is coloured (Horde red, Alliance blue).
+- The pet happiness face is a little smaller.
+- A clean-up pass across the whole addon: faster chat lines, damage meter timer, tooltips, quest tracker and nameplate quest tags, plus tidier code.
+
+## Fixed
+- Radial Menu in the Gamepad UI: opening the bags (or Social) from a radial no longer causes a "blocked" error and a long freeze.
+- Hide Tutorials now closes every tutorial tip, not only some.
+- The player's level no longer turns gold after a level-up in the ring styles.
+- Proc Glow no longer leaves a glow stuck after it is switched off and on.
+- Radial Menu: deleting a radial and pressing Undo restores its keybinds too. A slot keeps its highlight when an item finishes loading.
+- Settings: the "module is off" card no longer covers search results. The welcome screen counts Resource Bars as a module.
+- Chat and damage meter hooks are no longer added again on every settings change.
+- The weapon enchant tooltip no longer keeps lines from the last unit you hovered.
+
 # FlareUI 2.3.1
 
 ## New

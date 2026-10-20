@@ -3,12 +3,9 @@ local L = ns.L
 
 --------------------------------------------------
 -- MOVERS
--- Two Edit Mode frames for pop-ups Blizzard gives no place of their own:
---   FlareUI Loot Rolls  the Need / Greed / Pass frames (GroupLootContainer)
---   FlareUI Toasts      Blizzard's toast stack: new recipe learned, achievements, loot won...
--- Each shows a sample in Edit Mode. Part of Quality of Life, with the window mover (one option).
--- Hooks only: the loot rolls share a layout with protected frames, so they are re-anchored after
--- Blizzard places them and nothing is written onto Blizzard's frames.
+-- Edit Mode frames "FlareUI Loot Rolls" (GroupLootContainer) and "FlareUI Toasts" (AlertFrame),
+-- each with a sample in Edit Mode. Hooks only: the loot rolls share a layout with protected frames,
+-- so they are re-anchored after Blizzard places them.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -27,14 +24,14 @@ local math_floor = math.floor
 local CreateFrame = CreateFrame
 local LEM = LibStub("FlareEditMode")
 
--- Blizzard's geometry: the first roll frame sits 16.5 above the container's bottom
+-- Blizzard's geometry: the first roll frame sits 16.5 above the container's bottom, the first
+-- toast 20 above AlertFrame's
 local ROLL_W, ROLL_H, ROLL_BOTTOM = 277, 67, 16.5
--- ... and the first toast 20 above AlertFrame's bottom
 local TOAST_W, TOAST_H, TOAST_BOTTOM = 312, 89, 20
 
 local DEFAULTS = {
     loot  = { point = "BOTTOM", x = 0, y = 173 },   -- between the player cast bar and the action bars
-    toast = { point = "TOP", x = 0, y = -158 },     -- top centre, clear of the fight
+    toast = { point = "TOP", x = 0, y = -158 },
 }
 
 local holders = {}   -- key -> holder frame
@@ -78,14 +75,14 @@ local function CreateHolder(key, globalName, label, width, height)
     local holder = CreateFrame("Frame", globalName, UIParent)
     holder:SetSize(width, height)
     holder:SetClampedToScreen(true)
-    -- MEDIUM (UIParent's), under Edit Mode's selection box, which is MEDIUM at level 1000
+    -- MEDIUM (UIParent's), under Edit Mode's selection box (MEDIUM, level 1000)
     holder.preview = CreateFrame("Frame", nil, holder)
     holder.preview:SetAllPoints()
     holder.preview:Hide()
     holders[key] = holder
     ApplyPosition(key)
     LEM:AddFrame(holder, Mover(key), DEFAULTS[key], label)
-    -- the sample is a full panel; the selection box goes over it, as on every other Edit Mode frame
+    -- the selection box over the sample panel
     local selection = LEM.frameSelections and LEM.frameSelections[holder]
     if selection then selection:SetFrameLevel(holder.preview:GetFrameLevel() + 10) end
     return holder
@@ -93,8 +90,8 @@ end
 
 --------------------------------------------------
 -- 4. LOOT ROLLS
--- GroupLootContainer goes back on the holder after every placement; its height stays 1, so the
--- bottom managed frames do not leave room for rolls that are now elsewhere.
+-- GroupLootContainer goes back on the holder after every placement; its height stays 1 so the
+-- bottom managed frames leave no room for it.
 --------------------------------------------------
 local placingLoot = false
 local function PlaceLoot()
@@ -167,8 +164,8 @@ end
 
 --------------------------------------------------
 -- 5. TOASTS
--- AlertFrame is the base every toast stacks from. The loot rolls are part of the stack, so while
--- they are moved the stack is walked again without them.
+-- AlertFrame is the base every toast stacks from. The loot rolls are part of that stack, so while
+-- they show elsewhere the stack is walked again without them.
 --------------------------------------------------
 local function PlaceToasts()
     local base, holder = _G.AlertFrame, holders.toast

@@ -905,10 +905,10 @@ ns.Copy = {
             section = "rm.look",
         },
         ["rm.pad"] = {
-            desc = L["R3 opens the main radial and picks a button."],
+            desc = L["L3 opens the main radial. Aim with the right stick and press R3 to use the button; B or L3 closes it. LB and RB switch the aimed button's sub-radial choice."],
             label = L["Controller support"],
             section = "rm.controller",
-            tip = L["The ping menu moves to L3."],
+            tip = L["The camera holds still while the radial is open. R3 pings as usual while it is closed."],
         },
         ["rm.position"] = {
             choices = { L["Mouse cursor"], L["Screen centre"] },
@@ -1024,7 +1024,7 @@ ns.Copy = {
             label = L["Show level"],
         },
         ["uf.*.mirror"] = {
-            desc = L["Flips the frame to face the player frame."],
+            desc = L["Flips the frame to face the player frame. In FlareUI and Forever Style, only the bars' direction."],
             label = L["Mirror"],
         },
         ["uf.*.myDebuffs"] = {
@@ -1101,10 +1101,10 @@ ns.Copy = {
             tip = L["Each style keeps its own setup."],
         },
         ["uf.fullNames"] = {
-            desc = L["Players' first names and surnames on every unit frame."],
+            desc = L["Players' first names and surnames:\n* Player and target frames: always\n* Party and focus frames: in Forever Style"],
             label = L["Full Player Names"],
             section = "uf.look",
-            tip = L["Off: the first name only."],
+            tip = L["Off: the first name only, everywhere."],
         },
         ["uf.hidePlayer"] = {
             desc = L["Your player and pet frames fade out while:\n* You're out of combat\n* You have no target\n* You're at full health"],
@@ -1162,14 +1162,14 @@ ns.Copy = {
             desc = L["Where each kind of aura sits."],
             label = L["Dispel icons"],
         },
+        ["uf.party.grow"] = {
+            choices = { L["Down"], L["Up"] },
+            desc = L["Which way the frames go from the first member."],
+            label = L["Growth"],
+        },
         ["uf.party.healerPower"] = {
             desc = L["Only healers show a power bar."],
             label = L["Power bar for healers only"],
-        },
-        ["uf.party.orientation"] = {
-            choices = { L["Vertical"], L["Horizontal"] },
-            desc = L["Members stacked down, or side by side."],
-            label = L["Orientation"],
         },
         ["uf.party.pets"] = {
             desc = L["A small frame for each pet, under its owner."],

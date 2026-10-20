@@ -3,15 +3,9 @@ local L = ns.L
 
 --------------------------------------------------
 -- QUEST TRACKER
--- The Quest Tracker, in place of Blizzard's: the tracked quests (current zone first, nearest
--- first) and tracked recipes, in a FlareUI window placed in Edit Mode.
---   * It grows away from the screen edge it sits on; quest item buttons sit outside the edge facing
---     the middle of the screen.
---   * Minimizes to its header or a lone "+" (also by keybind), and once on the way into an instance
---     or combat when asked to.
---   * Blizzard's tracker is parked while this one is on.
--- Third-party licence notices: LICENSES/.
--- Stands aside in the Gamepad UI.
+-- Replaces Blizzard's tracker (parked) with tracked quests and recipes in an Edit Mode window that
+-- grows away from its screen edge and minimizes to its header or a lone "+". Third-party licence
+-- notices: LICENSES/.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -288,10 +282,11 @@ local function CollectQuests(db)
     wipe(groupBest)
     for _, q in ipairs(questBuf) do
         local best = groupBest[q.ftHeader]
-        if not best or q.ftDistance < best.distance then
-            groupBest[q.ftHeader] = { distance = q.ftDistance, index = best and best.index or q.ftIndex, here = (best and best.here) or q.ftHere }
-        elseif q.ftHere then
-            best.here = true
+        if not best then
+            groupBest[q.ftHeader] = { distance = q.ftDistance, index = q.ftIndex, here = q.ftHere }
+        else
+            if q.ftDistance < best.distance then best.distance = q.ftDistance end
+            if q.ftHere then best.here = true end
         end
     end
     wipe(groupOrder)
@@ -742,7 +737,7 @@ function OT:Render()
         local prefix = ""
         if level then
             local c = GetQuestDifficultyColor(level)
-            prefix = ColorCode({ c.r, c.g, c.b }) .. "[" .. level .. (db.showTags and tags or "") .. "]|r "
+            prefix = string_format("|cff%02x%02x%02x", Byte(c.r), Byte(c.g), Byte(c.b)) .. "[".. level .. (db.showTags and tags or "") .. "]|r "
         end
         return prefix .. title .. (collapsed and ("  " .. ColorCode(C.DIM) .. "+|r") or "")
     end
@@ -960,7 +955,7 @@ function OT:RequestRender()
     C_Timer.After(0.1, function() OT:Render() end)
 end
 
--- Distance changes as you walk: redraw only when the order would change
+-- Distance changes while moving: redraw only when the order would change
 local function OnSortTick()
     local db = GetDb()
     if not (db and db.sortByDistance and holder and holder:IsVisible() and scroll:IsShown()) then return end
@@ -974,8 +969,7 @@ end
 --------------------------------------------------
 -- 10. MINIMIZE AND AUTO-MINIMIZE
 --------------------------------------------------
--- Settings > Quest Tracker open: the tracker shows, with Edit Mode's sample quests when nothing is
--- tracked (Frame Opacity can be seen)
+-- While Settings > Quest Tracker is open: shown, with the sample quests when nothing is tracked
 function OT:SetSettingsPreview(on)
     on = on and true or false
     if state.preview == on then return end
@@ -992,8 +986,7 @@ function OT:ToggleMinimized()
     self:SetMinimized(not Char().minimized)
 end
 
--- The kind of place you are in; combat counts while it lasts (when it has a rule). The open world
--- never has one.
+-- The current context; combat counts only when it has a rule, the open world never minimizes
 local INSTANCE_CONTEXT = { party = "dungeon", raid = "raid", pvp = "pvp", arena = "arena" }
 
 local function CurrentContext(rules)
@@ -1034,9 +1027,8 @@ local function ParkBlizzardTracker()
     if tracker:GetParent() ~= parking then tracker:SetParent(parking) end
 end
 
--- Sections other addons stack under Blizzard's tracker through the shared ForeverTrackerHost would
--- go with it: while this tracker is on they are switched to their own movable column, once (a
--- player who attaches them again keeps that), and attached back when this tracker is turned off.
+-- Sections stacked under Blizzard's tracker through the shared ForeverTrackerHost would be parked
+-- with it: detached once while this tracker is on, attached back when it is turned off.
 local function DetachCompanionSections()
     local host, db = _G.ForeverTrackerHost, GetDb()
     if type(host) ~= "table" or not (host.IsAttachedToQuestTracker and host.SetAttached) or not db then return end
@@ -1304,11 +1296,6 @@ function OT:Refresh()
     self:Render()
 end
 
--- Stands aside in the Gamepad UI
-function OT:ShouldLoad()
-    return not ns.IsGamepadUI()
-end
-
 function OT:Init()
     if self.initialized then return end
     self.initialized = true
@@ -1327,8 +1314,9 @@ function OT:Init()
         "ZONE_CHANGED", "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED_INDOORS", "SUPER_TRACKING_CHANGED",
         "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "BAG_UPDATE_COOLDOWN",
         "PLAYER_LEVEL_UP", "PLAYER_TARGET_CHANGED", "TRACKED_RECIPE_UPDATE", "BAG_UPDATE_DELAYED",
-        "GET_ITEM_INFO_RECEIVED", "UNIT_QUEST_LOG_CHANGED",
+        "GET_ITEM_INFO_RECEIVED",
     }) do events:RegisterEvent(e) end
+    events:RegisterUnitEvent("UNIT_QUEST_LOG_CHANGED", "player")
     events:SetScript("OnEvent", function(_, event, arg1)
         if event == "PLAYER_ENTERING_WORLD" then
             ParkBlizzardTracker()
@@ -1348,8 +1336,6 @@ function OT:Init()
             return
         elseif event == "PLAYER_TARGET_CHANGED" then
             UpdateRangeTicker()
-            return
-        elseif event == "UNIT_QUEST_LOG_CHANGED" and arg1 ~= "player" then
             return
         elseif (event == "BAG_UPDATE_DELAYED" or event == "GET_ITEM_INFO_RECEIVED") and state.recipes == 0 then
             return

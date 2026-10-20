@@ -1,28 +1,20 @@
 local _, ns = ...
 
 --------------------------------------------------
--- PROC GLOW (Action Bars > Buttons, off by default)
--- Blizzard's proc glow on the action bars (and so on the Fake CM bars) for the abilities worth
--- reacting to:
---   * whatever the game flags with its own proc glow (SPELL_ACTIVATION_OVERLAY_GLOW_SHOW). Blizzard's
---     buttons only glow when the flagged spell ID is the exact one in the slot, which misses every
---     other rank; here the spell's name decides, so any rank on any bar lights up.
---   * the reaction abilities, which become usable only after something happens: Overpower (the
---     target dodged), Revenge (you blocked, dodged or parried), Riposte and Counterattack (you
---     parried), Mongoose Bite (the target dodged), Execute and Hammer of Wrath (the target is low).
---     They glow while usable and not on their own cooldown. In combat Forever may hide whether an
---     action is usable; the glow's alpha then takes that hidden answer directly (SetAlphaFromBoolean),
---     without FlareUI ever reading it.
--- Each glow is Blizzard's own (ActionButtonSpellAlertTemplate), on a frame of FlareUI's: Blizzard's
--- alert manager is never touched, so the buttons stay untainted.
+-- PROC GLOW
+-- Blizzard's proc glow on the action bars for game-flagged procs (matched by spell name, so every
+-- rank lights) and for reaction abilities (Overpower, Execute...) while usable and off cooldown.
+-- Glows are FlareUI frames from ActionButtonSpellAlertTemplate; Blizzard's alert manager is never
+-- touched, so the buttons stay untainted.
 --------------------------------------------------
+
 --------------------------------------------------
 -- 1. MODULE AND DATA
 --------------------------------------------------
 local PG = {}
 ns.ProcGlow = PG
 
--- the reaction abilities, by one rank's spell ID (the name covers every rank)
+-- one rank's spell ID each; the name covers every rank
 local REACTIVE_IDS = {
     7384,   -- Overpower
     6572,   -- Revenge
@@ -38,7 +30,7 @@ local BAR_PREFIXES = {
     "MultiBarLeftButton", "MultiBar5Button", "MultiBar6Button", "MultiBar7Button",
 }
 
-local GLOW_SCALE = 1.4      -- Blizzard's own size for the alert around a button
+local GLOW_SCALE = 1.4      -- Blizzard's alert size around a button
 
 local reactive = {}         -- localised spell name -> true
 local flagged = {}          -- localised spell name -> true while the game flags it
@@ -61,7 +53,7 @@ local function SpellName(id)
     if ok and Readable(name) and type(name) == "string" then return name end
 end
 
--- the spell in a button's slot (a spell, or a macro that casts one), with its name
+-- the spell in a button's slot (a spell, or a macro that casts one)
 local function ButtonSpell(button)
     local slot = button.action
     if not (Readable(slot) and type(slot) == "number" and slot > 0) then return nil end
@@ -97,7 +89,7 @@ local function HideGlow(button)
     glow:SetAlpha(1)
 end
 
--- on: true/false, or Forever's hidden answer (secret) for "usable"
+-- on: a boolean, or a secret "usable" fed to SetAlphaFromBoolean unread
 local function ShowGlow(button, on)
     local glow = Glow(button)
     if not canaccessvalue(on) then
@@ -112,7 +104,7 @@ local function ShowGlow(button, on)
     glow:SetAlpha(1)
     if not glow:IsShown() then
         glow:Show()
-        glow.ProcStartAnim:Play()   -- Blizzard's burst, then its loop
+        glow.ProcStartAnim:Play()
     end
 end
 
@@ -129,7 +121,7 @@ local function UpdateButton(button, enabled)
     if not enabled then HideGlow(button) return end
     local id, name, slot = ButtonSpell(button)
     if not id then HideGlow(button) return end
-    -- Blizzard already glows this one (same rank): its glow is enough
+    -- Blizzard already glows this exact rank
     local blizzard = button.SpellActivationAlert
     if blizzard and blizzard:IsShown() then HideGlow(button) return end
 
@@ -151,7 +143,7 @@ local function UpdateAll()
     for _, button in ipairs(buttons) do UpdateButton(button, enabled) end
 end
 
--- many events arrive together: one pass on the next frame
+-- events arrive in bursts: one pass on the next frame
 local function Schedule()
     if pending then return end
     pending = true
@@ -176,7 +168,6 @@ local EVENTS = {
 --------------------------------------------------
 -- 4. PUBLIC
 --------------------------------------------------
--- the buttons, the reaction abilities by name, and the event frame: once
 local function Setup()
     if events then return end
     for _, prefix in ipairs(BAR_PREFIXES) do
@@ -201,6 +192,8 @@ function PG:Refresh()
         pcall(events.RegisterUnitEvent, events, "UNIT_HEALTH", "target")
     else
         events:UnregisterAllEvents()
+        -- HIDE events are missed while off: a kept flag would glow on return
+        wipe(flagged)
     end
     UpdateAll()
 end

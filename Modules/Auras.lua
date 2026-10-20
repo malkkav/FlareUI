@@ -3,15 +3,9 @@ local L = ns.L
 
 --------------------------------------------------
 -- BUFFS & DEBUFFS
--- The player's buffs and debuffs, in place of Blizzard's BuffFrame / DebuffFrame: two Edit Mode
--- frames, each holding a CustomAuraContainer. Blizzard picks, sorts and times the auras and drives
--- our textures, so it works with secret aura data; right-click cancels. FlareUI draws the look:
---   * square (classic icon bevel) or round (the spellbook passive ring)
---   * borders tinted by Blizzard through a colour map (dispel colours for debuffs, never read by Lua)
---   * the cooldown swipe over the icon (the unit frames may also use the border or none); timer
---     and stacks
--- Weapon enchants lead the buffs (FlareUI's own buttons); private auras get anchors beside the
--- debuffs. Stands aside in the Gamepad UI (Blizzard's frames are part of its navigation).
+-- Replaces BuffFrame / DebuffFrame with two Edit Mode frames holding CustomAuraContainers: Blizzard
+-- drives the auras (secret-safe), FlareUI draws the look. Also weapon enchants, private aura anchors
+-- and the shared aura button look (ns.AuraLook). Stands aside in the Gamepad UI.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -38,29 +32,28 @@ end
 -- 3. CONSTANTS
 --------------------------------------------------
 local MEDIA         = "Interface\\AddOns\\FlareUI\\Media\\Auras\\"
--- Square: the classic icon bevel (grey, wtf-tools/buildborder.js), the icon in its opening. Round:
--- the Radial Menu's rim, the icon under its mask. Both tinted bronze for buffs.
+-- Square: the classic icon bevel; round: the radial menu's rim. Both grey art, tinted.
 local SQUARE_BORDER = MEDIA .. "IconBorder"
 local SQUARE_INSET  = 6 / 128     -- the icon starts this far in, under the bevel's inner line
 local SQUARE_MASK   = MEDIA .. "IconMask"   -- the icon clipped to the bevel's 45 degree corners
--- the minimap frame's bronze, lifted a little as the tint multiplies the grey art
+-- bronze, lifted as the tint multiplies the grey art
 local SQUARE_TINT   = { 0.72, 0.56, 0.38 }
 local ROUND_BORDER  = "talents-node-circle-gray"
 local ROUND_MASK    = "talents-node-circle-mask"
-local ROUND_TINT    = { 0.72, 0.56, 0.38 }   -- the same bronze on the silver ring
--- White outlines for the Border swipe (a swipe takes a file, not an atlas); never drawn as art
+local ROUND_TINT    = { 0.72, 0.56, 0.38 }
+-- Border swipe outlines: a swipe takes a file, not an atlas
 local SWIPE_SQUARE  = MEDIA .. "Border"
 local SWIPE_ROUND   = MEDIA .. "BorderRound"
 local SWIPE_DISC    = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 local TEMPLATE      = "CustomAuraContainerTemplate"
-local TIMER_SPACE   = 13      -- room under the icon for a timer placed below it
-local SWIPE_ALPHA   = 0.7     -- how much the spent part of the border dims (Border swipe)
-local ICON_SWIPE_ALPHA = 0.82 -- how dark the overlay over the icon is (Icon swipe)
-local SWIPE_EDGE_SCALE = 1.6  -- the sweeping edge, thicker than Blizzard's
-local SWIPE_EDGE    = MEDIA .. "Edge"   -- the sweeping edge line of the Icon swipe
+local TIMER_SPACE   = 13      -- room for a timer below the icon
+local SWIPE_ALPHA   = 0.7     -- Border swipe dimming
+local ICON_SWIPE_ALPHA = 0.82 -- Icon swipe overlay darkness
+local SWIPE_EDGE_SCALE = 1.6
+local SWIPE_EDGE    = MEDIA .. "Edge"
 local PRIVATE_COUNT = 4       -- private aura anchors beside the debuffs
 
--- The dispel type names Blizzard keys its colour maps by ("None" = no dispel type)
+-- The keys of Blizzard's dispel colour maps ("None" = no dispel type)
 local DISPEL_KEYS = { "None", "Magic", "Curse", "Disease", "Poison", "Bleed", "Enrage" }
 -- Debuff borders by dispel type (bright, as they multiply the grey art)
 local DEBUFF_COLORS = {
@@ -71,7 +64,7 @@ local DEBUFF_COLORS = {
     Poison  = { 0.45, 0.85, 0.38 },
 }
 
--- Edit Mode preview: sample icons for every slot
+-- Edit Mode preview samples
 local PREVIEW_ICONS = {
     buffs = { "Spell_Holy_WordFortitude", "Spell_Nature_Regeneration", "Spell_Holy_MagicalSentry",
               "Ability_Warrior_BattleShout", "Spell_Holy_GreaterBlessingofKings", "Spell_Nature_Rejuvenation",
@@ -93,7 +86,7 @@ local KIND_ORDER = { "buffs", "debuffs" }
 --------------------------------------------------
 -- 4. STATE
 --------------------------------------------------
-local frames = {}           -- kind -> holder frame (the Edit Mode frame)
+local frames = {}           -- kind -> holder (the Edit Mode frame)
 local pendingLayout = false
 local UpdatePreview         -- section 6
 local hiddenParent = CreateFrame("Frame", nil, UIParent)
@@ -104,7 +97,7 @@ local function KindDb(kind)
     return db and db[kind]
 end
 
--- Blizzard applies the map's colours with SetVertexColor(color:GetRGBA()). Four maps in all, cached.
+-- Blizzard applies the map with SetVertexColor(color:GetRGBA()); four maps, cached
 local colorMaps = {}
 local function ColorMap(isDebuff, round)
     local cacheKey = (isDebuff and "d" or "b") .. (round and "r" or "s")
@@ -119,7 +112,7 @@ local function ColorMap(isDebuff, round)
     return map
 end
 
--- The cell a frame's icons take: the icon, plus the timer's room when it sits under it
+-- Icon height plus the timer's room when it sits below
 local function CellHeight(size)
     local db = GetDb()
     return size + ((db and db.timer == "below") and TIMER_SPACE or 0)
@@ -127,11 +120,9 @@ end
 
 --------------------------------------------------
 -- 5. AURA BUTTONS
--- initializeFrame: Blizzard calls it for every pooled button; the look is built once and restyled
--- on later calls (a new group generation passes the new settings).
+-- Blizzard calls initializeFrame for every pooled button: the look is built once, restyled later
 --------------------------------------------------
--- Edit Mode: Blizzard's sample auras have no duration, so a sample timer stands in for the timer
--- text (the same place, font and colour), while a timer is shown; every styled button, for the switch
+-- Blizzard's Edit Mode sample auras have no duration: a sample timer stands in for the timer text
 local SAMPLE_TIMERS = { "9s", "24s", "1m", "3s", "45s", "2m", "17s", "6s" }
 local styledButtons = setmetatable({}, { __mode = "k" })
 
@@ -164,8 +155,7 @@ local function StyleButton(button, look)
         bg:AddMaskTexture(mask)
         button.FlareUI_Mask = mask
 
-        -- layers, bottom up: icon (area), then border and cooldown in the order the swipe needs
-        -- (StyleButton), then the text on top
+        -- bottom up: icon, border and cooldown (ordered per swipe below), text
         local borderFrame = CreateFrame("Frame", nil, area)
         borderFrame:SetAllPoints(area)
         button.FlareUI_BorderFrame = borderFrame
@@ -178,7 +168,7 @@ local function StyleButton(button, look)
         cd:SetDrawEdge(false)
         cd:SetDrawBling(false)
         cd:SetHideCountdownNumbers(true)
-        cd:SetReverse(true)     -- the spent part grows as the aura runs out
+        cd:SetReverse(true)
         button.FlareUI_Cooldown = cd
 
         local overlay = CreateFrame("Frame", nil, area)
@@ -202,7 +192,7 @@ local function StyleButton(button, look)
     area:SetPoint("TOP", button, "TOP", 0, 0)
     area:SetSize(size, size)
 
-    -- square: the icon in the border's opening, clipped to its cut corners; round: under the ring's mask
+    -- square: the icon in the bevel's opening, clipped to its cut corners; round: under the ring's mask
     icon:ClearAllPoints()
     mask:ClearAllPoints()
     border:ClearAllPoints()
@@ -221,13 +211,12 @@ local function StyleButton(button, look)
         border:SetTexture(SQUARE_BORDER)
         border:SetAllPoints(area)
     end
-    -- crop the icon's own built-in border away; ours is drawn over the edge
+    -- crop the icon's built-in border
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     bg:ClearAllPoints()
     bg:SetAllPoints(icon)
 
-    -- the swipe: a darkening sweep along the border's outline, over the whole icon, or none. Over
-    -- the border it must draw above the border art; over the icon, below it.
+    -- the Border swipe draws above the border art, the Icon swipe below it
     local base = area:GetFrameLevel()
     if look.swipe == "border" then
         button.FlareUI_BorderFrame:SetFrameLevel(base + 1)
@@ -237,7 +226,7 @@ local function StyleButton(button, look)
         button.FlareUI_BorderFrame:SetFrameLevel(base + 2)
     end
     button.FlareUI_Overlay:SetFrameLevel(base + 4)
-    -- square with the Icon swipe: the sweep covers only the opening, in its cut shape
+    -- square Icon swipe: only the opening, in its cut shape
     local fitIcon = look.swipe == "icon" and not round
     cd:ClearAllPoints()
     cd:SetAllPoints(fitIcon and icon or area)
@@ -255,7 +244,6 @@ local function StyleButton(button, look)
         cd:SetSwipeTexture(round and SWIPE_ROUND or SWIPE_SQUARE)
         cd:SetSwipeColor(0, 0, 0, SWIPE_ALPHA)
     else
-        -- over the icon: a darker overlay, with a bright sweeping edge (Media/Auras/Edge.tga)
         cd:SetDrawSwipe(true)
         cd:SetSwipeTexture(round and SWIPE_DISC or SQUARE_MASK)
         cd:SetSwipeColor(0, 0, 0, ICON_SWIPE_ALPHA)
@@ -264,11 +252,10 @@ local function StyleButton(button, look)
         if cd.SetEdgeScale then cd:SetEdgeScale(SWIPE_EDGE_SCALE) end
     end
 
-    -- text: stacks top right on the icon, the timer under it or along its bottom edge
     local fontPath = ns.GetFontPath(look.font and look.font.face or "Friz Quadrata TT")
     local fontSize = (look.font and look.font.size) or 11
     local flags = (look.font and look.font.flags) or "OUTLINE"
-    if flags == "NONE" then flags = "" end   -- the font settings' "None"; the client knows no such flag
+    if flags == "NONE" then flags = "" end   -- not a valid client flag
     local countText, durationText = button.FlareUI_Count, button.FlareUI_Duration
     countText:SetFont(fontPath, fontSize, flags)
     durationText:SetFont(fontPath, math_max(8, fontSize - 1), flags)
@@ -284,9 +271,8 @@ local function StyleButton(button, look)
     else
         durationText:SetPoint("BOTTOM", area, "BOTTOM", 0, 2)
     end
-    -- No Timer: Blizzard still shows and fills the text, so it is hidden by alpha
+    -- no timer: Blizzard still shows and fills the text, so it is hidden by alpha
     button.FlareUI_TimerShown = look.timer ~= "none"
-    -- the Edit Mode sample timer, in the timer's place and look
     local preview = button.FlareUI_PreviewTimer
     if not preview then
         preview = durationText:GetParent():CreateFontString(nil, "OVERLAY")
@@ -295,7 +281,7 @@ local function StyleButton(button, look)
         SAMPLE_TIMERS.next = (SAMPLE_TIMERS.next or 0) % #SAMPLE_TIMERS + 1
         preview.sample = SAMPLE_TIMERS[SAMPLE_TIMERS.next]
     end
-    -- the font first: a font string takes no text without one
+    -- a font string takes no text without a font
     preview:SetFont(durationText:GetFont())
     preview:SetText(preview.sample)
     local r, g, b, alpha = durationText:GetTextColor()
@@ -306,11 +292,10 @@ local function StyleButton(button, look)
     ApplyPreviewTimer(button)
 end
 
--- entering and leaving Edit Mode (every styled button, whichever frame it is on)
 LEM:RegisterCallback("enter", function() for button in pairs(styledButtons) do ApplyPreviewTimer(button) end end)
 LEM:RegisterCallback("exit", function() for button in pairs(styledButtons) do ApplyPreviewTimer(button) end end)
 
--- Hands our regions to Blizzard's aura button, which drives them from its aura
+-- Hands FlareUI's regions to Blizzard's aura button, which drives them
 local function HookButton(button, look)
     local icon, cd, border = button.FlareUI_Icon, button.FlareUI_Cooldown, button.FlareUI_Border
     local countText, durationText = button.FlareUI_Count, button.FlareUI_Duration
@@ -319,8 +304,7 @@ local function HookButton(button, look)
     pcall(button.SetApplicationCount, button, countText, {})
     pcall(button.SetDurationText, button, durationText, {})
     pcall(button.ClearDispelTypeTextures, button)
-    -- Blizzard tints the border from the colour map, whatever the (possibly secret) dispel type.
-    -- Once handed over it is only restyled out of combat, before being handed over again.
+    -- Blizzard tints the border from the colour map, so a secret dispel type is never read by Lua
     if Enum.CustomAuraButtonDispelTypeTextureStyle then
         local options = {
             style = Enum.CustomAuraButtonDispelTypeTextureStyle.PreserveAsset,
@@ -337,7 +321,7 @@ local function HookButton(button, look)
     end
 end
 
--- A snapshot of one frame's settings, handed to every button Blizzard initialises
+-- A snapshot of one frame's settings for the buttons Blizzard initialises
 local function Look(kind)
     local db, kdb = GetDb(), KindDb(kind)
     return {
@@ -351,8 +335,8 @@ local function Look(kind)
     }
 end
 
--- The same buttons for the unit and party frames' auras (whether or not this module is on), in each
--- frame's own look and the Aura Text font, sized to the icon
+-- The same buttons for unit, party and raid frame auras (with or without this module), in the
+-- "Aura Text" font sized to the icon
 ns.AuraLook = {
     Style = StyleButton,
     Hook = HookButton,
@@ -377,8 +361,7 @@ ns.AuraLook = {
 
 --------------------------------------------------
 -- 6. LAYOUT
--- The holder is as big as the grid can grow, so the Edit Mode box shows the full reach; the
--- container fills it from its starting corner.
+-- The holder is the grid's full size, so the Edit Mode box shows its reach
 --------------------------------------------------
 local function GridSize(kdb)
     local size, spacing = kdb.size or 30, kdb.spacing or 6
@@ -393,7 +376,7 @@ local function StartCorner(kdb)
     return ((kdb.wrap == "UP") and "BOTTOM" or "TOP") .. ((kdb.grow == "RIGHT") and "LEFT" or "RIGHT")
 end
 
--- Edit Mode: samples in every slot up to Max Icons, in the chosen look (plain frames, not Blizzard's)
+-- Edit Mode: plain sample frames in every slot up to "Max Icons"
 function UpdatePreview(kind)
     local holder, kdb = frames[kind], KindDb(kind)
     if not (holder and kdb) then return end
@@ -423,7 +406,7 @@ function UpdatePreview(kind)
             sample.FlareUI_Border:SetVertexColor(look.colors[key]:GetRGBA())
             sample.FlareUI_Count:SetText(i % 4 == 0 and tostring(i % 9 + 1) or "")
             sample.FlareUI_Duration:SetText(PREVIEW_TIMES[(i - 1) % #PREVIEW_TIMES + 1])
-            -- a long running cooldown, each slot at a different point, to show the swipe
+            -- staggered long cooldowns show the swipe
             sample.FlareUI_Cooldown:SetCooldown(now - (i * 37) % 300, 300)
             local col, row = (i - 1) % perRow, math_floor((i - 1) / perRow)
             sample:ClearAllPoints()
@@ -435,7 +418,7 @@ function UpdatePreview(kind)
     end
 end
 
--- Private auras: a row just outside the holder, on the side the grid wraps towards
+-- Private auras: a row just outside the holder, on the side the grid wraps to
 local function LayoutPrivateAnchors(holder, kdb)
     if not (C_UnitAuras and C_UnitAuras.AddPrivateAuraAnchor) then return end
     holder.privateAnchors = holder.privateAnchors or {}
@@ -486,19 +469,16 @@ local function LayoutPrivateAnchors(holder, kdb)
 end
 
 --------------------------------------------------
--- 6b. WEAPON ENCHANTS
--- Poisons, oils, stones and shaman imbues live on the weapon, not on the player, so no aura API
--- returns them. Blizzard's aura container reads them from C_PaperDollInfo.GetTemporaryEnchantmentInfo,
--- which Forever leaves empty; Forever's own buff frame reads C_Item.GetWeaponEnchantInfo, and so do
--- these buttons. They are FlareUI's frames, in the buffs' look, at the start of the first row: the
--- container is moved along by as many cells (out of combat; in combat a new enchant sits just
--- before the first row until combat ends).
+-- 7. WEAPON ENCHANTS
+-- The aura container reads C_PaperDollInfo.GetTemporaryEnchantmentInfo, which Forever leaves empty:
+-- FlareUI's own buttons read C_Item.GetWeaponEnchantInfo and lead the first row, the container
+-- shifted along (out of combat; until then a new enchant sits just before the row).
 --------------------------------------------------
--- Enum.WeaponSlot (0 main hand, 1 off hand, 2 ranged) -> the inventory slot the tooltip shows
+-- Enum.WeaponSlot -> inventory slot
 local WEAPON_SLOTS = { { slot = 0, inv = 16 }, { slot = 1, inv = 17 }, { slot = 2, inv = 18 } }
-local enchantDurations = {}   -- "slot:type" -> the full duration, snapshot when the enchant is seen first
+local enchantDurations = {}   -- "slot:type" -> full duration, taken when first seen
 
--- the timed enchants on the weapons now, in slot order
+-- The timed weapon enchants, in slot order
 local function ActiveEnchants()
     local list = {}
     if not (C_Item and C_Item.GetWeaponEnchantInfo) then return list end
@@ -506,7 +486,7 @@ local function ActiveEnchants()
     for _, weapon in ipairs(WEAPON_SLOTS) do
         local ok, enchants = pcall(C_Item.GetWeaponEnchantInfo, weapon.slot)
         for _, e in ipairs(ok and enchants or {}) do
-            -- a permanent enchant (no time left) is part of the item, not a buff
+            -- a permanent enchant (no time left) is not a buff
             if e.hasEnchant and (e.timeLeft or 0) > 0 then
                 local left = e.timeLeft / 1000
                 local key = weapon.slot .. ":" .. (e.enchantType or 0)
@@ -535,13 +515,13 @@ local function EnchantButton(holder, i)
     b:EnableMouse(true)
     b:SetScript("OnEnter", function(self)
         if not self.enchant then return end
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+        ns.OwnGameTooltip(self, "ANCHOR_BOTTOMLEFT")
         GameTooltip:SetInventoryItem("player", self.enchant.weapon.inv)
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    -- no right-click cancel: removing a weapon enchant is a Blizzard-only action in Forever (blocked for
-    -- addons, and the secure cancelaura route reads a CANCELABLE_ITEMS table Forever never defines)
+    -- no right-click cancel: blocked for addons on Forever, and the secure cancelaura route reads a
+    -- CANCELABLE_ITEMS table Forever never defines
     holder.enchants[i] = b
     return b
 end
@@ -556,7 +536,14 @@ local function EnchantTimer(holder)
     end
 end
 
--- the cells the container is moved along by (set by LayoutKind, out of combat)
+local function EnchantOnUpdate(self, elapsed)
+    self.enchantTick = (self.enchantTick or 0) + elapsed
+    if self.enchantTick < 0.5 then return end
+    self.enchantTick = 0
+    EnchantTimer(self)
+end
+
+-- Shifts the container by one cell per enchant (out of combat only)
 local function PlaceContainer(holder, kdb, corner, width)
     local container = holder.container
     local n = (not LEM:IsInEditMode() and holder.activeEnchants) or 0
@@ -597,14 +584,9 @@ local function UpdateEnchants(kind)
             b:Hide()
         end
     end
-    holder:SetScript("OnUpdate", #list > 0 and function(self, elapsed)
-        self.enchantTick = (self.enchantTick or 0) + elapsed
-        if self.enchantTick < 0.5 then return end
-        self.enchantTick = 0
-        EnchantTimer(self)
-    end or nil)
+    holder:SetScript("OnUpdate", #list > 0 and EnchantOnUpdate or nil)
     EnchantTimer(holder)
-    -- the container makes room for them once combat allows
+    -- the container makes room once combat allows
     if #list ~= (holder.activeEnchants or 0) then
         holder.activeEnchants = #list
         if InCombatLockdown() then
@@ -652,7 +634,7 @@ local function LayoutKind(kind)
     local key = kind .. holder.generation
     local ok, err = pcall(container.AddAuraGroup, container, key, KINDS[kind].filter, {
         maxFrameCount = kdb.max or 32,
-        -- in the order they were gained; the container compares the ids, never our code
+        -- gain order; the container compares the ids, never addon code
         sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.AuraInstanceIDOnly,
         initializeFrame = function(button) StyleButton(button, look); HookButton(button, look) end,
         layout = layout,
@@ -672,7 +654,7 @@ local function LayoutKind(kind)
 end
 
 --------------------------------------------------
--- 7. POSITION (per Edit Mode layout)
+-- 8. POSITION (per Edit Mode layout)
 --------------------------------------------------
 local function GetLayoutStore(layoutName)
     local db = GetDb()
@@ -700,7 +682,7 @@ local function OnFrameMoved(holder, layoutName, point, x, y)
 end
 
 --------------------------------------------------
--- 8. EDIT MODE SETTINGS
+-- 9. EDIT MODE SETTINGS
 --------------------------------------------------
 local GROW_VALUES = {
     { text = L["Left"],  value = "LEFT",  isRadio = true },
@@ -739,7 +721,7 @@ local function BuildSettings(kind)
 end
 
 --------------------------------------------------
--- 9. BLIZZARD'S FRAMES (parked for the session)
+-- 10. BLIZZARD'S FRAMES (parked for the session)
 --------------------------------------------------
 local function HideBlizzard(name)
     local frame = _G[name]
@@ -754,7 +736,7 @@ local function HideBlizzard(name)
 end
 
 --------------------------------------------------
--- 10. SETUP
+-- 11. SETUP
 --------------------------------------------------
 local function CreateHolder(kind)
     local info = KINDS[kind]

@@ -2,8 +2,8 @@ local _, ns = ...
 local S = ns.Settings
 
 --------------------------------------------------
--- QUEST TRACKER (Modules/ObjectiveTracker.lua). Fixed, no option: quest levels shown; no
--- auto-minimize in the open world or in cities.
+-- QUEST TRACKER
+-- Settings for Modules/ObjectiveTracker.lua.
 --------------------------------------------------
 local function Refresh()
     if ns.ObjectiveTracker and ns.ObjectiveTracker.Refresh then ns.ObjectiveTracker:Refresh() end
@@ -13,20 +13,16 @@ local function Holder() return _G.FlareUI_ObjectiveTracker end
 
 S:Module{ key = "qt", group = "Info", order = 25, enabled = "objectivetracker.enabled", editMode = Holder, tabs = { { key = "settings" }, { key = "fonts" } } }
 
--- on this page the tracker shows (Edit Mode's sample quests when nothing is tracked), so Frame
--- Opacity can be seen
+-- the tracker stays shown on this page (sample quests when empty) so Frame Opacity can be seen
 S:On("PageShown", function(key)
     if ns.ObjectiveTracker and ns.ObjectiveTracker.SetSettingsPreview then ns.ObjectiveTracker:SetSettingsPreview(key == "qt") end
 end)
 
--- how dark the background is (0.5 by default)
 S:Row{ key = "qt.opacity", kind = "choice", path = "objectivetracker.opacity", choices = S:OpacityChoices(), apply = Refresh }
 S:Row{ key = "qt.border", kind = "choice", path = "objectivetracker.borderTexture", choices = S.BorderChoices,
     apply = Refresh }
 
--- By zone: the zone you are in first, the other zones by their nearest quest.
--- By distance: the nearest quest first, whatever its zone.
--- By level: the lowest level quest first, whatever its zone.
+-- one choice over three saved flags: zone (current zone first), distance, level
 S:Row{
     key = "qt.sort", kind = "choice", choices = { "zone", "distance", "level" }, apply = Refresh,
     get = function()
@@ -40,7 +36,6 @@ S:Row{
     end,
 }
 
--- Display: what the tracker shows, two to a line
 local function Display(key, path)
     S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, apply = Refresh, section = "qt.display", half = true }
 end
@@ -52,7 +47,7 @@ Display("recipes", "showRecipes")
 Display("count", "showCount")
 Display("hideEmpty", "hideEmpty")
 
--- Minimize: to a lone + button, in instances (dungeon, raid, battleground, arena), and in combat
+-- Minimize: one switch sets every instance type
 local INSTANCES = { "dungeon", "raid", "pvp", "arena" }
 S:Row{
     key = "qt.minimizeButton", apply = Refresh,
@@ -74,7 +69,6 @@ S:Row{
     set = function(on) S:SetPath("objectivetracker.autoMinimize.combat", on and "minimize" or "none") end,
 }
 
--- the key that minimizes and expands it (Bindings.xml), last in the section
 local trackerKey = S:BindingAccessors("FLAREUI_TRACKER")
 S:Row{ key = "qt.minimizeKey", kind = "keybind", get = trackerKey.get, set = trackerKey.set, section = "qt.minimizeIn" }
 

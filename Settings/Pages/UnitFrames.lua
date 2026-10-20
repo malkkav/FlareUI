@@ -2,11 +2,11 @@ local _, ns = ...
 local S = ns.Settings
 
 --------------------------------------------------
--- UNIT FRAMES (Modules/UnitFrames.lua, PartyFrames.lua, RaidFrames.lua, BossFrames.lua). Each frame is a row with its switch and
--- Edit; size, texts, portrait, auras and icons are set in Edit Mode. Frames are made at login, so
--- switching one asks for a reload. Class colours and the aura look apply to every frame.
+-- UNIT FRAMES
+-- One switch + Edit row per frame (unit, party, raid, boss); frames are made at login, so switching
+-- asks for a reload. Look options apply to every frame; the rest is in Edit Mode.
 --------------------------------------------------
--- UnitFrames:Refresh passes the change on to the party, raid and boss frames and the resource bars
+-- UnitFrames:Refresh also refreshes party, raid, boss and resource bars
 local function Refresh()
     if ns.UnitFrames and ns.UnitFrames.Refresh then ns.UnitFrames:Refresh() end
 end
@@ -21,12 +21,12 @@ end
 S:Module{
     key = "uf", group = "HUD", order = 20, enabled = "unitframes.enabled",
     tabs = { { key = "settings" }, { key = "fonts" } },
-    -- the frames of the one Player / Pet / Target / Focus row: each dialog gets the FlareUI settings button
+    -- the frames behind the shared Player / Pet / Target / Focus row
     editFrames = {
         function() return _G.FlareUI_UF_Player end, function() return _G.FlareUI_UF_Target end,
         function() return _G.FlareUI_UF_Focus end, function() return _G.FlareUI_UF_Pet end,
     },
-    -- the header button opens Edit Mode on the first frame that is on
+    -- the header button opens Edit Mode on the first frame that exists
     editMode = function()
         for _, name in ipairs({ "FlareUI_UF_Player", "FlareUI_UF_Target", "FlareUI_UF_Focus", "FlareUI_Party", "FlareUI_Boss" }) do
             if _G[name] then return _G[name] end
@@ -34,8 +34,7 @@ S:Module{
     end,
 }
 
--- Frames. Player, pet, target and focus go together: one switch for the four (Edit opens the
--- player frame)
+-- one switch for player, pet, target and focus (Edit opens the player frame)
 local MAIN_UNITS = { "player", "pet", "target", "focus" }
 S:Row{
     key = "uf.main", kind = "frame", reload = true, half = true,
@@ -52,10 +51,7 @@ Frame("party", "unitframes.party.enabled", "FlareUI_Party")
 Frame("raid", "unitframes.raid.enabled", "FlareUI_Raid")
 Frame("boss", "unitframes.boss.enabled", "FlareUI_Boss")
 
--- Look: every frame, party frames and the resource health bar included
--- The player, target and focus frames' look: Forever Style (the bronze ring on Forever's frame
--- plate), FlareUI Style (the ring beside FlareUI's bars, the default) or Addon Style (no ring). Each
--- style keeps its own whole unit frames setup (UnitFramesRing.lua), loaded on the reload.
+-- each style keeps its own unit frames setup (UnitFramesRing.lua), loaded on reload
 S:Row{
     key = "uf.frameStyle", kind = "choice", reload = true, choices = { "flareui", "forever", "addon" },
     get = function() return ns.UFRing and ns.UFRing.Style() or "addon" end,
@@ -63,7 +59,6 @@ S:Row{
         if ns.UFRing then ns.UFRing.SetStyle(value) end
     end,
 }
--- the bars' colours: FlareUI's tones or Blizzard's bright originals
 S:Row{
     key = "uf.palette", kind = "choice", path = "unitframes.palette", choices = { "flareui", "blizzard" },
     apply = function()
@@ -71,7 +66,7 @@ S:Row{
         Refresh()
     end,
 }
--- the player and pet frames show in combat, or while the mouse is over either of them
+-- player and pet frames fade out of combat unless moused over
 S:Row{
     key = "uf.hidePlayer", apply = Refresh,
     get = function() return ns.UnitFrames and ns.UnitFrames.GetPlayerShow and ns.UnitFrames:GetPlayerShow() == "fade" or false end,

@@ -3,11 +3,11 @@ local L = ns.L
 local S = ns.Settings
 
 --------------------------------------------------
--- PROFILES (under About, at the top of the list): switch, make, duplicate or delete a profile;
--- reset FlareUI. A switch reloads the UI (Core.lua OnProfileChanged). Sync Blizz UI lives in
--- Quality of Life.
+-- PROFILES
+-- Switch, create, duplicate or delete a profile, and reset FlareUI. A profile switch asks for a
+-- reload (Core.lua OnProfileChanged).
 --------------------------------------------------
--- a new profile's name: trimmed, not empty and not one already in use (SetProfile would switch to it)
+-- a trimmed, unused profile name or nil (SetProfile on an existing name would switch to it)
 local function FreeName(text)
     text = text and strtrim(text) or ""
     if text == "" or not ns.db then return nil end
@@ -33,7 +33,7 @@ ns.Dialogs["FLAREUI_NEW_PROFILE"] = {
     hideOnEscape = true,
 }
 
--- the copy starts with the settings of the profile in use, then becomes the one in use
+-- the copy takes the current profile's settings and becomes current
 ns.Dialogs["FLAREUI_DUPLICATE_PROFILE"] = {
     text = L["Name the copy of |cffffff00%s|r."],
     button1 = L["Duplicate"],
@@ -70,7 +70,7 @@ local function Profiles()
     return list
 end
 
--- the profiles other than the one in use: the ones that can be deleted
+-- the profiles that can be deleted (all but the current one)
 local function Others()
     local list, current = {}, ns.db and ns.db:GetCurrentProfile()
     for _, p in ipairs(Profiles()) do
@@ -80,13 +80,11 @@ local function Others()
 end
 
 S:Module{
-    key = "adv", group = "top", order = 2,   -- right under About
-    navIcon = "Interface\\Icons\\INV_Misc_Note_01", navIconRound = true,   -- a note of saved settings
+    key = "adv", group = "top", order = 2,
+    navIcon = "Interface\\Icons\\INV_Misc_Note_01", navIconRound = true,
 }
 
--- The profile in use on its own line, and under it what can be done with profiles, as one block of
--- the same width: New (from defaults), Duplicate (from the one in use), Delete (a menu of the
--- profiles that can go, not the one in use, then a question).
+-- the profile dropdown spans the width of the New / Duplicate / Delete buttons under it
 local BUTTON_W, BUTTON_GAP = 108, 6
 
 S:Row{
@@ -116,6 +114,5 @@ S:Row{
     },
 }
 
--- Reset, alone at the bottom
 S:Row{ key = "adv.reset", kind = "button", center = true, section = "adv.reset",
     apply = function() ns.ShowDialog("FLAREUI_RESET") end }

@@ -3,8 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- XP BAR
--- FlareUI's XP bar in place of Blizzard's status tracking bars: XP, reputation or honor in two
--- sections, placed in Edit Mode. Loads with the Action Bars module.
+-- Replaces Blizzard's status tracking bars: XP, reputation or honor in two sections, placed in
+-- Edit Mode. Loads with the Action Bars module.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -50,7 +50,7 @@ local function GetTexture()
     return LSM:Fetch("statusbar", name) or "Interface\\Buttons\\WHITE8x8"
 end
 
--- Bar Texture's choices: FlareUI's bars, then a divider and other addons' (as every FlareUI frame)
+-- "Bar Texture" choices: FlareUI's bars, a divider, then other addons'
 local function TextureValues()
     local values = {}
     for _, name in ipairs({ "FlareUI Flat", "FlareUI Forever", "FlareUI Striped" }) do
@@ -74,11 +74,9 @@ end
 
 --------------------------------------------------
 -- 5. THE FLAREUI XP BAR
--- Two sections in one border, meeting under Blizzard's rested pip; Blizzard's bars are hidden.
---   Below max level   left: XP              right: the watched reputation, or Honor without one
---   At max level      left: the reputation   right: Honor
--- An empty section gives its room to the other; with nothing to show the bar hides. Values are
--- read as Blizzard_StatusTrackingBar reads them.
+-- Two sections in one border under Blizzard's rested pip. Below max level: XP, then the watched
+-- reputation or Honor; at max level: reputation, then Honor. An empty section yields its room;
+-- values are read as Blizzard_StatusTrackingBar reads them.
 --------------------------------------------------
 local FLARE_NAME    = "FlareUI_XPBar"
 local FLARE_LABEL   = "FlareUI XP Bar"
@@ -94,7 +92,7 @@ local STANDING_BY_REACTION = { "FACTION_RED_COLOR", "FACTION_RED_COLOR", "FACTIO
 local flare                                    -- the bar frame
 local LEM
 
--- A section's text: current / max, as Blizzard's bars show it (shown on mouseover)
+-- "current / max", as Blizzard's bars show it
 local function FormatValues(value, maxValue)
     return ("%s / %s"):format(BreakUpLargeNumbers(value), BreakUpLargeNumbers(maxValue))
 end
@@ -165,7 +163,7 @@ function Read.honor()
     }
 end
 
--- Blizzard's bar manager's tests (CanShowBar)
+-- Blizzard's bar manager tests (CanShowBar)
 local function WatchedReputation()
     local data = C_Reputation.GetWatchedFactionData()
     if data and data.name and data.name ~= "" and data.factionID and data.factionID ~= 0 then return data end
@@ -181,7 +179,7 @@ local function ShowsXP()
     return not IsXPUserDisabled() and not (GameRulesUtil and GameRulesUtil.IsPlayerAtEffectiveMaxLevel())
 end
 
--- The two sections' contents (nil = nothing to show there)
+-- The two sections' contents (nil = nothing to show)
 local function PickSections()
     local rep, honor = WatchedReputation(), TracksHonor()
     if ShowsXP() then
@@ -208,7 +206,7 @@ local function CreateSection(parent)
     track:SetAllPoints()
     section.Track = track
 
-    -- rested XP: from the left edge to where the bonus would take the fill, under the fill
+    -- rested XP: from the left edge to where the bonus would take the fill
     local rested = section:CreateTexture(nil, "BORDER")
     rested:SetPoint("TOPLEFT")
     rested:SetPoint("BOTTOMLEFT")
@@ -224,7 +222,7 @@ local function CreateSection(parent)
     text:SetWordWrap(false)
     section.Text = text
 
-    -- the numbers on mouseover (no tooltip)
+    -- the numbers on mouseover
     section:SetScript("OnEnter", function(self)
         local db = GetDb()
         if not (db and db.textMode == "ALWAYS") then self.Text:Show() end
@@ -323,7 +321,7 @@ local function OnFlareMoved(_, layoutName, point, x, y)
     store.point, store.x, store.y = point, math.floor(x + 0.5), math.floor(y + 0.5)
 end
 
--- Blizzard's bars stay hidden while ours is on: a state driver, plus a Show hook for Edit Mode
+-- A state driver plus a Show hook (Edit Mode) keep Blizzard's bars hidden
 local function KeepBlizzardBarsHidden()
     for _, name in ipairs({ "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer" }) do
         local frame = _G[name]

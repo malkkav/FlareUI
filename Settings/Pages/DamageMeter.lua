@@ -2,8 +2,8 @@ local _, ns = ...
 local S = ns.Settings
 
 --------------------------------------------------
--- DAMAGE METER (Modules/DamageMeter.lua). Fixed, no option: the Threat tab. The threat toggle key is
--- a key binding (Bindings.xml), bound here or in Blizzard's Key Bindings.
+-- DAMAGE METER
+-- Settings for Modules/DamageMeter.lua; the threat key is a Bindings.xml binding.
 --------------------------------------------------
 local function Refresh()
     if ns.DamageMeter and ns.DamageMeter.Refresh then ns.DamageMeter:Refresh() end
@@ -16,7 +16,7 @@ end
 S:Module{
     key = "dm", group = "Info", order = 20, enabled = "damagemeter.enabled",
     tabs = { { key = "settings" }, { key = "fonts" } },
-    -- FlareUI's meter shows Blizzard's: it needs Blizzard's "Enable Damage Meter" on
+    -- FlareUI's meter restyles Blizzard's, which needs "Enable Damage Meter" on
     banner = function()
         if BlizzardMeterOn() then return nil end
         return S:ModuleText("dm", "banner"), S:ModuleText("dm", "bannerButton"), function()
@@ -26,15 +26,13 @@ S:Module{
     end,
 }
 
--- on this page the meter shows, whatever its visibility, so Frame Opacity can be seen
+-- the meter stays shown on this page so Frame Opacity can be seen
 S:On("PageShown", function(key)
     if ns.DamageMeter and ns.DamageMeter.SetSettingsPreview then ns.DamageMeter:SetSettingsPreview(key == "dm") end
 end)
 
--- how dark the background is (0.5 by default)
 S:Row{ key = "dm.opacity", kind = "choice", path = "damagemeter.opacity", choices = S:OpacityChoices(), apply = Refresh, section = "dm.frame" }
 
--- when the meter shows (FlareUI's, over Blizzard's Edit Mode one), and the mouseover while it hides
 local function ApplyVisibility()
     if ns.DamageMeter and ns.DamageMeter.ApplyVisibility then ns.DamageMeter:ApplyVisibility() end
 end
@@ -46,7 +44,6 @@ S:Row{ key = "dm.fadeSpeed", kind = "choice", path = "damagemeter.fadeSpeed", ch
 S:Row{ key = "dm.border", kind = "choice", path = "damagemeter.borderTexture", choices = S.BorderChoices,
     apply = Refresh, section = "dm.frame" }
 
--- Tweaks, two to a line; the threat key on a line of its own below
 S:Row{ key = "dm.mouseover", path = "damagemeter.showOnMouseover", apply = ApplyVisibility,
     disabled = AlwaysVisible, section = "dm.tweaks", half = true }
 S:Row{ key = "dm.matchChat", path = "damagemeter.matchChatSize", apply = Refresh, section = "dm.tweaks", half = true,

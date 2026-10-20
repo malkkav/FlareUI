@@ -2,9 +2,9 @@ local _, ns = ...
 local S = ns.Settings
 
 --------------------------------------------------
--- ABOUT: top of the list. A page of its own (module.custom): the thank-you and the links, the
--- credits, and the slash commands in a box at the bottom. The rows below are never drawn (search
--- skips text rows); the page reads their texts from the copy.
+-- ABOUT
+-- A custom page: thanks and links, credits, and the slash commands. Its text rows are never drawn;
+-- the page reads their copy.
 --------------------------------------------------
 local CREDIT_LINKS = {
     clari = "https://clariturela.itch.io/",
@@ -12,8 +12,7 @@ local CREDIT_LINKS = {
     sampconradGitHub = "https://github.com/sampconrad",
 }
 
--- the networks under the thank-you. icon: a texture, grey until pointed at; without one the
--- button shows the name. A link that is not known yet (nil) is left out.
+-- buttons under the thanks: an icon (grey until hovered) or the name; a nil url is skipped
 local NETWORKS = {
     { name = "CurseForge", url = "https://www.curseforge.com/wow/addons/flareui" },
     { name = "Wago.io", url = "https://addons.wago.io/addons/flareui" },
@@ -90,10 +89,8 @@ local function NetworkButton(host, net)
 end
 
 local function Build(host)
-    -- thank you, and where to write
     local thanksTitle = Section(host, S:SectionText("about.yourFriendlyUiOverhowl"), nil, -8)
     local thanks = Body(host, S:Text("about.thanks", "text", true), thanksTitle, -12)
-    -- the link note: grey and small, in brackets, right under the thank-you
     local linksNote = Body(host, "(" .. (S:Text("about.links", "text", true) or "") .. ")", thanks, -4, "GameFontDisableSmall")
 
     local first, previous
@@ -109,7 +106,7 @@ local function Build(host)
         end
     end
 
-    -- credits: the names are links, a click shows them to copy
+    -- credit names become links that open a copy box
     local creditsTitle = Section(host, S:SectionText("about.credits"), first or linksNote, -22)
     local credits = S:Text("about.credits", "text", true) or ""
     credits = credits:gsub("|cffffd100Clari Turela|r", Link("Clari Turela", CREDIT_LINKS.clari))
@@ -122,7 +119,7 @@ local function Build(host)
         if url then CopyLink(url) end
     end)
 
-    -- slash commands, in a small box at the bottom
+    -- slash commands box at the bottom
     local box = CreateFrame("Frame", nil, host)
     box:SetPoint("BOTTOMLEFT", 0, 8)
     box:SetPoint("BOTTOMRIGHT", 0, 8)
@@ -148,7 +145,7 @@ end
 
 S:Module{
     key = "about", group = "top", order = 1,
-    navIcon = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png",   -- the dog
+    navIcon = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png",
     custom = { key = "main", custom = Build },
 }
 

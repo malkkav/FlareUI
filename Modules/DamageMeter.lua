@@ -3,9 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- DAMAGE METER
--- Blizzard's damage meter in FlareUI's look: skinned windows, header and fonts, group buttons
--- (ready check, countdown), a Threat tab, a live combat timer, the chat's size, and FlareUI's own
--- visibility with show on mouseover.
+-- Blizzard's damage meter in FlareUI's look: skin, header, fonts, group buttons, a Threat tab, a
+-- live combat timer, chat-size matching and FlareUI's own visibility with show on mouseover.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -47,7 +46,7 @@ local CONTENT_TOP     = 34
 local ROW_CENTER_Y    = -15
 local TITLE_LEFT      = 17   -- chat: 10 px tab-bar offset + 7 px button padding
 local ICON_SIZE       = 13   -- nominal box, used for layout maths
--- draw sizes that make each glyph ~10-11 px tall, like the chat header icons (the art has padding)
+-- draw sizes giving ~10-11 px glyphs like the chat header icons (the art has padding)
 local ICON_DRAW_SIZE  = { settings = 16, segments = 11, ready = 16, countdown = 12 }
 -- the gear sits high in its texture
 local ICON_DRAW_YOFS  = { settings = -2.5, segments = 0 }
@@ -63,9 +62,8 @@ end
 
 --------------------------------------------------
 -- 4. HELPERS
--- Never hook SetSessionDuration, the window's SetMinimized or the entries' Init / UpdateValue: they
--- run in secure code with secret values, and styling there taints it. Everything is applied from
--- Refresh(), out of combat and outside Edit Mode.
+-- Never hook SetSessionDuration, SetMinimized or the entries' Init / UpdateValue: secure code with
+-- secret values that styling taints. Everything is applied from Refresh(), out of combat.
 --------------------------------------------------
 local function GetDb()
     if not ns.db or not ns.db.profile or not ns.db.profile.damagemeter then
@@ -111,8 +109,8 @@ local function IsEditModeActive()
     return _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
 end
 
--- Settings > Damage Meter open: the meter shows whatever its visibility (Frame Opacity can be seen).
--- Blizzard re-checks its visibility on combat and group changes, so it is kept shown after each.
+-- Settings > Damage Meter open: the meter stays shown whatever its visibility, also after Blizzard's
+-- re-checks on combat and group changes.
 function DamageMeter:SetSettingsPreview(on)
     local meter = _G.DamageMeter
     on = on and true or false
@@ -226,7 +224,6 @@ local function UpdateSkinFrame(window, db)
     ns.CopyStrata(skin, window)
     skin:SetFrameLevel(math_max((window:GetFrameLevel() or 1) - 1, 0))
 
-    -- the chat frame's look: Blizzard's dark dialog background inside the chosen border
     local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
     local borderTexture = GetBorderFile(db)
     skin:SetBackdrop({ bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = ns.BorderEdgeSize(borderTexture, 16), insets = { left = 3, right = 3, top = 3, bottom = 3 } })
@@ -410,7 +407,6 @@ local function ApplyHeader(window, db)
     if sessionDropdown then sessionDropdown:Show() end
     if settingsDropdown then settingsDropdown:Show() end
 
-    -- laid out like the chat header
     if not InCombatLockdown() then
         SafeCall(function()
             local dd = GetWindowTypeDropdown(window)
@@ -436,7 +432,6 @@ local function ApplyHeader(window, db)
                 dd:SetPoint("TOPLEFT", ref, "TOPLEFT", 0, 0)
                 dd:SetPoint("BOTTOMRIGHT", ref, "TOPRIGHT", -(ICON_RIGHT + iconsWidth + 8), -HEADER_HEIGHT)
             end
-            -- the timer sits at the right end of the title row, just left of the icons
             local timer = GetWindowSessionTimer(window)
             if timer and timer.ClearAllPoints then
                 timer:ClearAllPoints()
@@ -452,7 +447,6 @@ local function ApplyHeader(window, db)
         end)
     end
 
-    -- the list fills the skin below the header
     local function ApplyScrollBoxAnchors()
         local sb = GetWindowScrollBox(window)
         if sb and not InCombatLockdown() and GetDb() then
@@ -671,10 +665,8 @@ local function ApplyBarFont(entry, db)
     end
 end
 
--- Blizzard makes and sets up a row for each new name on the meter (a group member joining, a new
--- spell) and calls its SetTextScale each time: the bar font follows there, so rows made after the
--- last refresh have it too. Hooked on Blizzard's row mixin (rows made from now on) and on each row
--- styled before.
+-- Blizzard calls SetTextScale on every row it sets up, so the bar font is re-applied there: hooked
+-- on the row mixin (rows made later) and on each row styled before.
 local function RestyleEntry(entry)
     local db = GetDb()
     if db and db.enabled and db.barFont then ApplyBarFont(entry, db) end
@@ -716,8 +708,8 @@ end
 --------------------------------------------------
 -- 15. UNCLAMP
 --------------------------------------------------
--- The window can be dragged past the screen edge, like the chat. Something re-clamps it in Edit
--- Mode, so later clamps are undone, and the Edit Mode selection is unclamped too.
+-- The window may be dragged past the screen edge, like the chat. Edit Mode re-clamps it, so later
+-- clamps are undone.
 local function Unclamp(frame)
     if not frame or frame:IsForbidden() then return end
     frame:SetClampedToScreen(false)
@@ -741,11 +733,9 @@ end
 
 --------------------------------------------------
 -- 16. THREAT TAB
--- A second view beside Blizzard's meter type in the title row. Left-click picks a tab; a hit area
--- over Blizzard's title passes right-clicks through, so Blizzard's own code opens its type menu.
--- The list is FlareUI's (Blizzard's is secure code): the group sorted by threat on your target, in
--- rows from Blizzard's entry template. You always keep a row. Where threat is secret, the view
--- says so.
+-- A second view beside Blizzard's meter type in the title row. A hit area over Blizzard's title
+-- passes right-clicks through to its type menu. Blizzard's list is secure code, so the threat list
+-- is FlareUI's own, in rows from Blizzard's entry template; the player always keeps a row.
 --------------------------------------------------
 local TAB_GAP       = 14
 local TAB_INACTIVE  = { r = 0.56, g = 0.51, b = 0.46, a = 1 }   -- #8F8275, the chat's unselected tab
@@ -870,7 +860,8 @@ local function FillRow(row, data, top, window, db, index, height, spacing)
     row:SetTextScale(window.GetTextScale and window:GetTextScale() or 1)
     row:SetShowBarIcons(window.ShouldShowBarIcons and window:ShouldShowBarIcons() or false)
     row:SetStyle(window.GetStyle and window:GetStyle() or Enum.DamageMeterStyle.Default)
-    ApplyBarFont(row, db)
+    -- the SetTextScale hook has already restyled the font
+    if not DamageMeter.FlareUI_EntryHooked then ApplyBarFont(row, db) end
 
     local bar = row:GetStatusBar()
     bar:SetMinMaxValues(0, top > 0 and top or 1)
@@ -916,7 +907,7 @@ local function UpdateThreatView(window, view)
         end
     end
 
-    -- past the last row, the last row is yours
+    -- past capacity, the last row shows the player
     local shown = {}
     for i = 1, math_min(#list, capacity) do shown[i] = list[i] end
     if #list > capacity then
@@ -979,9 +970,8 @@ local function SetView(window, showThreat)
     WatchThreat()
 end
 
--- The player's pick (the Threat tab, the meter's title or the toggle key) is kept in the profile:
--- the meter stays on it, after a reload too, until the player picks the other. Only Threat View in
--- Combat switches on its own, and after the fight it goes back to the pick.
+-- The player's pick is kept in the profile; only Threat View in Combat switches on its own, and
+-- goes back to the pick after the fight.
 local function ThreatPicked()
     local db = GetDb()
     return db and db.threatView and true or false
@@ -993,8 +983,7 @@ local function PickView(window, showThreat)
     SetView(window, showThreat)
 end
 
--- The threat key flips every window: what is on screen (Threat View in Combat may be showing threat
--- over a damage pick)
+-- The threat key flips every window from what is on screen, not from the saved pick
 local function ToggleThreatViews()
     local showing = false
     for _, view in pairs(views) do if view.showing then showing = true end end
@@ -1068,12 +1057,16 @@ local liveTimers = {}            -- session window -> FlareUI's timer text
 local combatStart
 local timerDriver = CreateFrame("Frame")
 timerDriver:Hide()
-local timerElapsed = 0
+local timerElapsed, timerSecond = 0, nil
 timerDriver:SetScript("OnUpdate", function(_, elapsed)
     timerElapsed = timerElapsed + elapsed
     if timerElapsed < 0.1 then return end
     timerElapsed = 0
-    local text = ("[%s] "):format(SecondsToClock(GetTime() - (combatStart or GetTime())))
+    -- the text changes once a second
+    local second = math.floor(GetTime() - (combatStart or GetTime()))
+    if second == timerSecond then return end
+    timerSecond = second
+    local text = ("[%s] "):format(SecondsToClock(second))
     for _, fs in pairs(liveTimers) do fs:SetText(text) end
 end)
 
@@ -1085,7 +1078,7 @@ local function UpdateLiveTimers()
         fs:SetShown(live)
         if blizzard then blizzard:SetAlpha(live and 0 or 1) end
     end
-    timerElapsed = 1
+    timerElapsed, timerSecond = 1, nil
     timerDriver:SetShown(live)
 end
 
@@ -1094,8 +1087,8 @@ local timerEvents = CreateFrame("Frame")
 timerEvents:SetScript("OnEvent", function(_, event)
     combatStart = event == "PLAYER_REGEN_DISABLED" and GetTime() or nil
     UpdateLiveTimers()
-    -- Threat View in Combat. Back to the damage view after a fight: if the meter is fading out by
-    -- then, only once it has faded (the emptied threat view fades, not a flash of damage bars)
+    -- Threat View in Combat. After a fight a fading meter switches back only once faded (no flash of
+    -- damage bars)
     local db = GetDb()
     if not (db and db.enabled and db.autoThreat) then return end
     DamageMeter.viewBackPending = nil
@@ -1198,7 +1191,6 @@ end
 -- every chat resize. FlareUI's chat only; out of combat only.
 --------------------------------------------------
 local matchSizing = false
-local hookedChatSource
 
 local function ChatSizeSource()
     local chat = _G.ChatFrame1
@@ -1231,8 +1223,8 @@ local function HookChatSize()
         hooksecurefunc(meter, "SetSize", MatchChatSize)
     end
     -- the chat's skin arrives with the Chat module, after ChatFrame1 itself
-    if source ~= hookedChatSource then
-        hookedChatSource = source
+    if not source.FlareUI_DMSizeHooked then
+        source.FlareUI_DMSizeHooked = true
         source:HookScript("OnSizeChanged", MatchChatSize)
     end
 end
@@ -1267,7 +1259,6 @@ function DamageMeter:Refresh()
         self:ApplyToWindow(window)
     end
     HookChatSize()
-    -- Match chat size switched off: Edit Mode's own Frame Width / Height again
     if db.matchChatSize then
         MatchChatSize()
         self.sizeMatched = true
@@ -1306,12 +1297,9 @@ end
 
 --------------------------------------------------
 -- 22. VISIBILITY AND SHOW ON MOUSEOVER (Settings > Damage Meter)
--- FlareUI's own visibility, applied after each of Blizzard's checks: it overrules the meter's Edit Mode
--- dropdown (a preset layout, such as the one Blizzard picks when gamepad mode ends, cannot save that
--- one). Show on Mouseover: while the visibility hides the meter, it stays up but invisible and shows
--- under the mouse. Every show and hide fades at the Fade Speed (instant, fast, slow): one driver moves
--- the meter's alpha to its target and hides the meter once a fade out ends. Blizzard's own switch for
--- the meter (off) still hides it at once.
+-- Applied after each of Blizzard's checks, overruling the Edit Mode dropdown (preset layouts cannot
+-- save it). Show on Mouseover keeps a hidden meter up at alpha 0 until hovered. One driver fades the
+-- alpha at the Fade Speed and hides the meter after a fade out.
 --------------------------------------------------
 local VISIBILITY = {
     always = function() return true end,
@@ -1323,16 +1311,20 @@ local fadeDriver = CreateFrame("Frame")
 fadeDriver:Hide()
 local fadeTarget, hideWhenFaded = 1, false
 
+-- runs every frame under Show on Mouseover, so the window callback is made once
+local mouseOverWindow = false
+local function CheckWindowMouse(window) if window:IsMouseOver() then mouseOverWindow = true end end
+
 local function MeterUnderMouse(meter)
     if meter:IsMouseOver() then return true end
-    local over = false
+    mouseOverWindow = false
     if type(meter.ForEachSessionWindow) == "function" then
-        meter:ForEachSessionWindow(function(window) if window:IsMouseOver() then over = true end end)
+        meter:ForEachSessionWindow(CheckWindowMouse)
     end
-    return over
+    return mouseOverWindow
 end
 
--- The bags or the quest log (the world map on Forever) open over the meter's place: no reveal then
+-- The bags or the world map (Forever's quest log) open over the meter's place: no reveal then
 local function PanelsInTheWay()
     if _G.WorldMapFrame and _G.WorldMapFrame:IsShown() then return true end
     if _G.ContainerFrameCombinedBags and _G.ContainerFrameCombinedBags:IsShown() then return true end
@@ -1345,10 +1337,8 @@ end
 
 local applying = false
 
--- Showing the meter runs Blizzard's window refresh at once, and in a fight that compares the
--- session's secret duration: from FlareUI's code that throws. So FlareUI only shows it out of
--- combat; during a fight Blizzard's own visibility check shows it, and FlareUI's rule is applied
--- again when the fight ends.
+-- Showing the meter runs Blizzard's refresh, which in a fight compares the secret session duration
+-- and throws from addon code: shown only out of combat, FlareUI's rule re-applied after the fight.
 local showPending = false
 local function InFight()
     if InCombatLockdown() then return true end
@@ -1384,9 +1374,9 @@ local function FadeStep(self, meter, elapsed)
     if time <= 0 then
         alpha = target
     elseif alpha < target then
-        alpha = math.min(target, alpha + elapsed / time)
+        alpha = math_min(target, alpha + elapsed / time)
     else
-        alpha = math.max(target, alpha - elapsed / time)
+        alpha = math_max(target, alpha - elapsed / time)
     end
     meter:SetAlpha(alpha)
     if alpha ~= target then return end
@@ -1416,8 +1406,7 @@ function DamageMeter.FadingOut()
     return fadeTarget == 0
 end
 
--- toward 1 or 0 at the Fade Speed; hide: once it reaches 0
--- the first step now: an instant change lands before the meter draws
+-- Fades toward target (hide: once at 0); the first step runs now, so an instant change lands first
 local function FadeMeter(meter, target, hide)
     fadeTarget, hideWhenFaded = target, hide and true or false
     fadeDriver:Show()
@@ -1437,8 +1426,7 @@ local function ApplyVisibility(meter)
     applying = true
     -- whether the meter was up (shown, not faded out) before Blizzard's check: a fade starts from there
     local wasUp = meter.FlareUI_Up
-    -- Edit Mode open: always up, whether or not Blizzard's own "Damage Meter" box there is ticked
-    -- (only a ticked box puts the meter in its editing state); Blizzard's meter switched off stays off
+    -- Edit Mode open: always up, its "Damage Meter" box ticked or not; Blizzard's switch off stays off
     local editing = (type(meter.IsEditing) == "function" and meter:IsEditing()) or (IsEditModeActive() and MeterAllowed())
     meter.FlareUI_MouseHidden = nil
     if editing or DamageMeter.settingsPreview then
@@ -1493,10 +1481,8 @@ function DamageMeter:SetupMouseover()
     DamageMeter:ApplyVisibility()
 end
 
--- Blizzard's verdict on the meter, then FlareUI's (the settings page changed the visibility or the
--- mouseover, the preview ended). Never meter:UpdateShownState() from here: run by FlareUI, it marks
--- the session timer's state as FlareUI's, and Blizzard's next combat check then trips over the
--- secret fight length (DamageMeterSessionWindow SetSessionDuration).
+-- Blizzard's verdict, then FlareUI's. Never meter:UpdateShownState() from here: run by addon code it
+-- taints the session timer, and Blizzard's next combat check trips over the secret fight length.
 function DamageMeter:ApplyVisibility()
     local meter = _G.DamageMeter
     if not meter then return end

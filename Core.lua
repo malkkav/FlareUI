@@ -3,9 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- CORE
--- FlareUI's namespace and what every module shares: colours, the combo point art, the saved
--- settings (AceDB) and their defaults, utilities, secure frame hiding, window sounds, the shared
--- dialogs and the modules' start-up.
+-- FlareUI's namespace and shared code: colours, combo point art, AceDB defaults, utilities,
+-- secure frame hiding, window sounds, shared dialogs and module start-up.
 --------------------------------------------------
 FlareUI = ns
 ns.modules = {}
@@ -22,18 +21,16 @@ local AceDB = LibStub("AceDB-3.0")
 -- Bronze tint of every FlareUI frame border
 ns.BORDER_COLOR = { r = 0.65, g = 0.49, b = 0.27, a = 1 }   -- #A67D45
 
--- FlareUI's windows (the settings panel, the welcome): the bronze edge and a gradient from a warm
--- dark at the top to near black at the bottom
+-- FlareUI's windows: bronze edge, warm dark top fading to near black
 ns.WINDOW_STYLE = {
     border = { 0.80, 0.60, 0.34 },
     top    = { 0.085, 0.075, 0.060, 1 },
     bottom = { 0.015, 0.015, 0.015, 1 },
 }
 
--- Blizzard's health green and mana blue, toned down a little (rage, energy and the other powers
--- stay Blizzard's). Shared by the unit frames, party frames and resource bars.
+-- Blizzard's health green and mana blue, toned down; other powers keep Blizzard's colours
 ns.HEALTH_GREEN = { 0.15, 0.82, 0.15 }
-ns.MANA_BLUE = { 0.24, 0.34, 1.00 }   -- a violet-leaning blue, clear of the shaman (210°) and mage (193°) class colours
+ns.MANA_BLUE = { 0.24, 0.34, 1.00 }   -- violet-leaning, clear of the shaman and mage class colours
 
 -- A power's bar colour (r, g, b), or nil when Blizzard has none for it
 function ns.PowerColor(token, powerType)
@@ -45,15 +42,37 @@ function ns.PowerColor(token, powerType)
     if c and c.r then return c.r, c.g, c.b end
 end
 
--- Class colours on FlareUI's health bars: one switch for every frame (Unit Frames page)
--- A unit's name on the frames. Forever's UnitName returns the first name and the surname apart; with
--- Full Player Names on (unitframes.fullNames) they are joined as Blizzard joins them
--- (NameUtil.FormatUnitNameForDisplay). A name or surname that is a secret value is left as it is:
--- the first name alone.
-function ns.UnitDisplayName(unit)
+-- An enemy's level colour as Blizzard's target frame has it: the server's difficulty for the unit
+-- (the level formula when that can't be read)
+function ns.LevelDifficultyColor(unit, level)
+    local api = C_PlayerInfo and C_PlayerInfo.GetContentDifficultyCreatureForPlayer
+    if api and GetDifficultyColor and unit then
+        local ok, difficulty = pcall(api, unit)
+        if ok and canaccessvalue(difficulty) and difficulty ~= nil then
+            local color = GetDifficultyColor(difficulty)
+            if color then return color end
+        end
+    end
+    return level and GetQuestDifficultyColor and GetQuestDifficultyColor(level) or nil
+end
+
+-- A level on the frames: friendly units in Blizzard's gold, neutral and hostile ones by difficulty
+local LEVEL_GOLD = { r = 1, g = 0.82, b = 0 }
+function ns.UnitLevelColor(unit, level)
+    local friend = UnitIsFriend("player", unit)
+    if canaccessvalue(friend) and friend then return LEVEL_GOLD end
+    return ns.LevelDifficultyColor(unit, level)
+end
+
+-- A unit's name on the frames. Forever's UnitName returns first name and surname apart; "Full Player
+-- Names" joins them as NameUtil.FormatUnitNameForDisplay does. Party and focus frames show the first
+-- name only outside Forever Style. A secret name or surname leaves the first name alone.
+local SHORT_NAME_FRAMES = { party = true, focus = true }
+function ns.UnitDisplayName(unit, frameKind)
     local name, surname = UnitName(unit)
     local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
     if uf and uf.fullNames == false then return name end
+    if frameKind and SHORT_NAME_FRAMES[frameKind] and not (ns.UFRing and ns.UFRing.PlateOn()) then return name end
     if not (canaccessvalue(name) and canaccessvalue(surname)) then return name end
     if type(name) ~= "string" or type(surname) ~= "string" or surname == "" then return name end
     local consts = Constants and Constants.CharacterNameSeparatorConsts
@@ -61,25 +80,87 @@ function ns.UnitDisplayName(unit)
     return name .. (type(sep) == "string" and sep or " ") .. surname
 end
 
+-- "Focus Boss Debuffs": during an encounter or with a boss unit engaged, only boss and role debuffs
+-- show. Frames can't rebuild auras in combat, so their aura groups are only switched here (allowed
+-- in combat): a "hide" group is disabled, a "filter" group takes the boss / role filter.
+local BossFight = { active = false, frames = setmetatable({}, { __mode = "k" }) }
+ns.BossFight = BossFight
+local BOSS_ONLY = { isBossOrRoleAura = true }
+
+local function InBossFight()
+    local api = C_InstanceEncounter and C_InstanceEncounter.IsEncounterInProgress
+    if api then
+        local ok, inProgress = pcall(api)
+        if ok and canaccessvalue(inProgress) and inProgress then return true end
+    end
+    for i = 1, 5 do
+        local exists = UnitExists("boss" .. i)
+        if canaccessvalue(exists) and exists then return true end
+    end
+    return false
+end
+
+-- f.bossFightLanes: { container, key, mode = "hide" | "filter", base = candidates }
+function BossFight.Apply(f)
+    local recs = f.bossFightLanes
+    if not recs then return end
+    local lem = LibStub and LibStub("FlareEditMode", true)
+    local on = BossFight.active and not (lem and lem:IsInEditMode())
+    local touched = {}
+    for _, rec in ipairs(recs) do
+        local c = rec.container
+        if rec.mode == "hide" then
+            pcall(c.SetAuraGroupEnabled, c, rec.key, not on)
+        else
+            pcall(c.SetAuraGroupCandidateFilters, c, rec.key, on and BOSS_ONLY or rec.base)
+        end
+        touched[c] = true
+    end
+    for c in pairs(touched) do pcall(c.UpdateAllAuras, c) end
+end
+
+-- Called after a frame (re)builds its aura groups, with the ones that switch (or none)
+function BossFight.Track(f, recs)
+    f.bossFightLanes = (recs and #recs > 0) and recs or nil
+    BossFight.frames[f] = f.bossFightLanes and true or nil
+    if f.bossFightLanes then BossFight.Apply(f) end
+end
+
+do
+    local events = CreateFrame("Frame")
+    for _, event in ipairs({ "ENCOUNTER_START", "ENCOUNTER_END", "INSTANCE_ENCOUNTER_ENGAGE_UNIT",
+                             "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED" }) do
+        pcall(events.RegisterEvent, events, event)
+    end
+    events:SetScript("OnEvent", function(_, event)
+        local active
+        if event == "ENCOUNTER_START" then active = true
+        elseif event == "ENCOUNTER_END" then active = false
+        else active = InBossFight() end
+        if active == BossFight.active then return end
+        BossFight.active = active
+        for f in pairs(BossFight.frames) do BossFight.Apply(f) end
+    end)
+end
+
+-- Class colours on health bars: one switch for every frame
 function ns.ClassColorsOn()
     local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
     return not uf or uf.classColor ~= false
 end
 
--- A built combo point on the segmented bars (resource bar, target frame strip), and the one-pixel
--- line between segments
+-- A built combo point on segmented bars, and the one-pixel line between segments
 ns.COMBO_COLOR = { 1.00, 0.30, 0.18 }
 ns.SEGMENT_LINE_COLOR = { 0, 0, 0, 1 }
 
 --------------------------------------------------
 -- 3. COMBO POINTS AND SEGMENTS
--- The art is the player-frame sheet, 128 px square. Parts are sheet pixels (left, right, top,
--- bottom). The socket is desaturated and tinted bronze; the shine is drawn on black, so it uses the
--- ADD blend.
+-- Parts are pixels (left, right, top, bottom) of the 128 px player-frame sheet. The shine is drawn
+-- on black, so it uses the ADD blend.
 --------------------------------------------------
 local COMBO_FILE  = "Interface\\PlayerFrame\\ClassOverlayComboPoints"
 local COMBO_SHEET = 128
-local COMBO_RIM   = { 0.80, 0.60, 0.34 }   -- #CC9957, the tooltip / XP bar border bronze
+local COMBO_RIM   = { 0.80, 0.60, 0.34 }   -- #CC9957
 local COMBO_PARTS = {
     socket = { 28, 50, 65, 87 },
     gem    = { 3, 19, 79, 95 },
@@ -88,8 +169,8 @@ local COMBO_PARTS = {
 local SOCKET_PX = COMBO_PARTS.socket[2] - COMBO_PARTS.socket[1]
 local GEM_RISE  = 1   -- sheet px the rim's centre sits above the socket cell's
 
--- Blizzard's point (RogueComboPointTemplate) is 20 px; its art reaches past the widget, so rows
--- and arcs space the points by that reach plus a small gap, and they never touch
+-- RogueComboPointTemplate is 20 px, but its art reaches past the widget: points are spaced by
+-- that reach plus a gap
 local BLIZZ_POINT_SIZE = 20
 local POINT_ART, POINT_GAP = 1.2, 2
 
@@ -101,8 +182,7 @@ function ns.PixelSize(frame)
     return factor / scale
 end
 
--- Splits a width into n segments on whole screen pixels. Returns segment i's left edge, its width
--- and the pixel size.
+-- Segment i of n across a width, on whole screen pixels: left edge, width, pixel size
 function ns.SegmentSpan(frame, width, n, i)
     local px = ns.PixelSize(frame)
     local total = math.floor(width / px + 0.5)
@@ -111,7 +191,7 @@ function ns.SegmentSpan(frame, width, n, i)
     return left * px, (right - left) * px, px
 end
 
--- Puts one part of the sheet on a texture; with a scale (screen px per sheet px) it also sizes it
+-- scale: screen px per sheet px; sizes the texture when given
 local function SetComboPart(tex, part, scale)
     local p = COMBO_PARTS[part]
     local l, r, t, b = p[1], p[2], p[3], p[4]
@@ -126,7 +206,7 @@ local function SetComboPart(tex, part, scale)
     end
 end
 
--- Blizzard's ComboFrame timings: the shine fades in, then out
+-- Blizzard's ComboFrame shine timings
 local function CreateShineFlash(shine)
     local flash = shine:CreateAnimationGroup()
     local fadeIn = flash:CreateAnimation("Alpha")
@@ -159,9 +239,8 @@ local function SizeComboGem(gem, size)
     gem.shine:SetPoint("CENTER", gem.window, "CENTER")
 end
 
--- One combo point gem. The lit gem is a StatusBar drawn with the whole sheet, clipped to the gem's
--- window. Its range is [i-1, i] and it is fed the raw count, so no Lua compares a secret value.
--- black: the empty socket is filled black. gem.flash plays the shine.
+-- The lit gem is a StatusBar with range [i-1, i] fed the raw count, so no Lua compares a secret
+-- value. black: the empty socket is filled black.
 local function CreateComboGem(parent, i, size, black)
     local gem = CreateFrame("Frame", nil, parent)
     local socket = gem:CreateTexture(nil, "BACKGROUND")
@@ -199,15 +278,13 @@ local function CreateComboGem(parent, i, size, black)
     return gem
 end
 
--- The distance from one point's centre to the next
+-- Centre-to-centre distance between points
 function ns.ComboPointStep(size)
     return size * POINT_ART + POINT_GAP
 end
 
--- A combo point: Blizzard's own (RogueComboPointTemplate, with its art and fill animations) sized
--- to a gem. Blizzard's point has to be told whether it is lit, so it shows while the count is
--- readable; FlareUI's gem (fed the raw count, no compare) stands in while it is secret, or when the
--- template is missing.
+-- Blizzard's RogueComboPointTemplate must be told whether it is lit, so it shows only while the
+-- count is readable; FlareUI's gem stands in while the count is secret or the template is missing.
 function ns.CreateComboPoint(parent, i, size, black)
     local p = CreateFrame("Frame", nil, parent)
     p.index = i
@@ -230,8 +307,7 @@ function ns.SizeComboPoint(p, size)
     if p.blizz then p.blizz:SetScale(size / BLIZZ_POINT_SIZE) end
 end
 
--- points: the raw count (it may be secret). animate: play Blizzard's fill and empty animations (off
--- right after a target change, as Blizzard does)
+-- points: the raw count, possibly secret. animate: off right after a target change, as Blizzard does.
 function ns.SetComboPoint(p, points, animate)
     local known = p.blizz and type(points) == "number" and (not canaccessvalue or canaccessvalue(points)) or false
     if p.blizz then p.blizz:SetShown(known) end
@@ -247,7 +323,6 @@ end
 --------------------------------------------------
 -- 4. DEFAULTS
 --------------------------------------------------
--- Builders for the repetitive defaults.
 -- Every element with a Show choice (Modules/Visibility.lua): always shown, in no fade group
 local VISIBILITY_KEYS = { "bar1", "bar2", "bar3", "bar4", "bar5", "bar6", "bar7", "bar8", "pet", "stance", "bags", "menu", "xp" }
 
@@ -323,7 +398,7 @@ local defaults = {
             procGlow = false,           -- Blizzard's proc glow on reaction abilities and flagged procs
             buttonArt = true,
             stopAutoAddSpells = true,
-            autoRanks = false,          -- Update Spell Ranks: a new rank replaces the old one on your bars
+            autoRanks = false,          -- Update Spell Ranks: a new rank replaces the old one on the bars
             autoPagingBar = 1,          -- Auto-Paging: the bar that switches to the Stealth / form page (0 = none)
 
             -- Status colouring (one row sets both)
@@ -453,14 +528,18 @@ local defaults = {
             raid = {
                 enabled = false,
                 layouts = {}, tankLayouts = {},
-                sort = "CLASS",            -- GROUP | ROLE | CLASS
+                sort = "GROUP",            -- GROUP | ROLE | CLASS
                 orientation = "ROWS",      -- ROWS (each group a row, stacked) | COLUMNS
                 spacing = 2, groupSpacing = 2, groupNumbers = false, missingBuffs = true,
-                width = 90, height = 55,
-                mainTanks = { enabled = false, w = 182, h = 55, spacing = 2 },
-                powerHeight = 5, healthText = "none", texture = "FlareUI Forever", border = "FlareUI Thin",
-                debuffs = "INSIDE_TOPRIGHT", buffs = "INSIDE_TOPLEFT", dispels = "INSIDE_BOTTOMRIGHT",
-                auraSize = 10, bigBossDebuffs = true,
+                width = 90, height = 60,
+                -- the main tank frames: their own size, and these of their own (the rest is the raid's)
+                mainTanks = { enabled = false, w = 182, h = 60, spacing = 2,
+                              buffs = "INSIDE_LEFT", debuffs = "INSIDE_RIGHT", auraSize = 14,
+                              bigBossDebuffs = false, bigDefensive = false,
+                              hideBuffs = "PERMANENT", onlyMyBuffs = false, dispellableOnly = false, encounterOnly = false },
+                powerHeight = 6, healthText = "none", texture = "FlareUI Forever", border = "FlareUI Thin",
+                debuffs = "INSIDE_RIGHT", buffs = "INSIDE_LEFT", dispels = "INSIDE_BOTTOMRIGHT",
+                auraSize = 12, bigBossDebuffs = false,
                 bigDefensive = true, bigDefensiveSize = 22, dispelHighlight = "mine",
                 icons = {},
             },
@@ -587,7 +666,7 @@ local defaults = {
             hideEmpty = true,           -- nothing tracked: no tracker
             showCount = true,           -- "Quests 14/25" in the header
             zoneHeaders = true,
-            zoneFirst = true,           -- quests of the zone you are in first
+            zoneFirst = true,           -- quests of the current zone first
             zoneOnly = false,           -- the header's Zone / All switch
             sortByDistance = true,
             sortByLevel = false,        -- the lowest level quest first (zones mixed, no zone headings)
@@ -623,9 +702,9 @@ local defaults = {
             hideZoneText = false,
             hidePartyTitle = false,
             hidePortraitNumbers = false,
-            mailBook = false,           -- Mail Address Book: your characters beside Send Mail's "To:"
+            mailBook = false,           -- Mail Address Book: own characters beside Send Mail's "To:"
             merchantKnown = false,      -- Gray Out Known Items: known items greyed out at merchants
-            petFood = false,            -- Pet Food in Bags: a paw on food your hunter pet eats
+            petFood = false,            -- Pet Food in Bags: a paw on food the hunter pet eats
             skipLootConfirm = false,    -- Skip Loot Confirmations: bind-on-loot and roll dialogs
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
             combatPlates = false,       -- Enemy Nameplates in Combat Only
@@ -647,18 +726,16 @@ local defaults = {
 --------------------------------------------------
 -- 5. SHARED UTILITIES
 --------------------------------------------------
--- A unit's health bar under GameTooltip is only hidden when the tooltip closes, so a tooltip reused
--- without closing (the mouse goes from a unit frame straight to another button) would keep it under
--- its new text. Each time the tooltip is wiped for new content the bar hides; a unit tooltip shows it
--- again as it builds (Blizzard's TooltipDataRules.HealthBar). Hide only: writing to the bar taints.
+-- GameTooltip's health bar only hides on close, so a tooltip reused without closing keeps it. Hidden
+-- on every clear; a unit tooltip re-shows it as it builds. Hide only: writing to the bar taints.
 if GameTooltip and GameTooltip.StatusBar then
     GameTooltip:HookScript("OnTooltipCleared", function(tooltip)
         if tooltip.StatusBar then tooltip.StatusBar:Hide() end
     end)
 end
 
--- The GameTooltip for one of FlareUI's own buttons. A tooltip owned by something else is hidden
--- first: Blizzard clears its health, money and progress bars only in OnHide.
+-- GameTooltip for FlareUI's own buttons. Another owner's tooltip is hidden first: Blizzard clears its
+-- health, money and progress bars only in OnHide.
 function ns.OwnGameTooltip(owner, anchor)
     if GameTooltip:IsShown() and not GameTooltip:IsOwned(owner) then GameTooltip:Hide() end
     GameTooltip:SetOwner(owner, anchor)
@@ -685,7 +762,6 @@ function ns.GetFontPath(face)
     return "Fonts\\FRIZQT__.TTF"
 end
 
--- Applies a font config's shadow to a font string
 function ns.ApplyShadow(fontString, fontConfig)
     if not fontString or not fontConfig then return end
     if fontConfig.enableShadow then
@@ -697,7 +773,7 @@ function ns.ApplyShadow(fontString, fontConfig)
     end
 end
 
--- Fade Speed choices (action bars, chat, damage meter): seconds for a fade in or out; instant is 0
+-- "Fade Speed" choices: seconds per fade
 local FADE_TIMES = { instant = 0, fast = 0.2, slow = 0.4 }
 function ns.FadeTime(speed) return FADE_TIMES[speed] or 0 end
 
@@ -710,8 +786,7 @@ function ns.FCMActive()
     return false
 end
 
--- ReloadUI is protected on Forever, so a hint to /reload is scheduled first. If the reload goes
--- through, the timer never fires.
+-- ReloadUI is protected on Forever: a /reload hint is scheduled first and never fires if it works
 function ns.Reload()
     C_Timer.After(0.5, function()
         print("|cffff9900FlareUI:|r " .. L["This client does not let addons reload the UI. Type |cffffff00/reload|r to apply the change."])
@@ -719,15 +794,13 @@ function ns.Reload()
     pcall(ReloadUI)
 end
 
--- Puts a frame on another's strata. The game can keep a frame's strata secret, and a secret can't be
--- passed on from addon code: the frame keeps its own then.
+-- A frame's strata can be secret and can't be passed on: the frame then keeps its own
 function ns.CopyStrata(frame, from)
     local strata = from and from:GetFrameStrata()
     if strata ~= nil and (not canaccessvalue or canaccessvalue(strata)) then frame:SetFrameStrata(strata) end
 end
 
--- Blizzard's InputUtil.IsGamepadUIEnabled test. Switching the Gamepad UI reloads the UI, so the
--- answer holds for the session.
+-- InputUtil.IsGamepadUIEnabled; switching reloads the UI, so the answer holds for the session
 function ns.IsGamepadUI()
     return C_InputInterfaceStyle ~= nil
         and C_InputInterfaceStyle.GetCurrentStyle() == Enum.InputDeviceInterfaceType.Gamepad
@@ -747,13 +820,11 @@ function ns.Fade(frame, inset, top, bottom)
     return bg
 end
 
--- Header icons in struck bronze (chat and damage meter): the white art gets a metal gradient, about
--- the selected tab's colour (#CC9957) at the top to a darker bronze at the bottom, over a dark copy
--- 1 px down-right (the icon sits raised) and a faint light copy 1 px up (a bevel along its top).
--- Hovered, the whole gradient lightens.
+-- Header icons in struck bronze: a metal gradient over a dark copy 1 px down-right and a faint light
+-- copy 1 px up; hovering lightens the gradient
 ns.BronzeIcon = {
-    TOP = 1.38,           -- the colour times this at the top
-    BOTTOM = 0.80,        -- and times this at the bottom
+    TOP = 1.38,           -- colour multiplier at the top
+    BOTTOM = 0.80,        -- and at the bottom
     HOVER = 0.15,         -- added to both when hovered
     SHADOW = { 0, 0, 0, 0.85 },
     LIGHT = { 1, 0.93, 0.75, 0.20 },
@@ -783,7 +854,6 @@ function ns.BronzeIcon.Apply(icon, path, color)
         light:SetPoint("TOPLEFT", icon, "TOPLEFT", 0, 1)
         light:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 0, 1)
         icon.FlareUI_Shadow, icon.FlareUI_Light = shadow, light
-        -- they show and hide with the icon
         hooksecurefunc(icon, "Show", function() shadow:Show(); light:Show() end)
         hooksecurefunc(icon, "Hide", function() shadow:Hide(); light:Hide() end)
     end
@@ -797,24 +867,21 @@ end
 
 --------------------------------------------------
 -- 7. EDIT MODE SELECTION BOXES
--- A Blizzard Edit Mode system FlareUI redraws (the chat window, the minimap): Blizzard sizes its
--- selection box, and the screen clamp it derives from it, from its own frame, bigger than what shows.
--- The box goes on the visible border instead (bounds() returns the frame and the offsets of its
--- TOPLEFT and BOTTOMRIGHT corners from it), and the clamp follows, so the frame can sit flush with the
--- screen edges and never leave the screen.
+-- For Blizzard systems FlareUI redraws (chat, minimap): the selection box and screen clamp go on the
+-- visible border, not Blizzard's larger frame. bounds() returns the reference frame and the offsets
+-- of its TOPLEFT and BOTTOMRIGHT corners.
 --------------------------------------------------
 local fittedBoxes = {}
 
 function ns.FitEditModeBox(system, bounds)
     if not (system and system.Selection) then return end
-    -- called again (the chat skin's padding changed): fit now
     if system.FlareUI_FitBox then system.FlareUI_FitBox(system) return end
     local retries = 0
     local function Fit(self)
         if InCombatLockdown() and self:IsProtected() then return end
         local ref, left, top, right, bottom = bounds()
         if not (ref and ref:GetLeft() and self:GetLeft()) then
-            -- not laid out yet (just made): again in a moment
+            -- not laid out yet
             if retries < 10 then
                 retries = retries + 1
                 C_Timer.After(0.5, function() Fit(self) end)
@@ -822,18 +889,16 @@ function ns.FitEditModeBox(system, bounds)
             return
         end
         local selection = self.Selection
-        -- offsets are measured in the reference's units; the box takes them in its own
+        -- offsets are in the reference's units
         local scale = ref:GetEffectiveScale() / self:GetEffectiveScale()
         local k = ref:GetEffectiveScale() / selection:GetEffectiveScale()
         selection:ClearAllPoints()
         selection:SetPoint("TOPLEFT", ref, "TOPLEFT", left * k, top * k)
         selection:SetPoint("BOTTOMRIGHT", ref, "BOTTOMRIGHT", right * k, bottom * k)
-        -- the clamp rect is the visible border: offsets from the frame's own edges
         self:SetClampRectInsets((ref:GetLeft() + left) * scale - self:GetLeft(), (ref:GetRight() + right) * scale - self:GetRight(),
                                 (ref:GetTop() + top) * scale - self:GetTop(), (ref:GetBottom() + bottom) * scale - self:GetBottom())
-        -- At login Blizzard placed the frame while the clamp was still its own box, which pushed it in
-        -- from the screen edge: once, it goes back to its layout's place (Blizzard's ApplySystemAnchor
-        -- arithmetic, without calling Blizzard's code)
+        -- Blizzard's login placement used the old clamp and pushed the frame in from the screen edge:
+        -- re-anchor once with ApplySystemAnchor's arithmetic (calling it would taint)
         if not self.FlareUI_Replaced then
             self.FlareUI_Replaced = true
             local anchor = self.systemInfo and self.systemInfo.anchorInfo
@@ -847,7 +912,7 @@ function ns.FitEditModeBox(system, bounds)
     end
     system.FlareUI_FitBox = Fit
     fittedBoxes[#fittedBoxes + 1] = system
-    -- and each time Edit Mode opens, once Blizzard has placed its boxes
+    -- refit each time Edit Mode opens, after Blizzard places its boxes
     if #fittedBoxes == 1 and EditModeManagerFrame then
         EditModeManagerFrame:HookScript("OnShow", function()
             C_Timer.After(0, function() for _, s in ipairs(fittedBoxes) do s.FlareUI_FitBox(s) end end)
@@ -861,9 +926,8 @@ end
 
 --------------------------------------------------
 -- 8. SECURE FRAME HIDING
+-- Keeps a Blizzard frame hidden (Hide plus an OnShow re-hide); protected frames wait for combat to end
 --------------------------------------------------
--- Keeps a Blizzard frame hidden: Hide plus an OnShow re-hide. Protected frames wait for combat
--- to end.
 local pendingHides = {}
 local hideWatcher = CreateFrame("Frame")
 hideWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -874,8 +938,8 @@ hideWatcher:SetScript("OnEvent", function()
     end
 end)
 
--- Edit Mode systems replace Hide / SetPoint / SetScale with Lua that re-lays out other frames.
--- Run from addon code, that Lua spreads taint, so these call the engine methods (*Base) instead.
+-- Edit Mode systems override Hide / SetPoint / SetScale with Lua that spreads taint when run from
+-- addon code: the engine methods (*Base) are called instead
 function ns.RawHide(frame)
     local hide = frame.HideBase or frame.Hide
     return hide(frame)
@@ -918,7 +982,7 @@ function ns.HideFrameSecurely(frame, shouldHide)
         end
         ns.RawHide(frame)
     elseif frame.FlareUI_Hidden then
-        -- only frames we hid come back, and only if they were shown when we hid them
+        -- only frames hidden here come back, and only if they were shown before
         frame.FlareUI_Hidden = nil
         if frame.FlareUI_WasShown then frame:Show() end
         frame.FlareUI_WasShown = nil
@@ -928,8 +992,8 @@ end
 
 --------------------------------------------------
 -- 9. WINDOW SOUNDS
--- Game Menu sounds, one per action: a window opened or closed by a button click stays quiet, and
--- two windows closing together are heard once.
+-- Game Menu sounds, one per action: no window sound on the frame of a button click, and one sound
+-- for windows closing together
 --------------------------------------------------
 local SOUND_OPEN, SOUND_CLOSE, SOUND_BUTTON = 850, 854, 852   -- SOUNDKIT.IG_MAINMENU_*
 local lastClick, lastWindowSound
@@ -952,8 +1016,8 @@ function ns.WindowCloseSound() WindowSound(SOUND_CLOSE) end
 
 --------------------------------------------------
 -- 10. CHARACTER IDENTITY
--- Per-character state lives in db.global.characters under the player's GUID. Names are unreliable
--- on Forever (UnitName gives the first name only, and AceDB's char key can read "Unknown" at load).
+-- Per-character state is keyed by GUID in db.global.characters: on Forever UnitName gives the first
+-- name only and AceDB's char key can read "Unknown" at load.
 --------------------------------------------------
 function ns.PlayerGUID()
     local guid = UnitGUID("player")
@@ -977,7 +1041,7 @@ end
 
 --------------------------------------------------
 -- 11. DIALOGS
--- FlareUI's questions (Dialog.lua shows them; it loads after this file)
+-- Shown by Dialog.lua, which loads after this file
 --------------------------------------------------
 ns.Dialogs = ns.Dialogs or {}
 
@@ -1002,8 +1066,7 @@ ns.Dialogs["FLAREUI_RESET"] = {
     showAlert = true,
 }
 
--- The secure button switches the copied Edit Mode layout and reloads; from addon code the layout
--- switch would taint every system
+-- The layout switch runs from the secure button: from addon code it would taint every system
 ns.Dialogs["FLAREUI_SYNC_RELOAD"] = {
     text = L["FlareUI copied this character's interface settings from %s.\n\nReload now to finish applying them. Until you do, some of Blizzard's own panels - Edit Mode in particular - can throw errors."],
     button1 = L["Reload Now"],
@@ -1026,8 +1089,7 @@ ns.Dialogs["FLAREUI_RELOAD"] = {
 
 --------------------------------------------------
 -- 12. INITIALIZATION
--- Settings are saved as FlareUI2_DB. Settings found in FlareUI_DB are brought over once first
--- (Import.lua).
+-- Settings live in FlareUI2_DB; FlareUI_DB is imported once first (Import.lua)
 --------------------------------------------------
 local f = CreateFrame("Frame")
 f:RegisterEvent("ADDON_LOADED")

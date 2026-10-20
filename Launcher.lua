@@ -3,15 +3,14 @@ local L = ns.L
 
 --------------------------------------------------
 -- LAUNCHER
--- The ways into FlareUI's settings panel (Settings/Panel.lua): /fui, the key binding and the radial
--- menu's panel (FlareUI_ToggleSettings), the addon compartment on the minimap, and FlareUI's page in
--- Blizzard's Options > AddOns. Also /rl.
+-- The ways into the settings panel (Settings/Panel.lua): /fui, the key binding, the radial menu,
+-- the addon compartment and FlareUI's page in Options > AddOns. Also /rl.
 --------------------------------------------------
 
 --------------------------------------------------
 -- 1. SLASH COMMANDS
 --------------------------------------------------
--- Only the commands that do something right now
+-- Lists only the commands that currently do something
 local function PrintCommands()
     local function Line(command, text) print("  |cffffff00" .. command .. "|r - " .. text) end
     print("|cff00ccffFlareUI:|r " .. L["commands"])
@@ -26,7 +25,7 @@ end
 --------------------------------------------------
 -- 2. KEY BINDING
 --------------------------------------------------
--- the key binding (Bindings.xml) and the radial menu's FlareUI Settings panel
+-- Bindings.xml and the radial menu's FlareUI Settings panel
 BINDING_HEADER_FLAREUI = "FlareUI"
 BINDING_NAME_FLAREUI_SETTINGS = L["Open Settings"]
 function FlareUI_ToggleSettings()
@@ -36,7 +35,6 @@ end
 --------------------------------------------------
 -- 3. BLIZZARD'S OPTIONS > ADDONS
 --------------------------------------------------
--- FlareUI's page there: the banner and a way into the panel
 local function RegisterOptionsPage()
     local panel = CreateFrame("Frame", "FlareUI_BlizzOptionsPanel", UIParent)
     panel.name = "FlareUI"
@@ -66,8 +64,8 @@ local function RegisterOptionsPage()
     credit:SetText(L["Doggie art by Clari Turela"])
     credit:SetTextColor(0.6, 0.6, 0.6)
 
-    -- In the Gamepad UI a button here would run FlareUI code inside Blizzard's controller navigation
-    -- (the client hangs), and so would /fui: the other ways in are named instead
+    -- In the Gamepad UI a button here (or /fui) runs FlareUI code inside Blizzard's controller
+    -- navigation and hangs the client: the other ways in are named instead
     if ns.IsGamepadUI() then
         local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightMedium")
         hint:SetPoint("TOP", credit, "BOTTOM", 0, -40)

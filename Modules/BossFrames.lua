@@ -3,10 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- BOSS FRAMES
--- Boss frames: boss1 to boss5, on the party frames' classic tile (PartyFrames.lua's tile kit),
--- mirrored as the target frame is. A boss can show up mid fight, so each frame keeps a fixed place
--- and Blizzard's unit watch shows it. Auras: every buff on the boss and only the player's debuffs.
--- Blizzard's boss frames are parked.
+-- boss1 to boss5 on the party frames' classic tile (PartyFrames.lua tile kit), mirrored like the
+-- target frame. Fixed places and a unit watch, so a boss can appear mid-fight. Blizzard's are hidden.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -31,13 +29,12 @@ local Tile = PF and PF.Tile
 
 local MAX_BOSSES = 5
 local BASE_POSITION = { point = "RIGHT", x = -3, y = -11 }
--- the default in use (FlareUI Style's has its own); Edit Mode's reset keeps this table
+-- Edit Mode keeps a reference to this table: ApplyPosition refills it for the style in use
 local DEFAULT_POSITION = { point = "RIGHT", x = -3, y = -11 }
 local TILE_TEMPLATE = "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate"
 
--- hostile red, as on the unit frames
 local HOSTILE_RGB = { 0.87, 0.27, 0.27 }
--- Edit Mode samples: three bosses, then two adds
+-- Edit Mode samples
 local SAMPLES = {
     { name = "Onyxia", level = -1, health = 0.78, power = 0.62, marker = 8, buffs = 1, debuffs = 2,
       portrait = "Interface\\Icons\\INV_Misc_Head_Dragon_Black" },
@@ -68,8 +65,8 @@ local function IsEditing()
     return LEM:IsInEditMode()
 end
 
--- What a tile reads: the boss settings, plus what the boss frames never have (no party icons, no
--- dispel or defensive auras) and what never changes (five auras to a lane in one row)
+-- The tile settings: the boss db plus fixed values (no party icons, dispels or defensives; five
+-- auras to a row)
 local ICONS = { role = { shown = false }, leader = { shown = false }, readyCheck = { shown = false },
                 status = { shown = false }, raidIcon = {} }
 local FIXED = { bigBossDebuffs = false, bigDefensive = false, dispelHighlight = "off",
@@ -84,6 +81,10 @@ local view = setmetatable({}, { __index = function(_, key)
         return ICONS
     end
     return db[key]
+end, __newindex = function(_, key, value)
+    -- writes land in the boss db (Forever Style's Scale sets the height through the view)
+    local db = GetDb()
+    if db then db[key] = value end
 end })
 
 local ctx = {
@@ -91,12 +92,12 @@ local ctx = {
     PreviewData = function(f) return f.sample or SAMPLES[1] end,
     ReadyHold = function() return nil end,
     classic = true, mirror = true, hostile = true, castbar = true,
-    ringKind = "boss",   -- FlareUI Style: the target frame's portrait ring (PartyFrames.lua RingKind)
+    ringKind = "boss",   -- the portrait ring in the ring styles (PartyFrames.lua RingKind)
 }
 
--- FlareUI Style's boss frames have the ring
+-- FlareUI Style and Forever Style both use the ring
 local function RingStyle()
-    return ns.UFRing and ns.UFRing.Style() == "flareui" or false
+    return ns.UFRing and ns.UFRing.Style() ~= "addon" or false
 end
 
 --------------------------------------------------
@@ -119,13 +120,12 @@ local function CreateTile(i)
     f:SetScript("OnEnter", Tile.OnEnter)
     f:SetScript("OnLeave", Tile.OnLeave)
     Tile.Build(f, unit)
-    -- a boss that becomes targetable (or stops) refreshes like any other change
     pcall(f.RegisterUnitEvent, f, "UNIT_TARGETABLE_CHANGED", unit)
     tiles[i] = f
     return f
 end
 
--- One frame to the next: the frame, its cast bar, the auras above and below it, and the spacing
+-- The first frame's offset, and the step between frames (frame, cast bar, auras, spacing)
 local function Step()
     local above = Tile.LanesExtent(view, Tile.ABOVE_PLACES)
     local below = Tile.LanesExtent(view, Tile.BELOW_PLACES)
@@ -134,8 +134,8 @@ local function Step()
     return above, above + h + below + (view.spacing or 16)
 end
 
--- Fixed places (a boss can show up in a fight, when nothing may move): boss 1 at the top, or at the
--- bottom when the frames grow up
+-- Fixed places: a boss can appear in combat, when secure frames cannot move. Boss 1 at the top
+-- (the bottom for Growth Up).
 local function LayoutHolder()
     if not holder then return end
     local above, step = Step()
@@ -163,8 +163,8 @@ end
 local function ApplyPosition(layoutName)
     if not holder then return end
     if InCombatLockdown() then pendingLayout = true return end
-    -- the default: FlareUI Style's own, past the ring
-    local base = RingStyle() and ns.UFRing.TILE_POSITIONS.boss or BASE_POSITION
+    -- the ring styles' default leaves room for the ring
+    local base = RingStyle() and ns.UFRing.TilePosition("boss") or BASE_POSITION
     for k, v in pairs(base) do DEFAULT_POSITION[k] = v end
     local store = LayoutStore(layoutName)
     local pos = (store and store.point) and store or DEFAULT_POSITION
@@ -179,8 +179,7 @@ end
 
 --------------------------------------------------
 -- 6. VISIBILITY
--- Each frame follows its unit (Blizzard's unit watch, safe in a fight); in Edit Mode all five show,
--- with samples.
+-- Each frame follows its unit (unit watch, combat-safe); Edit Mode shows all five with samples.
 --------------------------------------------------
 local function ApplyVisibility()
     if not holder then return end
@@ -209,9 +208,10 @@ local function Refresh()
     if not holder then return end
     if InCombatLockdown() then pendingLayout = true return end
     pendingLayout = false
-    -- Mirror (on by default): laid out as the target frame
     local db = GetDb()
-    ctx.mirror = not (db and db.mirror == false)
+    -- the ring styles keep the target frame's layout: Mirror turns only the bars there
+    ctx.fillMirror = not (db and db.mirror == false)
+    ctx.mirror = RingStyle() or ctx.fillMirror
     for _, f in ipairs(tiles) do
         local ok, err = pcall(Tile.Layout, f)
         if not ok then geterrorhandler()(err) end
@@ -229,7 +229,7 @@ end
 --------------------------------------------------
 local function BuildSettings()
     local base = (ns.defaults and ns.defaults.profile.unitframes.boss) or {}
-    -- FlareUI Style's boss frames: its look
+    -- the ring style's defaults first
     local ring = ns.UFRing and ns.UFRing.TileDefaults("boss")
     local D = ring and setmetatable({}, { __index = function(_, k)
         if ring[k] ~= nil then return ring[k] end
@@ -254,7 +254,6 @@ local function BuildSettings()
 
     local Section, settings = K.EditSections()
 
-    -- the boss frames as a group, as the Party and Raid sections are for theirs
     Section("Boss", {
         { name = L["Growth"], kind = LEM.SettingType.Dropdown, default = D.grow,
           values = { { text = L["Down"], value = "DOWN", isRadio = true }, { text = L["Up"], value = "UP", isRadio = true } },
@@ -265,23 +264,35 @@ local function BuildSettings()
           desc = L["The gap between the boss frames."] },
     })
 
+    -- Forever Style's plate: sized by Scale
+    local function onPlate() return ns.UFRing and ns.UFRing.PlateOn() or false end
     Section("Frame", {
+        { name = L["Scale"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.PlateDefaultScale("boss") or 100,
+          minValue = 75, maxValue = 250, valueStep = 5, formatter = function(value) return value .. "%" end,
+          get = function() local db = GetDb(); return db and db.plateScale or (ns.UFRing and ns.UFRing.PlateDefaultScale("boss")) or 100 end,
+          set = function(_, value)
+              if not onPlate() then return end
+              ns.UFRing.ApplyPlateScale(GetDb(), value)
+              Refresh()
+          end,
+          hidden = function() return not onPlate() end },
         { name = L["Width"], kind = LEM.SettingType.Slider, default = D.width, minValue = 80, maxValue = 400, valueStep = 2, get = get("width"), set = set("width") },
-        { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = get("height"), set = set("height") },
+        { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = get("height"), set = set("height"),
+          hidden = onPlate },
         { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
-          get = get("powerHeight"), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
-        -- FlareUI Style: the ring's size, as the target frame's
+          get = get("powerHeight"), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end,
+          hidden = onPlate },
         { name = L["Portrait Size"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.DefaultSize("boss") or 80,
           minValue = 36, maxValue = 120, valueStep = 1,
           get = function() local db = GetDb(); return db and db.ringSize or (ns.UFRing and ns.UFRing.DefaultSize("boss")) or 80 end,
-          set = set("ringSize"), hidden = function() return not RingStyle() end },
+          set = set("ringSize"), hidden = function() return not RingStyle() or onPlate() end },
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") },
         { name = L["Power Text"], kind = LEM.SettingType.Checkbox, default = D.powerText or false, get = get("powerText"), set = set("powerText") },
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = get("showLevel"), set = set("showLevel") },
         { name = L["Mirror"], kind = LEM.SettingType.Checkbox, default = D.mirror ~= false,
           get = function() return get("mirror")() ~= false end, set = set("mirror"),
-          desc = L["Laid out as the target frame: portrait on the right, bars filling from the right."] },
-        -- (FlareUI Style: always, in the ring)
+          desc = L["Laid out as the target frame: portrait on the right, bars filling from the right. In FlareUI and Forever Style, only the bars' direction."] },
+        -- the ring always has a portrait
         { name = L["Portrait"], kind = LEM.SettingType.Checkbox, default = D.portrait or false, get = get("portrait"), set = set("portrait"),
           hidden = RingStyle },
     })
@@ -291,7 +302,6 @@ local function BuildSettings()
           get = get("texture"), set = set("texture") },
         { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = D.border, values = K.BuildBorderValues(false),
           get = get("border"), set = set("border"), hidden = K.NoBorderOptions },
-        -- shields on a boss: none yet on Forever, but a boss could bring them
         { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildAbsorbValues(),
           get = get("absorbTexture"), set = set("absorbTexture"),
           desc = L["The texture of the shield (absorb) over the health bar."] },
@@ -324,9 +334,14 @@ local function BuildSettings()
           desc = L["Frame Border uses the frame's own border."] },
     })
 
-    -- no Right of the Frame (the frames sit at the screen's right edge); a place that clashes with
-    -- the other kind's (the same one, or a whole-width one on the same edge) is greyed out
+    -- no Right of the Frame (the frames sit at the screen's right edge); clashing places grey out
     local places = PF.AuraPlaces("RIGHT")
+    -- Forever Style's plate: no inside places (the bars are too slim)
+    if ns.UFRing and ns.UFRing.PlateOn() then
+        local kept = {}
+        for _, p in ipairs(places) do if not p.value:find("^INSIDE") then kept[#kept + 1] = p end end
+        places = kept
+    end
     local function Place(field, other)
         return function(_, rootDescription, data)
             for _, p in ipairs(places) do
@@ -354,7 +369,7 @@ local function BuildSettings()
 end
 
 --------------------------------------------------
--- 8. BLIZZARD'S BOSS FRAMES (parked with HardHide)
+-- 8. BLIZZARD'S BOSS FRAMES (hidden with HardHide)
 --------------------------------------------------
 local function HideBlizzardBoss()
     if _G.BossTargetFrameContainer then K.HardHide("BossTargetFrameContainer") end
@@ -390,7 +405,7 @@ function BF:OnGlobalEvent(event, unit)
             elseif event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_THREAT_SITUATION_UPDATE" then
                 Tile.UpdateThreat(f)
             else
-                Tile.UpdateAll(f)   -- the bosses changed (an encounter, a phase)
+                Tile.UpdateAll(f)   -- the bosses changed
             end
         end
     end
@@ -404,7 +419,7 @@ local GLOBAL_EVENTS = {
 function BF:Init()
     if self.initialized or not (K and Tile) then return end
     if InCombatLockdown() then
-        -- secure frames cannot be made in a fight (a /reload mid-combat); they come after it
+        -- secure frames cannot be created in combat (a /reload mid-fight): wait for it to end
         self:RegisterEvent("PLAYER_REGEN_ENABLED", function()
             self:UnregisterEvent("PLAYER_REGEN_ENABLED")
             self:Init()
@@ -413,7 +428,7 @@ function BF:Init()
     end
     self.initialized = true
 
-    -- Right of the Frame is gone: auras set there move to the left (off when that is taken)
+    -- Right of the Frame is not offered: saved auras there move to the left (off when taken)
     local db = GetDb()
     if db then
         for _, field in ipairs({ "buffs", "debuffs" }) do

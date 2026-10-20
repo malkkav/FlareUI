@@ -1,26 +1,23 @@
 local _, ns = ...
 
 --------------------------------------------------
--- FLAREUI DIALOG
--- FlareUI's yes / no questions, in place of StaticPopups. In the Gamepad UI a StaticPopup shown
--- from addon code hangs the client (the gamepad focus manager runs tainted), so this window reads
--- the pad itself: bottom face button yes, right face button no.
---
--- A dialog is a table in ns.Dialogs:
---   text           shown as written; "%s" takes the text argument of ns.ShowDialog
---   button1/2      the yes and no labels (button2 optional)
---   OnAccept(data, text)  on yes; text is the edit box's when hasEditBox
---   OnCancel(data)        on no (and Escape / right face button, when hideOnEscape)
---   hasEditBox, maxLetters, editText(data)   an edit box, its limit and starting text
---   hideOnEscape   Escape (and the right face button) answers no
---   showAlert      the exclamation mark beside the text
---   padInput       reads the controller outside the gamepad UI too (the switch to Gamepad mode)
---   reloads        yes reloads the UI after OnAccept (see Reloading below)
---   macro          like reloads, but the secure button runs this macro (or function(data) returning
---                  it) and its PreClick calls OnMacro; OnAccept stays the pad's and combat's answer
---   padSecure      with macro: the pad's yes / no are bound to the secure buttons, so a pad yes runs
---                  the macro too
+-- DIALOG
+-- FlareUI's yes / no questions in place of StaticPopups, which hang the client in the Gamepad UI
+-- when shown from addon code. Reads the pad itself: bottom face button yes, right face button no.
 --------------------------------------------------
+-- ns.Dialogs[key] fields:
+--   text                  "%s" takes ns.ShowDialog's textArg
+--   button1, button2      yes / no labels (button2 optional)
+--   OnAccept(data, text)  on yes; text is the edit box's
+--   OnCancel(data)        on no, Escape or the right face button
+--   hasEditBox, maxLetters, editText(data)
+--   hideOnEscape          Escape and the right face button answer no
+--   showAlert             exclamation mark beside the text
+--   padInput              reads the controller outside the Gamepad UI too
+--   reloads               yes reloads the UI after OnAccept (section 2)
+--   macro                 the secure button runs this macro (or function(data)); PreClick calls
+--                         OnMacro, OnAccept stays the pad's and combat's answer
+--   padSecure             with macro: pad yes / no are bound to the secure buttons
 ns.Dialogs = ns.Dialogs or {}
 
 --------------------------------------------------
@@ -63,9 +60,8 @@ end
 
 --------------------------------------------------
 -- 2. RELOADING
--- ReloadUI is protected on Forever, so "yes" on a reloads dialog is a secure button running /reload
--- as a macro (PreClick runs OnAccept first). It is parented to UIParent, laid over the yes button,
--- so the dialog itself stays unprotected. In combat, yes falls back to the /reload hint.
+-- ReloadUI is protected on Forever: "yes" is a secure macro button on UIParent laid over the yes
+-- button, so the dialog stays unprotected. In combat, yes falls back to the /reload hint.
 --------------------------------------------------
 local reloadButton, secureReload, accepted
 
@@ -97,7 +93,7 @@ local function GetReloadButton()
     return reloadButton
 end
 
--- Hidden with the dialog, or after combat
+-- Released with the dialog, or after combat
 local releaseWaiter
 local function ReleaseReloadButton()
     if not secureReload then return end
@@ -120,8 +116,8 @@ end
 --------------------------------------------------
 -- 3. KEYS AND CONTROLLER
 --------------------------------------------------
--- Escape and Enter are taken; every other key goes on to its binding. Propagation cannot change in
--- combat, where the keys fall through and only the buttons work.
+-- Escape and Enter are taken, other keys propagate. Propagation can't change in combat, where only
+-- the buttons work.
 local function OnKeyDown(self, key)
     -- with the secure reload button up, Enter goes on to its override binding
     local handled = (key == "ESCAPE" and current and current.hideOnEscape) or (key == "ENTER" and not secureReload)
@@ -178,7 +174,7 @@ local function Build()
     frame.smartNavigationIgnored = true
 
     frame.Alert = frame:CreateTexture(nil, "ARTWORK")
-    frame.Alert:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")   -- StaticPopup's own
+    frame.Alert:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
     frame.Alert:SetSize(32, 32)
     frame.Alert:SetPoint("TOPLEFT", PADDING, -PADDING + 4)
 
@@ -205,7 +201,7 @@ local function Build()
         self.EditBox:ClearFocus()
         ReleaseReloadButton()
         if current then
-            -- hidden from outside (ns.HideDialog): no answer, no callback
+            -- hidden from outside: no answer, no callback
             current, currentData = nil, nil
         end
     end)
@@ -251,7 +247,7 @@ end
 --------------------------------------------------
 -- 5. SHOWING
 --------------------------------------------------
--- key: the ns.Dialogs entry; textArg fills "%s"; data is handed to OnAccept / OnCancel
+-- textArg fills "%s"; data is passed to OnAccept / OnCancel
 function ns.ShowDialog(key, textArg, data)
     local def = ns.Dialogs[key]
     if not def then return end
@@ -272,7 +268,10 @@ function ns.ShowDialog(key, textArg, data)
     end
     ReleaseReloadButton()
     accepted = false
+    -- a reload button kept from before combat is protected: it cannot move until combat ends
+    local placeSecure = false
     if (def.reloads or def.macro) and not InCombatLockdown() then
+        placeSecure = true
         local macro = def.macro
         if type(macro) == "function" then macro = macro(data) end
         GetReloadButton():SetAttribute("macrotext", macro or "/reload")
@@ -286,7 +285,7 @@ function ns.ShowDialog(key, textArg, data)
     end
     frame:Show()
     frame:Raise()
-    if secureReload then
+    if placeSecure then
         -- a protected frame cannot anchor to an insecure one: place it on UIParent at the yes button
         local x, y = frame.Button1:GetCenter()
         reloadButton:ClearAllPoints()
@@ -302,11 +301,6 @@ function ns.ShowDialog(key, textArg, data)
         frame.EditBox:SetFocus()
         frame.EditBox:HighlightText()
     end
-end
-
--- Closes the dialog if it is showing key, without answering it
-function ns.HideDialog(key)
-    if frame and frame:IsShown() and current == ns.Dialogs[key] then Close() end
 end
 
 function ns.AnyDialogShown()

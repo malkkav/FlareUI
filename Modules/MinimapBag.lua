@@ -3,13 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- ADDON BUTTON BAG (part of the Minimap module, started from MM:Init)
--- The day/night badge opens a panel with every addon's shortcut:
---   * LibDBIcon buttons, redrawn from their LibDataBroker objects; the originals are parked and
---     LibDBIcon's settings are never written
---   * other addons' minimap buttons, moved into the bag as they are
---   * Blizzard's addon compartment entries, called as Blizzard's menu calls them
--- An addon in two lists shows once. Closes on the badge, Escape, a click elsewhere, or after use.
--- Icons can be dragged to a new place in the bag (the order is saved; new addons go last, A to Z).
+-- The day/night badge opens a panel with LibDBIcon buttons (redrawn, originals parked), other addons'
+-- minimap buttons (moved in) and addon compartment entries, each addon once, in a draggable order.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -29,11 +24,10 @@ local C = {
     GAP = 6,                  -- between the badge and the panel
     BORDER = "FlareUI Frames",
     OPACITY = 0.9,
-    -- names of minimap children that are Blizzard's (or ours) and never go in the bag
+    -- minimap children that are Blizzard's or FlareUI's
     SKIP = { "^Minimap", "^MiniMap", "^GameTime", "^TimeManager", "^QueueStatus", "^Expansion",
              "^GarrisonLandingPage", "^AddonCompartment", "^FlareUI", "^HybridMinimap" },
-    -- map pins and markers other addons draw on the minimap (quests, nodes, waypoints): small named
-    -- buttons too, but never shortcuts (as ElvUI's and MinimapButtonButton's ignore lists)
+    -- map pins other addons draw on the minimap: small named buttons, but never shortcuts
     PINS = { "^Questie", "^HandyNotes", "^GatherMate", "^GatherNote", "^TomTom", "^Archy", "^ZGV",
              "^DugisArrow", "^poiMinimap", "^Spy_Map", "^RareTracker", "^Routes", "^WestPointer",
              "^MapNote", "^Carbonite", "^NxMinimap", "Pin%d*$", "^HereBeDragons" },
@@ -43,13 +37,13 @@ local C = {
 local panel, badgeButton
 local hiddenParent = CreateFrame("Frame")
 hiddenParent:Hide()
-local entries = {}            -- what the bag shows, rebuilt on every open
+local entries = {}            -- rebuilt on every open
 local buttons = {}            -- the bag's own icon buttons (pool)
-local adopted = {}            -- other addons' minimap buttons moved into the bag: frame -> true
-local parked = {}             -- LibDBIcon buttons parked out of sight: frame -> their old parent
-local cells = {}              -- what each cell of the open bag shows: index -> frame
-local catchers = {}           -- the drag handles over the cells (pool)
-local drag                    -- the icon being dragged: { from = index, frame = frame }
+local adopted = {}            -- other addons' buttons moved into the bag: frame -> true
+local parked = {}             -- parked LibDBIcon buttons: frame -> old parent
+local cells = {}              -- index -> frame shown in that cell
+local catchers = {}           -- drag handles over the cells (pool)
+local drag                    -- { from = index, frame = frame }
 
 local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.minimap
@@ -84,16 +78,14 @@ local function ParkAllIcons()
     for _, name in ipairs(lib:GetButtonList() or {}) do ParkIcon(lib:GetMinimapButton(name)) end
 end
 
--- A button LibDBIcon really made (the bag shows those from their data objects). Some addons name
--- their own button the LibDBIcon way without the library: those count as any other addon's button.
+-- A button LibDBIcon really made; look-alike names without the library count as foreign buttons
 local function IsLibDBIconButton(frame, name)
     local lib = LibDBIcon()
     local id = name:match("^LibDBIcon10_(.+)$")
     return id ~= nil and lib ~= nil and lib:GetMinimapButton(id) == frame
 end
 
--- A pin another addon keeps on the minimap through HereBeDragons (Questie's quest markers, gathering
--- nodes, waypoints): the library's own list of them
+-- A minimap pin registered with HereBeDragons
 local function IsMapPin(frame)
     for _, major in ipairs({ "HereBeDragons-Pins-2.0", "HereBeDragons-Pins-1.0" }) do
         local pins = LibStub and LibStub(major, true)
@@ -104,8 +96,8 @@ local function IsMapPin(frame)
     return false
 end
 
--- Children of the minimap that look like an addon's button: a named, unprotected, small Button that
--- is not Blizzard's, LibDBIcon's or FlareUI's, not a map pin, and does something when clicked
+-- An addon's minimap button: named, unprotected, small, clickable, and not Blizzard's, LibDBIcon's,
+-- FlareUI's or a map pin
 local function IsForeignButton(frame)
     if not (frame and frame.IsObjectType and frame:IsObjectType("Button")) then return false end
     if frame:IsForbidden() or frame:IsProtected() then return false end
@@ -123,8 +115,7 @@ local function IsForeignButton(frame)
     return (w or 0) > 8 and (w or 0) <= 48 and (h or 0) > 8 and (h or 0) <= 48
 end
 
--- An adopted button's name in the bag: its data object's text when it has one (a LibDBIcon-style
--- button), else its frame name without the LibDBIcon prefix
+-- An adopted button's label: its data object's text, else its frame name
 local function FrameLabel(frame)
     local object = type(frame.dataObject) == "table" and frame.dataObject or nil
     local label = object and StripText(object.label or object.text) or ""
@@ -132,9 +123,8 @@ local function FrameLabel(frame)
     return (frame:GetName():gsub("^LibDBIcon10_", ""))
 end
 
--- An addon with its own minimap button often lists itself in Blizzard's compartment too, under its
--- title ("Lorever") where its button has a frame name ("LoreverMinimapButton"). Names are compared
--- loosely: lower case, letters and digits only, the usual button words dropped.
+-- Compartment titles ("Lorever") are matched to button names ("LoreverMinimapButton") loosely:
+-- lower case, letters and digits only, the usual button words dropped
 local NAME_NOISE = { "libdbicon10", "minimapbutton", "minimap", "button", "btn", "icon", "ldb", "broker" }
 local function NameKey(text)
     local key = StripText(text):lower():gsub("[^%w]", "")
@@ -181,8 +171,7 @@ local function SameIcon(icon, art)
     return ok and type(id) == "number" and id > 0 and art[id] or false
 end
 
--- A compartment entry for an addon already in the bag as a button (by name or by icon). Two
--- compartment entries are always two addons.
+-- A compartment entry for an addon already in the bag as a button (by name or icon)
 local function AlreadyListed(data, label)
     for _, e in ipairs(entries) do
         if e.kind ~= "compartment" and (SameName(label, e.label) or SameName(label, e.name)) then return true end
@@ -200,7 +189,6 @@ local function CollectEntries()
     wipe(entries)
     local seen = {}
 
-    -- LibDBIcon buttons, from their data objects
     local lib, ldb = LibDBIcon(), LibDataBroker()
     if lib and ldb then
         for _, name in ipairs(lib:GetButtonList() or {}) do
@@ -217,7 +205,7 @@ local function CollectEntries()
         end
     end
 
-    -- other addons' buttons on the minimap (a flood of them is some addon's pins: none are taken)
+    -- other addons' buttons; a flood of them is some addon's pins, so none are taken
     local found = {}
     for _, parent in ipairs({ Minimap, MinimapCluster }) do
         for _, child in ipairs({ parent:GetChildren() }) do
@@ -233,7 +221,6 @@ local function CollectEntries()
         seen[label:lower()] = true
     end
 
-    -- Blizzard's addon compartment
     local compartment = AddonCompartmentFrame
     for _, data in ipairs(compartment and compartment.registeredAddons or {}) do
         local label = StripText(data.text)
@@ -243,8 +230,7 @@ local function CollectEntries()
         end
     end
 
-    -- A to Z, then the order the player dragged them into (minimap.bagOrder: entry ids); entries
-    -- not in it yet keep their place after the ordered ones
+    -- the dragged order (minimap.bagOrder), then the rest A to Z
     table.sort(entries, function(a, b) return a.label:lower() < b.label:lower() end)
     local db = GetDb()
     local order = db and db.bagOrder
@@ -261,7 +247,6 @@ local function CollectEntries()
     end
 end
 
--- the entry's id in the saved order
 local function EntryId(e) return e.kind .. ":" .. e.name end
 
 --------------------------------------------------
@@ -327,8 +312,7 @@ local function OnIconClick(self, mouseButton)
     end
 end
 
--- The bag's own button for a LibDBIcon or compartment entry, in Blizzard's small action button look
--- (as the Quest Tracker's item buttons)
+-- The bag's own button for a LibDBIcon or compartment entry, in the action button look
 local function GetIconButton(i)
     local b = buttons[i]
     if b then return b end
@@ -371,7 +355,7 @@ local function SetIcon(texture, icon, object)
     if object and object.iconR then texture:SetVertexColor(object.iconR, object.iconG or 1, object.iconB or 1) end
 end
 
--- The panel opens beside the badge, towards the middle of the screen
+-- Beside the badge, towards the middle of the screen
 local function AnchorPanel()
     local badge = MinimapCluster and MinimapCluster.DielFrame
     if not badge then return end
@@ -403,11 +387,11 @@ function Bag:Layout()
         local x, y = C.PAD + col * step, -(C.PAD + row * step)
         local frame
         if e.kind == "frame" then
-            -- the addon's own button, moved into the cell (its own look and scripts)
+            -- the addon's own button, moved into the cell
             frame = e.frame
             frame:SetParent(panel)
-            -- a button with its own strata (or a level below the panel's) would sit under the panel
-            frame:SetFrameStrata(panel:GetFrameStrata())
+            -- its own strata or a lower level would put it under the panel
+            ns.CopyStrata(frame, panel)
             frame:SetFrameLevel(panel:GetFrameLevel() + 2)
             frame:ClearAllPoints()
             frame:SetPoint("CENTER", panel, "TOPLEFT", x + C.BUTTON / 2, y - C.BUTTON / 2)
@@ -419,13 +403,13 @@ function Bag:Layout()
             SetIcon(frame.icon, e.kind == "ldb" and e.object.icon or e.data.icon, e.kind == "ldb" and e.object or nil)
             frame:ClearAllPoints()
             frame:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y)
-            -- under the drag handles again (a dragged icon is lifted over everything)
+            -- back under the drag handles (a dragged icon is lifted)
             frame:SetFrameLevel(panel:GetFrameLevel() + 2)
             frame:Show()
         end
     end
     for i = used + 1, #buttons do buttons[i]:Hide(); buttons[i].entry = nil end
-    -- a drag handle over each cell (clicks and the mouse-over still reach the icon under it)
+    -- a drag handle over each cell; clicks and mouse-over pass through to the icon
     wipe(cells)
     for i, e in ipairs(entries) do cells[i] = e.kind == "frame" and e.frame or nil end
     local iconIndex = 0
@@ -447,9 +431,8 @@ function Bag:Layout()
 end
 
 --------------------------------------------------
--- 3b. DRAG TO REORDER
--- The icon follows the cursor; dropped on a cell, it takes that place and the rest shift. The new
--- order is saved by entry (kind and name), so it holds when addons come and go.
+-- 4. DRAG TO REORDER
+-- The order is saved by entry id (kind and name), so it holds when addons come and go
 --------------------------------------------------
 local function CursorInUI()
     local x, y = GetCursorPosition()
@@ -470,10 +453,9 @@ local function OnDragStart(self)
     local frame = cells[self.index]
     if not frame then return end
     drag = { from = self.index, frame = frame }
-    -- the drop on any mouse-up (the drag's own stop may never come, as when the cursor leaves the
-    -- game window)
+    -- drop on any mouse-up: OnDragStop may never come (cursor leaving the game window)
     panel:RegisterEvent("GLOBAL_MOUSE_UP")
-    -- (the icon's own click, which the mouse-up may still bring, is skipped)
+    -- skip the icon's click the mouse-up may still bring
     Bag.justDragged = true
     GameTooltip:Hide()
     frame:SetFrameLevel(panel:GetFrameLevel() + 20)
@@ -486,7 +468,7 @@ local function OnDragStop()
     panel:UnregisterEvent("GLOBAL_MOUSE_UP")
     local from = drag.from
     drag = nil
-    -- the cell under the cursor (outside the bag: the nearest end)
+    -- the cell under the cursor, clamped to the bag
     local x, y = CursorInUI()
     local left, top = panel:GetLeft(), panel:GetTop()
     local step = C.BUTTON + C.SPACING
@@ -550,12 +532,12 @@ local function CreatePanel()
     panel.empty:SetPoint("CENTER")
     panel.empty:SetText(L["No addon buttons"])
 
-    -- closes on Escape, and on a click anywhere that is not the bag or the badge
+    -- closes on Escape and on a click outside the bag and badge
     tinsert(UISpecialFrames, "FlareUI_MinimapBag")
     panel:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
     panel:SetScript("OnHide", function(self)
         self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-        -- closed mid-drag: the icon goes back to its cell next time
+        -- closed mid-drag: the icon returns to its cell next time
         if drag then drag = nil; self:SetScript("OnUpdate", nil); self:UnregisterEvent("GLOBAL_MOUSE_UP") end
     end)
     panel:SetScript("OnEvent", function(self, event)
@@ -566,7 +548,7 @@ local function CreatePanel()
 end
 
 --------------------------------------------------
--- 4. BADGE AND SETUP
+-- 5. BADGE AND SETUP
 --------------------------------------------------
 -- The click area over the badge (Blizzard's badge takes no mouse)
 local function CreateBadgeButton()
@@ -598,8 +580,8 @@ function Bag:Init()
     self.initialized = true
     CreatePanel()
     CreateBadgeButton()
-    -- LibDBIcon buttons are parked at once and as they are made; other addons' buttons have no
-    -- signal, so they are swept for a few times while addons finish loading
+    -- LibDBIcon buttons are parked as they are made; other buttons have no signal, so a few sweeps
+    -- run while addons finish loading
     local lib = LibDBIcon()
     if lib and lib.RegisterCallback then
         lib.RegisterCallback(Bag, "LibDBIcon_IconCreated", function(_, button) ParkIcon(button) end)

@@ -3,9 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- TOTEMS
--- Blizzard's TotemFrame lives in PlayerFrame, which the unit frames park, so it is moved onto
--- FlareUI Totems: an Edit Mode frame with a size and totems per row. Blizzard's code still runs it.
--- Edit Mode shows four sample totems.
+-- Blizzard's TotemFrame lives in the parked PlayerFrame, so it moves onto FlareUI Totems, an Edit Mode
+-- frame with a size and totems per row. Blizzard's code still runs it.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -94,7 +93,7 @@ end
 
 local function ByLayoutIndex(a, b) return (a.layoutIndex or 0) < (b.layoutIndex or 0) end
 
--- After Blizzard's Layout, the shown buttons go back into the grid
+-- After Blizzard's Layout the shown buttons go back into the grid
 local active = {}
 local function ArrangeTotems()
     local frame = _G.TotemFrame
@@ -110,8 +109,7 @@ end
 
 --------------------------------------------------
 -- 5. BLIZZARD'S TOTEM FRAME, REHOMED
--- A managed frame: on every show Blizzard re-parents it into the parked PlayerFrame, so it comes
--- straight back to the holder.
+-- A managed frame: Blizzard re-parents it into PlayerFrame on every show, so it is pulled back
 --------------------------------------------------
 local anchoring = false
 local function AnchorTotemFrame()
@@ -172,13 +170,13 @@ end
 local function SetPreview(shown)
     if not holder then return end
     holder.preview:SetShown(shown)
-    -- live totems step aside while the samples show, so the two do not overlap
+    -- live totems step aside while the samples show
     if _G.TotemFrame then _G.TotemFrame:SetAlpha(shown and 0 or 1) end
 end
 
 --------------------------------------------------
 -- 7. SIZE AND GRID
--- The holder is sized to the grid; the totems are scaled inside it, so its position stays put.
+-- The holder is sized to the grid and the totems scaled inside it, so its position stays put
 --------------------------------------------------
 local function ApplyLayout()
     if not holder then return end
@@ -214,7 +212,7 @@ local function BuildSettings()
             ApplyLayout()
         end
     end
-    -- the style's defaults (the ring styles have their own)
+    -- the ring styles have their own defaults
     local style = ns.UFRing and ns.UFRing.On() and ns.UFRing.DefaultTotems() or {}
     local size, perRow = style.size or DEFAULT_SIZE, style.perRow or DEFAULT_PER_ROW
     return {
@@ -240,7 +238,7 @@ function TOT:Init()
     if self.initialized or not _G.TotemFrame then return end
     self.initialized = true
 
-    -- the ring styles have their own default positions (a style switch reloads)
+    -- the ring styles have their own default position (a style switch reloads)
     if ns.UFRing and ns.UFRing.On() then
         local _, totemPosition = ns.UFRing.DefaultPositions()
         for key, value in pairs(totemPosition) do DEFAULT_POSITION[key] = value end

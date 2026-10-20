@@ -2,8 +2,8 @@ local _, ns = ...
 local S = ns.Settings
 
 --------------------------------------------------
--- MINIMAP (Modules/Minimap.lua, Modules/MinimapBag.lua). Fixed, no option: the day/night badge, and
--- the quest tracker as wide as the minimap.
+-- MINIMAP
+-- Settings for Modules/Minimap.lua and MinimapBag.lua.
 --------------------------------------------------
 local function Refresh()
     if ns.Minimap and ns.Minimap.Refresh then ns.Minimap:Refresh() end

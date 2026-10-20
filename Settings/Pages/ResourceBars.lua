@@ -2,8 +2,9 @@ local _, ns = ...
 local S = ns.Settings
 
 --------------------------------------------------
--- RESOURCE BARS (Modules/ResourceBars.lua). Each bar is a row with its switch and Edit; Show, size, text and the rest are in Edit Mode. Druid mana is offered to druids
--- only. A bar is made at login, so switching one asks for a reload.
+-- RESOURCE BARS
+-- One switch + Edit row per bar (Modules/ResourceBars.lua); bars are made at login, so switching
+-- asks for a reload. Druid mana shows for druids only.
 --------------------------------------------------
 local function Bar(key, extra)
     local row = {
@@ -22,7 +23,7 @@ end
 
 local BARS = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged" }
 
--- the header button opens Edit Mode on the first bar that is on
+-- the header button opens Edit Mode on the first bar that exists
 S:Module{
     key = "rb", group = "HUD", order = 30, enabled = "unitframes.resource.enabled",
     tabs = { { key = "settings" }, { key = "fonts" } },

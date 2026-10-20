@@ -2,8 +2,8 @@ local _, ns = ...
 local S = ns.Settings
 
 --------------------------------------------------
--- BUFFS & DEBUFFS (Modules/Auras.lua): the player's buff and debuff frames. Fixed, no option: the
--- icon swipe, weapon enchants shown. Unit frame auras have their own shape and timer (Unit Frames).
+-- BUFFS & DEBUFFS
+-- Settings for the player's buff and debuff frames (Modules/Auras.lua).
 --------------------------------------------------
 local function Refresh()
     if ns.Auras and ns.Auras.Refresh then ns.Auras:Refresh() end

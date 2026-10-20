@@ -2,13 +2,9 @@ local _, ns = ...
 
 --------------------------------------------------
 -- IMPORT
--- Brings the settings saved as FlareUI_DB into FlareUI2_DB, once, before the database opens. Only
--- what the settings offer comes along, so nothing arrives that the settings can't change back:
---   * account-wide: the radials, every character's own state (radial choice and keys, tracker,
---     chat history), the Sync Blizz UI data, and which character uses which profile
---   * per profile: the settings panel's options, every frame's Edit Mode settings and switches, and
---     the positions stored per Edit Mode layout
--- FlareUI_DB itself is left as it is.
+-- Copies FlareUI_DB into FlareUI2_DB once, before the database opens, keeping only what the settings
+-- offer: account-wide data, panel options, Edit Mode settings and per-layout positions. FlareUI_DB
+-- itself is left untouched.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -55,7 +51,7 @@ for _, path in ipairs({
     "visibility.hidePossessBar", "visibility.hideRaidManager", "visibility.hideStanceBar", "visibility.hideTotemBar",
 }) do PATHS[path] = true end
 
--- the Fake Cooldown Manager bar switches (only from a profile that had Fake CM on)
+-- Fake CM bar switches (kept only from a profile that had Fake CM on)
 local PREFIXES = { "fcm.bars." }
 
 -- a font's controls on the Fonts tabs
@@ -72,13 +68,13 @@ for _, key in ipairs({
     "spacing", "text", "width", "wrap", "mirror", "style", "texture", "border", "borderTexture",
 }) do EDIT_KEYS[key] = true end
 
--- positions per Edit Mode layout, and Move Any Frame's window positions: copied whole
+-- per-layout positions and Move Any Frame's window positions: copied whole
 local STORES = { layouts = true, totemLayouts = true, tankLayouts = true, moverLayouts = true, frames = true }
 
 -- account-wide keys that come along whole
 local GLOBAL_KEYS = { "radialmenu", "characters", "uiSync" }
 
--- the unit frames keys both styles share (UnitFramesRing.lua SHARED_KEYS); the rest is a style's own
+-- unit frame keys both styles share (UnitFramesRing.lua SHARED_KEYS)
 local SHARED_KEYS = { enabled = true, foreverStyle = true, plateStyle = true, styleProfiles = true, editSections = true,
                       raid = true, resource = true, styleStart = true, tileStyle = true }
 
@@ -96,7 +92,7 @@ local function StartsWith(s, prefix) return s:sub(1, #prefix) == prefix end
 
 local function Wanted(path, key)
     if PATHS[path] then return true end
-    -- every font's face, size, outline and shadow (each Fonts tab)
+    -- every font's fields (the Fonts tabs)
     if FONT_FIELDS[key] and path:find("[Ff]ont%a*%.%a+$") then return true end
     for _, prefix in ipairs(PREFIXES) do
         if StartsWith(path, prefix) and key == "enabled" then return true end
@@ -109,7 +105,7 @@ local function Wanted(path, key)
     return false
 end
 
--- the default at the same place: nil when the defaults have no such table
+-- The default at the same path; nil when the defaults have no such table
 local function DefaultAt(defaults, keys)
     local t = defaults
     for i = 1, #keys do
@@ -149,8 +145,7 @@ local function ImportProfile(old, defaults)
                         Walk(v)
                     end
                 elseif Wanted(path, k) then
-                    -- a value of the same kind as the default (none: a per-unit or per-bar setting
-                    -- whose table exists)
+                    -- same type as the default, or no default inside an existing table (per-unit keys)
                     local default = DefaultAt(defaults, keys)
                     local parent = DefaultAt(defaults, { unpack(keys, 1, #keys - 1) })
                     if (default ~= nil and type(default) == type(v)) or (default == nil and type(parent) == "table") then
@@ -167,8 +162,7 @@ local function ImportProfile(old, defaults)
     local oldFCM = old.fcm
     if new.fcm and not (type(oldFCM) == "table" and oldFCM.enabled) then new.fcm.bars = nil end
 
-    -- the saved chat fading (on / off, with or without combat, its fade-out time) becomes Visibility
-    -- and Fade Speed
+    -- old chat fading settings map to "Visibility" and "Fade Speed"
     local oldChat = old.chat
     if type(oldChat) == "table" and oldChat.autoHideEnabled then
         new.chat = new.chat or {}
@@ -176,7 +170,7 @@ local function ImportProfile(old, defaults)
         local out = tonumber(oldChat.fadeOutSpeed) or 0
         new.chat.fadeSpeed = out <= 0 and "instant" or (out <= 0.3 and "fast" or "slow")
     end
-    -- Fade Delay offers 0, 5, 10, 15 or 30 seconds: the nearest
+    -- "Fade Delay" offers 0, 5, 10, 15 or 30 seconds: the nearest
     local delay = new.chat and new.chat.autoHideDelay
     if type(delay) == "number" then
         local best = 0
@@ -186,9 +180,7 @@ local function ImportProfile(old, defaults)
         new.chat.autoHideDelay = best
     end
 
-    -- The imported frames are the Addon style: that setup is also kept as the Addon style's own, so
-    -- switching to it brings the frames back as they were. The Forever style (the default) starts
-    -- from its preset.
+    -- Imported frames are Addon Style: kept as that style's profile; Forever Style starts from its preset
     local uf = new.unitframes
     if uf then
         local usual = {}
@@ -203,7 +195,7 @@ end
 --------------------------------------------------
 -- 4. THE ACCOUNT
 --------------------------------------------------
--- Runs before AceDB opens FlareUI2_DB. Only into settings that are still empty, and only once.
+-- Runs before AceDB opens FlareUI2_DB; only into empty settings, and only once
 function ns.ImportOldSettings(defaults)
     local old = _G.FlareUI_DB
     if type(old) ~= "table" then return end

@@ -3,9 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- EDIT MODE OVERLAYS
--- An eye button beside Edit Mode's close button hides the selection boxes of every Edit Mode frame
--- (alpha 0: they still drag and click). Saved per profile. Edit Mode's Frames checkboxes also show
--- and hide FlareUI's frames.
+-- An eye button beside Edit Mode's close button hides every selection box (alpha 0: they still drag
+-- and click), saved per profile. Edit Mode's Frames checkboxes also toggle FlareUI's frames.
 --------------------------------------------------
 local EYE_TEXTURE      = "Interface\\LFGFrame\\LFG-Eye"
 local EYE_FRAME_OPEN   = 0
@@ -18,13 +17,12 @@ local LEM = LibStub("FlareEditMode")
 
 --------------------------------------------------
 -- 1. HIDING FLAREUI'S FRAMES IN EDIT MODE
--- A frame can be hidden for a reason while editing (Blizzard's checkbox for it is off): it goes
--- invisible and so does its selection box, which then cannot be clicked, until no reason is left. A
--- frame never hidden is never touched (its own alpha stays its module's).
+-- A frame hidden for any reason goes invisible with its selection box until no reason is left. A
+-- frame never hidden here keeps its module's alpha.
 --------------------------------------------------
 local hiddenFor = {}   -- frame -> { reason = true }
 
-function ns.EditModeHide(frame, reason, hide)
+local function EditModeHide(frame, reason, hide)
     if not frame then return end
     local reasons = hiddenFor[frame]
     if not hide and not (reasons and reasons[reason]) then return end
@@ -50,8 +48,8 @@ end
 --------------------------------------------------
 -- 2. THE FRAMES CHECKBOXES
 --------------------------------------------------
--- Edit Mode's Frames checkboxes show and hide Blizzard's frames, which FlareUI keeps hidden; they
--- show and hide FlareUI's own in their place (in Edit Mode only)
+-- The checkboxes toggle Blizzard's frames, which FlareUI keeps hidden: in Edit Mode they toggle
+-- FlareUI's replacements instead
 local SWITCHES = {
     { setter = "SetTargetAndFocusShown", setting = "ShowTargetAndFocus",
       frames = { "FlareUI_UF_Target", "FlareUI_UF_Focus", "FlareUI_UF_TargetOfTarget", "FlareUI_UF_TargetOfFocus" } },
@@ -69,7 +67,7 @@ local function ApplySwitch(switch)
     if not (manager and enum) then return end
     local ok, shown = pcall(manager.GetAccountSettingValueBool, manager, enum)
     local off = LEM:IsInEditMode() and ok and shown == false or false
-    for _, name in ipairs(switch.frames) do ns.EditModeHide(_G[name], "blizzard", off) end
+    for _, name in ipairs(switch.frames) do EditModeHide(_G[name], "blizzard", off) end
 end
 
 local function ApplySwitches()
@@ -124,7 +122,7 @@ local function UpdateEye()
     SetEyeFrame(eyeButton:GetNormalTexture(), hidden and EYE_FRAME_CLOSED or EYE_FRAME_OPEN)
 end
 
-function ns.ToggleEditModeOverlays(state)
+local function ToggleEditModeOverlays(state)
     if not ns.db or not ns.db.profile then return end
     if state == nil then state = not ns.db.profile.editModeOverlaysHidden end
     ns.db.profile.editModeOverlaysHidden = state and true or false
@@ -145,7 +143,7 @@ local function CreateEye()
     end
     eyeButton:SetNormalTexture(EYE_TEXTURE)
     eyeButton:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-    eyeButton:SetScript("OnClick", function() ns.ToggleEditModeOverlays() end)
+    eyeButton:SetScript("OnClick", function() ToggleEditModeOverlays() end)
     eyeButton:SetScript("OnEnter", function(self)
         ns.OwnGameTooltip(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(L["Toggle Edit Mode Overlays"])
@@ -161,7 +159,7 @@ end
 local function OnEditModeShown()
     CreateEye()
     UpdateEye()
-    -- after Blizzard and the libraries show their selections; shown is every frame's own state
+    -- after Blizzard and the libraries show their selections
     if IsHidden() then C_Timer.After(0, ApplyOverlays) end
 end
 
@@ -181,7 +179,7 @@ local function Hook()
             hooksecurefunc(account, switch.setter, function() ApplySwitch(switch) end)
         end
     end
-    -- after the modules have shown their frames for Edit Mode; leaving it shows them all again
+    -- after the modules show their frames for Edit Mode
     LEM:RegisterCallback("enter", function() C_Timer.After(0, ApplySwitches) end)
     LEM:RegisterCallback("exit", ApplySwitches)
 end

@@ -3,17 +3,9 @@ local L = ns.L
 
 --------------------------------------------------
 -- RADIAL MENU
--- A radial menu: hold the binding, sweep the mouse, release to fire the button you
--- landed on. It works the same in combat as out of it:
---   * the radial is ordinary art, so we can show / move / resize it whenever we like, and plain Lua
---     highlights the hovered button from the cursor angle
---   * ONE SecureActionButton (the caster) carries the action, and the binding clicks it on release
---   * a secure snippet wrapped round the caster picks the radial button again, with the same maths,
---     and writes the caster's attributes - secure code may do that in combat, plain Lua may not
--- Radial macros: "/click FUIRadial <radial name>" opens any radial in click mode, for macros with
--- conditionals and for a radial button that opens another radial. A /click never delivers a key
--- release, so a macro radial stays open: click the button you want (or press the macro again to fire
--- the aimed one); right-click or Escape closes it. See section 9.
+-- Hold the binding, sweep the mouse, release to fire the aimed button; works in combat. The radial
+-- is plain art; one SecureActionButton (the caster) fires, and a secure snippet picks the button
+-- with the same maths and writes its attributes. Macros open radials in click mode (section 10).
 --------------------------------------------------
 
 --------------------------------------------------
@@ -39,9 +31,8 @@ local GetTime = GetTime
 
 --------------------------------------------------
 -- 3. CONSTANTS
--- Geometry and the selection maths follow Blizzard's own radial wheel
--- (SharedXML/Blizzard_RadialWheel.lua), which drives the in-game ping wheel: button one at the top,
--- a dead zone in the middle that means "cancel", and the pointer rotated to the cursor angle.
+-- Geometry and selection follow Blizzard_RadialWheel.lua (the ping wheel): button one at the top, a
+-- cancel dead zone in the middle, the pointer turned to the cursor angle.
 --------------------------------------------------
 local TAU = math_pi * 2
 local QUARTER = math_pi / 2
@@ -52,13 +43,14 @@ local CATCHER_NAME = "FlareUI_RadialCatcher"
 local MACRO_NAME   = "FUIRadial"   -- the button macros /click; kept short, users type it
 local PAD_NAME     = "FlareUI_RadialPad"   -- what the stick press clicks in controller mode
 local PAD_CANCEL   = GAMEPAD_FACE_RIGHT or "PAD2"   -- B / Circle closes a controller radial
+local PAD_PREV     = GAMEPAD_SHOULDER_LEFT or "PADLSHOULDER"    -- LB / RB: the aimed slot's previous /
+local PAD_NEXT     = GAMEPAD_SHOULDER_RIGHT or "PADRSHOULDER"   -- next sub-radial button (the mouse wheel's job)
 local PAD_DEAD_LEN = 0.5          -- a stick pushed less than this aims at nothing (the X)
 
--- Blizzard's ping wheel art: the pointer, and the X in the middle with the circle that lights up
--- behind it
 local ATLAS_POINTER       = "Radial_Wheel_Select_Pointer"
 local ATLAS_CIRCLE_MASK   = "CircleMaskScalable"
 local ATLAS_CANCEL_ICON   = "Radial_Wheel_Icon_Close"
+local ATLAS_CANCEL_PAD    = "gamepad-xb-32x-rstick"   -- the Gamepad UI: the aiming stick, as Blizzard's ping wheel
 local ATLAS_CANCEL_SELECT = "Radial_Wheel_Select_Close"
 local CANCEL_ICON_SIZE    = 24
 local CANCEL_SELECT_SIZE  = 48
@@ -67,28 +59,19 @@ local POINTER_SIZE = 84   -- turned to the raw atan2 angle, as Blizzard's
 
 local DEAD_ZONE_SQ = 500          -- cursor closer than this to the centre selects nothing
 local ICON_SIZE    = 46
--- Centre of the radial to centre of a button icon, from the button count rather than a setting, so any
--- radial spreads its icons out comfortably: 90 up to four buttons, then 7.5 more per button, which is
--- 120 at eight and 150 at the maximum of twelve.
+-- radius from the button count: 90 up to four buttons, then 7.5 more per button (150 at twelve)
 local RADIUS_MIN, RADIUS_FLAT_BUTTONS, RADIUS_PER_BUTTON = 90, 4, 7.5
--- Round buttons are sized on their own, not off ICON_SIZE, so the icon can run right up to its rim
--- and the whole button reads bigger at the same footprint.
 local ROUND_SIZE   = 52           -- outer diameter of a round button
-local ROUND_BORDER = 3            -- rim thickness for the drawn fallback below
+local ROUND_BORDER = 3            -- rim thickness for the drawn fallback
 local ROUND_ICON   = ROUND_SIZE - ROUND_BORDER * 2
 
--- A round button is framed by the first of these the client actually has. The first is the rim the
--- spellbook puts round a passive ability (Blizzard_SpellBookItem.lua:694, the Circle art set); the
--- second is Blizzard's azerite rim, which carries its own padding and so holds a smaller icon. The
--- rim never changes with the selection: the lit slice marks that.
--- None of these atlases are in the Forever API snapshot, so the choice is made in the client.
+-- The first rim style whose atlases the client has (they are not in the API export, so it is
+-- checked in the client). The azerite rim has its own padding, hence the smaller icon.
 local ROUND_STYLES = {
     {
         mask = "talents-node-circle-mask",
         idle = "talents-node-circle-gray",
-        -- the silver is neutral, so a warm multiply pulls it towards the bronze of the rest of the
-        -- UI without flattening the metal out of it
-        idleTint = { 0.92, 0.76, 0.52 },
+        idleTint = { 0.92, 0.76, 0.52 },   -- warms the neutral silver towards the UI's bronze
         iconFactor = 1.00,
     },
     {
@@ -98,23 +81,17 @@ local ROUND_STYLES = {
     },
 }
 local RIM_TINT_NONE = { 1, 1, 1 }
-local BORDER_COLOR         = { 0.45, 0.33, 0.19 }   -- the drawn fallback rim: #735430, the panel frames' brown
--- the hovered button grows to full size; the rest sit a little smaller
-local ICON_SCALE_IDLE      = 0.88
+local BORDER_COLOR         = { 0.45, 0.33, 0.19 }   -- the drawn fallback rim, the panel frames' brown
+local ICON_SCALE_IDLE      = 0.88   -- the hovered button is full size
 
--- Unusable buttons are tinted the way Blizzard's action buttons are (ActionButton.lua): grey when
--- the action cannot be used, blue when only the mana is missing. The cooldown swipe is cut to a
--- circle by its texture, the portrait mask, so it stays inside the round icon.
+-- tinted as Blizzard's action buttons; the portrait-mask swipe stays inside the round icon
 local TINT_USABLE   = { 1, 1, 1 }
 local TINT_UNUSABLE = { 0.4, 0.4, 0.4 }
 local TINT_NO_MANA  = { 0.5, 0.5, 1 }
 local SWIPE_TEXTURE = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 
--- The radial looks like Blizzard's ping wheel: its backdrop, a divider between every two slices,
--- the hovered slice lit, and its open / close animation. Blizzard ships its dividers and slice
--- light for four slices only (Radial_Wheel_Frame_Count_4, Radial_Wheel_Select_Wedge_Count_4), so
--- FlareUI draws its own (wtf-tools/buildradial.js) and cuts the light to any slice width with two
--- rotated half-plane masks.
+-- Ping wheel look. Blizzard's divider and slice-light art exists for four slices only, so FlareUI
+-- ships its own and cuts the light to any slice width with two rotated half-plane masks.
 local MEDIA = "Interface\\AddOns\\FlareUI\\Media\\Radial\\"
 local PING = {
     BG_ATLAS = "Radial_Wheel_BG",
@@ -124,20 +101,16 @@ local PING = {
     RING_SIZE = 56, HUB = 24,           -- the hub ring, and where the dividers start
     GLOW_SIZE = 400,                    -- the light's inner edge meets the hub ring at this size
     DIVIDER_THICKNESS = 4,
-    -- Forever's bronze rather than grey: the dividers in the frame bronze (ns.BORDER_COLOR, #A67D45)
-    -- a little dimmed, the hub ring in the darker panel-frame brown the buttons' rims sit next to
-    DIVIDER_COLOR = { 0.58, 0.44, 0.25, 0.85 },
+    DIVIDER_COLOR = { 0.58, 0.44, 0.25, 0.85 },   -- frame bronze, dimmed
     RING_COLOR = { 0.45, 0.33, 0.19, 1 },
-    LIT_COLOR = { 1, 0.80, 0.25 },      -- the Radial_Wheel pointer's yellow, a touch warmer
+    LIT_COLOR = { 1, 0.80, 0.25 },
     GLOW_ALPHA = 0.5,
     LIT_DIVIDER_ALPHA = 0.7,
-    -- Blizzard_RadialWheel.lua: everything fades in over 0.2 s and out over 0.13 s while the icons
-    -- glide 20 px out from (in towards) the middle, eased InOutCubic
+    -- Blizzard_RadialWheel.lua's timings: fade in / out while the icons glide SLIDE px
     INTRO = 0.2, OUTRO = 0.13, SLIDE = 20,
     LABEL_GAP = 4,
     LABEL_WRAP = 16,                    -- a name of several words this long goes on two lines
-    -- Page dots under a button the mouse wheel steps through (a sub-radial): one per option, the
-    -- current one lit, spread along the bottom of the rim
+    -- a sub-radial's page dots along the bottom of the rim
     DOT = MEDIA .. "Dot.tga",
     DOT_SIZE = 6, DOT_SIZE_ON = 7,
     DOT_STEP = math.rad(13),           -- between two dots, round the rim
@@ -148,9 +121,9 @@ local PING = {
 
 local STUCK_OPEN_SECONDS = 20     -- see the guard in UpdateSelection
 
-local MAX_BUTTONS = 12             -- more than this and a radial stops being quicker than a bar
-local MAX_EXTRA_KEYS = 5           -- extra keybinds per character, each opening its own radial
-local MAX_RADIAL_DEPTH = 4          -- a radial inside a radial inside a radial is already past useful
+local MAX_BUTTONS = 12
+local MAX_EXTRA_KEYS = 5           -- extra keybinds per character
+local MAX_RADIAL_DEPTH = 4
 
 local radial, caster, header, wheel, buttons = nil, nil, nil, nil, {}
 local catcher, macroButton          -- click mode's full-screen catcher, and the button macros click
@@ -158,16 +131,16 @@ local padButton                     -- controller mode's button, clicked by the 
 local padStickIndex = 2             -- the right stick in C_GamePad's mapped state (RightStickIndex)
 local isOpen, selectedIndex, currentRadial = false, nil, nil
 local currentID                     -- the radial id currentRadial belongs to
-local openMode                      -- "hold" (the keybind), "click" (a macro) or "pad"; see section 8
+local openMode                      -- "hold" (the keybind), "click" (a macro) or "pad"
 local resolved = {}               -- currentRadial resolved to names / icons / attributes
-local resolvedCache = {}          -- every radial resolved, as the secure layer holds them (SyncSecure)
+local resolvedCache = {}          -- every radial resolved, as the secure layer holds them
 local syncedIDs = {}              -- radial ids written to the secure layer, to retire deleted ones
 local syncedTags = {}             -- macro tags written to the secure layer, to retire renamed ones
 local openedAt = 0
 local previewID, previewAnchor     -- set while the radial editor is open
-local CloseRadial                   -- defined in section 8, used by the guard in section 7
-local SyncSecure                  -- defined in section 9, run at the end of every layout
-local layoutPending               -- a layout held back by combat; see LayoutRadial
+local CloseRadial                   -- section 9
+local SyncSecure                  -- section 10
+local layoutPending               -- a layout held back by combat
 
 --------------------------------------------------
 -- 4. HELPERS
@@ -176,8 +149,7 @@ local function RadialRadius(count)
     return RADIUS_MIN + math_max(0, count - RADIUS_FLAT_BUTTONS) * RADIUS_PER_BUTTON
 end
 
--- Resolved once, in the client, and remembered. false means none of the styles are available and
--- the drawn rim takes over.
+-- false: no style available, the drawn rim takes over
 local roundStyle
 local function RoundStyle()
     if roundStyle ~= nil then return roundStyle or nil end
@@ -195,14 +167,13 @@ local function RoundStyle()
     return nil
 end
 
--- Show Button Names lives in the profile (the radials themselves are account-wide, in global)
+-- profile options; the radials themselves are account-wide, in global
 local function ShowNames()
     local db = ns.db and ns.db.profile and ns.db.profile.radialmenu
     return not (db and db.showNames == false)
 end
 
--- Menu Position (cursor | center) and Activation (hold | toggle), in the profile. The secure layer
--- reads its own copy (header attributes "flare-center" / "flare-toggle", set by SyncSecure).
+-- the secure layer reads its own copy ("flare-center" / "flare-toggle", set by SyncSecure)
 local function Option(key, default)
     local db = ns.db and ns.db.profile and ns.db.profile.radialmenu
     local value = db and db[key]
@@ -218,52 +189,40 @@ end
 
 --------------------------------------------------
 -- 5. ACTIONS
--- A button is stored as a small description - { kind = "spell", id = 133 } - and resolved to a name,
--- an icon and a set of secure attributes when the radial is laid out. Every kind maps onto one of
--- Blizzard's own SECURE_ACTIONS handlers (SecureTemplates.lua), so nothing here reimplements
--- casting, marking or panel opening; it only decides which attributes to write.
--- Resolvers return: name, icon, attributes. Icon is { atlas = } or { texture = }.
+-- A stored button ({ kind = "spell", id = 133 }) resolves to name, icon ({ atlas } or { texture })
+-- and the attributes of one of Blizzard's SECURE_ACTIONS handlers.
 --------------------------------------------------
 local ACTIONS = {}
-local ResolveEntry                -- defined below; ACTIONS.subradial recurses through it
+local ResolveEntry                -- ACTIONS.subradial recurses through it
 
--- Most panels click the real Blizzard micro button, so each one keeps its own behaviour rather than
--- having its toggle reimplemented here. Bags has no micro button and runs the toggle instead.
--- Both go through a macro on the secure button, so the panel opens from Blizzard's own untainted
--- code. That matters: a panel opened from our tainted call leaves taint on every frame it touches,
--- and the client then refuses to compare the secret numbers it finds there (TextStatusBar.lua:110
--- reading player health as the Character panel opens).
--- Forever keeps Spellbook, Talents and Legacy as separate micro buttons.
+-- Panels open through a macro on the secure button (a micro button /click or Blizzard's toggle):
+-- opened from a tainted call, a panel taints its frames and secret comparisons there then fail.
 local MICRO_PANELS = {
-    bags        = { order = 1,  label = L["Bags"],         icon = 133633,  macrotext = "/run ToggleAllBags()" },
+    bags        = { order = 1,  label = L["Bags"],         icon = 133633,  button = "MainMenuBarBackpackButton",
+                    macrotext = "/run ToggleAllBags()" },
     character   = { order = 2,  label = L["Character"],    icon = 136047,  button = "CharacterMicroButton" },
     collections = { order = 3,  label = L["Collections"],  icon = 132261,  button = "CollectionsMicroButton" },
+    gamemenu    = { order = 3.5, label = L["Game Menu"],  icon = "Interface\\Icons\\INV_Misc_Gear_01", button = "MainMenuMicroButton" },
     groupfinder = { order = 4,  label = L["Group Finder"], icon = 132161,  button = "LFDMicroButton" },
     guild       = { order = 5,  label = L["Guild & Communities"],          button = "GuildMicroButton" },
     legacy      = { order = 6,  label = L["Legacy"],       icon = 4279397, button = "LegacyMicroButton" },
+    macros      = { order = 6.5, label = L["Macros"],     icon = "Interface\\Icons\\INV_Misc_Note_06", macrotext = "/macro" },
     professions = { order = 7,  label = L["Professions"],  icon = 4202228, button = "ProfessionMicroButton" },
     quests      = { order = 8,  label = L["Quest Log"],    icon = 8197102, button = "QuestLogMicroButton" },
-    -- the Friends window (Blizzard's TOGGLESOCIAL binding); no micro button of its own
     social      = { order = 9,  label = L["Social"],       icon = "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend",
-                    macrotext = "/run ToggleFriendsFrame()" },
+                    button = "QuickJoinToastButton", macrotext = "/run ToggleFriendsFrame()" },
     spellbook   = { order = 10, label = L["Spellbook"],    icon = 133741,  button = "SpellbookMicroButton" },
     talents     = { order = 11, label = L["Talents"],      icon = 132222,  button = "TalentMicroButton" },
-    -- FlareUI's own settings (FlareUI_ToggleSettings, Launcher.lua)
     flareui     = { order = 12, label = L["FlareUI Settings"], icon = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png",
                     macrotext = "/run FlareUI_ToggleSettings()" },
-    -- flips the damage meter between Blizzard's view and FlareUI's threat view (Modules/DamageMeter.lua)
     threat      = { order = 13, label = L["Toggle Threat Meter"], icon = "Interface\\Icons\\Ability_Physical_Taunt",
                     macrotext = "/run FlareUI_ToggleThreatMeter()" },
 }
 RM.MICRO_PANELS = MICRO_PANELS
 
--- Guild & Communities: the guild tabard, rather than the muted micro menu art or a faction crest.
--- A texture path, not an atlas, because this icon predates atlases and is in every client.
 local GUILD_ICON = "Interface\\Icons\\INV_Shirt_GuildTabard_01"
 
--- A button that has just had its type changed has no id yet, and the lookup APIs raise a usage error
--- rather than returning nil when handed one. Every id-based resolver bails out first; the button
--- then counts as unavailable and is left out of the radial until it is filled in.
+-- the lookup APIs raise an error on a nil id, so id-based resolvers bail out first
 ACTIONS.spell = function(entry)
     if not entry.id then return nil end
     local info = C_Spell.GetSpellInfo(entry.id)
@@ -271,7 +230,6 @@ ACTIONS.spell = function(entry)
     return info.name, { texture = info.iconID }, { type = "spell", spell = entry.id }
 end
 
--- Mounts are spells; the journal is only used to look the spell and icon up by mount ID.
 ACTIONS.mount = function(entry)
     if not (entry.id and C_MountJournal) then return nil end
     local name, spellID, icon = C_MountJournal.GetMountInfoByID(entry.id)
@@ -279,9 +237,8 @@ ACTIONS.mount = function(entry)
     return name, { texture = icon }, { type = "spell", spell = spellID }
 end
 
--- Blizzard's "item" action reads an item NAME (an ID would parse as a bag slot), so the ID is
--- stored and the name handed over. An uncached name makes the button unavailable until the item
--- data arrives (ITEM_DATA_LOAD_RESULT, see Init).
+-- Blizzard's "item" action needs a NAME (an ID parses as a bag slot); an uncached name leaves the
+-- button out until ITEM_DATA_LOAD_RESULT
 local awaitedItems = {}   -- item id -> true while a radial waits for its data
 ACTIONS.item = function(entry)
     if not entry.id then return nil end
@@ -328,19 +285,19 @@ ACTIONS.micromenu = function(entry)
     if not panel then return nil end
     local icon = { texture = panel.icon or GUILD_ICON }
 
+    -- Blizzard's own button first: /run is forced insecure, and a panel opened from it in the
+    -- Gamepad UI is blocked (ForceTaint_Strong) when Blizzard hands it the controller
+    if panel.button and _G[panel.button] then
+        -- /click, not a clickbutton attribute: the secure layer copies plain values only
+        return panel.label, icon, { type = "macro", macrotext = "/click " .. panel.button }
+    end
     if panel.macrotext then
         return panel.label, icon, { type = "macro", macrotext = panel.macrotext }
     end
-    if not _G[panel.button] then return nil end
-    -- /click rather than a clickbutton attribute: the secure layer copies each action as plain values
-    -- (section 9), and a frame cannot travel that way. /click also puts Blizzard's own guards in front
-    -- of the click (SlashCommands.lua:738), so a frame the client has fenced off is left alone.
-    return panel.label, icon, { type = "macro", macrotext = "/click " .. panel.button }
+    return nil
 end
 
--- Emotes: the animated ones of Blizzard's chat menu (EmoteList), each run as its slash command
--- through the secure macro, like a radial's own macros, so they work in combat too. The name and
--- command are the game's own (localised); Blizzard has no emote icons, so each has a picked one.
+-- the chat menu's animated emotes, run as their localised slash command; Blizzard has no icons
 local EMOTES = {
     { token = "WAVE",    icon = "Achievement_Reputation_01" },
     { token = "BOW",     icon = "Spell_Holy_PrayerofSpirit" },
@@ -375,7 +332,7 @@ local function EmoteInfo(token)
     return emoteByToken[token]
 end
 
--- the game's slash command for an emote token ("/wave"), found as Blizzard's chat menu finds it
+-- an emote token's slash command ("/wave"), found as Blizzard's chat menu does
 local emoteCommands = {}
 local function EmoteCommand(token)
     if emoteCommands[token] then return emoteCommands[token] end
@@ -399,11 +356,8 @@ ACTIONS.emote = function(entry)
     return name, { texture = "Interface\\Icons\\" .. info.icon }, { type = "macro", macrotext = command }
 end
 
--- A button that stands for another radial. The sub-radial is never drawn: the button shows one of the
--- nested actions at a time and the mouse wheel steps through them. The children are resolved here,
--- so an unavailable one is skipped exactly as it would be in its own radial, and a radial whose
--- children all fail is itself unavailable. seen holds the radials on the current path, so a radial
--- cannot contain itself however long the chain.
+-- A button standing for another radial: it shows one resolved child at a time and the mouse wheel
+-- steps through them. seen holds the radials on the current path, so no radial contains itself.
 ACTIONS.subradial = function(entry, depth, seen)
     local id = entry.radial
     if not id or depth >= MAX_RADIAL_DEPTH or seen[id] then return nil end
@@ -420,16 +374,12 @@ ACTIONS.subradial = function(entry, depth, seen)
     seen[id] = nil
     if #children == 0 then return nil end
 
-    -- the button wears the first child until the wheel moves it; see SetButtonChild
     local first = children[1]
     return first.name, first.icon, first.attributes,
         { children = children, childIndex = 1, radialName = data.name, radialID = id }
 end
 
--- Resolution can fail: a mount that is not collected, an item the character does not have, a panel
--- whose addon has not loaded. An unavailable button is dropped from the radial entirely and the rest
--- close up around it, rather than leaving a gap. Because availability changes, the radial is
--- resolved afresh every time it opens.
+-- nil when unavailable (uncollected mount, missing item...): the radial closes up around it
 local UNKNOWN_ICON = 134400
 
 function ResolveEntry(entry, depth, seen)
@@ -438,14 +388,13 @@ function ResolveEntry(entry, depth, seen)
     local name, icon, attributes, extra = resolver(entry, depth or 0, seen or {})
     if not attributes then return nil end
     local info = { name = name, icon = icon or { texture = UNKNOWN_ICON }, attributes = attributes, entry = entry }
-    -- a sub-radial hands back its children here
     if extra then
         for key, value in pairs(extra) do info[key] = value end
     end
     return info
 end
 
--- The radial a new account starts with: the eight raid target markers.
+-- a new account's first radial
 local function MarkerButtons()
     local t = {}
     for i = 1, 8 do t[i] = { kind = "targetmarker", marker = i } end
@@ -464,8 +413,7 @@ local function CreateRadialButton(index)
 
     local style = RoundStyle()
 
-    -- The fallback rim when the client has no rim art: a flat colour disc under the icon, clipped
-    -- to a circle. Only one of this and RimArt is ever shown.
+    -- fallback rim without rim art: a colour disc clipped to a circle (RimArt otherwise)
     button.Rim = button:CreateTexture(nil, "BACKGROUND")
     button.Rim:SetColorTexture(1, 1, 1)
     button.Rim:SetPoint("CENTER")
@@ -477,7 +425,7 @@ local function CreateRadialButton(index)
     button.RimMask:SetAllPoints(button.Rim)
     button.Rim:AddMaskTexture(button.RimMask)
 
-    -- anchored by ApplyButtonShape, which differs between the two shapes
+    -- anchored by ApplyButtonShape
     button.Icon = button:CreateTexture(nil, "ARTWORK")
 
     button.Mask = button:CreateMaskTexture()
@@ -489,15 +437,13 @@ local function CreateRadialButton(index)
     button.RimArt:SetSize(ROUND_SIZE, ROUND_SIZE)
     button.RimArt:Hide()
 
-    -- the cooldown swipe over the icon; see ApplyButtonState
     button.Cooldown = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
     button.Cooldown:SetAllPoints(button.Icon)
     button.Cooldown:SetSwipeTexture(SWIPE_TEXTURE)
     button.Cooldown:SetDrawEdge(false)
     button.Cooldown:SetDrawBling(false)
 
-    -- The name, shown only on the hovered button and on the outer side of it (see PlaceLabel). On
-    -- its own frame above the cooldown, so the swipe never covers it.
+    -- the hovered button's name, on a frame above the cooldown swipe
     button.Front = CreateFrame("Frame", nil, button)
     button.Front:SetAllPoints()
     button.Front:SetFrameLevel(button.Cooldown:GetFrameLevel() + 2)
@@ -506,20 +452,18 @@ local function CreateRadialButton(index)
     button.Label:SetShadowOffset(1, -1)
     button.Label:Hide()
 
-    button.Dots = {}   -- a sub-radial's page dots; see SetPageDots
+    button.Dots = {}   -- a sub-radial's page dots
 
     button.index = index
     return button
 end
 
--- Blizzard's rule (Blizzard_RadialWheel.lua): the name goes above a button in the top quarter of the
--- wheel, left of one on the left, below one at the bottom and right of one on the right.
+-- Blizzard_RadialWheel.lua's rule: the name sits on the button's outer side
 local function PlaceLabel(button, angle)
     local a = angle % TAU
     local q, gap = math_pi / 4, PING.LABEL_GAP
     local label = button.Label
     label:ClearAllPoints()
-    -- a wrapped name lines up towards its button
     if a > q and a <= math_pi - q then
         label:SetPoint("BOTTOM", button, "TOP", 0, gap)
         label:SetJustifyH("CENTER")
@@ -535,9 +479,8 @@ local function PlaceLabel(button, angle)
     end
 end
 
--- Sets the name. A long name of several words is split in two at the space that gives the most even
--- lines ("Guild &" / "Communities"); a single word is never broken. Decided by length rather than
--- by measuring the text: the first layout after a reload can run before the font is ready.
+-- A long multi-word name splits at the most even space. By length, not measured: the first layout
+-- after a reload can run before the font is ready.
 local function SetLabelText(button, text)
     text = text or ""
     if #text >= PING.LABEL_WRAP then
@@ -551,8 +494,7 @@ local function SetLabelText(button, text)
     button.Label:SetText(text)
 end
 
--- One dot per option of a sub-radial, centred under the button along the rim, the current one lit.
--- count 0 or 1: no dots (nothing to scroll to).
+-- one dot per child under the button, the current one lit; none for 0 or 1
 local function SetPageDots(button, count, current)
     local dots = button.Dots
     local shown = count and count > 1 and count or 0
@@ -591,7 +533,6 @@ local function ApplyButtonShape(button)
         button.Icon:AddMaskTexture(button.Mask)
         button.masked = true
     end
-    -- whichever of the two is in use; see ROUND_STYLES
     button.RimArt:SetShown(style ~= nil)
     button.Rim:SetShown(style == nil)
     if style then
@@ -603,8 +544,7 @@ local function ApplyButtonShape(button)
     end
 end
 
--- Square icon files get the usual border crop; atlases carry their own coordinates and must not be
--- cropped, so SetAtlas is applied on its own.
+-- icon files get the border crop; atlases carry their own coordinates
 local function SetButtonIcon(button, icon)
     if icon and icon.atlas then
         button.Icon:SetTexCoord(0, 1, 0, 1)
@@ -617,15 +557,11 @@ end
 
 local function SetButtonSelected(button, selected)
     button:SetScale(selected and 1 or ICON_SCALE_IDLE)
-    -- the lit slice marks the choice; the button itself only grows and names its action
     button.Label:SetShown(selected and ShowNames() and (button.Label:GetText() or "") ~= "")
 end
 
--- Cooldown swipe and usable tint for what a button fires now (a sub-radial's current child). Spells
--- and mounts go through the spell API; the cooldown is handed over as Blizzard's duration object,
--- which carries the timing even when cooldowns are secret, and the global cooldown is left out so a
--- recent cast does not sweep every button. Items read their own cooldown. Markers, panels and
--- macros have neither and stay as they are. Anything unreadable leaves the button looking usable.
+-- Cooldown swipe and usable tint for what a button fires now. Spell cooldowns go through a duration
+-- object (works when secret, GCD left out); anything unreadable looks usable.
 local function Readable(value)
     return value ~= nil and canaccessvalue(value)
 end
@@ -665,7 +601,7 @@ local function RefreshButtonStates()
     for i, info in ipairs(resolved) do ApplyButtonState(buttons[i], info) end
 end
 
--- While the radial is up, cooldowns starting or ending and power changing re-run the states
+-- registered only while the radial is up
 local stateEvents = CreateFrame("Frame")
 stateEvents:SetScript("OnEvent", RefreshButtonStates)
 local STATE_EVENTS = { "SPELL_UPDATE_COOLDOWN", "SPELL_UPDATE_USABLE", "BAG_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_USABLE" }
@@ -676,9 +612,8 @@ local function WatchButtonStates(watch)
     end
 end
 
--- Puts a sub-radial button on one of its children. Called back from the secure wheel handler, which
--- owns the choice (section 9): the art only follows it, so what is shown is what the release fires.
--- The radial itself is not rebuilt, so the sweep is never interrupted.
+-- Called back by the secure wheel handler, which owns the child choice; the art only follows it
+-- (no rebuild, so the sweep is not interrupted)
 local function SetButtonChild(index, childIndex)
     local info, button = resolved[index], buttons[index]
     if not (info and button and info.children) then return end
@@ -692,7 +627,6 @@ local function SetButtonChild(index, childIndex)
     ApplyButtonState(button, info)
 end
 
--- Unavailable buttons are skipped, so the radial closes up around them.
 local function ResolveButtons(list)
     local out = {}
     for i = 1, #(list or {}) do
@@ -703,7 +637,7 @@ local function ResolveButtons(list)
     return out
 end
 
--- Every radial in the library, since a macro may open any of them in combat
+-- every radial: a macro may open any of them in combat
 local function ResolveAll()
     wipe(resolvedCache)
     for _, id in ipairs(RM:GetRadialOrder()) do
@@ -712,15 +646,11 @@ local function ResolveAll()
     end
 end
 
--- fromCache: draw the copy the secure layer holds without resolving or syncing again (a nested radial
--- opened in place: the secure side is mid-snippet and keeps its wheel choices)
+-- fromCache: draw the secure layer's copy without resolving or syncing (a nested radial opened in
+-- place keeps the secure side's wheel choices)
 function RM:LayoutRadial(fromCache)
     if not (radial and currentRadial) then return end
-    -- The secure layer holds a copy of every radial's layout (SyncSecure), and that copy cannot be
-    -- rewritten in combat. Resolving afresh there would let the art drift from what a click actually
-    -- fires, so in combat the art draws the copy made out of combat, and a new one is made on the way
-    -- out. Resolving happens here rather than per frame; LayoutRadial runs whenever a radial opens or
-    -- is edited.
+    -- the secure copy cannot be rewritten in combat: there the art draws it, so it matches what fires
     if fromCache and currentID and resolvedCache[currentID] then
         resolved = resolvedCache[currentID]
     elseif InCombatLockdown() then
@@ -748,7 +678,7 @@ function RM:LayoutRadial(fromCache)
         end
         if button then
             if entry then
-                -- button 1 at the top, the rest clockwise from it
+                -- button 1 at the top, the rest clockwise
                 local angle = QUARTER - (i - 1) * interval
                 button.angle = angle
                 button.baseX, button.baseY = math_cos(angle) * radius, math_sin(angle) * radius
@@ -766,20 +696,20 @@ function RM:LayoutRadial(fromCache)
             end
         end
     end
+    -- every button was just drawn unselected: an open radial picks its selection again next frame
+    if isOpen then selectedIndex = nil end
     RM:LayoutPing(count, radius, interval)
     RefreshButtonStates()
     if not fromCache then SyncSecure() end
 end
 
--- The Ping Wheel art for count buttons: the backdrop, the hub ring, and a divider half an interval
--- clockwise of every button (so divider i runs between button i and button i + 1). One button has
--- no slices to divide.
+-- divider i runs between button i and button i + 1; one button has none
 function RM:LayoutPing(count, radius, interval)
     local p = radial.Ping
     p.count, p.interval = count, interval
     local bg = math_max(PING.BG_MIN, radius * PING.BG_FACTOR)
     p.Background:SetSize(bg, bg)
-    p.Background:SetShown(not previewID)   -- in the editor it would spill out of the box
+    p.Background:SetShown(not previewID)   -- would spill out of the editor's box
 
     local sliced = count >= 2
     local outer = radius + ICON_SIZE * 0.9
@@ -804,10 +734,8 @@ function RM:LayoutPing(count, radius, interval)
     self:LightSlice(nil)
 end
 
--- Lights the slice of button index (nil: none). The light is a full ring cut down to the slice by two
--- half-plane masks: one keeps the half turn anticlockwise of the slice's clockwise edge, the other the
--- half turn clockwise of its anticlockwise edge, and what both keep is the slice. Its two dividers
--- light up with it.
+-- Lights a slice (nil: none) and its two dividers: a full ring cut by two half-plane masks, one per
+-- slice edge, whose overlap is the slice.
 function RM:LightSlice(index)
     local p = radial and radial.Ping
     if not p then return end
@@ -834,12 +762,10 @@ local function CreateRadial()
     if radial then return end
     radial = CreateFrame("Frame", "FlareUI_Radial", UIParent)
     radial:SetFrameStrata("DIALOG")
-    radial:EnableMouse(false)          -- the cursor is polled, never captured
-    -- the mouse wheel is taken by the secure layer's wheel frame, not here; see section 9
+    radial:EnableMouse(false)          -- the cursor is polled; the secure wheel frame takes the wheel
     radial:Hide()
 
-    -- The cancel X sits in the middle, with its own highlight circle behind it. Blizzard layers these
-    -- the same way: the pointer above everything, and it hides whenever the X is the selection.
+    -- the cancel X and its highlight; the pointer above all, hidden while the X is selected
     radial.CancelSelect = radial:CreateTexture(nil, "ARTWORK")
     radial.CancelSelect:SetAtlas(ATLAS_CANCEL_SELECT)
     radial.CancelSelect:SetSize(CANCEL_SELECT_SIZE, CANCEL_SELECT_SIZE)
@@ -856,8 +782,7 @@ local function CreateRadial()
     radial.Pointer:SetSize(POINTER_SIZE, POINTER_SIZE)
     radial.Pointer:SetPoint("CENTER")
 
-    -- Ping Wheel art (see PING), all under the buttons. The buttons are child frames, so anything
-    -- drawn on the radial itself sits beneath them.
+    -- ping wheel art, drawn on the radial and so beneath the button frames
     local p = { Dividers = {} }
     radial.Ping = p
     p.Background = radial:CreateTexture(nil, "BACKGROUND", nil, 1)
@@ -892,24 +817,83 @@ end
 
 --------------------------------------------------
 -- 7. SELECTION
--- The cursor angle picks the button - or, in controller mode, the stick's. Button one sits at the
--- top and the rest run clockwise, so the offset from the top is measured backwards, and half an
--- interval is added so that each button owns the wedge centred on it rather than the one starting
--- at it.
+-- The cursor (or stick) angle picks the button: measured clockwise from the top, plus half an
+-- interval so each button owns the wedge centred on it.
 --------------------------------------------------
--- the aiming stick, from the same table the secure snippet reads through GetGamePadState
+-- the same table the secure snippet reads through GetGamePadState
 local function PadStick()
     local state = C_GamePad.GetDeviceMappedState()
     return state and state.sticks and state.sticks[padStickIndex]
 end
 
+-- The camera holds still while a controller radial is open. A frame of the addon's own taking stick
+-- input stops walking too, so this borrows Blizzard's gamepad axis listener (InputAxisBinding.lua,
+-- the one its binding stack uses for camera axis bindings): its right-stick function takes the
+-- "Camera" stick while the radial is open, and the left stick passes on as before. Only when
+-- Blizzard has no camera function of its own there; its stick input is turned on out of combat.
+local CAMERA_HOLD = function() return false end
+local cameraHeld, cameraEnabledHere
+
+local function AxisListener()
+    local listener = _G.inputBindingAxisListener
+    return listener and type(listener.right) == "table" and listener or nil
+end
+
+local function HoldCamera(on)
+    local listener = AxisListener()
+    if not listener then return end
+    if on then
+        if cameraHeld or listener.right.func ~= nil then return end
+        listener.right.func = CAMERA_HOLD
+        cameraHeld = true
+        if not listener:IsGamePadStickEnabled() and not InCombatLockdown() then
+            listener:EnableGamePadStick(true)
+            cameraEnabledHere = true
+        end
+    elseif cameraHeld then
+        if listener.right.func == CAMERA_HOLD then listener.right.func = nil end
+        cameraHeld = false
+        RM.ReleaseAxisListener()
+    end
+end
+
+-- turns the listener's stick input back off when nothing of Blizzard's needs it (out of combat)
+function RM.ReleaseAxisListener()
+    local listener = AxisListener()
+    if not (listener and cameraEnabledHere) or cameraHeld or InCombatLockdown() then return end
+    local l, r = listener.left or {}, listener.right
+    if not (l.func or r.func or l.waitForCentering or r.waitForCentering) then listener:EnableGamePadStick(false) end
+    cameraEnabledHere = nil
+end
+
+-- an earlier build changed the controller config's camera stick while a radial was open: put back
+-- whatever it left
+local function RestoreCameraConfig()
+    local global = ns.db and ns.db.global
+    local saved = global and global.padCameraRestore
+    if not (saved and C_GamePad and C_GamePad.SetConfig) then return end
+    for _, old in ipairs(saved) do
+        local got, config = pcall(C_GamePad.GetConfig, old.id)
+        if got and type(config) == "table" and type(config.stickConfigs) == "table" then
+            for _, stick in ipairs(config.stickConfigs) do
+                if stick.stick == "Camera" then
+                    stick.deadzone, stick.deadzoneX, stick.deadzoneY = old.deadzone, old.deadzoneX, old.deadzoneY
+                    pcall(C_GamePad.SetConfig, config)
+                    break
+                end
+            end
+        end
+    end
+    global.padCameraRestore = nil
+    pcall(C_GamePad.ApplyConfigs)
+end
+
 local function UpdateSelection()
     if not (isOpen and currentRadial) then return end
 
-    -- Safety net for the one thing that cannot be checked outside the game: whether a CLICK binding
-    -- really delivers the key-up as well as the key-down. If it does not, the radial would hang open
-    -- with no way to dismiss it, so it closes itself instead of trapping the screen (quietly).
+    -- safety net: a CLICK binding that never delivers its key-up would leave the radial stuck open
     if openMode == "hold" and GetTime() - openedAt > STUCK_OPEN_SECONDS then
+        RM.EndHold()
         CloseRadial()
         return
     end
@@ -939,7 +923,7 @@ local function UpdateSelection()
         index = math_floor(((QUARTER - angle) % TAU + interval / 2) / interval) % count + 1
         SetCancelSelected(false)
     else
-        -- inside the dead zone: the X is the selection, and releasing here cancels
+        -- dead zone: releasing here cancels
         radial.Pointer:Hide()
         SetCancelSelected(true)
     end
@@ -953,10 +937,8 @@ local function UpdateSelection()
 end
 
 --------------------------------------------------
--- 7b. OPEN / CLOSE ANIMATION
--- The ping wheel's (Blizzard_RadialWheel.lua): the radial fades in while every button glides out from
--- PING.SLIDE px nearer the middle, and fades out while they glide back in. Plain art only - the
--- secure layer never looks at where the buttons are drawn - so it runs in combat as well.
+-- 8. OPEN / CLOSE ANIMATION
+-- The ping wheel's fade and glide; plain art only, so it runs in combat too.
 --------------------------------------------------
 local animator = CreateFrame("Frame")
 animator:Hide()
@@ -1008,52 +990,29 @@ local function Animate(outro)
 end
 
 --------------------------------------------------
--- 8. OPEN / CLOSE
+-- 9. OPEN / CLOSE
 --------------------------------------------------
--- While a controller radial is up the right stick aims instead of turning the camera: a frame taking
--- stick input is shown, and its OnGamePadStick returns false - handled, as Blizzard's own
--- inputBindingAxisListener does (InputAxisBinding.lua) - for the right stick and the camera it
--- drives, true for the rest, so the left stick still walks. (Setting the gamepad turn-speed CVars
--- to 0 does not stop the camera on Forever.) A plain frame's Show is not protected: fine in combat.
-local BLOCKED_STICKS = { Right = true, Camera = true }
-local stickBlocker
-local function SetPadFreeze(on)
-    if on then
-        if not stickBlocker then
-            stickBlocker = CreateFrame("Frame", nil, UIParent)
-            stickBlocker:EnableGamePadStick(true)
-            stickBlocker:SetScript("OnGamePadStick", function(_, stick)
-                return not BLOCKED_STICKS[stick]
-            end)
-        end
-        stickBlocker:Show()
-    elseif stickBlocker then
-        stickBlocker:Hide()
-    end
-end
-
--- mode "hold" is the keybind (the radial assigned to it, also while the editor previews another);
--- "click" is a macro, which names its radial; "pad" is the controller's stick press. A radial
--- already up gives way to the new one.
+-- mode: "hold" (the keybind), "click" (a macro) or "pad" (the stick press)
 local function OpenRadial(radialID, mode)
     if isOpen then CloseRadial() end
-    StopAnimation()   -- a close still fading out gives way
+    StopAnimation()
     openMode = mode or "hold"
-    -- Laid out on every open so that availability (mounts, items, loaded panels) is current. In
-    -- combat LayoutRadial draws the copy the secure layer holds.
+    -- laid out on every open so availability is current
     if radialID then
         RM:LoadRadial(radialID)
     else
         RM:LoadActiveRadial()
     end
-    RM:LayoutRadial()   -- also refreshes the button states, in combat too
+    RM:LayoutRadial()
     if #resolved == 0 then return end
     WatchButtonStates(true)
     radial:SetScale(1)
+    local padIcon = ns.IsGamepadUI() and C_Texture.GetAtlasInfo(ATLAS_CANCEL_PAD)
+    radial.CancelIcon:SetAtlas(padIcon and ATLAS_CANCEL_PAD or ATLAS_CANCEL_ICON)
 
-    -- mid-screen with Menu Position "Screen centre", and always for a controller (no cursor to open
-    -- it at); the secure layer measures from the same point
+    -- the secure layer measures from the same point
     local x, y
+    if openMode == "pad" then HoldCamera(true) end
     if openMode == "pad" or Option("position", "cursor") == "center" then
         x, y = UIParent:GetCenter()
     else
@@ -1062,12 +1021,11 @@ local function OpenRadial(radialID, mode)
     radial:ClearAllPoints()
     radial:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
     radial.Pointer:Hide()
-    SetCancelSelected(true)   -- the cursor starts dead centre
+    SetCancelSelected(true)
 
     selectedIndex = nil
     isOpen = true
     openedAt = GetTime()
-    if openMode == "pad" then SetPadFreeze(true) end
     radial:Show()
     radial:SetScript("OnUpdate", UpdateSelection)
     UpdateSelection()
@@ -1078,38 +1036,33 @@ end
 
 function CloseRadial()
     if not isOpen then return end
-    SetPadFreeze(false)
+    HoldCamera(false)
     isOpen = false
     openMode = nil
     radial:SetScript("OnUpdate", nil)
     WatchButtonStates(false)
-    -- The secure release hides the wheel frame itself. This covers the radial closing any other way,
-    -- such as the stuck-open guard; in combat that has to wait for PLAYER_REGEN_ENABLED.
+    -- for closes other than the secure release; in combat PLAYER_REGEN_ENABLED does it
     if wheel and not InCombatLockdown() then wheel:Hide() end
     -- The released button keeps its light while the radial fades out, as the ping wheel's does; the
     -- next layout clears it.
-    local fade = not previewID
-    if not fade then
+    -- outside the editor the released button stays lit while fading out; the next layout clears it
+    if previewID then
         if selectedIndex and buttons[selectedIndex] then SetButtonSelected(buttons[selectedIndex], false) end
         RM:LightSlice(nil)
     end
     selectedIndex = nil
     radial.Pointer:Hide()
+    StopAnimation()
     -- the editor gets its preview back rather than an empty box
     if previewID then
-        StopAnimation()
         RM:ShowPreview(previewID, previewAnchor)
-    elseif fade then
-        StopAnimation()
-        Animate(true)
     else
-        radial:Hide()
+        Animate(true)
     end
 end
 
--- Toggle activation: a nested radial opened in place of the open one (middle-click), or the one
--- before it back (right-click). Called from the secure catcher, which owns the switch; the art
--- follows on the same spot, from the secure layer's copy.
+-- Called by the secure catcher (middle-click opens a nested radial, right-click goes back); the
+-- art follows from the secure layer's copy
 local function ShowNestedRadial(radialID)
     if not (isOpen and radialID) then return end
     StopAnimation()
@@ -1124,44 +1077,25 @@ local function ShowNestedRadial(radialID)
 end
 
 --------------------------------------------------
--- 9. THE SECURE LAYER
--- One SecureActionButton, the caster, carries every action and the binding clicks it: down on the press, up on
--- the release. useOnKeyDown = false makes Blizzard act on the release (SecureActionButton_OnClick in
--- SecureTemplates.lua), which is what gives the hold-sweep-release feel.
--- The radial button is chosen by a snippet wrapped round the caster's OnClick. It runs as secure
--- code, so it can write the caster's attributes in combat, where plain Lua cannot. It finds the radial
--- button from the cursor with the same maths as UpdateSelection, so the highlighted button is the one
--- that fires.
--- Snippets can only read plain values, so SyncSecure copies the layout onto the header out of
--- combat: the button count, and for each button every child's attributes as "s<button>-<child>-<key>".
--- A plain button is a sub-radial of one child, which keeps the snippets free of special cases.
--- The mouse wheel is caught by a full-screen secure frame, shown only while the radial is open. It
--- steps a sub-radial button's child in secure state and tells the art through CallMethod, for the same
--- reason: the choice has to live where the release can read it in combat.
--- Every radial is copied, each under its own id ("<id>-count", "<id>-s<button>-<child>-<key>"), and
--- ACTIVE names the one that is open: the keybind opens "flare-assigned", a macro names its own.
--- Radial macros (click mode): the macro clicks MACRO_NAME with the radial's tag as
--- the mouse button: its name without spaces or symbols, any case ("tag-<lower case>" holds the id;
--- a bare id works too). A /click sends no key release, so the radial waits for a click on CATCHER_NAME, a
--- full-screen SecureActionButton shown only meanwhile: left-click fires the aimed button, right-click
--- or Escape (a binding the header holds while open) closes. The same macro pressed again fires the
--- aimed button from MACRO_NAME itself, so tap - aim - tap works without the mouse buttons.
--- Controller support (MODE "pad"): R3 clicks PAD_NAME on its release. The first press opens the
--- radial this character's keybind opens; the next fires the button the right stick aims at, read
--- from GetGamePadState() right here in the restricted environment - so it works in combat - from
--- the stick "flare-padstick" names. B and Escape are bound to PAD_NAME's RightButton meanwhile,
--- which closes.
--- Menu Position: with "flare-center" set, OPENX / OPENY are the screen's middle rather than the cursor
--- (the art opens there too). Activation "Toggle" ("flare-toggle"): the keybind opens click mode, as a
--- macro does, and pressing it again fires the aimed button. In click mode a middle-click on a
--- sub-radial button opens that radial in place (ACTIVE becomes its id; STACK / DEPTH remember the way
--- back), right-click goes back a level or closes, Escape closes. ROOT is the radial click mode
--- opened, whatever is nested on top of it.
+-- 10. THE SECURE LAYER
+-- The binding clicks the caster down on the press and up on the release; useOnKeyDown = false makes
+-- the action run on the release. Snippets wrapped round its OnClick pick the button with the same
+-- maths as UpdateSelection and write its attributes, which plain Lua cannot do in combat.
+-- SyncSecure copies every radial onto the header out of combat as "<id>-count" and
+-- "<id>-s<button>-<child>-<key>" (a plain button is a sub-radial of one child). ACTIVE is the open
+-- radial; the wheel steps children in secure state (CHILD) and tells the art via CallMethod.
+-- Click mode (macros "/click FUIRadial <tag>", or Activation "Toggle"): a /click sends no release,
+-- so the full-screen catcher waits: left-click fires, middle-click opens a sub-radial in place
+-- (STACK / DEPTH), right-click goes back or closes, Escape closes; pressing the same macro or key
+-- again fires the aimed button. ROOT is the radial click mode opened.
+-- Pad mode: L3 clicks PAD_NAME and opens; R3 (bound while open) fires what the right stick aims at
+-- (GetGamePadState works in the restricted environment); LB / RB cycle the aimed slot; B, Escape or
+-- L3 close.
+-- OPENX / OPENY: where the radial opened (screen centre with "flare-center").
 --------------------------------------------------
 local ACTION_KEYS = "type spell item macro macrotext unit marker action"
 
--- self is the header. Returns the button under the cursor, or nil in the dead zone. OPENX / OPENY are
--- where the radial opened, recorded by the click snippet in the same restricted environment.
+-- self is the header. Returns the aimed button index, or nil in the dead zone.
 local SELECT_SNIPPET = ([[
     local count = ACTIVE and self:GetAttribute(ACTIVE .. "-count") or 0
     if count == 0 then return nil end
@@ -1185,7 +1119,7 @@ local SELECT_SNIPPET = ([[
     return math.floor(((math.pi / 2 - angle) %% tau + interval / 2) / interval) %% count + 1
 ]]):format(PAD_DEAD_LEN, DEAD_ZONE_SQ)
 
--- self is the header. The attribute prefix of the button the cursor aims at in the open radial.
+-- self is the header. The attribute prefix of the aimed button.
 local AIMED_SNIPPET = [[
     local index = self:RunAttribute("flare-select")
     if not (index and ACTIVE) then return nil end
@@ -1193,8 +1127,7 @@ local AIMED_SNIPPET = [[
     return ACTIVE .. "-s" .. index .. "-" .. child .. "-"
 ]]
 
--- self is the header. Where the radial opened, in the wheel frame's units: the cursor, or the middle
--- of the screen with Menu Position "Screen centre". The wheel frame has to be showing.
+-- self is the header. Sets OPENX / OPENY in the wheel frame's units; the wheel frame must be shown.
 local OPEN_POINT_SNIPPET = [[
     local screen = self:GetFrameRef("wheel")
     if self:GetAttribute("flare-center") then
@@ -1209,8 +1142,7 @@ local OPEN_POINT_SNIPPET = [[
     end
 ]]
 
--- self is the header; ... = quiet. Ends click mode: catcher, wheel frame and Escape binding go. The
--- art is told unless quiet (the keybind opening over a macro radial redraws the art itself).
+-- self is the header; ... = quiet (the art is not told). Ends click mode.
 local CLOSE_CLICK_SNIPPET = [[
     if MODE ~= "click" then return end
     MODE, ROOT, DEPTH = nil, nil, 0
@@ -1221,7 +1153,7 @@ local CLOSE_CLICK_SNIPPET = [[
     if not ... then self:CallMethod("OnSecureClose") end
 ]]
 
--- self is the header; ... = the radial id. Opens that radial in click mode at the cursor.
+-- self is the header; ... = the radial id. Opens it in click mode.
 local OPEN_CLICK_SNIPPET = [[
     local id = ...
     if (self:GetAttribute(id .. "-count") or 0) == 0 then return false end
@@ -1234,7 +1166,7 @@ local OPEN_CLICK_SNIPPET = [[
     return true
 ]]
 
--- self is the header; ... = quiet. Ends controller mode (its B / Escape bindings go with the rest).
+-- self is the header; ... = quiet. Ends controller mode and its B / Escape bindings.
 local CLOSE_PAD_SNIPPET = [[
     if MODE ~= "pad" then return end
     MODE = nil
@@ -1248,17 +1180,31 @@ local OPEN_PAD_SNIPPET = [[
     ACTIVE, MODE = id, "pad"
     self:SetBindingClick(true, "]] .. PAD_CANCEL .. [[", "]] .. PAD_NAME .. [[", "RightButton")
     self:SetBindingClick(true, "ESCAPE", "]] .. PAD_NAME .. [[", "RightButton")
+    self:SetBindingClick(true, "]] .. PAD_PREV .. [[", "]] .. PAD_NAME .. [[", "Button4")
+    self:SetBindingClick(true, "]] .. PAD_NEXT .. [[", "]] .. PAD_NAME .. [[", "Button5")
+    self:SetBindingClick(true, "PADRSTICK", "]] .. PAD_NAME .. [[", "MiddleButton")
     self:CallMethod("OnSecurePadOpen", id)
 ]]
 
--- self is the pad button, control the header. LeftButton is the stick press: open, or fire what the
--- stick aims at. RightButton (B, Escape) closes.
+-- self is the pad button, control the header. LeftButton (L3) opens, or closes an open one;
+-- MiddleButton (R3, while open) fires the aimed button; RightButton (B, Escape) closes.
 local PAD_SNIPPET = [[
-    if button ~= "LeftButton" then
-        control:RunAttribute("flare-closepad")
+    -- LB / RB: the aimed slot's previous / next sub-radial button, as the mouse wheel
+    if button == "Button4" or button == "Button5" then
+        if MODE ~= "pad" then return false end
+        local index = control:RunAttribute("flare-select")
+        if not (index and ACTIVE) then return false end
+        local n = control:GetAttribute(ACTIVE .. "-s" .. index .. "-n") or 1
+        if n < 2 then return false end
+        CHILD[ACTIVE] = CHILD[ACTIVE] or newtable()
+        local children = CHILD[ACTIVE]
+        local child = ((children[index] or 1) - 1 + (button == "Button4" and -1 or 1)) % n + 1
+        children[index] = child
+        control:CallMethod("OnSecureChild", index, child)
         return false
     end
-    if MODE == "pad" then
+    if button == "MiddleButton" then
+        if MODE ~= "pad" then return false end
         local prefix = control:RunAttribute("flare-aimed")
         control:RunAttribute("flare-closepad")
         if not prefix then return false end
@@ -1267,6 +1213,10 @@ local PAD_SNIPPET = [[
         end
         return nil, "fired"
     end
+    if button ~= "LeftButton" or MODE == "pad" then
+        control:RunAttribute("flare-closepad")
+        return false
+    end
     local id = control:GetAttribute("flare-assigned")
     if not id or (control:GetAttribute(id .. "-count") or 0) == 0 then return false end
     control:RunAttribute("flare-closeclick", true)
@@ -1274,10 +1224,8 @@ local PAD_SNIPPET = [[
     return false
 ]]
 
--- self is the caster, control the header. Returning false cancels the button's own click, which is
--- what stops a press on its own, or a release in the dead zone, from casting anything. Actions run on
--- the release (useOnKeyDown false), so Toggle's second press picks the button on the press (FIRE)
--- and fires it on the release.
+-- self is the caster, control the header. Returning false cancels the click (a press, or a release
+-- in the dead zone). Toggle's second press picks the button (FIRE) and fires it on the release.
 local CLICK_SNIPPET = [[
     local screen = control:GetFrameRef("wheel")
     if down then
@@ -1301,6 +1249,8 @@ local CLICK_SNIPPET = [[
         ACTIVE, MODE = id, "hold"
         screen:Show()
         control:RunAttribute("flare-openpoint")
+        -- the catcher takes the mouse while the key is held: right-click cancels
+        control:GetFrameRef("catcher"):Show()
         return false
     end
     if FIRE then
@@ -1314,6 +1264,7 @@ local CLICK_SNIPPET = [[
     -- Toggle's release after opening: the radial stays up for its click
     if MODE == "click" then return false end
     local prefix = MODE == "hold" and control:RunAttribute("flare-aimed") or nil
+    if MODE == "hold" then control:GetFrameRef("catcher"):Hide() end
     screen:Hide()
     MODE = nil
     OPENX, OPENY = nil, nil
@@ -1324,9 +1275,20 @@ local CLICK_SNIPPET = [[
     return nil, "fired"
 ]]
 
--- self is the catcher, control the header: left-click fires the aimed button, middle-click opens an
--- aimed sub-radial in place, right-click goes back a level or closes, Escape closes
+-- self is the catcher, control the header
 local CATCHER_SNIPPET = [[
+    -- the key held (Hold): right-click cancels, the key's release then fires nothing; other
+    -- buttons do nothing
+    if MODE == "hold" then
+        if button == "RightButton" then
+            MODE = nil
+            OPENX, OPENY = nil, nil
+            self:Hide()
+            control:GetFrameRef("wheel"):Hide()
+            control:CallMethod("OnSecureHoldCancel")
+        end
+        return false
+    end
     if button == "MiddleButton" then
         local index = control:RunAttribute("flare-select")
         local sub = index and ACTIVE and control:GetAttribute(ACTIVE .. "-s" .. index .. "-sub")
@@ -1359,9 +1321,8 @@ local CATCHER_SNIPPET = [[
     return nil, "fired"
 ]]
 
--- self is the macro button, button the radial id the macro named (or a mouse button when it named
--- none: the radial this character's keybind opens). The same radial again fires the aimed button.
--- The restricted environment has no L: the translated message is written into the snippet.
+-- self is the macro button, button the tag or id the macro named (a mouse button when none: the
+-- keybind's radial). The restricted environment has no L: the message is baked into the snippet.
 local MACRO_SNIPPET = [[
     local id = control:GetAttribute("tag-" .. strlower(button)) or button
     if (control:GetAttribute(id .. "-count") or -1) < 0 then
@@ -1388,7 +1349,7 @@ local MACRO_SNIPPET = [[
     return false
 ]]
 
--- After the action has run: the button is left empty between uses.
+-- after the action has run, the button is left empty
 local CLEAR_SNIPPET = [[
     for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do self:SetAttribute(key, nil) end
 ]]
@@ -1406,9 +1367,8 @@ local WHEEL_SNIPPET = [[
     control:CallMethod("OnSecureChild", index, child)
 ]]
 
--- A radial's macro tag: its name with the spaces and symbols taken out ("Summon Minions" ->
--- "SummonMinions"), since a /click passes one word. Matched in any case. When two radials come out
--- the same, the first in the library keeps the tag and the other is opened by its id.
+-- Macro tag: the name without spaces or symbols (a /click passes one word), any case. On a clash
+-- the first radial keeps the tag and the other is opened by its id.
 local function MacroTags()
     local byTag, tagOf = {}, {}
     for _, id in ipairs(RM:GetRadialOrder()) do
@@ -1421,10 +1381,8 @@ local function MacroTags()
     return byTag, tagOf
 end
 
--- Copies every radial's layout onto the header, and which radial the keybind opens. Out of combat
--- only, which is enough: in combat LayoutRadial does not change the layouts either. Every key is
--- written for every child, nil included, so a slot that changed kind cannot keep a key from what it
--- used to be. A deleted radial is left with a count of 0, so a macro naming it opens nothing.
+-- Out of combat only. Every key is written, nil included, so a slot that changed kind keeps no
+-- stale key; a deleted radial is left with a count of 0.
 function SyncSecure()
     if not header or InCombatLockdown() then return end
     for id in pairs(syncedIDs) do
@@ -1462,26 +1420,25 @@ function SyncSecure()
     header:SetAttribute("flare-assigned", RM:GetAssignedRadialID())
     header:SetAttribute("flare-center", Option("position", "cursor") == "center")
     header:SetAttribute("flare-toggle", Option("activation", "hold") == "toggle")
-    -- sub-radial buttons start on their first child again, as the art does after a layout
+    -- sub-radials restart on their first child, as the art does
     SecureHandlerExecute(header, "CHILD = newtable()")
 end
 
--- Toggle: the secure snippet opens (OnSecureOpen) or fires and closes, so the art waits for it
+-- with Toggle the secure snippet opens the art itself (OnSecureOpen)
 local function OnPreClick(_, button, down)
     if down and not header:GetAttribute("flare-toggle") then OpenRadial(RM:GetRadial(button) and button or nil, "hold") end
 end
 
--- Only a radial the keybind opened: a button whose macro opens another radial (click mode) has
--- already replaced it by the time this runs, and that one stays up for its click.
+-- hold mode only: a fired macro that opened a click-mode radial keeps that one up
 local function OnPostClick(_, _, down)
     if not down and openMode == "hold" then CloseRadial() end
 end
 
--- Frames, snippets and wraps all have to be set up out of combat; Init defers this if it is not.
+-- out of combat only; Init defers it otherwise
 local function CreateSecureLayer()
     if caster then return end
     caster = CreateFrame("Button", CASTER_NAME, UIParent, "SecureActionButtonTemplate")
-    -- parked off screen: a binding click never needs the button to be visible or moused over
+    -- parked off screen: a binding click needs no visible button
     caster:SetSize(1, 1)
     caster:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -500, 500)
     caster:RegisterForClicks("AnyDown", "AnyUp")
@@ -1498,6 +1455,7 @@ local function CreateSecureLayer()
     header:SetAttribute("flare-closeclick", CLOSE_CLICK_SNIPPET)
     header:SetAttribute("flare-openpoint", OPEN_POINT_SNIPPET)
     header.OnSecureNested = function(_, radialID) ShowNestedRadial(radialID) end
+    header.OnSecureHoldCancel = function() if openMode == "hold" then CloseRadial() end end
     header.OnSecureChild = function(_, index, child) SetButtonChild(index, child) end
     header.OnSecureOpen = function(_, radialID) OpenRadial(radialID, "click") end
     header.OnSecurePadOpen = function(_, radialID) OpenRadial(radialID, "pad") end
@@ -1505,9 +1463,8 @@ local function CreateSecureLayer()
     header:SetAttribute("flare-openpad", OPEN_PAD_SNIPPET)
     header:SetAttribute("flare-closepad", CLOSE_PAD_SNIPPET)
 
-    -- Full screen so the wheel works wherever the cursor has swept to, and so it doubles as the
-    -- coordinate frame for SELECT_SNIPPET: GetMousePosition answers nil outside the frame it is
-    -- asked about. It takes the wheel only, never clicks.
+    -- Full screen: it is SELECT_SNIPPET's coordinate frame (GetMousePosition is nil outside the
+    -- frame asked). Takes the wheel only, never clicks.
     wheel = CreateFrame("Frame", WHEEL_NAME, UIParent, "SecureFrameTemplate")
     wheel:SetAllPoints(UIParent)
     wheel:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -1516,7 +1473,7 @@ local function CreateSecureLayer()
     wheel:Hide()
     SecureHandlerSetFrameRef(header, "wheel", wheel)
 
-    -- Click mode's catcher: above the wheel frame, so it takes the wheel too while it is up
+    -- above the wheel frame, so it takes the wheel too while up
     catcher = CreateFrame("Button", CATCHER_NAME, UIParent, "SecureActionButtonTemplate")
     catcher:SetAllPoints(UIParent)
     catcher:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -1528,7 +1485,7 @@ local function CreateSecureLayer()
     catcher:Hide()
     SecureHandlerSetFrameRef(header, "catcher", catcher)
 
-    -- what macros click; never shown, a /click needs no visible button
+    -- what macros click; never shown
     macroButton = CreateFrame("Button", MACRO_NAME, UIParent, "SecureActionButtonTemplate")
     macroButton:RegisterForClicks("AnyUp", "AnyDown")
     macroButton:SetAttribute("useOnKeyDown", false)
@@ -1540,7 +1497,7 @@ local function CreateSecureLayer()
     SecureHandlerWrapScript(catcher, "OnMouseWheel", header, WHEEL_SNIPPET)
     SecureHandlerWrapScript(macroButton, "OnClick", header, MACRO_SNIPPET, CLEAR_SNIPPET)
 
-    -- controller mode: the stick press clicks this on its release (see PAD_SNIPPET)
+    -- the stick press clicks this on its release
     padButton = CreateFrame("Button", PAD_NAME, UIParent, "SecureActionButtonTemplate")
     padButton:RegisterForClicks("AnyUp")
     padButton:SetAttribute("useOnKeyDown", false)
@@ -1550,10 +1507,8 @@ local function CreateSecureLayer()
 end
 
 --------------------------------------------------
--- 10. LIVE PREVIEW
--- Used by the radial editor. The radial is ordinary art, so previewing it is just a matter of pointing
--- it at a different radial, parking it in the editor's box and scaling it down if the radial is wider
--- than the box.
+-- 11. LIVE PREVIEW
+-- The radial editor parks the art in its box, scaled down to fit.
 --------------------------------------------------
 local PREVIEW_BOX = 220   -- fits the settings panel's right column
 
@@ -1571,7 +1526,7 @@ function RM:ShowPreview(radialID, anchor)
     radial:SetScript("OnUpdate", nil)
     radial.Pointer:Hide()
     SetCancelSelected(false)
-    -- above the settings panel (DIALOG, raised to the top), whose right column it sits in
+    -- above the settings panel (DIALOG)
     radial:SetFrameStrata("FULLSCREEN")
     radial:Show()
 end
@@ -1592,19 +1547,15 @@ function RM:RefreshPreview()
 end
 
 --------------------------------------------------
--- 11. RADIAL LIBRARY
--- Radials live in db.global, deliberately away from the shared profile: a profile change is meant to
--- reach every character, while a radial is meant to belong to one. Radials are keyed by a stable id so
--- that renaming one does not orphan the characters using it, with a separate order list for display.
--- Which radial a character opens is kept by that character (GetAssignedRadialID):
--- nothing here lists characters.
+-- 12. RADIAL LIBRARY
+-- Radials live in db.global, keyed by a stable id (renames orphan nothing) with an order list; which
+-- radial a character opens is kept in that character's own state.
 --------------------------------------------------
 local function GetStore()
     if not (ns.db and ns.db.global) then return nil end
     local store = ns.db.global.radialmenu or {}
     ns.db.global.radialmenu = store
-    -- a save in the ring names (rings of slices, nested rings), as an imported one can be, moves to
-    -- the radial names once
+    -- an import can still carry the old "ring" key names: renamed once
     if store.rings then
         store.radials = store.radials or store.rings
         store.radialOrder = store.radialOrder or store.ringOrder
@@ -1634,7 +1585,7 @@ function RM:GetRadialOrder()
     return store and store.radialOrder or {}
 end
 
--- The radials by name (A to Z, any case), for the lists people pick from; creation order otherwise
+-- A to Z, any case
 function RM:GetRadialsByName()
     local ids = {}
     for _, id in ipairs(self:GetRadialOrder()) do
@@ -1672,15 +1623,14 @@ function RM:DeleteRadial(id)
     for i, other in ipairs(store.radialOrder) do
         if other == id then table.remove(store.radialOrder, i) break end
     end
-    -- a character that chose it falls back to the first radial; see GetAssignedRadialID
+    -- a character that chose it falls back to the first radial
     self:LoadActiveRadial()
     self:LayoutRadial()
     self:ApplyBindings()
 end
 
--- A character's radial setup: the radial its main key opens and its extra keybinds. The account keeps
--- a copy of the last setup any character changed (store.lastSetup); a character that never set one up
--- starts from that copy, so a new character opens the same radials as the one played before it.
+-- A character's setup (its radial and extra keybinds). A character without one starts from the
+-- account's copy of the last setup changed (store.lastSetup).
 local function CopyKeys(list)
     local out = {}
     for i, extra in ipairs(list or {}) do out[i] = { key = extra.key, radial = extra.radial } end
@@ -1695,7 +1645,7 @@ end
 
 local function CharacterSetup()
     local charDB = ns.CharDB()
-    if charDB.ring ~= nil then   -- the ring name, as in GetStore
+    if charDB.ring ~= nil then   -- the old key name, as in GetStore
         if charDB.radial == nil then charDB.radial = charDB.ring end
         charDB.ring = nil
     end
@@ -1712,9 +1662,7 @@ local function CharacterSetup()
     return charDB
 end
 
--- The radial this character opens, kept with the character's own state (ns.CharDB) rather than in a
--- table of characters. nil means it never chose and gets the first radial in the library, so a new
--- character's key works straight away; "" means it chose none.
+-- choice nil: never chose, gets the first radial; "": chose none
 function RM:GetAssignedRadialID()
     local charDB = CharacterSetup()
     local choice = charDB.radial
@@ -1730,15 +1678,14 @@ function RM:SetAssignedRadialID(radialID)
     self:LayoutRadial()
 end
 
--- currentRadial points straight at the saved button list, so edits show up without copying
+-- currentRadial is the saved button list itself, so edits show without copying
 function RM:LoadRadial(radialID)
     local data = self:GetRadial(radialID)
     currentID = data and radialID or nil
     currentRadial = data and data.buttons or {}
 end
 
--- The line a macro needs to open this radial (Radial Menu settings, "Radial Macros"): its tag, or
--- its id when another radial already has the tag (see MacroTags)
+-- the macro line that opens this radial ("Radial Macros")
 function RM:GetMacroText(radialID)
     if not radialID then return "" end
     local _, tagOf = MacroTags()
@@ -1750,21 +1697,18 @@ function RM:LoadActiveRadial()
 end
 
 --------------------------------------------------
--- 12. BINDING
--- The key is captured in FlareUI's own settings rather than Blizzard's Key Bindings panel, so
--- everything about the radial lives in one place. It is stored account-wide: one key on every
--- character, each opening that character's own radial.
--- SetOverrideBindingClick is protected, so a change made during combat is applied on the way out.
+-- 13. BINDING
+-- The main key is account-wide, each character opening its own radial. Override bindings are
+-- protected: a change in combat waits for the fight to end.
 --------------------------------------------------
--- Extra keybinds belong to the character, like its radial choice: { key = "F", radial = "r2" } each.
+-- per character: { key = "F", radial = "r2" } each
 local function ExtraBindings()
     local charDB = CharacterSetup()
     charDB.radialKeys = charDB.radialKeys or {}
     return charDB.radialKeys
 end
 
--- C_GamePad numbers sticks from 0 (StickIndexToConfigName), the mapped state lists them from 1. Seen
--- on Forever: 0 Left, 1 Right, 2 Gyro, 3 Pad, 4 Movement, 5 Camera, 6 Look, 7 Cursor.
+-- StickIndexToConfigName counts from 0, the mapped state from 1
 local function RightStickIndex()
     for i = 0, 7 do
         local ok, configName = pcall(C_GamePad.StickIndexToConfigName, i)
@@ -1786,19 +1730,18 @@ local function ApplyBinding()
     if key and key ~= "" then
         SetOverrideBindingClick(radial, true, key, CASTER_NAME, "LeftButton")
     end
-    -- each extra key clicks the caster with its radial's id as the mouse button (see CLICK_SNIPPET)
+    -- an extra key clicks the caster with its radial's id as the mouse button
     for _, extra in ipairs(ExtraBindings()) do
         if extra.key and extra.key ~= "" and extra.radial and RM:GetRadial(extra.radial) then
             SetOverrideBindingClick(radial, true, extra.key, CASTER_NAME, extra.radial)
         end
     end
-    -- Controller support, Gamepad UI only (switching it reloads the UI): R3 opens the radial and
-    -- fires the aimed button. Ping, R3's own, moves to L3 in place of Auto Run.
+    -- Gamepad UI only: L3 runs the radial, aimed with the right stick (the camera holds still while
+    -- it is open, section 7); R3 keeps the ping.
     if ns.IsGamepadUI() and store and store.controller and padButton then
         padStickIndex = RightStickIndex()
         header:SetAttribute("flare-padstick", padStickIndex)
-        SetOverrideBindingClick(radial, true, "PADRSTICK", PAD_NAME, "LeftButton")
-        SetOverrideBinding(radial, true, "PADLSTICK", "TOGGLEPINGSYSTEM")
+        SetOverrideBindingClick(radial, true, "PADLSTICK", PAD_NAME, "LeftButton")
     end
 end
 
@@ -1818,8 +1761,7 @@ function RM:ApplyBindings()
     ApplyBinding()
 end
 
--- One key opens one radial: whichever row takes a key, any other row holding it lets go (the
--- account-wide main keybind included). index 0 is the main keybind.
+-- one key opens one radial: any other row holding it lets go; index 0 is the main keybind
 local function ReleaseKey(key, keepIndex)
     if not key or key == "" then return end
     local store = GetStore()
@@ -1835,7 +1777,7 @@ function RM:GetExtraBindings()
     return ExtraBindings()
 end
 
--- A new row starts on the character's own radial, with no key yet
+-- a new row starts on the character's own radial, with no key
 function RM:AddExtraBinding()
     local list = ExtraBindings()
     if #list >= MAX_EXTRA_KEYS then return end
@@ -1888,21 +1830,38 @@ function RM:PLAYER_REGEN_ENABLED()
         ApplyBinding()
     end
     if self.bindingPending then ApplyBinding() end
+    RM.ReleaseAxisListener()
     if not isOpen then
-        -- whatever the fight held back: a layout (see LayoutRadial), or a wheel frame left showing by
-        -- a radial that closed some other way than a release
+        -- what the fight held back: a layout, or secure frames left up by a close other than a release
         if layoutPending then
             if previewID then self:RefreshPreview() else self:LayoutRadial() end
         end
         if wheel then wheel:Hide() end
-        if catcher and catcher:IsShown() then SecureHandlerExecute(header, [[self:RunAttribute("flare-closeclick", true)]]) end
+        if catcher and catcher:IsShown() then
+            SecureHandlerExecute(header, [[self:RunAttribute("flare-closeclick", true)]])
+            RM.EndHold()
+        end
     end
 end
 
 --------------------------------------------------
--- 13. PUBLIC
+-- 14. PUBLIC
 --------------------------------------------------
--- Menu Position / Activation changed: the secure layer takes its copy now, or after the fight
+-- a Hold that never got its key release: the secure side lets go too, or its catcher keeps the
+-- mouse; out of combat only
+function RM.EndHold()
+    if not header or InCombatLockdown() then return end
+    SecureHandlerExecute(header, [[
+        if MODE == "hold" then
+            MODE = nil
+            OPENX, OPENY = nil, nil
+            self:GetFrameRef("catcher"):Hide()
+            self:GetFrameRef("wheel"):Hide()
+        end
+    ]])
+end
+
+-- Menu Position / Activation changed
 function RM:ApplyOpening()
     if not header then return end
     if InCombatLockdown() then layoutPending = true return end
@@ -1919,15 +1878,15 @@ function RM:Init()
     self.initialized = true
 
     CreateRadial()
-    -- a /reload in combat: the secure frames and wraps wait for the fight to end
+    -- a /reload in combat: the secure layer waits for the fight to end
     if InCombatLockdown() then
         self.securePending = true
     else
         CreateSecureLayer()
     end
+    RestoreCameraConfig()
 
-    -- first run: give the account one radial to edit, so the editor is never looking at an empty
-    -- library; as the first radial it is also what every character opens until it picks another
+    -- first run: one radial, so the library is never empty
     local store = GetStore()
     if store and not next(store.radials) then
         local id = self:CreateRadial(L["Markers"])
@@ -1939,8 +1898,7 @@ function RM:Init()
 
     ApplyBinding()
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
-    -- an item button resolves once its name is cached: redraw when one of ours comes back (the event
-    -- fires for every item anything loads)
+    -- an item button resolves once its name is cached; the event fires for every item loaded
     local relayoutQueued = false
     self:RegisterEvent("ITEM_DATA_LOAD_RESULT", function(_, itemID)
         if not awaitedItems[itemID] then return end
@@ -1954,7 +1912,7 @@ function RM:Init()
     end)
 end
 
--- called by the editor after any change to a radial's contents
+-- called by the editor after any change
 function RM:RadialChanged(radialID)
     if previewID and (radialID == nil or radialID == previewID) then
         self:RefreshPreview()

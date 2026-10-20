@@ -3,20 +3,9 @@ local L = ns.L
 
 --------------------------------------------------
 -- QUALITY OF LIFE (Tweaks)
--- Small quality-of-life tweaks, each a toggle:
---   Windows & Settings  Move Any Frame, Sync Blizz UI (account-wide settings)
---   Vendor              Sell Junk Automatically, Repair Automatically, Durability Warning, Gray Out
---                       Known Items
---   Camera              Max and faster camera zoom
---   Nameplates          Combo Points under the target's nameplate, Tag Quest Objectives, Hide Level,
---                       Enemy Nameplates in Combat Only
---   Convenience         Faster Auto Loot, Auto-Type DELETE, Train All button, Mail Address Book,
---                       Alert Sounds, Pet Food in Bags, Skip Loot Confirmations
---   Hide                Error Messages, Zone Text, Party Title, Frame Numbers, Contextual Tips
---   Map pins            /way
---   Always on           Party frames unclamped from the screen edge; the Edit Mode layout of each
---                       input mode remembered
--- Everything applies live except the ones that replace Blizzard scripts (those ask for a reload).
+-- The Quality of Life toggles: windows, Sync Blizz UI, vendor, camera, nameplates, convenience,
+-- hiding, /way, plus the always-on party unclamp and Edit Mode layout per input mode. Most apply
+-- live; the ones that replace Blizzard scripts need a reload.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -198,7 +187,7 @@ local function OnMouseUp(handle, button)
         -- a window that was never moved stays where Blizzard's panel layout puts it
         if store and store.point then SavePosition(frame) end
     end
-    -- plain right-click on a bag window opens its sorting menu, wherever you click
+    -- a plain right-click anywhere on a bag window opens its sorting menu
     if not IsShiftKeyDown() and not IsControlKeyDown() then ToggleBagMenu(frame) end
 end
 
@@ -217,9 +206,8 @@ local function SetupHandle(frame, handle)
     handle:HookScript("OnMouseUp", OnMouseUp)
 end
 
--- Ctrl+wheel scales from anywhere over the window (scroll frames keep their own wheel)
--- A window that takes no wheel of its own takes it only while Ctrl is down, so a plain wheel over it
--- still zooms the camera
+-- Ctrl+wheel scales from anywhere over the window (scroll frames keep their own wheel). A window
+-- without a wheel of its own takes it only while Ctrl is down, so a plain wheel still zooms the camera.
 local wheelOnCtrl = {}
 local wheelWatcher
 
@@ -266,8 +254,7 @@ local function SetupMovableFrame(name)
     if moveSuspended or moveFrames[name] or MOVE_EXCLUDED[name] then return end
     local frame = _G[name]
     if type(frame) ~= "table" or not frame.GetObjectType or not frame.StartMoving then return end
-    -- a protected window (the spellbook) can load in combat, when SetMovable / SetClampedToScreen
-    -- on it are blocked: it is set up once combat ends
+    -- a protected window (the spellbook) loaded in combat is set up after it (SetMovable is blocked)
     if InCombatLockdown() and frame:IsProtected() then
         setupPending[name] = true
         return
@@ -279,7 +266,7 @@ local function SetupMovableFrame(name)
     frame:SetClampedToScreen(true)
     SetupHandle(frame, GetHeaderHandle(frame))
     SetupWheel(frame)
-    -- the panel manager has placed the window by OnShow: put ours back before it draws
+    -- the panel manager has placed the window by OnShow: the saved position goes back before it draws
     frame:HookScript("OnShow", function(f)
         ApplySavedPosition(f)
         C_Timer.After(0, function() ApplySavedPosition(f) end)
@@ -303,10 +290,8 @@ local function ScanUIPanels()
     for _, name in ipairs(EXTRA_WINDOWS) do SetupMovableFrame(name) end
 end
 
--- Bags are named, not UI panels. Their portrait router covers the title bar and opens the portrait
--- menu on mouse down, which would swallow the drag. The router becomes the drag handle instead: a
--- left click (no drag) opens the menu as Blizzard's does, press and move drags the window, and a
--- right-click still opens it too (OnMouseUp).
+-- A bag's portrait router covers the title bar and opens the menu on mouse down, which would
+-- swallow the drag; it becomes the drag handle instead, opening the menu on a click without a drag.
 local function BagRouterMouseDown(router)
     router.bagDragged = nil
 end
@@ -388,7 +373,7 @@ local function InitMoveAnyFrame()
     ScanBagFrames()
     -- load-on-demand panels register themselves when their addon loads
     Tweaks:RegisterEvent("ADDON_LOADED", function() C_Timer.After(0, ScanUIPanels) end)
-    -- Blizzard's panel manager re-anchors panels as they open / close; put ours back afterwards
+    -- Blizzard's panel manager re-anchors panels as they open / close; saved positions go back after
     local delegate = _G.FramePositionDelegate
     if delegate then
         for _, method in ipairs({ "SetUIPanel", "UpdateUIPanelPositions", "ShowUIPanel" }) do
@@ -598,10 +583,9 @@ local function LoadSync()
         end
     end
 
-    -- Edit Mode layout, matched on name and kind. The switch rides on the reload dialog's secure
-    -- button (from our code it would taint every system). Only a layout of the current input mode,
-    -- and once per character (syncLayoutTaken), as each mode's layout is remembered (section 15):
-    -- the layout then becomes the one remembered for this mode.
+    -- Edit Mode layout, matched on name and kind; the switch rides on the reload dialog's secure
+    -- button (from addon code it taints every system). Only a layout of the current input mode, once
+    -- per character, as each mode's layout is remembered (section 15).
     local layoutChanged, layoutIndex = false, nil
     local manager = EditModeManagerFrame
     local layoutInfo = manager and manager.layoutInfo
@@ -728,9 +712,8 @@ local function LoadSync()
         end)
     end
 
-    -- A watched CVar runs Blizzard's callback inside our call and taints what it writes (the raid
-    -- frame options), so after any change the UI is reloaded clean. Asked once, after the action
-    -- bar pass.
+    -- A watched CVar runs Blizzard's callback inside this call and taints what it writes (the raid
+    -- frame options): any change asks for a clean reload, after the action bar pass.
     if changed > 0 or layoutChanged or chatChanged then
         C_Timer.After(6, function()
             if not InCombatLockdown() then
@@ -1048,7 +1031,12 @@ local function ApplyTips()
     if db.hideTips then
         pcall(SetCVar, "showTutorials", 0)
         pcall(SetCVar, "showNPETutorials", 0)
-        HelpTip:HideAllSystem()
+        -- HideAllSystem() with no system only matches system-less tips: close every active one
+        if HelpTip and HelpTip.framePool then
+            local open = {}
+            for frame in HelpTip.framePool:EnumerateActive() do open[#open + 1] = frame end
+            for _, frame in ipairs(open) do frame:Close() end
+        end
         forced.tips = true
     elseif forced.tips then
         pcall(SetCVar, "showTutorials", 1)
@@ -1257,8 +1245,8 @@ local function QuestTagAnchor(plate)
         if not questLevelHooked[level] then
             questLevelHooked[level] = true
             local function Replace(self)
-                local db, owner = GetDb(), self:GetParent()
-                if db and db.nameplateQuest and owner and owner.unit and questUnits[owner.unit] then
+                local now, owner = GetDb(), self:GetParent()
+                if now and now.nameplateQuest and owner and owner.unit and questUnits[owner.unit] then
                     UpdateQuestTag(owner.unit)
                 end
             end
@@ -1300,6 +1288,16 @@ local function UpdateAllQuestTags()
     for unit in pairs(questUnits) do UpdateQuestTag(unit) end
 end
 
+-- QUEST_LOG_UPDATE comes in bursts: one pass on the next frame
+local function QueueAllQuestTags()
+    if Tweaks.questTagsQueued then return end
+    Tweaks.questTagsQueued = true
+    C_Timer.After(0, function()
+        Tweaks.questTagsQueued = nil
+        UpdateAllQuestTags()
+    end)
+end
+
 -- A secret unit token cannot be used, so such a plate stays untagged
 local function OnQuestTagEvent(_, event, unit)
     if unit and not canaccessvalue(unit) then return end
@@ -1313,7 +1311,7 @@ local function OnQuestTagEvent(_, event, unit)
     elseif event == "UNIT_FACTION" then
         if questUnits[unit] then UpdateQuestTag(unit) end
     else
-        UpdateAllQuestTags()
+        QueueAllQuestTags()
     end
 end
 
@@ -1498,7 +1496,7 @@ end
 -- 15. EDIT MODE LAYOUT PER MODE
 -- Switching the Gamepad UI falls back to the new mode's preset layout. FlareUI remembers the layout
 -- last used in each mode (per character, by type and name) and offers it back after login. The
--- switch runs from the dialog's secure button (from our code it would taint every system); never
+-- switch runs from the dialog's secure button (from addon code it would taint every system); never
 -- in combat.
 --------------------------------------------------
 local function ModeKey()
@@ -1704,8 +1702,8 @@ local function NoteCharacter()
     me.class = select(2, UnitClass("player"))
 end
 
--- Mail Address Book: a button beside Send Mail's "To:" box lists your other characters on this realm
--- and faction, and the last one you mailed from this character
+-- Mail Address Book: a button beside Send Mail's "To:" box lists the account's other characters on
+-- this realm and faction, and this character's last recipient
 local function MailMenu(owner)
     local box = _G.SendMailNameEditBox
     if not box then return end
@@ -1769,7 +1767,7 @@ local function ApplyMailBook()
     if Tweaks.mailButton then Tweaks.mailButton:SetShown(db and db.mailBook or false) end
 end
 
--- Gray Out Known Items: a recipe (or any item) you already know is greyed out at merchants
+-- Gray Out Known Items: known recipes (or any known item) greyed out at merchants
 local knownMarked = {}
 local function MarkKnownItems()
     local db = GetDb()
@@ -1815,7 +1813,7 @@ local function InitAlerts()
     frame:SetScript("OnEvent", OnAlert)
 end
 
--- Pet Food in Bags: a paw on the food your hunter pet eats (its diet, C_PetInfo.CanPetEatItem)
+-- Pet Food in Bags: a paw on the food the hunter pet eats (C_PetInfo.CanPetEatItem)
 local PAW = "Interface\\Icons\\Ability_Hunter_BeastTraining"
 local function MarkPetFood(container)
     local db = GetDb()
@@ -1932,9 +1930,10 @@ function Tweaks:Refresh()
     ApplyCombatPlates()
     UpdatePetFood()
     if MerchantFrame and MerchantFrame:IsShown() and MerchantFrame_UpdateMerchantInfo then MerchantFrame_UpdateMerchantInfo() end
+    -- Blizzard's merchant update above shows the button again when Sell Junk goes off
     if MerchantSellAllJunkButton and MerchantSellAllJunkButton:IsShown() then
         local db = GetDb()
-        if db and db.sellJunk then MerchantSellAllJunkButton:Hide() else MerchantSellAllJunkButton:Show() end
+        if db and db.sellJunk then MerchantSellAllJunkButton:Hide() end
     end
 end
 

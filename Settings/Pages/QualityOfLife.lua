@@ -3,15 +3,15 @@ local L = ns.L
 local S = ns.Settings
 
 --------------------------------------------------
--- QUALITY OF LIFE (Modules/Tweaks.lua), in three tabs: Gameplay (looting, camera, convenience),
--- Interface (nameplates, vendor, hide clutter) and Advanced (Sync Blizz UI, windows). Options
--- that replace Blizzard scripts ask for a reload; the rest apply live through Tweaks:Refresh().
+-- QUALITY OF LIFE
+-- Settings for Modules/Tweaks.lua in Gameplay, Interface and Advanced tabs. Options that replace
+-- Blizzard scripts ask for a reload; the rest apply live.
 --------------------------------------------------
 local function Refresh()
     if ns.Tweaks then ns.Tweaks:Refresh() end
 end
 
--- another nameplate addon draws its own plates: the nameplate rows are greyed out
+-- greys the nameplate rows while another nameplate addon draws the plates
 local function NameplateAddon()
     return ns.Tweaks and ns.Tweaks.GetNameplateAddon and ns.Tweaks:GetNameplateAddon() and true or false
 end
@@ -22,7 +22,7 @@ S:Module{
 }
 
 -- ADVANCED ---------------------------------------
--- Sync Blizz UI: one character's Blizzard settings copied to the others
+-- Sync Blizz UI: copies one character's Blizzard settings to the others
 S:Row{ key = "qol.sync", tab = "advanced", path = "tweaks.syncUI", reload = true, section = "qol.syncBlizzUi" }
 S:Row{
     key = "qol.source", kind = "button", tab = "advanced", parent = "qol.sync", section = "qol.syncBlizzUi",
@@ -35,7 +35,7 @@ S:Row{
     apply = function() ns.ShowDialog("FLAREUI_SYNC_SOURCE") end,
 }
 
--- Windows: moving windows and placing loot rolls / toasts are one switch
+-- one switch for moving windows and placing loot rolls / toasts
 S:Row{
     key = "qol.move", tab = "advanced", reload = true,
     get = function() return S:GetPath("tweaks.moveAnyFrame") end,
@@ -46,9 +46,8 @@ S:Row{
 }
 
 -- GAMEPLAY ---------------------------------------
--- (sections in this order: Looting, Camera, Convenience)
 S:Row{ key = "qol.fastLoot", tab = "gameplay", path = "tweaks.fasterLoot", apply = Refresh }
--- Camera: further and faster zoom are one switch
+-- one switch for further and faster camera zoom
 S:Row{
     key = "qol.camera", tab = "gameplay",
     get = function() return S:GetPath("tweaks.maxCameraZoom") end,
@@ -67,17 +66,16 @@ S:Row{ key = "qol.petFood", tab = "gameplay", path = "tweaks.petFood", apply = R
 S:Row{ key = "qol.skipLoot", tab = "gameplay", path = "tweaks.skipLootConfirm" }
 
 -- INTERFACE --------------------------------------
--- (sections in this order: Nameplates, Vendor, Hide clutter)
 S:Row{ key = "qol.npCombo", tab = "interface", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon }
 S:Row{ key = "qol.npQuest", tab = "interface", path = "tweaks.nameplateQuest", apply = Refresh, disabled = NameplateAddon }
--- live when switched on; switched off, plates on screen keep the full-width bar until Blizzard lays
--- them out again, so the reload footer offers a reload (switching back on clears it)
+-- live when switched on; switching off leaves visible plates' bars wide until Blizzard re-lays
+-- them, so the reload bar offers a reload
 S:Row{ key = "qol.npLevel", tab = "interface", path = "tweaks.nameplateHideLevel", disabled = NameplateAddon,
     apply = function(on)
         Refresh()
         S:TrackReload("qol.npLevel", on and "on" or "off", "on")
     end }
--- Blizzard's own enemy nameplates, so another nameplate addon does not grey it out
+-- Blizzard's own enemy plates, so another nameplate addon does not grey it out
 S:Row{ key = "qol.npCombat", tab = "interface", path = "tweaks.combatPlates", apply = Refresh }
 
 S:Row{ key = "qol.sellJunk", tab = "interface", path = "tweaks.sellJunk", apply = Refresh }
@@ -85,7 +83,6 @@ S:Row{ key = "qol.repair", tab = "interface", path = "tweaks.autoRepair", apply 
 S:Row{ key = "qol.durability", tab = "interface", path = "tweaks.durabilityWarning", apply = Refresh }
 S:Row{ key = "qol.merchantKnown", tab = "interface", path = "tweaks.merchantKnown", apply = Refresh }
 
--- Hide clutter: one per line
 S:Row{ key = "qol.hideErrors", tab = "interface", path = "tweaks.hideErrors", reload = true }
 S:Row{ key = "qol.hideZoneText", tab = "interface", path = "tweaks.hideZoneText", reload = true }
 S:Row{ key = "qol.hidePartyTitle", tab = "interface", path = "tweaks.hidePartyTitle", apply = Refresh }

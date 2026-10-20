@@ -3,9 +3,7 @@ local L = ns.L
 
 --------------------------------------------------
 -- WELCOME
--- Shown once per account, the first time FlareUI loads. Every module ships switched off, so a new
--- player would otherwise see nothing change and not know where to begin. Built like the other
--- FlareUI windows: bronze edge, the settings panel's gradient, red buttons, Game Menu sounds.
+-- Shown once per account on first load: every module ships off, so it points to the settings.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -15,19 +13,17 @@ local LSM = LibStub("LibSharedMedia-3.0")
 
 local WIDTH, HEIGHT = 400, 330
 local BANNER = "Interface\\AddOns\\FlareUI\\Media\\Art\\Banner.png"
-local SUBTITLE = L["Your friendly UI overhowl"]   -- the tagline from the TOC and the options page
+local SUBTITLE = L["Your friendly UI overhowl"]
 local TEXT = L["Every module of this addon starts switched off.\nTo begin, open the settings and enable the modules you want to use."]
 
 local welcome
 
--- An account with a module already switched on is past the point this is for
-local MODULES = { "chat", "damagemeter", "radialmenu", "unitframes", "actionbars", "auras",
-                  "objectivetracker", "minimap", "tooltips", "tweaks" }
+-- an account with any module on has no need for it
 local function AnyModuleEnabled()
-    local profile = ns.db and ns.db.profile
-    if not profile then return false end
-    for _, key in ipairs(MODULES) do
-        if profile[key] and profile[key].enabled then return true end
+    local S = ns.Settings
+    if not (S and ns.db and ns.db.profile) then return false end
+    for _, module in pairs(S.modules) do
+        if module.enabled and module:IsOn() then return true end
     end
     return false
 end
@@ -67,7 +63,7 @@ local function Build()
     tinsert(UISpecialFrames, "FlareUI_Welcome")
 
     welcome:SetScript("OnShow", ns.WindowOpenSound)
-    -- Seen however it closes - either button or Escape - so it never comes back by itself.
+    -- seen however it closes (either button or Escape)
     welcome:SetScript("OnHide", function()
         ns.WindowCloseSound()
         if ns.db and ns.db.global then ns.db.global.welcomeSeen = true end
@@ -116,6 +112,6 @@ loader:SetScript("OnEvent", function()
         global.welcomeSeen = true
         return
     end
-    -- after the loading screen has cleared, so it is not missed behind it
+    -- after the loading screen has cleared
     C_Timer.After(2, ShowWelcome)
 end)

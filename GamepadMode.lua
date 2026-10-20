@@ -3,11 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- GAMEPAD MODE
--- The Gamepad UI is the CVar InputDeviceInterfaceStyle; changing it reloads the UI.
---   * With keyboard and mouse, the first controller press offers the switch, once a session,
---     never in combat.
---   * /fui pad asks to switch either way.
--- Also prints the login line.
+-- Switches the InputDeviceInterfaceStyle CVar (reloads the UI): offered on the first controller press
+-- with keyboard and mouse (once a session, never in combat), or via /fui pad. Prints the login line.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -17,12 +14,12 @@ local GAMEPAD, MKB = 1, 0           -- Enum.InputDeviceInterfaceType.Gamepad / .
 local CVAR = "InputDeviceInterfaceStyle"
 
 local declined, pendingOffer, padActive
--- After a reload the controller can still read as active, so the offer waits for one keyboard or
--- mouse input first. A fresh login starts armed.
+-- After a reload the controller can still read as active: the offer waits for keyboard or mouse
+-- input first. A fresh login starts armed.
 local armed
 
 local function CheckSwitched(on)
-    -- the switch reloads the UI; still here a moment later means it did not go through
+    -- still here a moment later: the switch did not go through
     C_Timer.After(1, function()
         if ns.IsGamepadUI() ~= on then
             print("|cffff9900FlareUI:|r " .. L["The switch did not go through. Use Blizzard's Settings > Gamepad > Enable Gamepad UI."])
@@ -30,7 +27,7 @@ local function CheckSwitched(on)
     end)
 end
 
--- The pad's yes answer: the client allows this from a controller press, not from a mouse click
+-- The pad's yes: the client allows this from a controller press, not a mouse click
 local function SetGamepadMode(on)
     if InCombatLockdown() then
         print("|cffff9900FlareUI:|r " .. L["Gamepad mode cannot be switched in combat."])
@@ -56,7 +53,7 @@ ns.Dialogs["FLAREUI_GAMEPAD_ON"] = {
     OnMacro = function() CheckSwitched(true) end,
     OnCancel = function() declined = true end,
     hideOnEscape = true,
-    padInput = true,    -- answered with the controller that brought it up
+    padInput = true,
 }
 
 ns.Dialogs["FLAREUI_GAMEPAD_OFF"] = {
@@ -97,7 +94,7 @@ f:SetScript("OnEvent", function(self, event, arg1)
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
         local isInitialLogin = arg1
         armed = isInitialLogin and true or false
-        -- after Chat's history (restored a second after login), so it comes last
+        -- after Chat's restored history (a second after login)
         if isInitialLogin then
             C_Timer.After(2, function()
                 local version = C_AddOns.GetAddOnMetadata(addonName, "Version") or ""
@@ -116,7 +113,7 @@ f:SetScript("OnEvent", function(self, event, arg1)
             Offer()
         end
     elseif event == "PLAYER_REGEN_ENABLED" then
-        -- only if the controller is still the last thing used
+        -- only if the controller is still the last input
         if pendingOffer then
             pendingOffer = false
             if padActive then Offer() end

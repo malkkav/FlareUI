@@ -3,14 +3,9 @@ local L = ns.L
 
 --------------------------------------------------
 -- RESOURCE BARS
--- The player's resources as separate bars in the cast bar look, each its own Edit Mode frame:
---   Health      health, incoming heals and absorbs
---   Power       the current power in its colour; the five-second rule spark while it is mana
---   Mana        mana while another power is the main one (a druid in Bear or Cat Form)
---   Combo       combo points on the target (rogues, druids in Cat Form)
---   Swing       main-hand, off-hand and ranged swing timers (PLAYER_SWING), with a range check
--- Part of the Unit Frames module; replaces the Personal Resource Display and Blizzard's swing
--- timers. Secret-safe: values go straight into widgets, readable() guards every Lua test.
+-- Health, power, druid mana, combo point and swing timer bars, each an Edit Mode frame. Replaces the
+-- Personal Resource Display and Blizzard's swing timers. Secret-safe: values go straight into
+-- widgets, readable() guards every Lua test.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -19,8 +14,6 @@ local L = ns.L
 ns.ResourceBars = ns.ResourceBars or {}
 local RB = ns.ResourceBars
 ns.modules["ResourceBars"] = RB
-
-LibStub("AceEvent-3.0"):Embed(RB)
 
 --------------------------------------------------
 -- 2. UPVALUES / CONSTANTS
@@ -45,14 +38,13 @@ local SWING_SPARK = "Interface\\CastingBar\\UI-CastingBar-Spark"
 
 local COLORS = {
     combo      = ns.COMBO_COLOR,
-    swingMain  = { 0.86, 0.65, 0.39 },   -- a touch brighter than the off hand
+    swingMain  = { 0.86, 0.65, 0.39 },
     swingOff   = { 0.72, 0.54, 0.32 },
     swingRanged = { 0.45, 0.68, 0.40 },
     outOfRange = { 0.78, 0.28, 0.24 },
 }
 
--- textSize: the bar text size, added to the Fonts tab size (centred; on a swing bar the name on the
--- left and the time on the right)
+-- textSize: added to the Fonts tab size
 local BAR_ORDER = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged" }
 local BARS = {
     health      = { kind = "health", label = L["Health Bar"],      default = { point = "CENTER", x = 0, y = -148 }, textSize = 2 },
@@ -67,7 +59,7 @@ local BARS = {
                     swingType = SWING and SWING.Ranged, text = _G.SWING_TIMER_RANGED or "Ranged" },
 }
 
--- the same choices as every other "when does it show" in FlareUI (no Mouseover: these bars only display)
+-- FlareUI's usual "Show" choices, minus Mouseover (these bars take no mouse)
 local SHOW_VALUES = {
     { text = L["Always"],                       value = "always", isRadio = true },
     { text = L["Combat"],                       value = "combat", isRadio = true },
@@ -82,7 +74,7 @@ local TEXT_VALUES = {
 }
 
 local bars = {}            -- key -> holder
-local fsrStart             -- GetTime() of the last mana cast while the five-second window runs
+local fsrStart             -- GetTime() of the last mana cast, while the five seconds run
 
 --------------------------------------------------
 -- 3. SETTINGS ACCESS
@@ -92,7 +84,7 @@ local function GetResourceDb()
     return db and db.resource
 end
 
--- the combo bar's classic gems: on in the unit frames' ring styles, off in Addon Style
+-- Classic combo gems: on in the ring styles, off in Addon Style
 local function ClassicCombo()
     return ns.UFRing and ns.UFRing.On() and true or false
 end
@@ -115,7 +107,7 @@ local function ClassFile()
 end
 
 --------------------------------------------------
--- 4. AVAILABILITY (whether a bar has anything to show right now; Edit Mode shows them all)
+-- 4. AVAILABILITY (Edit Mode shows every bar)
 --------------------------------------------------
 local function PowerTypeNow()
     return readable(UnitPowerType("player"))
@@ -136,8 +128,8 @@ local function BuildsComboPoints()
     return false
 end
 
--- Attack speeds are secret while unit stats are restricted: the last readable answer stands in,
--- and with none yet the bar shows (an empty bar beats a missing one).
+-- Attack speeds are secret while unit stats are restricted: the last readable answer stands in;
+-- with none yet the bar shows
 local hasWeapon = {}
 local function HasSwingWeapon(swingType)
     if not (SWING and swingType) then return false end
@@ -152,7 +144,6 @@ end
 local function IsAvailable(holder)
     local info = BARS[holder.key]
     if info.kind == "mana" then
-        -- Druid mana: only while a form puts another power on the power bar
         return ManaIsSecondary()
     elseif info.kind == "combo" then
         return BuildsComboPoints()
@@ -244,8 +235,7 @@ local function UpdatePower(holder)
     bar:SetMinMaxValues(0, UnitPowerMax("player", powerType))
     bar:SetValue(UnitPower("player", powerType))
     bar:SetStatusBarColor(K.GetPowerColor("player"))
-    SetText(holder, "value", UnitPower("player", powerType))   -- power and mana show the value only
-end
+    SetText(holder, "value", UnitPower("player", powerType))end
 
 local function UpdateMana(holder)
     local bar = holder.Bar
@@ -255,7 +245,7 @@ local function UpdateMana(holder)
     SetText(holder, "value", UnitPower("player", MANA))
 end
 
--- How many segments: each is a bar from i - 1 to i fed the (possibly secret) point count
+-- Segment count; each segment is a bar from i - 1 to i fed the (possibly secret) point count
 local function ComboCount()
     local max = readable(UnitPowerMax("player", COMBO_POWER))
     if not (max and max >= 1) then max = COMBO_FALLBACK end
@@ -264,7 +254,7 @@ end
 
 local LayoutCombo   -- section 6
 
--- Classic: Blizzard's combo points (Core.lua), animated except right after a target change
+-- Classic gems animate, except right after a target change
 local function UpdateCombo(holder)
     local count = ComboCount()
     if count ~= holder.count then
@@ -281,7 +271,6 @@ local function UpdateCombo(holder)
     holder.lastPoints = (not IsEditing() and readable(points)) or nil
 end
 
--- Swing: the bar fills over the swing, the spark rides its edge, the time counts down
 local function SwingOnUpdate(holder)
     local remaining = holder.swingEnd - GetTime()
     if remaining <= 0 then
@@ -339,7 +328,7 @@ local function UpdateBar(holder)
     elseif kind == "swing" then UpdateSwing(holder) end
 end
 
--- Edit Mode: each bar shows a sample
+-- Edit Mode sample values
 local function ApplyPreview(holder)
     local kind = BARS[holder.key].kind
     local cfg = Cfg(holder.key)
@@ -391,7 +380,7 @@ end
 --------------------------------------------------
 -- 6. LAYOUT
 --------------------------------------------------
--- FlareUI Thin keeps the full inset at any height; another border is fitted to a thin bar (BorderFit)
+-- FlareUI Thin keeps the full inset at any height; other borders are fitted to thin bars (BorderFit)
 local DEFAULT_BAR_BORDER = "FlareUI Thin"
 local function BarPadding(cfg, height)
     local _, pad = K.BorderFit(height, K.GetBorderFile(cfg.border or DEFAULT_BAR_BORDER))
@@ -407,10 +396,10 @@ local function ApplyFrameLook(holder, cfg)
     K.ApplyBorderStyle(holder.Border, K.GetBorderFile(cfg.border or DEFAULT_BAR_BORDER), height + 2 * K.INSET)
 end
 
--- Classic Combo Points: Blizzard's points in a row, twice the bar's height, no backdrop or border
+-- Classic gems in a row, no backdrop or border
 local function LayoutClassicCombo(holder, cfg, count)
     local size = cfg.classicSize or (cfg.height or 12) * 2
-    local spacing = ns.ComboPointStep(size)   -- Blizzard's art never touches its neighbour
+    local spacing = ns.ComboPointStep(size)
     for i = 1, count do
         local gem = holder.gems[i]
         if gem then
@@ -472,7 +461,7 @@ local function LayoutBar(holder)
     ApplyFrameLook(holder, cfg)
     local rdb = GetResourceDb()
     local font = rdb and rdb.font
-    -- the Fonts tab size; health, power and mana a little larger (textSize: the offset from it)
+    -- the Fonts tab size plus the bar's textSize
     if info.textSize and font then font = setmetatable({ size = (font.size or 10) + info.textSize }, { __index = font }) end
 
     if kind == "combo" then
@@ -517,7 +506,6 @@ local function LayoutBar(holder)
         heal:SetWidth(width)
         heal:SetPoint("TOPLEFT", clip, "TOPLEFT", 0, 0)
         heal:SetPoint("BOTTOMLEFT", clip, "BOTTOMLEFT", 0, 0)
-        -- incoming heals in the bar's own texture
         heal:SetStatusBarTexture(texture)
         absorb:ClearAllPoints()
         absorb:SetWidth(width)
@@ -548,12 +536,11 @@ local function ApplyPosition(holder, layoutName)
     holder:SetPoint(pos.point or "CENTER", UIParent, pos.point or "CENTER", pos.x or 0, pos.y or 0)
 end
 
--- flush: the borders overlap by a pixel; a gentle pull, and the arrow keys stay free for the last pixel
+-- flush: the borders overlap by a pixel
 local SNAP_DISTANCE, SNAP_GAP, SNAP_ALIGN = 10, -1, 30
 
--- The nearest other bar this one sits just above or below (edges within SNAP_DISTANCE, centres
--- within SNAP_ALIGN sideways): the centre it lands on, centred on the other bar and flush with it.
--- Edit Mode calls it while the bar is dragged (FlareEditMode SetFrameSnapper), and shows the spot.
+-- FlareEditMode's snapper while dragging: the centre that puts this bar flush above or below the
+-- nearest other bar (edges within SNAP_DISTANCE, centres within SNAP_ALIGN sideways)
 local function SnapTarget(holder)
     local cx = holder:GetCenter()
     local top, bottom = holder:GetTop(), holder:GetBottom()
@@ -622,7 +609,6 @@ local function CreateHolder(key)
             local seg = K.CreateBar(holder, level + 1)
             seg:Hide()
             holder.segments[i] = seg
-            -- a one-pixel black line between segments
             local sep = sepFrame:CreateTexture(nil, "BACKGROUND")
             local c = ns.SEGMENT_LINE_COLOR
             sep:SetColorTexture(c[1], c[2], c[3], c[4])
@@ -654,7 +640,7 @@ local function CreateHolder(key)
     end
 
     if info.kind == "power" or info.kind == "mana" then
-        -- the five-second rule: a spark crosses the bar for five seconds after a mana cast
+        -- "Five-Second Rule": a spark crosses the bar for five seconds after a mana cast
         local fsr = CreateFrame("Frame", nil, holder.Bar)
         fsr:SetAllPoints(holder.Bar)
         fsr:SetFrameLevel(holder.Bar:GetFrameLevel() + 1)
@@ -722,7 +708,7 @@ local function BuildSettings(key)
             Relayout(key)
         end
     end
-    -- classic combo gems have one Size; the bar's width and height wait for the bar style
+    -- classic gems have one "Size"; width and height apply to the bar style
     local function classicOn() return info.kind == "combo" and ClassicCombo() end
     local function classicOff() return not classicOn() end
     local frameItems = {
@@ -743,7 +729,7 @@ local function BuildSettings(key)
         add({ name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false, get = get("fsr", false), set = set("fsr"),
               desc = L["A spark crosses the bar for five seconds after a spell that costs mana: spirit regen comes back when it ends."] })
     end
-    -- the sections every FlareUI frame uses (UnitFrames.lua EditSections); classic gems have no Look
+    -- classic gems have no Look
     local Section, settings = K.EditSections()
     Section("Frame", frameItems)
     Section("Look", {
@@ -778,10 +764,11 @@ function RB:OnEvent(event, arg1, arg2, arg3)
         local comboChange = not (event == "UNIT_POWER_FREQUENT" and canaccessvalue(arg2) and arg2 ~= "COMBO_POINTS")
         if comboChange and bars.combo and bars.combo:IsShown() then UpdateCombo(bars.combo) end
     elseif event == "UNIT_DISPLAYPOWER" then
-        -- a shapeshift: the main power changes, the mana and combo bars come or go
+        -- a shapeshift: the mana and combo bars come or go
         ApplyAllShown()
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         local spellID = arg3
+        if not (bars.power or bars.mana) then return end
         if not (spellID and canaccessvalue(spellID)) then return end
         local costs = C_Spell.GetSpellPowerCost(spellID)
         if not costs then return end
@@ -813,7 +800,7 @@ function RB:OnEvent(event, arg1, arg2, arg3)
         if bars.combo then bars.combo.lastPoints = nil end   -- the new target's points do not animate
         ApplyAllShown()
     else
-        -- combat in or out, gear, attack speed, entering the world: everything may come or go
+        -- combat, gear, attack speed, entering the world: any bar may come or go
         if event == "PLAYER_ENTERING_WORLD" or event == "WEAPON_SLOT_CHANGED" then EnableSwingRange() end
         ApplyAllShown()
     end
@@ -844,17 +831,15 @@ function RB:Refresh()
     ApplyAllShown()
 end
 
--- Druid mana is for druids only
 local function BarOn(key)
     local cfg = Cfg(key)
     if key == "mana" and ClassFile() ~= "DRUID" then return false end
     return cfg and cfg.enabled and true or false
 end
 
--- loads when any bar is on
+-- Loads when the module and any bar are on
 function RB:ShouldLoad()
     local db = K and K.GetDb()
-    -- its own module in the settings (unitframes.resource.enabled), apart from the unit frames
     if not (db and db.resource and db.resource.enabled) then return false end
     for _, key in ipairs(BAR_ORDER) do
         if BarOn(key) then return true end
@@ -862,8 +847,8 @@ function RB:ShouldLoad()
     return false
 end
 
--- Blizzard's versions are parked while ours are on (back after a reload). The Personal Resource
--- Display goes whenever the module is on (it also shows combo points); each swing bar has its own.
+-- Blizzard's counterparts are parked for the session: the Personal Resource Display whenever the
+-- module is on, each swing timer with its bar
 local BLIZZARD_COUNTERPARTS = {
     { addon = "Blizzard_PersonalResourceDisplay", frame = "PersonalResourceDisplayFrame", always = true },
     { addon = "Blizzard_SwingTimer", frame = "SwingTimerMainHandFrame", bars = { "swingMain" } },

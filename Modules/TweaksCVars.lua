@@ -2,13 +2,11 @@ local _, ns = ...
 
 --------------------------------------------------
 -- SYNC CVARS
--- CVars mirrored by Quality of Life > Sync Blizz UI. The list comes from Account Wide Interface
--- Settings by ConineSpiritwolf, used under the MIT License (LICENSES/AccountWideInterfaceSettings.txt),
--- minus the Retail-only systems Forever lacks. Names the client does not know are skipped at
--- runtime, so the list can stay broad.
--- From Options > Advanced Options only the two damage meter switches are synced; the rest
--- (Diminishing Returns among them) are per-class choices. Swing Timer is not here because Blizzard
--- already stores it account-wide (WTF/Account/<acct>/config-cache.wtf).
+-- CVars mirrored by Quality of Life > Sync Blizz UI; names the client does not know are skipped.
+-- The list comes from Account Wide Interface Settings by ConineSpiritwolf, used under the MIT
+-- License (LICENSES/AccountWideInterfaceSettings.txt), minus Retail-only systems.
+-- Of Options > Advanced Options only the damage meter switches are synced (the rest are per-class
+-- choices); Swing Timer is already account-wide in Blizzard's config-cache.wtf.
 --------------------------------------------------
 
 --------------------------------------------------
