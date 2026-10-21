@@ -361,6 +361,7 @@ local function BuildSettings()
         { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = D.onlyMyDebuffs ~= false,
           get = function() return get("onlyMyDebuffs")() ~= false end, set = set("onlyMyDebuffs") },
     })
+    Section("Aura Ordering", ns.AuraOrder.Items(get, set))
 
     Section("Icons", {
         { name = L["Raid Markers"], kind = LEM.SettingType.Checkbox, default = D.raidIcon ~= false, get = get("raidIcon"), set = set("raidIcon") },

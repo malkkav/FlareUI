@@ -191,7 +191,8 @@ local FIXED = { castbar = false, auraMax = 3, auraPerRow = 3, absorbTexture = "F
 -- main tank settings of their own (db.mainTanks), falling back to the raid's
 local TANK_OWN = { powerHeight = true, buffs = true, debuffs = true, dispels = true, dispelHighlight = true,
                    auraSize = true, bigBossDebuffs = true, bigDefensive = true,
-                   hideBuffs = true, onlyMyBuffs = true, dispellableOnly = true, encounterOnly = true }
+                   hideBuffs = true, onlyMyBuffs = true, dispellableOnly = true, encounterOnly = true,
+                   auraSort = true, auraReverse = true, auraMineFirst = true }
 local function View(sizeFn, own)
     return setmetatable({}, { __index = function(_, key)
         local db = GetDb()
@@ -1067,6 +1068,7 @@ local function BuildSettings()
     })
 
     Section("Auras", AuraItems(get, set, d, raidView, holder, true))
+    Section("Aura Ordering", ns.AuraOrder.Items(get, set))
 
     local iconItems = {}
     local sample = { ctx = raidCtx }   -- the icon switches read the raid settings through it
@@ -1120,6 +1122,7 @@ local function BuildTankSettings()
         { name = L["Spacing"], kind = LEM.SettingType.Slider, default = 2, minValue = 0, maxValue = 20, valueStep = 1, get = get("spacing", 2), set = set("spacing") },
     })
     Section("Auras", AuraItems(get, set, d, tankView, tankHolder, false))
+    Section("Aura Ordering", ns.AuraOrder.Items(get, set))
     return settings
 end
 

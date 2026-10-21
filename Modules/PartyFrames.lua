@@ -799,7 +799,7 @@ end
 -- inside the frame: no timer, whatever the Aura Timer setting (it would cover the bars and names)
 local function LaneLook(size, isDebuff, inside)
     local timer = inside and "none" or UFAura("auraTimer", "none")
-    return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, UFAura("auraStyle", "square"), "icon", timer)
+    return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, UFAura("auraStyle", "square"), "both", timer)
 end
 
 -- Where a place's auras start and which way they grow
@@ -910,14 +910,19 @@ local function ConfigurePosition(f, pos, lanes)
     local unit = f.unit
     entry.generation = entry.generation + 1
     local gen = entry.generation
+    -- Aura Ordering: the buffs and debuffs rows (Bigger Boss Debuffs and dispel icons keep Blizzard's)
+    local order = TS(f)
+    local sortMethod, sortDirection = ns.AuraOrder.Options(order and order.auraSort, order and order.auraReverse, order and order.auraMineFirst)
     for index, lane in ipairs(lanes) do
         local key = lane.key .. gen
         local isDebuff, kind = lane.isDebuff, lane.kind
+        local sorted = lane.key == "buffs" or lane.key == "debuffs"
         local laneSize = lane.scale and math_floor(size * lane.scale + 0.5) or size
         local look = kind ~= "dispels" and LaneLook(laneSize, isDebuff, inside) or nil
         local ok, err = pcall(container.AddAuraGroup, container, key, lane.filter, {
             maxFrameCount = lane.max or (lane.sameLine and besideBoss) or (kind == "dispels" and math_min(max, 3) or max),
             candidateFilters = lane.candidates,
+            sortMethod = sorted and sortMethod or nil, sortDirection = sorted and sortDirection or nil,
             initializeFrame = function(button)
                 if kind == "dispels" then
                     InitDispelIcon(button, laneSize, inside)
@@ -967,7 +972,7 @@ local function ConfigureAuras(f)
     if not st then return end
     local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.width, st.height, st.powerHeight, st.portrait, (DispelGrid(f)), f.ringKind, AuraGrid(st), UFAura("auraStyle", "square"),
         UFAura("auraTimer", "none"), st.bigBossDebuffs, st.castbar, st.castHeight, st.petHeight, (not f.ctx and GetPartyDb().pets), OnPlate(f),
-        st.hideBuffs, IsEditing(), st.onlyMyBuffs, st.dispellableOnly, st.encounterOnly)
+        st.hideBuffs, IsEditing(), st.onlyMyBuffs, st.dispellableOnly, st.encounterOnly, st.auraSort, st.auraReverse, st.auraMineFirst)
     if f.auraSignature == sig then return end
     f.auraSignature = sig
     f.bossFightRecs = {}
@@ -2577,6 +2582,7 @@ local function BuildSettings()
           set = function(layoutName, value) setS("bigDefensive")(layoutName, value); LEM:RefreshFrameSettings(holder) end,
           desc = L["A big defensive cooldown on the member (Shield Wall, Divine Shield...) in the middle of the frame."] },
     })
+    Section("Aura Ordering", ns.AuraOrder.Items(getS, setS))
 
     -- one switch per icon; where they sit is fixed
     local iconItems = {}

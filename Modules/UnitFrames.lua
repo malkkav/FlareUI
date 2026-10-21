@@ -1216,13 +1216,15 @@ local function ConfigureAuraCorner(f, corner, lanes)
     local unit, font = f.unit, db and db.font
     local auraTimer = db and db.auraTimer or "none"
     local showTimer = auraTimer ~= "none"
+    local sortMethod, sortDirection = ns.AuraOrder.Options(udb.auraSort, udb.auraReverse, udb.auraMineFirst)
     for index, lane in ipairs(lanes) do
         local key = lane.key .. gen
         local isDebuff = lane.isDebuff
-        local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, unit == "player", db and db.auraStyle or "square", "icon", auraTimer)
+        local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, unit == "player", db and db.auraStyle or "square", "both", auraTimer)
         local ok, err = pcall(container.AddAuraGroup, container, key, lane.filter, {
             maxFrameCount = max,
             candidateFilters = lane.candidates,
+            sortMethod = sortMethod, sortDirection = sortDirection,
             initializeFrame = function(button) InitAuraButton(button, size, isDebuff, unit, font, showTimer, look) end,
             layout = {
                 elementWidth = size, elementHeight = look and look.cellHeight or size,
@@ -3114,6 +3116,7 @@ local function BuildSettings(unit)
             auraItems[#auraItems + 1] = { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = defaults.onlyMyDebuffs or false, get = get("onlyMyDebuffs"), set = set("onlyMyDebuffs") }
         end
         Section("Auras", auraItems)
+        Section("Aura Ordering", ns.AuraOrder.Items(get, set))
     end
 
     -- one switch per icon; where they sit is fixed

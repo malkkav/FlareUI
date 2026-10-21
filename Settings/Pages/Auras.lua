@@ -21,7 +21,16 @@ S:Module{
 }
 
 S:Row{ key = "au.shape", kind = "choice", path = "auras.style", choices = { "round", "square" }, apply = Refresh }
+S:Row{ key = "au.swipe", kind = "choice", path = "auras.swipe", choices = { "icon", "border", "both", "none" }, apply = Refresh }
 S:Row{ key = "au.timer", kind = "choice", path = "auras.timer", choices = { "below", "bottom", "middle", "none" }, apply = Refresh }
+
+local function NoMineFirst()
+    local sort = S:GetPath("auras.sort")
+    return sort ~= "time" and sort ~= "name"
+end
+S:Row{ key = "au.sort", kind = "choice", path = "auras.sort", choices = { "default", "applied", "time", "name" }, apply = Refresh }
+S:Row{ key = "au.reverse", path = "auras.reverse", apply = Refresh }
+S:Row{ key = "au.mineFirst", path = "auras.mineFirst", apply = Refresh, disabled = NoMineFirst }
 
 S:FontRows{ module = "au", tab = "fonts", section = "au.fonts", apply = Refresh, fonts = {
     { key = "timer", path = "auras.font" },

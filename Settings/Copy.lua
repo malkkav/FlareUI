@@ -335,15 +335,42 @@ ns.Copy = {
             desc = L["Time left and stack counts."],
             label = L["Aura timers"],
         },
+        ["au.mineFirst"] = {
+            desc = L["Your own auras lead the row."],
+            label = L["Your auras first"],
+            section = "au.auraOrdering",
+            tip = L["Only with Time left or Name."],
+        },
+        ["au.reverse"] = {
+            desc = L["Turns the order around."],
+            label = L["Reverse order"],
+            section = "au.auraOrdering",
+            tip = L["Newest, longest left or Z first."],
+        },
         ["au.shape"] = {
             choices = { L["Round"], L["Square"] },
             desc = L["The shape of your buff and debuff icons."],
             label = L["Icon shape"],
+            section = "au.general",
+        },
+        ["au.sort"] = {
+            choices = { L["Default"], L["Order applied"], L["Time left"], L["Name"] },
+            desc = L["How your buffs and debuffs line up."],
+            label = L["Sort by"],
+            section = "au.auraOrdering",
+            tip = L["Time left puts the auras about to end first. Permanent ones go last."],
+        },
+        ["au.swipe"] = {
+            choices = { L["Over the icon"], L["Around the border"], L["Both"], L["None"] },
+            desc = L["How the time remaining for auras is shown."],
+            label = L["Swipe"],
+            section = "au.general",
         },
         ["au.timer"] = {
             choices = { L["Under the icon"], L["Bottom of the icon"], L["Middle of the icon"], L["None"] },
             desc = L["Where the time left shows."],
             label = L["Timer"],
+            section = "au.general",
         },
         ["ch.border"] = {
             desc = L["The border around the chat and its edit box."],
@@ -989,9 +1016,21 @@ ns.Copy = {
             section = "tt.showTooltips",
             tip = L["Hold Shift to see a hidden tooltip."],
         },
+        ["uf.*.auraMineFirst"] = {
+            desc = L["The same three as the Buffs & Debuffs page, per frame, in their own section right below Auras. Default sorting is Blizzard's: yours first, then the important ones."],
+            label = L["Your Auras First"],
+        },
+        ["uf.*.auraReverse"] = {
+            desc = L["The same three as the Buffs & Debuffs page, per frame, in their own section right below Auras. Default sorting is Blizzard's: yours first, then the important ones."],
+            label = L["Reverse Order"],
+        },
         ["uf.*.auraSize"] = {
             desc = L["The size of aura icons."],
             label = L["Aura size"],
+        },
+        ["uf.*.auraSort"] = {
+            desc = L["The same three as the Buffs & Debuffs page, per frame, in their own section right below Auras. Default sorting is Blizzard's: yours first, then the important ones."],
+            label = L["Sort By"],
         },
         ["uf.*.buffs"] = {
             choices = { L["Off"], L["Top left"], L["Top right"], L["Bottom left"], L["Bottom right"] },
@@ -1219,6 +1258,8 @@ ns.Copy = {
         ["about.credits"] = L["Credits"],
         ["about.yourFriendlyUiOverhowl"] = L["Your friendly UI overhowl"],
         ["adv.reset"] = L["Reset"],
+        ["au.auraOrdering"] = L["Aura Ordering"],
+        ["au.general"] = L["General"],
         ["ch.editBoxSection"] = L["Edit Box"],
         ["ch.formatting"] = L["Formatting |cffff4040(Outside Instances Only)|r"],
         ["ch.frame"] = L["Frame"],

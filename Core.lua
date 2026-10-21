@@ -56,6 +56,41 @@ function ns.LevelDifficultyColor(unit, level)
     return level and GetQuestDifficultyColor and GetQuestDifficultyColor(level) or nil
 end
 
+-- Aura Ordering (every frame with auras): Blizzard's aura containers sort each group themselves (safe
+-- with secret values). sort: "default" (Blizzard's: yours first, then important, then applied order),
+-- "applied", "time" (time left; permanent last) or "name"; mineFirst (time, name): your own lead.
+ns.AuraOrder = {}
+function ns.AuraOrder.Options(sort, reverse, mineFirst)
+    local M, D = AuraContainerSortMethod, AuraContainerSortDirection
+    if not (M and D) then return nil, nil end
+    local method = M.Default
+    if sort == "applied" then method = M.AuraInstanceIDOnly
+    elseif sort == "time" then method = mineFirst == false and M.ExpirationOnly or M.Expiration
+    elseif sort == "name" then method = mineFirst == false and M.NameOnly or M.Name end
+    return method, reverse and D.Reverse or D.Normal
+end
+
+-- The Edit Mode "Aura Ordering" rows; get(key) / set(key) are the dialog's own accessors
+function ns.AuraOrder.Items(get, set, defaultSort)
+    local LEM = LibStub("FlareEditMode")
+    defaultSort = defaultSort or "default"
+    local function Sort() return get("auraSort")() or defaultSort end
+    return {
+        { name = L["Sort By"], kind = LEM.SettingType.Dropdown, default = defaultSort,
+          values = { { text = L["Default"], value = "default", isRadio = true }, { text = L["Order Applied"], value = "applied", isRadio = true },
+                     { text = L["Time Left"], value = "time", isRadio = true }, { text = L["Name"], value = "name", isRadio = true } },
+          get = Sort, set = set("auraSort"),
+          desc = L["Default: yours first, then the important ones. Time Left: the soonest to end first."] },
+        { name = L["Reverse Order"], kind = LEM.SettingType.Checkbox, default = false,
+          get = function() return get("auraReverse")() and true or false end, set = set("auraReverse"),
+          desc = L["Turns the order around: newest, longest left or Z first."] },
+        { name = L["Your Auras First"], kind = LEM.SettingType.Checkbox, default = true,
+          get = function() return get("auraMineFirst")() ~= false end, set = set("auraMineFirst"),
+          hidden = function() local s = Sort(); return s ~= "time" and s ~= "name" end,
+          desc = L["Your own auras lead, the rest follow in the same order."] },
+    }
+end
+
 -- A level on the frames: friendly units in Blizzard's gold, neutral and hostile ones by difficulty
 local LEVEL_GOLD = { r = 1, g = 0.82, b = 0 }
 function ns.UnitLevelColor(unit, level)
@@ -605,7 +640,9 @@ local defaults = {
         auras = {
             enabled = false,
             style = "round",            -- square | round
+            swipe = "both",             -- both (default) | icon (over the icon) | border (around the edge) | none
             timer = "below",            -- below (under the icon) | bottom (along its bottom edge)
+            sort = "applied", reverse = false, mineFirst = true,   -- Aura Ordering (both frames)
             font = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- per frame, set in Edit Mode
             buffs   = { size = 26, perRow = 9, max = 27, spacing = 4, grow = "LEFT", wrap = "DOWN" },

@@ -42,8 +42,9 @@ local ROUND_BORDER  = "talents-node-circle-gray"
 local ROUND_MASK    = "talents-node-circle-mask"
 local ROUND_TINT    = { 0.72, 0.56, 0.38 }
 -- Border swipe outlines: a swipe takes a file, not an atlas
-local SWIPE_SQUARE  = MEDIA .. "Border"
-local SWIPE_ROUND   = MEDIA .. "BorderRound"
+local SWIPE_SQUARE  = MEDIA .. "BorderThick"         -- 2 px wider inward than the border art
+local SWIPE_ROUND   = MEDIA .. "BorderRoundThick"
+local BORDER_SATURATION = 1.35   -- Border swipe: the tints a little richer
 local SWIPE_DISC    = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 local TEMPLATE      = "CustomAuraContainerTemplate"
 local TIMER_SPACE   = 13      -- room for a timer below the icon
@@ -99,14 +100,22 @@ end
 
 -- Blizzard applies the map with SetVertexColor(color:GetRGBA()); four maps, cached
 local colorMaps = {}
-local function ColorMap(isDebuff, round)
-    local cacheKey = (isDebuff and "d" or "b") .. (round and "r" or "s")
+local function ColorMap(isDebuff, round, saturate)
+    local cacheKey = (isDebuff and "d" or "b") .. (round and "r" or "s") .. (saturate and "+" or "")
     local map = colorMaps[cacheKey]
     if map then return map end
     map = {}
     for _, key in ipairs(DISPEL_KEYS) do
         local c = isDebuff and (DEBUFF_COLORS[key] or DEBUFF_COLORS.None) or (round and ROUND_TINT or SQUARE_TINT)
-        map[key] = CreateColor(c[1], c[2], c[3], 1)
+        local r, g, b = c[1], c[2], c[3]
+        if saturate then
+            -- away from the grey of the same brightness
+            local l = 0.3 * r + 0.59 * g + 0.11 * b
+            r = math_min(1, math_max(0, l + (r - l) * BORDER_SATURATION))
+            g = math_min(1, math_max(0, l + (g - l) * BORDER_SATURATION))
+            b = math_min(1, math_max(0, l + (b - l) * BORDER_SATURATION))
+        end
+        map[key] = CreateColor(r, g, b, 1)
     end
     colorMaps[cacheKey] = map
     return map
@@ -216,9 +225,9 @@ local function StyleButton(button, look)
     bg:ClearAllPoints()
     bg:SetAllPoints(icon)
 
-    -- the Border swipe draws above the border art, the Icon swipe below it
+    -- the Border and Both swipes draw above the border art, the Icon swipe below it
     local base = area:GetFrameLevel()
-    if look.swipe == "border" then
+    if look.swipe == "border" or look.swipe == "both" then
         button.FlareUI_BorderFrame:SetFrameLevel(base + 1)
         cd:SetFrameLevel(base + 2)
     else
@@ -243,6 +252,14 @@ local function StyleButton(button, look)
         cd:SetDrawEdge(false)
         cd:SetSwipeTexture(round and SWIPE_ROUND or SWIPE_SQUARE)
         cd:SetSwipeColor(0, 0, 0, SWIPE_ALPHA)
+    elseif look.swipe == "both" then
+        -- one swipe over the icon and its border together (Blizzard drives a single cooldown)
+        cd:SetDrawSwipe(true)
+        cd:SetSwipeTexture(round and SWIPE_DISC or SQUARE_MASK)
+        cd:SetSwipeColor(0, 0, 0, SWIPE_ALPHA)
+        cd:SetDrawEdge(true)
+        cd:SetEdgeTexture(SWIPE_EDGE, 1, 1, 1, 1)
+        if cd.SetEdgeScale then cd:SetEdgeScale(SWIPE_EDGE_SCALE) end
     else
         cd:SetDrawSwipe(true)
         cd:SetSwipeTexture(round and SWIPE_DISC or SQUARE_MASK)
@@ -327,11 +344,11 @@ local function Look(kind)
     return {
         size = kdb.size or 30,
         style = db.style or "square",
-        swipe = "icon",
+        swipe = db.swipe or "both",
         timer = db.timer or "below",
         font = db.font,
         isDebuff = KINDS[kind].isDebuff,
-        colors = ColorMap(KINDS[kind].isDebuff, db.style == "round"),
+        colors = ColorMap(KINDS[kind].isDebuff, db.style == "round", db.swipe == "border"),
     }
 end
 
@@ -632,10 +649,12 @@ local function LayoutKind(kind)
         groupSpacing = spacing, groupLineSpacing = spacing,
     }
     local key = kind .. holder.generation
+    local adb = GetDb()
+    local sortMethod, sortDirection = ns.AuraOrder.Options(adb and adb.sort or "applied", adb and adb.reverse, adb and adb.mineFirst)
     local ok, err = pcall(container.AddAuraGroup, container, key, KINDS[kind].filter, {
         maxFrameCount = kdb.max or 32,
-        -- gain order; the container compares the ids, never addon code
-        sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.AuraInstanceIDOnly,
+        -- Aura Ordering (Order Applied by default); the container compares, never addon code
+        sortMethod = sortMethod, sortDirection = sortDirection,
         initializeFrame = function(button) StyleButton(button, look); HookButton(button, look) end,
         layout = layout,
     })

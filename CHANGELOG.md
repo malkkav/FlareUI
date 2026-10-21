@@ -1,3 +1,17 @@
+# FlareUI 2.4.1
+
+Aura ordering on every aura frame, and the swipe choice back on Buffs & Debuffs.
+
+## New
+- **Aura Ordering**, a new section right below Auras in Edit Mode on every unit frame with auras: player, target, focus, pet and their targets, party, raid, main tanks and boss frames.
+- Aura Ordering: **Sort By** (Default, Order Applied, Time Left or Name), **Reverse Order**, and **Your Auras First** (with Time Left or Name). Default keeps Blizzard's order; nothing changes until you pick one. On party, raid and boss frames the buff and debuff rows are sorted; Bigger Boss Debuffs, dispel icons and the big defensive keep their order.
+- Buffs & Debuffs: the same Aura Ordering options in a new section of their settings page (Order Applied by default, as before). The icon shape and timer options now sit under **General**.
+- Buffs & Debuffs: **Swipe** is back in General: Over the icon, Around the border, Both or None.
+
+## Changed
+- The aura swipe now runs over the icon and its border together (**Both**): the default on Buffs & Debuffs, and on every unit frame aura (player, target, focus, pet, party, raid, main tanks and boss).
+- Buffs & Debuffs, Around the border: a slightly thicker ring and richer border colours.
+
 # FlareUI 2.4.0
 
 New aura filters, party and boss frames on Forever Style's frame plate, Growth for party and raid frames, a reworked controller radial, and a full clean-up pass.
