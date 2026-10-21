@@ -483,6 +483,7 @@ local defaults = {
         minimap = {
             enabled = false,
             autoZoom = 5,               -- seconds before zooming back out (0 = off)
+            mapSize = 244,              -- Edit Mode's Map Size: the map alone, in unscaled pixels
             buttonBag = true,           -- the badge opens a bag with every addon's minimap button (MinimapBag.lua)
             clockStats = true,          -- framerate and latency in the clock's tooltip
             -- Fonts tab: the zone name and the clock (Forever's own look by default)
@@ -599,14 +600,14 @@ local defaults = {
                 target       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = true, showLevel = true, mirror = true,
                                  texture = "FlareUI Forever", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
-                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                                 castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24, onlyMyDebuffs = true },
                 targettarget = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin" },
                 focus        = { enabled = true, width = 160, height = 35, powerHeight = 0, healthText = "percent", powerText = false, showLevel = true, mirror = true,
                                  texture = "FlareUI Forever", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
-                                 castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                                 castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 18, onlyMyDebuffs = true },
                 focustarget  = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin" },

@@ -1,3 +1,15 @@
+# FlareUI 2.4.2
+
+A bigger minimap without a bulkier frame, and a cast bar switch on the target and focus frames.
+
+## New
+- Minimap: **Map Size** in Edit Mode, in a panel under the minimap's dialog. It grows or shrinks the map itself; the border, header and buttons keep their size. Blizzard's Size slider is now called **Scale** and still scales the whole minimap.
+- Target and focus frames: a **Cast Bar** switch at the top of the Cast Bar section (on by default), like the one on party and boss frames.
+
+## Changed
+- Target and focus frames: Cast Bar Texture now sits right below Cast Bar Position.
+- Party and boss frames: Cast Bar Texture now sits above Cast Bar Height.
+
 # FlareUI 2.4.1
 
 Aura ordering on every aura frame, and the swipe choice back on Buffs & Debuffs.

@@ -885,7 +885,9 @@ local function IsCastEnabled(cast)
         local db = GetDb()
         return db and db.playerCastbar and db.playerCastbar.enabled
     end
-    return true
+    -- target / focus: the Cast Bar switch in Edit Mode
+    local udb = GetUnitDb(cast.unit)
+    return not (udb and udb.castbar == false)
 end
 
 local function UpdateCast(f)
@@ -3033,26 +3035,35 @@ local function BuildSettings(unit)
     Section("Look", lookItems)
 
     if info.castbar then
+        local function noCast() local u = GetUnitDb(unit); return u and u.castbar == false or false end
         Section("Cast Bar", {
+            { name = L["Cast Bar"], kind = LEM.SettingType.Checkbox, default = defaults.castbar ~= false,
+              get = function() return not noCast() end,
+              set = function(layoutName, value)
+                  set("castbar")(layoutName, value)
+                  if frames[unit] then LEM:RefreshFrameSettings(frames[unit]) end
+              end },
             { name = L["Cast Bar Position"], kind = LEM.SettingType.Dropdown, default = defaults.castbarPosition or "BOTTOM",
               values = { { text = L["Above"], value = "TOP", isRadio = true }, { text = L["Below"], value = "BOTTOM", isRadio = true } },
-              get = get("castbarPosition"), set = set("castbarPosition") },
+              get = get("castbarPosition"), set = set("castbarPosition"), hidden = noCast },
+            { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(),
+              get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture"), hidden = noCast },
             { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = defaults.castHeight or CAST_HEIGHT, minValue = 8, maxValue = 40, valueStep = 1,
-              get = function() local u = GetUnitDb(unit); return u and u.castHeight or CAST_HEIGHT end, set = set("castHeight") },
+              get = function() local u = GetUnitDb(unit); return u and u.castHeight or CAST_HEIGHT end, set = set("castHeight"), hidden = noCast },
             { name = L["Hide Icon"], kind = LEM.SettingType.Checkbox, default = false,
               get = function() local u = GetUnitDb(unit); return u and u.castIcon == false or false end,
               set = function(layoutName, value) set("castIcon")(layoutName, not value) end,
+              hidden = noCast,
               desc = L["No spell icon left of the bar."] },
             { name = L["Hide Spell Timer"], kind = LEM.SettingType.Checkbox, default = false,
               get = function() local u = GetUnitDb(unit); return u and u.castTimer == false or false end,
               set = function(layoutName, value) set("castTimer")(layoutName, not value) end,
+              hidden = noCast,
               desc = L["No time left at the right end of the bar."] },
-            { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(),
-              get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture") },
             { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
               get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture"),
               desc = L["Frame Border uses the frame's own border."],
-              hidden = function() return ns.UFRing and ns.UFRing.PlateOn() or false end },
+              hidden = function() return noCast() or (ns.UFRing and ns.UFRing.PlateOn()) or false end },
         })
     end
     if info.auras then

@@ -364,6 +364,7 @@ L["Group Numbers"] = true
 L["Group Spacing"] = true
 L["Groups"] = true
 L["Grow"] = true
+L["Grows the map itself; the border and header keep their size. Scale grows all of it."] = true
 L["Growth"] = true
 L["Gryphons"] = true
 L["Guild & Communities"] = true
@@ -511,6 +512,7 @@ L["Make this character the Sync Blizz UI source?\n\nEvery other character will c
 L["Manage profiles"] = true
 L["Map pins are not allowed on this map."] = true
 L["Map pins on \"/way\""] = true
+L["Map Size"] = true
 L["Markers"] = true
 L["Match chat size"] = true
 L["Max Height"] = true

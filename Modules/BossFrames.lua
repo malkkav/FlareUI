@@ -314,6 +314,8 @@ local function BuildSettings()
     Section("Cast Bar", {
         { name = L["Cast Bars"], kind = LEM.SettingType.Checkbox, default = D.castbar ~= false, get = get("castbar"),
           set = function(layoutName, value) set("castbar")(layoutName, value); if holder then LEM:RefreshFrameSettings(holder) end end },
+        { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
+          get = get("castTexture"), set = set("castTexture"), hidden = noCast, },
         { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight or 14, minValue = 8, maxValue = 30, valueStep = 1,
           get = get("castHeight"), set = set("castHeight"), hidden = noCast },
         { name = L["Hide Icon"], kind = LEM.SettingType.Checkbox, default = false,
@@ -326,8 +328,6 @@ local function BuildSettings()
           set = function(layoutName, value) set("castTimer")(layoutName, not value) end,
           hidden = noCast,
           desc = L["No time left at the right end of the bar."] },
-        { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
-          get = get("castTexture"), set = set("castTexture"), hidden = noCast, },
         { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
           get = get("castBorderTexture"), set = set("castBorderTexture"),
           hidden = function() return noCast() or K.NoBorderOptions() end,
