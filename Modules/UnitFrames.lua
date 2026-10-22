@@ -1332,7 +1332,9 @@ LayoutAuras = function(f)
         -- "Focus Boss Debuffs": ns.BossFight switches the filter in boss fights
         AddLane(udb.debuffs, "debuffs", debuffFilter, true, nil,
             (f.unit == "player" and udb.encounterOnly) and "filter" or nil)
-        AddLane(udb.buffs, "buffs", "HELPFUL", false, buffCandidates)
+        -- "Only My Buffs" (player): the PLAYER filter
+        local buffFilter = (f.unit == "player" and udb.onlyMyBuffs) and "HELPFUL|PLAYER" or "HELPFUL"
+        AddLane(udb.buffs, "buffs", buffFilter, false, buffCandidates)
     end
     f.bossFightRecs = {}
     for _, corner in ipairs(AURA_CORNERS) do
@@ -1418,7 +1420,7 @@ local function LayoutComboSegments(f)
     local combo, udb = f.Combo, GetUnitDb(f.unit)
     if not combo or combo.count == 0 then return end
     local n = combo.count
-    local width = (udb and udb.width or 220) - 2 * INSET - PortraitSpace(f)
+    local width = (udb and udb.width or 220) - 2 * INSET - PortraitSpace(f) - (combo.clear or 0)
     local texture = GetBarTexture(udb and udb.texture)
     for i = 1, n do
         local seg = GetComboSegment(f, i)
@@ -1497,9 +1499,14 @@ local function GetClassicCombo()
     if combo and combo:IsEventRegistered("PLAYER_TARGET_CHANGED") then return combo end
 end
 
--- Classic combo points go with the style: on in the ring styles (round the ring), off in Addon Style
+-- Classic combo points go with the style: on in the ring styles (round the ring), off in Addon Style.
+-- FlareUI Style can take Addon Style's strip instead (Modern Combo Points).
 local function UsesClassicCombo(f)
     local ringOn = ns.UFRing and ns.UFRing.Applies(f)
+    if ringOn and ns.UFRing.Style() == "flareui" then
+        local udb = GetUnitDb(f.unit)
+        if udb and udb.modernCombo then return false end
+    end
     return (ringOn and GetClassicCombo()) and true or false
 end
 
@@ -2269,9 +2276,16 @@ local function LayoutBars(f)
 
     if comboShown then
         local combo = f.Combo
+        -- FlareUI Style (Modern Combo Points): the strip ends where the ring starts at its depth
+        combo.clear = 0
+        local ringSide
+        if ns.UFRing and ns.UFRing.Applies(f) then
+            combo.clear = ns.UFRing.Clearance(f, -(PADDING + COMBO.height))
+            ringSide = ns.UFRing.Side(f)
+        end
         combo:ClearAllPoints()
-        combo:SetPoint("TOPLEFT", health, "TOPLEFT", 0, 0)
-        combo:SetPoint("TOPRIGHT", health, "TOPRIGHT", 0, 0)
+        combo:SetPoint("TOPLEFT", health, "TOPLEFT", ringSide == "LEFT" and combo.clear or 0, 0)
+        combo:SetPoint("TOPRIGHT", health, "TOPRIGHT", ringSide == "RIGHT" and -combo.clear or 0, 0)
         combo:SetHeight(COMBO.height)
         combo:Show()
         LayoutComboSegments(f)
@@ -3032,6 +3046,14 @@ local function BuildSettings(unit)
     lookItems[#lookItems + 1] = UF.BgOpacitySetting(bgDefault,
         function() local u = GetUnitDb(unit); local v = u and u.bgOpacity; if v == nil then return bgDefault end; return v end,
         set("bgOpacity"))
+    -- FlareUI Style only: Addon Style's combo strip over the health bar instead of the gems round the ring
+    if info.comboPoints then
+        lookItems[#lookItems + 1] = { name = L["Modern Combo Points"], kind = LEM.SettingType.Checkbox, default = false,
+            get = function() local u = GetUnitDb(unit); return u and u.modernCombo or false end,
+            set = set("modernCombo"),
+            hidden = function() return not (ns.UFRing and ns.UFRing.Style() == "flareui") end,
+            desc = L["Combo points as a bar along the top of the health bar, as in Addon Style, instead of gems round the portrait."] }
+    end
     Section("Look", lookItems)
 
     if info.castbar then
@@ -3111,8 +3133,11 @@ local function BuildSettings(unit)
                 set = set("hideBuffs"),
                 desc = L["Buffs left off the player frame, by their full duration. Every choice but Off also hides permanent buffs."] })
         end
-        -- the player: Focus Boss Debuffs, after Aura Size
+        -- the player: Only My Buffs and Focus Boss Debuffs, after Aura Size
         if unit == "player" then
+            auraItems[#auraItems + 1] = { name = L["Only My Buffs"], kind = LEM.SettingType.Checkbox, default = false,
+                get = function() local u = GetUnitDb(unit); return u and u.onlyMyBuffs or false end, set = set("onlyMyBuffs"),
+                desc = L["Only the buffs you cast on yourself."] }
             auraItems[#auraItems + 1] = { name = L["Focus Boss Debuffs"], kind = LEM.SettingType.Checkbox, default = false,
           get = function() local u = GetUnitDb(unit); return u and u.encounterOnly or false end, set = set("encounterOnly"),
           desc = L["In a boss fight, only the boss and role debuffs (the ones Blizzard marks as cast by a boss, or aimed at a role). Every debuff shows elsewhere."] }

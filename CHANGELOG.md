@@ -1,3 +1,12 @@
+# FlareUI 2.4.3
+
+Party frames in a row again, a modern combo bar for FlareUI Style, and Only My Buffs on the player frame.
+
+## New
+- Party frames: **Orientation** is back (Vertical or Horizontal), between Style and Growth. In a row, Growth reads Right or Left. Each frame leaves room for its side auras, a pet or target on its right, and the ring in FlareUI and Forever Style.
+- Target frame, FlareUI Style: **Modern Combo Points** at the bottom of Look (off by default). The combo points show as Addon Style's bar along the top of the health bar instead of gems round the portrait.
+- Player frame: **Only My Buffs** right below Aura Size (off by default): only the buffs you cast on yourself.
+
 # FlareUI 2.4.2
 
 A bigger minimap without a bulkier frame, and a cast bar switch on the target and focus frames.

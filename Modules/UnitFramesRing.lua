@@ -422,6 +422,12 @@ function Ring.Clearance(f, gap)
     return math.ceil(ReachAt(g, g.H / 2 + gap)) + 3
 end
 
+-- how far the ring stands out past the frame's edge (a horizontal party's spacing)
+function Ring.Overhang(f)
+    local g = Geometry(f)
+    return math.max(0, math.ceil(g.R - g.centre))
+end
+
 -- the name's extra inset on the ring's side, from the health bar's edge: clear of the portrait
 function Ring.TextPad(f)
     local g = Geometry(f)

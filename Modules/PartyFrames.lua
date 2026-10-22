@@ -197,6 +197,11 @@ local function PetPlace()
     if not party then return "OFF" end
     return party.petPlace or (party.pets and "BOTTOM" or "OFF")
 end
+local function Horizontal()
+    local party = GetPartyDb()
+    return party and party.orientation == "HORIZONTAL" or false
+end
+
 local function TargetPlace()
     local party = GetPartyDb()
     if not party then return "OFF" end
@@ -1532,7 +1537,7 @@ function SIDE.BottomRow(st, hasPet)
     if TargetPlace() == "BOTTOM" then h = math_max(h, SIDE.TargetOuter(st)) end
     return h
 end
--- the room beside each frame, for a horizontal party
+-- the room beside each frame, for a horizontal party (Step)
 function SIDE.RightRoom(st)
     local w = 0
     if PetPlace() == "RIGHT" then w = math_max(w, st.petWidth or 120) end
@@ -1621,6 +1626,18 @@ local function Step()
     local st = S()
     local above = LanesExtent(st, ABOVE_PLACES)
     local below = LanesExtent(st, BELOW_PLACES)
+    -- a row: each frame with its side auras and what sits on its right (pet, target)
+    if Horizontal() then
+        local left = LanesExtent(st, { "LEFT" }, true)
+        local right = LanesExtent(st, { "RIGHT" }, true)
+        -- FlareUI / Forever Style: the ring past the frame's edge, on its side
+        local f = members[1]
+        if f and f.ringKind and ns.UFRing then
+            local overhang = ns.UFRing.Overhang(f)
+            if f.ringSide == "LEFT" then left = math_max(left, overhang) else right = math_max(right, overhang) end
+        end
+        return left + (st.width or 200) + right + SIDE.RightRoom(st) + (st.spacing or 8), 0, left, -above
+    end
     local h = st.height or 46
     if st.castbar then h = h + (st.castHeight or 16) + K.CAST_GAP + K.INSET end
     -- the bottom row's room is added per frame (LayoutHolder: BottomRoom); under it the gap is
@@ -2419,8 +2436,18 @@ local function BuildSettings()
               Refresh()
               RebuildSettings()
           end },
+        { name = L["Orientation"], kind = LEM.SettingType.Dropdown, default = "VERTICAL",
+          values = { { text = L["Vertical"], value = "VERTICAL", isRadio = true }, { text = L["Horizontal"], value = "HORIZONTAL", isRadio = true } },
+          get = getP("orientation", "VERTICAL"),
+          set = function(layoutName, value) setP("orientation")(layoutName, value); LEM:RefreshFrameSettings(holder) end },
+        -- in a row, Down / Up read as Right / Left
         { name = L["Growth"], kind = LEM.SettingType.Dropdown, default = "DOWN",
-          values = { { text = L["Down"], value = "DOWN", isRadio = true }, { text = L["Up"], value = "UP", isRadio = true } },
+          values = function()
+              if Horizontal() then
+                  return { { text = L["Right"], value = "DOWN", isRadio = true }, { text = L["Left"], value = "UP", isRadio = true } }
+              end
+              return { { text = L["Down"], value = "DOWN", isRadio = true }, { text = L["Up"], value = "UP", isRadio = true } }
+          end,
           desc = L["Which way the frames go from the first member."],
           get = getP("grow", "DOWN"), set = setP("grow") },
         { name = L["Pets"], kind = LEM.SettingType.Dropdown, default = "OFF", values = SIDE_PLACES,
