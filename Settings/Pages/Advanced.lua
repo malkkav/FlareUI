@@ -61,6 +61,79 @@ ns.Dialogs["FLAREUI_DELETE_PROFILE"] = {
     showAlert = true,
 }
 
+--------------------------------------------------
+-- SHARE
+-- A profile as one line of text: Blizzard's own pipeline (as Cooldown Manager strings) of CBOR,
+-- Deflate and Base64 behind a "FlareUI1:" tag. Only the profile's own changes travel (AceDB keeps
+-- defaults out of the saved table); an import becomes a new profile.
+--------------------------------------------------
+local SHARE_TAG = "FlareUI1:"
+
+local function ExportString()
+    local name = ns.db and ns.db:GetCurrentProfile()
+    local saved = name and ns.db.sv and ns.db.sv.profiles and ns.db.sv.profiles[name]
+    if not saved then return "" end
+    local payload = { addon = "FlareUI", name = name, profile = saved,
+        version = C_AddOns.GetAddOnMetadata("FlareUI", "Version") }
+    local ok, text = pcall(function()
+        local cbor = C_EncodingUtil.SerializeCBOR(payload)
+        return C_EncodingUtil.EncodeBase64(C_EncodingUtil.CompressString(cbor, Enum.CompressionMethod.Deflate))
+    end)
+    return ok and text and (SHARE_TAG .. text) or ""
+end
+
+-- the payload, or nil and why not
+local function ReadString(text)
+    text = text and strtrim(text) or ""
+    if text:sub(1, #SHARE_TAG) ~= SHARE_TAG then return nil end
+    local ok, payload = pcall(function()
+        local packed = C_EncodingUtil.DecodeBase64(text:sub(#SHARE_TAG + 1))
+        return C_EncodingUtil.DeserializeCBOR(C_EncodingUtil.DecompressString(packed, Enum.CompressionMethod.Deflate))
+    end)
+    if not (ok and type(payload) == "table" and payload.addon == "FlareUI" and type(payload.profile) == "table") then
+        return nil
+    end
+    return payload
+end
+
+-- the shared name, or with " (2)", " (3)"... when taken
+local function ImportName(base)
+    base = (type(base) == "string" and strtrim(base) ~= "") and strtrim(base):sub(1, 28) or L["Imported"]
+    local taken = {}
+    for _, name in ipairs(ns.db:GetProfiles() or {}) do taken[name] = true end
+    if not taken[base] then return base end
+    local n = 2
+    while taken[("%s (%d)"):format(base, n)] do n = n + 1 end
+    return ("%s (%d)"):format(base, n)
+end
+
+ns.Dialogs["FLAREUI_EXPORT_PROFILE"] = {
+    text = L["Copy this text (Ctrl+C) to share the profile |cffffff00%s|r."],
+    button1 = L["Close"],
+    hasEditBox = true,
+    editText = function() return ExportString() end,
+    hideOnEscape = true,
+}
+
+ns.Dialogs["FLAREUI_IMPORT_PROFILE"] = {
+    text = L["Paste a FlareUI profile string (Ctrl+V). It becomes a new profile."],
+    button1 = L["Import"],
+    button2 = L["Cancel"],
+    hasEditBox = true,
+    OnAccept = function(_, text)
+        local payload = ReadString(text)
+        if not (payload and ns.db and ns.db.sv) then
+            UIErrorsFrame:AddMessage(L["That isn't a FlareUI profile string."], 1, 0.1, 0.1)
+            return
+        end
+        local name = ImportName(payload.name)
+        ns.db.sv.profiles = ns.db.sv.profiles or {}
+        ns.db.sv.profiles[name] = payload.profile
+        ns.db:SetProfile(name)
+    end,
+    hideOnEscape = true,
+}
+
 local function Profiles()
     local list = {}
     if not ns.db then return list end
@@ -111,6 +184,19 @@ S:Row{
                   end
               end)
           end },
+    },
+}
+
+-- Export / Import: two buttons as wide as the three above
+local SHARE_W = (BUTTON_W * 3 + BUTTON_GAP) / 2
+S:Row{
+    key = "adv.share", kind = "buttons", labelFn = function() return "" end, gapAbove = 12,
+    buttons = {
+        { text = L["Export"], width = SHARE_W, onClick = function()
+              local current = ns.db and ns.db:GetCurrentProfile()
+              if current then ns.ShowDialog("FLAREUI_EXPORT_PROFILE", current) end
+          end },
+        { text = L["Import"], width = SHARE_W, onClick = function() ns.ShowDialog("FLAREUI_IMPORT_PROFILE") end },
     },
 }
 

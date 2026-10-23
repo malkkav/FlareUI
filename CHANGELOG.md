@@ -1,3 +1,15 @@
+# FlareUI 2.4.4
+
+Share your FlareUI profile as a text string.
+
+## New
+- Profiles: **Export** and **Import** buttons under the profile options. Export shows the profile in use as a string to copy; Import takes a pasted string and adds it as a new profile (your current one is never overwritten). Radial menus and Blizzard's Edit Mode layouts aren't included.
+
+## Changed
+- Profiles: the profile options sit in a **Profile** section.
+- About: the note on copying links now ends the thanks line.
+- Radial Menu: **Game Menu** is gone from the Panels library (it couldn't open the game menu from a radial).
+
 # FlareUI 2.4.3
 
 Party frames in a row again, a modern combo bar for FlareUI Style, and Only My Buffs on the player frame.

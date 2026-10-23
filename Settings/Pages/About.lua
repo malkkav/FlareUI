@@ -90,8 +90,10 @@ end
 
 local function Build(host)
     local thanksTitle = Section(host, S:SectionText("about.yourFriendlyUiOverhowl"), nil, -8)
-    local thanks = Body(host, S:Text("about.thanks", "text", true), thanksTitle, -12)
-    local linksNote = Body(host, "(" .. (S:Text("about.links", "text", true) or "") .. ")", thanks, -4, "GameFontDisableSmall")
+    -- the links note ends the thanks line, greyed: "... the links below (Click a button ...)."
+    local note = S:Text("about.links", "text", true) or ""
+    local linksNote = Body(host, (S:Text("about.thanks", "text", true) or "") .. " "
+        .. GRAY_FONT_COLOR:WrapTextInColorCode("(" .. note .. ")") .. ".", thanksTitle, -12)
 
     local first, previous
     for _, net in ipairs(NETWORKS) do

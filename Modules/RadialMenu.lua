@@ -202,7 +202,6 @@ local MICRO_PANELS = {
                     macrotext = "/run ToggleAllBags()" },
     character   = { order = 2,  label = L["Character"],    icon = 136047,  button = "CharacterMicroButton" },
     collections = { order = 3,  label = L["Collections"],  icon = 132261,  button = "CollectionsMicroButton" },
-    gamemenu    = { order = 3.5, label = L["Game Menu"],  icon = "Interface\\Icons\\INV_Misc_Gear_01", button = "MainMenuMicroButton" },
     groupfinder = { order = 4,  label = L["Group Finder"], icon = 132161,  button = "LFDMicroButton" },
     guild       = { order = 5,  label = L["Guild & Communities"],          button = "GuildMicroButton" },
     legacy      = { order = 6,  label = L["Legacy"],       icon = 4279397, button = "LegacyMicroButton" },

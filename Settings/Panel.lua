@@ -657,7 +657,8 @@ local function SectionHeader(parent, text, y, sectionKey)
     return SECTION_H
 end
 
--- lays rows out from y down and returns the new y; half rows pair up except in search results
+-- lays rows out from y down and returns the new y; half rows pair up except in search results.
+-- row.gapAbove: extra space over a full-width row (not in search results)
 local function PlaceRows(parent, rows, y, crumbOf)
     local col, lineH = 0, 0
     for _, row in ipairs(rows) do
@@ -674,6 +675,7 @@ local function PlaceRows(parent, rows, y, crumbOf)
             if col == 1 then y, col, lineH = y - lineH, 0, 0 else col = 1 end
         else
             if col == 1 then y, col, lineH = y - lineH, 0, 0 end
+            if row.gapAbove and not crumbOf then y = y - row.gapAbove end
             local indent = row.parent and INDENT or 0
             f:SetPoint("TOPLEFT", indent, y)
             f.width = CONTENT_W - indent
