@@ -170,8 +170,30 @@ local function EntryDisplay(entry)
             return CHEVRON .. data.name, info and info.icon or { texture = FALLBACK_ICON }
         end
     end
-    if info then return info.name, info.icon end
+    if info then
+        -- the editor names a spell's rank ("Frostbolt (Rank 3)"), so the ranks tell apart and search
+        -- finds them; the radial itself keeps the short name
+        if entry.kind == "spell" and entry.id and info.name then
+            local subtext = C_Spell.GetSpellSubtext(entry.id)
+            if type(subtext) == "string" and subtext:find("%d") then return info.name .. " (" .. subtext .. ")", info.icon end
+        end
+        return info.name, info.icon
+    end
     return "|cff808080" .. L["unavailable"] .. "|r", { texture = FALLBACK_ICON }
+end
+
+-- Spells and items get the game's own tooltip (it shows the rank), the rest their name; hint below
+local function EntryTooltip(owner, entry, hint)
+    ns.OwnGameTooltip(owner, "ANCHOR_RIGHT")
+    if entry.kind == "spell" and entry.id then
+        GameTooltip:SetSpellByID(entry.id)
+    elseif entry.kind == "item" and entry.id then
+        GameTooltip:SetItemByID(entry.id)
+    else
+        GameTooltip:AddLine((EntryDisplay(entry)), 1, 1, 1)
+    end
+    if hint then GameTooltip:AddLine(hint, 0.6, 0.6, 0.6, true) end
+    GameTooltip:Show()
 end
 
 local function ApplyIcon(owner, icon)
@@ -590,10 +612,7 @@ local function BuildEmbedded(host, previewHost)
         function(cell)
             cell:SetScript("OnEnter", function(self)
                 if not self.item then return end
-                ns.OwnGameTooltip(self, "ANCHOR_RIGHT")
-                GameTooltip:AddLine((EntryDisplay(self.item)), 1, 1, 1)
-                GameTooltip:AddLine(L["Drag to reorder, right-click to remove."], 0.6, 0.6, 0.6, true)
-                GameTooltip:Show()
+                EntryTooltip(self, self.item, L["Drag to reorder, right-click to remove."])
             end)
             cell.Text:SetFontObject("GameFontHighlight")
             cell.Text:ClearAllPoints()
@@ -675,6 +694,10 @@ local function BuildEmbedded(host, previewHost)
     local browseList = CreateList(host, rightW, 2, browseRows, EMBED_ROW_H,
         function(cell)
             cell:RegisterForDrag("LeftButton")
+            cell:SetScript("OnEnter", function(self)
+                if self.item then EntryTooltip(self, self.item, L["Click or drag to add it."]) end
+            end)
+            cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
             cell:SetScript("OnDragStart", function(self)
                 if self.item then StartDrag({ entry = self.item }) end
             end)

@@ -624,13 +624,9 @@ local function LayoutKind(kind)
     holder:SetSize(width, height)
 
     local container = holder.container
-    -- retire the previous generation of groups (keys must be unique per container)
-    for _, key in ipairs(holder.groups) do
-        pcall(container.SetAuraGroupEnabled, container, key, false)
-        pcall(container.SetAuraGroupMaxFrameCount, container, key, 0)
-    end
-    holder.groups = {}
-    holder.generation = holder.generation + 1
+    -- one group per look, reused (ns.AuraGroups)
+    holder.auraGroups = holder.auraGroups or {}
+    ns.AuraGroups.Begin(holder.auraGroups)
 
     local look = Look(kind)
     local spacing = kdb.spacing or 6
@@ -648,21 +644,17 @@ local function LayoutKind(kind)
         elementSpacing = spacing, lineSpacing = spacing,
         groupSpacing = spacing, groupLineSpacing = spacing,
     }
-    local key = kind .. holder.generation
     local adb = GetDb()
     local sortMethod, sortDirection = ns.AuraOrder.Options(adb and adb.sort or "applied", adb and adb.reverse, adb and adb.mineFirst)
-    local ok, err = pcall(container.AddAuraGroup, container, key, KINDS[kind].filter, {
+    local key, err = ns.AuraGroups.Add(container, holder.auraGroups, kind, ns.AuraGroups.Sig(look), KINDS[kind].filter, {
         maxFrameCount = kdb.max or 32,
         -- Aura Ordering (Order Applied by default); the container compares, never addon code
         sortMethod = sortMethod, sortDirection = sortDirection,
         initializeFrame = function(button) StyleButton(button, look); HookButton(button, look) end,
         layout = layout,
     })
-    if ok then
-        holder.groups[#holder.groups + 1] = key
-    else
-        print("|cffff0000FlareUI:|r aura frame failed: " .. tostring(err))
-    end
+    if not key then print("|cffff0000FlareUI:|r aura frame failed: " .. tostring(err)) end
+    ns.AuraGroups.Finish(container, holder.auraGroups)
 
     if KINDS[kind].isDebuff then LayoutPrivateAnchors(holder, kdb) end
 
@@ -764,8 +756,6 @@ local function CreateHolder(kind)
     holder.kind = kind
     holder:SetFrameStrata("LOW")
     holder:SetSize(1, 1)
-    holder.groups = {}
-    holder.generation = 0
 
     local ok, container = pcall(CreateFrame, "AuraContainer", nil, holder, TEMPLATE)
     if not (ok and container) then return nil end

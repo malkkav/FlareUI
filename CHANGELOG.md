@@ -1,3 +1,23 @@
+# FlareUI 2.5.0
+
+See when your interrupt is ready, jump straight to a setting from search, and spell ranks in the radial editor.
+
+## New
+- Cast bars: an enemy's cast bar on the target, focus and boss frames turns green while your interrupt is ready (Kick, Pummel, Shield Bash, Counterspell, Earth Shock or Silence). While it's on cooldown the bar keeps its normal colour, and casts you can't interrupt stay grey.
+- Settings: click the path above a search result to open its page, scrolled to the setting, which flashes briefly.
+- Settings: new options can show a **NEW** label on their row, page and tab. Search for "new" to list them.
+- Radial Menu editor: spells show their rank ("Frostbolt (Rank 3)"), so you can tell the ranks apart and search for one. Hovering a spell or item in the Catalog or the Buttons list shows its game tooltip.
+
+## Changed
+- Unit, party, raid and boss frames: the hover highlight is brighter, a soft glow over the health bar that's easier to see.
+- Settings: search ignores accents, so "ecran" finds "Écran".
+
+## Fixed
+- Player and pet frames set to fade now stay visible while you're missing health.
+- Cast bars: casts you can't interrupt now turn grey during combat too.
+- Auto repair no longer says "Repaired" when you couldn't afford it. After selling junk it waits for the gold to arrive, then repairs.
+- Auras: changing aura options no longer piles up hidden aura icons in the background.
+
 # FlareUI 2.4.5
 
 Launch-day fixes: whisper tabs, Target of Target, and nothing reloads your UI in a fight.

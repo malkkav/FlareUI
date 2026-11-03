@@ -243,6 +243,14 @@ local function NewRowFrame(parent, kind)
     f.label = Text(f, "GameFontHighlight")
     f.label:SetPoint("LEFT", 6, 0)
     f.crumb:SetPoint("BOTTOMLEFT", f.label, "TOPLEFT", 0, 1)
+    -- in search results the path is a link: it opens the row's page and shows the row
+    local link = CreateFrame("Button", nil, f)
+    link:SetAllPoints(f.crumb)
+    link:SetScript("OnEnter", function() f.crumb:SetTextColor(NORMAL_FONT_COLOR:GetRGB()) RowEnter(f) end)
+    link:SetScript("OnLeave", function() f.crumb:SetTextColor(GRAY_FONT_COLOR:GetRGB()) RowLeave(f) end)
+    link:SetScript("OnClick", function() if f.row then Panel:JumpTo(f.row) end end)
+    link:Hide()
+    f.crumbLink = link
     f.kind = kind
     if Build[kind] then Build[kind](f) end
     return f
@@ -601,9 +609,44 @@ local function FillRow(f, row, crumb)
     f.row = row
     f.label:SetText(row:Label() or "")
     f.crumb:SetText(crumb or "")
+    f.crumb:SetTextColor(GRAY_FONT_COLOR:GetRGB())
+    f.crumbLink:SetShown(crumb ~= nil)
     f:SetHeight(crumb and ROW_H + 12 or ROW_H)
+    if f.flashAnim then f.flashAnim:Stop() end
     if Fill[row.kind] then Fill[row.kind](f, row) end
     SetRowEnabled(f, not row:IsDisabled())
+    -- Blizzard's NEW label after the name (Settings.NEW)
+    if row:IsNew() then
+        if not f.newBadge then
+            f.newBadge = CreateFrame("Frame", nil, f, "NewFeatureLabelNoAnimateTemplate")
+            f.newBadge:SetScale(0.8)
+            f.newBadge:SetPoint("LEFT", f.label, "RIGHT", 2, 0)
+        end
+        f.newBadge:Show()
+    elseif f.newBadge then
+        f.newBadge:Hide()
+    end
+end
+
+-- A gold flash over a row that was jumped to: in, dip, in again, then a slow fade
+local FLASH_STEPS = { { 0, 1, 0.15 }, { 1, 0.15, 0.35 }, { 0.15, 1, 0.15 }, { 1, 0, 0.8 } }
+local function FlashRow(f)
+    if not f.flashAnim then
+        f.flash = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+        f.flash:SetAllPoints()
+        f.flash:SetColorTexture(1, 0.72, 0.12, 0.3)
+        f.flash:SetAlpha(0)
+        f.flashAnim = f.flash:CreateAnimationGroup()
+        for i, step in ipairs(FLASH_STEPS) do
+            local a = f.flashAnim:CreateAnimation("Alpha")
+            a:SetFromAlpha(step[1])
+            a:SetToAlpha(step[2])
+            a:SetDuration(step[3])
+            a:SetOrder(i)
+        end
+    end
+    f.flashAnim:Stop()
+    f.flashAnim:Play()
 end
 
 --------------------------------------------------
@@ -671,6 +714,7 @@ local function PlaceRows(parent, rows, y, crumbOf)
             f.width = w - (col == 0 and 8 or 0)
             f:SetWidth(f.width)
             FillRow(f, row)
+            if row == page.jumpRow then page.jumpFrame, page.jumpTop = f, -y end
             lineH = math.max(lineH, f:GetHeight())
             if col == 1 then y, col, lineH = y - lineH, 0, 0 else col = 1 end
         else
@@ -681,6 +725,7 @@ local function PlaceRows(parent, rows, y, crumbOf)
             f.width = CONTENT_W - indent
             f:SetWidth(f.width)
             FillRow(f, row, crumbOf and crumbOf(row))
+            if row == page.jumpRow and not crumbOf then page.jumpFrame, page.jumpTop = f, -y end
             y = y - f:GetHeight()
         end
     end
@@ -728,7 +773,14 @@ local function UpdateHeader(module)
         if tab then
             b.tabKey = tab.key
             b.Text:SetText(names[i] or tab.key)
-            b:SetWidth((b.Text:GetStringWidth() or 60) + 40)
+            local new = module:HasNew(tab.key)
+            if new and not b.newBadge then
+                b.newBadge = CreateFrame("Frame", nil, b, "NewFeatureLabelNoAnimateTemplate")
+                b.newBadge:SetScale(0.7)
+                b.newBadge:SetPoint("LEFT", b.Text, "RIGHT", 0, 0)
+            end
+            if b.newBadge then b.newBadge:SetShown(new) end
+            b:SetWidth((b.Text:GetStringWidth() or 60) + 40 + (new and 30 or 0))
             if b.SetSelected then b:SetSelected(tab == active) end
         end
     end
@@ -864,6 +916,7 @@ local function UpdateNav()
             b.dot:SetVertexColor(on and 0.35 or 0.4, on and 0.85 or 0.4, on and 0.35 or 0.4)
         end
         b.text:SetTextColor((on and HIGHLIGHT_FONT_COLOR or GRAY_FONT_COLOR):GetRGB())
+        b.newBadge:SetShown(on and module:HasNew())
     end
 end
 
@@ -880,6 +933,30 @@ function Panel:Select(key)
     page.scroll:SetVerticalScroll(0)
     UpdateNav()
     self:Refresh()
+end
+
+-- From a search result: the row's page and tab, its section unfolded, scrolled to and flashed
+function Panel:JumpTo(row)
+    local module = S.modules[row.module]
+    if not module then return end
+    PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
+    if row.kind ~= "editmode" then
+        if module.tabs then currentTab[module.key] = row.tab or module.tabs[1].key end
+        if row.section then closedSections[row.section] = nil end
+        page.jumpRow = row
+    end
+    page.jumpFrame = nil
+    self:Select(module.key)
+    local f, top = page.jumpFrame, page.jumpTop
+    page.jumpRow, page.jumpFrame = nil, nil
+    if not f then return end
+    -- the scroll range is known once the content has its height
+    C_Timer.After(0, function()
+        if f.row ~= row or not f:IsVisible() then return end
+        local range = page.scroll:GetVerticalScrollRange() or 0
+        page.scroll:SetVerticalScroll(math.max(0, math.min(range, top - 40)))
+        FlashRow(f)
+    end)
 end
 
 local function BuildNav(left)
@@ -912,6 +989,9 @@ local function BuildNav(left)
             b.text = Text(b, "GameFontHighlight")
             b.text:SetPoint("LEFT", 20, 0)
             b.text:SetText(module:Title())
+            b.newBadge = CreateFrame("Frame", nil, b, "NewFeatureLabelNoAnimateTemplate")
+            b.newBadge:SetScale(0.7)
+            b.newBadge:SetPoint("RIGHT", -2, 0)
             b:SetScript("OnClick", function()
                 PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
                 Panel:Select(module.key)

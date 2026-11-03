@@ -805,18 +805,33 @@ end
 local function OnMerchantShow()
     local db = GetDb()
     if not db or IsShiftKeyDown() then return end
+    local sold = false
     if db.sellJunk and C_MerchantFrame.IsSellAllJunkEnabled() and C_MerchantFrame.GetNumJunkItems() > 0 then
         local value = JunkValue()
         C_MerchantFrame.SellAllJunkItems()
+        sold = true
         if value > 0 then Print(L["Sold junk for %s."]:format(C_CurrencyInfo.GetCoinText(value))) end
     end
-    if db.autoRepair and CanMerchantRepair() then
+    if not (db.autoRepair and CanMerchantRepair()) then return end
+
+    -- true once there is nothing left to repair or the repair was paid
+    local function TryRepair()
         local cost, canRepair = GetRepairAllCost()
-        if canRepair and cost and cost > 0 then
-            RepairAllItems()
-            Print(L["Repaired for %s."]:format(C_CurrencyInfo.GetCoinText(cost)))
-        end
+        if not (canRepair and cost and cost > 0) then return true end
+        if GetMoney() < cost then return false end
+        RepairAllItems()
+        Print(L["Repaired for %s."]:format(C_CurrencyInfo.GetCoinText(cost)))
+        return true
     end
+    -- The junk gold arrives a moment after the sale, so a repair it has to pay for waits for it
+    if TryRepair() or not sold then return end
+    Tweaks:RegisterEvent("PLAYER_MONEY", function()
+        if TryRepair() then Tweaks:UnregisterEvent("PLAYER_MONEY") end
+    end)
+    Tweaks:RegisterEvent("MERCHANT_CLOSED", function()
+        Tweaks:UnregisterEvent("PLAYER_MONEY")
+        Tweaks:UnregisterEvent("MERCHANT_CLOSED")
+    end)
 end
 
 local function InitVendor()

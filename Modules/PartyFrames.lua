@@ -763,7 +763,7 @@ local function PrecreateAuraContainers(f)
             if policy then pcall(container.SetAuraProcessingPolicy, container, policy.ProcessAura, {}) end
             container:SetFrameLevel(f:GetFrameLevel() + 6)
             container:Hide()
-            f.AuraPos[pos] = { container = container, groups = {}, generation = 0 }
+            f.AuraPos[pos] = { container = container }
         end
     end
     local ok, slots = pcall(CreateFrame, "AuraContainer", nil, f, AURA_CONTAINER_TEMPLATE)
@@ -891,12 +891,10 @@ local function ConfigurePosition(f, pos, lanes)
     local entry = f.AuraPos and f.AuraPos[pos]
     if not entry then return end
     local container = entry.container
-    for _, key in ipairs(entry.groups) do
-        pcall(container.SetAuraGroupEnabled, container, key, false)
-        pcall(container.SetAuraGroupMaxFrameCount, container, key, 0)
-    end
-    entry.groups = {}
+    -- groups are reused per lane and look (ns.AuraGroups); the lanes left out turn off
+    ns.AuraGroups.Begin(entry)
     if #lanes == 0 then
+        ns.AuraGroups.Finish(container, entry)
         pcall(container.SetEnabled, container, false)
         container:Hide()
         return
@@ -919,18 +917,16 @@ local function ConfigurePosition(f, pos, lanes)
     local showTimer = not inside and UFAura("auraTimer", "none") ~= "none"
     local font = db and db.font
     local unit = f.unit
-    entry.generation = entry.generation + 1
-    local gen = entry.generation
     -- Aura Ordering: the buffs and debuffs rows (Bigger Boss Debuffs and dispel icons keep Blizzard's)
     local order = TS(f)
     local sortMethod, sortDirection = ns.AuraOrder.Options(order and order.auraSort, order and order.auraReverse, order and order.auraMineFirst)
     for index, lane in ipairs(lanes) do
-        local key = lane.key .. gen
         local isDebuff, kind = lane.isDebuff, lane.kind
         local sorted = lane.key == "buffs" or lane.key == "debuffs"
         local laneSize = lane.scale and math_floor(size * lane.scale + 0.5) or size
         local look = kind ~= "dispels" and LaneLook(laneSize, isDebuff, inside) or nil
-        local ok, err = pcall(container.AddAuraGroup, container, key, lane.filter, {
+        local lookSig = ns.AuraGroups.Sig(kind, laneSize, isDebuff, inside, font, showTimer, look)
+        local key, err = ns.AuraGroups.Add(container, entry, lane.key, lookSig, lane.filter, {
             maxFrameCount = lane.max or (lane.sameLine and besideBoss) or (kind == "dispels" and math_min(max, 3) or max),
             candidateFilters = lane.candidates,
             sortMethod = sorted and sortMethod or nil, sortDirection = sorted and sortDirection or nil,
@@ -951,8 +947,7 @@ local function ConfigurePosition(f, pos, lanes)
                 forceNewLine = index > 1 and not lane.sameLine,
             },
         })
-        if ok then
-            entry.groups[#entry.groups + 1] = key
+        if key then
             if lane.bossFight and f.bossFightRecs then
                 f.bossFightRecs[#f.bossFightRecs + 1] = { container = container, key = key, mode = lane.bossFight, base = lane.candidates }
             end
@@ -960,6 +955,7 @@ local function ConfigurePosition(f, pos, lanes)
             geterrorhandler()(err)
         end
     end
+    ns.AuraGroups.Finish(container, entry)
     PlaceAuraContainer(f, pos, container, size, perRow)
     container:SetFrameLevel(f:GetFrameLevel() + 6)
     -- the portrait's grid: over it and under the ready check (the ring's icons: +11)
@@ -2205,10 +2201,7 @@ local function BuildTile(f, unit)
     f.StatusIcon = top:CreateTexture(nil, "OVERLAY", nil, 1)
     f.StatusIcon:Hide()
 
-    f.Highlight = overlay:CreateTexture(nil, "OVERLAY")
-    f.Highlight:SetAllPoints(f.Health)
-    f.Highlight:SetColorTexture(1, 1, 1, 0.08)
-    f.Highlight:Hide()
+    f.Highlight = K.HoverHighlight(f.Health)
 
     -- the target outline: four thin lines just inside the border
     local hl = CreateFrame("Frame", nil, f)
@@ -2303,10 +2296,7 @@ local function CreatePet(index)
     p.Name = overlay:CreateFontString(nil, "OVERLAY")
     p.Name:SetJustifyH("LEFT")
     p.Name:SetWordWrap(false)
-    p.Highlight = overlay:CreateTexture(nil, "OVERLAY")
-    p.Highlight:SetAllPoints(p.Health)
-    p.Highlight:SetColorTexture(1, 1, 1, 0.08)
-    p.Highlight:Hide()
+    p.Highlight = K.HoverHighlight(p.Health)
     p:SetScript("OnEvent", function(self) UpdatePet(self) end)
     for _, event in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_NAME_UPDATE", "UNIT_CONNECTION" }) do
         pcall(p.RegisterUnitEvent, p, event, p.unit)
@@ -2332,10 +2322,7 @@ local function CreatePartyTarget(index)
     t.Name = overlay:CreateFontString(nil, "OVERLAY")
     t.Name:SetJustifyH("LEFT")
     t.Name:SetWordWrap(false)
-    t.Highlight = overlay:CreateTexture(nil, "OVERLAY")
-    t.Highlight:SetAllPoints(t.Health)
-    t.Highlight:SetColorTexture(1, 1, 1, 0.08)
-    t.Highlight:Hide()
+    t.Highlight = K.HoverHighlight(t.Health)
     -- the member picks a new target (your own: PLAYER_TARGET_CHANGED, in OnGlobalEvent)
     t:SetScript("OnEvent", function(self) UpdatePartyTarget(self) end)
     if index > 0 then pcall(t.RegisterUnitEvent, t, "UNIT_TARGET", SLOT_UNITS[index]) end

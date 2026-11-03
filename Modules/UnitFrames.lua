@@ -386,6 +386,17 @@ local function CreateBar(parent, level)
     return bar
 end
 
+-- Hover: a soft brightening of the health bar, the same in every style. It sits on the bar, over
+-- the fill and under the heal bars, the border and the target, dispel and aggro marks.
+function UF.HoverHighlight(bar)
+    local hl = bar:CreateTexture(nil, "OVERLAY")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.15)
+    hl:SetBlendMode("ADD")
+    hl:Hide()
+    return hl
+end
+
 -- "Background Opacity": the bars' empty part, in percent; 0 on the plate, whose slot shows there
 UF.BAR_BG_OPACITY = 90
 function UF.DefaultBgOpacity(unit)
@@ -657,6 +668,34 @@ local SAMPLE_CAST_ICON = "Interface\\Icons\\Spell_Fire_FlameBolt"
 local sampleCastTicker
 local castBars = {}          -- every cast bar object, for previews
 
+-- Interrupt ready: an interruptible enemy cast is green while the player's interrupt is ready, and
+-- its normal colour while it cools down. All ranks share one cooldown, so rank 1 stands for them all.
+-- isActive and isOnGCD are never secret; a hidden Cooldown frame tells when a cooldown ends.
+local KICK = {
+    spells = { 1766, 6552, 72, 2139, 8042, 15487 },   -- Kick, Pummel, Shield Bash, Counterspell, Earth Shock, Silence
+    READY = { 0.30, 0.72, 0.36 },
+    known = {},       -- spellID -> true while ready, false while cooling
+    timers = {},      -- spellID -> Cooldown frame
+}
+
+-- nil when the player has no interrupt, else whether one is ready
+function KICK.IsReady()
+    local any
+    for _, ready in pairs(KICK.known) do
+        if ready then return true end
+        any = false
+    end
+    return any
+end
+
+-- the cast bar colour for an interruptible cast, or nil to keep the normal one
+function KICK.Color(cast)
+    if cast.standalone or cast.unit == "player" or not KICK.IsReady() then return end
+    local canAttack = UnitCanAttack("player", cast.unit)
+    if not canaccessvalue(canAttack) or not canAttack then return end
+    return KICK.READY
+end
+
 local timerFormatter
 local function GetTimerFormatter()
     if timerFormatter ~= nil then return timerFormatter or nil end
@@ -874,10 +913,18 @@ local function UpdateCastBar(cast, enabled)
     else
         color = channeling and CAST_CHANNEL or CAST_COLOR
     end
-    if canaccessvalue(notInterruptible) and notInterruptible then
-        color = CAST_NOINTERRUPT
+    color = KICK.Color(cast) or color
+    if canaccessvalue(notInterruptible) then
+        if notInterruptible then color = CAST_NOINTERRUPT end
+        cast:SetStatusBarColor(color[1], color[2], color[3])
+    else
+        -- secret on enemy casts in combat: the fill texture picks the colour itself
+        cast.noInterruptColor = cast.noInterruptColor or CreateColor(1, 1, 1)
+        cast.baseColor = cast.baseColor or CreateColor(1, 1, 1)
+        cast.noInterruptColor:SetRGB(CAST_NOINTERRUPT[1], CAST_NOINTERRUPT[2], CAST_NOINTERRUPT[3])
+        cast.baseColor:SetRGB(color[1], color[2], color[3])
+        cast:GetStatusBarTexture():SetVertexColorFromBoolean(notInterruptible, cast.noInterruptColor, cast.baseColor)
     end
-    cast:SetStatusBarColor(color[1], color[2], color[3])
     cast:Show()
 end
 
@@ -910,6 +957,75 @@ local function SetCastPreview(enabled)
         for _, cast in ipairs(castBars) do UpdateCastBar(cast, IsCastEnabled(cast)) end
     end
 end
+
+-- Recolour the enemy casts on screen when the interrupt state flips
+function KICK.UpdateBars()
+    for _, cast in ipairs(castBars) do
+        if cast:IsShown() and not cast.standalone and cast.unit ~= "player" then
+            UpdateCastBar(cast, IsCastEnabled(cast))
+        end
+    end
+end
+
+function KICK.Timer(spellID)
+    local timer = KICK.timers[spellID]
+    if not timer then
+        -- shown but invisible: a hidden Cooldown frame may never finish
+        timer = CreateFrame("Cooldown", nil, UIParent, "CooldownFrameTemplate")
+        timer:SetSize(1, 1)
+        timer:SetPoint("CENTER")
+        timer:SetAlpha(0)
+        timer:SetDrawSwipe(false)
+        timer:SetDrawEdge(false)
+        timer:SetDrawBling(false)
+        timer:SetHideCountdownNumbers(true)
+        timer:EnableMouse(false)
+        timer:SetScript("OnCooldownDone", function()
+            if KICK.known[spellID] == false then
+                KICK.known[spellID] = true
+                KICK.UpdateBars()
+            end
+        end)
+        KICK.timers[spellID] = timer
+    end
+    return timer
+end
+
+-- isOnGCD is only trustworthy on SPELL_UPDATE_COOLDOWN: the global cooldown counts as ready
+function KICK.Refresh(cooldownEvent)
+    local before = KICK.IsReady()
+    for spellID in pairs(KICK.known) do
+        local info = C_Spell.GetSpellCooldown(spellID)
+        local ready = not (info and info.isActive) or (cooldownEvent and info.isOnGCD == true)
+        KICK.known[spellID] = ready and true or false
+        if not ready then
+            local duration = C_Spell.GetSpellCooldownDuration(spellID, true)
+            if duration then KICK.Timer(spellID):SetCooldownFromDurationObject(duration) end
+        end
+    end
+    if KICK.IsReady() ~= before then KICK.UpdateBars() end
+end
+
+function KICK.Learn()
+    wipe(KICK.known)
+    for _, spellID in ipairs(KICK.spells) do
+        if IsPlayerSpell(spellID) then KICK.known[spellID] = true end
+    end
+    KICK.Refresh(false)
+    KICK.UpdateBars()
+end
+
+KICK.events = CreateFrame("Frame")
+KICK.events:RegisterEvent("PLAYER_LOGIN")
+KICK.events:RegisterEvent("SPELLS_CHANGED")
+KICK.events:RegisterEvent("SPELL_UPDATE_COOLDOWN")
+KICK.events:SetScript("OnEvent", function(_, event)
+    if event == "SPELL_UPDATE_COOLDOWN" then
+        if next(KICK.known) then KICK.Refresh(true) end
+    else
+        KICK.Learn()
+    end
+end)
 
 local UpdateComboPoints   -- defined in 10 (needs the layout helpers)
 local UpdateHappiness     -- defined in 8c
@@ -1181,7 +1297,7 @@ local function PrecreateAuraContainers(f)
             pcall(container.SetUnit, container, f.unit)
             container:SetFrameLevel(f:GetFrameLevel() + 4)
             container:Hide()
-            f.Auras[corner] = { container = container, groups = {}, generation = 0 }
+            f.Auras[corner] = { container = container }
         end
     end
 end
@@ -1193,14 +1309,11 @@ local function ConfigureAuraCorner(f, corner, lanes)
     local container = entry.container
     local db, udb = GetDb(), GetUnitDb(f.unit)
 
-    -- retire the previous generation of groups (keys must be unique per container)
-    for _, key in ipairs(entry.groups) do
-        pcall(container.SetAuraGroupEnabled, container, key, false)
-        pcall(container.SetAuraGroupMaxFrameCount, container, key, 0)
-    end
-    entry.groups = {}
+    -- groups are reused per lane and look (ns.AuraGroups); the lanes left out turn off
+    ns.AuraGroups.Begin(entry)
 
     if #lanes == 0 then
+        ns.AuraGroups.Finish(container, entry)
         pcall(container.SetEnabled, container, false)
         container:Hide()
         return
@@ -1217,17 +1330,14 @@ local function ConfigureAuraCorner(f, corner, lanes)
         lineSize = math.max(size, math_floor(f:GetWidth() / 2) - INSET - 4)
     end
     local max = 2 * math.max(2, math_floor((lineSize + AURA_SPACING) / (size + AURA_SPACING)))
-    entry.generation = entry.generation + 1
-    local gen = entry.generation
     local unit, font = f.unit, db and db.font
     local auraTimer = db and db.auraTimer or "none"
     local showTimer = auraTimer ~= "none"
     local sortMethod, sortDirection = ns.AuraOrder.Options(udb.auraSort, udb.auraReverse, udb.auraMineFirst)
     for index, lane in ipairs(lanes) do
-        local key = lane.key .. gen
         local isDebuff = lane.isDebuff
         local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, unit == "player", db and db.auraStyle or "square", "both", auraTimer)
-        local ok, err = pcall(container.AddAuraGroup, container, key, lane.filter, {
+        local key, err = ns.AuraGroups.Add(container, entry, lane.key, ns.AuraGroups.Sig(size, isDebuff, font, showTimer, look), lane.filter, {
             maxFrameCount = max,
             candidateFilters = lane.candidates,
             sortMethod = sortMethod, sortDirection = sortDirection,
@@ -1240,8 +1350,7 @@ local function ConfigureAuraCorner(f, corner, lanes)
                 forceNewLine = index > 1,
             },
         })
-        if ok then
-            entry.groups[#entry.groups + 1] = key
+        if key then
             if lane.bossFight and f.bossFightRecs then
                 f.bossFightRecs[#f.bossFightRecs + 1] = { container = container, key = key, mode = lane.bossFight, base = lane.candidates }
             end
@@ -1249,6 +1358,7 @@ local function ConfigureAuraCorner(f, corner, lanes)
             print("|cffff0000FlareUI:|r aura group failed: " .. tostring(err))
         end
     end
+    ns.AuraGroups.Finish(container, entry)
 
     -- grow away from the corner (Top / Bottom: from the left)
     local isTop, isLeft = corner:find("^TOP") ~= nil, AURA.FULL[corner] or corner:find("LEFT$") ~= nil
@@ -2584,11 +2694,16 @@ end
 --------------------------------------------------
 local FADE = { interval = 0.1, units = { "player", "pet" } }
 
--- UnitHealth can be secret; a comparison would throw
-local function IsHealthMissing(unit)
-    local hp, max = UnitHealth(unit), UnitHealthMax(unit)
-    if not (canaccessvalue(hp) and canaccessvalue(max)) then return false end
-    return hp < max
+-- Player health is secret even out of combat, so "missing health" can't be compared in Lua: a step
+-- curve turns the health percent into the alpha itself (1 below full, 0 at full)
+local function HealthAlpha()
+    if not FADE.curve then
+        FADE.curve = C_CurveUtil.CreateCurve()
+        FADE.curve:SetType(Enum.LuaCurveType.Step)
+        FADE.curve:AddPoint(0, 1)
+        FADE.curve:AddPoint(1, 0)
+    end
+    return UnitHealthPercent("player", false, FADE.curve)
 end
 
 function FADE.ShouldShow()
@@ -2597,13 +2712,19 @@ function FADE.ShouldShow()
         local f = frames[unit]
         if f and f:IsShown() and f:IsMouseOver() then return true end
     end
-    return IsHealthMissing("player")
+    return false
 end
 
+-- The health alpha is secret, and GetAlpha stays secret after it, so then the alpha is set every tick
 function FADE.SetAlpha(alpha)
     for _, unit in ipairs(FADE.units) do
         local f = frames[unit]
-        if f and math.abs(f:GetAlpha() - alpha) > 0.005 then f:SetAlpha(alpha) end
+        if f then
+            local current = f:GetAlpha()
+            if not (canaccessvalue(alpha) and canaccessvalue(current)) or math.abs(current - alpha) > 0.005 then
+                f:SetAlpha(alpha)
+            end
+        end
     end
 end
 
@@ -2614,7 +2735,7 @@ local function FadeTick(self, elapsed)
     self.elapsed = self.elapsed + elapsed
     if self.elapsed < FADE.interval then return end
     self.elapsed = 0
-    FADE.SetAlpha(FADE.ShouldShow() and 1 or 0)
+    FADE.SetAlpha(FADE.ShouldShow() and 1 or HealthAlpha())
 end
 
 -- The ticker runs only while the frames fade
@@ -2722,10 +2843,7 @@ local function CreateUnitFrame(unit)
         pcall(f.RegisterUnitEvent, f, "UNIT_MODEL_CHANGED", unit)
     end
 
-    f.Highlight = overlay:CreateTexture(nil, "OVERLAY")
-    f.Highlight:SetAllPoints(f.Health)
-    f.Highlight:SetColorTexture(1, 1, 1, 0.08)
-    f.Highlight:Hide()
+    f.Highlight = UF.HoverHighlight(f.Health)
 
     if info.castbar then f.Cast = CreateCastBar(f, unit) end
     if info.comboPoints then
@@ -3237,7 +3355,7 @@ UF.Kit = {
     GetDb = GetDb,
     GetBarTexture = GetBarTexture, GetBorderFile = GetBorderFile, BorderFit = BorderFit,
     ApplyBorderStyle = ApplyBorderStyle, ResetBorderTint = ResetBorderTint, SetBorderTint = SetBorderTint,
-    CreateBar = CreateBar, ApplyFont = ApplyFont,
+    CreateBar = CreateBar, ApplyFont = ApplyFont, HoverHighlight = UF.HoverHighlight,
     GetHealthColor = GetHealthColor, GetPowerColor = GetPowerColor,
     HardHide = HardHide, SetIconArt = SetIconArt, HasAtlas = HasAtlas,
     CreateCastBar = CreateCastBar, LayoutCastBar = LayoutCastBar, UpdateCastBar = UpdateCastBar,

@@ -1,4 +1,4 @@
-local _, ns = ...
+local ADDON_NAME, ns = ...
 local L = ns.L
 
 --------------------------------------------------
@@ -16,6 +16,12 @@ local Settings = {
 ns.Settings = Settings
 
 local GROUPS = { "top", "HUD", "Info", "Tools", "bottom" }
+
+-- Rows that get a NEW badge, by row key -> the version that added them ("2.5"). The badge shows
+-- while FlareUI's version starts with it, so it goes with the next minor release. Example:
+--   ["qol.holdToRelease"] = "2.5",
+Settings.NEW = {
+}
 
 --------------------------------------------------
 -- 1. TEXT
@@ -133,6 +139,19 @@ function Module:Sections(tabKey)
     return list
 end
 
+-- Any visible row with a NEW badge, in one tab (or the whole module when tabKey is nil)
+function Module:HasNew(tabKey)
+    for _, section in ipairs(self.sections) do
+        for _, row in ipairs(section.rows) do
+            if row:IsNew() and not row:IsHidden()
+                and (tabKey == nil or not self.tabs or (row.tab or self.tabs[1].key) == tabKey) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 -- def: key, group, order, enabled ("db.path"), editMode, editFrames, banner, navIcon, navIconRound,
 -- custom, tabs ({ key, custom = build(host, previewHost), refresh, preview })
 function Settings:Module(def)
@@ -185,6 +204,13 @@ function Row:Label()
 end
 function Row:Description() return Settings:Text(self.key, "desc") end
 function Row:Tip() return Settings:Text(self.key, "tip") end
+
+function Row:IsNew()
+    local since = Settings.NEW[self.key]
+    if not since then return false end
+    local version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or ""
+    return version == since or version:sub(1, #since + 1) == since .. "."
+end
 
 function Row:IsHidden()
     return self.hidden and self.hidden() or false
@@ -257,12 +283,20 @@ function Row:Choices()
     return list
 end
 
--- Label, description, tip and copy tags, lowercased and cached
+-- Search ignores case and accents: "ecran" finds "Écran"
+function Settings:Fold(text)
+    if CaseAccentInsensitiveParse then text = CaseAccentInsensitiveParse(text) end
+    return text:lower()
+end
+
+-- Label, description, tip and copy tags, folded and cached
 function Row:SearchText()
     if not self.searchText then
         local parts = { self:Label() or "", self:Description() or "", self:Tip() or "" }
         for _, tag in ipairs(Settings:Text(self.key, "tags") or {}) do parts[#parts + 1] = tag end
-        self.searchText = table.concat(parts, " "):lower()
+        -- the word "new" finds every row with a NEW badge
+        if self:IsNew() then parts[#parts + 1] = L["new"] end
+        self.searchText = Settings:Fold(table.concat(parts, " "))
     end
     return self.searchText
 end
@@ -330,14 +364,14 @@ end
 function Settings:Search(text)
     -- each word must start a word ("ids" finds "Show IDs", not "raids")
     local words = {}
-    for word in text:lower():gmatch("%S+") do
+    for word in self:Fold(text):gmatch("%S+") do
         words[#words + 1] = "%f[%w]" .. word:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")
     end
     local results = {}
     if #words == 0 then return results end
     for _, key in ipairs(self.order) do
         local module = self.modules[key]
-        local moduleTitle = (module:Title() or ""):lower()
+        local moduleTitle = self:Fold(module:Title() or "")
         for _, section in ipairs(module.sections) do
             for _, row in ipairs(section.rows) do
                 if Matches(row, words, moduleTitle) then results[#results + 1] = row end

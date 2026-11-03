@@ -811,6 +811,83 @@ function ns.ApplyShadow(fontString, fontConfig)
     end
 end
 
+-- Aura groups can't be removed from a container, and each keeps its pooled buttons. So a group is
+-- made once per lane and button look, then reused: filter, size, sort and layout change in place.
+-- Only a new look makes a new group, as initializeFrame runs once per button.
+-- store: the container's own table. Begin, then Add per lane, then Finish turns off the rest.
+ns.AuraGroups = {}
+local FONT_FIELDS = { "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }
+
+-- A look's key: tables by sorted fields (fonts also by FONT_FIELDS, as they inherit via __index)
+function ns.AuraGroups.Sig(...)
+    local parts = {}
+    local function add(value, depth)
+        if type(value) ~= "table" then
+            parts[#parts + 1] = tostring(value)
+            return
+        end
+        if depth > 3 then parts[#parts + 1] = "{}" return end
+        local keys = {}
+        for k in pairs(value) do keys[#keys + 1] = tostring(k) end
+        table.sort(keys)
+        parts[#parts + 1] = "{"
+        for _, k in ipairs(keys) do
+            local v = value[k]
+            if v == nil then v = value[tonumber(k)] end
+            if type(v) ~= "function" then
+                parts[#parts + 1] = k .. "="
+                add(v, depth + 1)
+            end
+        end
+        for _, field in ipairs(FONT_FIELDS) do
+            if rawget(value, field) == nil and value[field] ~= nil then parts[#parts + 1] = field .. "=" .. tostring(value[field]) end
+        end
+        parts[#parts + 1] = "}"
+    end
+    for i = 1, select("#", ...) do add((select(i, ...)), 0) end
+    return table.concat(parts, "|")
+end
+
+function ns.AuraGroups.Begin(store)
+    store.all = store.all or {}   -- lane .. look -> group key
+    store.used = {}
+end
+
+-- Returns the group's key, or nil and the error
+function ns.AuraGroups.Add(container, store, lane, look, filter, options)
+    local id = lane .. "\n" .. look
+    local key = store.all[id]
+    if key then
+        local defaults = CustomAuraContainerGroupDefaultOptions
+        local ok, err = pcall(function()
+            container:SetAuraGroupFilterString(key, filter)
+            container:SetAuraGroupMaxFrameCount(key, options.maxFrameCount or defaults.maxFrameCount)
+            container:SetAuraGroupCandidateFilters(key, options.candidateFilters)
+            container:SetAuraGroupSortMethod(key, options.sortMethod or defaults.sortMethod, options.sortDirection or defaults.sortDirection)
+            container:SetAuraGroupLayout(key, options.layout)
+            container:SetAuraGroupEnabled(key, true)
+        end)
+        if not ok then return nil, err end
+    else
+        store.count = (store.count or 0) + 1
+        key = lane .. "#" .. store.count
+        local ok, err = pcall(container.AddAuraGroup, container, key, filter, options)
+        if not ok then return nil, err end
+        store.all[id] = key
+    end
+    store.used[key] = true
+    return key
+end
+
+function ns.AuraGroups.Finish(container, store)
+    for _, key in pairs(store.all or {}) do
+        if not store.used[key] then
+            pcall(container.SetAuraGroupEnabled, container, key, false)
+            pcall(container.SetAuraGroupMaxFrameCount, container, key, 0)
+        end
+    end
+end
+
 -- "Fade Speed" choices: seconds per fade
 local FADE_TIMES = { instant = 0, fast = 0.2, slow = 0.4 }
 function ns.FadeTime(speed) return FADE_TIMES[speed] or 0 end
