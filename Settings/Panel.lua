@@ -929,14 +929,23 @@ end
 -- (keeps the window unprotected), placed out of combat only; in combat the plain button opens the dialog.
 local secureReload
 local function PlaceSecureReload()
-    if not frame or InCombatLockdown() then return end
+    if not frame then return end
+    -- it cannot hide or move in combat: it turns invisible, and its macro stops itself there
+    if InCombatLockdown() then
+        if secureReload and not frame:IsShown() then secureReload:SetAlpha(0) end
+        return
+    end
     if not secureReload then
         secureReload = CreateFrame("Button", "FlareUI_SettingsReload", UIParent, "SecureActionButtonTemplate, UIPanelButtonTemplate")
         secureReload:SetFrameStrata("FULLSCREEN_DIALOG")
         secureReload:RegisterForClicks("AnyUp", "AnyDown")
         secureReload:SetAttribute("type", "macro")
-        secureReload:SetAttribute("macrotext", "/reload")
-        secureReload:SetScript("PreClick", function()
+        secureReload:SetAttribute("macrotext", "/stopmacro [combat]\n/reload")
+        secureReload:SetScript("PreClick", function(_, _, down)
+            if InCombatLockdown() then
+                if down and ERR_NOT_IN_COMBAT and UIErrorsFrame then UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT, 1, 0.1, 0.1) end
+                return
+            end
             ns.reloading = true
             ns.ButtonSound()
         end)
@@ -952,6 +961,7 @@ local function PlaceSecureReload()
         secureReload:ClearAllPoints()
         secureReload:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x * scale, y * scale)
         secureReload:SetText(button:GetText())
+        secureReload:SetAlpha(1)
         secureReload:Show()
     else
         secureReload:Hide()

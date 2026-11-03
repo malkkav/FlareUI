@@ -990,7 +990,8 @@ end
 local INSTANCE_CONTEXT = { party = "dungeon", raid = "raid", pvp = "pvp", arena = "arena" }
 
 local function CurrentContext(rules)
-    if rules.combat == "minimize" and InCombatLockdown() then return "combat" end
+    -- lockdown only begins after PLAYER_REGEN_DISABLED, where this runs; the player is in combat already
+    if rules.combat == "minimize" and UnitAffectingCombat("player") then return "combat" end
     local _, instanceType = IsInInstance()
     return INSTANCE_CONTEXT[instanceType] or "world"
 end

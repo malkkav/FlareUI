@@ -827,6 +827,8 @@ end
 -- ReloadUI is protected on Forever: a /reload hint is scheduled first and never fires if it works
 function ns.Reload()
     C_Timer.After(0.5, function()
+        -- still here: the reload was blocked, and later changes must ask again
+        ns.reloading = nil
         print("|cffff9900FlareUI:|r " .. L["This client does not let addons reload the UI. Type |cffffff00/reload|r to apply the change."])
     end)
     pcall(ReloadUI)
@@ -942,8 +944,11 @@ function ns.FitEditModeBox(system, bounds)
             local anchor = self.systemInfo and self.systemInfo.anchorInfo
             local s = self:GetScale()
             if anchor and anchor.point and s and s > 0 then
-                self:ClearAllPoints()
-                self:SetPoint(anchor.point, anchor.relativeTo or UIParent, anchor.relativePoint or anchor.point,
+                -- the engine methods: Edit Mode's overrides would mark its anchors dirty from addon code
+                local clear = self.ClearAllPointsBase or self.ClearAllPoints
+                local setPoint = self.SetPointBase or self.SetPoint
+                clear(self)
+                setPoint(self, anchor.point, anchor.relativeTo or UIParent, anchor.relativePoint or anchor.point,
                     (anchor.offsetX or 0) / s, (anchor.offsetY or 0) / s)
             end
         end

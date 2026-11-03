@@ -186,7 +186,8 @@ local function CreateRadialMacro()
         return
     end
     local _, perCharacter = GetNumMacros()
-    if perCharacter >= (MAX_CHARACTER_MACROS or 18) then
+    local maxPerCharacter = Constants.MacroConsts and Constants.MacroConsts.MAX_CHARACTER_MACROS or 30
+    if perCharacter >= maxPerCharacter then
         print("|cffff4040FlareUI:|r " .. (S:Text("rm.macroCreate", "errorMacrosFull") or L["Your macro list is full. Delete one and try again."]))
         return
     end

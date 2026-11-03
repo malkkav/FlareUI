@@ -367,6 +367,8 @@ local function BuildFlare()
         C_Timer.After(0, function() queued = false; UpdateFlare() end)
     end)
     for _, event in ipairs(FLARE_EVENTS) do pcall(flare.RegisterEvent, flare, event) end
+    -- the new level can land after PLAYER_LEVEL_UP's update (Blizzard re-checks on UNIT_LEVEL too)
+    pcall(flare.RegisterUnitEvent, flare, "UNIT_LEVEL", "player")
 
     KeepBlizzardBarsHidden()
 

@@ -487,6 +487,11 @@ local function SaveSync()
             if ok and value ~= nil then store.cvars[name] = value end
         end
     end
+    -- Enemy Nameplates in Combat Only holds the CVar at 0 out of combat: the player's own value travels
+    local forced = ns.db.global and ns.db.global.forcedCVars
+    if forced and forced.combatPlates ~= nil and store.cvars.nameplateShowEnemies ~= nil then
+        store.cvars.nameplateShowEnemies = forced.combatPlates
+    end
 
     -- Edit Mode layout, by name and kind, from the manager's presets-then-saved list (the only place
     -- where the active index and the names agree)
@@ -1935,6 +1940,23 @@ function Tweaks:Refresh()
         local db = GetDb()
         if db and db.sellJunk then MerchantSellAllJunkButton:Hide() end
     end
+end
+
+-- With the module off, Init never runs: CVars FlareUI forced go back here (Core asks before the switch)
+function Tweaks:ShouldLoad()
+    local tweaks = ns.db and ns.db.profile and ns.db.profile.tweaks
+    local forced = ns.db and ns.db.global and ns.db.global.forcedCVars
+    if tweaks and tweaks.enabled == false and forced and next(forced) and not InCombatLockdown() then
+        if forced.maxZoom then pcall(SetCVar, "cameraDistanceMaxZoomFactor", 1.9) end
+        if forced.zoomSpeed then pcall(SetCVar, "cameraZoomSpeed", 20) end
+        if forced.tips then
+            pcall(SetCVar, "showTutorials", 1)
+            pcall(SetCVar, "showNPETutorials", 1)
+        end
+        if forced.combatPlates ~= nil then pcall(SetCVar, "nameplateShowEnemies", forced.combatPlates) end
+        wipe(forced)
+    end
+    return true
 end
 
 function Tweaks:Init()

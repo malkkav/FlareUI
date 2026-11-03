@@ -764,9 +764,14 @@ end
 local function MissingIcons(unit)
     if not known or not next(known) then return {} end
     if not readable(UnitIsConnected(unit)) or readable(UnitIsDeadOrGhost(unit)) ~= false then return nil end
+    -- a member out of sight has no aura data: everything would look missing
+    if readable(UnitIsVisible(unit)) ~= true then return nil end
+    -- aura reads throw while auras are secret, which outlasts combat (a dead player in a boss fight)
+    if C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() then return nil end
     local have = {}
     for i = 1, 40 do
-        local aura = C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL")
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HELPFUL")
+        if not ok then return nil end
         if not aura then break end
         local name = readable(aura.name)
         if name == nil then return nil end

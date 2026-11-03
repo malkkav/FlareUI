@@ -541,11 +541,17 @@ end
 -- Out of range fades the frame (UnitInRange is secret: SetAlphaFromBoolean picks the alpha). The
 -- player's own frame and enemy tiles never fade.
 local function UpdateRange(f)
-    if f.unit == "player" or (f.ctx and f.ctx.hostile) or IsEditing() then
+    -- raidN can be the player too
+    if f.unit == "player" or (f.ctx and f.ctx.hostile) or IsEditing() or readable(UnitIsUnit(f.unit, "player")) then
         f:SetAlpha(1)
         return
     end
-    local inRange = UnitInRange(f.unit)
+    -- a range the client could not check is not out of range (as Blizzard's raid frames)
+    local inRange, checkedRange = UnitInRange(f.unit)
+    if readable(checkedRange) == false then
+        f:SetAlpha(1)
+        return
+    end
     if f.SetAlphaFromBoolean then
         if not pcall(f.SetAlphaFromBoolean, f, inRange, 1, RANGE_ALPHA) then f:SetAlpha(1) end
     elseif canaccessvalue(inRange) then

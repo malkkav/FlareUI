@@ -2293,23 +2293,27 @@ function Chat:SetupAutoHide(db)
         Chat.autoHideEventsRegistered = true
     end
 
-    for i = 1, NUM_CHAT_WINDOWS do
-        local frame = _G["ChatFrame" .. i]
+    -- CHAT_FRAMES also lists the whisper windows (ChatFrame11 and up)
+    for _, name in ipairs(CHAT_FRAMES or {}) do
+        local frame = _G[name]
         if frame and not frame:IsForbidden() then
-            if not frame.FlareUI_AutoHideHooked then
-                frame.FlareUI_AutoHideHooked = true
-                Chat:SecureHookScript(frame, "OnEnter", OnChatEnter)
-                Chat:SecureHook(frame, "AddMessage", OnChatMessage)
-                local editBox = frame.editBox
-                if editBox and not editBox.FlareUI_AutoHideHooked then
-                    editBox.FlareUI_AutoHideHooked = true
-                    Chat:SecureHookScript(editBox, "OnEditFocusGained", function()
-                        Chat:ShowChatFrame(frame, GetDb())
-                    end)
-                end
-            end
+            Chat:HookAutoHide(frame)
             Chat:ShowChatFrame(frame, db)
         end
+    end
+end
+
+function Chat:HookAutoHide(frame)
+    if frame.FlareUI_AutoHideHooked then return end
+    frame.FlareUI_AutoHideHooked = true
+    Chat:SecureHookScript(frame, "OnEnter", OnChatEnter)
+    Chat:SecureHook(frame, "AddMessage", OnChatMessage)
+    local editBox = frame.editBox
+    if editBox and not editBox.FlareUI_AutoHideHooked then
+        editBox.FlareUI_AutoHideHooked = true
+        Chat:SecureHookScript(editBox, "OnEditFocusGained", function()
+            Chat:ShowChatFrame(frame, GetDb())
+        end)
     end
 end
 
@@ -2520,6 +2524,8 @@ function Chat:Init()
                 if selectedFrame.isTemporary and not selectedFrame.FlareUI_Skin then
                     Chat:StyleChatFrame(selectedFrame, db)
                     Chat:StyleEditBox(selectedFrame, db)
+                    Chat:HookAutoHide(selectedFrame)
+                    Chat:ShowChatFrame(selectedFrame, db)
                 end
             end
         end
@@ -2529,7 +2535,9 @@ function Chat:Init()
             C_Timer.After(0, AfterDockTabs)
         end)
 
-        Chat:SecureHook("FCFTab_UpdateAlpha", function(tab)
+        -- Blizzard passes the chat frame, not its tab
+        Chat:SecureHook("FCFTab_UpdateAlpha", function(chatFrame)
+            local tab = chatFrame and _G[chatFrame:GetName() .. "Tab"]
             if not tab or tab:IsForbidden() then return end
             tab:SetAlpha(0)
         end)

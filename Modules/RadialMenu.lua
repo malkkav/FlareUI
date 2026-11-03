@@ -1155,6 +1155,8 @@ local CLOSE_CLICK_SNIPPET = [[
 -- self is the header; ... = the radial id. Opens it in click mode.
 local OPEN_CLICK_SNIPPET = [[
     local id = ...
+    -- no radial assigned (Toggle with every radial deleted)
+    if not id then return false end
     if (self:GetAttribute(id .. "-count") or 0) == 0 then return false end
     ACTIVE, MODE, ROOT, DEPTH = id, "click", id, 0
     self:GetFrameRef("wheel"):Show()

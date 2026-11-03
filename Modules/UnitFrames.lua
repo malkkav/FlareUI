@@ -162,6 +162,7 @@ local UNITS = {
         key = "TargetOfTarget", label = L["Target of Target"], order = 3, noRaidIcon = true,
         driver = "[@targettarget,exists] show; hide",
         globalEvents = { PLAYER_TARGET_CHANGED = true, UNIT_TARGET = "target" },
+        poll = true,
     },
     focus = {
         mirrorable = true,
@@ -177,6 +178,7 @@ local UNITS = {
         key = "TargetOfFocus", label = L["Target of Focus"], order = 6, noRaidIcon = true,
         driver = "[@focustarget,exists] show; hide",
         globalEvents = { PLAYER_FOCUS_CHANGED = true, UNIT_TARGET = "focus" },
+        poll = true,
         sample = { name = L["Target of Focus"] },
     },
     pet = {
@@ -1038,6 +1040,7 @@ local function OnUnitEvent(f, event, arg1, arg2)
         UpdateName(f)
     elseif event == "UNIT_LEVEL" or event == "UNIT_CLASSIFICATION_CHANGED" then
         UpdateLevel(f)
+        if event == "UNIT_CLASSIFICATION_CHANGED" then UpdateIndicators(f) end   -- the elite / rare icon
     elseif event == "UNIT_FACTION" or event == "UNIT_CONNECTION" or event == "UNIT_FLAGS" then
         UpdateHealth(f)
         UpdatePower(f)
@@ -1051,7 +1054,8 @@ local function OnUnitEvent(f, event, arg1, arg2)
     elseif event:find("^UNIT_SPELLCAST") then
         UpdateCast(f)
     else
-        UpdateAll(f)   -- the unit behind the token changed
+        f.lastReady = nil   -- the unit behind the token changed: the last one's ready check goes
+        UpdateAll(f)
         -- the containers only follow UNIT_AURA: a new unit would keep the old one's auras, so
         -- they rebuild, as Blizzard's TargetFrame does (not protected: fine in combat)
         if f.Auras then
@@ -2774,6 +2778,19 @@ local function CreateUnitFrame(unit)
                 pcall(f.RegisterUnitEvent, f, event, filter)
             end
         end
+    end
+
+    -- the client sends no unit events for targettarget / focustarget: Blizzard polls them too
+    if info.poll then
+        local elapsed = 0
+        f:SetScript("OnUpdate", function(self, dt)
+            elapsed = elapsed + dt
+            if elapsed < 0.2 then return end
+            elapsed = 0
+            if not UnitExists(self.unit) then return end
+            UpdateHealth(self)
+            UpdatePower(self)
+        end)
     end
 
     frames[unit] = f

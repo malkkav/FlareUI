@@ -440,7 +440,11 @@ end
 -- 10. FAKE COOLDOWN MANAGER (FCM) API
 --------------------------------------------------
 local function ApplyClickthroughToBar(key, enabled)
-    if InCombatLockdown() then return false end
+    -- a drop in combat leaves the bars clickable: the refresh after combat locks them again
+    if InCombatLockdown() then
+        ActionBars._pendingRefresh = true
+        return false
+    end
     for _, btn in ipairs(GetButtonsForBarKey(key)) do btn:EnableMouse(not enabled) end
     return true
 end

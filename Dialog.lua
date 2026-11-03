@@ -75,8 +75,19 @@ local function GetReloadButton()
     reloadButton:RegisterForClicks("AnyUp", "AnyDown")
     reloadButton:SetAttribute("type", "macro")
     -- PreClick runs for both halves of a click, so OnAccept is guarded to run once
-    reloadButton:SetScript("PreClick", function(self)
-        if accepted or not current then return end
+    reloadButton:SetScript("PreClick", function(self, _, down)
+        -- a dialog closed in combat keeps its Enter binding until combat ends (the macro stops
+        -- itself in combat): Enter opens the chat, as it would without the dialog
+        if not current then
+            if down and InCombatLockdown() and ChatFrameUtil and ChatFrameUtil.OpenChat then ChatFrameUtil.OpenChat(nil) end
+            return
+        end
+        if accepted then return end
+        -- in combat the macro does nothing: yes takes the combat answer (OnAccept, then the /reload hint)
+        if InCombatLockdown() then
+            if down then Answer(true) end
+            return
+        end
         accepted = true
         ns.reloading = (self:GetAttribute("macrotext") or ""):find("/reload", 1, true) ~= nil
         ns.ButtonSound()
@@ -199,6 +210,7 @@ local function Build()
     frame:SetScript("OnShow", function() ns.WindowOpenSound() end)
     frame:SetScript("OnHide", function(self)
         self.EditBox:ClearFocus()
+        if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
         ReleaseReloadButton()
         if current then
             -- hidden from outside: no answer, no callback
@@ -257,8 +269,13 @@ function ns.ShowDialog(key, textArg, data)
     if textArg ~= nil then text = text:format(textArg) end
     Layout(def, text)
 
-    frame:EnableKeyboard(true)
-    if not InCombatLockdown() then frame:SetPropagateKeyboardInput(true) end
+    -- propagation is locked in combat: a dialog that would not pass keys on takes none (buttons still work)
+    if InCombatLockdown() then
+        frame:EnableKeyboard(frame:GetPropagateKeyboardInput())
+    else
+        frame:EnableKeyboard(true)
+        frame:SetPropagateKeyboardInput(true)
+    end
     local padSecure = def.padSecure and def.macro and not InCombatLockdown()
     frame:EnableGamePadButton(not padSecure and (ns.IsGamepadUI() or def.padInput == true))
 
@@ -274,7 +291,8 @@ function ns.ShowDialog(key, textArg, data)
         placeSecure = true
         local macro = def.macro
         if type(macro) == "function" then macro = macro(data) end
-        GetReloadButton():SetAttribute("macrotext", macro or "/reload")
+        -- never reload or switch layouts mid-fight, from the dialog or a binding it left behind
+        GetReloadButton():SetAttribute("macrotext", "/stopmacro [combat]\n" .. (macro or "/reload"))
         GetReloadButton():SetText(frame.Button1:GetText())
         secureReload = true
         SetOverrideBindingClick(frame, true, "ENTER", "FlareUIDialogReload", "LeftButton")

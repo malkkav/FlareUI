@@ -1,3 +1,21 @@
+# FlareUI 2.4.5
+
+Launch-day fixes: whisper tabs, Target of Target, and nothing reloads your UI in a fight.
+
+## Fixed
+- Chat: a new whisper tab no longer opens with an empty window, and whisper tabs now fade in and out like your other chat windows.
+- Target of Target and Target of Focus: health and power now update during the fight, not only when the target changes.
+- Reload questions: if one was closed during combat, pressing Enter could still reload the UI. Enter now opens the chat as usual, and a dialog shown in combat no longer blocks your movement keys.
+- Settings: closing the window in combat no longer leaves a clickable **Reload now** button on screen.
+- Quest Tracker: **Minimize in combat** now works.
+- Raid frames: Missing Buffs no longer throws errors when you die during a boss fight, and no longer marks members who are too far away to check.
+- Raid frames: your own frame no longer flickers faded, and members whose range can't be checked are no longer faded.
+- Quality of Life: turning the module off now puts back the game settings it changed (enemy nameplates, camera zoom, tutorials). Sync Blizz UI no longer copies "enemy nameplates off" from Combat Plates to your other characters.
+- Radial Menu: **Create macro** now allows up to 30 character macros, and a Toggle keybind with no radial left no longer errors.
+- Fake Cooldown Manager: bars no longer stay clickable after dropping a spell during combat.
+- Target frame: the Elite & Rare icon follows changes, and an old ready check mark no longer shows on a new target.
+- XP bar: hides more reliably when you reach max level.
+
 # FlareUI 2.4.4
 
 Share your FlareUI profile as a text string.
