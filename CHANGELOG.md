@@ -1,3 +1,15 @@
+# FlareUI 2.5.1
+
+Copy a whole chat tab, smarter spell rank upgrades, and faded action bars that show when you drag a spell.
+
+## New
+- Chat: **Copy Chat** in a tab's right-click menu opens a window with that tab's lines as plain text, all selected for Ctrl+C. Lines the game keeps hidden, such as chat inside instances, are left out, and the window says so.
+
+## Fixed
+- Update spell ranks: a Train All visit now takes your buttons to the newest rank whatever order the ranks were learned in, and a button also moves if you skipped a rank in between. Lower ranks you keep on your bars on purpose still stay.
+- Action bars: faded bars now show while you drag a spell or item, without Fake Cooldown Manager bars.
+- Damage Meter: a window saved as collapsed can be expanded again: its button shows in the middle of the window.
+
 # FlareUI 2.5.0
 
 See when your interrupt is ready, jump straight to a setting from search, and spell ranks in the radial editor.

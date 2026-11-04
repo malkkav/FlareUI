@@ -157,19 +157,30 @@ local function GetWindowMinimizeButton(window) return GetWindowPart(window, "Get
 local function ApplyMinimizeCompatibility(window)
     local btn = GetWindowMinimizeButton(window)
     if btn and not btn:IsForbidden() then
-        btn:Hide()
-        btn:SetAlpha(0)
-        btn:EnableMouse(false)
+        -- hidden, unless Blizzard restored a collapsed window: its button is the way back, in the
+        -- middle of the empty window (the skin's own buttons hold the top right)
+        -- never window:SetMinimized(): it taints isMinimized, which Blizzard reads with secret values
+        local function Update()
+            local collapsed = window.IsMinimized and window:IsMinimized() and true or false
+            btn:SetShown(collapsed)
+            btn:SetAlpha(collapsed and 1 or 0)
+            btn:EnableMouse(collapsed)
+        end
         if not btn.FlareUI_HideHooked then
             btn.FlareUI_HideHooked = true
-            btn:HookScript("OnShow", function(self)
-                self:Hide()
-                self:SetAlpha(0)
-                self:EnableMouse(false)
-            end)
+            btn:ClearAllPoints()
+            btn:SetPoint("CENTER", window, "CENTER")
+            btn:SetFrameLevel(btn:GetFrameLevel() + 10)
+            btn:HookScript("OnShow", Update)
+            -- Blizzard shows the list exactly while the window isn't collapsed
+            local container = window.GetMinimizeContainer and window:GetMinimizeContainer()
+            if container then
+                container:HookScript("OnShow", Update)
+                container:HookScript("OnHide", Update)
+            end
         end
+        Update()
     end
-    -- never window:SetMinimized(): it taints isMinimized, which Blizzard reads with secret values
 end
 
 --------------------------------------------------

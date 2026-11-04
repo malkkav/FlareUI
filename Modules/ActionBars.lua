@@ -458,7 +458,7 @@ local function ForEachFCMBar(fn)
     end
 end
 
--- dragging something makes the FCM bars clickable (CURSOR_CHANGED, only while FCM bars exist)
+-- dragging something shows every faded bar and makes the FCM bars clickable (CURSOR_CHANGED)
 local function OnCursorChanged()
     local isDragging = GetCursorInfo() ~= nil
     if isDragging == ActionBars.fcm.wasDragging then return end
@@ -518,46 +518,101 @@ function ActionBars:StartDragDetection()
     return true
 end
 
-function ActionBars:StopDragDetection()
-    if self.fcm.dragWatching then
-        self.fcm.dragWatching = nil
-        self:UnregisterEvent("CURSOR_CHANGED")
-    end
-    self.fcm.wasDragging = false
-end
-
 --------------------------------------------------
 -- 11. UPDATE SPELL RANKS
--- A newly learned rank replaces the rank just below it on every bar; older ranks placed on purpose
--- stay. Out of combat, with nothing on the cursor.
+-- A newly learned rank replaces the best rank known below it on every bar; lower ranks placed on
+-- purpose stay. Out of combat, with nothing on the cursor.
 --------------------------------------------------
 local MAX_ACTION_SLOT = 180
 local pendingRanks = {}
 
 local function RankOf(spellID)
     local subtext = C_Spell.GetSpellSubtext(spellID)
-    return subtext and tonumber(subtext:match("(%d+)"))
+    return type(subtext) == "string" and tonumber(subtext:match("(%d+)")) or nil
 end
 
-local function UpgradeRank(newID)
-    local name, rank = C_Spell.GetSpellName(newID), RankOf(newID)
-    if not (name and rank and rank > 1) then return end
-    for slot = 1, MAX_ACTION_SLOT do
-        local kind, id = GetActionInfo(slot)
-        if kind == "spell" and id and id ~= newID and C_Spell.GetSpellName(id) == name and RankOf(id) == rank - 1 then
-            C_Spell.PickupSpell(newID)
-            PlaceAction(slot)
-            ClearCursor()
+-- The ranks the character knows of the spells just learned: name -> { rank -> spellID }. Low ranks
+-- are spellbook items too (Blizzard's book only hides them); future spells aren't known yet.
+local function KnownRanks(learned)
+    local known = {}
+    local bank = Enum.SpellBookSpellBank.Player
+    for line = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+        local lineInfo = C_SpellBook.GetSpellBookSkillLineInfo(line)
+        for offset = 1, lineInfo and lineInfo.numSpellBookItems or 0 do
+            local info = C_SpellBook.GetSpellBookItemInfo(lineInfo.itemIndexOffset + offset, bank)
+            local spellID = info and info.spellID
+            local name = spellID and C_Spell.GetSpellName(spellID)
+            if name and learned[name] and IsPlayerSpell(spellID) then
+                local rank = RankOf(spellID)
+                if rank then
+                    known[name] = known[name] or {}
+                    known[name][rank] = spellID
+                end
+            end
         end
     end
+    return known
+end
+
+-- The rank a slot moves to: step up through the new ranks in order, while the slot holds the best
+-- rank known below each one. A lower rank with a better one above it was put there on purpose.
+local function TargetRank(rank, newRanks, known)
+    -- the book should hold the slot's own rank; if not, only the rank just below counts
+    local trusted = known[rank] ~= nil
+    for _, newRank in ipairs(newRanks) do
+        if newRank > rank then
+            local below = newRank - 1
+            if trusted then
+                while below > rank and not known[below] do below = below - 1 end
+            end
+            if below == rank then rank = newRank end
+        end
+    end
+    return rank
 end
 
 local function FlushRanks()
     if InCombatLockdown() then return end   -- OnCombatEnd tries again
     if GetCursorInfo() then C_Timer.After(1, FlushRanks) return end
-    -- in the order learned: Train All teaches several ranks in a row
-    for _, spellID in ipairs(pendingRanks) do UpgradeRank(spellID) end
+    -- Train All teaches several ranks in a row, in any order: all of a spell's go together
+    local learned = {}
+    for _, spellID in ipairs(pendingRanks) do
+        local name, rank = C_Spell.GetSpellName(spellID), RankOf(spellID)
+        if name and rank then
+            learned[name] = learned[name] or {}
+            learned[name][rank] = spellID
+        end
+    end
     wipe(pendingRanks)
+    if not next(learned) then return end
+
+    local known = KnownRanks(learned)
+    local ordered = {}
+    for name, ranks in pairs(learned) do
+        known[name] = known[name] or {}
+        local list = {}
+        for rank, spellID in pairs(ranks) do
+            known[name][rank] = spellID
+            list[#list + 1] = rank
+        end
+        table.sort(list)
+        ordered[name] = list
+    end
+
+    for slot = 1, MAX_ACTION_SLOT do
+        local kind, id = GetActionInfo(slot)
+        local name = kind == "spell" and id and C_Spell.GetSpellName(id)
+        local rank = name and ordered[name] and RankOf(id)
+        if rank then
+            local target = TargetRank(rank, ordered[name], known[name])
+            if target ~= rank then
+                C_Spell.PickupSpell(known[name][target])
+                -- with nothing picked up, placing would only empty the slot
+                if GetCursorInfo() == "spell" then PlaceAction(slot) end
+                ClearCursor()
+            end
+        end
+    end
 end
 
 function ActionBars:OnSpellLearned(_, spellID)
@@ -719,7 +774,7 @@ function ActionBars:Refresh()
     UpdatePetColors()
     if ns.ProcGlow then ns.ProcGlow:Refresh() end
 
-    -- FCM: click-through unless Setup Mode is on; drag detection while any FCM bar exists
+    -- FCM: click-through unless Setup Mode is on; drag detection for every faded bar
     if ns.db.profile.fcm then
         local fcm = ns.db.profile.fcm
         for i = 1, 8 do
@@ -731,13 +786,7 @@ function ActionBars:Refresh()
             self.fcm.unlockMode = false
         end
         self:ApplyClickthrough(not self.fcm.unlockMode)
-        local hasFCMBars = false
-        ForEachFCMBar(function() hasFCMBars = true end)
-        if hasFCMBars then
-            self:StartDragDetection()
-        else
-            self:StopDragDetection()
-        end
+        self:StartDragDetection()
     end
 end
 

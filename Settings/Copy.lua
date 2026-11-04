@@ -398,7 +398,7 @@ ns.Copy = {
             section = "ch.tweaks",
         },
         ["ch.copyLinks"] = {
-            desc = L["Click a web link in chat to copy it."],
+            desc = L["Click a web link in chat to copy it. To copy a whole chat tab, right-click the tab and pick Copy Chat."],
             label = L["Copy chat links"],
             section = "ch.tweaks",
         },

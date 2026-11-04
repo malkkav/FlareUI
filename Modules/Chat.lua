@@ -1050,6 +1050,100 @@ end
 -- The copy box, for other modules and the settings panel's links
 function Chat.ShowCopyText(text) ShowCopyBox(text) end
 
+-- A chat line as plain text: colour, icon and link codes would paste as gibberish
+function Chat.PlainLine(text)
+    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[^:]*:", ""):gsub("|r", "")
+        :gsub("|H.-|h(.-)|h", "%1"):gsub("|T.-|t", ""):gsub("|A.-|a", ""):gsub("|K.-|k", ""):gsub("||", "|")
+    return text
+end
+
+-- Copy Chat (the tab's right-click menu): a read-only window with a chat window's lines, all selected.
+-- Lines the game keeps secret can't be read, so they're left out and the window says so.
+function Chat:ShowCopyChat(chatFrame)
+    local f = self.copyChatFrame
+    if not f then
+        f = CreateFrame("Frame", "FlareUI_CopyChat", UIParent, "BackdropTemplate")
+        f:SetSize(640, 440)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetToplevel(true)
+        f:SetClampedToScreen(true)
+        f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = LSM:Fetch("border", "Blizzard Tooltip"),
+                        edgeSize = 16, insets = { left = 4, right = 4, top = 4, bottom = 4 } })
+        f:SetBackdropColor(0, 0, 0, 0.95)
+        f:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1)
+        f:EnableMouse(true)
+        f:SetMovable(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+
+        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f.title:SetPoint("TOPLEFT", 14, -12)
+        f.title:SetPoint("RIGHT", -34, 0)
+        f.title:SetJustifyH("LEFT")
+        f.title:SetWordWrap(false)
+        f.note = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        f.note:SetPoint("BOTTOMLEFT", 14, 10)
+        f.note:SetPoint("RIGHT", -14, 0)
+        f.note:SetJustifyH("LEFT")
+        local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        close:SetPoint("TOPRIGHT", -2, -2)
+
+        local scroll = CreateFrame("ScrollFrame", nil, f)
+        scroll:SetPoint("TOPLEFT", 14, -34)
+        scroll:SetPoint("BOTTOMRIGHT", -24, 28)
+        f.scroll = scroll
+        local box = CreateFrame("EditBox", nil, scroll)
+        box:SetMultiLine(true)
+        box:SetAutoFocus(false)
+        box:SetMaxLetters(0)
+        box:SetFontObject("ChatFontNormal")
+        box:SetWidth(640 - 14 - 24)
+        box:SetScript("OnEscapePressed", function() f:Hide() end)
+        -- read-only: typing puts the lines back
+        box:SetScript("OnTextChanged", function(self, userInput)
+            if not userInput then return end
+            self:SetText(f.text or "")
+            self:HighlightText()
+        end)
+        scroll:SetScrollChild(box)
+        f.box = box
+        ns.SettingsPanel.AttachScrollLine(scroll, f)
+
+        f:SetScript("OnHide", function()
+            box:ClearFocus()
+            PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
+        end)
+        tinsert(UISpecialFrames, "FlareUI_CopyChat")
+        self.copyChatFrame = f
+    end
+
+    local lines, hidden = {}, 0
+    for i = 1, chatFrame:GetNumMessages() do
+        local msg = chatFrame:GetMessageInfo(i)
+        -- canaccessvalue first, before any other test
+        if not canaccessvalue(msg) then
+            hidden = hidden + 1
+        elseif type(msg) == "string" then
+            lines[#lines + 1] = Chat.PlainLine(msg)
+        end
+    end
+    f.text = table.concat(lines, "\n")
+    f.title:SetText(L["Copy Chat"] .. ": " .. (chatFrame.name or "") .. "  |cff808080" .. L["Ctrl+C to copy, Esc to close"] .. "|r")
+    f.note:SetText(hidden > 0 and L["Some lines are left out: the game keeps them hidden."] or "")
+    f.box:SetText(f.text)
+    if not f:IsShown() then PlaySound(SOUNDKIT.IG_MAINMENU_OPEN) end
+    f:Show()
+    f:Raise()
+    f.box:SetFocus()
+    f.box:HighlightText()
+    -- newest lines in view, once the box has its height
+    C_Timer.After(0.05, function()
+        if f:IsShown() then f.scroll:SetVerticalScroll(f.scroll:GetVerticalScrollRange() or 0) end
+    end)
+end
+
 -- Blizzard only calls filters with accessible values, so no secret check is needed. A message that
 -- already carries a hyperlink is left alone.
 local function URLFilter(self, event, msg, ...)
@@ -1176,6 +1270,8 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
             end
             FCF_OpenNewWindow(name)
         end)
+
+        rootDescription:CreateButton(L["Copy Chat"], function() Chat:ShowCopyChat(chatFrame) end)
 
         rootDescription:CreateDivider()
 
