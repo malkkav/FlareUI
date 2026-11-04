@@ -23,8 +23,7 @@ local pcall = pcall
 local UnitExists, UnitName, UnitClass, UnitReaction = UnitExists, UnitName, UnitClass, UnitReaction
 local UnitIsPlayer, UnitIsUnit, UnitClassification = UnitIsPlayer, UnitIsUnit, UnitClassification
 local UnitAffectingCombat, IsShiftKeyDown = UnitAffectingCombat, IsShiftKeyDown
-local canaccessvalue = canaccessvalue or function() return true end
-local issecretvalue = issecretvalue or function() return false end
+local canaccessvalue, issecretvalue = canaccessvalue, issecretvalue
 
 local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.tooltips
@@ -486,7 +485,8 @@ local function OnTooltipShow(tip)
     local unitName = tip:GetUnit()
     if issecretvalue(unitName) or unitName then return end
     if MouseIsOverWorld() and HideIfNeeded(tip, CAT_WORLD_OBJECT) then return end
-    ApplyColors(tip, nil)
+    -- Blizzard shows a tooltip after its post-calls: an item keeps the quality border just set
+    if not tip:IsTooltipType(Enum.TooltipDataType.Item) then ApplyColors(tip, nil) end
     HideHealthBar()
 end
 

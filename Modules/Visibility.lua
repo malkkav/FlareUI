@@ -16,7 +16,6 @@ local Visibility = ns.Visibility
 ns.modules["Visibility"] = Visibility
 
 LibStub("AceEvent-3.0"):Embed(Visibility)
-LibStub("AceHook-3.0"):Embed(Visibility)
 
 local LEM = LibStub("FlareEditMode")
 
@@ -391,7 +390,12 @@ local function AddMember(groupName, data)
 end
 
 function Visibility:Refresh()
-    if InCombatLockdown() then return end
+    -- runs again when the fight ends (OnVisibilityStateChange)
+    if InCombatLockdown() then
+        self.refreshPending = true
+        return
+    end
+    self.refreshPending = nil
     local db = GetDb()
     if not db then return end
     if not self:ShouldLoad() then
@@ -400,19 +404,20 @@ function Visibility:Refresh()
         return
     end
 
-    -- Edit Mode needs the frames: the secure hide is lifted and a hidden frame is hidden plainly,
-    -- its selection made invisible
+    -- A frame hidden for good stays hidden in Edit Mode, its selection made invisible; lifting the hide
+    -- would lose whether the frame comes back when the option goes off
     local inEditMode = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
     for _, pair in ipairs(HIDE_KEYS) do
         local key, settingKey = pair[1], pair[2]
         local hidden = db[settingKey]
         if inEditMode then
-            ApplySecureHide(key, false)
             if hidden then
+                ApplySecureHide(key, true)
                 ForEachFrameOfKey(key, KeepHiddenInEditMode, settingKey)
                 ForEachFrameOfKey(key, HideFrame)
                 HideEditModeMover(key)
             else
+                ApplySecureHide(key, false)
                 RestoreEditModeMover(key)
             end
         else
@@ -484,6 +489,10 @@ end
 --------------------------------------------------
 -- 9. EVENT HANDLERS
 --------------------------------------------------
-function Visibility:OnVisibilityStateChange()
-    MarkAllDirty()
+function Visibility:OnVisibilityStateChange(event)
+    if event == "PLAYER_REGEN_ENABLED" and self.refreshPending then
+        self:Refresh()
+    else
+        MarkAllDirty()
+    end
 end

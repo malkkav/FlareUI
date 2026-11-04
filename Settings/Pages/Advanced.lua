@@ -64,16 +64,47 @@ ns.Dialogs["FLAREUI_DELETE_PROFILE"] = {
 --------------------------------------------------
 -- SHARE
 -- A profile as one line of text: Blizzard's own pipeline (as Cooldown Manager strings) of CBOR,
--- Deflate and Base64 behind a "FlareUI1:" tag. Only the profile's own changes travel (AceDB keeps
--- defaults out of the saved table); an import becomes a new profile.
+-- Deflate and Base64 behind a "FlareUI1:" tag. Only the profile's changes from the defaults travel
+-- (in play AceDB keeps the defaults in the saved table, until logout); an import becomes a new profile.
 --------------------------------------------------
 local SHARE_TAG = "FlareUI1:"
+
+-- what differs from the defaults; AceDB's "*" and "**" sections aren't compared, so they travel whole
+local function Changes(saved, defaults)
+    local out = {}
+    for key, value in pairs(saved) do
+        local default = defaults[key]
+        if type(value) == "table" and type(default) == "table" then
+            local sub = Changes(value, default)
+            -- a changed list (colours, fade groups) travels whole, so no sparse table goes to CBOR
+            if next(sub) ~= nil then out[key] = value[1] ~= nil and value or sub end
+        elseif value ~= default then
+            out[key] = value
+        end
+    end
+    return out
+end
+
+-- a shared string is anyone's text: a key whose type differs from its default goes back to the default
+local function DropWrongTypes(profile, defaults)
+    for key, value in pairs(profile) do
+        local default = defaults[key]
+        if default ~= nil then
+            if type(value) ~= type(default) then
+                profile[key] = nil
+            elseif type(value) == "table" then
+                DropWrongTypes(value, default)
+            end
+        end
+    end
+end
 
 local function ExportString()
     local name = ns.db and ns.db:GetCurrentProfile()
     local saved = name and ns.db.sv and ns.db.sv.profiles and ns.db.sv.profiles[name]
     if not saved then return "" end
-    local payload = { addon = "FlareUI", name = name, profile = saved,
+    local payload = { addon = "FlareUI", name = name,
+        profile = Changes(saved, ns.defaults and ns.defaults.profile or {}),
         version = C_AddOns.GetAddOnMetadata("FlareUI", "Version") }
     local ok, text = pcall(function()
         local cbor = C_EncodingUtil.SerializeCBOR(payload)
@@ -127,6 +158,7 @@ ns.Dialogs["FLAREUI_IMPORT_PROFILE"] = {
             return
         end
         local name = ImportName(payload.name)
+        DropWrongTypes(payload.profile, ns.defaults and ns.defaults.profile or {})
         ns.db.sv.profiles = ns.db.sv.profiles or {}
         ns.db.sv.profiles[name] = payload.profile
         ns.db:SetProfile(name)

@@ -174,15 +174,10 @@ local function TracksHonor()
         or (IsInActiveWorldPVP and IsInActiveWorldPVP()) or false
 end
 
-local function ShowsXP()
-    if GameRulesUtil and GameRulesUtil.CanShowExperienceBar then return GameRulesUtil.CanShowExperienceBar() end
-    return not IsXPUserDisabled() and not (GameRulesUtil and GameRulesUtil.IsPlayerAtEffectiveMaxLevel())
-end
-
 -- The two sections' contents (nil = nothing to show)
 local function PickSections()
     local rep, honor = WatchedReputation(), TracksHonor()
-    if ShowsXP() then
+    if GameRulesUtil.CanShowExperienceBar() then
         return Read.xp(), (rep and Read.rep(rep)) or (honor and Read.honor()) or nil
     end
     local left = (rep and Read.rep(rep)) or (honor and Read.honor()) or nil
@@ -259,8 +254,7 @@ local function UpdateFlare()
     local db = GetDb()
     local left, right
     if LEM:IsInEditMode() then left, right = SampleSections() else left, right = PickSections() end
-    if not left and not right then flare:Hide() return end
-    left, right = left or right, left and right or nil
+    if not left then flare:Hide() return end
 
     local width, height = db.width or 560, db.height or 14
     local leftWidth = right and width / 2 or width
@@ -337,6 +331,7 @@ local FLARE_EVENTS = {
     "PLAYER_ENTERING_WORLD", "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP", "UPDATE_EXHAUSTION", "PLAYER_UPDATE_RESTING",
     "ENABLE_XP_GAIN", "DISABLE_XP_GAIN", "UPDATE_EXPANSION_LEVEL", "PLAYER_MAX_LEVEL_UPDATE",
     "UPDATE_FACTION", "MAJOR_FACTION_RENOWN_LEVEL_CHANGED", "HONOR_XP_UPDATE", "ZONE_CHANGED", "ZONE_CHANGED_NEW_AREA",
+    "CVAR_UPDATE",   -- Blizzard's "show honor as XP" switch is a CVar; every other one is skipped below
 }
 
 local function BuildFlare()
@@ -361,7 +356,8 @@ local function BuildFlare()
 
     -- events come in bursts; one update per frame
     local queued = false
-    flare:SetScript("OnEvent", function()
+    flare:SetScript("OnEvent", function(_, event, cvar)
+        if event == "CVAR_UPDATE" and cvar ~= "showHonorAsExperience" then return end
         if queued then return end
         queued = true
         C_Timer.After(0, function() queued = false; UpdateFlare() end)

@@ -46,7 +46,7 @@ end
 local function CreateList(parent, width, columns, rows, cellHeight, buildCell, fillCell)
     local list = CreateFrame("Frame", nil, parent)
     local cellWidth = (width - 12) / columns
-    list.cells, list.data, list.columns = {}, {}, columns
+    list.cells, list.data = {}, {}
     list:SetSize(width, rows * cellHeight)
 
     for i = 1, columns * rows do
@@ -230,7 +230,7 @@ AddCategory("spells", L["Spells"], function()
         if lineInfo and not lineInfo.shouldHide then
             for offset = 1, lineInfo.numSpellBookItems do
                 local info = C_SpellBook.GetSpellBookItemInfo(lineInfo.itemIndexOffset + offset, bank)
-                if info and info.spellID and not info.isPassive then
+                if info and info.spellID and not info.isPassive and info.itemType ~= Enum.SpellBookItemType.FutureSpell then
                     out[#out + 1] = { kind = "spell", id = info.spellID }
                 end
             end
@@ -572,6 +572,7 @@ local function BuildEmbedded(host, previewHost)
     local picker = CreateFrame("DropdownButton", nil, host, "WowStyle1DropdownTemplate")
     picker:SetWidth(180)
     picker:SetPoint("LEFT", pickerLabel, "RIGHT", 8, 0)
+    picker:SetDefaultText(L["No radials"])
     host.UpdatePicker = function(list, order, value)
         picker:SetupMenu(function(_, root)
             for _, id in ipairs(order) do
@@ -583,7 +584,6 @@ local function BuildEmbedded(host, previewHost)
             end
         end)
         picker:SetEnabled(value ~= nil)
-        if not value and picker.OverrideText then picker:OverrideText(L["No radials"]) end
     end
     host.deleteButton = RedButton(host, L["Delete"], 70, function()
         local radial = editingID and RM():GetRadial(editingID)
@@ -628,11 +628,21 @@ local function BuildEmbedded(host, previewHost)
                 if self.dataIndex then StartDrag({ from = self.dataIndex, entry = self.item }) end
             end)
             cell:SetScript("OnDragStop", FinishDrag)
+            -- something on the game cursor goes in at this row
+            cell:SetScript("OnReceiveDrag", function(self)
+                local entry = EntryFromCursor()
+                if entry then InsertEntry(entry, self.dataIndex) end
+            end)
             cell:SetScript("OnClick", function(self, mouseButton)
                 if not self.dataIndex then return end
                 if mouseButton == "RightButton" then
                     RemoveButton(self.dataIndex)
                 else
+                    local entry = EntryFromCursor()
+                    if entry then
+                        InsertEntry(entry, self.dataIndex)
+                        return
+                    end
                     selectedButton = self.dataIndex
                     Refresh()
                 end
@@ -652,7 +662,6 @@ local function BuildEmbedded(host, previewHost)
     dropZone:SetPoint("BOTTOMRIGHT", buttonList, "BOTTOMRIGHT", 0, -6)
     dropZone:SetFrameLevel(math.max(0, buttonList:GetFrameLevel() - 1))
     dropZone:EnableMouse(true)
-    dropZone:RegisterForDrag("LeftButton")
     dropZone:SetScript("OnReceiveDrag", function()
         local entry = EntryFromCursor()
         if entry then InsertEntry(entry) end
@@ -754,7 +763,7 @@ local function BuildEmbedded(host, previewHost)
     -- opening takes the Undo snapshot; leaving keeps the edits
     host:SetScript("OnShow", function()
         browseCache = {}
-        if not dirty then TakeSnapshot() end
+        TakeSnapshot()
     end)
     host:SetScript("OnHide", function()
         dirty, snapshot = false, nil

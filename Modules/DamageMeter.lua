@@ -109,20 +109,30 @@ local function IsEditModeActive()
     return _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
 end
 
+-- Showing the meter runs Blizzard's refresh, which in a fight compares the secret session duration
+-- and throws from addon code. The player is in combat a moment before lockdown begins.
+local function InFight()
+    if InCombatLockdown() then return true end
+    local busy = UnitAffectingCombat("player")
+    return not canaccessvalue(busy) or busy and true or false
+end
+
 -- Settings > Damage Meter open: the meter stays shown whatever its visibility, also after Blizzard's
--- re-checks on combat and group changes.
+-- re-checks on combat and group changes. With the module off Blizzard's meter is left alone.
 function DamageMeter:SetSettingsPreview(on)
     local meter = _G.DamageMeter
     on = on and true or false
-    if not meter or self.settingsPreview == on then return end
+    if not meter or (self.settingsPreview or false) == on then return end
+    local db = GetDb()
+    if on and not (db and db.enabled) then return end
     self.settingsPreview = on
     if not self.previewHooked and type(meter.UpdateShownState) == "function" then
         self.previewHooked = true
         hooksecurefunc(meter, "UpdateShownState", function(m)
-            if DamageMeter.settingsPreview and not InCombatLockdown() and not m:IsShown() then m:Show() end
+            if DamageMeter.settingsPreview and not InFight() and not m:IsShown() then m:Show() end
         end)
     end
-    if InCombatLockdown() then return end
+    if InFight() then return end
     if on then
         meter:Show()
     else
@@ -188,20 +198,9 @@ end
 --------------------------------------------------
 local function GetSessionWindows()
     local list = {}
-    for i = 1, 10 do
+    for i = 1, 3 do   -- Blizzard's maximum
         local w = _G["DamageMeterSessionWindow" .. i]
         if w then list[#list + 1] = w end
-    end
-    if #list == 0 then
-        local dm = _G.DamageMeter
-        if dm then
-            for i = 1, dm:GetNumChildren() do
-                local w = select(i, dm:GetChildren())
-                if w and w.Header and w.DamageMeterTypeDropdown then
-                    list[#list + 1] = w
-                end
-            end
-        end
     end
     return list
 end
@@ -359,13 +358,16 @@ GROUP_BUTTONS.events:SetScript("OnEvent", function()
     C_Timer.After(0.2, function()
         GROUP_BUTTONS.pending = nil
         local db = GetDb()
-        if db and db.enabled and DamageMeter.Refresh then DamageMeter:Refresh() end
+        if not (db and db.enabled and DamageMeter.Refresh) then return end
+        -- only when another set of buttons applies now (Layout notes the last one laid out)
+        if table.concat(GROUP_BUTTONS.Shown(db), ",") ~= GROUP_BUTTONS.laidOut then DamageMeter:Refresh() end
     end)
 end)
 
 -- Lays out the buttons that show, left of the segments icon; returns how many show
 function GROUP_BUTTONS.Layout(window, db, ref, box, levelOf)
     local shown = GROUP_BUTTONS.Shown(db)
+    GROUP_BUTTONS.laidOut = table.concat(shown, ",")
     local isShown = {}
     for slot, key in ipairs(shown) do
         isShown[key] = true
@@ -692,6 +694,8 @@ local function HookEntryFonts()
 end
 
 local function HookEntry(entry)
+    -- a row made after the mixin's hook carries it already
+    if entry and DamageMeter.FlareUI_EntryHooked and entry.SetTextScale == _G.DamageMeterEntryMixin.SetTextScale then return end
     if entry and not entry.FlareUI_FontHooked and type(entry.SetTextScale) == "function" then
         entry.FlareUI_FontHooked = true
         hooksecurefunc(entry, "SetTextScale", RestyleEntry)
@@ -776,23 +780,6 @@ local function ThreatMob()
     if UnitExists("target") and IsHostile("targettarget") then return "targettarget" end
 end
 
--- A player's spec icon (own spec, or an inspected one); nil falls back to the class icon
-local function SpecIconOf(unit, isMe)
-    local specID
-    if isMe then
-        local index = GetSpecialization and GetSpecialization()
-        specID = index and GetSpecializationInfo(index)
-    else
-        specID = GetInspectSpecialization and GetInspectSpecialization(unit)
-    end
-    if specID and specID ~= 0 then return select(4, GetSpecializationInfoByID(specID)) end
-end
-
-local function SpecIcon(unit, isMe)
-    local ok, icon = pcall(SpecIconOf, unit, isMe)
-    return ok and icon or nil
-end
-
 -- Every group member and pet with threat on the mob, highest first. secret = the client hid it.
 local function CollectThreat(mob)
     local list, secret = {}, false
@@ -805,13 +792,11 @@ local function CollectThreat(mob)
         local _, class = UnitClass(unit)
         local isMe = UnitIsUnit(unit, "player")
         list[#list + 1] = {
-            unit = unit, value = value, scaled = scaled or 0,
+            value = value, scaled = scaled or 0,
             name = Readable(name) and name or "?",
             class = Readable(class) and class or nil,
             isPlayer = Readable(isMe) and isMe or false,
         }
-        local isPlayer = UnitIsPlayer(unit)
-        if Readable(isPlayer) and isPlayer then list[#list].specIcon = SpecIcon(unit, list[#list].isPlayer) end
     end
     if IsInRaid() then
         for i = 1, GetNumGroupMembers() do Add("raid" .. i); Add("raidpet" .. i) end
@@ -864,15 +849,31 @@ local function GetRow(view, index)
 end
 
 local function FillRow(row, data, top, window, db, index, height, spacing)
-    row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", row:GetParent(), "TOPLEFT", 0, -(index - 1) * (height + spacing))
-    row:SetPoint("TOPRIGHT", row:GetParent(), "TOPRIGHT", 0, -(index - 1) * (height + spacing))
-    row:SetBarHeight(height)
-    row:SetTextScale(window.GetTextScale and window:GetTextScale() or 1)
-    row:SetShowBarIcons(window.ShouldShowBarIcons and window:ShouldShowBarIcons() or false)
-    row:SetStyle(window.GetStyle and window:GetStyle() or Enum.DamageMeterStyle.Default)
-    -- the SetTextScale hook has already restyled the font
-    if not DamageMeter.FlareUI_EntryHooked then ApplyBarFont(row, db) end
+    -- this runs several times a second in a fight: each setter only when its value changed
+    if row.ftHeight ~= height or row.ftSpacing ~= spacing then
+        row.ftHeight, row.ftSpacing = height, spacing
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", row:GetParent(), "TOPLEFT", 0, -(index - 1) * (height + spacing))
+        row:SetPoint("TOPRIGHT", row:GetParent(), "TOPRIGHT", 0, -(index - 1) * (height + spacing))
+        row:SetBarHeight(height)
+    end
+    local scale = window.GetTextScale and window:GetTextScale() or 1
+    if row.ftScale ~= scale then
+        row.ftScale = scale
+        row:SetTextScale(scale)
+        -- the SetTextScale hook has already restyled the font
+        if not DamageMeter.FlareUI_EntryHooked then ApplyBarFont(row, db) end
+    end
+    local icons = window.ShouldShowBarIcons and window:ShouldShowBarIcons() or false
+    if row.ftIcons ~= icons then
+        row.ftIcons = icons
+        row:SetShowBarIcons(icons)
+    end
+    local style = window.GetStyle and window:GetStyle() or Enum.DamageMeterStyle.Default
+    if row.ftStyle ~= style then
+        row.ftStyle = style
+        row:SetStyle(style)
+    end
 
     local bar = row:GetStatusBar()
     bar:SetMinMaxValues(0, top > 0 and top or 1)
@@ -881,15 +882,14 @@ local function FillRow(row, data, top, window, db, index, height, spacing)
     row.classFilename = data.class
     row.sourceDisplayType = Enum.DamageMeterSourceDisplayType and Enum.DamageMeterSourceDisplayType.Ally
     row:SetUseClassColor(window.ShouldUseClassColor and window:ShouldUseClassColor() or false)
-    local icon = row:GetIcon()
-    -- rows are reused, so each kind of icon sets its own coordinates
-    if data.specIcon then
-        icon:SetTexture(data.specIcon)
-        icon:SetTexCoord(0.0625, 0.9, 0.0626, 0.9)
-    elseif data.class then
-        icon:SetAtlas(GetClassAtlas(data.class), false, nil, true)
-    else
-        icon:SetTexture(nil)
+    if row.ftClass ~= data.class then
+        row.ftClass = data.class
+        local icon = row:GetIcon()
+        if data.class then
+            icon:SetAtlas(GetClassAtlas(data.class), false, nil, true)
+        else
+            icon:SetTexture(nil)
+        end
     end
     row:GetName():SetText(("%d. %s"):format(data.rank, data.name))
     row:GetValue():SetText(("%s  %d%%"):format(AbbreviateNumbers(data.value / 100), math.floor(data.scaled + 0.5)))
@@ -1156,6 +1156,11 @@ local function ApplyThreatTab(window)
     view.frame:ClearAllPoints()
     view.frame:SetPoint("TOPLEFT", skin, "TOPLEFT", 6, -CONTENT_TOP)
     view.frame:SetPoint("BOTTOMRIGHT", skin, "BOTTOMRIGHT", -6, 6)
+    -- a changed bar font: FillRow only restyles a row when the text scale changes
+    local db = GetDb()
+    if db then
+        for _, row in ipairs(view.rows) do ApplyBarFont(row, db) end
+    end
     SetView(window, view.showing)
 end
 
@@ -1219,7 +1224,8 @@ local function MatchChatSize()
     if matchSizing or not (db and db.enabled and db.matchChatSize and meter) or InCombatLockdown() then return end
     if not ChatModuleOn() then return end
     local source = ChatSizeSource()
-    local width, height = source and source:GetSize()
+    if not source then return end
+    local width, height = source:GetSize()
     if not (width and height and width > 0 and height > 0) then return end
     matchSizing = true
     meter:SetSize(width, height)
@@ -1243,10 +1249,11 @@ end
 -- Switched off: Edit Mode's own Frame Width / Height again
 function DamageMeter:RestoreEditModeSize()
     local meter = _G.DamageMeter
-    if meter and not InCombatLockdown() and meter.UpdateSystemSettingFrameWidth then
-        meter:UpdateSystemSettingFrameWidth()
-        meter:UpdateSystemSettingFrameHeight()
-    end
+    if not meter or InCombatLockdown() or type(meter.GetSettingValue) ~= "function" then return end
+    -- the size Edit Mode has saved, read and set from here: Blizzard's own setters stay out of addon code
+    local setting = Enum.EditModeDamageMeterSetting
+    local width, height = meter:GetSettingValue(setting.FrameWidth), meter:GetSettingValue(setting.FrameHeight)
+    if width and height and width > 0 and height > 0 then meter:SetSize(width, height) end
 end
 
 --------------------------------------------------
@@ -1348,14 +1355,8 @@ end
 
 local applying = false
 
--- Showing the meter runs Blizzard's refresh, which in a fight compares the secret session duration
--- and throws from addon code: shown only out of combat, FlareUI's rule re-applied after the fight.
+-- Shown only out of a fight (see InFight), FlareUI's rule re-applied after it.
 local showPending = false
-local function InFight()
-    if InCombatLockdown() then return true end
-    local busy = UnitAffectingCombat("player")
-    return not canaccessvalue(busy) or busy and true or false
-end
 
 local function ShowMeter(meter)
     if meter:IsShown() then return true end
@@ -1486,6 +1487,12 @@ function DamageMeter:SetupMouseover()
     if not meter or self.mouseoverHooked or type(meter.UpdateShownState) ~= "function" then return end
     self.mouseoverHooked = true
     hooksecurefunc(meter, "UpdateShownState", ApplyVisibility)
+    -- a window opened from Blizzard's settings menu gets the skin too
+    if type(meter.SetupSessionWindow) == "function" then
+        hooksecurefunc(meter, "SetupSessionWindow", function()
+            C_Timer.After(0, function() DamageMeter:Refresh() end)
+        end)
+    end
     -- Blizzard re-checks the meter on entering Edit Mode only when its "Damage Meter" box is ticked
     EventRegistry:RegisterCallback("EditMode.Enter", function() DamageMeter:ApplyVisibility() end, DamageMeter)
     EventRegistry:RegisterCallback("EditMode.Exit", function() C_Timer.After(0, function() DamageMeter:ApplyVisibility() end) end, DamageMeter)
@@ -1499,7 +1506,7 @@ function DamageMeter:ApplyVisibility()
     if not meter then return end
     if not InCombatLockdown() and type(meter.ShouldBeShown) == "function" then
         local ok, should = pcall(meter.ShouldBeShown, meter)
-        if ok then meter:SetShown(should and true or false) end
+        if ok and (not should or not InFight()) then meter:SetShown(should and true or false) end
     end
     ApplyVisibility(meter)
 end

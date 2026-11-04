@@ -559,9 +559,9 @@ function MM:Init()
     AddEditModeSettings()
     KeepMapUnrotated()
     if Cluster.SetRotateMinimap then hooksecurefunc(Cluster, "SetRotateMinimap", KeepMapUnrotated) end
-    -- Blizzard's addon drawer stays hidden (UpdateDisplay re-shows it)
+    -- Blizzard's addon drawer stays hidden while the bag replaces it (UpdateDisplay re-shows it)
     local drawer = _G.AddonCompartmentFrame
-    if drawer then
+    if drawer and ns.MinimapBag and ns.MinimapBag:IsOn() then
         hooksecurefunc(drawer, "UpdateDisplay", drawer.Hide)
         drawer:Hide()
     end

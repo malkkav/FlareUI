@@ -308,6 +308,12 @@ local STATE_TINT = {
     unusable = { 0.5, 0.5, 0.5 },
 }
 
+-- what Blizzard's UpdateUsable paints (ActionButton.lua), for switching the colours off
+local BLIZZARD_TINT = {
+    mana     = { 0.5, 0.5, 1 },
+    unusable = { 0.4, 0.4, 0.4 },
+}
+
 local function ApplyStateColor(button, state)
     if button.FlareUI_ColorState == state then return end
     button.FlareUI_ColorState = state
@@ -335,9 +341,13 @@ end
 local function RefreshButtonColor(button)
     local db = GetBarConfig()
     if not db or not db.colors or not db.colors.enableRange then
-        -- switched off: drop the desaturation (Blizzard rewrites the tint itself)
+        -- switched off: Blizzard's own look until its next update
         if button.FlareUI_ColorState then
-            if button.FlareUI_ColorState ~= "locked" and button.icon then button.icon:SetDesaturated(false) end
+            if button.FlareUI_ColorState ~= "locked" and button.icon then
+                local tint = BLIZZARD_TINT[button.FlareUI_Usable] or STATE_TINT.normal
+                button.icon:SetVertexColor(tint[1], tint[2], tint[3], 1)
+                button.icon:SetDesaturated(false)
+            end
             button.FlareUI_ColorState = nil
         end
         return
@@ -345,6 +355,12 @@ local function RefreshButtonColor(button)
     local usable = button.FlareUI_Usable or "normal"
     if usable == "normal" and button.FlareUI_OutOfRange then usable = "range" end
     ApplyStateColor(button, usable)
+end
+
+-- Blizzard has just rewritten the tint (and its Update the desaturation): a repeated state paints again
+local function ForgetColorState(button)
+    local db = GetBarConfig()
+    if db and db.colors and db.colors.enableRange then button.FlareUI_ColorState = nil end
 end
 
 local function OnUpdateUsable(button, action, isUsable, notEnoughMana)
@@ -359,10 +375,10 @@ local function OnUpdateUsable(button, action, isUsable, notEnoughMana)
         -- a #showtooltip macro reports the macro's usability, not the spell's
         local actionType, id = GetActionInfo(slot)
         if actionType == "macro" then
-            local name = GetMacroInfo(id)
-            if name and name:sub(1, 1) == "#" then
+            local _, _, body = GetMacroInfo(id)
+            if body and body:sub(1, 1) == "#" then
                 local spellID = GetMacroSpell(id)
-                if spellID then isUsable, notEnoughMana = C_Spell.IsSpellUsable(spellID) end
+                if canaccessvalue(spellID) and spellID then isUsable, notEnoughMana = C_Spell.IsSpellUsable(spellID) end
             end
         end
         -- an answer the client hides is left to Blizzard's own tint
@@ -372,6 +388,7 @@ local function OnUpdateUsable(button, action, isUsable, notEnoughMana)
         end
         button.FlareUI_Usable = isUsable and "normal" or (notEnoughMana and "mana" or "unusable")
     end
+    ForgetColorState(button)
     RefreshButtonColor(button)
 end
 
@@ -404,6 +421,7 @@ local function UpdatePetColors()
         if canaccessvalue(usable) and canaccessvalue(notEnoughMana) and canaccessvalue(checksRange) and canaccessvalue(inRange) then
             button.FlareUI_Usable = usable and "normal" or (notEnoughMana and "mana" or "unusable")
             button.FlareUI_OutOfRange = (checksRange and not inRange) or false
+            ForgetColorState(button)
             RefreshButtonColor(button)
         end
     end
@@ -485,10 +503,12 @@ function ns.ToggleFCMSetupMode()
         print("|cffff0000FlareUI:|r " .. L["Cannot toggle setup mode in combat."])
         return
     end
-    local fcm = ns.db.profile.fcm
-    fcm.setupModeEnabled = not fcm.setupModeEnabled
-    ActionBars:SetFCM_UnlockMode(fcm.setupModeEnabled)
-    print("|cff00ff00FlareUI:|r " .. (fcm.setupModeEnabled and L["Fake CM setup mode on."] or L["Fake CM setup mode off."]))
+    -- never with the module off (it must leave Blizzard's buttons alone) or no bar picked
+    local db = GetBarConfig()
+    if not (db and db.enabled and ns.FCMActive()) then return end
+    local on = not ActionBars.fcm.unlockMode
+    ActionBars:SetFCM_UnlockMode(on)
+    print("|cff00ff00FlareUI:|r " .. (on and L["Fake CM setup mode on."] or L["Fake CM setup mode off."]))
 end
 
 function ActionBars:SetFCM_UnlockMode(enabled)
@@ -731,16 +751,35 @@ local function HookEndCaps()
     KeepEndCapsWithBar(bar)
 end
 
--- switching the option off restores Blizzard's default once, then leaves the CVar to the player
+-- switching the option off restores Blizzard's default once, then leaves the CVar to the player. The
+-- mark is saved: the option or the whole module can go off across a reload (profile switch, module
+-- switch), so this also runs at login with the module off.
 local function UpdateAutoPushSpells(db)
-    if db.stopAutoAddSpells then
+    local global = ns.db.global
+    if db and db.enabled and db.stopAutoAddSpells then
         C_CVar.SetCVar("AutoPushSpellToActionBar", "0")
-        ActionBars.autoPushSet = true
-    elseif ActionBars.autoPushSet then
+        global.autoPushSet = true
+    elseif global.autoPushSet then
         C_CVar.SetCVar("AutoPushSpellToActionBar", "1")
-        ActionBars.autoPushSet = nil
+        global.autoPushSet = nil
     end
+    ActionBars.autoPushSet = global.autoPushSet
 end
+
+local autoPushLoader = CreateFrame("Frame")
+autoPushLoader:RegisterEvent("PLAYER_LOGIN")
+autoPushLoader:SetScript("OnEvent", function(self)
+    self:UnregisterAllEvents()
+    if not ns.db then return end
+    UpdateAutoPushSpells(GetBarConfig())
+    -- Reset wipes db.global too, the mark with it: undone now, from the copy kept above
+    ns.db.RegisterCallback(ActionBars, "OnDatabaseReset", function()
+        if ActionBars.autoPushSet then
+            C_CVar.SetCVar("AutoPushSpellToActionBar", "1")
+            ActionBars.autoPushSet = nil
+        end
+    end)
+end)
 
 function ActionBars:Refresh()
     if InCombatLockdown() then
@@ -768,7 +807,6 @@ function ActionBars:Refresh()
         btn:SetScale(BUTTON_SCALE)
         UpdateButtonText(btn)
         -- one-off repaint; the hooks keep it current
-        btn.FlareUI_ColorState = nil
         OnUpdateUsable(btn)
     end
     UpdatePetColors()
@@ -781,10 +819,7 @@ function ActionBars:Refresh()
             local bar = fcm.bars and fcm.bars["bar" .. i]
             if not (bar and bar.enabled) then ApplyClickthroughToBar("bar" .. i, false) end
         end
-        if not ns.FCMActive() and self.fcm.unlockMode then
-            fcm.setupModeEnabled = false
-            self.fcm.unlockMode = false
-        end
+        if not ns.FCMActive() then self.fcm.unlockMode = false end
         self:ApplyClickthrough(not self.fcm.unlockMode)
         self:StartDragDetection()
     end
@@ -793,8 +828,6 @@ end
 function ActionBars:Init()
     local db = GetBarConfig()
     if not db or not db.enabled then return end
-    -- Setup Mode is for the session only
-    if ns.db.profile.fcm then ns.db.profile.fcm.setupModeEnabled = false end
 
     self:Refresh()
     HookEndCaps()
@@ -814,8 +847,8 @@ function ActionBars:Init()
         ActionBars:SecureHook(extraBtn, "UpdateHotkeys", UpdateHotkeyText)
     end
 
-    self:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", "OnLayoutUpdate")
-    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnLayoutUpdate")
+    self:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", "Refresh")
+    self:RegisterEvent("PLAYER_ENTERING_WORLD", "Refresh")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatEnd")
     self:RegisterEvent("UPDATE_EXTRA_ACTIONBAR", "OnExtraActionBarUpdate")
     self:RegisterEvent("UPDATE_BINDINGS", "OnExtraActionBarUpdate")
@@ -826,12 +859,6 @@ end
 --------------------------------------------------
 -- 14. EVENT HANDLERS
 --------------------------------------------------
-function ActionBars:OnLayoutUpdate()
-    if not InCombatLockdown() then
-        self:Refresh()
-    end
-end
-
 function ActionBars:OnFormsChanged()
     ApplyAutoPaging()
 end

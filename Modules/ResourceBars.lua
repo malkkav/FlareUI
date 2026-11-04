@@ -687,6 +687,7 @@ local function Relayout(key)
     if not holder then return end
     LayoutBar(holder)
     ApplyShown(holder)
+    UpdateFsrSpark()
 end
 
 local function BuildSettings(key)
@@ -810,6 +811,7 @@ local UNIT_EVENTS = {
     "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_HEAL_PREDICTION", "UNIT_ABSORB_AMOUNT_CHANGED",
     "UNIT_POWER_UPDATE", "UNIT_POWER_FREQUENT", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER",
     "UNIT_SPELLCAST_SUCCEEDED", "UNIT_ATTACK_SPEED",
+    "UNIT_INVENTORY_CHANGED",   -- as Blizzard's swing timers: the weapon events miss the login
 }
 local EVENTS = {
     "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_TARGET_CHANGED", "PLAYER_ENTERING_WORLD",
@@ -895,12 +897,7 @@ function RB:Init()
         for _, holder in pairs(bars) do ApplyPosition(holder, layoutName) end
     end)
     LEM:RegisterCallback("enter", function() ApplyAllShown() end)
-    LEM:RegisterCallback("exit", function()
-        for _, holder in pairs(bars) do
-            if holder.swingEnd == nil and holder.Spark then holder.Spark:Hide() end
-        end
-        ApplyAllShown()
-    end)
+    LEM:RegisterCallback("exit", function() ApplyAllShown() end)
 
     HideBlizzardCounterparts()
     EnableSwingRange()

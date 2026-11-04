@@ -400,6 +400,8 @@ end
 local LayoutBars   -- section 6
 
 local function WantsPower(f)
+    -- the plate always has its power bar (LayoutBars)
+    if OnPlate(f) then return true end
     local st = TS(f)
     return st and (st.powerHeight or 0) > 0 or false
 end
@@ -712,8 +714,9 @@ local function UpdatePartyTarget(t)
     t.Name:SetText(ns.UnitDisplayName(unit, "party") or "")
 end
 
-local function OnMemberEvent(f, event, arg1)
-    if IsEditing() then return end
+local function OnMemberEvent(f, event)
+    -- hidden (solo or in a raid, the holder is): OnShow runs UpdateAll when it comes back
+    if IsEditing() or not f:IsVisible() then return end
     if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
         UpdateHealth(f)
         UpdateHealPrediction(f)
@@ -727,7 +730,7 @@ local function OnMemberEvent(f, event, arg1)
         UpdateLevel(f)
     elseif event == "UNIT_IN_RANGE_UPDATE" then
         UpdateRange(f)
-    elseif event == "UNIT_THREAT_SITUATION_UPDATE" then
+    elseif event == "UNIT_THREAT_SITUATION_UPDATE" or event == "UNIT_THREAT_LIST_UPDATE" then
         UpdateThreat(f)
     elseif event == "UNIT_PHASE" or event == "UNIT_OTHER_PARTY_CHANGED" then
         UpdateStatus(f)
@@ -927,7 +930,7 @@ local function ConfigurePosition(f, pos, lanes)
         local look = kind ~= "dispels" and LaneLook(laneSize, isDebuff, inside) or nil
         local lookSig = ns.AuraGroups.Sig(kind, laneSize, isDebuff, inside, font, showTimer, look)
         local key, err = ns.AuraGroups.Add(container, entry, lane.key, lookSig, lane.filter, {
-            maxFrameCount = lane.max or (lane.sameLine and besideBoss) or (kind == "dispels" and math_min(max, 3) or max),
+            maxFrameCount = lane.max or (lane.sameLine and besideBoss) or (kind == "dispels" and not portrait and math_min(max, 3) or max),
             candidateFilters = lane.candidates,
             sortMethod = sorted and sortMethod or nil, sortDirection = sorted and sortDirection or nil,
             initializeFrame = function(button)
@@ -977,9 +980,9 @@ local function ConfigureAuras(f)
     if not f.AuraPos then return end
     local st = TS(f)
     if not st then return end
-    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.width, st.height, st.powerHeight, st.portrait, (DispelGrid(f)), f.ringKind, AuraGrid(st), UFAura("auraStyle", "square"),
-        UFAura("auraTimer", "none"), st.bigBossDebuffs, st.castbar, st.castHeight, st.petHeight, (not f.ctx and GetPartyDb().pets), OnPlate(f),
-        st.hideBuffs, IsEditing(), st.onlyMyBuffs, st.dispellableOnly, st.encounterOnly, st.auraSort, st.auraReverse, st.auraMineFirst)
+    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.width, st.height, st.powerHeight, st.portrait, st.ringSize, (DispelGrid(f)), f.ringKind, AuraGrid(st), UFAura("auraStyle", "square"),
+        UFAura("auraTimer", "none"), ns.AuraGroups.Sig(UFAura("auraFont")), ns.AuraGroups.Sig(UFAura("font")), st.bigBossDebuffs, st.castbar, st.castHeight, OnPlate(f),
+        st.hideBuffs, IsEditing(), st.onlyMyDebuffs, st.onlyMyBuffs, st.dispellableOnly, st.encounterOnly, st.auraSort, st.auraReverse, st.auraMineFirst)
     if f.auraSignature == sig then return end
     f.auraSignature = sig
     f.bossFightRecs = {}
@@ -1046,7 +1049,8 @@ local function ConfigureSlots(f)
     if not slots then return end
     local st = TS(f)
     local plate = OnPlate(f)
-    local sig = Signature(st.bigDefensive, st.bigDefensiveSize, UFAura("auraStyle", "square"), st.dispelHighlight, plate)
+    -- (border and short heights: the highlight copies the backdrop once, and its edge shrinks under 22)
+    local sig = Signature(st.bigDefensive, st.bigDefensiveSize, UFAura("auraStyle", "square"), st.dispelHighlight, plate, K.Border(st.border), (st.height and st.height < 22 and st.height or 22))
     if slots.signature == sig then
         pcall(slots.container.SetEditModePreviewEnabled, slots.container, SlotsPreview(f))
         return
@@ -1251,8 +1255,6 @@ local function LayoutHealClip(f)
     local health, clip, heal, absorb = f.Health, f.HealClip, f.HealBar, f.AbsorbBar
     local fill = health:GetStatusBarTexture()
     local width = (st.width or 200) - 2 * K.INSET - PortraitSpace(f)
-    -- shields grow back from the end of the bar, so they show at full health too
-    local reverse = true
     clip:ClearAllPoints()
     heal:ClearAllPoints()
     absorb:ClearAllPoints()
@@ -1262,20 +1264,16 @@ local function LayoutHealClip(f)
     heal:SetWidth(width)
     absorb:SetWidth(width)
     heal:SetReverseFill(mirror)
-    absorb:SetReverseFill(reverse ~= mirror)
+    -- shields grow back from the end of the bar, so they show at full health too
+    absorb:SetReverseFill(not mirror)
     -- incoming heals in the tile's own bar texture
     heal:SetStatusBarTexture(K.GetBarTexture(st.texture, mirror))
     clip:SetPoint("TOP" .. near, fill, "TOP" .. far, 0, 0)
     clip:SetPoint("BOTTOM" .. far, health, "BOTTOM" .. far, 0, 0)
     heal:SetPoint("TOP" .. near, clip, "TOP" .. near, 0, 0)
     heal:SetPoint("BOTTOM" .. near, clip, "BOTTOM" .. near, 0, 0)
-    if reverse then
-        absorb:SetPoint("TOP" .. far, clip, "TOP" .. far, 0, 0)
-        absorb:SetPoint("BOTTOM" .. far, clip, "BOTTOM" .. far, 0, 0)
-    else
-        absorb:SetPoint("TOP" .. near, heal:GetStatusBarTexture(), "TOP" .. far, 0, 0)
-        absorb:SetPoint("BOTTOM" .. near, heal:GetStatusBarTexture(), "BOTTOM" .. far, 0, 0)
-    end
+    absorb:SetPoint("TOP" .. far, clip, "TOP" .. far, 0, 0)
+    absorb:SetPoint("BOTTOM" .. far, clip, "BOTTOM" .. far, 0, 0)
     local base = clip:GetFrameLevel()
     heal:SetFrameLevel(base + 1)
     absorb:SetFrameLevel(base + 2)
@@ -1666,10 +1664,8 @@ local function HasPet(i)
     return UnitExists(PET_UNITS[i]) and true or false
 end
 
-local function SlotsInUse()
-    local party = GetPartyDb()
-    local first = party.showPlayer and 0 or 1
-    return first, MAX_MEMBERS
+local function FirstSlot()
+    return GetPartyDb().showPlayer and 0 or 1
 end
 
 -- The frames in order: party order, or by role (an unreadable role counts as none; absent members
@@ -1700,8 +1696,8 @@ local function LayoutHolder()
     if not holder then return end
     if InCombatLockdown() then pendingLayout = true return end
     local st = S()
-    local first, last = SlotsInUse()
-    local count = last - first + 1
+    local first = FirstSlot()
+    local count = MAX_MEMBERS - first + 1
     local dx, dy, ox, oy = Step()
     -- each frame's place: the ones before it, and the room their bottom rows take (vertical only)
     local x, y = ox, oy
@@ -1895,7 +1891,7 @@ local function ApplyPreviewExtras(f, data)
         local auras = 0
         local function Row(place, count, icons, isDebuff, bossFirst)
             if not place or place == "OFF" or (count or 0) <= 0 then return end
-            local max, perRow = AuraFit(st, place, f)
+            local max = AuraFit(st, place, f)
             local point, rel, relPoint, x, y, growH = AuraAnchor(f, place)
             local sx = growH == AnchorUtil.FlowDirection.Left and -1 or 1
             local offset = 0
@@ -1971,12 +1967,29 @@ local function ApplyPreviewExtras(f, data)
             hl = CreateFrame("Frame", nil, f, "BackdropTemplate")
             f.HighlightSample = hl
         end
-        hl:ClearAllPoints()
-        hl:SetAllPoints(f.Border)
-        hl:SetFrameLevel(f.Border:GetFrameLevel() + 1)
-        hl:SetBackdrop(f.Border:GetBackdrop())
         local c = DISPEL_RGB[data.highlight] or DISPEL_RGB.Magic
-        hl:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+        hl:ClearAllPoints()
+        -- Forever Style's plate: the name box's glow instead
+        local strip = OnPlate(f) and f.PlateFrame and f.PlateFrame.Strip
+        if strip then
+            hl:SetAllPoints(strip)
+            hl:SetFrameLevel(f.PlateFrame:GetFrameLevel() + 2)
+            hl:SetBackdrop(nil)
+            if not hl.Glow then
+                hl.Glow = hl:CreateTexture(nil, "OVERLAY")
+                hl.Glow:SetAllPoints(hl)
+                hl.Glow:SetBlendMode("ADD")
+            end
+            pcall(hl.Glow.SetAtlas, hl.Glow, ns.UFRing.STRIP_ATLAS, false)
+            hl.Glow:SetVertexColor(c[1], c[2], c[3], 1)
+            hl.Glow:Show()
+        else
+            if hl.Glow then hl.Glow:Hide() end
+            hl:SetAllPoints(f.Border)
+            hl:SetFrameLevel(f.Border:GetFrameLevel() + 1)
+            hl:SetBackdrop(f.Border:GetBackdrop())
+            hl:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+        end
         hl:Show()
     end
 end
@@ -2012,7 +2025,6 @@ ApplyPreview = function(f)
     else
         f.Health:SetStatusBarColor(ns.HEALTH_GREEN[1], ns.HEALTH_GREEN[2], ns.HEALTH_GREEN[3])
     end
-    f.Health:SetAlpha(1)
     local mode = st.healthText or "percent"
     if data.dead then
         f.HealthText:SetText(K.DEAD_TEXT)
@@ -2587,7 +2599,7 @@ local function BuildSettings()
         { name = L["Focus Boss Debuffs"], kind = LEM.SettingType.Checkbox, default = false,
           get = function() return getS("encounterOnly")() and true or false end, set = setS("encounterOnly"),
           desc = L["In a boss fight, only the boss and role debuffs (the ones Blizzard marks as cast by a boss, or aimed at a role). Every debuff shows elsewhere."] },
-        -- one dispel icon, big on the portrait (or the health bar's middle)
+        -- up to four dispel icons, on the portrait (or the health bar's middle)
         { name = L["Dispel Icons"], kind = LEM.SettingType.Checkbox, default = D.dispels ~= "OFF",
           get = function() local st = S(); local v = st and st.dispels; if v == nil then v = D.dispels end; return v ~= "OFF" end,
           set = function(_, value) setS("dispels")(nil, value and "PORTRAIT" or "OFF") end,
@@ -2629,7 +2641,7 @@ local function BuildSettings()
           get = getS("petBorder"), set = setS("petBorder"), hidden = function() return noPets() or K.NoBorderOptions() end },
     })
 
-    -- the members' targets: only while Show Party Targets (Party section) is on
+    -- the members' targets: only while Party Targets (Party section) is on
     local function noTargets() return not getP("targets", false)() end
     Section("Target", {
         { name = L["Target Frame Width"], kind = LEM.SettingType.Slider, default = D.targetWidth, minValue = 40, maxValue = 300, valueStep = 2,
@@ -2710,7 +2722,7 @@ end
 --------------------------------------------------
 -- 14. PUBLIC
 --------------------------------------------------
--- A member's target sends no health events: the shown ones are re-read while Show Party Targets is on
+-- A member's target sends no health events: the shown ones are re-read while Party Targets is on
 local targetTicker
 local function UpdateTargetTicker()
     local on = GetPartyDb().targets
@@ -2838,7 +2850,7 @@ function PF:OnGlobalEvent(event, ...)
     if event == "PLAYER_TARGET_CHANGED" and own and own:IsShown() then UpdatePartyTarget(own) end
     for i = 0, MAX_MEMBERS do
         local f = members[i]
-        if f and f:IsShown() then
+        if f and f:IsVisible() then
             if event == "PLAYER_TARGET_CHANGED" then
                 UpdateTarget(f)
             elseif event == "RAID_TARGET_UPDATE" then
@@ -2916,6 +2928,8 @@ function PF:Init()
     LEM:RegisterCallback("enter", function()
         ApplyVisibility()
         LayoutHolder()   -- the sample pets take their room
+        -- Hide Buffs is skipped in Edit Mode (samples have no duration): not protected, fine in combat
+        for i = 0, MAX_MEMBERS do ConfigureAuras(members[i]) end
         SetAuraPreview(true)
         for i = 0, MAX_MEMBERS do UpdateAll(members[i]) end
         UpdateMissingAll()

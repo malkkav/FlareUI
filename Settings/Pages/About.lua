@@ -12,7 +12,7 @@ local CREDIT_LINKS = {
     sampconradGitHub = "https://github.com/sampconrad",
 }
 
--- buttons under the thanks: an icon (grey until hovered) or the name; a nil url is skipped
+-- the buttons under the thanks
 local NETWORKS = {
     { name = "CurseForge", url = "https://www.curseforge.com/wow/addons/flareui" },
     { name = "Wago.io", url = "https://addons.wago.io/addons/flareui" },
@@ -55,32 +55,9 @@ local function Body(host, text, anchor, y, font)
 end
 
 local function NetworkButton(host, net)
-    local b
-    if net.icon then
-        b = CreateFrame("Button", nil, host)
-        b:SetSize(36, 36)
-        b.icon = b:CreateTexture(nil, "ARTWORK")
-        b.icon:SetAllPoints()
-        b.icon:SetTexture(net.icon)
-        b.icon:SetDesaturated(true)
-        b.icon:SetAlpha(0.75)
-        b:SetScript("OnEnter", function(self)
-            self.icon:SetDesaturated(false)
-            self.icon:SetAlpha(1)
-            ns.OwnGameTooltip(self, "ANCHOR_TOP")
-            GameTooltip:SetText(net.name, 1, 1, 1)
-            GameTooltip:Show()
-        end)
-        b:SetScript("OnLeave", function(self)
-            self.icon:SetDesaturated(true)
-            self.icon:SetAlpha(0.75)
-            GameTooltip:Hide()
-        end)
-    else
-        b = CreateFrame("Button", nil, host, "UIPanelButtonTemplate")
-        b:SetSize(100, 24)
-        b:SetText(net.name)
-    end
+    local b = CreateFrame("Button", nil, host, "UIPanelButtonTemplate")
+    b:SetSize(100, 24)
+    b:SetText(net.name)
     b:SetScript("OnClick", function()
         ns.ButtonSound()
         CopyLink(net.url)
@@ -97,19 +74,17 @@ local function Build(host)
 
     local first, previous
     for _, net in ipairs(NETWORKS) do
-        if net.url then
-            local b = NetworkButton(host, net)
-            if previous then
-                b:SetPoint("LEFT", previous, "RIGHT", 8, 0)
-            else
-                b:SetPoint("TOPLEFT", linksNote, "BOTTOMLEFT", 0, -16)
-            end
-            first, previous = first or b, b
+        local b = NetworkButton(host, net)
+        if previous then
+            b:SetPoint("LEFT", previous, "RIGHT", 8, 0)
+        else
+            b:SetPoint("TOPLEFT", linksNote, "BOTTOMLEFT", 0, -16)
         end
+        first, previous = first or b, b
     end
 
     -- credit names become links that open a copy box
-    local creditsTitle = Section(host, S:SectionText("about.credits"), first or linksNote, -22)
+    local creditsTitle = Section(host, S:SectionText("about.credits"), first, -22)
     local credits = S:Text("about.credits", "text", true) or ""
     credits = credits:gsub("|cffffd100Clari Turela|r", Link("Clari Turela", CREDIT_LINKS.clari))
     credits = credits:gsub("|cffffd100sampconrad|r", Link("sampconrad", CREDIT_LINKS.sampconrad)

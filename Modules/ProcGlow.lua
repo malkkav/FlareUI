@@ -35,7 +35,8 @@ local GLOW_SCALE = 1.4      -- Blizzard's alert size around a button
 local reactive = {}         -- localised spell name -> true
 local flagged = {}          -- localised spell name -> true while the game flags it
 local buttons = {}
-local pending = false
+local slotSpell = {}        -- action slot -> { id, name }, or false: not a spell (macros are read each time)
+local pending, pendingNow = false, false
 local events
 
 local function Enabled()
@@ -57,12 +58,22 @@ end
 local function ButtonSpell(button)
     local slot = button.action
     if not (Readable(slot) and type(slot) == "number" and slot > 0) then return nil end
+    local cached = slotSpell[slot]
+    if cached then return cached.id, cached.name, slot end
+    if cached == false then return nil end
     local ok, kind, id, subType = pcall(GetActionInfo, slot)
-    if not (ok and Readable(kind)) then return nil end
+    if not (ok and Readable(kind)) then
+        if ok and canaccessvalue(kind) then slotSpell[slot] = false end   -- an empty slot
+        return nil
+    end
     if kind == "spell" or (kind == "macro" and Readable(subType) and subType == "spell") then
         local name = SpellName(id)
-        if name then return id, name, slot end
+        if not name then return nil end
+        -- a macro's spell changes with its conditions, without an event
+        if kind == "spell" then slotSpell[slot] = { id = id, name = name } end
+        return id, name, slot
     end
+    if kind ~= "macro" then slotSpell[slot] = false end
 end
 
 --------------------------------------------------
@@ -138,22 +149,43 @@ local function UpdateButton(button, enabled)
 end
 
 local function UpdateAll()
-    pending = false
     local enabled = Enabled()
     for _, button in ipairs(buttons) do UpdateButton(button, enabled) end
 end
 
--- events arrive in bursts: one pass on the next frame
+local function UpdateThrottled()
+    pending = false
+    UpdateAll()
+end
+
+local function UpdateNow()
+    pendingNow = false
+    UpdateAll()
+end
+
+-- usable, cooldown and target health events arrive in bursts: one pass per tenth of a second
 local function Schedule()
     if pending then return end
     pending = true
-    C_Timer.After(0, UpdateAll)
+    C_Timer.After(0.1, UpdateThrottled)
+end
+
+-- a proc lights on the next frame, once Blizzard's own glow has had its turn
+local function ScheduleNow()
+    if pendingNow then return end
+    pendingNow = true
+    C_Timer.After(0, UpdateNow)
 end
 
 local function OnEvent(_, event, spellID)
     if event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" or event == "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" then
         local name = SpellName(spellID)
         if name then flagged[name] = (event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW") or nil end
+        ScheduleNow()
+        return
+    end
+    if event == "ACTIONBAR_SLOT_CHANGED" or event == "SPELLS_CHANGED" or event == "PLAYER_ENTERING_WORLD" then
+        wipe(slotSpell)
     end
     Schedule()
 end
@@ -194,6 +226,7 @@ function PG:Refresh()
         events:UnregisterAllEvents()
         -- HIDE events are missed while off: a kept flag would glow on return
         wipe(flagged)
+        wipe(slotSpell)
     end
     UpdateAll()
 end

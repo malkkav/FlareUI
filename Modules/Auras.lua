@@ -734,14 +734,22 @@ end
 --------------------------------------------------
 -- 10. BLIZZARD'S FRAMES (parked for the session)
 --------------------------------------------------
+local unparked = {}   -- frames a /reload in combat left in place, parked when it ends
+
+local function ParkBlizzard(frame)
+    pcall(ns.RawHide, frame)
+    pcall(frame.SetParent, frame, hiddenParent)
+end
+
 local function HideBlizzard(name)
     local frame = _G[name]
     if not frame or frame.FlareUI_Hidden then return end
     frame.FlareUI_Hidden = true
     pcall(frame.UnregisterAllEvents, frame)
-    if not InCombatLockdown() then
-        pcall(ns.RawHide, frame)
-        pcall(frame.SetParent, frame, hiddenParent)
+    if InCombatLockdown() then
+        unparked[frame] = true
+    else
+        ParkBlizzard(frame)
     end
     hooksecurefunc(frame, "Show", function(f) if not InCombatLockdown() then ns.RawHide(f) end end)
 end
@@ -827,6 +835,10 @@ function AU:Init()
         if event ~= "PLAYER_REGEN_ENABLED" then
             UpdateEnchants("buffs")
             return
+        end
+        for frame in pairs(unparked) do
+            ParkBlizzard(frame)
+            unparked[frame] = nil
         end
         if not pendingLayout then return end
         pendingLayout = false

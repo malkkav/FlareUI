@@ -455,9 +455,6 @@ local defaults = {
         fcm = {
             bars = FCMBars(),           -- Fake CM is on while a bar is picked
             show = "combat",            -- always | combat | target | harm (Modules/Visibility.lua)
-
-            -- Setup Mode
-            setupModeEnabled = false,
         },
 
         -- [[ DAMAGE METER MODULE ]]
@@ -622,7 +619,7 @@ local defaults = {
         },
 
         -- [[ VISIBILITY (Show choices, fade groups, permanent hiding; part of the Action Bars module) ]]
-        -- show: always | mouseover | combat | target | harm. A group (1-3) owns its members' show.
+        -- show: always | mouseover | combat | target | harm. A group (1-5) owns its members' show.
         visibility = {
             elements = VisibilityElements(),
             groups = { { show = "combat" }, { show = "combat" }, { show = "combat" }, { show = "combat" }, { show = "combat" } },
@@ -713,7 +710,7 @@ local defaults = {
             showTags = true,
             wrapText = true,
             showRecipes = true,
-            -- once on the way in: "minimize" or "none"
+            -- on the way in, and open again on the way out: "minimize" or "none"
             autoMinimize = { dungeon = "minimize", raid = "minimize", pvp = "minimize", arena = "minimize", combat = "none" },
             headerFont = { face = "Friz Quadrata TT", size = 13, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             titleFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -1078,8 +1075,16 @@ function ns.SetSystemScale(frame, scale)
     end
 end
 
+-- Blizzard wanted it up (Edit Mode's samples don't count), so it comes back when the hiding ends; shown
+-- in combat, it goes after the fight
 local function ReHideOnShow(self)
-    if self.FlareUI_Hidden and not InCombatLockdown() then ns.RawHide(self) end
+    if not self.FlareUI_Hidden then return end
+    if not (EditModeManagerFrame and EditModeManagerFrame:IsShown()) then self.FlareUI_WasShown = true end
+    if InCombatLockdown() then
+        pendingHides[self] = true
+    else
+        ns.RawHide(self)
+    end
 end
 
 function ns.HideFrameSecurely(frame, shouldHide)
@@ -1091,6 +1096,7 @@ function ns.HideFrameSecurely(frame, shouldHide)
         pendingHides[frame] = shouldHide
         return true
     end
+    pendingHides[frame] = nil
     if shouldHide then
         if not frame.FlareUI_Hidden then
             frame.FlareUI_WasShown = frame:IsShown()
@@ -1104,7 +1110,14 @@ function ns.HideFrameSecurely(frame, shouldHide)
     elseif frame.FlareUI_Hidden then
         -- only frames hidden here come back, and only if they were shown before
         frame.FlareUI_Hidden = nil
-        if frame.FlareUI_WasShown then frame:Show() end
+        -- an action bar knows whether Blizzard wants it up (a pet bar, not after the pet is gone). The
+        -- engine method: Edit Mode's override would re-lay the bars from addon code
+        local wanted = frame.isShownExternal
+        if wanted == nil then wanted = frame.FlareUI_WasShown end
+        if wanted then
+            local show = frame.ShowBase or frame.Show
+            show(frame)
+        end
         frame.FlareUI_WasShown = nil
     end
     return true
@@ -1180,7 +1193,17 @@ ns.Dialogs["FLAREUI_RESET"] = {
     text = L["Reset every FlareUI setting back to its default?\n\nThis cannot be undone."],
     button1 = L["Reset"],
     button2 = L["Cancel"],
-    OnAccept = function() ns.db:ResetDB("Default") end,
+    -- what undoes FlareUI's changes to the player's own settings, and the import marker, outlive the reset
+    OnAccept = function()
+        local global, kept = ns.db.global, {}
+        for _, key in ipairs({ "forcedCVars", "hiddenBubbles", "chatStyleBeforeGamepad", "padCameraRestore" }) do
+            kept[key] = global[key]
+        end
+        local imported = ns.db.sv.imported
+        ns.db:ResetDB("Default")
+        for key, value in pairs(kept) do ns.db.global[key] = value end
+        ns.db.sv.imported = imported
+    end,
     reloads = true,
     hideOnEscape = true,
     showAlert = true,
@@ -1230,7 +1253,10 @@ f:SetScript("OnEvent", function(self, event, ...)
         ns.defaults = defaults
 
         -- ResetDB (the Reset dialog) is already reloading, so it is not asked about again
+        -- An open panel follows at once, for when the reload is declined
         local function OnProfileChanged()
+            local panel = ns.SettingsPanel
+            if panel and panel:IsShown() then panel:Refresh() end
             if not ns.reloading then ns.ShowDialog("FLAREUI_RELOAD") end
         end
 

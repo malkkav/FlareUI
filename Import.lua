@@ -76,7 +76,7 @@ local GLOBAL_KEYS = { "radialmenu", "characters", "uiSync" }
 
 -- unit frame keys both styles share (UnitFramesRing.lua SHARED_KEYS)
 local SHARED_KEYS = { enabled = true, foreverStyle = true, plateStyle = true, styleProfiles = true, editSections = true,
-                      raid = true, resource = true, styleStart = true, tileStyle = true }
+                      raid = true, resource = true, styleStart = true, tileStyle = true, plateTiles = true }
 
 --------------------------------------------------
 -- 2. HELPERS

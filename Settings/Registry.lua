@@ -289,10 +289,10 @@ function Settings:Fold(text)
     return text:lower()
 end
 
--- Label, description, tip and copy tags, folded and cached
+-- Label, info title, description, tip and copy tags, folded and cached
 function Row:SearchText()
     if not self.searchText then
-        local parts = { self:Label() or "", self:Description() or "", self:Tip() or "" }
+        local parts = { self:Label() or "", Settings:Text(self.key, "info") or "", self:Description() or "", self:Tip() or "" }
         for _, tag in ipairs(Settings:Text(self.key, "tags") or {}) do parts[#parts + 1] = tag end
         -- the word "new" finds every row with a NEW badge
         if self:IsNew() then parts[#parts + 1] = L["new"] end
@@ -362,10 +362,12 @@ end
 
 -- Rows and Edit Mode stubs whose text holds every word
 function Settings:Search(text)
-    -- each word must start a word ("ids" finds "Show IDs", not "raids")
+    -- each word must start a word ("ids" finds "Show IDs", not "raids"); one that begins with no
+    -- letter or digit ("/way", or a non-Latin script) can't pass that test and may match anywhere
     local words = {}
     for word in self:Fold(text):gmatch("%S+") do
-        words[#words + 1] = "%f[%w]" .. word:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")
+        local escaped = word:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")
+        words[#words + 1] = (word:find("^%w") and "%f[%w]" or "") .. escaped
     end
     local results = {}
     if #words == 0 then return results end

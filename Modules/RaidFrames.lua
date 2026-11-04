@@ -239,13 +239,6 @@ end
 --------------------------------------------------
 local Tile = PF and PF.Tile
 
--- the player's own tile is never faded for range
-local function UpdateRange(f)
-    if not f.unit then return end
-    if readable(UnitIsUnit(f.unit, "player")) then f:SetAlpha(1) return end
-    Tile.UpdateRange(f)
-end
-
 -- Lua setup of a tile the header created (called from INIT_SNIPPET)
 local function InitTile(header, name)
     local f = _G[name]
@@ -320,7 +313,6 @@ end
 local function AddGroupLabel(h, k)
     local label = h:CreateFontString(nil, "OVERLAY")
     StyleGroupLabel(label, k)
-    h.groupIndex = k
     h.Label = label
     h:HookScript("OnSizeChanged", function(self, w, hh)
         local db = GetDb()
@@ -374,6 +366,8 @@ end
 
 local function ConfigureHeader(h, w, hh, gap, ggap)
     local rows = Rows()
+    -- the raid's rows of five stack from the frame's bottom on Growth Up
+    local columnAnchor = rows and (h == headers.all and Grow() == "UP" and "BOTTOM" or "TOP") or "LEFT"
     h:SetAttribute("_ignore", "batch")
     h:SetAttribute("tileWidth", w)
     h:SetAttribute("tileHeight", hh)
@@ -381,14 +375,18 @@ local function ConfigureHeader(h, w, hh, gap, ggap)
     h:SetAttribute("xOffset", rows and gap or 0)
     h:SetAttribute("yOffset", rows and 0 or -gap)
     h:SetAttribute("columnSpacing", ggap)
-    h:SetAttribute("columnAnchorPoint", rows and "TOP" or "LEFT")
+    h:SetAttribute("columnAnchorPoint", columnAnchor)
     h:SetAttribute("_ignore", nil)
-    -- a change outside the batch makes the header lay out again
-    h:SetAttribute("flareRefresh", (h:GetAttribute("flareRefresh") or 0) + 1)
+    -- the header adds its anchors to a tile's old ones: a changed point would keep both
     for i = 1, h.count or 0 do
         local f = h[i]
-        if f then f:SetSize(w, hh) end
+        if f then
+            f:ClearAllPoints()
+            f:SetSize(w, hh)
+        end
     end
+    -- a change outside the batch makes the header lay out again
+    h:SetAttribute("flareRefresh", (h:GetAttribute("flareRefresh") or 0) + 1)
 end
 
 local function LayoutGroups()
@@ -424,7 +422,6 @@ local function LayoutGroups()
         all:SetAttribute("groupingOrder", sort == "CLASS" and CLASS_ORDER or ROLE_ORDER)
         -- Growth: the rows of five stack from the frame's top or bottom (or round its middle)
         local grow = Rows() and Grow() or "CENTER"
-        all:SetAttribute("columnAnchorPoint", Rows() and (grow == "UP" and "BOTTOM" or "TOP") or "LEFT")
         all:ClearAllPoints()
         if grow == "DOWN" then
             all:SetPoint("TOP", holder, "TOP")
@@ -453,8 +450,14 @@ local function LayoutTanks()
     h:SetAttribute("point", up and "BOTTOM" or "TOP")
     h:SetAttribute("yOffset", up and gap or -gap)
     h:SetAttribute("_ignore", nil)
+    -- as in ConfigureHeader: the header adds its anchors to a tile's old ones
+    for i = 1, h.count do
+        if h[i] then
+            h[i]:ClearAllPoints()
+            h[i]:SetSize(w, hh)
+        end
+    end
     h:SetAttribute("flareRefresh", (h:GetAttribute("flareRefresh") or 0) + 1)
-    for i = 1, h.count do if h[i] then h[i]:SetSize(w, hh) end end
     h:ClearAllPoints()
     h:SetPoint(up and "BOTTOM" or "TOP", tankHolder, up and "BOTTOM" or "TOP")
     h:SetShown(not IsEditing())
@@ -526,7 +529,6 @@ local function PlacePreview()
         holder.sampleLabelLayer:SetAllPoints(holder)
     end
     holder.sampleLabelLayer:SetFrameLevel(holder:GetFrameLevel() + 30)
-    local font = K.GetDb() and K.GetDb().font
     for g = 1, MAX_GROUPS do
         local label = holder.sampleLabels[g]
         if not label then
@@ -618,6 +620,13 @@ local function TanksOn()
     return db and db.mainTanks and db.mainTanks.enabled == true or false
 end
 
+-- plain frames, so this also works in combat
+local function HideSamples()
+    for _, f in ipairs(previewTiles) do f:Hide() end
+    for _, label in ipairs(holder.sampleLabels or {}) do label:Hide() end
+    for _, f in ipairs(tankPreview) do f:Hide() end
+end
+
 -- in a raid only; in Edit Mode the samples show instead of the live tiles
 local function ApplyVisibility()
     if InCombatLockdown() then pendingLayout = true return end
@@ -633,9 +642,7 @@ local function ApplyVisibility()
             frame:Hide()
         end
     end
-    for _, f in ipairs(previewTiles) do if not editing then f:Hide() end end
-    for _, label in ipairs(holder.sampleLabels or {}) do if not editing then label:Hide() end end
-    for _, f in ipairs(tankPreview) do if not editing then f:Hide() end end
+    if not editing then HideSamples() end
 end
 
 --------------------------------------------------
@@ -673,7 +680,7 @@ local function Refresh()
         end
     else
         for _, f in ipairs(tiles) do
-            if f:IsVisible() and f.unit then Tile.UpdateAll(f); UpdateRange(f); MB.Update(f) end
+            if f:IsVisible() and f.unit then Tile.UpdateAll(f); Tile.UpdateRange(f); MB.Update(f) end
         end
     end
 end
@@ -898,8 +905,22 @@ function MB.UpdateAll()
     for _, f in ipairs(tiles) do MB.Update(f) end
 end
 
--- aura changes come in bursts: touched tiles update once, a moment later
+-- aura and roster changes come in bursts: touched tiles update once, a moment later
 local dirty, scheduled = {}, false
+local function FlushDirty()
+    scheduled = false
+    for f in pairs(dirty) do MB.Update(f) end
+    wipe(dirty)
+end
+local function ScheduleDirty()
+    if scheduled then return end
+    scheduled = true
+    C_Timer.After(0.3, FlushDirty)
+end
+function MB.UpdateAllSoon()
+    for _, f in ipairs(tiles) do dirty[f] = true end
+    ScheduleDirty()
+end
 function MB.OnAura(unit)
     -- every unit's UNIT_AURA arrives here: raid units only, out of combat
     if InCombatLockdown() or not (holder and holder:IsShown()) then return end
@@ -908,13 +929,7 @@ function MB.OnAura(unit)
     unit = readable(unit)
     if not (unit and unit:find("^raid")) then return end
     for _, f in ipairs(tiles) do if f.unit == unit then dirty[f] = true end end
-    if scheduled then return end
-    scheduled = true
-    C_Timer.After(0.3, function()
-        scheduled = false
-        for f in pairs(dirty) do MB.Update(f) end
-        wipe(dirty)
-    end)
+    ScheduleDirty()
 end
 
 --------------------------------------------------
@@ -1158,13 +1173,13 @@ function RF:OnGlobalEvent(event, ...)
         return
     elseif event == "SPELLS_CHANGED" then
         MB.Learn()
-        MB.UpdateAll()
+        MB.UpdateAllSoon()
         return
     end
     if IsEditing() then return end
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
         ForTiles(Tile.UpdateAll)
-        MB.UpdateAll()
+        MB.UpdateAllSoon()
         return
     end
     if event == "READY_CHECK_FINISHED" then
@@ -1205,7 +1220,7 @@ local GLOBAL_EVENTS = {
 local function StartRangeTicker()
     C_Timer.NewTicker(RANGE_INTERVAL, function()
         if not holder:IsShown() or IsEditing() then return end
-        ForTiles(UpdateRange)
+        ForTiles(Tile.UpdateRange)
     end)
 end
 
@@ -1264,6 +1279,9 @@ function RF:Init()
     tankHolder.editModeName = "FlareUI Main Tanks"
     local tanks = NewHeader("FlareUI_RaidTanksHeader", tankHolder, tankCtx, MAX_TANKS)
     tanks:SetAttribute("groupFilter", "MAINTANK")
+    -- no more than the frame has room for, and tiles can't be made in combat
+    tanks:SetAttribute("unitsPerColumn", MAX_TANKS)
+    tanks:SetAttribute("maxColumns", 1)
     headers.tanks = tanks
     Precreate(tanks)
 
@@ -1285,6 +1303,7 @@ function RF:Init()
         StackGroupFrames()
     end)
     LEM:RegisterCallback("exit", function()
+        HideSamples()
         StackGroupFrames()
         Refresh()
     end)

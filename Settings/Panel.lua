@@ -117,9 +117,7 @@ function Panel.AttachScrollLine(scroll, parent, step)
     scroll:HookScript("OnSizeChanged", Update)
     scroll:HookScript("OnShow", Update)
     scroll:HookScript("OnHide", Update)
-    line.Update = Update
     Update()
-    return line
 end
 
 -- Tooltips over the panel and FlareUI's Edit Mode settings stay opaque black: later background
@@ -455,8 +453,7 @@ function Panel.KeyButton(parent, onSet)
     end
     b:SetScript("OnClick", function(self, mouse)
         if mouse == "RightButton" then
-            if not self.waiting then onSet("") end
-            Stop()
+            if self.waiting then Stop() Panel:Refresh() else onSet("") end
             return
         end
         if self.waiting then Stop() Panel:Refresh() return end
@@ -500,7 +497,6 @@ Build.buttons = function(f)
     f.buttons = {}
 end
 Fill.buttons = function(f, row)
-    f.label:SetText(row:Label() or "")
     local previous
     local defs = row.buttons or {}
     for n = #defs, 1, -1 do
@@ -711,8 +707,7 @@ local function PlaceRows(parent, rows, y, crumbOf)
             local indent = row.parent and INDENT or 0
             local w = math.floor((CONTENT_W - indent) / 2)
             f:SetPoint("TOPLEFT", indent + col * w, y)
-            f.width = w - (col == 0 and 8 or 0)
-            f:SetWidth(f.width)
+            f:SetWidth(w - (col == 0 and 8 or 0))
             FillRow(f, row)
             if row == page.jumpRow then page.jumpFrame, page.jumpTop = f, -y end
             lineH = math.max(lineH, f:GetHeight())
@@ -722,8 +717,7 @@ local function PlaceRows(parent, rows, y, crumbOf)
             if row.gapAbove and not crumbOf then y = y - row.gapAbove end
             local indent = row.parent and INDENT or 0
             f:SetPoint("TOPLEFT", indent, y)
-            f.width = CONTENT_W - indent
-            f:SetWidth(f.width)
+            f:SetWidth(CONTENT_W - indent)
             FillRow(f, row, crumbOf and crumbOf(row))
             if row == page.jumpRow and not crumbOf then page.jumpFrame, page.jumpTop = f, -y end
             y = y - f:GetHeight()
@@ -849,7 +843,8 @@ function Panel:Refresh()
             y = PlaceRows(content, results, y, function(row)
                 local module = S.modules[row.module]
                 if row.kind == "editmode" then
-                    return module:Title() .. "  ›  " .. row.frameName .. "  ·  " .. L["Edit Mode"]
+                    -- ab.fade is a page row: it names no frame
+                    return module:Title() .. (row.frameName and ("  ›  " .. row.frameName) or "") .. "  ·  " .. L["Edit Mode"]
                 end
                 local section = row.section and ns.Copy.sections[row.section]
                 return module:Title() .. (section and ("  ›  " .. section) or "")
@@ -1012,26 +1007,25 @@ local function PlaceSecureReload()
     if not frame then return end
     -- it cannot hide or move in combat: it turns invisible, and its macro stops itself there
     if InCombatLockdown() then
-        if secureReload and not frame:IsShown() then secureReload:SetAlpha(0) end
+        if secureReload and not (frame:IsShown() and frame.reload:IsVisible()) then secureReload:SetAlpha(0) end
         return
     end
     if not secureReload then
         secureReload = CreateFrame("Button", "FlareUI_SettingsReload", UIParent, "SecureActionButtonTemplate, UIPanelButtonTemplate")
         secureReload:SetFrameStrata("FULLSCREEN_DIALOG")
-        secureReload:RegisterForClicks("AnyUp", "AnyDown")
+        -- acts on the press, whatever ActionButtonUseKeyDown says, so PreClick runs once and in step
+        secureReload:RegisterForClicks("AnyDown")
+        secureReload:SetAttribute("useOnKeyDown", true)
         secureReload:SetAttribute("type", "macro")
         secureReload:SetAttribute("macrotext", "/stopmacro [combat]\n/reload")
-        secureReload:SetScript("PreClick", function(_, _, down)
+        secureReload:SetScript("PreClick", function()
             if InCombatLockdown() then
-                if down and ERR_NOT_IN_COMBAT and UIErrorsFrame then UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT, 1, 0.1, 0.1) end
+                if ERR_NOT_IN_COMBAT and UIErrorsFrame then UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT, 1, 0.1, 0.1) end
                 return
             end
             ns.reloading = true
             ns.ButtonSound()
         end)
-        local waiter = CreateFrame("Frame")
-        waiter:RegisterEvent("PLAYER_REGEN_ENABLED")
-        waiter:SetScript("OnEvent", PlaceSecureReload)
     end
     local button = frame.reload
     local x, y = button:GetCenter()
@@ -1097,7 +1091,9 @@ local function BuildWindow()
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", function(self)
         self:StartMoving()
-        if secureReload and not InCombatLockdown() then secureReload:Hide() end
+        if secureReload then
+            if InCombatLockdown() then secureReload:SetAlpha(0) else secureReload:Hide() end
+        end
     end)
     frame:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
@@ -1317,7 +1313,7 @@ local function BuildWindow()
     local content = CreateFrame("Frame", nil, scroll)
     content:SetSize(1, 1)
     scroll:SetScrollChild(content)
-    page.scrollLine = Panel.AttachScrollLine(scroll, middle)
+    Panel.AttachScrollLine(scroll, middle)
     page.scroll, page.content = scroll, content
 
     page.searchTitle = Text(middle, "GameFontNormal")
@@ -1392,6 +1388,33 @@ local function BuildWindow()
 
     S:On("RowChanged", function() Panel:Refresh() end)
     S:On("ReloadChanged", UpdateFooter)
+
+    -- combat decides the Edit buttons, and its end lets the secure reload button be placed. Only the
+    -- buttons are touched: a full Refresh would drop an open menu, a key capture and the radial
+    -- editor's Undo. They wait a frame on the way in: the lockdown may not have begun yet.
+    local function UpdateEditButtons()
+        if not frame:IsShown() then return end
+        local canEdit = S:CanEditFrames() and true or false
+        for _, f in ipairs(used) do
+            local row = f.row
+            if f.edit and row then
+                local real = f.kind ~= "frame" or (row:Get() and row.frame and row.frame() ~= nil)
+                f.edit:SetEnabled(canEdit and real and true or false)
+            end
+        end
+        if page.editMode:IsShown() then page.editMode:SetEnabled(canEdit) end
+    end
+    local combat = CreateFrame("Frame")
+    combat:RegisterEvent("PLAYER_REGEN_ENABLED")
+    combat:RegisterEvent("PLAYER_REGEN_DISABLED")
+    combat:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_ENABLED" then
+            PlaceSecureReload()
+            UpdateEditButtons()
+        else
+            C_Timer.After(0, UpdateEditButtons)
+        end
+    end)
 end
 
 --------------------------------------------------

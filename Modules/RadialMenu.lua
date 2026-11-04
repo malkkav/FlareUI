@@ -378,7 +378,7 @@ ACTIONS.subradial = function(entry, depth, seen)
         { children = children, childIndex = 1, radialName = data.name, radialID = id }
 end
 
--- nil when unavailable (uncollected mount, missing item...): the radial closes up around it
+-- nil when unavailable (unknown spell, uncached item, emptied sub-radial...): the radial closes up around it
 local UNKNOWN_ICON = 134400
 
 function ResolveEntry(entry, depth, seen)
@@ -562,7 +562,7 @@ end
 -- Cooldown swipe and usable tint for what a button fires now. Spell cooldowns go through a duration
 -- object (works when secret, GCD left out); anything unreadable looks usable.
 local function Readable(value)
-    return value ~= nil and canaccessvalue(value)
+    return canaccessvalue(value) and value ~= nil
 end
 
 local function ApplyButtonState(button, info)
@@ -1042,9 +1042,8 @@ function CloseRadial()
     WatchButtonStates(false)
     -- for closes other than the secure release; in combat PLAYER_REGEN_ENABLED does it
     if wheel and not InCombatLockdown() then wheel:Hide() end
-    -- The released button keeps its light while the radial fades out, as the ping wheel's does; the
-    -- next layout clears it.
-    -- outside the editor the released button stays lit while fading out; the next layout clears it
+    -- outside the editor the released button stays lit while fading out, as the ping wheel's does;
+    -- the next layout clears it
     if previewID then
         if selectedIndex and buttons[selectedIndex] then SetButtonSelected(buttons[selectedIndex], false) end
         RM:LightSlice(nil)
@@ -1232,7 +1231,7 @@ local CLICK_SNIPPET = [[
     if down then
         -- an extra keybind clicks with its radial's id as the button; the main one with LeftButton
         local id = button
-        if (control:GetAttribute(id .. "-count") or 0) < 1 then id = control:GetAttribute("flare-assigned") end
+        if id == "LeftButton" then id = control:GetAttribute("flare-assigned") end
         local toggle = control:GetAttribute("flare-toggle")
         if toggle and MODE == "click" and ROOT == id then
             FIRE = control:RunAttribute("flare-aimed")
@@ -1244,7 +1243,8 @@ local CLICK_SNIPPET = [[
         control:RunAttribute("flare-closepad", true)
         for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do self:SetAttribute(key, nil) end
         if toggle then
-            control:RunAttribute("flare-openclick", id)
+            -- nothing to open: the art of the radial just closed quietly goes too
+            if not control:RunAttribute("flare-openclick", id) then control:CallMethod("OnSecureClose") end
             return false
         end
         ACTIVE, MODE = id, "hold"
@@ -1346,7 +1346,8 @@ local MACRO_SNIPPET = [[
     end
     control:RunAttribute("flare-closeclick", true)
     control:RunAttribute("flare-closepad", true)
-    control:RunAttribute("flare-openclick", id)
+    -- nothing to open: the art of the radial just closed quietly goes too
+    if not control:RunAttribute("flare-openclick", id) then control:CallMethod("OnSecureClose") end
     return false
 ]]
 

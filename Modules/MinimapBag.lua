@@ -40,7 +40,7 @@ hiddenParent:Hide()
 local entries = {}            -- rebuilt on every open
 local buttons = {}            -- the bag's own icon buttons (pool)
 local adopted = {}            -- other addons' buttons moved into the bag: frame -> true
-local parked = {}             -- parked LibDBIcon buttons: frame -> old parent
+local parked = {}             -- parked LibDBIcon buttons: frame -> true
 local cells = {}              -- index -> frame shown in that cell
 local catchers = {}           -- drag handles over the cells (pool)
 local drag                    -- { from = index, frame = frame }
@@ -68,7 +68,7 @@ local function LibDataBroker() return LibStub and LibStub("LibDataBroker-1.1", t
 -- A LibDBIcon button off the minimap, without touching LibDBIcon's settings
 local function ParkIcon(frame)
     if not frame or parked[frame] then return end
-    parked[frame] = frame:GetParent() or Minimap
+    parked[frame] = true
     frame:SetParent(hiddenParent)
 end
 
@@ -205,7 +205,8 @@ local function CollectEntries()
         end
     end
 
-    -- other addons' buttons; a flood of them is some addon's pins, so none are taken
+    -- other addons' buttons; a flood of them, hidden ones included, is some addon's pins, so none are
+    -- taken. One its addon or player has hidden waits on the minimap until it's shown
     local found = {}
     for _, parent in ipairs({ Minimap, MinimapCluster }) do
         for _, child in ipairs({ parent:GetChildren() }) do
@@ -213,12 +214,17 @@ local function CollectEntries()
         end
     end
     if #found <= C.MAX_FOREIGN then
-        for _, child in ipairs(found) do adopted[child] = true end
+        for _, child in ipairs(found) do
+            if child:IsShown() then adopted[child] = true end
+        end
     end
     for frame in pairs(adopted) do
-        local label = FrameLabel(frame)
-        entries[#entries + 1] = { kind = "frame", name = frame:GetName(), label = label, frame = frame }
-        seen[label:lower()] = true
+        -- one its addon has hidden since gets no cell (the panel's being hidden doesn't count)
+        if frame:IsShown() then
+            local label = FrameLabel(frame)
+            entries[#entries + 1] = { kind = "frame", name = frame:GetName(), label = label, frame = frame }
+            seen[label:lower()] = true
+        end
     end
 
     local compartment = AddonCompartmentFrame
@@ -359,15 +365,30 @@ end
 local function AnchorPanel()
     local badge = MinimapCluster and MinimapCluster.DielFrame
     if not badge then return end
+    -- the badge's own units (its scale and Edit Mode's) to UIParent's
     local x, y = badge:GetCenter()
-    local right = x and x > UIParent:GetWidth() / 2
-    local top = y and y > UIParent:GetHeight() / 2
+    local k = badge:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    local right = x and x * k > UIParent:GetWidth() / 2
+    local top = y and y * k > UIParent:GetHeight() / 2
     panel:ClearAllPoints()
     local v = top and "TOP" or "BOTTOM"
     if right then
         panel:SetPoint(v .. "RIGHT", badge, v .. "LEFT", -C.GAP, 0)
     else
         panel:SetPoint(v .. "LEFT", badge, v .. "RIGHT", C.GAP, 0)
+    end
+end
+
+-- A button another addon moves back onto the minimap goes straight back into the bag
+local function KeepAdoptedInBag()
+    for frame in pairs(adopted) do
+        if not frame.FlareUI_BagHooked then
+            frame.FlareUI_BagHooked = true
+            hooksecurefunc(frame, "SetParent", function(self, parent)
+                if parent ~= panel and adopted[self] and Bag:IsOn() then self:SetParent(panel) end
+            end)
+        end
+        if not (panel and panel:IsShown()) and frame:GetParent() ~= panel then frame:SetParent(panel) end
     end
 end
 
@@ -382,6 +403,7 @@ function Bag:Layout()
     if count == 0 then panel:SetSize(170, 40) end
 
     local used = 0
+    wipe(cells)
     for i, e in ipairs(entries) do
         local col, row = (i - 1) % columns, math.floor((i - 1) / columns)
         local x, y = C.PAD + col * step, -(C.PAD + row * step)
@@ -395,7 +417,6 @@ function Bag:Layout()
             frame:SetFrameLevel(panel:GetFrameLevel() + 2)
             frame:ClearAllPoints()
             frame:SetPoint("CENTER", panel, "TOPLEFT", x + C.BUTTON / 2, y - C.BUTTON / 2)
-            frame:Show()
         else
             used = used + 1
             frame = GetIconButton(used)
@@ -407,27 +428,25 @@ function Bag:Layout()
             frame:SetFrameLevel(panel:GetFrameLevel() + 2)
             frame:Show()
         end
+        cells[i] = frame
     end
     for i = used + 1, #buttons do buttons[i]:Hide(); buttons[i].entry = nil end
     -- a drag handle over each cell; clicks and mouse-over pass through to the icon
-    wipe(cells)
-    for i, e in ipairs(entries) do cells[i] = e.kind == "frame" and e.frame or nil end
-    local iconIndex = 0
-    for i, e in ipairs(entries) do
-        if e.kind ~= "frame" then iconIndex = iconIndex + 1; cells[i] = buttons[iconIndex] end
-    end
     for i = 1, count do
         local catcher = Bag.GetCatcher(i)
-        local col, row = (i - 1) % columns, math.floor((i - 1) / columns)
-        catcher:ClearAllPoints()
-        catcher:SetPoint("TOPLEFT", panel, "TOPLEFT", C.PAD + col * step, -(C.PAD + row * step))
-        catcher:SetSize(C.BUTTON, C.BUTTON)
-        catcher:SetFrameLevel(panel:GetFrameLevel() + 10)
-        catcher:Show()
+        if catcher then
+            local col, row = (i - 1) % columns, math.floor((i - 1) / columns)
+            catcher:ClearAllPoints()
+            catcher:SetPoint("TOPLEFT", panel, "TOPLEFT", C.PAD + col * step, -(C.PAD + row * step))
+            catcher:SetSize(C.BUTTON, C.BUTTON)
+            catcher:SetFrameLevel(panel:GetFrameLevel() + 10)
+            catcher:Show()
+        end
     end
     for i = count + 1, #catchers do catchers[i]:Hide() end
     Bag.columns = columns
     AnchorPanel()
+    KeepAdoptedInBag()
 end
 
 --------------------------------------------------
@@ -492,6 +511,8 @@ end
 function Bag.GetCatcher(i)
     local catcher = catchers[i]
     if catcher then catcher.index = i; return catcher end
+    -- mouse propagation can't be set in combat: no drag handle until the next open
+    if InCombatLockdown() then return nil end
     catcher = CreateFrame("Frame", nil, panel)
     catcher:EnableMouse(true)
     catcher:RegisterForDrag("LeftButton")
@@ -538,7 +559,7 @@ local function CreatePanel()
     panel:SetScript("OnHide", function(self)
         self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
         -- closed mid-drag: the icon returns to its cell next time
-        if drag then drag = nil; self:SetScript("OnUpdate", nil); self:UnregisterEvent("GLOBAL_MOUSE_UP") end
+        if drag then drag = nil; Bag.justDragged = nil; self:SetScript("OnUpdate", nil); self:UnregisterEvent("GLOBAL_MOUSE_UP") end
     end)
     panel:SetScript("OnEvent", function(self, event)
         if event == "GLOBAL_MOUSE_UP" then OnDragStop() return end
@@ -559,19 +580,6 @@ local function CreateBadgeButton()
     badgeButton:SetFrameLevel(badge:GetFrameLevel() + 2)
     badgeButton:RegisterForClicks("LeftButtonUp")
     badgeButton:SetScript("OnClick", function() Bag:Toggle() end)
-end
-
--- A button another addon moves back onto the minimap goes straight back into the bag
-local function KeepAdoptedInBag()
-    for frame in pairs(adopted) do
-        if not frame.FlareUI_BagHooked then
-            frame.FlareUI_BagHooked = true
-            hooksecurefunc(frame, "SetParent", function(self, parent)
-                if parent ~= panel and adopted[self] and Bag:IsOn() then self:SetParent(panel) end
-            end)
-        end
-        if not (panel and panel:IsShown()) and frame:GetParent() ~= panel then frame:SetParent(panel) end
-    end
 end
 
 function Bag:Init()

@@ -77,7 +77,7 @@ BINDING_NAME_FLAREUI_TRACKER = L["Minimize/Expand Tracker"]
 local holder, header, scroll, content, divider, miniButton
 local lines, itemButtons, titleLines = {}, {}, {}
 local state = {
-    rendered = false, pending = false, editMode = false,
+    pending = false, editMode = false,
     context = nil, order = {}, itemsDirty = false, rangeTicker = nil, itemsShown = 0,
     recipes = 0, empty = false, groups = {},
 }
@@ -357,8 +357,7 @@ local function ShowQuestMenu(owner, questID)
         root:CreateButton(focused and TEXT.unfocus or TEXT.focus, function() ToggleFocus(questID) end)
         root:CreateButton(TEXT.openLog, function() OpenQuest(questID) end)
         local share = root:CreateButton(TEXT.share, function()
-            C_QuestLog.SetSelectedQuest(questID)
-            QuestLogPushQuest()
+            QuestUtil.ShareQuest(questID)
         end)
         share:SetEnabled(IsInGroup() and C_QuestLog.IsPushableQuest(questID))
         root:CreateButton(Char().collapsedQuests[questID] and L["Expand"] or L["Collapse"], function() ToggleCollapsed(questID) end)
@@ -563,7 +562,8 @@ local function UpdateItemRanges()
     for _, b in ipairs(itemButtons) do
         if b:IsShown() and b.logIndex then
             -- 0 = out of range, 1 = in range, nil = no range for this item
-            local out = IsQuestLogSpecialItemInRange(b.logIndex) == 0
+            local range = IsQuestLogSpecialItemInRange(b.logIndex)
+            local out = canaccessvalue(range) and range == 0
             if b.out ~= out then
                 b.out = out
                 if out then b.icon:SetVertexColor(1, 0.3, 0.3) else b.icon:SetVertexColor(1, 1, 1) end
@@ -588,7 +588,7 @@ function OT:UpdateItemCooldowns()
     for _, b in ipairs(itemButtons) do
         if b:IsShown() and b.logIndex then
             local start, duration, enable = GetQuestLogSpecialItemCooldown(b.logIndex)
-            if start then CooldownFrame_Set(b.cooldown, start, duration, enable) end
+            if canaccessallvalues(start, duration, enable) and start then CooldownFrame_Set(b.cooldown, start, duration, enable) end
         end
     end
 end
@@ -745,6 +745,7 @@ function OT:Render()
     local empty = true
     if not minimized then
         if (state.editMode or state.preview) and self:CountTracked() == 0 then
+            wipe(state.order)
             for _, s in ipairs(PREVIEW) do
                 if s.zone then
                     if db.zoneHeaders then
@@ -790,7 +791,7 @@ function OT:Render()
                     local collapsed = char.collapsedQuests[q.questID]
                     local complete = C_QuestLog.IsComplete(q.questID)
                     local color = q.questID == focused and C.TITLE_FOCUS or (complete and C.TITLE_DONE or C.TITLE)
-                    local line = AddLine(TitleText(q.level, QuestTags(q), q.title or "?", collapsed), "title", color)
+                    local line = AddLine(TitleText(q.level, db.showTags and QuestTags(q) or "", q.title or "?", collapsed), "title", color)
                     line.questID, line.logIndex = q.questID, q.ftLogIndex
                     titleLines[#titleLines + 1] = line
                     if not collapsed then
@@ -843,19 +844,28 @@ function OT:Render()
     end
     for i = n + 1, #lines do lines[i]:Hide() end
     wipe(state.groups)
+    local underMouse
     for i = 1, n do
         local line = lines[i]
         local key = (line.questID and ("q" .. line.questID)) or (line.recipeID and ("r" .. line.recipeID))
             or (line.zone and ("z" .. i))
         line.group = key
         if key then
+            if line:IsMouseOver() then underMouse = key end
             local g = state.groups[key]
             if not g then g = { first = line }; state.groups[key] = g end
             g.last = line
         end
     end
-    state.shownGroup = nil
-    self:HighlightGroup(nil)
+    -- the quest pointed at keeps its band and tooltip through a redraw (leaving it clears them); once
+    -- it is gone or has moved from under the mouse they go now, as no line will clear them
+    if state.shownGroup and state.shownGroup == underMouse then
+        self:HighlightGroup(state.shownGroup)
+    else
+        if state.shownGroup then GameTooltip:Hide() end
+        state.shownGroup = nil
+        self:HighlightGroup(nil)
+    end
     state.empty = empty
 
     -- size: the header, then the list up to the maximum height (scrolling past it)
@@ -900,7 +910,6 @@ function OT:Render()
         miniButton:SetShown(lone and not hide)
     end
     self:UpdateItemButtons()
-    state.rendered = true
 end
 
 -- A faint band behind every line of the quest pointed at, across the list's width
@@ -942,7 +951,7 @@ function OT:CountTracked()
     local n = 0
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local info = C_QuestLog.GetInfo(i)
-        if info and not info.isHeader and info.questID and info.questID > 0
+        if info and not info.isHeader and not info.isHidden and info.questID and info.questID > 0
                 and C_QuestLog.GetQuestWatchType(info.questID) ~= nil then n = n + 1 end
     end
     return n
@@ -978,7 +987,9 @@ function OT:SetSettingsPreview(on)
 end
 
 function OT:SetMinimized(minimized)
-    Char().minimized = minimized and true or false
+    local char = Char()
+    char.minimized = minimized and true or false
+    char.autoMinimized = nil   -- CheckContext marks its own after this; anything else is the player
     self:Render()
 end
 
@@ -996,7 +1007,9 @@ local function CurrentContext(rules)
     return INSTANCE_CONTEXT[instanceType] or "world"
 end
 
--- Each rule applies once, on the way in
+-- Each rule applies once, on the way in, and opens the tracker again on the way out if the rule is
+-- what closed it. Saved per character, so a /reload in a dungeon still opens it on leaving. A click
+-- or the key takes over: the player's choice stays
 function OT:CheckContext()
     local db = GetDb()
     local rules = db and db.autoMinimize
@@ -1004,7 +1017,15 @@ function OT:CheckContext()
     local context = CurrentContext(rules)
     if context == state.context then return end
     state.context = context
-    if context ~= "world" and rules[context] == "minimize" then self:SetMinimized(true) end
+    local char = Char()
+    if context ~= "world" and rules[context] == "minimize" then
+        if not char.minimized then
+            self:SetMinimized(true)
+            char.autoMinimized = true
+        end
+    elseif char.autoMinimized then
+        self:SetMinimized(false)
+    end
 end
 
 --------------------------------------------------

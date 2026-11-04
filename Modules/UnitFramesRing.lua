@@ -268,7 +268,7 @@ local function UnitDb(unit)
 end
 
 local function Readable(v)
-    if v ~= nil and canaccessvalue(v) then return v end
+    if canaccessvalue(v) then return v end
 end
 
 -- what the ring takes a frame for: its unit (player, target, focus), or a tile's kind (party, boss)
@@ -335,11 +335,7 @@ end
 -- the ring's side (a tile: f.ringSide); Mirror only turns target's and focus's bars here
 function Ring.Side(f)
     if f.ringKind then return f.ringSide or "LEFT" end
-    if f.unit == "player" then return "LEFT" end
-    if f.unit == "target" or f.unit == "focus" then return BLIZZ[f.unit].side end
-    local udb = UnitDb(f.unit)
-    local natural = BLIZZ[f.unit].side
-    return (udb and udb.mirror) and natural or (natural == "LEFT" and "RIGHT" or "LEFT")
+    return BLIZZ[f.unit].side
 end
 
 --------------------------------------------------
@@ -392,7 +388,7 @@ end
 local function Geometry(f)
     local udb = Db(f) or {}
     local H = udb.height or 44
-    local D = udb.ringSize or Ring.DefaultSize(Kind(f), H)
+    local D = udb.ringSize or Ring.DefaultSize(Kind(f))
     local R = D / 2
     local g = { D = D, R = R, side = Ring.Side(f), k = D / BLIZZ[Kind(f)].D }
     if Ring.Plate(f) then
@@ -741,9 +737,9 @@ end
 -- fill direction must be set first
 local function PlaceBar(bar, f, s, flip, slot)
     PlaceOnPlate(bar, f, s, flip, slot[1], slot[2], slot[3], slot[4])
-    -- for the heal and absorb overlays (LayoutIndicators): the colour's insets and the bar's length
+    -- for the heal and absorb overlays (LayoutIndicators): the bar's length
     local length = (f:GetWidth() or 0) - ((slot[1] - PLATE.x0) + (PLATE.x1 - slot[2])) * s
-    bar.FlareUI_PlateInset = { x = 0, y = 0, length = length }
+    bar.FlareUI_PlateInset = { length = length }
     local udb = Db(f)
     local name = udb and udb.texture
     if name and name ~= "" and name ~= "FlareUI Forever" and LSM:IsValid("statusbar", name) then
@@ -814,11 +810,7 @@ local function HidePlate(f)
     f.PlateFrame:Hide()
     if f.Health.bg then f.Health.bg:SetAlpha(1) end
     if f.Power.bg then f.Power.bg:SetAlpha(1) end
-    for _, bar in ipairs({ f.Health, f.Power }) do
-        local tex = bar:GetStatusBarTexture()
-        if tex then tex:SetDesaturated(false) end
-        bar.FlareUI_PlateInset = nil
-    end
+    f.Health.FlareUI_PlateInset, f.Power.FlareUI_PlateInset = nil, nil
 end
 Ring.HidePlate = HidePlate
 
@@ -1037,8 +1029,10 @@ end
 -- ring units (threat fires for every group member); RegisterUnitEvent takes two units, so focus has
 -- a frame of its own.
 do
-    local function OnEvent()
-        for f in pairs(frames) do Ring.Update(f) end
+    local function OnEvent(_, event)
+        -- threat only moves the flash, and fires often in a fight
+        local update = (event == "UNIT_THREAT_SITUATION_UPDATE" or event == "UNIT_THREAT_LIST_UPDATE") and Ring.UpdateThreat or Ring.Update
+        for f in pairs(frames) do update(f) end
     end
     local events, focusEvents = CreateFrame("Frame"), CreateFrame("Frame")
     for _, event in ipairs({ "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_UPDATE_RESTING", "PVP_TIMER_UPDATE" }) do
@@ -1291,11 +1285,8 @@ end
 --------------------------------------------------
 -- 9. EDIT MODE
 --------------------------------------------------
--- Edit Mode's Portrait Size default: the preset's, else from the frame's height
-function Ring.DefaultSize(unit, height)
+-- Portrait Size's default: the preset's
+function Ring.DefaultSize(unit)
     if unit == "party" or unit == "boss" then return TILE_RING_D end
-    local preset = FOREVER[unit] and FOREVER[unit].ringSize
-    if preset then return preset end
-    local udb = UnitDb(unit)
-    return DefaultDiameter(udb and udb.height)
+    return FOREVER[unit] and FOREVER[unit].ringSize
 end

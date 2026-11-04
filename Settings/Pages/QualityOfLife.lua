@@ -16,6 +16,16 @@ local function NameplateAddon()
     return ns.Tweaks and ns.Tweaks.GetNameplateAddon and ns.Tweaks:GetNameplateAddon() and true or false
 end
 
+-- greys the quest badge row too while Questie draws its own nameplate icons
+local function QuestBadgeTaken()
+    return NameplateAddon() or (ns.Tweaks and ns.Tweaks.QuestieHasNameplateIcons and ns.Tweaks:QuestieHasNameplateIcons()) or false
+end
+
+-- greys the /way row: TomTom keeps the command
+local function WayTaken()
+    return ns.Tweaks and ns.Tweaks.TomTomOwnsWay and ns.Tweaks:TomTomOwnsWay() or false
+end
+
 S:Module{
     key = "qol", group = "Tools", order = 20, enabled = "tweaks.enabled",
     tabs = { { key = "gameplay" }, { key = "interface" }, { key = "advanced" } },
@@ -59,7 +69,7 @@ S:Row{
 }
 S:Row{ key = "qol.delete", tab = "gameplay", path = "tweaks.autoDelete", apply = Refresh }
 S:Row{ key = "qol.trainAll", tab = "gameplay", path = "tweaks.trainAll", apply = Refresh }
-S:Row{ key = "qol.way", tab = "gameplay", path = "tweaks.way", reload = true }
+S:Row{ key = "qol.way", tab = "gameplay", path = "tweaks.way", reload = true, disabled = WayTaken }
 S:Row{ key = "qol.mailBook", tab = "gameplay", path = "tweaks.mailBook", apply = Refresh }
 S:Row{ key = "qol.alerts", tab = "gameplay", path = "tweaks.alertSounds" }
 S:Row{ key = "qol.petFood", tab = "gameplay", path = "tweaks.petFood", apply = Refresh }
@@ -67,7 +77,7 @@ S:Row{ key = "qol.skipLoot", tab = "gameplay", path = "tweaks.skipLootConfirm" }
 
 -- INTERFACE --------------------------------------
 S:Row{ key = "qol.npCombo", tab = "interface", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon }
-S:Row{ key = "qol.npQuest", tab = "interface", path = "tweaks.nameplateQuest", apply = Refresh, disabled = NameplateAddon }
+S:Row{ key = "qol.npQuest", tab = "interface", path = "tweaks.nameplateQuest", apply = Refresh, disabled = QuestBadgeTaken }
 -- live when switched on; switching off leaves visible plates' bars wide until Blizzard re-lays
 -- them, so the reload bar offers a reload
 S:Row{ key = "qol.npLevel", tab = "interface", path = "tweaks.nameplateHideLevel", disabled = NameplateAddon,

@@ -71,21 +71,23 @@ local function GetReloadButton()
     reloadButton:SetSize(BUTTON_W, BUTTON_H)
     -- above the dialog's strata, or the toplevel dialog takes the click
     reloadButton:SetFrameStrata("TOOLTIP")
-    -- a mouse click acts on release, a bound key on press
-    reloadButton:RegisterForClicks("AnyUp", "AnyDown")
+    -- mouse and bound key both act on the press, whatever ActionButtonUseKeyDown says. The dialog
+    -- closes on that press, so an action waiting for the release would never come.
+    reloadButton:RegisterForClicks("AnyDown")
+    reloadButton:SetAttribute("useOnKeyDown", true)
     reloadButton:SetAttribute("type", "macro")
-    -- PreClick runs for both halves of a click, so OnAccept is guarded to run once
     reloadButton:SetScript("PreClick", function(self, _, down)
+        if not down then return end
         -- a dialog closed in combat keeps its Enter binding until combat ends (the macro stops
         -- itself in combat): Enter opens the chat, as it would without the dialog
         if not current then
-            if down and InCombatLockdown() and ChatFrameUtil and ChatFrameUtil.OpenChat then ChatFrameUtil.OpenChat(nil) end
+            if InCombatLockdown() and IsKeyDown("ENTER") and ChatFrameUtil and ChatFrameUtil.OpenChat then ChatFrameUtil.OpenChat(nil) end
             return
         end
         if accepted then return end
         -- in combat the macro does nothing: yes takes the combat answer (OnAccept, then the /reload hint)
         if InCombatLockdown() then
-            if down then Answer(true) end
+            Answer(true)
             return
         end
         accepted = true
@@ -104,7 +106,8 @@ local function GetReloadButton()
     return reloadButton
 end
 
--- Released with the dialog, or after combat
+-- Released with the dialog, or after combat: until then it can't hide, so it only goes invisible.
+-- A dialog still up when combat ends was opened in combat and uses its own yes button.
 local releaseWaiter
 local function ReleaseReloadButton()
     if not secureReload then return end
@@ -113,9 +116,10 @@ local function ReleaseReloadButton()
             releaseWaiter = CreateFrame("Frame")
             releaseWaiter:SetScript("OnEvent", function(waiter)
                 waiter:UnregisterEvent("PLAYER_REGEN_ENABLED")
-                if not (frame and frame:IsShown()) then ReleaseReloadButton() end
+                ReleaseReloadButton()
             end)
         end
+        reloadButton:SetAlpha(0)
         releaseWaiter:RegisterEvent("PLAYER_REGEN_ENABLED")
         return
     end
@@ -306,6 +310,7 @@ function ns.ShowDialog(key, textArg, data)
     if placeSecure then
         -- a protected frame cannot anchor to an insecure one: place it on UIParent at the yes button
         local x, y = frame.Button1:GetCenter()
+        reloadButton:SetAlpha(1)
         reloadButton:ClearAllPoints()
         if x and y then
             reloadButton:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)

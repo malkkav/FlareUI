@@ -121,6 +121,9 @@ local function CreateTile(i)
     f:SetScript("OnLeave", Tile.OnLeave)
     Tile.Build(f, unit)
     pcall(f.RegisterUnitEvent, f, "UNIT_TARGETABLE_CHANGED", unit)
+    -- the tile shows the player's threat on this boss: its threat list, and the player's situation
+    pcall(f.RegisterUnitEvent, f, "UNIT_THREAT_LIST_UPDATE", unit)
+    pcall(f.RegisterUnitEvent, f, "UNIT_THREAT_SITUATION_UPDATE", unit, "player")
     tiles[i] = f
     return f
 end
@@ -391,7 +394,7 @@ function BF:ShouldLoad()
     return db and db.enabled and db.boss and db.boss.enabled and Tile and true or false
 end
 
-function BF:OnGlobalEvent(event, unit)
+function BF:OnGlobalEvent(event)
     if event == "PLAYER_REGEN_ENABLED" then
         if pendingLayout then Refresh() end
         return
@@ -403,8 +406,6 @@ function BF:OnGlobalEvent(event, unit)
                 Tile.UpdateTarget(f)
             elseif event == "RAID_TARGET_UPDATE" then
                 Tile.UpdateRaidIcon(f)
-            elseif event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_THREAT_SITUATION_UPDATE" then
-                Tile.UpdateThreat(f)
             else
                 Tile.UpdateAll(f)   -- the bosses changed
             end
@@ -414,7 +415,7 @@ end
 
 local GLOBAL_EVENTS = {
     "INSTANCE_ENCOUNTER_ENGAGE_UNIT", "PLAYER_TARGET_CHANGED", "RAID_TARGET_UPDATE",
-    "UNIT_THREAT_LIST_UPDATE", "UNIT_THREAT_SITUATION_UPDATE", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED",
+    "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED",
 }
 
 function BF:Init()

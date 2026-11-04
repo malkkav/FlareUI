@@ -28,7 +28,7 @@ local function AnyModuleEnabled()
     return false
 end
 
-local function RedButton(text, width, onClick)
+local function Button(text, width, onClick)
     local b = CreateFrame("Button", nil, welcome, "UIPanelButtonTemplate")
     b:SetSize(width, 22)
     b:SetText(text)
@@ -89,9 +89,9 @@ local function Build()
     body:SetSpacing(2)
     body:SetText(TEXT)
 
-    local open = RedButton(L["Open Settings"], 140, OpenSettings)
+    local open = Button(L["Open Settings"], 140, OpenSettings)
     open:SetPoint("BOTTOMRIGHT", welcome, "BOTTOM", -4, 20)
-    local close = RedButton(CLOSE or "Close", 140, function() welcome:Hide() end)
+    local close = Button(CLOSE or "Close", 140, function() welcome:Hide() end)
     close:SetPoint("BOTTOMLEFT", welcome, "BOTTOM", 4, 20)
 end
 

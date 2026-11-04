@@ -191,12 +191,15 @@ local function CreateRadialMacro()
         print("|cffff4040FlareUI:|r " .. (S:Text("rm.macroCreate", "errorMacrosFull") or L["Your macro list is full. Delete one and try again."]))
         return
     end
-    local name = ("FUI " .. data.name):sub(1, 16)
+    -- 16 bytes at most, without splitting a multi-byte letter
+    local full, cut = "FUI " .. data.name, 16
+    while cut < #full and full:byte(cut + 1) >= 128 and full:byte(cut + 1) < 192 do cut = cut - 1 end
+    local name = full:sub(1, cut)
     local index = CreateMacro(name, "INV_MISC_QUESTIONMARK", MacroLine(), true)
     if index then
         PickupMacro(index)
         local done = S:Text("rm.macroCreate", "done") or L["Macro \"{name}\" created and on your cursor. Drop it on a bar."]
-        print("|cff00ccffFlareUI:|r " .. done:gsub("{name}", name))
+        print("|cff00ccffFlareUI:|r " .. done:gsub("{name}", function() return name end))
     end
 end
 S:Row{

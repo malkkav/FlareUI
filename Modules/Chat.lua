@@ -97,6 +97,17 @@ local function IsPopped(chatFrame)
     return chatFrame ~= nil and dock ~= nil and chatFrame ~= dock.primary and not chatFrame.isDocked
 end
 
+-- Every chat window, whisper windows (ChatFrame11 and up) included: for _, cf in Windows() do
+local function NextWindow(names, i)
+    i = i + 1
+    local name = names[i]
+    if name then return i, _G[name] end
+end
+
+local function Windows()
+    return NextWindow, CHAT_FRAMES or {}, 0
+end
+
 -- BetterDate for one format, kept for the last two seconds: every chat line formats a timestamp
 local stampCache = {}
 local function CachedDate(fmt, t)
@@ -113,22 +124,14 @@ local function CachedDate(fmt, t)
     return s
 end
 
+-- Better Timestamps: Blizzard's timestamp in FlareUI's colour, or one added where it has none
 local function GetTimestamp()
-    local db = GetDb()
-    if not db then return "" end
     local format = C_CVar.GetCVar("showTimestamps")
-
-    if format == "none" and not db.betterTimestamps then return "" end
     if format == "none" then format = "%H:%M" end
 
     -- Blizzard's formats end in a space, which belongs outside the brackets
     local timeStr = string_gsub(CachedDate(format, time()), "%s+$", "")
-
-    if db.betterTimestamps then
-        return string_format("%s<%s>|r ", TIMESTAMP_COLOR, timeStr)
-    else
-        return string_format("[%s] ", timeStr)
-    end
+    return string_format("%s<%s>|r ", TIMESTAMP_COLOR, timeStr)
 end
 
 local function GetFontData(fontDB)
@@ -432,7 +435,7 @@ end
 -- One event argument, or nil where it is secret or not the expected type
 local function Arg(args, index, kind)
     local v = args[index]
-    if v ~= nil and canaccessvalue(v) and type(v) == kind then return v end
+    if canaccessvalue(v) and type(v) == kind then return v end
     return nil
 end
 
@@ -456,8 +459,8 @@ end
 
 function Lines.Remember(guid, name, level)
     if not (canaccessvalue(level) and type(level) == "number" and level > 0) then return end
-    if guid and canaccessvalue(guid) and type(guid) == "string" then Store(guid, level) end
-    if name and canaccessvalue(name) and type(name) == "string" then Store(NameKey(name), level) end
+    if canaccessvalue(guid) and type(guid) == "string" then Store(guid, level) end
+    if canaccessvalue(name) and type(name) == "string" then Store(NameKey(name), level) end
 end
 
 function Lines.RememberUnit(unit)
@@ -468,14 +471,15 @@ function Lines.RememberUnit(unit)
     local okG, guid = pcall(UnitGUID, unit)
     local okN, name = pcall(UnitName, unit)
     local okL, level = pcall(UnitLevel, unit)
-    if okL then Lines.Remember(okG and guid or nil, okN and name or nil, level) end
+    -- no truth test on the name or GUID: either can be secret
+    if okL then Lines.Remember(okG and guid, okN and name, level) end
 end
 
 -- The sender's level, from a unit token or from what was seen this session; nil when unknown
 function Lines.LevelFor(guid, sender)
     if guid then
         local ok, unit = pcall(UnitTokenFromGUID, guid)
-        if ok and unit and canaccessvalue(unit) then Lines.RememberUnit(unit) end
+        if ok and canaccessvalue(unit) and unit then Lines.RememberUnit(unit) end
         if Lines.levels[guid] then return Lines.levels[guid] end
     end
     return sender and Lines.levels[NameKey(sender)] or nil
@@ -646,6 +650,11 @@ end
 -- reload or logout inside still restores them.
 local BUBBLE_CVARS = { "chatBubbles", "chatBubblesParty" }
 
+local function RestoreBubbles(global)
+    for cvar, value in pairs(global.hiddenBubbles) do C_CVar.SetCVar(cvar, value) end
+    global.hiddenBubbles = nil
+end
+
 function Chat:UpdateInstanceBubbles()
     local db, global = GetDb(), ns.db and ns.db.global
     if not global then return end
@@ -658,8 +667,7 @@ function Chat:UpdateInstanceBubbles()
         end
         for _, cvar in ipairs(BUBBLE_CVARS) do C_CVar.SetCVar(cvar, "0") end
     elseif saved then
-        for cvar, value in pairs(saved) do C_CVar.SetCVar(cvar, value) end
-        global.hiddenBubbles = nil
+        RestoreBubbles(global)
     end
 end
 
@@ -761,8 +769,7 @@ local headerDrag = { key = nil, header = nil, button = nil, marker = nil, driver
 -- The header's button for key (the volume button is each skin's own)
 local function HeaderButtonOf(header, key)
     if key == "volume" then
-        for i = 1, NUM_CHAT_WINDOWS do
-            local cf = _G["ChatFrame" .. i]
+        for _, cf in Windows() do
             if cf and cf.FlareUI_Skin == header then return cf.FlareUI_VolumeBtn end
         end
         return nil
@@ -853,8 +860,7 @@ local function StopHeaderDrag()
         local at = tIndexOf(order, target)
         table.insert(order, from < to and at + 1 or at, key)
         db.headerOrder = order
-        for i = 1, NUM_CHAT_WINDOWS do
-            local cf = _G["ChatFrame" .. i]
+        for _, cf in Windows() do
             if cf and cf.FlareUI_Skin then Chat:SetupVolumeButton(cf, db) end
         end
         Chat:StyleHeaderButtons()
@@ -1130,7 +1136,9 @@ function Chat:ShowCopyChat(chatFrame)
         end
     end
     f.text = table.concat(lines, "\n")
-    f.title:SetText(L["Copy Chat"] .. ": " .. (chatFrame.name or "") .. "  |cff808080" .. L["Ctrl+C to copy, Esc to close"] .. "|r")
+    -- a whisper window's name can be secret
+    local windowName = canaccessvalue(chatFrame.name) and chatFrame.name or ""
+    f.title:SetText(L["Copy Chat"] .. ": " .. windowName .. "  |cff808080" .. L["Ctrl+C to copy, Esc to close"] .. "|r")
     f.note:SetText(hidden > 0 and L["Some lines are left out: the game keeps them hidden."] or "")
     f.box:SetText(f.text)
     if not f:IsShown() then PlaySound(SOUNDKIT.IG_MAINMENU_OPEN) end
@@ -1244,9 +1252,10 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
     if ns.IsGamepadUI() then return end
 
     MenuUtil.CreateContextMenu(tabButton, function(owner, rootDescription)
-        rootDescription:CreateButton(EDIT_MODE or "Edit Mode", function()
-            if EditModeManagerFrame then ShowUIPanel(EditModeManagerFrame) end
+        local editMode = rootDescription:CreateButton(EDIT_MODE or "Edit Mode", function()
+            if EditModeManagerFrame and not InCombatLockdown() then ShowUIPanel(EditModeManagerFrame) end
         end)
+        editMode:SetEnabled(EditModeManagerFrame ~= nil and EditModeManagerFrame:CanEnterEditMode() and not InCombatLockdown())
 
         rootDescription:CreateButton(RENAME_CHAT_WINDOW, function()
             ns.ShowDialog("FLAREUI_RENAME_CHAT", nil, chatFrame)
@@ -1280,7 +1289,11 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
         end)
 
         rootDescription:CreateButton(L["Filter Settings"], function()
-            if ChatConfigFrame then ShowUIPanel(ChatConfigFrame) end
+            if ChatConfigFrame then
+                -- the window the dialog edits, as Blizzard's right click sets it
+                _G.CURRENT_CHAT_FRAME_ID = chatFrame:GetID()
+                ShowUIPanel(ChatConfigFrame)
+            end
         end)
 
         if IsPopped(chatFrame) then
@@ -1424,6 +1437,7 @@ end
 
 -- an unselected tab's text at rest; hovering lifts it to 1
 local TAB_IDLE_ALPHA = 0.6
+local SECRET_TAB_WIDTH = 90   -- Blizzard's own docked width for these tabs
 
 local function CursorX(region)
     return GetCursorPosition() / region:GetEffectiveScale()
@@ -1618,9 +1632,13 @@ function Chat:UpdateCustomTabs(chatFrame, db)
             btn.Text:SetFont(fontPath, fontSize, fontFlags)
             ns.ApplyShadow(btn.Text, db.tabFont)
 
-            local tabText = realTab:GetText() or ("Chat " .. tabID)
+            -- A whisper tab's name can be secret: it is shown but never tested, at a fixed width
+            local tabText = realTab:GetText()
+            local readable = canaccessvalue(tabText)
+            if readable and not tabText then tabText = "Chat " .. tabID end
             btn.Text:SetText(tabText)
-            local w = btn.Text:GetStringWidth() + 14
+            local textWidth = btn.Text:GetStringWidth()
+            local w = (readable and canaccessvalue(textWidth)) and (textWidth + 14) or SECRET_TAB_WIDTH
             btn:SetWidth(w)
             btn.Text:ClearAllPoints()
             btn.Text:SetPoint("CENTER", btn, "CENTER", 0, TAB_TEXT_Y)
@@ -1675,10 +1693,9 @@ function Chat:HideBlizzardTabs()
     end
 
     local gamepad = ns.IsGamepadUI()
-    for i = 1, NUM_CHAT_WINDOWS do
-        local chatFrame = _G["ChatFrame"..i]
-        local tab = _G["ChatFrame"..i.."Tab"]
-        if tab and chatFrame then
+    for _, chatFrame in Windows() do
+        local tab = chatFrame and _G[chatFrame:GetName() .. "Tab"]
+        if tab then
             tab:SetAlpha(0)
             tab:EnableMouse(false)
             if not tab.FlareUI_ModernKilled and not gamepad then
@@ -2129,8 +2146,7 @@ end
 function Chat:RefreshWindows()
     local db = GetDb()
     if not db then return end
-    for i = 1, NUM_CHAT_WINDOWS do
-        local cf = _G["ChatFrame" .. i]
+    for _, cf in Windows() do
         if cf and cf.FlareUI_Skin and not cf:IsForbidden() then
             Chat:SetupVolumeButton(cf, db)
             Chat:UpdateCustomTabs(cf, db)
@@ -2208,8 +2224,6 @@ function Chat:SetChatFrameAlpha(chatFrame, alpha)
     chatFrame.FlareUI_IgnoreAlpha = true
     chatFrame:SetAlpha(alpha)
     chatFrame.FlareUI_IgnoreAlpha = false
-    -- the skin carries the tabs and header buttons
-    if chatFrame.FlareUI_Skin then chatFrame.FlareUI_Skin:SetAlpha(alpha) end
 end
 
 -- true while something keeps the window up: the mouse, a focused edit box, combat, Edit Mode
@@ -2334,8 +2348,7 @@ end
 function Chat:OnCombatStateChange()
     local db = GetDb()
     if not (db and db.enabled and Fades(db) and db.visibility == "combat") then return end
-    for i = 1, NUM_CHAT_WINDOWS do
-        local cf = _G["ChatFrame" .. i]
+    for _, cf in Windows() do
         if cf and cf:IsShown() and not cf:IsForbidden() then
             self:ShowChatFrame(cf, db)
         end
@@ -2345,8 +2358,7 @@ end
 function Chat:RefreshForEditMode()
     local db = GetDb()
     if not db or not db.enabled then return end
-    for i = 1, NUM_CHAT_WINDOWS do
-        local cf = _G["ChatFrame" .. i]
+    for _, cf in Windows() do
         if cf and cf.FlareUI_Skin and not cf:IsForbidden() then
             self:ShowChatFrame(cf, db)
         end
@@ -2431,9 +2443,9 @@ function Chat:Apply(db)
     Chat:KillGeneralDockManager()
     StyleButtonFrame()
 
-    for i = 1, NUM_CHAT_WINDOWS do
-        local frame = _G["ChatFrame" .. i]
-        if frame and not frame:IsForbidden() then
+    -- a whisper window is skinned when first selected (AfterDockTabs), and follows the settings after that
+    for _, frame in Windows() do
+        if frame and not frame:IsForbidden() and (frame.FlareUI_Skin or not frame.isTemporary) then
             Chat:StyleChatFrame(frame, db)
             Chat:StyleEditBox(frame, db)
         end
@@ -2511,6 +2523,20 @@ local function SetupGamepadTabHints()
     end)
 end
 
+-- Runs at login even with Chat off (Core asks before it checks the switch): what FlareUI stored while
+-- it was on goes back, as Init would otherwise never run to restore it.
+function Chat:ShouldLoad()
+    local db, global = GetDb(), ns.db and ns.db.global
+    if global and db and not db.enabled then
+        if global.hiddenBubbles then RestoreBubbles(global) end
+        if global.chatStyleBeforeGamepad then
+            if C_CVar.GetCVar("chatStyle") == "im" then C_CVar.SetCVar("chatStyle", global.chatStyleBeforeGamepad) end
+            global.chatStyleBeforeGamepad = nil
+        end
+    end
+    return true
+end
+
 function Chat:Init()
     Chat:ApplyGamepadChatStyle()
     SetupGamepadTabHints()
@@ -2542,7 +2568,10 @@ function Chat:Init()
         button2 = CANCEL,
         hasEditBox = true,
         maxLetters = 31,
-        editText = function(chatFrame) return chatFrame and chatFrame.name or "" end,
+        editText = function(chatFrame)
+            local name = chatFrame and chatFrame.name
+            return canaccessvalue(name) and name or ""   -- a whisper window's name can be secret
+        end,
         OnAccept = function(chatFrame, text)
             if text and text ~= "" and chatFrame then
                 FCF_SetWindowName(chatFrame, text)
@@ -2608,8 +2637,7 @@ function Chat:Init()
         local function AfterDockTabs()
             local db = GetDb()
             if not db then return end
-            for i = 1, NUM_CHAT_WINDOWS do
-                local cf = _G["ChatFrame" .. i]
+            for _, cf in Windows() do
                 if cf and cf.FlareUI_TabBar then Chat:UpdateCustomTabs(cf, db) end
             end
             Chat:StyleHeaderButtons()
@@ -2630,6 +2658,11 @@ function Chat:Init()
             if db then HandleCombatLog(db) end
             C_Timer.After(0, AfterDockTabs)
         end)
+
+        -- a tab's red flash starts and stops without a dock update
+        local function AfterAlertFlash() C_Timer.After(0, AfterDockTabs) end
+        Chat:SecureHook("FCF_StartAlertFlash", AfterAlertFlash)
+        Chat:SecureHook("FCF_StopAlertFlash", AfterAlertFlash)
 
         -- Blizzard passes the chat frame, not its tab
         Chat:SecureHook("FCFTab_UpdateAlpha", function(chatFrame)
@@ -2714,7 +2747,8 @@ function Chat:SaveHistory()
                     -- secret lines are skipped; canaccessvalue first, before any other test
                     if canaccessvalue(msg) and type(msg) == "string" then
                         if not canaccessallvalues(r, g, b) then r, g, b = 1, 1, 1 end
-                        messages[#messages + 1] = ColorCode(r, g, b) .. msg .. "|r"
+                        -- a restored line has no colour of its own: its code is already in the text
+                        messages[#messages + 1] = r and (ColorCode(r, g, b) .. msg .. "|r") or msg
                     end
                 end
                 if #messages > 0 then history[i] = messages end

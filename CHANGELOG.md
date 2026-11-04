@@ -1,3 +1,34 @@
+# FlareUI 2.5.2
+
+A big launch-day cleanup: dozens of fixes across every module, and FlareUI now gives way to TomTom, Questie and OpenMap where they overlap.
+
+## Changed
+- Works with other addons: TomTom keeps /way, and FlareUI's Map pins on "/way" option greys out while TomTom is loaded. FlareUI's nameplate quest marks step aside while Questie's nameplate icons are on. Move Any Frame leaves the world map to OpenMap.
+- Quest Tracker: Minimize during fights and in instances now opens the tracker again afterwards, unless you minimized or expanded it yourself.
+- Profiles: exported strings only carry what you changed, so they are much shorter. Imports ignore values of the wrong type.
+- Addon Button Bag: buttons their addon has hidden are no longer pulled into the bag.
+- Proc Glow: uses less CPU in fights. Reactive abilities can take up to a tenth of a second to light up.
+
+## Fixed
+- Settings: searching no longer stops with a Lua error, "/way" style searches find results, and profile changes show right away.
+- Reload Now works whatever your Cast on Key Down setting is, and an invisible leftover button no longer opens chat when clicked in combat.
+- Chat: a whisper tab no longer breaks the tab bars when the whisper arrives in an instance. Whisper windows now follow your settings and keep their tab list up to date, tabs flash when a new whisper arrives, Filter Settings opens on the right window, and chat fades evenly.
+- Raid frames: changing the layout while in a raid no longer leaves tiles misplaced or stretched. Main tank frames stop at four, and closing Edit Mode in combat removes the samples right away.
+- Party and boss frames: Only My Debuffs, the aura font and border changes apply without a reload. Party frames show sample buffs as soon as Edit Mode opens, and the portrait dispel spot holds four icons.
+- Unit frames: the PvP crest and level colour follow faction changes, the high level skull updates on level changes, heal and absorb bars follow maximum health changes, and clearing a target plays its sound again. Reset on the Forever Style focus frame no longer shrinks it.
+- Damage Meter: Match Chat Size now works, the settings page no longer touches Blizzard's meter while the module is off, new windows are styled straight away, and hidden meters no longer show themselves at the start of a pull.
+- Quest Tracker: a quest's tooltip and highlight no longer get stuck after the list updates, and Hide When Empty ignores hidden quests.
+- Action bars: turning Status Colours off restores normal icons right away, out of range colours stay on after an icon updates, and #showtooltip macros use their spell's colours. Stop Auto-Add gives the setting back when turned off or when the module is off.
+- Hide options: a hidden bar comes back when you untick its option, also after a visit to Edit Mode. A pet bar shown in combat hides again after it, and changes made in combat apply when it ends.
+- Quality of Life: turning camera or tutorial options off restores your own values. Sync Blizz UI no longer asks for a reload just because the camera moved, and no longer fights Enemy Nameplates in Combat Only.
+- Reset every setting keeps what's needed to restore your game settings, such as enemy nameplates.
+- Tooltips: item quality borders stay on instead of being reset.
+- Radial Menu: an extra key on an empty radial no longer fires the main radial, and switching to an empty radial closes the old one. You can drop spells on occupied rows in the editor, the Spells list hides spells you haven't learned, and a % in a radial's name no longer breaks Create Macro.
+- Minimap: turning the Addon Button Bag off brings back Blizzard's addon compartment. The bag no longer ignores clicks after closing it during a drag, and opens away from the screen edge at any scale.
+- Resource Bars: off-hand and ranged swing bars show after login, and the Five-Second Rule spark follows its option right away.
+- XP Bar: follows the show honor as experience setting right away.
+- A /reload in combat no longer leaves Blizzard's buffs or frames on screen after the fight.
+
 # FlareUI 2.5.1
 
 Copy a whole chat tab, smarter spell rank upgrades, and faded action bars that show when you drag a spell.

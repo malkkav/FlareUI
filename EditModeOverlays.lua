@@ -122,10 +122,9 @@ local function UpdateEye()
     SetEyeFrame(eyeButton:GetNormalTexture(), hidden and EYE_FRAME_CLOSED or EYE_FRAME_OPEN)
 end
 
-local function ToggleEditModeOverlays(state)
+local function ToggleEditModeOverlays()
     if not ns.db or not ns.db.profile then return end
-    if state == nil then state = not ns.db.profile.editModeOverlaysHidden end
-    ns.db.profile.editModeOverlaysHidden = state and true or false
+    ns.db.profile.editModeOverlaysHidden = not ns.db.profile.editModeOverlaysHidden
     ApplyOverlays()
     UpdateEye()
 end

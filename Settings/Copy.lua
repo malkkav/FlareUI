@@ -1026,11 +1026,11 @@ ns.Copy = {
             tip = L["Hold Shift to see a hidden tooltip."],
         },
         ["uf.*.auraMineFirst"] = {
-            desc = L["The same three as the Buffs & Debuffs page, per frame, in their own section right below Auras. Default sorting is Blizzard's: yours first, then the important ones."],
+            desc = L["How this frame's auras line up. Default sorting is Blizzard's: yours first, then the important ones."],
             label = L["Your Auras First"],
         },
         ["uf.*.auraReverse"] = {
-            desc = L["The same three as the Buffs & Debuffs page, per frame, in their own section right below Auras. Default sorting is Blizzard's: yours first, then the important ones."],
+            desc = L["How this frame's auras line up. Default sorting is Blizzard's: yours first, then the important ones."],
             label = L["Reverse Order"],
         },
         ["uf.*.auraSize"] = {
@@ -1038,7 +1038,7 @@ ns.Copy = {
             label = L["Aura size"],
         },
         ["uf.*.auraSort"] = {
-            desc = L["The same three as the Buffs & Debuffs page, per frame, in their own section right below Auras. Default sorting is Blizzard's: yours first, then the important ones."],
+            desc = L["How this frame's auras line up. Default sorting is Blizzard's: yours first, then the important ones."],
             label = L["Sort By"],
         },
         ["uf.*.buffs"] = {
@@ -1143,7 +1143,7 @@ ns.Copy = {
         },
         ["uf.frameStyle"] = {
             choices = { L["FlareUI"], L["Forever"], L["Addon"] },
-            desc = L["The look of the player, target and focus frames.\n* FlareUI: the bronze ring beside FlareUI's bars\n* Forever: Blizzard's bronze frame and portrait ring\n* Addon: plain frames, the most options"],
+            desc = L["The look of the player, target, focus, party and boss frames.\n* FlareUI: the bronze ring beside FlareUI's bars\n* Forever: Blizzard's bronze frame and portrait ring\n* Addon: plain frames, the most options"],
             label = L["Frame style"],
             section = "uf.look",
             tip = L["Each style keeps its own setup."],
@@ -1173,7 +1173,7 @@ ns.Copy = {
             section = "uf.look",
         },
         ["uf.party"] = {
-            desc = L["Your party, in one of two styles:\n* Classic: like the player frame\n* Raid: compact tiles"],
+            desc = L["Your party, in one of two styles:\n* Classic: like the player frame\n* Raid-Style: compact tiles"],
             label = L["Party frames"],
             section = "uf.frames",
             tip = L["Pick the style in Edit Mode."],
@@ -1232,8 +1232,8 @@ ns.Copy = {
             label = L["Sort by role"],
         },
         ["uf.party.style"] = {
-            choices = { L["Classic"], L["Raid"] },
-            desc = L["How party frames look.\n* Classic: like the player frame\n* Raid: compact tiles"],
+            choices = { L["Classic"], L["Raid-Style"] },
+            desc = L["How party frames look.\n* Classic: like the player frame\n* Raid-Style: compact tiles"],
             label = L["Style"],
         },
         ["uf.player.fsr"] = {

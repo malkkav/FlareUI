@@ -252,6 +252,8 @@ end
 
 local function SetupMovableFrame(name)
     if moveSuspended or moveFrames[name] or MOVE_EXCLUDED[name] then return end
+    -- OpenMap places and scales the map itself, and puts it back whenever anything else changes it
+    if name == "WorldMapFrame" and C_AddOns.IsAddOnLoaded("OpenMap") then return end
     local frame = _G[name]
     if type(frame) ~= "table" or not frame.GetObjectType or not frame.StartMoving then return end
     -- a protected window (the spellbook) loaded in combat is set up after it (SetMovable is blocked)
@@ -430,6 +432,15 @@ end
 local SYNC_CVARS = ns.SYNC_CVARS or {}   -- filled in Modules/TweaksCVars.lua
 local syncSaveTimer
 
+-- These drift with play (camera distance, windows left open): copied, but no reason to ask for a reload
+Tweaks.SYNC_NO_RELOAD = {
+    cameraSavedDistance = true, cameraSavedPitch = true, cameraSavedVehicleDistance = true,
+    cameraSavedPetBattleDistance = true, minimapZoom = true, minimapInsideZoom = true,
+    questLogOpen = true, miniWorldMap = true, characterFrameCollapsed = true, closedInfoFrames = true,
+    friendsSmallView = true, friendsViewButtons = true, guildRosterView = true,
+    miniCommunitiesFrame = true, miniDressUpFrame = true,
+}
+
 -- AceEvent keeps one callback per object per event, so the sync has its own object
 local SyncEvents = {}
 LibStub("AceEvent-3.0"):Embed(SyncEvents)
@@ -579,11 +590,15 @@ local function LoadSync()
 
     -- CVars
     local changed = 0
+    local forced = ns.db.global and ns.db.global.forcedCVars
     for name, value in pairs(store.cvars or {}) do
-        if CVarKnown(name) then
+        if name == "nameplateShowEnemies" and forced and forced.combatPlates ~= nil then
+            -- Enemy Nameplates in Combat Only holds the CVar: the source's value is what comes back later
+            forced.combatPlates = tostring(value)
+        elseif CVarKnown(name) then
             local ok, current = pcall(GetCVar, name)
             if ok and tostring(current) ~= tostring(value) then
-                if pcall(SetCVar, name, value) then changed = changed + 1 end
+                if pcall(SetCVar, name, value) and not Tweaks.SYNC_NO_RELOAD[name] then changed = changed + 1 end
             end
         end
     end
@@ -747,21 +762,12 @@ local function InitSyncUI()
     SyncEvents:RegisterEvent("UPDATE_CHAT_WINDOWS", QueueSaveSync)
     SyncEvents:RegisterEvent("UPDATE_FLOATING_CHAT_WINDOWS", QueueSaveSync)
 
-    local started = false
-    local function Start()
-        if started then return end
-        started = true
-        C_Timer.After(3, function()
-            -- a no-op when this character is the source, or when none is set yet
-            RunLoadSync()
-            -- recorded either way, so this character can be nominated as the source later
-            C_Timer.After(1, SaveSync)
-        end)
-    end
-
-    -- PLAYER_ENTERING_WORLD is only a backstop
-    SyncEvents:RegisterEvent("PLAYER_ENTERING_WORLD", Start)
-    Start()
+    C_Timer.After(3, function()
+        -- a no-op when this character is the source, or when none is set yet
+        RunLoadSync()
+        -- the source's first snapshot; with no source yet, this character becomes it
+        C_Timer.After(1, SaveSync)
+    end)
 end
 
 -- Read by the source button in the options
@@ -894,8 +900,8 @@ local ZOOM_STEP = 4.0
 local origZoomIn, origZoomOut
 
 -- CameraZoomIn / Out are replaced (the wheel bindings call the globals; no hook can change the
--- step); the originals come back when the option is off. CVars go back to Blizzard's defaults only
--- when FlareUI changed them (ForcedCVars).
+-- step); the originals come back when the option is off. CVars go back to the player's own values
+-- only when FlareUI changed them (ForcedCVars).
 local function ForcedCVars()
     local global = ns.db and ns.db.global
     if not global then return {} end
@@ -903,15 +909,27 @@ local function ForcedCVars()
     return global.forcedCVars
 end
 
+-- The value to put back; earlier versions stored only true, and put back Blizzard's default
+function Tweaks.StoredCVar(stored, default)
+    if stored == true then return default end
+    return stored
+end
+
+function Tweaks.RestoreTips(stored)
+    local saved = type(stored) == "table" and stored or {}
+    pcall(SetCVar, "showTutorials", saved.tutorials or 1)
+    pcall(SetCVar, "showNPETutorials", saved.npe or 1)
+end
+
 local function ApplyCamera()
     local db = GetDb()
     if not db then return end
     local forced = ForcedCVars()
     if db.maxCameraZoom then
+        forced.maxZoom = forced.maxZoom or GetCVar("cameraDistanceMaxZoomFactor") or true
         pcall(SetCVar, "cameraDistanceMaxZoomFactor", 2.6)
-        forced.maxZoom = true
     elseif forced.maxZoom then
-        pcall(SetCVar, "cameraDistanceMaxZoomFactor", 1.9)
+        pcall(SetCVar, "cameraDistanceMaxZoomFactor", Tweaks.StoredCVar(forced.maxZoom, 1.9))
         forced.maxZoom = nil
     end
     if db.fasterCameraZoom then
@@ -919,12 +937,12 @@ local function ApplyCamera()
         origZoomOut = origZoomOut or _G.CameraZoomOut
         _G.CameraZoomIn = function() origZoomIn(ZOOM_STEP) end
         _G.CameraZoomOut = function() origZoomOut(ZOOM_STEP) end
+        forced.zoomSpeed = forced.zoomSpeed or GetCVar("cameraZoomSpeed") or true
         pcall(SetCVar, "cameraZoomSpeed", 50)
-        forced.zoomSpeed = true
     else
         if origZoomIn then _G.CameraZoomIn, _G.CameraZoomOut = origZoomIn, origZoomOut end
         if forced.zoomSpeed then
-            pcall(SetCVar, "cameraZoomSpeed", 20)
+            pcall(SetCVar, "cameraZoomSpeed", Tweaks.StoredCVar(forced.zoomSpeed, 20))
             forced.zoomSpeed = nil
         end
     end
@@ -1049,6 +1067,7 @@ local function ApplyTips()
     if not db then return end
     local forced = ForcedCVars()
     if db.hideTips then
+        forced.tips = forced.tips or { tutorials = GetCVar("showTutorials"), npe = GetCVar("showNPETutorials") }
         pcall(SetCVar, "showTutorials", 0)
         pcall(SetCVar, "showNPETutorials", 0)
         -- HideAllSystem() with no system only matches system-less tips: close every active one
@@ -1057,10 +1076,8 @@ local function ApplyTips()
             for frame in HelpTip.framePool:EnumerateActive() do open[#open + 1] = frame end
             for _, frame in ipairs(open) do frame:Close() end
         end
-        forced.tips = true
     elseif forced.tips then
-        pcall(SetCVar, "showTutorials", 1)
-        pcall(SetCVar, "showNPETutorials", 1)
+        Tweaks.RestoreTips(forced.tips)
         forced.tips = nil
     end
 end
@@ -1226,6 +1243,14 @@ local questLevelHooked = {}    -- level boxes whose show / hide already re-place
 local questEvents
 local UpdateQuestTag
 
+-- Questie draws its own quest icons on nameplates. Read each time: its option applies live
+function Tweaks:QuestieHasNameplateIcons()
+    local questie = _G.Questie
+    local db = type(questie) == "table" and questie.db
+    local profile = type(db) == "table" and db.profile
+    return type(profile) == "table" and profile.nameplateEnabled == true
+end
+
 -- Width / height of the art, so the tag keeps its shape at any height
 local questTagAspect
 local function QuestTagAspect()
@@ -1283,6 +1308,10 @@ function UpdateQuestTag(unit)
     if not canaccessvalue(unit) then return end
     local plate = C_NamePlate.GetNamePlateForUnit(unit)
     if not plate or plate:IsForbidden() then return end
+    if Tweaks:QuestieHasNameplateIcons() then
+        if questTags[plate] then questTags[plate]:Hide() end
+        return
+    end
     local hostile = UnitCanAttack("player", unit)
     local related = C_QuestLog.UnitIsRelatedToActiveQuest(unit)
     local show = canaccessvalue(hostile) and hostile and canaccessvalue(related) and related
@@ -1388,6 +1417,8 @@ local function ApplyHideLevel(plate)
     if not level or level:IsForbidden() then return end
     local db = GetDb()
     local on = db and db.nameplateHideLevel and not Tweaks:GetNameplateAddon()
+    -- never on this session: Blizzard's plate stays untouched
+    if not on and not levelEvents then return end
     level:SetAlpha(on and 0 or 1)
     if not levelHooked[unitFrame] and type(unitFrame.UpdateAnchors) == "function" then
         levelHooked[unitFrame] = true
@@ -1630,7 +1661,7 @@ end
 
 --------------------------------------------------
 -- 16. /way MAP PINS
--- "/way 52.3 48.1 [note]" pins the current map; "/way Zone Name 52 48" looks the zone up by name.
+-- "/way 52.3 48.1" pins the current map; "/way Zone Name 52 48" looks the zone up by name.
 --------------------------------------------------
 local mapNameCache
 local function GetMapIDByName(targetName)
@@ -1700,9 +1731,14 @@ local function HandleWay(msg)
     print(string.format("|cff00ff00FlareUI:|r " .. L["Pin set for %s at %.1f, %.1f"], mapName, tonumber(xStr), tonumber(yStr)))
 end
 
+-- TomTom keeps /way: two addons on one slash command means either could win
+function Tweaks:TomTomOwnsWay()
+    return C_AddOns.IsAddOnLoaded("TomTom")
+end
+
 local function InitWay()
     local db = GetDb()
-    if db and db.way and not SLASH_FLAREWAY1 then
+    if db and db.way and not SLASH_FLAREWAY1 and not Tweaks:TomTomOwnsWay() then
         SLASH_FLAREWAY1 = "/way"
         SlashCmdList["FLAREWAY"] = HandleWay
     end
@@ -1838,6 +1874,8 @@ local PAW = "Interface\\Icons\\Ability_Hunter_BeastTraining"
 local function MarkPetFood(container)
     local db = GetDb()
     local hasPet = db and db.petFood and UnitExists("pet") and select(2, UnitClass("player")) == "HUNTER"
+    -- nothing to mark, and no mark to take back
+    if not hasPet and not Tweaks.petFoodMarked then return end
     for _, button in container:EnumerateValidItems() do
         local mark = button.FlareUI_PetFood
         local itemID = hasPet and C_Container.GetContainerItemID(button:GetBagID(), button:GetID())
@@ -1849,6 +1887,7 @@ local function MarkPetFood(container)
             mark:SetTexture(PAW)
             mark:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             button.FlareUI_PetFood = mark
+            Tweaks.petFoodMarked = true
         end
         if mark then mark:SetShown(food and true or false) end
     end
@@ -1962,12 +2001,9 @@ function Tweaks:ShouldLoad()
     local tweaks = ns.db and ns.db.profile and ns.db.profile.tweaks
     local forced = ns.db and ns.db.global and ns.db.global.forcedCVars
     if tweaks and tweaks.enabled == false and forced and next(forced) and not InCombatLockdown() then
-        if forced.maxZoom then pcall(SetCVar, "cameraDistanceMaxZoomFactor", 1.9) end
-        if forced.zoomSpeed then pcall(SetCVar, "cameraZoomSpeed", 20) end
-        if forced.tips then
-            pcall(SetCVar, "showTutorials", 1)
-            pcall(SetCVar, "showNPETutorials", 1)
-        end
+        if forced.maxZoom then pcall(SetCVar, "cameraDistanceMaxZoomFactor", Tweaks.StoredCVar(forced.maxZoom, 1.9)) end
+        if forced.zoomSpeed then pcall(SetCVar, "cameraZoomSpeed", Tweaks.StoredCVar(forced.zoomSpeed, 20)) end
+        if forced.tips then Tweaks.RestoreTips(forced.tips) end
         if forced.combatPlates ~= nil then pcall(SetCVar, "nameplateShowEnemies", forced.combatPlates) end
         wipe(forced)
     end
