@@ -215,7 +215,13 @@ local function PlaceZone()
 end
 
 local function StyleHeader()
-    _G.MinimapCompassTexture:SetAlpha(0)
+    -- Forever's round art, parked: an alpha of 0 isn't enough, as any addon tinting it with
+    -- SetVertexColor sets the alpha too (BetterBlizzFrames does at every login). Kept there if moved.
+    local compass = _G.MinimapCompassTexture
+    Remove(compass)
+    hooksecurefunc(compass, "SetParent", function(self, parent)
+        if parent ~= hiddenParent then self:SetParent(hiddenParent) end
+    end)
     -- Forever's skin shows a round underlay whenever rotateMinimap is on
     Remove(_G.MinimapCompassTextureUnderlay)
     Remove(MinimapFrame.ZoomIn)

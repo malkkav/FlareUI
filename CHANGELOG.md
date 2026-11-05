@@ -1,3 +1,10 @@
+# FlareUI 2.6.1
+
+A fix for the round minimap showing inside the square one.
+
+## Fixed
+- Minimap: Forever's round map frame no longer shows inside the square minimap when another addon tints it, as BetterBlizzFrames does at every login.
+
 # FlareUI 2.6.0
 
 Pet frames in your frame style, portraits you can click, and the option to hide your player frame while in a party.
