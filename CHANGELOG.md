@@ -1,3 +1,10 @@
+# FlareUI 2.6.2
+
+A fix for errors when changing fonts.
+
+## Fixed
+- Fonts: picking a font that won't load no longer causes errors, as it did on the Buffs & Debuffs page. That text uses Friz Quadrata instead, in every module.
+
 # FlareUI 2.6.1
 
 A fix for the round minimap showing inside the square one.

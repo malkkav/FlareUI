@@ -92,7 +92,7 @@ local function GetFontData(fontDB)
     local size = fontDB.size or 12
     local flags = fontDB.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end
-    local path = LSM:Fetch("font", face) or "Fonts\\FRIZQT__.TTF"
+    local path = ns.GetFontPath(face)
     return path, size, flags
 end
 

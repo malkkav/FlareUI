@@ -787,12 +787,25 @@ function ns.BorderEdgeSize(edgeFile, size)
     return size
 end
 
--- Font path from LibSharedMedia, Friz Quadrata when unknown
+-- A font LibSharedMedia lists may not load (another addon's copy of the library takes any path, and the
+-- file may be gone). SetFont then fails and a new font string is left with no font: reading it back
+-- gives nil, and any text on it throws. Tried once per file, on a font string of its own.
+local fontProbe
+local goodFonts = {}
+local function FontLoads(path)
+    if goodFonts[path] then return true end
+    fontProbe = fontProbe or UIParent:CreateFontString(nil, "BACKGROUND")
+    local ok, loaded = pcall(fontProbe.SetFont, fontProbe, path, 12, "")
+    goodFonts[path] = (ok and loaded) and true or nil
+    return goodFonts[path] or false
+end
+
+-- Font path from LibSharedMedia, Friz Quadrata when unknown or when the file doesn't load
 function ns.GetFontPath(face)
     local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
     if LSM then
         local success, found = pcall(LSM.Fetch, LSM, "font", face, true)
-        if success and found then
+        if success and found and FontLoads(found) then
             return found
         end
     end
