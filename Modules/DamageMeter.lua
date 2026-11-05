@@ -617,7 +617,7 @@ local function ApplyHeaderFonts(window)
 
     local function ApplyToFontString(fs)
         if not fs or not fs.SetFont then return end
-        fs:SetFont(path, size, flags)
+        ns.SetFont(fs, path, size, flags)
         ApplyFontEffects(fs, fontDb)
     end
 
@@ -661,7 +661,7 @@ local function ApplyBarFont(entry, db)
 
     local function ApplyToFS(fs)
         if fs and fs.SetFont then
-            fs:SetFont(path, size, flags)
+            ns.SetFont(fs, path, size, flags)
             ApplyFontEffects(fs, fontDb)
         end
     end
@@ -818,8 +818,8 @@ local function LayoutTabs(window, view)
     local dd = GetWindowTypeDropdown(window)
     local ref = window.FlareUI_DMSkin or GetWindowHeader(window)
     if not (dd and dd.TypeName and ref) then return end
-    local path, size, flags = dd.TypeName:GetFont()
-    if path then view.tab.Text:SetFont(path, size, flags) end
+    local path, size, flags = ns.GetWantedFont(dd.TypeName)
+    if path then ns.SetFont(view.tab.Text, path, size, flags) end
     view.tab.Text:SetShadowOffset(dd.TypeName:GetShadowOffset())
     view.tab.Text:SetShadowColor(dd.TypeName:GetShadowColor())
     view.tab:ClearAllPoints()
@@ -1134,8 +1134,8 @@ local function ApplyLiveTimer(window)
         fs:SetJustifyH("RIGHT")
         liveTimers[window] = fs
     end
-    local path, size, flags = blizzard:GetFont()
-    if path then fs:SetFont(path, size, flags) end
+    local path, size, flags = ns.GetWantedFont(blizzard)
+    if path then ns.SetFont(fs, path, size, flags) end
     fs:SetShadowOffset(blizzard:GetShadowOffset())
     fs:SetShadowColor(blizzard:GetShadowColor())
     fs:SetTextColor(TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, TITLE_COLOR.a or 1)

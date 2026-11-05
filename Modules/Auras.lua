@@ -275,8 +275,8 @@ local function StyleButton(button, look)
     if flags == "NONE" then flags = "" end   -- not a valid client flag
     local countText, durationText = button.FlareUI_Count, button.FlareUI_Duration
     local timerSize = math_max(8, fontSize - 1)
-    countText:SetFont(fontPath, fontSize, flags)
-    durationText:SetFont(fontPath, timerSize, flags)
+    ns.SetFont(countText, fontPath, fontSize, flags)
+    ns.SetFont(durationText, fontPath, timerSize, flags)
     ns.ApplyShadow(countText, look.font)
     ns.ApplyShadow(durationText, look.font)
     countText:ClearAllPoints()
@@ -300,7 +300,7 @@ local function StyleButton(button, look)
         preview.sample = SAMPLE_TIMERS[SAMPLE_TIMERS.next]
     end
     -- a font string takes no text without a font
-    preview:SetFont(fontPath, timerSize, flags)
+    ns.SetFont(preview, fontPath, timerSize, flags)
     preview:SetText(preview.sample)
     local r, g, b, alpha = durationText:GetTextColor()
     if r then preview:SetTextColor(r, g, b, alpha or 1) end

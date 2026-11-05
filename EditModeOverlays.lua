@@ -61,17 +61,43 @@ local SWITCHES = {
     { setter = "SetBuffsAndDebuffsShown", setting = "ShowBuffsAndDebuffs", frames = { "FlareUI_Buffs", "FlareUI_Debuffs" } },
 }
 
+local switchedOnNow = {}   -- switch -> turned on below: Blizzard's checkbox can't show it until a reload
+
 local function ApplySwitch(switch)
     local manager = EditModeManagerFrame
     local enum = Enum.EditModeAccountSetting and Enum.EditModeAccountSetting[switch.setting]
     if not (manager and enum) then return end
     local ok, shown = pcall(manager.GetAccountSettingValueBool, manager, enum)
-    local off = LEM:IsInEditMode() and ok and shown == false or false
+    local off = LEM:IsInEditMode() and ok and shown == false and not switchedOnNow[switch] or false
     for _, name in ipairs(switch.frames) do EditModeHide(_G[name], "blizzard", off) end
 end
 
 local function ApplySwitches()
     for _, switch in ipairs(SWITCHES) do ApplySwitch(switch) end
+end
+
+local function HasFrame(switch)
+    for _, name in ipairs(switch.frames) do
+        if _G[name] then return true end
+    end
+    return false
+end
+
+-- A switch starts on the first time one of its frames runs on this account, so Edit Mode shows the frame.
+-- Once only: unticking it afterwards is the player's choice. Blizzard's setters would taint its raid frame
+-- code, so this goes straight to the saved setting.
+local function TurnOnNewSwitches()
+    local global = ns.db and ns.db.global
+    if not global then return end
+    global.editModeSwitchesSet = global.editModeSwitchesSet or {}
+    for _, switch in ipairs(SWITCHES) do
+        local enum = Enum.EditModeAccountSetting and Enum.EditModeAccountSetting[switch.setting]
+        if enum and not global.editModeSwitchesSet[switch.setting] and HasFrame(switch) then
+            global.editModeSwitchesSet[switch.setting] = true
+            C_EditMode.SetAccountSetting(enum, 1)
+            switchedOnNow[switch] = true
+        end
+    end
 end
 
 --------------------------------------------------
@@ -214,11 +240,19 @@ local function Hook()
     local account = EditModeManagerFrame.AccountSettings
     for _, switch in ipairs(SWITCHES) do
         if account and type(account[switch.setter]) == "function" then
-            hooksecurefunc(account, switch.setter, function() ApplySwitch(switch) end)
+            hooksecurefunc(account, switch.setter, function(_, _, isUserInput)
+                if isUserInput then switchedOnNow[switch] = nil end
+                ApplySwitch(switch)
+            end)
         end
     end
     -- after the modules show their frames for Edit Mode
-    LEM:RegisterCallback("enter", function() C_Timer.After(0, ApplySwitches) end)
+    LEM:RegisterCallback("enter", function()
+        C_Timer.After(0, function()
+            TurnOnNewSwitches()
+            ApplySwitches()
+        end)
+    end)
     LEM:RegisterCallback("exit", ApplySwitches)
     LEM:RegisterCallback("exit", function() HideHint(false) end)
 end
@@ -228,4 +262,6 @@ loader:RegisterEvent("PLAYER_LOGIN")
 loader:SetScript("OnEvent", function()
     Hook()
     if EditModeManagerFrame and EditModeManagerFrame:IsShown() then OnEditModeShown() end
+    -- after the modules have made their frames
+    C_Timer.After(0, TurnOnNewSwitches)
 end)

@@ -32,6 +32,7 @@ local C = {
              "^DugisArrow", "^poiMinimap", "^Spy_Map", "^RareTracker", "^Routes", "^WestPointer",
              "^MapNote", "^Carbonite", "^NxMinimap", "Pin%d*$", "^HereBeDragons" },
     MAX_FOREIGN = 40,         -- more than this many "buttons" means something is drawing pins
+    BUTTON_BORDER_FILE = 136430,   -- Interface\Minimap\MiniMap-TrackingBorder
 }
 
 local panel, badgeButton
@@ -96,18 +97,33 @@ local function IsMapPin(frame)
     return false
 end
 
--- An addon's minimap button: named, unprotected, small, clickable, and not Blizzard's, LibDBIcon's,
--- FlareUI's or a map pin
+-- Wears Blizzard's round minimap button border, the one thing that tells a button with no name from a pin
+local function HasButtonBorder(frame)
+    for _, region in ipairs({ frame:GetRegions() }) do
+        if region:IsObjectType("Texture") then
+            local ok, id = pcall(region.GetTextureFileID, region)
+            if ok and id == C.BUTTON_BORDER_FILE then return true end
+        end
+    end
+    return false
+end
+
+-- An addon's minimap button: named or wearing the button border, unprotected, small, clickable, and not
+-- Blizzard's, LibDBIcon's, FlareUI's or a map pin
 local function IsForeignButton(frame)
     if not (frame and frame.IsObjectType and frame:IsObjectType("Button")) then return false end
     if frame:IsForbidden() or frame:IsProtected() then return false end
     local name = frame:GetName()
-    if not name or IsLibDBIconButton(frame, name) then return false end
-    for _, pattern in ipairs(C.SKIP) do
-        if name:find(pattern) then return false end
-    end
-    for _, pattern in ipairs(C.PINS) do
-        if name:find(pattern) then return false end
+    if name then
+        if IsLibDBIconButton(frame, name) then return false end
+        for _, pattern in ipairs(C.SKIP) do
+            if name:find(pattern) then return false end
+        end
+        for _, pattern in ipairs(C.PINS) do
+            if name:find(pattern) then return false end
+        end
+    elseif not HasButtonBorder(frame) then
+        return false
     end
     if IsMapPin(frame) then return false end
     if not (frame:GetScript("OnClick") or frame:GetScript("OnMouseUp")) then return false end
@@ -115,12 +131,27 @@ local function IsForeignButton(frame)
     return (w or 0) > 8 and (w or 0) <= 48 and (h or 0) > 8 and (h or 0) <= 48
 end
 
--- An adopted button's label: its data object's text, else its frame name
+-- The addon folder that made a button with no name, from where the client says it was created
+local function SourceAddon(frame)
+    local location = frame.GetSourceLocation and frame:GetSourceLocation()
+    return type(location) == "string" and location:match("AddOns[\\/]([^\\/]+)") or nil
+end
+
+-- An adopted button's id in the saved order: its frame name, else the addon that made it
+local function FrameId(frame)
+    return frame:GetName() or SourceAddon(frame) or L["Addon button"]
+end
+
+-- An adopted button's label: its data object's text, else its frame name or its addon's title
 local function FrameLabel(frame)
     local object = type(frame.dataObject) == "table" and frame.dataObject or nil
     local label = object and StripText(object.label or object.text) or ""
     if label ~= "" then return label end
-    return (frame:GetName():gsub("^LibDBIcon10_", ""))
+    local name = frame:GetName()
+    if name then return (name:gsub("^LibDBIcon10_", "")) end
+    local addon = SourceAddon(frame)
+    local title = addon and StripText(C_AddOns.GetAddOnTitle(addon)) or ""
+    return title ~= "" and title or FrameId(frame)
 end
 
 -- Compartment titles ("Lorever") are matched to button names ("LoreverMinimapButton") loosely:
@@ -222,7 +253,7 @@ local function CollectEntries()
         -- one its addon has hidden since gets no cell (the panel's being hidden doesn't count)
         if frame:IsShown() then
             local label = FrameLabel(frame)
-            entries[#entries + 1] = { kind = "frame", name = frame:GetName(), label = label, frame = frame }
+            entries[#entries + 1] = { kind = "frame", name = FrameId(frame), label = label, frame = frame }
             seen[label:lower()] = true
         end
     end

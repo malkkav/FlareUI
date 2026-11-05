@@ -1629,7 +1629,7 @@ function Chat:UpdateCustomTabs(chatFrame, db)
             btn.realTab = realTab
             btn.chatFrame = frame
 
-            btn.Text:SetFont(fontPath, fontSize, fontFlags)
+            ns.SetFont(btn.Text, fontPath, fontSize, fontFlags)
             ns.ApplyShadow(btn.Text, db.tabFont)
 
             -- A whisper tab's name can be secret: it is shown but never tested, at a fixed width
@@ -1720,7 +1720,7 @@ function Chat:UpdateTabFonts(db)
         if tab then
             local fs = tab:GetFontString()
             if fs then
-                fs:SetFont(fontPath, fontSize, fontFlags)
+                ns.SetFont(fs, fontPath, fontSize, fontFlags)
                 ns.ApplyShadow(fs, font)
                 fs:SetTextColor(c.r, c.g, c.b, c.a)
             end
@@ -1894,9 +1894,9 @@ function Chat:StyleEditBox(chatFrame, db)
     EditExtras.Setup(eb)
 
     local path, size, flags = GetFontData(db.editBoxFont)
-    eb:SetFont(path, size, flags)
+    ns.SetFont(eb, path, size, flags)
     ns.ApplyShadow(eb, db.editBoxFont)
-    if eb.header then eb.header:SetFont(path, size, flags); ns.ApplyShadow(eb.header, db.editBoxFont) end
+    if eb.header then ns.SetFont(eb.header, path, size, flags); ns.ApplyShadow(eb.header, db.editBoxFont) end
 end
 
 --------------------------------------------------
@@ -2033,12 +2033,25 @@ function Chat:MessageFont(chatFrame, db)
     return GetFontData(db.chatFont)
 end
 
+-- Increase Line Height: this much over the window's own spacing. Off never touches a window it didn't change.
+local EXTRA_LINE_SPACING = 2
+local function ApplyLineSpacing(chatFrame, db)
+    if db.increaseLineHeight then
+        if not chatFrame.FlareUI_BaseSpacing then chatFrame.FlareUI_BaseSpacing = chatFrame:GetSpacing() or 0 end
+        chatFrame:SetSpacing(chatFrame.FlareUI_BaseSpacing + EXTRA_LINE_SPACING)
+    elseif chatFrame.FlareUI_BaseSpacing then
+        chatFrame:SetSpacing(chatFrame.FlareUI_BaseSpacing)
+        chatFrame.FlareUI_BaseSpacing = nil
+    end
+end
+
 function Chat:ApplyMessageFont(chatFrame, db)
     local path, size, flags = self:MessageFont(chatFrame, db)
     chatFrame.FlareUI_SettingFont = true
     chatFrame:SetFont(path, size, flags)
     chatFrame.FlareUI_SettingFont = false
     ns.ApplyShadow(chatFrame, db.chatFont)
+    ApplyLineSpacing(chatFrame, db)
 end
 
 function Chat:StyleChatFrame(chatFrame, db)

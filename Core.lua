@@ -389,6 +389,7 @@ local defaults = {
 
             copyLinks = true,
             hoverTooltips = true,       -- pointing at a chat link shows its tooltip
+            increaseLineHeight = false, -- a little more space between chat lines
             formatNPC = false,
             formatPlayer = false,
             betterTimestamps = false,
@@ -786,29 +787,59 @@ function ns.BorderEdgeSize(edgeFile, size)
     return size
 end
 
--- A font LibSharedMedia lists may not load (another addon's copy of the library takes any path, and the
--- file may be gone). SetFont then fails and a new font string is left with no font: reading it back
--- gives nil, and any text on it throws. Tried once per file, on a font string of its own.
-local fontProbe
-local goodFonts = {}
-local function FontLoads(path)
-    if goodFonts[path] then return true end
-    fontProbe = fontProbe or UIParent:CreateFontString(nil, "BACKGROUND")
-    local ok, loaded = pcall(fontProbe.SetFont, fontProbe, path, 12, "")
-    goodFonts[path] = (ok and loaded) and true or nil
-    return goodFonts[path] or false
+-- The client's own font for this language: always loaded, and it has the language's letters
+local function BaseFont()
+    return _G.STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
 end
 
--- Font path from LibSharedMedia, Friz Quadrata when unknown or when the file doesn't load
+-- Font path from LibSharedMedia, the client's own font when the name or file is unknown.
+-- A known file need not be loaded yet: use ns.SetFont, which waits for it.
 function ns.GetFontPath(face)
     local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
     if LSM then
         local success, found = pcall(LSM.Fetch, LSM, "font", face, true)
-        if success and found and FontLoads(found) then
+        if success and found and C_UIFileAsset.IsKnownFile(found) then
             return found
         end
     end
-    return "Fonts\\FRIZQT__.TTF"
+    return BaseFont()
+end
+
+-- Most font files load only when a drawn font string asks for them. Until then SetFont answers false
+-- and reads back the old font (a new font string has none, and any text on it throws), and the string
+-- switches once the file is in. So a string gets the base font at the right size and asks again until
+-- the client says yes. A blank or hidden string's request doesn't load the file: never test a font on one.
+local RETRY_SECONDS, RETRY_TICKS = 0.5, 60
+local pendingFonts = setmetatable({}, { __mode = "k" })   -- font string -> what it's waiting for
+local retryTicker, retryTicks
+
+local function RetryFonts()
+    retryTicks = retryTicks + 1
+    for fontString, want in pairs(pendingFonts) do
+        if fontString:SetFont(want.path, want.size, want.flags) ~= false then pendingFonts[fontString] = nil end
+    end
+    if retryTicks >= RETRY_TICKS or not next(pendingFonts) then
+        wipe(pendingFonts)   -- never loaded: the base font stays until the next refresh asks again
+        retryTicker:Cancel()
+        retryTicker = nil
+    end
+end
+
+function ns.SetFont(fontString, path, size, flags)
+    pendingFonts[fontString] = nil
+    if fontString:SetFont(path, size, flags) ~= false then return end
+    fontString:SetFont(BaseFont(), size, flags)
+    fontString:SetFont(path, size, flags)
+    pendingFonts[fontString] = { path = path, size = size, flags = flags }
+    retryTicks = 0
+    retryTicker = retryTicker or C_Timer.NewTicker(RETRY_SECONDS, RetryFonts)
+end
+
+-- The font a string shows or is waiting for, for copying its look to another string
+function ns.GetWantedFont(fontString)
+    local want = pendingFonts[fontString]
+    if want then return want.path, want.size, want.flags end
+    return fontString:GetFont()
 end
 
 function ns.ApplyShadow(fontString, fontConfig)

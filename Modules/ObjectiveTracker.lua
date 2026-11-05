@@ -182,7 +182,7 @@ local function ApplyFont(fontString, cfg, fallbackSize)
     cfg = cfg or {}
     local flags = cfg.flags
     if flags == "NONE" then flags = "" end
-    fontString:SetFont(ns.GetFontPath(cfg.face or "Friz Quadrata TT"), cfg.size or fallbackSize or 12, flags or "")
+    ns.SetFont(fontString, ns.GetFontPath(cfg.face or "Friz Quadrata TT"), cfg.size or fallbackSize or 12, flags or "")
     ns.ApplyShadow(fontString, cfg)
 end
 

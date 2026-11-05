@@ -461,6 +461,11 @@ ns.Copy = {
             section = "ch.formatting",
             tip = L["Off in dungeons, raids and battlegrounds: Blizzard locks chat there."],
         },
+        ["ch.lineHeight"] = {
+            desc = L["A little more space between chat lines."],
+            label = L["Increase line height"],
+            section = "ch.tweaks",
+        },
         ["ch.menu"] = {
             desc = L["The menu with emotes, languages and chat options."],
             label = L["Chat menu"],

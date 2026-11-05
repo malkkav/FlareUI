@@ -1821,7 +1821,7 @@ end
 -- 9. EDIT MODE PREVIEW
 --------------------------------------------------
 local function PreviewColor(class)
-    local c = PREVIEW_CLASS_RGB[class]
+    local c = ns.ClassHealthOverride(class) or PREVIEW_CLASS_RGB[class]
     if c then return c[1], c[2], c[3] end
     local cc = class and C_ClassColor and C_ClassColor.GetClassColor(class)
     if cc then return cc:GetRGB() end

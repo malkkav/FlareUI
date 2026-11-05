@@ -43,9 +43,20 @@ local ASSETS = {
     },
 }
 
+-- Fonts need the alphabets they cover, or LibSharedMedia drops them on every non-Western client
+local LATIN_CYRILLIC = LSM.LOCALE_BIT_western + LSM.LOCALE_BIT_ruRU
+local FONT_ALPHABETS = {
+    ["Asap Condensed"]   = LSM.LOCALE_BIT_western,
+    ["Fira Condensed"]   = LATIN_CYRILLIC,
+    ["Cabin Condensed"]  = LSM.LOCALE_BIT_western,
+    ["Barlow Condensed"] = LSM.LOCALE_BIT_western,
+    ["Roboto Condensed"] = LATIN_CYRILLIC,
+}
+
 for mediaType, entries in pairs(ASSETS) do
     for name, relativePath in pairs(entries) do
-        local ok, err = pcall(LSM.Register, LSM, mediaType, name, MEDIA_PATH .. relativePath)
+        local langMask = mediaType == "font" and FONT_ALPHABETS[name] or nil
+        local ok, err = pcall(LSM.Register, LSM, mediaType, name, MEDIA_PATH .. relativePath, langMask)
         if not ok then
             print(("|cffff0000FlareUI Media:|r could not register %s '%s': %s"):format(mediaType, name, tostring(err)))
         end

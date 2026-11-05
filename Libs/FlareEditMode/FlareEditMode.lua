@@ -103,8 +103,9 @@ local function resetSelection()
 	end
 end
 
--- FlareUI: a frame's own snapper (lib:SetFrameSnapper) runs while it is dragged: a ghost shows
--- where it will land, and dropping it there places it. Nudging with the arrow keys never snaps.
+-- FlareUI: while a frame is dragged a ghost shows where it will land, from its own snapper
+-- (lib:SetFrameSnapper) or else the grid, and dropping it there places it. All of it needs Edit Mode's
+-- Snap to Elements on. Nudging with the arrow keys never snaps.
 local snapPreview
 local function SnapPreview()
 	if snapPreview then return snapPreview end
@@ -129,16 +130,25 @@ local function SnapPreview()
 end
 
 -- the snapper's target: the centre the frame would land on (in its own coordinates, as GetCenter), or nil
+local function snapEnabled()
+	local manager = _G.EditModeManagerFrame
+	return manager and manager.IsSnapEnabled and manager:IsSnapEnabled()
+end
+
 local function snapTarget(frame)
 	local snapper = lib.frameSnappers and lib.frameSnappers[frame]
-	if not snapper then return nil end
+	if not (snapper and snapEnabled()) then return nil end
 	local ok, x, y = pcall(snapper, frame)
 	if ok and x and y then return x, y end
 end
 
+-- the grid's target: filled in below, as snapping sits after the drag code's helpers
+local gridTarget
+
 local function onDragUpdate(self)
 	local preview = SnapPreview()
 	local x, y = snapTarget(self.parent)
+	if not x then x, y = gridTarget(self.parent) end
 	if x then
 		local scale = self.parent:GetEffectiveScale() / UIParent:GetEffectiveScale()
 		preview:SetSize(self.parent:GetWidth() * scale, self.parent:GetHeight() * scale)
@@ -158,9 +168,7 @@ local function onDragStart(self)
 
 	self:RegisterEvent('PLAYER_REGEN_DISABLED')
 	self.parent:StartMoving()
-	if lib.frameSnappers and lib.frameSnappers[self.parent] then
-		self:SetScript('OnUpdate', onDragUpdate)
-	end
+	self:SetScript('OnUpdate', onDragUpdate)
 end
 
 local function normalizePosition(frame)
@@ -268,10 +276,10 @@ local function closestShift(sources, targets, best)
 	return best
 end
 
-local function snapToGrid(frame)
-	local manager = _G.EditModeManagerFrame
+-- the shift (UIParent units, either may be nil) that lands the frame on the grid, or nothing
+local function gridShift(frame)
 	local magnetism = _G.EditModeMagnetismManager
-	if not (manager and magnetism and manager.IsSnapEnabled and manager:IsSnapEnabled()) then return end
+	if not (magnetism and snapEnabled()) then return end
 	local left, right, bottom, top, centerX, centerY = frameSides(frame)
 	if not left then return end
 
@@ -309,14 +317,17 @@ local function snapToGrid(frame)
 		end
 	end
 
-	if bestX.shift or bestY.shift then
-		local scale = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
-		local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
-		if point then
-			frame:ClearAllPoints()
-			frame:SetPoint(point, relativeTo, relativePoint, (x or 0) + (bestX.shift or 0) / scale, (y or 0) + (bestY.shift or 0) / scale)
-		end
-	end
+	return bestX.shift, bestY.shift
+end
+
+-- the centre the frame would land on (its own coordinates, as GetCenter), or nil when nothing's in range
+gridTarget = function(frame)
+	local ok, shiftX, shiftY = pcall(gridShift, frame)
+	if not (ok and (shiftX or shiftY)) then return nil end
+	local x, y = frame:GetCenter()
+	if not x then return nil end
+	local scale = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+	return x + (shiftX or 0) / scale, y + (shiftY or 0) / scale
 end
 
 local function onDragStop(self)
@@ -332,11 +343,10 @@ local function onDragStop(self)
 
 	-- the frame's own snapper wins over the grid
 	local x, y = snapTarget(parent)
+	if not x then x, y = gridTarget(parent) end
 	if x then
 		parent:ClearAllPoints()
 		parent:SetPoint('CENTER', UIParent, 'BOTTOMLEFT', x, y)
-	else
-		pcall(snapToGrid, parent)
 	end
 
 	updatePosition(self)

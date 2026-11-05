@@ -266,7 +266,7 @@ local function UpdateButtonText(button)
     if not db then return end
 
     if button.HotKey then
-        button.HotKey:SetFont(FontArgs(db.hotkeyFont))
+        ns.SetFont(button.HotKey, FontArgs(db.hotkeyFont))
         ns.ApplyShadow(button.HotKey, db.hotkeyFont)
         UpdateHotkeyText(button)
     end
@@ -274,7 +274,7 @@ local function UpdateButtonText(button)
     local count = button.Count
     if count then
         local font = db.countFont
-        count:SetFont(FontArgs(font))
+        ns.SetFont(count, FontArgs(font))
         count:ClearAllPoints()
         count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", COUNT_X, COUNT_Y)
         ns.ApplyShadow(count, font)
@@ -287,7 +287,7 @@ local function UpdateButtonText(button)
         else
             name:Show()
             local font = db.macroFont
-            name:SetFont(FontArgs(font))
+            ns.SetFont(name, FontArgs(font))
             name:ClearAllPoints()
             name:SetPoint("BOTTOM", button, "BOTTOM", MACRO_X, MACRO_Y)
             ns.ApplyShadow(name, font)
@@ -448,7 +448,7 @@ local function StyleZoneAbilityButtonFonts(container)
     for _, button in ipairs({ container:GetChildren() }) do
         local count = button:IsObjectType("Button") and button.Count
         if count then
-            count:SetFont(FontArgs(font))
+            ns.SetFont(count, FontArgs(font))
             ns.ApplyShadow(count, font)
         end
     end

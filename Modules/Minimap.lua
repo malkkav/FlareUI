@@ -81,7 +81,7 @@ local function ApplyFont(fontString, font)
     if not (fontString and font) then return end
     local flags = font.flags or ""
     if flags == "NONE" then flags = "" end
-    fontString:SetFont(ns.GetFontPath(font.face or "Friz Quadrata TT"), font.size or 12, flags)
+    ns.SetFont(fontString, ns.GetFontPath(font.face or "Friz Quadrata TT"), font.size or 12, flags)
     ns.ApplyShadow(fontString, font)
 end
 

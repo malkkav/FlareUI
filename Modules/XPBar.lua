@@ -68,7 +68,7 @@ local function ApplyFont(fontString)
     local fontDb = ns.db and ns.db.profile.actionbars and ns.db.profile.actionbars.hotkeyFont
     local flags = fontDb and fontDb.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end
-    fontString:SetFont(ns.GetFontPath(fontDb and fontDb.face or "Friz Quadrata TT"), fontDb and fontDb.size or 12, flags)
+    ns.SetFont(fontString, ns.GetFontPath(fontDb and fontDb.face or "Friz Quadrata TT"), fontDb and fontDb.size or 12, flags)
     ns.ApplyShadow(fontString, fontDb)
 end
 

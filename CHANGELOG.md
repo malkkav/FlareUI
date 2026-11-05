@@ -1,3 +1,21 @@
+# FlareUI 2.8.0
+
+Your fonts work again, shaman and rogue health bars stand out from their power bars, and Edit Mode shows where a frame will land.
+
+## New
+- Chat: **Increase line height** in Tweaks adds a little space between chat lines. It's off by default.
+- Edit Mode: while you drag a FlareUI frame, a ghost shows where it will land. Snapping needs Snap to Elements on, and the grid counts while Show Grid is on.
+
+## Changed
+- FlareUI palette: shaman health bars are a deeper blue and rogue health bars a deeper yellow, so they're easier to tell from mana and energy. Names, tooltips and the Blizzard palette keep the usual class colours.
+- Edit Mode: the Frames checkboxes for FlareUI's frames turn on once when a frame first runs, this update included, so it's there when you open Edit Mode. The tick may appear after your next reload. Untick one and it stays unticked.
+- Resource Bars: bars only snap to each other when Snap to Elements is on.
+
+## Fixed
+- Fonts: most fonts showed as Friz Quadrata. Any font you pick now loads, and text switches to it as soon as the game has it.
+- Fonts: on non-English clients, text falls back to the game's own font for your language. FlareUI's fonts are now listed on Russian clients too. Fira Condensed and Roboto Condensed have Cyrillic letters; the other three don't.
+- Addon button drawer: minimap buttons with no frame name now go in the drawer, such as Forever++'s.
+
 # FlareUI 2.7.0
 
 More control over how your bars, XP bar and minimap fade, and a sign pointing at the options that were there all along.

@@ -92,6 +92,8 @@ UF.PALETTES = {
         hostile = { 0.87, 0.27, 0.27 }, neutral = { 0.93, 0.78, 0.25 }, friendly = { 0.30, 0.78, 0.30 },
         cast = { 0.80, 0.60, 0.36 }, castNoInterrupt = { 0.55, 0.55, 0.55 }, castChannel = { 0.30, 0.65, 0.90 },
         playerCast = { 0.36, 0.56, 0.78 }, playerChannel = { 0.50, 0.75, 0.88 },
+        -- health bars only, kept apart from these classes' mana and energy bars; names keep the real colours
+        classHealth = { SHAMAN = { 0.00, 0.32, 0.62 }, ROGUE = { 0.90, 0.80, 0.25 } },
     },
     -- Blizzard's own colours (the player's cast bar the same as everyone's)
     blizzard = {
@@ -102,6 +104,12 @@ UF.PALETTES = {
         texture = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Flat-Bright",
     },
 }
+
+-- The palette's own health bar colour for a class, or nil for the class's real colour
+function ns.ClassHealthOverride(classFile)
+    local overrides = UF.PALETTES[UF.palette or "flareui"].classHealth
+    return overrides and overrides[classFile]
+end
 
 function UF.ApplyPalette()
     local db = ns.db and ns.db.profile and ns.db.profile.unitframes
@@ -426,7 +434,7 @@ local function ApplyFont(fontString, fontDb, sizeDelta)
     local path = ns.GetFontPath(fontDb and fontDb.face or "Friz Quadrata TT")
     local flags = fontDb and fontDb.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end
-    fontString:SetFont(path, (fontDb and fontDb.size or 12) + (sizeDelta or 0), flags)
+    ns.SetFont(fontString, path, (fontDb and fontDb.size or 12) + (sizeDelta or 0), flags)
     ns.ApplyShadow(fontString, fontDb)
 end
 
@@ -438,6 +446,8 @@ local function GetHealthColor(unit, classColor)
     if UnitIsPlayer(unit) then
         local _, classFile = UnitClass(unit)
         if canaccessvalue(classFile) and classFile then
+            local override = ns.ClassHealthOverride(classFile)
+            if override then return override[1], override[2], override[3] end
             local color = C_ClassColor.GetClassColor(classFile)
             if color then return color:GetRGB() end
         end
@@ -1294,8 +1304,8 @@ local function InitAuraButton(button, size, isDebuff, unit, font, showTimer, loo
 
     local fontPath = ns.GetFontPath(font and font.face or "Friz Quadrata TT")
     local textSize = math.max(8, math_floor(size * 0.45))
-    button.FlareUI_Count:SetFont(fontPath, textSize, "OUTLINE")
-    button.FlareUI_Duration:SetFont(fontPath, math.max(8, textSize - 1), "OUTLINE")
+    ns.SetFont(button.FlareUI_Count, fontPath, textSize, "OUTLINE")
+    ns.SetFont(button.FlareUI_Duration, fontPath, math.max(8, textSize - 1), "OUTLINE")
     ns.ApplyShadow(button.FlareUI_Count, font)
     ns.ApplyShadow(button.FlareUI_Duration, font)
     -- Blizzard shows and fills the duration text itself, so it is hidden by alpha
