@@ -2166,6 +2166,7 @@ local function BuildTile(f, unit)
 
     f.Health = K.CreateBar(f, level + 1)
     f.Power = K.CreateBar(f, level + 1)
+    if unit == "player" and ns.UnitFrames.AttachFsrSpark then ns.UnitFrames.AttachFsrSpark(f) end
 
     -- levels as on the unit frames: bars +1, overlays +2 / +3, border +4, text +5, inside auras +6
     f.Border = CreateFrame("Frame", nil, f, "BackdropTemplate")

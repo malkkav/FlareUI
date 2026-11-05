@@ -359,7 +359,7 @@ end
 -- 4. DEFAULTS
 --------------------------------------------------
 -- Every element with a Show choice (Modules/Visibility.lua): always shown, in no fade group
-local VISIBILITY_KEYS = { "bar1", "bar2", "bar3", "bar4", "bar5", "bar6", "bar7", "bar8", "pet", "stance", "bags", "menu", "xp" }
+local VISIBILITY_KEYS = { "bar1", "bar2", "bar3", "bar4", "bar5", "bar6", "bar7", "bar8", "pet", "stance", "bags", "menu", "xp", "minimap" }
 
 local function VisibilityElements()
     local t = {}
@@ -480,7 +480,6 @@ local defaults = {
         minimap = {
             enabled = false,
             autoZoom = 5,               -- seconds before zooming back out (0 = off)
-            mapSize = 244,              -- Edit Mode's Map Size: the map alone, in unscaled pixels
             buttonBag = true,           -- the badge opens a bag with every addon's minimap button (MinimapBag.lua)
             clockStats = true,          -- framerate and latency in the clock's tooltip
             -- Fonts tab: the zone name and the clock (Forever's own look by default)
@@ -616,7 +615,7 @@ local defaults = {
             },
             -- Fade Player and Pet: all off = always shown ("fade" turns the set on)
             visibility = {
-                player = { condMouseover = false, condCombat = false, condTarget = false, condHealth = false },
+                player = { condMouseover = false, condCombat = false, condTarget = false, condHealth = false, minAlpha = 0 },
             },
         },
 

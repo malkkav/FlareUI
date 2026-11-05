@@ -93,7 +93,7 @@ ns.Copy = {
         },
         ["ab.bar.group"] = {
             choices = { L["None"], L["1"], L["2"], L["3"], L["4"], L["5"] },
-            desc = L["Bars in the same group:\n* Fade together\n* Share one Show choice"],
+            desc = L["Bars in the same group:\n* Fade together\n* Share their Show Condition, Fade Speed and Min Alpha"],
             label = L["Fade group"],
             tip = L["One group for your bottom bars, another for your side bars."],
         },
@@ -120,12 +120,6 @@ ns.Copy = {
             label = L["Use Edit Mode to set fading and fade groups for each bar"],
             section = "ab.fadeOptions",
             tip = L["Bars 1 to 8, pet, stance, bag bar, micro menu and XP bar all have them."],
-        },
-        ["ab.fadeSpeed"] = {
-            choices = { L["Instant"], L["Fast"], L["Slow"] },
-            desc = L["How fast bars appear and disappear.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
-            label = L["Fade Speed"],
-            section = "ab.fadeOptions",
         },
         ["ab.fcmBar1"] = {
             desc = L["This bar becomes part of a cooldown display:\n* Can't be clicked\n* Shows only by the Show Condition"],
@@ -1155,7 +1149,7 @@ ns.Copy = {
             tip = L["Off: the first name only, everywhere."],
         },
         ["uf.hidePlayer"] = {
-            desc = L["Your player and pet frames fade out while:\n* You're out of combat\n* You have no target\n* You're at full health"],
+            desc = L["How visible your player and pet frames stay while you're out of combat, with no target and at full health.\n* 100%: no fading\n* 0%: invisible"],
             label = L["Fade Player and Pet"],
             section = "uf.look",
             tip = L["Pointing at either frame shows both."],

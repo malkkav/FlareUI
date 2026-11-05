@@ -3,9 +3,9 @@ local L = ns.L
 
 --------------------------------------------------
 -- VISIBILITY
--- Show choices (always | mouseover | combat | target | harm) and fade groups 1-5 for the action
--- bars, bag bar, micro menu and XP bar, set in each element's Edit Mode dialog, plus the Blizzard
--- pieces hidden for good. Fake CM bars follow profile.fcm.show and never the mouse.
+-- Show choices (always | mouseover | combat | target | harm), fade groups 1-5, Fade Speed and Min Alpha
+-- for the action bars, bag bar, micro menu, XP bar and minimap, set in each element's Edit Mode dialog,
+-- plus the Blizzard pieces hidden for good. Fake CM bars follow profile.fcm.show and never the mouse.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -55,6 +55,7 @@ local ELEMENTS = {
     { key = "bags", frame = "BagsBar", system = "Bags" },
     { key = "menu", frame = "MicroMenuContainer", system = "MicroMenu" },
     { key = "xp" },   -- FlareUI's XP bar, its own Edit Mode frame
+    { key = "minimap", frame = "MinimapCluster", needsMinimap = true },   -- with the Minimap module
 }
 local ELEMENT_BY_KEY = {}
 for _, e in ipairs(ELEMENTS) do ELEMENT_BY_KEY[e.key] = e end
@@ -86,9 +87,36 @@ end
 
 local function SetCapAlpha(cap, alpha) cap:SetAlpha(alpha) end
 
+-- The game draws the minimap's player arrow, quest marks and other blips itself, at full strength
+-- whatever the alpha, and has no API for them: only hiding the map removes them. So the map goes once
+-- it has faded right out (the cluster stays, so pointing at it still brings it back), which is why it
+-- has no Min Alpha, and no fade group that could give it one.
+local minimapFadedOut = false
+local function SetMinimapDrawn(alpha)
+    local map = _G.Minimap
+    if not map or (InCombatLockdown() and map:IsProtected()) then return end
+    if alpha <= 0.01 then
+        if map:IsShown() then
+            if not map.FlareUI_FadeHooked then
+                map.FlareUI_FadeHooked = true
+                -- Blizzard may show it again: it stays out until the fade comes back
+                map:HookScript("OnShow", function(self)
+                    if minimapFadedOut then self:Hide() end
+                end)
+            end
+            minimapFadedOut = true
+            map:Hide()
+        end
+    elseif minimapFadedOut then
+        minimapFadedOut = false
+        map:Show()
+    end
+end
+
 local function ApplyElementAlpha(frame, key, alpha)
     frame:SetAlpha(alpha)
     if key == "bar1" then ForEachEndCap(SetCapAlpha, alpha) end
+    if key == "minimap" then SetMinimapDrawn(alpha) end
 end
 
 -- "endcaps" is the two gryphon frames
@@ -103,6 +131,16 @@ end
 
 local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.visibility
+end
+
+local function ActionBarsOn()
+    local ab = ns.db and ns.db.profile and ns.db.profile.actionbars
+    return ab and ab.enabled or false
+end
+
+local function MinimapOn()
+    local mm = ns.db and ns.db.profile and ns.db.profile.minimap
+    return mm and mm.enabled or false
 end
 
 --------------------------------------------------
@@ -137,13 +175,58 @@ function Visibility:SetShow(key, show)
     self:Refresh()
 end
 
--- joining a group adopts the group's choice; leaving one keeps it
-function Visibility:SetGroup(key, group)
-    local cfg = ElementConfig(key)
-    if not cfg then return end
-    if (group or 0) == 0 and (cfg.group or 0) > 0 then cfg.show = self:GetShow(key) end
-    cfg.group = group or 0
+-- The group an element is in, or nil. A group owns its members' Show, Fade Speed and Min Alpha.
+local function ElementGroup(key)
+    local db, cfg = GetDb(), ElementConfig(key)
+    return cfg and cfg.group and cfg.group > 0 and db.groups and db.groups[cfg.group] or nil
+end
+
+-- a setup from before these were per element keeps its one Fade Speed
+function Visibility:GetFadeSpeed(key)
+    local db, owner = GetDb(), ElementGroup(key) or ElementConfig(key)
+    return (owner and owner.fadeSpeed) or (db and db.fadeSpeed) or "instant"
+end
+
+-- in percent
+function Visibility:GetMinAlpha(key)
+    local owner = ElementGroup(key) or ElementConfig(key)
+    return owner and owner.minAlpha or 0
+end
+
+function Visibility:SetElementFade(key, field, value)
+    local owner = ElementGroup(key) or ElementConfig(key)
+    if not owner then return end
+    owner[field] = value
     self:Refresh()
+end
+
+-- anyone else in this group?
+local function GroupHasMembers(group, exceptKey)
+    local db = GetDb()
+    for elementKey, cfg in pairs(db and db.elements or {}) do
+        if elementKey ~= exceptKey and cfg.group == group then return true end
+    end
+    return false
+end
+
+-- Joining a group takes on what's set for it; the first member brings its own choices. Leaving keeps them.
+function Visibility:SetGroup(key, group)
+    local db, cfg = GetDb(), ElementConfig(key)
+    if not (db and cfg) then return end
+    group = group or 0
+    if group == (cfg.group or 0) then return end
+    local show, speed, minAlpha = self:GetShow(key), self:GetFadeSpeed(key), self:GetMinAlpha(key)
+    local target = db.groups and db.groups[group]
+    if group == 0 then
+        target = cfg
+    elseif target and GroupHasMembers(group, key) then
+        target = nil
+    end
+    if target then target.show, target.fadeSpeed, target.minAlpha = show, speed, minAlpha end
+    cfg.group = group
+    self:Refresh()
+    -- the dialog's other rows now show the group's values (after the dropdown's own click)
+    C_Timer.After(0, function() LEM:RefreshOpenSettings() end)
 end
 
 --------------------------------------------------
@@ -241,7 +324,7 @@ end
 
 local function UpdateMicroTips()
     local db = GetDb()
-    local hidden = db and db.hideMicroMenu
+    local hidden = db and db.hideMicroMenu and ActionBarsOn()
     for tip in _G.HelpTip.framePool:EnumerateActive() do
         SetTipMasked(tip, hidden and tip.info and tip.info.system == "MicroButtons" or false)
     end
@@ -318,9 +401,6 @@ Fader.UpdateScript = function(self, elapsed)
     if check then self.updateTimer = 0 end
 
     local hasActiveFades = false
-    local db = GetDb()
-    local speed = ns.FadeTime(db and db.fadeSpeed)
-    local change = speed > 0 and (1 / speed) * elapsed or 1
 
     for groupName, members in pairs(self.groups) do
         if check or self.shows[groupName] == nil then
@@ -340,10 +420,11 @@ Fader.UpdateScript = function(self, elapsed)
 
         for _, data in ipairs(members) do
             local frame = data.frame
-            local targetAlpha = effectiveShow and 1 or 0
+            local targetAlpha = effectiveShow and 1 or data.minAlpha
             local currentAlpha = frame:GetAlpha()
             if math_abs(currentAlpha - targetAlpha) > 0.005 then
                 hasActiveFades = true
+                local change = data.fadeTime > 0 and elapsed / data.fadeTime or 1
                 local newAlpha = (currentAlpha < targetAlpha) and math_min(targetAlpha, currentAlpha + change) or math_max(targetAlpha, currentAlpha - change)
                 ApplyElementAlpha(frame, data.key, newAlpha)
             end
@@ -383,8 +464,20 @@ local function Label(copyKey, fallback)
     return ns.Settings and ns.Settings:Text(copyKey, "label") or fallback
 end
 
+local SPEED_VALUES = { { text = L["Instant"], value = "instant", isRadio = true },
+                       { text = L["Fast"], value = "fast", isRadio = true },
+                       { text = L["Slow"], value = "slow", isRadio = true } }
+
 local function BuildElementSettings(key)
+    -- nothing fades while it's always shown
+    local function AlwaysShown() return Visibility:GetShow(key) == "always" end
     return {
+        {
+            name = Label("ab.bar.group", L["Fade group"]), kind = LEM.SettingType.Dropdown, default = 0,
+            values = Values("ab.bar.group", GROUP_VALUES, function(v) return v == 0 and L["None"] or tostring(v) end),
+            get = function() return Visibility:GetGroup(key) end,
+            set = function(_, value) Visibility:SetGroup(key, value) end,
+        },
         {
             name = Label("ab.bar.show", L["Show"]), kind = LEM.SettingType.Dropdown, default = "always",
             values = Values("ab.bar.show", SHOW_VALUES, function(v) return v end),
@@ -392,23 +485,49 @@ local function BuildElementSettings(key)
             set = function(_, value) Visibility:SetShow(key, value) end,
         },
         {
-            name = Label("ab.bar.group", L["Fade group"]), kind = LEM.SettingType.Dropdown, default = 0,
-            values = Values("ab.bar.group", GROUP_VALUES, function(v) return v == 0 and L["None"] or tostring(v) end),
-            get = function() return Visibility:GetGroup(key) end,
-            set = function(_, value) Visibility:SetGroup(key, value) end,
+            name = L["Fade Speed"], kind = LEM.SettingType.Dropdown, default = "instant", values = SPEED_VALUES,
+            get = function() return Visibility:GetFadeSpeed(key) end,
+            set = function(_, value) Visibility:SetElementFade(key, "fadeSpeed", value) end,
+            hidden = AlwaysShown,
+            desc = L["How fast it appears and disappears.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
+        },
+        {
+            name = L["Min Alpha"], kind = LEM.SettingType.Slider, default = 0, minValue = 0, maxValue = 100, valueStep = 5,
+            formatter = function(value) return value .. "%" end,
+            get = function() return Visibility:GetMinAlpha(key) end,
+            set = function(_, value) Visibility:SetElementFade(key, "minAlpha", value) end,
+            hidden = AlwaysShown,
+            desc = L["How see-through it gets when faded. 0% is invisible."],
         },
     }
 end
 
+-- The rows under a Visibility title that always stays open
+local function WithVisibilityTitle(rows)
+    table_insert(rows, 1, { name = "|cffffd100" .. L["Visibility"] .. "|r", kind = LEM.SettingType.Expander,
+        static = true, hideArrow = true, get = function() return true end, set = function() end })
+    return rows
+end
+
+-- for the Minimap module
+function Visibility:MinimapSettings()
+    local rows = BuildElementSettings("minimap")
+    table.remove(rows, 4)   -- Min Alpha
+    table.remove(rows, 1)   -- Fade group
+    return WithVisibilityTitle(rows)
+end
+
 local systemsAdded, xpAdded = false, false
 local function AddEditModeSettings()
-    if not systemsAdded and Enum.EditModeSystem and Enum.EditModeActionBarSystemIndices then
+    if not systemsAdded and ActionBarsOn() and Enum.EditModeSystem and Enum.EditModeActionBarSystemIndices then
         systemsAdded = true
         for _, e in ipairs(ELEMENTS) do
             local system = e.system and Enum.EditModeSystem[e.system]
             if system then
                 local index = e.index and Enum.EditModeActionBarSystemIndices[e.index]
-                if not e.index or index then LEM:AddSystemSettings(system, BuildElementSettings(e.key), index) end
+                if not e.index or index then
+                    LEM:AddSystemSettings(system, WithVisibilityTitle(BuildElementSettings(e.key)), index)
+                end
             end
         end
     end
@@ -417,17 +536,16 @@ local function AddEditModeSettings()
     local settings = xp and LEM.GetFrameSettings and LEM:GetFrameSettings(xp)
     if settings and not xpAdded then
         xpAdded = true
-        for _, setting in ipairs(BuildElementSettings("xp")) do table_insert(settings, setting) end
+        for _, setting in ipairs(WithVisibilityTitle(BuildElementSettings("xp"))) do table_insert(settings, setting) end
     end
 end
 
 --------------------------------------------------
 -- 8. PUBLIC API
 --------------------------------------------------
--- part of the Action Bars module: loads with it
+-- part of the Action Bars module, and fades the minimap for the Minimap module: each only touches its own
 function Visibility:ShouldLoad()
-    local ab = ns.db and ns.db.profile and ns.db.profile.actionbars
-    return ab and ab.enabled or false
+    return ActionBarsOn() or MinimapOn()
 end
 
 local HIDE_KEYS = {
@@ -450,6 +568,9 @@ function Visibility:Refresh()
     self.refreshPending = nil
     local db = GetDb()
     if not db then return end
+    -- the minimap fades on its own, right out (SetMinimapDrawn), whatever an earlier setup stored
+    local minimapCfg = db.elements and db.elements.minimap
+    if minimapCfg then minimapCfg.group, minimapCfg.minAlpha = 0, nil end
     if not self:ShouldLoad() then
         Fader:SetScript("OnUpdate", nil)
         Fader.updateEnabled = false
@@ -459,7 +580,8 @@ function Visibility:Refresh()
     -- A frame hidden for good stays hidden in Edit Mode, its selection made invisible; lifting the hide
     -- would lose whether the frame comes back when the option goes off
     local inEditMode = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
-    for _, pair in ipairs(HIDE_KEYS) do
+    local barsOn = ActionBarsOn()
+    for _, pair in ipairs(barsOn and HIDE_KEYS or {}) do
         local key, settingKey = pair[1], pair[2]
         local hidden = db[settingKey]
         if inEditMode then
@@ -476,8 +598,10 @@ function Visibility:Refresh()
             ApplySecureHide(key, hidden)
         end
     end
-    SetMicroFlashesBlank(db.hideMicroMenu)
-    UpdateMicroTips()
+    if barsOn then
+        SetMicroFlashesBlank(db.hideMicroMenu)
+        UpdateMicroTips()
+    end
 
     Fader.groups = {}
     Fader.delays = {}
@@ -491,19 +615,23 @@ function Visibility:Refresh()
     for _, e in ipairs(ELEMENTS) do
         local key = e.key
         local frame = GetFrame(key)
-        if frame and frame.GetAlpha then
+        local moduleOn = e.needsMinimap and MinimapOn() or (not e.needsMinimap and barsOn)
+        if moduleOn and frame and frame.GetAlpha then
             local isBar = key:match("^bar[1-8]$") ~= nil
             local fcmBar = isBar and fcm and fcm.bars and fcm.bars[key]
             if fcmBar and fcmBar.enabled then
                 -- Fake CM bars: their own rule, one group, no mouse
-                AddMember("fcm", { key = key, frame = frame, isBar = true, fcm = true, show = fcm.show or "combat" })
+                AddMember("fcm", { key = key, frame = frame, isBar = true, fcm = true, show = fcm.show or "combat",
+                                   fadeTime = ns.FadeTime(self:GetFadeSpeed(key)), minAlpha = 0 })
             else
                 local show = self:GetShow(key)
                 if show == "always" then
                     ApplyElementAlpha(frame, key, 1)
                 else
                     local group = self:GetGroup(key)
-                    AddMember(group > 0 and ("group" .. group) or key, { key = key, frame = frame, isBar = isBar, show = show })
+                    AddMember(group > 0 and ("group" .. group) or key, { key = key, frame = frame, isBar = isBar, show = show,
+                                                                         fadeTime = ns.FadeTime(self:GetFadeSpeed(key)),
+                                                                         minAlpha = self:GetMinAlpha(key) / 100 })
                     Fader.watchesMouseover = true
                 end
             end
@@ -534,7 +662,7 @@ function Visibility:Init()
     -- in Edit Mode, toggling Raid / Party Frames makes Blizzard show the raid manager again
     hooksecurefunc("CompactRaidFrameManager_UpdateShown", function()
         local db = GetDb()
-        if db and db.hideRaidManager and _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown() then
+        if db and db.hideRaidManager and ActionBarsOn() and _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown() then
             local manager = _G.CompactRaidFrameManager
             if manager and manager:IsShown() and not InCombatLockdown() then ns.RawHide(manager) end
         end

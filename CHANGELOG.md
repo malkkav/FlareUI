@@ -1,3 +1,22 @@
+# FlareUI 2.7.0
+
+More control over how your bars, XP bar and minimap fade, and a sign pointing at the options that were there all along.
+
+## New
+- Edit Mode: yes, FlareUI has more options. No, they didn't go anywhere. They've been in Edit Mode this whole time, behind the buttons that say Edit, which take you right to them. Since those buttons turned out to be a little too subtle, the Unit Frames and Action Bars pages now have a banner saying so, with an **Open Edit Mode** button. Edit Mode itself now tells you to click a FlareUI frame the first time you open it. You've got this.
+- Action bars, XP bar: each one now has its own **Fade Speed** and **Min Alpha** in Edit Mode, so a bar can fade to see-through instead of disappearing.
+- Fade groups: **Fade group** is now the top option, and a group shares its Show Condition, Fade Speed and Min Alpha. Pick a group to see what's set for it. A change from any bar in the group applies to all of them.
+- Minimap: it can now fade too, with Show Condition and Fade Speed in Edit Mode. It fades on its own, all the way out, because the game won't let addons fade the player arrow or quest marks.
+- Party frames: your own frame in the party now shows the Five-Second Rule spark when the player frame has it on.
+
+## Changed
+- Fade Player and Pet: now one percentage, below Colour Palette, choosing how far the frames fade. 100% is no fading. If you were already fading, it shows 0%, the same as before.
+- Action bars: Fade Speed moved from the settings page to each bar in Edit Mode. Your old speed stays until you change it.
+- Edit Mode: bar, XP bar and minimap options now sit under a **Visibility** title.
+
+## Removed
+- Minimap: Map Size is gone, as it didn't work well. The map goes back to its default size. Use Edit Mode's Scale to resize the whole minimap.
+
 # FlareUI 2.6.2
 
 A fix for errors when changing fonts.

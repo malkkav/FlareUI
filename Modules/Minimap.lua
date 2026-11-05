@@ -5,7 +5,7 @@ local L = ns.L
 -- MINIMAP
 -- A square minimap in Blizzard's panel frame art, the header (tracking, zone, clock, calendar)
 -- inside its top edge and the day/night badge on its bottom-left corner. Edit Mode's Size (shown as
--- Scale) scales it; its Map Size grows the map alone, the border art and header keeping their size.
+-- Scale) scales it.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -34,8 +34,8 @@ local Cluster = _G.MinimapCluster
 --------------------------------------------------
 -- 3. CONSTANTS
 --------------------------------------------------
--- the square map: Map Size in Edit Mode (minimap.mapSize), unscaled pixels
-local MAP_SIZE      = { DEFAULT = 244, MIN = 160, MAX = 400, STEP = 4 }
+-- the square map and its art, in unscaled pixels
+local MAP_SIZE      = 244
 local FRAME_PAD     = 8                             -- room around the map for the frame art
 -- the map stops this far inside the art, per side: its square corners would show past the art's
 -- angled ones, and the gold line (5 px wide) hides the edge
@@ -75,11 +75,6 @@ local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.minimap
 end
 
-local function MapSize()
-    local db = GetDb()
-    local size = db and tonumber(db.mapSize) or MAP_SIZE.DEFAULT
-    return math.max(MAP_SIZE.MIN, math.min(MAP_SIZE.MAX, size))
-end
 
 -- Settings > Minimap > Fonts: the zone name and the clock
 local function ApplyFont(fontString, font)
@@ -290,7 +285,7 @@ local function PlaceHeader()
     header:ClearAllPoints()
     tracking:SetPoint("TOPLEFT", MM.Frame, "TOPLEFT", HEADER_SIDE, -HEADER_TOP)
     header:SetPoint("LEFT", tracking, "RIGHT", HEADER_GAP, 0)
-    header:SetWidth(MapSize() - 2 * HEADER_SIDE - tracking:GetWidth() - calendar:GetWidth() - 2 * HEADER_GAP)
+    header:SetWidth(MAP_SIZE - 2 * HEADER_SIDE - tracking:GetWidth() - calendar:GetWidth() - 2 * HEADER_GAP)
     calendar:SetPoint("LEFT", header, "RIGHT", HEADER_GAP, 0)
     PlaceZone()
 end
@@ -364,7 +359,7 @@ local sizingCluster = false
 local function SizeCluster()
     if sizingCluster then return end
     sizingCluster = true
-    local size = MapSize() + 2 * FRAME_PAD
+    local size = MAP_SIZE + 2 * FRAME_PAD
     Cluster:SetSize(size, size)
     sizingCluster = false
 end
@@ -387,7 +382,7 @@ function MM:UpdateLayout()
     local scale = EditModeSize()
     if math.abs(Cluster:GetScale() - scale) > 0.001 then ns.SetSystemScale(Cluster, scale) end
 
-    local size = MapSize()
+    local size = MAP_SIZE
     MinimapFrame:SetSize(size - 2 * MAP_CROP, size - 2 * MAP_CROP)
     MinimapFrame:ClearAllPoints()
     MinimapFrame:SetPoint("CENTER", Cluster, "CENTER", 0, 0)
@@ -416,32 +411,14 @@ local function RemoveEditModeSettings()
     for i = #displayInfo, 1, -1 do
         if removed[displayInfo[i].setting] then table_remove(displayInfo, i) end
     end
-    -- Blizzard's Size scales the whole minimap; Map Size is the map's own size
+    -- Blizzard's Size scales the whole minimap
     for _, info in ipairs(displayInfo) do
         if info.setting == Enum.EditModeMinimapSetting.Size then info.name = L["Scale"] end
     end
 end
 
--- Map Size, in a FlareEditMode panel under Blizzard's dialog (one value for every layout)
-local function SetMapSize(_, value)
-    local db = GetDb()
-    if not db or db.mapSize == value then return end
-    db.mapSize = value
-    MM:UpdateLayout()
-    -- the frame's corners and the Edit Mode box move on the next layout pass
-    C_Timer.After(0, function()
-        MM:UpdateTrackerScale()
-        if Cluster.FlareUI_FitBox then Cluster.FlareUI_FitBox(Cluster) end
-    end)
-end
-
 local function AddEditModeSettings()
-    LEM:AddSystemSettings(Enum.EditModeSystem.Minimap, {
-        { name = L["Map Size"], kind = LEM.SettingType.Slider, default = MAP_SIZE.DEFAULT,
-          minValue = MAP_SIZE.MIN, maxValue = MAP_SIZE.MAX, valueStep = MAP_SIZE.STEP,
-          get = MapSize, set = SetMapSize,
-          desc = L["Grows the map itself; the border and header keep their size. Scale grows all of it."] },
-    })
+    if ns.Visibility then LEM:AddSystemSettings(Enum.EditModeSystem.Minimap, ns.Visibility:MinimapSettings()) end
 end
 
 -- The square map can't rotate: rotateMinimap goes off at load and whenever a layout sets it

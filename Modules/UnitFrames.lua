@@ -1694,6 +1694,25 @@ local function MoveFsrSpark(holder)
     holder.Spark:SetPoint("CENTER", bar, "LEFT", x, 0)
 end
 
+-- the spark on a mana bar, hidden until a window runs
+local function NewFsrHolder(bar)
+    local holder = CreateFrame("Frame", nil, bar)
+    holder:SetAllPoints(bar)
+    holder:SetFrameLevel(bar:GetFrameLevel() + 2)
+    holder:Hide()
+    local spark = holder:CreateTexture(nil, "OVERLAY")
+    spark:SetTexture(FSR_SPARK)
+    spark:SetBlendMode("ADD")
+    holder.Spark = spark
+    -- the spark art is mostly glow, so it is taller than the bar
+    holder:SetScript("OnShow", function(self)
+        local height = bar:GetHeight()
+        self.Spark:SetSize(math.max(height, 8), math.max(height * 2.2, 18))
+    end)
+    holder:SetScript("OnUpdate", MoveFsrSpark)
+    return holder
+end
+
 local function CreateFsrSpark(f)
     local bar = f.Power
     -- Mana cost preview without arithmetic (mana can be secret): a clip to the fill's end holds a bar
@@ -1737,21 +1756,13 @@ local function CreateFsrSpark(f)
     end
     f.ManaCost = cost
 
-    local holder = CreateFrame("Frame", nil, bar)
-    holder:SetAllPoints(bar)
-    holder:SetFrameLevel(bar:GetFrameLevel() + 2)
-    holder:Hide()
-    local spark = holder:CreateTexture(nil, "OVERLAY")
-    spark:SetTexture(FSR_SPARK)
-    spark:SetBlendMode("ADD")
-    holder.Spark = spark
-    -- the spark art is mostly glow, so it is taller than the bar
-    holder:SetScript("OnShow", function(self)
-        local height = bar:GetHeight()
-        self.Spark:SetSize(math.max(height, 8), math.max(height * 2.2, 18))
-    end)
-    holder:SetScript("OnUpdate", MoveFsrSpark)
-    f.FsrSpark = holder
+    f.FsrSpark = NewFsrHolder(bar)
+end
+
+-- Your frame in the party shows the spark too, following the player frame's option (PartyFrames.lua)
+function UF.AttachFsrSpark(tile)
+    tile.FsrSpark = NewFsrHolder(tile.Power)
+    UF.fsrTile = tile
 end
 
 local function UpdateFsrSpark()
@@ -1760,8 +1771,10 @@ local function UpdateFsrSpark()
     if not holder then return end
     if fsrStart and GetTime() - fsrStart >= FSR_SECONDS then fsrStart = nil end
     local u = GetUnitDb("player")
-    local on = u and u.fsr == true
-    holder:SetShown(on and fsrStart ~= nil and f.Power:IsShown() and BarShowsMana())
+    local on = u and u.fsr == true and fsrStart ~= nil and BarShowsMana()
+    holder:SetShown(on and f.Power:IsShown())
+    local tile = UF.fsrTile
+    if tile then tile.FsrSpark:SetShown(on and tile.Power:IsShown()) end
 end
 
 local function InitFsrSpark()
@@ -2701,11 +2714,16 @@ local FADE = { interval = 0.1, units = { "player", "pet" } }
 -- Player health is secret even out of combat, so "missing health" can't be compared in Lua: a step
 -- curve turns the health percent into the alpha itself (1 below full, 0 at full)
 local function HealthAlpha()
-    if not FADE.curve then
+    local db = GetDb()
+    local v = db and db.visibility and db.visibility.player
+    -- Min Alpha: how far they fade, at full health
+    local minAlpha = (v and v.minAlpha or 0) / 100
+    if not FADE.curve or FADE.curveMin ~= minAlpha then
         FADE.curve = C_CurveUtil.CreateCurve()
         FADE.curve:SetType(Enum.LuaCurveType.Step)
         FADE.curve:AddPoint(0, 1)
-        FADE.curve:AddPoint(1, 0)
+        FADE.curve:AddPoint(1, minAlpha)
+        FADE.curveMin = minAlpha
     end
     return UnitHealthPercent("player", false, FADE.curve)
 end

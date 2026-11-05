@@ -754,8 +754,12 @@ local function UpdateHeader(module)
             page.banner.button:SetText(button or "")
             page.banner.button:SetShown(button ~= nil)
             page.banner.onClick = onClick
+            page.banner.button:SetEnabled(not module.bannerEditMode or S:CanEditFrames() and true or false)
+            -- a longer text wraps, and the banner grows with it
+            local bannerHeight = math.max(30, math.ceil(page.banner.text:GetStringHeight()) + 12)
+            page.banner:SetHeight(bannerHeight)
             page.banner:Show()
-            height = height + 36
+            height = height + bannerHeight + 6
         end
     end
     -- tabs along the bottom of the header
@@ -1273,10 +1277,13 @@ local function BuildWindow()
     banner:SetPoint("RIGHT")
     banner:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
     banner:SetBackdropColor(0.5, 0.35, 0, 0.35)
-    banner.text = Text(banner, "GameFontNormal")
-    banner.text:SetPoint("LEFT", 8, 0)
     banner.button = CreateFrame("Button", nil, banner, "UIPanelButtonTemplate")
     banner.button:SetSize(110, 22)
+    banner.text = Text(banner, "GameFontNormal")
+    banner.text:SetPoint("LEFT", 8, 0)
+    banner.text:SetWidth(CONTENT_W - 110 - 24)
+    banner.text:SetJustifyH("LEFT")
+    banner.text:SetWordWrap(true)
     banner.button:SetPoint("RIGHT", -4, 0)
     banner.button:SetScript("OnClick", function()
         ns.ButtonSound()
@@ -1403,6 +1410,8 @@ local function BuildWindow()
             end
         end
         if page.editMode:IsShown() then page.editMode:SetEnabled(canEdit) end
+        local module = S.modules[current]
+        if module and module.bannerEditMode then page.banner.button:SetEnabled(canEdit) end
     end
     local combat = CreateFrame("Frame")
     combat:RegisterEvent("PLAYER_REGEN_ENABLED")

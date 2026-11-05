@@ -59,6 +59,8 @@ function expanderMixin:SetExpandedState(expanded)
 end
 
 function expanderMixin:OnMouseUp()
+	-- FlareUI: a section title that always stays open
+	if self.setting.static then return end
 	self:SetExpandedState(not self.expanded)
 end
 

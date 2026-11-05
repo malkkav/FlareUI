@@ -153,11 +153,47 @@ local function CreateEye()
 end
 
 --------------------------------------------------
+-- 3b. FIRST-TIME HINT
+-- Says where the options are, until the first frame is clicked (per account, never again after that)
+--------------------------------------------------
+local hint
+
+local function HintSeen()
+    local global = ns.db and ns.db.global
+    return not global or global.editModeHintSeen
+end
+
+local function HideHint(seen)
+    if hint then hint:Hide() end
+    if seen and ns.db and ns.db.global then ns.db.global.editModeHintSeen = true end
+end
+
+local function ShowHint()
+    -- (the Gamepad UI has its own way round Edit Mode; only with something of FlareUI's to click)
+    local profile = ns.db and ns.db.profile
+    local anyFrame = next(LEM.frameSelections or {}) or (profile and profile.actionbars and profile.actionbars.enabled)
+    if HintSeen() or ns.IsGamepadUI() or not anyFrame then return end
+    if not hint then
+        hint = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+        hint:SetFrameStrata("DIALOG")
+        hint:SetPoint("TOP", UIParent, "TOP", 0, -70)
+        hint:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+        hint:SetBackdropColor(0, 0, 0, 0.75)
+        hint.text = hint:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        hint.text:SetPoint("CENTER")
+        hint.text:SetText(L["Click a FlareUI frame to see its options"])
+        hint:SetSize(hint.text:GetStringWidth() + 32, hint.text:GetStringHeight() + 16)
+    end
+    hint:Show()
+end
+
+--------------------------------------------------
 -- 4. HOOKS
 --------------------------------------------------
 local function OnEditModeShown()
     CreateEye()
     UpdateEye()
+    ShowHint()
     -- after Blizzard and the libraries show their selections
     if IsHidden() then C_Timer.After(0, ApplyOverlays) end
 end
@@ -170,7 +206,10 @@ local function Hook()
     -- a selected system can be re-shown by Blizzard; keep it invisible
     hooksecurefunc(EditModeManagerFrame, "SelectSystem", function()
         if IsHidden() then C_Timer.After(0, ApplyOverlays) end
+        HideHint(true)
     end)
+    -- (nil: the selection was only cleared, as Edit Mode opens)
+    LEM:RegisterCallback("select", function(frame) if frame then HideHint(true) end end)
     -- the Frames checkboxes (a click, or Blizzard setting them as Edit Mode opens)
     local account = EditModeManagerFrame.AccountSettings
     for _, switch in ipairs(SWITCHES) do
@@ -181,6 +220,7 @@ local function Hook()
     -- after the modules show their frames for Edit Mode
     LEM:RegisterCallback("enter", function() C_Timer.After(0, ApplySwitches) end)
     LEM:RegisterCallback("exit", ApplySwitches)
+    LEM:RegisterCallback("exit", function() HideHint(false) end)
 end
 
 local loader = CreateFrame("Frame")

@@ -700,6 +700,18 @@ function lib:RefreshFrameSettings(frame)
 	end
 end
 
+-- FlareUI addition: redraws whichever settings are open, for rows whose values changed from elsewhere
+function lib:RefreshOpenSettings()
+	local extension = internal.extension
+	if extension and extension:IsShown() then
+		extension:Update(extension.systemID, extension.subSystemID)
+	end
+	local dialog = internal.dialog
+	if dialog and dialog:IsShown() and dialog.selection then
+		dialog:Update(dialog.selection)
+	end
+end
+
 --[[ FlareEditMode:AddSystemSettings(_systemID, settings[, subSystemID]_) ![](https://img.shields.io/badge/function-blue)
 Register extra settings for a Blizzard system, it will be displayed in an dialog attached to the system's dialog in the Edit Mode.
 

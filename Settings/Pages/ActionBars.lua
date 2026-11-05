@@ -15,6 +15,11 @@ end
 S:Module{
     key = "ab", group = "HUD", order = 10, enabled = "actionbars.enabled",
     tabs = { { key = "settings" }, { key = "fcm" }, { key = "fonts" } },
+    -- the options that live in Edit Mode are easy to miss: said at the top of the page
+    bannerEditMode = true,
+    banner = function()
+        return L["Most options are in Edit Mode: size, visibility, fading and more. Open it, then click a bar."], L["Open Edit Mode"], function() S:OpenEditMode("ab") end
+    end,
     -- Blizzard's bars: no FlareUI frame to select, so plain Edit Mode
     editMode = function() return nil end,
 }
@@ -59,8 +64,6 @@ Hide("hideRaidManager", "hideRaidManager")
 
 -- Fade Options are per bar in Edit Mode; this row opens it
 S:Row{ key = "ab.fade", kind = "editmode", section = "ab.fadeOptions", sectionTitle = L["Fade Options"] }
-S:Row{ key = "ab.fadeSpeed", kind = "choice", path = "visibility.fadeSpeed", choices = { "instant", "fast", "slow" },
-    section = "ab.fadeOptions", apply = function() if ns.Visibility and ns.Visibility.Refresh then ns.Visibility:Refresh() end end }
 
 -- Fake Cooldown Manager tab: no switch, it is on while any bar is picked
 for i = 1, 8 do
