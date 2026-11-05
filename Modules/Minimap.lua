@@ -37,6 +37,9 @@ local Cluster = _G.MinimapCluster
 -- the square map: Map Size in Edit Mode (minimap.mapSize), unscaled pixels
 local MAP_SIZE      = { DEFAULT = 244, MIN = 160, MAX = 400, STEP = 4 }
 local FRAME_PAD     = 8                             -- room around the map for the frame art
+-- the map stops this far inside the art, per side: its square corners would show past the art's
+-- angled ones, and the gold line (5 px wide) hides the edge
+local MAP_CROP      = 4
 local BORDER_LAYOUT = "ButtonFrameTemplateNoPortrait"   -- Blizzard NineSlice layout
 local LEFT_SHIFT    = -6     -- the layout sits further in on the left
 -- the border art's transparent shadow outside its gold line, per side (measured in game)
@@ -142,7 +145,8 @@ end
 
 local function CreateMapArt()
     local frame = CreateFrame("Frame", nil, MinimapFrame)
-    frame:SetAllPoints(MinimapFrame)
+    frame:SetPoint("TOPLEFT", MinimapFrame, "TOPLEFT", -MAP_CROP, MAP_CROP)
+    frame:SetPoint("BOTTOMRIGHT", MinimapFrame, "BOTTOMRIGHT", MAP_CROP, -MAP_CROP)
     frame:SetFrameLevel(MinimapFrame:GetFrameLevel() + 2)
     NineSliceUtil.ApplyLayout(frame, BorderLayout())
     MM.Frame = frame
@@ -278,7 +282,7 @@ local function PlaceHeader()
     tracking:ClearAllPoints()
     calendar:ClearAllPoints()
     header:ClearAllPoints()
-    tracking:SetPoint("TOPLEFT", MinimapFrame, "TOPLEFT", HEADER_SIDE, -HEADER_TOP)
+    tracking:SetPoint("TOPLEFT", MM.Frame, "TOPLEFT", HEADER_SIDE, -HEADER_TOP)
     header:SetPoint("LEFT", tracking, "RIGHT", HEADER_GAP, 0)
     header:SetWidth(MapSize() - 2 * HEADER_SIDE - tracking:GetWidth() - calendar:GetWidth() - 2 * HEADER_GAP)
     calendar:SetPoint("LEFT", header, "RIGHT", HEADER_GAP, 0)
@@ -290,7 +294,7 @@ local function PlaceIndicators()
     local indicators = Cluster.IndicatorFrame
     Raise(indicators)
     indicators:ClearAllPoints()
-    indicators:SetPoint("TOPLEFT", MinimapFrame, "TOPLEFT", HEADER_SIDE, -(BAND_HEIGHT + MAIL_GAP))
+    indicators:SetPoint("TOPLEFT", MM.Frame, "TOPLEFT", HEADER_SIDE, -(BAND_HEIGHT + MAIL_GAP))
 end
 
 -- One size up and in Blizzard's gold, once per font string
@@ -312,7 +316,7 @@ local function PlaceCoords()
     local size = text and select(2, text:GetFont()) or 10
     coords:SetHeight(size + 2)
     coords:ClearAllPoints()
-    coords:SetPoint("BOTTOM", MinimapFrame, "BOTTOM", 0, COORDS.GAP)
+    coords:SetPoint("BOTTOM", MM.Frame, "BOTTOM", 0, COORDS.GAP)
 end
 
 -- The world map's coordinates in the same style; one anchor per label so the bigger font is not cut
@@ -342,7 +346,7 @@ local function PlaceSun()
     sun:SetScale(SUN_SCALE)
     sun:ClearAllPoints()
     local overhang = SUN_OVERHANG / SUN_SCALE   -- offsets are in the badge's own, scaled units
-    sun:SetPoint("BOTTOMLEFT", MinimapFrame, "BOTTOMLEFT", -overhang, -overhang)
+    sun:SetPoint("BOTTOMLEFT", MM.Frame, "BOTTOMLEFT", -overhang, -overhang)
     Raise(sun, 1)
 end
 
@@ -378,7 +382,7 @@ function MM:UpdateLayout()
     if math.abs(Cluster:GetScale() - scale) > 0.001 then ns.SetSystemScale(Cluster, scale) end
 
     local size = MapSize()
-    MinimapFrame:SetSize(size, size)
+    MinimapFrame:SetSize(size - 2 * MAP_CROP, size - 2 * MAP_CROP)
     MinimapFrame:ClearAllPoints()
     MinimapFrame:SetPoint("CENTER", Cluster, "CENTER", 0, 0)
     ApplySquareMap()

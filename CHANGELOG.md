@@ -1,3 +1,10 @@
+# FlareUI 2.5.4
+
+A clean edge for the minimap.
+
+## Fixed
+- Minimap: the map no longer pokes out past the border art at its right-hand corners.
+
 # FlareUI 2.5.3
 
 A small polish patch for Hide Micro Menu, the hover highlight and Forever Style.
