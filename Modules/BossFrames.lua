@@ -134,7 +134,7 @@ local function Step()
     local below = Tile.LanesExtent(view, Tile.BELOW_PLACES)
     local h = view.height or 50
     if view.castbar then h = h + (view.castHeight or 14) + K.CAST_GAP + K.INSET end
-    return above, above + h + below + (view.spacing or 16)
+    return above, above + h + below + (view.spacing or 14)
 end
 
 -- Fixed places: a boss can appear in combat, when secure frames cannot move. Boss 1 at the top
@@ -148,7 +148,7 @@ local function LayoutHolder()
         f:ClearAllPoints()
         f:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -(above + slot * step))
     end
-    holder:SetSize(view.width or 200, math_max(1, MAX_BOSSES * step - (view.spacing or 16)))
+    holder:SetSize(view.width or 200, math_max(1, MAX_BOSSES * step - (view.spacing or 14)))
 end
 
 --------------------------------------------------
@@ -262,7 +262,7 @@ local function BuildSettings()
           values = { { text = L["Down"], value = "DOWN", isRadio = true }, { text = L["Up"], value = "UP", isRadio = true } },
           desc = L["Which way the frames go from the first boss."],
           get = get("grow"), set = set("grow") },
-        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing or 16, minValue = 0, maxValue = 80, valueStep = 1,
+        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing or 14, minValue = 0, maxValue = 80, valueStep = 1,
           get = get("spacing"), set = set("spacing"),
           desc = L["The gap between the boss frames."] },
     })

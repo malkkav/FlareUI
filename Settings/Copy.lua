@@ -1247,6 +1247,12 @@ ns.Copy = {
             section = "uf.frames",
             tip = L["Each raid size can have its own tile size."],
         },
+        ["uf.simplePet"] = {
+            desc = L["Keeps the plain pet frame in every style.\n* Off: the pet is a small frame of your style, in Forever and FlareUI Style"],
+            label = L["Simple Pet Frame"],
+            section = "uf.look",
+            tip = L["Addon Style always has the plain frame."],
+        },
         ["uf.tof"] = {
             desc = L["Who your focus is targeting."],
             label = L["Target of focus"],

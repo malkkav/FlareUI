@@ -140,6 +140,8 @@ local UNITS = {
     player = {
         key = "Player", label = L["Player"], order = 1, auras = true, portrait = true,
         blizzard = { "PlayerFrame" },
+        -- Hide Player Frame while in party: when the party frames show, so a raid brings it back
+        partyDriver = "[group:raid] show; [group:party] hide; show",
         events = { "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE" },
         globalEvents = { PLAYER_UPDATE_RESTING = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true,
                          PLAYER_FLAGS_CHANGED = "player", PVP_TIMER_UPDATE = true },
@@ -186,6 +188,7 @@ local UNITS = {
         sample = { name = L["Pet"], powerToken = "FOCUS", health = 0.85, power = 0.7 },
         blizzard = { "PetFrame" },
         driver = "[@pet,exists] show; hide",
+        partyDriver = "[group:raid,@pet,exists] show; [group:raid] hide; [group:party] hide; [@pet,exists] show; hide",
         indicators = { heals = true },
         globalEvents = { UNIT_PET = "player" },
     },
@@ -276,6 +279,7 @@ local ICON_UI = {
         waiting  = _G.READY_CHECK_WAITING_TEXTURE or "UI-LFG-PendingMark",
     },
     HAPPINESS_GAP = 4,   -- the happiness face outside the frame
+    HAPPINESS_PLATE_SIZE = 20,   -- ... and its size beside Forever Style's small pet frame
     READY_HOLD = 6,   -- seconds a finished check's results stay up
 }
 
@@ -302,6 +306,16 @@ function ICON_UI.Store(unit, key, create)
         udb.icons[key] = udb.icons[key] or {}
     end
     return udb.icons and udb.icons[key]
+end
+
+-- Where the pet's happiness face sits. The styled pet: always right of the frame on Forever Style;
+-- centre or right on FlareUI Style (right by default). The simple frame: any of the three.
+function ICON_UI.HappinessPlace(unit)
+    local store = ICON_UI.Store(unit, "happiness")
+    local place = store and store.place
+    if not UNITS[unit].styledPet then return place or "CENTER" end
+    if ns.UFRing.PlateOn() or place ~= "CENTER" then return "RIGHT" end
+    return place
 end
 
 -- every icon starts shown except those with default = false
@@ -576,7 +590,7 @@ local function UpdateLevel(f)
         f.Level:SetTextColor(1, 1, 1)
     end
     -- ring styles: the player's level is white, as on Blizzard's frame
-    if unit == "player" and ns.UFRing and ns.UFRing.Applies(f) then f.Level:SetTextColor(1, 1, 1) end
+    if (unit == "player" or unit == "pet") and ns.UFRing and ns.UFRing.Applies(f) then f.Level:SetTextColor(1, 1, 1) end
 end
 
 local function UpdateHealth(f)
@@ -2563,9 +2577,9 @@ local function LayoutFrame(f)
 
     if f.Happiness then
         local size = math.max(RAID_ICON, healthHeight * HAPPINESS_SHARE) - 4
+        if UNITS[f.unit].styledPet and ns.UFRing.PlateOn() then size = ICON_UI.HAPPINESS_PLATE_SIZE end
         -- Happiness Position: mid health bar, or just outside the frame on either side
-        local store = ICON_UI.Store(f.unit, "happiness")
-        local place = store and store.place
+        local place = ICON_UI.HappinessPlace(f.unit)
         if place == "RIGHT" then
             ICON_UI.Place(f.Happiness, size, size, "LEFT", f, "RIGHT", ICON_UI.HAPPINESS_GAP, 0)
         elseif place == "LEFT" then
@@ -2662,11 +2676,15 @@ end
 local function ApplyVisibility(f)
     if InCombatLockdown() then pendingLayout = true return end
     local info = UNITS[f.unit]
+    local party = GetDb() and GetDb().party
+    -- the party frames must be on and showing the player, or there'd be no frame of yours left
+    local hideInParty = info.partyDriver and party and party.enabled and party.showPlayer and party.hidePlayerInParty
+    local driver = hideInParty and info.partyDriver or info.driver
     if LEM:IsInEditMode() then
         UnregisterStateDriver(f, "visibility")
         f:Show()
-    elseif info.driver then
-        RegisterStateDriver(f, "visibility", info.driver)
+    elseif driver then
+        RegisterStateDriver(f, "visibility", driver)
     else
         UnregisterStateDriver(f, "visibility")
         f:Show()
@@ -2696,7 +2714,7 @@ function FADE.ShouldShow()
     if LEM:IsInEditMode() or InCombatLockdown() or UnitExists("target") then return true end
     for _, unit in ipairs(FADE.units) do
         local f = frames[unit]
-        if f and f:IsShown() and f:IsMouseOver() then return true end
+        if f and f:IsShown() and (f:IsMouseOver() or (ns.UFRing and ns.UFRing.MouseOverHit(f))) then return true end
     end
     return false
 end
@@ -3073,6 +3091,7 @@ local function BuildSettings(unit)
         end
     end
     local defaults = ns.defaults and ns.defaults.profile.unitframes.units[unit] or {}
+    if info.styledPet then defaults = ns.UFRing.PetDefaults() end
 
     -- sizes, then the portrait, then the texts. Forever Style's Scale sets ring and height together.
     local function onPlate() return ns.UFRing and ns.UFRing.Plate(frames[unit]) or false end
@@ -3087,7 +3106,7 @@ local function BuildSettings(unit)
     local settings = {}
     if info.portrait and ns.UFRing and ns.UFRing.PLATE_UNITS[unit] then
         settings[#settings + 1] = { name = L["Scale"], kind = LEM.SettingType.Slider, default = ns.UFRing.PlateDefaultScale(unit),
-            minValue = 75, maxValue = 250, valueStep = 5,
+            minValue = info.styledPet and 40 or 75, maxValue = 250, valueStep = 5,
             formatter = function(value) return value .. "%" end,
             get = function() return ns.UFRing.GetPlateScale(unit) end,
             set = function(_, value)
@@ -3116,7 +3135,8 @@ local function BuildSettings(unit)
             set = setOffPlate("ringSize"),
             hidden = function() return not ns.UFRing.On() or onPlate() end }
     end
-    if info.portrait then
+    -- (the styled pet always shows its own portrait)
+    if info.portrait and not info.styledPet then
         local portraitValues = {
             { text = L["None"],       value = "none",  isRadio = true },
             { text = L["3D"],         value = "3d",    isRadio = true },
@@ -3308,12 +3328,14 @@ local function BuildSettings(unit)
                 end }
             -- the pet: where its happiness face sits (while it shows)
             if key == "happiness" then
-                items[#items + 1] = { name = L["Happiness Position"], kind = LEM.SettingType.Dropdown, default = "CENTER",
-                    values = { { text = L["Centre"], value = "CENTER", isRadio = true },
-                               { text = L["Right of the Frame"], value = "RIGHT", isRadio = true },
-                               { text = L["Left of the Frame"], value = "LEFT", isRadio = true } },
-                    hidden = function() return not ICON_UI.Shown(unit, "happiness") end,
-                    get = function() local store = ICON_UI.Store(unit, "happiness"); return store and store.place or "CENTER" end,
+                -- the styled pet: no Left, right by default; none of it on Forever Style
+                local places = { { text = L["Centre"], value = "CENTER", isRadio = true },
+                                 { text = L["Right of the Frame"], value = "RIGHT", isRadio = true } }
+                if not info.styledPet then places[3] = { text = L["Left of the Frame"], value = "LEFT", isRadio = true } end
+                items[#items + 1] = { name = L["Happiness Position"], kind = LEM.SettingType.Dropdown, default = info.styledPet and "RIGHT" or "CENTER",
+                    values = places,
+                    hidden = function() return not ICON_UI.Shown(unit, "happiness") or (info.styledPet and onPlate()) or false end,
+                    get = function() return ICON_UI.HappinessPlace(unit) end,
                     set = function(_, value)
                         local store = ICON_UI.Store(unit, "happiness", true)
                         if not store then return end
@@ -3406,6 +3428,13 @@ function UF:GetPlayerShow()
     return v and (v.condCombat or v.condMouseover or v.condTarget or v.condHealth) and "fade" or "always"
 end
 
+-- Show Player or Hide Player Frame while in party changed (Party frames' Edit Mode)
+function UF:RefreshPartyHide()
+    for _, unit in ipairs({ "player", "pet" }) do
+        if frames[unit] then ApplyVisibility(frames[unit]) end
+    end
+end
+
 function UF:SetPlayerShow(mode)
     local db = GetDb()
     local v = db and db.visibility and db.visibility.player
@@ -3436,6 +3465,14 @@ function UF:Init()
     -- the ring styles have their own default positions (a style switch reloads)
     if ns.UFRing and ns.UFRing.On() then
         for key, pos in pairs((ns.UFRing.DefaultPositions())) do DEFAULT_POSITIONS[key] = pos end
+    end
+
+    -- Simple Pet Frame off: the pet is a small frame of the style, with its ring and own default place
+    if ns.UFRing and ns.UFRing.PetStyled() then
+        local pet = UNITS.pet
+        pet.portrait, pet.styledPet = true, true
+        pet.indicators.threatGlow = true
+        DEFAULT_POSITIONS.pet = ns.UFRing.PetPosition()
     end
 
     for _, unit in ipairs(UNIT_ORDER) do

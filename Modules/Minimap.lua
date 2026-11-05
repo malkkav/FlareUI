@@ -465,9 +465,17 @@ local function KeepSquareMask(_, texture)
     maskGuard = false
 end
 
+-- First thing in Init: a failure anywhere later must not leave the round map inside the square frame
+local function KeepMapSquare()
+    ApplySquareMap()
+    hooksecurefunc(MinimapFrame, "SetMaskTexture", KeepSquareMask)
+    if not _G.HybridMinimap then
+        EventUtil.ContinueOnAddOnLoaded("Blizzard_HybridMinimap", SquareHybridMinimap)
+    end
+end
+
 local function InstallHooks()
     hooksecurefunc(Cluster, "SetSize", SizeCluster)
-    hooksecurefunc(MinimapFrame, "SetMaskTexture", KeepSquareMask)
     -- both re-place pieces from Blizzard's layout
     hooksecurefunc(Cluster, "SetEditModeScale", function()
         MM:UpdateLayout()
@@ -478,9 +486,6 @@ local function InstallHooks()
     if Cluster.UpdateMinimapConfig then hooksecurefunc(Cluster, "UpdateMinimapConfig", PlaceZone) end
     hooksecurefunc("MiniMapIndicatorFrame_UpdatePosition", PlaceIndicators)
     hooksecurefunc(MinimapFrame, "SetZoom", OnZoom)
-    if not _G.HybridMinimap then
-        EventUtil.ContinueOnAddOnLoaded("Blizzard_HybridMinimap", SquareHybridMinimap)
-    end
 end
 
 --------------------------------------------------
@@ -559,6 +564,7 @@ function MM:Init()
         return
     end
 
+    KeepMapSquare()
     RemoveEditModeSettings()
     AddEditModeSettings()
     KeepMapUnrotated()
@@ -582,7 +588,6 @@ function MM:Init()
             rightEdge:GetRight() - cut.right - art:GetRight(), bottomEdge:GetBottom() + cut.bottom - art:GetBottom()
     end)
     self.initialized = true
-    if ns.MinimapBag then ns.MinimapBag:Init() end
 
     EventUtil.ContinueOnAddOnLoaded("Blizzard_ObjectiveTracker", function() self:UpdateTrackerScale() end)
     EventUtil.ContinueOnAddOnLoaded("Blizzard_WorldMap", RestyleWorldMapCoords)
@@ -592,4 +597,6 @@ function MM:Init()
     self:Refresh()
     -- the frame's corners have positions only after the first layout pass
     C_Timer.After(0, function() self:Refresh() end)
+    -- last: it reads other addons' buttons, and the map doesn't depend on it
+    if ns.MinimapBag then ns.MinimapBag:Init() end
 end

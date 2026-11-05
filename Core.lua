@@ -492,6 +492,7 @@ local defaults = {
         unitframes = {
             enabled = false,
             classColor = true,          -- class colours on every FlareUI health bar (one switch for every frame)
+            simplePet = false,          -- Simple Pet Frame: the plain pet frame in every style; off, it follows the style
             fullNames = true,           -- Full Player Names: "First Surname" on every frame, not the first name only
             palette = "flareui",        -- the bars' colours: flareui (FlareUI's softer tones) | blizzard (UnitFrames' ApplyPalette)
             foreverStyle = true,        -- Forever's bronze portrait ring on player / target / focus; off = Addon style (UnitFramesRing.lua)
@@ -529,11 +530,12 @@ local defaults = {
                 enabled = false,
                 style = "classic",          -- classic | raid
                 showPlayer = true, pets = false, sortByRole = true,
+                hidePlayerInParty = false,  -- Hide Player Frame while in party (with Show Player)
                 targets = false,                 -- Show Party Targets: each member's target beside its frame
                 orientation = "VERTICAL",   -- VERTICAL | HORIZONTAL
                 layouts = {},
                 classic = {
-                    width = 240, height = 70, powerHeight = 12, spacing = 16, healthText = "percent", powerText = false,
+                    width = 240, height = 70, powerHeight = 12, spacing = 14, healthText = "percent", powerText = false,
                     showLevel = true, portrait = "none",
                     texture = "FlareUI Forever", border = "FlareUI Thick",
                     absorbTexture = "FlareUI Striped",
@@ -580,7 +582,7 @@ local defaults = {
             boss = {
                 enabled = true,
                 layouts = {},
-                width = 240, height = 70, powerHeight = 12, grow = "DOWN", spacing = 16,
+                width = 240, height = 70, powerHeight = 12, grow = "DOWN", spacing = 14,
                 healthText = "percent", powerText = false, showLevel = true, portrait = false, raidIcon = true,
                 mirror = true, onlyMyDebuffs = true, absorbTexture = "FlareUI Striped",
                 texture = "FlareUI Forever", border = "FlareUI Thick",

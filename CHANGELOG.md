@@ -1,3 +1,21 @@
+# FlareUI 2.6.0
+
+Pet frames in your frame style, portraits you can click, and the option to hide your player frame while in a party.
+
+## New
+- Pet frame: in FlareUI Style and Forever Style the pet frame now follows your style, as a small version of your player frame. Your old pet frame settings are kept: turn on **Simple Pet Frame** in Unit Frames > Look to go back to the plain frame. Addon Style keeps the plain frame.
+- Party frames: **Hide Player Frame while in party**, below Show Player in Edit Mode. Your player and pet frames hide while you're in a party, and come back solo and in a raid. Your frame in the party has the same right-click menu.
+
+## Changed
+- Unit Frames settings: every option in this section now applies to all styles, including Fade Player and Pet, colours, names, auras and fonts. The values from the style you're using now become the ones used everywhere.
+- Unit Frames settings: Full Player Names now sits above Class Colours.
+- Party and boss frames: the default Spacing is 14 in every style. Spacing you already have stays as it is.
+- FlareUI Totems: new default positions, sizes and totems per row in FlareUI Style and Forever Style. Totems you've already set up stay as they are.
+
+## Fixed
+- Portraits and level discs in FlareUI Style and Forever Style now work like the rest of the frame: click to select, right-click for the menu, hover for the tooltip, and click casting and pings.
+- Minimap: a problem elsewhere during startup can no longer leave a round map inside the square frame.
+
 # FlareUI 2.5.4
 
 A clean edge for the minimap.

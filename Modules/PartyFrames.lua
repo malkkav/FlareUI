@@ -2475,8 +2475,23 @@ local function BuildSettings()
           desc = L["The gap between the frames. Each style keeps its own."] },
         { name = L["Sort by Role"], kind = LEM.SettingType.Checkbox, default = true, get = getP("sortByRole", true), set = setP("sortByRole"),
           desc = L["Tanks first, then healers, then damage dealers. A change during combat is applied when the fight ends."] },
-        { name = L["Show Player"], kind = LEM.SettingType.Checkbox, default = showPlayerDefault, get = getP("showPlayer", showPlayerDefault), set = setP("showPlayer"),
+        { name = L["Show Player"], kind = LEM.SettingType.Checkbox, default = showPlayerDefault, get = getP("showPlayer", showPlayerDefault),
+          set = function(layoutName, value)
+              setP("showPlayer")(layoutName, value)
+              LEM:RefreshFrameSettings(holder)
+              if ns.UnitFrames.RefreshPartyHide then ns.UnitFrames:RefreshPartyHide() end
+          end,
           desc = L["Your own frame first, with the party."] },
+        { name = L["Hide Player Frame while in party"], kind = LEM.SettingType.Checkbox, default = false,
+          get = getP("hidePlayerInParty", false),
+          set = function(_, value)
+              local party = GetPartyDb()
+              if not party then return end
+              party.hidePlayerInParty = value
+              if ns.UnitFrames.RefreshPartyHide then ns.UnitFrames:RefreshPartyHide() end
+          end,
+          hidden = function() return not getP("showPlayer", showPlayerDefault)() end,
+          desc = L["Your player and pet frames hide while you're in a party, and come back solo and in a raid. Your frame in the party has the same right-click menu."] },
     })
 
     -- Forever Style (classic look): the plate keeps Blizzard's proportions; Scale sizes it
