@@ -1,10 +1,21 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 2.5.2
+## Version: 2.5.3
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
 ## Notes: Your friendly UI overhowl
+## Category: User Interface
+## Category-deDE: Benutzeroberfläche
+## Category-esES: Interfaz
+## Category-esMX: Interfaz
+## Category-frFR: Interface
+## Category-itIT: Interfaccia
+## Category-koKR: 인터페이스
+## Category-ptBR: Interface
+## Category-ruRU: Интерфейс
+## Category-zhCN: 界面
+## Category-zhTW: 介面
 ## SavedVariables: FlareUI2_DB, FlareUI_DB
 ## IconTexture: Interface\AddOns\FlareUI\Media\Art\Icon.png
 ## AddonCompartmentFunc: FlareUI_OnAddonCompartmentClick

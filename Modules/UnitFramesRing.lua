@@ -141,6 +141,7 @@ local PLATE = {
     power  = { 4, 125, 45, 53, tex = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mana.tga",
                mirrored = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mana-Mirrored.tga" },
     strip  = "UI-HUD-UnitFrame-Target-PortraitOn-Type",   -- the name box's reaction glow
+    stripRight = 131, stripTop = 10,       -- where Blizzard's anchors put the glow on this art
 }
 -- (party and boss: the tiles' ring kinds)
 Ring.PLATE_UNITS = { player = true, target = true, focus = true, party = true, boss = true }
@@ -224,7 +225,7 @@ Ring.PLATE_POSITIONS = {
     pet           = { point = "BOTTOM",      x = -246, y = 268 },
     playercastbar = { point = "CENTER",      x = 0,    y = -221 },
 }
-Ring.PLATE_TOTEM_POSITION = { point = "BOTTOM", x = -352, y = 220 }
+Ring.PLATE_TOTEM_POSITION = { point = "BOTTOM", x = -352, y = 219 }
 
 -- a FlareUI Style preset value, for Edit Mode's defaults
 function Ring.PresetValue(unit, key)
@@ -778,8 +779,24 @@ function Ring.LayoutPlate(f)
     end
     local n = PLATE.name
     PlaceOnPlate(plate.NameBox, f, s, flip, n[1], n[2], n[3], n[4])
-    PlaceOnPlate(plate.Strip, f, s, flip, n[1], n[2], n[3], n[4])
-    if not SetAtlasSafe(plate.Strip, PLATE.strip) then plate.Strip:Hide() end
+    -- the glow's atlas has clear edges round its colour: they hang outside the name box, as on
+    -- Blizzard's frame, so the colour fills the box at any Width
+    if SetAtlasSafe(plate.Strip, PLATE.strip) then
+        local art = C_Texture.GetAtlasInfo(PLATE.strip)
+        local left = n[1] - (PLATE.stripRight - art.width)
+        local right = PLATE.stripRight - n[2]
+        local top = n[3] - PLATE.stripTop
+        local bottom = PLATE.stripTop + art.height - n[4]
+        local boxW = (f:GetWidth() or 0) - ((n[1] - PLATE.x0) + (PLATE.x1 - n[2])) * s
+        local boxH = (f:GetHeight() or 0) - ((RowY(n[3]) - RowY(PLATE.y0)) + (RowY(PLATE.y1) - RowY(n[4]))) * s
+        local kx = boxW / (art.width - left - right)
+        local ky = boxH / (art.height - top - bottom)
+        plate.Strip:ClearAllPoints()
+        plate.Strip:SetPoint("TOPLEFT", plate.NameBox, "TOPLEFT", -left * kx, top * ky)
+        plate.Strip:SetPoint("BOTTOMRIGHT", plate.NameBox, "BOTTOMRIGHT", right * kx, -bottom * ky)
+    else
+        plate.Strip:Hide()
+    end
     PlaceBar(f.Health, f, s, flip, PLATE.health)
     PlaceBar(f.Power, f, s, flip, PLATE.power)
     f.Power:Show()

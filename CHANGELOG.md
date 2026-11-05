@@ -1,3 +1,16 @@
+# FlareUI 2.5.3
+
+A small polish patch for Hide Micro Menu, the hover highlight and Forever Style.
+
+## Changed
+- Unit, party, raid and boss frames: the hover highlight is softer.
+- Forever Style: the FlareUI Totems frame's default position is one pixel lower.
+- FlareUI now shows under the User Interface category in the game's addon list.
+
+## Fixed
+- Hide Micro Menu: flashing micro button alerts and their tips, such as "unopened collectibles", no longer show while the menu is hidden.
+- Forever Style: the name box's glow now fills the box at any frame width.
+
 # FlareUI 2.5.2
 
 A big launch-day cleanup: dozens of fixes across every module, and FlareUI now gives way to TomTom, Questie and OpenMap where they overlap.

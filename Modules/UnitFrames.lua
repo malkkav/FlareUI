@@ -386,17 +386,6 @@ local function CreateBar(parent, level)
     return bar
 end
 
--- Hover: a soft brightening of the health bar, the same in every style. It sits on the bar, over
--- the fill and under the heal bars, the border and the target, dispel and aggro marks.
-function UF.HoverHighlight(bar)
-    local hl = bar:CreateTexture(nil, "OVERLAY")
-    hl:SetAllPoints()
-    hl:SetColorTexture(1, 1, 1, 0.15)
-    hl:SetBlendMode("ADD")
-    hl:Hide()
-    return hl
-end
-
 -- "Background Opacity": the bars' empty part, in percent; 0 on the plate, whose slot shows there
 UF.BAR_BG_OPACITY = 90
 function UF.DefaultBgOpacity(unit)
@@ -2840,7 +2829,10 @@ local function CreateUnitFrame(unit)
         pcall(f.RegisterUnitEvent, f, "UNIT_MODEL_CHANGED", unit)
     end
 
-    f.Highlight = UF.HoverHighlight(f.Health)
+    f.Highlight = overlay:CreateTexture(nil, "OVERLAY")
+    f.Highlight:SetAllPoints(f.Health)
+    f.Highlight:SetColorTexture(1, 1, 1, 0.08)
+    f.Highlight:Hide()
 
     if info.castbar then f.Cast = CreateCastBar(f, unit) end
     if info.comboPoints then
@@ -3362,7 +3354,7 @@ UF.Kit = {
     GetDb = GetDb,
     GetBarTexture = GetBarTexture, GetBorderFile = GetBorderFile, BorderFit = BorderFit,
     ApplyBorderStyle = ApplyBorderStyle, ResetBorderTint = ResetBorderTint, SetBorderTint = SetBorderTint,
-    CreateBar = CreateBar, ApplyFont = ApplyFont, HoverHighlight = UF.HoverHighlight,
+    CreateBar = CreateBar, ApplyFont = ApplyFont,
     GetHealthColor = GetHealthColor, GetPowerColor = GetPowerColor,
     HardHide = HardHide, SetIconArt = SetIconArt, HasAtlas = HasAtlas,
     CreateCastBar = CreateCastBar, LayoutCastBar = LayoutCastBar, UpdateCastBar = UpdateCastBar,

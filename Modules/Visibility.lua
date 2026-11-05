@@ -195,6 +195,58 @@ local function KeepHiddenInEditMode(frame, settingKey)
     end)
 end
 
+-- A micro button with news (a new mount) flashes through UIFrameFlash, which shows its textures again
+-- every frame: in a hidden menu they go blank, which touches none of Blizzard's alert state
+local blankedFlashes = {}   -- texture -> its atlas
+local function SetFlashBlank(texture, blank)
+    if not texture then return end
+    if blank then
+        local atlas = not blankedFlashes[texture] and texture:GetAtlas()
+        if atlas then
+            blankedFlashes[texture] = atlas
+            texture:SetTexture(nil)
+        end
+    elseif blankedFlashes[texture] then
+        texture:SetAtlas(blankedFlashes[texture])
+        blankedFlashes[texture] = nil
+    end
+end
+
+local function SetMicroFlashesBlank(blank)
+    local menu = _G.MicroMenu
+    if not menu then return end
+    for _, button in ipairs({ menu:GetChildren() }) do
+        SetFlashBlank(button.FlashBorder, blank)
+        SetFlashBlank(button.FlashContent, blank)
+    end
+end
+
+-- The tips on those buttons ("unopened collectibles") sit on UIParent, so they outlive the menu. Closing
+-- one from here would taint Blizzard's alert state and tip pool: it stays open, unseen and unclickable.
+-- Pooled frames go to other tips too, so each HelpTip:Show sorts out every active one.
+local maskedTips = {}   -- tip -> its mouse setting
+local function SetTipMasked(tip, masked)
+    if masked and maskedTips[tip] == nil then
+        maskedTips[tip] = tip:IsMouseEnabled()
+        tip:SetAlpha(0)
+        tip:EnableMouse(false)
+        tip.CloseButton:EnableMouse(false)
+    elseif not masked and maskedTips[tip] ~= nil then
+        tip:SetAlpha(1)
+        tip:EnableMouse(maskedTips[tip])
+        tip.CloseButton:EnableMouse(true)
+        maskedTips[tip] = nil
+    end
+end
+
+local function UpdateMicroTips()
+    local db = GetDb()
+    local hidden = db and db.hideMicroMenu
+    for tip in _G.HelpTip.framePool:EnumerateActive() do
+        SetTipMasked(tip, hidden and tip.info and tip.info.system == "MicroButtons" or false)
+    end
+end
+
 --------------------------------------------------
 -- 6. FADER ENGINE
 -- One OnUpdate for every faded element, running only while something fades, a group is dirty, or
@@ -424,6 +476,8 @@ function Visibility:Refresh()
             ApplySecureHide(key, hidden)
         end
     end
+    SetMicroFlashesBlank(db.hideMicroMenu)
+    UpdateMicroTips()
 
     Fader.groups = {}
     Fader.delays = {}
@@ -462,6 +516,7 @@ end
 function Visibility:Init()
     if not GetDb() or not self:ShouldLoad() then return end
     self:Refresh()
+    hooksecurefunc(_G.HelpTip, "Show", UpdateMicroTips)
 
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnVisibilityStateChange")
     self:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", "OnVisibilityStateChange")
