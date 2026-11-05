@@ -30,7 +30,7 @@ ns.WINDOW_STYLE = {
 
 -- Blizzard's health green and mana blue, toned down; other powers keep Blizzard's colours
 ns.HEALTH_GREEN = { 0.15, 0.82, 0.15 }
-ns.MANA_BLUE = { 0.24, 0.34, 1.00 }   -- violet-leaning, clear of the shaman and mage class colours
+ns.MANA_BLUE = { 0.18, 0.48, 1.00 }   -- bright, to stand out from the deep blue of shaman health bars
 
 -- A power's bar colour (r, g, b), or nil when Blizzard has none for it
 function ns.PowerColor(token, powerType)
@@ -735,6 +735,7 @@ local defaults = {
             nameplateCombo = false,     -- classic combo point gems under the target's nameplate
             nameplateQuest = false,     -- quest badge on enemy nameplates that belong to an active quest
             nameplateHideLevel = false, -- Blizzard's level box on the right of nameplates hidden
+            nameplateHideNames = false, -- unit names on Blizzard's nameplates hidden
             hideErrors = false,
             hideZoneText = false,
             hidePartyTitle = false,

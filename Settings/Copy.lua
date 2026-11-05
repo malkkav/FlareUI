@@ -709,6 +709,12 @@ ns.Copy = {
             section = "qol.nameplates",
             tip = L["Quest marks move to the health bar's edge."],
         },
+        ["qol.npNames"] = {
+            desc = L["Hides unit names on Blizzard's nameplates."],
+            label = L["Hide Names"],
+            section = "qol.nameplates",
+            tip = L["Friendly players shown by name only keep their names."],
+        },
         ["qol.npQuest"] = {
             desc = L["A quest mark on enemies you need for a quest."],
             label = L["Quest objectives"],

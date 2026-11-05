@@ -53,6 +53,12 @@ local TIMESTAMP_COLOR = "|cff00B2FF"
 local DEFAULT_BORDER = "FlareUI Frames"
 local TEXT_PADDING   = 10   -- between the window's text and its skin's edge
 local HEADER_HEIGHT  = 24   -- the tab row above the text
+-- the Combat Log's filter bar, between the tab row's separator and the text
+local COMBAT_BAR_HEIGHT   = 24
+local COMBAT_BAR_TEXT_GAP = 3    -- between the bar and the text
+local COMBAT_BAR_TOP_GAP  = -3   -- from the top of the other tabs' text down to the bar (negative: above it)
+local COMBAT_BAR_SPACE    = COMBAT_BAR_HEIGHT + COMBAT_BAR_TEXT_GAP + COMBAT_BAR_TOP_GAP
+local COMBAT_BAR_INSET    = 5    -- past the text on each side, in line with the separator
 local BORDER_SIZE    = 16
 local BORDER_INSET   = 3
 local TAB_TEXT_Y     = -3
@@ -337,6 +343,52 @@ local function AnchorBNToast()
     hooksecurefunc(frame, "SetPoint", Place)
     frame:HookScript("OnShow", Place)
     Place()
+end
+
+-- Voice chat: Blizzard's alerts (who is speaking) start from its hidden button column, and its mute
+-- and deafen buttons hang below the channel button, which FlareUI moved to the chat's header. All go
+-- above the chat: the alerts on the left, growing rightwards, and the buttons on the right.
+local VOICE_GAP = 4          -- between the chat's top edge and the alerts or buttons
+local VOICE_BUTTON_GAP = 2   -- between the two buttons
+
+-- With the chat's buttons on its right Blizzard grows the alerts leftwards, so each one's width moves
+-- it. Only the frames' anchors are changed: writing the container's justification would taint it.
+local function AlertsFromLeft(container)
+    for _, system in ipairs(container.alertFrameSubSystems) do
+        local frame = system.anchorFrame
+        if frame and frame:IsShown() then
+            local point, relativeTo, relativePoint = frame:GetPoint(1)
+            if point == "BOTTOMRIGHT" then
+                frame:ClearAllPoints()
+                frame:SetPoint("BOTTOMLEFT", relativeTo, relativePoint == "TOPRIGHT" and "TOPLEFT" or "BOTTOMLEFT", 0, 0)
+            end
+        end
+    end
+end
+
+local function AnchorVoiceChat()
+    local chat = _G.ChatFrame1
+    local anchor = chat and chat.FlareUI_Skin
+    if not anchor then return end
+
+    local alerts = _G.ChatAlertFrame
+    if alerts then
+        alerts:ClearAllPoints()
+        alerts:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, VOICE_GAP)
+        if not alerts.FlareUI_AnchorsHooked then
+            alerts.FlareUI_AnchorsHooked = true
+            hooksecurefunc(alerts, "UpdateAnchors", AlertsFromLeft)
+        end
+        AlertsFromLeft(alerts)
+    end
+
+    local deafen, mute = _G.ChatFrameToggleVoiceDeafenButton, _G.ChatFrameToggleVoiceMuteButton
+    if deafen and mute then
+        deafen:ClearAllPoints()
+        deafen:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", 0, VOICE_GAP)
+        mute:ClearAllPoints()
+        mute:SetPoint("RIGHT", deafen, "LEFT", -VOICE_BUTTON_GAP, 0)
+    end
 end
 
 local function DisableQuickJoinToasts()
@@ -1435,6 +1487,90 @@ local function KeepCombatLogSecond()
     FCFDock_UpdateTabs(dock)
 end
 
+-- The Combat Log's filter buttons: a second header inside the window, under the tab row's separator,
+-- with the text below it. Blizzard keeps them on the tab, which FlareUI hides, so they move to the
+-- window. COMBAT_BAR_SPACE lowers the docked log and raises its skin by the same amount, so the skin
+-- matches the other tabs' exactly.
+local StyleCombatLogBar
+function StyleCombatLogBar()
+    local combatLog, bar = _G.ChatFrame2, _G.CombatLogQuickButtonFrame_Custom
+    if not (combatLog and bar) then
+        -- Blizzard_CombatLog loads on demand
+        if not Chat.combatBarWait then
+            Chat.combatBarWait = CreateFrame("Frame")
+            Chat.combatBarWait:RegisterEvent("ADDON_LOADED")
+            Chat.combatBarWait:SetScript("OnEvent", function(self)
+                if not _G.CombatLogQuickButtonFrame_Custom then return end
+                self:UnregisterAllEvents()
+                StyleCombatLogBar()
+            end)
+        end
+        return
+    end
+    if bar:GetParent() ~= combatLog then
+        local shown = combatLog:IsShown()
+        bar:SetParent(combatLog)
+        bar:SetShown(shown)   -- shown and hidden with the window from here on (Blizzard's own hooks)
+    end
+    bar:SetHeight(COMBAT_BAR_HEIGHT)
+    bar:ClearAllPoints()
+    bar:SetPoint("BOTTOMLEFT", combatLog, "TOPLEFT", -COMBAT_BAR_INSET, COMBAT_BAR_TEXT_GAP)
+    bar:SetPoint("BOTTOMRIGHT", combatLog, "TOPRIGHT", COMBAT_BAR_INSET, COMBAT_BAR_TEXT_GAP)
+    bar:SetFrameLevel((combatLog:GetFrameLevel() or 1) + 5)
+    if ns.IsGamepadUI() then bar.smartNavigationIgnored = true end
+    -- Blizzard's arrow for filters that don't fit: taller than the bar, so centred on it
+    local more = _G.CombatLogQuickButtonFrame_CustomAdditionalFilterButton
+    if more then
+        more:ClearAllPoints()
+        more:SetPoint("RIGHT", bar, "RIGHT", -2, 0)
+    end
+
+    -- the edit box's look, shorter: same border and black fill, in place of Blizzard's dark strip
+    local db = GetDb()
+    if not db then return end
+    local strip = _G.CombatLogQuickButtonFrame_CustomTexture
+    if strip then strip:SetAlpha(0) end
+    local bg = bar.FlareUI_Backdrop
+    if not bg then
+        bg = CreateFrame("Frame", nil, bar, "BackdropTemplate")
+        bar.FlareUI_Backdrop = bg
+        bg:SetAllPoints()
+    end
+    bg:SetFrameLevel(bar:GetFrameLevel())   -- under the buttons
+    local edgeFile = GetBorderFile(db)
+    -- a thick border's corners would overlap at this height
+    local edgeSize = math_min(ns.BorderEdgeSize(edgeFile, BORDER_SIZE), COMBAT_BAR_HEIGHT / 2)
+    local inset = BORDER_INSET
+    bg:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = edgeFile, tile = true, tileSize = 16, edgeSize = edgeSize, insets = { left = inset, right = inset, top = inset, bottom = inset } })
+    bg:SetBackdropColor(0, 0, 0, db.editBoxOpacity or 1)
+    bg:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1)
+end
+
+-- Blizzard re-lays a docked log on every dock update, by the bar's height: back to FlareUI's space
+local function KeepCombatLogBelowBar()
+    local combatLog = _G.ChatFrame2
+    if not combatLog or combatLog:IsForbidden() then return end
+    local target = -COMBAT_BAR_SPACE
+    if not combatLog.FlareUI_HeightHooked then
+        combatLog.FlareUI_HeightHooked = true
+        local restoring
+        hooksecurefunc(combatLog, "SetPoint", function(self, point, relativeTo, relativePoint, x, y)
+            if restoring or point ~= "TOPLEFT" or not self.isDocked or type(y) ~= "number" or y == target then return end
+            restoring = true
+            self:SetPoint(point, relativeTo, relativePoint, x, target)
+            restoring = false
+        end)
+    end
+    if not combatLog.isDocked then return end
+    for i = 1, combatLog:GetNumPoints() do
+        local point, relativeTo, relativePoint, x, y = combatLog:GetPoint(i)
+        if point == "TOPLEFT" then
+            if y ~= target then combatLog:SetPoint(point, relativeTo, relativePoint, x, target) end
+            return
+        end
+    end
+end
+
 -- an unselected tab's text at rest; hovering lifts it to 1
 local TAB_IDLE_ALPHA = 0.6
 local SECRET_TAB_WIDTH = 90   -- Blizzard's own docked width for these tabs
@@ -1591,7 +1727,9 @@ function Chat:UpdateCustomTabs(chatFrame, db)
                     if not self.realTab or self.justDragged then return end
                     if button == "RightButton" then
                         Chat:OpenContextMenu(self, self.chatFrame)
-                    elseif not IsPopped(self.chatFrame) then   -- a popped window has only its own tab
+                    -- a popped window has only its own tab. In Edit Mode the main window stays shown:
+                    -- its selection box and size options hide with it, and docked windows share its size
+                    elseif not IsPopped(self.chatFrame) and not (_G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()) then
                         _G.FCF_Tab_OnClick(self.realTab, button)
                         C_Timer.After(0.01, function()
                             local chatDb = GetDb()
@@ -1996,6 +2134,8 @@ end
 
 local function CreateOrGetSkinFrame(chatFrame)
     local skin = chatFrame.FlareUI_Skin
+    -- the Combat Log's text starts below its filter bar; its skin and separator stay where the others' are
+    local raise = (chatFrame == _G.ChatFrame2) and COMBAT_BAR_SPACE or 0
     if not skin then
         skin = CreateFrame("Frame", nil, chatFrame, "BackdropTemplate")
         chatFrame.FlareUI_Skin = skin
@@ -2005,14 +2145,14 @@ local function CreateOrGetSkinFrame(chatFrame)
         local line = skin:CreateTexture(nil, "OVERLAY")
         line:SetTexture(SEPARATOR)
         line:SetHeight(8)
-        line:SetPoint("TOPLEFT", chatFrame, "TOPLEFT", -TEXT_PADDING + BORDER_INSET + 2, 10)
-        line:SetPoint("TOPRIGHT", chatFrame, "TOPRIGHT", TEXT_PADDING - BORDER_INSET - 2, 10)
+        line:SetPoint("TOPLEFT", chatFrame, "TOPLEFT", -TEXT_PADDING + BORDER_INSET + 2, 10 + raise)
+        line:SetPoint("TOPRIGHT", chatFrame, "TOPRIGHT", TEXT_PADDING - BORDER_INSET - 2, 10 + raise)
         skin.Separator = line
     end
 
     skin:ClearAllPoints()
     skin:SetPoint("BOTTOMLEFT", chatFrame, "BOTTOMLEFT", -TEXT_PADDING, -TEXT_PADDING)
-    skin:SetPoint("TOPRIGHT", chatFrame, "TOPRIGHT", TEXT_PADDING, TEXT_PADDING + HEADER_HEIGHT)
+    skin:SetPoint("TOPRIGHT", chatFrame, "TOPRIGHT", TEXT_PADDING, TEXT_PADDING + HEADER_HEIGHT + raise)
     if chatFrame.Selection then
         ns.FitEditModeBox(chatFrame, function() return chatFrame.FlareUI_Skin, 0, 0, 0, 0 end)
         -- Edit Mode's resize grip in the corner stays hidden
@@ -2453,6 +2593,8 @@ function Chat:Apply(db)
     end
 
     KeepCombatLogSecond()
+    KeepCombatLogBelowBar()
+    StyleCombatLogBar()
     Chat:KillGeneralDockManager()
     StyleButtonFrame()
 
@@ -2465,6 +2607,7 @@ function Chat:Apply(db)
     end
     -- again: the Gamepad UI parks the dock at ChatFrame1's skin, made in the loop above
     if ns.IsGamepadUI() then Chat:KillGeneralDockManager() end
+    AnchorVoiceChat()
 
     Chat:SetupAutoHide(db)
     self:UpdateTabFonts(db)

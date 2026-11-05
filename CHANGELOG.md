@@ -1,3 +1,19 @@
+# FlareUI 2.9.0
+
+The Combat Log's filter buttons are back, nameplates can hide names, and voice chat no longer sits on top of your chat.
+
+## New
+- Chat: the Combat Log's filter buttons now show in a small bar at the top of its window, with the log text below it. They were hidden before.
+- Quality of Life: **Hide Names** in the Nameplates section hides unit names on Blizzard's nameplates. It's off by default. Friendly players shown by name only keep their names.
+
+## Changed
+- FlareUI palette: mana bars are a brighter, more saturated blue, so they're easier to tell from shaman health bars.
+- Chat: voice chat's mute and deafen buttons and its "who's speaking" names now sit above the chat window, and the names no longer jump from side to side. Other alerts that share that spot, like voice channel prompts and Delves toasts, move above the chat too.
+
+## Fixed
+- Chat: clicking the Combat Log tab no longer makes the whole window shorter.
+- Edit Mode: clicking a chat tab no longer makes the chat's selection box and size options disappear. The tab stays put while Edit Mode is open, and docked tabs all share the main window's size.
+
 # FlareUI 2.8.1
 
 A text option for your power bars, and a clear message if FlareUI doesn't load properly.

@@ -88,7 +88,7 @@ local PLAYER_CAST_CHANNEL   = { 0.50, 0.75, 0.88 }
 -- "Colour palette": ApplyPalette copies the chosen set into the colour tables above and ns's, in place
 UF.PALETTES = {
     flareui = {
-        health = { 0.15, 0.82, 0.15 }, mana = { 0.24, 0.34, 1.00 }, grey = { 0.55, 0.55, 0.55 },
+        health = { 0.15, 0.82, 0.15 }, mana = { 0.18, 0.48, 1.00 }, grey = { 0.55, 0.55, 0.55 },
         hostile = { 0.87, 0.27, 0.27 }, neutral = { 0.93, 0.78, 0.25 }, friendly = { 0.30, 0.78, 0.30 },
         cast = { 0.80, 0.60, 0.36 }, castNoInterrupt = { 0.55, 0.55, 0.55 }, castChannel = { 0.30, 0.65, 0.90 },
         playerCast = { 0.36, 0.56, 0.78 }, playerChannel = { 0.50, 0.75, 0.88 },

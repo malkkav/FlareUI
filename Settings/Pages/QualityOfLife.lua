@@ -85,6 +85,7 @@ S:Row{ key = "qol.npLevel", tab = "interface", path = "tweaks.nameplateHideLevel
         Refresh()
         S:TrackReload("qol.npLevel", on and "on" or "off", "on")
     end }
+S:Row{ key = "qol.npNames", tab = "interface", path = "tweaks.nameplateHideNames", apply = Refresh, disabled = NameplateAddon }
 -- Blizzard's own enemy plates, so another nameplate addon does not grey it out
 S:Row{ key = "qol.npCombat", tab = "interface", path = "tweaks.combatPlates", apply = Refresh }
 

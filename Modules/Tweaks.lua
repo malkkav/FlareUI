@@ -1447,6 +1447,47 @@ local function ApplyHideLevelAll()
 end
 
 --------------------------------------------------
+-- 11b. HIDE NAMES
+-- A nameplate's unit name goes invisible. Only its alpha: Blizzard's health text turns off with a
+-- hidden name (NamePlateHealthBarMixin). A friendly player shown by name only keeps it, as that name
+-- is the whole plate. Blizzard re-lays a plate when that mode changes, so the layout is followed.
+--------------------------------------------------
+local nameHooked = {}   -- plate unit frames whose layout is followed
+local nameEvents
+
+local function ApplyHideName(unitFrame)
+    if not unitFrame or unitFrame:IsForbidden() then return end
+    local name = unitFrame.name
+    if not name or name:IsForbidden() then return end
+    local db = GetDb()
+    local on = db and db.nameplateHideNames and not Tweaks:GetNameplateAddon()
+    -- never on this session: Blizzard's plate stays untouched
+    if not on and not nameEvents then return end
+    name:SetAlpha((on and not unitFrame:IsShowOnlyName()) and 0 or 1)
+    if not nameHooked[unitFrame] and type(unitFrame.UpdateAnchors) == "function" then
+        nameHooked[unitFrame] = true
+        hooksecurefunc(unitFrame, "UpdateAnchors", ApplyHideName)
+    end
+end
+
+local function ApplyHideNamesAll()
+    local db = GetDb()
+    local on = db and db.nameplateHideNames and not Tweaks:GetNameplateAddon()
+    if on and not nameEvents then
+        nameEvents = CreateFrame("Frame")
+        nameEvents:SetScript("OnEvent", function(_, _, unit)
+            if not canaccessvalue(unit) then return end
+            local plate = C_NamePlate.GetNamePlateForUnit(unit)
+            ApplyHideName(plate and plate.UnitFrame)
+        end)
+    end
+    if nameEvents then
+        if on then nameEvents:RegisterEvent("NAME_PLATE_UNIT_ADDED") else nameEvents:UnregisterAllEvents() end
+    end
+    for _, plate in ipairs(C_NamePlate.GetNamePlates()) do ApplyHideName(plate.UnitFrame) end
+end
+
+--------------------------------------------------
 -- 12. PARTY FRAME UNCLAMP (always on)
 -- Edit Mode's clamp stops the party frames short of the left edge; switched off once, after combat
 -- if need be.
@@ -1984,6 +2025,7 @@ function Tweaks:Refresh()
     ApplyNameplateCombo()
     ApplyQuestTags()
     ApplyHideLevelAll()
+    ApplyHideNamesAll()
     UpdateTrainAll()
     ApplyMailBook()
     ApplyCombatPlates()
@@ -2037,5 +2079,6 @@ function Tweaks:Init()
     ApplyNameplateCombo()
     ApplyQuestTags()
     ApplyHideLevelAll()
+    ApplyHideNamesAll()
     UnclampPartyFrame()
 end
