@@ -739,11 +739,14 @@ local function UpdateHeader(module)
         page.title:SetPoint("TOPLEFT", 4, -4)
     end
     local editText = module.editMode and module:IsOn() and S:ModuleText(module.key, "editButton")
-    page.editMode:SetShown(editText and true or false)
-    if editText then
-        page.editMode:SetText(editText)
+    local customText, customClick
+    if module.headerButton then customText, customClick = module.headerButton() end
+    page.editMode.customClick = customClick
+    page.editMode:SetShown((customText or editText) and true or false)
+    if customText or editText then
+        page.editMode:SetText(customText or editText)
         page.editMode:SetWidth((page.editMode:GetTextWidth() or 120) + 30)
-        page.editMode:SetEnabled(S:CanEditFrames() and true or false)
+        page.editMode:SetEnabled(customText ~= nil or (S:CanEditFrames() and true or false))
     end
     page.banner:Hide()
     local height = 64
@@ -1255,8 +1258,12 @@ local function BuildWindow()
     page.editMode = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
     page.editMode:SetHeight(22)
     page.editMode:SetPoint("TOPRIGHT", 0, -2)
-    page.editMode:SetScript("OnClick", function()
+    page.editMode:SetScript("OnClick", function(self)
         ns.ButtonSound()
+        if self.customClick then
+            self.customClick()
+            return
+        end
         local module = S.modules[current]
         local target = module.editMode and module.editMode()
         if target then
@@ -1409,7 +1416,7 @@ local function BuildWindow()
                 f.edit:SetEnabled(canEdit and real and true or false)
             end
         end
-        if page.editMode:IsShown() then page.editMode:SetEnabled(canEdit) end
+        if page.editMode:IsShown() and not page.editMode.customClick then page.editMode:SetEnabled(canEdit) end
         local module = S.modules[current]
         if module and module.bannerEditMode then page.banner.button:SetEnabled(canEdit) end
     end

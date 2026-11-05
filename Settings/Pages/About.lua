@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 local S = ns.Settings
 
 --------------------------------------------------
@@ -124,6 +125,11 @@ S:Module{
     key = "about", group = "top", order = 1,
     navIcon = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png",
     custom = { key = "main", custom = Build },
+    -- the setup tour again (the Gamepad UI has no tour)
+    headerButton = function()
+        if ns.IsGamepadUI() then return nil end
+        return L["Start Tour"], function() ns.ShowTour() end
+    end,
 }
 
 S:Row{ key = "about.thanks", kind = "text" }

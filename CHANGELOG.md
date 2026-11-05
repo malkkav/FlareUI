@@ -1,3 +1,15 @@
+# FlareUI 2.10.0
+
+A setup tour for new players, and a mana bar for druids in Bear and Cat Form.
+
+## New
+- A **setup tour** now greets new players. It shows what each part of FlareUI does, lets you turn each one on and pick your unit frame style, and explains where the options live. Nothing changes until you click **Reload and finish** on the last page, and you can skip it from the first page.
+- About: a **Start Tour** button runs the tour again, and so does `/fui tour`.
+- Player frame: **Mana on Shapeshift** in Edit Mode shows a thin mana bar under the power bar when a druid is in a form that doesn't use mana. It's off by default, and isn't available in Forever Style.
+
+## Fixed
+- Chat: voice chat's "who's speaking" names no longer sit on top of the mute buttons or flash to the left when someone stops talking. They stay above the chat's left edge. Other alerts that share that spot follow the same stack.
+
 # FlareUI 2.9.0
 
 The Combat Log's filter buttons are back, nameplates can hide names, and voice chat no longer sits on top of your chat.

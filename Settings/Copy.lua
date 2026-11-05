@@ -279,7 +279,7 @@ ns.Copy = {
             kind = "text",
             label = L["Slash commands"],
             section = "about.credits",
-            text = L["`/fui` open settings. `/fui cm` Fake CM setup mode. `/fui pad` switch gamepad mode on/off."],
+            text = L["`/fui` open settings. `/fui cm` Fake CM setup mode. `/fui pad` switch gamepad mode on/off. `/fui tour` the setup tour."],
         },
         ["about.credits"] = {
             kind = "text",

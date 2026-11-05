@@ -153,7 +153,8 @@ function Module:HasNew(tabKey)
 end
 
 -- def: key, group, order, enabled ("db.path"), editMode, editFrames, banner, navIcon, navIconRound,
--- custom, tabs ({ key, custom = build(host, previewHost), refresh, preview })
+-- headerButton (returns text, onClick: takes the Edit Mode button's place), custom,
+-- tabs ({ key, custom = build(host, previewHost), refresh, preview })
 function Settings:Module(def)
     assert(type(def.key) == "string", "Settings:Module needs a key")
     local module = setmetatable(def, Module)

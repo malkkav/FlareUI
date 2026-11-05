@@ -663,6 +663,7 @@ local function UpdatePower(f)
     bar:SetValue(UnitPower(unit, powerType))
     bar:SetStatusBarColor(GetPowerColor(unit))
     if f.ManaCost then f.ManaCost:Refresh(powerType) end
+    if f.ShiftMana then UF.UpdateShiftMana(f) end
     if udb and udb.powerText and UnitIsConnected(unit) and not UnitIsDeadOrGhost(unit) then
         f.PowerText:SetText(AbbreviateNumbers(UnitPower(unit, powerType)))
     else
@@ -2357,6 +2358,19 @@ end
 --------------------------------------------------
 -- 10. LAYOUT
 --------------------------------------------------
+-- "Mana on Shapeshift": a druid in a form without mana gets a thin mana bar at the frame's bottom.
+-- Not in Forever Style, whose plate has no slot for it. Edit Mode previews it.
+UF.SHIFT_MANA_HEIGHT = 5
+function UF.ShiftManaShown(f)
+    if not f.ShiftMana then return false end
+    local udb = GetUnitDb(f.unit)
+    if not (udb and udb.shiftMana) or (ns.UFRing and ns.UFRing.Plate(f)) then return false end
+    if LEM:IsInEditMode() then return true end
+    local powerType = UnitPowerType("player")
+    if not canaccessvalue(powerType) then return f.ShiftMana:IsShown() end
+    return powerType ~= Enum.PowerType.Mana
+end
+
 -- Anchors health / power and the divider on their seam; the combo strip lies over the health bar's
 -- top edge. Unprotected children only, so it may run in combat (cat form gains the strip at once).
 local function LayoutBars(f)
@@ -2373,6 +2387,10 @@ local function LayoutBars(f)
     if f.Portrait and ns.UFRing and ns.UFRing.Plate(f) then
         -- Forever Style: the bars sit in the frame plate's slots, the ring beside it
         f.Separator:Hide()
+        if f.ShiftMana then
+            f.ShiftMana:Hide()
+            f.ShiftManaSeparator:Hide()
+        end
         if f.Combo then f.Combo:Hide() end
         ns.UFRing.LayoutPlate(f)
         ns.UFRing.Layout(f)
@@ -2429,10 +2447,31 @@ local function LayoutBars(f)
     elseif f.Combo then
         f.Combo:Hide()
     end
+    local bottom = PADDING
+    local shiftMana = f.ShiftMana
+    if shiftMana then
+        local separator = f.ShiftManaSeparator
+        if UF.ShiftManaShown(f) then
+            shiftMana:ClearAllPoints()
+            shiftMana:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", left, PADDING)
+            shiftMana:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -right, PADDING)
+            shiftMana:SetHeight(UF.SHIFT_MANA_HEIGHT)
+            shiftMana:Show()
+            separator:ClearAllPoints()
+            separator:SetPoint("TOPLEFT", shiftMana, "TOPLEFT", 0, SEPARATOR_HEIGHT / 2)
+            separator:SetPoint("TOPRIGHT", shiftMana, "TOPRIGHT", 0, SEPARATOR_HEIGHT / 2)
+            separator:SetHeight(SEPARATOR_HEIGHT)
+            separator:Show()
+            bottom = PADDING + UF.SHIFT_MANA_HEIGHT
+        else
+            shiftMana:Hide()
+            separator:Hide()
+        end
+    end
     if powerHeight > 0 then
         power:Show()
-        power:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", left, PADDING)
-        power:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -right, PADDING)
+        power:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", left, bottom)
+        power:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -right, bottom)
         power:SetHeight(powerHeight)
         health:SetPoint("BOTTOMRIGHT", power, "TOPRIGHT", 0, 0)
         f.Separator:ClearAllPoints()
@@ -2443,8 +2482,21 @@ local function LayoutBars(f)
     else
         f.Separator:Hide()
         power:Hide()
-        health:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -right, PADDING)
+        health:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -right, bottom)
     end
+end
+
+-- Shows or hides the bar (re-laying the frame when that changes) and feeds its values
+function UF.UpdateShiftMana(f)
+    local bar = f.ShiftMana
+    local shown = UF.ShiftManaShown(f)
+    if shown ~= bar:IsShown() then LayoutBars(f) end
+    if not shown then return end
+    local mana = Enum.PowerType.Mana
+    bar:SetMinMaxValues(0, UnitPowerMax("player", mana))
+    bar:SetValue(UnitPower("player", mana))
+    local r, g, b = ns.PowerColor("MANA", mana)
+    bar:SetStatusBarColor(r or ns.MANA_BLUE[1], g or ns.MANA_BLUE[2], b or ns.MANA_BLUE[3])
 end
 
 -- Shows the strip with the right number of segments, feeds the values, and re-lays the bars when it
@@ -2512,6 +2564,11 @@ local function LayoutFrame(f)
     power.bg:SetTexture(texture)
     health:SetReverseFill(fillMirror)
     power:SetReverseFill(fillMirror)
+    if f.ShiftMana then
+        f.ShiftMana:SetStatusBarTexture(texture)
+        f.ShiftMana.bg:SetTexture(texture)
+        f.ShiftMana:SetReverseFill(fillMirror)
+    end
 
     LayoutBars(f)
     -- the bars' empty part (Background Opacity; after LayoutBars, which hides it on the plate)
@@ -2519,6 +2576,7 @@ local function LayoutFrame(f)
     if bgOpacity == nil then bgOpacity = UF.DefaultBgOpacity(f.unit) end
     UF.SetBarBackground(health, bgOpacity)
     UF.SetBarBackground(power, bgOpacity)
+    if f.ShiftMana then UF.SetBarBackground(f.ShiftMana, bgOpacity) end
 
     -- ring styles: text one point smaller
     local fontDelta = (ns.UFRing and ns.UFRing.Applies(f)) and -1 or 0
@@ -2858,6 +2916,15 @@ local function CreateUnitFrame(unit)
     f.Separator:SetTexture(SEPARATOR_TEXTURE)
     f.Separator:SetVertexColor(1, 1, 1, 1)
     f.Separator:Hide()
+
+    if unit == "player" and PlayerClass() == "DRUID" then
+        f.ShiftMana = CreateBar(f, level + 1)
+        f.ShiftMana:Hide()
+        f.ShiftManaSeparator = overlay:CreateTexture(nil, "ARTWORK")
+        f.ShiftManaSeparator:SetTexture(SEPARATOR_TEXTURE)
+        f.ShiftManaSeparator:SetVertexColor(1, 1, 1, 1)
+        f.ShiftManaSeparator:Hide()
+    end
 
     if info.portrait then
         -- at the bars' level, under the border; the divider is the separator art turned upright
@@ -3199,6 +3266,16 @@ local function BuildSettings(unit)
             get = function() local u = GetUnitDb(unit); return u and u.fsr == true or false end,
             set = function(_, value) local u = GetUnitDb(unit); if not u then return end; u.fsr = value; UpdateFsrSpark() end,
             desc = L["A spark crosses the bar for five seconds after a spell that costs mana: spirit regen comes back when it ends."] }
+        settings[#settings + 1] = { name = L["Mana on Shapeshift"], kind = LEM.SettingType.Checkbox, default = false,
+            get = function() local u = GetUnitDb(unit); return u and u.shiftMana == true or false end,
+            set = function(_, value)
+                local u = GetUnitDb(unit); if not u then return end
+                u.shiftMana = value
+                local f = frames[unit]
+                if f and f.ShiftMana then UF.UpdateShiftMana(f) end
+            end,
+            desc = L["Druids: in a form that doesn't use mana, a thin mana bar shows below the power bar and the health bar gets shorter."],
+            hidden = onPlate }
     end
     -- everything above is the frame itself, and gets the first section
     local frameItems = settings

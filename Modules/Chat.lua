@@ -351,19 +351,23 @@ end
 local VOICE_GAP = 4          -- between the chat's top edge and the alerts or buttons
 local VOICE_BUTTON_GAP = 2   -- between the two buttons
 
--- With the chat's buttons on its right Blizzard grows the alerts leftwards, so each one's width moves
--- it. Only the frames' anchors are changed: writing the container's justification would taint it.
-local function AlertsFromLeft(container)
+-- The social button is the first link in Blizzard's alert chain, and every alert change moves it to
+-- the container and stacks the others on it. It lives in FlareUI's header, so the speakers sat on the
+-- header and jumped whenever the button did. After each change the alerts stack without it, growing
+-- rightwards, and it goes straight back. Only anchors are changed: writing the container's
+-- justification or subsystems would taint it.
+local function StackAlerts(container)
+    local social = _G.QuickJoinToastButton
+    local relative = container
     for _, system in ipairs(container.alertFrameSubSystems) do
         local frame = system.anchorFrame
-        if frame and frame:IsShown() then
-            local point, relativeTo, relativePoint = frame:GetPoint(1)
-            if point == "BOTTOMRIGHT" then
-                frame:ClearAllPoints()
-                frame:SetPoint("BOTTOMLEFT", relativeTo, relativePoint == "TOPRIGHT" and "TOPLEFT" or "BOTTOMLEFT", 0, 0)
-            end
+        if frame and frame ~= social and frame:IsShown() then
+            frame:ClearAllPoints()
+            frame:SetPoint("BOTTOMLEFT", relative, relative == container and "BOTTOMLEFT" or "TOPLEFT", 0, 0)
+            relative = frame
         end
     end
+    if social and social:IsShown() then Chat:StyleHeaderButtons() end
 end
 
 local function AnchorVoiceChat()
@@ -377,9 +381,9 @@ local function AnchorVoiceChat()
         alerts:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, VOICE_GAP)
         if not alerts.FlareUI_AnchorsHooked then
             alerts.FlareUI_AnchorsHooked = true
-            hooksecurefunc(alerts, "UpdateAnchors", AlertsFromLeft)
+            hooksecurefunc(alerts, "UpdateAnchors", StackAlerts)
         end
-        AlertsFromLeft(alerts)
+        StackAlerts(alerts)
     end
 
     local deafen, mute = _G.ChatFrameToggleVoiceDeafenButton, _G.ChatFrameToggleVoiceMuteButton

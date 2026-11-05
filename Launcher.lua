@@ -17,6 +17,7 @@ local function PrintCommands()
     Line("/flareui, /fui", L["Open configuration."])
     if ns.FCMActive() then Line("/fui cm", L["Toggle Fake CM setup mode."]) end
     Line("/fui pad", L["Switch Gamepad mode on or off."])
+    Line("/fui tour", L["Run the setup tour."])
     local qol = ns.db and ns.db.profile.tweaks
     if qol and qol.enabled and qol.way then Line("/way", L["Place a map pin (type it alone for the formats)."]) end
     Line("/rl", L["Reload UI shortcut."])
@@ -105,6 +106,8 @@ loader:SetScript("OnEvent", function(self)
             ns.ToggleFCMSetupMode()
         elseif msg == "pad" or msg == "gamepad" then
             ns.ToggleGamepadMode()
+        elseif msg == "tour" then
+            ns.ShowTour()
         else
             PrintCommands()
         end
