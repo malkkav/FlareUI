@@ -517,8 +517,8 @@ local defaults = {
                 layouts = {},
                 bars = {
                     health      = { enabled = false, show = "target", width = 220, height = 16, text = "both" },
-                    power       = { enabled = false, show = "target", width = 220, height = 16, fsr = false },
-                    mana        = { enabled = false, show = "target", width = 220, height = 16, fsr = false },
+                    power       = { enabled = false, show = "target", width = 220, height = 16, text = "value", fsr = false },
+                    mana        = { enabled = false, show = "target", width = 220, height = 16, text = "value", fsr = false },
                     combo       = { enabled = false, show = "target", width = 220, height = 12 },
                     swingMain   = { enabled = false, show = "combat",       width = 220, height = 12 },
                     swingOff    = { enabled = false, show = "combat",       width = 220, height = 12 },

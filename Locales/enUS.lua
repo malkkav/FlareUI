@@ -342,6 +342,7 @@ L["FlareUI Debuffs"] = true
 L["FlareUI settings"] = true
 L["FlareUI Settings"] = true
 L["FlareUI XP bar"] = true
+L["FlareUI's files didn't load completely. Restart the game. If this keeps happening, reinstall FlareUI."] = true
 L["FlareUI's own quest tracker."] = true
 L["Flashes the taskbar and plays a sound for:\n* Ready checks\n* Summons and resurrections\n* Group invites\n* Dungeon queues"] = true
 L["Flips the frame to face the player frame. In FlareUI and Forever Style, only the bars' direction."] = true

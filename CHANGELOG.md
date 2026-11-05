@@ -1,3 +1,13 @@
+# FlareUI 2.8.1
+
+A text option for your power bars, and a clear message if FlareUI doesn't load properly.
+
+## New
+- Resource Bars: the power and druid mana bars have a **Text** option in Edit Mode, to show the value or nothing.
+
+## Fixed
+- If FlareUI's files don't load completely, it now says so in chat and tells you what to do, and `/fui` shows the same message. Before, you'd only get a line about a missing library, and `/fui` did nothing. If you see this, restart the game, and reinstall FlareUI if it keeps happening.
+
 # FlareUI 2.8.0
 
 Your fonts work again, shaman and rogue health bars stand out from their power bars, and Edit Mode shows where a frame will land.

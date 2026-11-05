@@ -9,10 +9,7 @@ local ADDON_NAME, ns = ...
 -- 1. LIBRARY
 --------------------------------------------------
 local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
-if not LSM then
-    DEFAULT_CHAT_FRAME:AddMessage("|cffff0000FlareUI Error:|r LibSharedMedia-3.0 not found!")
-    return
-end
+if not LSM then return end   -- LoadCheck.lua tells the player
 
 -- forward slashes so the paths work on every platform
 local MEDIA_PATH = "Interface/AddOns/" .. ADDON_NAME .. "/Media/"

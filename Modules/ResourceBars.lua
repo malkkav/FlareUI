@@ -66,6 +66,11 @@ local SHOW_VALUES = {
     { text = L["Combat + Target"],              value = "target", isRadio = true },
     { text = L["Combat + Attackable Target"],   value = "harm",   isRadio = true },
 }
+-- power and mana: no percentages, as those of a (possibly secret) power are unreliable
+local POWER_TEXT_VALUES = {
+    { text = L["None"],  value = "none",  isRadio = true },
+    { text = L["Value"], value = "value", isRadio = true },
+}
 local TEXT_VALUES = {
     { text = L["None"],            value = "none",    isRadio = true },
     { text = L["Percent"],         value = "percent", isRadio = true },
@@ -235,14 +240,15 @@ local function UpdatePower(holder)
     bar:SetMinMaxValues(0, UnitPowerMax("player", powerType))
     bar:SetValue(UnitPower("player", powerType))
     bar:SetStatusBarColor(K.GetPowerColor("player"))
-    SetText(holder, "value", UnitPower("player", powerType))end
+    SetText(holder, Cfg("power").text or "value", UnitPower("player", powerType))
+end
 
 local function UpdateMana(holder)
     local bar = holder.Bar
     bar:SetMinMaxValues(0, UnitPowerMax("player", MANA))
     bar:SetValue(UnitPower("player", MANA))
     bar:SetStatusBarColor(ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3])
-    SetText(holder, "value", UnitPower("player", MANA))
+    SetText(holder, Cfg("mana").text or "value", UnitPower("player", MANA))
 end
 
 -- Segment count; each segment is a bar from i - 1 to i fed the (possibly secret) point count
@@ -346,11 +352,11 @@ local function ApplyPreview(holder)
     elseif kind == "power" then
         bar:SetValue(0.6)
         bar:SetStatusBarColor(K.GetPowerColor("player"))
-        SetText(holder, "value", 60)
+        SetText(holder, cfg.text or "value", 60)
     elseif kind == "mana" then
         bar:SetValue(0.4)
         bar:SetStatusBarColor(ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3])
-        SetText(holder, "value", 1600)
+        SetText(holder, cfg.text or "value", 1600)
     elseif kind == "swing" then
         holder:SetScript("OnUpdate", nil)
         holder.swingEnd = nil
@@ -722,7 +728,10 @@ local function BuildSettings(key)
               get = get("classicSize", 24), set = set("classicSize"), hidden = classicOff })
     end
     add({ name = L["Show"], kind = LEM.SettingType.Dropdown, default = defaults.show or "always", values = SHOW_VALUES, get = get("show", "always"), set = set("show") })
-    -- power and mana always show the value: percentages of a (possibly secret) power are unreliable
+    if info.kind == "power" or info.kind == "mana" then
+        add({ name = L["Text"], kind = LEM.SettingType.Dropdown, default = defaults.text or "value", values = POWER_TEXT_VALUES,
+              get = get("text", defaults.text or "value"), set = set("text") })
+    end
     if info.kind == "health" then
         add({ name = L["Text"], kind = LEM.SettingType.Dropdown, default = defaults.text or "both", values = TEXT_VALUES, get = get("text", defaults.text or "both"), set = set("text") })
     end
