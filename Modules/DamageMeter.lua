@@ -1378,6 +1378,11 @@ showRetry:SetScript("OnEvent", function()
 end)
 
 local function FadeStep(self, meter, elapsed)
+    -- at rest under Show on Mouseover it stays on watch: a check every 0.05 s is enough
+    self.restWait = (self.restWait or 0) + elapsed
+    if self.atRest and self.restWait < 0.05 then return end
+    elapsed = self.restWait
+    self.restWait = 0
     local target = fadeTarget
     if meter.FlareUI_MouseHidden then target = (MeterUnderMouse(meter) and not PanelsInTheWay()) and 1 or 0 end
     local db = GetDb()
@@ -1390,7 +1395,8 @@ local function FadeStep(self, meter, elapsed)
     else
         alpha = math_max(target, alpha - elapsed / time)
     end
-    meter:SetAlpha(alpha)
+    self.atRest = alpha == target and meter:GetAlpha() == target
+    if not self.atRest then meter:SetAlpha(alpha) end
     if alpha ~= target then return end
     if target == 0 and DamageMeter.viewBackPending then DamageMeter.ShowDamageViews() end
     if hideWhenFaded and target == 0 then

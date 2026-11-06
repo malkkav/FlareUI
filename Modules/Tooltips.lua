@@ -416,7 +416,7 @@ local function TooltipUnit(tip)
     local owner = tip:GetOwner()
     if owner and not owner:IsForbidden() then
         local ownerUnit = owner.unit
-        if ownerUnit == nil and owner.GetAttribute then ownerUnit = owner:GetAttribute("unit") end
+        if canaccessvalue(ownerUnit) and ownerUnit == nil and owner.GetAttribute then ownerUnit = owner:GetAttribute("unit") end
         if ownerUnit and canaccessvalue(ownerUnit) and type(ownerUnit) == "string" then return ownerUnit end
     end
     if MouseIsOverWorld() then return "mouseover" end

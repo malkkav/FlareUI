@@ -369,7 +369,7 @@ local function OnUpdateUsable(button, action, isUsable, notEnoughMana)
     if C_LevelLink.IsActionLocked(slot) then
         button.FlareUI_Usable = "locked"
     else
-        if isUsable == nil or notEnoughMana == nil then
+        if (canaccessvalue(isUsable) and isUsable == nil) or (canaccessvalue(notEnoughMana) and notEnoughMana == nil) then
             isUsable, notEnoughMana = C_ActionBar.IsUsableAction(slot)
         end
         -- a #showtooltip macro reports the macro's usability, not the spell's
@@ -644,9 +644,11 @@ end
 
 --------------------------------------------------
 -- 12. AUTO-PAGING
--- Forever never sets a bonus bar (GetBonusBarIndex stays 0 in Stealth or a form), so bar 1 never
--- pages. A secure state driver on the character's forms sets "actionpage" (Classic pages 7-10) on
--- the picked bar's buttons, which Blizzard's buttons read before their bar's page; works in combat.
+-- Stealth sets no bonus bar on Forever (GetBonusBarIndex stays 0 for a rogue), so Blizzard's bar 1
+-- doesn't page for it, while a warrior's stances do page it. A secure state driver on the character's
+-- forms sets "actionpage" (Classic pages 7-10) on the picked bar's buttons, which Blizzard's buttons
+-- read before their bar's page; works in combat. With another bar picked, or none, bar 1 is held on
+-- page 1 against Blizzard's own stance paging.
 --------------------------------------------------
 -- a form -> its page, by Classic spell ID or, should Forever's differ, its icon
 local FORM_PAGES = {
@@ -659,6 +661,9 @@ local FORM_PAGES = {
     { spells = { 15473 },        icon = 136200, page = 7 },    -- Shadowform
 }
 local PAGE_FIRST = "[possessbar][overridebar][vehicleui] default; [bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10"
+-- Bar 1 when it isn't the picked bar: only while Blizzard would swap it for a bonus bar. The player's
+-- own page keys and any vehicle or override bar stay Blizzard's
+local PAGE_HOLD = "[possessbar][overridebar][vehicleui][shapeshift] default; [actionbar:1,bonusbar:1/2/3/4] 1; default"
 local PAGE_SNIPPET = [[
     local page = newstate ~= "default" and tonumber(newstate) or nil
     for i = 1, 12 do
@@ -706,14 +711,15 @@ local function ApplyAutoPaging()
     for i = 1, 8 do
         local key = "bar" .. i
         local pager = pagers[key]
-        if i == picked and not pager then
+        local hold = i == 1 and picked ~= 1 and db and db.enabled
+        if (i == picked or hold) and not pager then
             pager = CreateFrame("Frame", nil, UIParent, "SecureHandlerStateTemplate")
             for n, button in ipairs(GetButtonsForBarKey(key)) do pager:SetFrameRef("b" .. n, button) end
             pager:SetAttribute("_onstate-page", PAGE_SNIPPET)
             pagers[key] = pager
         end
         -- off again: "default" hands the buttons back to their bar's own page
-        if pager then RegisterStateDriver(pager, "page", i == picked and driver or "default") end
+        if pager then RegisterStateDriver(pager, "page", (i == picked and driver) or (hold and PAGE_HOLD) or "default") end
     end
 end
 

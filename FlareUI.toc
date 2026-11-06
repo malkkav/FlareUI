@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 2.10.0
+## Version: 3.0
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -31,7 +31,7 @@ Libs\Libs.xml
 # ----------------------------------------------------
 # Addon Files
 # ----------------------------------------------------
-# Localization (first: option tables use it as they load)
+# Localization (before anything that builds labels as it loads)
 Locales\Locale.lua
 Locales\deDE.lua
 Locales\esES.lua

@@ -253,7 +253,6 @@ local function RepositionScrollToBottomButton(chatFrame)
 end
 
 local function StyleButtonFrame()
-    if not NUM_CHAT_WINDOWS then return end
     for i = 1, NUM_CHAT_WINDOWS do
         local bf = _G["ChatFrame" .. i .. "ButtonFrame"]
         if bf then
@@ -660,7 +659,13 @@ function Lines.UpdateLevelEvents()
         f:SetScript("OnEvent", function(_, event, unit)
             if event == "GUILD_ROSTER_UPDATE" then
                 if not GetGuildRosterInfo then return end
-                for i = 1, GetNumGuildMembers() do
+                -- the event comes often and a big guild is a long walk
+                local now = GetTime()
+                if f.guildReadAt and now - f.guildReadAt < 30 then return end
+                local count = GetNumGuildMembers()
+                -- (empty at login: the full roster's event still gets through)
+                if count > 0 then f.guildReadAt = now end
+                for i = 1, count do
                     RememberGuildMember(pcall(GetGuildRosterInfo, i))
                 end
             elseif event == "FRIENDLIST_UPDATE" then
@@ -1820,7 +1825,6 @@ function Chat:UpdateCustomTabs(chatFrame, db)
 end
 
 function Chat:HideBlizzardTabs()
-    if not NUM_CHAT_WINDOWS then return end
 
     -- In the Gamepad UI the dock's tabs stay shown but invisible: Tab Settings (Y) opens on them
     local dock = _G.GeneralDockManager
@@ -2551,7 +2555,7 @@ local function OnChatEnter(chatFrame)
 end
 
 function Chat:SetupAutoHide(db)
-    if not NUM_CHAT_WINDOWS or not db then return end
+    if not db then return end
     if not Chat.autoHideEventsRegistered then
         self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatStateChange")
         self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatStateChange")
@@ -2589,7 +2593,7 @@ function Chat:UpdateFilters()
 end
 
 function Chat:Apply(db)
-    if not NUM_CHAT_WINDOWS or not db then return end
+    if not db then return end
 
     if db.hideCombatLog and ChatFrame2 then
         ChatFrame2:UnregisterAllEvents()

@@ -19,8 +19,11 @@ ns.UFRing = Ring
 -- The ring is centred on the frame's middle, its end tucked under it so the bars start where their
 -- corners meet the rim.
 --------------------------------------------------
--- (the pet: only a styled pet has a portrait, which Ring.Applies asks for)
-local RING_UNITS = { player = true, target = true, focus = true, pet = true }
+-- (the small frames: only a styled one has a portrait, which Ring.Applies asks for)
+local RING_UNITS = { player = true, target = true, focus = true, pet = true, targettarget = true, focustarget = true }
+-- the small frames, with the frame each takes its size and look from. Target of Focus too follows
+-- the target: half of the focus frame would be too small to read
+local SMALL_FRAMES = { pet = "player", targettarget = "target", focustarget = "target" }
 
 -- the art: the atlas and the ring's box in it (fractions, to the outer edge of its shadow). The ring
 -- is on the atlas's right; on the left it is mirrored. Every frame shares the target's ring.
@@ -33,6 +36,8 @@ ART.focus = ART.target
 ART.party = ART.target
 ART.boss = ART.target
 ART.pet = ART.target
+ART.targettarget = ART.target
+ART.focustarget = ART.target
 local CIRCLE_MASK   = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 local SMALL_CIRCLE  = "UI-HUD-UnitFrame-SmallCircle"
 local PORTRAIT_SHARE = 0.86   -- the portrait inside the ring, of its diameter
@@ -95,7 +100,13 @@ BLIZZ.pet = {
     centre = BLIZZ.player.centre, D = BLIZZ.player.D, side = "LEFT",
     level = BLIZZ.player.level,
 }
--- the styled pet's size, of the player frame's, and its Portrait Size default
+-- The styled target of target and target of focus: the target frame, small, with no icons on the ring
+BLIZZ.targettarget = {
+    centre = BLIZZ.target.centre, D = BLIZZ.target.D, side = "RIGHT",
+    level = BLIZZ.target.level,
+}
+BLIZZ.focustarget = BLIZZ.targettarget
+-- the small frames' size, of the frame they follow, and their Portrait Size default
 local PET_SHARE, PET_RING_D = 0.5, 40
 -- the tiles' Portrait Size default (FlareUI Style's party and boss look)
 local TILE_RING_D = 66
@@ -130,7 +141,7 @@ local LEVEL_SCALE = 0.94
 -- are shared. So is every option of the settings page's Unit Frames section: those are general.
 local SHARED_KEYS = { enabled = true, foreverStyle = true, plateStyle = true, styleProfiles = true, editSections = true,
                       raid = true, resource = true, styleStart = true, tileStyle = true, plateTiles = true,
-                      simplePet = true, palette = true, visibility = true, classColor = true, fullNames = true,
+                      simplePet = true, simpleTargetOf = true, palette = true, visibility = true, classColor = true, fullNames = true,
                       auraStyle = true, auraTimer = true, font = true, fontPower = true, fontCast = true, auraFont = true }
 -- a stored setup may lack these
 local TILE_KEYS = { party = true, boss = true }
@@ -144,7 +155,8 @@ local PLATE = {
     -- the second row stretches with the height; rowDelta resizes a row by that many art pixels
     cutX = { 0, 8, 120, 145 }, cutY = { 6, 14, 24, 32, 39, 47, 51, 59 },
     rowDelta = { 0, -3, 0, 2, 0, 1, 0 },
-    defaultScale = { player = 130, target = 130, focus = 100, party = 100, boss = 100, pet = 65 },   -- percent of Blizzard's size
+    defaultScale = { player = 130, target = 130, focus = 100, party = 100, boss = 100, pet = 65,
+                     targettarget = 65, focustarget = 65 },   -- percent of Blizzard's size
     ringD = 61.8, ringX = 158.6,           -- Blizzard's ring on this art: its diameter and centre
     name   = { 4, 125, 11, 26 },           -- x from, x to, y from, y to
     -- the bars' art; mirrored files for right-to-left fill (a status bar crops an atlas from the left)
@@ -156,7 +168,8 @@ local PLATE = {
     stripRight = 131, stripTop = 10,       -- where Blizzard's anchors put the glow on this art
 }
 -- (party and boss: the tiles' ring kinds)
-Ring.PLATE_UNITS = { player = true, target = true, focus = true, party = true, boss = true, pet = true }
+Ring.PLATE_UNITS = { player = true, target = true, focus = true, party = true, boss = true, pet = true,
+                     targettarget = true, focustarget = true }
 Ring.STRIP_ATLAS = PLATE.strip
 -- an art y -> where it lands once the rows are squeezed or stretched (rowDelta)
 local function RowY(y)
@@ -223,6 +236,12 @@ Ring.TOTEM_POSITION = { point = "BOTTOM", x = -351, y = 225 }
 -- the styled pet's (Simple Pet Frame off; the simple one keeps POSITIONS' pet)
 Ring.PET_POSITION = { point = "BOTTOM", x = -236, y = 262 }
 
+-- the styled target of target and target of focus (Simple "Target Of" off; the simple ones keep POSITIONS')
+Ring.TARGET_OF_POSITIONS = {
+    targettarget = { point = "BOTTOM",      x = 236,  y = 241 },
+    focustarget  = { point = "BOTTOMRIGHT", x = -487, y = 267 },
+}
+
 -- The Forever Style preset, on top of the FlareUI Style setup it starts from
 local PLATE_PRESET = {
     player = { portrait = "class" },
@@ -241,6 +260,10 @@ Ring.PLATE_POSITIONS = {
 }
 Ring.PLATE_TOTEM_POSITION = { point = "BOTTOM", x = -362, y = 219 }
 Ring.PLATE_PET_POSITION = { point = "BOTTOM", x = -238, y = 260 }
+Ring.PLATE_TARGET_OF_POSITIONS = {
+    targettarget = { point = "BOTTOM",      x = 238,  y = 239 },
+    focustarget  = { point = "BOTTOMRIGHT", x = -476, y = 254 },
+}
 
 -- a FlareUI Style preset value, for Edit Mode's defaults
 function Ring.PresetValue(unit, key)
@@ -256,6 +279,11 @@ end
 -- this style's default position for the styled pet
 function Ring.PetPosition()
     return Ring.PlateOn() and Ring.PLATE_PET_POSITION or Ring.PET_POSITION
+end
+
+-- this style's default position for a styled target of target or target of focus
+function Ring.TargetOfPosition(unit)
+    return (Ring.PlateOn() and Ring.PLATE_TARGET_OF_POSITIONS or Ring.TARGET_OF_POSITIONS)[unit]
 end
 
 -- this style's totem size and totems per row
@@ -325,6 +353,12 @@ end
 function Ring.PetStyled()
     local db = GetDb()
     return Ring.On() and db.simplePet == false or false
+end
+
+-- Simple "Target Of" is off, in a ring style: target of target and of focus follow it (a reload applies it)
+function Ring.TargetOfStyled()
+    local db = GetDb()
+    return Ring.On() and db.simpleTargetOf == false or false
 end
 
 -- this frame is drawn in a ring style (FlareUI Style or Forever Style)
@@ -1107,7 +1141,7 @@ function Ring.UpdateThreat(f)
         status = Readable(UnitThreatSituation("player"))
     elseif kind == "party" or kind == "pet" then
         status = exists and Readable(UnitThreatSituation(unit)) or nil
-    elseif exists then
+    elseif exists and unit ~= "targettarget" and unit ~= "focustarget" then   -- those two show no threat
         status = Readable(UnitThreatSituation("player", unit))
     end
     if status and status > 0 and GetThreatStatusColor and not LEM:IsInEditMode() and IconOn(f, "threatGlow", true) then
@@ -1125,8 +1159,11 @@ end
 do
     local function OnEvent(_, event)
         -- threat only moves the flash, and fires often in a fight
-        local update = (event == "UNIT_THREAT_SITUATION_UPDATE" or event == "UNIT_THREAT_LIST_UPDATE") and Ring.UpdateThreat or Ring.Update
-        for f in pairs(frames) do update(f) end
+        local threat = event == "UNIT_THREAT_SITUATION_UPDATE" or event == "UNIT_THREAT_LIST_UPDATE"
+        local update = threat and Ring.UpdateThreat or Ring.Update
+        for f in pairs(frames) do
+            if not threat or f:IsVisible() then update(f) end
+        end
     end
     local events, focusEvents = CreateFrame("Frame"), CreateFrame("Frame")
     for _, event in ipairs({ "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_UPDATE_RESTING", "PVP_TIMER_UPDATE" }) do
@@ -1246,75 +1283,88 @@ local function ApplyForeverPreset(db)
     db.totemLayouts = {}
 end
 
--- The styled pet's sizes: half the player frame as it stands, with the player's look
-local function ApplyPetPreset(db, pet)
-    local player = db.units.player or {}
+-- A styled small frame's sizes: half the frame it follows as that stands, with its look
+local function ApplySmallPreset(db, pet, unit)
+    local from = SMALL_FRAMES[unit]
+    local player = db.units[from] or {}
     local function Half(value, default) return math.floor((value or default) * PET_SHARE + 0.5) end
     pet.width = Half(player.width, 200)
     pet.texture, pet.border, pet.absorbTexture = player.texture, player.border, player.absorbTexture
     pet.healthText = player.healthText
-    pet.showLevel = player.showLevel ~= false
+    -- the level starts off on target of target and target of focus
+    pet.showLevel = unit == "pet" and player.showLevel ~= false
     pet.powerHeight = Half(player.powerHeight, 15)
     if db.plateStyle then
-        ApplyPlateScale(pet, Half(player.plateScale, PLATE.defaultScale.player))
+        ApplyPlateScale(pet, Half(player.plateScale, PLATE.defaultScale[from]))
     else
         pet.height = Half(player.height, 60)
-        pet.ringSize = Half(player.ringSize, FOREVER.player.ringSize)
+        pet.ringSize = Half(player.ringSize, FOREVER[from].ringSize)
     end
 end
 
--- The pet's stored place in every Edit Mode layout goes into `into` (the layouts' entries are cleared),
--- and `from`'s comes back
-local function SwapPetPositions(db, into, from)
+-- A small frame's stored place in every Edit Mode layout goes into `into` (the layouts' entries are
+-- cleared), and `from`'s comes back
+local function SwapSmallPositions(db, unit, into, from)
     for layoutName, store in pairs(db.layouts or {}) do
-        into[layoutName] = store.pet
-        store.pet = nil
+        into[layoutName] = store[unit]
+        store[unit] = nil
     end
     db.layouts = db.layouts or {}
     for layoutName, position in pairs(from or {}) do
         db.layouts[layoutName] = db.layouts[layoutName] or {}
-        db.layouts[layoutName].pet = position
+        db.layouts[layoutName][unit] = position
     end
 end
 
--- The simple and the styled pet each keep their own settings and places, per style: the one Simple
--- Pet Frame asks for is put in place here, its own switch aside. The first styled pet starts from the
--- preset, at its style's default place.
-function Ring.SyncPetSetup(db)
-    local pet = db.units and db.units.pet
-    local wanted = (db.foreverStyle and db.simplePet == false) and "styled" or "simple"
-    if not pet or (db.petSetup or "simple") == wanted then return end
-    local enabled, saved = pet.enabled, {}
-    for key, value in pairs(pet) do saved[key] = CopyRaw(value) end
-    db.petStash = db.petStash or {}
-    db.petStash[db.petSetup or "simple"] = saved
-    db.petPositions = db.petPositions or {}
+-- The simple and the styled frame each keep their own settings and places, per style: the one the
+-- option asks for is put in place here, its own switch aside. The first styled one starts from the
+-- preset, at its style's default place. Saved as <unit>Setup, <unit>Stash, <unit>Positions.
+local function SyncSmallSetup(db, unit)
+    local frame = db.units and db.units[unit]
+    local simple = db.simplePet
+    if unit ~= "pet" then simple = db.simpleTargetOf end
+    local wanted = (db.foreverStyle and simple == false) and "styled" or "simple"
+    local setupKey, stashKey, placesKey = unit .. "Setup", unit .. "Stash", unit .. "Positions"
+    local current = db[setupKey] or "simple"
+    if not frame or current == wanted then return end
+    local enabled, saved = frame.enabled, {}
+    for key, value in pairs(frame) do saved[key] = CopyRaw(value) end
+    db[stashKey] = db[stashKey] or {}
+    db[stashKey][current] = saved
+    db[placesKey] = db[placesKey] or {}
     local positions = {}
-    db.petPositions[db.petSetup or "simple"] = positions
-    SwapPetPositions(db, positions, db.petPositions[wanted])
-    local back = db.petStash[wanted]
+    db[placesKey][current] = positions
+    SwapSmallPositions(db, unit, positions, db[placesKey][wanted])
+    local back = db[stashKey][wanted]
     if back then
-        for key in pairs(pet) do pet[key] = nil end
-        Fill(pet, back)
+        for key in pairs(frame) do frame[key] = nil end
+        Fill(frame, back)
     else
-        ApplyPetPreset(db, pet)
+        ApplySmallPreset(db, frame, unit)
     end
-    pet.enabled = enabled
-    db.petSetup = wanted
+    frame.enabled = enabled
+    db[setupKey] = wanted
 end
 
--- A style's first setup starts with the simple pet (Ring.SyncPetSetup then makes a styled one to
+function Ring.SyncPetSetup(db)
+    for unit in pairs(SMALL_FRAMES) do SyncSmallSetup(db, unit) end
+end
+
+-- A style's first setup starts with the simple frames (Ring.SyncPetSetup then makes styled ones to
 -- that style's measure)
 local function ResetPetSetup(db)
-    local pet = db.units and db.units.pet
-    local simple = db.petStash and db.petStash.simple
-    if pet and db.petSetup == "styled" and simple then
-        local enabled = pet.enabled
-        for key in pairs(pet) do pet[key] = nil end
-        Fill(pet, simple)
-        pet.enabled = enabled
+    for unit in pairs(SMALL_FRAMES) do
+        local frame = db.units and db.units[unit]
+        local setupKey, stashKey, placesKey = unit .. "Setup", unit .. "Stash", unit .. "Positions"
+        local simple = db[stashKey] and db[stashKey].simple
+        if frame and db[setupKey] == "styled" and simple then
+            local enabled = frame.enabled
+            for key in pairs(frame) do frame[key] = nil end
+            Fill(frame, simple)
+            frame.enabled = enabled
+        end
+        db[setupKey], db[stashKey], db[placesKey] = nil, nil, nil
     end
-    db.petSetup, db.petStash, db.petPositions = nil, nil, nil
 end
 
 -- Once (db.plateTiles): a Forever Style setup without ring tiles takes FlareUI Style's party and boss setup
@@ -1383,8 +1433,8 @@ end
 local function ApplyPlatePreset(db)
     for unit in pairs(Ring.PLATE_UNITS) do
         local udb = db.units and db.units[unit]
-        -- (the pet's setup is Ring.SyncPetSetup's)
-        if udb and unit ~= "pet" then ApplyPlateScale(udb, Ring.PlateDefaultScale(unit)) end
+        -- (the small frames' setups are Ring.SyncPetSetup's)
+        if udb and not SMALL_FRAMES[unit] then ApplyPlateScale(udb, Ring.PlateDefaultScale(unit)) end
     end
     for unit, keys in pairs(PLATE_PRESET) do
         local udb = db.units and db.units[unit]
@@ -1463,19 +1513,20 @@ end
 --------------------------------------------------
 -- 9. EDIT MODE
 --------------------------------------------------
--- Edit Mode's defaults for the styled pet: half the player frame's presets
-function Ring.PetDefaults()
+-- Edit Mode's defaults for the styled small frames: half the player and target frames' presets (the same)
+function Ring.PetDefaults(unit)
     local player = FOREVER.player
     return {
         width = math.floor(player.width * PET_SHARE + 0.5), height = math.floor(player.height * PET_SHARE + 0.5),
-        powerHeight = math.floor(player.powerHeight * PET_SHARE + 0.5), healthText = "percent", showLevel = true,
+        powerHeight = math.floor(player.powerHeight * PET_SHARE + 0.5), healthText = "percent", showLevel = unit == "pet",
         powerText = false, texture = "FlareUI Forever", border = player.border, absorbTexture = "FlareUI Striped",
+        buffs = "OFF", debuffs = "OFF", auraSize = 12,
     }
 end
 
 -- Portrait Size's default: the preset's
 function Ring.DefaultSize(unit)
     if unit == "party" or unit == "boss" then return TILE_RING_D end
-    if unit == "pet" then return PET_RING_D end
+    if SMALL_FRAMES[unit] then return PET_RING_D end
     return FOREVER[unit] and FOREVER[unit].ringSize
 end

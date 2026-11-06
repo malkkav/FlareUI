@@ -25,7 +25,7 @@ S:Module{
     -- the options that live in Edit Mode are easy to miss: said at the top of the page
     bannerEditMode = true,
     banner = function()
-        return L["Most options are in Edit Mode: size, look, auras, icons and more. Open it, then click a frame."], L["Open Edit Mode"], function() S:OpenEditMode("uf") end
+        return "|cffff3333" .. L["MOST FRAMES OPTIONS ARE IN EDIT MODE!"] .. "|r", L["Open Edit Mode"], function() S:OpenEditMode("uf") end
     end,
     -- the frames behind the shared Player / Pet / Target / Focus row
     editFrames = {
@@ -91,6 +91,7 @@ S:Row{ key = "uf.classColours", path = "unitframes.classColor", apply = Refresh 
 S:Row{ key = "uf.fullNames", path = "unitframes.fullNames", apply = Refresh }
 -- frames are made at login: the pet's style applies on reload
 S:Row{ key = "uf.simplePet", path = "unitframes.simplePet", reload = true }
+S:Row{ key = "uf.simpleTargetOf", path = "unitframes.simpleTargetOf", reload = true }
 S:Row{ key = "uf.auraShape", kind = "choice", path = "unitframes.auraStyle", choices = { "square", "round" }, apply = Refresh }
 S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }
 

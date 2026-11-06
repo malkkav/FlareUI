@@ -1085,6 +1085,7 @@ local function BuildSettings()
         { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = d.border, values = K.BuildBorderValues(false),
           get = get("border", d.border), set = set("border"), hidden = K.NoBorderOptions },
         K.BgOpacitySetting(K.BAR_BG_OPACITY, get("bgOpacity", K.BAR_BG_OPACITY), set("bgOpacity")),
+        K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars")),
     })
 
     Section("Auras", AuraItems(get, set, d, raidView, holder, true))
@@ -1178,8 +1179,16 @@ function RF:OnGlobalEvent(event, ...)
     end
     if IsEditing() then return end
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
-        ForTiles(Tile.UpdateAll)
-        MB.UpdateAllSoon()
+        -- one pass for a burst (a raid forming)
+        if not MB.rosterPending then
+            MB.rosterPending = true
+            C_Timer.After(0.2, function()
+                MB.rosterPending = nil
+                if IsEditing() then return end
+                ForTiles(Tile.UpdateAll)
+                MB.UpdateAllSoon()
+            end)
+        end
         return
     end
     if event == "READY_CHECK_FINISHED" then

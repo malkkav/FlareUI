@@ -8,3 +8,4 @@ ignore:
   - README.md
   - CHANGELOG.md
   - tools
+  - Locales/enUS.lua

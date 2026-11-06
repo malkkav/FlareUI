@@ -308,9 +308,14 @@ local function BuildSettings()
         { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildAbsorbValues(),
           get = get("absorbTexture"), set = set("absorbTexture"),
           desc = L["The texture of the shield (absorb) over the health bar."] },
-        K.BgOpacitySetting(K.BAR_BG_OPACITY,
-            function() local v = get("bgOpacity")(); if v == nil then return K.BAR_BG_OPACITY end; return v end,
-            set("bgOpacity")),
+        (function()
+            local item = K.BgOpacitySetting(K.BAR_BG_OPACITY,
+                function() local v = get("bgOpacity")(); if v == nil then return K.BAR_BG_OPACITY end; return v end,
+                set("bgOpacity"))
+            item.hidden = K.NoBorderOptions   -- Forever Style's plate
+            return item
+        end)(),
+        K.SmoothBarsSetting(get("smoothBars"), set("smoothBars")),
     })
 
     local function noCast() return get("castbar")() == false end
@@ -360,6 +365,7 @@ local function BuildSettings()
           get = get("buffs"), set = set("buffs"), desc = L["Every buff on the boss, such as enrages and shields."] },
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = places, generator = Place("debuffs", "buffs"),
           get = get("debuffs"), set = set("debuffs"), desc = L["Debuffs on the boss: only your own with Only My Debuffs."] },
+        K.HideBuffsSetting("PERMANENT", function() return get("hideBuffs")() or "PERMANENT" end, set("hideBuffs")),
         { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1, get = get("auraSize"), set = set("auraSize") },
         { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = D.onlyMyDebuffs ~= false,
           get = function() return get("onlyMyDebuffs")() ~= false end, set = set("onlyMyDebuffs") },

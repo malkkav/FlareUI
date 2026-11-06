@@ -2,8 +2,7 @@ local _, ns = ...
 
 --------------------------------------------------
 -- LOAD CHECK
--- First in the TOC and needs nothing else, so it still runs when other files didn't load: a player
--- reported FlareUI listed in game, /fui doing nothing and LibSharedMedia missing, until a reinstall.
+-- First in the TOC and needs nothing else, so it still runs when other files didn't load.
 -- Without the libraries most files stop on their first lines and the errors stay hidden.
 --------------------------------------------------
 local LIBRARIES = {

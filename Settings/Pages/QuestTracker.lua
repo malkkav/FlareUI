@@ -22,17 +22,19 @@ S:Row{ key = "qt.opacity", kind = "choice", path = "objectivetracker.opacity", c
 S:Row{ key = "qt.border", kind = "choice", path = "objectivetracker.borderTexture", choices = S.BorderChoices,
     apply = Refresh }
 
--- one choice over three saved flags: zone (current zone first), distance, level
+-- one choice over four saved flags: zone (current zone first), distance, level, progress
 S:Row{
-    key = "qt.sort", kind = "choice", choices = { "zone", "distance", "level" }, apply = Refresh,
+    key = "qt.sort", kind = "choice", choices = { "zone", "distance", "level", "progress" }, apply = Refresh,
     get = function()
         if S:GetPath("objectivetracker.sortByLevel") then return "level" end
+        if S:GetPath("objectivetracker.sortByProgress") then return "progress" end
         return S:GetPath("objectivetracker.zoneFirst") and "zone" or "distance"
     end,
     set = function(mode)
         S:SetPath("objectivetracker.sortByLevel", mode == "level")
+        S:SetPath("objectivetracker.sortByProgress", mode == "progress")
         S:SetPath("objectivetracker.zoneFirst", mode == "zone")
-        S:SetPath("objectivetracker.sortByDistance", mode ~= "level")
+        S:SetPath("objectivetracker.sortByDistance", mode == "zone" or mode == "distance")
     end,
 }
 
@@ -46,7 +48,16 @@ Display("wrap", "wrapText")
 Display("recipes", "showRecipes")
 Display("count", "showCount")
 Display("hideEmpty", "hideEmpty")
+Display("hideLevel", "hideLevel")
+Display("focusButtons", "focusButtons")
+S:Row{ key = "qt.playButtons", path = "objectivetracker.playButtons", apply = Refresh, section = "qt.display", half = true,
+    hidden = function() return not _G.Spoken end }
 
+local function Quests(key, path)
+    S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, apply = Refresh, section = "qt.quests", half = true }
+end
+Quests("collapseCompleted", "collapseCompleted")
+Quests("hideFinished", "hideFinished")
 -- Minimize: one switch sets every instance type
 local INSTANCES = { "dungeon", "raid", "pvp", "arena" }
 S:Row{

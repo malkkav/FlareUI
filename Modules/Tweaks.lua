@@ -376,12 +376,6 @@ local function InitMoveAnyFrame()
     -- load-on-demand panels register themselves when their addon loads
     Tweaks:RegisterEvent("ADDON_LOADED", function() C_Timer.After(0, ScanUIPanels) end)
     -- Blizzard's panel manager re-anchors panels as they open / close; saved positions go back after
-    local delegate = _G.FramePositionDelegate
-    if delegate then
-        for _, method in ipairs({ "SetUIPanel", "UpdateUIPanelPositions", "ShowUIPanel" }) do
-            if type(delegate[method]) == "function" then hooksecurefunc(delegate, method, ApplyAllNowAndNext) end
-        end
-    end
     hooksecurefunc("UpdateUIPanelPositions", ApplyAllNowAndNext)
     -- bags re-anchor (and re-scale) themselves every time they open or the layout changes
     hooksecurefunc("UpdateContainerFrameAnchors", function() ScanBagFrames() ApplyAllNowAndNext() end)
@@ -517,7 +511,7 @@ local function SaveSync()
 
     -- Chat windows
     store.chat = {}
-    for i = 1, NUM_CHAT_WINDOWS do
+    for i = 1, Constants.ChatFrameConstants.MaxChatWindows do
         local name, size, r, g, b, a, shown, locked, docked, uninteractable = GetChatWindowInfo(i)
         local point, x, y = GetChatWindowSavedPosition(i)
         local width, height = GetChatWindowSavedDimensions(i)
@@ -679,7 +673,7 @@ local function LoadSync()
             end
         end
         C_Timer.After(1, function()
-            for i = 1, NUM_CHAT_WINDOWS do pcall(FloatingChatFrame_Update, i, true) end
+            for i = 1, Constants.ChatFrameConstants.MaxChatWindows do pcall(FloatingChatFrame_Update, i, true) end
             pcall(FCF_DockUpdate)
         end)
     end
@@ -1033,7 +1027,9 @@ end
 local function ApplyStatusText(hide)
     if not (hide or Tweaks.statusTextHidden) then return end
     for _, bar in ipairs(StatusBars()) do
-        for _, text in ipairs({ bar.TextString, bar.LeftText, bar.RightText }) do
+        -- (any of them can be missing)
+        for _, key in ipairs({ "TextString", "LeftText", "RightText" }) do
+            local text = bar[key]
             if text and text.SetAlpha then text:SetAlpha(hide and 0 or 1) end
         end
     end

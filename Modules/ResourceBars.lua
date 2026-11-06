@@ -208,18 +208,18 @@ local function UpdateHealPrediction(holder)
     pcall(function() absorb:SetValue(UnitGetTotalAbsorbs("player")) end)
 end
 
-local function UpdateHealth(holder)
+local function UpdateHealth(holder, glide)
     local cfg = Cfg("health")
     local bar = holder.Bar
     bar:SetMinMaxValues(0, UnitHealthMax("player"))
-    bar:SetValue(UnitHealth("player"))
+    ns.SetBarValue(bar, UnitHealth("player"), glide and cfg and cfg.smoothBars)
     bar:SetStatusBarColor(K.GetHealthColor("player", ns.ClassColorsOn()))
     if UnitIsDeadOrGhost("player") then
         holder.Text:SetText(UnitIsGhost("player") and K.GHOST_TEXT or K.DEAD_TEXT)
     else
         SetText(holder, cfg.text or "both", UnitHealth("player"), UnitHealthPercent("player", true, K.percentCurve))
     end
-    UpdateHealPrediction(holder)
+    UpdateHealPrediction(holder)   -- the amounts are clamped by the health missing
 end
 
 local function UpdateFsrSpark()
@@ -234,19 +234,21 @@ local function UpdateFsrSpark()
     end
 end
 
-local function UpdatePower(holder)
+local function UpdatePower(holder, glide)
     local bar = holder.Bar
     local powerType = UnitPowerType("player")
     bar:SetMinMaxValues(0, UnitPowerMax("player", powerType))
-    bar:SetValue(UnitPower("player", powerType))
+    local cfg = Cfg(holder.key)
+    ns.SetBarValue(bar, UnitPower("player", powerType), glide and cfg and cfg.smoothBars)
     bar:SetStatusBarColor(K.GetPowerColor("player"))
     SetText(holder, Cfg("power").text or "value", UnitPower("player", powerType))
 end
 
-local function UpdateMana(holder)
+local function UpdateMana(holder, glide)
     local bar = holder.Bar
     bar:SetMinMaxValues(0, UnitPowerMax("player", MANA))
-    bar:SetValue(UnitPower("player", MANA))
+    local cfg = Cfg(holder.key)
+    ns.SetBarValue(bar, UnitPower("player", MANA), glide and cfg and cfg.smoothBars)
     bar:SetStatusBarColor(ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3])
     SetText(holder, Cfg("mana").text or "value", UnitPower("player", MANA))
 end
@@ -280,7 +282,7 @@ end
 local function SwingOnUpdate(holder)
     local remaining = holder.swingEnd - GetTime()
     if remaining <= 0 then
-        holder.swingEnd, holder.swingDuration = nil, nil
+        holder.swingEnd, holder.swingDuration, holder.swingTenth = nil, nil, nil
         holder:SetScript("OnUpdate", nil)
         holder.Bar:SetValue(0)
         holder.Text:SetText("")
@@ -288,7 +290,12 @@ local function SwingOnUpdate(holder)
         return
     end
     holder.Bar:SetValue((holder.swingDuration - remaining) / holder.swingDuration)
-    holder.Text:SetFormattedText("%.1f", remaining)
+    -- runs every frame: the text only when it changes
+    local tenth = math.floor(remaining * 10)
+    if tenth ~= holder.swingTenth then
+        holder.swingTenth = tenth
+        holder.Text:SetFormattedText("%.1f", remaining)
+    end
 end
 
 local function StartSwing(holder, duration)
@@ -448,6 +455,7 @@ LayoutCombo = function(holder)
         seg:SetSize(segWidth, height)
         seg:SetStatusBarTexture(texture)
         seg.bg:SetTexture(texture)
+        K.SetBarBackground(seg, cfg.bgOpacity)
         seg:SetStatusBarColor(COLORS.combo[1], COLORS.combo[2], COLORS.combo[3])
         seg:SetMinMaxValues(i - 1, i)
         -- the separator is the last pixel of this segment
@@ -480,6 +488,7 @@ local function LayoutBar(holder)
     local texture = K.GetBarTexture(cfg.texture)
     bar:SetStatusBarTexture(texture)
     bar.bg:SetTexture(texture)
+    K.SetBarBackground(bar, cfg.bgOpacity)
     bar:ClearAllPoints()
     bar:SetPoint("TOPLEFT", holder, "TOPLEFT", PADDING, -PADDING)
     bar:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", -PADDING, PADDING)
@@ -747,6 +756,17 @@ local function BuildSettings(key)
           values = K.BuildTextureValues(), get = get("texture", defaults.texture or K.DEFAULT_TEXTURE), set = set("texture"), hidden = classicOn },
         { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BAR_BORDER,
           values = K.BuildBorderValues(false), get = get("border", defaults.border or DEFAULT_BAR_BORDER), set = set("border"), hidden = classicOn },
+        (function()
+            local item = K.BgOpacitySetting(K.BAR_BG_OPACITY, get("bgOpacity", K.BAR_BG_OPACITY), set("bgOpacity"))
+            item.hidden = classicOn
+            return item
+        end)(),
+        (function()
+            -- only the bars that hold a value: combo points are steps, swing timers already run smoothly
+            local item = K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars"))
+            item.hidden = function() return info.kind ~= "health" and info.kind ~= "power" and info.kind ~= "mana" end
+            return item
+        end)(),
     })
     return settings
 end
@@ -766,11 +786,13 @@ end
 
 function RB:OnEvent(event, arg1, arg2, arg3)
     if IsEditing() then return end
-    if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" or event == "UNIT_HEAL_PREDICTION" or event == "UNIT_ABSORB_AMOUNT_CHANGED" then
-        if bars.health and bars.health:IsShown() then UpdateHealth(bars.health) end
+    if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
+        if bars.health and bars.health:IsShown() then UpdateHealth(bars.health, true) end
+    elseif event == "UNIT_HEAL_PREDICTION" or event == "UNIT_ABSORB_AMOUNT_CHANGED" then
+        if bars.health and bars.health:IsShown() then UpdateHealPrediction(bars.health) end
     elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT" or event == "UNIT_MAXPOWER" then
-        if bars.power and bars.power:IsShown() then UpdatePower(bars.power) end
-        if bars.mana and bars.mana:IsShown() then UpdateMana(bars.mana) end
+        if bars.power and bars.power:IsShown() then UpdatePower(bars.power, true) end
+        if bars.mana and bars.mana:IsShown() then UpdateMana(bars.mana, true) end
         local comboChange = not (event == "UNIT_POWER_FREQUENT" and canaccessvalue(arg2) and arg2 ~= "COMBO_POINTS")
         if comboChange and bars.combo and bars.combo:IsShown() then UpdateCombo(bars.combo) end
     elseif event == "UNIT_DISPLAYPOWER" then

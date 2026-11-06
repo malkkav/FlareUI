@@ -31,7 +31,7 @@ jobs:
           exclude: |
             Libs/**
             Modules/**
-            Options/**
+            Settings/**
             *.lua
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}

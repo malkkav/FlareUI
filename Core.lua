@@ -377,7 +377,7 @@ end
 
 local defaults = {
     profile = {
-        editModeOverlaysHidden = false,   -- global: eye button on the HUD Edit Mode window (EditModeOverlays.lua)
+        editModeOverlaysHidden = false,   -- eye button on the HUD Edit Mode window (EditModeOverlays.lua)
 
         -- [[ CHAT MODULE ]]
         chat = {
@@ -493,6 +493,7 @@ local defaults = {
             enabled = false,
             classColor = true,          -- class colours on every FlareUI health bar (one switch for every frame)
             simplePet = false,          -- Simple Pet Frame: the plain pet frame in every style; off, it follows the style
+            simpleTargetOf = false,     -- Simple "Target Of": the same for target of target and target of focus
             fullNames = true,           -- Full Player Names: "First Surname" on every frame, not the first name only
             palette = "flareui",        -- the bars' colours: flareui (FlareUI's softer tones) | blizzard (UnitFrames' ApplyPalette)
             foreverStyle = true,        -- Forever's bronze portrait ring on player / target / focus; off = Addon style (UnitFramesRing.lua)
@@ -586,7 +587,7 @@ local defaults = {
                 healthText = "percent", powerText = false, showLevel = true, portrait = false, raidIcon = true,
                 mirror = true, onlyMyDebuffs = true, absorbTexture = "FlareUI Striped",
                 texture = "FlareUI Forever", border = "FlareUI Thick",
-                debuffs = "INSIDE_TOPRIGHT", buffs = "INSIDE_TOPLEFT", auraSize = 16,
+                debuffs = "INSIDE_TOPRIGHT", buffs = "INSIDE_TOPLEFT", auraSize = 16, hideBuffs = "PERMANENT",
                 castbar = true, castHeight = 14, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
             },
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
@@ -612,7 +613,8 @@ local defaults = {
                                  texture = "FlareUI Forever", border = "FlareUI Thin" },
                 pet          = { enabled = true, width = 120, height = 30, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin",
-                                 absorbTexture = "FlareUI Striped" },
+                                 absorbTexture = "FlareUI Striped",
+                                 buffs = "OFF", debuffs = "OFF", auraSize = 12, hideBuffs = "PERMANENT" },
             },
             -- Fade Player and Pet: all off = always shown ("fade" turns the set on)
             visibility = {
@@ -642,6 +644,7 @@ local defaults = {
             style = "round",            -- square | round
             swipe = "both",             -- both (default) | icon (over the icon) | border (around the edge) | none
             timer = "below",            -- below (under the icon) | bottom (along its bottom edge)
+            arrive = false,             -- new icons fade in while dropping into place
             sort = "applied", reverse = false, mineFirst = true,   -- Aura Ordering (both frames)
             font = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- per frame, set in Edit Mode
@@ -707,7 +710,14 @@ local defaults = {
             zoneOnly = false,           -- the header's Zone / All switch
             sortByDistance = true,
             sortByLevel = false,        -- the lowest level quest first (zones mixed, no zone headings)
+            sortByProgress = false,     -- the furthest along first (zones mixed, no zone headings)
             anchor = "auto",            -- auto | TOP | BOTTOM (Edit Mode); left / right follows the frame's half
+            questGap = 9,               -- pixels between quests (Edit Mode)
+            hideLevel = false,
+            focusButtons = false,       -- a dot before each quest that focuses it
+            playButtons = false,        -- a voice-line button before each quest, with the Spoken addon
+            collapseCompleted = false,  -- finished and failed quests fold, unless a timer runs
+            hideFinished = false,       -- finished objectives leave the list
             completedLast = true,
             showTags = true,
             wrapText = true,
@@ -754,11 +764,7 @@ local defaults = {
         },
     },
     -- account-wide, untouched by profile switching
-    global = {
-        radialmenu = {
-            key = nil,
-        },
-    },
+    global = {},
 }
 
 --------------------------------------------------
@@ -958,6 +964,16 @@ end
 function ns.CopyStrata(frame, from)
     local strata = from and from:GetFrameStrata()
     if strata ~= nil and (not canaccessvalue or canaccessvalue(strata)) then frame:SetFrameStrata(strata) end
+end
+
+-- A bar's value, gliding there when asked (Smooth Bar Animations). The client eases it and takes
+-- secret values. Only for a change on the unit already shown: a new unit, or a bar just shown, lands at once
+function ns.SetBarValue(bar, value, glide)
+    if glide and bar:IsVisible() then
+        bar:SetValue(value, Enum.StatusBarInterpolation.ExponentialEaseOut)
+    else
+        bar:SetValue(value)
+    end
 end
 
 -- InputUtil.IsGamepadUIEnabled; switching reloads the UI, so the answer holds for the session
@@ -1264,6 +1280,7 @@ ns.Dialogs["FLAREUI_SYNC_RELOAD"] = {
         local layout = data and tonumber(data.layout)
         return (layout and ("/run C_EditMode.SetActiveLayout(" .. layout .. ")\n") or "") .. "/reload"
     end,
+    reloads = true,   -- in combat the macro can't run: yes says how to reload
     hideOnEscape = true,
     padSecure = true,
 }

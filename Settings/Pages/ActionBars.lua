@@ -18,7 +18,7 @@ S:Module{
     -- the options that live in Edit Mode are easy to miss: said at the top of the page
     bannerEditMode = true,
     banner = function()
-        return L["Most options are in Edit Mode: size, visibility, fading and more. Open it, then click a bar."], L["Open Edit Mode"], function() S:OpenEditMode("ab") end
+        return "|cffff3333" .. L["MOST BARS OPTIONS ARE IN EDIT MODE!"] .. "|r", L["Open Edit Mode"], function() S:OpenEditMode("ab") end
     end,
     -- Blizzard's bars: no FlareUI frame to select, so plain Edit Mode
     editMode = function() return nil end,
@@ -41,7 +41,7 @@ S:Row{ key = "ab.cleanKeybinds", path = "actionbars.cleanKeybinds", apply = Refr
 S:Row{ key = "ab.buttonArt", path = "actionbars.buttonArt", apply = Refresh, half = true }
 S:Row{ key = "ab.stopAutoAdd", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
 
--- the bar that pages for stealth / forms (Forever never pages bar 1 by itself)
+-- the bar that pages for stealth / forms; with another bar or none, bar 1 stays on its page
 S:Row{ key = "ab.autoPagingBar", kind = "choice", path = "actionbars.autoPagingBar",
     choices = { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, apply = Refresh }
 
@@ -76,6 +76,7 @@ S:Row{
 }
 S:Row{
     key = "ab.fcmSetup", kind = "button", tab = "fcm", center = true, section = "ab.fakeCooldownManager",
+    disabled = function() return not ns.FCMActive() end,
     apply = function() if ns.ToggleFCMSetupMode then ns.ToggleFCMSetupMode() end end,
 }
 

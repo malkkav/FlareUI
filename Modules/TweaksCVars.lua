@@ -4,7 +4,7 @@ local _, ns = ...
 -- SYNC CVARS
 -- CVars mirrored by Quality of Life > Sync Blizz UI; names the client does not know are skipped.
 -- The list comes from Account Wide Interface Settings by ConineSpiritwolf, used under the MIT
--- License (LICENSES/AccountWideInterfaceSettings.txt), minus Retail-only systems.
+-- License (LICENSES/AccountWideInterfaceSettings.txt), minus most Retail-only systems.
 -- Of Options > Advanced Options only the damage meter switches are synced (the rest are per-class
 -- choices); Swing Timer is already account-wide in Blizzard's config-cache.wtf.
 --------------------------------------------------

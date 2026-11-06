@@ -230,7 +230,6 @@ local function CreateSection(parent)
 end
 
 local function FillSection(section, info, width)
-    section.info = info
     if not info then section:Hide() return end
     local fraction = info.max > 0 and info.value / info.max or 0
     local smooth = Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.ExponentialEaseOut

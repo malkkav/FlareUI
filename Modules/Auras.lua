@@ -78,7 +78,7 @@ local PREVIEW_TIMES = { "5m", "32s", "1h", "12s", "2m", "45m", "8s" }
 
 local KINDS = {
     buffs   = { label = L["FlareUI Buffs"],   filter = "HELPFUL", isDebuff = false,
-                default = { point = "TOPRIGHT", x = -260, y = -3 } },
+                default = { point = "TOPRIGHT", x = -260, y = -4 } },
     debuffs = { label = L["FlareUI Debuffs"], filter = "HARMFUL", isDebuff = true,
                 default = { point = "TOPRIGHT", x = -260, y = -166 } },
 }
@@ -135,10 +135,15 @@ end
 local SAMPLE_TIMERS = { "9s", "24s", "1m", "3s", "45s", "2m", "17s", "6s" }
 local styledButtons = setmetatable({}, { __mode = "k" })
 
+-- The sample icons, with their timers where Timer puts them: in Edit Mode, and on this module's
+-- settings page. Out of combat only: the real icons' container can't be shown again in a fight
+local previewWanted, settingsPreview = false, false
+local function Previewing() return LEM:IsInEditMode() or settingsPreview end
+
 local function ApplyPreviewTimer(button)
     local text, preview = button.FlareUI_Duration, button.FlareUI_PreviewTimer
     if not (text and preview) then return end
-    local on = LEM:IsInEditMode() and button.FlareUI_TimerShown
+    local on = Previewing() and button.FlareUI_TimerShown
     preview:SetShown(on and true or false)
     text:SetAlpha((button.FlareUI_TimerShown and not on) and 1 or 0)
 end
@@ -302,8 +307,8 @@ local function StyleButton(button, look)
     -- a font string takes no text without a font
     ns.SetFont(preview, fontPath, timerSize, flags)
     preview:SetText(preview.sample)
-    local r, g, b, alpha = durationText:GetTextColor()
-    if r then preview:SetTextColor(r, g, b, alpha or 1) end
+    -- never copied from the real timer: it sits at alpha 0 while previewing, and its colour reads back with that
+    preview:SetTextColor(1, 1, 1, 1)
     ns.ApplyShadow(preview, look.font)
     preview:ClearAllPoints()
     for i = 1, durationText:GetNumPoints() do preview:SetPoint(durationText:GetPoint(i)) end
@@ -339,6 +344,40 @@ local function HookButton(button, look)
     end
 end
 
+-- Arrival Animation: the icon fades in while dropping into place. Handed to Blizzard's button, which
+-- plays it as a hidden button is shown, in combat too. Moves and fades only: a scale would draw the
+-- masked icon square
+local ARRIVE_DROP, ARRIVE_TIME = 6, 0.25
+local function SetArrival(button, on)
+    pcall(button.ClearAuraShownAnimations, button)
+    if not on then return end
+    local g = button.FlareUI_Arrive
+    if not g then
+        g = button.FlareUI_Area:CreateAnimationGroup()
+        local hide = g:CreateAnimation("Alpha")
+        hide:SetFromAlpha(0)
+        hide:SetToAlpha(0)
+        hide:SetDuration(0)
+        hide:SetOrder(1)
+        local lift = g:CreateAnimation("Translation")
+        lift:SetOffset(0, ARRIVE_DROP)
+        lift:SetDuration(0)
+        lift:SetOrder(1)
+        local drop = g:CreateAnimation("Translation")
+        drop:SetOffset(0, -ARRIVE_DROP)
+        drop:SetDuration(ARRIVE_TIME)
+        drop:SetOrder(2)
+        drop:SetSmoothing("OUT")
+        local fade = g:CreateAnimation("Alpha")
+        fade:SetFromAlpha(0)
+        fade:SetToAlpha(1)
+        fade:SetDuration(ARRIVE_TIME)
+        fade:SetOrder(2)
+        button.FlareUI_Arrive = g
+    end
+    pcall(button.AddAuraShownAnimation, button, g)
+end
+
 -- A snapshot of one frame's settings for the buttons Blizzard initialises
 local function Look(kind)
     local db, kdb = GetDb(), KindDb(kind)
@@ -350,6 +389,7 @@ local function Look(kind)
         font = db.font,
         isDebuff = KINDS[kind].isDebuff,
         colors = ColorMap(KINDS[kind].isDebuff, db.style == "round", db.swipe == "border"),
+        arrive = db.arrive and true or false,
     }
 end
 
@@ -398,7 +438,7 @@ end
 function UpdatePreview(kind)
     local holder, kdb = frames[kind], KindDb(kind)
     if not (holder and kdb) then return end
-    local editing = LEM:IsInEditMode()
+    local editing = Previewing()
     holder.container:SetShown(not editing)
     holder.preview = holder.preview or {}
     local count = editing and (kdb.max or 32) or 0
@@ -564,7 +604,7 @@ end
 -- Shifts the container by one cell per enchant (out of combat only)
 local function PlaceContainer(holder, kdb, corner, width)
     local container = holder.container
-    local n = (not LEM:IsInEditMode() and holder.activeEnchants) or 0
+    local n = (not Previewing() and holder.activeEnchants) or 0
     local step = (kdb.size or 30) + (kdb.spacing or 6)
     holder.enchantShift = n
     container:ClearAllPoints()
@@ -575,7 +615,7 @@ end
 local function UpdateEnchants(kind)
     local holder, kdb = frames[kind], KindDb(kind)
     if not (holder and kdb) or KINDS[kind].isDebuff then return end
-    local list = LEM:IsInEditMode() and {} or ActiveEnchants()
+    local list = Previewing() and {} or ActiveEnchants()
     local look = Look(kind)
     local step = (kdb.size or 30) + (kdb.spacing or 6)
     local corner = StartCorner(kdb)
@@ -651,7 +691,11 @@ local function LayoutKind(kind)
         maxFrameCount = kdb.max or 32,
         -- Aura Ordering (Order Applied by default); the container compares, never addon code
         sortMethod = sortMethod, sortDirection = sortDirection,
-        initializeFrame = function(button) StyleButton(button, look); HookButton(button, look) end,
+        initializeFrame = function(button)
+            StyleButton(button, look)
+            HookButton(button, look)
+            SetArrival(button, look.arrive)
+        end,
         layout = layout,
     })
     if not key then print("|cffff0000FlareUI:|r aura frame failed: " .. tostring(err)) end
@@ -787,6 +831,22 @@ function AU:Refresh()
     for _, kind in ipairs(KIND_ORDER) do LayoutKind(kind) end
 end
 
+local function ApplySettingsPreview(on)
+    settingsPreview = on
+    SetPreview()
+    for button in pairs(styledButtons) do ApplyPreviewTimer(button) end
+    AU:Refresh()
+end
+
+-- This module's settings page is open or closed
+function AU:SetSettingsPreview(on)
+    on = on and true or false
+    previewWanted = on
+    if not self.initialized or settingsPreview == on then return end
+    -- a fight: PLAYER_REGEN_ENABLED picks it up
+    if not InCombatLockdown() then ApplySettingsPreview(on) end
+end
+
 -- The Edit Mode holder of "buffs" or "debuffs" (the settings panel's Edit buttons)
 function AU:GetFrame(kind)
     return frames[kind]
@@ -828,11 +888,18 @@ function AU:Init()
 
     local events = CreateFrame("Frame")
     events:RegisterEvent("PLAYER_REGEN_ENABLED")
+    events:RegisterEvent("PLAYER_REGEN_DISABLED")
     for _, event in ipairs({ "WEAPON_ENCHANT_CHANGED", "WEAPON_SLOT_CHANGED", "PLAYER_EQUIPMENT_CHANGED" }) do
         pcall(events.RegisterEvent, events, event)
     end
     pcall(events.RegisterUnitEvent, events, "UNIT_INVENTORY_CHANGED", "player")
     events:SetScript("OnEvent", function(_, event)
+        -- a fight starting: the real icons come back while they still can (lockdown starts after this)
+        if event == "PLAYER_REGEN_DISABLED" then
+            if settingsPreview then ApplySettingsPreview(false) end
+            return
+        end
+        if event == "PLAYER_REGEN_ENABLED" and previewWanted ~= settingsPreview then ApplySettingsPreview(previewWanted) end
         if event ~= "PLAYER_REGEN_ENABLED" then
             UpdateEnchants("buffs")
             return

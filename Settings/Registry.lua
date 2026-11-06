@@ -11,7 +11,6 @@ local Settings = {
     order = {},         -- module keys, in list order
     rows = {},          -- key -> row
     pending = {},       -- row key -> true while its value differs from the session start
-    missing = {},       -- copy keys asked for and not found (listed by the harness)
 }
 ns.Settings = Settings
 
@@ -43,26 +42,19 @@ function Settings:Text(key, field, optional)
         if control then row = CopyRow("font." .. control) end
     end
     local text = row and row[field]
-    if text == nil and field == "label" and not optional then
-        self.missing[key] = true
-        return key
-    end
+    if text == nil and field == "label" and not optional then return key end
     return text
 end
 
 function Settings:ModuleText(key, field)
     local m = ns.Copy and ns.Copy.modules and ns.Copy.modules[key]
     local text = m and m[field]
-    if text == nil and field == "title" then
-        self.missing["module " .. key] = true
-        return key
-    end
+    if text == nil and field == "title" then return key end
     return text
 end
 
 function Settings:SectionText(key)
     local text = ns.Copy and ns.Copy.sections and ns.Copy.sections[key]
-    if text == nil then self.missing["section " .. key] = true end
     return text or key
 end
 

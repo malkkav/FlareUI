@@ -20,9 +20,15 @@ S:Module{
     editFrames = { Holder("buffs"), Holder("debuffs") },
 }
 
+-- the sample icons show on this page, so Timer, Icon Shape and Swipe can be seen
+S:On("PageShown", function(key)
+    if ns.Auras and ns.Auras.SetSettingsPreview then ns.Auras:SetSettingsPreview(key == "au") end
+end)
+
 S:Row{ key = "au.shape", kind = "choice", path = "auras.style", choices = { "round", "square" }, apply = Refresh }
 S:Row{ key = "au.swipe", kind = "choice", path = "auras.swipe", choices = { "icon", "border", "both", "none" }, apply = Refresh }
 S:Row{ key = "au.timer", kind = "choice", path = "auras.timer", choices = { "below", "bottom", "middle", "none" }, apply = Refresh }
+S:Row{ key = "au.arrive", path = "auras.arrive", apply = Refresh }
 
 local function NoMineFirst()
     local sort = S:GetPath("auras.sort")

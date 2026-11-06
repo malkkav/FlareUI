@@ -125,7 +125,7 @@ function FlareUI_OnAddonCompartmentEnter(_, menuButtonFrame)
     ns.OwnGameTooltip(menuButtonFrame, "ANCHOR_LEFT")
     GameTooltip:AddLine(L["FlareUI"])
     GameTooltip:AddLine(L["Left-click: open settings"], 1, 1, 1)
-    GameTooltip:AddLine(L["Right-click: toggle Fake CM setup mode"], 1, 1, 1)
+    if ns.FCMActive() then GameTooltip:AddLine(L["Right-click: toggle Fake CM setup mode"], 1, 1, 1) end
     GameTooltip:Show()
 end
 

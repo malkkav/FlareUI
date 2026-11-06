@@ -47,6 +47,10 @@ local C = {
     BOX_COLOR = { 0.50, 0.38, 0.21 },        -- a darker bronze than the frame border
     BOX_COLOR_LIT = { 0.65, 0.49, 0.27 },    -- the frame border's bronze while pointed at
     SORT_TICK = 2,          -- seconds between distance checks
+    BUTTON_ROOM = 13,       -- beside a title, for each focus / play button
+    BUTTON_SIZE = 12,
+    -- Quest animations: px a quest slides, seconds for it to move, leave, and for a sheen to cross
+    SLIDE = 24, MOVE_TIME = 0.25, LEAVE_TIME = 0.3, SHEEN_TIME = 0.6, SHEEN_WIDTH = 36,
     -- colours: zone headers in FlareUI's tab bronze, titles in Blizzard's tracker gold and blue
     ZONE = { 0.80, 0.60, 0.34 },
     TITLE = { 1, 0.82, 0 },
@@ -55,12 +59,21 @@ local C = {
     OBJECTIVE = { 0.85, 0.85, 0.85 },
     OBJECTIVE_DONE = { 0.55, 0.55, 0.55 },
     DIM = { 0.55, 0.55, 0.55 },
+    URGENT = { 1, 0.25, 0.25 },
+    -- a quest timer by the quarter of its time it is in, last to first
+    TIMER = { { 1, 0.25, 0.25 }, { 1, 0.5, 0.15 }, { 1, 1, 0 }, { 0.25, 1, 0.25 } },
 }
 
 -- Blizzard's strings where it has them
 local TEXT = {
     quests = _G.QUESTS_LABEL or "Quests",
     ready = _G.QUEST_WATCH_QUEST_READY or "Ready to turn in",
+    failed = _G.FAILED or "Failed",
+    timeLeft = _G.TIME_REMAINING or "Time Remaining:",
+    clickComplete = _G.QUEST_WATCH_CLICK_TO_COMPLETE or "Click to complete quest",
+    waypoint = _G.WAYPOINT_OBJECTIVE_FORMAT_OPTIONAL or "%s",
+    showMap = _G.OBJECTIVES_SHOW_QUEST_MAP or "Show on Map",
+    linkChat = _G.SHARE_IN_CHAT or "Link to Chat",
     focus = _G.SUPER_TRACK_QUEST or "Focus",
     unfocus = _G.STOP_SUPER_TRACK_QUEST or "Stop Focusing",
     openLog = _G.OBJECTIVES_VIEW_IN_QUESTLOG or "Open Quest Log",
@@ -76,10 +89,12 @@ BINDING_NAME_FLAREUI_TRACKER = L["Minimize/Expand Tracker"]
 
 local holder, header, scroll, content, divider, miniButton
 local lines, itemButtons, titleLines = {}, {}, {}
+local questTimers, timerTotals, timerLines = {}, {}, {}   -- by questID: seconds left, full time, the line showing them
 local state = {
     pending = false, editMode = false,
     context = nil, order = {}, itemsDirty = false, rangeTicker = nil, itemsShown = 0,
     recipes = 0, empty = false, groups = {},
+    arriving = {}, seen = {}, tops = {}, sheens = {},
 }
 
 local function GetDb()
@@ -97,6 +112,15 @@ local function Char()
 end
 
 local function SetColor(fontString, c) fontString:SetTextColor(c[1], c[2], c[3]) end
+
+-- How far along an objective is, 0 to 1. A count alone proves nothing: action objectives can read
+-- 1/1 before they are finished
+local function ObjectiveProgress(obj)
+    if obj.finished then return 1 end
+    local have, need = obj.numFulfilled, obj.numRequired
+    if have and need and need > 0 and have < need then return have / need end
+    return 0
+end
 
 local function Byte(v) return math_floor(v * 255 + 0.5) end
 
@@ -245,14 +269,60 @@ end
 local function ByOrder(a, b)
     if a.ftRank ~= b.ftRank then return a.ftRank < b.ftRank end
     if a.ftDone ~= b.ftDone then return not a.ftDone end
-    -- by level: the lowest first (0 for every quest in the other orders)
+    -- by level or progress: 0 for every quest in the other orders
     if a.ftLevel ~= b.ftLevel then return a.ftLevel < b.ftLevel end
     if a.ftDistance ~= b.ftDistance then return a.ftDistance < b.ftDistance end
     return a.ftIndex < b.ftIndex
 end
 
+-- By progress: the share of its objectives done, furthest along first
+local function ProgressKey(questID)
+    if C_QuestLog.IsComplete(questID) then return -1 end
+    local objectives, sum = C_QuestLog.GetQuestObjectives(questID) or {}, 0
+    for _, obj in ipairs(objectives) do sum = sum + ObjectiveProgress(obj) end
+    return #objectives > 0 and -(sum / #objectives) or 0
+end
+
+-- Blizzard's own timer panel is a child of its tracker, so it is parked with it
+local function ReadTimers()
+    wipe(questTimers)
+    for _, t in ipairs(C_QuestLog.GetQuestTimers() or {}) do
+        local id, seconds = t.questID, t.questTimer
+        questTimers[id] = seconds
+        -- the full time from the client; failing that, the most this session has seen
+        local total = timerTotals[id] or C_QuestLog.GetTimeAllowed(id) or 0
+        timerTotals[id] = math_max(total, seconds)
+    end
+end
+
+local function TimerColor(questID, seconds)
+    local total = timerTotals[questID]
+    local quarter = total and total > 0 and math_floor(seconds / total * 4) + 1 or #C.TIMER
+    return C.TIMER[math_max(1, math_min(#C.TIMER, quarter))]
+end
+
+local function TimerText(seconds)
+    seconds = math_max(0, math_floor(seconds))
+    if seconds <= 1 then return L["Time's up!"] end
+    local h, m, s = math_floor(seconds / 3600), math_floor(seconds / 60) % 60, seconds % 60
+    local clock = h > 0 and string_format("%d:%02d:%02d", h, m, s) or string_format("%d:%02d", m, s)
+    return TEXT.timeLeft .. " " .. clock
+end
+
+-- Once a second while a timer is drawn; a timer that ended (turned in, failed) takes a redraw
+local function UpdateTimers()
+    ReadTimers()
+    for questID, line in pairs(timerLines) do
+        local seconds = questTimers[questID]
+        if not seconds then OT:RequestRender() return end
+        line.text:SetText(TimerText(seconds))
+        SetColor(line.text, TimerColor(questID, seconds))
+    end
+end
+
 local function CollectQuests(db)
     CurrentZoneNames()
+    ReadTimers()
     wipe(questBuf)
     local header
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
@@ -263,14 +333,16 @@ local function CollectQuests(db)
             elseif not info.isHidden and info.questID and info.questID > 0
                     and C_QuestLog.GetQuestWatchType(info.questID) ~= nil then
                 local here = (header and zoneNames[header]) or C_QuestLog.IsOnMap(info.questID)
-                if here or not db.zoneOnly then
+                -- a running timer stays listed outside its zone
+                if here or not db.zoneOnly or questTimers[info.questID] then
                     info.ftLogIndex = i
                     info.ftIndex = #questBuf + 1
                     info.ftHeader = header or _G.OTHER or "Other"
                     info.ftHere = here and true or false
                     info.ftDone = db.completedLast and C_QuestLog.IsComplete(info.questID) or false
                     info.ftDistance = db.sortByDistance and Distance(info.questID) or 0
-                    info.ftLevel = db.sortByLevel and info.level or 0
+                    info.ftLevel = (db.sortByLevel and (info.difficultyLevel or info.level))
+                        or (db.sortByProgress and ProgressKey(info.questID)) or 0
                     questBuf[#questBuf + 1] = info
                 end
             end
@@ -299,10 +371,10 @@ local function CollectQuests(db)
         return ga.index < gb.index
     end)
     for rank, name in ipairs(groupOrder) do groupRank[name] = rank end
-    -- without zone headers a current-zone quest under another header still goes first; by level,
-    -- zones play no part
+    -- without zone headers a current-zone quest under another header still goes first; by level or
+    -- progress, zones play no part
     for _, q in ipairs(questBuf) do
-        if db.sortByLevel then
+        if db.sortByLevel or db.sortByProgress then
             q.ftRank = 0
         else
             q.ftRank = (db.zoneHeaders or not db.zoneFirst) and groupRank[q.ftHeader] or (q.ftHere and 0 or 1)
@@ -335,8 +407,41 @@ end
 --------------------------------------------------
 -- 6. CLICKS, MENU AND TOOLTIP
 --------------------------------------------------
+-- Opening the log from here taints the gamepad bindings, and in combat it runs outside Blizzard's
+-- secure click: both are refused with a message
+local function CanOpenPanels()
+    local refusal
+    if ns.IsGamepadUI() then
+        refusal = L["Open the quest log with your controller."]
+    elseif InCombatLockdown() then
+        refusal = L["The quest log can't be opened from the tracker in combat."]
+    end
+    if refusal and UIErrorsFrame then UIErrorsFrame:AddMessage(refusal, 1, 0.25, 0.25) end
+    return not refusal
+end
+
+-- A finished auto-complete quest completes on the click, as on Blizzard's tracker
 local function OpenQuest(questID)
-    if QuestMapFrame_OpenToQuestDetails then QuestMapFrame_OpenToQuestDetails(questID) end
+    if not CanOpenPanels() then return end
+    local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
+    local info = logIndex and C_QuestLog.GetInfo(logIndex)
+    if info and info.isAutoComplete and C_QuestLog.IsComplete(questID) then
+        ShowQuestComplete(questID)
+    elseif QuestMapFrame_OpenToQuestDetails then
+        QuestMapFrame_OpenToQuestDetails(questID)
+    end
+end
+
+-- The world map on the quest's zone
+local function ShowOnMap(questID)
+    if not CanOpenPanels() then return end
+    local mapID = GetQuestUiMapID(questID)
+    if mapID and mapID ~= 0 then OpenWorldMap(mapID) elseif QuestMapFrame_OpenToQuestDetails then QuestMapFrame_OpenToQuestDetails(questID) end
+end
+
+local function LinkToChat(questID)
+    local link = GetQuestLink(questID)
+    if link and not ChatFrameUtil.InsertLink(link) then ChatFrameUtil.OpenChat(link) end
 end
 
 local function ToggleFocus(questID)
@@ -344,9 +449,27 @@ local function ToggleFocus(questID)
     C_SuperTrack.SetSuperTrackedQuestID(focused and 0 or questID)
 end
 
+-- Auto-Collapse Completed: a finished or failed quest with no timer folds until the player opens it
+local function AutoCollapsed(questID)
+    local db = GetDb()
+    return db and db.collapseCompleted and not questTimers[questID]
+        and (C_QuestLog.IsComplete(questID) or C_QuestLog.IsFailed(questID)) or false
+end
+
+-- collapsedQuests: true collapsed, false held open against the automatic rule, nil follows the rule
+local function IsCollapsed(questID)
+    local choice = Char().collapsedQuests[questID]
+    if choice == nil then return AutoCollapsed(questID) end
+    return choice
+end
+
+local function SetCollapsed(questID, collapsed)
+    if collapsed == AutoCollapsed(questID) then collapsed = nil end
+    Char().collapsedQuests[questID] = collapsed
+end
+
 local function ToggleCollapsed(questID)
-    local c = Char().collapsedQuests
-    c[questID] = not c[questID] or nil
+    SetCollapsed(questID, not IsCollapsed(questID))
     OT:RequestRender()
 end
 
@@ -356,12 +479,16 @@ local function ShowQuestMenu(owner, questID)
         local focused = C_SuperTrack.GetSuperTrackedQuestID() == questID
         root:CreateButton(focused and TEXT.unfocus or TEXT.focus, function() ToggleFocus(questID) end)
         root:CreateButton(TEXT.openLog, function() OpenQuest(questID) end)
+        root:CreateButton(TEXT.showMap, function() ShowOnMap(questID) end)
+        root:CreateButton(TEXT.linkChat, function() LinkToChat(questID) end)
         local share = root:CreateButton(TEXT.share, function()
             QuestUtil.ShareQuest(questID)
         end)
         share:SetEnabled(IsInGroup() and C_QuestLog.IsPushableQuest(questID))
-        root:CreateButton(Char().collapsedQuests[questID] and L["Expand"] or L["Collapse"], function() ToggleCollapsed(questID) end)
-        root:CreateButton(TEXT.untrack, function() C_QuestLog.RemoveQuestWatch(questID) end)
+        root:CreateButton(IsCollapsed(questID) and L["Expand"] or L["Collapse"], function() ToggleCollapsed(questID) end)
+        if QuestUtil.CanRemoveQuestWatch() then
+            root:CreateButton(TEXT.untrack, function() C_QuestLog.RemoveQuestWatch(questID) end)
+        end
         root:CreateDivider()
         -- Blizzard's own abandon flow: its confirmation, its warning about quest items
         root:CreateButton("|cffff4040" .. TEXT.abandon .. "|r", function() QuestMapQuestOptions_AbandonQuest(questID) end)
@@ -436,9 +563,27 @@ local function QuestTooltip(line)
     GameTooltip:Show()
 end
 
+-- Shift-click on a zone heading: all its quests collapse, or open if they already are
+local function ToggleZoneQuests(zone)
+    local db = GetDb()
+    local allCollapsed = true
+    local quests = CollectQuests(db)
+    for _, q in ipairs(quests) do
+        if q.ftHeader == zone and not IsCollapsed(q.questID) then allCollapsed = false end
+    end
+    for _, q in ipairs(quests) do
+        if q.ftHeader == zone then SetCollapsed(q.questID, not allCollapsed) end
+    end
+    OT:RequestRender()
+end
+
 local function OnLineClick(self, button)
     if state.editMode then return end
     if self.zone then
+        if IsShiftKeyDown() and button == "LeftButton" then
+            ToggleZoneQuests(self.zone)
+            return
+        end
         local z = Char().collapsedZones
         z[self.zone] = not z[self.zone] or nil
         OT:RequestRender()
@@ -509,6 +654,167 @@ local function GetLine(i)
     end)
     lines[i] = line
     return line
+end
+
+-- Quest animations. Only for a reason: a quest accepted or turned in, an objective finished. Data
+-- arriving at login just appears. Own frames, so they run in combat; the list clips what leaves it.
+
+-- Drawn dx, dy px off and at fromAlpha, easing back to rest (visual only, the line never moves)
+local function MoveLine(line, dx, dy, fromAlpha)
+    local g = line.moveAnim
+    if not g then
+        g = line:CreateAnimationGroup()
+        g.hold = g:CreateAnimation("Alpha")
+        g.hold:SetDuration(0)
+        g.hold:SetOrder(1)
+        g.jump = g:CreateAnimation("Translation")
+        g.jump:SetDuration(0)
+        g.jump:SetOrder(1)
+        g.move = g:CreateAnimation("Translation")
+        g.move:SetDuration(C.MOVE_TIME)
+        g.move:SetOrder(2)
+        g.move:SetSmoothing("OUT")
+        g.fade = g:CreateAnimation("Alpha")
+        g.fade:SetToAlpha(1)
+        g.fade:SetDuration(C.MOVE_TIME)
+        g.fade:SetOrder(2)
+        line.moveAnim = g
+    end
+    g:Stop()
+    g.hold:SetFromAlpha(fromAlpha)
+    g.hold:SetToAlpha(fromAlpha)
+    g.fade:SetFromAlpha(fromAlpha)
+    g.jump:SetOffset(dx, dy)
+    g.move:SetOffset(-dx, -dy)
+    g:Play()
+end
+
+-- Slides away and stays clear until the line is reused
+local function LeaveLine(line, dx)
+    local g = line.leaveAnim
+    if not g then
+        g = line:CreateAnimationGroup()
+        g:SetToFinalAlpha(true)
+        g.move = g:CreateAnimation("Translation")
+        g.move:SetDuration(C.LEAVE_TIME)
+        g.move:SetSmoothing("IN")
+        local fade = g:CreateAnimation("Alpha")
+        fade:SetFromAlpha(1)
+        fade:SetToAlpha(0)
+        fade:SetDuration(C.LEAVE_TIME)
+        line.leaveAnim = g
+    end
+    if line.moveAnim then line.moveAnim:Stop() end
+    g:Stop()
+    g.move:SetOffset(dx, 0)
+    g:Play()
+end
+
+-- A soft band of light that crosses the line's text once
+local function PlaySheen(line)
+    local band = line.sheen
+    if not band then
+        band = CreateFrame("Frame", nil, line)
+        band:SetWidth(C.SHEEN_WIDTH)
+        band:SetPoint("TOPLEFT", line, "TOPLEFT", -C.SHEEN_WIDTH, 0)
+        band:SetPoint("BOTTOMLEFT", line, "BOTTOMLEFT", -C.SHEEN_WIDTH, 0)
+        local c = C.TITLE_DONE
+        local clear, lit = CreateColor(c[1], c[2], c[3], 0), CreateColor(c[1], c[2], c[3], 0.55)
+        local left = band:CreateTexture(nil, "OVERLAY")
+        left:SetColorTexture(1, 1, 1)
+        left:SetBlendMode("ADD")
+        left:SetPoint("TOPLEFT")
+        left:SetPoint("BOTTOMRIGHT", band, "BOTTOM")
+        left:SetGradient("HORIZONTAL", clear, lit)
+        local right = band:CreateTexture(nil, "OVERLAY")
+        right:SetColorTexture(1, 1, 1)
+        right:SetBlendMode("ADD")
+        right:SetPoint("TOPLEFT", band, "TOP")
+        right:SetPoint("BOTTOMRIGHT")
+        right:SetGradient("HORIZONTAL", lit, clear)
+        local g = band:CreateAnimationGroup()
+        g.move = g:CreateAnimation("Translation")
+        g.move:SetDuration(C.SHEEN_TIME)
+        g.move:SetSmoothing("IN_OUT")
+        g:SetScript("OnFinished", function() band:Hide() end)
+        band.anim = g
+        band:Hide()
+        line.sheen = band
+    end
+    band.anim:Stop()
+    band.anim.move:SetOffset(line.text:GetStringWidth() + C.SHEEN_WIDTH, 0)
+    band:Show()
+    band.anim:Play()
+end
+
+-- Which way a line leaves or arrives: the side of the screen the tracker sits on
+local function SlideDistance()
+    return OT:Side() and C.SLIDE or -C.SLIDE
+end
+
+-- The focus and play buttons, left of a title; pointing at one counts as pointing at the quest
+local function LineButton(line, key)
+    local b = line[key]
+    if b then return b end
+    b = CreateFrame("Button", nil, line)
+    b:SetSize(C.BUTTON_SIZE, C.BUTTON_SIZE)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetAllPoints()
+    b:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    b:RegisterForClicks("LeftButtonUp")
+    b:SetScript("OnEnter", function(self) local p = self:GetParent(); p:GetScript("OnEnter")(p) end)
+    b:SetScript("OnLeave", function(self) local p = self:GetParent(); p:GetScript("OnLeave")(p) end)
+    line[key] = b
+    return b
+end
+
+-- Voice lines from the Spoken addon's quest part, when it is installed, switched on and has this quest
+local function VoiceOverReady()
+    local spoken, voice = _G.Spoken, _G.VoiceOver
+    return spoken and voice and voice.DataModules and voice.QuestOverlayUI and voice.Player
+        and spoken.IsPartOn and spoken:IsPartOn("quests")
+end
+
+local function HasVoice(questID)
+    local voice = _G.VoiceOver
+    if not voice then return false end
+    local ok, sound = pcall(voice.DataModules.PrepareSound, voice.DataModules,
+        { event = voice.Enums.SoundEvent.QuestAccept, questID = questID })
+    return ok and sound
+end
+
+local function VoiceQueued(questID)
+    local voice = _G.VoiceOver
+    if not (voice and questID) then return nil end
+    local ok, queued = pcall(voice.QuestOverlayUI.QueuedLine, voice.QuestOverlayUI, questID)
+    return ok and queued or nil
+end
+
+local function PaintPlayButton(b)
+    b.icon:SetTexture(VoiceQueued(b.questID) and "Interface\\Common\\VoiceChat-Muted" or "Interface\\Common\\VoiceChat-Speaker")
+end
+
+local function TogglePlay(self)
+    local voice, questID = _G.VoiceOver, self.questID
+    -- the previews' buttons do nothing
+    if state.editMode or not (questID and VoiceOverReady() and HasVoice(questID)) then return end
+    local queued = VoiceQueued(questID)
+    if queued then
+        voice.Player:Remove(queued)
+    else
+        local enums, data = voice.Enums, voice.DataModules
+        local giverType, giverID = data:GetQuestLogQuestGiverTypeAndID(questID)
+        voice.Player:PlayNow({
+            event = enums.SoundEvent.QuestAccept,
+            questID = questID,
+            name = giverID and data:GetObjectName(giverType, giverID) or "Unknown Name",
+            title = C_QuestLog.GetTitleForQuestID(questID) or "",
+            unitGUID = giverID and enums.GUID:CanHaveID(giverType) and voice.Utils:MakeGUID(giverType, giverID) or nil,
+            unitIsObjectOrItem = giverID ~= nil and not enums.GUID:IsCreature(giverType),
+            origin = "FlareUI Quest Tracker",
+        })
+    end
+    PaintPlayButton(self)
 end
 
 --------------------------------------------------
@@ -655,8 +961,8 @@ end
 -- Sample quests, in Edit Mode while nothing is tracked; one has a sample item button
 local PREVIEW = {
     { zone = true, text = "Elwynn Forest" },
-    { level = 7, title = "Kobold Camp Cleanup", objectives = { { text = "6/10 Kobold Vermin slain" } } },
-    { level = 8, title = "Wolves Across the Border", objectives = { { text = "4/8 Tough Wolf Meat" } },
+    { level = 7, title = "Kobold Camp Cleanup", timer = 285, objectives = { { text = "6/10 Kobold Vermin slain" } } },
+    { level = 8, title = "Wolves Across the Border", focus = true, objectives = { { text = "4/8 Tough Wolf Meat" } },
       item = "Interface\\Icons\\INV_Misc_Bag_10" },
     { level = 9, title = "Red Linen Goods", objectives = { { text = "6/6 Red Linen Bandana", finished = true } }, done = true },
     { zone = true, text = "Westfall" },
@@ -675,6 +981,10 @@ function OT:Render()
     if not (db and holder) then return end
     local char = Char()
     local minimized = char.minimized and not state.editMode
+    local questGap = db.questGap or C.QUEST_GAP
+    local inScenario = C_Scenario and C_Scenario.GetStepInfo and select(2, IsInInstance()) == "scenario"
+    state.watchMoney = false
+    wipe(state.sheens)
 
     -- header
     local count, max = QuestCount()
@@ -699,7 +1009,8 @@ function OT:Render()
     local lastBottom = 0   -- the bottom of the last line drawn
     local width = (db.width or C.WIDTH) - C.PAD * 2
     wipe(titleLines)
-    local fonts = { header = db.headerFont, title = db.titleFont, objective = db.objectiveFont }
+    wipe(timerLines)
+    local fonts ={ header = db.headerFont, title = db.titleFont, objective = db.objectiveFont }
 
     local function AddLine(text, kind, color, indent)
         n = n + 1
@@ -727,23 +1038,110 @@ function OT:Render()
         line:SetPoint("TOPLEFT", content, "TOPLEFT", line.ftX, y)
         line.questID, line.zone, line.recipeID, line.recipeName, line.logIndex = nil, nil, nil, nil, nil
         line.group, line.sampleItem = nil, nil
+        if line.focusButton then line.focusButton:Hide() end
+        if line.playButton then line.playButton:Hide() end
+        if line.leaving then
+            line.leaving = nil
+            line.leaveAnim:Stop()
+            line:SetAlpha(1)
+        end
+        line.kind = kind
         line:Show()
         lastBottom = y - h
         y = y - h - C.LINE_GAP
         return line
     end
 
-    local function TitleText(level, tags, title, collapsed)
+    local function TitleText(level, tags, title, collapsed, questID)
         local prefix = ""
         if level then
-            local c = GetQuestDifficultyColor(level)
-            prefix = string_format("|cff%02x%02x%02x", Byte(c.r), Byte(c.g), Byte(c.b)) .. "[".. level .. (db.showTags and tags or "") .. "]|r "
+            -- the quest's own difficulty, as the quest log colours it; the sample quests have only a level
+            local c
+            if questID and HaveQuestData(questID) then
+                c = GetDifficultyColor(C_PlayerInfo.GetContentDifficultyQuestForPlayer(questID))
+            else
+                c = GetQuestDifficultyColor(level)
+            end
+            local shownLevel = db.hideLevel and "" or level
+            local shownTags = db.showTags and tags or ""
+            if shownLevel == "" then shownTags = shownTags:gsub("^ +", "") end
+            if shownLevel ~= "" or shownTags ~= "" then
+                prefix = string_format("|cff%02x%02x%02x", Byte(c.r), Byte(c.g), Byte(c.b)) .. "[" .. shownLevel .. shownTags .. "]|r "
+            end
         end
         return prefix .. title .. (collapsed and ("  " .. ColorCode(C.DIM) .. "+|r") or "")
     end
 
+    -- What a complete quest says: click to finish, its own closing text, where to go, or "ready"
+    local function CompleteText(q)
+        if q.isAutoComplete then return TEXT.clickComplete end
+        local text = GetQuestLogCompletionText(q.ftLogIndex)
+        if text and text ~= "" then return (text:gsub("[\r\n]+", " ")) end
+        local waypoint = C_QuestLog.GetNextWaypointText(q.questID)
+        if waypoint and waypoint ~= "" then return waypoint end
+        return TEXT.ready
+    end
+
+    -- The running scenario's stage and objectives, which live in the parked tracker
+    local function AddScenario()
+        local name = C_Scenario.GetInfo()
+        local stage, _, numCriteria = C_Scenario.GetStepInfo()
+        local title = (canaccessvalue(name) and name) or (canaccessvalue(stage) and stage) or nil
+        if not title or title == "" then return false end
+        local collapsed = char.collapsedZones[title]
+        AddLine(title, "header", C.ZONE).zone = title
+        if collapsed then return true end
+        y = y - C.ZONE_GAP
+        if canaccessvalue(stage) and stage and stage ~= "" and stage ~= title then AddLine(stage, "title", C.TITLE) end
+        for i = 1, canaccessvalue(numCriteria) and numCriteria or 0 do
+            local info = C_ScenarioInfo.GetCriteriaInfo(i)
+            if info and canaccessallvalues(info.description, info.quantity, info.totalQuantity, info.completed) and info.description then
+                local text = info.description
+                local total = info.totalQuantity or 0
+                if total > 1 then text = string_format("%d/%d %s", info.quantity or 0, total, text) end
+                AddLine(text, "objective", info.completed and C.OBJECTIVE_DONE or C.OBJECTIVE, C.INDENT)
+            end
+        end
+        y = y - questGap
+        return true
+    end
+
+    -- Room left of the titles for their buttons; the objectives keep their step in from the title.
+    -- While previewing, every quest shows the voice button, whether it has a voice line or not
+    local previewing = state.editMode or state.preview
+    local voiceReady = db.playButtons and VoiceOverReady()
+    local showPlay = db.playButtons and (previewing or voiceReady)
+    local titleRoom = (db.focusButtons and C.BUTTON_ROOM or 0) + (showPlay and C.BUTTON_ROOM or 0)
+    local objectiveIndent = C.INDENT + titleRoom
+
+    local function AddTitleButtons(line, questID, isFocused)
+        local x = -3
+        if db.focusButtons then
+            local b = LineButton(line, "focusButton")
+            b.questID = questID
+            b.icon:SetTexture(isFocused and "Interface\\Common\\Indicator-Yellow" or "Interface\\Common\\Indicator-Gray")
+            b:SetScript("OnClick", function(self)
+                if self.questID and not state.editMode then ToggleFocus(self.questID) end
+            end)
+            b:ClearAllPoints()
+            b:SetPoint("TOPRIGHT", line, "TOPLEFT", x, 0)
+            b:Show()
+            x = x - C.BUTTON_ROOM
+        end
+        if showPlay and (previewing or HasVoice(questID)) then
+            local b = LineButton(line, "playButton")
+            b.questID = questID
+            PaintPlayButton(b)
+            b:SetScript("OnClick", TogglePlay)
+            b:ClearAllPoints()
+            b:SetPoint("TOPRIGHT", line, "TOPLEFT", x, 0)
+            b:Show()
+        end
+    end
+
     local empty = true
     if not minimized then
+        if inScenario and not state.editMode and AddScenario() then empty = false end
         if (state.editMode or state.preview) and self:CountTracked() == 0 then
             wipe(state.order)
             for _, s in ipairs(PREVIEW) do
@@ -754,15 +1152,20 @@ function OT:Render()
                         y = y - C.ZONE_GAP
                     end
                 else
-                    local line = AddLine(TitleText(s.level, s.tags or "", s.title), "title", s.done and C.TITLE_DONE or C.TITLE)
+                    local color = s.focus and C.TITLE_FOCUS or (s.done and C.TITLE_DONE or C.TITLE)
+                    local line = AddLine(TitleText(s.level, s.tags or "", s.title), "title", color, titleRoom)
+                    AddTitleButtons(line, nil, s.focus)
                     if s.item then
                         line.sampleItem = s.item
                         titleLines[#titleLines + 1] = line
                     end
+                    if s.timer then AddLine(TimerText(s.timer), "objective", C.TIMER[#C.TIMER], objectiveIndent) end
                     for _, o in ipairs(s.objectives) do
-                        AddLine(o.text, "objective", o.finished and C.OBJECTIVE_DONE or C.OBJECTIVE, C.INDENT)
+                        if not (db.hideFinished and o.finished) then
+                            AddLine(o.text, "objective", o.finished and C.OBJECTIVE_DONE or C.OBJECTIVE, objectiveIndent)
+                        end
                     end
-                    y = y - C.QUEST_GAP
+                    y = y - questGap
                 end
             end
             empty = false
@@ -773,7 +1176,7 @@ function OT:Render()
             local zoneCounts = {}
             for _, q in ipairs(quests) do zoneCounts[q.ftHeader] = (zoneCounts[q.ftHeader] or 0) + 1 end
             -- zone headings, except by level (the zones are mixed there)
-            local headings = db.zoneHeaders and not db.sortByLevel
+            local headings = db.zoneHeaders and not db.sortByLevel and not db.sortByProgress
             local order = state.order
             wipe(order)
             for _, q in ipairs(quests) do
@@ -788,24 +1191,59 @@ function OT:Render()
                     if not zoneCollapsed then y = y - C.ZONE_GAP end
                 end
                 if not zoneCollapsed then
-                    local collapsed = char.collapsedQuests[q.questID]
+                    local collapsed = IsCollapsed(q.questID)
                     local complete = C_QuestLog.IsComplete(q.questID)
                     local color = q.questID == focused and C.TITLE_FOCUS or (complete and C.TITLE_DONE or C.TITLE)
-                    local line = AddLine(TitleText(q.level, db.showTags and QuestTags(q) or "", q.title or "?", collapsed), "title", color)
+                    local line = AddLine(TitleText(q.difficultyLevel or q.level, db.showTags and QuestTags(q) or "", q.title or "?", collapsed, q.questID), "title", color, titleRoom)
                     line.questID, line.logIndex = q.questID, q.ftLogIndex
                     titleLines[#titleLines + 1] = line
+                    AddTitleButtons(line, q.questID, q.questID == focused)
+                    -- what this quest looked like last time, to tell what has just finished
+                    local seen = state.seen[q.questID]
+                    local now = { complete = complete }
+                    -- a running timer shows on a collapsed quest too
+                    local seconds = questTimers[q.questID]
+                    if seconds then
+                        local timer = AddLine(TimerText(seconds), "objective", TimerColor(q.questID, seconds), objectiveIndent)
+                        timer.questID = q.questID
+                        timerLines[q.questID] = timer
+                    end
                     if not collapsed then
                         if complete then
-                            AddLine(TEXT.ready, "objective", C.TITLE_DONE, C.INDENT).questID = q.questID
+                            local ready = AddLine(CompleteText(q), "objective", C.TITLE_DONE, objectiveIndent)
+                            ready.questID = q.questID
+                            if seen and seen.complete == false then state.sheens[#state.sheens + 1] = ready end
+                        elseif C_QuestLog.IsFailed(q.questID) then
+                            AddLine(TEXT.failed, "objective", C.URGENT, objectiveIndent).questID = q.questID
                         else
-                            for _, obj in ipairs(C_QuestLog.GetQuestObjectives(q.questID) or {}) do
-                                if obj.text and obj.text ~= "" then
-                                    AddLine(obj.text, "objective", obj.finished and C.OBJECTIVE_DONE or C.OBJECTIVE, C.INDENT).questID = q.questID
+                            -- the next step on the way, for the focused quest
+                            local waypoint = q.questID == focused and C_QuestLog.GetNextWaypointText(q.questID)
+                            if waypoint and waypoint ~= "" then
+                                AddLine(TEXT.waypoint:format(waypoint), "objective", C.OBJECTIVE, objectiveIndent).questID = q.questID
+                            end
+                            for i, obj in ipairs(C_QuestLog.GetQuestObjectives(q.questID) or {}) do
+                                now[i] = obj.finished and true or false
+                                if obj.text and obj.text ~= "" and not (db.hideFinished and obj.finished) then
+                                    local row = AddLine(obj.text, "objective", obj.finished and C.OBJECTIVE_DONE or C.OBJECTIVE, objectiveIndent)
+                                    row.questID = q.questID
+                                    if obj.finished and seen and seen[i] == false then state.sheens[#state.sheens + 1] = row end
+                                end
+                            end
+                            -- gold the quest needs, while it is short
+                            local needed = C_QuestLog.GetRequiredMoney(q.questID) or 0
+                            if needed > 0 then
+                                state.watchMoney = true
+                                local have = GetMoney()
+                                if needed > have then
+                                    AddLine(GetMoneyString(have) .. " / " .. GetMoneyString(needed), "objective", C.OBJECTIVE, objectiveIndent).questID = q.questID
                                 end
                             end
                         end
+                        state.seen[q.questID] = now
+                    else
+                        state.seen[q.questID] = nil   -- nothing is lit for what finished out of sight
                     end
-                    y = y - C.QUEST_GAP
+                    y = y - questGap
                 end
             end
 
@@ -836,13 +1274,20 @@ function OT:Render()
                                 r.recipeID, r.recipeName = recipeID, name
                             end
                         end
-                        y = y - C.QUEST_GAP
+                        y = y - questGap
                     end
                 end
             end
         end
     end
     for i = n + 1, #lines do lines[i]:Hide() end
+    local timing = next(timerLines) ~= nil
+    if timing and not state.timerTicker then
+        state.timerTicker = C_Timer.NewTicker(1, UpdateTimers)
+    elseif not timing and state.timerTicker then
+        state.timerTicker:Cancel()
+        state.timerTicker = nil
+    end
     wipe(state.groups)
     local underMouse
     for i = 1, n do
@@ -851,7 +1296,12 @@ function OT:Render()
             or (line.zone and ("z" .. i))
         line.group = key
         if key then
-            if line:IsMouseOver() then underMouse = key end
+            -- (its buttons stand outside the line)
+            local focusB, playB = line.focusButton, line.playButton
+            if line:IsMouseOver() or (focusB and focusB:IsShown() and focusB:IsMouseOver())
+                    or (playB and playB:IsShown() and playB:IsMouseOver()) then
+                underMouse = key
+            end
             local g = state.groups[key]
             if not g then g = { first = line }; state.groups[key] = g end
             g.last = line
@@ -889,6 +1339,7 @@ function OT:Render()
         line:ClearAllPoints()
         line:SetPoint("TOPLEFT", content, "TOPLEFT", line.ftX, line.ftY - drop)
     end
+    self:AnimateLayout(n, drop)
     scroll:SetHeight(math_max(1, listHeight))
     -- minimized, the header keeps the same 3 px below it as above it
     holder:SetHeight(C.HEADER + (showList and (C.LIST_TOP + listHeight + C.LIST_BOTTOM) or 3))
@@ -898,7 +1349,7 @@ function OT:Render()
     -- Minimize Style "button": minimized, only a lone "+" shows at the anchored corner
     local lone = minimized and db.minimizeStyle == "button"
     -- Hide When Empty asks whether anything is tracked, not whether anything was drawn
-    local tracked = self:CountTracked() > 0
+    local tracked = self:CountTracked() > 0 or inScenario
         or (db.showRecipes and C_TradeSkillUI and C_TradeSkillUI.GetRecipesTracked
             and #C_TradeSkillUI.GetRecipesTracked(false) > 0)
     local hide = not tracked and db.hideEmpty and not state.editMode and not state.preview
@@ -910,6 +1361,68 @@ function OT:Render()
         miniButton:SetShown(lone and not hide)
     end
     self:UpdateItemButtons()
+end
+
+-- Quests accepted slide in, the ones below make room, and finished objectives get their sheen
+function OT:AnimateLayout(n, drop)
+    local tops = {}
+    local found = false
+    for i = 1, n do
+        local line = lines[i]
+        local key = (line.questID and ("q" .. line.questID)) or (line.zone and ("z" .. line.zone))
+        if key and not tops[key] then tops[key] = line.ftY - drop end
+        if line.questID and state.arriving[line.questID] then found = true end
+    end
+    if found or state.glideNext then
+        state.glideNext = nil
+        local dx = SlideDistance()
+        for i = 1, n do
+            local line = lines[i]
+            local key = (line.questID and ("q" .. line.questID)) or (line.zone and ("z" .. line.zone))
+            if key then
+                local old, top = state.tops[key], tops[key]
+                if line.questID and state.arriving[line.questID] then
+                    MoveLine(line, dx, 0, 0)
+                elseif not old then
+                    MoveLine(line, 0, 0, 0)
+                elseif old ~= top then
+                    MoveLine(line, 0, old - top, 1)
+                end
+            end
+        end
+        for i = 1, n do
+            local id = lines[i].questID
+            if id then state.arriving[id] = nil end
+        end
+    end
+    state.tops = tops
+    -- accepted but never drawn (not tracked, or filtered out)
+    local stale = GetTime() - 3
+    for id, at in pairs(state.arriving) do
+        if at < stale then state.arriving[id] = nil end
+    end
+    for _, line in ipairs(state.sheens) do PlaySheen(line) end
+end
+
+function OT:QuestAccepted(questID)
+    if questID then state.arriving[questID] = GetTime() end
+end
+
+-- Its lines slide off first, and the redraw that closes the gap waits for them
+function OT:QuestTurnedIn(questID)
+    if not questID then return end
+    local dx, any = SlideDistance(), false
+    for _, line in ipairs(lines) do
+        if line:IsShown() and line.questID == questID then
+            line.leaving = true
+            LeaveLine(line, dx)
+            any = true
+        end
+    end
+    if any then
+        state.glideNext = true
+        state.holdUntil = GetTime() + C.LEAVE_TIME
+    end
 end
 
 -- A faint band behind every line of the quest pointed at, across the list's width
@@ -961,7 +1474,17 @@ end
 function OT:RequestRender()
     if state.pending or not holder then return end
     state.pending = true
-    C_Timer.After(0.1, function() OT:Render() end)
+    local function Later()
+        -- a quest still sliding off keeps its place until it has gone
+        local left = state.holdUntil and state.holdUntil - GetTime()
+        state.holdUntil = nil
+        if left and left > 0 then
+            C_Timer.After(left, Later)
+        else
+            OT:Render()
+        end
+    end
+    C_Timer.After(0.1, Later)
 end
 
 -- Distance changes while moving: redraw only when the order would change
@@ -1099,6 +1622,8 @@ local function BuildSettings()
           get = get("width", C.WIDTH), set = set("width") },
         { name = L["Max Height"], kind = LEM.SettingType.Slider, default = C.MAX_HEIGHT, minValue = 150, maxValue = 1000, valueStep = 10,
           get = get("maxHeight", C.MAX_HEIGHT), set = set("maxHeight") },
+        { name = L["Quest Spacing"], kind = LEM.SettingType.Slider, default = C.QUEST_GAP, minValue = 2, maxValue = 20, valueStep = 1,
+          get = get("questGap", C.QUEST_GAP), set = set("questGap") },
         -- the edge it is held by (it grows away from it); Automatic: the one nearest the screen edge
         { name = L["Anchor"], kind = LEM.SettingType.Dropdown, default = "auto",
           values = { { text = L["Automatic"], value = "auto", isRadio = true },
@@ -1336,7 +1861,8 @@ function OT:Init()
         "ZONE_CHANGED", "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED_INDOORS", "SUPER_TRACKING_CHANGED",
         "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "BAG_UPDATE_COOLDOWN",
         "PLAYER_LEVEL_UP", "PLAYER_TARGET_CHANGED", "TRACKED_RECIPE_UPDATE", "BAG_UPDATE_DELAYED",
-        "GET_ITEM_INFO_RECEIVED",
+        "GET_ITEM_INFO_RECEIVED", "QUEST_AUTOCOMPLETE", "PLAYER_MONEY", "SCENARIO_UPDATE", "SCENARIO_CRITERIA_UPDATE",
+        "QUEST_TURNED_IN",
     }) do events:RegisterEvent(e) end
     events:RegisterUnitEvent("UNIT_QUEST_LOG_CHANGED", "player")
     events:SetScript("OnEvent", function(_, event, arg1)
@@ -1361,14 +1887,37 @@ function OT:Init()
             return
         elseif (event == "BAG_UPDATE_DELAYED" or event == "GET_ITEM_INFO_RECEIVED") and state.recipes == 0 then
             return
+        elseif event == "PLAYER_MONEY" and not state.watchMoney then
+            return
         elseif event == "ZONE_CHANGED_NEW_AREA" then
             OT:CheckContext()
         elseif event == "QUEST_REMOVED" and arg1 then
             Char().collapsedQuests[arg1] = nil
+            state.seen[arg1] = nil
+        elseif event == "QUEST_ACCEPTED" then
+            OT:QuestAccepted(arg1)
+        elseif event == "QUEST_TURNED_IN" then
+            OT:QuestTurnedIn(arg1)
         end
         OT:RequestRender()
     end)
     C_Timer.NewTicker(C.SORT_TICK, OnSortTick)
+
+    -- The voice addon's packs load after the first draw; its play state changes on its own
+    local spoken = _G.Spoken
+    if spoken and spoken.RegisterCallback then
+        local function Redraw() OT:RequestRender() end
+        pcall(spoken.RegisterCallback, spoken, "VOICE_PACKS_LOADED", Redraw)
+        pcall(spoken.RegisterCallback, spoken, "PART_SWITCHED", function(part)
+            if part == "quests" then Redraw() end
+        end)
+        pcall(spoken.RegisterCallback, spoken, "AUDIO_CHANGED", function()
+            for _, line in ipairs(lines) do
+                local b = line.playButton
+                if b and b:IsShown() then PaintPlayButton(b) end
+            end
+        end)
+    end
 
     self:ApplyLook()
     self:Render()

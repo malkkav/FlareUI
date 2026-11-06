@@ -348,9 +348,15 @@ end
 --------------------------------------------------
 -- 4. UPDATERS (secret-safe, as in UnitFrames.lua)
 --------------------------------------------------
+-- a name can be secret: never tested unless it can be read
+local function SafeName(name)
+    if canaccessvalue(name) and not name then return "" end
+    return name
+end
+
 local function UpdateName(f)
     -- the party frames pass "party" (first-name rules); raid and boss tiles show the whole name
-    f.Name:SetText(ns.UnitDisplayName(f.unit, not f.ctx and "party" or nil) or "")
+    f.Name:SetText(SafeName(ns.UnitDisplayName(f.unit, not f.ctx and "party" or nil)))
 end
 
 local function UpdateLevel(f)
@@ -373,12 +379,13 @@ local function UpdateLevel(f)
     end
 end
 
-local function UpdateHealth(f)
+local function UpdateHealth(f, glide)
     local unit, st = f.unit, TS(f)
     local bar = f.Health
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
-    bar:SetValue(UnitHealth(unit))
-    bar:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn()))
+    ns.SetBarValue(bar, UnitHealth(unit), glide and st and st.smoothBars)
+    -- (a plain health change has the same colour, but for a hostile tile going grey when tapped)
+    if not glide or (f.ctx and f.ctx.hostile) then bar:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn())) end
 
     local mode = st and st.healthText or "percent"
     local text = f.HealthText
@@ -406,10 +413,11 @@ local function WantsPower(f)
     return st and (st.powerHeight or 0) > 0 or false
 end
 
-local function UpdatePower(f)
+local function UpdatePower(f, glide)
     local unit, st = f.unit, TS(f)
     local want = WantsPower(f)
-    if want ~= f.powerShown then
+    local appeared = want ~= f.powerShown
+    if appeared then
         f.powerShown = want
         LayoutBars(f)
     end
@@ -417,7 +425,7 @@ local function UpdatePower(f)
     local bar = f.Power
     local powerType = UnitPowerType(unit)
     bar:SetMinMaxValues(0, UnitPowerMax(unit, powerType))
-    bar:SetValue(UnitPower(unit, powerType))
+    ns.SetBarValue(bar, UnitPower(unit, powerType), glide and not appeared and st and st.smoothBars)
     bar:SetStatusBarColor(K.GetPowerColor(unit))
     if st and st.powerText and not RaidTile(f) and UnitIsConnected(unit) and not UnitIsDeadOrGhost(unit) then
         f.PowerText:SetText(AbbreviateNumbers(UnitPower(unit, powerType)))
@@ -694,14 +702,15 @@ local function UpdateAll(f)
     UpdateRing(f)
 end
 
-local function UpdatePet(p)
+local function UpdatePet(p, glide)
     if IsEditing() then return end
     if not UnitExists(p.unit) then return end
     local unit = p.unit
     p.Health:SetMinMaxValues(0, UnitHealthMax(unit))
-    p.Health:SetValue(UnitHealth(unit))
+    local st = TS(p)
+    ns.SetBarValue(p.Health, UnitHealth(unit), glide and st and st.smoothBars)
     p.Health:SetStatusBarColor(K.GetHealthColor(unit, false))
-    p.Name:SetText(ns.UnitDisplayName(unit) or "")
+    p.Name:SetText(SafeName(ns.UnitDisplayName(unit)))
 end
 
 local function UpdatePartyTarget(t)
@@ -711,17 +720,20 @@ local function UpdatePartyTarget(t)
     t.Health:SetMinMaxValues(0, UnitHealthMax(unit))
     t.Health:SetValue(UnitHealth(unit))
     t.Health:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn()))
-    t.Name:SetText(ns.UnitDisplayName(unit, "party") or "")
+    t.Name:SetText(SafeName(ns.UnitDisplayName(unit, "party")))
 end
 
 local function OnMemberEvent(f, event)
     -- hidden (solo or in a raid, the holder is): OnShow runs UpdateAll when it comes back
     if IsEditing() or not f:IsVisible() then return end
-    if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
+    if event == "UNIT_HEALTH" then
+        UpdateHealth(f, true)
+        UpdateHealPrediction(f)   -- the amounts are clamped by the health missing
+    elseif event == "UNIT_MAXHEALTH" then
         UpdateHealth(f)
         UpdateHealPrediction(f)
-    elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER" or event == "UNIT_POWER_FREQUENT" or event == "UNIT_DISPLAYPOWER" then
-        UpdatePower(f)
+    elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER" or event == "UNIT_DISPLAYPOWER" then
+        UpdatePower(f, event ~= "UNIT_DISPLAYPOWER")
     elseif event == "UNIT_HEAL_PREDICTION" or event == "UNIT_ABSORB_AMOUNT_CHANGED" then
         UpdateHealPrediction(f)
     elseif event == "UNIT_NAME_UPDATE" then
@@ -738,6 +750,13 @@ local function OnMemberEvent(f, event)
         UpdatePortrait(f)
     elseif event:find("^UNIT_SPELLCAST") then
         UpdateCast(f)
+    elseif event == "UNIT_FLAGS" or event == "UNIT_FACTION" or event == "UNIT_CONNECTION" then
+        -- bursts at a pull: no aura rebuild for these
+        UpdateHealth(f)
+        UpdatePower(f)
+        UpdateStatus(f)
+        UpdateLevel(f)
+        UpdateRing(f)
     else
         UpdateAll(f)
     end
@@ -1476,7 +1495,8 @@ local function LayoutMember(f)
     if f.ringKind then ns.UFRing.Layout(f) end
     -- the bars' empty part (Background Opacity; on the plate its slot is the background: 0 unless set)
     local bgOpacity = st.bgOpacity
-    if bgOpacity == nil and OnPlate(f) then bgOpacity = 0 end
+    -- on the plate its art is the background
+    if OnPlate(f) then bgOpacity = 0 end
     K.SetBarBackground(f.Health, bgOpacity)
     K.SetBarBackground(f.Power, bgOpacity)
     LayoutHealClip(f)
@@ -2152,7 +2172,7 @@ end
 
 local MEMBER_UNIT_EVENTS = {
     "UNIT_HEALTH", "UNIT_MAXHEALTH",
-    "UNIT_POWER_UPDATE", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER", "UNIT_POWER_FREQUENT",
+    "UNIT_POWER_UPDATE", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER",
     "UNIT_NAME_UPDATE", "UNIT_LEVEL", "UNIT_FACTION", "UNIT_CONNECTION", "UNIT_FLAGS",
     "UNIT_HEAL_PREDICTION", "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_THREAT_SITUATION_UPDATE",
     "UNIT_IN_RANGE_UPDATE", "UNIT_PHASE", "UNIT_OTHER_PARTY_CHANGED",
@@ -2316,11 +2336,11 @@ local function CreatePet(index)
     p.Highlight:SetAllPoints(p.Health)
     p.Highlight:SetColorTexture(1, 1, 1, 0.08)
     p.Highlight:Hide()
-    p:SetScript("OnEvent", function(self) UpdatePet(self) end)
+    p:SetScript("OnEvent", function(self) UpdatePet(self, true) end)
     for _, event in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_NAME_UPDATE", "UNIT_CONNECTION" }) do
         pcall(p.RegisterUnitEvent, p, event, p.unit)
     end
-    p:HookScript("OnShow", UpdatePet)
+    p:HookScript("OnShow", function(self) UpdatePet(self) end)
     pets[index] = p
     return p
 end
@@ -2561,9 +2581,14 @@ local function BuildSettings()
         { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildAbsorbValues(),
           get = getS("absorbTexture"), set = setS("absorbTexture"),
           desc = L["The texture of the shield (absorb) over the health bar."] },
-        K.BgOpacitySetting(K.BAR_BG_OPACITY,
-            function() local v = getS("bgOpacity")(); if v == nil then return K.BAR_BG_OPACITY end; return v end,
-            setS("bgOpacity")),
+        (function()
+            local item = K.BgOpacitySetting(K.BAR_BG_OPACITY,
+                function() local v = getS("bgOpacity")(); if v == nil then return K.BAR_BG_OPACITY end; return v end,
+                setS("bgOpacity"))
+            item.hidden = onPlate
+            return item
+        end)(),
+        K.SmoothBarsSetting(getS("smoothBars"), setS("smoothBars")),
     })
 
     local function noCast() return not getS("castbar")() end
@@ -2597,18 +2622,7 @@ local function BuildSettings()
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = PARTY_PLACES, generator = Place("debuffs"),
           get = getS("debuffs"), set = setS("debuffs"),
           desc = L["Debuffs as Blizzard's raid frames pick them: boss and role debuffs, priority debuffs, and the ones you can dispel."] },
-        -- by the buffs' full duration; every choice but Off hides permanent ones
-        { name = L["Hide Buffs"], kind = LEM.SettingType.Dropdown, default = "PERMANENT",
-          values = {
-              { text = L["Off"], value = "OFF", isRadio = true },
-              { text = L["Permanent"], value = "PERMANENT", isRadio = true },
-              { text = L["Longer than 15 Minutes"], value = "900", isRadio = true },
-              { text = L["Longer than 10 Minutes"], value = "600", isRadio = true },
-              { text = L["Longer than 5 Minutes"], value = "300", isRadio = true },
-              { text = L["Longer than 1 Minute"], value = "60", isRadio = true },
-          },
-          get = function() return getS("hideBuffs")() or "PERMANENT" end, set = setS("hideBuffs"),
-          desc = L["Buffs left off the party frames, by their full duration. Every choice but Off also hides permanent buffs."] },
+        K.HideBuffsSetting("PERMANENT", function() return getS("hideBuffs")() or "PERMANENT" end, setS("hideBuffs")),
         { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = D.dispelHighlight,
           values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
                      { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
@@ -2805,7 +2819,7 @@ PF.Tile = {
     Build = BuildTile, SetUnit = SetTileUnit, Layout = LayoutMember, UpdateAll = UpdateAll,
     UpdateRange = UpdateRange, UpdateTarget = UpdateTarget, UpdateRaidIcon = UpdateRaidIcon,
     UpdateLeader = UpdateLeader, UpdateRole = UpdateRole, UpdatePower = UpdatePower,
-    UpdateReadyCheck = UpdateReadyCheck, UpdateStatus = UpdateStatus, UpdateThreat = UpdateThreat,
+    UpdateReadyCheck = UpdateReadyCheck, UpdateStatus = UpdateStatus,
     OnEnter = OnEnter, OnLeave = OnLeave, ICON_ORDER = ICON_ORDER, ICON_LABELS = ICON_LABELS,
     PlacesClash = PlacesClash, ABOVE_PLACES = ABOVE_PLACES, BELOW_PLACES = BELOW_PLACES,
     IconShown = IconShown, IconStore = IconStore, LanesExtent = LanesExtent,

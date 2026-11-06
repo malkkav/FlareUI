@@ -113,7 +113,7 @@ local function ExportString()
     return ok and text and (SHARE_TAG .. text) or ""
 end
 
--- the payload, or nil and why not
+-- the payload, or nil
 local function ReadString(text)
     text = text and strtrim(text) or ""
     if text:sub(1, #SHARE_TAG) ~= SHARE_TAG then return nil end

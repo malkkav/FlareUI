@@ -192,7 +192,7 @@ local UNITS = {
         sample = { name = L["Target of Focus"] },
     },
     pet = {
-        key = "Pet", label = L["Pet"], order = 5, happiness = true, noRaidIcon = true,
+        key = "Pet", label = L["Pet"], order = 5, happiness = true, noRaidIcon = true, auras = true,
         sample = { name = L["Pet"], powerToken = "FOCUS", health = 0.85, power = 0.7 },
         blizzard = { "PetFrame" },
         driver = "[@pet,exists] show; hide",
@@ -430,6 +430,29 @@ function UF.BgOpacitySetting(default, get, set)
         desc = L["How dark the empty part of the bars is."] }
 end
 
+-- Which buffs a frame leaves out, by their full duration: one choice, as Blizzard's filter for a longest
+-- duration always leaves out the permanent ones too
+function UF.HideBuffsSetting(default, get, set)
+    return { name = L["Hide Buffs"], kind = LEM.SettingType.Dropdown, default = default,
+        values = {
+            { text = L["Off"], value = "OFF", isRadio = true },
+            { text = L["Permanent"], value = "PERMANENT", isRadio = true },
+            { text = L["Longer than 15 Minutes"], value = "900", isRadio = true },
+            { text = L["Longer than 10 Minutes"], value = "600", isRadio = true },
+            { text = L["Longer than 5 Minutes"], value = "300", isRadio = true },
+            { text = L["Longer than 1 Minute"], value = "60", isRadio = true },
+        },
+        get = get, set = set,
+        desc = L["Buffs left off this frame, by their full duration. Every choice but Off also hides permanent buffs."] }
+end
+
+-- Always right below Background Opacity
+function UF.SmoothBarsSetting(get, set)
+    return { name = L["Smooth Bar Animations"], kind = LEM.SettingType.Checkbox, default = false,
+        get = function() return get() and true or false end, set = set,
+        desc = L["Health and power glide to their new value instead of jumping there."] }
+end
+
 local function ApplyFont(fontString, fontDb, sizeDelta)
     local path = ns.GetFontPath(fontDb and fontDb.face or "Friz Quadrata TT")
     local flags = fontDb and fontDb.flags or "OUTLINE"
@@ -603,7 +626,7 @@ local function UpdateLevel(f)
     if (unit == "player" or unit == "pet") and ns.UFRing and ns.UFRing.Applies(f) then f.Level:SetTextColor(1, 1, 1) end
 end
 
-local function UpdateHealth(f)
+local function UpdateHealth(f, glide)
     local unit = f.unit
     local udb = GetUnitDb(unit)
     local bar = f.Health
@@ -634,7 +657,7 @@ local function UpdateHealth(f)
     end
 
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
-    bar:SetValue(UnitHealth(unit))
+    ns.SetBarValue(bar, UnitHealth(unit), glide and udb and udb.smoothBars and not UNITS[unit].poll)
     bar:SetStatusBarColor(GetHealthColor(unit, ns.ClassColorsOn()))
 
     local mode = udb and udb.healthText or "percent"
@@ -654,13 +677,13 @@ local function UpdateHealth(f)
     end
 end
 
-local function UpdatePower(f)
+local function UpdatePower(f, glide)
     local unit = f.unit
     local udb = GetUnitDb(unit)
     local bar = f.Power
     local powerType = UnitPowerType(unit)
     bar:SetMinMaxValues(0, UnitPowerMax(unit, powerType))
-    bar:SetValue(UnitPower(unit, powerType))
+    ns.SetBarValue(bar, UnitPower(unit, powerType), glide and udb and udb.smoothBars and not UNITS[unit].poll)
     bar:SetStatusBarColor(GetPowerColor(unit))
     if f.ManaCost then f.ManaCost:Refresh(powerType) end
     if f.ShiftMana then UF.UpdateShiftMana(f) end
@@ -817,7 +840,8 @@ local function CreateCastBar(parent, unit)
 end
 
 local function SetCastTimer(cast, duration)
-    if cast.TimerBinding and duration then
+    -- (the duration can be secret: never tested)
+    if cast.TimerBinding then
         pcall(cast.TimerBinding.SetDuration, cast.TimerBinding, duration)
     end
 end
@@ -835,7 +859,6 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
     local height = style.height
     local iconOffset = style.icon and (height + CAST_ICON_GAP) or 0
 
-    cast.style = style
     cast:SetStatusBarTexture(texture)
     cast.bg:SetTexture(texture)
     UF.SetBarBackground(cast, style.bgOpacity)
@@ -1176,18 +1199,19 @@ local function OnUnitEvent(f, event, arg1, arg2)
         return
     end
     if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
-        UpdateHealth(f)
-        if event == "UNIT_MAXHEALTH" then UpdateHealPrediction(f) end   -- the overlays' range
+        UpdateHealth(f, true)
+        UpdateHealPrediction(f)   -- the overlays' range, and the amounts are clamped by the health missing
     elseif event == "UNIT_POWER_FREQUENT" or event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER"
         or event == "UNIT_DISPLAYPOWER" then
-        UpdatePower(f)
+        -- a new power type (a druid's form) lands at once: its value has nothing to do with the old one
+        UpdatePower(f, event ~= "UNIT_DISPLAYPOWER")
     elseif event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_THREAT_SITUATION_UPDATE" then
         UpdateThreat(f)
     elseif event == "UNIT_HEAL_PREDICTION" or event == "UNIT_ABSORB_AMOUNT_CHANGED" then
         UpdateHealPrediction(f)
     elseif event == "PLAYER_UPDATE_RESTING" or event == "GROUP_ROSTER_UPDATE" or event == "PARTY_LEADER_CHANGED"
         or event == "PLAYER_FLAGS_CHANGED" or event == "QUEST_LOG_UPDATE" or event == "PVP_TIMER_UPDATE" then
-        UpdateIndicators(f)
+        if f:IsVisible() then UpdateIndicators(f) end
     elseif event == "UNIT_NAME_UPDATE" then
         UpdateName(f)
     elseif event == "UNIT_LEVEL" or event == "UNIT_CLASSIFICATION_CHANGED" then
@@ -1469,19 +1493,15 @@ LayoutAuras = function(f)
         local list = corner and perCorner[corner]
         if list then list[#list + 1] = { key = key, filter = filter, isDebuff = isDebuff, candidates = candidates, bossFight = bossFight } end
     end
-    -- permanent buffs are left out, except in Edit Mode (its samples have no duration)
+    -- "Hide Buffs": filters by full duration (secret-safe); any maxDuration also drops permanent buffs,
+    -- so Off is no filter. Not in Edit Mode: its samples have no duration
     local buffCandidates
     if not LEM:IsInEditMode() then
-        buffCandidates = { maxDuration = 999999 }
-        -- "Hide Buffs": filters by full duration (secret-safe); any maxDuration also drops permanent
-        -- buffs, so Off is no filter
-        if f.unit == "player" then
-            local hide = udb.hideBuffs or "PERMANENT"
-            if hide == "OFF" then
-                buffCandidates = nil
-            elseif hide ~= "PERMANENT" and tonumber(hide) then
-                buffCandidates = { maxDuration = tonumber(hide) }
-            end
+        local hide = udb.hideBuffs or "PERMANENT"
+        if hide == "PERMANENT" then
+            buffCandidates = { maxDuration = 999999 }
+        elseif tonumber(hide) then
+            buffCandidates = { maxDuration = tonumber(hide) }
         end
     end
     -- "Only My Debuffs": the PLAYER filter (isFromPlayerOrPlayerPet means any player); other units only
@@ -1806,7 +1826,7 @@ local function InitFsrSpark()
             elseif select("#", UnitCastingInfo("player")) == 0 then   -- the count: the values may be secret
                 f.manaCost = nil
             end
-            UpdatePower(f)
+            UpdatePower(f, true)
             if event ~= "UNIT_SPELLCAST_SUCCEEDED" then return end
         end
         if event == "UNIT_SPELLCAST_SUCCEEDED" then
@@ -1907,7 +1927,6 @@ local function CreateIndicators(f)
             tex:SetTexture("Interface\\CharacterFrame\\UI-StateIcon")
             tex:SetTexCoord(0, 0.5, 0, 0.421875)
         end
-        rest.tex = tex
         rest:Hide()
         f.RestIcon = rest
     end
@@ -2131,7 +2150,7 @@ end
 -- highest threat on anything)
 function UpdateThreat(f)
     if not f.threatTint then return end
-    if not ICON_UI.Shown(f.unit, "threatGlow") then ResetBorderTint(f.Border) return end
+    if UNITS[f.unit].noThreatGlow or not ICON_UI.Shown(f.unit, "threatGlow") then ResetBorderTint(f.Border) return end
     local status
     if f.unit == "player" then
         status = Readable(UnitThreatSituation("player"))
@@ -2490,11 +2509,13 @@ end
 function UF.UpdateShiftMana(f)
     local bar = f.ShiftMana
     local shown = UF.ShiftManaShown(f)
-    if shown ~= bar:IsShown() then LayoutBars(f) end
+    local appeared = shown ~= bar:IsShown()
+    if appeared then LayoutBars(f) end
     if not shown then return end
     local mana = Enum.PowerType.Mana
     bar:SetMinMaxValues(0, UnitPowerMax("player", mana))
-    bar:SetValue(UnitPower("player", mana))
+    local udb = GetUnitDb(f.unit)
+    ns.SetBarValue(bar, UnitPower("player", mana), not appeared and udb and udb.smoothBars)
     local r, g, b = ns.PowerColor("MANA", mana)
     bar:SetStatusBarColor(r or ns.MANA_BLUE[1], g or ns.MANA_BLUE[2], b or ns.MANA_BLUE[3])
 end
@@ -2574,12 +2595,16 @@ local function LayoutFrame(f)
     -- the bars' empty part (Background Opacity; after LayoutBars, which hides it on the plate)
     local bgOpacity = udb.bgOpacity
     if bgOpacity == nil then bgOpacity = UF.DefaultBgOpacity(f.unit) end
+    -- on the plate its art is the background
+    if ns.UFRing and ns.UFRing.Plate(f) then bgOpacity = 0 end
     UF.SetBarBackground(health, bgOpacity)
     UF.SetBarBackground(power, bgOpacity)
     if f.ShiftMana then UF.SetBarBackground(f.ShiftMana, bgOpacity) end
 
     -- ring styles: text one point smaller
     local fontDelta = (ns.UFRing and ns.UFRing.Applies(f)) and -1 or 0
+    -- the small plate of target of target and target of focus: smaller still
+    if UNITS[f.unit].poll and ns.UFRing and ns.UFRing.Plate(f) then fontDelta = -3 end
     ApplyFont(f.Name, db.font, fontDelta)
     ApplyFont(f.Level, db.font, fontDelta)
     ApplyFont(f.HealthText, db.font, fontDelta)
@@ -3002,6 +3027,12 @@ local function CreateUnitFrame(unit)
         end
     end
 
+    -- hidden frames skip these two in their events (the player's, by Hide Player Frame in a party)
+    f:HookScript("OnShow", function(self)
+        UpdateIndicators(self)
+        if ns.UFRing then ns.UFRing.UpdateThreat(self) end
+    end)
+
     -- the client sends no unit events for targettarget / focustarget: Blizzard polls them too
     if info.poll then
         local elapsed = 0
@@ -3012,6 +3043,21 @@ local function CreateUnitFrame(unit)
             if not UnitExists(self.unit) then return end
             UpdateHealth(self)
             UpdatePower(self)
+            -- a styled frame's ring shows who it is; no event says this unit changed, so the GUID does
+            -- when it can be read
+            local guid = UnitGUID(self.unit)
+            local readable = canaccessvalue(guid)
+            local same = readable and guid == self.polledGuid
+            self.polledGuid = readable and guid or nil
+            -- unreadable: at most once a second
+            local now = GetTime()
+            if self.Portrait and not same and (readable or now - (self.polledAt or 0) >= 1) then
+                self.polledAt = now
+                UpdateName(self)
+                UpdateLevel(self)
+                UpdatePortrait(self)
+                if ns.UFRing then ns.UFRing.Update(self) end
+            end
         end)
     end
 
@@ -3186,7 +3232,7 @@ local function BuildSettings(unit)
         end
     end
     local defaults = ns.defaults and ns.defaults.profile.unitframes.units[unit] or {}
-    if info.styledPet then defaults = ns.UFRing.PetDefaults() end
+    if info.styledPet then defaults = ns.UFRing.PetDefaults(unit) end
 
     -- sizes, then the portrait, then the texts. Forever Style's Scale sets ring and height together.
     local function onPlate() return ns.UFRing and ns.UFRing.Plate(frames[unit]) or false end
@@ -3305,6 +3351,11 @@ local function BuildSettings(unit)
     lookItems[#lookItems + 1] = UF.BgOpacitySetting(bgDefault,
         function() local u = GetUnitDb(unit); local v = u and u.bgOpacity; if v == nil then return bgDefault end; return v end,
         set("bgOpacity"))
+    lookItems[#lookItems].hidden = onPlate
+    -- (not on target of target and target of focus)
+    if not info.poll then
+        lookItems[#lookItems + 1] = UF.SmoothBarsSetting(function() local u = GetUnitDb(unit); return u and u.smoothBars end, set("smoothBars"))
+    end
     -- FlareUI Style only: Addon Style's combo strip over the health bar instead of the gems round the ring
     if info.comboPoints then
         lookItems[#lookItems + 1] = { name = L["Modern Combo Points"], kind = LEM.SettingType.Checkbox, default = false,
@@ -3376,22 +3427,8 @@ local function BuildSettings(unit)
               generator = Corner("debuffs", "buffs"), get = get("debuffs"), set = set("debuffs") },
             { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1, get = get("auraSize"), set = set("auraSize") },
         }
-        -- the player: which buffs to leave out, by their full duration (one choice: Blizzard's filter
-        -- for a longest duration always leaves out the permanent ones too)
-        if unit == "player" then
-            table.insert(auraItems, 3, { name = L["Hide Buffs"], kind = LEM.SettingType.Dropdown, default = "PERMANENT",
-                values = {
-                    { text = L["Off"], value = "OFF", isRadio = true },
-                    { text = L["Permanent"], value = "PERMANENT", isRadio = true },
-                    { text = L["Longer than 15 Minutes"], value = "900", isRadio = true },
-                    { text = L["Longer than 10 Minutes"], value = "600", isRadio = true },
-                    { text = L["Longer than 5 Minutes"], value = "300", isRadio = true },
-                    { text = L["Longer than 1 Minute"], value = "60", isRadio = true },
-                },
-                get = function() local u = GetUnitDb(unit); return u and u.hideBuffs or "PERMANENT" end,
-                set = set("hideBuffs"),
-                desc = L["Buffs left off the player frame, by their full duration. Every choice but Off also hides permanent buffs."] })
-        end
+        table.insert(auraItems, 3, UF.HideBuffsSetting("PERMANENT",
+            function() local u = GetUnitDb(unit); return u and u.hideBuffs or "PERMANENT" end, set("hideBuffs")))
         -- the player: Only My Buffs and Focus Boss Debuffs, after Aura Size
         if unit == "player" then
             auraItems[#auraItems + 1] = { name = L["Only My Buffs"], kind = LEM.SettingType.Checkbox, default = false,
@@ -3469,7 +3506,7 @@ UF.Kit = {
     -- Background Opacity's bar background and its Edit Mode slider
     Border = function(name) return ns.UFRing and ns.UFRing.Border(name) or name end,
     NoBorderOptions = function() return ns.UFRing and ns.UFRing.PlateOn() or false end,
-    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting,
+    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting, SmoothBarsSetting = UF.SmoothBarsSetting, HideBuffsSetting = UF.HideBuffsSetting,
     INSET = INSET, BG_OPACITY = BG_OPACITY, BACKDROP_FILE = BACKDROP_FILE,
     SEPARATOR_TEXTURE = SEPARATOR_TEXTURE, SEPARATOR_HEIGHT = SEPARATOR_HEIGHT, TEXT_INSET = TEXT_INSET,
     CAST_GAP = CAST_GAP, AURA_GAP = AURA_GAP,
@@ -3578,6 +3615,21 @@ function UF:Init()
         pet.portrait, pet.styledPet = true, true
         pet.indicators.threatGlow = true
         DEFAULT_POSITIONS.pet = ns.UFRing.PetPosition()
+    end
+    -- A pet saved before it had auras, or swapped back in from a stored setup, has none of these
+    local petDb = db.units.pet
+    if petDb then
+        petDb.buffs, petDb.debuffs = petDb.buffs or "OFF", petDb.debuffs or "OFF"
+        petDb.auraSize, petDb.hideBuffs = petDb.auraSize or 12, petDb.hideBuffs or "PERMANENT"
+    end
+
+    -- Simple "Target Of" off: the same, for target of target and target of focus
+    if ns.UFRing and ns.UFRing.TargetOfStyled() then
+        for _, unit in ipairs({ "targettarget", "focustarget" }) do
+            local info = UNITS[unit]
+            info.portrait, info.styledPet, info.noThreatGlow = true, true, true
+            DEFAULT_POSITIONS[unit] = ns.UFRing.TargetOfPosition(unit)
+        end
     end
 
     for _, unit in ipairs(UNIT_ORDER) do

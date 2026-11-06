@@ -80,7 +80,7 @@ ns.Copy = {
     rows = {
         ["ab.autoPagingBar"] = {
             choices = { L["No Auto-Paging"], L["Action Bar 1"], L["Action Bar 2"], L["Action Bar 3"], L["Action Bar 4"], L["Action Bar 5"], L["Action Bar 6"], L["Action Bar 7"], L["Action Bar 8"] },
-            desc = L["The bar that switches to its own page in Stealth, a druid form or a warrior stance."],
+            desc = L["The bar that switches to its own page in Stealth, a druid form or a warrior stance. Any other bar, or No Auto-Paging, stays on its page."],
             label = L["Allow Auto-paging"],
             section = "ab.buttons",
             tip = L["The new page starts empty: fill it while in that form."],
@@ -333,6 +333,12 @@ ns.Copy = {
         ["au.*.size"] = {
             desc = L["The size of the icons, and how many fit in a row."],
             label = L["Icon size"],
+        },
+        ["au.arrive"] = {
+            desc = L["New icons fade in while dropping into place."],
+            label = L["Arrival animation"],
+            section = "au.general",
+            tip = L["Plays where an icon is added, so with a sort that moves icons around it can land on the last slot."],
         },
         ["au.font.timer"] = {
             desc = L["Time left and stack counts."],
@@ -768,6 +774,12 @@ ns.Copy = {
             section = "qt.frame",
             tip = L["None hides it."],
         },
+        ["qt.collapseCompleted"] = {
+            desc = L["Finished and failed quests fold to their name while no timer runs on them."],
+            label = L["Collapse completed quests"],
+            section = "qt.quests",
+            tip = L["Middle-click to open one again. It stays open."],
+        },
         ["qt.completedLast"] = {
             desc = L["Quests ready to turn in move to the bottom."],
             label = L["Completed last"],
@@ -776,6 +788,11 @@ ns.Copy = {
         ["qt.count"] = {
             desc = L["\"Quests 14/25\" in the header."],
             label = L["Quest count"],
+            section = "qt.display",
+        },
+        ["qt.focusButtons"] = {
+            desc = L["A dot before each quest. Click it to focus the quest on the map."],
+            label = L["Focus buttons"],
             section = "qt.display",
         },
         ["qt.font.header"] = {
@@ -793,6 +810,16 @@ ns.Copy = {
         ["qt.hideEmpty"] = {
             desc = L["No tracker while nothing is tracked."],
             label = L["Hide when empty"],
+            section = "qt.display",
+        },
+        ["qt.hideFinished"] = {
+            desc = L["An objective leaves the list once it's done."],
+            label = L["Hide finished objectives"],
+            section = "qt.quests",
+        },
+        ["qt.hideLevel"] = {
+            desc = L["No level in front of quest names."],
+            label = L["Hide quest level"],
             section = "qt.display",
         },
         ["qt.minCombat"] = {
@@ -823,18 +850,24 @@ ns.Copy = {
             label = L["Frame Opacity"],
             section = "qt.frame",
         },
+        ["qt.playButtons"] = {
+            desc = L["A button before each quest that plays its voice line."],
+            label = L["Voice buttons"],
+            section = "qt.display",
+            tip = L["Needs the Spoken addon."],
+        },
         ["qt.recipes"] = {
             desc = L["Tracked recipes, with the reagents you carry."],
             label = L["Tracked recipes"],
             section = "qt.display",
         },
         ["qt.size"] = {
-            desc = L["The tracker's width, and how tall it grows before it scrolls."],
-            label = L["Width / Max height"],
+            desc = L["The tracker's width, how tall it grows before it scrolls, and the gap between quests."],
+            label = L["Width / Max height / Quest Spacing"],
         },
         ["qt.sort"] = {
-            choices = { L["By zone"], L["By distance"], L["By level"] },
-            desc = L["How quests are ordered.\n* By zone: your zone first\n* By distance: nearest first\n* By level: lowest first"],
+            choices = { L["By zone"], L["By distance"], L["By level"], L["By progress"] },
+            desc = L["How quests are ordered.\n* By zone: your zone first\n* By distance: nearest first\n* By level: lowest first\n* By progress: furthest along first"],
             label = L["Objective Sorting"],
             section = "qt.frame",
         },
@@ -852,6 +885,7 @@ ns.Copy = {
             desc = L["Quests grouped under their zone's name."],
             label = L["Zone headings"],
             section = "qt.display",
+            tip = L["Shift-click a heading to fold all its quests."],
         },
         ["rb.*.fsr"] = {
             desc = L["After you spend mana, a spark crosses the bar for five seconds."],
@@ -1258,6 +1292,12 @@ ns.Copy = {
             section = "uf.look",
             tip = L["Addon Style always has the plain frame."],
         },
+        ["uf.simpleTargetOf"] = {
+            desc = L["Keeps the plain target of target and target of focus frames in every style.\n* Off: they are small frames of your style, in Forever and FlareUI Style"],
+            label = L["Simple \"Target Of\""],
+            section = "uf.look",
+            tip = L["Addon Style always has the plain frames."],
+        },
         ["uf.tof"] = {
             desc = L["Who your focus is targeting."],
             label = L["Target of focus"],
@@ -1299,6 +1339,7 @@ ns.Copy = {
         ["qt.display"] = L["Display"],
         ["qt.frame"] = L["Frame"],
         ["qt.minimizeIn"] = L["Minimize"],
+        ["qt.quests"] = L["Quests"],
         ["rb.bars"] = L["Bars"],
         ["rm.controller"] = L["Controller"],
         ["rm.look"] = L["Look"],

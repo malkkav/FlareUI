@@ -1,3 +1,47 @@
+# FlareUI 3.0
+
+Portrait versions of your target of target and focus target frames, smooth bars, a much better Quest Tracker, and animations where they count. This one's big, so here's the lot.
+
+## New
+- Unit frames: **Target of Target** and **Target of Focus** now have small portrait versions in FlareUI and Forever Style, like the pet. **Simple "Target Of"** in the Unit Frames settings keeps the plain frames, and the two keep separate settings and positions.
+- Unit frames, Resource Bars: **Smooth Bar Animations** in Edit Mode makes health and power glide to their new value. It's off by default, and sits under Background Opacity on every frame that has it. Target of Target and Target of Focus don't have it.
+- Pet frames: **Auras** and **Aura Ordering** in Edit Mode, in every style. Buffs and Debuffs are off by default.
+- Target, focus and boss frames: **Hide Buffs** in Edit Mode, set to Permanent by default, which is how they already behaved.
+- Resource Bars: **Background Opacity** in Edit Mode.
+- Buffs & Debuffs: **Arrival animation** fades new icons in as they drop into place. It's off by default.
+- Buffs & Debuffs: opening the settings page shows sample icons, so you can see your Timer, Icon Shape and Swipe choices as you change them.
+- Quest Tracker: quests slide in when accepted and out when turned in, the rest make room, and a finished objective gets a soft sheen.
+- Quest Tracker: timed quests show a countdown that goes from green to yellow, orange and red, even on a collapsed quest, and they stay listed when you leave their zone.
+- Quest Tracker: completed quests show their own text, like where to turn them in. Auto-complete quests finish when you click them.
+- Quest Tracker: scenario objectives show above your quests, a line shows the gold a quest still needs, and your focused quest shows its next waypoint when the game gives one.
+- Quest Tracker: new options in the settings:
+  - **Collapse completed quests**
+  - **Hide finished objectives**
+  - **Hide quest level**
+  - **Focus buttons**
+  - **Voice buttons**, with the Spoken addon
+- Quest Tracker: **By progress** in Objective Sorting, and **Quest Spacing** in Edit Mode.
+- Quest Tracker: **Show on Map** and **Link to Chat** in the right-click menu, and shift-click a zone heading to fold all its quests.
+
+## Changed
+- Forever Style: **Background Opacity** is gone from unit, party and boss frames. The frame's own art is the background there, and the slider only painted over it.
+- Forever Style: Target of Target and Target of Focus use smaller text.
+- Action Bars, Unit Frames: the banner pointing to Edit Mode is shorter and harder to miss.
+- Buffs: the default position moved down by one pixel. Only frames you haven't moved follow it.
+- Fake Cooldown Manager: the setup button and its right-click hint only show as available when a bar uses it.
+
+## Fixed
+- Action Bars: **No Auto-Paging** now really stops Action Bar 1 changing page with a warrior's stance. Picking another bar for Auto-Paging does the same.
+- Quest Tracker: quest levels use the same colours as the quest log.
+- Quest Tracker: failed quests now say so.
+- Quest Tracker: opening a quest from the tracker in combat or in the Gamepad UI is now refused with a message. It could cause errors or break controller bindings.
+- Buffs & Debuffs: sample timers now show in Edit Mode.
+- Party, raid and boss frames: possible errors from hidden names in instances.
+- Quality of Life: Sync Blizz UI could fail to save your chat windows.
+- The prompt to reload after copying interface settings now tells you how if you answer it in combat.
+- Performance: less work in raids, mainly on party and raid frames, roster changes, threat on hidden frames, swing timers, and big guilds with Level Before Names on.
+- A smaller download.
+
 # FlareUI 2.10.0
 
 A setup tour for new players, and a mana bar for druids in Bear and Cat Form.
