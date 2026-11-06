@@ -36,6 +36,52 @@ end
 --------------------------------------------------
 -- 3. BLIZZARD'S OPTIONS > ADDONS
 --------------------------------------------------
+-- A NEW tag beside FlareUI in Blizzard's AddOns list, while one of FlareUI's own pages still has one.
+-- Blizzard's tag only follows list-style pages, and this one is a canvas: so a tag of our own over the
+-- row, which only reads Blizzard's list and writes nothing to it. The list recycles and scrolls its rows,
+-- so the row is looked up again while the window is open. Not in the Gamepad UI (see below).
+local TAG_SCALE, TAG_GAP, TAG_CHECK = 0.75, 4, 0.1
+local function AddListTag(category)
+    local list = SettingsPanel and SettingsPanel.GetCategoryList and SettingsPanel:GetCategoryList()
+    if not (list and list.ScrollBox and list.FindCategoryElementData and ns.SettingsPanel) then return end
+
+    local watcher = CreateFrame("Frame", nil, SettingsPanel)
+    local tag = ns.SettingsPanel.NewBadge(watcher)
+    tag:SetScale(TAG_SCALE)
+    tag:SetFrameStrata("HIGH")
+    tag:Hide()
+
+    local wanted, elapsed, placedOn = false, 0, nil
+    local function FindRow()
+        local data = list:FindCategoryElementData(category)
+        return data and list.ScrollBox:FindFrame(data)
+    end
+    watcher:SetScript("OnShow", function()
+        wanted = ns.Settings:AnyNew()
+        elapsed, placedOn = TAG_CHECK, nil
+        tag:Hide()
+    end)
+    watcher:SetScript("OnUpdate", function(_, delta)
+        if not wanted then return end
+        elapsed = elapsed + delta
+        if elapsed < TAG_CHECK then return end
+        elapsed = 0
+        local ok, row = pcall(FindRow)
+        local label = ok and row and row:IsVisible() and row.Label
+        if not label then
+            tag:Hide()
+            placedOn = nil
+            return
+        end
+        if placedOn ~= row then
+            placedOn = row
+            tag:ClearAllPoints()
+            tag:SetPoint("LEFT", label, "LEFT", (label:GetStringWidth() + TAG_GAP) / TAG_SCALE, 0)
+        end
+        tag:Show()
+    end)
+end
+
 local function RegisterOptionsPage()
     local panel = CreateFrame("Frame", "FlareUI_BlizzOptionsPanel", UIParent)
     panel.name = "FlareUI"
@@ -81,7 +127,9 @@ local function RegisterOptionsPage()
         open:SetScript("OnClick", function() ns.SettingsPanel:Open() end)
     end
 
-    Settings.RegisterAddOnCategory(Settings.RegisterCanvasLayoutCategory(panel, panel.name))
+    local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
+    Settings.RegisterAddOnCategory(category)
+    if not ns.IsGamepadUI() then AddListTag(category) end
 end
 
 --------------------------------------------------

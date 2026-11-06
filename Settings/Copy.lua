@@ -98,7 +98,7 @@ ns.Copy = {
         },
         ["ab.buttonArt"] = {
             desc = L["Blizzard's framed slot on every button of bars 1 to 8 and the pet bar, even on bars set to hide their art."],
-            label = L["Button art"],
+            label = L["Show button art"],
             section = "ab.buttons",
         },
         ["ab.cleanKeybinds"] = {
@@ -780,7 +780,7 @@ ns.Copy = {
         },
         ["qt.collapseCompleted"] = {
             desc = L["Finished and failed quests fold to their name while no timer runs on them."],
-            label = L["Collapse completed quests"],
+            label = L["Collapse completed"],
             section = "qt.quests",
             tip = L["Middle-click to open one again. It stays open."],
         },

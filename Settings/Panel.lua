@@ -19,7 +19,24 @@ local PICTURE = "Interface\\AddOns\\FlareUI\\Media\\Art\\Banner.png"
 
 local BRONZE_MUTED = { 0.61, 0.48, 0.29 }
 
+-- Blizzard's NEW label, smaller and with its text at the frame's left. Its glow reaches 20 px past the
+-- text: tightened, so it stays inside tabs and clear of checkboxes.
+local NEW_SCALE, NEW_GAP, NEW_W = 0.65, 3, 20   -- gap and width on screen
+local function NewBadge(parent)
+    local badge = CreateFrame("Frame", nil, parent, "NewFeatureLabelNoAnimateTemplate")
+    badge:SetScale(NEW_SCALE)
+    badge.Label:ClearAllPoints()
+    badge.Label:SetPoint("LEFT")
+    badge.BGLabel:ClearAllPoints()
+    badge.BGLabel:SetPoint("LEFT", 0.5, -0.5)
+    badge.Glow:ClearAllPoints()
+    badge.Glow:SetPoint("TOPLEFT", badge.Label, -6, 4)
+    badge.Glow:SetPoint("BOTTOMRIGHT", badge.Label, 6, -4)
+    return badge
+end
+
 local Panel = {}
+Panel.NewBadge = NewBadge
 ns.SettingsPanel = Panel
 
 local frame             -- the window
@@ -613,11 +630,14 @@ local function FillRow(f, row, crumb)
     SetRowEnabled(f, not row:IsDisabled())
     -- Blizzard's NEW label after the name (Settings.NEW)
     if row:IsNew() then
-        if not f.newBadge then
-            f.newBadge = CreateFrame("Frame", nil, f, "NewFeatureLabelNoAnimateTemplate")
-            f.newBadge:SetScale(0.8)
-            f.newBadge:SetPoint("LEFT", f.label, "RIGHT", 2, 0)
+        if not f.newBadge then f.newBadge = NewBadge(f) end
+        -- after the name; a long one still leaves it clear of the control
+        local x = f.label:GetStringWidth() + NEW_GAP
+        if f.control then
+            x = math.min(x, f:GetWidth() - 6 - f.control:GetWidth() - 4 - 2 - NEW_W)
         end
+        f.newBadge:ClearAllPoints()
+        f.newBadge:SetPoint("LEFT", f.label, "LEFT", x / NEW_SCALE, 0)
         f.newBadge:Show()
     elseif f.newBadge then
         f.newBadge:Hide()
@@ -776,12 +796,11 @@ local function UpdateHeader(module)
             b.Text:SetText(names[i] or tab.key)
             local new = module:HasNew(tab.key)
             if new and not b.newBadge then
-                b.newBadge = CreateFrame("Frame", nil, b, "NewFeatureLabelNoAnimateTemplate")
-                b.newBadge:SetScale(0.7)
-                b.newBadge:SetPoint("LEFT", b.Text, "RIGHT", 0, 0)
+                b.newBadge = NewBadge(b)
+                b.newBadge:SetPoint("LEFT", b.Text, "RIGHT", NEW_GAP / NEW_SCALE, 0)
             end
             if b.newBadge then b.newBadge:SetShown(new) end
-            b:SetWidth((b.Text:GetStringWidth() or 60) + 40 + (new and 30 or 0))
+            b:SetWidth((b.Text:GetStringWidth() or 60) + 40 + (new and 2 * (NEW_W + NEW_GAP) or 0))
             if b.SetSelected then b:SetSelected(tab == active) end
         end
     end
@@ -826,6 +845,9 @@ local function ShowCustom(module, tab)
     if tab.refresh then tab.refresh(host, preview.host) end
 end
 
+local UpdateNav
+local newVisit      -- the page and tab whose NEW badges are showing
+
 function Panel:Refresh()
     if not frame or not frame:IsShown() then return end
     ReleaseAll()
@@ -836,6 +858,8 @@ function Panel:Refresh()
     content:SetWidth(CONTENT_W)
     local y = 0
     if searchText ~= "" then
+        S:EndNewVisit()
+        newVisit = nil
         page.header:Hide()
         page.scroll:SetPoint("TOPLEFT", page.root, "TOPLEFT", 0, 0)
         local results = S:Search(searchText)
@@ -863,12 +887,22 @@ function Panel:Refresh()
         page.scroll:SetPoint("TOPLEFT", page.header, "BOTTOMLEFT", 0, -4)
         local module = S.modules[current]
         if not module then return end
+        -- leaving a page or tab takes its seen badges away
+        local activeTab = self:ActiveTab(module)
+        local visit = module.key .. "/" .. (activeTab and activeTab.key or "")
+        if visit ~= newVisit then
+            S:EndNewVisit()
+            newVisit = visit
+            UpdateNav()
+        end
         UpdateHeader(module)
         if module.enabled and not module:IsOn() then
             page.offCard.text:SetText((S:WindowText("moduleOffCard", L["{Module} is off. Its settings appear here once it's on."])):gsub("{Module}", module:Title()))
             page.offCard:Show()
         else
-            local tab = self:ActiveTab(module) or module.custom
+            local tab = activeTab or module.custom
+            -- (not behind What's new, which opens by itself after an update)
+            if not self.holdNewSeen and not frame.news:IsShown() then module:MarkNewSeen(activeTab and activeTab.key) end
             ShowModulePreview()
             if tab and tab.custom then
                 -- a custom tab's rows exist only for search
@@ -894,7 +928,7 @@ end
 --------------------------------------------------
 -- 5. LEFT COLUMN
 --------------------------------------------------
-local function UpdateNav()
+function UpdateNav()
     for key, b in pairs(navButtons) do
         local module = S.modules[key]
         local on = module:IsOn()
@@ -923,6 +957,10 @@ end
 
 function Panel:Select(key)
     if not S.modules[key] then return end
+    if key ~= current then
+        S:EndNewVisit()
+        newVisit = nil
+    end
     current = key
     -- lets the shown module preview itself
     S:Fire("PageShown", key)
@@ -990,9 +1028,8 @@ local function BuildNav(left)
             b.text = Text(b, "GameFontHighlight")
             b.text:SetPoint("LEFT", 20, 0)
             b.text:SetText(module:Title())
-            b.newBadge = CreateFrame("Frame", nil, b, "NewFeatureLabelNoAnimateTemplate")
-            b.newBadge:SetScale(0.7)
-            b.newBadge:SetPoint("RIGHT", -2, 0)
+            b.newBadge = NewBadge(b)
+            b.newBadge:SetPoint("RIGHT", -6 / NEW_SCALE, 0)
             b:SetScript("OnClick", function()
                 PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
                 Panel:Select(module.key)
@@ -1126,6 +1163,8 @@ local function BuildWindow()
         Panel:Refresh()
     end)
     frame:SetScript("OnHide", function()
+        S:EndNewVisit()
+        newVisit = nil
         S:Fire("PageShown", nil)
         ns.WindowCloseSound()
         PlaceSecureReload()
@@ -1459,7 +1498,9 @@ function Panel:Open(key, tabKey)
 end
 
 function Panel:OpenWhatsNew()
+    self.holdNewSeen = true
     self:Open()
+    self.holdNewSeen = nil
     self:SetMode("whatsnew")
 end
 
@@ -1472,6 +1513,8 @@ do
         local version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version")
         if not (global and version) or global.whatsNewSeen == version then return end
         local update = global.welcomeSeen and global.whatsNewSeen ~= nil
+        -- a fresh install has no NEW badges
+        if global.whatsNewSeen == nil then S:MarkAllNewSeen() end
         global.whatsNewSeen = version
         if update and ns.WhatsNew and ns.WhatsNew[1] then
             C_Timer.After(4, function()

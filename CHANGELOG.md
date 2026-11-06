@@ -1,3 +1,15 @@
+# FlareUI 3.0.3
+
+A NEW tag now points out recently added options.
+
+## New
+- Settings: new options show a **NEW** tag, and so do their tab and page. Once you've opened a page and moved on, its tags are gone for good. New installs don't get them.
+- Options > AddOns: FlareUI's row shows a **NEW** tag while any of its pages still has one. Not in the Gamepad UI.
+
+## Changed
+- Action Bars: **Button art** is now **Show button art**.
+- Quest Tracker: **Collapse completed quests** is now **Collapse completed**.
+
 # FlareUI 3.0.2
 
 Better proc glows on your action bars.

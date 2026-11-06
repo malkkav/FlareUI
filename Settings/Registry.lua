@@ -16,10 +16,20 @@ ns.Settings = Settings
 
 local GROUPS = { "top", "HUD", "Info", "Tools", "bottom" }
 
--- Rows that get a NEW badge, by row key -> the version that added them ("2.5"). The badge shows
--- while FlareUI's version starts with it, so it goes with the next minor release. Example:
---   ["qol.holdToRelease"] = "2.5",
+-- Rows that get a NEW badge, by row key -> the version that added them ("2.5"). The badge shows while
+-- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
+-- Filled by tools/newtags.js on each release.
 Settings.NEW = {
+    ["ab.noStancePaging"] = "3.0",
+    ["ab.stealthPaging"] = "3.0",
+    ["ab.xpNumbers"] = "3.0",
+    ["au.arrive"] = "3.0",
+    ["qt.collapseCompleted"] = "3.0",
+    ["qt.focusButtons"] = "3.0",
+    ["qt.hideFinished"] = "3.0",
+    ["qt.hideLevel"] = "3.0",
+    ["qt.playButtons"] = "3.0",
+    ["uf.simpleTargetOf"] = "3.0",
 }
 
 --------------------------------------------------
@@ -131,6 +141,47 @@ function Module:Sections(tabKey)
     return list
 end
 
+-- Rows seen on the page open now: their badges stay until the player leaves it
+local newShowing = {}
+
+local function NewSeen()
+    local global = ns.db and ns.db.global
+    if not global then return nil end
+    global.newSeen = global.newSeen or {}
+    return global.newSeen
+end
+
+-- A fresh install: nothing is new to this player
+function Settings:MarkAllNewSeen()
+    local seen = NewSeen()
+    if not seen then return end
+    for key, since in pairs(self.NEW) do seen[key] = since end
+end
+
+function Settings:EndNewVisit()
+    for key, row in pairs(newShowing) do
+        row.searchText = nil
+        newShowing[key] = nil
+    end
+end
+
+-- The player opened this page: its badges count as seen, in one tab (or the whole module when tabKey is nil).
+-- Saved at once, so a reload on the page counts too.
+function Module:MarkNewSeen(tabKey)
+    local seen = NewSeen()
+    if not seen or not next(Settings.NEW) then return end
+    for _, section in ipairs(self.sections) do
+        for _, row in ipairs(section.rows) do
+            if row:IsNew() and not row:IsHidden()
+                and (tabKey == nil or not self.tabs or (row.tab or self.tabs[1].key) == tabKey) then
+                seen[row.key] = Settings.NEW[row.key]
+                newShowing[row.key] = row
+                row.searchText = nil
+            end
+        end
+    end
+end
+
 -- Any visible row with a NEW badge, in one tab (or the whole module when tabKey is nil)
 function Module:HasNew(tabKey)
     for _, section in ipairs(self.sections) do
@@ -140,6 +191,14 @@ function Module:HasNew(tabKey)
                 return true
             end
         end
+    end
+    return false
+end
+
+-- Any page the player could open that still has a NEW badge
+function Settings:AnyNew()
+    for _, module in pairs(self.modules) do
+        if module:IsOn() and module:HasNew() then return true end
     end
     return false
 end
@@ -202,7 +261,10 @@ function Row:IsNew()
     local since = Settings.NEW[self.key]
     if not since then return false end
     local version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or ""
-    return version == since or version:sub(1, #since + 1) == since .. "."
+    if not (version == since or version:sub(1, #since + 1) == since .. ".") then return false end
+    if newShowing[self.key] then return true end
+    local seen = ns.db and ns.db.global and ns.db.global.newSeen
+    return not (seen and seen[self.key] == since)
 end
 
 function Row:IsHidden()
