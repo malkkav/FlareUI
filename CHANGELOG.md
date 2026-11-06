@@ -1,3 +1,17 @@
+# FlareUI 3.0.2
+
+Better proc glows on your action bars.
+
+## New
+- Proc Glow: **Victory Rush** now glows while you can use it, and goes dark during its cooldown.
+
+## Fixed
+- Proc Glow: Revenge goes dark after you use it, instead of staying lit for the rest of its window. It comes back when you next block, dodge or parry. Blizzard can hide your casts in dungeons and raids, so there it may stay lit as before.
+- Proc Glow: a glow should no longer flicker or go out when you press another ability during the global cooldown.
+- Proc Glow: procs already active when you reload now glow right away, and a glow that got stuck clears the next time you change zones.
+- Proc Glow: reaction abilities are now checked by class, so a spell with the same name on another class no longer glows by mistake.
+- Performance: Proc Glow does less work on classes with no reaction abilities.
+
 # FlareUI 3.0.1
 
 Simpler action bar paging, class colours for each frame, and more ways to read your XP.
