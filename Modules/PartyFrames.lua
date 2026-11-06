@@ -46,8 +46,6 @@ local BASE_POSITION = { point = "LEFT", x = 3, y = 0 }
 -- Edit Mode keeps a reference to this table: ApplyPosition refills it for the style in use
 local DEFAULT_POSITION = { point = "LEFT", x = 3, y = 0 }
 local PET_GAP = 2
-local BIG_DEFENSIVE = 26              -- big defensive icon size: party, raid and main tank frames
-local PLATE_BIG_DEFENSIVE = 32        -- the same on Forever Style's plate (on the portrait)
 local TARGET_GAP = 6                 -- gap between a party frame and its target
 local TARGET_INTERVAL = 0.2          -- a member's target sends no health events: re-read this often
 local PREVIEW_HOSTILE_RGB = { 0.87, 0.27, 0.27 }
@@ -128,9 +126,9 @@ local PREVIEW = {
       portrait = "Interface\\Icons\\INV_Misc_Head_Human_01" },
     { name = "Elysande",  class = "PRIEST",  role = "HEALER",  health = 0.64, power = 0.85, ready = "ready",
       portrait = "Interface\\Icons\\INV_Misc_Head_Elf_02" },
-    { name = "Morwen",    class = "WARLOCK", role = "DAMAGER", health = 0.48, power = 0.60, marker = 8, highlight = "Magic", pet = "Voidwalker", missing = { "int" },
+    { name = "Morwen",    class = "WARLOCK", role = "DAMAGER", health = 0.48, power = 0.60, marker = 8, highlight = "Magic", pet = "Voidwalker",
       portrait = "Interface\\Icons\\INV_Misc_Head_Undead_02" },
-    { name = "Sylvara",   class = "HUNTER",  role = "DAMAGER", health = 0.81, power = 0.72, pet = "Wolf", missing = { "fort", "mark" }, status = "IncomingResurrection",
+    { name = "Sylvara",   class = "HUNTER",  role = "DAMAGER", health = 0.81, power = 0.72, pet = "Wolf", status = "IncomingResurrection",
       portrait = "Interface\\Icons\\INV_Misc_Head_Troll_02" },
     { name = "Kestrel",   class = "ROGUE",   role = "DAMAGER", health = 0.27, power = 0.90, status = "IncomingSummonPending",
       portrait = "Interface\\Icons\\INV_Misc_Head_Gnome_01" },
@@ -153,7 +151,6 @@ local PREVIEW_POWER_RGB = { MANA = { 0, 0, 1 }, RAGE = { 1, 0, 0 }, ENERGY = { 1
 local DISPEL_TYPES = { "Magic", "Curse", "Poison", "Disease" }
 local DISPEL_RGB = { Magic = { 0.20, 0.60, 1.00 }, Curse = { 0.60, 0.00, 1.00 }, Poison = { 0.00, 0.60, 0.00 }, Disease = { 0.60, 0.40, 0.00 } }
 -- sample auras for tiles without aura containers (the raid frames' Edit Mode samples)
-local SAMPLE_DEFENSIVE_ICON = "Interface\\Icons\\Ability_Warrior_ShieldWall"
 local SAMPLE_BUFF_ICONS = { "Interface\\Icons\\Spell_Holy_Renew", "Interface\\Icons\\Spell_Nature_Rejuvenation", "Interface\\Icons\\Spell_Holy_PowerWordShield" }
 local SAMPLE_DEBUFF_ICONS = { "Interface\\Icons\\Spell_Shadow_ShadowWordPain", "Interface\\Icons\\Spell_Fire_Immolation", "Interface\\Icons\\Ability_Creature_Poison_02" }
 
@@ -234,7 +231,7 @@ end
 -- Above or below the frame: one row per lane, as many as fit before the frame's middle (whole-width:
 -- across, less the ring's room). Secure frames cannot move in combat, so LanesExtent reserves exactly
 -- that row. Inside whole-width places fill the health bar in the grid's rows; elsewhere the fixed
--- grid. Third return: the row length, for the lanes beside Bigger Boss Debuffs.
+-- grid.
 local EDGE_PLACES = { ABOVE = true, ABOVE_RIGHT = true, ABOVE_WIDE = true, BELOW = true, BELOW_RIGHT = true, BELOW_WIDE = true }
 local function AuraFit(st, pos, f)
     local size = st.auraSize or 18
@@ -257,7 +254,7 @@ local function AuraFit(st, pos, f)
         lineSize = math_floor((st.width or 200) / 2) - K.INSET - 4
     end
     local perRow = PerRow(lineSize)
-    return perRow, perRow, lineSize
+    return perRow, perRow
 end
 
 -- A side and its opposite, swapped on a mirrored tile, and which way +x goes from the near side
@@ -671,7 +668,6 @@ local function RefreshAurasOnNewUnit(f)
         if entry and entry.container:IsShown() then pcall(entry.container.UpdateAllAuras, entry.container) end
     end
     if f.AuraPos then for _, entry in pairs(f.AuraPos) do Refresh(entry) end end
-    Refresh(f.AuraSlots)
     Refresh(f.AuraHighlight)
 end
 
@@ -765,7 +761,7 @@ end
 --------------------------------------------------
 -- 5. AURAS
 -- Blizzard's aura containers render everything (aura data can be secret): one per place, on the
--- ProcessAura policy (Blizzard's raid frame rules), plus the big defensive and dispel highlight slots.
+-- ProcessAura policy (Blizzard's raid frame rules), plus the dispel highlight slot.
 --------------------------------------------------
 local auraSupport
 local function HasAuraSupport()
@@ -787,14 +783,6 @@ local function PrecreateAuraContainers(f)
             container:Hide()
             f.AuraPos[pos] = { container = container }
         end
-    end
-    local ok, slots = pcall(CreateFrame, "AuraContainer", nil, f, AURA_CONTAINER_TEMPLATE)
-    if ok and slots then
-        pcall(slots.SetUnit, slots, f.unit)
-        slots:SetSize(1, 1)
-        slots:SetPoint("CENTER", f, "CENTER")
-        slots:SetFrameLevel(f:GetFrameLevel() + 3)
-        f.AuraSlots = { container = slots, keys = {}, generation = 0 }
     end
     -- the dispel highlight, kept out of Edit Mode's sample data (ApplyPreview draws its own)
     local okH, hl = pcall(CreateFrame, "AuraContainer", nil, f, AURA_CONTAINER_TEMPLATE)
@@ -926,56 +914,42 @@ local function ConfigurePosition(f, pos, lanes)
     local db = K.GetDb()
     local portrait = pos == "PORTRAIT"
     local size = portrait and DispelGrid(f) or st.auraSize or 18
-    local max, perRow, lineSize = AuraFit(st, pos, f)
+    local max, perRow = AuraFit(st, pos, f)
     if portrait then max, perRow = 4, 2 end
-    -- one-row places: the debuffs beside Bigger Boss Debuffs leave room for two of those, so the row
-    -- never wraps
-    local besideBoss
-    if lineSize then
-        local boss = math_floor(size * 1.5 + 0.5) + AURA_SPACING
-        besideBoss = math_max(1, math_floor((lineSize + AURA_SPACING - 2 * boss) / (size + AURA_SPACING)))
-    end
     local inside = portrait or pos:find("^INSIDE") ~= nil
     local showTimer = not inside and UFAura("auraTimer", "none") ~= "none"
     local font = db and db.font
     local unit = f.unit
-    -- Aura Ordering: the buffs and debuffs rows (Bigger Boss Debuffs and dispel icons keep Blizzard's)
+    -- Aura Ordering: the buffs and debuffs rows (dispel icons keep Blizzard's)
     local order = TS(f)
     local sortMethod, sortDirection = ns.AuraOrder.Options(order and order.auraSort, order and order.auraReverse, order and order.auraMineFirst)
     for index, lane in ipairs(lanes) do
         local isDebuff, kind = lane.isDebuff, lane.kind
         local sorted = lane.key == "buffs" or lane.key == "debuffs"
-        local laneSize = lane.scale and math_floor(size * lane.scale + 0.5) or size
-        local look = kind ~= "dispels" and LaneLook(laneSize, isDebuff, inside) or nil
-        local lookSig = ns.AuraGroups.Sig(kind, laneSize, isDebuff, inside, font, showTimer, look)
+        local look = kind ~= "dispels" and LaneLook(size, isDebuff, inside) or nil
+        local lookSig = ns.AuraGroups.Sig(kind, size, isDebuff, inside, font, showTimer, look)
         local key, err = ns.AuraGroups.Add(container, entry, lane.key, lookSig, lane.filter, {
-            maxFrameCount = lane.max or (lane.sameLine and besideBoss) or (kind == "dispels" and not portrait and math_min(max, 3) or max),
+            maxFrameCount = kind == "dispels" and not portrait and math_min(max, 3) or max,
             candidateFilters = lane.candidates,
             sortMethod = sorted and sortMethod or nil, sortDirection = sorted and sortDirection or nil,
             initializeFrame = function(button)
                 if kind == "dispels" then
-                    InitDispelIcon(button, laneSize, inside)
+                    InitDispelIcon(button, size, inside)
                 else
-                    K.InitAuraButton(button, laneSize, isDebuff, unit, font, showTimer, look)
+                    K.InitAuraButton(button, size, isDebuff, unit, font, showTimer, look)
                     if inside then PassClicks(button) end
                 end
             end,
             layout = {
-                elementWidth = laneSize, elementHeight = look and look.cellHeight or laneSize,
+                elementWidth = size, elementHeight = look and look.cellHeight or size,
                 elementSpacing = AURA_SPACING, lineSpacing = AURA_SPACING,
                 groupSpacing = AURA_SPACING, groupLineSpacing = AURA_SPACING,
                 layoutIndex = index,
-                -- each kind starts a row of its own; boss debuffs share the debuffs' row
-                forceNewLine = index > 1 and not lane.sameLine,
+                -- each kind starts a row of its own
+                forceNewLine = index > 1,
             },
         })
-        if key then
-            if lane.bossFight and f.bossFightRecs then
-                f.bossFightRecs[#f.bossFightRecs + 1] = { container = container, key = key, mode = lane.bossFight, base = lane.candidates }
-            end
-        else
-            geterrorhandler()(err)
-        end
+        if not key then geterrorhandler()(err) end
     end
     ns.AuraGroups.Finish(container, entry)
     PlaceAuraContainer(f, pos, container, size, perRow)
@@ -1000,11 +974,10 @@ local function ConfigureAuras(f)
     local st = TS(f)
     if not st then return end
     local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.width, st.height, st.powerHeight, st.portrait, st.ringSize, (DispelGrid(f)), f.ringKind, AuraGrid(st), UFAura("auraStyle", "square"),
-        UFAura("auraTimer", "none"), ns.AuraGroups.Sig(UFAura("auraFont")), ns.AuraGroups.Sig(UFAura("font")), st.bigBossDebuffs, st.castbar, st.castHeight, OnPlate(f),
-        st.hideBuffs, IsEditing(), st.onlyMyDebuffs, st.onlyMyBuffs, st.dispellableOnly, st.encounterOnly, st.auraSort, st.auraReverse, st.auraMineFirst)
+        UFAura("auraTimer", "none"), ns.AuraGroups.Sig(UFAura("auraFont")), ns.AuraGroups.Sig(UFAura("font")), st.castbar, st.castHeight, OnPlate(f),
+        st.hideBuffs, IsEditing(), st.onlyMyDebuffs, st.onlyMyBuffs, st.dispellableOnly, st.auraSort, st.auraReverse, st.auraMineFirst)
     if f.auraSignature == sig then return end
     f.auraSignature = sig
-    f.bossFightRecs = {}
     local processed = AuraUtil and AuraUtil.AuraUpdateChangedType
     local perPos = {}
     for _, pos in ipairs(AURA_POSITIONS) do perPos[pos] = {} end
@@ -1049,23 +1022,11 @@ local function ConfigureAuras(f)
         Add(st.buffs,   { key = "buffs", kind = "buffs", filter = "HELPFUL", isDebuff = false, candidates = HideBuffs(nil) })
         ApplyBuffPolicy(true)
         for _, pos in ipairs(AURA_POSITIONS) do ConfigurePosition(f, pos, perPos[pos]) end
-        ns.BossFight.Track(f, nil)
         return
     end
-    -- debuffs first, nearest the frame; boss and role debuffs lead, bigger. Dispellable Debuffs Only:
-    -- the RAID filter. Focus Boss Debuffs: in boss fights ns.BossFight hides the other group (or
-    -- filters the single one).
+    -- debuffs first, nearest the frame. Dispellable Debuffs Only: the RAID filter.
     local debuffFilter = st.dispellableOnly and "HARMFUL|RAID" or "HARMFUL"
-    local focus = st.encounterOnly
-    if st.bigBossDebuffs ~= false then
-        Add(st.debuffs, { key = "bossdebuffs", kind = "debuffs", filter = debuffFilter, isDebuff = true, scale = 1.5, max = 2,
-                          candidates = { isBossOrRoleAura = true } })
-        Add(st.debuffs, { key = "debuffs", kind = "debuffs", filter = debuffFilter, isDebuff = true, sameLine = true,
-                          candidates = { isBossOrRoleAura = false }, bossFight = focus and "hide" or nil })
-    else
-        Add(st.debuffs, { key = "debuffs", kind = "debuffs", filter = debuffFilter, isDebuff = true,
-                          bossFight = focus and "filter" or nil })
-    end
+    Add(st.debuffs, { key = "debuffs", kind = "debuffs", filter = debuffFilter, isDebuff = true })
     Add(DispelPlace(f, st), { key = "dispels", kind = "dispels", filter = "HARMFUL", isDebuff = true,
                       candidates = processed and { processedAuraType = processed.Dispel } })
     -- Only My Buffs: the PLAYER filter, on unless set false; off shows everyone's buffs
@@ -1075,72 +1036,19 @@ local function ConfigureAuras(f)
                       candidates = HideBuffs(processed and not allBuffs and { processedAuraType = processed.Buff } or nil) })
     ApplyBuffPolicy(allBuffs)
     for _, pos in ipairs(AURA_POSITIONS) do ConfigurePosition(f, pos, perPos[pos]) end
-    ns.BossFight.Track(f, f.bossFightRecs)
 end
 
--- The big defensive (mid health bar) and the dispel highlight: slots showing the first aura of their
--- filter. Edit Mode's sample big defensive shows on the first party frame only (owned tiles draw
--- their own samples).
-local function SlotsPreview(f, editing)
-    if editing == nil then editing = IsEditing() end
-    if not editing or f.ctx then return false end
-    local party = GetPartyDb()
-    return f.index == ((party and party.showPlayer) and 0 or 1)
-end
-
-local function ConfigureSlots(f)
-    local slots = f.AuraSlots
-    if not slots then return end
+-- The dispel highlight: a slot in its own container, showing the first aura of its filter (never given
+-- Edit Mode's sample data)
+local function ConfigureDispelHighlight(f)
+    local hlEntry = f.AuraHighlight
+    if not hlEntry then return end
     local st = TS(f)
     local plate = OnPlate(f)
     -- (border and short heights: the highlight copies the backdrop once, and its edge shrinks under 22)
-    local sig = Signature(st.bigDefensive, st.bigDefensiveSize, UFAura("auraStyle", "square"), st.dispelHighlight, plate, K.Border(st.border), (st.height and st.height < 22 and st.height or 22))
-    if slots.signature == sig then
-        pcall(slots.container.SetEditModePreviewEnabled, slots.container, SlotsPreview(f))
-        return
-    end
-    slots.signature = sig
-    local container = slots.container
-    for _, key in ipairs(slots.keys) do pcall(container.SetAuraSlotEnabled, container, key, false) end
-    slots.keys = {}
-    slots.generation = slots.generation + 1
-    local gen = slots.generation
-    local health = f.Health
-    local unit = f.unit
-    local db = K.GetDb()
-
-    if st.bigDefensive ~= false then
-        -- enemy tiles have a size setting; on the plate it sits on the portrait
-        local size = (f.ctx and f.ctx.hostile) and (st.bigDefensiveSize or 22) or (plate and PLATE_BIG_DEFENSIVE) or BIG_DEFENSIVE
-        local look = LaneLook(size, false, true)   -- mid-frame: inside, no timer
-        local key = "bigdef" .. gen
-        local ok = pcall(container.AddAuraSlot, container, key, "HELPFUL|BIG_DEFENSIVE", {
-            initializeFrame = function(button)
-                K.InitAuraButton(button, size, false, unit, db and db.font, false, look and { size = size, style = look.style,
-                    swipe = look.swipe, timer = "none", font = look.font, isDebuff = false, cancel = false, colors = look.colors,
-                    cellHeight = size } or nil)
-                button:ClearAllPoints()
-                if plate then
-                    -- in the middle of the portrait, over everything on the ring
-                    button:SetPoint("CENTER", f.Portrait, "CENTER", 0, 0)
-                    button:SetFrameLevel(f:GetFrameLevel() + 20)
-                else
-                    button:SetPoint("CENTER", health, "CENTER", 0, 0)
-                    button:SetFrameLevel(health:GetFrameLevel() + 6)
-                end
-                PassClicks(button)
-            end,
-        })
-        if ok then slots.keys[#slots.keys + 1] = key end
-    end
-
-    container:Show()
-    pcall(container.SetEditModePreviewEnabled, container, SlotsPreview(f))
-    pcall(container.UpdateAllAuras, container)
-
-    -- the dispel highlight, in its own container (never given Edit Mode's sample data)
-    local hlEntry = f.AuraHighlight
-    if not hlEntry then return end
+    local sig = Signature(st.dispelHighlight, plate, K.Border(st.border), (st.height and st.height < 22 and st.height or 22))
+    if hlEntry.signature == sig then return end
+    hlEntry.signature = sig
     local hlContainer = hlEntry.container
     for _, key in ipairs(hlEntry.keys) do pcall(hlContainer.SetAuraSlotEnabled, hlContainer, key, false) end
     hlEntry.keys = {}
@@ -1212,7 +1120,6 @@ local function SetAuraPreview(enabled)
             if f.AuraPos then
                 for _, entry in pairs(f.AuraPos) do pcall(entry.container.SetEditModePreviewEnabled, entry.container, enabled) end
             end
-            if f.AuraSlots then pcall(f.AuraSlots.container.SetEditModePreviewEnabled, f.AuraSlots.container, SlotsPreview(f, enabled and true or false)) end
         end
     end
 end
@@ -1464,14 +1371,10 @@ local function LanesExtent(st, places, across)
         if across then
             -- beside the frame: a row's width
             if st.debuffs == pos or st.buffs == pos or st.dispels == pos then
-                local boss = (st.debuffs == pos and st.bigBossDebuffs ~= false) and math_floor(size * 0.5 + 0.5) * 2 or 0
-                reach = perRow * (size + AURA_SPACING) + boss
+                reach = perRow * (size + AURA_SPACING)
             end
         else
-            if st.debuffs == pos then
-                reach = reach + math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING)
-                if st.bigBossDebuffs ~= false then reach = reach + math_floor(size * 0.5 + 0.5) end
-            end
+            if st.debuffs == pos then reach = reach + math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING) end
             if st.dispels == pos then reach = reach + math.ceil(math_min(max, 3) / perRow) * (size + AURA_SPACING) end
             if st.buffs == pos then reach = reach + math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING) end
         end
@@ -1548,7 +1451,7 @@ local function LayoutMember(f)
         end
     end
     ConfigureAuras(f)
-    ConfigureSlots(f)
+    ConfigureDispelHighlight(f)
 end
 
 -- Pets and party targets. The bottom row sits below the frame's auras and cast bar (room reserved:
@@ -1934,29 +1837,21 @@ local function ApplyPreviewExtras(f, data)
     -- buffs and debuffs drawn by hand where there are no containers to show Edit Mode's samples
     if f.noAuras then
         local auras = 0
-        local function Row(place, count, icons, isDebuff, bossFirst)
+        local function Row(place, count, icons, isDebuff)
             if not place or place == "OFF" or (count or 0) <= 0 then return end
             local max = AuraFit(st, place, f)
             local point, rel, relPoint, x, y, growH = AuraAnchor(f, place)
             local sx = growH == AnchorUtil.FlowDirection.Left and -1 or 1
             local offset = 0
             for i = 1, math_min(count, max) do
-                local s = (bossFirst and i == 1 and st.bigBossDebuffs ~= false) and math_floor(size * 1.5 + 0.5) or size
                 auras = auras + 1
-                local b = PreviewAura(f, auras, s, isDebuff, icons[(i - 1) % #icons + 1])
+                local b = PreviewAura(f, auras, size, isDebuff, icons[(i - 1) % #icons + 1])
                 b:SetPoint(point, rel, relPoint, x + sx * offset, y)
-                offset = offset + s + AURA_SPACING
+                offset = offset + size + AURA_SPACING
             end
         end
         Row(st.buffs, data.buffs, SAMPLE_BUFF_ICONS, false)
-        Row(st.debuffs, (data.debuffs or 0) + (data.bossDebuff and 1 or 0), SAMPLE_DEBUFF_ICONS, true, data.bossDebuff)
-        -- the big defensive, mid health bar, on the samples that have one
-        if data.defensive and st.bigDefensive ~= false then
-            auras = auras + 1
-            local b = PreviewAura(f, auras, BIG_DEFENSIVE, false, SAMPLE_DEFENSIVE_ICON)
-            b:SetFrameLevel(f.Health:GetFrameLevel() + 6)
-            b:SetPoint("CENTER", f.Health, "CENTER", 0, 0)
-        end
+        Row(st.debuffs, data.debuffs, SAMPLE_DEBUFF_ICONS, true)
     end
     -- sample dispel icons at their place (below the debuff rows when shared); the party's on the
     -- portrait of the sample with a dispellable debuff
@@ -2250,7 +2145,7 @@ local function BuildTile(f, unit)
     f.RoleIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 3)
     f.RoleIcon:Hide()
 
-    -- the centre icons sit above the inside auras and the big defensive
+    -- the centre icons sit above the inside auras
     local top = CreateFrame("Frame", nil, f)
     top:SetAllPoints()
     top:SetFrameLevel(level + 8)
@@ -2325,7 +2220,6 @@ local function SetTileUnit(f, unit)
     end
     local function Retarget(container) pcall(container.SetUnit, container, unit) end
     if f.AuraPos then for _, entry in pairs(f.AuraPos) do Retarget(entry.container) end end
-    if f.AuraSlots then Retarget(f.AuraSlots.container) end
     if f.AuraHighlight then Retarget(f.AuraHighlight.container) end
     if unit and f:IsVisible() then UpdateAll(f) end
 end
@@ -2336,8 +2230,6 @@ local function CreateMember(index)
     f.index = index
     BuildTile(f, unit)
     members[index] = f
-    -- a member can get its unit before the frame shows (UpdateMissing is in section 13)
-    f:HookScript("OnShow", function(self) if PF.UpdateMissing then PF.UpdateMissing(self) end end)
     return f
 end
 
@@ -2663,23 +2555,11 @@ local function BuildSettings()
         { name = L["Dispellable Debuffs Only"], kind = LEM.SettingType.Checkbox, default = false,
           get = function() return getS("dispellableOnly")() and true or false end, set = setS("dispellableOnly"),
           desc = L["Only the debuffs you can dispel."] },
-        { name = L["Focus Boss Debuffs"], kind = LEM.SettingType.Checkbox, default = false,
-          get = function() return getS("encounterOnly")() and true or false end, set = setS("encounterOnly"),
-          desc = L["In a boss fight, only the boss and role debuffs (the ones Blizzard marks as cast by a boss, or aimed at a role). Every debuff shows elsewhere."] },
         -- up to four dispel icons, on the portrait (or the health bar's middle)
         { name = L["Dispel Icons"], kind = LEM.SettingType.Checkbox, default = D.dispels ~= "OFF",
           get = function() local st = S(); local v = st and st.dispels; if v == nil then v = D.dispels end; return v ~= "OFF" end,
           set = function(_, value) setS("dispels")(nil, value and "PORTRAIT" or "OFF") end,
           desc = L["The debuffs you can dispel, up to four, two to a row in the middle of the portrait (or of the health bar without one)."] },
-        { name = L["Missing Buffs"], kind = LEM.SettingType.Checkbox, default = D.missingBuffs or false,
-          get = function() return getS("missingBuffs")() and true or false end, set = setS("missingBuffs"),
-          desc = L["Out of combat, the group buffs a member lacks that you can cast show in the middle of the frame."] },
-        { name = L["Bigger Boss Debuffs"], kind = LEM.SettingType.Checkbox, default = D.bigBossDebuffs ~= false, get = getS("bigBossDebuffs"), set = setS("bigBossDebuffs"),
-          desc = L["Boss and role debuffs first and half again as big, as Blizzard's raid frames show them."] },
-        { name = L["Big Defensive"], kind = LEM.SettingType.Checkbox, default = D.bigDefensive ~= false,
-          get = function() return getS("bigDefensive")() ~= false end,
-          set = function(layoutName, value) setS("bigDefensive")(layoutName, value); LEM:RefreshFrameSettings(holder) end,
-          desc = L["A big defensive cooldown on the member (Shield Wall, Divine Shield...) in the middle of the frame."] },
     })
     Section("Aura Ordering", ns.AuraOrder.Items(getS, setS))
 
@@ -2728,66 +2608,7 @@ RebuildSettings = function()
 end
 
 --------------------------------------------------
--- 13. MISSING BUFFS (Auras > Missing Buffs)
--- The raid frames' reminder (ns.MissingBuffs, RaidFrames.lua): out of combat, a row in the middle of
--- the frame beneath the big defensive
---------------------------------------------------
-
-local function UpdateMissing(f)
-    local MB = ns.MissingBuffs
-    if not (f and MB) then return end
-    local st = S()
-    if not (st and st.missingBuffs) then
-        if f.MissingBuffs then MB.Show(f) end
-        return
-    end
-    if not f.MissingBuffs then MB.Attach(f) end
-    local size = st.auraSize or 16
-    -- (on Forever Style's plate: a little smaller, in the slimmer health bar)
-    if OnPlate(f) then size = math_max(10, math_floor(size * 0.8 + 0.5)) end
-    f.MissingBuffs.place = nil
-    f.MissingBuffs.size = size
-    f.MissingBuffs.offsetY = 0
-    -- Forever Style's plate: from the health bar's near end
-    f.MissingBuffs.align = OnPlate(f) and "LEFT" or nil
-    -- above the bars (+1), under the big defensive's container (+3) and the border (+4)
-    f.MissingBuffs:SetFrameLevel(f:GetFrameLevel() + 2)
-    if IsEditing() then
-        MB.Show(f, MB.SampleIcons(f.preview and f.preview.missing))
-        return
-    end
-    if InCombatLockdown() or not (f.unit and f:IsVisible() and UnitExists(f.unit)) then MB.Show(f) return end
-    if not MB.Learned() then MB.Learn() end
-    MB.Show(f, MB.Icons(f.unit))
-end
-
-local function UpdateMissingAll()
-    for i = 0, MAX_MEMBERS do UpdateMissing(members[i]) end
-end
-
--- aura changes come in bursts: looked at once, a moment later
-local missingDirty, missingScheduled = {}, false
-local function OnMissingAura(unit)
-    if not (holder and holder:IsShown()) then return end   -- every unit's auras come through here
-    local st = S()
-    if not (st and st.missingBuffs) or InCombatLockdown() then return end
-    unit = readable(unit)
-    if not unit then return end
-    for i = 0, MAX_MEMBERS do
-        local f = members[i]
-        if f and f.unit == unit then missingDirty[f] = true end
-    end
-    if missingScheduled or not next(missingDirty) then return end
-    missingScheduled = true
-    C_Timer.After(0.3, function()
-        missingScheduled = false
-        for f in pairs(missingDirty) do UpdateMissing(f) end
-        wipe(missingDirty)
-    end)
-end
-
---------------------------------------------------
--- 14. PUBLIC
+-- 13. PUBLIC
 --------------------------------------------------
 -- A member's target sends no health events: the shown ones are re-read while Party Targets is on
 local targetTicker
@@ -2827,14 +2648,11 @@ Refresh = function()
         if targets[i] and targets[i]:IsShown() then UpdatePartyTarget(targets[i]) end
     end
     UpdateTargetTicker()
-    UpdateMissingAll()
 end
 
 function PF:Refresh()
     Refresh()
 end
-
-PF.UpdateMissing = UpdateMissing
 
 -- The tile kit (RaidFrames.lua and BossFrames.lua build their tiles with it). A tile's owner sets f.ctx:
 --   Settings()     the tile settings (the party style's keys, plus auraMax and auraPerRow)
@@ -2884,17 +2702,6 @@ end
 function PF:OnGlobalEvent(event, ...)
     if event == "PLAYER_REGEN_ENABLED" then
         if pendingLayout then Refresh() end
-        UpdateMissingAll()
-        return
-    elseif event == "PLAYER_REGEN_DISABLED" then
-        UpdateMissingAll()   -- hidden in a fight
-        return
-    elseif event == "UNIT_AURA" then
-        OnMissingAura(...)
-        return
-    elseif event == "SPELLS_CHANGED" then
-        local st = S()
-        if ns.MissingBuffs and st and st.missingBuffs then ns.MissingBuffs.Learn(); UpdateMissingAll() end
         return
     end
     if IsEditing() then return end
@@ -2940,14 +2747,13 @@ function PF:OnGlobalEvent(event, ...)
             UpdatePet(p)
         end
     end
-    if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then UpdateMissingAll() end
 end
 
 local GLOBAL_EVENTS = {
     "GROUP_ROSTER_UPDATE", "PARTY_LEADER_CHANGED", "RAID_TARGET_UPDATE", "PLAYER_TARGET_CHANGED",
     "PLAYER_ROLES_ASSIGNED", "READY_CHECK", "READY_CHECK_CONFIRM", "READY_CHECK_FINISHED",
     "INCOMING_SUMMON_CHANGED", "INCOMING_RESURRECT_CHANGED", "PLAYER_ENTERING_WORLD", "UNIT_PET",
-    "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "UNIT_AURA", "SPELLS_CHANGED",
+    "PLAYER_REGEN_ENABLED",
 }
 
 function PF:Init()
@@ -2999,7 +2805,6 @@ function PF:Init()
         for i = 0, MAX_MEMBERS do ConfigureAuras(members[i]) end
         SetAuraPreview(true)
         for i = 0, MAX_MEMBERS do UpdateAll(members[i]) end
-        UpdateMissingAll()
     end)
     LEM:RegisterCallback("exit", function()
         ApplyVisibility()

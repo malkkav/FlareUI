@@ -1429,11 +1429,7 @@ local function ConfigureAuraCorner(f, corner, lanes)
                 forceNewLine = index > 1,
             },
         })
-        if key then
-            if lane.bossFight and f.bossFightRecs then
-                f.bossFightRecs[#f.bossFightRecs + 1] = { container = container, key = key, mode = lane.bossFight, base = lane.candidates }
-            end
-        else
+        if not key then
             print("|cffff0000FlareUI:|r aura group failed: " .. tostring(err))
         end
     end
@@ -1499,9 +1495,9 @@ LayoutAuras = function(f)
     if InCombatLockdown() then pendingLayout = true return end
     local perCorner = {}
     for _, corner in ipairs(AURA_CORNERS) do perCorner[corner] = {} end
-    local function AddLane(corner, key, filter, isDebuff, candidates, bossFight)
+    local function AddLane(corner, key, filter, isDebuff, candidates)
         local list = corner and perCorner[corner]
-        if list then list[#list + 1] = { key = key, filter = filter, isDebuff = isDebuff, candidates = candidates, bossFight = bossFight } end
+        if list then list[#list + 1] = { key = key, filter = filter, isDebuff = isDebuff, candidates = candidates } end
     end
     -- "Hide Buffs": filters by full duration (secret-safe); any maxDuration also drops permanent buffs,
     -- so Off is no filter. Not in Edit Mode: its samples have no duration
@@ -1518,18 +1514,14 @@ LayoutAuras = function(f)
     local debuffFilter = (udb.onlyMyDebuffs and f.unit ~= "player") and "HARMFUL|PLAYER" or "HARMFUL"
     -- debuffs first: closest to the frame when both share a corner; none with Hide Auras (focus)
     if not udb.hideAuras then
-        -- "Focus Boss Debuffs": ns.BossFight switches the filter in boss fights
-        AddLane(udb.debuffs, "debuffs", debuffFilter, true, nil,
-            (f.unit == "player" and udb.encounterOnly) and "filter" or nil)
+        AddLane(udb.debuffs, "debuffs", debuffFilter, true)
         -- "Only My Buffs" (player): the PLAYER filter
         local buffFilter = (f.unit == "player" and udb.onlyMyBuffs) and "HELPFUL|PLAYER" or "HELPFUL"
         AddLane(udb.buffs, "buffs", buffFilter, false, buffCandidates)
     end
-    f.bossFightRecs = {}
     for _, corner in ipairs(AURA_CORNERS) do
         ConfigureAuraCorner(f, corner, perCorner[corner])
     end
-    ns.BossFight.Track(f, f.bossFightRecs)
     PositionAuraContainers(f)
 end
 
@@ -3450,14 +3442,11 @@ local function BuildSettings(unit)
         }
         table.insert(auraItems, 3, UF.HideBuffsSetting("PERMANENT",
             function() local u = GetUnitDb(unit); return u and u.hideBuffs or "PERMANENT" end, set("hideBuffs")))
-        -- the player: Only My Buffs and Focus Boss Debuffs, after Aura Size
+        -- the player: Only My Buffs, after Aura Size
         if unit == "player" then
             auraItems[#auraItems + 1] = { name = L["Only My Buffs"], kind = LEM.SettingType.Checkbox, default = false,
                 get = function() local u = GetUnitDb(unit); return u and u.onlyMyBuffs or false end, set = set("onlyMyBuffs"),
                 desc = L["Only the buffs you cast on yourself."] }
-            auraItems[#auraItems + 1] = { name = L["Focus Boss Debuffs"], kind = LEM.SettingType.Checkbox, default = false,
-          get = function() local u = GetUnitDb(unit); return u and u.encounterOnly or false end, set = set("encounterOnly"),
-          desc = L["In a boss fight, only the boss and role debuffs (the ones Blizzard marks as cast by a boss, or aimed at a role). Every debuff shows elsewhere."] }
         end
         -- the focus can do without auras altogether
         if unit == "focus" then

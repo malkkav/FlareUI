@@ -1234,10 +1234,6 @@ ns.Copy = {
             desc = L["The size of aura icons."],
             label = L["Aura size"],
         },
-        ["uf.party.bossDebuffs"] = {
-            desc = L["Boss debuffs show larger than the rest."],
-            label = L["Bigger boss debuffs"],
-        },
         ["uf.party.buffs"] = {
             choices = { L["Off"], L["Right of the frame"], L["Left of the frame"], L["Above, left"], L["Above, right"], L["Below, left"], L["Below, right"], L["Inside, top left"], L["Inside, top right"], L["Inside, bottom left"], L["Inside, bottom right"] },
             desc = L["Where each kind of aura sits."],

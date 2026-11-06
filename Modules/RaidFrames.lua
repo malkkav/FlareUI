@@ -4,8 +4,7 @@ local L = ns.L
 --------------------------------------------------
 -- RAID FRAMES
 -- Raid tiles on the party frames' Raid-Style tile kit; secure group headers hand out the units (the
--- roster can change in combat) and a restricted snippet places the groups. Also the main tank frames
--- and the missing-buff reminder.
+-- roster can change in combat) and a restricted snippet places the groups. Also the main tank frames.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -21,14 +20,11 @@ LibStub("AceEvent-3.0"):Embed(RF)
 -- 2. UPVALUES / CONSTANTS
 --------------------------------------------------
 local pairs, ipairs, pcall, type = pairs, ipairs, pcall, type
-local math_floor, math_max, math_min, math_ceil = math.floor, math.max, math.min, math.ceil
+local math_floor, math_ceil = math.floor, math.ceil
 local CreateFrame, InCombatLockdown = CreateFrame, InCombatLockdown
 local LEM = LibStub("FlareEditMode")
 local K = ns.UnitFrames and ns.UnitFrames.Kit
 local PF = ns.PartyFrames
-
-local canaccessvalue = canaccessvalue or function() return true end
-local function readable(v) if canaccessvalue(v) then return v end end
 
 local MAX_GROUPS, GROUP_SIZE, MAX_RAID = 8, 5, 40
 local MAX_TANKS = 4
@@ -142,15 +138,12 @@ do
     SAMPLES[7].ready = "ready"
     SAMPLES[9].status = "IncomingResurrection"
     SAMPLES[12].dead, SAMPLES[12].health = true, 0
-    SAMPLES[14].missing = { "fort", "mark" }
-    SAMPLES[18].missing = { "int" }
     SAMPLES[21].marker = 1
     for i = 1, MAX_RAID do
         if i % 3 == 0 then SAMPLES[i].buffs = 1 + i % 2 end
         if i % 4 == 1 then SAMPLES[i].debuffs = 1 + i % 3 end
     end
-    SAMPLES[4].bossDebuff = true
-    SAMPLES[1].defensive, SAMPLES[11].defensive = true, true
+    SAMPLES[4].debuffs = 1
 end
 
 --------------------------------------------------
@@ -163,7 +156,7 @@ local previewTiles, tankPreview = {}, {}
 local pendingLayout = false
 local readyHold             -- C_Timer handle while a finished check's results stay up
 local sampleRaid = "medium"   -- Edit Mode's sample raid (not saved)
-local MB = {}               -- the missing-buff reminder (section 8)
+local rosterPending = false   -- a roster pass is scheduled
 
 local function GetDb()
     local db = K and K.GetDb()
@@ -190,8 +183,7 @@ end
 local FIXED = { castbar = false, auraMax = 3, auraPerRow = 3, absorbTexture = "FlareUI Striped" }
 -- main tank settings of their own (db.mainTanks), falling back to the raid's
 local TANK_OWN = { powerHeight = true, buffs = true, debuffs = true, dispels = true, dispelHighlight = true,
-                   auraSize = true, bigBossDebuffs = true, bigDefensive = true,
-                   hideBuffs = true, onlyMyBuffs = true, dispellableOnly = true, encounterOnly = true,
+                   auraSize = true, hideBuffs = true, onlyMyBuffs = true, dispellableOnly = true,
                    auraSort = true, auraReverse = true, auraMineFirst = true }
 local function View(sizeFn, own)
     return setmetatable({}, { __index = function(_, key)
@@ -256,13 +248,8 @@ local function InitTile(header, name)
     f:HookScript("OnAttributeChanged", function(self, attr, value)
         if attr == "unit" then
             Tile.SetUnit(self, value)
-            MB.Update(self)
         end
     end)
-    if f.ctx == raidCtx then
-        MB.Attach(f)
-        f:HookScript("OnShow", MB.Update)   -- a tile can get its unit before the raid frame shows
-    end
     tiles[#tiles + 1] = f
     if not InCombatLockdown() then pcall(Tile.Layout, f) end
 end
@@ -567,7 +554,6 @@ local function SampleTile(parent, ctx, sample)
     f.noAuras = true
     f.sample = sample
     Tile.Build(f, nil)
-    if ctx == raidCtx then MB.Attach(f) end
     f:Hide()
     pcall(Tile.Layout, f)   -- fonts and sizes before it is ever shown
     return f
@@ -674,13 +660,12 @@ local function Refresh()
                 if f:IsShown() then
                     pcall(Tile.Layout, f)
                     Tile.UpdateAll(f)
-                    MB.Update(f)
                 end
             end
         end
     else
         for _, f in ipairs(tiles) do
-            if f:IsVisible() and f.unit then Tile.UpdateAll(f); Tile.UpdateRange(f); MB.Update(f) end
+            if f:IsVisible() and f.unit then Tile.UpdateAll(f); Tile.UpdateRange(f) end
         end
     end
 end
@@ -690,256 +675,13 @@ function RF:Refresh()
 end
 
 --------------------------------------------------
--- 8. MISSING BUFFS
--- The group buffs a player lacks that you can cast. Out of combat only (aura data can be secret in
--- one); a member whose buffs can't be read shows nothing.
---------------------------------------------------
-local BUFFS = {
-    { key = "fort",   class = "PRIEST",  who = "all",  ids = { 1243, 1244, 1245, 2791, 10937, 10938, 21562, 21564 } },
-    { key = "spirit", class = "PRIEST",  who = "mana", ids = { 14752, 14818, 14819, 27841, 27681 } },
-    { key = "int",    class = "MAGE",    who = "mana", ids = { 1459, 1460, 1461, 10156, 10157, 23028 } },
-    { key = "mark",   class = "DRUID",   who = "all",  ids = { 1126, 5232, 6756, 5234, 8907, 9884, 9885, 21849, 21850 } },
-    { key = "thorns", class = "DRUID",   who = "tank", ids = { 467, 782, 1075, 8914, 9756, 9910 } },
-    { key = "blessing", class = "PALADIN", who = "all", ids = {} },   -- every blessing below
-}
--- the blessings, and which one a role is reminded of first
-local BLESSINGS = {
-    might     = { 19740, 19834, 19835, 19836, 19837, 19838, 25291, 25782, 25916 },
-    wisdom    = { 19742, 19850, 19852, 19853, 19854, 25290, 25894, 25918 },
-    kings     = { 20217, 25898 },
-    salvation = { 1038, 25895 },
-    light     = { 19977, 19978, 19979, 25890 },
-    sanctuary = { 20911, 20912, 20913, 20914, 25899 },
-}
-local BLESSING_PICK = {
-    TANK = { "kings", "might", "sanctuary" }, HEALER = { "wisdom", "kings" },
-    CASTER = { "wisdom", "kings" }, MELEE = { "might", "kings" },
-}
-local NO_MANA = { WARRIOR = true, ROGUE = true }
-local MAX_ICONS = 3
-
-local known          -- buff key -> { names = set, icon = texture } for the buffs you can cast
-local blessingKnown  -- blessing name -> icon
-
-local function SpellName(id)
-    return C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id)
-end
-
-local function Knows(id)
-    if C_SpellBook and C_SpellBook.IsSpellKnown then
-        local ok, yes = pcall(C_SpellBook.IsSpellKnown, id)
-        if ok and yes then return true end
-    end
-    return IsPlayerSpell and IsPlayerSpell(id) or false
-end
-
--- the buffs this character can give, looked up again when the spellbook changes
-function MB.Learn()
-    known, blessingKnown = {}, {}
-    local _, class = UnitClass("player")
-    for _, buff in ipairs(BUFFS) do
-        if buff.class == class then
-            if buff.key == "blessing" then
-                local names = {}
-                for kind, ids in pairs(BLESSINGS) do
-                    for _, id in ipairs(ids) do
-                        local name = SpellName(id)
-                        if name then names[name] = true end
-                        if Knows(id) then blessingKnown[kind] = C_Spell.GetSpellTexture(id) end
-                    end
-                end
-                if next(blessingKnown) then known.blessing = { names = names } end
-            else
-                local names, icon = {}, nil
-                for _, id in ipairs(buff.ids) do
-                    local name = SpellName(id)
-                    if name then names[name] = true end
-                    if Knows(id) then icon = C_Spell.GetSpellTexture(id) end
-                end
-                if icon then known[buff.key] = { names = names, icon = icon, who = buff.who } end
-            end
-        end
-    end
-end
-
-local function Lacks(names, have)
-    for name in pairs(names) do if have[name] then return false end end
-    return true
-end
-
--- the icons a unit is missing (nil: can't tell)
-local function MissingIcons(unit)
-    if not known or not next(known) then return {} end
-    if not readable(UnitIsConnected(unit)) or readable(UnitIsDeadOrGhost(unit)) ~= false then return nil end
-    -- a member out of sight has no aura data: everything would look missing
-    if readable(UnitIsVisible(unit)) ~= true then return nil end
-    -- aura reads throw while auras are secret, which outlasts combat (a dead player in a boss fight)
-    if C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() then return nil end
-    local have = {}
-    for i = 1, 40 do
-        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HELPFUL")
-        if not ok then return nil end
-        if not aura then break end
-        local name = readable(aura.name)
-        if name == nil then return nil end
-        have[name] = true
-    end
-    local _, class = UnitClass(unit)
-    class = readable(class)
-    local role = readable(UnitGroupRolesAssigned(unit))
-    local isTank = role == "TANK" or (GetPartyAssignment and readable(GetPartyAssignment("MAINTANK", unit)))
-    local manaUser = class and not NO_MANA[class]
-    local icons = {}
-    for _, buff in ipairs(BUFFS) do
-        local k = known[buff.key]
-        if k and #icons < MAX_ICONS and Lacks(k.names, have) then
-            if buff.key == "blessing" then
-                local pick = isTank and BLESSING_PICK.TANK or role == "HEALER" and BLESSING_PICK.HEALER
-                    or manaUser and BLESSING_PICK.CASTER or BLESSING_PICK.MELEE
-                for _, kind in ipairs(pick) do
-                    if blessingKnown[kind] then icons[#icons + 1] = blessingKnown[kind] break end
-                end
-            elseif k.who == "all" or (k.who == "mana" and manaUser) or (k.who == "tank" and isTank) then
-                icons[#icons + 1] = k.icon
-            end
-        end
-    end
-    return icons
-end
-
-function MB.Attach(f)
-    local frame = CreateFrame("Frame", nil, f)
-    frame:SetFrameLevel(f:GetFrameLevel() + 7)
-    frame:SetAllPoints(f.Health)
-    frame.icons = {}
-    for i = 1, MAX_ICONS do
-        local t = CreateFrame("Frame", nil, frame)
-        t:Hide()
-        frame.icons[i] = t
-    end
-    f.MissingBuffs = frame
-end
-
--- styled as a buff in the unit frames' aura look; restyled only when the size or look changes
-local function StyleMissingIcon(t, size)
-    local uf = K.GetDb()
-    local style = uf and uf.auraStyle or "square"
-    if t.styledSize == size and t.styledLook == style then return end
-    t.styledSize, t.styledLook = size, style
-    local look = ns.AuraLook and ns.AuraLook.ForUnit(size, false, false, style, "icon", "none")
-    if look then
-        ns.AuraLook.Style(t, look)
-        t.FlareUI_Border:SetVertexColor(look.colors.None:GetRGBA())
-        t.FlareUI_Count:SetText("")
-        t.FlareUI_Duration:SetText("")
-    else
-        t.FlareUI_Icon = t.FlareUI_Icon or t:CreateTexture(nil, "ARTWORK")
-        t.FlareUI_Icon:SetAllPoints()
-        t.FlareUI_Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        t:SetSize(size, size)
-    end
-end
-
--- frame.place: nil (a centred row on the health bar, frame.offsetY down) or an INSIDE_ corner;
--- frame.align "LEFT": a row from the bar's left end; frame.size: the icon size
-local function ShowIcons(f, icons)
-    local frame = f.MissingBuffs
-    local place = frame.place
-    local size = frame.size or math_max(10, math_min(16, math_floor((f:GetHeight() or 40) * 0.3)))
-    local count = icons and math_min(#icons, #frame.icons) or 0
-    local start = -(count * size + (count - 1)) / 2
-    for i, t in ipairs(frame.icons) do
-        local icon = icons and icons[i]
-        if icon then
-            StyleMissingIcon(t, size)
-            t.FlareUI_Icon:SetTexture(icon)
-            t:ClearAllPoints()
-            if frame.align == "LEFT" then
-                -- a row from the health bar's left end (the party frames on Forever Style's plate)
-                t:SetPoint("LEFT", frame, "LEFT", 2 + (i - 1) * (size + 1), frame.offsetY or 0)
-            elseif place then
-                local left, top = place:find("LEFT") ~= nil, place:find("TOP") ~= nil
-                local corner = (top and "TOP" or "BOTTOM") .. (left and "LEFT" or "RIGHT")
-                t:SetPoint(corner, frame, corner, (left and 1 or -1) * (2 + (i - 1) * (size + 1)), top and -2 or 2)
-            else
-                t:SetPoint("LEFT", frame, "CENTER", start + (i - 1) * (size + 1), frame.offsetY or 0)
-            end
-            t:Show()
-        else
-            t:Hide()
-        end
-    end
-end
-
--- sample icons for Edit Mode, from a sample's missing keys
-local SAMPLE_ICON_IDS = { fort = 1243, mark = 1126, int = 1459 }
-local function SampleIcons(keys)
-    local icons = {}
-    for _, key in ipairs(keys or {}) do icons[#icons + 1] = C_Spell.GetSpellTexture(SAMPLE_ICON_IDS[key]) end
-    return icons
-end
-
--- Shared with the party frames (PartyFrames.lua), which keep their own switch and events
-ns.MissingBuffs = {
-    Learn = MB.Learn,
-    Learned = function() return known ~= nil end,
-    Attach = MB.Attach,
-    Show = ShowIcons,
-    Icons = MissingIcons,
-    SampleIcons = SampleIcons,
-}
-
-function MB.Update(f)
-    if not f.MissingBuffs then return end
-    local db = GetDb()
-    if not (db and db.missingBuffs ~= false) then ShowIcons(f) return end
-    if IsEditing() then
-        ShowIcons(f, SampleIcons(f.sample and f.sample.missing))
-        return
-    end
-    if InCombatLockdown() or not f.unit or not f:IsVisible() then ShowIcons(f) return end
-    ShowIcons(f, MissingIcons(f.unit))
-end
-
-function MB.UpdateAll()
-    for _, f in ipairs(tiles) do MB.Update(f) end
-end
-
--- aura and roster changes come in bursts: touched tiles update once, a moment later
-local dirty, scheduled = {}, false
-local function FlushDirty()
-    scheduled = false
-    for f in pairs(dirty) do MB.Update(f) end
-    wipe(dirty)
-end
-local function ScheduleDirty()
-    if scheduled then return end
-    scheduled = true
-    C_Timer.After(0.3, FlushDirty)
-end
-function MB.UpdateAllSoon()
-    for _, f in ipairs(tiles) do dirty[f] = true end
-    ScheduleDirty()
-end
-function MB.OnAura(unit)
-    -- every unit's UNIT_AURA arrives here: raid units only, out of combat
-    if InCombatLockdown() or not (holder and holder:IsShown()) then return end
-    local db = GetDb()
-    if not (db and db.missingBuffs ~= false) then return end
-    unit = readable(unit)
-    if not (unit and unit:find("^raid")) then return end
-    for _, f in ipairs(tiles) do if f.unit == unit then dirty[f] = true end end
-    ScheduleDirty()
-end
-
---------------------------------------------------
--- 9. EDIT MODE SETTINGS
+-- 8. EDIT MODE SETTINGS
 --------------------------------------------------
 local RebuildSettings
 
 -- The Auras section for the raid and main tank frames (each with its get / set and view); a place
 -- that clashes with another kind's is greyed out
-local function AuraItems(get, set, d, view, dialogFrame, withMissing)
+local function AuraItems(get, set, d, view)
     local AURA_FIELDS = { "buffs", "debuffs", "dispels" }
     local function Place(field)
         return function(_, rootDescription, data)
@@ -989,21 +731,7 @@ local function AuraItems(get, set, d, view, dialogFrame, withMissing)
         { name = L["Dispellable Debuffs Only"], kind = LEM.SettingType.Checkbox, default = false,
           get = get("dispellableOnly", false), set = set("dispellableOnly"),
           desc = L["Only the debuffs you can dispel."] },
-        { name = L["Focus Boss Debuffs"], kind = LEM.SettingType.Checkbox, default = false,
-          get = get("encounterOnly", false), set = set("encounterOnly"),
-          desc = L["In a boss fight, only the boss and role debuffs (the ones Blizzard marks as cast by a boss, or aimed at a role). Every debuff shows elsewhere."] },
     }
-    if withMissing then
-        items[#items + 1] = { name = L["Missing Buffs"], kind = LEM.SettingType.Checkbox, default = true, get = get("missingBuffs", true), set = set("missingBuffs"),
-          desc = L["Out of combat, the group buffs a player lacks that you can cast show on their frame."] }
-    end
-    items[#items + 1] = { name = L["Bigger Boss Debuffs"], kind = LEM.SettingType.Checkbox, default = d.bigBossDebuffs ~= false,
-          get = get("bigBossDebuffs", true), set = set("bigBossDebuffs"),
-          desc = L["Boss and role debuffs first and half again as big, as Blizzard's raid frames show them."] }
-    items[#items + 1] = { name = L["Big Defensive"], kind = LEM.SettingType.Checkbox, default = d.bigDefensive ~= false,
-          get = function() return get("bigDefensive", true)() ~= false end,
-          set = function(layoutName, value) set("bigDefensive")(layoutName, value); if dialogFrame then LEM:RefreshFrameSettings(dialogFrame) end end,
-          desc = L["A big defensive cooldown on the member (Shield Wall, Divine Shield...) in the middle of the frame."] }
     return items
 end
 
@@ -1090,7 +818,7 @@ local function BuildSettings()
         K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars")),
     })
 
-    Section("Auras", AuraItems(get, set, d, raidView, holder, true))
+    Section("Auras", AuraItems(get, set, d, raidView))
     Section("Aura Ordering", ns.AuraOrder.Items(get, set))
 
     local iconItems = {}
@@ -1144,7 +872,7 @@ local function BuildTankSettings()
           get = get("powerHeight", 4), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
         { name = L["Spacing"], kind = LEM.SettingType.Slider, default = 2, minValue = 0, maxValue = 20, valueStep = 1, get = get("spacing", 2), set = set("spacing") },
     })
-    Section("Auras", AuraItems(get, set, d, tankView, tankHolder, false))
+    Section("Auras", AuraItems(get, set, d, tankView))
     Section("Aura Ordering", ns.AuraOrder.Items(get, set))
     return settings
 end
@@ -1155,7 +883,7 @@ RebuildSettings = function()
 end
 
 --------------------------------------------------
--- 10. EVENTS
+-- 9. EVENTS
 --------------------------------------------------
 local function ForTiles(fn)
     for _, f in ipairs(tiles) do
@@ -1166,29 +894,17 @@ end
 function RF:OnGlobalEvent(event, ...)
     if event == "PLAYER_REGEN_ENABLED" then
         if pendingLayout then Refresh() end
-        MB.UpdateAll()
-        return
-    elseif event == "PLAYER_REGEN_DISABLED" then
-        for _, f in ipairs(tiles) do if f.MissingBuffs then ShowIcons(f) end end
-        return
-    elseif event == "UNIT_AURA" then
-        MB.OnAura(...)
-        return
-    elseif event == "SPELLS_CHANGED" then
-        MB.Learn()
-        MB.UpdateAllSoon()
         return
     end
     if IsEditing() then return end
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
         -- one pass for a burst (a raid forming)
-        if not MB.rosterPending then
-            MB.rosterPending = true
+        if not rosterPending then
+            rosterPending = true
             C_Timer.After(0.2, function()
-                MB.rosterPending = nil
+                rosterPending = false
                 if IsEditing() then return end
                 ForTiles(Tile.UpdateAll)
-                MB.UpdateAllSoon()
             end)
         end
         return
@@ -1224,7 +940,7 @@ local GLOBAL_EVENTS = {
     "GROUP_ROSTER_UPDATE", "PARTY_LEADER_CHANGED", "RAID_TARGET_UPDATE", "PLAYER_TARGET_CHANGED",
     "PLAYER_ROLES_ASSIGNED", "READY_CHECK", "READY_CHECK_CONFIRM", "READY_CHECK_FINISHED",
     "INCOMING_SUMMON_CHANGED", "INCOMING_RESURRECT_CHANGED", "PLAYER_ENTERING_WORLD",
-    "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "UNIT_AURA", "SPELLS_CHANGED",
+    "PLAYER_REGEN_ENABLED",
 }
 
 -- Range has no event for every change; the tiles re-check twice a second
@@ -1257,7 +973,7 @@ local function HideBlizzardRaid()
 end
 
 --------------------------------------------------
--- 11. PUBLIC
+-- 10. PUBLIC
 --------------------------------------------------
 function RF:ShouldLoad()
     local db = K and K.GetDb()
@@ -1296,7 +1012,6 @@ function RF:Init()
     headers.tanks = tanks
     Precreate(tanks)
 
-    MB.Learn()
     Refresh()
 
     LEM:AddFrame(holder, Mover("layouts"), DEFAULT_POSITION, "FlareUI Raid Frames")

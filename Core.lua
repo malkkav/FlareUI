@@ -115,69 +115,6 @@ function ns.UnitDisplayName(unit, frameKind)
     return name .. (type(sep) == "string" and sep or " ") .. surname
 end
 
--- "Focus Boss Debuffs": during an encounter or with a boss unit engaged, only boss and role debuffs
--- show. Frames can't rebuild auras in combat, so their aura groups are only switched here (allowed
--- in combat): a "hide" group is disabled, a "filter" group takes the boss / role filter.
-local BossFight = { active = false, frames = setmetatable({}, { __mode = "k" }) }
-ns.BossFight = BossFight
-local BOSS_ONLY = { isBossOrRoleAura = true }
-
-local function InBossFight()
-    local api = C_InstanceEncounter and C_InstanceEncounter.IsEncounterInProgress
-    if api then
-        local ok, inProgress = pcall(api)
-        if ok and canaccessvalue(inProgress) and inProgress then return true end
-    end
-    for i = 1, 5 do
-        local exists = UnitExists("boss" .. i)
-        if canaccessvalue(exists) and exists then return true end
-    end
-    return false
-end
-
--- f.bossFightLanes: { container, key, mode = "hide" | "filter", base = candidates }
-function BossFight.Apply(f)
-    local recs = f.bossFightLanes
-    if not recs then return end
-    local lem = LibStub and LibStub("FlareEditMode", true)
-    local on = BossFight.active and not (lem and lem:IsInEditMode())
-    local touched = {}
-    for _, rec in ipairs(recs) do
-        local c = rec.container
-        if rec.mode == "hide" then
-            pcall(c.SetAuraGroupEnabled, c, rec.key, not on)
-        else
-            pcall(c.SetAuraGroupCandidateFilters, c, rec.key, on and BOSS_ONLY or rec.base)
-        end
-        touched[c] = true
-    end
-    for c in pairs(touched) do pcall(c.UpdateAllAuras, c) end
-end
-
--- Called after a frame (re)builds its aura groups, with the ones that switch (or none)
-function BossFight.Track(f, recs)
-    f.bossFightLanes = (recs and #recs > 0) and recs or nil
-    BossFight.frames[f] = f.bossFightLanes and true or nil
-    if f.bossFightLanes then BossFight.Apply(f) end
-end
-
-do
-    local events = CreateFrame("Frame")
-    for _, event in ipairs({ "ENCOUNTER_START", "ENCOUNTER_END", "INSTANCE_ENCOUNTER_ENGAGE_UNIT",
-                             "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED" }) do
-        pcall(events.RegisterEvent, events, event)
-    end
-    events:SetScript("OnEvent", function(_, event)
-        local active
-        if event == "ENCOUNTER_START" then active = true
-        elseif event == "ENCOUNTER_END" then active = false
-        else active = InBossFight() end
-        if active == BossFight.active then return end
-        BossFight.active = active
-        for f in pairs(BossFight.frames) do BossFight.Apply(f) end
-    end)
-end
-
 -- Class colours on a frame's health bar (st: its settings). A frame not set yet follows the one switch
 -- this replaced, so off carries over in every profile and style setup; on by default.
 function ns.ClassColorsOn(st)
@@ -543,8 +480,7 @@ local defaults = {
                     texture = "FlareUI Forever", border = "FlareUI Thick",
                     absorbTexture = "FlareUI Striped",
                     debuffs = "INSIDE_TOPRIGHT", buffs = "INSIDE_TOPLEFT", dispels = "PORTRAIT",
-                    auraSize = 16, bigBossDebuffs = false,
-                    bigDefensive = true, bigDefensiveSize = 30, dispelHighlight = "mine",
+                    auraSize = 16, dispelHighlight = "mine",
                     castbar = false, castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                     petHeight = 19, petWidth = 120, petBorder = "FlareUI Thin", icons = {},
                     targetWidth = 100, targetHeight = 25, targetBorder = "FlareUI Thin",
@@ -554,31 +490,28 @@ local defaults = {
                     texture = "FlareUI Forever", border = "FlareUI Thin",
                     absorbTexture = "FlareUI Striped",
                     debuffs = "INSIDE_BOTTOMRIGHT", buffs = "INSIDE_BOTTOMLEFT", dispels = "PORTRAIT",
-                    auraSize = 16, bigBossDebuffs = true,
-                    bigDefensive = true, bigDefensiveSize = 30, dispelHighlight = "mine",
+                    auraSize = 16, dispelHighlight = "mine",
                     castbar = false, castHeight = 10, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = false, castTimer = false,
                     petHeight = 14, petWidth = 80, petBorder = "FlareUI Thin", icons = {},
                     targetWidth = 100, targetHeight = 25, targetBorder = "FlareUI Thin",
                 },
             },
             -- raid frames (Modules/RaidFrames.lua): the Raid-Style tile for everyone in a raid, main tank
-            -- frames and the missing-buff reminder
+            -- frames
             raid = {
                 enabled = false,
                 layouts = {}, tankLayouts = {},
                 sort = "GROUP",            -- GROUP | ROLE | CLASS
                 orientation = "ROWS",      -- ROWS (each group a row, stacked) | COLUMNS
-                spacing = 2, groupSpacing = 2, groupNumbers = false, missingBuffs = true,
+                spacing = 2, groupSpacing = 2, groupNumbers = false,
                 width = 90, height = 60,
                 -- the main tank frames: their own size, and these of their own (the rest is the raid's)
                 mainTanks = { enabled = false, w = 182, h = 60, spacing = 2,
                               buffs = "INSIDE_LEFT", debuffs = "INSIDE_RIGHT", auraSize = 14,
-                              bigBossDebuffs = false, bigDefensive = false,
-                              hideBuffs = "PERMANENT", onlyMyBuffs = true, dispellableOnly = false, encounterOnly = false },
+                              hideBuffs = "PERMANENT", onlyMyBuffs = true, dispellableOnly = false },
                 powerHeight = 6, healthText = "none", texture = "FlareUI Forever", border = "FlareUI Thin",
                 debuffs = "INSIDE_RIGHT", buffs = "INSIDE_LEFT", dispels = "INSIDE_BOTTOMRIGHT",
-                auraSize = 12, bigBossDebuffs = false,
-                bigDefensive = true, bigDefensiveSize = 22, dispelHighlight = "mine",
+                auraSize = 12, dispelHighlight = "mine",
                 icons = {},
             },
             -- boss frames (Modules/BossFrames.lua): boss1-5 on the classic party tile, mirrored

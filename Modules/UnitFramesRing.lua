@@ -195,7 +195,7 @@ local FOREVER_TILES = {
     party = {
         showPlayer = false,
         classic = { width = 188, height = 50, powerHeight = 10, ringSize = 66, castHeight = 15, spacing = 14,
-                    buffs = "ABOVE", debuffs = "ABOVE_RIGHT", auraSize = 18, bigDefensiveSize = 24, portrait = "3d" },
+                    buffs = "ABOVE", debuffs = "ABOVE_RIGHT", auraSize = 18, portrait = "3d" },
     },
     boss  = { width = 164, height = 50, powerHeight = 10, ringSize = 66, castHeight = 15, spacing = 14,
               buffs = "ABOVE", debuffs = "ABOVE_RIGHT", auraSize = 18 },

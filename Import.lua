@@ -61,9 +61,9 @@ local FONT_FIELDS = { face = true, size = true, flags = true, enableShadow = tru
 local EDIT_ROOTS = { "unitframes.", "auras.", "objectivetracker.", "actionbars.xpbar." }
 local EDIT_KEYS = {}
 for _, key in ipairs({
-    "enabled", "auraSize", "bigBossDebuffs", "buffs", "castbar", "castbarPosition", "classic", "classicSize",
+    "enabled", "auraSize", "buffs", "castbar", "castbarPosition", "classic", "classicSize",
     "debuffs", "dispelHighlight", "dispels", "fsr", "groupNumbers", "groupSpacing", "grow",
-    "healthText", "height", "max", "maxHeight", "missingBuffs", "onlyMyDebuffs", "orientation", "perRow",
+    "healthText", "height", "max", "maxHeight", "onlyMyDebuffs", "orientation", "perRow",
     "portrait", "powerHeight", "powerText", "raidIcon", "ringSize", "show", "showLevel", "size", "sort",
     "spacing", "text", "width", "wrap", "mirror", "style", "texture", "border", "borderTexture",
 }) do EDIT_KEYS[key] = true end

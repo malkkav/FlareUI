@@ -65,12 +65,11 @@ local function IsEditing()
     return LEM:IsInEditMode()
 end
 
--- The tile settings: the boss db plus fixed values (no party icons, dispels or defensives; five
+-- The tile settings: the boss db plus fixed values (no party icons or dispels; five
 -- auras to a row)
 local ICONS = { role = { shown = false }, leader = { shown = false }, readyCheck = { shown = false },
                 status = { shown = false }, raidIcon = {} }
-local FIXED = { bigBossDebuffs = false, bigDefensive = false, dispelHighlight = "off",
-                dispels = "OFF", auraMax = 5, auraPerRow = 5 }
+local FIXED = { dispelHighlight = "off", dispels = "OFF", auraMax = 5, auraPerRow = 5 }
 local view = setmetatable({}, { __index = function(_, key)
     local db = GetDb()
     if not db then return nil end

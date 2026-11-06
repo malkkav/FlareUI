@@ -1,3 +1,13 @@
+# FlareUI 3.0.5
+
+Fewer options on your frames: four that we couldn't confirm work properly on Forever are gone.
+
+## Removed
+- Party, raid and main tank frames: **Big Defensive**. It showed everyday buffs such as paladin seals and herb gathering in the middle of the frame.
+- Party, raid and main tank frames: **Bigger Boss Debuffs**. Boss debuffs now show at the same size as the others.
+- Party, raid and main tank frames, player frame: **Focus Boss Debuffs**. Every debuff your other settings allow now shows in boss fights too.
+- Party and raid frames: **Missing Buffs**.
+
 # FlareUI 3.0.4
 
 See everyone's buffs on party and raid frames, DoesItDie on your target and focus frames, and new tooltip options.
