@@ -325,7 +325,7 @@ local function HookButton(button, look)
     pcall(button.SetIcon, button, icon)
     pcall(button.SetDurationCooldown, button, cd)
     pcall(button.SetApplicationCount, button, countText, {})
-    pcall(button.SetDurationText, button, durationText, {})
+    ns.SetAuraDurationText(button, durationText)
     pcall(button.ClearDispelTypeTextures, button)
     -- Blizzard tints the border from the colour map, so a secret dispel type is never read by Lua
     if Enum.CustomAuraButtonDispelTypeTextureStyle then
@@ -589,7 +589,7 @@ local function EnchantTimer(holder)
     for _, b in ipairs(holder.enchants or {}) do
         if b:IsShown() and b.enchant then
             local left = math_max(0, b.enchant.expires - now)
-            b.FlareUI_Duration:SetFormattedText(SecondsToTimeAbbrev(left))
+            b.FlareUI_Duration:SetText(ns.FormatAuraTime(left))
         end
     end
 end

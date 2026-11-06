@@ -1025,6 +1025,11 @@ ns.Copy = {
             label = L["Health bar"],
             section = "tt.look",
         },
+        ["tt.hideFaction"] = {
+            desc = L["Removes the Alliance or Horde line from tooltips."],
+            label = L["Hide faction"],
+            section = "tt.tweaks",
+        },
         ["tt.ids"] = {
             desc = L["Adds item and spell IDs."],
             label = L["Show IDs"],
@@ -1050,6 +1055,16 @@ ns.Copy = {
             label = L["On unit frames"],
             section = "tt.showTooltips",
             tip = L["Hold Shift to see a hidden tooltip."],
+        },
+        ["tt.showGuild"] = {
+            desc = L["The guild line on players' tooltips."],
+            label = L["Show guild name"],
+            section = "tt.tweaks",
+        },
+        ["tt.showGuildRank"] = {
+            desc = L["Adds the player's rank after their guild's name."],
+            label = L["Show guild ranks"],
+            section = "tt.tweaks",
         },
         ["tt.showTarget"] = {
             desc = L["Adds \"Target: Name\" to unit tooltips."],

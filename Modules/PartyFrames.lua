@@ -1014,11 +1014,40 @@ local function ConfigureAuras(f)
         if plate and IsInsidePlace(pos) then return end
         if pos and perPos[pos] then perPos[pos][#perPos[pos] + 1] = lane end
     end
+    -- Hide Buffs: Blizzard's maxDuration filter on the full duration, which always drops permanent
+    -- buffs too; skipped in Edit Mode (samples have no duration)
+    local function HideBuffs(candidates)
+        local hide = not IsEditing() and (st.hideBuffs or "PERMANENT")
+        if hide and hide ~= "OFF" then
+            candidates = candidates or {}
+            candidates.maxDuration = (hide == "PERMANENT") and 999999 or tonumber(hide)
+        end
+        return candidates
+    end
+    -- ProcessAura's rules keep only the buffs you cast. Its policy is per container, and debuff groups need
+    -- it: only a place holding buffs alone goes without (they never share a place, but a stored setup may)
+    local function ApplyBuffPolicy(allBuffs)
+        local policy = _G.CustomAuraContainerAuraProcessingPolicy
+        if not policy then return end
+        for _, pos in ipairs(AURA_POSITIONS) do
+            local rec, lanes = f.AuraPos[pos], perPos[pos]
+            local plain = allBuffs and #lanes == 1 and lanes[1].kind == "buffs"
+            if rec and (rec.plainPolicy or false) ~= plain then
+                rec.plainPolicy = plain
+                if plain then
+                    pcall(rec.container.SetAuraProcessingPolicy, rec.container, policy.None)
+                else
+                    pcall(rec.container.SetAuraProcessingPolicy, rec.container, policy.ProcessAura, {})
+                end
+            end
+        end
+    end
     -- an enemy tile: every buff on it, and only the player's debuffs (damage over time, sunders)
     if f.ctx and f.ctx.hostile then
         -- Only My Debuffs: on unless set false
         Add(st.debuffs, { key = "debuffs", kind = "debuffs", filter = st.onlyMyDebuffs == false and "HARMFUL" or "HARMFUL|PLAYER", isDebuff = true })
-        Add(st.buffs,   { key = "buffs", kind = "buffs", filter = "HELPFUL", isDebuff = false })
+        Add(st.buffs,   { key = "buffs", kind = "buffs", filter = "HELPFUL", isDebuff = false, candidates = HideBuffs(nil) })
+        ApplyBuffPolicy(true)
         for _, pos in ipairs(AURA_POSITIONS) do ConfigurePosition(f, pos, perPos[pos]) end
         ns.BossFight.Track(f, nil)
         return
@@ -1039,16 +1068,12 @@ local function ConfigureAuras(f)
     end
     Add(DispelPlace(f, st), { key = "dispels", kind = "dispels", filter = "HARMFUL", isDebuff = true,
                       candidates = processed and { processedAuraType = processed.Dispel } })
-    -- Hide Buffs: Blizzard's maxDuration filter on the full duration, which always drops permanent
-    -- buffs too; skipped in Edit Mode (samples have no duration). Only My Buffs: the PLAYER filter.
-    local buffCandidates = processed and { processedAuraType = processed.Buff } or nil
-    local hide = not IsEditing() and (st.hideBuffs or "PERMANENT")
-    if hide and hide ~= "OFF" then
-        buffCandidates = buffCandidates or {}
-        buffCandidates.maxDuration = (hide == "PERMANENT") and 999999 or tonumber(hide)
-    end
-    Add(st.buffs,   { key = "buffs", kind = "buffs", filter = st.onlyMyBuffs and "HELPFUL|PLAYER" or "HELPFUL", isDebuff = false,
-                      candidates = buffCandidates })
+    -- Only My Buffs: the PLAYER filter, on unless set false; off shows everyone's buffs
+    local onlyMine = st.onlyMyBuffs ~= false
+    local allBuffs = not onlyMine
+    Add(st.buffs,   { key = "buffs", kind = "buffs", filter = onlyMine and "HELPFUL|PLAYER" or "HELPFUL", isDebuff = false,
+                      candidates = HideBuffs(processed and not allBuffs and { processedAuraType = processed.Buff } or nil) })
+    ApplyBuffPolicy(allBuffs)
     for _, pos in ipairs(AURA_POSITIONS) do ConfigurePosition(f, pos, perPos[pos]) end
     ns.BossFight.Track(f, f.bossFightRecs)
 end
@@ -2341,6 +2366,7 @@ local function CreatePet(index)
         pcall(p.RegisterUnitEvent, p, event, p.unit)
     end
     p:HookScript("OnShow", function(self) UpdatePet(self) end)
+    LEM:AddSelectionArea(p)
     pets[index] = p
     return p
 end
@@ -2369,6 +2395,7 @@ local function CreatePartyTarget(index)
     t:SetScript("OnEvent", function(self) UpdatePartyTarget(self) end)
     if index > 0 then pcall(t.RegisterUnitEvent, t, "UNIT_TARGET", SLOT_UNITS[index]) end
     t:HookScript("OnShow", UpdatePartyTarget)
+    LEM:AddSelectionArea(t)
     targets[index] = t
     return t
 end
@@ -2630,9 +2657,9 @@ local function BuildSettings()
           desc = L["A dispellable debuff colours the frame's border in its type's colour."],
           get = getS("dispelHighlight"), set = setS("dispelHighlight") },
         { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1, get = getS("auraSize"), set = setS("auraSize") },
-        { name = L["Only My Buffs"], kind = LEM.SettingType.Checkbox, default = false,
-          get = function() return getS("onlyMyBuffs")() and true or false end, set = setS("onlyMyBuffs"),
-          desc = L["Only the buffs you cast (your heals over time, your blessings)."] },
+        { name = L["Only My Buffs"], kind = LEM.SettingType.Checkbox, default = true,
+          get = function() return getS("onlyMyBuffs")() ~= false end, set = setS("onlyMyBuffs"),
+          desc = L["Only the buffs you cast (your heals over time, your blessings). Off: everyone's buffs."] },
         { name = L["Dispellable Debuffs Only"], kind = LEM.SettingType.Checkbox, default = false,
           get = function() return getS("dispellableOnly")() and true or false end, set = setS("dispellableOnly"),
           desc = L["Only the debuffs you can dispel."] },

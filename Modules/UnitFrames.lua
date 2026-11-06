@@ -808,6 +808,7 @@ local function CreateCastBar(parent, unit)
     cast.unit = unit
     cast:SetMinMaxValues(0, 1)
     cast:Hide()
+    LEM:AddSelectionArea(cast)
 
     cast.Backdrop = CreateFrame("Frame", nil, cast, "BackdropTemplate")
     cast.Backdrop:SetFrameLevel(cast:GetFrameLevel() - 1)
@@ -1348,7 +1349,7 @@ local function InitAuraButton(button, size, isDebuff, unit, font, showTimer, loo
     pcall(button.SetIcon, button, button.FlareUI_Icon)
     pcall(button.SetDurationCooldown, button, button.FlareUI_Cooldown)
     pcall(button.SetApplicationCount, button, button.FlareUI_Count, {})
-    pcall(button.SetDurationText, button, button.FlareUI_Duration, {})
+    ns.SetAuraDurationText(button, button.FlareUI_Duration)
     pcall(button.ClearDispelTypeTextures, button)
     if isDebuff and Enum.CustomAuraButtonDispelTypeTextureStyle then
         button.FlareUI_Dispel:Show()
@@ -3183,6 +3184,9 @@ local function CreatePlayerCastBar()
     holder.editModeName = "FlareUI Player Cast Bar"
     holder.Cast = CreateCastBar(holder, "player")
     holder.Cast.standalone = true
+    -- Cinematic fades this holder between fights, as the game's cast bar: the bar itself stays up, so
+    -- hearthing, gathering and quest objects still show their cast
+    if C_AddOns.IsAddOnLoaded("Cinematic") then holder.Cast:SetIgnoreParentAlpha(true) end
     holder:SetScript("OnEvent", function(self) UpdateCastBar(self.Cast, IsCastEnabled(self.Cast)) end)
     for _, event in ipairs(CAST_EVENTS) do pcall(holder.RegisterUnitEvent, holder, event, "player") end
     pcall(holder.RegisterEvent, holder, "PLAYER_ENTERING_WORLD")

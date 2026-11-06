@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 3.0.3
+## Version: 3.0.4
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -60,6 +60,7 @@ Modules\XPBar.lua
 Modules\Visibility.lua
 Modules\UnitFrames.lua
 Modules\UnitFramesRing.lua
+Modules\UnitFramesDoesItDie.lua
 Modules\PartyFrames.lua
 Modules\RaidFrames.lua
 Modules\BossFrames.lua

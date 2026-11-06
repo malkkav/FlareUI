@@ -1,3 +1,23 @@
+# FlareUI 3.0.4
+
+See everyone's buffs on party and raid frames, DoesItDie on your target and focus frames, and new tooltip options.
+
+**Restart the game fully after updating** (not just /reload): this version adds a new file.
+
+## New
+- Unit frames: **DoesItDie** now works on FlareUI's target and focus frames, with no setup: a mark for the damage your DoTs still have left, and a skull when that's enough to kill. Its own marker, skull and focus settings still apply.
+- Tooltips: **Show guild name** (on by default), **Show guild ranks** and **Hide faction**. Blizzard can hide tooltip text in instances and some fights, and these options can't change those tooltips.
+- Edit Mode: clicking or dragging a portrait ring, level disc, attached cast bar, party pet or party target now selects its frame.
+
+## Changed
+- Party and raid frames, main tanks: **Only My Buffs** is on by default, and turning it off now really shows everyone's buffs. Before, off still hid most of them. Raid frames only hold three icons, so **Hide Buffs** on a time limit helps there.
+- Boss frames: every buff on the boss now shows, apart from what **Hide Buffs** leaves out.
+- Buffs and debuffs: timers read s, m, h and d in every language, in the Buffs & Debuffs frames and on unit frames.
+
+## Fixed
+- Boss frames: **Hide Buffs** did nothing.
+- Cinematic: FlareUI's player cast bar stays up between fights, so hearthing, gathering and quest objects show their cast. Cinematic's Cast bar row no longer hides it.
+
 # FlareUI 3.0.3
 
 A NEW tag now points out recently added options.

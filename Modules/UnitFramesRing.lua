@@ -674,6 +674,8 @@ local function Build(f)
 
     ring.Hit = NewHitButton(f)
     ring.DiscHit = NewHitButton(f)
+    LEM:AddSelectionArea(ring.Hit)
+    LEM:AddSelectionArea(ring.DiscHit)
 
     f.RingFrame = ring
     return ring

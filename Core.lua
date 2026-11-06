@@ -574,7 +574,7 @@ local defaults = {
                 mainTanks = { enabled = false, w = 182, h = 60, spacing = 2,
                               buffs = "INSIDE_LEFT", debuffs = "INSIDE_RIGHT", auraSize = 14,
                               bigBossDebuffs = false, bigDefensive = false,
-                              hideBuffs = "PERMANENT", onlyMyBuffs = false, dispellableOnly = false, encounterOnly = false },
+                              hideBuffs = "PERMANENT", onlyMyBuffs = true, dispellableOnly = false, encounterOnly = false },
                 powerHeight = 6, healthText = "none", texture = "FlareUI Forever", border = "FlareUI Thin",
                 debuffs = "INSIDE_RIGHT", buffs = "INSIDE_LEFT", dispels = "INSIDE_BOTTOMRIGHT",
                 auraSize = 12, bigBossDebuffs = false,
@@ -673,6 +673,9 @@ local defaults = {
             nameColor = "class",          -- none | class
             showThreat = true,          -- Blizzard's threat line on enemy tooltips
             showTarget = false,
+            showGuild = true,           -- Blizzard's guild line on players
+            showGuildRank = false,      -- the rank after the guild's name
+            hideFaction = false,
             showItemID = false,
             showSpellID = false,
 
@@ -772,6 +775,53 @@ local defaults = {
 --------------------------------------------------
 -- 5. SHARED UTILITIES
 --------------------------------------------------
+-- Buff and debuff timers read s, m, h and d in every language; Blizzard's own units follow the client's
+-- ("min" in some). The same bands as Blizzard's: a unit runs to 1.5 of the next one, rounded up.
+local AURA_TIME_BANDS = {
+    { from = 129600, div = 86400, unit = "d" },
+    { from = 5401, div = 3600, unit = "h" },
+    { from = 91, div = 60, unit = "m" },
+    { from = 0, div = 1, unit = "s" },
+}
+
+-- For a time Lua can read (weapon enchants)
+function ns.FormatAuraTime(seconds)
+    for _, band in ipairs(AURA_TIME_BANDS) do
+        if seconds >= band.from then return math.ceil(seconds / band.div) .. band.unit end
+    end
+end
+
+-- SetDurationText's options. Aura times can be secret, so the client does the formatting, from these
+-- rules; checked once, and if the client answers otherwise its own formatter stays.
+local auraTimerOptions
+local function AuraTimerOptions()
+    if auraTimerOptions then return auraTimerOptions end
+    auraTimerOptions = {}
+    local ok, formatter = pcall(C_StringUtil.CreateNumericRuleFormatter)
+    if not (ok and formatter) then return auraTimerOptions end
+    local up = Enum.NumericRuleFormatRounding and Enum.NumericRuleFormatRounding.Up
+    local rules = {}
+    for i = #AURA_TIME_BANDS, 1, -1 do
+        local band = AURA_TIME_BANDS[i]
+        rules[#rules + 1] = { threshold = band.from, format = "%.0f" .. band.unit,
+            components = { { div = band.div, step = 1, rounding = up } } }
+    end
+    if not pcall(formatter.SetBreakpoints, formatter, rules) then return auraTimerOptions end
+    for seconds, text in pairs({ [30] = "30s", [300] = "5m", [7200] = "2h" }) do
+        local okText, shown = pcall(formatter.FormatNumber, formatter, seconds)
+        if not okText or shown ~= text then return auraTimerOptions end
+    end
+    auraTimerOptions.textFormatter = formatter
+    return auraTimerOptions
+end
+
+-- Hands an aura button its timer text
+function ns.SetAuraDurationText(button, fontString)
+    if not pcall(button.SetDurationText, button, fontString, AuraTimerOptions()) then
+        pcall(button.SetDurationText, button, fontString, {})
+    end
+end
+
 -- GameTooltip's health bar only hides on close, so a tooltip reused without closing keeps it. Hidden
 -- on every clear; a unit tooltip re-shows it as it builds. Hide only: writing to the bar taints.
 if GameTooltip and GameTooltip.StatusBar then

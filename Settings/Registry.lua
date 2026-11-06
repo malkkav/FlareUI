@@ -29,6 +29,9 @@ Settings.NEW = {
     ["qt.hideFinished"] = "3.0",
     ["qt.hideLevel"] = "3.0",
     ["qt.playButtons"] = "3.0",
+    ["tt.hideFaction"] = "3.0",
+    ["tt.showGuild"] = "3.0",
+    ["tt.showGuildRank"] = "3.0",
     ["uf.simpleTargetOf"] = "3.0",
 }
 

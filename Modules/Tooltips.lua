@@ -307,7 +307,29 @@ local function RemoveClassLine(tip, unit)
     end
 end
 
--- Faction line in Blizzard's faction colours
+-- Show guild name off: no guild line. Show guild ranks: the rank after the name. The line has no type of
+-- its own, so it is found by the guild's name, in whatever form the client writes it.
+local function ApplyGuildLine(tip, unit)
+    local db = GetDb()
+    if not db or (db.showGuild ~= false and not db.showGuildRank) then return end
+    if not Readable(UnitIsPlayer(unit)) then return end
+    local guild, rank = GetGuildInfo(unit)
+    if not (canaccessvalue(guild) and type(guild) == "string" and guild ~= "") then return end
+    for i = 2, tip:NumLines() do
+        local line = LeftLine(i)
+        local text = line and line:GetText()
+        if canaccessvalue(text) and type(text) == "string" and text:find(guild, 1, true) then
+            if db.showGuild == false then
+                line:SetText(nil)
+            elseif canaccessvalue(rank) and type(rank) == "string" and rank ~= "" then
+                line:SetText(text .. " (" .. rank .. ")")
+            end
+            return
+        end
+    end
+end
+
+-- Faction line in Blizzard's faction colours, or gone with Hide faction
 local FACTION_LINE_COLORS = {
     { word = "FACTION_HORDE",    hex = "|cffe60d12" },
     { word = "FACTION_ALLIANCE", hex = "|cff4a9eff" },
@@ -320,7 +342,12 @@ local function ColorFactionLine(tip)
             for _, f in ipairs(FACTION_LINE_COLORS) do
                 local word = _G[f.word]
                 if word and text == word then
-                    line:SetText(f.hex .. text .. "|r")
+                    local db = GetDb()
+                    if db and db.hideFaction then
+                        line:SetText(nil)
+                    else
+                        line:SetText(f.hex .. text .. "|r")
+                    end
                     return
                 end
             end
@@ -439,6 +466,7 @@ local function OnTooltipSetUnit(tip)
     if not SafeToTouch(tip) then return end
     ScrubLines(tip)
     ColorName(tip, unit)
+    ApplyGuildLine(tip, unit)
     ColorLevelLine(tip, unit)
     RemoveClassLine(tip, unit)
     ColorFactionLine(tip)

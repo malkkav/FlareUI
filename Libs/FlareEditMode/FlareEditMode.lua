@@ -374,11 +374,19 @@ local function onMouseDown(self) -- replacement for EditModeSystemMixin:SelectSy
 	end
 end
 
+-- FlareUI: parts standing outside a frame's box still select it (see AddSelectionArea)
+local function showSelectionAreas(shown)
+	for _, area in ipairs(lib.selectionAreas or {}) do
+		area:SetShown(shown)
+	end
+end
+
 local function onEditModeEnter()
 	lib.isEditing = true
 
 	resetDialogs()
 	resetSelection()
+	showSelectionAreas(true)
 
 	for _, callback in next, lib.anonCallbacksEnter do
 		securecallfunction(callback)
@@ -390,6 +398,7 @@ local function onEditModeExit()
 
 	resetDialogs()
 	resetSelection()
+	showSelectionAreas(false)
 
 	for _, callback in next, lib.anonCallbacksExit do
 		securecallfunction(callback)
@@ -613,6 +622,48 @@ function lib:AddFrame(frame, callback, default, name)
 			onEditModeChanged(nil, C_EditMode.GetLayouts()) -- introduces a little latency
 		end
 	end
+end
+
+--[[ FlareEditMode:AddSelectionArea(region)
+FlareUI: in Edit Mode, clicking or dragging `region` (a frame standing outside the box of the registered frame it
+belongs to, like a portrait ring) acts on that frame's selection. The registered frame is found through its parents
+when used, so either may come first. An invisible frame over the region, hidden with it and outside Edit Mode.
+--]]
+local function selectionOf(region)
+	local parent = region:GetParent()
+	while parent do
+		local selection = lib.frameSelections[parent]
+		if selection then return selection end
+		parent = parent:GetParent()
+	end
+end
+
+function lib:AddSelectionArea(region)
+	local area = CreateFrame('Frame', nil, region)
+	area:SetAllPoints()
+	area:SetFrameLevel(region:GetFrameLevel() + 10)
+	area:EnableMouse(true)
+	area:RegisterForDrag('LeftButton')
+	local function forward(handler)
+		return function()
+			local selection = selectionOf(region)
+			if selection and selection:IsShown() then handler(selection) end
+		end
+	end
+	local function forwardScript(name)
+		return forward(function(selection)
+			local script = selection:GetScript(name)
+			if script then script(selection) end
+		end)
+	end
+	area:SetScript('OnMouseDown', forward(onMouseDown))
+	area:SetScript('OnDragStart', forward(onDragStart))
+	area:SetScript('OnDragStop', forward(onDragStop))
+	area:SetScript('OnEnter', forwardScript('OnEnter'))
+	area:SetScript('OnLeave', forwardScript('OnLeave'))
+	area:SetShown(lib.isEditing or false)
+	lib.selectionAreas = lib.selectionAreas or {}
+	lib.selectionAreas[#lib.selectionAreas + 1] = area
 end
 
 --[[ FlareEditMode:AddFrameSettings(_frame, settings_) ![](https://img.shields.io/badge/function-blue)
