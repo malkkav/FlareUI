@@ -1,3 +1,10 @@
+# FlareUI 3.0.7
+
+Fixes a Lua error from 3.0.6 on cast bars.
+
+## Fixed
+- Cast bars: since 3.0.6, enemy casts in combat could flood you with Lua errors from Backdrop.lua, which could also appear when you opened Edit Mode.
+
 # FlareUI 3.0.6
 
 The group finder stays in one piece when you move it, and crafting shows the right icon on your cast bar.

@@ -895,7 +895,9 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
     -- the border wrap: the inset shrinks with the edge on a thin bar (BorderFit)
     local _, wrap = BorderFit(height, style.border and edgeFile)
     cast.Backdrop:ClearAllPoints()
-    cast.Backdrop:SetPoint("TOPLEFT", style.icon and cast.Icon or cast, "TOPLEFT", -wrap, wrap)
+    -- anchored to the bar alone: a secret cast icon makes anything anchored to the icon secret-sized,
+    -- and BackdropTemplate does Lua maths on its own size
+    cast.Backdrop:SetPoint("TOPLEFT", cast, "TOPLEFT", -iconOffset - wrap, wrap)
     cast.Backdrop:SetPoint("BOTTOMRIGHT", cast, "BOTTOMRIGHT", wrap, -wrap)
     cast.Backdrop:SetBackdrop({ bgFile = BACKDROP_FILE, insets = { left = wrap, right = wrap, top = wrap, bottom = wrap } })
     cast.Backdrop:SetBackdropColor(0, 0, 0, BG_OPACITY)
