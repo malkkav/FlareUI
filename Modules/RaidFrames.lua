@@ -1084,6 +1084,8 @@ local function BuildSettings()
           get = get("texture", d.texture), set = set("texture") },
         { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = d.border, values = K.BuildBorderValues(false),
           get = get("border", d.border), set = set("border"), hidden = K.NoBorderOptions },
+        -- (main tanks follow it)
+        K.ClassColorSetting(function() return ns.ClassColorsOn(GetDb()) end, set("classColor")),
         K.BgOpacitySetting(K.BAR_BG_OPACITY, get("bgOpacity", K.BAR_BG_OPACITY), set("bgOpacity")),
         K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars")),
     })

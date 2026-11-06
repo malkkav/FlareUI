@@ -41,12 +41,13 @@ S:Row{ key = "ab.cleanKeybinds", path = "actionbars.cleanKeybinds", apply = Refr
 S:Row{ key = "ab.buttonArt", path = "actionbars.buttonArt", apply = Refresh, half = true }
 S:Row{ key = "ab.stopAutoAdd", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
 
--- the bar that pages for stealth / forms; with another bar or none, bar 1 stays on its page
-S:Row{ key = "ab.autoPagingBar", kind = "choice", path = "actionbars.autoPagingBar",
-    choices = { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, apply = Refresh }
+S:Row{ key = "ab.stealthPaging", path = "actionbars.stealthPaging", apply = Refresh, half = true }
+S:Row{ key = "ab.noStancePaging", path = "actionbars.noStancePaging", apply = Refresh, half = true }
 
 S:Row{ key = "ab.xpBar", path = "actionbars.xpbar.enabled", reload = true }
 S:Row{ key = "ab.xpText", kind = "choice", path = "actionbars.xpbar.textMode", choices = { "HOVER", "ALWAYS" },
+    parent = "ab.xpBar", apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
+S:Row{ key = "ab.xpNumbers", kind = "choice", path = "actionbars.xpbar.textFormat", choices = { "VALUES", "PERCENT", "BOTH", "REMAINING" },
     parent = "ab.xpBar", apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
 
 -- Hide Blizzard elements (also removed from Edit Mode)
@@ -61,9 +62,6 @@ Hide("hideTotemBar", "hideTotemBar")
 Hide("hidePossessBar", "hidePossessBar")
 Hide("hideGryphons", "hideEndCaps")
 Hide("hideRaidManager", "hideRaidManager")
-
--- Fade Options are per bar in Edit Mode; this row opens it
-S:Row{ key = "ab.fade", kind = "editmode", section = "ab.fadeOptions", sectionTitle = L["Fade Options"] }
 
 -- Fake Cooldown Manager tab: no switch, it is on while any bar is picked
 for i = 1, 8 do

@@ -92,9 +92,17 @@ local STANDING_BY_REACTION = { "FACTION_RED_COLOR", "FACTION_RED_COLOR", "FACTIO
 local flare                                    -- the bar frame
 local LEM
 
--- "current / max", as Blizzard's bars show it
+-- The numbers, as "XP Bar Numbers" asks; the default is "current / max", as Blizzard's bars show it
 local function FormatValues(value, maxValue)
-    return ("%s / %s"):format(BreakUpLargeNumbers(value), BreakUpLargeNumbers(maxValue))
+    local db = GetDb()
+    local format = db and db.textFormat
+    -- a paragon reward waiting takes the value past the max
+    local percent = maxValue > 0 and math.min(100, math.floor(value / maxValue * 100)) or 0
+    if format == "PERCENT" then return percent .. "%" end
+    if format == "REMAINING" then return L["%s to go"]:format(BreakUpLargeNumbers(math.max(0, maxValue - value))) end
+    local values = ("%s / %s"):format(BreakUpLargeNumbers(value), BreakUpLargeNumbers(maxValue))
+    if format == "BOTH" then return ("%s (%d%%)"):format(values, percent) end
+    return values
 end
 
 -- Each kind of section: value, max, rested bonus (XP only), colour and text
@@ -105,11 +113,15 @@ function Read.xp()
     if not maxValue or maxValue <= 0 then value, maxValue = 0, 1 end
     local rested = GetXPExhaustion() or 0
     local color = rested > 0 and COLOR_RESTED or COLOR_XP
-    return {
-        value = value, max = maxValue, rested = rested, color = color,
-        -- Blizzard's own experience bar text ("XP: 1234/5000")
-        text = XP_STATUS_BAR_TEXT and XP_STATUS_BAR_TEXT:format(value, maxValue) or FormatValues(value, maxValue),
-    }
+    local db = GetDb()
+    local format = db and db.textFormat
+    local text
+    if (not format or format == "VALUES") and XP_STATUS_BAR_TEXT then
+        text = XP_STATUS_BAR_TEXT:format(value, maxValue)   -- Blizzard's own text ("XP: 1234/5000")
+    else
+        text = L["XP"] .. "  " .. FormatValues(value, maxValue)
+    end
+    return { value = value, max = maxValue, rested = rested, color = color, text = text }
 end
 
 function Read.rep(data)

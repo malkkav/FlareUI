@@ -94,6 +94,12 @@ local function ClassicCombo()
     return ns.UFRing and ns.UFRing.On() and true or false
 end
 
+-- The health bar's class colours follow the player frame's switch
+local function PlayerClassColors()
+    local db = K.GetDb()
+    return ns.ClassColorsOn(db and db.units and db.units.player)
+end
+
 local function Cfg(key)
     local rdb = GetResourceDb()
     if not rdb then return nil end
@@ -213,7 +219,7 @@ local function UpdateHealth(holder, glide)
     local bar = holder.Bar
     bar:SetMinMaxValues(0, UnitHealthMax("player"))
     ns.SetBarValue(bar, UnitHealth("player"), glide and cfg and cfg.smoothBars)
-    bar:SetStatusBarColor(K.GetHealthColor("player", ns.ClassColorsOn()))
+    bar:SetStatusBarColor(K.GetHealthColor("player", PlayerClassColors()))
     if UnitIsDeadOrGhost("player") then
         holder.Text:SetText(UnitIsGhost("player") and K.GHOST_TEXT or K.DEAD_TEXT)
     else
@@ -353,7 +359,7 @@ local function ApplyPreview(holder)
     bar:SetMinMaxValues(0, 1)
     if kind == "health" then
         bar:SetValue(0.75)
-        bar:SetStatusBarColor(K.GetHealthColor("player", ns.ClassColorsOn()))
+        bar:SetStatusBarColor(K.GetHealthColor("player", PlayerClassColors()))
         SetText(holder, cfg.text or "both", 18000, 75)
         if holder.HealBar then holder.HealBar:SetValue(0); holder.AbsorbBar:SetValue(0) end
     elseif kind == "power" then

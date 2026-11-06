@@ -446,6 +446,12 @@ function UF.HideBuffsSetting(default, get, set)
         desc = L["Buffs left off this frame, by their full duration. Every choice but Off also hides permanent buffs."] }
 end
 
+-- Right below Absorb Texture
+function UF.ClassColorSetting(get, set)
+    return { name = L["Class Colours"], kind = LEM.SettingType.Checkbox, default = true, get = get, set = set,
+        desc = L["Players' health bars in their class colour. Off: green. NPCs keep their reaction colour."] }
+end
+
 -- Always right below Background Opacity
 function UF.SmoothBarsSetting(get, set)
     return { name = L["Smooth Bar Animations"], kind = LEM.SettingType.Checkbox, default = false,
@@ -637,10 +643,13 @@ local function UpdateHealth(f, glide)
         bar:SetMinMaxValues(0, 1)
         bar:SetValue(health)
         if UnitExists(unit) then
-            bar:SetStatusBarColor(GetHealthColor(unit, ns.ClassColorsOn()))
-        else
+            bar:SetStatusBarColor(GetHealthColor(unit, ns.ClassColorsOn(udb)))
+        elseif unit == "pet" then
             local c = REACTION[5]
             bar:SetStatusBarColor(c[1], c[2], c[3])
+        else
+            -- no unit: yours, so Class Colours shows here too
+            bar:SetStatusBarColor(GetHealthColor("player", ns.ClassColorsOn(udb)))
         end
         local mode = udb and udb.healthText or "percent"
         local value = AbbreviateNumbers(math_floor(health * 24000))
@@ -658,7 +667,7 @@ local function UpdateHealth(f, glide)
 
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     ns.SetBarValue(bar, UnitHealth(unit), glide and udb and udb.smoothBars and not UNITS[unit].poll)
-    bar:SetStatusBarColor(GetHealthColor(unit, ns.ClassColorsOn()))
+    bar:SetStatusBarColor(GetHealthColor(unit, ns.ClassColorsOn(udb)))
 
     local mode = udb and udb.healthText or "percent"
     local text = f.HealthText
@@ -3346,6 +3355,14 @@ local function BuildSettings(unit)
             set = set("absorbTexture"),
             desc = L["The texture of the shield (absorb) over the health bar."] }
     end
+    if unit ~= "pet" then
+        lookItems[#lookItems + 1] = UF.ClassColorSetting(function() return ns.ClassColorsOn(GetUnitDb(unit)) end,
+            function(layoutName, value)
+                set("classColor")(layoutName, value)
+                -- the Resource Bars' health bar follows the player frame
+                if unit == "player" and ns.ResourceBars and ns.ResourceBars.Refresh then ns.ResourceBars:Refresh() end
+            end)
+    end
     -- last in Look: how dark the bars' empty part is
     local bgDefault = UF.DefaultBgOpacity(unit)
     lookItems[#lookItems + 1] = UF.BgOpacitySetting(bgDefault,
@@ -3506,7 +3523,7 @@ UF.Kit = {
     -- Background Opacity's bar background and its Edit Mode slider
     Border = function(name) return ns.UFRing and ns.UFRing.Border(name) or name end,
     NoBorderOptions = function() return ns.UFRing and ns.UFRing.PlateOn() or false end,
-    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting, SmoothBarsSetting = UF.SmoothBarsSetting, HideBuffsSetting = UF.HideBuffsSetting,
+    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting, SmoothBarsSetting = UF.SmoothBarsSetting, HideBuffsSetting = UF.HideBuffsSetting, ClassColorSetting = UF.ClassColorSetting,
     INSET = INSET, BG_OPACITY = BG_OPACITY, BACKDROP_FILE = BACKDROP_FILE,
     SEPARATOR_TEXTURE = SEPARATOR_TEXTURE, SEPARATOR_HEIGHT = SEPARATOR_HEIGHT, TEXT_INSET = TEXT_INSET,
     CAST_GAP = CAST_GAP, AURA_GAP = AURA_GAP,

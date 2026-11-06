@@ -850,8 +850,7 @@ function Panel:Refresh()
             y = PlaceRows(content, results, y, function(row)
                 local module = S.modules[row.module]
                 if row.kind == "editmode" then
-                    -- ab.fade is a page row: it names no frame
-                    return module:Title() .. (row.frameName and ("  ›  " .. row.frameName) or "") .. "  ·  " .. L["Edit Mode"]
+                    return module:Title() .. "  ›  " .. row.frameName .. "  ·  " .. L["Edit Mode"]
                 end
                 local section = row.section and ns.Copy.sections[row.section]
                 return module:Title() .. (section and ("  ›  " .. section) or "")

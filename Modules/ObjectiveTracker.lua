@@ -607,14 +607,16 @@ local function OnLineClick(self, button)
     elseif button == "RightButton" then
         GameTooltip:Hide()
         ShowQuestMenu(self, questID)
-    elseif IsShiftKeyDown() or IsControlKeyDown() then
-        -- while typing in chat, shift-click links the quest; otherwise Shift or Ctrl focuses it
+    elseif IsShiftKeyDown() then
+        -- while typing in chat it links the quest; otherwise it untracks it (the list only holds tracked quests)
         local link = GetQuestLink(questID)
-        if IsShiftKeyDown() and link and ChatFrameUtil.GetActiveWindow() then
+        if link and ChatFrameUtil.GetActiveWindow() then
             ChatFrameUtil.InsertLink(link)
-        else
-            ToggleFocus(questID)
+        elseif QuestUtil.CanRemoveQuestWatch() then
+            C_QuestLog.RemoveQuestWatch(questID)
         end
+    elseif IsControlKeyDown() then
+        ToggleFocus(questID)
     else
         OpenQuest(questID)
     end

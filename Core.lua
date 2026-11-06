@@ -178,8 +178,10 @@ do
     end)
 end
 
--- Class colours on health bars: one switch for every frame
-function ns.ClassColorsOn()
+-- Class colours on a frame's health bar (st: its settings). A frame not set yet follows the one switch
+-- this replaced, so off carries over in every profile and style setup; on by default.
+function ns.ClassColorsOn(st)
+    if st and st.classColor ~= nil then return st.classColor end
     local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
     return not uf or uf.classColor ~= false
 end
@@ -435,7 +437,8 @@ local defaults = {
             buttonArt = true,
             stopAutoAddSpells = true,
             autoRanks = false,          -- Update Spell Ranks: a new rank replaces the old one on the bars
-            autoPagingBar = 1,          -- Auto-Paging: the bar that switches to the Stealth / form page (0 = none)
+            stealthPaging = true,       -- Auto-Paging for Stealth: rogues' bar 1 switches to page 7
+            noStancePaging = false,     -- No Auto-Paging for Stances: warriors' bar 1 stays on its page
 
             -- Status colouring (one row sets both)
             colors = {
@@ -444,7 +447,7 @@ local defaults = {
             },
 
             -- the FlareUI XP Bar (Modules/XPBar.lua), placed in Edit Mode; off = Blizzard's bars untouched
-            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Forever", textMode = "HOVER", layouts = {} },
+            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Forever", textMode = "HOVER", textFormat = "VALUES", layouts = {} },
 
             -- Typography
             hotkeyFont = { face = "Arial Narrow", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -491,7 +494,6 @@ local defaults = {
         -- [[ UNIT FRAMES MODULE ]]
         unitframes = {
             enabled = false,
-            classColor = true,          -- class colours on every FlareUI health bar (one switch for every frame)
             simplePet = false,          -- Simple Pet Frame: the plain pet frame in every style; off, it follows the style
             simpleTargetOf = false,     -- Simple "Target Of": the same for target of target and target of focus
             fullNames = true,           -- Full Player Names: "First Surname" on every frame, not the first name only

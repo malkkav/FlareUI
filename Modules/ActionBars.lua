@@ -643,27 +643,17 @@ function ActionBars:OnSpellLearned(_, spellID)
 end
 
 --------------------------------------------------
--- 12. AUTO-PAGING
--- Stealth sets no bonus bar on Forever (GetBonusBarIndex stays 0 for a rogue), so Blizzard's bar 1
--- doesn't page for it, while a warrior's stances do page it. A secure state driver on the character's
--- forms sets "actionpage" (Classic pages 7-10) on the picked bar's buttons, which Blizzard's buttons
--- read before their bar's page; works in combat. With another bar picked, or none, bar 1 is held on
--- page 1 against Blizzard's own stance paging.
+-- 12. CLASS PAGING
+-- A secure state driver sets "actionpage" on bar 1's buttons, which Blizzard's buttons read before their
+-- bar's page; works in combat. Everything else on the bars is Blizzard's own paging.
+-- Rogues: Stealth sets no bonus bar on Forever (GetBonusBarIndex stays 0), so bar 1 doesn't page for it
+-- unless we do it. Warriors: stances do page bar 1; the toggle holds it on page 1, only while Blizzard
+-- would swap it, so page keys and vehicle, override or temporary shapeshift bars stay Blizzard's.
 --------------------------------------------------
--- a form -> its page, by Classic spell ID or, should Forever's differ, its icon
-local FORM_PAGES = {
-    { spells = { 768 },          icon = 132115, page = 7 },    -- Cat Form
-    { spells = { 5487, 9634 },   icon = 132276, page = 9 },    -- Bear Form, Dire Bear Form
-    { spells = { 24858 },        icon = 136036, page = 10 },   -- Moonkin Form
-    { spells = { 2457 },         icon = 132349, page = 7 },    -- Battle Stance
-    { spells = { 71 },           icon = 132341, page = 8 },    -- Defensive Stance
-    { spells = { 2458 },         icon = 132275, page = 9 },    -- Berserker Stance
-    { spells = { 15473 },        icon = 136200, page = 7 },    -- Shadowform
+local CLASS_PAGING = {
+    ROGUE = { key = "stealthPaging", driver = "[possessbar][overridebar][vehicleui] default; [stealth] 7; default" },
+    WARRIOR = { key = "noStancePaging", driver = "[possessbar][overridebar][vehicleui][shapeshift] default; [actionbar:1,bonusbar:1/2/3] 1; default" },
 }
-local PAGE_FIRST = "[possessbar][overridebar][vehicleui] default; [bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10"
--- Bar 1 when it isn't the picked bar: only while Blizzard would swap it for a bonus bar. The player's
--- own page keys and any vehicle or override bar stay Blizzard's
-local PAGE_HOLD = "[possessbar][overridebar][vehicleui][shapeshift] default; [actionbar:1,bonusbar:1/2/3/4] 1; default"
 local PAGE_SNIPPET = [[
     local page = newstate ~= "default" and tonumber(newstate) or nil
     for i = 1, 12 do
@@ -671,56 +661,33 @@ local PAGE_SNIPPET = [[
         if button then button:SetAttribute("actionpage", page) end
     end
 ]]
-local pagers = {}
+local classPager
 
-local function FormPage(icon, spellID)
-    for _, entry in ipairs(FORM_PAGES) do
-        if icon and icon == entry.icon then return entry.page end
-        for _, id in ipairs(entry.spells) do
-            if spellID == id then return entry.page end
-        end
-    end
-end
-
--- Stealth (rogues; a druid's Prowl is Cat Form's second page), then each form by its stance index
-local function PagingDriver()
-    local parts = { PAGE_FIRST }
-    local _, class = UnitClass("player")
-    if class == "ROGUE" then parts[#parts + 1] = "[stealth] 7" end
-    for i = 1, GetNumShapeshiftForms() or 0 do
-        local icon, _, _, spellID = GetShapeshiftFormInfo(i)
-        local page = FormPage(icon, spellID)
-        if page then
-            if class == "DRUID" and page == 7 then parts[#parts + 1] = "[stance:" .. i .. ",stealth] 8" end
-            parts[#parts + 1] = "[stance:" .. i .. "] " .. page
-        end
-    end
-    parts[#parts + 1] = "default"
-    return table.concat(parts, "; ")
-end
-
--- the picked bar pages, the others keep their own page; out of combat (secure frames)
-local function ApplyAutoPaging()
+-- out of combat (secure frames)
+local function ApplyClassPaging()
     if InCombatLockdown() then
         ActionBars._pendingRefresh = true
         return
     end
     local db = GetBarConfig()
-    local picked = db and db.enabled and tonumber(db.autoPagingBar) or 0
-    local driver = PagingDriver()
-    for i = 1, 8 do
-        local key = "bar" .. i
-        local pager = pagers[key]
-        local hold = i == 1 and picked ~= 1 and db and db.enabled
-        if (i == picked or hold) and not pager then
-            pager = CreateFrame("Frame", nil, UIParent, "SecureHandlerStateTemplate")
-            for n, button in ipairs(GetButtonsForBarKey(key)) do pager:SetFrameRef("b" .. n, button) end
-            pager:SetAttribute("_onstate-page", PAGE_SNIPPET)
-            pagers[key] = pager
-        end
-        -- off again: "default" hands the buttons back to their bar's own page
-        if pager then RegisterStateDriver(pager, "page", (i == picked and driver) or (hold and PAGE_HOLD) or "default") end
+    if not db then return end
+    -- the 3.0 bar choice these toggles replaced: none turned Stealth paging off; none or another bar held stances
+    if db.autoPagingBar ~= nil then
+        if db.autoPagingBar == 0 then db.stealthPaging = false end
+        if db.autoPagingBar ~= 1 then db.noStancePaging = true end
+        db.autoPagingBar = nil
     end
+    local _, class = UnitClass("player")
+    local paging = CLASS_PAGING[class]
+    if not paging then return end
+    local on = db.enabled and db[paging.key]
+    if on and not classPager then
+        classPager = CreateFrame("Frame", nil, UIParent, "SecureHandlerStateTemplate")
+        for n, button in ipairs(GetButtonsForBarKey("bar1")) do classPager:SetFrameRef("b" .. n, button) end
+        classPager:SetAttribute("_onstate-page", PAGE_SNIPPET)
+    end
+    -- off again: "default" hands the buttons back to their bar's own page
+    if classPager then RegisterStateDriver(classPager, "page", on and paging.driver or "default") end
 end
 
 --------------------------------------------------
@@ -797,7 +764,7 @@ function ActionBars:Refresh()
     if not db or not db.enabled then return end
 
     UpdateAutoPushSpells(db)
-    ApplyAutoPaging()
+    ApplyClassPaging()
 
     UpdateGryphonLayer()
     UpdateButtonArtAll()
@@ -859,16 +826,11 @@ function ActionBars:Init()
     self:RegisterEvent("UPDATE_EXTRA_ACTIONBAR", "OnExtraActionBarUpdate")
     self:RegisterEvent("UPDATE_BINDINGS", "OnExtraActionBarUpdate")
     self:RegisterEvent("LEARNED_SPELL_IN_SKILL_LINE", "OnSpellLearned")
-    self:RegisterEvent("UPDATE_SHAPESHIFT_FORMS", "OnFormsChanged")
 end
 
 --------------------------------------------------
 -- 14. EVENT HANDLERS
 --------------------------------------------------
-function ActionBars:OnFormsChanged()
-    ApplyAutoPaging()
-end
-
 function ActionBars:OnCombatEnd()
     if self._pendingRefresh then
         self:Refresh()

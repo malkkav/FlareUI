@@ -87,7 +87,6 @@ S:Row{
         if ns.UnitFrames and ns.UnitFrames.SetPlayerShow then ns.UnitFrames:SetPlayerShow(percent < 100 and "fade" or "always") end
     end,
 }
-S:Row{ key = "uf.classColours", path = "unitframes.classColor", apply = Refresh }
 S:Row{ key = "uf.fullNames", path = "unitframes.fullNames", apply = Refresh }
 -- frames are made at login: the pet's style applies on reload
 S:Row{ key = "uf.simplePet", path = "unitframes.simplePet", reload = true }

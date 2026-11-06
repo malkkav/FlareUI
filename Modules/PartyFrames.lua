@@ -385,7 +385,7 @@ local function UpdateHealth(f, glide)
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     ns.SetBarValue(bar, UnitHealth(unit), glide and st and st.smoothBars)
     -- (a plain health change has the same colour, but for a hostile tile going grey when tapped)
-    if not glide or (f.ctx and f.ctx.hostile) then bar:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn())) end
+    if not glide or (f.ctx and f.ctx.hostile) then bar:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn(st))) end
 
     local mode = st and st.healthText or "percent"
     local text = f.HealthText
@@ -719,7 +719,7 @@ local function UpdatePartyTarget(t)
     if not UnitExists(unit) then return end
     t.Health:SetMinMaxValues(0, UnitHealthMax(unit))
     t.Health:SetValue(UnitHealth(unit))
-    t.Health:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn()))
+    t.Health:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn(TS(t))))
     t.Name:SetText(SafeName(ns.UnitDisplayName(unit, "party")))
 end
 
@@ -2040,7 +2040,7 @@ ApplyPreview = function(f)
     f.Health:SetValue(data.health or 1)
     if data.rgb then
         f.Health:SetStatusBarColor(data.rgb[1], data.rgb[2], data.rgb[3])
-    elseif ns.ClassColorsOn() then
+    elseif ns.ClassColorsOn(st) then
         f.Health:SetStatusBarColor(PreviewColor(class))
     else
         f.Health:SetStatusBarColor(ns.HEALTH_GREEN[1], ns.HEALTH_GREEN[2], ns.HEALTH_GREEN[3])
@@ -2581,6 +2581,7 @@ local function BuildSettings()
         { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildAbsorbValues(),
           get = getS("absorbTexture"), set = setS("absorbTexture"),
           desc = L["The texture of the shield (absorb) over the health bar."] },
+        K.ClassColorSetting(function() return ns.ClassColorsOn(S()) end, setS("classColor")),
         (function()
             local item = K.BgOpacitySetting(K.BAR_BG_OPACITY,
                 function() local v = getS("bgOpacity")(); if v == nil then return K.BAR_BG_OPACITY end; return v end,

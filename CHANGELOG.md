@@ -1,3 +1,21 @@
+# FlareUI 3.0.1
+
+Simpler action bar paging, class colours for each frame, and more ways to read your XP.
+
+## New
+- Unit frames: **Class Colours** is now in each frame's Edit Mode dialog, under Look, on the player, target, focus, target of target, target of focus, party and raid frames. It's on by default. If you had the old option off, every frame starts off. The Resource Bars' health bar follows the player frame.
+- XP bar: **XP Bar Numbers** in the Action Bars settings shows current / max, a percentage, both, or what's left to go. Reputation and honor use it too.
+- Action Bars: **No Auto-Paging for Stances** keeps a warrior's Action Bar 1 on its page when changing stance. It's off by default, but stays on if you'd already stopped stance paging in 3.0.
+
+## Changed
+- Action Bars: **Allow Auto-paging** is now one toggle, **Auto-Paging for Stealth**, for rogues. Druid forms and warrior stances are back to Blizzard's own paging, and bars 2 to 8 no longer page. If you'd set it to No Auto-Paging, the new toggle starts off.
+- Quest Tracker: shift-click now tracks and untracks quests. Ctrl-click sets the focus.
+- Unit Frames settings: **Class colours** moved to Edit Mode.
+- Action Bars settings: **Fade Options** is gone from the page. Fading is still in each bar's Edit Mode dialog.
+
+## Fixed
+- Action Bars: reports of druid form paging not working since 3.0 should be fixed by the paging change above.
+
 # FlareUI 3.0
 
 Portrait versions of your target of target and focus target frames, smooth bars, a much better Quest Tracker, and animations where they count. This one's big, so here's the lot.

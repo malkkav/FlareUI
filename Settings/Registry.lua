@@ -311,7 +311,7 @@ function Settings:Row(def)
         or (copySections[row.key] and row.key) or (moduleKey .. ".main")
     local section = module.sectionByKey[sectionKey]
     if not section then
-        local title = (ns.Copy and ns.Copy.sections and ns.Copy.sections[sectionKey]) or row.sectionTitle
+        local title = ns.Copy and ns.Copy.sections and ns.Copy.sections[sectionKey]
         section = { key = sectionKey, title = title, rows = {} }
         module.sectionByKey[sectionKey] = section
         module.sections[#module.sections + 1] = section

@@ -78,13 +78,6 @@ ns.Copy = {
         },
     },
     rows = {
-        ["ab.autoPagingBar"] = {
-            choices = { L["No Auto-Paging"], L["Action Bar 1"], L["Action Bar 2"], L["Action Bar 3"], L["Action Bar 4"], L["Action Bar 5"], L["Action Bar 6"], L["Action Bar 7"], L["Action Bar 8"] },
-            desc = L["The bar that switches to its own page in Stealth, a druid form or a warrior stance. Any other bar, or No Auto-Paging, stays on its page."],
-            label = L["Allow Auto-paging"],
-            section = "ab.buttons",
-            tip = L["The new page starts empty: fill it while in that form."],
-        },
         ["ab.autoRanks"] = {
             desc = L["A newly learned rank replaces the rank below it on your bars."],
             label = L["Update spell ranks"],
@@ -113,13 +106,6 @@ ns.Copy = {
             label = L["Clean keybind text"],
             section = "ab.buttons",
             tip = L["Off shows Blizzard's own labels."],
-        },
-        ["ab.fade"] = {
-            desc = L["Set in each bar's Edit Mode dialog:\n* Show: when the bar appears\n* Fade group: bars that fade together"],
-            info = L["Fade Options"],
-            label = L["Use Edit Mode to set fading and fade groups for each bar"],
-            section = "ab.fadeOptions",
-            tip = L["Bars 1 to 8, pet, stance, bag bar, micro menu and XP bar all have them."],
         },
         ["ab.fcmBar1"] = {
             desc = L["This bar becomes part of a cooldown display:\n* Can't be clicked\n* Shows only by the Show Condition"],
@@ -245,6 +231,12 @@ ns.Copy = {
             label = L["Totem bar"],
             section = "ab.hideBlizzardElements",
         },
+        ["ab.noStancePaging"] = {
+            desc = L["Warriors: Action Bar 1 stays on its page when you change stance."],
+            label = L["No Auto-Paging for Stances"],
+            section = "ab.buttons",
+            tip = L["All three stances share the same buttons on that bar."],
+        },
         ["ab.procGlow"] = {
             desc = L["Abilities glow when an event makes them usable."],
             label = L["Ability Proc glow"],
@@ -255,6 +247,12 @@ ns.Copy = {
             desc = L["Buttons change colour when you can't use them:\n* Red: target out of range\n* Blue: not enough mana or energy\n* Grey: unusable right now"],
             label = L["Status colouring"],
             section = "ab.buttons",
+        },
+        ["ab.stealthPaging"] = {
+            desc = L["Rogues: Action Bar 1 switches to its own page in Stealth."],
+            label = L["Auto-Paging for Stealth"],
+            section = "ab.buttons",
+            tip = L["The new page starts empty: fill it while in Stealth."],
         },
         ["ab.stopAutoAdd"] = {
             desc = L["New spells you learn are not placed on your bars by themselves."],
@@ -268,6 +266,12 @@ ns.Copy = {
             reload = true,
             section = "ab.experience",
             tip = L["Place and size it in Edit Mode."],
+        },
+        ["ab.xpNumbers"] = {
+            choices = { L["Current / Max"], L["Percentage"], L["Current / Max and Percentage"], L["Remaining"] },
+            desc = L["How the XP bar shows its numbers. Also used for reputation and honor."],
+            label = L["XP Bar Numbers"],
+            section = "ab.experience",
         },
         ["ab.xpText"] = {
             choices = { L["On mouseover"], L["Always"] },
@@ -1158,12 +1162,6 @@ ns.Copy = {
             label = L["Player cast bar"],
             section = "uf.frames",
         },
-        ["uf.classColours"] = {
-            desc = L["Health bars in the player's class colour, on every FlareUI frame."],
-            label = L["Class colours"],
-            section = "uf.look",
-            tip = L["Off: Blizzard's green."],
-        },
         ["uf.font.auras"] = {
             desc = L["The time left on unit frame auras."],
             label = L["Aura timers"],
@@ -1312,7 +1310,6 @@ ns.Copy = {
     sections = {
         ["ab.buttons"] = L["Tweaks"],
         ["ab.experience"] = L["XP Bar"],
-        ["ab.fadeOptions"] = L["Fade Options"],
         ["ab.fakeCooldownManager"] = L["Fake Cooldown Manager (FCM)"],
         ["ab.hideBlizzardElements"] = L["Hide Bars"],
         ["about.credits"] = L["Credits"],
