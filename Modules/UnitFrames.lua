@@ -936,6 +936,40 @@ local function ShowSampleCast(cast)
     cast:Show()
 end
 
+-- A cast's icon. Crafting casts can carry a placeholder or the wrong picture, so they take what the
+-- profession window shows: the item it makes, then the recipe's icon. A secret icon goes straight to
+-- the texture, which takes it. With none or the question mark: the recipe, then the spell's own icon;
+-- the question mark only when nothing has a real one.
+do
+    local QUESTION_MARK = 134400
+    local function IsRealIcon(icon)
+        return icon and icon ~= 0 and icon ~= QUESTION_MARK
+    end
+    local function RecipeIcon(spellID)
+        if not C_TradeSkillUI then return nil end
+        local ok, output = pcall(C_TradeSkillUI.GetRecipeOutputItemData, spellID)
+        if ok and output and IsRealIcon(output.icon) then return output.icon end
+        local okInfo, recipe = pcall(C_TradeSkillUI.GetRecipeInfo, spellID)
+        if okInfo and recipe and IsRealIcon(recipe.icon) then return recipe.icon end
+        return nil
+    end
+    function UF.CastIcon(texture, spellID, isTradeskill)
+        local id = canaccessvalue(spellID) and spellID or nil
+        local secret = not canaccessvalue(texture)
+        local crafting = canaccessvalue(isTradeskill) and isTradeskill
+        if id and (crafting or (not secret and not IsRealIcon(texture))) then
+            local icon = RecipeIcon(id)
+            if icon then return icon end
+        end
+        if secret or IsRealIcon(texture) then return texture end
+        if id then
+            local icon = C_Spell.GetSpellTexture(id)
+            if IsRealIcon(icon) then return icon end
+        end
+        return QUESTION_MARK
+    end
+end
+
 local function UpdateCastBar(cast, enabled)
     if not enabled then cast:Hide() return end
     if LEM:IsInEditMode() then ShowSampleCast(cast) return end
@@ -943,13 +977,13 @@ local function UpdateCastBar(cast, enabled)
 
     local channeling = false
     local n = select("#", UnitCastingInfo(unit))
-    local name, text, texture, _, _, _, _, notInterruptible
+    local name, text, texture, _, isTradeskill, notInterruptible, spellID
     if n > 0 then
-        name, text, texture, _, _, _, _, notInterruptible = UnitCastingInfo(unit)
+        name, text, texture, _, _, isTradeskill, _, notInterruptible, spellID = UnitCastingInfo(unit)
     else
         n = select("#", UnitChannelInfo(unit))
         if n > 0 then
-            name, text, texture, _, _, _, notInterruptible = UnitChannelInfo(unit)
+            name, text, texture, _, _, isTradeskill, notInterruptible, spellID = UnitChannelInfo(unit)
             channeling = true
         end
     end
@@ -969,11 +1003,7 @@ local function UpdateCastBar(cast, enabled)
     local label = text
     if canaccessvalue(text) then label = text or name or "" end
     cast.Text:SetText(label)
-    if canaccessvalue(texture) and texture then
-        cast.Icon:SetTexture(texture)
-    else
-        cast.Icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-    end
+    cast.Icon:SetTexture(UF.CastIcon(texture, spellID, isTradeskill))
 
     local color
     if cast.standalone then

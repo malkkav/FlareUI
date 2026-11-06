@@ -218,10 +218,10 @@ local function UpdateWheels()
     end
 end
 
-local function SetupWheel(frame)
+local function SetupWheel(frame, target)
     if frame.moveWheelHooked or not frame.EnableMouseWheel then return end
     frame.moveWheelHooked = true
-    frame.moveTarget = frame
+    frame.moveTarget = target or frame
     frame:HookScript("OnMouseWheel", OnMouseWheel)
     if frame:IsMouseWheelEnabled() then return end
     wheelOnCtrl[frame] = true
@@ -277,12 +277,34 @@ local function SetupMovableFrame(name)
 end
 
 -- windows Blizzard shows without registering them as panels (the clock, opened mail, the stable,
--- loot history, the group finder's lists, the dressing preview): each one once it exists
+-- loot history, the group finder, the dressing preview): each one once it exists
 local EXTRA_WINDOWS = {
     "TimeManagerFrame", "OpenMailFrame", "StableFrame", "PetStableFrame", "GroupLootHistoryFrame",
-    "LFGListingFrame", "LFGBrowseFrame", "LFGWhoListFrame", "ModelPreviewFrame", "CinematicsMenu",
-    "CooldownViewerSettings",
+    "LFGParentFrame", "ModelPreviewFrame", "CinematicsMenu", "CooldownViewerSettings",
 }
+
+-- The group finder's pages fill its window and hold the only title bar, so they move the window. Moved
+-- on their own they would come apart from it and its tabs.
+local LFG_PAGES = { "LFGBrowseFrame", "LFGListingFrame", "LFGWhoListFrame" }
+
+local function SetupLFGPages()
+    local parent = moveFrames.LFGParentFrame
+    if not parent then return end
+    for _, name in ipairs(LFG_PAGES) do
+        local page = _G[name]
+        if type(page) == "table" and page.TitleContainer then
+            SetupHandle(parent, page.TitleContainer)
+            SetupWheel(page, parent)
+        end
+    end
+end
+
+-- Pages moved by an earlier version go back into the window
+local function ForgetLFGPagePositions()
+    local db = GetDb()
+    if not (db and db.frames) then return end
+    for _, name in ipairs(LFG_PAGES) do db.frames[name] = nil end
+end
 
 local function ScanUIPanels()
     local windows = _G.UIPanelWindows
@@ -290,6 +312,7 @@ local function ScanUIPanels()
         for name in pairs(windows) do SetupMovableFrame(name) end
     end
     for _, name in ipairs(EXTRA_WINDOWS) do SetupMovableFrame(name) end
+    SetupLFGPages()
 end
 
 -- A bag's portrait router covers the title bar and opens the menu on mouse down, which would
@@ -371,6 +394,7 @@ local function ScanBagFrames()
 end
 
 local function InitMoveAnyFrame()
+    ForgetLFGPagePositions()
     ScanUIPanels()
     ScanBagFrames()
     -- load-on-demand panels register themselves when their addon loads

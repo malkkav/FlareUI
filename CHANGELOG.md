@@ -1,3 +1,11 @@
+# FlareUI 3.0.6
+
+The group finder stays in one piece when you move it, and crafting shows the right icon on your cast bar.
+
+## Fixed
+- Move Any Frame: moving or scaling the Looking for Group window pulled its pages away from the window and its tabs, and it stayed that way. It now moves and scales as one window. If yours came apart, it goes back together and returns to its default spot.
+- Cast bars: crafting showed a question mark or the wrong icon. It now shows the item you're making.
+
 # FlareUI 3.0.5
 
 Fewer options on your frames: four that we couldn't confirm work properly on Forever are gone.
