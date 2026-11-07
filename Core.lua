@@ -424,6 +424,8 @@ local defaults = {
             visibility = "always",      -- always | combat | hidden | group (overrules Blizzard's Edit Mode one)
             showOnMouseover = false,    -- while the visibility hides the meter, it shows under the mouse
             matchChatSize = false,      -- the meter takes the chat frame's size (Edit Mode's is overridden)
+            chatTab = false,            -- a Meter tab with the chat's tabs: the meter in the chat window (Chat module on)
+            chatTabIgnoreFade = false,  -- on the Meter tab the chat never fades, whatever its Visibility
             autoThreat = false,         -- the Threat tab when combat starts, Blizzard's view when it ends
         },
 
