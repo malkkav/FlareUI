@@ -1383,9 +1383,20 @@ function DamageMeter:Refresh()
     local db = GetDb()
     if not db or not db.enabled then return end
     self:SetupMouseover()
-    -- several events can ask in the same frame
+    -- several events can ask in the same frame: one pass now, and one more a frame later for what
+    -- the rest brought (at login the loading screen holds every timer, then lands them all in one
+    -- frame: the chat's skin arrives there after the first pass)
     local now = GetTime()
-    if self._lastRefresh == now then return end
+    if self._lastRefresh == now then
+        if not self._refreshQueued then
+            self._refreshQueued = true
+            C_Timer.After(0, function()
+                self._refreshQueued = nil
+                self:Refresh()
+            end)
+        end
+        return
+    end
     self._lastRefresh = now
 
     for _, window in ipairs(GetSessionWindows()) do

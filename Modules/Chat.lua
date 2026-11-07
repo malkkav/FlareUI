@@ -3109,4 +3109,6 @@ function Chat:RefreshAll()
         if cf then Chat:ShowChatFrame(cf, db) end
     end
     Chat:RefreshMeterTab()   -- its hover watch follows a changed Visibility
+    -- the meter takes the skin's size and place: its own pass at login may have come first
+    if ns.DamageMeter and ns.DamageMeter.Refresh then ns.DamageMeter:Refresh() end
 end
