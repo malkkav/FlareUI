@@ -12,6 +12,9 @@ local open = {}   -- heading row key -> open
 
 local SIZES = {}
 for i = 8, 24 do SIZES[#SIZES + 1] = { i, tostring(i) } end
+-- Auto (0) first: unit frame aura text sized to the icon
+local AUTO_SIZES = { { 0, ns.L["Auto"] } }
+for _, size in ipairs(SIZES) do AUTO_SIZES[#AUTO_SIZES + 1] = size end
 
 -- shadow offset per preset; "none" has no shadow
 local SHADOWS = { soft = 1, strong = 2 }
@@ -23,7 +26,8 @@ local function Faces()
     return list
 end
 
--- def: module, tab, section, apply, fonts ({ { key = "text", path = "chat.chatFont" }, ... })
+-- def: module, tab, section, apply, fonts ({ { key = "text", path = "chat.chatFont" }, ... });
+-- a font with autoSize adds the Auto size (0)
 function S:FontRows(def)
     for _, font in ipairs(def.fonts) do
         local heading = def.module .. ".font." .. font.key
@@ -43,7 +47,7 @@ function S:FontRows(def)
             S:Row(row)
         end
         Control("face", { kind = "dropdown", choices = Faces, dropdownWidth = 150 })
-        Control("size", { kind = "choice", choices = SIZES })
+        Control("size", { kind = "choice", choices = font.autoSize and AUTO_SIZES or SIZES })
         Control("flags", { kind = "choice", choices = { "NONE", "OUTLINE", "THICKOUTLINE" } })
         -- one choice sets the shadow and its offset
         Control("shadow", { kind = "choice", choices = { "none", "soft", "strong" },

@@ -1344,6 +1344,13 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
 
         rootDescription:CreateButton(L["Copy Chat"], function() Chat:ShowCopyChat(chatFrame) end)
 
+        -- Blizzard's own toggle and text: links off and no resizing, for the docked windows together
+        if _G.FCF_SetExpandedUninteractable and _G.MAKE_UNINTERACTABLE and _G.MAKE_INTERACTABLE then
+            rootDescription:CreateButton(chatFrame.isUninteractable and MAKE_INTERACTABLE or MAKE_UNINTERACTABLE, function()
+                FCF_SetExpandedUninteractable(chatFrame, not chatFrame.isUninteractable)
+            end)
+        end
+
         rootDescription:CreateDivider()
 
         rootDescription:CreateButton(L["Chat Settings"], function()

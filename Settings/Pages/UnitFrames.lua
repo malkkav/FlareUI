@@ -98,5 +98,6 @@ S:FontRows{ module = "uf", tab = "fonts", section = "uf.fonts", apply = Refresh,
     { key = "names", path = "unitframes.font" },
     { key = "power", path = "unitframes.fontPower" },
     { key = "castBar", path = "unitframes.fontCast" },
-    { key = "auras", path = "unitframes.auraFont" },
+    { key = "auras", path = "unitframes.auraFont", autoSize = true },
+    { key = "auraCount", path = "unitframes.auraCountFont", autoSize = true },
 } }

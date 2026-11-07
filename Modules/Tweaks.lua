@@ -1751,8 +1751,9 @@ end
 -- 15. EDIT MODE LAYOUT PER MODE
 -- Switching the Gamepad UI falls back to the new mode's preset layout. FlareUI remembers the layout
 -- last used in each mode (per character, by type and name) and offers it back after login. The
--- switch runs from the dialog's secure button (from addon code it would taint every system); never
--- in combat.
+-- switch runs from the dialog's secure button, never in combat, and reloads: SetActiveLayout applies
+-- the layout inside the call and /run is forced insecure, so without the reload every system kept
+-- tainted anchors and Blizzard's bar layout was blocked in the next fight.
 --------------------------------------------------
 local function ModeKey()
     return ns.IsGamepadUI() and "gamepad" or "keyboard"
@@ -1811,10 +1812,10 @@ local function RememberedIndex()
 end
 
 ns.Dialogs["FLAREUI_RESTORE_LAYOUT"] = {
-    text = L["Restore your %s Edit Mode layout?"],
+    text = L["Restore your %s Edit Mode layout?"] .. "\n\n" .. L["This reloads your interface."],
     button1 = L["Restore"],
     button2 = L["Not Now"],
-    macro = function(data) return "/run C_EditMode.SetActiveLayout(" .. data.index .. ")" end,
+    macro = function(data) return "/run C_EditMode.SetActiveLayout(" .. data.index .. ")\n/reload" end,
     hideOnEscape = true,
     padSecure = true,
 }

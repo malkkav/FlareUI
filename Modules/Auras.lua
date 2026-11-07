@@ -77,9 +77,9 @@ local PREVIEW_DEBUFF_TYPES = { "Magic", "Curse", "Disease", "Poison", "None" }
 local PREVIEW_TIMES = { "5m", "32s", "1h", "12s", "2m", "45m", "8s" }
 
 local KINDS = {
-    buffs   = { label = L["FlareUI Buffs"],   filter = "HELPFUL", isDebuff = false,
+    buffs   = { label = L["FlareUI Buffs"],   isDebuff = false,
                 default = { point = "TOPRIGHT", x = -260, y = -4 } },
-    debuffs = { label = L["FlareUI Debuffs"], filter = "HARMFUL", isDebuff = true,
+    debuffs = { label = L["FlareUI Debuffs"], isDebuff = true,
                 default = { point = "TOPRIGHT", x = -260, y = -166 } },
 }
 local KIND_ORDER = { "buffs", "debuffs" }
@@ -140,12 +140,19 @@ local styledButtons = setmetatable({}, { __mode = "k" })
 local previewWanted, settingsPreview = false, false
 local function Previewing() return LEM:IsInEditMode() or settingsPreview end
 
-local function ApplyPreviewTimer(button)
+local function ApplyPreviewTimerNow(button)
     local text, preview = button.FlareUI_Duration, button.FlareUI_PreviewTimer
     if not (text and preview) then return end
     local on = Previewing() and button.FlareUI_TimerShown
     preview:SetShown(on and true or false)
     text:SetAlpha((button.FlareUI_TimerShown and not on) and 1 or 0)
+end
+
+-- Blizzard locks its aura buttons against addon code while auras are secret (combat, instances:
+-- DenyTaintedAccessWhenAurasAreSecret), and every call on them then errors. A locked button keeps
+-- its timer as it was until the next change
+local function ApplyPreviewTimer(button)
+    pcall(ApplyPreviewTimerNow, button)
 end
 
 local function StyleButton(button, look)
@@ -274,16 +281,19 @@ local function StyleButton(button, look)
         if cd.SetEdgeScale then cd:SetEdgeScale(SWIPE_EDGE_SCALE) end
     end
 
-    local fontPath = ns.GetFontPath(look.font and look.font.face or "Friz Quadrata TT")
-    local fontSize = (look.font and look.font.size) or 11
-    local flags = (look.font and look.font.flags) or "OUTLINE"
+    local font, countFont = look.font or {}, look.countFont or look.font or {}
+    local fontPath = ns.GetFontPath(font.face or "Friz Quadrata TT")
+    local fontSize = font.size or 11
+    local flags = font.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end   -- not a valid client flag
+    local countFlags = countFont.flags or "OUTLINE"
+    if countFlags == "NONE" then countFlags = "" end
     local countText, durationText = button.FlareUI_Count, button.FlareUI_Duration
-    local timerSize = math_max(8, fontSize - 1)
-    ns.SetFont(countText, fontPath, fontSize, flags)
+    local timerSize = look.timerSize or math_max(8, fontSize - 1)
+    ns.SetFont(countText, ns.GetFontPath(countFont.face or "Friz Quadrata TT"), countFont.size or fontSize, countFlags)
     ns.SetFont(durationText, fontPath, timerSize, flags)
-    ns.ApplyShadow(countText, look.font)
-    ns.ApplyShadow(durationText, look.font)
+    ns.ApplyShadow(countText, countFont)
+    ns.ApplyShadow(durationText, font)
     countText:ClearAllPoints()
     countText:SetPoint("TOPRIGHT", area, "TOPRIGHT", round and 1 or -1, round and 1 or -1)
     durationText:ClearAllPoints()
@@ -381,12 +391,14 @@ end
 -- A snapshot of one frame's settings for the buttons Blizzard initialises
 local function Look(kind)
     local db, kdb = GetDb(), KindDb(kind)
+    ns.SeedFont(db, "font", "countFont", "countFontSeeded")
     return {
         size = kdb.size or 30,
         style = db.style or "square",
         swipe = db.swipe or "both",
         timer = db.timer or "below",
         font = db.font,
+        countFont = db.countFont,
         isDebuff = KINDS[kind].isDebuff,
         colors = ColorMap(KINDS[kind].isDebuff, db.style == "round", db.swipe == "border"),
         arrive = db.arrive and true or false,
@@ -394,25 +406,31 @@ local function Look(kind)
 end
 
 -- The same buttons for unit, party and raid frame auras (with or without this module), in the
--- "Aura Text" font sized to the icon
+-- unit frame fonts: Aura timers and Aura stacks, each sized to the icon on Auto (size 0)
 ns.AuraLook = {
     Style = StyleButton,
     Hook = HookButton,
     ForUnit = function(size, isDebuff, canCancel, style, swipe, timer)
         local uf = ns.db and ns.db.profile and ns.db.profile.unitframes or {}
+        ns.SeedFont(uf, "auraFont", "auraCountFont", "auraCountFontSeeded", true)
         style, timer = style or "square", timer or "below"
-        local fontSize = math_max(7, math_floor(size * 0.4 + 0.5))
-        local font = setmetatable({ size = fontSize }, { __index = uf.auraFont or {} })
+        local autoSize = math_max(7, math_floor(size * 0.4 + 0.5))
+        local timerFont, countFont = uf.auraFont or {}, uf.auraCountFont or uf.auraFont or {}
+        local timerSize = (timerFont.size or 0) > 0 and timerFont.size or math_max(8, autoSize - 1)
+        local countSize = (countFont.size or 0) > 0 and countFont.size or autoSize
         return {
             size = size,
             style = style,
             swipe = swipe or "icon",
             timer = timer,
-            font = font,
+            font = setmetatable({ size = autoSize }, { __index = timerFont }),
+            countFont = setmetatable({ size = countSize }, { __index = countFont }),
+            timerSize = timerSize,
             isDebuff = isDebuff,
             cancel = canCancel,
             colors = ColorMap(isDebuff, style == "round"),
-            cellHeight = size + ((timer == "below") and (fontSize + 3) or 0),
+            -- Auto keeps the old room (autoSize + 3); a chosen size gets its own
+            cellHeight = size + ((timer == "below") and ((timerFont.size or 0) > 0 and timerSize + 4 or autoSize + 3) or 0),
         }
     end,
 }
@@ -687,7 +705,8 @@ local function LayoutKind(kind)
     }
     local adb = GetDb()
     local sortMethod, sortDirection = ns.AuraOrder.Options(adb and adb.sort or "applied", adb and adb.reverse, adb and adb.mineFirst)
-    local key, err = ns.AuraGroups.Add(container, holder.auraGroups, kind, ns.AuraGroups.Sig(look), KINDS[kind].filter, {
+    local lane = ns.AuraPolicy.PlayerListLane(KINDS[kind].isDebuff)
+    local key, err = ns.AuraGroups.Add(container, holder.auraGroups, kind, ns.AuraGroups.Sig(look), lane.filter, {
         maxFrameCount = kdb.max or 32,
         -- Aura Ordering (Order Applied by default); the container compares, never addon code
         sortMethod = sortMethod, sortDirection = sortDirection,

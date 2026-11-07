@@ -145,7 +145,8 @@ local LEVEL_SCALE = 0.94
 local SHARED_KEYS = { enabled = true, foreverStyle = true, plateStyle = true, styleProfiles = true, editSections = true,
                       raid = true, resource = true, styleStart = true, tileStyle = true, plateTiles = true,
                       simplePet = true, simpleTargetOf = true, palette = true, visibility = true, classColor = true, fullNames = true,
-                      auraStyle = true, auraTimer = true, font = true, fontPower = true, fontCast = true, auraFont = true }
+                      auraStyle = true, auraTimer = true, font = true, fontPower = true, fontCast = true, auraFont = true,
+                      auraCountFont = true, auraCountFontSeeded = true }
 -- a stored setup may lack these
 local TILE_KEYS = { party = true, boss = true }
 

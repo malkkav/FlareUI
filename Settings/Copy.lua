@@ -344,8 +344,12 @@ ns.Copy = {
             section = "au.general",
             tip = L["Plays where an icon is added, so with a sort that moves icons around it can land on the last slot."],
         },
+        ["au.font.count"] = {
+            desc = L["The stack count on each icon."],
+            label = L["Aura stacks"],
+        },
         ["au.font.timer"] = {
-            desc = L["Time left and stack counts."],
+            desc = L["The time left on each icon."],
             label = L["Aura timers"],
         },
         ["au.mineFirst"] = {
@@ -1217,9 +1221,15 @@ ns.Copy = {
             label = L["Player cast bar"],
             section = "uf.frames",
         },
+        ["uf.font.auraCount"] = {
+            desc = L["The stack count on unit frame auras."],
+            label = L["Aura stacks"],
+            tip = L["Auto sizes the text to the icon."],
+        },
         ["uf.font.auras"] = {
             desc = L["The time left on unit frame auras."],
             label = L["Aura timers"],
+            tip = L["Auto sizes the text to the icon."],
         },
         ["uf.font.castBar"] = {
             desc = L["Spell names and times on cast bars."],

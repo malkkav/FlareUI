@@ -558,18 +558,11 @@ local function UpdateStatus(f)
     end
 end
 
--- A group member too far away to be visible comes with no aura durations: every buff reads as permanent,
--- so Hide Buffs would hide them all. Its filter drops out until the unit is near again.
+-- A group member too far away to be visible comes with no aura durations: Hide Buffs drops until the
+-- unit is near again (ns.AuraPolicy.UpdateReach). Enemy tiles keep it.
 local function UpdateAuraReach(f)
     if not f.AuraPos or (f.ctx and f.ctx.hostile) then return end
-    local far = f.unit and UnitExists(f.unit) and not UnitIsVisible(f.unit) or false
-    if (f.auraFar or false) == far then return end
-    f.auraFar = far
-    for _, entry in pairs(f.AuraPos) do
-        if entry.durationKey then
-            pcall(entry.container.SetAuraGroupCandidateFilters, entry.container, entry.durationKey, far and entry.farFilter or entry.durationFilter)
-        end
-    end
+    ns.AuraPolicy.UpdateReach(f, f.unit)
 end
 
 -- Out of range fades the frame (UnitInRange is secret: SetAlphaFromBoolean picks the alpha). The
@@ -685,18 +678,9 @@ local function UpdateRing(f)
 end
 
 -- Aura containers only follow UNIT_AURA for their token: when another unit takes it (roster change,
--- new boss1) the old auras would linger. Rebuild on a new GUID (always when it is secret). Not
--- protected: fine in combat.
+-- new boss1) the old auras would linger. Rebuild on a new GUID (always when it is secret).
 local function RefreshAurasOnNewUnit(f)
-    local guid = UnitGUID(f.unit)
-    if not canaccessvalue(guid) then guid = nil end
-    if guid and guid == f.auraGUID then return end
-    f.auraGUID = guid
-    local function Refresh(entry)
-        if entry and entry.container:IsShown() then pcall(entry.container.UpdateAllAuras, entry.container) end
-    end
-    if f.AuraPos then for _, entry in pairs(f.AuraPos) do Refresh(entry) end end
-    Refresh(f.AuraHighlight)
+    if f.AuraPos or f.AuraHighlight then ns.AuraPolicy.UnitChanged(f, f.unit, true) end
 end
 
 local function UpdateAll(f)
@@ -789,8 +773,8 @@ end
 
 --------------------------------------------------
 -- 5. AURAS
--- Blizzard's aura containers render everything (aura data can be secret): one per place, on the
--- ProcessAura policy (Blizzard's raid frame rules), plus the dispel highlight slot.
+-- Blizzard's aura containers render everything (aura data can be secret): one per place, plus the
+-- dispel highlight slot. What each place shows, and on which policy, comes from ns.AuraPolicy.
 --------------------------------------------------
 local auraSupport
 local function HasAuraSupport()
@@ -810,7 +794,7 @@ local function PrecreateAuraContainers(f)
             if policy then pcall(container.SetAuraProcessingPolicy, container, policy.ProcessAura, {}) end
             container:SetFrameLevel(f:GetFrameLevel() + 6)
             container:Hide()
-            f.AuraPos[pos] = { container = container }
+            f.AuraPos[pos] = { container = container, policy = "process" }
         end
     end
     -- the dispel highlight, kept out of Edit Mode's sample data (ApplyPreview draws its own)
@@ -930,7 +914,6 @@ local function ConfigurePosition(f, pos, lanes)
     local entry = f.AuraPos and f.AuraPos[pos]
     if not entry then return end
     local container = entry.container
-    entry.durationKey, entry.durationFilter, entry.farFilter = nil, nil, nil
     -- groups are reused per lane and look (ns.AuraGroups); the lanes left out turn off
     ns.AuraGroups.Begin(entry)
     if #lanes == 0 then
@@ -983,11 +966,8 @@ local function ConfigurePosition(f, pos, lanes)
         })
         if not key then
             geterrorhandler()(err)
-        elseif lane.candidates and lane.candidates.maxDuration then
-            -- the same filters without Hide Buffs' duration, for UpdateAuraReach
-            local far = CopyTable(lane.candidates)
-            far.maxDuration = nil
-            entry.durationKey, entry.durationFilter, entry.farFilter = key, lane.candidates, far
+        else
+            ns.AuraPolicy.Track(f, container, key, lane)
         end
     end
     ns.AuraGroups.Finish(container, entry)
@@ -1013,71 +993,37 @@ local function ConfigureAuras(f)
     local st = TS(f)
     if not st then return end
     local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.buffSize, st.debuffSize, st.width, st.height, st.powerHeight, st.portrait, st.ringSize, (DispelGrid(f)), f.ringKind, AuraGrid(st), UFAura("auraStyle", "square"),
-        UFAura("auraTimer", "none"), ns.AuraGroups.Sig(UFAura("auraFont")), ns.AuraGroups.Sig(UFAura("font")), st.castbar, st.castHeight, OnPlate(f),
+        UFAura("auraTimer", "none"), ns.AuraGroups.Sig(UFAura("auraFont")), ns.AuraGroups.Sig(UFAura("auraCountFont")), ns.AuraGroups.Sig(UFAura("font")), st.castbar, st.castHeight, OnPlate(f),
         st.hideBuffs, IsEditing(), st.onlyMyDebuffs, st.onlyMyBuffs, st.dispellableOnly, st.auraSort, st.auraReverse, st.auraMineFirst)
     if f.auraSignature == sig then return end
     f.auraSignature = sig
-    local processed = AuraUtil and AuraUtil.AuraUpdateChangedType
     local perPos = {}
     for _, pos in ipairs(AURA_POSITIONS) do perPos[pos] = {} end
     -- (on the plate the bars are too slim for auras: an inside place shows nothing)
     local plate = OnPlate(f)
-    local function Add(pos, lane)
-        if plate and IsInsidePlace(pos) then return end
-        if pos and perPos[pos] then perPos[pos][#perPos[pos] + 1] = lane end
+    -- what each lane shows, and on which rules, comes from ns.AuraPolicy (debuffs first, nearest the
+    -- frame); the places and sizes are this module's
+    local hostile = f.ctx and f.ctx.hostile or false
+    local lanes = ns.AuraPolicy.TileLanes(st, { hostile = hostile, dispelPlace = DispelPlace(f, st), editing = IsEditing() })
+    for _, lane in ipairs(lanes) do
+        local pos = lane.place
+        if pos and perPos[pos] and not (plate and IsInsidePlace(pos)) then perPos[pos][#perPos[pos] + 1] = lane end
     end
-    -- Hide Buffs: Blizzard's maxDuration filter on the full duration, which always drops permanent
-    -- buffs too; skipped in Edit Mode (samples have no duration)
-    local function HideBuffs(candidates)
-        local hide = not IsEditing() and (st.hideBuffs or "PERMANENT")
-        if hide and hide ~= "OFF" then
-            candidates = candidates or {}
-            candidates.maxDuration = (hide == "PERMANENT") and 999999 or tonumber(hide)
-        end
-        return candidates
-    end
-    -- ProcessAura's rules keep only the buffs you cast. Its policy is per container, and debuff groups need
-    -- it: only a place holding buffs alone goes without (they never share a place, but a stored setup may)
-    local function ApplyBuffPolicy(allBuffs)
-        local policy = _G.CustomAuraContainerAuraProcessingPolicy
-        if not policy then return end
-        for _, pos in ipairs(AURA_POSITIONS) do
-            local rec, lanes = f.AuraPos[pos], perPos[pos]
-            local plain = allBuffs and #lanes == 1 and lanes[1].kind == "buffs"
-            if rec and (rec.plainPolicy or false) ~= plain then
-                rec.plainPolicy = plain
-                if plain then
-                    pcall(rec.container.SetAuraProcessingPolicy, rec.container, policy.None)
-                else
-                    pcall(rec.container.SetAuraProcessingPolicy, rec.container, policy.ProcessAura, {})
-                end
+    -- the processing policy is per container: set before its groups are built
+    for _, pos in ipairs(AURA_POSITIONS) do
+        local rec, placeLanes = f.AuraPos[pos], perPos[pos]
+        if rec and #placeLanes > 0 then
+            local policy = ns.AuraPolicy.PlacePolicy(placeLanes)
+            if rec.policy ~= policy then
+                rec.policy = policy
+                ns.AuraPolicy.ApplyPolicy(rec.container, policy)
             end
         end
     end
-    -- an enemy tile: every buff on it, and only the player's debuffs (damage over time, sunders)
-    if f.ctx and f.ctx.hostile then
-        -- Only My Debuffs: on unless set false
-        Add(st.debuffs, { key = "debuffs", kind = "debuffs", filter = st.onlyMyDebuffs == false and "HARMFUL" or "HARMFUL|PLAYER", isDebuff = true })
-        Add(st.buffs,   { key = "buffs", kind = "buffs", filter = "HELPFUL", isDebuff = false, candidates = HideBuffs(nil) })
-        ApplyBuffPolicy(true)
-        for _, pos in ipairs(AURA_POSITIONS) do ConfigurePosition(f, pos, perPos[pos]) end
-        return
-    end
-    -- debuffs first, nearest the frame. Dispellable Debuffs Only: the RAID filter.
-    local debuffFilter = st.dispellableOnly and "HARMFUL|RAID" or "HARMFUL"
-    Add(st.debuffs, { key = "debuffs", kind = "debuffs", filter = debuffFilter, isDebuff = true })
-    Add(DispelPlace(f, st), { key = "dispels", kind = "dispels", filter = "HARMFUL", isDebuff = true,
-                      candidates = processed and { processedAuraType = processed.Dispel } })
-    -- Only My Buffs: the PLAYER filter, on unless set false; off shows everyone's buffs
-    local onlyMine = st.onlyMyBuffs ~= false
-    local allBuffs = not onlyMine
-    Add(st.buffs,   { key = "buffs", kind = "buffs", filter = onlyMine and "HELPFUL|PLAYER" or "HELPFUL", isDebuff = false,
-                      candidates = HideBuffs(processed and not allBuffs and { processedAuraType = processed.Buff } or nil) })
-    ApplyBuffPolicy(allBuffs)
+    ns.AuraPolicy.Begin(f)
     for _, pos in ipairs(AURA_POSITIONS) do ConfigurePosition(f, pos, perPos[pos]) end
-    -- the groups were just given their filters
-    f.auraFar = false
-    UpdateAuraReach(f)
+    -- the groups were just given their filters: reach applies on top (enemy tiles: never)
+    if not hostile then ns.AuraPolicy.Done(f, f.unit) end
 end
 
 -- The dispel highlight: a slot in its own container, showing the first aura of its filter (never given
@@ -1092,15 +1038,22 @@ local function ConfigureDispelHighlight(f)
     if hlEntry.signature == sig then return end
     hlEntry.signature = sig
     local hlContainer = hlEntry.container
-    for _, key in ipairs(hlEntry.keys) do pcall(hlContainer.SetAuraSlotEnabled, hlContainer, key, false) end
-    hlEntry.keys = {}
-    hlEntry.generation = hlEntry.generation + 1
+    -- slots can't be removed and their button is styled once: one slot per look, reused when that
+    -- look comes back; the filter (mine / all) changes in place
+    for _, key in pairs(hlEntry.keys) do pcall(hlContainer.SetAuraSlotEnabled, hlContainer, key, false) end
     local highlight = st.dispelHighlight or "mine"
     local styles = Enum.CustomAuraButtonDispelTypeTextureStyle
+    local lookSig = Signature(plate, K.Border(st.border), (st.height and st.height < 22 and st.height or 22))
     if highlight ~= "off" and styles then
         local filter = highlight == "all" and "HARMFUL|RAID_PLAYER_DISPELLABLE" or "HARMFUL|RAID"
+        local reused = hlEntry.keys[lookSig]
+        if reused then
+            pcall(hlContainer.SetAuraSlotFilterString, hlContainer, reused, filter)
+            pcall(hlContainer.SetAuraSlotEnabled, hlContainer, reused, true)
+        end
+        hlEntry.generation = hlEntry.generation + 1
         local key = "dispelhl" .. hlEntry.generation
-        local ok = pcall(hlContainer.AddAuraSlot, hlContainer, key, filter, {
+        local ok = not reused and pcall(hlContainer.AddAuraSlot, hlContainer, key, filter, {
             -- a copy of the frame's border just over it: Blizzard shows and tints its pieces for a
             -- dispellable debuff (the type may be secret)
             initializeFrame = function(button)
@@ -1147,7 +1100,7 @@ local function ConfigureDispelHighlight(f)
                 end
             end,
         })
-        if ok then hlEntry.keys[#hlEntry.keys + 1] = key end
+        if ok then hlEntry.keys[lookSig] = key end
     end
     hlContainer:Show()
     pcall(hlContainer.SetEditModePreviewEnabled, hlContainer, false)

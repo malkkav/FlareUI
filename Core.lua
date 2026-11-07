@@ -460,8 +460,10 @@ local defaults = {
             layouts = {},
             -- Blizzard's totem frame on FlareUI Totems (Modules/Totems.lua): size in %, totems per row
             totems = { size = 90, perRow = 4 },
-            -- aura text; its size follows the icon size, so auraFont.size is not used
-            auraFont = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            -- aura timers and stack counts; size 0 (Auto) follows the icon size. The stack font starts
+            -- as a copy of the timer font (ns.SeedFont)
+            auraFont = { face = "Friz Quadrata TT", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            auraCountFont = { face = "Friz Quadrata TT", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             editSections = {},          -- Edit Mode sections left open (shared by every frame)
             -- resource bars (Modules/ResourceBars.lua); positions in layouts[layout][bar]
             resource = {
@@ -595,6 +597,8 @@ local defaults = {
             arrive = false,             -- new icons fade in while dropping into place
             sort = "applied", reverse = false, mineFirst = true,   -- Aura Ordering (both frames)
             font = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            -- stack counts; starts as a copy of the timer font (ns.SeedFont)
+            countFont = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- per frame, set in Edit Mode
             buffs   = { size = 26, perRow = 9, max = 27, spacing = 4, grow = "LEFT", wrap = "DOWN" },
             debuffs = { size = 30, perRow = 8, max = 16, spacing = 4, grow = "LEFT", wrap = "UP" },
@@ -876,6 +880,20 @@ function ns.ApplyShadow(fontString, fontConfig)
     end
 end
 
+-- A font split off another (aura stacks from aura timers) starts as the player's copy of it, once
+-- per profile: only fields the player changed are copied, the rest are the same defaults anyway.
+-- Size is copied only where the old font's size was in use.
+function ns.SeedFont(db, fromKey, toKey, flagKey, skipSize)
+    if not db or rawget(db, flagKey) then return end
+    db[flagKey] = true
+    local from, to = db[fromKey], db[toKey]
+    if type(from) ~= "table" or type(to) ~= "table" then return end
+    for _, field in ipairs({ "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }) do
+        local value = rawget(from, field)
+        if value ~= nil and not (skipSize and field == "size") then to[field] = value end
+    end
+end
+
 -- Aura groups can't be removed from a container, and each keeps its pooled buttons. So a group is
 -- made once per lane and button look, then reused: filter, size, sort and layout change in place.
 -- Only a new look makes a new group, as initializeFrame runs once per button.
@@ -950,6 +968,203 @@ function ns.AuraGroups.Finish(container, store)
             pcall(container.SetAuraGroupEnabled, container, key, false)
             pcall(container.SetAuraGroupMaxFrameCount, container, key, 0)
         end
+    end
+end
+
+-- AURA POLICY: what every aura frame shows. The modules keep where (corners, places, sizes); the
+-- rules live here once: the filter strings, candidate filters, processing policy, and what happens
+-- when the unit behind a token changes. Blizzard's aura containers do the tracking, timers and sort.
+-- A lane: { key, kind, place, filter, isDebuff, candidates, enemyFilter, policy }.
+--   enemyFilter: the filter while the unit can be attacked (Only My Debuffs), else filter.
+--   policy (tiles): "process" = Blizzard's raid frame rules (AuraUtil.ProcessAura), "none" = plain.
+ns.AuraPolicy = {}
+do
+    local AP = ns.AuraPolicy
+
+    -- Hide Buffs: Blizzard's maxDuration on the full duration, which also always drops permanent
+    -- buffs, so Off is no filter. Not in Edit Mode: its samples have no duration.
+    function AP.HideBuffs(hide, editing, candidates)
+        hide = hide or "PERMANENT"
+        if editing or hide == "OFF" then return candidates end
+        local max = (hide == "PERMANENT") and 999999 or tonumber(hide)
+        if not max then return candidates end
+        candidates = candidates or {}
+        candidates.maxDuration = max
+        return candidates
+    end
+
+    -- Can the player attack it? (Only My Debuffs counts on enemies: a friend's debuffs are all shown)
+    function AP.IsEnemy(unit)
+        if not unit or not UnitExists(unit) then return false end
+        local enemy = UnitCanAttack("player", unit)
+        return canaccessvalue(enemy) and enemy == true
+    end
+
+    -- Player, target, focus, pet. udb: the unit's settings. Debuffs first: nearest the frame when both
+    -- share a corner. None with Hide Auras (focus).
+    function AP.UnitLanes(unit, udb, editing)
+        local lanes = {}
+        if not udb or udb.hideAuras then return lanes end
+        -- every debuff on yourself is yours to see: Only My Debuffs is for other units, and only enemies
+        local mine = udb.onlyMyDebuffs and unit ~= "player"
+        lanes[1] = { key = "debuffs", kind = "debuffs", place = udb.debuffs, isDebuff = true,
+                     filter = "HARMFUL", enemyFilter = mine and "HARMFUL|PLAYER" or nil }
+        -- Only My Buffs (player): the PLAYER filter
+        lanes[2] = { key = "buffs", kind = "buffs", place = udb.buffs, isDebuff = false,
+                     filter = (unit == "player" and udb.onlyMyBuffs) and "HELPFUL|PLAYER" or "HELPFUL",
+                     candidates = AP.HideBuffs(udb.hideBuffs, editing) }
+        return lanes
+    end
+
+    -- Party, raid, main tank and boss tiles. st: the tile's settings; opts: { hostile, dispelPlace,
+    -- editing }. Friendly debuff places take Blizzard's raid frame rules (ProcessAura: boss, role,
+    -- priority and dispellable debuffs); a dispellable one shows once, as a dispel icon when those are on.
+    function AP.TileLanes(st, opts)
+        local lanes = {}
+        if not st then return lanes end
+        local processed = AuraUtil and AuraUtil.AuraUpdateChangedType
+        if opts.hostile then
+            -- an enemy: every buff on it, and only the player's debuffs (damage over time, sunders);
+            -- plain rules on every place, as the target frame
+            lanes[1] = { key = "debuffs", kind = "debuffs", place = st.debuffs, isDebuff = true, policy = "none",
+                         filter = st.onlyMyDebuffs == false and "HARMFUL" or "HARMFUL|PLAYER" }
+            lanes[2] = { key = "buffs", kind = "buffs", place = st.buffs, isDebuff = false, policy = "none",
+                         filter = "HELPFUL", candidates = AP.HideBuffs(st.hideBuffs, opts.editing) }
+            return lanes
+        end
+        local dispelIcons = opts.dispelPlace and opts.dispelPlace ~= "OFF"
+        -- Dispellable Debuffs Only: the RAID filter (dispellable by you); those land as ProcessAura's
+        -- Dispel, so the debuff row takes them whatever the dispel icons do
+        local debuffCandidates
+        if dispelIcons and not st.dispellableOnly and processed then
+            debuffCandidates = { processedAuraType = processed.Debuff }
+        end
+        lanes[#lanes + 1] = { key = "debuffs", kind = "debuffs", place = st.debuffs, isDebuff = true, policy = "process",
+                              filter = st.dispellableOnly and "HARMFUL|RAID" or "HARMFUL", candidates = debuffCandidates }
+        if dispelIcons then
+            lanes[#lanes + 1] = { key = "dispels", kind = "dispels", place = opts.dispelPlace, isDebuff = true, policy = "process",
+                                  filter = "HARMFUL", candidates = processed and { processedAuraType = processed.Dispel } }
+        end
+        -- Only My Buffs: on unless set false = Blizzard's rules (buffs you cast and can apply) + PLAYER;
+        -- off shows everyone's, which needs the plain policy
+        local onlyMine = st.onlyMyBuffs ~= false
+        lanes[#lanes + 1] = { key = "buffs", kind = "buffs", place = st.buffs, isDebuff = false,
+                              policy = onlyMine and "process" or "none",
+                              filter = onlyMine and "HELPFUL|PLAYER" or "HELPFUL",
+                              candidates = AP.HideBuffs(st.hideBuffs, opts.editing,
+                                  (onlyMine and processed) and { processedAuraType = processed.Buff } or nil) }
+        return lanes
+    end
+
+    -- The Buffs & Debuffs frames (Modules/Auras.lua): the player's whole list, permanent buffs too
+    function AP.PlayerListLane(isDebuff)
+        if isDebuff then
+            return { key = "debuffs", kind = "debuffs", isDebuff = true, filter = "HARMFUL", policy = "none" }
+        end
+        return { key = "buffs", kind = "buffs", isDebuff = false, filter = "HELPFUL", policy = "none" }
+    end
+
+    -- The policy for a container holding these lanes. It is per container: a place holding any
+    -- "process" lane keeps Blizzard's rules (processedAuraType candidates need them).
+    function AP.PlacePolicy(lanes)
+        for _, lane in ipairs(lanes) do
+            if lane.policy == "process" then return "process" end
+        end
+        return "none"
+    end
+
+    -- A lane's filter for its unit right now
+    function AP.FilterFor(lane, unit)
+        if lane.enemyFilter and AP.IsEnemy(unit) then return lane.enemyFilter end
+        return lane.filter
+    end
+
+    function AP.ApplyPolicy(container, policy)
+        local P = _G.CustomAuraContainerAuraProcessingPolicy
+        if not P then return end
+        if policy == "process" then
+            pcall(container.SetAuraProcessingPolicy, container, P.ProcessAura, {})
+        else
+            pcall(container.SetAuraProcessingPolicy, container, P.None)
+        end
+    end
+
+    -- Live state per frame (f.auraLive): the groups whose filter follows the unit's side, and the ones
+    -- with Hide Buffs' duration, which drops while a group member is too far to be visible (it then
+    -- comes with no durations: every buff reads as permanent, so Hide Buffs would hide them all).
+    -- Begin before a frame's groups are built; Track each built group; Done after.
+    function AP.Begin(f)
+        f.auraLive = { enemy = {}, reach = {} }
+    end
+
+    function AP.Track(f, container, key, lane)
+        local live = f.auraLive
+        if not (live and key) then return end
+        if lane.enemyFilter then
+            live.enemy[#live.enemy + 1] = { container = container, key = key, lane = lane }
+        end
+        if lane.candidates and lane.candidates.maxDuration then
+            local far = CopyTable(lane.candidates)
+            far.maxDuration = nil
+            live.reach[#live.reach + 1] = { container = container, key = key, near = lane.candidates, far = far }
+        end
+    end
+
+    -- Re-applies the side and reach state (the groups were just given their layout-time filters)
+    function AP.Done(f, unit)
+        local live = f.auraLive
+        if not live then return end
+        live.isEnemy, live.isFar = nil, nil
+        AP.UpdateSide(f, unit)
+        AP.UpdateReach(f, unit)
+    end
+
+    function AP.UpdateSide(f, unit)
+        local live = f.auraLive
+        if not (live and #live.enemy > 0) then return end
+        local enemy = AP.IsEnemy(unit)
+        if live.isEnemy == enemy then return end
+        live.isEnemy = enemy
+        for _, rec in ipairs(live.enemy) do
+            pcall(rec.container.SetAuraGroupFilterString, rec.container, rec.key, enemy and rec.lane.enemyFilter or rec.lane.filter)
+        end
+    end
+
+    -- noReach: enemy tiles and the player (always visible)
+    function AP.UpdateReach(f, unit)
+        local live = f.auraLive
+        if not (live and #live.reach > 0) then return end
+        local far = unit and unit ~= "player" and UnitExists(unit) and not UnitIsVisible(unit) or false
+        if live.isFar == far then return end
+        live.isFar = far
+        for _, rec in ipairs(live.reach) do
+            pcall(rec.container.SetAuraGroupCandidateFilters, rec.container, rec.key, far and rec.far or rec.near)
+        end
+    end
+
+    -- Every aura container a frame owns: unit frames (f.Auras), tiles (f.AuraPos, f.AuraHighlight)
+    local function EachContainer(f, fn)
+        for _, entry in pairs(f.Auras or {}) do fn(entry.container) end
+        for _, entry in pairs(f.AuraPos or {}) do fn(entry.container) end
+        if f.AuraHighlight then fn(f.AuraHighlight.container) end
+    end
+
+    -- The unit behind the token changed. The containers only follow UNIT_AURA, so a new unit would
+    -- keep the old one's auras: they rebuild, as Blizzard's TargetFrame does (not protected: fine in
+    -- combat; UpdateAllAuras only marks them dirty). byGUID: only when the GUID changed (always when
+    -- it is secret); else always.
+    function AP.UnitChanged(f, unit, byGUID)
+        AP.UpdateSide(f, unit)
+        AP.UpdateReach(f, unit)
+        if byGUID then
+            local guid = unit and UnitGUID(unit)
+            if not canaccessvalue(guid) then guid = nil end
+            if guid and guid == f.auraGUID then return end
+            f.auraGUID = guid
+        end
+        EachContainer(f, function(container)
+            if container:IsShown() then pcall(container.UpdateAllAuras, container) end
+        end)
     end
 end
 

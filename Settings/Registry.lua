@@ -20,9 +20,8 @@ local GROUPS = { "top", "HUD", "Info", "Tools", "bottom" }
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["dm.chatTab"] = "4.1",
-    ["dm.chatTabIgnoreFade"] = "4.1",
-    ["dm.chatTabOpen"] = "4.1",
+    ["au.font.count"] = "4.2",
+    ["uf.font.auraCount"] = "4.2",
 }
 
 --------------------------------------------------

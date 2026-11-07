@@ -40,4 +40,5 @@ S:Row{ key = "au.mineFirst", path = "auras.mineFirst", apply = Refresh, disabled
 
 S:FontRows{ module = "au", tab = "fonts", section = "au.fonts", apply = Refresh, fonts = {
     { key = "timer", path = "auras.font" },
+    { key = "count", path = "auras.countFont" },
 } }

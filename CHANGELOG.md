@@ -1,3 +1,24 @@
+# FlareUI 4.2
+
+Stack counts get their own font, chat windows can be made click-through from the tab menu, and every aura frame now follows one shared set of rules, which fixes several aura bugs.
+
+## New
+- Buffs & Debuffs and Unit Frames: **Aura stacks** font on the Fonts tab, with face, size, outline and shadow for stack counts, separate from the timers. It starts as a copy of your timer font, so nothing changes until you edit it. On unit frames its size can be **Auto** (the default), sized to the icon.
+- Chat: **Make Uninteractable** in the chat tab's right-click menu, Blizzard's own option. Links in that window stop reacting and it can't be resized. Docked windows switch together. Right-click the tab again to undo it.
+
+## Changed
+- Unit Frames, Aura timers font: its Size now works. **Auto** (the default) keeps sizing the timer to the icon.
+- Party, raid and main tank frames: with dispel icons on, a debuff you can dispel shows only as its dispel icon, no longer a second time in the debuff row, like Blizzard's raid frames.
+- Boss frames pick their debuffs the same way as the target frame, no longer by party-frame rules.
+- The "Restore your Edit Mode layout?" prompt after switching characters now reloads your interface to finish the switch.
+
+## Fixed
+- Target, focus and pet: **Only My Debuffs** hid other players' debuffs on friendly units and on yourself. It now filters enemies only, like Blizzard's target frame.
+- Action bars could vanish in combat until the fight ended after restoring an Edit Mode layout from FlareUI's prompt.
+- A Lua error when opening Edit Mode in combat or in an instance with Buffs & Debuffs on.
+- Party and raid frames: the dispel highlight added a hidden slot each time you changed its look in Edit Mode.
+- Pet frame: Hide Buffs no longer hides timed buffs while the pet is far away, like target and focus.
+
 # FlareUI 4.1
 
 Your damage meter as a chat tab, a real Clear All for raid markers, and two fixes.

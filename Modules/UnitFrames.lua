@@ -1304,6 +1304,8 @@ local function OnUnitEvent(f, event, arg1, arg2)
             UpdateLevel(f)
             UpdateIndicators(f)
         end
+        -- a unit turning hostile or friendly: Only My Debuffs applies to enemies only
+        if f.Auras then ns.AuraPolicy.UpdateSide(f, f.unit) end
     elseif event == "RAID_TARGET_UPDATE" then
         UpdateRaidIcon(f)
     elseif event == "READY_CHECK" or event == "READY_CHECK_CONFIRM" or event == "READY_CHECK_FINISHED" then
@@ -1314,15 +1316,9 @@ local function OnUnitEvent(f, event, arg1, arg2)
         UpdateCast(f)
     else
         f.lastReady = nil   -- the unit behind the token changed: the last one's ready check goes
-        UF.UpdateAuraReach(f)
         UpdateAll(f)
-        -- the containers only follow UNIT_AURA: a new unit would keep the old one's auras, so
-        -- they rebuild, as Blizzard's TargetFrame does (not protected: fine in combat)
-        if f.Auras then
-            for _, entry in pairs(f.Auras) do
-                if entry.container:IsShown() then pcall(entry.container.UpdateAllAuras, entry.container) end
-            end
-        end
+        -- the auras rebuild for the new unit, and Only My Debuffs follows its side (ns.AuraPolicy)
+        if f.Auras then ns.AuraPolicy.UnitChanged(f, f.unit) end
     end
 end
 
@@ -1446,13 +1442,12 @@ local function PrecreateAuraContainers(f)
     end
 end
 
--- corner: TOPLEFT | TOPRIGHT | BOTTOMLEFT | BOTTOMRIGHT; lanes: { {key, filter, isDebuff, candidates}, ... }
+-- corner: TOPLEFT | TOPRIGHT | BOTTOMLEFT | BOTTOMRIGHT; lanes: ns.AuraPolicy lanes
 local function ConfigureAuraCorner(f, corner, lanes)
     local entry = f.Auras and f.Auras[corner]
     if not entry then return end
     local container = entry.container
     local db, udb = GetDb(), GetUnitDb(f.unit)
-    entry.durationKey, entry.durationFilter = nil, nil
 
     -- groups are reused per lane and look (ns.AuraGroups); the lanes left out turn off
     ns.AuraGroups.Begin(entry)
@@ -1486,7 +1481,7 @@ local function ConfigureAuraCorner(f, corner, lanes)
         -- as many per row as fit at this lane's size
         local max = 2 * math.max(2, math_floor((lineSize + AURA_SPACING) / (size + AURA_SPACING)))
         local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, unit == "player", db and db.auraStyle or "square", "both", auraTimer)
-        local key, err = ns.AuraGroups.Add(container, entry, lane.key, ns.AuraGroups.Sig(size, isDebuff, font, showTimer, look), lane.filter, {
+        local key, err = ns.AuraGroups.Add(container, entry, lane.key, ns.AuraGroups.Sig(size, isDebuff, font, showTimer, look), ns.AuraPolicy.FilterFor(lane, unit), {
             maxFrameCount = max,
             candidateFilters = lane.candidates,
             sortMethod = sortMethod, sortDirection = sortDirection,
@@ -1501,8 +1496,8 @@ local function ConfigureAuraCorner(f, corner, lanes)
         })
         if not key then
             print("|cffff0000FlareUI:|r aura group failed: " .. tostring(err))
-        elseif lane.candidates and lane.candidates.maxDuration then
-            entry.durationKey, entry.durationFilter = key, lane.candidates
+        else
+            ns.AuraPolicy.Track(f, container, key, lane)
         end
     end
     ns.AuraGroups.Finish(container, entry)
@@ -1542,18 +1537,10 @@ function AURA.Placement(f, corner)
     return isTop, isLeft, x, y
 end
 
--- A group member too far away to be visible comes with no aura durations: every buff reads as permanent,
--- so Hide Buffs would hide them all. Target and focus drop that filter until the unit is near again.
+-- A group member too far away to be visible comes with no aura durations (ns.AuraPolicy.UpdateReach):
+-- Hide Buffs drops until the unit is near again. Target, focus and pet; the player is always near.
 function UF.UpdateAuraReach(f)
-    if not (f and f.Auras and (f.unit == "target" or f.unit == "focus")) then return end
-    local far = UnitExists(f.unit) and not UnitIsVisible(f.unit) or false
-    if (f.auraFar or false) == far then return end
-    f.auraFar = far
-    for _, entry in pairs(f.Auras) do
-        if entry.durationKey then
-            pcall(entry.container.SetAuraGroupCandidateFilters, entry.container, entry.durationKey, far and {} or entry.durationFilter)
-        end
-    end
+    if f and f.Auras then ns.AuraPolicy.UpdateReach(f, f.unit) end
 end
 
 -- Two places clash: the same one, or a whole-width one and anything on its edge
@@ -1581,37 +1568,19 @@ LayoutAuras = function(f)
     if InCombatLockdown() then pendingLayout = true return end
     local perCorner = {}
     for _, corner in ipairs(AURA_CORNERS) do perCorner[corner] = {} end
-    local function AddLane(corner, key, filter, isDebuff, candidates)
-        local list = corner and perCorner[corner]
-        if list then list[#list + 1] = { key = key, filter = filter, isDebuff = isDebuff, candidates = candidates } end
+    -- what each lane shows comes from ns.AuraPolicy (filters, Hide Buffs, Only My Debuffs / Buffs);
+    -- the corners and sizes are this module's
+    for _, lane in ipairs(ns.AuraPolicy.UnitLanes(f.unit, udb, LEM:IsInEditMode())) do
+        local list = lane.place and perCorner[lane.place]
+        if list then list[#list + 1] = lane end
     end
-    -- "Hide Buffs": filters by full duration (secret-safe); any maxDuration also drops permanent buffs,
-    -- so Off is no filter. Not in Edit Mode: its samples have no duration
-    local buffCandidates
-    if not LEM:IsInEditMode() then
-        local hide = udb.hideBuffs or "PERMANENT"
-        if hide == "PERMANENT" then
-            buffCandidates = { maxDuration = 999999 }
-        elseif tonumber(hide) then
-            buffCandidates = { maxDuration = tonumber(hide) }
-        end
-    end
-    -- "Only My Debuffs": the PLAYER filter (isFromPlayerOrPlayerPet means any player); other units only
-    local debuffFilter = (udb.onlyMyDebuffs and f.unit ~= "player") and "HARMFUL|PLAYER" or "HARMFUL"
-    -- debuffs first: closest to the frame when both share a corner; none with Hide Auras (focus)
-    if not udb.hideAuras then
-        AddLane(udb.debuffs, "debuffs", debuffFilter, true)
-        -- "Only My Buffs" (player): the PLAYER filter
-        local buffFilter = (f.unit == "player" and udb.onlyMyBuffs) and "HELPFUL|PLAYER" or "HELPFUL"
-        AddLane(udb.buffs, "buffs", buffFilter, false, buffCandidates)
-    end
+    ns.AuraPolicy.Begin(f)
     for _, corner in ipairs(AURA_CORNERS) do
         ConfigureAuraCorner(f, corner, perCorner[corner])
     end
     PositionAuraContainers(f)
-    -- the groups were just given their filters
-    f.auraFar = false
-    UF.UpdateAuraReach(f)
+    -- the groups were just given their layout-time filters: the unit's side and reach apply on top
+    ns.AuraPolicy.Done(f, f.unit)
 end
 
 -- Edit Mode: the containers render Blizzard's sample auras
@@ -3795,6 +3764,7 @@ function UF:Init()
     C_Timer.NewTicker(1, function()
         UF.UpdateAuraReach(frames.target)
         UF.UpdateAuraReach(frames.focus)
+        UF.UpdateAuraReach(frames.pet)
     end)
 
     LEM:RegisterCallback("layout", function(layoutName)
