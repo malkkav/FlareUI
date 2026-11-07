@@ -13,8 +13,6 @@ In game, type `/fui` to open the settings.
 
 FlareUI includes Brazilian Portuguese translations when the game client uses the `ptBR` locale.
 Other untranslated phrases fall back to English.
-The in-game release notes are translated separately in `Locales/ptBRNews.lua`, keyed by version;
-update them when changing the corresponding notes in `CHANGELOG.md`.
 
 ## Bugs and ideas
 

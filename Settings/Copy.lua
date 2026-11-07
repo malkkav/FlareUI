@@ -637,6 +637,18 @@ ns.Copy = {
             section = "qol.convenience",
             tip = L["Heard even with sound effects off."],
         },
+        ["qol.autoAcceptQuests"] = {
+            desc = L["Accepts the quests an NPC offers when you talk to them."],
+            label = L["Auto accept quests"],
+            section = "qol.convenience",
+            tip = L["Hold Shift to read one first. Grey and repeatable quests wait for you."],
+        },
+        ["qol.autoTurnInQuests"] = {
+            desc = L["Turns in your finished quests when you talk to the NPC."],
+            label = L["Auto turn-in quests"],
+            section = "qol.convenience",
+            tip = L["Hold Shift to stop it. A choice of rewards, a gold cost or a repeatable quest waits for you."],
+        },
         ["qol.camera"] = {
             desc = L["The camera zooms out further, and faster."],
             label = L["Better camera"],
@@ -656,6 +668,12 @@ ns.Copy = {
             desc = L["Loots everything at once, without the loot window."],
             label = L["Faster auto loot"],
             section = "qol.looting",
+        },
+        ["qol.gamepadPrompt"] = {
+            desc = L["Pressing a controller button asks whether to switch to Blizzard's Gamepad UI."],
+            label = L["Gamepad mode prompt"],
+            section = "qol.convenience",
+            tip = L["Off: no question. /fui pad still switches."],
         },
         ["qol.hideErrors"] = {
             desc = L["Hides the red error text, like \"Not enough rage\"."],

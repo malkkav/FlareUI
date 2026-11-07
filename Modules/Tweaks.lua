@@ -336,6 +336,34 @@ local function ForgetLFGPagePositions()
     for _, name in ipairs(LFG_PAGES) do db.frames[name] = nil end
 end
 
+-- The client also remembers a dragged frame by name (layout-local.txt, per character) and puts it back
+-- at login. A page found away from its window returns to it, and the client forgets its place.
+local function ReattachLFGPage(page)
+    local parent = _G.LFGParentFrame
+    if not parent or not CanTouch(page) then return end
+    local _, relativeTo = page:GetPoint(1)
+    if relativeTo == parent and not page:IsUserPlaced() then return end
+    local movable = page:IsMovable()
+    page:SetMovable(true)   -- the client only takes this from a movable frame
+    page:SetUserPlaced(false)
+    page:SetMovable(movable)
+    page:ClearAllPoints()
+    page:SetAllPoints(parent)
+end
+
+-- Whether Move Any Frame is on or not: a page dragged while it was on stays detached after it goes off
+local function KeepLFGPagesAttached()
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_GroupFinder_VanillaStyle", function()
+        for _, name in ipairs(LFG_PAGES) do
+            local page = _G[name]
+            if type(page) == "table" and page.HookScript then
+                page:HookScript("OnShow", ReattachLFGPage)
+                ReattachLFGPage(page)
+            end
+        end
+    end)
+end
+
 local function ScanUIPanels()
     local windows = _G.UIPanelWindows
     if type(windows) == "table" then
@@ -1573,6 +1601,91 @@ local function InitAutoDelete()
 end
 
 --------------------------------------------------
+-- 13b. AUTO ACCEPT AND TURN-IN QUESTS
+-- Shift holds both back. Repeatable quests are never touched: accepting and turning them in by
+-- themselves would spend every item they take. A choice of rewards, a gold cost and a PvP quest's
+-- confirmation still wait for the player. Off in the Gamepad UI: its quest windows are Blizzard's own.
+--------------------------------------------------
+local function InitAutoQuests()
+    if ns.IsGamepadUI() then return end
+
+    local function On(key)
+        local db = GetDb()
+        return db and db[key] and not IsShiftKeyDown()
+    end
+    local function CanAccept(questID)
+        return questID and not C_QuestLog.IsRepeatableQuest(questID) and not C_QuestLog.IsQuestTrivial(questID)
+    end
+    local function CanTurnIn()
+        local money = GetQuestMoneyToGet()
+        return not C_QuestLog.IsRepeatableQuest(GetQuestID()) and not (money and money > 0)
+    end
+
+    local handlers = {}
+    function handlers.GOSSIP_SHOW()
+        if On("autoTurnInQuests") then
+            for _, quest in ipairs(C_GossipInfo.GetActiveQuests()) do
+                if quest.isComplete and not C_QuestLog.IsRepeatableQuest(quest.questID) then
+                    C_GossipInfo.SelectActiveQuest(quest.questID)
+                    return
+                end
+            end
+        end
+        if On("autoAcceptQuests") then
+            for _, quest in ipairs(C_GossipInfo.GetAvailableQuests()) do
+                if not quest.isIgnored and CanAccept(quest.questID) then
+                    C_GossipInfo.SelectAvailableQuest(quest.questID)
+                    return
+                end
+            end
+        end
+    end
+    function handlers.QUEST_GREETING()
+        if On("autoTurnInQuests") then
+            for i = 1, GetNumActiveQuests() do
+                local _, isComplete = GetActiveTitle(i)
+                if isComplete and not C_QuestLog.IsRepeatableQuest(GetActiveQuestID(i)) then
+                    SelectActiveQuest(i)
+                    return
+                end
+            end
+        end
+        if On("autoAcceptQuests") then
+            for i = 1, GetNumAvailableQuests() do
+                local questID = select(5, GetAvailableQuestInfo(i))
+                if CanAccept(questID) then
+                    SelectAvailableQuest(i)
+                    return
+                end
+            end
+        end
+    end
+    function handlers.QUEST_DETAIL(questStartItemID)
+        if not On("autoAcceptQuests") then return end
+        -- Blizzard offers these through the quest tracker's pop-up instead of this window
+        if (questStartItemID and questStartItemID ~= 0) or QuestIsFromAdventureMap() then return end
+        if QuestFlagsPVP() or not CanAccept(GetQuestID()) then return end
+        if QuestGetAutoAccept() then
+            if not QuestIsFromAreaTrigger() then AcknowledgeAutoAcceptQuest() end
+        else
+            AcceptQuest()
+        end
+    end
+    function handlers.QUEST_PROGRESS()
+        if On("autoTurnInQuests") and IsQuestCompletable() and CanTurnIn() then CompleteQuest() end
+    end
+    function handlers.QUEST_COMPLETE()
+        if not (On("autoTurnInQuests") and CanTurnIn()) then return end
+        local choices = GetNumQuestChoices()
+        if choices <= 1 then GetQuestReward(choices) end
+    end
+
+    local listener = CreateFrame("Frame")
+    for event in pairs(handlers) do listener:RegisterEvent(event) end
+    listener:SetScript("OnEvent", function(_, event, ...) handlers[event](...) end)
+end
+
+--------------------------------------------------
 -- 14. TRAIN ALL
 -- Learns every available skill as far as the gold goes; never a new profession, not at pet
 -- trainers. Walked from the bottom: a purchase reindexes the entries below it.
@@ -2108,6 +2221,7 @@ function Tweaks:Init()
     if not db then return end
     self.initialized = true
 
+    KeepLFGPagesAttached()
     if db.moveAnyFrame then StartMoveAnyFrame() end
     if db.syncUI then InitSyncUI() end
     InitVendor()
@@ -2115,6 +2229,7 @@ function Tweaks:Init()
     InitCameraLoot()
     InitHide()
     InitAutoDelete()
+    InitAutoQuests()
     InitTrainAll()
     InitBagTooltip()
     InitWay()

@@ -66,6 +66,11 @@ local SHOW_VALUES = {
     { text = L["Combat + Target"],              value = "target", isRadio = true },
     { text = L["Combat + Attackable Target"],   value = "harm",   isRadio = true },
 }
+-- Swing timers can also appear only while their weapon is swinging
+local SWING_SHOW_VALUES = CopyTable(SHOW_VALUES)
+table.insert(SWING_SHOW_VALUES, { text = L["Only When In Use"], value = "inuse", isRadio = true })
+-- How long a bar in that mode outlasts a finished swing: the next one rarely lands on the same frame
+local SWING_IN_USE_HOLD = 1.5
 -- power and mana: no percentages, as those of a (possibly secret) power are unreliable
 local POWER_TEXT_VALUES = {
     { text = L["None"],  value = "none",  isRadio = true },
@@ -168,6 +173,8 @@ local function ShouldShow(holder)
     local cfg = Cfg(holder.key)
     if not cfg then return false end
     if IsEditing() then return true end
+    -- a swing proves the weapon, so no availability check (attack speeds can be secret)
+    if cfg.show == "inuse" then return (holder.swingEnd or holder.swingHold) and true or false end
     if not IsAvailable(holder) then return false end
     local show = cfg.show or "always"
     if show == "always" then return true end
@@ -293,6 +300,14 @@ local function SwingOnUpdate(holder)
         holder.Bar:SetValue(0)
         holder.Text:SetText("")
         holder.Spark:Hide()
+        local cfg = Cfg(holder.key)
+        if cfg and cfg.show == "inuse" then
+            holder.swingHold = C_Timer.NewTimer(SWING_IN_USE_HOLD, function()
+                holder.swingHold = nil
+                local now = Cfg(holder.key)
+                if now and now.show == "inuse" and not holder.swingEnd and not IsEditing() then holder:Hide() end
+            end)
+        end
         return
     end
     holder.Bar:SetValue((holder.swingDuration - remaining) / holder.swingDuration)
@@ -307,6 +322,10 @@ end
 local function StartSwing(holder, duration)
     duration = readable(duration)
     if not (duration and duration > 0) then return end
+    if holder.swingHold then
+        holder.swingHold:Cancel()
+        holder.swingHold = nil
+    end
     holder.swingDuration = duration
     holder.swingEnd = GetTime() + duration
     holder.Bar:SetMinMaxValues(0, 1)
@@ -742,7 +761,9 @@ local function BuildSettings(key)
         add({ name = L["Size"], kind = LEM.SettingType.Slider, default = 24, minValue = 12, maxValue = 48, valueStep = 1,
               get = get("classicSize", 24), set = set("classicSize"), hidden = classicOff })
     end
-    add({ name = L["Show"], kind = LEM.SettingType.Dropdown, default = defaults.show or "always", values = SHOW_VALUES, get = get("show", "always"), set = set("show") })
+    add({ name = L["Show"], kind = LEM.SettingType.Dropdown, default = defaults.show or "always",
+          values = info.kind == "swing" and SWING_SHOW_VALUES or SHOW_VALUES, get = get("show", "always"), set = set("show"),
+          desc = info.kind == "swing" and L["Only When In Use: the bar appears when this weapon swings and leaves soon after the swings stop."] or nil })
     if info.kind == "power" or info.kind == "mana" then
         add({ name = L["Text"], kind = LEM.SettingType.Dropdown, default = defaults.text or "value", values = POWER_TEXT_VALUES,
               get = get("text", defaults.text or "value"), set = set("text") })
@@ -824,7 +845,11 @@ function RB:OnEvent(event, arg1, arg2, arg3)
         local duration, swingType = arg1, arg2
         for _, key in ipairs({ "swingMain", "swingOff", "swingRanged" }) do
             local holder = bars[key]
-            if holder and BARS[key].swingType == swingType then StartSwing(holder, duration) end
+            if holder and BARS[key].swingType == swingType then
+                StartSwing(holder, duration)
+                -- Only When In Use: a hidden bar's OnUpdate would not run
+                if not holder:IsShown() then ApplyShown(holder) end
+            end
         end
     elseif event == "PLAYER_SWING_RANGE_UPDATE" then
         local swingType, isInRange, checksRange = arg1, arg2, arg3

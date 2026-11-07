@@ -1803,7 +1803,10 @@ function Chat:UpdateCustomTabs(chatFrame, db)
                 btn.Text:SetAlpha(TAB_IDLE_ALPHA)
                 btn.isFlashing = realTab.glow and realTab.glow:IsShown() or nil
                 if btn.isFlashing then
-                    btn.Text:SetTextColor(1, 0, 0, 1)
+                    -- the player's whisper colour, as set in Blizzard's chat settings. Only a whisper
+                    -- window knows its type, so Battle.net whispers on a regular tab stay pink.
+                    local whisper = ChatTypeInfo[frame.chatType == "BN_WHISPER" and "BN_WHISPER" or "WHISPER"]
+                    btn.Text:SetTextColor(whisper.r or 1, whisper.g or 0.5, whisper.b or 1, 1)
                     btn.Text:SetAlpha(1)
                 end
             end
@@ -2794,6 +2797,10 @@ function Chat:Init()
                 if not db then return end
                 if _G.ChatFrame1 then Chat:UpdateCustomTabs(_G.ChatFrame1, db) end
                 Chat:StyleHeaderButtons()
+                -- a closed tab leaves the bars scrolled past the tabs that remain: back to the first
+                for _, cf in Windows() do
+                    if cf and cf.FlareUI_TabBar then cf.FlareUI_TabBar:SetHorizontalScroll(0) end
+                end
             end)
         end)
 
@@ -2823,7 +2830,7 @@ function Chat:Init()
             C_Timer.After(0, AfterDockTabs)
         end)
 
-        -- a tab's red flash starts and stops without a dock update
+        -- a tab's alert colour starts and stops without a dock update
         local function AfterAlertFlash() C_Timer.After(0, AfterDockTabs) end
         Chat:SecureHook("FCF_StartAlertFlash", AfterAlertFlash)
         Chat:SecureHook("FCF_StopAlertFlash", AfterAlertFlash)

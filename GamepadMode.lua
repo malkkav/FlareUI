@@ -4,7 +4,8 @@ local L = ns.L
 --------------------------------------------------
 -- GAMEPAD MODE
 -- Switches the InputDeviceInterfaceStyle CVar (reloads the UI): offered on the first controller press
--- with keyboard and mouse (once a session, never in combat), or via /fui pad. Prints the login line.
+-- with keyboard and mouse (once a session, never in combat, unless switched off in Quality of Life),
+-- or via /fui pad. Prints the login line.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -80,6 +81,7 @@ end
 --------------------------------------------------
 local function Offer()
     if declined or ns.IsGamepadUI() or ns.AnyDialogShown() then return end
+    if not ns.db.profile.tweaks.gamepadPrompt then return end   -- Quality of Life's Gamepad mode prompt
     if InCombatLockdown() then pendingOffer = true return end
     ns.ShowDialog("FLAREUI_GAMEPAD_ON")
 end

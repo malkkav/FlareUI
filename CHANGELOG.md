@@ -1,3 +1,22 @@
+# FlareUI 3.0.9
+
+Quests that accept and turn themselves in, swing timers only when you're swinging, and FlareUI in Brazilian Portuguese.
+
+## New
+- Quality of Life: **Auto accept quests** and **Auto turn-in quests**, both off by default. Hold Shift to stop them for a moment. Repeatable quests, a choice of rewards, a gold cost and PvP quests always wait for you, and grey quests aren't auto-accepted. They do nothing in the Gamepad UI.
+- Quality of Life: **Gamepad mode prompt**, on by default. Turn it off to stop FlareUI asking about Blizzard's Gamepad UI when you press a controller button, handy for ConsolePort. `/fui pad` still switches.
+- Resource Bars: **Only When In Use** in the Show dropdown of the swing timers. A bar appears when its weapon swings, so there's no off-hand or ranged bar unless you're using one.
+- Brazilian Portuguese translation, thanks to paulovnas.
+
+## Changed
+- Swing timers now default to Only When In Use. If yours were on Combat, they probably changed too: pick Combat in each bar's Show dropdown in Edit Mode to go back.
+- Chat: an unread whisper tab now shows in your whisper colour instead of red, and Battle.net whispers in their own colour.
+
+## Fixed
+- Chat: closing a tab scrolls the tabs back to the first one.
+- Minimap: the day/night button goes back to its corner if something moves it. Players with EnhanceQoL reported it stuck over the calendar and clock.
+- Move Any Frame: a group finder page still detached from its window now snaps back when it opens, even with Move Any Frame off.
+
 # FlareUI 3.0.8
 
 Cleaner portraits on faded frames, Forever Style draws Blizzard's whole ring, and windows are easier to move and close.

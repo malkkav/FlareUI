@@ -340,15 +340,28 @@ local function RestyleWorldMapCoords()
 end
 
 -- Forever's day/night badge in the map's bottom-left corner, always shown
+local placingSun = false
 local function PlaceSun()
     local sun = Cluster.DielFrame
-    if not sun then return end
+    if not sun or placingSun then return end
+    placingSun = true
     sun:Show()   -- also the Addon Button Bag's button (MinimapBag.lua)
     sun:SetScale(SUN_SCALE)
     sun:ClearAllPoints()
     local overhang = SUN_OVERHANG / SUN_SCALE   -- offsets are in the badge's own, scaled units
     sun:SetPoint("BOTTOMLEFT", MM.Frame, "BOTTOMLEFT", -overhang, -overhang)
     Raise(sun, 1)
+    placingSun = false
+end
+
+-- Blizzard's own place for the badge is the map's top right, over the calendar and clock. Whoever
+-- moves it there (players report it with EnhanceQoL loaded), it goes straight back.
+local function KeepSunPlaced()
+    local sun = Cluster.DielFrame
+    if not sun then return end
+    hooksecurefunc(sun, "SetPoint", PlaceSun)
+    hooksecurefunc(sun, "SetScale", PlaceSun)
+    PlaceSun()
 end
 
 --------------------------------------------------
@@ -458,6 +471,7 @@ local function KeepMapSquare()
 end
 
 local function InstallHooks()
+    KeepSunPlaced()
     hooksecurefunc(Cluster, "SetSize", SizeCluster)
     -- both re-place pieces from Blizzard's layout
     hooksecurefunc(Cluster, "SetEditModeScale", function()

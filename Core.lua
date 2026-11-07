@@ -460,9 +460,9 @@ local defaults = {
                     power       = { enabled = false, show = "target", width = 220, height = 16, text = "value", fsr = false },
                     mana        = { enabled = false, show = "target", width = 220, height = 16, text = "value", fsr = false },
                     combo       = { enabled = false, show = "target", width = 220, height = 12 },
-                    swingMain   = { enabled = false, show = "combat",       width = 220, height = 12 },
-                    swingOff    = { enabled = false, show = "combat",       width = 220, height = 12 },
-                    swingRanged = { enabled = false, show = "combat",       width = 220, height = 12 },
+                    swingMain   = { enabled = false, show = "inuse",        width = 220, height = 12 },
+                    swingOff    = { enabled = false, show = "inuse",        width = 220, height = 12 },
+                    swingRanged = { enabled = false, show = "inuse",        width = 220, height = 12 },
                 },
             },
             -- party frames (Modules/PartyFrames.lua): two styles, each with its own settings
@@ -693,9 +693,12 @@ local defaults = {
             petFood = false,            -- Pet Food in Bags: a paw on food the hunter pet eats
             skipLootConfirm = false,    -- Skip Loot Confirmations: bind-on-loot and roll dialogs
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
+            gamepadPrompt = true,       -- Gamepad mode prompt: offer Blizzard's Gamepad UI on a controller press
             combatPlates = false,       -- Enemy Nameplates in Combat Only
             hideTips = false,
             autoDelete = false,         -- DELETE typed into the destroy-item confirmation
+            autoAcceptQuests = false,   -- Auto accept quests
+            autoTurnInQuests = false,   -- Auto turn-in quests
             trainAll = false,           -- Train All button at trainers
             moveLootToasts = true,      -- FlareUI Loot Rolls / FlareUI Toasts in Edit Mode (Modules/Movers.lua); positions in moverLayouts{}
             frames = {},

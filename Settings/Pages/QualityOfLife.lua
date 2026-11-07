@@ -68,11 +68,14 @@ S:Row{
     apply = Refresh,
 }
 S:Row{ key = "qol.delete", tab = "gameplay", path = "tweaks.autoDelete", apply = Refresh }
+S:Row{ key = "qol.autoAcceptQuests", tab = "gameplay", path = "tweaks.autoAcceptQuests" }
+S:Row{ key = "qol.autoTurnInQuests", tab = "gameplay", path = "tweaks.autoTurnInQuests" }
 S:Row{ key = "qol.trainAll", tab = "gameplay", path = "tweaks.trainAll", apply = Refresh }
 S:Row{ key = "qol.way", tab = "gameplay", path = "tweaks.way", reload = true, disabled = WayTaken }
 S:Row{ key = "qol.mailBook", tab = "gameplay", path = "tweaks.mailBook", apply = Refresh }
 S:Row{ key = "qol.alerts", tab = "gameplay", path = "tweaks.alertSounds" }
 S:Row{ key = "qol.petFood", tab = "gameplay", path = "tweaks.petFood", apply = Refresh }
+S:Row{ key = "qol.gamepadPrompt", tab = "gameplay", path = "tweaks.gamepadPrompt" }
 S:Row{ key = "qol.skipLoot", tab = "gameplay", path = "tweaks.skipLootConfirm" }
 
 -- INTERFACE --------------------------------------

@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 3.0.8
+## Version: 3.0.9
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -82,7 +82,6 @@ Settings\Welcome.lua
 Settings\RadialEditor.lua
 Settings\Copy.lua
 Settings\WhatsNew.lua
-Locales\ptBRNews.lua
 Settings\Registry.lua
 Settings\Fonts.lua
 Settings\Pages\About.lua
