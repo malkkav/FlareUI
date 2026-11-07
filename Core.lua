@@ -426,6 +426,7 @@ local defaults = {
             matchChatSize = false,      -- the meter takes the chat frame's size (Edit Mode's is overridden)
             chatTab = false,            -- a Meter tab with the chat's tabs: the meter in the chat window (Chat module on)
             chatTabIgnoreFade = false,  -- on the Meter tab the chat never fades, whatever its Visibility
+            chatTabOpen = "combat",     -- the Meter tab opens on its own: click | combat | group | login
             autoThreat = false,         -- the Threat tab when combat starts, Blizzard's view when it ends
         },
 

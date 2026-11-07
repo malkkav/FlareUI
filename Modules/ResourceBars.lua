@@ -182,8 +182,9 @@ local function ShouldShow(holder)
     if InCombatLockdown() or UnitAffectingCombat("player") then return true end
     if show == "target" and UnitExists("target") then return true end
     if show == "harm" and UnitExists("target") then
-        local canAttack = UnitCanAttack("player", "target")
-        if canaccessvalue(canAttack) and canAttack then return true end
+        -- a corpse still counts as attackable: clicking it to loot would bring the bar back
+        local canAttack, dead = UnitCanAttack("player", "target"), UnitIsDead("target")
+        if canaccessvalue(canAttack) and canAttack and canaccessvalue(dead) and not dead then return true end
     end
     return false
 end

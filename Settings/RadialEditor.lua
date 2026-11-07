@@ -280,6 +280,7 @@ end)
 AddCategory("markers", L["Markers"], function()
     local out = {}
     for i = 1, 8 do out[#out + 1] = { kind = "targetmarker", marker = i } end
+    out[#out + 1] = { kind = "targetmarker", marker = -1 }
     out[#out + 1] = { kind = "targetmarker", marker = 0 }
     for i = 1, 8 do out[#out + 1] = { kind = "worldmarker", marker = i } end
     out[#out + 1] = { kind = "worldmarker", marker = 0 }

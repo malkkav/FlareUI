@@ -3295,8 +3295,14 @@ local function CreatePlayerCastBar()
     holder.Cast = CreateCastBar(holder, "player")
     holder.Cast.standalone = true
     -- Cinematic fades this holder between fights, as the game's cast bar: the bar itself stays up, so
-    -- hearthing, gathering and quest objects still show their cast
-    if C_AddOns.IsAddOnLoaded("Cinematic") then holder.Cast:SetIgnoreParentAlpha(true) end
+    -- hearthing, gathering and quest objects still show their cast. It also hides the holder once at
+    -- load (a player's /run showed Holder hidden, Cast shown); FlareUI never hides it, so show it back
+    if C_AddOns.IsAddOnLoaded("Cinematic") then
+        holder.Cast:SetIgnoreParentAlpha(true)
+        local function KeepShown(self) if not self:IsShown() then self:Show() end end
+        hooksecurefunc(holder, "Hide", KeepShown)
+        hooksecurefunc(holder, "SetShown", KeepShown)
+    end
     holder:SetScript("OnEvent", function(self) UpdateCastBar(self.Cast, IsCastEnabled(self.Cast)) end)
     for _, event in ipairs(CAST_EVENTS) do pcall(holder.RegisterUnitEvent, holder, event, "player") end
     pcall(holder.RegisterEvent, holder, "PLAYER_ENTERING_WORLD")

@@ -1,3 +1,21 @@
+# FlareUI 4.1
+
+Your damage meter as a chat tab, a real Clear All for raid markers, and two fixes.
+
+## New
+- Damage Meter: **Meter tab in the chat**, off by default, thanks to Gregory Duhamel. A Meter tab joins your chat tabs and shows Blizzard's meter inside the chat window, at the chat's size. Click a chat tab to get the chat back, in combat too. A chat tab whose messages arrive while the meter covers them lights up. Find it in Settings > Damage Meter > Meter Tab, with:
+  - **Open the Meter tab**: When clicked, In combat (back to the chat after the fight, the default), In group or At login.
+  - **Ignore chat fade**: the chat window stays up while the Meter tab is open.
+  - While the tab is on, the meter's own Visibility waits, and it doesn't show in the Gamepad UI.
+- Radial menu: **Clear All Markers** removes every raid marker on players and enemies at once. Add it from the Markers category in the radial menu editor. New radials get it on their own.
+
+## Changed
+- Radial menu: the two old clear slices now say what they do: **Clear Target's Marker** and **Clear World Markers** (the flares on the ground). If your "Clear All" slice never removed the marks over heads, it was Clear World Markers: swap it for Clear All Markers.
+- Combat + Attackable Target (Fake Cooldown Manager, fading bars and Resource Bars): a dead target no longer counts, so clicking a corpse to loot it doesn't bring the bars back.
+
+## Fixed
+- Player cast bar with Cinematic: it no longer stays hidden after a login or /reload.
+
 # FlareUI 4.0
 
 A lighter FlareUI: the same features, doing far less work behind the scenes. Plus separate buff and debuff sizes, a lighter Forever bar texture and macro cooldowns in the radial menu.

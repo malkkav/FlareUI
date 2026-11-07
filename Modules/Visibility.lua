@@ -32,6 +32,7 @@ local CreateFrame = CreateFrame
 local InCombatLockdown = InCombatLockdown
 local UnitExists = UnitExists
 local UnitCanAttack = UnitCanAttack
+local UnitIsDead = UnitIsDead
 local canaccessvalue = canaccessvalue
 
 -- wait before fading out: covers the mouse crossing the gap between the bars of a group
@@ -345,9 +346,12 @@ Fader.updateEnabled = false
 Fader.watchesMouseover = false   -- set by Refresh(), not per tick
 Fader.fading = false             -- something was mid-fade on the last pass
 
--- UnitCanAttack can be secret
+-- UnitCanAttack can be secret. A corpse still counts as attackable, so it is left out: clicking it
+-- to loot would bring the bars back
 local function TargetIsHostile()
     if not UnitExists("target") then return false end
+    local dead = UnitIsDead("target")
+    if not (canaccessvalue(dead) and not dead) then return false end
     local canAttack = UnitCanAttack("player", "target")
     return canaccessvalue(canAttack) and canAttack or false
 end

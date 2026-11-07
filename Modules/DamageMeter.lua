@@ -1281,9 +1281,11 @@ local function ChatModuleOn()
     return chat ~= nil and chat.enabled == true
 end
 
--- Meter Tab in the Chat: both modules on, the main chat window skinned
+-- Meter Tab in the Chat: both modules on, the main chat window skinned. Not in the Gamepad UI
+-- (no new features there while Blizzard's gamepad UI is in alpha): the meter keeps its own place
 function ChatTabOn()
     local db = GetDb()
+    if ns.IsGamepadUI() then return false end
     return (db ~= nil and db.enabled and db.chatTab and ChatModuleOn() and ChatSkin() ~= nil) and true or false
 end
 
@@ -1686,6 +1688,8 @@ end
 -- back, Always starts on it; a click holds until the rule next changes.
 --------------------------------------------------
 local CHAT_TAB_LOWERED = "BACKGROUND"   -- the chat windows are LOW
+-- Open the Meter Tab -> the VISIBILITY rule that picks it: When Clicked never switches on its own
+local CHAT_TAB_OPEN = { click = "hidden", combat = "combat", group = "group", login = "always" }
 local STRATA_ORDER = { "BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP" }
 
 -- Both modules on, the chat skinned and Blizzard's meter allowed, as last applied (ApplyVisibility
@@ -1736,8 +1740,8 @@ end
 function ApplyChatTab(meter, db)
     -- into the chat when Refresh has not placed it yet, or a fight held it back
     if not DamageMeter.chatAnchored then MatchChatSize() end
-    -- Visibility's rule picks the tab when its answer changes
-    local rule = (VISIBILITY[db.visibility] or VISIBILITY.always)(meter) and true or false
+    -- Open the Meter Tab picks the tab when its answer changes (Visibility is left for the tab off)
+    local rule = (VISIBILITY[CHAT_TAB_OPEN[db.chatTabOpen] or "combat"])(meter) and true or false
     if rule ~= DamageMeter.chatTabRule then
         DamageMeter.chatTabRule = rule
         if (DamageMeter.chatTabActive or false) ~= rule then

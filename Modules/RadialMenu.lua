@@ -276,12 +276,17 @@ ACTIONS.macro = function(entry)
         { type = "macro", macrotext = entry.text or "" }
 end
 
--- marker 0 clears the target's mark instead of setting one
+-- marker 0 clears the target's mark instead of setting one, -1 every mark in the group (Forever has
+-- neither RAID_TARGET_NONE nor REMOVE_WORLD_MARKERS: FlareUI names them)
 ACTIONS.targetmarker = function(entry)
     local m = entry.marker or 1
     if m == 0 then
-        return _G.RAID_TARGET_NONE or "Clear Marker", { atlas = "GM-raidMarker-remove" },
+        return L["Clear Target's Marker"], { atlas = "GM-raidMarker-remove" },
             { type = "raidtarget", unit = "target", marker = 0, action = "clear" }
+    end
+    if m == -1 then
+        return L["Clear All Markers"], { atlas = "GM-raidMarker-remove" },
+            { type = "raidtarget", action = "clear-all" }
     end
     return (_G["RAID_TARGET_" .. m] or ("Marker " .. m)),
         { texture = ("Interface\\TargetingFrame\\UI-RaidTargetingIcon_%d"):format(m) },
@@ -292,7 +297,7 @@ end
 ACTIONS.worldmarker = function(entry)
     local m = entry.marker or 1
     if m == 0 then
-        return _G.REMOVE_WORLD_MARKERS or "Clear All", { atlas = "GM-raidMarker-remove" },
+        return L["Clear World Markers"], { atlas = "GM-raidMarker-remove" },
             { type = "worldmarker", action = "clear" }
     end
     return ((_G.WORLD_MARKER or "World Marker %d"):format(m)), { atlas = "GM-raidMarker" .. m },
@@ -417,6 +422,7 @@ end
 local function MarkerButtons()
     local t = {}
     for i = 1, 8 do t[i] = { kind = "targetmarker", marker = i } end
+    t[9] = { kind = "targetmarker", marker = -1 }
     return t
 end
 
