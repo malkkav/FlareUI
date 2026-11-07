@@ -24,7 +24,7 @@ for _, path in ipairs({
     "chat.hideBubblesInInstance", "chat.hideCombatLog", "chat.menuHide", "chat.opacity", "chat.saveHistory",
     "chat.showVolume", "chat.socialHide",
     "damagemeter.combatTimer", "damagemeter.readyCheckButton", "damagemeter.countdownButton", "chat.autoHideDelay",
-    "damagemeter.autoThreat", "damagemeter.enabled", "damagemeter.matchChatSize", "damagemeter.opacity",
+    "damagemeter.autoThreat", "damagemeter.chatTab", "damagemeter.chatTabIgnoreFade", "damagemeter.enabled", "damagemeter.matchChatSize", "damagemeter.opacity",
     "damagemeter.showOnMouseover", "damagemeter.visibility",
     "fcm.show",
     "minimap.autoZoom", "minimap.buttonBag", "minimap.enabled",
