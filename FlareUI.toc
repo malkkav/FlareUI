@@ -82,6 +82,7 @@ Settings\Welcome.lua
 Settings\RadialEditor.lua
 Settings\Copy.lua
 Settings\WhatsNew.lua
+Locales\ptBRNews.lua
 Settings\Registry.lua
 Settings\Fonts.lua
 Settings\Pages\About.lua
