@@ -1441,10 +1441,10 @@ local function MeterTabAvailable()
     return dm ~= nil and dm.ChatTabAvailable ~= nil and dm:ChatTabAvailable() or false
 end
 
--- asked on every alpha step and every line: the cheap test first
+-- asked on every alpha step and every line: two fields, no call
 function Chat:MeterTabActive()
     local dm = ns.DamageMeter
-    return dm ~= nil and dm.chatTabActive == true and MeterTabAvailable()
+    return dm ~= nil and dm.chatTabActive == true and dm.chatTabApplied == true
 end
 
 local function SelectedDocked()
@@ -1467,7 +1467,8 @@ local function SetDockedTextShown(shown)
 end
 
 -- With the chat fading (Visibility), the meter takes the mouse the window would see: a hover over it
--- keeps the window up, checked ten times a second while the Meter tab is selected
+-- brings a fading or faded window back, checked ten times a second while the Meter tab is selected.
+-- A window fully up needs no check: its hold asks CheckChatVisibility when it runs out.
 local meterHover = CreateFrame("Frame")
 meterHover:Hide()
 meterHover.elapsed = 0
@@ -1475,9 +1476,11 @@ meterHover:SetScript("OnUpdate", function(self, elapsed)
     self.elapsed = self.elapsed + elapsed
     if self.elapsed < 0.1 then return end
     self.elapsed = 0
+    local frame = SelectedDocked()
+    if not frame or (frame.FlareUI_TargetAlpha or 1) >= 1 then return end
     local dm, db = ns.DamageMeter, GetDb()
     if not (db and dm and dm.ChatTabMouseOver and dm:ChatTabMouseOver()) then return end
-    Chat:ShowChatFrame(SelectedDocked(), db)
+    Chat:ShowChatFrame(frame, db)
 end)
 
 -- Called by the Damage Meter module whenever the tab's state may have changed: a click, Visibility,
@@ -1498,7 +1501,7 @@ function Chat:RefreshMeterTab()
         if cf and cf.FlareUI_TabBar then Chat:UpdateCustomTabs(cf, db) end
     end
     meterHover:SetShown(active and fades and not ignore)
-    -- Ignore Chat Fade on the Meter Tab: a faded window comes up with the tab (CheckChatVisibility holds it)
+    -- Ignore Chat Fade: a faded window comes up with the tab (CheckChatVisibility holds it)
     if active and fades and ignore then Chat:ShowChatFrame(SelectedDocked(), db) end
 end
 

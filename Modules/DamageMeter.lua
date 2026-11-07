@@ -1528,7 +1528,7 @@ local function FadeStep(self, meter, elapsed)
         applying = wasApplying
     end
     -- on a chat tab (Meter Tab in the Chat): faded out, it drops under the chat, which gets the mouse
-    if target == 0 and not DamageMeter.chatTabActive and ChatTabOn() then ApplyChatTabStrata(meter, false) end
+    if target == 0 and not DamageMeter.chatTabActive and DamageMeter.chatTabApplied then ApplyChatTabStrata(meter, false) end
     if not meter.FlareUI_MouseHidden then self:Hide() end
 end
 
@@ -1571,6 +1571,8 @@ local function ApplyVisibilityBody(meter)
     if inChat ~= (DamageMeter.chatTabApplied or false) then
         DamageMeter.chatTabApplied = inChat or nil
         if not inChat then DamageMeter:LeaveChatTab() end
+        -- the chat draws or drops its tab; a frame later, as this can be Blizzard's own check
+        if ns.Chat and ns.Chat.RefreshMeterTab then C_Timer.After(0, function() ns.Chat:RefreshMeterTab() end) end
     end
     if inChat then
         ApplyChatTab(meter, db)
@@ -1675,9 +1677,11 @@ end
 local CHAT_TAB_LOWERED = "BACKGROUND"   -- the chat windows are LOW
 local STRATA_ORDER = { "BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP" }
 
--- Both modules on, the chat skinned and Blizzard's meter allowed: the chat draws the tab
+-- Both modules on, the chat skinned and Blizzard's meter allowed, as last applied (ApplyVisibility
+-- notes it on every check): the chat draws the tab. Asked on every alpha step and every chat line,
+-- so no CVar or API call here.
 function DamageMeter:ChatTabAvailable()
-    return _G.DamageMeter ~= nil and ChatTabOn() and MeterAllowed()
+    return self.chatTabApplied == true
 end
 
 -- The meter's own strata, or the one above the chat window's when its own is not (the chat is
@@ -1692,10 +1696,13 @@ local function ChatTabRaisedStrata(meter)
 end
 
 -- The meter, its windows and FlareUI's frames on them with a strata of their own (the skin, the
--- group buttons): raised on the Meter tab, lowered under the chat on a chat tab
+-- group buttons): raised on the Meter tab, lowered under the chat on a chat tab. Frames made later
+-- copy the meter's strata of the moment, so an unchanged strata is left alone.
 function ApplyChatTabStrata(meter, raised)
     if not meter.FlareUI_Strata then meter.FlareUI_Strata = meter:GetFrameStrata() or "MEDIUM" end
     local strata = raised and ChatTabRaisedStrata(meter) or CHAT_TAB_LOWERED
+    if meter.FlareUI_ChatStrata == strata then return end
+    meter.FlareUI_ChatStrata = strata
     local function Set(frame)
         if frame and not frame:IsForbidden() and frame:GetFrameStrata() ~= strata then frame:SetFrameStrata(strata) end
     end
@@ -1731,11 +1738,14 @@ function ApplyChatTab(meter, db)
     local active = DamageMeter.chatTabActive or false
     -- Edit Mode shows it whatever the tab, with its own skin: it may sit away from the chat there.
     -- Not Settings > Damage Meter: the chat's skin is its background here
-    local editing = (type(meter.IsEditing) == "function" and meter:IsEditing()) or IsEditModeActive()
+    local editing = ((type(meter.IsEditing) == "function" and meter:IsEditing()) or IsEditModeActive()) and true or false
     if editing then active = true end
-    for _, window in ipairs(GetSessionWindows()) do
-        local skin = window.FlareUI_DMSkin
-        if skin and skin.FlareUI_InChat == editing then SetSkinInChat(window, db, not editing) end
+    if editing ~= (DamageMeter.chatTabEditing or false) then
+        DamageMeter.chatTabEditing = editing or nil
+        for _, window in ipairs(GetSessionWindows()) do
+            local skin = window.FlareUI_DMSkin
+            if skin and skin.FlareUI_InChat == editing then SetSkinInChat(window, db, not editing) end
+        end
     end
     meter.FlareUI_MouseHidden = nil
     hideWhenFaded = false
@@ -1771,7 +1781,7 @@ function DamageMeter:SetChatTabAlpha(alpha)
     if meter:IsShown() then meter:SetAlpha(alpha) end
 end
 
--- Ignore Chat Fade on the Meter Tab: the chat's own fading waits while the tab is selected
+-- Ignore Chat Fade: the chat's own fading waits while the tab is selected
 function DamageMeter:ChatTabIgnoresFade()
     local db = GetDb()
     return db ~= nil and db.chatTabIgnoreFade == true
@@ -1786,7 +1796,7 @@ end
 -- Out of the chat (the option or Blizzard's switch off): its own strata back now, its Edit Mode
 -- place after a fight (PLAYER_REGEN_ENABLED)
 function DamageMeter:LeaveChatTab()
-    self.chatTabActive, self.chatTabRule = nil, nil
+    self.chatTabActive, self.chatTabRule, self.chatTabEditing = nil, nil, nil
     local meter = _G.DamageMeter
     if meter then ApplyChatTabStrata(meter, true) end
     if InCombatLockdown() then

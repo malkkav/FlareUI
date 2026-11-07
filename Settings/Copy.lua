@@ -534,7 +534,7 @@ ns.Copy = {
         },
         ["dm.chatTabIgnoreFade"] = {
             desc = L["The chat's Visibility fade is ignored while the Meter tab is selected: the window stays up."],
-            label = L["Ignore chat fade on the Meter tab"],
+            label = L["Ignore chat fade"],
             section = "dm.tweaks",
         },
         ["dm.combatTimer"] = {
