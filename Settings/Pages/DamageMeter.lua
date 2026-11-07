@@ -44,10 +44,17 @@ S:Row{ key = "dm.fadeSpeed", kind = "choice", path = "damagemeter.fadeSpeed", ch
 S:Row{ key = "dm.border", kind = "choice", path = "damagemeter.borderTexture", choices = S.BorderChoices,
     apply = Refresh, section = "dm.frame" }
 
+-- Meter Tab in the Chat needs the Chat module; the meter then has the chat's size and the tab
+-- shows it, so Match Chat Size and Show on Mouseover have nothing to add
+local function ChatOff() return not S:GetPath("chat.enabled") end
+local function InChat() return S:GetPath("damagemeter.chatTab") and not ChatOff() or false end
 S:Row{ key = "dm.mouseover", path = "damagemeter.showOnMouseover", apply = ApplyVisibility,
-    disabled = AlwaysVisible, section = "dm.tweaks", half = true }
+    disabled = function() return AlwaysVisible() or InChat() end, section = "dm.tweaks", half = true }
 S:Row{ key = "dm.matchChat", path = "damagemeter.matchChatSize", apply = Refresh, section = "dm.tweaks", half = true,
-    hidden = function() return not S:GetPath("chat.enabled") end }
+    hidden = ChatOff, disabled = InChat }
+S:Row{ key = "dm.chatTab", path = "damagemeter.chatTab", apply = Refresh, section = "dm.tweaks", half = true, hidden = ChatOff }
+S:Row{ key = "dm.chatTabIgnoreFade", path = "damagemeter.chatTabIgnoreFade", apply = Refresh, section = "dm.tweaks", half = true,
+    hidden = function() return not InChat() end }
 S:Row{ key = "dm.threatCombat", path = "damagemeter.autoThreat", apply = Refresh, section = "dm.tweaks", half = true }
 S:Row{ key = "dm.combatTimer", path = "damagemeter.combatTimer", apply = Refresh, section = "dm.tweaks", half = true }
 S:Row{ key = "dm.readyCheck", path = "damagemeter.readyCheckButton", apply = Refresh, section = "dm.tweaks", half = true }

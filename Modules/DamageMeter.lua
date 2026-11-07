@@ -4,7 +4,8 @@ local L = ns.L
 --------------------------------------------------
 -- DAMAGE METER
 -- Blizzard's damage meter in FlareUI's look: skin, header, fonts, group buttons, a Threat tab, a
--- live combat timer, chat-size matching and FlareUI's own visibility with show on mouseover.
+-- live combat timer, chat-size matching, a Meter tab in the chat and FlareUI's own visibility with
+-- show on mouseover.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -52,6 +53,7 @@ local ICON_DRAW_SIZE  = { settings = 16, segments = 11, ready = 16, countdown = 
 local ICON_DRAW_YOFS  = { settings = -2.5, segments = 0 }
 local ICON_RIGHT      = 15
 local ICON_SPACING    = 21
+local CHAT_TAB_ROW    = 28   -- Meter tab: the chat's tab row and its separator line, above the meter's header
 local TITLE_COLOR     = { r = 0.80, g = 0.60, b = 0.34, a = 1 }   -- #CC9957 (chat active tab)
 local ICON_COLOR      = { r = 0.61, g = 0.48, b = 0.29, a = 1 }   -- #9C7A4A (chat header icons)
 local BORDER_TINT     = ns.BORDER_COLOR
@@ -71,6 +73,9 @@ local function GetDb()
     end
     return ns.db.profile.damagemeter
 end
+
+-- Meter Tab in the Chat: the option on (section 19), Blizzard's switch (22), its rule and strata (23)
+local ChatTabOn, MeterAllowed, ApplyChatTab, ApplyChatTabStrata
 
 -- The border picked in the options, or the default when LibSharedMedia does not know it
 local function GetBorderFile(db)
@@ -223,6 +228,17 @@ local function CreateOrGetSkinFrame(window)
     return skin
 end
 
+-- In the chat window (Meter tab) the chat's skin is the background: the meter's goes clear, its
+-- separator line stays. Back in Edit Mode, where the meter may sit elsewhere.
+local function SetSkinInChat(window, db, inChat)
+    local skin = window.FlareUI_DMSkin
+    if not skin then return end
+    inChat = inChat and true or false
+    skin.FlareUI_InChat = inChat
+    skin:SetBackdropColor(1, 1, 1, inChat and 0 or db.opacity or 0.85)
+    skin:SetBackdropBorderColor(BORDER_TINT.r, BORDER_TINT.g, BORDER_TINT.b, inChat and 0 or BORDER_TINT.a)
+end
+
 local function UpdateSkinFrame(window, db)
     if not window or window:IsForbidden() then return end
     local skin = CreateOrGetSkinFrame(window)
@@ -237,8 +253,7 @@ local function UpdateSkinFrame(window, db)
     local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
     local borderTexture = GetBorderFile(db)
     skin:SetBackdrop({ bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = ns.BorderEdgeSize(borderTexture, 16), insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-    skin:SetBackdropColor(1, 1, 1, db.opacity or 0.85)
-    skin:SetBackdropBorderColor(BORDER_TINT.r, BORDER_TINT.g, BORDER_TINT.b, BORDER_TINT.a)
+    SetSkinInChat(window, db, ChatTabOn())
 
     -- the skin replaces Blizzard's background and header bar
     local bg = GetWindowBackground(window)
@@ -1246,7 +1261,8 @@ end
 --------------------------------------------------
 -- 19. MATCH CHAT FRAME SIZE
 -- Blizzard's DamageMeter frame takes the chat skin's size, again after every Edit Mode sizing and
--- every chat resize. FlareUI's chat only; out of combat only.
+-- every chat resize. FlareUI's chat only; out of combat only. With Meter Tab in the Chat it also
+-- takes its place: the window inside the chat skin, under the chat's tab row.
 --------------------------------------------------
 local matchSizing = false
 
@@ -1255,23 +1271,54 @@ local function ChatSizeSource()
     return chat and (chat.FlareUI_Skin or chat)
 end
 
+local function ChatSkin()
+    local chat = _G.ChatFrame1
+    return chat and chat.FlareUI_Skin
+end
+
 local function ChatModuleOn()
     local chat = ns.db and ns.db.profile and ns.db.profile.chat
     return chat ~= nil and chat.enabled == true
 end
 
-local function MatchChatSize()
+-- Meter Tab in the Chat: both modules on, the main chat window skinned
+function ChatTabOn()
+    local db = GetDb()
+    return (db ~= nil and db.enabled and db.chatTab and ChatModuleOn() and ChatSkin() ~= nil) and true or false
+end
+
+local MatchChatSize
+local function MatchChatSizeBody()
     local db = GetDb()
     local meter = _G.DamageMeter
-    if matchSizing or not (db and db.enabled and db.matchChatSize and meter) or InCombatLockdown() then return end
+    local inChat = ChatTabOn()
+    if matchSizing or not (db and db.enabled and (db.matchChatSize or inChat) and meter) or InCombatLockdown() then return end
     if not ChatModuleOn() then return end
-    local source = ChatSizeSource()
+    local source = inChat and ChatSkin() or ChatSizeSource()
     if not source then return end
     local width, height = source:GetSize()
+    -- in the chat: the meter's own skin (SKIN_PADDING around the window) lands on the chat skin's
+    -- edges, under the chat's tab row
+    if inChat then width, height = width - 2 * SKIN_PADDING, height - CHAT_TAB_ROW - 2 * SKIN_PADDING end
     if not (width and height and width > 0 and height > 0) then return end
     matchSizing = true
     meter:SetSize(width, height)
+    -- not while Edit Mode is open: the meter is dragged there, and keeps its own place for the tab off
+    if inChat and not IsEditModeActive() then
+        -- Edit Mode wraps SetPoint / ClearAllPoints on its frames: the base setters, when it keeps
+        -- them, place the frame without telling Edit Mode about a position change
+        local clear = meter.ClearAllPointsBase or meter.ClearAllPoints
+        local set = meter.SetPointBase or meter.SetPoint
+        clear(meter)
+        set(meter, "TOPLEFT", source, "TOPLEFT", SKIN_PADDING, -(CHAT_TAB_ROW + SKIN_PADDING))
+        DamageMeter.chatAnchored = true
+    end
     matchSizing = false
+end
+
+-- an error inside (reported) must not leave the guard up
+function MatchChatSize()
+    if not SafeCall(MatchChatSizeBody) then matchSizing = false end
 end
 
 local function HookChatSize()
@@ -1280,6 +1327,19 @@ local function HookChatSize()
     if not meter.FlareUI_SizeHooked then
         meter.FlareUI_SizeHooked = true
         hooksecurefunc(meter, "SetSize", MatchChatSize)
+        -- Edit Mode re-anchors the meter (its layouts at login, a layout change), by SetPoint or by
+        -- the base setter it keeps: back into the chat a frame later, once every point Blizzard sets is in
+        local pending = false
+        local function Reanchor()
+            if pending or matchSizing or IsEditModeActive() or not ChatTabOn() then return end
+            pending = true
+            C_Timer.After(0, function()
+                pending = false
+                MatchChatSize()
+            end)
+        end
+        hooksecurefunc(meter, "SetPoint", Reanchor)
+        if type(meter.SetPointBase) == "function" then hooksecurefunc(meter, "SetPointBase", Reanchor) end
     end
     -- the chat's skin arrives with the Chat module, after ChatFrame1 itself
     if not source.FlareUI_DMSizeHooked then
@@ -1296,6 +1356,19 @@ function DamageMeter:RestoreEditModeSize()
     local setting = Enum.EditModeDamageMeterSetting
     local width, height = meter:GetSettingValue(setting.FrameWidth), meter:GetSettingValue(setting.FrameHeight)
     if width and height and width > 0 and height > 0 then meter:SetSize(width, height) end
+end
+
+-- Out of the chat (Meter Tab in the Chat off): the place Edit Mode has saved, read and set from here
+-- like the size above
+function DamageMeter:RestoreEditModeAnchor()
+    local meter = _G.DamageMeter
+    if not (meter and self.chatAnchored) or InCombatLockdown() then return end
+    local info = meter.systemInfo and meter.systemInfo.anchorInfo
+    if not (info and info.point) then return end   -- Edit Mode's next layout puts it back
+    self.chatAnchored = nil
+    local clear, set = meter.ClearAllPointsBase or meter.ClearAllPoints, meter.SetPointBase or meter.SetPoint
+    clear(meter)
+    set(meter, info.point, info.relativeTo, info.relativePoint, info.offsetX, info.offsetY)
 end
 
 --------------------------------------------------
@@ -1319,13 +1392,18 @@ function DamageMeter:Refresh()
         self:ApplyToWindow(window)
     end
     HookChatSize()
-    if db.matchChatSize then
+    local inChat = ChatTabOn()
+    if db.matchChatSize or inChat then
         MatchChatSize()
         self.sizeMatched = true
     elseif self.sizeMatched then
         self.sizeMatched = nil
         self:RestoreEditModeSize()
     end
+    -- Meter Tab in the Chat switched on or off: the visibility rules change hands (ApplyVisibility)
+    if (inChat and MeterAllowed()) ~= (self.chatTabApplied or false) then self:ApplyVisibility() end
+    -- the chat draws or drops its Meter tab (Blizzard's switch may have changed too)
+    if ns.Chat and ns.Chat.RefreshMeterTab then SafeCall(ns.Chat.RefreshMeterTab, ns.Chat) end
 
     self._pendingRefresh = false
 end
@@ -1334,6 +1412,7 @@ end
 -- 21. EVENT HANDLERS
 --------------------------------------------------
 function DamageMeter:PLAYER_REGEN_ENABLED()
+    if self.chatTabLeavePending then self:LeaveChatTab() end
     if self._pendingRefresh then
         C_Timer.After(0, function() self:Refresh() end)
     end
@@ -1448,6 +1527,8 @@ local function FadeStep(self, meter, elapsed)
         meter:Hide()
         applying = wasApplying
     end
+    -- on a chat tab (Meter Tab in the Chat): faded out, it drops under the chat, which gets the mouse
+    if target == 0 and not DamageMeter.chatTabActive and DamageMeter.chatTabApplied then ApplyChatTabStrata(meter, false) end
     if not meter.FlareUI_MouseHidden then self:Hide() end
 end
 
@@ -1474,16 +1555,30 @@ local function FadeMeter(meter, target, hide)
 end
 
 -- Blizzard's switch for the meter is on and the meter can be used here
-local function MeterAllowed()
+function MeterAllowed()
     if C_CVar.GetCVarBool and not C_CVar.GetCVarBool("damageMeterEnabled") then return false end
     if C_DamageMeter and C_DamageMeter.IsDamageMeterAvailable and not C_DamageMeter.IsDamageMeterAvailable() then return false end
     return true
 end
 
-local function ApplyVisibility(meter)
+local function ApplyVisibilityBody(meter)
     local db = GetDb()
     if applying or not (db and db.enabled) then return end
     applying = true
+    -- in the chat the tab decides (Blizzard's switch off: hidden below, as ever). Switching in or
+    -- out of the chat is noted here, whichever check brings it: Refresh, a click, Blizzard's own
+    local inChat = ChatTabOn() and MeterAllowed()
+    if inChat ~= (DamageMeter.chatTabApplied or false) then
+        DamageMeter.chatTabApplied = inChat or nil
+        if not inChat then DamageMeter:LeaveChatTab() end
+        -- the chat draws or drops its tab; a frame later, as this can be Blizzard's own check
+        if ns.Chat and ns.Chat.RefreshMeterTab then C_Timer.After(0, function() ns.Chat:RefreshMeterTab() end) end
+    end
+    if inChat then
+        ApplyChatTab(meter, db)
+        applying = false
+        return
+    end
     -- whether the meter was up (shown, not faded out) before Blizzard's check: a fade starts from there
     local wasUp = meter.FlareUI_Up
     -- Edit Mode open: always up, its "Damage Meter" box ticked or not; Blizzard's switch off stays off
@@ -1530,6 +1625,15 @@ local function ApplyVisibility(meter)
     applying = false
 end
 
+-- an error inside (reported) must not leave the guard up: every later check would be skipped
+local function ApplyVisibility(meter)
+    local ok, err = pcall(ApplyVisibilityBody, meter)
+    if not ok then
+        applying = false
+        geterrorhandler()(err)
+    end
+end
+
 function DamageMeter:SetupMouseover()
     local meter = _G.DamageMeter
     if not meter or self.mouseoverHooked or type(meter.UpdateShownState) ~= "function" then return end
@@ -1552,7 +1656,8 @@ end
 function DamageMeter:ApplyVisibility()
     local meter = _G.DamageMeter
     if not meter then return end
-    if not InCombatLockdown() and type(meter.ShouldBeShown) == "function" then
+    -- in the chat the tab decides, not Blizzard's verdict (the meter is never hidden there)
+    if not self:ChatTabAvailable() and not InCombatLockdown() and type(meter.ShouldBeShown) == "function" then
         local ok, should = pcall(meter.ShouldBeShown, meter)
         if ok and (not should or not InFight()) then meter:SetShown(should and true or false) end
     end
@@ -1560,7 +1665,150 @@ function DamageMeter:ApplyVisibility()
 end
 
 --------------------------------------------------
--- 23. INIT
+-- 23. METER TAB IN THE CHAT (Settings > Damage Meter)
+-- The meter as a tab of FlareUI's chat: in the main chat window under its tab row (MatchChatSize),
+-- its own skin clear over the chat's. The tab sets its alpha, up on the Meter tab and 0 on a chat
+-- tab: alpha is allowed in a fight where Show is not, so the frame is never hidden. Faded out it
+-- drops under the chat (strata), so the chat's links and wheel get the mouse. The chat draws the
+-- tab, hides its text under the meter and lends the meter its fades (Chat.lua, METER TAB).
+-- Visibility picks the tab when its rule changes: In Combat and In Group switch to the meter and
+-- back, Always starts on it; a click holds until the rule next changes.
+--------------------------------------------------
+local CHAT_TAB_LOWERED = "BACKGROUND"   -- the chat windows are LOW
+local STRATA_ORDER = { "BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP" }
+
+-- Both modules on, the chat skinned and Blizzard's meter allowed, as last applied (ApplyVisibility
+-- notes it on every check): the chat draws the tab. Asked on every alpha step and every chat line,
+-- so no CVar or API call here.
+function DamageMeter:ChatTabAvailable()
+    return self.chatTabApplied == true
+end
+
+-- The meter's own strata, or the one above the chat window's when its own is not (the chat is
+-- toplevel: in the same strata it climbs over the meter on a click)
+local function ChatTabRaisedStrata(meter)
+    local own = meter.FlareUI_Strata or "MEDIUM"
+    local chat = _G.ChatFrame1
+    local ownIndex = tIndexOf(STRATA_ORDER, own) or 3
+    local chatIndex = tIndexOf(STRATA_ORDER, chat and chat:GetFrameStrata() or "LOW") or 2
+    if ownIndex > chatIndex then return own end
+    return STRATA_ORDER[math_min(chatIndex + 1, #STRATA_ORDER)]
+end
+
+-- The meter, its windows and FlareUI's frames on them with a strata of their own (the skin, the
+-- group buttons): raised on the Meter tab, lowered under the chat on a chat tab. Frames made later
+-- copy the meter's strata of the moment, so an unchanged strata is left alone.
+function ApplyChatTabStrata(meter, raised)
+    if not meter.FlareUI_Strata then meter.FlareUI_Strata = meter:GetFrameStrata() or "MEDIUM" end
+    local strata = raised and ChatTabRaisedStrata(meter) or CHAT_TAB_LOWERED
+    if meter.FlareUI_ChatStrata == strata then return end
+    meter.FlareUI_ChatStrata = strata
+    local function Set(frame)
+        if frame and not frame:IsForbidden() and frame:GetFrameStrata() ~= strata then frame:SetFrameStrata(strata) end
+    end
+    Set(meter)
+    for _, window in ipairs(GetSessionWindows()) do
+        Set(window)
+        Set(window.FlareUI_DMSkin)
+        for _, btn in pairs(GROUP_BUTTONS.buttons[window] or {}) do Set(btn) end
+    end
+end
+
+-- The chat's alpha (its own fading), which the meter shares on the Meter tab
+local function ChatAlpha()
+    local dock = _G.GeneralDockManager
+    local frame = (dock and FCFDock_GetSelectedWindow(dock)) or _G.ChatFrame1
+    return frame and frame.FlareUI_TargetAlpha or 1
+end
+
+-- FlareUI's rule in the chat, from ApplyVisibility after each of Blizzard's checks
+function ApplyChatTab(meter, db)
+    -- into the chat when Refresh has not placed it yet, or a fight held it back
+    if not DamageMeter.chatAnchored then MatchChatSize() end
+    -- Visibility's rule picks the tab when its answer changes
+    local rule = (VISIBILITY[db.visibility] or VISIBILITY.always)(meter) and true or false
+    if rule ~= DamageMeter.chatTabRule then
+        DamageMeter.chatTabRule = rule
+        if (DamageMeter.chatTabActive or false) ~= rule then
+            DamageMeter.chatTabActive = rule
+            -- from Blizzard's own check: the chat follows a frame later
+            if ns.Chat and ns.Chat.RefreshMeterTab then C_Timer.After(0, function() ns.Chat:RefreshMeterTab() end) end
+        end
+    end
+    local active = DamageMeter.chatTabActive or false
+    -- Edit Mode shows it whatever the tab, with its own skin: it may sit away from the chat there.
+    -- Not Settings > Damage Meter: the chat's skin is its background here
+    local editing = ((type(meter.IsEditing) == "function" and meter:IsEditing()) or IsEditModeActive()) and true or false
+    if editing then active = true end
+    if editing ~= (DamageMeter.chatTabEditing or false) then
+        DamageMeter.chatTabEditing = editing or nil
+        for _, window in ipairs(GetSessionWindows()) do
+            local skin = window.FlareUI_DMSkin
+            if skin and skin.FlareUI_InChat == editing then SetSkinInChat(window, db, not editing) end
+        end
+    end
+    meter.FlareUI_MouseHidden = nil
+    hideWhenFaded = false
+    -- never hidden (a fight allows alpha, not Show); its first showing starts from nothing
+    if not meter:IsShown() then meter:SetAlpha(0) end
+    if not ShowMeter(meter) then
+        meter.FlareUI_Up = false
+        return
+    end
+    if active then
+        ApplyChatTabStrata(meter, true)
+        meter.FlareUI_Up = true
+        FadeMeter(meter, ChatAlpha())
+    else
+        meter.FlareUI_Up = false
+        FadeMeter(meter, 0)   -- lowered once faded (FadeStep)
+    end
+end
+
+-- The Meter tab clicked (true) or a chat tab (false)
+function DamageMeter:SetChatTab(active)
+    active = active and true or false
+    if (self.chatTabActive or false) == active then return end
+    self.chatTabActive = active
+    self:ApplyVisibility()
+    if ns.Chat and ns.Chat.RefreshMeterTab then ns.Chat:RefreshMeterTab() end
+end
+
+-- The chat fades (its Visibility): on the Meter tab the meter goes with the window it stands in
+function DamageMeter:SetChatTabAlpha(alpha)
+    local meter = _G.DamageMeter
+    if not (meter and self.chatTabActive and self:ChatTabAvailable()) or fadeDriver:IsShown() then return end
+    if meter:IsShown() then meter:SetAlpha(alpha) end
+end
+
+-- Ignore Chat Fade: the chat's own fading waits while the tab is selected
+function DamageMeter:ChatTabIgnoresFade()
+    local db = GetDb()
+    return db ~= nil and db.chatTabIgnoreFade == true
+end
+
+-- The mouse is over the meter or one of its windows: keeps a fading chat up
+function DamageMeter:ChatTabMouseOver()
+    local meter = _G.DamageMeter
+    return meter ~= nil and meter:IsShown() and MeterUnderMouse(meter)
+end
+
+-- Out of the chat (the option or Blizzard's switch off): its own strata back now, its Edit Mode
+-- place after a fight (PLAYER_REGEN_ENABLED)
+function DamageMeter:LeaveChatTab()
+    self.chatTabActive, self.chatTabRule, self.chatTabEditing = nil, nil, nil
+    local meter = _G.DamageMeter
+    if meter then ApplyChatTabStrata(meter, true) end
+    if InCombatLockdown() then
+        self.chatTabLeavePending = true
+        return
+    end
+    self.chatTabLeavePending = nil
+    self:RestoreEditModeAnchor()
+end
+
+--------------------------------------------------
+-- 24. INIT
 --------------------------------------------------
 function DamageMeter:Init()
     -- EDIT_MODE_LAYOUTS_UPDATED fires while Edit Mode is open, where Refresh does nothing

@@ -4,7 +4,8 @@ local L = ns.L
 --------------------------------------------------
 -- CHAT
 -- Blizzard's chat windows in FlareUI's look: a skin per window with tabs and header buttons,
--- rewritten lines, copyable links, hover tooltips, saved history, pop-out windows and fading.
+-- rewritten lines, copyable links, hover tooltips, saved history, pop-out windows, fading and the
+-- damage meter as a tab.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -1427,7 +1428,106 @@ function Chat:KillGeneralDockManager()
 end
 
 --------------------------------------------------
--- 11. TAB BAR
+-- 11. METER TAB
+-- Blizzard's damage meter as a tab of the bar (Settings > Damage Meter > Meter Tab in the Chat). The
+-- Damage Meter module keeps the meter in the main window and sets its alpha (DamageMeter.lua, METER
+-- TAB IN THE CHAT); the chat draws the tab after the windows' tabs, hides the shown window's text
+-- under the meter, lends the meter its fades and lights a tab whose lines it hides.
+--------------------------------------------------
+local meterUnread = {}   -- chat frame -> true: a line arrived while the Meter tab hid it
+
+local function MeterTabAvailable()
+    local dm = ns.DamageMeter
+    return dm ~= nil and dm.ChatTabAvailable ~= nil and dm:ChatTabAvailable() or false
+end
+
+-- asked on every alpha step and every line: two fields, no call
+function Chat:MeterTabActive()
+    local dm = ns.DamageMeter
+    return dm ~= nil and dm.chatTabActive == true and dm.chatTabApplied == true
+end
+
+local function SelectedDocked()
+    local dock = _G.GeneralDockManager
+    return (dock and FCFDock_GetSelectedWindow(dock)) or _G.ChatFrame1
+end
+
+-- The docked windows' text, and what goes with it, under the meter or back
+local function SetDockedTextShown(shown)
+    local dock = _G.GeneralDockManager
+    local alpha = shown and 1 or 0
+    for _, frame in ipairs(dock and dock.DOCKED_CHAT_FRAMES or {}) do
+        if not frame:IsForbidden() then
+            if frame.FontStringContainer then frame.FontStringContainer:SetAlpha(alpha) end
+            if frame.ScrollToBottomButton then frame.ScrollToBottomButton:SetAlpha(alpha) end
+        end
+    end
+    local bar = _G.CombatLogQuickButtonFrame_Custom
+    if bar then bar:SetAlpha(alpha) end
+end
+
+-- With the chat fading (Visibility), the meter takes the mouse the window would see: a hover over it
+-- brings a fading or faded window back, checked ten times a second while the Meter tab is selected.
+-- A window fully up needs no check: its hold asks CheckChatVisibility when it runs out.
+local meterHover = CreateFrame("Frame")
+meterHover:Hide()
+meterHover.elapsed = 0
+meterHover:SetScript("OnUpdate", function(self, elapsed)
+    self.elapsed = self.elapsed + elapsed
+    if self.elapsed < 0.1 then return end
+    self.elapsed = 0
+    local frame = SelectedDocked()
+    if not frame or (frame.FlareUI_TargetAlpha or 1) >= 1 then return end
+    local dm, db = ns.DamageMeter, GetDb()
+    if not (db and dm and dm.ChatTabMouseOver and dm:ChatTabMouseOver()) then return end
+    Chat:ShowChatFrame(frame, db)
+end)
+
+-- Called by the Damage Meter module whenever the tab's state may have changed: a click, Visibility,
+-- the options, Blizzard's switch. Its Refresh asks often, so an unchanged state is left alone.
+function Chat:RefreshMeterTab()
+    local db = GetDb()
+    if not (db and db.enabled) then return end
+    local dm = ns.DamageMeter
+    local active = Chat:MeterTabActive()
+    local fades = Chat.Fades(db)
+    local ignore = dm ~= nil and dm.ChatTabIgnoresFade ~= nil and dm:ChatTabIgnoresFade()
+    local state = (MeterTabAvailable() and 1 or 0) + (active and 2 or 0) + (fades and 4 or 0) + (ignore and 8 or 0)
+    if state == self.meterTabState then return end
+    self.meterTabState = state
+    SetDockedTextShown(not active)
+    if not active then wipe(meterUnread) end
+    for _, cf in Windows() do
+        if cf and cf.FlareUI_TabBar then Chat:UpdateCustomTabs(cf, db) end
+    end
+    meterHover:SetShown(active and fades and not ignore)
+    -- Ignore Chat Fade: a faded window comes up with the tab (CheckChatVisibility holds it)
+    if active and fades and ignore then Chat:ShowChatFrame(SelectedDocked(), db) end
+end
+
+-- The Meter tab clicked (true) or a chat tab (false)
+function Chat:SelectMeterTab(active)
+    local dm = ns.DamageMeter
+    if not (dm and dm.SetChatTab) then return end
+    dm:SetChatTab(active)   -- comes back through RefreshMeterTab
+    Chat:ShowChatFrame(SelectedDocked(), GetDb())
+end
+
+-- A line into the window the meter hides: its tab lights up until the chat is back
+local function MarkUnread(chatFrame)
+    for _, cf in Windows() do
+        local bar = cf and cf.FlareUI_TabBar
+        for _, btn in ipairs(bar and bar.buttons or {}) do
+            if btn.chatFrame == chatFrame and btn:IsShown() then
+                btn.isUnread = true
+                btn.Text:SetAlpha(1)
+            end
+        end
+    end
+end
+
+--------------------------------------------------
+-- 12. TAB BAR
 -- FlareUI's own tabs on the skin, one per docked window (a popped window has only its own).
 --------------------------------------------------
 function Chat:CreateCustomTabBar(chatFrame)
@@ -1702,11 +1802,13 @@ function Chat:UpdateCustomTabs(chatFrame, db)
     scrollFrame:SetPoint("TOPRIGHT", chatFrame.FlareUI_Skin, "TOPRIGHT", margin, 0)
 
     for _, btn in ipairs(scrollFrame.buttons) do btn:Hide() end
+    if scrollFrame.meterButton then scrollFrame.meterButton:Hide() end
 
     local dock = _G.GeneralDockManager
     local dockedFrames = dock and dock.DOCKED_CHAT_FRAMES
     if not dockedFrames then return end
     if popped then dockedFrames = { chatFrame } end
+    local meterActive = not popped and Chat:MeterTabActive()
 
     local prevBtn = nil
     local fontPath, fontSize, fontFlags = GetFontData(db.tabFont)
@@ -1740,6 +1842,7 @@ function Chat:UpdateCustomTabs(chatFrame, db)
                     -- its selection box and size options hide with it, and docked windows share its size
                     elseif not IsPopped(self.chatFrame) and not (_G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()) then
                         _G.FCF_Tab_OnClick(self.realTab, button)
+                        if Chat:MeterTabActive() then Chat:SelectMeterTab(false) end
                         C_Timer.After(0.01, function()
                             local chatDb = GetDb()
                             if chatDb then Chat:UpdateCustomTabs(_G.ChatFrame1, chatDb) end
@@ -1769,7 +1872,7 @@ function Chat:UpdateCustomTabs(chatFrame, db)
                     Chat:ShowChatFrame(chatFrame, GetDb())
                 end)
 
-                btn:SetScript("OnLeave", function(self) if not (self.isSelected or self.isFlashing) then self.Text:SetAlpha(TAB_IDLE_ALPHA) end end)
+                btn:SetScript("OnLeave", function(self) if not (self.isSelected or self.isFlashing or self.isUnread) then self.Text:SetAlpha(TAB_IDLE_ALPHA) end end)
                 scrollFrame.buttons[buttonIndex] = btn
             end
 
@@ -1790,8 +1893,10 @@ function Chat:UpdateCustomTabs(chatFrame, db)
             btn.Text:ClearAllPoints()
             btn.Text:SetPoint("CENTER", btn, "CENTER", 0, TAB_TEXT_Y)
 
-            local isSelected = popped or FCFDock_GetSelectedWindow(dock) == frame
+            -- on the Meter tab the window Blizzard has selected is shown as any other
+            local isSelected = popped or (not meterActive and FCFDock_GetSelectedWindow(dock) == frame)
             btn.isSelected = isSelected
+            btn.isUnread = meterUnread[frame] or nil
 
             if isSelected then
                 local c = TAB_ACTIVE_COLOR
@@ -1808,6 +1913,8 @@ function Chat:UpdateCustomTabs(chatFrame, db)
                     local whisper = ChatTypeInfo[frame.chatType == "BN_WHISPER" and "BN_WHISPER" or "WHISPER"]
                     btn.Text:SetTextColor(whisper.r or 1, whisper.g or 0.5, whisper.b or 1, 1)
                     btn.Text:SetAlpha(1)
+                elseif btn.isUnread then
+                    btn.Text:SetAlpha(1)
                 end
             end
 
@@ -1822,6 +1929,44 @@ function Chat:UpdateCustomTabs(chatFrame, db)
             prevBtn = btn
             totalWidth = totalWidth + w + 4
         end
+    end
+
+    -- the Meter tab (METER TAB), after the windows' tabs; a popped window has only its own
+    local meterBtn = scrollFrame.meterButton
+    if not popped and MeterTabAvailable() then
+        if not meterBtn then
+            meterBtn = CreateFrame("Button", nil, scrollChild)
+            meterBtn:SetHeight(24)
+            meterBtn.Text = meterBtn:CreateFontString(nil, "OVERLAY")
+            meterBtn:RegisterForClicks("LeftButtonUp")
+            meterBtn:SetScript("OnClick", function() Chat:SelectMeterTab(true) end)
+            meterBtn:SetScript("OnEnter", function(self)
+                self.Text:SetAlpha(1)
+                GameTooltip:Hide()
+                Chat:ShowChatFrame(chatFrame, GetDb())
+            end)
+            meterBtn:SetScript("OnLeave", function(self) if not self.isSelected then self.Text:SetAlpha(TAB_IDLE_ALPHA) end end)
+            scrollFrame.meterButton = meterBtn
+        end
+        ns.SetFont(meterBtn.Text, fontPath, fontSize, fontFlags)
+        ns.ApplyShadow(meterBtn.Text, db.tabFont)
+        meterBtn.Text:SetText(L["Meter"])
+        local w = meterBtn.Text:GetStringWidth() + 14
+        meterBtn:SetWidth(w)
+        meterBtn.Text:ClearAllPoints()
+        meterBtn.Text:SetPoint("CENTER", meterBtn, "CENTER", 0, TAB_TEXT_Y)
+        meterBtn.isSelected = meterActive
+        local c = meterActive and TAB_ACTIVE_COLOR or TAB_INACTIVE_COLOR
+        meterBtn.Text:SetTextColor(c.r, c.g, c.b, c.a)
+        meterBtn.Text:SetAlpha(meterActive and 1 or TAB_IDLE_ALPHA)
+        meterBtn:ClearAllPoints()
+        if prevBtn then
+            meterBtn:SetPoint("LEFT", prevBtn, "RIGHT", 4, 0)
+        else
+            meterBtn:SetPoint("LEFT", scrollChild, "LEFT", 0, 0)
+        end
+        meterBtn:Show()
+        totalWidth = totalWidth + w + 4
     end
 
     scrollChild:SetWidth(math_max(1, totalWidth))
@@ -1880,7 +2025,7 @@ function Chat:UpdateTabFonts(db)
 end
 
 --------------------------------------------------
--- 12. EDIT BOX
+-- 13. EDIT BOX
 -- * Sent history: the last lines sent (all channels, per character). Up / Down, with or without
 --   Shift or Alt, step through them; Down past the newest restores the draft. Blizzard's own list
 --   is emptied after each line so Alt+Up does not fight this one.
@@ -2049,7 +2194,7 @@ function Chat:StyleEditBox(chatFrame, db)
 end
 
 --------------------------------------------------
--- 13. WINDOW SKIN
+-- 14. WINDOW SKIN
 --------------------------------------------------
 
 function Chat:SetupVolumeButton(chatFrame, db)
@@ -2271,7 +2416,7 @@ function Chat:StyleChatFrame(chatFrame, db)
 end
 
 --------------------------------------------------
--- 14. POP-OUT WINDOWS
+-- 15. POP-OUT WINDOWS
 -- With Blizzard's tabs hidden, the tab menu's Pop Out undocks a window through Blizzard's functions,
 -- which save its state, position and size. A popped window keeps the skin with only its own tab;
 -- its tab and header drag it. The shared header buttons stay on the dock.
@@ -2363,7 +2508,7 @@ function Chat:DockWindow(chatFrame)
 end
 
 --------------------------------------------------
--- 15. AUTO-HIDE
+-- 16. AUTO-HIDE
 -- With a Visibility other than Always, a window stays up autoHideDelay seconds (Fade Delay) after
 -- the last message, hover, edit (or combat), then fades out at the Fade Speed. A message only
 -- moves hideAt; one timer per window waits for it. Fades run on one shared OnUpdate that stops when
@@ -2388,6 +2533,8 @@ function Chat:SetChatFrameAlpha(chatFrame, alpha)
     chatFrame.FlareUI_IgnoreAlpha = true
     chatFrame:SetAlpha(alpha)
     chatFrame.FlareUI_IgnoreAlpha = false
+    -- on the Meter tab the meter fades with the window it stands in
+    if Chat:MeterTabActive() and chatFrame == SelectedDocked() then ns.DamageMeter:SetChatTabAlpha(alpha) end
 end
 
 -- true while something keeps the window up: the mouse, a focused edit box, combat, Edit Mode
@@ -2400,6 +2547,7 @@ function Chat:CheckChatVisibility(chatFrame, db)
             if btn and btn:IsMouseOver() then return true end
         end
     end
+    if Chat:MeterTabActive() and (ns.DamageMeter:ChatTabIgnoresFade() or ns.DamageMeter:ChatTabMouseOver()) then return true end
     local editBox = chatFrame.editBox
     if editBox and editBox:HasFocus() then return true end
     if db.visibility == "combat" and InCombatLockdown() then return true end
@@ -2507,7 +2655,7 @@ function Chat:TakeOverFromDock(chatFrame)
 end
 
 --------------------------------------------------
--- 16. EVENT HANDLERS
+-- 17. EVENT HANDLERS
 --------------------------------------------------
 function Chat:OnCombatStateChange()
     local db = GetDb()
@@ -2544,13 +2692,18 @@ function Chat:OnNPCInteractionEnd()
 end
 
 --------------------------------------------------
--- 17. APPLY
+-- 18. APPLY
 --------------------------------------------------
 -- every message (combat log lines included) lands here, so it returns early when auto-hide is off
 local function OnChatMessage(chatFrame)
     UpdateScrollToBottomVisibility(chatFrame)
     local db = GetDb()
     if db and Fades(db) then Chat:ShowChatFrame(chatFrame, db) end
+    -- a line under the Meter tab lights its window's tab (not the Combat Log's, which never stops)
+    if Chat:MeterTabActive() and not meterUnread[chatFrame] and chatFrame ~= _G.ChatFrame2 and chatFrame == SelectedDocked() then
+        meterUnread[chatFrame] = true
+        MarkUnread(chatFrame)
+    end
 end
 
 local function OnChatEnter(chatFrame)
@@ -2625,7 +2778,7 @@ function Chat:Apply(db)
 end
 
 --------------------------------------------------
--- 18. INIT
+-- 19. INIT
 --------------------------------------------------
 -- Blizzard's gamepad chat only works in IM style, so the Gamepad UI switches to it; the player's
 -- style comes back in keyboard mode. The CVar is account-wide, so the saved style is too.
@@ -2896,7 +3049,7 @@ function Chat:Init()
 end
 
 --------------------------------------------------
--- 19. SAVED HISTORY AND REFRESH
+-- 20. SAVED HISTORY AND REFRESH
 --------------------------------------------------
 function Chat:SaveHistory()
     local db = GetDb()
@@ -2955,4 +3108,5 @@ function Chat:RefreshAll()
         local cf = _G["ChatFrame" .. i]
         if cf then Chat:ShowChatFrame(cf, db) end
     end
+    Chat:RefreshMeterTab()   -- its hover watch follows a changed Visibility
 end

@@ -526,6 +526,17 @@ ns.Copy = {
             section = "dm.frame",
             tip = L["None hides it."],
         },
+        ["dm.chatTab"] = {
+            desc = L["A Meter tab with the chat's tabs: the meter in the chat window, the chat back on its own tabs."],
+            label = L["Meter tab in the chat"],
+            section = "dm.tweaks",
+            tip = L["Visibility picks the tab: In combat and In group switch to it and back, Always starts on it."],
+        },
+        ["dm.chatTabIgnoreFade"] = {
+            desc = L["The chat's Visibility fade is ignored while the Meter tab is selected: the window stays up."],
+            label = L["Ignore chat fade"],
+            section = "dm.tweaks",
+        },
         ["dm.combatTimer"] = {
             desc = L["The fight's running time in the meter's title."],
             label = L["Combat timer"],
