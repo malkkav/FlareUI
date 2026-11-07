@@ -1,3 +1,22 @@
+# FlareUI 3.0.8
+
+Cleaner portraits on faded frames, Forever Style draws Blizzard's whole ring, and windows are easier to move and close.
+
+**Restart the game fully after updating** (not just /reload): this version adds new files.
+
+## Changed
+- FlareUI Style party, raid and boss frames: the selected frame now gets a brighter border instead of white lines.
+- Forever Style: the dispel glow on the name box is stronger, in Edit Mode's preview too.
+- Move Any Frame: a window starts moving as soon as you drag its title bar, with no dead zone.
+
+## Fixed
+- FlareUI Style: on a faded or out of range frame, the end of the bars no longer shows through the portrait.
+- FlareUI and Forever Style: the ring and portrait no longer show through the level disc on a faded frame.
+- Forever Style: the portrait ring is whole, with its full shadow, and joins the frame in a straight line.
+- Target, focus, party and raid frames: Hide Buffs hid every buff on a group member too far away to see, because the game sends no durations at that distance. It now pauses for them. With Only My Buffs on, party and raid frames can still show none at that distance.
+- Move Any Frame: the close button works across its whole area on the AddOns window and others without a portrait.
+- Combat text no longer draws behind the swing timers and other Resource Bars.
+
 # FlareUI 3.0.7
 
 Fixes a Lua error from 3.0.6 on cast bars.

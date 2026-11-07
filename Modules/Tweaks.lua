@@ -51,6 +51,7 @@ local MOVE_EXCLUDED = {
 }
 local moveFrames = {}          -- name -> frame (already set up)
 local moveApplyQueued = false
+local moveDragWatch            -- watches the cursor between a press on a title bar and the first movement
 local movePending = {}         -- frames whose saved position must be applied after combat
 local setupPending = {}        -- protected windows that loaded in combat: set up when it ends
 local moveSuspended = false    -- the gamepad UI came on mid-session; see StartMoveAnyFrame
@@ -144,14 +145,37 @@ end
 
 local function OnDragStart(handle)
     local frame = handle.moveTarget or handle
-    if not CanTouch(frame) or IsMaximized(frame) then return end
+    moveDragWatch:Hide()
+    if frame.moveDragging or not CanTouch(frame) or IsMaximized(frame) then return end
     frame:SetMovable(true)
     frame:StartMoving()
     frame.moveDragging = true
+    handle.bagDragged = true   -- a bag's portrait: this was a drag, not a click for its menu
+end
+
+-- The client only reports a drag after the cursor has gone several pixels, which felt like a dead zone:
+-- the move starts on the first pixel instead. A click without movement leaves the window alone.
+moveDragWatch = CreateFrame("Frame")
+moveDragWatch:Hide()
+moveDragWatch:SetScript("OnUpdate", function(self)
+    if not IsMouseButtonDown("LeftButton") then
+        self:Hide()
+        return
+    end
+    local x, y = GetCursorPosition()
+    if x ~= self.x or y ~= self.y then OnDragStart(self.handle) end
+end)
+
+local function OnMouseDown(handle, button)
+    if button ~= "LeftButton" then return end
+    moveDragWatch.handle = handle
+    moveDragWatch.x, moveDragWatch.y = GetCursorPosition()
+    moveDragWatch:Show()
 end
 
 local function OnDragStop(handle)
     local frame = handle.moveTarget or handle
+    moveDragWatch:Hide()
     if not frame.moveDragging then return end
     frame.moveDragging = false
     frame:StopMovingOrSizing()
@@ -177,6 +201,7 @@ local function ToggleBagMenu(frame)
 end
 
 local function OnMouseUp(handle, button)
+    if button == "LeftButton" then OnDragStop(handle) end
     if button ~= "RightButton" then return end
     local frame = handle.moveTarget or handle
     if IsShiftKeyDown() then ResetPosition(frame) end
@@ -194,6 +219,9 @@ end
 -- Only the header drags: a mouse-enabled window would swallow every click inside it
 local HEADER_HEIGHT = 26
 local CLOSE_BUTTON_ROOM = 40
+-- A title bar takes the mouse here, level with the close and maximize buttons, and on a window that hides
+-- its portrait it runs the whole width over them: its right end stays clear of clicks.
+local TITLE_BUTTONS_ROOM = 60
 
 local function SetupHandle(frame, handle)
     if not handle or handle.moveHooked then return end
@@ -201,6 +229,8 @@ local function SetupHandle(frame, handle)
     handle.moveTarget = frame
     if handle.EnableMouse then handle:EnableMouse(true) end
     if handle.RegisterForDrag then handle:RegisterForDrag("LeftButton") end
+    if handle ~= frame.moveStrip and handle.SetHitRectInsets then handle:SetHitRectInsets(0, TITLE_BUTTONS_ROOM, 0, 0) end
+    handle:HookScript("OnMouseDown", OnMouseDown)
     handle:HookScript("OnDragStart", OnDragStart)
     handle:HookScript("OnDragStop", OnDragStop)
     handle:HookScript("OnMouseUp", OnMouseUp)

@@ -910,9 +910,18 @@ local function HideBlizzardCounterparts()
     end
 end
 
+-- Blizzard's scrolling combat text shares the MEDIUM strata with no level of its own, so it drew
+-- behind these bars. Above the unit frames too (their top level is about 205); a strata change
+-- would also put it over every open window.
+local COMBAT_TEXT_LEVEL = 250
+local function RaiseCombatText()
+    if CombatText then CombatText:SetFrameLevel(COMBAT_TEXT_LEVEL) end
+end
+
 function RB:Init()
     if self.initialized or not K then return end
     self.initialized = true
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_CombatText", RaiseCombatText)
 
     for _, key in ipairs(BAR_ORDER) do
         local info = BARS[key]

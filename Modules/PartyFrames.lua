@@ -545,9 +545,24 @@ local function UpdateStatus(f)
     end
 end
 
+-- A group member too far away to be visible comes with no aura durations: every buff reads as permanent,
+-- so Hide Buffs would hide them all. Its filter drops out until the unit is near again.
+local function UpdateAuraReach(f)
+    if not f.AuraPos or (f.ctx and f.ctx.hostile) then return end
+    local far = f.unit and UnitExists(f.unit) and not UnitIsVisible(f.unit) or false
+    if (f.auraFar or false) == far then return end
+    f.auraFar = far
+    for _, entry in pairs(f.AuraPos) do
+        if entry.durationKey then
+            pcall(entry.container.SetAuraGroupCandidateFilters, entry.container, entry.durationKey, far and entry.farFilter or entry.durationFilter)
+        end
+    end
+end
+
 -- Out of range fades the frame (UnitInRange is secret: SetAlphaFromBoolean picks the alpha). The
 -- player's own frame and enemy tiles never fade.
 local function UpdateRange(f)
+    UpdateAuraReach(f)
     -- raidN can be the player too
     if f.unit == "player" or (f.ctx and f.ctx.hostile) or IsEditing() or readable(UnitIsUnit(f.unit, "player")) then
         f:SetAlpha(1)
@@ -566,12 +581,12 @@ local function UpdateRange(f)
     end
 end
 
--- The player's target: a bright outline inside the border
+-- The player's target: a brighter border
 local function UpdateTarget(f)
     local hl = f.TargetHighlight
-    -- the lines inside the border, or on the plate the name box's glow (the frame's alpha drives both)
+    -- the border's bright copy, or on the plate the name box's glow (the frame's alpha drives both)
     local plate = OnPlate(f) and f.PlateFrame and f.PlateFrame.Strip
-    for _, line in ipairs(hl.Lines or {}) do line:SetShown(not plate) end
+    hl.Border:SetShown(not plate)
     if plate then
         if not hl.PlateGlow then
             hl.PlateGlow = hl:CreateTexture(nil, "OVERLAY")
@@ -901,6 +916,7 @@ local function ConfigurePosition(f, pos, lanes)
     local entry = f.AuraPos and f.AuraPos[pos]
     if not entry then return end
     local container = entry.container
+    entry.durationKey, entry.durationFilter, entry.farFilter = nil, nil, nil
     -- groups are reused per lane and look (ns.AuraGroups); the lanes left out turn off
     ns.AuraGroups.Begin(entry)
     if #lanes == 0 then
@@ -949,7 +965,14 @@ local function ConfigurePosition(f, pos, lanes)
                 forceNewLine = index > 1,
             },
         })
-        if not key then geterrorhandler()(err) end
+        if not key then
+            geterrorhandler()(err)
+        elseif lane.candidates and lane.candidates.maxDuration then
+            -- the same filters without Hide Buffs' duration, for UpdateAuraReach
+            local far = CopyTable(lane.candidates)
+            far.maxDuration = nil
+            entry.durationKey, entry.durationFilter, entry.farFilter = key, lane.candidates, far
+        end
     end
     ns.AuraGroups.Finish(container, entry)
     PlaceAuraContainer(f, pos, container, size, perRow)
@@ -1036,6 +1059,9 @@ local function ConfigureAuras(f)
                       candidates = HideBuffs(processed and not allBuffs and { processedAuraType = processed.Buff } or nil) })
     ApplyBuffPolicy(allBuffs)
     for _, pos in ipairs(AURA_POSITIONS) do ConfigurePosition(f, pos, perPos[pos]) end
+    -- the groups were just given their filters
+    f.auraFar = false
+    UpdateAuraReach(f)
 end
 
 -- The dispel highlight: a slot in its own container, showing the first aura of its filter (never given
@@ -1076,7 +1102,6 @@ local function ConfigureDispelHighlight(f)
                         button.FlareUI_HighlightStrip = glow
                     end
                     pcall(glow.SetAtlas, glow, ns.UFRing.STRIP_ATLAS, false)
-                    glow:SetBlendMode("ADD")
                     if button.FlareUI_HighlightBorder then button.FlareUI_HighlightBorder:Hide() end
                     pcall(button.ClearDispelTypeTextures, button)
                     glow:Hide()   -- until Blizzard shows it for a dispellable debuff
@@ -1410,6 +1435,11 @@ local function LayoutMember(f)
         f:SetBackdropColor(0, 0, 0, K.BG_OPACITY)
         K.ApplyBorderStyle(f.Border, K.GetBorderFile(K.Border(st.border)), st.height or 46)
         f.Border:Show()
+        -- added over the border, so any border art comes out brighter in its own shape
+        local bright = f.TargetHighlight.Border
+        bright:SetBackdrop(f.Border:GetBackdrop())
+        bright:SetBackdropBorderColor(1, 0.85, 0.5, 1)
+        bright:SetBorderBlendMode("ADD")
     end
 
     -- mirrored tiles turn the FlareUI Forever gradient with the fill
@@ -1918,7 +1948,6 @@ local function ApplyPreviewExtras(f, data)
             if not hl.Glow then
                 hl.Glow = hl:CreateTexture(nil, "OVERLAY")
                 hl.Glow:SetAllPoints(hl)
-                hl.Glow:SetBlendMode("ADD")
             end
             pcall(hl.Glow.SetAtlas, hl.Glow, ns.UFRing.STRIP_ATLAS, false)
             hl.Glow:SetVertexColor(c[1], c[2], c[3], 1)
@@ -2159,21 +2188,13 @@ local function BuildTile(f, unit)
     f.Highlight:SetColorTexture(1, 1, 1, 0.08)
     f.Highlight:Hide()
 
-    -- the target outline: four thin lines just inside the border
+    -- the target's highlight: the frame's border again, brightened (its backdrop: LayoutMember)
     local hl = CreateFrame("Frame", nil, f)
     hl:SetPoint("TOPLEFT", f, "TOPLEFT", K.INSET - 1, -K.INSET + 1)
     hl:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -K.INSET + 1, K.INSET - 1)
     hl:SetFrameLevel(level + 5)
-    for _, e in ipairs({ { "TOPLEFT", "TOPRIGHT", nil, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 1 },
-                         { "TOPLEFT", "BOTTOMLEFT", 1, nil }, { "TOPRIGHT", "BOTTOMRIGHT", 1, nil } }) do
-        local line = hl:CreateTexture(nil, "OVERLAY")
-        line:SetColorTexture(1, 1, 1, 0.9)
-        line:SetPoint(e[1])
-        line:SetPoint(e[2])
-        if e[3] then line:SetWidth(e[3]) else line:SetHeight(e[4]) end
-        hl.Lines = hl.Lines or {}
-        hl.Lines[#hl.Lines + 1] = line
-    end
+    hl.Border = CreateFrame("Frame", nil, hl, "BackdropTemplate")
+    hl.Border:SetAllPoints(f.Border)
     hl:SetAlpha(0)
     f.TargetHighlight = hl
 

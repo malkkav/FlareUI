@@ -1282,6 +1282,7 @@ local function OnUnitEvent(f, event, arg1, arg2)
         UpdateCast(f)
     else
         f.lastReady = nil   -- the unit behind the token changed: the last one's ready check goes
+        UF.UpdateAuraReach(f)
         UpdateAll(f)
         -- the containers only follow UNIT_AURA: a new unit would keep the old one's auras, so
         -- they rebuild, as Blizzard's TargetFrame does (not protected: fine in combat)
@@ -1419,6 +1420,7 @@ local function ConfigureAuraCorner(f, corner, lanes)
     if not entry then return end
     local container = entry.container
     local db, udb = GetDb(), GetUnitDb(f.unit)
+    entry.durationKey, entry.durationFilter = nil, nil
 
     -- groups are reused per lane and look (ns.AuraGroups); the lanes left out turn off
     ns.AuraGroups.Begin(entry)
@@ -1463,6 +1465,8 @@ local function ConfigureAuraCorner(f, corner, lanes)
         })
         if not key then
             print("|cffff0000FlareUI:|r aura group failed: " .. tostring(err))
+        elseif lane.candidates and lane.candidates.maxDuration then
+            entry.durationKey, entry.durationFilter = key, lane.candidates
         end
     end
     ns.AuraGroups.Finish(container, entry)
@@ -1500,6 +1504,20 @@ function AURA.Placement(f, corner)
         x = x + (isLeft and clear or -clear)
     end
     return isTop, isLeft, x, y
+end
+
+-- A group member too far away to be visible comes with no aura durations: every buff reads as permanent,
+-- so Hide Buffs would hide them all. Target and focus drop that filter until the unit is near again.
+function UF.UpdateAuraReach(f)
+    if not (f and f.Auras and (f.unit == "target" or f.unit == "focus")) then return end
+    local far = UnitExists(f.unit) and not UnitIsVisible(f.unit) or false
+    if (f.auraFar or false) == far then return end
+    f.auraFar = far
+    for _, entry in pairs(f.Auras) do
+        if entry.durationKey then
+            pcall(entry.container.SetAuraGroupCandidateFilters, entry.container, entry.durationKey, far and {} or entry.durationFilter)
+        end
+    end
 end
 
 -- Two places clash: the same one, or a whole-width one and anything on its edge
@@ -1555,6 +1573,9 @@ LayoutAuras = function(f)
         ConfigureAuraCorner(f, corner, perCorner[corner])
     end
     PositionAuraContainers(f)
+    -- the groups were just given their filters
+    f.auraFar = false
+    UF.UpdateAuraReach(f)
 end
 
 -- Edit Mode: the containers render Blizzard's sample auras
@@ -3696,6 +3717,11 @@ function UF:Init()
     HookExtras()
     if frames.player then InitFsrSpark() end
     self.initialized = true
+    -- nothing announces a unit going out of sight
+    C_Timer.NewTicker(1, function()
+        UF.UpdateAuraReach(frames.target)
+        UF.UpdateAuraReach(frames.focus)
+    end)
 
     LEM:RegisterCallback("layout", function(layoutName)
         for _, f in pairs(frames) do ApplyPosition(f, layoutName) end

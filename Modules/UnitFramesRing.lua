@@ -158,6 +158,9 @@ local PLATE = {
     defaultScale = { player = 130, target = 130, focus = 100, party = 100, boss = 100, pet = 65,
                      targettarget = 65, focustarget = 65 },   -- percent of Blizzard's size
     ringD = 61.8, ringX = 158.6,           -- Blizzard's ring on this art: its diameter and centre
+    ringRise = 0.64,                       -- its centre above the plate's, in art pixels
+    maskLeft = "Interface\\AddOns\\FlareUI\\Media\\Masks\\RingPlateLeft",     -- the ring art's mask: ring on the left
+    maskRight = "Interface\\AddOns\\FlareUI\\Media\\Masks\\RingPlateRight",
     name   = { 4, 125, 11, 26 },           -- x from, x to, y from, y to
     -- the bars' art; mirrored files for right-to-left fill (a status bar crops an atlas from the left)
     health = { 4, 125, 29, 42, tex = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever.tga",
@@ -542,12 +545,12 @@ end
 -- 4. BUILD
 --------------------------------------------------
 -- the ring out of its atlas, mirrored on the other side from the atlas's
-local function Crop(tex, artInfo, side)
+local function Crop(tex, artInfo, side, box)
     local info = C_Texture.GetAtlasInfo(artInfo.atlas)
     if not info then return false end
     local l, r, t, b = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
     if not (l and r and t and b and info.file) then return false end
-    local box = artInfo.box
+    box = box or artInfo.box
     local x1, x2 = l + box[1] * (r - l), l + box[2] * (r - l)
     if side and side ~= artInfo.side then x1, x2 = x2, x1 end
     tex:SetTexture(info.file)
@@ -604,6 +607,72 @@ local function PlaceHitButton(hit, f, g, dx, dy, w, h)
     hit:EnableMouse(not LEM:IsInEditMode())
 end
 
+-- The frame runs on under the ring, which hid its end until the frame faded. A round hole cut in
+-- everything there (under the rim, so no gap shows) leaves nothing to see through the portrait.
+-- CLAMPTOWHITE: past the mask's own square nothing is cut, however wide the frame.
+local BAR_HOLE_FILE = "Interface\\AddOns\\FlareUI\\Media\\Masks\\RingHole"
+local BAR_HOLE_BACKDROP = { "TopLeftCorner", "TopRightCorner", "BottomLeftCorner", "BottomRightCorner",
+    "TopEdge", "BottomEdge", "LeftEdge", "RightEdge", "Center" }
+
+local function BarHoleRegions(f)
+    local list = {}
+    local function add(region) if region then list[#list + 1] = region end end
+    for _, owner in ipairs({ f, f.Border, f.TargetHighlight and f.TargetHighlight.Border }) do
+        for _, piece in ipairs(BAR_HOLE_BACKDROP) do add(owner[piece]) end
+    end
+    for _, key in ipairs({ "Health", "Power", "ShiftMana", "HealBar", "AbsorbBar" }) do
+        local bar = f[key]
+        if bar then
+            add(bar:GetStatusBarTexture())
+            add(bar.bg)
+        end
+    end
+    add(f.Separator)
+    add(f.ShiftManaSeparator)
+    add(f.Highlight)
+    return list
+end
+
+local function RemoveBarHole(ring)
+    for region in pairs(ring.BarHoleCut or {}) do region:RemoveMaskTexture(ring.BarHole) end
+    ring.BarHoleCut = nil
+end
+
+-- after the frame's backdrop and bars are set up: they make the regions it cuts
+local function ApplyBarHole(f, ring)
+    if not ring.BarHole then
+        ring.BarHole = f:CreateMaskTexture()
+        ring.BarHole:SetTexture(BAR_HOLE_FILE, "CLAMPTOWHITE", "CLAMPTOWHITE")
+    end
+    ring.BarHole:ClearAllPoints()
+    ring.BarHole:SetAllPoints(ring)
+    ring.BarHoleCut = ring.BarHoleCut or {}
+    for _, region in ipairs(BarHoleRegions(f)) do
+        if not ring.BarHoleCut[region] then
+            region:AddMaskTexture(ring.BarHole)
+            ring.BarHoleCut[region] = true
+        end
+    end
+end
+
+-- The same round hole under the level disc, through the ring and portrait, while the disc shows.
+-- The disc's art has wide clear margins: this share of its region puts the hole's edge under its
+-- gold rim (measured from a screenshot). size: the disc's width, when it changes.
+local DISC_HOLE_SHARE = 0.77
+local function SetDiscHole(f, ring, on, size)
+    if not ring.DiscHole then
+        ring.DiscHole = f:CreateMaskTexture()
+        ring.DiscHole:SetTexture(BAR_HOLE_FILE, "CLAMPTOWHITE", "CLAMPTOWHITE")
+        ring.DiscHole:SetPoint("CENTER", ring.Disc, "CENTER")
+    end
+    if size then ring.DiscHole:SetSize(size * DISC_HOLE_SHARE, size * DISC_HOLE_SHARE) end
+    if on == (ring.discHoleOn or false) then return end
+    for _, region in ipairs({ ring.Art, f.Portrait.Tex, ring.Status, ring.Flash, ring.Boss }) do
+        if on then region:AddMaskTexture(ring.DiscHole) else region:RemoveMaskTexture(ring.DiscHole) end
+    end
+    ring.discHoleOn = on
+end
+
 -- the ring, its masks, the discs, glows and extras: made once
 local function Build(f)
     if f.RingFrame then return f.RingFrame end
@@ -615,6 +684,8 @@ local function Build(f)
     ring.Mask:SetAllPoints(ring.Art)
     ring.Mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     ring.Art:AddMaskTexture(ring.Mask)
+    ring.artMasked = true
+    ring.PlateMask = ring:CreateMaskTexture()
 
     -- the portrait's mask, the same shape
     ring.PortraitMask = f.Portrait:CreateMaskTexture()
@@ -724,9 +795,42 @@ function Ring.Layout(f)
 
     ring:ClearAllPoints()
     ring:SetSize(g.D, g.D)
-    ring:SetPoint("CENTER", f, left and "LEFT" or "RIGHT", left and g.centre or -g.centre, 0)
-    ring.hasArt = Crop(ring.Art, ART[Kind(f)], g.side)
+    -- Forever Style: Blizzard's whole ring, shadow and all, where the art has it against the plate.
+    -- FlareUI Style: a clean circle, as the art's join to the plate has nothing to meet there.
+    local plate = Ring.Plate(f)
+    ring:SetPoint("CENTER", f, left and "LEFT" or "RIGHT", left and g.centre or -g.centre, plate and PLATE.ringRise * g.s or 0)
+    local art = ART[Kind(f)]
+    ring.Art:ClearAllPoints()
+    if plate then
+        -- out to the atlas's own edges, at the same scale; the plate takes over on the bars' side
+        local box = art.box
+        local w, h = g.D / (box[2] - box[1]), g.D / (box[4] - box[3])
+        local out = (1 - box[2]) * w
+        ring.Art:SetPoint("TOPLEFT", ring, "TOPLEFT", left and -out or 0, box[3] * h)
+        ring.Art:SetPoint("BOTTOMRIGHT", ring, "BOTTOMRIGHT", left and 0 or out, -(1 - box[4]) * h)
+        ring.hasArt = Crop(ring.Art, art, g.side, { box[1], 1, 0, 1 })
+    else
+        ring.Art:SetAllPoints()
+        ring.hasArt = Crop(ring.Art, art, g.side)
+    end
     ring:SetShown(ring.hasArt)
+    if plate then
+        -- the whole art past the plate's end; before it only the ring, as the art's copy of the plate's
+        -- rails rounds differently from the plate and shows a step. The file is 2.5 radii wide.
+        ring.PlateMask:SetTexture(left and PLATE.maskLeft or PLATE.maskRight, "CLAMPTOWHITE", "CLAMPTOWHITE")
+        ring.PlateMask:ClearAllPoints()
+        ring.PlateMask:SetPoint("CENTER", ring, "CENTER")
+        ring.PlateMask:SetSize(g.R * 2.5, g.R * 2.5)
+    end
+    if plate and ring.artMasked then
+        ring.Art:RemoveMaskTexture(ring.Mask)
+        ring.Art:AddMaskTexture(ring.PlateMask)
+        ring.artMasked = false
+    elseif not plate and not ring.artMasked then
+        ring.Art:RemoveMaskTexture(ring.PlateMask)
+        ring.Art:AddMaskTexture(ring.Mask)
+        ring.artMasked = true
+    end
     PlaceHitButton(ring.Hit, f, g, 0, 0, g.D, g.D)
     ring.Hit:Show()
 
@@ -759,6 +863,9 @@ function Ring.Layout(f)
         ring.PvPDisc:SetPoint("CENTER", ring, "CENTER", px, py)
     end
 
+    -- FlareUI Style only: on Forever Style's plate the ring stands past the frame's end
+    if ring.hasArt and not Ring.Plate(f) then ApplyBarHole(f, ring) else RemoveBarHole(ring) end
+
     Ring.LayoutLevel(f, g)
     Ring.Update(f)
 end
@@ -769,7 +876,7 @@ function Ring.LayoutLevel(f, g)
     if not ring then return end
     g = g or Geometry(f)
     local e = BLIZZ[Kind(f)].level
-    PlaceRegion(f, g, ring.Disc, e)
+    local placed = PlaceRegion(f, g, ring.Disc, e)
     -- a little under its atlas size, round the same centre
     local w, h = ring.Disc:GetSize()
     ring.Disc:SetSize(w * LEVEL_SCALE, h * LEVEL_SCALE)
@@ -782,6 +889,7 @@ function Ring.LayoutLevel(f, g)
     -- Show Level: the disc goes with the number
     local udb = Db(f)
     ring.Disc:SetShown(udb and udb.showLevel and true or false)
+    SetDiscHole(f, ring, placed and ring.Disc:IsShown(), w * LEVEL_SCALE)
     local dx, dy, dw, dh = Place(f, g, e)
     if dx then PlaceHitButton(ring.DiscHit, f, g, dx, dy, dw, dh) end
     ring.DiscHit:SetShown(dx and ring.Disc:IsShown() or false)
@@ -943,6 +1051,7 @@ function Ring.Reset(f)
     frames[f] = nil
     local level = f:GetFrameLevel()
     ring:Hide()
+    RemoveBarHole(ring)
     ring.Hit:Hide()
     ring.DiscHit:Hide()
     f.Level:SetAlpha(1)
@@ -950,6 +1059,7 @@ function Ring.Reset(f)
     f.Overlay:SetFrameLevel(level + 5)
     f.Level:SetParent(f.Overlay)
     ring.Disc:Hide()
+    SetDiscHole(f, ring, false)
     for _, key in ipairs(RING_ICONS) do
         local region = f[key]
         if region then region:SetParent(region.ringHome or f.Overlay) end
