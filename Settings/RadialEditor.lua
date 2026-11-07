@@ -182,13 +182,19 @@ local function EntryDisplay(entry)
     return "|cff808080" .. L["unavailable"] .. "|r", { texture = FALLBACK_ICON }
 end
 
--- Spells and items get the game's own tooltip (it shows the rank), the rest their name; hint below
+-- Spells and items get the game's own tooltip (it shows the rank), the rest their name; hint below.
+-- A macro gets the tooltip of what it casts now, under its own name.
 local function EntryTooltip(owner, entry, hint)
     ns.OwnGameTooltip(owner, "ANCHOR_RIGHT")
+    local macroKind, macroID
+    if entry.kind == "macro" and RM() and RM().MacroAction then macroKind, macroID = RM().MacroAction(entry) end
     if entry.kind == "spell" and entry.id then
         GameTooltip:SetSpellByID(entry.id)
     elseif entry.kind == "item" and entry.id then
         GameTooltip:SetItemByID(entry.id)
+    elseif macroKind == "spell" or macroKind == "item" then
+        if macroKind == "spell" then GameTooltip:SetSpellByID(macroID) else GameTooltip:SetItemByID(macroID) end
+        GameTooltip:AddLine(L["Macro"] .. ": " .. tostring(entry.name), 1, 0.82, 0)
     else
         GameTooltip:AddLine((EntryDisplay(entry)), 1, 1, 1)
     end

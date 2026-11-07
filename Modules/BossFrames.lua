@@ -365,7 +365,10 @@ local function BuildSettings()
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = places, generator = Place("debuffs", "buffs"),
           get = get("debuffs"), set = set("debuffs"), desc = L["Debuffs on the boss: only your own with Only My Debuffs."] },
         K.HideBuffsSetting("PERMANENT", function() return get("hideBuffs")() or "PERMANENT" end, set("hideBuffs")),
-        { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1, get = get("auraSize"), set = set("auraSize") },
+        { name = L["Buffs Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
+          get = function() return ns.AuraSize(GetDb(), false, D.auraSize) end, set = set("buffSize") },
+        { name = L["Debuffs Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
+          get = function() return ns.AuraSize(GetDb(), true, D.auraSize) end, set = set("debuffSize") },
         { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = D.onlyMyDebuffs ~= false,
           get = function() return get("onlyMyDebuffs")() ~= false end, set = set("onlyMyDebuffs") },
     })

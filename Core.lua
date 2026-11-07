@@ -101,12 +101,13 @@ end
 
 -- A unit's name on the frames. Forever's UnitName returns first name and surname apart; "Full Player
 -- Names" joins them as NameUtil.FormatUnitNameForDisplay does. Party and focus frames show the first
--- name only outside Forever Style. A secret name or surname leaves the first name alone.
+-- name only outside Forever Style, target of target and target of focus ("targetof") always.
+-- A secret name or surname leaves the first name alone.
 local SHORT_NAME_FRAMES = { party = true, focus = true }
 function ns.UnitDisplayName(unit, frameKind)
     local name, surname = UnitName(unit)
     local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
-    if uf and uf.fullNames == false then return name end
+    if (uf and uf.fullNames == false) or frameKind == "targetof" then return name end
     if frameKind and SHORT_NAME_FRAMES[frameKind] and not (ns.UFRing and ns.UFRing.PlateOn()) then return name end
     if not (canaccessvalue(name) and canaccessvalue(surname)) then return name end
     if type(name) ~= "string" or type(surname) ~= "string" or surname == "" then return name end
@@ -121,6 +122,15 @@ function ns.ClassColorsOn(st)
     if st and st.classColor ~= nil then return st.classColor end
     local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
     return not uf or uf.classColor ~= false
+end
+
+-- Buffs Size and Debuffs Size on a frame (st: its settings). A frame not set yet follows the single
+-- Aura Size these replaced, so every profile and style setup keeps the size it had.
+function ns.AuraSize(st, isDebuff, fallback)
+    if not st then return fallback end
+    local size
+    if isDebuff then size = st.debuffSize else size = st.buffSize end
+    return size or st.auraSize or fallback
 end
 
 -- A built combo point on segmented bars, and the one-pixel line between segments
@@ -789,15 +799,30 @@ end
 
 -- Font path from LibSharedMedia, the client's own font when the name or file is unknown.
 -- A known file need not be loaded yet: use ns.SetFont, which waits for it.
-function ns.GetFontPath(face)
-    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
-    if LSM then
-        local success, found = pcall(LSM.Fetch, LSM, "font", face, true)
-        if success and found and C_UIFileAsset.IsKnownFile(found) then
-            return found
+-- Only found paths are remembered (a name not registered yet may be later); a registered name keeps its
+-- file, but LSM's global override changes every answer, so its callbacks forget them all.
+do
+    local foundPaths, listening = {}, false
+    local function Forget() wipe(foundPaths) end
+
+    function ns.GetFontPath(face)
+        local path = face ~= nil and foundPaths[face]
+        if path then return path end
+        local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+        if LSM then
+            if not listening and LSM.RegisterCallback then
+                listening = true
+                LSM.RegisterCallback(foundPaths, "LibSharedMedia_SetGlobal", Forget)
+                LSM.RegisterCallback(foundPaths, "LibSharedMedia_Registered", Forget)
+            end
+            local success, found = pcall(LSM.Fetch, LSM, "font", face, true)
+            if success and found and C_UIFileAsset.IsKnownFile(found) then
+                if face ~= nil then foundPaths[face] = found end
+                return found
+            end
         end
+        return BaseFont()
     end
-    return BaseFont()
 end
 
 -- Most font files load only when a drawn font string asks for them. Until then SetFont answers false

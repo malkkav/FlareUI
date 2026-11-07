@@ -20,22 +20,8 @@ local GROUPS = { "top", "HUD", "Info", "Tools", "bottom" }
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["ab.noStancePaging"] = "3.0",
-    ["ab.stealthPaging"] = "3.0",
-    ["ab.xpNumbers"] = "3.0",
-    ["au.arrive"] = "3.0",
-    ["qol.autoAcceptQuests"] = "3.0",
-    ["qol.autoTurnInQuests"] = "3.0",
-    ["qol.gamepadPrompt"] = "3.0",
-    ["qt.collapseCompleted"] = "3.0",
-    ["qt.focusButtons"] = "3.0",
-    ["qt.hideFinished"] = "3.0",
-    ["qt.hideLevel"] = "3.0",
-    ["qt.playButtons"] = "3.0",
-    ["tt.hideFaction"] = "3.0",
-    ["tt.showGuild"] = "3.0",
-    ["tt.showGuildRank"] = "3.0",
-    ["uf.simpleTargetOf"] = "3.0",
+    ["uf.party.buffSize"] = "4.0",
+    ["uf.party.debuffSize"] = "4.0",
 }
 
 --------------------------------------------------

@@ -224,6 +224,7 @@ local HEALTH_TEXT_MODES = {
     { text = L["Percent"],         value = "percent", isRadio = true },
     { text = L["Value"],           value = "value",   isRadio = true },
     { text = L["Value + Percent"], value = "both",    isRadio = true },
+    { text = L["Current | Max"],   value = "valuemax", isRadio = true },
 }
 
 --------------------------------------------------
@@ -347,6 +348,7 @@ local function GetBarTexture(name, mirrored)
     if not (name and name ~= "" and LSM:IsValid("statusbar", name)) then name = DEFAULT_TEXTURE end
     if name == "FlareUI Flat" and UF.palette == "blizzard" then return UF.PALETTES.blizzard.texture end
     if mirrored and name == "FlareUI Forever" then return "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mirrored.tga" end
+    if mirrored and name == "FlareUI Forever (Light)" then return "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Bright-Mirrored.tga" end
     return LSM:Fetch("statusbar", name) or "Interface\\TargetingFrame\\UI-StatusBar"
 end
 
@@ -599,8 +601,10 @@ end
 -- 5. UPDATERS (all secret-safe: values go straight into widgets)
 --------------------------------------------------
 local function UpdateName(f)
-    -- focus: first name only outside Forever Style
-    local name = ns.UnitDisplayName(f.unit, f.unit == "focus" and "focus" or nil)
+    -- focus: first name only outside Forever Style; target of target and of focus: always
+    local unit = f.unit
+    local kind = (unit == "focus" and "focus") or ((unit == "targettarget" or unit == "focustarget") and "targetof") or nil
+    local name = ns.UnitDisplayName(unit, kind)
     if canaccessvalue(name) and not name then name = "" end
     f.Name:SetText(name)
 end
@@ -639,6 +643,7 @@ local function UpdateHealth(f, glide)
 
     -- Edit Mode: sample health in the unit's colour when there is one
     if LEM:IsInEditMode() then
+        f.colorClass = nil   -- the colour below is the sample's: the next tick sets it again
         local health = (UNITS[unit].sample or {}).health or 0.75
         bar:SetMinMaxValues(0, 1)
         bar:SetValue(health)
@@ -659,6 +664,8 @@ local function UpdateHealth(f, glide)
             f.HealthText:SetText(value)
         elseif mode == "both" then
             f.HealthText:SetFormattedText("%s | %.0f%%", value, health * 100)
+        elseif mode == "valuemax" then
+            f.HealthText:SetFormattedText("%s | %s", value, AbbreviateNumbers(24000))
         else
             f.HealthText:SetText("")
         end
@@ -667,7 +674,18 @@ local function UpdateHealth(f, glide)
 
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     ns.SetBarValue(bar, UnitHealth(unit), glide and udb and udb.smoothBars and not UNITS[unit].poll)
-    bar:SetStatusBarColor(GetHealthColor(unit, ns.ClassColorsOn(udb)))
+    -- The player is always connected and a player, so a health tick keeps its colour unless the class
+    -- (readable), the palette or Class Colours changed since it was set
+    local classOn = ns.ClassColorsOn(udb)
+    local classFile
+    if glide and unit == "player" then
+        local _, file = UnitClass(unit)
+        if canaccessvalue(file) then classFile = file end
+    end
+    if not (classFile and f.colorClass == classFile and f.colorPalette == UF.palette and f.colorClassOn == classOn) then
+        bar:SetStatusBarColor(GetHealthColor(unit, classOn))
+        f.colorClass, f.colorPalette, f.colorClassOn = classFile, UF.palette, classOn
+    end
 
     local mode = udb and udb.healthText or "percent"
     local text = f.HealthText
@@ -681,6 +699,8 @@ local function UpdateHealth(f, glide)
         text:SetText(AbbreviateNumbers(UnitHealth(unit)))
     elseif mode == "both" then
         text:SetFormattedText("%s | %.0f%%", AbbreviateNumbers(UnitHealth(unit)), UnitHealthPercent(unit, true, percentCurve))
+    elseif mode == "valuemax" then
+        text:SetFormattedText("%s | %s", AbbreviateNumbers(UnitHealth(unit)), AbbreviateNumbers(UnitHealthMax(unit)))
     else
         text:SetText("")
     end
@@ -1245,6 +1265,13 @@ local function OnUnitEvent(f, event, arg1, arg2)
         UpdateHealPrediction(f)   -- the overlays' range, and the amounts are clamped by the health missing
     elseif event == "UNIT_POWER_FREQUENT" or event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER"
         or event == "UNIT_DISPLAYPOWER" then
+        -- UNIT_POWER_UPDATE right after UNIT_POWER_FREQUENT in the same frame (GetTime is the frame's
+        -- time) repeats the change already drawn: the same reads would set the same values
+        if event == "UNIT_POWER_UPDATE" then
+            if f.powerFrequentAt == GetTime() then return end
+        elseif event == "UNIT_POWER_FREQUENT" then
+            f.powerFrequentAt = GetTime()
+        end
         -- a new power type (a druid's form) lands at once: its value has nothing to do with the old one
         UpdatePower(f, event ~= "UNIT_DISPLAYPOWER")
     elseif event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_THREAT_SITUATION_UPDATE" then
@@ -1253,7 +1280,12 @@ local function OnUnitEvent(f, event, arg1, arg2)
         UpdateHealPrediction(f)
     elseif event == "PLAYER_UPDATE_RESTING" or event == "GROUP_ROSTER_UPDATE" or event == "PARTY_LEADER_CHANGED"
         or event == "PLAYER_FLAGS_CHANGED" or event == "QUEST_LOG_UPDATE" or event == "PVP_TIMER_UPDATE" then
-        if f:IsVisible() then UpdateIndicators(f) end
+        -- the quest log only moves the quest mark: with it unchanged nothing else is redone (Edit Mode
+        -- always redraws, for its sample icons)
+        if f:IsVisible() and not (event == "QUEST_LOG_UPDATE" and f.QuestIcon and not LEM:IsInEditMode()
+            and ICON_UI.QuestShown(f.unit) == f.questShown) then
+            UpdateIndicators(f)
+        end
     elseif event == "UNIT_NAME_UPDATE" then
         UpdateName(f)
     elseif event == "UNIT_LEVEL" or event == "UNIT_CLASSIFICATION_CHANGED" then
@@ -1432,23 +1464,27 @@ local function ConfigureAuraCorner(f, corner, lanes)
         return
     end
 
-    local size = udb.auraSize or 20
+    -- Buffs Size and Debuffs Size: each lane its own; the line holds the larger of the corner's lanes
+    local largest = 0
+    for _, lane in ipairs(lanes) do largest = math.max(largest, ns.AuraSize(udb, lane.isDebuff, 20)) end
     -- a corner wraps before the frame's middle, at most two rows (an even count, 4+); Top / Bottom:
     -- the whole width less the ring's room
     local lineSize
     if AURA.FULL[corner] then
         local clear = (ns.UFRing and ns.UFRing.Applies(f)) and ns.UFRing.Clearance(f, AURA_GAP) or 0
-        lineSize = math.max(size, f:GetWidth() - 2 * INSET - clear)
+        lineSize = math.max(largest, f:GetWidth() - 2 * INSET - clear)
     else
-        lineSize = math.max(size, math_floor(f:GetWidth() / 2) - INSET - 4)
+        lineSize = math.max(largest, math_floor(f:GetWidth() / 2) - INSET - 4)
     end
-    local max = 2 * math.max(2, math_floor((lineSize + AURA_SPACING) / (size + AURA_SPACING)))
     local unit, font = f.unit, db and db.font
     local auraTimer = db and db.auraTimer or "none"
     local showTimer = auraTimer ~= "none"
     local sortMethod, sortDirection = ns.AuraOrder.Options(udb.auraSort, udb.auraReverse, udb.auraMineFirst)
     for index, lane in ipairs(lanes) do
         local isDebuff = lane.isDebuff
+        local size = ns.AuraSize(udb, isDebuff, 20)
+        -- as many per row as fit at this lane's size
+        local max = 2 * math.max(2, math_floor((lineSize + AURA_SPACING) / (size + AURA_SPACING)))
         local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, unit == "player", db and db.auraStyle or "square", "both", auraTimer)
         local key, err = ns.AuraGroups.Add(container, entry, lane.key, ns.AuraGroups.Sig(size, isDebuff, font, showTimer, look), lane.filter, {
             maxFrameCount = max,
@@ -1818,18 +1854,22 @@ local function CreateFsrSpark(f)
         end
         local fill = bar:GetStatusBarTexture()
         local reverse = bar:GetReverseFill()
-        clip:ClearAllPoints()
-        self:ClearAllPoints()
-        if reverse then
-            clip:SetPoint("TOPLEFT", fill, "TOPLEFT")
-            clip:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT")
-            self:SetPoint("TOPLEFT", clip, "TOPLEFT")
-            self:SetPoint("BOTTOMLEFT", clip, "BOTTOMLEFT")
-        else
-            clip:SetPoint("TOPLEFT", bar, "TOPLEFT")
-            clip:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT")
-            self:SetPoint("TOPRIGHT", clip, "TOPRIGHT")
-            self:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT")
+        -- the anchors follow the fill's end by themselves: set again only for a new fill or side
+        if self.anchorFill ~= fill or self.anchorReverse ~= reverse then
+            self.anchorFill, self.anchorReverse = fill, reverse
+            clip:ClearAllPoints()
+            self:ClearAllPoints()
+            if reverse then
+                clip:SetPoint("TOPLEFT", fill, "TOPLEFT")
+                clip:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT")
+                self:SetPoint("TOPLEFT", clip, "TOPLEFT")
+                self:SetPoint("BOTTOMLEFT", clip, "BOTTOMLEFT")
+            else
+                clip:SetPoint("TOPLEFT", bar, "TOPLEFT")
+                clip:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT")
+                self:SetPoint("TOPRIGHT", clip, "TOPRIGHT")
+                self:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT")
+            end
         end
         self:SetWidth(bar:GetWidth())
         self:SetReverseFill(not reverse)
@@ -2247,6 +2287,16 @@ function ICON_UI.UpdateReady(f, event)
     end
 end
 
+-- The quest mark: a quest boss, or a hostile unit tied to an active quest (the nameplate quest tags' test)
+function ICON_UI.QuestShown(unit)
+    if not ICON_UI.Shown(unit, "quest") then return false end
+    local show = Readable(UnitIsQuestBoss(unit)) == true
+    if not show and Readable(UnitCanAttack("player", unit)) then
+        show = Readable(C_QuestLog.UnitIsRelatedToActiveQuest(unit)) == true
+    end
+    return show
+end
+
 function UpdateIndicators(f)
     local unit = f.unit
     local readable = Readable
@@ -2307,14 +2357,8 @@ function UpdateIndicators(f)
         end
     end
     if f.QuestIcon then
-        -- a quest boss, or a hostile unit tied to an active quest (the nameplate quest tags' test)
-        local show = false
-        if ICON_UI.Shown(unit, "quest") then
-            show = readable(UnitIsQuestBoss(unit)) == true
-            if not show and readable(UnitCanAttack("player", unit)) then
-                show = readable(C_QuestLog.UnitIsRelatedToActiveQuest(unit)) == true
-            end
-        end
+        local show = ICON_UI.QuestShown(unit)
+        f.questShown = show   -- QUEST_LOG_UPDATE compares against it
         if show then SetIconArt(f.QuestIcon, QUEST_ATLAS, QUEST_FILE) end
         f.QuestIcon:SetShown(show)
     end
@@ -2435,6 +2479,7 @@ end
 -- "Mana on Shapeshift": a druid in a form without mana gets a thin mana bar at the frame's bottom.
 -- Not in Forever Style, whose plate has no slot for it. Edit Mode previews it.
 UF.SHIFT_MANA_HEIGHT = 5
+UF.SHIFT_MANA_TEXT_SIZE = 8
 function UF.ShiftManaShown(f)
     if not f.ShiftMana then return false end
     local udb = GetUnitDb(f.unit)
@@ -2573,6 +2618,12 @@ function UF.UpdateShiftMana(f)
     ns.SetBarValue(bar, UnitPower("player", mana), not appeared and udb and udb.smoothBars)
     local r, g, b = ns.PowerColor("MANA", mana)
     bar:SetStatusBarColor(r or ns.MANA_BLUE[1], g or ns.MANA_BLUE[2], b or ns.MANA_BLUE[3])
+    -- the number follows Power Text, as on the power bar
+    if udb and udb.powerText and not UnitIsDeadOrGhost("player") then
+        f.ShiftManaText:SetText(AbbreviateNumbers(UnitPower("player", mana)))
+    else
+        f.ShiftManaText:SetText("")
+    end
 end
 
 -- Shows the strip with the right number of segments, feeds the values, and re-lays the bars when it
@@ -2664,6 +2715,15 @@ local function LayoutFrame(f)
     ApplyFont(f.Level, db.font, fontDelta)
     ApplyFont(f.HealthText, db.font, fontDelta)
     ApplyFont(f.PowerText, db.fontPower or db.font, fontDelta)
+    if f.ShiftManaText then
+        -- the power font at a fixed small size: the strip is only a few pixels tall
+        local font = db.fontPower or db.font
+        ApplyFont(f.ShiftManaText, font, UF.SHIFT_MANA_TEXT_SIZE - (font and font.size or 12))
+        f.ShiftManaText:ClearAllPoints()
+        f.ShiftManaText:SetPoint(mirror and "LEFT" or "RIGHT", f.ShiftMana, mirror and "LEFT" or "RIGHT",
+            mirror and TEXT_INSET or -TEXT_INSET, 0)
+        f.ShiftManaText:SetJustifyH(mirror and "LEFT" or "RIGHT")
+    end
 
     f.Level:ClearAllPoints()
     f.Name:ClearAllPoints()
@@ -3004,6 +3064,11 @@ local function CreateUnitFrame(unit)
         f.ShiftManaSeparator:SetTexture(SEPARATOR_TEXTURE)
         f.ShiftManaSeparator:SetVertexColor(1, 1, 1, 1)
         f.ShiftManaSeparator:Hide()
+        -- its number (Power Text) on a layer above the strip, so it comes and goes with it
+        local textLayer = CreateFrame("Frame", nil, f.ShiftMana)
+        textLayer:SetAllPoints()
+        textLayer:SetFrameLevel(level + 5)
+        f.ShiftManaText = textLayer:CreateFontString(nil, "OVERLAY")
     end
 
     if info.portrait then
@@ -3140,7 +3205,7 @@ function UF.MediaValues(mediaType, base, first)
         return values
     end
 end
-UF.FLAREUI_BARS = { "FlareUI Flat", "FlareUI Forever", "FlareUI Striped" }
+UF.FLAREUI_BARS = { "FlareUI Flat", "FlareUI Forever", "FlareUI Forever (Light)", "FlareUI Striped" }
 
 -- Bar, Cast Bar and Absorb Texture values
 local function BuildTextureValues()
@@ -3491,11 +3556,14 @@ local function BuildSettings(unit)
               generator = Corner("buffs", "debuffs"), get = get("buffs"), set = set("buffs") },
             { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = defaults.debuffs or "OFF", values = positions,
               generator = Corner("debuffs", "buffs"), get = get("debuffs"), set = set("debuffs") },
-            { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1, get = get("auraSize"), set = set("auraSize") },
+            { name = L["Buffs Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1,
+              get = function() return ns.AuraSize(GetUnitDb(unit), false, defaults.auraSize or 22) end, set = set("buffSize") },
+            { name = L["Debuffs Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1,
+              get = function() return ns.AuraSize(GetUnitDb(unit), true, defaults.auraSize or 22) end, set = set("debuffSize") },
         }
         table.insert(auraItems, 3, UF.HideBuffsSetting("PERMANENT",
             function() local u = GetUnitDb(unit); return u and u.hideBuffs or "PERMANENT" end, set("hideBuffs")))
-        -- the player: Only My Buffs, after Aura Size
+        -- the player: Only My Buffs, after the sizes
         if unit == "player" then
             auraItems[#auraItems + 1] = { name = L["Only My Buffs"], kind = LEM.SettingType.Checkbox, default = false,
                 get = function() local u = GetUnitDb(unit); return u and u.onlyMyBuffs or false end, set = set("onlyMyBuffs"),

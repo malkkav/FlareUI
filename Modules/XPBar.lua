@@ -53,7 +53,7 @@ end
 -- "Bar Texture" choices: FlareUI's bars, a divider, then other addons'
 local function TextureValues()
     local values = {}
-    for _, name in ipairs({ "FlareUI Flat", "FlareUI Forever", "FlareUI Striped" }) do
+    for _, name in ipairs({ "FlareUI Flat", "FlareUI Forever", "FlareUI Forever (Light)", "FlareUI Striped" }) do
         if LSM:IsValid("statusbar", name) then values[#values + 1] = { text = name, value = name, isRadio = true } end
     end
     local others = ns.AddonMedia("statusbar")

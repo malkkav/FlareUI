@@ -4,6 +4,9 @@
 # The phrase list is Locales/enUS.lua, regenerated from every L["..."] in the code (it also holds the
 # Edit Mode section titles, which the code looks up as L[name]), so only that file is scanned.
 # Phrases dropped from the list are deleted on CurseForge unless someone has translated them.
+# Excludes match from the repository root ("*.lua" is root files only), and every L["key"] = "text"
+# the action finds becomes that key's English text: so the other locale files are excluded by name.
+# ptBR.lua holds hand-kept translations; scanning it once uploaded Portuguese as the English text.
 name: Upload localization phrases
 
 on:
@@ -33,5 +36,16 @@ jobs:
             Modules/**
             Settings/**
             *.lua
+            Locales/Locale.lua
+            Locales/deDE.lua
+            Locales/esES.lua
+            Locales/esMX.lua
+            Locales/frFR.lua
+            Locales/itIT.lua
+            Locales/koKR.lua
+            Locales/ptBR.lua
+            Locales/ruRU.lua
+            Locales/zhCN.lua
+            Locales/zhTW.lua
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}

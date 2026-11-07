@@ -62,6 +62,7 @@ local C = {
     URGENT = { 1, 0.25, 0.25 },
     -- a quest timer by the quarter of its time it is in, last to first
     TIMER = { { 1, 0.25, 0.25 }, { 1, 0.5, 0.15 }, { 1, 1, 0 }, { 0.25, 1, 0.25 } },
+    NO_FONT = {},           -- a font setting with nothing set (only ever read)
 }
 
 -- Blizzard's strings where it has them
@@ -95,6 +96,7 @@ local state = {
     context = nil, order = {}, itemsDirty = false, rangeTicker = nil, itemsShown = 0,
     recipes = 0, empty = false, groups = {},
     arriving = {}, seen = {}, tops = {}, sheens = {},
+    zoneCounts = {}, fonts = {},   -- reused by every render
 }
 
 local function GetDb()
@@ -202,12 +204,27 @@ end
 --------------------------------------------------
 -- 4. FONTS AND LOOK
 --------------------------------------------------
+-- A string already showing exactly this font (not one still waiting for its file: ns.SetFont) and
+-- shadow is left as it is, as every render passes here for every line. Answers true when it wrote.
 local function ApplyFont(fontString, cfg, fallbackSize)
-    cfg = cfg or {}
+    cfg = cfg or C.NO_FONT
     local flags = cfg.flags
     if flags == "NONE" then flags = "" end
-    ns.SetFont(fontString, ns.GetFontPath(cfg.face or "Friz Quadrata TT"), cfg.size or fallbackSize or 12, flags or "")
+    flags = flags or ""
+    local path, size = ns.GetFontPath(cfg.face or "Friz Quadrata TT"), cfg.size or fallbackSize or 12
+    local shadow = cfg.enableShadow and true or false
+    local shadowX, shadowY = shadow and (cfg.shadowX or 1) or 0, shadow and (cfg.shadowY or -1) or 0
+    local shownPath, shownSize, shownFlags = fontString:GetFont()
+    local wantPath, wantSize, wantFlags = ns.GetWantedFont(fontString)
+    if shownPath == path and shownSize == size and shownFlags == flags
+            and wantPath == path and wantSize == size and wantFlags == flags
+            and fontString.ftShadow == shadow and fontString.ftShadowX == shadowX and fontString.ftShadowY == shadowY then
+        return false
+    end
+    ns.SetFont(fontString, path, size, flags)
     ns.ApplyShadow(fontString, cfg)
+    fontString.ftShadow, fontString.ftShadowX, fontString.ftShadowY = shadow, shadowX, shadowY
+    return true
 end
 
 local function FontHeight(cfg, fallback)
@@ -239,6 +256,8 @@ end
 --------------------------------------------------
 -- reused on every pass (the distance check runs every few seconds)
 local zoneNames, questBuf, groupRank, groupBest, groupOrder = {}, {}, {}, {}, {}
+-- the quest log as last read; each watched quest's distance as the last sort saw it
+local logBuf, sortIDs, sortDist = {}, {}, {}
 
 local function AddZoneName(z)
     if z and z ~= "" then zoneNames[z] = true end
@@ -256,14 +275,33 @@ local function Distance(questID)
     return (distSq and onContinent) and distSq or math_huge
 end
 
-local function QuestCount()
-    local n = 0
+-- One walk of the quest log (GetInfo makes a new table per entry) for everything that reads it next:
+-- the entries in log order, the header's count and the number tracked. Read it again before each use
+-- outside a render, as the log may have changed since.
+local function ReadLog()
+    wipe(logBuf)
+    local count, tracked = 0, 0
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local info = C_QuestLog.GetInfo(i)
-        if info and not info.isHeader and not info.isHidden and not info.isTask and not info.isBounty then n = n + 1 end
+        if info then
+            info.ftLogIndex = i
+            if not info.isHeader and not info.isHidden then
+                if not info.isTask and not info.isBounty then count = count + 1 end
+                if info.questID and info.questID > 0 and C_QuestLog.GetQuestWatchType(info.questID) ~= nil then
+                    info.ftWatched = true
+                    tracked = tracked + 1
+                end
+            end
+            logBuf[#logBuf + 1] = info
+        end
     end
+    state.logCount, state.logTracked = count, tracked
+end
+
+-- (after ReadLog)
+local function QuestCount()
     local max = C_QuestLog.GetMaxNumQuestsCanAccept and C_QuestLog.GetMaxNumQuestsCanAccept() or nil
-    return n, max
+    return state.logCount, max
 end
 
 local function ByOrder(a, b)
@@ -315,39 +353,45 @@ local function UpdateTimers()
     for questID, line in pairs(timerLines) do
         local seconds = questTimers[questID]
         if not seconds then OT:RequestRender() return end
-        line.text:SetText(TimerText(seconds))
-        SetColor(line.text, TimerColor(questID, seconds))
+        local text, color = TimerText(seconds), TimerColor(questID, seconds)
+        line.text:SetText(text)
+        SetColor(line.text, color)
+        line.ftText, line.ftColor = text, color   -- what the line shows, for the next render (AddLine)
     end
 end
 
+-- (after ReadLog)
 local function CollectQuests(db)
     CurrentZoneNames()
     ReadTimers()
     wipe(questBuf)
     local header
-    for i = 1, C_QuestLog.GetNumQuestLogEntries() do
-        local info = C_QuestLog.GetInfo(i)
-        if info then
-            if info.isHeader then
-                header = info.title
-            elseif not info.isHidden and info.questID and info.questID > 0
-                    and C_QuestLog.GetQuestWatchType(info.questID) ~= nil then
-                local here = (header and zoneNames[header]) or C_QuestLog.IsOnMap(info.questID)
-                -- a running timer stays listed outside its zone
-                if here or not db.zoneOnly or questTimers[info.questID] then
-                    info.ftLogIndex = i
-                    info.ftIndex = #questBuf + 1
-                    info.ftHeader = header or _G.OTHER or "Other"
-                    info.ftHere = here and true or false
-                    info.ftDone = db.completedLast and C_QuestLog.IsComplete(info.questID) or false
-                    info.ftDistance = db.sortByDistance and Distance(info.questID) or 0
-                    info.ftLevel = (db.sortByLevel and (info.difficultyLevel or info.level))
-                        or (db.sortByProgress and ProgressKey(info.questID)) or 0
-                    questBuf[#questBuf + 1] = info
-                end
+    local watched = 0
+    for _, info in ipairs(logBuf) do
+        if info.isHeader then
+            header = info.title
+        elseif info.ftWatched then
+            local distance = db.sortByDistance and Distance(info.questID) or 0
+            -- every watched quest, listed or not: one coming into its zone has moved nearer too
+            if db.sortByDistance then
+                watched = watched + 1
+                sortIDs[watched], sortDist[watched] = info.questID, distance
+            end
+            local here = (header and zoneNames[header]) or C_QuestLog.IsOnMap(info.questID)
+            -- a running timer stays listed outside its zone
+            if here or not db.zoneOnly or questTimers[info.questID] then
+                info.ftIndex = #questBuf + 1
+                info.ftHeader = header or _G.OTHER or "Other"
+                info.ftHere = here and true or false
+                info.ftDone = db.completedLast and C_QuestLog.IsComplete(info.questID) or false
+                info.ftDistance = distance
+                info.ftLevel = (db.sortByLevel and (info.difficultyLevel or info.level))
+                    or (db.sortByProgress and ProgressKey(info.questID)) or 0
+                questBuf[#questBuf + 1] = info
             end
         end
     end
+    state.sortCount = db.sortByDistance and watched or nil
 
     -- a group's place: current zone, then its nearest quest, then log order
     wipe(groupRank)
@@ -567,6 +611,7 @@ end
 local function ToggleZoneQuests(zone)
     local db = GetDb()
     local allCollapsed = true
+    ReadLog()
     local quests = CollectQuests(db)
     for _, q in ipairs(quests) do
         if q.ftHeader == zone and not IsCollapsed(q.questID) then allCollapsed = false end
@@ -640,6 +685,8 @@ local function GetLine(i)
     if line then return line end
     line = CreateFrame("Button", nil, content)
     line.text = line:CreateFontString(nil, "OVERLAY")
+    line.text:SetJustifyH("LEFT")
+    line.text:SetPoint("TOPLEFT", line, "TOPLEFT")
     line:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
     line:SetScript("OnClick", OnLineClick)
     line:SetScript("OnEnter", function(self)
@@ -989,6 +1036,7 @@ function OT:Render()
     wipe(state.sheens)
 
     -- header
+    ReadLog()   -- the one walk of the quest log this render reads
     local count, max = QuestCount()
     local title = TEXT.quests
     if db.showCount then title = title .. "  " .. ColorCode(C.DIM) .. (max and (count .. "/" .. max) or count) .. "|r" end
@@ -1012,31 +1060,51 @@ function OT:Render()
     local width = (db.width or C.WIDTH) - C.PAD * 2
     wipe(titleLines)
     wipe(timerLines)
-    local fonts ={ header = db.headerFont, title = db.titleFont, objective = db.objectiveFont }
+    local fonts = state.fonts
+    fonts.header, fonts.title, fonts.objective = db.headerFont, db.titleFont, db.objectiveFont
+    local wrap = db.wrapText ~= false
 
+    -- A pooled line remembers what it was given last (ft*), and only what differs is written: most
+    -- lines read the same from one render to the next. (Justify and the text's anchor: GetLine.)
     local function AddLine(text, kind, color, indent)
         n = n + 1
         local line = GetLine(n)
         local w = width - (indent or 0)
         local cfg = fonts[kind]
-        ApplyFont(line.text, cfg, kind == "objective" and 11 or 12)
-        line.text:SetJustifyH("LEFT")
-        line.text:SetWordWrap(db.wrapText ~= false)
-        line.text:SetMaxLines(db.wrapText ~= false and 0 or 1)
-        line.text:SetText(text)
-        SetColor(line.text, color)
-        line:SetWidth(w)
-        line.text:ClearAllPoints()
-        line.text:SetPoint("TOPLEFT", line, "TOPLEFT")
-        line.text:SetWidth(w)
+        -- a new font: text and colour are written again too
+        if ApplyFont(line.text, cfg, kind == "objective" and 11 or 12) then line.ftText, line.ftColor = false, false end
+        if line.ftWrap ~= wrap then
+            line.ftWrap = wrap
+            line.text:SetWordWrap(wrap)
+            line.text:SetMaxLines(wrap and 0 or 1)
+        end
+        if line.ftText ~= text then
+            line.ftText = text
+            line.text:SetText(text)
+        end
+        if line.ftColor ~= color then
+            line.ftColor = color
+            SetColor(line.text, color)
+        end
+        if line.ftWidth ~= w then
+            line.ftWidth = w
+            line:SetWidth(w)
+            line.text:SetWidth(w)
+        end
         local h = math_max(FontHeight(cfg, 12), math_floor(line.text:GetStringHeight() + 0.5))
-        line:SetHeight(h)
-        line.text:SetHeight(h)
+        if line.ftHeight ~= h then
+            line.ftHeight = h
+            line:SetHeight(h)
+            line.text:SetHeight(h)
+        end
         line:ClearAllPoints()
         line.ftY = y
         -- the mouse area reaches the band's edges and the gap to the next line
         line.ftX = C.PAD + (indent or 0)
-        line:SetHitRectInsets(-(C.PAD + (indent or 0) - 4), -(C.PAD - 4), -1, -(C.LINE_GAP - 1))
+        if line.ftInset ~= line.ftX then
+            line.ftInset = line.ftX
+            line:SetHitRectInsets(-(C.PAD + (indent or 0) - 4), -(C.PAD - 4), -1, -(C.LINE_GAP - 1))
+        end
         line:SetPoint("TOPLEFT", content, "TOPLEFT", line.ftX, y)
         line.questID, line.zone, line.recipeID, line.recipeName, line.logIndex = nil, nil, nil, nil, nil
         line.group, line.sampleItem = nil, nil
@@ -1144,7 +1212,7 @@ function OT:Render()
     local empty = true
     if not minimized then
         if inScenario and not state.editMode and AddScenario() then empty = false end
-        if (state.editMode or state.preview) and self:CountTracked() == 0 then
+        if (state.editMode or state.preview) and state.logTracked == 0 then
             wipe(state.order)
             for _, s in ipairs(PREVIEW) do
                 if s.zone then
@@ -1175,7 +1243,8 @@ function OT:Render()
             local quests = CollectQuests(db)
             local focused = C_SuperTrack.GetSuperTrackedQuestID()
             local lastHeader
-            local zoneCounts = {}
+            local zoneCounts = state.zoneCounts
+            wipe(zoneCounts)
             for _, q in ipairs(quests) do zoneCounts[q.ftHeader] = (zoneCounts[q.ftHeader] or 0) + 1 end
             -- zone headings, except by level (the zones are mixed there)
             local headings = db.zoneHeaders and not db.sortByLevel and not db.sortByProgress
@@ -1351,7 +1420,7 @@ function OT:Render()
     -- Minimize Style "button": minimized, only a lone "+" shows at the anchored corner
     local lone = minimized and db.minimizeStyle == "button"
     -- Hide When Empty asks whether anything is tracked, not whether anything was drawn
-    local tracked = self:CountTracked() > 0 or inScenario
+    local tracked = state.logTracked > 0 or inScenario
         or (db.showRecipes and C_TradeSkillUI and C_TradeSkillUI.GetRecipesTracked
             and #C_TradeSkillUI.GetRecipesTracked(false) > 0)
     local hide = not tracked and db.hideEmpty and not state.editMode and not state.preview
@@ -1463,13 +1532,8 @@ function OT:UpdateScrollBar()
 end
 
 function OT:CountTracked()
-    local n = 0
-    for i = 1, C_QuestLog.GetNumQuestLogEntries() do
-        local info = C_QuestLog.GetInfo(i)
-        if info and not info.isHeader and not info.isHidden and info.questID and info.questID > 0
-                and C_QuestLog.GetQuestWatchType(info.questID) ~= nil then n = n + 1 end
-    end
-    return n
+    ReadLog()
+    return state.logTracked
 end
 
 -- Quest log events come in bursts: one redraw for each burst
@@ -1493,6 +1557,17 @@ end
 local function OnSortTick()
     local db = GetDb()
     if not (db and db.sortByDistance and holder and holder:IsVisible() and scroll:IsShown()) then return end
+    -- the order can only move once a watched quest is nearer or farther than the last sort saw it
+    -- (standing still, nothing has); everything else that changes it comes with an event
+    local count = state.sortCount
+    if count then
+        local same = true
+        for i = 1, count do
+            if Distance(sortIDs[i]) ~= sortDist[i] then same = false break end
+        end
+        if same then return end
+    end
+    ReadLog()
     local quests, order = CollectQuests(db), state.order
     if #quests ~= #order then OT:RequestRender() return end
     for i, q in ipairs(quests) do

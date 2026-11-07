@@ -938,7 +938,7 @@ ns.Copy = {
             section = "rb.bars",
         },
         ["rb.health.text"] = {
-            choices = { L["None"], L["Percent"], L["Value"], L["Value + Percent"] },
+            choices = { L["None"], L["Percent"], L["Value"], L["Value + Percent"], L["Current | Max"] },
             desc = L["The numbers on the health bar."],
             label = L["Health text"],
         },
@@ -1109,13 +1109,13 @@ ns.Copy = {
             desc = L["How this frame's auras line up. Default sorting is Blizzard's: yours first, then the important ones."],
             label = L["Reverse Order"],
         },
-        ["uf.*.auraSize"] = {
-            desc = L["The size of aura icons."],
-            label = L["Aura size"],
-        },
         ["uf.*.auraSort"] = {
             desc = L["How this frame's auras line up. Default sorting is Blizzard's: yours first, then the important ones."],
             label = L["Sort By"],
+        },
+        ["uf.*.buffSize"] = {
+            desc = L["The size of buff icons. Each row holds as many as fit."],
+            label = L["Buffs size"],
         },
         ["uf.*.buffs"] = {
             choices = { L["Off"], L["Top left"], L["Top right"], L["Bottom left"], L["Bottom right"] },
@@ -1128,6 +1128,10 @@ ns.Copy = {
             desc = L["Where the cast bar sits."],
             label = L["Cast bar position"],
         },
+        ["uf.*.debuffSize"] = {
+            desc = L["The size of debuff icons. Each row holds as many as fit."],
+            label = L["Debuffs size"],
+        },
         ["uf.*.debuffs"] = {
             choices = { L["Off"], L["Top left"], L["Top right"], L["Bottom left"], L["Bottom right"] },
             desc = L["Where auras sit around the frame."],
@@ -1135,7 +1139,7 @@ ns.Copy = {
             tip = L["On the cast bar's side, they sit beyond it."],
         },
         ["uf.*.healthText"] = {
-            choices = { L["None"], L["Percent"], L["Value"], L["Value + Percent"] },
+            choices = { L["None"], L["Percent"], L["Value"], L["Value + Percent"], L["Current | Max"] },
             desc = L["The numbers on the health bar."],
             label = L["Health text"],
         },
@@ -1222,7 +1226,7 @@ ns.Copy = {
             desc = L["Players' first names and surnames:\n* Player and target frames: always\n* Party and focus frames: in Forever Style"],
             label = L["Full Player Names"],
             section = "uf.look",
-            tip = L["Off: the first name only, everywhere."],
+            tip = L["Off: the first name only, everywhere. Target of target and target of focus always show the first name only."],
         },
         ["uf.hidePlayer"] = {
             desc = L["How visible your player and pet frames stay while you're out of combat, with no target and at full health.\n* 100%: no fading\n* 0%: invisible"],
@@ -1248,9 +1252,9 @@ ns.Copy = {
             section = "uf.frames",
             tip = L["Pick the style in Edit Mode."],
         },
-        ["uf.party.auraSize"] = {
-            desc = L["The size of aura icons."],
-            label = L["Aura size"],
+        ["uf.party.buffSize"] = {
+            desc = L["The size of buff icons. Each row holds as many as fit."],
+            label = L["Buffs size"],
         },
         ["uf.party.buffs"] = {
             choices = { L["Off"], L["Right of the frame"], L["Left of the frame"], L["Above, left"], L["Above, right"], L["Below, left"], L["Below, right"], L["Inside, top left"], L["Inside, top right"], L["Inside, bottom left"], L["Inside, bottom right"] },
@@ -1260,6 +1264,10 @@ ns.Copy = {
         ["uf.party.castbars"] = {
             desc = L["A cast bar under each member."],
             label = L["Cast bars"],
+        },
+        ["uf.party.debuffSize"] = {
+            desc = L["The size of debuff icons and dispel icons. Each row holds as many as fit."],
+            label = L["Debuffs size"],
         },
         ["uf.party.debuffs"] = {
             choices = { L["Off"], L["Right of the frame"], L["Left of the frame"], L["Above, left"], L["Above, right"], L["Below, left"], L["Below, right"], L["Inside, top left"], L["Inside, top right"], L["Inside, bottom left"], L["Inside, bottom right"] },

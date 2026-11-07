@@ -18,6 +18,7 @@ local function PrintCommands()
     if ns.FCMActive() then Line("/fui cm", L["Toggle Fake CM setup mode."]) end
     Line("/fui pad", L["Switch Gamepad mode on or off."])
     Line("/fui tour", L["Run the setup tour."])
+    Line("/fui perf", L["Measure FlareUI's performance (type it alone for the commands)."])
     local qol = ns.db and ns.db.profile.tweaks
     if qol and qol.enabled and qol.way then Line("/way", L["Place a map pin (type it alone for the formats)."]) end
     Line("/rl", L["Reload UI shortcut."])
@@ -147,7 +148,8 @@ loader:SetScript("OnEvent", function(self)
     SLASH_FLAREUI1 = "/flareui"
     SLASH_FLAREUI2 = "/fui"
     SlashCmdList.FLAREUI = function(msg)
-        msg = msg:match("^%s*(.-)%s*$"):lower()
+        local raw = msg:match("^%s*(.-)%s*$")
+        msg = raw:lower()
         if msg == "" then
             ns.SettingsPanel:Toggle()
         elseif msg == "cm" then
@@ -156,6 +158,8 @@ loader:SetScript("OnEvent", function(self)
             ns.ToggleGamepadMode()
         elseif msg == "tour" then
             ns.ShowTour()
+        elseif msg == "perf" or msg:find("^perf%s") then
+            ns.Perf.Command(raw:sub(5))   -- keeps the recording name's case
         else
             PrintCommands()
         end

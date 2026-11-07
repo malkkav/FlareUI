@@ -338,6 +338,8 @@ local function ApplyStateColor(button, state)
     icon:SetDesaturated(desaturate)
 end
 
+local OnUpdateUsable
+
 local function RefreshButtonColor(button)
     local db = GetBarConfig()
     if not db or not db.colors or not db.colors.enableRange then
@@ -352,6 +354,11 @@ local function RefreshButtonColor(button)
         end
         return
     end
+    -- its usable state was skipped while the colours were off: read it now, as that update would have
+    if button.FlareUI_UsableSkipped then
+        button.FlareUI_UsableSkipped = nil
+        OnUpdateUsable(button)
+    end
     local usable = button.FlareUI_Usable or "normal"
     if usable == "normal" and button.FlareUI_OutOfRange then usable = "range" end
     ApplyStateColor(button, usable)
@@ -363,9 +370,19 @@ local function ForgetColorState(button)
     if db and db.colors and db.colors.enableRange then button.FlareUI_ColorState = nil end
 end
 
-local function OnUpdateUsable(button, action, isUsable, notEnoughMana)
+OnUpdateUsable = function(button, action, isUsable, notEnoughMana)
     local slot = button.action
     if not slot then return end   -- pet bar has its own path; stance buttons keep Blizzard's look
+    -- colours off and nothing of ours left to undo: the state is only read once they're back on
+    -- (RefreshButtonColor reads it then), so it isn't worked out on every Blizzard update meanwhile
+    if not button.FlareUI_ColorState then
+        local db = GetBarConfig()
+        if not db or not db.colors or not db.colors.enableRange then
+            button.FlareUI_UsableSkipped = true
+            return
+        end
+    end
+    button.FlareUI_UsableSkipped = nil
     if C_LevelLink.IsActionLocked(slot) then
         button.FlareUI_Usable = "locked"
     else
@@ -410,6 +427,10 @@ local function UpdatePetColors()
         for _, button in ipairs(GetButtonsForBarKey("pet")) do RefreshButtonColor(button) end
         return
     end
+    -- no pet bar and none on screen (Blizzard's Update has just hidden it, icons blank): nothing to
+    -- colour. A pet coming runs Update again (UNIT_PET, PET_BAR_UPDATE) before the bar shows.
+    local bar = _G.PetActionBar
+    if not PetHasActionBar() and not (bar and bar:IsVisible()) then return end
     for index, button in ipairs(GetButtonsForBarKey("pet")) do
         local _, _, _, _, _, _, spellID, checksRange, inRange = GetPetActionInfo(index)
         local usable, notEnoughMana

@@ -233,8 +233,19 @@ end
 -- that row. Inside whole-width places fill the health bar in the grid's rows; elsewhere the fixed
 -- grid.
 local EDGE_PLACES = { ABOVE = true, ABOVE_RIGHT = true, ABOVE_WIDE = true, BELOW = true, BELOW_RIGHT = true, BELOW_WIDE = true }
+-- Buffs Size / Debuffs Size: a place is as big as the largest kind it holds (dispel icons go with the
+-- debuffs); a stored setup with both kinds in one place takes the larger
+local function PlaceAuraSize(st, pos)
+    local buff, debuff = ns.AuraSize(st, false, 18), ns.AuraSize(st, true, 18)
+    local hasBuff = st.buffs == pos
+    local hasDebuff = st.debuffs == pos or st.dispels == pos
+    if hasBuff and not hasDebuff then return buff end
+    if hasDebuff and not hasBuff then return debuff end
+    return math_max(buff, debuff)
+end
+
 local function AuraFit(st, pos, f)
-    local size = st.auraSize or 18
+    local size = PlaceAuraSize(st, pos)
     local function PerRow(lineSize)
         return math_max(2, math_floor((math_max(size, lineSize) + AURA_SPACING) / (size + AURA_SPACING)))
     end
@@ -396,6 +407,8 @@ local function UpdateHealth(f, glide)
         text:SetText(AbbreviateNumbers(UnitHealth(unit)))
     elseif mode == "both" then
         text:SetFormattedText("%s | %.0f%%", AbbreviateNumbers(UnitHealth(unit)), UnitHealthPercent(unit, true, K.percentCurve))
+    elseif mode == "valuemax" then
+        text:SetFormattedText("%s | %s", AbbreviateNumbers(UnitHealth(unit)), AbbreviateNumbers(UnitHealthMax(unit)))
     else
         text:SetText("")
     end
@@ -714,6 +727,7 @@ local function UpdateAll(f)
 end
 
 local function UpdatePet(p, glide)
+    UpdateRange(p)   -- out of range fades it, as the members (full in Edit Mode)
     if IsEditing() then return end
     if not UnitExists(p.unit) then return end
     local unit = p.unit
@@ -929,7 +943,7 @@ local function ConfigurePosition(f, pos, lanes)
     local st = TS(f)
     local db = K.GetDb()
     local portrait = pos == "PORTRAIT"
-    local size = portrait and DispelGrid(f) or st.auraSize or 18
+    local size = portrait and DispelGrid(f) or PlaceAuraSize(st, pos)
     local max, perRow = AuraFit(st, pos, f)
     if portrait then max, perRow = 4, 2 end
     local inside = portrait or pos:find("^INSIDE") ~= nil
@@ -942,6 +956,8 @@ local function ConfigurePosition(f, pos, lanes)
     for index, lane in ipairs(lanes) do
         local isDebuff, kind = lane.isDebuff, lane.kind
         local sorted = lane.key == "buffs" or lane.key == "debuffs"
+        -- each kind at its own size (the portrait grid keeps its cell)
+        local size = portrait and size or ns.AuraSize(st, isDebuff, 18)
         local look = kind ~= "dispels" and LaneLook(size, isDebuff, inside) or nil
         local lookSig = ns.AuraGroups.Sig(kind, size, isDebuff, inside, font, showTimer, look)
         local key, err = ns.AuraGroups.Add(container, entry, lane.key, lookSig, lane.filter, {
@@ -996,7 +1012,7 @@ local function ConfigureAuras(f)
     if not f.AuraPos then return end
     local st = TS(f)
     if not st then return end
-    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.width, st.height, st.powerHeight, st.portrait, st.ringSize, (DispelGrid(f)), f.ringKind, AuraGrid(st), UFAura("auraStyle", "square"),
+    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.buffSize, st.debuffSize, st.width, st.height, st.powerHeight, st.portrait, st.ringSize, (DispelGrid(f)), f.ringKind, AuraGrid(st), UFAura("auraStyle", "square"),
         UFAura("auraTimer", "none"), ns.AuraGroups.Sig(UFAura("auraFont")), ns.AuraGroups.Sig(UFAura("font")), st.castbar, st.castHeight, OnPlate(f),
         st.hideBuffs, IsEditing(), st.onlyMyDebuffs, st.onlyMyBuffs, st.dispellableOnly, st.auraSort, st.auraReverse, st.auraMineFirst)
     if f.auraSignature == sig then return end
@@ -1388,7 +1404,7 @@ end
 
 -- How far the lanes at these places reach out from the frame
 local function LanesExtent(st, places, across)
-    local size = st.auraSize or 18
+    local buffSize, debuffSize = ns.AuraSize(st, false, 18), ns.AuraSize(st, true, 18)
     local best = 0
     for _, pos in ipairs(places) do
         local max, perRow = AuraFit(st, pos)
@@ -1396,12 +1412,12 @@ local function LanesExtent(st, places, across)
         if across then
             -- beside the frame: a row's width
             if st.debuffs == pos or st.buffs == pos or st.dispels == pos then
-                reach = perRow * (size + AURA_SPACING)
+                reach = perRow * (PlaceAuraSize(st, pos) + AURA_SPACING)
             end
         else
-            if st.debuffs == pos then reach = reach + math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING) end
-            if st.dispels == pos then reach = reach + math.ceil(math_min(max, 3) / perRow) * (size + AURA_SPACING) end
-            if st.buffs == pos then reach = reach + math.ceil(max / perRow) * (CellHeight(size) + AURA_SPACING) end
+            if st.debuffs == pos then reach = reach + math.ceil(max / perRow) * (CellHeight(debuffSize) + AURA_SPACING) end
+            if st.dispels == pos then reach = reach + math.ceil(math_min(max, 3) / perRow) * (debuffSize + AURA_SPACING) end
+            if st.buffs == pos then reach = reach + math.ceil(max / perRow) * (CellHeight(buffSize) + AURA_SPACING) end
         end
         if reach > best then best = reach end
     end
@@ -1863,12 +1879,13 @@ local function ApplyPreviewExtras(f, data)
     HidePreviewExtras(f)
     local st = TS(f)
     local used = 0
-    local size = st.auraSize or 18
+    local size = ns.AuraSize(st, true, 18)   -- the debuffs' (the dispel samples go with them)
     -- buffs and debuffs drawn by hand where there are no containers to show Edit Mode's samples
     if f.noAuras then
         local auras = 0
         local function Row(place, count, icons, isDebuff)
             if not place or place == "OFF" or (count or 0) <= 0 then return end
+            local size = ns.AuraSize(st, isDebuff, 18)
             local max = AuraFit(st, place, f)
             local point, rel, relPoint, x, y, growH = AuraAnchor(f, place)
             local sx = growH == AnchorUtil.FlowDirection.Left and -1 or 1
@@ -2003,6 +2020,8 @@ ApplyPreview = function(f)
         f.HealthText:SetText(AbbreviateNumbers(math_floor((data.health or 1) * 24000)))
     elseif mode == "both" then
         f.HealthText:SetFormattedText("%s | %.0f%%", AbbreviateNumbers(math_floor((data.health or 1) * 24000)), (data.health or 1) * 100)
+    elseif mode == "valuemax" then
+        f.HealthText:SetFormattedText("%s | %s", AbbreviateNumbers(math_floor((data.health or 1) * 24000)), AbbreviateNumbers(24000))
     else
         f.HealthText:SetText("")
     end
@@ -2274,8 +2293,12 @@ local function CreatePet(index)
     p.Highlight:SetAllPoints(p.Health)
     p.Highlight:SetColorTexture(1, 1, 1, 0.08)
     p.Highlight:Hide()
-    p:SetScript("OnEvent", function(self) UpdatePet(self, true) end)
-    for _, event in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_NAME_UPDATE", "UNIT_CONNECTION" }) do
+    -- hidden (no pet, or the holder is): OnShow below repaints it when it comes back
+    p:SetScript("OnEvent", function(self, event)
+        if not self:IsVisible() then return end
+        if event == "UNIT_IN_RANGE_UPDATE" then UpdateRange(self) else UpdatePet(self, true) end
+    end)
+    for _, event in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_NAME_UPDATE", "UNIT_CONNECTION", "UNIT_IN_RANGE_UPDATE" }) do
         pcall(p.RegisterUnitEvent, p, event, p.unit)
     end
     p:HookScript("OnShow", function(self) UpdatePet(self) end)
@@ -2305,7 +2328,8 @@ local function CreatePartyTarget(index)
     t.Highlight:SetColorTexture(1, 1, 1, 0.08)
     t.Highlight:Hide()
     -- the member picks a new target (your own: PLAYER_TARGET_CHANGED, in OnGlobalEvent)
-    t:SetScript("OnEvent", function(self) UpdatePartyTarget(self) end)
+    -- hidden (no target, or the holder is): the OnShow hook repaints it when it comes back
+    t:SetScript("OnEvent", function(self) if self:IsVisible() then UpdatePartyTarget(self) end end)
     if index > 0 then pcall(t.RegisterUnitEvent, t, "UNIT_TARGET", SLOT_UNITS[index]) end
     t:HookScript("OnShow", UpdatePartyTarget)
     LEM:AddSelectionArea(t)
@@ -2569,7 +2593,10 @@ local function BuildSettings()
                      { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
           desc = L["A dispellable debuff colours the frame's border in its type's colour."],
           get = getS("dispelHighlight"), set = setS("dispelHighlight") },
-        { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1, get = getS("auraSize"), set = setS("auraSize") },
+        { name = L["Buffs Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
+          get = function() return ns.AuraSize(S(), false, D.auraSize) end, set = setS("buffSize") },
+        { name = L["Debuffs Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
+          get = function() return ns.AuraSize(S(), true, D.auraSize) end, set = setS("debuffSize") },
         { name = L["Only My Buffs"], kind = LEM.SettingType.Checkbox, default = true,
           get = function() return getS("onlyMyBuffs")() ~= false end, set = setS("onlyMyBuffs"),
           desc = L["Only the buffs you cast (your heals over time, your blessings). Off: everyone's buffs."] },
@@ -2717,6 +2744,11 @@ local function StartRangeTicker()
             local f = members[i]
             if f and f:IsShown() then UpdateRange(f) end
         end
+        -- the pets too, your own among them (index 0)
+        for i = 0, MAX_MEMBERS do
+            local p = pets[i]
+            if p and p:IsVisible() then UpdateRange(p) end
+        end
     end)
 end
 
@@ -2726,11 +2758,25 @@ function PF:OnGlobalEvent(event, ...)
         return
     end
     if IsEditing() then return end
-    -- a new member or role re-places the frames (after combat when in one)
+    -- only the party's own pets concern these frames (in a raid every raid pet sends UNIT_PET)
+    if event == "UNIT_PET" then
+        local unit = ...
+        if canaccessvalue(unit) then
+            local ours = false
+            for i = 0, MAX_MEMBERS do if SLOT_UNITS[i] == unit then ours = true end end
+            if not ours then return end
+        end
+    end
+    -- a new member or role re-places the frames (after combat when in one). While the holder is
+    -- hidden (solo, in a raid) that waits for its OnShow (see Init).
     local party = GetPartyDb()
     if ((event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ROLES_ASSIGNED") and party.sortByRole)
         or ((event == "GROUP_ROSTER_UPDATE" or event == "UNIT_PET") and party.pets) then
-        LayoutHolder()
+        if holder:IsShown() or InCombatLockdown() then
+            LayoutHolder()
+        else
+            holder.layoutStale = true
+        end
     end
     if event == "READY_CHECK_FINISHED" then
         if readyCheckHold then readyCheckHold:Cancel() end
@@ -2763,8 +2809,9 @@ function PF:OnGlobalEvent(event, ...)
                 UpdateAll(f)
             end
         end
+        -- a pet under a hidden holder is repainted by its OnShow instead
         local p = pets[i]
-        if p and p:IsShown() and (event == "GROUP_ROSTER_UPDATE" or event == "UNIT_PET" or event == "PLAYER_ENTERING_WORLD") then
+        if p and p:IsVisible() and (event == "GROUP_ROSTER_UPDATE" or event == "UNIT_PET" or event == "PLAYER_ENTERING_WORLD") then
             UpdatePet(p)
         end
     end
@@ -2808,6 +2855,14 @@ function PF:Init()
     holder:SetClampedToScreen(true)
     holder:SetSize(200, 200)
     holder.editModeName = "FlareUI Party Frames"
+    -- roster and pet changes while hidden skip the layout (OnGlobalEvent): it catches up here
+    -- (after combat when it shows in one: LayoutHolder defers to Refresh)
+    holder:HookScript("OnShow", function(self)
+        if self.layoutStale then
+            self.layoutStale = nil
+            LayoutHolder()
+        end
+    end)
     for i = 0, MAX_MEMBERS do CreateMember(i) end
     for i = 0, MAX_MEMBERS do CreatePet(i) end
     for i = 0, MAX_MEMBERS do CreatePartyTarget(i) end

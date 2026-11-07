@@ -183,7 +183,7 @@ end
 local FIXED = { castbar = false, auraMax = 3, auraPerRow = 3, absorbTexture = "FlareUI Striped" }
 -- main tank settings of their own (db.mainTanks), falling back to the raid's
 local TANK_OWN = { powerHeight = true, buffs = true, debuffs = true, dispels = true, dispelHighlight = true,
-                   auraSize = true, hideBuffs = true, onlyMyBuffs = true, dispellableOnly = true,
+                   auraSize = true, buffSize = true, debuffSize = true, hideBuffs = true, onlyMyBuffs = true, dispellableOnly = true,
                    auraSort = true, auraReverse = true, auraMineFirst = true }
 local function View(sizeFn, own)
     return setmetatable({}, { __index = function(_, key)
@@ -723,8 +723,10 @@ local function AuraItems(get, set, d, view)
         { name = L["Dispel Icons"], kind = LEM.SettingType.Dropdown, default = d.dispels, values = RAID_PLACES, generator = Place("dispels"),
           get = get("dispels"), set = set("dispels"),
           desc = L["The symbol of each debuff type you can dispel (Magic, Curse, Disease, Poison)."] },
-        { name = L["Aura Size"], kind = LEM.SettingType.Slider, default = d.auraSize or 14, minValue = 8, maxValue = 30, valueStep = 1,
-          get = get("auraSize", 14), set = set("auraSize") },
+        { name = L["Buffs Size"], kind = LEM.SettingType.Slider, default = d.auraSize or 14, minValue = 8, maxValue = 30, valueStep = 1,
+          get = function() return ns.AuraSize(view, false, d.auraSize or 14) end, set = set("buffSize") },
+        { name = L["Debuffs Size"], kind = LEM.SettingType.Slider, default = d.auraSize or 14, minValue = 8, maxValue = 30, valueStep = 1,
+          get = function() return ns.AuraSize(view, true, d.auraSize or 14) end, set = set("debuffSize") },
         { name = L["Only My Buffs"], kind = LEM.SettingType.Checkbox, default = true,
           get = get("onlyMyBuffs", true), set = set("onlyMyBuffs"),
           desc = L["Only the buffs you cast (your heals over time, your blessings). Off: everyone's buffs."] },

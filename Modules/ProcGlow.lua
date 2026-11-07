@@ -27,6 +27,9 @@ local REACTIVE_IDS = {
     HUNTER = { 19306, 1495 },       -- Counterattack, Mongoose Bite
     PALADIN = { 24275 },            -- Hammer of Wrath
 }
+-- the classes above with one that lights by the target's health (Execute, Hammer of Wrath): only they
+-- listen to the target's health, the others' windows come with the usable events
+local TARGET_HEALTH_CLASSES = { WARRIOR = true, PALADIN = true }
 
 -- Revenge: no cooldown, and its cast doesn't close its window, so the game goes on calling it usable.
 -- After a cast it stays dark until the window closes or you avoid another attack.
@@ -51,6 +54,7 @@ local buttons = {}
 local slotSpell = {}        -- action slot -> { id, name }, or false: not a spell (macros are read each time)
 local pending, pendingNow = false, false
 local events
+local playerClass
 
 local function Enabled()
     local db = ns.db and ns.db.profile and ns.db.profile.actionbars
@@ -156,6 +160,8 @@ local function UpdateButton(button, enabled)
     if not enabled then HideGlow(button) return end
     local id, name, slot = ButtonSpell(button)
     if not id then HideGlow(button) return end
+    -- neither flagged nor a reaction ability: no glow either way, so Blizzard's own isn't asked about
+    if not (flagged[name] or reactive[name]) then HideGlow(button) return end
     -- Blizzard already glows this exact rank
     local blizzard = button.SpellActivationAlert
     if blizzard and blizzard:IsShown() then HideGlow(button) return end
@@ -284,6 +290,7 @@ local function Setup()
         end
     end
     local _, class = UnitClass("player")
+    playerClass = class
     for _, id in ipairs(REACTIVE_IDS[class] or {}) do
         local name = SpellName(id)
         if name then
@@ -302,7 +309,9 @@ function PG:Refresh()
         for _, event in ipairs(EVENTS) do pcall(events.RegisterEvent, events, event) end
         if next(reactive) then
             for _, event in ipairs(REACTIVE_EVENTS) do pcall(events.RegisterEvent, events, event) end
-            pcall(events.RegisterUnitEvent, events, "UNIT_HEALTH", "target")
+            if TARGET_HEALTH_CLASSES[playerClass] then
+                pcall(events.RegisterUnitEvent, events, "UNIT_HEALTH", "target")
+            end
         end
         if oneUseName then
             pcall(events.RegisterUnitEvent, events, "UNIT_SPELLCAST_SUCCEEDED", "player")

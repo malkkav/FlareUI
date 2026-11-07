@@ -18,11 +18,13 @@ local MEDIA_PATH = "Interface/AddOns/" .. ADDON_NAME .. "/Media/"
 -- 2. CUSTOM ASSETS
 --------------------------------------------------
 local ASSETS = {
-    -- Forever: Blizzard's Forever health bar art, greyed so the bar colours tint it
+    -- Forever: Blizzard's Forever health bar art, greyed so the bar colours tint it. Forever (Light):
+    -- the same art 1.25x brighter, as bright as Flat on average.
     statusbar = {
         ["FlareUI Flat"]    = "Bars/FlareUI-Flat.tga",
         ["FlareUI Striped"] = "Bars/FlareUI-Striped.tga",
         ["FlareUI Forever"] = "Bars/FlareUI-Forever.tga",
+        ["FlareUI Forever (Light)"] = "Bars/FlareUI-Forever-Bright.tga",
     },
     -- grey frame borders, tinted by each frame's border colour; 16 px edge
     border = {

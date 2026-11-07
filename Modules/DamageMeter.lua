@@ -780,33 +780,47 @@ local function ThreatMob()
     if UnitExists("target") and IsHostile("targettarget") then return "targettarget" end
 end
 
+-- The threat list, its entries and the shown rows are reused: they are redrawn up to five times a
+-- second in a fight. Each redraw fills them anew before reading them.
+local threatScratch = { list = {}, pool = {}, shown = {} }
+
+local function AddThreat(unit)
+    local s = threatScratch
+    -- once the client hides a value the whole list is dropped: no need to read the rest
+    if s.secret or not UnitExists(unit) then return end
+    local _, _, scaled, _, value = UnitDetailedThreatSituation(unit, s.mob)
+    if not canaccessallvalues(value, scaled) then s.secret = true; return end
+    if value == nil then return end
+    local name = UnitName(unit)
+    local _, class = UnitClass(unit)
+    local isMe = UnitIsUnit(unit, "player")
+    local n = #s.list + 1
+    local data = s.pool[n] or {}
+    s.pool[n] = data
+    data.value, data.scaled = value, scaled or 0
+    data.name = Readable(name) and name or "?"
+    data.class = Readable(class) and class or nil
+    data.isPlayer = Readable(isMe) and isMe or false
+    s.list[n] = data
+end
+
+local function ByThreat(a, b) return a.value > b.value end
+
 -- Every group member and pet with threat on the mob, highest first. secret = the client hid it.
 local function CollectThreat(mob)
-    local list, secret = {}, false
-    local function Add(unit)
-        if not UnitExists(unit) then return end
-        local _, _, scaled, _, value = UnitDetailedThreatSituation(unit, mob)
-        if not canaccessallvalues(value, scaled) then secret = true; return end
-        if value == nil then return end
-        local name = UnitName(unit)
-        local _, class = UnitClass(unit)
-        local isMe = UnitIsUnit(unit, "player")
-        list[#list + 1] = {
-            value = value, scaled = scaled or 0,
-            name = Readable(name) and name or "?",
-            class = Readable(class) and class or nil,
-            isPlayer = Readable(isMe) and isMe or false,
-        }
-    end
+    local s = threatScratch
+    local list = s.list
+    wipe(list)
+    s.mob, s.secret = mob, false
     if IsInRaid() then
-        for i = 1, GetNumGroupMembers() do Add("raid" .. i); Add("raidpet" .. i) end
+        for i = 1, GetNumGroupMembers() do AddThreat("raid" .. i); AddThreat("raidpet" .. i) end
     else
-        Add("player"); Add("pet")
-        for i = 1, GetNumSubgroupMembers() do Add("party" .. i); Add("partypet" .. i) end
+        AddThreat("player"); AddThreat("pet")
+        for i = 1, GetNumSubgroupMembers() do AddThreat("party" .. i); AddThreat("partypet" .. i) end
     end
-    table.sort(list, function(a, b) return a.value > b.value end)
+    table.sort(list, ByThreat)
     for i, data in ipairs(list) do data.rank = i end
-    return list, secret
+    return list, s.secret
 end
 
 local function ColorTab(fontString, active)
@@ -904,22 +918,25 @@ local function UpdateThreatView(window, view)
     local spacing = window.GetBarSpacing and window:GetBarSpacing() or 2
     local capacity = math_max(1, math.floor((frame:GetHeight() + spacing) / (height + spacing)))
 
-    local list, message = {}, nil
+    local list, message = threatScratch.list, nil
     local mob = ThreatMob()
     if not mob then
+        wipe(list)
         message = L["No hostile target"]
     else
         local secret
         list, secret = CollectThreat(mob)
         if secret then
-            message, list = L["Threat is hidden here"], {}
+            message = L["Threat is hidden here"]
+            wipe(list)
         elseif #list == 0 then
             message = L["No threat yet"]
         end
     end
 
     -- past capacity, the last row shows the player
-    local shown = {}
+    local shown = threatScratch.shown
+    wipe(shown)
     for i = 1, math_min(#list, capacity) do shown[i] = list[i] end
     if #list > capacity then
         local inView = false
@@ -943,7 +960,9 @@ local threatDriver = CreateFrame("Frame")
 local threatDirty, threatElapsed, threatWatching = false, 0, false
 threatDriver:Hide()   -- runs only while a Threat tab is up; see WatchThreat
 threatDriver:SetScript("OnEvent", function() threatDirty = true end)
-threatDriver:SetScript("OnUpdate", function(_, elapsed)
+threatDriver:SetScript("OnUpdate", function(self, elapsed)
+    -- a list skipped while nobody could see it is redrawn as soon as it can be seen again
+    if self.stale then UpdateThreatViews(true) end
     threatElapsed = threatElapsed + elapsed
     if threatElapsed < THREAT_TICK then return end
     threatElapsed = 0
@@ -964,9 +983,29 @@ local function WatchThreat()
     threatDriver:SetShown(any)
 end
 
-function UpdateThreatViews()
+-- Whether the list can be seen: shown, and the meter (the session windows' parent) not faded to
+-- nothing (Show on Mouseover, the end of a fade out)
+local function ViewSeen(view)
+    if not view.frame:IsVisible() then return false end
+    local meter = _G.DamageMeter
+    if not meter then return true end
+    local alpha = meter:GetAlpha()
+    return not (canaccessvalue(alpha) and alpha <= 0)
+end
+
+-- A list nobody can see is not redrawn, only marked stale; staleOnly redraws just those once seen
+function UpdateThreatViews(staleOnly)
+    threatDriver.stale = nil
     for window, view in pairs(views) do
-        if view.showing then SafeCall(UpdateThreatView, window, view) end
+        if view.showing and (view.stale or not staleOnly) then
+            if ViewSeen(view) then
+                view.stale = nil
+                SafeCall(UpdateThreatView, window, view)
+            else
+                view.stale = true
+                threatDriver.stale = true
+            end
+        end
     end
 end
 
@@ -977,7 +1016,10 @@ local function SetView(window, showThreat)
     view.frame:SetShown(view.showing)
     SetBlizzardListShown(window, not view.showing)
     LayoutTabs(window, view)
-    if view.showing then UpdateThreatView(window, view) end
+    if view.showing then
+        view.stale = nil
+        UpdateThreatView(window, view)
+    end
     WatchThreat()
 end
 

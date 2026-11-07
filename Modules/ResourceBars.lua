@@ -81,6 +81,7 @@ local TEXT_VALUES = {
     { text = L["Percent"],         value = "percent", isRadio = true },
     { text = L["Value"],           value = "value",   isRadio = true },
     { text = L["Value + Percent"], value = "both",    isRadio = true },
+    { text = L["Current | Max"],   value = "valuemax", isRadio = true },
 }
 
 local bars = {}            -- key -> holder
@@ -190,7 +191,8 @@ end
 --------------------------------------------------
 -- 5. UPDATERS
 --------------------------------------------------
-local function SetText(holder, mode, value, percent)
+-- max: only the health bar's Current | Max uses it
+local function SetText(holder, mode, value, percent, max)
     local text = holder.Text
     if mode == "percent" then
         text:SetFormattedText("%.0f%%", percent)
@@ -198,6 +200,8 @@ local function SetText(holder, mode, value, percent)
         text:SetText(AbbreviateNumbers(value))
     elseif mode == "both" then
         text:SetFormattedText("%s | %.0f%%", AbbreviateNumbers(value), percent)
+    elseif mode == "valuemax" then
+        text:SetFormattedText("%s | %s", AbbreviateNumbers(value), AbbreviateNumbers(max))
     else
         text:SetText("")
     end
@@ -221,18 +225,26 @@ local function UpdateHealPrediction(holder)
     pcall(function() absorb:SetValue(UnitGetTotalAbsorbs("player")) end)
 end
 
-local function UpdateHealth(holder, glide)
+-- Max and colour are set by the full updates below (UNIT_MAXHEALTH, UNIT_MAXPOWER, a show, a
+-- setting, Refresh); the ticks only set the value and text, as Blizzard's own player bars do.
+-- holder.ready: a full update has run since the last Edit Mode preview (which sets its own max).
+local function UpdateHealthValue(holder, glide)
     local cfg = Cfg("health")
-    local bar = holder.Bar
-    bar:SetMinMaxValues(0, UnitHealthMax("player"))
-    ns.SetBarValue(bar, UnitHealth("player"), glide and cfg and cfg.smoothBars)
-    bar:SetStatusBarColor(K.GetHealthColor("player", PlayerClassColors()))
+    ns.SetBarValue(holder.Bar, UnitHealth("player"), glide and cfg and cfg.smoothBars)
     if UnitIsDeadOrGhost("player") then
         holder.Text:SetText(UnitIsGhost("player") and K.GHOST_TEXT or K.DEAD_TEXT)
     else
-        SetText(holder, cfg.text or "both", UnitHealth("player"), UnitHealthPercent("player", true, K.percentCurve))
+        SetText(holder, cfg.text or "both", UnitHealth("player"), UnitHealthPercent("player", true, K.percentCurve), UnitHealthMax("player"))
     end
     UpdateHealPrediction(holder)   -- the amounts are clamped by the health missing
+end
+
+local function UpdateHealth(holder, glide)
+    local bar = holder.Bar
+    bar:SetMinMaxValues(0, UnitHealthMax("player"))
+    bar:SetStatusBarColor(K.GetHealthColor("player", PlayerClassColors()))
+    holder.ready = true
+    UpdateHealthValue(holder, glide)
 end
 
 local function UpdateFsrSpark()
@@ -247,23 +259,56 @@ local function UpdateFsrSpark()
     end
 end
 
+-- Value and text of the power or mana bar. UNIT_POWER_UPDATE and UNIT_POWER_FREQUENT often come
+-- in the same frame (GetTime() does not move within one) with the same readable value: the second
+-- would redo the same work. Secret values can't be compared, so those always update.
+local function SetPowerValue(holder, powerType, glide, full)
+    local cfg = Cfg(holder.key)
+    local value = UnitPower("player", powerType)
+    local now, v, t = GetTime(), readable(value), readable(powerType)
+    if not full and v ~= nil and t ~= nil and holder.valueTime == now and holder.valueType == t and holder.lastValue == v then
+        return
+    end
+    holder.valueTime, holder.valueType, holder.lastValue = now, t, v
+    ns.SetBarValue(holder.Bar, value, glide and cfg and cfg.smoothBars)
+    SetText(holder, cfg.text or "value", value)
+end
+
+-- holder.powerType: the type the max and colour were set for, so a tick that finds another type
+-- (or one it can't read) still runs in full
 local function UpdatePower(holder, glide)
     local bar = holder.Bar
     local powerType = UnitPowerType("player")
     bar:SetMinMaxValues(0, UnitPowerMax("player", powerType))
-    local cfg = Cfg(holder.key)
-    ns.SetBarValue(bar, UnitPower("player", powerType), glide and cfg and cfg.smoothBars)
     bar:SetStatusBarColor(K.GetPowerColor("player"))
-    SetText(holder, Cfg("power").text or "value", UnitPower("player", powerType))
+    holder.ready, holder.powerType = true, readable(powerType)
+    SetPowerValue(holder, powerType, glide, true)
+end
+
+local function UpdatePowerValue(holder, glide)
+    local powerType = UnitPowerType("player")
+    local t = readable(powerType)
+    if not holder.ready or t == nil or t ~= holder.powerType then
+        UpdatePower(holder, glide)
+        return
+    end
+    SetPowerValue(holder, powerType, glide)
 end
 
 local function UpdateMana(holder, glide)
     local bar = holder.Bar
     bar:SetMinMaxValues(0, UnitPowerMax("player", MANA))
-    local cfg = Cfg(holder.key)
-    ns.SetBarValue(bar, UnitPower("player", MANA), glide and cfg and cfg.smoothBars)
     bar:SetStatusBarColor(ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3])
-    SetText(holder, Cfg("mana").text or "value", UnitPower("player", MANA))
+    holder.ready = true
+    SetPowerValue(holder, MANA, glide, true)
+end
+
+local function UpdateManaValue(holder, glide)
+    if not holder.ready then
+        UpdateMana(holder, glide)
+        return
+    end
+    SetPowerValue(holder, MANA, glide)
 end
 
 -- Segment count; each segment is a bar from i - 1 to i fed the (possibly secret) point count
@@ -376,10 +421,11 @@ local function ApplyPreview(holder)
     end
     local bar = holder.Bar
     bar:SetMinMaxValues(0, 1)
+    holder.ready = nil   -- the next update sets the real max and colour again
     if kind == "health" then
         bar:SetValue(0.75)
         bar:SetStatusBarColor(K.GetHealthColor("player", PlayerClassColors()))
-        SetText(holder, cfg.text or "both", 18000, 75)
+        SetText(holder, cfg.text or "both", 18000, 75, 24000)
         if holder.HealBar then holder.HealBar:SetValue(0); holder.AbsorbBar:SetValue(0) end
     elseif kind == "power" then
         bar:SetValue(0.6)
@@ -801,9 +847,12 @@ end
 --------------------------------------------------
 -- 10. EVENTS
 --------------------------------------------------
+-- one list for every swing event, not a new table per swing
+local SWING_KEYS = { "swingMain", "swingOff", "swingRanged" }
+
 local function EnableSwingRange()
     if not (C_SwingTimer and C_SwingTimer.EnableRangeCheck) then return end
-    for _, key in ipairs({ "swingMain", "swingOff", "swingRanged" }) do
+    for _, key in ipairs(SWING_KEYS) do
         local info = BARS[key]
         if info.swingType and bars[key] then
             pcall(C_SwingTimer.EnableRangeCheck, info.swingType, true)
@@ -814,12 +863,23 @@ end
 function RB:OnEvent(event, arg1, arg2, arg3)
     if IsEditing() then return end
     if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
-        if bars.health and bars.health:IsShown() then UpdateHealth(bars.health, true) end
+        if bars.health and bars.health:IsShown() then
+            if event == "UNIT_MAXHEALTH" or not bars.health.ready then UpdateHealth(bars.health, true)
+            else UpdateHealthValue(bars.health, true) end
+        end
     elseif event == "UNIT_HEAL_PREDICTION" or event == "UNIT_ABSORB_AMOUNT_CHANGED" then
         if bars.health and bars.health:IsShown() then UpdateHealPrediction(bars.health) end
     elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT" or event == "UNIT_MAXPOWER" then
-        if bars.power and bars.power:IsShown() then UpdatePower(bars.power, true) end
-        if bars.mana and bars.mana:IsShown() then UpdateMana(bars.mana, true) end
+        local maxChange = event == "UNIT_MAXPOWER"
+        if bars.power and bars.power:IsShown() then
+            if maxChange then UpdatePower(bars.power, true) else UpdatePowerValue(bars.power, true) end
+        end
+        -- arg2 is the changed power's token: the mana bar skips the other powers (energy ticks),
+        -- as Blizzard's class power bars do; with no readable token it updates as before
+        local token = readable(arg2)
+        if bars.mana and bars.mana:IsShown() and (token == nil or token == "MANA") then
+            if maxChange then UpdateMana(bars.mana, true) else UpdateManaValue(bars.mana, true) end
+        end
         local comboChange = not (event == "UNIT_POWER_FREQUENT" and canaccessvalue(arg2) and arg2 ~= "COMBO_POINTS")
         if comboChange and bars.combo and bars.combo:IsShown() then UpdateCombo(bars.combo) end
     elseif event == "UNIT_DISPLAYPOWER" then
@@ -843,7 +903,7 @@ function RB:OnEvent(event, arg1, arg2, arg3)
         end
     elseif event == "PLAYER_SWING" then
         local duration, swingType = arg1, arg2
-        for _, key in ipairs({ "swingMain", "swingOff", "swingRanged" }) do
+        for _, key in ipairs(SWING_KEYS) do
             local holder = bars[key]
             if holder and BARS[key].swingType == swingType then
                 StartSwing(holder, duration)
@@ -853,7 +913,7 @@ function RB:OnEvent(event, arg1, arg2, arg3)
         end
     elseif event == "PLAYER_SWING_RANGE_UPDATE" then
         local swingType, isInRange, checksRange = arg1, arg2, arg3
-        for _, key in ipairs({ "swingMain", "swingOff", "swingRanged" }) do
+        for _, key in ipairs(SWING_KEYS) do
             local holder = bars[key]
             if holder and BARS[key].swingType == swingType then
                 SetSwingRange(holder, readable(checksRange) and readable(isInRange) == false)

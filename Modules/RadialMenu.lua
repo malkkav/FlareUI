@@ -251,6 +251,26 @@ ACTIONS.item = function(entry)
     return name, { texture = icon }, { type = "item", item = name }
 end
 
+-- What a saved macro casts right now, read from the player's macro of that name: the game works out
+-- #showtooltip and conditions such as [mod] or [@focus], as it does for action bars. The slice still
+-- runs its own copy of the text; this only lends it the cooldown, the editor's tooltip and the icon.
+-- Answers "spell", id or "item", id, then the macro's current icon; nothing when no macro has the name.
+function RM.MacroAction(entry)
+    local name = entry and entry.name
+    if type(name) ~= "string" or name == "" then return nil end
+    local index = GetMacroIndexByName(name)
+    if not (canaccessvalue(index) and index and index > 0) then return nil end
+    local _, icon = GetMacroInfo(index)
+    if not canaccessvalue(icon) then icon = nil end
+    local spellID = GetMacroSpell(index)
+    if canaccessvalue(spellID) and spellID then return "spell", spellID, icon end
+    local itemName, itemLink = GetMacroItem(index)
+    local item = (canaccessvalue(itemLink) and itemLink) or (canaccessvalue(itemName) and itemName) or nil
+    local itemID = item and C_Item.GetItemInfoInstant(item)
+    if canaccessvalue(itemID) and itemID then return "item", itemID, icon end
+    return nil, nil, icon
+end
+
 ACTIONS.macro = function(entry)
     return entry.name or L["Macro"], { texture = entry.icon or 134400 },
         { type = "macro", macrotext = entry.text or "" }
@@ -572,21 +592,32 @@ local function ApplyButtonState(button, info)
     local cooldown = button.Cooldown
     local usable, noMana = true, false
 
+    -- a macro shows what it would cast now (RM.MacroAction), with that one's icon
+    local kind, id
     if attributes and attributes.type == "spell" and attributes.spell then
-        local id = attributes.spell
+        kind, id = "spell", attributes.spell
+    elseif attributes and attributes.type == "item" and entry and entry.id then
+        kind, id = "item", entry.id
+    elseif attributes and attributes.type == "macro" and entry and entry.kind == "macro" then
+        local icon
+        kind, id, icon = RM.MacroAction(entry)
+        if icon and button.Icon:GetTexture() ~= icon then SetButtonIcon(button, { texture = icon }) end
+    end
+
+    if kind == "spell" then
         local cd = C_Spell.GetSpellCooldown(id)
         local duration = cd and Readable(cd.isActive) and cd.isActive and C_Spell.GetSpellCooldownDuration(id, true)
         if duration then cooldown:SetCooldownFromDurationObject(duration) else cooldown:Clear() end
         local isUsable, isNoMana = C_Spell.IsSpellUsable(id)
         if Readable(isUsable) then usable, noMana = isUsable, Readable(isNoMana) and isNoMana end
-    elseif attributes and attributes.type == "item" and entry and entry.id then
-        local start, duration, enabled = C_Item.GetItemCooldown(entry.id)
+    elseif kind == "item" then
+        local start, duration, enabled = C_Item.GetItemCooldown(id)
         if Readable(start) and Readable(duration) and Readable(enabled) and enabled and duration > 0 then
             cooldown:SetCooldown(start, duration)
         else
             cooldown:Clear()
         end
-        local isUsable, isNoMana = C_Item.IsUsableItem(entry.id)
+        local isUsable, isNoMana = C_Item.IsUsableItem(id)
         if Readable(isUsable) then usable, noMana = isUsable, Readable(isNoMana) and isNoMana end
     else
         cooldown:Clear()
@@ -603,7 +634,9 @@ end
 -- registered only while the radial is up
 local stateEvents = CreateFrame("Frame")
 stateEvents:SetScript("OnEvent", RefreshButtonStates)
-local STATE_EVENTS = { "SPELL_UPDATE_COOLDOWN", "SPELL_UPDATE_USABLE", "BAG_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_USABLE" }
+-- (a modifier, target, focus or macro edit can change what a macro casts)
+local STATE_EVENTS = { "SPELL_UPDATE_COOLDOWN", "SPELL_UPDATE_USABLE", "BAG_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_USABLE",
+                       "MODIFIER_STATE_CHANGED", "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED", "UPDATE_MACROS" }
 
 local function WatchButtonStates(watch)
     for _, event in ipairs(STATE_EVENTS) do

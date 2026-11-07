@@ -24,6 +24,9 @@ local RING_UNITS = { player = true, target = true, focus = true, pet = true, tar
 -- the small frames, with the frame each takes its size and look from. Target of Focus too follows
 -- the target: half of the focus frame would be too small to read
 local SMALL_FRAMES = { pet = "player", targettarget = "target", focustarget = "target" }
+-- their saved keys (<unit>Setup, <unit>Stash, <unit>Positions), built once: Ring.On checks them on every call
+local SMALL_KEYS = {}
+for unit in pairs(SMALL_FRAMES) do SMALL_KEYS[unit] = { unit .. "Setup", unit .. "Stash", unit .. "Positions" } end
 
 -- the art: the atlas and the ring's box in it (fractions, to the outer edge of its shadow). The ring
 -- is on the atlas's right; on the left it is mirrored. Every frame shares the target's ring.
@@ -955,7 +958,10 @@ local function PlaceBar(bar, f, s, flip, slot)
     bar.FlareUI_PlateInset = { length = length }
     local udb = Db(f)
     local name = udb and udb.texture
-    if name and name ~= "" and name ~= "FlareUI Forever" and LSM:IsValid("statusbar", name) then
+    if name == "FlareUI Forever (Light)" and bar:GetReverseFill() then
+        -- the light art's own right-to-left copy, as GetBarTexture picks off the plate
+        bar:SetStatusBarTexture("Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Bright-Mirrored.tga")
+    elseif name and name ~= "" and name ~= "FlareUI Forever" and LSM:IsValid("statusbar", name) then
         bar:SetStatusBarTexture(LSM:Fetch("statusbar", name))
     else
         bar:SetStatusBarTexture(bar:GetReverseFill() and slot.mirrored or slot.tex)
@@ -1436,7 +1442,8 @@ local function SyncSmallSetup(db, unit)
     local simple = db.simplePet
     if unit ~= "pet" then simple = db.simpleTargetOf end
     local wanted = (db.foreverStyle and simple == false) and "styled" or "simple"
-    local setupKey, stashKey, placesKey = unit .. "Setup", unit .. "Stash", unit .. "Positions"
+    local keys = SMALL_KEYS[unit]
+    local setupKey, stashKey, placesKey = keys[1], keys[2], keys[3]
     local current = db[setupKey] or "simple"
     if not frame or current == wanted then return end
     local enabled, saved = frame.enabled, {}

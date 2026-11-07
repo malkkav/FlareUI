@@ -361,8 +361,8 @@ local function ShowRule(show)
     return false   -- combat
 end
 
-local function CheckMember(data)
-    local editMode = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
+-- editMode: read once per pass by the caller, not once per member
+local function CheckMember(data, editMode)
     if editMode then return true end
     local fcmState = ns.ActionBars and ns.ActionBars.fcm
     -- every action bar shows while something is dragged onto them
@@ -390,23 +390,40 @@ local function MarkAllDirty()
 end
 
 local CHECK_INTERVAL = 0.05  -- seconds between condition checks
+-- A group whose members all reached its alpha isn't walked again until its show changes or an event
+-- marks it; this slower pass still walks every group, to put back an alpha changed behind our back
+local REPAIR_INTERVAL = 1
 Fader.shows = {}            -- group -> fading in, from the last condition check
 Fader.counting = {}         -- group -> its fade-out delay is running down
+Fader.settled = {}          -- group -> the show every member had reached on its last walk
+Fader.repairTimer = 0
 Fader.UpdateScript = function(self, elapsed)
     self.updateTimer = self.updateTimer + elapsed
     local check = self.updateTimer >= CHECK_INTERVAL or next(self.dirty) ~= nil
     -- between checks only a running fade has work to do
     if not check and not self.fading then return end
     local tick = self.updateTimer
-    if check then self.updateTimer = 0 end
+    local repair = false
+    if check then
+        self.updateTimer = 0
+        self.repairTimer = self.repairTimer + tick
+        if self.repairTimer >= REPAIR_INTERVAL then
+            self.repairTimer = 0
+            repair = true
+        end
+    end
 
     local hasActiveFades = false
+    local editMode   -- read once, on the first group checked
 
     for groupName, members in pairs(self.groups) do
         if check or self.shows[groupName] == nil then
+            if editMode == nil then
+                editMode = (_G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()) or false
+            end
             local groupShouldShow = false
             for _, data in ipairs(members) do
-                if CheckMember(data) then groupShouldShow = true break end
+                if CheckMember(data, editMode) then groupShouldShow = true break end
             end
 
             if not self.delays[groupName] then self.delays[groupName] = 0 end
@@ -418,15 +435,24 @@ Fader.UpdateScript = function(self, elapsed)
         end
         local effectiveShow = self.shows[groupName]
 
-        for _, data in ipairs(members) do
-            local frame = data.frame
-            local targetAlpha = effectiveShow and 1 or data.minAlpha
-            local currentAlpha = frame:GetAlpha()
-            if math_abs(currentAlpha - targetAlpha) > 0.005 then
+        if repair or self.dirty[groupName] or self.settled[groupName] ~= effectiveShow then
+            local groupFading = false
+            for _, data in ipairs(members) do
+                local frame = data.frame
+                local targetAlpha = effectiveShow and 1 or data.minAlpha
+                local currentAlpha = frame:GetAlpha()
+                if math_abs(currentAlpha - targetAlpha) > 0.005 then
+                    groupFading = true
+                    local change = data.fadeTime > 0 and elapsed / data.fadeTime or 1
+                    local newAlpha = (currentAlpha < targetAlpha) and math_min(targetAlpha, currentAlpha + change) or math_max(targetAlpha, currentAlpha - change)
+                    ApplyElementAlpha(frame, data.key, newAlpha)
+                end
+            end
+            if groupFading then
                 hasActiveFades = true
-                local change = data.fadeTime > 0 and elapsed / data.fadeTime or 1
-                local newAlpha = (currentAlpha < targetAlpha) and math_min(targetAlpha, currentAlpha + change) or math_max(targetAlpha, currentAlpha - change)
-                ApplyElementAlpha(frame, data.key, newAlpha)
+                self.settled[groupName] = nil
+            else
+                self.settled[groupName] = effectiveShow
             end
         end
 
@@ -608,6 +634,7 @@ function Visibility:Refresh()
     Fader.dirty = {}
     Fader.shows = {}
     Fader.counting = {}
+    Fader.settled = {}
     Fader.watchesMouseover = false
     Fader.fading = false
 
