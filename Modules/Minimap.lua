@@ -3,7 +3,10 @@ local L = ns.L
 
 --------------------------------------------------
 -- MINIMAP
--- A square minimap in Blizzard's panel frame art or the native round Forever minimap.
+-- A square minimap in Blizzard's panel frame art, the header (tracking, zone, clock, calendar)
+-- inside its top edge and the day/night badge on its bottom-left corner. Edit Mode's Size (shown as
+-- Scale) scales it.
+-- Forever Circle keeps Blizzard's native round minimap layout.
 --------------------------------------------------
 
 --------------------------------------------------
