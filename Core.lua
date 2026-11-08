@@ -1549,6 +1549,12 @@ f:SetScript("OnEvent", function(self, event, ...)
         ns.db = db
         ns.defaults = defaults
 
+        -- Older manual settings may have no language saved until the dropdown was used.
+        local global = db.global
+        if global.useGameLanguage == false and global.language == nil then
+            global.language = ns.LoadedLocale()
+        end
+
         -- ResetDB (the Reset dialog) is already reloading, so it is not asked about again
         -- An open panel follows at once, for when the reload is declined
         local function OnProfileChanged()
