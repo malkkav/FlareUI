@@ -34,11 +34,14 @@ S:Row{
 }
 S:Row{ key = "ab.procGlow", path = "actionbars.procGlow", half = true,
     apply = function() if ns.ProcGlow then ns.ProcGlow:Refresh() end end }
+-- in pairs (half rows): feedback above, then the art, the text, the spells
+S:Row{ key = "ab.steadyAttackFlash", path = "actionbars.steadyAttackFlash", apply = Refresh, half = true }
+S:Row{ key = "ab.gryphonsBehind", path = "actionbars.gryphonsBehind", apply = Refresh, half = true }
 S:Row{ key = "ab.hideMacroText", path = "actionbars.hideMacroText", apply = Refresh, half = true }
 S:Row{ key = "ab.hideKeybinds", path = "actionbars.hideHotkeys", apply = Refresh, half = true }
-S:Row{ key = "ab.autoRanks", path = "actionbars.autoRanks", half = true }
 S:Row{ key = "ab.cleanKeybinds", path = "actionbars.cleanKeybinds", apply = Refresh, half = true }
 S:Row{ key = "ab.buttonArt", path = "actionbars.buttonArt", apply = Refresh, half = true }
+S:Row{ key = "ab.autoRanks", path = "actionbars.autoRanks", half = true }
 S:Row{ key = "ab.stopAutoAdd", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
 
 S:Row{ key = "ab.stealthPaging", path = "actionbars.stealthPaging", apply = Refresh, half = true }

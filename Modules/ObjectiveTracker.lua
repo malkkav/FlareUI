@@ -1349,6 +1349,14 @@ function OT:Render()
                     end
                 end
             end
+
+            -- nothing to list: say why, or the bare header looks minimized and its button does nothing
+            if empty then
+                local hint = (state.logTracked > 0 and db.zoneOnly)
+                    and L["No tracked quests in this zone. Click Zone to show them all."]
+                    or L["No quests tracked. Shift-click a quest in your quest log to track it."]
+                AddLine(hint, "objective", C.DIM)
+            end
         end
     end
     for i = n + 1, #lines do lines[i]:Hide() end

@@ -820,6 +820,23 @@ function Panel:ActiveTab(module)
     return module.tabs[1]
 end
 
+-- A wide custom tab (tab.wide) grows the window by WIDE_EXTRA, about its centre; the middle column
+-- gets all of it, the right column keeps its place
+local WIDE_EXTRA = 150
+local function SetWide(wide)
+    if not page.right or (page.wide or false) == wide then return end
+    page.wide = wide
+    local x, y = frame:GetCenter()
+    frame:SetWidth(WIDTH + (wide and WIDE_EXTRA or 0))
+    if x then
+        frame:ClearAllPoints()
+        frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
+    end
+    if Panel.OnResize then Panel.OnResize() end
+end
+Panel.WIDE_W = WIDTH + WIDE_EXTRA - 12 - LEFT_W - RIGHT_W - 2 * PAD   -- a wide tab's middle width
+Panel.RIGHT_W, Panel.PAD = RIGHT_W, PAD
+
 local function HideCustom()
     for _, host in pairs(customHosts) do host:Hide() end
     if preview.host then preview.host:Hide() end
@@ -852,6 +869,12 @@ function Panel:Refresh()
     if not frame or not frame:IsShown() then return end
     ReleaseAll()
     HideCustom()
+    -- only a wide custom tab, shown (not search results or a module that is off), widens the window
+    do
+        local module = searchText == "" and S.modules[current]
+        local tab = module and not (module.enabled and not module:IsOn()) and self:ActiveTab(module)
+        SetWide(tab and tab.wide and true or false)
+    end
     page.offCard:Hide()
     page.scroll:Show()
     local content = page.content
@@ -1084,6 +1107,7 @@ local function PlaceSecureReload()
         secureReload:Hide()
     end
 end
+Panel.OnResize = PlaceSecureReload   -- a wide tab moved the reload button
 
 -- pending reloads (with the button), else a page notice that lasts until another page shows
 local notice, noticePage
@@ -1259,6 +1283,7 @@ local function BuildWindow()
     middle:SetPoint("TOPLEFT", left, "TOPRIGHT", PAD, -PAD)
     middle:SetPoint("BOTTOMRIGHT", right, "BOTTOMLEFT", -PAD, PAD)
     page.root = middle
+    page.body, page.right, page.rightLine = body, right, rightLine
 
     -- search
     local search = CreateFrame("EditBox", nil, left, "SearchBoxTemplate")
@@ -1479,6 +1504,7 @@ function Panel:SetMode(mode)
     if not frame then return end
     local news = mode == "whatsnew"
     if news then S:Fire("PageShown", nil) elseif current then S:Fire("PageShown", current) end
+    if news then SetWide(false) end
     frame.body:SetShown(not news)
     frame.news:SetShown(news)
     for _, b in ipairs(frame.topTabs) do if b.SetSelected then b:SetSelected(b.mode == mode) end end

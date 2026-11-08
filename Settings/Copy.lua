@@ -61,7 +61,7 @@ ns.Copy = {
         },
         rm = {
             desc = L["A ring of spells, items, macros and more. Hold the key, point, release."],
-            tabs = { L["Editor"], L["Keybinds"], L["Options"] },
+            tabs = { L["Radials"], L["Options"] },
             title = L["Radial Menu"],
         },
         tt = {
@@ -180,6 +180,11 @@ ns.Copy = {
             desc = L["Macro names on buttons."],
             label = L["Macro names"],
         },
+        ["ab.gryphonsBehind"] = {
+            desc = L["The art at each end of the main bar sits behind your action bars instead of over them."],
+            label = L["Gryphons behind bars"],
+            section = "ab.buttons",
+        },
         ["ab.hideBagBar"] = {
             desc = L["Hides the bag buttons."],
             label = L["Bag bar"],
@@ -246,6 +251,11 @@ ns.Copy = {
         ["ab.statusColours"] = {
             desc = L["Buttons change colour when you can't use them:\n* Red: target out of range\n* Blue: not enough mana or energy\n* Grey: unusable right now"],
             label = L["Status colouring"],
+            section = "ab.buttons",
+        },
+        ["ab.steadyAttackFlash"] = {
+            desc = L["Attack, Auto Shot and Shoot stay lit in red while they're on, instead of blinking."],
+            label = L["Steady attack highlight"],
             section = "ab.buttons",
         },
         ["ab.stealthPaging"] = {
@@ -997,24 +1007,21 @@ ns.Copy = {
             section = "rm.opening",
             tip = L["Toggle: middle-click a nested radial to open it in place. The mouse wheel still steps through it."],
         },
-        ["rm.keys"] = {
-            desc = L["Each key opens a radial on this character."],
-            empty = L["No keybinds yet. Add one to open a radial."],
-            label = L["Keybinds"],
-            tip = L["Alt, Ctrl and Shift combinations work. Right-click a key to clear it."],
+        ["rm.copy"] = {
+            desc = L["Makes a copy with the same buttons and the same reach, without a key. Handy for a Horde or class version."],
+            label = L["Copy"],
+        },
+        ["rm.key"] = {
+            desc = L["Opens this radial on every character that gets it."],
+            label = L["Key"],
+            tip = L["Alt, Ctrl and Shift combinations work. Right-click to clear it. Two radials can share a key: on a character that gets both, the narrower one wins (This character, then class, then faction)."],
         },
         ["rm.macroCreate"] = {
-            desc = L["Opens a radial from an action bar or another radial:\n* Press the macro: opens it\n* Click or press again: uses the button you point at\n* Right-click or Escape: closes it"],
+            desc = L["Puts a macro on your cursor that opens this radial from an action bar or another radial:\n* Press the macro: opens it\n* Click or press again: uses the button you point at\n* Right-click or Escape: closes it"],
             done = L["Macro \"{name}\" created and on your cursor. Drop it on a bar."],
             errorInCombat = L["You can't create macros in combat."],
             errorMacrosFull = L["Your macro list is full. Delete one and try again."],
             label = L["Create macro"],
-            section = "rm.radialMacros",
-            tip = L["Puts a macro for the selected radial on your cursor."],
-        },
-        ["rm.macroRadial"] = {
-            desc = L["Opens a radial from an action bar or another radial:\n* Press the macro: opens it\n* Click or press again: uses the button you point at\n* Right-click or Escape: closes it"],
-            label = L["Radial"],
             section = "rm.radialMacros",
             tip = L["Macro conditionals work."],
         },
@@ -1023,8 +1030,22 @@ ns.Copy = {
             label = L["Show button names"],
             section = "rm.look",
         },
+        ["rm.new"] = {
+            desc = L["Creates an empty radial. Choose who gets it as you name it."],
+            label = L["New radial"],
+        },
+        ["rm.overview"] = {
+            desc = L["Every key that opens a radial on the character you're playing."],
+            label = L["On this character"],
+            tip = L["A clash means two radials with the same reach share a key. The first in the list wins."],
+        },
+        ["rm.ownKey"] = {
+            desc = L["Gives this character its own key for this radial. Your other characters keep the shared key."],
+            label = L["Only this character"],
+            tip = L["A key set this way wins over any other radial on the same key."],
+        },
         ["rm.pad"] = {
-            desc = L["L3 opens the main radial. Aim with the right stick and press R3 to use the button; B or L3 closes it. LB and RB switch the aimed button's sub-radial choice."],
+            desc = L["L3 opens your first radial with a key. Aim with the right stick and press R3 to use the button; B or L3 closes it. LB and RB switch the aimed button's sub-radial choice."],
             label = L["Controller support"],
             section = "rm.controller",
             tip = L["The camera holds still while the radial is open. R3 pings as usual while it is closed."],
@@ -1035,6 +1056,11 @@ ns.Copy = {
             label = L["Menu position"],
             section = "rm.opening",
             tip = L["Radial macros open there too. The controller always opens it in the middle."],
+        },
+        ["rm.scope"] = {
+            desc = L["Which of your characters get this radial. Each character gets every radial available to it when it logs in."],
+            label = L["Available to"],
+            tip = L["A new radial starts on this character only."],
         },
         ["tt.anchor"] = {
             choices = { L["Default"], L["Cursor"] },

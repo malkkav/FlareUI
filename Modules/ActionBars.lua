@@ -133,10 +133,13 @@ local function SnapshotButtonArt(button)
     if button.FlareUI_ArtOrig then return end
     local nw, nh = button.NormalTexture:GetSize()
     local pw, ph = button.PushedTexture:GetSize()
+    local hw, hh = button.HighlightTexture and button.HighlightTexture:GetSize()
+    local cw, ch = button.CheckedTexture and button.CheckedTexture:GetSize()
     button.FlareUI_ArtOrig = {
         slotArt = button.SlotArt:IsShown(), slotBg = button.SlotBackground:IsShown(),
         normalAtlas = button.NormalTexture:GetAtlas(), normalLayer = button.NormalTexture:GetDrawLayer(), nw = nw, nh = nh,
         pushedAtlas = button.PushedTexture:GetAtlas(), pushedLayer = button.PushedTexture:GetDrawLayer(), pw = pw, ph = ph,
+        hw = hw, hh = hh, cw = cw, ch = ch,
     }
 end
 
@@ -151,6 +154,8 @@ local function RestoreButtonArt(button)
     if o.pushedAtlas then button:SetPushedAtlas(o.pushedAtlas) end
     button.PushedTexture:SetDrawLayer(o.pushedLayer)
     button.PushedTexture:SetSize(o.pw, o.ph)
+    if o.hw and button.HighlightTexture then button.HighlightTexture:SetSize(o.hw, o.hh) end
+    if o.cw and button.CheckedTexture then button.CheckedTexture:SetSize(o.cw, o.ch) end
     button.FlareUI_ArtOrig = nil
 end
 
@@ -167,7 +172,16 @@ local function ApplyButtonArt(button)
     local small = button.FlareUI_Small
     if small == nil then small = SmallActionButtonMixin and button.UpdateButtonArt == SmallActionButtonMixin.UpdateButtonArt or false end
     local w, h = 46, 45
-    if small then w, h = 35, 35 end
+    if small then
+        -- The frame atlases are drawn for a 45 px button and anchored TOPLEFT. Blizzard sizes them
+        -- 35 (frame) or 46x45 (hover, checked) on the 30 px pet and possess buttons, so they hang
+        -- over the right and bottom edges. They are kept in proportion to the button instead.
+        local bw, bh = button:GetSize()
+        if not bw or bw <= 0 then bw, bh = 30, 30 end
+        w, h = bw * 46 / 45, bh
+        if button.HighlightTexture then button.HighlightTexture:SetSize(w, h) end
+        if button.CheckedTexture then button.CheckedTexture:SetSize(w, h) end
+    end
     button:SetNormalAtlas("UI-HUD-ActionBar-IconFrame")
     button.NormalTexture:SetDrawLayer("OVERLAY")
     button.NormalTexture:SetSize(w, h)
@@ -714,12 +728,28 @@ end
 --------------------------------------------------
 -- 13. PUBLIC API
 --------------------------------------------------
--- button text draws at frame level 500: the end caps' container goes above it
+-- button text draws at frame level 500: the end caps' container goes above it. Gryphons Behind
+-- Bars puts it under every bar instead (the bars sit at level 50 and up in the same strata).
 local GRYPHON_LEVEL_ABOVE = 501
-local function UpdateGryphonLayer()
+local GRYPHON_LEVEL_BEHIND = 1
+local function UpdateGryphonLayer(db)
     local caps = _G.MainActionBar and _G.MainActionBar.EndCaps
     if not caps or not caps.SetFrameLevel then return end
-    if caps:GetFrameLevel() < GRYPHON_LEVEL_ABOVE then caps:SetFrameLevel(GRYPHON_LEVEL_ABOVE) end
+    if db and db.gryphonsBehind then
+        caps:SetFrameLevel(GRYPHON_LEVEL_BEHIND)
+    elseif caps:GetFrameLevel() < GRYPHON_LEVEL_ABOVE then
+        caps:SetFrameLevel(GRYPHON_LEVEL_ABOVE)
+    end
+    -- bar 1's page number and arrows (level 100 in Blizzard's XML) stay above the gryphons, or the
+    -- left one covers them; their arrow buttons go one higher
+    local pager = _G.MainActionBar.ActionBarPageNumber
+    if pager and pager.SetFrameLevel then
+        local level = math.max(pager:GetFrameLevel(), caps:GetFrameLevel() + 1)
+        pager:SetFrameLevel(level)
+        for _, button in ipairs({ pager.UpButton, pager.DownButton }) do
+            if button and button.SetFrameLevel then button:SetFrameLevel(level + 1) end
+        end
+    end
 end
 
 -- On Forever each gryphon is its own Edit Mode system, but the main bar's OnShow still runs
@@ -775,6 +805,19 @@ autoPushLoader:SetScript("OnEvent", function(self)
     end)
 end)
 
+-- Steady Attack Highlight: Attack, Auto Shot and Shoot blink their red overlay (Flash) while active.
+-- Each time Blizzard's update hides it mid-blink, it is shown again, so it stays lit. StopFlash
+-- clears the flag before it hides the overlay, so the overlay still goes when the attack stops.
+local steadyFlash = false
+local function HookFlash(btn)
+    local flash = btn.Flash
+    if not flash or btn.FlareUI_FlashHooked or type(btn.IsFlashing) ~= "function" then return end
+    btn.FlareUI_FlashHooked = true
+    hooksecurefunc(flash, "Hide", function(self)
+        if steadyFlash and btn:IsFlashing() then self:Show() end
+    end)
+end
+
 function ActionBars:Refresh()
     if InCombatLockdown() then
         self._pendingRefresh = true
@@ -787,7 +830,8 @@ function ActionBars:Refresh()
     UpdateAutoPushSpells(db)
     ApplyClassPaging()
 
-    UpdateGryphonLayer()
+    UpdateGryphonLayer(db)
+    steadyFlash = db.steadyAttackFlash and true or false
     UpdateButtonArtAll()
     SetupRangeColors()
 
@@ -833,6 +877,7 @@ function ActionBars:Init()
             if btn.UpdateHotkeys then ActionBars:SecureHook(btn, "UpdateHotkeys", UpdateHotkeyText) end
             if btn.UpdateUsable then ActionBars:SecureHook(btn, "UpdateUsable", OnUpdateUsable) end
         end
+        HookFlash(btn)
     end
 
     -- the extra action button sets its hotkey when it appears

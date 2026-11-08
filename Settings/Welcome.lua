@@ -739,7 +739,7 @@ loader:SetScript("OnEvent", function()
     if global.tourRadialKeys then
         global.tourRadialKeys = nil
         C_Timer.After(2, function()
-            if not InCombatLockdown() and not ns.IsGamepadUI() then ns.SettingsPanel:Open("rm", "keys") end
+            if not InCombatLockdown() and not ns.IsGamepadUI() then ns.SettingsPanel:Open("rm", "radials") end
         end)
     end
     if global.welcomeSeen then return end

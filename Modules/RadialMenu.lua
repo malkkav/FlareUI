@@ -122,7 +122,6 @@ local PING = {
 local STUCK_OPEN_SECONDS = 20     -- see the guard in UpdateSelection
 
 local MAX_BUTTONS = 12
-local MAX_EXTRA_KEYS = 5           -- extra keybinds per character
 local MAX_RADIAL_DEPTH = 4
 
 local radial, caster, header, wheel, buttons = nil, nil, nil, nil, {}
@@ -386,7 +385,8 @@ ACTIONS.subradial = function(entry, depth, seen)
     local id = entry.radial
     if not id or depth >= MAX_RADIAL_DEPTH or seen[id] then return nil end
     local data = RM:GetRadial(id)
-    if not data then return nil end
+    -- a radial this character doesn't get leaves no button behind
+    if not data or not RM:IsRadialAvailable(id) then return nil end
 
     seen[id] = true
     local children = {}
@@ -675,12 +675,13 @@ local function ResolveButtons(list)
     return out
 end
 
--- every radial: a macro may open any of them in combat
+-- every radial this character gets: a macro may open any of them in combat (the others are left
+-- with a count of 0 in the secure layer, so their keys and macros open nothing)
 local function ResolveAll()
     wipe(resolvedCache)
     for _, id in ipairs(RM:GetRadialOrder()) do
         local data = RM:GetRadial(id)
-        if data then resolvedCache[id] = ResolveButtons(data.buttons) end
+        if data and RM:IsRadialAvailable(id) then resolvedCache[id] = ResolveButtons(data.buttons) end
     end
 end
 
@@ -1458,7 +1459,7 @@ function SyncSecure()
         header:SetAttribute("tag-" .. tag, id)
         syncedTags[tag] = true
     end
-    header:SetAttribute("flare-assigned", RM:GetAssignedRadialID())
+    header:SetAttribute("flare-assigned", RM:GetDefaultRadialID())
     header:SetAttribute("flare-center", Option("position", "cursor") == "center")
     header:SetAttribute("flare-toggle", Option("activation", "hold") == "toggle")
     -- sub-radials restart on their first child, as the art does
@@ -1642,14 +1643,27 @@ function RM:GetRadial(id)
     return store and store.radials[id]
 end
 
-function RM:CreateRadial(name)
+-- scope: who gets it (see AVAILABILITY below); a new radial has no key yet
+function RM:CreateRadial(name, scope)
     local store = GetStore()
     if not store then return nil end
     local id = "r" .. store.nextRadialID
     store.nextRadialID = store.nextRadialID + 1
     store.radials[id] = { name = name or "New Radial", buttons = {} }
     store.radialOrder[#store.radialOrder + 1] = id
+    if scope then self:SetRadialScope(id, scope) end
     return id
+end
+
+-- a copy keeps the buttons and who gets it, but no key (it would only clash with the original)
+function RM:CopyRadial(id, name)
+    local data = self:GetRadial(id)
+    if not data then return nil end
+    local copy = self:CreateRadial(name or data.name)
+    local new = self:GetRadial(copy)
+    new.buttons = CopyTable(data.buttons)
+    new.scope, new.scopeName = data.scope, data.scopeName
+    return copy
 end
 
 function RM:RenameRadial(id, name)
@@ -1664,66 +1678,11 @@ function RM:DeleteRadial(id)
     for i, other in ipairs(store.radialOrder) do
         if other == id then table.remove(store.radialOrder, i) break end
     end
-    -- a character that chose it falls back to the first radial
+    local charDB = ns.CharDB()
+    if charDB.radialKeyOverride then charDB.radialKeyOverride[id] = nil end
     self:LoadActiveRadial()
     self:LayoutRadial()
     self:ApplyBindings()
-end
-
--- A character's setup (its radial and extra keybinds). A character without one starts from the
--- account's copy of the last setup changed (store.lastSetup).
-local function CopyKeys(list)
-    local out = {}
-    for i, extra in ipairs(list or {}) do out[i] = { key = extra.key, radial = extra.radial } end
-    return out
-end
-
-local function RememberSetup()
-    local store, charDB = GetStore(), ns.CharDB()
-    if not store then return end
-    store.lastSetup = { radial = charDB.radial, keys = CopyKeys(charDB.radialKeys) }
-end
-
-local function CharacterSetup()
-    local charDB = ns.CharDB()
-    if charDB.ring ~= nil then   -- the old key name, as in GetStore
-        if charDB.radial == nil then charDB.radial = charDB.ring end
-        charDB.ring = nil
-    end
-    local store = GetStore()
-    if charDB.radial == nil and charDB.radialKeys == nil then
-        local last = store and store.lastSetup
-        if last then
-            charDB.radial = last.radial
-            charDB.radialKeys = CopyKeys(last.keys)
-        end
-    elseif store and not store.lastSetup then
-        RememberSetup()   -- a set-up character, but no account copy yet
-    end
-    return charDB
-end
-
--- choice nil: never chose, gets the first radial; "": chose none
-function RM:GetAssignedRadialID()
-    local charDB = CharacterSetup()
-    local choice = charDB.radial
-    if choice == "" then return nil end
-    if choice and self:GetRadial(choice) then return choice end
-    return self:GetRadialOrder()[1]
-end
-
-function RM:SetAssignedRadialID(radialID)
-    CharacterSetup().radial = radialID or ""
-    RememberSetup()
-    self:LoadActiveRadial()
-    self:LayoutRadial()
-end
-
--- currentRadial is the saved button list itself, so edits show without copying
-function RM:LoadRadial(radialID)
-    local data = self:GetRadial(radialID)
-    currentID = data and radialID or nil
-    currentRadial = data and data.buttons or {}
 end
 
 -- the macro line that opens this radial ("Radial Macros")
@@ -1733,20 +1692,172 @@ function RM:GetMacroText(radialID)
     return "/click " .. MACRO_NAME .. " " .. (tagOf[radialID] or radialID)
 end
 
+-- currentRadial is the saved button list itself, so edits show without copying
+function RM:LoadRadial(radialID)
+    local data = self:GetRadial(radialID)
+    currentID = data and radialID or nil
+    currentRadial = data and data.buttons or {}
+end
+
 function RM:LoadActiveRadial()
-    self:LoadRadial(self:GetAssignedRadialID())
+    self:LoadRadial(self:GetDefaultRadialID())
 end
 
 --------------------------------------------------
--- 13. BINDING
--- The main key is account-wide, each character opening its own radial. Override bindings are
--- protected: a change in combat waits for the fight to end.
+-- 13. AVAILABILITY AND KEYS
+-- Each radial says who gets it (radial.scope) and has its own key (radial.key), which every
+-- character it is available to shares. A character can keep its own key for a radial instead
+-- (CharDB().radialKeyOverride[id]: a key, or false for none). Override bindings are protected: a
+-- change in combat waits for the fight to end.
 --------------------------------------------------
--- per character: { key = "F", radial = "r2" } each
-local function ExtraBindings()
-    local charDB = CharacterSetup()
-    charDB.radialKeys = charDB.radialKeys or {}
-    return charDB.radialKeys
+-- radial.scope: nil (every character), "faction:Horde", "class:DRUID" or "char:<GUID>";
+-- radial.scopeName keeps that character's name for the settings. More specific wins a shared key.
+local SCOPE_RANK = { faction = 1, class = 2, char = 3 }
+local OWN_KEY_RANK = 4
+
+local function SplitScope(scope)
+    if type(scope) ~= "string" then return nil end
+    return scope:match("^(%a+):(.+)$")
+end
+RM.SplitScope = SplitScope
+
+-- Alliance or Horde; nil before a faction is chosen
+local function PlayerFaction()
+    local faction = UnitFactionGroup("player")
+    return (faction == "Alliance" or faction == "Horde") and faction or nil
+end
+
+-- the scopes this character can give a radial, widest first
+function RM:GetScopeChoices()
+    local _, class = UnitClass("player")
+    local list = { "" }
+    local faction = PlayerFaction()
+    if faction then list[#list + 1] = "faction:" .. faction end
+    if class then list[#list + 1] = "class:" .. class end
+    local guid = ns.PlayerGUID()
+    if guid then list[#list + 1] = "char:" .. guid end
+    return list
+end
+
+function RM:IsRadialAvailable(id)
+    local data = self:GetRadial(id)
+    if not data then return false end
+    local kind, value = SplitScope(data.scope)
+    if kind == "faction" then return value == PlayerFaction() end
+    if kind == "class" then return value == select(2, UnitClass("player")) end
+    if kind == "char" then return value == ns.PlayerGUID() end
+    return true
+end
+
+-- scope "" or nil: every character
+function RM:SetRadialScope(id, scope)
+    local data = self:GetRadial(id)
+    if not data then return end
+    scope = (scope ~= "" and scope) or nil
+    data.scope = scope
+    data.scopeName = (SplitScope(scope) == "char") and UnitName("player") or nil
+    self:AvailabilityChanged()
+end
+
+-- what a character can open changed: relayout (the secure copy drops what is not available) and rebind
+function RM:AvailabilityChanged()
+    self:LoadActiveRadial()
+    if previewID then self:RefreshPreview() else self:LayoutRadial() end
+    self:ApplyBindings()
+end
+
+local function KeyOverrides()
+    local charDB = ns.CharDB()
+    charDB.radialKeyOverride = charDB.radialKeyOverride or {}
+    return charDB.radialKeyOverride
+end
+
+-- the key a radial has on this character (nil for none), and true when it is this character's own
+function RM:GetRadialKey(id)
+    local data = self:GetRadial(id)
+    if not data then return nil, false end
+    local own = KeyOverrides()[id]
+    if own ~= nil then return own or nil, true end
+    return data.key, false
+end
+
+-- the key every character with the radial shares
+function RM:GetSharedKey(id)
+    local data = self:GetRadial(id)
+    return data and data.key
+end
+
+-- sets the key for every character with the radial, or only for this one while it keeps its own
+function RM:SetRadialKey(id, key)
+    local data = self:GetRadial(id)
+    if not data then return end
+    key = (key and key ~= "") and key or nil
+    local overrides = KeyOverrides()
+    if overrides[id] ~= nil then
+        overrides[id] = key or false
+    else
+        data.key = key
+    end
+    self:ApplyBindings()
+end
+
+function RM:HasOwnKey(id)
+    return KeyOverrides()[id] ~= nil
+end
+
+-- on: this character starts from the shared key and keeps its own from then on; off: back to the
+-- shared key
+function RM:SetOwnKey(id, on)
+    local data = self:GetRadial(id)
+    if not data then return end
+    local overrides = KeyOverrides()
+    if on then
+        if overrides[id] == nil then overrides[id] = data.key or false end
+    else
+        overrides[id] = nil
+    end
+    self:ApplyBindings()
+end
+
+-- Every key on this character. Returns key -> the radial it opens, and per available radial with a
+-- key { key, own, rank, beatenBy, tie }: a character's own key beats This character, class,
+-- faction and every character, in that order; a tie goes to the radial listed first.
+function RM:ResolveKeys()
+    local winner, perRadial = {}, {}
+    for _, id in ipairs(self:GetRadialOrder()) do
+        if self:IsRadialAvailable(id) then
+            local key, own = self:GetRadialKey(id)
+            if key then
+                local rank = own and OWN_KEY_RANK or SCOPE_RANK[SplitScope(self:GetRadial(id).scope) or ""] or 0
+                perRadial[id] = { key = key, own = own, rank = rank }
+                local holder = winner[key]
+                if not holder or rank > perRadial[holder].rank then winner[key] = id end
+            end
+        end
+    end
+    for id, info in pairs(perRadial) do
+        local holder = winner[info.key]
+        if holder ~= id then
+            info.beatenBy = holder
+            info.tie = perRadial[holder].rank == info.rank
+        end
+    end
+    return winner, perRadial
+end
+
+-- what the controller, a bare macro and a reset open: the first radial with a working key here,
+-- else the first radial available here
+function RM:GetDefaultRadialID()
+    local _, perRadial = self:ResolveKeys()
+    local first
+    for _, id in ipairs(self:GetRadialOrder()) do
+        if self:IsRadialAvailable(id) then
+            local info = perRadial[id]
+            if info and not info.beatenBy then return id end
+            first = first or id
+        end
+    end
+    return first
 end
 
 -- StickIndexToConfigName counts from 0, the mapped state from 1
@@ -1758,6 +1869,7 @@ local function RightStickIndex()
     return 2
 end
 
+-- each key clicks the caster with its radial's id as the mouse button
 local function ApplyBinding()
     if not (radial and caster) then return end
     if InCombatLockdown() then
@@ -1766,17 +1878,12 @@ local function ApplyBinding()
     end
     RM.bindingPending = nil
     ClearOverrideBindings(radial)
+    local winner = RM:ResolveKeys()
+    for key, id in pairs(winner) do
+        SetOverrideBindingClick(radial, true, key, CASTER_NAME, id)
+    end
     local store = GetStore()
-    local key = store and store.key
-    if key and key ~= "" then
-        SetOverrideBindingClick(radial, true, key, CASTER_NAME, "LeftButton")
-    end
-    -- an extra key clicks the caster with its radial's id as the mouse button
-    for _, extra in ipairs(ExtraBindings()) do
-        if extra.key and extra.key ~= "" and extra.radial and RM:GetRadial(extra.radial) then
-            SetOverrideBindingClick(radial, true, extra.key, CASTER_NAME, extra.radial)
-        end
-    end
+    if header then header:SetAttribute("flare-assigned", RM:GetDefaultRadialID()) end
     -- Gamepad UI only: L3 runs the radial, aimed with the right stick (the camera holds still while
     -- it is open, section 7); R3 keeps the ping.
     if ns.IsGamepadUI() and store and store.controller and padButton then
@@ -1802,66 +1909,51 @@ function RM:ApplyBindings()
     ApplyBinding()
 end
 
--- one key opens one radial: any other row holding it lets go; index 0 is the main keybind
-local function ReleaseKey(key, keepIndex)
-    if not key or key == "" then return end
+-- Up to 4.2 the account key (store.key) opened each character's chosen radial (charDB.radial), each
+-- character kept up to five extra keys (charDB.radialKeys), and a character never set up copied the
+-- last setup changed (store.lastSetup). That last setup becomes the radials' own keys, and every
+-- character that differed keeps its keys as its own, so nothing changes in game. Every radial
+-- starts available to every character, as before.
+local function MigrateKeys()
     local store = GetStore()
-    if keepIndex ~= 0 and store and store.key == key then store.key = nil end
-    for i, extra in ipairs(ExtraBindings()) do
-        if i ~= keepIndex and extra.key == key then extra.key = nil end
+    if not store or store.keysPerRadial then return end
+    store.keysPerRadial = true
+    local radials, order = store.radials, store.radialOrder
+    -- as the old GetAssignedRadialID: "" chose none, nil or a deleted one gets the first radial
+    local function Pick(choice)
+        if choice == "" then return nil end
+        if choice and radials[choice] then return choice end
+        return order[1]
     end
-end
-
-RM.MAX_EXTRA_KEYS = MAX_EXTRA_KEYS
-
-function RM:GetExtraBindings()
-    return ExtraBindings()
-end
-
--- a new row starts on the character's own radial, with no key
-function RM:AddExtraBinding()
-    local list = ExtraBindings()
-    if #list >= MAX_EXTRA_KEYS then return end
-    list[#list + 1] = { radial = self:GetAssignedRadialID() or self:GetRadialOrder()[1] }
-    RememberSetup()
-end
-
-function RM:SetExtraKey(index, key)
-    local extra = ExtraBindings()[index]
-    if not extra then return end
-    key = (key ~= "" and key) or nil
-    ReleaseKey(key, index)
-    extra.key = key
-    RememberSetup()
-    ApplyBinding()
-end
-
-function RM:SetExtraRadial(index, radialID)
-    local extra = ExtraBindings()[index]
-    if not extra then return end
-    extra.radial = radialID
-    RememberSetup()
-    ApplyBinding()
-end
-
-function RM:RemoveExtraBinding(index)
-    table.remove(ExtraBindings(), index)
-    RememberSetup()
-    ApplyBinding()
-end
-
-function RM:GetKey()
-    local store = GetStore()
-    return store and store.key or ""
-end
-
-function RM:SetKey(key)
-    local store = GetStore()
-    if not store then return end
-    key = (key ~= "" and key) or nil
-    ReleaseKey(key, 0)
-    store.key = key
-    ApplyBinding()
+    -- radial id -> key; a radial now has one key, the first it had
+    local function Setup(choice, extras)
+        local map, used = {}, {}
+        local main = Pick(choice)
+        if main and store.key then map[main], used[store.key] = store.key, true end
+        for _, extra in ipairs(extras or {}) do
+            local id, key = extra.radial, extra.key
+            if key and id and radials[id] and not map[id] and not used[key] then map[id], used[key] = key, true end
+        end
+        return map
+    end
+    local last = store.lastSetup
+    local shared = last and Setup(last.radial, last.keys) or Setup(nil, nil)
+    for id, data in pairs(radials) do data.key = shared[id] end
+    for _, charDB in pairs(ns.db.global.characters or {}) do
+        local choice = charDB.radial
+        if choice == nil then choice = charDB.ring end
+        if choice ~= nil or charDB.radialKeys ~= nil then
+            local own = Setup(choice, charDB.radialKeys)
+            for id in pairs(radials) do
+                if own[id] ~= shared[id] then
+                    charDB.radialKeyOverride = charDB.radialKeyOverride or {}
+                    charDB.radialKeyOverride[id] = own[id] or false
+                end
+            end
+        end
+        charDB.radial, charDB.ring, charDB.radialKeys = nil, nil, nil
+    end
+    store.key, store.lastSetup = nil, nil
 end
 
 function RM:PLAYER_REGEN_ENABLED()
@@ -1927,6 +2019,7 @@ function RM:Init()
     end
     RestoreCameraConfig()
 
+    MigrateKeys()
     -- first run: one radial, so the library is never empty
     local store = GetStore()
     if store and not next(store.radials) then
@@ -1939,6 +2032,8 @@ function RM:Init()
 
     ApplyBinding()
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
+    -- a character that picks its faction now gets that faction's radials (absent on some clients)
+    pcall(self.RegisterEvent, self, "NEUTRAL_FACTION_SELECT_RESULT", function() self:AvailabilityChanged() end)
     -- an item button resolves once its name is cached; the event fires for every item loaded
     local relayoutQueued = false
     self:RegisterEvent("ITEM_DATA_LOAD_RESULT", function(_, itemID)
@@ -1959,7 +2054,7 @@ function RM:RadialChanged(radialID)
         self:RefreshPreview()
         return
     end
-    if radialID == nil or radialID == self:GetAssignedRadialID() then
+    if radialID == nil or radialID == self:GetDefaultRadialID() then
         self:LoadActiveRadial()
         self:LayoutRadial()
     end
