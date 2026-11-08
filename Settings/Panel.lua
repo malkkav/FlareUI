@@ -255,7 +255,9 @@ local function NewRowFrame(parent, kind)
     f.hover:SetColorTexture(1, 0.82, 0, 0.06)
     f.hover:Hide()
     f.crumb = Text(f, "GameFontDisableSmall")
+    f.crumb:SetWordWrap(true)
     f.label = Text(f, "GameFontHighlight")
+    f.label:SetWordWrap(true)
     f.label:SetPoint("LEFT", 6, 0)
     f.crumb:SetPoint("BOTTOMLEFT", f.label, "TOPLEFT", 0, 1)
     -- in search results the path is a link: it opens the row's page and shows the row
@@ -573,7 +575,8 @@ Build.frame = function(f)
     f.control:SetPoint("RIGHT", f.edit, "LEFT", -8, 0)
 end
 Fill.frame = function(f, row)
-    f.edit:SetWidth(row.half and 60 or 80)
+    local labelWidth = f.edit:GetFontString():GetUnboundedStringWidth()
+    f.edit:SetWidth(math.max(row.half and 60 or 80, math.ceil(labelWidth) + 24))
     f.control:SetChecked(row:Get() and true or false)
     f.edit:SetEnabled(S:CanEditFrames() and row:Get() and row.frame and row.frame() ~= nil or false)
 end
@@ -618,6 +621,24 @@ local function SetRowEnabled(f, enabled)
     if control and control.SetEnabled then control:SetEnabled(enabled) end
 end
 
+local function RowLabelSpace(f, row)
+    -- Use the first visible control, not the width of its container.
+    local control = f.control or f.edit
+    if f.stepper then
+        control = f.stepper.DecrementButton
+    elseif row.kind == "dropdown" and row.sideButtons and row.sideButtons.left then
+        control = f.leftButton
+    elseif row.kind == "buttons" and row.buttons and #row.buttons > 0 then
+        control = f.buttons[1]
+    elseif row.kind == "expander" then
+        control = f.control.sign
+    end
+    local left = f:GetLeft()
+    local right = control and control:GetLeft() or f:GetRight()
+    local width = left and right and right - left or f:GetWidth()
+    return math.max(1, width - 12)
+end
+
 local function FillRow(f, row, crumb)
     f.row = row
     f.label:SetText(row:Label() or "")
@@ -628,14 +649,22 @@ local function FillRow(f, row, crumb)
     if f.flashAnim then f.flashAnim:Stop() end
     if Fill[row.kind] then Fill[row.kind](f, row) end
     SetRowEnabled(f, not row:IsDisabled())
+    local isNew = row:IsNew()
+    local space = RowLabelSpace(f, row)
+    local labelWidth = math.max(1, space - (isNew and NEW_W + NEW_GAP or 0))
+    f.label:SetWidth(labelWidth)
+    local padding = 6
+    if crumb then
+        f.crumb:SetWidth(space)
+        -- The crumb sits above the vertically centered label.
+        padding = math.max(padding, 2 * (math.ceil(f.crumb:GetStringHeight()) + 2))
+    end
+    local height = math.ceil(f.label:GetStringHeight()) + padding
+    f:SetHeight(math.max(f:GetHeight(), height))
     -- Blizzard's NEW label after the name (Settings.NEW)
-    if row:IsNew() then
+    if isNew then
         if not f.newBadge then f.newBadge = NewBadge(f) end
-        -- after the name; a long one still leaves it clear of the control
-        local x = f.label:GetStringWidth() + NEW_GAP
-        if f.control then
-            x = math.min(x, f:GetWidth() - 6 - f.control:GetWidth() - 4 - 2 - NEW_W)
-        end
+        local x = math.min(f.label:GetStringWidth(), labelWidth) + NEW_GAP
         f.newBadge:ClearAllPoints()
         f.newBadge:SetPoint("LEFT", f.label, "LEFT", x / NEW_SCALE, 0)
         f.newBadge:Show()
@@ -719,21 +748,32 @@ end
 -- lays rows out from y down and returns the new y; half rows pair up except in search results.
 -- row.gapAbove: extra space over a full-width row (not in search results)
 local function PlaceRows(parent, rows, y, crumbOf)
-    local col, lineH = 0, 0
+    local firstHalf
     for _, row in ipairs(rows) do
         local f = Acquire(parent, row.kind)
         f:ClearAllPoints()
         if row.half and not crumbOf then
+            local col = firstHalf and 1 or 0
             local indent = row.parent and INDENT or 0
             local w = math.floor((CONTENT_W - indent) / 2)
             f:SetPoint("TOPLEFT", indent + col * w, y)
             f:SetWidth(w - (col == 0 and 8 or 0))
             FillRow(f, row)
             if row == page.jumpRow then page.jumpFrame, page.jumpTop = f, -y end
-            lineH = math.max(lineH, f:GetHeight())
-            if col == 1 then y, col, lineH = y - lineH, 0, 0 else col = 1 end
+            if firstHalf then
+                local height = math.max(firstHalf:GetHeight(), f:GetHeight())
+                firstHalf:SetHeight(height)
+                f:SetHeight(height)
+                y = y - height
+                firstHalf = nil
+            else
+                firstHalf = f
+            end
         else
-            if col == 1 then y, col, lineH = y - lineH, 0, 0 end
+            if firstHalf then
+                y = y - firstHalf:GetHeight()
+                firstHalf = nil
+            end
             if row.gapAbove and not crumbOf then y = y - row.gapAbove end
             local indent = row.parent and INDENT or 0
             f:SetPoint("TOPLEFT", indent, y)
@@ -743,33 +783,42 @@ local function PlaceRows(parent, rows, y, crumbOf)
             y = y - f:GetHeight()
         end
     end
-    if col == 1 then y = y - lineH end
+    if firstHalf then y = y - firstHalf:GetHeight() end
     return y
 end
 
 local function UpdateHeader(module)
     page.title:SetText(module:Title())
     page.desc:SetText(module:Description() or "")
-    page.switch:SetShown(module.enabled ~= nil)
+    local hasSwitch = module.enabled ~= nil
+    page.switch:SetShown(hasSwitch)
     page.switch:SetChecked(module:IsOn())
-    page.title:ClearAllPoints()
-    if module.enabled then
-        page.title:SetPoint("LEFT", page.switch, "RIGHT", 4, 0)
-    else
-        page.title:SetPoint("TOPLEFT", 4, -4)
-    end
     local editText = module.editMode and module:IsOn() and S:ModuleText(module.key, "editButton")
     local customText, customClick
     if module.headerButton then customText, customClick = module.headerButton() end
     page.editMode.customClick = customClick
     page.editMode:SetShown((customText or editText) and true or false)
+    local titleRightInset = 4
     if customText or editText then
         page.editMode:SetText(customText or editText)
         page.editMode:SetWidth((page.editMode:GetTextWidth() or 120) + 30)
         page.editMode:SetEnabled(customText ~= nil or (S:CanEditFrames() and true or false))
+        titleRightInset = page.editMode:GetWidth() + 8
     end
+    local titleLeftInset = hasSwitch and page.switch:GetWidth() + 2 or 4
+    local titleWidth = math.max(1, page.header:GetWidth() - titleLeftInset - titleRightInset)
+    page.title:SetWidth(titleWidth)
+    page.title:ClearAllPoints()
+    local titleWraps = page.title:GetUnboundedStringWidth() > titleWidth
+    if hasSwitch and not titleWraps then
+        page.title:SetPoint("LEFT", page.switch, "RIGHT", 4, 0)
+    else
+        page.title:SetPoint("TOPLEFT", titleLeftInset, -4)
+    end
+    local titleExtra = titleWraps and math.max(0, math.ceil(page.title:GetStringHeight()) - 22) or 0
+    page.desc:SetPoint("TOPLEFT", 4, -36 - titleExtra)
     page.banner:Hide()
-    local height = 64
+    local height = 64 + titleExtra
     if module.banner and module:IsOn() then
         local text, button, onClick = module.banner()
         if text then
@@ -778,6 +827,13 @@ local function UpdateHeader(module)
             page.banner.button:SetShown(button ~= nil)
             page.banner.onClick = onClick
             page.banner.button:SetEnabled(not module.bannerEditMode or S:CanEditFrames() and true or false)
+            local buttonWidth = 0
+            if button then
+                local labelWidth = page.banner.button:GetFontString():GetUnboundedStringWidth()
+                buttonWidth = math.max(110, math.ceil(labelWidth) + 24)
+                page.banner.button:SetWidth(buttonWidth)
+            end
+            page.banner.text:SetWidth(CONTENT_W - buttonWidth - 24)
             -- a longer text wraps, and the banner grows with it
             local bannerHeight = math.max(30, math.ceil(page.banner.text:GetStringHeight()) + 12)
             page.banner:SetHeight(bannerHeight)
@@ -951,6 +1007,8 @@ end
 --------------------------------------------------
 -- 5. LEFT COLUMN
 --------------------------------------------------
+local NAV_TEXT_INSET, NAV_RIGHT_INSET = 20, 6
+
 function UpdateNav()
     for key, b in pairs(navButtons) do
         local module = S.modules[key]
@@ -974,7 +1032,14 @@ function UpdateNav()
             b.dot:SetVertexColor(on and 0.35 or 0.4, on and 0.85 or 0.4, on and 0.35 or 0.4)
         end
         b.text:SetTextColor((on and HIGHLIGHT_FONT_COLOR or GRAY_FONT_COLOR):GetRGB())
-        b.newBadge:SetShown(on and module:HasNew())
+        local showNew = on and module:HasNew()
+        if b.showNew ~= showNew then
+            b.showNew = showNew
+            b.newBadge:SetShown(showNew)
+            local badgeWidth = showNew and (NEW_W + NEW_GAP) or 0
+            b.text:SetWidth(b:GetWidth() - NAV_TEXT_INSET - NAV_RIGHT_INSET - badgeWidth)
+            b:SetHeight(math.max(24, math.ceil(b.text:GetStringHeight()) + 6))
+        end
     end
 end
 
@@ -1022,22 +1087,24 @@ function Panel:JumpTo(row)
 end
 
 local function BuildNav(left)
-    local y = -PAD + 4
+    -- Anchor each row to the one above so badge changes can reflow the list.
+    local anchor, anchorPoint, x, gap = left, "TOPLEFT", PAD, PAD - 4
+    local buttonWidth = LEFT_W - 2 * PAD
     local GROUP_LABEL = { HUD = L["HUD"], Info = L["Info"], Tools = L["Tools"] }
     for _, group in ipairs(S:Groups()) do
         local label = GROUP_LABEL[group.group]
         if label then
             local g = Text(left, "GameFontDisableSmall")
-            g:SetPoint("TOPLEFT", PAD + 4, y - 8)
+            g:SetPoint("TOPLEFT", anchor, anchorPoint, x + 4, -gap - 8)
             g:SetText(label)
-            y = y - 24
+            gap = gap + 24
         elseif group.group == "bottom" then
-            y = y - 10
+            gap = gap + 10
         end
         for _, module in ipairs(group.modules) do
             local b = CreateFrame("Button", nil, left)
-            b:SetSize(LEFT_W - 2 * PAD, 24)
-            b:SetPoint("TOPLEFT", PAD, y)
+            b:SetSize(buttonWidth, 24)
+            b:SetPoint("TOPLEFT", anchor, anchorPoint, x, -gap)
             b.selected = b:CreateTexture(nil, "BACKGROUND")
             b.selected:SetAllPoints()
             b.selected:SetColorTexture(1, 0.82, 0, 0.12)
@@ -1049,16 +1116,17 @@ local function BuildNav(left)
             b.dot:SetSize(14, 14)
             b.dot:SetPoint("LEFT", 2, 0)
             b.text = Text(b, "GameFontHighlight")
-            b.text:SetPoint("LEFT", 20, 0)
+            b.text:SetPoint("LEFT", NAV_TEXT_INSET, 0)
+            b.text:SetWordWrap(true)
             b.text:SetText(module:Title())
             b.newBadge = NewBadge(b)
-            b.newBadge:SetPoint("RIGHT", -6 / NEW_SCALE, 0)
+            b.newBadge:SetPoint("RIGHT", -NAV_RIGHT_INSET / NEW_SCALE, 0)
             b:SetScript("OnClick", function()
                 PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
                 Panel:Select(module.key)
             end)
             navButtons[module.key] = b
-            y = y - 24
+            anchor, anchorPoint, x, gap = b, "BOTTOMLEFT", 0, 0
         end
     end
 end
@@ -1309,7 +1377,7 @@ local function BuildWindow()
     page.switch:SetSize(30, 30)
     page.switch:SetPoint("TOPLEFT", -2, 2)
     page.title = Text(header, "GameFontNormalHuge")
-    page.title:SetPoint("LEFT", page.switch, "RIGHT", 4, 0)
+    page.title:SetWordWrap(true)
     page.switch:SetScript("OnClick", function(self)
         local on = self:GetChecked() and true or false
         PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
@@ -1348,10 +1416,9 @@ local function BuildWindow()
     banner:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
     banner:SetBackdropColor(0.5, 0.35, 0, 0.35)
     banner.button = CreateFrame("Button", nil, banner, "UIPanelButtonTemplate")
-    banner.button:SetSize(110, 22)
+    banner.button:SetHeight(22)
     banner.text = Text(banner, "GameFontNormal")
     banner.text:SetPoint("LEFT", 8, 0)
-    banner.text:SetWidth(CONTENT_W - 110 - 24)
     banner.text:SetJustifyH("LEFT")
     banner.text:SetWordWrap(true)
     banner.button:SetPoint("RIGHT", -4, 0)
@@ -1455,9 +1522,10 @@ local function BuildWindow()
     frame.footerText = Text(footer, "GameFontHighlight")
     frame.footerText:SetPoint("LEFT", PAD + 4, -1)
     frame.reload = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
-    frame.reload:SetSize(130, 22)
     frame.reload:SetPoint("RIGHT", -PAD, -1)
     frame.reload:SetText(S:WindowText("reloadFooter2", L["Reload now"]))
+    local reloadLabelWidth = frame.reload:GetFontString():GetUnboundedStringWidth()
+    frame.reload:SetSize(math.max(130, math.ceil(reloadLabelWidth) + 24), 22)
     frame.reload:SetScript("OnClick", function()
         ns.ButtonSound()
         ns.ShowDialog("FLAREUI_RELOAD")
