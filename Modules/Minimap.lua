@@ -6,7 +6,7 @@ local L = ns.L
 -- A square minimap in Blizzard's panel frame art, the header (tracking, zone, clock, calendar)
 -- inside its top edge and the day/night badge on its bottom-left corner. Edit Mode's Size (shown as
 -- Scale) scales it.
--- Forever Circle keeps Blizzard's native round minimap layout.
+-- Style Round (minimap.style) keeps Forever's native round minimap and skips all of the above.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -591,7 +591,7 @@ function MM:Init()
         return
     end
     local db = GetDb()
-    squareStyle = not db or db.style ~= "forever"
+    squareStyle = not db or db.style ~= "round"
 
     hooksecurefunc("GameTime_UpdateTooltip", AddClockStats)
     -- filled on enter, not on Blizzard's next tick

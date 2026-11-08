@@ -216,13 +216,14 @@ function Ring.TileDefaults(kind)
     return kind == "party" and FOREVER_TILES.party.classic or FOREVER_TILES.boss
 end
 -- their default positions (the ring stands out past the outer side)
+-- party: Marcus's FlareUI Style place (11-08)
 Ring.TILE_POSITIONS = {
-    party = { point = "LEFT",  x = 65,  y = 0 },
+    party = { point = "LEFT",  x = 64,  y = 0 },
     boss  = { point = "RIGHT", x = -88, y = 10 },
 }
--- Forever Style's
+-- Forever Style's (party: Marcus's place, 11-08)
 Ring.PLATE_TILE_POSITIONS = {
-    party = { point = "LEFT",  x = 71,  y = 0 },
+    party = { point = "LEFT",  x = 75,  y = 0 },
     boss  = { point = "RIGHT", x = -93, y = 10 },
 }
 function Ring.TilePosition(kind)

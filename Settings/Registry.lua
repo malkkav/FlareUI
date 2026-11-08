@@ -20,8 +20,16 @@ local GROUPS = { "top", "HUD", "Info", "Tools", "bottom" }
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["au.font.count"] = "4.2",
-    ["uf.font.auraCount"] = "4.2",
+    ["ab.gryphonsBehind"] = "4.3",
+    ["ab.steadyAttackFlash"] = "4.3",
+    ["about.layout"] = "4.3",
+    ["mm.style"] = "4.3",
+    ["rm.copy"] = "4.3",
+    ["rm.key"] = "4.3",
+    ["rm.new"] = "4.3",
+    ["rm.overview"] = "4.3",
+    ["rm.ownKey"] = "4.3",
+    ["rm.scope"] = "4.3",
 }
 
 --------------------------------------------------

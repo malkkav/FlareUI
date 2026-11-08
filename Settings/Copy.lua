@@ -301,6 +301,12 @@ ns.Copy = {
             section = "about.credits",
             text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* Licences for the libraries and code FlareUI builds on are in its LICENSES folder."],
         },
+        ["about.layout"] = {
+            kind = "text",
+            label = L["Edit Mode layout"],
+            section = "about.editModeLayout",
+            text = L["Want your screen set up like ours? Import the FlareUI layout into Edit Mode:\n\n`1.` Click `Copy layout code` and press `Ctrl+C`.\n`2.` Press `Esc` and choose `Edit Mode`.\n`3.` Open the `Layout` menu and choose `Import`.\n`4.` Paste with `Ctrl+V`, name it and click `Import`."],
+        },
         ["about.links"] = {
             kind = "text",
             label = L["Links"],
@@ -659,10 +665,10 @@ ns.Copy = {
             label = L["Zone name"],
         },
         ["mm.style"] = {
-            choices = { L["Square"], L["Forever Circle"] },
-            desc = L["Choose FlareUI's square frame or WoW Forever's round minimap."],
+            choices = { L["Square"], L["Round"] },
+            desc = L["FlareUI's square minimap, or Forever's own round one."],
             label = L["Style"],
-            tip = L["Applies after reloading the UI."],
+            reload = true,
         },
         ["mm.zoom"] = {
             choices = { L["Off"], L["5 s"], L["10 s"], L["30 s"] },
@@ -1410,6 +1416,7 @@ ns.Copy = {
         ["ab.fakeCooldownManager"] = L["Fake Cooldown Manager (FCM)"],
         ["ab.hideBlizzardElements"] = L["Hide Bars"],
         ["about.credits"] = L["Credits"],
+        ["about.editModeLayout"] = L["FlareUI Edit Mode layout"],
         ["about.yourFriendlyUiOverhowl"] = L["Your friendly UI overhowl"],
         ["adv.profile"] = L["Profile"],
         ["adv.reset"] = L["Reset"],

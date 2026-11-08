@@ -90,7 +90,14 @@ local function Build(host)
     credits = credits:gsub("|cffffd100Clari Turela|r", Link("Clari Turela", CREDIT_LINKS.clari))
     credits = credits:gsub("|cffffd100sampconrad|r", Link("sampconrad", CREDIT_LINKS.sampconrad)
         .. " (" .. Link("GitHub", CREDIT_LINKS.sampconradGitHub) .. ")")
-    Body(host, credits, creditsTitle, -12)
+    local creditsText = Body(host, credits, creditsTitle, -12)
+
+    -- the FlareUI Edit Mode layout: how to import it, and its code to copy
+    local layoutTitle = Section(host, S:SectionText("about.editModeLayout"), creditsText, -22)
+    local layoutText = Body(host, S:Format(S:Text("about.layout", "text", true)), layoutTitle, -12)
+    local copy = ns.EditModeLayout.Button(host)
+    copy:SetPoint("TOPLEFT", layoutText, "BOTTOMLEFT", 0, -12)
+
     host:SetHyperlinksEnabled(true)
     host:SetScript("OnHyperlinkClick", function(_, link)
         local url = link:match("^url:(.+)$")
@@ -136,3 +143,4 @@ S:Row{ key = "about.thanks", kind = "text" }
 S:Row{ key = "about.links", kind = "text" }
 S:Row{ key = "about.credits", kind = "text" }
 S:Row{ key = "about.commands", kind = "text" }
+S:Row{ key = "about.layout", kind = "text" }

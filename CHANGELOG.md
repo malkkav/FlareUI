@@ -1,3 +1,27 @@
+# FlareUI 4.3
+
+Radials that know which character they belong to, a cleaner Radial Menu page, an official FlareUI Edit Mode layout, a round minimap and two action bar tweaks.
+
+**Restart the game fully after updating** (not just /reload): this version adds a new file.
+
+## New
+- Radial Menu: each radial has its own **Available to** (all characters, all Alliance or Horde characters, all characters of a class, or only this character) and its own **Key**, shared by every character that gets it. Your characters pick up their radials at login, so a Druid radial stays on your Druids. Two radials can share a key: on a character that gets both, the narrower one wins. Tick **Only this character** to give one character its own key.
+- Radial Menu: **Copy** a radial (handy for a Horde or class version), and **Create macro** right next to its key.
+- Minimap: **Style**, Square (the default) or Round, Forever's own round minimap, thanks to parchinskiy. Needs a reload.
+- The **FlareUI Edit Mode layout**: copy its code from the bottom of the About page (or the new page in the setup tour) and import it in Edit Mode to set your screen up like ours.
+- Action Bars, Tweaks: **Steady attack highlight** (on): Attack, Auto Shot and Shoot stay lit in red while they're on, instead of blinking.
+- Action Bars, Tweaks: **Gryphons behind bars** (off): the art at each end of the main bar sits behind your bars instead of over them.
+
+## Changed
+- Radial Menu page: one Radials tab with your radials on the right, what opens on this character below them, and a bigger editor with a two-column Catalog. The Keybinds tab is gone: your keys were moved onto your radials and every character keeps the keys it had.
+- Radial Menu now sits below Quality of Life in the settings list.
+- Party frames: new default places for Forever Style and FlareUI Style (frames you already moved stay where they are).
+- Quest Tracker: an empty tracker says why, instead of looking minimized.
+
+## Fixed
+- Action bar 1: the page arrows no longer hide under the left gryphon.
+- Pet bar with Show button art: the frames no longer hang over each other.
+
 # FlareUI 4.2
 
 Stack counts get their own font, chat windows can be made click-through from the tab menu, and every aura frame now follows one shared set of rules, which fixes several aura bugs.

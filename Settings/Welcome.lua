@@ -389,7 +389,32 @@ function BuildPage.editMode(page)
     Stack(right, Say(right, "GameFontNormal", L["The rest is set up here."], right.inner))
 end
 
--- 5: the two windows
+-- 5: the FlareUI Edit Mode layout, imported by the player in Blizzard's own dialog
+function BuildPage.layout(page)
+    local left = Card(page, 0, 0, CARD_W2, BODY_H)
+    Stack(left, Say(left, "GameFontNormalLarge", L["Use our layout"], left.inner))
+    Stack(left, Say(left, "GameFontHighlight", L["Want your screen set up like ours? Import the FlareUI layout into Edit Mode:"], left.inner))
+    Stack(left, Say(left, "GameFontHighlight", table.concat({
+        "|cffffd1001.|r " .. L["Click |cffffd100Copy layout code|r and press |cffffd100Ctrl+C|r."],
+        "|cffffd1002.|r " .. L["Press |cffffd100Esc|r and choose |cffffd100Edit Mode|r."],
+        "|cffffd1003.|r " .. L["Open the |cffffd100Layout|r menu and choose |cffffd100Import|r."],
+        "|cffffd1004.|r " .. L["Paste with |cffffd100Ctrl+V|r, name it and click |cffffd100Import|r."],
+    }, "\n"), left.inner), 10)
+    local copy = ns.EditModeLayout.Button(left, 170)
+    copy:SetPoint("BOTTOMLEFT", CARD_PAD, CARD_PAD)
+
+    local right = Card(page, CARD_W2 + GAP, 0, CARD_W2, BODY_H)
+    Stack(right, Say(right, "GameFontNormalLarge", L["Good to know"], right.inner))
+    Stack(right, Say(right, "GameFontHighlight", Bullets({
+        L["It's saved and switched on right away"],
+        L["Your old layout stays: switch back any time from the Layout menu"],
+        L["FlareUI's own frames already sit where the layout expects them"],
+        L["Made for the default UI scale. Wider screens just get more room at the sides"],
+    }), right.inner), 10)
+    Stack(right, Say(right, "GameFontNormal", L["It's also at the bottom of the About page in /fui."], right.inner), 14)
+end
+
+-- 6: the two windows
 function BuildPage.chatMeter(page)
     ModuleCard(page, 0, "ch", "Chat", 130, {
         L["A header with your tabs and buttons"],
@@ -403,7 +428,7 @@ function BuildPage.chatMeter(page)
     })
 end
 
--- 6: where you are, what you're doing
+-- 7: where you are, what you're doing
 function BuildPage.mapQuests(page)
     ModuleCard(page, 0, "mm", "Minimap", 160, {
         L["A square map with Forever's day and night cycle"],
@@ -417,7 +442,7 @@ function BuildPage.mapQuests(page)
     })
 end
 
--- 7: the radial, and the key it still needs
+-- 8: the radial, and the key it still needs
 function BuildPage.radial(page)
     local art = Picture(page, "Radial", 270, 270)
     art:SetPoint("TOPLEFT")
@@ -434,7 +459,7 @@ function BuildPage.radial(page)
     CardTick(card, "rm")
 end
 
--- 8: the helpers
+-- 9: the helpers
 function BuildPage.qol(page)
     local tick = Tick(page, "qol", L["Use Quality of Life"])
     tick:SetPoint("TOPLEFT", -3, 0)
@@ -468,7 +493,7 @@ function BuildPage.qol(page)
     CardTick(right, "tt")
 end
 
--- 9: the choices, and what to try after the reload
+-- 10: the choices, and what to try after the reload
 function BuildPage.finish(page)
     local banner = page:CreateTexture(nil, "ARTWORK")
     banner:SetTexture(BANNER)
@@ -525,6 +550,7 @@ local PAGES = {
     { build = "unitFrames", title = function() return Title("uf") end, lead = L["Your player, target, focus and pet frames, and the boss frames."] },
     { build = "bars", title = L["Bars and Buffs"], lead = L["The buttons and bars you look at all day."] },
     { build = "editMode", title = L["Where do the options live?"], lead = L["This is the one thing to remember: there are two places."] },
+    { build = "layout", title = L["The FlareUI Layout"], lead = L["Your screen set up the way FlareUI is made to look."] },
     { build = "chatMeter", title = L["Chat and Damage Meter"], lead = L["Two windows that match, usually in the bottom corners of your screen."] },
     { build = "mapQuests", title = L["Minimap and Quests"], lead = L["Where you are, and what you're doing there."] },
     { build = "radial", title = function() return Title("rm") end, lead = L["Everything you need, one key away."] },

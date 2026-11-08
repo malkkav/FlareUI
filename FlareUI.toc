@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 4.2
+## Version: 4.3
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -79,6 +79,7 @@ Modules\RadialMenu.lua
 # Settings panel
 Launcher.lua
 Perf.lua
+Settings\EditModeLayout.lua
 Settings\Welcome.lua
 Settings\RadialEditor.lua
 Settings\Copy.lua
