@@ -38,7 +38,7 @@ ns.Copy = {
             title = L["Damage Meter"],
         },
         mm = {
-            desc = L["A square minimap with some tricks under the hood."],
+            desc = L["A minimap with square and round styles."],
             tabs = { L["Settings"], L["Fonts"] },
             title = L["Minimap"],
         },
@@ -657,6 +657,12 @@ ns.Copy = {
         ["mm.font.zone"] = {
             desc = L["The zone's name along the top of the minimap."],
             label = L["Zone name"],
+        },
+        ["mm.style"] = {
+            choices = { L["Square"], L["Forever Circle"] },
+            desc = L["Choose FlareUI's square frame or WoW Forever's round minimap."],
+            label = L["Style"],
+            tip = L["Applies after reloading the UI."],
         },
         ["mm.zoom"] = {
             choices = { L["Off"], L["5 s"], L["10 s"], L["30 s"] },
