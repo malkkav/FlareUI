@@ -433,6 +433,7 @@ local defaults = {
         -- [[ MINIMAP MODULE ]]
         minimap = {
             enabled = false,
+            style = "square",
             autoZoom = 5,               -- seconds before zooming back out (0 = off)
             buttonBag = true,           -- the badge opens a bag with every addon's minimap button (MinimapBag.lua)
             clockStats = true,          -- framerate and latency in the clock's tooltip

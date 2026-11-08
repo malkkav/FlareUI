@@ -3,9 +3,7 @@ local L = ns.L
 
 --------------------------------------------------
 -- MINIMAP
--- A square minimap in Blizzard's panel frame art, the header (tracking, zone, clock, calendar)
--- inside its top edge and the day/night badge on its bottom-left corner. Edit Mode's Size (shown as
--- Scale) scales it.
+-- A square minimap in Blizzard's panel frame art or the native round Forever minimap.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -30,6 +28,7 @@ local C_Timer = C_Timer
 -- Blizzard's frames. "Minimap" is a global, so the module table and the frame keep separate names.
 local MinimapFrame = _G.Minimap
 local Cluster = _G.MinimapCluster
+local squareStyle -- latched at startup because the square layout's hooks last until reload
 
 --------------------------------------------------
 -- 3. CONSTANTS
@@ -308,14 +307,20 @@ local function RestyleCoordText(text)
     text:SetTextColor(c.r, c.g, c.b)
 end
 
-local function PlaceCoords()
+local function StyleCoords()
     local coords = Cluster.MinimapContainer and Cluster.MinimapContainer.PlayerCoords
     if not coords then return end
     local text = coords.CoordText
-    Raise(coords)
     RestyleCoordText(text)
     local size = text and select(2, text:GetFont()) or 10
     coords:SetHeight(size + 2)
+    return coords
+end
+
+local function PlaceCoords()
+    local coords = StyleCoords()
+    if not coords then return end
+    Raise(coords)
     coords:ClearAllPoints()
     coords:SetPoint("BOTTOM", MM.Frame, "BOTTOM", 0, COORDS.GAP)
 end
@@ -389,6 +394,10 @@ end
 
 function MM:UpdateLayout()
     if not self.initialized then return end
+    if not squareStyle then
+        StyleCoords()
+        return
+    end
     Cluster.MinimapContainer:SetScale(1)
     Cluster.ZoneTextButton:SetScale(1)
     SizeCluster()
@@ -470,19 +479,32 @@ local function KeepMapSquare()
     end
 end
 
-local function InstallHooks()
+local function InstallSquareHooks()
     KeepSunPlaced()
     hooksecurefunc(Cluster, "SetSize", SizeCluster)
-    -- both re-place pieces from Blizzard's layout
-    hooksecurefunc(Cluster, "SetEditModeScale", function()
-        MM:UpdateLayout()
-        MM:UpdateTrackerScale()   -- Blizzard's tracker follows the new width
-    end)
     hooksecurefunc(Cluster, "SetHeaderUnderneath", function() MM:UpdateLayout() end)
     -- Forever's config pass (rotateMinimap, layout) drops the zone button to its own frame level
     if Cluster.UpdateMinimapConfig then hooksecurefunc(Cluster, "UpdateMinimapConfig", PlaceZone) end
     hooksecurefunc("MiniMapIndicatorFrame_UpdatePosition", PlaceIndicators)
-    hooksecurefunc(MinimapFrame, "SetZoom", OnZoom)
+end
+
+local function InitSquare()
+    KeepMapSquare()
+    RemoveEditModeSettings()
+    KeepMapUnrotated()
+    if Cluster.SetRotateMinimap then hooksecurefunc(Cluster, "SetRotateMinimap", KeepMapUnrotated) end
+    CreateMapArt()
+    StyleHeader()
+    InstallSquareHooks()
+    -- Edit Mode's box on the border art's edge strips, less their shadow outside the gold line
+    ns.FitEditModeBox(Cluster, function()
+        local art = MM.Frame
+        local leftEdge, rightEdge, topEdge, bottomEdge = art and art.LeftEdge, art and art.RightEdge, art and art.TopEdge, art and art.BottomEdge
+        if not (art and art:GetLeft() and leftEdge and rightEdge and topEdge and bottomEdge and leftEdge:GetLeft()) then return nil end
+        local cut = BORDER_SHADOW
+        return art, leftEdge:GetLeft() + cut.left - art:GetLeft(), topEdge:GetTop() - cut.top - art:GetTop(),
+            rightEdge:GetRight() - cut.right - art:GetRight(), bottomEdge:GetBottom() + cut.bottom - art:GetBottom()
+    end)
 end
 
 --------------------------------------------------
@@ -491,13 +513,22 @@ end
 --------------------------------------------------
 local TRACKER_LINE_WIDTH = 288
 
--- The minimap frame's outer width in the tracker's parent's units
+-- The map's outer width in the tracker's parent's units
 local function FrameOuterWidth(tracker)
     local frame = MM.Frame
-    local left = frame and frame.TopLeftCorner and frame.TopLeftCorner:GetLeft()
-    local right = frame and frame.TopRightCorner and frame.TopRightCorner:GetRight()
-    if not (left and right) then return nil end
-    return (right - left) * frame:GetEffectiveScale() / tracker:GetParent():GetEffectiveScale()
+    if not squareStyle then frame = Cluster.MinimapContainer end
+    if not frame then return end
+    local width
+    if squareStyle then
+        local left = frame.TopLeftCorner and frame.TopLeftCorner:GetLeft()
+        local right = frame.TopRightCorner and frame.TopRightCorner:GetRight()
+        if not (left and right) then return end
+        width = right - left
+    else
+        width = frame:GetWidth()
+        if width <= 0 then return end
+    end
+    return width * frame:GetEffectiveScale() / tracker:GetParent():GetEffectiveScale()
 end
 
 -- ns.SetSystemScale, not Edit Mode's SetScale (its re-layout would run tainted); out of combat only
@@ -520,7 +551,9 @@ function MM:UpdateTrackerScale()
         return
     end
     local width = FrameOuterWidth(tracker)
-    ns.SetSystemScale(tracker, width and width / TRACKER_LINE_WIDTH or 1)
+    if width or squareStyle then
+        ns.SetSystemScale(tracker, width and width / TRACKER_LINE_WIDTH or 1)
+    end
 end
 
 --------------------------------------------------
@@ -550,39 +583,32 @@ end
 
 function MM:Init()
     if self.initialized then return end
+    if not (MinimapFrame and Cluster and Cluster.ZoneTextButton and Cluster.Tracking and Cluster.MinimapContainer and _G.GameTimeFrame) then
+        print("|cffff0000FlareUI:|r Minimap module could not find the Blizzard minimap cluster.")
+        return
+    end
+    local db = GetDb()
+    squareStyle = not db or db.style ~= "forever"
+
     hooksecurefunc("GameTime_UpdateTooltip", AddClockStats)
     -- filled on enter, not on Blizzard's next tick
     EventUtil.ContinueOnAddOnLoaded("Blizzard_TimeManager", function()
         local clock = _G.TimeManagerClockButton
         if clock then clock:HookScript("OnEnter", function() TimeManagerClockButton_UpdateTooltip() end) end
+        if not squareStyle then self:ApplyFonts() end
     end)
-    if not (MinimapFrame and Cluster and Cluster.ZoneTextButton and Cluster.Tracking and Cluster.MinimapContainer and _G.GameTimeFrame) then
-        print("|cffff0000FlareUI:|r Minimap module could not find the Blizzard minimap cluster.")
-        return
-    end
 
-    KeepMapSquare()
-    RemoveEditModeSettings()
-    AddEditModeSettings()
-    KeepMapUnrotated()
-    if Cluster.SetRotateMinimap then hooksecurefunc(Cluster, "SetRotateMinimap", KeepMapUnrotated) end
-    -- Blizzard's addon drawer stays hidden while the bag replaces it (UpdateDisplay re-shows it)
-    local drawer = _G.AddonCompartmentFrame
-    if drawer and ns.MinimapBag and ns.MinimapBag:IsOn() then
-        hooksecurefunc(drawer, "UpdateDisplay", drawer.Hide)
-        drawer:Hide()
+    if squareStyle then
+        InitSquare()
+    else
+        -- Rotation can change the native frame's width.
+        Cluster.MinimapContainer:HookScript("OnSizeChanged", function() self:UpdateTrackerScale() end)
     end
-    CreateMapArt()
-    StyleHeader()
-    InstallHooks()
-    -- Edit Mode's box on the border art's edge strips, less their shadow outside the gold line
-    ns.FitEditModeBox(Cluster, function()
-        local art = MM.Frame
-        local leftEdge, rightEdge, topEdge, bottomEdge = art and art.LeftEdge, art and art.RightEdge, art and art.TopEdge, art and art.BottomEdge
-        if not (art and art:GetLeft() and leftEdge and rightEdge and topEdge and bottomEdge and leftEdge:GetLeft()) then return nil end
-        local cut = BORDER_SHADOW
-        return art, leftEdge:GetLeft() + cut.left - art:GetLeft(), topEdge:GetTop() - cut.top - art:GetTop(),
-            rightEdge:GetRight() - cut.right - art:GetRight(), bottomEdge:GetBottom() + cut.bottom - art:GetBottom()
+    AddEditModeSettings()
+    hooksecurefunc(MinimapFrame, "SetZoom", OnZoom)
+    hooksecurefunc(Cluster, "SetEditModeScale", function()
+        self:UpdateLayout()
+        self:UpdateTrackerScale()
     end)
     self.initialized = true
 
@@ -595,5 +621,12 @@ function MM:Init()
     -- the frame's corners have positions only after the first layout pass
     C_Timer.After(0, function() self:Refresh() end)
     -- last: it reads other addons' buttons, and the map doesn't depend on it
-    if ns.MinimapBag then ns.MinimapBag:Init() end
+    local bag = ns.MinimapBag
+    if bag then bag:Init() end
+    local drawer = _G.AddonCompartmentFrame
+    if drawer and bag and bag.initialized then
+        -- Blizzard's addon drawer stays hidden while the bag replaces it.
+        hooksecurefunc(drawer, "UpdateDisplay", drawer.Hide)
+        drawer:Hide()
+    end
 end
