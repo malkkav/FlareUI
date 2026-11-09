@@ -19,6 +19,7 @@ for (const raw of lines) {
     continue;
   }
   if (!current) continue;
+  if (raw.trim() === '---') break;   // the footer below the notes (the history link)
   let line = raw.trimEnd();
   line = line.replace(/\*\*(.+?)\*\*/g, '|cffffffff$1|r');          // bold: white
   line = line.replace(/`([^`]+)`/g, '|cffffd100$1|r');               // code: gold
