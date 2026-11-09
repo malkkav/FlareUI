@@ -148,6 +148,8 @@ local UNITS = {
     player = {
         key = "Player", label = L["Player"], order = 1, auras = true, portrait = true,
         blizzard = { "PlayerFrame" },
+        -- its own cast bar is used with Standalone Cast Bar off (on: the FlareUI Player Cast Bar)
+        castbar = true,
         -- Hide Player Frame while in party: when the party frames show, so a raid brings it back
         partyDriver = "[group:raid] show; [@raid1,exists] show; [group:party] hide; [@party1,exists] hide; show",
         events = { "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE" },
@@ -222,7 +224,7 @@ local CAST_EVENTS = {
 -- Health Text and Power Text share these (Power Text has no Health Lost). Saved names: "both" is
 -- Value | Percent, "valuemax" Current (Max).
 local HEALTH_TEXT_MODES = {
-    { text = L["None"],                     value = "none",        isRadio = true },
+    { text = L["Off"],                      value = "none",        isRadio = true },
     { text = L["Percent"],                  value = "percent",     isRadio = true },
     { text = L["Value"],                    value = "value",       isRadio = true },
     { text = L["Value | Percent"],          value = "both",        isRadio = true },
@@ -231,25 +233,25 @@ local HEALTH_TEXT_MODES = {
     { text = L["Health Lost"],              value = "lost",        isRadio = true },
 }
 
--- The text for every mode but Health Lost. cur and max go through AbbreviateNumbers and percent is
+-- The text for every mode but Health Lost. cur and max go through ns.ShortNumber (in full up to 9999) and percent is
 -- 0-100; all three can be secret, which SetFormattedText takes as they are.
 function UF.FormatBarText(fs, mode, cur, percent, max)
     if mode == "percent" then
         fs:SetFormattedText("%.0f%%", percent)
     elseif mode == "value" then
-        fs:SetText(AbbreviateNumbers(cur))
+        fs:SetText(ns.ShortNumber(cur))
     elseif mode == "both" then
-        fs:SetFormattedText("%s | %.0f%%", AbbreviateNumbers(cur), percent)
+        fs:SetFormattedText("%s | %.0f%%", ns.ShortNumber(cur), percent)
     elseif mode == "valuemax" then
-        fs:SetFormattedText("%s (%s)", AbbreviateNumbers(cur), AbbreviateNumbers(max))
+        fs:SetFormattedText("%s (%s)", ns.ShortNumber(cur), ns.ShortNumber(max))
     elseif mode == "valuemaxpct" then
-        fs:SetFormattedText("%s (%s) | %.0f%%", AbbreviateNumbers(cur), AbbreviateNumbers(max), percent)
+        fs:SetFormattedText("%s (%s) | %.0f%%", ns.ShortNumber(cur), ns.ShortNumber(max), percent)
     else
         fs:SetText("")
     end
 end
 
--- Health Lost: "-1.2K" from UnitHealthMissing. The value can be secret, so "-0" at full health can't
+-- Health Lost: "-1234" or "-12K" from UnitHealthMissing. The value can be secret, so "-0" at full health can't
 -- be caught in Lua: a step curve turns the health percent into the text's alpha (1 below full, 0 at
 -- full). Every other mode puts the alpha back to 1.
 function UF.SetHealthLost(fs, unit)
@@ -259,14 +261,14 @@ function UF.SetHealthLost(fs, unit)
         UF.lostCurve:AddPoint(0, 1)
         UF.lostCurve:AddPoint(1, 0)
     end
-    fs:SetFormattedText("-%s", AbbreviateNumbers(UnitHealthMissing(unit, true)))
+    fs:SetFormattedText("-%s", ns.ShortNumber(UnitHealthMissing(unit, true)))
     fs:SetAlpha(UnitHealthPercent(unit, true, UF.lostCurve))
 end
 
 -- Edit Mode samples: health is a 0-1 share of a 24000 sample maximum
 function UF.SetSampleHealthLost(fs, health)
     local lost = math.floor((1 - health) * 24000 + 0.5)
-    if lost > 0 then fs:SetFormattedText("-%s", AbbreviateNumbers(lost)) else fs:SetText("") end
+    if lost > 0 then fs:SetFormattedText("-%s", ns.ShortNumber(lost)) else fs:SetText("") end
 end
 
 -- Power Text: Health Text's modes but Health Lost. A saved true or false (a checkbox's) reads as Value.
@@ -283,7 +285,7 @@ end
 -- percent from the client's curve (power can be secret)
 function UF.SetPowerText(fs, unit, powerType, mode)
     if mode == "value" then
-        fs:SetText(AbbreviateNumbers(UnitPower(unit, powerType)))
+        fs:SetText(ns.ShortNumber(UnitPower(unit, powerType)))
     elseif POWER_MODE[mode] and mode ~= "none" then
         UF.FormatBarText(fs, mode, UnitPower(unit, powerType),
             UnitPowerPercent(unit, powerType, false, CurveConstants.ScaleTo100), UnitPowerMax(unit, powerType))
@@ -504,10 +506,10 @@ function UF.HideBuffsSetting(default, get, set)
         values = {
             { text = L["Off"], value = "OFF", isRadio = true },
             { text = L["Permanent"], value = "PERMANENT", isRadio = true },
-            { text = L["Longer than 15 Minutes"], value = "900", isRadio = true },
-            { text = L["Longer than 10 Minutes"], value = "600", isRadio = true },
-            { text = L["Longer than 5 Minutes"], value = "300", isRadio = true },
-            { text = L["Longer than 1 Minute"], value = "60", isRadio = true },
+            { text = L["Longer Than 15 Minutes"], value = "900", isRadio = true },
+            { text = L["Longer Than 10 Minutes"], value = "600", isRadio = true },
+            { text = L["Longer Than 5 Minutes"], value = "300", isRadio = true },
+            { text = L["Longer Than 1 Minute"], value = "60", isRadio = true },
         },
         get = get, set = set,
         desc = L["Buffs left off this frame, by their full duration. Every choice but Off also hides permanent buffs."] }
@@ -1041,7 +1043,7 @@ local function ShowSampleCast(cast)
     cast.Text:SetText(channel and L["Sample Channel"] or L["Sample Cast"])
     cast.Icon:SetTexture(SAMPLE_CAST_ICON)
     local color
-    if cast.standalone then
+    if cast.standalone or own then
         color = channel and PLAYER_CAST_CHANNEL or PLAYER_CAST_COLOR
     else
         color = channel and CAST_CHANNEL or CAST_COLOR
@@ -1319,9 +1321,11 @@ function UF.UpdatePlayerCastExtras(cast, event, channeling, castBarID, startMs, 
     local _, _, home, world = GetNetStats()
     local lag = (world and world > 0) and world or home
     -- the player cast bar's switches: Latency Zone (on by default), Spell Queue Window, Channel
-    -- Ticks, Spell Pushback
+    -- Ticks, Spell Pushback. The standalone bar keeps them in playerCastbar, the bar on the player
+    -- frame (Standalone Cast Bar off) with the frame's own settings.
     local db = GetDb()
-    local pc = cast.standalone and db and db.playerCastbar
+    local pc
+    if cast.standalone then pc = db and db.playerCastbar else pc = GetUnitDb("player") end
     if not (pc and pc.latencyZone) then lag = nil end
     local width = cast:GetWidth()
     local zoneWidth = (lag and lag > 0 and width) and width * math.min(lag / (endMs - startMs), 1) or 0
@@ -1530,7 +1534,8 @@ local function UpdateCastBar(cast, enabled, event, by, barID)
     cast.Icon:SetTexture(UF.CastIcon(texture, spellID, isTradeskill))
 
     local color
-    if cast.standalone then
+    -- your own casts in the player colours, on either player bar
+    if cast.standalone or cast.unit == "player" then
         color = channeling and PLAYER_CAST_CHANNEL or PLAYER_CAST_COLOR
     else
         color = channeling and CAST_CHANNEL or CAST_COLOR
@@ -1577,14 +1582,23 @@ local function UpdateCastBar(cast, enabled, event, by, barID)
     UF.UpdateKickTick(cast, channeling, duration, notInterruptible)
 end
 
+-- Standalone Cast Bar (player frame, Edit Mode): on, the FlareUI Player Cast Bar is the player's; off,
+-- the bar that hangs off the player frame, as on the target
+function UF.PlayerCastStandalone()
+    local udb = GetUnitDb("player")
+    return not (udb and udb.standaloneCast == false)
+end
+
 local function IsCastEnabled(cast)
     if cast.isEnabled then return cast.isEnabled() end
     if cast.standalone then
         -- the cast bar is part of Main Frames: it lives while the player frame does
         local db = GetDb()
-        return db and db.units and db.units.player and db.units.player.enabled and true or false
+        local on = db and db.units and db.units.player and db.units.player.enabled and true or false
+        return on and UF.PlayerCastStandalone()
     end
-    -- target, focus, pet: the Cast Bar switch in Edit Mode
+    if cast.unit == "player" and UF.PlayerCastStandalone() then return false end
+    -- target, focus, pet (and the player without the standalone bar): the Cast Bar switch in Edit Mode
     local udb = GetUnitDb(cast.unit)
     return not (udb and udb.castbar == false)
 end
@@ -3620,7 +3634,7 @@ local FADE = { interval = 0.1, units = { "player", "pet" } }
 local function HealthAlpha()
     local db = GetDb()
     local v = db and db.visibility and db.visibility.player
-    -- Min Alpha: how far they fade, at full health
+    -- Faded Opacity: how far they fade, at full health
     local minAlpha = (v and v.minAlpha or 0) / 100
     if not FADE.curve or FADE.curveMin ~= minAlpha then
         FADE.curve = C_CurveUtil.CreateCurve()
@@ -4031,6 +4045,7 @@ local function EditSections()
     local settings = {}
     local function Section(key, items)
         if #items == 0 then return end
+        ns.OrderEditSettings(items)   -- dropdowns, sliders, switches; the same order on every frame
         local own = {}
         for i, item in ipairs(items) do own[i] = item.hidden end
         settings[#settings + 1] = { name = "|cffffd100" .. L[key] .. "|r", kind = LEM.SettingType.Expander, default = false,
@@ -4095,7 +4110,8 @@ local function CreatePlayerCastBar()
     -- load (a player's /run showed Holder hidden, Cast shown); FlareUI never hides it, so show it back
     if C_AddOns.IsAddOnLoaded("Cinematic") then
         holder.Cast:SetIgnoreParentAlpha(true)
-        local function KeepShown(self) if not self:IsShown() then self:Show() end end
+        -- (only while Standalone Cast Bar is on: off, FlareUI hides it itself)
+        local function KeepShown(self) if not self:IsShown() and UF.PlayerCastStandalone() then self:Show() end end
         hooksecurefunc(holder, "Hide", KeepShown)
         hooksecurefunc(holder, "SetShown", KeepShown)
     end
@@ -4106,6 +4122,21 @@ local function CreatePlayerCastBar()
     pcall(holder.RegisterEvent, holder, "PLAYER_ENTERING_WORLD")
     playerCastHolder = holder
     return holder
+end
+
+-- Standalone Cast Bar switched: the FlareUI Player Cast Bar shows (with its Edit Mode box) only while
+-- it is on; the player frame's own bar takes over while it is off. A plain frame: fine in a fight.
+function UF.ApplyPlayerCastMode()
+    local standalone = UF.PlayerCastStandalone()
+    if playerCastHolder then
+        playerCastHolder:SetShown(standalone)
+        UpdateCastBar(playerCastHolder.Cast, IsCastEnabled(playerCastHolder.Cast))
+    end
+    local f = frames.player
+    if f and f.Cast then
+        UpdateCastBar(f.Cast, IsCastEnabled(f.Cast))
+        if not InCombatLockdown() then LayoutFrame(f) end
+    end
 end
 
 local function BuildPlayerCastSettings()
@@ -4143,7 +4174,7 @@ local function BuildPlayerCastSettings()
     })
     Section("Look", {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
-        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
+        { name = L["Border"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
         UF.BgOpacitySetting(UF.BAR_BG_OPACITY, get("bgOpacity", UF.BAR_BG_OPACITY), set("bgOpacity")),
         { name = L["Channel Ticks"], kind = LEM.SettingType.Checkbox, default = false, get = get("channelTicks", false), set = set("channelTicks"),
           desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
@@ -4318,7 +4349,7 @@ local function BuildSettings(unit)
     local lookItems = {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.texture or DEFAULT_TEXTURE, values = BuildTextureValues(),
           get = function() local u = GetUnitDb(unit); return u and u.texture or DEFAULT_TEXTURE end, set = set("texture") },
-        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BORDER, values = BuildBorderValues(false),
+        { name = L["Border"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BORDER, values = BuildBorderValues(false),
           get = function() local u = GetUnitDb(unit); return u and u.border or DEFAULT_BORDER end, set = set("border"),
           -- Forever Style: one fixed border (the plate's own on its frames)
           hidden = function() return ns.UFRing and ns.UFRing.PlateOn() or false end },
@@ -4352,20 +4383,37 @@ local function BuildSettings(unit)
     Section("Look", lookItems)
 
     if info.castbar then
-        local function noCast() local u = GetUnitDb(unit); return u and u.castbar == false or false end
-        Section("Cast Bar", {
+        -- the player: Standalone Cast Bar on top; while it is on, the rest of the section is hidden
+        local function standalone() return unit == "player" and UF.PlayerCastStandalone() end
+        local function castOff() local u = GetUnitDb(unit); return u and u.castbar == false or false end
+        local function noCast() return standalone() or castOff() end
+        local standaloneItem
+        if unit == "player" then
+            standaloneItem = { name = L["Standalone Cast Bar"], kind = LEM.SettingType.Checkbox, default = true,
+                get = function() return UF.PlayerCastStandalone() end,
+                set = function(_, value)
+                    local u = GetUnitDb(unit)
+                    if not u then return end
+                    u.standaloneCast = value
+                    UF.ApplyPlayerCastMode()
+                    if frames[unit] then LEM:RefreshFrameSettings(frames[unit]) end
+                end,
+                desc = L["On: the FlareUI Player Cast Bar, a frame of its own that you place and size in Edit Mode. Off: the cast bar hangs off the player frame, as on the target, and these options set it."] }
+        end
+        local castItems = {
             { name = L["Cast Bar"], kind = LEM.SettingType.Checkbox, default = defaults.castbar ~= false,
-              get = function() return not noCast() end,
+              get = function() return not castOff() end,
               set = function(layoutName, value)
                   set("castbar")(layoutName, value)
                   if frames[unit] then LEM:RefreshFrameSettings(frames[unit]) end
-              end },
+              end,
+              hidden = standalone },
             { name = L["Cast Bar Position"], kind = LEM.SettingType.Dropdown, default = defaults.castbarPosition or "BOTTOM",
               values = { { text = L["Above"], value = "TOP", isRadio = true }, { text = L["Below"], value = "BOTTOM", isRadio = true } },
               get = get("castbarPosition"), set = set("castbarPosition"), hidden = noCast },
             { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(),
               get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture"), hidden = noCast },
-            { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
+            { name = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
               get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture"),
               desc = L["Frame Border uses the frame's own border."],
               hidden = function() return noCast() or (ns.UFRing and ns.UFRing.PlateOn()) or false end },
@@ -4381,7 +4429,29 @@ local function BuildSettings(unit)
               set = function(layoutName, value) set("castTimer")(layoutName, not value) end,
               hidden = noCast,
               desc = L["No time left at the right end of the bar."] },
-        })
+        }
+        if standaloneItem then
+            table.insert(castItems, 1, standaloneItem)
+            -- the standalone bar's extras, on the bar that hangs off the player frame
+            local function flag(key, default)
+                return function() local u = GetUnitDb(unit); local v = u and u[key]; if v == nil then return default end; return v end
+            end
+            local extras = {
+                { name = L["Latency Zone"], kind = LEM.SettingType.Checkbox, default = true, get = flag("latencyZone", true), set = set("latencyZone"),
+                  desc = L["The end of the bar your latency covers, in red: start the next spell there and it is sent as this one lands."] },
+                { name = L["Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = flag("pushback", false), set = set("pushback"),
+                  desc = L["How far being hit has set your cast back (\"+0.5\") or cut your channel short, next to the timer."] },
+                { name = L["Channel Ticks"], kind = LEM.SettingType.Checkbox, default = false, get = flag("channelTicks", false), set = set("channelTicks"),
+                  desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
+                { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = flag("queueMark", false), set = set("queueMark"),
+                  desc = L["A mark near the end of the bar: press your next spell after it and it goes off as soon as this one ends."] },
+            }
+            for _, item in ipairs(extras) do
+                item.hidden = noCast
+                castItems[#castItems + 1] = item
+            end
+        end
+        Section("Cast Bar", castItems)
     end
     if info.auras then
         local positions = {
@@ -4410,9 +4480,9 @@ local function BuildSettings(unit)
               generator = Corner("buffs", "debuffs"), get = get("buffs"), set = set("buffs") },
             { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = defaults.debuffs or "OFF", values = positions,
               generator = Corner("debuffs", "buffs"), get = get("debuffs"), set = set("debuffs") },
-            { name = L["Buffs Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1,
+            { name = L["Buff Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1,
               get = function() return ns.AuraSize(GetUnitDb(unit), false, defaults.auraSize or 22) end, set = set("buffSize") },
-            { name = L["Debuffs Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1,
+            { name = L["Debuff Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1,
               get = function() return ns.AuraSize(GetUnitDb(unit), true, defaults.auraSize or 22) end, set = set("debuffSize") },
         }
         table.insert(auraItems, 3, UF.HideBuffsSetting("PERMANENT",
@@ -4550,6 +4620,7 @@ function UF:Refresh()
             UpdateCastBar(playerCastHolder.Cast, IsCastEnabled(playerCastHolder.Cast))
         end)
     end
+    guard("player cast mode", UF.ApplyPlayerCastMode)
 end
 
 -- Fade Player and Pet (Settings > Unit Frames): "always", or "fade" (section 14). Saved as the four
@@ -4653,6 +4724,8 @@ function UF:Init()
         -- also the Gamepad UI's bar (Forever has no GamepadPlayerCastingBarFrame)
         HardHide("PlayerCastingBarFrame")
     end
+    -- Standalone Cast Bar: this bar or the player frame's own
+    UF.ApplyPlayerCastMode()
     HookExtras()
     if frames.player then InitFsrSpark() end
     self.initialized = true

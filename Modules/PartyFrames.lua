@@ -2619,7 +2619,7 @@ local function BuildSettings()
 
     Section("Party", {
         { name = L["Style"], kind = LEM.SettingType.Dropdown, default = "classic",
-          values = { { text = L["Classic"], value = "classic", isRadio = true }, { text = L["Raid-Style"], value = "raid", isRadio = true } },
+          values = { { text = L["Classic"], value = "classic", isRadio = true }, { text = L["Raid Style"], value = "raid", isRadio = true } },
           desc = L["Classic: the player frame's look. Raid-Style: compact tiles with the auras inside. Each style keeps its own settings."],
           get = getP("style", "classic"),
           set = function(_, value)
@@ -2661,7 +2661,7 @@ local function BuildSettings()
               if ns.UnitFrames.RefreshPartyHide then ns.UnitFrames:RefreshPartyHide() end
           end,
           desc = L["Your own frame first, with the party."] },
-        { name = L["Hide Player Frame while in party"], kind = LEM.SettingType.Checkbox, default = false,
+        { name = L["Hide Player Frame in a Party"], kind = LEM.SettingType.Checkbox, default = false,
           get = getP("hidePlayerInParty", false),
           set = function(_, value)
               local party = GetPartyDb()
@@ -2735,7 +2735,7 @@ local function BuildSettings()
     Section("Look", {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.texture, values = K.BuildTextureValues(),
           get = getS("texture"), set = setS("texture") },
-        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = D.border, values = K.BuildBorderValues(false),
+        { name = L["Border"], kind = LEM.SettingType.Dropdown, default = D.border, values = K.BuildBorderValues(false),
           get = getS("border"), set = setS("border"), hidden = K.NoBorderOptions },
         { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildAbsorbValues(),
           get = getS("absorbTexture"), set = setS("absorbTexture"),
@@ -2757,7 +2757,7 @@ local function BuildSettings()
           set = function(layoutName, value) setS("castbar")(layoutName, value); LEM:RefreshFrameSettings(holder) end },
         { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
           get = getS("castTexture"), set = setS("castTexture"), hidden = noCast, },
-        { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
+        { name = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
           get = getS("castBorderTexture"), set = setS("castBorderTexture"),
           hidden = function() return noCast() or K.NoBorderOptions() end,
           desc = L["Frame Border uses the frame's own border."] },
@@ -2788,9 +2788,9 @@ local function BuildSettings()
                      { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
           desc = L["A dispellable debuff colours the frame's border in its type's colour."],
           get = getS("dispelHighlight"), set = setS("dispelHighlight") },
-        { name = L["Buffs Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
+        { name = L["Buff Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
           get = function() return ns.AuraSize(S(), false, D.auraSize) end, set = setS("buffSize") },
-        { name = L["Debuffs Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
+        { name = L["Debuff Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
           get = function() return ns.AuraSize(S(), true, D.auraSize) end, set = setS("debuffSize") },
         { name = L["Only My Buffs"], kind = LEM.SettingType.Checkbox, default = true,
           get = function() return getS("onlyMyBuffs")() ~= false end, set = setS("onlyMyBuffs"),
@@ -2827,7 +2827,7 @@ local function BuildSettings()
           get = getS("petWidth"), set = setS("petWidth"), hidden = noPets },
         { name = L["Pet Frame Height"], kind = LEM.SettingType.Slider, default = D.petHeight, minValue = 10, maxValue = 40, valueStep = 1,
           get = getS("petHeight"), set = setS("petHeight"), hidden = noPets },
-        { name = L["Pet Border Texture"], kind = LEM.SettingType.Dropdown, default = D.petBorder, values = K.BuildBorderValues(false),
+        { name = L["Pet Border"], kind = LEM.SettingType.Dropdown, default = D.petBorder, values = K.BuildBorderValues(false),
           get = getS("petBorder"), set = setS("petBorder"), hidden = function() return noPets() or K.NoBorderOptions() end },
     })
 
@@ -2838,7 +2838,7 @@ local function BuildSettings()
           get = getS("targetWidth"), set = setS("targetWidth"), hidden = noTargets },
         { name = L["Target Frame Height"], kind = LEM.SettingType.Slider, default = D.targetHeight, minValue = 12, maxValue = 60, valueStep = 1,
           get = getS("targetHeight"), set = setS("targetHeight"), hidden = noTargets },
-        { name = L["Target Border Texture"], kind = LEM.SettingType.Dropdown, default = D.targetBorder, values = K.BuildBorderValues(false),
+        { name = L["Target Border"], kind = LEM.SettingType.Dropdown, default = D.targetBorder, values = K.BuildBorderValues(false),
           get = getS("targetBorder"), set = setS("targetBorder"), hidden = function() return noTargets() or K.NoBorderOptions() end },
     })
     return settings

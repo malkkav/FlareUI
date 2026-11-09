@@ -233,7 +233,7 @@ local function ImportParts(profile)
         end
     end
     -- anything else the string holds comes as one more part
-    local rest = { title = L["Other settings"], roots = {} }
+    local rest = { title = L["Other Settings"], roots = {} }
     for root in pairs(profile) do
         if not byRoot[root] then rest.roots[#rest.roots + 1] = root end
     end
@@ -303,7 +303,7 @@ local function BuildPicker()
 
     f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     f.title:SetPoint("TOP", 0, -14)
-    f.title:SetText(L["Import profile"])
+    f.title:SetText(L["Import Profile"])
     f.info = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.info:SetPoint("TOP", f.title, "BOTTOM", 0, -6)
     f.info:SetWidth(340)

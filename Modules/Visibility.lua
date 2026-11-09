@@ -3,8 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- VISIBILITY
--- Show choices (always | mouseover | combat | target | harm | nomount | group), fade groups 1-5,
--- Fade Speed and Min Alpha for the action bars, bag bar, micro menu, XP bar, minimap, buffs, debuffs
+-- Show conditions (always | mouseover | any of combat, hastarget, attackable, ingroup, unmounted), fade groups 1-5,
+-- Fade Speed and Faded Opacity for the action bars, bag bar, micro menu, XP bar, minimap, buffs, debuffs
 -- and quest tracker, set in each element's Edit Mode dialog, plus the Blizzard pieces hidden for good. Fake CM bars follow profile.fcm.show and never the mouse.
 --------------------------------------------------
 
@@ -99,7 +99,7 @@ local function SetCapAlpha(cap, alpha) cap:SetAlpha(alpha) end
 -- The game draws the minimap's player arrow, quest marks and other blips itself, at full strength
 -- whatever the alpha, and has no API for them: only hiding the map removes them. So the map goes once
 -- it has faded right out (the cluster stays, so pointing at it still brings it back), which is why it
--- has no Min Alpha, and no fade group that could give it one.
+-- has no Faded Opacity, and no fade group that could give it one.
 local minimapFadedOut = false
 local function SetMinimapDrawn(alpha)
     local map = _G.Minimap
@@ -229,7 +229,7 @@ function Visibility:SetShow(key, show)
     self:Refresh()
 end
 
--- The group an element is in, or nil. A group owns its members' Show, Fade Speed and Min Alpha.
+-- The group an element is in, or nil. A group owns its members' Show, Fade Speed and Faded Opacity.
 local function ElementGroup(key)
     local db, cfg = GetDb(), ElementConfig(key)
     return cfg and cfg.group and cfg.group > 0 and db.groups and db.groups[cfg.group] or nil
@@ -430,17 +430,26 @@ local function FlyoutOver(bar)
     return false
 end
 
+-- A Visibility is "always", "mouseover" (only pointing at it shows it), or the conditions ticked in
+-- its dropdown joined by commas ("combat,unmounted"): any one of them shows the element (ns.Conditions)
+local Conditions = ns.Conditions
+local SHOW_SPEC = { exclusive = { "always", "mouseover" }, tokens = Conditions.BAR_TOKENS, legacy = Conditions.BAR_LEGACY, empty = "mouseover" }
+
+-- also the resource bars' and Fake CM's rule (ns.Visibility.ShowRule)
 local function ShowRule(show)
     if show == "always" then return true end
-    if show == "mouseover" then return false end
+    if show == "mouseover" or type(show) ~= "string" then return false end
+    local set = Conditions.Set(show, SHOW_SPEC)
     -- InCombatLockdown is still false during PLAYER_REGEN_DISABLED: the event's own flag counts too
-    if InCombatLockdown() or Visibility.inFight then return true end
-    if show == "target" then return UnitExists("target") end
-    if show == "harm" then return TargetIsHostile() end
-    if show == "nomount" then return not Riding() end
-    if show == "group" then return IsInGroup() end
-    return false   -- combat
+    -- (and UnitAffectingCombat, for the resource bars while this module isn't running)
+    if set.combat and (InCombatLockdown() or Visibility.inFight or UnitAffectingCombat("player")) then return true end
+    if set.hastarget and UnitExists("target") then return true end
+    if set.attackable and TargetIsHostile() then return true end
+    if set.ingroup and IsInGroup() then return true end
+    if set.unmounted and not Riding() then return true end
+    return false
 end
+Visibility.ShowRule = ShowRule
 
 -- the spellbook tab of the spells window, open: spells are dragged from it onto the bars
 local function SpellbookOpen()
@@ -567,16 +576,24 @@ end
 --------------------------------------------------
 -- 7. EDIT MODE SETTINGS
 --------------------------------------------------
-local SHOW_VALUES = { "always", "mouseover", "combat", "target", "harm", "nomount", "group" }
+-- Always and Mouseover each clear the rest; the conditions after the line are toggles
+local SHOW_VALUES = { "always", "mouseover", "combat", "hastarget", "attackable", "ingroup", "unmounted" }
 local GROUP_VALUES = { 0, 1, 2, 3, 4, 5 }
 
 local function Values(copyKey, list, fallback)
     local names = ns.Settings and ns.Settings:Text(copyKey, "choices") or {}
     local values = {}
     for i, value in ipairs(list) do
-        values[i] = { text = names[i] or fallback(value), value = value, isRadio = true }
+        values[#values + 1] = { text = names[i] or fallback(value), value = value, isRadio = true }
+        if value == "mouseover" then values[#values + 1] = { isDivider = true } end
     end
     return values
+end
+
+-- what the Show dropdown ticks, and a click in it (no condition left ticked is Mouseover)
+local function ShowSelection(key) return Conditions.Selection(Visibility:GetShow(key), SHOW_SPEC) end
+local function ToggleShow(key, value)
+    Visibility:SetShow(key, Conditions.Toggle(Visibility:GetShow(key), value, SHOW_SPEC))
 end
 
 local function Label(copyKey, fallback)
@@ -592,16 +609,16 @@ local function BuildElementSettings(key)
     local function AlwaysShown() return Visibility:GetShow(key) == "always" end
     return {
         {
-            name = Label("ab.bar.group", L["Fade group"]), kind = LEM.SettingType.Dropdown, default = 0,
+            name = Label("ab.bar.group", L["Fade Group"]), kind = LEM.SettingType.Dropdown, default = 0,
             values = Values("ab.bar.group", GROUP_VALUES, function(v) return v == 0 and L["None"] or tostring(v) end),
             get = function() return Visibility:GetGroup(key) end,
             set = function(_, value) Visibility:SetGroup(key, value) end,
         },
         {
-            name = Label("ab.bar.show", L["Show"]), kind = LEM.SettingType.Dropdown, default = "always",
+            name = Label("ab.bar.show", L["Visibility"]), kind = LEM.SettingType.Dropdown, default = "always", multiple = true,
             values = Values("ab.bar.show", SHOW_VALUES, function(v) return v end),
-            get = function() return Visibility:GetShow(key) end,
-            set = function(_, value) Visibility:SetShow(key, value) end,
+            get = function() return ShowSelection(key) end,
+            set = function(_, value) ToggleShow(key, value) end,
         },
         {
             name = L["Fade Speed"], kind = LEM.SettingType.Dropdown, default = "instant", values = SPEED_VALUES,
@@ -611,7 +628,7 @@ local function BuildElementSettings(key)
             desc = L["How fast it appears and disappears.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
         },
         {
-            name = L["Min Alpha"], kind = LEM.SettingType.Slider, default = 0, minValue = 0, maxValue = 100, valueStep = 5,
+            name = L["Faded Opacity"], kind = LEM.SettingType.Slider, default = 0, minValue = 0, maxValue = 100, valueStep = 5,
             formatter = function(value) return value .. "%" end,
             get = function() return Visibility:GetMinAlpha(key) end,
             set = function(_, value) Visibility:SetElementFade(key, "minAlpha", value) end,
@@ -621,9 +638,9 @@ local function BuildElementSettings(key)
     }
 end
 
--- The rows under a Visibility title that always stays open
+-- The rows under a Fading title that always stays open
 local function WithVisibilityTitle(rows)
-    table_insert(rows, 1, { name = "|cffffd100" .. L["Visibility"] .. "|r", kind = LEM.SettingType.Expander,
+    table_insert(rows, 1, { name = "|cffffd100" .. L["Fading"] .. "|r", kind = LEM.SettingType.Expander,
         static = true, hideArrow = true, get = function() return true end, set = function() end })
     return rows
 end
@@ -631,7 +648,7 @@ end
 -- for the Minimap module
 function Visibility:MinimapSettings()
     local rows = BuildElementSettings("minimap")
-    table.remove(rows, 4)   -- Min Alpha
+    table.remove(rows, 4)   -- Faded Opacity
     table.remove(rows, 1)   -- Fade group
     return WithVisibilityTitle(rows)
 end
@@ -811,7 +828,7 @@ function Visibility:Init()
     self:RegisterEvent("PLAYER_TARGET_CHANGED", "OnVisibilityStateChange")
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnVisibilityStateChange")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnVisibilityStateChange")
-    -- the Not mounted and In a group Show choices
+    -- the Not mounted and In a group Show conditions
     self:RegisterEvent("PLAYER_MOUNT_DISPLAY_CHANGED", "OnVisibilityStateChange")
     self:RegisterEvent("GROUP_ROSTER_UPDATE", "OnVisibilityStateChange")
     -- bars show while the spellbook is open (Blizzard_PlayerSpells loads on demand)

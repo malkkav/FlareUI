@@ -634,7 +634,7 @@ local function ScopeText(scope, data)
     elseif kind == "char" then
         return L["Only %s"]:format("|cffffd100" .. ScopeOwner(scope, data) .. "|r")
     end
-    return L["All characters"]
+    return L["All Characters"]
 end
 
 -- only a narrowed radial gets an icon (class, faction crest, a person); false for every character
@@ -708,7 +708,7 @@ ns.Dialogs["FLAREUI_RADIAL_BAR_TAKEN"] = {
 -- asked before a radial key takes a game key; acts on the radial the question named
 ns.Dialogs["FLAREUI_RADIAL_KEY_TAKEN"] = {
     text = "%s",
-    button1 = L["Use it"],
+    button1 = L["Use It"],
     button2 = L["Cancel"],
     OnAccept = function(data)
         if data and data.id and RM():GetRadial(data.id) then RM():SetRadialKey(data.id, data.key) end
@@ -751,7 +751,7 @@ local function ShowNamePopup(renaming)
         -- who gets the new radial
         local scopeLabel = popup:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         scopeLabel:SetPoint("TOPLEFT", box, "BOTTOMLEFT", -6, -14)
-        scopeLabel:SetText(L["Available to"])
+        scopeLabel:SetText(L["Available To"])
         popup.scopeLabel = scopeLabel
         local scopeDrop = CreateFrame("DropdownButton", nil, popup, "WowStyle1DropdownTemplate")
         scopeDrop:SetWidth(256)
@@ -937,7 +937,7 @@ local function BuildRadialColumn(host, column)
     local height = column:GetHeight() > 0 and column:GetHeight() - 2 * COLUMN_PAD or 600
     local title = Text(col, "GameFontNormal", L["Radials"])
     title:SetPoint("TOPLEFT", 4, -4)
-    host.newButton = LinkButton(col, L["+ New radial"], function() ShowNamePopup(false) end)
+    host.newButton = LinkButton(col, L["+ New Radial"], function() ShowNamePopup(false) end)
     host.newButton:SetPoint("TOPRIGHT", col, "TOPLEFT", LIST_W, 0)
     Hover(host.newButton, "rm.new")
 
@@ -1014,7 +1014,7 @@ local function BuildRadialColumn(host, column)
     host.previewArea = previewArea
     local previewLabel = Text(col, "GameFontNormal", L["Live Preview"])
     previewLabel:SetPoint("BOTTOMLEFT", previewArea, "TOPLEFT", 4, 4)
-    host.undoButton = LinkButton(col, L["Undo changes"], function()
+    host.undoButton = LinkButton(col, L["Undo Changes"], function()
         RestoreSnapshot()
         TakeSnapshot()
         Refresh()
@@ -1409,7 +1409,7 @@ local function RefreshRadialColumn(perRadial)
         end
     end
     if #other > 0 then
-        here[#here + 1] = { header = L["Not on this character"] }
+        here[#here + 1] = { header = L["Not on This Character"] }
         for _, item in ipairs(other) do here[#here + 1] = item end
     end
     editor.radialList:SetData(here)

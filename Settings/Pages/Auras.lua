@@ -31,6 +31,8 @@ S:Row{ key = "au.timer", kind = "choice", path = "auras.timer", choices = { "bel
 S:Row{ key = "au.timerColor", path = "auras.timerColor", apply = Refresh,
     disabled = function() return S:GetPath("auras.timer") == "none" end }
 S:Row{ key = "au.arrive", path = "auras.arrive", apply = Refresh }
+-- Blizzard's Cooldown Manager restyled; off needs a reload to give Blizzard's look back
+S:Row{ key = "au.skinCDM", path = "auras.skinCDM", reload = true }
 
 local function NoMineFirst()
     local sort = S:GetPath("auras.sort")

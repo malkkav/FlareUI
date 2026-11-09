@@ -808,16 +808,16 @@ local WRAP_VALUES = {
     { text = L["Up"],   value = "UP",   isRadio = true },
 }
 local SWIPE_VALUES = {
-    { text = L["Over the icon"], value = "icon", isRadio = true },
-    { text = L["Around the border"], value = "border", isRadio = true },
+    { text = L["Over the Icon"], value = "icon", isRadio = true },
+    { text = L["Around the Border"], value = "border", isRadio = true },
     { text = L["Both"], value = "both", isRadio = true },
-    { text = L["None"], value = "none", isRadio = true },
+    { text = L["Off"], value = "none", isRadio = true },
 }
 local TIMER_VALUES = {
-    { text = L["Under the icon"], value = "below", isRadio = true },
-    { text = L["Bottom of the icon"], value = "bottom", isRadio = true },
-    { text = L["Middle of the icon"], value = "middle", isRadio = true },
-    { text = L["None"], value = "none", isRadio = true },
+    { text = L["Under the Icon"], value = "below", isRadio = true },
+    { text = L["Bottom of the Icon"], value = "bottom", isRadio = true },
+    { text = L["Middle of the Icon"], value = "middle", isRadio = true },
+    { text = L["Off"], value = "none", isRadio = true },
 }
 
 local function BuildSettings(kind)
@@ -840,7 +840,8 @@ local function BuildSettings(kind)
             AU:Refresh()
         end
     end
-    return {
+    -- dropdowns, sliders, switches (ns.OrderEditSettings)
+    return ns.OrderEditSettings({
         { name = L["Icon Size"], kind = LEM.SettingType.Slider, default = defaults.size or 30, minValue = 16, maxValue = 64, valueStep = 1,
           get = get("size"), set = set("size") },
         { name = L["Icons per Row"], kind = LEM.SettingType.Slider, default = defaults.perRow or 12, minValue = 1, maxValue = 40, valueStep = 1,
@@ -849,7 +850,7 @@ local function BuildSettings(kind)
           get = get("max"), set = set("max") },
         { name = L["Spacing"], kind = LEM.SettingType.Slider, default = defaults.spacing or 6, minValue = 0, maxValue = 20, valueStep = 1,
           get = get("spacing"), set = set("spacing") },
-        { name = L["Grow"], kind = LEM.SettingType.Dropdown, default = defaults.grow or "LEFT", values = GROW_VALUES,
+        { name = L["Growth"], kind = LEM.SettingType.Dropdown, default = defaults.grow or "LEFT", values = GROW_VALUES,
           get = get("grow"), set = set("grow") },
         { name = L["Wrap"], kind = LEM.SettingType.Dropdown, default = defaults.wrap or "DOWN", values = WRAP_VALUES,
           get = get("wrap"), set = set("wrap") },
@@ -858,7 +859,176 @@ local function BuildSettings(kind)
           get = shared("swipe", "both"), set = setShared("swipe") },
         { name = L["Aura Timer"], kind = LEM.SettingType.Dropdown, default = "below", values = TIMER_VALUES,
           get = shared("timer", "below"), set = setShared("timer") },
-    }
+    })
+end
+
+--------------------------------------------------
+-- 9b. BLIZZARD'S COOLDOWN MANAGER (Skin Cooldown Manager, on with this module)
+-- The Tracked Bars and Tracked Buffs icons in FlareUI's look: the bars as FlareUI's cast bars (the
+-- unit frames' bar texture, a thin bronze border, the cast bar font), the icons as FlareUI's buffs
+-- (Aura Icon Shape, Aura Swipe, the stack font). Blizzard keeps driving its own pooled frames; it sets
+-- only values, text and the spark after a frame is made, so each one is styled once as it is
+-- acquired. Its aura data is kept from addons (CooldownViewerSecure.lua): nothing here reads it,
+-- writes onto its frames, re-parents them or calls their layout. FlareUI's pieces live in a weak table.
+--------------------------------------------------
+local CDM = { pieces = setmetatable({}, { __mode = "k" }), BAR_COLOR = { 1, 0.5, 0.25 }, BORDER = "FlareUI Thin",
+              OVERLAY = "UI-HUD-CoolDownManager-IconOverlay" }
+
+function CDM.On()
+    local db = GetDb()
+    return db and db.enabled and db.skinCDM ~= false and not ns.IsGamepadUI() or false
+end
+
+function CDM.Pieces(frame)
+    local p = CDM.pieces[frame]
+    if not p then p = {}; CDM.pieces[frame] = p end
+    return p
+end
+
+-- An icon in FlareUI's buff look: Blizzard's rounded mask and thick ring go, FlareUI's bevel (or rim)
+-- and its cut-corner mask come in. holder: the frame the icon fills.
+function CDM.StyleIcon(holder, texture, p, round)
+    for i = texture:GetNumMaskTextures(), 1, -1 do
+        local mask = texture:GetMaskTexture(i)
+        if mask and mask ~= p.mask then texture:RemoveMaskTexture(mask) end
+    end
+    for _, region in ipairs({ holder:GetRegions() }) do
+        if region ~= p.border and region.GetAtlas and region:GetAtlas() == CDM.OVERLAY then region:SetAlpha(0) end
+    end
+    if not p.border then
+        local frame = CreateFrame("Frame", nil, holder)
+        frame:SetAllPoints(holder)
+        frame:SetFrameLevel(holder:GetFrameLevel() + 2)
+        p.border = frame:CreateTexture(nil, "OVERLAY", nil, 1)
+        p.mask = holder:CreateMaskTexture()
+        texture:AddMaskTexture(p.mask)
+    end
+    local border, mask = p.border, p.mask
+    texture:ClearAllPoints()
+    mask:ClearAllPoints()
+    border:ClearAllPoints()
+    if round then
+        texture:SetAllPoints(holder)
+        mask:SetAtlas(ROUND_MASK, TextureKitConstants and TextureKitConstants.IgnoreAtlasSize)
+        border:SetAtlas(ROUND_BORDER, TextureKitConstants and TextureKitConstants.IgnoreAtlasSize)
+        border:SetVertexColor(ROUND_TINT[1], ROUND_TINT[2], ROUND_TINT[3])
+    else
+        local inset = (holder:GetWidth() or 30) * SQUARE_INSET
+        texture:SetPoint("TOPLEFT", holder, "TOPLEFT", inset, -inset)
+        texture:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", -inset, inset)
+        mask:SetTexture(SQUARE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        border:SetTexture(SQUARE_BORDER)
+        border:SetVertexColor(SQUARE_TINT[1], SQUARE_TINT[2], SQUARE_TINT[3])
+    end
+    mask:SetAllPoints(holder)
+    border:SetAllPoints(holder)
+    texture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+end
+
+function CDM.StackFont(fontString)
+    local db = GetDb()
+    ns.SeedFont(db, "font", "countFont", "countFontSeeded")
+    local font = db.countFont or db.font or {}
+    local flags = font.flags or "OUTLINE"
+    if flags == "NONE" then flags = "" end
+    ns.SetFont(fontString, ns.GetFontPath(font.face or "Friz Quadrata TT"), font.size or 11, flags)
+    ns.ApplyShadow(fontString, font)
+end
+
+-- A Tracked Buffs icon
+function CDM.StyleBuffIcon(item)
+    local db = GetDb()
+    local round = db.style == "round"
+    local p = CDM.Pieces(item)
+    if item.Icon then CDM.StyleIcon(item, item.Icon, p, round) end
+    local cd = item.Cooldown
+    if cd then
+        -- Blizzard sets the swipe's colour and edge on each refresh, its texture and drawing never
+        local swipe = db.swipe or "both"
+        cd:SetDrawSwipe(swipe ~= "none")
+        if swipe == "border" then
+            cd:SetSwipeTexture(round and SWIPE_ROUND or SWIPE_SQUARE)
+        else
+            cd:SetSwipeTexture(round and SWIPE_DISC or SQUARE_MASK)
+        end
+        cd:SetUseCircularEdge(round)
+    end
+    local count = item.Applications and item.Applications.Applications
+    if count then CDM.StackFont(count) end
+end
+
+-- A Tracked Bar: the bar as a FlareUI cast bar, its icon as a buff
+function CDM.StyleBar(item)
+    local K = ns.UnitFrames and ns.UnitFrames.Kit
+    local bar = item.Bar
+    if not (K and bar) then return end
+    local uf = ns.db.profile.unitframes or {}
+    local player = uf.units and uf.units.player
+    local p = CDM.Pieces(item)
+    local texture = K.GetBarTexture(player and player.texture)
+    bar:SetStatusBarTexture(texture)
+    bar:SetStatusBarColor(CDM.BAR_COLOR[1], CDM.BAR_COLOR[2], CDM.BAR_COLOR[3])
+    if bar.BarBG then bar.BarBG:SetAlpha(0) end
+    if bar.Pip then bar.Pip:SetAlpha(0) end
+    if not p.bg then
+        p.bg = bar:CreateTexture(nil, "BACKGROUND", nil, -1)
+        p.bg:SetAllPoints(bar)
+        p.backdrop = CreateFrame("Frame", nil, bar, "BackdropTemplate")
+        p.backdrop:SetFrameLevel(math_max(0, bar:GetFrameLevel() - 1))
+        p.barBorder = CreateFrame("Frame", nil, bar, "BackdropTemplate")
+        p.barBorder:SetFrameLevel(bar:GetFrameLevel() + 3)
+    end
+    p.bg:SetTexture(texture)
+    p.bg:SetVertexColor(0.15, 0.15, 0.15, K.BAR_BG_OPACITY / 100)
+    -- the border wraps the bar, as on the cast bars (BorderFit's inset on a thin bar)
+    local height = 19
+    local edgeFile = K.GetBorderFile(CDM.BORDER)
+    local _, wrap = K.BorderFit(height, edgeFile)
+    p.backdrop:ClearAllPoints()
+    p.backdrop:SetPoint("TOPLEFT", bar, "TOPLEFT", -wrap, wrap)
+    p.backdrop:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", wrap, -wrap)
+    p.backdrop:SetBackdrop({ bgFile = K.BACKDROP_FILE, insets = { left = wrap, right = wrap, top = wrap, bottom = wrap } })
+    p.backdrop:SetBackdropColor(0, 0, 0, K.BG_OPACITY)
+    p.barBorder:ClearAllPoints()
+    p.barBorder:SetAllPoints(p.backdrop)
+    K.ApplyBorderStyle(p.barBorder, edgeFile, height + 2 * K.INSET)
+    local castFont = uf.fontCast or uf.font
+    if bar.Name then K.ApplyFont(bar.Name, castFont) end
+    if bar.Duration then K.ApplyFont(bar.Duration, castFont) end
+    local icon = item.Icon
+    if icon and icon.Icon then
+        CDM.StyleIcon(icon, icon.Icon, CDM.Pieces(icon), GetDb().style == "round")
+        if icon.Applications then CDM.StackFont(icon.Applications) end
+    end
+end
+
+CDM.VIEWERS = { BuffBarCooldownViewer = CDM.StyleBar, BuffIconCooldownViewer = CDM.StyleBuffIcon }
+
+-- every frame showing now (a settings change, or the viewer was already up)
+function CDM.StyleAll()
+    if not CDM.On() then return end
+    for name, style in pairs(CDM.VIEWERS) do
+        local viewer = _G[name]
+        local pool = viewer and viewer.itemFramePool
+        if pool and pool.EnumerateActive then
+            for item in pool:EnumerateActive() do style(item) end
+        end
+    end
+end
+
+-- new frames as Blizzard acquires them (tracking another buff), in a fight too
+function CDM.Hook()
+    if CDM.hooked then return end
+    for name, style in pairs(CDM.VIEWERS) do
+        local viewer = _G[name]
+        if viewer and viewer.OnAcquireItemFrame then
+            CDM.hooked = true
+            hooksecurefunc(viewer, "OnAcquireItemFrame", function(_, item)
+                if CDM.On() then style(item) end
+            end)
+        end
+    end
+    CDM.StyleAll()
 end
 
 --------------------------------------------------
@@ -914,6 +1084,7 @@ end
 function AU:Refresh()
     if not self.initialized then return end
     for _, kind in ipairs(KIND_ORDER) do LayoutKind(kind) end
+    CDM.StyleAll()   -- Aura Icon Shape, Aura Swipe and the fonts reach the Cooldown Manager too
 end
 
 local function ApplySettingsPreview(on)
@@ -963,6 +1134,8 @@ function AU:Init()
 
     HideBlizzard("BuffFrame")
     HideBlizzard("DebuffFrame")
+    -- Skin Cooldown Manager (its addon can load after FlareUI)
+    if CDM.On() then EventUtil.ContinueOnAddOnLoaded("Blizzard_CooldownViewer", CDM.Hook) end
 
     for _, kind in ipairs(KIND_ORDER) do
         ApplyPosition(kind)

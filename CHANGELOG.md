@@ -1,3 +1,29 @@
+# FlareUI 5.0.1
+
+## New
+- **Visibility** on bars, the XP bar, buffs, debuffs, the quest tracker and the minimap is now a list of toggles: tick **In Combat**, **Has a Target**, **Has an Attackable Target**, **In a Group** and **Not Mounted** in any mix, and any one of them shows it. **Always** and **Mouseover** clear the rest. Your current choice carries over (Combat + Target is now In Combat and Has a Target ticked).
+- The same toggles for:
+  - **Resource Bars → Visibility**: also **In a Group** and **Not Mounted**. Swing timers keep **Only When In Use**.
+  - **Fake Cooldown Manager → Visibility**.
+- Player frame, Edit Mode: a **Cast Bar** section like the target's, topped by **Standalone Cast Bar** (on). On, your cast bar is the FlareUI Player Cast Bar, placed on its own as before. Off, it hangs off the player frame instead, with Cast Bar Position, Texture, Border, Height, Hide Icon, Hide Spell Timer, and the standalone bar's Latency Zone, Spell Pushback, Channel Ticks and Spell Queue Window, in your own cast colours.
+- Buffs & Debuffs: **Skin Cooldown Manager** (on): Blizzard's Cooldown Manager in FlareUI's look. Tracked Bars look like FlareUI's cast bars (the unit frames' bar texture, a thin bronze border, the cast bar font); Tracked Buffs icons look like your FlareUI buffs and follow Aura Icon Shape and Aura Swipe. Everything Blizzard's Cooldown Manager lets you set still works. Thanks to the player who asked!
+- Action Bars, XP Bar: the **FlareUI XP Bar** switch is back (on). Off brings back Blizzard's XP and reputation bars. Needs a reload.
+
+## Changed
+- Health, power and threat numbers show in full up to 9,999 ("8742" rather than "8.7K"), then shorten as before (12K, 1.2M).
+- One name for when a frame appears: **Visibility** everywhere (it was Show Condition, Show or Visibility). Searching the old names still finds it. Chat and Damage Meter keep their single-choice Visibility.
+- In Edit Mode, FlareUI's fading rows sit under a **Fading** title, and **Min Alpha** is now **Faded Opacity** (also in the Chat and Damage Meter settings).
+- Every setting name, choice, tab and button is now in Title Case, in the settings and in Edit Mode alike, so a setting reads the same wherever you open it.
+- Settings say the same thing the same way. A few you may look for:
+  - **Border** (was Frame Border or Border Texture), **Buff Size** and **Debuff Size**, **Growth** on buffs and debuffs, **Scale** on Tooltips.
+  - **XP Text** and **XP Text Visibility** (were XP Bar Numbers and XP Bar Text), **Threat Text** (was Threat Value Display), **Sort By** on the Quest Tracker.
+  - **Keep Bar 1 in Stances** (was No Auto-Paging for Stances), **Hide Bubbles in Instances** (was No bubbles in instances), **Proc Glow**, **Fake CM Setup Mode**, **Controller Bar** on the Radial Menu.
+  - **Off** instead of None where it turns a feature off: Health Text, Power Text, Aura Swipe and Aura Timer.
+  - Searching the old names still finds them.
+- Options are grouped by type everywhere: dropdowns first, then sliders, then switches, in the settings and in every Edit Mode dialog. The same option now sits in the same place on the player, target, focus, party, raid and boss frames.
+- The XP Bar's options sit under the **FlareUI XP Bar** switch, and the Meter tab's options under **Meter Tab in the Chat**.
+- Action Bars, Tweaks: **Steady attack highlight** is gone. Attack, Auto Shot and Shoot blink as Blizzard's do.
+
 # FlareUI 5.0
 
 Biggest update for FlareUI yet. Every single aspect of the addon is improved in an inversely proportional rate to the developer's health. Read the LotR sized changelog below to find out what changed.
@@ -348,37 +374,6 @@ Your damage meter as a chat tab, a real Clear All for raid markers, and two fixe
 ## Fixed
 - Player cast bar with Cinematic: it no longer stays hidden after a login or /reload.
 
-# FlareUI 4.0
-
-A lighter FlareUI: the same features, doing far less work behind the scenes. Plus separate buff and debuff sizes, a lighter Forever bar texture and macro cooldowns in the radial menu.
-
-**Restart the game fully after updating** (not just /reload): this version adds new files.
-
-## Performance
-FlareUI got a full performance pass. Nothing was removed or changed in how it looks or works; it just stops redoing work that hasn't changed. In our own testing, FlareUI's CPU use stayed under 0.2%.
-- Power bars: a power change was drawn twice in the same frame. Now once. Most noticeable for energy and rage.
-- Resource Bars: each power tick now only moves the bar and its number, and the Druid Mana bar ignores energy and rage ticks.
-- Quest tracker: it reads the quest log once per redraw instead of three times, no longer rebuilds the whole list every 2 seconds while you stand still, and skips text and fonts that haven't changed.
-- Fading bars: bars that have finished fading are no longer checked 20 times a second.
-- Proc glows: only warriors and paladins follow the target's health (for Execute and Hammer of Wrath).
-- Party frames: in a raid, the hidden party frames no longer re-lay out on every roster change or raid pet change, and hidden pet and target tiles wait until they show.
-- Threat meter: no work while it's hidden or faded out, and it reuses its lists instead of building new ones up to five times a second.
-- Unit frames: fewer updates per health and power tick on the player frame, the mana cost overlay and the quest icon.
-- New: **/fui perf** measures FlareUI with Blizzard's addon profiler. `/fui perf start <name>` records a scenario, `/fui perf stop` saves it and `/fui perf report` gives you text to paste in a bug report.
-
-## New
-- Every frame with auras: **Buffs Size** and **Debuffs Size** replace Aura Size, so each can have its own size. Both start at your old Aura Size. On party, raid and boss frames, dispel icons follow Debuffs Size.
-- Health Text: **Current | Max** on every unit, party, raid and boss frame, in every style, and on the Resource Bars health bar.
-- Bar textures: **FlareUI Forever (Light)**, the Forever texture as bright as FlareUI Flat. FlareUI Forever stays as it was, and stays the default.
-- Mana on Shapeshift: the druid mana strip now shows its number when Power Text is on.
-- Radial menu: a macro shows the cooldown, the usable state and the icon of the spell or item it would cast right now, following `#showtooltip` and conditions like `[mod:shift]`. In the radial menu editor, macros show that spell's or item's tooltip.
-
-## Changed
-- Target of target and target of focus always show the first name only, whatever Full Player Names is set to.
-
-## Fixed
-- Party frames: pets now fade when out of range, like the members.
-
 ---
 
-Older versions (3.0.9 and before): [CHANGELOG-history.md](CHANGELOG-history.md).
+Older versions (4.0 and before): [CHANGELOG-history.md](CHANGELOG-history.md).

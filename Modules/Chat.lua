@@ -2769,6 +2769,19 @@ end
 --------------------------------------------------
 local autoHide = {}   -- chat frame -> { frame, hideAt, timer, expire, fadeFrom, fadeTo, fadeStart, fadeTime }
 
+-- Visibility: always | interactions (new messages and typing wake it) | combat (that, and up in a
+-- fight). A test build saved ticked toggles ("messages,incombat"): read as the nearest choice.
+Chat.VISIBILITY_SPEC = { exclusive = { "always", "mouseover" }, tokens = { "messages", "incombat" }, empty = "mouseover",
+    legacy = { interactions = "messages", combat = "messages,incombat" } }
+function Chat.VisibilityHas(db, token)
+    if not db then return false end
+    local v = db.visibility
+    if v ~= nil and v ~= "always" and v ~= "interactions" and v ~= "combat" then
+        db.visibility = ns.Conditions.Has(v, "incombat") and "combat" or "interactions"
+    end
+    return ns.Conditions.Has(db.visibility, token, Chat.VISIBILITY_SPEC)
+end
+
 -- The chat fades away with any Visibility but Always
 local function Fades(db)
     return db and (db.visibility or "always") ~= "always" or false
@@ -2803,7 +2816,7 @@ function Chat:CheckChatVisibility(chatFrame, db)
     if Chat:MeterTabActive() and (ns.DamageMeter:ChatTabIgnoresFade() or ns.DamageMeter:ChatTabMouseOver()) then return true end
     local editBox = chatFrame.editBox
     if editBox and editBox:HasFocus() then return true end
-    if db.visibility == "combat" and InCombatLockdown() then return true end
+    if Chat.VisibilityHas(db, "incombat") and InCombatLockdown() then return true end
     if Chat.settingsPreview then return true end
     return _G.EditModeManagerFrame ~= nil and _G.EditModeManagerFrame:IsShown()
 end
@@ -2852,7 +2865,7 @@ local function OnHoldExpired(state)
     if remaining > 0 then
         state.timer = C_Timer.NewTimer(remaining, state.expire)
     else
-        -- Min Alpha: how far the window fades out (0 = gone)
+        -- Faded Opacity: how far the window fades out (0 = gone)
         FadeTo(state, math_max(0, math_min(0.9, tonumber(db.minAlpha) or 0)), FadeDuration(db))
     end
 end
@@ -2913,7 +2926,7 @@ end
 --------------------------------------------------
 function Chat:OnCombatStateChange()
     local db = GetDb()
-    if not (db and db.enabled and Fades(db) and db.visibility == "combat") then return end
+    if not (db and db.enabled and Fades(db) and Chat.VisibilityHas(db, "incombat")) then return end
     for _, cf in Windows() do
         if cf and cf:IsShown() and not cf:IsForbidden() then
             self:ShowChatFrame(cf, db)
@@ -2955,7 +2968,7 @@ local function OnChatMessage(chatFrame)
     if chatFrame == _G.ChatFrame2 and db and db.hideCombatLog then return end
     UpdateScrollToBottomVisibility(chatFrame)
     -- a line into a window that isn't shown (another tab) doesn't wake the chat: its tab lights up
-    if db and Fades(db) and chatFrame:IsVisible() then Chat:ShowChatFrame(chatFrame, db) end
+    if db and Fades(db) and Chat.VisibilityHas(db, "messages") and chatFrame:IsVisible() then Chat:ShowChatFrame(chatFrame, db) end
     -- a line under the Meter tab lights its window's tab (not the Combat Log's, which never stops)
     if Chat:MeterTabActive() and not meterUnread[chatFrame] and chatFrame ~= _G.ChatFrame2 and chatFrame == SelectedDocked() then
         meterUnread[chatFrame] = true

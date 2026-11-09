@@ -385,12 +385,13 @@ local defaults = {
             menuHide = false,
             channelHide = false,
 
-            -- Visibility: always | interactions (new messages, typing) | combat (interactions and combat);
-            -- pointing at the chat always shows it. fadeSpeed: instant | fast | slow
+            -- Visibility: always | mouseover | toggles of messages, incombat (Chat.VISIBILITY_SPEC; the
+            -- old interactions and combat still read); pointing at the chat or typing always shows it.
+            -- fadeSpeed: instant | fast | slow
             visibility = "always",
             fadeSpeed = "instant",
             autoHideDelay = 5,          -- Fade Delay: seconds the chat stays after showing (0 = at once)
-            minAlpha = 0,               -- Min Alpha: how far the chat fades out (0 to 0.9)
+            minAlpha = 0,               -- Faded Opacity: how far the chat fades out (0 to 0.9)
 
             -- Typography
             chatFont = { face = "Arial Narrow", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -410,7 +411,6 @@ local defaults = {
             buttonArt = true,
             stopAutoAddSpells = true,
             gryphonsBehind = false,     -- Gryphons Behind Bars: the end caps draw under the bars
-            steadyAttackFlash = true,   -- Steady Attack Highlight: auto-attack buttons stay lit, no blinking
             dimOnCooldown = false,      -- Dim on cooldown: icons grey while a real cooldown (not the GCD) runs
             autoRanks = false,          -- Update Spell Ranks: a new rank replaces the old one on the bars
             stealthPaging = true,       -- Auto-Paging for Stealth: bar 1 to page 7 (rogue Stealth) or 8 (druid Prowl)
@@ -422,8 +422,8 @@ local defaults = {
                 unusable = { desaturate = true },
             },
 
-            -- the FlareUI XP Bar (Modules/XPBar.lua), placed in Edit Mode; always on with the module
-            xpbar = { width = 560, height = 14, texture = "FlareUI Forever", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", layouts = {} },
+            -- the FlareUI XP Bar (Modules/XPBar.lua), placed in Edit Mode; off leaves Blizzard's bars alone
+            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Forever", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", layouts = {} },
 
             -- Typography
             hotkeyFont = { face = "Arial Narrow", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -434,14 +434,14 @@ local defaults = {
         -- [[ FAKE COOLDOWN MANAGER (FCM) ]]
         fcm = {
             bars = FCMBars(),           -- Fake CM is on while a bar is picked
-            show = "combat",            -- always | combat | target | harm (Modules/Visibility.lua)
+            show = "combat",            -- always, or toggles joined by commas (ns.Conditions, Modules/Visibility.lua)
         },
 
         -- [[ DAMAGE METER MODULE ]]
         damagemeter = {
             enabled = false,
             fadeSpeed = "instant",      -- instant | fast | slow: every show and hide (Visibility, mouseover)
-            minAlpha = 0,               -- Min Alpha: how far the meter fades out (0 to 0.9)
+            minAlpha = 0,               -- Faded Opacity: how far the meter fades out (0 to 0.9)
 
             opacity = 0.5,
             borderTexture = "FlareUI Frames",
@@ -451,7 +451,7 @@ local defaults = {
             combatTimer = true,         -- Blizzard's "[mm:ss]" session timer in the title row
             readyCheckButton = true,    -- Ready Check button in the header
             countdownButton = true,     -- Countdown button in the header
-            visibility = "always",      -- always | combat | hidden | group (overrules Blizzard's Edit Mode one)
+            visibility = "always",      -- always | combat | group | hidden (overrules Blizzard's Edit Mode one)
             showOnMouseover = false,    -- while the visibility hides the meter, it shows under the mouse
             matchChatSize = false,      -- the meter takes the chat frame's size (Edit Mode's is overridden)
             chatTab = false,            -- a Meter tab with the chat's tabs: the meter in the chat window (Chat module on)
@@ -586,6 +586,10 @@ local defaults = {
                 player       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true,
                                  texture = "FlareUI Forever", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
+                                 -- Standalone Cast Bar (on): the FlareUI Player Cast Bar; off, the cast bar below hangs off the frame
+                                 standaloneCast = true,
+                                 castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                                 latencyZone = true, pushback = false, channelTicks = false, queueMark = false,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24 },
                 target       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true, mirror = true,
                                  texture = "FlareUI Forever", border = "FlareUI Thick",
@@ -637,6 +641,7 @@ local defaults = {
             timer = "below",            -- below (under the icon) | bottom (along its bottom edge)
             timerColor = false,         -- the timer turns yellow, then red, as it runs out
             arrive = false,             -- new icons fade in while dropping into place
+            skinCDM = true,             -- Skin Cooldown Manager: Blizzard's Tracked Bars and Tracked Buffs in FlareUI's look
             sort = "applied", reverse = false, mineFirst = true,   -- Aura Ordering (both frames)
             font = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- stack counts; starts as a copy of the timer font (ns.SeedFont)
@@ -1442,6 +1447,165 @@ end
 local FADE_TIMES = { instant = 0, fast = 0.2, slow = 0.4 }
 function ns.FadeTime(speed) return FADE_TIMES[speed] or 0 end
 
+-- Numbers on the bars (health, power, threat): in full up to 9999, then shortened as Blizzard does
+-- (12K, 1.2M, 12M, 1.2B). AbbreviateNumbers takes secret values and custom breakpoints; Blizzard's own
+-- start at 1000 ("1.2K"), so FlareUI hands it the same ones minus that first. The letters come from
+-- the client's own output, so each language keeps its own. East Asian clients already count in
+-- 10,000s and keep Blizzard's.
+do
+    local options   -- nil: not built yet; false: Blizzard's own breakpoints
+    local function Suffix(n) return (AbbreviateNumbers(n):gsub("[%d%.,%s]", "")) end
+    local function Build()
+        local locale = GetLocale()
+        if locale == "koKR" or locale == "zhCN" or locale == "zhTW" then return false end
+        local ok, k, m, b, t = pcall(function()
+            return Suffix(12345), Suffix(12345678), Suffix(12345678901), Suffix(12345678901234)
+        end)
+        if not ok or k == "" or m == "" then return false end
+        local function At(breakpoint, abbreviation, significandDivisor, fractionDivisor)
+            return { breakpoint = breakpoint, abbreviation = abbreviation, significandDivisor = significandDivisor,
+                     fractionDivisor = fractionDivisor, abbreviationIsGlobal = false }
+        end
+        return { breakpointData = {
+            At(1e13, t ~= "" and t or b, 1e12, 1), At(1e12, t ~= "" and t or b, 1e11, 10),
+            At(1e10, b, 1e9, 1), At(1e9, b, 1e8, 10),
+            At(1e7, m, 1e6, 1), At(1e6, m, 1e5, 10),
+            At(1e4, k, 1e3, 1),
+        } }
+    end
+    function ns.ShortNumber(n)
+        if options == nil then options = Build() end
+        if options then
+            local ok, text = pcall(AbbreviateNumbers, n, options)
+            if ok then return text end
+            options = false   -- refused by a later client: Blizzard's own from now on
+        end
+        return AbbreviateNumbers(n)
+    end
+end
+
+-- Edit Mode rows in one order everywhere (12-terminology.md, Ordering): within a section, dropdowns,
+-- then sliders, then switches; inside each kind, the order below, so an option sits in the same place
+-- on every frame. A section's master switch (Cast Bar) stays on top. Names not listed keep their own
+-- order after the listed ones of their kind.
+do
+    local CANON = {
+        -- dropdowns
+        "Style", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
+        "Visibility", "Portrait", "Health Text", "Power Text", "Text", "Combo Points",
+        "Bar Texture", "Border", "Absorb Texture",
+        "Cast Bar Position", "Cast Bar Texture", "Cast Bar Border",
+        "Buffs", "Debuffs", "Hide Buffs", "Dispel Highlight", "Dispel Icons", "Aura Swipe", "Aura Timer",
+        "Happiness Position", "Pet Border", "Target Border",
+        -- sliders
+        "Scale", "Size", "Width", "Height", "Max Height", "Power Bar Height", "Portrait Size",
+        "Pet Frame Width", "Pet Frame Height", "Target Frame Width", "Target Frame Height",
+        "Icon Size", "Icons per Row", "Totems per Row", "Max Icons", "Spacing", "Group Spacing", "Quest Spacing",
+        "Background Opacity", "Cast Bar Height", "Buff Size", "Debuff Size",
+        -- switches
+        "Sort by Role", "Show Player", "Hide Player Frame in a Party", "Group Numbers", "Main Tank Frames",
+        "Show Threat", "Combo Points@switch", "Show Level", "Mirror", "Portrait@switch", "Power Bar for Mana Users Only",
+        "Five-Second Rule", "Mana on Shapeshift", "GCD Spark", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
+        "Hide Icon", "Hide Spell Timer", "Latency Zone", "Spell Pushback", "Channel Ticks", "Spell Queue Window",
+        "Class Colours", "Low Health Colour", "Smooth Bar Animations",
+        "Only My Buffs", "Only My Debuffs", "Dispellable Debuffs Only", "Highlight Purgeable Buffs",
+        "Reverse Order", "Your Auras First",
+    }
+    local LEAD = { "Standalone Cast Bar", "Cast Bar", "Cast Bars" }
+    -- "Name@switch": the place of a name that is a dropdown on some frames and a switch on others
+    local canon, lead   -- localized name -> place, built on first use (the locale is loaded by then)
+    local function KindRank(kind)
+        local T = LibStub("FlareEditMode").SettingType
+        if kind == T.Dropdown then return 1 end
+        if kind == T.Slider then return 2 end
+        return 3
+    end
+    function ns.OrderEditSettings(items)
+        if not canon then
+            canon, lead = {}, {}
+            for i, name in ipairs(CANON) do
+                local base, switch = name:match("^(.-)(@switch)$")
+                local key = switch and (ns.L[base] .. "@switch") or ns.L[name]
+                canon[key] = canon[key] or i
+            end
+            for _, name in ipairs(LEAD) do lead[ns.L[name]] = true end
+        end
+        local keyed = {}
+        for i, item in ipairs(items) do
+            local rank = lead[item.name] and 0 or KindRank(item.kind)
+            local place = (rank == 3 and canon[(item.name or "") .. "@switch"]) or canon[item.name] or (1000 + i)
+            keyed[i] = { item = item, rank = rank, place = place, i = i }
+        end
+        table.sort(keyed, function(a, b)
+            if a.rank ~= b.rank then return a.rank < b.rank end
+            if a.place ~= b.place then return a.place < b.place end
+            return a.i < b.i
+        end)
+        for i, k in ipairs(keyed) do items[i] = k.item end
+        return items
+    end
+end
+
+-- Show conditions ticked as toggles in a dropdown (Edit Mode's Show, and settings rows with toggles).
+-- A value is one of the spec's exclusive choices ("always"), or the ticked tokens joined by commas
+-- ("combat,ingroup"), any one of which shows the frame. spec = { exclusive = { ... }, tokens = { ... },
+-- empty = the value when nothing is ticked, legacy = { old single value = "its,tokens" } }.
+ns.Conditions = {}
+do
+    local C = ns.Conditions
+    local sets = {}   -- value -> { token = true }
+    local function IsExclusive(spec, value) return tContains(spec.exclusive, value) end
+
+    function C.Set(value, spec)
+        value = (spec and spec.legacy and spec.legacy[value]) or value
+        if type(value) ~= "string" then value = "" end
+        local set = sets[value]
+        if not set then
+            set = {}
+            for token in value:gmatch("[^,]+") do set[token] = true end
+            sets[value] = set
+        end
+        return set
+    end
+
+    function C.Has(value, token, spec) return C.Set(value, spec)[token] == true end
+
+    -- whether the dropdown ticks this choice
+    function C.Ticked(value, choice, spec)
+        if IsExclusive(spec, choice) then return value == choice end
+        if IsExclusive(spec, value) then return false end
+        return C.Has(value, choice, spec)
+    end
+
+    -- every ticked choice, for Edit Mode's multiple-choice dropdowns
+    function C.Selection(value, spec)
+        if IsExclusive(spec, value) then return { value } end
+        local set, list = C.Set(value, spec), {}
+        for _, token in ipairs(spec.tokens) do
+            if set[token] then list[#list + 1] = token end
+        end
+        return list
+    end
+
+    -- the value after a click on a choice: an exclusive one clears the rest, a token flips
+    function C.Toggle(value, choice, spec)
+        if IsExclusive(spec, choice) then return choice end
+        local set = IsExclusive(spec, value) and {} or C.Set(value, spec)
+        local list = {}
+        for _, token in ipairs(spec.tokens) do
+            local on = set[token]
+            if token == choice then on = not on end
+            if on then list[#list + 1] = token end
+        end
+        return #list > 0 and table.concat(list, ",") or spec.empty
+    end
+
+    -- The bars' conditions (action bars and the frames faded with them, Fake CM, resource bars). The
+    -- single choices from before the toggles each meant "in combat, or ...".
+    C.BAR_TOKENS = { "combat", "hastarget", "attackable", "ingroup", "unmounted" }
+    C.BAR_LEGACY = { target = "combat,hastarget", harm = "combat,attackable", nomount = "combat,unmounted", group = "combat,ingroup" }
+end
+
 -- Fake CM is on while at least one bar is picked
 function ns.FCMActive()
     local fcm = ns.db and ns.db.profile and ns.db.profile.fcm
@@ -1861,7 +2025,7 @@ ns.Dialogs["FLAREUI_SYNC_RELOAD"] = {
 -- the settings window closed with changes that need a reload
 ns.Dialogs["FLAREUI_RELOAD_ON_CLOSE"] = {
     text = L["Some changes need a reload to take effect."],
-    button1 = L["Reload now"],
+    button1 = L["Reload Now"],
     button2 = L["Later"],
     reloads = true,
     hideOnEscape = true,

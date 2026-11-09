@@ -25,11 +25,11 @@ function Layout.Copy()
     if ns.Chat and ns.Chat.ShowCopyText then ns.Chat.ShowCopyText(strtrim(Layout.code)) end
 end
 
--- a Copy layout code button; greyed with a tooltip while there is no code yet
+-- a Copy Layout Code button; greyed with a tooltip while there is no code yet
 function Layout.Button(parent, width)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetSize(width or 160, 24)
-    b:SetText(ns.L["Copy layout code"])
+    b:SetText(ns.L["Copy Layout Code"])
     b:SetMotionScriptsWhileDisabled(true)
     b:SetScript("OnClick", function()
         ns.ButtonSound()

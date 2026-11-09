@@ -61,26 +61,31 @@ local BARS = {
                     swingType = SWING and SWING.Ranged, text = _G.SWING_TIMER_RANGED or "Ranged" },
 }
 
--- FlareUI's usual "Show" choices, minus Mouseover (these bars take no mouse)
-local SHOW_VALUES = {
-    { text = L["Always"],                       value = "always", isRadio = true },
-    { text = L["Combat"],                       value = "combat", isRadio = true },
-    { text = L["Combat + Target"],              value = "target", isRadio = true },
-    { text = L["Combat + Attackable Target"],   value = "harm",   isRadio = true },
-}
--- Swing timers can also appear only while their weapon is swinging
-local SWING_SHOW_VALUES = CopyTable(SHOW_VALUES)
-table.insert(SWING_SHOW_VALUES, { text = L["Only When In Use"], value = "inuse", isRadio = true })
+-- FlareUI's usual Show conditions as toggles (ns.Conditions), minus Mouseover (these bars take no
+-- mouse): nothing ticked is Always. Swing timers can also appear only while their weapon is swinging.
+local SHOW_SPEC = { exclusive = { "always" }, tokens = ns.Conditions.BAR_TOKENS, legacy = ns.Conditions.BAR_LEGACY, empty = "always" }
+local SWING_SHOW_SPEC = { exclusive = { "always", "inuse" }, tokens = ns.Conditions.BAR_TOKENS, legacy = ns.Conditions.BAR_LEGACY, empty = "always" }
+local function ShowValues(swing)
+    local list = { { text = L["Always"], value = "always" } }
+    if swing then list[#list + 1] = { text = L["Only When In Use"], value = "inuse" } end
+    list[#list + 1] = { isDivider = true }
+    for _, item in ipairs({ { L["In Combat"], "combat" }, { L["Has a Target"], "hastarget" }, { L["Has an Attackable Target"], "attackable" },
+                            { L["In a Group"], "ingroup" }, { L["Not Mounted"], "unmounted" } }) do
+        list[#list + 1] = { text = item[1], value = item[2] }
+    end
+    return list
+end
+local SHOW_VALUES, SWING_SHOW_VALUES = ShowValues(false), ShowValues(true)
 -- How long a bar in that mode outlasts a finished swing: the next one rarely lands on the same frame
 local SWING_IN_USE_HOLD = 1.5
 -- power and mana: the percent comes from the client's curve (UnitPowerPercent), so a secret power works
 local POWER_TEXT_VALUES = {
-    { text = L["None"],    value = "none",    isRadio = true },
+    { text = L["Off"],     value = "none",    isRadio = true },
     { text = L["Value"],   value = "value",   isRadio = true },
     { text = L["Percent"], value = "percent", isRadio = true },
 }
 local TEXT_VALUES = {
-    { text = L["None"],            value = "none",    isRadio = true },
+    { text = L["Off"],             value = "none",    isRadio = true },
     { text = L["Percent"],         value = "percent", isRadio = true },
     { text = L["Value"],           value = "value",   isRadio = true },
     { text = L["Value | Percent"], value = "both",    isRadio = true },
@@ -224,14 +229,8 @@ local function ShouldShow(holder)
     if not IsAvailable(holder) then return false end
     local show = cfg.show or "always"
     if show == "always" then return true end
-    if InCombatLockdown() or UnitAffectingCombat("player") then return true end
-    if show == "target" and UnitExists("target") then return true end
-    if show == "harm" and UnitExists("target") then
-        -- a corpse still counts as attackable: clicking it to loot would bring the bar back
-        local canAttack, dead = UnitCanAttack("player", "target"), UnitIsDead("target")
-        if canaccessvalue(canAttack) and canAttack and canaccessvalue(dead) and not dead then return true end
-    end
-    return false
+    -- the action bars' rule: any ticked condition shows it (a corpse never counts as attackable)
+    return ns.Visibility.ShowRule(show)
 end
 
 --------------------------------------------------
@@ -1009,8 +1008,15 @@ local function BuildSettings(key)
         add({ name = L["Size"], kind = LEM.SettingType.Slider, default = 24, minValue = 12, maxValue = 48, valueStep = 1,
               get = get("classicSize", 24), set = set("classicSize"), hidden = classicOff })
     end
-    add({ name = L["Show"], kind = LEM.SettingType.Dropdown, default = defaults.show or "always",
-          values = info.kind == "swing" and SWING_SHOW_VALUES or SHOW_VALUES, get = get("show", "always"), set = set("show"),
+    local showSpec = info.kind == "swing" and SWING_SHOW_SPEC or SHOW_SPEC
+    local getShow, setShow = get("show", "always"), set("show")
+    add({ name = L["Visibility"], kind = LEM.SettingType.Dropdown, default = defaults.show or "always", multiple = true,
+          values = info.kind == "swing" and SWING_SHOW_VALUES or SHOW_VALUES,
+          get = function() return ns.Conditions.Selection(getShow(), showSpec) end,
+          -- the dialog's Reset hands over the default whole (isReset), a click one choice to toggle
+          set = function(layout, value, isReset)
+              setShow(layout, isReset and value or ns.Conditions.Toggle(getShow(), value, showSpec))
+          end,
           desc = info.kind == "swing" and L["Only When In Use: the bar appears when this weapon swings and leaves soon after the swings stop."] or nil })
     if info.kind == "power" or info.kind == "mana" then
         add({ name = L["Text"], kind = LEM.SettingType.Dropdown, default = defaults.text or "value", values = POWER_TEXT_VALUES,
@@ -1046,7 +1052,7 @@ local function BuildSettings(key)
     Section("Look", {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.texture or K.DEFAULT_TEXTURE,
           values = K.BuildTextureValues(), get = get("texture", defaults.texture or K.DEFAULT_TEXTURE), set = set("texture"), hidden = classicOn },
-        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BAR_BORDER,
+        { name = L["Border"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BAR_BORDER,
           values = K.BuildBorderValues(false), get = get("border", defaults.border or DEFAULT_BAR_BORDER), set = set("border"), hidden = classicOn },
         (function()
             local item = K.BgOpacitySetting(K.BAR_BG_OPACITY, get("bgOpacity", K.BAR_BG_OPACITY), set("bgOpacity"))
@@ -1343,6 +1349,8 @@ local EVENTS = {
     "PLAYER_DEAD",
     "SPELL_UPDATE_COOLDOWN", "CURRENT_SPELL_CAST_CHANGED", "ACTIONBAR_UPDATE_STATE",
     "PLAYER_ENTER_COMBAT", "PLAYER_LEAVE_COMBAT", "START_AUTOREPEAT_SPELL", "STOP_AUTOREPEAT_SPELL",
+    -- the In a group and Not mounted Show conditions (flight paths: control lost and gained)
+    "GROUP_ROSTER_UPDATE", "PLAYER_MOUNT_DISPLAY_CHANGED", "UPDATE_SHAPESHIFT_FORM", "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED",
 }
 
 --------------------------------------------------

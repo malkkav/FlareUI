@@ -22,6 +22,7 @@ local GROUPS = { "top", "HUD", "Info", "Tools", "bottom" }
 Settings.NEW = {
     ["ab.dimOnCooldown"] = "5.0",
     ["ab.xpQuest"] = "5.0",
+    ["au.skinCDM"] = "5.0",
     ["au.timerColor"] = "5.0",
     ["ch.copyButton"] = "5.0",
     ["ch.minAlpha"] = "5.0",
@@ -349,7 +350,7 @@ function Settings:BorderChoices()
     return list
 end
 
--- Min Alpha: how far a fading frame fades, 0% to 90%
+-- Faded Opacity: how far a fading frame fades, 0% to 90%
 function Settings:MinAlphaChoices()
     local list = {}
     for i = 0, 9 do list[#list + 1] = { i / 10, (i * 10) .. "%" } end
@@ -363,19 +364,22 @@ function Settings:OpacityChoices()
     return list
 end
 
--- Choice names come from the row's own { value, "text" } pairs, else the copy (in order)
+-- Choice names come from the row's own { value, "text" } pairs, else the copy (in order, dividers
+-- not counted)
 function Row:Choices()
     local list = {}
     local names = Settings:Text(self.key, "choices")
     local choices = self.choices
     if type(choices) == "function" then choices = choices() end
+    local n = 0
     for i, choice in ipairs(choices or {}) do
         if type(choice) == "table" and choice.divider then
             list[i] = { divider = true }
         else
+            n = n + 1
             local value, text = choice, nil
             if type(choice) == "table" then value, text = choice[1], choice[2] end
-            list[i] = { value = value, text = text or (names and names[i]) or tostring(value) }
+            list[i] = { value = value, text = text or (names and names[n]) or tostring(value) }
         end
     end
     return list
@@ -399,8 +403,42 @@ function Row:SearchText()
     return self.searchText
 end
 
+-- A section's rows in one order (12-terminology.md, Ordering): copy text, then dropdowns, then
+-- switches, then keybinds, buttons and legends. A row with a parent sits under it, among its siblings
+-- in the same order; lead = true keeps a row on top (a switch the others read the other way round);
+-- rank = n places a row by hand (Fake CM's Visibility: 3.5, between the bar switches and the button).
+local KIND_RANK = { text = 0, choice = 1, dropdown = 1, toggle = 3, frame = 3, keybind = 4, button = 4, buttons = 4,
+                    editmode = 4, legend = 5, expander = 5 }
+local function RowRank(row)
+    if row.lead then return -1 end
+    if row.rank then return row.rank end
+    return KIND_RANK[row.kind] or 4
+end
+local function InsertOrdered(list, row)
+    local rank = RowRank(row)
+    if row.parent then
+        local at
+        for i, r in ipairs(list) do
+            if r.key == row.parent then at = i end
+        end
+        if at then
+            local last = at
+            while list[last + 1] and list[last + 1].parent == row.parent do last = last + 1 end
+            for i = at + 1, last do
+                if RowRank(list[i]) > rank then table.insert(list, i, row) return end
+            end
+            table.insert(list, last + 1, row)
+            return
+        end
+    end
+    for i, r in ipairs(list) do
+        if not r.parent and RowRank(r) > rank then table.insert(list, i, row) return end
+    end
+    list[#list + 1] = row
+end
+
 -- def: key ("module.row"), kind, path ("db.path") or get/set, choices, parent, tab, section, half,
--- reload, apply, hidden, disabled. Kinds: toggle, choice, dropdown, keybind, button, buttons, frame,
+-- reload, apply, hidden, disabled, lead, rank, gapAbove. Kinds: toggle, choice, dropdown, keybind, button, buttons, frame,
 -- expander, editmode, legend (built in Settings/Panel.lua), text (custom-page copy, never drawn or searched)
 function Settings:Row(def)
     assert(type(def.key) == "string", "Settings:Row needs a key")
@@ -421,7 +459,7 @@ function Settings:Row(def)
         module.sectionByKey[sectionKey] = section
         module.sections[#module.sections + 1] = section
     end
-    section.rows[#section.rows + 1] = row
+    InsertOrdered(section.rows, row)
     row.section = sectionKey
     self.rows[row.key] = row
     return row
@@ -736,7 +774,7 @@ function Settings:LinkEditMode()
     -- none in the Gamepad UI: closing Edit Mode from addon code there taints Blizzard's controller focus
     if not (LEM and LEM.AddFrameSettingsButton) or self.linked or ns.IsGamepadUI() then return end
     self.linked = true
-    local backText = self:WindowText("editModeDialogsBackLink", L["FlareUI settings"])
+    local backText = self:WindowText("editModeDialogsBackLink", L["FlareUI Settings"])
     for _, key in ipairs(self.order) do
         local module = self.modules[key]
         for _, frame in ipairs(ModuleFrames(module)) do
@@ -781,7 +819,7 @@ end
 ns.Dialogs = ns.Dialogs or {}
 ns.Dialogs["FLAREUI_KEY_TAKEN"] = {
     text = "%s",
-    button1 = L["Use it"],
+    button1 = L["Use It"],
     button2 = L["Cancel"],
     OnAccept = function(data)
         if data and data.apply then data.apply() end

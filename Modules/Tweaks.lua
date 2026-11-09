@@ -2228,7 +2228,7 @@ local function MailMenu(owner)
         local me = ns.CharDB and ns.CharDB() or {}
         local function Pick(name) return function() box:SetText(name); box:SetCursorPosition(#name) end end
         if me.lastMailTo then
-            root:CreateTitle(L["Last sent to"])
+            root:CreateTitle(L["Last Sent To"])
             root:CreateButton(me.lastMailTo, Pick(me.lastMailTo))
         end
         local list = {}
@@ -2238,7 +2238,7 @@ local function MailMenu(owner)
             end
         end
         table.sort(list, function(a, b) return a.mailName < b.mailName end)
-        root:CreateTitle(L["Your characters"])
+        root:CreateTitle(L["Your Characters"])
         if #list == 0 then root:CreateTitle(L["Log in on your other characters to list them."]) end
         for _, char in ipairs(list) do
             local color = char.class and C_ClassColor.GetClassColor(char.class)

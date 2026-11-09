@@ -984,19 +984,6 @@ autoPushLoader:SetScript("OnEvent", function(self)
     end)
 end)
 
--- Steady Attack Highlight: Attack, Auto Shot and Shoot blink their red overlay (Flash) while active.
--- Each time Blizzard's update hides it mid-blink, it is shown again, so it stays lit. StopFlash
--- clears the flag before it hides the overlay, so the overlay still goes when the attack stops.
-local steadyFlash = false
-local function HookFlash(btn)
-    local flash = btn.Flash
-    if not flash or btn.FlareUI_FlashHooked or type(btn.IsFlashing) ~= "function" then return end
-    btn.FlareUI_FlashHooked = true
-    hooksecurefunc(flash, "Hide", function(self)
-        if steadyFlash and btn:IsFlashing() then self:Show() end
-    end)
-end
-
 function ActionBars:Refresh(event)
     if event == "PLAYER_ENTERING_WORLD" then burstQuietUntil = GetTime() + 3 end
     if InCombatLockdown() then
@@ -1011,7 +998,6 @@ function ActionBars:Refresh(event)
     ApplyClassPaging()
 
     UpdateGryphonLayer(db)
-    steadyFlash = db.steadyAttackFlash and true or false
     UpdateButtonArtAll()
     SetupRangeColors()
     SetupCooldowns()
@@ -1064,7 +1050,6 @@ function ActionBars:Init()
             if btn.UpdateUsable then ActionBars:SecureHook(btn, "UpdateUsable", OnUpdateUsable) end
             if btn.UpdateAction then ActionBars:SecureHook(btn, "UpdateAction", OnUpdateAction) end
         end
-        HookFlash(btn)
     end
 
     -- the extra action button sets its hotkey when it appears

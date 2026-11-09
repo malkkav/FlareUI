@@ -33,7 +33,6 @@ S:Row{
 S:Row{ key = "ab.procGlow", path = "actionbars.procGlow", half = true,
     apply = function() if ns.ProcGlow then ns.ProcGlow:Refresh() end end }
 -- in pairs (half rows): feedback above, then the art, the text, the spells
-S:Row{ key = "ab.steadyAttackFlash", path = "actionbars.steadyAttackFlash", apply = Refresh, half = true }
 S:Row{ key = "ab.gryphonsBehind", path = "actionbars.gryphonsBehind", apply = Refresh, half = true }
 S:Row{ key = "ab.hideMacroText", path = "actionbars.hideMacroText", apply = Refresh, half = true }
 S:Row{ key = "ab.hideKeybinds", path = "actionbars.hideHotkeys", apply = Refresh, half = true }
@@ -47,13 +46,16 @@ S:Row{ key = "ab.stealthPaging", path = "actionbars.stealthPaging", apply = Refr
 S:Row{ key = "ab.noStancePaging", path = "actionbars.noStancePaging", apply = Refresh, half = true }
 S:Row{ key = "ab.dimOnCooldown", path = "actionbars.dimOnCooldown", apply = Refresh, half = true }
 
--- the XP bar is always on with the module: xpbar.enabled is not read
-S:Row{ key = "ab.xpText", kind = "choice", path = "actionbars.xpbar.textMode", choices = { "HOVER", "ALWAYS" },
+-- the FlareUI XP Bar: off leaves Blizzard's bars alone, so turning it on or off reloads; its options sit
+-- under it and grey out while it's off
+
+S:Row{ key = "ab.xpBar", path = "actionbars.xpbar.enabled", reload = true }
+S:Row{ key = "ab.xpText", kind = "choice", path = "actionbars.xpbar.textMode", choices = { "HOVER", "ALWAYS" }, parent = "ab.xpBar",
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
-S:Row{ key = "ab.xpNumbers", kind = "choice", path = "actionbars.xpbar.textFormat", choices = { "VALUES", "PERCENT", "BOTH", "REMAINING" },
+S:Row{ key = "ab.xpNumbers", kind = "choice", path = "actionbars.xpbar.textFormat", choices = { "VALUES", "PERCENT", "BOTH", "REMAINING" }, parent = "ab.xpBar",
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
 -- one choice for both settings: Off clears questXP, the rest set it and pick the quests counted
-S:Row{ key = "ab.xpQuest", kind = "choice", choices = { "off", "done", "all", "zone" },
+S:Row{ key = "ab.xpQuest", kind = "choice", choices = { "off", "done", "all", "zone" }, parent = "ab.xpBar",
     get = function()
         if not S:GetPath("actionbars.xpbar.questXP") then return "off" end
         return S:GetPath("actionbars.xpbar.questXPMode") or "done"
@@ -83,11 +85,16 @@ for i = 1, 8 do
         section = "ab.fakeCooldownManager", half = true }
 end
 S:Row{
-    key = "ab.fcmShow", kind = "choice", tab = "fcm", path = "fcm.show", section = "ab.fakeCooldownManager",
-    choices = { "combat", "target", "harm", "always" }, apply = Refresh,
+    -- toggles as on the bars (ns.Conditions), with no Mouseover: nothing ticked is Always
+    key = "ab.fcmShow", kind = "dropdown", tab = "fcm", path = "fcm.show", section = "ab.fakeCooldownManager",
+    choices = { "always", { divider = true }, "combat", "hastarget", "attackable", "ingroup", "unmounted" }, apply = Refresh,
+    toggles = { exclusive = { "always" }, tokens = ns.Conditions.BAR_TOKENS, legacy = ns.Conditions.BAR_LEGACY, empty = "always" },
+    -- under the bar switches (pick the bars, then when they show, then set them up), a line's space
+    -- from the switches and from the button below
+    rank = 3.5, gapAbove = 12,
 }
 S:Row{
-    key = "ab.fcmSetup", kind = "button", tab = "fcm", center = true, section = "ab.fakeCooldownManager",
+    key = "ab.fcmSetup", kind = "button", tab = "fcm", center = true, section = "ab.fakeCooldownManager", gapAbove = 12,
     disabled = function() return not ns.FCMActive() end,
     apply = function() if ns.ToggleFCMSetupMode then ns.ToggleFCMSetupMode() end end,
 }

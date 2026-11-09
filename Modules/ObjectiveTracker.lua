@@ -1974,7 +1974,8 @@ local function BuildSettings()
             OT:Render()
         end
     end
-    return {
+    -- dropdowns, sliders, switches (ns.OrderEditSettings)
+    return ns.OrderEditSettings({
         { name = L["Width"], kind = LEM.SettingType.Slider, default = C.WIDTH, minValue = 180, maxValue = 500, valueStep = 5,
           get = get("width", C.WIDTH), set = set("width") },
         { name = L["Max Height"], kind = LEM.SettingType.Slider, default = C.MAX_HEIGHT, minValue = 150, maxValue = 1000, valueStep = 10,
@@ -1999,7 +2000,7 @@ local function BuildSettings()
               OnFrameMoved(nil, LEM:GetActiveLayoutName())
               OT:Render()
           end },
-    }
+    })
 end
 
 --------------------------------------------------

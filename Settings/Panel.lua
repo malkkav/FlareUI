@@ -313,13 +313,31 @@ end
 -- choice and dropdown menus: set up once per frame, filled from the row it shows
 local function IsChoice(c) return c.row:Get() == c.value end
 local function PickChoice(c) c.row:Set(c.value) end
+-- a row with toggles (row.toggles, an ns.Conditions spec): checkboxes that stay open. A full Refresh
+-- would drop the open menu, so the page is redrawn once it closes (RowChanged in Panel:Init)
+local function IsTicked(c) return ns.Conditions.Ticked(c.row:Get(), c.value, c.row.toggles) end
+local function Tick(c)
+    Panel.toggleHold = true
+    c.row:Set(ns.Conditions.Toggle(c.row:Get(), c.value, c.row.toggles))
+    Panel.toggleHold = nil
+end
+local function OnToggleMenuClosed()
+    if Panel.toggleRefreshPending then
+        Panel.toggleRefreshPending = nil
+        Panel:Refresh()
+    end
+end
 local function SetupChoiceMenu(dropdown, f)
+    dropdown:RegisterCallback(DropdownButtonMixin.Event.OnMenuClose, OnToggleMenuClosed, dropdown)
     dropdown:SetupMenu(function(_, root)
         local row = f.row
         if not row then return end
         for _, c in ipairs(row:Choices()) do
             if c.divider then
                 root:CreateDivider()
+            elseif row.toggles then
+                c.row = row
+                root:CreateCheckbox(c.text, IsTicked, Tick, c)
             else
                 c.row = row
                 root:CreateRadio(c.text, IsChoice, PickChoice, c)
@@ -1430,7 +1448,7 @@ local function BuildWindow()
     for i, mode in ipairs({ "settings", "whatsnew" }) do
         local b = CreateFrame("Button", nil, frame, "MinimalTabTemplate")
         b:SetHeight(30)
-        b.Text:SetText(S:WindowText(i == 1 and "tabs" or "tabs2", i == 1 and L["Settings"] or L["What's new"]))
+        b.Text:SetText(S:WindowText(i == 1 and "tabs" or "tabs2", i == 1 and L["Settings"] or L["What's New"]))
         b:SetWidth((b.Text:GetStringWidth() or 80) + 40)
         b.mode = mode
         b:SetScript("OnClick", function(self)
@@ -1629,7 +1647,7 @@ local function BuildWindow()
     local turnOn = CreateFrame("Button", nil, off, "UIPanelButtonTemplate")
     turnOn:SetSize(160, 26)
     turnOn:SetPoint("TOP", off.text, "BOTTOM", 0, -16)
-    turnOn:SetText(S:WindowText("moduleOffCard2", L["Turn on"]))
+    turnOn:SetText(S:WindowText("moduleOffCard2", L["Turn On"]))
     turnOn:SetScript("OnClick", function()
         ns.ButtonSound()
         S.modules[current]:SetOn(true)
@@ -1676,7 +1694,7 @@ local function BuildWindow()
     frame.footerText:SetPoint("LEFT", PAD + 4, -1)
     frame.reload = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
     frame.reload:SetPoint("RIGHT", -PAD, -1)
-    frame.reload:SetText(S:WindowText("reloadFooter2", L["Reload now"]))
+    frame.reload:SetText(S:WindowText("reloadFooter2", L["Reload Now"]))
     local reloadLabelWidth = frame.reload:GetFontString():GetUnboundedStringWidth()
     frame.reload:SetSize(math.max(130, math.ceil(reloadLabelWidth) + 24), 22)
     frame.reload:SetScript("OnClick", function()
@@ -1684,7 +1702,9 @@ local function BuildWindow()
         ns.ShowDialog("FLAREUI_RELOAD")
     end)
 
-    S:On("RowChanged", function() Panel:Refresh() end)
+    S:On("RowChanged", function()
+        if Panel.toggleHold then Panel.toggleRefreshPending = true else Panel:Refresh() end
+    end)
     S:On("ReloadChanged", UpdateFooter)
 
     -- combat decides the Edit buttons, and its end lets the secure reload button be placed. Only the

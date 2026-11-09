@@ -40,7 +40,7 @@ S:Row{
         local label = ns.Tweaks and ns.Tweaks.GetSyncSourceLabel and ns.Tweaks:GetSyncSourceLabel()
         return label and L["Current source: %s"]:format(label) or L["No source yet."]
     end,
-    buttonText = L["Make this character the source"],
+    buttonText = L["Make This Character the Source"],
     disabled = function() return ns.Tweaks and ns.Tweaks.IsSyncSource and ns.Tweaks:IsSyncSource() or false end,
     apply = function() ns.ShowDialog("FLAREUI_SYNC_SOURCE") end,
 }

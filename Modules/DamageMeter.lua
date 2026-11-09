@@ -1000,7 +1000,7 @@ local function FillRow(row, data, top, window, db, index, height, spacing)
     if row.ftValue ~= data.value or row.ftPercent ~= percent or row.ftLead ~= (data.lead ~= nil) or row.ftDisplay ~= display then
         row.ftValue, row.ftPercent, row.ftLead, row.ftDisplay = data.value, percent, data.lead ~= nil, display
         local pct = (data.lead and "+%d%%" or "%d%%"):format(percent)
-        local amount = AbbreviateNumbers(data.value / 100)
+        local amount = ns.ShortNumber(data.value / 100)
         if display == "percent" then
             row:GetValue():SetText(pct)
         elseif display == "value" then
@@ -1812,6 +1812,16 @@ local VISIBILITY = {
     hidden = function() return false end,
     group  = function(meter) return meter:IsPlayerInGroup() end,
 }
+-- Visibility is one rule, or rules ticked as toggles joined by commas (ns.Conditions): any one shows it
+local function VisibilityRule(value, meter)
+    local rule = VISIBILITY[value]
+    if rule then return rule(meter) and true or false end
+    for token in pairs(ns.Conditions.Set(value)) do
+        rule = VISIBILITY[token]
+        if rule and rule(meter) then return true end
+    end
+    return false
+end
 local fadeDriver = CreateFrame("Frame")
 fadeDriver:Hide()
 local fadeTarget, hideWhenFaded = 1, false
@@ -1864,7 +1874,7 @@ showRetry:SetScript("OnEvent", function()
     C_Timer.After(0.5, function() DamageMeter:ApplyVisibility() end)
 end)
 
--- Min Alpha: how far the meter fades out (0 = gone). Not for the Meter tab in the chat, where the
+-- Faded Opacity: how far the meter fades out (0 = gone). Not for the Meter tab in the chat, where the
 -- tab decides and a faded meter sits under the chat.
 local function DownAlpha()
     local db = GetDb()
@@ -1936,9 +1946,28 @@ function MeterAllowed()
     return true
 end
 
+-- Visibility and Open the Meter Tab are single choices. A test build saved them as ticked toggles
+-- ("combat,group", "mouseover" for Show on Mouseover): those read back once as the nearest choice.
+local SINGLE_VISIBILITY = { always = true, combat = true, group = true, hidden = true }
+local SINGLE_TAB_OPEN = { click = true, combat = true, group = true, login = true }
+local function NormalizeChoices(db)
+    local v = db.visibility
+    if v ~= nil and not SINGLE_VISIBILITY[v] then
+        local set = ns.Conditions.Set(v)
+        if set.mouseover then db.showOnMouseover = true end
+        db.visibility = (set.combat and "combat") or (set.group and "group") or "hidden"
+    end
+    local open = db.chatTabOpen
+    if open ~= nil and not SINGLE_TAB_OPEN[open] then
+        local set = ns.Conditions.Set(open)
+        db.chatTabOpen = (set.combat and "combat") or (set.group and "group") or (set.login and "login") or "click"
+    end
+end
+
 local function ApplyVisibilityBody(meter)
     local db = GetDb()
     if applying or not (db and db.enabled) then return end
+    NormalizeChoices(db)
     applying = true
     -- in the chat the tab decides (Blizzard's switch off: hidden below, as ever). Switching in or
     -- out of the chat is noted here, whichever check brings it: Refresh, a click, Blizzard's own
@@ -1971,7 +2000,7 @@ local function ApplyVisibilityBody(meter)
         meter:Hide()
         if DamageMeter.viewBackPending then DamageMeter.ShowDamageViews() end
         meter.FlareUI_Up = false
-    elseif (VISIBILITY[db.visibility] or VISIBILITY.always)(meter) then
+    elseif VisibilityRule(db.visibility or "always", meter) then
         -- from where a fade out left it, or from nothing when it was hidden
         if not wasUp and not meter:IsShown() then meter:SetAlpha(0) end
         -- held back in a fight (ShowMeter): it stays down, and comes up with its fade after it
@@ -1986,7 +2015,7 @@ local function ApplyVisibilityBody(meter)
         end
         meter.FlareUI_Up = false
     elseif DownAlpha() > 0 then
-        -- Min Alpha: faded, not gone (held back in a fight like any show, ShowMeter)
+        -- Faded Opacity: faded, not gone (held back in a fight like any show, ShowMeter)
         meter.FlareUI_Up = false
         if not wasUp and not meter:IsShown() then meter:SetAlpha(0) end
         if ShowMeter(meter) then FadeMeter(meter, DownAlpha()) end
@@ -2055,8 +2084,8 @@ end
 -- back, Always starts on it; a click holds until the rule next changes.
 --------------------------------------------------
 local CHAT_TAB_LOWERED = "BACKGROUND"   -- the chat windows are LOW
--- Open the Meter Tab -> the VISIBILITY rule that picks it: When Clicked never switches on its own
-local CHAT_TAB_OPEN = { click = "hidden", combat = "combat", group = "group", login = "always" }
+-- Open the Meter Tab: When Clicked ("click") never switches on its own; In Combat and In Group ticked as
+-- toggles (ns.Conditions) switch to the meter while either holds; At Login opens it on the first check
 local STRATA_ORDER = { "BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP" }
 
 -- Both modules on, the chat skinned and Blizzard's meter allowed, as last applied (ApplyVisibility
@@ -2108,11 +2137,14 @@ function ApplyChatTab(meter, db)
     -- into the chat when Refresh has not placed it yet, or a fight held it back
     if not DamageMeter.chatAnchored then MatchChatSize() end
     -- Open the Meter Tab picks the tab when its answer changes (Visibility is left for the tab off)
-    local rule = (VISIBILITY[CHAT_TAB_OPEN[db.chatTabOpen] or "combat"])(meter) and true or false
+    local open = ns.Conditions.Set(db.chatTabOpen or "combat")
+    local rule = ((open.combat and VISIBILITY.combat(meter)) or (open.group and VISIBILITY.group(meter))) and true or false
     if rule ~= DamageMeter.chatTabRule then
+        local first = DamageMeter.chatTabRule == nil
         DamageMeter.chatTabRule = rule
-        if (DamageMeter.chatTabActive or false) ~= rule then
-            DamageMeter.chatTabActive = rule
+        local want = rule or (first and open.login) or false
+        if (DamageMeter.chatTabActive or false) ~= want then
+            DamageMeter.chatTabActive = want
             -- from Blizzard's own check: the chat follows a frame later
             if ns.Chat and ns.Chat.RefreshMeterTab then C_Timer.After(0, function() ns.Chat:RefreshMeterTab() end) end
         end

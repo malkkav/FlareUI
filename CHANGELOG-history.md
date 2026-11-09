@@ -1,6 +1,37 @@
 # FlareUI changelog history
 
-Versions 3.0.9 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 4.0 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 4.0
+
+A lighter FlareUI: the same features, doing far less work behind the scenes. Plus separate buff and debuff sizes, a lighter Forever bar texture and macro cooldowns in the radial menu.
+
+**Restart the game fully after updating** (not just /reload): this version adds new files.
+
+## Performance
+FlareUI got a full performance pass. Nothing was removed or changed in how it looks or works; it just stops redoing work that hasn't changed. In our own testing, FlareUI's CPU use stayed under 0.2%.
+- Power bars: a power change was drawn twice in the same frame. Now once. Most noticeable for energy and rage.
+- Resource Bars: each power tick now only moves the bar and its number, and the Druid Mana bar ignores energy and rage ticks.
+- Quest tracker: it reads the quest log once per redraw instead of three times, no longer rebuilds the whole list every 2 seconds while you stand still, and skips text and fonts that haven't changed.
+- Fading bars: bars that have finished fading are no longer checked 20 times a second.
+- Proc glows: only warriors and paladins follow the target's health (for Execute and Hammer of Wrath).
+- Party frames: in a raid, the hidden party frames no longer re-lay out on every roster change or raid pet change, and hidden pet and target tiles wait until they show.
+- Threat meter: no work while it's hidden or faded out, and it reuses its lists instead of building new ones up to five times a second.
+- Unit frames: fewer updates per health and power tick on the player frame, the mana cost overlay and the quest icon.
+- New: **/fui perf** measures FlareUI with Blizzard's addon profiler. `/fui perf start <name>` records a scenario, `/fui perf stop` saves it and `/fui perf report` gives you text to paste in a bug report.
+
+## New
+- Every frame with auras: **Buffs Size** and **Debuffs Size** replace Aura Size, so each can have its own size. Both start at your old Aura Size. On party, raid and boss frames, dispel icons follow Debuffs Size.
+- Health Text: **Current | Max** on every unit, party, raid and boss frame, in every style, and on the Resource Bars health bar.
+- Bar textures: **FlareUI Forever (Light)**, the Forever texture as bright as FlareUI Flat. FlareUI Forever stays as it was, and stays the default.
+- Mana on Shapeshift: the druid mana strip now shows its number when Power Text is on.
+- Radial menu: a macro shows the cooldown, the usable state and the icon of the spell or item it would cast right now, following `#showtooltip` and conditions like `[mod:shift]`. In the radial menu editor, macros show that spell's or item's tooltip.
+
+## Changed
+- Target of target and target of focus always show the first name only, whatever Full Player Names is set to.
+
+## Fixed
+- Party frames: pets now fade when out of range, like the members.
 
 # FlareUI 3.0.9
 

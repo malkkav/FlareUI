@@ -139,7 +139,7 @@ local function UpdateHints()
         K(KEY.B) .. " " .. (grabbed and L["Done"] or L["Close"]),
     }
     if focus and focus.padX then parts[#parts + 1] = K(KEY.X) .. " " .. L["Remove"] end
-    if focus and (focus.padY or focus.padMove) then parts[#parts + 1] = K(KEY.Y) .. " " .. (grabbed and L["Put down"] or L["Move"]) end
+    if focus and (focus.padY or focus.padMove) then parts[#parts + 1] = K(KEY.Y) .. " " .. (grabbed and L["Put Down"] or L["Move"]) end
     hints.text:SetText(table.concat(parts, "     "))
 end
 
@@ -253,6 +253,8 @@ local function Move(key)
 end
 
 local function CycleRow(row, delta)
+    -- toggles have no single value to step through: the menu opens instead
+    if row.toggles then return end
     local choices = {}
     for _, c in ipairs(row:Choices() or {}) do
         if not c.divider then choices[#choices + 1] = c end

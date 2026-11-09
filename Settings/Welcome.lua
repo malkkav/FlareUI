@@ -220,7 +220,7 @@ end
 
 -- The "Use it" tick at a card's bottom
 local function CardTick(card, key)
-    local tick = Tick(card, key, L["Use it"])
+    local tick = Tick(card, key, L["Use It"])
     tick:SetPoint("BOTTOMLEFT", CARD_PAD - 3, 6)
     return tick
 end
@@ -266,7 +266,7 @@ function BuildPage.welcome(page)
     body:SetSpacing(3)
     body:SetText(L["Everything starts switched off. This short tour shows you what each part does, and you choose the ones you want as you go."])
 
-    local start = PanelButton(page, L["Show me around"], 240, 34, NextStep)
+    local start = PanelButton(page, L["Show Me Around"], 240, 34, NextStep)
     start:SetPoint("BOTTOM", 0, 72)
 
     local skip = PanelButton(page, L["Skip, I know what I'm doing"], 240, 24, CloseTour)
@@ -394,10 +394,10 @@ end
 -- 5: the FlareUI Edit Mode layout, imported by the player in Blizzard's own dialog
 function BuildPage.layout(page)
     local left = Card(page, 0, 0, CARD_W2, BODY_H)
-    Stack(left, Say(left, "GameFontNormalLarge", L["Use our layout"], left.inner))
+    Stack(left, Say(left, "GameFontNormalLarge", L["Use Our Layout"], left.inner))
     Stack(left, Say(left, "GameFontHighlight", L["Want your screen set up like ours? Import the FlareUI layout into Edit Mode:"], left.inner))
     Stack(left, Say(left, "GameFontHighlight", table.concat({
-        "|cffffd1001.|r " .. L["Click |cffffd100Copy layout code|r and press |cffffd100Ctrl+C|r."],
+        "|cffffd1001.|r " .. L["Click |cffffd100Copy Layout Code|r and press |cffffd100Ctrl+C|r."],
         "|cffffd1002.|r " .. L["Press |cffffd100Esc|r and choose |cffffd100Edit Mode|r."],
         "|cffffd1003.|r " .. L["Open the |cffffd100Layout|r menu and choose |cffffd100Import|r."],
         "|cffffd1004.|r " .. L["Paste with |cffffd100Ctrl+V|r, name it and click |cffffd100Import|r."],
@@ -406,7 +406,7 @@ function BuildPage.layout(page)
     copy:SetPoint("BOTTOMLEFT", CARD_PAD, CARD_PAD)
 
     local right = Card(page, CARD_W2 + GAP, 0, CARD_W2, BODY_H)
-    Stack(right, Say(right, "GameFontNormalLarge", L["Good to know"], right.inner))
+    Stack(right, Say(right, "GameFontNormalLarge", L["Good to Know"], right.inner))
     Stack(right, Say(right, "GameFontHighlight", Bullets({
         L["It's saved and switched on right away"],
         L["Your old layout stays: switch back any time from the Layout menu"],
@@ -468,21 +468,21 @@ function BuildPage.qol(page)
     local height = BODY_H - 34
 
     local left = Card(page, 0, -34, CARD_W2, height)
-    Stack(left, Say(left, "GameFontNormal", L["Move any window"], left.inner))
+    Stack(left, Say(left, "GameFontNormal", L["Move Any Window"], left.inner))
     Stack(left, Say(left, "GameFontHighlight", L["Drag a Blizzard window by its header to move it. |cffffd100Ctrl|r + mouse wheel resizes it, and |cffffd100Shift|r + right-click puts it back."], left.inner), 6)
-    local move = Tick(left, "move", L["Use it"], "qol")
+    local move = Tick(left, "move", L["Use It"], "qol")
     Stack(left, move, 4)
     local syncName = Say(left, "GameFontNormal", L["Sync Blizz UI"], left.inner)
     syncName:SetPoint("TOPLEFT", move, "BOTTOMLEFT", 0, -10)
     local syncText = Say(left, "GameFontHighlight", L["Got alts? Copies one character's interface options, Edit Mode layout, chat and bag settings to your others."], left.inner)
     syncText:SetPoint("TOPLEFT", syncName, "BOTTOMLEFT", 0, -6)
-    local sync = Tick(left, "sync", L["Use it"], "qol")
+    local sync = Tick(left, "sync", L["Use It"], "qol")
     sync:SetPoint("TOPLEFT", syncText, "BOTTOMLEFT", 0, -4)
 
     local right = Card(page, CARD_W2 + GAP, -34, CARD_W2, height)
-    Stack(right, Say(right, "GameFontNormal", L["Also in there"], right.inner))
+    Stack(right, Say(right, "GameFontNormal", L["Also in There"], right.inner))
     Stack(right, Say(right, "GameFontHighlight", Bullets({
-        L["Faster auto loot"],
+        L["Faster Auto Loot"],
         L["A Train All button at trainers"],
         L["A camera that zooms out further"],
         L["Map pins with /way"],
@@ -516,7 +516,7 @@ function BuildPage.finish(page)
     nothing:SetPoint("TOPLEFT", CARD_PAD, -30)
 
     local after = Card(page, 0, -182, BODY_W, BODY_H - 182)
-    Stack(after, Say(after, "GameFontNormal", L["Try these next"], after.inner))
+    Stack(after, Say(after, "GameFontNormal", L["Try These Next"], after.inner))
     local tips = Stack(after, Say(after, "GameFontHighlight", "", after.inner))
 
     function page.Refresh()
@@ -717,10 +717,10 @@ local function BuildTour()
     back:SetPoint("BOTTOMLEFT", SIDE, 16)
     tour.next = PanelButton(footer, NEXT or "Next", 104, 26, NextStep)
     tour.next:SetPoint("BOTTOMRIGHT", -SIDE, 16)
-    tour.skip = PanelButton(footer, L["Skip the rest"], 130, 26, function() tour.Show(#PAGES) end)
+    tour.skip = PanelButton(footer, L["Skip the Rest"], 130, 26, function() tour.Show(#PAGES) end)
     tour.skip:SetPoint("BOTTOM", 0, 16)
     -- reached only while the secure button can't cover it: in combat
-    tour.finish = PanelButton(footer, L["Reload and finish"], 220, 30, function()
+    tour.finish = PanelButton(footer, L["Reload and Finish"], 220, 30, function()
         if ERR_NOT_IN_COMBAT and UIErrorsFrame then UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT, 1, 0.1, 0.1) end
     end)
     tour.finish:SetPoint("BOTTOMRIGHT", -SIDE, 14)

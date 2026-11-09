@@ -7,11 +7,11 @@ ns.Copy.modules.language = {
     desc = L["Choose which language FlareUI uses."],
 }
 ns.Copy.rows["language.useGame"] = {
-    label = L["Use the game language"],
+    label = L["Use the Game Language"],
     desc = L["Match the language selected in World of Warcraft."],
 }
 ns.Copy.rows["language.override"] = {
-    label = L["Addon language"],
+    label = L["Addon Language"],
     desc = L["Applies after reloading the UI."],
 }
 
@@ -34,7 +34,7 @@ S:Module{
 }
 
 S:Row{
-    key = "language.useGame",
+    key = "language.useGame", lead = true,   -- on top: the language list below only counts while it is off
     get = UseGameLanguage,
     set = function(on)
         local global = ns.db.global

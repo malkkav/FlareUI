@@ -311,26 +311,27 @@ local function BuildSettings()
     -- the ring styles have their own defaults
     local style = ns.UFRing and ns.UFRing.On() and ns.UFRing.DefaultTotems() or {}
     local size, perRow = style.size or DEFAULT_SIZE, style.perRow or DEFAULT_PER_ROW
-    return {
+    -- dropdowns, sliders, switches (ns.OrderEditSettings)
+    return ns.OrderEditSettings({
         { name = L["Size"], kind = LEM.SettingType.Slider, default = size, minValue = 50, maxValue = 200, valueStep = 5,
           get = get("size", size), set = set("size") },
         { name = L["Totems per Row"], kind = LEM.SettingType.Slider, default = perRow, minValue = 1, maxValue = MAX, valueStep = 1,
           get = get("perRow", perRow), set = set("perRow") },
         { name = L["Aura Swipe"], kind = LEM.SettingType.Dropdown, default = "both", get = get("swipe", "both"), set = set("swipe"),
           values = {
-              { text = L["Over the icon"], value = "icon", isRadio = true },
-              { text = L["Around the border"], value = "border", isRadio = true },
+              { text = L["Over the Icon"], value = "icon", isRadio = true },
+              { text = L["Around the Border"], value = "border", isRadio = true },
               { text = L["Both"], value = "both", isRadio = true },
-              { text = L["None"], value = "none", isRadio = true },
+              { text = L["Off"], value = "none", isRadio = true },
           } },
         { name = L["Aura Timer"], kind = LEM.SettingType.Dropdown, default = "none", get = get("timer", "none"), set = set("timer"),
           values = {
-              { text = L["Under the icon"], value = "below", isRadio = true },
-              { text = L["Bottom of the icon"], value = "bottom", isRadio = true },
-              { text = L["Middle of the icon"], value = "middle", isRadio = true },
-              { text = L["None"], value = "none", isRadio = true },
+              { text = L["Under the Icon"], value = "below", isRadio = true },
+              { text = L["Bottom of the Icon"], value = "bottom", isRadio = true },
+              { text = L["Middle of the Icon"], value = "middle", isRadio = true },
+              { text = L["Off"], value = "none", isRadio = true },
           } },
-    }
+    })
 end
 
 --------------------------------------------------

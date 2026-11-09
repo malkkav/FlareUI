@@ -57,7 +57,7 @@ local function InChat() return S:GetPath("damagemeter.chatTab") and not ChatOff(
 local function NotInChat() return not InChat() end
 
 S:Row{ key = "dm.visibility", kind = "choice", path = "damagemeter.visibility",
-    choices = { "always", "combat", "hidden", "group" }, apply = ApplyVisibility, disabled = InChat, section = "dm.frame" }
+    choices = { "always", "combat", "group", "hidden" }, apply = ApplyVisibility, disabled = InChat, section = "dm.frame" }
 local function AlwaysVisible() return (S:GetPath("damagemeter.visibility") or "always") == "always" end
 -- in the chat the tab fades the meter in and out at this speed
 S:Row{ key = "dm.fadeSpeed", kind = "choice", path = "damagemeter.fadeSpeed", choices = { "instant", "fast", "slow" },
@@ -68,11 +68,12 @@ S:Row{ key = "dm.minAlpha", kind = "choice", path = "damagemeter.minAlpha", choi
 S:Row{ key = "dm.border", kind = "choice", path = "damagemeter.borderTexture", choices = S.BorderChoices,
     apply = Refresh, section = "dm.frame" }
 
-S:Row{ key = "dm.chatTab", path = "damagemeter.chatTab", apply = Refresh, section = "dm.meterTab", half = true, hidden = ChatOff }
-S:Row{ key = "dm.chatTabIgnoreFade", path = "damagemeter.chatTabIgnoreFade", apply = Refresh, section = "dm.meterTab", half = true,
+S:Row{ key = "dm.chatTab", path = "damagemeter.chatTab", apply = Refresh, section = "dm.meterTab", hidden = ChatOff }
+-- the two below sit under the Meter Tab switch (parent): its options, greyed while it is off
+S:Row{ key = "dm.chatTabIgnoreFade", path = "damagemeter.chatTabIgnoreFade", apply = Refresh, section = "dm.meterTab", parent = "dm.chatTab",
     hidden = ChatOff, disabled = NotInChat }
 S:Row{ key = "dm.chatTabOpen", kind = "choice", path = "damagemeter.chatTabOpen", choices = { "click", "combat", "group", "login" },
-    apply = ApplyVisibility, section = "dm.meterTab", hidden = ChatOff, disabled = NotInChat }
+    apply = ApplyVisibility, section = "dm.meterTab", parent = "dm.chatTab", hidden = ChatOff, disabled = NotInChat }
 
 S:Row{ key = "dm.mouseover", path = "damagemeter.showOnMouseover", apply = ApplyVisibility,
     disabled = function() return AlwaysVisible() or InChat() end, tab = "tweaks", section = "dm.tweaks", half = true }

@@ -591,7 +591,7 @@ local function BuildFlare()
     local manager = _G.StatusTrackingBarManager
     if manager and manager.UnregisterAllEvents then manager:UnregisterAllEvents() end
 
-    -- faded out (Show Condition), the bar lets the mouse through; its own hover text comes back with it
+    -- faded out (Visibility), the bar lets the mouse through; its own hover text comes back with it
     hooksecurefunc(flare, "SetAlpha", function(f, alpha)
         local on = (alpha or 1) > 0.05
         if f.ftMouse ~= on then
@@ -602,14 +602,15 @@ local function BuildFlare()
     end)
 
     LEM:AddFrame(flare, OnFlareMoved, FLARE_DEFAULT, FLARE_LABEL)
-    LEM:AddFrameSettings(flare, {
+    -- dropdowns, sliders, switches (ns.OrderEditSettings)
+    LEM:AddFrameSettings(flare, ns.OrderEditSettings({
         { name = L["Width"], kind = LEM.SettingType.Slider, default = 560, minValue = 200, maxValue = 1200, valueStep = 2,
           get = function() return GetDb().width or 560 end, set = function(_, value) GetDb().width = value; LayoutFlare() end },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 14, minValue = 6, maxValue = 30, valueStep = 1,
           get = function() return GetDb().height or 14 end, set = function(_, value) GetDb().height = value; LayoutFlare() end },
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = TEXTURE_NAME, values = TextureValues(),
           get = function() return GetDb().texture or TEXTURE_NAME end, set = function(_, value) GetDb().texture = value; LayoutFlare() end },
-    })
+    }))
     LEM:RegisterCallback("layout", function(layoutName) PlaceFlare(layoutName) end)
     LEM:RegisterCallback("enter", UpdateFlare)
     LEM:RegisterCallback("exit", UpdateFlare)
@@ -623,7 +624,8 @@ end
 --------------------------------------------------
 function XPB:ShouldLoad()
     local ab = ns.db and ns.db.profile and ns.db.profile.actionbars
-    return ab and ab.enabled or false   -- always on with the module: no switch of its own
+    -- with the module, unless its FlareUI XP Bar switch is off (Blizzard's bars are then untouched)
+    return (ab and ab.enabled and not (ab.xpbar and ab.xpbar.enabled == false)) or false
 end
 
 -- The FlareUI XP Bar, for the Visibility module's fader
