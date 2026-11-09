@@ -1,5 +1,4 @@
 local _, ns = ...
-if GetLocale() ~= "frFR" then return end
-local L = ns.L
+local L = ns.LocaleStrings("frFR")
 
 --@localization(locale="frFR", format="lua_additive_table", handle-unlocalized="ignore")@
