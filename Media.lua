@@ -54,6 +54,10 @@ local FONT_ALPHABETS = {
 
 for mediaType, entries in pairs(ASSETS) do
     for name, relativePath in pairs(entries) do
+        -- FlareUI's own fonts with Russian letters: their families keep them (Core.lua, ns.FontFamily)
+        if mediaType == "font" and FONT_ALPHABETS[name] == LATIN_CYRILLIC and ns.FontFamily then
+            ns.FontFamily.cyrillic[(MEDIA_PATH .. relativePath):lower():gsub("/", "\\")] = true
+        end
         local langMask = mediaType == "font" and FONT_ALPHABETS[name] or nil
         local ok, err = pcall(LSM.Register, LSM, mediaType, name, MEDIA_PATH .. relativePath, langMask)
         if not ok then

@@ -34,6 +34,8 @@ local TRACK_COLOR   = { 0.15, 0.15, 0.15, 0.9 }
 -- Blizzard's XP purple and rested blue
 local COLOR_XP     = { 0.58, 0.00, 0.55 }          -- #94008C
 local COLOR_RESTED = { 0.00, 0.39, 0.88 }          -- #0063E0
+-- Quest XP: what the quests ready to hand in would give
+local COLOR_QUEST  = { 1.00, 0.76, 0.10 }
 
 --------------------------------------------------
 -- 4. HELPERS
@@ -105,7 +107,39 @@ local function FormatValues(value, maxValue)
     return values
 end
 
--- Each kind of section: value, max, rested bonus (XP only), colour and text
+-- The reward XP of the quests in the log: those ready to hand in, and (Quest XP Counts "all" or
+-- "zone") those still in progress. Read again only after a quest log change, a level-up or a new zone
+-- (questXPStale), not on every XP tick
+local questXPStale, questXPDone, questXPOpen = true, 0, 0
+-- the quests ready to hand in, { title, xp }, biggest first, for the tooltip
+local questXPList = {}
+local QUEST_LIST_MAX = 10
+local function QuestXPTotals()
+    if not questXPStale then return questXPDone, questXPOpen end
+    questXPStale = false
+    local db = GetDb()
+    local mode = db and db.questXPMode or "done"
+    local done, open = 0, 0
+    wipe(questXPList)
+    for i = 1, C_QuestLog.GetNumQuestLogEntries() do
+        local info = C_QuestLog.GetInfo(i)
+        local id = info and not info.isHeader and info.questID
+        if id and id > 0 and (mode ~= "zone" or C_QuestLog.IsOnMap(id)) then
+            local xp = GetQuestLogRewardXP(id) or 0
+            if C_QuestLog.ReadyForTurnIn(id) or C_QuestLog.IsComplete(id) then
+                done = done + xp
+                if xp > 0 then questXPList[#questXPList + 1] = { info.title or "?", xp } end
+            elseif mode ~= "done" then
+                open = open + xp
+            end
+        end
+    end
+    table.sort(questXPList, function(a, b) return a[2] > b[2] end)
+    questXPDone, questXPOpen = done, open
+    return done, open
+end
+
+-- Each kind of section: value, max, rested bonus and quest XP (XP only), colour and text
 local Read = {}
 
 function Read.xp()
@@ -121,7 +155,11 @@ function Read.xp()
     else
         text = L["XP"] .. "  " .. FormatValues(value, maxValue)
     end
-    return { value = value, max = maxValue, rested = rested, color = color, text = text }
+    local quest, questOpen = 0, 0
+    if db and db.questXP then quest, questOpen = QuestXPTotals() end
+    if quest > 0 then text = text .. "  " .. L["+%s quest XP"]:format(BreakUpLargeNumbers(quest)) end
+    return { kind = "xp", value = value, max = maxValue, rested = rested, quest = quest, questOpen = questOpen,
+        color = color, text = text, level = UnitLevel("player") }
 end
 
 function Read.rep(data)
@@ -157,7 +195,16 @@ function Read.rep(data)
         local named = _G[STANDING_BY_REACTION[reaction] or "FACTION_YELLOW_COLOR"]
         color = named and { named:GetRGB() } or COLOR_RESTED
     end
+    -- the standing's name, as Blizzard's reputation panel shows it
+    local standing
+    local friend = C_GossipInfo.GetFriendshipReputation(factionID)
+    if friend and friend.friendshipFactionID and friend.friendshipFactionID > 0 then
+        standing = friend.reaction
+    else
+        standing = GetText and GetText("FACTION_STANDING_LABEL" .. reaction, UnitSex("player")) or nil
+    end
     return {
+        kind = "rep", name = data.name, standing = standing, capped = capped,
         value = value, max = maxValue, rested = 0, color = color,
         text = capped and data.name or (data.name .. "  " .. FormatValues(value, maxValue)),
     }
@@ -170,6 +217,7 @@ function Read.honor()
     local named = (faction == "Alliance" and PLAYER_FACTION_COLOR_ALLIANCE) or (faction == "Horde" and PLAYER_FACTION_COLOR_HORDE)
     local color = named and { named:GetRGB() } or COLOR_RESTED
     return {
+        kind = "honor", level = UnitHonorLevel and UnitHonorLevel("player") or nil,
         value = value, max = maxValue, rested = 0, color = color,
         text = HONOR .. "  " .. FormatValues(value, maxValue),
     }
@@ -197,9 +245,91 @@ local function PickSections()
     return left, right
 end
 
+-- XP per hour this session: the XP gained between readings (a level-up adds what the old level still
+-- needed), over the time since the first reading. Shown after a minute.
+local xpRate = {}
+local function TrackXP()
+    local value, maxValue, level = UnitXP("player"), UnitXPMax("player"), UnitLevel("player")
+    if not (value and maxValue and level) then return false end
+    local gained = false
+    if not xpRate.start then
+        xpRate.start, xpRate.total = GetTime(), 0
+    elseif level > (xpRate.level or level) then
+        xpRate.total = xpRate.total + math.max(0, (xpRate.max or 0) - (xpRate.value or 0)) + value
+        gained = true
+    elseif level == xpRate.level and value > (xpRate.value or value) then
+        xpRate.total = xpRate.total + value - xpRate.value
+        gained = true
+    end
+    xpRate.value, xpRate.max, xpRate.level = value, maxValue, level
+    return gained
+end
+
+local function XPPerHour()
+    local elapsed = xpRate.start and GetTime() - xpRate.start or 0
+    if elapsed < 60 or not xpRate.total or xpRate.total <= 0 then return nil end
+    return xpRate.total * 3600 / elapsed
+end
+
+-- The bar's tooltip, unless Tooltips > On action/data bars hides it (Hold Shift shows it)
+local function ShowSectionTooltip(section)
+    local info = section.info
+    if not info then return end
+    if ns.Tooltips and ns.Tooltips.BarTooltipHidden and ns.Tooltips.BarTooltipHidden() then
+        GameTooltip:Hide()
+        return
+    end
+    ns.OwnGameTooltip(section, "ANCHOR_TOP")
+    local function Pct(v, m) return m > 0 and math.floor(v / m * 100 + 0.5) or 0 end
+    if info.kind == "xp" then
+        GameTooltip:AddLine(LEVEL and (LEVEL .. " " .. (info.level or "")) or L["XP"], 1, 0.82, 0)
+        GameTooltip:AddDoubleLine(L["XP"], ("%s / %s (%d%%)"):format(BreakUpLargeNumbers(info.value), BreakUpLargeNumbers(info.max), Pct(info.value, info.max)), 1, 1, 1, 1, 1, 1)
+        GameTooltip:AddDoubleLine(L["To next level"], BreakUpLargeNumbers(math.max(0, info.max - info.value)), 1, 1, 1, 1, 1, 1)
+        if info.rested and info.rested > 0 then
+            GameTooltip:AddDoubleLine(L["Rested"], ("%s (%d%%)"):format(BreakUpLargeNumbers(info.rested), Pct(info.rested, info.max)), 1, 1, 1, COLOR_RESTED[1] + 0.3, COLOR_RESTED[2] + 0.3, 1)
+        end
+        if (info.quest or 0) > 0 then
+            GameTooltip:AddDoubleLine(L["Quests ready to hand in"], BreakUpLargeNumbers(info.quest), 1, 1, 1, COLOR_QUEST[1], COLOR_QUEST[2], COLOR_QUEST[3])
+            -- each one, so the total can be trusted (a talk quest counts as ready too)
+            for i = 1, math.min(#questXPList, QUEST_LIST_MAX) do
+                local entry = questXPList[i]
+                GameTooltip:AddDoubleLine("   " .. entry[1], BreakUpLargeNumbers(entry[2]), 0.8, 0.8, 0.8, 0.8, 0.8, 0.8)
+            end
+            if #questXPList > QUEST_LIST_MAX then
+                GameTooltip:AddLine("   " .. L["and %d more"]:format(#questXPList - QUEST_LIST_MAX), 0.6, 0.6, 0.6)
+            end
+        end
+        if (info.questOpen or 0) > 0 then
+            GameTooltip:AddDoubleLine(L["Quests in progress"], BreakUpLargeNumbers(info.questOpen), 1, 1, 1, COLOR_QUEST[1], COLOR_QUEST[2], COLOR_QUEST[3])
+        end
+        local rate = XPPerHour()
+        if rate then
+            GameTooltip:AddDoubleLine(L["XP per hour"], BreakUpLargeNumbers(math.floor(rate)), 1, 1, 1, 1, 1, 1)
+            local left = math.max(0, info.max - info.value)
+            if left > 0 and SecondsToTime then
+                GameTooltip:AddDoubleLine(L["Time to level"], SecondsToTime(math.floor(left / rate * 3600)), 1, 1, 1, 1, 1, 1)
+            end
+        end
+    elseif info.kind == "rep" then
+        GameTooltip:AddLine(info.name or REPUTATION, 1, 0.82, 0)
+        if info.standing then GameTooltip:AddLine(info.standing, info.color[1], info.color[2], info.color[3]) end
+        if not info.capped then
+            GameTooltip:AddDoubleLine(REPUTATION, ("%s / %s (%d%%)"):format(BreakUpLargeNumbers(info.value), BreakUpLargeNumbers(info.max), Pct(info.value, info.max)), 1, 1, 1, 1, 1, 1)
+        end
+    elseif info.kind == "honor" then
+        GameTooltip:AddLine(HONOR, 1, 0.82, 0)
+        if info.level and HONOR_LEVEL_LABEL then GameTooltip:AddLine(HONOR_LEVEL_LABEL:format(info.level), 1, 1, 1) end
+        GameTooltip:AddDoubleLine(HONOR, ("%s / %s (%d%%)"):format(BreakUpLargeNumbers(info.value), BreakUpLargeNumbers(info.max), Pct(info.value, info.max)), 1, 1, 1, 1, 1, 1)
+    else
+        GameTooltip:Hide()
+        return
+    end
+    GameTooltip:Show()
+end
+
 -- Edit Mode samples, so the frame can be placed whatever is tracked
 local function SampleSections()
-    return { value = 6, max = 10, rested = 2, color = COLOR_RESTED, text = L["XP"] },
+    return { value = 6, max = 10, rested = 2, quest = GetDb().questXP and 1 or 0, color = COLOR_RESTED, text = L["XP"] },
            { value = 4, max = 10, rested = 0, color = FACTION_GREEN_COLOR and { FACTION_GREEN_COLOR:GetRGB() } or COLOR_RESTED, text = REPUTATION }
 end
 
@@ -220,6 +350,20 @@ local function CreateSection(parent)
     rested:Hide()
     section.Rested = rested
 
+    -- quest XP: from the left edge to where handing in the finished quests would take the fill
+    local quest = section:CreateTexture(nil, "BORDER", nil, 1)
+    quest:SetPoint("TOPLEFT")
+    quest:SetPoint("BOTTOMLEFT")
+    quest:Hide()
+    section.Quest = quest
+
+    -- quests still in progress (Quest XP Counts): paler, past the finished ones
+    local questOpen = section:CreateTexture(nil, "BORDER", nil, 0)
+    questOpen:SetPoint("TOPLEFT")
+    questOpen:SetPoint("BOTTOMLEFT")
+    questOpen:Hide()
+    section.QuestOpen = questOpen
+
     local textHolder = CreateFrame("Frame", nil, section)
     textHolder:SetAllPoints()
     textHolder:SetFrameLevel(section:GetFrameLevel() + 2)
@@ -229,15 +373,34 @@ local function CreateSection(parent)
     text:SetWordWrap(false)
     section.Text = text
 
-    -- the numbers on mouseover
+    -- the numbers on mouseover, and the tooltip (Shift pressed or let go while hovering redraws it)
     section:SetScript("OnEnter", function(self)
         local db = GetDb()
         if not (db and db.textMode == "ALWAYS") then self.Text:Show() end
+        ShowSectionTooltip(self)
+        self:RegisterEvent("MODIFIER_STATE_CHANGED")
     end)
     section:SetScript("OnLeave", function(self)
         local db = GetDb()
         if not (db and db.textMode == "ALWAYS") then self.Text:Hide() end
+        self:UnregisterEvent("MODIFIER_STATE_CHANGED")
+        if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
     end)
+    section:SetScript("OnEvent", function(self) if self:IsMouseOver() then ShowSectionTooltip(self) end end)
+
+    -- a short light over the fill on an XP gain
+    local flash = section:CreateTexture(nil, "OVERLAY")
+    flash:SetAllPoints(section:GetStatusBarTexture() or section)
+    flash:SetColorTexture(1, 1, 1, 1)
+    flash:SetBlendMode("ADD")
+    flash:SetAlpha(0)
+    local anim = flash:CreateAnimationGroup()
+    local up = anim:CreateAnimation("Alpha")
+    up:SetFromAlpha(0); up:SetToAlpha(0.35); up:SetDuration(0.15); up:SetOrder(1)
+    local down = anim:CreateAnimation("Alpha")
+    down:SetFromAlpha(0.35); down:SetToAlpha(0); down:SetDuration(0.5); down:SetOrder(2)
+    flash.anim = anim
+    section.Flash = flash
     return section
 end
 
@@ -245,7 +408,11 @@ local function FillSection(section, info, width)
     if not info then section:Hide() return end
     local fraction = info.max > 0 and info.value / info.max or 0
     local smooth = Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.ExponentialEaseOut
-    if smooth and section:IsShown() then section:SetValue(fraction, smooth) else section:SetValue(fraction) end
+    -- it glides forward only: a level-up or a new faction lands at once instead of sliding back
+    -- across the whole bar
+    local forward = section.ftFraction == nil or fraction >= section.ftFraction
+    section.ftFraction = fraction
+    if smooth and forward and section:IsShown() then section:SetValue(fraction, smooth) else section:SetValue(fraction) end
     local r, g, b = info.color[1], info.color[2], info.color[3]
     section:SetStatusBarColor(r, g, b, 1)
     if info.rested and info.rested > 0 then
@@ -256,6 +423,24 @@ local function FillSection(section, info, width)
     else
         section.Rested:Hide()
     end
+    if info.quest and info.quest > 0 then
+        local reach = math.min(1, (info.value + info.quest) / info.max)
+        section.Quest:SetWidth(math.max(1, reach * width))
+        section.Quest:SetVertexColor(COLOR_QUEST[1], COLOR_QUEST[2], COLOR_QUEST[3], REST_ALPHA + 0.15)
+        section.Quest:Show()
+    else
+        section.Quest:Hide()
+    end
+    if info.questOpen and info.questOpen > 0 then
+        local reach = math.min(1, (info.value + (info.quest or 0) + info.questOpen) / info.max)
+        section.QuestOpen:SetWidth(math.max(1, reach * width))
+        section.QuestOpen:SetVertexColor(COLOR_QUEST[1], COLOR_QUEST[2], COLOR_QUEST[3], REST_ALPHA - 0.15)
+        section.QuestOpen:Show()
+    else
+        section.QuestOpen:Hide()
+    end
+    section.info = info
+    if section:IsMouseOver() and GameTooltip:IsOwned(section) then ShowSectionTooltip(section) end
     section.Text:SetText(info.text or "")
     section:Show()
 end
@@ -264,7 +449,13 @@ local function UpdateFlare()
     if not flare then return end
     local db = GetDb()
     local left, right
-    if LEM:IsInEditMode() then left, right = SampleSections() else left, right = PickSections() end
+    local gained = false
+    if LEM:IsInEditMode() then
+        left, right = SampleSections()
+    else
+        if GameRulesUtil.CanShowExperienceBar() then gained = TrackXP() end
+        left, right = PickSections()
+    end
     if not left then flare:Hide() return end
 
     local width, height = db.width or 560, db.height or 14
@@ -277,6 +468,11 @@ local function UpdateFlare()
     flare.Right:SetSize(leftWidth, height)
     FillSection(flare.Left, left, leftWidth)
     FillSection(flare.Right, right, leftWidth)
+    -- XP is the left section whenever it shows
+    if gained and left.kind == "xp" and flare.Left.Flash then
+        flare.Left.Flash.anim:Stop()
+        flare.Left.Flash.anim:Play()
+    end
     local pipHeight = height + 2 * PIP_OVERHANG
     flare.Pip:SetSize(math.max(4, math.floor(pipHeight * PIP_RATIO + 0.5)), pipHeight)
     flare.Pip:SetShown(right ~= nil)
@@ -295,12 +491,18 @@ local function LayoutFlare()
     flare.Border:SetBackdropBorderColor(BORDER_COLOR[1], BORDER_COLOR[2], BORDER_COLOR[3], 1)
     for _, section in ipairs({ flare.Left, flare.Right }) do
         section:SetStatusBarTexture(texture)
+        -- the gain flash covers the fill only (the fill region exists once the texture is set)
+        if section.Flash and section:GetStatusBarTexture() then section.Flash:ClearAllPoints(); section.Flash:SetAllPoints(section:GetStatusBarTexture()) end
         section.Track:SetTexture(texture)
         section.Track:SetVertexColor(TRACK_COLOR[1], TRACK_COLOR[2], TRACK_COLOR[3], TRACK_COLOR[4])
         section.Rested:SetTexture(texture)
+        section.Quest:SetTexture(texture)
+        section.QuestOpen:SetTexture(texture)
         ApplyFont(section.Text)
         section.Text:SetShown(db.textMode == "ALWAYS")
     end
+    -- the quest log only matters with Show Quest XP on (it changes often)
+    if db.questXP then pcall(flare.RegisterEvent, flare, "QUEST_LOG_UPDATE") else flare:UnregisterEvent("QUEST_LOG_UPDATE") end
     UpdateFlare()
 end
 
@@ -345,6 +547,10 @@ local FLARE_EVENTS = {
     "CVAR_UPDATE",   -- Blizzard's "show honor as XP" switch is a CVar; every other one is skipped below
 }
 
+-- the events after which the quest XP total is read again
+local QUEST_XP_EVENTS = { QUEST_LOG_UPDATE = true, PLAYER_LEVEL_UP = true, PLAYER_ENTERING_WORLD = true, UNIT_LEVEL = true,
+    ZONE_CHANGED_NEW_AREA = true }
+
 local function BuildFlare()
     LEM = LibStub("FlareEditMode")
     flare = CreateFrame("Frame", FLARE_NAME, UIParent)
@@ -369,6 +575,7 @@ local function BuildFlare()
     local queued = false
     flare:SetScript("OnEvent", function(_, event, cvar)
         if event == "CVAR_UPDATE" and cvar ~= "showHonorAsExperience" then return end
+        if QUEST_XP_EVENTS[event] then questXPStale = true end
         if queued then return end
         queued = true
         C_Timer.After(0, function() queued = false; UpdateFlare() end)
@@ -378,6 +585,21 @@ local function BuildFlare()
     pcall(flare.RegisterUnitEvent, flare, "UNIT_LEVEL", "player")
 
     KeepBlizzardBarsHidden()
+    -- Blizzard's hidden bars' manager keeps handling its events (fades, layout, the bottom action bar
+    -- positions on every XP tick) for bars nobody sees: silenced for the session, as the FlareUI bar
+    -- replaces them while Action Bars is on
+    local manager = _G.StatusTrackingBarManager
+    if manager and manager.UnregisterAllEvents then manager:UnregisterAllEvents() end
+
+    -- faded out (Show Condition), the bar lets the mouse through; its own hover text comes back with it
+    hooksecurefunc(flare, "SetAlpha", function(f, alpha)
+        local on = (alpha or 1) > 0.05
+        if f.ftMouse ~= on then
+            f.ftMouse = on
+            f.Left:EnableMouse(on)
+            f.Right:EnableMouse(on)
+        end
+    end)
 
     LEM:AddFrame(flare, OnFlareMoved, FLARE_DEFAULT, FLARE_LABEL)
     LEM:AddFrameSettings(flare, {
@@ -401,7 +623,7 @@ end
 --------------------------------------------------
 function XPB:ShouldLoad()
     local ab = ns.db and ns.db.profile and ns.db.profile.actionbars
-    return ab and ab.enabled and ab.xpbar and ab.xpbar.enabled or false
+    return ab and ab.enabled or false   -- always on with the module: no switch of its own
 end
 
 -- The FlareUI XP Bar, for the Visibility module's fader
@@ -410,6 +632,7 @@ function XPB:GetFrame()
 end
 
 function XPB:Refresh()
+    questXPStale = true   -- Quest XP Counts may have changed
     if flare then
         PlaceFlare()
         LayoutFlare()

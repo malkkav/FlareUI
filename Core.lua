@@ -159,11 +159,35 @@ local BLIZZ_POINT_SIZE = 20
 local POINT_ART, POINT_GAP = 1.2, 2
 
 -- One physical screen pixel in a frame's own units, so a 1-pixel line stays one pixel at any UI scale
+-- (the screen height can read 0 for a moment while the display mode changes: one unit then)
 function ns.PixelSize(frame)
     local factor = PixelUtil and PixelUtil.GetPixelToUIUnitFactor and PixelUtil.GetPixelToUIUnitFactor()
     local scale = frame:GetEffectiveScale()
-    if not (factor and scale and scale > 0) then return 1 end
+    if not (factor and factor > 0 and factor < math.huge and scale and scale > 0) then return 1 end
     return factor / scale
+end
+
+-- The pixel-exact layouts (combo segments, the quest tracker's lines) again after a UI scale or
+-- display change, out of combat
+do
+    local watcher = CreateFrame("Frame")
+    local function Relayout()
+        if InCombatLockdown() then
+            watcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+            return
+        end
+        watcher:UnregisterEvent("PLAYER_REGEN_ENABLED")
+        for _, module in ipairs({ ns.ResourceBars, ns.UnitFrames }) do
+            if module and module.initialized and module.Refresh then ns.SafeCall("Relayout Refresh", module.Refresh, module) end
+        end
+        local ot = ns.ObjectiveTracker
+        if ot and ot.initialized and ot.RequestRender then ns.SafeCall("Relayout tracker", ot.RequestRender, ot) end
+    end
+    watcher:RegisterEvent("UI_SCALE_CHANGED")
+    watcher:RegisterEvent("DISPLAY_SIZE_CHANGED")
+    watcher:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_ENABLED" then Relayout() else C_Timer.After(0.2, Relayout) end
+    end)
 end
 
 -- Segment i of n across a width, on whole screen pixels: left edge, width, pixel size
@@ -337,7 +361,8 @@ local defaults = {
             saveHistory = true,
 
             copyLinks = true,
-            hoverTooltips = true,       -- pointing at a chat link shows its tooltip
+            copyButton = true,          -- the copy icon in each window's top right corner
+            hoverTooltips = true,      -- pointing at a chat link shows its tooltip
             increaseLineHeight = false, -- a little more space between chat lines
             formatNPC = false,
             formatPlayer = false,
@@ -365,6 +390,7 @@ local defaults = {
             visibility = "always",
             fadeSpeed = "instant",
             autoHideDelay = 5,          -- Fade Delay: seconds the chat stays after showing (0 = at once)
+            minAlpha = 0,               -- Min Alpha: how far the chat fades out (0 to 0.9)
 
             -- Typography
             chatFont = { face = "Arial Narrow", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -385,8 +411,9 @@ local defaults = {
             stopAutoAddSpells = true,
             gryphonsBehind = false,     -- Gryphons Behind Bars: the end caps draw under the bars
             steadyAttackFlash = true,   -- Steady Attack Highlight: auto-attack buttons stay lit, no blinking
+            dimOnCooldown = false,      -- Dim on cooldown: icons grey while a real cooldown (not the GCD) runs
             autoRanks = false,          -- Update Spell Ranks: a new rank replaces the old one on the bars
-            stealthPaging = true,       -- Auto-Paging for Stealth: rogues' bar 1 switches to page 7
+            stealthPaging = true,       -- Auto-Paging for Stealth: bar 1 to page 7 (rogue Stealth) or 8 (druid Prowl)
             noStancePaging = false,     -- No Auto-Paging for Stances: warriors' bar 1 stays on its page
 
             -- Status colouring (one row sets both)
@@ -395,8 +422,8 @@ local defaults = {
                 unusable = { desaturate = true },
             },
 
-            -- the FlareUI XP Bar (Modules/XPBar.lua), placed in Edit Mode; off = Blizzard's bars untouched
-            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Forever", textMode = "HOVER", textFormat = "VALUES", layouts = {} },
+            -- the FlareUI XP Bar (Modules/XPBar.lua), placed in Edit Mode; always on with the module
+            xpbar = { width = 560, height = 14, texture = "FlareUI Forever", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", layouts = {} },
 
             -- Typography
             hotkeyFont = { face = "Arial Narrow", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -414,6 +441,7 @@ local defaults = {
         damagemeter = {
             enabled = false,
             fadeSpeed = "instant",      -- instant | fast | slow: every show and hide (Visibility, mouseover)
+            minAlpha = 0,               -- Min Alpha: how far the meter fades out (0 to 0.9)
 
             opacity = 0.5,
             borderTexture = "FlareUI Frames",
@@ -430,6 +458,11 @@ local defaults = {
             chatTabIgnoreFade = false,  -- on the Meter tab the chat never fades, whatever its Visibility
             chatTabOpen = "combat",     -- the Meter tab opens on its own: click | combat | group | login
             autoThreat = false,         -- the Threat tab when combat starts, Blizzard's view when it ends
+            resetOnInstance = false,    -- clear the meter on entering a new dungeon or raid
+            threatPullLine = false,     -- Threat tab: a line on the bars where you would pull the mob
+            threatPullFlash = false,    -- Threat tab: your bar flashes as you near that line
+            threatTankLead = false,     -- Threat tab: the tank's row shows its lead over second place
+            threatValueDisplay = "percent", -- Threat tab: "both" / "percent" / "value"
         },
 
         -- [[ MINIMAP MODULE ]]
@@ -439,6 +472,8 @@ local defaults = {
             autoZoom = 5,               -- seconds before zooming back out (0 = off)
             buttonBag = true,           -- the badge opens a bag with every addon's minimap button (MinimapBag.lua)
             clockStats = true,          -- framerate and latency in the clock's tooltip
+            microMenu = true,           -- middle-click the map: a list of Blizzard's panels
+            coordsOnHover = true,       -- the coordinates under the map show only while pointing at it
             -- Fonts tab: the zone name and the clock (Forever's own look by default)
             zoneFont  = { face = "Friz Quadrata TT", size = 10, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             clockFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -454,6 +489,8 @@ local defaults = {
             foreverStyle = true,        -- Forever's bronze portrait ring on player / target / focus; off = Addon style (UnitFramesRing.lua)
             auraStyle = "square",       -- the unit frames' aura icons: square | round
             auraTimer = "none",         -- none | below | bottom | middle
+            auraTimerColor = false,     -- the timer turns yellow, then red, as it runs out
+            auraSwipe = "both",         -- both | icon (over the icon) | border (around the edge) | none
             -- The look is set per frame in Edit Mode (units.* below).
             -- font: level, name and health; fontPower: power value; fontCast: spell name and timer.
             font      = { face = "Friz Quadrata TT", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -462,7 +499,7 @@ local defaults = {
             -- positions per Edit Mode layout: layouts[name][unit] = { point, x, y }
             layouts = {},
             -- Blizzard's totem frame on FlareUI Totems (Modules/Totems.lua): size in %, totems per row
-            totems = { size = 90, perRow = 4 },
+            totems = { size = 90, perRow = 4, swipe = "both", timer = "none" },
             -- aura timers and stack counts; size 0 (Auto) follows the icon size. The stack font starts
             -- as a copy of the timer font (ns.SeedFont)
             auraFont = { face = "Friz Quadrata TT", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -493,7 +530,7 @@ local defaults = {
                 orientation = "VERTICAL",   -- VERTICAL | HORIZONTAL
                 layouts = {},
                 classic = {
-                    width = 240, height = 70, powerHeight = 12, spacing = 14, healthText = "percent", powerText = false,
+                    width = 240, height = 70, powerHeight = 12, spacing = 14, healthText = "percent", powerText = "value",
                     showLevel = true, portrait = "none",
                     texture = "FlareUI Forever", border = "FlareUI Thick",
                     absorbTexture = "FlareUI Striped",
@@ -537,36 +574,37 @@ local defaults = {
                 enabled = true,
                 layouts = {},
                 width = 240, height = 70, powerHeight = 12, grow = "DOWN", spacing = 14,
-                healthText = "percent", powerText = false, showLevel = true, portrait = false, raidIcon = true,
+                healthText = "percent", powerText = "value", showLevel = true, portrait = false, raidIcon = true,
                 mirror = true, onlyMyDebuffs = true, absorbTexture = "FlareUI Striped",
                 texture = "FlareUI Forever", border = "FlareUI Thick",
                 debuffs = "INSIDE_TOPRIGHT", buffs = "INSIDE_TOPLEFT", auraSize = 16, hideBuffs = "PERMANENT",
                 castbar = true, castHeight = 14, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
             },
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
-            playerCastbar = { enabled = true, width = 250, height = 25, texture = "FlareUI Forever", borderTexture = "FlareUI Thin", icon = true, timer = true },
+            playerCastbar = { enabled = true, width = 250, height = 25, texture = "FlareUI Forever", borderTexture = "FlareUI Thin", icon = true, timer = true, queueMark = false, channelTicks = false, pushback = false, latencyZone = true },
             units = {
-                player       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = true, showLevel = true,
+                player       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true,
                                  texture = "FlareUI Forever", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24 },
-                target       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = true, showLevel = true, mirror = true,
+                target       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true, mirror = true,
                                  texture = "FlareUI Forever", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
                                  castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24, onlyMyDebuffs = true },
-                targettarget = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
+                targettarget = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin" },
-                focus        = { enabled = true, width = 160, height = 35, powerHeight = 0, healthText = "percent", powerText = false, showLevel = true, mirror = true,
+                focus        = { enabled = true, width = 160, height = 35, powerHeight = 0, healthText = "percent", powerText = "value", showLevel = true, mirror = true,
                                  texture = "FlareUI Forever", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
                                  castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 18, onlyMyDebuffs = true },
-                focustarget  = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
+                focustarget  = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin" },
-                pet          = { enabled = true, width = 120, height = 30, powerHeight = 0, healthText = "none", powerText = false, showLevel = false,
+                pet          = { enabled = true, width = 120, height = 30, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin",
                                  absorbTexture = "FlareUI Striped",
+                                 castbar = false, castbarPosition = "BOTTOM", castHeight = 12, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "OFF", debuffs = "OFF", auraSize = 12, hideBuffs = "PERMANENT" },
             },
             -- Fade Player and Pet: all off = always shown ("fade" turns the set on)
@@ -597,6 +635,7 @@ local defaults = {
             style = "round",            -- square | round
             swipe = "both",             -- both (default) | icon (over the icon) | border (around the edge) | none
             timer = "below",            -- below (under the icon) | bottom (along its bottom edge)
+            timerColor = false,         -- the timer turns yellow, then red, as it runs out
             arrive = false,             -- new icons fade in while dropping into place
             sort = "applied", reverse = false, mineFirst = true,   -- Aura Ordering (both frames)
             font = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -629,6 +668,7 @@ local defaults = {
             showGuild = true,           -- Blizzard's guild line on players
             showGuildRank = false,      -- the rank after the guild's name
             hideFaction = false,
+            compareShift = true,        -- comparison tooltips only while Shift is held
             showItemID = false,
             showSpellID = false,
 
@@ -651,6 +691,7 @@ local defaults = {
             showNames = true,           -- the hovered button names its action
             position = "cursor",        -- cursor | center: where a mouse radial opens
             activation = "hold",        -- hold (release to use) | toggle (press to open, click to use)
+            scale = 1,                  -- Radial Scale: the whole radial's size
         },
 
         -- [[ QUEST TRACKER MODULE ]] minimized and collapsed state per character (CharDB().objectiveTracker)
@@ -704,16 +745,31 @@ local defaults = {
             nameplateQuest = false,     -- quest badge on enemy nameplates that belong to an active quest
             nameplateHideLevel = false, -- Blizzard's level box on the right of nameplates hidden
             nameplateHideNames = false, -- unit names on Blizzard's nameplates hidden
+            nameplateLevelName = false, -- with the level box hidden: the level before the plate's name
+            -- Bags and Looting (Modules/Bags.lua): all off leaves Blizzard's bag windows alone
+            bagColumns = 0,             -- combined backpack columns; 0 = Blizzard's (10)
+            bagGaps = true,             -- each bag starts a new row, with a gap
+            bagButtons = true,          -- bag slot buttons down the combined backpack's side
+            bagThickBorders = false,    -- FlareUI Thick in place of the always-on Thin border
+            bagRarityBorders = true,    -- slot borders in the item's quality colour
+            bagJunkIcon = true,         -- the junk coin on grey items always, not only at a vendor
+            bagUpgradeArrow = true,     -- green arrow on gear that beats what you wear (Bags.lua Upgrade)
             hideErrors = false,
             hideZoneText = false,
-            hidePartyTitle = false,
             hidePortraitNumbers = false,
             mailBook = false,           -- Mail Address Book: own characters beside Send Mail's "To:"
             merchantKnown = false,      -- Gray Out Known Items: known items greyed out at merchants
+            bulkBuy = false,            -- Buy More Than One Stack: Shift+click buys several stacks at a merchant
             petFood = false,            -- Pet Food in Bags: a paw on food the hunter pet eats
             skipLootConfirm = false,    -- Skip Loot Confirmations: bind-on-loot and roll dialogs
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
             gamepadPrompt = true,       -- Gamepad mode prompt: offer Blizzard's Gamepad UI on a controller press
+            rumbleAlerts = false,       -- Rumble on alerts: the controller rumbles for ready checks, queue invites ...
+            rumbleProcs = false,        -- Rumble on procs: a short rumble when a spell lights up
+            mapFade = false,            -- Fade Map While Moving: Blizzard's mapFade CVar
+            taxiMap = false,            -- Open Flight Map at Once: a flight master with no quests skips its talk
+            fishCast = false,           -- Double-click to fish: a second right-click casts with a pole in hand
+            fishSound = false,          -- Fishing sounds: music and ambience down, effects up while fishing
             combatPlates = false,       -- Enemy Nameplates in Combat Only
             hideTips = false,
             autoDelete = false,         -- DELETE typed into the destroy-item confirmation
@@ -731,6 +787,49 @@ local defaults = {
 --------------------------------------------------
 -- 5. SHARED UTILITIES
 --------------------------------------------------
+-- Caught errors: the last 20 are kept (account-wide) for bug reports, shown with /fui errors. Nothing
+-- is printed when one is caught.
+ns.ERRORS_KEPT = 20
+function ns.LogError(where, err)
+    local global = ns.db and ns.db.global
+    if not global or err == nil then return end
+    global.errors = global.errors or {}
+    local list = global.errors
+    local version = C_AddOns.GetAddOnMetadata("FlareUI", "Version") or "?"
+    local build = select(2, GetBuildInfo()) or "?"
+    local text = tostring(err):gsub("[\r\n]+", " ")
+    list[#list + 1] = ("%s | %s | %s | %s | %s"):format(date("%Y-%m-%d %H:%M"), version, build, where, text)
+    while #list > ns.ERRORS_KEPT do table.remove(list, 1) end
+end
+
+-- pcall that keeps what failed in the log (no table per call; trailing nil results survive)
+local function LoggedResult(where, ok, ...)
+    if not ok then ns.LogError(where, (...)) end
+    return ok, ...
+end
+function ns.SafeCall(where, fn, ...)
+    return LoggedResult(where, pcall(fn, ...))
+end
+
+-- /fui errors: the log in a window to copy from; /fui errors clear empties it
+function ns.ErrorsCommand(args)
+    local global = ns.db and ns.db.global
+    if not global then return end
+    if args == "clear" then
+        global.errors = nil
+        print("|cff33ff99FlareUI:|r " .. L["Error log cleared."])
+        return
+    end
+    local list = global.errors
+    if not list or #list == 0 then
+        print("|cff33ff99FlareUI:|r " .. L["No errors caught."])
+        return
+    end
+    local _, class = UnitClass("player")
+    local head = ("FlareUI %s | build %s | %s | %s %d"):format(C_AddOns.GetAddOnMetadata("FlareUI", "Version") or "?",
+        select(2, GetBuildInfo()) or "?", GetLocale(), class or "?", UnitLevel("player") or 0)
+    ns.Perf.ShowText(L["FlareUI caught errors"], head .. "\n\n" .. table.concat(list, "\n"))
+end
 -- Buff and debuff timers read s, m, h and d in every language; Blizzard's own units follow the client's
 -- ("min" in some). The same bands as Blizzard's: a unit runs to 1.5 of the next one, rounded up.
 local AURA_TIME_BANDS = {
@@ -771,11 +870,35 @@ local function AuraTimerOptions()
     return auraTimerOptions
 end
 
--- Hands an aura button its timer text
-function ns.SetAuraDurationText(button, fontString)
+-- Timer colour by time left: the client colours the text from a step curve on the time remaining
+-- (secret-safe): red under 5 seconds, yellow under 10, white above. false when the client lacks it.
+local auraTimerColorOptions
+local function AuraTimerColorOptions()
+    if auraTimerColorOptions ~= nil then return auraTimerColorOptions end
+    auraTimerColorOptions = false
+    if not (C_CurveUtil and C_CurveUtil.CreateColorCurve and Enum.DurationTextBindingProperty) then return false end
+    local ok, curve = pcall(C_CurveUtil.CreateColorCurve)
+    if not (ok and curve) then return false end
+    if Enum.LuaCurveType then pcall(curve.SetType, curve, Enum.LuaCurveType.Step) end
+    for _, point in ipairs({ { 0, 1, 0.25, 0.2 }, { 5, 1, 0.82, 0 }, { 10, 1, 1, 1 } }) do
+        if not pcall(curve.AddPoint, curve, point[1], CreateColor(point[2], point[3], point[4])) then return false end
+    end
+    local options = {}
+    for k, v in pairs(AuraTimerOptions()) do options[k] = v end
+    options.textColor = { curve = curve, property = Enum.DurationTextBindingProperty.RemainingDuration }
+    auraTimerColorOptions = options
+    return options
+end
+
+-- Hands an aura button its timer text. colorByTime: the timer colour follows the time left.
+function ns.SetAuraDurationText(button, fontString, colorByTime)
+    local colored = colorByTime and AuraTimerColorOptions()
+    if colored and pcall(button.SetDurationText, button, fontString, colored) then return end
     if not pcall(button.SetDurationText, button, fontString, AuraTimerOptions()) then
         pcall(button.SetDurationText, button, fontString, {})
     end
+    -- turned off: the text keeps the curve's last colour otherwise
+    pcall(fontString.SetTextColor, fontString, 1, 1, 1)
 end
 
 -- GameTooltip's health bar only hides on close, so a tooltip reused without closing keeps it. Hidden
@@ -865,6 +988,77 @@ function ns.SetFont(fontString, path, size, flags)
     retryTicker = retryTicker or C_Timer.NewTicker(RETRY_SECONDS, RetryFonts)
 end
 
+-- Font families for text other players write (names, meter rows, tooltips). The game draws a whole
+-- string with one member of a family, picked by its letters: the chosen font for Latin text, and for
+-- Russian, Korean or Chinese a font that has those letters. A plain SetFont keeps only the chosen
+-- file, which on an English client draws Cyrillic and Chinese / Korean as boxes. Table fields, not
+-- file-scope locals.
+ns.FontFamily = {
+    alphabets = { "roman", "russian", "korean", "simplifiedchinese", "traditionalchinese" },
+    -- Blizzard's own face for each alphabet, as its font families have it
+    stock = { russian = "Fonts\\FRIZQT___CYR.TTF", korean = "Fonts\\2002.TTF",
+              simplifiedchinese = "Fonts\\ARKai_T.ttf", traditionalchinese = "Fonts\\blei00d.TTF" },
+    -- the client's own alphabet takes the chosen font (on that client it has those letters)
+    clientAlphabet = ({ koKR = "korean", zhCN = "simplifiedchinese", zhTW = "traditionalchinese", ruRU = "russian" })[GetLocale()],
+    -- files that draw the Russian alphabet (lower case); FlareUI's own register theirs (Media.lua)
+    cyrillic = { ["fonts\\frizqt___cyr.ttf"] = true, ["fonts\\arialn.ttf"] = true },
+    built = {},
+    count = 0,
+}
+
+function ns.FontHasCyrillic(path)
+    return type(path) == "string" and ns.FontFamily.cyrillic[path:lower():gsub("/", "\\")] == true
+end
+
+-- whether an alphabet's member takes the chosen file, or keeps Blizzard's face
+local function MemberTakesPath(alphabet, path)
+    local F = ns.FontFamily
+    return alphabet == "roman" or alphabet == F.clientAlphabet or (alphabet == "russian" and ns.FontHasCyrillic(path))
+end
+
+-- A string's font as a family. A string takes its family from its first font write: a plain SetFont
+-- would fix its face for good. Falls back to ns.SetFont where families can't be made.
+function ns.SetFontFamily(fontString, path, size, flags)
+    local F = ns.FontFamily
+    flags = flags or ""
+    if not (CreateFontFamily and fontString.SetFontObject and path and size) then
+        return ns.SetFont(fontString, path, size, flags)
+    end
+    local key = path .. "|" .. size .. "|" .. flags
+    local family = F.built[key]
+    if not family then
+        local members = {}
+        for _, alphabet in ipairs(F.alphabets) do
+            local file = MemberTakesPath(alphabet, path) and path or F.stock[alphabet]
+            members[#members + 1] = { alphabet = alphabet, file = file, height = size, flags = flags }
+        end
+        F.count = F.count + 1
+        local ok, made = pcall(CreateFontFamily, "FlareUI_FontFamily" .. F.count, members)
+        if not (ok and made) then return ns.SetFont(fontString, path, size, flags) end
+        family, F.built[key] = made, made
+    end
+    fontString:SetFontObject(family)
+end
+
+-- Blizzard's own font objects (tooltip text): set member by member, so the Cyrillic and Chinese /
+-- Korean members keep a face that has their letters, at the new size
+function ns.SetFontObjectFace(fontObject, path, size, flags)
+    flags = flags or ""
+    fontObject:SetFont(path, size, flags)
+    if not fontObject.GetFontObjectForAlphabet then return end
+    for _, alphabet in ipairs(ns.FontFamily.alphabets) do
+        local ok, member = pcall(fontObject.GetFontObjectForAlphabet, fontObject, alphabet)
+        if ok and member and member.SetFont then
+            if MemberTakesPath(alphabet, path) then
+                member:SetFont(path, size, flags)
+            else
+                local file = member:GetFont() or ns.FontFamily.stock[alphabet]
+                if file then member:SetFont(file, size, flags) end
+            end
+        end
+    end
+end
+
 -- The font a string shows or is waiting for, for copying its look to another string
 function ns.GetWantedFont(fontString)
     local want = pendingFonts[fontString]
@@ -898,8 +1092,8 @@ function ns.SeedFont(db, fromKey, toKey, flagKey, skipSize)
 end
 
 -- Aura groups can't be removed from a container, and each keeps its pooled buttons. So a group is
--- made once per lane and button look, then reused: filter, size, sort and layout change in place.
--- Only a new look makes a new group, as initializeFrame runs once per button.
+-- made once per lane, then reused: filter, size, sort, layout and the buttons' look change in place,
+-- so dragging a size slider never leaves a group of buttons behind for each step.
 -- store: the container's own table. Begin, then Add per lane, then Finish turns off the rest.
 ns.AuraGroups = {}
 local FONT_FIELDS = { "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }
@@ -935,14 +1129,54 @@ function ns.AuraGroups.Sig(...)
 end
 
 function ns.AuraGroups.Begin(store)
-    store.all = store.all or {}   -- lane .. look -> group key
+    store.all = store.all or {}     -- every group key made, for Finish
+    store.lanes = store.lanes or {} -- lane -> { key, look, init, buttons }: the lane's current group
     store.used = {}
+end
+
+-- A new look restyles the lane's group in place: its buttons' initializeFrame (all of FlareUI's can
+-- run again) is handed the new look, and pooled buttons made later get it too. Blizzard locks the
+-- buttons while auras are secret (in an instance even out of combat): a locked button keeps its old
+-- look and is restyled once auras can be read again, so the group is never replaced.
+local staleGroups, staleTicker = {}, nil
+local function RetryStale()
+    if C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() then return end
+    for group in pairs(staleGroups) do
+        for button in pairs(group.stale) do
+            if group.init and pcall(group.init, button) then group.stale[button] = nil end
+        end
+        if not group.init or not next(group.stale) then staleGroups[group] = nil end
+    end
+    if not next(staleGroups) and staleTicker then
+        staleTicker:Cancel()
+        staleTicker = nil
+    end
+end
+
+local function Restyle(group, init)
+    group.init = init
+    group.stale = group.stale or setmetatable({}, { __mode = "k" })
+    if not init then return end
+    for button in pairs(group.buttons) do
+        group.stale[button] = (not pcall(init, button)) or nil
+    end
+    if next(group.stale) then
+        staleGroups[group] = true
+        if not staleTicker then staleTicker = C_Timer.NewTicker(1, RetryStale) end
+    end
 end
 
 -- Returns the group's key, or nil and the error
 function ns.AuraGroups.Add(container, store, lane, look, filter, options)
-    local id = lane .. "\n" .. look
-    local key = store.all[id]
+    local group = store.lanes[lane]
+    local key
+    if group then
+        if group.look ~= look then
+            Restyle(group, options.initializeFrame)
+            group.look = look
+        end
+        key = group.key
+    end
     if key then
         local defaults = CustomAuraContainerGroupDefaultOptions
         local ok, err = pcall(function()
@@ -957,9 +1191,17 @@ function ns.AuraGroups.Add(container, store, lane, look, filter, options)
     else
         store.count = (store.count or 0) + 1
         key = lane .. "#" .. store.count
-        local ok, err = pcall(container.AddAuraGroup, container, key, filter, options)
+        group = { key = key, look = look, init = options.initializeFrame, buttons = setmetatable({}, { __mode = "k" }) }
+        local wrapped = {}
+        for k, v in pairs(options) do wrapped[k] = v end
+        wrapped.initializeFrame = function(button)
+            group.buttons[button] = true
+            if group.init then group.init(button) end
+        end
+        local ok, err = pcall(container.AddAuraGroup, container, key, filter, wrapped)
         if not ok then return nil, err end
-        store.all[id] = key
+        store.all[#store.all + 1] = key
+        store.lanes[lane] = group
     end
     store.used[key] = true
     return key
@@ -1004,7 +1246,7 @@ do
     end
 
     -- Player, target, focus, pet. udb: the unit's settings. Debuffs first: nearest the frame when both
-    -- share a corner. None with Hide Auras (focus).
+    -- share a corner.
     function AP.UnitLanes(unit, udb, editing)
         local lanes = {}
         if not udb or udb.hideAuras then return lanes end
@@ -1012,10 +1254,20 @@ do
         local mine = udb.onlyMyDebuffs and unit ~= "player"
         lanes[1] = { key = "debuffs", kind = "debuffs", place = udb.debuffs, isDebuff = true,
                      filter = "HARMFUL", enemyFilter = mine and "HARMFUL|PLAYER" or nil }
+        -- Highlight Purgeable Buffs (target, focus): the buffs you or your group can purge or dispel
+        -- lead the row with Blizzard's stealable border, the rest follow on the same row. The client
+        -- decides from the filter, so secret auras sort too. Not in Edit Mode (one sample row).
+        local candidates = AP.HideBuffs(udb.hideBuffs, editing)
+        local purge = udb.purgeHighlight and not editing and (unit == "target" or unit == "focus")
+        if purge then
+            lanes[#lanes + 1] = { key = "purge", kind = "buffs", place = udb.buffs, isDebuff = false, stealable = true,
+                                  filter = "HELPFUL|RAID_PLAYER_DISPELLABLE", candidates = candidates }
+        end
         -- Only My Buffs (player): the PLAYER filter
-        lanes[2] = { key = "buffs", kind = "buffs", place = udb.buffs, isDebuff = false,
-                     filter = (unit == "player" and udb.onlyMyBuffs) and "HELPFUL|PLAYER" or "HELPFUL",
-                     candidates = AP.HideBuffs(udb.hideBuffs, editing) }
+        lanes[#lanes + 1] = { key = "buffs", kind = "buffs", place = udb.buffs, isDebuff = false, joinPrevious = purge or nil,
+                     filter = purge and "HELPFUL|!RAID_PLAYER_DISPELLABLE"
+                         or ((unit == "player" and udb.onlyMyBuffs) and "HELPFUL|PLAYER" or "HELPFUL"),
+                     candidates = candidates }
         return lanes
     end
 
@@ -1031,19 +1283,30 @@ do
             -- plain rules on every place, as the target frame
             lanes[1] = { key = "debuffs", kind = "debuffs", place = st.debuffs, isDebuff = true, policy = "none",
                          filter = st.onlyMyDebuffs == false and "HARMFUL" or "HARMFUL|PLAYER" }
-            lanes[2] = { key = "buffs", kind = "buffs", place = st.buffs, isDebuff = false, policy = "none",
-                         filter = "HELPFUL", candidates = AP.HideBuffs(st.hideBuffs, opts.editing) }
+            -- Highlight Purgeable Buffs (boss tiles): as on the target frame, purgeable buffs and
+            -- enrages (Frenzy: Tranquilizing Shot) first with the stealable border, the rest after
+            local candidates = AP.HideBuffs(st.hideBuffs, opts.editing)
+            local purge = st.purgeHighlight and not opts.editing
+            if purge then
+                lanes[#lanes + 1] = { key = "purge", kind = "buffs", place = st.buffs, isDebuff = false, policy = "none",
+                                      stealable = true, filter = "HELPFUL|RAID_PLAYER_DISPELLABLE", candidates = candidates }
+            end
+            lanes[#lanes + 1] = { key = "buffs", kind = "buffs", place = st.buffs, isDebuff = false, policy = "none",
+                                  joinPrevious = purge or nil,
+                                  filter = purge and "HELPFUL|!RAID_PLAYER_DISPELLABLE" or "HELPFUL", candidates = candidates }
             return lanes
         end
         local dispelIcons = opts.dispelPlace and opts.dispelPlace ~= "OFF"
-        -- Dispellable Debuffs Only: the RAID filter (dispellable by you); those land as ProcessAura's
-        -- Dispel, so the debuff row takes them whatever the dispel icons do
+        -- Dispellable Debuffs Only: Blizzard's own rule (its raid frames' option), which keeps boss,
+        -- role and priority debuffs and drops only the plain ones you can't dispel. Its place takes the
+        -- "processDispellable" policy; the dispel icons, in their own place, keep the usual rules.
         local debuffCandidates
-        if dispelIcons and not st.dispellableOnly and processed then
+        if dispelIcons and processed then
             debuffCandidates = { processedAuraType = processed.Debuff }
         end
-        lanes[#lanes + 1] = { key = "debuffs", kind = "debuffs", place = st.debuffs, isDebuff = true, policy = "process",
-                              filter = st.dispellableOnly and "HARMFUL|RAID" or "HARMFUL", candidates = debuffCandidates }
+        lanes[#lanes + 1] = { key = "debuffs", kind = "debuffs", place = st.debuffs, isDebuff = true,
+                              policy = st.dispellableOnly and "processDispellable" or "process",
+                              filter = "HARMFUL", candidates = debuffCandidates }
         if dispelIcons then
             lanes[#lanes + 1] = { key = "dispels", kind = "dispels", place = opts.dispelPlace, isDebuff = true, policy = "process",
                                   filter = "HARMFUL", candidates = processed and { processedAuraType = processed.Dispel } }
@@ -1070,10 +1333,12 @@ do
     -- The policy for a container holding these lanes. It is per container: a place holding any
     -- "process" lane keeps Blizzard's rules (processedAuraType candidates need them).
     function AP.PlacePolicy(lanes)
+        local policy = "none"
         for _, lane in ipairs(lanes) do
-            if lane.policy == "process" then return "process" end
+            if lane.policy == "processDispellable" then return "processDispellable" end
+            if lane.policy == "process" then policy = "process" end
         end
-        return "none"
+        return policy
     end
 
     -- A lane's filter for its unit right now
@@ -1087,6 +1352,8 @@ do
         if not P then return end
         if policy == "process" then
             pcall(container.SetAuraProcessingPolicy, container, P.ProcessAura, {})
+        elseif policy == "processDispellable" then
+            pcall(container.SetAuraProcessingPolicy, container, P.ProcessAura, { displayOnlyDispellableDebuffs = true })
         else
             pcall(container.SetAuraProcessingPolicy, container, P.None)
         end
@@ -1338,6 +1605,29 @@ function ns.FitEditModeBox(system, bounds)
 end
 
 --------------------------------------------------
+-- 7b. EDIT MODE IN A FIGHT
+-- Edit Mode stays open when a fight starts, but secure frames can't change visibility in one, so
+-- samples left up could not be taken down and aura timers would keep their sample text. A fight
+-- ends the previews (PLAYER_REGEN_DISABLED is the last moment before lockdown) and its end brings
+-- them back while Edit Mode is still open. Modules read ns.EditPreviewing(), not LEM:IsInEditMode(),
+-- and register what to redo with ns.OnEditFight.
+--------------------------------------------------
+do
+    local LEM = LibStub("FlareEditMode")
+    local fighting, callbacks = InCombatLockdown() and true or false, {}
+    function ns.EditPreviewing() return LEM:IsInEditMode() and not fighting end
+    function ns.OnEditFight(fn) callbacks[#callbacks + 1] = fn end
+    local events = CreateFrame("Frame")
+    events:RegisterEvent("PLAYER_REGEN_DISABLED")
+    events:RegisterEvent("PLAYER_REGEN_ENABLED")
+    events:SetScript("OnEvent", function(_, event)
+        fighting = event == "PLAYER_REGEN_DISABLED"
+        if not LEM:IsInEditMode() then return end
+        for _, fn in ipairs(callbacks) do securecallfunction(fn) end
+    end)
+end
+
+--------------------------------------------------
 -- 8. SECURE FRAME HIDING
 -- Keeps a Blizzard frame hidden (Hide plus an OnShow re-hide); protected frames wait for combat to end
 --------------------------------------------------
@@ -1376,11 +1666,26 @@ end
 local function ReHideOnShow(self)
     if not self.FlareUI_Hidden then return end
     if not (EditModeManagerFrame and EditModeManagerFrame:IsShown()) then self.FlareUI_WasShown = true end
-    if InCombatLockdown() then
+    -- a protected bar shown in a fight was hidden again by its secure OnShow (SecureReHide); a plain
+    -- frame can go at once
+    if InCombatLockdown() and self:IsProtected() then
         pendingHides[self] = true
     else
         ns.RawHide(self)
     end
+end
+
+-- A protected bar Blizzard shows in a fight (a pet revived or called: the pet bar) can't be hidden
+-- from addon code then, so its OnShow is wrapped in a secure snippet that hides it again, in combat
+-- too, while its "flareui-hide" attribute is set. The engine's Hide runs there, not Edit Mode's Lua.
+local secureHideHeader
+local function SecureReHide(frame)
+    if frame.FlareUI_SecureReHide or not frame:IsProtected() or not SecureHandlerWrapScript then return end
+    secureHideHeader = secureHideHeader or CreateFrame("Frame", nil, UIParent, "SecureHandlerBaseTemplate")
+    local ok = pcall(SecureHandlerWrapScript, frame, "OnShow", secureHideHeader, [[
+        if self:GetAttribute("flareui-hide") then self:Hide() end
+    ]])
+    if ok then frame.FlareUI_SecureReHide = true end
 end
 
 function ns.HideFrameSecurely(frame, shouldHide)
@@ -1402,10 +1707,15 @@ function ns.HideFrameSecurely(frame, shouldHide)
             frame.FlareUI_ReHideHooked = true
             frame:HookScript("OnShow", ReHideOnShow)
         end
+        if frame:IsProtected() then
+            frame:SetAttribute("flareui-hide", true)
+            SecureReHide(frame)
+        end
         ns.RawHide(frame)
     elseif frame.FlareUI_Hidden then
         -- only frames hidden here come back, and only if they were shown before
         frame.FlareUI_Hidden = nil
+        if frame:IsProtected() then frame:SetAttribute("flareui-hide", nil) end
         -- an action bar knows whether Blizzard wants it up (a pet bar, not after the pet is gone). The
         -- engine method: Edit Mode's override would re-lay the bars from addon code
         local wanted = frame.isShownExternal
@@ -1448,6 +1758,22 @@ function ns.WindowCloseSound() WindowSound(SOUND_CLOSE) end
 -- Per-character state is keyed by GUID in db.global.characters: on Forever UnitName gives the first
 -- name only and AceDB's char key can read "Unknown" at load.
 --------------------------------------------------
+-- What differs from the defaults (a saved style, a shared profile). A changed list (colours, fade
+-- groups) comes whole, so no sparse list is made; a key the defaults don't have comes whole.
+function ns.ProfileChanges(saved, defaults)
+    local out = {}
+    for key, value in pairs(saved) do
+        local default = type(defaults) == "table" and defaults[key] or nil
+        if type(value) == "table" and type(default) == "table" then
+            local sub = ns.ProfileChanges(value, default)
+            if next(sub) ~= nil then out[key] = value[1] ~= nil and value or sub end
+        elseif value ~= default then
+            out[key] = value
+        end
+    end
+    return out
+end
+
 function ns.PlayerGUID()
     local guid = UnitGUID("player")
     if guid == nil or (canaccessvalue and not canaccessvalue(guid)) then return nil end
@@ -1492,12 +1818,25 @@ ns.Dialogs["FLAREUI_RESET"] = {
     -- what undoes FlareUI's changes to the player's own settings, and the import marker, outlive the reset
     OnAccept = function()
         local global, kept = ns.db.global, {}
-        for _, key in ipairs({ "forcedCVars", "hiddenBubbles", "chatStyleBeforeGamepad", "padCameraRestore" }) do
+        for _, key in ipairs({ "forcedCVars", "hiddenBubbles", "chatStyleBeforeGamepad", "padCameraRestore", "fishingSounds",
+                             "editModeSwitchesSet" }) do
             kept[key] = global[key]
+        end
+        -- CVars saved per character keep their memory per character
+        local charForced = {}
+        for guid, entry in pairs(global.characters or {}) do
+            if type(entry) == "table" and entry.forcedCVars then charForced[guid] = entry.forcedCVars end
         end
         local imported = ns.db.sv.imported
         ns.db:ResetDB("Default")
         for key, value in pairs(kept) do ns.db.global[key] = value end
+        if next(charForced) then
+            ns.db.global.characters = ns.db.global.characters or {}
+            for guid, forced in pairs(charForced) do
+                ns.db.global.characters[guid] = ns.db.global.characters[guid] or {}
+                ns.db.global.characters[guid].forcedCVars = forced
+            end
+        end
         ns.db.sv.imported = imported
     end,
     reloads = true,
@@ -1517,6 +1856,15 @@ ns.Dialogs["FLAREUI_SYNC_RELOAD"] = {
     reloads = true,   -- in combat the macro can't run: yes says how to reload
     hideOnEscape = true,
     padSecure = true,
+}
+
+-- the settings window closed with changes that need a reload
+ns.Dialogs["FLAREUI_RELOAD_ON_CLOSE"] = {
+    text = L["Some changes need a reload to take effect."],
+    button1 = L["Reload now"],
+    button2 = L["Later"],
+    reloads = true,
+    hideOnEscape = true,
 }
 
 ns.Dialogs["FLAREUI_RELOAD"] = {
@@ -1558,6 +1906,9 @@ f:SetScript("OnEvent", function(self, event, ...)
         -- ResetDB (the Reset dialog) is already reloading, so it is not asked about again
         -- An open panel follows at once, for when the reload is declined
         local function OnProfileChanged()
+            -- the character's choice, kept by GUID (AceDB's own record is keyed by a name that can
+            -- read "Unknown" while the game starts; PLAYER_LOGIN below puts the choice back)
+            if ns.PlayerGUID() and ns.db then ns.CharDB().profileName = ns.db:GetCurrentProfile() end
             local panel = ns.SettingsPanel
             if panel and panel:IsShown() then panel:Refresh() end
             if not ns.reloading then ns.ShowDialog("FLAREUI_RELOAD") end
@@ -1579,6 +1930,23 @@ f:SetScript("OnEvent", function(self, event, ...)
             return
         end
 
+        -- Each character's profile, by GUID: before any module starts, so nothing needs a reload. A
+        -- character with no choice kept yet takes the profile it opened with.
+        local char = ns.CharDB()
+        local wanted, currentProfile = char.profileName, ns.db:GetCurrentProfile()
+        if type(wanted) == "string" and wanted ~= currentProfile then
+            local exists = false
+            for _, name in ipairs(ns.db:GetProfiles() or {}) do
+                if name == wanted then exists = true break end
+            end
+            if exists then
+                ns.reloading = true
+                pcall(ns.db.SetProfile, ns.db, wanted)
+                ns.reloading = nil
+            end
+        end
+        if ns.PlayerGUID() then char.profileName = ns.db:GetCurrentProfile() end
+
         local profile = ns.db.profile
         for name, module in pairs(ns.modules) do
             local shouldLoad = true
@@ -1589,6 +1957,7 @@ f:SetScript("OnEvent", function(self, event, ...)
                     shouldLoad = loadResult
                 else
                     print(string.format("|cffff0000FlareUI Warning:|r %s ShouldLoad() failed: %s", name, tostring(loadResult)))
+                    ns.LogError(name .. " ShouldLoad", loadResult)
                     shouldLoad = false
                 end
             end
@@ -1601,6 +1970,7 @@ f:SetScript("OnEvent", function(self, event, ...)
                 local initSuccess, initErr = pcall(module.Init, module)
                 if not initSuccess then
                     print(string.format("|cffff0000FlareUI Error:|r %s failed to load: %s", name, tostring(initErr)))
+                    ns.LogError(name .. " Init", initErr)
                 end
             end
         end

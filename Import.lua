@@ -41,7 +41,7 @@ for _, path in ipairs({
     "tooltips.showSpellID", "tooltips.visibility.actionBars", "tooltips.visibility.frameUnits",
     "tooltips.visibility.worldObjects", "tooltips.visibility.worldUnits",
     "tweaks.autoDelete", "tweaks.autoRepair", "tweaks.durabilityWarning", "tweaks.enabled",
-    "tweaks.fasterCameraZoom", "tweaks.fasterLoot", "tweaks.hideErrors", "tweaks.hidePartyTitle",
+    "tweaks.fasterCameraZoom", "tweaks.fasterLoot", "tweaks.hideErrors",
     "tweaks.hideTips", "tweaks.hideZoneText", "tweaks.maxCameraZoom", "tweaks.moveAnyFrame",
     "tweaks.moveLootToasts", "tweaks.nameplateCombo", "tweaks.nameplateHideLevel", "tweaks.nameplateQuest",
     "tweaks.sellJunk", "tweaks.syncUI", "tweaks.trainAll", "tweaks.way",
@@ -224,4 +224,10 @@ function ns.ImportOldSettings(defaults)
         end
     end)
     db.imported = ok and "1.x" or ("failed: " .. tostring(err))
+    -- before the settings open: written straight into the error log /fui errors shows
+    if not ok then
+        db.global = db.global or {}
+        db.global.errors = db.global.errors or {}
+        table.insert(db.global.errors, ("%s | 1.x import | %s"):format(date("%Y-%m-%d %H:%M"), tostring(err)))
+    end
 end

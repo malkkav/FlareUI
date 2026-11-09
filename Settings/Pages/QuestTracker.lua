@@ -18,6 +18,13 @@ S:On("PageShown", function(key)
     if ns.ObjectiveTracker and ns.ObjectiveTracker.SetSettingsPreview then ns.ObjectiveTracker:SetSettingsPreview(key == "qt") end
 end)
 
+-- Gamepad mode: Blizzard's own tracker shows instead (ObjectiveTracker.lua, OT:ShouldLoad); said
+-- at the top, where it can't be missed
+S:Row{
+    key = "qt.gamepad", kind = "legend",
+    hidden = function() return not ns.IsGamepadUI() end,
+    lines = function() return { S:Text("qt.gamepad", "desc") or "" } end,
+}
 S:Row{ key = "qt.opacity", kind = "choice", path = "objectivetracker.opacity", choices = S:OpacityChoices(), apply = Refresh }
 S:Row{ key = "qt.border", kind = "choice", path = "objectivetracker.borderTexture", choices = S.BorderChoices,
     apply = Refresh }

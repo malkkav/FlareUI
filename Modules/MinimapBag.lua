@@ -17,16 +17,16 @@ local LSM = LibStub("LibSharedMedia-3.0")
 local ipairs, pairs, type, wipe = ipairs, pairs, type, wipe
 
 local C = {
-    BUTTON = 28,              -- one icon
+    BUTTON = 24,              -- one icon
     SPACING = 4,
-    COLUMNS = 5,
+    COLUMNS = 6,
     PAD = 9,                  -- inside the panel's border
     GAP = 6,                  -- between the badge and the panel
     BORDER = "FlareUI Frames",
     OPACITY = 0.9,
     -- minimap children that are Blizzard's or FlareUI's
     SKIP = { "^Minimap", "^MiniMap", "^GameTime", "^TimeManager", "^QueueStatus", "^Expansion",
-             "^GarrisonLandingPage", "^AddonCompartment", "^FlareUI", "^HybridMinimap" },
+             "^GarrisonLandingPage", "^AddonCompartment", "^FlareUI", "^HybridMinimap", "^ExternalEventURL" },
     -- map pins other addons draw on the minimap: small named buttons, but never shortcuts
     PINS = { "^Questie", "^HandyNotes", "^GatherMate", "^GatherNote", "^TomTom", "^Archy", "^ZGV",
              "^DugisArrow", "^poiMinimap", "^Spy_Map", "^RareTracker", "^Routes", "^WestPointer",
@@ -116,8 +116,10 @@ local function IsForeignButton(frame)
     local name = frame:GetName()
     if name then
         if IsLibDBIconButton(frame, name) then return false end
+        -- some icon libraries name their buttons "MinimapButton_<lib>_LibDBIcon_<addon>": an addon's, not Blizzard's
+        local addonIcon = name:find("^MinimapButton_") and name:find("LibDBIcon", 1, true)
         for _, pattern in ipairs(C.SKIP) do
-            if name:find(pattern) then return false end
+            if not addonIcon and name:find(pattern) then return false end
         end
         for _, pattern in ipairs(C.PINS) do
             if name:find(pattern) then return false end
@@ -239,8 +241,8 @@ local function CollectEntries()
     -- other addons' buttons; a flood of them, hidden ones included, is some addon's pins, so none are
     -- taken. One its addon or player has hidden waits on the minimap until it's shown
     local found = {}
-    for _, parent in ipairs({ Minimap, MinimapCluster }) do
-        for _, child in ipairs({ parent:GetChildren() }) do
+    for _, parent in ipairs({ Minimap, MinimapBackdrop, MinimapCluster }) do
+        for _, child in ipairs(parent and { parent:GetChildren() } or {}) do
             if not adopted[child] and IsForeignButton(child) then found[#found + 1] = child end
         end
     end
@@ -337,11 +339,23 @@ local function OnIconLeave(self)
     GameTooltip:Hide()
 end
 
+-- a menu an addon opened from its icon (Blizzard's menus, or the old dropdown list)
+local function AnyMenuOpen()
+    local manager = Menu and Menu.GetManager and Menu.GetManager()
+    if manager and manager:IsAnyMenuOpen() then return true end
+    local list = _G.DropDownList1
+    return list and list:IsShown() or false
+end
+
+-- The click runs first and the bag closes a frame later: Blizzard closes a menu whose owner is hidden,
+-- so a launcher's right-click menu would vanish at once. A menu it opens keeps the bag open.
 local function OnIconClick(self, mouseButton)
     local e = self.entry
     if not e or Bag.justDragged then return end
     GameTooltip:Hide()
-    Bag:Close()
+    C_Timer.After(0, function()
+        if not AnyMenuOpen() then Bag:Close() end
+    end)
     if e.kind == "ldb" then
         if e.object.OnClick then e.object.OnClick(self, mouseButton) end
     elseif e.kind == "compartment" then
@@ -410,13 +424,29 @@ local function AnchorPanel()
     end
 end
 
--- A button another addon moves back onto the minimap goes straight back into the bag
+-- the cell an adopted button sits in; true while FlareUI itself places one
+local placing = false
+local function PlaceInCell(frame)
+    local cell = frame.FlareUI_BagCell
+    if not cell then return end
+    placing = true
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", panel, "TOPLEFT", cell[1], cell[2])
+    placing = false
+end
+
+-- A button another addon moves back onto the minimap goes straight back into the bag, and one its addon
+-- re-anchors (on its own events) goes back into its cell
 local function KeepAdoptedInBag()
     for frame in pairs(adopted) do
         if not frame.FlareUI_BagHooked then
             frame.FlareUI_BagHooked = true
             hooksecurefunc(frame, "SetParent", function(self, parent)
                 if parent ~= panel and adopted[self] and Bag:IsOn() then self:SetParent(panel) end
+            end)
+            hooksecurefunc(frame, "SetPoint", function(self)
+                if placing or not (adopted[self] and Bag:IsOn() and self:GetParent() == panel) then return end
+                PlaceInCell(self)
             end)
         end
         if not (panel and panel:IsShown()) and frame:GetParent() ~= panel then frame:SetParent(panel) end
@@ -446,8 +476,8 @@ function Bag:Layout()
             -- its own strata or a lower level would put it under the panel
             ns.CopyStrata(frame, panel)
             frame:SetFrameLevel(panel:GetFrameLevel() + 2)
-            frame:ClearAllPoints()
-            frame:SetPoint("CENTER", panel, "TOPLEFT", x + C.BUTTON / 2, y - C.BUTTON / 2)
+            frame.FlareUI_BagCell = { x + C.BUTTON / 2, y - C.BUTTON / 2 }
+            PlaceInCell(frame)
         else
             used = used + 1
             frame = GetIconButton(used)
@@ -594,6 +624,8 @@ local function CreatePanel()
     end)
     panel:SetScript("OnEvent", function(self, event)
         if event == "GLOBAL_MOUSE_UP" then OnDragStop() return end
+        -- a press on an addon's menu beside the bag: the menu needs its owner until the click lands
+        if AnyMenuOpen() then return end
         if self:IsMouseOver() or (badgeButton and badgeButton:IsMouseOver()) then return end
         self:Hide()
     end)
@@ -632,4 +664,14 @@ function Bag:Init()
     end
     Sweep()
     for _, delay in ipairs({ 0, 0.5, 1.5, 4 }) do C_Timer.After(delay, Sweep) end
+    -- an addon loaded later (on demand, or one that waits) gets its button parked too: one sweep a
+    -- moment after a burst of loads
+    local loads = CreateFrame("Frame")
+    local pending = false
+    loads:RegisterEvent("ADDON_LOADED")
+    loads:SetScript("OnEvent", function()
+        if pending then return end
+        pending = true
+        C_Timer.After(0.5, function() pending = false; Sweep() end)
+    end)
 end

@@ -114,7 +114,9 @@ local function SetEyeFrame(texture, index)
                         row * EYE_FRAME_SIZE / EYE_TEXTURE_H, (row + 1) * EYE_FRAME_SIZE / EYE_TEXTURE_H)
 end
 
--- Every selection overlay: Blizzard's systems plus addon frames with the selection mixin
+-- Every selection overlay: Blizzard's systems plus addon frames with the selection mixin. The addon
+-- ones are found by a walk over every frame in the UI once per Edit Mode visit, not per selection.
+local addonSelections
 local function ForEachSelection(fn)
     local seen = {}
     local manager = EditModeManagerFrame
@@ -127,13 +129,21 @@ local function ForEachSelection(fn)
             end
         end
     end
-    local frame = EnumerateFrames()
-    while frame do
-        if not seen[frame] and frame.ShowHighlighted and frame.ShowSelected and frame.MouseOverHighlight and frame.parent then
+    if not addonSelections then
+        addonSelections = {}
+        local frame = EnumerateFrames()
+        while frame do
+            if not seen[frame] and frame.ShowHighlighted and frame.ShowSelected and frame.MouseOverHighlight and frame.parent then
+                addonSelections[#addonSelections + 1] = frame
+            end
+            frame = EnumerateFrames(frame)
+        end
+    end
+    for _, frame in ipairs(addonSelections) do
+        if not seen[frame] then
             seen[frame] = true
             fn(frame)
         end
-        frame = EnumerateFrames(frame)
     end
 end
 
@@ -217,6 +227,7 @@ end
 -- 4. HOOKS
 --------------------------------------------------
 local function OnEditModeShown()
+    addonSelections = nil   -- frames made since the last visit are found again
     CreateEye()
     UpdateEye()
     ShowHint()

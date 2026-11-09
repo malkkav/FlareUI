@@ -46,6 +46,13 @@ local PAD_CANCEL   = GAMEPAD_FACE_RIGHT or "PAD2"   -- B / Circle closes a contr
 local PAD_PREV     = GAMEPAD_SHOULDER_LEFT or "PADLSHOULDER"    -- LB / RB: the aimed slot's previous /
 local PAD_NEXT     = GAMEPAD_SHOULDER_RIGHT or "PADRSHOULDER"   -- next sub-radial button (the mouse wheel's job)
 local PAD_DEAD_LEN = 0.5          -- a stick pushed less than this aims at nothing (the X)
+local AIM_NAME     = "FlareUI_RadialAim"   -- what the right stick's directions click while a controller radial is open
+local PAD_AIM_LEN  = 0.15         -- a stick event this far out moves the kept aim (STICKY)
+-- The right stick's directions arrive as these keys only while this CVar is on: on while a
+-- controller radial is open, the player's own value back after
+local STICK_KEYS_CVAR = "GamePadStickAxisButtons"
+local PAD_COMBO_STICKS = { "L3", "R3" }                  -- a controller key's stick press ...
+local PAD_COMBO_SIDES = { "TOP", "LT", "RT", "LTRT" }    -- ... and the triggers held (ns.ParsePadCombo)
 
 local ATLAS_POINTER       = "Radial_Wheel_Select_Pointer"
 local ATLAS_CIRCLE_MASK   = "CircleMaskScalable"
@@ -88,6 +95,7 @@ local ICON_SCALE_IDLE      = 0.88   -- the hovered button is full size
 local TINT_USABLE   = { 1, 1, 1 }
 local TINT_UNUSABLE = { 0.4, 0.4, 0.4 }
 local TINT_NO_MANA  = { 0.5, 0.5, 1 }
+local TINT_OUT_OF_RANGE = { 0.8, 0.1, 0.1 }
 local SWIPE_TEXTURE = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 
 -- Ping wheel look. Blizzard's divider and slice-light art exists for four slices only, so FlareUI
@@ -127,6 +135,8 @@ local MAX_RADIAL_DEPTH = 4
 local radial, caster, header, wheel, buttons = nil, nil, nil, nil, {}
 local catcher, macroButton          -- click mode's full-screen catcher, and the button macros click
 local padButton                     -- controller mode's button, clicked by the stick press
+local aimButton, padSticky          -- clicked by the right stick's directions; the aim it keeps (art side)
+local padLast = {}                  -- radial id -> the button a controller open used last (art side)
 local padStickIndex = 2             -- the right stick in C_GamePad's mapped state (RightStickIndex)
 local isOpen, selectedIndex, currentRadial = false, nil, nil
 local currentID                     -- the radial id currentRadial belongs to
@@ -135,6 +145,8 @@ local resolved = {}               -- currentRadial resolved to names / icons / a
 local resolvedCache = {}          -- every radial resolved, as the secure layer holds them
 local syncedIDs = {}              -- radial ids written to the secure layer, to retire deleted ones
 local syncedTags = {}             -- macro tags written to the secure layer, to retire renamed ones
+local syncDirty = true           -- the secure copy is out of date: the next open resolves and syncs again
+local mouseKeyed = {}             -- radial id -> true: "<id>-mousekey" written (a radial on a mouse button)
 local openedAt = 0
 local previewID, previewAnchor     -- set while the radial editor is open
 local CloseRadial                   -- section 9
@@ -202,7 +214,7 @@ local MICRO_PANELS = {
     character   = { order = 2,  label = L["Character"],    icon = 136047,  button = "CharacterMicroButton" },
     collections = { order = 3,  label = L["Collections"],  icon = 132261,  button = "CollectionsMicroButton" },
     groupfinder = { order = 4,  label = L["Group Finder"], icon = 132161,  button = "LFDMicroButton" },
-    guild       = { order = 5,  label = L["Guild & Communities"],          button = "GuildMicroButton" },
+    guild       = { order = 5,  label = L["Guild & Communities"], icon = "Interface\\Icons\\INV_Shirt_GuildTabard_01", button = "GuildMicroButton" },
     legacy      = { order = 6,  label = L["Legacy"],       icon = 4279397, button = "LegacyMicroButton" },
     macros      = { order = 6.5, label = L["Macros"],     icon = "Interface\\Icons\\INV_Misc_Note_06", macrotext = "/macro" },
     professions = { order = 7,  label = L["Professions"],  icon = 4202228, button = "ProfessionMicroButton" },
@@ -220,19 +232,95 @@ RM.MICRO_PANELS = MICRO_PANELS
 
 local GUILD_ICON = "Interface\\Icons\\INV_Shirt_GuildTabard_01"
 
+-- the player's own spells, and the pet's
+local function Known(spellID)
+    if IsPlayerSpell(spellID) then return true end
+    if C_SpellBook.IsSpellKnownOrInSpellBook then
+        return C_SpellBook.IsSpellKnownOrInSpellBook(spellID, Enum.SpellBookSpellBank.Pet) == true
+    end
+    return C_SpellBook.IsSpellKnown(spellID, Enum.SpellBookSpellBank.Pet) == true
+end
+
+-- The best rank of each spell in the player's book, by name; read again after the book changes
+local bestByName
+local function RankOf(spellID)
+    local subtext = C_Spell.GetSpellSubtext(spellID)
+    return type(subtext) == "string" and tonumber(subtext:match("(%d+)")) or 0
+end
+function RM.BestRank(name)
+    if not name then return nil end
+    if not bestByName then
+        bestByName = {}
+        local rankOf = {}
+        local bank = Enum.SpellBookSpellBank.Player
+        for line = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+            local lineInfo = C_SpellBook.GetSpellBookSkillLineInfo(line)
+            local count = (lineInfo and not lineInfo.offSpecID) and lineInfo.numSpellBookItems or 0
+            for offset = 1, count do
+                local item = C_SpellBook.GetSpellBookItemInfo(lineInfo.itemIndexOffset + offset, bank)
+                local id = item and item.spellID
+                local spellName = id and IsPlayerSpell(id) and C_Spell.GetSpellName(id)
+                if spellName then
+                    local rank = RankOf(id)
+                    if not rankOf[spellName] or rank > rankOf[spellName] then
+                        bestByName[spellName], rankOf[spellName] = id, rank
+                    end
+                end
+            end
+        end
+    end
+    return bestByName[name]
+end
+function RM.ForgetRanks() bestByName = nil end
+
+-- Update Spell Ranks (Action Bars) switches the radials' rank following on too
+local function FollowsRanks()
+    local bars = ns.db and ns.db.profile and ns.db.profile.actionbars
+    return bars and bars.autoRanks and true or false
+end
+
+-- A spell put on a radial at a lower rank than the best one known was picked on purpose: pinned to
+-- that rank. Run when a button is added, and once for buttons saved before ranks were followed.
+function RM.MarkRank(entry)
+    if not (entry and entry.kind == "spell" and entry.id) then return end
+    local name = C_Spell.GetSpellName(entry.id)
+    local best = name and RM.BestRank(name)
+    -- the book isn't read yet: asked again later
+    if not best then return end
+    entry.pinned = (best ~= entry.id and Known(entry.id) and RankOf(entry.id) < RankOf(best)) or nil
+    entry.rankChecked = true
+end
+
 -- the lookup APIs raise an error on a nil id, so id-based resolvers bail out first
 ACTIONS.spell = function(entry)
     if not entry.id then return nil end
     local info = C_Spell.GetSpellInfo(entry.id)
     if not info then return nil end
-    return info.name, { texture = info.iconID }, { type = "spell", spell = entry.id }
+    local spellID = entry.id
+    -- Radials are shared, so the rank is worked out per character: with Update Spell Ranks on, the
+    -- best rank this character knows, unless a lower one was put there on purpose (pinned). A
+    -- character who doesn't know the stored rank casts its best; one that knows no rank at all
+    -- (another class, a spell not learned yet) leaves the button out.
+    local best = RM.BestRank(info.name)
+    if not entry.rankChecked then RM.MarkRank(entry) end
+    if best and ((FollowsRanks() and not entry.pinned) or not Known(spellID)) then
+        spellID = best
+    elseif not Known(spellID) then
+        return nil
+    end
+    return info.name, { texture = info.iconID }, { type = "spell", spell = spellID }
 end
 
 ACTIONS.mount = function(entry)
     if not (entry.id and C_MountJournal) then return nil end
-    local name, spellID, icon = C_MountJournal.GetMountInfoByID(entry.id)
+    local name, spellID, icon, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(entry.id)
     if not (name and spellID) then return nil end
-    return name, { texture = icon }, { type = "spell", spell = spellID }
+    -- radials are shared: a mount this character doesn't have is left out
+    if isCollected == false then return nil end
+    -- by name, as /cast does: a mount's summon spell isn't in the spellbook, and casting it by id
+    -- may do nothing
+    local spellName = C_Spell.GetSpellName(spellID) or name
+    return name, { texture = icon }, { type = "spell", spell = spellName }
 end
 
 -- Blizzard's "item" action needs a NAME (an ID parses as a bag slot); an uncached name leaves the
@@ -240,19 +328,24 @@ end
 local awaitedItems = {}   -- item id -> true while a radial waits for its data
 ACTIONS.item = function(entry)
     if not entry.id then return nil end
+    -- an item this character neither carries nor wears is left out (it comes back with the item)
+    if C_Item.GetItemCount(entry.id) == 0 and not (C_Item.IsEquippedItem and C_Item.IsEquippedItem(entry.id)) then
+        return nil
+    end
+    -- the secure action takes "item:<id>", so the button works before the item's data is loaded;
+    -- only its label waits (the radial is laid out again when the data arrives)
     local name = C_Item.GetItemNameByID(entry.id)
     if not name then
         awaitedItems[entry.id] = true
         C_Item.RequestLoadItemDataByID(entry.id)
-        return nil
     end
     local icon = C_Item.GetItemIconByID and C_Item.GetItemIconByID(entry.id)
-    return name, { texture = icon }, { type = "item", item = name }
+    return name or L["Item"], { texture = icon }, { type = "item", item = "item:" .. entry.id }
 end
 
 -- What a saved macro casts right now, read from the player's macro of that name: the game works out
 -- #showtooltip and conditions such as [mod] or [@focus], as it does for action bars. The slice still
--- runs its own copy of the text; this only lends it the cooldown, the editor's tooltip and the icon.
+-- runs that macro (ACTIONS.macro); this lends it the cooldown, the editor's tooltip and the icon.
 -- Answers "spell", id or "item", id, then the macro's current icon; nothing when no macro has the name.
 function RM.MacroAction(entry)
     local name = entry and entry.name
@@ -270,8 +363,19 @@ function RM.MacroAction(entry)
     return nil, nil, icon
 end
 
+-- The player's macro of that name runs as it is now (edited since it was added, or another
+-- character's own version); the copy taken when it was added runs only where no macro has the name
 ACTIONS.macro = function(entry)
-    return entry.name or L["Macro"], { texture = entry.icon or 134400 },
+    local name = entry.name
+    if type(name) == "string" and name ~= "" then
+        local index = GetMacroIndexByName(name)
+        if canaccessvalue(index) and index and index > 0 then
+            local _, icon = GetMacroInfo(index)
+            if not canaccessvalue(icon) then icon = nil end
+            return name, { texture = icon or entry.icon or 134400 }, { type = "macro", macro = name }
+        end
+    end
+    return name or L["Macro"], { texture = entry.icon or 134400 },
         { type = "macro", macrotext = entry.text or "" }
 end
 
@@ -299,8 +403,30 @@ ACTIONS.worldmarker = function(entry)
         return L["Clear World Markers"], { atlas = "GM-raidMarker-remove" },
             { type = "worldmarker", action = "clear" }
     end
-    return ((_G.WORLD_MARKER or "World Marker %d"):format(m)), { atlas = "GM-raidMarker" .. m },
+    -- the game numbers world markers in its own order (blue square first); the raid icon each one
+    -- shows is the one Blizzard's raid manager pairs with it
+    local icon = RM.WorldMarkerIcon(m)
+    local name = _G["WORLD_MARKER" .. m]
+    if type(name) ~= "string" then
+        local iconName = icon and _G["RAID_TARGET_" .. icon]
+        name = iconName and L["%s World Marker"]:format(iconName) or (_G.WORLD_MARKER or "World Marker %d"):format(m)
+    end
+    return name, icon and { texture = ("Interface\\TargetingFrame\\UI-RaidTargetingIcon_%d"):format(icon) } or { atlas = "GM-raidMarker" .. m },
         { type = "worldmarker", marker = m, action = "toggle" }
+end
+
+-- world marker (the game's number) -> its raid icon (1 star ... 8 skull), as Blizzard's raid manager
+-- pairs them: icon button k places world marker WORLD_RAID_MARKER_ORDER[9 - k]
+local WORLD_ORDER = { 8, 4, 1, 7, 2, 3, 6, 5 }
+function RM.WorldMarkerIcon(marker)
+    local order = _G.WORLD_RAID_MARKER_ORDER or WORLD_ORDER
+    for k = 1, 8 do
+        if order[k] == marker then return 9 - k end
+    end
+end
+function RM.WorldMarkerForIcon(icon)
+    local order = _G.WORLD_RAID_MARKER_ORDER or WORLD_ORDER
+    return order[9 - icon]
 end
 
 ACTIONS.micromenu = function(entry)
@@ -403,6 +529,60 @@ ACTIONS.subradial = function(entry, depth, seen)
         { children = children, childIndex = 1, radialName = data.name, radialID = id }
 end
 
+-- Quest Items: the usable items of the quests in your log, tracked quests first, as one button whose
+-- choices are the items (LB / RB or the mouse wheel step through them, as a sub-radial's). It is gone
+-- while no quest has an item, and comes back with one.
+RM.QUEST_ITEMS_ICON = "Interface\\GossipFrame\\AvailableQuestIcon"
+ACTIONS.questitems = function(entry)
+    local children, taken = {}, {}
+    local function Add(logIndex)
+        if not logIndex or #children >= MAX_BUTTONS then return end
+        local link, texture = GetQuestLogSpecialItemInfo(logIndex)
+        local itemID = type(link) == "string" and tonumber(link:match("item:(%d+)"))
+        if not itemID or taken[itemID] then return end
+        taken[itemID] = true
+        local name = C_Item.GetItemNameByID(itemID) or link:match("%[(.-)%]") or L["Item"]
+        -- each child is an item of its own, so it shows its cooldown and count like one
+        children[#children + 1] = { name = name, icon = { texture = texture }, entry = { kind = "item", id = itemID },
+            attributes = { type = "item", item = "item:" .. itemID } }
+    end
+    for i = 1, C_QuestLog.GetNumQuestWatches() do
+        local questID = C_QuestLog.GetQuestIDForQuestWatchIndex(i)
+        Add(questID and C_QuestLog.GetLogIndexForQuestID(questID))
+    end
+    for logIndex = 1, C_QuestLog.GetNumQuestLogEntries() do
+        local info = C_QuestLog.GetInfo(logIndex)
+        if info and not info.isHeader then Add(logIndex) end
+    end
+    if #children == 0 then return nil end
+    local first = children[1]
+    return first.name, first.icon, first.attributes, { children = children, childIndex = 1 }
+end
+
+-- Party spell: one helpful spell spread over the group, a button for you and each party member
+-- (party1-4; in a raid, your own group), so you aim at a person and cast on them without changing
+-- your target. Units, not names, sit in the secure attributes; names are only drawn. The buttons
+-- follow the group out of combat (a change in a fight shows after it).
+ACTIONS.partycast = function(entry)
+    local name, icon, attributes = ACTIONS.spell(entry)
+    if not attributes then return nil end
+    local spread = {}
+    for _, unit in ipairs({ "player", "party1", "party2", "party3", "party4" }) do
+        if UnitExists(unit) then
+            local who = UnitName(unit)
+            local _, class = UnitClass(unit)
+            local color = canaccessvalue(class) and class and C_ClassColor.GetClassColor(class)
+            local label = (canaccessvalue(who) and who) or unit
+            if color then label = color:WrapTextInColorCode(label) end
+            spread[#spread + 1] = { name = label, icon = icon, entry = { kind = "spell", id = entry.id },
+                attributes = { type = "spell", spell = attributes.spell, unit = unit } }
+        end
+    end
+    if #spread == 0 then return nil end
+    local first = spread[1]
+    return name, first.icon, first.attributes, { spread = spread }
+end
+
 -- nil when unavailable (unknown spell, uncached item, emptied sub-radial...): the radial closes up around it
 local UNKNOWN_ICON = 134400
 
@@ -427,6 +607,10 @@ local function MarkerButtons()
 end
 
 RM.ResolveEntry = function(_, entry) return ResolveEntry(entry) end
+-- the radial's round button look, for the editor's icons (RadialEditor.lua)
+RM.RoundStyle = function() return RoundStyle() end
+RM.ROUND_BORDER_FRACTION = ROUND_BORDER / ROUND_SIZE
+RM.ROUND_BORDER_COLOR = BORDER_COLOR
 RM.MAX_BUTTONS = MAX_BUTTONS
 
 --------------------------------------------------
@@ -472,6 +656,16 @@ local function CreateRadialButton(index)
     button.Front = CreateFrame("Frame", nil, button)
     button.Front:SetAllPoints()
     button.Front:SetFrameLevel(button.Cooldown:GetFrameLevel() + 2)
+    -- a stackable item's count, or a spell's charges, in the corner
+    button.Count = button.Front:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    button.Count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
+    button.Count:Hide()
+    -- a world marker that is on the ground
+    button.Placed = button.Front:CreateTexture(nil, "OVERLAY")
+    button.Placed:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+    button.Placed:SetSize(14, 14)
+    button.Placed:SetPoint("TOPRIGHT", button, "TOPRIGHT", 0, 0)
+    button.Placed:Hide()
     button.Label = button.Front:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     button.Label:SetShadowColor(0, 0, 0, 1)
     button.Label:SetShadowOffset(1, -1)
@@ -610,6 +804,13 @@ local function ApplyButtonState(button, info)
         if icon and button.Icon:GetTexture() ~= icon then SetButtonIcon(button, { texture = icon }) end
     end
 
+    -- a mount: the Mount Journal's own check (indoors included); the spell check says no to every mount
+    if kind == "spell" and entry and entry.kind == "mount" and entry.id and C_MountJournal.GetMountUsabilityByID then
+        local isUsable = C_MountJournal.GetMountUsabilityByID(entry.id, true)
+        cooldown:Clear()
+        if Readable(isUsable) then usable = isUsable end
+        kind = nil
+    end
     if kind == "spell" then
         local cd = C_Spell.GetSpellCooldown(id)
         local duration = cd and Readable(cd.isActive) and cd.isActive and C_Spell.GetSpellCooldownDuration(id, true)
@@ -629,7 +830,38 @@ local function ApplyButtonState(button, info)
         cooldown:Clear()
     end
 
-    local t = usable and TINT_USABLE or (noMana and TINT_NO_MANA or TINT_UNUSABLE)
+    -- out of range of the target comes first, as on action bars (nil: no target, or no range)
+    local outOfRange = false
+    if kind == "spell" then
+        -- a party spell measures to its own person
+        local inRange = C_Spell.IsSpellInRange(id, (attributes and attributes.unit) or "target")
+        outOfRange = Readable(inRange) and inRange == false
+    elseif kind == "item" and not InCombatLockdown() and C_Item.IsItemInRange then
+        local ok, inRange = pcall(C_Item.IsItemInRange, id, "target")
+        outOfRange = ok and Readable(inRange) and inRange == false
+    end
+
+    -- the count: a stackable item's, or a spell's charges (shown as it comes, never compared)
+    local count
+    if kind == "item" then
+        local stack = C_Item.GetItemMaxStackSizeByID and C_Item.GetItemMaxStackSizeByID(id)
+        if Readable(stack) and stack and stack > 1 then count = C_Item.GetItemCount(id) end
+    elseif kind == "spell" and C_Spell.GetSpellCharges then
+        local charges = C_Spell.GetSpellCharges(id)
+        if charges and Readable(charges.maxCharges) and charges.maxCharges > 1 then count = charges.currentCharges end
+    end
+    if count then
+        button.Count:SetText(count)
+        button.Count:Show()
+    else
+        button.Count:Hide()
+    end
+
+    -- a world marker already placed: the button picks it up again
+    local marker = entry and entry.kind == "worldmarker" and entry.marker
+    button.Placed:SetShown(marker and marker > 0 and IsRaidMarkerActive and IsRaidMarkerActive(marker) or false)
+
+    local t = (outOfRange and TINT_OUT_OF_RANGE) or (usable and TINT_USABLE) or (noMana and TINT_NO_MANA or TINT_UNUSABLE)
     button.Icon:SetVertexColor(t[1], t[2], t[3])
 end
 
@@ -642,12 +874,17 @@ local stateEvents = CreateFrame("Frame")
 stateEvents:SetScript("OnEvent", RefreshButtonStates)
 -- (a modifier, target, focus or macro edit can change what a macro casts)
 local STATE_EVENTS = { "SPELL_UPDATE_COOLDOWN", "SPELL_UPDATE_USABLE", "BAG_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_USABLE",
-                       "MODIFIER_STATE_CHANGED", "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED", "UPDATE_MACROS" }
+                       "MODIFIER_STATE_CHANGED", "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED", "UPDATE_MACROS",
+                       "BAG_UPDATE_DELAYED", "SPELL_UPDATE_CHARGES", "RAID_TARGET_UPDATE" }
 
+-- range has no event: read every 0.2 s while the radial is up
+local stateTicker
 local function WatchButtonStates(watch)
     for _, event in ipairs(STATE_EVENTS) do
         if watch then stateEvents:RegisterEvent(event) else stateEvents:UnregisterEvent(event) end
     end
+    if stateTicker then stateTicker:Cancel(); stateTicker = nil end
+    if watch then stateTicker = C_Timer.NewTicker(0.2, RefreshButtonStates) end
 end
 
 -- Called back by the secure wheel handler, which owns the child choice; the art only follows it
@@ -670,7 +907,15 @@ local function ResolveButtons(list)
     for i = 1, #(list or {}) do
         if #out >= MAX_BUTTONS then break end
         local entry = ResolveEntry(list[i], 0, {})
-        if entry then out[#out + 1] = entry end
+        -- a party spell takes a button per person (ACTIONS.partycast)
+        if entry and entry.spread then
+            for _, person in ipairs(entry.spread) do
+                if #out >= MAX_BUTTONS then break end
+                out[#out + 1] = person
+            end
+        elseif entry then
+            out[#out + 1] = entry
+        end
     end
     return out
 end
@@ -697,6 +942,7 @@ function RM:LayoutRadial(fromCache)
         resolved = (currentID and resolvedCache[currentID]) or resolved
     else
         layoutPending = nil
+        syncDirty = false
         ResolveAll()
         resolved = (currentID and resolvedCache[currentID]) or ResolveButtons(currentRadial)
     end
@@ -865,48 +1111,46 @@ local function PadStick()
     return state and state.sticks and state.sticks[padStickIndex]
 end
 
--- The camera holds still while a controller radial is open. A frame of the addon's own taking stick
--- input stops walking too, so this borrows Blizzard's gamepad axis listener (InputAxisBinding.lua,
--- the one its binding stack uses for camera axis bindings): its right-stick function takes the
--- "Camera" stick while the radial is open, and the left stick passes on as before. Only when
--- Blizzard has no camera function of its own there; its stick input is turned on out of combat.
-local CAMERA_HOLD = function() return false end
-local cameraHeld, cameraEnabledHere
+-- While the controller radial is open the right stick aims it, so the camera holds still. A frame
+-- of FlareUI's own takes the camera stick's input and keeps it while a radial is aimed (returning
+-- false: handled), passing it on otherwise. Turning stick input on is protected, so it's done once,
+-- out of combat, when the controller radial is bound; it then stays on, and holding works in a
+-- fight too. Nothing of Blizzard's stick listener is touched.
+local cameraHeld = false
+local stickGuard
 
-local function AxisListener()
-    local listener = _G.inputBindingAxisListener
-    return listener and type(listener.right) == "table" and listener or nil
+local function GuardStick()
+    if stickGuard or InCombatLockdown() then return end
+    stickGuard = CreateFrame("Frame", nil, UIParent)
+    stickGuard:SetScript("OnGamepadStick", function(_, stick)
+        if cameraHeld and stick == "Camera" then return false end
+        return true
+    end)
+    stickGuard:EnableGamePadStick(true)
 end
 
 local function HoldCamera(on)
-    local listener = AxisListener()
-    if not listener then return end
+    cameraHeld = on and true or false
+end
+
+-- The right stick's directions come as keys (the aim button's clicks) only with the CVar on: on
+-- while a controller radial is open, the player's value back on close. The value to put back is
+-- saved too, so a crash or reload while open restores it at the next login (Init).
+local function SetStickKeys(on)
+    local global = ns.db and ns.db.global
+    if not global then return end
     if on then
-        if cameraHeld or listener.right.func ~= nil then return end
-        listener.right.func = CAMERA_HOLD
-        cameraHeld = true
-        if not listener:IsGamePadStickEnabled() and not InCombatLockdown() then
-            listener:EnableGamePadStick(true)
-            cameraEnabledHere = true
-        end
-    elseif cameraHeld then
-        if listener.right.func == CAMERA_HOLD then listener.right.func = nil end
-        cameraHeld = false
-        RM.ReleaseAxisListener()
+        if global.padStickKeysRestore ~= nil then return end
+        local value = C_CVar.GetCVar(STICK_KEYS_CVAR)
+        if value == nil or value == "1" then return end
+        if pcall(C_CVar.SetCVar, STICK_KEYS_CVAR, "1") then global.padStickKeysRestore = value end
+    elseif global.padStickKeysRestore ~= nil then
+        if pcall(C_CVar.SetCVar, STICK_KEYS_CVAR, global.padStickKeysRestore) then global.padStickKeysRestore = nil end
     end
 end
 
--- turns the listener's stick input back off when nothing of Blizzard's needs it (out of combat)
-function RM.ReleaseAxisListener()
-    local listener = AxisListener()
-    if not (listener and cameraEnabledHere) or cameraHeld or InCombatLockdown() then return end
-    local l, r = listener.left or {}, listener.right
-    if not (l.func or r.func or l.waitForCentering or r.waitForCentering) then listener:EnableGamePadStick(false) end
-    cameraEnabledHere = nil
-end
-
--- an earlier build changed the controller config's camera stick while a radial was open: put back
--- whatever it left
+-- Older settings may hold the camera stick's dead zones, saved when a radial changed them: put
+-- them back
 local function RestoreCameraConfig()
     local global = ns.db and ns.db.global
     local saved = global and global.padCameraRestore
@@ -940,15 +1184,26 @@ local function UpdateSelection()
     local count = #resolved
     if count == 0 then return end
 
-    local dx, dy, aimed
+    local dx, dy, aimed, kept
     if openMode == "pad" then
         local stick = PadStick()
         aimed = stick ~= nil and stick.len >= PAD_DEAD_LEN
-        if aimed then dx, dy = stick.x, stick.y end
+        if aimed then
+            dx, dy = stick.x, stick.y
+        elseif padSticky and padSticky <= count then
+            -- the stick let go: the button it last pointed at stays lit (what R3 or a release uses)
+            kept = padSticky
+        elseif RM:IsPadRepeatOn() and padLast[currentID] and padLast[currentID] <= count then
+            -- nothing aimed yet: the last button used, which pressing again uses
+            kept = padLast[currentID]
+        end
     else
         local cx, cy = CursorPosition()
+        -- the radial's own coordinates are in its scale (Radial Scale): back to the screen's
         local centerX, centerY = radial:GetCenter()
         if not centerX then return end
+        local s = radial:GetScale()
+        centerX, centerY = centerX * s, centerY * s
         dx, dy = cx - centerX, cy - centerY
         aimed = (dx * dx + dy * dy) > DEAD_ZONE_SQ
     end
@@ -960,6 +1215,10 @@ local function UpdateSelection()
 
         local interval = TAU / count
         index = math_floor(((QUARTER - angle) % TAU + interval / 2) / interval) % count + 1
+        SetCancelSelected(false)
+    elseif kept then
+        index = kept
+        radial.Pointer:Hide()
         SetCancelSelected(false)
     else
         -- dead zone: releasing here cancels
@@ -1036,29 +1295,40 @@ local function OpenRadial(radialID, mode)
     if isOpen then CloseRadial() end
     StopAnimation()
     openMode = mode or "hold"
-    -- laid out on every open so availability is current
     if radialID then
         RM:LoadRadial(radialID)
     else
         RM:LoadActiveRadial()
     end
-    RM:LayoutRadial()
+    -- the secure copy is rewritten only after something changed (RM.MarkDirty); otherwise the press
+    -- draws what it already holds
+    RM:LayoutRadial(not syncDirty and currentID ~= nil and resolvedCache[currentID] ~= nil and not InCombatLockdown())
     if #resolved == 0 then return end
     WatchButtonStates(true)
-    radial:SetScale(1)
+    local scale = tonumber(Option("scale", 1)) or 1
+    radial:SetScale(scale)
     local padIcon = ns.IsGamepadUI() and C_Texture.GetAtlasInfo(ATLAS_CANCEL_PAD)
     radial.CancelIcon:SetAtlas(padIcon and ATLAS_CANCEL_PAD or ATLAS_CANCEL_ICON)
 
     -- the secure layer measures from the same point
     local x, y
-    if openMode == "pad" then HoldCamera(true) end
-    if openMode == "pad" or Option("position", "cursor") == "center" then
+    padSticky = nil
+    if openMode == "pad" then
+        HoldCamera(true)
+        SetStickKeys(true)
+    end
+    -- the secure layer's own copy of Menu Position: a change made in a fight reaches it only after
+    -- the fight, and both sides must measure from the same point
+    local centered = header and header:GetAttribute("flare-center")
+    if centered == nil then centered = Option("position", "cursor") == "center" end
+    if openMode == "pad" or centered then
         x, y = UIParent:GetCenter()
     else
         x, y = CursorPosition()
     end
     radial:ClearAllPoints()
-    radial:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
+    -- offsets are in the radial's own (scaled) units
+    radial:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / scale, y / scale)
     radial.Pointer:Hide()
     SetCancelSelected(true)
 
@@ -1076,6 +1346,8 @@ end
 function CloseRadial()
     if not isOpen then return end
     HoldCamera(false)
+    SetStickKeys(false)
+    padSticky = nil
     isOpen = false
     openMode = nil
     radial:SetScript("OnUpdate", nil)
@@ -1126,9 +1398,11 @@ end
 -- so the full-screen catcher waits: left-click fires, middle-click opens a sub-radial in place
 -- (STACK / DEPTH), right-click goes back or closes, Escape closes; pressing the same macro or key
 -- again fires the aimed button. ROOT is the radial click mode opened.
--- Pad mode: L3 clicks PAD_NAME and opens; R3 (bound while open) fires what the right stick aims at
--- (GetGamePadState works in the restricted environment); LB / RB cycle the aimed slot; B, Escape or
--- L3 close.
+-- Pad mode: a radial's controller key (L3 or R3, alone or with LT / RT held) clicks PAD_NAME as
+-- PadL3 / PadR3 and opens it; R3 (bound while open) fires what the right stick aims at, or the aim it
+-- kept once let go (STICKY, from the aim button: the stick's directions arrive as keys while open);
+-- with Release the stick to use, letting go fires it. GetGamePadState works in the restricted
+-- environment. LB / RB cycle the aimed slot; B, Escape or L3 close.
 -- OPENX / OPENY: where the radial opened (screen centre with "flare-center").
 --------------------------------------------------
 local ACTION_KEYS = "type spell item macro macrotext unit marker action"
@@ -1141,7 +1415,8 @@ local SELECT_SNIPPET = ([[
     if MODE == "pad" then
         local state = GetGamePadState()
         local stick = state and state.sticks and state.sticks[self:GetAttribute("flare-padstick") or 2]
-        if not stick or stick.len < %s then return nil end
+        -- let go: the button the stick last pointed at (kept by the aim button, AIM_SNIPPET)
+        if not stick or stick.len < %s then return STICKY end
         dx, dy = stick.x, stick.y
     else
         if not OPENX then return nil end
@@ -1209,7 +1484,7 @@ local OPEN_CLICK_SNIPPET = [[
 -- self is the header; ... = quiet. Ends controller mode and its B / Escape bindings.
 local CLOSE_PAD_SNIPPET = [[
     if MODE ~= "pad" then return end
-    MODE = nil
+    MODE, STICKY = nil, nil
     self:ClearBindings()
     if not ... then self:CallMethod("OnSecureClose") end
 ]]
@@ -1217,7 +1492,13 @@ local CLOSE_PAD_SNIPPET = [[
 -- self is the header; ... = the radial id. Opens it in controller mode.
 local OPEN_PAD_SNIPPET = [[
     local id = ...
-    ACTIVE, MODE = id, "pad"
+    ACTIVE, MODE, STICKY = id, "pad", nil
+    HELD = newtable()
+    -- the right stick's directions (keys while the CVar is on) keep the aim
+    self:SetBindingClick(true, "PADRSTICKUP", "]] .. AIM_NAME .. [[", "AimUp")
+    self:SetBindingClick(true, "PADRSTICKDOWN", "]] .. AIM_NAME .. [[", "AimDown")
+    self:SetBindingClick(true, "PADRSTICKLEFT", "]] .. AIM_NAME .. [[", "AimLeft")
+    self:SetBindingClick(true, "PADRSTICKRIGHT", "]] .. AIM_NAME .. [[", "AimRight")
     self:SetBindingClick(true, "]] .. PAD_CANCEL .. [[", "]] .. PAD_NAME .. [[", "RightButton")
     self:SetBindingClick(true, "ESCAPE", "]] .. PAD_NAME .. [[", "RightButton")
     self:SetBindingClick(true, "]] .. PAD_PREV .. [[", "]] .. PAD_NAME .. [[", "Button4")
@@ -1226,8 +1507,9 @@ local OPEN_PAD_SNIPPET = [[
     self:CallMethod("OnSecurePadOpen", id)
 ]]
 
--- self is the pad button, control the header. LeftButton (L3) opens, or closes an open one;
--- MiddleButton (R3, while open) fires the aimed button; RightButton (B, Escape) closes.
+-- self is the pad button, control the header. PadL3 / PadR3 (a stick press) open the radial of the
+-- triggers held, or close an open one; MiddleButton (R3, while open) fires the aimed button;
+-- RightButton (B, Escape) closes.
 local PAD_SNIPPET = [[
     -- LB / RB: the aimed slot's previous / next sub-radial button, as the mouse wheel
     if button == "Button4" or button == "Button5" then
@@ -1243,29 +1525,99 @@ local PAD_SNIPPET = [[
         control:CallMethod("OnSecureChild", index, child)
         return false
     end
-    if button == "MiddleButton" then
+    -- R3 while open: the header's binding (MiddleButton), or the radial's own R3 binding when
+    -- that one wins the key. With nothing aimed, Press again to repeat uses the last button.
+    if button == "MiddleButton" or (button == "PadR3" and MODE == "pad") then
         if MODE ~= "pad" then return false end
         local prefix = control:RunAttribute("flare-aimed")
+        if not prefix and control:GetAttribute("flare-padrepeat") then prefix = LAST[ACTIVE] end
         control:RunAttribute("flare-closepad")
         if not prefix then return false end
+        LAST[ACTIVE] = prefix
+        control:CallMethod("OnSecureLast", ACTIVE, prefix)
         for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
             self:SetAttribute(key, control:GetAttribute(prefix .. key))
         end
         return nil, "fired"
     end
-    if button ~= "LeftButton" or MODE == "pad" then
+    -- B or Escape
+    if button == "RightButton" then
         control:RunAttribute("flare-closepad")
         return false
     end
-    local id = control:GetAttribute("flare-assigned")
-    if not id or (control:GetAttribute(id .. "-count") or 0) == 0 then return false end
+    -- what this press opens: a stick press, the radial of the triggers held with it (LT / RT are the
+    -- bar's crossbar modifiers, so they are read here rather than bound); anything else is a gamepad
+    -- bar macro ("/click FlareUI_RadialPad <radial id>")
+    local id
+    if button == "PadL3" or button == "PadR3" then
+        local state = GetGamePadState()
+        local held = state and state.buttons
+        local lt, rt = control:GetAttribute("flare-ltindex"), control:GetAttribute("flare-rtindex")
+        local l, r = held and lt and held[lt], held and rt and held[rt]
+        local side = (l and r and "LTRT") or (l and "LT") or (r and "RT") or "TOP"
+        id = control:GetAttribute("flare-pad-" .. (button == "PadL3" and "L3" or "R3") .. "-" .. side)
+    else
+        id = control:GetAttribute("tag-" .. strlower(button)) or button
+    end
+    if id and (control:GetAttribute(id .. "-count") or 0) == 0 then id = nil end
+    -- pressed again while its radial is open: with nothing aimed and Press again to repeat on, the
+    -- last button; otherwise it closes. Another radial's button switches to that radial.
+    if MODE == "pad" then
+        if not id or id == ACTIVE then
+            local prefix = control:GetAttribute("flare-padrepeat") and not control:RunAttribute("flare-select") and LAST[ACTIVE]
+            control:RunAttribute("flare-closepad")
+            if not prefix then return false end
+            control:CallMethod("OnSecureLast", ACTIVE, prefix)
+            for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
+                self:SetAttribute(key, control:GetAttribute(prefix .. key))
+            end
+            return nil, "fired"
+        end
+        control:RunAttribute("flare-closepad", true)
+    end
+    if not id then return false end
     control:RunAttribute("flare-closeclick", true)
     control:RunAttribute("flare-openpad", id)
     return false
 ]]
 
+-- self is the aim button, control the header; button is the direction (AimUp ...), down its
+-- press or release. Each direction key the right stick sends keeps the button it points at
+-- (STICKY), so letting go of the stick still knows the aim. With Release the stick to use on, the
+-- last direction let go with the stick back near the middle uses that button.
+local AIM_SNIPPET = ([[
+    if MODE ~= "pad" or not ACTIVE then return false end
+    HELD = HELD or newtable()
+    HELD[button] = down or nil
+    local count = control:GetAttribute(ACTIVE .. "-count") or 0
+    if count == 0 then return false end
+    local state = GetGamePadState()
+    local stick = state and state.sticks and state.sticks[control:GetAttribute("flare-padstick") or 2]
+    if not stick then return false end
+    if stick.len >= %s then
+        local interval = 2 * math.pi / count
+        local angle = math.atan2(stick.y, stick.x)
+        local index = math.floor(((math.pi / 2 - angle) %% (2 * math.pi) + interval / 2) / interval) %% count + 1
+        if index ~= STICKY then
+            STICKY = index
+            control:CallMethod("OnSecureSticky", index)
+        end
+    end
+    if down or not control:GetAttribute("flare-padrelease") or next(HELD) or not STICKY then return false end
+    local prefix = control:RunAttribute("flare-aimed")
+    control:RunAttribute("flare-closepad")
+    if not prefix then return false end
+    LAST[ACTIVE] = prefix
+    control:CallMethod("OnSecureLast", ACTIVE, prefix)
+    for key in gmatch(control:GetAttribute("flare-keys"), "%%S+") do
+        self:SetAttribute(key, control:GetAttribute(prefix .. key))
+    end
+    return nil, "fired"
+]]):format(PAD_AIM_LEN)
+
 -- self is the caster, control the header. Returning false cancels the click (a press, or a release
--- in the dead zone). Toggle's second press picks the button (FIRE) and fires it on the release.
+-- in the dead zone). Toggle's second press closes the radial without using anything: only a click
+-- uses a button.
 local CLICK_SNIPPET = [[
     local screen = control:GetFrameRef("wheel")
     if down then
@@ -1274,7 +1626,7 @@ local CLICK_SNIPPET = [[
         if id == "LeftButton" then id = control:GetAttribute("flare-assigned") end
         local toggle = control:GetAttribute("flare-toggle")
         if toggle and MODE == "click" and ROOT == id then
-            FIRE = control:RunAttribute("flare-aimed")
+            FIRE = nil
             control:RunAttribute("flare-closeclick")
             return false
         end
@@ -1287,7 +1639,16 @@ local CLICK_SNIPPET = [[
             if not control:RunAttribute("flare-openclick", id) then control:CallMethod("OnSecureClose") end
             return false
         end
-        ACTIVE, MODE = id, "hold"
+        ACTIVE, MODE, HOLD = id, "hold", id
+        -- for the length of the hold: the key with a modifier pressed since still lets go of it,
+        -- and Escape cancels
+        local variants = control:GetAttribute(id .. "-holdkeys")
+        if variants then
+            for key in gmatch(variants, "%S+") do
+                control:SetBindingClick(true, key, "]] .. CASTER_NAME .. [[", id)
+            end
+        end
+        control:SetBindingClick(true, "ESCAPE", "]] .. CATCHER_NAME .. [[", "RightButton")
         screen:Show()
         control:RunAttribute("flare-openpoint")
         -- the catcher takes the mouse while the key is held: right-click cancels
@@ -1304,8 +1665,18 @@ local CLICK_SNIPPET = [[
     end
     -- Toggle's release after opening: the radial stays up for its click
     if MODE == "click" then return false end
+    -- two keys held: the first one's release belongs to the radial it opened, which another key
+    -- has since replaced, so it does nothing
+    if MODE == "hold" then
+        local id = button
+        if id == "LeftButton" then id = control:GetAttribute("flare-assigned") end
+        if id ~= HOLD then return false end
+    end
     local prefix = MODE == "hold" and control:RunAttribute("flare-aimed") or nil
-    if MODE == "hold" then control:GetFrameRef("catcher"):Hide() end
+    if MODE == "hold" then
+        control:GetFrameRef("catcher"):Hide()
+        control:ClearBindings()
+    end
     screen:Hide()
     MODE = nil
     OPENX, OPENY = nil, nil
@@ -1318,17 +1689,32 @@ local CLICK_SNIPPET = [[
 
 -- self is the catcher, control the header
 local CATCHER_SNIPPET = [[
-    -- the key held (Hold): right-click cancels, the key's release then fires nothing; other
-    -- buttons do nothing
+    -- the key held (Hold): right-click, left-click or Escape cancels, and the key's release then
+    -- fires nothing (left-click too, so a hold whose key-up never came can't keep the mouse, even in
+    -- a fight); other buttons do nothing
     if MODE == "hold" then
-        if button == "RightButton" then
+        if button == "RightButton" or button == "LeftButton" then
             MODE = nil
             OPENX, OPENY = nil, nil
             self:Hide()
             control:GetFrameRef("wheel"):Hide()
+            control:ClearBindings()
             control:CallMethod("OnSecureHoldCancel")
         end
         return false
+    end
+    -- Toggle on a mouse button: pressing that button again closes the radial, as the key does (the
+    -- catcher takes every mouse press while the radial is open). The middle button keeps opening
+    -- sub-radials.
+    local mouseKey = (button == "Button4" and "BUTTON4") or (button == "Button5" and "BUTTON5")
+        or (button == "MiddleButton" and "BUTTON3") or nil
+    if mouseKey and ROOT and control:GetAttribute(ROOT .. "-mousekey") == mouseKey then
+        local index = control:RunAttribute("flare-select")
+        local sub = button == "MiddleButton" and index and ACTIVE and control:GetAttribute(ACTIVE .. "-s" .. index .. "-sub")
+        if not sub then
+            control:RunAttribute("flare-closeclick")
+            return false
+        end
     end
     if button == "MiddleButton" then
         local index = control:RunAttribute("flare-select")
@@ -1375,14 +1761,10 @@ local MACRO_SNIPPET = [[
         end
         if not id then return false end
     end
+    -- the same macro again closes the radial it opened, as Toggle's key does
     if MODE == "click" and ROOT == id then
-        local prefix = control:RunAttribute("flare-aimed")
         control:RunAttribute("flare-closeclick")
-        if not prefix then return false end
-        for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
-            self:SetAttribute(key, control:GetAttribute(prefix .. key))
-        end
-        return nil, "fired"
+        return false
     end
     control:RunAttribute("flare-closeclick", true)
     control:RunAttribute("flare-closepad", true)
@@ -1410,14 +1792,26 @@ local WHEEL_SNIPPET = [[
 ]]
 
 -- Macro tag: the name without spaces or symbols (a /click passes one word), any case. On a clash
--- the first radial keeps the tag and the other is opened by its id.
+-- the first radial keeps the tag and the other is opened by its id. A renamed radial keeps its old
+-- tags too, so macros typed with the old name still open it, unless a radial now has that name.
+local function TagOf(name)
+    return (name or ""):gsub("[^%w]", "")
+end
+
 local function MacroTags()
     local byTag, tagOf = {}, {}
-    for _, id in ipairs(RM:GetRadialOrder()) do
+    local order = RM:GetRadialOrder()
+    for _, id in ipairs(order) do
         local data = RM:GetRadial(id)
-        local tag = data and (data.name or ""):gsub("[^%w]", "") or ""
+        local tag = data and TagOf(data.name) or ""
         if tag ~= "" and not byTag[tag:lower()] then
             byTag[tag:lower()], tagOf[id] = id, tag
+        end
+    end
+    for _, id in ipairs(order) do
+        local data = RM:GetRadial(id)
+        for old in pairs(data and data.oldTags or {}) do
+            if not byTag[old] then byTag[old] = id end
         end
     end
     return byTag, tagOf
@@ -1545,14 +1939,28 @@ local function CreateSecureLayer()
     padButton:SetAttribute("useOnKeyDown", false)
     padButton:SetAttribute("pressAndHoldAction", false)
     SecureHandlerWrapScript(padButton, "OnClick", header, PAD_SNIPPET, CLEAR_SNIPPET)
-    SecureHandlerExecute(header, "CHILD = newtable(); STACK = newtable(); DEPTH = 0")
+
+    -- the right stick's directions click this, on their press and their release, while a
+    -- controller radial is open; a release can use the kept aim (AIM_SNIPPET)
+    aimButton = CreateFrame("Button", AIM_NAME, UIParent, "SecureActionButtonTemplate")
+    aimButton:RegisterForClicks("AnyDown", "AnyUp")
+    aimButton:SetAttribute("useOnKeyDown", false)
+    aimButton:SetAttribute("pressAndHoldAction", false)
+    SecureHandlerWrapScript(aimButton, "OnClick", header, AIM_SNIPPET, CLEAR_SNIPPET)
+    header.OnSecureSticky = function(_, index) padSticky = index end
+    -- the button a controller radial used last (Press again to repeat lights it when nothing is aimed)
+    header.OnSecureLast = function(_, radialID, prefix)
+        local index = prefix and tonumber(prefix:match("%-s(%d+)%-%d+%-$"))
+        if radialID and index then padLast[radialID] = index end
+    end
+    SecureHandlerExecute(header, "CHILD = newtable(); STACK = newtable(); DEPTH = 0; LAST = newtable()")
 end
 
 --------------------------------------------------
 -- 11. LIVE PREVIEW
 -- The radial editor parks the art in its box, scaled down to fit.
 --------------------------------------------------
-local PREVIEW_BOX = 220   -- fits the settings panel's right column
+local PREVIEW_BOX = 200   -- fits the bottom of the settings panel's right column (RadialEditor.lua)
 
 function RM:ShowPreview(radialID, anchor)
     if not radial then return end
@@ -1589,7 +1997,156 @@ function RM:RefreshPreview()
 end
 
 --------------------------------------------------
--- 12. RADIAL LIBRARY
+-- 12. GAMEPAD BAR (the Gamepad UI)
+-- A radial on a slot of Blizzard's controller bar (LT + A, a D-pad direction ...): an account macro
+-- "/click FlareUI_RadialPad <radial id>" (PAD_SNIPPET opens it as the stick press does), placed with
+-- Blizzard's own GamepadActionBarBindingUtil, out of combat, on this character
+-- (CharDB().padBar[id] = the slot, ns.PadBarKey). The macro's first line marks it as FlareUI's, so no
+-- other macro is ever touched. A slot is a crossbar (none, LT, RT or both held) and the button its
+-- GAMEPADACTIONBUTTON1-8 binding is on; Blizzard keeps some slots (jump, interact ...) for itself.
+--------------------------------------------------
+local PAD_MACRO_MARK = "#flareui-radial"
+local PAD_BARS = { TOP = "topBar", LT = "leftBar", RT = "rightBar", LTRT = "bottomBar" }
+
+local function PadMacroBody(id)
+    return PAD_MACRO_MARK .. "\n/click " .. PAD_NAME .. " " .. id
+end
+
+-- the account macro that opens this radial, or nil
+local function FindPadMacro(id)
+    local body = PadMacroBody(id)
+    local accountCount = GetNumMacros()
+    for index = 1, accountCount or 0 do
+        local _, _, text = GetMacroInfo(index)
+        if text and strtrim(text) == body then return index end
+    end
+end
+
+-- the radial's name cut to a macro name's 16 bytes, never mid-letter
+local function PadMacroName(name)
+    local out = ""
+    for char in (name or ""):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+        if #out + #char > 16 then break end
+        out = out .. char
+    end
+    return out ~= "" and out or "Radial"
+end
+
+-- every storage slot of the controller bar, on every page
+local function ForEachBarSlot(callback)
+    local ui = _G.C_GamepadUI
+    if not (ui and ui.GetFirstGamepadActionStorageSlotIndex and ui.IsValidGamepadActionStorageSlotIndex) then return end
+    local slot = ui.GetFirstGamepadActionStorageSlotIndex()
+    while slot and ui.IsValidGamepadActionStorageSlotIndex(slot) do
+        callback(slot)
+        slot = slot + 1
+    end
+end
+
+-- the storage slot a bar key presses on the bar's current page, or nil and why
+local function BarStorageSlot(key)
+    local side, button = ns.ParsePadBar(key)
+    local util = _G.GamepadActionBarBindingUtil
+    local frame = _G.GamepadMainActionBarFrame
+    local pageUnit = frame and frame.PageUnit
+    if not (side and util and pageUnit and pageUnit.actionBars) then return nil, "nobar" end
+    local slotIndex
+    for n = 1, 8 do
+        local ok, a, b = pcall(GetBindingKey, "GAMEPADACTIONBUTTON" .. n, 1)
+        if ok and (a == button or b == button) then slotIndex = n break end
+    end
+    local bar = slotIndex and pageUnit.actionBars[PAD_BARS[side]]
+    local slotButton = bar and bar.GetActionButtonByIndex and bar:GetActionButtonByIndex(slotIndex)
+    local slotID = slotButton and slotButton.GetGamepadPageUnitSlotID and slotButton:GetGamepadPageUnitSlotID()
+    if not slotID or not util.IsBindablePageUnitSlotID(slotID) then return nil, "reserved" end
+    local storage = util.GetGamepadStorageSlotIndexFromPageAndPageUnitSlotID(pageUnit:GetCurrentPage(), slotID)
+    if not storage then return nil, "reserved" end
+    return storage
+end
+
+-- what a slot holds now, by name, or nil when it is empty
+local function SlotContents(slot)
+    if not HasAction(slot) then return nil end
+    local kind, actionID = GetActionInfo(slot)
+    if kind == "spell" then return C_Spell.GetSpellName(actionID) or kind end
+    if kind == "item" then return C_Item.GetItemNameByID(actionID) or kind end
+    if kind == "macro" then return (GetMacroInfo(actionID)) or kind end
+    return GetActionText(slot) or kind or "?"
+end
+
+local function PadBarStore()
+    local charDB = ns.CharDB()
+    charDB.padBar = charDB.padBar or {}
+    return charDB.padBar
+end
+
+-- where this radial is on this character's controller bar (a bar key), or nil; a slot the player
+-- emptied or filled since is forgotten
+function RM:GetBarKey(id)
+    local key = PadBarStore()[id]
+    if not key then return nil end
+    local macro = FindPadMacro(id)
+    local found = false
+    if macro then
+        ForEachBarSlot(function(slot)
+            local kind, actionID = GetActionInfo(slot)
+            if kind == "macro" and actionID == macro then found = true end
+        end)
+    end
+    if not found and _G.C_GamepadUI then PadBarStore()[id] = nil return nil end
+    return key
+end
+
+-- Puts the radial on the slot `key` presses (this page). Returns true, or false and why: "combat",
+-- "nobar", "reserved", "full", or "occupied" plus what is there (force replaces it).
+function RM:PlaceOnBar(id, key, force)
+    if InCombatLockdown() then return false, "combat" end
+    if not self:GetRadial(id) then return false, "nobar" end
+    local slot, why = BarStorageSlot(key)
+    if not slot then return false, why end
+    local macro = FindPadMacro(id)
+    local occupant = SlotContents(slot)
+    local kind, actionID = GetActionInfo(slot)
+    if occupant and not force and not (macro and kind == "macro" and actionID == macro) then
+        return false, "occupied", occupant
+    end
+    if not macro then
+        if (GetNumMacros() or 0) >= (MAX_ACCOUNT_MACROS or 120) then return false, "full" end
+        local first = resolvedCache[id] and resolvedCache[id][1]
+        local texture = first and first.icon and first.icon.texture
+        local icon = (type(texture) == "number" or type(texture) == "string") and texture or UNKNOWN_ICON
+        macro = CreateMacro(PadMacroName(self:GetRadial(id).name), icon, PadMacroBody(id), false)
+        if not macro then return false, "full" end
+    end
+    -- one place per radial: off any other slot first
+    local util = _G.GamepadActionBarBindingUtil
+    ForEachBarSlot(function(other)
+        local otherKind, otherID = GetActionInfo(other)
+        if other ~= slot and otherKind == "macro" and otherID == macro then util.ClearActionFromGamepadSlot(other) end
+    end)
+    util.AssignActionToGamepadStandardSlot(slot, PickupMacro, macro)
+    ClearCursor()
+    PadBarStore()[id] = key
+    return true
+end
+
+-- off this character's controller bar (the macro stays for the other characters)
+function RM:RemoveFromBar(id)
+    if InCombatLockdown() then return false end
+    local macro = FindPadMacro(id)
+    local util = _G.GamepadActionBarBindingUtil
+    if macro and util then
+        ForEachBarSlot(function(slot)
+            local kind, actionID = GetActionInfo(slot)
+            if kind == "macro" and actionID == macro then util.ClearActionFromGamepadSlot(slot) end
+        end)
+    end
+    PadBarStore()[id] = nil
+    return true
+end
+
+--------------------------------------------------
+-- 13. RADIAL LIBRARY
 -- Radials live in db.global, keyed by a stable id (renames orphan nothing) with an order list; which
 -- radial a character opens is kept in that character's own state.
 --------------------------------------------------
@@ -1645,6 +2202,7 @@ end
 
 -- scope: who gets it (see AVAILABILITY below); a new radial has no key yet
 function RM:CreateRadial(name, scope)
+    syncDirty = true
     local store = GetStore()
     if not store then return nil end
     local id = "r" .. store.nextRadialID
@@ -1657,6 +2215,7 @@ end
 
 -- a copy keeps the buttons and who gets it, but no key (it would only clash with the original)
 function RM:CopyRadial(id, name)
+    syncDirty = true
     local data = self:GetRadial(id)
     if not data then return nil end
     local copy = self:CreateRadial(name or data.name)
@@ -1667,11 +2226,27 @@ function RM:CopyRadial(id, name)
 end
 
 function RM:RenameRadial(id, name)
+    syncDirty = true
     local data = self:GetRadial(id)
-    if data and name and name ~= "" then data.name = name end
+    if not (data and name and name ~= "") then return end
+    local old = TagOf(data.name):lower()
+    if old ~= "" and old ~= TagOf(name):lower() then
+        data.oldTags = data.oldTags or {}
+        data.oldTags[old] = true
+    end
+    if data.oldTags then data.oldTags[TagOf(name):lower()] = nil end
+    if data.oldTags and not next(data.oldTags) then data.oldTags = nil end
+    data.name = name
+    -- its gamepad bar macro is named after it
+    local macro = not InCombatLockdown() and FindPadMacro(id)
+    if macro then
+        local _, icon, body = GetMacroInfo(macro)
+        EditMacro(macro, PadMacroName(name), icon, body)
+    end
 end
 
 function RM:DeleteRadial(id)
+    syncDirty = true
     local store = GetStore()
     if not (store and store.radials[id]) then return end
     store.radials[id] = nil
@@ -1680,6 +2255,10 @@ function RM:DeleteRadial(id)
     end
     local charDB = ns.CharDB()
     if charDB.radialKeyOverride then charDB.radialKeyOverride[id] = nil end
+    -- its gamepad bar macro goes too (deleting a macro empties its bar slots)
+    local macro = not InCombatLockdown() and FindPadMacro(id)
+    if macro then DeleteMacro(macro) end
+    if charDB.padBar then charDB.padBar[id] = nil end
     self:LoadActiveRadial()
     self:LayoutRadial()
     self:ApplyBindings()
@@ -1704,7 +2283,7 @@ function RM:LoadActiveRadial()
 end
 
 --------------------------------------------------
--- 13. AVAILABILITY AND KEYS
+-- 14. AVAILABILITY AND KEYS
 -- Each radial says who gets it (radial.scope) and has its own key (radial.key), which every
 -- character it is available to shares. A character can keep its own key for a radial instead
 -- (CharDB().radialKeyOverride[id]: a key, or false for none). Override bindings are protected: a
@@ -1751,6 +2330,7 @@ end
 
 -- scope "" or nil: every character
 function RM:SetRadialScope(id, scope)
+    syncDirty = true
     local data = self:GetRadial(id)
     if not data then return end
     scope = (scope ~= "" and scope) or nil
@@ -1789,6 +2369,7 @@ end
 
 -- sets the key for every character with the radial, or only for this one while it keeps its own
 function RM:SetRadialKey(id, key)
+    syncDirty = true
     local data = self:GetRadial(id)
     if not data then return end
     key = (key and key ~= "") and key or nil
@@ -1845,6 +2426,38 @@ function RM:ResolveKeys()
     return winner, perRadial
 end
 
+-- A radial's controller button (radial.padKey): a stick press, alone or with LT / RT held
+-- (ns.PadComboKey), shared by every character that gets the radial. It is kept apart from the key, so
+-- switching between keyboard and Gamepad mode keeps both.
+function RM:GetPadKey(id)
+    local data = self:GetRadial(id)
+    return data and data.padKey
+end
+
+function RM:SetPadKey(id, key)
+    syncDirty = true
+    local data = self:GetRadial(id)
+    if not data then return end
+    data.padKey = (key and ns.ParsePadCombo(key)) and key or nil
+    self:ApplyBindings()
+end
+
+-- controller button -> the radial it opens on this character: the narrower scope wins (This
+-- character, class, faction, every character), a tie goes to the radial listed first
+function RM:ResolvePadKeys()
+    local winner, rankOf = {}, {}
+    for _, id in ipairs(self:GetRadialOrder()) do
+        local key = self:IsRadialAvailable(id) and self:GetPadKey(id)
+        if key then
+            local rank = SCOPE_RANK[SplitScope(self:GetRadial(id).scope) or ""] or 0
+            rankOf[id] = rank
+            local holder = winner[key]
+            if not holder or rank > rankOf[holder] then winner[key] = id end
+        end
+    end
+    return winner
+end
+
 -- what the controller, a bare macro and a reset open: the first radial with a working key here,
 -- else the first radial available here
 function RM:GetDefaultRadialID()
@@ -1869,6 +2482,34 @@ local function RightStickIndex()
     return 2
 end
 
+-- The key with every modifier set that keeps its own (F: SHIFT-F, CTRL-F, ALT-SHIFT-F ...; SHIFT-F:
+-- CTRL-SHIFT-F ...), leaving out any that another radial uses. A modifier pressed during a hold
+-- changes which binding the key's release goes to; these catch it.
+local MODIFIERS = { "ALT", "CTRL", "SHIFT" }
+function RM.HoldVariants(key, taken)
+    local own, base = {}, key
+    while true do
+        local mod, rest = base:match("^(%u+)%-(.+)$")
+        if not (mod and (mod == "ALT" or mod == "CTRL" or mod == "SHIFT")) then break end
+        own[mod], base = true, rest
+    end
+    local out = {}
+    for mask = 1, 7 do
+        local parts, keeps, adds = {}, true, false
+        for i, mod in ipairs(MODIFIERS) do
+            local on = mask % (2 ^ i) >= 2 ^ (i - 1)
+            if on then parts[#parts + 1] = mod; if not own[mod] then adds = true end
+            elseif own[mod] then keeps = false end
+        end
+        if keeps and adds then
+            parts[#parts + 1] = base
+            local variant = table.concat(parts, "-")
+            if not taken[variant] then out[#out + 1] = variant end
+        end
+    end
+    return table.concat(out, " ")
+end
+
 -- each key clicks the caster with its radial's id as the mouse button
 local function ApplyBinding()
     if not (radial and caster) then return end
@@ -1879,29 +2520,118 @@ local function ApplyBinding()
     RM.bindingPending = nil
     ClearOverrideBindings(radial)
     local winner = RM:ResolveKeys()
+    -- a radial on a mouse button: the catcher needs to know it (Toggle's "press again to close")
+    -- and the key with each modifier added, bound only while it's held (HoldVariants)
+    if header then
+        for id in pairs(mouseKeyed) do
+            header:SetAttribute(id .. "-mousekey", nil)
+            header:SetAttribute(id .. "-holdkeys", nil)
+        end
+        wipe(mouseKeyed)
+    end
+    local padOn = ns.IsGamepadUI() and RM:IsControllerEnabled() and padButton ~= nil and not ns.OtherControllerAddon()
+    local padSticks = {}
+    if header then
+        for _, stick in ipairs(PAD_COMBO_STICKS) do
+            for _, side in ipairs(PAD_COMBO_SIDES) do header:SetAttribute("flare-pad-" .. stick .. "-" .. side, nil) end
+        end
+    end
+    -- controller buttons: the pad button reads the triggers held with the stick press (PAD_SNIPPET);
+    -- only in the Gamepad UI
+    if padOn then
+        for key, id in pairs(RM:ResolvePadKeys()) do
+            local stick, side = ns.ParsePadCombo(key)
+            if stick then
+                header:SetAttribute("flare-pad-" .. stick .. "-" .. side, id)
+                padSticks[stick] = true
+            end
+        end
+    end
     for key, id in pairs(winner) do
-        SetOverrideBindingClick(radial, true, key, CASTER_NAME, id)
+        -- a controller combo saved as a key is never bound as one
+        if not ns.ParsePadCombo(key) then
+            SetOverrideBindingClick(radial, true, key, CASTER_NAME, id)
+            if header then
+                if key == "BUTTON3" or key == "BUTTON4" or key == "BUTTON5" then
+                    header:SetAttribute(id .. "-mousekey", key)
+                end
+                local variants = RM.HoldVariants(key, winner)
+                if variants ~= "" then
+                    local before = header:GetAttribute(id .. "-holdkeys")
+                    header:SetAttribute(id .. "-holdkeys", before and (before .. " " .. variants) or variants)
+                end
+                mouseKeyed[id] = true
+            end
+        end
     end
     local store = GetStore()
-    if header then header:SetAttribute("flare-assigned", RM:GetDefaultRadialID()) end
-    -- Gamepad UI only: L3 runs the radial, aimed with the right stick (the camera holds still while
-    -- it is open, section 7); R3 keeps the ping.
-    if ns.IsGamepadUI() and store and store.controller and padButton then
-        padStickIndex = RightStickIndex()
-        header:SetAttribute("flare-padstick", padStickIndex)
-        SetOverrideBindingClick(radial, true, "PADLSTICK", PAD_NAME, "LeftButton")
+    local default = RM:GetDefaultRadialID()
+    if header then header:SetAttribute("flare-assigned", default) end
+    if not padOn then return end
+    -- Settings that switched controller support on by hand (store.controller == true) keep L3 opening
+    -- the first radial until a radial gets a controller button; everyone else keeps L3 for Auto Run.
+    if not next(padSticks) and store and store.controller == true and default then
+        header:SetAttribute("flare-pad-L3-TOP", default)
+        padSticks.L3 = true
+    end
+    -- the right stick aims (the camera holds still while it is open, section 7) whatever opened the
+    -- radial (a stick press or a gamepad bar macro); LT and RT are read as the mapped state's buttons
+    -- by the keys the controller bar put them on
+    padStickIndex = RightStickIndex()
+    header:SetAttribute("flare-padstick", padStickIndex)
+    header:SetAttribute("flare-padrelease", RM:IsPadReleaseOn() or nil)
+    header:SetAttribute("flare-padrepeat", RM:IsPadRepeatOn() or nil)
+    for attribute, side in pairs({ ["flare-ltindex"] = "LT", ["flare-rtindex"] = "RT" }) do
+        local index = C_GamePad.ButtonBindingToIndex and C_GamePad.ButtonBindingToIndex(ns.PadTriggerKey(side))
+        header:SetAttribute(attribute, index and index + 1 or nil)
+    end
+    GuardStick()
+    for stick in pairs(padSticks) do
+        SetOverrideBindingClick(radial, true, ns.PadStickKey(stick), PAD_NAME, "Pad" .. stick)
     end
 end
 
+-- Release the stick to use (store.padRelease): on unless switched off
+function RM:IsPadReleaseOn()
+    local store = GetStore()
+    return store ~= nil and store.padRelease ~= false
+end
+
+function RM:SetPadReleaseOn(on)
+    local store = GetStore()
+    if not store then return end
+    store.padRelease = on and true or false
+    ApplyBinding()
+end
+
+-- Press again to repeat (store.padRepeat): off unless switched on
+function RM:IsPadRepeatOn()
+    local store = GetStore()
+    return store ~= nil and store.padRepeat == true
+end
+
+function RM:SetPadRepeatOn(on)
+    local store = GetStore()
+    if not store then return end
+    store.padRepeat = on and true or nil
+    ApplyBinding()
+end
+
+-- on unless switched off (store.controller == false)
 function RM:IsControllerEnabled()
     local store = GetStore()
-    return store and store.controller or false
+    return store ~= nil and store.controller ~= false
 end
 
+-- switching on stores nil, not true: true is the old setting that keeps L3 on the first radial
 function RM:SetControllerEnabled(enabled)
     local store = GetStore()
     if not store then return end
-    store.controller = enabled and true or nil
+    if not enabled then
+        store.controller = false
+    elseif store.controller == false then
+        store.controller = nil
+    end
     ApplyBinding()
 end
 
@@ -1909,11 +2639,11 @@ function RM:ApplyBindings()
     ApplyBinding()
 end
 
--- Up to 4.2 the account key (store.key) opened each character's chosen radial (charDB.radial), each
+-- Older settings: the account key (store.key) opened each character's chosen radial (charDB.radial), each
 -- character kept up to five extra keys (charDB.radialKeys), and a character never set up copied the
 -- last setup changed (store.lastSetup). That last setup becomes the radials' own keys, and every
 -- character that differed keeps its keys as its own, so nothing changes in game. Every radial
--- starts available to every character, as before.
+-- starts available to every character.
 local function MigrateKeys()
     local store = GetStore()
     if not store or store.keysPerRadial then return end
@@ -1963,7 +2693,6 @@ function RM:PLAYER_REGEN_ENABLED()
         ApplyBinding()
     end
     if self.bindingPending then ApplyBinding() end
-    RM.ReleaseAxisListener()
     if not isOpen then
         -- what the fight held back: a layout, or secure frames left up by a close other than a release
         if layoutPending then
@@ -1978,7 +2707,7 @@ function RM:PLAYER_REGEN_ENABLED()
 end
 
 --------------------------------------------------
--- 14. PUBLIC
+-- 15. PUBLIC
 --------------------------------------------------
 -- a Hold that never got its key release: the secure side lets go too, or its catcher keeps the
 -- mouse; out of combat only
@@ -1990,6 +2719,7 @@ function RM.EndHold()
             OPENX, OPENY = nil, nil
             self:GetFrameRef("catcher"):Hide()
             self:GetFrameRef("wheel"):Hide()
+            self:ClearBindings()
         end
     ]])
 end
@@ -2018,8 +2748,14 @@ function RM:Init()
         CreateSecureLayer()
     end
     RestoreCameraConfig()
+    -- a controller radial left open by a crash or reload: the stick-direction CVar goes back
+    SetStickKeys(false)
 
     MigrateKeys()
+    -- a controller combo saved as a key moves to its own field
+    for _, data in pairs(GetStore() and GetStore().radials or {}) do
+        if ns.ParsePadCombo(data.key) then data.padKey, data.key = data.padKey or data.key, nil end
+    end
     -- first run: one radial, so the library is never empty
     local store = GetStore()
     if store and not next(store.radials) then
@@ -2032,6 +2768,15 @@ function RM:Init()
 
     ApplyBinding()
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
+    -- the spellbook changed: each spell's best rank is read again
+    self:RegisterEvent("SPELLS_CHANGED", RM.ForgetRanks)
+    -- a loading screen during a hold: the key's release never comes
+    self:RegisterEvent("PLAYER_ENTERING_WORLD", function()
+        if isOpen and openMode == "hold" then
+            RM.EndHold()
+            CloseRadial()
+        end
+    end)
     -- a character that picks its faction now gets that faction's radials (absent on some clients)
     pcall(self.RegisterEvent, self, "NEUTRAL_FACTION_SELECT_RESULT", function() self:AvailabilityChanged() end)
     -- an item button resolves once its name is cached; the event fires for every item loaded
@@ -2048,8 +2793,20 @@ function RM:Init()
     end)
 end
 
--- called by the editor after any change
+-- anything that changes what a button resolves to (the spellbook, macros, bags, mounts, an edit)
+-- rewrites the secure copy on the next open
+function RM.MarkDirty() syncDirty = true end
+local dirtyEvents = CreateFrame("Frame")
+for _, event in ipairs({ "SPELLS_CHANGED", "UPDATE_MACROS", "BAG_UPDATE_DELAYED", "PLAYER_EQUIPMENT_CHANGED",
+                         "NEW_MOUNT_ADDED", "COMPANION_LEARNED", "COMPANION_UNLEARNED", "PLAYER_GUILD_UPDATE",
+                         "LEARNED_SPELL_IN_SKILL_LINE", "PLAYER_TALENT_UPDATE", "UPDATE_SHAPESHIFT_FORMS", "UNIT_PET",
+                         "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_WATCH_LIST_CHANGED", "GROUP_ROSTER_UPDATE" }) do
+    pcall(dirtyEvents.RegisterEvent, dirtyEvents, event)
+end
+dirtyEvents:SetScript("OnEvent", RM.MarkDirty)
+
 function RM:RadialChanged(radialID)
+    syncDirty = true
     if previewID and (radialID == nil or radialID == previewID) then
         self:RefreshPreview()
         return

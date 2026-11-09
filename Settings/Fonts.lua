@@ -43,6 +43,7 @@ function S:FontRows(def)
             row.key = heading .. "." .. field
             if not row.get then row.path = font.path .. "." .. field end
             row.parent, row.tab, row.section, row.hidden, row.apply = heading, def.tab, def.section, Closed, def.apply
+            row.collapsedBy = heading   -- searchable while folded; a search result opens the heading
             row.half = true
             S:Row(row)
         end

@@ -21,7 +21,6 @@ ns.Perf = Perf
 
 local MAX_RUNS = 30
 local SAMPLE_EVERY = 0.5
-local SPIKE_LIMITS = { 1, 5, 10, 50, 100 }
 
 local P = C_AddOnProfiler
 local M = Enum and Enum.AddOnProfilerMetric
@@ -150,7 +149,7 @@ local function Start(label)
     active.ticker = C_Timer.NewTicker(SAMPLE_EVERY, Sample)
     events:RegisterEvent("ENCOUNTER_START")
     events:RegisterEvent("ENCOUNTER_END")
-    Say("Recording \"" .. label .. "\". Play normally, then type |cffffff00/fui perf stop|r.")
+    Say("Recording \"" .. label .. "\". Play normally, then type |cffffff00/fui perf stop|r. A reload ends it unsaved.")
 end
 
 local function Finish(side)
@@ -203,7 +202,7 @@ end
 --------------------------------------------------
 local function SideLine(name, s)
     if not s then return nil end
-    return ("  %s (%d samples): FlareUI avg %.3f ms, highest %.3f | all addons %.3f | game %.2f ms | FPS avg %.0f, low %.0f")
+    return ("  %s (%d samples): FlareUI avg %.3f ms, highest 1 s average %.3f | all addons %.3f | game %.2f ms | FPS avg %.0f, low %.0f")
         :format(name, s.n, s.addon, s.addonMax, s.all, s.game, s.fps, s.fpsMin)
 end
 
@@ -228,13 +227,8 @@ local function RunText(i, r)
 end
 
 local reportFrame
-local function ShowReport()
-    local runs = Runs()
-    if not runs or #runs == 0 then Say("No recordings yet. Type |cffffff00/fui perf start <name>|r.") return end
-    local parts = { ("FlareUI perf report, %d recording(s)"):format(#runs) }
-    for i, r in ipairs(runs) do parts[#parts + 1] = RunText(i, r) end
-    local text = table.concat(parts, "\n\n")
-
+-- A read-only window with text to copy (the perf report, the error log)
+function Perf.ShowText(titleText, text)
     local f = reportFrame
     if not f then
         local LSM = LibStub("LibSharedMedia-3.0")
@@ -256,7 +250,7 @@ local function ShowReport()
 
         local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         title:SetPoint("TOPLEFT", 14, -12)
-        title:SetText("FlareUI perf report")
+        f.title = title
         local note = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         note:SetPoint("BOTTOMLEFT", 14, 10)
         note:SetText("Ctrl+C to copy, then paste it to the developer.")
@@ -287,12 +281,21 @@ local function ShowReport()
         tinsert(UISpecialFrames, "FlareUI_PerfReport")
         reportFrame = f
     end
+    f.title:SetText(titleText)
     f.text = text
     f.box:SetText(text)
     f:Show()
     f:Raise()
     f.box:SetFocus()
     f.box:HighlightText()
+end
+
+local function ShowReport()
+    local runs = Runs()
+    if not runs or #runs == 0 then Say("No recordings yet. Type |cffffff00/fui perf start <name>|r.") return end
+    local parts = { ("FlareUI perf report, %d recording(s)"):format(#runs) }
+    for i, r in ipairs(runs) do parts[#parts + 1] = RunText(i, r) end
+    Perf.ShowText("FlareUI perf report", table.concat(parts, "\n\n"))
 end
 
 --------------------------------------------------

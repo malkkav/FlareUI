@@ -65,7 +65,8 @@ end
 --------------------------------------------------
 -- 4. HELPERS
 -- Never hook SetSessionDuration, SetMinimized or the entries' Init / UpdateValue: secure code with
--- secret values that styling taints. Everything is applied from Refresh(), out of combat.
+-- secret values that styling taints. Styling is applied from Refresh(), out of combat (only the list's
+-- anchors and the group buttons also follow changes in a fight).
 --------------------------------------------------
 local function GetDb()
     if not ns.db or not ns.db.profile or not ns.db.profile.damagemeter then
@@ -137,12 +138,27 @@ function DamageMeter:SetSettingsPreview(on)
             if DamageMeter.settingsPreview and not InFight() and not m:IsShown() then m:Show() end
         end)
     end
-    if InFight() then return end
-    if on then
-        meter:Show()
-    else
-        DamageMeter:ApplyVisibility()
+    -- the Threat tab's sample rows come and go with the page (a Threat option shown there goes back
+    -- to the player's own tab pick)
+    if DamageMeter.EndThreatPreview then
+        if not on then DamageMeter.EndThreatPreview() end
+        DamageMeter.RedrawThreat()
     end
+    -- with the Meter tab in the chat, the page opens that tab, and leaving it goes back to the chat
+    -- tab that was up (unless a tab was clicked meanwhile)
+    if self:ChatTabAvailable() then
+        if on then
+            self.previewTabWas = self.chatTabActive or false
+            self:SetChatTab(true)
+        else
+            if self.previewTabWas == false and self.chatTabActive then self:SetChatTab(false) end
+            self.previewTabWas = nil
+        end
+    end
+    if InFight() then return end
+    -- both ways through ApplyVisibility: its preview branch stops any fade and sets alpha 1 (a plain
+    -- Show would leave a faded-out meter at alpha 0)
+    DamageMeter:ApplyVisibility()
 end
 
 -- A session window part through its getter, or its key
@@ -324,7 +340,9 @@ end
 -- The keys switched on that apply right now, right to left
 function GROUP_BUTTONS.Shown(db)
     local list = {}
-    local applies = { countdown = IsInGroup(), ready = GROUP_BUTTONS.CanReadyCheck() }
+    -- a raid counts down from its leader or an assistant, like Blizzard's raid manager; a party from anyone
+    local canReady = GROUP_BUTTONS.CanReadyCheck()
+    local applies = { countdown = IsInGroup() and (not IsInRaid() or canReady), ready = canReady }
     for _, key in ipairs(GROUP_BUTTONS.order) do
         if db and db[GROUP_BUTTONS[key].option] ~= false and applies[key] then list[#list + 1] = key end
     end
@@ -375,7 +393,10 @@ GROUP_BUTTONS.events:SetScript("OnEvent", function()
         local db = GetDb()
         if not (db and db.enabled and DamageMeter.Refresh) then return end
         -- only when another set of buttons applies now (Layout notes the last one laid out)
-        if table.concat(GROUP_BUTTONS.Shown(db), ",") ~= GROUP_BUTTONS.laidOut then DamageMeter:Refresh() end
+        if table.concat(GROUP_BUTTONS.Shown(db), ",") == GROUP_BUTTONS.laidOut then return end
+        -- in a fight the buttons are FlareUI's own: laid out now, the rest of the header after the fight
+        if InCombatLockdown() then GROUP_BUTTONS.LayoutAll(db) end
+        DamageMeter:Refresh()
     end)
 end)
 
@@ -401,6 +422,17 @@ function GROUP_BUTTONS.Layout(window, db, ref, box, levelOf)
         if not isShown[key] then btn:Hide() end
     end
     return #shown
+end
+
+-- A roster change in a fight: the buttons only, against the header as it was laid out
+function GROUP_BUTTONS.LayoutAll(db)
+    for _, window in ipairs(GetSessionWindows()) do
+        local header = GetWindowHeader(window)
+        if header and window.FlareUI_DMSkin then
+            local levelOf = GetWindowSessionDropdown(window) or GetWindowSettingsDropdown(window)
+            SafeCall(GROUP_BUTTONS.Layout, window, db, window.FlareUI_DMSkin, ICON_SIZE + 9, levelOf)
+        end
+    end
 end
 
 --------------------------------------------------
@@ -475,24 +507,28 @@ local function ApplyHeader(window, db)
         end)
     end
 
+    -- The list sits inside FlareUI's skin. Neither the meter nor its list is protected, so this also
+    -- runs in a fight.
+    local function AnchorScrollBox(sb)
+        local skinRef = window.FlareUI_DMSkin or window
+        sb:ClearAllPoints()
+        sb:SetPoint("TOPLEFT", skinRef, "TOPLEFT", 6, -CONTENT_TOP)
+        sb:SetPoint("BOTTOMRIGHT", skinRef, "BOTTOMRIGHT", -6, 6)
+    end
     local function ApplyScrollBoxAnchors()
         local sb = GetWindowScrollBox(window)
-        if sb and not InCombatLockdown() and GetDb() then
-            local skinRef = window.FlareUI_DMSkin or window
-            sb:ClearAllPoints()
-            sb:SetPoint("TOPLEFT", skinRef, "TOPLEFT", 6, -CONTENT_TOP)
-            sb:SetPoint("BOTTOMRIGHT", skinRef, "BOTTOMRIGHT", -6, 6)
-        end
+        local d = GetDb()
+        if not (sb and d and d.enabled) or sb.FlareUI_Anchoring then return end
+        sb.FlareUI_Anchoring = true
+        SafeCall(AnchorScrollBox, sb)
+        sb.FlareUI_Anchoring = nil
     end
-    if not InCombatLockdown() then
-        SafeCall(ApplyScrollBoxAnchors)
-    end
-    -- Blizzard re-anchors the list when its scroll bar shows or hides
-    local scrollBar = GetWindowScrollBar(window)
-    if scrollBar and not scrollBar.FlareUI_ScrollBoxAnchorHooked then
-        scrollBar.FlareUI_ScrollBoxAnchorHooked = true
-        scrollBar:HookScript("OnShow", ApplyScrollBoxAnchors)
-        scrollBar:HookScript("OnHide", ApplyScrollBoxAnchors)
+    ApplyScrollBoxAnchors()
+    -- Blizzard re-anchors the list after its scroll bar shows or hides: put back right after it
+    local scrollBox = GetWindowScrollBox(window)
+    if scrollBox and not scrollBox.FlareUI_ScrollBoxAnchorHooked then
+        scrollBox.FlareUI_ScrollBoxAnchorHooked = true
+        hooksecurefunc(scrollBox, "SetPoint", ApplyScrollBoxAnchors)
     end
 
     AttachHeaderButtonHooks(window)
@@ -562,9 +598,12 @@ function AttachHeaderButtonHooks(window)
     if not window or window.FlareUI_HeaderBtnHooked then return end
     window.FlareUI_HeaderBtnHooked = true
 
+    -- the window and its three buttons all show together: one pass per frame
     local function Reapply()
         local db = GetDb()
-        if db and db.enabled then
+        local now = GetTime()
+        if db and db.enabled and window.FlareUI_ButtonsStyledAt ~= now then
+            window.FlareUI_ButtonsStyledAt = now
             SafeCall(ApplyHeaderButtonStyle, window)
         end
     end
@@ -584,18 +623,27 @@ end
 --------------------------------------------------
 -- 11. SCROLL BAR
 --------------------------------------------------
+-- The bar stays Blizzard's to show or hide (every layout of the list shows it again); FlareUI only
+-- makes its parts invisible and click-through. Blizzard's hover animation fades the bar
+-- itself, which has nothing left to show. The mouse wheel still scrolls the list.
+local function MuteScrollBar(bar)
+    if bar.FlareUI_Muted then return end
+    bar.FlareUI_Muted = true
+    bar:EnableMouse(false)
+    for _, region in ipairs({ bar:GetRegions() }) do region:SetAlpha(0) end
+    for _, child in ipairs({ bar:GetChildren() }) do
+        child:SetAlpha(0)
+        child:EnableMouse(false)
+        for _, part in ipairs({ child:GetChildren() }) do part:EnableMouse(false) end
+    end
+end
+
 local function ApplyScrollBarVisibility(window)
     if not window or window:IsForbidden() then return end
     local sb = GetWindowScrollBar(window)
     if not sb then return end
 
-    sb:Hide()
-    sb:SetAlpha(0)
-    sb:EnableMouse(false)
-    if not sb.FlareUI_HideScrollBarHooked then
-        sb.FlareUI_HideScrollBarHooked = true
-        sb:HookScript("OnShow", function(self) self:Hide() end)
-    end
+    MuteScrollBar(sb)
     local scrollBox = GetWindowScrollBox(window)
     if scrollBox and scrollBox.EnableMouseWheel then
         scrollBox:EnableMouseWheel(true)
@@ -603,14 +651,7 @@ local function ApplyScrollBarVisibility(window)
 
     local sw = GetWindowSourceWindow(window)
     if sw and sw.ScrollBar then
-        local srcSb = sw.ScrollBar
-        srcSb:Hide()
-        srcSb:SetAlpha(0)
-        srcSb:EnableMouse(false)
-        if not srcSb.FlareUI_HideScrollBarHooked then
-            srcSb.FlareUI_HideScrollBarHooked = true
-            srcSb:HookScript("OnShow", function(self) self:Hide() end)
-        end
+        MuteScrollBar(sw.ScrollBar)
         if sw.ScrollBox and sw.ScrollBox.EnableMouseWheel then
             sw.ScrollBox:EnableMouseWheel(true)
         end
@@ -663,34 +704,33 @@ end
 --------------------------------------------------
 -- 13. BAR FONTS
 --------------------------------------------------
--- the bar fill stays Blizzard's; only the font is FlareUI's
+-- the bar fill stays Blizzard's; only the font is FlareUI's. Blizzard sets a row up again on every
+-- rebuild of the list but never touches its font, so a row is styled once per pass of Refresh (a
+-- changed setting brings a new pass) and skipped after that.
+local barFontPass = 0
+
 local function ApplyBarFont(entry, db)
     if not entry or entry:IsForbidden() then return end
     local fontDb = db.barFont
-    if not fontDb then return end
+    if not fontDb or entry.FlareUI_FontPass == barFontPass then return end
+    entry.FlareUI_FontPass = barFontPass
 
     local path, size, flags = GetFontData(fontDb)
     local statusBar = entry.GetStatusBar and entry:GetStatusBar() or entry.StatusBar
     local nameFs = statusBar and statusBar.Name or entry.Name
     local valueFs = statusBar and statusBar.Value or entry.Value
 
+    -- a family: other players' names keep their Cyrillic and Chinese / Korean letters
     local function ApplyToFS(fs)
         if fs and fs.SetFont then
-            ns.SetFont(fs, path, size, flags)
+            ns.SetFontFamily(fs, path, size, flags)
             ApplyFontEffects(fs, fontDb)
         end
     end
 
+    -- the row's only texts, both on its status bar
     ApplyToFS(nameFs)
     ApplyToFS(valueFs)
-
-    if entry.GetRegions then
-        for _, region in pairs({ entry:GetRegions() }) do
-            if region and region.IsObjectType and region:IsObjectType("FontString") then
-                ApplyToFS(region)
-            end
-        end
-    end
 end
 
 -- Blizzard calls SetTextScale on every row it sets up, so the bar font is re-applied there: hooked
@@ -771,7 +811,7 @@ local TAB_GAP       = 14
 local TAB_INACTIVE  = { r = 0.56, g = 0.51, b = 0.46, a = 1 }   -- #8F8275, the chat's unselected tab
 local THREAT_TICK   = 0.2    -- seconds between redraws while threat events keep coming
 local THREAT_EVENTS = { "UNIT_THREAT_LIST_UPDATE", "UNIT_THREAT_SITUATION_UPDATE", "PLAYER_TARGET_CHANGED",
-    "UNIT_TARGET", "GROUP_ROSTER_UPDATE", "UNIT_PET", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }
+    "GROUP_ROSTER_UPDATE", "UNIT_PET", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }
 
 local views = {}                 -- session window -> its threat tab, hit area, list and state
 local UpdateThreatViews          -- defined below the list code
@@ -797,29 +837,56 @@ end
 
 -- The threat list, its entries and the shown rows are reused: they are redrawn up to five times a
 -- second in a fight. Each redraw fills them anew before reading them.
-local threatScratch = { list = {}, pool = {}, shown = {} }
+-- classOf / isMe: per unit token, until the group or a pet changes (a hidden answer is not kept)
+local threatScratch = { list = {}, pool = {}, shown = {}, classOf = {}, isMe = {} }
+
+-- A pet row takes its owner's class colour (a pet's own class belongs to nobody in the group)
+local function PetOwner(unit)
+    if unit == "pet" then return "player" end
+    local n = unit:match("^partypet(%d+)$")
+    if n then return "party" .. n end
+    n = unit:match("^raidpet(%d+)$")
+    if n then return "raid" .. n end
+end
 
 local function AddThreat(unit)
     local s = threatScratch
     -- once the client hides a value the whole list is dropped: no need to read the rest
     if s.secret or not UnitExists(unit) then return end
-    local _, _, scaled, _, value = UnitDetailedThreatSituation(unit, s.mob)
-    if not canaccessallvalues(value, scaled) then s.secret = true; return end
-    if value == nil then return end
+    local tanking, _, scaled, _, value = UnitDetailedThreatSituation(unit, s.mob)
+    if not canaccessallvalues(value, scaled, tanking) then s.secret = true; return end
+    -- no row for a member with no threat on the mob
+    if value == nil or value <= 0 then return end
+    local owner = PetOwner(unit)
     local name = UnitName(unit)
-    local _, class = UnitClass(unit)
-    local isMe = UnitIsUnit(unit, "player")
+    local class = s.classOf[unit]
+    if class == nil then
+        local _, read = UnitClass(owner or unit)
+        if Readable(read) then class = read; s.classOf[unit] = read end
+    end
+    local isMe = s.isMe[unit]
+    if isMe == nil then
+        local read = UnitIsUnit(unit, "player")
+        if Readable(read) then isMe = read and true or false; s.isMe[unit] = isMe end
+    end
     local n = #s.list + 1
     local data = s.pool[n] or {}
     s.pool[n] = data
     data.value, data.scaled = value, scaled or 0
+    data.order = n
     data.name = Readable(name) and name or "?"
-    data.class = Readable(class) and class or nil
-    data.isPlayer = Readable(isMe) and isMe or false
+    data.class = class
+    data.isPet = owner ~= nil
+    data.isPlayer = isMe or false
+    data.tanking = tanking and true or false
     s.list[n] = data
 end
 
-local function ByThreat(a, b) return a.value > b.value end
+-- equal threat keeps the order the group was read in, so rows never swap places between redraws
+local function ByThreat(a, b)
+    if a.value ~= b.value then return a.value > b.value end
+    return a.order < b.order
+end
 
 -- Every group member and pet with threat on the mob, highest first. secret = the client hid it.
 local function CollectThreat(mob)
@@ -911,18 +978,88 @@ local function FillRow(row, data, top, window, db, index, height, spacing)
     row.classFilename = data.class
     row.sourceDisplayType = Enum.DamageMeterSourceDisplayType and Enum.DamageMeterSourceDisplayType.Ally
     row:SetUseClassColor(window.ShouldUseClassColor and window:ShouldUseClassColor() or false)
-    if row.ftClass ~= data.class then
-        row.ftClass = data.class
+    -- a pet shows no class icon: it is not a member of that class
+    local iconKey = data.isPet and "pet" or data.class
+    if row.ftClass ~= iconKey then
+        row.ftClass = iconKey
         local icon = row:GetIcon()
-        if data.class then
+        if data.class and not data.isPet then
             icon:SetAtlas(GetClassAtlas(data.class), false, nil, true)
         else
             icon:SetTexture(nil)
         end
     end
-    row:GetName():SetText(("%d. %s"):format(data.rank, data.name))
-    row:GetValue():SetText(("%s  %d%%"):format(AbbreviateNumbers(data.value / 100), math.floor(data.scaled + 0.5)))
+    -- the texts only when what they show changed
+    if row.ftRank ~= data.rank or row.ftName ~= data.name then
+        row.ftRank, row.ftName = data.rank, data.name
+        row:GetName():SetText(("%d. %s"):format(data.rank, data.name))
+    end
+    -- Tank's Lead: the tank's row shows how far it is ahead of second place, as "+25%"
+    local percent = data.lead or math.floor(data.scaled + 0.5)
+    local display = db.threatValueDisplay or "percent"
+    if row.ftValue ~= data.value or row.ftPercent ~= percent or row.ftLead ~= (data.lead ~= nil) or row.ftDisplay ~= display then
+        row.ftValue, row.ftPercent, row.ftLead, row.ftDisplay = data.value, percent, data.lead ~= nil, display
+        local pct = (data.lead and "+%d%%" or "%d%%"):format(percent)
+        local amount = AbbreviateNumbers(data.value / 100)
+        if display == "percent" then
+            row:GetValue():SetText(pct)
+        elseif display == "value" then
+            row:GetValue():SetText(amount)
+        else
+            row:GetValue():SetText(amount .. "  " .. pct)
+        end
+    end
+    -- Pull Warning: your bar flashes as you near the point where you pull the mob
+    if data.warn then
+        if not row.FlareUI_Flash then
+            local flash = bar:CreateTexture(nil, "OVERLAY", nil, 6)
+            flash:SetAllPoints(bar)
+            flash:SetColorTexture(1, 0.15, 0.1, 1)
+            flash:SetBlendMode("ADD")
+            flash:SetAlpha(0)
+            local anim = flash:CreateAnimationGroup()
+            anim:SetLooping("BOUNCE")
+            local fade = anim:CreateAnimation("Alpha")
+            fade:SetFromAlpha(0)
+            fade:SetToAlpha(0.55)
+            fade:SetDuration(0.4)
+            fade:SetSmoothing("IN_OUT")
+            flash.anim = anim
+            row.FlareUI_Flash = flash
+        end
+        if not row.FlareUI_Flash.anim:IsPlaying() then row.FlareUI_Flash.anim:Play() end
+    elseif row.FlareUI_Flash and row.FlareUI_Flash.anim:IsPlaying() then
+        row.FlareUI_Flash.anim:Stop()
+        row.FlareUI_Flash:SetAlpha(0)
+    end
     row:Show()
+end
+
+-- Settings > Damage Meter open with no enemy targeted: sample rows, so the Threat tab's options can
+-- be seen. A tank, you closing in on the pull line, and two more.
+local PULL_WARN = 85   -- Pull Warning starts here (100 = you pull the mob)
+
+local function SampleThreat()
+    local s = threatScratch
+    wipe(s.list)
+    local names = LOCALIZED_CLASS_NAMES_MALE or {}
+    local me = UnitName("player")
+    local _, myClass = UnitClass("player")
+    local samples = {
+        { names.WARRIOR or "Warrior", "WARRIOR", 1000000, 100, true },
+        { Readable(me) and me or "?", Readable(myClass) and myClass or nil, 960000, 87, false, true },
+        { names.MAGE or "Mage", "MAGE", 720000, 55 },
+        { names.PRIEST or "Priest", "PRIEST", 310000, 22 },
+    }
+    for n, sample in ipairs(samples) do
+        local data = s.pool[n] or {}
+        s.pool[n] = data
+        data.name, data.class, data.value, data.scaled = sample[1], sample[2], sample[3], sample[4]
+        data.tanking, data.isPlayer, data.isPet = sample[5] or false, sample[6] or false, false
+        data.order, data.rank = n, n
+        s.list[n] = data
+    end
+    return s.list
 end
 
 local function UpdateThreatView(window, view)
@@ -935,8 +1072,12 @@ local function UpdateThreatView(window, view)
 
     local list, message = threatScratch.list, nil
     local mob = ThreatMob()
-    if not mob then
+    if not mob and DamageMeter.settingsPreview then
+        threatScratch.mob = nil
+        list = SampleThreat()
+    elseif not mob then
         wipe(list)
+        threatScratch.mob = nil
         message = L["No hostile target"]
     else
         local secret
@@ -949,11 +1090,39 @@ local function UpdateThreatView(window, view)
         end
     end
 
-    -- past capacity, the last row shows the player
+    -- the tank's lead, your pull point and the warning
+    local tank, second, me
+    for _, data in ipairs(list) do
+        data.lead, data.warn = nil, nil
+        if data.tanking and not tank then
+            tank = data
+        elseif not second then
+            second = data
+        end
+        if data.isPlayer then me = data end
+    end
+    if db.threatTankLead and tank and second and second.value > 0 then
+        tank.lead = math_max(0, math.floor((tank.value / second.value - 1) * 100 + 0.5))
+    end
+    -- the scaled percent is your threat against the point you pull at (110% of the tank's in melee,
+    -- 130% at range), so that point is your threat over it
+    local pull
+    if me and not me.tanking and me.scaled > 0 then
+        pull = me.value * 100 / me.scaled
+        if db.threatPullFlash and me.scaled >= PULL_WARN then me.warn = true end
+    end
+    local top = list[1] and list[1].value or 0
+    local showPull = db.threatPullLine and pull and true or false
+    if showPull and pull > top then top = pull end
+
+    -- the mouse wheel scrolls a list longer than the window; at the top, past capacity, the last row
+    -- shows the player
+    local offset = math_max(0, math_min(view.offset or 0, #list - capacity))
+    view.offset = offset
     local shown = threatScratch.shown
     wipe(shown)
-    for i = 1, math_min(#list, capacity) do shown[i] = list[i] end
-    if #list > capacity then
+    for i = 1, math_min(#list - offset, capacity) do shown[i] = list[offset + i] end
+    if offset == 0 and #list > capacity then
         local inView = false
         for i = 1, capacity do if shown[i].isPlayer then inView = true end end
         if not inView then
@@ -963,9 +1132,33 @@ local function UpdateThreatView(window, view)
         end
     end
 
-    local top = list[1] and list[1].value or 0
     for i, data in ipairs(shown) do FillRow(GetRow(view, i), data, top, window, db, i, height, spacing) end
     for i = #shown + 1, #view.rows do view.rows[i]:Hide() end
+
+    -- Pull Aggro Line: across the shown bars, where you would pull the mob
+    local line = view.pullLine
+    if showPull and #shown > 0 then
+        local firstBar = view.rows[1]:GetStatusBar()
+        local lastBar = view.rows[#shown]:GetStatusBar()
+        local width = firstBar:GetWidth()
+        if width and width > 0 then
+            view.lineRetry = nil
+            line:ClearAllPoints()
+            line:SetPoint("TOP", firstBar, "TOPLEFT", width * pull / top, 1)
+            line:SetPoint("BOTTOM", lastBar, "BOTTOMLEFT", width * pull / top, -1)
+            line:Show()
+        else
+            -- a new row has no size yet: placed a frame later (once; a meter that never gets a size
+            -- would otherwise redraw every frame)
+            line:Hide()
+            if not view.lineRetry then
+                view.lineRetry = true
+                C_Timer.After(0, function() if view.showing then SafeCall(UpdateThreatView, window, view) end end)
+            end
+        end
+    elseif line then
+        line:Hide()
+    end
     frame.Empty:SetText(message or "")
     frame.Empty:SetShown(message ~= nil)
 end
@@ -973,14 +1166,43 @@ end
 -- Threat events arrive in bursts: the list is redrawn at most every THREAT_TICK
 local threatDriver = CreateFrame("Frame")
 local threatDirty, threatElapsed, threatWatching = false, 0, false
+local threatSafety = 0
 threatDriver:Hide()   -- runs only while a Threat tab is up; see WatchThreat
-threatDriver:SetScript("OnEvent", function() threatDirty = true end)
+
+-- The group's own units: their threat situation is the only one that matters here
+local GROUP_TOKENS = { player = true, pet = true }
+for i = 1, 4 do GROUP_TOKENS["party" .. i] = true; GROUP_TOKENS["partypet" .. i] = true end
+for i = 1, 40 do GROUP_TOKENS["raid" .. i] = true; GROUP_TOKENS["raidpet" .. i] = true end
+
+-- In a raid threat events come for every mob and member nearby: only the shown mob's list and the
+-- group's own situation mark the list for a redraw
+threatDriver:SetScript("OnEvent", function(_, event, unit)
+    if event == "UNIT_THREAT_LIST_UPDATE" then
+        local mob = threatScratch.mob
+        if not (mob and unit) then return end
+        local same = UnitIsUnit(unit, mob)
+        if canaccessvalue(same) and not same then return end
+    elseif event == "UNIT_THREAT_SITUATION_UPDATE" then
+        if not GROUP_TOKENS[unit] then return end
+    elseif event == "GROUP_ROSTER_UPDATE" or event == "UNIT_PET" then
+        wipe(threatScratch.classOf)
+        wipe(threatScratch.isMe)
+    end
+    threatDirty = true
+end)
 threatDriver:SetScript("OnUpdate", function(self, elapsed)
-    -- a list skipped while nobody could see it is redrawn as soon as it can be seen again
-    if self.stale then UpdateThreatViews(true) end
     threatElapsed = threatElapsed + elapsed
     if threatElapsed < THREAT_TICK then return end
+    -- a list skipped while nobody could see it is redrawn as soon as it can be seen again
+    if self.stale then UpdateThreatViews(true) end
+    threatSafety = threatSafety + threatElapsed
     threatElapsed = 0
+    -- a mob that is only your target's target (no nameplate, no boss frame) sends no threat event
+    -- of its own: in a fight its list is redrawn twice a second anyway
+    if threatSafety >= 0.5 then
+        threatSafety = 0
+        if not threatDirty and InCombatLockdown() and ThreatMob() == "targettarget" then threatDirty = true end
+    end
     if threatDirty then
         threatDirty = false
         UpdateThreatViews()
@@ -992,9 +1214,14 @@ local function WatchThreat()
     for _, view in pairs(views) do if view.showing then any = true end end
     if any == threatWatching then return end
     threatWatching = any
+    -- the group may have changed while no tab listened
+    wipe(threatScratch.classOf)
+    wipe(threatScratch.isMe)
     for _, event in ipairs(THREAT_EVENTS) do
         if any then threatDriver:RegisterEvent(event) else threatDriver:UnregisterEvent(event) end
     end
+    -- only the target's target matters (the target-of-target fallback), not every raid member's
+    if any then threatDriver:RegisterUnitEvent("UNIT_TARGET", "target") else threatDriver:UnregisterEvent("UNIT_TARGET") end
     threatDriver:SetShown(any)
 end
 
@@ -1051,15 +1278,37 @@ local function PickView(window, showThreat)
     SetView(window, showThreat)
 end
 
--- The threat key flips every window from what is on screen, not from the saved pick
+-- Settings: a changed Threat option shows the Threat tab (with sample rows when nothing is targeted)
+-- until the page closes; the player's own pick is not changed
+function DamageMeter.PreviewThreat()
+    if not DamageMeter.settingsPreview then return end
+    DamageMeter.threatPreviewing = true
+    for window, view in pairs(views) do
+        if view.showing then SafeCall(UpdateThreatView, window, view) else SetView(window, true) end
+    end
+end
+
+function DamageMeter.EndThreatPreview()
+    if not DamageMeter.threatPreviewing then return end
+    DamageMeter.threatPreviewing = nil
+    local threat = ThreatPicked()
+    for window in pairs(views) do SetView(window, threat) end
+end
+
+function DamageMeter.RedrawThreat()
+    for window, view in pairs(views) do
+        if view.showing then SafeCall(UpdateThreatView, window, view) end
+    end
+end
+
+-- The toggle flips every window from what is on screen, not from the saved pick
 local function ToggleThreatViews()
     local showing = false
     for _, view in pairs(views) do if view.showing then showing = true end end
     for window in pairs(views) do PickView(window, not showing) end
 end
 
--- The radial menu's "Toggle Threat Meter" and the key binding (Bindings.xml) run this
-BINDING_NAME_FLAREUI_THREAT = L["Toggle Threat Meter"]
+-- The radial menu's "Toggle Threat Meter" runs this
 function FlareUI_ToggleThreatMeter()
     if next(views) then
         ToggleThreatViews()
@@ -1103,11 +1352,27 @@ local function CreateThreatView(window)
     frame:SetFrameLevel(scrollBox:GetFrameLevel() + 20)
     frame:EnableMouse(true)                          -- Blizzard's invisible rows stay unclickable
     frame:EnableMouseWheel(true)
-    frame:SetScript("OnMouseWheel", function() end)
+    -- a list longer than the window scrolls a row per notch
+    frame:SetScript("OnMouseWheel", function(_, delta)
+        local offset = math_max(0, (view.offset or 0) - delta)
+        if offset == (view.offset or 0) then return end
+        view.offset = offset
+        SafeCall(UpdateThreatView, window, view)
+    end)
     frame.Empty = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     frame.Empty:SetPoint("CENTER")
     frame:Hide()
     view.frame = frame
+
+    -- Pull Aggro Line, over the rows
+    local overlay = CreateFrame("Frame", nil, frame)
+    overlay:SetAllPoints()
+    overlay:SetFrameLevel(frame:GetFrameLevel() + 30)
+    local line = overlay:CreateTexture(nil, "OVERLAY", nil, 7)
+    line:SetColorTexture(1, 0.2, 0.15, 0.95)
+    line:SetWidth(2)
+    line:Hide()
+    view.pullLine = line
 
     -- a new meter type renames the title: the Threat tab follows the new width
     hooksecurefunc(dd.TypeName, "SetText", function() LayoutTabs(window, view) end)
@@ -1118,36 +1383,86 @@ end
 
 --------------------------------------------------
 -- 17. LIVE COMBAT TIMER
--- Blizzard's session timer only moves every two seconds or so, so in combat FlareUI counts the
--- fight in its place. Out of combat Blizzard's timer shows a past segment's (secret) length.
+-- Blizzard's session timer only moves every two seconds or so, so in a fight FlareUI shows each
+-- window's segment length in its place, read from the meter itself (it matches the bars, follows
+-- Overall, survives a /reload). It keeps running while your group fights on after you die. A past
+-- fight keeps Blizzard's timer, which shows that fight's fixed length.
 --------------------------------------------------
 local liveTimers = {}            -- session window -> FlareUI's timer text
 local combatStart
 local timerDriver = CreateFrame("Frame")
 timerDriver:Hide()
-local timerElapsed, timerSecond = 0, nil
+local timerElapsed = 0
+
+-- The length of the segment the window shows, or nil for a past fight (or a hidden value)
+local function LiveSeconds(window)
+    if window.GetSessionID and window:GetSessionID() ~= nil then return nil end
+    local kind = window.GetSessionType and window:GetSessionType()
+    if kind == nil then return nil end
+    if C_DamageMeter and C_DamageMeter.GetSessionDurationSeconds then
+        local ok, seconds = pcall(C_DamageMeter.GetSessionDurationSeconds, kind)
+        if ok and canaccessvalue(seconds) and type(seconds) == "number" then return math.floor(seconds) end
+    end
+    -- fallback: FlareUI's own count, for the current fight only
+    if kind == Enum.DamageMeterSessionType.Current and combatStart then return math.floor(GetTime() - combatStart) end
+end
+
+-- You, or anyone in your group, still in a fight
+local function GroupInCombat()
+    local mine = UnitAffectingCombat("player")
+    if canaccessvalue(mine) and mine then return true end
+    if not IsInGroup() then return false end
+    local prefix, count = "party", GetNumSubgroupMembers()
+    if IsInRaid() then prefix, count = "raid", GetNumGroupMembers() end
+    for i = 1, count do
+        local fighting = UnitAffectingCombat(prefix .. i)
+        if canaccessvalue(fighting) and fighting then return true end
+    end
+    return false
+end
+
+local UpdateLiveTimers
+
+-- Each window's text, when its second changed; Blizzard's timer shows where FlareUI's has nothing
+local function PaintLiveTimers()
+    for window, fs in pairs(liveTimers) do
+        local seconds = LiveSeconds(window)
+        if seconds ~= fs.FlareUI_Second then
+            fs.FlareUI_Second = seconds
+            if seconds then fs:SetText(("[%s] "):format(SecondsToClock(seconds))) end
+            fs:SetShown(seconds ~= nil)
+            local blizzard = GetWindowSessionTimer(window)
+            if blizzard then blizzard:SetAlpha(seconds and 0 or 1) end
+        end
+    end
+end
+
 timerDriver:SetScript("OnUpdate", function(_, elapsed)
     timerElapsed = timerElapsed + elapsed
     if timerElapsed < 0.1 then return end
     timerElapsed = 0
-    -- the text changes once a second
-    local second = math.floor(GetTime() - (combatStart or GetTime()))
-    if second == timerSecond then return end
-    timerSecond = second
-    local text = ("[%s] "):format(SecondsToClock(second))
-    for _, fs in pairs(liveTimers) do fs:SetText(text) end
+    -- after your own fight ends, the group's fight keeps the clock going
+    if not combatStart and not GroupInCombat() then
+        UpdateLiveTimers()
+        return
+    end
+    PaintLiveTimers()
 end)
 
-local function UpdateLiveTimers()
+function UpdateLiveTimers()
     local db = GetDb()
-    local live = db and db.enabled and db.combatTimer and combatStart ~= nil
+    local live = db and db.enabled and db.combatTimer and (combatStart ~= nil or GroupInCombat())
     for window, fs in pairs(liveTimers) do
-        local blizzard = GetWindowSessionTimer(window)
-        fs:SetShown(live)
-        if blizzard then blizzard:SetAlpha(live and 0 or 1) end
+        fs.FlareUI_Second = false   -- repaint
+        if not live then
+            fs:Hide()
+            local blizzard = GetWindowSessionTimer(window)
+            if blizzard then blizzard:SetAlpha(1) end
+        end
     end
-    timerElapsed, timerSecond = 1, nil
-    timerDriver:SetShown(live)
+    timerElapsed = 1
+    timerDriver:SetShown(live and true or false)
+    if live then PaintLiveTimers() end
 end
 
 -- registered in Init
@@ -1281,8 +1596,8 @@ local function ChatModuleOn()
     return chat ~= nil and chat.enabled == true
 end
 
--- Meter Tab in the Chat: both modules on, the main chat window skinned. Not in the Gamepad UI
--- (no new features there while Blizzard's gamepad UI is in alpha): the meter keeps its own place
+-- Meter Tab in the Chat: both modules on, the main chat window skinned. Not in the Gamepad UI, where
+-- the meter keeps its own place
 function ChatTabOn()
     local db = GetDb()
     if ns.IsGamepadUI() then return false end
@@ -1299,9 +1614,10 @@ local function MatchChatSizeBody()
     local source = inChat and ChatSkin() or ChatSizeSource()
     if not source then return end
     local width, height = source:GetSize()
-    -- in the chat: the meter's own skin (SKIN_PADDING around the window) lands on the chat skin's
-    -- edges, under the chat's tab row
-    if inChat then width, height = width - 2 * SKIN_PADDING, height - CHAT_TAB_ROW - 2 * SKIN_PADDING end
+    -- the meter's own skin reaches SKIN_PADDING past the window on every side: the window is that much
+    -- smaller, so the skin is the chat skin's size. In the chat it also sits under the chat's tab row.
+    width, height = width - 2 * SKIN_PADDING, height - 2 * SKIN_PADDING
+    if inChat then height = height - CHAT_TAB_ROW end
     if not (width and height and width > 0 and height > 0) then return end
     matchSizing = true
     meter:SetSize(width, height)
@@ -1401,6 +1717,7 @@ function DamageMeter:Refresh()
     end
     self._lastRefresh = now
 
+    barFontPass = barFontPass + 1   -- every row takes the bar font again
     for _, window in ipairs(GetSessionWindows()) do
         self:ApplyToWindow(window)
     end
@@ -1443,8 +1760,44 @@ function DamageMeter:ADDON_LOADED(event, addonName)
     end
 end
 
-function DamageMeter:PLAYER_ENTERING_WORLD()
+function DamageMeter:PLAYER_ENTERING_WORLD(_, _, isReload)
     C_Timer.After(0.5, function() self:Refresh() end)
+    C_Timer.After(2, function() self:CheckInstanceReset(isReload) end)   -- once the zone has settled
+end
+
+-- Reset on Entering a Dungeon: a new dungeon or raid clears the meter. Coming back into the same one
+-- (a ghost run, a hearth back in, a relog) keeps it, unless you were away more than ten minutes; a
+-- /reload never clears it. The dungeon is kept with the character, so it outlives a reload or relog.
+local INSTANCE_AWAY = 600
+
+local function CurrentInstance()
+    local inInstance, kind = IsInInstance()
+    return inInstance and (kind == "party" or kind == "raid") and select(8, GetInstanceInfo()) or nil
+end
+
+-- every loading screen (zoning out, a logout, a reload) stamps when you left the remembered dungeon
+function DamageMeter:PLAYER_LEAVING_WORLD()
+    local saved = ns.CharDB()
+    local id = CurrentInstance()
+    if id and id == saved.meterInstance then saved.meterLeftAt = time() end
+end
+
+function DamageMeter:CheckInstanceReset(isReload)
+    local saved = ns.CharDB()
+    local instanceID = CurrentInstance()
+    if not instanceID then
+        if saved.meterInstance and not saved.meterLeftAt then saved.meterLeftAt = time() end
+        return
+    end
+    local away = saved.meterLeftAt and time() - saved.meterLeftAt > INSTANCE_AWAY
+    local isNew = instanceID ~= saved.meterInstance or away
+    saved.meterLeftAt = nil
+    if not isNew then return end
+    saved.meterInstance = instanceID
+    if isReload then return end
+    local db = GetDb()
+    if not (db and db.enabled and db.resetOnInstance) then return end
+    if C_DamageMeter and C_DamageMeter.ResetAllCombatSessions then pcall(C_DamageMeter.ResetAllCombatSessions) end
 end
 
 --------------------------------------------------
@@ -1511,14 +1864,23 @@ showRetry:SetScript("OnEvent", function()
     C_Timer.After(0.5, function() DamageMeter:ApplyVisibility() end)
 end)
 
+-- Min Alpha: how far the meter fades out (0 = gone). Not for the Meter tab in the chat, where the
+-- tab decides and a faded meter sits under the chat.
+local function DownAlpha()
+    local db = GetDb()
+    local v = db and tonumber(db.minAlpha) or 0
+    return math_max(0, math_min(0.9, v))
+end
+
 local function FadeStep(self, meter, elapsed)
-    -- at rest under Show on Mouseover it stays on watch: a check every 0.05 s is enough
+    -- at rest under Show on Mouseover it stays on watch: a check every 0.1 s is enough (the bags and
+    -- map are only looked at once the pointer is over the meter)
     self.restWait = (self.restWait or 0) + elapsed
-    if self.atRest and self.restWait < 0.05 then return end
+    if self.atRest and self.restWait < 0.1 then return end
     elapsed = self.restWait
     self.restWait = 0
     local target = fadeTarget
-    if meter.FlareUI_MouseHidden then target = (MeterUnderMouse(meter) and not PanelsInTheWay()) and 1 or 0 end
+    if meter.FlareUI_MouseHidden then target = (MeterUnderMouse(meter) and not PanelsInTheWay()) and 1 or DownAlpha() end
     local db = GetDb()
     local time = ns.FadeTime(db and db.fadeSpeed)
     local alpha = meter:GetAlpha()
@@ -1532,7 +1894,7 @@ local function FadeStep(self, meter, elapsed)
     self.atRest = alpha == target and meter:GetAlpha() == target
     if not self.atRest then meter:SetAlpha(alpha) end
     if alpha ~= target then return end
-    if target == 0 and DamageMeter.viewBackPending then DamageMeter.ShowDamageViews() end
+    if target < 1 and DamageMeter.viewBackPending then DamageMeter.ShowDamageViews() end
     if hideWhenFaded and target == 0 then
         hideWhenFaded = false
         local wasApplying = applying
@@ -1557,7 +1919,7 @@ function DamageMeter.FadingOut()
     local meter = _G.DamageMeter
     if not (meter and meter:IsShown() and fadeDriver:IsShown() and meter:GetAlpha() > 0) then return false end
     if meter.FlareUI_MouseHidden then return not (MeterUnderMouse(meter) and not PanelsInTheWay()) end
-    return fadeTarget == 0
+    return fadeTarget < 1
 end
 
 -- Fades toward target (hide: once at 0); the first step runs now, so an instant change lands first
@@ -1620,9 +1982,14 @@ local function ApplyVisibilityBody(meter)
         if not wasUp and not meter:IsShown() then meter:SetAlpha(0) end
         if ShowMeter(meter) then
             meter.FlareUI_MouseHidden = true
-            FadeMeter(meter, 0)
+            FadeMeter(meter, DownAlpha())
         end
         meter.FlareUI_Up = false
+    elseif DownAlpha() > 0 then
+        -- Min Alpha: faded, not gone (held back in a fight like any show, ShowMeter)
+        meter.FlareUI_Up = false
+        if not wasUp and not meter:IsShown() then meter:SetAlpha(0) end
+        if ShowMeter(meter) then FadeMeter(meter, DownAlpha()) end
     elseif wasUp then
         -- it was up: on screen for its fade out, hidden at the end (already hidden: nothing to fade)
         meter.FlareUI_Up = false
@@ -1839,10 +2206,23 @@ function DamageMeter:Init()
     self:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
     self:RegisterEvent("ADDON_LOADED")
     self:RegisterEvent("PLAYER_ENTERING_WORLD")
+    self:RegisterEvent("PLAYER_LEAVING_WORLD")
     GROUP_BUTTONS.events:RegisterEvent("GROUP_ROSTER_UPDATE")
     GROUP_BUTTONS.events:RegisterEvent("PARTY_LEADER_CHANGED")
     timerEvents:RegisterEvent("PLAYER_REGEN_DISABLED")
     timerEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
+
+    -- the meter's gear menu gets FlareUI's settings (its own "Open Settings" goes to a page this
+    -- client doesn't have). Menu.ModifyMenu adds to Blizzard's menu without touching it.
+    if Menu and Menu.ModifyMenu and not self.gearMenuHooked then
+        self.gearMenuHooked = true
+        Menu.ModifyMenu("MENU_DAMAGE_METER_WINDOW_SETTINGS", function(_, rootDescription)
+            local db = GetDb()
+            if not (db and db.enabled and ns.SettingsPanel) then return end
+            rootDescription:CreateDivider()
+            rootDescription:CreateButton(L["FlareUI Settings"], function() ns.SettingsPanel:Open("dm") end)
+        end)
+    end
 
     C_Timer.After(0, function() self:Refresh() end)
     C_Timer.After(1, function() self:Refresh() end)

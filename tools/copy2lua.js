@@ -61,6 +61,12 @@ for (const raw of lines) {
   if (m) { copy.modules[mod].editButton = strip(m[1]); continue; }
   m = line.match(/^Under the frame rows:\s*(.+)$/);
   if (m) { copy.modules[mod].editNote = strip(m[1]); continue; }
+  m = line.match(/^Banner 2:\s*(.+)$/);
+  if (m) {
+    const parts = [...m[1].matchAll(/\*\*(.+?)\*\*/g)].map((p) => p[1]);
+    copy.modules[mod].banner2 = parts[0]; copy.modules[mod].banner2Button = parts[1];
+    continue;
+  }
   m = line.match(/^Banner:\s*(.+)$/);
   if (m) {
     const parts = [...m[1].matchAll(/\*\*(.+?)\*\*/g)].map((p) => p[1]);
@@ -139,7 +145,7 @@ for (const raw of lines) {
 // <br> in the copy document is a line break in the game (<br><br> leaves an empty line)
 const q = (s) => 'L["' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\s*<br>\s*/gi, '\\n') + '"]';
 const plain = (s) => '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-const TEXT = new Set(['title', 'info', 'desc', 'label', 'tip', 'intro', 'done', 'empty', 'text', 'editButton', 'editNote', 'banner', 'bannerButton']);
+const TEXT = new Set(['title', 'info', 'desc', 'label', 'tip', 'intro', 'done', 'empty', 'text', 'editButton', 'editNote', 'banner', 'bannerButton', 'banner2', 'banner2Button']);
 function luaValue(k, v, allText) {
   if (Array.isArray(v)) return '{ ' + v.map((x) => (k === 'tags' ? plain(x.toLowerCase()) : q(x))).join(', ') + ' }';
   if (typeof v === 'boolean') return String(v);

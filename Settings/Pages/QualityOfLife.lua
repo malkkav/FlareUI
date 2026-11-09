@@ -56,7 +56,22 @@ S:Row{
 }
 
 -- GAMEPLAY ---------------------------------------
-S:Row{ key = "qol.fastLoot", tab = "gameplay", path = "tweaks.fasterLoot", apply = Refresh }
+-- Bags and Looting: the bag rows first (Modules/Bags.lua). Another bag addon greys them all; the
+-- layout rows also need Blizzard's Combined Bags.
+local function RefreshBags() if ns.Bags then ns.Bags:Refresh() end end
+local function BagAddon() return ns.Bags and ns.Bags.GetOtherBagAddon and ns.Bags:GetOtherBagAddon() and true or false end
+local function NotCombined() return BagAddon() or not (ns.Bags and ns.Bags:IsCombined()) end
+local BAG_COLUMNS = { { 0, L["Default"] } }
+for n = 6, 20 do BAG_COLUMNS[#BAG_COLUMNS + 1] = { n, tostring(n) } end
+S:Row{ key = "qol.bagColumns", kind = "choice", tab = "gameplay", path = "tweaks.bagColumns", choices = BAG_COLUMNS,
+    apply = RefreshBags, disabled = NotCombined }
+S:Row{ key = "qol.bagGaps", half = true, tab = "gameplay", path = "tweaks.bagGaps", apply = RefreshBags, disabled = NotCombined }
+S:Row{ key = "qol.bagButtons", half = true, tab = "gameplay", path = "tweaks.bagButtons", apply = RefreshBags, disabled = NotCombined }
+S:Row{ key = "qol.bagRarityBorders", half = true, tab = "gameplay", path = "tweaks.bagRarityBorders", apply = RefreshBags, disabled = BagAddon }
+S:Row{ key = "qol.bagThickBorders", half = true, tab = "gameplay", path = "tweaks.bagThickBorders", apply = RefreshBags, disabled = BagAddon }
+S:Row{ key = "qol.bagJunkIcon", half = true, tab = "gameplay", path = "tweaks.bagJunkIcon", apply = RefreshBags, disabled = BagAddon }
+S:Row{ key = "qol.bagUpgradeArrow", half = true, tab = "gameplay", path = "tweaks.bagUpgradeArrow", apply = RefreshBags, disabled = BagAddon }
+S:Row{ key = "qol.fastLoot", half = true, tab = "gameplay", path = "tweaks.fasterLoot", apply = Refresh }
 -- one switch for further and faster camera zoom
 S:Row{
     key = "qol.camera", tab = "gameplay",
@@ -67,20 +82,30 @@ S:Row{
     end,
     apply = Refresh,
 }
-S:Row{ key = "qol.delete", tab = "gameplay", path = "tweaks.autoDelete", apply = Refresh }
-S:Row{ key = "qol.autoAcceptQuests", tab = "gameplay", path = "tweaks.autoAcceptQuests" }
-S:Row{ key = "qol.autoTurnInQuests", tab = "gameplay", path = "tweaks.autoTurnInQuests" }
-S:Row{ key = "qol.trainAll", tab = "gameplay", path = "tweaks.trainAll", apply = Refresh }
-S:Row{ key = "qol.way", tab = "gameplay", path = "tweaks.way", reload = true, disabled = WayTaken }
-S:Row{ key = "qol.mailBook", tab = "gameplay", path = "tweaks.mailBook", apply = Refresh }
-S:Row{ key = "qol.alerts", tab = "gameplay", path = "tweaks.alertSounds" }
-S:Row{ key = "qol.petFood", tab = "gameplay", path = "tweaks.petFood", apply = Refresh }
+S:Row{ key = "qol.autoAcceptQuests", half = true, tab = "gameplay", path = "tweaks.autoAcceptQuests" }
+S:Row{ key = "qol.autoTurnInQuests", half = true, tab = "gameplay", path = "tweaks.autoTurnInQuests" }
+S:Row{ key = "qol.delete", half = true, tab = "gameplay", path = "tweaks.autoDelete", apply = Refresh }
+S:Row{ key = "qol.trainAll", half = true, tab = "gameplay", path = "tweaks.trainAll", apply = Refresh }
+S:Row{ key = "qol.way", half = true, tab = "gameplay", path = "tweaks.way", reload = true, disabled = WayTaken }
+S:Row{ key = "qol.mailBook", half = true, tab = "gameplay", path = "tweaks.mailBook", apply = Refresh }
+S:Row{ key = "qol.alerts", half = true, tab = "gameplay", path = "tweaks.alertSounds" }
+S:Row{ key = "qol.petFood", half = true, tab = "gameplay", path = "tweaks.petFood", apply = Refresh }
+S:Row{ key = "qol.fishCast", half = true, tab = "gameplay", path = "tweaks.fishCast", apply = Refresh }
+S:Row{ key = "qol.fishSound", half = true, tab = "gameplay", path = "tweaks.fishSound", apply = Refresh }
+S:Row{ key = "qol.mapFade", half = true, tab = "gameplay", path = "tweaks.mapFade", apply = Refresh }
+S:Row{ key = "qol.taxiMap", half = true, tab = "gameplay", path = "tweaks.taxiMap" }
+S:Row{ key = "qol.skipLoot", half = true, tab = "gameplay", path = "tweaks.skipLootConfirm" }
+-- Controller: the Gamepad mode prompt and rumble (GamepadMode.lua)
 S:Row{ key = "qol.gamepadPrompt", tab = "gameplay", path = "tweaks.gamepadPrompt" }
-S:Row{ key = "qol.skipLoot", tab = "gameplay", path = "tweaks.skipLootConfirm" }
+S:Row{ key = "qol.rumbleAlerts", half = true, tab = "gameplay", path = "tweaks.rumbleAlerts" }
+S:Row{ key = "qol.rumbleProcs", half = true, tab = "gameplay", path = "tweaks.rumbleProcs" }
 
 -- INTERFACE --------------------------------------
 S:Row{ key = "qol.npCombo", tab = "interface", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon }
 S:Row{ key = "qol.npQuest", tab = "interface", path = "tweaks.nameplateQuest", apply = Refresh, disabled = QuestBadgeTaken }
+-- Blizzard's own enemy plates, so another nameplate addon does not grey it out
+S:Row{ key = "qol.npCombat", tab = "interface", path = "tweaks.combatPlates", apply = Refresh }
+S:Row{ key = "qol.npNames", tab = "interface", path = "tweaks.nameplateHideNames", apply = Refresh, disabled = NameplateAddon }
 -- live when switched on; switching off leaves visible plates' bars wide until Blizzard re-lays
 -- them, so the reload bar offers a reload
 S:Row{ key = "qol.npLevel", tab = "interface", path = "tweaks.nameplateHideLevel", disabled = NameplateAddon,
@@ -88,17 +113,19 @@ S:Row{ key = "qol.npLevel", tab = "interface", path = "tweaks.nameplateHideLevel
         Refresh()
         S:TrackReload("qol.npLevel", on and "on" or "off", "on")
     end }
-S:Row{ key = "qol.npNames", tab = "interface", path = "tweaks.nameplateHideNames", apply = Refresh, disabled = NameplateAddon }
--- Blizzard's own enemy plates, so another nameplate addon does not grey it out
-S:Row{ key = "qol.npCombat", tab = "interface", path = "tweaks.combatPlates", apply = Refresh }
+-- the level moves in front of the name: needs the box hidden and the names shown
+S:Row{ key = "qol.npLevelName", tab = "interface", path = "tweaks.nameplateLevelName", parent = "qol.npLevel", apply = Refresh,
+    disabled = function()
+        return NameplateAddon() or not S:GetPath("tweaks.nameplateHideLevel") or S:GetPath("tweaks.nameplateHideNames") and true or false
+    end }
 
 S:Row{ key = "qol.sellJunk", tab = "interface", path = "tweaks.sellJunk", apply = Refresh }
 S:Row{ key = "qol.repair", tab = "interface", path = "tweaks.autoRepair", apply = Refresh }
 S:Row{ key = "qol.durability", tab = "interface", path = "tweaks.durabilityWarning", apply = Refresh }
 S:Row{ key = "qol.merchantKnown", tab = "interface", path = "tweaks.merchantKnown", apply = Refresh }
+S:Row{ key = "qol.bulkBuy", tab = "interface", path = "tweaks.bulkBuy", apply = Refresh }
 
 S:Row{ key = "qol.hideErrors", tab = "interface", path = "tweaks.hideErrors", reload = true }
 S:Row{ key = "qol.hideZoneText", tab = "interface", path = "tweaks.hideZoneText", reload = true }
-S:Row{ key = "qol.hidePartyTitle", tab = "interface", path = "tweaks.hidePartyTitle", apply = Refresh }
 S:Row{ key = "qol.hideTips", tab = "interface", path = "tweaks.hideTips", apply = Refresh }
 S:Row{ key = "qol.hideFrameNumbers", tab = "interface", path = "tweaks.hidePortraitNumbers", apply = Refresh }

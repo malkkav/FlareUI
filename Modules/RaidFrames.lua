@@ -31,7 +31,7 @@ local MAX_TANKS = 4
 local TILE_TEMPLATE = "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate"
 local DEFAULT_POSITION = { point = "LEFT", x = 2, y = 0 }
 local TANK_DEFAULT_POSITION = { point = "BOTTOMLEFT", x = 2, y = 106 }
-local RANGE_INTERVAL = 0.5
+local RANGE_INTERVAL = 1   -- a safety re-check: range comes from UNIT_IN_RANGE_UPDATE
 local READY_CHECK_HOLD = 6
 local INSIDE = { "INSIDE_TOP", "INSIDE_TOPLEFT", "INSIDE_TOPRIGHT", "INSIDE_CENTER", "INSIDE_LEFT", "INSIDE_RIGHT",
                  "INSIDE_BOTTOM", "INSIDE_BOTTOMLEFT", "INSIDE_BOTTOMRIGHT" }
@@ -163,8 +163,9 @@ local function GetDb()
     return db and db.raid
 end
 
+-- Edit Mode, unless a fight ended its previews (ns.OnEditFight)
 local function IsEditing()
-    return LEM:IsInEditMode()
+    return ns.EditPreviewing()
 end
 
 local function TileSize()
@@ -184,7 +185,8 @@ local FIXED = { castbar = false, auraMax = 3, auraPerRow = 3, absorbTexture = "F
 -- main tank settings of their own (db.mainTanks), falling back to the raid's
 local TANK_OWN = { powerHeight = true, buffs = true, debuffs = true, dispels = true, dispelHighlight = true,
                    auraSize = true, buffSize = true, debuffSize = true, hideBuffs = true, onlyMyBuffs = true, dispellableOnly = true,
-                   auraSort = true, auraReverse = true, auraMineFirst = true }
+                   auraSort = true, auraReverse = true, auraMineFirst = true,
+                   powerManaOnly = true, powerText = true, tankTargets = true }
 local function View(sizeFn, own)
     return setmetatable({}, { __index = function(_, key)
         local db = GetDb()
@@ -231,6 +233,129 @@ end
 --------------------------------------------------
 local Tile = PF and PF.Tile
 
+-- Tank Targets (main tank frames): what each main tank is targeting, below or right of its frame. A
+-- secure button, child of the tank's tile: the header runs the tile's unit snippet as it hands the
+-- tile its unit, in combat too, and the snippet gives the button "<tank>target". A unit watch shows
+-- it while that target exists; a light poll paints it (no event says a tank's target changed).
+local TT = { HEIGHT = 18, GAP = 2, frames = {} }
+TT.SNIPPET = [[
+    local target = self:GetFrameRef("fuiTankTarget")
+    if not target then return end
+    local unit = self:GetAttribute("unit")
+    if unit then target:SetAttribute("unit", unit .. "target") else target:SetAttribute("unit", nil) end
+]]
+
+function TT.Place()
+    local db = GetDb()
+    local v = db and db.mainTanks and db.mainTanks.tankTargets
+    return (v == "BOTTOM" or v == "RIGHT") and v or "OFF"
+end
+
+function TT.Update(t)
+    local unit = t:GetAttribute("unit")
+    if not unit or not UnitExists(unit) then return end
+    t.Health:SetMinMaxValues(0, UnitHealthMax(unit))
+    t.Health:SetValue(UnitHealth(unit))
+    t.Health:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn(GetDb())))
+    t.Name:SetText(ns.UnitDisplayName(unit))
+end
+
+function TT.Create(f)
+    local t = CreateFrame("Button", nil, f, "SecureUnitButtonTemplate,BackdropTemplate")
+    t:SetAttribute("*type1", "target")
+    t:SetAttribute("*type2", "togglemenu")
+    t:RegisterForClicks("AnyUp")
+    t:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+    t:SetBackdropColor(0, 0, 0, 0.7)
+    t.Health = K.CreateBar(t, t:GetFrameLevel() + 1)
+    t.Health:SetPoint("TOPLEFT", 1, -1)
+    t.Health:SetPoint("BOTTOMRIGHT", -1, 1)
+    local overlay = CreateFrame("Frame", nil, t)
+    overlay:SetAllPoints()
+    overlay:SetFrameLevel(t:GetFrameLevel() + 3)
+    t.Name = overlay:CreateFontString(nil, "OVERLAY")
+    t.Name:SetPoint("LEFT", 4, 0)
+    t.Name:SetPoint("RIGHT", -4, 0)
+    t.Name:SetJustifyH("LEFT")
+    t.Name:SetWordWrap(false)
+    t:SetScript("OnShow", TT.Update)
+    t:Hide()
+    SecureHandlerSetFrameRef(f, "fuiTankTarget", t)
+    f:SetAttribute("refreshUnitChange", TT.SNIPPET)
+    f.TankTarget = t
+    TT.frames[#TT.frames + 1] = t
+end
+
+-- Edit Mode: a sample target beside each sample tank (a plain frame)
+function TT.PlaceSample(f, w, hh)
+    local place = TT.Place()
+    local s = f.SampleTarget
+    if place == "OFF" then
+        if s then s:Hide() end
+        return
+    end
+    if not s then
+        s = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        s:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+        s:SetBackdropColor(0, 0, 0, 0.7)
+        s.Health = K.CreateBar(s, s:GetFrameLevel() + 1)
+        s.Health:SetPoint("TOPLEFT", 1, -1)
+        s.Health:SetPoint("BOTTOMRIGHT", -1, 1)
+        s.Health:SetMinMaxValues(0, 1)
+        s.Health:SetValue(0.7)
+        s.Health:SetStatusBarColor(0.8, 0.1, 0.1)
+        s.Name = s.Health:CreateFontString(nil, "OVERLAY")
+        s.Name:SetPoint("LEFT", 4, 0)
+        s.Name:SetPoint("RIGHT", -4, 0)
+        s.Name:SetJustifyH("LEFT")
+        s.Name:SetWordWrap(false)
+        s.Name:SetText(L["Target"])
+        f.SampleTarget = s
+    end
+    local db, kdb = GetDb(), K.GetDb()
+    s.Health:SetStatusBarTexture(K.GetBarTexture(db and db.texture))
+    K.ApplyFont(s.Name, kdb and kdb.font, -2)
+    s:ClearAllPoints()
+    if place == "RIGHT" then
+        s:SetPoint("TOPLEFT", f, "TOPRIGHT", TT.GAP, 0)
+        s:SetSize(w, hh)
+    else
+        s:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -TT.GAP)
+        s:SetSize(w, TT.HEIGHT)
+    end
+    s:Show()
+end
+
+-- out of combat (LayoutTanks): place, look and the unit watch
+function TT.Layout()
+    local place = TT.Place()
+    local db = GetDb()
+    local w, hh = TankSize()
+    local tex = K.GetBarTexture(db and db.texture)
+    local kdb = K.GetDb()
+    for _, t in ipairs(TT.frames) do
+        local f = t:GetParent()
+        t:ClearAllPoints()
+        if place == "RIGHT" then
+            t:SetPoint("TOPLEFT", f, "TOPRIGHT", TT.GAP, 0)
+            t:SetSize(w, hh)
+        else
+            t:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -TT.GAP)
+            t:SetSize(w, TT.HEIGHT)
+        end
+        t.Health:SetStatusBarTexture(tex)
+        K.ApplyFont(t.Name, kdb and kdb.font, -2)
+        local unit = f:GetAttribute("unit")
+        t:SetAttribute("unit", unit and (unit .. "target") or nil)
+        if place == "OFF" or IsEditing() then
+            UnregisterUnitWatch(t)
+            t:Hide()
+        else
+            RegisterUnitWatch(t)
+        end
+    end
+end
+
 -- Lua setup of a tile the header created (called from INIT_SNIPPET)
 local function InitTile(header, name)
     local f = _G[name]
@@ -240,11 +365,13 @@ local function InitTile(header, name)
     f.auraPositions = INSIDE
     f:RegisterForClicks("AnyUp")
     if type(f.SetRolesets) == "function" then pcall(f.SetRolesets, f, "unitFrames") end
-    _G.ClickCastFrames = _G.ClickCastFrames or {}
-    _G.ClickCastFrames[f] = true
     f:SetScript("OnEnter", Tile.OnEnter)
     f:SetScript("OnLeave", Tile.OnLeave)
+    -- after the scripts: a click-cast addon wraps OnEnter / OnLeave as it registers the frame
+    _G.ClickCastFrames = _G.ClickCastFrames or {}
+    _G.ClickCastFrames[f] = true
     Tile.Build(f, nil)
+    if header.ctx == tankCtx then TT.Create(f) end
     f:HookScript("OnAttributeChanged", function(self, attr, value)
         if attr == "unit" then
             Tile.SetUnit(self, value)
@@ -428,6 +555,8 @@ local function LayoutTanks()
     local db = GetDb()
     local w, hh = TankSize()
     local gap = db.mainTanks and db.mainTanks.spacing or 2
+    -- Tank Targets below the frames: the room for them between the tanks
+    if TT.Place() == "BOTTOM" then gap = gap + TT.HEIGHT + TT.GAP end
     local h = headers.tanks
     h:SetAttribute("_ignore", "batch")
     h:SetAttribute("tileWidth", w)
@@ -449,6 +578,7 @@ local function LayoutTanks()
     h:SetPoint(up and "BOTTOM" or "TOP", tankHolder, up and "BOTTOM" or "TOP")
     h:SetShown(not IsEditing())
     tankHolder:SetSize(w, MAX_TANKS * hh + (MAX_TANKS - 1) * gap)
+    TT.Layout()
 end
 
 -- Edit Mode: the sample raid of the size being set, laid out as the live one would be
@@ -535,6 +665,8 @@ local function PlacePreview()
 
     local tw, th = TankSize()
     local tgap = db.mainTanks and db.mainTanks.spacing or 2
+    -- Tank Targets below the frames take room between them, as live
+    if TT.Place() == "BOTTOM" then tgap = tgap + TT.HEIGHT + TT.GAP end
     local tanksUp = Grow() == "UP"
     for i, f in ipairs(tankPreview) do
         f:ClearAllPoints()
@@ -544,6 +676,7 @@ local function PlacePreview()
             f:SetPoint("TOP", tankHolder, "TOP", 0, -(i - 1) * (th + tgap))
         end
         f:SetShown(db.mainTanks and db.mainTanks.enabled ~= false)
+        TT.PlaceSample(f, tw, th)
     end
     if tankHolder then tankHolder:SetSize(tw, MAX_TANKS * th + (MAX_TANKS - 1) * tgap) end
 end
@@ -622,7 +755,7 @@ local function ApplyVisibility()
             UnregisterStateDriver(frame, "visibility")
             frame:SetShown(frame == holder or TanksOn())
         elseif frame == holder or TanksOn() then
-            RegisterStateDriver(frame, "visibility", "[group:raid] show; hide")
+            RegisterStateDriver(frame, "visibility", "[group:raid] show; [@raid1,exists] show; hide")
         else
             UnregisterStateDriver(frame, "visibility")
             frame:Hide()
@@ -665,7 +798,7 @@ local function Refresh()
         end
     else
         for _, f in ipairs(tiles) do
-            if f:IsVisible() and f.unit then Tile.UpdateAll(f); Tile.UpdateRange(f) end
+            if f:IsVisible() and f.fuiUnit then Tile.UpdateAll(f); Tile.UpdateRange(f) end
         end
     end
 end
@@ -732,7 +865,7 @@ local function AuraItems(get, set, d, view)
           desc = L["Only the buffs you cast (your heals over time, your blessings). Off: everyone's buffs."] },
         { name = L["Dispellable Debuffs Only"], kind = LEM.SettingType.Checkbox, default = false,
           get = get("dispellableOnly", false), set = set("dispellableOnly"),
-          desc = L["Only the debuffs you can dispel."] },
+          desc = L["Only the debuffs you can dispel, plus boss debuffs and other important ones, as on Blizzard's raid frames."] },
     }
     return items
 end
@@ -807,6 +940,11 @@ local function BuildSettings()
           get = get("powerHeight", 4), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = d.healthText or "none", values = K.HEALTH_TEXT_MODES,
           get = get("healthText", "none"), set = set("healthText") },
+        { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "none", values = K.POWER_TEXT_MODES,
+          get = get("powerText", "none"), set = set("powerText") },
+        { name = L["Power Bar for Mana Users Only"], kind = LEM.SettingType.Checkbox, default = false,
+          get = get("powerManaOnly", false), set = set("powerManaOnly"),
+          desc = L["Power bars only for classes that use mana: warriors and rogues get the room for health."] },
     })
 
     Section("Look", {
@@ -815,8 +953,8 @@ local function BuildSettings()
         { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = d.border, values = K.BuildBorderValues(false),
           get = get("border", d.border), set = set("border"), hidden = K.NoBorderOptions },
         -- (main tanks follow it)
-        K.ClassColorSetting(function() return ns.ClassColorsOn(GetDb()) end, set("classColor")),
         K.BgOpacitySetting(K.BAR_BG_OPACITY, get("bgOpacity", K.BAR_BG_OPACITY), set("bgOpacity")),
+        K.ClassColorSetting(function() return ns.ClassColorsOn(GetDb()) end, set("classColor")),
         K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars")),
     })
 
@@ -873,6 +1011,12 @@ local function BuildTankSettings()
         { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = d.powerHeight or 4, minValue = 0, maxValue = 15, valueStep = 1,
           get = get("powerHeight", 4), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
         { name = L["Spacing"], kind = LEM.SettingType.Slider, default = 2, minValue = 0, maxValue = 20, valueStep = 1, get = get("spacing", 2), set = set("spacing") },
+        { name = L["Tank Targets"], kind = LEM.SettingType.Dropdown, default = "OFF",
+          values = { { text = L["Off"], value = "OFF", isRadio = true },
+                     { text = L["Bottom of the Frame"], value = "BOTTOM", isRadio = true },
+                     { text = L["Right of the Frame"], value = "RIGHT", isRadio = true } },
+          get = get("tankTargets", "OFF"), set = set("tankTargets"),
+          desc = L["What each main tank is targeting, in a small frame below or right of theirs."] },
     })
     Section("Auras", AuraItems(get, set, d, tankView))
     Section("Aura Ordering", ns.AuraOrder.Items(get, set))
@@ -889,7 +1033,7 @@ end
 --------------------------------------------------
 local function ForTiles(fn)
     for _, f in ipairs(tiles) do
-        if f.unit and f:IsVisible() then fn(f) end
+        if f.fuiUnit and f:IsVisible() then fn(f) end
     end
 end
 
@@ -900,13 +1044,17 @@ function RF:OnGlobalEvent(event, ...)
     end
     if IsEditing() then return end
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
-        -- one pass for a burst (a raid forming)
+        -- one pass for a burst (a raid forming); tiles the headers gave a new unit since it began
+        -- were already drawn in full (SetTileUnit)
         if not rosterPending then
             rosterPending = true
+            local burstStart = GetTime()
             C_Timer.After(0.2, function()
                 rosterPending = false
                 if IsEditing() then return end
-                ForTiles(Tile.UpdateAll)
+                ForTiles(function(f)
+                    if not (f.unitSetAt and f.unitSetAt >= burstStart) then Tile.UpdateAll(f) end
+                end)
             end)
         end
         return
@@ -915,7 +1063,7 @@ function RF:OnGlobalEvent(event, ...)
         if readyHold then readyHold:Cancel() end
         readyHold = C_Timer.NewTimer(READY_CHECK_HOLD, function()
             readyHold = nil
-            for _, f in ipairs(tiles) do f.lastReady = nil; if f.unit then Tile.UpdateReadyCheck(f) end end
+            for _, f in ipairs(tiles) do f.lastReady = nil; if f.fuiUnit then Tile.UpdateReadyCheck(f) end end
         end)
     elseif event == "READY_CHECK" then
         if readyHold then readyHold:Cancel(); readyHold = nil end
@@ -945,11 +1093,19 @@ local GLOBAL_EVENTS = {
     "PLAYER_REGEN_ENABLED",
 }
 
--- Range has no event for every change; the tiles re-check twice a second
+-- Range comes from UNIT_IN_RANGE_UPDATE; every second the tiles re-check it (in case an event was
+-- missed) and their aura reach, which has no event
 local function StartRangeTicker()
     C_Timer.NewTicker(RANGE_INTERVAL, function()
         if not holder:IsShown() or IsEditing() then return end
         ForTiles(Tile.UpdateRange)
+    end)
+    -- Tank Targets: a tank's target has no event of its own
+    C_Timer.NewTicker(0.3, function()
+        if TT.Place() == "OFF" then return end
+        for _, t in ipairs(TT.frames) do
+            if t:IsVisible() then TT.Update(t) end
+        end
     end)
 end
 
@@ -1030,10 +1186,14 @@ function RF:Init()
         RebuildSettings()
         StackGroupFrames()
     end)
-    LEM:RegisterCallback("exit", function()
+    local function EndPreview()
         HideSamples()
         StackGroupFrames()
         Refresh()
+    end
+    LEM:RegisterCallback("exit", EndPreview)
+    ns.OnEditFight(function()
+        if IsEditing() then Refresh() StackGroupFrames() else EndPreview() end
     end)
 
     StartRangeTicker()

@@ -110,6 +110,7 @@ local function Char()
     local t = c.objectiveTracker
     t.collapsedQuests = t.collapsedQuests or {}
     t.collapsedZones = t.collapsedZones or {}
+    t.pinned = t.pinned or {}   -- questID -> true: Pin to Top
     return t
 end
 
@@ -144,16 +145,32 @@ local function GetLayoutStore(layoutName)
     return db.layouts[layoutName]
 end
 
--- right: the frame's centre is on the right half of the screen; top: the top half, unless Edit Mode's
--- Anchor picks top or bottom
-function OT:Side()
+-- Where the frame stands now: right when its centre is on the right half; top when its top edge is
+-- nearer the screen's top than its bottom edge is to the screen's bottom. The edges, not the centre:
+-- a tall tracker near the top has its centre low, and held by the bottom it would collapse downward.
+local function SideFromRect()
+    local right, top = true, true
+    local left, bottom, width, height = holder:GetRect()
+    if left then
+        local w, h = UIParent:GetSize()
+        right = left + width / 2 > w / 2
+        top = h - (bottom + height) <= bottom
+    end
+    return right, top
+end
+
+local CORNER_SIDES = { TOPRIGHT = { true, true }, TOPLEFT = { false, true },
+                       BOTTOMRIGHT = { true, false }, BOTTOMLEFT = { false, false } }
+
+-- right, top: the corner the frame is held by, so the answer stays put while its height changes.
+-- Edit Mode's Anchor (Top / Bottom) wins; fresh = judge where it stands now (after a move).
+function OT:Side(fresh)
     local db = GetDb()
     local anchor = db and db.anchor
     local right, top = true, true
     if holder then
-        local x, y = holder:GetCenter()
-        local w, h = UIParent:GetSize()
-        if x then right, top = x > w / 2, y > h / 2 end
+        local sides = not fresh and CORNER_SIDES[holder:GetPoint(1) or ""]
+        if sides then right, top = sides[1], sides[2] else right, top = SideFromRect() end
     end
     if anchor == "TOP" then top = true elseif anchor == "BOTTOM" then top = false end
     return right, top
@@ -166,7 +183,7 @@ end
 local function AnchorToCorner()
     local left, bottom, width, height = holder:GetRect()
     if not left then return nil end
-    local right, top = OT:Side()
+    local right, top = OT:Side(true)
     local corner = CornerOf(right, top)
     local x = right and (left + width - UIParent:GetWidth()) or left
     local y = top and (bottom + height - UIParent:GetHeight()) or bottom
@@ -198,6 +215,7 @@ local function OnFrameMoved(_, layoutName)
     local store = GetLayoutStore(layoutName)
     if not (store and corner) then return end
     store.corner, store.x, store.y = corner, math_floor(x + 0.5), math_floor(y + 0.5)
+    store.edgeJudged = true
     OT:RequestRender()
 end
 
@@ -258,6 +276,7 @@ end
 local zoneNames, questBuf, groupRank, groupBest, groupOrder = {}, {}, {}, {}, {}
 -- the quest log as last read; each watched quest's distance as the last sort saw it
 local logBuf, sortIDs, sortDist = {}, {}, {}
+local sortNew, sortRankOld, sortRankNew = {}, {}, {}   -- scratch for the distance check (OnSortTick)
 
 local function AddZoneName(z)
     if z and z ~= "" then zoneNames[z] = true end
@@ -317,7 +336,14 @@ end
 local function ProgressKey(questID)
     if C_QuestLog.IsComplete(questID) then return -1 end
     local objectives, sum = C_QuestLog.GetQuestObjectives(questID) or {}, 0
-    for _, obj in ipairs(objectives) do sum = sum + ObjectiveProgress(obj) end
+    for _, obj in ipairs(objectives) do
+        if obj.type == "progressbar" and not obj.finished and GetQuestProgressBarPercent then
+            local pct = GetQuestProgressBarPercent(questID)
+            sum = sum + ((canaccessvalue(pct) and type(pct) == "number") and pct / 100 or 0)
+        else
+            sum = sum + ObjectiveProgress(obj)
+        end
+    end
     return #objectives > 0 and -(sum / #objectives) or 0
 end
 
@@ -347,6 +373,28 @@ local function TimerText(seconds)
     return TEXT.timeLeft .. " " .. clock
 end
 
+-- Timer bars: a thin bar under each quest timer, pooled on the list
+local timerBars, timerBarsUsed = {}, 0
+local function GetTimerBar(i)
+    local bar = timerBars[i]
+    if bar then return bar end
+    bar = CreateFrame("StatusBar", nil, content)
+    bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+    bar:SetMinMaxValues(0, 1)
+    local bg = bar:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0, 0, 0, 0.5)
+    timerBars[i] = bar
+    return bar
+end
+
+local function FillTimerBar(bar, questID, seconds)
+    local total = timerTotals[questID]
+    bar:SetValue((total and total > 0) and math_max(0, math_min(1, seconds / total)) or 1)
+    local c = TimerColor(questID, seconds)
+    bar:SetStatusBarColor(c[1], c[2], c[3], 0.9)
+end
+
 -- Once a second while a timer is drawn; a timer that ended (turned in, failed) takes a redraw
 local function UpdateTimers()
     ReadTimers()
@@ -357,6 +405,7 @@ local function UpdateTimers()
         line.text:SetText(text)
         SetColor(line.text, color)
         line.ftText, line.ftColor = text, color   -- what the line shows, for the next render (AddLine)
+        if line.timerBar and line.timerBar:IsShown() then FillTimerBar(line.timerBar, questID, seconds) end
     end
 end
 
@@ -424,7 +473,24 @@ local function CollectQuests(db)
             q.ftRank = (db.zoneHeaders or not db.zoneFirst) and groupRank[q.ftHeader] or (q.ftHere and 0 or 1)
         end
     end
+    -- Pin to Top: pinned quests lead the list, in their own order
+    local pinned = Char().pinned
+    for _, q in ipairs(questBuf) do
+        if pinned[q.questID] then q.ftRank = -1 end
+    end
     table.sort(questBuf, ByOrder)
+    -- in a fight with quest item buttons up, the list keeps the order it had when the fight began
+    -- (the buttons cannot move then): quests already listed in place, new ones after them
+    local frozen = state.frozenOrder
+    if frozen then
+        for i, q in ipairs(questBuf) do q.ftNow = i end
+        table.sort(questBuf, function(a, b)
+            local fa, fb = frozen[a.questID], frozen[b.questID]
+            if fa and fb then return fa < fb end
+            if fa or fb then return fa ~= nil end
+            return a.ftNow < b.ftNow
+        end)
+    end
     return questBuf
 end
 
@@ -451,6 +517,16 @@ end
 --------------------------------------------------
 -- 6. CLICKS, MENU AND TOOLTIP
 --------------------------------------------------
+-- Wowhead Link: the quest's page on Wowhead's Forever site, selected for copying
+ns.Dialogs = ns.Dialogs or {}
+ns.Dialogs["FLAREUI_QUEST_LINK"] = {
+    text = L["Wowhead link (Ctrl+C to copy)"],
+    button1 = _G.CLOSE or L["Close"],
+    hasEditBox = true,
+    maxLetters = 0,
+    editText = function(url) return url end,
+    hideOnEscape = true,
+}
 -- Opening the log from here taints the gamepad bindings, and in combat it runs outside Blizzard's
 -- secure click: both are refused with a message
 local function CanOpenPanels()
@@ -464,6 +540,23 @@ local function CanOpenPanels()
     return not refusal
 end
 
+-- A map addon that finishes opening the map a moment later (OpenMap) can reset the quest panel to
+-- the list after the details were shown: the first click then only opened the map. The details are
+-- checked again on the next frames and shown again when another quest, or none, is up.
+local OPEN_RECHECKS = { 0, 0.1, 0.3 }
+
+local function OpenToDetails(questID)
+    QuestMapFrame_OpenToQuestDetails(questID)
+    for _, delay in ipairs(OPEN_RECHECKS) do
+        C_Timer.After(delay, function()
+            if InCombatLockdown() or not (WorldMapFrame and WorldMapFrame:IsShown()) then return end
+            local shown = QuestMapFrame_GetDetailQuestID and QuestMapFrame_GetDetailQuestID()
+            local detailsUp = QuestMapFrame.DetailsFrame and QuestMapFrame.DetailsFrame:IsShown()
+            if shown ~= questID or not detailsUp then QuestMapFrame_OpenToQuestDetails(questID) end
+        end)
+    end
+end
+
 -- A finished auto-complete quest completes on the click, as on Blizzard's tracker
 local function OpenQuest(questID)
     if not CanOpenPanels() then return end
@@ -471,8 +564,9 @@ local function OpenQuest(questID)
     local info = logIndex and C_QuestLog.GetInfo(logIndex)
     if info and info.isAutoComplete and C_QuestLog.IsComplete(questID) then
         ShowQuestComplete(questID)
+        if RemoveAutoQuestPopUp then RemoveAutoQuestPopUp(questID) end
     elseif QuestMapFrame_OpenToQuestDetails then
-        QuestMapFrame_OpenToQuestDetails(questID)
+        OpenToDetails(questID)
     end
 end
 
@@ -502,6 +596,8 @@ end
 
 -- collapsedQuests: true collapsed, false held open against the automatic rule, nil follows the rule
 local function IsCollapsed(questID)
+    local held = state.frozenCollapsed and state.frozenCollapsed[questID]
+    if held ~= nil then return held end
     local choice = Char().collapsedQuests[questID]
     if choice == nil then return AutoCollapsed(questID) end
     return choice
@@ -530,6 +626,14 @@ local function ShowQuestMenu(owner, questID)
         end)
         share:SetEnabled(IsInGroup() and C_QuestLog.IsPushableQuest(questID))
         root:CreateButton(IsCollapsed(questID) and L["Expand"] or L["Collapse"], function() ToggleCollapsed(questID) end)
+        local pins = Char().pinned
+        root:CreateButton(pins[questID] and L["Unpin"] or L["Pin to Top"], function()
+            pins[questID] = (not pins[questID]) or nil
+            OT:RequestRender()
+        end)
+        root:CreateButton(L["Wowhead Link"], function()
+            ns.ShowDialog("FLAREUI_QUEST_LINK", nil, ("https://www.wowhead.com/forever/quest=%d/"):format(questID))
+        end)
         if QuestUtil.CanRemoveQuestWatch() then
             root:CreateButton(TEXT.untrack, function() C_QuestLog.RemoveQuestWatch(questID) end)
         end
@@ -580,7 +684,43 @@ local function AnchorTooltip(line)
     end
 end
 
-local function QuestTooltip(line)
+-- The quest's rewards, as the quest log lists them (when it shows them): XP, money, items, a choice
+local function AddRewards(questID)
+    if C_QuestLog.ShouldShowQuestRewards and not C_QuestLog.ShouldShowQuestRewards(questID) then return end
+    local xp = GetQuestLogRewardXP and GetQuestLogRewardXP(questID) or 0
+    local money = GetQuestLogRewardMoney and GetQuestLogRewardMoney(questID) or 0
+    local items = GetNumQuestLogRewards and GetNumQuestLogRewards(questID) or 0
+    local choices = GetNumQuestLogChoices and GetNumQuestLogChoices(questID, true) or 0
+    if xp <= 0 and money <= 0 and items == 0 and choices == 0 then return false end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(_G.REWARDS or L["Rewards"], 1, 0.82, 0)
+    if xp > 0 then GameTooltip:AddLine(L["%s XP"]:format(BreakUpLargeNumbers(xp)), 1, 1, 1) end
+    if money > 0 and GetMoneyString then GameTooltip:AddLine(GetMoneyString(money), 1, 1, 1) end
+    local missing = false
+    local function Item(name, texture, count, quality)
+        if not name then missing = true return end
+        local color = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+        local r, g, b = 1, 1, 1
+        if color then r, g, b = color.r, color.g, color.b end
+        local text = (texture and ("|T" .. texture .. ":14:14|t ") or "") .. name
+        if count and count > 1 then text = text .. " x" .. count end
+        GameTooltip:AddLine(text, r, g, b)
+    end
+    for i = 1, items do
+        local name, texture, count, quality = GetQuestLogRewardInfo(i, questID)
+        Item(name, texture, count, quality)
+    end
+    if choices > 0 then
+        GameTooltip:AddLine(_G.REWARD_CHOOSE or L["Choose one:"], 0.8, 0.8, 0.8)
+        for i = 1, choices do
+            local name, texture, count, quality = GetQuestLogChoiceInfo(i, questID)
+            Item(name, texture, count, quality)
+        end
+    end
+    return missing
+end
+
+local function QuestTooltip(line, retry)
     local questID = line.questID
     AnchorTooltip(line)
     GameTooltip:AddLine(C_QuestLog.GetTitleForQuestID(questID) or "?")
@@ -603,6 +743,12 @@ local function QuestTooltip(line)
             end
         end
     end
+    -- an item the client hasn't loaded yet: drawn once more a moment later
+    if AddRewards(questID) and not retry then
+        C_Timer.After(0.3, function()
+            if GameTooltip:IsOwned(line) and line.questID == questID and line:IsMouseOver() then QuestTooltip(line, true) end
+        end)
+    end
     AddPartyProgress(questID)
     GameTooltip:Show()
 end
@@ -624,6 +770,15 @@ end
 
 local function OnLineClick(self, button)
     if state.editMode then return end
+    -- a quest offered from an item or an area, or one that completes on a click
+    if self.popupQuestID then
+        if CanOpenPanels() then
+            if self.popupType == "OFFER" then ShowQuestOffer(self.popupQuestID) else ShowQuestComplete(self.popupQuestID) end
+            if RemoveAutoQuestPopUp then RemoveAutoQuestPopUp(self.popupQuestID) end
+            OT:RequestRender()
+        end
+        return
+    end
     if self.zone then
         if IsShiftKeyDown() and button == "LeftButton" then
             ToggleZoneQuests(self.zone)
@@ -635,6 +790,8 @@ local function OnLineClick(self, button)
         return
     end
     if self.recipeID then
+        -- the Gamepad UI: no menu and no professions window opened from here (see quests below)
+        if ns.IsGamepadUI() and not (button ~= "RightButton" and IsShiftKeyDown()) then return end
         if button == "RightButton" then
             GameTooltip:Hide()
             ShowRecipeMenu(self, self.recipeID, self.recipeName)
@@ -650,6 +807,8 @@ local function OnLineClick(self, button)
     if button == "MiddleButton" then
         ToggleCollapsed(questID)
     elseif button == "RightButton" then
+        -- in the Gamepad UI a menu opened from addon code hangs the client (as on the chat tabs)
+        if ns.IsGamepadUI() then return end
         GameTooltip:Hide()
         ShowQuestMenu(self, questID)
     elseif IsShiftKeyDown() then
@@ -909,6 +1068,7 @@ local function GetItemButton(i)
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     b:Hide()
+    b:SetAlpha(OT.fadeAlpha or 1)
     itemButtons[i] = b
     return b
 end
@@ -948,20 +1108,16 @@ function OT:UpdateItemCooldowns()
     end
 end
 
--- While minimized or hidden in combat the buttons cannot hide: they turn invisible instead
-local function SetItemsAlpha(alpha)
-    for _, b in ipairs(itemButtons) do b:SetAlpha(alpha) end
-end
-
+-- Minimized or hidden in combat the buttons cannot hide (they are protected) and stay where they are,
+-- visible and working: made invisible, a click on the empty spot would still use the item. They go
+-- once the fight ends. (Minimizing at the start of a fight runs before lockdown and hides them.)
 function OT:UpdateItemButtons()
     local showing = holder and holder:IsVisible() and scroll:IsShown()
     if InCombatLockdown() then
         state.itemsDirty = true
-        SetItemsAlpha(showing and 1 or 0)
         return
     end
     state.itemsDirty = false
-    SetItemsAlpha(1)
     local used = 0
     if showing then
         local right = self:Side()
@@ -1031,7 +1187,8 @@ function OT:Render()
     local char = Char()
     local minimized = char.minimized and not state.editMode
     local questGap = db.questGap or C.QUEST_GAP
-    local inScenario = C_Scenario and C_Scenario.GetStepInfo and select(2, IsInInstance()) == "scenario"
+    local inScenario = C_Scenario and C_Scenario.GetStepInfo
+        and ((C_Scenario.IsInScenario and C_Scenario.IsInScenario()) or select(2, IsInInstance()) == "scenario")
     state.watchMoney = false
     wipe(state.sheens)
 
@@ -1060,6 +1217,8 @@ function OT:Render()
     local width = (db.width or C.WIDTH) - C.PAD * 2
     wipe(titleLines)
     wipe(timerLines)
+    for _, bar in ipairs(timerBars) do bar:Hide() end
+    timerBarsUsed = 0
     local fonts = state.fonts
     fonts.header, fonts.title, fonts.objective = db.headerFont, db.titleFont, db.objectiveFont
     local wrap = db.wrapText ~= false
@@ -1108,6 +1267,7 @@ function OT:Render()
         line:SetPoint("TOPLEFT", content, "TOPLEFT", line.ftX, y)
         line.questID, line.zone, line.recipeID, line.recipeName, line.logIndex = nil, nil, nil, nil, nil
         line.group, line.sampleItem = nil, nil
+        line.popupQuestID, line.popupType, line.timerBar = nil, nil, nil
         if line.focusButton then line.focusButton:Hide() end
         if line.playButton then line.playButton:Hide() end
         if line.leaving then
@@ -1163,12 +1323,21 @@ function OT:Render()
         if collapsed then return true end
         y = y - C.ZONE_GAP
         if canaccessvalue(stage) and stage and stage ~= "" and stage ~= title then AddLine(stage, "title", C.TITLE) end
-        for i = 1, canaccessvalue(numCriteria) and numCriteria or 0 do
+        -- Blizzard's rules: criteria only when the scenario shows them; a count in front unless the
+        -- text carries its own (formatted) or the step fills a bar (weighted progress, shown here as n%)
+        local showCriteria = not (C_Scenario.ShouldShowCriteria and C_Scenario.ShouldShowCriteria() == false)
+        for i = 1, (showCriteria and canaccessvalue(numCriteria) and numCriteria) or 0 do
             local info = C_ScenarioInfo.GetCriteriaInfo(i)
             if info and canaccessallvalues(info.description, info.quantity, info.totalQuantity, info.completed) and info.description then
                 local text = info.description
                 local total = info.totalQuantity or 0
-                if total > 1 then text = string_format("%d/%d %s", info.quantity or 0, total, text) end
+                local weighted = canaccessvalue(info.isWeightedProgress) and info.isWeightedProgress
+                local formatted = canaccessvalue(info.isFormatted) and info.isFormatted
+                if weighted then
+                    if not info.completed then text = string_format("%s (%d%%)", text, info.quantity or 0) end
+                elseif not formatted and total > 1 then
+                    text = string_format("%d/%d %s", info.quantity or 0, total, text)
+                end
                 AddLine(text, "objective", info.completed and C.OBJECTIVE_DONE or C.OBJECTIVE, C.INDENT)
             end
         end
@@ -1212,6 +1381,26 @@ function OT:Render()
     local empty = true
     if not minimized then
         if inScenario and not state.editMode and AddScenario() then empty = false end
+        -- Quests Blizzard offers from an item or an area, and ones that complete on a click: Blizzard
+        -- shows these in its own tracker, which is parked, and closes the quest window for an offer
+        if not state.editMode and GetNumAutoQuestPopUps and GetAutoQuestPopUp then
+            for i = 1, GetNumAutoQuestPopUps() do
+                local questID, popUpType = GetAutoQuestPopUp(i)
+                local bounty = questID and C_QuestLog.IsQuestBounty and C_QuestLog.IsQuestBounty(questID)
+                local title = questID and not bounty and C_QuestLog.GetTitleForQuestID(questID)
+                if title and title ~= "" then
+                    local offer = popUpType == "OFFER"
+                    local head = AddLine("! " .. title, "title", C.TITLE_FOCUS, titleRoom)
+                    head.popupQuestID, head.popupType = questID, popUpType
+                    local hint = offer and (_G.QUEST_WATCH_POPUP_CLICK_TO_VIEW or "Click to view quest")
+                        or (_G.QUEST_WATCH_POPUP_CLICK_TO_COMPLETE or "Click to complete quest")
+                    local row = AddLine(hint, "objective", C.OBJECTIVE, objectiveIndent)
+                    row.popupQuestID, row.popupType = questID, popUpType
+                    y = y - questGap
+                    empty = false
+                end
+            end
+        end
         if (state.editMode or state.preview) and state.logTracked == 0 then
             wipe(state.order)
             for _, s in ipairs(PREVIEW) do
@@ -1278,6 +1467,18 @@ function OT:Render()
                         local timer = AddLine(TimerText(seconds), "objective", TimerColor(q.questID, seconds), objectiveIndent)
                         timer.questID = q.questID
                         timerLines[q.questID] = timer
+                        -- a thin bar under it, emptying as the time runs out. Held by the line, so it
+                        -- follows the list when it sits at the bottom of the frame (drop, below)
+                        timerBarsUsed = timerBarsUsed + 1
+                        local bar = GetTimerBar(timerBarsUsed)
+                        bar:ClearAllPoints()
+                        bar:SetPoint("TOPLEFT", timer, "BOTTOMLEFT", 0, -1)
+                        bar:SetSize(math_max(20, width - objectiveIndent - 4), 3)
+                        FillTimerBar(bar, q.questID, seconds)
+                        bar:Show()
+                        timer.timerBar = bar
+                        lastBottom = lastBottom - 5
+                        y = y - 5
                     end
                     if not collapsed then
                         if complete then
@@ -1295,7 +1496,13 @@ function OT:Render()
                             for i, obj in ipairs(C_QuestLog.GetQuestObjectives(q.questID) or {}) do
                                 now[i] = obj.finished and true or false
                                 if obj.text and obj.text ~= "" and not (db.hideFinished and obj.finished) then
-                                    local row = AddLine(obj.text, "objective", obj.finished and C.OBJECTIVE_DONE or C.OBJECTIVE, objectiveIndent)
+                                    -- a progress-bar objective has no count in its text: Blizzard draws a bar
+                                    local text = obj.text
+                                    if obj.type == "progressbar" and not obj.finished and GetQuestProgressBarPercent then
+                                        local pct = GetQuestProgressBarPercent(q.questID)
+                                        if canaccessvalue(pct) and type(pct) == "number" then text = string_format("%s (%d%%)", text, pct) end
+                                    end
+                                    local row = AddLine(text, "objective", obj.finished and C.OBJECTIVE_DONE or C.OBJECTIVE, objectiveIndent)
                                     row.questID = q.questID
                                     if obj.finished and seen and seen[i] == false then state.sheens[#state.sheens + 1] = row end
                                 end
@@ -1423,6 +1630,14 @@ function OT:Render()
     -- minimized, the header keeps the same 3 px below it as above it
     holder:SetHeight(C.HEADER + (showList and (C.LIST_TOP + listHeight + C.LIST_BOTTOM) or 3))
     state.contentHeight, state.listHeight = contentHeight, listHeight
+    -- a saved corner without edgeJudged was picked by the centre: judged once by the edges, while open
+    if not minimized and db.anchor ~= "TOP" and db.anchor ~= "BOTTOM" then
+        local store = GetLayoutStore()
+        if store and store.corner and not store.edgeJudged then
+            store.edgeJudged = true
+            OnFrameMoved(nil, LEM:GetActiveLayoutName())
+        end
+    end
     self:UpdateScrollBar()
 
     -- Minimize Style "button": minimized, only a lone "+" shows at the anchored corner
@@ -1561,6 +1776,16 @@ function OT:RequestRender()
     C_Timer.After(0.1, Later)
 end
 
+local function ByOldDistance(x, y)
+    if sortDist[x] ~= sortDist[y] then return sortDist[x] < sortDist[y] end
+    return x < y
+end
+
+local function ByNewDistance(x, y)
+    if sortNew[x] ~= sortNew[y] then return sortNew[x] < sortNew[y] end
+    return x < y
+end
+
 -- Distance changes while moving: redraw only when the order would change
 local function OnSortTick()
     local db = GetDb()
@@ -1571,9 +1796,24 @@ local function OnSortTick()
     if count then
         local same = true
         for i = 1, count do
-            if Distance(sortIDs[i]) ~= sortDist[i] then same = false break end
+            sortNew[i] = Distance(sortIDs[i])
+            if sortNew[i] ~= sortDist[i] then same = false end
         end
         if same then return end
+        -- moving changes the distances all the time, but the order only when two quests swap: the
+        -- watched quests ranked by the old and the new distances. Unchanged, the log isn't read again
+        for i = 1, count do sortRankOld[i], sortRankNew[i] = i, i end
+        for i = count + 1, #sortRankOld do sortRankOld[i], sortRankNew[i] = nil, nil end
+        table.sort(sortRankOld, ByOldDistance)
+        table.sort(sortRankNew, ByNewDistance)
+        local swapped = false
+        for i = 1, count do
+            if sortRankOld[i] ~= sortRankNew[i] then swapped = true break end
+        end
+        if not swapped then
+            for i = 1, count do sortDist[i] = sortNew[i] end
+            return
+        end
     end
     ReadLog()
     local quests, order = CollectQuests(db), state.order
@@ -1592,6 +1832,39 @@ function OT:SetSettingsPreview(on)
     if state.preview == on then return end
     state.preview = on
     if holder then self:Render() end
+    -- a faded tracker shows while its page is open
+    if ns.Visibility and ns.Visibility.Wake then ns.Visibility:Wake() end
+end
+
+function OT:IsSettingsPreview() return state.preview or false end
+
+-- for Visibility: the window, and the pieces it fades with it that sit outside it
+function OT:GetFrame() return holder end
+
+function OT:SetFadeAlpha(alpha)
+    self.fadeAlpha = alpha
+    if miniButton then miniButton:SetAlpha(alpha) end
+    for _, b in ipairs(itemButtons) do b:SetAlpha(alpha) end
+end
+
+function OT:IsMouseOverExtras()
+    if miniButton and miniButton:IsShown() and miniButton:IsMouseOver() then return true end
+    for _, b in ipairs(itemButtons) do
+        if b:IsShown() and b:IsMouseOver() then return true end
+    end
+    return false
+end
+
+-- Quest item buttons up as a fight starts: the order and folding hold until it ends, so each button
+-- stays beside its quest (a protected button cannot follow its title in a fight)
+function OT:FreezeForCombat()
+    if (state.itemsShown or 0) == 0 then return end
+    local frozen, collapsed = {}, {}
+    for i, questID in ipairs(state.order or {}) do
+        frozen[questID] = i
+        collapsed[questID] = IsCollapsed(questID)
+    end
+    state.frozenOrder, state.frozenCollapsed = frozen, collapsed
 end
 
 function OT:SetMinimized(minimized)
@@ -1638,23 +1911,21 @@ end
 
 --------------------------------------------------
 -- 11. BLIZZARD'S TRACKER
--- Parked under a hidden frame (Hide is blocked in combat, and Blizzard re-shows it), re-parented
--- whenever Blizzard moves it. It keeps running, so new quests are still tracked automatically.
+-- Shrunk to nothing and see-through, where Blizzard keeps it: never hidden or re-parented. Any hide
+-- or re-parent from here runs Blizzard's OnHide (the managed frame layout, UpdateHeight, MarkDirty)
+-- tainted, and the tracker's next update then fails on secret auras (Maw buffs in its scenario
+-- section), as on a level-up, when Blizzard re-lays its right-hand frames. Scale and alpha run no
+-- scripts. It keeps running, so new quests are still tracked automatically.
 --------------------------------------------------
--- under UIParent, so the parked tracker keeps its usual scale for anyone measuring it
-local parking = CreateFrame("Frame", nil, UIParent)
-parking:Hide()
+local PARKED_SCALE = 0.001
 
 local function ParkBlizzardTracker()
     local tracker = _G.ObjectiveTrackerFrame
     if not tracker or InCombatLockdown() then return end
-    if not state.parkHooked then
-        state.parkHooked = true
-        hooksecurefunc(tracker, "SetParent", function(self, parent)
-            if parent ~= parking and not InCombatLockdown() then self:SetParent(parking) end
-        end)
-    end
-    if tracker:GetParent() ~= parking then tracker:SetParent(parking) end
+    -- the widget's own SetScale: Edit Mode's override re-lays the frame
+    local setScale = tracker.SetScaleBase or tracker.SetScale
+    if math.abs(tracker:GetScale() - PARKED_SCALE) > 0.0001 then setScale(tracker, PARKED_SCALE) end
+    if tracker:GetAlpha() ~= 0 then tracker:SetAlpha(0) end
 end
 
 -- Sections stacked under Blizzard's tracker through the shared ForeverTrackerHost would be parked
@@ -1662,7 +1933,8 @@ end
 local function DetachCompanionSections()
     local host, db = _G.ForeverTrackerHost, GetDb()
     if type(host) ~= "table" or not (host.IsAttachedToQuestTracker and host.SetAttached) or not db then return end
-    local on = db.enabled
+    -- in the Gamepad UI this tracker stands aside, so they stay with Blizzard's
+    local on = db.enabled and not ns.IsGamepadUI()
     if on and not db.companionDetached then
         if host.IsAttachedToQuestTracker() then
             host.SetAttached(false)
@@ -1879,6 +2151,8 @@ local function CreateFrames()
     content.Highlight:Hide()
     scroll:EnableMouseWheel(true)
     scroll:SetScript("OnMouseWheel", function(self, delta)
+        -- in a fight the quest item buttons cannot move with the list: it holds still while they show
+        if InCombatLockdown() and (state.itemsShown or 0) > 0 then return end
         local max = math_max(0, content:GetHeight() - self:GetHeight())
         self:SetVerticalScroll(math_min(max, math_max(0, self:GetVerticalScroll() - delta * C.SCROLL_STEP)))
     end)
@@ -1928,6 +2202,12 @@ function OT:Refresh()
     self:Render()
 end
 
+-- Not in the Gamepad UI: Blizzard's own tracker is part of its controller navigation (D-pad Up gives
+-- it the pad, with its quest items and menus), so it shows there instead. Switching modes reloads.
+function OT:ShouldLoad()
+    return not ns.IsGamepadUI()
+end
+
 function OT:Init()
     if self.initialized then return end
     self.initialized = true
@@ -1946,7 +2226,7 @@ function OT:Init()
         "ZONE_CHANGED", "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED_INDOORS", "SUPER_TRACKING_CHANGED",
         "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "BAG_UPDATE_COOLDOWN",
         "PLAYER_LEVEL_UP", "PLAYER_TARGET_CHANGED", "TRACKED_RECIPE_UPDATE", "BAG_UPDATE_DELAYED",
-        "GET_ITEM_INFO_RECEIVED", "QUEST_AUTOCOMPLETE", "PLAYER_MONEY", "SCENARIO_UPDATE", "SCENARIO_CRITERIA_UPDATE",
+        "GET_ITEM_INFO_RECEIVED", "QUEST_AUTOCOMPLETE", "QUEST_DETAIL", "PLAYER_MONEY", "SCENARIO_UPDATE", "SCENARIO_CRITERIA_UPDATE",
         "QUEST_TURNED_IN",
     }) do events:RegisterEvent(e) end
     events:RegisterUnitEvent("UNIT_QUEST_LOG_CHANGED", "player")
@@ -1958,11 +2238,15 @@ function OT:Init()
             C_Timer.After(1, function() OT:Render() end)
         elseif event == "PLAYER_REGEN_ENABLED" then
             ParkBlizzardTracker()
+            local wasFrozen = state.frozenOrder ~= nil
+            state.frozenOrder, state.frozenCollapsed = nil, nil
             OT:CheckContext()
+            if wasFrozen then OT:Render() end
             if state.itemsDirty then OT:UpdateItemButtons() end
             return
         elseif event == "PLAYER_REGEN_DISABLED" then
             OT:CheckContext()
+            OT:FreezeForCombat()
             return
         elseif event == "BAG_UPDATE_COOLDOWN" then
             OT:UpdateItemCooldowns()
@@ -1978,6 +2262,7 @@ function OT:Init()
             OT:CheckContext()
         elseif event == "QUEST_REMOVED" and arg1 then
             Char().collapsedQuests[arg1] = nil
+            Char().pinned[arg1] = nil
             state.seen[arg1] = nil
         elseif event == "QUEST_ACCEPTED" then
             OT:QuestAccepted(arg1)

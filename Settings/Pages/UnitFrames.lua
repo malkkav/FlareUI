@@ -22,15 +22,13 @@ end
 S:Module{
     key = "uf", group = "HUD", order = 20, enabled = "unitframes.enabled",
     tabs = { { key = "settings" }, { key = "fonts" } },
-    -- the options that live in Edit Mode are easy to miss: said at the top of the page
-    bannerEditMode = true,
-    banner = function()
-        return "|cffff3333" .. L["MOST FRAMES OPTIONS ARE IN EDIT MODE!"] .. "|r", L["Open Edit Mode"], function() S:OpenEditMode("uf") end
-    end,
     -- the frames behind the shared Player / Pet / Target / Focus row
     editFrames = {
         function() return _G.FlareUI_UF_Player end, function() return _G.FlareUI_UF_Target end,
         function() return _G.FlareUI_UF_Focus end, function() return _G.FlareUI_UF_Pet end,
+        -- frames of their own with no row here
+        function() return _G.FlareUI_UF_PlayerCastBar end, function() return _G.FlareUI_RaidTanks end,
+        function() return _G.FlareUI_Totems end,
     },
     -- the header button opens Edit Mode on the first frame that exists
     editMode = function()
@@ -40,22 +38,24 @@ S:Module{
     end,
 }
 
--- one switch for player, pet, target and focus (Edit opens the player frame)
+-- one switch for player, pet, target, focus and the player cast bar (Edit opens the player frame);
+-- the cast bar has no other home, so it is made with the player frame (UnitFrames.lua)
 local MAIN_UNITS = { "player", "pet", "target", "focus" }
 S:Row{
     key = "uf.main", kind = "frame", reload = true, half = true,
     get = function() return S:GetPath("unitframes.units.player.enabled") and true or false end,
     set = function(on)
         for _, unit in ipairs(MAIN_UNITS) do S:SetPath("unitframes.units." .. unit .. ".enabled", on and true or false) end
+        S:SetPath("unitframes.playerCastbar.enabled", on and true or false)
     end,
     frame = function() return _G.FlareUI_UF_Player end,
 }
-Frame("castbar", "unitframes.playerCastbar.enabled", "FlareUI_UF_PlayerCastBar")
-Frame("tot", "unitframes.units.targettarget.enabled", "FlareUI_UF_TargetOfTarget")
-Frame("tof", "unitframes.units.focustarget.enabled", "FlareUI_UF_TargetOfFocus")
+-- two columns: Main | Party, Raid | Boss, Target of Target | Target of Focus
 Frame("party", "unitframes.party.enabled", "FlareUI_Party")
 Frame("raid", "unitframes.raid.enabled", "FlareUI_Raid")
 Frame("boss", "unitframes.boss.enabled", "FlareUI_Boss")
+Frame("tot", "unitframes.units.targettarget.enabled", "FlareUI_UF_TargetOfTarget")
+Frame("tof", "unitframes.units.focustarget.enabled", "FlareUI_UF_TargetOfFocus")
 
 -- each style keeps its own unit frames setup (UnitFramesRing.lua), loaded on reload
 S:Row{
@@ -92,7 +92,10 @@ S:Row{ key = "uf.fullNames", path = "unitframes.fullNames", apply = Refresh }
 S:Row{ key = "uf.simplePet", path = "unitframes.simplePet", reload = true }
 S:Row{ key = "uf.simpleTargetOf", path = "unitframes.simpleTargetOf", reload = true }
 S:Row{ key = "uf.auraShape", kind = "choice", path = "unitframes.auraStyle", choices = { "square", "round" }, apply = Refresh }
+S:Row{ key = "uf.auraSwipe", kind = "choice", path = "unitframes.auraSwipe", choices = { "icon", "border", "both", "none" }, apply = Refresh }
 S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }
+S:Row{ key = "uf.auraTimerColor", path = "unitframes.auraTimerColor", apply = Refresh,
+    disabled = function() return (S:GetPath("unitframes.auraTimer") or "none") == "none" end }
 
 S:FontRows{ module = "uf", tab = "fonts", section = "uf.fonts", apply = Refresh, fonts = {
     { key = "names", path = "unitframes.font" },

@@ -65,9 +65,22 @@ end
 --------------------------------------------------
 local reloadButton, secureReload, accepted
 
+-- The secure reload buttons (this dialog's and the settings window's) sit on a secure parent its
+-- state driver hides in a fight: a protected button can't hide itself in combat, and one left up
+-- invisible would keep taking the clicks meant for whatever is under it. Made out of combat.
+function ns.SecureReloadParent()
+    if ns.secureReloadParent then return ns.secureReloadParent end
+    if InCombatLockdown() then return UIParent end
+    local parent = CreateFrame("Frame", "FlareUI_ReloadParent", UIParent, "SecureHandlerStateTemplate")
+    parent:SetAllPoints(UIParent)
+    RegisterStateDriver(parent, "visibility", "[combat] hide; show")
+    ns.secureReloadParent = parent
+    return parent
+end
+
 local function GetReloadButton()
     if reloadButton then return reloadButton end
-    reloadButton = CreateFrame("Button", "FlareUIDialogReload", UIParent, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+    reloadButton = CreateFrame("Button", "FlareUIDialogReload", ns.SecureReloadParent(), "SecureActionButtonTemplate, UIPanelButtonTemplate")
     reloadButton:SetSize(BUTTON_W, BUTTON_H)
     -- above the dialog's strata, or the toplevel dialog takes the click
     reloadButton:SetFrameStrata("TOOLTIP")
@@ -103,6 +116,15 @@ local function GetReloadButton()
         frame:Hide()
     end)
     reloadButton:Hide()
+    -- the secure yes goes with its parent in a fight: the dialog's own yes stands in (it gives the
+    -- combat answer), and steps back when the fight ends
+    local swap = CreateFrame("Frame")
+    swap:RegisterEvent("PLAYER_REGEN_DISABLED")
+    swap:RegisterEvent("PLAYER_REGEN_ENABLED")
+    swap:SetScript("OnEvent", function(_, event)
+        if not (secureReload and current and frame and frame:IsShown()) then return end
+        frame.Button1:SetShown(event == "PLAYER_REGEN_DISABLED")
+    end)
     return reloadButton
 end
 
@@ -134,6 +156,8 @@ end
 -- Escape and Enter are taken, other keys propagate. Propagation can't change in combat, where only
 -- the buttons work.
 local function OnKeyDown(self, key)
+    -- in a fight the keys also reach the game (propagation is locked on): only the buttons answer
+    if InCombatLockdown() and self:GetPropagateKeyboardInput() then return end
     -- with the secure reload button up, Enter goes on to its override binding
     local handled = (key == "ESCAPE" and current and current.hideOnEscape) or (key == "ENTER" and not secureReload)
     if not InCombatLockdown() then self:SetPropagateKeyboardInput(not handled) end
@@ -244,7 +268,7 @@ local function Layout(def, text)
         frame.EditBox:Hide()
     end
 
-    frame.Button1:SetText(PadLabel(PAD_YES, def.button1 or "Okay", def.padInput))
+    frame.Button1:SetText(PadLabel(PAD_YES, def.button1 or OKAY or "Okay", def.padInput))
     frame.Button1:Show()
     frame.Button1:ClearAllPoints()
     if def.button2 then

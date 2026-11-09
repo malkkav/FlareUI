@@ -22,6 +22,8 @@ S:Row{ key = "ch.visibility", kind = "choice", path = "chat.visibility",
     choices = { "always", "interactions", "combat" }, apply = Refresh, section = "ch.frame" }
 S:Row{ key = "ch.fade", kind = "choice", path = "chat.fadeSpeed", choices = { "instant", "fast", "slow" },
     apply = Refresh, disabled = AlwaysVisible, section = "ch.frame" }
+S:Row{ key = "ch.minAlpha", kind = "choice", path = "chat.minAlpha", choices = S:MinAlphaChoices(),
+    apply = Refresh, disabled = AlwaysVisible, section = "ch.frame" }
 S:Row{ key = "ch.fadeDelay", kind = "choice", path = "chat.autoHideDelay", choices = { 0, 5, 10, 15, 30 },
     apply = Refresh, disabled = AlwaysVisible, section = "ch.frame" }
 S:Row{ key = "ch.border", kind = "choice", path = "chat.borderTexture", choices = S.BorderChoices,
@@ -37,6 +39,7 @@ S:Row{ key = "ch.hoverTooltips", tab = "tweaks", path = "chat.hoverTooltips", se
 S:Row{ key = "ch.noBubbles", tab = "tweaks", path = "chat.hideBubblesInInstance", apply = Refresh, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.combatLog", tab = "tweaks", path = "chat.hideCombatLog", reload = true, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.lineHeight", tab = "tweaks", path = "chat.increaseLineHeight", apply = Refresh, section = "ch.tweaks", half = true }
+S:Row{ key = "ch.copyButton", tab = "tweaks", path = "chat.copyButton", apply = Refresh, section = "ch.tweaks", half = true }
 
 -- Formatting (never applied in instances, where chat lines are unreadable)
 local function Format(key, path)

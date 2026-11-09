@@ -19,6 +19,7 @@ local function PrintCommands()
     Line("/fui pad", L["Switch Gamepad mode on or off."])
     Line("/fui tour", L["Run the setup tour."])
     Line("/fui perf", L["Measure FlareUI's performance (type it alone for the commands)."])
+    Line("/fui errors", L["Errors FlareUI caught, to copy into a bug report (\"/fui errors clear\" empties the list)."])
     local qol = ns.db and ns.db.profile.tweaks
     if qol and qol.enabled and qol.way then Line("/way", L["Place a map pin (type it alone for the formats)."]) end
     Line("/rl", L["Reload UI shortcut."])
@@ -160,6 +161,10 @@ loader:SetScript("OnEvent", function(self)
             ns.ShowTour()
         elseif msg == "perf" or msg:find("^perf%s") then
             ns.Perf.Command(raw:sub(5))   -- keeps the recording name's case
+        elseif msg == "errors" or msg:find("^errors%s") then
+            ns.ErrorsCommand(msg:sub(8))
+        elseif msg == "taint" or msg:find("^taint%s") then
+            ns.TaintWatch.Command(msg:sub(6))   -- a developer's Gamepad UI probe (TaintWatch.lua)
         else
             PrintCommands()
         end

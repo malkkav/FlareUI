@@ -20,16 +20,47 @@ local GROUPS = { "top", "HUD", "Info", "Tools", "bottom" }
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["ab.gryphonsBehind"] = "4.3",
-    ["ab.steadyAttackFlash"] = "4.3",
-    ["about.layout"] = "4.3",
-    ["mm.style"] = "4.3",
-    ["rm.copy"] = "4.3",
-    ["rm.key"] = "4.3",
-    ["rm.new"] = "4.3",
-    ["rm.overview"] = "4.3",
-    ["rm.ownKey"] = "4.3",
-    ["rm.scope"] = "4.3",
+    ["ab.dimOnCooldown"] = "5.0",
+    ["ab.xpQuest"] = "5.0",
+    ["au.timerColor"] = "5.0",
+    ["ch.copyButton"] = "5.0",
+    ["ch.minAlpha"] = "5.0",
+    ["dm.minAlpha"] = "5.0",
+    ["dm.pullFlash"] = "5.0",
+    ["dm.pullLine"] = "5.0",
+    ["dm.resetOnInstance"] = "5.0",
+    ["dm.tankLead"] = "5.0",
+    ["dm.threatValue"] = "5.0",
+    ["mm.coordsHover"] = "5.0",
+    ["mm.microMenu"] = "5.0",
+    ["qol.bagButtons"] = "5.0",
+    ["qol.bagColumns"] = "5.0",
+    ["qol.bagGaps"] = "5.0",
+    ["qol.bagJunkIcon"] = "5.0",
+    ["qol.bagRarityBorders"] = "5.0",
+    ["qol.bagThickBorders"] = "5.0",
+    ["qol.bagUpgradeArrow"] = "5.0",
+    ["qol.bulkBuy"] = "5.0",
+    ["qol.fishCast"] = "5.0",
+    ["qol.fishSound"] = "5.0",
+    ["qol.mapFade"] = "5.0",
+    ["qol.npLevelName"] = "5.0",
+    ["qol.rumbleAlerts"] = "5.0",
+    ["qol.rumbleProcs"] = "5.0",
+    ["qol.taxiMap"] = "5.0",
+    ["qt.gamepad"] = "5.0",
+    ["qt.maxHeight"] = "5.0",
+    ["qt.spacing"] = "5.0",
+    ["qt.width"] = "5.0",
+    ["rm.padBar"] = "5.0",
+    ["rm.padLegend"] = "5.0",
+    ["rm.padRelease"] = "5.0",
+    ["rm.padRepeat"] = "5.0",
+    ["rm.padStick"] = "5.0",
+    ["rm.scale"] = "5.0",
+    ["tt.compareShift"] = "5.0",
+    ["uf.auraSwipe"] = "5.0",
+    ["uf.auraTimerColor"] = "5.0",
 }
 
 --------------------------------------------------
@@ -257,10 +288,12 @@ end
 function Row:Description() return Settings:Text(self.key, "desc") end
 function Row:Tip() return Settings:Text(self.key, "tip") end
 
+local addonVersion   -- read once
 function Row:IsNew()
     local since = Settings.NEW[self.key]
     if not since then return false end
-    local version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or ""
+    addonVersion = addonVersion or C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or ""
+    local version = addonVersion
     if not (version == since or version:sub(1, #since + 1) == since .. ".") then return false end
     if newShowing[self.key] then return true end
     local seen = ns.db and ns.db.global and ns.db.global.newSeen
@@ -274,6 +307,9 @@ end
 -- Greyed when its own check says so or its parent row is off
 function Row:IsDisabled()
     if self.disabled and self.disabled() then return true end
+    -- a row of a module that is off (found by search) does nothing until the module is on
+    local module = Settings.modules[self.module]
+    if module and module.IsOn and not module:IsOn() then return true end
     local parent = self.parent and Settings.rows[self.parent]
     if parent and not parent:Get() then return true end
     return false
@@ -310,6 +346,13 @@ function Settings:BorderChoices()
         list[#list + 1] = { divider = true }
         for _, name in ipairs(others) do list[#list + 1] = { name, name } end
     end
+    return list
+end
+
+-- Min Alpha: how far a fading frame fades, 0% to 90%
+function Settings:MinAlphaChoices()
+    local list = {}
+    for i = 0, 9 do list[#list + 1] = { i / 10, (i * 10) .. "%" } end
     return list
 end
 
@@ -358,7 +401,7 @@ end
 
 -- def: key ("module.row"), kind, path ("db.path") or get/set, choices, parent, tab, section, half,
 -- reload, apply, hidden, disabled. Kinds: toggle, choice, dropdown, keybind, button, buttons, frame,
--- expander, editmode (built in Settings/Panel.lua), text (custom-page copy, never drawn or searched)
+-- expander, editmode, legend (built in Settings/Panel.lua), text (custom-page copy, never drawn or searched)
 function Settings:Row(def)
     assert(type(def.key) == "string", "Settings:Row needs a key")
     local moduleKey = def.module or def.key:match("^([^.]+)")
@@ -406,40 +449,132 @@ end
 --------------------------------------------------
 -- 6. SEARCH
 --------------------------------------------------
-local function Matches(row, words, moduleTitle)
-    if row:IsHidden() or row.kind == "text" then return false end
-    local haystack = row:SearchText() .. " " .. moduleTitle
-    for _, word in ipairs(words) do
-        if not haystack:find(word) then return false end
+-- the tab and section a row sits in, folded and cached: "fonts" finds every Fonts tab's rows
+local function ContextText(row)
+    if row.contextText then return row.contextText end
+    local module = Settings.modules[row.module]
+    local parts = {}
+    if module and module.tabs and row.tab then
+        local names = Settings:ModuleText(module.key, "tabs") or {}
+        for i, tab in ipairs(module.tabs) do
+            if tab.key == row.tab and names[i] then parts[#parts + 1] = names[i] end
+        end
+    end
+    local section = module and row.section and module.sectionByKey[row.section]
+    if section and section.title then parts[#parts + 1] = section.title end
+    row.contextText = Settings:Fold(table.concat(parts, " "))
+    return row.contextText
+end
+
+-- Other words for the same thing (folded), so "transparency" finds Opacity and "hotkey" finds Keybind
+local SYNONYMS = {
+    transparency = { "opacity", "alpha" }, transparent = { "opacity", "alpha" }, alpha = { "opacity" },
+    opacity = { "alpha" }, hotkey = { "keybind", "key" }, hotkeys = { "keybind", "key" },
+    keybind = { "key" }, binding = { "keybind", "key" }, aggro = { "threat" }, threat = { "aggro" },
+    xp = { "experience" }, experience = { "xp" }, exp = { "xp", "experience" },
+    plates = { "nameplate" }, plate = { "nameplate" }, inventory = { "bag" }, backpack = { "bag" },
+    color = { "colour" }, colour = { "color" }, colors = { "colour" }, hover = { "mouseover" },
+    mouse = { "mouseover" }, castbar = { "cast bar" }, buff = { "aura" }, debuff = { "aura" },
+    hp = { "health" }, mana = { "power" }, combo = { "combo point" }, ping = { "marker" },
+}
+
+-- One typed word as the patterns that may find it: itself, its singular, its other words. Each must
+-- start a word ("ids" finds "Show IDs", not "raids"); a word that begins with no letter or digit
+-- ("/way", or a non-Latin script) can't pass that test and may match anywhere.
+local function WordPatterns(word)
+    local list, seen = {}, {}
+    local function Add(text)
+        if seen[text] or text == "" then return end
+        seen[text] = true
+        local escaped = text:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")
+        list[#list + 1] = (text:find("^%w") and "%f[%w]" or "") .. escaped
+    end
+    Add(word)
+    if #word > 3 and word:sub(-1) == "s" then Add(word:sub(1, -2)) end
+    for _, other in ipairs(SYNONYMS[word] or {}) do Add(other) end
+    -- run together ("castbar"): also looked for with the spaces taken out of the text
+    list.joined = #word >= 5 and (word:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")) or nil
+    return list
+end
+
+local function AllWords(haystack, words)
+    local joined   -- the text without spaces, made only when a word needs it
+    for _, patterns in ipairs(words) do
+        local found = false
+        for _, pattern in ipairs(patterns) do
+            if haystack:find(pattern) then found = true break end
+        end
+        if not found then
+            if not patterns.joined then return false end
+            joined = joined or haystack:gsub("%s+", "")
+            if not joined:find(patterns.joined) then return false end
+        end
     end
     return true
 end
 
--- Rows and Edit Mode stubs whose text holds every word
+local function Matches(row, words, moduleTitle)
+    if row.kind == "text" then return false end
+    -- a row folded away under a closed heading is still found (opening it shows it)
+    if row:IsHidden() and not row.collapsedBy then return false end
+    return AllWords(row:SearchText() .. " " .. moduleTitle .. " " .. ContextText(row), words)
+end
+
+-- A tab or titled section whose name holds every word, as one result that opens it
+local function PlaceResult(module, label, tabKey, sectionKey)
+    local row = setmetatable({
+        key = "link:" .. module.key .. ":" .. (sectionKey or tabKey or ""), kind = "button", module = module.key,
+        tab = tabKey, section = sectionKey, buttonText = L["Open"],
+        labelFn = function() return label end,
+    }, Row)
+    row.apply = function() if ns.SettingsPanel then ns.SettingsPanel:JumpTo(row) end end
+    function row:SearchText() return "" end
+    function row:IsDisabled() return false end   -- opening a page always works (an off module shows its card)
+    return row
+end
+
+-- Rows and Edit Mode stubs whose text holds every word, tabs and sections first; within those,
+-- rows whose own name holds every word come before rows found by their description
 function Settings:Search(text)
-    -- each word must start a word ("ids" finds "Show IDs", not "raids"); one that begins with no
-    -- letter or digit ("/way", or a non-Latin script) can't pass that test and may match anywhere
     local words = {}
-    for word in self:Fold(text):gmatch("%S+") do
-        local escaped = word:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")
-        words[#words + 1] = (word:find("^%w") and "%f[%w]" or "") .. escaped
-    end
+    for word in self:Fold(text):gmatch("%S+") do words[#words + 1] = WordPatterns(word) end
     local results = {}
     if #words == 0 then return results end
+    local places, strong, weak = {}, {}, {}
     for _, key in ipairs(self.order) do
         local module = self.modules[key]
         local moduleTitle = self:Fold(module:Title() or "")
+        -- the module's tabs and section titles
+        if module.tabs then
+            local names = self:ModuleText(key, "tabs") or {}
+            for i, tab in ipairs(module.tabs) do
+                local name = names[i]
+                if name and AllWords(self:Fold(name), words) then
+                    places[#places + 1] = PlaceResult(module, name, tab.key, nil)
+                end
+            end
+        end
         for _, section in ipairs(module.sections) do
+            if section.title and AllWords(self:Fold(section.title), words) then
+                local first = section.rows[1]
+                places[#places + 1] = PlaceResult(module, section.title, first and first.tab, section.key)
+            end
             for _, row in ipairs(section.rows) do
-                if Matches(row, words, moduleTitle) then results[#results + 1] = row end
+                if Matches(row, words, moduleTitle) then
+                    local name = self:Fold(row:Label() or "")
+                    if AllWords(name, words) then strong[#strong + 1] = row else weak[#weak + 1] = row end
+                end
             end
         end
         -- a module that is off has no frames to search
         if module:IsOn() then
             for _, row in ipairs(module:EditModeRows()) do
-                if Matches(row, words, moduleTitle) then results[#results + 1] = row end
+                if Matches(row, words, moduleTitle) then weak[#weak + 1] = row end
             end
         end
+    end
+    for _, list in ipairs({ places, strong, weak }) do
+        for _, row in ipairs(list) do results[#results + 1] = row end
     end
     return results
 end
@@ -469,8 +604,10 @@ end
 local LEM = LibStub and LibStub("FlareEditMode", true)
 Settings.editModeReturn = nil   -- module key to reopen when Edit Mode closes
 
+-- Not in the Gamepad UI: Edit Mode opened from addon code registers with Blizzard's controller focus
+-- inside FlareUI's call, and its bindings then run tainted (the game menu's Edit Mode is fine there)
 function Settings:CanEditFrames()
-    return LEM and LEM.SelectFrame and not InCombatLockdown()
+    return LEM and LEM.SelectFrame and not InCombatLockdown() and not ns.IsGamepadUI()
 end
 
 function Settings:EditFrame(frame, moduleKey)
@@ -509,13 +646,23 @@ local function ModuleFrames(module)
 end
 
 -- a copy entry of this module whose label matches an Edit Mode setting name
+-- (one label -> key map per module, made on first use)
+local labelKeys = {}
 local function CopyKeyForSetting(moduleKey, name)
-    local lower = name:lower()
-    for key, entry in pairs(ns.Copy and ns.Copy.rows or {}) do
-        if entry.label and entry.label:lower() == lower and key:match("^" .. moduleKey .. "%.") then
-            return key
+    local map = labelKeys[moduleKey]
+    if not map then
+        map = {}
+        local prefix = moduleKey .. "."
+        for key, entry in pairs(ns.Copy and ns.Copy.rows or {}) do
+            if entry.label and key:sub(1, #prefix) == prefix then
+                local lower = entry.label:lower()
+                -- the first key in sorted order wins, so the pick never changes between sessions
+                if not map[lower] or key < map[lower] then map[lower] = key end
+            end
         end
+        labelKeys[moduleKey] = map
     end
+    return map[name:lower()]
 end
 
 local EditRow = setmetatable({}, { __index = Row })
@@ -525,7 +672,15 @@ function EditRow:Description()
     return self.copyKey and Settings:Text(self.copyKey, "desc") or nil
 end
 function EditRow:Tip() return self.copyKey and Settings:Text(self.copyKey, "tip") or nil end
-function EditRow:IsHidden() return false end
+-- a setting its dialog hides right now (Fade Speed on a frame that's always shown) isn't listed
+function EditRow:IsHidden()
+    local hidden = self.setting and self.setting.hidden
+    if type(hidden) == "function" then
+        local ok, result = pcall(hidden, LEM.GetActiveLayoutName and LEM:GetActiveLayoutName())
+        return ok and result and true or false
+    end
+    return hidden and true or false
+end
 function EditRow:IsDisabled() return not Settings:CanEditFrames() end
 function EditRow:Get() return nil end
 
@@ -541,10 +696,34 @@ function Module:EditModeRows()
                 if name and setting.kind ~= LEM.SettingType.Divider and setting.kind ~= LEM.SettingType.Expander then
                     rows[#rows + 1] = setmetatable({
                         key = "em:" .. frameName .. ":" .. name, kind = "editmode", module = self.key,
-                        name = name, frame = frame, frameName = frameName,
+                        name = name, frame = frame, frameName = frameName, setting = setting,
                         copyKey = CopyKeyForSetting(self.key, name),
                     }, EditRow)
                 end
+            end
+        end
+    end
+    -- settings FlareUI adds to Blizzard's own Edit Mode systems (action bars, the minimap): found
+    -- the same way; their Edit button opens Edit Mode (selecting a Blizzard system from here could taint)
+    local systems = self.editSystems
+    if type(systems) == "function" then systems = systems() end
+    for _, system in ipairs(LEM and systems or {}) do
+        local list
+        if system.index then
+            list = LEM.subSystemSettings and LEM.subSystemSettings[system.system] and LEM.subSystemSettings[system.system][system.index]
+        else
+            list = LEM.systemSettings and LEM.systemSettings[system.system]
+        end
+        local frameName = system.name or "?"
+        for _, setting in ipairs(list or {}) do
+            local name = type(setting.name) == "string" and setting.name
+            if name and not name:find("|c", 1, true) and setting.kind ~= LEM.SettingType.Divider
+                and setting.kind ~= LEM.SettingType.Expander then
+                rows[#rows + 1] = setmetatable({
+                    key = "em:" .. frameName .. ":" .. name, kind = "editmode", module = self.key,
+                    name = name, frame = nil, frameName = frameName, setting = setting,
+                    copyKey = CopyKeyForSetting(self.key, name),
+                }, EditRow)
             end
         end
     end
@@ -554,7 +733,8 @@ end
 
 -- After the modules made their frames: the back button in each dialog, and the return on exit
 function Settings:LinkEditMode()
-    if not (LEM and LEM.AddFrameSettingsButton) or self.linked then return end
+    -- none in the Gamepad UI: closing Edit Mode from addon code there taints Blizzard's controller focus
+    if not (LEM and LEM.AddFrameSettingsButton) or self.linked or ns.IsGamepadUI() then return end
     self.linked = true
     local backText = self:WindowText("editModeDialogsBackLink", L["FlareUI settings"])
     for _, key in ipairs(self.order) do
@@ -570,7 +750,13 @@ function Settings:LinkEditMode()
             })
         end
     end
+    -- settings added while Edit Mode opens (fade rows) are searchable from then: the stubs are made again
+    local function ForgetStubs()
+        for _, module in pairs(self.modules) do module.editRows = nil end
+    end
+    LEM:RegisterCallback("enter", ForgetStubs)
     LEM:RegisterCallback("exit", function()
+        ForgetStubs()
         local back = self.editModeReturn
         self.editModeReturn = nil
         if back and ns.SettingsPanel and not InCombatLockdown() then
@@ -591,17 +777,46 @@ end
 --------------------------------------------------
 -- 9. HELPERS
 --------------------------------------------------
+-- asked before a key bound to something else is taken over
+ns.Dialogs = ns.Dialogs or {}
+ns.Dialogs["FLAREUI_KEY_TAKEN"] = {
+    text = "%s",
+    button1 = L["Use it"],
+    button2 = L["Cancel"],
+    OnAccept = function(data)
+        if data and data.apply then data.apply() end
+        if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
+    end,
+    hideOnEscape = true,
+}
+
 -- get/set for a Bindings.xml action; a new key replaces the old ones, saved to the current binding set
 function Settings:BindingAccessors(action)
     return {
         get = function() return GetBindingKey(action) or "" end,
         set = function(key)
-            if InCombatLockdown() then return end
-            local old1, old2 = GetBindingKey(action)
-            if old1 then SetBinding(old1) end
-            if old2 then SetBinding(old2) end
-            if key and key ~= "" then SetBinding(key, action) end
-            SaveBindings(GetCurrentBindingSet())
+            if InCombatLockdown() then
+                print("|cffff9900FlareUI:|r " .. L["key bindings can't change during a fight."])
+                return
+            end
+            local function Apply()
+                if InCombatLockdown() then return end
+                local old1, old2 = GetBindingKey(action)
+                if old1 then SetBinding(old1) end
+                if old2 then SetBinding(old2) end
+                if key and key ~= "" then SetBinding(key, action) end
+                SaveBindings(GetCurrentBindingSet())
+            end
+            local taken = key and key ~= "" and GetBindingAction(key)
+            if taken and taken ~= "" and taken ~= action then
+                local name = GetBindingName and GetBindingName(taken)
+                ns.ShowDialog("FLAREUI_KEY_TAKEN",
+                    L["%s is bound to %s. Use it anyway?"]:format(GetBindingText and GetBindingText(key) or key,
+                        (name and name ~= "") and name or taken),
+                    { apply = Apply })
+                return
+            end
+            Apply()
         end,
     }
 end

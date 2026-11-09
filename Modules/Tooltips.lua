@@ -50,7 +50,7 @@ local MUTE = 0.85                                   -- class / quality colour mu
 -- tooltips that follow the main one's scale and colours
 local SATELLITES = {
     "ItemRefTooltip", "ShoppingTooltip1", "ShoppingTooltip2", "EmbeddedItemTooltip",
-    "FriendsTooltip", "ReputationParagonTooltip",
+    "ItemRefShoppingTooltip1", "ItemRefShoppingTooltip2", "FriendsTooltip",
 }
 
 -- visibility categories (items, spells, auras and plain UI tips always show)
@@ -423,6 +423,14 @@ local function ShouldHide(category)
     return inCombat and true or false
 end
 
+-- Tooltips > On action/data bars, for FlareUI's own bars (the XP bar): true while it hides them (Hold
+-- Shift shows them). With the Tooltips module off, nothing is hidden.
+function ns.Tooltips.BarTooltipHidden()
+    local db = GetDb()
+    if not (db and db.enabled) then return false end
+    return ShouldHide(CAT_ACTION)
+end
+
 local function HideIfNeeded(tip, category)
     if ShouldHide(category) then
         tip:Hide()
@@ -473,9 +481,14 @@ local function OnTooltipSetUnit(tip)
     ApplyColors(tip, GetUnitBorderColor(unit))
 end
 
+-- "Action bars": every tooltip type an action button shows (spells and items, but also pet actions,
+-- macros, mounts, toys and flyouts)
+local function OnTooltipSetAny(tip)
+    if tip == GameTooltip and SafeToTouch(tip) and OwnerIsActionButton(tip) then HideIfNeeded(tip, CAT_ACTION) end
+end
+
 local function OnTooltipSetItem(tip, data)
     if not SafeToTouch(tip) then return end
-    if tip == GameTooltip and OwnerIsActionButton(tip) and HideIfNeeded(tip, CAT_ACTION) then return end
 
     local db = GetDb()
     local color
@@ -495,7 +508,6 @@ end
 
 local function OnTooltipSetSpell(tip, data)
     if not SafeToTouch(tip) then return end
-    if tip == GameTooltip and OwnerIsActionButton(tip) and HideIfNeeded(tip, CAT_ACTION) then return end
     ApplyColors(tip, nil)
     AddIdLine(tip, "showSpellID", L["Spell ID"], data)
 end
@@ -545,7 +557,8 @@ local function ApplyFonts()
         if not (fontObject and fontDb) then return end
         local flags = fontDb.flags or "NONE"
         if flags == "NONE" then flags = "" end
-        fontObject:SetFont(ns.GetFontPath(fontDb.face or "Friz Quadrata TT"), (fontDb.size or 12) + (sizeOffset or 0), flags)
+        -- member by member: other alphabets keep a face that has their letters
+        ns.SetFontObjectFace(fontObject, ns.GetFontPath(fontDb.face or "Friz Quadrata TT"), (fontDb.size or 12) + (sizeOffset or 0), flags)
         ns.ApplyShadow(fontObject, fontDb)
     end
     Apply(_G.GameTooltipHeaderText, db.titleFont)
@@ -553,8 +566,43 @@ local function ApplyFonts()
     Apply(_G.GameTooltipTextSmall, db.contentFont, -2)
 end
 
+-- Compare with Shift: the comparison tooltips show only while Shift is held (Blizzard's
+-- alwaysCompareItems off). Off puts back the player's own value, only when FlareUI changed it.
+local COMPARE_CVAR = "alwaysCompareItems"
+local function Forced()
+    return ns.Tweaks and ns.Tweaks.ForcedCVars and ns.Tweaks.ForcedCVars("compare")
+end
+
+local function RestoreCompare()
+    local forced = Forced()
+    if forced and forced.compare ~= nil then
+        pcall(SetCVar, COMPARE_CVAR, forced.compare)
+        forced.compare = nil
+    end
+end
+
+local function ApplyCompare()
+    local db = GetDb()
+    local forced = Forced()
+    if not (db and forced) then return end
+    if db.compareShift then
+        if forced.compare == nil then forced.compare = GetCVar(COMPARE_CVAR) or "1" end
+        if GetCVar(COMPARE_CVAR) ~= "0" then pcall(SetCVar, COMPARE_CVAR, 0) end
+    else
+        RestoreCompare()
+    end
+end
+
+-- With the module off, Init never runs: the value FlareUI changed goes back here
+function TIP:ShouldLoad()
+    local db = GetDb()
+    if db and db.enabled == false then RestoreCompare() end
+    return true
+end
+
 function TIP:Refresh()
     if not self.initialized then return end
+    ApplyCompare()
     ApplyFonts()
     ApplyScaleToAll()
     if GameTooltip and GameTooltip:IsShown() then
@@ -577,6 +625,7 @@ function TIP:Init()
     add(Enum.TooltipDataType.Item, OnTooltipSetItem)
     add(Enum.TooltipDataType.Spell, OnTooltipSetSpell)
     add(Enum.TooltipDataType.UnitAura, OnTooltipSetAura)
+    add(TooltipDataProcessor.AllTypes, OnTooltipSetAny)
 
     -- "Show threat" off: a line pre-call returning true drops the threat line without a gap
     if Enum.TooltipDataLineType and Enum.TooltipDataLineType.UnitThreat and TooltipDataProcessor.AddLinePreCall then
@@ -594,6 +643,7 @@ function TIP:Init()
     end)
     hooksecurefunc("GameTooltip_SetDefaultAnchor", ApplyAnchor)
 
+    ApplyCompare()
     ApplyFonts()
     ApplyScaleToAll()
 end

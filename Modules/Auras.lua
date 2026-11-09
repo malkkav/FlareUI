@@ -138,7 +138,7 @@ local styledButtons = setmetatable({}, { __mode = "k" })
 -- The sample icons, with their timers where Timer puts them: in Edit Mode, and on this module's
 -- settings page. Out of combat only: the real icons' container can't be shown again in a fight
 local previewWanted, settingsPreview = false, false
-local function Previewing() return LEM:IsInEditMode() or settingsPreview end
+local function Previewing() return ns.EditPreviewing() or settingsPreview end
 
 local function ApplyPreviewTimerNow(button)
     local text, preview = button.FlareUI_Duration, button.FlareUI_PreviewTimer
@@ -150,9 +150,26 @@ end
 
 -- Blizzard locks its aura buttons against addon code while auras are secret (combat, instances:
 -- DenyTaintedAccessWhenAurasAreSecret), and every call on them then errors. A locked button keeps
--- its timer as it was until the next change
+-- its timer as it was, so it is tried again each second until it lets go (a sample timer would
+-- otherwise stay frozen on a real icon after Edit Mode ends in a fight)
+local lockedButtons = setmetatable({}, { __mode = "k" })
+local retryTicker
+local function RetryLockedButtons()
+    for button in pairs(lockedButtons) do
+        if pcall(ApplyPreviewTimerNow, button) then lockedButtons[button] = nil end
+    end
+    if not next(lockedButtons) and retryTicker then
+        retryTicker:Cancel()
+        retryTicker = nil
+    end
+end
 local function ApplyPreviewTimer(button)
-    pcall(ApplyPreviewTimerNow, button)
+    if pcall(ApplyPreviewTimerNow, button) then
+        lockedButtons[button] = nil
+        return
+    end
+    lockedButtons[button] = true
+    if not retryTicker then retryTicker = C_Timer.NewTicker(1, RetryLockedButtons) end
 end
 
 local function StyleButton(button, look)
@@ -323,10 +340,28 @@ local function StyleButton(button, look)
     preview:ClearAllPoints()
     for i = 1, durationText:GetNumPoints() do preview:SetPoint(durationText:GetPoint(i)) end
     ApplyPreviewTimer(button)
+
+    -- Highlight Purgeable Buffs: Blizzard's stealable border round a buff that can be purged
+    local glow = button.FlareUI_Stealable
+    if look.stealable then
+        if not glow then
+            glow = button.FlareUI_BorderFrame:CreateTexture(nil, "OVERLAY", nil, 2)
+            glow:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-Stealable")
+            glow:SetBlendMode("ADD")
+            button.FlareUI_Stealable = glow
+        end
+        glow:ClearAllPoints()
+        glow:SetPoint("CENTER", area, "CENTER")
+        glow:SetSize(size * 1.4, size * 1.4)
+        glow:Show()
+    elseif glow then
+        glow:Hide()
+    end
 end
 
 LEM:RegisterCallback("enter", function() for button in pairs(styledButtons) do ApplyPreviewTimer(button) end end)
 LEM:RegisterCallback("exit", function() for button in pairs(styledButtons) do ApplyPreviewTimer(button) end end)
+ns.OnEditFight(function() for button in pairs(styledButtons) do ApplyPreviewTimer(button) end end)
 
 -- Hands FlareUI's regions to Blizzard's aura button, which drives them
 local function HookButton(button, look)
@@ -335,7 +370,8 @@ local function HookButton(button, look)
     pcall(button.SetIcon, button, icon)
     pcall(button.SetDurationCooldown, button, cd)
     pcall(button.SetApplicationCount, button, countText, {})
-    ns.SetAuraDurationText(button, durationText)
+    -- (a hidden timer, Timer None, stays uncoloured: the colour would bring its alpha back)
+    ns.SetAuraDurationText(button, durationText, look.timerColor and look.timer ~= "none")
     pcall(button.ClearDispelTypeTextures, button)
     -- Blizzard tints the border from the colour map, so a secret dispel type is never read by Lua
     if Enum.CustomAuraButtonDispelTypeTextureStyle then
@@ -402,6 +438,7 @@ local function Look(kind)
         isDebuff = KINDS[kind].isDebuff,
         colors = ColorMap(KINDS[kind].isDebuff, db.style == "round", db.swipe == "border"),
         arrive = db.arrive and true or false,
+        timerColor = db.timerColor and true or false,
     }
 end
 
@@ -414,6 +451,8 @@ ns.AuraLook = {
         local uf = ns.db and ns.db.profile and ns.db.profile.unitframes or {}
         ns.SeedFont(uf, "auraFont", "auraCountFont", "auraCountFontSeeded", true)
         style, timer = style or "square", timer or "below"
+        -- Aura swipe (Unit Frames settings), for every unit, party, raid and boss frame
+        swipe = uf.auraSwipe or swipe or "both"
         local autoSize = math_max(7, math_floor(size * 0.4 + 0.5))
         local timerFont, countFont = uf.auraFont or {}, uf.auraCountFont or uf.auraFont or {}
         local timerSize = (timerFont.size or 0) > 0 and timerFont.size or math_max(8, autoSize - 1)
@@ -421,15 +460,16 @@ ns.AuraLook = {
         return {
             size = size,
             style = style,
-            swipe = swipe or "icon",
+            swipe = swipe,
             timer = timer,
             font = setmetatable({ size = autoSize }, { __index = timerFont }),
             countFont = setmetatable({ size = countSize }, { __index = countFont }),
             timerSize = timerSize,
             isDebuff = isDebuff,
             cancel = canCancel,
-            colors = ColorMap(isDebuff, style == "round"),
-            -- Auto keeps the old room (autoSize + 3); a chosen size gets its own
+            timerColor = uf.auraTimerColor and true or false,
+            colors = ColorMap(isDebuff, style == "round", swipe == "border"),
+            -- room under the icon: autoSize + 3 on Auto, a chosen size gets its own
             cellHeight = size + ((timer == "below") and ((timerFont.size or 0) > 0 and timerSize + 4 or autoSize + 3) or 0),
         }
     end,
@@ -767,6 +807,18 @@ local WRAP_VALUES = {
     { text = L["Down"], value = "DOWN", isRadio = true },
     { text = L["Up"],   value = "UP",   isRadio = true },
 }
+local SWIPE_VALUES = {
+    { text = L["Over the icon"], value = "icon", isRadio = true },
+    { text = L["Around the border"], value = "border", isRadio = true },
+    { text = L["Both"], value = "both", isRadio = true },
+    { text = L["None"], value = "none", isRadio = true },
+}
+local TIMER_VALUES = {
+    { text = L["Under the icon"], value = "below", isRadio = true },
+    { text = L["Bottom of the icon"], value = "bottom", isRadio = true },
+    { text = L["Middle of the icon"], value = "middle", isRadio = true },
+    { text = L["None"], value = "none", isRadio = true },
+}
 
 local function BuildSettings(kind)
     local defaults = ns.defaults and ns.defaults.profile.auras[kind] or {}
@@ -777,6 +829,15 @@ local function BuildSettings(kind)
             if not k then return end
             k[key] = value
             LayoutKind(kind)
+        end
+    end
+    local function shared(key, default) return function() local db = GetDb(); return db and db[key] or default end end
+    local function setShared(key)
+        return function(_, value)
+            local db = GetDb()
+            if not db then return end
+            db[key] = value
+            AU:Refresh()
         end
     end
     return {
@@ -792,6 +853,11 @@ local function BuildSettings(kind)
           get = get("grow"), set = set("grow") },
         { name = L["Wrap"], kind = LEM.SettingType.Dropdown, default = defaults.wrap or "DOWN", values = WRAP_VALUES,
           get = get("wrap"), set = set("wrap") },
+        -- the look both bars share (Settings > Buffs & Debuffs too): the samples follow at once
+        { name = L["Aura Swipe"], kind = LEM.SettingType.Dropdown, default = "both", values = SWIPE_VALUES,
+          get = shared("swipe", "both"), set = setShared("swipe") },
+        { name = L["Aura Timer"], kind = LEM.SettingType.Dropdown, default = "below", values = TIMER_VALUES,
+          get = shared("timer", "below"), set = setShared("timer") },
     }
 end
 
@@ -855,7 +921,11 @@ local function ApplySettingsPreview(on)
     SetPreview()
     for button in pairs(styledButtons) do ApplyPreviewTimer(button) end
     AU:Refresh()
+    -- faded frames show while the page is open
+    if ns.Visibility and ns.Visibility.Wake then ns.Visibility:Wake() end
 end
+
+function AU:IsSettingsPreview() return settingsPreview end
 
 -- This module's settings page is open or closed
 function AU:SetSettingsPreview(on)
@@ -904,6 +974,7 @@ function AU:Init()
     end)
     LEM:RegisterCallback("enter", function() SetPreview() AU:Refresh() end)
     LEM:RegisterCallback("exit", function() SetPreview() AU:Refresh() end)
+    ns.OnEditFight(function() SetPreview() AU:Refresh() end)
 
     local events = CreateFrame("Frame")
     events:RegisterEvent("PLAYER_REGEN_ENABLED")

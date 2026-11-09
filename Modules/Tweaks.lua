@@ -48,6 +48,7 @@ local MIN_SCALE, MAX_SCALE, SCALE_STEP = 0.5, 2.0, 0.1
 local MOVE_EXCLUDED = {
     EditModeManagerFrame = true, GameMenuFrame = true, SettingsPanel = true, HelpFrame = true,
     ChatConfigFrame = true, StaticPopup1 = true,
+    LootFrame = true,   -- an Edit Mode system: Edit Mode moves it
 }
 local moveFrames = {}          -- name -> frame (already set up)
 local moveApplyQueued = false
@@ -286,6 +287,8 @@ local function SetupMovableFrame(name)
     if name == "WorldMapFrame" and C_AddOns.IsAddOnLoaded("OpenMap") then return end
     local frame = _G[name]
     if type(frame) ~= "table" or not frame.GetObjectType or not frame.StartMoving then return end
+    -- a forbidden window (the shop) can't be touched at all
+    if frame.IsForbidden and frame:IsForbidden() then return end
     -- a protected window (the spellbook) loaded in combat is set up after it (SetMovable is blocked)
     if InCombatLockdown() and frame:IsProtected() then
         setupPending[name] = true
@@ -304,6 +307,16 @@ local function SetupMovableFrame(name)
         C_Timer.After(0, function() ApplySavedPosition(f) end)
     end)
     if frame:IsShown() then ApplySavedPosition(frame) end
+    -- a window that closes while it is dragged (walked out of range) never hears the mouse-up: the drag
+    -- ends here, where it was let go, so the next drag works
+    frame:HookScript("OnHide", function(f)
+        if not f.moveDragging then return end
+        if InCombatLockdown() and f:IsProtected() then
+            f.moveDragging = false
+            return
+        end
+        OnDragStop(f)
+    end)
 end
 
 -- windows Blizzard shows without registering them as panels (the clock, opened mail, the stable,
@@ -329,11 +342,13 @@ local function SetupLFGPages()
     end
 end
 
--- Pages moved by an earlier version go back into the window
+-- Saved positions that must not be applied: the group finder pages belong inside their window, and
+-- the loot window is an Edit Mode system (moving it from addon code taints Edit Mode)
 local function ForgetLFGPagePositions()
     local db = GetDb()
     if not (db and db.frames) then return end
     for _, name in ipairs(LFG_PAGES) do db.frames[name] = nil end
+    db.frames.LootFrame = nil
 end
 
 -- The client also remembers a dragged frame by name (layout-local.txt, per character) and puts it back
@@ -575,7 +590,7 @@ local function SaveSync()
         end
     end
     -- Enemy Nameplates in Combat Only holds the CVar at 0 out of combat: the player's own value travels
-    local forced = ns.db.global and ns.db.global.forcedCVars
+    local forced = ns.db.global and Tweaks.ForcedCVars("combatPlates")
     if forced and forced.combatPlates ~= nil and store.cvars.nameplateShowEnemies ~= nil then
         store.cvars.nameplateShowEnemies = forced.combatPlates
     end
@@ -666,7 +681,7 @@ local function LoadSync()
 
     -- CVars
     local changed = 0
-    local forced = ns.db.global and ns.db.global.forcedCVars
+    local forced = ns.db.global and Tweaks.ForcedCVars("combatPlates")
     for name, value in pairs(store.cvars or {}) do
         if name == "nameplateShowEnemies" and forced and forced.combatPlates ~= nil then
             -- Enemy Nameplates in Combat Only holds the CVar: the source's value is what comes back later
@@ -833,7 +848,11 @@ end
 
 local function InitSyncUI()
     SyncEvents:RegisterEvent("PLAYER_LOGOUT", SaveSync)
-    SyncEvents:RegisterEvent("CVAR_UPDATE", QueueSaveSync)
+    -- Enemy Nameplates in Combat Only flips its CVar at every fight; the snapshot takes the player's
+    -- own value from the forced-CVar memory, so those writes need no new snapshot
+    SyncEvents:RegisterEvent("CVAR_UPDATE", function(_, name)
+        if name ~= "nameplateShowEnemies" then QueueSaveSync() end
+    end)
     SyncEvents:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", QueueSaveSync)
     SyncEvents:RegisterEvent("UPDATE_CHAT_WINDOWS", QueueSaveSync)
     SyncEvents:RegisterEvent("UPDATE_FLOATING_CHAT_WINDOWS", QueueSaveSync)
@@ -868,33 +887,22 @@ end
 
 --------------------------------------------------
 -- 5. VENDOR: SELL JUNK / REPAIR
--- Junk is sold by Blizzard's C_MerchantFrame.SellAllJunkItems; the value is counted first.
+-- Junk is sold by Blizzard's C_MerchantFrame.SellAllJunkItems; the value is the gold that came in.
 --------------------------------------------------
-local function JunkValue()
-    local total = 0
-    for bag = BACKPACK_CONTAINER, NUM_TOTAL_EQUIPPED_BAG_SLOTS do
-        for slot = 1, C_Container.GetContainerNumSlots(bag) do
-            local info = C_Container.GetContainerItemInfo(bag, slot)
-            if info and info.quality == Enum.ItemQuality.Poor and not info.hasNoValue then
-                local price = select(11, C_Item.GetItemInfo(info.itemID))
-                total = total + (price or 0) * (info.stackCount or 1)
-            end
-        end
-    end
-    return total
-end
+-- The gold that came in counts, not prices read beforehand: an item the client hasn't loaded has no
+-- price yet, and the server sells in steps, past its rate limit skipping some (a second sale picks
+-- those up)
+-- the waits below register and drop events on an object of their own, so no other feature's
+-- handler for the same events is replaced or dropped with them (AceEvent: one per object and event)
+Tweaks.VendorEvents = {}
+LibStub("AceEvent-3.0"):Embed(Tweaks.VendorEvents)
 
 local function OnMerchantShow()
     local db = GetDb()
     if not db or IsShiftKeyDown() then return end
-    local sold = false
-    if db.sellJunk and C_MerchantFrame.IsSellAllJunkEnabled() and C_MerchantFrame.GetNumJunkItems() > 0 then
-        local value = JunkValue()
-        C_MerchantFrame.SellAllJunkItems()
-        sold = true
-        if value > 0 then Print(L["Sold junk for %s."]:format(C_CurrencyInfo.GetCoinText(value))) end
-    end
-    if not (db.autoRepair and CanMerchantRepair()) then return end
+    local selling = db.sellJunk and C_MerchantFrame.IsSellAllJunkEnabled() and C_MerchantFrame.GetNumJunkItems() > 0
+    local repairing = db.autoRepair and CanMerchantRepair()
+    local before, spent, repaired = GetMoney(), 0, not repairing
 
     -- true once there is nothing left to repair or the repair was paid
     local function TryRepair()
@@ -902,17 +910,59 @@ local function OnMerchantShow()
         if not (canRepair and cost and cost > 0) then return true end
         if GetMoney() < cost then return false end
         RepairAllItems()
+        spent = spent + cost
         Print(L["Repaired for %s."]:format(C_CurrencyInfo.GetCoinText(cost)))
         return true
     end
+    local function CantAfford()
+        local cost = GetRepairAllCost()
+        if cost and cost > 0 then
+            Print(L["Not enough gold to repair (%s)."]:format(C_CurrencyInfo.GetCoinText(cost)))
+        end
+    end
+    local function Finish()
+        Tweaks.VendorEvents:UnregisterEvent("PLAYER_MONEY")
+        Tweaks.VendorEvents:UnregisterEvent("MERCHANT_CLOSED")
+    end
+
+    if repairing then repaired = TryRepair() end
+    if not selling then
+        if not repaired then CantAfford() end
+        return
+    end
+
+    local sold = C_MerchantFrame.GetNumJunkItems()
+    C_MerchantFrame.SellAllJunkItems()
     -- The junk gold arrives a moment after the sale, so a repair it has to pay for waits for it
-    if TryRepair() or not sold then return end
-    Tweaks:RegisterEvent("PLAYER_MONEY", function()
-        if TryRepair() then Tweaks:UnregisterEvent("PLAYER_MONEY") end
-    end)
-    Tweaks:RegisterEvent("MERCHANT_CLOSED", function()
-        Tweaks:UnregisterEvent("PLAYER_MONEY")
-        Tweaks:UnregisterEvent("MERCHANT_CLOSED")
+    if not repaired then
+        Tweaks.VendorEvents:RegisterEvent("PLAYER_MONEY", function()
+            if TryRepair() then
+                repaired = true
+                Tweaks.VendorEvents:UnregisterEvent("PLAYER_MONEY")
+            end
+        end)
+        Tweaks.VendorEvents:RegisterEvent("MERCHANT_CLOSED", Finish)
+    end
+    local function Report()
+        local gained = GetMoney() - before + spent
+        if gained > 0 then Print(L["Sold %d junk items for %s."]:format(sold, C_CurrencyInfo.GetCoinText(gained))) end
+        if not repaired then
+            Finish()
+            CantAfford()
+        end
+    end
+    C_Timer.After(1.5, function()
+        -- the second pass asks again: still on, Shift not held, and not on the Buyback tab (an item
+        -- bought back just now would be sold again)
+        local open = MerchantFrame and MerchantFrame:IsShown() and MerchantFrame.selectedTab == 1
+        local db = GetDb()
+        if open and db and db.sellJunk and not IsShiftKeyDown() and C_MerchantFrame.GetNumJunkItems() > 0 then
+            sold = sold + C_MerchantFrame.GetNumJunkItems()
+            C_MerchantFrame.SellAllJunkItems()
+            C_Timer.After(1.5, Report)
+        else
+            Report()
+        end
     end)
 end
 
@@ -935,10 +985,20 @@ local DURABILITY_SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10, 16, 17, 18 }   -- armour and
 local DURABILITY_THRESHOLD = 50
 local durabilityWarned = false
 
+-- A thrown weapon spends a point of durability per throw: its percentage counts throws left, not wear
+local function IsThrown(slot)
+    if slot ~= INVSLOT_RANGED and slot ~= 18 then return false end
+    local itemID = GetInventoryItemID("player", slot)
+    if not itemID then return false end
+    local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
+    return classID == Enum.ItemClass.Weapon and subclassID == Enum.ItemWeaponSubclass.Thrown
+end
+
 local function LowestDurability()
     local lowest
     for _, slot in ipairs(DURABILITY_SLOTS) do
-        local current, max = GetInventoryItemDurability(slot)
+        local current, max
+        if not IsThrown(slot) then current, max = GetInventoryItemDurability(slot) end
         if canaccessvalue(current) and canaccessvalue(max) and current and max and max > 0 then
             local percent = current / max * 100
             if not lowest or percent < lowest then lowest = percent end
@@ -956,7 +1016,13 @@ local function CheckDurability()
     if lowest <= threshold then
         if not durabilityWarned then
             durabilityWarned = true
-            Print(L["|cffff4040Durability at %d%%|r - time to repair."]:format(math_floor(lowest + 0.5)))
+            local text = L["|cffff4040Durability at %d%%|r - time to repair."]:format(math_floor(lowest + 0.5))
+            Print(text)
+            -- also in the middle of the screen with a sound: a chat line is easy to miss in a fight
+            if UIErrorsFrame and UIErrorsFrame.AddMessage then
+                UIErrorsFrame:AddMessage(text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""), 1, 0.25, 0.25)
+            end
+            PlaySound(SOUNDKIT.RAID_WARNING)
         end
     elseif lowest > threshold + 5 then
         durabilityWarned = false   -- re-arm once repaired
@@ -965,6 +1031,7 @@ end
 
 local function InitDurability()
     Tweaks:RegisterEvent("UPDATE_INVENTORY_DURABILITY", CheckDurability)
+    Tweaks:RegisterEvent("UPDATE_INVENTORY_ALERTS", CheckDurability)   -- items that mend themselves
     Tweaks:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", CheckDurability)
     Tweaks:RegisterEvent("PLAYER_ENTERING_WORLD", CheckDurability)
 end
@@ -978,17 +1045,42 @@ local origZoomIn, origZoomOut
 -- CameraZoomIn / Out are replaced (the wheel bindings call the globals; no hook can change the
 -- step); the originals come back when the option is off. CVars go back to the player's own values
 -- only when FlareUI changed them (ForcedCVars).
-local function ForcedCVars()
+-- The memory lives where the game keeps the CVar: per character for a CVar saved per character (so
+-- one character's switch never writes its value over another's), account-wide otherwise
+Tweaks.FORCED_KEYS = {
+    maxZoom = "cameraDistanceMaxZoomFactor", zoomSpeed = "cameraZoomSpeed",
+    tips = "showTutorials", combatPlates = "nameplateShowEnemies", mapFade = "mapFade",
+    compare = "alwaysCompareItems",   -- the Tooltips module's Compare with Shift
+}
+
+function Tweaks.SavedPerCharacter(cvar)
+    if not (C_CVar and C_CVar.GetCVarInfo) then return false end
+    local ok, _, _, _, perCharacter = pcall(C_CVar.GetCVarInfo, cvar)
+    return ok and perCharacter == true
+end
+
+function Tweaks.ForcedCVars(key)
     local global = ns.db and ns.db.global
     if not global then return {} end
     global.forcedCVars = global.forcedCVars or {}
-    return global.forcedCVars
+    local cvar = Tweaks.FORCED_KEYS[key]
+    if not (cvar and Tweaks.SavedPerCharacter(cvar)) then return global.forcedCVars end
+    local char = ns.CharDB()
+    char.forcedCVars = char.forcedCVars or {}
+    -- a value held account-wide for this key moves to the character
+    if global.forcedCVars[key] ~= nil and char.forcedCVars[key] == nil then
+        char.forcedCVars[key] = global.forcedCVars[key]
+    end
+    global.forcedCVars[key] = nil
+    return char.forcedCVars
 end
+local ForcedCVars = Tweaks.ForcedCVars
 
--- The value to put back; earlier versions stored only true, and put back Blizzard's default
-function Tweaks.StoredCVar(stored, default)
-    if stored == true then return default end
-    return stored
+-- The value to put back; a stored true (no value was read) puts back Blizzard's default
+function Tweaks.StoredCVar(stored, cvar)
+    if stored ~= true then return stored end
+    local ok, default = pcall(C_CVar.GetCVarDefault, cvar)
+    return ok and default or nil
 end
 
 function Tweaks.RestoreTips(stored)
@@ -1000,25 +1092,35 @@ end
 local function ApplyCamera()
     local db = GetDb()
     if not db then return end
-    local forced = ForcedCVars()
+    local forced = ForcedCVars("maxZoom")
     if db.maxCameraZoom then
         forced.maxZoom = forced.maxZoom or GetCVar("cameraDistanceMaxZoomFactor") or true
         pcall(SetCVar, "cameraDistanceMaxZoomFactor", 2.6)
     elseif forced.maxZoom then
-        pcall(SetCVar, "cameraDistanceMaxZoomFactor", Tweaks.StoredCVar(forced.maxZoom, 1.9))
+        pcall(SetCVar, "cameraDistanceMaxZoomFactor", Tweaks.StoredCVar(forced.maxZoom, "cameraDistanceMaxZoomFactor"))
         forced.maxZoom = nil
     end
-    if db.fasterCameraZoom then
+    -- The gamepad's stick zoom calls the same functions every frame with a small step of its own:
+    -- with the Gamepad UI on they stay Blizzard's, and otherwise only the bindings' step of 1 grows
+    if db.fasterCameraZoom and not ns.IsGamepadUI() then
         origZoomIn = origZoomIn or _G.CameraZoomIn
         origZoomOut = origZoomOut or _G.CameraZoomOut
-        _G.CameraZoomIn = function() origZoomIn(ZOOM_STEP) end
-        _G.CameraZoomOut = function() origZoomOut(ZOOM_STEP) end
+        _G.CameraZoomIn = function(step, ...)
+            if step == 1 then step = ZOOM_STEP end
+            return origZoomIn(step, ...)
+        end
+        _G.CameraZoomOut = function(step, ...)
+            if step == 1 then step = ZOOM_STEP end
+            return origZoomOut(step, ...)
+        end
+        forced = ForcedCVars("zoomSpeed")
         forced.zoomSpeed = forced.zoomSpeed or GetCVar("cameraZoomSpeed") or true
         pcall(SetCVar, "cameraZoomSpeed", 50)
     else
         if origZoomIn then _G.CameraZoomIn, _G.CameraZoomOut = origZoomIn, origZoomOut end
+        forced = ForcedCVars("zoomSpeed")
         if forced.zoomSpeed then
-            pcall(SetCVar, "cameraZoomSpeed", Tweaks.StoredCVar(forced.zoomSpeed, 20))
+            pcall(SetCVar, "cameraZoomSpeed", Tweaks.StoredCVar(forced.zoomSpeed, "cameraZoomSpeed"))
             forced.zoomSpeed = nil
         end
     end
@@ -1029,13 +1131,31 @@ local lootTaken = false
 local function FastLoot(_, autoLoot)
     local db = GetDb()
     if lootTaken or not (autoLoot and db and db.fasterLoot) then return end
+    -- an event that comes before the slots are filled must not use up this window's one go
+    if GetNumLootItems() == 0 then return end
     lootTaken = true
     for slot = GetNumLootItems(), 1, -1 do LootSlot(slot) end
 end
 
+-- Fade Map While Moving: Blizzard's own map fade (the mapFade CVar), which no options page offers
+function Tweaks.ApplyMapFade()
+    local db = GetDb()
+    if not db then return end
+    local forced = ForcedCVars("mapFade")
+    if db.mapFade then
+        if forced.mapFade == nil then forced.mapFade = GetCVar("mapFade") or "0" end
+        pcall(SetCVar, "mapFade", 1)
+    elseif forced.mapFade ~= nil then
+        pcall(SetCVar, "mapFade", forced.mapFade)
+        forced.mapFade = nil
+    end
+end
+
 local function InitCameraLoot()
     ApplyCamera()
+    Tweaks.ApplyMapFade()
     Tweaks:RegisterEvent("LOOT_READY", FastLoot)
+    Tweaks:RegisterEvent("LOOT_OPENED", FastLoot)   -- the second chance, same payload (autoLoot first)
     Tweaks:RegisterEvent("LOOT_CLOSED", function() lootTaken = false end)
 end
 
@@ -1046,6 +1166,7 @@ end
 -- log), shown through Blizzard's TryDisplayMessage
 local KEPT_ERRORS = {
     "ERR_INV_FULL", "ERR_ITEM_MAX_COUNT", "ERR_LOOT_GONE",    -- loot that did not make it into the bags
+    "ERR_BAG_FULL", "ERR_LOOT_NO_SPACE",                      -- (only those the client has are kept)
     "ERR_NOT_ENOUGH_MONEY", "ERR_TOO_MUCH_GOLD",              -- money
     "ERR_QUEST_LOG_FULL",                                     -- quests
 }
@@ -1065,26 +1186,16 @@ local function InitHideErrors()
             frame:TryDisplayMessage(messageType, message, RED_FONT_COLOR:GetRGB())
         end
     end)
-    pcall(UIParent.UnregisterEvent, UIParent, "PING_SYSTEM_ERROR")
+    -- ping errors come through Blizzard's own event router, straight into the errors frame
+    local game = _G.GameEvent
+    if game and game.UnregisterInternalEvent then
+        game.UnregisterInternalEvent("PING_SYSTEM_ERROR")
+    end
 end
 
 local function InitHideZoneText()
     if ZoneTextFrame then ZoneTextFrame:SetScript("OnShow", ZoneTextFrame.Hide) end
     if SubZoneTextFrame then SubZoneTextFrame:SetScript("OnShow", SubZoneTextFrame.Hide) end
-end
-
-local partyTitleHidden = false
-local function ApplyPartyTitle()
-    local db = GetDb()
-    local title = _G.CompactPartyFrameTitle
-    if not (db and title) then return end
-    if db.hidePartyTitle then
-        title:Hide()
-        partyTitleHidden = true
-    elseif partyTitleHidden then
-        title:Show()
-        partyTitleHidden = false
-    end
 end
 
 -- Frame Numbers: the damage and healing numbers on the player and pet portraits, and the status text
@@ -1143,7 +1254,7 @@ end
 local function ApplyTips()
     local db = GetDb()
     if not db then return end
-    local forced = ForcedCVars()
+    local forced = ForcedCVars("tips")
     if db.hideTips then
         forced.tips = forced.tips or { tutorials = GetCVar("showTutorials"), npe = GetCVar("showNPETutorials") }
         pcall(SetCVar, "showTutorials", 0)
@@ -1165,8 +1276,6 @@ local function InitHide()
     if not db then return end
     if db.hideErrors then InitHideErrors() end
     if db.hideZoneText then InitHideZoneText() end
-    ApplyPartyTitle()
-    Tweaks:RegisterEvent("GROUP_ROSTER_UPDATE", ApplyPartyTitle)
     ApplyPortraitNumbers()
     ApplyTips()
 end
@@ -1566,6 +1675,78 @@ local function ApplyHideNamesAll()
 end
 
 --------------------------------------------------
+-- 11c. LEVEL BEFORE NAME
+-- With Hide Level Box on and names shown, a nameplate's name gets the unit's level in front, in the
+-- difficulty colour for enemies ("??" for a skull). Blizzard writes the name in
+-- CompactUnitFrame_UpdateName; the hook writes it again from the same GetUnitName call, so the level is
+-- never added twice. A secret level skips the plate; a secret name goes through SetFormattedText as is.
+-- The hook is set the first time the option is on, so an untouched option leaves the plates alone.
+--------------------------------------------------
+local LevelName = { written = {} }   -- written: plate unit frames that carry a level
+
+function LevelName.On()
+    local db = GetDb()
+    return db and db.nameplateHideLevel and db.nameplateLevelName and not db.nameplateHideNames
+        and not Tweaks:GetNameplateAddon() and true or false
+end
+
+function LevelName.Text(frame)
+    local unit = frame.unit
+    local showFullName = frame.optionTable and frame.optionTable.updateNameUsesGetUnitName and not frame.hideRealmName
+    return GetUnitName(unit, showFullName)
+end
+
+-- the level with its colour, or nil when it can't be read
+function LevelName.Prefix(unit)
+    local level = UnitEffectiveLevel(unit)
+    if not canaccessvalue(level) or type(level) ~= "number" then return nil end
+    if level <= 0 then return "|cffff2020??|r" end
+    local attackable = UnitCanAttack("player", unit)
+    local color
+    if canaccessvalue(attackable) and attackable then
+        color = ns.LevelDifficultyColor(unit, level)
+    else
+        color = _G.UNIT_LEVEL_NON_ATTACKABLE
+    end
+    if color and color.r then
+        return ("|cff%02x%02x%02x%d|r"):format(color.r * 255, color.g * 255, color.b * 255, level)
+    end
+    return tostring(level)
+end
+
+function LevelName.Apply(frame)
+    if not frame or frame:IsForbidden() then return end
+    local unit = frame.unit
+    if not (unit and canaccessvalue(unit) and type(unit) == "string" and unit:find("^nameplate")) then return end
+    -- the settings preview and the commentator write their own names
+    if frame.UpdateNameOverride then return end
+    local name = frame.name
+    if not name or name:IsForbidden() then return end
+    if not LevelName.On() then
+        -- switched off: the plain name back where a level was written
+        if LevelName.written[frame] then
+            LevelName.written[frame] = nil
+            if name:IsShown() then name:SetText(LevelName.Text(frame)) end
+        end
+        return
+    end
+    if not name:IsShown() then return end
+    local prefix = LevelName.Prefix(unit)
+    if not prefix then return end
+    name:SetFormattedText("%s %s", prefix, LevelName.Text(frame))
+    LevelName.written[frame] = true
+end
+
+function LevelName.ApplyAll()
+    if LevelName.On() and not LevelName.hooked then
+        LevelName.hooked = true
+        hooksecurefunc("CompactUnitFrame_UpdateName", LevelName.Apply)
+    end
+    if not LevelName.hooked then return end
+    for _, plate in ipairs(C_NamePlate.GetNamePlates()) do LevelName.Apply(plate.UnitFrame) end
+end
+
+--------------------------------------------------
 -- 12. PARTY FRAME UNCLAMP (always on)
 -- Edit Mode's clamp stops the party frames short of the left edge; switched off once, after combat
 -- if need be.
@@ -1587,6 +1768,7 @@ end
 
 --------------------------------------------------
 -- 13. AUTO-TYPE DELETE (the word goes into the box; Yes still has to be pressed)
+-- The dialog's Enter handler deletes as soon as the word is in, so the box gives up its focus.
 --------------------------------------------------
 local DELETE_DIALOGS = { DELETE_GOOD_ITEM = true, DELETE_GOOD_QUEST_ITEM = true }
 
@@ -1596,7 +1778,10 @@ local function InitAutoDelete()
         if not (db and db.autoDelete and DELETE_DIALOGS[which]) then return end
         local dialog = StaticPopup_FindVisible(which)
         local editBox = dialog and dialog:GetEditBox()
-        if editBox then editBox:SetText(DELETE_ITEM_CONFIRM_STRING) end
+        if editBox then
+            editBox:SetText(DELETE_ITEM_CONFIRM_STRING)
+            editBox:ClearFocus()
+        end
     end)
 end
 
@@ -1607,25 +1792,43 @@ end
 -- confirmation still wait for the player. Off in the Gamepad UI: its quest windows are Blizzard's own.
 --------------------------------------------------
 local function InitAutoQuests()
-    if ns.IsGamepadUI() then return end
-
+    -- checked on every event, so a switch to the Gamepad UI after login counts too
     local function On(key)
         local db = GetDb()
-        return db and db[key] and not IsShiftKeyDown()
+        return db and db[key] and not IsShiftKeyDown() and not ns.IsGamepadUI()
     end
-    local function CanAccept(questID)
-        return questID and not C_QuestLog.IsRepeatableQuest(questID) and not C_QuestLog.IsQuestTrivial(questID)
+    -- what the offer itself says (repeatable, daily, weekly) counts first: the quest log answers
+    -- from cached quest data, which may not know a quest it hasn't seen yet
+    local function Repeatable(questID, repeatable, frequency)
+        return repeatable or (frequency and frequency > 0) or C_QuestLog.IsRepeatableQuest(questID)
+    end
+    -- grey when either the offer or the quest log says so
+    local function CanAccept(questID, repeatable, frequency, trivial)
+        return questID and not trivial and not Repeatable(questID, repeatable, frequency)
+            and not C_QuestLog.IsQuestTrivial(questID)
+    end
+    -- battleground marks are worth keeping for other rewards: a quest that takes them is handed in by hand
+    -- (Warsong Gulch, Arathi Basin, Alterac Valley)
+    local MARKS = { [20558] = true, [20559] = true, [20560] = true }
+    local function TakesMarks()
+        for i = 1, GetNumQuestItems() do
+            local link = GetQuestItemLink("required", i)
+            local itemID = link and C_Item.GetItemInfoInstant(link)
+            if itemID and MARKS[itemID] then return true end
+        end
+        return false
     end
     local function CanTurnIn()
         local money = GetQuestMoneyToGet()
         return not C_QuestLog.IsRepeatableQuest(GetQuestID()) and not (money and money > 0)
     end
 
+    local TAXI_ICON = 132057   -- the flight master's gossip icon (Interface\GossipFrame\TaxiGossipIcon)
     local handlers = {}
     function handlers.GOSSIP_SHOW()
         if On("autoTurnInQuests") then
             for _, quest in ipairs(C_GossipInfo.GetActiveQuests()) do
-                if quest.isComplete and not C_QuestLog.IsRepeatableQuest(quest.questID) then
+                if quest.isComplete and not Repeatable(quest.questID, quest.repeatable, quest.frequency) then
                     C_GossipInfo.SelectActiveQuest(quest.questID)
                     return
                 end
@@ -1633,8 +1836,17 @@ local function InitAutoQuests()
         end
         if On("autoAcceptQuests") then
             for _, quest in ipairs(C_GossipInfo.GetAvailableQuests()) do
-                if not quest.isIgnored and CanAccept(quest.questID) then
+                if not quest.isIgnored and CanAccept(quest.questID, quest.repeatable, quest.frequency, quest.isTrivial) then
                     C_GossipInfo.SelectAvailableQuest(quest.questID)
+                    return
+                end
+            end
+        end
+        -- a flight master with nothing else to say opens the flight map at once (Shift talks normally)
+        if On("taxiMap") and #C_GossipInfo.GetAvailableQuests() == 0 and #C_GossipInfo.GetActiveQuests() == 0 then
+            for _, option in ipairs(C_GossipInfo.GetOptions() or {}) do
+                if option.gossipOptionID and (option.icon == TAXI_ICON or option.overrideIconID == TAXI_ICON) then
+                    C_GossipInfo.SelectOption(option.gossipOptionID)
                     return
                 end
             end
@@ -1652,8 +1864,8 @@ local function InitAutoQuests()
         end
         if On("autoAcceptQuests") then
             for i = 1, GetNumAvailableQuests() do
-                local questID = select(5, GetAvailableQuestInfo(i))
-                if CanAccept(questID) then
+                local trivial, frequency, repeatable, _, questID = GetAvailableQuestInfo(i)
+                if CanAccept(questID, repeatable, frequency, trivial) then
                     SelectAvailableQuest(i)
                     return
                 end
@@ -1672,7 +1884,7 @@ local function InitAutoQuests()
         end
     end
     function handlers.QUEST_PROGRESS()
-        if On("autoTurnInQuests") and IsQuestCompletable() and CanTurnIn() then CompleteQuest() end
+        if On("autoTurnInQuests") and IsQuestCompletable() and CanTurnIn() and not TakesMarks() then CompleteQuest() end
     end
     function handlers.QUEST_COMPLETE()
         if not (On("autoTurnInQuests") and CanTurnIn()) then return end
@@ -1869,17 +2081,61 @@ end
 -- "/way 52.3 48.1" pins the current map; "/way Zone Name 52 48" looks the zone up by name.
 --------------------------------------------------
 local mapNameCache
+-- Map names, lower case with accents folded (so "orgrimmar" finds Orgrimmar and "teldrassil" finds an
+-- accented name too), read once in one walk of the map tree; on a name clash a zone wins over a
+-- continent, then a dungeon, then a micro map
+local function MapKey(name)
+    -- Latin-1 letters in UTF-8: a capital (second byte 128-158) lowers by 32, then folds to its base letter
+    local key = name:lower():gsub("\195([\128-\191])", function(byte)
+        local b = byte:byte()
+        if b >= 128 and b <= 158 and b ~= 151 then b = b + 32 end
+        if b >= 160 and b <= 165 then return "a" end
+        if b == 167 then return "c" end
+        if b >= 168 and b <= 171 then return "e" end
+        if b >= 172 and b <= 175 then return "i" end
+        if b == 177 then return "n" end
+        if (b >= 178 and b <= 182) or b == 184 then return "o" end
+        if b >= 185 and b <= 188 then return "u" end
+        if b == 159 then return "ss" end
+        return "\195" .. string.char(b)
+    end)
+    return key
+end
+
 local function GetMapIDByName(targetName)
-    local target = targetName:lower():match("^%s*(.-)%s*$")
+    local target = MapKey(targetName:match("^%s*(.-)%s*$"))
     if target == "" then return nil end
     if not mapNameCache then
         mapNameCache = {}
-        for mapID = 1, 4000 do
-            local info = C_Map.GetMapInfo(mapID)
-            if info and info.name then
-                local key = info.name:lower()
-                if not mapNameCache[key] then mapNameCache[key] = mapID end
+        local T = Enum.UIMapType
+        local RANK = { [T.Zone] = 1, [T.Continent] = 2, [T.Dungeon] = 3, [T.Micro] = 4 }
+        local rankOf = {}
+        local function Add(info)
+            if not (info and info.name and info.mapID) then return end
+            local key, rank = MapKey(info.name), RANK[info.mapType] or 9
+            if not mapNameCache[key] or rank < rankOf[key] then
+                mapNameCache[key], rankOf[key] = info.mapID, rank
             end
+        end
+        -- up to the top of the tree, then every map below it in one call
+        local root = C_Map.GetFallbackWorldMapID and C_Map.GetFallbackWorldMapID()
+        local rootInfo = root and C_Map.GetMapInfo(root)
+        while rootInfo and rootInfo.parentMapID and rootInfo.parentMapID ~= 0 do
+            local parent = C_Map.GetMapInfo(rootInfo.parentMapID)
+            if not parent then break end
+            rootInfo = parent
+        end
+        local count = 0
+        if rootInfo then
+            Add(rootInfo)
+            for _, info in ipairs(C_Map.GetMapChildrenInfo(rootInfo.mapID, nil, true) or {}) do
+                Add(info)
+                count = count + 1
+            end
+        end
+        -- a tree that didn't come back whole: every ID is read instead
+        if count < 50 then
+            for mapID = 1, 4000 do Add(C_Map.GetMapInfo(mapID)) end
         end
     end
     return mapNameCache[target]
@@ -1995,7 +2251,9 @@ end
 local function InitMailBook()
     EventUtil.ContinueOnAddOnLoaded("Blizzard_MailFrame", function()
         local box = _G.SendMailNameEditBox
-        if not box or Tweaks.mailButton then return end
+        -- not in the Gamepad UI: the controller cursor would land on it and run its menu (addon code)
+        -- inside Blizzard's navigation, which hangs the client
+        if not box or Tweaks.mailButton or ns.IsGamepadUI() then return end
         local button = CreateFrame("Button", nil, box)
         button:SetSize(22, 22)
         button:SetPoint("LEFT", box, "RIGHT", 2, 0)
@@ -2054,16 +2312,116 @@ local function MarkKnownItems()
     end
 end
 
+-- Buy More Than One Stack: Shift+click on a merchant item opens Blizzard's amount box with room for
+-- several stacks (capped by gold, bag room and stock). It buys one stack at a time and waits for each
+-- to reach the bags; an error, the merchant closing or a timeout stops it. Items paid in other items
+-- or currencies keep Blizzard's own one-stack box.
+local Bulk = { queue = nil }
+
+-- room in the bags for itemID: empty slots that take it, plus what its partial stacks still hold
+function Bulk.BagRoom(itemID, stackSize)
+    local family = C_Item.GetItemFamily(itemID) or 0
+    local room = 0
+    for bag = BACKPACK_CONTAINER, NUM_TOTAL_EQUIPPED_BAG_SLOTS do
+        local free, bagFamily = C_Container.GetContainerNumFreeSlots(bag)
+        if free and free > 0 and (not bagFamily or bagFamily == 0 or bit.band(bagFamily, family) ~= 0) then
+            room = room + free * stackSize
+        end
+        for slot = 1, C_Container.GetContainerNumSlots(bag) do
+            local info = C_Container.GetContainerItemInfo(bag, slot)
+            if info and info.itemID == itemID and info.stackCount then
+                room = room + math.max(0, stackSize - info.stackCount)
+            end
+        end
+    end
+    return room
+end
+
+function Bulk.Stop()
+    if Bulk.timer then Bulk.timer:Cancel() Bulk.timer = nil end
+    Bulk.queue = nil
+    Bulk.events:UnregisterAllEvents()
+end
+
+-- buys the next stack, or finishes
+function Bulk.Next()
+    local q = Bulk.queue
+    if Bulk.timer then Bulk.timer:Cancel() Bulk.timer = nil end
+    if not q or q.left <= 0 or not (MerchantFrame and MerchantFrame:IsShown()) then Bulk.Stop() return end
+    local amount = math.min(q.left, q.perBuy)
+    q.left = q.left - amount
+    BuyMerchantItem(q.index, amount)
+    -- no bag update within two seconds: something went wrong, stop rather than guess
+    Bulk.timer = C_Timer.NewTimer(2, Bulk.Stop)
+end
+
+function Bulk.Start(index, total, perBuy)
+    Bulk.Stop()
+    Bulk.queue = { index = index, left = total, perBuy = perBuy }
+    Bulk.events:RegisterEvent("BAG_UPDATE_DELAYED")
+    Bulk.events:RegisterEvent("UI_ERROR_MESSAGE")
+    Bulk.events:RegisterEvent("MERCHANT_CLOSED")
+    Bulk.Next()
+end
+
+function Bulk.Init()
+    Bulk.events = CreateFrame("Frame")
+    Bulk.events:SetScript("OnEvent", function(_, event)
+        if event == "BAG_UPDATE_DELAYED" then Bulk.Next() else Bulk.Stop() end
+    end)
+    -- the amount box answers this frame's SplitStack, so no Blizzard button is changed
+    Bulk.owner = CreateFrame("Frame", nil, UIParent)
+    Bulk.owner.SplitStack = function(owner, split)
+        if split and split > 0 and owner.index then Bulk.Start(owner.index, split, owner.perBuy) end
+    end
+    if not MerchantItemButton_OnModifiedClick then return end
+    hooksecurefunc("MerchantItemButton_OnModifiedClick", function(button)
+        local db = GetDb()
+        if not (db and db.bulkBuy) or ns.IsGamepadUI() then return end
+        -- only where Blizzard just opened its own amount box (not a chat link or a dress-up)
+        local split = _G.StackSplitFrame
+        if not (split and split:IsShown() and split.owner == button) or MerchantFrame.selectedTab ~= 1 then return end
+        if button.extendedCost or button.showNonrefundablePrompt then return end
+        local index = button:GetID()
+        local info = C_MerchantFrame.GetItemInfo(index)
+        local itemID = GetMerchantItemID(index)
+        local perBuy = GetMerchantItemMaxStack(index)
+        if not (info and itemID and perBuy and perBuy > 0) or info.hasExtendedCost then return end
+        local unit = math.max(1, info.stackCount or 1)
+        local cap = math.huge
+        if info.price and info.price > 0 then cap = math.floor(GetMoney() / (info.price / unit)) end
+        if info.numAvailable and info.numAvailable >= 0 then cap = math.min(cap, info.numAvailable * unit) end
+        local stackSize = C_Item.GetItemMaxStackSize(itemID) or perBuy
+        cap = math.min(cap, Bulk.BagRoom(itemID, stackSize))
+        cap = math.floor(cap / unit) * unit
+        if cap <= perBuy then return end   -- one stack's worth: Blizzard's box already does it
+        Bulk.owner.index, Bulk.owner.perBuy = index, math.max(unit, math.floor(perBuy / unit) * unit)
+        Bulk.owner:ClearAllPoints()
+        Bulk.owner:SetAllPoints(button)
+        split:OpenStackSplitFrame(cap, Bulk.owner, "BOTTOMLEFT", "TOPLEFT", unit)
+    end)
+end
+
 local function InitMerchantKnown()
     if MerchantFrame_UpdateMerchantInfo then hooksecurefunc("MerchantFrame_UpdateMerchantInfo", MarkKnownItems) end
+    -- the Buyback tab reuses the same buttons and never clears their greying itself
+    if MerchantFrame_UpdateBuybackInfo then hooksecurefunc("MerchantFrame_UpdateBuybackInfo", MarkKnownItems) end
 end
 
 -- Alert Sounds: flashes the game's taskbar icon and plays an alert on the Master channel, so it is
 -- heard with sound effects off or the game in the background
 local ALERT_EVENTS = { "READY_CHECK", "CONFIRM_SUMMON", "RESURRECT_REQUEST", "PARTY_INVITE_REQUEST", "LFG_PROPOSAL_SHOW" }
-local function OnAlert()
+-- Blizzard already plays this sound and flashes the icon for these, on the sound effects channel
+Tweaks.BLIZZARD_SOUNDS = { READY_CHECK = true, LFG_PROPOSAL_SHOW = true }
+local function OnAlert(_, event, initiator)
     local db = GetDb()
     if not (db and db.alertSounds) then return end
+    -- a ready check the player started themself asks nothing of them (Blizzard stays quiet too)
+    if event == "READY_CHECK" and initiator and canaccessvalue(initiator) and UnitIsUnit("player", initiator) then
+        return
+    end
+    -- heard twice, a beat apart, when Blizzard's own sound already plays
+    if Tweaks.BLIZZARD_SOUNDS[event] and GetCVarBool("Sound_EnableSFX") then return end
     if FlashClientIcon then FlashClientIcon() end
     PlaySound(SOUNDKIT.READY_CHECK, "Master")
 end
@@ -2120,11 +2478,13 @@ local function InitPetFood()
     frame:SetScript("OnEvent", UpdatePetFood)
 end
 
--- Skip Loot Confirmations: "will bind to you" when looting, and when rolling Need or Greed
+-- Skip Loot Confirmations: "will bind to you" when looting, and when rolling Need, Greed or Disenchant
 local function InitLootConfirm()
     local frame = CreateFrame("Frame")
     frame:RegisterEvent("LOOT_BIND_CONFIRM")
     frame:RegisterEvent("CONFIRM_LOOT_ROLL")
+    -- a Disenchant roll asks in the same dialog, with other text
+    pcall(frame.RegisterEvent, frame, "CONFIRM_DISENCHANT_ROLL")
     frame:SetScript("OnEvent", function(_, event, id, rollType)
         local db = GetDb()
         if not (db and db.skipLootConfirm) then return end
@@ -2149,7 +2509,7 @@ end
 
 local function ApplyCombatPlates()
     local db = GetDb()
-    local forced = ForcedCVars()
+    local forced = ForcedCVars("combatPlates")
     if InCombatLockdown() then return end
     if db and db.combatPlates then
         if forced.combatPlates == nil then forced.combatPlates = GetCVar("nameplateShowEnemies") or "1" end
@@ -2183,13 +2543,15 @@ end
 function Tweaks:Refresh()
     if not self.initialized then return end
     ApplyCamera()
-    ApplyPartyTitle()
+    Tweaks.ApplyMapFade()
+    if ns.Fishing then ns.Fishing:Apply() end
     ApplyPortraitNumbers()
     ApplyTips()
     ApplyNameplateCombo()
     ApplyQuestTags()
     ApplyHideLevelAll()
     ApplyHideNamesAll()
+    LevelName.ApplyAll()
     UpdateTrainAll()
     ApplyMailBook()
     ApplyCombatPlates()
@@ -2205,13 +2567,20 @@ end
 -- With the module off, Init never runs: CVars FlareUI forced go back here (Core asks before the switch)
 function Tweaks:ShouldLoad()
     local tweaks = ns.db and ns.db.profile and ns.db.profile.tweaks
-    local forced = ns.db and ns.db.global and ns.db.global.forcedCVars
-    if tweaks and tweaks.enabled == false and forced and next(forced) and not InCombatLockdown() then
-        if forced.maxZoom then pcall(SetCVar, "cameraDistanceMaxZoomFactor", Tweaks.StoredCVar(forced.maxZoom, 1.9)) end
-        if forced.zoomSpeed then pcall(SetCVar, "cameraZoomSpeed", Tweaks.StoredCVar(forced.zoomSpeed, 20)) end
-        if forced.tips then Tweaks.RestoreTips(forced.tips) end
-        if forced.combatPlates ~= nil then pcall(SetCVar, "nameplateShowEnemies", forced.combatPlates) end
-        wipe(forced)
+    if tweaks and tweaks.enabled == false and ns.db.global and not InCombatLockdown() then
+        local function Take(key)
+            local forced = ForcedCVars(key)
+            local value = forced[key]
+            forced[key] = nil
+            return value
+        end
+        local maxZoom, zoomSpeed, tips, plates = Take("maxZoom"), Take("zoomSpeed"), Take("tips"), Take("combatPlates")
+        local mapFade = Take("mapFade")
+        if mapFade ~= nil then pcall(SetCVar, "mapFade", mapFade) end
+        if maxZoom then pcall(SetCVar, "cameraDistanceMaxZoomFactor", Tweaks.StoredCVar(maxZoom, "cameraDistanceMaxZoomFactor")) end
+        if zoomSpeed then pcall(SetCVar, "cameraZoomSpeed", Tweaks.StoredCVar(zoomSpeed, "cameraZoomSpeed")) end
+        if tips then Tweaks.RestoreTips(tips) end
+        if plates ~= nil then pcall(SetCVar, "nameplateShowEnemies", plates) end
     end
     return true
 end
@@ -2238,6 +2607,7 @@ function Tweaks:Init()
     NoteCharacter()
     InitMailBook()
     InitMerchantKnown()
+    Bulk.Init()
     InitAlerts()
     InitPetFood()
     InitLootConfirm()
@@ -2246,5 +2616,6 @@ function Tweaks:Init()
     ApplyQuestTags()
     ApplyHideLevelAll()
     ApplyHideNamesAll()
+    LevelName.ApplyAll()
     UnclampPartyFrame()
 end

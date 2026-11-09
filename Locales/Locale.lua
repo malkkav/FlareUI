@@ -34,30 +34,35 @@ local L = setmetatable({}, {
 })
 ns.L = L
 
+-- a language with few phrases of its own borrows a close one's first: Mexican Spanish takes the Spain
+-- Spanish phrases, and its own file (loaded after) puts its words over them
+local FALLBACK = { esMX = "esES" }
+
 -- The packager can populate otherwise empty locale files. Discover which ones
 -- have translations, and keep only the strings for the locale loaded this session.
 function ns.LocaleStrings(locale)
     return setmetatable({}, {
         __newindex = function(_, key, value)
             available[locale] = true
-            if locale == requestedLocale then L[key] = value end
+            if locale == requestedLocale or locale == FALLBACK[requestedLocale] then L[key] = value end
         end,
     })
 end
 
 function ns.ResolveLocale(locale)
     locale = type(locale) == "string" and locale or gameLocale
-    return available[locale] and locale or "enUS"
+    return (available[locale] or available[FALLBACK[locale] or false]) and locale or "enUS"
 end
 
 function ns.LoadedLocale()
     return ns.ResolveLocale(requestedLocale)
 end
 
+-- the languages with phrases, their own or a fallback's (as ResolveLocale accepts them)
 function ns.LanguageChoices()
     local choices = {}
     for _, entry in ipairs(languages) do
-        if available[entry[1]] then choices[#choices + 1] = entry end
+        if ns.ResolveLocale(entry[1]) == entry[1] then choices[#choices + 1] = entry end
     end
     return choices
 end

@@ -22,7 +22,8 @@ for (const raw of lines) {
   let line = raw.trimEnd();
   line = line.replace(/\*\*(.+?)\*\*/g, '|cffffffff$1|r');          // bold: white
   line = line.replace(/`([^`]+)`/g, '|cffffd100$1|r');               // code: gold
-  if (/^## /.test(line)) line = '|cffffd100' + line.slice(3) + '|r'; // section: gold
+  if (/^### /.test(line)) line = '|cffe6cc99' + line.slice(4) + '|r'; // sub-section: pale bronze
+  else if (/^## /.test(line)) line = '|cffffd100' + line.slice(3) + '|r'; // section: gold
   else if (/^\s+- /.test(line)) line = '      - ' + line.replace(/^\s+- /, '');
   else if (/^- /.test(line)) line = '• ' + line.slice(2);
   current.text.push(line);

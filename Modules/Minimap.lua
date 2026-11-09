@@ -23,7 +23,6 @@ LibStub("AceEvent-3.0"):Embed(MM)
 --------------------------------------------------
 local _G = _G
 local ipairs, pairs, type = ipairs, pairs, type
-local table_remove = table.remove
 local hooksecurefunc = hooksecurefunc
 local LEM = LibStub("FlareEditMode")
 local C_Timer = C_Timer
@@ -148,9 +147,12 @@ local function CreateMapArt()
     NineSliceUtil.ApplyLayout(frame, BorderLayout())
     MM.Frame = frame
 
-    -- black where the map texture has no data
+    -- black where the map texture has no data. On the cluster, so it draws under the map, and placed
+    -- where the map sits (ApplyLayout) rather than anchored to it: some node addons move the invisible
+    -- map under the cursor to read its tooltip, and a texture anchored to it would follow the cursor
     local back = Cluster:CreateTexture(nil, "BACKGROUND")
-    back:SetAllPoints(MinimapFrame)
+    back:SetPoint("CENTER", Cluster, "CENTER", 0, 0)
+    back:SetSize(MAP_SIZE - 2 * MAP_CROP, MAP_SIZE - 2 * MAP_CROP)
     back:SetColorTexture(0, 0, 0, 1)
 end
 
@@ -363,7 +365,7 @@ local function PlaceSun()
 end
 
 -- Blizzard's own place for the badge is the map's top right, over the calendar and clock. Whoever
--- moves it there (players report it with EnhanceQoL loaded), it goes straight back.
+-- moves it there, it goes straight back.
 local function KeepSunPlaced()
     local sun = Cluster.DielFrame
     if not sun then return end
@@ -397,6 +399,7 @@ end
 
 function MM:UpdateLayout()
     if not self.initialized then return end
+    -- (the minimap and its cluster are not protected on Forever: this runs in a fight too)
     if not squareStyle then
         StyleCoords()
         return
@@ -421,25 +424,205 @@ end
 
 --------------------------------------------------
 -- 8. EDIT MODE
--- "Rotate Minimap" and "Header Underneath" leave the dialog; stored values are harmless, as the
--- layout is re-applied after Blizzard's
+-- "Rotate Minimap" and "Header Underneath" leave the minimap's dialog and Size reads "Scale". Done on
+-- the dialog's own rows after Blizzard builds them, never in Blizzard's table they are built from
+-- (addon-written entries there would taint Edit Mode). Stored values are harmless: the layout is
+-- re-applied after Blizzard's.
 --------------------------------------------------
-local function RemoveEditModeSettings()
-    local removed = {
+local function TrimMinimapDialog(dialog)
+    local system = dialog and dialog.attachedToSystem
+    if not (system and system.system == Enum.EditModeSystem.Minimap and dialog.Settings) then return end
+    local hidden = {
         [Enum.EditModeMinimapSetting.RotateMinimap] = true,
         [Enum.EditModeMinimapSetting.HeaderUnderneath] = true,
     }
-    -- never rewrite saved layouts: addon-written layout tables taint Edit Mode's data
-    local byId = EditModeSettingDisplayInfoManager and EditModeSettingDisplayInfoManager.systemSettingDisplayInfo
-    local displayInfo = byId and byId[Enum.EditModeSystem.Minimap]
-    if not displayInfo then return end
-    for i = #displayInfo, 1, -1 do
-        if removed[displayInfo[i].setting] then table_remove(displayInfo, i) end
+    local changed = false
+    for _, row in ipairs({ dialog.Settings:GetChildren() }) do
+        if row:IsShown() and row.setting then
+            if hidden[row.setting] then
+                row:Hide()
+                changed = true
+            elseif row.setting == Enum.EditModeMinimapSetting.Size and row.Label then
+                -- Blizzard's Size scales the whole minimap
+                row.Label:SetText(L["Scale"])
+            end
+        end
     end
-    -- Blizzard's Size scales the whole minimap
-    for _, info in ipairs(displayInfo) do
-        if info.setting == Enum.EditModeMinimapSetting.Size then info.name = L["Scale"] end
+    if changed then
+        dialog.Settings:Layout()
+        if dialog.Layout then dialog:Layout() end
     end
+end
+
+local function RemoveEditModeSettings()
+    local dialog = _G.EditModeSystemSettingsDialog
+    if not dialog then
+        if EventUtil and EventUtil.ContinueOnAddOnLoaded then EventUtil.ContinueOnAddOnLoaded("Blizzard_EditMode", RemoveEditModeSettings) end
+        return
+    end
+    if dialog.FlareUI_MinimapTrim then return end
+    dialog.FlareUI_MinimapTrim = true
+    hooksecurefunc(dialog, "UpdateSettings", TrimMinimapDialog)
+end
+
+--------------------------------------------------
+-- 8b. MOUSE: WHOLE SQUARE, MIDDLE-CLICK MENU, COORDINATES ON HOVER
+--------------------------------------------------
+-- Pointing at the map (or anything on it) shows the coordinates with Coordinates on Hover; a light
+-- check while the pointer is around, stopped once it has left the cluster
+local hoverTicker
+local function CoordsFrame() return Cluster.MinimapContainer and Cluster.MinimapContainer.PlayerCoords end
+
+local function ShowCoords(shown)
+    local coords = CoordsFrame()
+    if coords then coords:SetAlpha(shown and 1 or 0) end
+end
+
+local function UpdateCoordsHover()
+    local db = GetDb()
+    if not (db and db.coordsOnHover) then
+        if hoverTicker then hoverTicker:Cancel(); hoverTicker = nil end
+        ShowCoords(true)
+        return
+    end
+    local over = Cluster:IsMouseOver()
+    ShowCoords(over)
+    if not over and hoverTicker then hoverTicker:Cancel(); hoverTicker = nil end
+end
+
+local function OnMapEnter()
+    local db = GetDb()
+    if not (db and db.coordsOnHover) then return end
+    ShowCoords(true)
+    if not hoverTicker then hoverTicker = C_Timer.NewTicker(0.2, UpdateCoordsHover) end
+end
+
+-- Middle-click Menu: Blizzard's panels as secure buttons, each a macro clicking the micro button (a
+-- panel opened from addon code would taint its frames). Out of combat only: the list holds protected
+-- buttons.
+local menu
+local MENU_KEYS = { "character", "spellbook", "talents", "professions", "quests", "groupfinder", "guild",
+    "collections", "social", "legacy", "flareui" }
+local MENU_ROW, MENU_PAD = 22, 8
+
+local function HideMenu()
+    if menu and menu:IsShown() and not InCombatLockdown() then menu:Hide() end
+end
+
+local function BuildMenu()
+    local panels = ns.RadialMenu and ns.RadialMenu.MICRO_PANELS
+    if not panels then return nil end
+    local f = CreateFrame("Frame", "FlareUI_MinimapMenu", UIParent, "BackdropTemplate")
+    f:SetFrameStrata("DIALOG")
+    f:SetClampedToScreen(true)
+    f:EnableMouse(true)
+    local LSM = LibStub("LibSharedMedia-3.0")
+    local file = LSM:Fetch("border", "FlareUI Frames")
+    f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = file, edgeSize = ns.BorderEdgeSize(file, 16),
+        insets = { left = 4, right = 4, top = 4, bottom = 4 } })
+    f:SetBackdropColor(0, 0, 0, 0.9)
+    f:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1)
+    local width, n = 0, 0
+    for _, key in ipairs(MENU_KEYS) do
+        local p = panels[key]
+        local usable = p and ((p.button and _G[p.button]) or p.macrotext)
+        if usable then
+            n = n + 1
+            local b = CreateFrame("Button", nil, f, "SecureActionButtonTemplate")
+            b:SetHeight(MENU_ROW)
+            b:SetPoint("TOPLEFT", f, "TOPLEFT", MENU_PAD, -MENU_PAD - (n - 1) * MENU_ROW)
+            b:SetPoint("TOPRIGHT", f, "TOPRIGHT", -MENU_PAD, -MENU_PAD - (n - 1) * MENU_ROW)
+            b:RegisterForClicks("AnyUp", "AnyDown")
+            b:SetAttribute("type", "macro")
+            b:SetAttribute("macrotext", (p.button and _G[p.button]) and ("/click " .. p.button) or p.macrotext)
+            local icon = b:CreateTexture(nil, "ARTWORK")
+            icon:SetSize(16, 16)
+            icon:SetPoint("LEFT", 2, 0)
+            icon:SetTexture(p.icon or 134400)
+            local text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            text:SetPoint("LEFT", icon, "RIGHT", 6, 0)
+            text:SetText(p.label)
+            width = math.max(width, text:GetStringWidth() + 28)
+            local hl = b:CreateTexture(nil, "HIGHLIGHT")
+            hl:SetAllPoints()
+            hl:SetColorTexture(1, 1, 1, 0.08)
+            b:HookScript("PostClick", function() C_Timer.After(0, HideMenu) end)
+        end
+    end
+    f:SetSize(width + 2 * MENU_PAD, n * MENU_ROW + 2 * MENU_PAD)
+    f:Hide()
+    table.insert(UISpecialFrames, "FlareUI_MinimapMenu")   -- Escape closes it
+    -- a click elsewhere or a fight closes it (the fight first: lockdown begins after this event)
+    f:RegisterEvent("PLAYER_REGEN_DISABLED")
+    -- clicks are watched only while the menu is open
+    f:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
+    f:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
+    f:SetScript("OnEvent", function(self, event)
+        if event == "GLOBAL_MOUSE_DOWN" and self:IsMouseOver() then return end
+        HideMenu()
+    end)
+    return f
+end
+
+local function ToggleMenu()
+    local db = GetDb()
+    if not (db and db.microMenu) then return end
+    if InCombatLockdown() then
+        if UIErrorsFrame then UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT or "Can't do that in combat", 1, 0.25, 0.25) end
+        return
+    end
+    menu = menu or BuildMenu()
+    if not menu then return end
+    if menu:IsShown() then menu:Hide() return end
+    local x, y = GetCursorPosition()
+    local scale = menu:GetEffectiveScale()
+    menu:ClearAllPoints()
+    menu:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+    menu:Show()
+end
+
+-- Square style: one surface over the whole square, so the corners zoom and ping too (Blizzard pings
+-- only inside the round map it draws); the middle button opens the menu
+local function CreateMapSurface()
+    local surface = CreateFrame("Frame", nil, MinimapFrame)
+    surface:SetAllPoints(MinimapFrame)
+    surface:SetFrameLevel(MinimapFrame:GetFrameLevel())   -- under the buttons and pins on the map
+    surface:EnableMouse(true)
+    surface:EnableMouseWheel(true)
+    if surface.SetPropagateMouseMotion then surface:SetPropagateMouseMotion(true) end
+    surface:SetScript("OnMouseWheel", function(_, delta)
+        if delta > 0 then Minimap_ZoomIn() elseif delta < 0 then Minimap_ZoomOut() end
+    end)
+    surface:SetScript("OnMouseUp", function(_, button)
+        if button == "MiddleButton" then ToggleMenu() return end
+        if button ~= "LeftButton" then return end
+        local x, y = GetCursorPosition()
+        local scale = MinimapFrame:GetEffectiveScale()
+        local cx, cy = MinimapFrame:GetCenter()
+        if not cx then return end
+        pcall(MinimapFrame.PingLocation, MinimapFrame, x / scale - cx, y / scale - cy)
+    end)
+    surface:SetScript("OnEnter", OnMapEnter)
+end
+
+-- Blizzard's map pings on any button (Minimap:OnClick on OnMouseUp), and clicks can land on it rather
+-- than the square surface, so its handler is wrapped: the middle button opens the menu instead of
+-- pinging while Middle-click Menu is on. The map is not a protected frame.
+local function WrapMapClick()
+    local blizzard = MinimapFrame:GetScript("OnMouseUp")
+    MinimapFrame:SetScript("OnMouseUp", function(self, button, ...)
+        local db = GetDb()
+        if button == "MiddleButton" and db and db.microMenu then ToggleMenu() return end
+        if blizzard then return blizzard(self, button, ...) end
+    end)
+end
+
+local function SetupMapMouse()
+    if squareStyle then CreateMapSurface() end
+    WrapMapClick()
+    MinimapFrame:HookScript("OnEnter", OnMapEnter)
+    Cluster:HookScript("OnEnter", OnMapEnter)
+    UpdateCoordsHover()
 end
 
 local function AddEditModeSettings()
@@ -582,10 +765,50 @@ function MM:Refresh()
     self:UpdateLayout()
     self:UpdateTrackerScale()
     self:ApplyFonts()
+    UpdateCoordsHover()
+end
+
+-- The zone map (Shift+M, Blizzard_BattlefieldMap): FlareUI Thin in bronze instead of Blizzard's gold
+-- frame, on its BorderFrame so Blizzard's opacity slider fades it too; and its tab (shown while the
+-- mouse is on the map) drags it. Blizzard saves a moved tab's place at logout.
+local ZONE_MAP_PIECES = { "TopLeft", "TopRight", "BottomLeft", "BottomRight", "Top", "Bottom", "Left", "Right", "CloseButtonBorder" }
+local function SkinZoneMap()
+    local map, tab = _G.BattlefieldMapFrame, _G.BattlefieldMapTab
+    local frame = map and map.BorderFrame
+    if not frame or map.FlareUI_Skinned then return end
+    map.FlareUI_Skinned = true
+    for _, key in ipairs(ZONE_MAP_PIECES) do
+        if frame[key] then frame[key]:Hide() end
+    end
+    local area = map.ScrollContainer or map
+    local border = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    border:SetPoint("TOPLEFT", area, "TOPLEFT", -3, 3)
+    border:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", 3, -3)
+    border:SetBackdrop({ edgeFile = LibStub("LibSharedMedia-3.0"):Fetch("border", "FlareUI Thin"), edgeSize = 8 })
+    local c = ns.BORDER_COLOR
+    border:SetBackdropBorderColor(c.r, c.g, c.b, 1)
+    if frame.CloseButton then
+        frame.CloseButton:ClearAllPoints()
+        frame.CloseButton:SetPoint("TOPRIGHT", border, "TOPRIGHT", 2, 2)
+    end
+
+    -- Blizzard drags the tab only while unlocked, and then moves the map away from it: here the tab
+    -- drags whatever Lock says, and takes the map along (it hangs below the tab)
+    if not (tab and tab.StartMoving) then return end
+    tab:RegisterForDrag("LeftButton")
+    tab:SetScript("OnDragStart", function(self)
+        self:SetMovable(true)
+        self:StartMoving()
+    end)
+    tab:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        if ValidateFramePosition then ValidateFramePosition(self) end
+    end)
 end
 
 function MM:Init()
     if self.initialized then return end
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_BattlefieldMap", SkinZoneMap)
     if not (MinimapFrame and Cluster and Cluster.ZoneTextButton and Cluster.Tracking and Cluster.MinimapContainer and _G.GameTimeFrame) then
         print("|cffff0000FlareUI:|r Minimap module could not find the Blizzard minimap cluster.")
         return
@@ -608,6 +831,7 @@ function MM:Init()
         Cluster.MinimapContainer:HookScript("OnSizeChanged", function() self:UpdateTrackerScale() end)
     end
     AddEditModeSettings()
+    SetupMapMouse()
     hooksecurefunc(MinimapFrame, "SetZoom", OnZoom)
     hooksecurefunc(Cluster, "SetEditModeScale", function()
         self:UpdateLayout()

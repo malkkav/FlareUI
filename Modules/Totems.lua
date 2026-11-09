@@ -23,7 +23,7 @@ local math_floor, math_ceil, math_max, math_min = math.floor, math.ceil, math.ma
 local table_sort = table.sort
 
 -- under the player frame, beside the pet frame
-local DEFAULT_POSITION = { point = "BOTTOM", x = -361, y = 264 }
+local DEFAULT_POSITION = { point = "BOTTOM", x = -361, y = 270 }
 local DEFAULT_SIZE, DEFAULT_PER_ROW = 90, 4
 -- Blizzard's totem button geometry (TotemButtonTemplate)
 local BUTTON, ICON, RING = 37, 22, 30
@@ -77,10 +77,22 @@ end
 --------------------------------------------------
 -- 4. GRID (slot n, perRow to a row, rows going down; offsets in the scaled frame's units)
 --------------------------------------------------
+-- Rows keep room for the time only while it shows under the icons; otherwise they close up to the
+-- columns' spacing
+local function TimerBelow()
+    local db = GetDb()
+    local totems = db and db.totems
+    return (totems and totems.timer or "none") == "below"
+end
+
+local function RowStep()
+    return TimerBelow() and ROW_STEP or COL_STEP
+end
+
 local function SlotOffset(n, perRow)
     local col = (n - 1) % perRow
     local row = math_floor((n - 1) / perRow)
-    return col * COL_STEP, -row * ROW_STEP
+    return col * COL_STEP, -row * RowStep()
 end
 
 local function PlaceInGrid(buttons, parent, perRow)
@@ -92,6 +104,71 @@ local function PlaceInGrid(buttons, parent, perRow)
 end
 
 local function ByLayoutIndex(a, b) return (a.layoutIndex or 0) < (b.layoutIndex or 0) end
+
+-- Aura Swipe and Aura Timer, as on the Buffs & Debuffs icons (round): the swipe over the icon,
+-- round the ring, both (one disc over icon and ring) or none; the time under the icon, along its
+-- bottom, in its middle or not at all. On Blizzard's own buttons, and on the Edit Mode samples.
+local MEDIA = "Interface\\AddOns\\FlareUI\\Media\\Auras\\"
+local SWIPE_ROUND = MEDIA .. "BorderRoundThick"
+local SWIPE_EDGE = MEDIA .. "Edge"
+local SWIPE_DISC = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
+local function TotemLook()
+    local db = GetDb()
+    local t = db and db.totems or {}
+    return t.swipe or "both", t.timer or "none"
+end
+
+-- button: the totem button; cd: its cooldown; text: its time; ring: its border art
+local function StyleTotem(button, cd, text, ring)
+    local swipe, timer = TotemLook()
+    if cd then
+        cd:ClearAllPoints()
+        -- Blizzard draws the ring art 1 px right and 1.5 px down of the icon: only the ring swipe follows
+        -- it. A disc stays on the icon at the icon's size, or it reads as a shadow growing bottom right.
+        local onRing = swipe == "border"
+        cd:SetPoint("CENTER", onRing and ring or button, "CENTER")
+        cd:SetSize(onRing and RING or ICON, onRing and RING or ICON)
+        cd:SetFrameLevel(button:GetFrameLevel() + ((onRing or swipe == "both") and 3 or 1))
+        cd:SetUseCircularEdge(true)
+        if swipe == "none" then
+            cd:SetDrawSwipe(false)
+            cd:SetDrawEdge(false)
+        elseif swipe == "border" then
+            cd:SetDrawSwipe(true)
+            cd:SetDrawEdge(false)
+            cd:SetSwipeTexture(SWIPE_ROUND)
+            cd:SetSwipeColor(0, 0, 0, 0.7)
+        else
+            cd:SetDrawSwipe(true)
+            cd:SetSwipeTexture(SWIPE_DISC)
+            cd:SetSwipeColor(0, 0, 0, swipe == "both" and 0.7 or 0.82)
+            cd:SetDrawEdge(true)
+            cd:SetEdgeTexture(SWIPE_EDGE, 1, 1, 1, 1)
+            if cd.SetEdgeScale then cd:SetEdgeScale(1.6) end
+        end
+    end
+    if text then
+        -- the time on a layer of its own, above the swipe (Blizzard keeps writing it)
+        local layer = button.FlareUI_TextLayer
+        if not layer then
+            layer = CreateFrame("Frame", nil, button)
+            layer:SetAllPoints(button)
+            button.FlareUI_TextLayer = layer
+        end
+        layer:SetFrameLevel(button:GetFrameLevel() + 5)
+        if text:GetParent() ~= layer then text:SetParent(layer) end
+        text:SetDrawLayer("OVERLAY")
+        text:ClearAllPoints()
+        if timer == "middle" then
+            text:SetPoint("CENTER", button, "CENTER", 0, 0)
+        elseif timer == "bottom" then
+            text:SetPoint("BOTTOM", ring or button, "BOTTOM", 0, 2)
+        else
+            text:SetPoint("TOP", button, "BOTTOM", 0, 5)
+        end
+        text:SetAlpha(timer == "none" and 0 or 1)
+    end
+end
 
 -- After Blizzard's Layout the shown buttons go back into the grid
 local active = {}
@@ -105,6 +182,9 @@ local function ArrangeTotems()
     end
     table_sort(active, ByLayoutIndex)
     PlaceInGrid(active, frame, perRow)
+    for _, button in ipairs(active) do
+        StyleTotem(button, button.Icon and button.Icon.Cooldown, button.Duration, button.Border)
+    end
 end
 
 --------------------------------------------------
@@ -161,17 +241,29 @@ local function CreatePreview()
         local text = b:CreateFontString(nil, "BACKGROUND", "GameFontNormalSmall")
         text:SetPoint("TOP", b, "BOTTOM", 0, 5)
         text:SetText(PREVIEW_TIMES[i])
+        local cd = CreateFrame("Cooldown", nil, b, "CooldownFrameTemplate")
+        cd:SetHideCountdownNumbers(true)
+        cd:SetReverse(true)
+        b.Cooldown, b.Duration, b.Ring = cd, text, ring
 
         preview.buttons[i] = b
     end
     holder.preview = preview
 end
 
+-- shown: Edit Mode; a fight in it brings the live totems back (ns.OnEditFight)
 local function SetPreview(shown)
     if not holder then return end
+    shown = shown and ns.EditPreviewing()
     holder.preview:SetShown(shown)
-    -- live totems step aside while the samples show
-    if _G.TotemFrame then _G.TotemFrame:SetAlpha(shown and 0 or 1) end
+    -- live totems step aside while the samples show, and can't be right-clicked away unseen
+    local frame = _G.TotemFrame
+    if frame then
+        frame:SetAlpha(shown and 0 or 1)
+        for _, button in ipairs({ frame:GetChildren() }) do
+            if button.EnableMouse then pcall(button.EnableMouse, button, not shown) end
+        end
+    end
 end
 
 --------------------------------------------------
@@ -183,11 +275,15 @@ local function ApplyLayout()
     local scale, perRow = GetSettings()
     local rows = math_ceil(MAX / perRow)
     local width = BUTTON + (perRow - 1) * COL_STEP
-    local height = BUTTON + (rows - 1) * ROW_STEP + TEXT_BELOW
+    local height = BUTTON + (rows - 1) * RowStep() + (TimerBelow() and TEXT_BELOW or 0)
     holder:SetSize(width * scale, height * scale)
 
     holder.preview:SetScale(scale)
     PlaceInGrid(holder.preview.buttons, holder.preview, perRow)
+    for i, b in ipairs(holder.preview.buttons) do
+        StyleTotem(b, b.Cooldown, b.Duration, b.Ring)
+        b.Cooldown:SetCooldown(GetTime() - 12 * i, 60)   -- a running sample swipe
+    end
 
     local frame = _G.TotemFrame
     if frame then
@@ -220,6 +316,20 @@ local function BuildSettings()
           get = get("size", size), set = set("size") },
         { name = L["Totems per Row"], kind = LEM.SettingType.Slider, default = perRow, minValue = 1, maxValue = MAX, valueStep = 1,
           get = get("perRow", perRow), set = set("perRow") },
+        { name = L["Aura Swipe"], kind = LEM.SettingType.Dropdown, default = "both", get = get("swipe", "both"), set = set("swipe"),
+          values = {
+              { text = L["Over the icon"], value = "icon", isRadio = true },
+              { text = L["Around the border"], value = "border", isRadio = true },
+              { text = L["Both"], value = "both", isRadio = true },
+              { text = L["None"], value = "none", isRadio = true },
+          } },
+        { name = L["Aura Timer"], kind = LEM.SettingType.Dropdown, default = "none", get = get("timer", "none"), set = set("timer"),
+          values = {
+              { text = L["Under the icon"], value = "below", isRadio = true },
+              { text = L["Bottom of the icon"], value = "bottom", isRadio = true },
+              { text = L["Middle of the icon"], value = "middle", isRadio = true },
+              { text = L["None"], value = "none", isRadio = true },
+          } },
     }
 end
 
@@ -257,4 +367,5 @@ function TOT:Init()
     LEM:RegisterCallback("layout", function(layoutName) ApplyPosition(layoutName) end)
     LEM:RegisterCallback("enter", function() SetPreview(true) end)
     LEM:RegisterCallback("exit", function() SetPreview(false) end)
+    ns.OnEditFight(function() SetPreview(LEM:IsInEditMode()) end)
 end

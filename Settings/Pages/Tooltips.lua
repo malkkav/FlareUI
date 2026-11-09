@@ -32,21 +32,22 @@ S:Row{ key = "tt.healthBar", apply = Refresh,
     set = function(on) S:SetPath("tooltips.hideHealthBar", not on) end }
 
 local borders = Both({ "tooltips.borderByReaction", "tooltips.borderByClass", "tooltips.borderByQuality" })
-S:Row{ key = "tt.borders", get = borders.get, set = borders.set, apply = Refresh }
+S:Row{ half = true, key = "tt.borders", get = borders.get, set = borders.set, apply = Refresh }
 
 S:Row{
-    key = "tt.classNames", apply = Refresh,
+    key = "tt.classNames", half = true, apply = Refresh,
     get = function() return S:GetPath("tooltips.nameColor") == "class" end,
     set = function(on) S:SetPath("tooltips.nameColor", on and "class" or "none") end,
 }
-S:Row{ key = "tt.showThreat", path = "tooltips.showThreat" }
-S:Row{ key = "tt.showTarget", path = "tooltips.showTarget", apply = Refresh }
-S:Row{ key = "tt.showGuild", path = "tooltips.showGuild", apply = Refresh }
-S:Row{ key = "tt.showGuildRank", path = "tooltips.showGuildRank", parent = "tt.showGuild", apply = Refresh }
-S:Row{ key = "tt.hideFaction", path = "tooltips.hideFaction", apply = Refresh }
+S:Row{ half = true, key = "tt.showThreat", path = "tooltips.showThreat" }
+S:Row{ half = true, key = "tt.showTarget", path = "tooltips.showTarget", apply = Refresh }
+S:Row{ half = true, key = "tt.showGuild", path = "tooltips.showGuild", apply = Refresh }
+S:Row{ half = true, key = "tt.showGuildRank", path = "tooltips.showGuildRank", parent = "tt.showGuild", apply = Refresh }
+S:Row{ half = true, key = "tt.hideFaction", path = "tooltips.hideFaction", apply = Refresh }
 
 local ids = Both({ "tooltips.showItemID", "tooltips.showSpellID" })
-S:Row{ key = "tt.ids", get = ids.get, set = ids.set, apply = Refresh }
+S:Row{ half = true, key = "tt.ids", get = ids.get, set = ids.set, apply = Refresh }
+S:Row{ half = true, key = "tt.compareShift", path = "tooltips.compareShift", apply = Refresh }
 
 local SHOW = { "always", "combat", "never" }
 local world = Both({ "tooltips.visibility.worldUnits", "tooltips.visibility.worldObjects" })

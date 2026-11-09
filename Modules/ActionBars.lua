@@ -26,8 +26,6 @@ local ipairs = ipairs
 local table_insert = table.insert
 local InCombatLockdown = InCombatLockdown
 local GetActionInfo = GetActionInfo
-local GetMacroInfo = GetMacroInfo
-local GetMacroSpell = GetMacroSpell
 local GetPetActionInfo = GetPetActionInfo
 local GetPetActionSlotUsable = GetPetActionSlotUsable
 local C_Spell = C_Spell
@@ -214,6 +212,7 @@ end
 -- Applied in order to the raw (never localised) binding key: NUMPAD before PLUS, SPACEBAR before SPACE
 local KEY_SHORT = {
     { "ALT%-", "A" }, { "CTRL%-", "C" }, { "SHIFT%-", "S" }, { "META%-", "M" },
+    { "NUMPADDECIMAL", "N." },
     { "NUMPAD", "N" },
     { "PLUS", "+" }, { "MINUS", "-" }, { "MULTIPLY", "*" }, { "DIVIDE", "/" },
     { "BACKSPACE", "BS" }, { "CAPSLOCK", "Cp" }, { "CLEAR", "Cl" }, { "DELETE", "Del" },
@@ -267,11 +266,16 @@ local function UpdateHotkeyText(button)
         hotkey:Hide()
         return
     end
-    -- off: Blizzard's own text, so switching off needs no reload
-    if db.cleanKeybinds then hotkey:SetText(ShortenKey(key)) else hotkey:SetText(GetBindingText(key, 1)) end
+    -- off: Blizzard's own text, so switching off needs no reload; a controller button keeps
+    -- Blizzard's icon either way
+    local pad = IsBindingForGamePad and IsBindingForGamePad(key)
+    if db.cleanKeybinds and not pad then hotkey:SetText(ShortenKey(key)) else hotkey:SetText(GetBindingText(key, 1)) end
     hotkey:Show()
     hotkey:ClearAllPoints()
     hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", HOTKEY_X, HOTKEY_Y)
+    -- Blizzard's box fits its own small font: the button's width and the text's own height, so a
+    -- larger keybind font isn't cut off
+    hotkey:SetSize(math.max(1, button:GetWidth() - 2), 0)
 end
 
 local function UpdateButtonText(button)
@@ -328,6 +332,14 @@ local BLIZZARD_TINT = {
     unusable = { 0.4, 0.4, 0.4 },
 }
 
+-- Dim on cooldown (section 8b) adds to the desaturation: button.FlareUI_OnCD is set while a real
+-- cooldown runs
+local function CooldownDims(button)
+    if not button.FlareUI_OnCD then return false end
+    local db = GetBarConfig()
+    return db and db.enabled and db.dimOnCooldown or false
+end
+
 local function ApplyStateColor(button, state)
     if button.FlareUI_ColorState == state then return end
     button.FlareUI_ColorState = state
@@ -349,7 +361,7 @@ local function ApplyStateColor(button, state)
         local db = GetBarConfig()
         desaturate = db and db.colors and db.colors.unusable and db.colors.unusable.desaturate or false
     end
-    icon:SetDesaturated(desaturate)
+    icon:SetDesaturated(desaturate or CooldownDims(button))
 end
 
 local OnUpdateUsable
@@ -362,7 +374,7 @@ local function RefreshButtonColor(button)
             if button.FlareUI_ColorState ~= "locked" and button.icon then
                 local tint = BLIZZARD_TINT[button.FlareUI_Usable] or STATE_TINT.normal
                 button.icon:SetVertexColor(tint[1], tint[2], tint[3], 1)
-                button.icon:SetDesaturated(false)
+                button.icon:SetDesaturated(CooldownDims(button))
             end
             button.FlareUI_ColorState = nil
         end
@@ -403,15 +415,6 @@ OnUpdateUsable = function(button, action, isUsable, notEnoughMana)
         if (canaccessvalue(isUsable) and isUsable == nil) or (canaccessvalue(notEnoughMana) and notEnoughMana == nil) then
             isUsable, notEnoughMana = C_ActionBar.IsUsableAction(slot)
         end
-        -- a #showtooltip macro reports the macro's usability, not the spell's
-        local actionType, id = GetActionInfo(slot)
-        if actionType == "macro" then
-            local _, _, body = GetMacroInfo(id)
-            if body and body:sub(1, 1) == "#" then
-                local spellID = GetMacroSpell(id)
-                if canaccessvalue(spellID) and spellID then isUsable, notEnoughMana = C_Spell.IsSpellUsable(spellID) end
-            end
-        end
         -- an answer the client hides is left to Blizzard's own tint
         if not (canaccessvalue(isUsable) and canaccessvalue(notEnoughMana)) then
             button.FlareUI_ColorState = nil
@@ -421,6 +424,24 @@ OnUpdateUsable = function(button, action, isUsable, notEnoughMana)
     end
     ForgetColorState(button)
     RefreshButtonColor(button)
+end
+
+-- A button's action changed (page, stance, form, a spell dragged in): Blizzard turns range checking
+-- on for the new action but doesn't say whether it's in range until it next changes, so the old
+-- answer would tint the new spell. Read it now.
+local function OnUpdateAction(button)
+    local slot = button.action
+    if not (canaccessvalue(slot) and type(slot) == "number") then return end
+    local out = false
+    local has = C_ActionBar.HasAction(slot)
+    if canaccessvalue(has) and has then
+        local r = C_ActionBar.IsActionInRange(slot)
+        out = (canaccessvalue(r) and r == false) or false
+    end
+    if out ~= button.FlareUI_OutOfRange then
+        button.FlareUI_OutOfRange = out
+        RefreshButtonColor(button)
+    end
 end
 
 local function OnUpdateRangeIndicator(button, checksRange, inRange)
@@ -474,6 +495,99 @@ local function SetupRangeColors()
 end
 
 --------------------------------------------------
+-- 8b. COOLDOWNS: DIM ON COOLDOWN, READY BURST
+-- A real cooldown (not the global one) is read from isActive / isOnGCD, which are never secret, after
+-- each of Blizzard's cooldown updates. Dim on cooldown greys the icon meanwhile; on Fake CM bars the end
+-- of one plays the proc alert's opening burst. The game sends no event when a cooldown ends, so the
+-- cooldown frame's OnCooldownDone reads it again.
+--------------------------------------------------
+local fcmButtons = {}        -- button -> on a Fake CM bar (Refresh)
+local burstQuietUntil = 0    -- no bursts just after a loading screen: every cooldown is read anew
+local GCD_SPAN = 1.5         -- a shorter arm span is a global cooldown read as a real one
+
+local function BurstDone(anim) anim:GetParent():Hide() end
+
+local function PlayBurst(button)
+    local burst = button.FlareUI_ReadyBurst
+    if not burst then
+        burst = CreateFrame("Frame", nil, button, "ActionButtonSpellAlertTemplate")
+        local w, h = button:GetSize()
+        burst:SetSize(w * 1.4, h * 1.4)
+        burst:SetPoint("CENTER", button, "CENTER", 0, 0)
+        -- the start only: Blizzard's own script would carry on into the endless loop
+        burst.ProcStartAnim:SetScript("OnFinished", BurstDone)
+        button.FlareUI_ReadyBurst = burst
+    end
+    burst.ProcStartAnim:Stop()
+    burst:Show()
+    burst.ProcStartAnim:Play()
+end
+
+-- Greys or restores the icon after a change; with the colours painting, they repaint with it. Blizzard's
+-- Update clears the desaturation, so a dimmed icon is greyed again on each pass.
+local function PaintDim(button)
+    local dim = CooldownDims(button)
+    local changed = dim ~= (button.FlareUI_Dimmed or false)
+    button.FlareUI_Dimmed = dim or nil
+    if button.FlareUI_ColorState then
+        if changed then
+            button.FlareUI_ColorState = nil
+            RefreshButtonColor(button)
+        end
+    elseif (dim or changed) and not C_LevelLink.IsActionLocked(button.action) then
+        button.icon:SetDesaturated(dim)
+    end
+end
+
+local function OnUpdateCooldown(button)
+    local slot = button.action
+    if not (button.icon and canaccessvalue(slot) and type(slot) == "number") then return end
+    local db = GetBarConfig()
+    local watch = db and db.enabled and (fcmButtons[button] or db.dimOnCooldown)
+    if not watch and not button.FlareUI_OnCD then return end
+
+    local onCD, id = false, nil
+    local has = watch and C_ActionBar.HasAction(slot)
+    if canaccessvalue(has) and has then
+        local info = C_ActionBar.GetActionCooldown(slot)
+        onCD = (info and info.isActive and not info.isOnGCD) or false
+        local _, actionID = GetActionInfo(slot)
+        id = canaccessvalue(actionID) and actionID or nil
+    end
+    -- a new action on the button (page, form, a spell dragged in) is no cooldown ending
+    local same = id ~= nil and button.FlareUI_CDSlot == slot and button.FlareUI_CDID == id
+    button.FlareUI_CDSlot, button.FlareUI_CDID = slot, id
+    local armedAt, now = button.FlareUI_OnCD, GetTime()
+    if onCD then
+        if not (armedAt and same) then button.FlareUI_OnCD = now end
+    elseif armedAt then
+        button.FlareUI_OnCD = nil
+        if same and fcmButtons[button] and now - armedAt >= GCD_SPAN and now >= burstQuietUntil then
+            PlayBurst(button)
+        end
+    end
+    PaintDim(button)
+end
+
+-- the cooldown frame reaches its end a moment before the client may report it over
+local function OnCooldownDone(cooldown)
+    local button = cooldown:GetParent()
+    OnUpdateCooldown(button)
+    if button.FlareUI_OnCD then C_Timer.After(0.1, function() OnUpdateCooldown(button) end) end
+end
+
+local function SetupCooldowns()
+    if ActionBars.CooldownHooked then return end
+    ActionBars.CooldownHooked = true
+    if _G.ActionButton_UpdateCooldown then
+        ActionBars:SecureHook("ActionButton_UpdateCooldown", OnUpdateCooldown)
+    end
+    for _, btn in ipairs(GetAllActionButtons()) do
+        if btn.cooldown and btn.action then btn.cooldown:HookScript("OnCooldownDone", OnCooldownDone) end
+    end
+end
+
+--------------------------------------------------
 -- 9. ZONE ABILITY BUTTONS
 --------------------------------------------------
 local function StyleZoneAbilityButtonFonts(container)
@@ -519,15 +633,15 @@ local function OnCursorChanged()
     if isDragging then
         ActionBars.fcm.wasDragging = true
         ForEachFCMBar(function(key) ApplyClickthroughToBar(key, false) end)
-        -- Visibility shows the bars while wasDragging
-        if ns.Visibility then ns.Visibility:Refresh() end
+        -- Visibility shows the bars while wasDragging (a check, not a rebuild: drags come in bursts)
+        if ns.Visibility then ns.Visibility:Wake() end
     else
         ActionBars.fcm.wasDragging = false
         -- click-through again after a moment, unless Setup Mode is on
         ActionBars:ScheduleTimer(function()
             if ActionBars.fcm.wasDragging or ActionBars.fcm.unlockMode then return end
             ForEachFCMBar(function(key) ApplyClickthroughToBar(key, true) end)
-            if ns.Visibility then ns.Visibility:Refresh() end
+            if ns.Visibility then ns.Visibility:Wake() end
         end, 0.2)
     end
 end
@@ -588,16 +702,19 @@ end
 
 -- The ranks the character knows of the spells just learned: name -> { rank -> spellID }. Low ranks
 -- are spellbook items too (Blizzard's book only hides them); future spells aren't known yet.
+-- learned = true reads every ranked spell in the book.
 local function KnownRanks(learned)
     local known = {}
     local bank = Enum.SpellBookSpellBank.Player
     for line = 1, C_SpellBook.GetNumSpellBookSkillLines() do
         local lineInfo = C_SpellBook.GetSpellBookSkillLineInfo(line)
-        for offset = 1, lineInfo and lineInfo.numSpellBookItems or 0 do
+        -- another specialization's line holds spells the character can't cast now
+        local count = (lineInfo and not lineInfo.offSpecID) and lineInfo.numSpellBookItems or 0
+        for offset = 1, count do
             local info = C_SpellBook.GetSpellBookItemInfo(lineInfo.itemIndexOffset + offset, bank)
             local spellID = info and info.spellID
             local name = spellID and C_Spell.GetSpellName(spellID)
-            if name and learned[name] and IsPlayerSpell(spellID) then
+            if name and (learned == true or learned[name]) and C_SpellBook.IsSpellKnown(spellID, Enum.SpellBookSpellBank.Player) then
                 local rank = RankOf(spellID)
                 if rank then
                     known[name] = known[name] or {}
@@ -626,20 +743,52 @@ local function TargetRank(rank, newRanks, known)
     return rank
 end
 
-local function FlushRanks()
+-- The top rank of each spell the character has had its bars brought up to: name -> rank, per character
+local function TopRanks()
+    local char = ns.CharDB()
+    char.topRanks = char.topRanks or {}
+    return char.topRanks
+end
+
+local FlushRanks
+local cursorWait = CreateFrame("Frame")
+cursorWait:SetScript("OnEvent", function(self)
+    if GetCursorInfo() then return end
+    self:UnregisterEvent("CURSOR_CHANGED")
+    FlushRanks()
+end)
+
+local retried = {}   -- spellID -> true: a rank whose text wasn't loaded yet gets one more try
+function FlushRanks()
     if InCombatLockdown() then return end   -- OnCombatEnd tries again
-    if GetCursorInfo() then C_Timer.After(1, FlushRanks) return end
+    -- with something on the cursor, wait until it's put down
+    if GetCursorInfo() then cursorWait:RegisterEvent("CURSOR_CHANGED") return end
     -- Train All teaches several ranks in a row, in any order: all of a spell's go together
-    local learned = {}
+    local learned, again = {}, {}
     for _, spellID in ipairs(pendingRanks) do
         local name, rank = C_Spell.GetSpellName(spellID), RankOf(spellID)
         if name and rank then
             learned[name] = learned[name] or {}
             learned[name][rank] = spellID
+        elseif not retried[spellID] then
+            retried[spellID] = true
+            again[#again + 1] = spellID
         end
     end
     wipe(pendingRanks)
+    if #again > 0 then
+        for _, spellID in ipairs(again) do pendingRanks[#pendingRanks + 1] = spellID end
+        C_Timer.After(1, FlushRanks)
+    end
     if not next(learned) then return end
+
+    -- remembered, so the next catch-up scan doesn't take these ranks for new ones
+    local tops = TopRanks()
+    for name, ranks in pairs(learned) do
+        for rank in pairs(ranks) do
+            if rank > (tops[name] or 0) then tops[name] = rank end
+        end
+    end
 
     local known = KnownRanks(learned)
     local ordered = {}
@@ -677,16 +826,44 @@ function ActionBars:OnSpellLearned(_, spellID)
     C_Timer.After(0.2, FlushRanks)
 end
 
+-- Catch-up, at login and when the option is turned on: every rank above the top one the bars were
+-- last brought up to counts as new, so ranks learned while the option was off move up too. A
+-- character never scanned before has all its ranks moved up once.
+function ActionBars:CatchUpRanks()
+    local db = GetBarConfig()
+    if not (db and db.enabled and db.autoRanks) then return end
+    local tops = TopRanks()
+    for name, ranks in pairs(KnownRanks(true)) do
+        local top = tops[name] or 0
+        for rank, spellID in pairs(ranks) do
+            if rank > top then pendingRanks[#pendingRanks + 1] = spellID end
+        end
+    end
+    if #pendingRanks > 0 then FlushRanks() end
+end
+
+-- the book is complete at the first SPELLS_CHANGED after login; a moment later the rank texts are too
+local rankScan = CreateFrame("Frame")
+rankScan:RegisterEvent("SPELLS_CHANGED")
+rankScan:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("SPELLS_CHANGED")
+    C_Timer.After(3, function() ActionBars:CatchUpRanks() end)
+end)
+
 --------------------------------------------------
 -- 12. CLASS PAGING
 -- A secure state driver sets "actionpage" on bar 1's buttons, which Blizzard's buttons read before their
 -- bar's page; works in combat. Everything else on the bars is Blizzard's own paging.
--- Rogues: Stealth sets no bonus bar on Forever (GetBonusBarIndex stays 0), so bar 1 doesn't page for it
--- unless we do it. Warriors: stances do page bar 1; the toggle holds it on page 1, only while Blizzard
+-- Rogues and druids: Stealth and Prowl set no bonus bar of their own on Forever (GetBonusBarIndex
+-- stays 0), so bar 1 doesn't page for them unless we do it. Warriors: stances do page bar 1; the toggle holds it on page 1, only while Blizzard
 -- would swap it, so page keys and vehicle, override or temporary shapeshift bars stay Blizzard's.
 --------------------------------------------------
 local CLASS_PAGING = {
-    ROGUE = { key = "stealthPaging", driver = "[possessbar][overridebar][vehicleui] default; [stealth] 7; default" },
+    -- only while bar 1 shows page 1: Shift+number (or the page keys) still turn pages in stealth
+    ROGUE = { key = "stealthPaging", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth] 7; default" },
+    -- Druids: Prowl (Cat Form) gets page 8, Classic's prowl page, which is free (Blizzard pages Cat
+    -- Form itself to 7). [stealth] is Shadowmeld too, as for rogues.
+    DRUID = { key = "stealthPaging", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth] 8; default" },
     WARRIOR = { key = "noStancePaging", driver = "[possessbar][overridebar][vehicleui][shapeshift] default; [actionbar:1,bonusbar:1/2/3] 1; default" },
 }
 local PAGE_SNIPPET = [[
@@ -706,7 +883,8 @@ local function ApplyClassPaging()
     end
     local db = GetBarConfig()
     if not db then return end
-    -- the 3.0 bar choice these toggles replaced: none turned Stealth paging off; none or another bar held stances
+    -- an older single bar choice, carried over once: none turned Stealth paging off; none or another
+    -- bar held stances
     if db.autoPagingBar ~= nil then
         if db.autoPagingBar == 0 then db.stealthPaging = false end
         if db.autoPagingBar ~= 1 then db.noStancePaging = true end
@@ -753,8 +931,8 @@ local function UpdateGryphonLayer(db)
 end
 
 -- On Forever each gryphon is its own Edit Mode system, but the main bar's OnShow still runs
--- UpdateEndCaps(hideBarArt): with Hide Bar Art on, the container stayed hidden after Alt+Z or a
--- cinematic. Shown again with the bar; each gryphon keeps its own visibility.
+-- UpdateEndCaps(hideBarArt): with Hide Bar Art on, that would keep the container hidden after Alt+Z
+-- or a cinematic. It is shown again with the bar; each gryphon keeps its own visibility.
 local function KeepEndCapsWithBar(bar)
     local caps = bar and bar.EndCaps
     if not caps or caps:IsShown() or not bar:IsVisible() then return end
@@ -781,7 +959,8 @@ end
 local function UpdateAutoPushSpells(db)
     local global = ns.db.global
     if db and db.enabled and db.stopAutoAddSpells then
-        C_CVar.SetCVar("AutoPushSpellToActionBar", "0")
+        -- written only when it differs (Refresh runs on every loading screen)
+        if C_CVar.GetCVar("AutoPushSpellToActionBar") ~= "0" then C_CVar.SetCVar("AutoPushSpellToActionBar", "0") end
         global.autoPushSet = true
     elseif global.autoPushSet then
         C_CVar.SetCVar("AutoPushSpellToActionBar", "1")
@@ -818,7 +997,8 @@ local function HookFlash(btn)
     end)
 end
 
-function ActionBars:Refresh()
+function ActionBars:Refresh(event)
+    if event == "PLAYER_ENTERING_WORLD" then burstQuietUntil = GetTime() + 3 end
     if InCombatLockdown() then
         self._pendingRefresh = true
         return
@@ -834,6 +1014,11 @@ function ActionBars:Refresh()
     steadyFlash = db.steadyAttackFlash and true or false
     UpdateButtonArtAll()
     SetupRangeColors()
+    SetupCooldowns()
+    wipe(fcmButtons)
+    ForEachFCMBar(function(key)
+        for _, btn in ipairs(GetButtonsForBarKey(key)) do fcmButtons[btn] = true end
+    end)
 
     if _G.ExtraActionButton1 then UpdateButtonText(_G.ExtraActionButton1) end
     if _G.ZoneAbilityFrame and _G.ZoneAbilityFrame.SpellButtonContainer then
@@ -846,6 +1031,7 @@ function ActionBars:Refresh()
         UpdateButtonText(btn)
         -- one-off repaint; the hooks keep it current
         OnUpdateUsable(btn)
+        OnUpdateCooldown(btn)
     end
     UpdatePetColors()
     if ns.ProcGlow then ns.ProcGlow:Refresh() end
@@ -876,6 +1062,7 @@ function ActionBars:Init()
             btn.FlareUI_ButtonHooked = true
             if btn.UpdateHotkeys then ActionBars:SecureHook(btn, "UpdateHotkeys", UpdateHotkeyText) end
             if btn.UpdateUsable then ActionBars:SecureHook(btn, "UpdateUsable", OnUpdateUsable) end
+            if btn.UpdateAction then ActionBars:SecureHook(btn, "UpdateAction", OnUpdateAction) end
         end
         HookFlash(btn)
     end

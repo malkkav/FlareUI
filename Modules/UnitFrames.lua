@@ -149,7 +149,7 @@ local UNITS = {
         key = "Player", label = L["Player"], order = 1, auras = true, portrait = true,
         blizzard = { "PlayerFrame" },
         -- Hide Player Frame while in party: when the party frames show, so a raid brings it back
-        partyDriver = "[group:raid] show; [group:party] hide; show",
+        partyDriver = "[group:raid] show; [@raid1,exists] show; [group:party] hide; [@party1,exists] hide; show",
         events = { "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE" },
         globalEvents = { PLAYER_UPDATE_RESTING = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true,
                          PLAYER_FLAGS_CHANGED = "player", PVP_TIMER_UPDATE = true },
@@ -162,7 +162,7 @@ local UNITS = {
         blizzard = { "TargetFrame" },
         driver = "[@target,exists] show; hide",
         globalEvents = { PLAYER_TARGET_CHANGED = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true, PLAYER_FLAGS_CHANGED = "target",
-                         QUEST_LOG_UPDATE = true },
+                         QUEST_LOG_UPDATE = true, COMBO_TARGET_CHANGED = true },
         castbar = true,
         comboPoints = true,
         indicators = { leader = true, pvp = true, classification = true, highSkull = true, quest = true, threat = true,
@@ -192,11 +192,11 @@ local UNITS = {
         sample = { name = L["Target of Focus"] },
     },
     pet = {
-        key = "Pet", label = L["Pet"], order = 5, happiness = true, noRaidIcon = true, auras = true,
+        key = "Pet", label = L["Pet"], order = 5, happiness = true, noRaidIcon = true, auras = true, castbar = true,
         sample = { name = L["Pet"], powerToken = "FOCUS", health = 0.85, power = 0.7 },
         blizzard = { "PetFrame" },
         driver = "[@pet,exists] show; hide",
-        partyDriver = "[group:raid,@pet,exists] show; [group:raid] hide; [group:party] hide; [@pet,exists] show; hide",
+        partyDriver = "[group:raid,@pet,exists] show; [group:raid] hide; [group:party] hide; [@party1,exists] hide; [@pet,exists] show; hide",
         indicators = { heals = true },
         globalEvents = { UNIT_PET = "player" },
     },
@@ -219,13 +219,78 @@ local CAST_EVENTS = {
     "UNIT_SPELLCAST_CHANNEL_STOP", "UNIT_SPELLCAST_INTERRUPTIBLE", "UNIT_SPELLCAST_NOT_INTERRUPTIBLE",
 }
 
+-- Health Text and Power Text share these (Power Text has no Health Lost). Saved names: "both" is
+-- Value | Percent, "valuemax" Current (Max).
 local HEALTH_TEXT_MODES = {
-    { text = L["None"],            value = "none",    isRadio = true },
-    { text = L["Percent"],         value = "percent", isRadio = true },
-    { text = L["Value"],           value = "value",   isRadio = true },
-    { text = L["Value + Percent"], value = "both",    isRadio = true },
-    { text = L["Current | Max"],   value = "valuemax", isRadio = true },
+    { text = L["None"],                     value = "none",        isRadio = true },
+    { text = L["Percent"],                  value = "percent",     isRadio = true },
+    { text = L["Value"],                    value = "value",       isRadio = true },
+    { text = L["Value | Percent"],          value = "both",        isRadio = true },
+    { text = L["Current (Max)"],            value = "valuemax",    isRadio = true },
+    { text = L["Current (Max) | Percent"],  value = "valuemaxpct", isRadio = true },
+    { text = L["Health Lost"],              value = "lost",        isRadio = true },
 }
+
+-- The text for every mode but Health Lost. cur and max go through AbbreviateNumbers and percent is
+-- 0-100; all three can be secret, which SetFormattedText takes as they are.
+function UF.FormatBarText(fs, mode, cur, percent, max)
+    if mode == "percent" then
+        fs:SetFormattedText("%.0f%%", percent)
+    elseif mode == "value" then
+        fs:SetText(AbbreviateNumbers(cur))
+    elseif mode == "both" then
+        fs:SetFormattedText("%s | %.0f%%", AbbreviateNumbers(cur), percent)
+    elseif mode == "valuemax" then
+        fs:SetFormattedText("%s (%s)", AbbreviateNumbers(cur), AbbreviateNumbers(max))
+    elseif mode == "valuemaxpct" then
+        fs:SetFormattedText("%s (%s) | %.0f%%", AbbreviateNumbers(cur), AbbreviateNumbers(max), percent)
+    else
+        fs:SetText("")
+    end
+end
+
+-- Health Lost: "-1.2K" from UnitHealthMissing. The value can be secret, so "-0" at full health can't
+-- be caught in Lua: a step curve turns the health percent into the text's alpha (1 below full, 0 at
+-- full). Every other mode puts the alpha back to 1.
+function UF.SetHealthLost(fs, unit)
+    if not UF.lostCurve then
+        UF.lostCurve = C_CurveUtil.CreateCurve()
+        UF.lostCurve:SetType(Enum.LuaCurveType.Step)
+        UF.lostCurve:AddPoint(0, 1)
+        UF.lostCurve:AddPoint(1, 0)
+    end
+    fs:SetFormattedText("-%s", AbbreviateNumbers(UnitHealthMissing(unit, true)))
+    fs:SetAlpha(UnitHealthPercent(unit, true, UF.lostCurve))
+end
+
+-- Edit Mode samples: health is a 0-1 share of a 24000 sample maximum
+function UF.SetSampleHealthLost(fs, health)
+    local lost = math.floor((1 - health) * 24000 + 0.5)
+    if lost > 0 then fs:SetFormattedText("-%s", AbbreviateNumbers(lost)) else fs:SetText("") end
+end
+
+-- Power Text: Health Text's modes but Health Lost. A saved true or false (a checkbox's) reads as Value.
+UF.POWER_TEXT_MODES = {}
+for _, mode in ipairs(HEALTH_TEXT_MODES) do
+    if mode.value ~= "lost" then UF.POWER_TEXT_MODES[#UF.POWER_TEXT_MODES + 1] = mode end
+end
+local POWER_MODE = { none = true, percent = true, value = true, both = true, valuemax = true, valuemaxpct = true }
+function UF.IsPowerTextMode(v) return POWER_MODE[v] or false end
+function UF.PowerTextMode(v)
+    if POWER_MODE[v] then return v end
+    return "value"
+end
+-- percent from the client's curve (power can be secret)
+function UF.SetPowerText(fs, unit, powerType, mode)
+    if mode == "value" then
+        fs:SetText(AbbreviateNumbers(UnitPower(unit, powerType)))
+    elseif POWER_MODE[mode] and mode ~= "none" then
+        UF.FormatBarText(fs, mode, UnitPower(unit, powerType),
+            UnitPowerPercent(unit, powerType, false, CurveConstants.ScaleTo100), UnitPowerMax(unit, powerType))
+    else
+        fs:SetText("")
+    end
+end
 
 --------------------------------------------------
 -- 4. HELPERS
@@ -247,7 +312,7 @@ end
 -- Portrait: "none", "3d" or "class", a square taken from the bars. The ring styles always have one,
 -- in the ring, and the bars keep their full width.
 local function PortraitMode(f)
-    local udb = GetUnitDb(f.unit)
+    local udb = GetUnitDb(f.fuiUnit)
     local mode = (f.Portrait and udb and udb.portrait) or "none"
     if mode == "none" and ns.UFRing and ns.UFRing.Applies(f) then mode = "3d" end
     return mode
@@ -256,7 +321,7 @@ end
 local function PortraitSpace(f)
     if ns.UFRing and ns.UFRing.Applies(f) then return 0 end
     if PortraitMode(f) == "none" then return 0 end
-    local udb = GetUnitDb(f.unit)
+    local udb = GetUnitDb(f.fuiUnit)
     return ((udb and udb.height) or 44) - 2 * INSET + PORTRAIT_GAP
 end
 
@@ -465,18 +530,30 @@ local function ApplyFont(fontString, fontDb, sizeDelta)
     local path = ns.GetFontPath(fontDb and fontDb.face or "Friz Quadrata TT")
     local flags = fontDb and fontDb.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end
-    ns.SetFont(fontString, path, (fontDb and fontDb.size or 12) + (sizeDelta or 0), flags)
+    -- a family: names of other players keep their Cyrillic and Chinese / Korean letters
+    ns.SetFontFamily(fontString, path, (fontDb and fontDb.size or 12) + (sizeDelta or 0), flags)
     ns.ApplyShadow(fontString, fontDb)
 end
 
+-- A secret class still colours: GetClassColor takes it, and the bar takes the secret r, g, b.
+-- pcall covers a missing colour (nil) or an unreadable one.
+local function SecretClassRGB(classFile)
+    return C_ClassColor.GetClassColor(classFile):GetRGB()
+end
+
 -- Health bar colour: class colour for players (green with Class Color off), reaction colour for
--- NPCs. A secret class falls back to the reaction colour, a secret reaction to friendly.
+-- NPCs. A secret reaction falls back to friendly. The class is secret for a chained unit
+-- (targettarget, focustarget) whenever a unit in the chain is an NPC: it keeps Blizzard's class
+-- colour then (no custom class colours, which need a readable class).
 local function GetHealthColor(unit, classColor)
     if not UnitIsConnected(unit) then return GREY[1], GREY[2], GREY[3] end
     if UnitIsPlayer(unit) and not classColor then return ns.HEALTH_GREEN[1], ns.HEALTH_GREEN[2], ns.HEALTH_GREEN[3] end
     if UnitIsPlayer(unit) then
         local _, classFile = UnitClass(unit)
-        if canaccessvalue(classFile) and classFile then
+        if not canaccessvalue(classFile) then
+            local ok, r, g, b = pcall(SecretClassRGB, classFile)
+            if ok then return r, g, b end
+        elseif classFile then
             local override = ns.ClassHealthOverride(classFile)
             if override then return override[1], override[2], override[3] end
             local color = C_ClassColor.GetClassColor(classFile)
@@ -571,7 +648,7 @@ local function KeepAsMenuOwner(name, over)
     hooksecurefunc(frame, "Hide", function(f) if not InCombatLockdown() then f:Show() end end)
 end
 
--- the parked TargetFrame no longer plays the target-select sounds, so they play here
+-- the parked TargetFrame plays no target-select sounds, so they play here
 do
     local listener = CreateFrame("Frame")
     listener:RegisterEvent("PLAYER_TARGET_CHANGED")
@@ -602,7 +679,7 @@ end
 --------------------------------------------------
 local function UpdateName(f)
     -- focus: first name only outside Forever Style; target of target and of focus: always
-    local unit = f.unit
+    local unit = f.fuiUnit
     local kind = (unit == "focus" and "focus") or ((unit == "targettarget" or unit == "focustarget") and "targetof") or nil
     local name = ns.UnitDisplayName(unit, kind)
     if canaccessvalue(name) and not name then name = "" end
@@ -610,7 +687,7 @@ local function UpdateName(f)
 end
 
 local function UpdateLevel(f)
-    local unit = f.unit
+    local unit = f.fuiUnit
     local udb = GetUnitDb(unit)
     if not (udb and udb.showLevel) then f.Level:SetText("") return end
     local level = UnitLevel(unit)
@@ -636,13 +713,18 @@ local function UpdateLevel(f)
     if (unit == "player" or unit == "pet") and ns.UFRing and ns.UFRing.Applies(f) then f.Level:SetTextColor(1, 1, 1) end
 end
 
+-- Dead or a ghost, but not a hunter feigning death (group members can read a feign as dead)
+function UF.IsDead(unit)
+    return UnitIsDeadOrGhost(unit) and not (UnitIsFeignDeath and UnitIsFeignDeath(unit))
+end
+
 local function UpdateHealth(f, glide)
-    local unit = f.unit
+    local unit = f.fuiUnit
     local udb = GetUnitDb(unit)
     local bar = f.Health
 
     -- Edit Mode: sample health in the unit's colour when there is one
-    if LEM:IsInEditMode() then
+    if ns.EditPreviewing() then
         f.colorClass = nil   -- the colour below is the sample's: the next tick sets it again
         local health = (UNITS[unit].sample or {}).health or 0.75
         bar:SetMinMaxValues(0, 1)
@@ -657,23 +739,18 @@ local function UpdateHealth(f, glide)
             bar:SetStatusBarColor(GetHealthColor("player", ns.ClassColorsOn(udb)))
         end
         local mode = udb and udb.healthText or "percent"
-        local value = AbbreviateNumbers(math_floor(health * 24000))
-        if mode == "percent" then
-            f.HealthText:SetFormattedText("%.0f%%", health * 100)
-        elseif mode == "value" then
-            f.HealthText:SetText(value)
-        elseif mode == "both" then
-            f.HealthText:SetFormattedText("%s | %.0f%%", value, health * 100)
-        elseif mode == "valuemax" then
-            f.HealthText:SetFormattedText("%s | %s", value, AbbreviateNumbers(24000))
+        f.HealthText:SetAlpha(1)
+        if mode == "lost" then
+            UF.SetSampleHealthLost(f.HealthText, health)
         else
-            f.HealthText:SetText("")
+            UF.FormatBarText(f.HealthText, mode, math_floor(health * 24000), health * 100, 24000)
         end
         return
     end
 
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
-    ns.SetBarValue(bar, UnitHealth(unit), glide and udb and udb.smoothBars and not UNITS[unit].poll)
+    -- a corpse gets no more health ticks, so a glide could stop short of empty
+    ns.SetBarValue(bar, UnitHealth(unit), glide and udb and udb.smoothBars and not UNITS[unit].poll and not UnitIsDead(unit))
     -- The player is always connected and a player, so a health tick keeps its colour unless the class
     -- (readable), the palette or Class Colours changed since it was set
     local classOn = ns.ClassColorsOn(udb)
@@ -689,25 +766,22 @@ local function UpdateHealth(f, glide)
 
     local mode = udb and udb.healthText or "percent"
     local text = f.HealthText
+    text:SetAlpha(1)
     if not UnitIsConnected(unit) then
         text:SetText(OFFLINE_TEXT)
-    elseif UnitIsDeadOrGhost(unit) then
+    elseif UF.IsDead(unit) then
         text:SetText(UnitIsGhost(unit) and GHOST_TEXT or DEAD_TEXT)
-    elseif mode == "percent" then
-        text:SetFormattedText("%.0f%%", UnitHealthPercent(unit, true, percentCurve))
-    elseif mode == "value" then
-        text:SetText(AbbreviateNumbers(UnitHealth(unit)))
-    elseif mode == "both" then
-        text:SetFormattedText("%s | %.0f%%", AbbreviateNumbers(UnitHealth(unit)), UnitHealthPercent(unit, true, percentCurve))
-    elseif mode == "valuemax" then
-        text:SetFormattedText("%s | %s", AbbreviateNumbers(UnitHealth(unit)), AbbreviateNumbers(UnitHealthMax(unit)))
-    else
+    elseif mode == "lost" then
+        UF.SetHealthLost(text, unit)
+    elseif mode == "none" then
         text:SetText("")
+    else
+        UF.FormatBarText(text, mode, UnitHealth(unit), UnitHealthPercent(unit, true, percentCurve), UnitHealthMax(unit))
     end
 end
 
 local function UpdatePower(f, glide)
-    local unit = f.unit
+    local unit = f.fuiUnit
     local udb = GetUnitDb(unit)
     local bar = f.Power
     local powerType = UnitPowerType(unit)
@@ -716,8 +790,8 @@ local function UpdatePower(f, glide)
     bar:SetStatusBarColor(GetPowerColor(unit))
     if f.ManaCost then f.ManaCost:Refresh(powerType) end
     if f.ShiftMana then UF.UpdateShiftMana(f) end
-    if udb and udb.powerText and UnitIsConnected(unit) and not UnitIsDeadOrGhost(unit) then
-        f.PowerText:SetText(AbbreviateNumbers(UnitPower(unit, powerType)))
+    if udb and UnitIsConnected(unit) and not UF.IsDead(unit) then
+        UF.SetPowerText(f.PowerText, unit, powerType, UF.PowerTextMode(udb.powerText))
     else
         f.PowerText:SetText("")
     end
@@ -726,13 +800,13 @@ end
 -- GetRaidTargetIndex can be secret. A secret is never nil, so it still means a marker is set, and
 -- SetRaidTargetIconTexture takes it as is.
 local function UpdateRaidIcon(f)
-    if UNITS[f.unit].noRaidIcon then
+    if UNITS[f.fuiUnit].noRaidIcon then
         f.RaidIcon:Hide()
         return
     end
-    local index = GetRaidTargetIndex(f.unit)
+    local index = GetRaidTargetIndex(f.fuiUnit)
     local show
-    if not ICON_UI.Shown(f.unit, "raidIcon") then
+    if not ICON_UI.Shown(f.fuiUnit, "raidIcon") then
         show = false
     elseif not canaccessvalue(index) then
         show = true
@@ -805,8 +879,8 @@ local function GetCastStyle(udb, standalone)
         return {
             width = udb.width or 250, height = udb.height or 25,
             icon = udb.icon ~= false, timer = udb.timer ~= false, name = true,
-            texture = udb.texture, border = true,
-            borderTexture = ns.UFRing and ns.UFRing.Border(udb.borderTexture) or udb.borderTexture,
+            -- (its own border in every style, Forever Style too)
+            texture = udb.texture, border = true, borderTexture = udb.borderTexture,
             bgOpacity = udb.bgOpacity,
         }
     end
@@ -946,16 +1020,39 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
 end
 
 -- Edit Mode: a looping 3 s sample cast so the bar can be placed without a casting unit
+-- Your own bar's sample takes turns: a cast (latency zone, pushback, Spell Queue Window) and a
+-- channel (Channel Ticks, on Arcane Missiles' tick rate)
+local SAMPLE_CHANNEL_SPELL = 5143
 local function ShowSampleCast(cast)
+    UF.EndCastFlash(cast)
+    cast.rangeSpell, cast.outOfRange = nil, nil
+    local own = cast.unit == "player"
+    local channel = false
+    if own then
+        cast.sampleChannel = not cast.sampleChannel
+        channel = cast.sampleChannel
+    end
+    local now = GetTime()
     local duration = C_DurationUtil.CreateDuration()
-    duration:SetTimeFromStart(GetTime(), SAMPLE_CAST_SECONDS)
-    cast:SetTimerDuration(duration, Enum.StatusBarInterpolation.Immediate, Enum.StatusBarTimerDirection.ElapsedTime)
+    duration:SetTimeFromStart(now, SAMPLE_CAST_SECONDS)
+    cast:SetTimerDuration(duration, Enum.StatusBarInterpolation.Immediate,
+        channel and Enum.StatusBarTimerDirection.RemainingTime or Enum.StatusBarTimerDirection.ElapsedTime)
     SetCastTimer(cast, duration)
-    cast.Text:SetText(L["Sample Cast"])
+    cast.Text:SetText(channel and L["Sample Channel"] or L["Sample Cast"])
     cast.Icon:SetTexture(SAMPLE_CAST_ICON)
-    local color = cast.standalone and PLAYER_CAST_COLOR or CAST_COLOR
+    local color
+    if cast.standalone then
+        color = channel and PLAYER_CAST_CHANNEL or PLAYER_CAST_COLOR
+    else
+        color = channel and CAST_CHANNEL or CAST_COLOR
+    end
     cast:SetStatusBarColor(color[1], color[2], color[3])
     cast:Show()
+    if own then
+        local startMs = now * 1000
+        UF.UpdatePlayerCastExtras(cast, channel and "UNIT_SPELLCAST_CHANNEL_START" or "UNIT_SPELLCAST_START", channel, nil,
+            startMs, startMs + SAMPLE_CAST_SECONDS * 1000, not channel and 500 or nil, SAMPLE_CHANNEL_SPELL)
+    end
 end
 
 -- A cast's icon. Crafting casts can carry a placeholder or the wrong picture, so they take what the
@@ -992,27 +1089,432 @@ do
     end
 end
 
-local function UpdateCastBar(cast, enabled)
-    if not enabled then cast:Hide() return end
-    if LEM:IsInEditMode() then ShowSampleCast(cast) return end
+-- "Interrupted": an interrupted cast stays up for a moment, filled red, before it goes. The fill is
+-- an overlay over the bar (the client keeps driving the bar's own timer underneath).
+UF.INTERRUPT_HOLD, UF.INTERRUPT_COLOR = 0.7, { 0.85, 0.12, 0.10 }
+
+function UF.EndCastFlash(cast)
+    if cast.flashTimer then cast.flashTimer:Cancel() cast.flashTimer = nil end
+    if cast.FadeAnim and cast.FadeAnim:IsPlaying() then cast.FadeAnim:Stop() end   -- back to full alpha
+    if not cast.flashing then return end
+    cast.flashing = nil
+    if cast.FlashFill then cast.FlashFill:Hide() end
+    cast:GetStatusBarTexture():SetAlpha(1)
+    cast.Time:Show()
+end
+
+-- Your own cast that finishes: the bar fills to full (the client's timer can stop just short of it)
+-- and fades out, as Blizzard's does; a channel, which runs down to empty, only fades. A new cast
+-- ends it (EndCastFlash).
+UF.FINISH_FADE = 0.25
+function UF.FinishCast(cast, channel)
+    if not cast.FlashFill then
+        cast.FlashFill = cast:CreateTexture(nil, "ARTWORK", nil, 7)
+        cast.FlashFill:SetAllPoints(cast)
+    end
+    if not channel then
+        cast.FlashFill:SetTexture(cast:GetStatusBarTexture():GetTexture())
+        cast.FlashFill:SetVertexColor(cast:GetStatusBarColor())
+        cast.FlashFill:Show()
+        cast:GetStatusBarTexture():SetAlpha(0)
+    end
+    cast.Time:Hide()
+    UF.HideCastExtras(cast)
+    cast.flashing = true
+    if not cast.FadeAnim then
+        local anim = cast:CreateAnimationGroup()
+        local fade = anim:CreateAnimation("Alpha")
+        fade:SetFromAlpha(1)
+        fade:SetToAlpha(0)
+        fade:SetDuration(UF.FINISH_FADE)
+        anim:SetScript("OnFinished", function()
+            UF.EndCastFlash(cast)
+            cast:Hide()
+        end)
+        cast.FadeAnim = anim
+    end
+    cast.FadeAnim:Stop()
+    cast.FadeAnim:Play()
+end
+
+-- "Interrupted by <name>" as Blizzard's cast bar says it, the name class-coloured when readable.
+-- by: the event's interruptedBy GUID, maybe secret (UnitNameFromGUID takes a secret one; a secret
+-- name goes to the text as is)
+function UF.SetInterruptText(text, by)
+    local plain = _G.INTERRUPTED or "Interrupted"
+    local fmt = _G.SPELL_INTERRUPTED_BY
+    if (canaccessvalue(by) and by == nil) or not fmt then text:SetText(plain) return end
+    local ok, name = pcall(UnitNameFromGUID, by)
+    if not ok or (canaccessvalue(name) and (name == nil or name == "")) then text:SetText(plain) return end
+    if canaccessvalue(name) then
+        local okClass, _, classFile = pcall(UnitClassFromGUID, by)
+        local color = okClass and canaccessvalue(classFile) and classFile and RAID_CLASS_COLORS[classFile]
+        if color then name = color:WrapTextInColorCode(name) end
+    end
+    text:SetFormattedText(fmt, name)
+end
+
+-- failed: "Failed" (your own cast) instead of "Interrupted"
+function UF.FlashInterrupted(cast, by, failed)
+    if not cast.FlashFill then
+        cast.FlashFill = cast:CreateTexture(nil, "ARTWORK", nil, 7)
+        cast.FlashFill:SetAllPoints(cast)
+    end
+    local c = UF.INTERRUPT_COLOR
+    cast.FlashFill:SetTexture(cast:GetStatusBarTexture():GetTexture())
+    cast.FlashFill:SetVertexColor(c[1], c[2], c[3])
+    cast.FlashFill:Show()
+    cast:GetStatusBarTexture():SetAlpha(0)
+    cast.Time:Hide()
+    UF.HideCastExtras(cast)
+    if failed then
+        cast.Text:SetText(_G.FAILED or "Failed")
+    else
+        UF.SetInterruptText(cast.Text, by)
+    end
+    cast.flashing = true
+    if cast.flashTimer then cast.flashTimer:Cancel() end
+    cast.flashTimer = C_Timer.NewTimer(UF.INTERRUPT_HOLD, function()
+        cast.flashTimer = nil
+        UF.EndCastFlash(cast)
+        cast:Hide()
+    end)
+end
+
+-- The cast bar's extras: on your own bar the latency zone and the pushback, on an enemy's the kick tick
+function UF.HideCastExtras(cast)
+    if cast.LagZone then cast.LagZone:Hide() end
+    if cast.QueueMark then cast.QueueMark:Hide() end
+    for _, tick in ipairs(cast.Ticks or {}) do tick:Hide() end
+    if cast.Delay then cast.Delay:Hide() end
+    if cast.KickHost then cast.KickHost:Hide() end
+end
+
+-- Your own cast's times are readable. Latency zone: the end of the bar your world latency covers
+-- (a channel ends on the left). Pushback: how far the cast was set back ("+0.5") or the channel cut
+-- short ("-0.5"), kept from the cast's first end time.
+UF.LAG_COLOR, UF.DELAY_COLOR = { 1, 0.15, 0.1, 0.45 }, { 1, 0.3, 0.25 }
+-- Your own cast greys out while the target is out of the spell's range (a spell that can't go on
+-- the target, a heal on an enemy, answers nil and keeps its colour)
+UF.CAST_OUT_OF_RANGE = { 0.5, 0.5, 0.5 }
+function UF.CastRangeCheck(cast)
+    local id = cast.rangeSpell
+    local r = id and UnitExists("target") and C_Spell.IsSpellInRange(id, "target")
+    local out = (canaccessvalue(r) and r == false) or false
+    if out == cast.outOfRange then return end
+    cast.outOfRange = out
+    local c = out and UF.CAST_OUT_OF_RANGE or cast.rangeColor
+    if c then cast:SetStatusBarColor(c[1], c[2], c[3]) end
+end
+
+-- The cast bar's marks in Forever's bronze: a bronze line with a dark shade beside it, so it reads
+-- as engraved in the bar rather than drawn over it. A frame, so line and shade come and go together.
+UF.BRONZE, UF.BRONZE_SHADE = { 0.80, 0.62, 0.36 }, { 0.12, 0.08, 0.04 }
+UF.BRONZE_DARK = { 0.58, 0.43, 0.24 }
+-- color: the line's own bronze (the channel ticks a darker one)
+function UF.BronzeLine(cast, width, alpha, color)
+    local line = CreateFrame("Frame", nil, cast)
+    line:SetFrameLevel(cast:GetFrameLevel() + 1)
+    line:SetWidth(width + 1)
+    local b, d = color or UF.BRONZE, UF.BRONZE_SHADE
+    local bronze = line:CreateTexture(nil, "OVERLAY", nil, 1)
+    bronze:SetColorTexture(b[1], b[2], b[3], alpha)
+    bronze:SetPoint("TOPLEFT")
+    bronze:SetPoint("BOTTOMLEFT")
+    bronze:SetWidth(width)
+    local shade = line:CreateTexture(nil, "OVERLAY", nil, 0)
+    shade:SetColorTexture(d[1], d[2], d[3], alpha * 0.7)
+    shade:SetPoint("TOPLEFT", bronze, "TOPRIGHT")
+    shade:SetPoint("BOTTOMLEFT", bronze, "BOTTOMRIGHT")
+    shade:SetWidth(1)
+    line:Hide()
+    return line
+end
+
+-- Spell Queue Window (the player cast bar): where pressing the next spell queues it straight on
+function UF.PlaceQueueMark(cast, show, startMs, endMs)
+    local mark = cast.QueueMark
+    local window = show and C_Spell.GetSpellQueueWindow and C_Spell.GetSpellQueueWindow()
+    local total = endMs - startMs
+    if not (window and window > 0 and total > window) then
+        if mark then mark:Hide() end
+        return
+    end
+    if not mark then
+        mark = UF.BronzeLine(cast, 2, 0.95)
+        cast.QueueMark = mark
+    end
+    local x = cast:GetWidth() * (1 - window / total)
+    mark:ClearAllPoints()
+    mark:SetPoint("TOP", cast, "TOPLEFT", x, 0)
+    mark:SetPoint("BOTTOM", cast, "BOTTOMLEFT", x, 0)
+    mark:Show()
+end
+
+-- Channel Ticks (the player cast bar): classic channels and how often each ticks, by name so every
+-- rank matches. Only these: a wrong guess would be worse than none.
+UF.CHANNEL_TICK_IDS = {
+    [5143] = 1,   -- Arcane Missiles
+    [10] = 1,     -- Blizzard
+    [689] = 1,    -- Drain Life
+    [5138] = 1,   -- Drain Mana
+    [1120] = 3,   -- Drain Soul
+    [755] = 1,    -- Health Funnel
+    [1949] = 1,   -- Hellfire
+    [5740] = 2,   -- Rain of Fire
+    [15407] = 1,  -- Mind Flay
+    [16914] = 1,  -- Hurricane
+    [740] = 2,    -- Tranquility
+    [1510] = 1,   -- Volley
+}
+function UF.ChannelTickInterval(spellID)
+    if not UF.channelTickNames then
+        UF.channelTickNames = {}
+        for id, interval in pairs(UF.CHANNEL_TICK_IDS) do
+            local name = C_Spell.GetSpellName(id)
+            if name then UF.channelTickNames[name] = interval end
+        end
+    end
+    local name = canaccessvalue(spellID) and spellID and C_Spell.GetSpellName(spellID)
+    return name and UF.channelTickNames[name]
+end
+
+function UF.PlaceChannelTicks(cast, show, spellID, startMs, endMs)
+    cast.Ticks = cast.Ticks or {}
+    local interval = show and UF.ChannelTickInterval(spellID)
+    local count = interval and math.floor((endMs - startMs) / 1000 / interval + 0.5) or 0
+    local width = cast:GetWidth()
+    for i = 1, math.max(count - 1, #cast.Ticks) do
+        local tick = cast.Ticks[i]
+        if i < count then
+            if not tick then
+                tick = UF.BronzeLine(cast, 2, 0.85, UF.BRONZE_DARK)
+                cast.Ticks[i] = tick
+            end
+            local x = width * i / count
+            tick:ClearAllPoints()
+            tick:SetPoint("TOP", cast, "TOPLEFT", x, 0)
+            tick:SetPoint("BOTTOM", cast, "BOTTOMLEFT", x, 0)
+            tick:Show()
+        elseif tick then
+            tick:Hide()
+        end
+    end
+end
+
+-- delayMs: UnitCastingInfo's delay so far (never secret); a channel has none, so it is tracked here
+function UF.UpdatePlayerCastExtras(cast, event, channeling, castBarID, startMs, endMs, delayMs, spellID)
+    if cast.unit ~= "player" then return end
+    if not (canaccessvalue(startMs) and canaccessvalue(endMs) and startMs and endMs and endMs > startMs) then
+        UF.HideCastExtras(cast)
+        return
+    end
+    local zone = cast.LagZone
+    if not zone then
+        zone = cast:CreateTexture(nil, "ARTWORK", nil, 6)
+        zone:SetColorTexture(1, 1, 1, 1)
+        cast.LagZone = zone
+    end
+    -- world latency, or home latency while the world figure reads 0
+    local _, _, home, world = GetNetStats()
+    local lag = (world and world > 0) and world or home
+    -- the player cast bar's switches: Latency Zone (on by default), Spell Queue Window, Channel
+    -- Ticks, Spell Pushback
+    local db = GetDb()
+    local pc = cast.standalone and db and db.playerCastbar
+    if not (pc and pc.latencyZone) then lag = nil end
+    local width = cast:GetWidth()
+    local zoneWidth = (lag and lag > 0 and width) and width * math.min(lag / (endMs - startMs), 1) or 0
+    if zoneWidth >= 1 then
+        local c = UF.LAG_COLOR
+        zone:SetVertexColor(c[1], c[2], c[3], c[4])
+        zone:ClearAllPoints()
+        local side = channeling and "LEFT" or "RIGHT"
+        zone:SetPoint("TOP" .. side, cast, "TOP" .. side)
+        zone:SetPoint("BOTTOM" .. side, cast, "BOTTOM" .. side)
+        zone:SetWidth(zoneWidth)
+        zone:Show()
+    else
+        zone:Hide()
+    end
+
+    local text = cast.Delay
+    if not text then
+        text = cast.Time:GetParent():CreateFontString(nil, "OVERLAY")
+        text:SetJustifyH("RIGHT")
+        cast.Delay = text
+    end
+    local newCast = event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START"
+        or not cast.pushEnd or (castBarID ~= nil and castBarID ~= cast.pushID)
+    if not channeling and canaccessvalue(delayMs) and type(delayMs) == "number" then
+        cast.pushDelay = delayMs / 1000
+    elseif newCast then
+        cast.pushID, cast.pushEnd, cast.pushDelay = castBarID, endMs, 0
+    elseif event == "UNIT_SPELLCAST_DELAYED" or event == "UNIT_SPELLCAST_CHANNEL_UPDATE" then
+        cast.pushDelay = (channeling and (cast.pushEnd - endMs) or (endMs - cast.pushEnd)) / 1000
+    end
+    -- the standalone bar's marks (Spell Queue Window: casts; Channel Ticks: channels)
+    UF.PlaceQueueMark(cast, pc and not channeling and pc.queueMark, startMs, endMs)
+    UF.PlaceChannelTicks(cast, pc and channeling and pc.channelTicks, spellID, startMs, endMs)
+
+    -- Spell Pushback (the player cast bar's switch, off by default)
+    if pc and pc.pushback and cast.pushDelay and cast.pushDelay >= 0.05 then
+        local face, size, flags = cast.Time:GetFont()
+        if face then text:SetFont(face, math.max(6, math.floor(size * 0.85 + 0.5)), flags or "") end
+        text:ClearAllPoints()
+        text:SetPoint("RIGHT", cast.Time, "LEFT", -4, 0)
+        local c = UF.DELAY_COLOR
+        text:SetTextColor(c[1], c[2], c[3])
+        text:SetFormattedText(channeling and "-%.1f" or "+%.1f", cast.pushDelay)
+        text:Show()
+    else
+        text:Hide()
+    end
+end
+
+-- Kick tick: where on an enemy's cast your interrupt comes off cooldown. Two hidden bars on the
+-- cast's scale, read at the same moment: the first filled to the time gone (a channel: the time
+-- left), the second chained to its end and filled to your kick's cooldown left. The tick sits at
+-- the second's end and stays put as both run down together; past the cast's end it is clipped.
+-- Shown only while the kick cools and the cast can be interrupted; both may be secret, so frame
+-- alphas follow them (a texture's boolean alpha draws nothing on this client).
+function KICK.Active()
+    for _, spellID in ipairs(KICK.spells) do
+        if KICK.known[spellID] ~= nil then return spellID end
+    end
+end
+
+function UF.NoSnap(bar)
+    local tex = bar:GetStatusBarTexture()
+    if tex and tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(false); tex:SetTexelSnappingBias(0) end
+end
+
+function UF.UpdateKickTick(cast, channeling, duration, notInterruptible)
+    local host = cast.KickHost
+    local spellID = KICK.Active()
+    local canAttack = not cast.standalone and cast.unit ~= "player" and spellID and UnitCanAttack("player", cast.unit)
+    local cd = canaccessvalue(canAttack) and canAttack and canaccessvalue(duration) and duration
+        and C_Spell.GetSpellCooldownDuration(spellID, true)
+    local width = cast:GetWidth()
+    if not cd or (canaccessvalue(notInterruptible) and notInterruptible) or not (canaccessvalue(width) and width > 0) then
+        if host then host:Hide() end
+        return
+    end
+    if not host then
+        host = CreateFrame("Frame", nil, cast)
+        host:SetAllPoints(cast)
+        host:SetClipsChildren(true)
+        host:SetFrameLevel(cast:GetFrameLevel() + 1)
+        local function Bar()
+            local bar = CreateFrame("StatusBar", nil, host)
+            bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+            bar:GetStatusBarTexture():SetAlpha(0)
+            bar:SetMinMaxValues(0, 1)
+            return bar
+        end
+        host.Elapsed, host.Cooldown = Bar(), Bar()
+        host.TickFrame = CreateFrame("Frame", nil, host)
+        host.TickFrame:SetAllPoints(host)
+        host.Tick = host.TickFrame:CreateTexture(nil, "OVERLAY")
+        host.Tick:SetColorTexture(1, 1, 1, 0.9)
+        host.Tick:SetWidth(2)
+        cast.KickHost = host
+    end
+    local first, second, tick = host.Elapsed, host.Cooldown, host.Tick
+    local height = cast:GetHeight()
+    first:SetSize(width, height)
+    second:SetSize(width, height)
+    first:ClearAllPoints()
+    first:SetPoint("LEFT", host, "LEFT")
+    local total = duration:GetTotalDuration()
+    first:SetMinMaxValues(0, total)
+    second:SetMinMaxValues(0, total)
+    -- a channel's bar drains to the left: the kick point is its time left minus the cooldown
+    first:SetValue(channeling and duration:GetRemainingDuration() or duration:GetElapsedDuration())
+    second:SetValue(cd:GetRemainingDuration())
+    second:SetFillStyle(channeling and Enum.StatusBarFillStyle.Reverse or Enum.StatusBarFillStyle.Standard)
+    UF.NoSnap(first)
+    UF.NoSnap(second)
+    second:ClearAllPoints()
+    tick:ClearAllPoints()
+    if channeling then
+        second:SetPoint("RIGHT", first:GetStatusBarTexture(), "RIGHT")
+        tick:SetPoint("RIGHT", second:GetStatusBarTexture(), "LEFT", 1, 0)
+    else
+        second:SetPoint("LEFT", first:GetStatusBarTexture(), "RIGHT")
+        tick:SetPoint("LEFT", second:GetStatusBarTexture(), "RIGHT", -1, 0)
+    end
+    tick:SetPoint("TOP", host, "TOP")
+    tick:SetPoint("BOTTOM", host, "BOTTOM")
+    -- hidden once the kick is ready (the bar turns green then) and on a cast that can't be kicked
+    local ready = cd:IsZero()
+    if not pcall(host.TickFrame.SetAlphaFromBoolean, host.TickFrame, ready, 0, 1) then host.TickFrame:SetAlpha(0) end
+    if canaccessvalue(notInterruptible) then
+        host:SetAlpha(1)
+    elseif not pcall(host.SetAlphaFromBoolean, host, notInterruptible, 0, 1) then
+        host:SetAlpha(0)
+    end
+    host:Show()
+end
+
+-- event: the cast event that asked (an interrupt shows the flash)
+-- by, barID: the event's interruptedBy (maybe secret) and castBarID (never secret, may be nil)
+local function UpdateCastBar(cast, enabled, event, by, barID)
+    if not enabled then UF.EndCastFlash(cast) cast:Hide() return end
+    if ns.EditPreviewing() then UF.HideCastExtras(cast) ShowSampleCast(cast) return end
+    -- a kicked channel only says so through CHANNEL_STOP's interruptedBy (a secret one is a GUID, so set)
+    local interrupted = event == "UNIT_SPELLCAST_INTERRUPTED"
+        or (event == "UNIT_SPELLCAST_CHANNEL_STOP" and cast.isChannel and not (canaccessvalue(by) and by == nil))
+    -- only the cast on screen: a late interrupt of an earlier cast must not cover the next one
+    if interrupted and cast:IsShown() and not cast.flashing
+        and (barID == nil or cast.castBarID == nil or barID == cast.castBarID) then
+        UF.FlashInterrupted(cast, by)
+        return
+    end
     local unit = cast.unit
 
     local channeling = false
     local n = select("#", UnitCastingInfo(unit))
-    local name, text, texture, _, isTradeskill, notInterruptible, spellID
+    -- your own cast failing holds a moment on "Failed". FAILED's castBarID is its 4th argument (by's
+    -- place); a key pressed during a cast also fails, so only when that same cast has stopped
+    if event == "UNIT_SPELLCAST_FAILED" and unit == "player" and n == 0 and cast:IsShown() and not cast.flashing
+        and by ~= nil and by == cast.castBarID then
+        UF.FlashInterrupted(cast, nil, true)
+        return
+    end
+    local name, text, texture, startMs, endMs, isTradeskill, notInterruptible, spellID, castBarID, delayMs
     if n > 0 then
-        name, text, texture, _, _, isTradeskill, _, notInterruptible, spellID = UnitCastingInfo(unit)
+        name, text, texture, startMs, endMs, isTradeskill, _, notInterruptible, spellID, castBarID, delayMs = UnitCastingInfo(unit)
     else
         n = select("#", UnitChannelInfo(unit))
         if n > 0 then
-            name, text, texture, _, _, isTradeskill, notInterruptible, spellID = UnitChannelInfo(unit)
+            name, text, texture, startMs, endMs, isTradeskill, notInterruptible, spellID, _, _, castBarID = UnitChannelInfo(unit)
             channeling = true
         end
     end
     if n == 0 then
+        if cast.flashing then return end   -- the STOP after an interrupt: the flash ends by itself
+        -- a channel restarted at once (Mind Flay clipped, Arcane Missiles chained) can read empty at
+        -- its START: one more look next frame, the bar left as it is until then
+        if (event == "UNIT_SPELLCAST_CHANNEL_START" or event == "UNIT_SPELLCAST_START") and not cast.startRetry then
+            cast.startRetry = true
+            C_Timer.After(0, function()
+                cast.startRetry = nil
+                UpdateCastBar(cast, enabled)
+            end)
+            return
+        end
+        -- your own cast done (a kick or a failure has flashed already): filled and faded out
+        if unit == "player" and cast:IsShown()
+            and (event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_CHANNEL_STOP") then
+            UF.FinishCast(cast, event == "UNIT_SPELLCAST_CHANNEL_STOP")
+            return
+        end
         cast:Hide()
         return
     end
+    UF.EndCastFlash(cast)   -- a new cast replaces the flash
+    cast.castBarID, cast.isChannel = castBarID, channeling
 
     local duration
     if channeling then duration = UnitChannelDuration(unit) else duration = UnitCastingDuration(unit) end
@@ -1046,21 +1548,49 @@ local function UpdateCastBar(cast, enabled)
         cast:GetStatusBarTexture():SetVertexColorFromBoolean(notInterruptible, cast.noInterruptColor, cast.baseColor)
     end
     cast:Show()
+    -- your own cast: greyed while the target is out of range, checked while the bar shows
+    if unit == "player" then
+        cast.rangeSpell = canaccessvalue(spellID) and spellID or nil
+        cast.rangeColor, cast.outOfRange = color, nil
+        UF.CastRangeCheck(cast)
+        if not cast.rangeTicker then
+            cast.rangeTicker = C_Timer.NewTicker(0.2, function()
+                if not cast:IsShown() then
+                    cast.rangeTicker:Cancel()
+                    cast.rangeTicker = nil
+                    return
+                end
+                if not cast.flashing then UF.CastRangeCheck(cast) end
+            end)
+        end
+    end
+    -- your own cast: if its STOP is ever lost, one more look a second past its end clears the bar
+    if unit == "player" and canaccessvalue(endMs) and type(endMs) == "number" then
+        if cast.safetyTimer then cast.safetyTimer:Cancel() end
+        local wait = endMs / 1000 + 1 - GetTime()
+        cast.safetyTimer = wait > 0 and C_Timer.NewTimer(wait, function()
+            cast.safetyTimer = nil
+            if cast:IsShown() and not cast.flashing then UpdateCastBar(cast, enabled) end
+        end) or nil
+    end
+    UF.UpdatePlayerCastExtras(cast, event, channeling, castBarID, startMs, endMs, delayMs, spellID)
+    UF.UpdateKickTick(cast, channeling, duration, notInterruptible)
 end
 
 local function IsCastEnabled(cast)
     if cast.isEnabled then return cast.isEnabled() end
     if cast.standalone then
+        -- the cast bar is part of Main Frames: it lives while the player frame does
         local db = GetDb()
-        return db and db.playerCastbar and db.playerCastbar.enabled
+        return db and db.units and db.units.player and db.units.player.enabled and true or false
     end
-    -- target / focus: the Cast Bar switch in Edit Mode
+    -- target, focus, pet: the Cast Bar switch in Edit Mode
     local udb = GetUnitDb(cast.unit)
     return not (udb and udb.castbar == false)
 end
 
-local function UpdateCast(f)
-    if f.Cast then UpdateCastBar(f.Cast, IsCastEnabled(f.Cast)) end
+local function UpdateCast(f, event, by, barID)
+    if f.Cast then UpdateCastBar(f.Cast, IsCastEnabled(f.Cast), event, by, barID) end
 end
 
 local function SetCastPreview(enabled)
@@ -1129,7 +1659,7 @@ end
 function KICK.Learn()
     wipe(KICK.known)
     for _, spellID in ipairs(KICK.spells) do
-        if IsPlayerSpell(spellID) then KICK.known[spellID] = true end
+        if C_SpellBook.IsSpellKnown(spellID, Enum.SpellBookSpellBank.Player) then KICK.known[spellID] = true end
     end
     KICK.Refresh(false)
     KICK.UpdateBars()
@@ -1177,7 +1707,7 @@ local function UpdatePortrait(f)
         portrait:Hide()
         return
     end
-    local unit = UnitExists(f.unit) and f.unit or "player"
+    local unit = UnitExists(f.fuiUnit) and f.fuiUnit or "player"
     local tex = portrait.Tex
     local class
     if mode == "class" then
@@ -1192,7 +1722,7 @@ local function UpdatePortrait(f)
         tex:SetAtlas(GetClassAtlas(class), false, nil, true)   -- reset coords: SetAtlas keeps a 3D flip otherwise
     else
         SetPortraitTexture(tex, unit, true)
-        local udb = GetUnitDb(f.unit)
+        local udb = GetUnitDb(f.fuiUnit)
         if udb and UF.LayoutMirrored(f) and PortraitFacesRight(unit) then
             tex:SetTexCoord(1, 0, 0, 1)
             portrait.flipUntil = GetTime() + 1
@@ -1207,7 +1737,7 @@ end
 
 -- Edit Mode with no unit behind the frame: sample values, texts per the frame's settings
 local function ApplySample(f)
-    local info, udb = UNITS[f.unit], GetUnitDb(f.unit)
+    local info, udb = UNITS[f.fuiUnit], GetUnitDb(f.fuiUnit)
     local s = info.sample or {}
     local power = s.power or 0.6
     f.Name:SetText(s.name or info.label)
@@ -1222,11 +1752,12 @@ local function ApplySample(f)
     f.Power:SetValue(power)
     local r, g, b = ns.PowerColor(s.powerToken or "MANA")
     f.Power:SetStatusBarColor(r or ns.MANA_BLUE[1], g or ns.MANA_BLUE[2], b or ns.MANA_BLUE[3])
-    f.PowerText:SetText((udb and udb.powerText) and AbbreviateNumbers(math_floor(power * 3000)) or "")
+    local ptMode = UF.PowerTextMode(udb and udb.powerText)
+    UF.FormatBarText(f.PowerText, ptMode, math_floor(power * 3000), math_floor(power * 100), 3000)
 end
 
 local function UpdateAll(f)
-    if LEM:IsInEditMode() and not UnitExists(f.unit) then
+    if ns.EditPreviewing() and not UnitExists(f.fuiUnit) then
         ApplySample(f)
         UpdateRaidIcon(f)
         UpdateCast(f)
@@ -1242,6 +1773,7 @@ local function UpdateAll(f)
     UpdateLevel(f)
     UpdateHealth(f)
     UpdatePower(f)
+    if f.fuiUnit == "target" or f.fuiUnit == "focus" then UF.ApplyRangeAlpha(f, f.fuiUnit) end
     UpdateRaidIcon(f)
     UpdateCast(f)
     if f.Combo then UpdateComboPoints(f) end
@@ -1253,18 +1785,37 @@ local function UpdateAll(f)
 end
 
 -- the most frequent events first
-local function OnUnitEvent(f, event, arg1, arg2)
-    if arg1 == "player" and f.unit ~= "player" and COMBO_EVENTS[event] then
+local function OnUnitEvent(f, event, arg1, arg2, _, arg4, arg5)
+    if arg1 == "player" and f.fuiUnit ~= "player" and COMBO_EVENTS[event] then
         -- the player's energy ticks are not combo point changes
         if event == "UNIT_POWER_FREQUENT" and canaccessvalue(arg2) and arg2 ~= "COMBO_POINTS" then return end
         if f.Combo then UpdateComboPoints(f) end
         return
     end
+    if event == "UNIT_FACTION" and arg1 == "player" and f.fuiUnit ~= "player" then
+        if f.Auras then ns.AuraPolicy.UpdateSide(f, f.fuiUnit) end
+        return
+    end
     if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
         UpdateHealth(f, true)
         UpdateHealPrediction(f)   -- the overlays' range, and the amounts are clamped by the health missing
+        -- death and release come as health ticks: the power text blanks (or returns) with them
+        local dead = UF.IsDead(f.fuiUnit)
+        if dead ~= f.wasDead then
+            f.wasDead = dead
+            UpdatePower(f)
+        end
     elseif event == "UNIT_POWER_FREQUENT" or event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER"
         or event == "UNIT_DISPLAYPOWER" then
+        -- another power than the bar's (a cat's mana regen, a rogue's combo points): only Mana on
+        -- Shapeshift wants mana. An unreadable token updates everything.
+        if event ~= "UNIT_DISPLAYPOWER" and canaccessvalue(arg2) and arg2 then
+            local _, own = UnitPowerType(f.fuiUnit)
+            if canaccessvalue(own) and own and arg2 ~= own then
+                if arg2 == "MANA" and f.ShiftMana then UF.UpdateShiftMana(f) end
+                return
+            end
+        end
         -- UNIT_POWER_UPDATE right after UNIT_POWER_FREQUENT in the same frame (GetTime is the frame's
         -- time) repeats the change already drawn: the same reads would set the same values
         if event == "UNIT_POWER_UPDATE" then
@@ -1282,10 +1833,13 @@ local function OnUnitEvent(f, event, arg1, arg2)
         or event == "PLAYER_FLAGS_CHANGED" or event == "QUEST_LOG_UPDATE" or event == "PVP_TIMER_UPDATE" then
         -- the quest log only moves the quest mark: with it unchanged nothing else is redone (Edit Mode
         -- always redraws, for its sample icons)
-        if f:IsVisible() and not (event == "QUEST_LOG_UPDATE" and f.QuestIcon and not LEM:IsInEditMode()
-            and ICON_UI.QuestShown(f.unit) == f.questShown) then
+        if f:IsVisible() and not (event == "QUEST_LOG_UPDATE" and f.QuestIcon and not ns.EditPreviewing()
+            and ICON_UI.QuestShown(f.fuiUnit) == f.questShown) then
             UpdateIndicators(f)
         end
+    elseif event == "COMBO_TARGET_CHANGED" then
+        -- Forever: points moved to a new target keep their count, so no power event fires
+        if f.Combo then UpdateComboPoints(f) end
     elseif event == "UNIT_NAME_UPDATE" then
         UpdateName(f)
     elseif event == "UNIT_LEVEL" or event == "UNIT_CLASSIFICATION_CHANGED" then
@@ -1305,7 +1859,7 @@ local function OnUnitEvent(f, event, arg1, arg2)
             UpdateIndicators(f)
         end
         -- a unit turning hostile or friendly: Only My Debuffs applies to enemies only
-        if f.Auras then ns.AuraPolicy.UpdateSide(f, f.unit) end
+        if f.Auras then ns.AuraPolicy.UpdateSide(f, f.fuiUnit) end
     elseif event == "RAID_TARGET_UPDATE" then
         UpdateRaidIcon(f)
     elseif event == "READY_CHECK" or event == "READY_CHECK_CONFIRM" or event == "READY_CHECK_FINISHED" then
@@ -1313,12 +1867,12 @@ local function OnUnitEvent(f, event, arg1, arg2)
     elseif event == "UNIT_PORTRAIT_UPDATE" or event == "UNIT_MODEL_CHANGED" then
         UpdatePortrait(f)
     elseif event:find("^UNIT_SPELLCAST") then
-        UpdateCast(f)
+        UpdateCast(f, event, arg4, arg5)
     else
         f.lastReady = nil   -- the unit behind the token changed: the last one's ready check goes
         UpdateAll(f)
         -- the auras rebuild for the new unit, and Only My Debuffs follows its side (ns.AuraPolicy)
-        if f.Auras then ns.AuraPolicy.UnitChanged(f, f.unit) end
+        if f.Auras then ns.AuraPolicy.UnitChanged(f, f.fuiUnit) end
     end
 end
 
@@ -1429,12 +1983,12 @@ end
 
 -- Called from CreateUnitFrame: one container per corner, all at login
 local function PrecreateAuraContainers(f)
-    if not UNITS[f.unit].auras or not HasAuraSupport() then return end
+    if not UNITS[f.fuiUnit].auras or not HasAuraSupport() then return end
     f.Auras = {}
     for _, corner in ipairs(AURA_CORNERS) do
         local ok, container = pcall(CreateFrame, "AuraContainer", nil, f, AURA_CONTAINER_TEMPLATE)
         if ok and container then
-            pcall(container.SetUnit, container, f.unit)
+            pcall(container.SetUnit, container, f.fuiUnit)
             container:SetFrameLevel(f:GetFrameLevel() + 4)
             container:Hide()
             f.Auras[corner] = { container = container }
@@ -1447,7 +2001,7 @@ local function ConfigureAuraCorner(f, corner, lanes)
     local entry = f.Auras and f.Auras[corner]
     if not entry then return end
     local container = entry.container
-    local db, udb = GetDb(), GetUnitDb(f.unit)
+    local db, udb = GetDb(), GetUnitDb(f.fuiUnit)
 
     -- groups are reused per lane and look (ns.AuraGroups); the lanes left out turn off
     ns.AuraGroups.Begin(entry)
@@ -1471,7 +2025,7 @@ local function ConfigureAuraCorner(f, corner, lanes)
     else
         lineSize = math.max(largest, math_floor(f:GetWidth() / 2) - INSET - 4)
     end
-    local unit, font = f.unit, db and db.font
+    local unit, font = f.fuiUnit, db and db.font
     local auraTimer = db and db.auraTimer or "none"
     local showTimer = auraTimer ~= "none"
     local sortMethod, sortDirection = ns.AuraOrder.Options(udb.auraSort, udb.auraReverse, udb.auraMineFirst)
@@ -1481,6 +2035,7 @@ local function ConfigureAuraCorner(f, corner, lanes)
         -- as many per row as fit at this lane's size
         local max = 2 * math.max(2, math_floor((lineSize + AURA_SPACING) / (size + AURA_SPACING)))
         local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, unit == "player", db and db.auraStyle or "square", "both", auraTimer)
+        if look and lane.stealable then look.stealable = true end   -- Highlight Purgeable Buffs
         local key, err = ns.AuraGroups.Add(container, entry, lane.key, ns.AuraGroups.Sig(size, isDebuff, font, showTimer, look), ns.AuraPolicy.FilterFor(lane, unit), {
             maxFrameCount = max,
             candidateFilters = lane.candidates,
@@ -1491,7 +2046,7 @@ local function ConfigureAuraCorner(f, corner, lanes)
                 elementSpacing = AURA_SPACING, lineSpacing = AURA_SPACING,
                 groupSpacing = AURA_SPACING, groupLineSpacing = AURA_SPACING,
                 layoutIndex = index,
-                forceNewLine = index > 1,
+                forceNewLine = index > 1 and not lane.joinPrevious,
             },
         })
         if not key then
@@ -1512,7 +2067,7 @@ local function ConfigureAuraCorner(f, corner, lanes)
     pcall(container.SetFlowLayoutMaximumLineSize, container, lineSize)
     pcall(container.SetFlowLayoutPadding, container, 0, 0, 0, 0)
     pcall(container.SetEnabled, container, true)
-    pcall(container.SetEditModePreviewEnabled, container, LEM:IsInEditMode())
+    pcall(container.SetEditModePreviewEnabled, container, ns.EditPreviewing())
     container:Show()
     pcall(container.UpdateAllAuras, container)
 end
@@ -1524,8 +2079,8 @@ function AURA.Placement(f, corner)
     local isLeft = AURA.FULL[corner] or corner:find("LEFT$") ~= nil
     local x = isLeft and INSET or -INSET
     local y = isTop and AURA_GAP or -AURA_GAP
-    local udb = GetUnitDb(f.unit)
-    if f.Cast and f.Cast:IsShown() and udb and UNITS[f.unit].castbar and (udb.castbarPosition == "TOP") == isTop then
+    local udb = GetUnitDb(f.fuiUnit)
+    if f.Cast and f.Cast:IsShown() and udb and UNITS[f.fuiUnit].castbar and (udb.castbarPosition == "TOP") == isTop then
         -- the cast bar's gap from the frame, the bar, and the same gap again before the auras
         local reach = (udb.castHeight or CAST_HEIGHT) + 2 * CAST_GAP
         y = isTop and reach or -reach
@@ -1540,7 +2095,7 @@ end
 -- A group member too far away to be visible comes with no aura durations (ns.AuraPolicy.UpdateReach):
 -- Hide Buffs drops until the unit is near again. Target, focus and pet; the player is always near.
 function UF.UpdateAuraReach(f)
-    if f and f.Auras then ns.AuraPolicy.UpdateReach(f, f.unit) end
+    if f and f.Auras then ns.AuraPolicy.UpdateReach(f, f.fuiUnit) end
 end
 
 -- Two places clash: the same one, or a whole-width one and anything on its edge
@@ -1563,14 +2118,14 @@ local function PositionAuraContainers(f)
 end
 
 LayoutAuras = function(f)
-    local udb = GetUnitDb(f.unit)
+    local udb = GetUnitDb(f.fuiUnit)
     if not udb or not f.Auras then return end
     if InCombatLockdown() then pendingLayout = true return end
     local perCorner = {}
     for _, corner in ipairs(AURA_CORNERS) do perCorner[corner] = {} end
     -- what each lane shows comes from ns.AuraPolicy (filters, Hide Buffs, Only My Debuffs / Buffs);
     -- the corners and sizes are this module's
-    for _, lane in ipairs(ns.AuraPolicy.UnitLanes(f.unit, udb, LEM:IsInEditMode())) do
+    for _, lane in ipairs(ns.AuraPolicy.UnitLanes(f.fuiUnit, udb, ns.EditPreviewing())) do
         local list = lane.place and perCorner[lane.place]
         if list then list[#list + 1] = lane end
     end
@@ -1580,7 +2135,7 @@ LayoutAuras = function(f)
     end
     PositionAuraContainers(f)
     -- the groups were just given their layout-time filters: the unit's side and reach apply on top
-    ns.AuraPolicy.Done(f, f.unit)
+    ns.AuraPolicy.Done(f, f.fuiUnit)
 end
 
 -- Edit Mode: the containers render Blizzard's sample auras
@@ -1615,7 +2170,7 @@ end
 local function ShouldShowComboPoints()
     local class = PlayerClass()
     if class ~= "ROGUE" and class ~= "DRUID" then return false end
-    if LEM:IsInEditMode() then return true end
+    if ns.EditPreviewing() then return true end
     if class == "DRUID" then
         local powerType = UnitPowerType("player")
         if not (canaccessvalue(powerType) and powerType == Enum.PowerType.Energy) then return false end
@@ -1656,7 +2211,7 @@ end
 
 -- Spreads the segments across the strip on whole pixels, a one-pixel line between each
 local function LayoutComboSegments(f)
-    local combo, udb = f.Combo, GetUnitDb(f.unit)
+    local combo, udb = f.Combo, GetUnitDb(f.fuiUnit)
     if not combo or combo.count == 0 then return end
     local n = combo.count
     local width = (udb and udb.width or 220) - 2 * INSET - PortraitSpace(f) - (combo.clear or 0)
@@ -1704,14 +2259,22 @@ local function GetClassicCombo()
     if combo and combo:IsEventRegistered("PLAYER_TARGET_CHANGED") then return combo end
 end
 
--- Classic combo points go with the style: on in the ring styles (round the ring), off in Addon Style.
--- FlareUI Style can take Addon Style's strip instead (Modern Combo Points).
+-- FlareUI Style's Combo Points: Classic (gems round the portrait, the default), Modern (Addon Style's
+-- strip over the health bar) or Off. A saved modernCombo reads as Modern.
+function UF.RingComboMode(udb)
+    local mode = udb and udb.ringCombo
+    if mode == "classic" or mode == "modern" or mode == "off" then return mode end
+    return (udb and udb.modernCombo) and "modern" or "classic"
+end
+
+local function IsFlareUIRing(f)
+    return ns.UFRing and ns.UFRing.Applies(f) and ns.UFRing.Style() == "flareui" or false
+end
+
+-- Classic combo points go with the style: on in the ring styles (round the ring), off in Addon Style
 local function UsesClassicCombo(f)
     local ringOn = ns.UFRing and ns.UFRing.Applies(f)
-    if ringOn and ns.UFRing.Style() == "flareui" then
-        local udb = GetUnitDb(f.unit)
-        if udb and udb.modernCombo then return false end
-    end
+    if IsFlareUIRing(f) and UF.RingComboMode(GetUnitDb(f.fuiUnit)) ~= "classic" then return false end
     return (ringOn and GetClassicCombo()) and true or false
 end
 
@@ -1753,7 +2316,7 @@ local FSR_SPARK   = "Interface\\CastingBar\\UI-CastingBar-Spark"
 local fsrStart            -- GetTime() of the last mana cast while a window runs
 
 local function CostsMana(spellID)
-    if not (spellID and canaccessvalue(spellID)) then return false end
+    if not (canaccessvalue(spellID) and spellID) then return false end
     local costs = C_Spell.GetSpellPowerCost(spellID)
     if not costs then return false end
     for _, cost in ipairs(costs) do
@@ -1804,10 +2367,10 @@ local function NewFsrHolder(bar)
     return holder
 end
 
-local function CreateFsrSpark(f)
-    local bar = f.Power
-    -- Mana cost preview without arithmetic (mana can be secret): a clip to the fill's end holds a bar
-    -- of the same width filling from the other end
+-- Mana cost preview without arithmetic (mana can be secret): a clip to the fill's end holds a bar
+-- of the same width filling from the other end. getAmount: the cost now (nil: none); getColor: the
+-- bar's colour (the preview is a darker shade). Also on the Resource Bars (UF.Kit.CreateManaCost).
+function UF.CreateManaCost(bar, getAmount, getColor)
     local clip = CreateFrame("Frame", nil, bar)
     clip:SetFrameLevel(bar:GetFrameLevel() + 1)
     clip:SetClipsChildren(true)
@@ -1816,7 +2379,7 @@ local function CreateFsrSpark(f)
     cost:SetMinMaxValues(0, 1)
     cost:SetValue(0)
     function cost:Refresh(powerType)
-        local amount = f.manaCost
+        local amount = getAmount()
         if (canaccessvalue(amount) and amount == nil) or not (canaccessvalue(powerType) and powerType == Enum.PowerType.Mana) then
             clip:Hide()
             return
@@ -1843,15 +2406,22 @@ local function CreateFsrSpark(f)
         self:SetWidth(bar:GetWidth())
         self:SetReverseFill(not reverse)
         self:SetStatusBarTexture(fill:GetTexture())
-        local r, g, b = GetPowerColor("player")
+        local r, g, b = getColor()
         self:SetStatusBarColor(r * 0.6, g * 0.6, b * 0.6)
         self:SetMinMaxValues(bar:GetMinMaxValues())
         self:SetValue(amount)
         clip:Show()
     end
-    f.ManaCost = cost
+    return cost
+end
+
+local function CreateFsrSpark(f)
+    local bar = f.Power
+    f.ManaCost = UF.CreateManaCost(bar, function() return f.manaCost end, function() return GetPowerColor("player") end)
 
     f.FsrSpark = NewFsrHolder(bar)
+    -- a druid in Cat or Bear Form: the window runs on the Mana on Shapeshift strip (powershifting)
+    if f.ShiftMana then f.ShiftFsrSpark = NewFsrHolder(f.ShiftMana) end
 end
 
 -- Your frame in the party shows the spark too, following the player frame's option (PartyFrames.lua)
@@ -1866,13 +2436,18 @@ local function UpdateFsrSpark()
     if not holder then return end
     if fsrStart and GetTime() - fsrStart >= FSR_SECONDS then fsrStart = nil end
     local u = GetUnitDb("player")
-    local on = u and u.fsr == true and fsrStart ~= nil and BarShowsMana()
+    local running = u and u.fsr == true and fsrStart ~= nil
+    local on = running and BarShowsMana()
     holder:SetShown(on and f.Power:IsShown())
+    if f.ShiftFsrSpark then f.ShiftFsrSpark:SetShown(running and f.ShiftMana:IsShown() or false) end
     local tile = UF.fsrTile
     if tile then tile.FsrSpark:SetShown(on and tile.Power:IsShown()) end
 end
 
 local function InitFsrSpark()
+    -- warriors and rogues never spend mana: no spark, no cost preview, no cast events
+    local _, class = UnitClass("player")
+    if class == "WARRIOR" or class == "ROGUE" then return end
     local events = CreateFrame("Frame")
     events:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
     events:RegisterUnitEvent("UNIT_DISPLAYPOWER", "player")
@@ -1883,6 +2458,7 @@ local function InitFsrSpark()
         -- mana cost preview: set on cast start, cleared once no cast runs (an off-GCD spell keeps it)
         local f = frames.player
         if f and f.ManaCost and event ~= "UNIT_DISPLAYPOWER" then
+            local old = f.manaCost
             if event == "UNIT_SPELLCAST_START" then
                 local costs, amount = CostsMana(spellID)
                 f.manaCost = nil
@@ -1890,7 +2466,9 @@ local function InitFsrSpark()
             elseif select("#", UnitCastingInfo("player")) == 0 then   -- the count: the values may be secret
                 f.manaCost = nil
             end
-            UpdatePower(f, true)
+            -- only a changed preview redraws the bar (a spammed key fires FAILED on every press)
+            local new = f.manaCost
+            if not (canaccessvalue(old) and canaccessvalue(new) and old == new) then UpdatePower(f, true) end
             if event ~= "UNIT_SPELLCAST_SUCCEEDED" then return end
         end
         if event == "UNIT_SPELLCAST_SUCCEEDED" then
@@ -1918,11 +2496,11 @@ end
 function UpdateHappiness(f)
     local face = f.Happiness
     if not face then return end
-    if ICON_UI.Shown(f.unit, "happiness") then
+    if ICON_UI.Shown(f.fuiUnit, "happiness") then
         face:RegisterEvent("UNIT_HAPPINESS")
         face:RegisterEvent("UNIT_PET")
         face:UpdateHappiness()
-        if LEM:IsInEditMode() and not face:IsShown() then
+        if ns.EditPreviewing() and not face:IsShown() then
             face.Texture:SetAtlas(HAPPINESS_PREVIEW)
             face:Show()
         end
@@ -1964,7 +2542,7 @@ local function SetIconArt(tex, atlas, file, coords)
 end
 
 local function CreateIndicators(f)
-    local info = UNITS[f.unit]
+    local info = UNITS[f.fuiUnit]
     local ind = info.indicators
     if not ind then return end
     local overlay = f.Overlay
@@ -2041,6 +2619,7 @@ local function CreateIndicators(f)
         absorb:SetMinMaxValues(0, 1)
         absorb:SetValue(0)
         f.HealClip, f.HealBar, f.AbsorbBar = clip, heal, absorb
+        f.ShieldGlow = UF.CreateShieldGlow(f.Health, clip)
         if CreateUnitHealPredictionCalculator then
             local ok, calc = pcall(CreateUnitHealPredictionCalculator)
             if ok and calc then f.HealCalc = calc end
@@ -2051,14 +2630,14 @@ end
 -- The frame laid out as the target frame (portrait, icons, texts). In the ring styles Mirror only
 -- turns the bars' fill, so target and focus keep that layout; the fill always follows udb.mirror.
 function UF.LayoutMirrored(f)
-    local info = UNITS[f.unit]
+    local info = UNITS[f.fuiUnit]
     if info and info.mirrorable and ns.UFRing and ns.UFRing.Applies(f) then return true end
-    local udb = GetUnitDb(f.unit)
+    local udb = GetUnitDb(f.fuiUnit)
     return udb and udb.mirror and true or false
 end
 
 local function LayoutIndicators(f)
-    local udb = GetUnitDb(f.unit)
+    local udb = GetUnitDb(f.fuiUnit)
     local mirror = UF.LayoutMirrored(f)
     local fillMirror = udb and udb.mirror and true or false
     -- Forever style: the icons with a home on the ring go there
@@ -2108,9 +2687,10 @@ local function LayoutIndicators(f)
         ICON_UI.Place(f.QuestIcon, ICON_SIZE.quest * aspect, ICON_SIZE.quest, "CENTER", f.Health, "CENTER", 0, 0)
     end
     if f.ReadyIcon and not onRing.readyCheck then
-        -- mid-frame, over the raid marker
-        local size = math.min(32, math.max(16, ((udb and udb.height) or 44) - 12))
-        ICON_UI.Place(f.ReadyIcon, size, size, "CENTER", f, "CENTER", 0, 0)
+        -- mid health bar, over the raid marker, sized to the bar
+        local healthHeight = ((udb and udb.height) or 44) - ((udb and udb.powerHeight) or 0) - 2 * INSET
+        local size = math.min(32, math.max(14, healthHeight - 4))
+        ICON_UI.Place(f.ReadyIcon, size, size, "CENTER", f.Health, "CENTER", 0, 0)
     end
     if f.HealClip then
         local health, clip, heal, absorb = f.Health, f.HealClip, f.HealBar, f.AbsorbBar
@@ -2152,6 +2732,7 @@ local function LayoutIndicators(f)
         local edge = mirror and "LEFT" or "RIGHT"
         absorb:SetPoint("TOP" .. edge, clip, "TOP" .. edge, 0, 0)
         absorb:SetPoint("BOTTOM" .. edge, clip, "BOTTOM" .. edge, 0, 0)
+        UF.PlaceShieldGlow(f.ShieldGlow, health, mirror)
 
         -- the absorb sits over the heals
         local base = clip:GetFrameLevel()
@@ -2167,18 +2748,72 @@ local function LayoutIndicators(f)
     end
 end
 
+-- Over-shield glow: shields never draw past the bar (the calculator clamps them to the health
+-- missing), so a unit with more shield than missing health, at full health too, gets Blizzard's
+-- raid-frame glow at the bar's far end. The calculator's "clamped" flag (maybe secret) drives it.
+UF.SHIELD_GLOW_ATLAS = "RaidFrame-Shield-Overshield"
+
+-- clip: the heal/absorb clip frame; the glow sits over it and is not clipped by it
+function UF.CreateShieldGlow(health, clip)
+    local holder = CreateFrame("Frame", nil, health)
+    holder:SetAllPoints(health)
+    holder:SetFrameLevel((clip or health):GetFrameLevel() + 3)
+    local glow = holder:CreateTexture(nil, "OVERLAY", nil, 7)
+    local ok, set = pcall(glow.SetAtlas, glow, UF.SHIELD_GLOW_ATLAS, false)
+    if not (ok and set) then
+        glow:SetColorTexture(1, 1, 1, 0.6)
+    end
+    glow:SetBlendMode("ADD")
+    -- the boolean alpha goes on the holder frame: on a texture it draws nothing on this client
+    glow.holder = holder
+    holder:SetAlpha(0)
+    return glow
+end
+
+-- on the far end of the bar (the left on a mirrored fill)
+function UF.PlaceShieldGlow(glow, health, mirror)
+    if not glow then return end
+    glow:ClearAllPoints()
+    local edge = mirror and "LEFT" or "RIGHT"
+    local x = mirror and 7 or -7
+    glow:SetPoint("TOP" .. (mirror and "RIGHT" or "LEFT"), health, "TOP" .. edge, x, 0)
+    glow:SetPoint("BOTTOM" .. (mirror and "RIGHT" or "LEFT"), health, "BOTTOM" .. edge, x, 0)
+    glow:SetWidth(16)
+    local info = C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(UF.SHIELD_GLOW_ATLAS)
+    if info then
+        local l, r = info.leftTexCoord, info.rightTexCoord
+        if mirror then l, r = r, l end
+        glow:SetTexCoord(l, r, info.topTexCoord, info.bottomTexCoord)
+    end
+end
+
+-- clamped: GetDamageAbsorbs' second return (maybe secret: never tested in Lua)
+function UF.SetShieldGlow(glow, clamped)
+    if not glow then return end
+    local holder = glow.holder
+    if not (holder.SetAlphaFromBoolean and pcall(holder.SetAlphaFromBoolean, holder, clamped, 1, 0)) then
+        holder:SetAlpha(0)
+    end
+end
+
+-- Edit Mode, no calculator
+function UF.HideShieldGlow(glow)
+    if glow then glow.holder:SetAlpha(0) end
+end
+
 function UpdateHealPrediction(f)
     local heal, absorb = f.HealBar, f.AbsorbBar
     if not heal then return end
     -- Edit Mode: a sample incoming heal and barrier on the sample health (UpdateHealth, 0..1)
-    if LEM:IsInEditMode() then
+    if ns.EditPreviewing() then
         heal:SetMinMaxValues(0, 1)
         absorb:SetMinMaxValues(0, 1)
         heal:SetValue(0.12)
         absorb:SetValue(0.15)
+        UF.HideShieldGlow(f.ShieldGlow)
         return
     end
-    local unit = f.unit
+    local unit = f.fuiUnit
     local max = UnitHealthMax(unit)
     heal:SetMinMaxValues(0, max)
     absorb:SetMinMaxValues(0, max)
@@ -2188,12 +2823,14 @@ function UpdateHealPrediction(f)
         local ok = pcall(UnitGetDetailedHealPrediction, unit, "player", calc)
         if ok then
             local okH, incoming = pcall(calc.GetIncomingHeals, calc)
-            local okA, absorbs = pcall(calc.GetDamageAbsorbs, calc)
+            local okA, absorbs, clamped = pcall(calc.GetDamageAbsorbs, calc)
             if okH then heal:SetValue(incoming) end
             if okA then absorb:SetValue(absorbs) end
+            if okA then UF.SetShieldGlow(f.ShieldGlow, clamped) else UF.HideShieldGlow(f.ShieldGlow) end
             return
         end
     end
+    UF.HideShieldGlow(f.ShieldGlow)
     pcall(function() heal:SetValue(UnitGetIncomingHeals(unit)) end)
     pcall(function() absorb:SetValue(UnitGetTotalAbsorbs(unit)) end)
 end
@@ -2210,16 +2847,94 @@ local function ThreatColor(status)
     return c[1], c[2], c[3]
 end
 
+-- Show Threat (target, focus): your threat on the unit as a percent, in Blizzard's threat colours
+-- (white with none, then yellow, orange, red). Ring styles: a big number above the portrait ring
+-- (the auras keep clear of the ring). Addon Style: after the health value, "75% | 42%". Threat
+-- values are readable on Forever; a hidden one shows nothing. Tanking, it shows your lead (over 100%).
+-- The text is placed once per layout (f.threatLaid, cleared by LayoutFrame), not on every threat event.
+UF.THREAT_PERCENT_UNITS = { target = true, focus = true }
+UF.THREAT_RING_SIZE = 8   -- added to the frame font's size above the ring
+function UF.UpdateThreatPercent(f)
+    local unit = f.fuiUnit
+    if not UF.THREAT_PERCENT_UNITS[unit] then return end
+    local udb = GetUnitDb(unit)
+    local text = f.ThreatText
+    if not (udb and udb.threatPercent) then if text then text:Hide() end return end
+    if not text then
+        -- a layer a strata above the frame: the number draws over the raid marker and the ring's art
+        local layer = CreateFrame("Frame", nil, f)
+        layer:SetAllPoints(f)
+        layer:SetFrameStrata("MEDIUM")
+        text = layer:CreateFontString(nil, "OVERLAY")
+        text:SetWordWrap(false)
+        f.ThreatText = text
+    end
+    local ring = ns.UFRing and ns.UFRing.Applies(f) and f.RingFrame
+    local mirrored = not ring and UF.LayoutMirrored(f)
+    local laid = ring and "ring" or (mirrored and "mirror" or "plain")
+    if f.threatLaid ~= laid then
+        f.threatLaid = laid
+        local db = GetDb()
+        text:ClearAllPoints()
+        if ring then
+            ApplyFont(text, db and db.font, UF.THREAT_RING_SIZE)
+            text:SetJustifyH("CENTER")
+            text:SetPoint("BOTTOM", ring, "TOP", 0, 2)
+        else
+            -- the health value, then the threat: the texts beside it move over for it
+            ApplyFont(text, db and db.font, 0)
+            if mirrored then
+                text:SetJustifyH("LEFT")
+                text:SetPoint("LEFT", f.HealthText, "RIGHT", 0, 0)
+                f.Name:SetPoint("LEFT", text, "RIGHT", 4, 0)
+            else
+                text:SetJustifyH("RIGHT")
+                text:SetPoint("RIGHT", f.Health, "RIGHT", -TEXT_INSET, 0)
+                f.HealthText:SetPoint("RIGHT", text, "LEFT", 0, 0)
+            end
+        end
+    end
+    text:Show()
+    local display, status
+    -- Edit Mode shows a sample whatever is targeted
+    if ns.EditPreviewing() then
+        display, status = 75, 1
+    else
+        -- the scaled percent: 100% is where you pull the mob
+        local ok, tanking, detailed, scaled = pcall(UnitDetailedThreatSituation, "player", unit)
+        if ok and canaccessallvalues(tanking, detailed, scaled) then
+            display, status = scaled, detailed
+            if tanking then
+                local lead = UnitThreatPercentageOfLead("player", unit)
+                if canaccessvalue(lead) and lead then display = lead end
+            end
+        end
+        local class = UnitClassification(unit)
+        if canaccessvalue(class) and class == "minus" then display = nil end
+    end
+    if not display or display == 0 then text:SetText("") return end
+    local r, g, b = 1, 1, 1
+    if status and status >= 1 and GetThreatStatusColor then r, g, b = GetThreatStatusColor(status) end
+    if ring then
+        text:SetTextColor(r, g, b)
+        text:SetFormattedText("%.0f%%", display)
+    else
+        text:SetTextColor(f.HealthText:GetTextColor())
+        text:SetFormattedText(" | |cff%02x%02x%02x%.0f%%|r", r * 255, g * 255, b * 255, display)
+    end
+end
+
 -- the frame border takes the threat colour, and its fixed colour when clear (the player's: its
 -- highest threat on anything)
 function UpdateThreat(f)
+    UF.UpdateThreatPercent(f)
     if not f.threatTint then return end
-    if UNITS[f.unit].noThreatGlow or not ICON_UI.Shown(f.unit, "threatGlow") then ResetBorderTint(f.Border) return end
+    if UNITS[f.fuiUnit].noThreatGlow or not ICON_UI.Shown(f.fuiUnit, "threatGlow") then ResetBorderTint(f.Border) return end
     local status
-    if f.unit == "player" then
+    if f.fuiUnit == "player" then
         status = Readable(UnitThreatSituation("player"))
     else
-        status = Readable(UnitThreatSituation("player", f.unit))
+        status = Readable(UnitThreatSituation("player", f.fuiUnit))
     end
     if status and status >= 1 then
         SetBorderTint(f.Border, ThreatColor(status))
@@ -2242,8 +2957,8 @@ function ICON_UI.UpdateReady(f, event)
             ICON_UI.UpdateReady(f)
         end)
     end
-    if not ICON_UI.Shown(f.unit, "readyCheck") then icon:Hide() return end
-    local status = Readable(GetReadyCheckStatus(f.unit))
+    if not ICON_UI.Shown(f.fuiUnit, "readyCheck") then icon:Hide() return end
+    local status = Readable(GetReadyCheckStatus(f.fuiUnit))
     if not status and f.readyHold then status = f.lastReady end
     if f.readyHold and status == "waiting" then status = "notready" end
     local atlas = status and ICON_UI.READY[status]
@@ -2251,7 +2966,7 @@ function ICON_UI.UpdateReady(f, event)
         if not f.readyHold then f.lastReady = status end
         icon:SetAtlas(atlas, false)
         icon:Show()
-    elseif not LEM:IsInEditMode() then
+    elseif not ns.EditPreviewing() then
         icon:Hide()
     end
 end
@@ -2267,7 +2982,7 @@ function ICON_UI.QuestShown(unit)
 end
 
 function UpdateIndicators(f)
-    local unit = f.unit
+    local unit = f.fuiUnit
     local readable = Readable
 
     if f.RestIcon then
@@ -2384,7 +3099,7 @@ end
 function ICON_UI.UpdatePvPTimer(f)
     local timer = f.PvPTimer
     if not timer then return end
-    local on = ICON_UI.Shown(f.unit, "pvpTimer") and not (ns.UFRing and ns.UFRing.Applies(f))
+    local on = ICON_UI.Shown(f.fuiUnit, "pvpTimer") and not (ns.UFRing and ns.UFRing.Applies(f))
     timer.pvpEnd = nil
     timer:SetScript("OnUpdate", nil)
     if on and Readable(IsPVPTimerRunning()) then
@@ -2397,7 +3112,7 @@ function ICON_UI.UpdatePvPTimer(f)
             return
         end
     end
-    if on and LEM:IsInEditMode() then
+    if on and ns.EditPreviewing() then
         timer.Text:SetFormattedText(SecondsToTimeAbbrev(299))
         timer.Text:Show()
     else
@@ -2407,11 +3122,11 @@ end
 
 -- Edit Mode: every icon the frame shows appears with sample art
 function ICON_UI.Preview(f)
-    if not LEM:IsInEditMode() then return end
+    if not ns.EditPreviewing() then return end
     local ringOn = ns.UFRing and ns.UFRing.Applies(f)
-    for _, key in ipairs(ICON_UI.List(f.unit)) do
+    for _, key in ipairs(ICON_UI.List(f.fuiUnit)) do
         local def = ICON_UI.defs[key]
-        if key ~= "happiness" and def.field and not def.ring and not (def.noRing and ringOn) and ICON_UI.Shown(f.unit, key) then
+        if key ~= "happiness" and def.field and not def.ring and not (def.noRing and ringOn) and ICON_UI.Shown(f.fuiUnit, key) then
             ICON_UI.PreviewIcon(f, key)
         end
     end
@@ -2451,9 +3166,9 @@ UF.SHIFT_MANA_HEIGHT = 5
 UF.SHIFT_MANA_TEXT_SIZE = 8
 function UF.ShiftManaShown(f)
     if not f.ShiftMana then return false end
-    local udb = GetUnitDb(f.unit)
+    local udb = GetUnitDb(f.fuiUnit)
     if not (udb and udb.shiftMana) or (ns.UFRing and ns.UFRing.Plate(f)) then return false end
-    if LEM:IsInEditMode() then return true end
+    if ns.EditPreviewing() then return true end
     local powerType = UnitPowerType("player")
     if not canaccessvalue(powerType) then return f.ShiftMana:IsShown() end
     return powerType ~= Enum.PowerType.Mana
@@ -2462,7 +3177,7 @@ end
 -- Anchors health / power and the divider on their seam; the combo strip lies over the health bar's
 -- top edge. Unprotected children only, so it may run in combat (cat form gains the strip at once).
 local function LayoutBars(f)
-    local udb = GetUnitDb(f.unit)
+    local udb = GetUnitDb(f.fuiUnit)
     if not udb then return end
     local PADDING = INSET
     local powerHeight = udb.powerHeight or 8
@@ -2519,7 +3234,7 @@ local function LayoutBars(f)
 
     if comboShown then
         local combo = f.Combo
-        -- FlareUI Style (Modern Combo Points): the strip ends where the ring starts at its depth
+        -- FlareUI Style, Combo Points Modern: the strip ends where the ring starts at its depth
         combo.clear = 0
         local ringSide
         if ns.UFRing and ns.UFRing.Applies(f) then
@@ -2579,17 +3294,20 @@ function UF.UpdateShiftMana(f)
     local bar = f.ShiftMana
     local shown = UF.ShiftManaShown(f)
     local appeared = shown ~= bar:IsShown()
-    if appeared then LayoutBars(f) end
+    if appeared then
+        LayoutBars(f)
+        UpdateFsrSpark()   -- a running window moves onto the strip, or back to the power bar
+    end
     if not shown then return end
     local mana = Enum.PowerType.Mana
     bar:SetMinMaxValues(0, UnitPowerMax("player", mana))
-    local udb = GetUnitDb(f.unit)
+    local udb = GetUnitDb(f.fuiUnit)
     ns.SetBarValue(bar, UnitPower("player", mana), not appeared and udb and udb.smoothBars)
     local r, g, b = ns.PowerColor("MANA", mana)
     bar:SetStatusBarColor(r or ns.MANA_BLUE[1], g or ns.MANA_BLUE[2], b or ns.MANA_BLUE[3])
     -- the number follows Power Text, as on the power bar
-    if udb and udb.powerText and not UnitIsDeadOrGhost("player") then
-        f.ShiftManaText:SetText(AbbreviateNumbers(UnitPower("player", mana)))
+    if udb and not UnitIsDeadOrGhost("player") then
+        UF.SetPowerText(f.ShiftManaText, "player", mana, UF.PowerTextMode(udb.powerText))
     else
         f.ShiftManaText:SetText("")
     end
@@ -2601,7 +3319,15 @@ function UpdateComboPoints(f)
     local combo = f.Combo
     if not combo then return end
     local count = 0
-    if not UsesClassicCombo(f) and ShouldShowComboPoints() then
+    local udb = GetUnitDb(f.fuiUnit)
+    -- the strip: FlareUI Style's Modern, else the Combo Points switch (Addon Style)
+    local strip
+    if IsFlareUIRing(f) then
+        strip = UF.RingComboMode(udb) == "modern"
+    else
+        strip = not (udb and udb.comboPoints == false)
+    end
+    if not UsesClassicCombo(f) and strip and ShouldShowComboPoints() then
         local max = UnitPowerMax("player", Enum.PowerType.ComboPoints)
         if not (canaccessvalue(max) and max and max >= 1) then max = COMBO.fallbackMax end
         count = math.min(max, COMBO.maxSegments)
@@ -2611,13 +3337,13 @@ function UpdateComboPoints(f)
         LayoutBars(f)
     end
     if count > 0 then
-        local value = LEM:IsInEditMode() and COMBO.previewPoints or GetComboPoints("player", "target")
+        local value = ns.EditPreviewing() and COMBO.previewPoints or GetComboPoints("player", "target")
         for i = 1, count do GetComboSegment(f, i):SetValue(value) end
     end
 end
 
 local function LayoutFrame(f)
-    local db, udb = GetDb(), GetUnitDb(f.unit)
+    local db, udb = GetDb(), GetUnitDb(f.fuiUnit)
     if not db or not udb then return end
     if InCombatLockdown() then pendingLayout = true return end
 
@@ -2629,7 +3355,7 @@ local function LayoutFrame(f)
     if plate then
         -- no stored Scale: the default (ring and height)
         if udb.plateScale == nil then
-            ns.UFRing.SetPlateScale(f.unit, ns.UFRing.PlateDefaultScale(f.unit))
+            ns.UFRing.SetPlateScale(f.fuiUnit, ns.UFRing.PlateDefaultScale(f.fuiUnit))
             height = udb.height
         end
         local minW, minH = ns.UFRing.PlateMinSize(f)
@@ -2669,7 +3395,7 @@ local function LayoutFrame(f)
     LayoutBars(f)
     -- the bars' empty part (Background Opacity; after LayoutBars, which hides it on the plate)
     local bgOpacity = udb.bgOpacity
-    if bgOpacity == nil then bgOpacity = UF.DefaultBgOpacity(f.unit) end
+    if bgOpacity == nil then bgOpacity = UF.DefaultBgOpacity(f.fuiUnit) end
     -- on the plate its art is the background
     if ns.UFRing and ns.UFRing.Plate(f) then bgOpacity = 0 end
     UF.SetBarBackground(health, bgOpacity)
@@ -2679,7 +3405,7 @@ local function LayoutFrame(f)
     -- ring styles: text one point smaller
     local fontDelta = (ns.UFRing and ns.UFRing.Applies(f)) and -1 or 0
     -- the small plate of target of target and target of focus: smaller still
-    if UNITS[f.unit].poll and ns.UFRing and ns.UFRing.Plate(f) then fontDelta = -3 end
+    if UNITS[f.fuiUnit].poll and ns.UFRing and ns.UFRing.Plate(f) then fontDelta = -3 end
     ApplyFont(f.Name, db.font, fontDelta)
     ApplyFont(f.Level, db.font, fontDelta)
     ApplyFont(f.HealthText, db.font, fontDelta)
@@ -2698,6 +3424,7 @@ local function LayoutFrame(f)
     f.Name:ClearAllPoints()
     f.HealthText:ClearAllPoints()
     f.PowerText:ClearAllPoints()
+    f.threatLaid = nil   -- Show Threat's text is placed again against the new anchors
     -- ring styles: the level is in the ring's disc
     local ringOn = ns.UFRing and ns.UFRing.Applies(f)
     local levelInRow = udb.showLevel and not ringOn
@@ -2747,7 +3474,7 @@ local function LayoutFrame(f)
         f.PowerText:SetJustifyH("CENTER")
     end
     -- (the plate's power bar is always tall enough for its number)
-    f.PowerText:SetShown(udb.powerText and (nameBox or powerHeight >= 10) and true or false)
+    f.PowerText:SetShown(UF.PowerTextMode(udb.powerText) ~= "none" and (nameBox or powerHeight >= 10) and true or false)
     if ringOn then
         ns.UFRing.LayoutLevel(f)
         -- the classic gems follow the ring's size and side
@@ -2767,9 +3494,9 @@ local function LayoutFrame(f)
 
     if f.Happiness then
         local size = math.max(RAID_ICON, healthHeight * HAPPINESS_SHARE) - 4
-        if UNITS[f.unit].styledPet and ns.UFRing.PlateOn() then size = ICON_UI.HAPPINESS_PLATE_SIZE end
+        if UNITS[f.fuiUnit].styledPet and ns.UFRing.PlateOn() then size = ICON_UI.HAPPINESS_PLATE_SIZE end
         -- Happiness Position: mid health bar, or just outside the frame on either side
-        local place = ICON_UI.HappinessPlace(f.unit)
+        local place = ICON_UI.HappinessPlace(f.fuiUnit)
         if place == "RIGHT" then
             ICON_UI.Place(f.Happiness, size, size, "LEFT", f, "RIGHT", ICON_UI.HAPPINESS_GAP, 0)
         elseif place == "LEFT" then
@@ -2802,7 +3529,7 @@ end
 --------------------------------------------------
 local function AttachExtras(f)
     if InCombatLockdown() then pendingLayout = true return end
-    if f.unit == "player" then
+    if f.fuiUnit == "player" then
         local container = _G.PlayerBottomManagedFrameContainer
         if container then
             container:ClearAllPoints()
@@ -2849,7 +3576,7 @@ end
 local function ApplyPosition(f, layoutName)
     if InCombatLockdown() then pendingLayout = true return end
     local store = GetLayoutStore(layoutName)
-    local pos = store and store[f.unit] or DEFAULT_POSITIONS[f.unit]
+    local pos = store and store[f.fuiUnit] or DEFAULT_POSITIONS[f.fuiUnit]
     f:ClearAllPoints()
     f:SetPoint(pos.point or "CENTER", UIParent, pos.point or "CENTER", pos.x or 0, pos.y or 0)
 end
@@ -2857,7 +3584,7 @@ end
 local function OnFrameMoved(f, layoutName, point, x, y)
     local store = GetLayoutStore(layoutName)
     if not store then return end
-    store[f.unit] = { point = point, x = math_floor(x + 0.5), y = math_floor(y + 0.5) }
+    store[f.fuiUnit] = { point = point, x = math_floor(x + 0.5), y = math_floor(y + 0.5) }
 end
 
 --------------------------------------------------
@@ -2865,12 +3592,12 @@ end
 --------------------------------------------------
 local function ApplyVisibility(f)
     if InCombatLockdown() then pendingLayout = true return end
-    local info = UNITS[f.unit]
+    local info = UNITS[f.fuiUnit]
     local party = GetDb() and GetDb().party
     -- the party frames must be on and showing the player, or there'd be no frame of yours left
     local hideInParty = info.partyDriver and party and party.enabled and party.showPlayer and party.hidePlayerInParty
     local driver = hideInParty and info.partyDriver or info.driver
-    if LEM:IsInEditMode() then
+    if ns.EditPreviewing() then
         UnregisterStateDriver(f, "visibility")
         f:Show()
     elseif driver then
@@ -2906,7 +3633,7 @@ local function HealthAlpha()
 end
 
 function FADE.ShouldShow()
-    if LEM:IsInEditMode() or InCombatLockdown() or UnitExists("target") then return true end
+    if ns.EditPreviewing() or FADE.inCombat or InCombatLockdown() or UnitExists("target") then return true end
     for _, unit in ipairs(FADE.units) do
         local f = frames[unit]
         if f and f:IsShown() and (f:IsMouseOver() or (ns.UFRing and ns.UFRing.MouseOverHit(f))) then return true end
@@ -2949,16 +3676,112 @@ local function RefreshVisibilityFader()
     end
 end
 
--- Target, combat-end and health changes decide at once, so the player frame shows with the target
--- frame; the tick covers the mouse and combat start (InCombatLockdown is false in PLAYER_REGEN_DISABLED)
+-- Target, combat and health changes decide at once, so the player frame shows with the target
+-- frame and on the pull; the tick covers the mouse. InCombatLockdown is still false during
+-- PLAYER_REGEN_DISABLED, so the fight is also tracked from the events themselves.
 fader:RegisterEvent("PLAYER_TARGET_CHANGED")
 fader:RegisterEvent("PLAYER_REGEN_ENABLED")
+fader:RegisterEvent("PLAYER_REGEN_DISABLED")
+-- a death mid-fight in an instance doesn't always send PLAYER_REGEN_ENABLED: dying, and every
+-- loading screen, read the fight again
+fader:RegisterEvent("PLAYER_DEAD")
+fader:RegisterEvent("PLAYER_ENTERING_WORLD")
 fader:RegisterUnitEvent("UNIT_HEALTH", "player")
-fader:SetScript("OnEvent", function(self)
+fader:SetScript("OnEvent", function(self, event)
+    if event == "PLAYER_REGEN_DISABLED" then FADE.inCombat = true
+    elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_DEAD" then FADE.inCombat = nil
+    elseif event == "PLAYER_ENTERING_WORLD" then FADE.inCombat = InCombatLockdown() or nil end
     if not self:GetScript("OnUpdate") then return end
     self.elapsed = FADE.interval
     FadeTick(self, 0)
 end)
+
+--------------------------------------------------
+-- 14b. OUT OF RANGE FADING (target, focus, and the boss tiles through UF.Kit)
+-- Group members answer UnitInRange (as the party tiles); anyone else is measured with the
+-- player's own spells: a harmful one for enemies, a helpful one for friends. Any spell in range
+-- counts as in range, so a hunter inside Auto Shot's minimum range stays bright.
+--------------------------------------------------
+UF.RANGE_ALPHA = 0.45
+UF.RANGE_SPELLS = {   -- rank-1 spell IDs; only the ones the player knows are used
+    WARRIOR = { harm = { 78, 100 } },                                -- Heroic Strike, Charge
+    ROGUE   = { harm = { 1752, 2764 } },                             -- Sinister Strike, Throw
+    HUNTER  = { harm = { 75, 2973 } },                               -- Auto Shot, Raptor Strike
+    PALADIN = { harm = { 20271, 853 }, help = { 635 } },             -- Judgement, Hammer of Justice; Holy Light
+    PRIEST  = { harm = { 585, 589 }, help = { 2050, 1243 } },        -- Smite, Shadow Word: Pain; Lesser Heal, Fortitude
+    SHAMAN  = { harm = { 403, 8042 }, help = { 331 } },              -- Lightning Bolt, Earth Shock; Healing Wave
+    MAGE    = { harm = { 133, 116, 2136 }, help = { 1459 } },        -- Fireball, Frostbolt, Fire Blast; Arcane Intellect
+    WARLOCK = { harm = { 686, 348, 172 }, help = { 5697 } },         -- Shadow Bolt, Immolate, Corruption; Unending Breath
+    DRUID   = { harm = { 5176, 8921 }, help = { 5185, 774, 1126 },   -- Wrath, Moonfire; Healing Touch, Rejuvenation, Mark of the Wild
+                melee = { 1082, 6807 } },                            -- Claw, Maul: enemies in Cat and Bear Form
+}
+-- form IDs (not stance bar slots, which follow the order the forms were learned)
+UF.MELEE_FORMS = { [1] = true, [5] = true, [8] = true }   -- Cat, Bear, Dire Bear
+
+-- the known spells of one list, rebuilt when the spellbook changes (UF.rangeKnown = nil)
+function UF.RangeKnown(kind)
+    if not UF.rangeKnown then
+        UF.rangeKnown = { harm = {}, help = {}, melee = {} }
+        local _, class = UnitClass("player")
+        local lists = UF.RANGE_SPELLS[class] or {}
+        for k in pairs(UF.rangeKnown) do
+            for _, id in ipairs(lists[k] or {}) do
+                if C_SpellBook.IsSpellKnown(id, Enum.SpellBookSpellBank.Player) then table.insert(UF.rangeKnown[k], id) end
+            end
+        end
+    end
+    return UF.rangeKnown[kind]
+end
+
+-- Sets f's alpha from unit's range: full in Edit Mode, for the player, for a range nobody can check
+function UF.ApplyRangeAlpha(f, unit)
+    if not f then return end
+    if ns.EditPreviewing() or not UnitExists(unit) or canaccessvalue(UnitIsUnit(unit, "player")) and UnitIsUnit(unit, "player") then
+        f:SetAlpha(1)
+        return
+    end
+    local inGroup = UnitInParty(unit)
+    if not (canaccessvalue(inGroup) and inGroup) then inGroup = UnitInRaid(unit) end
+    if canaccessvalue(inGroup) and inGroup then
+        local inRange, checked = UnitInRange(unit)
+        if not (canaccessvalue(checked) and checked == false) and f.SetAlphaFromBoolean
+            and pcall(f.SetAlphaFromBoolean, f, inRange, 1, UF.RANGE_ALPHA) then
+            return
+        end
+        f:SetAlpha(1)
+        return
+    end
+    local canAttack = UnitCanAttack("player", unit)
+    if not canaccessvalue(canAttack) then f:SetAlpha(1) return end
+    local out, hasSecret, secret = false, false, nil
+    local list = UF.RangeKnown(canAttack and "harm" or "help")
+    -- a cat or bear fights in melee: its casting spells would keep it bright at 30 yards
+    if canAttack and UF.MELEE_FORMS[GetShapeshiftFormID and GetShapeshiftFormID() or 0] and #UF.RangeKnown("melee") > 0 then
+        list = UF.RangeKnown("melee")
+    end
+    for _, id in ipairs(list) do
+        local r = C_Spell.IsSpellInRange(id, unit)
+        if not canaccessvalue(r) then
+            if not hasSecret then hasSecret, secret = true, r end
+        elseif r == true then
+            f:SetAlpha(1)
+            return
+        elseif r == false then
+            out = true
+        end
+    end
+    if hasSecret and f.SetAlphaFromBoolean and pcall(f.SetAlphaFromBoolean, f, secret, 1, UF.RANGE_ALPHA) then return end
+    f:SetAlpha(out and UF.RANGE_ALPHA or 1)
+end
+
+-- target and focus re-check five times a second while shown (range has no event for them)
+UF.RANGE_UNITS = { "target", "focus" }
+function UF.UpdateFrameRanges()
+    for _, unit in ipairs(UF.RANGE_UNITS) do
+        local f = frames[unit]
+        if f and f:IsShown() then UF.ApplyRangeAlpha(f, unit) end
+    end
+end
 
 --------------------------------------------------
 -- 15. FRAME CREATION
@@ -2967,7 +3790,7 @@ local function OnEnter(f)
     f.Highlight:Show()
     if GameTooltip:IsForbidden() then return end
     GameTooltip_SetDefaultAnchor(GameTooltip, f)
-    GameTooltip:SetUnit(f.unit)
+    GameTooltip:SetUnit(f.fuiUnit)
     GameTooltip:Show()
 end
 
@@ -2979,7 +3802,7 @@ end
 local function CreateUnitFrame(unit)
     local info = UNITS[unit]
     local f = CreateFrame("Button", "FlareUI_UF_" .. info.key, UIParent, "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate")
-    f.unit = unit
+    f.fuiUnit = unit
     f:SetFrameStrata("LOW")
     f:SetAttribute("unit", unit)
     f:SetAttribute("*type1", "target")
@@ -3086,6 +3909,8 @@ local function CreateUnitFrame(unit)
     end
     -- the level's colour and skull depend on the player's level too
     if unit == "target" or unit == "focus" then pcall(f.RegisterUnitEvent, f, "UNIT_LEVEL", unit, "player") end
+    -- flagging yourself for PvP can make the unit attackable: Only My Debuffs follows
+    if info.auras and unit ~= "player" then pcall(f.RegisterUnitEvent, f, "UNIT_FACTION", unit, "player") end
     if info.castbar then
         for _, event in ipairs(CAST_EVENTS) do pcall(f.RegisterUnitEvent, f, event, unit) end
     end
@@ -3129,23 +3954,25 @@ local function CreateUnitFrame(unit)
             elapsed = elapsed + dt
             if elapsed < 0.2 then return end
             elapsed = 0
-            if not UnitExists(self.unit) then return end
+            if not UnitExists(self.fuiUnit) then return end
             UpdateHealth(self)
             UpdatePower(self)
-            -- a styled frame's ring shows who it is; no event says this unit changed, so the GUID does
-            -- when it can be read
-            local guid = UnitGUID(self.unit)
+            -- no event says this unit changed (the target's target can switch unseen), so the GUID
+            -- does when it can be read: name and level on every frame, portrait and ring where shown
+            local guid = UnitGUID(self.fuiUnit)
             local readable = canaccessvalue(guid)
             local same = readable and guid == self.polledGuid
             self.polledGuid = readable and guid or nil
             -- unreadable: at most once a second
             local now = GetTime()
-            if self.Portrait and not same and (readable or now - (self.polledAt or 0) >= 1) then
+            if not same and (readable or now - (self.polledAt or 0) >= 1) then
                 self.polledAt = now
                 UpdateName(self)
                 UpdateLevel(self)
-                UpdatePortrait(self)
-                if ns.UFRing then ns.UFRing.Update(self) end
+                if self.Portrait then
+                    UpdatePortrait(self)
+                    if ns.UFRing then ns.UFRing.Update(self) end
+                end
             end
         end)
     end
@@ -3259,7 +4086,7 @@ local function CreatePlayerCastBar()
     local holder = CreateFrame("Frame", "FlareUI_UF_PlayerCastBar", UIParent)
     holder:SetFrameStrata("MEDIUM")
     holder:SetClampedToScreen(true)
-    holder.unit = "playercastbar"
+    holder.fuiUnit = "playercastbar"
     holder.editModeName = "FlareUI Player Cast Bar"
     holder.Cast = CreateCastBar(holder, "player")
     holder.Cast.standalone = true
@@ -3272,7 +4099,9 @@ local function CreatePlayerCastBar()
         hooksecurefunc(holder, "Hide", KeepShown)
         hooksecurefunc(holder, "SetShown", KeepShown)
     end
-    holder:SetScript("OnEvent", function(self) UpdateCastBar(self.Cast, IsCastEnabled(self.Cast)) end)
+    holder:SetScript("OnEvent", function(self, event, _, _, _, by, barID)
+        UpdateCastBar(self.Cast, IsCastEnabled(self.Cast), event, by, barID)
+    end)
     for _, event in ipairs(CAST_EVENTS) do pcall(holder.RegisterUnitEvent, holder, event, "player") end
     pcall(holder.RegisterEvent, holder, "PLAYER_ENTERING_WORLD")
     playerCastHolder = holder
@@ -3307,12 +4136,19 @@ local function BuildPlayerCastSettings()
           desc = L["No spell icon left of the bar."] },
         { name = L["Hide Spell Timer"], kind = LEM.SettingType.Checkbox, default = false, get = getHideTimer, set = setHideTimer,
           desc = L["No time left at the right end of the bar."] },
+        { name = L["Latency Zone"], kind = LEM.SettingType.Checkbox, default = true, get = get("latencyZone", true), set = set("latencyZone"),
+          desc = L["The end of the bar your latency covers, in red: start the next spell there and it is sent as this one lands."] },
+        { name = L["Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = get("pushback", false), set = set("pushback"),
+          desc = L["How far being hit has set your cast back (\"+0.5\") or cut your channel short, next to the timer."] },
     })
     Section("Look", {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
-        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture"),
-          hidden = function() return ns.UFRing and ns.UFRing.PlateOn() or false end },
+        { name = L["Border Texture"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
         UF.BgOpacitySetting(UF.BAR_BG_OPACITY, get("bgOpacity", UF.BAR_BG_OPACITY), set("bgOpacity")),
+        { name = L["Channel Ticks"], kind = LEM.SettingType.Checkbox, default = false, get = get("channelTicks", false), set = set("channelTicks"),
+          desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
+        { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueMark", false), set = set("queueMark"),
+          desc = L["A mark near the end of the bar: press your next spell after it and it goes off as soon as this one ends."] },
     })
     return settings
 end
@@ -3397,7 +4233,58 @@ local function BuildSettings(unit)
             get = function() local u = GetUnitDb(unit); return u and u.portrait or "none" end, set = set("portrait") }
     end
     settings[#settings + 1] = { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = defaults.healthText or "percent", values = HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") }
-    settings[#settings + 1] = { name = L["Power Text"], kind = LEM.SettingType.Checkbox, default = defaults.powerText or false, get = get("powerText"), set = set("powerText") }
+    settings[#settings + 1] = { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "value", values = UF.POWER_TEXT_MODES,
+        get = function() local u = GetUnitDb(unit); return UF.PowerTextMode(u and u.powerText) end, set = set("powerText") }
+    if info.comboPoints then
+        local function refreshCombo()
+            local f = frames[unit]
+            if not f then return end
+            ApplyComboMode(f)
+            LayoutFrame(f)
+            UpdateAll(f)
+        end
+        -- Addon Style: the combo strip along the health bar, on or off
+        settings[#settings + 1] = { name = L["Combo Points"], kind = LEM.SettingType.Checkbox, default = true,
+            get = function() local u = GetUnitDb(unit); return not (u and u.comboPoints == false) end,
+            set = function(_, value)
+                local u = GetUnitDb(unit)
+                if not u then return end
+                u.comboPoints = value
+                refreshCombo()
+            end,
+            hidden = function()
+                local style = ns.UFRing and ns.UFRing.Style()
+                return style ~= nil and style ~= "addon"
+            end }
+        -- FlareUI Style: gems round the portrait, the strip, or none
+        settings[#settings + 1] = { name = L["Combo Points"], kind = LEM.SettingType.Dropdown, default = "classic",
+            values = {
+                { text = L["Classic"], value = "classic", isRadio = true },
+                { text = L["Modern"],  value = "modern",  isRadio = true },
+                { text = L["Off"],     value = "off",     isRadio = true },
+            },
+            get = function() return UF.RingComboMode(GetUnitDb(unit)) end,
+            set = function(_, value)
+                local u = GetUnitDb(unit)
+                if not u then return end
+                u.ringCombo, u.modernCombo = value, nil
+                refreshCombo()
+            end,
+            hidden = function() return not (ns.UFRing and ns.UFRing.Style() == "flareui") end,
+            desc = L["Classic: gems round the portrait. Modern: a bar along the top of the health bar, as in Addon Style."] }
+    end
+    if UF.THREAT_PERCENT_UNITS[unit] then
+        settings[#settings + 1] = { name = L["Show Threat"], kind = LEM.SettingType.Checkbox, default = false,
+            desc = L["Your threat on this unit as a percent, in the threat colours: above the portrait ring, or after the health value in Addon Style."],
+            get = function() local u = GetUnitDb(unit); return u and u.threatPercent or false end,
+            set = function(_, value)
+                local u = GetUnitDb(unit)
+                if not u then return end
+                u.threatPercent = value
+                local f = frames[unit]
+                if f then LayoutFrame(f); UpdateAll(f) end   -- off gives the health text its place back
+            end }
+    end
     -- (the ring styles show it in the ring's disc, which goes with it)
     settings[#settings + 1] = { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = defaults.showLevel ~= false, get = get("showLevel"), set = set("showLevel") }
     if info.mirrorable then
@@ -3444,6 +4331,12 @@ local function BuildSettings(unit)
             set = set("absorbTexture"),
             desc = L["The texture of the shield (absorb) over the health bar."] }
     end
+    -- how dark the bars' empty part is, then Class Colours below it
+    local bgDefault = UF.DefaultBgOpacity(unit)
+    lookItems[#lookItems + 1] = UF.BgOpacitySetting(bgDefault,
+        function() local u = GetUnitDb(unit); local v = u and u.bgOpacity; if v == nil then return bgDefault end; return v end,
+        set("bgOpacity"))
+    lookItems[#lookItems].hidden = onPlate
     if unit ~= "pet" then
         lookItems[#lookItems + 1] = UF.ClassColorSetting(function() return ns.ClassColorsOn(GetUnitDb(unit)) end,
             function(layoutName, value)
@@ -3452,23 +4345,9 @@ local function BuildSettings(unit)
                 if unit == "player" and ns.ResourceBars and ns.ResourceBars.Refresh then ns.ResourceBars:Refresh() end
             end)
     end
-    -- last in Look: how dark the bars' empty part is
-    local bgDefault = UF.DefaultBgOpacity(unit)
-    lookItems[#lookItems + 1] = UF.BgOpacitySetting(bgDefault,
-        function() local u = GetUnitDb(unit); local v = u and u.bgOpacity; if v == nil then return bgDefault end; return v end,
-        set("bgOpacity"))
-    lookItems[#lookItems].hidden = onPlate
     -- (not on target of target and target of focus)
     if not info.poll then
         lookItems[#lookItems + 1] = UF.SmoothBarsSetting(function() local u = GetUnitDb(unit); return u and u.smoothBars end, set("smoothBars"))
-    end
-    -- FlareUI Style only: Addon Style's combo strip over the health bar instead of the gems round the ring
-    if info.comboPoints then
-        lookItems[#lookItems + 1] = { name = L["Modern Combo Points"], kind = LEM.SettingType.Checkbox, default = false,
-            get = function() local u = GetUnitDb(unit); return u and u.modernCombo or false end,
-            set = set("modernCombo"),
-            hidden = function() return not (ns.UFRing and ns.UFRing.Style() == "flareui") end,
-            desc = L["Combo points as a bar along the top of the health bar, as in Addon Style, instead of gems round the portrait."] }
     end
     Section("Look", lookItems)
 
@@ -3486,6 +4365,10 @@ local function BuildSettings(unit)
               get = get("castbarPosition"), set = set("castbarPosition"), hidden = noCast },
             { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(),
               get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture"), hidden = noCast },
+            { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
+              get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture"),
+              desc = L["Frame Border uses the frame's own border."],
+              hidden = function() return noCast() or (ns.UFRing and ns.UFRing.PlateOn()) or false end },
             { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = defaults.castHeight or CAST_HEIGHT, minValue = 8, maxValue = 40, valueStep = 1,
               get = function() local u = GetUnitDb(unit); return u and u.castHeight or CAST_HEIGHT end, set = set("castHeight"), hidden = noCast },
             { name = L["Hide Icon"], kind = LEM.SettingType.Checkbox, default = false,
@@ -3498,10 +4381,6 @@ local function BuildSettings(unit)
               set = function(layoutName, value) set("castTimer")(layoutName, not value) end,
               hidden = noCast,
               desc = L["No time left at the right end of the bar."] },
-            { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
-              get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture"),
-              desc = L["Frame Border uses the frame's own border."],
-              hidden = function() return noCast() or (ns.UFRing and ns.UFRing.PlateOn()) or false end },
         })
     end
     if info.auras then
@@ -3544,14 +4423,14 @@ local function BuildSettings(unit)
                 get = function() local u = GetUnitDb(unit); return u and u.onlyMyBuffs or false end, set = set("onlyMyBuffs"),
                 desc = L["Only the buffs you cast on yourself."] }
         end
-        -- the focus can do without auras altogether
-        if unit == "focus" then
-            auraItems[#auraItems + 1] = { name = L["Hide Auras"], kind = LEM.SettingType.Checkbox, default = false, get = get("hideAuras"), set = set("hideAuras"),
-                desc = L["No buffs or debuffs on the focus frame."] }
-        end
         -- every debuff on yourself is yours to see: other units only
         if unit ~= "player" then
             auraItems[#auraItems + 1] = { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = defaults.onlyMyDebuffs or false, get = get("onlyMyDebuffs"), set = set("onlyMyDebuffs") }
+        end
+        if unit == "target" or unit == "focus" then
+            auraItems[#auraItems + 1] = { name = L["Highlight Purgeable Buffs"], kind = LEM.SettingType.Checkbox, default = false,
+                get = function() local u = GetUnitDb(unit); return u and u.purgeHighlight or false end, set = set("purgeHighlight"),
+                desc = L["Buffs that you or your group can purge or dispel come first, with Blizzard's stealable border."] }
         end
         Section("Auras", auraItems)
         Section("Aura Ordering", ns.AuraOrder.Items(get, set))
@@ -3599,8 +4478,8 @@ local function BuildSettings(unit)
 end
 
 local function RegisterEditMode(f)
-    LEM:AddFrame(f, OnFrameMoved, DEFAULT_POSITIONS[f.unit], "FlareUI " .. UNITS[f.unit].label)
-    LEM:AddFrameSettings(f, BuildSettings(f.unit))
+    LEM:AddFrame(f, OnFrameMoved, DEFAULT_POSITIONS[f.fuiUnit], "FlareUI " .. UNITS[f.fuiUnit].label)
+    LEM:AddFrameSettings(f, BuildSettings(f.fuiUnit))
 end
 
 --------------------------------------------------
@@ -3619,6 +4498,9 @@ UF.Kit = {
     DEFAULT_TEXTURE = DEFAULT_TEXTURE,
     HEAL_COLOR = HEAL_COLOR, ABSORB_COLOR = ABSORB_COLOR, HEAL_TEXTURE = HEAL_TEXTURE, ABSORB_TEXTURE = ABSORB_TEXTURE,
     HEALTH_TEXT_MODES = HEALTH_TEXT_MODES, CAST_EVENTS = CAST_EVENTS,
+    SetHealthLost = UF.SetHealthLost, SetSampleHealthLost = UF.SetSampleHealthLost,
+    POWER_TEXT_MODES = UF.POWER_TEXT_MODES, PowerTextMode = UF.PowerTextMode, SetPowerText = UF.SetPowerText,
+    IsPowerTextMode = UF.IsPowerTextMode, FormatBarText = UF.FormatBarText,
     DEAD_TEXT = DEAD_TEXT, GHOST_TEXT = GHOST_TEXT, OFFLINE_TEXT = OFFLINE_TEXT,
     percentCurve = percentCurve,
     GetDb = GetDb,
@@ -3629,6 +4511,9 @@ UF.Kit = {
     HardHide = HardHide, SetIconArt = SetIconArt, HasAtlas = HasAtlas,
     CreateCastBar = CreateCastBar, LayoutCastBar = LayoutCastBar, UpdateCastBar = UpdateCastBar,
     InitAuraButton = InitAuraButton, HasAuraSupport = HasAuraSupport,
+    ApplyRangeAlpha = UF.ApplyRangeAlpha,
+    CreateManaCost = UF.CreateManaCost, CostsMana = CostsMana, GetTimerFormatter = GetTimerFormatter,
+    IsDead = UF.IsDead, CreateShieldGlow = UF.CreateShieldGlow, PlaceShieldGlow = UF.PlaceShieldGlow, SetShieldGlow = UF.SetShieldGlow, HideShieldGlow = UF.HideShieldGlow,
     BuildTextureValues = BuildTextureValues, BuildBorderValues = BuildBorderValues, BuildAbsorbValues = BuildTextureValues, EditSections = EditSections,
     ThreatColor = ThreatColor,
 }
@@ -3705,11 +4590,21 @@ function UF:PLAYER_ENTERING_WORLD()
     if playerCastHolder then UpdateCastBar(playerCastHolder.Cast, IsCastEnabled(playerCastHolder.Cast)) end
 end
 
+-- the client's portrait cache was rebuilt (after a loading screen): no unit event says so
+function UF:PORTRAITS_UPDATED()
+    for _, f in pairs(frames) do UpdatePortrait(f) end
+end
+
 function UF:Init()
     if self.initialized then return end
     local db = GetDb()
     if not db then return end
     UF.ApplyPalette()
+    -- a saved Hide Auras on the focus frame becomes Buffs and Debuffs Off
+    local focusDb = db.units and db.units.focus
+    if focusDb and focusDb.hideAuras then
+        focusDb.buffs, focusDb.debuffs, focusDb.hideAuras = "OFF", "OFF", nil
+    end
     -- the ring styles have their own default positions (a style switch reloads)
     if ns.UFRing and ns.UFRing.On() then
         for key, pos in pairs((ns.UFRing.DefaultPositions())) do DEFAULT_POSITIONS[key] = pos end
@@ -3750,7 +4645,8 @@ function UF:Init()
             end
         end
     end
-    if db.playerCastbar and db.playerCastbar.enabled then
+    -- part of Main Frames (one switch in the settings): made with the player frame
+    if db.playerCastbar and db.units and db.units.player and db.units.player.enabled then
         local holder = CreatePlayerCastBar()
         LEM:AddFrame(holder, OnFrameMoved, DEFAULT_POSITIONS.playercastbar, holder.editModeName)
         LEM:AddFrameSettings(holder, BuildPlayerCastSettings())
@@ -3760,6 +4656,12 @@ function UF:Init()
     HookExtras()
     if frames.player then InitFsrSpark() end
     self.initialized = true
+    -- out of range fading on target and focus (no event for their range); a new spellbook re-picks
+    -- the spells it measures with
+    C_Timer.NewTicker(0.2, UF.UpdateFrameRanges)
+    local spells = CreateFrame("Frame")
+    spells:RegisterEvent("SPELLS_CHANGED")
+    spells:SetScript("OnEvent", function() UF.rangeKnown = nil end)
     -- nothing announces a unit going out of sight
     C_Timer.NewTicker(1, function()
         UF.UpdateAuraReach(frames.target)
@@ -3771,22 +4673,27 @@ function UF:Init()
         for _, f in pairs(frames) do ApplyPosition(f, layoutName) end
         if playerCastHolder then ApplyPosition(playerCastHolder, layoutName) end
     end)
-    LEM:RegisterCallback("enter", function()
+    local function ShowPreview()
         for _, f in pairs(frames) do ApplyVisibility(f); f:SetAlpha(1); if f.Combo then UpdateComboPoints(f) end; UpdateHappiness(f); UpdateAll(f) end
         for _, f in pairs(frames) do LayoutAuras(f) end
         SetAuraPreview(true)
         SetCastPreview(true)
-    end)
-    LEM:RegisterCallback("exit", function()
+    end
+    local function EndPreview()
         for _, f in pairs(frames) do ApplyVisibility(f); if f.Combo then UpdateComboPoints(f) end; UpdateHappiness(f); UpdateAll(f) end
         RefreshVisibilityFader()
         for _, f in pairs(frames) do LayoutAuras(f) end
         SetAuraPreview(false)
         SetCastPreview(false)
-    end)
+    end
+    LEM:RegisterCallback("enter", ShowPreview)
+    LEM:RegisterCallback("exit", EndPreview)
+    -- a fight in Edit Mode ends the samples (ns.EditPreviewing), its end brings them back
+    ns.OnEditFight(function() if ns.EditPreviewing() then ShowPreview() else EndPreview() end end)
 
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
     self:RegisterEvent("PLAYER_ENTERING_WORLD")
+    self:RegisterEvent("PORTRAITS_UPDATED")
 
     self:Refresh()
     C_Timer.After(0, function() self:Refresh() end)

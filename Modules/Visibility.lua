@@ -3,9 +3,9 @@ local L = ns.L
 
 --------------------------------------------------
 -- VISIBILITY
--- Show choices (always | mouseover | combat | target | harm), fade groups 1-5, Fade Speed and Min Alpha
--- for the action bars, bag bar, micro menu, XP bar and minimap, set in each element's Edit Mode dialog,
--- plus the Blizzard pieces hidden for good. Fake CM bars follow profile.fcm.show and never the mouse.
+-- Show choices (always | mouseover | combat | target | harm | nomount | group), fade groups 1-5,
+-- Fade Speed and Min Alpha for the action bars, bag bar, micro menu, XP bar, minimap, buffs, debuffs
+-- and quest tracker, set in each element's Edit Mode dialog, plus the Blizzard pieces hidden for good. Fake CM bars follow profile.fcm.show and never the mouse.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -57,6 +57,10 @@ local ELEMENTS = {
     { key = "menu", frame = "MicroMenuContainer", system = "MicroMenu" },
     { key = "xp" },   -- FlareUI's XP bar, its own Edit Mode frame
     { key = "minimap", frame = "MinimapCluster", needsMinimap = true },   -- with the Minimap module
+    -- FlareUI's own Edit Mode frames, each with its module
+    { key = "buffs", module = "auras" },
+    { key = "debuffs", module = "auras" },
+    { key = "quest", module = "objectivetracker" },
 }
 local ELEMENT_BY_KEY = {}
 for _, e in ipairs(ELEMENTS) do ELEMENT_BY_KEY[e.key] = e end
@@ -70,6 +74,10 @@ local HIDE_FRAMES = {
 local function GetFrame(key)
     if key == "xp" then
         return ns.XPBar and ns.XPBar.GetFrame and ns.XPBar:GetFrame() or nil
+    elseif key == "buffs" or key == "debuffs" then
+        return ns.Auras and ns.Auras.GetFrame and ns.Auras:GetFrame(key) or nil
+    elseif key == "quest" then
+        return ns.ObjectiveTracker and ns.ObjectiveTracker.GetFrame and ns.ObjectiveTracker:GetFrame() or nil
     end
     local name = HIDE_FRAMES[key] or (ELEMENT_BY_KEY[key] and ELEMENT_BY_KEY[key].frame)
     local f = name and _G[name]
@@ -110,14 +118,46 @@ local function SetMinimapDrawn(alpha)
         end
     elseif minimapFadedOut then
         minimapFadedOut = false
-        map:Show()
+        -- the Toggle Minimap key pressed while it was faded out: it stays hidden
+        if not ns.minimapKeyHidden then map:Show() end
+    end
+end
+
+-- The Toggle Minimap key: a press while the map is faded out (its show is undone at once) flips
+-- what the fade's return does; otherwise the key's own result is noted
+if ToggleMinimap then
+    hooksecurefunc("ToggleMinimap", function()
+        if C_GameRules and C_GameRules.IsGameRuleActive and Enum.GameRule and Enum.GameRule.MinimapDisabled
+                and C_GameRules.IsGameRuleActive(Enum.GameRule.MinimapDisabled) then return end
+        local map = _G.Minimap
+        if minimapFadedOut then
+            ns.minimapKeyHidden = not ns.minimapKeyHidden
+        elseif map then
+            ns.minimapKeyHidden = not map:IsShown()
+        end
+    end)
+end
+
+-- The cooldown-finished flash draws at full strength whatever the bar's alpha: a bar faded below
+-- half has it off on its buttons, set again only when the alpha crosses half
+local blingOn = setmetatable({}, { __mode = "k" })
+local function SetBarBling(frame, alpha)
+    local on = alpha > 0.5
+    if blingOn[frame] == on then return end
+    blingOn[frame] = on
+    for _, button in ipairs(frame.actionButtons or {}) do
+        local cd = button.cooldown
+        if cd and cd.SetDrawBling then cd:SetDrawBling(on) end
     end
 end
 
 local function ApplyElementAlpha(frame, key, alpha)
     frame:SetAlpha(alpha)
+    if frame.actionButtons then SetBarBling(frame, alpha) end
     if key == "bar1" then ForEachEndCap(SetCapAlpha, alpha) end
     if key == "minimap" then SetMinimapDrawn(alpha) end
+    -- the tracker's lone "+" and its quest item buttons sit on UIParent, outside its frame
+    if key == "quest" and ns.ObjectiveTracker.SetFadeAlpha then ns.ObjectiveTracker:SetFadeAlpha(alpha) end
 end
 
 -- "endcaps" is the two gryphon frames
@@ -144,15 +184,28 @@ local function MinimapOn()
     return mm and mm.enabled or false
 end
 
+-- an element's module is on: the bars' with Action Bars, the minimap with Minimap, the others with theirs
+local function ElementOn(e)
+    if e.needsMinimap then return MinimapOn() end
+    if e.module then
+        local db = ns.db and ns.db.profile and ns.db.profile[e.module]
+        return db and db.enabled or false
+    end
+    return ActionBarsOn()
+end
+
 --------------------------------------------------
 -- 4. SHOW CHOICES AND FADE GROUPS
 --------------------------------------------------
-local function ElementConfig(key)
+-- Reading never writes: an element nobody set reads the defaults, and gets its own entry in the
+-- profile only when something is set (create)
+local UNSET = setmetatable({}, { __index = { show = "always", group = 0 }, __newindex = function() end })
+local function ElementConfig(key, create)
     local db = GetDb()
     local elements = db and db.elements
     if not elements then return nil end
-    elements[key] = elements[key] or { show = "always", group = 0 }
-    return elements[key]
+    if create then elements[key] = elements[key] or { show = "always", group = 0 } end
+    return elements[key] or UNSET
 end
 
 function Visibility:GetGroup(key)
@@ -169,7 +222,7 @@ function Visibility:GetShow(key)
 end
 
 function Visibility:SetShow(key, show)
-    local db, cfg = GetDb(), ElementConfig(key)
+    local db, cfg = GetDb(), ElementConfig(key, true)
     if not (db and cfg) then return end
     local group = cfg.group and cfg.group > 0 and db.groups and db.groups[cfg.group]
     if group then group.show = show else cfg.show = show end
@@ -182,7 +235,7 @@ local function ElementGroup(key)
     return cfg and cfg.group and cfg.group > 0 and db.groups and db.groups[cfg.group] or nil
 end
 
--- a setup from before these were per element keeps its one Fade Speed
+-- falls back to the profile-wide Fade Speed
 function Visibility:GetFadeSpeed(key)
     local db, owner = GetDb(), ElementGroup(key) or ElementConfig(key)
     return (owner and owner.fadeSpeed) or (db and db.fadeSpeed) or "instant"
@@ -195,7 +248,7 @@ function Visibility:GetMinAlpha(key)
 end
 
 function Visibility:SetElementFade(key, field, value)
-    local owner = ElementGroup(key) or ElementConfig(key)
+    local owner = ElementGroup(key) or ElementConfig(key, true)
     if not owner then return end
     owner[field] = value
     self:Refresh()
@@ -212,7 +265,7 @@ end
 
 -- Joining a group takes on what's set for it; the first member brings its own choices. Leaving keeps them.
 function Visibility:SetGroup(key, group)
-    local db, cfg = GetDb(), ElementConfig(key)
+    local db, cfg = GetDb(), ElementConfig(key, true)
     if not (db and cfg) then return end
     group = group or 0
     if group == (cfg.group or 0) then return end
@@ -356,26 +409,59 @@ local function TargetIsHostile()
     return canaccessvalue(canAttack) and canAttack or false
 end
 
+-- Not mounted: a druid's travel and aquatic forms and a flight path count as riding
+local TRAVEL_FORMS = { [3] = true, [4] = true, [27] = true, [29] = true }
+local function Riding()
+    if IsMounted() or UnitOnTaxi("player") then return true end
+    local form = GetShapeshiftFormID and GetShapeshiftFormID()
+    return form ~= nil and TRAVEL_FORMS[form] == true
+end
+
+-- a spell flyout opened from one of this bar's buttons, with the mouse on it: Blizzard parents the
+-- popup to the button, outside the bar's own rectangle
+local function FlyoutOver(bar)
+    local flyout = _G.SpellFlyout
+    if not (flyout and flyout:IsShown() and flyout:IsMouseOver()) then return false end
+    local parent = flyout:GetParent()
+    while parent do
+        if parent == bar then return true end
+        parent = parent:GetParent()
+    end
+    return false
+end
+
 local function ShowRule(show)
     if show == "always" then return true end
     if show == "mouseover" then return false end
-    if InCombatLockdown() then return true end
+    -- InCombatLockdown is still false during PLAYER_REGEN_DISABLED: the event's own flag counts too
+    if InCombatLockdown() or Visibility.inFight then return true end
     if show == "target" then return UnitExists("target") end
     if show == "harm" then return TargetIsHostile() end
+    if show == "nomount" then return not Riding() end
+    if show == "group" then return IsInGroup() end
     return false   -- combat
 end
 
--- editMode: read once per pass by the caller, not once per member
-local function CheckMember(data, editMode)
+-- the spellbook tab of the spells window, open: spells are dragged from it onto the bars
+local function SpellbookOpen()
+    local book = _G.PlayerSpellsFrame and _G.PlayerSpellsFrame.SpellBookFrame
+    return book and book:IsVisible() or false
+end
+
+-- editMode, spellbook: read once per pass by the caller, not once per member
+local function CheckMember(data, editMode, spellbook)
     if editMode then return true end
     local fcmState = ns.ActionBars and ns.ActionBars.fcm
-    -- every action bar shows while something is dragged onto them
-    if data.isBar and fcmState and fcmState.wasDragging then return true end
+    -- every action bar shows while something is dragged onto them, or the spellbook is open
+    if data.isBar and ((fcmState and fcmState.wasDragging) or spellbook) then return true end
     if data.fcm then
         return (fcmState and fcmState.unlockMode) or ShowRule(data.show)
     end
     if ShowRule(data.show) then return true end
-    return data.frame:IsMouseOver()
+    -- shown while its own settings page is open
+    if data.owner and data.owner.IsSettingsPreview and data.owner:IsSettingsPreview() then return true end
+    if data.key == "quest" and ns.ObjectiveTracker.IsMouseOverExtras and ns.ObjectiveTracker:IsMouseOverExtras() then return true end
+    return data.frame:IsMouseOver() or (data.isBar and FlyoutOver(data.frame))
 end
 
 -- an event may have changed a condition: every group is checked again this frame
@@ -418,16 +504,19 @@ Fader.UpdateScript = function(self, elapsed)
     end
 
     local hasActiveFades = false
-    local editMode   -- read once, on the first group checked
+    local editMode, spellbook   -- read once, on the first group checked
 
     for groupName, members in pairs(self.groups) do
         if check or self.shows[groupName] == nil then
             if editMode == nil then
-                editMode = (_G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()) or false
+                -- Quick Keybind mode too: Blizzard closes Edit Mode for it, and faded bars need binding
+                editMode = (_G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown())
+                    or (_G.QuickKeybindFrame and _G.QuickKeybindFrame:IsShown()) or false
+                spellbook = SpellbookOpen()
             end
             local groupShouldShow = false
             for _, data in ipairs(members) do
-                if CheckMember(data, editMode) then groupShouldShow = true break end
+                if CheckMember(data, editMode, spellbook) then groupShouldShow = true break end
             end
 
             if not self.delays[groupName] then self.delays[groupName] = 0 end
@@ -478,7 +567,7 @@ end
 --------------------------------------------------
 -- 7. EDIT MODE SETTINGS
 --------------------------------------------------
-local SHOW_VALUES = { "always", "mouseover", "combat", "target", "harm" }
+local SHOW_VALUES = { "always", "mouseover", "combat", "target", "harm", "nomount", "group" }
 local GROUP_VALUES = { 0, 1, 2, 3, 4, 5 }
 
 local function Values(copyKey, list, fallback)
@@ -547,7 +636,24 @@ function Visibility:MinimapSettings()
     return WithVisibilityTitle(rows)
 end
 
-local systemsAdded, xpAdded = false, false
+-- The Blizzard systems these settings go into, for the settings search (Settings/Registry.lua)
+function Visibility:EditSystems()
+    local list = {}
+    if not (Enum.EditModeSystem and Enum.EditModeActionBarSystemIndices) then return list end
+    for _, e in ipairs(ELEMENTS) do
+        local system = e.system and Enum.EditModeSystem[e.system]
+        local index = e.index and Enum.EditModeActionBarSystemIndices[e.index]
+        if system and (index or not e.index) then
+            local frame = GetFrame(e.key)
+            local ok, name = false, nil
+            if frame and frame.GetSystemName then ok, name = pcall(frame.GetSystemName, frame) end
+            list[#list + 1] = { system = system, index = index, name = (ok and type(name) == "string" and name) or e.frame or e.key }
+        end
+    end
+    return list
+end
+
+local systemsAdded, frameAdded = false, {}
 local function AddEditModeSettings()
     if not systemsAdded and ActionBarsOn() and Enum.EditModeSystem and Enum.EditModeActionBarSystemIndices then
         systemsAdded = true
@@ -556,26 +662,48 @@ local function AddEditModeSettings()
             if system then
                 local index = e.index and Enum.EditModeActionBarSystemIndices[e.index]
                 if not e.index or index then
-                    LEM:AddSystemSettings(system, WithVisibilityTitle(BuildElementSettings(e.key)), index)
+                    local rows = BuildElementSettings(e.key)
+                    -- Blizzard's own Bar Visible, higher up in the same dialog, hides the bar for good
+                    -- whatever Show says: a line says so while it's set to anything but Always
+                    if e.system == "ActionBar" then
+                        local key = e.key
+                        table_insert(rows, 1, {
+                            name = "|cffff9933" .. L["Bar Visible above also hides this bar"] .. "|r",
+                            kind = LEM.SettingType.Expander, static = true, hideArrow = true,
+                            get = function() return true end, set = function() end,
+                            hidden = function()
+                                local frame = GetFrame(key)
+                                local setting = frame and frame.visibility
+                                return setting == nil or setting == "Always"
+                            end,
+                        })
+                    end
+                    LEM:AddSystemSettings(system, WithVisibilityTitle(rows), index)
                 end
             end
         end
     end
-    -- the XP bar is a FlareUI frame: its rows go after its own Width / Height
-    local xp = GetFrame("xp")
-    local settings = xp and LEM.GetFrameSettings and LEM:GetFrameSettings(xp)
-    if settings and not xpAdded then
-        xpAdded = true
-        for _, setting in ipairs(WithVisibilityTitle(BuildElementSettings("xp"))) do table_insert(settings, setting) end
+    -- FlareUI's own frames (XP bar, buffs, debuffs, quest tracker): their rows go after their own
+    for _, key in ipairs({ "xp", "buffs", "debuffs", "quest" }) do
+        local frame = not frameAdded[key] and ElementOn(ELEMENT_BY_KEY[key]) and GetFrame(key)
+        local settings = frame and LEM.GetFrameSettings and LEM:GetFrameSettings(frame)
+        if settings then
+            frameAdded[key] = true
+            for _, setting in ipairs(WithVisibilityTitle(BuildElementSettings(key))) do table_insert(settings, setting) end
+        end
     end
 end
 
 --------------------------------------------------
 -- 8. PUBLIC API
 --------------------------------------------------
--- part of the Action Bars module, and fades the minimap for the Minimap module: each only touches its own
+-- part of the Action Bars module, and fades the minimap, buffs, debuffs and quest tracker for theirs:
+-- each only touches its own
 function Visibility:ShouldLoad()
-    return ActionBarsOn() or MinimapOn()
+    for _, e in ipairs(ELEMENTS) do
+        if ElementOn(e) then return true end
+    end
+    return false
 end
 
 local HIDE_KEYS = {
@@ -590,12 +718,11 @@ local function AddMember(groupName, data)
 end
 
 function Visibility:Refresh()
-    -- runs again when the fight ends (OnVisibilityStateChange)
-    if InCombatLockdown() then
-        self.refreshPending = true
-        return
-    end
-    self.refreshPending = nil
+    -- In a fight only the fader is rebuilt (alpha, allowed on protected frames), so a Show or fade
+    -- change counts at once; hiding for good waits, and the whole pass runs again when the fight
+    -- ends (OnVisibilityStateChange)
+    local inCombat = InCombatLockdown()
+    self.refreshPending = inCombat or nil
     local db = GetDb()
     if not db then return end
     -- the minimap fades on its own, right out (SetMinimapDrawn), whatever an earlier setup stored
@@ -611,7 +738,7 @@ function Visibility:Refresh()
     -- would lose whether the frame comes back when the option goes off
     local inEditMode = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
     local barsOn = ActionBarsOn()
-    for _, pair in ipairs(barsOn and HIDE_KEYS or {}) do
+    for _, pair in ipairs((barsOn and not inCombat) and HIDE_KEYS or {}) do
         local key, settingKey = pair[1], pair[2]
         local hidden = db[settingKey]
         if inEditMode then
@@ -628,7 +755,7 @@ function Visibility:Refresh()
             ApplySecureHide(key, hidden)
         end
     end
-    if barsOn then
+    if barsOn and not inCombat then
         SetMicroFlashesBlank(db.hideMicroMenu)
         UpdateMicroTips()
     end
@@ -646,8 +773,7 @@ function Visibility:Refresh()
     for _, e in ipairs(ELEMENTS) do
         local key = e.key
         local frame = GetFrame(key)
-        local moduleOn = e.needsMinimap and MinimapOn() or (not e.needsMinimap and barsOn)
-        if moduleOn and frame and frame.GetAlpha then
+        if ElementOn(e) and frame and frame.GetAlpha then
             local isBar = key:match("^bar[1-8]$") ~= nil
             local fcmBar = isBar and fcm and fcm.bars and fcm.bars[key]
             if fcmBar and fcmBar.enabled then
@@ -660,7 +786,8 @@ function Visibility:Refresh()
                     ApplyElementAlpha(frame, key, 1)
                 else
                     local group = self:GetGroup(key)
-                    AddMember(group > 0 and ("group" .. group) or key, { key = key, frame = frame, isBar = isBar, show = show,
+                    local owner = (key == "quest" and ns.ObjectiveTracker) or ((key == "buffs" or key == "debuffs") and ns.Auras) or nil
+                    AddMember(group > 0 and ("group" .. group) or key, { key = key, frame = frame, isBar = isBar, show = show, owner = owner,
                                                                          fadeTime = ns.FadeTime(self:GetFadeSpeed(key)),
                                                                          minAlpha = self:GetMinAlpha(key) / 100 })
                     Fader.watchesMouseover = true
@@ -675,6 +802,8 @@ end
 function Visibility:Init()
     if not GetDb() or not self:ShouldLoad() then return end
     self:Refresh()
+    -- modules start in no set order: once more when every one has made its frames
+    C_Timer.After(0, function() Visibility:Refresh() end)
     hooksecurefunc(_G.HelpTip, "Show", UpdateMicroTips)
 
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnVisibilityStateChange")
@@ -682,12 +811,27 @@ function Visibility:Init()
     self:RegisterEvent("PLAYER_TARGET_CHANGED", "OnVisibilityStateChange")
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnVisibilityStateChange")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnVisibilityStateChange")
+    -- the Not mounted and In a group Show choices
+    self:RegisterEvent("PLAYER_MOUNT_DISPLAY_CHANGED", "OnVisibilityStateChange")
+    self:RegisterEvent("GROUP_ROSTER_UPDATE", "OnVisibilityStateChange")
+    -- bars show while the spellbook is open (Blizzard_PlayerSpells loads on demand)
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_PlayerSpells", function()
+        local book = _G.PlayerSpellsFrame and _G.PlayerSpellsFrame.SpellBookFrame
+        if not book then return end
+        book:HookScript("OnShow", MarkAllDirty)
+        book:HookScript("OnHide", MarkAllDirty)
+    end)
 
     if _G.EditModeManagerFrame then
         _G.EditModeManagerFrame:HookScript("OnShow", function() Visibility:Refresh() end)
         _G.EditModeManagerFrame:HookScript("OnHide", function() Visibility:Refresh() end)
     end
-    -- Blizzard's dialogs now, the XP bar's once it exists
+    -- Quick Keybind mode shows every faded bar, as Edit Mode does
+    if EventRegistry then
+        EventRegistry:RegisterCallback("QuickKeybindFrame.QuickKeybindModeEnabled", function() Visibility:Refresh() end, Visibility)
+        EventRegistry:RegisterCallback("QuickKeybindFrame.QuickKeybindModeDisabled", function() Visibility:Refresh() end, Visibility)
+    end
+    -- Blizzard's dialogs now, FlareUI's own frames once they exist
     AddEditModeSettings()
     LEM:RegisterCallback("enter", AddEditModeSettings)
     -- in Edit Mode, toggling Raid / Party Frames makes Blizzard show the raid manager again
@@ -703,7 +847,15 @@ end
 --------------------------------------------------
 -- 9. EVENT HANDLERS
 --------------------------------------------------
+-- A condition changed (a drag began or ended): every fade group is checked again, without the
+-- full rebuild of Refresh
+function Visibility:Wake()
+    MarkAllDirty()
+end
+
 function Visibility:OnVisibilityStateChange(event)
+    if event == "PLAYER_REGEN_DISABLED" then self.inFight = true
+    elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_ENTERING_WORLD" then self.inFight = nil end
     if event == "PLAYER_REGEN_ENABLED" and self.refreshPending then
         self:Refresh()
     else

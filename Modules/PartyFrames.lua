@@ -52,7 +52,7 @@ local PREVIEW_HOSTILE_RGB = { 0.87, 0.27, 0.27 }
 local AURA_SPACING = 2
 local AURA_CONTAINER_TEMPLATE = "CustomAuraContainerTemplate"
 local READY_CHECK_HOLD = 6           -- seconds the result stays after a ready check ends
-local RANGE_INTERVAL = 0.5
+local RANGE_INTERVAL = 1   -- a safety re-check: range comes from UNIT_IN_RANGE_UPDATE
 local RANGE_ALPHA = 0.45             -- out of range
 -- auras per lane and per row, by party style (an owner's view gives its own: auraMax, auraPerRow)
 local PARTY_AURA_GRID = { classic = { 5, 5 }, raid = { 6, 3 } }
@@ -320,8 +320,9 @@ local function RingClear(f, isLeft, gap)
     return ns.UFRing.Clearance(f, gap)
 end
 
+-- Edit Mode, unless a fight ended its previews (ns.OnEditFight)
 local function IsEditing()
-    return LEM:IsInEditMode()
+    return ns.EditPreviewing()
 end
 
 local function IconStore(key, create, f)
@@ -364,13 +365,13 @@ end
 
 local function UpdateName(f)
     -- the party frames pass "party" (first-name rules); raid and boss tiles show the whole name
-    f.Name:SetText(SafeName(ns.UnitDisplayName(f.unit, not f.ctx and "party" or nil)))
+    f.Name:SetText(SafeName(ns.UnitDisplayName(f.fuiUnit, not f.ctx and "party" or nil)))
 end
 
 local function UpdateLevel(f)
     local st = TS(f)
     if not (st and st.showLevel) then f.Level:SetText("") return end
-    local level = UnitLevel(f.unit)
+    local level = UnitLevel(f.fuiUnit)
     if canaccessvalue(level) and level then
         if level < 0 then
             f.Level:SetText("??")
@@ -378,7 +379,7 @@ local function UpdateLevel(f)
         else
             f.Level:SetFormattedText("%d", level)
             -- friendly: Blizzard's gold; neutral and hostile: by difficulty
-            local color = ns.UnitLevelColor(f.unit, level)
+            local color = ns.UnitLevelColor(f.fuiUnit, level)
             if color then f.Level:SetTextColor(color.r, color.g, color.b) else f.Level:SetTextColor(1, 1, 1) end
         end
     else
@@ -388,43 +389,61 @@ local function UpdateLevel(f)
 end
 
 local function UpdateHealth(f, glide)
-    local unit, st = f.unit, TS(f)
+    local unit, st = f.fuiUnit, TS(f)
     local bar = f.Health
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
-    ns.SetBarValue(bar, UnitHealth(unit), glide and st and st.smoothBars)
+    ns.SetBarValue(bar, UnitHealth(unit), glide and st and st.smoothBars and not UnitIsDead(unit))
     -- (a plain health change has the same colour, but for a hostile tile going grey when tapped)
     if not glide or (f.ctx and f.ctx.hostile) then bar:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn(st))) end
 
     local mode = st and st.healthText or "percent"
     local text = f.HealthText
+    text:SetAlpha(1)
     if not UnitIsConnected(unit) then
         text:SetText(K.OFFLINE_TEXT)
-    elseif UnitIsDeadOrGhost(unit) then
+    elseif K.IsDead(unit) then
         text:SetText(UnitIsGhost(unit) and K.GHOST_TEXT or K.DEAD_TEXT)
-    elseif mode == "percent" then
-        text:SetFormattedText("%.0f%%", UnitHealthPercent(unit, true, K.percentCurve))
-    elseif mode == "value" then
-        text:SetText(AbbreviateNumbers(UnitHealth(unit)))
-    elseif mode == "both" then
-        text:SetFormattedText("%s | %.0f%%", AbbreviateNumbers(UnitHealth(unit)), UnitHealthPercent(unit, true, K.percentCurve))
-    elseif mode == "valuemax" then
-        text:SetFormattedText("%s | %s", AbbreviateNumbers(UnitHealth(unit)), AbbreviateNumbers(UnitHealthMax(unit)))
-    else
+    elseif mode == "lost" then
+        K.SetHealthLost(text, unit)
+    elseif mode == "none" then
         text:SetText("")
+    else
+        K.FormatBarText(text, mode, UnitHealth(unit), UnitHealthPercent(unit, true, K.percentCurve), UnitHealthMax(unit))
     end
 end
 
 local LayoutBars   -- section 6
 
-local function WantsPower(f)
+-- Mana Users Only (raid tiles): no power bar for the classes that never use mana. By class, so it
+-- holds for a druid in Cat or Bear Form; an unreadable class keeps the bar.
+local NO_MANA = { WARRIOR = true, ROGUE = true }
+local function WantsPower(f, previewClass)
     -- the plate always has its power bar (LayoutBars)
     if OnPlate(f) then return true end
     local st = TS(f)
-    return st and (st.powerHeight or 0) > 0 or false
+    if not (st and (st.powerHeight or 0) > 0) then return false end
+    if st.powerManaOnly and RaidTile(f) then
+        local class = previewClass
+        if not class and f.fuiUnit then
+            local _, file = UnitClass(f.fuiUnit)
+            if canaccessvalue(file) then class = file end
+        end
+        if class and NO_MANA[class] then return false end
+    end
+    return true
+end
+
+-- Power Text: the raid's (and raid-style tiles') default is None, the party's Value
+local function TilePowerMode(f, st)
+    if RaidTile(f) then
+        local v = st and st.powerText
+        return K.IsPowerTextMode(v) and v or "none"
+    end
+    return K.PowerTextMode(st and st.powerText)
 end
 
 local function UpdatePower(f, glide)
-    local unit, st = f.unit, TS(f)
+    local unit, st = f.fuiUnit, TS(f)
     local want = WantsPower(f)
     local appeared = want ~= f.powerShown
     if appeared then
@@ -437,18 +456,34 @@ local function UpdatePower(f, glide)
     bar:SetMinMaxValues(0, UnitPowerMax(unit, powerType))
     ns.SetBarValue(bar, UnitPower(unit, powerType), glide and not appeared and st and st.smoothBars)
     bar:SetStatusBarColor(K.GetPowerColor(unit))
-    if st and st.powerText and not RaidTile(f) and UnitIsConnected(unit) and not UnitIsDeadOrGhost(unit) then
-        f.PowerText:SetText(AbbreviateNumbers(UnitPower(unit, powerType)))
+    -- kept for the ticks (UpdatePowerValue); a secret type always takes this full path
+    f.powerType = canaccessvalue(powerType) and powerType or nil
+    f.powerTextMode = nil
+    local ptMode = st and TilePowerMode(f, st) or "none"
+    if ptMode ~= "none" and UnitIsConnected(unit) and not K.IsDead(unit) then
+        f.powerTextMode = ptMode
+        K.SetPowerText(f.PowerText, unit, powerType, f.powerTextMode)
     else
         f.PowerText:SetText("")
     end
+end
+
+-- A power tick: only the value (and its text) moves. The type, colour, maximum and layout follow
+-- UNIT_DISPLAYPOWER / UNIT_MAXPOWER and unit changes, which run UpdatePower.
+local function UpdatePowerValue(f)
+    local powerType = f.powerType
+    if not powerType then UpdatePower(f, true) return end
+    if not f.powerShown then return end
+    local unit, st = f.fuiUnit, TS(f)
+    ns.SetBarValue(f.Power, UnitPower(unit, powerType), st and st.smoothBars)
+    if f.powerTextMode then K.SetPowerText(f.PowerText, unit, powerType, f.powerTextMode) end
 end
 
 -- Incoming heals and absorbs, clipped to the empty part of the health bar (as UnitFrames.lua)
 local function UpdateHealPrediction(f)
     local heal, absorb = f.HealBar, f.AbsorbBar
     if not heal then return end
-    local unit = f.unit
+    local unit = f.fuiUnit
     local max = UnitHealthMax(unit)
     heal:SetMinMaxValues(0, max)
     absorb:SetMinMaxValues(0, max)
@@ -456,12 +491,14 @@ local function UpdateHealPrediction(f)
     if calc and UnitGetDetailedHealPrediction then
         if pcall(UnitGetDetailedHealPrediction, unit, "player", calc) then
             local okH, incoming = pcall(calc.GetIncomingHeals, calc)
-            local okA, absorbs = pcall(calc.GetDamageAbsorbs, calc)
+            local okA, absorbs, clamped = pcall(calc.GetDamageAbsorbs, calc)
             if okH then heal:SetValue(incoming) end
             if okA then absorb:SetValue(absorbs) end
+            if okA then K.SetShieldGlow(f.ShieldGlow, clamped) else K.HideShieldGlow(f.ShieldGlow) end
             return
         end
     end
+    K.HideShieldGlow(f.ShieldGlow)
     pcall(function() heal:SetValue(UnitGetIncomingHeals(unit)) end)
     pcall(function() absorb:SetValue(UnitGetTotalAbsorbs(unit)) end)
 end
@@ -470,7 +507,7 @@ end
 local function UpdateRaidIcon(f)
     local icon = f.RaidIcon
     if not IconShown("raidIcon", f) then icon:Hide() return end
-    local index = GetRaidTargetIndex(f.unit)
+    local index = GetRaidTargetIndex(f.fuiUnit)
     local show
     if not canaccessvalue(index) then show = true else show = index ~= nil and index > 0 end
     if show then SetRaidTargetIconTexture(icon, index) end
@@ -480,10 +517,10 @@ end
 local function UpdateLeader(f)
     local icon = f.LeaderIcon
     if not IconShown("leader", f) then icon:Hide() return end
-    if readable(UnitIsGroupLeader(f.unit)) then
+    if readable(UnitIsGroupLeader(f.fuiUnit)) then
         K.SetIconArt(icon, "UI-HUD-UnitFrame-Player-Group-LeaderIcon", "Interface\\GroupFrame\\UI-Group-LeaderIcon")
         icon:Show()
-    elseif readable(UnitIsGroupAssistant(f.unit)) then
+    elseif readable(UnitIsGroupAssistant(f.fuiUnit)) then
         K.SetIconArt(icon, nil, "Interface\\GroupFrame\\UI-Group-AssistantIcon")
         icon:Show()
     else
@@ -499,10 +536,10 @@ local function UpdateRole(f)
     local util = _G.UnitFrameUtil and _G.UnitFrameUtil.UpdateUnitFrameRoleIcon
     if util then
         f.roleProxy = f.roleProxy or { optionTable = { displayRoleIcon = true } }
-        f.roleProxy.roleIcon, f.roleProxy.unit = icon, f.unit
+        f.roleProxy.roleIcon, f.roleProxy.unit = icon, f.fuiUnit
         if pcall(util, f.roleProxy) then return end
     end
-    local role = readable(UnitGroupRolesAssigned(f.unit))
+    local role = readable(UnitGroupRolesAssigned(f.fuiUnit))
     local atlas = role and ROLE_ATLAS[role]
     if atlas and K.HasAtlas(atlas) then
         icon:SetAtlas(atlas, false)
@@ -518,7 +555,7 @@ local function UpdateReadyCheck(f)
     -- the raid frames keep their own hold
     local hold = readyCheckHold
     if f.ctx then hold = f.ctx.ReadyHold() end
-    local status = readable(GetReadyCheckStatus(f.unit))
+    local status = readable(GetReadyCheckStatus(f.fuiUnit))
     if not status and hold then status = f.lastReady end
     -- a member who never answered was not ready (Blizzard's CompactUnitFrame_FinishReadyCheck)
     if hold and status == "waiting" then status = "notready" end
@@ -531,6 +568,13 @@ local function UpdateReadyCheck(f)
     end
 end
 
+-- Far members often report a phase reason: as on Blizzard's raid frames, the phasing icon only
+-- shows within 250 yards (a distance the client measured)
+local function WithinPhaseDistance(unit)
+    local distance, checked = UnitDistanceSquared(unit)
+    return canaccessvalue(checked) and checked and canaccessvalue(distance) and distance < 62500 or false
+end
+
 local function CenterStatus(unit)
     if C_IncomingSummon and readable(C_IncomingSummon.HasIncomingSummon(unit)) then
         local status = readable(C_IncomingSummon.IncomingSummonStatus(unit))
@@ -540,7 +584,7 @@ local function CenterStatus(unit)
         elseif SS and status == SS.Declined then return "IncomingSummonDeclined" end
     end
     if readable(UnitHasIncomingResurrection(unit)) then return "IncomingResurrection" end
-    if UnitPhaseReason and readable(UnitPhaseReason(unit)) then return "InOtherPhase" end
+    if UnitPhaseReason and readable(UnitPhaseReason(unit)) and WithinPhaseDistance(unit) then return "InOtherPhase" end
     if UnitInOtherParty and readable(UnitInOtherParty(unit)) then return "InPublicGroup" end
     return nil
 end
@@ -548,7 +592,7 @@ end
 local function UpdateStatus(f)
     local icon = f.StatusIcon
     if not IconShown("status", f) then icon:Hide() return end
-    local state = CenterStatus(f.unit)
+    local state = CenterStatus(f.fuiUnit)
     local atlas = state and STATUS_ATLAS[state]
     if atlas and K.HasAtlas(atlas) then
         icon:SetAtlas(atlas, false)
@@ -562,20 +606,55 @@ end
 -- unit is near again (ns.AuraPolicy.UpdateReach). Enemy tiles keep it.
 local function UpdateAuraReach(f)
     if not f.AuraPos or (f.ctx and f.ctx.hostile) then return end
-    ns.AuraPolicy.UpdateReach(f, f.unit)
+    ns.AuraPolicy.UpdateReach(f, f.fuiUnit)
+end
+
+-- The resurrection spell you know, if any: Resurrection, Redemption, Ancestral Spirit, Rebirth
+local RezSpell
+do
+    local ids = { 2006, 7328, 2008, 20484 }
+    RezSpell = function()
+        for _, id in ipairs(ids) do
+            if C_SpellBook.IsSpellKnown(id, Enum.SpellBookSpellBank.Player) then return id end
+        end
+    end
 end
 
 -- Out of range fades the frame (UnitInRange is secret: SetAlphaFromBoolean picks the alpha). The
--- player's own frame and enemy tiles never fade.
+-- player's own frame never fades; enemy tiles (bosses) go by spell range, as the target frame.
 local function UpdateRange(f)
     UpdateAuraReach(f)
+    -- the phasing icon follows the distance, so it is checked with the range (enemy tiles have none)
+    if f.StatusIcon and f.fuiUnit and not (f.ctx and f.ctx.hostile) and not IsEditing() then
+        local near = WithinPhaseDistance(f.fuiUnit)
+        if near ~= f.phaseNear then
+            f.phaseNear = near
+            UpdateStatus(f)
+        end
+    end
+    if f.ctx and f.ctx.hostile and not IsEditing() and K.ApplyRangeAlpha then
+        K.ApplyRangeAlpha(f, f.fuiUnit)
+        return
+    end
     -- raidN can be the player too
-    if f.unit == "player" or (f.ctx and f.ctx.hostile) or IsEditing() or readable(UnitIsUnit(f.unit, "player")) then
+    if f.fuiUnit == "player" or (f.ctx and f.ctx.hostile) or IsEditing() or readable(UnitIsUnit(f.fuiUnit, "player")) then
         f:SetAlpha(1)
         return
     end
+    -- a dead member: the range to their corpse, which is where a rez goes (the ghost may be far off),
+    -- measured with your resurrection spell when you have one
+    if K.IsDead(f.fuiUnit) then
+        local rez = RezSpell()
+        local r = rez and C_Spell.IsSpellInRange(rez, f.fuiUnit)
+        if not canaccessvalue(r) then
+            if f.SetAlphaFromBoolean and pcall(f.SetAlphaFromBoolean, f, r, 1, RANGE_ALPHA) then return end
+        elseif r ~= nil then
+            f:SetAlpha(r and 1 or RANGE_ALPHA)
+            return
+        end
+    end
     -- a range the client could not check is not out of range (as Blizzard's raid frames)
-    local inRange, checkedRange = UnitInRange(f.unit)
+    local inRange, checkedRange = UnitInRange(f.fuiUnit)
     if readable(checkedRange) == false then
         f:SetAlpha(1)
         return
@@ -607,7 +686,7 @@ local function UpdateTarget(f)
         hl.PlateGlow:Hide()
     end
     if IsEditing() then hl:SetAlpha(0) return end
-    local isTarget = UnitIsUnit(f.unit, "target")
+    local isTarget = UnitIsUnit(f.fuiUnit, "target")
     if hl.SetAlphaFromBoolean then
         if not pcall(hl.SetAlphaFromBoolean, hl, isTarget, 1, 0) then hl:SetAlpha(0) end
     else
@@ -619,9 +698,9 @@ end
 local function UpdateThreat(f)
     local status
     if f.ctx and f.ctx.hostile then
-        status = readable(UnitThreatSituation("player", f.unit))
+        status = readable(UnitThreatSituation("player", f.fuiUnit))
     else
-        status = readable(UnitThreatSituation(f.unit))
+        status = readable(UnitThreatSituation(f.fuiUnit))
     end
     -- Forever Style's plate has no border: the ring flashes instead
     if OnPlate(f) then
@@ -643,7 +722,7 @@ local function UpdatePortrait(f)
     -- the ring always holds a portrait
     if f.ringKind and mode == "none" then mode = "3d" end
     if mode == "none" then portrait:Hide() return end
-    local unit = (UnitExists(f.unit) and not IsEditing()) and f.unit or "player"
+    local unit = (UnitExists(f.fuiUnit) and not IsEditing()) and f.fuiUnit or "player"
     local tex = portrait.Tex
     local class
     if mode == "class" then
@@ -666,8 +745,8 @@ local function UpdatePortrait(f)
     portrait:Show()
 end
 
-local function UpdateCast(f)
-    if f.Cast then K.UpdateCastBar(f.Cast, f.Cast.isEnabled()) end
+local function UpdateCast(f, event, by, barID)
+    if f.Cast then K.UpdateCastBar(f.Cast, f.Cast.isEnabled(), event, by, barID) end
 end
 
 local ApplyPreview, HidePreviewExtras   -- section 9
@@ -680,7 +759,7 @@ end
 -- Aura containers only follow UNIT_AURA for their token: when another unit takes it (roster change,
 -- new boss1) the old auras would linger. Rebuild on a new GUID (always when it is secret).
 local function RefreshAurasOnNewUnit(f)
-    if f.AuraPos or f.AuraHighlight then ns.AuraPolicy.UnitChanged(f, f.unit, true) end
+    if f.AuraPos or f.AuraHighlight then ns.AuraPolicy.UnitChanged(f, f.fuiUnit, true) end
 end
 
 local function UpdateAll(f)
@@ -690,7 +769,7 @@ local function UpdateAll(f)
         return
     end
     HidePreviewExtras(f)
-    if not UnitExists(f.unit) then return end
+    if not UnitExists(f.fuiUnit) then return end
     RefreshAurasOnNewUnit(f)
     UpdateName(f)
     UpdateLevel(f)
@@ -713,18 +792,18 @@ end
 local function UpdatePet(p, glide)
     UpdateRange(p)   -- out of range fades it, as the members (full in Edit Mode)
     if IsEditing() then return end
-    if not UnitExists(p.unit) then return end
-    local unit = p.unit
+    if not UnitExists(p.fuiUnit) then return end
+    local unit = p.fuiUnit
     p.Health:SetMinMaxValues(0, UnitHealthMax(unit))
     local st = TS(p)
-    ns.SetBarValue(p.Health, UnitHealth(unit), glide and st and st.smoothBars)
+    ns.SetBarValue(p.Health, UnitHealth(unit), glide and st and st.smoothBars and not UnitIsDead(unit))
     p.Health:SetStatusBarColor(K.GetHealthColor(unit, false))
     p.Name:SetText(SafeName(ns.UnitDisplayName(unit)))
 end
 
 local function UpdatePartyTarget(t)
     if IsEditing() then return end
-    local unit = t.unit
+    local unit = t.fuiUnit
     if not UnitExists(unit) then return end
     t.Health:SetMinMaxValues(0, UnitHealthMax(unit))
     t.Health:SetValue(UnitHealth(unit))
@@ -732,21 +811,58 @@ local function UpdatePartyTarget(t)
     t.Name:SetText(SafeName(ns.UnitDisplayName(unit, "party")))
 end
 
-local function OnMemberEvent(f, event)
+-- Health and heal prediction are drawn at most once per frame per tile: in a raid one unit can get
+-- several health, heal and absorb events in a frame (Blizzard's raid frames batch them the same way).
+-- The flush runs in OnUpdate, before the frame is drawn, and only while something waits.
+-- dirty[f]: 1 heal prediction only, 2 health with glide, 3 health without glide (the colour too);
+-- health is always followed by the prediction (its amounts are clamped by the health missing)
+local dirty, flushing = {}, {}
+local flusher = CreateFrame("Frame")
+local function FlushTiles(self)
+    self:SetScript("OnUpdate", nil)
+    dirty, flushing = flushing, dirty
+    for f, level in pairs(flushing) do
+        if f.fuiUnit and f:IsVisible() and not IsEditing() then
+            if level >= 2 then
+                UpdateHealth(f, level == 2)
+                -- death and release come as health ticks: the power text blanks (or returns) with them
+                local dead = K.IsDead(f.fuiUnit)
+                if dead ~= f.wasDead then
+                    f.wasDead = dead
+                    UpdatePower(f)
+                end
+            end
+            UpdateHealPrediction(f)
+        end
+    end
+    wipe(flushing)
+end
+local function MarkDirty(f, level)
+    local old = dirty[f]
+    if not old then
+        if not next(dirty) then flusher:SetScript("OnUpdate", FlushTiles) end
+        dirty[f] = level
+    elseif level > old then
+        dirty[f] = level
+    end
+end
+
+local function OnMemberEvent(f, event, _, _, _, by, barID)
     -- hidden (solo or in a raid, the holder is): OnShow runs UpdateAll when it comes back
     if IsEditing() or not f:IsVisible() then return end
     if event == "UNIT_HEALTH" then
-        UpdateHealth(f, true)
-        UpdateHealPrediction(f)   -- the amounts are clamped by the health missing
+        MarkDirty(f, 2)
     elseif event == "UNIT_MAXHEALTH" then
-        UpdateHealth(f)
-        UpdateHealPrediction(f)
-    elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER" or event == "UNIT_DISPLAYPOWER" then
+        MarkDirty(f, 3)
+    elseif event == "UNIT_POWER_UPDATE" then
+        UpdatePowerValue(f)
+    elseif event == "UNIT_MAXPOWER" or event == "UNIT_DISPLAYPOWER" then
         UpdatePower(f, event ~= "UNIT_DISPLAYPOWER")
     elseif event == "UNIT_HEAL_PREDICTION" or event == "UNIT_ABSORB_AMOUNT_CHANGED" then
-        UpdateHealPrediction(f)
+        MarkDirty(f, 1)
     elseif event == "UNIT_NAME_UPDATE" then
         UpdateName(f)
+        MarkDirty(f, 3)   -- a far member's class comes with its name: the health colour follows
     elseif event == "UNIT_LEVEL" then
         UpdateLevel(f)
     elseif event == "UNIT_IN_RANGE_UPDATE" then
@@ -758,14 +874,20 @@ local function OnMemberEvent(f, event)
     elseif event == "UNIT_PORTRAIT_UPDATE" or event == "UNIT_MODEL_CHANGED" then
         UpdatePortrait(f)
     elseif event:find("^UNIT_SPELLCAST") then
-        UpdateCast(f)
-    elseif event == "UNIT_FLAGS" or event == "UNIT_FACTION" or event == "UNIT_CONNECTION" then
-        -- bursts at a pull: no aura rebuild for these
+        UpdateCast(f, event, by, barID)
+    elseif event == "UNIT_FLAGS" then
+        -- every member fires it entering and leaving combat: one batched health repaint (the colour
+        -- for charm and tapped, Dead and Ghost with the power text after it)
+        MarkDirty(f, 3)
+    elseif event == "UNIT_FACTION" or event == "UNIT_CONNECTION" then
+        -- no aura rebuild for these
         UpdateHealth(f)
         UpdatePower(f)
         UpdateStatus(f)
         UpdateLevel(f)
         UpdateRing(f)
+        -- no range event comes for a disconnect or a return
+        if event == "UNIT_CONNECTION" then UpdateRange(f) end
     else
         UpdateAll(f)
     end
@@ -790,7 +912,7 @@ local function PrecreateAuraContainers(f)
     for _, pos in ipairs(f.auraPositions or AURA_POSITIONS) do
         local ok, container = pcall(CreateFrame, "AuraContainer", nil, f, AURA_CONTAINER_TEMPLATE)
         if ok and container then
-            pcall(container.SetUnit, container, f.unit)
+            pcall(container.SetUnit, container, f.fuiUnit or "none")
             if policy then pcall(container.SetAuraProcessingPolicy, container, policy.ProcessAura, {}) end
             container:SetFrameLevel(f:GetFrameLevel() + 6)
             container:Hide()
@@ -800,7 +922,7 @@ local function PrecreateAuraContainers(f)
     -- the dispel highlight, kept out of Edit Mode's sample data (ApplyPreview draws its own)
     local okH, hl = pcall(CreateFrame, "AuraContainer", nil, f, AURA_CONTAINER_TEMPLATE)
     if okH and hl then
-        pcall(hl.SetUnit, hl, f.unit)
+        pcall(hl.SetUnit, hl, f.fuiUnit or "none")
         hl:SetSize(1, 1)
         hl:SetPoint("CENTER", f, "CENTER")
         hl:SetFrameLevel(f:GetFrameLevel() + 3)
@@ -811,6 +933,13 @@ end
 -- Aura buttons inside the frame pass clicks through to it and keep their tooltip
 local function PassClicks(button)
     if button.SetPropagateMouseClicks then pcall(button.SetPropagateMouseClicks, button, true) end
+end
+
+-- Party and raid tiles show no aura tooltips: hovering an icon falls through to the tile (its unit
+-- tooltip, mouseover healing). Clicks still reach the icon. Boss tiles keep theirs.
+local function NoAuraTooltip(f, button)
+    if f and f.ctx and f.ctx.hostile then return end
+    if button.SetMouseMotionEnabled then pcall(button.SetMouseMotionEnabled, button, false) end
 end
 
 -- A dispel type's symbol, drawn by Blizzard from the aura
@@ -828,6 +957,7 @@ local function InitDispelIcon(button, size, inside)
         })
     end
     if inside then PassClicks(button) end
+    NoAuraTooltip(nil, button)   -- (dispel icons: party and raid tiles only)
 end
 
 -- inside the frame: no timer, whatever the Aura Timer setting (it would cover the bars and names)
@@ -910,6 +1040,70 @@ local function PlaceAuraContainer(f, pos, container, size, perRow)
     pcall(container.SetFlowLayoutPadding, container, 0, 0, 0, 0)
 end
 
+-- Dispel icons alone in their place: one icon per type you can dispel, as Forever's raid frames show
+-- them (a group repeats a type, and three Magic debuffs push the Poison symbol out). A slot per type,
+-- one button each, filtered by type in Blizzard's code (the type is never read here), in a fixed cell
+-- each in the order Magic, Curse, Disease, Poison. No class dispels more than three types. Edit Mode
+-- keeps the group: slots get no sample icons.
+local DISPEL_SLOT_TYPES = {
+    PRIEST = { "Magic", "Disease" }, PALADIN = { "Magic", "Disease", "Poison" }, SHAMAN = { "Disease", "Poison" },
+    DRUID = { "Curse", "Poison" }, MAGE = { "Curse" }, WARLOCK = { "Magic" },
+}
+
+local function DisableDispelSlots(container, entry)
+    for key in pairs(entry.dispelSlots or {}) do pcall(container.SetAuraSlotEnabled, container, key, false) end
+end
+
+-- true when the place shows as slots (its groups then step aside)
+local function ConfigureDispelSlots(f, pos, entry, container, lanes, size, perRow, inside)
+    local lane = lanes[1]
+    local processed = AuraUtil and AuraUtil.AuraUpdateChangedType
+    local _, class = UnitClass("player")
+    local types = DISPEL_SLOT_TYPES[class]
+    if #lanes ~= 1 or lane.kind ~= "dispels" or IsEditing() or not types or not processed or not container.AddAuraSlot then
+        DisableDispelSlots(container, entry)
+        return false
+    end
+    ns.AuraGroups.Finish(container, entry)
+    entry.dispelSlots = entry.dispelSlots or {}
+    local point, _, _, _, _, growH, growV = AuraAnchor(f, pos)
+    -- the cells grow from where the container meets its place (its own size doesn't matter then)
+    local corner = (point == "LEFT" or point == "RIGHT") and ("TOP" .. point) or point
+    local sx = growH == AnchorUtil.FlowDirection.Left and -1 or 1
+    local sy = growV == AnchorUtil.FlowDirection.Up and 1 or -1
+    local step = size + AURA_SPACING
+    local used = {}
+    for i, dtype in ipairs(types) do
+        local key = "dispel" .. dtype
+        used[key] = true
+        local button = entry.dispelSlots[key]
+        if button then
+            pcall(container.SetAuraSlotEnabled, container, key, true)
+            pcall(InitDispelIcon, button, size, inside)
+        else
+            local ok, frame = pcall(container.AddAuraSlot, container, key, lane.filter, {
+                candidateFilters = { processedAuraType = processed.Dispel, includeDispelTypes = { [dtype] = true } },
+                initializeFrame = function(b) InitDispelIcon(b, size, inside) end,
+            })
+            if ok and frame then
+                entry.dispelSlots[key] = frame
+                button = frame
+            end
+        end
+        if button then
+            local col, row = (i - 1) % perRow, math_floor((i - 1) / perRow)
+            pcall(function()
+                button:ClearAllPoints()
+                button:SetPoint(corner, container, point, sx * col * step, sy * row * step)
+            end)
+        end
+    end
+    for key in pairs(entry.dispelSlots) do
+        if not used[key] then pcall(container.SetAuraSlotEnabled, container, key, false) end
+    end
+    return true
+end
+
 local function ConfigurePosition(f, pos, lanes)
     local entry = f.AuraPos and f.AuraPos[pos]
     if not entry then return end
@@ -917,6 +1111,7 @@ local function ConfigurePosition(f, pos, lanes)
     -- groups are reused per lane and look (ns.AuraGroups); the lanes left out turn off
     ns.AuraGroups.Begin(entry)
     if #lanes == 0 then
+        DisableDispelSlots(container, entry)
         ns.AuraGroups.Finish(container, entry)
         pcall(container.SetEnabled, container, false)
         container:Hide()
@@ -932,16 +1127,18 @@ local function ConfigurePosition(f, pos, lanes)
     local inside = portrait or pos:find("^INSIDE") ~= nil
     local showTimer = not inside and UFAura("auraTimer", "none") ~= "none"
     local font = db and db.font
-    local unit = f.unit
+    local unit = f.fuiUnit
     -- Aura Ordering: the buffs and debuffs rows (dispel icons keep Blizzard's)
     local order = TS(f)
     local sortMethod, sortDirection = ns.AuraOrder.Options(order and order.auraSort, order and order.auraReverse, order and order.auraMineFirst)
-    for index, lane in ipairs(lanes) do
+    local slotted = ConfigureDispelSlots(f, pos, entry, container, lanes, size, perRow, inside)
+    for index, lane in ipairs(slotted and {} or lanes) do
         local isDebuff, kind = lane.isDebuff, lane.kind
-        local sorted = lane.key == "buffs" or lane.key == "debuffs"
+        local sorted = lane.key == "buffs" or lane.key == "debuffs" or lane.key == "purge"
         -- each kind at its own size (the portrait grid keeps its cell)
         local size = portrait and size or ns.AuraSize(st, isDebuff, 18)
         local look = kind ~= "dispels" and LaneLook(size, isDebuff, inside) or nil
+        if look and lane.stealable then look.stealable = true end   -- Highlight Purgeable Buffs (boss tiles)
         local lookSig = ns.AuraGroups.Sig(kind, size, isDebuff, inside, font, showTimer, look)
         local key, err = ns.AuraGroups.Add(container, entry, lane.key, lookSig, lane.filter, {
             maxFrameCount = kind == "dispels" and not portrait and math_min(max, 3) or max,
@@ -953,6 +1150,7 @@ local function ConfigurePosition(f, pos, lanes)
                 else
                     K.InitAuraButton(button, size, isDebuff, unit, font, showTimer, look)
                     if inside then PassClicks(button) end
+                    NoAuraTooltip(f, button)
                 end
             end,
             layout = {
@@ -961,7 +1159,7 @@ local function ConfigurePosition(f, pos, lanes)
                 groupSpacing = AURA_SPACING, groupLineSpacing = AURA_SPACING,
                 layoutIndex = index,
                 -- each kind starts a row of its own
-                forceNewLine = index > 1,
+                forceNewLine = index > 1 and not lane.joinPrevious,
             },
         })
         if not key then
@@ -992,19 +1190,21 @@ local function ConfigureAuras(f)
     if not f.AuraPos then return end
     local st = TS(f)
     if not st then return end
-    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.buffSize, st.debuffSize, st.width, st.height, st.powerHeight, st.portrait, st.ringSize, (DispelGrid(f)), f.ringKind, AuraGrid(st), UFAura("auraStyle", "square"),
-        UFAura("auraTimer", "none"), ns.AuraGroups.Sig(UFAura("auraFont")), ns.AuraGroups.Sig(UFAura("auraCountFont")), ns.AuraGroups.Sig(UFAura("font")), st.castbar, st.castHeight, OnPlate(f),
-        st.hideBuffs, IsEditing(), st.onlyMyDebuffs, st.onlyMyBuffs, st.dispellableOnly, st.auraSort, st.auraReverse, st.auraMineFirst)
+    -- what each lane shows, and on which rules, comes from ns.AuraPolicy (debuffs first, nearest the
+    -- frame); the places and sizes are this module's
+    local hostile = f.ctx and f.ctx.hostile or false
+    local lanes = ns.AuraPolicy.TileLanes(st, { hostile = hostile, dispelPlace = DispelPlace(f, st), editing = IsEditing() })
+    -- rebuilt only when what shapes the groups changes: the places and sizes, plus the lanes and a
+    -- look as computed, so a new aura rule or look setting can't be missed here
+    local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.buffSize, st.debuffSize, st.width, st.height, st.powerHeight, st.portrait, st.ringSize, (DispelGrid(f)), f.ringKind, AuraGrid(st),
+        ns.AuraGroups.Sig(UFAura("font")), st.castbar, st.castHeight, OnPlate(f), IsEditing(), st.auraSort, st.auraReverse, st.auraMineFirst,
+        ns.AuraGroups.Sig(lanes), ns.AuraGroups.Sig(LaneLook(10, false, false)))
     if f.auraSignature == sig then return end
     f.auraSignature = sig
     local perPos = {}
     for _, pos in ipairs(AURA_POSITIONS) do perPos[pos] = {} end
     -- (on the plate the bars are too slim for auras: an inside place shows nothing)
     local plate = OnPlate(f)
-    -- what each lane shows, and on which rules, comes from ns.AuraPolicy (debuffs first, nearest the
-    -- frame); the places and sizes are this module's
-    local hostile = f.ctx and f.ctx.hostile or false
-    local lanes = ns.AuraPolicy.TileLanes(st, { hostile = hostile, dispelPlace = DispelPlace(f, st), editing = IsEditing() })
     for _, lane in ipairs(lanes) do
         local pos = lane.place
         if pos and perPos[pos] and not (plate and IsInsidePlace(pos)) then perPos[pos][#perPos[pos] + 1] = lane end
@@ -1023,7 +1223,7 @@ local function ConfigureAuras(f)
     ns.AuraPolicy.Begin(f)
     for _, pos in ipairs(AURA_POSITIONS) do ConfigurePosition(f, pos, perPos[pos]) end
     -- the groups were just given their filters: reach applies on top (enemy tiles: never)
-    if not hostile then ns.AuraPolicy.Done(f, f.unit) end
+    if not hostile then ns.AuraPolicy.Done(f, f.fuiUnit) end
 end
 
 -- The dispel highlight: a slot in its own container, showing the first aura of its filter (never given
@@ -1140,7 +1340,7 @@ LayoutBars = function(f)
         if f.PortraitDivider then f.PortraitDivider:Hide() end
         ns.UFRing.LayoutPlate(f)
         f.Power:Show()
-        f.PowerText:SetShown(st.powerText and true or false)
+        f.PowerText:SetShown(TilePowerMode(f, st) ~= "none")
         return
     end
     local PADDING = K.INSET
@@ -1191,7 +1391,8 @@ LayoutBars = function(f)
         f.Separator:Hide()
         health:SetPoint("BOTTOM" .. far, f, "BOTTOM" .. far, -sx * PADDING, PADDING)
     end
-    f.PowerText:SetShown(not RaidTile(f) and st.powerText and showPower and powerHeight >= 10)
+    -- (a raid tile with a slim bar shows it at the health bar's foot: LayoutTexts)
+    f.PowerText:SetShown(TilePowerMode(f, st) ~= "none" and showPower and (powerHeight >= 10 or RaidTile(f)))
 end
 
 local function LayoutHealClip(f)
@@ -1200,6 +1401,9 @@ local function LayoutHealClip(f)
     local health, clip, heal, absorb = f.Health, f.HealClip, f.HealBar, f.AbsorbBar
     local fill = health:GetStatusBarTexture()
     local width = (st.width or 200) - 2 * K.INSET - PortraitSpace(f)
+    -- Forever Style's plate: the bar's real length (UnitFramesRing PlaceBar), as the unit frames use
+    local inset = health.FlareUI_PlateInset
+    if inset then width = inset.length end
     clip:ClearAllPoints()
     heal:ClearAllPoints()
     absorb:ClearAllPoints()
@@ -1212,13 +1416,14 @@ local function LayoutHealClip(f)
     -- shields grow back from the end of the bar, so they show at full health too
     absorb:SetReverseFill(not mirror)
     -- incoming heals in the tile's own bar texture
-    heal:SetStatusBarTexture(K.GetBarTexture(st.texture, mirror))
+    heal:SetStatusBarTexture(K.GetBarTexture(inset and "FlareUI Forever" or st.texture, mirror))
     clip:SetPoint("TOP" .. near, fill, "TOP" .. far, 0, 0)
     clip:SetPoint("BOTTOM" .. far, health, "BOTTOM" .. far, 0, 0)
     heal:SetPoint("TOP" .. near, clip, "TOP" .. near, 0, 0)
     heal:SetPoint("BOTTOM" .. near, clip, "BOTTOM" .. near, 0, 0)
     absorb:SetPoint("TOP" .. far, clip, "TOP" .. far, 0, 0)
     absorb:SetPoint("BOTTOM" .. far, clip, "BOTTOM" .. far, 0, 0)
+    K.PlaceShieldGlow(f.ShieldGlow, health, mirror)
     local base = clip:GetFrameLevel()
     heal:SetFrameLevel(base + 1)
     absorb:SetFrameLevel(base + 2)
@@ -1265,6 +1470,13 @@ local function LayoutTexts(f)
         f.Name:SetPoint("RIGHT", health, "RIGHT", -T, 0)
         f.HealthText:SetJustifyH("CENTER")
         f.HealthText:SetPoint("CENTER", health, "CENTER", 0, -4)
+        -- Power Text: in the power bar when it has the room, else at the health bar's foot
+        f.PowerText:SetJustifyH("CENTER")
+        if (st.powerHeight or 0) >= 10 then
+            f.PowerText:SetPoint("CENTER", power, "CENTER", 0, 0)
+        else
+            f.PowerText:SetPoint("BOTTOM", health, "BOTTOM", 0, 2)
+        end
     else
         -- level and name from the near side, the numbers on the far side (swapped when mirrored)
         local near, far, sx = Sides(f)
@@ -1306,7 +1518,9 @@ end
 local function LayoutIcons(f)
     local st, raid = TS(f), RaidTile(f)
     local health = f.Health
-    local healthHeight = (st.height or 46) - 2 * K.INSET - (WantsPower(f) and (st.powerHeight or 0) or 0)
+    local wantsPower = f.powerShown
+    if wantsPower == nil then wantsPower = WantsPower(f) end
+    local healthHeight = (st.height or 46) - 2 * K.INSET - (wantsPower and (st.powerHeight or 0) or 0)
     local mid = math_max(12, math_min(24, healthHeight * 0.6))
     if raid then
         PlaceIcon(f, "role", f.RoleIcon, 12, 12, "TOPLEFT", health, "TOPLEFT", 2, -2)
@@ -1608,7 +1822,14 @@ local function HasPet(i)
         local sample = PREVIEW[i - (party.showPlayer and 0 or 1) + 1]
         return sample and sample.pet and true or false
     end
-    return UnitExists(PET_UNITS[i]) and true or false
+    if UnitExists(PET_UNITS[i]) then return true end
+    -- a pet called mid-fight shows at once, but the frames can't move then: room is kept under the
+    -- classes with pets (and under anyone whose class can't be read)
+    local unit = SLOT_UNITS[i]
+    if not UnitExists(unit) then return false end
+    local _, class = UnitClass(unit)
+    if not canaccessvalue(class) then return true end
+    return class == "HUNTER" or class == "WARLOCK"
 end
 
 local function FirstSlot()
@@ -1721,7 +1942,9 @@ local function ApplyVisibility()
         UnregisterStateDriver(holder, "visibility")
         holder:Show()
     else
-        RegisterStateDriver(holder, "visibility", "[group:raid] hide; [group:party] show; hide")
+        -- [group:party] can stay false through a fight after joining one (party1 already exists):
+        -- the unit checks cover it, and raid1 hides it in a raid the same way
+        RegisterStateDriver(holder, "visibility", "[group:raid] hide; [@raid1,exists] hide; [group:party] show; [@party1,exists] show; hide")
     end
     for i = 0, MAX_MEMBERS do
         local f, p = members[i], pets[i]
@@ -1965,20 +2188,15 @@ ApplyPreview = function(f)
         f.Health:SetStatusBarColor(ns.HEALTH_GREEN[1], ns.HEALTH_GREEN[2], ns.HEALTH_GREEN[3])
     end
     local mode = st.healthText or "percent"
+    f.HealthText:SetAlpha(1)
     if data.dead then
         f.HealthText:SetText(K.DEAD_TEXT)
-    elseif mode == "percent" then
-        f.HealthText:SetFormattedText("%.0f%%", (data.health or 1) * 100)
-    elseif mode == "value" then
-        f.HealthText:SetText(AbbreviateNumbers(math_floor((data.health or 1) * 24000)))
-    elseif mode == "both" then
-        f.HealthText:SetFormattedText("%s | %.0f%%", AbbreviateNumbers(math_floor((data.health or 1) * 24000)), (data.health or 1) * 100)
-    elseif mode == "valuemax" then
-        f.HealthText:SetFormattedText("%s | %s", AbbreviateNumbers(math_floor((data.health or 1) * 24000)), AbbreviateNumbers(24000))
+    elseif mode == "lost" then
+        K.SetSampleHealthLost(f.HealthText, data.health or 1)
     else
-        f.HealthText:SetText("")
+        K.FormatBarText(f.HealthText, mode, math_floor((data.health or 1) * 24000), (data.health or 1) * 100, 24000)
     end
-    f.powerShown = WantsPower(f)
+    f.powerShown = WantsPower(f, class)
     LayoutBars(f)
     f.Power:SetMinMaxValues(0, 1)
     f.Power:SetValue(data.power or 1)
@@ -1990,8 +2208,9 @@ ApplyPreview = function(f)
         local p = PREVIEW_POWER_RGB[powerToken]
         f.Power:SetStatusBarColor(p[1], p[2], p[3])
     end
-    f.PowerText:SetText(not RaidTile(f) and st.powerText and AbbreviateNumbers(math_floor((data.power or 1) * 9000)) or "")
-    if f.HealBar then f.HealBar:SetValue(0); f.AbsorbBar:SetValue(0) end
+    local ptMode = TilePowerMode(f, st)
+    K.FormatBarText(f.PowerText, ptMode, math_floor((data.power or 1) * 9000), math_floor((data.power or 1) * 100), 9000)
+    if f.HealBar then f.HealBar:SetValue(0); f.AbsorbBar:SetValue(0); K.HideShieldGlow(f.ShieldGlow) end
 
     -- the icons at their size again (Blizzard's role routine narrows the role icon to 1 px when the
     -- unit has no role)
@@ -2065,9 +2284,9 @@ end
 --------------------------------------------------
 local function OnEnter(f)
     f.Highlight:Show()
-    if GameTooltip:IsForbidden() or IsEditing() or not f.unit then return end
+    if GameTooltip:IsForbidden() or IsEditing() or not f.fuiUnit then return end
     GameTooltip_SetDefaultAnchor(GameTooltip, f)
-    GameTooltip:SetUnit(f.unit)
+    GameTooltip:SetUnit(f.fuiUnit)
     GameTooltip:Show()
 end
 
@@ -2078,16 +2297,17 @@ end
 
 local function SecureUnitButton(name, unit)
     local f = CreateFrame("Button", name, holder, "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate")
-    f.unit = unit
+    f.fuiUnit = unit
     f:SetAttribute("unit", unit)
     f:SetAttribute("*type1", "target")
     f:SetAttribute("*type2", "togglemenu")
     f:RegisterForClicks("AnyUp")
     if type(f.SetRolesets) == "function" then pcall(f.SetRolesets, f, "unitFrames") end
-    _G.ClickCastFrames = _G.ClickCastFrames or {}
-    _G.ClickCastFrames[f] = true
     f:SetScript("OnEnter", OnEnter)
     f:SetScript("OnLeave", OnLeave)
+    -- after the scripts: a click-cast addon wraps OnEnter / OnLeave as it registers the frame
+    _G.ClickCastFrames = _G.ClickCastFrames or {}
+    _G.ClickCastFrames[f] = true
     return f
 end
 
@@ -2096,9 +2316,21 @@ local MEMBER_UNIT_EVENTS = {
     "UNIT_POWER_UPDATE", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER",
     "UNIT_NAME_UPDATE", "UNIT_LEVEL", "UNIT_FACTION", "UNIT_CONNECTION", "UNIT_FLAGS",
     "UNIT_HEAL_PREDICTION", "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_THREAT_SITUATION_UPDATE",
-    "UNIT_IN_RANGE_UPDATE", "UNIT_PHASE", "UNIT_OTHER_PARTY_CHANGED",
+    "UNIT_PHASE", "UNIT_OTHER_PARTY_CHANGED",
     "UNIT_PORTRAIT_UPDATE", "UNIT_MODEL_CHANGED",
 }
+
+-- UNIT_IN_RANGE_UPDATE only while the tile shows, and never on enemy tiles (they don't fade): the
+-- client does extra work for every frame registered for it, as Blizzard's raid frames note
+local function SetRangeEvent(f, on)
+    if on and f.fuiUnit and not (f.ctx and f.ctx.hostile) then
+        pcall(f.RegisterUnitEvent, f, "UNIT_IN_RANGE_UPDATE", f.fuiUnit)
+    else
+        pcall(f.UnregisterEvent, f, "UNIT_IN_RANGE_UPDATE")
+    end
+end
+local function RangeEventOn(f) SetRangeEvent(f, true) end
+local function RangeEventOff(f) SetRangeEvent(f, false) end
 
 -- Builds a tile on a unit button: bars, texts, icons, highlights, heal overlays, auras and events.
 -- f.ctx (set first) gives it an owner of its own; f.noAuras leaves out the aura containers (samples).
@@ -2183,6 +2415,7 @@ local function BuildTile(f, unit)
     absorb:SetMinMaxValues(0, 1)
     absorb:SetValue(0)
     f.HealClip, f.HealBar, f.AbsorbBar = clip, heal, absorb
+    f.ShieldGlow = K.CreateShieldGlow(f.Health, clip)
     if CreateUnitHealPredictionCalculator then
         local ok, calc = pcall(CreateUnitHealPredictionCalculator)
         if ok and calc then f.HealCalc = calc end
@@ -2200,18 +2433,23 @@ local function BuildTile(f, unit)
         for _, event in ipairs(MEMBER_UNIT_EVENTS) do pcall(f.RegisterUnitEvent, f, event, unit) end
         if f.Cast then for _, event in ipairs(K.CAST_EVENTS) do pcall(f.RegisterUnitEvent, f, event, unit) end end
     end
+    f:HookScript("OnShow", RangeEventOn)
+    f:HookScript("OnHide", RangeEventOff)
+    if f:IsVisible() then RangeEventOn(f) end
     f:HookScript("OnShow", UpdateAll)
 end
 
 -- A raid header hands its tiles a new unit (in combat too: no protected calls here)
 local function SetTileUnit(f, unit)
-    if f.unit == unit then return end
-    f.unit = unit
+    if f.fuiUnit == unit then return end
+    f.fuiUnit = unit
+    f.unitSetAt = GetTime()   -- drawn in full now (or on its OnShow): the roster pass can skip it
     for _, event in ipairs(MEMBER_UNIT_EVENTS) do pcall(f.UnregisterEvent, f, event) end
     if unit then
         for _, event in ipairs(MEMBER_UNIT_EVENTS) do pcall(f.RegisterUnitEvent, f, event, unit) end
     end
-    local function Retarget(container) pcall(container.SetUnit, container, unit) end
+    SetRangeEvent(f, f:IsVisible())
+    local function Retarget(container) pcall(container.SetUnit, container, unit or "none") end   -- no unit: the containers' own null token
     if f.AuraPos then for _, entry in pairs(f.AuraPos) do Retarget(entry.container) end end
     if f.AuraHighlight then Retarget(f.AuraHighlight.container) end
     if unit and f:IsVisible() then UpdateAll(f) end
@@ -2251,9 +2489,12 @@ local function CreatePet(index)
         if not self:IsVisible() then return end
         if event == "UNIT_IN_RANGE_UPDATE" then UpdateRange(self) else UpdatePet(self, true) end
     end)
-    for _, event in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_NAME_UPDATE", "UNIT_CONNECTION", "UNIT_IN_RANGE_UPDATE" }) do
-        pcall(p.RegisterUnitEvent, p, event, p.unit)
+    for _, event in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_NAME_UPDATE", "UNIT_CONNECTION" }) do
+        pcall(p.RegisterUnitEvent, p, event, p.fuiUnit)
     end
+    p:HookScript("OnShow", RangeEventOn)
+    p:HookScript("OnHide", RangeEventOff)
+    if p:IsVisible() then RangeEventOn(p) end
     p:HookScript("OnShow", function(self) UpdatePet(self) end)
     LEM:AddSelectionArea(p)
     pets[index] = p
@@ -2465,7 +2706,8 @@ local function BuildSettings()
           end,
           set = setS("portrait"), hidden = classicOnly },
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = getS("healthText"), set = setS("healthText") },
-        { name = L["Power Text"], kind = LEM.SettingType.Checkbox, default = D.powerText or false, get = getS("powerText"), set = setS("powerText"), hidden = classicOnly },
+        { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "value", values = K.POWER_TEXT_MODES,
+          get = function() local st = S(); return K.PowerTextMode(st and st.powerText) end, set = setS("powerText"), hidden = classicOnly },
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = getS("showLevel"), set = setS("showLevel") },
     })
 
@@ -2498,7 +2740,6 @@ local function BuildSettings()
         { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildAbsorbValues(),
           get = getS("absorbTexture"), set = setS("absorbTexture"),
           desc = L["The texture of the shield (absorb) over the health bar."] },
-        K.ClassColorSetting(function() return ns.ClassColorsOn(S()) end, setS("classColor")),
         (function()
             local item = K.BgOpacitySetting(K.BAR_BG_OPACITY,
                 function() local v = getS("bgOpacity")(); if v == nil then return K.BAR_BG_OPACITY end; return v end,
@@ -2506,6 +2747,7 @@ local function BuildSettings()
             item.hidden = onPlate
             return item
         end)(),
+        K.ClassColorSetting(function() return ns.ClassColorsOn(S()) end, setS("classColor")),
         K.SmoothBarsSetting(getS("smoothBars"), setS("smoothBars")),
     })
 
@@ -2515,6 +2757,10 @@ local function BuildSettings()
           set = function(layoutName, value) setS("castbar")(layoutName, value); LEM:RefreshFrameSettings(holder) end },
         { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
           get = getS("castTexture"), set = setS("castTexture"), hidden = noCast, },
+        { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
+          get = getS("castBorderTexture"), set = setS("castBorderTexture"),
+          hidden = function() return noCast() or K.NoBorderOptions() end,
+          desc = L["Frame Border uses the frame's own border."] },
         { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight, minValue = 8, maxValue = 30, valueStep = 1,
           get = getS("castHeight"), set = setS("castHeight"), hidden = noCast },
         { name = L["Hide Icon"], kind = LEM.SettingType.Checkbox, default = false,
@@ -2527,10 +2773,6 @@ local function BuildSettings()
           set = function(layoutName, value) setS("castTimer")(layoutName, not value) end,
           hidden = noCast,
           desc = L["No time left at the right end of the bar."] },
-        { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
-          get = getS("castBorderTexture"), set = setS("castBorderTexture"),
-          hidden = function() return noCast() or K.NoBorderOptions() end,
-          desc = L["Frame Border uses the frame's own border."] },
     })
 
     Section("Auras", {
@@ -2555,12 +2797,12 @@ local function BuildSettings()
           desc = L["Only the buffs you cast (your heals over time, your blessings). Off: everyone's buffs."] },
         { name = L["Dispellable Debuffs Only"], kind = LEM.SettingType.Checkbox, default = false,
           get = function() return getS("dispellableOnly")() and true or false end, set = setS("dispellableOnly"),
-          desc = L["Only the debuffs you can dispel."] },
-        -- up to four dispel icons, on the portrait (or the health bar's middle)
+          desc = L["Only the debuffs you can dispel, plus boss debuffs and other important ones, as on Blizzard's raid frames."] },
+        -- a dispel icon per type you can dispel, on the portrait (or the health bar's middle)
         { name = L["Dispel Icons"], kind = LEM.SettingType.Checkbox, default = D.dispels ~= "OFF",
           get = function() local st = S(); local v = st and st.dispels; if v == nil then v = D.dispels end; return v ~= "OFF" end,
           set = function(_, value) setS("dispels")(nil, value and "PORTRAIT" or "OFF") end,
-          desc = L["The debuffs you can dispel, up to four, two to a row in the middle of the portrait (or of the health bar without one)."] },
+          desc = L["The symbol of each debuff type you can dispel, two to a row in the middle of the portrait (or of the health bar without one)."] },
     })
     Section("Aura Ordering", ns.AuraOrder.Items(getS, setS))
 
@@ -2687,7 +2929,8 @@ function PF:ShouldLoad()
     return db and db.enabled and db.party and db.party.enabled and true or false
 end
 
--- Range has no event for every change; frames in a group re-check twice a second
+-- Range comes from UNIT_IN_RANGE_UPDATE; every second the shown frames re-check it (in case an event
+-- was missed) and their aura reach, which has no event
 local rangeTicker
 local function StartRangeTicker()
     if rangeTicker then return end
@@ -2755,6 +2998,8 @@ function PF:OnGlobalEvent(event, ...)
                 UpdateStatus(f)
             elseif event == "PARTY_LEADER_CHANGED" then
                 UpdateLeader(f)
+            elseif event == "PORTRAITS_UPDATED" then
+                UpdatePortrait(f)
             elseif event == "PLAYER_ROLES_ASSIGNED" then
                 UpdateRole(f)
                 UpdatePower(f)
@@ -2774,7 +3019,7 @@ local GLOBAL_EVENTS = {
     "GROUP_ROSTER_UPDATE", "PARTY_LEADER_CHANGED", "RAID_TARGET_UPDATE", "PLAYER_TARGET_CHANGED",
     "PLAYER_ROLES_ASSIGNED", "READY_CHECK", "READY_CHECK_CONFIRM", "READY_CHECK_FINISHED",
     "INCOMING_SUMMON_CHANGED", "INCOMING_RESURRECT_CHANGED", "PLAYER_ENTERING_WORLD", "UNIT_PET",
-    "PLAYER_REGEN_ENABLED",
+    "PLAYER_REGEN_ENABLED", "PORTRAITS_UPDATED",
 }
 
 function PF:Init()
@@ -2827,19 +3072,22 @@ function PF:Init()
     for _, event in ipairs(GLOBAL_EVENTS) do self:RegisterEvent(event, "OnGlobalEvent") end
 
     LEM:RegisterCallback("layout", function(layoutName) ApplyPosition(layoutName) end)
-    LEM:RegisterCallback("enter", function()
+    local function ShowPreview()
         ApplyVisibility()
         LayoutHolder()   -- the sample pets take their room
         -- Hide Buffs is skipped in Edit Mode (samples have no duration): not protected, fine in combat
         for i = 0, MAX_MEMBERS do ConfigureAuras(members[i]) end
         SetAuraPreview(true)
         for i = 0, MAX_MEMBERS do UpdateAll(members[i]) end
-    end)
-    LEM:RegisterCallback("exit", function()
+    end
+    local function EndPreview()
         ApplyVisibility()
         SetAuraPreview(false)
         Refresh()
-    end)
+    end
+    LEM:RegisterCallback("enter", ShowPreview)
+    LEM:RegisterCallback("exit", EndPreview)
+    ns.OnEditFight(function() if IsEditing() then ShowPreview() else EndPreview() end end)
 
     StartRangeTicker()
     Refresh()

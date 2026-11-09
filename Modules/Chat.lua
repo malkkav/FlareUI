@@ -131,13 +131,30 @@ local function CachedDate(fmt, t)
     return s
 end
 
+-- Blizzard's timestamp setting, read once and again only when it changes (not on every line)
+local stampFormats = {}
+local function StampFormats()
+    if not stampFormats.read then
+        stampFormats.read = true
+        stampFormats.blizzard = ChatFrameUtil.GetTimestampFormat and ChatFrameUtil.GetTimestampFormat()
+        stampFormats.cvar = C_CVar.GetCVar("showTimestamps")
+        if not stampFormats.watched and CVarCallbackRegistry and CVarCallbackRegistry.RegisterCallback then
+            stampFormats.watched = true
+            pcall(CVarCallbackRegistry.RegisterCallback, CVarCallbackRegistry, "showTimestamps", function()
+                stampFormats.read = nil
+            end, stampFormats)
+        end
+    end
+    return stampFormats.blizzard, stampFormats.cvar
+end
+
 -- Better Timestamps: Blizzard's timestamp in FlareUI's colour, or one added where it has none
-local function GetTimestamp()
-    local format = C_CVar.GetCVar("showTimestamps")
-    if format == "none" then format = "%H:%M" end
+local function GetTimestamp(at)
+    local _, format = StampFormats()
+    if not format or format == "none" then format = "%H:%M" end
 
     -- Blizzard's formats end in a space, which belongs outside the brackets
-    local timeStr = string_gsub(CachedDate(format, time()), "%s+$", "")
+    local timeStr = string_gsub(CachedDate(format, at or time()), "%s+$", "")
     return string_format("%s<%s>|r ", TIMESTAMP_COLOR, timeStr)
 end
 
@@ -225,6 +242,44 @@ local function UpdateScrollToBottomVisibility(chatFrame)
     if not btn or chatFrame:IsForbidden() then return end
     local shown = (chatFrame.GetScrollOffset and chatFrame:GetScrollOffset() or 0) ~= 0
     if btn:IsShown() ~= shown then btn:SetShown(shown) end
+end
+
+-- Copy Chat Button: a faint note icon in the window's top right corner opens Copy Chat for that
+-- window; full strength and bronze while pointed at
+local COPY_ICON = "Interface\\Buttons\\UI-GuildButton-PublicNote-Up"
+local COPY_ALPHA = 0.35
+local COPY_HOVER = { 1.00, 0.78, 0.46 }   -- bright bronze
+local function UpdateCopyButton(chatFrame, db)
+    if not chatFrame or chatFrame:IsForbidden() then return end
+    local btn = chatFrame.FlareUI_CopyButton
+    if not db.copyButton then
+        if btn then btn:Hide() end
+        return
+    end
+    if not btn then
+        btn = CreateFrame("Button", nil, chatFrame)
+        btn:SetSize(18, 18)
+        btn:SetPoint("TOPRIGHT", chatFrame, "TOPRIGHT", -2, -2)
+        btn:SetNormalTexture(COPY_ICON)
+        btn:SetAlpha(COPY_ALPHA)
+        btn:SetScript("OnEnter", function(self)
+            self:SetAlpha(1)
+            local icon = self:GetNormalTexture()
+            icon:SetDesaturated(true)
+            icon:SetVertexColor(COPY_HOVER[1], COPY_HOVER[2], COPY_HOVER[3])
+        end)
+        btn:SetScript("OnLeave", function(self)
+            self:SetAlpha(COPY_ALPHA)
+            local icon = self:GetNormalTexture()
+            icon:SetDesaturated(false)
+            icon:SetVertexColor(1, 1, 1)
+        end)
+        btn:SetScript("OnClick", function() Chat:ShowCopyChat(chatFrame) end)
+        chatFrame.FlareUI_CopyButton = btn
+    end
+    btn:SetFrameLevel((chatFrame:GetFrameLevel() or 0) + 3)
+    -- a docked window under the Meter tab keeps it hidden (see SetDockedTextShown)
+    btn:SetShown(not (chatFrame.isDocked and Chat:MeterTabActive()))
 end
 
 local function RepositionScrollToBottomButton(chatFrame)
@@ -461,7 +516,7 @@ local Lines = {
 -- Splits off Blizzard's timestamp: the line was just formatted, so this second or the one before
 -- reproduces it.
 function Lines.SplitStamp(message)
-    local fmt = ChatFrameUtil.GetTimestampFormat and ChatFrameUtil.GetTimestampFormat()
+    local fmt = StampFormats()
     if not fmt then return "", message end
     local now = time()
     for t = now, now - 1, -1 do
@@ -533,60 +588,76 @@ end
 
 -- The sender's level, from a unit token or from what was seen this session; nil when unknown
 function Lines.LevelFor(guid, sender)
+    -- what was seen first (group changes, level-ups and targets keep it current); the unit only for
+    -- someone not seen yet
+    local known = (guid and Lines.levels[guid]) or (sender and Lines.levels[NameKey(sender)])
+    if known then return known end
     if guid then
         local ok, unit = pcall(UnitTokenFromGUID, guid)
         if ok and canaccessvalue(unit) and unit then Lines.RememberUnit(unit) end
-        if Lines.levels[guid] then return Lines.levels[guid] end
+        return Lines.levels[guid]
     end
-    return sender and Lines.levels[NameKey(sender)] or nil
 end
 
 local function ColorCode(r, g, b)
     return string_format("|cff%02x%02x%02x", (r or 1) * 255, (g or 1) * 255, (b or 1) * 255)
 end
 
--- Better Player Names: the link's text becomes the class-coloured name and "says:" goes.
--- Level Before Names: the level goes inside the link, in front of the name.
-function Lines.RewriteSender(body, chatType, args, mode, db)
-    local s, e, open, display = body:find("(|Hplayer:[^|]*|h)(.-)|h")
-    if not s then return body end
-    local sender, guid = Arg(args, 2, "string"), Arg(args, 12, "string")
-    if not sender or sender == "" then return body end
-    if guid == "" then guid = nil end
-
-    local class
-    if guid then
-        local ok, _, classFile = pcall(GetPlayerInfoByGUID, guid)
-        if ok and canaccessvalue(classFile) and type(classFile) == "string" then class = classFile end
-    end
-
+-- Better Player Names and Level Before Names change the name itself through Blizzard's own filter
+-- for it. It keeps any icon Blizzard or another addon put on the name, and holds when a censored
+-- line is revealed:
+--   Better Player Names   the class-coloured name, without its realm
+--   Level Before Names    "(42)" in front of the name
+-- Blizzard skips the filter when the name is hidden, and puts the brackets and link round it.
+function Lines.SenderName(event, decorated, _, sender, ...)
+    local db = GetDb()
+    if not (db and db.enabled and (db.formatPlayer or db.showLevel)) then return nil end
+    if type(event) ~= "string" or type(decorated) ~= "string" then return nil end
+    local chatType = event:sub(10)
+    if chatType:sub(1, 7) == "CHANNEL" then chatType = "CHANNEL" end
+    if not NAME_EVENTS[chatType] then return nil end
+    local guid = select(10, ...)   -- the 12th message argument (the 3rd is the first in ...)
+    if not (canaccessvalue(guid) and type(guid) == "string" and guid ~= "") then guid = nil end
+    if not (canaccessvalue(sender) and type(sender) == "string" and sender ~= "") then sender = nil end
+    local name = decorated
     if db.formatPlayer then
-        local name = string_gsub(sender, "%-[^|]+", "")
-        local color = class and C_ClassColor.GetClassColor(class)
-        display = color and (color:GenerateHexColorMarkup() .. "[" .. name .. "]|r") or ("[" .. name .. "]")
+        if sender then
+            -- the realm goes (Blizzard keeps it for other realms)
+            local short = sender:gsub("%-.*$", "")
+            local s, e = name:find(sender, 1, true)
+            if s and short ~= sender then name = name:sub(1, s - 1) .. short .. name:sub(e + 1) end
+        end
+        -- the class colour, where Blizzard's own class colouring is off for this chat type
+        if guid and not name:find("|c", 1, true) then
+            local ok, _, classFile = pcall(GetPlayerInfoByGUID, guid)
+            local color = ok and canaccessvalue(classFile) and type(classFile) == "string" and C_ClassColor.GetClassColor(classFile)
+            if color then name = color:WrapTextInColorCode(name) end
+        end
     end
-
-    local prefix = ""
     if db.showLevel then
         local level = Lines.LevelFor(guid, sender)
         if level then
             local c = GetQuestDifficultyColor and GetQuestDifficultyColor(level)
-            prefix = (c and ColorCode(c.r, c.g, c.b) or "|cffffffff") .. "(" .. level .. ")|r "
+            name = (c and ColorCode(c.r, c.g, c.b) or "|cffffffff") .. "(" .. level .. ")|r " .. name
         end
     end
+    return name
+end
 
+-- Better Player Names on "says" lines: the rest of CHAT_<type>_GET after the name (" says: ") goes
+function Lines.RewriteSender(body, chatType)
+    local s, e = body:find("|Hplayer:[^|]*|h.-|h")
+    if not s then return body end
+    -- after the link, maybe behind an ally icon
     local after = body:sub(e + 1)
-    if db.formatPlayer and mode == "full" then
-        -- after the link comes the rest of CHAT_<type>_GET (" says: "), maybe behind an ally icon
-        local key = _G[Lines.getKeys[chatType]]
-        local suffix = type(key) == "string" and key:match("%%s(.*)$")
-        local ally, rest = after:match("^( |A[^|]*|a)(.*)$")
-        local tail = rest or after
-        if suffix and suffix ~= "" and tail:sub(1, #suffix) == suffix then
-            after = (ally or "") .. " " .. tail:sub(#suffix + 1)
-        end
+    local key = _G[Lines.getKeys[chatType]]
+    local suffix = type(key) == "string" and key:match("%%s(.*)$")
+    local ally, rest = after:match("^( |A[^|]*|a)(.*)$")
+    local tail = rest or after
+    if suffix and suffix ~= "" and tail:sub(1, #suffix) == suffix then
+        return body:sub(1, e) .. (ally or "") .. " " .. tail:sub(#suffix + 1)
     end
-    return body:sub(1, s - 1) .. open .. prefix .. display .. "|h" .. after
+    return body
 end
 
 -- NPC lines have no link: the CHAT_MONSTER_<type>_GET header becomes the orange name
@@ -603,35 +674,46 @@ end
 local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, eventArgs)
     local db = GetDb()
     if not (db and event) then return end
-    if not (db.shortChannels or db.formatPlayer or db.formatNPC or db.betterTimestamps
-            or db.showLevel) then return end
+    if not (db.shortChannels or db.formatPlayer or db.formatNPC or db.betterTimestamps) then return end
     if not canaccessallvalues(message, event) or type(message) ~= "string" or type(event) ~= "string"
             or event:sub(1, 9) ~= "CHAT_MSG_" then return end
-    local args = type(eventArgs) == "table" and canaccesstable(eventArgs) and eventArgs or nil
-    local chatType = event:sub(10)
-
-    local stamp, body = Lines.SplitStamp(message)
-    if db.shortChannels then body = Lines.ShortenChannel(body, chatType) end
-    if args then
-        if NPC_EVENTS[chatType] then
-            if db.formatNPC then body = Lines.RewriteNPC(body, chatType, args) end
-        elseif NAME_EVENTS[chatType] and (db.formatPlayer or db.showLevel) then
-            body = Lines.RewriteSender(body, chatType, args, NAME_EVENTS[chatType], db)
+    -- the same line shown in several windows (General and a Guild tab, say) is worked out once
+    local line
+    local now = time()
+    if message == Lines.lastIn and event == Lines.lastEvent and now == Lines.lastAt then
+        line = Lines.lastOut
+    else
+        local args = type(eventArgs) == "table" and canaccesstable(eventArgs) and eventArgs or nil
+        local chatType = event:sub(10)
+        -- Blizzard's stamp is only split off when FlareUI replaces it
+        local stamp, body = "", message
+        if db.betterTimestamps then stamp, body = Lines.SplitStamp(message) end
+        if db.shortChannels then body = Lines.ShortenChannel(body, chatType) end
+        if args then
+            if NPC_EVENTS[chatType] then
+                if db.formatNPC then body = Lines.RewriteNPC(body, chatType, args) end
+            elseif db.formatPlayer and NAME_EVENTS[chatType] == "full" then
+                body = Lines.RewriteSender(body, chatType)
+            end
         end
+        if db.betterTimestamps then stamp = GetTimestamp() end
+        line = stamp .. body
+        Lines.lastIn, Lines.lastEvent, Lines.lastOut, Lines.lastAt = message, event, line, now
     end
-    if db.betterTimestamps then stamp = GetTimestamp() end
-
-    local line = stamp .. body
     if line == message then return end
     local entry = chatFrame.historyBuffer and chatFrame.historyBuffer:GetEntryAtIndex(1)
     if entry and canaccessallvalues(entry.message) and entry.message == message then
+        -- Blizzard's AddMessage has just marked the window for a redraw, which shows the new text
         entry.message = line
-        chatFrame:MarkDisplayDirty()
     end
 end
 
 -- Every chat window, temporary whisper windows included
 local function HookLineRewrite()
+    if not Lines.nameFilter and ChatFrameUtil and ChatFrameUtil.AddSenderNameFilter then
+        Lines.nameFilter = true
+        ChatFrameUtil.AddSenderNameFilter(Lines.SenderName)
+    end
     for _, name in ipairs(CHAT_FRAMES or {}) do
         local frame = _G[name]
         if frame and not Lines.hooked[frame] then
@@ -686,8 +768,10 @@ function Lines.UpdateLevelEvents()
                 Lines.RememberUnit("target")
             elseif event == "UPDATE_MOUSEOVER_UNIT" then
                 Lines.RememberUnit("mouseover")
-            elseif event == "NAME_PLATE_UNIT_ADDED" then
+            elseif event == "NAME_PLATE_UNIT_ADDED" or event == "UNIT_LEVEL" then
                 Lines.RememberUnit(unit)
+            elseif event == "PLAYER_LEVEL_UP" then
+                Lines.RememberUnit("player")
             end
         end)
         Lines.events = f
@@ -695,7 +779,8 @@ function Lines.UpdateLevelEvents()
     local f = Lines.events
     if want then
         for _, event in ipairs({ "GUILD_ROSTER_UPDATE", "FRIENDLIST_UPDATE", "WHO_LIST_UPDATE",
-                "GROUP_ROSTER_UPDATE", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT", "NAME_PLATE_UNIT_ADDED" }) do
+                "GROUP_ROSTER_UPDATE", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT", "NAME_PLATE_UNIT_ADDED",
+                "UNIT_LEVEL", "PLAYER_LEVEL_UP" }) do
             f:RegisterEvent(event)
         end
         if IsInGuild() and C_GuildInfo and C_GuildInfo.GuildRoster then C_GuildInfo.GuildRoster() end
@@ -960,20 +1045,23 @@ end
 
 local function KillTexture(tex) if tex then tex:SetAlpha(0) end end
 
+-- An error inside (reported) must not leave the guard up: every later call would be skipped
 function Chat:StyleHeaderButtons(chatFrame)
     if self.isStyling then return end
     self.isStyling = true
+    local ok, err = pcall(self.StyleHeaderButtonsBody, self, chatFrame)
+    self.isStyling = false
+    if not ok then geterrorhandler()(err) end
+end
 
+function Chat:StyleHeaderButtonsBody(chatFrame)
     local db = GetDb()
     local target = chatFrame or VisibleSkinHost()
     if target and IsPopped(target) then target = VisibleSkinHost() end   -- the buttons stay on the dock
     if not target or not target.FlareUI_Skin then
         target = ChatFrame1
     end
-    if not db or not target or not target.FlareUI_Skin then
-        self.isStyling = false
-        return
-    end
+    if not db or not target or not target.FlareUI_Skin then return end
     local header = target.FlareUI_Skin
 
     local function SetupBtn(btn, iconPath, key)
@@ -1047,7 +1135,6 @@ function Chat:StyleHeaderButtons(chatFrame)
     SetupBtn(_G.QuickJoinToastButton,   ICON_SOCIAL,   "social")
     SetupBtn(_G.ChatFrameChannelButton, ICON_CHANNELS, "channel")
     SetupBtn(_G.ChatFrameMenuButton,    ICON_MENU,     "menu")
-    self.isStyling = false
 end
 
 --------------------------------------------------
@@ -1125,7 +1212,7 @@ function Chat.PlainLine(text)
     return text
 end
 
--- Copy Chat (the tab's right-click menu): a read-only window with a chat window's lines, all selected.
+-- Copy Chat (the copy button in each window): a read-only window with a chat window's lines, all selected.
 -- Lines the game keeps secret can't be read, so they're left out and the window says so.
 function Chat:ShowCopyChat(chatFrame)
     local f = self.copyChatFrame
@@ -1214,14 +1301,27 @@ function Chat:ShowCopyChat(chatFrame)
     end)
 end
 
--- Blizzard only calls filters with accessible values, so no secret check is needed. A message that
--- already carries a hyperlink is left alone.
+-- The plain stretches of a line get their addresses linked; a hyperlink (|H...|h...|h) is kept whole
+local function LinkPlainText(msg)
+    if not msg:find("|H", 1, true) then return (msg:gsub("%S+", LinkAddress)) end
+    local out, pos = {}, 1
+    while true do
+        local s, e = msg:find("|H.-|h.-|h", pos)
+        if not s then break end
+        out[#out + 1] = msg:sub(pos, s - 1):gsub("%S+", LinkAddress)
+        out[#out + 1] = msg:sub(s, e)
+        pos = e + 1
+    end
+    out[#out + 1] = msg:sub(pos):gsub("%S+", LinkAddress)
+    return table.concat(out)
+end
+
+-- Blizzard only calls filters with accessible values, so no secret check is needed
 local function URLFilter(self, event, msg, ...)
-    if type(msg) ~= "string" or msg:find("|H", 1, true) then return false, msg, ... end
+    if type(msg) ~= "string" then return false, msg, ... end
     -- most lines hold no address: skip the per-word scan
     if not (msg:find("://", 1, true) or msg:find("www.", 1, true)) then return false, msg, ... end
-    msg = msg:gsub("%S+", LinkAddress)
-    return false, msg, ...
+    return false, LinkPlainText(msg), ...
 end
 
 -- Registered once for the session (LinkUtil asserts on a second registration)
@@ -1323,7 +1423,8 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
             ns.ShowDialog("FLAREUI_RENAME_CHAT", nil, chatFrame)
         end)
 
-        rootDescription:CreateButton(NEW_CHAT_WINDOW, function()
+        -- greyed out with all ten windows in use, as in Blizzard's menu
+        local newWindow = rootDescription:CreateButton(NEW_CHAT_WINDOW, function()
             local baseName = "New"
             local name = baseName
             local count = 1
@@ -1341,8 +1442,7 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
             end
             FCF_OpenNewWindow(name)
         end)
-
-        rootDescription:CreateButton(L["Copy Chat"], function() Chat:ShowCopyChat(chatFrame) end)
+        if _G.FCF_CanOpenNewWindow then newWindow:SetEnabled(FCF_CanOpenNewWindow()) end
 
         -- Blizzard's own toggle and text: links off and no resizing, for the docked windows together
         if _G.FCF_SetExpandedUninteractable and _G.MAKE_UNINTERACTABLE and _G.MAKE_INTERACTABLE then
@@ -1359,7 +1459,8 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
 
         rootDescription:CreateButton(L["Filter Settings"], function()
             if ChatConfigFrame then
-                -- the window the dialog edits, as Blizzard's right click sets it
+                -- the window the dialog edits, as Blizzard's right click sets it (otherwise the dialog
+                -- edits whichever window Blizzard last had; only this dialog reads it)
                 _G.CURRENT_CHAT_FRAME_ID = chatFrame:GetID()
                 ShowUIPanel(ChatConfigFrame)
             end
@@ -1368,17 +1469,26 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
         if IsPopped(chatFrame) then
             rootDescription:CreateDivider()
             rootDescription:CreateButton(L["Dock"], function() Chat:DockWindow(chatFrame) end)
-            rootDescription:CreateButton(chatFrame.isLocked and UNLOCK_WINDOW or LOCK_WINDOW, function()
-                FCF_SetLocked(chatFrame, not chatFrame.isLocked)
-            end)
-        elseif chatFrame:GetID() ~= 1 and chatFrame ~= _G.ChatFrame2 then
+            -- not on a whisper window: Blizzard reuses those, and its own code reads the lock
+            if not chatFrame.isTemporary then
+                rootDescription:CreateButton(chatFrame.isLocked and UNLOCK_WINDOW or LOCK_WINDOW, function()
+                    FCF_SetLocked(chatFrame, not chatFrame.isLocked)
+                end)
+            end
+        elseif chatFrame:GetID() ~= 1 and chatFrame ~= _G.ChatFrame2 and not chatFrame.isTemporary then
             rootDescription:CreateDivider()
             rootDescription:CreateButton(L["Pop Out"], function() Chat:PopOutWindow(chatFrame) end)
         end
 
         if chatFrame:GetID() ~= 1 then
             rootDescription:CreateDivider()
-            rootDescription:CreateButton(CLOSE_CHAT_WINDOW, function() FCF_Close(chatFrame) end)
+            -- as Blizzard closes it: a window's channels (and a whisper window's person) go back to
+            -- the main window first; only other temporary windows (the pet battle log) just close
+            local whisper = chatFrame.chatType == "WHISPER" or chatFrame.chatType == "BN_WHISPER"
+            local label = whisper and CLOSE_CHAT_WHISPER_WINDOW or CLOSE_CHAT_WINDOW
+            rootDescription:CreateButton(label, function()
+                if chatFrame.isTemporary and not whisper then FCF_Close(chatFrame) else FCF_PopInWindow(chatFrame) end
+            end)
         end
     end)
 end
@@ -1467,6 +1577,8 @@ local function SetDockedTextShown(shown)
         if not frame:IsForbidden() then
             if frame.FontStringContainer then frame.FontStringContainer:SetAlpha(alpha) end
             if frame.ScrollToBottomButton then frame.ScrollToBottomButton:SetAlpha(alpha) end
+            -- under the meter the copy button would copy the hidden chat: it goes too
+            if frame.FlareUI_CopyButton then frame.FlareUI_CopyButton:SetShown(shown and (GetDb() or {}).copyButton or false) end
         end
     end
     local bar = _G.CombatLogQuickButtonFrame_Custom
@@ -1537,6 +1649,51 @@ end
 -- 12. TAB BAR
 -- FlareUI's own tabs on the skin, one per docked window (a popped window has only its own).
 --------------------------------------------------
+-- Every docked window has its own tab bar (on its own skin), but they show one strip: one scroll
+-- value for all of them, so a tab switch never lands on a bar scrolled somewhere else
+Chat.tabScroll = 0
+Chat.tabStylePass = 1   -- bumped by Apply: the tab buttons take the font again
+
+local function DockedTabBars()
+    local bars = {}
+    local dock = _G.GeneralDockManager
+    for _, frame in ipairs(dock and dock.DOCKED_CHAT_FRAMES or {}) do
+        if frame.FlareUI_TabBar then bars[#bars + 1] = frame.FlareUI_TabBar end
+    end
+    return bars
+end
+
+function Chat:SetTabScroll(value)
+    Chat.tabScroll = math_max(0, value or 0)
+    for _, bar in ipairs(DockedTabBars()) do
+        local max = bar:GetHorizontalScrollRange() or 0
+        bar:SetHorizontalScroll(math_min(Chat.tabScroll, math_max(0, max)))
+    end
+end
+
+-- The selected window's tab into view, on the bar now shown
+function Chat:ScrollTabIntoView(chatFrame)
+    local dock = _G.GeneralDockManager
+    local shown = dock and FCFDock_GetSelectedWindow(dock)
+    local bar = shown and shown.FlareUI_TabBar
+    if not bar then return end
+    for _, btn in ipairs(bar.buttons or {}) do
+        if btn.chatFrame == chatFrame and btn:IsShown() then
+            local left, right, barLeft = btn:GetLeft(), btn:GetRight(), bar:GetLeft()
+            if not (left and right and barLeft) then return end
+            local scroll = bar:GetHorizontalScroll()
+            local width = bar:GetWidth()
+            local tabLeft, tabRight = left - barLeft + scroll, right - barLeft + scroll
+            if tabRight > scroll + width then
+                Chat:SetTabScroll(tabRight - width + 10)
+            elseif tabLeft < scroll then
+                Chat:SetTabScroll(tabLeft - 10)
+            end
+            return
+        end
+    end
+end
+
 function Chat:CreateCustomTabBar(chatFrame)
     if not chatFrame.FlareUI_Skin then return end
     if chatFrame.FlareUI_TabBar then return end
@@ -1561,7 +1718,8 @@ function Chat:CreateCustomTabBar(chatFrame)
         local new = cur - (delta * step)
         if new < 0 then new = 0 end
         if new > max then new = max end
-        self:SetHorizontalScroll(new)
+        -- a popped window's bar is its own; the docked bars move together
+        if IsPopped(chatFrame) then self:SetHorizontalScroll(new) else Chat:SetTabScroll(new) end
     end)
 
     scrollFrame.buttons = {}
@@ -1850,25 +2008,12 @@ function Chat:UpdateCustomTabs(chatFrame, db)
                     elseif not IsPopped(self.chatFrame) and not (_G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()) then
                         _G.FCF_Tab_OnClick(self.realTab, button)
                         if Chat:MeterTabActive() then Chat:SelectMeterTab(false) end
+                        local picked = self.chatFrame
                         C_Timer.After(0.01, function()
                             local chatDb = GetDb()
                             if chatDb then Chat:UpdateCustomTabs(_G.ChatFrame1, chatDb) end
-                            -- scroll the selected tab into view if it is cut off
-                            C_Timer.After(0.02, function()
-                                if not self:IsShown() then return end
-                                local left, right = self:GetLeft(), self:GetRight()
-                                local scrollLeft = scrollFrame:GetLeft()
-                                if not (left and right and scrollLeft) then return end
-                                local scroll = scrollFrame:GetHorizontalScroll()
-                                local scrollWidth = scrollFrame:GetWidth()
-                                local tabLeft = left - scrollLeft + scroll
-                                local tabRight = right - scrollLeft + scroll
-                                if tabRight > scroll + scrollWidth then
-                                    scrollFrame:SetHorizontalScroll(tabRight - scrollWidth + 10)
-                                elseif tabLeft < scroll then
-                                    scrollFrame:SetHorizontalScroll(math_max(0, tabLeft - 10))
-                                end
-                            end)
+                            -- the picked tab into view if it is cut off, on the bar now shown
+                            C_Timer.After(0.02, function() Chat:ScrollTabIntoView(picked) end)
                         end)
                     end
                 end)
@@ -1886,16 +2031,29 @@ function Chat:UpdateCustomTabs(chatFrame, db)
             btn.realTab = realTab
             btn.chatFrame = frame
 
-            ns.SetFont(btn.Text, fontPath, fontSize, fontFlags)
-            ns.ApplyShadow(btn.Text, db.tabFont)
+            -- the font only when the settings changed (a pass of Apply), the text and its width only
+            -- when the name changed: the bars are redrawn on every dock change and whisper flash
+            local fontChanged = btn.ftPass ~= Chat.tabStylePass
+            if fontChanged then
+                btn.ftPass = Chat.tabStylePass
+                ns.SetFont(btn.Text, fontPath, fontSize, fontFlags)
+                ns.ApplyShadow(btn.Text, db.tabFont)
+            end
 
             -- A whisper tab's name can be secret: it is shown but never tested, at a fixed width
             local tabText = realTab:GetText()
             local readable = canaccessvalue(tabText)
             if readable and not tabText then tabText = "Chat " .. tabID end
-            btn.Text:SetText(tabText)
-            local textWidth = btn.Text:GetStringWidth()
-            local w = (readable and canaccessvalue(textWidth)) and (textWidth + 14) or SECRET_TAB_WIDTH
+            local w
+            if readable and not fontChanged and btn.ftText == tabText and btn.ftWidth then
+                w = btn.ftWidth
+            else
+                btn.Text:SetText(tabText)
+                local textWidth = btn.Text:GetStringWidth()
+                w = (readable and canaccessvalue(textWidth)) and (textWidth + 14) or SECRET_TAB_WIDTH
+                btn.ftText = readable and tabText or nil
+                btn.ftWidth = w
+            end
             btn:SetWidth(w)
             btn.Text:ClearAllPoints()
             btn.Text:SetPoint("CENTER", btn, "CENTER", 0, TAB_TEXT_Y)
@@ -1977,6 +2135,11 @@ function Chat:UpdateCustomTabs(chatFrame, db)
     end
 
     scrollChild:SetWidth(math_max(1, totalWidth))
+    -- the docked bars share one scroll (see Chat:SetTabScroll)
+    if not popped then
+        local max = math_max(0, totalWidth - (scrollFrame:GetWidth() or 0))
+        scrollFrame:SetHorizontalScroll(math_min(Chat.tabScroll or 0, max))
+    end
 end
 
 function Chat:HideBlizzardTabs()
@@ -2048,22 +2211,69 @@ function EditExtras.Sent()
     return char.sentHistory
 end
 
-function EditExtras.OnLineSent(eb, text)
+-- The line as the game would keep it: "/w Name text", "/2 text", "/g text". A recalled line then goes
+-- where it went the first time, not to the chat the box is on now.
+function EditExtras.WithHeader(eb, text)
+    local ok, chatType = pcall(eb.GetChatType, eb)
+    if not (ok and canaccessvalue(chatType) and type(chatType) == "string") then return text end
+    local header = _G["SLASH_" .. chatType .. "1"]
+    header = type(header) == "string" and header or nil
+    local target
+    if chatType == "WHISPER" then
+        local got, tell = pcall(eb.GetTellTarget, eb)
+        target = got and canaccessvalue(tell) and type(tell) == "string" and tell ~= "" and tell or nil
+        if not (header and target) then return text end
+        return header .. " " .. target .. " " .. text
+    elseif chatType == "CHANNEL" then
+        local got, channel = pcall(eb.GetChannelTarget, eb)
+        channel = got and canaccessvalue(channel) and channel or nil
+        if not channel or channel == "" then return text end
+        return "/" .. tostring(channel) .. " " .. text
+    end
+    return header and (header .. " " .. text) or text
+end
+
+-- The line about to be sent, read on the Enter key itself or as Blizzard announces the send, never
+-- from inside Blizzard's send steps. Secure commands (/cast, /use, /target...) are not kept: put back
+-- in the box by addon code they would not run.
+function EditExtras.OnLineSent(eb)
+    local now = GetTime()
+    if eb.FlareUI_SentAt == now then return end
+    eb.FlareUI_SentAt = now
+    local text = eb:GetText()
     if canaccessvalue(text) and type(text) == "string" and text ~= "" then
-        local list = EditExtras.Sent()
-        if list[#list] ~= text then
-            list[#list + 1] = text
-            while #list > EditExtras.SENT_MAX do table.remove(list, 1) end
+        local command = text:match("^(/%S+)")
+        local ok, secure = false, false
+        if command and IsSecureCmd then ok, secure = pcall(IsSecureCmd, command) end
+        if not (ok and secure) then
+            if not command then text = EditExtras.WithHeader(eb, text) end
+            local list = EditExtras.Sent()
+            if list[#list] ~= text then
+                list[#list + 1] = text
+                while #list > EditExtras.SENT_MAX do table.remove(list, 1) end
+            end
         end
     end
     eb.FlareUI_HistoryPos, eb.FlareUI_Draft = 0, nil
-    pcall(eb.ClearHistory, eb)
+    -- Blizzard's own list stays empty (the arrows recall FlareUI's), emptied once the send is done
+    C_Timer.After(0, function() pcall(eb.ClearHistory, eb) end)
+end
+
+-- In chat lockdown (boss fights, rated PvP) the game refuses text an addon put in the box
+local function ChatLocked()
+    if not (C_ChatInfo and C_ChatInfo.InChatMessagingLockdown) then return false end
+    local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
+    return ok and canaccessvalue(locked) and locked and true or false
 end
 
 function EditExtras.OnKeyDown(eb, key)
-    if (key ~= "UP" and key ~= "DOWN") or IsControlKeyDown() then return end
-    -- the name list under a half-typed whisper uses the arrows itself
-    if AutoCompleteBox and AutoCompleteBox:IsShown() and AutoCompleteBox.parent == eb then return end
+    -- the name list under a half-typed whisper uses the arrows and Enter itself
+    local picking = AutoCompleteBox and AutoCompleteBox:IsShown() and AutoCompleteBox.parent == eb
+    if key == "ENTER" or key == "NUMPADENTER" then
+        if not picking then EditExtras.OnLineSent(eb) end
+        return
+    end
+    if (key ~= "UP" and key ~= "DOWN") or IsControlKeyDown() or picking or ChatLocked() then return end
     local list = EditExtras.Sent()
     if #list == 0 then return end
     local pos = eb.FlareUI_HistoryPos or 0
@@ -2100,27 +2310,61 @@ function EditExtras.Push(chatFrame, up)
     EditExtras.PlaceLines(chatFrame)
 end
 
+-- The window the open box sits over: a docked box covers whichever docked window is shown, which
+-- is not its own once a tab is picked with the box open (a whisper you start selects its new tab)
+function EditExtras.Target(eb)
+    local frame = eb.chatFrame
+    local dock = _G.GeneralDockManager
+    if frame and frame.isDocked and dock then
+        local shown = FCFDock_GetSelectedWindow(dock)
+        if shown and not shown:IsForbidden() then return shown end
+    end
+    return frame
+end
+
+-- Edit Box Position "inside": the shown window's lines move up over the open box
+function EditExtras.PushFor(eb)
+    local db = GetDb()
+    if not (db and (db.editBoxPosition or "inside") == "inside") then return end
+    local frame = EditExtras.Target(eb)
+    if not frame or frame == eb.FlareUI_PushedFrame then return end
+    if eb.FlareUI_PushedFrame then EditExtras.Push(eb.FlareUI_PushedFrame, 0) end
+    local top = select(5, eb:GetPoint(1))
+    eb.FlareUI_PushedFrame = frame
+    EditExtras.Push(frame, (top or 30) + EditExtras.PUSH_GAP)
+end
+
+-- A tab picked while the box is open: the push moves to the window now shown
+function EditExtras.FollowDock()
+    local eb = _G.ACTIVE_CHAT_EDIT_BOX
+    if eb and eb.FlareUI_EditExtras and eb:HasFocus() then EditExtras.PushFor(eb) end
+end
+
 function EditExtras.Setup(eb)
     if eb.FlareUI_EditExtras then return end
     eb.FlareUI_EditExtras = true
-    if eb.AddHistoryLine then hooksecurefunc(eb, "AddHistoryLine", EditExtras.OnLineSent) end
     eb:HookScript("OnKeyDown", EditExtras.OnKeyDown)
-    eb:HookScript("OnEditFocusGained", function(self)
-        local db = GetDb()
-        if db and (db.editBoxPosition or "inside") == "inside" then
-            local frame = self.chatFrame
-            local top = select(5, self:GetPoint(1))
-            self.FlareUI_PushedFrame = frame
-            EditExtras.Push(frame, (top or 30) + EditExtras.PUSH_GAP)
+    -- focus and sends through Blizzard's own announcements (run apart from its chat steps), not
+    -- hooks on the box: once, for every box set up here
+    if EditExtras.callbacks then return end
+    EditExtras.callbacks = true
+    EventRegistry:RegisterCallback("ChatFrame.OnEditBoxFocusGained", function(_, box)
+        if not (box and box.FlareUI_EditExtras) then return end
+        EditExtras.PushFor(box)
+        -- auto-hide: an open box keeps its window shown
+        if box.chatFrame and box.chatFrame.FlareUI_AutoHideHooked then Chat:ShowChatFrame(box.chatFrame, GetDb()) end
+    end, EditExtras)
+    EventRegistry:RegisterCallback("ChatFrame.OnEditBoxFocusLost", function(_, box)
+        if not (box and box.FlareUI_EditExtras) then return end
+        box.FlareUI_HistoryPos, box.FlareUI_Draft = 0, nil
+        if box.FlareUI_PushedFrame then
+            EditExtras.Push(box.FlareUI_PushedFrame, 0)
+            box.FlareUI_PushedFrame = nil
         end
-    end)
-    eb:HookScript("OnEditFocusLost", function(self)
-        self.FlareUI_HistoryPos, self.FlareUI_Draft = 0, nil
-        if self.FlareUI_PushedFrame then
-            EditExtras.Push(self.FlareUI_PushedFrame, 0)
-            self.FlareUI_PushedFrame = nil
-        end
-    end)
+    end, EditExtras)
+    EventRegistry:RegisterCallback("ChatFrame.OnEditBoxPreSendText", function(_, box)
+        if box and box.FlareUI_EditExtras then EditExtras.OnLineSent(box) end
+    end, EditExtras)
 end
 
 function Chat:StyleEditBox(chatFrame, db)
@@ -2367,6 +2611,7 @@ function Chat:StyleChatFrame(chatFrame, db)
     KillScrollBar(chatFrame)
     HideButtonFrame(chatFrame)
     RepositionScrollToBottomButton(chatFrame)
+    UpdateCopyButton(chatFrame, db)
 
     if not chatFrame.FlareUI_ScriptHooked then
         chatFrame.FlareUI_ScriptHooked = true
@@ -2415,11 +2660,12 @@ function Chat:StyleChatFrame(chatFrame, db)
 
     Chat:CreateCustomTabBar(chatFrame)
     Chat:UpdateCustomTabs(chatFrame, db)
-    Chat:HideBlizzardTabs()
+    -- during Apply these run once after all windows (see Chat:Apply)
+    if not Chat.applying then Chat:HideBlizzardTabs() end
 
     Chat:SetupVolumeButton(chatFrame, db)
     Chat:ApplyPopState(chatFrame)
-    Chat:StyleHeaderButtons()
+    if not Chat.applying then Chat:StyleHeaderButtons() end
 end
 
 --------------------------------------------------
@@ -2606,7 +2852,8 @@ local function OnHoldExpired(state)
     if remaining > 0 then
         state.timer = C_Timer.NewTimer(remaining, state.expire)
     else
-        FadeTo(state, 0, FadeDuration(db))
+        -- Min Alpha: how far the window fades out (0 = gone)
+        FadeTo(state, math_max(0, math_min(0.9, tonumber(db.minAlpha) or 0)), FadeDuration(db))
     end
 end
 
@@ -2703,9 +2950,12 @@ end
 --------------------------------------------------
 -- every message (combat log lines included) lands here, so it returns early when auto-hide is off
 local function OnChatMessage(chatFrame)
-    UpdateScrollToBottomVisibility(chatFrame)
     local db = GetDb()
-    if db and Fades(db) then Chat:ShowChatFrame(chatFrame, db) end
+    -- Hide Combat Log: the hidden log still gets every combat line, with nothing to show or wake
+    if chatFrame == _G.ChatFrame2 and db and db.hideCombatLog then return end
+    UpdateScrollToBottomVisibility(chatFrame)
+    -- a line into a window that isn't shown (another tab) doesn't wake the chat: its tab lights up
+    if db and Fades(db) and chatFrame:IsVisible() then Chat:ShowChatFrame(chatFrame, db) end
     -- a line under the Meter tab lights its window's tab (not the Combat Log's, which never stops)
     if Chat:MeterTabActive() and not meterUnread[chatFrame] and chatFrame ~= _G.ChatFrame2 and chatFrame == SelectedDocked() then
         meterUnread[chatFrame] = true
@@ -2740,13 +2990,7 @@ function Chat:HookAutoHide(frame)
     frame.FlareUI_AutoHideHooked = true
     Chat:SecureHookScript(frame, "OnEnter", OnChatEnter)
     Chat:SecureHook(frame, "AddMessage", OnChatMessage)
-    local editBox = frame.editBox
-    if editBox and not editBox.FlareUI_AutoHideHooked then
-        editBox.FlareUI_AutoHideHooked = true
-        Chat:SecureHookScript(editBox, "OnEditFocusGained", function()
-            Chat:ShowChatFrame(frame, GetDb())
-        end)
-    end
+    -- its edit box keeps it shown while open: see EditExtras.Setup (Blizzard's focus announcement)
 end
 
 -- Formatting lives in the line rewriter, which reads the options on every line
@@ -2769,13 +3013,23 @@ function Chat:Apply(db)
     Chat:KillGeneralDockManager()
     StyleButtonFrame()
 
-    -- a whisper window is skinned when first selected (AfterDockTabs), and follows the settings after that
-    for _, frame in Windows() do
-        if frame and not frame:IsForbidden() and (frame.FlareUI_Skin or not frame.isTemporary) then
-            Chat:StyleChatFrame(frame, db)
-            Chat:StyleEditBox(frame, db)
+    -- a whisper window is skinned when first selected (AfterDockTabs), and follows the settings after that.
+    -- The header and Blizzard's tabs are done once after the loop, not once per window.
+    Chat.tabStylePass = (Chat.tabStylePass or 0) + 1
+    Chat.applying = true
+    -- an error inside (reported) must not leave the flag up
+    local ok, err = pcall(function()
+        for _, frame in Windows() do
+            if frame and not frame:IsForbidden() and (frame.FlareUI_Skin or not frame.isTemporary) then
+                Chat:StyleChatFrame(frame, db)
+                Chat:StyleEditBox(frame, db)
+            end
         end
-    end
+    end)
+    Chat.applying = nil
+    if not ok then geterrorhandler()(err) end
+    Chat:HideBlizzardTabs()
+    Chat:StyleHeaderButtons()
     -- again: the Gamepad UI parks the dock at ChatFrame1's skin, made in the loop above
     if ns.IsGamepadUI() then Chat:KillGeneralDockManager() end
     AnchorVoiceChat()
@@ -2958,9 +3212,7 @@ function Chat:Init()
                 if _G.ChatFrame1 then Chat:UpdateCustomTabs(_G.ChatFrame1, db) end
                 Chat:StyleHeaderButtons()
                 -- a closed tab leaves the bars scrolled past the tabs that remain: back to the first
-                for _, cf in Windows() do
-                    if cf and cf.FlareUI_TabBar then cf.FlareUI_TabBar:SetHorizontalScroll(0) end
-                end
+                Chat:SetTabScroll(0)
             end)
         end)
 
@@ -2983,6 +3235,13 @@ function Chat:Init()
                     Chat:ShowChatFrame(selectedFrame, db)
                 end
             end
+            -- Meter tab up and Blizzard selects another window (a new window, a whisper you start):
+            -- that window wins, or its lines would draw under the meter
+            if selectedFrame ~= Chat.lastDockSelected then
+                if Chat.lastDockSelected and Chat:MeterTabActive() then Chat:SelectMeterTab(false) end
+                Chat.lastDockSelected = selectedFrame
+            end
+            EditExtras.FollowDock()
         end
         Chat:SecureHook("FCFDock_UpdateTabs", function()
             local db = GetDb()
@@ -3002,41 +3261,23 @@ function Chat:Init()
             tab:SetAlpha(0)
         end)
 
-        -- A new whisper window does not take the selection from the window being read
-        local preventAutoSelect = false
-
+        -- A new whisper window: Blizzard decides whether it takes the selection (a whisper you start
+        -- selects its tab; one you receive only flashes it). FlareUI only styles it.
         Chat:SecureHook("FCF_OpenTemporaryWindow", function()
-            preventAutoSelect = true
-            local dock = _G.GeneralDockManager
-            local currentSelected = dock and FCFDock_GetSelectedWindow(dock)
-
-            C_Timer.After(0.15, function()
-                preventAutoSelect = false
+            C_Timer.After(0, function()
                 local db = GetDb()
                 if not db then return end
                 StyleNewWindows(db)
-                if dock and currentSelected and not currentSelected:IsForbidden() then
-                    FCFDock_SelectWindow(dock, currentSelected)
-                    currentSelected:Show()
-                    _G.SELECTED_CHAT_FRAME = currentSelected
+                local dock = _G.GeneralDockManager
+                for _, cf in ipairs(dock and dock.DOCKED_CHAT_FRAMES or {}) do
+                    if cf.isTemporary and not cf.FlareUI_Skin and not cf:IsForbidden() then
+                        Chat:StyleChatFrame(cf, db)
+                        Chat:StyleEditBox(cf, db)
+                        Chat:HookAutoHide(cf)
+                    end
                 end
                 if _G.ChatFrame1 then Chat:UpdateCustomTabs(_G.ChatFrame1, db) end
             end)
-        end)
-
-        hooksecurefunc("FCFDock_SelectWindow", function(dock, chatFrame)
-            if preventAutoSelect and chatFrame and chatFrame.isTemporary then
-                C_Timer.After(0, function()
-                    if dock then
-                        local currentlySelected = FCFDock_GetSelectedWindow(dock)
-                        if currentlySelected and currentlySelected.isTemporary and _G.ChatFrame1 then
-                            FCFDock_SelectWindow(dock, _G.ChatFrame1)
-                            _G.ChatFrame1:Show()
-                            _G.SELECTED_CHAT_FRAME = _G.ChatFrame1
-                        end
-                    end
-                end)
-            end
         end)
     end
 
@@ -3058,6 +3299,103 @@ end
 --------------------------------------------------
 -- 20. SAVED HISTORY AND REFRESH
 --------------------------------------------------
+local HISTORY_LINES = 128   -- kept per window
+
+-- A Battle.net friend's name reaches chat as a token (|K...|k) the client only resolves this session:
+-- saved as is, it could show another friend's name next time. Saved lines take the BattleTag
+-- (without its number) instead, and a line with a token nobody matches is left out. BN links, which
+-- point at this session's friend IDs, keep only their text.
+local function BattleTagsByToken()
+    local map = {}
+    if not (C_BattleNet and C_BattleNet.GetFriendAccountInfo and BNGetNumFriends) then return map end
+    local ok, count = pcall(BNGetNumFriends)
+    if not (ok and canaccessvalue(count) and type(count) == "number") then return map end
+    for i = 1, count do
+        local got, info = pcall(C_BattleNet.GetFriendAccountInfo, i)
+        local token, tag = got and info and info.accountName, got and info and info.battleTag
+        if canaccessallvalues(token, tag) and type(token) == "string" and type(tag) == "string" then
+            map[token] = tag:match("^[^#]+") or tag
+        end
+    end
+    return map
+end
+
+local function SafeHistoryLine(msg, tags)
+    if not msg:find("|K", 1, true) and not msg:find("|HBNplayer", 1, true) then return msg end
+    local missing = false
+    msg = msg:gsub("|K.-|k", function(token)
+        local name = tags[token]
+        if not name then missing = true end
+        return name or ""
+    end)
+    if missing then return nil end
+    return (msg:gsub("|HBNplayer:.-|h(.-)|h", "%1"))
+end
+
+-- Saved History keeps conversation only: lines from players (and your own), not loot, money, system
+-- or addon lines, which have no chat event
+local PLAYER_CHAT = {}
+for _, kind in ipairs({ "SAY", "YELL", "EMOTE", "TEXT_EMOTE", "WHISPER", "WHISPER_INFORM", "BN_WHISPER",
+        "BN_WHISPER_INFORM", "GUILD", "OFFICER", "PARTY", "PARTY_LEADER", "PARTY_GUIDE", "RAID", "RAID_LEADER",
+        "RAID_WARNING", "INSTANCE_CHAT", "INSTANCE_CHAT_LEADER", "CHANNEL", "COMMUNITIES_CHANNEL" }) do
+    PLAYER_CHAT["CHAT_MSG_" .. kind] = true
+end
+
+-- Lines put back from the last session: the text shown -> what was saved (the line without its
+-- stamp, when it arrived, its event), so a later save keeps its first time and stays player chat
+Chat.restoredLines = Chat.restoredLines or {}
+
+-- The line without the timestamp in front: FlareUI's own (Better Timestamps) or Blizzard's, which
+-- was made from when the line arrived (or the second before)
+local function StripStamp(msg, at)
+    local flare = msg:match("^" .. TIMESTAMP_COLOR .. "<[^>]*>|r (.*)$")
+    if flare then return flare end
+    local fmt = StampFormats()
+    if fmt and at then
+        for when = at, at - 1, -1 do
+            local stamp = CachedDate(fmt, when)
+            if msg:sub(1, #stamp) == stamp then return msg:sub(#stamp + 1) end
+        end
+    end
+    return msg
+end
+
+-- A window's last HISTORY_LINES player-chat lines, added to out with when each arrived (server time)
+local function ReadHistoryLines(cf, tags, out)
+    local num = cf:GetNumMessages()
+    local buffer = cf.historyBuffer
+    local offset = time() - GetTime()   -- the buffer keeps GetTime(); saved lines keep the clock
+    -- never earlier than the line before it, so the window's own order holds
+    local last = 0
+    for j = math_max(1, num - (HISTORY_LINES - 1)), num do
+        local msg, r, g, b, id, _, _, event = cf:GetMessageInfo(j)
+        -- secret lines are skipped; canaccessvalue first, before any other test
+        if canaccessvalue(msg) and type(msg) == "string" then
+            local back = Chat.restoredLines[msg]
+            local raw, at
+            if back then
+                raw, at, event = back.raw, back.at, back.event
+            elseif canaccessvalue(event) and PLAYER_CHAT[event] then
+                -- GetMessageInfo counts from the oldest line, the buffer from the newest
+                local entry = buffer and buffer:GetEntryAtIndex(num - j + 1)
+                local when = entry and entry.timestamp
+                at = (canaccessvalue(when) and type(when) == "number") and math.floor(when + offset + 0.5) or time()
+                raw = StripStamp(msg, at)
+            end
+            if raw then raw = SafeHistoryLine(raw, tags) end
+            if raw then
+                if at < last then at = last end
+                last = at
+                if not canaccessallvalues(r, g, b) then r, g, b = 1, 1, 1 end
+                -- the line, its colour, its chat type (Blizzard recolours by type), when, its event
+                local line = { raw, r or 1, g or 1, b or 1, (canaccessvalue(id) and type(id) == "number") and id or false, at, event }
+                out[#out + 1] = { line = line, at = at, order = #out + 1 }
+            end
+        end
+    end
+    return out
+end
+
 function Chat:SaveHistory()
     local db = GetDb()
     if not db or not db.saveHistory then
@@ -3067,20 +3405,35 @@ function Chat:SaveHistory()
 
     local success, err = pcall(function()
         local history = {}
+        local tags = BattleTagsByToken()
         for i = 1, NUM_CHAT_WINDOWS do
             local cf = _G["ChatFrame"..i]
-            if cf then
-                local messages = {}
-                local num = cf:GetNumMessages()
-                local start = math_max(1, num - 128)
-                for j = start, num do
-                    local msg, r, g, b = cf:GetMessageInfo(j)
-                    -- secret lines are skipped; canaccessvalue first, before any other test
-                    if canaccessvalue(msg) and type(msg) == "string" then
-                        if not canaccessallvalues(r, g, b) then r, g, b = 1, 1, 1 end
-                        -- a restored line has no colour of its own: its code is already in the text
-                        messages[#messages + 1] = r and (ColorCode(r, g, b) .. msg .. "|r") or msg
+            -- not the Combat Log: it rebuilds itself
+            if cf and cf ~= _G.ChatFrame2 then
+                local lines = ReadHistoryLines(cf, tags, {})
+                -- the main window also keeps the open whisper windows' lines: those windows don't
+                -- come back after a reload (Blizzard never saves them). In "both" mode the whispers
+                -- are in the main window already.
+                if i == 1 and C_CVar.GetCVar("whisperMode") == "popout" then
+                    for _, name in ipairs(CHAT_FRAMES or {}) do
+                        local wf = _G[name]
+                        if wf and wf.isTemporary and wf.inUse ~= false and not wf:IsForbidden()
+                                and (wf.chatType == "WHISPER" or wf.chatType == "BN_WHISPER") then
+                            ReadHistoryLines(wf, tags, lines)
+                        end
                     end
+                    -- in the order they arrived, the newest HISTORY_LINES
+                    table.sort(lines, function(x, y)
+                        if x.at ~= y.at then return x.at < y.at end
+                        return x.order < y.order
+                    end)
+                end
+                -- the same line twice (same text, same second) is kept once
+                local messages, prev = {}, nil
+                for k = math_max(1, #lines - (HISTORY_LINES - 1)), #lines do
+                    local line = lines[k].line
+                    if not (prev and prev[1] == line[1] and prev[6] == line[6]) then messages[#messages + 1] = line end
+                    prev = line
                 end
                 if #messages > 0 then history[i] = messages end
             end
@@ -3093,13 +3446,41 @@ function Chat:SaveHistory()
     end
 end
 
+-- Filled in above what has arrived since login, newest saved line first, so the window reads in
+-- order: the last session, then this one. (Older saves hold plain strings, coloured in the text.)
 function Chat:RestoreHistory()
     local db = GetDb()
     local history = ns.CharDB().chatHistory
     if not (db and db.saveHistory and history) then return end
     for i, msgs in pairs(history) do
         local cf = _G["ChatFrame"..i]
-        if cf then for _, msg in ipairs(msgs) do cf:AddMessage(msg) end end
+        if cf and cf ~= _G.ChatFrame2 and cf.BackFillMessage then
+            -- where the last session ends and this one begins: filled in first, so the saved lines go
+            -- above it (it has no chat event, so it is never saved itself)
+            if #msgs > 0 then
+                cf:BackFillMessage("|cff808080---------- " .. L["Saved history ends here"] .. " ----------|r")
+            end
+            for j = #msgs, 1, -1 do
+                local line = msgs[j]
+                if type(line) == "table" and type(line[1]) == "string" then
+                    local raw, at = line[1], tonumber(line[6])
+                    local text = raw
+                    if at then
+                        -- stamped again, in today's format, with the time it arrived
+                        local fmt = StampFormats()
+                        if db.betterTimestamps then
+                            text = GetTimestamp(at) .. raw
+                        elseif fmt then
+                            text = CachedDate(fmt, at) .. raw
+                        end
+                        Chat.restoredLines[text] = { raw = raw, at = at, event = line[7] }
+                    end
+                    cf:BackFillMessage(text, line[2], line[3], line[4], line[5] or nil)
+                elseif type(line) == "string" then
+                    cf:BackFillMessage(line)
+                end
+            end
+        end
     end
 end
 

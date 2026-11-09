@@ -28,6 +28,8 @@ end)
 S:Row{ key = "au.shape", kind = "choice", path = "auras.style", choices = { "round", "square" }, apply = Refresh }
 S:Row{ key = "au.swipe", kind = "choice", path = "auras.swipe", choices = { "icon", "border", "both", "none" }, apply = Refresh }
 S:Row{ key = "au.timer", kind = "choice", path = "auras.timer", choices = { "below", "bottom", "middle", "none" }, apply = Refresh }
+S:Row{ key = "au.timerColor", path = "auras.timerColor", apply = Refresh,
+    disabled = function() return S:GetPath("auras.timer") == "none" end }
 S:Row{ key = "au.arrive", path = "auras.arrive", apply = Refresh }
 
 local function NoMineFirst()

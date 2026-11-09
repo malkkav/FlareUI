@@ -4,7 +4,7 @@ local _, ns = ...
 -- FLAREUI EDIT MODE LAYOUT
 -- The layout code exported from Edit Mode (Layout menu > Share > Copy to Clipboard). Players import
 -- it themselves in Blizzard's own dialog: an addon that imports or switches layouts taints the
--- bars, and C_EditMode.SaveLayouts from addon code crashed the client. Offered on the About page
+-- bars, and C_EditMode.SaveLayouts from addon code crashes the client. Offered on the About page
 -- and in the setup tour.
 --------------------------------------------------
 local Layout = {

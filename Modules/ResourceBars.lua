@@ -42,6 +42,8 @@ local COLORS = {
     swingOff   = { 0.72, 0.54, 0.32 },
     swingRanged = { 0.45, 0.68, 0.40 },
     outOfRange = { 0.78, 0.28, 0.24 },
+    queued     = { 1.00, 0.82, 0.25 },   -- Queued Attack Colour: an on-next-swing attack is queued
+    waiting    = { 0.45, 0.45, 0.45 },   -- Waiting State: auto attack on, no swing running
 }
 
 -- textSize: added to the Fonts tab size
@@ -71,17 +73,18 @@ local SWING_SHOW_VALUES = CopyTable(SHOW_VALUES)
 table.insert(SWING_SHOW_VALUES, { text = L["Only When In Use"], value = "inuse", isRadio = true })
 -- How long a bar in that mode outlasts a finished swing: the next one rarely lands on the same frame
 local SWING_IN_USE_HOLD = 1.5
--- power and mana: no percentages, as those of a (possibly secret) power are unreliable
+-- power and mana: the percent comes from the client's curve (UnitPowerPercent), so a secret power works
 local POWER_TEXT_VALUES = {
-    { text = L["None"],  value = "none",  isRadio = true },
-    { text = L["Value"], value = "value", isRadio = true },
+    { text = L["None"],    value = "none",    isRadio = true },
+    { text = L["Value"],   value = "value",   isRadio = true },
+    { text = L["Percent"], value = "percent", isRadio = true },
 }
 local TEXT_VALUES = {
     { text = L["None"],            value = "none",    isRadio = true },
     { text = L["Percent"],         value = "percent", isRadio = true },
     { text = L["Value"],           value = "value",   isRadio = true },
-    { text = L["Value + Percent"], value = "both",    isRadio = true },
-    { text = L["Current | Max"],   value = "valuemax", isRadio = true },
+    { text = L["Value | Percent"], value = "both",    isRadio = true },
+    { text = L["Current (Max)"],   value = "valuemax", isRadio = true },
 }
 
 local bars = {}            -- key -> holder
@@ -114,8 +117,39 @@ local function Cfg(key)
     return rdb.bars[key]
 end
 
+-- The health bar's own Class Colours; until set it follows the player frame's
+local function HealthClassColors()
+    local cfg = Cfg("health")
+    if cfg and cfg.classColor ~= nil then return cfg.classColor end
+    return PlayerClassColors()
+end
+
+-- Low Health Colour: a red layer over the fill, its alpha from your health through a step curve
+-- (health is secret, so no comparison in Lua): shown under LOW_HEALTH of your health
+local LOW_HEALTH = { at = 0.3, color = { 0.85, 0.1, 0.1 } }
+function LOW_HEALTH.Alpha()
+    if not LOW_HEALTH.curve then
+        LOW_HEALTH.curve = C_CurveUtil.CreateCurve()
+        LOW_HEALTH.curve:SetType(Enum.LuaCurveType.Step)
+        LOW_HEALTH.curve:AddPoint(0, 1)
+        LOW_HEALTH.curve:AddPoint(LOW_HEALTH.at, 0)
+    end
+    return UnitHealthPercent("player", false, LOW_HEALTH.curve)
+end
+-- Lays the red layer over the bar's fill (a layout can replace the fill texture) and shows it
+function LOW_HEALTH.Place(holder)
+    local low, fill = holder.LowHealth, holder.Bar:GetStatusBarTexture()
+    low:ClearAllPoints()
+    low:SetAllPoints(fill)
+    low.Tex:SetTexture(fill:GetTexture())
+    local c = LOW_HEALTH.color
+    low.Tex:SetVertexColor(c[1], c[2], c[3])
+    low:Show()
+end
+
 local function IsEditing()
-    return LEM:IsInEditMode()
+    -- Edit Mode with its samples; a fight in Edit Mode shows the live bars (ns.OnEditFight)
+    return ns.EditPreviewing()
 end
 
 local function ClassFile()
@@ -170,12 +204,23 @@ local function IsAvailable(holder)
     return true
 end
 
+-- Auto attack state, for the swing bars' Waiting State: melee from PLAYER_ENTER/LEAVE_COMBAT,
+-- Auto Shot and wands from START/STOP_AUTOREPEAT_SPELL
+RB.auto = { melee = false, ranged = false }
+local function AutoAttacking(key)
+    if key == "swingRanged" then return RB.auto.ranged end
+    return RB.auto.melee
+end
+
 local function ShouldShow(holder)
     local cfg = Cfg(holder.key)
     if not cfg then return false end
     if IsEditing() then return true end
-    -- a swing proves the weapon, so no availability check (attack speeds can be secret)
-    if cfg.show == "inuse" then return (holder.swingEnd or holder.swingHold) and true or false end
+    -- a swing proves the weapon, so no availability check (attack speeds can be secret); Waiting
+    -- State keeps the bar up while auto attack is on
+    if cfg.show == "inuse" then
+        return (holder.swingEnd or holder.swingHold or (cfg.waiting and AutoAttacking(holder.key))) and true or false
+    end
     if not IsAvailable(holder) then return false end
     local show = cfg.show or "always"
     if show == "always" then return true end
@@ -192,20 +237,9 @@ end
 --------------------------------------------------
 -- 5. UPDATERS
 --------------------------------------------------
--- max: only the health bar's Current | Max uses it
+-- max: only the health bar's Current (Max) uses it (the unit frames' formats)
 local function SetText(holder, mode, value, percent, max)
-    local text = holder.Text
-    if mode == "percent" then
-        text:SetFormattedText("%.0f%%", percent)
-    elseif mode == "value" then
-        text:SetText(AbbreviateNumbers(value))
-    elseif mode == "both" then
-        text:SetFormattedText("%s | %.0f%%", AbbreviateNumbers(value), percent)
-    elseif mode == "valuemax" then
-        text:SetFormattedText("%s | %s", AbbreviateNumbers(value), AbbreviateNumbers(max))
-    else
-        text:SetText("")
-    end
+    K.FormatBarText(holder.Text, mode, value, percent, max)
 end
 
 local function UpdateHealPrediction(holder)
@@ -217,11 +251,13 @@ local function UpdateHealPrediction(holder)
     local calc = holder.HealCalc
     if calc and UnitGetDetailedHealPrediction and pcall(UnitGetDetailedHealPrediction, "player", "player", calc) then
         local okH, incoming = pcall(calc.GetIncomingHeals, calc)
-        local okA, absorbs = pcall(calc.GetDamageAbsorbs, calc)
+        local okA, absorbs, clamped = pcall(calc.GetDamageAbsorbs, calc)
         if okH then heal:SetValue(incoming) end
         if okA then absorb:SetValue(absorbs) end
+        if okA then K.SetShieldGlow(holder.ShieldGlow, clamped) else K.HideShieldGlow(holder.ShieldGlow) end
         return
     end
+    K.HideShieldGlow(holder.ShieldGlow)
     pcall(function() heal:SetValue(UnitGetIncomingHeals("player")) end)
     pcall(function() absorb:SetValue(UnitGetTotalAbsorbs("player")) end)
 end
@@ -238,13 +274,19 @@ local function UpdateHealthValue(holder, glide)
         SetText(holder, cfg.text or "both", UnitHealth("player"), UnitHealthPercent("player", true, K.percentCurve), UnitHealthMax("player"))
     end
     UpdateHealPrediction(holder)   -- the amounts are clamped by the health missing
+    local low = holder.LowHealth
+    if low and low:IsShown() and not pcall(low.SetAlpha, low, LOW_HEALTH.Alpha()) then low:SetAlpha(0) end
 end
 
 local function UpdateHealth(holder, glide)
     local bar = holder.Bar
     bar:SetMinMaxValues(0, UnitHealthMax("player"))
-    bar:SetStatusBarColor(K.GetHealthColor("player", PlayerClassColors()))
+    bar:SetStatusBarColor(K.GetHealthColor("player", HealthClassColors()))
     holder.ready = true
+    local cfg = Cfg("health")
+    if holder.LowHealth then
+        if cfg and cfg.lowHealth then LOW_HEALTH.Place(holder) else holder.LowHealth:Hide() end
+    end
     UpdateHealthValue(holder, glide)
 end
 
@@ -272,7 +314,10 @@ local function SetPowerValue(holder, powerType, glide, full)
     end
     holder.valueTime, holder.valueType, holder.lastValue = now, t, v
     ns.SetBarValue(holder.Bar, value, glide and cfg and cfg.smoothBars)
-    SetText(holder, cfg.text or "value", value)
+    local mode = cfg.text or "value"
+    local percent   -- may be secret
+    if mode == "percent" then percent = UnitPowerPercent("player", powerType, false, K.percentCurve) end
+    SetText(holder, mode, value, percent)
 end
 
 -- holder.powerType: the type the max and colour were set for, so a tick that finds another type
@@ -284,6 +329,7 @@ local function UpdatePower(holder, glide)
     bar:SetStatusBarColor(K.GetPowerColor("player"))
     holder.ready, holder.powerType = true, readable(powerType)
     SetPowerValue(holder, powerType, glide, true)
+    if holder.ManaCost then holder.ManaCost:Refresh(powerType) end
 end
 
 local function UpdatePowerValue(holder, glide)
@@ -302,6 +348,7 @@ local function UpdateMana(holder, glide)
     bar:SetStatusBarColor(ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3])
     holder.ready = true
     SetPowerValue(holder, MANA, glide, true)
+    if holder.ManaCost then holder.ManaCost:Refresh(MANA) end
 end
 
 local function UpdateManaValue(holder, glide)
@@ -338,20 +385,61 @@ local function UpdateCombo(holder)
     holder.lastPoints = (not IsEditing() and readable(points)) or nil
 end
 
+-- The swing bar's colour: out of range, else Waiting State (idle, auto attack on), else Queued
+-- Attack Colour, else its own
+local function SwingColor(holder)
+    local c = COLORS[holder.key]
+    if holder.outOfRange then c = COLORS.outOfRange
+    elseif holder.waiting then c = COLORS.waiting
+    elseif holder.queued or holder.previewQueued then
+        local cfg = Cfg(holder.key)
+        if cfg and cfg.queueTint then c = COLORS.queued end
+    end
+    holder.Bar:SetStatusBarColor(c[1], c[2], c[3])
+end
+
+-- Stand-Still Zone (ranged bar): the swing's last half second, when Auto Shot and wands need you
+-- standing still
+local STAND_STILL = 0.5
+local function SwingZone(holder)
+    local zone = holder.StandStill
+    if not zone then return end
+    local cfg, d = Cfg(holder.key), holder.swingDuration
+    if cfg and cfg.standStill and d and d > 0 then
+        zone:SetWidth(math_max(1, holder.Bar:GetWidth() * math_min(STAND_STILL / d, 1)))
+        zone:Show()
+    else
+        zone:Hide()
+    end
+end
+
+-- An idle swing bar: empty, or with Waiting State full and grey while auto attack is on
+local function SwingIdle(holder)
+    local cfg = Cfg(holder.key)
+    holder.waiting = (cfg and cfg.waiting and AutoAttacking(holder.key)) and true or false
+    holder.Bar:SetMinMaxValues(0, 1)
+    holder.Bar:SetValue(holder.waiting and 1 or 0)
+    holder.Text:SetText(holder.waiting and L["Waiting"] or "")
+    holder.Spark:Hide()
+    SwingZone(holder)
+    SwingColor(holder)
+end
+
 local function SwingOnUpdate(holder)
     local remaining = holder.swingEnd - GetTime()
     if remaining <= 0 then
         holder.swingEnd, holder.swingDuration, holder.swingTenth = nil, nil, nil
         holder:SetScript("OnUpdate", nil)
-        holder.Bar:SetValue(0)
-        holder.Text:SetText("")
-        holder.Spark:Hide()
+        SwingIdle(holder)
         local cfg = Cfg(holder.key)
         if cfg and cfg.show == "inuse" then
             holder.swingHold = C_Timer.NewTimer(SWING_IN_USE_HOLD, function()
                 holder.swingHold = nil
                 local now = Cfg(holder.key)
-                if now and now.show == "inuse" and not holder.swingEnd and not IsEditing() then holder:Hide() end
+                if now and now.show == "inuse" and not holder.swingEnd and not IsEditing()
+                    and not (now.waiting and AutoAttacking(holder.key)) then
+                    holder:Hide()
+                end
             end)
         end
         return
@@ -373,27 +461,25 @@ local function StartSwing(holder, duration)
         holder.swingHold = nil
     end
     holder.swingDuration = duration
+    holder.swingSpeed = duration   -- the weapon speed it started at (a haste change rescales from it)
     holder.swingEnd = GetTime() + duration
     holder.Bar:SetMinMaxValues(0, 1)
     holder.Bar:SetValue(0)
     holder.Spark:Show()
+    holder.waiting = false
+    SwingColor(holder)
+    SwingZone(holder)
     holder:SetScript("OnUpdate", SwingOnUpdate)
 end
 
 local function SetSwingRange(holder, outOfRange)
     holder.outOfRange = outOfRange and true or false
-    local c = holder.outOfRange and COLORS.outOfRange or COLORS[holder.key]
-    holder.Bar:SetStatusBarColor(c[1], c[2], c[3])
+    SwingColor(holder)
 end
 
 local function UpdateSwing(holder)
     local info = BARS[holder.key]
-    if not holder.swingEnd then
-        holder.Bar:SetMinMaxValues(0, 1)
-        holder.Bar:SetValue(0)
-        holder.Text:SetText("")
-        holder.Spark:Hide()
-    end
+    if not holder.swingEnd then SwingIdle(holder) end
     holder.Label:SetText(info.text)
     if C_SwingTimer and info.swingType and not IsEditing() then
         local inRange = readable(C_SwingTimer.IsTargetWithinSwingRange(info.swingType))
@@ -424,32 +510,71 @@ local function ApplyPreview(holder)
     bar:SetMinMaxValues(0, 1)
     holder.ready = nil   -- the next update sets the real max and colour again
     if kind == "health" then
-        bar:SetValue(0.75)
-        bar:SetStatusBarColor(K.GetHealthColor("player", PlayerClassColors()))
-        SetText(holder, cfg.text or "both", 18000, 75, 24000)
-        if holder.HealBar then holder.HealBar:SetValue(0); holder.AbsorbBar:SetValue(0) end
+        -- Low Health Colour: the sample is low and red
+        local low = cfg.lowHealth and holder.LowHealth
+        bar:SetValue(low and 0.25 or 0.75)
+        bar:SetStatusBarColor(K.GetHealthColor("player", HealthClassColors()))
+        SetText(holder, cfg.text or "both", low and 6000 or 18000, low and 25 or 75, 24000)
+        if holder.HealBar then holder.HealBar:SetValue(0); holder.AbsorbBar:SetValue(0); K.HideShieldGlow(holder.ShieldGlow) end
+        if holder.LowHealth then
+            if low then
+                LOW_HEALTH.Place(holder)
+                low:SetAlpha(1)
+            else
+                holder.LowHealth:Hide()
+            end
+        end
     elseif kind == "power" then
         bar:SetValue(0.6)
         bar:SetStatusBarColor(K.GetPowerColor("player"))
-        SetText(holder, cfg.text or "value", 60)
+        SetText(holder, cfg.text or "value", 60, 60)
+        if holder.ManaCost then holder.ManaCost:Refresh(UnitPowerType("player")) end   -- the sample cost
+        -- GCD Spark: a still sample
+        if holder.Gcd then
+            holder.Gcd.preview = cfg.gcd and true or nil
+            holder.Gcd:SetShown(cfg.gcd and true or false)
+        end
     elseif kind == "mana" then
         bar:SetValue(0.4)
         bar:SetStatusBarColor(ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3])
-        SetText(holder, cfg.text or "value", 1600)
+        SetText(holder, cfg.text or "value", 1600, 40)
+        if holder.ManaCost then holder.ManaCost:Refresh(MANA) end
     elseif kind == "swing" then
         holder:SetScript("OnUpdate", nil)
         holder.swingEnd = nil
-        bar:SetValue(0.6)
-        SetSwingRange(holder, false)
         holder.Spark:Show()
-        holder.Text:SetText("1.4")
         holder.Label:SetText(BARS[holder.key].text)
+        holder.waiting = cfg.waiting and true or false
+        holder.previewQueued = (holder.key == "swingMain" and cfg.queueTint) and true or nil
+        if holder.waiting then
+            bar:SetValue(1)
+            holder.Spark:Hide()
+            holder.Text:SetText(L["Waiting"])
+        else
+            bar:SetValue(0.6)
+            holder.Text:SetText("1.4")
+        end
+        SetSwingRange(holder, false)
+        -- Stand-Still Zone on a sample 2.5 s swing
+        if holder.StandStill then
+            if cfg.standStill and not holder.waiting then
+                holder.StandStill:SetWidth(math_max(1, bar:GetWidth() * STAND_STILL / 2.5))
+                holder.StandStill:Show()
+            else
+                holder.StandStill:Hide()
+            end
+        end
     end
 end
 
 local function ApplyShown(holder)
     local show = ShouldShow(holder)
     holder:SetShown(show)
+    if not IsEditing() then
+        -- the samples' extras go with Edit Mode
+        holder.previewQueued = nil
+        if holder.Gcd and holder.Gcd.preview then holder.Gcd.preview = nil holder.Gcd:Hide() end
+    end
     if show then
         if IsEditing() then ApplyPreview(holder) else UpdateBar(holder) end
     end
@@ -458,6 +583,25 @@ end
 local function ApplyAllShown()
     for _, key in ipairs(BAR_ORDER) do
         if bars[key] then ApplyShown(bars[key]) end
+    end
+    UpdateFsrSpark()
+end
+
+-- Target and combat edges: only which bars show can change. A health, power or mana bar already up
+-- keeps its values (and a Smooth Bars glide in flight); one that just came up gets a full update.
+-- The swing bars (range on the new target) and the combo points (newTarget) always update.
+local function ApplyAllVisibility(newTarget)
+    for _, key in ipairs(BAR_ORDER) do
+        local holder = bars[key]
+        if holder then
+            local kind = BARS[key].kind
+            local was = holder:IsShown()
+            if kind == "swing" or (kind == "combo" and newTarget) or not was then
+                ApplyShown(holder)
+            else
+                holder:SetShown(ShouldShow(holder))
+            end
+        end
     end
     UpdateFsrSpark()
 end
@@ -593,12 +737,13 @@ local function LayoutBar(holder)
         heal:SetWidth(width)
         heal:SetPoint("TOPLEFT", clip, "TOPLEFT", 0, 0)
         heal:SetPoint("BOTTOMLEFT", clip, "BOTTOMLEFT", 0, 0)
-        heal:SetStatusBarTexture(texture)
+        -- (the heal bar keeps its own texture and colour, set at creation: a new texture would drop the colour)
         absorb:ClearAllPoints()
         absorb:SetWidth(width)
         absorb:SetReverseFill(true)
         absorb:SetPoint("TOPRIGHT", clip, "TOPRIGHT", 0, 0)
         absorb:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT", 0, 0)
+        K.PlaceShieldGlow(holder.ShieldGlow, bar, false)
         absorb:SetStatusBarTexture(K.GetBarTexture(K.ABSORB_TEXTURE))
         absorb:SetStatusBarColor(K.ABSORB_COLOR[1], K.ABSORB_COLOR[2], K.ABSORB_COLOR[3], K.ABSORB_COLOR[4])
     end
@@ -720,10 +865,59 @@ local function CreateHolder(key)
         absorb:SetMinMaxValues(0, 1)
         absorb:SetValue(0)
         holder.HealClip, holder.HealBar, holder.AbsorbBar = clip, heal, absorb
+        holder.ShieldGlow = K.CreateShieldGlow(holder.Bar, clip)
+        -- Low Health Colour: on its own frame (its alpha may be secret; a texture's would not draw)
+        local low = CreateFrame("Frame", nil, holder.Bar)
+        low:SetFrameLevel(holder.Bar:GetFrameLevel() + 1)
+        low.Tex = low:CreateTexture(nil, "ARTWORK")
+        low.Tex:SetAllPoints()
+        low:Hide()
+        holder.LowHealth = low
         if CreateUnitHealPredictionCalculator then
             local ok, calc = pcall(CreateUnitHealPredictionCalculator)
             if ok and calc then holder.HealCalc = calc end
         end
+    end
+
+    if info.kind == "power" or info.kind == "mana" then
+        -- the mana a spell being cast will cost, shaded at the fill's end (as on the player frame)
+        holder.ManaCost = K.CreateManaCost(holder.Bar, function()
+            if IsEditing() then return 0.15 end   -- the Edit Mode sample (the bar runs 0 to 1 then)
+            return RB.manaCost
+        end, function()
+            if info.kind == "mana" then return ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3] end
+            return K.GetPowerColor("player")
+        end)
+    end
+
+    if info.kind == "power" then
+        -- GCD Spark: crosses the bar during the global cooldown
+        local gcd = CreateFrame("Frame", nil, holder.Bar)
+        gcd:SetAllPoints(holder.Bar)
+        gcd:SetFrameLevel(holder.Bar:GetFrameLevel() + 2)
+        gcd:Hide()
+        local spark = gcd:CreateTexture(nil, "OVERLAY")
+        spark:SetTexture(FSR_SPARK)
+        spark:SetBlendMode("ADD")
+        spark:SetVertexColor(1, 0.85, 0.4)
+        gcd.Spark = spark
+        gcd:SetScript("OnShow", function(self)
+            local h = holder.Bar:GetHeight()
+            self.Spark:SetSize(math_max(h, 8), math_max(h * 2.2, 18))
+        end)
+        gcd:SetScript("OnUpdate", function(self)
+            if self.preview then   -- Edit Mode: a still spark
+                self.Spark:SetPoint("CENTER", holder.Bar, "LEFT", holder.Bar:GetWidth() * 0.4, 0)
+                return
+            end
+            local elapsed = RB.gcdStart and (GetTime() - RB.gcdStart)
+            if not elapsed or elapsed >= RB.gcdDuration then
+                self:Hide()
+                return
+            end
+            self.Spark:SetPoint("CENTER", holder.Bar, "LEFT", holder.Bar:GetWidth() * elapsed / RB.gcdDuration, 0)
+        end)
+        holder.Gcd = gcd
     end
 
     if info.kind == "power" or info.kind == "mana" then
@@ -759,6 +953,13 @@ local function CreateHolder(key)
         holder.Spark:SetTexture(SWING_SPARK)
         holder.Spark:SetBlendMode("ADD")
         holder.Spark:Hide()
+        if key == "swingRanged" then
+            holder.StandStill = holder.Bar:CreateTexture(nil, "ARTWORK", nil, 3)
+            holder.StandStill:SetColorTexture(1, 0.2, 0.15, 0.35)
+            holder.StandStill:SetPoint("TOPRIGHT", holder.Bar, "TOPRIGHT")
+            holder.StandStill:SetPoint("BOTTOMRIGHT", holder.Bar, "BOTTOMRIGHT")
+            holder.StandStill:Hide()
+        end
     end
 
     holder:Hide()
@@ -822,6 +1023,23 @@ local function BuildSettings(key)
         add({ name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false, get = get("fsr", false), set = set("fsr"),
               desc = L["A spark crosses the bar for five seconds after a spell that costs mana: spirit regen comes back when it ends."] })
     end
+    -- at the bottom of Frame: each bar's own extras (off by default)
+    if key == "power" then
+        add({ name = L["GCD Spark"], kind = LEM.SettingType.Checkbox, default = false, get = get("gcd", false), set = set("gcd"),
+              desc = L["A spark crosses the bar during the global cooldown."] })
+    end
+    if key == "swingRanged" then
+        add({ name = L["Stand-Still Zone"], kind = LEM.SettingType.Checkbox, default = false, get = get("standStill", false), set = set("standStill"),
+              desc = L["Marks the swing's last half second: Auto Shot and wands need you standing still then."] })
+    end
+    if key == "swingMain" then
+        add({ name = L["Queued Attack Colour"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueTint", false), set = set("queueTint"),
+              desc = L["The bar turns gold while Heroic Strike, Cleave, Maul or Raptor Strike waits for the next swing."] })
+    end
+    if info.kind == "swing" then
+        add({ name = L["Waiting State"], kind = LEM.SettingType.Checkbox, default = false, get = get("waiting", false), set = set("waiting"),
+              desc = L["With auto attack on but no swing running (the target out of reach), the bar shows full and grey, saying Waiting."] })
+    end
     -- classic gems have no Look
     local Section, settings = K.EditSections()
     Section("Frame", frameItems)
@@ -835,6 +1053,15 @@ local function BuildSettings(key)
             item.hidden = classicOn
             return item
         end)(),
+        -- the health bar: Class Colours (until set, the player frame's), then Low Health Colour
+        (function()
+            local item = K.ClassColorSetting(HealthClassColors, set("classColor"))
+            item.hidden = function() return info.kind ~= "health" end
+            return item
+        end)(),
+        { name = L["Low Health Colour"], kind = LEM.SettingType.Checkbox, default = false, get = get("lowHealth", false), set = set("lowHealth"),
+          desc = L["The bar turns red while your health is under 30%."],
+          hidden = function() return info.kind ~= "health" end },
         (function()
             -- only the bars that hold a value: combo points are steps, swing timers already run smoothly
             local item = K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars"))
@@ -861,7 +1088,123 @@ local function EnableSwingRange()
     end
 end
 
+-- A weapon swap restarts a running swing at the new weapon's speed (as Blizzard's timer does), and
+-- ends it when that hand has no weapon any more
+local function RestartSwings()
+    local main, off, ranged = UnitAttackSpeed("player")
+    for _, key in ipairs(SWING_KEYS) do
+        local holder, swingType = bars[key], BARS[key].swingType
+        if holder and holder.swingEnd then
+            if HasSwingWeapon(swingType) then
+                local speed = swingType == SWING.OffHand and off or (swingType == SWING.Ranged and ranged or main)
+                StartSwing(holder, speed)   -- an unreadable speed leaves the old swing running
+            else
+                holder.swingEnd = GetTime()   -- SwingOnUpdate clears the bar on its next frame
+            end
+        end
+    end
+end
+
+-- Classic swing rules the server applies with no swing event of its own (the next PLAYER_SWING
+-- corrects the bar anyway):
+-- * haste gained or lost mid-swing (Flurry, Slice and Dice, Rapid Fire) scales the time left by
+--   new speed / old speed; only when both speeds can be read
+local function RescaleSwings()
+    local main, off, ranged = UnitAttackSpeed("player")
+    local now = GetTime()
+    for _, key in ipairs(SWING_KEYS) do
+        local holder, swingType = bars[key], BARS[key].swingType
+        if holder and holder.swingEnd and holder.swingSpeed then
+            local new = readable(swingType == SWING.OffHand and off or (swingType == SWING.Ranged and ranged or main))
+            local old = holder.swingSpeed
+            if new and new > 0 and math.abs(new - old) > 0.001 then
+                local ratio = new / old
+                holder.swingEnd = now + (holder.swingEnd - now) * ratio
+                holder.swingDuration = holder.swingDuration * ratio
+                holder.swingSpeed = new
+                SwingZone(holder)
+            end
+        end
+    end
+end
+
+-- * a parry hastens your next main-hand swing: 40% of the speed off while more than 60% is left,
+--   else down to 20% of the speed
+local function ParryHaste()
+    local holder = bars.swingMain
+    if not (holder and holder.swingEnd and holder.swingSpeed) then return end
+    local now, speed = GetTime(), holder.swingSpeed
+    local remaining = holder.swingEnd - now
+    if remaining > 0.6 * speed then
+        holder.swingEnd = holder.swingEnd - 0.4 * speed
+    elseif remaining > 0.2 * speed then
+        holder.swingEnd = now + 0.2 * speed
+    end
+end
+
+-- * finishing a spell with a cast time (Slam, a heal, Aimed Shot) restarts the swing; Auto Shot is
+--   the ranged swing itself
+local AUTO_SHOT = 75
+
+-- Queued Attack Colour (main-hand bar): an on-next-swing attack is queued
+local QUEUED_SPELLS = { 78, 845, 6807, 2973 }   -- Heroic Strike, Cleave, Maul, Raptor Strike (by name: every rank)
+local function UpdateQueued()
+    local holder = bars.swingMain
+    if not holder then return end
+    local cfg, on = Cfg("swingMain"), false
+    if cfg and cfg.queueTint and C_Spell.IsCurrentSpell then
+        for _, id in ipairs(QUEUED_SPELLS) do
+            local name = C_Spell.GetSpellName(id)
+            if name and readable(C_Spell.IsCurrentSpell(name)) then on = true break end
+        end
+    end
+    if on ~= holder.queued then
+        holder.queued = on
+        SwingColor(holder)
+    end
+end
+
+-- GCD Spark (power bar): the global cooldown, read from a spell that only has the GCD; only when
+-- its times can be read
+local GCD_SPELLS = { 29515, 61304 }
+local function UpdateGcd()
+    local power = bars.power
+    local cfg = Cfg("power")
+    if not (power and power.Gcd and power:IsShown() and cfg and cfg.gcd) then return end
+    for _, id in ipairs(GCD_SPELLS) do
+        local info = C_Spell.GetSpellCooldown(id)
+        local start, duration = info and readable(info.startTime), info and readable(info.duration)
+        if start and duration and duration > 0 and duration <= 2 then
+            RB.gcdStart, RB.gcdDuration = start, duration
+            power.Gcd:Show()
+            return
+        end
+    end
+end
+
+-- Mana cost preview on the power and mana bars: the cost of the spell being cast
+local function RefreshManaCost()
+    local power, mana = bars.power, bars.mana
+    if power and power.ManaCost and power:IsShown() then power.ManaCost:Refresh(UnitPowerType("player")) end
+    if mana and mana.ManaCost and mana:IsShown() then mana.ManaCost:Refresh(MANA) end
+end
+
+-- no cast running any more: the preview goes (a secret name still means a cast)
+local function ClearManaCostIfDone()
+    local name = UnitCastingInfo("player")
+    if not canaccessvalue(name) or name ~= nil then return end
+    if canaccessvalue(RB.manaCost) and RB.manaCost == nil then return end
+    RB.manaCost = nil
+    RefreshManaCost()
+end
+
 function RB:OnEvent(event, arg1, arg2, arg3)
+    -- the auto attack state is kept in Edit Mode too, for the bars after it
+    if event == "PLAYER_ENTER_COMBAT" or event == "PLAYER_LEAVE_COMBAT" then
+        RB.auto.melee = event == "PLAYER_ENTER_COMBAT"
+    elseif event == "START_AUTOREPEAT_SPELL" or event == "STOP_AUTOREPEAT_SPELL" then
+        RB.auto.ranged = event == "START_AUTOREPEAT_SPELL"
+    end
     if IsEditing() then return end
     if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
         if bars.health and bars.health:IsShown() then
@@ -872,24 +1215,56 @@ function RB:OnEvent(event, arg1, arg2, arg3)
         if bars.health and bars.health:IsShown() then UpdateHealPrediction(bars.health) end
     elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT" or event == "UNIT_MAXPOWER" then
         local maxChange = event == "UNIT_MAXPOWER"
-        if bars.power and bars.power:IsShown() then
-            if maxChange then UpdatePower(bars.power, true) else UpdatePowerValue(bars.power, true) end
-        end
-        -- arg2 is the changed power's token: the mana bar skips the other powers (energy ticks),
-        -- as Blizzard's class power bars do; with no readable token it updates as before
+        -- arg2 is the changed power's token: each bar takes only its own power (a cat's energy bar
+        -- skips mana regen, the combo bar skips energy), as Blizzard's class power bars do; with no
+        -- readable token every bar updates
         local token = readable(arg2)
+        if bars.power and bars.power:IsShown() then
+            local _, own = UnitPowerType("player")
+            if token == nil or own == nil or token == own then
+                if maxChange then UpdatePower(bars.power, true) else UpdatePowerValue(bars.power, true) end
+            end
+        end
         if bars.mana and bars.mana:IsShown() and (token == nil or token == "MANA") then
             if maxChange then UpdateMana(bars.mana, true) else UpdateManaValue(bars.mana, true) end
         end
-        local comboChange = not (event == "UNIT_POWER_FREQUENT" and canaccessvalue(arg2) and arg2 ~= "COMBO_POINTS")
-        if comboChange and bars.combo and bars.combo:IsShown() then UpdateCombo(bars.combo) end
+        if bars.combo and bars.combo:IsShown() and (token == nil or token == "COMBO_POINTS") then
+            UpdateCombo(bars.combo)
+        end
     elseif event == "UNIT_DISPLAYPOWER" then
         -- a shapeshift: the mana and combo bars come or go
         ApplyAllShown()
+    elseif event == "UNIT_SPELLCAST_START" then
+        -- a cast with a cast time (instants fire no START): the swing restarts when it lands
+        RB.castingSpell = readable(arg3)
+        local costs, amount = K.CostsMana(arg3)
+        -- (no "and/or" here: the amount may be secret, and that would test it)
+        if costs then RB.manaCost = amount else RB.manaCost = nil end
+        RefreshManaCost()
+    elseif event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_FAILED" then
+        if event == "UNIT_SPELLCAST_INTERRUPTED" then RB.castingSpell = nil end
+        ClearManaCostIfDone()
+    elseif event == "SPELL_UPDATE_COOLDOWN" then
+        UpdateGcd()
+    elseif event == "CURRENT_SPELL_CAST_CHANGED" or event == "ACTIONBAR_UPDATE_STATE" then
+        UpdateQueued()
+    elseif event == "PLAYER_ENTER_COMBAT" or event == "PLAYER_LEAVE_COMBAT"
+        or event == "START_AUTOREPEAT_SPELL" or event == "STOP_AUTOREPEAT_SPELL" then
+        for _, key in ipairs(SWING_KEYS) do
+            if bars[key] then ApplyShown(bars[key]) end
+        end
+    elseif event == "UNIT_COMBAT" then
+        if readable(arg2) == "PARRY" then ParryHaste() end
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         local spellID = arg3
+        ClearManaCostIfDone()
+        local hardCast = RB.castingSpell
+        RB.castingSpell = nil
+        if hardCast and canaccessvalue(spellID) and spellID == hardCast and spellID ~= AUTO_SHOT then
+            RestartSwings()
+        end
         if not (bars.power or bars.mana) then return end
-        if not (spellID and canaccessvalue(spellID)) then return end
+        if not (canaccessvalue(spellID) and spellID) then return end
         local costs = C_Spell.GetSpellPowerCost(spellID)
         if not costs then return end
         for _, cost in ipairs(costs) do
@@ -922,23 +1297,52 @@ function RB:OnEvent(event, arg1, arg2, arg3)
         end
     elseif event == "PLAYER_TARGET_CHANGED" then
         if bars.combo then bars.combo.lastPoints = nil end   -- the new target's points do not animate
-        ApplyAllShown()
+        -- Blizzard's own (hidden) swing timers still get events and can turn the shared range check
+        -- off: it is turned back on with each target
+        EnableSwingRange()
+        ApplyAllVisibility(true)
+    elseif event == "PLAYER_DEAD" then
+        -- no swing runs on a corpse: SwingOnUpdate clears each bar on its next frame
+        for _, key in ipairs(SWING_KEYS) do
+            local holder = bars[key]
+            if holder and holder.swingEnd then holder.swingEnd = GetTime() end
+        end
+    elseif event == "COMBO_TARGET_CHANGED" then
+        -- points moved to a new target keep their count, so no power event fires (Forever's own
+        -- combo bar listens for this too)
+        if bars.combo and bars.combo:IsShown() then UpdateCombo(bars.combo) end
+    elseif event == "UNIT_INVENTORY_CHANGED" or event == "UNIT_ATTACK_SPEED" or event == "WEAPON_SLOT_CHANGED" then
+        -- gear and attack speed only touch the swing bars (looting fires UNIT_INVENTORY_CHANGED often)
+        if event == "WEAPON_SLOT_CHANGED" then
+            RestartSwings()
+            EnableSwingRange()
+        elseif event == "UNIT_ATTACK_SPEED" then
+            RescaleSwings()
+        end
+        for _, key in ipairs(SWING_KEYS) do
+            if bars[key] then ApplyShown(bars[key]) end
+        end
     else
-        -- combat, gear, attack speed, entering the world: any bar may come or go
-        if event == "PLAYER_ENTERING_WORLD" or event == "WEAPON_SLOT_CHANGED" then EnableSwingRange() end
-        ApplyAllShown()
+        -- combat, entering the world: any bar may come or go
+        if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_REGEN_DISABLED" then EnableSwingRange() end
+        if event == "PLAYER_ENTERING_WORLD" then ApplyAllShown() else ApplyAllVisibility(false) end
     end
 end
 
 local UNIT_EVENTS = {
     "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_HEAL_PREDICTION", "UNIT_ABSORB_AMOUNT_CHANGED",
     "UNIT_POWER_UPDATE", "UNIT_POWER_FREQUENT", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER",
-    "UNIT_SPELLCAST_SUCCEEDED", "UNIT_ATTACK_SPEED",
+    "UNIT_SPELLCAST_SUCCEEDED", "UNIT_ATTACK_SPEED", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_COMBAT",
+    "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_FAILED",
     "UNIT_INVENTORY_CHANGED",   -- as Blizzard's swing timers: the weapon events miss the login
 }
 local EVENTS = {
     "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_TARGET_CHANGED", "PLAYER_ENTERING_WORLD",
     "PLAYER_SWING", "PLAYER_SWING_RANGE_UPDATE", "WEAPON_SLOT_CHANGED", "PLAYER_IN_COMBAT_CHANGED",
+    "COMBO_TARGET_CHANGED",   -- Forever: points moved to a new target (no power event)
+    "PLAYER_DEAD",
+    "SPELL_UPDATE_COOLDOWN", "CURRENT_SPELL_CAST_CHANGED", "ACTIONBAR_UPDATE_STATE",
+    "PLAYER_ENTER_COMBAT", "PLAYER_LEAVE_COMBAT", "START_AUTOREPEAT_SPELL", "STOP_AUTOREPEAT_SPELL",
 }
 
 --------------------------------------------------
@@ -972,10 +1376,10 @@ function RB:ShouldLoad()
     return false
 end
 
--- Blizzard's counterparts are parked for the session: the Personal Resource Display whenever the
--- module is on, each swing timer with its bar
+-- Blizzard's counterparts are parked for the session: the Personal Resource Display with a health,
+-- power, mana or combo bar (not for swing timers alone), each swing timer with its bar
 local BLIZZARD_COUNTERPARTS = {
-    { addon = "Blizzard_PersonalResourceDisplay", frame = "PersonalResourceDisplayFrame", always = true },
+    { addon = "Blizzard_PersonalResourceDisplay", frame = "PersonalResourceDisplayFrame", bars = { "health", "power", "mana", "combo" } },
     { addon = "Blizzard_SwingTimer", frame = "SwingTimerMainHandFrame", bars = { "swingMain" } },
     { addon = "Blizzard_SwingTimer", frame = "SwingTimerOffHandFrame",  bars = { "swingOff" } },
     { addon = "Blizzard_SwingTimer", frame = "SwingTimerRangedFrame",   bars = { "swingRanged" } },
@@ -983,7 +1387,7 @@ local BLIZZARD_COUNTERPARTS = {
 
 local function HideBlizzardCounterparts()
     for _, entry in ipairs(BLIZZARD_COUNTERPARTS) do
-        local wanted = entry.always or false
+        local wanted = false
         for _, key in ipairs(entry.bars or {}) do if BarOn(key) then wanted = true end end
         if wanted then
             local function hide() if _G[entry.frame] then K.HardHide(entry.frame) end end
@@ -1030,6 +1434,7 @@ function RB:Init()
     end)
     LEM:RegisterCallback("enter", function() ApplyAllShown() end)
     LEM:RegisterCallback("exit", function() ApplyAllShown() end)
+    ns.OnEditFight(function() ApplyAllShown() end)
 
     HideBlizzardCounterparts()
     EnableSwingRange()

@@ -125,7 +125,19 @@ function Panel.AttachScrollLine(scroll, parent, step)
         scroll:SetVerticalScroll(position * (scroll:GetVerticalScrollRange() or 0))
     end
     scroll:EnableMouseWheel(true)
+    -- inside the settings window, Shift + wheel sizes the whole window (Panel.ScaleStep); other
+    -- windows with a scroll line (chat copy, perf report) just scroll
+    local inWindow
     scroll:SetScript("OnMouseWheel", function(self, delta)
+        if inWindow == nil and frame then
+            inWindow = false
+            local region = self
+            while region do
+                if region == frame then inWindow = true break end
+                region = region:GetParent()
+            end
+        end
+        if inWindow and IsShiftKeyDown() then Panel.ScaleStep(delta) return end
         local range = self:GetVerticalScrollRange() or 0
         self:SetVerticalScroll(math.max(0, math.min(range, (self:GetVerticalScroll() or 0) - delta * (step or 40))))
     end)
@@ -456,13 +468,39 @@ end
 local MOD_KEYS = { LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true, LMETA = true, RMETA = true }
 local MOUSE_KEYS = { MiddleButton = "BUTTON3", Button4 = "BUTTON4", Button5 = "BUTTON5" }
 
-function Panel.KeyButton(parent, onSet)
+-- Controller buttons: with keyboard and mouse, a pad button is a key like any other (with Shift,
+-- Ctrl or Alt held, or the pad's own emulated ones). In the Gamepad UI the game's controller bar owns
+-- the pad, so only a button of the kind the row asks for counts there (padMode, the radials):
+--   "stick": L3 or R3, alone or with LT, RT or both held (ns.PadComboKey)
+--   "bar":   a face button or D-pad direction, alone or with LT, RT or both (ns.PadBarKey)
+-- B alone cancels; LB / RB (the targeting) and other buttons are refused with a message.
+local PAD_CANCEL_KEY = GAMEPAD_FACE_RIGHT or "PAD2"
+local PAD_STICKS = { PADLSTICK = "L3", PADRSTICK = "R3" }
+local PAD_BAR_BUTTONS = { PAD1 = true, PAD2 = true, PAD3 = true, PAD4 = true,
+                          PADDUP = true, PADDDOWN = true, PADDLEFT = true, PADDRIGHT = true }
+
+-- the buttons the pad uses as Shift, Ctrl and Alt outside the Gamepad UI: never a key of their own
+local EMULATE_CVARS = { "GamePadEmulateShift", "GamePadEmulateCtrl", "GamePadEmulateAlt" }
+local function EmulatedModifier(button)
+    for _, cvar in ipairs(EMULATE_CVARS) do
+        if GetCVar(cvar) == button then return true end
+    end
+    return false
+end
+
+-- onCancel: what a cancelled capture does (Escape, right-click, a second click); a full page refresh
+-- when not given. padMode: in the Gamepad UI, take stick presses ("stick") or bar slots ("bar").
+function Panel.KeyButton(parent, onSet, onCancel, padMode)
     local b = CreateFrame("Button", nil, parent, "UIMenuButtonStretchTemplate")
     b:SetSize(170, 24)
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    local held = {}
     local function Stop()
+        if ns.keyCapturing == b then ns.keyCapturing = nil end
         b.waiting = nil
         b:EnableKeyboard(false)
+        if b.EnableGamePadButton then b:EnableGamePadButton(false) end
+        wipe(held)
         b:UnlockHighlight()
     end
     local function Finish(key)
@@ -470,30 +508,72 @@ function Panel.KeyButton(parent, onSet)
         Stop()
         onSet(mods .. key)
     end
+    local function Cancel()
+        Stop()
+        if onCancel then onCancel(b) else Panel:Refresh() end
+    end
     b:SetScript("OnClick", function(self, mouse)
         if mouse == "RightButton" then
-            if self.waiting then Stop() Panel:Refresh() else onSet("") end
+            if self.waiting then Cancel() else onSet("") end
             return
         end
-        if self.waiting then Stop() Panel:Refresh() return end
+        if self.waiting then Cancel() return end
         self.waiting = true
         self:SetText(L["Press a key"])
         self:LockHighlight()
         self:EnableKeyboard(true)
         if self.SetPropagateKeyboardInput and not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
+        if self.EnableGamePadButton then self:EnableGamePadButton(true) end
+        -- the controller navigation waits while a key is being taken (PadNav.lua)
+        ns.keyCapturing = self
     end)
     b:SetScript("OnKeyDown", function(self, key)
         if not self.waiting or MOD_KEYS[key] then return end
-        if key == "ESCAPE" then Stop() Panel:Refresh() return end
+        if key == "ESCAPE" then Cancel() return end
         Finish(key)
     end)
+    b:SetScript("OnGamePadButtonDown", function(self, button)
+        if not self.waiting then return end
+        held[button] = true
+        if not ns.IsGamepadUI() then
+            if button == PAD_CANCEL_KEY then Cancel() return end
+            if not EmulatedModifier(button) then Finish(button) end
+            return
+        end
+        local lt, rt = ns.PadTriggerKey("LT"), ns.PadTriggerKey("RT")
+        if button == lt or button == rt then return end   -- a trigger alone: keep listening
+        local function Down(key) return held[key] or IsKeyDown(key) end
+        local l, r = Down(lt), Down(rt)
+        -- B alone cancels (with a trigger held it is a bar slot)
+        if button == PAD_CANCEL_KEY and not (l or r) then Cancel() return end
+        local stick = padMode == "stick" and PAD_STICKS[button]
+        local slot = padMode == "bar" and PAD_BAR_BUTTONS[button]
+        local refusal
+        if Down(GAMEPAD_SHOULDER_LEFT or "PADLSHOULDER") or Down(GAMEPAD_SHOULDER_RIGHT or "PADRSHOULDER") then
+            refusal = L["LB and RB are for targeting. Hold LT, RT or both instead."]
+        elseif padMode == "stick" and not stick then
+            refusal = L["Press L3 or R3, alone or with LT, RT or both held."]
+        elseif padMode == "bar" and not slot then
+            refusal = L["Press A, B, X, Y or a D-pad direction, alone or with LT, RT or both held."]
+        elseif not padMode then
+            refusal = L["In Gamepad mode the controller's buttons belong to its action bar."]
+        end
+        if refusal then
+            if UIErrorsFrame then UIErrorsFrame:AddMessage(refusal, 1, 0.25, 0.25) end
+            return
+        end
+        local side = (l and r and "LTRT") or (l and "LT") or (r and "RT") or "TOP"
+        Stop()
+        onSet(stick and ns.PadComboKey(stick, side) or ns.PadBarKey(side, button))
+    end)
+    b:SetScript("OnGamePadButtonUp", function(_, button) held[button] = nil end)
     b:SetScript("OnMouseDown", function(self, mouse)
         if self.waiting and MOUSE_KEYS[mouse] then Finish(MOUSE_KEYS[mouse]) end
     end)
     b:SetScript("OnHide", Stop)
     function b:ShowKey(key)
         if key and key ~= "" then
-            self:SetText(GetBindingText and GetBindingText(key) or key)
+            self:SetText(ns.KeyText(key))
         else
             self:SetText("|cff808080" .. (NOT_BOUND or L["Not bound"]) .. "|r")
         end
@@ -557,7 +637,8 @@ local function EditButton(f, onClick)
     b:HookScript("OnEnter", function(self)
         if not self:IsEnabled() then
             ns.OwnGameTooltip(self, "ANCHOR_TOP")
-            GameTooltip:SetText(L["Edit Mode can't open in combat."], 1, 1, 1, 1, true)
+            GameTooltip:SetText(ns.IsGamepadUI() and L["In Gamepad mode, open Edit Mode from the game menu."]
+                or L["Edit Mode can't open in combat."], 1, 1, 1, 1, true)
             GameTooltip:Show()
         end
     end)
@@ -579,6 +660,26 @@ Fill.frame = function(f, row)
     f.edit:SetWidth(math.max(row.half and 60 or 80, math.ceil(labelWidth) + 24))
     f.control:SetChecked(row:Get() and true or false)
     f.edit:SetEnabled(S:CanEditFrames() and row:Get() and row.frame and row.frame() ~= nil or false)
+end
+
+-- legend: a short block of lines under its label (row.lines() returns them), such as which
+-- controller button does what; nothing to set
+Build.legend = function(f)
+    f.lines = Text(f, "GameFontHighlightSmall")
+    f.lines:SetPoint("TOPLEFT", 18, -26)
+    f.lines:SetPoint("RIGHT", -6, 0)
+    f.lines:SetJustifyH("LEFT")
+    f.lines:SetSpacing(4)
+end
+Fill.legend = function(f, row)
+    -- in search results the path sits above the label
+    local top = (f.crumb:GetText() or "") ~= "" and 18 or 6
+    f.label:ClearAllPoints()
+    f.label:SetPoint("TOPLEFT", 6, -top)
+    f.lines:SetPoint("TOPLEFT", 18, -top - 20)
+    local lines = row.lines and row.lines() or {}
+    f.lines:SetText(table.concat(lines, "\n"))
+    f:SetHeight(top + 26 + f.lines:GetStringHeight())
 end
 
 -- expander: a heading that opens and closes the rows under it
@@ -754,9 +855,9 @@ local function PlaceRows(parent, rows, y, crumbOf)
         f:ClearAllPoints()
         if row.half and not crumbOf then
             local col = firstHalf and 1 or 0
-            local indent = row.parent and INDENT or 0
-            local w = math.floor((CONTENT_W - indent) / 2)
-            f:SetPoint("TOPLEFT", indent + col * w, y)
+            -- a half row keeps to its column even under a parent (the parent still greys it)
+            local w = math.floor(CONTENT_W / 2)
+            f:SetPoint("TOPLEFT", col * w, y)
             f:SetWidth(w - (col == 0 and 8 or 0))
             FillRow(f, row)
             if row == page.jumpRow then page.jumpFrame, page.jumpTop = f, -y end
@@ -891,6 +992,7 @@ local function SetWide(wide)
     if Panel.OnResize then Panel.OnResize() end
 end
 Panel.WIDE_W = WIDTH + WIDE_EXTRA - 12 - LEFT_W - RIGHT_W - 2 * PAD   -- a wide tab's middle width
+Panel.MIDDLE_W = WIDTH - 12 - LEFT_W - RIGHT_W - 2 * PAD               -- a custom tab's middle width
 Panel.RIGHT_W, Panel.PAD = RIGHT_W, PAD
 
 local function HideCustom()
@@ -922,7 +1024,7 @@ local UpdateNav
 local newVisit      -- the page and tab whose NEW badges are showing
 
 function Panel:Refresh()
-    if not frame or not frame:IsShown() then return end
+    if not frame or not frame:IsShown() or self.opening then return end
     ReleaseAll()
     HideCustom()
     -- only a wide custom tab, shown (not search results or a module that is off), widens the window
@@ -942,7 +1044,12 @@ function Panel:Refresh()
         page.header:Hide()
         page.scroll:SetPoint("TOPLEFT", page.root, "TOPLEFT", 0, 0)
         local results = S:Search(searchText)
-        page.searchTitle:SetText(L["Results for \"%s\""]:format(searchText))
+        -- a word of one or two letters matches most rows: the first ones are shown
+        local MAX_RESULTS = 60
+        local cut = #results > MAX_RESULTS
+        for i = #results, MAX_RESULTS + 1, -1 do results[i] = nil end
+        page.searchTitle:SetText(cut and L["First %d results for \"%s\""]:format(MAX_RESULTS, searchText)
+            or L["Results for \"%s\""]:format(searchText))
         page.searchTitle:Show()
         y = -24
         if #results == 0 then
@@ -1070,6 +1177,9 @@ function Panel:JumpTo(row)
     if row.kind ~= "editmode" then
         if module.tabs then currentTab[module.key] = row.tab or module.tabs[1].key end
         if row.section then closedSections[row.section] = nil end
+        -- a row folded under a closed heading: the heading opens
+        local heading = row.collapsedBy and S.rows[row.collapsedBy]
+        if heading and heading.isOpen and heading.toggle and not heading.isOpen() then heading.toggle() end
         page.jumpRow = row
     end
     page.jumpFrame = nil
@@ -1139,13 +1249,14 @@ end
 local secureReload
 local function PlaceSecureReload()
     if not frame then return end
-    -- it cannot hide or move in combat: it turns invisible, and its macro stops itself there
+    -- it cannot hide or move in combat: its secure parent hides it then (ns.SecureReloadParent), and it
+    -- is placed again when the fight ends
     if InCombatLockdown() then
         if secureReload and not (frame:IsShown() and frame.reload:IsVisible()) then secureReload:SetAlpha(0) end
         return
     end
     if not secureReload then
-        secureReload = CreateFrame("Button", "FlareUI_SettingsReload", UIParent, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+        secureReload = CreateFrame("Button", "FlareUI_SettingsReload", ns.SecureReloadParent(), "SecureActionButtonTemplate, UIPanelButtonTemplate")
         secureReload:SetFrameStrata("FULLSCREEN_DIALOG")
         -- acts on the press, whatever ActionButtonUseKeyDown says, so PreClick runs once and in step
         secureReload:RegisterForClicks("AnyDown")
@@ -1176,6 +1287,29 @@ local function PlaceSecureReload()
     end
 end
 Panel.OnResize = PlaceSecureReload   -- a wide tab moved the reload button
+
+-- Window scale: Shift + mouse wheel over the window, 70% to 130%, kept for the account. The window
+-- keeps its centre. Out of combat only: the secure reload button can't follow it in a fight.
+local function ApplyPanelScale()
+    if not frame then return end
+    local global = ns.db and ns.db.global
+    local scale = global and global.panelScale or 1
+    local x, y = frame:GetCenter()
+    local old = frame:GetScale()
+    frame:SetScale(scale)
+    if x and old and old > 0 then
+        frame:ClearAllPoints()
+        frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x * old / scale, y * old / scale)
+    end
+    PlaceSecureReload()
+end
+function Panel.ScaleStep(delta)
+    local global = ns.db and ns.db.global
+    if not (frame and global) or InCombatLockdown() then return end
+    local scale = math.max(0.7, math.min(1.3, (global.panelScale or 1) + (delta > 0 and 0.05 or -0.05)))
+    global.panelScale = math.floor(scale * 100 + 0.5) / 100
+    ApplyPanelScale()
+end
 
 -- pending reloads (with the button), else a page notice that lasts until another page shows
 local notice, noticePage
@@ -1218,6 +1352,12 @@ local function BuildWindow()
     frame = CreateFrame("Frame", "FlareUI_SettingsPanel", UIParent, "BackdropTemplate")
     frame:SetSize(WIDTH, HEIGHT)
     frame:SetPoint("CENTER")
+    -- the scale the player set (Shift + mouse wheel anywhere over the window)
+    frame:SetScale(ns.db and ns.db.global and ns.db.global.panelScale or 1)
+    frame:EnableMouseWheel(true)
+    frame:SetScript("OnMouseWheel", function(_, delta)
+        if IsShiftKeyDown() then Panel.ScaleStep(delta) end
+    end)
     frame:SetFrameStrata("DIALOG")
     frame:SetToplevel(true)
     frame:SetClampedToScreen(true)
@@ -1260,7 +1400,10 @@ local function BuildWindow()
         S:Fire("PageShown", nil)
         ns.WindowCloseSound()
         PlaceSecureReload()
-        if S:PendingCount() > 0 and not Panel.quietHide then ns.ShowDialog("FLAREUI_RELOAD") end
+        -- a dialog already up (a profile name being typed) is left alone
+        if S:PendingCount() > 0 and not Panel.quietHide and not ns.AnyDialogShown() then
+            ns.ShowDialog("FLAREUI_RELOAD_ON_CLOSE")
+        end
     end)
 
     -- header
@@ -1358,11 +1501,21 @@ local function BuildWindow()
     search:SetSize(LEFT_W - 2 * PAD - 4, 22)
     search:SetPoint("BOTTOMLEFT", PAD + 4, PAD - 2)
     search.Instructions:SetText(S:WindowText("searchPlaceholder", L["Search settings"]))
+    -- the page redraws once typing pauses for a moment, not on every key
+    local searchToken = 0
     search:HookScript("OnTextChanged", function(self)
-        searchText = strtrim(self:GetText() or "")
-        page.scroll:SetVerticalScroll(0)
-        UpdateNav()
-        Panel:Refresh()
+        -- unchanged (Select clearing the box, a trailing space): no redraw, which would undo a jump's scroll
+        local text = strtrim(self:GetText() or "")
+        if text == searchText then return end
+        searchText = text
+        searchToken = searchToken + 1
+        local token = searchToken
+        C_Timer.After(0.15, function()
+            if token ~= searchToken then return end
+            page.scroll:SetVerticalScroll(0)
+            UpdateNav()
+            Panel:Refresh()
+        end)
     end)
     frame.search = search
     BuildNav(left)
@@ -1562,6 +1715,32 @@ local function BuildWindow()
             C_Timer.After(0, UpdateEditButtons)
         end
     end)
+
+    -- Gamepad UI: the window with the controller (PadNav.lua). LB / RB step the page's tabs, LT / RT
+    -- the pages in the list's order; focus starts on the page's content.
+    local function Step(list, isCurrent, delta)
+        local at
+        for i, b in ipairs(list) do if isCurrent(b) then at = i end end
+        if #list == 0 then return end
+        local target = list[at and ((at - 1 + delta) % #list) + 1 or 1]
+        target:Click()
+    end
+    ns.PadNav.Attach(frame, {
+        close = function() frame:Hide() end,
+        tab = function(delta)
+            local tabs = {}
+            for _, b in ipairs(page.tabButtons) do if b:IsShown() then tabs[#tabs + 1] = b end end
+            Step(tabs, function(b) return b.tabKey == currentTab[current] or (not currentTab[current] and b == tabs[1]) end, delta)
+        end,
+        page = function(delta)
+            local list = {}
+            for _, b in pairs(navButtons) do list[#list + 1] = b end
+            table.sort(list, function(a, b) return (a:GetTop() or 0) > (b:GetTop() or 0) end)
+            local selected = navButtons[current]
+            Step(list, function(b) return b == selected end, delta)
+        end,
+        start = function() return page.scroll:IsShown() and page.scroll or nil end,
+    })
 end
 
 --------------------------------------------------
@@ -1582,12 +1761,17 @@ end
 function Panel:Open(key, tabKey)
     if not frame then BuildWindow() end
     if key and tabKey then currentTab[key] = tabKey end
-    if SettingsPanel and SettingsPanel:IsShown() then HideUIPanel(SettingsPanel) end
+    -- Blizzard's options window (Options > AddOns > Open Configuration) is left open under FlareUI's:
+    -- hiding it from here would skip its own close, where key bindings and Apply settings are saved,
+    -- and closing it the proper way from addon code would run that save tainted
     key = key or current or (ns.db and ns.db.global and ns.db.global.settingsPage) or "about"
     if not S.modules[key] then key = "about" end
     current = key
+    -- one redraw, by Select: showing the window and its mode would each draw the page first
+    self.opening = true
     frame:Show()
     self:SetMode("settings")
+    self.opening = nil
     self:Select(key)
 end
 
@@ -1610,9 +1794,17 @@ do
         -- a fresh install has no NEW badges
         if global.whatsNewSeen == nil then S:MarkAllNewSeen() end
         global.whatsNewSeen = version
-        if update and ns.WhatsNew and ns.WhatsNew[1] then
+        -- not in the Gamepad UI, where the window can't be used with the controller; it stays on the
+        -- About page
+        if update and ns.WhatsNew and ns.WhatsNew[1] and not ns.IsGamepadUI() then
             C_Timer.After(4, function()
-                if not InCombatLockdown() then Panel:OpenWhatsNew() end
+                if not InCombatLockdown() then Panel:OpenWhatsNew() return end
+                -- logged in during a fight: the notes wait for its end instead of being skipped
+                loader:RegisterEvent("PLAYER_REGEN_ENABLED")
+                loader:SetScript("OnEvent", function()
+                    loader:UnregisterEvent("PLAYER_REGEN_ENABLED")
+                    if not ns.IsGamepadUI() then Panel:OpenWhatsNew() end
+                end)
             end)
         end
     end)

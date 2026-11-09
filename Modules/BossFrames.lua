@@ -61,8 +61,9 @@ local function GetDb()
     return db and db.boss
 end
 
+-- Edit Mode, unless a fight ended its previews (ns.OnEditFight)
 local function IsEditing()
-    return LEM:IsInEditMode()
+    return ns.EditPreviewing()
 end
 
 -- The tile settings: the boss db plus fixed values (no party icons or dispels; five
@@ -108,16 +109,17 @@ local function CreateTile(i)
     f.ctx = ctx
     f.index = i
     f.sample = SAMPLES[i]
-    f.unit = unit
+    f.fuiUnit = unit
     f:SetAttribute("unit", unit)
     f:SetAttribute("*type1", "target")
     f:SetAttribute("*type2", "togglemenu")
     f:RegisterForClicks("AnyUp")
     if type(f.SetRolesets) == "function" then pcall(f.SetRolesets, f, "unitFrames") end
-    _G.ClickCastFrames = _G.ClickCastFrames or {}
-    _G.ClickCastFrames[f] = true
     f:SetScript("OnEnter", Tile.OnEnter)
     f:SetScript("OnLeave", Tile.OnLeave)
+    -- after the scripts: a click-cast addon wraps OnEnter / OnLeave as it registers the frame
+    _G.ClickCastFrames = _G.ClickCastFrames or {}
+    _G.ClickCastFrames[f] = true
     Tile.Build(f, unit)
     pcall(f.RegisterUnitEvent, f, "UNIT_TARGETABLE_CHANGED", unit)
     -- the tile shows the player's threat on this boss: its threat list, and the player's situation
@@ -136,16 +138,59 @@ local function Step()
     return above, above + h + below + (view.spacing or 14)
 end
 
--- Fixed places: a boss can appear in combat, when secure frames cannot move. Boss 1 at the top
--- (the bottom for Growth Up).
+-- The bosses there close up, in boss order, from the top (the bottom for Growth Up): a boss that
+-- despawns leaves no gap. Bosses come and go in combat, when secure frames can only be moved by
+-- secure code, so a stacker does it: one attribute per boss slot follows [@bossN,exists], and its
+-- snippet re-anchors the tiles of the bosses there. Edit Mode shows all five in their places.
+local STACK_SNIPPET = [[
+    if name:sub(1, 10) ~= "state-boss" or self:GetAttribute("editing") then return end
+    local above, step, up, count = self:GetAttribute("above"), self:GetAttribute("step"), self:GetAttribute("up"), self:GetAttribute("count")
+    if not (above and step and count) then return end
+    local slot = 0
+    for i = 1, count do
+        local v = self:GetAttribute("state-boss" .. i)
+        if v == 1 or v == "1" then
+            local tile = self:GetFrameRef("tile" .. i)
+            local s = up and (count - 1 - slot) or slot
+            tile:ClearAllPoints()
+            tile:SetPoint("TOPLEFT", self, "TOPLEFT", 0, -(above + s * step))
+            slot = slot + 1
+        end
+    end
+]]
+
+local function CreateStacker()
+    local st = CreateFrame("Frame", nil, holder, "SecureHandlerAttributeTemplate")
+    st:SetAllPoints(holder)
+    for i, f in ipairs(tiles) do SecureHandlerSetFrameRef(st, "tile" .. i, f) end
+    st:SetAttribute("count", MAX_BOSSES)
+    st:SetAttribute("_onattributechanged", STACK_SNIPPET)
+    holder.Stacker = st
+    for i = 1, MAX_BOSSES do
+        RegisterAttributeDriver(st, "state-boss" .. i, ("[@boss%d,exists] 1; 0"):format(i))
+    end
+end
+
 local function LayoutHolder()
     if not holder then return end
     local above, step = Step()
     local up = view.grow == "UP"
+    local st = holder.Stacker
+    local editing = IsEditing()
+    if st then
+        st:SetAttribute("above", above)
+        st:SetAttribute("step", step)
+        st:SetAttribute("up", up)
+        st:SetAttribute("editing", editing)
+    end
+    local slot = 0
     for i, f in ipairs(tiles) do
-        local slot = up and (MAX_BOSSES - i) or (i - 1)
+        local here = editing or not st or tonumber(st:GetAttribute("state-boss" .. i)) == 1
+        -- a boss not there keeps its own place (hidden), a boss there takes the next free one
+        local s = here and slot or (i - 1)
+        if here then slot = slot + 1 end
         f:ClearAllPoints()
-        f:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -(above + slot * step))
+        f:SetPoint("TOPLEFT", st or holder, "TOPLEFT", 0, -(above + (up and (MAX_BOSSES - 1 - s) or s) * step))
     end
     holder:SetSize(view.width or 200, math_max(1, MAX_BOSSES * step - (view.spacing or 14)))
 end
@@ -289,7 +334,8 @@ local function BuildSettings()
           get = function() local db = GetDb(); return db and db.ringSize or (ns.UFRing and ns.UFRing.DefaultSize("boss")) or 80 end,
           set = set("ringSize"), hidden = function() return not RingStyle() or onPlate() end },
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") },
-        { name = L["Power Text"], kind = LEM.SettingType.Checkbox, default = D.powerText or false, get = get("powerText"), set = set("powerText") },
+        { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "value", values = K.POWER_TEXT_MODES,
+          get = function() local db = GetDb(); return K.PowerTextMode(db and db.powerText) end, set = set("powerText") },
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = get("showLevel"), set = set("showLevel") },
         { name = L["Mirror"], kind = LEM.SettingType.Checkbox, default = D.mirror ~= false,
           get = function() return get("mirror")() ~= false end, set = set("mirror"),
@@ -323,6 +369,10 @@ local function BuildSettings()
           set = function(layoutName, value) set("castbar")(layoutName, value); if holder then LEM:RefreshFrameSettings(holder) end end },
         { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
           get = get("castTexture"), set = set("castTexture"), hidden = noCast, },
+        { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
+          get = get("castBorderTexture"), set = set("castBorderTexture"),
+          hidden = function() return noCast() or K.NoBorderOptions() end,
+          desc = L["Frame Border uses the frame's own border."] },
         { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight or 14, minValue = 8, maxValue = 30, valueStep = 1,
           get = get("castHeight"), set = set("castHeight"), hidden = noCast },
         { name = L["Hide Icon"], kind = LEM.SettingType.Checkbox, default = false,
@@ -335,10 +385,6 @@ local function BuildSettings()
           set = function(layoutName, value) set("castTimer")(layoutName, not value) end,
           hidden = noCast,
           desc = L["No time left at the right end of the bar."] },
-        { name = L["Cast Bar Border Texture"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
-          get = get("castBorderTexture"), set = set("castBorderTexture"),
-          hidden = function() return noCast() or K.NoBorderOptions() end,
-          desc = L["Frame Border uses the frame's own border."] },
     })
 
     -- no Right of the Frame (the frames sit at the screen's right edge); clashing places grey out
@@ -371,6 +417,9 @@ local function BuildSettings()
           get = function() return ns.AuraSize(GetDb(), true, D.auraSize) end, set = set("debuffSize") },
         { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = D.onlyMyDebuffs ~= false,
           get = function() return get("onlyMyDebuffs")() ~= false end, set = set("onlyMyDebuffs") },
+        { name = L["Highlight Purgeable Buffs"], kind = LEM.SettingType.Checkbox, default = false,
+          get = function() return get("purgeHighlight")() and true or false end, set = set("purgeHighlight"),
+          desc = L["Buffs and enrages that you or your group can purge, dispel or soothe come first, with Blizzard's stealable border."] },
     })
     Section("Aura Ordering", ns.AuraOrder.Items(get, set))
 
@@ -408,6 +457,10 @@ function BF:OnGlobalEvent(event)
         return
     end
     if IsEditing() then return end
+    -- the slots are still settling when the engage event lands: repaint once more next frame
+    if event == "INSTANCE_ENCOUNTER_ENGAGE_UNIT" then
+        C_Timer.After(0, function() BF:OnGlobalEvent("SETTLED") end)
+    end
     for _, f in ipairs(tiles) do
         if f:IsShown() then
             if event == "PLAYER_TARGET_CHANGED" then
@@ -455,23 +508,44 @@ function BF:Init()
     holder:SetSize(200, 300)
     holder.editModeName = "FlareUI Boss Frames"
     for i = 1, MAX_BOSSES do CreateTile(i) end
+    CreateStacker()
 
     LEM:AddFrame(holder, OnFrameMoved, DEFAULT_POSITION, "FlareUI Boss Frames")
     LEM:AddFrameSettings(holder, BuildSettings())
     HideBlizzardBoss()
 
     for _, event in ipairs(GLOBAL_EVENTS) do self:RegisterEvent(event, "OnGlobalEvent") end
+    -- out of range fading: no event covers a boss's range
+    C_Timer.NewTicker(0.25, function()
+        if not holder:IsShown() then return end
+        for _, f in ipairs(tiles) do
+            if f.fuiUnit and f:IsVisible() then
+                Tile.UpdateRange(f)
+                -- a boss slot can change hands with no event (an add takes boss2, the old boss2
+                -- moves to boss3): a new readable GUID repaints the tile, name and auras included
+                local guid = not IsEditing() and UnitGUID(f.fuiUnit)
+                if canaccessvalue(guid) and guid and guid ~= f.bossGuid then
+                    f.bossGuid = guid
+                    Tile.UpdateAll(f)
+                end
+            end
+        end
+    end)
 
     LEM:RegisterCallback("layout", function(layoutName) ApplyPosition(layoutName) end)
-    LEM:RegisterCallback("enter", function()
+    local function ShowPreview()
+        if not InCombatLockdown() then LayoutHolder() end   -- the samples in all five places
         ApplyVisibility()
         SetAuraPreview(true)
         for _, f in ipairs(tiles) do Tile.UpdateAll(f) end
-    end)
-    LEM:RegisterCallback("exit", function()
+    end
+    local function EndPreview()
         SetAuraPreview(false)
         Refresh()
-    end)
+    end
+    LEM:RegisterCallback("enter", ShowPreview)
+    LEM:RegisterCallback("exit", EndPreview)
+    ns.OnEditFight(function() if IsEditing() then ShowPreview() else EndPreview() end end)
 
     Refresh()
     C_Timer.After(0, Refresh)

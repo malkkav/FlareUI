@@ -95,6 +95,8 @@ local function ShowSmallWelcome()
     open:SetPoint("BOTTOMRIGHT", small, "BOTTOM", -4, 20)
     local close = PanelButton(small, CLOSE or "Close", 140, 22, function() small:Hide() end)
     close:SetPoint("BOTTOMLEFT", small, "BOTTOM", 4, 20)
+    -- the controller: D-pad between the two buttons, A presses, B closes (PadNav.lua)
+    if ns.PadNav then ns.PadNav.Attach(small, { close = function() small:Hide() end }) end
     small:Show()
 end
 

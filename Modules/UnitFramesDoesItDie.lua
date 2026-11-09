@@ -110,7 +110,7 @@ local function Update(unit)
     local db = _G.DoesItDieDB
     local handOver = type(db) == "table" and type(db[info.customBar]) == "string" and strtrim(db[info.customBar]) ~= ""
     local off = handOver or (unit == "focus" and type(db) == "table" and db.focusMode == "off")
-    if off or LEM:IsInEditMode() then return HideRecord(rec) end
+    if off or ns.EditPreviewing() then return HideRecord(rec) end
 
     local exists, dead = UnitExists(unit), UnitIsDead(unit)
     if not canaccessvalue(exists) or not exists or (canaccessvalue(dead) and dead) then return HideRecord(rec) end
@@ -160,6 +160,7 @@ loader:SetScript("OnEvent", function(self, event, arg)
         self:RegisterUnitEvent("UNIT_MAXHEALTH", "target", "focus")
         LEM:RegisterCallback("enter", function() DIE:Refresh() end)
         LEM:RegisterCallback("exit", function() DIE:Refresh() end)
+        ns.OnEditFight(function() DIE:Refresh() end)
         DIE:Refresh()
     elseif event == "PLAYER_ENTERING_WORLD" then
         DIE:Refresh()

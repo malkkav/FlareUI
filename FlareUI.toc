@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 4.3
+## Version: 5.0
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -72,14 +72,18 @@ Modules\Minimap.lua
 Modules\MinimapBag.lua
 Modules\TweaksCVars.lua
 Modules\Tweaks.lua
+Modules\Fishing.lua
+Modules\Bags.lua
 Modules\Movers.lua
 Modules\Tooltips.lua
+Modules\ItemStats.lua
 Modules\ObjectiveTracker.lua
 Modules\RadialMenu.lua
 
 # Settings panel
 Launcher.lua
 Perf.lua
+TaintWatch.lua
 Settings\EditModeLayout.lua
 Settings\Welcome.lua
 Settings\RadialEditor.lua
@@ -101,4 +105,5 @@ Settings\Pages\RadialMenu.lua
 Settings\Pages\QualityOfLife.lua
 Settings\Pages\Advanced.lua
 Settings\Pages\Language.lua
+Settings\PadNav.lua
 Settings\Panel.lua
