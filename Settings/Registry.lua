@@ -14,6 +14,11 @@ local Settings = {
 }
 ns.Settings = Settings
 
+function Settings.ButtonWidthForText(button, minWidth)
+    local textWidth = button:GetFontString():GetUnboundedStringWidth()
+    return math.max(minWidth, math.ceil(textWidth) + 24)
+end
+
 local GROUPS = { "top", "HUD", "Info", "Tools", "bottom" }
 
 -- Rows that get a NEW badge, by row key -> the version that added them ("2.5"). The badge shows while

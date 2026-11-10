@@ -266,11 +266,19 @@ function BuildPage.welcome(page)
     body:SetSpacing(3)
     body:SetText(L["Everything starts switched off. This short tour shows you what each part does, and you choose the ones you want as you go."])
 
-    local start = PanelButton(page, L["Show Me Around"], 240, 34, NextStep)
+    local minWidth = 240
+    local start = PanelButton(page, L["Show Me Around"], minWidth, 34, NextStep)
     start:SetPoint("BOTTOM", 0, 72)
 
-    local skip = PanelButton(page, L["Skip, I know what I'm doing"], 240, 24, CloseTour)
+    local skip = PanelButton(page, L["Skip, I know what I'm doing"], minWidth, 24, CloseTour)
     skip:SetPoint("TOP", start, "BOTTOM", 0, -8)
+
+    local width = math.max(
+        ns.Settings.ButtonWidthForText(start, minWidth),
+        ns.Settings.ButtonWidthForText(skip, minWidth)
+    )
+    start:SetWidth(width)
+    skip:SetWidth(width)
 
     local hint = page:CreateFontString(nil, "OVERLAY", "GameFontDisable")
     hint:SetPoint("TOP", skip, "BOTTOM", 0, -8)

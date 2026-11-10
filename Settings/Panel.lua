@@ -447,6 +447,8 @@ Fill.dropdown = function(f, row)
     f.control:GenerateMenu()
 end
 
+local ButtonWidthForText = S.ButtonWidthForText
+
 -- button
 Build.button = function(f)
     local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -473,12 +475,18 @@ Fill.button = function(f, row)
         return
     end
     f.control:SetPoint("RIGHT", -4, 0)
-    f.control:SetWidth(row.buttonWidth or 200)
+    local width = row.buttonWidth or 200
+    f.control:SetWidth(width)
     if row.buttonText then
         f.control:SetText(row.buttonText)
     else
         f.control:SetText(row:Label())
         f.label:SetText("")
+    end
+    if row.fitButtonText then
+        -- Leave room for the status label to the left.
+        local maxWidth = math.max(width, f:GetWidth() - 120)
+        f.control:SetWidth(math.min(ButtonWidthForText(f.control, width), maxWidth))
     end
 end
 
@@ -609,7 +617,49 @@ Fill.keybind = function(f, row)
     if not f.control.waiting then f.control:ShowKey(row:Get()) end
 end
 
+local BUTTON_HEIGHT, BUTTON_GAP = 22, 6
+
+local function FitButtonGroup(f, groupWidth, count)
+    local widths, total, widest = {}, 0, 0
+    for i = 1, count do
+        local width = ButtonWidthForText(f.buttons[i], 40)
+        widths[i], total, widest = width, total + width, math.max(widest, width)
+    end
+
+    local available = groupWidth - BUTTON_GAP * (count - 1)
+    if widest <= available / count then return end
+
+    local split = total > available
+    local perRow = split and math.ceil(count / 2) or count
+    local rowStep = BUTTON_HEIGHT + BUTTON_GAP
+    if split then f:SetHeight(f:GetHeight() + rowStep) end
+
+    for first = 1, count, perRow do
+        local last = math.min(first + perRow - 1, count)
+        local slots = last - first + 1
+        local lineWidth = groupWidth - BUTTON_GAP * (slots - 1)
+        local equalWidth = lineWidth / slots
+        local needed, largest = 0, 0
+        for i = first, last do
+            needed = needed + widths[i]
+            largest = math.max(largest, widths[i])
+        end
+        local extra = (lineWidth - needed) / slots
+        local redistribute = largest > equalWidth and extra >= 0
+        local y = split and (first == 1 and rowStep / 2 or -rowStep / 2) or 0
+        local previous
+        for i = last, first, -1 do
+            local button = f.buttons[i]
+            button:SetWidth(redistribute and widths[i] + extra or equalWidth)
+            button:ClearAllPoints()
+            button:SetPoint("RIGHT", previous or f, previous and "LEFT" or "RIGHT", previous and -BUTTON_GAP or -4, previous and 0 or y)
+            previous = button
+        end
+    end
+end
+
 -- buttons: row.buttons = { { text, width, onClick(button), disabled() } }, right-aligned
+-- row.fitButtonsWidth keeps the group within a shared column, with two rows if needed
 Build.buttons = function(f)
     f.buttons = {}
 end
@@ -621,7 +671,7 @@ Fill.buttons = function(f, row)
         local b = f.buttons[i]
         if not b then
             b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-            b:SetHeight(22)
+            b:SetHeight(BUTTON_HEIGHT)
             b:SetScript("OnClick", function(self)
                 ns.ButtonSound()
                 local d = f.row and f.row.buttons[self.index]
@@ -634,12 +684,13 @@ Fill.buttons = function(f, row)
         b:SetText(def.text)
         b:SetWidth(def.width or 140)
         b:ClearAllPoints()
-        b:SetPoint("RIGHT", previous or f, previous and "LEFT" or "RIGHT", previous and -6 or -4, 0)
+        b:SetPoint("RIGHT", previous or f, previous and "LEFT" or "RIGHT", previous and -BUTTON_GAP or -4, 0)
         b:SetEnabled(not (def.disabled and def.disabled()))
         b:Show()
         previous = b
     end
-    for i = #(row.buttons or {}) + 1, #f.buttons do f.buttons[i]:Hide() end
+    for i = #defs + 1, #f.buttons do f.buttons[i]:Hide() end
+    if row.fitButtonsWidth and #defs > 1 then FitButtonGroup(f, row.fitButtonsWidth, #defs) end
 end
 
 -- Edit button, greyed in combat
@@ -674,8 +725,7 @@ Build.frame = function(f)
     f.control:SetPoint("RIGHT", f.edit, "LEFT", -8, 0)
 end
 Fill.frame = function(f, row)
-    local labelWidth = f.edit:GetFontString():GetUnboundedStringWidth()
-    f.edit:SetWidth(math.max(row.half and 60 or 80, math.ceil(labelWidth) + 24))
+    f.edit:SetWidth(ButtonWidthForText(f.edit, row.half and 60 or 80))
     f.control:SetChecked(row:Get() and true or false)
     f.edit:SetEnabled(S:CanEditFrames() and row:Get() and row.frame and row.frame() ~= nil or false)
 end
@@ -948,8 +998,7 @@ local function UpdateHeader(module)
             page.banner.button:SetEnabled(not module.bannerEditMode or S:CanEditFrames() and true or false)
             local buttonWidth = 0
             if button then
-                local labelWidth = page.banner.button:GetFontString():GetUnboundedStringWidth()
-                buttonWidth = math.max(110, math.ceil(labelWidth) + 24)
+                buttonWidth = ButtonWidthForText(page.banner.button, 110)
                 page.banner.button:SetWidth(buttonWidth)
             end
             page.banner.text:SetWidth(CONTENT_W - buttonWidth - 24)
@@ -1695,8 +1744,7 @@ local function BuildWindow()
     frame.reload = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
     frame.reload:SetPoint("RIGHT", -PAD, -1)
     frame.reload:SetText(S:WindowText("reloadFooter2", L["Reload Now"]))
-    local reloadLabelWidth = frame.reload:GetFontString():GetUnboundedStringWidth()
-    frame.reload:SetSize(math.max(130, math.ceil(reloadLabelWidth) + 24), 22)
+    frame.reload:SetSize(ButtonWidthForText(frame.reload, 130), 22)
     frame.reload:SetScript("OnClick", function()
         ns.ButtonSound()
         ns.ShowDialog("FLAREUI_RELOAD")
