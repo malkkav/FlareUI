@@ -405,15 +405,30 @@ ns.Copy = {
             label = L["Remind Before It Ends"],
             section = "au.reminderSection",
         },
-        ["au.reminderBlessing"] = {
-            desc = L["Paladins: the blessing to keep on each member. Automatic gives warriors, rogues and hunters Might, and everyone else Wisdom."],
-            label = L["Blessing"],
+        ["au.reminderBeforeDungeon"] = {
+            desc = L["Remind Before It Ends inside dungeons. Same as Above uses the time above."],
+            label = L["In Dungeons"],
+            section = "au.reminderSection",
+        },
+        ["au.reminderBeforeRaid"] = {
+            desc = L["Remind Before It Ends inside raids. Same as Above uses the time above."],
+            label = L["In Raids"],
+            section = "au.reminderSection",
+        },
+        ["au.reminderCamping"] = {
+            desc = L["Missing Camp Benefits, and while levelling with a Cozy Sleeping Bag, fewer than three Well-Rested stacks. Click the bag's icon to use it."],
+            label = L["Camping and Rest"],
             section = "au.reminderSection",
         },
         ["au.reminderConsumables"] = {
             choices = { L["Off"], L["In Dungeons and Raids"], L["Always"] },
             desc = L["An icon while you have no Well Fed buff or no flask."],
             label = L["Food and Flask"],
+            section = "au.reminderSection",
+        },
+        ["au.reminderGathering"] = {
+            desc = L["Find Herbs or Find Minerals is off while you know one."],
+            label = L["Gathering Tracking"],
             section = "au.reminderSection",
         },
         ["au.reminderGlow"] = {
@@ -432,19 +447,39 @@ ns.Copy = {
             label = L["Group Buffs"],
             section = "au.reminderSection",
         },
+        ["au.reminderHidden"] = {
+            desc = L["Right-click a reminder to hide it until you reload, or for good. This brings them all back."],
+            label = L["Hidden Reminders"],
+            section = "au.reminderAlerts",
+        },
+        ["au.reminderHideDamage"] = {
+            desc = L["Your group buffs stay hidden while your group role is this. Your own buffs still show."],
+            label = L["Hide as Damage"],
+            section = "au.reminderHiding",
+        },
+        ["au.reminderHideHealer"] = {
+            desc = L["Your group buffs stay hidden while your group role is this. Your own buffs still show."],
+            label = L["Hide as Healer"],
+            section = "au.reminderHiding",
+        },
+        ["au.reminderHideNoRole"] = {
+            desc = L["Your group buffs stay hidden while you have no group role. Your own buffs still show."],
+            label = L["Hide With No Role"],
+            section = "au.reminderHiding",
+        },
+        ["au.reminderHideTank"] = {
+            desc = L["Your group buffs stay hidden while your group role is this. Your own buffs still show."],
+            label = L["Hide as Tank"],
+            section = "au.reminderHiding",
+        },
         ["au.reminderParty"] = {
             desc = L["Shows while you're in a party."],
             label = L["In a Party"],
             section = "au.reminderWhen",
         },
-        ["au.reminderPets"] = {
-            desc = L["Hunters and warlocks: an icon to call, revive or summon a missing pet, or to mend a hurt one."],
-            label = L["Pet Reminders"],
-            section = "au.reminderSection",
-        },
         ["au.reminderProvider"] = {
             desc = L["A group buff only shows when no one else of your class is in the group to give it."],
-            label = L["Only When You're the Only Provider"],
+            label = L["Only Provider"],
             section = "au.reminderWhen",
         },
         ["au.reminderRaid"] = {
@@ -455,7 +490,7 @@ ns.Copy = {
         ["au.reminderRested"] = {
             desc = L["Nothing shows in towns and inns."],
             label = L["Hide in Rested Areas"],
-            section = "au.reminderWhen",
+            section = "au.reminderHiding",
         },
         ["au.reminderSolo"] = {
             desc = L["Shows while you're not in a group."],
@@ -473,7 +508,7 @@ ns.Copy = {
             label = L["Buff Reminders"],
             reload = true,
             section = "au.reminderSection",
-            tip = L["Move it, size it and pick its direction in Edit Mode."],
+            tip = L["Move it, size it and pick its direction in Edit Mode. Right-click an icon to hide it, or for a paladin's blessing or a druid's Thorns, to pick which one or who it goes on."],
         },
         ["au.reverse"] = {
             desc = L["Turns the order around."],
@@ -1908,6 +1943,7 @@ ns.Copy = {
         ["au.auraOrdering"] = L["Aura Ordering"],
         ["au.general"] = L["General"],
         ["au.reminderAlerts"] = L["Alerts"],
+        ["au.reminderHiding"] = L["Hiding"],
         ["au.reminderSection"] = L["Buff Reminders"],
         ["au.reminderWhen"] = L["When It Shows"],
         ["ch.editBoxSection"] = L["Edit Box"],
