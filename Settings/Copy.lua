@@ -506,7 +506,7 @@ ns.Copy = {
             tip = L["Off in dungeons, raids and battlegrounds: Blizzard locks chat there."],
         },
         ["ch.formatPlayer"] = {
-            desc = L["Player names in their class colour, without the realm."],
+            desc = L["Player names in their class colour, without the realm. Say lines start with a clickable [Say] that switches your chat to Say."],
             label = L["Better Player Names"],
             section = "ch.formatting",
             tip = L["Off in dungeons, raids and battlegrounds: Blizzard locks chat there."],

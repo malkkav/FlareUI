@@ -1,3 +1,8 @@
+# FlareUI 5.1.1
+
+## New
+- Chat: with **Better Player Names** on, Say lines start with a clickable **[Say]** label (**[S]** with **Short Channel Names**). Click it to switch your chat back to Say. Thanks to parchinskiy for the feature!
+
 # FlareUI 5.1
 
 ## Highlights

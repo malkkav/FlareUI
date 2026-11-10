@@ -471,7 +471,8 @@ end
 -- own line (player link, report ID, flash, censoring) stays. Replacing AddMessage or the CHAT_*_GET
 -- strings would taint Blizzard's handler. Secret lines pass untouched.
 --   Short Channel Names   [2. Trade - City] -> [2], [Guild] -> [G], [Say] -> [S]
---   Better Player Names   "[Name] says:" -> the class-coloured [Name] without realm or "says:"
+--   Better Player Names   "[Name] says:" -> the class-coloured [Name] without realm or "says:";
+--                         a Say line also starts with a clickable [Say] (PR #17, parchinskiy)
 --   Better NPC Names      "Thrall says:" -> an orange [Thrall]
 --   Level Before Names    "(42)" in front of a player's name
 --   Better Timestamps     Blizzard's timestamp in FlareUI's colour, or one added where it has none
@@ -681,7 +682,9 @@ local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, ev
     if not canaccessallvalues(message, event) or type(message) ~= "string" or type(event) ~= "string"
             or event:sub(1, 9) ~= "CHAT_MSG_" then return end
     local chatType = event:sub(10)
-    local sayTag = chatType == "SAY" and (db.shortChannels and SHORT_SAY_TAG or SAY_TAG)
+    -- with Better Player Names (which drops "says:"), a Say line gets its clickable label instead;
+    -- off, the line stays Blizzard's. Short Channel Names picks [S] or [Say].
+    local sayTag = chatType == "SAY" and db.formatPlayer and (db.shortChannels and SHORT_SAY_TAG or SAY_TAG)
     if not (sayTag or db.shortChannels or db.formatPlayer or db.formatNPC or db.betterTimestamps) then return end
     -- the same line shown in several windows (General and a Guild tab, say) is worked out once
     local line
