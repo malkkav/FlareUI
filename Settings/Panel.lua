@@ -259,7 +259,7 @@ end
 -- A dark box with a bronze edge: the left list, the page and the right column
 -- FlareUI Thin (8 px edge) for every box, button and tab in the window (11-10, Marcus)
 local THIN = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thin.tga"
-local THIN_EDGE, THIN_INSET = 8, 3   -- fills start 3 px in: under the border's rounded corners
+local THIN_EDGE, THIN_INSET = 8, 4   -- fills start 4 px in: under the border's rounded corners
 local EDGE_COLOR = { 0.55, 0.42, 0.24 }       -- resting
 local EDGE_HOVER = { 0.78, 0.6, 0.34 }        -- under the pointer
 local EDGE_LIT = { 1, 0.84, 0.5 }             -- selected
