@@ -103,23 +103,57 @@ end
 -- it is away, FlareUI keeps their offset when it anchors the map, leaves their empty mask on, keeps
 -- the coordinates and auto zoom-out still and lets the mouse wheel through (it would zoom the hidden
 -- map instead of the camera). What waited runs once the map is home. NodeRadar never moves it.
-local Scan = { x = 0, y = 0, onHome = {} }
+-- Node addons (Lueur, NodeSight, Nodeworthy) scan by sliding the hidden map under the cursor. A scan
+-- is on while the map is away from home, while one of them holds the map's clicks off (each turns
+-- them off at the start and back on at the end), and for a moment after the last move. Lueur 1.6
+-- parks the map at home, still hidden, while the pointer is on a window, then moves it again: home
+-- alone is not the end, and FlareUI's square mask put back there showed the map chasing the cursor.
+-- (clicks left off with no move for HELD seconds are not a scan: Lueur's longest wait is 2)
+local Scan = { x = 0, y = 0, onHome = {}, clicksOff = false, movedAt = 0, offAt = 0, QUIET = 0.4, HELD = 5 }
 function Scan.Away() return math.abs(Scan.x) > 0.5 or math.abs(Scan.y) > 0.5 end
+function Scan.Busy()
+    local since = GetTime() - math.max(Scan.movedAt, Scan.offAt)
+    return Scan.Away() or (Scan.clicksOff and since < Scan.HELD) or (GetTime() - Scan.movedAt) < Scan.QUIET
+end
 function Scan.Later(key, fn) Scan.onHome[key] = fn end
+local function ScanCheck()
+    local busy, was = Scan.Busy(), Scan.wasBusy
+    if busy ~= was then
+        Scan.wasBusy = busy
+        if Scan.OnChange then Scan.OnChange(busy) end
+    end
+    if busy then
+        -- the time limits run out with no call of theirs: look again then
+        if not Scan.Away() and not Scan.timer then
+            Scan.timer = C_Timer.NewTimer(Scan.clicksOff and 1 or Scan.QUIET, function() Scan.timer = nil; ScanCheck() end)
+        end
+        return
+    end
+    if not was then return end   -- (not the end of a scan: none was on)
+    local waiting = Scan.onHome
+    Scan.onHome = {}
+    for _, fn in pairs(waiting) do fn() end
+    if Scan.OnEnd then Scan.OnEnd() end
+end
 function Scan.Watch()
     if Scan.watching or not MinimapFrame.AdjustPointsOffset then return end
     Scan.watching = true
     hooksecurefunc(MinimapFrame, "AdjustPointsOffset", function(_, dx, dy)
         if type(dx) ~= "number" or type(dy) ~= "number" or not (canaccessvalue(dx) and canaccessvalue(dy)) then return end
         Scan.x, Scan.y = Scan.x + dx, Scan.y + dy
-        local away = Scan.Away()
-        if not away then Scan.x, Scan.y = 0, 0 end
-        if Scan.OnChange then Scan.OnChange(away) end
-        if away then return end
-        local waiting = Scan.onHome
-        Scan.onHome = {}
-        for _, fn in pairs(waiting) do fn() end
+        if not Scan.Away() then Scan.x, Scan.y = 0, 0 end
+        Scan.movedAt = GetTime()
+        if Scan.Away() and Scan.OnAway then Scan.OnAway() end
+        ScanCheck()
     end)
+    if MinimapFrame.SetMouseClickEnabled then
+        hooksecurefunc(MinimapFrame, "SetMouseClickEnabled", function(_, enabled)
+            if not canaccessvalue(enabled) then return end
+            Scan.clicksOff = not enabled
+            if not enabled then Scan.offAt = GetTime() end
+            ScanCheck()
+        end)
+    end
 end
 
 local hiddenParent = CreateFrame("Frame", nil, UIParent)
@@ -393,28 +427,87 @@ local function RestyleWorldMapCoords()
     end
 end
 
--- Forever's day/night badge in the map's bottom-left corner, always shown
+-- Forever's day/night badge (also the Addon Button Bag's button, MinimapBag.lua). Square style: the
+-- map's bottom-left corner, always shown. Round style: Blizzard's own spot (Diel.lua's transform).
+-- Nothing else may place it: other addons (EnhanceQoL's "Minimap moon") put it over the calendar.
+local SUN_ROUND_X, SUN_ROUND_Y = 55, 86   -- Diel.lua's DielFrameData.AnchorX / AnchorY
+
+-- scale, point, relative frame, relative point, x, y
+local function SunSpot()
+    if squareStyle then
+        local overhang = SUN_OVERHANG / SUN_SCALE   -- offsets are in the badge's own, scaled units
+        return SUN_SCALE, "BOTTOMLEFT", MM.Frame, "BOTTOMLEFT", -overhang, -overhang
+    end
+    local container = Cluster.MinimapContainer
+    local s = container:GetScale()
+    if not (s and s > 0) then s = 1 end
+    return 1 / s, "CENTER", container, "CENTER", SUN_ROUND_X * s, SUN_ROUND_Y * s
+end
+
+-- EnhanceQoL's "Hide minimap moon" switch (MapNavigation_Camelot.lua) still hides it
+local function EQoLHidesSun()
+    local eqol = _G.EnhanceQoL
+    local db = type(eqol) == "table" and eqol.db
+    return type(db) == "table" and db.squareMinimapDialHidden == true
+end
+
 local placingSun = false
 local function PlaceSun()
     local sun = Cluster.DielFrame
-    if not sun or placingSun then return end
+    if not sun or placingSun or (squareStyle and not MM.Frame) then return end
     placingSun = true
-    sun:Show()   -- also the Addon Button Bag's button (MinimapBag.lua)
-    sun:SetScale(SUN_SCALE)
+    local scale, point, relative, relativePoint, x, y = SunSpot()
+    -- Blizzard's parent: a borrowed one carries someone else's scale and visibility
+    if sun:GetParent() ~= Cluster.MinimapContainer then sun:SetParent(Cluster.MinimapContainer) end
+    if squareStyle and not EQoLHidesSun() then sun:Show() end
+    sun:SetScale(scale)
     sun:ClearAllPoints()
-    local overhang = SUN_OVERHANG / SUN_SCALE   -- offsets are in the badge's own, scaled units
-    sun:SetPoint("BOTTOMLEFT", MM.Frame, "BOTTOMLEFT", -overhang, -overhang)
-    Raise(sun, 1)
+    sun:SetPoint(point, relative, relativePoint, x, y)
+    if squareStyle then Raise(sun, 1) end
     placingSun = false
 end
 
--- Blizzard's own place for the badge is the map's top right, over the calendar and clock. Whoever
--- moves it there, it goes straight back.
+local function SunMoved(sun)
+    if squareStyle and not MM.Frame then return false end
+    local scale, point, relative, relativePoint, x, y = SunSpot()
+    if sun:GetParent() ~= Cluster.MinimapContainer or sun:GetNumPoints() ~= 1
+        or math.abs(sun:GetScale() - scale) > 0.001 then
+        return true
+    end
+    local p, r, rp, px, py = sun:GetPoint(1)
+    return p ~= point or r ~= relative or rp ~= relativePoint
+        or math.abs((px or 0) - x) > 0.01 or math.abs((py or 0) - y) > 0.01
+end
+
+-- EnhanceQoL's "Minimap moon" places the badge on Minimap (top right by default, over the calendar)
+-- and hooks its SetPoint / SetAllPoints to put it back there, so the two hooks would fight and
+-- theirs would win. Every one of its paths (hooks, events, settings) calls
+-- EnhanceQoL.functions.ApplySquareMinimapDial by name: that function now only shows or hides it.
+local function SilenceEQoLMoon()
+    local eqol = _G.EnhanceQoL
+    local fns = type(eqol) == "table" and eqol.functions
+    if type(fns) ~= "table" or type(fns.ApplySquareMinimapDial) ~= "function" or fns.FlareUI_MoonSilenced then return end
+    fns.FlareUI_MoonSilenced = true
+    fns.ApplySquareMinimapDial = function()
+        local sun = Cluster.DielFrame
+        if sun then sun:SetShown(not EQoLHidesSun()) end
+    end
+    PlaceSun()
+end
+
+-- Every way to place it puts it straight back, and a check every frame catches the calls these hooks
+-- never see (a method taken from the frame metatable, or a parent moved under it).
 local function KeepSunPlaced()
     local sun = Cluster.DielFrame
-    if not sun then return end
-    hooksecurefunc(sun, "SetPoint", PlaceSun)
-    hooksecurefunc(sun, "SetScale", PlaceSun)
+    if not sun or MM.sunGuard then return end
+    EventUtil.ContinueOnAddOnLoaded("EnhanceQoL", SilenceEQoLMoon)
+    for _, method in ipairs({ "SetPoint", "SetAllPoints", "ClearAllPoints", "SetScale", "SetParent" }) do
+        if sun[method] then hooksecurefunc(sun, method, PlaceSun) end
+    end
+    MM.sunGuard = CreateFrame("Frame")
+    MM.sunGuard:SetScript("OnUpdate", function()
+        if not placingSun and SunMoved(sun) then PlaceSun() end
+    end)
     PlaceSun()
 end
 
@@ -472,7 +565,7 @@ function MM:UpdateLayout()
     -- a node addon's scan keeps its offset, so the move it takes back at the end lands home
     MinimapFrame:SetPoint("CENTER", Cluster, "CENTER", Scan.x, Scan.y)
     -- and its empty mask (the map hidden under the cursor) stays until it is home
-    if Scan.Away() then Scan.Later("mask", ApplySquareMap) else ApplySquareMap() end
+    if Scan.Busy() then Scan.Later("mask", ApplySquareMap) else ApplySquareMap() end
 
     PlaceHeader()
     PlaceIndicators()
@@ -543,6 +636,8 @@ local function UpdateCoordsHover()
         ShowCoords(true)
         return
     end
+    -- mid-scan the coordinates are the scan's to hide (Lueur puts back what it found at the end)
+    if Scan.Busy() then return end
     local over = Cluster:IsMouseOver()
     ShowCoords(over)
     if not over and hoverTicker then hoverTicker:Cancel(); hoverTicker = nil end
@@ -552,7 +647,7 @@ local function OnMapEnter()
     local db = GetDb()
     if not (db and db.coordsOnHover) then return end
     -- the hidden map slid under the pointer by a node addon's scan is not the player pointing at it
-    if Scan.Away() or not Cluster:IsMouseOver() then return end
+    if Scan.Busy() or not Cluster:IsMouseOver() then return end
     ShowCoords(true)
     if not hoverTicker then hoverTicker = C_Timer.NewTicker(0.2, UpdateCoordsHover) end
 end
@@ -654,7 +749,7 @@ local function CreateMapSurface()
     if surface.SetMouseMotionEnabled then surface:SetMouseMotionEnabled(false) end
     if surface.SetPropagateMouseMotion then surface:SetPropagateMouseMotion(true) end
     -- a node addon's scan holds the hidden map under the pointer: the wheel goes to the camera
-    Scan.OnChange = function(away) surface:EnableMouseWheel(not away) end
+    Scan.OnChange = function(busy) surface:EnableMouseWheel(not busy) end
     surface:SetScript("OnMouseWheel", function(_, delta)
         if delta > 0 then Minimap_ZoomIn() elseif delta < 0 then Minimap_ZoomOut() end
     end)
@@ -709,7 +804,7 @@ local function OnZoom(_, level)
     if level ~= 0 and delay > 0 then
         -- not in the middle of a node addon's scan (a new zoom would end it): once the map is home
         zoomTimer = C_Timer.NewTimer(delay, function()
-            if Scan.Away() then Scan.Later("zoom", function() MinimapFrame:SetZoom(0) end) else MinimapFrame:SetZoom(0) end
+            if Scan.Busy() then Scan.Later("zoom", function() MinimapFrame:SetZoom(0) end) else MinimapFrame:SetZoom(0) end
         end)
     end
 end
@@ -730,8 +825,29 @@ end
 
 -- Forever's skin puts its round mask back each time rotateMinimap changes: the square (or the empty
 -- mask of a faded-out map) goes back on. A node addon's scan sets its empty one past this hook.
+-- While a scan has the map away from home, it stays empty whoever shows it: a drawn map there chases
+-- the cursor. Set through the frame's own method, past every hook (as the scans do), so no addon
+-- takes the empty mask for the one to put back.
+local function HideMapDirect()
+    local meta = getmetatable(MinimapFrame)
+    local set = type(meta) == "table" and type(meta.__index) == "table" and meta.__index.SetMaskTexture
+    if type(set) ~= "function" then return end
+    maskGuard = true
+    pcall(set, MinimapFrame, MASKS.EMPTY)
+    maskGuard = false
+    Scan.hidden = true
+end
+Scan.OnAway = function() if not Scan.hidden then HideMapDirect() end end
+-- A scan over: the wanted mask goes back on, whatever the scan put back (Lueur restores the last one
+-- it saw set, which can be stale)
+Scan.OnEnd = function() SetMask() end
+
 local function KeepMask(_, texture)
+    if texture ~= MASKS.EMPTY then Scan.hidden = false end
     if maskGuard then return end
+    if texture ~= MASKS.EMPTY and Scan.Away() then HideMapDirect() return end
+    -- (a mask set mid-scan, another addon's empty one maybe, is not the round one to keep)
+    if Scan.Busy() then return end   -- Scan.OnEnd puts the wanted one back
     if not squareStyle and texture ~= MASKS.EMPTY and texture ~= nil then MM.roundMask = texture end
     if (squareStyle or MM.mapFaded) and texture ~= WantedMask() then SetMask() end
 end
@@ -748,7 +864,7 @@ function MM:SetMapFaded(faded)
     if InCombatLockdown() and MinimapFrame:IsProtected() then return true end
     if (self.mapFaded or false) == faded then return true end
     self.mapFaded = faded
-    if Scan.Away() then Scan.Later("fade", SetMask) else SetMask() end
+    if Scan.Busy() then Scan.Later("fade", SetMask) else SetMask() end
     return true
 end
 
@@ -762,7 +878,6 @@ local function KeepMapSquare()
 end
 
 local function InstallSquareHooks()
-    KeepSunPlaced()
     hooksecurefunc(Cluster, "SetSize", SizeCluster)
     hooksecurefunc(Cluster, "SetHeaderUnderneath", function() MM:UpdateLayout() end)
     -- Forever's config pass (rotateMinimap, layout) drops the zone button to its own frame level
@@ -818,9 +933,10 @@ local trackerScaleWaiter
 function MM:UpdateTrackerScale()
     local tracker = _G.ObjectiveTrackerFrame
     if not (tracker and GetDb()) then return end
-    -- FlareUI's Quest Tracker parks Blizzard's
+    -- FlareUI's Quest Tracker parks Blizzard's (unless it stands aside in Gamepad mode)
     local own = ns.db.profile.objectivetracker
-    if own and own.enabled then return end
+    local OT = ns.ObjectiveTracker
+    if own and own.enabled and not (OT and OT.WantedInMode and not OT.WantedInMode()) then return end
     if InCombatLockdown() then
         if not trackerScaleWaiter then
             trackerScaleWaiter = CreateFrame("Frame")
@@ -926,6 +1042,7 @@ function MM:Init()
         -- Rotation can change the native frame's width.
         Cluster.MinimapContainer:HookScript("OnSizeChanged", function() self:UpdateTrackerScale() end)
     end
+    KeepSunPlaced()   -- both styles
     AddEditModeSettings()
     Scan.Watch()
     WatchMask()   -- the round style too: a faded-out map keeps its empty mask

@@ -2719,8 +2719,9 @@ local function LayoutIndicators(f)
         -- incoming heals in the frame's own bar texture (on the plate, whose bars are Blizzard's art:
         -- FlareUI Forever, the same art)
         heal:SetStatusBarTexture(GetBarTexture(inset and "FlareUI Forever" or (udb and udb.texture), mirror))
-        -- shields grow back from the end of the bar towards the health, so they show at full health too
-        absorb:SetReverseFill(not mirror)
+        -- shields follow the health and the incoming heals, as Blizzard's frames draw them: what the
+        -- bar has no room for is cut at its end, where the over-shield glow shows instead
+        absorb:SetReverseFill(mirror)
 
         -- the clip keeps the overlays inside the bar without comparing (secret) values
         if mirror then
@@ -2736,10 +2737,11 @@ local function LayoutIndicators(f)
             heal:SetPoint("BOTTOMLEFT", clip, "BOTTOMLEFT", 0, 0)
         end
 
-        -- the absorb starts at the far end of the bar
-        local edge = mirror and "LEFT" or "RIGHT"
-        absorb:SetPoint("TOP" .. edge, clip, "TOP" .. edge, 0, 0)
-        absorb:SetPoint("BOTTOM" .. edge, clip, "BOTTOM" .. edge, 0, 0)
+        -- the absorb starts where the incoming heals end (the heal fill's far edge: no secret value read)
+        local near, far = mirror and "RIGHT" or "LEFT", mirror and "LEFT" or "RIGHT"
+        local healFill = heal:GetStatusBarTexture()
+        absorb:SetPoint("TOP" .. near, healFill, "TOP" .. far, 0, 0)
+        absorb:SetPoint("BOTTOM" .. near, healFill, "BOTTOM" .. far, 0, 0)
         UF.PlaceShieldGlow(f.ShieldGlow, health, mirror)
 
         -- the absorb sits over the heals
@@ -3617,92 +3619,37 @@ local function ApplyVisibility(f)
 end
 
 --------------------------------------------------
--- 14. HIDE PLAYER AND PET (fading)
--- The player and pet frames are see-through unless in combat, with a target, missing health or
--- moused over. Alpha works in combat.
+-- 14. FADING (Visibility.lua)
+-- Each frame sits on a plain holder that Visibility fades, by the Show choice, Fade Speed and Faded
+-- Opacity in its Edit Mode dialog (the action bars' rows, without fade groups). The frame's own alpha
+-- stays the range fading's (14b, set from secret values): the two multiply, and neither reads the other.
 --------------------------------------------------
-local FADE = { interval = 0.1, units = { "player", "pet" } }
+UF.fadeHolders = {}   -- unit -> holder
 
--- Player health is secret even out of combat, so "missing health" can't be compared in Lua: a step
--- curve turns the health percent into the alpha itself (1 below full, 0 at full)
-local function HealthAlpha()
-    local db = GetDb()
-    local v = db and db.visibility and db.visibility.player
-    -- Faded Opacity: how far they fade, at full health
-    local minAlpha = (v and v.minAlpha or 0) / 100
-    if not FADE.curve or FADE.curveMin ~= minAlpha then
-        FADE.curve = C_CurveUtil.CreateCurve()
-        FADE.curve:SetType(Enum.LuaCurveType.Step)
-        FADE.curve:AddPoint(0, 1)
-        FADE.curve:AddPoint(1, minAlpha)
-        FADE.curveMin = minAlpha
-    end
-    return UnitHealthPercent("player", false, FADE.curve)
+function UF:GetFadeFrame(unit) return UF.fadeHolders[unit] end
+
+-- the pointer on the frame, or on a ring style's portrait outside it
+function UF:IsMouseOverUnit(unit)
+    local f = frames[unit]
+    if not (f and f:IsVisible()) then return false end
+    return f:IsMouseOver() or (ns.UFRing and ns.UFRing.MouseOverHit(f)) or false
 end
 
-function FADE.ShouldShow()
-    if ns.EditPreviewing() or FADE.inCombat or InCombatLockdown() or UnitExists("target") then return true end
-    for _, unit in ipairs(FADE.units) do
-        local f = frames[unit]
-        if f and f:IsShown() and (f:IsMouseOver() or (ns.UFRing and ns.UFRing.MouseOverHit(f))) then return true end
-    end
-    return false
-end
-
--- The health alpha is secret, and GetAlpha stays secret after it, so then the alpha is set every tick
-function FADE.SetAlpha(alpha)
-    for _, unit in ipairs(FADE.units) do
-        local f = frames[unit]
-        if f then
-            local current = f:GetAlpha()
-            if not (canaccessvalue(alpha) and canaccessvalue(current)) or math.abs(current - alpha) > 0.005 then
-                f:SetAlpha(alpha)
-            end
+-- Fade Player and Pet (up to 5.0.6: combat, target, missing health and the mouse showed both frames)
+-- becomes the same on each of the two frames. Off (its default) was no fading: Always, the default here too.
+function UF.MigrateOldFade()
+    local db, profile = GetDb(), ns.db and ns.db.profile
+    local old = db and rawget(db, "visibility")
+    if type(old) ~= "table" then return end
+    local v = old.player
+    local vis = profile and profile.visibility
+    if type(v) == "table" and (v.condCombat or v.condMouseover or v.condTarget or v.condHealth) and vis and vis.elements then
+        for _, key in ipairs({ "uf_player", "uf_pet" }) do
+            vis.elements[key] = vis.elements[key] or { show = "combat,hastarget,health", group = 0, minAlpha = v.minAlpha or 0, fadeSpeed = "instant" }
         end
     end
+    db.visibility = nil
 end
-
-local fader = CreateFrame("Frame")
-fader.elapsed = 0
-
-local function FadeTick(self, elapsed)
-    self.elapsed = self.elapsed + elapsed
-    if self.elapsed < FADE.interval then return end
-    self.elapsed = 0
-    FADE.SetAlpha(FADE.ShouldShow() and 1 or HealthAlpha())
-end
-
--- The ticker runs only while the frames fade
-local function RefreshVisibilityFader()
-    fader.elapsed = FADE.interval
-    if UF:GetPlayerShow() == "fade" then
-        fader:SetScript("OnUpdate", FadeTick)
-        FadeTick(fader, 0)
-    else
-        fader:SetScript("OnUpdate", nil)
-        FADE.SetAlpha(1)
-    end
-end
-
--- Target, combat and health changes decide at once, so the player frame shows with the target
--- frame and on the pull; the tick covers the mouse. InCombatLockdown is still false during
--- PLAYER_REGEN_DISABLED, so the fight is also tracked from the events themselves.
-fader:RegisterEvent("PLAYER_TARGET_CHANGED")
-fader:RegisterEvent("PLAYER_REGEN_ENABLED")
-fader:RegisterEvent("PLAYER_REGEN_DISABLED")
--- a death mid-fight in an instance doesn't always send PLAYER_REGEN_ENABLED: dying, and every
--- loading screen, read the fight again
-fader:RegisterEvent("PLAYER_DEAD")
-fader:RegisterEvent("PLAYER_ENTERING_WORLD")
-fader:RegisterUnitEvent("UNIT_HEALTH", "player")
-fader:SetScript("OnEvent", function(self, event)
-    if event == "PLAYER_REGEN_DISABLED" then FADE.inCombat = true
-    elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_DEAD" then FADE.inCombat = nil
-    elseif event == "PLAYER_ENTERING_WORLD" then FADE.inCombat = InCombatLockdown() or nil end
-    if not self:GetScript("OnUpdate") then return end
-    self.elapsed = FADE.interval
-    FadeTick(self, 0)
-end)
 
 --------------------------------------------------
 -- 14b. OUT OF RANGE FADING (target, focus, and the boss tiles through UF.Kit)
@@ -3882,7 +3829,10 @@ end
 
 local function CreateUnitFrame(unit)
     local info = UNITS[unit]
-    local f = CreateFrame("Button", "FlareUI_UF_" .. info.key, UIParent, "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate")
+    -- on its own fade holder (section 14), which stays on UIParent's scale
+    local holder = CreateFrame("Frame", nil, UIParent)
+    UF.fadeHolders[unit] = holder
+    local f = CreateFrame("Button", "FlareUI_UF_" .. info.key, holder, "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate")
     f.fuiUnit = unit
     f:SetFrameStrata("LOW")
     f:SetAttribute("unit", unit)
@@ -4163,6 +4113,9 @@ local function LayoutPlayerCastBar()
     LayoutCastBar(holder.Cast, style, holder, "FILL")
 end
 
+-- the FlareUI Player Cast Bar's frame, for its fading (Visibility.lua); nil until it is made
+function UF.GetPlayerCastHolder() return playerCastHolder end
+
 local function CreatePlayerCastBar()
     if playerCastHolder then return playerCastHolder end
     local holder = CreateFrame("Frame", "FlareUI_UF_PlayerCastBar", UIParent)
@@ -4246,6 +4199,10 @@ local function BuildPlayerCastSettings()
         { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueMark", false), set = set("queueMark"),
           desc = L["A mark near the end of the bar: press your next spell after it and it goes off as soon as this one ends."] },
     })
+    -- last: Visibility and Faded Opacity (Visibility.lua; Always by default)
+    if ns.Visibility and ns.Visibility.PlayerCastSettings then
+        Section("Fading", ns.Visibility:PlayerCastSettings())
+    end
     return settings
 end
 
@@ -4592,6 +4549,10 @@ local function BuildSettings(unit)
         end
         Section("Icons", items)
     end
+    -- last: Visibility, Fade Speed and Faded Opacity, as on the action bars (Visibility.lua)
+    if ns.Visibility and ns.Visibility.UnitFrameSettings then
+        Section("Fading", ns.Visibility:UnitFrameSettings(unit))
+    end
     return settings
 end
 
@@ -4655,7 +4616,8 @@ function UF:Refresh()
             UpdateAll(f)
         end)
     end
-    RefreshVisibilityFader()
+    -- the frames that exist now are the ones that fade
+    if ns.Visibility and ns.Visibility.Refresh then guard("fading", function() ns.Visibility:Refresh() end) end
     -- the group frames and resource bars share the fonts, palette and class colours set here
     if ns.PartyFrames and ns.PartyFrames.initialized then guard("party frames", function() ns.PartyFrames:Refresh() end) end
     if ns.RaidFrames and ns.RaidFrames.initialized then guard("raid frames", function() ns.RaidFrames:Refresh() end) end
@@ -4671,33 +4633,11 @@ function UF:Refresh()
     guard("player cast mode", UF.ApplyPlayerCastMode)
 end
 
--- Fade Player and Pet (Settings > Unit Frames): "always", or "fade" (section 14). Saved as the four
--- conditions it stands for; any one of them on reads as "fade".
-UF.PLAYER_FADE = { condMouseover = true, condCombat = true, condTarget = true, condHealth = true }
-function UF:GetPlayerShow()
-    local db = GetDb()
-    local v = db and db.visibility and db.visibility.player
-    return v and (v.condCombat or v.condMouseover or v.condTarget or v.condHealth) and "fade" or "always"
-end
-
 -- Show Player or Hide Player Frame while in party changed (Party frames' Edit Mode)
 function UF:RefreshPartyHide()
     for _, unit in ipairs({ "player", "pet" }) do
         if frames[unit] then ApplyVisibility(frames[unit]) end
     end
-end
-
-function UF:SetPlayerShow(mode)
-    local db = GetDb()
-    local v = db and db.visibility and db.visibility.player
-    if not v then return end
-    for key, on in pairs(UF.PLAYER_FADE) do v[key] = (mode == "fade") and on or false end
-    self:RefreshVisibility()
-end
-
-function UF:RefreshVisibility()
-    if not self.initialized then return end
-    RefreshVisibilityFader()
 end
 
 function UF:PLAYER_REGEN_ENABLED()
@@ -4719,6 +4659,7 @@ function UF:Init()
     local db = GetDb()
     if not db then return end
     UF.ApplyPalette()
+    UF.MigrateOldFade()
     -- a saved Hide Auras on the focus frame becomes Buffs and Debuffs Off
     local focusDb = db.units and db.units.focus
     if focusDb and focusDb.hideAuras then
@@ -4801,7 +4742,6 @@ function UF:Init()
     end
     local function EndPreview()
         for _, f in pairs(frames) do ApplyVisibility(f); if f.Combo then UpdateComboPoints(f) end; UpdateHappiness(f); UpdateAll(f) end
-        RefreshVisibilityFader()
         for _, f in pairs(frames) do LayoutAuras(f) end
         SetAuraPreview(false)
         SetCastPreview(false)

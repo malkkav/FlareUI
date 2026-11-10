@@ -3,8 +3,8 @@ local L = ns.L
 
 --------------------------------------------------
 -- MOVERS
--- Edit Mode frames "FlareUI Loot Rolls" (GroupLootContainer) and "FlareUI Toasts" (AlertFrame),
--- each with a sample in Edit Mode. Hooks only: the loot rolls share a layout with protected frames,
+-- Edit Mode frames "FlareUI Loot Rolls" (GroupLootContainer), "FlareUI Toasts" (AlertFrame) and
+-- "FlareUI Battleground Objectives" (UIWidgetTopCenterContainerFrame), each with a sample in Edit Mode. Hooks only: the loot rolls share a layout with protected frames,
 -- so they are re-anchored after Blizzard places them.
 --------------------------------------------------
 
@@ -28,10 +28,13 @@ local LEM = LibStub("FlareEditMode")
 -- toast 20 above AlertFrame's
 local ROLL_W, ROLL_H, ROLL_BOTTOM = 277, 67, 16.5
 local TOAST_W, TOAST_H, TOAST_BOTTOM = 312, 89, 20
+-- the battleground scores: Blizzard's container sits at TOP 0,-15 and grows down from its top
+local OBJ_W, OBJ_H = 240, 40
 
 local DEFAULTS = {
     loot  = { point = "BOTTOM", x = 0, y = 173 },   -- between the player cast bar and the action bars
     toast = { point = "TOP", x = 0, y = -158 },
+    objectives = { point = "TOP", x = 0, y = -15 },   -- Blizzard's own spot
 }
 
 local holders = {}   -- key -> holder frame
@@ -210,7 +213,51 @@ local function CreateToastPreview(holder)
 end
 
 --------------------------------------------------
--- 6. SETUP
+-- 6. BATTLEGROUND OBJECTIVES
+-- The top-centre widget container (flag and base scores, resources, timers). A plain frame, not an
+-- Edit Mode system or a managed frame: it goes back on the holder after anything places it.
+--------------------------------------------------
+-- EnhanceQoL Mover's own "Top Center Widgets" entry (off by default): turned on, it moves them, not us
+local function EQoLMovesObjectives()
+    local eqol = _G.EnhanceQoL
+    local fns = type(eqol) == "table" and type(eqol.Mover) == "table" and eqol.Mover.functions
+    if type(fns) ~= "table" or type(fns.IsFrameEnabled) ~= "function" then return false end
+    local ok, on = pcall(fns.IsFrameEnabled, "UIWidgetTopCenterContainerFrame")
+    return ok and on == true
+end
+
+local placingObjectives = false
+local function PlaceObjectives()
+    local container, holder = _G.UIWidgetTopCenterContainerFrame, holders.objectives
+    if placingObjectives or not (container and holder) or EQoLMovesObjectives() then return end
+    if InCombatLockdown() and container:IsProtected() then return end
+    placingObjectives = true
+    container:ClearAllPoints()
+    container:SetPoint("TOP", holder, "TOP", 0, 0)
+    placingObjectives = false
+end
+
+-- a faction icon and its score, twice
+local function CreateObjectivesPreview(holder)
+    local p = holder.preview
+    local bg = p:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0, 0, 0, 0.35)
+    local function Side(icon, score, x)
+        local t = p:CreateTexture(nil, "ARTWORK")
+        t:SetSize(36, 36)
+        t:SetPoint("CENTER", x - 14, -2)
+        t:SetTexture(icon)
+        local n = p:CreateFontString(nil, "ARTWORK", "GameFontHighlightLarge")
+        n:SetPoint("LEFT", t, "RIGHT", -6, 2)
+        n:SetText(score)
+    end
+    Side("Interface\\TargetingFrame\\UI-PVP-Alliance", "2 / 3", -50)
+    Side("Interface\\TargetingFrame\\UI-PVP-Horde", "1 / 3", 50)
+end
+
+--------------------------------------------------
+-- 7. SETUP
 --------------------------------------------------
 -- The Gamepad UI shows its own loot rolls and toasts
 function MOV:ShouldLoad()
@@ -235,6 +282,18 @@ function MOV:Init()
         CreateToastPreview(CreateHolder("toast", "FlareUI_Toasts", "FlareUI Toasts", TOAST_W, TOAST_H))
         PlaceToasts()
         hooksecurefunc(base, "UpdateAnchors", RewalkToasts)
+    end
+
+    local objectives = _G.UIWidgetTopCenterContainerFrame
+    if objectives then
+        CreateObjectivesPreview(CreateHolder("objectives", "FlareUI_BattlegroundObjectives",
+            "FlareUI Battleground Objectives", OBJ_W, OBJ_H))
+        hooksecurefunc(objectives, "SetPoint", PlaceObjectives)
+        PlaceObjectives()
+        -- a placement held back by combat
+        local regen = CreateFrame("Frame")
+        regen:RegisterEvent("PLAYER_REGEN_ENABLED")
+        regen:SetScript("OnEvent", PlaceObjectives)
     end
 
     LEM:RegisterCallback("layout", function(layoutName)

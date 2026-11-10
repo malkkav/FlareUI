@@ -1907,8 +1907,19 @@ local function CreateSecureLayer()
     header.OnSecureHoldCancel = function() if openMode == "hold" then CloseRadial() end end
     header.OnSecureChild = function(_, index, child) SetButtonChild(index, child) end
     header.OnSecureOpen = function(_, radialID) OpenRadial(radialID, "click") end
-    header.OnSecurePadOpen = function(_, radialID) OpenRadial(radialID, "pad") end
-    header.OnSecureClose = function() if openMode == "click" or openMode == "pad" then CloseRadial() end end
+    -- a stick bound only with a trigger held stays bound while its radial is open: L3 closes it
+    header.OnSecurePadOpen = function(_, radialID)
+        OpenRadial(radialID, "pad")
+        RM.padRadialOpen = true
+        RM.UpdateTriggerSticks()
+    end
+    header.OnSecureClose = function()
+        if openMode == "click" or openMode == "pad" then CloseRadial() end
+        if RM.padRadialOpen then
+            RM.padRadialOpen = nil
+            RM.UpdateTriggerSticks()
+        end
+    end
     header:SetAttribute("flare-openpad", OPEN_PAD_SNIPPET)
     header:SetAttribute("flare-closepad", CLOSE_PAD_SNIPPET)
     SecureHandlerSetFrameRef(header, "stickguard", GuardStick())
@@ -2557,7 +2568,8 @@ local function ApplyBinding()
             local stick, side = ns.ParsePadCombo(key)
             if stick then
                 header:SetAttribute("flare-pad-" .. stick .. "-" .. side, id)
-                padSticks[stick] = true
+                padSticks[stick] = padSticks[stick] or {}
+                padSticks[stick][side] = true
             end
         end
     end
@@ -2581,12 +2593,16 @@ local function ApplyBinding()
     local store = GetStore()
     local default = RM:GetDefaultRadialID()
     if header then header:SetAttribute("flare-assigned", default) end
-    if not padOn then return end
+    if not padOn then
+        RM.triggerSticks = nil
+        RM.UpdateTriggerSticks()
+        return
+    end
     -- Settings that switched controller support on by hand (store.controller == true) keep L3 opening
     -- the first radial until a radial gets a controller button; everyone else keeps L3 for Auto Run.
     if not next(padSticks) and store and store.controller == true and default then
         header:SetAttribute("flare-pad-L3-TOP", default)
-        padSticks.L3 = true
+        padSticks.L3 = { TOP = true }
     end
     -- the right stick aims (the camera holds still while it is open, section 7) whatever opened the
     -- radial (a stick press or a gamepad bar macro); LT and RT are read as the mapped state's buttons
@@ -2599,8 +2615,55 @@ local function ApplyBinding()
         local index = C_GamePad.ButtonBindingToIndex and C_GamePad.ButtonBindingToIndex(ns.PadTriggerKey(side))
         header:SetAttribute(attribute, index and index + 1 or nil)
     end
-    for stick in pairs(padSticks) do
-        SetOverrideBindingClick(radial, true, ns.PadStickKey(stick), PAD_NAME, "Pad" .. stick)
+    RM.triggerSticks = {}
+    for stick, sides in pairs(padSticks) do
+        if sides.TOP then
+            SetOverrideBindingClick(radial, true, ns.PadStickKey(stick), PAD_NAME, "Pad" .. stick)
+        else
+            RM.triggerSticks[stick] = sides
+        end
+    end
+    RM.UpdateTriggerSticks()
+end
+
+-- A stick whose radials all need a trigger held (LT + L3) leaves the stick's own press to the game
+-- (L3 Auto Run, R3 ping): LT and RT are the crossbar's modifiers, not keys a binding can carry, so the
+-- stick is bound only while a trigger with a radial on it is held, as the game reports the crossbar
+-- (GamepadMode.RegisterCrossBarModifierStateChanged). Bindings can't change in a fight: the stick is
+-- bound for the whole of it, so its own press waits for the fight's end.
+RM.triggerHeld = { left = false, right = false }
+function RM.UpdateTriggerSticks()
+    if InCombatLockdown() then return end
+    local owner = RM.triggerOwner
+    if not owner then
+        owner = CreateFrame("Frame")
+        RM.triggerOwner = owner
+        owner:SetScript("OnEvent", function(_, event)
+            if event == "PLAYER_REGEN_DISABLED" then RM.inFight = true
+            elseif event == "PLAYER_REGEN_ENABLED" then RM.inFight = nil end
+            RM.UpdateTriggerSticks()
+        end)
+        -- (the event comes before the lockdown: a binding can still change here)
+        owner:RegisterEvent("PLAYER_REGEN_DISABLED")
+        owner:RegisterEvent("PLAYER_REGEN_ENABLED")
+    end
+    ClearOverrideBindings(owner)
+    local sticks = RM.triggerSticks
+    if not (sticks and next(sticks)) then return end
+    if not RM.crossbarWatched and GamepadMode and GamepadMode.RegisterCrossBarModifierStateChanged then
+        RM.crossbarWatched = true
+        GamepadMode.RegisterCrossBarModifierStateChanged(function(_, side, down)
+            if side ~= "left" and side ~= "right" then return end
+            RM.triggerHeld[side] = down and true or false
+            RM.UpdateTriggerSticks()
+        end, RM)
+    end
+    local held = RM.triggerHeld
+    local side = (held.left and held.right and "LTRT") or (held.left and "LT") or (held.right and "RT") or nil
+    for stick, sides in pairs(sticks) do
+        if RM.inFight or RM.padRadialOpen or (side and sides[side]) then
+            SetOverrideBindingClick(owner, true, ns.PadStickKey(stick), PAD_NAME, "Pad" .. stick)
+        end
     end
 end
 

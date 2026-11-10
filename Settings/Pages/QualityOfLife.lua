@@ -71,6 +71,9 @@ S:Row{ key = "qol.bagRarityBorders", half = true, tab = "gameplay", path = "twea
 S:Row{ key = "qol.bagThickBorders", half = true, tab = "gameplay", path = "tweaks.bagThickBorders", apply = RefreshBags, disabled = BagAddon }
 S:Row{ key = "qol.bagJunkIcon", half = true, tab = "gameplay", path = "tweaks.bagJunkIcon", apply = RefreshBags, disabled = BagAddon }
 S:Row{ key = "qol.bagUpgradeArrow", half = true, tab = "gameplay", path = "tweaks.bagUpgradeArrow", apply = RefreshBags, disabled = BagAddon }
+-- two more on what is in your bags (no bag addon greys them: they are not Bags.lua's)
+S:Row{ key = "qol.petFood", half = true, tab = "gameplay", path = "tweaks.petFood", apply = Refresh }
+S:Row{ key = "qol.delete", half = true, tab = "gameplay", path = "tweaks.autoDelete", apply = Refresh }
 S:Row{ key = "qol.fastLoot", half = true, tab = "gameplay", path = "tweaks.fasterLoot", apply = Refresh }
 -- one switch for further and faster camera zoom
 S:Row{
@@ -82,29 +85,33 @@ S:Row{
     end,
     apply = Refresh,
 }
+-- Convenience, in pairs: quests, the map, NPCs, then fishing
 S:Row{ key = "qol.autoAcceptQuests", half = true, tab = "gameplay", path = "tweaks.autoAcceptQuests" }
 S:Row{ key = "qol.autoTurnInQuests", half = true, tab = "gameplay", path = "tweaks.autoTurnInQuests" }
-S:Row{ key = "qol.delete", half = true, tab = "gameplay", path = "tweaks.autoDelete", apply = Refresh }
-S:Row{ key = "qol.trainAll", half = true, tab = "gameplay", path = "tweaks.trainAll", apply = Refresh }
 S:Row{ key = "qol.way", half = true, tab = "gameplay", path = "tweaks.way", reload = true, disabled = WayTaken }
-S:Row{ key = "qol.mailBook", half = true, tab = "gameplay", path = "tweaks.mailBook", apply = Refresh }
-S:Row{ key = "qol.alerts", half = true, tab = "gameplay", path = "tweaks.alertSounds" }
-S:Row{ key = "qol.petFood", half = true, tab = "gameplay", path = "tweaks.petFood", apply = Refresh }
-S:Row{ key = "qol.fishCast", half = true, tab = "gameplay", path = "tweaks.fishCast", apply = Refresh }
-S:Row{ key = "qol.fishSound", half = true, tab = "gameplay", path = "tweaks.fishSound", apply = Refresh }
 S:Row{ key = "qol.mapFade", half = true, tab = "gameplay", path = "tweaks.mapFade", apply = Refresh }
 S:Row{ key = "qol.taxiMap", half = true, tab = "gameplay", path = "tweaks.taxiMap" }
+S:Row{ key = "qol.trainAll", half = true, tab = "gameplay", path = "tweaks.trainAll", apply = Refresh }
+S:Row{ key = "qol.mailBook", half = true, tab = "gameplay", path = "tweaks.mailBook", apply = Refresh }
+S:Row{ key = "qol.alerts", half = true, tab = "gameplay", path = "tweaks.alertSounds" }
+S:Row{ key = "qol.fishCast", half = true, tab = "gameplay", path = "tweaks.fishCast", apply = Refresh }
+S:Row{ key = "qol.fishSound", half = true, tab = "gameplay", path = "tweaks.fishSound", apply = Refresh }
 S:Row{ key = "qol.skipLoot", half = true, tab = "gameplay", path = "tweaks.skipLootConfirm" }
 -- Controller: the Gamepad mode prompt and rumble (GamepadMode.lua)
-S:Row{ key = "qol.gamepadPrompt", tab = "gameplay", path = "tweaks.gamepadPrompt" }
+S:Row{ key = "qol.gamepadPrompt", half = true, tab = "gameplay", path = "tweaks.gamepadPrompt" }
+-- the quest tracker's own switch (ObjectiveTracker.lua OT.WantedInMode), with the other gamepad ones;
+-- greyed while FlareUI's tracker is off, since then Blizzard's shows anyway
+S:Row{ key = "qol.padTracker", half = true, tab = "gameplay", path = "objectivetracker.padBlizzard", reload = true,
+    disabled = function() return not S:GetPath("objectivetracker.enabled") end }
 S:Row{ key = "qol.rumbleAlerts", half = true, tab = "gameplay", path = "tweaks.rumbleAlerts" }
 S:Row{ key = "qol.rumbleProcs", half = true, tab = "gameplay", path = "tweaks.rumbleProcs" }
 
 -- INTERFACE --------------------------------------
+-- whether enemy plates show at all first, then what goes on them, then their text
+-- (Blizzard's own enemy plates, so another nameplate addon does not grey it out)
+S:Row{ key = "qol.npCombat", tab = "interface", path = "tweaks.combatPlates", apply = Refresh }
 S:Row{ key = "qol.npCombo", tab = "interface", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon }
 S:Row{ key = "qol.npQuest", tab = "interface", path = "tweaks.nameplateQuest", apply = Refresh, disabled = QuestBadgeTaken }
--- Blizzard's own enemy plates, so another nameplate addon does not grey it out
-S:Row{ key = "qol.npCombat", tab = "interface", path = "tweaks.combatPlates", apply = Refresh }
 S:Row{ key = "qol.npNames", tab = "interface", path = "tweaks.nameplateHideNames", apply = Refresh, disabled = NameplateAddon }
 -- live when switched on; switching off leaves visible plates' bars wide until Blizzard re-lays
 -- them, so the reload bar offers a reload

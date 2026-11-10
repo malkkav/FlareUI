@@ -33,23 +33,25 @@ S:Row{ key = "ch.editBoxOpacity", kind = "choice", path = "chat.editBoxOpacity",
 S:Row{ key = "ch.editBox", kind = "choice", path = "chat.editBoxPosition",
     choices = { "inside", "below", "above" }, apply = Refresh, section = "ch.editBoxSection" }
 
-S:Row{ key = "ch.history", tab = "tweaks", path = "chat.saveHistory", apply = Refresh, section = "ch.tweaks", half = true }
+-- in pairs: copying, links and history, what's hidden, the lines
+S:Row{ key = "ch.copyButton", tab = "tweaks", path = "chat.copyButton", apply = Refresh, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.copyLinks", tab = "tweaks", path = "chat.copyLinks", apply = Refresh, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.hoverTooltips", tab = "tweaks", path = "chat.hoverTooltips", section = "ch.tweaks", half = true }
-S:Row{ key = "ch.noBubbles", tab = "tweaks", path = "chat.hideBubblesInInstance", apply = Refresh, section = "ch.tweaks", half = true }
+S:Row{ key = "ch.history", tab = "tweaks", path = "chat.saveHistory", apply = Refresh, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.combatLog", tab = "tweaks", path = "chat.hideCombatLog", reload = true, section = "ch.tweaks", half = true }
+S:Row{ key = "ch.noBubbles", tab = "tweaks", path = "chat.hideBubblesInInstance", apply = Refresh, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.lineHeight", tab = "tweaks", path = "chat.increaseLineHeight", apply = Refresh, section = "ch.tweaks", half = true }
-S:Row{ key = "ch.copyButton", tab = "tweaks", path = "chat.copyButton", apply = Refresh, section = "ch.tweaks", half = true }
 
 -- Formatting (never applied in instances, where chat lines are unreadable)
 local function Format(key, path)
     S:Row{ key = "ch." .. key, tab = "tweaks", path = "chat." .. path, apply = Refresh, section = "ch.formatting", half = true }
 end
-Format("formatNPC", "formatNPC")
+-- player names first (their level with them), then NPCs and channels, then the time
 Format("formatPlayer", "formatPlayer")
-Format("timestamps", "betterTimestamps")
-Format("shortChannels", "shortChannels")
 Format("levels", "showLevel")
+Format("formatNPC", "formatNPC")
+Format("shortChannels", "shortChannels")
+Format("timestamps", "betterTimestamps")
 
 S:FontRows{ module = "ch", tab = "fonts", section = "ch.fonts", apply = Refresh, fonts = {
     { key = "text", path = "chat.chatFont" },

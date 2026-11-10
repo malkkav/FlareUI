@@ -1,3 +1,27 @@
+# FlareUI 5.1
+
+## New
+- Unit frames: the player, pet, target, focus, target of target and target of focus frames each have a **Fading** section at the bottom of their Edit Mode dialog, with the action bars' **Visibility** choices (Mouseover, In Combat, Has a Target and the rest). They fade at once. The player and pet frames also get **Faded Opacity** and **Missing Health**: they stay up while that unit is hurt. Thanks for asking for more than one switch!
+  - It replaces **Fade Player and Pet** in Settings › Unit Frames. If you had it on, both frames keep the same behaviour: in combat, with a target or while hurt.
+- Resource bars: every bar has a **Fading** section in Edit Mode: **Fade Group**, **Visibility**, **Fade Speed** and **Faded Opacity**, and **Missing Health** on the health bar. A bar can now fade together with your action bars through a fade group. Bars fade instead of vanishing; your choices carry over as they were.
+- FlareUI Player Cast Bar: **Visibility** and **Faded Opacity** in its Edit Mode dialog (Always by default).
+- Gryphons: each one has its own fading in its **End Cap** Edit Mode dialog, fade groups included. They start on the new **Same as Action Bar 1**, so nothing changes until you pick something else.
+- Battleground objectives (the scores at the top of the screen) move in Edit Mode as **FlareUI Battleground Objectives**, with **Move Any Window** on. Thanks for the request!
+- Quest tracker: **Colour Names by Difficulty** colours quest names like their level. Complete and focused quests keep their green and blue. Thanks for the feedback!
+- Quest tracker: FlareUI's tracker works in Gamepad mode again. **Force Blizzard Tracker**, in Quality of Life › Gamepad, brings back Blizzard's tracker there instead. Thanks for telling us it mattered!
+
+## Changed
+- Unit frames, party, raid, boss and the health bar: shields (barriers) now start right after your health and incoming heals, as in Blizzard's frames, so missing health is never hidden behind them. Thanks to the player who explained why it mattered!
+- Nameplate combo points sit below the enemy's cast bar, so a cast no longer covers them. Thanks for the report!
+- Resource bars: new default places and **In Combat** by default for the health, power, druid mana and combo point bars. Bars you placed yourself stay where they are.
+- Settings window: switches about the same thing now sit together on every page. **Completed Last** moved to the quest tracker's Quests section; **Pet Food Marker** and **Auto Type "delete"** to Bags and Looting. The Controller section of Quality of Life is now **Gamepad**.
+
+## Fixed
+- Quest tracker: the Forever tracker sections of Shortest Path Forever, SkillUp Forever and Adventure Guide Forever no longer disappear with FlareUI's Quest Tracker on. Thanks to the players who tracked it down!
+- Minimap: EnhanceQoL can no longer move the day/night button (and its Addon Button Drawer) over the calendar.
+- Minimap: Lueur 1.6's scans no longer show the minimap chasing your cursor when they pause over a window or while you turn the camera.
+- Radials: a radial on LT or RT with L3 no longer takes away L3's own Auto Run outside fights. In a fight L3 stays the radial's (the game locks bindings in combat). Thanks for the report!
+
 # FlareUI 5.0.6
 
 ## Fixed

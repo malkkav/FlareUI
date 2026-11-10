@@ -1288,7 +1288,7 @@ end
 --------------------------------------------------
 local NP_COMBO_SIZE     = 14   -- the point's side
 local NP_COMBO_SPACING  = ns.ComboPointStep(NP_COMBO_SIZE)   -- Blizzard's art never touches its neighbour
-local NP_COMBO_OFFSET_Y = -5   -- below the health bar, clear of the aggro glow (negative = down)
+local NP_COMBO_OFFSET_Y = -5   -- below the cast bar slot, clear of the aggro glow (negative = down)
 local NP_COMBO_SCALE    = 1.1  -- on top of the nameplate's own scale
 local NP_COMBO_MAX      = 10
 local NP_COMBO_FALLBACK = 5
@@ -1344,9 +1344,13 @@ local function PlayerBuildsComboPoints()
     return canaccessvalue(hostile) and hostile or false
 end
 
--- The plate's health bar, or the plate itself
+-- Below the plate's cast bar slot: Forever keeps it under the health bar whether the unit casts or
+-- not (Blizzard's own widgets hang there too), so a cast never covers the points and they never
+-- jump. Then the health bar, then the plate itself.
 local function PlateAnchor(plate)
     local unitFrame = plate.UnitFrame
+    local casts = unitFrame and unitFrame.CastBarsContainer
+    if casts and not casts:IsForbidden() then return casts end
     local bar = unitFrame and unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar
     if bar and not bar:IsForbidden() then return bar end
     return plate

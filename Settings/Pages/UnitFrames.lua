@@ -72,21 +72,7 @@ S:Row{
         Refresh()
     end,
 }
--- player and pet frames fade out of combat unless moused over, down to this; 100% is no fading
-local FADE_CHOICES = {}
-for percent = 0, 100, 10 do FADE_CHOICES[#FADE_CHOICES + 1] = { percent, percent .. "%" } end
-S:Row{
-    key = "uf.hidePlayer", kind = "choice", choices = FADE_CHOICES, apply = Refresh,
-    get = function()
-        local fades = ns.UnitFrames and ns.UnitFrames.GetPlayerShow and ns.UnitFrames:GetPlayerShow() == "fade"
-        if not fades then return 100 end
-        return S:GetPath("unitframes.visibility.player.minAlpha") or 0
-    end,
-    set = function(percent)
-        S:SetPath("unitframes.visibility.player.minAlpha", percent < 100 and percent or 0)
-        if ns.UnitFrames and ns.UnitFrames.SetPlayerShow then ns.UnitFrames:SetPlayerShow(percent < 100 and "fade" or "always") end
-    end,
-}
+-- (each frame's fading is in its Edit Mode dialog: Visibility.lua, UnitFrames.lua section 14)
 S:Row{ key = "uf.fullNames", path = "unitframes.fullNames", apply = Refresh }
 -- frames are made at login: the pet's style applies on reload
 S:Row{ key = "uf.simplePet", path = "unitframes.simplePet", reload = true }

@@ -50,32 +50,20 @@ local COLORS = {
 local BAR_ORDER = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged" }
 local BARS = {
     health      = { kind = "health", label = L["Health Bar"],      default = { point = "CENTER", x = 0, y = -148 }, textSize = 2 },
-    power       = { kind = "power",  label = L["Power Bar"],       default = { point = "CENTER", x = 0, y = -170 }, textSize = 2 },
-    mana        = { kind = "mana",   label = L["Druid Mana"],      default = { point = "CENTER", x = 0, y = -192 }, textSize = 2 },
-    combo       = { kind = "combo",  label = L["Combo Points"],    default = { point = "CENTER", x = 0, y = -128 } },
-    swingMain   = { kind = "swing",  label = L["Main-Hand Swing"], default = { point = "CENTER", x = 0, y = -248 }, textSize = 0,
+    power       = { kind = "power",  label = L["Power Bar"],       default = { point = "CENTER", x = 0, y = -180 }, textSize = 2 },
+    mana        = { kind = "mana",   label = L["Druid Mana"],      default = { point = "CENTER", x = 0, y = -202 }, textSize = 2 },
+    combo       = { kind = "combo",  label = L["Combo Points"],    default = { point = "CENTER", x = 0, y = -108 } },
+    swingMain   = { kind = "swing",  label = L["Main-Hand Swing"], default = { point = "CENTER", x = 0, y = -258 }, textSize = 0,
                     swingType = SWING and SWING.MainHand, text = _G.SWING_TIMER_MAIN_HAND or "Main Hand" },
-    swingOff    = { kind = "swing",  label = L["Off-Hand Swing"],  default = { point = "CENTER", x = 0, y = -266 }, textSize = 0,
+    swingOff    = { kind = "swing",  label = L["Off-Hand Swing"],  default = { point = "CENTER", x = 0, y = -286 }, textSize = 0,
                     swingType = SWING and SWING.OffHand, text = _G.SWING_TIMER_OFF_HAND or "Off Hand" },
-    swingRanged = { kind = "swing",  label = L["Ranged Swing"],    default = { point = "CENTER", x = 0, y = -284 }, textSize = 0,
+    swingRanged = { kind = "swing",  label = L["Ranged Swing"],    default = { point = "BOTTOM", x = 0, y = 276 }, textSize = 0,
                     swingType = SWING and SWING.Ranged, text = _G.SWING_TIMER_RANGED or "Ranged" },
 }
 
--- FlareUI's usual Show conditions as toggles (ns.Conditions), minus Mouseover (these bars take no
--- mouse): nothing ticked is Always. Swing timers can also appear only while their weapon is swinging.
-local SHOW_SPEC = { exclusive = { "always" }, tokens = ns.Conditions.BAR_TOKENS, legacy = ns.Conditions.BAR_LEGACY, empty = "always" }
-local SWING_SHOW_SPEC = { exclusive = { "always", "inuse" }, tokens = ns.Conditions.BAR_TOKENS, legacy = ns.Conditions.BAR_LEGACY, empty = "always" }
-local function ShowValues(swing)
-    local list = { { text = L["Always"], value = "always" } }
-    if swing then list[#list + 1] = { text = L["Only When In Use"], value = "inuse" } end
-    list[#list + 1] = { isDivider = true }
-    for _, item in ipairs({ { L["In Combat"], "combat" }, { L["Has a Target"], "hastarget" }, { L["Has an Attackable Target"], "attackable" },
-                            { L["In a Group"], "ingroup" }, { L["Not Mounted"], "unmounted" } }) do
-        list[#list + 1] = { text = item[1], value = item[2] }
-    end
-    return list
-end
-local SHOW_VALUES, SWING_SHOW_VALUES = ShowValues(false), ShowValues(true)
+-- Visibility (the action bars' Show conditions, Fade Group, Fade Speed, Faded Opacity, and Missing
+-- Health on the health bar) is Visibility.lua's: elements rb_<key>, faded by alpha. The bars still show
+-- and hide themselves where they don't apply, and a swing bar set to Only When In Use with its swings.
 -- How long a bar in that mode outlasts a finished swing: the next one rarely lands on the same frame
 local SWING_IN_USE_HOLD = 1.5
 -- power and mana: the percent comes from the client's curve (UnitPowerPercent), so a secret power works
@@ -223,14 +211,11 @@ local function ShouldShow(holder)
     if IsEditing() then return true end
     -- a swing proves the weapon, so no availability check (attack speeds can be secret); Waiting
     -- State keeps the bar up while auto attack is on
-    if cfg.show == "inuse" then
+    if RB.InUse(holder.key) then
         return (holder.swingEnd or holder.swingHold or (cfg.waiting and AutoAttacking(holder.key))) and true or false
     end
-    if not IsAvailable(holder) then return false end
-    local show = cfg.show or "always"
-    if show == "always" then return true end
-    -- the action bars' rule: any ticked condition shows it (a corpse never counts as attackable)
-    return ns.Visibility.ShowRule(show)
+    -- the Show conditions fade the bar (Visibility.lua)
+    return IsAvailable(holder)
 end
 
 --------------------------------------------------
@@ -431,11 +416,11 @@ local function SwingOnUpdate(holder)
         holder:SetScript("OnUpdate", nil)
         SwingIdle(holder)
         local cfg = Cfg(holder.key)
-        if cfg and cfg.show == "inuse" then
+        if cfg and RB.InUse(holder.key) then
             holder.swingHold = C_Timer.NewTimer(SWING_IN_USE_HOLD, function()
                 holder.swingHold = nil
                 local now = Cfg(holder.key)
-                if now and now.show == "inuse" and not holder.swingEnd and not IsEditing()
+                if now and RB.InUse(holder.key) and not holder.swingEnd and not IsEditing()
                     and not (now.waiting and AutoAttacking(holder.key)) then
                     holder:Hide()
                 end
@@ -739,9 +724,11 @@ local function LayoutBar(holder)
         -- (the heal bar keeps its own texture and colour, set at creation: a new texture would drop the colour)
         absorb:ClearAllPoints()
         absorb:SetWidth(width)
-        absorb:SetReverseFill(true)
-        absorb:SetPoint("TOPRIGHT", clip, "TOPRIGHT", 0, 0)
-        absorb:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT", 0, 0)
+        -- after the health and the incoming heals, as Blizzard's frames draw shields (UnitFrames.lua)
+        absorb:SetReverseFill(false)
+        local healFill = heal:GetStatusBarTexture()
+        absorb:SetPoint("TOPLEFT", healFill, "TOPRIGHT", 0, 0)
+        absorb:SetPoint("BOTTOMLEFT", healFill, "BOTTOMRIGHT", 0, 0)
         K.PlaceShieldGlow(holder.ShieldGlow, bar, false)
         absorb:SetStatusBarTexture(K.GetBarTexture(K.ABSORB_TEXTURE))
         absorb:SetStatusBarColor(K.ABSORB_COLOR[1], K.ABSORB_COLOR[2], K.ABSORB_COLOR[3], K.ABSORB_COLOR[4])
@@ -1008,16 +995,6 @@ local function BuildSettings(key)
         add({ name = L["Size"], kind = LEM.SettingType.Slider, default = 24, minValue = 12, maxValue = 48, valueStep = 1,
               get = get("classicSize", 24), set = set("classicSize"), hidden = classicOff })
     end
-    local showSpec = info.kind == "swing" and SWING_SHOW_SPEC or SHOW_SPEC
-    local getShow, setShow = get("show", "always"), set("show")
-    add({ name = L["Visibility"], kind = LEM.SettingType.Dropdown, default = defaults.show or "always", multiple = true,
-          values = info.kind == "swing" and SWING_SHOW_VALUES or SHOW_VALUES,
-          get = function() return ns.Conditions.Selection(getShow(), showSpec) end,
-          -- the dialog's Reset hands over the default whole (isReset), a click one choice to toggle
-          set = function(layout, value, isReset)
-              setShow(layout, isReset and value or ns.Conditions.Toggle(getShow(), value, showSpec))
-          end,
-          desc = info.kind == "swing" and L["Only When In Use: the bar appears when this weapon swings and leaves soon after the swings stop."] or nil })
     if info.kind == "power" or info.kind == "mana" then
         add({ name = L["Text"], kind = LEM.SettingType.Dropdown, default = defaults.text or "value", values = POWER_TEXT_VALUES,
               get = get("text", defaults.text or "value"), set = set("text") })
@@ -1075,6 +1052,10 @@ local function BuildSettings(key)
             return item
         end)(),
     })
+    -- last: Fade Group, Visibility, Fade Speed and Faded Opacity, as on the action bars (Visibility.lua)
+    if ns.Visibility and ns.Visibility.ResourceBarSettings then
+        Section("Fading", ns.Visibility:ResourceBarSettings(key))
+    end
     return settings
 end
 
@@ -1356,6 +1337,29 @@ local EVENTS = {
 --------------------------------------------------
 -- 11. PUBLIC
 --------------------------------------------------
+-- the bar Visibility fades (nil when it was not made: off at login)
+function RB:GetHolder(key) return bars[key] end
+
+-- a swing bar set to Only When In Use (its Visibility in Visibility.lua; a fade group's Show counts)
+function RB.InUse(key)
+    if BARS[key].kind ~= "swing" then return false end
+    return ns.Visibility and ns.Visibility.GetShow and ns.Visibility:GetShow("rb_" .. key) == "inuse" or false
+end
+
+-- Up to 5.0.6 each bar's Visibility was saved with the bar (resource.bars[key].show, which hid it): each
+-- one becomes its Visibility element once, as it was (shown or hidden = faded to 0%, at once)
+function RB.SeedVisibility()
+    local vis = ns.db and ns.db.profile and ns.db.profile.visibility
+    if not (vis and vis.elements) then return end
+    for _, key in ipairs(BAR_ORDER) do
+        local element = "rb_" .. key
+        if vis.elements[element] == nil then
+            local cfg = Cfg(key)
+            vis.elements[element] = { show = (cfg and cfg.show) or "always", group = 0, minAlpha = 0, fadeSpeed = "instant" }
+        end
+    end
+end
+
 function RB:Refresh()
     if not self.initialized then return end
     for _, key in ipairs(BAR_ORDER) do
@@ -1366,6 +1370,7 @@ function RB:Refresh()
         end
     end
     ApplyAllShown()
+    if ns.Visibility and ns.Visibility.Refresh then ns.Visibility:Refresh() end
 end
 
 local function BarOn(key)
@@ -1419,6 +1424,7 @@ end
 function RB:Init()
     if self.initialized or not K then return end
     self.initialized = true
+    RB.SeedVisibility()
     EventUtil.ContinueOnAddOnLoaded("Blizzard_CombatText", RaiseCombatText)
 
     for _, key in ipairs(BAR_ORDER) do

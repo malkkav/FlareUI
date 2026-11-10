@@ -18,13 +18,7 @@ S:On("PageShown", function(key)
     if ns.ObjectiveTracker and ns.ObjectiveTracker.SetSettingsPreview then ns.ObjectiveTracker:SetSettingsPreview(key == "qt") end
 end)
 
--- Gamepad mode: Blizzard's own tracker shows instead (ObjectiveTracker.lua, OT:ShouldLoad); said
--- at the top, where it can't be missed
-S:Row{
-    key = "qt.gamepad", kind = "legend",
-    hidden = function() return not ns.IsGamepadUI() end,
-    lines = function() return { S:Text("qt.gamepad", "desc") or "" } end,
-}
+-- (Blizzard's Tracker in Gamepad Mode is on the Quality of Life page, under Gamepad)
 S:Row{ key = "qt.opacity", kind = "choice", path = "objectivetracker.opacity", choices = S:OpacityChoices(), apply = Refresh }
 S:Row{ key = "qt.border", kind = "choice", path = "objectivetracker.borderTexture", choices = S.BorderChoices,
     apply = Refresh }
@@ -48,14 +42,15 @@ S:Row{
 local function Display(key, path)
     S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, apply = Refresh, section = "qt.display", half = true }
 end
+-- in pairs: what is listed, the tracker itself, the level and its colour, the text, the buttons
 Display("zoneHeaders", "zoneHeaders")
-Display("completedLast", "completedLast")
-Display("tags", "showTags")
-Display("wrap", "wrapText")
 Display("recipes", "showRecipes")
 Display("count", "showCount")
 Display("hideEmpty", "hideEmpty")
 Display("hideLevel", "hideLevel")
+Display("colorNames", "colorNames")
+Display("tags", "showTags")
+Display("wrap", "wrapText")
 Display("focusButtons", "focusButtons")
 S:Row{ key = "qt.playButtons", path = "objectivetracker.playButtons", apply = Refresh, section = "qt.display", half = true,
     hidden = function() return not _G.Spoken end }
@@ -63,6 +58,8 @@ S:Row{ key = "qt.playButtons", path = "objectivetracker.playButtons", apply = Re
 local function Quests(key, path)
     S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, apply = Refresh, section = "qt.quests", half = true }
 end
+-- the three about completed quests
+Quests("completedLast", "completedLast")
 Quests("collapseCompleted", "collapseCompleted")
 Quests("hideFinished", "hideFinished")
 -- Minimize: one switch sets every instance type

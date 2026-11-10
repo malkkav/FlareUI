@@ -18,10 +18,11 @@ S:Module{ key = "mm", group = "HUD", order = 75, enabled = "minimap.enabled",
 
 S:Row{ key = "mm.style", kind = "choice", path = "minimap.style", choices = { "square", "round" }, reload = true }
 S:Row{ key = "mm.zoom", kind = "choice", path = "minimap.autoZoom", choices = { 0, 5, 10, 30 }, apply = Refresh }
-S:Row{ key = "mm.bag", path = "minimap.buttonBag", reload = true }
-S:Row{ key = "mm.clockStats", path = "minimap.clockStats" }
-S:Row{ key = "mm.microMenu", path = "minimap.microMenu" }
+-- the two for the pointer on the map together, then the clock, then the drawer
 S:Row{ key = "mm.coordsHover", path = "minimap.coordsOnHover", apply = Refresh }
+S:Row{ key = "mm.microMenu", path = "minimap.microMenu" }
+S:Row{ key = "mm.clockStats", path = "minimap.clockStats" }
+S:Row{ key = "mm.bag", path = "minimap.buttonBag", reload = true }
 
 S:FontRows{ module = "mm", tab = "fonts", section = "mm.fonts", apply = Refresh, fonts = {
     { key = "zone", path = "minimap.zoneFont" },

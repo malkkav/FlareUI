@@ -511,10 +511,10 @@ local defaults = {
                 font = { face = "Friz Quadrata TT", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
                 layouts = {},
                 bars = {
-                    health      = { enabled = false, show = "target", width = 220, height = 16, text = "both" },
-                    power       = { enabled = false, show = "target", width = 220, height = 16, text = "value", fsr = false },
-                    mana        = { enabled = false, show = "target", width = 220, height = 16, text = "value", fsr = false },
-                    combo       = { enabled = false, show = "target", width = 220, height = 12 },
+                    health      = { enabled = false, show = "combat", width = 220, height = 16, text = "both" },
+                    power       = { enabled = false, show = "combat", width = 220, height = 16, text = "value", fsr = false },
+                    mana        = { enabled = false, show = "combat", width = 220, height = 16, text = "value", fsr = false },
+                    combo       = { enabled = false, show = "combat", width = 220, height = 12 },
                     swingMain   = { enabled = false, show = "inuse",        width = 220, height = 12 },
                     swingOff    = { enabled = false, show = "inuse",        width = 220, height = 12 },
                     swingRanged = { enabled = false, show = "inuse",        width = 220, height = 12 },
@@ -610,10 +610,6 @@ local defaults = {
                                  castbar = false, castbarPosition = "BOTTOM", castHeight = 12, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "OFF", debuffs = "OFF", auraSize = 12, hideBuffs = "PERMANENT" },
             },
-            -- Fade Player and Pet: all off = always shown ("fade" turns the set on)
-            visibility = {
-                player = { condMouseover = false, condCombat = false, condTarget = false, condHealth = false, minAlpha = 0 },
-            },
         },
 
         -- [[ VISIBILITY (Show choices, fade groups, permanent hiding; part of the Action Bars module) ]]
@@ -707,6 +703,7 @@ local defaults = {
             borderTexture = "FlareUI Frames",
             opacity = 0.5,
             minimizeStyle = "header",   -- "header": the header stays; "button": only a "+" button
+            padBlizzard = false,        -- Gamepad UI: Blizzard's tracker instead of this one (reload)
             hideEmpty = true,           -- nothing tracked: no tracker
             showCount = true,           -- "Quests 14/25" in the header
             zoneHeaders = true,
@@ -718,6 +715,7 @@ local defaults = {
             anchor = "auto",            -- auto | TOP | BOTTOM (Edit Mode); left / right follows the frame's half
             questGap = 9,               -- pixels between quests (Edit Mode)
             hideLevel = false,
+            colorNames = false,         -- quest names in their difficulty colour (not complete or focused ones)
             focusButtons = false,       -- a dot before each quest that focuses it
             playButtons = false,        -- a voice-line button before each quest, with the Spoken addon
             collapseCompleted = false,  -- finished and failed quests fold, unless a timer runs
@@ -1492,7 +1490,8 @@ do
     local CANON = {
         -- dropdowns
         "Style", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
-        "Visibility", "Portrait", "Health Text", "Power Text", "Text", "Combo Points",
+        -- a Fade Group decides the rows after it (Fading: Fade Group, Visibility, Fade Speed)
+        "Fade Group", "Visibility", "Fade Speed", "Portrait", "Health Text", "Power Text", "Text", "Combo Points",
         "Bar Texture", "Border", "Absorb Texture",
         "Cast Bar Position", "Cast Bar Texture", "Cast Bar Border",
         "Buffs", "Debuffs", "Hide Buffs", "Dispel Highlight", "Dispel Icons", "Aura Swipe", "Aura Timer",

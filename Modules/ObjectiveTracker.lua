@@ -103,6 +103,14 @@ local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.objectivetracker
 end
 
+-- Whether this tracker runs in the current input mode: always with keyboard and mouse; in the
+-- Gamepad UI unless Blizzard's Tracker in Gamepad Mode is on. (Its own on/off is db.enabled.)
+function OT.WantedInMode()
+    if not ns.IsGamepadUI() then return true end
+    local db = GetDb()
+    return not (db and db.padBlizzard)
+end
+
 -- The character's own state: minimized, collapsed quests and zones
 local function Char()
     local c = ns.CharDB()
@@ -1282,16 +1290,35 @@ function OT:Render()
         return line
     end
 
+    -- the quest's own difficulty, as the quest log colours it; the sample quests have only a level
+    local function DifficultyColor(level, questID)
+        if questID and HaveQuestData(questID) then
+            return GetDifficultyColor(C_PlayerInfo.GetContentDifficultyQuestForPlayer(questID))
+        end
+        return GetQuestDifficultyColor(level)
+    end
+
+    -- Colour Names by Difficulty: the name in its level's colour, unless complete or focused (one
+    -- table per colour, so a line keeps its colour between renders)
+    state.difficultyColors = state.difficultyColors or {}
+    local function TitleColor(level, questID, focus, done)
+        if focus then return C.TITLE_FOCUS end
+        if done then return C.TITLE_DONE end
+        if not (db.colorNames and level) then return C.TITLE end
+        local c = DifficultyColor(level, questID)
+        local key = string_format("%.3f %.3f %.3f", c.r, c.g, c.b)
+        local color = state.difficultyColors[key]
+        if not color then
+            color = { c.r, c.g, c.b }
+            state.difficultyColors[key] = color
+        end
+        return color
+    end
+
     local function TitleText(level, tags, title, collapsed, questID)
         local prefix = ""
         if level then
-            -- the quest's own difficulty, as the quest log colours it; the sample quests have only a level
-            local c
-            if questID and HaveQuestData(questID) then
-                c = GetDifficultyColor(C_PlayerInfo.GetContentDifficultyQuestForPlayer(questID))
-            else
-                c = GetQuestDifficultyColor(level)
-            end
+            local c = DifficultyColor(level, questID)
             local shownLevel = db.hideLevel and "" or level
             local shownTags = db.showTags and tags or ""
             if shownLevel == "" then shownTags = shownTags:gsub("^ +", "") end
@@ -1411,7 +1438,7 @@ function OT:Render()
                         y = y - C.ZONE_GAP
                     end
                 else
-                    local color = s.focus and C.TITLE_FOCUS or (s.done and C.TITLE_DONE or C.TITLE)
+                    local color = TitleColor(s.level, nil, s.focus, s.done)
                     local line = AddLine(TitleText(s.level, s.tags or "", s.title), "title", color, titleRoom)
                     AddTitleButtons(line, nil, s.focus)
                     if s.item then
@@ -1453,7 +1480,7 @@ function OT:Render()
                 if not zoneCollapsed then
                     local collapsed = IsCollapsed(q.questID)
                     local complete = C_QuestLog.IsComplete(q.questID)
-                    local color = q.questID == focused and C.TITLE_FOCUS or (complete and C.TITLE_DONE or C.TITLE)
+                    local color = TitleColor(q.difficultyLevel or q.level, q.questID, q.questID == focused, complete)
                     local line = AddLine(TitleText(q.difficultyLevel or q.level, db.showTags and QuestTags(q) or "", q.title or "?", collapsed, q.questID), "title", color, titleRoom)
                     line.questID, line.logIndex = q.questID, q.ftLogIndex
                     titleLines[#titleLines + 1] = line
@@ -1928,21 +1955,70 @@ local function ParkBlizzardTracker()
     if tracker:GetAlpha() ~= 0 then tracker:SetAlpha(0) end
 end
 
--- Sections stacked under Blizzard's tracker through the shared ForeverTrackerHost would be parked
--- with it: detached once while this tracker is on, attached back when it is turned off.
-local function DetachCompanionSections()
-    local host, db = _G.ForeverTrackerHost, GetDb()
-    if type(host) ~= "table" or not (host.IsAttachedToQuestTracker and host.SetAttached) or not db then return end
-    -- in the Gamepad UI this tracker stands aside, so they stay with Blizzard's
-    local on = db.enabled and not ns.IsGamepadUI()
-    if on and not db.companionDetached then
-        if host.IsAttachedToQuestTracker() then
-            host.SetAttached(false)
-            db.companionDetached = true
+-- Sections stacked under Blizzard's tracker through the shared ForeverTrackerHost (Shortest Path,
+-- SkillUp and Adventure Guide Forever) would be parked with it: detached once while this tracker
+-- is on, attached back when it is turned off.
+-- The shared column (ForeverTrackerCompanion) also copies Blizzard's tracker's scale on every
+-- layout, attached or not, so a parked tracker drew it at a thousandth of its size (5.0 to 5.0.6:
+-- "their tracker disappeared"). While Blizzard's is parked, the column keeps the player's own scale,
+-- and a detached column never dragged starts beside this tracker, not beside the parked one.
+local DetachCompanionSections
+do
+    local function Parked()
+        local tracker = _G.ObjectiveTrackerFrame
+        return tracker and tracker:GetScale() < 0.01
+    end
+
+    local function KeepScale(column)
+        local api = _G.ForeverTrackerHost
+        if not Parked() or type(api) ~= "table" then return end
+        local want = api.GetScale and api.GetScale() or 1
+        if type(want) ~= "number" or want <= 0 then want = 1 end
+        -- re-enters this hook once, at the right scale, and stops
+        if math.abs(column:GetScale() - want) > 0.0001 then column:SetScale(want) end
+    end
+
+    local function SeedPosition(api)
+        if not holder or not api.GetSettings or api.IsAttachedToQuestTracker() then return end
+        local settings = api.GetSettings()
+        if type(settings) ~= "table" or (settings.x and settings.y) then return end
+        local left, right, top = holder:GetLeft(), holder:GetRight(), holder:GetTop()
+        local uiScale = UIParent:GetEffectiveScale()
+        if not (left and right and top) or uiScale <= 0 then return end
+        -- the column's own units: UIParent's, from its top left corner (their SavePosition's)
+        local k = holder:GetEffectiveScale() / uiScale
+        left, right, top = left * k, right * k, top * k
+        local tracker = _G.ObjectiveTrackerFrame
+        local width = (tracker and tracker:GetWidth() or 250) * (api.GetScale and api.GetScale() or 1)
+        local x = left - 8 - width
+        if x < 0 then x = right + 8 end
+        settings.x, settings.y = x, top - UIParent:GetHeight()
+    end
+
+    local hooked = false
+    DetachCompanionSections = function()
+        local host, db = _G.ForeverTrackerHost, GetDb()
+        if type(host) ~= "table" or not (host.IsAttachedToQuestTracker and host.SetAttached) or not db then return end
+        -- where this tracker stands aside (Gamepad UI, by choice), they stay with Blizzard's
+        local on = db.enabled and OT.WantedInMode()
+        if on and not db.companionDetached then
+            if host.IsAttachedToQuestTracker() then
+                host.SetAttached(false)
+                db.companionDetached = true
+            end
+        elseif not on and db.companionDetached then
+            if not host.IsAttachedToQuestTracker() then host.SetAttached(true) end
+            db.companionDetached = nil
         end
-    elseif not on and db.companionDetached then
-        if not host.IsAttachedToQuestTracker() then host.SetAttached(true) end
-        db.companionDetached = nil
+        local column = _G.ForeverTrackerCompanion
+        if not on or type(column) ~= "table" or not column.SetScale then return end
+        if not hooked then
+            hooked = true
+            hooksecurefunc(column, "SetScale", KeepScale)
+        end
+        SeedPosition(host)
+        KeepScale(column)
+        if type(column.MarkDirty) == "function" then column:MarkDirty() end
     end
 end
 
@@ -2203,10 +2279,11 @@ function OT:Refresh()
     self:Render()
 end
 
--- Not in the Gamepad UI: Blizzard's own tracker is part of its controller navigation (D-pad Up gives
--- it the pad, with its quest items and menus), so it shows there instead. Switching modes reloads.
+-- In the Gamepad UI only if the player keeps it there (Blizzard's Tracker in Gamepad Mode, off by
+-- default): Blizzard's own tracker is part of its controller navigation (D-pad Up gives it the pad,
+-- with its quest items and menus). Switching modes reloads.
 function OT:ShouldLoad()
-    return not ns.IsGamepadUI()
+    return OT.WantedInMode()
 end
 
 function OT:Init()

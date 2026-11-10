@@ -837,7 +837,7 @@ ns.Copy = {
         ["qol.delete"] = {
             desc = L["Fills in DELETE when you destroy a valuable item."],
             label = L["Auto Type \"delete\""],
-            section = "qol.convenience",
+            section = "qol.looting",
             tags = { "auto-type \"delete\"" },
         },
         ["qol.durability"] = {
@@ -914,7 +914,7 @@ ns.Copy = {
             desc = L["Move and resize any Blizzard window:\n* Drag the header: move\n* Ctrl + mouse wheel: resize (a plain wheel still zooms the camera)\n* Shift + right-click: reset the position\n* Ctrl + right-click: reset the size"],
             label = L["Move Any Window"],
             section = "qol.windows",
-            tip = L["Loot rolls and toasts move in Edit Mode."],
+            tip = L["Loot rolls, toasts and battleground objectives move in Edit Mode."],
         },
         ["qol.npCombat"] = {
             desc = L["Enemy nameplates show only during fights."],
@@ -951,10 +951,16 @@ ns.Copy = {
             label = L["Quest Objectives"],
             section = "qol.nameplates",
         },
+        ["qol.padTracker"] = {
+            desc = L["In Gamepad mode, the game's own tracker shows instead of FlareUI's, so D-pad Up, its quest items and its menus work with the controller."],
+            label = L["Force Blizzard Tracker"],
+            section = "qol.controller",
+            tip = L["Off: FlareUI's tracker stays in Gamepad mode too, without its right-click menus."],
+        },
         ["qol.petFood"] = {
             desc = L["A paw marks the food in your bags your hunter pet eats."],
             label = L["Pet Food Marker"],
-            section = "qol.convenience",
+            section = "qol.looting",
         },
         ["qol.repair"] = {
             desc = L["Repairs your gear at vendors that can."],
@@ -1024,10 +1030,15 @@ ns.Copy = {
             section = "qt.quests",
             tip = L["Middle-click to open one again. It stays open."],
         },
+        ["qt.colorNames"] = {
+            desc = L["Quest names in their difficulty colour, as the level shows it. Complete and focused quests keep their green and blue."],
+            label = L["Colour Names by Difficulty"],
+            section = "qt.display",
+        },
         ["qt.completedLast"] = {
             desc = L["Quests ready to turn in move to the bottom."],
             label = L["Completed Last"],
-            section = "qt.display",
+            section = "qt.quests",
         },
         ["qt.count"] = {
             desc = L["\"Quests 14/25\" in the header."],
@@ -1050,12 +1061,6 @@ ns.Copy = {
         ["qt.font.titles"] = {
             desc = L["Quest names."],
             label = L["Quest Names"],
-        },
-        ["qt.gamepad"] = {
-            desc = L["In Gamepad mode the game's own tracker shows instead, so D-pad Up, its quest items and its menus work with the controller. These settings apply with keyboard and mouse."],
-            label = L["Blizzard's Tracker in Gamepad Mode"],
-            section = "qt.gamepadSection",
-            tip = L["A radial's Quest Items button uses your quest items from anywhere."],
         },
         ["qt.hideEmpty"] = {
             desc = L["No tracker while nothing is tracked."],
@@ -1288,7 +1293,7 @@ ns.Copy = {
         ["rm.padStick"] = {
             desc = L["Gamepad mode: press L3 or R3, alone or with LT, RT or both held. That press opens this radial."],
             label = L["Controller Stick"],
-            tip = L["Right-click to clear it. A stick with no radial on it keeps its own job (L3 Auto Run, R3 ping)."],
+            tip = L["Right-click to clear it. Pressed alone, a stick with no radial of its own keeps its job (L3 Auto Run, R3 ping), except in fights while LT or RT with it opens a radial."],
         },
         ["rm.position"] = {
             choices = { L["Mouse Cursor"], L["Screen Centre"] },
@@ -1562,12 +1567,6 @@ ns.Copy = {
             section = "uf.look",
             tip = L["Off: the first name only, everywhere. Target of target and target of focus always show the first name only."],
         },
-        ["uf.hidePlayer"] = {
-            desc = L["How visible your player and pet frames stay while you're out of combat, with no target and at full health.\n* 100%: no fading\n* 0%: invisible"],
-            label = L["Fade Player and Pet"],
-            section = "uf.look",
-            tip = L["Pointing at either frame shows both."],
-        },
         ["uf.main"] = {
             desc = L["Your player, pet, target and focus frames."],
             label = L["Main Frames"],
@@ -1699,7 +1698,7 @@ ns.Copy = {
         ["dm.threat"] = L["Threat Meter"],
         ["dm.tweaks"] = L["Tweaks"],
         ["qol.camera"] = L["Camera"],
-        ["qol.controller"] = L["Controller"],
+        ["qol.controller"] = L["Gamepad"],
         ["qol.convenience"] = L["Convenience"],
         ["qol.hideClutter"] = L["Hide Clutter"],
         ["qol.looting"] = L["Bags and Looting"],
@@ -1709,7 +1708,6 @@ ns.Copy = {
         ["qol.windows"] = L["Windows"],
         ["qt.display"] = L["Display"],
         ["qt.frame"] = L["Frame"],
-        ["qt.gamepadSection"] = L["Gamepad Mode"],
         ["qt.minimizeIn"] = L["Minimize"],
         ["qt.quests"] = L["Quests"],
         ["rb.bars"] = L["Bars"],

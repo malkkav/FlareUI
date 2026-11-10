@@ -22,6 +22,7 @@ S:Module{
     editSystems = function() return ns.Visibility and ns.Visibility.EditSystems and ns.Visibility:EditSystems() or {} end,
 }
 
+-- in pairs (half rows): the button's state, its art, its text, the spells, paging
 S:Row{
     key = "ab.statusColours", apply = Refresh, half = true,
     get = function() return S:GetPath("actionbars.colors.enableRange") end,
@@ -30,21 +31,19 @@ S:Row{
         S:SetPath("actionbars.colors.unusable.desaturate", on)
     end,
 }
+S:Row{ key = "ab.dimOnCooldown", path = "actionbars.dimOnCooldown", apply = Refresh, half = true }
 S:Row{ key = "ab.procGlow", path = "actionbars.procGlow", half = true,
     apply = function() if ns.ProcGlow then ns.ProcGlow:Refresh() end end }
--- in pairs (half rows): feedback above, then the art, the text, the spells
-S:Row{ key = "ab.gryphonsBehind", path = "actionbars.gryphonsBehind", apply = Refresh, half = true }
-S:Row{ key = "ab.hideMacroText", path = "actionbars.hideMacroText", apply = Refresh, half = true }
+S:Row{ key = "ab.buttonArt", path = "actionbars.buttonArt", apply = Refresh, half = true }
 S:Row{ key = "ab.hideKeybinds", path = "actionbars.hideHotkeys", apply = Refresh, half = true }
 S:Row{ key = "ab.cleanKeybinds", path = "actionbars.cleanKeybinds", apply = Refresh, half = true }
-S:Row{ key = "ab.buttonArt", path = "actionbars.buttonArt", apply = Refresh, half = true }
+S:Row{ key = "ab.hideMacroText", path = "actionbars.hideMacroText", apply = Refresh, half = true }
+S:Row{ key = "ab.gryphonsBehind", path = "actionbars.gryphonsBehind", apply = Refresh, half = true }
 S:Row{ key = "ab.autoRanks", path = "actionbars.autoRanks", half = true,
     apply = function() if ns.ActionBars.CatchUpRanks then ns.ActionBars:CatchUpRanks() end end }
 S:Row{ key = "ab.stopAutoAdd", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
-
 S:Row{ key = "ab.stealthPaging", path = "actionbars.stealthPaging", apply = Refresh, half = true }
 S:Row{ key = "ab.noStancePaging", path = "actionbars.noStancePaging", apply = Refresh, half = true }
-S:Row{ key = "ab.dimOnCooldown", path = "actionbars.dimOnCooldown", apply = Refresh, half = true }
 
 -- the FlareUI XP Bar: off leaves Blizzard's bars alone, so turning it on or off reloads; its options sit
 -- under it and grey out while it's off

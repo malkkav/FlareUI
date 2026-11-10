@@ -46,7 +46,7 @@ for _, path in ipairs({
     "tweaks.moveLootToasts", "tweaks.nameplateCombo", "tweaks.nameplateHideLevel", "tweaks.nameplateQuest",
     "tweaks.sellJunk", "tweaks.syncUI", "tweaks.trainAll", "tweaks.way",
     "unitframes.auraStyle", "unitframes.auraTimer", "unitframes.classColor", "unitframes.enabled",
-    "unitframes.palette", "unitframes.visibility.player.condCombat", "unitframes.visibility.player.condMouseover",
+    "unitframes.palette",
     "visibility.hideBagBar", "visibility.hideEndCaps", "visibility.hideMicroMenu", "visibility.hidePetBar",
     "visibility.hidePossessBar", "visibility.hideRaidManager", "visibility.hideStanceBar", "visibility.hideTotemBar",
 }) do PATHS[path] = true end
