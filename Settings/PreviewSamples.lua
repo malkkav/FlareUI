@@ -316,7 +316,7 @@ local function Auras(c, unit, spec)
         local b = c:Object('aura' .. i, 'Frame')
         b:SetPoint('TOPLEFT', unit and 48 + (i - 1) * 42 or 16 + (i - 1) * 66, unit and -115 or -65)
         -- Use the production aura renderer, including its masks, timer placement and swipe textures.
-        ns.AuraLook.Style(b, { size = unit and 30 or 46, style = style, swipe = swipe, timer = timer,
+        ns.AuraLook.Style(b, { preview = true, size = unit and 30 or 46, style = style, swipe = swipe, timer = timer,
             font = font, countFont = countFont, timerSize = timerSize })
         b.FlareUI_Icon:SetTexture('Interface\\Icons\\' .. name)
         b.FlareUI_Border:SetVertexColor(1, 1, 1)
@@ -780,10 +780,13 @@ function R.reminders(c, spec)
     if spec.key == 'au.reminders' and not Get('auras.reminders') then
         c:Text('remindersOff', L["Disabled"], 12, 90); return
     end
-    local names = {'Spell_Holy_WordFortitude', 'Spell_Holy_MagicalSentry'}
-    if Get('auras.reminder.pets', true) then names[#names+1]='Ability_Hunter_BeastCall' end
+    -- pets and the blessing are picked in the icon's right-click menu now, so a pet always shows
+    local names = {'Spell_Holy_WordFortitude', 'Spell_Holy_MagicalSentry', 'Ability_Hunter_BeastCall'}
     if Get('auras.reminder.consumables', 'off') ~= 'off' then names[#names+1]='INV_Potion_41' end
-    if spec.key == 'au.reminderBlessing' then names[1] = Get('auras.reminder.blessing','auto') == 'wisdom' and 'Spell_Holy_SealOfWisdom' or 'Spell_Holy_FistOfJustice' end
+    if Get('auras.reminder.camping', false) then names[#names+1]='Spell_Fire_Fire' end
+    if Get('auras.reminder.gathering', false) then names[#names+1]='INV_Misc_Flower_02' end
+    -- as many as fit the picture
+    for i = #names, math.max(1, math.floor((c.width - 12) / 48)) + 1, -1 do names[i] = nil end
     for i, name in ipairs(names) do
         local x=12+(i-1)*48
         Icon(c,'reminderIcon'..i,name,x,65,38)
@@ -793,7 +796,7 @@ function R.reminders(c, spec)
             edge:SetBackdropBorderColor(1,i==2 and 0.5 or 0.85,0.1,1)
         end
     end
-    c:Text('reminderState', L["Missing"] .. ' / ' .. tostring(Get('auras.reminder.before',3)) .. ' min',12,114,c.width-24)
+    c:Text('reminderState', L["Missing"] .. ' / ' .. tostring(Get('auras.reminder.before',2)) .. ' min',12,114,c.width-24)
     c:Text('reminderGroup', ({self=L["Player"],party=L["Party"],all=L["Raid"]})[Get('auras.reminder.group','all')],12,140,c.width-24)
     local elapsed=0
     c:Animate(function(_,dt)

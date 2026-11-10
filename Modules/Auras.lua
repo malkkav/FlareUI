@@ -174,7 +174,8 @@ end
 
 local function StyleButton(button, look)
     local size, round = look.size, look.style == "round"
-    styledButtons[button] = true
+    -- the settings window's sample auras stay out: Edit Mode's preview timers are not theirs
+    if not look.preview then styledButtons[button] = true end
     button:SetSize(size, look.cellHeight or CellHeight(size))
 
     if not button.FlareUI_Area then

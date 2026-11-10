@@ -390,14 +390,20 @@ function Row:ResetValue()
     if key == 'qt.minInstances' then return D('objectivetracker.autoMinimize.dungeon') == 'minimize' end
     if key == 'qt.minCombat' then return D('objectivetracker.autoMinimize.combat') == 'minimize' end
 end
+-- What a section's Reset changes: only rows the player can see and use, that differ from their
+-- default. Never a keybind (it would unbind a key), a row that needs a reload (a frame switch, the
+-- frame style, UI Scale: too big for a one-click reset), or one marked noReset. (11-10 review of PR #19)
+local NO_RESET_KINDS = { expander = true, button = true, buttons = true, text = true, legend = true, keybind = true }
 function Settings:SectionDefaults(moduleKey, sectionKey, tab)
     local module = self.modules[moduleKey]
     local section = module and module.sectionByKey[sectionKey]
     local list = {}
     for _, row in ipairs(section and section.rows or {}) do
-        if (not tab or (row.tab or (module.tabs and module.tabs[1].key) or 'settings') == tab) and row.kind ~= 'expander' and row.kind ~= 'button' and row.kind ~= 'buttons' and row.kind ~= 'text' and row.kind ~= 'legend' then
+        local onTab = not tab or (row.tab or (module.tabs and module.tabs[1].key) or 'settings') == tab
+        if onTab and not NO_RESET_KINDS[row.kind] and not row.reload and not row.noReset
+                and not row:IsHidden() and not row:IsDisabled() then
             local value = row:ResetValue()
-            if value ~= nil then list[#list + 1] = {row=row,value=value} end
+            if value ~= nil and row:Get() ~= value then list[#list + 1] = { row = row, value = value } end
         end
     end
     return list
@@ -406,6 +412,8 @@ function Settings:CanResetSection(moduleKey, sectionKey, tab)
     return #self:SectionDefaults(moduleKey, sectionKey, tab) > 0
 end
 function Settings:ResetSection(moduleKey, sectionKey, tab)
+    -- not in a fight: some setters move frames
+    if InCombatLockdown() then return end
     -- Snapshot before setters run: a style change can rebuild controls and other defaults.
     local changes = self:SectionDefaults(moduleKey, sectionKey, tab)
     for _, change in ipairs(changes) do change.row:Set(change.value) end

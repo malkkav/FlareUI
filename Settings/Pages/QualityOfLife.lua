@@ -28,7 +28,7 @@ end
 
 S:Module{
     key = "qol", group = "Tools", order = 20, enabled = "tweaks.enabled",
-    tabs = { { key = "gameplay", label = L["Gameplay"] }, { key = "bags", label = L["Bags and Looting"] }, { key = "nameplates", label = L["Nameplates"] }, { key = "interface", label = L["Interface"] }, { key = "advanced", label = L["Advanced"] } },
+    tabs = { { key = "gameplay" }, { key = "bags" }, { key = "nameplates" }, { key = "interface" }, { key = "advanced" } },
 }
 
 -- ADVANCED ---------------------------------------

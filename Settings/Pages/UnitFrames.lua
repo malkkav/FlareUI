@@ -21,7 +21,7 @@ end
 
 S:Module{
     key = "uf", group = "HUD", order = 20, enabled = "unitframes.enabled",
-    tabs = { { key = "settings", label = L["Appearance"] }, { key = "frames", label = L["Frames"] }, { key = "fonts", label = L["Fonts"] } },
+    tabs = { { key = "settings" }, { key = "frames" }, { key = "fonts" } },
     -- the frames behind the shared Player / Pet / Target / Focus row
     editFrames = {
         function() return _G.FlareUI_UF_Player end, function() return _G.FlareUI_UF_Target end,
@@ -93,15 +93,11 @@ S:FontRows{ module = "uf", tab = "fonts", section = "uf.fonts", apply = Refresh,
 
 -- Per-unit appearance belongs here as well as in the Edit Mode dialog.
 for _, unit in ipairs({ 'player', 'target', 'focus', 'pet', 'targettarget', 'focustarget' }) do
-    local names = { player=L["Player"], target=L["Target"], focus=L["Focus"], pet=L["Pet"], targettarget=L["Target of Target"], focustarget=L["Target of Focus"] }
-    local section = 'uf.appearance.' .. unit
-    ns.Copy.sections[section] = names[unit]
+    local section = 'uf.appearance.' .. unit     -- titles and text in the copy doc
     if unit == 'player' or unit == 'target' or unit == 'focus' then
         local key = 'uf.' .. unit .. 'Portrait'
-        ns.Copy.rows[key] = { label=L["Portrait"], desc=L["Choose the character portrait or class icon for this frame."] }
         S:Row{ key=key, section=section, tab='settings', kind='choice', path='unitframes.units.' .. unit .. '.portrait', resetValue=function() return S:DefaultPath('unitframes.units.' .. unit .. '.portrait') or 'none' end, choices={{'3d',L["Character Portrait"]},{'class',L["Class Icon"]},{'none',L["None (Addon Style)"]}}, apply=Refresh }
     end
     local key = 'uf.' .. unit .. 'Level'
-    ns.Copy.rows[key] = { label=L["Show Level"], desc=L["Show the unit level. Turning this off also hides its level badge."] }
     S:Row{ key=key, section=section, tab='settings', path='unitframes.units.' .. unit .. '.showLevel', apply=Refresh }
 end

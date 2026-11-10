@@ -35,6 +35,24 @@ local function NewBadge(parent)
     return badge
 end
 
+-- a section's Reset, confirmed (the section's name in the question)
+ns.Dialogs = ns.Dialogs or {}
+ns.Dialogs["FLAREUI_RESET_SECTION"] = {
+    text = L["Reset the %s options to their defaults?"],
+    button1 = L["Reset"],
+    button2 = L["Cancel"],
+    OnAccept = function(data)
+        if not data or InCombatLockdown() then return end
+        -- one redraw for the whole section, not one per option
+        local panel = ns.SettingsPanel
+        panel.toggleHold = true
+        S:ResetSection(data.module, data.section, data.tab)
+        panel.toggleHold = nil
+        if panel.toggleRefreshPending then panel.toggleRefreshPending = nil; panel:Refresh() end
+    end,
+    hideOnEscape = true,
+}
+
 local Panel = {}
 Panel.NewBadge = NewBadge
 ns.SettingsPanel = Panel
@@ -302,7 +320,8 @@ end
 
 local function RowLeave(self)
     self.hover:Hide()
-    if self.row and self.row.kind == 'framecard' then return end
+    -- a frame card goes back to the page's own picture and text
+    if self.row and self.row.kind == 'framecard' then ShowModulePreview() return end
     -- Keep a visual row visible after hover; cards revert from the hovered variant to the saved
     -- selection. Behaviour-only rows retain the existing explanation/picture behaviour.
     if self.row and ns.SettingsPreview.Resolve(self.row) then ShowRowPreview(self.row)
@@ -428,19 +447,34 @@ Fill.toggle = function(f, row)
     f.control:SetChecked(row:Get() and true or false)
 end
 
--- Named choices use the same compact dropdown as the longer selection lists.
+-- choice: Blizzard's Settings stepper (dropdown with arrows)
 Build.choice = function(f)
-    local dd = CreateFrame("DropdownButton", nil, f, "WowStyle1DropdownTemplate")
-    dd:SetPoint("RIGHT", -4, 0)
-    ForwardHover(dd, f)
-    f.control = dd
-    SetupChoiceMenu(dd, f)
+    local stepper = CreateFrame("Frame", nil, f, "SettingsDropdownWithButtonsTemplate")
+    stepper:SetPoint("RIGHT", 4, 0)
+    if stepper.Label then stepper.Label:Hide() end
+    stepper.Dropdown:SetWidth(180)
+    -- the template places its arrows past its right edge; anchor them to the row so none is clipped
+    stepper.IncrementButton:ClearAllPoints()
+    stepper.IncrementButton:SetPoint("RIGHT", f, "RIGHT", -6, 0)
+    stepper.Dropdown:ClearAllPoints()
+    stepper.Dropdown:SetPoint("RIGHT", stepper.IncrementButton, "LEFT", -5, 0)
+    stepper.DecrementButton:ClearAllPoints()
+    stepper.DecrementButton:SetPoint("RIGHT", stepper.Dropdown, "LEFT", -5, 0)
+    ForwardHover(stepper.Dropdown, f)
+    ForwardHover(stepper.IncrementButton, f)
+    ForwardHover(stepper.DecrementButton, f)
+    f:SetHeight(ROW_H + 8)
+    f.stepper = stepper
+    f.control = stepper
+    SetupChoiceMenu(stepper.Dropdown, f)
 end
 Fill.choice = function(f, row)
-    f.control:SetWidth(row.half and 104 or 190)
-    f.control:GenerateMenu()
-    f:SetHeight(ROW_H + 4)
+    -- narrower on half rows
+    f.stepper.Dropdown:SetWidth(row.half and 96 or 180)
+    f.stepper.Dropdown:GenerateMenu()
+    f:SetHeight(ROW_H + 8)
 end
+
 
 -- Discrete numeric settings keep their registered choices, including Default/Auto.
 -- Dragging previews without writes; releasing commits once. Keyboard changes commit directly.
@@ -467,6 +501,12 @@ Build.range = function(f)
         if f.rangeDragging then ShowRowPreview(f.row, choice.value) else Commit() end
     end)
     ForwardHover(slider, f)
+    -- the gamepad grabs it (A) and steps it with left / right (PadNav)
+    slider.padCycle = function(delta)
+        if not f.row or f.row:IsDisabled() then return end
+        local lo, hi = slider:GetMinMaxValues()
+        slider:SetValue(math.max(lo, math.min(hi, slider:GetValue() + delta)))
+    end
     f.control = slider
 end
 Fill.range = function(f, row)
@@ -494,7 +534,7 @@ Fill.styles = function(f, row)
     if minimap then width = math.min(168, width) end
     local cardHeight = minimap and 174 or 86
     local previewHeight = minimap and 148 or 62
-    local top = f.crumb:GetText() ~= "" and 32 or 20
+    local top = (f.crumb:GetText() or "") ~= "" and 32 or 20
     f.label:ClearAllPoints(); f.label:SetPoint("TOPLEFT", 6, -(top - 20))
     f:SetHeight(top + cardHeight + 8)
     for i, choice in ipairs(choices) do
@@ -898,7 +938,13 @@ Build.framecard = function(f)
     end)
     -- Help changes on hover; these cards already contain the complete visual preview.
     b:SetScript("OnEnter", function() if f.row then ShowPreview(f.row:Label(), f.row:Description(), f.row:Tip()) end end)
-    f.label:SetParent(b); f.label:ClearAllPoints(); f.label:SetPoint("TOPLEFT", 10, -8); f.label:SetPoint("RIGHT", b, "RIGHT", -34, 0)
+    b:SetScript("OnLeave", function() ShowModulePreview() end)
+    -- Edit beside the switch, as on the old frame rows (11-10 review of PR #19)
+    f.edit = EditButton(f, function(row) S:EditFrame(row.frame and row.frame(), row.module) end)
+    f.edit:SetParent(b); f.edit:SetFrameLevel(b:GetFrameLevel() + 2)
+    b.padChildren = true    -- the gamepad reaches the card, its switch and its Edit
+    f.edit:SetPoint("RIGHT", b.enable, "LEFT", -4, 0)
+    f.label:SetParent(b); f.label:ClearAllPoints(); f.label:SetPoint("TOPLEFT", 10, -8); f.label:SetPoint("RIGHT", f.edit, "LEFT", -6, 0)
     f.control = b
 
 end
@@ -913,6 +959,8 @@ Fill.framecard = function(f, row)
     b:SetBackdropColor(0.035, 0.03, 0.025, 0.8)
     b:SetBackdropBorderColor(0.45, 0.35, 0.22, 1)
     b.enable:SetChecked(on); b.enable:SetEnabled(not row:IsDisabled())
+    f.edit:SetSize(ButtonWidthForText(f.edit, 60), 20)
+    f.edit:SetEnabled(S:CanEditFrames() and on and row.frame and row.frame() ~= nil or false)
     b.canvas.frame:SetAlpha(on and 1 or 0.45)
 end
 
@@ -1082,9 +1130,11 @@ local function SectionHeader(parent, text, y, sectionKey)
         h.reset:SetSize(52, 20)
         h.reset:SetPoint("BOTTOMRIGHT", -30, 5)
         h.reset:SetText(L["Reset"])
+        -- asks first: a section can hold many options
         h.reset:SetScript("OnClick", function(self)
             local owner = self:GetParent()
-            S:ResetSection(current, owner.sectionKey, owner.resetTab)
+            ns.ShowDialog("FLAREUI_RESET_SECTION", owner.text:GetText() or "",
+                { module = current, section = owner.sectionKey, tab = owner.resetTab })
         end)
         h.text:SetPoint("RIGHT", h.reset, "LEFT", -8, 0)
         h.line = Line(h)

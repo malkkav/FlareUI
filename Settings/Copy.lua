@@ -8,7 +8,7 @@ ns.Copy = {
         ab = {
             desc = L["Blizzard's action bars in FlareUI's style."],
             editButton = L["Edit Bars in Edit Mode"],
-            tabs = { L["Settings"], L["Fake CM"], L["Fonts"] },
+            tabs = { L["Settings"], L["Visibility"], L["Fake CM"], L["Fonts"] },
             title = L["Action Bars"],
         },
         about = {
@@ -46,7 +46,7 @@ ns.Copy = {
         },
         qol = {
             desc = L["Small helpers that save you clicks."],
-            tabs = { L["Gameplay"], L["Bags and Looting"], L["Interface"], L["Advanced"] },
+            tabs = { L["Gameplay"], L["Bags and Looting"], L["Nameplates"], L["Interface"], L["Advanced"] },
             title = L["Quality of Life"],
         },
         qt = {
@@ -75,7 +75,7 @@ ns.Copy = {
             desc = L["Player, target, focus, pet and party frames in FlareUI's style."],
             editButton = L["Edit Frames in Edit Mode"],
             editNote = L["Size, health text, portrait, auras and icons are set in Edit Mode."],
-            tabs = { L["Settings"], L["Fonts"] },
+            tabs = { L["Settings"], L["Frames"], L["Fonts"] },
             title = L["Unit Frames"],
         },
     },
@@ -83,7 +83,7 @@ ns.Copy = {
         ["ab.autoRanks"] = {
             desc = L["A newly learned rank replaces the rank below it on your bars."],
             label = L["Update Spell Ranks"],
-            section = "ab.buttons",
+            section = "ab.spellBehavior",
             tip = L["Also catches up at login and when turned on, for ranks learned while it was off. Spell buttons on your radial menus cast each character's best rank. Lower ranks you placed on purpose stay."],
         },
         ["ab.bar.group"] = {
@@ -102,18 +102,18 @@ ns.Copy = {
         ["ab.buttonArt"] = {
             desc = L["Blizzard's framed slot on every button of bars 1 to 8 and the pet bar, even on bars set to hide their art."],
             label = L["Show Button Art"],
-            section = "ab.buttons",
+            section = "ab.buttonAppearance",
         },
         ["ab.cleanKeybinds"] = {
             desc = L["Shorter key labels on your buttons: SM4 for Shift + Mouse Button 4, SP for Spacebar, WU for Mouse Wheel Up."],
             label = L["Clean Keybind Text"],
-            section = "ab.buttons",
+            section = "ab.buttonText",
             tip = L["Off shows Blizzard's own labels."],
         },
         ["ab.dimOnCooldown"] = {
             desc = L["Buttons turn grey while their spell or item is on cooldown."],
             label = L["Dim on Cooldown"],
-            section = "ab.buttons",
+            section = "ab.buttonAppearance",
             tip = L["The global cooldown after each cast doesn't count."],
         },
         ["ab.fcmBar1"] = {
@@ -194,7 +194,7 @@ ns.Copy = {
         ["ab.gryphonsBehind"] = {
             desc = L["The art at each end of the main bar sits behind your action bars instead of over them."],
             label = L["Gryphons Behind Bars"],
-            section = "ab.buttons",
+            section = "ab.buttonAppearance",
         },
         ["ab.hideBagBar"] = {
             desc = L["Hides the bag buttons."],
@@ -210,12 +210,12 @@ ns.Copy = {
         ["ab.hideKeybinds"] = {
             desc = L["Removes the key labels from your buttons."],
             label = L["Hide Keybind Text"],
-            section = "ab.buttons",
+            section = "ab.buttonText",
         },
         ["ab.hideMacroText"] = {
             desc = L["Removes macro names from your buttons."],
             label = L["Hide Macro Text"],
-            section = "ab.buttons",
+            section = "ab.buttonText",
         },
         ["ab.hideMicroMenu"] = {
             desc = L["Hides the row of menu buttons (character, spellbook, talents...)."],
@@ -250,14 +250,14 @@ ns.Copy = {
         ["ab.noStancePaging"] = {
             desc = L["Warriors: Action Bar 1 stays on its page when you change stance."],
             label = L["Keep Bar 1 in Stances"],
-            section = "ab.buttons",
+            section = "ab.spellBehavior",
             tags = { "no auto-paging for stances" },
             tip = L["All three stances share the same buttons on that bar."],
         },
         ["ab.procGlow"] = {
             desc = L["Abilities glow when an event makes them usable."],
             label = L["Proc Glow"],
-            section = "ab.buttons",
+            section = "ab.buttonAppearance",
             tags = { "ability proc glow" },
             tip = L["Overpower, Revenge, Riposte, Execute, Hammer of Wrath and more. Spells a proc buff empowers glow too, like Ice Lance with Fingers of Frost. In combat they need the buff in Blizzard's Cooldown Manager (Tracked Buffs), unless the game shows its own proc alert for it."],
         },
@@ -265,26 +265,26 @@ ns.Copy = {
             desc = L["Blizzard's Cooldown Manager in FlareUI's look: the Tracked Bars like FlareUI's cast bars, the Tracked Buffs icons like FlareUI's buffs."],
             label = L["Skin Cooldown Manager"],
             reload = true,
-            section = "ab.buttons",
+            section = "ab.buttonAppearance",
             tags = { "cooldown manager", "tracked bars", "tracked buffs", "cdm" },
             tip = L["Needs Buffs & Debuffs on. Its size, layout and what it tracks stay in Blizzard's Cooldown Manager and its Edit Mode dialog."],
         },
         ["ab.statusColours"] = {
             desc = L["Buttons change colour when you can't use them:\n* Red: target out of range\n* Blue: not enough mana or energy\n* Grey: unusable right now"],
             label = L["Status Colouring"],
-            section = "ab.buttons",
+            section = "ab.buttonAppearance",
         },
         ["ab.stealthPaging"] = {
             desc = L["Rogues and druids: Action Bar 1 switches to its own page in Stealth, or in Prowl in Cat Form."],
             label = L["Auto Paging for Stealth"],
-            section = "ab.buttons",
+            section = "ab.spellBehavior",
             tags = { "auto-paging for stealth" },
             tip = L["The new page starts empty: fill it while in Stealth or Prowl."],
         },
         ["ab.stopAutoAdd"] = {
             desc = L["New spells you learn are not placed on your bars by themselves."],
             label = L["Stop Auto-Add Spells"],
-            section = "ab.buttons",
+            section = "ab.spellBehavior",
             tip = L["Find them in your spellbook and drag them where you want."],
         },
         ["ab.xpBar"] = {
@@ -1786,6 +1786,22 @@ ns.Copy = {
             tags = { "castbar", "standalone cast bar", "blizzard cast bar" },
             tip = L["For a cast bar on the player frame itself, turn on Cast Bar in its Edit Mode options."],
         },
+        ["uf.focusLevel"] = {
+            desc = L["Show the unit level. Turning this off also hides its level badge."],
+            label = L["Show Level"],
+            section = "uf.appearance.focus",
+        },
+        ["uf.focusPortrait"] = {
+            choices = { L["Character Portrait"], L["Class Icon"], L["None (Addon Style)"] },
+            desc = L["Choose the character portrait or class icon for this frame."],
+            label = L["Portrait"],
+            section = "uf.appearance.focus",
+        },
+        ["uf.focustargetLevel"] = {
+            desc = L["Show the unit level. Turning this off also hides its level badge."],
+            label = L["Show Level"],
+            section = "uf.appearance.focustarget",
+        },
         ["uf.font.auraCount"] = {
             desc = L["The stack count on unit frame auras."],
             label = L["Aura Stacks"],
@@ -1895,10 +1911,26 @@ ns.Copy = {
             desc = L["How party frames look.\n* Classic: like the player frame\n* Raid Style: compact tiles"],
             label = L["Style"],
         },
+        ["uf.petLevel"] = {
+            desc = L["Show the unit level. Turning this off also hides its level badge."],
+            label = L["Show Level"],
+            section = "uf.appearance.pet",
+        },
         ["uf.player.fsr"] = {
             desc = L["After you spend mana, a spark crosses the bar for five seconds."],
             label = L["Five-Second Rule"],
             tip = L["Spirit regeneration resumes when the spark ends."],
+        },
+        ["uf.playerLevel"] = {
+            desc = L["Show the unit level. Turning this off also hides its level badge."],
+            label = L["Show Level"],
+            section = "uf.appearance.player",
+        },
+        ["uf.playerPortrait"] = {
+            choices = { L["Character Portrait"], L["Class Icon"], L["None (Addon Style)"] },
+            desc = L["Choose the character portrait or class icon for this frame."],
+            label = L["Portrait"],
+            section = "uf.appearance.player",
         },
         ["uf.raid"] = {
             desc = L["Compact raid tiles, centred as the raid grows, with:\n* Main tank frames\n* A reminder of the buffs you can give"],
@@ -1919,6 +1951,22 @@ ns.Copy = {
             tags = { "simple \"target of\"" },
             tip = L["Addon Style always has the plain frames."],
         },
+        ["uf.targetLevel"] = {
+            desc = L["Show the unit level. Turning this off also hides its level badge."],
+            label = L["Show Level"],
+            section = "uf.appearance.target",
+        },
+        ["uf.targetPortrait"] = {
+            choices = { L["Character Portrait"], L["Class Icon"], L["None (Addon Style)"] },
+            desc = L["Choose the character portrait or class icon for this frame."],
+            label = L["Portrait"],
+            section = "uf.appearance.target",
+        },
+        ["uf.targettargetLevel"] = {
+            desc = L["Show the unit level. Turning this off also hides its level badge."],
+            label = L["Show Level"],
+            section = "uf.appearance.targettarget",
+        },
         ["uf.tof"] = {
             desc = L["Who your focus is targeting."],
             label = L["Target of Focus"],
@@ -1931,10 +1979,12 @@ ns.Copy = {
         },
     },
     sections = {
-        ["ab.buttons"] = L["Tweaks"],
+        ["ab.buttonAppearance"] = L["Button Appearance"],
+        ["ab.buttonText"] = L["Button Text"],
         ["ab.experience"] = L["XP Bar"],
         ["ab.fakeCooldownManager"] = L["Fake Cooldown Manager (FCM)"],
         ["ab.hideBlizzardElements"] = L["Hide Bars"],
+        ["ab.spellBehavior"] = L["Spell Behavior"],
         ["about.credits"] = L["Credits"],
         ["about.editModeLayout"] = L["FlareUI Edit Mode Layout"],
         ["about.yourFriendlyUiOverhowl"] = L["Your friendly UI overhowl"],
@@ -1980,6 +2030,12 @@ ns.Copy = {
         ["tt.look"] = L["Look"],
         ["tt.showTooltips"] = L["Show Tooltips"],
         ["tt.tweaks"] = L["Tweaks"],
+        ["uf.appearance.focus"] = L["Focus"],
+        ["uf.appearance.focustarget"] = L["Target of Focus"],
+        ["uf.appearance.pet"] = L["Pet"],
+        ["uf.appearance.player"] = L["Player"],
+        ["uf.appearance.target"] = L["Target"],
+        ["uf.appearance.targettarget"] = L["Target of Target"],
         ["uf.auras"] = L["Auras"],
         ["uf.frames"] = L["Enable Frames"],
         ["uf.look"] = L["Look"],

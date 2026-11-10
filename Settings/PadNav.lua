@@ -57,6 +57,7 @@ end
 
 local function Adjustable(obj)
     if IsStepper(obj) then return true end
+    if obj.padCycle and obj:IsObjectType("Slider") then return true end
     if IsDropdown(obj) then
         local parent = obj:GetParent()
         return obj.padCycle ~= nil or (parent and parent.row and parent.row.Choices) ~= nil
@@ -75,8 +76,11 @@ local function Collect(obj, out)
         if child:IsVisible() and not child.padSkip then
             if IsStepper(child) then
                 out[#out + 1] = child           -- one control; its arrows and dropdown are not
+            elseif child:IsObjectType("Slider") then
+                if child:IsEnabled() and Usable(child) then out[#out + 1] = child end
             elseif child:IsObjectType("Button") then
                 if child:IsEnabled() and child:IsMouseEnabled() and Usable(child) then out[#out + 1] = child end
+                if child.padChildren then Collect(child, out) end
             else
                 Collect(child, out)
             end

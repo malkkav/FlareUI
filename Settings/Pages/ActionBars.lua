@@ -1,10 +1,6 @@
 local _, ns = ...
 local L = ns.L
 local S = ns.Settings
--- Labels for the new appearance groups; kept outside the generated copy file.
-ns.Copy.sections["ab.buttonAppearance"] = L["Button Appearance"]
-ns.Copy.sections["ab.buttonText"] = L["Button Text"]
-ns.Copy.sections["ab.spellBehavior"] = L["Spell Behavior"]
 
 --------------------------------------------------
 -- ACTION BARS
@@ -18,7 +14,7 @@ end
 
 S:Module{
     key = "ab", group = "HUD", order = 10, enabled = "actionbars.enabled",
-    tabs = { { key = "settings", label = L["Appearance"] }, { key = "visibility", label = L["Visibility"] }, { key = "fcm", label = L["Fake CM"] }, { key = "fonts", label = L["Fonts"] } },
+    tabs = { { key = "settings" }, { key = "visibility" }, { key = "fcm" }, { key = "fonts" } },
     -- Blizzard's bars: no FlareUI frame to select, so plain Edit Mode
     editMode = function() return nil end,
     -- the XP bar is FlareUI's own frame; each bar's fade settings sit in Blizzard's bar dialogs
