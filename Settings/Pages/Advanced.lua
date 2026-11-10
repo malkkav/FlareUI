@@ -504,16 +504,18 @@ S:Module{
 
 -- the profile dropdown spans the width of the New / Rename / Duplicate / Delete buttons under it
 local BUTTON_W, BUTTON_GAP = 108, 6
-local MANAGE_W = (BUTTON_W * 3 + BUTTON_GAP * 2 - BUTTON_GAP * 3) / 4
+local PROFILE_W = BUTTON_W * 3 + BUTTON_GAP * 2
+local MANAGE_W = (PROFILE_W - BUTTON_GAP * 3) / 4
 
 S:Row{
-    key = "adv.profiles", kind = "dropdown", choices = Profiles, dropdownWidth = BUTTON_W * 3 + BUTTON_GAP * 2,
+    key = "adv.profiles", kind = "dropdown", choices = Profiles, dropdownWidth = PROFILE_W,
     get = function() return ns.db and ns.db:GetCurrentProfile() end,
     set = function(name) if ns.db and name ~= ns.db:GetCurrentProfile() then ns.db:SetProfile(name) end end,
 }
 
 S:Row{
     key = "adv.manage", kind = "buttons", labelFn = function() return "" end,
+    fitButtonsWidth = PROFILE_W,
     buttons = {
         { text = L["New"], width = MANAGE_W, onClick = function() ns.ShowDialog("FLAREUI_NEW_PROFILE") end },
         { text = L["Rename"], width = MANAGE_W, onClick = function()

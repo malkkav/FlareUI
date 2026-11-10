@@ -41,6 +41,7 @@ S:Row{
         return label and L["Current source: %s"]:format(label) or L["No source yet."]
     end,
     buttonText = L["Make This Character the Source"],
+    fitButtonText = true,
     disabled = function() return ns.Tweaks and ns.Tweaks.IsSyncSource and ns.Tweaks:IsSyncSource() or false end,
     apply = function() ns.ShowDialog("FLAREUI_SYNC_SOURCE") end,
 }
