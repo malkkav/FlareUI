@@ -259,7 +259,7 @@ end
 -- A dark box with a bronze edge: the left list, the page and the right column
 -- FlareUI Thin (8 px edge) for every box, button and tab in the window (11-10, Marcus)
 local THIN = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thin.tga"
-local THIN_EDGE, THIN_INSET = 8, 2
+local THIN_EDGE, THIN_INSET = 8, 3   -- fills start 3 px in: under the border's rounded corners
 local EDGE_COLOR = { 0.55, 0.42, 0.24 }       -- resting
 local EDGE_HOVER = { 0.78, 0.6, 0.34 }        -- under the pointer
 local EDGE_LIT = { 1, 0.84, 0.5 }             -- selected
@@ -267,6 +267,16 @@ local function ThinBackdrop(f, withFill)
     f:SetBackdrop({ bgFile = withFill and WHITE or nil, edgeFile = THIN, edgeSize = THIN_EDGE,
         insets = { left = THIN_INSET, right = THIN_INSET, top = THIN_INSET, bottom = THIN_INSET } })
     f:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1)
+end
+
+-- the Thin edge on its own frame over f, so f's fill textures sit under it; f.edge
+local function ThinEdge(f)
+    local edge = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    edge:SetAllPoints()
+    edge:SetFrameLevel(f:GetFrameLevel() + 1)
+    ThinBackdrop(edge)
+    f.edge = edge
+    return edge
 end
 
 local function Box(f, alpha)
@@ -277,8 +287,8 @@ Panel.Box = Box
 
 -- A bronze plate button: the page's tabs and the window's Settings / What's New. Lit when selected.
 local function Plate(parent, font)
-    local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    ThinBackdrop(b)
+    local b = CreateFrame("Button", nil, parent)
+    ThinEdge(b)
     b.fill = b:CreateTexture(nil, "BACKGROUND")
     b.fill:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
     b.fill:SetPoint("BOTTOMRIGHT", -THIN_INSET, THIN_INSET)
@@ -298,19 +308,19 @@ local function Plate(parent, font)
         self.isSelected = selected and true or false
         if selected then
             self.fill:SetGradient("VERTICAL", CreateColor(0.24, 0.17, 0.09, 1), CreateColor(0.42, 0.31, 0.16, 1))
-            self:SetBackdropBorderColor(EDGE_LIT[1], EDGE_LIT[2], EDGE_LIT[3], 1)
+            self.edge:SetBackdropBorderColor(EDGE_LIT[1], EDGE_LIT[2], EDGE_LIT[3], 1)
             self.shine:SetColorTexture(1, 0.9, 0.67, 0.28)
             self.Text:SetTextColor(1, 0.89, 0.63)
         else
             self.fill:SetGradient("VERTICAL", CreateColor(0.09, 0.065, 0.04, 1), CreateColor(0.2, 0.145, 0.085, 1))
-            self:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1)
+            self.edge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1)
             self.shine:SetColorTexture(1, 0.9, 0.67, 0.07)
             self.Text:SetTextColor(0.85, 0.79, 0.66)
         end
     end
     b:SetScript("OnEnter", function(self)
         if self.isSelected then return end
-        self:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1)
+        self.edge:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1)
         self.Text:SetTextColor(1, 0.96, 0.84)
     end)
     b:SetScript("OnLeave", function(self) self:SetSelected(self.isSelected) end)
@@ -401,9 +411,7 @@ local function SkinButton(b)
         if r:IsObjectType("Texture") then r:SetAlpha(0) end
     end
     if b.NineSlice then b.NineSlice:Hide() end
-    b.fEdge = CreateFrame("Frame", nil, b, "BackdropTemplate")
-    b.fEdge:SetAllPoints()
-    ThinBackdrop(b.fEdge)
+    b.fEdge = ThinEdge(b)
     b.fFill = b:CreateTexture(nil, "BACKGROUND", nil, 2)
     b.fFill:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
     b.fFill:SetPoint("BOTTOMRIGHT", -THIN_INSET, THIN_INSET)
@@ -1812,7 +1820,7 @@ function UpdateNav()
         local selected = key == current and searchText == ""
         b.selected:SetShown(selected)
         b.bar:SetShown(selected)
-        b:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], selected and 1 or 0)
+        b.edge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], selected and 1 or 0)
         if module.navIcon then
             b.dot:SetTexture(module.navIcon)
             -- game icon cropped to a circle
@@ -1923,11 +1931,11 @@ local function BuildNav(left)
                 module.navIconTint = true
             end
             -- the open page sits on a warm plate with a gold bar at its left edge
-            local b = CreateFrame("Button", nil, left, "BackdropTemplate")
+            local b = CreateFrame("Button", nil, left)
             b:SetSize(buttonWidth, NAV_H)
             b:SetPoint("TOPLEFT", anchor, anchorPoint, x, -gap)
-            ThinBackdrop(b)
-            b:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 0)
+            ThinEdge(b)
+            b.edge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 0)
             b.selected = b:CreateTexture(nil, "BACKGROUND")
             b.selected:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
             b.selected:SetPoint("BOTTOMRIGHT", -THIN_INSET, THIN_INSET)
