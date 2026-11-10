@@ -10,12 +10,14 @@ local S = ns.Settings
 -- 11-10 rework (Development/Research/Settings Panel Report): wider, after EnhanceQoL's layout.
 -- With the reload bar below (42) it fits 768 units; a smaller screen scales it down (FitScale).
 local WIDTH, HEIGHT = 1180, 700
-local HEADER_H, FOOTER_H = 56, 34
+local HEADER_H, FOOTER_H = 46, 34
 local LEFT_W, RIGHT_W = 200, 280
 local PAD = 12
-local EDGE, GAP, INNER = 8, 8, 10   -- body to window edge, between the three boxes, inside the middle box
+local EDGE, GAP, INNER = 14, 8, 10   -- body to window edge, between the three boxes, inside the middle box
 local ROW_H, SECTION_H = 30, 34
 local INDENT = 18
+-- the header row's middle: halfway down the band above the boxes, past the border's 4 px line
+local HEADER_ROW_Y = math.floor((4 + HEADER_H + EDGE) / 2) + 1
 -- the middle box's inside (the page) and, less the scroll line, the rows' width
 local MIDDLE_W = WIDTH - 2 * EDGE - LEFT_W - RIGHT_W - 2 * GAP - 2 * INNER
 local CONTENT_W = MIDDLE_W - 14
@@ -2139,13 +2141,13 @@ local function BuildWindow()
     local headerBg = frame:CreateTexture(nil, "BACKGROUND", nil, 4)
     headerBg:SetPoint("TOPLEFT", BG_INSET, -BG_INSET)
     headerBg:SetPoint("TOPRIGHT", -BG_INSET, -BG_INSET)
-    headerBg:SetHeight(HEADER_H - BG_INSET)
+    headerBg:SetHeight(HEADER_H + EDGE - BG_INSET)
     headerBg:SetColorTexture(1, 1, 1)
     headerBg:SetGradient("VERTICAL", CreateColor(0.08, 0.06, 0.04, 0.25), CreateColor(0.24, 0.17, 0.09, 0.6))
     local logo = frame:CreateTexture(nil, "ARTWORK", nil, 2)
     logo:SetTexture(LOGO)
     logo:SetSize(38, 38)
-    logo:SetPoint("TOPLEFT", PAD + 5, -9)
+    logo:SetPoint("TOPLEFT", EDGE + 3, -(HEADER_ROW_Y - 19))   -- centred on the header row
     local logoMask = frame:CreateMaskTexture()
     logoMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     logoMask:SetAllPoints(logo)
@@ -2169,7 +2171,7 @@ local function BuildWindow()
     version:SetTextColor(0.64, 0.6, 0.54)
     version:SetText(C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "")
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    close:SetPoint("RIGHT", frame, "TOPRIGHT", -8, -HEADER_H / 2)
+    close:SetPoint("RIGHT", frame, "TOPRIGHT", -EDGE + 4, -HEADER_ROW_Y)
 
     -- columns
     local body = CreateFrame("Frame", nil, frame)
