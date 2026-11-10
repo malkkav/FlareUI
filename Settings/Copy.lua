@@ -8,7 +8,7 @@ ns.Copy = {
         ab = {
             desc = L["Blizzard's action bars in FlareUI's style."],
             editButton = L["Edit Bars in Edit Mode"],
-            tabs = { L["Settings"], L["Visibility"], L["Fake CM"], L["Fonts"] },
+            tabs = { L["Settings"], L["XP Bar"], L["Visibility"], L["Fake CM"], L["Fonts"] },
             title = L["Action Bars"],
         },
         about = {
@@ -27,7 +27,7 @@ ns.Copy = {
         },
         ch = {
             desc = L["A cleaner chat frame with a customisable header."],
-            tabs = { L["Frame"], L["Tweaks"], L["Fonts"] },
+            tabs = { L["Damage"], L["Threat"], L["Fonts"] },
             title = L["Chat"],
         },
         dm = {
@@ -37,7 +37,7 @@ ns.Copy = {
             bannerButton = L["Turn It On"],
             desc = L["Blizzard's damage meter in a FlareUI frame, with a threat view."],
             tabs = { L["Frame"], L["Tweaks"], L["Fonts"] },
-            title = L["Damage Meter"],
+            title = L["Meters"],
         },
         mm = {
             desc = L["A minimap with square and round styles."],
@@ -325,7 +325,7 @@ ns.Copy = {
             kind = "text",
             label = L["Credits"],
             section = "about.credits",
-            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* Licences for the libraries and code FlareUI builds on are in its LICENSES folder."],
+            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings window's previews and new look.\n* |cffffd100parchinskiy|r for the round minimap and the Russian translation.\n* Licences for the libraries and code FlareUI builds on are in its LICENSES folder."],
         },
         ["about.layout"] = {
             kind = "text",
@@ -872,19 +872,23 @@ ns.Copy = {
         ["mm.bag"] = {
             desc = L["Every addon's minimap button in one drawer. Click the day/night badge to open it."],
             label = L["Addon Button Drawer"],
+            section = "mm.tweaks",
             tip = L["Drag and drop buttons to reorder them."],
         },
         ["mm.bagHover"] = {
             desc = L["The drawer opens while you point at the day/night button, and closes when you move away. A click still opens and closes it."],
             label = L["Open on Mouseover"],
+            section = "mm.tweaks",
         },
         ["mm.clockStats"] = {
             desc = L["Your framerate and latency in the clock's tooltip."],
             label = L["FPS and Latency on Clock"],
+            section = "mm.tweaks",
         },
         ["mm.coordsHover"] = {
             desc = L["Your coordinates under the minimap show only while you point at it."],
             label = L["Coordinates on Mouseover"],
+            section = "mm.tweaks",
             tags = { "coordinates on hover" },
         },
         ["mm.font.clock"] = {
@@ -898,11 +902,13 @@ ns.Copy = {
         ["mm.microMenu"] = {
             desc = L["Middle-click the minimap for a list of game panels: character, spellbook, talents, quest log and more."],
             label = L["Middle-Click Menu"],
+            section = "mm.tweaks",
             tip = L["Not in combat."],
         },
         ["mm.nodeScanNote"] = {
             kind = "text",
             label = L["Gathering Addons"],
+            section = "mm.tweaks",
             text = L["Lueur, NodeSight and Nodeworthy scan for nodes by moving the minimap under your cursor: while they do, the map and its icons can flash. That comes from them, not FlareUI."],
         },
         ["mm.style"] = {
@@ -910,11 +916,13 @@ ns.Copy = {
             desc = L["FlareUI's square minimap, or Forever's own round one."],
             label = L["Style"],
             reload = true,
+            section = "mm.styleSection",
         },
         ["mm.zoom"] = {
             choices = { L["Off"], L["5 Seconds"], L["10 Seconds"], L["30 Seconds"] },
             desc = L["Zooms the minimap back out a while after you zoom in."],
             label = L["Auto Zoom Out"],
+            section = "mm.tweaks",
         },
         ["qol.alerts"] = {
             desc = L["Flashes the taskbar and plays a sound for:\n* Ready checks\n* Summons and resurrections\n* Group invites\n* Dungeon queues"],
@@ -2005,6 +2013,8 @@ ns.Copy = {
         ["dm.meterTab"] = L["Meter Tab"],
         ["dm.threat"] = L["Threat Meter"],
         ["dm.tweaks"] = L["Tweaks"],
+        ["mm.styleSection"] = L["Style"],
+        ["mm.tweaks"] = L["Tweaks"],
         ["qol.bags"] = L["Bags"],
         ["qol.camera"] = L["Camera"],
         ["qol.controller"] = L["Gamepad"],

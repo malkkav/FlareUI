@@ -14,7 +14,7 @@ end
 
 S:Module{
     key = "ab", group = "combat", order = 10, enabled = "actionbars.enabled",
-    tabs = { { key = "settings" }, { key = "visibility" }, { key = "fcm" }, { key = "fonts" } },
+    tabs = { { key = "settings" }, { key = "xp" }, { key = "visibility" }, { key = "fcm" }, { key = "fonts" } },
     -- Blizzard's bars: no FlareUI frame to select, so plain Edit Mode
     editMode = function() return nil end,
     -- the XP bar is FlareUI's own frame; each bar's fade settings sit in Blizzard's bar dialogs
@@ -52,13 +52,13 @@ S:Row{ key = "ab.skinCDM", section = "ab.buttonAppearance", path = "auras.skinCD
 -- the FlareUI XP Bar: off leaves Blizzard's bars alone, so turning it on or off reloads; its options sit
 -- under it and grey out while it's off
 
-S:Row{ key = "ab.xpBar", path = "actionbars.xpbar.enabled", reload = true }
-S:Row{ key = "ab.xpText", kind = "choice", path = "actionbars.xpbar.textMode", choices = { "HOVER", "ALWAYS" }, parent = "ab.xpBar",
+S:Row{ key = "ab.xpBar", tab = "xp", path = "actionbars.xpbar.enabled", reload = true }
+S:Row{ key = "ab.xpText", tab = "xp", kind = "choice", path = "actionbars.xpbar.textMode", choices = { "HOVER", "ALWAYS" }, parent = "ab.xpBar",
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
-S:Row{ key = "ab.xpNumbers", kind = "choice", path = "actionbars.xpbar.textFormat", choices = { "VALUES", "PERCENT", "BOTH", "REMAINING" }, parent = "ab.xpBar",
+S:Row{ key = "ab.xpNumbers", tab = "xp", kind = "choice", path = "actionbars.xpbar.textFormat", choices = { "VALUES", "PERCENT", "BOTH", "REMAINING" }, parent = "ab.xpBar",
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
 -- one choice for both settings: Off clears questXP, the rest set it and pick the quests counted
-S:Row{ key = "ab.xpQuest", kind = "choice", choices = { "off", "done", "all", "zone" }, parent = "ab.xpBar",
+S:Row{ key = "ab.xpQuest", tab = "xp", kind = "choice", choices = { "off", "done", "all", "zone" }, parent = "ab.xpBar",
     get = function()
         if not S:GetPath("actionbars.xpbar.questXP") then return "off" end
         return S:GetPath("actionbars.xpbar.questXPMode") or "done"

@@ -412,6 +412,7 @@ local function SkinButton(b)
     return b
 end
 Panel.SkinButton = SkinButton
+ns.SkinButton = SkinButton   -- FlareUI's other windows (dialogs, tour, About, radial editor)
 local function PanelButton(parent)
     return SkinButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
 end
@@ -427,8 +428,18 @@ local function SkinDropdown(dd)
     dd.fFill = Pill(dd, "BACKGROUND", 2, 1, h)
     dd.fFill:SetColor(0.06, 0.047, 0.032)
     if dd.Arrow then
-        dd.Arrow:SetDesaturated(true)
-        dd.Arrow:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
+        dd.Arrow:SetAlpha(0)
+        dd.fChevron = dd:CreateTexture(nil, "OVERLAY")
+        dd.fChevron:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Chevron.tga")
+        dd.fChevron:SetSize(14, 14)
+        dd.fChevron:SetPoint("RIGHT", -10, 0)
+        dd.fChevron:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
+        if dd.Text then
+            dd.Text:ClearAllPoints()
+            dd.Text:SetPoint("LEFT", 12, 0)
+            dd.Text:SetPoint("RIGHT", dd.fChevron, "LEFT", -6, 0)
+            dd.Text:SetJustifyH("LEFT")
+        end
     end
     if dd.Text then dd.Text:SetFontObject(_G[PANEL_FONT.GameFontHighlightSmall]) end
     dd:HookScript("OnEnter", function(self) self.fRim:SetColor(0.69, 0.54, 0.31) end)
@@ -806,7 +817,10 @@ Fill.styles = function(f, row)
     local startX = math.max(6, (f:GetWidth() - (#choices * width + (#choices - 1) * gap)) / 2)
     local cardHeight = minimap and 180 or 92
     local previewHeight = minimap and 148 or 62
-    local top = (f.crumb:GetText() or "") ~= "" and 32 or 20
+    local crumbed = (f.crumb:GetText() or "") ~= ""
+    local top = crumbed and 32 or 20
+    if row.hideLabel and not crumbed then top = 6 end
+    f.label:SetShown(not row.hideLabel or crumbed)
     f.label:ClearAllPoints(); f.label:SetPoint("TOPLEFT", 6, -(top - 20))
     f:SetHeight(top + cardHeight + 8)
     for i, choice in ipairs(choices) do
@@ -2128,10 +2142,24 @@ local function BuildWindow()
     headerBg:SetHeight(HEADER_H - BG_INSET)
     headerBg:SetColorTexture(1, 1, 1)
     headerBg:SetGradient("VERTICAL", CreateColor(0.08, 0.06, 0.04, 0.25), CreateColor(0.24, 0.17, 0.09, 0.6))
-    local logo = frame:CreateTexture(nil, "ARTWORK")
+    local logo = frame:CreateTexture(nil, "ARTWORK", nil, 2)
     logo:SetTexture(LOGO)
-    logo:SetSize(40, 40)
-    logo:SetPoint("TOPLEFT", PAD + 4, -8)
+    logo:SetSize(38, 38)
+    logo:SetPoint("TOPLEFT", PAD + 5, -9)
+    local logoMask = frame:CreateMaskTexture()
+    logoMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    logoMask:SetAllPoints(logo)
+    logo:AddMaskTexture(logoMask)
+    local logoRim = frame:CreateTexture(nil, "ARTWORK", nil, 1)
+    logoRim:SetTexture(CIRCLE)
+    logoRim:SetSize(44, 44)
+    logoRim:SetPoint("CENTER", logo)
+    logoRim:SetVertexColor(0.78, 0.6, 0.34)
+    local logoShade = frame:CreateTexture(nil, "ARTWORK", nil, 0)
+    logoShade:SetTexture(CIRCLE)
+    logoShade:SetSize(48, 48)
+    logoShade:SetPoint("CENTER", logo)
+    logoShade:SetVertexColor(0, 0, 0, 0.6)
     local title = Text(frame, "GameFontNormalHuge")
     title:SetPoint("LEFT", logo, "RIGHT", 10, 1)
     title:SetTextColor(1, 0.83, 0.47)
@@ -2142,9 +2170,6 @@ local function BuildWindow()
     version:SetText(C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "")
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     close:SetPoint("RIGHT", frame, "TOPRIGHT", -8, -HEADER_H / 2)
-    local headerLine = Line(frame)
-    headerLine:SetPoint("TOPLEFT", 6, -HEADER_H)
-    headerLine:SetPoint("TOPRIGHT", -6, -HEADER_H)
 
     -- columns
     local body = CreateFrame("Frame", nil, frame)

@@ -38,6 +38,7 @@ end
 
 local function PanelButton(parent, text, width, height, onClick)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    if ns.SkinButton then ns.SkinButton(b) end
     b:SetSize(width, height)
     b:SetText(text)
     b:SetScript("OnClick", function()
@@ -612,6 +613,7 @@ local function PlaceSecureReload()
     end
     if not secureReload then
         secureReload = CreateFrame("Button", "FlareUI_TourReload", UIParent, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+        if ns.SkinButton then ns.SkinButton(secureReload) end
         secureReload:SetFrameStrata("FULLSCREEN_DIALOG")
         -- acts on the press, whatever ActionButtonUseKeyDown says, so PreClick runs once and in step
         secureReload:RegisterForClicks("AnyDown")

@@ -11,6 +11,8 @@ local CREDIT_LINKS = {
     clari = "https://clariturela.itch.io/",
     sampconrad = "https://www.curseforge.com/members/sampconrad/projects",
     sampconradGitHub = "https://github.com/sampconrad",
+    jeor = "https://github.com/Jeor",
+    parchinskiy = "https://github.com/parchinskiy",
 }
 
 -- the buttons under the thanks
@@ -29,103 +31,100 @@ local function CopyLink(url)
     end
 end
 
-local function Link(text, url)
-    return "|Hurl:" .. url .. "|h|cff4fb8ff" .. text .. "|r|h"
-end
+-- 11-10 rework: the page as bronze cards in the window's fonts; highlights in the window's gold,
+-- names that copy a link in light gold
+local GOLD = "|cffe9c46a"
+local LINK = "|cffffd479"
+local function Gold(text) return (text or ""):gsub("|cffffd100", GOLD) end
+local function Link(text, url) return "|Hurl:" .. url .. "|h" .. LINK .. text .. "|r|h" end
 
-local function Section(host, text, anchor, y)
-    local title = host:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", anchor or host, anchor and "BOTTOMLEFT" or "TOPLEFT", anchor and 0 or 6, y)
-    title:SetText(text)
-    local line = host:CreateTexture(nil, "ARTWORK")
-    line:SetColorTexture(0.61, 0.48, 0.29, 0.6)
-    line:SetHeight(1)
-    line:SetPoint("TOPLEFT", title, "BOTTOMLEFT", -6, -4)
-    line:SetPoint("RIGHT", host, "RIGHT", 0, 0)
-    return title
-end
+local CARD_PAD, CARD_GAP = 14, 10
 
-local function Body(host, text, anchor, y, font)
-    local fs = host:CreateFontString(nil, "OVERLAY", font or "GameFontHighlight")
-    fs:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, y)
-    fs:SetPoint("RIGHT", host, "RIGHT", -6, 0)
-    fs:SetJustifyH("LEFT")
-    fs:SetSpacing(3)
-    fs:SetText(text or "")
-    return fs
-end
-
-local function NetworkButton(host, net)
-    local b = CreateFrame("Button", nil, host, "UIPanelButtonTemplate")
-    b:SetSize(100, 24)
-    b:SetText(net.name)
-    b:SetScript("OnClick", function()
-        ns.ButtonSound()
-        CopyLink(net.url)
+-- a box with a gold title and a rule; returns it and the y where its content starts
+local function Card(host, title, width)
+    local card = CreateFrame("Frame", nil, host, "BackdropTemplate")
+    ns.SettingsPanel.Box(card, 0.34)
+    card:SetWidth(width)
+    local t = card:CreateFontString(nil, "OVERLAY", "FlareUI_PanelTitle")
+    t:SetPoint("TOPLEFT", CARD_PAD, -12)
+    t:SetTextColor(0.91, 0.77, 0.42)
+    t:SetText(title or "")
+    local rule = card:CreateTexture(nil, "ARTWORK")
+    rule:SetColorTexture(0.47, 0.36, 0.22, 0.8)
+    rule:SetHeight(1)
+    rule:SetPoint("TOPLEFT", CARD_PAD, -38)
+    rule:SetPoint("TOPRIGHT", -CARD_PAD, -38)
+    card:SetHyperlinksEnabled(true)
+    card:SetScript("OnHyperlinkClick", function(_, link)
+        local url = link:match("^url:(.+)$")
+        if url then ns.ButtonSound() CopyLink(url) end
     end)
-    return b
+    return card, -50
+end
+
+local function Body(card, text, y, font)
+    local fs = card:CreateFontString(nil, "OVERLAY", font or "FlareUI_PanelText")
+    fs:SetPoint("TOPLEFT", CARD_PAD, y)
+    fs:SetWidth(card:GetWidth() - 2 * CARD_PAD)
+    fs:SetJustifyH("LEFT")
+    fs:SetSpacing(4)
+    fs:SetText(text or "")
+    return fs, y - math.ceil(fs:GetStringHeight() or 0)
 end
 
 local function Build(host)
-    local thanksTitle = Section(host, S:SectionText("about.yourFriendlyUiOverhowl"), nil, -8)
-    -- the links note ends the thanks line, greyed: "... the links below (Click a button ...)."
+    local width = ns.SettingsPanel.MIDDLE_W or host:GetWidth()
+    local half = math.floor((width - CARD_GAP) / 2)
+
+    -- thanks and the links
+    local thanks, y = Card(host, S:SectionText("about.yourFriendlyUiOverhowl"), width)
+    thanks:SetPoint("TOPLEFT", 0, -2)
     local note = S:Text("about.links", "text", true) or ""
-    local linksNote = Body(host, (S:Text("about.thanks", "text", true) or "") .. " "
-        .. GRAY_FONT_COLOR:WrapTextInColorCode("(" .. note .. ")") .. ".", thanksTitle, -12)
-
-    local first, previous
+    local _, after = Body(thanks, (S:Text("about.thanks", "text", true) or "") .. " "
+        .. GRAY_FONT_COLOR:WrapTextInColorCode("(" .. note .. ")") .. ".", y)
+    y = after - 14
+    local previous
     for _, net in ipairs(NETWORKS) do
-        local b = NetworkButton(host, net)
-        if previous then
-            b:SetPoint("LEFT", previous, "RIGHT", 8, 0)
-        else
-            b:SetPoint("TOPLEFT", linksNote, "BOTTOMLEFT", 0, -16)
-        end
-        first, previous = first or b, b
+        local b = CreateFrame("Button", nil, thanks, "UIPanelButtonTemplate")
+        ns.SkinButton(b)
+        b:SetSize(112, 26)
+        b:SetText(net.name)
+        b:SetScript("OnClick", function()
+            ns.ButtonSound()
+            CopyLink(net.url)
+        end)
+        if previous then b:SetPoint("LEFT", previous, "RIGHT", 8, 0) else b:SetPoint("TOPLEFT", CARD_PAD, y) end
+        previous = b
     end
+    thanks:SetHeight(-(y - 26) + CARD_PAD)
 
-    -- credit names become links that open a copy box
-    local creditsTitle = Section(host, S:SectionText("about.credits"), first, -22)
-    local credits = S:Text("about.credits", "text", true) or ""
-    credits = credits:gsub("|cffffd100Clari Turela|r", Link("Clari Turela", CREDIT_LINKS.clari))
-    credits = credits:gsub("|cffffd100sampconrad|r", Link("sampconrad", CREDIT_LINKS.sampconrad)
+    -- credits (left) and the Edit Mode layout (right), side by side
+    local credits, cy = Card(host, S:SectionText("about.credits"), half)
+    credits:SetPoint("TOPLEFT", thanks, "BOTTOMLEFT", 0, -CARD_GAP)
+    local text = Gold(S:Text("about.credits", "text", true))
+    text = text:gsub(GOLD .. "Clari Turela|r", Link("Clari Turela", CREDIT_LINKS.clari))
+    text = text:gsub(GOLD .. "sampconrad|r", Link("sampconrad", CREDIT_LINKS.sampconrad)
         .. " (" .. Link("GitHub", CREDIT_LINKS.sampconradGitHub) .. ")")
-    local creditsText = Body(host, credits, creditsTitle, -12)
+    text = text:gsub(GOLD .. "Jeor|r", Link("Jeor", CREDIT_LINKS.jeor))
+    text = text:gsub(GOLD .. "parchinskiy|r", Link("parchinskiy", CREDIT_LINKS.parchinskiy))
+    local _, creditsEnd = Body(credits, text, cy)
 
-    -- the FlareUI Edit Mode layout: how to import it, and its code to copy
-    local layoutTitle = Section(host, S:SectionText("about.editModeLayout"), creditsText, -22)
-    local layoutText = Body(host, S:Format(S:Text("about.layout", "text", true)), layoutTitle, -12)
-    local copy = ns.EditModeLayout.Button(host)
-    copy:SetPoint("TOPLEFT", layoutText, "BOTTOMLEFT", 0, -12)
+    local layout, ly = Card(host, S:SectionText("about.editModeLayout"), width - half - CARD_GAP)
+    layout:SetPoint("TOPLEFT", credits, "TOPRIGHT", CARD_GAP, 0)
+    local _, layoutEnd = Body(layout, Gold(S:Format(S:Text("about.layout", "text", true))), ly)
+    local copy = ns.EditModeLayout.Button(layout)
+    copy:SetPoint("TOPLEFT", CARD_PAD, layoutEnd - 14)
+    layoutEnd = layoutEnd - 14 - 24
 
-    host:SetHyperlinksEnabled(true)
-    host:SetScript("OnHyperlinkClick", function(_, link)
-        local url = link:match("^url:(.+)$")
-        if url then CopyLink(url) end
-    end)
+    local pairH = math.max(-creditsEnd, -layoutEnd) + CARD_PAD
+    credits:SetHeight(pairH)
+    layout:SetHeight(pairH)
 
-    -- slash commands box at the bottom
-    local box = CreateFrame("Frame", nil, host)
-    box:SetPoint("BOTTOMLEFT", 0, 8)
-    box:SetPoint("BOTTOMRIGHT", 0, 8)
-    local bg = box:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0, 0, 0, 0.35)
-    local edge = box:CreateTexture(nil, "ARTWORK")
-    edge:SetColorTexture(0.61, 0.48, 0.29, 0.6)
-    edge:SetHeight(1)
-    edge:SetPoint("TOPLEFT")
-    edge:SetPoint("TOPRIGHT")
-    local label = box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("TOPLEFT", 10, -8)
-    label:SetText(S:Text("about.commands", "label") or "")
-    local commands = box:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    commands:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -6)
-    commands:SetPoint("RIGHT", -10, 0)
-    commands:SetJustifyH("LEFT")
-    commands:SetSpacing(2)
-    commands:SetText(S:Format(S:Text("about.commands", "text", true)) or "")
-    box:SetHeight((commands:GetStringHeight() or 24) + (label:GetStringHeight() or 12) + 24)
+    -- slash commands
+    local commands, sy = Card(host, S:Text("about.commands", "label") or "", width)
+    commands:SetPoint("TOPLEFT", credits, "BOTTOMLEFT", 0, -CARD_GAP)
+    local _, commandsEnd = Body(commands, Gold(S:Format(S:Text("about.commands", "text", true))), sy, "FlareUI_PanelTextSmall")
+    commands:SetHeight(-commandsEnd + CARD_PAD)
 end
 
 S:Module{

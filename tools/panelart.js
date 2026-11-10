@@ -72,6 +72,9 @@ const ICONS = {
   rm: [DIAL, seg(12, 4, 12, 8), seg(12, 16, 12, 20), seg(4, 12, 8, 12), seg(16, 12, 20, 12)],
   qol: [DIAL, ...poly([[9, 12], [11, 14], [15, 10]])],
 };
+// the dropdowns' arrow: a down chevron (Media/Panel/Chevron.tga)
+tga(path.join(ROOT, 'Chevron.tga'), 32, coverage(32, 32 / 24, (x, y) => poly([[6, 9.5], [12, 15.5], [18, 9.5]]).some((s) => s(x, y))));
+
 for (const [key, shapes] of Object.entries(ICONS)) {
   tga(path.join(ROOT, 'Icons', key + '.tga'), 32, coverage(32, 32 / 24, (x, y) => shapes.some((s) => s(x, y))));
 }

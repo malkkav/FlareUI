@@ -333,9 +333,11 @@ local function BuildPicker()
     f.missing:SetTextColor(1, 0.6, 0.2)
 
     f.import = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    if ns.SkinButton then ns.SkinButton(f.import) end
     f.import:SetSize(110, 22)
     f.import:SetText(L["Import"])
     f.cancel = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    if ns.SkinButton then ns.SkinButton(f.cancel) end
     f.cancel:SetSize(110, 22)
     f.cancel:SetText(L["Cancel"])
     f.cancel:SetScript("OnClick", function() f:Hide() end)

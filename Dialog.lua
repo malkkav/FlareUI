@@ -81,6 +81,7 @@ end
 local function GetReloadButton()
     if reloadButton then return reloadButton end
     reloadButton = CreateFrame("Button", "FlareUIDialogReload", ns.SecureReloadParent(), "SecureActionButtonTemplate, UIPanelButtonTemplate")
+    if ns.SkinButton then ns.SkinButton(reloadButton) end
     reloadButton:SetSize(BUTTON_W, BUTTON_H)
     -- above the dialog's strata, or the toplevel dialog takes the click
     reloadButton:SetFrameStrata("TOOLTIP")
@@ -187,6 +188,7 @@ end
 --------------------------------------------------
 local function CreateDialogButton(parent, onClick)
     local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    if ns.SkinButton then ns.SkinButton(button) end
     button:SetSize(BUTTON_W, BUTTON_H)
     button:SetScript("OnClick", onClick)
     return button

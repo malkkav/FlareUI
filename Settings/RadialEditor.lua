@@ -32,6 +32,7 @@ local Fade = ns.Fade
 -- sound replaces the Game Menu click; false leaves the sound to onClick
 local function RedButton(parent, text, width, onClick, sound)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    if ns.SkinButton then ns.SkinButton(b) end
     b:SetSize(width, 22)
     b:SetText(text)
     b:SetScript("OnClick", function(...)
