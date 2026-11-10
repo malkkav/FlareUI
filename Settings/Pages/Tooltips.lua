@@ -44,6 +44,7 @@ S:Row{ half = true, key = "tt.showTarget", path = "tooltips.showTarget", apply =
 S:Row{ half = true, key = "tt.showGuild", path = "tooltips.showGuild", apply = Refresh }
 S:Row{ half = true, key = "tt.showGuildRank", path = "tooltips.showGuildRank", parent = "tt.showGuild", apply = Refresh }
 S:Row{ half = true, key = "tt.hideFaction", path = "tooltips.hideFaction", apply = Refresh }
+S:Row{ half = true, key = "tt.shortItemStats", path = "tooltips.shortItemStats" }
 
 local ids = Both({ "tooltips.showItemID", "tooltips.showSpellID" })
 S:Row{ half = true, key = "tt.ids", get = ids.get, set = ids.set, apply = Refresh }

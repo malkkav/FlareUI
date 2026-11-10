@@ -60,6 +60,7 @@ Settings.NEW = {
     ["rm.padStick"] = "5.0",
     ["rm.scale"] = "5.0",
     ["tt.compareShift"] = "5.0",
+    ["tt.shortItemStats"] = "5.0",
     ["uf.auraSwipe"] = "5.0",
     ["uf.auraTimerColor"] = "5.0",
 }

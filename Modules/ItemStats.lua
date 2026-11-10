@@ -3,11 +3,17 @@ local _, ns = ...
 --------------------------------------------------
 -- ITEM STATS
 -- Item tooltips say "+12 Spell Power" where the game writes "Equip: Increases damage and healing
--- done by magical spells and effects by up to 12." The same goes for set bonuses. Always on.
+-- done by magical spells and effects by up to 12." The same goes for set bonuses. Tooltips >
+-- Simplified Item Stats (tooltips.shortItemStats, off by default), with the Tooltips module on.
 -- The patterns come from the game's own strings, so every language works; a line that matches
 -- none stays as the game wrote it.
 --------------------------------------------------
 if not (TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall) then return end
+
+local function Enabled()
+    local db = ns.db and ns.db.profile and ns.db.profile.tooltips
+    return db and db.enabled and db.shortItemStats
+end
 
 -- the long form (TOOLTIP_ITEM_STAT_<key>_INCREASE / _DECREASE) -> the short label (ITEM_MOD_<label>)
 local STATS = {
@@ -117,7 +123,7 @@ local function Rewrite(text)
 end
 
 TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tip)
-    if not (tip and tip.GetName and tip.NumLines) then return end
+    if not (tip and tip.GetName and tip.NumLines) or not Enabled() then return end
     local name = tip:GetName()
     if not name then return end
     if not rules then BuildRules() end

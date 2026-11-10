@@ -1360,6 +1360,12 @@ ns.Copy = {
             section = "tt.look",
             tags = { "tooltip scale" },
         },
+        ["tt.shortItemStats"] = {
+            desc = L["Item tooltips say \"+12 Spell Power\" instead of \"Equip: Increases damage and healing done by magical spells and effects by up to 12.\" Set bonuses too."],
+            label = L["Simplified Item Stats"],
+            section = "tt.tweaks",
+            tags = { "short stats", "item stats", "equip lines" },
+        },
         ["tt.showBars"] = {
             choices = { L["Always"], L["Hide in Combat"], L["Never"] },
             desc = L["When tooltips appear for what you point at."],

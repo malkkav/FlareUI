@@ -140,9 +140,14 @@ local function BorderLayout()
 end
 
 local function CreateMapArt()
-    local frame = CreateFrame("Frame", nil, MinimapFrame)
-    frame:SetPoint("TOPLEFT", MinimapFrame, "TOPLEFT", -MAP_CROP, MAP_CROP)
-    frame:SetPoint("BOTTOMRIGHT", MinimapFrame, "BOTTOMRIGHT", MAP_CROP, -MAP_CROP)
+    -- On the cluster, placed where the map sits (UpdateLayout centres the map on the cluster), never
+    -- parented or anchored to the map: node addons (Lueur, NodeSight) slide the map under the cursor
+    -- and fade it out to read its tooltips. The tracking button, indicators, coordinates and sun hang
+    -- off this frame, so anything tied to the map chased the cursor and flickered.
+    local frame = CreateFrame("Frame", nil, Cluster)
+    frame:SetPoint("CENTER", Cluster, "CENTER", 0, 0)
+    frame:SetSize(MAP_SIZE, MAP_SIZE)
+    frame:SetFrameStrata(MinimapFrame:GetFrameStrata())
     frame:SetFrameLevel(MinimapFrame:GetFrameLevel() + 2)
     NineSliceUtil.ApplyLayout(frame, BorderLayout())
     MM.Frame = frame
@@ -154,6 +159,17 @@ local function CreateMapArt()
     back:SetPoint("CENTER", Cluster, "CENTER", 0, 0)
     back:SetSize(MAP_SIZE - 2 * MAP_CROP, MAP_SIZE - 2 * MAP_CROP)
     back:SetColorTexture(0, 0, 0, 1)
+
+    -- neither is the map's child any more: they go with it when it is hidden (Toggle Minimap key, a
+    -- full fade), not when node addons only fade it out
+    local function FollowMapShown()
+        local shown = MinimapFrame:IsShown()
+        frame:SetShown(shown)
+        back:SetShown(shown)
+    end
+    MinimapFrame:HookScript("OnShow", FollowMapShown)
+    MinimapFrame:HookScript("OnHide", FollowMapShown)
+    FollowMapShown()
 end
 
 local function ApplySquareMap()

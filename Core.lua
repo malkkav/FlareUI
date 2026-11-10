@@ -673,6 +673,7 @@ local defaults = {
             showGuild = true,           -- Blizzard's guild line on players
             showGuildRank = false,      -- the rank after the guild's name
             hideFaction = false,
+            shortItemStats = false,     -- "+12 Spell Power" for the long Equip: stat lines (ItemStats.lua)
             compareShift = true,        -- comparison tooltips only while Shift is held
             showItemID = false,
             showSpellID = false,

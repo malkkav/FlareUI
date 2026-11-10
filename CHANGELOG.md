@@ -1,3 +1,16 @@
+# FlareUI 5.0.2
+
+## New
+- **Italian** and **Latin American Spanish**, and a full **Spanish (Spain)** translation. Pick one in **Settings → Language**, or let FlareUI follow your game's language.
+- **Portuguese (Brazil)** is complete again, with shorter labels that fit the settings and the words players use: buffs, debuffs, pet, cast bar, frames.
+- Tooltips: **Simplified Item Stats** (off). Item tooltips say "+12 Spell Power" instead of "Equip: Increases damage and healing done by magical spells and effects by up to 12.", set bonuses too.
+
+## Changed
+- Item tooltips show stats as the game writes them again. The short form, always on since 5.0, is now the **Simplified Item Stats** switch under Tooltips. Thanks to everyone who asked!
+
+## Fixed
+- Minimap: with a node-finding addon and Find Minerals or Find Herbs on, the coordinates, the header bar (tracking, zone, clock and calendar), the mail icon and the day/night badge no longer fly across the screen with your cursor or flicker. Thanks to the players who reported it!
+
 # FlareUI 5.0.1
 
 ## New
