@@ -862,7 +862,7 @@ local function EditButton(f, onClick)
         end
     end)
     b:HookScript("OnLeave", function() GameTooltip:Hide() end)
-    ForwardHover(b, f)
+    if f.hover then ForwardHover(b, f) end
     return b
 end
 
@@ -1169,8 +1169,9 @@ local function UpdateHeader(module)
     page.editMode:SetShown((customText or editText) and true or false)
     local titleRightInset = 4
     if customText or editText then
-        page.editMode:SetText(customText or editText)
-        page.editMode:SetWidth((page.editMode:GetTextWidth() or 120) + 30)
+        page.editMode:SetText(customText or module.editMenuLabel or editText)
+        page.editMode.arrow:SetShown(not customText and module.editTargets ~= nil)
+        page.editMode:SetWidth((page.editMode:GetTextWidth() or 120) + (module.editTargets and 40 or 24))
         page.editMode:SetEnabled(customText ~= nil or (S:CanEditFrames() and true or false))
         titleRightInset = page.editMode:GetWidth() + 8
     end
@@ -1845,8 +1846,15 @@ local function BuildWindow()
         Panel:Refresh()
     end)
     -- Edit Mode button: the module's main frame, or plain Edit Mode for Blizzard's bars
-    page.editMode = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
-    page.editMode:SetHeight(22)
+    page.editMode = EditButton(header, function() end)
+    page.editMode:SetHeight(24)
+    page.editMode:GetFontString():ClearAllPoints()
+    page.editMode:GetFontString():SetPoint("LEFT", 10, 0)
+    page.editMode.arrow = page.editMode:CreateTexture(nil, "ARTWORK")
+    page.editMode.arrow:SetPoint("RIGHT", -9, 0)
+    page.editMode.arrow:SetSize(14, 14)
+    page.editMode.arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
+    page.editMode.arrow:SetVertexColor(0.83, 0.68, 0.43)
     page.editMode:SetPoint("TOPRIGHT", 0, -2)
     page.editMode:SetScript("OnClick", function(self)
         ns.ButtonSound()
@@ -1855,6 +1863,10 @@ local function BuildWindow()
             return
         end
         local module = S.modules[current]
+        if module.editTargets then
+            S:OpenEditTargetMenu(self, module.key)
+            return
+        end
         local target = module.editMode and module.editMode()
         if target then
             S:EditFrame(target, module.key)

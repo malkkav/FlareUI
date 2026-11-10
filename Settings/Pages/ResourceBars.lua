@@ -1,5 +1,5 @@
 local _, ns = ...
-local S = ns.Settings
+local S, L = ns.Settings, ns.L
 
 --------------------------------------------------
 -- RESOURCE BARS
@@ -23,9 +23,17 @@ end
 
 local BARS = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged" }
 
--- the header button opens Edit Mode on the first bar that exists
+local editTargets = {}
+for _, key in ipairs(BARS) do
+    editTargets[#editTargets + 1] = {
+        key=key, rowKey="rb." .. key, name="FlareUI_Resource_" .. key,
+        path="unitframes.resource.bars." .. key .. ".enabled", hidden=key == "mana" and NotDruid or nil,
+    }
+end
+-- The page menu selects a specific bar; the fallback still supports ordinary Edit Mode links.
 S:Module{
     key = "rb", group = "HUD", order = 30, enabled = "unitframes.resource.enabled",
+    editTargets = editTargets, editMenuLabel = L["Edit Bars"],
     tabs = { { key = "settings" }, { key = "fonts" } },
     editMode = function()
         for _, key in ipairs(BARS) do

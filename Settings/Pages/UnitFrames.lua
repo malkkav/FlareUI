@@ -22,6 +22,19 @@ end
 S:Module{
     key = "uf", group = "HUD", order = 20, enabled = "unitframes.enabled",
     tabs = { { key = "settings", label = L["Appearance"] }, { key = "frames", label = L["Frames"] }, { key = "fonts", label = L["Fonts"] } },
+    editMenuLabel = L["Edit Frames"],
+    editTargets = {
+        { key="player", label=L["Player"], name="FlareUI_UF_Player", path="unitframes.units.player.enabled" },
+        { key="target", label=L["Target"], name="FlareUI_UF_Target", path="unitframes.units.target.enabled" },
+        { key="focus", label=L["Focus"], name="FlareUI_UF_Focus", path="unitframes.units.focus.enabled" },
+        { key="pet", label=L["Pet"], name="FlareUI_UF_Pet", path="unitframes.units.pet.enabled" },
+        { key="party", label=L["Party"], name="FlareUI_Party", path="unitframes.party.enabled" },
+        { key="raid", label=L["Raid"], name="FlareUI_Raid", path="unitframes.raid.enabled" },
+        { key="boss", label=L["Boss"], name="FlareUI_Boss", path="unitframes.boss.enabled" },
+        { key="castbar", label=L["Player Cast Bar"], name="FlareUI_UF_PlayerCastBar", path="unitframes.playerCastbar.enabled" },
+        { key="tot", label=L["Target of Target"], name="FlareUI_UF_TargetOfTarget", path="unitframes.units.targettarget.enabled" },
+        { key="tof", label=L["Target of Focus"], name="FlareUI_UF_TargetOfFocus", path="unitframes.units.focustarget.enabled" },
+    },
     -- the frames behind the shared Player / Pet / Target / Focus row
     editFrames = {
         function() return _G.FlareUI_UF_Player end, function() return _G.FlareUI_UF_Target end,

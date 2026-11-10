@@ -741,6 +741,43 @@ function Settings:OpenEditMode(moduleKey)
     return true
 end
 
+-- Resolve targets at menu-open and again at click time: frames can be enabled or rebuilt meanwhile.
+function Settings:EditTargets(moduleKey)
+    local module = self.modules[moduleKey]
+    local targets = {}
+    for _, def in ipairs(module and module.editTargets or {}) do
+        if not (def.hidden and def.hidden()) then
+            local frame = _G[def.name]
+            local enabled = module:IsOn() and self:GetPath(def.path) and true or false
+            local reason
+            if not enabled then reason = L["Enable and reload first"]
+            elseif not frame then reason = L["Reload to make this frame available"]
+            elseif not self:CanEditFrames() then reason = ns.IsGamepadUI() and L["Open Edit Mode from the game menu"] or L["Unavailable in combat"] end
+            local row = def.rowKey and self.rows[def.rowKey]
+            targets[#targets + 1] = { key=def.key, label=def.label or (row and row:Label()) or def.key, frame=frame, reason=reason }
+        end
+    end
+    return targets
+end
+function Settings:EditTarget(moduleKey, key)
+    for _, target in ipairs(self:EditTargets(moduleKey)) do
+        if target.key == key then
+            if target.reason then return false end
+            return self:EditFrame(target.frame, moduleKey)
+        end
+    end
+    return false
+end
+function Settings:OpenEditTargetMenu(owner, moduleKey)
+    MenuUtil.CreateContextMenu(owner, function(_, root)
+        for _, target in ipairs(self:EditTargets(moduleKey)) do
+            local label = target.label .. (target.reason and (" — " .. target.reason) or "")
+            local entry = root:CreateButton(label, function() self:EditTarget(moduleKey, target.key) end)
+            entry:SetEnabled(target.reason == nil)
+        end
+    end)
+end
+
 -- a module's frames: its frame rows plus module.editFrames getters
 local function ModuleFrames(module)
     local frames, seen = {}, {}

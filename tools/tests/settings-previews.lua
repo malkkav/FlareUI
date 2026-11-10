@@ -796,3 +796,64 @@ for _,r in ipairs(settings:Search('Fonts')) do
 end
 assert(fontLink and not wrongLink,'Search must use the actual tab labels, not old positional labels')
 print('PASS: drawer hover changes, compact bag groups remain separated, and Fonts search targets the correct tab')
+
+-- The header edit menu selects the requested live frame, with no saved-setting writes.
+local oldCanEdit, oldEditFrame = settings.CanEditFrames, settings.EditFrame
+local canEdit, selected = true, nil
+real.IsGamepadUI=function() return false end
+settings.CanEditFrames=function() return canEdit end
+settings.EditFrame=function(_,frame,module) selected={frame=frame,module=module}; return true end
+settings:SetPath('unitframes.enabled',true)
+settings:SetPath('unitframes.resource.enabled',true)
+for _,moduleKey in ipairs({'uf','rb'}) do
+    for _,def in ipairs(settings.modules[moduleKey].editTargets) do
+        settings:SetPath(def.path,true); _G[def.name]={id=def.key}
+    end
+    local targets=settings:EditTargets(moduleKey)
+    assert(#targets==(moduleKey=='uf' and 10 or 6),'Mana entry is hidden for non-druids')
+    for _,target in ipairs(targets) do
+        assert(not target.reason)
+        assert(settings:EditTarget(moduleKey,target.key))
+        assert(selected.frame==target.frame and selected.module==moduleKey)
+    end
+end
+local entries={}
+MenuUtil={CreateContextMenu=function(_,generator)
+    generator(nil,{CreateButton=function(_,label,callback)
+        local entry={label=label,click=callback,SetEnabled=function(self,on) self.enabled=on end}
+        entries[#entries+1]=entry; return entry
+    end})
+end}
+settings:SetPath('unitframes.raid.enabled',false)
+_G.FlareUI_UF_TargetOfFocus=nil
+settings:OpenEditTargetMenu({},'uf')
+assert(not entries[6].enabled and entries[6].label:find('Enable and reload first',1,true))
+assert(not entries[10].enabled and entries[10].label:find('Reload to make this frame available',1,true))
+entries[2].click(); assert(selected.frame==_G.FlareUI_UF_Target)
+selected=nil; canEdit=false
+entries[2].click(); assert(selected==nil,'Combat must be rechecked when a menu item is clicked')
+canEdit=true; settings:SetPath('unitframes.units.target.enabled',false)
+entries[2].click(); assert(selected==nil,'Disabled frames must be rechecked when clicked')
+settings.CanEditFrames,settings.EditFrame=oldCanEdit,oldEditFrame
+print('PASS: direct edit menus, all frame targets, class-specific bars, disabled explanations and stale-click guards')
+
+-- Reusing the compact Edit button in a header must not install row-only hover scripts.
+function Widget:SetFontString(v) self.fontString=v end
+function Widget:SetHighlightTexture() end
+function Widget:SetMotionScriptsWhileDisabled() end
+function Widget:IsEnabled() return self.enabled~=false end
+function Widget:HookScript(event,fn)
+    local old=self.scripts[event]; self.scripts[event]=function(...) if old then old(...) end; fn(...) end
+end
+GameTooltip={Hide=function() end}
+local ef=assert(io.open('Settings/Panel.lua','r'));local es=ef:read('*a');ef:close()
+local editCode=assert(es:match('(local function EditButton.-)\nBuild.frame'))
+local forwarded=0
+local makeEdit=assert(loadstring('local ns, Text, S, L, ForwardHover = ...\n'..editCode..'\nreturn EditButton'))(
+    real,function(parent) return widget(parent) end,settings,ns.L,function() forwarded=forwarded+1 end)
+local headerEdit=makeEdit(widget(),function() end)
+headerEdit.scripts.OnEnter(headerEdit); headerEdit.scripts.OnLeave(headerEdit)
+assert(forwarded==0)
+local rowFrame=widget(); rowFrame.hover=widget()
+makeEdit(rowFrame,function() end);assert(forwarded==1)
+print('PASS: compact header Edit button has safe hover behavior; row Edit buttons retain their hover forwarding')
