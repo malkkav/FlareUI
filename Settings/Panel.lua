@@ -14,7 +14,14 @@ local HEADER_H, FOOTER_H = 46, 34
 local LEFT_W, RIGHT_W = 200, 280
 local PAD = 12
 local EDGE, GAP, INNER = 14, 8, 10   -- body to window edge, between the three boxes, inside the middle box
-local ROW_H, SECTION_H = 30, 34
+local ROW_H, SECTION_H = 36, 34
+-- 11-10 batch C: rows on dark plates with a gap between them, each section in its own box
+local ROW_GAP, HALF_GAP = 4, 8
+local SEC_X, SEC_TOP, SEC_BOTTOM, SEC_GAP = 10, 2, 10, 10   -- inside a section box; between boxes
+local rowInset = 0   -- where rows start: SEC_X inside section boxes, 0 for search results
+-- kinds drawn on a plate (text blocks, legends, style cards and headings are not)
+local PLATED = { toggle = true, choice = true, dropdown = true, range = true, frame = true, button = true,
+    keybind = true, buttons = true, editmode = true }
 local INDENT = 18
 -- the header row's middle: halfway down the band above the boxes, past the border's 4 px line
 local HEADER_ROW_Y = math.floor((4 + HEADER_H + EDGE) / 2) + 1
@@ -71,7 +78,8 @@ local searchText = ""
 local navButtons = {}   -- module key -> left list button
 local pools = {}        -- row kind -> list of row frames
 local used = {}         -- row frames on the page
-local currentTab = {}   -- module key -> tab key shown
+local currentTab = {}   -- module key -> tab key shown (kept in db.global.settingsTabs)
+local scrollOf = {}     -- module key -> where its page was scrolled, for the session
 local customHosts = {}  -- "module.tab" -> a custom tab's frame
 
 --------------------------------------------------
@@ -602,10 +610,19 @@ local function NewRowFrame(parent, kind)
     f:EnableMouse(true)
     f:SetScript("OnEnter", RowEnter)
     f:SetScript("OnLeave", RowLeave)
+    f.plate = f:CreateTexture(nil, "BACKGROUND", nil, -1)
+    f.plate:SetAllPoints()
+    f.plate:SetColorTexture(0, 0, 0, 0.26)
     f.hover = f:CreateTexture(nil, "BACKGROUND")
     f.hover:SetAllPoints()
-    f.hover:SetColorTexture(1, 0.82, 0, 0.06)
+    f.hover:SetColorTexture(0.79, 0.65, 0.35, 0.10)
     f.hover:Hide()
+    -- a click anywhere on a switch's row flips it (the switch takes its own clicks)
+    f:SetScript("OnMouseUp", function(self, button)
+        if button ~= "LeftButton" or not (self.kind == "toggle" or self.kind == "frame") then return end
+        local c = self.control
+        if c and c:IsVisible() and c:IsEnabled() and self.row and not self.row:IsDisabled() then c:Click() end
+    end)
     f.crumb = Text(f, "GameFontDisableSmall")
     f.crumb:SetWordWrap(true)
     f.label = Text(f, "GameFontHighlight")
@@ -733,7 +750,7 @@ Build.choice = function(f)
     ForwardHover(stepper.Dropdown, f)
     ForwardHover(stepper.IncrementButton, f)
     ForwardHover(stepper.DecrementButton, f)
-    f:SetHeight(ROW_H + 8)
+    f:SetHeight(ROW_H)
     f.stepper = stepper
     f.control = stepper
     SetupChoiceMenu(stepper.Dropdown, f)
@@ -742,7 +759,7 @@ Fill.choice = function(f, row)
     -- narrower on half rows
     f.stepper.Dropdown:SetWidth(row.half and 96 or 180)
     f.stepper.Dropdown:GenerateMenu()
-    f:SetHeight(ROW_H + 8)
+    f:SetHeight(ROW_H)
 end
 
 
@@ -823,7 +840,7 @@ Fill.range = function(f, row)
     f.control:PaintFill()
     f.value:SetText(f.rangeChoice and f.rangeChoice.text or '')
     f.rangeFilling = nil
-    f:SetHeight(ROW_H + 4)
+    f:SetHeight(ROW_H)
 end
 
 -- Only the two major style choices use cards. The remaining options keep their existing controls.
@@ -1389,6 +1406,7 @@ local function FillRow(f, row, crumb)
     f.crumb:SetTextColor(GRAY_FONT_COLOR:GetRGB())
     f.crumbLink:SetShown(crumb ~= nil)
     f:SetHeight(crumb and ROW_H + 12 or ROW_H)
+    f.plate:SetShown(PLATED[row.kind] and true or false)
     if f.flashAnim then f.flashAnim:Stop() end
     if Fill[row.kind] then Fill[row.kind](f, row) end
     SetRowEnabled(f, not row:IsDisabled())
@@ -1508,8 +1526,8 @@ local function SectionHeader(parent, text, y, sectionKey)
     h.sign:SetText(sectionKey and (closedSections[sectionKey] and "+" or "-") or "")
     h.text:SetText(text)
     h:ClearAllPoints()
-    h:SetPoint("TOPLEFT", 0, y)
-    h:SetWidth(CONTENT_W)
+    h:SetPoint("TOPLEFT", rowInset, y)
+    h:SetWidth(CONTENT_W - 2 * rowInset)
     h:Show()
     used[#used + 1] = h
     return SECTION_H
@@ -1517,43 +1535,63 @@ end
 
 -- lays rows out from y down and returns the new y; half rows pair up except in search results.
 -- row.gapAbove: extra space over a full-width row (not in search results)
+-- a section's box: from its heading to its last row, under both (Thin edge, darker than the page)
+local function SectionBox(parent, top, bottom)
+    local key = "secbox"
+    pools[key] = pools[key] or {}
+    local b = table.remove(pools[key])
+    if not b then
+        b = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+        b.kind = key
+        Box(b, 0.32)
+    end
+    b:SetParent(parent)
+    b:SetFrameLevel(parent:GetFrameLevel())
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", 0, top)
+    b:SetSize(CONTENT_W, math.max(1, top - bottom))
+    b:Show()
+    used[#used + 1] = b
+end
+
 local function PlaceRows(parent, rows, y, crumbOf)
     local firstHalf
     for _, row in ipairs(rows) do
         local f = Acquire(parent, row.kind)
         f:ClearAllPoints()
+        local width = CONTENT_W - 2 * rowInset
         if row.half and not crumbOf then
             local col = firstHalf and 1 or 0
             -- a half row keeps to its column even under a parent (the parent still greys it)
-            local w = math.floor(CONTENT_W / 2)
-            f:SetPoint("TOPLEFT", col * w, y)
-            f:SetWidth(w - (col == 0 and 8 or 0))
+            local w = math.floor((width - HALF_GAP) / 2)
+            f:SetPoint("TOPLEFT", rowInset + col * (w + HALF_GAP), y)
+            f:SetWidth(w)
             FillRow(f, row)
             if row == page.jumpRow then page.jumpFrame, page.jumpTop = f, -y end
             if firstHalf then
                 local height = math.max(firstHalf:GetHeight(), f:GetHeight())
                 firstHalf:SetHeight(height)
                 f:SetHeight(height)
-                y = y - height
+                y = y - height - ROW_GAP
                 firstHalf = nil
             else
                 firstHalf = f
             end
         else
             if firstHalf then
-                y = y - firstHalf:GetHeight()
+                y = y - firstHalf:GetHeight() - ROW_GAP
                 firstHalf = nil
             end
             if row.gapAbove and not crumbOf then y = y - row.gapAbove end
             local indent = row.parent and INDENT or 0
-            f:SetPoint("TOPLEFT", indent, y)
-            f:SetWidth(CONTENT_W - indent)
+            f:SetPoint("TOPLEFT", rowInset + indent, y)
+            f:SetWidth(width - indent)
             FillRow(f, row, crumbOf and crumbOf(row))
             if row == page.jumpRow and not crumbOf then page.jumpFrame, page.jumpTop = f, -y end
-            y = y - f:GetHeight()
+            y = y - f:GetHeight() - ROW_GAP
         end
     end
-    if firstHalf then y = y - firstHalf:GetHeight() end
+    if firstHalf then y = y - firstHalf:GetHeight() - ROW_GAP end
     return y
 end
 
@@ -1792,13 +1830,19 @@ function Panel:Refresh()
                 page.scroll:Hide()
                 ShowCustom(module, tab)
             else
+                rowInset = SEC_X
                 for _, section in ipairs(module:Sections(tab and tab.key)) do
-                    if section.title then y = y - SectionHeader(content, section.title, y, section.key) end
+                    local top = y
+                    y = y - SEC_TOP
+                    if section.title then y = y - SectionHeader(content, section.title, y, section.key) - 4 end
                     if not (section.title and closedSections[section.key]) then
                         y = PlaceRows(content, section.rows, y)
                     end
-                    y = y - 6
+                    y = y - SEC_BOTTOM + ROW_GAP
+                    SectionBox(content, top, y)
+                    y = y - SEC_GAP
                 end
+                rowInset = 0
             end
             content:SetHeight(math.max(1, -y + 8))
             return
@@ -1860,6 +1904,7 @@ function Panel:Select(key)
     if key ~= current then
         S:EndNewVisit()
         newVisit = nil
+        if current and page.scroll then scrollOf[current] = page.scroll:GetVerticalScroll() end
     end
     current = key
     -- lets the shown module preview itself
@@ -1872,6 +1917,14 @@ function Panel:Select(key)
     page.scroll:SetVerticalScroll(0)
     UpdateNav()
     self:Refresh()
+    -- back where this page was left (the scroll range is known once the rows are placed)
+    local back = scrollOf[key]
+    if back and back > 0 then
+        C_Timer.After(0, function()
+            if current ~= key then return end
+            page.scroll:SetVerticalScroll(math.min(back, page.scroll:GetVerticalScrollRange() or 0))
+        end)
+    end
 end
 
 -- From a search result: the row's page and tab, its section unfolded, scrolled to and flashed
@@ -2086,6 +2139,9 @@ end)
 --------------------------------------------------
 local function BuildWindow()
     local style = ns.WINDOW_STYLE
+    -- each page opens on the tab it was left on, across sessions
+    local saved = ns.db and ns.db.global and ns.db.global.settingsTabs
+    if saved then for key, tab in pairs(saved) do if currentTab[key] == nil then currentTab[key] = tab end end end
     frame = CreateFrame("Frame", "FlareUI_SettingsPanel", UIParent, "BackdropTemplate")
     frame:SetSize(WIDTH, HEIGHT)
     frame:SetPoint("CENTER")
@@ -2380,6 +2436,11 @@ local function BuildWindow()
         b:SetScript("OnClick", function(self)
             PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
             currentTab[current] = self.tabKey
+            if ns.db and ns.db.global then
+                ns.db.global.settingsTabs = ns.db.global.settingsTabs or {}
+                ns.db.global.settingsTabs[current] = self.tabKey
+            end
+            scrollOf[current] = nil
             page.scroll:SetVerticalScroll(0)
             Panel:Refresh()
         end)
