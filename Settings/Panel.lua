@@ -413,7 +413,7 @@ local function SkinButton(b)
 end
 Panel.SkinButton = SkinButton
 local function PanelButton(parent)
-    return SkinButton(PanelButton(parent))
+    return SkinButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
 end
 
 -- Blizzard's dropdown button as a bronze-rimmed pill with a gold arrow
