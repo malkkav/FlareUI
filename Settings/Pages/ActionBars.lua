@@ -1,6 +1,10 @@
 local _, ns = ...
 local L = ns.L
 local S = ns.Settings
+-- Labels for the new appearance groups; kept outside the generated copy file.
+ns.Copy.sections["ab.buttonAppearance"] = L["Button Appearance"]
+ns.Copy.sections["ab.buttonText"] = L["Button Text"]
+ns.Copy.sections["ab.spellBehavior"] = L["Spell Behavior"]
 
 --------------------------------------------------
 -- ACTION BARS
@@ -14,7 +18,7 @@ end
 
 S:Module{
     key = "ab", group = "HUD", order = 10, enabled = "actionbars.enabled",
-    tabs = { { key = "settings" }, { key = "fcm" }, { key = "fonts" } },
+    tabs = { { key = "settings", label = L["Appearance"] }, { key = "visibility", label = L["Visibility"] }, { key = "fcm", label = L["Fake CM"] }, { key = "fonts", label = L["Fonts"] } },
     -- Blizzard's bars: no FlareUI frame to select, so plain Edit Mode
     editMode = function() return nil end,
     -- the XP bar is FlareUI's own frame; each bar's fade settings sit in Blizzard's bar dialogs
@@ -24,29 +28,29 @@ S:Module{
 
 -- in pairs (half rows): the button's state, its art, its text, the spells, paging
 S:Row{
-    key = "ab.statusColours", apply = Refresh, half = true,
+    key = "ab.statusColours", section = "ab.buttonAppearance", apply = Refresh, half = true,
     get = function() return S:GetPath("actionbars.colors.enableRange") end,
     set = function(on)
         S:SetPath("actionbars.colors.enableRange", on)
         S:SetPath("actionbars.colors.unusable.desaturate", on)
     end,
 }
-S:Row{ key = "ab.dimOnCooldown", path = "actionbars.dimOnCooldown", apply = Refresh, half = true }
-S:Row{ key = "ab.procGlow", path = "actionbars.procGlow", half = true,
+S:Row{ key = "ab.dimOnCooldown", section = "ab.buttonAppearance", path = "actionbars.dimOnCooldown", apply = Refresh, half = true }
+S:Row{ key = "ab.procGlow", section = "ab.buttonAppearance", path = "actionbars.procGlow", half = true,
     apply = function() if ns.ProcGlow then ns.ProcGlow:Refresh() end end }
-S:Row{ key = "ab.buttonArt", path = "actionbars.buttonArt", apply = Refresh, half = true }
-S:Row{ key = "ab.hideKeybinds", path = "actionbars.hideHotkeys", apply = Refresh, half = true }
-S:Row{ key = "ab.cleanKeybinds", path = "actionbars.cleanKeybinds", apply = Refresh, half = true }
-S:Row{ key = "ab.hideMacroText", path = "actionbars.hideMacroText", apply = Refresh, half = true }
-S:Row{ key = "ab.gryphonsBehind", path = "actionbars.gryphonsBehind", apply = Refresh, half = true }
-S:Row{ key = "ab.autoRanks", path = "actionbars.autoRanks", half = true,
+S:Row{ key = "ab.buttonArt", section = "ab.buttonAppearance", path = "actionbars.buttonArt", apply = Refresh, half = true }
+S:Row{ key = "ab.hideKeybinds", section = "ab.buttonText", path = "actionbars.hideHotkeys", apply = Refresh, half = true }
+S:Row{ key = "ab.cleanKeybinds", section = "ab.buttonText", path = "actionbars.cleanKeybinds", apply = Refresh, half = true }
+S:Row{ key = "ab.hideMacroText", section = "ab.buttonText", path = "actionbars.hideMacroText", apply = Refresh, half = true }
+S:Row{ key = "ab.gryphonsBehind", section = "ab.buttonAppearance", path = "actionbars.gryphonsBehind", apply = Refresh, half = true }
+S:Row{ key = "ab.autoRanks", section = "ab.spellBehavior", path = "actionbars.autoRanks", half = true,
     apply = function() if ns.ActionBars.CatchUpRanks then ns.ActionBars:CatchUpRanks() end end }
-S:Row{ key = "ab.stopAutoAdd", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
-S:Row{ key = "ab.stealthPaging", path = "actionbars.stealthPaging", apply = Refresh, half = true }
-S:Row{ key = "ab.noStancePaging", path = "actionbars.noStancePaging", apply = Refresh, half = true }
+S:Row{ key = "ab.stopAutoAdd", section = "ab.spellBehavior", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
+S:Row{ key = "ab.stealthPaging", section = "ab.spellBehavior", path = "actionbars.stealthPaging", apply = Refresh, half = true }
+S:Row{ key = "ab.noStancePaging", section = "ab.spellBehavior", path = "actionbars.noStancePaging", apply = Refresh, half = true }
 -- last in Tweaks: Blizzard's Cooldown Manager restyled (Auras.lua 9b, so it needs Buffs & Debuffs on);
 -- off needs a reload to give Blizzard's look back
-S:Row{ key = "ab.skinCDM", path = "auras.skinCDM", reload = true,
+S:Row{ key = "ab.skinCDM", section = "ab.buttonAppearance", path = "auras.skinCDM", reload = true,
     disabled = function() return not S:GetPath("auras.enabled") end }
 
 -- the FlareUI XP Bar: off leaves Blizzard's bars alone, so turning it on or off reloads; its options sit
@@ -71,7 +75,7 @@ S:Row{ key = "ab.xpQuest", kind = "choice", choices = { "off", "done", "all", "z
 
 -- Hide Blizzard elements (also removed from Edit Mode)
 local function Hide(key, path)
-    S:Row{ key = "ab." .. key, path = "visibility." .. path, apply = Refresh, section = "ab.hideBlizzardElements", half = true }
+    S:Row{ key = "ab." .. key, path = "visibility." .. path, apply = Refresh, tab = "visibility", section = "ab.hideBlizzardElements", half = true }
 end
 Hide("hideMicroMenu", "hideMicroMenu")
 Hide("hideBagBar", "hideBagBar")

@@ -9,4 +9,5 @@ ignore:
   - CHANGELOG.md
   - CHANGELOG-history.md
   - tools
+  - docs
   - Locales/enUS.lua

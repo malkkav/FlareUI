@@ -344,6 +344,72 @@ function Row:Set(value)
     Settings:Fire("RowChanged", self)
 end
 
+-- Section resets use profile defaults, never another profile or the current values.
+function Settings:DefaultPath(path)
+    local value = ns.defaults and ns.defaults.profile
+    for part in path:gmatch('[^.]+') do
+        if type(value) ~= 'table' then return nil end
+        value = value[part]
+    end
+    return value
+end
+local resetPaths = {
+    ['uf.main']='unitframes.units.player.enabled',
+    ['ab.statusColours']='actionbars.colors.enableRange',
+    ['qol.move']='tweaks.moveAnyFrame', ['qol.camera']='tweaks.maxCameraZoom',
+    ['tt.anchor']='tooltips.anchor', ['tt.borders']='tooltips.borderByReaction',
+    ['tt.ids']='tooltips.showItemID', ['tt.showWorld']='tooltips.visibility.worldUnits',
+}
+function Row:ResetValue()
+    local path = self.path or resetPaths[self.key]
+    if self.resetValue then return self.resetValue() end
+    if path then return Settings:DefaultPath(path) end
+    local function D(p) return Settings:DefaultPath(p) end
+    local key = self.key
+    if self.previewFont and key:match('%.shadow$') then
+        if not D(self.previewFont .. '.enableShadow') then return 'none' end
+        return (D(self.previewFont .. '.shadowX') or 1) >= 2 and 'strong' or 'soft'
+    end
+    if key == 'rm.pad' or key == 'rm.padRelease' then return true end
+    if key == 'rm.padRepeat' then return false end
+    if self.kind == 'keybind' then return '' end
+    if key == 'uf.frameStyle' then return not D('unitframes.foreverStyle') and 'addon' or D('unitframes.plateStyle') and 'forever' or 'flareui' end
+    if key == 'ch.channelNames' then return D('chat.channelNames') or (D('chat.shortChannels') and 'number' or 'full') end
+    if key == 'qol.uiScale' then return 'blizzard' end
+    if key == 'qol.uiScaleCustom' then return 100 end
+    if key == 'tt.healthBar' then return not D('tooltips.hideHealthBar') end
+    if key == 'tt.classNames' then return D('tooltips.nameColor') == 'class' end
+    local hide = ({['ch.social']='chat.socialHide',['ch.channels']='chat.channelHide',['ch.menu']='chat.menuHide'})[key]
+    if hide then return not D(hide) end
+    if key == 'ab.xpQuest' then return D('actionbars.xpbar.questXP') and (D('actionbars.xpbar.questXPMode') or 'done') or 'off' end
+    if key == 'qt.sort' then
+        return D('objectivetracker.sortByLevel') and 'level' or D('objectivetracker.sortByProgress') and 'progress' or D('objectivetracker.zoneFirst') and 'zone' or 'distance'
+    end
+    if key == 'qt.minimizeButton' then return D('objectivetracker.minimizeStyle') == 'button' end
+    if key == 'qt.minInstances' then return D('objectivetracker.autoMinimize.dungeon') == 'minimize' end
+    if key == 'qt.minCombat' then return D('objectivetracker.autoMinimize.combat') == 'minimize' end
+end
+function Settings:SectionDefaults(moduleKey, sectionKey, tab)
+    local module = self.modules[moduleKey]
+    local section = module and module.sectionByKey[sectionKey]
+    local list = {}
+    for _, row in ipairs(section and section.rows or {}) do
+        if (not tab or (row.tab or (module.tabs and module.tabs[1].key) or 'settings') == tab) and row.kind ~= 'expander' and row.kind ~= 'button' and row.kind ~= 'buttons' and row.kind ~= 'text' and row.kind ~= 'legend' then
+            local value = row:ResetValue()
+            if value ~= nil then list[#list + 1] = {row=row,value=value} end
+        end
+    end
+    return list
+end
+function Settings:CanResetSection(moduleKey, sectionKey, tab)
+    return #self:SectionDefaults(moduleKey, sectionKey, tab) > 0
+end
+function Settings:ResetSection(moduleKey, sectionKey, tab)
+    -- Snapshot before setters run: a style change can rebuild controls and other defaults.
+    local changes = self:SectionDefaults(moduleKey, sectionKey, tab)
+    for _, change in ipairs(changes) do change.row:Set(change.value) end
+end
+
 -- Frame Border choices: None, FlareUI's border, then other addons' borders; rebuilt on each open
 function Settings:BorderChoices()
     local list = { { "None", L["None"] }, { "FlareUI Frames", "FlareUI Frames" } }
@@ -412,7 +478,7 @@ end
 -- switches, then keybinds, buttons and legends. A row with a parent sits under it, among its siblings
 -- in the same order; lead = true keeps a row on top (a switch the others read the other way round);
 -- rank = n places a row by hand (Fake CM's Visibility: 3.5, between the bar switches and the button).
-local KIND_RANK = { text = 0, choice = 1, dropdown = 1, toggle = 3, frame = 3, keybind = 4, button = 4, buttons = 4,
+local KIND_RANK = { text = 0, styles = 1, choice = 1, range = 1, dropdown = 1, toggle = 3, frame = 3, framecard = 3, keybind = 4, button = 4, buttons = 4,
                     editmode = 4, legend = 5, expander = 5 }
 local function RowRank(row)
     if row.lead then return -1 end
@@ -443,7 +509,7 @@ local function InsertOrdered(list, row)
 end
 
 -- def: key ("module.row"), kind, path ("db.path") or get/set, choices, parent, tab, section, half,
--- reload, apply, hidden, disabled, lead, rank, gapAbove. Kinds: toggle, choice, dropdown, keybind, button, buttons, frame,
+-- reload, apply, hidden, disabled, lead, rank, gapAbove. Kinds: toggle, choice, range, dropdown, keybind, button, buttons, frame,
 -- expander, editmode, legend (built in Settings/Panel.lua), text (custom-page copy, never drawn or searched)
 function Settings:Row(def)
     assert(type(def.key) == "string", "Settings:Row needs a key")
@@ -500,7 +566,8 @@ local function ContextText(row)
     if module and module.tabs and row.tab then
         local names = Settings:ModuleText(module.key, "tabs") or {}
         for i, tab in ipairs(module.tabs) do
-            if tab.key == row.tab and names[i] then parts[#parts + 1] = names[i] end
+            local name = tab.label or names[i]
+            if tab.key == row.tab and name then parts[#parts + 1] = name end
         end
     end
     local section = module and row.section and module.sectionByKey[row.section]
@@ -591,7 +658,7 @@ function Settings:Search(text)
         if module.tabs then
             local names = self:ModuleText(key, "tabs") or {}
             for i, tab in ipairs(module.tabs) do
-                local name = names[i]
+                local name = tab.label or names[i]
                 if name and AllWords(self:Fold(name), words) then
                     places[#places + 1] = PlaceResult(module, name, tab.key, nil)
                 end

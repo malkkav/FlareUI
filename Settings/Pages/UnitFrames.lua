@@ -14,14 +14,14 @@ end
 
 local function Frame(key, path, frameName)
     S:Row{
-        key = "uf." .. key, kind = "frame", reload = true, path = path, half = true,
+        key = "uf." .. key, kind = "framecard", tab = "frames", reload = true, path = path, half = true,
         frame = function() return _G[frameName] end,
     }
 end
 
 S:Module{
     key = "uf", group = "HUD", order = 20, enabled = "unitframes.enabled",
-    tabs = { { key = "settings" }, { key = "fonts" } },
+    tabs = { { key = "settings", label = L["Appearance"] }, { key = "frames", label = L["Frames"] }, { key = "fonts", label = L["Fonts"] } },
     -- the frames behind the shared Player / Pet / Target / Focus row
     editFrames = {
         function() return _G.FlareUI_UF_Player end, function() return _G.FlareUI_UF_Target end,
@@ -41,7 +41,7 @@ S:Module{
 -- one switch for player, pet, target and focus (Edit opens the player frame)
 local MAIN_UNITS = { "player", "pet", "target", "focus" }
 S:Row{
-    key = "uf.main", kind = "frame", reload = true, half = true,
+    key = "uf.main", kind = "framecard", tab = "frames", reload = true, half = true,
     get = function() return S:GetPath("unitframes.units.player.enabled") and true or false end,
     set = function(on)
         for _, unit in ipairs(MAIN_UNITS) do S:SetPath("unitframes.units." .. unit .. ".enabled", on and true or false) end
@@ -59,7 +59,7 @@ Frame("tof", "unitframes.units.focustarget.enabled", "FlareUI_UF_TargetOfFocus")
 
 -- each style keeps its own unit frames setup (UnitFramesRing.lua), loaded on reload
 S:Row{
-    key = "uf.frameStyle", kind = "choice", reload = true, choices = { "flareui", "forever", "addon" },
+    key = "uf.frameStyle", kind = "styles", reload = true, choices = { "flareui", "forever", "addon" },
     get = function() return ns.UFRing and ns.UFRing.Style() or "addon" end,
     set = function(value)
         if ns.UFRing then ns.UFRing.SetStyle(value) end
@@ -90,3 +90,18 @@ S:FontRows{ module = "uf", tab = "fonts", section = "uf.fonts", apply = Refresh,
     { key = "auras", path = "unitframes.auraFont", autoSize = true },
     { key = "auraCount", path = "unitframes.auraCountFont", autoSize = true },
 } }
+
+-- Per-unit appearance belongs here as well as in the Edit Mode dialog.
+for _, unit in ipairs({ 'player', 'target', 'focus', 'pet', 'targettarget', 'focustarget' }) do
+    local names = { player=L["Player"], target=L["Target"], focus=L["Focus"], pet=L["Pet"], targettarget=L["Target of Target"], focustarget=L["Target of Focus"] }
+    local section = 'uf.appearance.' .. unit
+    ns.Copy.sections[section] = names[unit]
+    if unit == 'player' or unit == 'target' or unit == 'focus' then
+        local key = 'uf.' .. unit .. 'Portrait'
+        ns.Copy.rows[key] = { label=L["Portrait"], desc=L["Choose the character portrait or class icon for this frame."] }
+        S:Row{ key=key, section=section, tab='settings', kind='choice', path='unitframes.units.' .. unit .. '.portrait', resetValue=function() return S:DefaultPath('unitframes.units.' .. unit .. '.portrait') or 'none' end, choices={{'3d',L["Character Portrait"]},{'class',L["Class Icon"]},{'none',L["None (Addon Style)"]}}, apply=Refresh }
+    end
+    local key = 'uf.' .. unit .. 'Level'
+    ns.Copy.rows[key] = { label=L["Show Level"], desc=L["Show the unit level. Turning this off also hides its level badge."] }
+    S:Row{ key=key, section=section, tab='settings', path='unitframes.units.' .. unit .. '.showLevel', apply=Refresh }
+end

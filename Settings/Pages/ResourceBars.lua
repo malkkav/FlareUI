@@ -3,12 +3,12 @@ local S = ns.Settings
 
 --------------------------------------------------
 -- RESOURCE BARS
--- One switch + Edit row per bar (Modules/ResourceBars.lua); bars are made at login, so switching
+-- One switch per bar, with a shared page Edit button (Modules/ResourceBars.lua); bars are made at login, so switching
 -- asks for a reload. Druid mana shows for druids only.
 --------------------------------------------------
 local function Bar(key, extra)
     local row = {
-        key = "rb." .. key, kind = "frame", reload = true, half = true,
+        key = "rb." .. key, kind = "toggle", reload = true, half = true,
         path = "unitframes.resource.bars." .. key .. ".enabled",
         frame = function() return _G["FlareUI_Resource_" .. key] end,
     }

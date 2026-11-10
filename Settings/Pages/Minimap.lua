@@ -16,7 +16,7 @@ S:Module{ key = "mm", group = "HUD", order = 75, enabled = "minimap.enabled",
         return Enum.EditModeSystem and { { system = Enum.EditModeSystem.Minimap, name = _G.MINIMAP_LABEL or "Minimap" } } or {}
     end }
 
-S:Row{ key = "mm.style", kind = "choice", path = "minimap.style", choices = { "square", "round" }, reload = true }
+S:Row{ key = "mm.style", kind = "styles", path = "minimap.style", choices = { "square", "round" }, reload = true }
 S:Row{ key = "mm.zoom", kind = "choice", path = "minimap.autoZoom", choices = { 0, 5, 10, 30 }, apply = Refresh }
 -- the two for the pointer on the map together, then the clock, then the drawer
 S:Row{ key = "mm.coordsHover", path = "minimap.coordsOnHover", apply = Refresh }

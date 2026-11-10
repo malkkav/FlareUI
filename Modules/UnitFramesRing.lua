@@ -572,6 +572,13 @@ local function Crop(tex, artInfo, side, box)
     return true
 end
 
+-- Settings specimens use the same atlas coordinates as live frames, without registering units,
+-- changing the active style, or borrowing any protected frame.
+function Ring.SampleArt(tex, side, plate)
+    return Crop(tex, ART.target, side, plate and { 0, 1, 0, 1 } or nil)
+end
+Ring.SamplePlate = PLATE
+
 local function SetAtlasSafe(tex, atlas)
     if atlas and C_Texture.GetAtlasInfo(atlas) then
         tex:SetAtlas(atlas, false)
@@ -1193,6 +1200,10 @@ function Ring.Update(f)
     local ring = f.RingFrame
     if not ring or not Ring.Applies(f) then return end
     Ring.UpdatePlate(f)
+    -- Keep badge art, hit region and portrait cutout in sync after a live setting change.
+    local udb = Db(f)
+    local showLevel = udb and udb.showLevel and true or false
+    if not InCombatLockdown() and ring.Disc:IsShown() ~= showLevel then Ring.LayoutLevel(f) end
     local unit, kind = f.fuiUnit, Kind(f)
     local blizz = BLIZZ[kind]
     local exists = Readable(UnitExists(unit))

@@ -28,7 +28,7 @@ end
 
 S:Module{
     key = "qol", group = "Tools", order = 20, enabled = "tweaks.enabled",
-    tabs = { { key = "gameplay" }, { key = "bags" }, { key = "interface" }, { key = "advanced" } },
+    tabs = { { key = "gameplay", label = L["Gameplay"] }, { key = "bags", label = L["Bags and Looting"] }, { key = "nameplates", label = L["Nameplates"] }, { key = "interface", label = L["Interface"] }, { key = "advanced", label = L["Advanced"] } },
 }
 
 -- ADVANCED ---------------------------------------
@@ -141,7 +141,7 @@ local function BagAddon() return ns.Bags and ns.Bags.GetOtherBagAddon and ns.Bag
 local function NotCombined() return BagAddon() or not (ns.Bags and ns.Bags:IsCombined()) end
 local BAG_COLUMNS = { { 0, L["Default"] } }
 for n = 6, 20 do BAG_COLUMNS[#BAG_COLUMNS + 1] = { n, tostring(n) } end
-S:Row{ key = "qol.bagColumns", kind = "choice", tab = "bags", path = "tweaks.bagColumns", choices = BAG_COLUMNS,
+S:Row{ key = "qol.bagColumns", kind = "range", tab = "bags", path = "tweaks.bagColumns", choices = BAG_COLUMNS,
     apply = RefreshBags, disabled = NotCombined }
 S:Row{ key = "qol.bagGaps", half = true, tab = "bags", path = "tweaks.bagGaps", apply = RefreshBags, disabled = NotCombined }
 S:Row{ key = "qol.bagButtons", half = true, tab = "bags", path = "tweaks.bagButtons", apply = RefreshBags, disabled = NotCombined }
@@ -182,19 +182,19 @@ S:Row{ key = "qol.rumbleProcs", half = true, tab = "gameplay", path = "tweaks.ru
 -- INTERFACE --------------------------------------
 -- whether enemy plates show at all first, then what goes on them, then their text
 -- (Blizzard's own enemy plates, so another nameplate addon does not grey it out)
-S:Row{ key = "qol.npCombat", tab = "interface", path = "tweaks.combatPlates", apply = Refresh }
-S:Row{ key = "qol.npCombo", tab = "interface", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon }
-S:Row{ key = "qol.npQuest", tab = "interface", path = "tweaks.nameplateQuest", apply = Refresh, disabled = QuestBadgeTaken }
-S:Row{ key = "qol.npNames", tab = "interface", path = "tweaks.nameplateHideNames", apply = Refresh, disabled = NameplateAddon }
+S:Row{ key = "qol.npCombat", tab = "nameplates", path = "tweaks.combatPlates", apply = Refresh }
+S:Row{ key = "qol.npCombo", tab = "nameplates", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon }
+S:Row{ key = "qol.npQuest", tab = "nameplates", path = "tweaks.nameplateQuest", apply = Refresh, disabled = QuestBadgeTaken }
+S:Row{ key = "qol.npNames", tab = "nameplates", path = "tweaks.nameplateHideNames", apply = Refresh, disabled = NameplateAddon }
 -- live when switched on; switching off leaves visible plates' bars wide until Blizzard re-lays
 -- them, so the reload bar offers a reload
-S:Row{ key = "qol.npLevel", tab = "interface", path = "tweaks.nameplateHideLevel", disabled = NameplateAddon,
+S:Row{ key = "qol.npLevel", tab = "nameplates", path = "tweaks.nameplateHideLevel", disabled = NameplateAddon,
     apply = function(on)
         Refresh()
         S:TrackReload("qol.npLevel", on and "on" or "off", "on")
     end }
 -- the level moves in front of the name: needs the box hidden and the names shown
-S:Row{ key = "qol.npLevelName", tab = "interface", path = "tweaks.nameplateLevelName", parent = "qol.npLevel", apply = Refresh,
+S:Row{ key = "qol.npLevelName", tab = "nameplates", path = "tweaks.nameplateLevelName", parent = "qol.npLevel", apply = Refresh,
     disabled = function()
         return NameplateAddon() or not S:GetPath("tweaks.nameplateHideLevel") or S:GetPath("tweaks.nameplateHideNames") and true or false
     end }

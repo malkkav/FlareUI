@@ -19,7 +19,7 @@ S:On("PageShown", function(key)
 end)
 
 -- (Blizzard's Tracker in Gamepad Mode is on the Quality of Life page, under Gamepad)
-S:Row{ key = "qt.opacity", kind = "choice", path = "objectivetracker.opacity", choices = S:OpacityChoices(), apply = Refresh }
+S:Row{ key = "qt.opacity", kind = "range", path = "objectivetracker.opacity", choices = S:OpacityChoices(), apply = Refresh }
 S:Row{ key = "qt.border", kind = "choice", path = "objectivetracker.borderTexture", choices = S.BorderChoices,
     apply = Refresh }
 

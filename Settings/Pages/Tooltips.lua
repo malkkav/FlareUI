@@ -21,7 +21,7 @@ S:Module{ key = "tt", group = "Info", order = 30, enabled = "tooltips.enabled", 
 
 local SCALES = {}
 for i = 5, 15 do SCALES[#SCALES + 1] = { i / 10, (i * 10) .. "%" } end
-S:Row{ key = "tt.scale", kind = "choice", path = "tooltips.scale", choices = SCALES, apply = Refresh }
+S:Row{ key = "tt.scale", kind = "range", path = "tooltips.scale", choices = SCALES, apply = Refresh }
 
 local anchor = Both({ "tooltips.anchor", "tooltips.anchorFrames" })
 S:Row{ key = "tt.anchor", kind = "choice", choices = { "default", "cursorOffset" },

@@ -35,6 +35,7 @@ function S:FontRows(def)
         local function Closed() return not open[heading] end
         S:Row{
             key = heading, kind = "expander", tab = def.tab, section = def.section,
+            previewFont = font.path,
             get = function() return true end,   -- never greys out its child rows
             isOpen = function() return open[heading] end,
             toggle = function() open[heading] = not open[heading] end,
@@ -45,6 +46,7 @@ function S:FontRows(def)
             row.parent, row.tab, row.section, row.hidden, row.apply = heading, def.tab, def.section, Closed, def.apply
             row.collapsedBy = heading   -- searchable while folded; a search result opens the heading
             row.half = true
+            row.previewFont = font.path
             S:Row(row)
         end
         Control("face", { kind = "dropdown", choices = Faces, dropdownWidth = 150 })

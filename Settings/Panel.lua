@@ -9,9 +9,9 @@ local S = ns.Settings
 --------------------------------------------------
 local WIDTH, HEIGHT = 960, 716   -- with the reload bar below (46), fits 768 units (UI scale 1)
 local HEADER_H, FOOTER_H = 34, 34
-local LEFT_W, RIGHT_W = 190, 250
+local LEFT_W, RIGHT_W = 166, 250
 local PAD = 12
-local ROW_H, SECTION_H = 26, 30
+local ROW_H, SECTION_H = 30, 34
 local INDENT = 18
 -- window minus borders, both side columns, their padding and the scroll line
 local CONTENT_W = WIDTH - 12 - LEFT_W - RIGHT_W - 2 * PAD - 14
@@ -208,6 +208,40 @@ end
 -- 2. RIGHT COLUMN
 --------------------------------------------------
 local preview = {}
+local previewRow
+
+local function ShowVisual(row, value)
+    if not preview.canvas then return end
+    if preview.module ~= current or preview.tab ~= currentTab[current] then
+        preview.spec = nil; preview.helpRow = nil; preview.module = current; preview.tab = currentTab[current]
+    end
+    if preview.dirty and not row and preview.spec and S.rows then
+        preview.spec = ns.SettingsPreview.Resolve(S.rows[preview.spec.key]) or preview.spec
+    end
+    local spec = ns.SettingsPreview.Resolve(row, value) or preview.spec or ns.SettingsPreview.Module(current)
+    if not row and not spec and current == 'qol' then
+        local tab = currentTab[current] or 'gameplay'
+        if tab == 'bags' then spec = { kind = 'bags', key = 'qol.bagsOverview' }
+        elseif tab == 'nameplates' then spec = { kind = 'nameplate', key = 'qol.npOverview' } end
+    end
+    if not row and current == 'au' and currentTab[current] == 'reminders' then spec = preview.spec or {kind='reminders',key='au.remindersOverview'} end
+    -- One stable composition for the whole Action Bars page. Only dropdown exploration carries
+    -- a temporary value; ordinary hover changes the explanation, not the scene or animation.
+    if spec and spec.kind == 'actions' and value == nil then spec = { kind = 'actions', key = 'ab.overview' } end
+    local old = preview.spec
+    local same = old and spec and old.kind == spec.kind and old.key == spec.key and old.value == spec.value
+        and old.path == spec.path and old.font == spec.font
+    preview.spec = spec
+    local shown
+    if same and not preview.dirty and not preview.canvas.invalidated and preview.canvas.frame:IsShown() then shown = true
+    else shown = ns.SettingsPreview.Show(preview.canvas, spec) end
+    preview.dirty = nil
+    preview.picture:SetShown(not shown)
+    if preview.pause then preview.pause:SetShown(shown and true or false) end
+    preview.title:ClearAllPoints()
+    preview.title:SetPoint("TOPLEFT", shown and preview.canvas.frame or preview.picture, "BOTTOMLEFT", 0, -12)
+    preview.title:SetPoint("RIGHT", -PAD, 0)
+end
 
 local function ShowPreview(title, desc, tip)
     preview.title:SetText(title or "")
@@ -217,12 +251,24 @@ end
 
 -- nothing hovered: the picture and a hint
 local function ShowModulePreview()
+    previewRow = nil
+    ShowVisual(nil)
+    local help = preview.helpRow
+    if help then
+        local title = S:Text(help.key, "info")
+        if not title or title == "" then title = help:Label() end
+        ShowPreview(title, help:Description(), help:Tip())
+        return
+    end
     ShowPreview(S:WindowText("infoPanelNothingHovered", L["Info Panel"]),
         S:WindowText("infoPanelNothingHovered2", L["Hover any option to see how it works!"]))
 end
 
 -- title: the row's info text, else its label, else its section title
-local function ShowRowPreview(row)
+local function ShowRowPreview(row, value)
+    previewRow = row
+    ShowVisual(row, value)
+    preview.helpRow = row
     local title = S:Text(row.key, "info")
     if not title or title == "" then title = row:Label() end
     if not title or title == "" then
@@ -233,7 +279,7 @@ end
 
 -- for custom tabs' own controls
 function Panel:ShowPreview(title, desc, tip)
-    if preview.picture then ShowPreview(title, desc, tip) end
+    if preview.picture then previewRow = nil; ShowVisual(nil); ShowPreview(title, desc, tip) end
 end
 function Panel:ShowModulePreview()
     if preview.picture then ShowModulePreview() end
@@ -247,13 +293,20 @@ local Build = {}     -- kind -> function(f): adds the control once
 local Fill = {}      -- kind -> function(f, row): shows the row's values
 
 local function RowEnter(self)
-    if self.row then ShowRowPreview(self.row) end
+    if self.row then
+        if self.row.kind == 'framecard' then ShowPreview(self.row:Label(), self.row:Description(), self.row:Tip())
+        else ShowRowPreview(self.row, ns.SettingsPreview.HoverValue(self.row)) end
+    end
     self.hover:Show()
 end
 
 local function RowLeave(self)
     self.hover:Hide()
-    ShowModulePreview()
+    if self.row and self.row.kind == 'framecard' then return end
+    -- Keep a visual row visible after hover; cards revert from the hovered variant to the saved
+    -- selection. Behaviour-only rows retain the existing explanation/picture behaviour.
+    if self.row and ns.SettingsPreview.Resolve(self.row) then ShowRowPreview(self.row)
+    else ShowModulePreview() end
 end
 
 local function NewRowFrame(parent, kind)
@@ -329,6 +382,9 @@ local function OnToggleMenuClosed()
 end
 local function SetupChoiceMenu(dropdown, f)
     dropdown:RegisterCallback(DropdownButtonMixin.Event.OnMenuClose, OnToggleMenuClosed, dropdown)
+    dropdown:RegisterCallback(DropdownButtonMixin.Event.OnMenuClose, function()
+        if f.row then ShowRowPreview(f.row) end
+    end, f)
     dropdown:SetupMenu(function(_, root)
         local row = f.row
         if not row then return end
@@ -340,7 +396,16 @@ local function SetupChoiceMenu(dropdown, f)
                 root:CreateCheckbox(c.text, IsTicked, Tick, c)
             else
                 c.row = row
-                root:CreateRadio(c.text, IsChoice, PickChoice, c)
+                local option = root:CreateRadio(c.text, IsChoice, PickChoice, c)
+                option:SetOnEnter(function() ShowRowPreview(row, c.value) end)
+                option:SetOnLeave(function() ShowRowPreview(row) end)
+                if row.previewFont and row.key:match('%.face$') then
+                    option:AddInitializer(function(button)
+                        if button.fontString then
+                            ns.SetFontFamily(button.fontString, ns.GetFontPath(c.value), 13, '')
+                        end
+                    end)
+                end
             end
         end
     end)
@@ -363,32 +428,109 @@ Fill.toggle = function(f, row)
     f.control:SetChecked(row:Get() and true or false)
 end
 
--- choice: Blizzard's Settings stepper (dropdown with arrows)
+-- Named choices use the same compact dropdown as the longer selection lists.
 Build.choice = function(f)
-    local stepper = CreateFrame("Frame", nil, f, "SettingsDropdownWithButtonsTemplate")
-    stepper:SetPoint("RIGHT", 4, 0)
-    if stepper.Label then stepper.Label:Hide() end
-    stepper.Dropdown:SetWidth(180)
-    -- the template places its arrows past its right edge; anchor them to the row so none is clipped
-    stepper.IncrementButton:ClearAllPoints()
-    stepper.IncrementButton:SetPoint("RIGHT", f, "RIGHT", -6, 0)
-    stepper.Dropdown:ClearAllPoints()
-    stepper.Dropdown:SetPoint("RIGHT", stepper.IncrementButton, "LEFT", -5, 0)
-    stepper.DecrementButton:ClearAllPoints()
-    stepper.DecrementButton:SetPoint("RIGHT", stepper.Dropdown, "LEFT", -5, 0)
-    ForwardHover(stepper.Dropdown, f)
-    ForwardHover(stepper.IncrementButton, f)
-    ForwardHover(stepper.DecrementButton, f)
-    f:SetHeight(ROW_H + 8)
-    f.stepper = stepper
-    f.control = stepper
-    SetupChoiceMenu(stepper.Dropdown, f)
+    local dd = CreateFrame("DropdownButton", nil, f, "WowStyle1DropdownTemplate")
+    dd:SetPoint("RIGHT", -4, 0)
+    ForwardHover(dd, f)
+    f.control = dd
+    SetupChoiceMenu(dd, f)
 end
 Fill.choice = function(f, row)
-    -- narrower on half rows
-    f.stepper.Dropdown:SetWidth(row.half and 96 or 180)
-    f.stepper.Dropdown:GenerateMenu()
-    f:SetHeight(ROW_H + 8)
+    f.control:SetWidth(row.half and 104 or 190)
+    f.control:GenerateMenu()
+    f:SetHeight(ROW_H + 4)
+end
+
+-- Discrete numeric settings keep their registered choices, including Default/Auto.
+-- Dragging previews without writes; releasing commits once. Keyboard changes commit directly.
+Build.range = function(f)
+    local slider = CreateFrame("Slider", nil, f, "OptionsSliderTemplate")
+    slider:SetSize(146, 16); slider:SetPoint("RIGHT", -58, 0)
+    slider:SetValueStep(1); slider:SetObeyStepOnDrag(true)
+    if slider.Low then slider.Low:Hide() end
+    if slider.High then slider.High:Hide() end
+    if slider.Text then slider.Text:Hide() end
+    f.value = Text(f, "GameFontHighlightSmall", "RIGHT")
+    f.value:SetPoint("RIGHT", -4, 0); f.value:SetWidth(48); f.value:SetWordWrap(false)
+    local function Commit()
+        if f.row and f.rangeChoice and not f.row:IsDisabled() then f.row:Set(f.rangeChoice.value) end
+    end
+    slider:SetScript("OnMouseDown", function() f.rangeDragging = true end)
+    slider:SetScript("OnMouseUp", function() f.rangeDragging = nil; Commit() end)
+    slider:SetScript("OnValueChanged", function(_, value)
+        if f.rangeFilling or not f.row then return end
+        local choices = f.rangeChoices
+        local choice = choices and choices[math.max(1, math.min(#choices, math.floor(value + 0.5)))]
+        if not choice then return end
+        f.rangeChoice = choice; f.value:SetText(choice.text)
+        if f.rangeDragging then ShowRowPreview(f.row, choice.value) else Commit() end
+    end)
+    ForwardHover(slider, f)
+    f.control = slider
+end
+Fill.range = function(f, row)
+    f.rangeFilling = true; f.rangeDragging = nil
+    f.rangeChoices = row:Choices()
+    local selected = 1
+    for i, choice in ipairs(f.rangeChoices) do if choice.value == row:Get() then selected = i end end
+    f.rangeChoice = f.rangeChoices[selected]
+    f.control:SetMinMaxValues(1, math.max(1, #f.rangeChoices))
+    f.control:SetValue(selected)
+    f.value:SetText(f.rangeChoice and f.rangeChoice.text or '')
+    f.rangeFilling = nil
+    f:SetHeight(ROW_H + 4)
+end
+
+-- Only the two major style choices use cards. The remaining options keep their existing controls.
+Build.styles = function(f)
+    f.cards = {}
+end
+Fill.styles = function(f, row)
+    local choices = row:Choices()
+    local minimap = row.key == 'mm.style'
+    local gap = minimap and 10 or 6
+    local width = (f:GetWidth() - 12 - (#choices - 1) * gap) / #choices
+    if minimap then width = math.min(168, width) end
+    local cardHeight = minimap and 174 or 86
+    local previewHeight = minimap and 148 or 62
+    local top = f.crumb:GetText() ~= "" and 32 or 20
+    f.label:ClearAllPoints(); f.label:SetPoint("TOPLEFT", 6, -(top - 20))
+    f:SetHeight(top + cardHeight + 8)
+    for i, choice in ipairs(choices) do
+        local b = f.cards[i]
+        if not b then
+            b = CreateFrame("Button", nil, f, "BackdropTemplate")
+            b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+            b.label = Text(b, "GameFontNormalSmall", "CENTER")
+            b.label:SetPoint("BOTTOMLEFT", 4, 6); b.label:SetPoint("BOTTOMRIGHT", -4, 6)
+            b.tick = Text(b, "GameFontNormal", "RIGHT")
+            b.tick:SetPoint("TOPRIGHT", -4, -3); b.tick:SetText("|TInterface\\Buttons\\UI-CheckBox-Check:14|t")
+            b.canvas = ns.SettingsPreview.Create(b, 100, 65)
+            b.canvas.frame:SetPoint("TOPLEFT", 3, -3)
+            b:SetScript("OnEnter", function(self) if f.row then ShowRowPreview(f.row, self.value) end end)
+            b:SetScript("OnLeave", function() if f.row then ShowRowPreview(f.row) end end)
+            b:SetScript("OnClick", function(self)
+                if f.row and not f.row:IsDisabled() then ns.ButtonSound(); f.row:Set(self.value) end
+            end)
+            f.cards[i] = b
+        end
+        b.value = choice.value
+        b:SetPoint("TOPLEFT", 6 + (i - 1) * (width + gap), -top)
+        b:SetSize(width, cardHeight)
+        b.label:SetText(choice.text)
+        b.canvas.width, b.canvas.height = width - 6, previewHeight
+        b.canvas.isStyleCard = true
+        b.canvas.frame:SetSize(width - 6, previewHeight)
+        ns.SettingsPreview.Style(b.canvas, row, choice.value)
+        local selected = row:Get() == choice.value
+        b:SetBackdropColor(0.04, 0.035, 0.025, 0.8)
+        b:SetBackdropBorderColor(selected and 1 or 0.45, selected and 0.82 or 0.35, selected and 0 or 0.22, 1)
+        b.tick:SetShown(selected)
+        b:SetEnabled(not row:IsDisabled()); b:SetAlpha(row:IsDisabled() and 0.45 or 1)
+        b:Show()
+    end
+    for i = #choices + 1, #f.cards do f.cards[i]:Hide() end
 end
 
 -- dropdown (long lists). row.sideButtons = { left = def, right = def } puts buttons beside it,
@@ -695,7 +837,15 @@ end
 
 -- Edit button, greyed in combat
 local function EditButton(f, onClick)
-    local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    local b = CreateFrame("Button", nil, f, "BackdropTemplate")
+    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    b:SetBackdropColor(0.10, 0.085, 0.06, 1)
+    b:SetBackdropBorderColor(0.47, 0.36, 0.22, 1)
+    local label = Text(b, "GameFontHighlightSmall", "CENTER")
+    label:SetAllPoints(); b:SetFontString(label)
+    b:SetScript("OnDisable", function(self) self:SetAlpha(0.4) end)
+    b:SetScript("OnEnable", function(self) self:SetAlpha(1) end)
+    b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
     b:SetSize(80, 22)
     b:SetText(S:WindowText("editModeButtonOnAFrameRow", L["Edit"]))
     b:SetScript("OnClick", function()
@@ -728,6 +878,42 @@ Fill.frame = function(f, row)
     f.edit:SetWidth(ButtonWidthForText(f.edit, row.half and 60 or 80))
     f.control:SetChecked(row:Get() and true or false)
     f.edit:SetEnabled(S:CanEditFrames() and row:Get() and row.frame and row.frame() ~= nil or false)
+end
+
+-- Frame-group cards live on their own tab. Clicking artwork toggles the existing row; Edit is
+-- separate and retains the same combat/loaded-frame requirements as the former checkbox row.
+Build.framecard = function(f)
+    local b = CreateFrame("Button", nil, f, "BackdropTemplate")
+    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    b:SetPoint("TOPLEFT", 4, -4)
+    b.canvas = ns.SettingsPreview.Create(b, 210, 68)
+    b.canvas.frame:SetPoint("TOPLEFT", 8, -28)
+    b:SetScript("OnClick", function()
+        if f.row and not f.row:IsDisabled() then ns.ButtonSound(); f.row:Set(not f.row:Get()) end
+    end)
+    b.enable = CreateFrame("CheckButton", nil, b, "UICheckButtonTemplate")
+    b.enable:SetSize(24, 24); b.enable:SetPoint("TOPRIGHT", -5, -4)
+    b.enable:SetScript("OnClick", function(self)
+        if f.row and not f.row:IsDisabled() then ns.ButtonSound(); f.row:Set(self:GetChecked() and true or false) end
+    end)
+    -- Help changes on hover; these cards already contain the complete visual preview.
+    b:SetScript("OnEnter", function() if f.row then ShowPreview(f.row:Label(), f.row:Description(), f.row:Tip()) end end)
+    f.label:SetParent(b); f.label:ClearAllPoints(); f.label:SetPoint("TOPLEFT", 10, -8); f.label:SetPoint("RIGHT", b, "RIGHT", -34, 0)
+    f.control = b
+
+end
+Fill.framecard = function(f, row)
+    local b = f.control
+    local extra = (f.crumb:GetText() or '') ~= '' and 18 or 0
+    b:ClearAllPoints(); b:SetPoint('TOPLEFT', 4, -4 - extra)
+    f:SetHeight(106 + extra); b:SetSize(f:GetWidth() - 8, 100)
+    b.canvas.width = f:GetWidth() - 24; b.canvas.frame:SetWidth(b.canvas.width)
+    ns.SettingsPreview.Show(b.canvas, { kind = 'frames', key = row.key })
+    local on = row:Get() and true or false
+    b:SetBackdropColor(0.035, 0.03, 0.025, 0.8)
+    b:SetBackdropBorderColor(0.45, 0.35, 0.22, 1)
+    b.enable:SetChecked(on); b.enable:SetEnabled(not row:IsDisabled())
+    b.canvas.frame:SetAlpha(on and 1 or 0.45)
 end
 
 -- legend: a short block of lines under its label (row.lines() returns them), such as which
@@ -791,6 +977,7 @@ local function SetRowEnabled(f, enabled)
 end
 
 local function RowLabelSpace(f, row)
+    if row.kind == "styles" or row.kind == "framecard" then return f:GetWidth() - 24 end
     -- Use the first visible control, not the width of its container.
     local control = f.control or f.edit
     if f.stepper then
@@ -887,9 +1074,19 @@ local function SectionHeader(parent, text, y, sectionKey)
         h:SetHeight(SECTION_H)
         h.kind = key
         h.text = Text(h, "GameFontNormal")
-        h.text:SetPoint("BOTTOMLEFT", 6, 6)
+        h.text:SetPoint("BOTTOMLEFT", 6, 8)
+        h.text:SetTextColor(0.83, 0.68, 0.43)
         h.sign = Text(h, "GameFontNormal")
         h.sign:SetPoint("BOTTOMRIGHT", -10, 6)
+        h.reset = CreateFrame("Button", nil, h, "UIPanelButtonTemplate")
+        h.reset:SetSize(52, 20)
+        h.reset:SetPoint("BOTTOMRIGHT", -30, 5)
+        h.reset:SetText(L["Reset"])
+        h.reset:SetScript("OnClick", function(self)
+            local owner = self:GetParent()
+            S:ResetSection(current, owner.sectionKey, owner.resetTab)
+        end)
+        h.text:SetPoint("RIGHT", h.reset, "LEFT", -8, 0)
         h.line = Line(h)
         h.line:SetPoint("BOTTOMLEFT", 0, 2)
         h.line:SetPoint("BOTTOMRIGHT", 0, 2)
@@ -904,6 +1101,9 @@ local function SectionHeader(parent, text, y, sectionKey)
     end
     h:SetParent(parent)
     h.sectionKey = sectionKey
+    local active = S.modules[current] and Panel:ActiveTab(S.modules[current])
+    h.resetTab = active and active.key
+    h.reset:SetShown(sectionKey and S:CanResetSection(current, sectionKey, h.resetTab) or false)
     h.sign:SetText(sectionKey and (closedSections[sectionKey] and "+" or "-") or "")
     h.text:SetText(text)
     h:ClearAllPoints()
@@ -1017,20 +1217,20 @@ local function UpdateHeader(module)
         b:SetShown(tab and true or false)
         if tab then
             b.tabKey = tab.key
-            b.Text:SetText(names[i] or tab.key)
+            b.Text:SetText(tab.label or names[i] or tab.key)
             local new = module:HasNew(tab.key)
             if new and not b.newBadge then
                 b.newBadge = NewBadge(b)
                 b.newBadge:SetPoint("LEFT", b.Text, "RIGHT", NEW_GAP / NEW_SCALE, 0)
             end
             if b.newBadge then b.newBadge:SetShown(new) end
-            b:SetWidth((b.Text:GetStringWidth() or 60) + 40 + (new and 2 * (NEW_W + NEW_GAP) or 0))
+            b:SetWidth(math.min((CONTENT_W - 16 - (#module.tabs - 1) * 5) / #module.tabs, (b.Text:GetUnboundedStringWidth() or 60) + 24 + (new and NEW_W + NEW_GAP or 0)))
             if b.SetSelected then b:SetSelected(tab == active) end
         end
     end
     local tabbed = module.tabs and module:IsOn()
     page.tabLine:SetShown(tabbed and true or false)
-    if tabbed then height = height + 40 end
+    if tabbed then height = height + 34 end
     page.header:SetHeight(height)
 end
 
@@ -1081,6 +1281,9 @@ local function ShowCustom(module, tab)
     end
     host:Show()
     if tab.preview then
+        if preview.canvas then preview.canvas:Reset(); preview.canvas.frame:Hide() end
+        previewRow = nil
+        if preview.pause then preview.pause:Hide() end
         for _, region in ipairs({ preview.picture, preview.title, preview.desc, preview.tip }) do region:Hide() end
         preview.host:Show()
     end
@@ -1092,8 +1295,10 @@ local newVisit      -- the page and tab whose NEW badges are showing
 
 function Panel:Refresh()
     if not frame or not frame:IsShown() or self.opening then return end
+    preview.dirty = true
     ReleaseAll()
     HideCustom()
+    ShowModulePreview()
     -- only a wide custom tab, shown (not search results or a module that is off), widens the window
     do
         local module = searchText == "" and S.modules[current]
@@ -1279,6 +1484,11 @@ local function BuildNav(left)
             gap = gap + 10
         end
         for _, module in ipairs(group.modules) do
+            local icons = { ab=true, uf=true, rb=true, au=true, mm=true, ch=true, dm=true, qt=true, tt=true, qol=true, rm=true }
+            if icons[module.key] then
+                module.navIcon = 'Interface\\AddOns\\' .. ADDON_NAME .. '\\Media\\Icons\\Settings\\' .. module.key .. '.tga'
+                module.navIconRound = false
+            end
             local b = CreateFrame("Button", nil, left)
             b:SetSize(buttonWidth, 24)
             b:SetPoint("TOPLEFT", anchor, anchorPoint, x, -gap)
@@ -1452,7 +1662,7 @@ local function BuildWindow()
     art:SetVertTile(true)
     local wash = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
     wash:SetAllPoints(art)
-    wash:SetColorTexture(0, 0, 0, 0.5)
+    wash:SetColorTexture(0.015, 0.012, 0.009, 0.76)
     frame:Hide()
     tinsert(UISpecialFrames, "FlareUI_SettingsPanel")
     frame:SetScript("OnShow", function()
@@ -1475,7 +1685,10 @@ local function BuildWindow()
 
     -- header
     local title = Text(frame, "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", PAD + 4, -12)
+    title:SetPoint("TOPLEFT", PAD + 34, -12)
+    local logo = frame:CreateTexture(nil, "ARTWORK")
+    logo:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Art\\Icon.png")
+    logo:SetSize(28, 28); logo:SetPoint("TOPLEFT", PAD, -4)
     title:SetText(L["FlareUI"])
     local version = Text(frame, "GameFontDisableSmall")
     version:SetPoint("LEFT", title, "RIGHT", 8, -1)
@@ -1597,6 +1810,7 @@ local function BuildWindow()
     page.switch:SetSize(30, 30)
     page.switch:SetPoint("TOPLEFT", -2, 2)
     page.title = Text(header, "GameFontNormalHuge")
+    page.title:SetTextColor(0.94, 0.86, 0.69)
     page.title:SetWordWrap(true)
     page.switch:SetScript("OnClick", function(self)
         local on = self:GetChecked() and true or false
@@ -1627,7 +1841,7 @@ local function BuildWindow()
     page.desc = Text(header, "GameFontHighlightSmall")
     page.desc:SetPoint("TOPLEFT", 4, -36)
     page.desc:SetPoint("RIGHT", -4, 0)
-    page.desc:SetTextColor(0.62, 0.62, 0.62)
+    page.desc:SetTextColor(0.76, 0.73, 0.67)
 
     local banner = CreateFrame("Frame", nil, header, "BackdropTemplate")
     banner:SetHeight(30)
@@ -1652,9 +1866,17 @@ local function BuildWindow()
 
     -- module tabs
     page.tabButtons = {}
-    for i = 1, 4 do
-        local b = CreateFrame("Button", nil, header, "MinimalTabTemplate")
-        b:SetHeight(37)
+    for i = 1, 5 do
+        local b = CreateFrame("Button", nil, header, "BackdropTemplate")
+        b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        b.Text = Text(b, "GameFontHighlightSmall", "CENTER")
+        b.Text:SetPoint("LEFT", 8, 0); b.Text:SetPoint("RIGHT", -8, 0); b.Text:SetWordWrap(false)
+        function b:SetSelected(selected)
+            self:SetBackdropColor(selected and 0.19 or 0.055, selected and 0.15 or 0.048, selected and 0.08 or 0.038, 0.95)
+            self:SetBackdropBorderColor(selected and 0.86 or 0.37, selected and 0.67 or 0.29, selected and 0.30 or 0.19, 1)
+            self.Text:SetTextColor(selected and 1 or 0.81, selected and 0.85 or 0.78, selected and 0.51 or 0.70)
+        end
+        b:SetHeight(28)
         if i == 1 then b:SetPoint("BOTTOMLEFT", 8, 0) else b:SetPoint("BOTTOMLEFT", page.tabButtons[i - 1], "BOTTOMRIGHT", 5, 0) end
         b:SetScript("OnClick", function(self)
             PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
@@ -1714,7 +1936,23 @@ local function BuildWindow()
     preview.picture:SetPoint("TOP", 0, -PAD)
     preview.picture:SetTexture(PICTURE)
     preview.picture:SetSize(RIGHT_W - 2 * PAD, RIGHT_W - 2 * PAD)
+    preview.canvas = ns.SettingsPreview.Create(right, RIGHT_W - 2 * PAD, RIGHT_W - 2 * PAD)
+    preview.canvas.frame:SetPoint("TOP", 0, -32)
+    preview.canvas.frame:Hide()
+    local previewLabel = Text(right, "GameFontHighlightSmall")
+    previewLabel:SetPoint("TOPLEFT", PAD, -12); previewLabel:SetText(L["Preview"])
+    previewLabel:SetTextColor(0.76, 0.70, 0.59)
+    preview.pause = CreateFrame("Button", nil, right)
+    preview.pause:SetSize(48, 20); preview.pause:SetPoint("TOPRIGHT", -PAD, -6)
+    preview.pause:SetNormalFontObject("GameFontHighlightSmall")
+    preview.pause:SetText(L["Pause"])
+    preview.pause:SetScript("OnClick", function(self)
+        ns.SettingsPreview.paused = not ns.SettingsPreview.paused
+        self:SetText(ns.SettingsPreview.paused and L["Play"] or L["Pause"])
+        preview.dirty = true; ShowVisual(nil)
+    end)
     preview.title = Text(right, "GameFontNormalLarge")
+    preview.title:SetTextColor(0.83, 0.68, 0.43)
     preview.title:SetPoint("TOPLEFT", preview.picture, "BOTTOMLEFT", 0, -12)
     preview.title:SetPoint("RIGHT", -PAD, 0)
     preview.desc = Text(right, "GameFontHighlight")
@@ -1734,7 +1972,7 @@ local function BuildWindow()
     footer:SetHeight(FOOTER_H + 8)
     footer:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16 })
     footer:SetBackdropBorderColor(style.border[1], style.border[2], style.border[3], 1)
-    ns.Fade(footer, 4, { 0.42, 0.09, 0.06, 0.97 }, { 0.24, 0.04, 0.03, 0.97 })
+    ns.Fade(footer, 4, { 0.16, 0.13, 0.08, 0.98 }, { 0.07, 0.06, 0.04, 0.98 })
     footer:Hide()
     frame.footer = footer
     -- clamps the window with its bar
@@ -1750,8 +1988,10 @@ local function BuildWindow()
         ns.ShowDialog("FLAREUI_RELOAD")
     end)
 
-    S:On("RowChanged", function()
+    S:On("RowChanged", function(row)
         if Panel.toggleHold then Panel.toggleRefreshPending = true else Panel:Refresh() end
+        -- Refresh recycles row controls; re-render only when this was a visual settings change.
+        if frame:IsShown() and ns.SettingsPreview.Resolve(row) then ShowRowPreview(row) end
     end)
     S:On("ReloadChanged", UpdateFooter)
 
@@ -1764,7 +2004,7 @@ local function BuildWindow()
         for _, f in ipairs(used) do
             local row = f.row
             if f.edit and row then
-                local real = f.kind ~= "frame" or (row:Get() and row.frame and row.frame() ~= nil)
+                local real = (f.kind ~= "frame" and f.kind ~= "framecard") or (row:Get() and row.frame and row.frame() ~= nil)
                 f.edit:SetEnabled(canEdit and real and true or false)
             end
         end

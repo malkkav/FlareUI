@@ -65,6 +65,9 @@ local C = {
     NO_FONT = {},           -- a font setting with nothing set (only ever read)
 }
 
+-- Shared with the settings specimen so its palette follows the live tracker.
+OT.SampleColors = { TITLE = C.TITLE, TITLE_FOCUS = C.TITLE_FOCUS, ZONE = C.ZONE, OBJECTIVE = C.OBJECTIVE }
+
 -- Blizzard's strings where it has them
 local TEXT = {
     quests = _G.QUESTS_LABEL or "Quests",

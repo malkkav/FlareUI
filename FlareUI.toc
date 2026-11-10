@@ -93,6 +93,8 @@ Settings\RadialEditor.lua
 Settings\Copy.lua
 Settings\WhatsNew.lua
 Settings\Registry.lua
+Settings\Preview.lua
+Settings\PreviewSamples.lua
 Settings\Fonts.lua
 Settings\Pages\About.lua
 Settings\Pages\ActionBars.lua

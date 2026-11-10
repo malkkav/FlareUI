@@ -17,7 +17,7 @@ S:On("PageShown", function(key)
 end)
 
 local function AlwaysVisible() return (S:GetPath("chat.visibility") or "always") == "always" end
-S:Row{ key = "ch.opacity", kind = "choice", path = "chat.opacity", choices = S:OpacityChoices(), apply = Refresh, section = "ch.frame" }
+S:Row{ key = "ch.opacity", kind = "range", path = "chat.opacity", choices = S:OpacityChoices(), apply = Refresh, section = "ch.frame" }
 S:Row{ key = "ch.visibility", kind = "choice", path = "chat.visibility",
     choices = { "always", "interactions", "combat" }, apply = Refresh, section = "ch.frame" }
 S:Row{ key = "ch.fade", kind = "choice", path = "chat.fadeSpeed", choices = { "instant", "fast", "slow" },
@@ -29,7 +29,7 @@ S:Row{ key = "ch.fadeDelay", kind = "choice", path = "chat.autoHideDelay", choic
 S:Row{ key = "ch.border", kind = "choice", path = "chat.borderTexture", choices = S.BorderChoices,
     apply = Refresh, section = "ch.frame" }
 
-S:Row{ key = "ch.editBoxOpacity", kind = "choice", path = "chat.editBoxOpacity", choices = S:OpacityChoices(), apply = Refresh, section = "ch.editBoxSection" }
+S:Row{ key = "ch.editBoxOpacity", kind = "range", path = "chat.editBoxOpacity", choices = S:OpacityChoices(), apply = Refresh, section = "ch.editBoxSection" }
 S:Row{ key = "ch.editBox", kind = "choice", path = "chat.editBoxPosition",
     choices = { "inside", "below", "above" }, apply = Refresh, section = "ch.editBoxSection" }
 
