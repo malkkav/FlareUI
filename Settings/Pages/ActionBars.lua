@@ -44,6 +44,10 @@ S:Row{ key = "ab.autoRanks", path = "actionbars.autoRanks", half = true,
 S:Row{ key = "ab.stopAutoAdd", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
 S:Row{ key = "ab.stealthPaging", path = "actionbars.stealthPaging", apply = Refresh, half = true }
 S:Row{ key = "ab.noStancePaging", path = "actionbars.noStancePaging", apply = Refresh, half = true }
+-- last in Tweaks: Blizzard's Cooldown Manager restyled (Auras.lua 9b, so it needs Buffs & Debuffs on);
+-- off needs a reload to give Blizzard's look back
+S:Row{ key = "ab.skinCDM", path = "auras.skinCDM", reload = true,
+    disabled = function() return not S:GetPath("auras.enabled") end }
 
 -- the FlareUI XP Bar: off leaves Blizzard's bars alone, so turning it on or off reloads; its options sit
 -- under it and grey out while it's off

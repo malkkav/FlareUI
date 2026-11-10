@@ -1,7 +1,58 @@
 # FlareUI 5.1.1
 
+**Restart the game fully after updating** (not just /reload): this version adds new files.
+
+## Highlights
+- **Moved frames come back.** Since 5.1, a unit frame moved in Edit Mode could vanish or get stuck in the top-right corner. Fixed, and lost frames return to where you dropped them. Thanks for the reports!
+- **Buff Reminders**, a **Loot Feed** and a **Mouse Ring**, with more of what you asked for from other addons.
+
 ## New
-- Chat: with **Better Player Names** on, Say lines start with a clickable **[Say]** label (**[S]** with **Short Channel Names**). Click it to switch your chat back to Say. Thanks to parchinskiy for the feature!
+- **Russian** translation. Pick it in **Settings › Language**, or let FlareUI follow your game's language. Thanks to parchinskiy for the translation!
+- Buffs and debuffs: **Buff Reminders** (off), on its own **Buff Reminders** tab. Thanks for the request!
+  - An icon for each of your class's buffs missing on you or your group, or about to run out. Click it to cast the buff.
+  - Covers group buffs, self buffs, weapon imbues and poisons.
+  - Paladins: **Blessing** (Automatic) gives warriors, rogues and hunters Might, and everyone else Wisdom, or one blessing for everyone.
+  - **Pet Reminders** (on): hunters call, revive or mend their pet; warlocks summon theirs.
+  - **Food and Flask** (off): a reminder in dungeons and raids, or always.
+  - **When It Shows**: Solo, In a Party, In a Raid, **Hide in Rested Areas** (off) and **Only When You're the Only Provider** (off).
+  - **Alerts**: a **Sound** (off) and gold or orange glows (off).
+  - Edit Mode: **Orientation**, **Growth** and **Icon Size**. Hidden in a fight.
+- Quality of Life: a **Bags and Looting** tab, with the bag options, looting and the new Loot Feed.
+- Bags: **Keyring in Backpack** (off) and **Crafting Bag in Backpack** (off) add them to the bottom of the combined backpack. Thanks for the request!
+- Looting: **Loot Feed** (off) floats what you loot up beside you, so you don't have to read the chat. Thanks for the request!
+  - **Position**: **At the Cursor** (default), or **Where Placed** in Edit Mode.
+  - **Minimum Quality** (Poor) and **Show Money** (on).
+- Quality of Life › Gameplay › Cursor: **Mouse Ring** (Off) puts a bronze ring round your cursor: **Always**, **In Combat** or **While Right-Clicking**.
+  - **Size** (40) and **Thickness** (3).
+  - **Cast Ring**, **GCD Ring** and **Swing Ring** arcs (off).
+  - **Out-of-Range Colour** (off) turns it red while your target is out of reach.
+  - **Class Colours** and **Hide While Turning** (off).
+- Quality of Life › Advanced: **UI Scale** (Blizzard's) sets the size of the whole interface as you log in. Pick **Pixel Perfect**, a preset for 4K, 1440p or 1080p screens, or **Custom** (30% to 200%). Thanks for the request!
+- Quality of Life › Interface: **Wider Vendor Window** (off) shows 20 items a page.
+- Minimap: **Open on Mouseover** (off), under **Addon Button Drawer**, opens the drawer when you point at the day/night button. Thanks for the request!
+- Chat › Formatting, all off. Thanks for the request!
+  - **Race Icons** and **Class Icons** before player names.
+  - **Item and Spell Icons** inside links.
+  - **Whisper Markers**: a green > for whispers you get, a red < for ones you send.
+  - **Colon After Names**: "[Aria]: hello".
+- Chat: with **Better Player Names** on, Say lines start with a clickable **[Say]** label (**[S]** with short channel names). Click it to switch your chat back to Say. Thanks to parchinskiy for the feature!
+- Unit frames: **Range Check** (on), in the Look section of the target, focus, party, raid and boss frames. Off, the frame never fades for distance. Thanks for the report!
+- Resource bars: **Range Check** (on) for the three swing timers.
+
+## Changed
+- Quality of Life: **Buy More Than One Stack** is now **Enhanced Vendor Purchases**, with **Stack** and **MAX** buttons, items that don't stack, and its progress above the vendor window. Your setting carries over.
+- Chat: **Short Channel Names** is now **Channel Names**: **Full**, **Short** ("[2. Trade]") or **Number** ("[2]"). If you had it on, you get Number.
+- Chat: the **Formatting** options are in a new order.
+- Quality of Life: **Convenience** is now at the top of the Gameplay tab.
+- Action bars: **Skin Cooldown Manager** moved to the bottom of **Tweaks**. Your setting carries over.
+- Player frame: the **Mana on Shapeshift** bar is as tall as the power bar, so its number is easier to read. Thanks for the report!
+- Tooltips: **Compare with Shift** is now off by default.
+
+## Fixed
+- Unit frames: frames moved in Edit Mode no longer vanish or jump to the top-right corner. Thanks for the reports!
+- Resource bars: swing timers now turn red when your target is out of range.
+- Minimap: addon buttons on the edge of the square minimap no longer slip behind its border. Thanks for the report!
+- Settings and tour: buttons grow to fit longer translated labels, and the profile buttons move to two rows when they need the room. Thanks to parchinskiy for the fix!
 
 # FlareUI 5.1
 

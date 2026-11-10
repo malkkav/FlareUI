@@ -885,12 +885,48 @@ local function InstallSquareHooks()
     hooksecurefunc("MiniMapIndicatorFrame_UpdatePosition", PlaceIndicators)
 end
 
+-- Square style: addon buttons on the map. They are the map's children at its level + 1 unless they
+-- set their own (LibDBIcon's sit in MEDIUM), so the square border, two above the map, drew over the
+-- ones on its edge. Any Button child of the map at or under the border goes one above it; the border
+-- keeps its level over the map. Addons add buttons whenever they like: checked again whenever the map
+-- has a new child (a light 2-second count), and after loading screens.
+function MM.LiftMapButtons()
+    local art = MM.Frame
+    if not art then return end
+    local want = MinimapFrame:GetFrameLevel() + 2
+    if art:GetFrameLevel() ~= want then art:SetFrameLevel(want) end
+    local strata = art:GetFrameStrata()
+    for _, child in ipairs({ MinimapFrame:GetChildren() }) do
+        if child.IsObjectType and child:IsObjectType("Button") and not (child.IsForbidden and child:IsForbidden())
+                and not (InCombatLockdown() and child:IsProtected())
+                and child:GetFrameStrata() == strata and child:GetFrameLevel() <= want then
+            child:SetFrameLevel(want + 1)
+        end
+    end
+end
+
+local function WatchMapButtons()
+    MM.LiftMapButtons()
+    MM.mapChildren = MinimapFrame:GetNumChildren()
+    C_Timer.NewTicker(2, function()
+        local count = MinimapFrame:GetNumChildren()
+        if count ~= MM.mapChildren then
+            MM.mapChildren = count
+            MM.LiftMapButtons()
+        end
+    end)
+    local events = CreateFrame("Frame")
+    events:RegisterEvent("PLAYER_ENTERING_WORLD")
+    events:SetScript("OnEvent", function() C_Timer.After(1, MM.LiftMapButtons) end)
+end
+
 local function InitSquare()
     KeepMapSquare()
     RemoveEditModeSettings()
     KeepMapUnrotated()
     if Cluster.SetRotateMinimap then hooksecurefunc(Cluster, "SetRotateMinimap", KeepMapUnrotated) end
     CreateMapArt()
+    WatchMapButtons()
     StyleHeader()
     InstallSquareHooks()
     -- Edit Mode's box on the border art's edge strips, less their shadow outside the gold line

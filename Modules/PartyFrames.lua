@@ -632,6 +632,12 @@ local function UpdateRange(f)
             UpdateStatus(f)
         end
     end
+    -- Range Check off (rangeCheck in the frame's settings, on by default): always in full
+    local st = TS(f)
+    if st and st.rangeCheck == false then
+        f:SetAlpha(1)
+        return
+    end
     if f.ctx and f.ctx.hostile and not IsEditing() and K.ApplyRangeAlpha then
         K.ApplyRangeAlpha(f, f.fuiUnit)
         return
@@ -2750,6 +2756,9 @@ local function BuildSettings()
         end)(),
         K.ClassColorSetting(function() return ns.ClassColorsOn(S()) end, setS("classColor")),
         K.SmoothBarsSetting(getS("smoothBars"), setS("smoothBars")),
+        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The frame fades while the unit is out of your range. Off, it always shows in full."],
+          get = function() return getS("rangeCheck")() ~= false end, set = setS("rangeCheck") },
     })
 
     local function noCast() return not getS("castbar")() end

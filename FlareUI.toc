@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 5.1
+## Version: 5.1.1
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -68,6 +68,7 @@ Modules\BossFrames.lua
 Modules\ResourceBars.lua
 Modules\Totems.lua
 Modules\Auras.lua
+Modules\BuffReminders.lua
 Modules\Minimap.lua
 Modules\MinimapBag.lua
 Modules\TweaksCVars.lua
@@ -75,6 +76,8 @@ Modules\Tweaks.lua
 Modules\Fishing.lua
 Modules\Bags.lua
 Modules\Movers.lua
+Modules\LootFeed.lua
+Modules\MouseRing.lua
 Modules\Tooltips.lua
 Modules\ItemStats.lua
 Modules\ObjectiveTracker.lua

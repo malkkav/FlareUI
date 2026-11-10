@@ -935,6 +935,9 @@ function CDM.StackFont(fontString)
     ns.ApplyShadow(fontString, font)
 end
 
+-- the same look for Buff Reminders (BuffReminders.lua)
+AU.StyleIcon, AU.StackFont = CDM.StyleIcon, CDM.StackFont
+
 -- A Tracked Buffs icon
 function CDM.StyleBuffIcon(item)
     local db = GetDb()
@@ -1085,6 +1088,7 @@ function AU:Refresh()
     if not self.initialized then return end
     for _, kind in ipairs(KIND_ORDER) do LayoutKind(kind) end
     CDM.StyleAll()   -- Aura Icon Shape, Aura Swipe and the fonts reach the Cooldown Manager too
+    if ns.BuffReminders and ns.BuffReminders.Refresh then ns.BuffReminders:Refresh() end
 end
 
 local function ApplySettingsPreview(on)

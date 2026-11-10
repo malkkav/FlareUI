@@ -22,7 +22,7 @@ ns.Copy = {
         au = {
             desc = L["Your buffs and debuffs in FlareUI's style."],
             editButton = L["Edit Auras in Edit Mode"],
-            tabs = { L["Settings"], L["Fonts"] },
+            tabs = { L["Settings"], L["Buff Reminders"], L["Fonts"] },
             title = L["Buffs & Debuffs"],
         },
         ch = {
@@ -46,7 +46,7 @@ ns.Copy = {
         },
         qol = {
             desc = L["Small helpers that save you clicks."],
-            tabs = { L["Gameplay"], L["Interface"], L["Advanced"] },
+            tabs = { L["Gameplay"], L["Bags and Looting"], L["Interface"], L["Advanced"] },
             title = L["Quality of Life"],
         },
         qt = {
@@ -261,6 +261,14 @@ ns.Copy = {
             tags = { "ability proc glow" },
             tip = L["Overpower, Revenge, Riposte, Execute, Hammer of Wrath and more. Spells a proc buff empowers glow too, like Ice Lance with Fingers of Frost. In combat they need the buff in Blizzard's Cooldown Manager (Tracked Buffs), unless the game shows its own proc alert for it."],
         },
+        ["ab.skinCDM"] = {
+            desc = L["Blizzard's Cooldown Manager in FlareUI's look: the Tracked Bars like FlareUI's cast bars, the Tracked Buffs icons like FlareUI's buffs."],
+            label = L["Skin Cooldown Manager"],
+            reload = true,
+            section = "ab.buttons",
+            tags = { "cooldown manager", "tracked bars", "tracked buffs", "cdm" },
+            tip = L["Needs Buffs & Debuffs on. Its size, layout and what it tracks stay in Blizzard's Cooldown Manager and its Edit Mode dialog."],
+        },
         ["ab.statusColours"] = {
             desc = L["Buttons change colour when you can't use them:\n* Red: target out of range\n* Blue: not enough mana or energy\n* Grey: unusable right now"],
             label = L["Status Colouring"],
@@ -392,6 +400,81 @@ ns.Copy = {
             section = "au.auraOrdering",
             tip = L["Only with Time left or Name."],
         },
+        ["au.reminderBefore"] = {
+            desc = L["How long before a buff runs out it counts as missing."],
+            label = L["Remind Before It Ends"],
+            section = "au.reminderSection",
+        },
+        ["au.reminderBlessing"] = {
+            desc = L["Paladins: the blessing to keep on each member. Automatic gives warriors, rogues and hunters Might, and everyone else Wisdom."],
+            label = L["Blessing"],
+            section = "au.reminderSection",
+        },
+        ["au.reminderConsumables"] = {
+            choices = { L["Off"], L["In Dungeons and Raids"], L["Always"] },
+            desc = L["An icon while you have no Well Fed buff or no flask."],
+            label = L["Food and Flask"],
+            section = "au.reminderSection",
+        },
+        ["au.reminderGlow"] = {
+            desc = L["A gold glow round a buff that is missing."],
+            label = L["Glow When Missing"],
+            section = "au.reminderAlerts",
+        },
+        ["au.reminderGlowExpiring"] = {
+            desc = L["An orange glow round a buff that is about to run out."],
+            label = L["Glow When Running Out"],
+            section = "au.reminderAlerts",
+        },
+        ["au.reminderGroup"] = {
+            choices = { L["Party and Raid"], L["Party Only"], L["Only Me"] },
+            desc = L["Whose buffs it watches."],
+            label = L["Group Buffs"],
+            section = "au.reminderSection",
+        },
+        ["au.reminderParty"] = {
+            desc = L["Shows while you're in a party."],
+            label = L["In a Party"],
+            section = "au.reminderWhen",
+        },
+        ["au.reminderPets"] = {
+            desc = L["Hunters and warlocks: an icon to call, revive or summon a missing pet, or to mend a hurt one."],
+            label = L["Pet Reminders"],
+            section = "au.reminderSection",
+        },
+        ["au.reminderProvider"] = {
+            desc = L["A group buff only shows when no one else of your class is in the group to give it."],
+            label = L["Only When You're the Only Provider"],
+            section = "au.reminderWhen",
+        },
+        ["au.reminderRaid"] = {
+            desc = L["Shows while you're in a raid."],
+            label = L["In a Raid"],
+            section = "au.reminderWhen",
+        },
+        ["au.reminderRested"] = {
+            desc = L["Nothing shows in towns and inns."],
+            label = L["Hide in Rested Areas"],
+            section = "au.reminderWhen",
+        },
+        ["au.reminderSolo"] = {
+            desc = L["Shows while you're not in a group."],
+            label = L["Solo"],
+            section = "au.reminderWhen",
+        },
+        ["au.reminderSound"] = {
+            choices = { L["Off"], L["Raid Warning"], L["Alarm"], L["Whisper"] },
+            desc = L["A sound as a reminder appears. Picking one plays it."],
+            label = L["Sound"],
+            section = "au.reminderAlerts",
+        },
+        ["au.reminders"] = {
+            desc = L["An icon for each of your class's buffs missing on you or your group, or about to run out. Click it to cast the buff. Hidden in a fight."],
+            label = L["Buff Reminders"],
+            reload = true,
+            section = "au.reminderSection",
+            tip = L["Move it, size it and pick its direction in Edit Mode."],
+        },
         ["au.reverse"] = {
             desc = L["Turns the order around."],
             label = L["Reverse Order"],
@@ -403,13 +486,6 @@ ns.Copy = {
             desc = L["The shape of your buff and debuff icons."],
             label = L["Aura Icon Shape"],
             section = "au.general",
-        },
-        ["au.skinCDM"] = {
-            desc = L["Blizzard's Cooldown Manager in FlareUI's look: the Tracked Bars like FlareUI's cast bars, the Tracked Buffs icons like these buffs."],
-            label = L["Skin Cooldown Manager"],
-            section = "au.general",
-            tags = { "cooldown manager", "tracked bars", "tracked buffs", "cdm" },
-            tip = L["Its size, layout and what it tracks stay in Blizzard's Cooldown Manager and its Edit Mode dialog."],
         },
         ["au.sort"] = {
             choices = { L["Default"], L["Order Applied"], L["Time Left"], L["Name"] },
@@ -442,10 +518,24 @@ ns.Copy = {
             tags = { "frame border" },
             tip = L["None hides it."],
         },
+        ["ch.channelNames"] = {
+            choices = { L["Full"], L["Short"], L["Number"] },
+            desc = L["How channels show in chat:\n* Full: \"[1. General - Elwynn Forest]\"\n* Short: \"[1. General]\", \"[G]\" for Guild, \"[P]\" for Party\n* Number: \"[1]\", \"[G]\", \"[P]\""],
+            label = L["Channel Names"],
+            section = "ch.formatting",
+            tags = { "short channel names" },
+            tip = L["Off in dungeons, raids and battlegrounds: Blizzard locks chat there."],
+        },
         ["ch.channels"] = {
             desc = L["The channels and voice chat button."],
             label = L["Chat Channels"],
             section = "ch.header",
+        },
+        ["ch.classIcons"] = {
+            desc = L["The sender's class icon before their name."],
+            label = L["Class Icons"],
+            section = "ch.formatting",
+            tip = L["Off in dungeons, raids and battlegrounds: Blizzard locks chat there."],
         },
         ["ch.combatLog"] = {
             desc = L["Removes the Combat Log tab."],
@@ -534,6 +624,12 @@ ns.Copy = {
             label = L["Increase Line Height"],
             section = "ch.tweaks",
         },
+        ["ch.linkIcons"] = {
+            desc = L["The item's or spell's icon inside its link."],
+            label = L["Item and Spell Icons"],
+            section = "ch.formatting",
+            tip = L["Off in dungeons, raids and battlegrounds: Blizzard locks chat there."],
+        },
         ["ch.menu"] = {
             desc = L["The menu with emotes, languages and chat options."],
             label = L["Chat Menu"],
@@ -544,6 +640,12 @@ ns.Copy = {
             label = L["Faded Opacity"],
             section = "ch.frame",
             tags = { "min alpha", "alpha", "transparency" },
+        },
+        ["ch.nameColon"] = {
+            desc = L["With Better Player Names, a colon after the name, like \"[Aria]: hello\"."],
+            label = L["Colon After Names"],
+            section = "ch.formatting",
+            tip = L["Off in dungeons, raids and battlegrounds: Blizzard locks chat there."],
         },
         ["ch.noBubbles"] = {
             desc = L["No chat bubbles in dungeons, raids and battlegrounds."],
@@ -556,9 +658,9 @@ ns.Copy = {
             label = L["Frame Opacity"],
             section = "ch.frame",
         },
-        ["ch.shortChannels"] = {
-            desc = L["\"[1. General - Elwynn Forest]\" becomes \"[1]\"."],
-            label = L["Short Channel Names"],
+        ["ch.raceIcons"] = {
+            desc = L["The sender's race icon before their name."],
+            label = L["Race Icons"],
             section = "ch.formatting",
             tip = L["Off in dungeons, raids and battlegrounds: Blizzard locks chat there."],
         },
@@ -585,6 +687,12 @@ ns.Copy = {
             desc = L["A button for the game's master volume:\n* Click: mute or unmute\n* Mouse wheel: louder or quieter"],
             label = L["Volume"],
             section = "ch.header",
+        },
+        ["ch.whisperMarkers"] = {
+            desc = L["A green \">\" before whispers you get and a red \"<\" before ones you send, instead of \"whispers:\" and \"To\"."],
+            label = L["Whisper Markers"],
+            section = "ch.formatting",
+            tip = L["Off in dungeons, raids and battlegrounds: Blizzard locks chat there."],
         },
         ["dm.border"] = {
             desc = L["The border around the meter."],
@@ -731,6 +839,10 @@ ns.Copy = {
             label = L["Addon Button Drawer"],
             tip = L["Drag and drop buttons to reorder them."],
         },
+        ["mm.bagHover"] = {
+            desc = L["The drawer opens while you point at the day/night button, and closes when you move away. A click still opens and closes it."],
+            label = L["Open on Mouseover"],
+        },
         ["mm.clockStats"] = {
             desc = L["Your framerate and latency in the clock's tooltip."],
             label = L["FPS and Latency on Clock"],
@@ -785,49 +897,62 @@ ns.Copy = {
         ["qol.bagButtons"] = {
             desc = L["Your bag slots down the side of the combined backpack:\n* Drag bags in and out\n* Hover one to light its items"],
             label = L["Integrated Bag Buttons"],
-            section = "qol.looting",
+            section = "qol.bags",
             tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
         },
         ["qol.bagColumns"] = {
             desc = L["How many slots each row of the combined backpack holds."],
             label = L["Columns"],
-            section = "qol.looting",
+            section = "qol.bags",
             tip = L["Needs Combined Bags on in Blizzard's options (Controls). Default keeps Blizzard's 10."],
         },
         ["qol.bagGaps"] = {
             desc = L["Each bag starts on a new row of the combined backpack, with a gap above it."],
             label = L["Gaps Between Bags"],
-            section = "qol.looting",
+            section = "qol.bags",
             tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
         },
         ["qol.bagJunkIcon"] = {
             desc = L["Grey items worth money show a coin all the time, not only at a vendor."],
             label = L["Junk Coin"],
-            section = "qol.looting",
+            section = "qol.bags",
+        },
+        ["qol.bagKeyring"] = {
+            desc = L["Your keys sit at the bottom of the combined backpack, instead of in a keyring window of their own."],
+            label = L["Keyring in Backpack"],
+            section = "qol.bags",
+            tip = L["Needs Combined Bags on in Blizzard's options (Controls). Shows once you have had a key."],
         },
         ["qol.bagRarityBorders"] = {
             desc = L["Every item is framed in its quality colour: grey, white, green, blue, purple or orange."],
             label = L["Rarity Colours"],
-            section = "qol.looting",
+            section = "qol.bags",
             tip = L["Empty slots stay bronze."],
+        },
+        ["qol.bagReagent"] = {
+            desc = L["Your crafting material bag sits at the bottom of the combined backpack, instead of in a window of its own."],
+            label = L["Crafting Bag in Backpack"],
+            section = "qol.bags",
+            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
         },
         ["qol.bagThickBorders"] = {
             desc = L["Your bag slots get FlareUI's thick frame instead of the thin one."],
             label = L["Thicker Borders"],
-            section = "qol.looting",
+            section = "qol.bags",
             tip = L["Every slot has FlareUI's thin bronze frame while this is off."],
         },
         ["qol.bagUpgradeArrow"] = {
             desc = L["Gear you can wear that beats what you have on shows a green arrow in the corner."],
             label = L["Upgrade Arrow"],
-            section = "qol.looting",
+            section = "qol.bags",
             tip = L["A rough guide from the item's stats: your main stat counts most, then Stamina, then other ratings. It can't judge special effects."],
         },
         ["qol.bulkBuy"] = {
-            desc = L["Shift+click an item at a vendor to buy several stacks at once, such as arrows, reagents or water."],
-            label = L["Buy More Than One Stack"],
+            desc = L["Shift+click an item at a vendor to buy many at once, such as arrows, reagents or water, even items that don't stack. Stack and MAX buttons fill in one stack or the most you can buy."],
+            label = L["Enhanced Vendor Purchases"],
             section = "qol.vendor",
-            tip = L["It buys as many as your gold, bag space and the vendor's stock allow, one stack at a time."],
+            tags = { "buy more than one stack", "bulk buy" },
+            tip = L["It buys one stack at a time, as far as your gold, bag space and the vendor's stock allow, and shows its progress above the window."],
         },
         ["qol.camera"] = {
             desc = L["The camera zooms out further, and faster."],
@@ -837,7 +962,7 @@ ns.Copy = {
         ["qol.delete"] = {
             desc = L["Fills in DELETE when you destroy a valuable item."],
             label = L["Auto Type \"delete\""],
-            section = "qol.looting",
+            section = "qol.bags",
             tags = { "auto-type \"delete\"" },
         },
         ["qol.durability"] = {
@@ -892,6 +1017,28 @@ ns.Copy = {
             reload = true,
             section = "qol.hideClutter",
         },
+        ["qol.lootFeed"] = {
+            desc = L["What you loot floats up beside your cursor or a spot you choose: items, and money if you want, so you don't have to read the chat."],
+            label = L["Loot Feed"],
+            reload = true,
+            section = "qol.lootFeedSection",
+        },
+        ["qol.lootFeedMoney"] = {
+            desc = L["Looted money shows too."],
+            label = L["Show Money"],
+            section = "qol.lootFeedSection",
+        },
+        ["qol.lootFeedPosition"] = {
+            choices = { L["At the Cursor"], L["Where Placed"] },
+            desc = L["At the Cursor: the feed starts beside the pointer, where you looted. Where Placed: it stays where you put it in Edit Mode."],
+            label = L["Position"],
+            section = "qol.lootFeedSection",
+        },
+        ["qol.lootFeedQuality"] = {
+            desc = L["Items below this quality are left out."],
+            label = L["Minimum Quality"],
+            section = "qol.lootFeedSection",
+        },
         ["qol.mailBook"] = {
             desc = L["A button beside Send Mail's \"To:\" lists:\n* The last character you mailed\n* Your other characters here"],
             label = L["Mail Address Book"],
@@ -909,6 +1056,59 @@ ns.Copy = {
             label = L["Grey Out Known Items"],
             section = "qol.vendor",
             tags = { "gray out known items" },
+        },
+        ["qol.merchantWide"] = {
+            desc = L["Vendors show 20 items a page instead of 10, in four columns."],
+            label = L["Wider Vendor Window"],
+            reload = true,
+            section = "qol.vendor",
+        },
+        ["qol.mouseRingCast"] = {
+            desc = L["A brighter arc over the ring fills as you cast, and runs back as you channel."],
+            label = L["Cast Ring"],
+            section = "qol.cursor",
+        },
+        ["qol.mouseRingClassColor"] = {
+            desc = L["The ring takes your class colour."],
+            label = L["Class Colours"],
+            section = "qol.cursor",
+        },
+        ["qol.mouseRingGCD"] = {
+            desc = L["An arc just inside the ring shows the global cooldown. It hides while the cast ring runs."],
+            label = L["GCD Ring"],
+            section = "qol.cursor",
+        },
+        ["qol.mouseRingHideTurning"] = {
+            desc = L["No ring while you hold a mouse button to turn the camera."],
+            label = L["Hide While Turning"],
+            section = "qol.cursor",
+            tip = L["Not with While Right-Clicking, which shows the ring then."],
+        },
+        ["qol.mouseRingRange"] = {
+            desc = L["The ring turns red while the enemy you target is out of range: melee for most classes, Auto Shot for hunters, a wand or attack spell for mages, priests and warlocks."],
+            label = L["Out-of-Range Colour"],
+            section = "qol.cursor",
+        },
+        ["qol.mouseRingShow"] = {
+            choices = { L["Off"], L["Always"], L["In Combat"], L["While Right-Clicking"] },
+            desc = L["A bronze ring round your cursor, so you never lose it. Pick when it shows; While Right-Clicking marks where the cursor was as you turn the camera."],
+            label = L["Mouse Ring"],
+            section = "qol.cursor",
+        },
+        ["qol.mouseRingSize"] = {
+            desc = L["How wide the ring is. Its line stays as thick as Thickness sets."],
+            label = L["Size"],
+            section = "qol.cursor",
+        },
+        ["qol.mouseRingSwing"] = {
+            desc = L["An arc just outside the ring shows your next main-hand or ranged auto attack."],
+            label = L["Swing Ring"],
+            section = "qol.cursor",
+        },
+        ["qol.mouseRingThickness"] = {
+            desc = L["How thick the ring's line is, and its cast, GCD and swing rings."],
+            label = L["Thickness"],
+            section = "qol.cursor",
         },
         ["qol.move"] = {
             desc = L["Move and resize any Blizzard window:\n* Drag the header: move\n* Ctrl + mouse wheel: resize (a plain wheel still zooms the camera)\n* Shift + right-click: reset the position\n* Ctrl + right-click: reset the size"],
@@ -960,7 +1160,7 @@ ns.Copy = {
         ["qol.petFood"] = {
             desc = L["A paw marks the food in your bags your hunter pet eats."],
             label = L["Pet Food Marker"],
-            section = "qol.looting",
+            section = "qol.bags",
         },
         ["qol.repair"] = {
             desc = L["Repairs your gear at vendors that can."],
@@ -1010,6 +1210,20 @@ ns.Copy = {
             desc = L["A Train All button at class and profession trainers."],
             label = L["Train All Skills"],
             section = "qol.convenience",
+        },
+        ["qol.uiScale"] = {
+            choices = { L["Blizzard's"], L["Pixel Perfect"], L["Custom"], L["4K"], L["1440p"], L["1440p at 125%"], L["1080p"], L["1080p at 125%"] },
+            desc = L["How big the whole interface is, set as you log in, for every character:\n* Blizzard's: the game's own UI Scale setting\n* Pixel Perfect: one interface pixel per screen pixel\n* 4K, 1440p, 1080p: pixel perfect for that screen (at 125% for Windows' 125% display scaling)\n* Custom: any scale, smaller or bigger than Blizzard's slider allows"],
+            label = L["UI Scale"],
+            reload = true,
+            section = "qol.scale",
+            tip = L["Changing it reloads the interface."],
+        },
+        ["qol.uiScaleCustom"] = {
+            desc = L["The scale Custom uses. 100% is Blizzard's default size."],
+            label = L["Custom Scale"],
+            reload = true,
+            section = "qol.scale",
         },
         ["qol.way"] = {
             desc = L["Type /way and coordinates to pin a spot on the map."],
@@ -1688,6 +1902,9 @@ ns.Copy = {
         ["adv.reset"] = L["Reset"],
         ["au.auraOrdering"] = L["Aura Ordering"],
         ["au.general"] = L["General"],
+        ["au.reminderAlerts"] = L["Alerts"],
+        ["au.reminderSection"] = L["Buff Reminders"],
+        ["au.reminderWhen"] = L["When It Shows"],
         ["ch.editBoxSection"] = L["Edit Box"],
         ["ch.formatting"] = L["Formatting |cffff4040(Outside Instances Only)|r"],
         ["ch.frame"] = L["Frame"],
@@ -1697,12 +1914,16 @@ ns.Copy = {
         ["dm.meterTab"] = L["Meter Tab"],
         ["dm.threat"] = L["Threat Meter"],
         ["dm.tweaks"] = L["Tweaks"],
+        ["qol.bags"] = L["Bags"],
         ["qol.camera"] = L["Camera"],
         ["qol.controller"] = L["Gamepad"],
         ["qol.convenience"] = L["Convenience"],
+        ["qol.cursor"] = L["Cursor"],
         ["qol.hideClutter"] = L["Hide Clutter"],
-        ["qol.looting"] = L["Bags and Looting"],
+        ["qol.lootFeedSection"] = L["Loot Feed"],
+        ["qol.looting"] = L["Looting"],
         ["qol.nameplates"] = L["Nameplates"],
+        ["qol.scale"] = L["Interface Scale"],
         ["qol.syncBlizzUi"] = L["Sync Blizz UI"],
         ["qol.vendor"] = L["Vendor"],
         ["qol.windows"] = L["Windows"],

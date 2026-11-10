@@ -361,6 +361,9 @@ local function BuildSettings()
             return item
         end)(),
         K.SmoothBarsSetting(get("smoothBars"), set("smoothBars")),
+        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The frame fades while the unit is out of your range. Off, it always shows in full."],
+          get = function() return get("rangeCheck")() ~= false end, set = set("rangeCheck") },
     })
 
     local function noCast() return get("castbar")() == false end

@@ -956,6 +956,10 @@ local function BuildSettings()
         K.BgOpacitySetting(K.BAR_BG_OPACITY, get("bgOpacity", K.BAR_BG_OPACITY), set("bgOpacity")),
         K.ClassColorSetting(function() return ns.ClassColorsOn(GetDb()) end, set("classColor")),
         K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars")),
+        -- (main tanks follow it)
+        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The frame fades while the unit is out of your range. Off, it always shows in full."],
+          get = get("rangeCheck", true), set = set("rangeCheck") },
     })
 
     Section("Auras", AuraItems(get, set, d, raidView))

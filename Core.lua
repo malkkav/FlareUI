@@ -368,7 +368,13 @@ local defaults = {
             formatPlayer = false,
             betterTimestamps = false,
             showLevel = false,          -- the sender's level in front of the name, when known
-            shortChannels = false,
+            shortChannels = false,      -- on for Channel Names Short or Number (channelNames picks which)
+            channelNames = nil,         -- full | short | number (nil: number when shortChannels, else full)
+            raceIcons = false,          -- the sender's race icon before the name
+            classIcons = false,         -- the sender's class icon before the name
+            linkIcons = false,          -- icons inside item and spell links
+            whisperMarkers = false,     -- > and < instead of "whispers:" and "To"
+            nameColon = false,          -- "[Name]: text" with Better Player Names
             hideBubblesInInstance = false,
 
             -- Frame (Blizzard dark dialog background + the chosen border, tinted ns.BORDER_COLOR)
@@ -471,6 +477,7 @@ local defaults = {
             style = "square",
             autoZoom = 5,               -- seconds before zooming back out (0 = off)
             buttonBag = true,           -- the badge opens a bag with every addon's minimap button (MinimapBag.lua)
+            bagHover = false,           -- Open on Mouseover: pointing at the badge opens the bag (MinimapBag.lua)
             clockStats = true,          -- framerate and latency in the clock's tooltip
             microMenu = true,           -- middle-click the map: a list of Blizzard's panels
             coordsOnHover = true,       -- the coordinates under the map show only while pointing at it
@@ -638,6 +645,15 @@ local defaults = {
             arrive = false,             -- new icons fade in while dropping into place
             skinCDM = true,             -- Skin Cooldown Manager: Blizzard's Tracked Bars and Tracked Buffs in FlareUI's look
             sort = "applied", reverse = false, mineFirst = true,   -- Aura Ordering (both frames)
+            -- Buff Reminders (BuffReminders.lua): your class's missing buffs; Group Buffs all / party / self,
+            -- Icon Size, Remind Before It Ends in minutes, set in Edit Mode
+            reminders = false,
+            reminder = { group = "all", size = 36, before = 2, orientation = "HORIZONTAL", grow = "FORWARD",
+                         blessing = "auto", consumables = "off", pets = true,
+                         -- When It Shows, Alerts (the Buff Reminders tab)
+                         showSolo = true, showParty = true, showRaid = true, hideRested = false, onlyProvider = false,
+                         sound = "off", glowMissing = false, glowExpiring = false,
+                         layouts = {} },
             font = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- stack counts; starts as a copy of the timer font (ns.SeedFont)
             countFont = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -669,7 +685,7 @@ local defaults = {
             showGuildRank = false,      -- the rank after the guild's name
             hideFaction = false,
             shortItemStats = false,     -- "+12 Spell Power" for the long Equip: stat lines (ItemStats.lua)
-            compareShift = true,        -- comparison tooltips only while Shift is held
+            compareShift = false,       -- comparison tooltips only while Shift is held (off since 11-10, Marcus)
             showItemID = false,
             showSpellID = false,
 
@@ -744,6 +760,19 @@ local defaults = {
             maxCameraZoom = false,
             fasterCameraZoom = false,
             fasterLoot = false,
+            lootFeed = false,           -- Loot Feed: what you loot floats up beside you (LootFeed.lua)
+            lootFeedQuality = 0,        -- items below this quality are left out (0 = Poor: all)
+            lootFeedMoney = true,       -- money too
+            lootFeedPosition = "cursor", -- cursor (starts at the pointer) | placed (the Edit Mode spot)
+            mouseRingSize = 40,         -- the ring's diameter
+            mouseRingThickness = 3,     -- its line, the same at any size
+            mouseRingShow = "off",      -- Mouse Ring (MouseRing.lua): off | always | combat | rightclick (while the right button is held)
+            mouseRingClassColor = false,
+            mouseRingCast = false,      -- Cast Ring: an arc outside the ring while you cast
+            mouseRingGCD = false,       -- GCD Ring: an arc inside it for the global cooldown
+            mouseRingSwing = false,     -- Swing Ring: your next auto attack (C_SwingTimer)
+            mouseRingRange = false,     -- Out-of-Range Tint: red while the target is past your auto attack
+            mouseRingHideTurning = false, -- no ring while the mouse turns the camera
             nameplateCombo = false,     -- classic combo point gems under the target's nameplate
             nameplateQuest = false,     -- quest badge on enemy nameplates that belong to an active quest
             nameplateHideLevel = false, -- Blizzard's level box on the right of nameplates hidden
@@ -753,6 +782,8 @@ local defaults = {
             bagColumns = 0,             -- combined backpack columns; 0 = Blizzard's (10)
             bagGaps = true,             -- each bag starts a new row, with a gap
             bagButtons = true,          -- bag slot buttons down the combined backpack's side
+            bagKeyring = false,         -- Keyring in Backpack: the keyring as a section of the combined backpack
+            bagReagent = false,         -- Crafting Bag in Backpack: the crafting (reagent) bag there too
             bagThickBorders = false,    -- FlareUI Thick in place of the always-on Thin border
             bagRarityBorders = true,    -- slot borders in the item's quality colour
             bagJunkIcon = true,         -- the junk coin on grey items always, not only at a vendor
@@ -762,7 +793,8 @@ local defaults = {
             hidePortraitNumbers = false,
             mailBook = false,           -- Mail Address Book: own characters beside Send Mail's "To:"
             merchantKnown = false,      -- Gray Out Known Items: known items greyed out at merchants
-            bulkBuy = false,            -- Buy More Than One Stack: Shift+click buys several stacks at a merchant
+            bulkBuy = false,            -- Enhanced Vendor Purchases: Shift+click buys many stacks, Stack and MAX buttons
+            merchantWide = false,       -- Wider Vendor Window: 20 items a page
             petFood = false,            -- Pet Food in Bags: a paw on food the hunter pet eats
             skipLootConfirm = false,    -- Skip Loot Confirmations: bind-on-loot and roll dialogs
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
@@ -1644,6 +1676,56 @@ end
 function ns.IsGamepadUI()
     return C_InputInterfaceStyle ~= nil
         and C_InputInterfaceStyle.GetCurrentStyle() == Enum.InputDeviceInterfaceType.Gamepad
+end
+
+-- Whether the target is in reach of your auto attack: true, false, or nil when there is no answer
+-- (no target you can attack, or the game gives none). Forever's C_SwingTimer.IsTargetWithinSwingRange
+-- answers nil near and far, even while attacking (tested 11-10), so this asks the spell book: Auto
+-- Attack (6603) for melee, which Forever answers (confirmed in game 11-10), Auto Shot for hunters, a
+-- wand's Shoot or an attack spell for casters. Melee with no answer falls back to the game's ~10 yard
+-- check. Used by the mouse ring's Out-of-Range Colour and the resource bars' swing timers.
+do
+    local RANGED = {
+        HUNTER = { 75 },                     -- Auto Shot
+        MAGE = { 5019, 133, 116 },           -- Shoot (a wand), Fireball, Frostbolt
+        PRIEST = { 5019, 585 },              -- Shoot, Smite
+        WARLOCK = { 5019, 686 },             -- Shoot, Shadow Bolt
+    }
+    local MELEE = { ROGUE = { 6603, 1752 } } -- Auto Attack, Sinister Strike
+    local AUTO_ATTACK = { 6603 }
+    -- a readable true or false, else nil (an "and v or nil" would lose false)
+    local function Answer(v)
+        if canaccessvalue(v) and type(v) == "boolean" then return v end
+        return nil
+    end
+
+    -- ranged: the ranged slot's reach (a hunter's bow, a caster's wand or spell), else melee
+    function ns.TargetInRange(ranged)
+        local okE, exists = pcall(UnitExists, "target")
+        local okA, attack = pcall(UnitCanAttack, "player", "target")
+        local okD, dead = pcall(UnitIsDeadOrGhost, "target")
+        if not (okE and okA and okD and canaccessallvalues(exists, attack, dead) and exists and attack and not dead) then
+            return nil
+        end
+        if C_SwingTimer and C_SwingTimer.IsTargetWithinSwingRange and Enum.PlayerSwingType then
+            local swingType = ranged and Enum.PlayerSwingType.Ranged or Enum.PlayerSwingType.MainHand
+            local ok, v = pcall(C_SwingTimer.IsTargetWithinSwingRange, swingType)
+            if ok and Answer(v) ~= nil then return v end
+        end
+        local _, class = UnitClass("player")
+        local list = ranged and (RANGED[class] or { 75, 5019 }) or (MELEE[class] or AUTO_ATTACK)
+        for _, id in ipairs(list) do
+            if id == 6603 or IsPlayerSpell(id) then
+                local ok, v = pcall(C_Spell.IsSpellInRange, id, "target")
+                if ok and Answer(v) ~= nil then return v end
+            end
+        end
+        if not ranged and CheckInteractDistance then
+            local ok, v = pcall(CheckInteractDistance, "target", 3)
+            if ok and Answer(v) ~= nil then return v end
+        end
+        return nil
+    end
 end
 
 --------------------------------------------------

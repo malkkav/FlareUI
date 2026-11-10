@@ -46,12 +46,29 @@ S:Row{ key = "ch.lineHeight", tab = "tweaks", path = "chat.increaseLineHeight", 
 local function Format(key, path)
     S:Row{ key = "ch." .. key, tab = "tweaks", path = "chat." .. path, apply = Refresh, section = "ch.formatting", half = true }
 end
--- player names first (their level with them), then NPCs and channels, then the time
+-- Channel Names (the old Short Channel Names switch: on was Number)
+S:Row{ key = "ch.channelNames", kind = "choice", tab = "tweaks", section = "ch.formatting", choices = { "full", "short", "number" },
+    get = function()
+        local mode = S:GetPath("chat.channelNames")
+        if mode then return mode end
+        return S:GetPath("chat.shortChannels") and "number" or "full"
+    end,
+    set = function(mode)
+        S:SetPath("chat.channelNames", mode)
+        S:SetPath("chat.shortChannels", mode ~= "full")
+    end,
+    apply = Refresh }
+-- in pairs (Marcus, 11-10): names | colon, NPCs | whispers, time | link icons, race | class icons;
+-- the level last
 Format("formatPlayer", "formatPlayer")
-Format("levels", "showLevel")
+Format("nameColon", "nameColon")
 Format("formatNPC", "formatNPC")
-Format("shortChannels", "shortChannels")
+Format("whisperMarkers", "whisperMarkers")
 Format("timestamps", "betterTimestamps")
+Format("linkIcons", "linkIcons")
+Format("raceIcons", "raceIcons")
+Format("classIcons", "classIcons")
+Format("levels", "showLevel")
 
 S:FontRows{ module = "ch", tab = "fonts", section = "ch.fonts", apply = Refresh, fonts = {
     { key = "text", path = "chat.chatFont" },

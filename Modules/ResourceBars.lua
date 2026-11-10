@@ -465,9 +465,11 @@ local function UpdateSwing(holder)
     local info = BARS[holder.key]
     if not holder.swingEnd then SwingIdle(holder) end
     holder.Label:SetText(info.text)
-    if C_SwingTimer and info.swingType and not IsEditing() then
-        local inRange = readable(C_SwingTimer.IsTargetWithinSwingRange(info.swingType))
-        SetSwingRange(holder, inRange == false)
+    -- Range Check (rangeCheck, on by default) off: the bar never takes the out-of-range colour
+    local cfg = Cfg(holder.key)
+    if info.swingType and not IsEditing() and not (cfg and cfg.rangeCheck == false) then
+        -- Forever's own swing check answers nothing: the spell book's (Core.lua ns.TargetInRange)
+        SetSwingRange(holder, ns.TargetInRange(info.swingType == (SWING and SWING.Ranged)) == false)
     else
         SetSwingRange(holder, false)
     end
@@ -1045,6 +1047,10 @@ local function BuildSettings(key)
         { name = L["Low Health Colour"], kind = LEM.SettingType.Checkbox, default = false, get = get("lowHealth", false), set = set("lowHealth"),
           desc = L["The bar turns red while your health is under 30%."],
           hidden = function() return info.kind ~= "health" end },
+        -- the swing timers: the out-of-range colour, as the unit frames' range fading
+        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true, get = get("rangeCheck", true), set = set("rangeCheck"),
+          desc = L["The bar turns red while your target is out of reach of this attack. Off, it keeps its colour."],
+          hidden = function() return info.kind ~= "swing" end },
         (function()
             -- only the bars that hold a value: combo points are steps, swing timers already run smoothly
             local item = K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars"))
@@ -1065,7 +1071,25 @@ end
 -- one list for every swing event, not a new table per swing
 local SWING_KEYS = { "swingMain", "swingOff", "swingRanged" }
 
+-- the range has no event that comes (PLAYER_SWING_RANGE_UPDATE never fires on Forever): asked again
+-- four times a second for each swing bar on screen, recoloured only when it changes
+local swingRangeTicker
+local function PollSwingRange()
+    for _, key in ipairs(SWING_KEYS) do
+        local holder = bars[key]
+        if holder and holder:IsShown() and not IsEditing() then
+            local cfg = Cfg(key)
+            local out = not (cfg and cfg.rangeCheck == false)
+                and ns.TargetInRange(BARS[key].swingType == (SWING and SWING.Ranged)) == false
+            if out ~= (holder.outOfRange or false) then SetSwingRange(holder, out) end
+        end
+    end
+end
+
 local function EnableSwingRange()
+    if not swingRangeTicker and (bars.swingMain or bars.swingOff or bars.swingRanged) then
+        swingRangeTicker = C_Timer.NewTicker(0.25, PollSwingRange)
+    end
     if not (C_SwingTimer and C_SwingTimer.EnableRangeCheck) then return end
     for _, key in ipairs(SWING_KEYS) do
         local info = BARS[key]

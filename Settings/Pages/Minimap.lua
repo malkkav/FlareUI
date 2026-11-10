@@ -23,6 +23,9 @@ S:Row{ key = "mm.coordsHover", path = "minimap.coordsOnHover", apply = Refresh }
 S:Row{ key = "mm.microMenu", path = "minimap.microMenu" }
 S:Row{ key = "mm.clockStats", path = "minimap.clockStats" }
 S:Row{ key = "mm.bag", path = "minimap.buttonBag", reload = true }
+-- under the drawer: it opens on the pointer instead of a click (live)
+S:Row{ key = "mm.bagHover", path = "minimap.bagHover", parent = "mm.bag",
+    disabled = function() return not S:GetPath("minimap.buttonBag") end }
 
 S:FontRows{ module = "mm", tab = "fonts", section = "mm.fonts", apply = Refresh, fonts = {
     { key = "zone", path = "minimap.zoneFont" },

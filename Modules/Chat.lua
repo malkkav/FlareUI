@@ -470,12 +470,18 @@ end
 -- A post-hook on each window's AddMessage rewrites the newest history entry in place, so Blizzard's
 -- own line (player link, report ID, flash, censoring) stays. Replacing AddMessage or the CHAT_*_GET
 -- strings would taint Blizzard's handler. Secret lines pass untouched.
---   Short Channel Names   [2. Trade - City] -> [2], [Guild] -> [G], [Say] -> [S]
+--   Channel Names         Full; Short: [2. Trade - City] -> [2. Trade], [Guild] -> [G], [Say] -> [S];
+--                         Number: [2] (the old Short Channel Names switch, chat.shortChannels)
 --   Better Player Names   "[Name] says:" -> the class-coloured [Name] without realm or "says:";
 --                         a Say line also starts with a clickable [Say] (PR #17, parchinskiy)
 --   Better NPC Names      "Thrall says:" -> an orange [Thrall]
 --   Level Before Names    "(42)" in front of a player's name
 --   Better Timestamps     Blizzard's timestamp in FlareUI's colour, or one added where it has none
+--   Race / Class Icons    the sender's race and class icons before the name (from the line's GUID)
+--   Item and Spell Icons  the icon inside item and spell links
+--   Whisper Markers       a green ">" before whispers you get, a red "<" before ones you send
+--   Colon After Names     "[Name]: text" where Better Player Names drops "says:"
+-- (Race/class icons, link icons, markers and the colon after Better Forever Chat's: the ideas only.)
 --------------------------------------------------
 -- Chat type -> short tag and Blizzard's channel link keyword (raid warnings have no link).
 -- Numbered channels become just their number.
@@ -508,6 +514,11 @@ local NAME_EVENTS = {
 local NPC_EVENTS = { MONSTER_SAY = true, MONSTER_YELL = true, MONSTER_WHISPER = true }
 
 local Lines = {
+    icons = {},         -- GUID .. size .. what -> the race/class icon markup
+    iconCount = 0,
+    atlases = {},       -- atlas name -> whether the client has it
+    -- Whisper Markers: chat type -> its marker
+    marks = { WHISPER = "|cff40ff40>|r ", WHISPER_INFORM = "|cffff6060<|r " },
     levels = {},        -- GUID or lower-case name -> level, this session only
     hooked = {},        -- chat frames carrying the AddMessage post-hook (not a field on Blizzard's)
     -- chat type -> its CHAT_<type>_GET global's name, built once per type
@@ -531,10 +542,18 @@ function Lines.SplitStamp(message)
     return "", message
 end
 
-function Lines.ShortenChannel(body, chatType)
+-- Channel Names: "number" ([2]) or "short" ([2. Trade]); both shorten [Guild] to [G]
+function Lines.ShortenChannel(body, chatType, mode)
     local short
     if chatType == "CHANNEL" or chatType == "COMMUNITIES_CHANNEL" then
-        short = string_gsub(body, "(|Hchannel:channel:(%d+)|h)%[[^%]]*%]|h", "%1[%2]|h", 1)
+        if mode == "short" then
+            -- the zone after " - " goes
+            short = string_gsub(body, "(|Hchannel:channel:%d+|h)%[([^%]]*)%]|h", function(head, text)
+                return head .. "[" .. (text:gsub("%s+%-%s.*$", "")) .. "]|h"
+            end, 1)
+        else
+            short = string_gsub(body, "(|Hchannel:channel:(%d+)|h)%[[^%]]*%]|h", "%1[%2]|h", 1)
+        end
     elseif SHORT_TAGS[chatType] then
         local tag = SHORT_TAGS[chatType][1]
         if SHORT_TAGS[chatType][2] then
@@ -608,6 +627,92 @@ local function ColorCode(r, g, b)
     return string_format("|cff%02x%02x%02x", (r or 1) * 255, (g or 1) * 255, (b or 1) * 255)
 end
 
+-- the icons' size: a little under the window's font
+function Lines.IconSize(chatFrame)
+    local ok, _, size = pcall(chatFrame.GetFont, chatFrame)
+    size = ok and type(size) == "number" and size or 14
+    return math.floor(size * 0.9 + 0.5)
+end
+
+function Lines.HasAtlas(name)
+    local known = Lines.atlases[name]
+    if known == nil then
+        known = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) ~= nil or false
+        Lines.atlases[name] = known
+    end
+    return known
+end
+
+-- Race and Class Icons for a GUID ("" when the game doesn't know the player yet)
+function Lines.SenderIcons(guid, size, race, class)
+    local key = guid .. size .. (race and "r" or "") .. (class and "c" or "")
+    local cached = Lines.icons[key]
+    if cached then return cached end
+    local ok, _, classFile, _, raceFile, sex = pcall(GetPlayerInfoByGUID, guid)
+    if not (ok and canaccessvalue(classFile) and canaccessvalue(raceFile) and canaccessvalue(sex)) then return "" end
+    if type(classFile) ~= "string" then return "" end
+    local out = ""
+    local function Add(atlas)
+        if atlas and Lines.HasAtlas(atlas) then out = out .. "|A:" .. atlas .. ":" .. size .. ":" .. size .. "|a" end
+    end
+    if race and type(raceFile) == "string" and GetRaceAtlas then
+        Add(GetRaceAtlas(raceFile:lower(), sex == 3 and "female" or "male"))
+    end
+    if class and GetClassAtlas then Add(GetClassAtlas(classFile)) end
+    -- a city's worth of senders, then the list starts over
+    Lines.iconCount = Lines.iconCount + 1
+    if Lines.iconCount > 4000 then
+        wipe(Lines.icons)
+        Lines.iconCount = 1
+    end
+    Lines.icons[key] = out
+    return out
+end
+
+-- Item and Spell Icons: the icon goes inside the link, before its [Name]; a link that already has
+-- one (another addon's) is left alone
+function Lines.LinkIcons(body, size)
+    if not (body:find("|Hitem:", 1, true) or body:find("|Hspell:", 1, true)) then return body end
+    return (string_gsub(body, "(|H(%a+):(%d+)[^|]*|h)(.)", function(head, kind, id, nextChar)
+        if nextChar == "|" then return nil end
+        local texture
+        if kind == "item" then
+            texture = C_Item.GetItemIconByID and C_Item.GetItemIconByID(tonumber(id))
+        elseif kind == "spell" then
+            texture = C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(tonumber(id))
+        end
+        if not texture then return nil end
+        return head .. "|T" .. texture .. ":" .. size .. ":" .. size .. "|t" .. nextChar
+    end))
+end
+
+-- Whisper Markers: "[Name] whispers: hi" -> "> [Name]: hi", "To [Name]: hi" -> "< [Name]: hi"
+function Lines.RewriteWhisper(body, chatType)
+    local key = _G[Lines.getKeys[chatType]]
+    if type(key) ~= "string" then return body end
+    local prefix, suffix = key:match("^(.-)%%s(.*)$")
+    if not prefix then return body end
+    local s, e = body:find("|Hplayer:[^|]*|h.-|h")
+    if not s then return body end
+    -- "To " (or nothing) right before the name's link
+    local start = s - #prefix
+    if start < 1 or body:sub(start, s - 1) ~= prefix then return body end
+    local after = body:sub(e + 1)
+    local ally, rest = after:match("^( |A[^|]*|a)(.*)$")
+    local tail = rest or after
+    if suffix ~= "" and tail:sub(1, #suffix) ~= suffix then return body end
+    return body:sub(1, start - 1) .. Lines.marks[chatType] .. body:sub(s, e) .. (ally or "") .. ": "
+        .. tail:sub(#suffix + 1)
+end
+
+-- Race and Class Icons go right before the name's link (and its colour)
+function Lines.AddSenderIcons(body, icons)
+    local s = body:find("|Hplayer:", 1, true)
+    if not s then return body end
+    if s > 10 and body:sub(s - 10, s - 1):match("^|c%x%x%x%x%x%x%x%x$") then s = s - 10 end
+    return body:sub(1, s - 1) .. icons .. " " .. body:sub(s)
+end
+
 -- Better Player Names and Level Before Names change the name itself through Blizzard's own filter
 -- for it. It keeps any icon Blizzard or another addon put on the name, and holds when a censored
 -- line is revealed:
@@ -660,7 +765,9 @@ function Lines.RewriteSender(body, chatType)
     local ally, rest = after:match("^( |A[^|]*|a)(.*)$")
     local tail = rest or after
     if suffix and suffix ~= "" and tail:sub(1, #suffix) == suffix then
-        return body:sub(1, e) .. (ally or "") .. " " .. tail:sub(#suffix + 1)
+        -- Colon After Names keeps a ":" after the name
+        local db = GetDb()
+        return body:sub(1, e) .. (ally or "") .. (db and db.nameColon and ": " or " ") .. tail:sub(#suffix + 1)
     end
     return body
 end
@@ -685,11 +792,16 @@ local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, ev
     -- with Better Player Names (which drops "says:"), a Say line gets its clickable label instead;
     -- off, the line stays Blizzard's. Short Channel Names picks [S] or [Say].
     local sayTag = chatType == "SAY" and db.formatPlayer and (db.shortChannels and SHORT_SAY_TAG or SAY_TAG)
-    if not (sayTag or db.shortChannels or db.formatPlayer or db.formatNPC or db.betterTimestamps) then return end
+    local senderIcons = db.raceIcons or db.classIcons
+    if not (sayTag or db.shortChannels or db.formatPlayer or db.formatNPC or db.betterTimestamps or senderIcons
+            or db.linkIcons or db.whisperMarkers) then return end
+    -- icons follow each window's font
+    local size = (senderIcons or db.linkIcons) and Lines.IconSize(chatFrame) or 0
     -- the same line shown in several windows (General and a Guild tab, say) is worked out once
     local line
     local now = time()
-    if message == Lines.lastIn and event == Lines.lastEvent and now == Lines.lastAt and sayTag == Lines.lastSayTag then
+    if message == Lines.lastIn and event == Lines.lastEvent and now == Lines.lastAt and sayTag == Lines.lastSayTag
+            and size == Lines.lastSize then
         line = Lines.lastOut
     else
         local args = type(eventArgs) == "table" and canaccesstable(eventArgs) and eventArgs or nil
@@ -700,7 +812,7 @@ local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, ev
             local rewritten = Lines.RewriteSender(body, chatType)
             if rewritten ~= body then body = sayTag .. rewritten end
         elseif db.shortChannels then
-            body = Lines.ShortenChannel(body, chatType)
+            body = Lines.ShortenChannel(body, chatType, db.channelNames == "short" and "short" or "number")
         end
         if args then
             if NPC_EVENTS[chatType] then
@@ -708,11 +820,18 @@ local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, ev
             elseif db.formatPlayer and not sayTag and NAME_EVENTS[chatType] == "full" then
                 body = Lines.RewriteSender(body, chatType)
             end
+            if db.whisperMarkers and Lines.marks[chatType] then body = Lines.RewriteWhisper(body, chatType) end
+            if senderIcons and NAME_EVENTS[chatType] then
+                local guid = Arg(args, 12, "string")
+                local icons = guid and guid ~= "" and Lines.SenderIcons(guid, size, db.raceIcons, db.classIcons) or ""
+                if icons ~= "" then body = Lines.AddSenderIcons(body, icons) end
+            end
         end
+        if db.linkIcons then body = Lines.LinkIcons(body, size) end
         if db.betterTimestamps then stamp = GetTimestamp() end
         line = stamp .. body
         Lines.lastIn, Lines.lastEvent, Lines.lastOut, Lines.lastAt = message, event, line, now
-        Lines.lastSayTag = sayTag
+        Lines.lastSayTag, Lines.lastSize = sayTag, size
     end
     if line == message then return end
     local entry = chatFrame.historyBuffer and chatFrame.historyBuffer:GetEntryAtIndex(1)

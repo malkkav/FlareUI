@@ -2316,10 +2316,13 @@ local function MarkKnownItems()
     end
 end
 
--- Buy More Than One Stack: Shift+click on a merchant item opens Blizzard's amount box with room for
--- several stacks (capped by gold, bag room and stock). It buys one stack at a time and waits for each
--- to reach the bags; an error, the merchant closing or a timeout stops it. Items paid in other items
--- or currencies keep Blizzard's own one-stack box.
+-- Enhanced Vendor Purchases (tweaks.bulkBuy), after EnhanceQoL's (the idea only): Shift+click on a
+-- merchant item opens Blizzard's amount box with room for many stacks, or for many of an item that
+-- doesn't stack, capped by gold, stock and bag room. Stack and MAX buttons under the box fill in one
+-- stack or the most you can buy. It buys one stack (or one item) at a time and waits for each to
+-- reach the bags, with its progress above the merchant window; an error, the merchant closing, the
+-- item moving on the list or no delivery within five seconds stops it. Items paid in other items or
+-- currencies keep Blizzard's own box.
 local Bulk = { queue = nil }
 
 -- room in the bags for itemID: empty slots that take it, plus what its partial stacks still hold
@@ -2341,37 +2344,97 @@ function Bulk.BagRoom(itemID, stackSize)
     return room
 end
 
-function Bulk.Stop()
+-- the line above the merchant window; hides itself after a while
+function Bulk.Say(text, r, g, b, hideAfter)
+    local line = Bulk.progress
+    if not line then
+        line = MerchantFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        line:SetPoint("BOTTOM", MerchantFrame, "TOP", 0, 4)
+        Bulk.progress = line
+    end
+    if Bulk.sayTimer then Bulk.sayTimer:Cancel() Bulk.sayTimer = nil end
+    line:SetText(text)
+    line:SetTextColor(r or 1, g or 0.82, b or 0)
+    line:Show()
+    if hideAfter then Bulk.sayTimer = C_Timer.NewTimer(hideAfter, function() line:Hide() end) end
+end
+
+function Bulk.Stop(early)
     if Bulk.timer then Bulk.timer:Cancel() Bulk.timer = nil end
+    local q = Bulk.queue
     Bulk.queue = nil
     Bulk.events:UnregisterAllEvents()
+    if q and early and Bulk.progress then
+        Bulk.Say(L["Purchase stopped: %d of %d bought."]:format(q.total - q.left - (q.pending or 0), q.total), 1, 0.3, 0.3, 5)
+    end
 end
 
 -- buys the next stack, or finishes
 function Bulk.Next()
     local q = Bulk.queue
     if Bulk.timer then Bulk.timer:Cancel() Bulk.timer = nil end
-    if not q or q.left <= 0 or not (MerchantFrame and MerchantFrame:IsShown()) then Bulk.Stop() return end
+    if not q then return end
+    q.pending = 0
+    if q.left <= 0 then
+        Bulk.Say(L["Bought %d of %d."]:format(q.total, q.total), 0.4, 1, 0.4, 3)
+        Bulk.Stop()
+        return
+    end
+    -- the merchant closed, or the list changed under the index
+    if not (MerchantFrame and MerchantFrame:IsShown()) or GetMerchantItemID(q.index) ~= q.itemID then Bulk.Stop(true) return end
     local amount = math.min(q.left, q.perBuy)
-    q.left = q.left - amount
+    Bulk.Say(L["Buying %d of %d..."]:format(q.total - q.left, q.total))
+    q.left, q.pending = q.left - amount, amount
     BuyMerchantItem(q.index, amount)
-    -- no bag update within two seconds: something went wrong, stop rather than guess
-    Bulk.timer = C_Timer.NewTimer(2, Bulk.Stop)
+    -- nothing reached the bags in five seconds: stop rather than guess
+    Bulk.timer = C_Timer.NewTimer(5, function() Bulk.Stop(true) end)
 end
 
 function Bulk.Start(index, total, perBuy)
     Bulk.Stop()
-    Bulk.queue = { index = index, left = total, perBuy = perBuy }
+    Bulk.queue = { index = index, itemID = GetMerchantItemID(index), total = total, left = total, perBuy = perBuy }
     Bulk.events:RegisterEvent("BAG_UPDATE_DELAYED")
     Bulk.events:RegisterEvent("UI_ERROR_MESSAGE")
     Bulk.events:RegisterEvent("MERCHANT_CLOSED")
     Bulk.Next()
 end
 
+-- puts an amount into Blizzard's box, as its arrows would
+function Bulk.SetAmount(amount)
+    local split = _G.StackSplitFrame
+    if not (split and split:IsShown() and split.owner == Bulk.owner) then return end
+    amount = math.max(split.minSplit or 1, math.min(split.maxStack or amount, amount))
+    split.split, split.typing = amount, 0
+    if split.UpdateStackText then split:UpdateStackText() else split.StackSplitText:SetText(amount) end
+    if split.LeftButton then split.LeftButton:SetEnabled(amount > (split.minSplit or 1)) end
+    if split.RightButton then split.RightButton:SetEnabled(amount < (split.maxStack or amount)) end
+end
+
+-- Stack and MAX, under the box while it is FlareUI's
+function Bulk.Buttons(split)
+    if Bulk.stackButton then return end
+    local function Make(text, onClick)
+        local b = CreateFrame("Button", nil, split, "UIPanelButtonTemplate")
+        b:SetSize(60, 22)
+        b:SetText(text)
+        b:SetScript("OnClick", onClick)
+        b:Hide()
+        return b
+    end
+    Bulk.stackButton = Make(L["Stack"], function() Bulk.SetAmount(Bulk.owner.stack or 1) end)
+    Bulk.maxButton = Make(L["MAX"], function() Bulk.SetAmount(Bulk.owner.cap or 1) end)
+    Bulk.stackButton:SetPoint("TOPRIGHT", split, "BOTTOM", -2, 2)
+    Bulk.maxButton:SetPoint("TOPLEFT", split, "BOTTOM", 2, 2)
+    split:HookScript("OnHide", function()
+        Bulk.stackButton:Hide()
+        Bulk.maxButton:Hide()
+    end)
+end
+
 function Bulk.Init()
     Bulk.events = CreateFrame("Frame")
     Bulk.events:SetScript("OnEvent", function(_, event)
-        if event == "BAG_UPDATE_DELAYED" then Bulk.Next() else Bulk.Stop() end
+        if event == "BAG_UPDATE_DELAYED" then Bulk.Next() else Bulk.Stop(true) end
     end)
     -- the amount box answers this frame's SplitStack, so no Blizzard button is changed
     Bulk.owner = CreateFrame("Frame", nil, UIParent)
@@ -2382,14 +2445,20 @@ function Bulk.Init()
     hooksecurefunc("MerchantItemButton_OnModifiedClick", function(button)
         local db = GetDb()
         if not (db and db.bulkBuy) or ns.IsGamepadUI() then return end
-        -- only where Blizzard just opened its own amount box (not a chat link or a dress-up)
+        if MerchantFrame.selectedTab ~= 1 or not IsModifiedClick("SPLITSTACK") then return end
         local split = _G.StackSplitFrame
-        if not (split and split:IsShown() and split.owner == button) or MerchantFrame.selectedTab ~= 1 then return end
-        if button.extendedCost or button.showNonrefundablePrompt then return end
+        if not split then return end
+        -- Blizzard opened its box (stacking items), or opened nothing (an item that doesn't stack);
+        -- a chat link or a dress-up leaves it closed for another button
         local index = button:GetID()
+        local perBuy = GetMerchantItemMaxStack(index)
+        local opened = split:IsShown() and split.owner == button
+        if not opened and not (perBuy == 1 and not split:IsShown()) then return end
+        if button.extendedCost or button.showNonrefundablePrompt then return end
+        -- Shift+click with the chat box open puts a link in it
+        if not opened and ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow() then return end
         local info = C_MerchantFrame.GetItemInfo(index)
         local itemID = GetMerchantItemID(index)
-        local perBuy = GetMerchantItemMaxStack(index)
         if not (info and itemID and perBuy and perBuy > 0) or info.hasExtendedCost then return end
         local unit = math.max(1, info.stackCount or 1)
         local cap = math.huge
@@ -2398,12 +2467,85 @@ function Bulk.Init()
         local stackSize = C_Item.GetItemMaxStackSize(itemID) or perBuy
         cap = math.min(cap, Bulk.BagRoom(itemID, stackSize))
         cap = math.floor(cap / unit) * unit
-        if cap <= perBuy then return end   -- one stack's worth: Blizzard's box already does it
-        Bulk.owner.index, Bulk.owner.perBuy = index, math.max(unit, math.floor(perBuy / unit) * unit)
-        Bulk.owner:ClearAllPoints()
-        Bulk.owner:SetAllPoints(button)
-        split:OpenStackSplitFrame(cap, Bulk.owner, "BOTTOMLEFT", "TOPLEFT", unit)
+        if cap < unit then return end   -- nothing affordable or no room: Blizzard's box (or nothing) stays
+        local owner = Bulk.owner
+        owner.index, owner.perBuy, owner.cap = index, math.max(unit, math.floor(perBuy / unit) * unit), cap
+        owner.stack = math.min(cap, math.max(unit, math.floor(stackSize / unit) * unit))
+        owner:ClearAllPoints()
+        owner:SetAllPoints(button)
+        split:OpenStackSplitFrame(cap, owner, "BOTTOMLEFT", "TOPLEFT", unit)
+        Bulk.Buttons(split)
+        Bulk.stackButton:SetShown(cap > 1)
+        Bulk.maxButton:SetShown(cap > 1)
     end)
+end
+
+-- Wider Vendor Window (tweaks.merchantWide, reload): 20 items a page in four columns, after
+-- EnhanceQoL's. Blizzard's page size is set before its merchant code first runs; items 13 to 20 are
+-- made from Blizzard's own template; the Buyback tab gets Blizzard's narrow window back. Not in the
+-- Gamepad UI (its own navigation knows Blizzard's layout).
+do
+    local Wide = {}
+    Tweaks.WideMerchant = Wide
+    local NARROW, COLUMN = 336, 165   -- Blizzard's width; one more column of items (153 + 12)
+    local PER_PAGE = 20
+
+    function Wide.On()
+        local db = GetDb()
+        return db and db.enabled ~= false and db.merchantWide and not ns.IsGamepadUI() or false
+    end
+
+    local rightBorder
+    local function Layout(merchantTab)
+        local frame = MerchantFrame
+        if merchantTab then
+            frame:SetWidth(NARROW + 2 * COLUMN)
+            local item11 = _G.MerchantItem11
+            item11:ClearAllPoints()
+            item11:SetPoint("TOPLEFT", _G.MerchantItem2, "TOPRIGHT", 12, 0)
+            for i = 11, PER_PAGE do
+                local item = _G["MerchantItem" .. i]
+                if i > 12 then
+                    item:ClearAllPoints()
+                    if i % 2 == 1 then
+                        item:SetPoint("TOPLEFT", _G["MerchantItem" .. (i - 2)], "BOTTOMLEFT", 0, -8)
+                    else
+                        item:SetPoint("TOPLEFT", _G["MerchantItem" .. (i - 1)], "TOPRIGHT", 12, 0)
+                    end
+                end
+                item:Show()
+            end
+            _G.MerchantNextPageButton:ClearAllPoints()
+            _G.MerchantNextPageButton:SetPoint("CENTER", frame, "BOTTOMRIGHT", -26, 96)
+            -- the bottom border art, on the right as well
+            if not rightBorder then
+                rightBorder = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
+                rightBorder:SetAtlas("UI-Merchant-BotFrame")
+                rightBorder:SetSize(334, 61)
+                rightBorder:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 26)
+            end
+            rightBorder:Show()
+        else
+            frame:SetWidth(NARROW)
+            local item11 = _G.MerchantItem11
+            item11:ClearAllPoints()
+            item11:SetPoint("TOPLEFT", _G.MerchantItem9, "BOTTOMLEFT", 0, -15)
+            for i = 13, PER_PAGE do _G["MerchantItem" .. i]:Hide() end
+            _G.MerchantNextPageButton:ClearAllPoints()
+            _G.MerchantNextPageButton:SetPoint("CENTER", frame, "BOTTOMLEFT", 310, 96)
+            if rightBorder then rightBorder:Hide() end
+        end
+    end
+
+    function Wide.Init()
+        if not (Wide.On() and MerchantFrame and MerchantFrame_UpdateMerchantInfo and _G.MerchantItem12) then return end
+        MERCHANT_ITEMS_PER_PAGE = PER_PAGE
+        for i = 13, PER_PAGE do
+            if not _G["MerchantItem" .. i] then CreateFrame("Frame", "MerchantItem" .. i, MerchantFrame, "MerchantItemTemplate") end
+        end
+        hooksecurefunc("MerchantFrame_UpdateMerchantInfo", function() Layout(true) end)
+        if MerchantFrame_UpdateBuybackInfo then hooksecurefunc("MerchantFrame_UpdateBuybackInfo", function() Layout(false) end) end
+    end
 end
 
 local function InitMerchantKnown()
@@ -2541,6 +2683,64 @@ local function InitCombatPlates()
 end
 
 --------------------------------------------------
+-- 17b. UI SCALE (Quality of Life > Advanced), as EnhanceQoL's "Login UI scaling": a preset applied
+-- as you log in, account-wide (db.global.uiScale; db.global.uiScaleCustom for Custom). It sets
+-- useUiScale and uiscale, then UIParent's scale itself (Blizzard's slider stops at 65%). nil or
+-- "blizzard" touches nothing; going back to it puts the two CVars back as they were before.
+--------------------------------------------------
+do
+    local UIScale = {}
+    Tweaks.UIScale = UIScale
+    -- pixel perfect for each screen height (768 / height), and for Windows' 125% display scaling
+    UIScale.PRESETS = { ["4k"] = 768 / 2160, ["1440p"] = 768 / 1440, ["1440p125"] = 768 / 1440 * 1.25,
+                        ["1080p"] = 768 / 1080, ["1080p125"] = 768 / 1080 * 1.25 }
+    UIScale.CUSTOM_MIN, UIScale.CUSTOM_MAX = 0.3, 2
+
+    -- the scale the preset asks for, or nil for Blizzard's
+    function UIScale.Value()
+        local db, g = GetDb(), ns.db and ns.db.global
+        if not (db and db.enabled and g) then return nil end
+        local preset = g.uiScale
+        if preset == "auto" then
+            local _, height = GetPhysicalScreenSize()
+            if not (height and height > 0) then return nil end
+            return 768 / height
+        elseif preset == "custom" then
+            local value = tonumber(g.uiScaleCustom) or 1
+            return math.max(UIScale.CUSTOM_MIN, math.min(UIScale.CUSTOM_MAX, value))
+        end
+        return UIScale.PRESETS[preset]
+    end
+
+    function UIScale.Apply()
+        local g = ns.db and ns.db.global
+        if not g or InCombatLockdown() then return end
+        local value = UIScale.Value()
+        if value then
+            if not g.uiScaleBack then
+                g.uiScaleBack = { use = GetCVar("useUiScale"), scale = GetCVar("uiscale") }
+            end
+            if GetCVar("useUiScale") ~= "1" then SetCVar("useUiScale", "1") end
+            if math.abs((tonumber(GetCVar("uiscale")) or 0) - value) > 0.0001 then
+                SetCVar("uiscale", ("%.6f"):format(value))
+            end
+            UIParent:SetScale(value)
+        elseif g.uiScaleBack then
+            -- the engine scales UIParent from the two CVars again
+            local back = g.uiScaleBack
+            g.uiScaleBack = nil
+            if back.use then SetCVar("useUiScale", back.use) end
+            if back.scale then SetCVar("uiscale", back.scale) end
+        end
+    end
+
+    -- once, as you log in (a change asks for a reload)
+    local events = CreateFrame("Frame")
+    events:RegisterEvent("PLAYER_LOGIN")
+    events:SetScript("OnEvent", function() UIScale.Apply() end)
+end
+
+--------------------------------------------------
 -- 18. PUBLIC
 --------------------------------------------------
 -- Live re-apply for the options that need no reload
@@ -2612,6 +2812,7 @@ function Tweaks:Init()
     InitMailBook()
     InitMerchantKnown()
     Bulk.Init()
+    Tweaks.WideMerchant.Init()
     InitAlerts()
     InitPetFood()
     InitLootConfirm()

@@ -56,12 +56,154 @@ local function Combined()
     return _G.ContainerFrameCombinedBags
 end
 
--- The Gamepad UI lays its own bag buttons into the grid: FlareUI's layout stands aside there
+local function GamepadUI()
+    return InputUtil and InputUtil.IsGamepadUIEnabled and InputUtil.IsGamepadUIEnabled() or false
+end
+
+-- The Gamepad UI lays its own bag buttons into the grid (and merges the keyring and crafting bag
+-- itself): FlareUI's layout stands aside there
 local function LayoutWanted()
     local db = GetDb()
     if not db or Bags:GetOtherBagAddon() then return false end
-    if InputUtil and InputUtil.IsGamepadUIEnabled and InputUtil.IsGamepadUIEnabled() then return false end
-    return (db.bagColumns or 0) > 0 or db.bagGaps == true
+    if GamepadUI() then return false end
+    return (db.bagColumns or 0) > 0 or db.bagGaps == true or db.bagKeyring == true or db.bagReagent == true
+end
+
+--------------------------------------------------
+-- 0. KEYRING AND CRAFTING BAG IN THE BACKPACK (Keyring in Backpack, Crafting Bag in Backpack; off)
+-- Blizzard's combined backpack holds bags 0-4 only; the keyring (-1) and the crafting bag (5) open
+-- as their own windows. Each gets a section at the bottom of the combined backpack instead: FlareUI's
+-- own item buttons from Blizzard's template, under a plain parent whose ID is the bag, and each
+-- button's ID is its slot. Blizzard's GetBagID reads the parent's ID, so clicking, dragging, splitting
+-- and using items run Blizzard's own code untainted (the bag list globals are never touched).
+-- Blizzard still opens its crafting bag window with the others (the bag key counts it): it is kept
+-- open but moved off the screen, so the key opens and closes everything as before.
+--------------------------------------------------
+local extras = {}   -- bagID -> { holder = frame, buttons = { [slot] = button } }
+
+local function KeyringID() return Enum.BagIndex and Enum.BagIndex.Keyring end
+local function ReagentID() return Enum.BagIndex and Enum.BagIndex.ReagentBag end
+
+local function KeyringWanted()
+    local db, id = GetDb(), KeyringID()
+    if not (db and db.bagKeyring and id) then return false end
+    -- the game shows a keyring once you have had a key
+    if C_ActionBar and C_ActionBar.ShouldShowKeyring and not C_ActionBar.ShouldShowKeyring() then return false end
+    if not C_CVar.GetCVarBool("showKeyring") then return false end
+    return C_Container.GetContainerNumSlots(id) > 0
+end
+
+local function ReagentWanted()
+    local db, id = GetDb(), ReagentID()
+    return db and db.bagReagent and id and C_Container.GetContainerNumSlots(id) > 0 or false
+end
+
+-- from the bottom up: the keyring, then the crafting bag, then Blizzard's bags
+local function ExtraBags()
+    local list = {}
+    if KeyringWanted() then list[#list + 1] = KeyringID() end
+    if ReagentWanted() then list[#list + 1] = ReagentID() end
+    return list
+end
+
+-- how many slots a section shows: all of the crafting bag; the keyring up to its last key, in full
+-- rows, with room for one more (as Blizzard's keyring window grows)
+local function ShownSlots(bagID, columns)
+    local total = C_Container.GetContainerNumSlots(bagID)
+    if bagID ~= KeyringID() then return total end
+    local last = 0
+    for slot = 1, total do
+        if C_Container.GetContainerItemInfo(bagID, slot) then last = slot end
+    end
+    return math.min(total, math.max(columns, math.ceil((last + 1) / columns) * columns))
+end
+
+local function Extra(bagID, frame)
+    local e = extras[bagID]
+    if e then return e end
+    e = { buttons = {} }
+    e.holder = CreateFrame("Frame", nil, frame)
+    e.holder:SetAllPoints(frame)
+    e.holder:SetID(bagID)
+    extras[bagID] = e
+    return e
+end
+
+local function ExtraButton(e, slot)
+    local b = e.buttons[slot]
+    if b or InCombatLockdown() then return b end
+    b = CreateFrame("ItemButton", nil, e.holder, "ContainerFrameItemButtonTemplate")
+    b:SetID(slot)
+    -- the empty slot's art (Blizzard draws it behind its own buttons)
+    b.flareSlot = b:CreateTexture(nil, "BACKGROUND", nil, -1)
+    b.flareSlot:SetAtlas("bags-item-slot64")
+    b.flareSlot:SetAllPoints()
+    e.buttons[slot] = b
+    return b
+end
+
+local UpdateButton   -- section 3
+
+-- Blizzard's item update (ContainerFrameMixin:UpdateItems), for one of FlareUI's buttons
+local function FillExtraButton(b)
+    local bagID, slot = b:GetBagID(), b:GetID()
+    local info = C_Container.GetContainerItemInfo(bagID, slot)
+    local texture = info and info.iconFileID
+    pcall(function()
+        ClearItemButtonOverlay(b)
+        b:SetHasItem(texture)
+        b:SetItemButtonTexture(texture)
+        b:SyncAppearanceWithHasItem()
+        SetItemButtonQuality(b, info and info.quality, info and info.hyperlink, false, info and info.isBound)
+        SetItemButtonCount(b, info and info.stackCount)
+        SetItemButtonDesaturated(b, info and info.isLocked)
+        b:UpdateCooldown(texture)
+        b:SetReadable(info and info.isReadable)
+        b:SetMatchesSearch(not (info and info.isFiltered))
+    end)
+    local db = GetDb()
+    if db and UpdateButton then UpdateButton(b, db) end
+end
+
+local function HideExtras(except)
+    for bagID, e in pairs(extras) do
+        if not (except and except[bagID]) then e.holder:Hide() end
+    end
+end
+
+-- refills the shown sections (bag updates, cooldowns, locks, the search box)
+local function FillExtras()
+    for _, e in pairs(extras) do
+        if e.holder:IsShown() then
+            for _, b in pairs(e.buttons) do
+                if b:IsShown() then FillExtraButton(b) end
+            end
+        end
+    end
+end
+
+-- Blizzard's own crafting bag window, while its section is in the backpack: open but off the screen
+local parked = {}
+local function ParkReagentWindow()
+    for i = 1, (NUM_CONTAINER_FRAMES or 13) do
+        local frame = _G["ContainerFrame" .. i]
+        if type(frame) == "table" and frame.GetID then
+            local park = frame:IsShown() and frame:GetID() == ReagentID() and ReagentWanted()
+                and Bags:IsCombined() and LayoutWanted()
+            if park then
+                if parked[frame] == nil then parked[frame] = frame:IsClampedToScreen() end
+                frame:SetClampedToScreen(false)
+                frame:ClearAllPoints()
+                frame:SetPoint("TOPRIGHT", UIParent, "TOPLEFT", -2000, 0)
+                frame:SetAlpha(0)
+            elseif parked[frame] ~= nil then
+                -- the frame holds another bag now (Blizzard places it again)
+                frame:SetClampedToScreen(parked[frame])
+                parked[frame] = nil
+                frame:SetAlpha(1)
+            end
+        end
+    end
 end
 
 --------------------------------------------------
@@ -85,7 +227,7 @@ end
 local layingOut = false
 local function Relayout(frame)
     if layingOut or not frame or frame ~= Combined() or not frame:IsShown() then return end
-    if not (Bags:IsCombined() and LayoutWanted()) then return end
+    if not (Bags:IsCombined() and LayoutWanted()) then HideExtras() return end
     local db = GetDb()
     local items = {}
     for _, button in frame:EnumerateValidItems() do items[#items + 1] = button end
@@ -102,6 +244,31 @@ local function Relayout(frame)
 
     layingOut = true
     local col, row, gapCount, prevBag = 0, 0, 0, nil
+    -- the keyring and crafting bag sections first (the bottom rows), each with a gap above it
+    local shownBags = {}
+    for _, bagID in ipairs(ExtraBags()) do
+        local e = Extra(bagID, frame)
+        local shown = ShownSlots(bagID, columns)
+        -- the same order as Blizzard's bags: the last slot bottom right
+        for slot = shown, 1, -1 do
+            local b = ExtraButton(e, slot)
+            if b then
+                b:SetSize(w, h)
+                b:ClearAllPoints()
+                b:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -col * stepX, 4 + row * stepY + gapCount * BAG_GAP)
+                b:Show()
+                FillExtraButton(b)
+                col = col + 1
+                if col >= columns then col, row = 0, row + 1 end
+            end
+        end
+        for slot, b in pairs(e.buttons) do if slot > shown then b:Hide() end end
+        if col > 0 then col, row = 0, row + 1 end
+        gapCount = gapCount + 1
+        e.holder:Show()
+        shownBags[bagID] = true
+    end
+    HideExtras(shownBags)
     for _, button in ipairs(items) do
         local bag = button:GetBagID()
         if gaps and prevBag and bag ~= prevBag then
@@ -476,7 +643,7 @@ local function ShowUpgrade(ov, bagID, slotID, link)
     if Upgrade:Is(bagID, slotID, link) then ov.upgrade:Show() end
 end
 
-local function UpdateButton(button, db)
+function UpdateButton(button, db)
     local thick, rarity = db.bagThickBorders, db.bagRarityBorders
     local junk, upgrade = db.bagJunkIcon, db.bagUpgradeArrow
     local ov = GetOverlay(button)
@@ -556,7 +723,27 @@ function Bags:Init()
         combined:HookScript("OnShow", function() Bags:PlaceBagButtons() end)
     end
     -- the bags move when they open or the screen changes: the buttons pick their side again
-    hooksecurefunc("UpdateContainerFrameAnchors", function() Bags:PlaceBagButtons() end)
+    hooksecurefunc("UpdateContainerFrameAnchors", function()
+        Bags:PlaceBagButtons()
+        ParkReagentWindow()
+    end)
+    -- the keyring and crafting bag sections follow their items
+    local bagEvents = CreateFrame("Frame")
+    for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_UPDATE_COOLDOWN", "ITEM_LOCK_CHANGED", "INVENTORY_SEARCH_UPDATE",
+                             "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED" }) do
+        pcall(bagEvents.RegisterEvent, bagEvents, event)
+    end
+    bagEvents:SetScript("OnEvent", function(_, event)
+        if not next(extras) and not (KeyringWanted() or ReagentWanted()) then return end
+        local frame = Combined()
+        if not (frame and frame:IsShown()) then return end
+        -- a new bag, more keys or buttons held back by a fight: lay the backpack out again
+        if event == "BAG_CONTAINER_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED" then
+            Relayout(frame)
+        else
+            FillExtras()
+        end
+    end)
     -- new gear, a level or a talent change re-scores the Upgrade arrow; a level, a new weapon skill or
     -- a repair also asks again what can be worn
     local RE_ASK_WEAR = { PLAYER_LEVEL_UP = true, SKILL_LINES_CHANGED = true, UPDATE_INVENTORY_DURABILITY = true }
@@ -583,4 +770,5 @@ function Bags:Refresh()
         end
     end
     self:PlaceBagButtons()
+    ParkReagentWindow()
 end

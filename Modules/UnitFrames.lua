@@ -3170,10 +3170,17 @@ end
 --------------------------------------------------
 -- 10. LAYOUT
 --------------------------------------------------
--- "Mana on Shapeshift": a druid in a form without mana gets a thin mana bar at the frame's bottom.
--- Not in Forever Style, whose plate has no slot for it. Edit Mode previews it.
+-- "Mana on Shapeshift": a druid in a form without mana gets a mana bar at the frame's bottom, as tall
+-- as the power bar (its Power Bar Height), with the power text's font; only with the power bar off
+-- is it a thin strip with small text. Not in Forever Style, whose plate has no slot for it. Edit Mode
+-- previews it.
 UF.SHIFT_MANA_HEIGHT = 5
 UF.SHIFT_MANA_TEXT_SIZE = 8
+function UF.ShiftManaHeight(f)
+    local udb = GetUnitDb(f.fuiUnit)
+    local height = udb and udb.powerHeight or 8
+    return height > 0 and height or UF.SHIFT_MANA_HEIGHT
+end
 function UF.ShiftManaShown(f)
     if not f.ShiftMana then return false end
     local udb = GetUnitDb(f.fuiUnit)
@@ -3268,14 +3275,14 @@ local function LayoutBars(f)
             shiftMana:ClearAllPoints()
             shiftMana:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", left, PADDING)
             shiftMana:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -right, PADDING)
-            shiftMana:SetHeight(UF.SHIFT_MANA_HEIGHT)
+            shiftMana:SetHeight(UF.ShiftManaHeight(f))
             shiftMana:Show()
             separator:ClearAllPoints()
             separator:SetPoint("TOPLEFT", shiftMana, "TOPLEFT", 0, SEPARATOR_HEIGHT / 2)
             separator:SetPoint("TOPRIGHT", shiftMana, "TOPRIGHT", 0, SEPARATOR_HEIGHT / 2)
             separator:SetHeight(SEPARATOR_HEIGHT)
             separator:Show()
-            bottom = PADDING + UF.SHIFT_MANA_HEIGHT
+            bottom = PADDING + UF.ShiftManaHeight(f)
         else
             shiftMana:Hide()
             separator:Hide()
@@ -3421,9 +3428,13 @@ local function LayoutFrame(f)
     ApplyFont(f.HealthText, db.font, fontDelta)
     ApplyFont(f.PowerText, db.fontPower or db.font, fontDelta)
     if f.ShiftManaText then
-        -- the power font at a fixed small size: the strip is only a few pixels tall
+        -- the power text's font and size; a small one on the thin strip (power bar off)
         local font = db.fontPower or db.font
-        ApplyFont(f.ShiftManaText, font, UF.SHIFT_MANA_TEXT_SIZE - (font and font.size or 12))
+        if UF.ShiftManaHeight(f) > UF.SHIFT_MANA_HEIGHT then
+            ApplyFont(f.ShiftManaText, font, fontDelta)
+        else
+            ApplyFont(f.ShiftManaText, font, UF.SHIFT_MANA_TEXT_SIZE - (font and font.size or 12))
+        end
         f.ShiftManaText:ClearAllPoints()
         f.ShiftManaText:SetPoint(mirror and "LEFT" or "RIGHT", f.ShiftMana, mirror and "LEFT" or "RIGHT",
             mirror and TEXT_INSET or -TEXT_INSET, 0)
@@ -3587,6 +3598,14 @@ local function ApplyPosition(f, layoutName)
     if InCombatLockdown() then pendingLayout = true return end
     local store = GetLayoutStore(layoutName)
     local pos = store and store[f.fuiUnit] or DEFAULT_POSITIONS[f.fuiUnit]
+    -- 5.1 to 5.1.1: a frame moved in Edit Mode was measured against its fade holder, which had no size,
+    -- and saved as TOPRIGHT with its right and top edges counted from the screen's bottom left (the
+    -- frame then snapped to the top right corner). Turned back into the spot it was dropped on.
+    if store and store[f.fuiUnit] == pos and pos.point == "TOPRIGHT" and (pos.x or 0) > 50 and (pos.y or 0) > 50 then
+        local scale = f:GetScale() or 1
+        pos.x = math_floor(pos.x - UIParent:GetWidth() / scale + 0.5)
+        pos.y = math_floor(pos.y - UIParent:GetHeight() / scale + 0.5)
+    end
     f:ClearAllPoints()
     f:SetPoint(pos.point or "CENTER", UIParent, pos.point or "CENTER", pos.x or 0, pos.y or 0)
 end
@@ -3720,10 +3739,13 @@ function UF.RangeKnown(kind)
     return UF.rangeKnown[kind]
 end
 
--- Sets f's alpha from unit's range: full in Edit Mode, for the player, for a range nobody can check
+-- Sets f's alpha from unit's range: full in Edit Mode, for the player, for a range nobody can check,
+-- and with the frame's Range Check off (rangeCheck, on by default)
 function UF.ApplyRangeAlpha(f, unit)
     if not f then return end
-    if ns.EditPreviewing() or not UnitExists(unit) or canaccessvalue(UnitIsUnit(unit, "player")) and UnitIsUnit(unit, "player") then
+    local u = GetUnitDb(unit)
+    if ns.EditPreviewing() or (u and u.rangeCheck == false) or not UnitExists(unit)
+            or canaccessvalue(UnitIsUnit(unit, "player")) and UnitIsUnit(unit, "player") then
         f:SetAlpha(1)
         return
     end
@@ -3831,6 +3853,8 @@ local function CreateUnitFrame(unit)
     local info = UNITS[unit]
     -- on its own fade holder (section 14), which stays on UIParent's scale
     local holder = CreateFrame("Frame", nil, UIParent)
+    -- the whole screen: Edit Mode measures a moved frame against its parent (it catches no mouse)
+    holder:SetAllPoints(UIParent)
     UF.fadeHolders[unit] = holder
     local f = CreateFrame("Button", "FlareUI_UF_" .. info.key, holder, "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate")
     f.fuiUnit = unit
@@ -4401,6 +4425,18 @@ local function BuildSettings(unit)
     -- (not on target of target and target of focus)
     if not info.poll then
         lookItems[#lookItems + 1] = UF.SmoothBarsSetting(function() local u = GetUnitDb(unit); return u and u.smoothBars end, set("smoothBars"))
+    end
+    -- Range Check: the frames that fade out of range (target and focus)
+    if tContains(UF.RANGE_UNITS, unit) then
+        lookItems[#lookItems + 1] = { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
+            desc = L["The frame fades while the unit is out of your range. Off, it always shows in full."],
+            get = function() local u = GetUnitDb(unit); return not (u and u.rangeCheck == false) end,
+            set = function(_, value)
+                local u = GetUnitDb(unit)
+                if not u then return end
+                u.rangeCheck = value
+                UF.ApplyRangeAlpha(frames[unit], unit)
+            end }
     end
     Section("Look", lookItems)
 

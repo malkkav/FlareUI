@@ -55,6 +55,13 @@ function Bag:IsOn()
     return db and db.buttonBag ~= false or false
 end
 
+-- Open on Mouseover (minimap.bagHover, off): pointing at the badge opens the drawer, and it closes a
+-- moment after the pointer leaves both, as EnhanceQoL's button sink does
+local function HoverOn()
+    local db = GetDb()
+    return db and db.bagHover == true or false
+end
+
 local function StripText(text)
     if type(text) ~= "string" then return "" end
     return (text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", ""):gsub("|A.-|a", ""))
@@ -596,6 +603,34 @@ function Bag:Toggle()
     end
 end
 
+-- Hover mode: how long the pointer may be away from the badge and the drawer before it closes. A
+-- menu an icon opened, or an icon being dragged, keeps it open.
+local HOVER_CLOSE = 0.5
+local hoverWatch = CreateFrame("Frame")
+hoverWatch:Hide()
+hoverWatch:SetScript("OnUpdate", function(self, elapsed)
+    if not (panel and panel:IsShown()) then self:Hide() return end
+    if drag or AnyMenuOpen() or panel:IsMouseOver() or (badgeButton and badgeButton:IsMouseOver()) then
+        self.away = 0
+        return
+    end
+    self.away = (self.away or 0) + elapsed
+    if self.away >= HOVER_CLOSE then
+        self:Hide()
+        panel:Hide()
+    end
+end)
+
+local function OpenOnHover()
+    if not (panel and HoverOn()) then return end
+    if not panel:IsShown() then
+        Bag:Layout()
+        panel:Show()
+    end
+    hoverWatch.away = 0
+    hoverWatch:Show()
+end
+
 local function CreatePanel()
     panel = CreateFrame("Frame", "FlareUI_MinimapBag", UIParent, "BackdropTemplate")
     panel:SetFrameStrata("HIGH")
@@ -642,7 +677,9 @@ local function CreateBadgeButton()
     badgeButton:SetAllPoints(badge)
     badgeButton:SetFrameLevel(badge:GetFrameLevel() + 2)
     badgeButton:RegisterForClicks("LeftButtonUp")
+    -- with Open on Mouseover a click still toggles it (a quick close, or a second look)
     badgeButton:SetScript("OnClick", function() Bag:Toggle() end)
+    badgeButton:SetScript("OnEnter", OpenOnHover)
 end
 
 function Bag:Init()
