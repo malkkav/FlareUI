@@ -1,3 +1,14 @@
+# FlareUI 5.0.6
+
+## Fixed
+- Minimap: gathering addons that read nodes by sliding the hidden minimap under your cursor (Lueur, NodeSight, Nodeworthy) work with FlareUI now:
+  - The minimap no longer ends up outside its frame after gathering, and no longer shows while it chases the cursor.
+  - The mouse wheel zooms the camera again during their scans, instead of the hidden minimap.
+  - Auto zoom-out and **Coordinates on Hover** wait for a scan to finish instead of cutting it short or flashing.
+  - A faded-out minimap keeps being scanned.
+- Minimap: Gathercraft can read the minimap's tooltip again, and its tracking button no longer causes errors in a fight.
+- Action bars: turning **Show button art** off no longer throws a Lua error. Thanks to parchinskiy for the fix!
+
 # FlareUI 5.0.5
 
 ## Changed

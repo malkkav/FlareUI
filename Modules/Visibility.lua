@@ -97,12 +97,15 @@ end
 local function SetCapAlpha(cap, alpha) cap:SetAlpha(alpha) end
 
 -- The game draws the minimap's player arrow, quest marks and other blips itself, at full strength
--- whatever the alpha, and has no API for them: only hiding the map removes them. So the map goes once
+-- whatever the alpha, and has no API for them: only an empty mask or hiding removes them. So the map goes once
 -- it has faded right out (the cluster stays, so pointing at it still brings it back), which is why it
 -- has no Faded Opacity, and no fade group that could give it one.
+-- With the Minimap module running, the map is masked empty instead (Minimap.lua MM:SetMapFaded):
+-- gathering addons stop scanning a hidden map. Hiding stays the fallback.
 local minimapFadedOut = false
 local function SetMinimapDrawn(alpha)
     local map = _G.Minimap
+    if not minimapFadedOut and ns.Minimap and ns.Minimap.SetMapFaded and ns.Minimap:SetMapFaded(alpha <= 0.01) then return end
     if not map or (InCombatLockdown() and map:IsProtected()) then return end
     if alpha <= 0.01 then
         if map:IsShown() then

@@ -46,6 +46,9 @@ local LEFT_SHIFT    = -6     -- the layout sits further in on the left
 -- the border art's transparent shadow outside its gold line, per side (measured in game)
 local BORDER_SHADOW = { left = 10, top = 11, right = 4, bottom = 5 }
 local SQUARE_MASK   = "Interface\\BUTTONS\\WHITE8X8"
+-- a faded-out map: an empty mask hides its terrain and the dots the game draws at full strength
+-- (Hide would stop node addons' scans); Forever's own round mask (Blizzard_Minimap\Camelot)
+local MASKS = { EMPTY = "Interface\\AddOns\\FlareUI\\Media\\Art\\Empty", FOREVER = "ui-hud-minimap-frame-generic-mask" }
 
 -- The frame's top edge is a title band over the map; the header row is centred in it
 local BAND_HEIGHT   = 22     -- title band depth over the map
@@ -92,6 +95,31 @@ function MM:ApplyFonts()
     ApplyFont(_G.MinimapZoneText, db.zoneFont)
     ApplyFont(_G.TimeManagerClockTicker, db.clockFont)
     if self.FitClock then self.FitClock() end
+end
+
+-- Node addons' scans (Lueur, NodeSight, Nodeworthy): since Forever build 70862 the minimap tooltip
+-- only reads the real mouse, so they slide the hidden map under the cursor with AdjustPointsOffset
+-- and take their whole offset back at the end. The sum of those moves says where the map is: while
+-- it is away, FlareUI keeps their offset when it anchors the map, leaves their empty mask on, keeps
+-- the coordinates and auto zoom-out still and lets the mouse wheel through (it would zoom the hidden
+-- map instead of the camera). What waited runs once the map is home. NodeRadar never moves it.
+local Scan = { x = 0, y = 0, onHome = {} }
+function Scan.Away() return math.abs(Scan.x) > 0.5 or math.abs(Scan.y) > 0.5 end
+function Scan.Later(key, fn) Scan.onHome[key] = fn end
+function Scan.Watch()
+    if Scan.watching or not MinimapFrame.AdjustPointsOffset then return end
+    Scan.watching = true
+    hooksecurefunc(MinimapFrame, "AdjustPointsOffset", function(_, dx, dy)
+        if type(dx) ~= "number" or type(dy) ~= "number" or not (canaccessvalue(dx) and canaccessvalue(dy)) then return end
+        Scan.x, Scan.y = Scan.x + dx, Scan.y + dy
+        local away = Scan.Away()
+        if not away then Scan.x, Scan.y = 0, 0 end
+        if Scan.OnChange then Scan.OnChange(away) end
+        if away then return end
+        local waiting = Scan.onHome
+        Scan.onHome = {}
+        for _, fn in pairs(waiting) do fn() end
+    end)
 end
 
 local hiddenParent = CreateFrame("Frame", nil, UIParent)
@@ -173,7 +201,7 @@ local function CreateMapArt()
 end
 
 local function ApplySquareMap()
-    MinimapFrame:SetMaskTexture(SQUARE_MASK)
+    MinimapFrame:SetMaskTexture(MM.mapFaded and MASKS.EMPTY or SQUARE_MASK)
     MinimapFrame:SetArchBlobRingScalar(0)
     MinimapFrame:SetQuestBlobRingScalar(0)
     MinimapFrame:SetTaskBlobRingScalar(0)
@@ -420,6 +448,18 @@ function MM:UpdateLayout()
         StyleCoords()
         return
     end
+    -- a gathering addon's secure button on the map (Gathercraft) makes it protected: after the fight
+    if InCombatLockdown() and MinimapFrame:IsProtected() then
+        if not self.layoutWaiter then
+            self.layoutWaiter = CreateFrame("Frame")
+            self.layoutWaiter:SetScript("OnEvent", function(waiter)
+                waiter:UnregisterEvent("PLAYER_REGEN_ENABLED")
+                self:UpdateLayout()
+            end)
+        end
+        self.layoutWaiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+        return
+    end
     Cluster.MinimapContainer:SetScale(1)
     Cluster.ZoneTextButton:SetScale(1)
     SizeCluster()
@@ -429,8 +469,10 @@ function MM:UpdateLayout()
     local size = MAP_SIZE
     MinimapFrame:SetSize(size - 2 * MAP_CROP, size - 2 * MAP_CROP)
     MinimapFrame:ClearAllPoints()
-    MinimapFrame:SetPoint("CENTER", Cluster, "CENTER", 0, 0)
-    ApplySquareMap()
+    -- a node addon's scan keeps its offset, so the move it takes back at the end lands home
+    MinimapFrame:SetPoint("CENTER", Cluster, "CENTER", Scan.x, Scan.y)
+    -- and its empty mask (the map hidden under the cursor) stays until it is home
+    if Scan.Away() then Scan.Later("mask", ApplySquareMap) else ApplySquareMap() end
 
     PlaceHeader()
     PlaceIndicators()
@@ -509,6 +551,8 @@ end
 local function OnMapEnter()
     local db = GetDb()
     if not (db and db.coordsOnHover) then return end
+    -- the hidden map slid under the pointer by a node addon's scan is not the player pointing at it
+    if Scan.Away() or not Cluster:IsMouseOver() then return end
     ShowCoords(true)
     if not hoverTicker then hoverTicker = C_Timer.NewTicker(0.2, UpdateCoordsHover) end
 end
@@ -605,7 +649,12 @@ local function CreateMapSurface()
     surface:SetFrameLevel(MinimapFrame:GetFrameLevel())   -- under the buttons and pins on the map
     surface:EnableMouse(true)
     surface:EnableMouseWheel(true)
+    -- clicks and the wheel only: the pointer's hover stays the map's own, as the game's dot tooltip
+    -- and node addons (Gathercraft reads the mouse focus) need
+    if surface.SetMouseMotionEnabled then surface:SetMouseMotionEnabled(false) end
     if surface.SetPropagateMouseMotion then surface:SetPropagateMouseMotion(true) end
+    -- a node addon's scan holds the hidden map under the pointer: the wheel goes to the camera
+    Scan.OnChange = function(away) surface:EnableMouseWheel(not away) end
     surface:SetScript("OnMouseWheel", function(_, delta)
         if delta > 0 then Minimap_ZoomIn() elseif delta < 0 then Minimap_ZoomOut() end
     end)
@@ -618,7 +667,6 @@ local function CreateMapSurface()
         if not cx then return end
         pcall(MinimapFrame.PingLocation, MinimapFrame, x / scale - cx, y / scale - cy)
     end)
-    surface:SetScript("OnEnter", OnMapEnter)
 end
 
 -- Blizzard's map pings on any button (Minimap:OnClick on OnMouseUp), and clicks can land on it rather
@@ -659,23 +707,55 @@ local function OnZoom(_, level)
     local db = GetDb()
     local delay = db and db.autoZoom or 0
     if level ~= 0 and delay > 0 then
-        zoomTimer = C_Timer.NewTimer(delay, function() MinimapFrame:SetZoom(0) end)
+        -- not in the middle of a node addon's scan (a new zoom would end it): once the map is home
+        zoomTimer = C_Timer.NewTimer(delay, function()
+            if Scan.Away() then Scan.Later("zoom", function() MinimapFrame:SetZoom(0) end) else MinimapFrame:SetZoom(0) end
+        end)
     end
 end
 
--- Forever's skin puts its round mask back each time rotateMinimap changes
+-- The mask the map should have: empty while faded out, else square, else (round style) the last one
+-- Forever set
 local maskGuard = false
-local function KeepSquareMask(_, texture)
-    if maskGuard or texture == SQUARE_MASK then return end
+local function WantedMask()
+    if MM.mapFaded then return MASKS.EMPTY end
+    if squareStyle then return SQUARE_MASK end
+    return MM.roundMask or MASKS.FOREVER
+end
+local function SetMask()
     maskGuard = true
-    MinimapFrame:SetMaskTexture(SQUARE_MASK)
+    MinimapFrame:SetMaskTexture(WantedMask())
     maskGuard = false
+end
+
+-- Forever's skin puts its round mask back each time rotateMinimap changes: the square (or the empty
+-- mask of a faded-out map) goes back on. A node addon's scan sets its empty one past this hook.
+local function KeepMask(_, texture)
+    if maskGuard then return end
+    if not squareStyle and texture ~= MASKS.EMPTY and texture ~= nil then MM.roundMask = texture end
+    if (squareStyle or MM.mapFaded) and texture ~= WantedMask() then SetMask() end
+end
+local function WatchMask()
+    if MM.maskWatched then return end
+    MM.maskWatched = true
+    hooksecurefunc(MinimapFrame, "SetMaskTexture", KeepMask)
+end
+
+-- Minimap fading (Visibility.lua): faded right out, the map is masked empty rather than hidden, so
+-- node addons keep scanning it (they stop on a hidden map). Not mid-scan: once the map is home.
+function MM:SetMapFaded(faded)
+    if not self.initialized then return false end
+    if InCombatLockdown() and MinimapFrame:IsProtected() then return true end
+    if (self.mapFaded or false) == faded then return true end
+    self.mapFaded = faded
+    if Scan.Away() then Scan.Later("fade", SetMask) else SetMask() end
+    return true
 end
 
 -- First thing in Init: a failure anywhere later must not leave the round map inside the square frame
 local function KeepMapSquare()
     ApplySquareMap()
-    hooksecurefunc(MinimapFrame, "SetMaskTexture", KeepSquareMask)
+    WatchMask()
     if not _G.HybridMinimap then
         EventUtil.ContinueOnAddOnLoaded("Blizzard_HybridMinimap", SquareHybridMinimap)
     end
@@ -847,6 +927,8 @@ function MM:Init()
         Cluster.MinimapContainer:HookScript("OnSizeChanged", function() self:UpdateTrackerScale() end)
     end
     AddEditModeSettings()
+    Scan.Watch()
+    WatchMask()   -- the round style too: a faded-out map keeps its empty mask
     SetupMapMouse()
     hooksecurefunc(MinimapFrame, "SetZoom", OnZoom)
     hooksecurefunc(Cluster, "SetEditModeScale", function()
