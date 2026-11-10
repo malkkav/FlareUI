@@ -120,6 +120,7 @@ local function ScanCheck()
     local busy, was = Scan.Busy(), Scan.wasBusy
     if busy ~= was then
         Scan.wasBusy = busy
+        if Scan.UpdateArt then Scan.UpdateArt() end
         if Scan.OnChange then Scan.OnChange(busy) end
     end
     if busy then
@@ -222,13 +223,15 @@ local function CreateMapArt()
     back:SetSize(MAP_SIZE - 2 * MAP_CROP, MAP_SIZE - 2 * MAP_CROP)
     back:SetColorTexture(0, 0, 0, 1)
 
-    -- neither is the map's child any more: they go with it when it is hidden (Toggle Minimap key, a
-    -- full fade), not when node addons only fade it out
+    -- Keep the stationary border during a scan, but not the opaque backing: with the real map
+    -- away it leaves a black rectangle wherever the scanner has no replacement terrain to draw.
+    -- Both still follow an explicitly hidden map (Toggle Minimap key, a full fade).
     local function FollowMapShown()
         local shown = MinimapFrame:IsShown()
         frame:SetShown(shown)
-        back:SetShown(shown)
+        back:SetShown(shown and not Scan.Busy())
     end
+    Scan.UpdateArt = FollowMapShown
     MinimapFrame:HookScript("OnShow", FollowMapShown)
     MinimapFrame:HookScript("OnHide", FollowMapShown)
     FollowMapShown()
