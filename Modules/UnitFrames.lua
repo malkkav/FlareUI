@@ -3726,15 +3726,47 @@ UF.RANGE_SPELLS = {   -- rank-1 spell IDs; only the ones the player knows are us
 -- form IDs (not stance bar slots, which follow the order the forms were learned)
 UF.MELEE_FORMS = { [1] = true, [5] = true, [8] = true }   -- Cat, Bear, Dire Bear
 
--- the known spells of one list, rebuilt when the spellbook changes (UF.rangeKnown = nil)
+-- The player's spells by name, each at the best rank in the book. A rank-1 ID stops counting as
+-- known once a higher rank is learned: a rogue then kept only Throw, and faded up close (5.0).
+local BookByName
+do
+local function RankOf(spellID)
+    local subtext = C_Spell.GetSpellSubtext(spellID)
+    return type(subtext) == "string" and tonumber(subtext:match("(%d+)")) or 0
+end
+function BookByName()
+    local best, rankOf = {}, {}
+    local bank = Enum.SpellBookSpellBank.Player
+    for line = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+        local lineInfo = C_SpellBook.GetSpellBookSkillLineInfo(line)
+        local count = (lineInfo and not lineInfo.offSpecID) and lineInfo.numSpellBookItems or 0
+        for offset = 1, count do
+            local item = C_SpellBook.GetSpellBookItemInfo(lineInfo.itemIndexOffset + offset, bank)
+            local id = item and item.spellID
+            local name = id and IsPlayerSpell(id) and C_Spell.GetSpellName(id)
+            if name then
+                local rank = RankOf(id)
+                if not rankOf[name] or rank > rankOf[name] then best[name], rankOf[name] = id, rank end
+            end
+        end
+    end
+    return best
+end
+end
+
+-- the known spells of one list (best rank), rebuilt when the spellbook changes (UF.rangeKnown = nil)
 function UF.RangeKnown(kind)
     if not UF.rangeKnown then
         UF.rangeKnown = { harm = {}, help = {}, melee = {} }
         local _, class = UnitClass("player")
         local lists = UF.RANGE_SPELLS[class] or {}
+        local book = BookByName()
         for k in pairs(UF.rangeKnown) do
             for _, id in ipairs(lists[k] or {}) do
-                if C_SpellBook.IsSpellKnown(id, Enum.SpellBookSpellBank.Player) then table.insert(UF.rangeKnown[k], id) end
+                local name = C_Spell.GetSpellName(id)
+                local known = name and book[name]
+                if not known and C_SpellBook.IsSpellKnown(id, Enum.SpellBookSpellBank.Player) then known = id end
+                if known then table.insert(UF.rangeKnown[k], known) end
             end
         end
     end
@@ -3780,6 +3812,47 @@ function UF.ApplyRangeAlpha(f, unit)
     end
     if hasSecret and f.SetAlphaFromBoolean and pcall(f.SetAlphaFromBoolean, f, secret, 1, UF.RANGE_ALPHA) then return end
     f:SetAlpha(out and UF.RANGE_ALPHA or 1)
+end
+
+-- /fui range: what the fading reads for the target (developer probe, English only). Prints the
+-- class and form, each listed spell (known, in range, minimum range) and the alpha it ends on.
+function UF.RangeReport()
+    local unit = "target"
+    if not UnitExists(unit) then print("|cffffd100FlareUI range:|r no target") return end
+    local _, class = UnitClass("player")
+    local form = GetShapeshiftFormID and GetShapeshiftFormID() or 0
+    local canAttack = UnitCanAttack("player", unit)
+    local function Show(v)
+        if not canaccessvalue(v) then return "secret" end
+        return tostring(v)
+    end
+    print(("|cffffd100FlareUI range:|r %s, level %s, form %s, can attack %s, in combat %s, group %s"):format(
+        tostring(class), Show(UnitLevel("player")), tostring(form), Show(canAttack),
+        tostring(InCombatLockdown()), Show(UnitInParty(unit) or UnitInRaid(unit))))
+    UF.rangeKnown = nil
+    for kind in pairs(UF.RANGE_SPELLS[class] or {}) do
+        local used = {}
+        for _, id in ipairs(UF.RangeKnown(kind)) do
+            used[#used + 1] = id .. " " .. tostring(C_Spell.GetSpellName(id)) .. " " .. tostring(C_Spell.GetSpellSubtext(id))
+        end
+        print(("  %s uses: %s"):format(kind, #used > 0 and table.concat(used, ", ") or "nothing"))
+    end
+    for kind, ids in pairs(UF.RANGE_SPELLS[class] or {}) do
+        for _, id in ipairs(ids) do
+            local info = C_Spell.GetSpellInfo(id)
+            local known = C_SpellBook.IsSpellKnown(id, Enum.SpellBookSpellBank.Player)
+            local byName = info and info.name and C_Spell.IsSpellInRange(info.name, unit)
+            print(("  %s %d %s: known %s, in range %s (by name %s), range %s-%s"):format(kind, id,
+                info and info.name or "?", tostring(known), Show(C_Spell.IsSpellInRange(id, unit)), Show(byName),
+                tostring(info and info.minRange), tostring(info and info.maxRange)))
+        end
+    end
+    local f = frames[unit]
+    if f then
+        UF.ApplyRangeAlpha(f, unit)
+        local alpha = f:GetAlpha()
+        print("  frame alpha " .. (canaccessvalue(alpha) and ("%.2f"):format(alpha) or "secret"))
+    end
 end
 
 -- target and focus re-check five times a second while shown (range has no event for them)

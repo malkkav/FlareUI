@@ -42,7 +42,7 @@ local ROUND_BORDER  = "talents-node-circle-gray"
 local ROUND_MASK    = "talents-node-circle-mask"
 local ROUND_TINT    = { 0.72, 0.56, 0.38 }
 -- Border swipe outlines: a swipe takes a file, not an atlas
-local SWIPE_SQUARE  = MEDIA .. "BorderThick"         -- 2 px wider inward than the border art
+local SWIPE_SQUARE  = MEDIA .. "BorderThick"         -- 5 px wider inward than the border art (thickened 11-09)
 local SWIPE_ROUND   = MEDIA .. "BorderRoundThick"
 local BORDER_SATURATION = 1.35   -- Border swipe: the tints a little richer
 local SWIPE_DISC    = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"

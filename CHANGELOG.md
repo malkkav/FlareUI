@@ -1,3 +1,11 @@
+# FlareUI 5.0.5
+
+## Changed
+- Buffs and debuffs: the **Border** aura swipe draws a thicker ring around the icon, so the time left is easier to read. Thanks for the feedback!
+
+## Fixed
+- Target and focus no longer fade when you stand right next to an enemy. Range fading checked the first rank of your spells, which the game stops counting once you learn a higher one: a warrior or rogue was left with only Charge or Throw, which can't reach up close. It now uses the best rank you know. Thanks to the players who reported it!
+
 # FlareUI 5.0.4
 
 ## Changed

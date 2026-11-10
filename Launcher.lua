@@ -165,6 +165,9 @@ loader:SetScript("OnEvent", function(self)
             ns.ErrorsCommand(msg:sub(8))
         elseif msg == "taint" or msg:find("^taint%s") then
             ns.TaintWatch.Command(msg:sub(6))   -- a developer's Gamepad UI probe (TaintWatch.lua)
+        elseif msg == "range" then
+            -- a developer's probe for target / focus range fading (UnitFrames.lua), for bug reports
+            if ns.UnitFrames and ns.UnitFrames.RangeReport then ns.UnitFrames.RangeReport() end
         else
             PrintCommands()
         end
