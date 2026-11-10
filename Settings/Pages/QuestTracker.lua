@@ -11,7 +11,7 @@ end
 
 local function Holder() return _G.FlareUI_ObjectiveTracker end
 
-S:Module{ key = "qt", group = "Info", order = 25, enabled = "objectivetracker.enabled", editMode = Holder, tabs = { { key = "settings" }, { key = "fonts" } } }
+S:Module{ key = "qt", group = "map", order = 20, enabled = "objectivetracker.enabled", editMode = Holder, tabs = { { key = "settings" }, { key = "fonts" } } }
 
 -- the tracker stays shown on this page (sample quests when empty) so Frame Opacity can be seen
 S:On("PageShown", function(key)

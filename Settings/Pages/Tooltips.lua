@@ -17,7 +17,7 @@ local function Both(keys)
     }
 end
 
-S:Module{ key = "tt", group = "Info", order = 30, enabled = "tooltips.enabled", tabs = { { key = "settings" }, { key = "fonts" } } }
+S:Module{ key = "tt", group = "interface", order = 20, enabled = "tooltips.enabled", tabs = { { key = "settings" }, { key = "fonts" } } }
 
 local SCALES = {}
 for i = 5, 15 do SCALES[#SCALES + 1] = { i / 10, (i * 10) .. "%" } end

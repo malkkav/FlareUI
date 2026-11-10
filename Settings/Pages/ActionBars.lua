@@ -13,7 +13,7 @@ local function Refresh()
 end
 
 S:Module{
-    key = "ab", group = "HUD", order = 10, enabled = "actionbars.enabled",
+    key = "ab", group = "combat", order = 10, enabled = "actionbars.enabled",
     tabs = { { key = "settings" }, { key = "visibility" }, { key = "fcm" }, { key = "fonts" } },
     -- Blizzard's bars: no FlareUI frame to select, so plain Edit Mode
     editMode = function() return nil end,

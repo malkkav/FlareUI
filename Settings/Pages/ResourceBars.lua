@@ -25,7 +25,7 @@ local BARS = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swi
 
 -- the header button opens Edit Mode on the first bar that exists
 S:Module{
-    key = "rb", group = "HUD", order = 30, enabled = "unitframes.resource.enabled",
+    key = "rb", group = "combat", order = 30, enabled = "unitframes.resource.enabled",
     tabs = { { key = "settings" }, { key = "fonts" } },
     editMode = function()
         for _, key in ipairs(BARS) do

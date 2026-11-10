@@ -847,7 +847,7 @@ end
 -- menu over a two-column grid) and the radial's buttons.
 --------------------------------------------------
 local COLUMN_PAD = 12            -- the radials' inset in the panel's right column
-local LIST_W = 226               -- the radials list: the right column (250) less its insets
+local LIST_W = 256               -- the radials list: the right column (280) less its insets
 local DETAIL_X = 0               -- the selected radial's column
 local RADIAL_ROW_H = 22
 local BUTTON_LIST_W = 64         -- the radial's buttons

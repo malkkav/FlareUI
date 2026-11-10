@@ -9,7 +9,7 @@ local function Refresh()
     if ns.Minimap and ns.Minimap.Refresh then ns.Minimap:Refresh() end
 end
 
-S:Module{ key = "mm", group = "HUD", order = 75, enabled = "minimap.enabled",
+S:Module{ key = "mm", group = "map", order = 10, enabled = "minimap.enabled",
     tabs = { { key = "settings" }, { key = "fonts" } },
     -- the minimap's fade settings sit in Blizzard's minimap dialog
     editSystems = function()

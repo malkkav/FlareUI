@@ -19,7 +19,7 @@ function Settings.ButtonWidthForText(button, minWidth)
     return math.max(minWidth, math.ceil(textWidth) + 24)
 end
 
-local GROUPS = { "top", "HUD", "Info", "Tools", "bottom" }
+local GROUPS = { "top", "combat", "map", "interface", "bottom" }   -- 11-10 regrouping
 
 -- Rows that get a NEW badge, by row key -> the version that added them ("2.5"). The badge shows while
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).

@@ -9,7 +9,7 @@ local function Refresh()
     if ns.Chat and ns.Chat.RefreshAll then ns.Chat:RefreshAll() end
 end
 
-S:Module{ key = "ch", group = "Info", order = 10, enabled = "chat.enabled", tabs = { { key = "frame" }, { key = "tweaks" }, { key = "fonts" } } }
+S:Module{ key = "ch", group = "interface", order = 10, enabled = "chat.enabled", tabs = { { key = "frame" }, { key = "tweaks" }, { key = "fonts" } } }
 
 -- chat windows stay shown on this page so Frame Opacity can be seen
 S:On("PageShown", function(key)

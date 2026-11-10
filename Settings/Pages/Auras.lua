@@ -15,7 +15,7 @@ local function Holder(kind)
 end
 
 S:Module{
-    key = "au", group = "HUD", order = 50, enabled = "auras.enabled",
+    key = "au", group = "combat", order = 50, enabled = "auras.enabled",
     tabs = { { key = "settings" }, { key = "reminders" }, { key = "fonts" } },
     editMode = Holder("buffs"),
     editFrames = { Holder("buffs"), Holder("debuffs"),

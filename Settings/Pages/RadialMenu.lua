@@ -10,7 +10,7 @@ local S = ns.Settings
 local function RM() return ns.RadialMenu end
 
 S:Module{
-    key = "rm", group = "Tools", order = 30, enabled = "radialmenu.enabled",
+    key = "rm", group = "interface", order = 30, enabled = "radialmenu.enabled",
     tabs = {
         {
             -- the radials list and the live preview take the info panel's column (preview)

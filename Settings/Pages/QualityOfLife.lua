@@ -27,7 +27,7 @@ local function WayTaken()
 end
 
 S:Module{
-    key = "qol", group = "Tools", order = 20, enabled = "tweaks.enabled",
+    key = "qol", group = "interface", order = 40, enabled = "tweaks.enabled",
     tabs = { { key = "gameplay" }, { key = "bags" }, { key = "nameplates" }, { key = "interface" }, { key = "advanced" } },
 }
 

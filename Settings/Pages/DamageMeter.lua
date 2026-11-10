@@ -15,7 +15,7 @@ local function BlizzardMeterOn()
 end
 
 S:Module{
-    key = "dm", group = "Info", order = 20, enabled = "damagemeter.enabled",
+    key = "dm", group = "combat", order = 60, enabled = "damagemeter.enabled",
     tabs = { { key = "settings" }, { key = "tweaks" }, { key = "fonts" } },   -- "settings" is the Frame tab
     -- FlareUI's meter restyles Blizzard's, which needs "Enable Damage Meter" on
     banner = function()

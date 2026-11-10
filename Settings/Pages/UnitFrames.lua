@@ -20,7 +20,7 @@ local function Frame(key, path, frameName)
 end
 
 S:Module{
-    key = "uf", group = "HUD", order = 20, enabled = "unitframes.enabled",
+    key = "uf", group = "combat", order = 20, enabled = "unitframes.enabled",
     tabs = { { key = "settings" }, { key = "frames" }, { key = "fonts" } },
     -- the frames behind the shared Player / Pet / Target / Focus row
     editFrames = {
