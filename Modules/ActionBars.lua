@@ -131,8 +131,14 @@ local function SnapshotButtonArt(button)
     if button.FlareUI_ArtOrig then return end
     local nw, nh = button.NormalTexture:GetSize()
     local pw, ph = button.PushedTexture:GetSize()
-    local hw, hh = button.HighlightTexture and button.HighlightTexture:GetSize()
-    local cw, ch = button.CheckedTexture and button.CheckedTexture:GetSize()
+    local hw, hh
+    if button.HighlightTexture then
+        hw, hh = button.HighlightTexture:GetSize()
+    end
+    local cw, ch
+    if button.CheckedTexture then
+        cw, ch = button.CheckedTexture:GetSize()
+    end
     button.FlareUI_ArtOrig = {
         slotArt = button.SlotArt:IsShown(), slotBg = button.SlotBackground:IsShown(),
         normalAtlas = button.NormalTexture:GetAtlas(), normalLayer = button.NormalTexture:GetDrawLayer(), nw = nw, nh = nh,
