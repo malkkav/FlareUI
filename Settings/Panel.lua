@@ -257,24 +257,35 @@ local function Text(parent, font, justify)
 end
 
 -- A dark box with a bronze edge: the left list, the page and the right column
+-- FlareUI Thin (8 px edge) for every box, button and tab in the window (11-10, Marcus)
+local THIN = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thin.tga"
+local THIN_EDGE, THIN_INSET = 8, 2
+local EDGE_COLOR = { 0.55, 0.42, 0.24 }       -- resting
+local EDGE_HOVER = { 0.78, 0.6, 0.34 }        -- under the pointer
+local EDGE_LIT = { 1, 0.84, 0.5 }             -- selected
+local function ThinBackdrop(f, withFill)
+    f:SetBackdrop({ bgFile = withFill and WHITE or nil, edgeFile = THIN, edgeSize = THIN_EDGE,
+        insets = { left = THIN_INSET, right = THIN_INSET, top = THIN_INSET, bottom = THIN_INSET } })
+    f:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1)
+end
+
 local function Box(f, alpha)
-    f:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    ThinBackdrop(f, true)
     f:SetBackdropColor(0, 0, 0, alpha or 0.28)
-    f:SetBackdropBorderColor(0.24, 0.18, 0.11, 1)
 end
 Panel.Box = Box
 
 -- A bronze plate button: the page's tabs and the window's Settings / What's New. Lit when selected.
 local function Plate(parent, font)
     local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    b:SetBackdrop({ edgeFile = WHITE, edgeSize = 1 })
+    ThinBackdrop(b)
     b.fill = b:CreateTexture(nil, "BACKGROUND")
-    b.fill:SetPoint("TOPLEFT", 1, -1)
-    b.fill:SetPoint("BOTTOMRIGHT", -1, 1)
+    b.fill:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
+    b.fill:SetPoint("BOTTOMRIGHT", -THIN_INSET, THIN_INSET)
     b.fill:SetColorTexture(1, 1, 1)
     b.shine = b:CreateTexture(nil, "BORDER")
-    b.shine:SetPoint("TOPLEFT", 1, -1)
-    b.shine:SetPoint("TOPRIGHT", -1, -1)
+    b.shine:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
+    b.shine:SetPoint("TOPRIGHT", -THIN_INSET, -THIN_INSET)
     b.shine:SetHeight(1)
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints(b.fill)
@@ -287,19 +298,19 @@ local function Plate(parent, font)
         self.isSelected = selected and true or false
         if selected then
             self.fill:SetGradient("VERTICAL", CreateColor(0.24, 0.17, 0.09, 1), CreateColor(0.42, 0.31, 0.16, 1))
-            self:SetBackdropBorderColor(0.85, 0.70, 0.42, 1)
+            self:SetBackdropBorderColor(EDGE_LIT[1], EDGE_LIT[2], EDGE_LIT[3], 1)
             self.shine:SetColorTexture(1, 0.9, 0.67, 0.28)
             self.Text:SetTextColor(1, 0.89, 0.63)
         else
             self.fill:SetGradient("VERTICAL", CreateColor(0.09, 0.065, 0.04, 1), CreateColor(0.2, 0.145, 0.085, 1))
-            self:SetBackdropBorderColor(0.47, 0.36, 0.22, 1)
+            self:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1)
             self.shine:SetColorTexture(1, 0.9, 0.67, 0.07)
             self.Text:SetTextColor(0.85, 0.79, 0.66)
         end
     end
     b:SetScript("OnEnter", function(self)
         if self.isSelected then return end
-        self:SetBackdropBorderColor(0.69, 0.54, 0.31, 1)
+        self:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1)
         self.Text:SetTextColor(1, 0.96, 0.84)
     end)
     b:SetScript("OnLeave", function(self) self:SetSelected(self.isSelected) end)
@@ -390,17 +401,17 @@ local function SkinButton(b)
         if r:IsObjectType("Texture") then r:SetAlpha(0) end
     end
     if b.NineSlice then b.NineSlice:Hide() end
-    b.fEdge = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+    b.fEdge = CreateFrame("Frame", nil, b, "BackdropTemplate")
     b.fEdge:SetAllPoints()
-    b.fEdge:SetColorTexture(0.47, 0.36, 0.22)
+    ThinBackdrop(b.fEdge)
     b.fFill = b:CreateTexture(nil, "BACKGROUND", nil, 2)
-    b.fFill:SetPoint("TOPLEFT", 1, -1)
-    b.fFill:SetPoint("BOTTOMRIGHT", -1, 1)
+    b.fFill:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
+    b.fFill:SetPoint("BOTTOMRIGHT", -THIN_INSET, THIN_INSET)
     b.fFill:SetColorTexture(1, 1, 1)
     b.fFill:SetGradient("VERTICAL", CreateColor(0.09, 0.065, 0.04, 1), CreateColor(0.24, 0.17, 0.10, 1))
     b.fShine = b:CreateTexture(nil, "BACKGROUND", nil, 3)
-    b.fShine:SetPoint("TOPLEFT", 1, -1)
-    b.fShine:SetPoint("TOPRIGHT", -1, -1)
+    b.fShine:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
+    b.fShine:SetPoint("TOPRIGHT", -THIN_INSET, -THIN_INSET)
     b.fShine:SetHeight(1)
     b.fShine:SetColorTexture(1, 0.9, 0.67, 0.12)
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
@@ -409,8 +420,10 @@ local function SkinButton(b)
     b:SetNormalFontObject(_G[PANEL_FONT.GameFontNormal])
     b:SetHighlightFontObject(_G[PANEL_FONT.GameFontHighlight])
     b:SetDisabledFontObject(_G[PANEL_FONT.GameFontDisable])
-    b:HookScript("OnEnter", function(self) if self:IsEnabled() then self.fEdge:SetColorTexture(0.69, 0.54, 0.31) end end)
-    b:HookScript("OnLeave", function(self) self.fEdge:SetColorTexture(0.47, 0.36, 0.22) end)
+    b:HookScript("OnEnter", function(self)
+        if self:IsEnabled() then self.fEdge:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1) end
+    end)
+    b:HookScript("OnLeave", function(self) self.fEdge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1) end)
     return b
 end
 Panel.SkinButton = SkinButton
@@ -1195,9 +1208,10 @@ end
 -- Edit button, greyed in combat
 local function EditButton(f, onClick)
     local b = CreateFrame("Button", nil, f, "BackdropTemplate")
-    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    b:SetBackdropColor(0.10, 0.085, 0.06, 1)
-    b:SetBackdropBorderColor(0.47, 0.36, 0.22, 1)
+    ThinBackdrop(b, true)
+    b:SetBackdropColor(0.13, 0.095, 0.06, 1)
+    b:HookScript("OnEnter", function(self) if self:IsEnabled() then self:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1) end end)
+    b:HookScript("OnLeave", function(self) self:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1) end)
     local label = Text(b, "GameFontNormal", "CENTER")   -- gold, like the panel buttons
     label:SetAllPoints(); b:SetFontString(label)
     b:SetScript("OnDisable", function(self) self:SetAlpha(0.4) end)
@@ -1798,7 +1812,7 @@ function UpdateNav()
         local selected = key == current and searchText == ""
         b.selected:SetShown(selected)
         b.bar:SetShown(selected)
-        b:SetBackdropBorderColor(0.42, 0.32, 0.19, selected and 1 or 0)
+        b:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], selected and 1 or 0)
         if module.navIcon then
             b.dot:SetTexture(module.navIcon)
             -- game icon cropped to a circle
@@ -1912,11 +1926,11 @@ local function BuildNav(left)
             local b = CreateFrame("Button", nil, left, "BackdropTemplate")
             b:SetSize(buttonWidth, NAV_H)
             b:SetPoint("TOPLEFT", anchor, anchorPoint, x, -gap)
-            b:SetBackdrop({ edgeFile = WHITE, edgeSize = 1 })
-            b:SetBackdropBorderColor(0.42, 0.32, 0.19, 0)
+            ThinBackdrop(b)
+            b:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 0)
             b.selected = b:CreateTexture(nil, "BACKGROUND")
-            b.selected:SetPoint("TOPLEFT", 1, -1)
-            b.selected:SetPoint("BOTTOMRIGHT", -1, 1)
+            b.selected:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
+            b.selected:SetPoint("BOTTOMRIGHT", -THIN_INSET, THIN_INSET)
             b.selected:SetColorTexture(1, 1, 1)
             b.selected:SetGradient("HORIZONTAL", CreateColor(0.47, 0.36, 0.22, 0.55), CreateColor(0.24, 0.17, 0.09, 0.30))
             b.bar = b:CreateTexture(nil, "ARTWORK")
@@ -2101,10 +2115,10 @@ local function BuildWindow()
     art:SetHorizTile(true)
     art:SetVertTile(true)
     art:SetDesaturated(true)
-    art:SetVertexColor(0.34, 0.27, 0.19)
+    art:SetVertexColor(0.85, 0.68, 0.47)
     local wash = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
     wash:SetAllPoints(art)
-    wash:SetColorTexture(0.05, 0.038, 0.026, 0.62)
+    wash:SetColorTexture(0.05, 0.038, 0.026, 0.3)
     local glow = frame:CreateTexture(nil, "BACKGROUND", nil, 3)
     glow:SetPoint("TOPLEFT", art)
     glow:SetPoint("TOPRIGHT", art)
@@ -2284,9 +2298,9 @@ local function BuildWindow()
     local plate = CreateFrame("Frame", nil, header, "BackdropTemplate")
     plate:SetSize(42, 42)
     plate:SetPoint("TOPLEFT", 0, -2)
-    plate:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    ThinBackdrop(plate, true)
     plate:SetBackdropColor(0.13, 0.095, 0.055, 1)
-    plate:SetBackdropBorderColor(0.69, 0.54, 0.31, 1)
+    plate:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1)
     page.plateIcon = plate:CreateTexture(nil, "ARTWORK")
     page.plateIcon:SetSize(26, 26)
     page.plateIcon:SetPoint("CENTER")
