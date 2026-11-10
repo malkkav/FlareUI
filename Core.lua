@@ -649,7 +649,9 @@ local defaults = {
             -- Icon Size, Remind Before It Ends in minutes, set in Edit Mode
             reminders = false,
             reminder = { group = "all", size = 36, before = 2, orientation = "HORIZONTAL", grow = "FORWARD",
-                         blessing = "auto", consumables = "off", pets = true,
+                         blessing = "auto", consumables = "off", pets = true, thorns = "tank", camping = false, gathering = false,
+                         hideTank = false, hideHealer = false, hideDamage = false, hideNoRole = false,
+                         countText = "both", spacing = 6, alpha = 100,
                          -- When It Shows, Alerts (the Buff Reminders tab)
                          showSolo = true, showParty = true, showRaid = true, hideRested = false, onlyProvider = false,
                          sound = "off", glowMissing = false, glowExpiring = false,

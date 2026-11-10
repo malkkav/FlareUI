@@ -53,31 +53,61 @@ local function Reminder(def)
     S:Row(def)
 end
 Reminder{ key = "au.reminders", path = "auras.reminders", reload = true, apply = false }
--- first under the switch (rank 0.5: ahead of the dropdowns), Marcus 11-10
-Reminder{ key = "au.reminderPets", path = "auras.reminder.pets", parent = "au.reminders", rank = 0.5 }
 Reminder{ key = "au.reminderGroup", kind = "choice", path = "auras.reminder.group", parent = "au.reminders",
     choices = { "all", "party", "self" } }
 Reminder{ key = "au.reminderBefore", kind = "choice", path = "auras.reminder.before", parent = "au.reminders",
     choices = { { 0, L["Only When Missing"] }, { 1, "1 min" }, { 2, "2 min" }, { 3, "3 min" }, { 5, "5 min" }, { 10, "10 min" } } }
--- the blessings' names come from the game, in your language
-Reminder{ key = "au.reminderBlessing", kind = "choice", path = "auras.reminder.blessing", parent = "au.reminders",
-    choices = function()
-        local names = ns.BuffReminders and ns.BuffReminders.BlessingChoices and ns.BuffReminders.BlessingChoices()
-        return names or { { "auto", L["Automatic"] } }
-    end }
+-- the same warning, set apart for dungeons and raids ("same": the one above)
+local function BeforeFor(key)
+    return {
+        key = key, kind = "choice", parent = "au.reminders",
+        choices = { { "same", L["Same as Above"] }, { 0, L["Only When Missing"] }, { 1, "1 min" }, { 2, "2 min" }, { 3, "3 min" },
+                    { 5, "5 min" }, { 10, "10 min" } },
+    }
+end
+local dungeon = BeforeFor("au.reminderBeforeDungeon")
+dungeon.get = function() return S:GetPath("auras.reminder.beforeDungeon") or "same" end
+dungeon.set = function(v) S:SetPath("auras.reminder.beforeDungeon", v ~= "same" and v or nil) end
+Reminder(dungeon)
+local raid = BeforeFor("au.reminderBeforeRaid")
+raid.get = function() return S:GetPath("auras.reminder.beforeRaid") or "same" end
+raid.set = function(v) S:SetPath("auras.reminder.beforeRaid", v ~= "same" and v or nil) end
+Reminder(raid)
+-- a reminder's own choice (the blessing, Thorns' target) is in its icon's right-click menu
 Reminder{ key = "au.reminderConsumables", kind = "choice", path = "auras.reminder.consumables", parent = "au.reminders",
     choices = { "off", "instance", "always" } }
+-- Forever's camp and sleeping bag, and gathering tracking (both off), in a pair
+Reminder{ key = "au.reminderCamping", half = true, path = "auras.reminder.camping", parent = "au.reminders" }
+Reminder{ key = "au.reminderGathering", half = true, path = "auras.reminder.gathering", parent = "au.reminders" }
 -- When It Shows: alone, in a party, in a raid (in pairs), then the rested areas and the only provider
 Reminder{ key = "au.reminderSolo", half = true, path = "auras.reminder.showSolo" }
 Reminder{ key = "au.reminderParty", half = true, path = "auras.reminder.showParty" }
 Reminder{ key = "au.reminderRaid", half = true, path = "auras.reminder.showRaid" }
-Reminder{ key = "au.reminderRested", half = true, path = "auras.reminder.hideRested" }
-Reminder{ key = "au.reminderProvider", path = "auras.reminder.onlyProvider" }
+Reminder{ key = "au.reminderRested", path = "auras.reminder.hideRested" }   -- first in Hiding, a row of its own
+Reminder{ key = "au.reminderProvider", half = true, path = "auras.reminder.onlyProvider" }   -- beside In a Raid
+-- your group role hides the group buffs (in pairs)
+Reminder{ key = "au.reminderHideTank", half = true, path = "auras.reminder.hideTank" }
+Reminder{ key = "au.reminderHideHealer", half = true, path = "auras.reminder.hideHealer" }
+Reminder{ key = "au.reminderHideDamage", half = true, path = "auras.reminder.hideDamage" }
+Reminder{ key = "au.reminderHideNoRole", half = true, path = "auras.reminder.hideNoRole" }
 -- Alerts: the sound, then the two glows
 Reminder{ key = "au.reminderSound", kind = "choice", path = "auras.reminder.sound", choices = { "off", "raidwarning", "alarm", "whisper" },
     apply = function() RefreshReminders(); if ns.BuffReminders and ns.BuffReminders.PlayAlert then ns.BuffReminders.PlayAlert(true) end end }
 Reminder{ key = "au.reminderGlow", half = true, path = "auras.reminder.glowMissing" }
 Reminder{ key = "au.reminderGlowExpiring", half = true, path = "auras.reminder.glowExpiring" }
+-- last on the page, centred: the button says how many reminders a right-click hid, and brings them back
+Reminder{ key = "au.reminderHidden", kind = "button", center = true,
+    labelFn = function()
+        local n = ns.BuffReminders and ns.BuffReminders.HiddenCount and ns.BuffReminders.HiddenCount() or 0
+        return n > 0 and L["Show %d Hidden Reminders"]:format(n) or L["No Hidden Reminders"]
+    end,
+    disabled = function()
+        return NoReminders() or not (ns.BuffReminders and ns.BuffReminders.HiddenCount and ns.BuffReminders.HiddenCount() > 0)
+    end,
+    apply = function()
+        if ns.BuffReminders and ns.BuffReminders.ShowHidden then ns.BuffReminders.ShowHidden() end
+        if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
+    end }
 
 S:FontRows{ module = "au", tab = "fonts", section = "au.fonts", apply = Refresh, fonts = {
     { key = "timer", path = "auras.font" },
