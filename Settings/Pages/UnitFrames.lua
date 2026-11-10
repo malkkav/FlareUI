@@ -27,7 +27,7 @@ S:Module{
         function() return _G.FlareUI_UF_Player end, function() return _G.FlareUI_UF_Target end,
         function() return _G.FlareUI_UF_Focus end, function() return _G.FlareUI_UF_Pet end,
         -- frames of their own with no row here
-        function() return _G.FlareUI_UF_PlayerCastBar end, function() return _G.FlareUI_RaidTanks end,
+        function() return _G.FlareUI_RaidTanks end,
         function() return _G.FlareUI_Totems end,
     },
     -- the header button opens Edit Mode on the first frame that exists
@@ -38,19 +38,19 @@ S:Module{
     end,
 }
 
--- one switch for player, pet, target, focus and the player cast bar (Edit opens the player frame);
--- the cast bar has no other home, so it is made with the player frame (UnitFrames.lua)
+-- one switch for player, pet, target and focus (Edit opens the player frame)
 local MAIN_UNITS = { "player", "pet", "target", "focus" }
 S:Row{
     key = "uf.main", kind = "frame", reload = true, half = true,
     get = function() return S:GetPath("unitframes.units.player.enabled") and true or false end,
     set = function(on)
         for _, unit in ipairs(MAIN_UNITS) do S:SetPath("unitframes.units." .. unit .. ".enabled", on and true or false) end
-        S:SetPath("unitframes.playerCastbar.enabled", on and true or false)
     end,
     frame = function() return _G.FlareUI_UF_Player end,
 }
--- two columns: Main | Party, Raid | Boss, Target of Target | Target of Focus
+-- off, Blizzard's cast bar comes back
+Frame("castbar", "unitframes.playerCastbar.enabled", "FlareUI_UF_PlayerCastBar")
+-- two columns: Main | Player Cast Bar, Party | Raid, Boss | Target of Target, Target of Focus
 Frame("party", "unitframes.party.enabled", "FlareUI_Party")
 Frame("raid", "unitframes.raid.enabled", "FlareUI_Raid")
 Frame("boss", "unitframes.boss.enabled", "FlareUI_Boss")

@@ -1,3 +1,10 @@
+# FlareUI 5.0.3
+
+## Changed
+- Unit Frames: **Player Cast Bar** has its own switch again, next to Main Frames. Turn it off and Blizzard's cast bar comes back (after a reload). Thanks to everyone who missed it!
+- Player frame, Edit Mode: **Standalone Cast Bar** is gone. The **Cast Bar** section stays, for a cast bar on the player frame itself, now off by default and apart from the Player Cast Bar.
+- The settings window is a little taller, so the Unit Frames page fits without scrolling.
+
 # FlareUI 5.0.2
 
 ## New

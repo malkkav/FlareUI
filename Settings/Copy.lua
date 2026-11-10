@@ -1520,6 +1520,13 @@ ns.Copy = {
             label = L["Boss Frames"],
             section = "uf.frames",
         },
+        ["uf.castbar"] = {
+            desc = L["Your cast bar in FlareUI's style, placed on its own. Off brings back Blizzard's cast bar."],
+            label = L["Player Cast Bar"],
+            section = "uf.frames",
+            tags = { "castbar", "standalone cast bar", "blizzard cast bar" },
+            tip = L["For a cast bar on the player frame itself, turn on Cast Bar in its Edit Mode options."],
+        },
         ["uf.font.auraCount"] = {
             desc = L["The stack count on unit frame auras."],
             label = L["Aura Stacks"],
@@ -1562,7 +1569,7 @@ ns.Copy = {
             tip = L["Pointing at either frame shows both."],
         },
         ["uf.main"] = {
-            desc = L["Your player, pet, target and focus frames, and your cast bar."],
+            desc = L["Your player, pet, target and focus frames."],
             label = L["Main Frames"],
             section = "uf.frames",
             tip = L["Edit sets their size, text, portrait and auras."],

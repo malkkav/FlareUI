@@ -148,7 +148,7 @@ local UNITS = {
     player = {
         key = "Player", label = L["Player"], order = 1, auras = true, portrait = true,
         blizzard = { "PlayerFrame" },
-        -- its own cast bar is used with Standalone Cast Bar off (on: the FlareUI Player Cast Bar)
+        -- its own cast bar: the Cast Bar switch in Edit Mode (off by default), apart from the FlareUI Player Cast Bar
         castbar = true,
         -- Hide Player Frame while in party: when the party frames show, so a raid brings it back
         partyDriver = "[group:raid] show; [@raid1,exists] show; [group:party] hide; [@party1,exists] hide; show",
@@ -1322,7 +1322,7 @@ function UF.UpdatePlayerCastExtras(cast, event, channeling, castBarID, startMs, 
     local lag = (world and world > 0) and world or home
     -- the player cast bar's switches: Latency Zone (on by default), Spell Queue Window, Channel
     -- Ticks, Spell Pushback. The standalone bar keeps them in playerCastbar, the bar on the player
-    -- frame (Standalone Cast Bar off) with the frame's own settings.
+    -- frame with the frame's own settings.
     local db = GetDb()
     local pc
     if cast.standalone then pc = db and db.playerCastbar else pc = GetUnitDb("player") end
@@ -1582,23 +1582,17 @@ local function UpdateCastBar(cast, enabled, event, by, barID)
     UF.UpdateKickTick(cast, channeling, duration, notInterruptible)
 end
 
--- Standalone Cast Bar (player frame, Edit Mode): on, the FlareUI Player Cast Bar is the player's; off,
--- the bar that hangs off the player frame, as on the target
-function UF.PlayerCastStandalone()
-    local udb = GetUnitDb("player")
-    return not (udb and udb.standaloneCast == false)
+-- Player Cast Bar (Unit Frames settings): the FlareUI Player Cast Bar in place of Blizzard's. Off,
+-- Blizzard's bar comes back after a reload. The player frame's own Cast Bar (Edit Mode) is apart.
+function UF.PlayerCastOn()
+    local db = GetDb()
+    return db and db.playerCastbar and db.playerCastbar.enabled and true or false
 end
 
 local function IsCastEnabled(cast)
     if cast.isEnabled then return cast.isEnabled() end
-    if cast.standalone then
-        -- the cast bar is part of Main Frames: it lives while the player frame does
-        local db = GetDb()
-        local on = db and db.units and db.units.player and db.units.player.enabled and true or false
-        return on and UF.PlayerCastStandalone()
-    end
-    if cast.unit == "player" and UF.PlayerCastStandalone() then return false end
-    -- target, focus, pet (and the player without the standalone bar): the Cast Bar switch in Edit Mode
+    if cast.standalone then return UF.PlayerCastOn() end
+    -- player, target, focus, pet: the frame's Cast Bar switch in Edit Mode
     local udb = GetUnitDb(cast.unit)
     return not (udb and udb.castbar == false)
 end
@@ -4110,8 +4104,7 @@ local function CreatePlayerCastBar()
     -- load (a player's /run showed Holder hidden, Cast shown); FlareUI never hides it, so show it back
     if C_AddOns.IsAddOnLoaded("Cinematic") then
         holder.Cast:SetIgnoreParentAlpha(true)
-        -- (only while Standalone Cast Bar is on: off, FlareUI hides it itself)
-        local function KeepShown(self) if not self:IsShown() and UF.PlayerCastStandalone() then self:Show() end end
+        local function KeepShown(self) if not self:IsShown() and UF.PlayerCastOn() then self:Show() end end
         hooksecurefunc(holder, "Hide", KeepShown)
         hooksecurefunc(holder, "SetShown", KeepShown)
     end
@@ -4124,12 +4117,11 @@ local function CreatePlayerCastBar()
     return holder
 end
 
--- Standalone Cast Bar switched: the FlareUI Player Cast Bar shows (with its Edit Mode box) only while
--- it is on; the player frame's own bar takes over while it is off. A plain frame: fine in a fight.
+-- Both player cast bars brought up to date: the FlareUI Player Cast Bar (made only while Player Cast Bar
+-- is on) and the player frame's own. A plain frame: fine in a fight.
 function UF.ApplyPlayerCastMode()
-    local standalone = UF.PlayerCastStandalone()
     if playerCastHolder then
-        playerCastHolder:SetShown(standalone)
+        playerCastHolder:SetShown(UF.PlayerCastOn())
         UpdateCastBar(playerCastHolder.Cast, IsCastEnabled(playerCastHolder.Cast))
     end
     local f = frames.player
@@ -4383,31 +4375,15 @@ local function BuildSettings(unit)
     Section("Look", lookItems)
 
     if info.castbar then
-        -- the player: Standalone Cast Bar on top; while it is on, the rest of the section is hidden
-        local function standalone() return unit == "player" and UF.PlayerCastStandalone() end
         local function castOff() local u = GetUnitDb(unit); return u and u.castbar == false or false end
-        local function noCast() return standalone() or castOff() end
-        local standaloneItem
-        if unit == "player" then
-            standaloneItem = { name = L["Standalone Cast Bar"], kind = LEM.SettingType.Checkbox, default = true,
-                get = function() return UF.PlayerCastStandalone() end,
-                set = function(_, value)
-                    local u = GetUnitDb(unit)
-                    if not u then return end
-                    u.standaloneCast = value
-                    UF.ApplyPlayerCastMode()
-                    if frames[unit] then LEM:RefreshFrameSettings(frames[unit]) end
-                end,
-                desc = L["On: the FlareUI Player Cast Bar, a frame of its own that you place and size in Edit Mode. Off: the cast bar hangs off the player frame, as on the target, and these options set it."] }
-        end
+        local noCast = castOff
         local castItems = {
             { name = L["Cast Bar"], kind = LEM.SettingType.Checkbox, default = defaults.castbar ~= false,
               get = function() return not castOff() end,
               set = function(layoutName, value)
                   set("castbar")(layoutName, value)
                   if frames[unit] then LEM:RefreshFrameSettings(frames[unit]) end
-              end,
-              hidden = standalone },
+              end },
             { name = L["Cast Bar Position"], kind = LEM.SettingType.Dropdown, default = defaults.castbarPosition or "BOTTOM",
               values = { { text = L["Above"], value = "TOP", isRadio = true }, { text = L["Below"], value = "BOTTOM", isRadio = true } },
               get = get("castbarPosition"), set = set("castbarPosition"), hidden = noCast },
@@ -4430,9 +4406,8 @@ local function BuildSettings(unit)
               hidden = noCast,
               desc = L["No time left at the right end of the bar."] },
         }
-        if standaloneItem then
-            table.insert(castItems, 1, standaloneItem)
-            -- the standalone bar's extras, on the bar that hangs off the player frame
+        if unit == "player" then
+            -- the FlareUI Player Cast Bar's extras, on the bar on the player frame too
             local function flag(key, default)
                 return function() local u = GetUnitDb(unit); local v = u and u[key]; if v == nil then return default end; return v end
             end
@@ -4716,15 +4691,14 @@ function UF:Init()
             end
         end
     end
-    -- part of Main Frames (one switch in the settings): made with the player frame
-    if db.playerCastbar and db.units and db.units.player and db.units.player.enabled then
+    -- Player Cast Bar (its own switch in the settings): off, Blizzard's bar stays
+    if db.playerCastbar and db.playerCastbar.enabled then
         local holder = CreatePlayerCastBar()
         LEM:AddFrame(holder, OnFrameMoved, DEFAULT_POSITIONS.playercastbar, holder.editModeName)
         LEM:AddFrameSettings(holder, BuildPlayerCastSettings())
         -- also the Gamepad UI's bar (Forever has no GamepadPlayerCastingBarFrame)
         HardHide("PlayerCastingBarFrame")
     end
-    -- Standalone Cast Bar: this bar or the player frame's own
     UF.ApplyPlayerCastMode()
     HookExtras()
     if frames.player then InitFsrSpark() end

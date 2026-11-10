@@ -586,9 +586,8 @@ local defaults = {
                 player       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true,
                                  texture = "FlareUI Forever", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
-                                 -- Standalone Cast Bar (on): the FlareUI Player Cast Bar; off, the cast bar below hangs off the frame
-                                 standaloneCast = true,
-                                 castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                                 -- Cast Bar (off): a cast bar on the player frame, apart from the FlareUI Player Cast Bar
+                                 castbar = false, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  latencyZone = true, pushback = false, channelTicks = false, queueMark = false,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24 },
                 target       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true, mirror = true,
@@ -1512,7 +1511,7 @@ do
         "Only My Buffs", "Only My Debuffs", "Dispellable Debuffs Only", "Highlight Purgeable Buffs",
         "Reverse Order", "Your Auras First",
     }
-    local LEAD = { "Standalone Cast Bar", "Cast Bar", "Cast Bars" }
+    local LEAD = { "Cast Bar", "Cast Bars" }
     -- "Name@switch": the place of a name that is a dropdown on some frames and a switch on others
     local canon, lead   -- localized name -> place, built on first use (the locale is loaded by then)
     local function KindRank(kind)

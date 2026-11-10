@@ -7,7 +7,7 @@ local S = ns.Settings
 -- The window built from the registry: modules on the left, the page's rows in the middle, the
 -- hovered row's text on the right, the reload bar below. Built on first open.
 --------------------------------------------------
-local WIDTH, HEIGHT = 960, 700   -- with the reload bar below, fits 768 units (UI scale 1)
+local WIDTH, HEIGHT = 960, 716   -- with the reload bar below (46), fits 768 units (UI scale 1)
 local HEADER_H, FOOTER_H = 34, 34
 local LEFT_W, RIGHT_W = 190, 250
 local PAD = 12
