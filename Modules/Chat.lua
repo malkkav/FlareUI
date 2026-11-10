@@ -470,7 +470,7 @@ end
 -- A post-hook on each window's AddMessage rewrites the newest history entry in place, so Blizzard's
 -- own line (player link, report ID, flash, censoring) stays. Replacing AddMessage or the CHAT_*_GET
 -- strings would taint Blizzard's handler. Secret lines pass untouched.
---   Short Channel Names   [2. Trade - City] -> [2], [Guild] -> [G]
+--   Short Channel Names   [2. Trade - City] -> [2], [Guild] -> [G], [Say] -> [S]
 --   Better Player Names   "[Name] says:" -> the class-coloured [Name] without realm or "says:"
 --   Better NPC Names      "Thrall says:" -> an orange [Thrall]
 --   Level Before Names    "(42)" in front of a player's name
@@ -490,6 +490,10 @@ local SHORT_TAGS = {
     INSTANCE_CHAT = { "I", "INSTANCE_CHAT" },
     INSTANCE_CHAT_LEADER = { "IL", "INSTANCE_CHAT" },
 }
+
+-- Say has no native prefix. The short tag uses the same Latin style as [G] and [P].
+local SAY_TAG = "|Hchannel:SAY|h[" .. (SAY_MESSAGE or "Say") .. "]|h "
+local SHORT_SAY_TAG = "|Hchannel:SAY|h[S]|h "
 
 -- Lines whose sender is a player. "full": Better Player Names drops the "says:" too; "name": only the
 -- name changes (whispers keep their direction).
@@ -674,31 +678,38 @@ end
 local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, eventArgs)
     local db = GetDb()
     if not (db and event) then return end
-    if not (db.shortChannels or db.formatPlayer or db.formatNPC or db.betterTimestamps) then return end
     if not canaccessallvalues(message, event) or type(message) ~= "string" or type(event) ~= "string"
             or event:sub(1, 9) ~= "CHAT_MSG_" then return end
+    local chatType = event:sub(10)
+    local sayTag = chatType == "SAY" and (db.shortChannels and SHORT_SAY_TAG or SAY_TAG)
+    if not (sayTag or db.shortChannels or db.formatPlayer or db.formatNPC or db.betterTimestamps) then return end
     -- the same line shown in several windows (General and a Guild tab, say) is worked out once
     local line
     local now = time()
-    if message == Lines.lastIn and event == Lines.lastEvent and now == Lines.lastAt then
+    if message == Lines.lastIn and event == Lines.lastEvent and now == Lines.lastAt and sayTag == Lines.lastSayTag then
         line = Lines.lastOut
     else
         local args = type(eventArgs) == "table" and canaccesstable(eventArgs) and eventArgs or nil
-        local chatType = event:sub(10)
-        -- Blizzard's stamp is only split off when FlareUI replaces it
+        -- Keep Blizzard's timestamp ahead of the new Say prefix, even if it isn't replaced.
         local stamp, body = "", message
-        if db.betterTimestamps then stamp, body = Lines.SplitStamp(message) end
-        if db.shortChannels then body = Lines.ShortenChannel(body, chatType) end
+        if db.betterTimestamps or sayTag then stamp, body = Lines.SplitStamp(message) end
+        if sayTag then
+            local rewritten = Lines.RewriteSender(body, chatType)
+            if rewritten ~= body then body = sayTag .. rewritten end
+        elseif db.shortChannels then
+            body = Lines.ShortenChannel(body, chatType)
+        end
         if args then
             if NPC_EVENTS[chatType] then
                 if db.formatNPC then body = Lines.RewriteNPC(body, chatType, args) end
-            elseif db.formatPlayer and NAME_EVENTS[chatType] == "full" then
+            elseif db.formatPlayer and not sayTag and NAME_EVENTS[chatType] == "full" then
                 body = Lines.RewriteSender(body, chatType)
             end
         end
         if db.betterTimestamps then stamp = GetTimestamp() end
         line = stamp .. body
         Lines.lastIn, Lines.lastEvent, Lines.lastOut, Lines.lastAt = message, event, line, now
+        Lines.lastSayTag = sayTag
     end
     if line == message then return end
     local entry = chatFrame.historyBuffer and chatFrame.historyBuffer:GetEntryAtIndex(1)
