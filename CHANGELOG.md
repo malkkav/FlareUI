@@ -1,3 +1,11 @@
+# FlareUI 5.0.4
+
+## Changed
+- Forever and FlareUI styles: the **rest, combat and threat glows** now tint the portrait's own border with a soft pulse, instead of a bright line around it. Threat comes first while you have it.
+
+## Fixed
+- Controllers: both analog sticks work again with FlareUI on. Since 5.0 the controller radial kept listening to the sticks all the time; now it only listens while it is open. Thanks to the player who reported it!
+
 # FlareUI 5.0.3
 
 ## Changed
@@ -21,28 +29,21 @@
 # FlareUI 5.0.1
 
 ## New
-- **Visibility** on bars, the XP bar, buffs, debuffs, the quest tracker and the minimap is now a list of toggles: tick **In Combat**, **Has a Target**, **Has an Attackable Target**, **In a Group** and **Not Mounted** in any mix, and any one of them shows it. **Always** and **Mouseover** clear the rest. Your current choice carries over (Combat + Target is now In Combat and Has a Target ticked).
-- The same toggles for:
-  - **Resource Bars → Visibility**: also **In a Group** and **Not Mounted**. Swing timers keep **Only When In Use**.
-  - **Fake Cooldown Manager → Visibility**.
-- Player frame, Edit Mode: a **Cast Bar** section like the target's, topped by **Standalone Cast Bar** (on). On, your cast bar is the FlareUI Player Cast Bar, placed on its own as before. Off, it hangs off the player frame instead, with Cast Bar Position, Texture, Border, Height, Hide Icon, Hide Spell Timer, and the standalone bar's Latency Zone, Spell Pushback, Channel Ticks and Spell Queue Window, in your own cast colours.
-- Buffs & Debuffs: **Skin Cooldown Manager** (on): Blizzard's Cooldown Manager in FlareUI's look. Tracked Bars look like FlareUI's cast bars (the unit frames' bar texture, a thin bronze border, the cast bar font); Tracked Buffs icons look like your FlareUI buffs and follow Aura Icon Shape and Aura Swipe. Everything Blizzard's Cooldown Manager lets you set still works. Thanks to the player who asked!
-- Action Bars, XP Bar: the **FlareUI XP Bar** switch is back (on). Off brings back Blizzard's XP and reputation bars. Needs a reload.
+- **Visibility is now a list of toggles** on bars, the XP bar, buffs, debuffs, the quest tracker, the minimap, Resource Bars and the Fake Cooldown Manager. Tick **In Combat**, **Has a Target**, **Has an Attackable Target**, **In a Group** or **Not Mounted** in any mix: any one of them shows it. Your current choice carries over.
+- Buffs & Debuffs: **Skin Cooldown Manager** (on). Blizzard's Cooldown Manager in FlareUI's look: its bars like FlareUI's cast bars, its buff icons like your FlareUI buffs. Everything it lets you set still works. Thanks to the player who asked!
+- Action Bars: the **FlareUI XP Bar** switch is back (on). Off brings back Blizzard's XP and reputation bars after a reload.
+- Player frame, Edit Mode: a **Cast Bar** section, for a cast bar on the frame itself. *(Reworked in 5.0.3.)*
 
 ## Changed
-- Health, power and threat numbers show in full up to 9,999 ("8742" rather than "8.7K"), then shorten as before (12K, 1.2M).
-- One name for when a frame appears: **Visibility** everywhere (it was Show Condition, Show or Visibility). Searching the old names still finds it. Chat and Damage Meter keep their single-choice Visibility.
-- In Edit Mode, FlareUI's fading rows sit under a **Fading** title, and **Min Alpha** is now **Faded Opacity** (also in the Chat and Damage Meter settings).
-- Every setting name, choice, tab and button is now in Title Case, in the settings and in Edit Mode alike, so a setting reads the same wherever you open it.
-- Settings say the same thing the same way. A few you may look for:
-  - **Border** (was Frame Border or Border Texture), **Buff Size** and **Debuff Size**, **Growth** on buffs and debuffs, **Scale** on Tooltips.
-  - **XP Text** and **XP Text Visibility** (were XP Bar Numbers and XP Bar Text), **Threat Text** (was Threat Value Display), **Sort By** on the Quest Tracker.
-  - **Keep Bar 1 in Stances** (was No Auto-Paging for Stances), **Hide Bubbles in Instances** (was No bubbles in instances), **Proc Glow**, **Fake CM Setup Mode**, **Controller Bar** on the Radial Menu.
-  - **Off** instead of None where it turns a feature off: Health Text, Power Text, Aura Swipe and Aura Timer.
-  - Searching the old names still finds them.
-- Options are grouped by type everywhere: dropdowns first, then sliders, then switches, in the settings and in every Edit Mode dialog. The same option now sits in the same place on the player, target, focus, party, raid and boss frames.
-- The XP Bar's options sit under the **FlareUI XP Bar** switch, and the Meter tab's options under **Meter Tab in the Chat**.
-- Action Bars, Tweaks: **Steady attack highlight** is gone. Attack, Auto Shot and Shoot blink as Blizzard's do.
+- Health, power and threat numbers show in full up to 9,999 ("8742", not "8.7K").
+- **Settings read the same everywhere.** Names are in Title Case, options are grouped the same way (dropdowns, then sliders, then switches) in the settings and in every Edit Mode dialog, and one thing has one name. The renames you may look for:
+  - **Visibility** (was Show Condition or Show) and **Faded Opacity** (was Min Alpha)
+  - **Border**, **Buff Size**, **Debuff Size**, **Growth**, **XP Text**, **Threat Text**, **Sort By**
+  - **Keep Bar 1 in Stances**, **Hide Bubbles in Instances**, **Controller Bar**
+  - **Off** instead of None on Health Text, Power Text, Aura Swipe and Aura Timer
+
+  Searching an old name still finds the option.
+- Action Bars: **Steady attack highlight** is gone. Attack, Auto Shot and Shoot blink as Blizzard's do.
 
 # FlareUI 5.0
 

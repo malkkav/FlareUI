@@ -132,9 +132,12 @@ local PVP_ICONS = {
     Alliance = "UI-HUD-UnitFrame-SmallCircle-Alliance",
     FFA = "UI-HUD-UnitFrame-Player-PVP-FFAIcon",
 }
-local STATUS_RESTING = { 1.0, 0.88, 0.25 }
-local STATUS_COMBAT  = { 1.0, 0.0, 0.0 }
-local STATUS_PULSE   = { 55 / 255, 1, 0.5 }   -- Blizzard's status glow: alpha low, high, seconds each way
+local STATUS_RESTING = { 1.0, 0.82, 0.35 }
+local STATUS_COMBAT  = { 1.0, 0.22, 0.18 }
+-- the player's rest / combat state tints the ring's own border, pulsing softly: alpha low, high,
+-- seconds each way (the ring art is copied in grey, coloured, over the art)
+local STATUS_PULSE   = { 0.12, 0.55, 1.2 }
+local TINT_RIM_SHARE = 1.04   -- the tint's circle, of the ring's diameter (the rim's outer edge)
 -- Blizzard's level text (WhiteLargeNumberFont) at 1x
 local LEVEL_FONT, LEVEL_FONT_SIZE = "Fonts\\FRIZQT__.TTF", 14
 -- the level disc, number and skull, of the atlas size (as Blizzard draws them)
@@ -678,7 +681,7 @@ local function SetDiscHole(f, ring, on, size)
     end
     if size then ring.DiscHole:SetSize(size * DISC_HOLE_SHARE, size * DISC_HOLE_SHARE) end
     if on == (ring.discHoleOn or false) then return end
-    for _, region in ipairs({ ring.Art, f.Portrait.Tex, ring.Status, ring.Flash, ring.Boss }) do
+    for _, region in ipairs({ ring.Art, f.Portrait.Tex, ring.Status, ring.Flash, ring.Boss, ring.Tint }) do
         if on then region:AddMaskTexture(ring.DiscHole) else region:RemoveMaskTexture(ring.DiscHole) end
     end
     ring.discHoleOn = on
@@ -706,11 +709,20 @@ local function Build(f)
     -- the glows: resting / combat status (player) and the threat flash
     ring.Status = GlowTexture(ring)
     ring.Flash = GlowTexture(ring)
-    -- the status glow pulses, as Blizzard's does
+    -- the rest / combat tint: the ring art again, in grey and coloured, cut to the ring's circle (on
+    -- Forever Style's plate the art runs on past the ring), pulsing
+    ring.Tint = ring:CreateTexture(nil, "ARTWORK", nil, 7)
+    ring.Tint:SetDesaturated(true)
+    ring.Tint:SetBlendMode("BLEND")
+    ring.Tint:Hide()
+    ring.TintMask = ring:CreateMaskTexture()
+    ring.TintMask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    ring.TintMask:SetPoint("CENTER", ring, "CENTER")
+    ring.Tint:AddMaskTexture(ring.TintMask)
     ring.Pulse = ring:CreateAnimationGroup()
     ring.Pulse:SetLooping("BOUNCE")
     local fade = ring.Pulse:CreateAnimation("Alpha")
-    fade:SetTarget(ring.Status)
+    fade:SetTarget(ring.Tint)
     fade:SetFromAlpha(STATUS_PULSE[1])
     fade:SetToAlpha(STATUS_PULSE[2])
     fade:SetDuration(STATUS_PULSE[3])
@@ -842,6 +854,12 @@ function Ring.Layout(f)
         ring.Art:AddMaskTexture(ring.Mask)
         ring.artMasked = true
     end
+    -- the tint follows the art exactly
+    ring.Tint:SetTexture(ring.Art:GetTexture())
+    ring.Tint:SetTexCoord(ring.Art:GetTexCoord())
+    ring.Tint:ClearAllPoints()
+    for i = 1, ring.Art:GetNumPoints() do ring.Tint:SetPoint(ring.Art:GetPoint(i)) end
+    ring.TintMask:SetSize(g.D * TINT_RIM_SHARE, g.D * TINT_RIM_SHARE)
     PlaceHitButton(ring.Hit, f, g, 0, 0, g.D, g.D)
     ring.Hit:Show()
 
@@ -1232,19 +1250,14 @@ function Ring.Update(f)
     ring.Skull:SetShown(skull and ring.Disc:IsShown())
     f.Level:SetAlpha(skull and 0 or 1)
 
-    -- the player: red glow and swords in combat, else yellow glow and corner piece resting
+    -- the player: the ring tinted red and swords in combat, else gold and the corner piece resting
     if kind == "player" then
         local combat = Readable(UnitAffectingCombat("player"))
         local resting = not combat and Readable(IsResting())
         local color = combat and STATUS_COMBAT or resting and STATUS_RESTING or nil
-        if color and IconOn(f, "statusGlow", true) then
-            ring.Status:SetVertexColor(color[1], color[2], color[3], 1)
-            ring.Status:Show()
-            if not ring.Pulse:IsPlaying() then ring.Pulse:Play() end
-        else
-            ring.Status:Hide()
-            ring.Pulse:Stop()
-        end
+        ring.Status:Hide()
+        -- the tint itself is applied by UpdateThreat below (threat, when there is any, comes first)
+        ring.statusColor = color and IconOn(f, "statusGlow", true) and color or nil
         -- the player's level is white, as on Blizzard's frame
         f.Level:SetTextColor(1, 1, 1)
         ring.Corner:SetShown(resting and true or false)
@@ -1256,12 +1269,25 @@ function Ring.Update(f)
     Ring.UpdateThreat(f)
 end
 
--- Threat: the ring's flash in Blizzard's colours. Tiles off the plate use their border instead; on
+-- Threat: the ring's border tinted in Blizzard's colours, pulsing (was a separate flash line). Tiles off the plate use their border instead; on
 -- it a party member flashes for its own aggro, a boss for the player's threat on it.
+-- The ring's border tinted and pulsing: the threat colour, else the player's rest / combat colour
+local function ApplyTint(ring, color)
+    if color and ring.hasArt and ring.Tint then
+        ring.Tint:SetVertexColor(color[1], color[2], color[3])
+        ring.Tint:Show()
+        if not ring.Pulse:IsPlaying() then ring.Pulse:Play() end
+    elseif ring.Tint then
+        ring.Tint:Hide()
+        ring.Pulse:Stop()
+    end
+end
+
 function Ring.UpdateThreat(f)
     local ring = f.RingFrame
     if not ring then return end
-    if f.ringKind and not Ring.Plate(f) then ring.Flash:Hide() return end
+    ring.Flash:Hide()
+    if f.ringKind and not Ring.Plate(f) then ApplyTint(ring, ring.statusColor) return end
     local unit, kind = f.fuiUnit, Kind(f)
     local exists = unit and Readable(UnitExists(unit))
     local status
@@ -1274,10 +1300,9 @@ function Ring.UpdateThreat(f)
     end
     if status and status > 0 and GetThreatStatusColor and not ns.EditPreviewing() and IconOn(f, "threatGlow", true) then
         local r, gg, b = GetThreatStatusColor(status)
-        ring.Flash:SetVertexColor(r, gg, b, 1)
-        ring.Flash:Show()
+        ApplyTint(ring, { r, gg, b })
     else
-        ring.Flash:Hide()
+        ApplyTint(ring, ring.statusColor)
     end
 end
 

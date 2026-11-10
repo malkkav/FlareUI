@@ -1112,21 +1112,28 @@ local function PadStick()
 end
 
 -- While the controller radial is open the right stick aims it, so the camera holds still. A frame
--- of FlareUI's own takes the camera stick's input and keeps it while a radial is aimed (returning
--- false: handled), passing it on otherwise. Turning stick input on is protected, so it's done once,
--- out of combat, when the controller radial is bound; it then stays on, and holding works in a
--- fight too. Nothing of Blizzard's stick listener is touched.
+-- of FlareUI's own takes the camera stick's input while a radial is aimed (returning false: handled)
+-- and passes the rest on. It listens ONLY while a controller radial is open, as Blizzard's radial
+-- wheel does: left on for good, it took both sticks from the game on some setups (5.0 report: "can't
+-- use the joysticks"). Turning stick input on is protected, so the secure open / close snippets do
+-- it (frame ref "stickguard"), which works in a fight too. Made with the secure layer, out of combat.
 local cameraHeld = false
 local stickGuard
 
 local function GuardStick()
-    if stickGuard or InCombatLockdown() then return end
-    stickGuard = CreateFrame("Frame", nil, UIParent)
+    if stickGuard or InCombatLockdown() then return stickGuard end
+    stickGuard = CreateFrame("Frame", nil, UIParent, "SecureFrameTemplate")
     stickGuard:SetScript("OnGamepadStick", function(_, stick)
         if cameraHeld and stick == "Camera" then return false end
         return true
     end)
-    stickGuard:EnableGamePadStick(true)
+    stickGuard:EnableGamePadStick(false)
+    return stickGuard
+end
+
+-- out of a fight, the listener goes off with the radial whatever closed it
+local function ReleaseStickGuard()
+    if stickGuard and not InCombatLockdown() then pcall(stickGuard.EnableGamePadStick, stickGuard, false) end
 end
 
 local function HoldCamera(on)
@@ -1346,6 +1353,7 @@ end
 function CloseRadial()
     if not isOpen then return end
     HoldCamera(false)
+    ReleaseStickGuard()
     SetStickKeys(false)
     padSticky = nil
     isOpen = false
@@ -1486,6 +1494,8 @@ local CLOSE_PAD_SNIPPET = [[
     if MODE ~= "pad" then return end
     MODE, STICKY = nil, nil
     self:ClearBindings()
+    local guard = self:GetFrameRef("stickguard")
+    if guard then guard:EnableGamePadStick(false) end
     if not ... then self:CallMethod("OnSecureClose") end
 ]]
 
@@ -1494,6 +1504,9 @@ local OPEN_PAD_SNIPPET = [[
     local id = ...
     ACTIVE, MODE, STICKY = id, "pad", nil
     HELD = newtable()
+    -- the camera stick is held only while open (see GuardStick)
+    local guard = self:GetFrameRef("stickguard")
+    if guard then guard:EnableGamePadStick(true) end
     -- the right stick's directions (keys while the CVar is on) keep the aim
     self:SetBindingClick(true, "PADRSTICKUP", "]] .. AIM_NAME .. [[", "AimUp")
     self:SetBindingClick(true, "PADRSTICKDOWN", "]] .. AIM_NAME .. [[", "AimDown")
@@ -1898,6 +1911,7 @@ local function CreateSecureLayer()
     header.OnSecureClose = function() if openMode == "click" or openMode == "pad" then CloseRadial() end end
     header:SetAttribute("flare-openpad", OPEN_PAD_SNIPPET)
     header:SetAttribute("flare-closepad", CLOSE_PAD_SNIPPET)
+    SecureHandlerSetFrameRef(header, "stickguard", GuardStick())
 
     -- Full screen: it is SELECT_SNIPPET's coordinate frame (GetMousePosition is nil outside the
     -- frame asked). Takes the wheel only, never clicks.
@@ -2585,7 +2599,6 @@ local function ApplyBinding()
         local index = C_GamePad.ButtonBindingToIndex and C_GamePad.ButtonBindingToIndex(ns.PadTriggerKey(side))
         header:SetAttribute(attribute, index and index + 1 or nil)
     end
-    GuardStick()
     for stick in pairs(padSticks) do
         SetOverrideBindingClick(radial, true, ns.PadStickKey(stick), PAD_NAME, "Pad" .. stick)
     end
