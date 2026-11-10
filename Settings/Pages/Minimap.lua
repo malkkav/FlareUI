@@ -27,6 +27,10 @@ S:Row{ key = "mm.bag", path = "minimap.buttonBag", reload = true }
 S:Row{ key = "mm.bagHover", path = "minimap.bagHover", parent = "mm.bag",
     disabled = function() return not S:GetPath("minimap.buttonBag") end }
 
+-- while a gathering addon that moves the map to scan is loaded: the flashing is its own (Minimap.lua)
+S:Row{ key = "mm.nodeScanNote", kind = "text",
+    hidden = function() return not (ns.Minimap and ns.Minimap.LoadedScanners and #ns.Minimap.LoadedScanners() > 0) end }
+
 S:FontRows{ module = "mm", tab = "fonts", section = "mm.fonts", apply = Refresh, fonts = {
     { key = "zone", path = "minimap.zoneFont" },
     { key = "clock", path = "minimap.clockFont" },

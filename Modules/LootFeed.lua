@@ -141,7 +141,8 @@ local function Pattern(format)
     local p = format:gsub("%%%d*%$?s", "\001"):gsub("%%%d*%$?d", "\002")
     p = p:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%0")
     p = p:gsub("\001", "(.+)"):gsub("\002", "(%%d+)")
-    return "^" .. p .. "$"
+    -- anchored at the start only: some clients end the line with a colour code or a space
+    return "^" .. p
 end
 
 local patterns
@@ -162,7 +163,11 @@ local function LinkAndCount(...)
     local link, count
     for i = 1, select("#", ...) do
         local v = select(i, ...)
-        if v:find("|H") then link = v elseif tonumber(v) then count = tonumber(v) end
+        -- a sentence that did not match gives one nil: skipped, so the next sentence is tried
+        -- (it errored here, so lines without a count, the most common kind, never showed)
+        if type(v) == "string" then
+            if v:find("|H") then link = v elseif tonumber(v) then count = tonumber(v) end
+        end
     end
     return link, count or 1
 end
@@ -174,9 +179,21 @@ local function ItemLine(text)
     end
 end
 
-local function OnLoot(text)
+-- A line the game says is yours (its 12th argument, the looter's GUID, is your own) with an item link:
+-- for a client whose loot sentence the patterns miss (11-10, a player in another language saw no
+-- items). The count is the number after the link's "x", or 1.
+local function OwnLine(text, guid)
+    if not (guid and canaccessvalue(guid) and guid == UnitGUID("player")) then return nil end
+    local link = text:match("|c%x+|Hitem:.-|h.-|h|r") or text:match("|Hitem:.-|h.-|h")
+    if not link then return nil end
+    local after = text:sub((text:find(link, 1, true) or 1) + #link)
+    return link, tonumber(after:match("^%s*[x×]%s*(%d+)")) or 1
+end
+
+local function OnLoot(text, guid)
     if type(text) ~= "string" or (issecretvalue and issecretvalue(text)) then return end
     local link, count = ItemLine(text)
+    if not link then link, count = OwnLine(text, guid) end
     if not link then return end
     local db = GetDb()
     local id = tonumber(link:match("item:(%d+)"))
@@ -337,9 +354,9 @@ function LF:Init()
     events:RegisterEvent("CHAT_MSG_LOOT")
     events:RegisterEvent("CHAT_MSG_MONEY")
     events:RegisterEvent("PLAYER_MONEY")
-    events:SetScript("OnEvent", function(_, event, text)
+    events:SetScript("OnEvent", function(_, event, text, ...)
         if event == "CHAT_MSG_LOOT" then
-            OnLoot(text)
+            OnLoot(text, (select(11, ...)))   -- the 12th argument: the looter's GUID
         elseif event == "CHAT_MSG_MONEY" then
             OnMoneyChat()
         else
