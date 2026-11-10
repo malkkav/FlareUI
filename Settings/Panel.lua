@@ -306,6 +306,156 @@ local function Plate(parent, font)
 end
 Panel.Plate = Plate
 
+-- The controls kit (11-10, batch B), drawn from one smooth disc (tools/panelart.js)
+local CIRCLE = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Circle.tga"
+local GOLD = { 0.91, 0.77, 0.42 }
+
+-- A pill of the disc: two half discs and a stretched middle, so the ends stay round at any width.
+-- height is the frame's; inset draws it that much inside (a fill inside its rim).
+local function Pill(parent, layer, sub, inset, height)
+    local half = (height - 2 * inset) / 2
+    local p = {}
+    p.l = parent:CreateTexture(nil, layer, nil, sub)
+    p.l:SetTexture(CIRCLE)
+    p.l:SetTexCoord(0, 0.5, 0, 1)
+    p.l:SetPoint("TOPLEFT", inset, -inset)
+    p.l:SetPoint("BOTTOMLEFT", inset, inset)
+    p.l:SetWidth(half)
+    p.r = parent:CreateTexture(nil, layer, nil, sub)
+    p.r:SetTexture(CIRCLE)
+    p.r:SetTexCoord(0.5, 1, 0, 1)
+    p.r:SetPoint("TOPRIGHT", -inset, -inset)
+    p.r:SetPoint("BOTTOMRIGHT", -inset, inset)
+    p.r:SetWidth(half)
+    p.m = parent:CreateTexture(nil, layer, nil, sub)
+    p.m:SetTexture(CIRCLE)
+    p.m:SetTexCoord(0.49, 0.51, 0, 1)
+    p.m:SetPoint("TOPLEFT", p.l, "TOPRIGHT")
+    p.m:SetPoint("BOTTOMRIGHT", p.r, "BOTTOMLEFT")
+    function p:SetColor(r, g, b, a)
+        for _, t in ipairs({ self.l, self.m, self.r }) do t:SetVertexColor(r, g, b, a or 1) end
+    end
+    -- top and bottom colours, { r, g, b }
+    function p:SetGradient(top, bottom)
+        for _, t in ipairs({ self.l, self.m, self.r }) do
+            t:SetGradient("VERTICAL", CreateColor(bottom[1], bottom[2], bottom[3], 1), CreateColor(top[1], top[2], top[3], 1))
+        end
+    end
+    return p
+end
+Panel.Pill = Pill
+
+-- The on / off switch: a 44 x 20 pill, dark with a grey knob when off, warm gold with a light knob
+-- on the right when on. A plain CheckButton: SetChecked / GetChecked / Click work as before.
+local function PaintSwitch(s)
+    local on = s:GetChecked()
+    if on then
+        s.rim:SetColor(0.85, 0.70, 0.42)
+        s.fill:SetGradient({ 0.64, 0.48, 0.21 }, { 0.43, 0.31, 0.13 })
+        s.knob:SetVertexColor(0.98, 0.94, 0.81)
+    else
+        if s.hovered then s.rim:SetColor(0.69, 0.54, 0.31) else s.rim:SetColor(0.35, 0.27, 0.16) end
+        s.fill:SetGradient({ 0.03, 0.026, 0.02 }, { 0.07, 0.058, 0.04 })
+        s.knob:SetVertexColor(0.44, 0.40, 0.35)
+    end
+    s.knob:ClearAllPoints()
+    s.knob:SetPoint("LEFT", on and 27 or 3, 0)
+end
+local function Switch(parent)
+    local s = CreateFrame("CheckButton", nil, parent)
+    s:SetSize(44, 20)
+    s.rim = Pill(s, "BACKGROUND", 1, 0, 20)
+    s.fill = Pill(s, "BACKGROUND", 2, 1, 20)
+    s.knob = s:CreateTexture(nil, "ARTWORK")
+    s.knob:SetTexture(CIRCLE)
+    s.knob:SetSize(14, 14)
+    -- a click changes the state without SetChecked: PostClick paints it (OnClick belongs to the row)
+    hooksecurefunc(s, "SetChecked", PaintSwitch)
+    s:SetScript("PostClick", PaintSwitch)
+    s:SetMotionScriptsWhileDisabled(true)
+    s:SetScript("OnEnter", function(self) self.hovered = true PaintSwitch(self) end)
+    s:SetScript("OnLeave", function(self) self.hovered = nil PaintSwitch(self) end)
+    s:SetScript("OnDisable", function(self) self:SetAlpha(0.45) end)
+    s:SetScript("OnEnable", function(self) self:SetAlpha(1) end)
+    PaintSwitch(s)
+    return s
+end
+Panel.Switch = Switch
+
+-- Blizzard's panel button as a bronze plate (its own art hidden); gold text, white on hover
+local function SkinButton(b)
+    for _, r in ipairs({ b:GetRegions() }) do
+        if r:IsObjectType("Texture") then r:SetAlpha(0) end
+    end
+    if b.NineSlice then b.NineSlice:Hide() end
+    b.fEdge = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+    b.fEdge:SetAllPoints()
+    b.fEdge:SetColorTexture(0.47, 0.36, 0.22)
+    b.fFill = b:CreateTexture(nil, "BACKGROUND", nil, 2)
+    b.fFill:SetPoint("TOPLEFT", 1, -1)
+    b.fFill:SetPoint("BOTTOMRIGHT", -1, 1)
+    b.fFill:SetColorTexture(1, 1, 1)
+    b.fFill:SetGradient("VERTICAL", CreateColor(0.09, 0.065, 0.04, 1), CreateColor(0.24, 0.17, 0.10, 1))
+    b.fShine = b:CreateTexture(nil, "BACKGROUND", nil, 3)
+    b.fShine:SetPoint("TOPLEFT", 1, -1)
+    b.fShine:SetPoint("TOPRIGHT", -1, -1)
+    b.fShine:SetHeight(1)
+    b.fShine:SetColorTexture(1, 0.9, 0.67, 0.12)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints(b.fFill)
+    hl:SetColorTexture(1, 0.9, 0.7, 0.07)
+    b:SetNormalFontObject(_G[PANEL_FONT.GameFontNormal])
+    b:SetHighlightFontObject(_G[PANEL_FONT.GameFontHighlight])
+    b:SetDisabledFontObject(_G[PANEL_FONT.GameFontDisable])
+    b:HookScript("OnEnter", function(self) if self:IsEnabled() then self.fEdge:SetColorTexture(0.69, 0.54, 0.31) end end)
+    b:HookScript("OnLeave", function(self) self.fEdge:SetColorTexture(0.47, 0.36, 0.22) end)
+    return b
+end
+Panel.SkinButton = SkinButton
+local function PanelButton(parent)
+    return SkinButton(PanelButton(parent))
+end
+
+-- Blizzard's dropdown button as a bronze-rimmed pill with a gold arrow
+local function SkinDropdown(dd)
+    for _, r in ipairs({ dd:GetRegions() }) do
+        if r:IsObjectType("Texture") and r ~= dd.Arrow then r:SetAlpha(0) end
+    end
+    local h = dd:GetHeight()
+    dd.fRim = Pill(dd, "BACKGROUND", 1, 0, h)
+    dd.fRim:SetColor(0.47, 0.36, 0.22)
+    dd.fFill = Pill(dd, "BACKGROUND", 2, 1, h)
+    dd.fFill:SetColor(0.06, 0.047, 0.032)
+    if dd.Arrow then
+        dd.Arrow:SetDesaturated(true)
+        dd.Arrow:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
+    end
+    if dd.Text then dd.Text:SetFontObject(_G[PANEL_FONT.GameFontHighlightSmall]) end
+    dd:HookScript("OnEnter", function(self) self.fRim:SetColor(0.69, 0.54, 0.31) end)
+    dd:HookScript("OnLeave", function(self) self.fRim:SetColor(0.47, 0.36, 0.22) end)
+end
+Panel.SkinDropdown = SkinDropdown
+
+-- a stepper's arrows: gold, on small round bronze plates
+local function SkinArrow(b)
+    for _, r in ipairs({ b:GetRegions() }) do
+        if r:IsObjectType("Texture") then
+            r:SetDesaturated(true)
+            r:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
+        end
+    end
+    local rim = b:CreateTexture(nil, "BACKGROUND", nil, -2)
+    rim:SetTexture(CIRCLE)
+    rim:SetSize(22, 22)
+    rim:SetPoint("CENTER")
+    rim:SetVertexColor(0.47, 0.36, 0.22)
+    local fill = b:CreateTexture(nil, "BACKGROUND", nil, -1)
+    fill:SetTexture(CIRCLE)
+    fill:SetSize(20, 20)
+    fill:SetPoint("CENTER")
+    fill:SetVertexColor(0.14, 0.10, 0.06)
+end
+
 --------------------------------------------------
 -- 2. RIGHT COLUMN
 --------------------------------------------------
@@ -516,9 +666,8 @@ end
 
 -- toggle
 Build.toggle = function(f)
-    local check = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-    check:SetSize(26, 26)
-    check:SetPoint("RIGHT", -4, 0)
+    local check = Switch(f)
+    check:SetPoint("RIGHT", -6, 0)
     check:SetScript("OnClick", function(self)
         local on = self:GetChecked() and true or false
         PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
@@ -544,6 +693,9 @@ Build.choice = function(f)
     stepper.Dropdown:SetPoint("RIGHT", stepper.IncrementButton, "LEFT", -5, 0)
     stepper.DecrementButton:ClearAllPoints()
     stepper.DecrementButton:SetPoint("RIGHT", stepper.Dropdown, "LEFT", -5, 0)
+    SkinDropdown(stepper.Dropdown)
+    SkinArrow(stepper.IncrementButton)
+    SkinArrow(stepper.DecrementButton)
     ForwardHover(stepper.Dropdown, f)
     ForwardHover(stepper.IncrementButton, f)
     ForwardHover(stepper.DecrementButton, f)
@@ -563,20 +715,53 @@ end
 -- Discrete numeric settings keep their registered choices, including Default/Auto.
 -- Dragging previews without writes; releasing commits once. Keyboard changes commit directly.
 Build.range = function(f)
-    local slider = CreateFrame("Slider", nil, f, "OptionsSliderTemplate")
-    slider:SetSize(146, 16); slider:SetPoint("RIGHT", -58, 0)
-    slider:SetValueStep(1); slider:SetObeyStepOnDrag(true)
-    if slider.Low then slider.Low:Hide() end
-    if slider.High then slider.High:Hide() end
-    if slider.Text then slider.Text:Hide() end
-    f.value = Text(f, "GameFontHighlightSmall", "RIGHT")
+    -- a dark 8 px pill with a bronze rim, gold up to a gold diamond (11-10 kit)
+    local slider = CreateFrame("Slider", nil, f)
+    slider:SetOrientation("HORIZONTAL")
+    slider:SetSize(146, 18)
+    slider:SetPoint("RIGHT", -58, 0)
+    slider:SetValueStep(1)
+    slider:SetObeyStepOnDrag(true)
+    slider:SetHitRectInsets(-4, -4, -4, -4)
+    local track = CreateFrame("Frame", nil, slider)
+    track:SetPoint("LEFT")
+    track:SetPoint("RIGHT")
+    track:SetHeight(8)
+    local rim = Pill(track, "BACKGROUND", 1, 0, 8)
+    rim:SetColor(0.35, 0.27, 0.16)
+    local inner = Pill(track, "BACKGROUND", 2, 1, 8)
+    inner:SetColor(0.05, 0.043, 0.031)
+    slider.goldFill = track:CreateTexture(nil, "ARTWORK")
+    slider.goldFill:SetPoint("TOPLEFT", 1, -1)
+    slider.goldFill:SetPoint("BOTTOMLEFT", 1, 1)
+    slider.goldFill:SetColorTexture(1, 1, 1)
+    slider.goldFill:SetGradient("VERTICAL", CreateColor(0.64, 0.48, 0.21, 1), CreateColor(0.91, 0.77, 0.42, 1))
+    slider:SetThumbTexture(WHITE)
+    local thumb = slider:GetThumbTexture()
+    thumb:SetSize(10, 10)
+    thumb:SetRotation(math.rad(45))
+    thumb:SetVertexColor(0.98, 0.9, 0.66)
+    local edge = slider:CreateTexture(nil, "OVERLAY", nil, -1)
+    edge:SetTexture(WHITE)
+    edge:SetSize(13, 13)
+    edge:SetRotation(math.rad(45))
+    edge:SetVertexColor(0.35, 0.27, 0.16)
+    edge:SetPoint("CENTER", thumb)
+    thumb:SetDrawLayer("OVERLAY", 1)
+    function slider:PaintFill()
+        local lo, hi = self:GetMinMaxValues()
+        local frac = hi > lo and (self:GetValue() - lo) / (hi - lo) or 0
+        self.goldFill:SetWidth(math.max(1, frac * (self:GetWidth() - 10) + 4))
+    end
+    f.value = Text(f, "GameFontNormal", "RIGHT")
     f.value:SetPoint("RIGHT", -4, 0); f.value:SetWidth(48); f.value:SetWordWrap(false)
     local function Commit()
         if f.row and f.rangeChoice and not f.row:IsDisabled() then f.row:Set(f.rangeChoice.value) end
     end
     slider:SetScript("OnMouseDown", function() f.rangeDragging = true end)
     slider:SetScript("OnMouseUp", function() f.rangeDragging = nil; Commit() end)
-    slider:SetScript("OnValueChanged", function(_, value)
+    slider:SetScript("OnValueChanged", function(self, value)
+        self:PaintFill()
         if f.rangeFilling or not f.row then return end
         local choices = f.rangeChoices
         local choice = choices and choices[math.max(1, math.min(#choices, math.floor(value + 0.5)))]
@@ -601,6 +786,7 @@ Fill.range = function(f, row)
     f.rangeChoice = f.rangeChoices[selected]
     f.control:SetMinMaxValues(1, math.max(1, #f.rangeChoices))
     f.control:SetValue(selected)
+    f.control:PaintFill()
     f.value:SetText(f.rangeChoice and f.rangeChoice.text or '')
     f.rangeFilling = nil
     f:SetHeight(ROW_H + 4)
@@ -616,7 +802,9 @@ Fill.styles = function(f, row)
     local gap = minimap and 10 or 6
     local width = (f:GetWidth() - 12 - (#choices - 1) * gap) / #choices
     if minimap then width = math.min(168, width) end
-    local cardHeight = minimap and 174 or 86
+    -- the row of cards is centred (the minimap's are narrower than the row)
+    local startX = math.max(6, (f:GetWidth() - (#choices * width + (#choices - 1) * gap)) / 2)
+    local cardHeight = minimap and 180 or 92
     local previewHeight = minimap and 148 or 62
     local top = (f.crumb:GetText() or "") ~= "" and 32 or 20
     f.label:ClearAllPoints(); f.label:SetPoint("TOPLEFT", 6, -(top - 20))
@@ -625,31 +813,59 @@ Fill.styles = function(f, row)
         local b = f.cards[i]
         if not b then
             b = CreateFrame("Button", nil, f, "BackdropTemplate")
-            b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+            local edgeFile = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thick.tga"
+            b:SetBackdrop({ edgeFile = edgeFile, edgeSize = ns.BorderEdgeSize(edgeFile, 12) })
+            b.plate = b:CreateTexture(nil, "BACKGROUND")
+            b.plate:SetPoint("TOPLEFT", 3, -3)
+            b.plate:SetPoint("BOTTOMRIGHT", -3, 3)
+            b.plate:SetColorTexture(1, 1, 1)
             b.label = Text(b, "GameFontNormalSmall", "CENTER")
-            b.label:SetPoint("BOTTOMLEFT", 4, 6); b.label:SetPoint("BOTTOMRIGHT", -4, 6)
+            b.label:SetPoint("BOTTOMLEFT", 6, 8); b.label:SetPoint("BOTTOMRIGHT", -6, 8)
             b.tick = Text(b, "GameFontNormal", "RIGHT")
-            b.tick:SetPoint("TOPRIGHT", -4, -3); b.tick:SetText("|TInterface\\Buttons\\UI-CheckBox-Check:14|t")
+            b.tick:SetPoint("TOPRIGHT", -7, -6); b.tick:SetText("|TInterface\\Buttons\\UI-CheckBox-Check:14|t")
             b.canvas = ns.SettingsPreview.Create(b, 100, 65)
-            b.canvas.frame:SetPoint("TOPLEFT", 3, -3)
-            b:SetScript("OnEnter", function(self) if f.row then ShowRowPreview(f.row, self.value) end end)
-            b:SetScript("OnLeave", function() if f.row then ShowRowPreview(f.row) end end)
+            b.canvas.frame:SetPoint("TOPLEFT", 6, -6)
+            b:SetScript("OnEnter", function(self)
+                self.hovered = true
+                if self.Paint then self:Paint() end
+                if f.row then ShowRowPreview(f.row, self.value) end
+            end)
+            b:SetScript("OnLeave", function(self)
+                self.hovered = nil
+                if self.Paint then self:Paint() end
+                if f.row then ShowRowPreview(f.row) end
+            end)
+            function b:Paint()
+                local c = ns.BORDER_COLOR
+                if self.selected then
+                    self:SetBackdropBorderColor(1, 0.84, 0.5, 1)
+                    self.plate:SetGradient("VERTICAL", CreateColor(0.13, 0.095, 0.055, 1), CreateColor(0.29, 0.21, 0.12, 1))
+                elseif self.hovered then
+                    self:SetBackdropBorderColor(c.r * 1.2, c.g * 1.2, c.b * 1.2, 1)
+                    self.plate:SetGradient("VERTICAL", CreateColor(0.1, 0.075, 0.045, 1), CreateColor(0.21, 0.155, 0.09, 1))
+                else
+                    self:SetBackdropBorderColor(c.r * 0.8, c.g * 0.8, c.b * 0.8, 1)
+                    self.plate:SetGradient("VERTICAL", CreateColor(0.07, 0.055, 0.035, 1), CreateColor(0.15, 0.11, 0.065, 1))
+                end
+                self.label:SetTextColor(self.selected and 1 or 0.85, self.selected and 0.89 or 0.79, self.selected and 0.63 or 0.66)
+            end
             b:SetScript("OnClick", function(self)
                 if f.row and not f.row:IsDisabled() then ns.ButtonSound(); f.row:Set(self.value) end
             end)
             f.cards[i] = b
         end
         b.value = choice.value
-        b:SetPoint("TOPLEFT", 6 + (i - 1) * (width + gap), -top)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", startX + (i - 1) * (width + gap), -top)
         b:SetSize(width, cardHeight)
         b.label:SetText(choice.text)
-        b.canvas.width, b.canvas.height = width - 6, previewHeight
+        b.canvas.width, b.canvas.height = width - 12, previewHeight
         b.canvas.isStyleCard = true
-        b.canvas.frame:SetSize(width - 6, previewHeight)
+        b.canvas.frame:SetSize(width - 12, previewHeight)
         ns.SettingsPreview.Style(b.canvas, row, choice.value)
         local selected = row:Get() == choice.value
-        b:SetBackdropColor(0.04, 0.035, 0.025, 0.8)
-        b:SetBackdropBorderColor(selected and 1 or 0.45, selected and 0.82 or 0.35, selected and 0 or 0.22, 1)
+        b.selected = selected
+        b:Paint()
         b.tick:SetShown(selected)
         b:SetEnabled(not row:IsDisabled()); b:SetAlpha(row:IsDisabled() and 0.45 or 1)
         b:Show()
@@ -662,7 +878,7 @@ end
 local function SideButton(f, side)
     local key = side .. "Button"
     if not f[key] then
-        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        local b = PanelButton(f)
         b:SetHeight(22)
         b:SetScript("OnClick", function(self)
             ns.ButtonSound()
@@ -678,6 +894,7 @@ Build.dropdown = function(f)
     local dd = CreateFrame("DropdownButton", nil, f, "WowStyle1DropdownTemplate")
     dd:SetWidth(200)
     dd:SetPoint("RIGHT", -4, 0)
+    SkinDropdown(dd)
     ForwardHover(dd, f)
     f.control = dd
     SetupChoiceMenu(dd, f)
@@ -717,7 +934,7 @@ local ButtonWidthForText = S.ButtonWidthForText
 
 -- button
 Build.button = function(f)
-    local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    local b = PanelButton(f)
     b:SetSize(200, 22)
     b:SetPoint("RIGHT", -4, 0)
     b:SetScript("OnClick", function()
@@ -936,7 +1153,7 @@ Fill.buttons = function(f, row)
         local i, def = n, defs[n]
         local b = f.buttons[i]
         if not b then
-            b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+            b = PanelButton(f)
             b:SetHeight(BUTTON_HEIGHT)
             b:SetScript("OnClick", function(self)
                 ns.ButtonSound()
@@ -1205,15 +1422,25 @@ local function SectionHeader(parent, text, y, sectionKey)
         h = CreateFrame("Frame", nil, parent)
         h:SetHeight(SECTION_H)
         h.kind = key
-        h.text = Text(h, "GameFontNormal")
+        h.text = Text(h, "GameFontNormalLarge")
         h.text:SetPoint("BOTTOMLEFT", 6, 8)
-        h.text:SetTextColor(0.83, 0.68, 0.43)
+        h.text:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
         h.sign = Text(h, "GameFontNormal")
         h.sign:SetPoint("BOTTOMRIGHT", -10, 6)
-        h.reset = CreateFrame("Button", nil, h, "UIPanelButtonTemplate")
-        h.reset:SetSize(52, 20)
-        h.reset:SetPoint("BOTTOMRIGHT", -30, 5)
-        h.reset:SetText(L["Reset"])
+        h.reset = CreateFrame("Button", nil, h)
+        h.reset:SetPoint("BOTTOMRIGHT", -30, 6)
+        h.reset.label = Text(h.reset, "GameFontNormalSmall", "RIGHT")
+        h.reset.label:SetPoint("RIGHT")
+        h.reset.label:SetText(L["Reset"])
+        h.reset:SetSize(math.ceil(h.reset.label:GetStringWidth() or 30) + 6, 18)
+        h.reset:SetMotionScriptsWhileDisabled(true)
+        function h.reset:Paint()
+            if not self:IsEnabled() then self.label:SetTextColor(0.43, 0.40, 0.34)
+            elseif self.hovered then self.label:SetTextColor(1, 1, 1)
+            else self.label:SetTextColor(GOLD[1], GOLD[2], GOLD[3]) end
+        end
+        h.reset:SetScript("OnEnter", function(self) self.hovered = true self:Paint() end)
+        h.reset:SetScript("OnLeave", function(self) self.hovered = nil self:Paint() end)
         -- asks first: a section can hold many options
         h.reset:SetScript("OnClick", function(self)
             local owner = self:GetParent()
@@ -1237,7 +1464,9 @@ local function SectionHeader(parent, text, y, sectionKey)
     h.sectionKey = sectionKey
     local active = S.modules[current] and Panel:ActiveTab(S.modules[current])
     h.resetTab = active and active.key
-    h.reset:SetShown(sectionKey and S:CanResetSection(current, sectionKey, h.resetTab) or false)
+    h.reset:SetShown(sectionKey ~= nil)
+    h.reset:SetEnabled(sectionKey and S:CanResetSection(current, sectionKey, h.resetTab) or false)
+    h.reset:Paint()
     h.sign:SetText(sectionKey and (closedSections[sectionKey] and "+" or "-") or "")
     h.text:SetText(text)
     h:ClearAllPoints()
@@ -1294,6 +1523,7 @@ local function UpdateHeader(module)
     page.title:SetText(module:Title())
     page.desc:SetText(module:Description() or "")
     page.plateIcon:SetTexture(module.navIcon or LOGO)
+    if module.navIconTint then page.plateIcon:SetVertexColor(1, 0.83, 0.47) else page.plateIcon:SetVertexColor(1, 1, 1) end
     local hasSwitch = module.enabled ~= nil
     page.switch:SetShown(hasSwitch)
     page.switch:SetChecked(module:IsOn())
@@ -1564,7 +1794,10 @@ function UpdateNav()
                 b.dot:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             end
             b.dot:SetDesaturated(false)
-            b.dot:SetVertexColor(1, 1, 1)
+            if not module.navIconTint then b.dot:SetVertexColor(1, 1, 1)
+            elseif selected then b.dot:SetVertexColor(1, 0.83, 0.47)
+            elseif on then b.dot:SetVertexColor(0.69, 0.54, 0.31)
+            else b.dot:SetVertexColor(0.45, 0.42, 0.38) end
             b.dot:Show()
         else
             b.dot:SetShown(module.enabled ~= nil)
@@ -1652,10 +1885,12 @@ local function BuildNav(left)
             gap = gap + 10
         end
         for _, module in ipairs(group.modules) do
-            local icons = { ab=true, uf=true, rb=true, au=true, mm=true, ch=true, dm=true, qt=true, tt=true, qol=true, rm=true }
+            local icons = { about=true, adv=true, language=true, ab=true, uf=true, rb=true, au=true, dm=true,
+                mm=true, qt=true, ch=true, tt=true, rm=true, qol=true }
             if icons[module.key] then
-                module.navIcon = 'Interface\\AddOns\\' .. ADDON_NAME .. '\\Media\\Icons\\Settings\\' .. module.key .. '.tga'
+                module.navIcon = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Icons\\" .. module.key .. ".tga"
                 module.navIconRound = false
+                module.navIconTint = true
             end
             -- the open page sits on a warm plate with a gold bar at its left edge
             local b = CreateFrame("Button", nil, left, "BackdropTemplate")
@@ -1714,6 +1949,7 @@ local function PlaceSecureReload()
     if not secureReload then
         secureReload = CreateFrame("Button", "FlareUI_SettingsReload", ns.SecureReloadParent(), "SecureActionButtonTemplate, UIPanelButtonTemplate")
         secureReload:SetFrameStrata("FULLSCREEN_DIALOG")
+        SkinButton(secureReload)
         -- acts on the press, whatever ActionButtonUseKeyDown says, so PreClick runs once and in step
         secureReload:RegisterForClicks("AnyDown")
         secureReload:SetAttribute("useOnKeyDown", true)
@@ -2032,9 +2268,8 @@ local function BuildWindow()
     page.title:SetTextColor(1, 0.83, 0.47)
     page.title:SetWordWrap(true)
     page.title:SetPoint("TOPLEFT", plate, "TOPRIGHT", 12, -2)
-    page.switch = CreateFrame("CheckButton", nil, header, "UICheckButtonTemplate")
-    page.switch:SetSize(26, 26)
-    page.switch:SetPoint("LEFT", page.title, "RIGHT", 6, 0)
+    page.switch = Switch(header)
+    page.switch:SetPoint("LEFT", page.title, "RIGHT", 10, 0)
     page.switch:SetScript("OnClick", function(self)
         local on = self:GetChecked() and true or false
         PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
@@ -2043,7 +2278,7 @@ local function BuildWindow()
         Panel:Refresh()
     end)
     -- Edit Mode button: the module's main frame, or plain Edit Mode for Blizzard's bars
-    page.editMode = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
+    page.editMode = PanelButton(header)
     page.editMode:SetHeight(22)
     page.editMode:SetPoint("TOPRIGHT", 0, -2)
     page.editMode:SetScript("OnClick", function(self)
@@ -2072,7 +2307,7 @@ local function BuildWindow()
     banner:SetPoint("RIGHT")
     banner:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
     banner:SetBackdropColor(0.5, 0.35, 0, 0.35)
-    banner.button = CreateFrame("Button", nil, banner, "UIPanelButtonTemplate")
+    banner.button = PanelButton(banner)
     banner.button:SetHeight(22)
     banner.text = Text(banner, "GameFontNormal")
     banner.text:SetPoint("LEFT", 8, 0)
@@ -2131,7 +2366,7 @@ local function BuildWindow()
     off.text = Text(off, "GameFontHighlight", "CENTER")
     off.text:SetPoint("TOP", 0, -10)
     off.text:SetWidth(380)
-    local turnOn = CreateFrame("Button", nil, off, "UIPanelButtonTemplate")
+    local turnOn = PanelButton(off)
     turnOn:SetSize(160, 26)
     turnOn:SetPoint("TOP", off.text, "BOTTOM", 0, -16)
     turnOn:SetText(S:WindowText("moduleOffCard2", L["Turn On"]))
@@ -2195,7 +2430,7 @@ local function BuildWindow()
     frame:SetClampRectInsets(0, 0, 0, -(FOOTER_H + 4))
     frame.footerText = Text(footer, "GameFontHighlight")
     frame.footerText:SetPoint("LEFT", PAD + 4, -1)
-    frame.reload = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+    frame.reload = PanelButton(footer)
     frame.reload:SetPoint("RIGHT", -PAD, -1)
     frame.reload:SetText(S:WindowText("reloadFooter2", L["Reload Now"]))
     frame.reload:SetSize(ButtonWidthForText(frame.reload, 130), 22)
