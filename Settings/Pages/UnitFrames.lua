@@ -14,14 +14,14 @@ end
 
 local function Frame(key, path, frameName)
     S:Row{
-        key = "uf." .. key, kind = "framecard", tab = "frames", reload = true, path = path, half = true,
+        key = "uf." .. key, kind = "frame", reload = true, path = path, half = true,
         frame = function() return _G[frameName] end,
     }
 end
 
 S:Module{
     key = "uf", group = "combat", order = 20, enabled = "unitframes.enabled",
-    tabs = { { key = "settings" }, { key = "frames" }, { key = "fonts" } },
+    tabs = { { key = "settings" }, { key = "fonts" } },
     -- the frames behind the shared Player / Pet / Target / Focus row
     editFrames = {
         function() return _G.FlareUI_UF_Player end, function() return _G.FlareUI_UF_Target end,
@@ -41,7 +41,7 @@ S:Module{
 -- one switch for player, pet, target and focus (Edit opens the player frame)
 local MAIN_UNITS = { "player", "pet", "target", "focus" }
 S:Row{
-    key = "uf.main", kind = "framecard", tab = "frames", reload = true, half = true,
+    key = "uf.main", kind = "frame", reload = true, half = true,
     get = function() return S:GetPath("unitframes.units.player.enabled") and true or false end,
     set = function(on)
         for _, unit in ipairs(MAIN_UNITS) do S:SetPath("unitframes.units." .. unit .. ".enabled", on and true or false) end
@@ -90,14 +90,3 @@ S:FontRows{ module = "uf", tab = "fonts", section = "uf.fonts", apply = Refresh,
     { key = "auras", path = "unitframes.auraFont", autoSize = true },
     { key = "auraCount", path = "unitframes.auraCountFont", autoSize = true },
 } }
-
--- Per-unit appearance belongs here as well as in the Edit Mode dialog.
-for _, unit in ipairs({ 'player', 'target', 'focus', 'pet', 'targettarget', 'focustarget' }) do
-    local section = 'uf.appearance.' .. unit     -- titles and text in the copy doc
-    if unit == 'player' or unit == 'target' or unit == 'focus' then
-        local key = 'uf.' .. unit .. 'Portrait'
-        S:Row{ key=key, section=section, tab='settings', kind='choice', path='unitframes.units.' .. unit .. '.portrait', resetValue=function() return S:DefaultPath('unitframes.units.' .. unit .. '.portrait') or 'none' end, choices={{'3d',L["Character Portrait"]},{'class',L["Class Icon"]},{'none',L["None (Addon Style)"]}}, apply=Refresh }
-    end
-    local key = 'uf.' .. unit .. 'Level'
-    S:Row{ key=key, section=section, tab='settings', path='unitframes.units.' .. unit .. '.showLevel', apply=Refresh }
-end

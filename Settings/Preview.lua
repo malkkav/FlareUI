@@ -13,7 +13,6 @@ local function Route(kind, prefix, keys)
     for key in keys:gmatch('%S+') do routes[prefix .. '.' .. key] = kind end
 end
 Route('unit', 'uf', 'frameStyle palette fullNames simplePet simpleTargetOf')
-Route('unitDetail', 'uf', 'playerPortrait targetPortrait focusPortrait playerLevel targetLevel focusLevel petLevel targettargetLevel focustargetLevel')
 Route('unitAuras', 'uf', 'auraShape auraSwipe auraTimer auraTimerColor')
 Route('auras', 'ab', 'skinCDM')
 Route('auras', 'au', 'shape swipe timer timerColor arrive')

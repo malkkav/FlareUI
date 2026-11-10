@@ -1196,7 +1196,7 @@ local function EditButton(f, onClick)
     b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     b:SetBackdropColor(0.10, 0.085, 0.06, 1)
     b:SetBackdropBorderColor(0.47, 0.36, 0.22, 1)
-    local label = Text(b, "GameFontHighlightSmall", "CENTER")
+    local label = Text(b, "GameFontNormal", "CENTER")   -- gold, like the panel buttons
     label:SetAllPoints(); b:SetFontString(label)
     b:SetScript("OnDisable", function(self) self:SetAlpha(0.4) end)
     b:SetScript("OnEnable", function(self) self:SetAlpha(1) end)
