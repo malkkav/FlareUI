@@ -1057,6 +1057,40 @@ local function SkinZoneMap()
     end)
 end
 
+-- Gathering addons that read nodes by sliding the hidden map under the cursor (Lueur, NodeSight,
+-- Nodeworthy: the 11-10 audit) hide or shrink what is on the map while they scan, so quest areas and
+-- icons flash, on Blizzard's minimap too. Players blamed FlareUI: a notice, once per account and
+-- addon, says whose it is (and the Minimap settings page says so while one is loaded).
+MM.SCANNERS = { "Lueur", "NodeSight", "Nodeworthy" }
+function MM.LoadedScanners()
+    local list = {}
+    for _, name in ipairs(MM.SCANNERS) do
+        if C_AddOns.IsAddOnLoaded(name) then list[#list + 1] = C_AddOns.GetAddOnMetadata(name, "Title") or name end
+    end
+    return list
+end
+
+ns.Dialogs = ns.Dialogs or {}
+ns.Dialogs["FLAREUI_NODE_SCAN"] = {
+    text = L["%s finds gathering nodes by sliding the minimap under your cursor. While it scans, the map and what is on it (quest areas, icons) can flash or vanish for a moment.\n\nThat comes from the addon itself, not FlareUI, and happens on Blizzard's minimap too. NodeRadar, FarmMap and GatherMemory find nodes without moving the map."],
+    hideOnEscape = true,   -- (one button: the game's own Okay)
+}
+
+function MM.NoticeScanners()
+    local global = ns.db and ns.db.global
+    if not global then return end
+    global.nodeScanNotice = global.nodeScanNotice or {}
+    for _, name in ipairs(MM.SCANNERS) do
+        if C_AddOns.IsAddOnLoaded(name) and not global.nodeScanNotice[name] then
+            global.nodeScanNotice[name] = true
+            local title = C_AddOns.GetAddOnMetadata(name, "Title") or name
+            -- a moment after login, once the screen has settled
+            C_Timer.After(6, function() ns.ShowDialog("FLAREUI_NODE_SCAN", title) end)
+            return   -- one notice at a time; another such addon gets its own next login
+        end
+    end
+end
+
 function MM:Init()
     if self.initialized then return end
     EventUtil.ContinueOnAddOnLoaded("Blizzard_BattlefieldMap", SkinZoneMap)
@@ -1110,4 +1144,5 @@ function MM:Init()
         hooksecurefunc(drawer, "UpdateDisplay", drawer.Hide)
         drawer:Hide()
     end
+    MM.NoticeScanners()
 end

@@ -1011,6 +1011,7 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
     cast.Time:ClearAllPoints()
     cast.Time:SetPoint("RIGHT", cast, "RIGHT", -TEXT_INSET, 0)
     cast.Time:SetShown(style.timer)
+    cast.timerShown = style.timer and true or false   -- Hide Spell Timer: the end of a cast brings it back only if wanted
     cast.Text:ClearAllPoints()
     cast.Text:SetPoint("LEFT", cast, "LEFT", TEXT_INSET, 0)
     if style.timer then
@@ -1102,7 +1103,7 @@ function UF.EndCastFlash(cast)
     cast.flashing = nil
     if cast.FlashFill then cast.FlashFill:Hide() end
     cast:GetStatusBarTexture():SetAlpha(1)
-    cast.Time:Show()
+    cast.Time:SetShown(cast.timerShown ~= false)
 end
 
 -- Your own cast that finishes: the bar fills to full (the client's timer can stop just short of it)

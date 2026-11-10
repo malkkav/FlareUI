@@ -1012,21 +1012,46 @@ local function UpdateHeader(module)
     -- tabs along the bottom of the header
     local names = module.tabs and S:ModuleText(module.key, "tabs") or {}
     local active = Panel:ActiveTab(module)
+    -- the row must fit the page (four tabs with NEW badges ran past it, 11-10): each tab is its name,
+    -- some padding and, with a badge, room on both sides so the name stays centred. Too wide, the
+    -- padding shrinks first (down to 10), then the tabs' badges go (the rows' own stay).
+    local TAB_PAD, TAB_PAD_MIN, TAB_GAP, TAB_LEFT = 40, 10, 5, 8
+    local shown, textW, isNew = {}, {}, {}
     for i, b in ipairs(page.tabButtons) do
         local tab = module.tabs and module:IsOn() and module.tabs[i]
         b:SetShown(tab and true or false)
         if tab then
             b.tabKey = tab.key
             b.Text:SetText(names[i] or tab.key)
-            local new = module:HasNew(tab.key)
-            if new and not b.newBadge then
-                b.newBadge = NewBadge(b)
-                b.newBadge:SetPoint("LEFT", b.Text, "RIGHT", NEW_GAP / NEW_SCALE, 0)
-            end
-            if b.newBadge then b.newBadge:SetShown(new) end
-            b:SetWidth((b.Text:GetStringWidth() or 60) + 40 + (new and 2 * (NEW_W + NEW_GAP) or 0))
+            shown[#shown + 1] = i
+            textW[i] = b.Text:GetStringWidth() or 60
+            isNew[i] = module:HasNew(tab.key) and true or false
             if b.SetSelected then b:SetSelected(tab == active) end
         end
+    end
+    local room = (page.header:GetWidth() or 0) > 0 and page.header:GetWidth() or CONTENT_W
+    local function RowWidth(pad, badges)
+        local w = TAB_LEFT + TAB_GAP * math.max(0, #shown - 1)
+        for _, i in ipairs(shown) do w = w + textW[i] + pad + ((badges and isNew[i]) and 2 * (NEW_W + NEW_GAP) or 0) end
+        return w
+    end
+    local badges, pad = true, TAB_PAD
+    if RowWidth(pad, true) > room and #shown > 0 then
+        pad = math.max(TAB_PAD_MIN, TAB_PAD - (RowWidth(TAB_PAD, true) - room) / #shown)
+        if RowWidth(pad, true) > room then
+            badges = false
+            pad = math.max(TAB_PAD_MIN, math.min(TAB_PAD, TAB_PAD - (RowWidth(TAB_PAD, false) - room) / #shown))
+        end
+    end
+    for _, i in ipairs(shown) do
+        local b = page.tabButtons[i]
+        local new = badges and isNew[i]
+        if new and not b.newBadge then
+            b.newBadge = NewBadge(b)
+            b.newBadge:SetPoint("LEFT", b.Text, "RIGHT", NEW_GAP / NEW_SCALE, 0)
+        end
+        if b.newBadge then b.newBadge:SetShown(new) end
+        b:SetWidth(textW[i] + pad + (new and 2 * (NEW_W + NEW_GAP) or 0))
     end
     local tabbed = module.tabs and module:IsOn()
     page.tabLine:SetShown(tabbed and true or false)

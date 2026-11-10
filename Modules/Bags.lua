@@ -490,7 +490,12 @@ end
 -- secondary ratings 0.4, armour a tie-breaker. Only gear the tooltip doesn't mark red (wrong armour
 -- type, level, class) counts, and it is compared with what you wear there (the weaker of two rings,
 -- trinkets or dual-wielded weapons; both hands against a two-hander).
-local Upgrade = { score = {}, usable = {} }
+-- 11-10 (a level 15 warrior saw the arrow on grey cloth bracers over green mail ones), after EnhanceQoL's
+-- Forever rules (the idea only): a worn item whose stats can't be read blocks the arrow instead of
+-- scoring 0; the game's own C_PlayerInfo.CanUseItem decides what can be worn (the red tooltip as a
+-- fallback); and armour (cloth to plate, shields, cloaks) is only an upgrade when it loses no stat,
+-- its armour included, against the piece it replaces.
+local Upgrade = { score = {}, usable = {}, stats = {} }
 Bags.Upgrade = Upgrade
 
 local STAT_KEY = { [1] = "ITEM_MOD_STRENGTH_SHORT", [2] = "ITEM_MOD_AGILITY_SHORT", [4] = "ITEM_MOD_INTELLECT_SHORT" }
@@ -534,14 +539,17 @@ end
 
 function Upgrade:Score(link)
     if not link then return nil end
+    local original = link
     link = BaseLink(link)
     local cached = self.score[link]
     if cached then return cached end
     -- an uncached item has no stats yet: asked for, and scored on a later pass
     local itemID = C_Item.GetItemInfoInstant(link)
     if itemID and not C_Item.IsItemDataCachedByID(itemID) then C_Item.RequestLoadItemDataByID(itemID) return nil end
-    local stats = C_Item.GetItemStats(link)
-    if not stats then return nil end
+    -- the full link (a random suffix's stats come with it); none read yet is "unknown", not 0
+    local stats = C_Item.GetItemStats(original)
+    if not stats or next(stats) == nil then return nil end
+    self.stats[link] = stats
     local main = self:MainStat()
     local physical = main ~= 4
     local score, damage, healing = 0, 0, 0
@@ -581,6 +589,15 @@ end
 function Upgrade:CanWear(bagID, slotID, link)
     local known = self.usable[link]
     if known ~= nil then return known end
+    -- the game's answer first: proficiency, level and class
+    local itemID = C_Item.GetItemInfoInstant(link)
+    if itemID and C_PlayerInfo and C_PlayerInfo.CanUseItem then
+        local ok, can = pcall(C_PlayerInfo.CanUseItem, itemID)
+        if ok and can == false then
+            self.usable[link] = false
+            return false
+        end
+    end
     local ok, data = pcall(C_TooltipInfo.GetBagItem, bagID, slotID)
     if not ok or not data or not data.lines then return nil end
     local wear = true
@@ -594,7 +611,22 @@ end
 local function EquippedScore(slot)
     local link = GetInventoryItemLink("player", slot)
     if not link then return 0, true end
-    return Upgrade:Score(link) or math.huge, false   -- not loaded yet: no arrow this pass
+    -- not loaded yet, or its stats unreadable: no arrow (it would count as an empty slot)
+    return Upgrade:Score(link) or math.huge, false
+end
+
+-- armour: cloth, leather, mail, plate, shields (cloaks are cloth)
+local ARMOUR = { [1] = true, [2] = true, [3] = true, [4] = true, [6] = true }
+-- no stat lower than on the worn piece, its armour included (an upgrade, not a trade-off)
+function Upgrade:LosesNothing(link, slot)
+    local worn = GetInventoryItemLink("player", slot)
+    if not worn then return true end
+    local mine, theirs = self.stats[BaseLink(link)], self.stats[BaseLink(worn)]
+    if not (mine and theirs) then return false end
+    for stat, value in pairs(theirs) do
+        if type(value) == "number" and value > (mine[stat] or 0) then return false end
+    end
+    return true
 end
 
 -- true when the bag item beats what is worn in its slot
@@ -623,13 +655,17 @@ function Upgrade:Is(bagID, slotID, link)
         if slots[1] == 17 then return false end
         slots = { 16 }
     end
-    local worst, empty
+    local worst, empty, worstSlot
     for _, slot in ipairs(slots) do
         local s, isEmpty = EquippedScore(slot)
         if isEmpty then empty = true end
-        if not worst or s < worst then worst = s end
+        if not worst or s < worst then worst, worstSlot = s, slot end
     end
-    return empty or score > worst
+    if empty then return true end
+    if not (score > worst) then return false end
+    local classID, subclassID = select(6, C_Item.GetItemInfoInstant(link))
+    if classID == 4 and ARMOUR[subclassID] and worstSlot and not self:LosesNothing(link, worstSlot) then return false end
+    return true
 end
 
 -- talents, level and new gear change the answers
@@ -637,6 +673,7 @@ function Upgrade:Reset(full)
     self.mainStat = nil
     if full then wipe(self.usable) end
     wipe(self.score)
+    wipe(self.stats)
 end
 
 local function ShowUpgrade(ov, bagID, slotID, link)

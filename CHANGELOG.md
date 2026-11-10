@@ -1,3 +1,18 @@
+# FlareUI 5.1.2
+
+## New
+- Minimap: a one-time notice when Lueur, NodeSight or Nodeworthy is on. Their node scanning makes the minimap flash, and that comes from them, not FlareUI. The Minimap settings page says so too while one is loaded. Thanks for the report!
+
+## Changed
+- Loot Feed: the lowest **Minimum Quality** choice is now called **All Items**. It already showed every item. Thanks for the feedback!
+
+## Fixed
+- Loot Feed: single items show again; only stacks and money did. It now also works whatever language your game is in. Thanks for the report!
+- Bags: the **Upgrade Arrow** no longer marks weaker gear, such as grey cloth bracers over green mail ones. Armour only gets the arrow when it loses no stat, armour included. Thanks for the report!
+- Cast bars: **Hide Spell Timer** stays on after the first cast. Thanks for the report!
+- Minimap: no black box while gathering addons scan. Thanks to Jeor for the fix!
+- Settings: tabs no longer run past the edge of the page when they show NEW.
+
 # FlareUI 5.1.1
 
 **Restart the game fully after updating** (not just /reload): this version adds new files.

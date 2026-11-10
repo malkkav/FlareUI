@@ -161,7 +161,10 @@ S:Row{ key = "qol.skipLoot", half = true, tab = "bags", path = "tweaks.skipLootC
 -- Loot Feed: what you loot floats up beside you (LootFeed.lua); placed in Edit Mode
 S:Row{ key = "qol.lootFeed", tab = "bags", path = "tweaks.lootFeed", reload = true }
 local LOOT_QUALITY = {}
-for quality = 0, 4 do LOOT_QUALITY[#LOOT_QUALITY + 1] = { quality, _G["ITEM_QUALITY" .. quality .. "_DESC"] or tostring(quality) } end
+-- Poor (0) is the lowest, so it lets every item through: named All Items (a player read it as grey only)
+for quality = 0, 4 do
+    LOOT_QUALITY[#LOOT_QUALITY + 1] = { quality, quality == 0 and L["All Items"] or _G["ITEM_QUALITY" .. quality .. "_DESC"] or tostring(quality) }
+end
 local function NoFeed() return not S:GetPath("tweaks.lootFeed") end
 S:Row{ key = "qol.lootFeedQuality", kind = "choice", tab = "bags", parent = "qol.lootFeed", path = "tweaks.lootFeedQuality",
     choices = LOOT_QUALITY, disabled = NoFeed }

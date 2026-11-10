@@ -865,6 +865,11 @@ ns.Copy = {
             label = L["Middle-Click Menu"],
             tip = L["Not in combat."],
         },
+        ["mm.nodeScanNote"] = {
+            kind = "text",
+            label = L["Gathering Addons"],
+            text = L["Lueur, NodeSight and Nodeworthy scan for nodes by moving the minimap under your cursor: while they do, the map and its icons can flash. That comes from them, not FlareUI."],
+        },
         ["mm.style"] = {
             choices = { L["Square"], L["Round"] },
             desc = L["FlareUI's square minimap, or Forever's own round one."],

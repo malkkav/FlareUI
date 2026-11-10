@@ -47,6 +47,7 @@ Settings.NEW = {
     ["ch.raceIcons"] = "5.1",
     ["ch.whisperMarkers"] = "5.1",
     ["mm.bagHover"] = "5.1",
+    ["mm.nodeScanNote"] = "5.1",
     ["qol.bagKeyring"] = "5.1",
     ["qol.bagReagent"] = "5.1",
     ["qol.lootFeed"] = "5.1",
