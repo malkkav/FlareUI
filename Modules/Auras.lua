@@ -876,9 +876,16 @@ end
 local CDM = { pieces = setmetatable({}, { __mode = "k" }), BAR_COLOR = { 1, 0.5, 0.25 }, BORDER = "FlareUI Thin",
               OVERLAY = "UI-HUD-CoolDownManager-IconOverlay" }
 
+-- Blizzard's own Cooldown Manager switch (Options): with it off FlareUI leaves the manager alone
+-- (11-11, a player turning it off saw it back after a reload)
+function CDM.BlizzardOn()
+    return (C_CooldownViewer and GetCVarBool("cooldownViewerEnabled")) and true or false
+end
+ns.CooldownManagerOn = CDM.BlizzardOn
+
 function CDM.On()
     local db = GetDb()
-    return db and db.enabled and db.skinCDM ~= false and not ns.IsGamepadUI() or false
+    return db and db.enabled and db.skinCDM ~= false and not ns.IsGamepadUI() and CDM.BlizzardOn() or false
 end
 
 function CDM.Pieces(frame)
@@ -1163,6 +1170,14 @@ function AU:Init()
     HideBlizzard("DebuffFrame")
     -- Skin Cooldown Manager (its addon can load after FlareUI)
     if CDM.On() then EventUtil.ContinueOnAddOnLoaded("Blizzard_CooldownViewer", CDM.Hook) end
+    -- turned on in Blizzard's options later this session: skinned from then on
+    local cvarWatch = CreateFrame("Frame")
+    cvarWatch:RegisterEvent("CVAR_UPDATE")
+    cvarWatch:SetScript("OnEvent", function(_, _, name)
+        if name ~= "cooldownViewerEnabled" then return end
+        if CDM.On() then EventUtil.ContinueOnAddOnLoaded("Blizzard_CooldownViewer", CDM.Hook) end
+        if ns.SettingsPanel and ns.SettingsPanel.Refresh then pcall(ns.SettingsPanel.Refresh, ns.SettingsPanel) end
+    end)
 
     for _, kind in ipairs(KIND_ORDER) do
         ApplyPosition(kind)

@@ -27,7 +27,8 @@ S:Row{ key = "ab.flareBorders", section = "ab.barAppearance", path = "actionbars
 -- Blizzard's Cooldown Manager restyled (Auras.lua 9b, so it needs Buffs & Debuffs on); off needs a
 -- reload to give Blizzard's look back
 S:Row{ key = "ab.skinCDM", section = "ab.barAppearance", path = "auras.skinCDM", reload = true, half = true,
-    disabled = function() return not S:GetPath("auras.enabled") end }
+    -- (greyed while Blizzard's own Cooldown Manager is off: it is left alone then, 11-11)
+    disabled = function() return not S:GetPath("auras.enabled") or not (ns.CooldownManagerOn and ns.CooldownManagerOn()) end }
 -- every button's scale, as FlareUI 1.0's per-bar scales once (fixed at 106% since; 111% the default from 11-11)
 local SCALES = {}
 -- in half-percent steps (11-11 Marcus: it is that precise); kept as tenths of a percent so no float drifts
