@@ -400,13 +400,13 @@ local function PaintSwitch(s)
     if on then
         s.rim:SetColor(0.85, 0.70, 0.42)
         s.stone:SetVertexColor(0.95, 0.72, 0.36)
-        s.knob:SetVertexColor(0.95, 0.80, 0.52)
-        s.knobStone:SetVertexColor(0.62, 0.52, 0.40)
+        s.knob:SetVertexColor(0.98, 0.86, 0.60)
+        s.knobStone:SetVertexColor(0.92, 0.84, 0.68)
     else
         if s.hovered then s.rim:SetColor(0.69, 0.54, 0.31) else s.rim:SetColor(0.35, 0.27, 0.16) end
         s.stone:SetVertexColor(0.34, 0.30, 0.26)
-        s.knob:SetVertexColor(0.55, 0.45, 0.30)
-        s.knobStone:SetVertexColor(0.36, 0.32, 0.27)
+        s.knob:SetVertexColor(0.72, 0.62, 0.44)
+        s.knobStone:SetVertexColor(0.66, 0.61, 0.53)
     end
     local x = on and 23 or 3
     s.knob:ClearAllPoints()
@@ -693,9 +693,16 @@ local function NewRowFrame(parent, kind)
     f.plate = f:CreateTexture(nil, "BACKGROUND", nil, -1)
     f.plate:SetAllPoints()
     f.plate:SetColorTexture(0, 0, 0, 0.26)
+    f.plate:SetAlpha(0)   -- (11-11 Marcus: no dark box at rest; only the hover shows the row)
     f.hover = f:CreateTexture(nil, "BACKGROUND")
     f.hover:SetAllPoints()
-    f.hover:SetColorTexture(0.79, 0.65, 0.35, 0.10)
+    -- a rounded box: our own 32 px art, 8 px corners kept as a nine-slice
+    f.hover:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\RoundRect.tga")
+    if f.hover.SetTextureSliceMargins then
+        f.hover:SetTextureSliceMargins(8, 8, 8, 8)
+        if Enum.UITextureSliceMode then f.hover:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched) end
+    end
+    f.hover:SetVertexColor(0.79, 0.65, 0.35, 0.14)
     f.hover:Hide()
     -- a click anywhere on a switch's row flips it (the switch takes its own clicks)
     f:SetScript("OnMouseUp", function(self, button)
@@ -2428,7 +2435,8 @@ local function BuildWindow()
     local logo = frame:CreateTexture(nil, "ARTWORK", nil, 2)
     logo:SetTexture(LOGO)
     logo:SetSize(38, 38)
-    logo:SetPoint("TOPLEFT", EDGE + 3, -(HEADER_ROW_Y - 19))   -- centred on the header row
+    -- centred on the header row; its rim's outer edge on the left list's border line (11-11 Marcus)
+    logo:SetPoint("TOPLEFT", EDGE + 6, -(HEADER_ROW_Y - 19))
     local logoMask = frame:CreateMaskTexture()
     logoMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     logoMask:SetAllPoints(logo)
@@ -2440,7 +2448,7 @@ local function BuildWindow()
     logoRim:SetVertexColor(0.78, 0.6, 0.34)
     local logoShade = frame:CreateTexture(nil, "ARTWORK", nil, 0)
     logoShade:SetTexture(CIRCLE)
-    logoShade:SetSize(48, 48)
+    logoShade:SetSize(46, 46)
     logoShade:SetPoint("CENTER", logo)
     logoShade:SetVertexColor(0, 0, 0, 0.6)
     local title = Text(frame, "GameFontNormalHuge")
@@ -2453,7 +2461,7 @@ local function BuildWindow()
     version:SetText(C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "")
     -- on the frame's top right corner, above the frame art (11-11 Marcus)
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    close:SetPoint("CENTER", frame, "TOPRIGHT", 1, 3)
+    close:SetPoint("CENTER", frame, "TOPRIGHT", -5, -3)
     close:SetFrameLevel(frame:GetFrameLevel() + 40)
 
     -- columns
@@ -2476,7 +2484,8 @@ local function BuildWindow()
         end)
         frame.topTabs[i] = b
     end
-    frame.topTabs[1]:SetPoint("LEFT", version, "RIGHT", 24, 2)
+    -- Settings / What's New start at the middle box's left edge (11-11 Marcus)
+    frame.topTabs[1]:SetPoint("LEFT", frame, "TOPLEFT", EDGE + LEFT_W + GAP, -HEADER_ROW_Y)
     frame.topTabs[2]:SetPoint("LEFT", frame.topTabs[1], "RIGHT", 6, 0)
 
     -- What's new: every version's notes, newest first

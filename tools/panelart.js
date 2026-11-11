@@ -91,10 +91,16 @@ const ICONS = {
   fs.writeFileSync(path.join(ROOT, 'PillMask.tga'), Buffer.concat([header, px]));
 })();
 
+// the option rows' hover: a rounded box, 6 px corners (Media/Panel/RoundRect.tga, sliced 8 px in game)
+tga(path.join(ROOT, 'RoundRect.tga'), 32, coverage(32, 1, (x, y) => {
+  const r = 6, qx = Math.max(Math.abs(x - 16) - (16 - r), 0), qy = Math.max(Math.abs(y - 16) - (16 - r), 0);
+  return Math.hypot(qx, qy) <= r;
+}));
+
 // the dropdowns' arrow: a down chevron (Media/Panel/Chevron.tga)
 tga(path.join(ROOT, 'Chevron.tga'), 32, coverage(32, 32 / 24, (x, y) => poly([[6, 9.5], [12, 15.5], [18, 9.5]]).some((s) => s(x, y))));
 
 for (const [key, shapes] of Object.entries(ICONS)) {
   tga(path.join(ROOT, 'Icons', key + '.tga'), 32, coverage(32, 32 / 24, (x, y) => shapes.some((s) => s(x, y))));
 }
-console.log('panel art: Circle.tga, PillMask.tga + ' + Object.keys(ICONS).length + ' icons');
+console.log('panel art: Circle.tga, PillMask.tga, RoundRect.tga + ' + Object.keys(ICONS).length + ' icons');
