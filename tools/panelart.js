@@ -1,5 +1,6 @@
 // Draws the settings window's own art (11-10 panel rework) as white-with-alpha TGAs, tinted in game:
 //   Media/Panel/Circle.tga        a smooth disc (switch track caps, knobs, slider, round buttons)
+//   Media/Panel/Cursor.tga        the previews' pointer
 //   Media/Panel/Icons/<key>.tga   the left list's module icons, 1.8-unit strokes on a 24-unit grid
 // Run: node tools/panelart.js
 const fs = require('fs');
@@ -75,7 +76,18 @@ const ICONS = {
 // the dropdowns' arrow: a down chevron (Media/Panel/Chevron.tga)
 tga(path.join(ROOT, 'Chevron.tga'), 32, coverage(32, 32 / 24, (x, y) => poly([[6, 9.5], [12, 15.5], [18, 9.5]]).some((s) => s(x, y))));
 
+// the previews' pointer: a filled arrow (Media/Panel/Cursor.tga), tip at the top left
+const inPoly = (pts) => (x, y) => {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i], [xj, yj] = pts[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+};
+tga(path.join(ROOT, 'Cursor.tga'), 32, coverage(32, 32 / 24, inPoly([[3, 1.5], [3, 19.5], [7.6, 15.4], [10.6, 22], [13.6, 20.7], [10.7, 14.3], [16.6, 14.3]])));
+
 for (const [key, shapes] of Object.entries(ICONS)) {
   tga(path.join(ROOT, 'Icons', key + '.tga'), 32, coverage(32, 32 / 24, (x, y) => shapes.some((s) => s(x, y))));
 }
-console.log('panel art: Circle.tga + ' + Object.keys(ICONS).length + ' icons');
+console.log('panel art: Circle.tga, Chevron.tga, Cursor.tga + ' + Object.keys(ICONS).length + ' icons');

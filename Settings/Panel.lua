@@ -587,17 +587,12 @@ local Build = {}     -- kind -> function(f): adds the control once
 local Fill = {}      -- kind -> function(f, row): shows the row's values
 
 local function RowEnter(self)
-    if self.row then
-        if self.row.kind == 'framecard' then ShowPreview(self.row:Label(), self.row:Description(), self.row:Tip())
-        else ShowRowPreview(self.row, ns.SettingsPreview.HoverValue(self.row)) end
-    end
+    if self.row then ShowRowPreview(self.row, ns.SettingsPreview.HoverValue(self.row)) end
     self.hover:Show()
 end
 
 local function RowLeave(self)
     self.hover:Hide()
-    -- a frame card goes back to the page's own picture and text
-    if self.row and self.row.kind == 'framecard' then ShowModulePreview() return end
     -- Keep a visual row visible after hover; cards revert from the hovered variant to the saved
     -- selection. Behaviour-only rows retain the existing explanation/picture behaviour.
     if self.row and ns.SettingsPreview.Resolve(self.row) then ShowRowPreview(self.row)
@@ -1276,50 +1271,6 @@ Fill.frame = function(f, row)
     f.edit:SetEnabled(S:CanEditFrames() and row:Get() and row.frame and row.frame() ~= nil or false)
 end
 
--- Frame-group cards live on their own tab. Clicking artwork toggles the existing row; Edit is
--- separate and retains the same combat/loaded-frame requirements as the former checkbox row.
-Build.framecard = function(f)
-    local b = CreateFrame("Button", nil, f, "BackdropTemplate")
-    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    b:SetPoint("TOPLEFT", 4, -4)
-    b.canvas = ns.SettingsPreview.Create(b, 210, 68)
-    b.canvas.frame:SetPoint("TOPLEFT", 8, -28)
-    b:SetScript("OnClick", function()
-        if f.row and not f.row:IsDisabled() then ns.ButtonSound(); f.row:Set(not f.row:Get()) end
-    end)
-    b.enable = CreateFrame("CheckButton", nil, b, "UICheckButtonTemplate")
-    b.enable:SetSize(24, 24); b.enable:SetPoint("TOPRIGHT", -5, -4)
-    b.enable:SetScript("OnClick", function(self)
-        if f.row and not f.row:IsDisabled() then ns.ButtonSound(); f.row:Set(self:GetChecked() and true or false) end
-    end)
-    -- Help changes on hover; these cards already contain the complete visual preview.
-    b:SetScript("OnEnter", function() if f.row then ShowPreview(f.row:Label(), f.row:Description(), f.row:Tip()) end end)
-    b:SetScript("OnLeave", function() ShowModulePreview() end)
-    -- Edit beside the switch, as on the old frame rows (11-10 review of PR #19)
-    f.edit = EditButton(f, function(row) S:EditFrame(row.frame and row.frame(), row.module) end)
-    f.edit:SetParent(b); f.edit:SetFrameLevel(b:GetFrameLevel() + 2)
-    b.padChildren = true    -- the gamepad reaches the card, its switch and its Edit
-    f.edit:SetPoint("RIGHT", b.enable, "LEFT", -4, 0)
-    f.label:SetParent(b); f.label:ClearAllPoints(); f.label:SetPoint("TOPLEFT", 10, -8); f.label:SetPoint("RIGHT", f.edit, "LEFT", -6, 0)
-    f.control = b
-
-end
-Fill.framecard = function(f, row)
-    local b = f.control
-    local extra = (f.crumb:GetText() or '') ~= '' and 18 or 0
-    b:ClearAllPoints(); b:SetPoint('TOPLEFT', 4, -4 - extra)
-    f:SetHeight(106 + extra); b:SetSize(f:GetWidth() - 8, 100)
-    b.canvas.width = f:GetWidth() - 24; b.canvas.frame:SetWidth(b.canvas.width)
-    ns.SettingsPreview.Show(b.canvas, { kind = 'frames', key = row.key })
-    local on = row:Get() and true or false
-    b:SetBackdropColor(0.035, 0.03, 0.025, 0.8)
-    b:SetBackdropBorderColor(0.45, 0.35, 0.22, 1)
-    b.enable:SetChecked(on); b.enable:SetEnabled(not row:IsDisabled())
-    f.edit:SetSize(ButtonWidthForText(f.edit, 60), 20)
-    f.edit:SetEnabled(S:CanEditFrames() and on and row.frame and row.frame() ~= nil or false)
-    b.canvas.frame:SetAlpha(on and 1 or 0.45)
-end
-
 -- legend: a short block of lines under its label (row.lines() returns them), such as which
 -- controller button does what; nothing to set
 Build.legend = function(f)
@@ -1381,7 +1332,7 @@ local function SetRowEnabled(f, enabled)
 end
 
 local function RowLabelSpace(f, row)
-    if row.kind == "styles" or row.kind == "framecard" then return f:GetWidth() - 24 end
+    if row.kind == "styles" then return f:GetWidth() - 24 end
     -- Use the first visible control, not the width of its container.
     local control = f.control or f.edit
     if f.stepper then
@@ -2500,6 +2451,18 @@ local function BuildWindow()
     preview.canvas = ns.SettingsPreview.Create(right, RIGHT_W - 2 * PAD, RIGHT_W - 2 * PAD)   -- 256 square
     preview.canvas.frame:SetPoint("TOP", 0, -32)
     preview.canvas.frame:Hide()
+    -- the wireframes sit in a dark well, as in the mock-up; it comes and goes with them
+    local well = CreateFrame("Frame", nil, right, "BackdropTemplate")
+    well:SetPoint("TOPLEFT", preview.canvas.frame, "TOPLEFT", -4, 4)
+    well:SetPoint("BOTTOMRIGHT", preview.canvas.frame, "BOTTOMRIGHT", 4, -4)
+    well:SetFrameLevel(right:GetFrameLevel() + 1)
+    preview.canvas.frame:SetFrameLevel(right:GetFrameLevel() + 3)
+    preview.canvas.overlay:SetFrameLevel(preview.canvas.frame:GetFrameLevel() + 20)
+    ThinBackdrop(well, true)
+    well:SetBackdropColor(0.059, 0.047, 0.031, 0.95)
+    well:Hide()
+    preview.canvas.frame:HookScript("OnShow", function() well:Show() end)
+    preview.canvas.frame:HookScript("OnHide", function() well:Hide() end)
     local previewLabel = Text(right, "GameFontHighlightSmall")
     previewLabel:SetPoint("TOPLEFT", PAD, -12); previewLabel:SetText(L["Preview"])
     previewLabel:SetTextColor(0.76, 0.70, 0.59)
@@ -2565,7 +2528,7 @@ local function BuildWindow()
         for _, f in ipairs(used) do
             local row = f.row
             if f.edit and row then
-                local real = (f.kind ~= "frame" and f.kind ~= "framecard") or (row:Get() and row.frame and row.frame() ~= nil)
+                local real = f.kind ~= "frame" or (row:Get() and row.frame and row.frame() ~= nil)
                 f.edit:SetEnabled(canEdit and real and true or false)
             end
         end

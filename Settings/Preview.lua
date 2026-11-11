@@ -8,6 +8,26 @@ ns.SettingsPreview = P
 local MEDIA = 'Interface\\AddOns\\' .. ADDON_NAME .. '\\Media\\'
 P.MEDIA = MEDIA
 
+-- 11-10 batch E: every picture is a wireframe in the mock-up's look, so they all read as one set:
+-- 1 px bronze lines over a faint gold wash; a state is a tinted fill with its line in the same
+-- colour. Real fonts stay where the option is about a font; no game art is drawn.
+local WHITE = 'Interface\\Buttons\\WHITE8X8'
+local CIRCLE = MEDIA .. 'Panel\\Circle.tga'
+local HOLE = MEDIA .. 'Masks\\RingHole.tga'
+local HOLE_SHARE = 0.93          -- the hole's diameter, of RingHole.tga's width (as MouseRing.lua)
+local WF = {
+    line = { 0.54, 0.42, 0.24 },  -- resting line (#8a6a3e)
+    lit = { 1, 0.84, 0.5 },       -- selected, glowing
+    wash = { 0.79, 0.65, 0.35 },  -- the faint fill under a plain shape
+    washA = 0.06, tintA = 0.35,
+    dark = { 0.059, 0.047, 0.031 },
+    text = { 0.88, 0.82, 0.70 }, dim = { 0.64, 0.58, 0.48 },
+    gold = { 0.91, 0.77, 0.42 }, red = { 0.82, 0.28, 0.23 }, blue = { 0.31, 0.5, 0.88 },
+    grey = { 0.55, 0.55, 0.55 }, green = { 0.38, 0.72, 0.36 }, purple = { 0.64, 0.33, 0.93 },
+    orange = { 0.95, 0.55, 0.2 }, mage = { 0.41, 0.8, 0.94 },
+}
+P.WF, P.WHITE, P.CIRCLE = WF, WHITE, CIRCLE
+
 local routes = {}
 local function Route(kind, prefix, keys)
     for key in keys:gmatch('%S+') do routes[prefix .. '.' .. key] = kind end
@@ -111,9 +131,10 @@ function Canvas:Text(id, text, x, y, width, font)
     t:SetJustifyH('LEFT')
     t:SetWordWrap(true)
     t:SetMaxLines(0)
-    t:SetTextColor(0.9, 0.9, 0.9, 1)
+    t:SetTextColor(WF.text[1], WF.text[2], WF.text[3], 1)
+    -- the panel's own text face unless the picture is showing a font setting
     local cfg = font or {}
-    ns.SetFontFamily(t, ns.GetFontPath(cfg.face or 'Friz Quadrata TT'), math.max(8, cfg.size or 11), cfg.flags == 'NONE' and '' or cfg.flags or '')
+    ns.SetFontFamily(t, ns.GetFontPath(cfg.face or 'Roboto Condensed'), math.max(8, cfg.size or 11), cfg.flags == 'NONE' and '' or cfg.flags or '')
     ns.ApplyShadow(t, cfg)
     t:SetText(text)
     return t
@@ -128,38 +149,173 @@ function Canvas:Texture(id, path, x, y, w, h, overlay)
     t:SetDesaturated(false)
     return t
 end
-function Canvas:Box(id, x, y, w, h, border, opacity)
-    local f = self:Object(id, 'Frame', 'BackdropTemplate')
+-- WIREFRAME KIT. x, y from the canvas's top left; z is the frame level over the canvas (text is always
+-- on top). A line stays 1 screen pixel on a scaled canvas (canvas.scale).
+function Canvas:Frame(id, x, y, w, h, tint, opts)
+    opts = opts or {}
+    id = 'F:' .. id
+    local f = self.objects[id]
+    if not f then
+        f = CreateFrame('Frame', nil, self.frame)
+        f.fill = f:CreateTexture(nil, 'BACKGROUND')
+        f.fill:SetAllPoints()
+        f.edges = {}
+        for i = 1, 4 do f.edges[i] = f:CreateTexture(nil, 'BORDER') end
+        f.edges[1]:SetPoint('TOPLEFT'); f.edges[1]:SetPoint('TOPRIGHT')
+        f.edges[2]:SetPoint('BOTTOMLEFT'); f.edges[2]:SetPoint('BOTTOMRIGHT')
+        f.edges[3]:SetPoint('TOPLEFT'); f.edges[3]:SetPoint('BOTTOMLEFT')
+        f.edges[4]:SetPoint('TOPRIGHT'); f.edges[4]:SetPoint('BOTTOMRIGHT')
+        self.objects[id] = f
+    end
+    f:ClearAllPoints()
     f:SetPoint('TOPLEFT', x, -y)
-    f:SetSize(w, h)
-    local lsm = LibStub('LibSharedMedia-3.0')
-    local edge = border and border ~= 'None' and lsm:Fetch('border', border) or nil
-    f:SetBackdrop({ bgFile = 'Interface\\DialogFrame\\UI-DialogBox-Background', edgeFile = edge,
-        tile = true, tileSize = 16, edgeSize = edge and ns.BorderEdgeSize(edge, 16) or nil,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-    f:SetBackdropColor(1, 1, 1, opacity or 0)
-    local c = ns.BORDER_COLOR
-    f:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
-    -- Labels/textures on the canvas must stay above the sample background.
-    f:SetFrameLevel(self.frame:GetFrameLevel() + 1)
+    f:SetSize(math.max(1, w), math.max(1, h))
+    f:SetAlpha(1)
+    f:Show()
+    f:SetFrameLevel(self.frame:GetFrameLevel() + (opts.z or 2))
+    if f.bar then f.bar:Hide() end
+    local line = opts.line or tint or WF.line
+    local thick = (opts.thick or 1) / (self.scale or 1)
+    for i, e in ipairs(f.edges) do
+        e:SetColorTexture(line[1], line[2], line[3], opts.lineAlpha or 1)
+        if i <= 2 then e:SetHeight(thick) else e:SetWidth(thick) end
+        e:SetShown(not opts.noLine)
+    end
+    local fill = opts.fill or tint or WF.wash
+    f.fill:SetColorTexture(fill[1], fill[2], fill[3], opts.fillAlpha or (tint and WF.tintA or WF.washA))
+    f.fill:SetShown(not opts.noFill)
     return f
 end
-function Canvas:Bar(id, x, y, w, h, fraction, color, texture)
-    local bar = self:Object(id, 'StatusBar')
-    bar:SetPoint('TOPLEFT', x, -y)
-    bar:SetSize(w, h)
-    bar:SetStatusBarTexture(LibStub('LibSharedMedia-3.0'):Fetch('statusbar', texture or 'FlareUI Flat'))
-    bar:SetMinMaxValues(0, 1)
-    bar:SetValue(fraction)
-    bar:SetStatusBarColor(unpack(color))
-    bar:SetFrameLevel(self.frame:GetFrameLevel() + 2)
-    return bar
+-- a solid block (no line)
+function Canvas:Fill(id, x, y, w, h, color, alpha, z)
+    return self:Frame(id, x, y, w, h, color, { noLine = true, fillAlpha = alpha or 1, z = z })
+end
+-- a stand-in for text the option does not change
+function Canvas:Line(id, x, y, w, h)
+    return self:Fill(id, x, y, w, h or 4, WF.dim, 0.4)
+end
+-- a box with an option's border and opacity (chat, tracker, meter): opacity darkens the fill,
+-- None drops the line, Thick doubles it
+function Canvas:Box(id, x, y, w, h, border, opacity)
+    return self:Frame(id, x, y, w, h, nil, { fill = { 0, 0, 0 }, fillAlpha = math.max(WF.washA, (opacity or 0) * 0.8),
+        noLine = border == 'None', thick = border and border:find('Thick') and 2 or 1 })
+end
+-- a bar: its line and fill in the bar's colour; f:SetFraction(v) moves it
+local function SetFraction(f, v)
+    f.bar:SetWidth(math.max(0.01, (f.innerWidth or 1) * math.max(0, math.min(1, v))))
+    f.bar:SetShown(v > 0)
+end
+function Canvas:Bar(id, x, y, w, h, fraction, color, opts)
+    opts = opts or {}
+    local f = self:Frame(id, x, y, w, h, color, { fillAlpha = 0.08, z = opts.z, noLine = opts.noLine, line = opts.line })
+    if not f.bar then
+        f.bar = f:CreateTexture(nil, 'ARTWORK')
+        f.SetFraction = SetFraction
+    end
+    local inset = opts.noLine and 0 or 1 / (self.scale or 1)
+    f.bar:ClearAllPoints()
+    f.bar:SetPoint('TOPLEFT', inset, -inset)
+    f.bar:SetPoint('BOTTOMLEFT', inset, inset)
+    f.bar:SetColorTexture(color[1], color[2], color[3], opts.alpha or 0.6)
+    f.innerWidth = math.max(1, w - 2 * inset)
+    f:SetFraction(fraction)
+    return f
+end
+-- a filled circle (x, y its top left)
+function Canvas:Disc(id, x, y, d, color, alpha, z)
+    id = 'D:' .. id
+    local f = self.objects[id]
+    if not f then
+        f = CreateFrame('Frame', nil, self.frame)
+        f.tex = f:CreateTexture(nil, 'ARTWORK')
+        f.tex:SetAllPoints()
+        f.tex:SetTexture(CIRCLE)
+        self.objects[id] = f
+    end
+    f:ClearAllPoints(); f:SetPoint('TOPLEFT', x, -y); f:SetSize(math.max(1, d), math.max(1, d))
+    f:SetAlpha(1); f:Show()
+    f:SetFrameLevel(self.frame:GetFrameLevel() + (z or 2))
+    color = color or WF.wash
+    f.tex:SetVertexColor(color[1], color[2], color[3], alpha or 1)
+    return f
+end
+-- a circle's line: a disc with a round hole (the Mouse Ring's way)
+function Canvas:Ring(id, x, y, d, thickness, color, z)
+    id = 'R:' .. id
+    local f = self.objects[id]
+    if not f then
+        f = CreateFrame('Frame', nil, self.frame)
+        f.tex = f:CreateTexture(nil, 'ARTWORK')
+        f.tex:SetAllPoints()
+        f.tex:SetTexture(CIRCLE)
+        f.hole = f:CreateMaskTexture()
+        f.hole:SetTexture(HOLE, 'CLAMPTOWHITE', 'CLAMPTOWHITE')
+        f.hole:SetPoint('CENTER')
+        f.tex:AddMaskTexture(f.hole)
+        self.objects[id] = f
+    end
+    f:ClearAllPoints(); f:SetPoint('TOPLEFT', x, -y); f:SetSize(math.max(1, d), math.max(1, d))
+    f:SetAlpha(1); f:Show()
+    f:SetFrameLevel(self.frame:GetFrameLevel() + (z or 3))
+    local inner = math.max(1, d - 2 * (thickness or 1) / (self.scale or 1)) / HOLE_SHARE
+    f.hole:SetSize(inner, inner)
+    color = color or WF.line
+    f.tex:SetVertexColor(color[1], color[2], color[3], 1)
+    return f
+end
+-- an icon's place: a tinted square, or a tinted circle with its line
+function Canvas:Icon(id, x, y, size, tint, round, z)
+    tint = tint or WF.wash
+    if round then
+        self:Disc(id .. 'Fill', x, y, size, tint, tint == WF.wash and 0.12 or WF.tintA, z)
+        return self:Ring(id, x, y, size, 1, tint == WF.wash and WF.line or tint, (z or 2) + 1)
+    end
+    return self:Frame(id, x, y, size, size, tint ~= WF.wash and tint or nil, { z = z, fillAlpha = tint == WF.wash and 0.12 or nil })
+end
+-- one of the panel's glyphs (Media/Panel), tinted; rotation in radians
+function Canvas:Glyph(id, name, x, y, w, h, color, z, rotation)
+    id = 'G:' .. id
+    local f = self.objects[id]
+    if not f then
+        f = CreateFrame('Frame', nil, self.frame)
+        f.tex = f:CreateTexture(nil, 'ARTWORK')
+        f.tex:SetAllPoints()
+        self.objects[id] = f
+    end
+    f:ClearAllPoints(); f:SetPoint('TOPLEFT', x, -y); f:SetSize(w, h)
+    f:SetAlpha(1); f:Show()
+    f:SetFrameLevel(self.frame:GetFrameLevel() + (z or 8))
+    f.tex:SetTexture(MEDIA .. 'Panel\\' .. name .. '.tga')
+    f.tex:SetRotation(rotation or 0)
+    color = color or WF.text
+    f.tex:SetVertexColor(color[1], color[2], color[3], 1)
+    return f
+end
+-- a sweep over a shape (Blizzard's cooldown frame with a plain swipe); reverse lights what is left
+function Canvas:Sweep(id, x, y, size, round, color, reverse, z)
+    id = 'S:' .. id
+    local cd = self.objects[id]
+    if not cd then
+        cd = CreateFrame('Cooldown', nil, self.frame, 'CooldownFrameTemplate')
+        cd.FlareUI_Cooldown = cd
+        if cd.SetDrawEdge then cd:SetDrawEdge(false) end
+        if cd.SetDrawBling then cd:SetDrawBling(false) end
+        if cd.SetHideCountdownNumbers then cd:SetHideCountdownNumbers(true) end
+        self.objects[id] = cd
+    end
+    cd:ClearAllPoints(); cd:SetPoint('TOPLEFT', x, -y); cd:SetSize(size, size)
+    cd:SetAlpha(1); cd:Show()
+    cd:SetFrameLevel(self.frame:GetFrameLevel() + (z or 6))
+    if cd.SetSwipeTexture then cd:SetSwipeTexture(round and CIRCLE or WHITE) end
+    if cd.SetSwipeColor then cd:SetSwipeColor(color[1], color[2], color[3], color[4] or 0.7) end
+    if cd.SetReverse then cd:SetReverse(reverse and true or false) end
+    return cd
 end
 function P.Create(parent, width, height)
     local f = CreateFrame('Frame', nil, parent)
     f:SetSize(width, height)
     f:EnableMouse(false)
-    local canvas = setmetatable({ frame = f, width = width, height = height, objects = {}, owner = parent.FlareUIPreviewCanvas }, Canvas)
+    local canvas = setmetatable({ frame = f, width = width, height = height, objects = {}, owner = parent.FlareUIPreviewCanvas, scale = 1 }, Canvas)
     f.FlareUIPreviewCanvas = canvas
     canvas.overlay = CreateFrame('Frame', nil, f)
     canvas.overlay:SetAllPoints()

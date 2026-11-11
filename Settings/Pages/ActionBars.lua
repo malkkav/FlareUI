@@ -44,9 +44,9 @@ S:Row{ key = "ab.autoRanks", section = "ab.spellBehavior", path = "actionbars.au
 S:Row{ key = "ab.stopAutoAdd", section = "ab.spellBehavior", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
 S:Row{ key = "ab.stealthPaging", section = "ab.spellBehavior", path = "actionbars.stealthPaging", apply = Refresh, half = true }
 S:Row{ key = "ab.noStancePaging", section = "ab.spellBehavior", path = "actionbars.noStancePaging", apply = Refresh, half = true }
--- last in Tweaks: Blizzard's Cooldown Manager restyled (Auras.lua 9b, so it needs Buffs & Debuffs on);
--- off needs a reload to give Blizzard's look back
-S:Row{ key = "ab.skinCDM", section = "ab.buttonAppearance", path = "auras.skinCDM", reload = true,
+-- last in Button Appearance, beside Gryphons Behind Bars: Blizzard's Cooldown Manager restyled (Auras.lua 9b,
+-- so it needs Buffs & Debuffs on); off needs a reload to give Blizzard's look back
+S:Row{ key = "ab.skinCDM", section = "ab.buttonAppearance", path = "auras.skinCDM", reload = true, half = true,
     disabled = function() return not S:GetPath("auras.enabled") end }
 
 -- the FlareUI XP Bar: off leaves Blizzard's bars alone, so turning it on or off reloads; its options sit

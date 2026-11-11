@@ -487,7 +487,7 @@ end
 -- switches, then keybinds, buttons and legends. A row with a parent sits under it, among its siblings
 -- in the same order; lead = true keeps a row on top (a switch the others read the other way round);
 -- rank = n places a row by hand (Fake CM's Visibility: 3.5, between the bar switches and the button).
-local KIND_RANK = { text = 0, styles = 1, choice = 1, range = 1, dropdown = 1, toggle = 3, frame = 3, framecard = 3, keybind = 4, button = 4, buttons = 4,
+local KIND_RANK = { text = 0, styles = 1, choice = 1, range = 1, dropdown = 1, toggle = 3, frame = 3, keybind = 4, button = 4, buttons = 4,
                     editmode = 4, legend = 5, expander = 5 }
 local function RowRank(row)
     if row.lead then return -1 end
