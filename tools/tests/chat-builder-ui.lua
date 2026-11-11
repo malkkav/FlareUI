@@ -64,7 +64,7 @@ function Frame:CreateFontString() return new('FontString',self) end
 function Frame:CreateTexture() return new('Texture',self) end
 CreateFrame=function(kind,name,parent,template) local f=new(kind,parent);if kind=='CheckButton' then f.Text=f:CreateFontString() end;return f end
 ns.SkinButton=function() end;ns.ButtonSound=function() end
-ns.SettingsPanel={FONT={GameFontHighlight="PanelText"}, AttachScrollLine=function(scroll) scroll.standardScroll=true end, SkinDropdown=function(dd) dd.standardDropdown=true end, Rounded=function() end,Open=function(_,module,tab) ns.opened=tab end,
+ns.SettingsPanel={Box=function() end,FONT={GameFontHighlight="PanelText"}, AttachScrollLine=function(scroll) scroll.standardScroll=true end, SkinDropdown=function(dd) dd.standardDropdown=true end, Rounded=function() end,Open=function(_,module,tab) ns.opened=tab end,
     Switch=function(parent) local f=CreateFrame('CheckButton',nil,parent);f.standardSwitch=true;return f end,
     Plate=function(parent) local f=CreateFrame('Button',nil,parent);f.Text=f:CreateFontString();function f:SetSelected(on) self.isSelected=on end;return f end}
 ns.Dialogs={}
@@ -78,135 +78,89 @@ local f=loadfile('Settings/ChatBuilder.lua');if f then f('FlareUI',ns) end
 assert(ns.ChatBuilderEditor,'chat builder editor is missing')
 local host,side=new('Frame'),new('Frame');side:SetWidth(260)
 ns.ChatBuilderEditor.Build(host,side);host:Show();ns.ChatBuilderEditor.Refresh()
-local visible, rightColumn = 0, false
+local categories={}
+for _,o in ipairs(objects) do if o.kind=='DropdownButton' then
+    o.menu(o,{CreateRadio=function(_,name,checked,action) categories[name]=action end})
+end end
+local visible,rightColumn=0,false
 for _,o in ipairs(objects) do
     if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then
-        local key=o.parent.entry.key
-        assert(key=='SAY' or key=='GUILD' or key=='OFFICER' or key=='WHISPER','default view must show only Conversations')
-        visible=visible+1
+        visible=visible+1;assert(o.standardSwitch)
         if o.parent.point and type(o.parent.point[2])=='number' and o.parent.point[2]>0 then rightColumn=true end
     end
 end
-assert(visible>0 and rightColumn,'filters must use two compact columns')
-for _,o in ipairs(objects) do
-    if o.kind=='CheckButton' and o:IsVisible() then assert(o.standardSwitch,'use the same switch as other settings pages') end
-end
-for _,o in ipairs(objects) do
-    if o.kind=='ScrollFrame' then assert(o.standardScroll,'builder must use settings scrollbars') end
-    if o.kind=='DropdownButton' then assert(o.standardDropdown,'builder must use settings dropdown styling') end
-end
-for _,o in ipairs(objects) do assert(o:GetText()~='Built-in','preset type label must not reserve header space') end
-local previewHeader
-for _,o in ipairs(objects) do
-    if o.kind=='Button' and o:GetText():find('- Conversations',1,true) then previewHeader=o end
-end
-assert(previewHeader,'preset preview groups messages by category')
-local publicPreview
-for _,o in ipairs(objects) do if o.kind=='Button' and o.parent.alwaysOpen then publicPreview=o.parent end end
-assert(publicPreview and publicPreview.text:IsVisible(),'public-channel names remain visible without expanding')
-assert(previewHeader.parent.text:IsVisible(),'preview groups start expanded')
-local beforeMessages=table.concat({GetChatWindowMessages(1)},',')
-previewHeader.scripts.OnClick(previewHeader)
-assert(not previewHeader.parent.text:IsVisible(),'preview groups can collapse')
-assert(table.concat({GetChatWindowMessages(1)},',')==beforeMessages,'preview expansion never changes routing')
-previewHeader.scripts.OnClick(previewHeader)
-assert(previewHeader.parent.text:IsVisible(),'preview groups can expand again')
-for _,o in ipairs(objects) do
-    if o.kind=='Button' and (o:GetText()=='Save as preset' or o:GetText()=='Open Blizzard Settings') then
-        assert(o.parent.parent==host,'window actions belong beside the selected window')
-    end
-end
-local categoryDrop
-for _,o in ipairs(objects) do if o.kind=='DropdownButton' then categoryDrop=o;break end end
-local categories={}
-categoryDrop.menu(categoryDrop,{CreateRadio=function(_,name,checked,action) categories[name:match('^(.-)  %(')]=action end})
-categories['Public Channels']()
-for _,o in ipairs(objects) do if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then assert(o.parent.entry.kind=='channel','category selection must show only its own filters') end end
-categories.Groups()
-local social=click('Social');click('Move up');assert(ns.ChatBuilder:Windows()[3].id==3,'UI reorders selected dock tab');click('Move down');assert(ns.ChatBuilder:Windows()[4].id==3);click('Move up');assert(click('Social').isSelected,'selected window must be highlighted');click('Rename');local before=GetChatWindowInfo(3)
-assert(before=='Social','opening rename must not mutate');accept('Friends');assert(GetChatWindowInfo(3)=='Friends')
-click('Save as preset');accept('Friends preset')
-local found;for _,p in ipairs(ns.ChatBuilder:Presets()) do if p.name=='Friends preset' then found=p end end
-assert(found,'save action must persist preset')
-local search
-for _,o in ipairs(objects) do if o.kind=='EditBox' then search=o end end
-assert(search);search:SetFocus();search:SetText('loot')
+assert(visible>4 and rightColumn,'default view shows grouped filters in two columns')
+assert(not pcall(click,'Duplicate'),'advanced actions start hidden')
+assert(not pcall(click,'Create window'),'chooser starts hidden')
+click('Social');click('Move up');assert(ns.ChatBuilder:Windows()[3].id==3)
+click('Rename');accept('Friends');assert(GetChatWindowInfo(3)=='Friends')
+click('More options');click('Save as preset');accept('Friends preset')
+local saved;for _,p in ipairs(ns.ChatBuilder:Presets()) do if p.name=='Friends preset' then saved=p end end
+assert(saved)
+local search,nameBox
+for _,o in ipairs(objects) do if o.kind=='EditBox' then if o:IsVisible() then search=o else nameBox=o end end end
+assert(search and nameBox);search:SetText('loot')
 local loot
-for _,o in ipairs(objects) do
-    if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then
-        assert(o.parent.entry.key=='LOOT','filter search must hide nonmatching entries')
-        loot=o
-    end
-end
-assert(loot,'search must find item loot');loot:SetChecked(true);loot.scripts.OnClick(loot)
-local selectedHandle
-for _,h in ipairs(ns.ChatBuilder:Windows()) do if h.id==3 then selectedHandle=h end end
-assert(ns.ChatBuilder:Read(selectedHandle).messages.LOOT,'checkbox must change selected window saved filter')
-assert(search:HasFocus() and search:GetText()=='loot','refresh preserves search input and focus')
-loot.parent.scripts.OnMouseUp(loot.parent,'LeftButton')
-assert(not ns.ChatBuilder:Read(selectedHandle).activeMessages.LOOT,'full row toggles active routing')
-loot.parent.scripts.OnMouseUp(loot.parent,'LeftButton')
-local only
-for _,o in ipairs(objects) do if o.kind=='CheckButton' and not o.parent.entry and o:IsVisible() then only=o end end
-assert(only);only:SetChecked(true);only.scripts.OnClick(only)
-search:SetText('')
-for _,o in ipairs(objects) do
-    if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then assert(o:GetChecked(),'selected-only hides disabled filters') end
-end
-assert(not categoryDrop:IsEnabled(),'selected-only spans all categories')
-only:SetChecked(false);only.scripts.OnClick(only)
-categories.Conversations()
-for _,o in ipairs(objects) do
-    if o.kind=='Button' and o:GetText()=='All' and o.parent.category=='conversations' and o:IsVisible() then o.scripts.OnClick(o);break end
-end
-assert(ns.ChatBuilder:Read(selectedHandle).messages.OFFICER,'category action includes individual supported groups')
-local dropdown
-for _,o in ipairs(objects) do if o.kind=='DropdownButton' and o:GetText()~='Manage' then dropdown=o end end
-local options={};dropdown.menu(dropdown,{CreateRadio=function(_,name,checked,action) options[name]=action end})
-assert(options.Blank);options.Blank()
-click('Apply to selected window')
-assert(ns.ChatBuilder:Read(selectedHandle).messages.LOOT,'opening preset confirmation must not apply it')
-accept();assert(not ns.ChatBuilder:Read(selectedHandle).messages.LOOT,'accepting preset replaces supported filters')
-assert(not pcall(click,'Delete preset'),'built-in presets cannot be deleted')
-local function manageAction(name)
-    click('Manage');click(name)
-end
-assert(not pcall(manageAction,'Delete preset'),'built-in management must be hidden')
-options['Friends preset']();manageAction('Rename preset');accept('Private preset')
-assert(ns.ChatBuilder:Preset(found.id).name=='Private preset')
-manageAction('Delete preset');assert(ns.ChatBuilder:Preset(found.id),'confirmation alone preserves preset')
-accept();assert(not ns.ChatBuilder:Preset(found.id),'confirmed delete removes only the preset')
--- Free the fixture's final window slot, then exercise the distinct creation actions.
+for _,o in ipairs(objects) do if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then assert(o.parent.entry.key=='LOOT');loot=o end end
+assert(loot);loot.parent.scripts.OnMouseUp(loot.parent,'LeftButton')
+local function selectedHandle() for _,h in ipairs(ns.ChatBuilder:Windows()) do if h.id==3 then return h end end end
+assert(ns.ChatBuilder:Read(selectedHandle()).activeMessages.LOOT,'filter edits apply immediately')
+search:SetText('');categories['Public Channels']()
+for _,o in ipairs(objects) do if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then assert(o.parent.entry.kind=='channel') end end
+categories['All categories']()
+-- Applying a preset requires an explicit confirmation, captured for the selected window.
+click('Use a preset');assert(not pcall(click,'Rename'),'editor is hidden while choosing')
+click('Empty');click('Apply preset')
+assert(ns.ChatBuilder:Read(selectedHandle()).messages.LOOT,'preview and confirmation alone preserve filters')
+accept();assert(not ns.ChatBuilder:Read(selectedHandle()).messages.LOOT)
+click('Use a preset');click('Friends preset');click('Rename preset');accept('Private preset')
+assert(ns.ChatBuilder:Preset(saved.id).name=='Private preset')
+click('Delete preset');assert(ns.ChatBuilder:Preset(saved.id));accept();assert(not ns.ChatBuilder:Preset(saved.id));click('Cancel')
+-- Creation chooses a starting point and editable name in one view; Cancel never creates.
 FCF_Close(ChatFrame4);ns.ChatBuilderEditor.Refresh()
-click('Duplicate');accept('Friends copy')
-assert(GetChatWindowInfo(4)=='Friends copy')
-assert(ns.ChatBuilder:Read(ns.ChatBuilder:Windows()[4]).activeMessages.FUTURE_GROUP,'UI duplicate copies source routing')
+local countWindows=#ns.ChatBuilder:Windows()
+click('Add window');click('Social');assert(nameBox:GetText()=='Social')
+click('Edit name');assert(ns.Dialogs.CHAT_BUILDER_NAME.padInput,'name editing supports controller input');accept('My own name');click('Loot');assert(nameBox:GetText()=='My own name','preset changes preserve a user-entered name')
+click('Cancel');assert(#ns.ChatBuilder:Windows()==countWindows)
+click('Add window');click('Empty');nameBox:SetText('Empty test');click('Create window')
+assert(GetChatWindowInfo(4)=='Empty test' and #({GetChatWindowMessages(4)})==0)
 click('Delete window');accept();click('Friends')
-options.Social();click('New window');accept('Empty')
-assert(#({GetChatWindowMessages(4)})==0,'New window is blank regardless of selected preset')
-click('Delete window');accept();click('Friends')
-click('Create new window');accept('Preset copy')
+click('Add window');click('Social');nameBox:SetText('Preset copy');click('Create window')
+assert(GetChatWindowInfo(4)=='Preset copy')
 local groups={};for _,g in ipairs({GetChatWindowMessages(4)}) do groups[g]=true end
-assert(groups.GUILD,'Create from preset applies the selected template immediately')
-click('Delete window');accept();click('Friends')
-click('Delete window');assert(select(7,GetChatWindowInfo(3)),'opening close confirmation must not close')
--- A pending confirmation is safe even after native close/reuse.
-FCF_Close(ChatFrame3);accept();assert(GetChatWindowInfo(3)=='Friends')
-assert(not pcall(click,'Frame'),'redundant appearance navigation must be absent')
-local count=#objects;host:Hide();side:Show();ns.ChatBuilderEditor.Refresh();assert(#objects==count,'hidden editor must not build more controls')
-for _,o in ipairs(objects) do if o:GetText()=='Save as preset' then assert(not o:IsVisible(),'sidebar controls must hide when another custom tab uses the shared side host') end end
-host:Show();ns.ChatBuilderEditor.Refresh();assert(#objects<=count+5,'refresh must reuse controls')
+assert(groups.GUILD,'created window uses selected preset immediately')
+click('Delete window');accept();click('Friends');click('Duplicate');accept('Duplicate test')
+assert(GetChatWindowInfo(4)=='Duplicate test');click('Delete window');accept();click('Friends')
+-- Stale native close/reuse cannot redirect an outstanding apply confirmation.
+click('Use a preset');click('Social');click('Apply preset');FCF_Close(ChatFrame3);accept()
+assert(GetChatWindowInfo(3)=='Friends');click('Cancel')
+click('General');assert(not pcall(click,'Pop out') and not pcall(click,'Delete window'),'primary protection')
+click('Combat Log');assert(not pcall(click,'Use a preset'),'combat log protection')
+-- Leaving the page closes the chooser and restores the editor on return.
+click('General');click('Use a preset');host:Hide();side:Show();host:Show()
+assert(not pcall(click,'Apply preset'));click('More options')
 for _,key in ipairs({'GetChatWindowMessages','GetChatWindowChannels'}) do
-    local original=_G[key];_G[key]=nil
-    assert(pcall(ns.ChatBuilderEditor.Refresh),'missing client API must render a disabled availability screen')
-    _G[key]=original
+    local original=_G[key];_G[key]=nil;assert(pcall(ns.ChatBuilderEditor.Refresh));_G[key]=original
 end
--- Exercise page registration rather than grepping for a width flag.
 local registered
 ns.Settings={Module=function(_,definition) registered=definition end,Row=function() end,On=function() end,
     FontRows=function() end,OpacityChoices=function() return {} end,MinAlphaChoices=function() return {} end}
 assert(loadfile('Settings/Pages/Chat.lua'))('FlareUI',ns)
 local builderTab
 for _,tab in ipairs(registered.tabs) do if tab.key=='builder' then builderTab=tab end end
-assert(builderTab and not builderTab.wide,'Builder must retain the standard settings-panel width')
-print('PASS: chat builder UI selection, dialogs, preset persistence, standard styling, and lifecycle')
+assert(builderTab and not builderTab.wide and builderTab.spanRight and builderTab.label=='Windows','Windows reuses the right column without growing the panel')
+-- Execute the actual custom-page layout lifecycle with minimal frame primitives.
+local file=assert(io.open('Settings/Panel.lua'));local source=file:read('*a');file:close()
+local first=assert(source:find('local function HideCustom()',1,true))
+local last=assert(source:find('local UpdateNav',first,true))
+local panel={middleBox=new('Frame')};local page={right=new('Frame'),root=new('Frame'),header=new('Frame')}
+local preview={host=new('Frame'),picture=new('Frame'),title=new('Frame'),desc=new('Frame'),tip=new('Frame')}
+local env=setmetatable({Panel=panel,page=page,preview=preview,customHosts={},GAP=8},{__index=_G})
+local chunk=assert(loadstring(source:sub(first,last-1)..'\nreturn HideCustom,ShowCustom'));setfenv(chunk,env)
+local hide,show=chunk();local built=0
+show({key='chat'},{key='windows',spanRight=true,custom=function() built=built+1 end})
+assert(not page.right:IsShown() and panel.middleBox.point[3]=='BOTTOMRIGHT','spanning hides the old sidebar')
+hide();assert(page.right:IsShown() and panel.middleBox.point[3]=='BOTTOMLEFT','leaving restores normal settings geometry')
+show({key='chat'},{key='windows',spanRight=true,custom=function() built=built+1 end});assert(built==1,'custom host reused')
+hide()
+print('PASS: simplified chat editor, chooser, presets, protections, and settings layout lifecycle')

@@ -1921,12 +1921,20 @@ Panel.RIGHT_W, Panel.PAD = RIGHT_W, PAD
 
 local function HideCustom()
     for _, host in pairs(customHosts) do host:Hide() end
+    if page.spanning then
+        Panel.middleBox:SetPoint("BOTTOMRIGHT",page.right,"BOTTOMLEFT",-GAP,0)
+        page.right:Show();page.spanning=nil
+    end
     if preview.host then preview.host:Hide() end
     for _, region in ipairs({ preview.picture, preview.title, preview.desc, preview.tip }) do region:Show() end
 end
 
 -- a custom tab draws once into its own frame below the header; tab.preview also takes the right column
 local function ShowCustom(module, tab)
+    if tab.spanRight then
+        Panel.middleBox:SetPoint("BOTTOMRIGHT",page.right,"BOTTOMRIGHT",0,0)
+        page.right:Hide();page.spanning=true
+    end
     local id = module.key .. "." .. tab.key
     local host = customHosts[id]
     if not host then
@@ -1937,12 +1945,12 @@ local function ShowCustom(module, tab)
         tab.custom(host, preview.host)
     end
     host:Show()
-    if tab.preview then
+    if tab.preview or tab.spanRight then
         if preview.canvas then preview.canvas:Reset(); preview.canvas.frame:Hide() end
         previewRow = nil
         if preview.pause then preview.pause:Hide() end
         for _, region in ipairs({ preview.picture, preview.title, preview.desc, preview.tip }) do region:Hide() end
-        preview.host:Show()
+        preview.host:SetShown(tab.preview and true or false)
     end
     if tab.refresh then tab.refresh(host, preview.host) end
 end
