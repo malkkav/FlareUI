@@ -616,8 +616,9 @@ RM.MAX_BUTTONS = MAX_BUTTONS
 --------------------------------------------------
 -- 6. RADIAL FRAME
 --------------------------------------------------
-local function CreateRadialButton(index)
-    local button = CreateFrame("Frame", nil, radial)
+-- parent: a settings preview's wheel (the radial otherwise)
+local function CreateRadialButton(index, parent)
+    local button = CreateFrame("Frame", nil, parent or radial)
     button:SetSize(ICON_SIZE, ICON_SIZE)
 
     local style = RoundStyle()
@@ -947,19 +948,29 @@ function RM:LayoutRadial(fromCache)
         resolved = (currentID and resolvedCache[currentID]) or ResolveButtons(currentRadial)
     end
 
-    local count = #resolved
+    local count, radius, interval = RM.PlaceRadialButtons(radial, buttons, resolved)
+    -- every button was just drawn unselected: an open radial picks its selection again next frame
+    if isOpen then selectedIndex = nil end
+    RM:LayoutPing(count, radius, interval)
+    RefreshButtonStates()
+    if not fromCache then SyncSecure() end
+end
+
+-- The buttons of `entries` on `frame` (the radial, or a settings preview's wheel), kept in `list`
+function RM.PlaceRadialButtons(frame, list, entries)
+    local count = #entries
     local interval = count > 0 and (TAU / count) or TAU
     local radius = RadialRadius(count)
 
     local diameter = (radius + ICON_SIZE) * 2
-    radial:SetSize(diameter, diameter)
+    frame:SetSize(diameter, diameter)
 
-    for i = 1, math_max(count, #buttons) do
-        local button = buttons[i]
-        local entry = resolved[i]
+    for i = 1, math_max(count, #list) do
+        local button = list[i]
+        local entry = entries[i]
         if entry and not button then
-            button = CreateRadialButton(i)
-            buttons[i] = button
+            button = CreateRadialButton(i, frame)
+            list[i] = button
         end
         if button then
             if entry then
@@ -968,7 +979,7 @@ function RM:LayoutRadial(fromCache)
                 button.angle = angle
                 button.baseX, button.baseY = math_cos(angle) * radius, math_sin(angle) * radius
                 button:ClearAllPoints()
-                button:SetPoint("CENTER", radial, "CENTER", button.baseX, button.baseY)
+                button:SetPoint("CENTER", frame, "CENTER", button.baseX, button.baseY)
                 ApplyButtonShape(button)
                 SetButtonIcon(button, entry.icon)
                 SetLabelText(button, entry.name)
@@ -981,20 +992,18 @@ function RM:LayoutRadial(fromCache)
             end
         end
     end
-    -- every button was just drawn unselected: an open radial picks its selection again next frame
-    if isOpen then selectedIndex = nil end
-    RM:LayoutPing(count, radius, interval)
-    RefreshButtonStates()
-    if not fromCache then SyncSecure() end
+    return count, radius, interval
 end
 
 -- divider i runs between button i and button i + 1; one button has none
-function RM:LayoutPing(count, radius, interval)
-    local p = radial.Ping
+-- frame: a settings preview's wheel (the radial otherwise)
+function RM:LayoutPing(count, radius, interval, frame)
+    frame = frame or radial
+    local p = frame.Ping
     p.count, p.interval = count, interval
     local bg = math_max(PING.BG_MIN, radius * PING.BG_FACTOR)
     p.Background:SetSize(bg, bg)
-    p.Background:SetShown(not previewID)   -- would spill out of the editor's box
+    p.Background:SetShown(not (previewID or frame.fuiSample))   -- would spill out of the editor's box
 
     local sliced = count >= 2
     local outer = radius + ICON_SIZE * 0.9
@@ -1002,27 +1011,28 @@ function RM:LayoutPing(count, radius, interval)
         local line = p.Dividers[i]
         if sliced and i <= count then
             if not line then
-                line = radial:CreateLine(nil, "BORDER")
+                line = frame:CreateLine(nil, "BORDER")
                 line:SetTexture(PING.DIVIDER)
                 line:SetThickness(PING.DIVIDER_THICKNESS)
                 p.Dividers[i] = line
             end
             local a = QUARTER - (i - 1) * interval - interval / 2
             local c, s = math_cos(a), math_sin(a)
-            line:SetStartPoint("CENTER", radial, c * PING.HUB, s * PING.HUB)
-            line:SetEndPoint("CENTER", radial, c * outer, s * outer)
+            line:SetStartPoint("CENTER", frame, c * PING.HUB, s * PING.HUB)
+            line:SetEndPoint("CENTER", frame, c * outer, s * outer)
             line:Show()
         elseif line then
             line:Hide()
         end
     end
-    self:LightSlice(nil)
+    self:LightSlice(nil, frame)
 end
 
 -- Lights a slice (nil: none) and its two dividers: a full ring cut by two half-plane masks, one per
 -- slice edge, whose overlap is the slice.
-function RM:LightSlice(index)
-    local p = radial and radial.Ping
+function RM:LightSlice(index, frame)
+    local target = frame or radial
+    local p = target and target.Ping
     if not p then return end
     local d = PING.DIVIDER_COLOR
     for _, line in ipairs(p.Dividers) do line:SetVertexColor(d[1], d[2], d[3], d[4]) end
@@ -1049,7 +1059,11 @@ local function CreateRadial()
     radial:SetFrameStrata("DIALOG")
     radial:EnableMouse(false)          -- the cursor is polled; the secure wheel frame takes the wheel
     radial:Hide()
+    RM.BuildRadialArt(radial)
+end
 
+-- The wheel's art (cancel X, pointer, ping wheel), on the radial or a settings preview's wheel
+function RM.BuildRadialArt(radial)
     -- the cancel X and its highlight; the pointer above all, hidden while the X is selected
     radial.CancelSelect = radial:CreateTexture(nil, "ARTWORK")
     radial.CancelSelect:SetAtlas(ATLAS_CANCEL_SELECT)
@@ -2019,6 +2033,55 @@ end
 
 function RM:RefreshPreview()
     if previewID then self:ShowPreview(previewID, previewAnchor) end
+end
+
+-- A settings preview's wheel, apart from the radial and the editor's preview: the first radial this
+-- character gets (else six target markers, as a new account's first radial), laid out by the radial's
+-- own code with button one aimed at (its slice lit, its name per Show Names). Plain art only.
+function RM.CreateSample(parent)
+    local f = CreateFrame("Frame", nil, parent)
+    f.fuiSample = true
+    f.buttons = {}
+    f:EnableMouse(false)
+    f:SetFrameLevel(parent:GetFrameLevel() + 1)
+    RM.BuildRadialArt(f)
+    return f
+end
+
+function RM.DrawSample(f)
+    -- read straight from the saved radials: GetStore would create them
+    local list
+    local store = ns.db and ns.db.global and ns.db.global.radialmenu
+    if store and store.radials and store.radialOrder then
+        for _, id in ipairs(store.radialOrder) do
+            local data = store.radials[id]
+            if data and data.buttons and #data.buttons > 0 and RM:IsRadialAvailable(id) then
+                list = data.buttons
+                break
+            end
+        end
+    end
+    local entries = list and ResolveButtons(list) or {}
+    if #entries == 0 then
+        local markers = {}
+        for i = 1, 6 do markers[i] = { kind = "targetmarker", marker = i } end
+        entries = ResolveButtons(markers)
+    end
+    local count, radius, interval = RM.PlaceRadialButtons(f, f.buttons, entries)
+    RM:LayoutPing(count, radius, interval, f)
+    for i, info in ipairs(entries) do ApplyButtonState(f.buttons[i], info) end
+    if count > 0 and f.buttons[1] then
+        SetButtonSelected(f.buttons[1], true)
+        RM:LightSlice(1, f)
+        f.Pointer:SetRotation(QUARTER)
+        f.Pointer:Show()
+    else
+        f.Pointer:Hide()
+    end
+    f.CancelSelect:Hide()
+    f.CancelIcon:SetAlpha(CANCEL_ALPHA_IDLE)
+    f:Show()
+    return f:GetWidth(), f:GetHeight()
 end
 
 --------------------------------------------------

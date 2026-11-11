@@ -246,13 +246,24 @@ end
 
 -- In the chat window (Meter tab) the chat's skin is the background: the meter's goes clear, its
 -- separator line stays. Back in Edit Mode, where the meter may sit elsewhere.
-local function SetSkinInChat(window, db, inChat)
-    local skin = window.FlareUI_DMSkin
-    if not skin then return end
+-- (PaintSkin and SkinBackdrop also dress the settings preview's sample)
+function DamageMeter.PaintSkin(skin, db, inChat)
     inChat = inChat and true or false
     skin.FlareUI_InChat = inChat
     skin:SetBackdropColor(1, 1, 1, inChat and 0 or db.opacity or 0.85)
     skin:SetBackdropBorderColor(BORDER_TINT.r, BORDER_TINT.g, BORDER_TINT.b, inChat and 0 or BORDER_TINT.a)
+end
+
+local function SetSkinInChat(window, db, inChat)
+    local skin = window.FlareUI_DMSkin
+    if not skin then return end
+    DamageMeter.PaintSkin(skin, db, inChat)
+end
+
+function DamageMeter.SkinBackdrop(skin, db)
+    local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
+    local borderTexture = GetBorderFile(db)
+    skin:SetBackdrop({ bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = ns.BorderEdgeSize(borderTexture, 16), insets = { left = 3, right = 3, top = 3, bottom = 3 } })
 end
 
 local function UpdateSkinFrame(window, db)
@@ -266,9 +277,7 @@ local function UpdateSkinFrame(window, db)
     ns.CopyStrata(skin, window)
     skin:SetFrameLevel(math_max((window:GetFrameLevel() or 1) - 1, 0))
 
-    local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
-    local borderTexture = GetBorderFile(db)
-    skin:SetBackdrop({ bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = ns.BorderEdgeSize(borderTexture, 16), insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+    DamageMeter.SkinBackdrop(skin, db)
     SetSkinInChat(window, db, ChatTabOn())
 
     -- the skin replaces Blizzard's background and header bar
@@ -360,11 +369,7 @@ function GROUP_BUTTONS.Get(window, key)
     local def = GROUP_BUTTONS[key]
     local btn = CreateFrame("Button", nil, window)
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    local icon = btn:CreateTexture(nil, "OVERLAY", nil, 7)
-    icon:SetSize(ICON_DRAW_SIZE[key], ICON_DRAW_SIZE[key])
-    icon:SetPoint("CENTER")
-    ns.BronzeIcon.Apply(icon, def.icon, ICON_COLOR)
-    btn.FlareUI_Icon = icon
+    DamageMeter.HeaderIcon(btn, def.icon, ICON_DRAW_SIZE[key])
     btn:SetScript("OnEnter", function(self) GROUP_BUTTONS.Paint(self, true) end)
     btn:SetScript("OnLeave", function(self) GROUP_BUTTONS.Paint(self, false) end)
     btn:SetScript("OnMouseDown", function(self) self.FlareUI_Icon:SetPoint("CENTER", 1, -1) end)
@@ -554,11 +559,8 @@ local function HideBlizzardButtonVisuals(btn, hideSessionName)
     end
 end
 
-local function SetupCustomIcon(btn, iconPath, hideSessionName, drawSize, yOfs)
-    if not btn then return end
-    btn:Show()
-    HideBlizzardButtonVisuals(btn, hideSessionName)
-
+-- A header icon in struck bronze, centred on its button (also the settings preview's sample)
+function DamageMeter.HeaderIcon(btn, iconPath, drawSize, yOfs)
     if not btn.FlareUI_Icon then
         btn.FlareUI_Icon = btn:CreateTexture(nil, "OVERLAY")
         btn.FlareUI_Icon:SetDrawLayer("OVERLAY", 7)
@@ -567,6 +569,14 @@ local function SetupCustomIcon(btn, iconPath, hideSessionName, drawSize, yOfs)
     btn.FlareUI_Icon:SetPoint("CENTER", btn, "CENTER", 0, yOfs or 0)
     btn.FlareUI_Icon:SetSize(drawSize or ICON_SIZE, drawSize or ICON_SIZE)
     ns.BronzeIcon.Apply(btn.FlareUI_Icon, iconPath, ICON_COLOR)
+end
+
+local function SetupCustomIcon(btn, iconPath, hideSessionName, drawSize, yOfs)
+    if not btn then return end
+    btn:Show()
+    HideBlizzardButtonVisuals(btn, hideSessionName)
+
+    DamageMeter.HeaderIcon(btn, iconPath, drawSize, yOfs)
     btn.FlareUI_Icon:Show()
 
     if not btn.FlareUI_IconHoverHooked then
@@ -664,11 +674,15 @@ end
 -- Settings > Damage Meter > Fonts > Header, always in the header's gold
 local HEADER_FONT = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 }
 
+-- The header font with its gold (also the settings preview's sample)
+function DamageMeter.HeaderFontDb(db)
+    return setmetatable({ useCustomColor = true, color = TITLE_COLOR },
+        { __index = (db and db.headerFont) or HEADER_FONT })
+end
+
 local function ApplyHeaderFonts(window)
     if not window or window:IsForbidden() then return end
-    local db = GetDb()
-    local fontDb = setmetatable({ useCustomColor = true, color = TITLE_COLOR },
-        { __index = (db and db.headerFont) or HEADER_FONT })
+    local fontDb = DamageMeter.HeaderFontDb(GetDb())
     local path, size, flags = GetFontData(fontDb)
 
     local function ApplyToFontString(fs)
@@ -937,7 +951,8 @@ end
 local function GetRow(view, index)
     local row = view.rows[index]
     if not row then
-        row = CreateFrame("Button", nil, view.frame, "DamageMeterEntryTemplate")
+        -- the settings preview's sample brings its own (a stand-in when Blizzard's meter isn't loaded)
+        row = view.newRow and view.newRow(view.frame) or CreateFrame("Button", nil, view.frame, "DamageMeterEntryTemplate")
         row:EnableMouse(false)
         view.rows[index] = row
     end
@@ -1071,9 +1086,10 @@ local function UpdateThreatView(window, view)
     local capacity = math_max(1, math.floor((frame:GetHeight() + spacing) / (height + spacing)))
 
     local list, message = threatScratch.list, nil
-    local mob = ThreatMob()
-    if not mob and DamageMeter.settingsPreview then
-        threatScratch.mob = nil
+    -- the settings preview's sample view always shows the sample rows, and leaves the live mob alone
+    local mob = not view.sample and ThreatMob()
+    if not mob and (view.sample or DamageMeter.settingsPreview) then
+        if not view.sample then threatScratch.mob = nil end
         list = SampleThreat()
     elseif not mob then
         wipe(list)
@@ -2258,4 +2274,305 @@ function DamageMeter:Init()
 
     C_Timer.After(0, function() self:Refresh() end)
     C_Timer.After(1, function() self:Refresh() end)
+end
+
+--------------------------------------------------
+-- 25. SETTINGS PREVIEW SAMPLE
+-- The meter for the settings panel's picture, drawn by the real meter's own functions: FlareUI's
+-- skin, header, icons and Threat tab, with rows of fake players ("damage") or the Threat tab's
+-- sample rows ("threat"). With Meter Tab in the Chat it stands in the chat's sample window under its
+-- tab row. A plain frame: no events, no mouse, Blizzard's meter windows only read for their bar
+-- settings.
+--------------------------------------------------
+DamageMeter.sampleLook = {
+    WIDTH = 300, HEIGHT = 180,   -- the skin, out of the chat
+    SECONDS = 95,                -- the fight's length: the per-second values and the timer
+    -- name, class file, amount
+    players = {
+        { "Pyroblastoise", "MAGE", 1920000 },
+        { "Stabbington", "ROGUE", 1750000 },
+        { "Thrallbro", "WARRIOR", 1410000 },
+        { "Dotsalot", "WARLOCK", 1260000 },
+        { "Pewpew", "HUNTER", 980000 },
+        { "Moonbeam", "DRUID", 610000 },
+    },
+}
+
+-- A row standing in for Blizzard's entry template while Blizzard_DamageMeter isn't loaded: the same
+-- bar art and texts, and the few methods FillRow and ApplyBarFont use
+DamageMeter.SampleRowMixin = {}
+
+function DamageMeter.SampleRowMixin:SetBarHeight(height) self:SetHeight(height) end
+function DamageMeter.SampleRowMixin:SetTextScale() end
+function DamageMeter.SampleRowMixin:SetStyle() end
+function DamageMeter.SampleRowMixin:GetStatusBar() return self.StatusBar end
+function DamageMeter.SampleRowMixin:GetIcon() return self.Icon.Icon end
+function DamageMeter.SampleRowMixin:GetName() return self.StatusBar.Name end
+function DamageMeter.SampleRowMixin:GetValue() return self.StatusBar.Value end
+
+-- Blizzard's default style: the bar from the icon (or the row's left) to 4 px short of its right
+function DamageMeter.SampleRowMixin:SetShowBarIcons(show)
+    self.Icon:SetShown(show and true or false)
+    local bar = self.StatusBar
+    bar:ClearAllPoints()
+    if show then bar:SetPoint("LEFT", self.Icon, "RIGHT", 0, 0) else bar:SetPoint("LEFT", self, "LEFT", 0, 0) end
+    bar:SetPoint("TOP", self, "TOP", 0, -1)
+    bar:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -4, 1)
+end
+
+-- Blizzard's colour rule: the class colour when asked for, else the ally colour
+function DamageMeter.SampleRowMixin:SetUseClassColor(use)
+    local c = use and self.classFilename and RAID_CLASS_COLORS[self.classFilename]
+    c = c or _G.DAMAGE_METER_STATUS_BAR_ALLY_COLOR or { r = 0.3, g = 0.7, b = 0.3 }
+    self.StatusBar:GetStatusBarTexture():SetVertexColor(c.r, c.g, c.b)
+end
+
+function DamageMeter.NewSampleRow(parent)
+    if C_AddOns.IsAddOnLoaded("Blizzard_DamageMeter") and _G.DamageMeterEntryMixin then
+        local ok, row = pcall(CreateFrame, "Button", nil, parent, "DamageMeterEntryTemplate")
+        if ok and row then return row end
+    end
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(24)
+    local holder = CreateFrame("Frame", nil, row)
+    holder:SetSize(24, 24)
+    holder:SetPoint("LEFT")
+    holder.Icon = holder:CreateTexture(nil, "ARTWORK")
+    holder.Icon:SetAllPoints()
+    holder.Icon:SetTexCoord(0.0625, 0.9, 0.0626, 0.9)
+    local bar = CreateFrame("StatusBar", nil, row)
+    local fill = bar:CreateTexture(nil, "ARTWORK")
+    fill:SetAtlas("UI-HUD-CoolDownManager-Bar")
+    -- a client that only takes a file here gets the plain bar
+    if not pcall(bar.SetStatusBarTexture, bar, fill) then bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar") end
+    for _, part in ipairs({ { "BACKGROUND", "ui-damagemeters-bar-shadowbg" }, { "OVERLAY", "ui-damagemeters-bar-shadowedge" } }) do
+        local tex = bar:CreateTexture(nil, part[1])
+        tex:SetAtlas(part[2])
+        tex:SetPoint("TOPLEFT", bar, "TOPLEFT", -2, 2)
+        tex:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 2, -2)
+    end
+    bar.Value = bar:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    bar.Value:SetPoint("RIGHT", bar, "RIGHT", -3, 0)
+    bar.Name = bar:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    bar.Name:SetJustifyH("LEFT")
+    bar.Name:SetWordWrap(false)
+    bar.Name:SetPoint("LEFT", bar, "LEFT", 2, 0)
+    bar.Name:SetPoint("RIGHT", bar.Value, "LEFT", -25, 0)
+    row.Icon, row.StatusBar = holder, bar
+    Mixin(row, DamageMeter.SampleRowMixin)
+    row:SetShowBarIcons(false)
+    return row
+end
+
+-- Stands in for a session window where the meter's functions ask one: the bar settings are read
+-- from Blizzard's first window when it exists (plain getters), Blizzard's defaults otherwise
+function DamageMeter.SampleWindowFor(f)
+    local real = _G.DamageMeterSessionWindow1
+    local function Read(method, default)
+        local fn = real and real[method]
+        if type(fn) == "function" then
+            local ok, v = pcall(fn, real)
+            if ok and v ~= nil and canaccessvalue(v) then return v end
+        end
+        return default
+    end
+    local p = f.proxy
+    if not p then
+        p = { values = {} }
+        function p:GetBarHeight() return self.values.height end
+        function p:GetBarSpacing() return self.values.spacing end
+        function p:GetTextScale() return self.values.textScale end
+        function p:ShouldShowBarIcons() return self.values.icons end
+        function p:GetStyle() return self.values.style end
+        function p:ShouldUseClassColor() return self.values.classColor end
+        f.proxy = p
+    end
+    local v = p.values
+    v.height = Read("GetBarHeight", _G.DAMAGE_METER_DEFAULT_BAR_HEIGHT or 25)
+    v.spacing = Read("GetBarSpacing", _G.DAMAGE_METER_DEFAULT_BAR_SPACING or 4)
+    v.textScale = Read("GetTextScale", 1)
+    v.icons = Read("ShouldShowBarIcons", false)
+    v.style = Read("GetStyle", Enum.DamageMeterStyle and Enum.DamageMeterStyle.Default)
+    v.classColor = Read("ShouldUseClassColor", true)
+    v.numbers = Read("GetNumberDisplayType", Enum.DamageMeterNumbers and Enum.DamageMeterNumbers.Compact)
+    p.DamageMeterTypeDropdown = f.TypeDropdown
+    p.FlareUI_DMSkin = f.Skin
+    return p
+end
+
+function DamageMeter.CreateSample(parent, kind)
+    if kind ~= nil and kind ~= "damage" and kind ~= "threat" then return nil end
+    local f = CreateFrame("Frame", nil, parent)
+    f.fuiSample = true
+    f:EnableMouse(false)
+    if ns.Chat and ns.Chat.CreateSampleWindow then f.Chat = ns.Chat.CreateSampleWindow(f) end
+    local skin = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    skin:SetFrameLevel(f:GetFrameLevel() + 10)   -- over the chat's window, as the meter is
+    local line = skin:CreateTexture(nil, "OVERLAY")
+    line:SetTexture(SEPARATOR)
+    line:SetHeight(8)
+    line:SetPoint("TOPLEFT", skin, "TOPLEFT", 3, -HEADER_HEIGHT)
+    line:SetPoint("TOPRIGHT", skin, "TOPRIGHT", -3, -HEADER_HEIGHT)
+    f.Skin = skin
+    -- the title (Blizzard's type dropdown text) and the timer
+    f.TypeDropdown = { TypeName = skin:CreateFontString(nil, "OVERLAY") }
+    f.TypeDropdown.TypeName:SetJustifyH("LEFT")
+    f.Timer = skin:CreateFontString(nil, "OVERLAY")
+    f.Timer:SetJustifyH("RIGHT")
+    f.Icons = {}
+    for _, key in ipairs({ "settings", "segments", "countdown", "ready" }) do
+        f.Icons[key] = CreateFrame("Frame", nil, skin)
+    end
+    -- the Threat tab and both lists, under Blizzard's content top
+    local tab = CreateFrame("Frame", nil, skin)
+    tab.Text = tab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tab.Text:SetPoint("LEFT", tab, "LEFT", 4, 0)
+    tab.Text:SetText(L["Threat"])
+    local function List()
+        local list = CreateFrame("Frame", nil, skin)
+        list.Empty = list:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        list.Empty:SetPoint("CENTER")
+        return list
+    end
+    f.DamageView = { rows = {}, frame = List(), newRow = DamageMeter.NewSampleRow }
+    local threat = { rows = {}, frame = List(), tab = tab, sample = true, showing = true, newRow = DamageMeter.NewSampleRow }
+    local overlay = CreateFrame("Frame", nil, threat.frame)
+    overlay:SetAllPoints()
+    overlay:SetFrameLevel(threat.frame:GetFrameLevel() + 30)
+    threat.pullLine = overlay:CreateTexture(nil, "OVERLAY", nil, 7)
+    threat.pullLine:SetColorTexture(1, 0.2, 0.15, 0.95)
+    threat.pullLine:SetWidth(2)
+    threat.pullLine:Hide()
+    f.ThreatView = threat
+    f:Hide()
+    return f
+end
+
+-- Blizzard's value text for a row (Number Display: minimal, compact, complete)
+function DamageMeter.SampleValueText(amount, total, seconds, numbers)
+    local E = Enum.DamageMeterNumbers
+    local value, perSecond = AbbreviateLargeNumbers(amount), AbbreviateLargeNumbers(math.floor(amount / seconds))
+    if E and numbers == E.Complete then
+        return (_G.DAMAGE_METER_ENTRY_FORMAT_COMPLETE or "%s (%s, %s%%)"):format(value, perSecond, Round(amount / total * 100))
+    elseif E and numbers == E.Minimal then
+        return (_G.DAMAGE_METER_ENTRY_FORMAT_MINIMAL or "%s"):format(value)
+    end
+    return (_G.DAMAGE_METER_ENTRY_FORMAT_COMPACT or "%s (%s)"):format(value, perSecond)
+end
+
+function DamageMeter.DrawSample(f, kind)
+    local db = GetDb()
+    if not db then f:Hide() return 0, 0 end
+    local look = DamageMeter.sampleLook
+    local showThreat = kind == "threat"
+
+    -- Meter Tab in the Chat: the chat's window around it, the Meter tab picked, the meter's own skin clear
+    local chatDb = ns.db and ns.db.profile and ns.db.profile.chat
+    local inChat = ChatTabOn() and f.Chat ~= nil and chatDb ~= nil and ns.Chat.DrawSampleWindow ~= nil
+    local width, height, top
+    if inChat then
+        width, height = ns.Chat.SampleWindowSize()
+        f.Chat:ClearAllPoints()
+        f.Chat:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+        ns.Chat.DrawSampleWindow(f.Chat, chatDb, width, height, ns.Chat.SampleTabs(chatDb, true))
+        top = CHAT_TAB_ROW
+    else
+        if f.Chat then f.Chat:Hide() end
+        width, height, top = look.WIDTH, look.HEIGHT, 0
+    end
+    local skin = f.Skin
+    local skinWidth, skinHeight = width, height - top
+    skin:ClearAllPoints()
+    skin:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -top)
+    skin:SetSize(skinWidth, skinHeight)
+    DamageMeter.SkinBackdrop(skin, db)
+    DamageMeter.PaintSkin(skin, db, inChat)
+
+    -- the header as ApplyHeader and ApplyHeaderFonts lay it out
+    local fontDb = DamageMeter.HeaderFontDb(db)
+    local path, size, flags = GetFontData(fontDb)
+    local title = f.TypeDropdown.TypeName
+    for _, fs in ipairs({ title, f.Timer }) do
+        ns.SetFont(fs, path, size, flags)
+        ApplyFontEffects(fs, fontDb)
+    end
+    title:SetText(_G.DAMAGE_METER_TYPE_DAMAGE_DONE or L["Damage Done"])
+    title:ClearAllPoints()
+    title:SetPoint("LEFT", skin, "TOPLEFT", TITLE_LEFT, ROW_CENTER_Y)
+
+    local box = ICON_SIZE + 9
+    local function Place(btn, x)
+        btn:SetSize(box, box)
+        btn:ClearAllPoints()
+        btn:SetPoint("CENTER", skin, "TOPRIGHT", x, ROW_CENTER_Y)
+        btn:Show()
+    end
+    Place(f.Icons.settings, -(ICON_RIGHT + ICON_SIZE / 2))
+    DamageMeter.HeaderIcon(f.Icons.settings, ICON_SETTINGS, ICON_DRAW_SIZE.settings, ICON_DRAW_YOFS.settings)
+    Place(f.Icons.segments, -(ICON_RIGHT + ICON_SIZE / 2 + ICON_SPACING))
+    DamageMeter.HeaderIcon(f.Icons.segments, ICON_SEGMENTS, ICON_DRAW_SIZE.segments, ICON_DRAW_YOFS.segments)
+    -- Ready Check and Countdown by their switches alone (not the group), so the picture shows them
+    local extra = 0
+    for _, key in ipairs(GROUP_BUTTONS.order) do
+        local btn = f.Icons[key]
+        if db[GROUP_BUTTONS[key].option] ~= false then
+            extra = extra + 1
+            Place(btn, -(ICON_RIGHT + ICON_SIZE / 2 + (extra + 1) * ICON_SPACING))
+            DamageMeter.HeaderIcon(btn, GROUP_BUTTONS[key].icon, ICON_DRAW_SIZE[key])
+        else
+            btn:Hide()
+        end
+    end
+    local iconsWidth = ICON_SIZE + (1 + extra) * ICON_SPACING
+    f.Timer:SetText(("[%s] "):format(SecondsToClock(look.SECONDS)))
+    f.Timer:ClearAllPoints()
+    f.Timer:SetPoint("RIGHT", skin, "TOPRIGHT", -(ICON_RIGHT + iconsWidth + 10), ROW_CENTER_Y)
+    f.Timer:SetShown(db.combatTimer and true or false)
+
+    local window = DamageMeter.SampleWindowFor(f)
+    local threat, damage = f.ThreatView, f.DamageView
+    threat.showing = showThreat
+    LayoutTabs(window, threat)
+    threat.showing = true   -- its pull line's one retry (UpdateThreatView) runs for the sample too
+
+    local listWidth, listHeight = skinWidth - 12, math_max(1, skinHeight - CONTENT_TOP - 6)
+    for _, view in ipairs({ threat, damage }) do
+        view.frame:ClearAllPoints()
+        view.frame:SetPoint("TOPLEFT", skin, "TOPLEFT", 6, -CONTENT_TOP)
+        view.frame:SetSize(listWidth, listHeight)
+    end
+    threat.frame:SetShown(showThreat)
+    damage.frame:SetShown(not showThreat)
+
+    local rows
+    if showThreat then
+        threat.lineRetry = nil
+        SafeCall(UpdateThreatView, window, threat)
+        rows = threat.rows
+    else
+        local barHeight, spacing = window:GetBarHeight(), window:GetBarSpacing()
+        local capacity = math_max(1, math.floor((listHeight + spacing) / (barHeight + spacing)))
+        local total, shown = 0, math_min(#look.players, capacity)
+        for _, p in ipairs(look.players) do total = total + p[3] end
+        local best = look.players[1][3]
+        for i = 1, shown do
+            local p = look.players[i]
+            local row = GetRow(damage, i)
+            local data = { name = p[1], class = p[2], value = p[3], scaled = 0, rank = i, order = i }
+            row.ftValue = nil   -- FillRow's threat text is replaced below
+            FillRow(row, data, best, window, db, i, barHeight, spacing)
+            row:GetValue():SetText(DamageMeter.SampleValueText(p[3], total, look.SECONDS, window.values.numbers))
+        end
+        for i = shown + 1, #damage.rows do damage.rows[i]:Hide() end
+        rows = damage.rows
+    end
+    -- the bar font, now (Refresh's pass mark would skip rows styled before)
+    for _, row in ipairs(rows) do
+        row.FlareUI_FontPass = nil
+        ApplyBarFont(row, db)
+    end
+
+    f:SetSize(width, height)
+    f:Show()
+    return width, height
 end

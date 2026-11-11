@@ -800,3 +800,41 @@ function R.mouseRing(c,spec)
     local elapsed=0
     c:Animate(function(_,dt) elapsed=elapsed+dt; for i,mask in ipairs(arcs) do mask:SetRotation(elapsed*(i+1)) end end)
 end
+
+--------------------------------------------------
+-- MODULES' OWN SAMPLES (11-11)
+-- A module that builds its own sample (M.CreateSample(parent, kind) / M.DrawSample(f, kind), as the
+-- unit frames, bars and action buttons do) is shown that way; until it does, its drawing above stays.
+--------------------------------------------------
+local function ModuleSample(c, mod, kind)
+    local M = ns[mod]
+    if not (M and M.CreateSample and M.DrawSample) then return nil end
+    return Sample(c, mod .. ':' .. kind, function(parent) return M.CreateSample(parent, kind) end,
+        function(f) return M.DrawSample(f, kind) end, 4)
+end
+
+local ITEM_TOOLTIP = { ['tt.shortItemStats'] = true, ['tt.ids'] = true }
+local THREAT_KEYS = { ['dm.threatValue'] = true, ['dm.pullLine'] = true, ['dm.pullFlash'] = true, ['dm.tankLead'] = true, ['dm.threatOverview'] = true }
+local OWN = {
+    tooltip = { 'Tooltips', function(spec) return spec.key == 'tt.compareShift' and 'compare' or ITEM_TOOLTIP[spec.key] and 'item' or 'unit' end },
+    reminders = { 'BuffReminders', function() return 'reminders' end },
+    radial = { 'RadialMenu', function() return 'radial' end },
+    bags = { 'Bags', function() return 'bags' end },
+    tracker = { 'ObjectiveTracker', function(spec) return spec.key == 'qt.minimizeButton' and 'header' or 'full' end },
+    chat = { 'Chat', function() return 'chat' end },
+    meter = { 'DamageMeter', function(spec) return THREAT_KEYS[spec.key] and 'threat' or 'damage' end },
+    nameplate = { 'Tweaks', function() return 'plate' end },
+    -- the style cards keep their drawing (they show a style that may not be the one in use)
+    minimap = { 'Minimap', function(spec, c)
+        if c.isStyleCard or c.height < 120 then return nil end
+        return spec.key == 'mm.microMenu' and 'menu' or 'map'
+    end },
+}
+for kind, own in pairs(OWN) do
+    local drawn = R[kind]
+    R[kind] = function(c, spec)
+        local sampleKind = own[2](spec, c)
+        if sampleKind and ModuleSample(c, own[1], sampleKind) then return end
+        return drawn(c, spec)
+    end
+end

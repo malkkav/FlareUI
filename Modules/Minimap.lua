@@ -273,14 +273,18 @@ local function Plate(texture, frame)
 end
 
 -- The bar behind the zone text and clock: Forever's cluster has no BorderTop, and the zone button's
--- own plate is a fixed width
-local function CreateHeader()
-    local header = CreateFrame("Frame", nil, Cluster)
+-- own plate is a fixed width (also the settings preview's sample header)
+local function CreateHeader(parent)
+    local header = CreateFrame("Frame", nil, parent)
     header:SetHeight(HEADER_HEIGHT)
     header.Plate = header:CreateTexture(nil, "BACKGROUND")
     Plate(header.Plate, header)
-    MM.Header = header
     return header
+end
+
+-- The clock's width: room for its time text, never under CLOCK_WIDTH
+function MM.ClockWidth(ticker)
+    return math.max(CLOCK_WIDTH, math.ceil(ticker:GetUnboundedStringWidth() or 0) + 2 + PLATE_INSET)
 end
 
 -- The zone button spans the bar up to the clock; Forever's cluster re-places it, so every layout
@@ -309,7 +313,8 @@ local function StyleHeader()
     Remove(MinimapFrame.ZoomHitArea)
     if _G.MinimapBackdrop then Remove(_G.MinimapBackdrop.StaticOverlayTexture) end
 
-    local header = CreateHeader()
+    local header = CreateHeader(Cluster)
+    MM.Header = header
     for _, frame in ipairs({ Cluster.ZoneTextButton, Cluster.Tracking, _G.GameTimeFrame }) do Raise(frame) end
     Raise(header, -1)
 
@@ -349,7 +354,7 @@ local function StyleHeader()
         ticker:SetFontObject("GameFontHighlight")
 
         local function FitClock()
-            local width = math.max(CLOCK_WIDTH, math.ceil(ticker:GetUnboundedStringWidth() or 0) + 2 + PLATE_INSET)
+            local width = MM.ClockWidth(ticker)
             if width == clock:GetWidth() then return end
             clock:SetWidth(width)
             clockWidth = width
@@ -362,16 +367,20 @@ local function StyleHeader()
     MM:ApplyFonts()
 end
 
--- Tracking, the zone / clock bar and the calendar, left to right
-local function PlaceHeader()
-    local tracking, calendar, header = Cluster.Tracking, _G.GameTimeFrame, MM.Header
+-- Tracking, the zone / clock bar and the calendar, left to right along the frame art's top (the
+-- real row and the settings preview's sample)
+function MM.PlaceHeaderRow(frame, tracking, header, calendar)
     tracking:ClearAllPoints()
     calendar:ClearAllPoints()
     header:ClearAllPoints()
-    tracking:SetPoint("TOPLEFT", MM.Frame, "TOPLEFT", HEADER_SIDE, -HEADER_TOP)
+    tracking:SetPoint("TOPLEFT", frame, "TOPLEFT", HEADER_SIDE, -HEADER_TOP)
     header:SetPoint("LEFT", tracking, "RIGHT", HEADER_GAP, 0)
     header:SetWidth(MAP_SIZE - 2 * HEADER_SIDE - tracking:GetWidth() - calendar:GetWidth() - 2 * HEADER_GAP)
     calendar:SetPoint("LEFT", header, "RIGHT", HEADER_GAP, 0)
+end
+
+local function PlaceHeader()
+    MM.PlaceHeaderRow(MM.Frame, Cluster.Tracking, MM.Header, _G.GameTimeFrame)
     PlaceZone()
 end
 
@@ -667,13 +676,11 @@ local function HideMenu()
     if menu and menu:IsShown() and not InCombatLockdown() then menu:Hide() end
 end
 
-local function BuildMenu()
+-- The menu's look and rows on any BackdropTemplate frame: secure rows for the real menu, plain ones
+-- (labels and icons only) for the settings preview's sample. Sizes the frame; false without panels.
+function MM.FillMenu(f, secure)
     local panels = ns.RadialMenu and ns.RadialMenu.MICRO_PANELS
-    if not panels then return nil end
-    local f = CreateFrame("Frame", "FlareUI_MinimapMenu", UIParent, "BackdropTemplate")
-    f:SetFrameStrata("DIALOG")
-    f:SetClampedToScreen(true)
-    f:EnableMouse(true)
+    if not panels then return false end
     local LSM = LibStub("LibSharedMedia-3.0")
     local file = LSM:Fetch("border", "FlareUI Frames")
     f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = file, edgeSize = ns.BorderEdgeSize(file, 16),
@@ -686,13 +693,10 @@ local function BuildMenu()
         local usable = p and ((p.button and _G[p.button]) or p.macrotext)
         if usable then
             n = n + 1
-            local b = CreateFrame("Button", nil, f, "SecureActionButtonTemplate")
+            local b = CreateFrame("Button", nil, f, secure and "SecureActionButtonTemplate" or nil)
             b:SetHeight(MENU_ROW)
             b:SetPoint("TOPLEFT", f, "TOPLEFT", MENU_PAD, -MENU_PAD - (n - 1) * MENU_ROW)
             b:SetPoint("TOPRIGHT", f, "TOPRIGHT", -MENU_PAD, -MENU_PAD - (n - 1) * MENU_ROW)
-            b:RegisterForClicks("AnyUp", "AnyDown")
-            b:SetAttribute("type", "macro")
-            b:SetAttribute("macrotext", (p.button and _G[p.button]) and ("/click " .. p.button) or p.macrotext)
             local icon = b:CreateTexture(nil, "ARTWORK")
             icon:SetSize(16, 16)
             icon:SetPoint("LEFT", 2, 0)
@@ -701,13 +705,30 @@ local function BuildMenu()
             text:SetPoint("LEFT", icon, "RIGHT", 6, 0)
             text:SetText(p.label)
             width = math.max(width, text:GetStringWidth() + 28)
-            local hl = b:CreateTexture(nil, "HIGHLIGHT")
-            hl:SetAllPoints()
-            hl:SetColorTexture(1, 1, 1, 0.08)
-            b:HookScript("PostClick", function() C_Timer.After(0, HideMenu) end)
+            if secure then
+                b:RegisterForClicks("AnyUp", "AnyDown")
+                b:SetAttribute("type", "macro")
+                b:SetAttribute("macrotext", (p.button and _G[p.button]) and ("/click " .. p.button) or p.macrotext)
+                local hl = b:CreateTexture(nil, "HIGHLIGHT")
+                hl:SetAllPoints()
+                hl:SetColorTexture(1, 1, 1, 0.08)
+                b:HookScript("PostClick", function() C_Timer.After(0, HideMenu) end)
+            else
+                b:EnableMouse(false)
+            end
         end
     end
     f:SetSize(width + 2 * MENU_PAD, n * MENU_ROW + 2 * MENU_PAD)
+    return true
+end
+
+local function BuildMenu()
+    if not (ns.RadialMenu and ns.RadialMenu.MICRO_PANELS) then return nil end
+    local f = CreateFrame("Frame", "FlareUI_MinimapMenu", UIParent, "BackdropTemplate")
+    f:SetFrameStrata("DIALOG")
+    f:SetClampedToScreen(true)
+    f:EnableMouse(true)
+    MM.FillMenu(f, true)
     f:Hide()
     table.insert(UISpecialFrames, "FlareUI_MinimapMenu")   -- Escape closes it
     -- a click elsewhere or a fight closes it (the fight first: lockdown begins after this event)
@@ -1145,4 +1166,276 @@ function MM:Init()
         drawer:Hide()
     end
     MM.NoticeScanners()
+end
+
+--------------------------------------------------
+-- 12. SETTINGS PREVIEW SAMPLE
+-- A plain copy of the minimap as FlareUI draws it, from the module's own pieces (border layout,
+-- plate, header row, coordinates style, menu rows), for the settings Info Panel. Blizzard's minimap
+-- is never touched: the terrain is a shipped picture and the badge is drawn from its atlases.
+-- Kinds: "map" (default) and "menu". The clock's tooltip is Blizzard's (FlareUI only adds lines to
+-- it), so it has no sample.
+--------------------------------------------------
+do
+    local TERRAIN = "Interface\\AddOns\\FlareUI\\Media\\Art\\Tour\\Minimap.png"
+    local CROP_A, CROP_B = 35 / 512, 247 / 512        -- the map inside the picture
+    local ROUND_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+    -- Blizzard's round layout (Blizzard_Minimap Minimap.xml, Camelot Minimap.lua and the clock override)
+    local ROUND = { FRAME = "UI-HUD-Minimap-Frame", W = 215, H = 226, MAP = 198, CLUSTER = 256, TOP = 30, SHIFT = 10,
+        ZONE_W = 152, ZONE_H = 23, BUTTON = 23, TRACKING = 17, ZONE_LEVEL = 10 }
+    -- Forever's day/night badge (Camelot Diel.lua)
+    local DIEL = { BORDER = "UI-HUD-Minimap-Frame-Cycle", DAY = "UI-HUD-Minimap-DayCycle", NIGHT = "UI-HUD-Minimap-NightCycle" }
+    local TRACKING_ATLAS, CALENDAR_ATLAS = "ui-hud-minimap-tracking-button", "ui-hud-minimap-calendar-button"
+    local SAMPLE_X, SAMPLE_Y = 48.2, 36.7
+    local OVER_LEVEL = 12      -- badge, coordinates and drawer over both styles' header rows
+    local DRAWER_GAP = 6
+
+    local function AtlasSize(atlas, w, h)
+        local info = C_Texture.GetAtlasInfo(atlas)
+        if info and info.width and info.width > 0 then return info.width, info.height end
+        return w, h
+    end
+
+    -- a header button's art, without the button
+    local function ArtFrame(parent, atlas, size)
+        local frame = CreateFrame("Frame", nil, parent)
+        frame:SetSize(size, size)
+        frame.Art = frame:CreateTexture(nil, "ARTWORK")
+        frame.Art:SetAtlas(atlas)
+        frame.Art:SetAllPoints()
+        return frame
+    end
+
+    local function Terrain(parent, size)
+        local t = parent:CreateTexture(nil, "BACKGROUND", nil, 1)
+        t:SetTexture(TERRAIN)
+        t:SetTexCoord(CROP_A, CROP_B, CROP_A, CROP_B)
+        t:SetPoint("CENTER")
+        t:SetSize(size, size)
+        return t
+    end
+
+    local function ZoneAndClock(plate)
+        plate.Zone = plate:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        plate.Zone:SetJustifyH("LEFT")
+        plate.Zone:SetWordWrap(false)
+        plate.Clock = plate:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    end
+
+    -- Square style: the frame art, the black backing and the header row, as InitSquare lays them
+    local function BuildSquare(f)
+        local sq = CreateFrame("Frame", nil, f)
+        sq:SetPoint("TOPLEFT")
+        sq:SetSize(MAP_SIZE + 2 * FRAME_PAD, MAP_SIZE + 2 * FRAME_PAD)
+        local inner = MAP_SIZE - 2 * MAP_CROP
+        local back = sq:CreateTexture(nil, "BACKGROUND")
+        back:SetPoint("CENTER")
+        back:SetSize(inner, inner)
+        back:SetColorTexture(0, 0, 0, 1)
+        sq.Terrain = Terrain(sq, inner)
+        local art = CreateFrame("Frame", nil, sq)
+        art:SetPoint("CENTER")
+        art:SetSize(MAP_SIZE, MAP_SIZE)
+        art:SetFrameLevel(sq:GetFrameLevel() + 2)
+        NineSliceUtil.ApplyLayout(art, BorderLayout())
+        sq.Art = art
+        sq.Tracking = ArtFrame(sq, TRACKING_ATLAS, HEADER_HEIGHT)
+        sq.Calendar = ArtFrame(sq, CALENDAR_ATLAS, HEADER_HEIGHT)
+        sq.Header = CreateHeader(sq)
+        ZoneAndClock(sq.Header)
+        local row = sq:GetFrameLevel() + ROW_LEVEL
+        sq.Tracking:SetFrameLevel(row)
+        sq.Calendar:SetFrameLevel(row)
+        sq.Header:SetFrameLevel(row - 1)
+        MM.PlaceHeaderRow(art, sq.Tracking, sq.Header, sq.Calendar)
+        return sq
+    end
+
+    -- Round style: Forever's own cluster, which FlareUI leaves as it is (zone button, tracking,
+    -- calendar, round frame)
+    local function BuildRound(f)
+        local rd = CreateFrame("Frame", nil, f)
+        rd:SetPoint("TOPLEFT")
+        local w, h = AtlasSize(ROUND.FRAME, ROUND.W, ROUND.H)
+        rd:SetSize(ROUND.CLUSTER, ROUND.TOP + h)
+        local box = CreateFrame("Frame", nil, rd)
+        box:SetSize(w, h)
+        box:SetPoint("TOP", rd, "TOP", ROUND.SHIFT, -ROUND.TOP)
+        rd.Box = box
+        rd.Terrain = Terrain(box, ROUND.MAP)
+        local mask = box:CreateMaskTexture()
+        mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetAllPoints(rd.Terrain)
+        rd.Terrain:AddMaskTexture(mask)
+        local ring = box:CreateTexture(nil, "OVERLAY", nil, 2)
+        ring:SetAtlas(ROUND.FRAME)
+        ring:SetSize(w, h)
+        ring:SetPoint("CENTER")
+        local zone = CreateFrame("Frame", nil, rd)
+        zone:SetSize(ROUND.ZONE_W, ROUND.ZONE_H)
+        zone:SetPoint("TOP", rd, "TOP", ROUND.SHIFT, 0)
+        zone:SetFrameLevel(rd:GetFrameLevel() + ROUND.ZONE_LEVEL)
+        zone.Plate = zone:CreateTexture(nil, "BACKGROUND")
+        zone.Plate:SetAtlas(PLATE_ATLAS)
+        zone.Plate:SetAllPoints()
+        ZoneAndClock(zone)
+        zone.Zone:SetPoint("LEFT", zone, "LEFT", 8, -1)
+        zone.Zone:SetSize(110, 12)
+        -- the clock button sits 3 px in from the plate's right end, its text 3 px right of its middle
+        zone.Clock:SetPoint("CENTER", zone, "RIGHT", -20, -1)
+        rd.Zone = zone
+        local tracking = CreateFrame("Frame", nil, rd)
+        tracking:SetSize(ROUND.TRACKING, ROUND.TRACKING)
+        tracking:SetPoint("RIGHT", zone, "LEFT", 0, 0)
+        tracking:SetFrameLevel(zone:GetFrameLevel())
+        local trackingBack = tracking:CreateTexture(nil, "BACKGROUND")
+        trackingBack:SetAtlas("ui-hud-minimap-button")
+        trackingBack:SetAllPoints()
+        local trackingArt = ArtFrame(tracking, TRACKING_ATLAS, ROUND.BUTTON)
+        trackingArt:SetPoint("CENTER")
+        local calendar = ArtFrame(rd, CALENDAR_ATLAS, ROUND.BUTTON)
+        calendar:SetPoint("TOPLEFT", zone, "TOPRIGHT", -4, 0)
+        calendar:SetFrameLevel(zone:GetFrameLevel())
+        return rd
+    end
+
+    local function BuildBadge(parent)
+        local badge = CreateFrame("Frame", nil, parent)
+        badge:SetSize(AtlasSize(DIEL.BORDER, 42, 42))
+        badge.Background = badge:CreateTexture(nil, "BACKGROUND")
+        badge.Background:SetPoint("CENTER")
+        local border = badge:CreateTexture(nil, "OVERLAY", nil, 1)
+        border:SetAllPoints()
+        border:SetAtlas(DIEL.BORDER)
+        return badge
+    end
+
+    function MM.CreateSample(parent, kind)
+        local f = CreateFrame("Frame", nil, parent)
+        f.fuiSample = true
+        f:EnableMouse(false)
+        f.kind = kind == "menu" and "menu" or "map"
+        if f.kind == "menu" then
+            -- the real menu's rows, without their secure clicks
+            f.Menu = CreateFrame("Frame", nil, f, "BackdropTemplate")
+            f.Menu:SetPoint("TOPLEFT")
+            f.Menu:EnableMouse(false)
+            if not MM.FillMenu(f.Menu, false) then f.Menu:SetSize(120, 40) end
+            return f
+        end
+        f.Square = BuildSquare(f)
+        f.Round = BuildRound(f)
+        local over = CreateFrame("Frame", nil, f)
+        over:SetAllPoints()
+        over:SetFrameLevel(f:GetFrameLevel() + OVER_LEVEL)
+        f.Badge = BuildBadge(over)
+        f.Badge:SetFrameLevel(over:GetFrameLevel() + 1)
+        f.Coords = over:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        f.Coords:SetJustifyH("CENTER")
+        RestyleCoordText(f.Coords)
+        local bag = ns.MinimapBag
+        if bag and bag.CreateSample then
+            f.Drawer = bag.CreateSample(f)
+            f.Drawer:SetFrameLevel(f:GetFrameLevel() + OVER_LEVEL)
+        end
+        return f
+    end
+
+    local function CoordsText()
+        local tenths = GetCVarBool("coordsByTenths")
+        local ok, text
+        if tenths then
+            ok, text = pcall(string.format, _G.MINIMAP_PLAYER_COORDS or "%.1f, %.1f", SAMPLE_X, SAMPLE_Y)
+        else
+            ok, text = pcall(string.format, _G.MINIMAP_PLAYER_COORDS_INTEGER or "%d, %d", math.floor(SAMPLE_X + 0.5), math.floor(SAMPLE_Y + 0.5))
+        end
+        return ok and text or "48, 37"
+    end
+
+    local function DrawMap(f)
+        local db = GetDb() or {}
+        local square = db.style ~= "round"
+        f.Square:SetShown(square)
+        f.Round:SetShown(not square)
+
+        -- the zone's name and colour and the time, read from Blizzard's own (never written)
+        local zone = GetMinimapZoneText and GetMinimapZoneText() or ""
+        if zone == "" then zone = L["Deathknell"] end
+        local r, g, b = 1, 0.82, 0
+        if _G.MinimapZoneText then r, g, b = _G.MinimapZoneText:GetTextColor() end
+        local ticker = _G.TimeManagerClockTicker
+        local clock = ticker and ticker:GetText()
+        if not clock or clock == "" then clock = date("%H:%M") end
+        local plate = square and f.Square.Header or f.Round.Zone
+        ApplyFont(plate.Zone, db.zoneFont)
+        plate.Zone:SetText(zone)
+        plate.Zone:SetTextColor(r, g, b)
+        ApplyFont(plate.Clock, db.clockFont)
+        plate.Clock:SetText(clock)
+        if square then
+            -- the zone text runs up to the clock, which grows with its time (StyleHeader)
+            local header = f.Square.Header
+            local clockWidth = MM.ClockWidth(plate.Clock)
+            plate.Zone:ClearAllPoints()
+            plate.Zone:SetPoint("TOPLEFT", header, "TOPLEFT", HEADER_GAP + PLATE_INSET, 0)
+            plate.Zone:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -clockWidth, 0)
+            plate.Clock:ClearAllPoints()
+            plate.Clock:SetPoint("RIGHT", header, "RIGHT", -PLATE_INSET, 0)
+        end
+
+        local badge = f.Badge
+        local day = not C_DateAndTime or not C_DateAndTime.IsDayTime or C_DateAndTime.IsDayTime()
+        badge.Background:SetAtlas(day and DIEL.DAY or DIEL.NIGHT, true)
+        badge:ClearAllPoints()
+        if square then
+            badge:SetScale(SUN_SCALE)
+            local overhang = SUN_OVERHANG / SUN_SCALE
+            badge:SetPoint("BOTTOMLEFT", f.Square.Art, "BOTTOMLEFT", -overhang, -overhang)
+        else
+            badge:SetScale(1)
+            badge:SetPoint("CENTER", f.Round.Box, "CENTER", SUN_ROUND_X, SUN_ROUND_Y)
+        end
+        badge:SetShown(not EQoLHidesSun())
+
+        -- Blizzard shows coordinates unless its own option is off; FlareUI only on hover with Coordinates on Hover
+        local coords = f.Coords
+        local cvar = C_CVar and C_CVar.GetCVar and C_CVar.GetCVar("minimapShowPlayerCoords")
+        coords:SetShown(not db.coordsOnHover and cvar ~= "0")
+        coords:SetText(CoordsText())
+        coords:ClearAllPoints()
+        if square then
+            coords:SetPoint("BOTTOM", f.Square.Art, "BOTTOM", 0, COORDS.GAP + 1)
+        else
+            coords:SetPoint("CENTER", f.Round.Terrain, "BOTTOM", 0, -13)
+        end
+
+        local base = square and f.Square or f.Round
+        local width, height = base:GetSize()
+        -- the addon drawer, open under the map
+        local drawer = f.Drawer
+        local bag = ns.MinimapBag
+        if drawer and bag and bag:IsOn() then
+            local w, h = bag.DrawSample(drawer)
+            local x = square and FRAME_PAD or (ROUND.CLUSTER - f.Round.Box:GetWidth()) / 2 + ROUND.SHIFT
+            drawer:ClearAllPoints()
+            drawer:SetPoint("TOPLEFT", f, "TOPLEFT", x, -(height + DRAWER_GAP))
+            width = math.max(width, x + w)
+            height = height + DRAWER_GAP + h
+        elseif drawer then
+            drawer:Hide()
+        end
+        return width, height
+    end
+
+    function MM.DrawSample(f)
+        local width, height
+        if f.kind == "menu" then
+            width, height = f.Menu:GetSize()
+        else
+            width, height = DrawMap(f)
+        end
+        f:SetSize(width, height)
+        f:Show()
+        return width, height
+    end
 end

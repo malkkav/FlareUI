@@ -539,11 +539,8 @@ end
 --------------------------------------------------
 -- 4. ICONS
 --------------------------------------------------
-local function Icon(i)
-    local b = icons[i]
-    if b then return b end
-    b = CreateFrame("Button", "FlareUI_BuffReminder" .. i, row, "SecureActionButtonTemplate")
-    b:RegisterForClicks("AnyUp", "AnyDown")
+-- an icon's look (icon, count, pulse, glow), on the secure button or a settings preview's plain frame
+function BR.BuildIcon(b)
     b.icon = b:CreateTexture(nil, "ARTWORK")
     b.pieces = {}
     -- the count sits over the icon's border (a frame two levels up)
@@ -575,6 +572,15 @@ local function Icon(i)
     glowFade:SetDuration(0.6)
     glowFade:SetSmoothing("IN_OUT")
     b.glowPulse = glowPulse
+    return b
+end
+
+local function Icon(i)
+    local b = icons[i]
+    if b then return b end
+    b = CreateFrame("Button", "FlareUI_BuffReminder" .. i, row, "SecureActionButtonTemplate")
+    b:RegisterForClicks("AnyUp", "AnyDown")
+    BR.BuildIcon(b)
     -- right-click: no cast (an empty macro), the hide menu instead
     b:SetAttribute("type2", "macro")
     b:SetAttribute("macrotext2", "")
@@ -642,25 +648,40 @@ local function StyleIcon(b, size)
 end
 
 -- shows: { { entry, missing, total, unit }, ... }
-local function Show(shows)
+-- sample: a settings preview's plain frame, which holds its own icons (no clicks, no attributes)
+local function Show(shows, sample)
     local db = GetDb() or {}
     local size = db.size or 36
     local spacing = db.spacing or 6
     local vertical = db.orientation == "VERTICAL"
     local back = db.grow == "BACK"   -- left in a row, up in a column
+    local list, parentRow, frame = icons, row, holder
+    if sample then list, parentRow, frame = sample.icons, sample, sample end
     -- From the Middle: the frame keeps room for every reminder that could show, and the icons sit in
     -- its middle, so a placed frame grows both ways from its centre
     local slots = #shows
-    if db.grow == "CENTER" then slots = math_max(slots, BR.EnabledCount()) end
+    if db.grow == "CENTER" and not sample then slots = math_max(slots, BR.EnabledCount()) end
     local offset = (slots - #shows) * (size + spacing) / 2
-    holder:SetAlpha((db.alpha or 100) / 100)
+    frame:SetAlpha((db.alpha or 100) / 100)
     for i, s in ipairs(shows) do
-        local b = Icon(i)
+        local b
+        if sample then
+            b = list[i]
+            if not b then
+                b = BR.BuildIcon(CreateFrame("Frame", nil, sample))
+                b:EnableMouse(false)
+                list[i] = b
+            end
+        else
+            b = Icon(i)
+        end
         StyleIcon(b, size)
         local castID = s.castID or s.entry.castID
         b.icon:SetTexture(s.icon or s.entry.icon)
         b.spellID = castID
-        if s.action and s.action.macro then
+        if sample then
+            -- a picture only
+        elseif s.action and s.action.macro then
             b:SetAttribute("type", "macro")
             b:SetAttribute("macrotext", s.action.macro)
         elseif s.action and s.action.item then
@@ -685,9 +706,9 @@ local function Show(shows)
         local step = offset + (i - 1) * (size + spacing)
         b:ClearAllPoints()
         if vertical then
-            if back then b:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, step) else b:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -step) end
+            if back then b:SetPoint("BOTTOMLEFT", parentRow, "BOTTOMLEFT", 0, step) else b:SetPoint("TOPLEFT", parentRow, "TOPLEFT", 0, -step) end
         else
-            if back then b:SetPoint("TOPRIGHT", row, "TOPRIGHT", -step, 0) else b:SetPoint("TOPLEFT", row, "TOPLEFT", step, 0) end
+            if back then b:SetPoint("TOPRIGHT", parentRow, "TOPRIGHT", -step, 0) else b:SetPoint("TOPLEFT", parentRow, "TOPLEFT", step, 0) end
         end
         b:Show()
         if not b.pulse:IsPlaying() then b.pulse:Play() end
@@ -703,14 +724,40 @@ local function Show(shows)
             b.glow:Hide()
         end
     end
-    for i = #shows + 1, #icons do
-        icons[i].pulse:Stop()
-        icons[i].glowPulse:Stop()
-        icons[i]:Hide()
+    for i = #shows + 1, #list do
+        list[i].pulse:Stop()
+        list[i].glowPulse:Stop()
+        list[i]:Hide()
     end
     local n = math_max(slots, 1)
     local length = n * size + (n - 1) * spacing
-    if vertical then holder:SetSize(size, length) else holder:SetSize(length, size) end
+    if vertical then frame:SetSize(size, length) else frame:SetSize(length, size) end
+    return frame:GetWidth(), frame:GetHeight()
+end
+
+-- a settings preview's row: Edit Mode's samples (Fortitude missing on 2 of 5, Arcane Intellect running
+-- out) and a pet reminder, in the current look; kind is unused
+function BR.CreateSample(parent)
+    local f = CreateFrame("Frame", nil, parent)
+    f.fuiSample = true
+    f.icons = {}
+    f:EnableMouse(false)
+    f:SetFrameLevel(parent:GetFrameLevel() + 1)
+    f:SetSize(36, 36)
+    return f
+end
+
+function BR.DrawSample(f)
+    local _, class = UnitClass("player")
+    local pet = SpellIcon(class == "WARLOCK" and 688 or CALL_PET)
+    local shows = {
+        { entry = { icon = SpellIcon(1243) }, missing = 2, total = 5, unit = "player", running = false },
+        { entry = { icon = SpellIcon(1459) }, missing = 1, total = 5, unit = "player", running = true },
+        { entry = { icon = pet }, missing = 1, total = 1, unit = "player", running = false },
+    }
+    local w, h = Show(shows, f)
+    f:Show()
+    return w, h
 end
 
 --------------------------------------------------

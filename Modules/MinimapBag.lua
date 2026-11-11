@@ -370,13 +370,10 @@ local function OnIconClick(self, mouseButton)
     end
 end
 
--- The bag's own button for a LibDBIcon or compartment entry, in the action button look
-local function GetIconButton(i)
-    local b = buttons[i]
-    if b then return b end
-    b = CreateFrame("Button", nil, panel)
+-- The action button look of the bag's own icons (also the settings preview's sample)
+function Bag.NewIconButton(parent)
+    local b = CreateFrame("Button", nil, parent)
     b:SetSize(C.BUTTON, C.BUTTON)
-    b:RegisterForClicks("AnyUp")
     b.icon = b:CreateTexture(nil, "BACKGROUND")
     b.icon:SetAllPoints()
     local mask = b:CreateMaskTexture()
@@ -393,6 +390,15 @@ local function GetIconButton(i)
         t:SetPoint("TOPLEFT")
         t:SetSize(31.6 * art, 30.9 * art)
     end
+    return b
+end
+
+-- The bag's own button for a LibDBIcon or compartment entry
+local function GetIconButton(i)
+    local b = buttons[i]
+    if b then return b end
+    b = Bag.NewIconButton(panel)
+    b:RegisterForClicks("AnyUp")
     b:SetScript("OnEnter", OnIconEnter)
     b:SetScript("OnLeave", OnIconLeave)
     b:SetScript("OnClick", OnIconClick)
@@ -631,19 +637,24 @@ local function OpenOnHover()
     hoverWatch:Show()
 end
 
+-- The panel's backdrop on any BackdropTemplate frame (also the settings preview's sample)
+function Bag.StylePanel(f)
+    local bg = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
+    local edge = LSM:IsValid("border", C.BORDER) and LSM:Fetch("border", C.BORDER) or nil
+    f:SetBackdrop({ bgFile = bg, edgeFile = edge, tile = false, tileSize = 0,
+        edgeSize = ns.BorderEdgeSize(edge, 16), insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+    f:SetBackdropColor(1, 1, 1, C.OPACITY)
+    local b = ns.BORDER_COLOR
+    f:SetBackdropBorderColor(b.r, b.g, b.b, b.a)
+end
+
 local function CreatePanel()
     panel = CreateFrame("Frame", "FlareUI_MinimapBag", UIParent, "BackdropTemplate")
     panel:SetFrameStrata("HIGH")
     panel:SetClampedToScreen(true)
     panel:EnableMouse(true)
     panel:Hide()
-    local bg = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
-    local edge = LSM:IsValid("border", C.BORDER) and LSM:Fetch("border", C.BORDER) or nil
-    panel:SetBackdrop({ bgFile = bg, edgeFile = edge, tile = false, tileSize = 0,
-        edgeSize = ns.BorderEdgeSize(edge, 16), insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-    panel:SetBackdropColor(1, 1, 1, C.OPACITY)
-    local b = ns.BORDER_COLOR
-    panel:SetBackdropBorderColor(b.r, b.g, b.b, b.a)
+    Bag.StylePanel(panel)
 
     panel.empty = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     panel.empty:SetPoint("CENTER")
@@ -711,4 +722,55 @@ function Bag:Init()
         pending = true
         C_Timer.After(0.5, function() pending = false; Sweep() end)
     end)
+end
+
+--------------------------------------------------
+-- 6. SETTINGS PREVIEW SAMPLE (drawn under the Minimap module's sample)
+-- The panel's look and grid with one row of icons: the player's own LibDBIcon icons, only read (no
+-- button is parked or adopted), else stand-ins
+--------------------------------------------------
+local SAMPLE_ICONS = { "Interface\\Icons\\INV_Misc_Bag_08", "Interface\\Icons\\INV_Misc_Book_09",
+                       "Interface\\Icons\\INV_Misc_Map_01", "Interface\\Icons\\INV_Misc_Gear_01" }
+
+function Bag.CreateSample(parent)
+    local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    f.fuiSample = true
+    f:EnableMouse(false)
+    Bag.StylePanel(f)
+    f.icons = {}
+    for i = 1, C.COLUMNS do
+        local b = Bag.NewIconButton(f)
+        b:EnableMouse(false)
+        f.icons[i] = b
+    end
+    return f
+end
+
+function Bag.DrawSample(f)
+    local objects = {}
+    local lib, ldb = LibDBIcon(), LibDataBroker()
+    if lib and ldb then
+        for _, name in ipairs(lib:GetButtonList() or {}) do
+            local object = ldb:GetDataObjectByName(name)
+            if object and object.icon then objects[#objects + 1] = object end
+            if #objects >= C.COLUMNS then break end
+        end
+    end
+    local count = #objects > 0 and #objects or #SAMPLE_ICONS
+    local step = C.BUTTON + C.SPACING
+    for i, b in ipairs(f.icons) do
+        if i <= count then
+            local object = objects[i]
+            SetIcon(b.icon, object and object.icon or SAMPLE_ICONS[i], object)
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", f, "TOPLEFT", C.PAD + (i - 1) * step, -C.PAD)
+            b:Show()
+        else
+            b:Hide()
+        end
+    end
+    local width, height = C.PAD * 2 + count * step - C.SPACING, C.PAD * 2 + C.BUTTON
+    f:SetSize(width, height)
+    f:Show()
+    return width, height
 end

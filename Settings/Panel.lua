@@ -515,6 +515,7 @@ local function PageSpec()
     end
     if current == 'au' and tab == 'reminders' then return { kind = 'reminders', key = 'au.remindersOverview' } end
     if current == 'ab' and tab == 'xp' then return { kind = 'xp', key = 'ab.xpOverview' } end
+    if current == 'dm' and tab == 'threat' then return { kind = 'meter', key = 'dm.threatOverview' } end
     return ns.SettingsPreview.Module(current)
 end
 

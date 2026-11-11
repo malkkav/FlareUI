@@ -1459,6 +1459,11 @@ local function QuestTagAspect()
     return questTagAspect
 end
 
+-- The "!" art (also the settings preview's sample plate)
+function Tweaks.QuestTagArt(icon)
+    if C_Texture.GetAtlasInfo(QUEST_TAG_ATLAS) then icon:SetAtlas(QUEST_TAG_ATLAS) else icon:SetTexture(QUEST_TAG_FILE) end
+end
+
 local function GetQuestTag(plate)
     local tag = questTags[plate]
     if not tag then
@@ -1466,7 +1471,7 @@ local function GetQuestTag(plate)
         tag:SetSize(QUEST_TAG_SIZE, QUEST_TAG_SIZE)
         tag.icon = tag:CreateTexture(nil, "OVERLAY")
         tag.icon:SetAllPoints()
-        if C_Texture.GetAtlasInfo(QUEST_TAG_ATLAS) then tag.icon:SetAtlas(QUEST_TAG_ATLAS) else tag.icon:SetTexture(QUEST_TAG_FILE) end
+        Tweaks.QuestTagArt(tag.icon)
         questTags[plate] = tag
     end
     return tag
@@ -1711,7 +1716,7 @@ end
 function LevelName.Prefix(unit)
     local level = UnitEffectiveLevel(unit)
     if not canaccessvalue(level) or type(level) ~= "number" then return nil end
-    if level <= 0 then return "|cffff2020??|r" end
+    if level <= 0 then return LevelName.Format(level) end
     local attackable = UnitCanAttack("player", unit)
     local color
     if canaccessvalue(attackable) and attackable then
@@ -1719,6 +1724,12 @@ function LevelName.Prefix(unit)
     else
         color = _G.UNIT_LEVEL_NON_ATTACKABLE
     end
+    return LevelName.Format(level, color)
+end
+
+-- A level in its colour ("??" for a skull); also the settings preview's sample plate
+function LevelName.Format(level, color)
+    if level <= 0 then return "|cffff2020??|r" end
     if color and color.r then
         return ("|cff%02x%02x%02x%d|r"):format(color.r * 255, color.g * 255, color.b * 255, level)
     end
@@ -1755,6 +1766,181 @@ function LevelName.ApplyAll()
     end
     if not LevelName.hooked then return end
     for _, plate in ipairs(C_NamePlate.GetNamePlates()) do LevelName.Apply(plate.UnitFrame) end
+end
+
+--------------------------------------------------
+-- 11d. SETTINGS PREVIEW SAMPLE
+-- A stand-in for the target's enemy nameplate in the settings panel's picture: Blizzard's bar, name
+-- and level box at the sizes Blizzard's nameplate setup has now, with this module's combo row, quest
+-- "!", Hide Level Box, Hide Names and Level Before Name applied as on real plates. A plain frame: no
+-- events, no mouse, real plates untouched.
+--------------------------------------------------
+Tweaks.plateSample = {
+    PAD = 2,             -- the bar's backdrop reaches 2 px past its left edge
+    BAR_COLOR = { r = 1, g = 0, b = 0 },   -- hostile
+    HEALTH = 1,
+}
+
+function Tweaks.CreateSample(parent, kind)
+    if kind ~= nil and kind ~= "plate" then return nil end
+    local f = CreateFrame("Frame", nil, parent)
+    f.fuiSample = true
+    f:EnableMouse(false)
+    local bar = CreateFrame("StatusBar", nil, f)
+    local fill = bar:CreateTexture(nil, "ARTWORK")
+    fill:SetAtlas("UI-HUD-CoolDownManager-Bar")
+    -- a client that only takes a file here gets the plain bar
+    if not pcall(bar.SetStatusBarTexture, bar, fill) then bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar") end
+    bar:SetMinMaxValues(0, 1)
+    -- Blizzard's backdrop behind the bar, and a thin dark border round it
+    local bg = bar:CreateTexture(nil, "BACKGROUND")
+    bg:SetAtlas("UI-HUD-CoolDownManager-Bar-BG")
+    bg:SetPoint("TOPLEFT", bar, "TOPLEFT", -2, 3)
+    bg:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 6, -6)
+    for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT", 0, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, -1 },
+            { "TOPLEFT", "BOTTOMLEFT", -1, 0 }, { "TOPRIGHT", "BOTTOMRIGHT", 1, 0 } }) do
+        local edge = bar:CreateTexture(nil, "BORDER")
+        edge:SetColorTexture(0, 0, 0, 0.8)
+        edge:SetPoint(side[1], bar, side[1], side[3], side[4])
+        edge:SetPoint(side[2], bar, side[2], side[3], side[4])
+        if side[3] == 0 then edge:SetHeight(1) else edge:SetWidth(1) end
+    end
+    f.Bar = bar
+    -- texts over the bar
+    local texts = CreateFrame("Frame", nil, f)
+    texts:SetAllPoints(bar)
+    texts:SetFrameLevel(bar:GetFrameLevel() + 2)
+    f.Name = texts:CreateFontString(nil, "OVERLAY")
+    f.Name:SetWordWrap(false)
+    f.Health = texts:CreateFontString(nil, "OVERLAY")
+    f.Health:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
+    -- the level box (Forever's NameplateLevelFrame)
+    local level = CreateFrame("Frame", nil, f)
+    level:SetFrameLevel(bar:GetFrameLevel() + 3)
+    level.Icon = level:CreateTexture(nil, "BACKGROUND")
+    level.Icon:SetAtlas("ui-hud-nameplates-levelindicator")
+    level.Icon:SetAllPoints()
+    level.Text = level:CreateFontString(nil, "OVERLAY")
+    level.Text:SetPoint("CENTER", level.Icon, "CENTER", 0, 0)
+    f.Level = level
+    -- the cast bar's slot under the health bar: the combo row and a hidden box's quest tag hang on it
+    f.CastSlot = CreateFrame("Frame", nil, f)
+    f.Quest = CreateFrame("Frame", nil, f)
+    f.Quest:SetFrameLevel(bar:GetFrameLevel() + 5)
+    f.Quest.icon = f.Quest:CreateTexture(nil, "OVERLAY")
+    f.Quest.icon:SetAllPoints()
+    Tweaks.QuestTagArt(f.Quest.icon)
+    f.Combo = CreateFrame("Frame", nil, f)
+    f.Combo.gems = {}
+    f.Combo:SetScale(NP_COMBO_SCALE)
+    f.Combo:SetFrameLevel(bar:GetFrameLevel() + 5)
+    f:Hide()
+    return f
+end
+
+function Tweaks.DrawSample(f)
+    local db = GetDb() or {}
+    local look = Tweaks.plateSample
+    local so = _G.NamePlateSetupOptions or {}
+    local constants = _G.NamePlateConstants or {}
+    local styles = constants.NAME_ANCHOR_STYLES or {}
+    local addon = Tweaks:GetNameplateAddon()
+    local hideLevel = db.nameplateHideLevel and not addon
+    local hideName = db.nameplateHideNames and not addon
+    local showQuest = db.nameplateQuest and not addon and not Tweaks:QuestieHasNameplateIcons()
+    local showCombo = db.nameplateCombo and not addon
+
+    -- Blizzard's sizes (NamePlateDriverMixin:UpdateNamePlateOptions), its defaults where unset
+    local content = (constants.NAME_PLATE_WIDTH or 190) * (so.horizontalScale or 1) - 2 * (so.insetWidth or 12)
+    local healthHeight = so.healthBarHeight or 20
+    local levelWidth = so.playerLevelDiffWidth or 28
+    local castHeight = so.castBarHeight or 16
+    local castGap = so.castBarToHealthBarSpacing or 2
+    local nameAbove = so.unitNameAnchorStyle ~= nil and so.unitNameAnchorStyle ~= styles.InsideHealthBar
+    local nameRoom = nameAbove and ((so.healthBarFontHeight or 14) + (so.healthBarToNameAboveSpacing or 2)) or 0
+    local top = math.max(nameRoom, 3)   -- the level box reaches 3 px above the bar
+
+    -- Hide Level Box: the box only goes invisible, the bar takes its room (StretchHealthBar)
+    local barWidth = hideLevel and content or (content - levelWidth - 5)
+    local bar = f.Bar
+    bar:ClearAllPoints()
+    bar:SetPoint("TOPLEFT", f, "TOPLEFT", look.PAD, -top)
+    bar:SetSize(barWidth, healthHeight)
+    bar:SetValue(look.HEALTH)
+    bar:GetStatusBarTexture():SetVertexColor(look.BAR_COLOR.r, look.BAR_COLOR.g, look.BAR_COLOR.b)
+
+    local level = f.Level
+    level:ClearAllPoints()
+    level:SetPoint("TOPLEFT", bar, "TOPRIGHT", 5, 3)
+    level:SetPoint("BOTTOMLEFT", bar, "BOTTOMRIGHT", 5, -2)
+    level:SetWidth(levelWidth)
+    level:SetAlpha(hideLevel and 0 or 1)
+    level.Text:SetFontObject(_G.SystemFont_NamePlateLevel or GameFontNormalSmall)
+    local myLevel = UnitLevel("player")
+    if not (canaccessvalue(myLevel) and type(myLevel) == "number" and myLevel > 0) then myLevel = 1 end
+    local color = _G.FAIR_DIFFICULTY_COLOR or ns.LevelDifficultyColor(nil, myLevel)
+    level.Text:SetText(LevelName.Format(myLevel, color))
+
+    -- the name as Blizzard places it for the style, white; Level Before Name puts the level in front
+    local name = f.Name
+    name:SetFontObject(_G.SystemFont_NamePlate_Outlined or _G.SystemFont_NamePlate or GameFontNormalSmall)
+    name:SetTextColor(1, 1, 1)
+    local text = L["Duskbat"]
+    if hideLevel and db.nameplateLevelName and not hideName then text = LevelName.Format(myLevel, color) .. " " .. text end
+    name:SetText(text)
+    name:ClearAllPoints()
+    if nameAbove then
+        name:SetJustifyH(so.nameJustificationWhenAboveHealthBar or "LEFT")
+        name:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, so.healthBarToNameAboveSpacing or 2)
+        name:SetPoint("RIGHT", hideLevel and bar or level, "RIGHT", 0, 0)
+    else
+        name:SetJustifyH("LEFT")
+        name:SetPoint("LEFT", bar, "LEFT", 4, 0)
+        name:SetPoint("RIGHT", f.Health, "LEFT", -2, 0)
+    end
+    name:SetAlpha(hideName and 0 or 1)
+    f.Health:SetFontObject(_G.SystemFont_NamePlate_Outlined or _G.SystemFont_NamePlate or GameFontNormalSmall)
+    f.Health:SetTextColor(1, 1, 1)
+    f.Health:SetText(("%d%%"):format(look.HEALTH * 100))
+
+    local cast = f.CastSlot
+    cast:ClearAllPoints()
+    cast:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -castGap)
+    cast:SetSize(content, castHeight)
+
+    -- the quest "!" beside the box, or beside the cast slot with the box hidden (QuestTagAnchor),
+    -- sized by the box either way
+    local questWidth = 0
+    if showQuest then
+        local size = (healthHeight + 5) * QUEST_TAG_HEIGHT
+        questWidth = size * QuestTagAspect()
+        f.Quest:SetSize(questWidth, size)
+        f.Quest:ClearAllPoints()
+        f.Quest:SetPoint("LEFT", hideLevel and cast or level, "RIGHT", 0, 0)
+        f.Quest:Show()
+    else
+        f.Quest:Hide()
+    end
+
+    -- the combo row under the cast slot, three of five lit
+    local height = top + healthHeight + castGap + castHeight
+    if showCombo then
+        local row = f.Combo
+        if row.count ~= NP_COMBO_FALLBACK then LayoutComboRow(row, NP_COMBO_FALLBACK) end
+        for i = 1, NP_COMBO_FALLBACK do ns.SetComboPoint(row.gems[i], 3, false) end
+        row:ClearAllPoints()
+        row:SetPoint("TOP", cast, "BOTTOM", 0, NP_COMBO_OFFSET_Y)
+        row:Show()
+        height = height + (-NP_COMBO_OFFSET_Y + NP_COMBO_SIZE) * NP_COMBO_SCALE
+    else
+        f.Combo:Hide()
+    end
+
+    local width = look.PAD + content + math.max(questWidth, 6)   -- the backdrop reaches 6 px past the bar's right
+    height = height + 6
+    f:SetSize(width, height)
+    f:Show()
+    return width, height
 end
 
 --------------------------------------------------

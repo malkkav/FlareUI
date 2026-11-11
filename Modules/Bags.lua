@@ -134,12 +134,22 @@ local function ExtraButton(e, slot)
     if b or InCombatLockdown() then return b end
     b = CreateFrame("ItemButton", nil, e.holder, "ContainerFrameItemButtonTemplate")
     b:SetID(slot)
-    -- the empty slot's art (Blizzard draws it behind its own buttons)
+    Bags.AddSlotArt(b)
+    e.buttons[slot] = b
+    return b
+end
+
+-- the empty slot's art (Blizzard draws it behind its own buttons)
+function Bags.AddSlotArt(b)
     b.flareSlot = b:CreateTexture(nil, "BACKGROUND", nil, -1)
     b.flareSlot:SetAtlas("bags-item-slot64")
     b.flareSlot:SetAllPoints()
-    e.buttons[slot] = b
-    return b
+end
+
+-- a slot's place in the combined backpack: filled from the bottom right, right to left, upwards
+function Bags.GridPoint(b, anchor, col, row, gapCount, stepX, stepY)
+    b:ClearAllPoints()
+    b:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -col * stepX, 4 + row * stepY + gapCount * BAG_GAP)
 end
 
 local UpdateButton   -- section 3
@@ -254,8 +264,7 @@ local function Relayout(frame)
             local b = ExtraButton(e, slot)
             if b then
                 b:SetSize(w, h)
-                b:ClearAllPoints()
-                b:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -col * stepX, 4 + row * stepY + gapCount * BAG_GAP)
+                Bags.GridPoint(b, anchor, col, row, gapCount, stepX, stepY)
                 b:Show()
                 FillExtraButton(b)
                 col = col + 1
@@ -275,8 +284,7 @@ local function Relayout(frame)
             if col > 0 then col, row = 0, row + 1 end
             gapCount = gapCount + 1
         end
-        button:ClearAllPoints()
-        button:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -col * stepX, 4 + row * stepY + gapCount * BAG_GAP)
+        Bags.GridPoint(button, anchor, col, row, gapCount, stepX, stepY)
         col = col + 1
         if col >= columns then col, row = 0, row + 1 end
         prevBag = bag
@@ -377,12 +385,18 @@ function Bags.RoundBagButton(b)
     rim:SetPoint("CENTER")
 end
 
-local function CreateBagButtons(frame)
-    if bagButtons[1] then return end
+-- the bags the buttons hold: the four bag slots, and the crafting bag's where the client has one
+function Bags.BagButtonIDs()
     local ids = {}
     for i = 1, (NUM_BAG_FRAMES or 4) do ids[#ids + 1] = i end
     local reagents = Constants.InventoryConstants and Constants.InventoryConstants.NumReagentBagSlots or 0
     if reagents > 0 and Enum.BagIndex.ReagentBag then ids[#ids + 1] = Enum.BagIndex.ReagentBag end
+    return ids
+end
+
+local function CreateBagButtons(frame)
+    if bagButtons[1] then return end
+    local ids = Bags.BagButtonIDs()
     for i, bagID in ipairs(ids) do
         local b = CreateFrame("ItemButton", "FlareUI_BagButton" .. i, frame, "CircularItemButtonTemplate")
         Mixin(b, BagButton)
@@ -452,7 +466,8 @@ end
 -- edge size and outset per border: each art's bright band lands on the slot's edge
 local BORDERS = { thin = { "FlareUI Thin", 8, 3 }, thick = { "FlareUI Thick", 16, 2 } }
 local function GetOverlay(button)
-    local ov = overlays[button]
+    -- a settings preview's button keeps its own (it never joins the overlays list)
+    local ov = overlays[button] or button.fuiOverlay
     if ov then return ov end
     ov = CreateFrame("Frame", nil, button)
     ov:SetAllPoints()
@@ -467,7 +482,7 @@ local function GetOverlay(button)
     ov.upgrade:SetAtlas("bags-greenarrow", true)
     ov.upgrade:SetPoint("BOTTOMRIGHT", -1, 1)
     ov.upgrade:Hide()
-    overlays[button] = ov
+    if button.fuiSample then button.fuiOverlay = ov else overlays[button] = ov end
     return ov
 end
 
@@ -681,6 +696,14 @@ local function ShowUpgrade(ov, bagID, slotID, link)
 end
 
 function UpdateButton(button, db)
+    local bagID, slotID = button:GetBagID(), button:GetID()
+    local info = bagID and slotID and C_Container.GetContainerItemInfo(bagID, slotID)
+    Bags.DecorateButton(button, db, info, bagID, slotID)
+end
+
+-- info: the slot's item (C_Container's, or a settings preview's made-up one, whose sampleUpgrade
+-- stands for the upgrade check)
+function Bags.DecorateButton(button, db, info, bagID, slotID)
     local thick, rarity = db.bagThickBorders, db.bagRarityBorders
     local junk, upgrade = db.bagJunkIcon, db.bagUpgradeArrow
     local ov = GetOverlay(button)
@@ -689,8 +712,6 @@ function UpdateButton(button, db)
     ov.junk:Hide()
     ov.upgrade:Hide()
 
-    local bagID, slotID = button:GetBagID(), button:GetID()
-    local info = bagID and slotID and C_Container.GetContainerItemInfo(bagID, slotID)
     local quality = info and info.quality
 
     if button.IconBorder then button.IconBorder:SetAlpha(0) end
@@ -705,7 +726,9 @@ function UpdateButton(button, db)
 
     if not info then return end
     if junk and quality == Enum.ItemQuality.Poor and not info.hasNoValue then ov.junk:Show() end
-    if upgrade and info.hyperlink then
+    if upgrade and info.sampleUpgrade then
+        ov.upgrade:Show()
+    elseif upgrade and info.hyperlink then
         local link = info.hyperlink
         if C_Item.IsItemDataCachedByID(info.itemID) then
             ShowUpgrade(ov, bagID, slotID, link)
@@ -808,4 +831,232 @@ function Bags:Refresh()
     end
     self:PlaceBagButtons()
     ParkReagentWindow()
+end
+
+--------------------------------------------------
+-- 5. SETTINGS PREVIEW SAMPLE
+-- A made-up combined backpack: Blizzard's bag frame art, plain item buttons with made-up items laid
+-- out and decorated by the code above (columns, gaps, borders, junk coin, upgrade arrow), the
+-- keyring and crafting bag sections, the round bag buttons down the side and the money line.
+-- No secure buttons, no events, nothing in the module's lists.
+--------------------------------------------------
+do
+    local ICON = "Interface\\Icons\\"
+    -- by bag, from the last to the backpack (Blizzard's order); slot -> { icon, quality, count, ... }
+    local SAMPLE_BAGS = {
+        { bag = 1, slots = 8, items = {
+            [1] = { icon = ICON .. "INV_Misc_Pelt_Wolf_01", quality = 1, count = 6 },
+            [2] = { icon = ICON .. "INV_Misc_Bone_HumanSkull_01", quality = 0 },
+            [4] = { icon = ICON .. "INV_Ore_Copper_01", quality = 1, count = 8 },
+        } },
+        { bag = 0, slots = 16, items = {
+            [1] = { icon = ICON .. "INV_Misc_Rune_01", quality = 1 },
+            [2] = { icon = ICON .. "INV_Sword_04", quality = 2, upgrade = true },
+            [3] = { icon = ICON .. "INV_Chest_Cloth_17", quality = 3 },
+            [4] = { icon = ICON .. "INV_Jewelry_Ring_15", quality = 4 },
+            [5] = { icon = ICON .. "INV_Misc_Food_15", quality = 1, count = 20, petFood = true },
+            [6] = { icon = ICON .. "INV_Potion_51", quality = 1, count = 5 },
+            [7] = { icon = ICON .. "INV_Fabric_Linen_01", quality = 1, count = 12 },
+            [9] = { icon = ICON .. "INV_Misc_Bone_HumanSkull_01", quality = 0 },
+        } },
+    }
+    local KEYS = { [1] = { icon = ICON .. "INV_Misc_Key_03", quality = 1 }, [2] = { icon = ICON .. "INV_Misc_Key_11", quality = 1 } }
+    local REAGENTS = { [1] = { icon = ICON .. "INV_Misc_Herb_10", quality = 1, count = 14 },
+                       [2] = { icon = ICON .. "INV_Misc_Dust_01", quality = 1, count = 3 } }
+    local PAW = "Interface\\Icons\\Ability_Hunter_BeastTraining"   -- Pet Food in Bags (Tweaks.lua)
+    local SLOT_SIZE = 37                 -- an item button's own size
+    -- Blizzard's combined backpack paddings (ContainerFrameCombinedBagsMixin), the money box's height
+    local PAD_W, PAD_H, MONEY_H = 15, 75, 17
+    -- the frame art spills past the frame: the portrait corner left and up, the metal edges
+    local SPILL_L, SPILL_T, SPILL_R, SPILL_B = 13, 16, 4, 3
+    local PORTRAIT_BOTTOM = -55          -- the portrait's bottom edge, where the bag buttons start
+
+    local function NextName(kind)
+        Bags.previewCount = (Bags.previewCount or 0) + 1
+        return "FlareUI_Preview" .. kind .. Bags.previewCount
+    end
+
+    local function SampleButton(f, i)
+        local b = f.items[i]
+        if b then return b end
+        -- named: the ItemButton's own regions are named after it
+        b = CreateFrame("ItemButton", NextName("BagItem"), f.panel)
+        b.fuiSample = true
+        b:EnableMouse(false)
+        b:SetFrameLevel(f.panel:GetFrameLevel() + 2)
+        if b.ClearNormalTexture then b:ClearNormalTexture() end
+        if b.ClearPushedTexture then b:ClearPushedTexture() end
+        Bags.AddSlotArt(b)
+        b.paw = b:CreateTexture(nil, "OVERLAY", nil, 2)
+        b.paw:SetSize(14, 14)
+        b.paw:SetPoint("TOPLEFT", 2, -2)
+        b.paw:SetTexture(PAW)
+        b.paw:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        f.items[i] = b
+        return b
+    end
+
+    local function Fill(b, item, db)
+        SetItemButtonTexture(b, item and item.icon)
+        SetItemButtonCount(b, item and item.count)
+        local info = item and { quality = item.quality, sampleUpgrade = item.upgrade } or nil
+        Bags.DecorateButton(b, db, info)
+        b.paw:SetShown(item and item.petFood and db.petFood and true or false)
+        b:SetSize(SLOT_SIZE, SLOT_SIZE)
+        b:Show()
+    end
+
+    function Bags.CreateSample(parent)
+        local f = CreateFrame("Frame", nil, parent)
+        f.fuiSample = true
+        f:EnableMouse(false)
+        f:SetFrameLevel(parent:GetFrameLevel() + 1)
+        f.items, f.bagButtons = {}, {}
+
+        local panel = CreateFrame("Frame", nil, f)
+        panel:SetFrameLevel(f:GetFrameLevel() + 1)
+        panel.layoutType = "HeldBagLayout"
+        f.panel = panel
+        local level = panel:GetFrameLevel()
+        -- the combined backpack's art (PortraitFrameFlatTemplate), every level relative to the panel
+        panel.Bg = CreateFrame("Frame", nil, panel, "FlatPanelBackgroundTemplate")
+        panel.Bg:SetFrameLevel(level)
+        panel.Bg:SetPoint("TOPLEFT", 2, -20)
+        panel.Bg:SetPoint("BOTTOMRIGHT", -2, 3)
+        panel.NineSlice = CreateFrame("Frame", nil, panel, "NineSlicePanelTemplate")
+        panel.NineSlice:SetFrameLevel(level + 1)
+        panel.NineSlice:SetAllPoints()
+        if NineSliceUtil and NineSliceUtil.ApplyLayoutByName then
+            pcall(NineSliceUtil.ApplyLayoutByName, panel.NineSlice, "HeldBagLayout")
+        end
+        local top = CreateFrame("Frame", nil, panel)
+        top:SetAllPoints()
+        top:SetFrameLevel(level + 3)
+        panel.portrait = top:CreateTexture(nil, "OVERLAY")
+        panel.portrait:SetSize(62, 62)
+        panel.portrait:SetPoint("TOPLEFT", -5, 7)
+        panel.portrait:SetTexture(ICON .. "INV_Misc_Bag_08")
+        local mask = top:CreateMaskTexture()
+        mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetPoint("TOPLEFT", panel.portrait, "TOPLEFT", 2, 0)
+        mask:SetPoint("BOTTOMRIGHT", panel.portrait, "BOTTOMRIGHT", -2, 4)
+        panel.portrait:AddMaskTexture(mask)
+        panel.title = top:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        panel.title:SetPoint("TOPLEFT", 58, -6)
+        panel.title:SetPoint("TOPRIGHT", -24, -6)
+        panel.title:SetText(_G.COMBINED_BAG_TITLE or _G.BACKPACK_TOOLTIP or "")
+
+        -- the money line in Blizzard's coin box
+        local money = CreateFrame("Frame", nil, panel)
+        money:SetHeight(MONEY_H)
+        money:SetPoint("BOTTOMLEFT", 8, 8)
+        money:SetPoint("BOTTOMRIGHT", -8, 8)
+        money:SetFrameLevel(level + 2)
+        local left = money:CreateTexture(nil, "BACKGROUND")
+        left:SetAtlas("common-coinbox-left")
+        left:SetSize(8, MONEY_H)
+        left:SetPoint("LEFT")
+        local right = money:CreateTexture(nil, "BACKGROUND")
+        right:SetAtlas("common-coinbox-right")
+        right:SetSize(8, MONEY_H)
+        right:SetPoint("RIGHT")
+        local center = money:CreateTexture(nil, "BACKGROUND")
+        center:SetAtlas("_common-coinbox-center")
+        center:SetPoint("TOPLEFT", left, "TOPRIGHT")
+        center:SetPoint("BOTTOMRIGHT", right, "BOTTOMLEFT")
+        money.text = money:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+        money.text:SetPoint("RIGHT", -6, 0)
+        panel.money = money
+        return f
+    end
+
+    function Bags.DrawSample(f)
+        local db = GetDb() or {}
+        local panel = f.panel
+        local columns = (db.bagColumns or 0) > 0 and db.bagColumns or DEFAULT_COLUMNS
+        local gaps = db.bagGaps == true
+        local w, h = SLOT_SIZE, SLOT_SIZE
+        local stepX, stepY = w + ITEM_SPACING, h + ITEM_SPACING
+        local anchor = panel.money
+
+        -- Relayout's walk: the keyring and crafting bag sections first (the bottom rows), then the bags
+        local index, col, row, gapCount, prevBag = 0, 0, 0, 0, nil
+        local sections = {}
+        if db.bagKeyring and KeyringID() then sections[#sections + 1] = KEYS end
+        if db.bagReagent and ReagentID() then sections[#sections + 1] = REAGENTS end
+        for _, items in ipairs(sections) do
+            for slot = columns, 1, -1 do
+                index = index + 1
+                local b = SampleButton(f, index)
+                Fill(b, items[slot], db)
+                Bags.GridPoint(b, anchor, col, row, gapCount, stepX, stepY)
+                col = col + 1
+                if col >= columns then col, row = 0, row + 1 end
+            end
+            if col > 0 then col, row = 0, row + 1 end
+            gapCount = gapCount + 1
+        end
+        for _, bag in ipairs(SAMPLE_BAGS) do
+            for slot = bag.slots, 1, -1 do
+                if gaps and prevBag and bag.bag ~= prevBag then
+                    if col > 0 then col, row = 0, row + 1 end
+                    gapCount = gapCount + 1
+                end
+                index = index + 1
+                local b = SampleButton(f, index)
+                Fill(b, bag.items[slot], db)
+                Bags.GridPoint(b, anchor, col, row, gapCount, stepX, stepY)
+                col = col + 1
+                if col >= columns then col, row = 0, row + 1 end
+                prevBag = bag.bag
+            end
+        end
+        for i = index + 1, #f.items do f.items[i]:Hide() end
+        local rows = row + (col > 0 and 1 or 0)
+        local width = columns * w + (columns - 1) * ITEM_SPACING + PAD_W
+        local height = rows * h + (rows - 1) * ITEM_SPACING + gapCount * BAG_GAP + PAD_H + MONEY_H + 12
+        panel:SetSize(width, height)
+        if NineSliceUtil and NineSliceUtil.UpdateCornerCropping then pcall(NineSliceUtil.UpdateCornerCropping, panel, height) end
+
+        local cash = GetMoney and GetMoney() or 0
+        panel.money.text:SetText((GetMoneyString and GetMoneyString(cash, true))
+            or (C_CurrencyInfo and C_CurrencyInfo.GetCoinTextureString and C_CurrencyInfo.GetCoinTextureString(cash)) or "")
+
+        -- Integrated bag buttons: round, down the left edge from the portrait's bottom (PlaceBagButtons)
+        local showButtons = db.bagButtons and true or false
+        local ids = showButtons and Bags.BagButtonIDs() or {}
+        for i, bagID in ipairs(ids) do
+            local b = f.bagButtons[i]
+            if not b then
+                b = CreateFrame("ItemButton", NextName("BagButton"), panel, "CircularItemButtonTemplate")
+                Mixin(b, BagButton)
+                b:EnableMouse(false)
+                b:SetSize(BAG_BUTTON_SIZE, BAG_BUTTON_SIZE)
+                Bags.RoundBagButton(b)
+                b:SetFrameLevel(panel:GetFrameLevel() + 5)
+                f.bagButtons[i] = b
+            end
+            b:SetID(bagID)
+            b:ClearAllPoints()
+            if i == 1 then
+                b:SetPoint("TOPRIGHT", panel, "TOPLEFT", 0, PORTRAIT_BOTTOM)
+            else
+                b:SetPoint("TOP", f.bagButtons[i - 1], "BOTTOM", 0, BAG_BUTTON_GAP)
+            end
+            b:Update()
+            b:Show()
+        end
+        for i = #ids + 1, #f.bagButtons do f.bagButtons[i]:Hide() end
+
+        -- the whole picture: the art's spill and the buttons outside the left edge
+        local spillLeft = showButtons and math_max(SPILL_L, BAG_BUTTON_SIZE) or SPILL_L
+        local buttonsBottom = showButtons and (-PORTRAIT_BOTTOM + #ids * (BAG_BUTTON_SIZE - BAG_BUTTON_GAP)) or 0
+        local fullH = math_max(height, buttonsBottom) + SPILL_T + SPILL_B
+        local fullW = width + spillLeft + SPILL_R
+        panel:ClearAllPoints()
+        panel:SetPoint("TOPLEFT", f, "TOPLEFT", spillLeft, -SPILL_T)
+        f:SetSize(fullW, fullH)
+        f:Show()
+        return fullW, fullH
+    end
 end
