@@ -1224,6 +1224,11 @@ local function BuildLower(host, height, width)
     -- the radial's buttons, in order; the title and icons centred in the section, which runs on to the
     -- window's column line (BUTTONS_NUDGE past the host's edge)
     -- three boxes: the radial's form on top, the Catalog and the buttons below (11-11 Marcus)
+    -- a line between the tabs and the radial's name (11-11 Marcus: this tab only)
+    local tabLine = Divider(host)
+    tabLine:SetHeight(1)
+    tabLine:SetPoint("TOPLEFT", host, "TOPLEFT", x, 6)
+    tabLine:SetPoint("TOPRIGHT", host, "TOPLEFT", x + width, 6)
     local inner = ns.SettingsPanel.INNER or 10
     local page = ns.SettingsPanel.middleBox
     local topBox = SectionBox(host)
@@ -1313,32 +1318,68 @@ local function BuildLower(host, height, width)
     end)
     host.dropZone = dropZone
 
-    -- the Catalog: its category menu beside the title, a three-column grid, search at the bottom right
+    -- the Catalog: its categories as small text links right of the title (11-11 Marcus, instead of a
+    -- dropdown): right-aligned, split by slashes in the page title's gold, the open one yellow and the
+    -- rest grey, on a second line when they don't fit; then a three-column grid, search at the bottom
     local catalogTitle = Text(host, "GameFontNormal", L["Catalog"])
     catalogTitle:SetPoint("TOPLEFT", catX + 4, -top)
-    local category = CreateFrame("DropdownButton", nil, host, "WowStyle1DropdownTemplate")
-    category:SetWidth(160)
-    category:SetPoint("TOPRIGHT", host, "TOPLEFT", catX + gridW, -top + 4)
-    category:SetupMenu(function(_, root)
-        for _, c in ipairs(CATEGORIES) do
-            root:CreateRadio(c.label, function() return activeCategory == c.key end, function()
-                activeCategory = c.key
-                host.search:SetText("")
-                RefreshBrowse()
-            end)
+    local LINK_H, SLASH_W = 16, 14
+    local rightX, maxW = catX + gridW, gridW - 90
+    local links, slashes = {}, {}
+    for i, c in ipairs(CATEGORIES) do
+        local link = CreateFrame("Button", nil, host)
+        link:SetNormalFontObject("GameFontNormalSmall")
+        link:SetText(c.label)
+        link:SetSize(link:GetFontString():GetStringWidth() + 2, LINK_H)
+        link.key = c.key
+        link:SetScript("OnClick", function()
+            ns.ButtonSound()
+            activeCategory = c.key
+            host.search:SetText("")
+            RefreshBrowse()
+        end)
+        link:SetScript("OnEnter", function(self)
+            if self.key ~= activeCategory then self:GetFontString():SetTextColor(0.9, 0.9, 0.9) end
+        end)
+        link:SetScript("OnLeave", function() host.PaintCategories() end)
+        links[i] = link
+        -- the slash before it (between it and the one on its left)
+        local slash = Text(host, "GameFontNormalSmall", "/")
+        slash:SetTextColor(1, 0.83, 0.47)
+        slashes[i] = slash
+    end
+    -- right to left, a new line when the next one would pass the title's room
+    local x, line, lineOf = rightX, 0, {}
+    for i = #links, 1, -1 do
+        local w = links[i]:GetWidth()
+        local gap = (i < #links and lineOf[i + 1] == line) and SLASH_W or 0
+        if i < #links and x - gap - w < rightX - maxW then line, x, gap = line + 1, rightX, 0 end
+        x = x - gap
+        links[i]:SetPoint("TOPRIGHT", host, "TOPLEFT", x, -top - line * LINK_H)
+        lineOf[i] = line
+        x = x - w
+    end
+    for i = 2, #links do
+        local slash = slashes[i]
+        -- shown between links i - 1 and i when they share a line
+        if lineOf[i - 1] == lineOf[i] then
+            slash:SetPoint("CENTER", links[i], "LEFT", -SLASH_W / 2, 0)
+            slash:Show()
+        else
+            slash:Hide()
         end
-    end)
-    host.categoryDrop = category
-    category.padCycle = function(delta)
-        local at = 1
-        for i, c in ipairs(CATEGORIES) do if c.key == activeCategory then at = i end end
-        activeCategory = CATEGORIES[((at - 1 + delta) % #CATEGORIES) + 1].key
-        host.search:SetText("")
-        RefreshBrowse()
+    end
+    slashes[1]:Hide()
+    local extra = line * LINK_H   -- the grid starts lower by the extra lines
+    host.PaintCategories = function()
+        for _, link in ipairs(links) do
+            local on = link.key == activeCategory
+            link:GetFontString():SetTextColor(on and 1 or 0.5, on and 0.82 or 0.5, on and 0 or 0.5)
+        end
     end
 
     -- below the grid: how to edit (left) and the search (right)
-    local gridRows = math.max(4, math.floor((height - top - 26 - 44) / GRID_ROW_H))
+    local gridRows = math.max(4, math.floor((height - top - 26 - extra - 44) / GRID_ROW_H))
     local browseList = CreateList(host, gridW, 3, gridRows, GRID_ROW_H,
         function(cell)
             MakeRound(cell, GRID_RIM)
@@ -1366,19 +1407,19 @@ local function BuildLower(host, height, width)
             ApplyIcon(cell, icon)
             cell.Text:SetText(name)
         end)
-    browseList:SetPoint("TOPLEFT", catX, -top - 26)
+    browseList:SetPoint("TOPLEFT", catX, -top - 26 - extra)
     host.browseList = browseList
 
     local search = CreateFrame("EditBox", nil, host, "SearchBoxTemplate")
     -- level with the settings search in the left column
     search:SetSize(180, 22)
-    search:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", catX + gridW, 4)
+    search:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", catX + gridW - 10, 4)
     search:HookScript("OnTextChanged", function() if host:IsShown() then RefreshBrowse() end end)
     host.search = search
 
     local hint = Text(host, "GameFontDisableSmall", L["Click or drag from Catalog to add. Drag reorders, right-click removes."])
     hint:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", catX + 4, 6)
-    hint:SetWidth(gridW - 180 - 16)
+    hint:SetWidth(gridW - 180 - 26)
     hint:SetJustifyV("BOTTOM")
     hint:SetSpacing(1)
 end
@@ -1425,7 +1466,7 @@ function RefreshBrowse()
     for _, c in ipairs(CATEGORIES) do
         if c.key == activeCategory then category = c end
     end
-    editor.categoryDrop:GenerateMenu()
+    editor.PaintCategories()
     editor.categoryNote = category and category.note
 
     -- cached per opening; Radials depends on the edited radial and is rebuilt each time
