@@ -95,20 +95,22 @@ for _,o in ipairs(objects) do
     if o.kind=='ScrollFrame' then assert(o.standardScroll,'builder must use settings scrollbars') end
     if o.kind=='DropdownButton' then assert(o.standardDropdown,'builder must use settings dropdown styling') end
 end
+for _,o in ipairs(objects) do assert(o:GetText()~='Built-in','preset type label must not reserve header space') end
 local previewHeader
 for _,o in ipairs(objects) do
-    if o.kind=='Button' and o:GetText():find('+ Conversations',1,true) then previewHeader=o end
+    if o.kind=='Button' and o:GetText():find('- Conversations',1,true) then previewHeader=o end
 end
 assert(previewHeader,'preset preview groups messages by category')
 local publicPreview
 for _,o in ipairs(objects) do if o.kind=='Button' and o.parent.alwaysOpen then publicPreview=o.parent end end
 assert(publicPreview and publicPreview.text:IsVisible(),'public-channel names remain visible without expanding')
-assert(not previewHeader.parent.text:IsVisible(),'preview groups start collapsed')
+assert(previewHeader.parent.text:IsVisible(),'preview groups start expanded')
 local beforeMessages=table.concat({GetChatWindowMessages(1)},',')
 previewHeader.scripts.OnClick(previewHeader)
-assert(previewHeader.parent.text:IsVisible(),'preview groups expand')
+assert(not previewHeader.parent.text:IsVisible(),'preview groups can collapse')
 assert(table.concat({GetChatWindowMessages(1)},',')==beforeMessages,'preview expansion never changes routing')
 previewHeader.scripts.OnClick(previewHeader)
+assert(previewHeader.parent.text:IsVisible(),'preview groups can expand again')
 for _,o in ipairs(objects) do
     if o.kind=='Button' and (o:GetText()=='Save as preset' or o:GetText()=='Open Blizzard Settings') then
         assert(o.parent.parent==host,'window actions belong beside the selected window')

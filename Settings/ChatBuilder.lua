@@ -225,8 +225,10 @@ local function PresetSummary()
         ui.summaryPreset=presetID;expanded={};ui.manageExpanded=false;ui.presetScroll:SetVerticalScroll(0)
     end
     ui.preset:SetDefaultText(preview.preset.name)
-    ui.presetKind:SetText(preview.preset.builtin and L["Built-in"] or L["Custom"])
     ui.description:SetText(preview.preset.builtin and descriptions[presetID] or L["Saved filters shared across your characters."])
+    local descriptionHeight=ui.description:GetStringHeight()
+    ui.description:SetHeight(descriptionHeight)
+    ui.presetScroll:SetPoint("TOPLEFT",6,-(76+descriptionHeight))
     local selectedMessages={};for _,key in ipairs(preview.preset.messages) do selectedMessages[key]=true end
     local groups={}
     for _,category in ipairs(B:Categories()) do
@@ -247,11 +249,11 @@ local function PresetSummary()
         if not row then
             row=CreateFrame("Frame",nil,ui.presetScroll.content)
             row.header=Button(row,"",220,function()
-                if not row.alwaysOpen then expanded[row.key]=not expanded[row.key];Refresh() end
+                if not row.alwaysOpen then expanded[row.key]=expanded[row.key]==false;Refresh() end
             end)
             row.header:SetPoint("TOPLEFT",0,0);row.header:SetPoint("TOPRIGHT",0,0)
             row.text=Text(row,"","GameFontHighlightSmall")
-            row.text:SetPoint("TOPLEFT",8,-30);row.text:SetPoint("TOPRIGHT",-6,-30)
+            row.text:SetPoint("TOPLEFT",8,-28);row.text:SetPoint("TOPRIGHT",-6,-28)
             -- Only the public-channel heading needs the routing explanation.
             row.header:HookScript("OnEnter",function(self)
                 if row.alwaysOpen and GameTooltip then GameTooltip:SetOwner(self,"ANCHOR_RIGHT");GameTooltip:SetText(L["Channel toggles change this window only; they never join or leave channels."],nil,nil,nil,nil,true);GameTooltip:Show() end
@@ -261,14 +263,14 @@ local function PresetSummary()
         end
         row.key=group.key;row.alwaysOpen=group.alwaysOpen
         row:ClearAllPoints();row:SetPoint("TOPLEFT",0,-y);row:SetPoint("TOPRIGHT",-4,-y)
-        local open=group.alwaysOpen or expanded[group.key]
+        local open=group.alwaysOpen or expanded[group.key]~=false
         row.header:SetText((group.alwaysOpen and "" or (open and "- " or "+ "))..group.name.." ("..#group.names..")")
         row.text:SetText(open and table.concat(group.names,"\n") or "")
         row.text:SetShown(open and true or false)
-        local height=open and (34+row.text:GetStringHeight()) or 28
+        local height=open and (28+row.text:GetStringHeight()) or 24
         row.text:SetHeight(open and row.text:GetStringHeight() or 1)
         row:SetHeight(height);row:Show()
-        y=y+height+6
+        y=y+height+8
     end
     for i=#groups+1,#ui.presetRows do ui.presetRows[i]:Hide() end
     local note=#preview.skipped>0 and (L["Skipped unavailable:"].."\n"..table.concat(preview.skipped,", ")) or (#groups==0 and L["No supported content selected."] or "")
@@ -408,9 +410,8 @@ function Editor.Build(host,side)
     ui.preset.padCycle=function(delta)
         local presets=B:Presets();for i,p in ipairs(presets) do if p.id==presetID then presetID=presets[((i-1+delta)%#presets)+1].id;Refresh();break end end
     end
-    ui.presetKind=Text(side,"","GameFontDisableSmall");ui.presetKind:SetPoint("TOPLEFT",6,-68)
-    ui.description=Text(side);ui.description:SetPoint("TOPLEFT",6,-96);ui.description:SetPoint("TOPRIGHT",-10,-96);ui.description:SetHeight(48)
-    ui.presetScroll=Scroll(side);ui.presetScroll:SetPoint("TOPLEFT",6,-152);ui.presetScroll:SetPoint("BOTTOMRIGHT",-24,126)
+    ui.description=Text(side);ui.description:SetPoint("TOPLEFT",6,-66);ui.description:SetPoint("TOPRIGHT",-10,-66);ui.description:SetJustifyV("TOP")
+    ui.presetScroll=Scroll(side);ui.presetScroll:SetPoint("TOPLEFT",6,-96);ui.presetScroll:SetPoint("BOTTOMRIGHT",-24,126)
     ui.summary=Text(ui.presetScroll.content);ui.summary:SetPoint("TOPLEFT",0,0);ui.summary:SetPoint("TOPRIGHT",-4,0)
     ui.presetScroll.content:SetWidth(220)
     ui.createPreset=Button(side,L["Create new window"],242,function() NewWindow(presetID) end);ui.createPreset:SetPoint("BOTTOMLEFT",4,92)
@@ -418,7 +419,7 @@ function Editor.Build(host,side)
     ui.apply=Button(side,L["Apply to selected window"],242,ApplyPreset);ui.apply:SetPoint("BOTTOMLEFT",4,62)
     -- Real buttons keep management accessible through the settings controller navigator.
     ui.manage=Button(side,L["Manage"],100,function() ui.manageExpanded=not ui.manageExpanded;Refresh() end)
-    ui.manage:SetPoint("TOPRIGHT",-10,-62)
+    ui.manage:SetPoint("TOPRIGHT",-10,-2)
     ui.renamePreset=Button(side,L["Rename preset"],118,function()
         local id=presetID;local p=B:Preset(id);if not p or p.builtin then return end
         ui.manageExpanded=false;Refresh()

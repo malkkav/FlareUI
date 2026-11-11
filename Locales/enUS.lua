@@ -287,7 +287,6 @@ L["Buffs left off the raid frames, by their full duration. Every choice but Off 
 L["Buffs left off this frame, by their full duration. Every choice but Off also hides permanent buffs."] = true
 L["Buffs that you or your group can purge or dispel come first, with Blizzard's stealable border."] = true
 L["Builder"] = true
-L["Built-in"] = true
 L["Button Appearance"] = true
 L["Button Text"] = true
 L["Buttons"] = true
