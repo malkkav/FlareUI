@@ -662,7 +662,7 @@ local function Show(shows, sample)
     local slots = #shows
     if db.grow == "CENTER" and not sample then slots = math_max(slots, BR.EnabledCount()) end
     local offset = (slots - #shows) * (size + spacing) / 2
-    frame:SetAlpha((db.alpha or 100) / 100)
+    if sample or not BR.fading then frame:SetAlpha((db.alpha or 100) / 100) end
     for i, s in ipairs(shows) do
         local b
         if sample then
@@ -848,7 +848,43 @@ function BR.Update()
         shownKeys = now
         if fresh then BR.PlayAlert() end
     end
-    Show(shows)
+    BR.ShowFaded(shows, db)
+end
+
+-- Fade Speed (Fading section): the row fades in as reminders appear where there were none, and out
+-- as the last goes. The icons are secure buttons: the empty row is drawn after the fade, out of a fight
+-- only (a fight starting meanwhile leaves it to PLAYER_REGEN_ENABLED's update).
+local fadeTimer
+function BR.ShowFaded(list, db)
+    local t = ns.FadeTime and ns.FadeTime(db.fadeSpeed) or 0
+    local target = (db.alpha or 100) / 100
+    local had = BR.shownCount or 0
+    BR.shownCount = #list
+    if fadeTimer then fadeTimer:Cancel(); fadeTimer = nil end
+    if t <= 0 or (ns.EditPreviewing and ns.EditPreviewing()) then
+        BR.fading = nil
+        Show(list)
+        return
+    end
+    if #list > 0 then
+        Show(list)
+        if had == 0 then
+            BR.fading = true
+            UIFrameFadeIn(holder, t, 0, target)
+            fadeTimer = C_Timer.NewTimer(t, function() fadeTimer = nil; BR.fading = nil end)
+        end
+    elseif had > 0 then
+        BR.fading = true
+        UIFrameFadeOut(holder, t, holder:GetAlpha(), 0)
+        fadeTimer = C_Timer.NewTimer(t, function()
+            fadeTimer = nil
+            BR.fading = nil
+            if InCombatLockdown() then return end
+            Show(list)
+        end)
+    else
+        Show(list)
+    end
 end
 
 -- UNIT_AURA comes often: one check a moment later
@@ -909,9 +945,9 @@ local function BuildSettings()
         end
     end
     local function Vertical() local db = GetDb(); return db and db.orientation == "VERTICAL" end
-    -- the layout only: what it watches is in Settings > Buffs & Debuffs > Buff Reminders
-    -- one Frame section (dropdowns, sliders, switches)
-    return ns.EditSection("Frame", {
+    -- the layout and where it shows: what it watches is in Settings > Buffs & Debuffs > Buff Reminders
+    local Section, settings = ns.EditSections()
+    Section("Frame", {
         { name = L["Orientation"], kind = LEM.SettingType.Dropdown, default = "HORIZONTAL",
           values = { { text = L["Horizontal"], value = "HORIZONTAL", isRadio = true }, { text = L["Vertical"], value = "VERTICAL", isRadio = true } },
           get = get("orientation", "HORIZONTAL"),
@@ -938,10 +974,44 @@ local function BuildSettings()
           get = get("size", 36), set = set("size") },
         { name = L["Spacing"], kind = LEM.SettingType.Slider, default = 6, minValue = 0, maxValue = 20, valueStep = 1,
           get = get("spacing", 6), set = set("spacing") },
+    })
+    -- FADING (11-11, from the settings page's When It Shows and Hiding, as the other frames' Fading):
+    -- Visibility ticks where it shows (Solo / In a Party / In a Raid, any of them), and In Combat off
+    -- hides it in a fight (as the fight starts: its icons are secure buttons). Only Provider and the
+    -- role switches stay on the settings page: they pick group buffs, not where the frame shows.
+    local SHOW = { { "solo", "showSolo" }, { "party", "showParty" }, { "raid", "showRaid" }, { "combat", "showCombat" } }
+    local function On(field) local db = GetDb(); return not (db and db[field] == false) end
+    Section("Fading", {
+        { name = L["Visibility"], kind = LEM.SettingType.Dropdown, multiple = true,
+          values = { { text = L["Solo"], value = "solo" }, { text = L["In a Party"], value = "party" },
+                     { text = L["In a Raid"], value = "raid" }, { text = L["In Combat"], value = "combat" } },
+          desc = L["Where the reminders show: alone, in a party, in a raid. In Combat off hides them in fights."],
+          get = function()
+              local list = {}
+              for _, s in ipairs(SHOW) do if On(s[2]) then list[#list + 1] = s[1] end end
+              return list
+          end,
+          set = function(_, value)
+              local db = GetDb()
+              if not db then return end
+              for _, s in ipairs(SHOW) do
+                  if s[1] == value then db[s[2]] = not On(s[2]) end
+              end
+              BR.Update()
+          end },
+        { name = L["Hide in Rested Areas"], kind = LEM.SettingType.Checkbox, default = false,
+          desc = L["Nothing shows in towns and inns."],
+          get = function() local db = GetDb(); return db and db.hideRested or false end, set = set("hideRested") },
+        { name = L["Fade Speed"], kind = LEM.SettingType.Dropdown, default = "instant",
+          values = { { text = L["Instant"], value = "instant", isRadio = true }, { text = L["Fast"], value = "fast", isRadio = true },
+                     { text = L["Slow"], value = "slow", isRadio = true } },
+          desc = L["How fast it appears and disappears.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
+          get = get("fadeSpeed", "instant"), set = set("fadeSpeed") },
         { name = L["Opacity"], kind = LEM.SettingType.Slider, default = 100, minValue = 20, maxValue = 100, valueStep = 5,
           -- plain numbers, as Faded Opacity: "100%" ran past the dialog's edge (11-10)
           get = get("alpha", 100), set = set("alpha") },
     })
+    return settings
 end
 
 --------------------------------------------------
@@ -998,7 +1068,15 @@ function BR:Init()
     pcall(events.RegisterUnitEvent, events, "UNIT_HEALTH", "pet")
     pcall(events.RegisterUnitEvent, events, "UNIT_SPELLCAST_SUCCEEDED", "player")
     events:RegisterEvent("UNIT_AURA")
+    -- Visibility without In Combat: hidden as a fight starts (the last moment its secure icons can be)
+    events:RegisterEvent("PLAYER_REGEN_DISABLED")
     events:SetScript("OnEvent", function(_, event, unit, _, spellID)
+        if event == "PLAYER_REGEN_DISABLED" then
+            local db = GetDb()
+            if db and db.showCombat == false and not (ns.EditPreviewing and ns.EditPreviewing()) then holder:Hide() end
+            return
+        end
+        if event == "PLAYER_REGEN_ENABLED" and not holder:IsShown() then holder:Show() end
         if event == "SPELLS_CHANGED" or event == "PLAYER_LEVEL_UP" then Resolve() end
         -- a warlock's summon is remembered for the next time the pet is gone
         if event == "UNIT_SPELLCAST_SUCCEEDED" then

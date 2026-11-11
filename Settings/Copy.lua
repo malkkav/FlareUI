@@ -474,30 +474,10 @@ ns.Copy = {
             label = L["Hide as Tank"],
             section = "au.reminderHiding",
         },
-        ["au.reminderParty"] = {
-            desc = L["Shows while you're in a party."],
-            label = L["In a Party"],
-            section = "au.reminderWhen",
-        },
         ["au.reminderProvider"] = {
             desc = L["Group buffs show only when no one else of your class is in the group."],
             label = L["Only Provider"],
-            section = "au.reminderWhen",
-        },
-        ["au.reminderRaid"] = {
-            desc = L["Shows while you're in a raid."],
-            label = L["In a Raid"],
-            section = "au.reminderWhen",
-        },
-        ["au.reminderRested"] = {
-            desc = L["Nothing shows in towns and inns."],
-            label = L["Hide in Rested Areas"],
             section = "au.reminderHiding",
-        },
-        ["au.reminderSolo"] = {
-            desc = L["Shows while you're not in a group."],
-            label = L["Solo"],
-            section = "au.reminderWhen",
         },
         ["au.reminderSound"] = {
             choices = { L["Off"], L["Raid Warning"], L["Alarm"], L["Whisper"] },
@@ -1973,9 +1953,8 @@ ns.Copy = {
         ["au.auraOrdering"] = L["Aura Ordering"],
         ["au.general"] = L["General"],
         ["au.reminderAlerts"] = L["Alerts"],
-        ["au.reminderHiding"] = L["Hiding"],
+        ["au.reminderHiding"] = L["Group Buff Filters"],
         ["au.reminderSection"] = L["Buff Reminders"],
-        ["au.reminderWhen"] = L["When It Shows"],
         ["ch.editBoxSection"] = L["Edit Box"],
         ["ch.formatting"] = L["Formatting |cffff4040(Outside Instances Only)|r"],
         ["ch.frame"] = L["Frame"],

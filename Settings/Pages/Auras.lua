@@ -80,11 +80,9 @@ Reminder{ key = "au.reminderConsumables", kind = "choice", path = "auras.reminde
 Reminder{ key = "au.reminderCamping", half = true, path = "auras.reminder.camping", parent = "au.reminders" }
 Reminder{ key = "au.reminderGathering", half = true, path = "auras.reminder.gathering", parent = "au.reminders" }
 -- When It Shows: alone, in a party, in a raid (in pairs), then the rested areas and the only provider
-Reminder{ key = "au.reminderSolo", half = true, path = "auras.reminder.showSolo" }
-Reminder{ key = "au.reminderParty", half = true, path = "auras.reminder.showParty" }
-Reminder{ key = "au.reminderRaid", half = true, path = "auras.reminder.showRaid" }
-Reminder{ key = "au.reminderRested", path = "auras.reminder.hideRested" }   -- first in Hiding, a row of its own
-Reminder{ key = "au.reminderProvider", half = true, path = "auras.reminder.onlyProvider" }   -- beside In a Raid
+-- (Solo, In a Party, In a Raid and Hide in Rested Areas moved to Edit Mode's Fading section, 11-11)
+-- which group buffs are reminded of: Only Provider, then the roles
+Reminder{ key = "au.reminderProvider", path = "auras.reminder.onlyProvider" }
 -- your group role hides the group buffs (in pairs)
 Reminder{ key = "au.reminderHideTank", half = true, path = "auras.reminder.hideTank" }
 Reminder{ key = "au.reminderHideHealer", half = true, path = "auras.reminder.hideHealer" }

@@ -654,6 +654,7 @@ local defaults = {
                          countText = "both", spacing = 6, alpha = 100,
                          -- When It Shows, Alerts (the Buff Reminders tab)
                          showSolo = true, showParty = true, showRaid = true, hideRested = false, onlyProvider = false,
+                         showCombat = true, fadeSpeed = "instant",   -- Edit Mode's Fading section (11-11)
                          sound = "off", glowMissing = false, glowExpiring = false,
                          layouts = {} },
             font = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
