@@ -1798,9 +1798,9 @@ local function UpdateHeader(module)
     -- tabs along the bottom of the header
     local names = module.tabs and S:ModuleText(module.key, "tabs") or {}
     local active = Panel:ActiveTab(module)
-    -- the row must fit the page (four tabs with NEW badges ran past it, 11-10): each tab is its name,
-    -- some padding and, with a badge, room on both sides so the name stays centred. Too wide, the
-    -- padding shrinks first (down to 10), then the tabs' badges go (the rows' own stay).
+    -- the row must fit the page: each tab is its name and some padding; too wide, the padding shrinks
+    -- (down to TAB_PAD_MIN). A tab's NEW badge sits on its top edge, centred, over the border (11-11
+    -- Marcus: beside the name it looked bad), so it takes no width.
     local TAB_PAD, TAB_PAD_MIN, TAB_GAP, TAB_LEFT = 28, 12, 4, 0
     local shown, textW, isNew = {}, {}, {}
     for i, b in ipairs(page.tabButtons) do
@@ -1818,26 +1818,28 @@ local function UpdateHeader(module)
     local room = (page.header:GetWidth() or 0) > 0 and page.header:GetWidth() or CONTENT_W
     local function RowWidth(pad, badges)
         local w = TAB_LEFT + TAB_GAP * math.max(0, #shown - 1)
-        for _, i in ipairs(shown) do w = w + textW[i] + pad + ((badges and isNew[i]) and 2 * (NEW_W + NEW_GAP) or 0) end
+        for _, i in ipairs(shown) do w = w + textW[i] + pad end
         return w
     end
-    local badges, pad = true, TAB_PAD
-    if RowWidth(pad, true) > room and #shown > 0 then
-        pad = math.max(TAB_PAD_MIN, TAB_PAD - (RowWidth(TAB_PAD, true) - room) / #shown)
-        if RowWidth(pad, true) > room then
-            badges = false
-            pad = math.max(TAB_PAD_MIN, math.min(TAB_PAD, TAB_PAD - (RowWidth(TAB_PAD, false) - room) / #shown))
-        end
+    local pad = TAB_PAD
+    if RowWidth(pad) > room and #shown > 0 then
+        pad = math.max(TAB_PAD_MIN, TAB_PAD - (RowWidth(TAB_PAD) - room) / #shown)
     end
     for _, i in ipairs(shown) do
         local b = page.tabButtons[i]
-        local new = badges and isNew[i]
-        if new and not b.newBadge then
-            b.newBadge = NewBadge(b)
-            b.newBadge:SetPoint("LEFT", b.Text, "RIGHT", NEW_GAP / NEW_SCALE, 0)
+        local new = isNew[i]
+        if new and not b.newBadge then b.newBadge = NewBadge(b) end
+        if b.newBadge then
+            if new then
+                -- centred on the top edge, over the tab's border (offsets in the badge's own scale)
+                local badge = b.newBadge
+                badge:SetFrameLevel(b:GetFrameLevel() + 20)
+                badge:ClearAllPoints()
+                badge:SetPoint("LEFT", b, "TOP", -(badge.Label:GetStringWidth() or 0) / 2, 1 / NEW_SCALE)
+            end
+            b.newBadge:SetShown(new)
         end
-        if b.newBadge then b.newBadge:SetShown(new) end
-        b:SetWidth(textW[i] + pad + (new and 2 * (NEW_W + NEW_GAP) or 0))
+        b:SetWidth(textW[i] + pad)
     end
     local tabbed = module.tabs and module:IsOn()
     page.tabLine:SetShown(false)   -- (11-11 Marcus: no line between the tabs and the boxes)
