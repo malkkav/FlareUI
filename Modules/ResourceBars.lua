@@ -705,6 +705,9 @@ local function LayoutBar(holder)
         holder.Label:SetPoint("LEFT", bar, "LEFT", K.TEXT_INSET, 0)
         holder.Text:SetPoint("RIGHT", bar, "RIGHT", -K.TEXT_INSET, 0)
         holder.Text:SetJustifyH("RIGHT")
+        -- Bar Text and Timer (Look): each text can go
+        holder.Label:SetShown(cfg.showLabel ~= false)
+        holder.Text:SetShown(cfg.showTimer ~= false)
         local spark = holder.Spark
         spark:ClearAllPoints()
         spark:SetSize(math_max(8, (cfg.height or 10)), math_max(18, (cfg.height or 10) * 2.2))
@@ -1072,6 +1075,13 @@ local function BuildSettings(key)
         -- the swing timers: the out-of-range colour, as the unit frames' range fading
         { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true, get = get("rangeCheck", true), set = set("rangeCheck"),
           desc = L["The bar turns red while your target is out of reach of this attack. Off, it keeps its colour."],
+          hidden = function() return info.kind ~= "swing" end },
+        -- the swing timers' two texts, each on its own (11-11, a player's request)
+        { name = L["Bar Text"], kind = LEM.SettingType.Checkbox, default = true, get = get("showLabel", true), set = set("showLabel"),
+          desc = L["The swing's name on the left of the bar."],
+          hidden = function() return info.kind ~= "swing" end },
+        { name = L["Timer"], kind = LEM.SettingType.Checkbox, default = true, get = get("showTimer", true), set = set("showTimer"),
+          desc = L["The seconds left on the right of the bar (and Waiting)."],
           hidden = function() return info.kind ~= "swing" end },
         (function()
             -- only the bars that hold a value: combo points are steps, swing timers already run smoothly
