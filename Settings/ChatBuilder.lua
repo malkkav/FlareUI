@@ -189,13 +189,19 @@ local function RenderWindows(windows)
             ui.windowRows[i]=b
         end
         b.window=h;b:SetText(h.name)
-        b:SetSelected(selected and selected.id==h.id)
+        b:SetSelected(not ui.adding and selected and selected.id==h.id)
         b.detail:SetText(h.special and L["Combat Log"] or (h.docked and L["Docked"] or L["Popped out"]))
-        b.detail:SetTextColor(selected and selected.id==h.id and 1 or 0.6,0.65,0.4)
+        b.detail:SetTextColor(not ui.adding and selected and selected.id==h.id and 1 or 0.6,0.65,0.4)
         b:Show()
     end
     for i=#windows+1,#ui.windowRows do ui.windowRows[i]:Hide() end
     ui.windows.content:SetHeight(math.max(1,#windows*54))
+    if ui.revealSelected and selected then
+        for i,h in ipairs(windows) do if h.id==selected.id then
+            ui.windows:SetVerticalScroll(math.min(ui.windows:GetVerticalScrollRange(),(i-1)*54));break
+        end end
+        ui.revealSelected=nil
+    end
 end
 local function LayoutSets(id)
     local p=B:Preset(id);local messages,channels={},{}
@@ -261,7 +267,11 @@ function Refresh()
             local wanted=entry.kind=="message" and messages or channels;values[entry.key]=wanted[entry.key]
         end end end
     end
-    RenderWindows(windows);RenderFilters(shownState,editable and not ui.previewID)
+    if ui.adding then
+        local messages,channels=LayoutSets(presetID)
+        shownState={messages=messages,channels=channels}
+    end
+    RenderWindows(windows);RenderFilters(shownState,editable and not ui.previewID and not ui.adding)
     local currentID,currentName=CurrentLayout(state)
     ui.currentLayout=currentID
     local preview=ui.previewID and B:PreviewPreset(ui.previewID)
@@ -271,14 +281,18 @@ function Refresh()
     ui.previewNote:SetShown(preview~=nil)
     ui.previewNote:SetText(preview and L["Preview only. Apply layout to replace this window's filters, or Cancel."] or "")
     ui.addForm:SetShown(ui.adding and true or false)
-    ui.filtersArea:SetPoint("TOPLEFT",0,ui.adding and -208 or (preview and -148 or -112))
+    ui.filtersArea:SetPoint("TOPLEFT",0,ui.adding and -176 or (preview and -148 or -112))
     ui.addLayout:SetDefaultText(presetID=="blank" and L["Empty"] or B:Preset(presetID).name)
-    ui.title:SetText(selected and selected.name or L["Select a chat window"])
-    ui.moveUp:SetEnabled(selected and B:MoveTarget(selected,-1)~=nil);ui.moveDown:SetEnabled(selected and B:MoveTarget(selected,1)~=nil)
+    local draftName=ui.name:GetText():match("^%s*(.-)%s*$")
+    ui.title:SetText(ui.adding and (draftName~="" and L["New window: %s"]:format(draftName) or L["New window"]) or (selected and selected.name or L["Select a chat window"]))
+    ui.contentTitle:SetText(ui.adding and L["Preview for new window"] or L["What appears here"])
+    for _,control in ipairs({ui.rename,ui.close,ui.dock,ui.duplicate}) do control:SetShown(not ui.adding) end
+    ui.moveUp:SetEnabled(not ui.adding and selected and B:MoveTarget(selected,-1)~=nil);ui.moveDown:SetEnabled(not ui.adding and selected and B:MoveTarget(selected,1)~=nil)
     ui.rename:SetEnabled(editable);ui.close:SetEnabled(editable and not selected.primary)
     ui.dock:SetEnabled(editable and not selected.primary);ui.dock:SetText(selected and selected.docked and L["Pop out"] or L["Dock"])
-    ui.native:SetEnabled(ok and selected~=nil);ui.native:SetShown(selected and selected.special and true or false)
-    ui.new:SetEnabled(ok and FCF_CanOpenNewWindow and FCF_CanOpenNewWindow() and true or false);ui.duplicate:SetEnabled(editable and ui.new:IsEnabled())
+    ui.native:SetEnabled(ok and selected~=nil);ui.native:SetShown(not ui.adding and selected and selected.special and true or false)
+    local canCreate=ok and FCF_CanOpenNewWindow and FCF_CanOpenNewWindow() and true or false
+    ui.new:SetEnabled(canCreate and not ui.adding);ui.duplicate:SetEnabled(editable and canCreate)
     ui.selectedOnly:SetChecked(selectedOnly);ui.category:SetEnabled(not selectedOnly)
     local status=reason or L["Changes apply immediately."]
     if ok and selected and selected.special then status=L["Combat Log uses its own filters. Open Blizzard Settings to edit them."] end
@@ -290,15 +304,20 @@ function Refresh()
         status=L["Preview only. Apply layout to replace this window's filters, or Cancel."]
         if #preview.skipped>0 then status=status.."\n"..L["Skipped unavailable:"].." "..table.concat(preview.skipped,", ") end
     end
-    ui.status:SetPoint("BOTTOMRIGHT",selected and selected.special and -214 or 0,0)
+    if ui.adding then
+        status=reason or L["Preview only. Create window to add this chat window; existing windows are unchanged."]
+        local draft=B:PreviewPreset(presetID)
+        if draft and #draft.skipped>0 then status=status.."\n"..L["Skipped unavailable:"].." "..table.concat(draft.skipped,", ") end
+    end
+    ui.status:SetPoint("BOTTOMRIGHT",not ui.adding and selected and selected.special and -214 or 0,0)
     ui.status:SetText(ui.notice or status)
-    ui.create:SetEnabled(ui.new:IsEnabled())
+    ui.create:SetEnabled(canCreate)
 end
 function Editor.Build(host,side)
     ui={host=host,windowRows={},filterRows={}}
     local editor=CreateFrame("Frame",nil,host);editor:SetAllPoints();ui.editor=editor
     local title=Text(editor,L["Your chat windows"],"GameFontNormal");title:SetPoint("TOPLEFT",0,0)
-    ui.new=Button(editor,L["Add window"],148,function() ui.adding=true;ui.previewID=nil;ui.previewTarget=nil;presetID="general";ui.suggestedName=B:Preset(presetID).name;ui.name:SetText(ui.suggestedName);ui.notice=nil;Refresh() end);ui.new:SetPoint("TOPLEFT",0,-26)
+    ui.new=Button(editor,L["Add window"],148,function() ui.adding=true;activeCategory="all";selectedOnly=false;ui.search:SetText("");ui.filters:SetVerticalScroll(0);ui.previewID=nil;ui.previewTarget=nil;presetID="general";ui.suggestedName=B:Preset(presetID).name;ui.name:SetText(ui.suggestedName);ui.notice=nil;Refresh() end);ui.new:SetPoint("TOPLEFT",0,-26)
     ui.windows=Scroll(editor);ui.windows:SetPoint("TOPLEFT",0,-62);ui.windows:SetPoint("BOTTOMLEFT",0,34);ui.windows:SetWidth(148)
     ui.moveUp=Button(editor,L["Move up"],71,function() Act(function() return B:Move(selected,-1) end) end);ui.moveUp:SetPoint("BOTTOMLEFT",0,0)
     ui.moveDown=Button(editor,L["Move down"],71,function() Act(function() return B:Move(selected,1) end) end);ui.moveDown:SetPoint("LEFT",ui.moveUp,"RIGHT",6,0)
@@ -318,10 +337,11 @@ function Editor.Build(host,side)
     ui.applyLayout=Button(body,L["Apply layout"],110,ApplyPreset);ui.applyLayout:SetPoint("LEFT",ui.layout,"RIGHT",8,0)
     ui.cancelLayout=Button(body,L["Cancel"],74,function() ui.previewID=nil;ui.previewTarget=nil;ui.notice=nil;Refresh() end);ui.cancelLayout:SetPoint("LEFT",ui.applyLayout,"RIGHT",6,0)
     ui.previewNote=Text(body,"","GameFontHighlightSmall");ui.previewNote:SetPoint("TOPLEFT",0,-94);ui.previewNote:SetPoint("TOPRIGHT",0,-94);ui.previewNote:SetHeight(40)
-    local add=CreateFrame("Frame",nil,body,"BackdropTemplate");ui.addForm=add;add:SetPoint("TOPLEFT",0,-64);add:SetPoint("TOPRIGHT",0,-64);add:SetHeight(132);ns.SettingsPanel.Box(add,0.5);add:Hide()
+    local add=CreateFrame("Frame",nil,body,"BackdropTemplate");ui.addForm=add;add:SetPoint("TOPLEFT",0,-32);add:SetPoint("TOPRIGHT",0,-32);add:SetHeight(132);ns.SettingsPanel.Box(add,0.5);add:Hide()
     local nameLabel=Text(add,L["Window name"],"GameFontNormal");nameLabel:SetPoint("TOPLEFT",10,-10)
     ui.name=CreateFrame("EditBox",nil,add,"InputBoxTemplate");ui.name:SetAutoFocus(false);ui.name:SetMaxLetters(31);ui.name:SetFontObject(ns.SettingsPanel.FONT.GameFontHighlight)
     ui.name:SetHeight(24);ui.name:SetPoint("TOPLEFT",130,-6);ui.name:SetPoint("TOPRIGHT",-108,-6)
+    ui.name:HookScript("OnTextChanged",function() if ui.status and ui.adding then Refresh() end end)
     ui.editName=Button(add,L["Edit name"],86,function() AskName(L["Window name"],ui.name:GetText(),function(name) ui.name:SetText(name or "") end) end);ui.editName:SetPoint("TOPRIGHT",-10,-6)
     local addLabel=Text(add,L["Starting layout"],"GameFontNormal");addLabel:SetPoint("TOPLEFT",10,-46)
     ui.addLayout=LayoutDropdown(add,function(id)
@@ -333,7 +353,7 @@ function Editor.Build(host,side)
     ui.create=Button(add,L["Create window"],140,function()
         local h,result=B:Create(ui.name:GetText(),presetID)
         if not h then Report(nil,result);return end
-        selected=h;ui.adding=false;ui.notice=L["Window created. Filters are active."]
+        selected=h;ui.adding=false;ui.revealSelected=true;ui.notice=L["Window created. Filters are active."]
         if #result.skipped>0 then ui.notice=ui.notice.."\n"..L["Skipped unavailable:"].." "..table.concat(result.skipped,", ") end
         ui.name:ClearFocus();Refresh()
     end);ui.create:SetPoint("BOTTOMLEFT",10,8)
@@ -341,7 +361,7 @@ function Editor.Build(host,side)
     local cancel=Button(add,L["Cancel"],86,CancelAdd);cancel:SetPoint("LEFT",ui.create,"RIGHT",8,0);ui.name:SetScript("OnEscapePressed",CancelAdd)
     local filtersArea=CreateFrame("Frame",nil,body);ui.filtersArea=filtersArea;filtersArea:SetPoint("TOPLEFT",0,-112);filtersArea:SetPoint("BOTTOMRIGHT",0,0)
     ui.native=Button(filtersArea,L["Open Blizzard Settings"],206,function() Act(function() return B:OpenBlizzard(selected) end) end);ui.native:SetPoint("BOTTOMRIGHT",0,0)
-    local contentTitle=Text(filtersArea,L["What appears here"],"GameFontNormal");contentTitle:SetPoint("TOPLEFT",0,0)
+    local contentTitle=Text(filtersArea,L["What appears here"],"GameFontNormal");ui.contentTitle=contentTitle;contentTitle:SetPoint("TOPLEFT",0,0)
     ui.search=CreateFrame("EditBox",nil,filtersArea,"SearchBoxTemplate");ui.search:SetAutoFocus(false);ui.search:SetMaxLetters(80);ui.search:SetFontObject(ns.SettingsPanel.FONT.GameFontHighlight)
     if ui.search.Instructions then ui.search.Instructions:SetText(L["Find a message or channel"]) end
     ui.search:SetSize(200,24);ui.search:SetPoint("TOPLEFT",6,-26);ui.search:SetPoint("TOPRIGHT",-98,-26)

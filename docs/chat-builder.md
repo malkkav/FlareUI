@@ -10,9 +10,9 @@ The test build has separate addon preferences (`FlareUI_Chat2_DB`, `FlareUI_Chat
 
 Open **FlareUI → Chat → Windows**. Select a window in **Your chat windows**, then edit **What appears here**. All message categories are shown by default in compact two-column switch rows; search, category selection and Selected only help narrow the view. The window list follows dock order. Move up/down reorders docked tabs immediately, with General and Combat Log protected.
 
-**Add window** opens a compact inline form containing the window name and starting layout. Pick a layout, enter a name, and choose **Create window**. The controller-accessible Edit name button also opens the text-entry dialog. Cancel leaves chat unchanged.
+**Add window** opens a compact inline form containing the window name and starting layout. Pick a layout, enter a name, and choose **Create window**. The controller-accessible Edit name button also opens the text-entry dialog. While adding, the heading follows the draft name and the disabled filter preview follows its starting layout. Existing-window actions and selection highlighting are hidden. Cancel restores the previous window; Create selects and scrolls to the new window. Draft edits leave existing chat unchanged.
 
-The selected window has visible Rename, Duplicate, Delete window, and Dock/Pop out actions. **Starting layout** offers General, Social, Group, Loot, Trade, Empty, existing saved presets, or Custom (the current selection). Choosing a layout previews its supported filters in the same switch grid without changing chat. Preview switches are disabled to distinguish them from live edits. **Apply layout** explicitly replaces supported filters; **Cancel**, choosing Custom, or switching windows discards the preview. Unknown filters remain preserved. The dropdown displays Custom when actual filters do not exactly match a known layout.
+The selected window has visible Rename, Duplicate, Delete window, and Dock/Pop out actions. **Starting layout** offers General, Friends & Guild, Party & Raid, Loot, Trade, Empty, existing saved presets, or Custom (the current selection). Choosing a layout previews its supported filters in the same switch grid without changing chat. Preview switches are disabled to distinguish them from live edits. **Apply layout** explicitly replaces supported filters; **Cancel**, choosing Custom, or switching windows discards the preview. Unknown filters remain preserved. The dropdown displays Custom when actual filters do not exactly match a known layout.
 
 There is no separate preset screen or More options menu. Custom-preset management is omitted from the main workflow; stored presets remain intact and usable in the dropdown. The primary window cannot be deleted or popped out; Combat Log exposes its native settings button. Frame, Tweaks and Fonts remain shared appearance settings. The editor reuses the existing settings width, restoring other pages' normal geometry on exit.
 
@@ -25,8 +25,8 @@ Built-in presets are intentionally focused:
 | Preset | Messages | Public channels |
 | --- | --- | --- |
 | General | Nearby chat, whispers, guild, groups, system, quest and encounter dialogue | General, Local Defense |
-| Social | Nearby chat, whispers, guild/officer/Discord, achievements | None |
-| Group | Party/raid/instance and leaders, raid warnings, whispers, boss messages, pings, battleground notices | None |
+| Friends & Guild | Nearby chat, whispers, guild/officer/Discord, achievements | None |
+| Party & Raid | Party/raid/instance and leaders, raid warnings, whispers, boss messages, pings, battleground notices | None |
 | Loot | Items, money, currency, XP, honor, reputation, skill/crafting, opening, appearances | None |
 | Trade | Whispers and Battle.net replies | Trade, Services |
 | Blank | None | None |

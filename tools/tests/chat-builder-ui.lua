@@ -105,20 +105,40 @@ choose(layout,'Empty');assert(ns.ChatBuilder:Read(selectedHandle()).messages.LOO
 for _,o in ipairs(objects) do if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then assert(not o:IsEnabled(),'preview cannot accidentally edit live routing') end end
 click('Cancel');assert(ns.ChatBuilder:Read(selectedHandle()).messages.LOOT,'cancel leaves current settings intact')
 choose(layout,'Empty');click('Apply layout');assert(not ns.ChatBuilder:Read(selectedHandle()).messages.LOOT)
-choose(layout,'Social');click('General');assert(not pcall(click,'Apply layout'),'switching window cancels pending layout')
-click('Friends');choose(layout,'Social');click('Apply layout');assert(ns.ChatBuilder:Read(selectedHandle()).activeMessages.GUILD)
+choose(layout,'Friends & Guild');click('General');assert(not pcall(click,'Apply layout'),'switching window cancels pending layout')
+click('Friends');choose(layout,'Friends & Guild');click('Apply layout');assert(ns.ChatBuilder:Read(selectedHandle()).activeMessages.GUILD)
 -- Add is an inline name/layout form, with the selected window still visible.
 FCF_Close(ChatFrame4);ns.ChatBuilderEditor.Refresh()
 local countWindows=#ns.ChatBuilder:Windows()
+local beforeDraft=table.concat({GetChatWindowMessages(3)},',')
 click('Add window');assert(not layout:IsVisible(),'existing-window layout is hidden while adding')
-choose(addLayout,'Social');assert(nameBox:GetText()=='Social')
+assert(not pcall(click,'Rename') and not pcall(click,'Delete window') and not pcall(click,'Duplicate'),'old window actions hidden during creation')
+for _,o in ipairs(objects) do if o.window then assert(not o.isSelected,'no existing window looks selected during a draft') end end
+choose(addLayout,'Party & Raid')
+local draftParty,draftGuild
+for _,o in ipairs(objects) do if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then
+    assert(not o:IsEnabled(),'draft preview cannot mutate old window')
+    if o.parent.entry.key=='PARTY' then draftParty=o:GetChecked() end
+    if o.parent.entry.key=='GUILD' then draftGuild=o:GetChecked() end
+end end
+assert(draftParty and not draftGuild,'draft filters follow new layout, not the old window')
+assert(table.concat({GetChatWindowMessages(3)},',')==beforeDraft,'draft preserves existing routing')
+choose(addLayout,'Friends & Guild');assert(nameBox:GetText()=='Friends & Guild')
 click('Edit name');assert(ns.Dialogs.CHAT_BUILDER_NAME.padInput);accept('My own name');choose(addLayout,'Loot')
 assert(nameBox:GetText()=='My own name','changing a starting layout preserves a user-entered name')
+local draftTitle=false;for _,o in ipairs(objects) do if o:IsVisible() and o:GetText()=='New window: My own name' then draftTitle=true end end
+assert(draftTitle,'heading follows draft name')
 click('Cancel');assert(#ns.ChatBuilder:Windows()==countWindows)
 click('Add window');choose(addLayout,'Empty');nameBox:SetText('Empty test');click('Create window')
 assert(GetChatWindowInfo(4)=='Empty test' and #({GetChatWindowMessages(4)})==0)
+local newSelected,newTitle=false,false
+for _,o in ipairs(objects) do
+    if o.window and o.window.id==4 and o.isSelected then newSelected=true end
+    if o.kind=='FontString' and o:GetText()=='Empty test' and o:IsVisible() and not o.parent.window then newTitle=true end
+end
+assert(newSelected and newTitle,'creation focuses new window in list and editor')
 click('Delete window');accept();click('Friends')
-click('Add window');choose(addLayout,'Social');nameBox:SetText('Preset copy');click('Create window')
+click('Add window');choose(addLayout,'Friends & Guild');nameBox:SetText('Preset copy');click('Create window')
 assert(GetChatWindowInfo(4)=='Preset copy')
 local groups={};for _,g in ipairs({GetChatWindowMessages(4)}) do groups[g]=true end;assert(groups.GUILD)
 click('Delete window');accept();click('Friends');click('Duplicate');accept('Duplicate test')
@@ -128,7 +148,7 @@ choose(layout,'Empty');FCF_Close(ChatFrame3);ns.ChatBuilderEditor.Refresh();asse
 click('General');assert(not pcall(click,'Pop out') and not pcall(click,'Delete window'))
 click('Combat Log');assert(not layout:IsEnabled() and not pcall(click,'Duplicate'))
 local nativeVisible=false;for _,o in ipairs(objects) do if o:GetText()=='Open Blizzard Settings' and o:IsVisible() then nativeVisible=true end end;assert(nativeVisible)
-click('General');choose(layout,'Social');host:Hide();side:Show();host:Show();assert(not pcall(click,'Apply layout'))
+click('General');choose(layout,'Friends & Guild');host:Hide();side:Show();host:Show();assert(not pcall(click,'Apply layout'))
 for _,key in ipairs({'GetChatWindowMessages','GetChatWindowChannels'}) do
     local original=_G[key];_G[key]=nil;assert(pcall(ns.ChatBuilderEditor.Refresh));_G[key]=original
 end
