@@ -94,7 +94,9 @@ local function Build(host)
             ns.ButtonSound()
             CopyLink(net.url)
         end)
-        if previous then b:SetPoint("LEFT", previous, "RIGHT", 8, 0) else b:SetPoint("TOPLEFT", CARD_PAD, y) end
+        -- centred in the card (11-11 Marcus)
+        if previous then b:SetPoint("LEFT", previous, "RIGHT", 8, 0)
+        else b:SetPoint("TOPLEFT", (width - (#NETWORKS * 112 + (#NETWORKS - 1) * 8)) / 2, y) end
         previous = b
     end
     thanks:SetHeight(-(y - 26) + CARD_PAD)

@@ -256,6 +256,23 @@ for blizzard, def in pairs({
     PANEL_FONT[blizzard] = name
 end
 Panel.FONT = PANEL_FONT
+-- the button text: the page titles' gold rather than Blizzard's yellow (11-11 Marcus)
+local BUTTON_FONT = CreateFont("FlareUI_PanelButton")
+if _G.GameFontNormal then BUTTON_FONT:CopyFontObject(_G.GameFontNormal) end
+ns.SetFont(BUTTON_FONT, BODY_FONT, 14, "")
+BUTTON_FONT:SetTextColor(1, 0.83, 0.47)
+-- 11-11 (Marcus, to try): the titles in Blizzard's Friz Quadrata; /fui titlefont switches back to
+-- Marcellus after a reload. Set once the saved settings are there (BuildWindow).
+local function ApplyTitleFont()
+    if GetLocale() == "ruRU" then return end
+    local marcellus = ns.db and ns.db.global and ns.db.global.panelTitleFont == "marcellus"
+    local file = marcellus and TITLE_FONT or "Fonts\\FRIZQT__.TTF"
+    ns.SetFont(_G.FlareUI_PanelTitle, file, 17, "")
+    ns.SetFont(_G.FlareUI_PanelTitleHuge, file, 22, "")
+end
+Panel.TitleFont = function(name)
+    if ns.db and ns.db.global then ns.db.global.panelTitleFont = name end
+end
 
 local function Text(parent, font, justify)
     font = font or "GameFontHighlight"
@@ -300,6 +317,19 @@ local function ThickEdge(f)
     f.edge = edge
     return edge
 end
+
+-- a highlight or a selection: the option rows' rounded box (our art, 8 px corners as a nine-slice)
+local ROUND_RECT = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\RoundRect.tga"
+local function Rounded(tex, r, g, b, a)
+    tex:SetTexture(ROUND_RECT)
+    if tex.SetTextureSliceMargins then
+        tex:SetTextureSliceMargins(8, 8, 8, 8)
+        if Enum.UITextureSliceMode then tex:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched) end
+    end
+    if r then tex:SetVertexColor(r, g, b, a or 1) end
+    return tex
+end
+Panel.Rounded = Rounded
 
 local function Box(f, alpha)
     ThinBackdrop(f, true)
@@ -474,7 +504,7 @@ local function SkinButton(b)
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints(b.fFill)
     hl:SetColorTexture(1, 0.9, 0.7, 0.07)
-    b:SetNormalFontObject(_G[PANEL_FONT.GameFontNormal])
+    b:SetNormalFontObject(BUTTON_FONT)
     b:SetHighlightFontObject(_G[PANEL_FONT.GameFontHighlight])
     b:SetDisabledFontObject(_G[PANEL_FONT.GameFontDisable])
     b:HookScript("OnEnter", function(self)
@@ -1321,7 +1351,7 @@ local function EditButton(f, onClick)
     fill:SetGradient("VERTICAL", CreateColor(0.09, 0.065, 0.04, 1), CreateColor(0.24, 0.17, 0.10, 1))
     b:HookScript("OnEnter", function(self) if self:IsEnabled() then self.edge:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1) end end)
     b:HookScript("OnLeave", function(self) self.edge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1) end)
-    local label = Text(b, "GameFontNormal", "CENTER")   -- gold, like the panel buttons
+    local label = Text(b, "FlareUI_PanelButton", "CENTER")   -- the titles' gold, like the panel buttons
     label:SetAllPoints(); b:SetFontString(label)
     b:SetScript("OnDisable", function(self) self:SetAlpha(0.4) end)
     b:SetScript("OnEnable", function(self) self:SetAlpha(1) end)
@@ -1549,7 +1579,7 @@ local function SectionHeader(parent, text, y, sectionKey)
         h.line:SetPoint("BOTTOMRIGHT", 0, 2)
         h.hover = h:CreateTexture(nil, "BACKGROUND")
         h.hover:SetAllPoints()
-        h.hover:SetColorTexture(1, 0.82, 0, 0.06)
+        Rounded(h.hover, 1, 0.82, 0, 0.07)
         h.hover:Hide()
         h:EnableMouse(true)
         h:SetScript("OnEnter", function(self) self.hover:Show() end)
@@ -2088,15 +2118,15 @@ local function BuildNav(left)
             b.selected = b:CreateTexture(nil, "BACKGROUND")
             b.selected:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
             b.selected:SetPoint("BOTTOMRIGHT", -THIN_INSET, THIN_INSET)
-            b.selected:SetColorTexture(1, 1, 1)
+            Rounded(b.selected)
             b.selected:SetGradient("HORIZONTAL", CreateColor(0.47, 0.36, 0.22, 0.55), CreateColor(0.24, 0.17, 0.09, 0.30))
             b.bar = b:CreateTexture(nil, "ARTWORK")
             b.bar:SetColorTexture(0.91, 0.77, 0.42)
             b.bar:SetPoint("TOPLEFT", 0, -5)
             b.bar:SetPoint("BOTTOMLEFT", 0, 5)
             b.bar:SetWidth(3)
-            b:SetHighlightTexture(WHITE)
-            b:GetHighlightTexture():SetVertexColor(0.79, 0.65, 0.35, 0.10)
+            b:SetHighlightTexture(ROUND_RECT)
+            Rounded(b:GetHighlightTexture(), 0.79, 0.65, 0.35, 0.12)
             b.dot = b:CreateTexture(nil, "ARTWORK")
             b.dot:SetTexture("Interface\\COMMON\\Indicator-Green")
             b.dot:SetDesaturated(true)
@@ -2336,6 +2366,7 @@ end
 
 local function BuildWindow()
     local style = ns.WINDOW_STYLE
+    ApplyTitleFont()
     -- (11-11 Marcus: after a reload each page opens on its first tab; the tabs once kept go)
     if ns.db and ns.db.global then ns.db.global.settingsTabs = nil end
     frame = CreateFrame("Frame", "FlareUI_SettingsPanel", UIParent, "BackdropTemplate")
@@ -2488,24 +2519,31 @@ local function BuildWindow()
     news:SetAllPoints(body)
     news:Hide()
     local newsScroll = CreateFrame("ScrollFrame", nil, news)
-    newsScroll:SetPoint("TOPLEFT", PAD + 6, -PAD)
-    newsScroll:SetPoint("BOTTOMRIGHT", -PAD - 16, PAD)
+    newsScroll:SetPoint("TOPLEFT", PAD, -PAD)
+    newsScroll:SetPoint("BOTTOMRIGHT", -PAD - 28, PAD)
+    -- (11-11 Marcus) each version in a box of its own, as the settings' sections, clear of the scroll line
+    local NEWS_W, NEWS_PAD = WIDTH - 2 * EDGE - 2 * PAD - 40, 16
     local newsContent = CreateFrame("Frame", nil, newsScroll)
-    newsContent:SetSize(WIDTH - 2 * PAD - 40, 1)
+    newsContent:SetSize(NEWS_W, 1)
     newsScroll:SetScrollChild(newsContent)
     Panel.AttachScrollLine(newsScroll, news)
     local y = 0
     for _, entry in ipairs(ns.WhatsNew or {}) do
-        local title = Text(newsContent, "GameFontNormalHuge")
-        title:SetPoint("TOPLEFT", 0, y)
+        local box = CreateFrame("Frame", nil, newsContent, "BackdropTemplate")
+        Box(box, 0.32)
+        box:SetPoint("TOPLEFT", 0, y)
+        box:SetWidth(NEWS_W)
+        local title = Text(box, "GameFontNormalHuge")
+        title:SetPoint("TOPLEFT", NEWS_PAD, -NEWS_PAD + 2)
         title:SetText(L["FlareUI"] .. " " .. entry.version)
-        y = y - 34
-        local body = Text(newsContent, "GameFontHighlight")
-        body:SetPoint("TOPLEFT", 0, y)
-        body:SetWidth(WIDTH - 2 * PAD - 40)
+        local body = Text(box, "GameFontHighlight")
+        body:SetPoint("TOPLEFT", NEWS_PAD, -NEWS_PAD - 34)
+        body:SetWidth(NEWS_W - 2 * NEWS_PAD)
         body:SetSpacing(4)
         body:SetText(entry.text)
-        y = y - (body:GetStringHeight() or 0) - 30
+        local h = NEWS_PAD + 34 + (body:GetStringHeight() or 0) + NEWS_PAD
+        box:SetHeight(h)
+        y = y - h - 12
     end
     newsContent:SetHeight(math.max(1, -y))
     frame.news = news
@@ -2541,9 +2579,9 @@ local function BuildWindow()
 
     -- search
     local search = CreateFrame("EditBox", nil, frame, "SearchBoxTemplate")
-    search:SetSize(230, 24)
+    search:SetSize(RIGHT_W - 6, 24)   -- the right column's width (the template's own left inset aside)
     -- where the close button was: the header row's right end
-    search:SetPoint("RIGHT", frame, "TOPRIGHT", -EDGE - 4, -HEADER_ROW_Y)
+    search:SetPoint("RIGHT", frame, "TOPRIGHT", -EDGE, -HEADER_ROW_Y)
     search.Instructions:SetText(S:WindowText("searchPlaceholder", L["Search settings"]))
     -- the page redraws once typing pauses for a moment, not on every key
     local searchToken = 0

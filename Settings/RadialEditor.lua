@@ -59,7 +59,7 @@ local function CreateList(parent, width, columns, rows, cellHeight, buildCell, f
 
         cell.Highlight = cell:CreateTexture(nil, "BACKGROUND")
         cell.Highlight:SetAllPoints()
-        cell.Highlight:SetColorTexture(BRONZE[1], BRONZE[2], BRONZE[3], 0.25)
+        ns.SettingsPanel.Rounded(cell.Highlight, BRONZE[1], BRONZE[2], BRONZE[3], 0.25)
         cell.Highlight:Hide()
 
         cell.Icon = cell:CreateTexture(nil, "ARTWORK")
@@ -75,7 +75,7 @@ local function CreateList(parent, width, columns, rows, cellHeight, buildCell, f
 
         -- a bronze wash instead of Blizzard's blue square
         cell:SetHighlightTexture("Interface\\Buttons\\WHITE8x8")
-        cell:GetHighlightTexture():SetColorTexture(BRONZE[1], BRONZE[2], BRONZE[3], 0.18)
+        ns.SettingsPanel.Rounded(cell:GetHighlightTexture(), BRONZE[1], BRONZE[2], BRONZE[3], 0.18)
 
         if buildCell then buildCell(cell) end
         list.cells[i] = cell
@@ -865,7 +865,7 @@ local FORM_TOP = 34              -- labels; their controls sit 14 lower
 -- (switching modes reloads, so this holds for the session)
 local PAD_ROW = ns.IsGamepadUI()
 local PAD_TOP = 82               -- its labels
-local LOWER_TOP = PAD_ROW and 144 or 98   -- Catalog and buttons start here
+local LOWER_TOP = PAD_ROW and 150 or 104  -- Catalog and buttons start here (room under the form, 11-11)
 local LINE_ABOVE = 13                       -- the line under the form sits this far above them
 
 -- a tooltip from the copy document: label, description, tip
@@ -1324,7 +1324,7 @@ local function BuildLower(host, height, width)
     local catalogTitle = Text(host, "GameFontNormal", L["Catalog"])
     catalogTitle:SetPoint("TOPLEFT", catX + 4, -top)
     local LINK_H, SLASH_W = 16, 14
-    local rightX, maxW = catX + gridW, gridW - 90
+    local rightX, maxW = catX + gridW - 10, gridW - 100   -- (in line with the search box)
     local links, slashes = {}, {}
     for i, c in ipairs(CATEGORIES) do
         local link = CreateFrame("Button", nil, host)
