@@ -874,10 +874,10 @@ end
 
 function Tweaks:GetSyncSourceLabel()
     local store = GetSyncStore()
-    -- a source saved before full names were kept: this character fills its own in
+    -- a source saved before full names were kept: this character's own full name (read, not saved)
     if store and IsSource(store) and not store.source.full then
         local me = Me()
-        if me then store.source.full = me.full end
+        if me then return me.full end
     end
     return store and SourceLabel(store.source) or nil
 end

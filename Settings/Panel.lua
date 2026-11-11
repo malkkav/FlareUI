@@ -832,8 +832,11 @@ Build.range = function(f)
     end
     f.value = Text(f, "GameFontNormal", "RIGHT")
     f.value:SetPoint("RIGHT", -4, 0); f.value:SetWidth(48); f.value:SetWordWrap(false)
+    -- (only a real change is written: a saved value off the list, say from an old import, stays until moved)
     local function Commit()
-        if f.row and f.rangeChoice and not f.row:IsDisabled() then f.row:Set(f.rangeChoice.value) end
+        if f.row and f.rangeChoice and not f.row:IsDisabled() and f.rangeChoice.value ~= f.row:Get() then
+            f.row:Set(f.rangeChoice.value)
+        end
     end
     slider:SetScript("OnMouseDown", function() f.rangeDragging = true end)
     slider:SetScript("OnMouseUp", function() f.rangeDragging = nil; Commit() end)
@@ -2337,6 +2340,8 @@ local function BuildWindow()
     search:HookScript("OnEnterPressed", function(self)
         local text = strtrim(self:GetText() or "")
         if text == "" then return end
+        -- the redraw still waiting from the typing would undo the jump
+        searchToken = searchToken + 1
         local first = S:Search(text)[1]
         if first then Panel:JumpTo(first) end
         self:ClearFocus()
