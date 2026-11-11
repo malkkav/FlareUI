@@ -58,6 +58,7 @@ local CAT_WORLD_UNIT   = "worldUnits"
 local CAT_WORLD_OBJECT = "worldObjects"
 local CAT_FRAME_UNIT   = "frameUnits"
 local CAT_ACTION       = "actionBars"
+local CAT_AURA         = "auras"
 
 --------------------------------------------------
 -- 4. SAFETY
@@ -514,6 +515,7 @@ local function OnTooltipSetSpell(tip, data)
 end
 
 local function OnTooltipSetAura(tip, data)
+    if tip == GameTooltip and not tip:IsForbidden() and HideIfNeeded(tip, CAT_AURA) then return end
     if not SafeToTouch(tip) then return end
     ApplyColors(tip, nil)
     AddIdLine(tip, "showSpellID", L["Spell ID"], data)

@@ -1627,6 +1627,13 @@ ns.Copy = {
             section = "tt.tweaks",
             tags = { "short stats", "item stats", "equip lines" },
         },
+        ["tt.showAuras"] = {
+            choices = { L["Always"], L["Hide in Combat"], L["Never"] },
+            desc = L["When tooltips appear for buff and debuff icons."],
+            label = L["On Buffs/Debuffs"],
+            section = "tt.showTooltips",
+            tip = L["Hold Shift to see a hidden tooltip."],
+        },
         ["tt.showBars"] = {
             choices = { L["Always"], L["Hide in Combat"], L["Never"] },
             desc = L["When tooltips appear for what you point at."],
@@ -1640,6 +1647,13 @@ ns.Copy = {
             label = L["On Unit Frames"],
             section = "tt.showTooltips",
             tip = L["Hold Shift to see a hidden tooltip."],
+        },
+        ["tt.showGroupAuras"] = {
+            choices = { L["Always"], L["Hide in Combat"], L["Never"] },
+            desc = L["Whether party and raid frames' buff and debuff icons show tooltips. Never: pointing at an icon points at the frame."],
+            label = L["On Party/Raid Auras"],
+            section = "tt.showTooltips",
+            tip = L["While an icon shows its tooltip, mouseover macros don't reach the frame. Hide in Combat keeps them working in fights."],
         },
         ["tt.showGuild"] = {
             desc = L["The guild line on players' tooltips."],

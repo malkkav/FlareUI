@@ -54,6 +54,10 @@ local world = Both({ "tooltips.visibility.worldUnits", "tooltips.visibility.worl
 S:Row{ key = "tt.showWorld", kind = "choice", choices = SHOW, get = world.get, set = world.set, apply = Refresh }
 S:Row{ key = "tt.showFrames", kind = "choice", choices = SHOW, path = "tooltips.visibility.frameUnits", apply = Refresh }
 S:Row{ key = "tt.showBars", kind = "choice", choices = SHOW, path = "tooltips.visibility.actionBars", apply = Refresh }
+S:Row{ key = "tt.showAuras", kind = "choice", choices = SHOW, path = "tooltips.visibility.auras", apply = Refresh }
+-- party and raid aura icons only take the mouse when this lets them (PartyFrames.lua)
+S:Row{ key = "tt.showGroupAuras", kind = "choice", choices = SHOW, path = "tooltips.visibility.groupAuras",
+    apply = function() if ns.PartyFrames and ns.PartyFrames.ApplyAuraMouse then ns.PartyFrames.ApplyAuraMouse() end end }
 
 S:FontRows{ module = "tt", tab = "fonts", section = "tt.fonts", apply = Refresh, fonts = {
     { key = "title", path = "tooltips.titleFont" },

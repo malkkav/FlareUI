@@ -949,11 +949,40 @@ local function PassClicks(button)
     if button.SetPropagateMouseClicks then pcall(button.SetPropagateMouseClicks, button, true) end
 end
 
--- Party and raid tiles show no aura tooltips: hovering an icon falls through to the tile (its unit
--- tooltip, mouseover healing). Clicks still reach the icon. Boss tiles keep theirs.
+-- Party and raid tiles' aura tooltips: Tooltips > On Party/Raid Auras (tooltips.visibility.groupAuras).
+-- Never (the default): hovering an icon falls through to the tile (its unit tooltip, mouseover
+-- healing). Always: the icons take the mouse. Hide in Combat: only out of a fight, switched as one
+-- starts (PLAYER_REGEN_DISABLED, the last moment before lockdown) and ends, so mouseover healing
+-- works in it. Clicks reach the tile either way. Boss tiles keep theirs. (11-11, a player's request)
+local groupAuraButtons = setmetatable({}, { __mode = "k" })
+local inFight = false
+local function GroupAuraMouse()
+    local db = ns.db and ns.db.profile and ns.db.profile.tooltips
+    local mode = db and db.enabled and db.visibility and db.visibility.groupAuras or "never"
+    return mode == "always" or (mode == "combat" and not inFight)
+end
+
 local function NoAuraTooltip(f, button)
     if f and f.ctx and f.ctx.hostile then return end
-    if button.SetMouseMotionEnabled then pcall(button.SetMouseMotionEnabled, button, false) end
+    groupAuraButtons[button] = true
+    if button.SetMouseMotionEnabled then pcall(button.SetMouseMotionEnabled, button, GroupAuraMouse()) end
+end
+
+function PF.ApplyAuraMouse()
+    local on = GroupAuraMouse()
+    for button in pairs(groupAuraButtons) do
+        if button.SetMouseMotionEnabled then pcall(button.SetMouseMotionEnabled, button, on) end
+    end
+end
+
+do
+    local fight = CreateFrame("Frame")
+    fight:RegisterEvent("PLAYER_REGEN_DISABLED")
+    fight:RegisterEvent("PLAYER_REGEN_ENABLED")
+    fight:SetScript("OnEvent", function(_, event)
+        inFight = event == "PLAYER_REGEN_DISABLED"
+        if next(groupAuraButtons) then PF.ApplyAuraMouse() end
+    end)
 end
 
 -- A dispel type's symbol, drawn by Blizzard from the aura

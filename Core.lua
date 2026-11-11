@@ -701,6 +701,8 @@ local defaults = {
                 worldObjects = "always",
                 frameUnits = "always",
                 actionBars = "always",
+                auras = "always",       -- every buff and debuff icon's tooltip
+                groupAuras = "never",   -- party and raid aura icons: never takes the mouse (PartyFrames.lua)
             },
         },
 
