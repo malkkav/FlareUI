@@ -1764,10 +1764,12 @@ function Panel:Refresh()
         local results = S:Search(searchText)
         -- a word of one or two letters matches most rows: the first ones are shown
         local MAX_RESULTS = 60
-        local cut = #results > MAX_RESULTS
+        local found = #results
         for i = #results, MAX_RESULTS + 1, -1 do results[i] = nil end
-        page.searchTitle:SetText(cut and L["First %d results for \"%s\""]:format(MAX_RESULTS, searchText)
-            or L["Results for \"%s\""]:format(searchText))
+        -- how many matched (11-11); Enter goes to the first
+        page.searchTitle:SetText(L["%d found for \"%s\""]:format(found, searchText)
+            .. (found > MAX_RESULTS and ("  " .. GRAY_FONT_COLOR:WrapTextInColorCode(L["(first %d shown)"]:format(MAX_RESULTS))) or "")
+            .. (found > 0 and ("  " .. GRAY_FONT_COLOR:WrapTextInColorCode(L["Enter: go to the first"])) or ""))
         page.searchTitle:Show()
         y = -24
         if #results == 0 then
@@ -2331,6 +2333,14 @@ local function BuildWindow()
             Panel:Refresh()
         end)
     end)
+    -- Enter: straight to the first result, flashed
+    search:HookScript("OnEnterPressed", function(self)
+        local text = strtrim(self:GetText() or "")
+        if text == "" then return end
+        local first = S:Search(text)[1]
+        if first then Panel:JumpTo(first) end
+        self:ClearFocus()
+    end)
     frame.search = search
     BuildNav(left)
 
@@ -2479,6 +2489,8 @@ local function BuildWindow()
     -- (11-10: no "Preview" label or Pause button; the picture starts at the top)
     preview.canvas.frame:SetPoint("TOP", 0, -PAD)
     preview.canvas.frame:Hide()
+    -- the gamepad never stops on the pictures' sample buttons (they are only pictures)
+    preview.canvas.frame.padSkip = true
     preview.title = Text(right, "GameFontNormalLarge")
     preview.title:SetTextColor(1, 0.83, 0.47)
     preview.title:SetPoint("TOPLEFT", preview.picture, "BOTTOMLEFT", 0, -12)
