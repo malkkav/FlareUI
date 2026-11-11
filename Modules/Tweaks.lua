@@ -1620,6 +1620,15 @@ local function StretchHealthBar(unitFrame)
     if not (container and cast) or container:IsForbidden() then return end
     local spacing = _G.NamePlateSetupOptions and _G.NamePlateSetupOptions.castBarToHealthBarSpacing or 0
     pcall(container.SetPoint, container, "BOTTOMRIGHT", cast, "TOPRIGHT", 0, spacing)
+    -- the crowd control and loss-of-control icons right after the bar: Blizzard puts them past the
+    -- level box's width too, which left a gap with the box hidden (a player's report 11-11)
+    local auras = unitFrame.AurasFrame
+    if auras and not auras:IsForbidden() then
+        for _, key in ipairs({ "CrowdControlListFrame", "LossOfControlFrame" }) do
+            local list = auras[key]
+            if list and not list:IsForbidden() then pcall(list.SetPoint, list, "LEFT", container, "RIGHT", 5, 0) end
+        end
+    end
 end
 
 local function ApplyHideLevel(plate)
