@@ -633,6 +633,33 @@ local function PlaceHitButton(hit, f, g, dx, dy, w, h)
     hit:EnableMouse(not LEM:IsInEditMode())
 end
 
+-- A hit button placed (when f is given) and shown or hidden. They are secure: in a fight the change waits
+-- for its end (a druid's shapeshift re-lays the bars in combat when Shift Mana comes or goes: blocked
+-- ClearAllPoints, a player's report 11-11). The ring itself doesn't move then, so nothing is missed.
+local hitWaiting, hitEvents = {}, nil
+local function SetHit(hit, shown, f, g, dx, dy, w, h)
+    if InCombatLockdown() then
+        local wait = hitWaiting[hit] or {}
+        wait.shown = shown
+        if f then wait.f, wait.g, wait.dx, wait.dy, wait.w, wait.h = f, g, dx, dy, w, h end
+        hitWaiting[hit] = wait
+        if not hitEvents then
+            hitEvents = CreateFrame("Frame")
+            hitEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
+            hitEvents:SetScript("OnEvent", function()
+                for button, w8 in pairs(hitWaiting) do
+                    hitWaiting[button] = nil
+                    SetHit(button, w8.shown, w8.f, w8.g, w8.dx, w8.dy, w8.w, w8.h)
+                end
+            end)
+        end
+        return
+    end
+    hitWaiting[hit] = nil
+    if f then PlaceHitButton(hit, f, g, dx, dy, w, h) end
+    hit:SetShown(shown and true or false)
+end
+
 -- The frame runs on under the ring, which hid its end until the frame faded. A round hole cut in
 -- everything there (under the rim, so no gap shows) leaves nothing to see through the portrait.
 -- CLAMPTOWHITE: past the mask's own square nothing is cut, however wide the frame.
@@ -876,8 +903,7 @@ function Ring.Layout(f)
     for i = 1, ring.Art:GetNumPoints() do ring.Tint:SetPoint(ring.Art:GetPoint(i)) end
     ring.TintMask:SetSize(g.D * TINT_RIM_SHARE, g.D * TINT_RIM_SHARE)
     if ring.Hit then
-        PlaceHitButton(ring.Hit, f, g, 0, 0, g.D, g.D)
-        ring.Hit:Show()
+        SetHit(ring.Hit, true, f, g, 0, 0, g.D, g.D)
     end
 
     local size = g.D * PORTRAIT_SHARE
@@ -938,8 +964,8 @@ function Ring.LayoutLevel(f, g)
     SetDiscHole(f, ring, placed and ring.Disc:IsShown(), w * LEVEL_SCALE)
     local dx, dy, dw, dh = Place(f, g, e)
     if ring.DiscHit then
-        if dx then PlaceHitButton(ring.DiscHit, f, g, dx, dy, dw, dh) end
-        ring.DiscHit:SetShown(dx and ring.Disc:IsShown() or false)
+        if dx then SetHit(ring.DiscHit, ring.Disc:IsShown(), f, g, dx, dy, dw, dh)
+        else SetHit(ring.DiscHit, false) end
     end
     f.Level:SetParent(ring.Disc)
     f.Level:ClearAllPoints()
@@ -1103,8 +1129,8 @@ function Ring.Reset(f)
     local level = f:GetFrameLevel()
     ring:Hide()
     RemoveBarHole(ring)
-    if ring.Hit then ring.Hit:Hide() end
-    if ring.DiscHit then ring.DiscHit:Hide() end
+    if ring.Hit then SetHit(ring.Hit, false) end
+    if ring.DiscHit then SetHit(ring.DiscHit, false) end
     f.Level:SetAlpha(1)
     f.Portrait:SetFrameLevel(level + 1)
     f.Overlay:SetFrameLevel(level + 5)
