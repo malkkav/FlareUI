@@ -287,6 +287,20 @@ local function ThinEdge(f)
     return edge
 end
 
+-- FlareUI Thick (12 px edge), on its own frame over f as ThinEdge: tabs, buttons and dropdowns (11-11
+-- Marcus: heavier, closer to Forever's own panels)
+local THICK = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thick.tga"
+local THICK_EDGE, THICK_INSET = 12, 4
+local function ThickEdge(f)
+    local edge = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    edge:SetAllPoints()
+    edge:SetFrameLevel(f:GetFrameLevel() + 1)
+    edge:SetBackdrop({ edgeFile = THICK, edgeSize = THICK_EDGE })
+    edge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1)
+    f.edge = edge
+    return edge
+end
+
 local function Box(f, alpha)
     ThinBackdrop(f, true)
     f:SetBackdropColor(0, 0, 0, alpha or 0.28)
@@ -296,14 +310,14 @@ Panel.Box = Box
 -- A bronze plate button: the page's tabs and the window's Settings / What's New. Lit when selected.
 local function Plate(parent, font)
     local b = CreateFrame("Button", nil, parent)
-    ThinEdge(b)
+    ThickEdge(b)
     b.fill = b:CreateTexture(nil, "BACKGROUND")
-    b.fill:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
-    b.fill:SetPoint("BOTTOMRIGHT", -THIN_INSET, THIN_INSET)
+    b.fill:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
+    b.fill:SetPoint("BOTTOMRIGHT", -THICK_INSET, THICK_INSET)
     b.fill:SetColorTexture(1, 1, 1)
     b.shine = b:CreateTexture(nil, "BORDER")
-    b.shine:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
-    b.shine:SetPoint("TOPRIGHT", -THIN_INSET, -THIN_INSET)
+    b.shine:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
+    b.shine:SetPoint("TOPRIGHT", -THICK_INSET, -THICK_INSET)
     b.shine:SetHeight(1)
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints(b.fill)
@@ -376,28 +390,54 @@ local function Pill(parent, layer, sub, inset, height)
 end
 Panel.Pill = Pill
 
--- The on / off switch: a 44 x 20 pill, dark with a grey knob when off, warm gold with a light knob
--- on the right when on. A plain CheckButton: SetChecked / GetChecked / Click work as before.
+-- The on / off switch (11-11 Marcus: more physical): a 40 x 20 bronze-rimmed track of the game's rock,
+-- cut to a pill (Media/Panel/PillMask.tga) and shaded along its top so it sits into the panel; dark
+-- stone with a grey knob when off, the stone warmed gold with a light knob on the right when on. The
+-- knob casts a small shadow. A plain CheckButton: SetChecked / GetChecked / Click work as before.
+local PILL_MASK = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PillMask.tga"
 local function PaintSwitch(s)
     local on = s:GetChecked()
     if on then
         s.rim:SetColor(0.85, 0.70, 0.42)
-        s.fill:SetGradient({ 0.64, 0.48, 0.21 }, { 0.43, 0.31, 0.13 })
+        s.stone:SetVertexColor(0.95, 0.72, 0.36)
         s.knob:SetVertexColor(0.98, 0.94, 0.81)
     else
         if s.hovered then s.rim:SetColor(0.69, 0.54, 0.31) else s.rim:SetColor(0.35, 0.27, 0.16) end
-        s.fill:SetGradient({ 0.03, 0.026, 0.02 }, { 0.07, 0.058, 0.04 })
-        s.knob:SetVertexColor(0.44, 0.40, 0.35)
+        s.stone:SetVertexColor(0.34, 0.30, 0.26)
+        s.knob:SetVertexColor(0.52, 0.48, 0.42)
     end
+    local x = on and 23 or 3
     s.knob:ClearAllPoints()
-    s.knob:SetPoint("LEFT", on and 27 or 3, 0)
+    s.knob:SetPoint("LEFT", x, 0)
+    s.knobShadow:ClearAllPoints()
+    s.knobShadow:SetPoint("CENTER", s.knob, "CENTER", 1, -1.5)
 end
 local function Switch(parent)
     local s = CreateFrame("CheckButton", nil, parent)
-    s:SetSize(44, 20)
+    s:SetSize(40, 20)
     s.rim = Pill(s, "BACKGROUND", 1, 0, 20)
-    s.fill = Pill(s, "BACKGROUND", 2, 1, 20)
-    s.knob = s:CreateTexture(nil, "ARTWORK")
+    -- the stone, 1 px inside the rim, cut to the pill
+    s.stone = s:CreateTexture(nil, "BACKGROUND", nil, 2)
+    s.stone:SetPoint("TOPLEFT", 1, -1)
+    s.stone:SetPoint("BOTTOMRIGHT", -1, 1)
+    s.stone:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
+    s.stone:SetHorizTile(true)
+    s.stone:SetVertTile(true)
+    s.mask = s:CreateMaskTexture()
+    s.mask:SetTexture(PILL_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    s.mask:SetAllPoints(s.stone)
+    s.stone:AddMaskTexture(s.mask)
+    -- the recess: shade along the top
+    s.recess = s:CreateTexture(nil, "BACKGROUND", nil, 3)
+    s.recess:SetAllPoints(s.stone)
+    s.recess:SetColorTexture(1, 1, 1)
+    s.recess:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0), CreateColor(0, 0, 0, 0.6))
+    s.recess:AddMaskTexture(s.mask)
+    s.knobShadow = s:CreateTexture(nil, "ARTWORK", nil, 1)
+    s.knobShadow:SetTexture(CIRCLE)
+    s.knobShadow:SetSize(16, 16)
+    s.knobShadow:SetVertexColor(0, 0, 0, 0.55)
+    s.knob = s:CreateTexture(nil, "ARTWORK", nil, 2)
     s.knob:SetTexture(CIRCLE)
     s.knob:SetSize(14, 14)
     -- a click changes the state without SetChecked: PostClick paints it (OnClick belongs to the row)
@@ -419,15 +459,15 @@ local function SkinButton(b)
         if r:IsObjectType("Texture") then r:SetAlpha(0) end
     end
     if b.NineSlice then b.NineSlice:Hide() end
-    b.fEdge = ThinEdge(b)
+    b.fEdge = ThickEdge(b)
     b.fFill = b:CreateTexture(nil, "BACKGROUND", nil, 2)
-    b.fFill:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
-    b.fFill:SetPoint("BOTTOMRIGHT", -THIN_INSET, THIN_INSET)
+    b.fFill:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
+    b.fFill:SetPoint("BOTTOMRIGHT", -THICK_INSET, THICK_INSET)
     b.fFill:SetColorTexture(1, 1, 1)
     b.fFill:SetGradient("VERTICAL", CreateColor(0.09, 0.065, 0.04, 1), CreateColor(0.24, 0.17, 0.10, 1))
     b.fShine = b:CreateTexture(nil, "BACKGROUND", nil, 3)
-    b.fShine:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
-    b.fShine:SetPoint("TOPRIGHT", -THIN_INSET, -THIN_INSET)
+    b.fShine:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
+    b.fShine:SetPoint("TOPRIGHT", -THICK_INSET, -THICK_INSET)
     b.fShine:SetHeight(1)
     b.fShine:SetColorTexture(1, 0.9, 0.67, 0.12)
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
@@ -453,11 +493,13 @@ local function SkinDropdown(dd)
     for _, r in ipairs({ dd:GetRegions() }) do
         if r:IsObjectType("Texture") and r ~= dd.Arrow then r:SetAlpha(0) end
     end
-    local h = dd:GetHeight()
-    dd.fRim = Pill(dd, "BACKGROUND", 1, 0, h)
-    dd.fRim:SetColor(0.47, 0.36, 0.22)
-    dd.fFill = Pill(dd, "BACKGROUND", 2, 1, h)
-    dd.fFill:SetColor(0.06, 0.047, 0.032)
+    -- (11-11 Marcus: squared and heavier, its middle the buttons' brown, as Forever's own dropdowns)
+    dd.fEdge = ThickEdge(dd)
+    dd.fFill = dd:CreateTexture(nil, "BACKGROUND", nil, 2)
+    dd.fFill:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
+    dd.fFill:SetPoint("BOTTOMRIGHT", -THICK_INSET, THICK_INSET)
+    dd.fFill:SetColorTexture(1, 1, 1)
+    dd.fFill:SetGradient("VERTICAL", CreateColor(0.09, 0.065, 0.04, 1), CreateColor(0.24, 0.17, 0.10, 1))
     if dd.Arrow then
         dd.Arrow:SetAlpha(0)
         dd.fChevron = dd:CreateTexture(nil, "OVERLAY")
@@ -473,8 +515,8 @@ local function SkinDropdown(dd)
         end
     end
     if dd.Text then dd.Text:SetFontObject(_G[PANEL_FONT.GameFontHighlightSmall]) end
-    dd:HookScript("OnEnter", function(self) self.fRim:SetColor(0.69, 0.54, 0.31) end)
-    dd:HookScript("OnLeave", function(self) self.fRim:SetColor(0.47, 0.36, 0.22) end)
+    dd:HookScript("OnEnter", function(self) self.fEdge:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1) end)
+    dd:HookScript("OnLeave", function(self) self.fEdge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1) end)
 end
 Panel.SkinDropdown = SkinDropdown
 
@@ -1261,11 +1303,16 @@ end
 
 -- Edit button, greyed in combat
 local function EditButton(f, onClick)
-    local b = CreateFrame("Button", nil, f, "BackdropTemplate")
-    ThinBackdrop(b, true)
-    b:SetBackdropColor(0.13, 0.095, 0.06, 1)
-    b:HookScript("OnEnter", function(self) if self:IsEnabled() then self:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1) end end)
-    b:HookScript("OnLeave", function(self) self:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1) end)
+    local b = CreateFrame("Button", nil, f)
+    -- the panel buttons' look: the Thick edge over the brown fill
+    ThickEdge(b)
+    local fill = b:CreateTexture(nil, "BACKGROUND")
+    fill:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
+    fill:SetPoint("BOTTOMRIGHT", -THICK_INSET, THICK_INSET)
+    fill:SetColorTexture(1, 1, 1)
+    fill:SetGradient("VERTICAL", CreateColor(0.09, 0.065, 0.04, 1), CreateColor(0.24, 0.17, 0.10, 1))
+    b:HookScript("OnEnter", function(self) if self:IsEnabled() then self.edge:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1) end end)
+    b:HookScript("OnLeave", function(self) self.edge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1) end)
     local label = Text(b, "GameFontNormal", "CENTER")   -- gold, like the panel buttons
     label:SetAllPoints(); b:SetFontString(label)
     b:SetScript("OnDisable", function(self) self:SetAlpha(0.4) end)

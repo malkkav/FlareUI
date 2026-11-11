@@ -72,10 +72,29 @@ const ICONS = {
   rm: [DIAL, seg(12, 4, 12, 8), seg(12, 16, 12, 20), seg(4, 12, 8, 12), seg(16, 12, 20, 12)],
   qol: [DIAL, ...poly([[9, 12], [11, 14], [15, 10]])],
 };
+// the switch's stone track: a pill, 2:1 (Media/Panel/PillMask.tga, a mask)
+(() => {
+  const W = 64, H = 32, r = 16;
+  const header = Buffer.alloc(18);
+  header[2] = 2; header.writeUInt16LE(W, 12); header.writeUInt16LE(H, 14); header[16] = 32; header[17] = 0x28;
+  const px = Buffer.alloc(W * H * 4);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let n = 0;
+    for (let sy = 0; sy < 4; sy++) for (let sx = 0; sx < 4; sx++) {
+      const fx = x + (sx + 0.5) / 4, fy = y + (sy + 0.5) / 4;
+      const cx = Math.max(r, Math.min(W - r, fx));
+      if (Math.hypot(fx - cx, fy - r) <= r - 0.5) n++;
+    }
+    const i = (y * W + x) * 4;
+    px[i] = px[i + 1] = px[i + 2] = 255; px[i + 3] = Math.round(n / 16 * 255);
+  }
+  fs.writeFileSync(path.join(ROOT, 'PillMask.tga'), Buffer.concat([header, px]));
+})();
+
 // the dropdowns' arrow: a down chevron (Media/Panel/Chevron.tga)
 tga(path.join(ROOT, 'Chevron.tga'), 32, coverage(32, 32 / 24, (x, y) => poly([[6, 9.5], [12, 15.5], [18, 9.5]]).some((s) => s(x, y))));
 
 for (const [key, shapes] of Object.entries(ICONS)) {
   tga(path.join(ROOT, 'Icons', key + '.tga'), 32, coverage(32, 32 / 24, (x, y) => shapes.some((s) => s(x, y))));
 }
-console.log('panel art: Circle.tga + ' + Object.keys(ICONS).length + ' icons');
+console.log('panel art: Circle.tga, PillMask.tga + ' + Object.keys(ICONS).length + ' icons');
