@@ -329,6 +329,7 @@ local function Rounded(tex, r, g, b, a)
     return tex
 end
 Panel.Rounded = Rounded
+Panel.ThickEdge = function(f) return ThickEdge(f) end
 
 local function Box(f, alpha)
     ThinBackdrop(f, true)
@@ -1702,6 +1703,15 @@ local function RingIcon(tex, parent)
     tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     tex.ftRing:Show()
 end
+-- a module's game icon in the round aura look, size x size, on parent (the tour's summary)
+Panel.ModuleIcon = function(parent, key, size)
+    local tex = parent:CreateTexture(nil, "ARTWORK")
+    tex:SetSize(size, size)
+    tex:SetTexture("Interface\\Icons\\" .. (GAME_ICONS[key] or "INV_Misc_QuestionMark"))
+    RingIcon(tex, parent)
+    return tex
+end
+
 Panel.GameIcons = function(on)
     if ns.db and ns.db.global then ns.db.global.panelLineIcons = not on or nil end
 end
@@ -2292,6 +2302,76 @@ end)
 --------------------------------------------------
 -- 7. THE WINDOW
 --------------------------------------------------
+-- The look for FlareUI's other windows (the setup tour): the same stone, glow and shade, the heavy bronze
+-- frame with its rivets top left and bottom right, and a close button in its top right corner (returned).
+-- Without the frame's art (a client that lacks it), the tooltip edge.
+function Panel.DressWindow(f)
+    f:SetBackdrop(nil)
+    local art = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+    art:SetPoint("TOPLEFT", 3, 8)
+    art:SetPoint("BOTTOMRIGHT", -3, -8)
+    art:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
+    art:SetHorizTile(true)
+    art:SetVertTile(true)
+    local wash = f:CreateTexture(nil, "BACKGROUND", nil, 2)
+    wash:SetAllPoints(art)
+    wash:SetColorTexture(0.05, 0.038, 0.026, 0.35)
+    local glow = f:CreateTexture(nil, "BACKGROUND", nil, 3)
+    glow:SetPoint("TOPLEFT", art)
+    glow:SetPoint("TOPRIGHT", art)
+    glow:SetHeight(220)
+    glow:SetColorTexture(1, 1, 1)
+    glow:SetGradient("VERTICAL", CreateColor(0.55, 0.41, 0.22, 0), CreateColor(0.55, 0.41, 0.22, 0.20))
+    local shade = f:CreateTexture(nil, "BACKGROUND", nil, 3)
+    shade:SetPoint("BOTTOMLEFT", art)
+    shade:SetPoint("BOTTOMRIGHT", art)
+    shade:SetHeight(240)
+    shade:SetColorTexture(1, 1, 1)
+    shade:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0.5), CreateColor(0, 0, 0, 0))
+    local edge
+    if C_Texture.GetAtlasInfo("heavybronze-frame-basic") then
+        local b = CreateFrame("Frame", nil, f)
+        b:SetAllPoints()
+        b:SetFrameLevel(f:GetFrameLevel() + 30)
+        edge = b:CreateTexture(nil, "BORDER")
+        edge:SetAtlas("heavybronze-frame-basic")
+        edge:SetPoint("TOPLEFT", -9, 15)
+        edge:SetPoint("BOTTOMRIGHT", 9, -15)
+        for _, c in ipairs({ { "TL", "TOPLEFT" }, { "BR", "BOTTOMRIGHT" } }) do
+            local t = b:CreateTexture(nil, "ARTWORK")
+            t:SetAtlas("heavybronze-horz-cornerbracket-" .. c[1], true)
+            t:SetPoint(c[2], edge, c[2])
+        end
+    else
+        art:SetPoint("TOPLEFT", 3, -3)
+        art:SetPoint("BOTTOMRIGHT", -3, 3)
+        f:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16 })
+        local c = ns.WINDOW_STYLE.border
+        f:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+    end
+    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    if edge then close:SetPoint("TOPRIGHT", edge, "TOPRIGHT", -2, -2) else close:SetPoint("TOPRIGHT", -4, -4) end
+    close:SetFrameLevel(f:GetFrameLevel() + 40)
+    return close
+end
+
+-- A picture's bronze rim and soft shade (the Info Panel dog's), behind tex on parent; pad: how much
+-- larger than the picture the rim is drawn
+function Panel.RimPicture(parent, tex, pad)
+    local w, h = tex:GetSize()
+    local rim = parent:CreateTexture(nil, "ARTWORK", nil, -2)
+    rim:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PictureRim.tga")
+    rim:SetPoint("CENTER", tex, "CENTER")
+    rim:SetSize(w + pad, h + pad)
+    rim:SetVertexColor(0.78, 0.6, 0.34)
+    local shade = parent:CreateTexture(nil, "ARTWORK", nil, -3)
+    shade:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PictureShade.tga")
+    shade:SetPoint("CENTER", tex, "CENTER")
+    shade:SetSize(w + pad + 14, h + pad + 14)
+    shade:SetVertexColor(0, 0, 0, 1)
+    return rim, shade
+end
+
 --------------------------------------------------
 -- 6b. THE WINDOW'S STONE AND FRAME (11-11): Marcus picked the natural rock and the character select's
 -- heavy bronze frame (rivets on the top corners only). /fui bg [n] and /fui frame [n] still try the

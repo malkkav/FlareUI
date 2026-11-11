@@ -213,7 +213,7 @@ function P.Show(canvas, spec)
         -- A specimen must never abort Panel:Refresh after its controls were released.
         canvas:Reset()
         canvas.frame:Hide()
-        if P.lastError ~= err then
+        if not canvas.quiet and P.lastError ~= err then
             P.lastError = err
             if geterrorhandler then pcall(geterrorhandler(), err) end
         end
