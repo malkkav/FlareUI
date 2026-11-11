@@ -35,6 +35,17 @@ local function addWindow(id, name, special)
 end
 addWindow(1,'General'); addWindow(2,'Combat Log'); addWindow(3,'Social')
 DEFAULT_CHAT_FRAME = frames[1]
+GeneralDockManager={DOCKED_CHAT_FRAMES={frames[1],frames[2],frames[3]}}
+local function undock(f)
+    for i,v in ipairs(GeneralDockManager.DOCKED_CHAT_FRAMES) do if v==f then table.remove(GeneralDockManager.DOCKED_CHAT_FRAMES,i);return end end
+end
+local moves=0
+ns.Chat.MoveWindowBefore=function(_,f,before)
+    undock(f)
+    local index=#GeneralDockManager.DOCKED_CHAT_FRAMES+1
+    for i,v in ipairs(GeneralDockManager.DOCKED_CHAT_FRAMES) do if v==before then index=i;break end end
+    table.insert(GeneralDockManager.DOCKED_CHAT_FRAMES,index,f);moves=moves+1
+end
 IsCombatLog = function(f) return f.id==2 end
 GetChatWindowInfo = function(id) local w=windows[id]; if not w then return '' end; return w.name,14,0,0,0,0,w.shown,false,w.docked,false end
 GetChatWindowMessages = function(id) return unpack(list(windows[id].messages)) end
@@ -51,15 +62,32 @@ hooksecurefunc = function(name,fn) hooks[name]=hooks[name] or {};table.insert(ho
 CreateFrame = function() return {SetScript=function(self,k,v) self[k]=v end,RegisterEvent=function() end,UnregisterAllEvents=function() end} end
 C_Timer = {After=function(_,fn) fn() end}
 FCF_CanOpenNewWindow = function() return windows[4]==nil or not windows[4].shown end
-FCF_OpenNewWindow = function(name,blank) if not FCF_CanOpenNewWindow() then return end;local f=addWindow(4,name);windows[4].messages={};windows[4].channels={};f.messageTypeList={};f.channelList={};f.zoneChannelList={};fire('FCF_OpenNewWindow',name,blank);return f,4 end
-FCF_Close = function(f) windows[f.id].shown=false;windows[f.id].docked=false;fire('FCF_Close',f) end
+FCF_OpenNewWindow = function(name,blank) if not FCF_CanOpenNewWindow() then return end;local f=addWindow(4,name);table.insert(GeneralDockManager.DOCKED_CHAT_FRAMES,f);windows[4].messages={};windows[4].channels={};f.messageTypeList={};f.channelList={};f.zoneChannelList={};fire('FCF_OpenNewWindow',name,blank);return f,4 end
+FCF_Close = function(f) undock(f);windows[f.id].shown=false;windows[f.id].docked=false;fire('FCF_Close',f) end
 FCF_SetWindowName = function(f,name) windows[f.id].name=name;fire('FCF_SetWindowName',f,name) end
-ns.Chat.PopOutWindow=function(_,f) f.isDocked=false;windows[f.id].docked=false end
-ns.Chat.DockWindow=function(_,f) f.isDocked=true;windows[f.id].docked=true end
+ns.Chat.PopOutWindow=function(_,f) undock(f);f.isDocked=false;windows[f.id].docked=false end
+ns.Chat.DockWindow=function(_,f) undock(f);table.insert(GeneralDockManager.DOCKED_CHAT_FRAMES,f);f.isDocked=true;windows[f.id].docked=true end
 local function load(path) local f=loadfile(path); if f then f('FlareUI',ns) end end
 load('Modules/ChatBuilderCatalog.lua'); load('Modules/ChatBuilder.lua')
 assert(ns.ChatBuilder, 'chat builder backend is missing')
 local B = ns.ChatBuilder
+-- Preset intent: broad everyday chat, focused social/group/reward/trade windows.
+local presets={};local known={}
+for _,cat in ipairs(ns.ChatBuilderCatalog.categories) do for _,entry in ipairs(cat.entries) do known[entry[1]]=true end end
+for _,preset in ipairs(ns.ChatBuilderCatalog.presets) do
+    presets[preset.id]=preset
+    local seen={}
+    for _,group in ipairs(preset.messages) do assert(known[group] and not seen[group],'preset group must be catalogued and unique');seen[group]=true end
+    for _,channel in ipairs(preset.channels) do assert(ns.ChatBuilderCatalog.channelNames[channel],'preset channels need stable known identities') end
+end
+assert(set(presets.general.channels)['zone:1'] and set(presets.general.channels)['zone:22'])
+assert(set(presets.general.messages).MONSTER_WHISPER and set(presets.general.messages).MONSTER_BOSS_EMOTE,'general retains quest and encounter dialogue')
+assert(set(presets.social.messages).YELL and set(presets.social.messages).GUILD and #presets.social.channels==0)
+assert(set(presets.group.messages).BG_NEUTRAL and set(presets.group.messages).RAID_WARNING and #presets.group.channels==0)
+assert(set(presets.loot.messages).COMBAT_HONOR_GAIN and set(presets.loot.messages).TRADESKILLS and #presets.loot.channels==0)
+assert(set(presets.trade.channels)['zone:2'] and set(presets.trade.channels)['zone:42'] and set(presets.trade.messages).WHISPER,'trade includes channels and replies')
+assert(#presets.blank.messages==0 and #presets.blank.channels==0)
+
 B:Watch(function() end)
 local function handle(id) for _,h in ipairs(B:Windows()) do if h.id==id then return h end end end
 local h=assert(handle(3))
@@ -100,6 +128,15 @@ assert(#copyResult.skipped>0,'duplicate reports unavailable channel assignments'
 assert(not B:Duplicate(h,'No room'),'duplicate respects client capacity')
 assert(B:Close(duplicate))
 local created=assert(B:Create('New','blank')); assert(created.id==4)
+assert(not B:Move(h,-1),'cannot move before protected Combat Log')
+assert(not B:Move(handle(1),1) and not B:Move(handle(2),1),'fixed windows cannot move')
+assert(B:Move(created,-1));assert(B:Windows()[3].id==4 and B:Windows()[4].id==3,'list must follow dock order')
+assert(B:Move(created,1));assert(B:Windows()[4].id==4,'moving down restores order')
+assert(not B:Move(created,1),'end boundary cannot move')
+combat=true;assert(not B:Move(created,-1));combat=false
+assert(B:SetDocked(created,false));assert(not B:Move(created,-1),'popped windows cannot reorder dock')
+assert(B:SetDocked(created,true));assert(moves==2,'invalid moves never call dock mutation')
+
 assert(not B:Create('Full','blank'));assert(windows[3].name=='Social', 'capacity failure preserves existing windows')
 assert(B:Close(h)); windows[3].shown=true;windows[3].docked=true
 assert(not B:Rename(h,'Stale'), 'closed/reused frame must reject old handle even with same name')

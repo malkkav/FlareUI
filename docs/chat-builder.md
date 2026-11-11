@@ -10,7 +10,20 @@ The test build has separate addon preferences (`FlareUI_Chat2_DB`, `FlareUI_Chat
 
 Open **FlareUI → Chat → Builder**. Select a window, then choose which messages and joined channels it displays. Use the preset menu to inspect General, Social, Group, Loot, Trade, or Blank; **New window** creates an empty window, **Duplicate** copies the selected window into a new one, and **Create from preset** creates a window from the selected preset. **Replace window filters** replaces that window's supported filters after confirmation. **Save preset** creates an account-wide template from the saved selections.
 
-Builder keeps the standard settings-panel dimensions and reuses its fonts, switches, dropdowns, selected buttons, and slim scrollbars. The selected window is highlighted and named in the editing header. **Selected only** shows enabled filters across all categories. Appearance remains in the existing Frame, Tweaks, and Fonts tabs. Choose one content category from the selector to see a compact two-column checklist; each category shows its selected/total count. Search spans all categories, and clearing it returns to the selected category. All/None continues to affect the entire named category, including when search hides some entries.
+Builder keeps the standard settings-panel dimensions and reuses its fonts, switches, dropdowns, selected buttons, and slim scrollbars. The selected window is highlighted and named in the editing header. The window list follows the dock tab order; Move up/Move down moves the selected docked tab left/right immediately and saves its position. General and Combat Log keep their positions; popped-out windows are positioned by dragging. Creation guidance lives in button tooltips to leave more room for the window list. **Selected only** shows enabled filters across all categories. Appearance remains in the existing Frame, Tweaks, and Fonts tabs. Choose one content category from the selector to see a compact two-column checklist; each category shows its selected/total count. Search spans all categories, and clearing it returns to the selected category. All/None continues to affect the entire named category, including when search hides some entries.
+
+Built-in presets are intentionally focused:
+
+| Preset | Messages | Public channels |
+| --- | --- | --- |
+| General | Nearby chat, whispers, guild, groups, system, quest and encounter dialogue | General, Local Defense |
+| Social | Nearby chat, whispers, guild/officer/Discord, achievements | None |
+| Group | Party/raid/instance and leaders, raid warnings, whispers, boss messages, pings, battleground notices | None |
+| Loot | Items, money, currency, XP, honor, reputation, skill/crafting, opening, appearances | None |
+| Trade | Whispers and Battle.net replies | Trade, Services |
+| Blank | None | None |
+
+Client-specific or custom channels (such as OOC) remain opt-in in Public Channels. Unavailable public channels are skipped and reported, never joined. Updating these built-in templates does not overwrite existing windows or saved custom presets; load a template explicitly to use its revised filters.
 
 Filters update active routing and saved settings immediately through Blizzard's chat-frame methods. No reload is required. Native settings remain available after edits. A rejected batch attempts to restore its previous selections; any restoration failure is reported.
 

@@ -102,7 +102,7 @@ categoryDrop.menu(categoryDrop,{CreateRadio=function(_,name,checked,action) cate
 categories['Public Channels']()
 for _,o in ipairs(objects) do if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then assert(o.parent.entry.kind=='channel','category selection must show only its own filters') end end
 categories.Groups()
-local social=click('Social');assert(social.isSelected,'selected window must be highlighted');click('Rename');local before=GetChatWindowInfo(3)
+local social=click('Social');click('Move up');assert(ns.ChatBuilder:Windows()[3].id==3,'UI reorders selected dock tab');click('Move down');assert(ns.ChatBuilder:Windows()[4].id==3);click('Move up');assert(click('Social').isSelected,'selected window must be highlighted');click('Rename');local before=GetChatWindowInfo(3)
 assert(before=='Social','opening rename must not mutate');accept('Friends');assert(GetChatWindowInfo(3)=='Friends')
 click('Save preset');accept('Friends preset')
 local found;for _,p in ipairs(ns.ChatBuilder:Presets()) do if p.name=='Friends preset' then found=p end end

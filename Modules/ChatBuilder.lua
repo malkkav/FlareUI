@@ -64,6 +64,15 @@ function B:Windows()
                 special=(id == 2 or (IsCombatLog and IsCombatLog(frame))) and true or false, primary=(id == 1 or frame == DEFAULT_CHAT_FRAME)}
         end
     end
+    local order={}
+    local dock=GeneralDockManager
+    for i,frame in ipairs(dock and dock.DOCKED_CHAT_FRAMES or {}) do order[frame]=i end
+    table.sort(out,function(a,b)
+        local ai,bi=order[a.frame],order[b.frame]
+        if ai and bi then return ai<bi end
+        if ai or bi then return ai~=nil end
+        return a.id<b.id
+    end)
     return out
 end
 local function Current(handle)
@@ -390,6 +399,30 @@ function B:SetDocked(handle,enabled)
     if not method then return nil,L["Chat configuration is unavailable on this client."] end
     method(ns.Chat,window.frame);SavedChanged();return true
 end
+-- Direction follows the vertical Builder list and the horizontal dock tab order.
+function B:MoveTarget(handle,direction)
+    local window=Guard(handle)
+    if not window or window.primary or not window.docked or (direction~=-1 and direction~=1) then return end
+    if not ns.Chat.MoveWindowBefore then return end
+    local list=GeneralDockManager and GeneralDockManager.DOCKED_CHAT_FRAMES
+    if not list then return end
+    for i,frame in ipairs(list) do
+        if frame==window.frame then
+            local target=list[i+direction]
+            if not target or target==DEFAULT_CHAT_FRAME or target==ChatFrame2 or (IsCombatLog and IsCombatLog(target)) then return end
+            return target,i,list
+        end
+    end
+end
+function B:Move(handle,direction)
+    local window,err=Guard(handle);if not window then return nil,err end
+    local target,index,list=self:MoveTarget(window,direction)
+    if not target then return nil,L["This window cannot move further in that direction."] end
+    local before=direction==-1 and target or list[index+2]
+    ns.Chat:MoveWindowBefore(window.frame,before)
+    if list[index+direction]~=window.frame then return nil,L["The chat window order could not be changed."] end
+    SavedChanged();return true
+end
 function B:OpenBlizzard(handle)
     local window,err=Guard(handle,true);if not window then return nil,err end
     if not ChatConfigFrame then return nil,L["Chat configuration is unavailable on this client."] end
@@ -402,7 +435,7 @@ function B:Watch(callback)
     observers[callback]=true
     if not hooked then
         hooked=true
-        for _, name in ipairs({"FCF_Close","FCF_OpenNewWindow","FCF_SetWindowName","FCF_DockFrame","FCF_UnDockFrame","AddChatWindowMessages","RemoveChatWindowMessages","AddChatWindowChannel","RemoveChatWindowChannel"}) do
+        for _, name in ipairs({"FCF_Close","FCF_OpenNewWindow","FCF_SetWindowName","FCF_DockFrame","FCF_UnDockFrame","FCFDock_UpdateTabs","AddChatWindowMessages","RemoveChatWindowMessages","AddChatWindowChannel","RemoveChatWindowChannel"}) do
             if type(_G[name])=="function" then
                 hooksecurefunc(name,function(frame,fallback)
                     if name=="FCF_Close" then

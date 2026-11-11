@@ -2077,6 +2077,12 @@ local function MoveDockedWindow(frame, before)
     FCFDock_UpdateTabs(dock)
 end
 
+-- Builder and drag-and-drop share the same ordering and persistence rules.
+function Chat:MoveWindowBefore(frame, before)
+    if InCombatLockdown() then return end
+    MoveDockedWindow(frame, before)
+end
+
 local function OnTabDragStart(self)
     local scrollFrame = self.scrollFrame
     -- a popped window's tab is its handle
