@@ -1688,7 +1688,9 @@ local GAME_ICONS = {
 }
 local RING_MASK, RING_ART, RING_TINT = "talents-node-circle-mask", "talents-node-circle-gray", { 0.72, 0.56, 0.38 }
 local function GameIcons()
-    return not (ns.db and ns.db.global and ns.db.global.panelLineIcons)
+    -- (the look tests' saved switch, 11-11, retired)
+    if ns.db and ns.db.global then ns.db.global.panelLineIcons = nil end
+    return true
 end
 -- an icon texture in the round look: masked to the circle, the ring over it (made once per texture)
 local function RingIcon(tex, parent)
@@ -1714,9 +1716,6 @@ Panel.ModuleIcon = function(parent, key, size)
     return tex
 end
 
-Panel.GameIcons = function(on)
-    if ns.db and ns.db.global then ns.db.global.panelLineIcons = not on or nil end
-end
 
 local function UpdateHeader(module)
     page.title:SetText(module:Title())
@@ -2378,21 +2377,11 @@ end
 
 --------------------------------------------------
 -- 6b. THE WINDOW'S STONE AND FRAME (11-11): Marcus picked the natural rock and the character select's
--- heavy bronze frame (rivets on the top corners only). /fui bg [n] and /fui frame [n] still try the
--- others on the open window (temporary; nothing is saved)
+-- heavy bronze frame (rivets top left and bottom right), from look tests since retired
 --------------------------------------------------
 local LOOK_BG = {
     { "Rock, bronze tint (now)", file = "Interface\\FrameGeneral\\UI-Background-Rock", tile = true, desat = true, tint = { 0.85, 0.68, 0.47 }, wash = 0.3 },
     { "Rock, natural", file = "Interface\\FrameGeneral\\UI-Background-Rock", tile = true, wash = 0.35 },
-    { "Marble", file = "Interface\\FrameGeneral\\UI-Background-Marble", tile = true, wash = 0.3 },
-    { "Heavy bronze stone (character select)", atlas = "heavybronze-frame-background", wash = 0.1 },
-    { "Character panel stone", atlas = "character-panel-background", wash = 0.1 },
-    { "Stat stone", atlas = "UI-Character-Info-Stat-StoneBG3", wash = 0.2 },
-    { "Group finder", atlas = "groupfinder-background", wash = 0.2 },
-    { "Black market tile", file = "Interface\\BlackMarket\\BlackMarketBackground-Tile", tile = true, wash = 0.25 },
-    { "Dark dialog", file = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark", tile = true, wash = 0 },
-    { "Encounter journal", file = "Interface\\EncounterJournal\\UI-EJ-BACKGROUND-Default", wash = 0.25 },
-    { "Quest log", atlas = "QuestLog-main-background", wash = 0.15 },
 }
 local LOOK_FRAME = { "Tooltip edge (now)", "FlareUI Thick", "Heavy bronze (character select)" }
 local lookBg, lookFrame = 2, 3   -- the picks, drawn as the window is built
@@ -2460,21 +2449,6 @@ local function TryFrame(n)
         b:Show()
     end
     return true
-end
-
--- kind: "bg" or "frame"; n: a number, or nil for the next one
-function Panel:TryLook(kind, n)
-    if not (frame and frame:IsShown()) then self:Open() end
-    local list = kind == "frame" and LOOK_FRAME or LOOK_BG
-    local index = tonumber(n) or ((kind == "frame" and lookFrame or lookBg) % #list + 1)
-    if index < 1 or index > #list then
-        print("|cff00ccffFlareUI:|r 1-" .. #list)
-        return
-    end
-    local ok = kind == "frame" and TryFrame(index) or (kind ~= "frame" and TryBackground(index))
-    if kind == "frame" then lookFrame = index else lookBg = index end
-    local name = type(list[index]) == "table" and list[index][1] or list[index]
-    print(("|cff00ccffFlareUI:|r %s %d/%d: %s%s"):format(kind == "frame" and "frame" or "background", index, #list, name, ok and "" or " |cffff6060(missing in this client)|r"))
 end
 
 local function BuildWindow()
