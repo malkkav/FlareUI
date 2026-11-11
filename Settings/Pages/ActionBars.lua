@@ -30,11 +30,15 @@ S:Row{ key = "ab.skinCDM", section = "ab.barAppearance", path = "auras.skinCDM",
     disabled = function() return not S:GetPath("auras.enabled") end }
 -- every button's scale, as FlareUI 1.0's per-bar scales once (fixed at 106% since)
 local SCALES = {}
-for percent = 70, 150, 2 do SCALES[#SCALES + 1] = { percent / 100, percent .. "%" } end
+-- in half-percent steps (11-11 Marcus: it is that precise); kept as tenths of a percent so no float drifts
+for tenths = 700, 1500, 5 do
+    local percent = tenths / 10
+    SCALES[#SCALES + 1] = { tenths / 1000, (percent % 1 == 0 and ("%d"):format(percent) or ("%.1f"):format(percent)) .. "%" }
+end
 S:Row{ key = "ab.buttonScale", kind = "range", section = "ab.barAppearance", choices = SCALES, apply = Refresh,
     get = function()
         local v = tonumber(S:GetPath("actionbars.buttonScale")) or 1.06
-        return math.floor(v * 50 + 0.5) / 50
+        return math.floor(v * 200 + 0.5) * 5 / 1000
     end,
     set = function(v) S:SetPath("actionbars.buttonScale", v) end }
 
