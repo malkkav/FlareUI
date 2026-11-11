@@ -2168,6 +2168,13 @@ end
 local function TryFrame(n)
     local style = ns.WINDOW_STYLE
     if frame.ftBronze then frame.ftBronze:Hide() end
+    -- the stone reaches under the heavy bronze frame's top and bottom bars; the others sit on its edge
+    local art, under = frame.ftArt, n == 3 and 8 or -3
+    if art then
+        art:ClearAllPoints()
+        art:SetPoint("TOPLEFT", 3, under)
+        art:SetPoint("BOTTOMRIGHT", -3, -under)
+    end
     if n == 1 then
         frame:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16 })
         frame:SetBackdropBorderColor(style.border[1], style.border[2], style.border[3], 1)
@@ -2187,15 +2194,9 @@ local function TryFrame(n)
             b:SetFrameLevel(frame:GetFrameLevel() + 30)
             b.edge = b:CreateTexture(nil, "BORDER")
             b.edge:SetAtlas("heavybronze-frame-basic")
-            -- as a nine-slice, so the long sides keep the bars' thickness (it is drawn far bigger than
-            -- the character list it was made for)
-            if b.edge.SetTextureSliceMargins then
-                pcall(b.edge.SetTextureSliceMargins, b.edge, 24, 24, 24, 24)
-                if Enum.UITextureSliceMode then pcall(b.edge.SetTextureSliceMode, b.edge, Enum.UITextureSliceMode.Stretched) end
-            end
-            -- the same on every side, over the stone's edge
-            b.edge:SetPoint("TOPLEFT", -10, 10)
-            b.edge:SetPoint("BOTTOMRIGHT", 10, -10)
+            -- where the character select list draws it, stretched (11-11: the nine-slice try broke it)
+            b.edge:SetPoint("TOPLEFT", -9, 15)
+            b.edge:SetPoint("BOTTOMRIGHT", 9, -15)
             -- the rivets on the top corners only (11-11 Marcus)
             for _, c in ipairs({ { "TL", "TOPLEFT" }, { "TR", "TOPRIGHT" } }) do
                 local t = b:CreateTexture(nil, "ARTWORK")
@@ -2259,8 +2260,9 @@ local function BuildWindow()
     -- a shade toward the bottom. 3 px in, under the border's line, so no gap shows between them.
     local BG_INSET = 3
     local art = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    art:SetPoint("TOPLEFT", BG_INSET, -BG_INSET)
-    art:SetPoint("BOTTOMRIGHT", -BG_INSET, BG_INSET)
+    -- (11-11) up and down under the frame's top and bottom bars, which sit further out than its sides
+    art:SetPoint("TOPLEFT", BG_INSET, 8)
+    art:SetPoint("BOTTOMRIGHT", -BG_INSET, -8)
     art:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
     art:SetHorizTile(true)
     art:SetVertTile(true)
