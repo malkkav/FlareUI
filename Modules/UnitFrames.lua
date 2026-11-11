@@ -2931,7 +2931,7 @@ UF.THREAT_PERCENT_UNITS = { target = true, focus = true }
 UF.THREAT_RING_SIZE = 8   -- added to the frame font's size above the ring
 -- the ring's frame is the box round its art, shadow and all, wider on its outer side: the number moves
 -- this share of the ring's width towards the frame, over the ring's middle (11-11, read off a screenshot)
-UF.THREAT_RING_NUDGE = 0.08
+UF.THREAT_RING_NUDGE = 0.045   -- (0 sat ~10 px right of centre, 0.08 ~8 px left)
 function UF.UpdateThreatPercent(f)
     local unit = f.fuiUnit
     if not UF.THREAT_PERCENT_UNITS[unit] then return end
