@@ -7,6 +7,7 @@ local L = ns.L
 --   * Columns and Gaps between bags: the combined backpack's grid, laid out again after Blizzard's
 --     (hooksecurefunc on its UpdateFrameSize / UpdateItemLayout, so Blizzard's code runs untouched)
 --   * Integrated bag buttons: the four bag slots down the combined backpack's side
+--   * Item filters beside the search box that desaturate icons outside the selected category
 --   * Thicker borders, Rarity colours, Junk coin and Upgrade arrow: drawn on an overlay of each item
 -- Every option is off by default, and off leaves Blizzard's windows as they are, except the slot
 -- borders: FlareUI Thin round every slot always. When another bag addon owns the windows, nothing
@@ -29,6 +30,8 @@ local OTHER_BAG_ADDONS = { "LiteBag", "Bagnon", "Baganator", "ArkInventory", "Ad
 
 local overlays = {}                 -- item button -> its overlay
 local bagButtons = {}
+local itemFilter
+local dimmedIcons = {}
 
 local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.tweaks
@@ -445,12 +448,69 @@ end
 -- 3. ITEM OVERLAYS
 -- Slot borders, always on: FlareUI Thin round each slot in place of Blizzard's glow; Thicker
 -- borders swaps it for FlareUI Thick. Bronze, or with Rarity colours the item's exact quality colour
--- (grey to orange; empty slots stay bronze).
+-- (grey to orange; empty slots and items dimmed by a filter stay bronze).
 -- Junk coin: grey items worth money show Blizzard's coin always, not only at a vendor.
 -- Upgrade arrow: gear that beats what you wear shows Blizzard's green arrow in the bottom right.
 --------------------------------------------------
 -- edge size and outset per border: each art's bright band lands on the slot's edge
 local BORDERS = { thin = { "FlareUI Thin", 8, 3 }, thick = { "FlareUI Thick", 16, 2 } }
+
+local function UpdateFilteredQuestBorder(button, ov, bagID, slotID, dimmed)
+    local mark = button.IconQuestTexture
+    if not mark then return end
+    local quest = dimmed and mark:IsShown() and C_Container.GetContainerItemQuestInfo(bagID, slotID)
+    local isBorder = quest and (quest.questID or quest.isQuestItem) and not (quest.questID and not quest.isActive)
+    if isBorder then
+        if ov.questBorderAlpha == nil then ov.questBorderAlpha = mark:GetAlpha() end
+        mark:SetAlpha(0)
+    elseif ov.questBorderAlpha ~= nil then
+        mark:SetAlpha(ov.questBorderAlpha)
+        ov.questBorderAlpha = nil
+    end
+end
+
+local function UpdateItemFilter(button, bagID, slotID, info)
+    local dimmed
+    if itemFilter and info and not GamepadUI() then
+        if itemFilter == "quest" then
+            local quest = C_Container.GetContainerItemQuestInfo(bagID, slotID)
+            dimmed = quest and not (quest.isQuestItem or quest.questID)
+        elseif info.itemID and itemFilter == "equipment" then
+            local slotType = C_Item.GetItemInventoryTypeByID(info.itemID)
+            local types = Enum.InventoryType
+            dimmed = slotType == types.IndexNonEquipType or slotType == types.IndexBagType
+                or slotType == types.IndexQuiverType or slotType == types.IndexAmmoType
+        elseif info.itemID then
+            local classID, subclassID = select(6, C_Item.GetItemInfoInstant(info.itemID))
+            if classID ~= nil then
+                local classes = Enum.ItemClass
+                if itemFilter == "resources" then
+                    dimmed = classID ~= classes.Tradegoods
+                        and not (classID == classes.Reagent and subclassID == Enum.ItemReagentSubclass.Reagent)
+                else
+                    dimmed = classID ~= classes.Consumable
+                end
+            end
+        end
+    end
+    if not (dimmed or dimmedIcons[button]) then return end
+    dimmedIcons[button] = dimmed or nil
+    local icon = button:GetItemButtonIconTexture()
+    icon:SetDesaturated(dimmed or (info and info.isLocked) or false)
+
+    local ov = overlays[button]
+    if dimmed and not ov.filterShade then
+        -- Above the icon on BORDER, below stack counts and other item indicators.
+        local shade = button:CreateTexture(nil, "BORDER", nil, 1)
+        shade:SetAllPoints(icon)
+        shade:SetColorTexture(0, 0, 0, 0.52)
+        if button.Mask then shade:AddMaskTexture(button.Mask) end
+        ov.filterShade = shade
+    end
+    if ov.filterShade then ov.filterShade:SetShown(dimmed == true) end
+    UpdateFilteredQuestBorder(button, ov, bagID, slotID, dimmed)
+end
+
 local function GetOverlay(button)
     local ov = overlays[button]
     if ov then return ov end
@@ -483,6 +543,33 @@ local function ShowBorder(ov, style, r, g, b)
     end
     border:SetBackdropBorderColor(r, g, b, 1)
     ov.border:Show()
+end
+
+local function UpdateItemBorder(ov, db, quality, dimmed)
+    local style = db.bagThickBorders and "thick" or "thin"
+    if db.bagRarityBorders and quality and not dimmed then
+        local r, g, b = C_Item.GetItemQualityColor(quality)
+        ShowBorder(ov, style, r, g, b)
+    else
+        local c = ns.BORDER_COLOR
+        ShowBorder(ov, style, c.r, c.g, c.b)
+    end
+end
+
+local function RefreshItemFilter()
+    local db = GetDb()
+    for button, ov in pairs(overlays) do
+        local wasDimmed = dimmedIcons[button]
+        if (itemFilter and button:IsVisible()) or wasDimmed then
+            local bagID, slotID = button:GetBagID(), button:GetID()
+            local info = bagID and slotID and C_Container.GetContainerItemInfo(bagID, slotID)
+            UpdateItemFilter(button, bagID, slotID, info)
+            local dimmed = dimmedIcons[button]
+            if db and db.bagRarityBorders and wasDimmed ~= dimmed then
+                UpdateItemBorder(ov, db, info and info.quality, dimmed)
+            end
+        end
+    end
 end
 
 -- Upgrade arrow: Forever has no "is an upgrade" check (Blizzard's flyout asks for one that is never
@@ -681,7 +768,6 @@ local function ShowUpgrade(ov, bagID, slotID, link)
 end
 
 function UpdateButton(button, db)
-    local thick, rarity = db.bagThickBorders, db.bagRarityBorders
     local junk, upgrade = db.bagJunkIcon, db.bagUpgradeArrow
     local ov = GetOverlay(button)
     ov:Show()
@@ -691,17 +777,11 @@ function UpdateButton(button, db)
 
     local bagID, slotID = button:GetBagID(), button:GetID()
     local info = bagID and slotID and C_Container.GetContainerItemInfo(bagID, slotID)
+    UpdateItemFilter(button, bagID, slotID, info)
     local quality = info and info.quality
 
     if button.IconBorder then button.IconBorder:SetAlpha(0) end
-    local style = thick and "thick" or "thin"
-    if rarity and quality then
-        local r, g, b = C_Item.GetItemQualityColor(quality)
-        ShowBorder(ov, style, r, g, b)
-    else
-        local c = ns.BORDER_COLOR
-        ShowBorder(ov, style, c.r, c.g, c.b)
-    end
+    UpdateItemBorder(ov, db, quality, dimmedIcons[button])
 
     if not info then return end
     if junk and quality == Enum.ItemQuality.Poor and not info.hasNoValue then ov.junk:Show() end
@@ -742,6 +822,228 @@ local function BagFrames()
     return list
 end
 
+local FILTER_BUTTON_GAP, FILTER_SEARCH_GAP = 2, 4
+local FILTER_RIM_X_TRIM, FILTER_RIM_Y_TRIM = 0.10, 0.14
+local FILTER_RIM_UP, FILTER_RIM_DOWN = "bags-button-autosort-up", "bags-button-autosort-down"
+local FILTER_ICON_MASK_DIR = "Interface\\AddOns\\FlareUI\\Media\\Masks\\"
+local FILTER_ICON_MASKS = {
+    equipment = "BagFilterEquipment.tga",
+    resources = "BagFilterResources.tga",
+    consumables = "BagFilterConsumables.tga",
+}
+local filterButtons = {}
+local overflowButton, normalSearchWidth
+local resourceLabel = BAG_FILTER_REAGENTS or "Resources"
+local consumableLabel = BAG_FILTER_CONSUMABLES or "Consumables"
+
+local function SetCompactFilterRim(texture, atlas)
+    local width = atlas.rightTexCoord - atlas.leftTexCoord
+    local height = atlas.bottomTexCoord - atlas.topTexCoord
+    texture:SetTexture(atlas.file or atlas.filename)
+    -- Trim the clear margins in the sort artwork before covering its broom.
+    texture:SetTexCoord(atlas.leftTexCoord + width * FILTER_RIM_X_TRIM, atlas.rightTexCoord - width * FILTER_RIM_X_TRIM,
+        atlas.topTexCoord + height * FILTER_RIM_Y_TRIM, atlas.bottomTexCoord - height * FILTER_RIM_Y_TRIM)
+end
+
+local function SetFilterButtonActive(button, active)
+    button:SetChecked(active)
+    button.activeGlow:SetShown(active)
+    if button.rimUp then
+        SetCompactFilterRim(button.rim, active and button.rimDown or button.rimUp)
+    elseif button.rim then
+        button.rim:SetAtlas(active and FILTER_RIM_DOWN or FILTER_RIM_UP, false)
+    else
+        local color = active and NORMAL_FONT_COLOR or ns.BORDER_COLOR
+        button:SetBackdropBorderColor(color.r, color.g, color.b, 1)
+    end
+    button.icon:SetAlpha(active and 1 or button.iconIdleAlpha)
+end
+
+local function OverflowActive()
+    return itemFilter == "resources" or itemFilter == "consumables"
+end
+
+local function ToggleItemFilter(mode)
+    itemFilter = itemFilter ~= mode and mode or nil
+    for filter, button in pairs(filterButtons) do SetFilterButtonActive(button, filter == itemFilter) end
+    if overflowButton then SetFilterButtonActive(overflowButton, OverflowActive()) end
+    RefreshItemFilter()
+end
+
+local function CreateFilterButton(frame, filter, tooltip, atlasName, textureFile)
+    local button = CreateFrame("CheckButton", nil, frame, "BackdropTemplate")
+    local rimUp, rimDown = C_Texture.GetAtlasInfo(FILTER_RIM_UP), C_Texture.GetAtlasInfo(FILTER_RIM_DOWN)
+    local rimFile = rimUp and (rimUp.file or rimUp.filename)
+    if rimUp and rimDown and (filter or (rimFile and (rimDown.file or rimDown.filename))) then
+        button.rim = button:CreateTexture(nil, "BACKGROUND")
+        if filter then
+            button.rim:SetAtlas(FILTER_RIM_UP, false)
+            button.rim:SetPoint("CENTER")
+        else
+            button.rimUp, button.rimDown = rimUp, rimDown
+            SetCompactFilterRim(button.rim, rimUp)
+            button.rim:SetAllPoints()
+        end
+        -- The sort button's frame and broom share one atlas. Cover the center before drawing our icon.
+        local center = button:CreateTexture(nil, "ARTWORK", nil, -1)
+        if filter and rimFile then
+            -- Use the clean patch of background above and to the left of the broom.
+            local width = rimUp.rightTexCoord - rimUp.leftTexCoord
+            local height = rimUp.bottomTexCoord - rimUp.topTexCoord
+            center:SetTexture(rimFile)
+            center:SetTexCoord(rimUp.leftTexCoord + width * 0.25, rimUp.leftTexCoord + width * 0.34,
+                rimUp.topTexCoord + height * 0.30, rimUp.topTexCoord + height * 0.41)
+        else
+            center:SetColorTexture(0.09, 0.065, 0.04, 1)
+        end
+        center:SetPoint("TOPLEFT", 3, -3)
+        center:SetPoint("BOTTOMRIGHT", -3, 3)
+    else
+        button:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        button:SetBackdropColor(0.09, 0.065, 0.04, 1)
+        button:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1)
+    end
+    button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    local glow = button:CreateTexture(nil, "OVERLAY")
+    glow:SetAtlas("UI-HUD-ActionBar-IconFrame-Mouseover", false)
+    glow:SetAllPoints(button.rim or button)
+    glow:SetBlendMode("ADD")
+    glow:SetVertexColor(1, 0.82, 0.42, 0.85)
+    glow:Hide()
+    button.activeGlow = glow
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    if atlasName then
+        local atlas = C_Texture.GetAtlasInfo(atlasName)
+        if atlas then icon:SetAtlas(atlasName) else icon:SetTexture(textureFile) end
+        local aspect = atlas and atlas.width > 0 and atlas.height > 0 and atlas.width / atlas.height or 1
+        icon:SetSize(math.min(16, 16 * aspect), math.min(16, 16 / aspect))
+    else
+        local size, crop = 14, 0.07
+        icon:SetTexture(textureFile)
+        icon:SetTexCoord(crop, 1 - crop, crop, 1 - crop)
+        icon:SetSize(size, size)
+        local maskFile = FILTER_ICON_MASKS[filter]
+        if maskFile then
+            local mask = button:CreateMaskTexture()
+            mask:SetTexture(FILTER_ICON_MASK_DIR .. maskFile, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            -- The mask covers the full source texture. The icon samples only its cropped center.
+            local maskSize = size / (1 - 2 * crop)
+            mask:SetSize(maskSize, maskSize)
+            mask:SetPoint("CENTER", icon, "CENTER")
+            icon:AddMaskTexture(mask)
+        end
+    end
+    icon:SetPoint("CENTER")
+    button.iconIdleAlpha = atlasName and 0.7 or 1
+    icon:SetAlpha(button.iconIdleAlpha)
+    button.icon = icon
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(tooltip)
+        GameTooltip:Show()
+    end)
+    button:SetScript("OnLeave", GameTooltip_Hide)
+    if filter then button:SetScript("OnClick", function() ToggleItemFilter(filter) end) end
+    return button
+end
+
+local function OpenExtraFilters(button)
+    SetFilterButtonActive(button, OverflowActive())
+    MenuUtil.CreateContextMenu(button, function(_, root)
+        local function IsActive(mode) return itemFilter == mode end
+        root:CreateCheckbox(resourceLabel, IsActive, ToggleItemFilter, "resources")
+        root:CreateCheckbox(consumableLabel, IsActive, ToggleItemFilter, "consumables")
+    end)
+end
+
+local function HideFilterButtons()
+    for _, button in pairs(filterButtons) do button:Hide() end
+    if overflowButton then overflowButton:Hide() end
+end
+
+local function PlaceFilterButtons(frame, searchUpdated)
+    local search, sort = _G.BagItemSearchBox, _G.BagItemAutoSortButton
+    if not (frame and search and sort and search:GetParent() == frame and sort:GetParent() == frame) then return end
+    if GamepadUI() or not (search:IsShown() and sort:IsShown()) then
+        HideFilterButtons()
+        return
+    end
+    local searchPoint, searchParent, _, searchX = search:GetPoint(1)
+    local sortPoint, sortParent, _, sortX = sort:GetPoint(1)
+    if searchPoint ~= "TOPLEFT" or sortPoint ~= "TOPRIGHT" or searchParent ~= frame or sortParent ~= frame then return end
+    if searchUpdated or not normalSearchWidth then normalSearchWidth = search:GetWidth() end
+    local sortWidth, sortHeight = sort:GetSize()
+    local sortHighlight = sort:GetHighlightTexture()
+    -- Keep the compact button spacing while drawing the full native sort frame.
+    local buttonWidth = sortWidth * (1 - 2 * FILTER_RIM_X_TRIM)
+    local buttonHeight = sortHeight * (1 - 2 * FILTER_RIM_Y_TRIM)
+    local available = frame:GetWidth() + sortX - sortWidth - buttonWidth - FILTER_SEARCH_GAP - searchX
+    if available <= 0 then
+        HideFilterButtons()
+        return
+    end
+    if not filterButtons.quest then
+        filterButtons.quest = CreateFilterButton(frame, "quest", L["Quest Items"], "QuestNormal",
+            "Interface\\GossipFrame\\AvailableQuestIcon")
+        filterButtons.quest:SetPoint("RIGHT", sort, "LEFT", 0, 0)
+        filterButtons.equipment = CreateFilterButton(frame, "equipment", BAG_FILTER_EQUIPMENT or "Equipment",
+            nil, "Interface\\Icons\\INV_Chest_Chain_05")
+        filterButtons.resources = CreateFilterButton(frame, "resources", resourceLabel,
+            nil, "Interface\\Icons\\INV_Ingot_02")
+        filterButtons.consumables = CreateFilterButton(frame, "consumables", consumableLabel,
+            nil, "Interface\\Icons\\INV_Potion_49")
+    end
+    for _, button in pairs(filterButtons) do
+        if button:GetParent() ~= frame then button:SetParent(frame) end
+        button:SetSize(buttonWidth, buttonHeight)
+        if button.rim then button.rim:SetSize(sortWidth, sortHeight) end
+        if sortHighlight then
+            local highlight = button:GetHighlightTexture()
+            highlight:ClearAllPoints()
+            highlight:SetPoint("CENTER")
+            highlight:SetSize(sortHighlight:GetSize())
+        end
+    end
+    filterButtons.quest:Show()
+    local equipment = filterButtons.equipment
+    local remaining = available - buttonWidth - FILTER_BUTTON_GAP
+    local equipmentOnLeft = remaining < 70
+    equipment:ClearAllPoints()
+    if not equipmentOnLeft then
+        equipment:SetPoint("RIGHT", filterButtons.quest, "LEFT", -FILTER_BUTTON_GAP, 0)
+        available = remaining
+    else
+        -- In the separate backpack, use the space below the portrait to keep search readable.
+        equipment:SetPoint("RIGHT", search, "LEFT", -FILTER_SEARCH_GAP, -3)
+    end
+    equipment:Show()
+    local inlineWidth = available - 2 * (buttonWidth + FILTER_BUTTON_GAP)
+    local showInline = not equipmentOnLeft and inlineWidth >= 60
+    filterButtons.resources:SetShown(showInline)
+    filterButtons.consumables:SetShown(showInline)
+    if showInline then
+        if overflowButton then overflowButton:Hide() end
+        filterButtons.resources:SetPoint("RIGHT", equipment, "LEFT", -FILTER_BUTTON_GAP, 0)
+        filterButtons.consumables:SetPoint("RIGHT", filterButtons.resources, "LEFT", -FILTER_BUTTON_GAP, 0)
+        available = inlineWidth
+    else
+        -- Leave the search box and the two primary buttons in place on the narrow backpack.
+        if not overflowButton then
+            overflowButton = CreateFilterButton(frame, nil, FILTERS or FILTER or "Filters", "bags-icon-multiple",
+                "Interface\\Buttons\\UI-ScrollDownButton-Up")
+            overflowButton.icon:SetSize(10, 10)
+            overflowButton:SetScript("OnClick", OpenExtraFilters)
+        elseif overflowButton:GetParent() ~= frame then
+            overflowButton:SetParent(frame)
+        end
+        overflowButton:SetSize(12, buttonHeight)
+        overflowButton:SetPoint("RIGHT", equipmentOnLeft and equipment or search, "LEFT", -3, equipmentOnLeft and 0 or -3)
+        SetFilterButtonActive(overflowButton, OverflowActive())
+        overflowButton:Show()
+    end
+    search:SetWidth(math.min(normalSearchWidth, available))
+end
+
 function Bags:ShouldLoad()
     local db = GetDb()
     return not (db and db.enabled == false)
@@ -750,8 +1052,22 @@ end
 function Bags:Init()
     if self.initialized then return end
     self.initialized = true
+    local useFilterButtons = C_Container.GetContainerItemQuestInfo and C_Item.GetItemInventoryTypeByID
+        and Enum.InventoryType and not self:GetOtherBagAddon()
     for _, frame in ipairs(BagFrames()) do
         if frame.UpdateItems then hooksecurefunc(frame, "UpdateItems", UpdateFrameItems) end
+        if useFilterButtons and frame.UpdateSearchBox then
+            hooksecurefunc(frame, "UpdateSearchBox", function(bag) PlaceFilterButtons(bag, true) end)
+            frame:HookScript("OnSizeChanged", function(bag) PlaceFilterButtons(bag) end)
+        end
+    end
+    if useFilterButtons then
+        -- Blizzard also updates icon saturation on its own when a bag slot locks or unlocks.
+        hooksecurefunc("SetItemButtonDesaturated", function(button, locked)
+            if not locked and dimmedIcons[button] then button:GetItemButtonIconTexture():SetDesaturated(true) end
+        end)
+        local search = _G.BagItemSearchBox
+        if search and search:IsVisible() then PlaceFilterButtons(search:GetParent(), true) end
     end
     local combined = Combined()
     if combined then
@@ -766,11 +1082,16 @@ function Bags:Init()
     end)
     -- the keyring and crafting bag sections follow their items
     local bagEvents = CreateFrame("Frame")
+    if useFilterButtons then bagEvents:RegisterEvent("QUEST_LOG_UPDATE") end
     for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_UPDATE_COOLDOWN", "ITEM_LOCK_CHANGED", "INVENTORY_SEARCH_UPDATE",
                              "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED" }) do
         pcall(bagEvents.RegisterEvent, bagEvents, event)
     end
     bagEvents:SetScript("OnEvent", function(_, event)
+        if event == "QUEST_LOG_UPDATE" then
+            if itemFilter == "quest" then RefreshItemFilter() end
+            return
+        end
         if not next(extras) and not (KeyringWanted() or ReagentWanted()) then return end
         local frame = Combined()
         if not (frame and frame:IsShown()) then return end
