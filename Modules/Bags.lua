@@ -321,13 +321,12 @@ function BagButton:GetIsBarExpanded() return true end
 function BagButton:OnEnter()
     if not self.slotID then self:Update() end
     EventRegistry:TriggerEvent("BagSlot.OnEnter", self)
-    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+    -- the bag's own tooltip; an empty slot shows none (11-11: no "Equip Container")
     if GetInventoryItemTexture("player", self.slotID) then
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetInventoryItem("player", self.slotID)
-    else
-        GameTooltip_SetTitle(GameTooltip, _G.EQUIP_CONTAINER or _G.BAGSLOT or "")
+        GameTooltip:Show()
     end
-    GameTooltip:Show()
 end
 
 function BagButton:OnLeave()
