@@ -200,22 +200,26 @@ end
 -- chat and meter windows' border, goes where it was. The icon, its rounded corners, the slot art and every other
 -- part of the button stay Blizzard's. Off shows Blizzard's frame again.
 --------------------------------------------------
+-- the border's fit, tuned by eye (11-11): how far it reaches past the button's edge (negative: in),
+-- and its thickness. Neighbouring buttons' borders met in the gap between them at 3 px out.
+local FLARE_BORDER_OUT, FLARE_BORDER_EDGE = 0, 12
+
 local function SkinBorder(button, on)
     local icon = button.icon or button.Icon
     if not (icon and button.NormalTexture) then return end
     if on then
         if not button.FlareUI_Border then
             local b = CreateFrame("Frame", nil, button, "BackdropTemplate")
-            -- over the edge Blizzard's frame drew
-            b:SetPoint("TOPLEFT", -3, 3)
-            b:SetPoint("BOTTOMRIGHT", 3, -3)
             button.FlareUI_Border = b
         end
         local b = button.FlareUI_Border
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", -FLARE_BORDER_OUT, FLARE_BORDER_OUT)
+        b:SetPoint("BOTTOMRIGHT", FLARE_BORDER_OUT, -FLARE_BORDER_OUT)
         local LSM = LibStub("LibSharedMedia-3.0")
         -- (11-11: FlareUI Frames, the chat and meter windows' border; FlareUI Thin looked too faint here)
         local file = LSM:Fetch("border", "FlareUI Frames")
-        b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, 12) })
+        b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, FLARE_BORDER_EDGE) })
         local c = ns.BORDER_COLOR
         b:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
         -- over the cooldown swipe, under the texts' frame
