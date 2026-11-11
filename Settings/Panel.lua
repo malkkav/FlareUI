@@ -11,7 +11,7 @@ local S = ns.Settings
 -- With the reload bar below (42) it fits 768 units; a smaller screen scales it down (FitScale).
 local WIDTH, HEIGHT = 1180, 700
 local HEADER_H, FOOTER_H = 46, 34
-local FOOTER_RISE = 18   -- the reload bar's top the window's bronze frame covers
+local FOOTER_RISE = 8    -- the reload bar's extra height for the top the window's bronze frame covers
 local LEFT_W, RIGHT_W = 200, 280
 local PAD = 12
 local EDGE, GAP, INNER = 14, 8, 10   -- body to window edge, between the three boxes, inside the middle box
@@ -309,7 +309,7 @@ end
 -- FlareUI Thick (12 px edge), on its own frame over f as ThinEdge: tabs, buttons and dropdowns (11-11
 -- Marcus: heavier, closer to Forever's own panels)
 local THICK = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thick.tga"
-local THICK_EDGE, THICK_INSET = 12, 4
+local THICK_EDGE, THICK_INSET = 12, 3
 local function ThickEdge(f)
     local edge = CreateFrame("Frame", nil, f, "BackdropTemplate")
     edge:SetAllPoints()
@@ -558,7 +558,17 @@ local function SkinDropdown(dd)
             dd.Text:SetJustifyH("LEFT")
         end
     end
-    if dd.Text then dd.Text:SetFontObject(_G[PANEL_FONT.GameFontHighlightSmall]) end
+    if dd.Text then
+        dd.Text:SetFontObject(_G[PANEL_FONT.GameFontHighlightSmall])
+        -- the buttons' gold (11-11 Marcus); Blizzard's template sets its own colour on each state change
+        local function TextColor(self)
+            if self:IsEnabled() then self.Text:SetTextColor(1, 0.83, 0.47) else self.Text:SetTextColor(0.5, 0.5, 0.5) end
+        end
+        if dd.OnButtonStateChanged then hooksecurefunc(dd, "OnButtonStateChanged", TextColor) end
+        dd:HookScript("OnEnable", TextColor)
+        dd:HookScript("OnDisable", TextColor)
+        TextColor(dd)
+    end
     dd:HookScript("OnEnter", function(self) self.fEdge:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1) end)
     dd:HookScript("OnLeave", function(self) self.fEdge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1) end)
 end
