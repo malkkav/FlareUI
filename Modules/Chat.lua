@@ -3697,7 +3697,7 @@ end
 -- real ones. A plain frame: no events, no mouse, Blizzard's chat untouched.
 --------------------------------------------------
 Chat.sampleLook = {
-    TEXT_WIDTH = 420, TEXT_HEIGHT = 150,   -- the window's text area
+    TEXT_WIDTH = 250, TEXT_HEIGHT = 190,   -- the window's text area (narrow and tall: the preview shows it near its real size)
     EDIT_HEIGHT = 32,                      -- Blizzard's edit box
     TAB_BAR_MARGIN = 20, TAB_BUTTON_ROOM = 30,
     COPY_SIZE = 18,

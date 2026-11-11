@@ -4,7 +4,7 @@ local S = ns.Settings
 
 --------------------------------------------------
 -- QUALITY OF LIFE
--- Settings for Modules/Tweaks.lua in Gameplay, Interface and Advanced tabs. Options that replace
+-- Settings for Modules/Tweaks.lua in Gameplay, Bags, Nameplates and Interface tabs. Options that replace
 -- Blizzard scripts ask for a reload; the rest apply live.
 --------------------------------------------------
 local function Refresh()
@@ -28,61 +28,10 @@ end
 
 S:Module{
     key = "qol", group = "interface", order = 40, enabled = "tweaks.enabled",
-    tabs = { { key = "gameplay" }, { key = "bags" }, { key = "nameplates" }, { key = "interface" }, { key = "advanced" } },
+    tabs = { { key = "gameplay" }, { key = "bags" }, { key = "nameplates" }, { key = "interface" } },
 }
 
--- ADVANCED ---------------------------------------
--- Sync Blizz UI: copies one character's Blizzard settings to the others
-S:Row{ key = "qol.sync", tab = "advanced", path = "tweaks.syncUI", reload = true, section = "qol.syncBlizzUi" }
-S:Row{
-    key = "qol.source", kind = "button", tab = "advanced", parent = "qol.sync", section = "qol.syncBlizzUi",
-    labelFn = function()
-        local label = ns.Tweaks and ns.Tweaks.GetSyncSourceLabel and ns.Tweaks:GetSyncSourceLabel()
-        return label and L["Current source: %s"]:format(label) or L["No source yet."]
-    end,
-    buttonText = L["Make This Character the Source"],
-    fitButtonText = true,
-    disabled = function() return ns.Tweaks and ns.Tweaks.IsSyncSource and ns.Tweaks:IsSyncSource() or false end,
-    apply = function() ns.ShowDialog("FLAREUI_SYNC_SOURCE") end,
-}
-
--- The whole interface's scale (Tweaks.lua 17b), as EnhanceQoL's: a preset applied as you log in,
--- account-wide; Custom opens its own scale row
-local SCALE_PRESETS = { "blizzard", "auto", "custom", "4k", "1440p", "1440p125", "1080p", "1080p125" }
-local CUSTOM_CHOICES = {}
-for percent = 30, 200, 5 do CUSTOM_CHOICES[#CUSTOM_CHOICES + 1] = { percent, percent .. "%" } end
-local function Global() return ns.db and ns.db.global end
-S:Row{
-    key = "qol.uiScale", kind = "choice", tab = "advanced", choices = SCALE_PRESETS, reload = true,
-    get = function() local g = Global(); return g and g.uiScale or "blizzard" end,
-    set = function(preset)
-        local g = Global()
-        if not g then return end
-        g.uiScale = preset ~= "blizzard" and preset or nil
-        -- Custom starts from the scale in use, as EnhanceQoL's
-        if preset == "custom" and not g.uiScaleCustom then g.uiScaleCustom = UIParent:GetScale() end
-    end,
-}
-S:Row{
-    key = "qol.uiScaleCustom", kind = "choice", tab = "advanced", parent = "qol.uiScale", choices = CUSTOM_CHOICES, reload = true,
-    hidden = function() local g = Global(); return not (g and g.uiScale == "custom") end,
-    get = function()
-        local g = Global()
-        local value = g and tonumber(g.uiScaleCustom) or 1
-        return math.max(30, math.min(200, math.floor(value * 20 + 0.5) * 5))
-    end,
-    set = function(percent) local g = Global(); if g then g.uiScaleCustom = percent / 100 end end,
-}
-
--- one switch for moving windows and placing loot rolls / toasts
-S:Row{
-    key = "qol.move", tab = "advanced", reload = true,
-    get = function() return S:GetPath("tweaks.moveAnyFrame") end,
-    set = function(on)
-        S:SetPath("tweaks.moveAnyFrame", on)
-        S:SetPath("tweaks.moveLootToasts", on)
-    end,
-}
+-- (Sync Blizz UI, Move Any Window and UI Scale moved to the Settings page, Language.lua, 11-11)
 
 -- GAMEPLAY ---------------------------------------
 -- Convenience first, in pairs: quests, the map, NPCs, then fishing

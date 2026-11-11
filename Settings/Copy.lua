@@ -46,7 +46,7 @@ ns.Copy = {
         },
         qol = {
             desc = L["Small helpers that save you clicks."],
-            tabs = { L["Gameplay"], L["Bags and Looting"], L["Nameplates"], L["Interface"], L["Advanced"] },
+            tabs = { L["Gameplay"], L["Bags and Looting"], L["Nameplates"], L["Interface"] },
             title = L["Quality of Life"],
         },
         qt = {
@@ -325,7 +325,7 @@ ns.Copy = {
             kind = "text",
             label = L["Credits"],
             section = "about.credits",
-            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings window's previews and new look.\n* |cffffd100parchinskiy|r for the round minimap and the Russian translation.\n* Licences for the libraries and code FlareUI builds on are in its LICENSES folder."],
+            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings window's previews and new look.\n* |cffffd100parchinskiy|r for the round minimap.\n* Licences for the libraries and code FlareUI builds on are in its LICENSES folder."],
         },
         ["about.layout"] = {
             kind = "text",

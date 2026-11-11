@@ -85,6 +85,7 @@ local function Sample(c, id, create, draw, y, width, maxHeight)
     f:SetScale(k)
     f:ClearAllPoints()
     f:SetPoint('TOPLEFT', c.frame, 'TOPLEFT', (c.width - w * k) / 2 / k, -y / k)
+    c.used = math.max(c.used or 0, y + h * k)
     return f, h * k
 end
 
@@ -115,6 +116,7 @@ local function Unit(c, id, style, unit, y, width, palette, x, maxHeight, opts)
     local left = x or (c.width - e.width * k) / 2
     f:ClearAllPoints()
     f:SetPoint('TOPLEFT', c.frame, 'TOPLEFT', (left + e.left * k) / k, -(y + e.top * k) / k)
+    c.used = math.max(c.used or 0, y + e.height * k)
     return f, e.height * k
 end
 
@@ -293,6 +295,8 @@ local function Auras(c, unit, spec)
     -- Unit aura fonts use 0 for Auto. Match AuraLook.ForUnit without seeding or
     -- modifying saved variables, and retain dropdown overrides in the copied config.
     local size = unit and 30 or 46
+    -- the icons, their timers below and a little room (the picture's height)
+    c.used = 16 + size + 26
     local autoSize = math.max(7, math.floor(size * 0.4 + 0.5))
     local font, countFont = {}, {}
     for k, v in pairs(fontConfig) do font[k] = v end
@@ -709,6 +713,7 @@ function R.font(c, spec)
     local text = c:Text('fontSample', L["The quick brown fox jumps over the lazy dog"], 16, 16, c.width - 32, cfg)
     text:SetJustifyH('CENTER')
     c:Box('fontBox', 4, 4, c.width - 8, text:GetStringHeight() + 24, 'FlareUI Thin', 0.9)
+    c.used = text:GetStringHeight() + 32
 end
 
 
@@ -825,8 +830,9 @@ local OWN = {
     meter = { 'DamageMeter', function(spec) return THREAT_KEYS[spec.key] and 'threat' or 'damage' end },
     nameplate = { 'Tweaks', function() return 'plate' end },
     -- the style cards keep their drawing (they show a style that may not be the one in use)
+    -- a style card shows its own style
     minimap = { 'Minimap', function(spec, c)
-        if c.isStyleCard or c.height < 120 then return nil end
+        if c.isStyleCard or c.height < 120 then return spec.value == 'round' and 'round' or 'square' end
         return spec.key == 'mm.microMenu' and 'menu' or 'map'
     end },
 }

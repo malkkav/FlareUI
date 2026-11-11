@@ -501,6 +501,7 @@ end
 
 S:Module{
     key = "adv", group = "top", order = 2,
+    noReset = true,   -- (no Reset on its sections)
     navIcon = "Interface\\Icons\\INV_Misc_Note_01", navIconRound = true,
 }
 

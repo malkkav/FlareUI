@@ -58,8 +58,8 @@ const MAP = poly([[4, 7], [9, 5], [15, 7], [20, 5], [20, 17], [15, 19], [9, 17],
 const ICONS = {
   about: [ROUND, seg(12, 11, 12, 17), seg(12, 7.5, 12, 8)],
   adv: [ROUND, ring(12, 10, 3), ...poly([[7, 17], [8.2, 15.4], [10, 14.3], [12, 14], [14, 14.3], [15.8, 15.4], [17, 17]])],
-  // the globe's meridian stays inside its circle
-  language: [ROUND, seg(3, 12, 21, 12), (x, y) => Math.hypot(x - 12, y - 12) <= 9 && ellipse(12, 12, 4, 9)(x, y)],
+    // the Settings page (key language, 11-11): a gear, eight teeth round a ring and its hub
+  language: [ring(12, 12, 6), ring(12, 12, 2.2), ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => { const t = i * Math.PI / 4; return seg(12 + 6.8 * Math.cos(t), 12 + 6.8 * Math.sin(t), 12 + 9.2 * Math.cos(t), 12 + 9.2 * Math.sin(t)); })],
   ab: [BOX, seg(8, 9, 8, 15), seg(12, 9, 12, 15), seg(16, 9, 16, 15)],
   uf: [BOX, seg(8, 10, 16, 10), seg(8, 14, 13, 14)],
   rb: [BOX, seg(7, 10, 17, 10), seg(7, 14, 14, 14)],

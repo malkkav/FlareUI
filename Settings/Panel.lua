@@ -78,7 +78,7 @@ local searchText = ""
 local navButtons = {}   -- module key -> left list button
 local pools = {}        -- row kind -> list of row frames
 local used = {}         -- row frames on the page
-local currentTab = {}   -- module key -> tab key shown (kept in db.global.settingsTabs)
+local currentTab = {}   -- module key -> tab key shown, for the session (a reload opens each page on its first tab)
 local scrollOf = {}     -- module key -> where its page was scrolled, for the session
 local customHosts = {}  -- "module.tab" -> a custom tab's frame
 
@@ -551,7 +551,8 @@ local function ShowVisual(row)
         local canvas = preview.canvas
         local function Fit()
             if not canvas.frame:IsShown() then return end
-            local h = ns.SettingsPreview.Measure(canvas)
+            -- what a sample says it takes, else measured on screen
+            local h = canvas.used or ns.SettingsPreview.Measure(canvas)
             if h then canvas.frame:SetHeight(math.max(24, math.min(canvas.height, h + 8))) end
         end
         Fit()
@@ -577,6 +578,11 @@ local function ShowModulePreview()
         local title = S:Text(help.key, "info")
         if not title or title == "" then title = help:Label() end
         ShowPreview(title, help:Description(), help:Tip())
+        return
+    end
+    -- About: a word for the players
+    if current == "about" then
+        ShowPreview(L["Thank You!"], L["To everyone who downloaded FlareUI, sent feedback, reported bugs or helped a friend set it up: thank you. FlareUI gets better every week because of you."])
         return
     end
     ShowPreview(S:WindowText("infoPanelNothingHovered", L["Info Panel"]),
@@ -1496,7 +1502,8 @@ local function SectionHeader(parent, text, y, sectionKey)
     h.sectionKey = sectionKey
     local active = S.modules[current] and Panel:ActiveTab(S.modules[current])
     h.resetTab = active and active.key
-    h.reset:SetShown(sectionKey ~= nil)
+    -- (pages marked noReset have none: Profiles, Settings)
+    h.reset:SetShown(sectionKey ~= nil and not (S.modules[current] and S.modules[current].noReset))
     h.reset:SetEnabled(sectionKey and S:CanResetSection(current, sectionKey, h.resetTab) or false)
     h.reset:Paint()
     h.sign:SetText(sectionKey and (closedSections[sectionKey] and "+" or "-") or "")
@@ -2115,9 +2122,8 @@ end)
 --------------------------------------------------
 local function BuildWindow()
     local style = ns.WINDOW_STYLE
-    -- each page opens on the tab it was left on, across sessions
-    local saved = ns.db and ns.db.global and ns.db.global.settingsTabs
-    if saved then for key, tab in pairs(saved) do if currentTab[key] == nil then currentTab[key] = tab end end end
+    -- (11-11 Marcus: after a reload each page opens on its first tab; the tabs once kept go)
+    if ns.db and ns.db.global then ns.db.global.settingsTabs = nil end
     frame = CreateFrame("Frame", "FlareUI_SettingsPanel", UIParent, "BackdropTemplate")
     frame:SetSize(WIDTH, HEIGHT)
     frame:SetPoint("CENTER")
@@ -2412,10 +2418,6 @@ local function BuildWindow()
         b:SetScript("OnClick", function(self)
             PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
             currentTab[current] = self.tabKey
-            if ns.db and ns.db.global then
-                ns.db.global.settingsTabs = ns.db.global.settingsTabs or {}
-                ns.db.global.settingsTabs[current] = self.tabKey
-            end
             scrollOf[current] = nil
             page.scroll:SetVerticalScroll(0)
             Panel:Refresh()

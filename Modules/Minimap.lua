@@ -1315,6 +1315,8 @@ do
         f.fuiSample = true
         f:EnableMouse(false)
         f.kind = kind == "menu" and "menu" or "map"
+        -- the style cards: their own style, whatever the one in use
+        if kind == "square" or kind == "round" then f.forceStyle = kind end
         if f.kind == "menu" then
             -- the real menu's rows, without their secure clicks
             f.Menu = CreateFrame("Frame", nil, f, "BackdropTemplate")
@@ -1354,7 +1356,7 @@ do
 
     local function DrawMap(f)
         local db = GetDb() or {}
-        local square = db.style ~= "round"
+        local square = (f.forceStyle or db.style) ~= "round"
         f.Square:SetShown(square)
         f.Round:SetShown(not square)
 

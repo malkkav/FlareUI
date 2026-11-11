@@ -2038,17 +2038,29 @@ end
 -- A settings preview's wheel, apart from the radial and the editor's preview: the first radial this
 -- character gets (else six target markers, as a new account's first radial), laid out by the radial's
 -- own code with button one aimed at (its slice lit, its name per Show Names). Plain art only.
+-- (the wheel sits in a holder with room round it: its slice glow and name hang past the wheel)
 function RM.CreateSample(parent)
-    local f = CreateFrame("Frame", nil, parent)
+    local holder = CreateFrame("Frame", nil, parent)
+    holder:EnableMouse(false)
+    local f = CreateFrame("Frame", nil, holder)
     f.fuiSample = true
     f.buttons = {}
     f:EnableMouse(false)
-    f:SetFrameLevel(parent:GetFrameLevel() + 1)
+    f:SetFrameLevel(holder:GetFrameLevel() + 1)
+    f:SetPoint("CENTER", holder, "CENTER")
     RM.BuildRadialArt(f)
-    return f
+    holder.wheel = f
+    return holder
 end
 
-function RM.DrawSample(f)
+function RM.DrawSample(holder)
+    local w, h = RM.DrawWheelSample(holder.wheel)
+    local pad = math.ceil(math.max(w, h) * 0.2)
+    holder:SetSize(w + 2 * pad, h + 2 * pad)
+    return holder:GetWidth(), holder:GetHeight()
+end
+
+function RM.DrawWheelSample(f)
     -- read straight from the saved radials: GetStore would create them
     local list
     local store = ns.db and ns.db.global and ns.db.global.radialmenu

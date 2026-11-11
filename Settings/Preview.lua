@@ -199,6 +199,7 @@ function P.Create(parent, width, height)
 end
 function P.Show(canvas, spec)
     canvas:Reset()
+    canvas.used = nil   -- the height a sample takes (PreviewSamples' Sample and Unit set it)
     canvas.frame:SetAlpha(1)
     local draw = spec and P.renderers[spec.kind]
     if not draw then canvas.frame:Hide() return false end

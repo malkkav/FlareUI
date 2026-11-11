@@ -63,7 +63,8 @@ local function Card(host, title, width)
 end
 
 local function Body(card, text, y, font)
-    local fs = card:CreateFontString(nil, "OVERLAY", font or "FlareUI_PanelText")
+    -- (11-11 Marcus: a little smaller than the rows' text)
+    local fs = card:CreateFontString(nil, "OVERLAY", font or "FlareUI_PanelTextSmall")
     fs:SetPoint("TOPLEFT", CARD_PAD, y)
     fs:SetWidth(card:GetWidth() - 2 * CARD_PAD)
     fs:SetJustifyH("LEFT")
@@ -113,7 +114,7 @@ local function Build(host)
     layout:SetPoint("TOPLEFT", credits, "TOPRIGHT", CARD_GAP, 0)
     local _, layoutEnd = Body(layout, Gold(S:Format(S:Text("about.layout", "text", true))), ly)
     local copy = ns.EditModeLayout.Button(layout)
-    copy:SetPoint("TOPLEFT", CARD_PAD, layoutEnd - 14)
+    copy:SetPoint("TOP", layout, "TOP", 0, layoutEnd - 14)
     layoutEnd = layoutEnd - 14 - 24
 
     local pairH = math.max(-creditsEnd, -layoutEnd) + CARD_PAD
