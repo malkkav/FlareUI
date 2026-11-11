@@ -579,6 +579,8 @@ ACTIONS.partycast = function(entry)
         end
     end
     if #spread == 0 then return nil end
+    -- alone there is no one to aim at: the spell's own name, not yours (11-11, Marcus)
+    if #spread == 1 then spread[1].name = name end
     local first = spread[1]
     return name, first.icon, first.attributes, { spread = spread }
 end
