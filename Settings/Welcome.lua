@@ -196,7 +196,8 @@ local function Preview(parent, kind, key, width, height, art)
                 box.canvas = P.Create(box, width, height)
                 box.canvas.quiet = true   -- a failed sample falls back to the picture, unreported
             end
-            ok = P.Show(box.canvas, { kind = kind, key = key })
+            -- (a sample that drew nothing says no height: the picture then)
+            ok = P.Show(box.canvas, { kind = kind, key = key }) and box.canvas.used ~= nil
             if ok then
                 local used = box.canvas.used or height
                 box.canvas.frame:ClearAllPoints()
@@ -380,7 +381,7 @@ function BuildPage.unitFrames(page)
                     well.canvas.quiet, well.canvas.isStyleCard = true, true
                     well.canvas.frame:SetPoint("TOPLEFT")
                 end
-                ok = P.Style(well.canvas, row, style.value)
+                ok = P.Style(well.canvas, row, style.value) and well.canvas.used ~= nil
             end
             if not ok and not well.picture then
                 well.picture = Picture(well, style.art, CARD_W3 - 2 * CARD_PAD, 80)
@@ -832,6 +833,11 @@ local function BuildTour()
     tour.lead = Say(header, "GameFontHighlight")
     tour.lead:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
     tour.lead:SetPoint("TOPLEFT", tour.title, "BOTTOMLEFT", 0, -6)
+    -- title and lead stay clear of the step and its dots at the right
+    tour.title:SetWidth(WIDTH - 2 * SIDE - 60 - 170)
+    tour.title:SetWordWrap(false)
+    tour.lead:SetWidth(WIDTH - 2 * SIDE - 60 - 170)
+    tour.lead:SetWordWrap(false)
     tour.stepText = Say(header, "GameFontDisableSmall")
     tour.stepText:SetPoint("TOPRIGHT", -SIDE, -40)
     tour.dots = {}

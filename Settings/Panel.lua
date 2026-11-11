@@ -272,6 +272,8 @@ local function ApplyTitleFont()
     ns.SetFont(_G.FlareUI_PanelTitle, "Fonts\\FRIZQT__.TTF", 17, "")
     ns.SetFont(_G.FlareUI_PanelTitleHuge, "Fonts\\FRIZQT__.TTF", 22, "")
 end
+-- at load too: the setup tour can show before the settings window is ever built
+ApplyTitleFont()
 
 local function Text(parent, font, justify)
     font = font or "GameFontHighlight"
@@ -2333,6 +2335,8 @@ function Panel.DressWindow(f)
         local b = CreateFrame("Frame", nil, f)
         b:SetAllPoints()
         b:SetFrameLevel(f:GetFrameLevel() + 30)
+        -- the frame stands past the window: kept on screen with it
+        f:SetClampRectInsets(-9, 9, 15, -15)
         edge = b:CreateTexture(nil, "BORDER")
         edge:SetAtlas("heavybronze-frame-basic")
         edge:SetPoint("TOPLEFT", -9, 15)
