@@ -9,9 +9,8 @@ local L = ns.L
 --   * Integrated bag buttons: the four bag slots down the combined backpack's side
 --   * Item filters beside the search box that desaturate icons outside the selected category
 --   * Thicker borders, Rarity colours, Junk coin and Upgrade arrow: drawn on an overlay of each item
--- Every option is off by default, and off leaves Blizzard's windows as they are, except the slot
--- borders: FlareUI Thin round every slot always. When another bag addon owns the windows, nothing
--- here runs.
+-- The filter buttons take space beside search even with no category selected. Slots use FlareUI
+-- Thin borders by default. When another bag addon owns the windows, this module leaves them alone.
 --------------------------------------------------
 ns.Bags = ns.Bags or {}
 local Bags = ns.Bags
@@ -482,7 +481,7 @@ local function UpdateFilteredQuestBorder(button, ov, bagID, slotID, dimmed)
     end
 end
 
-local function UpdateItemFilter(button, bagID, slotID, info)
+local function UpdateItemFilter(button, ov, bagID, slotID, info)
     local dimmed
     if itemFilter and info and not GamepadUI() then
         if itemFilter == "quest" then
@@ -500,7 +499,7 @@ local function UpdateItemFilter(button, bagID, slotID, info)
                 if itemFilter == "resources" then
                     dimmed = classID ~= classes.Tradegoods
                         and not (classID == classes.Reagent and subclassID == Enum.ItemReagentSubclass.Reagent)
-                else
+                elseif itemFilter == "consumables" then
                     dimmed = classID ~= classes.Consumable
                 end
             end
@@ -511,7 +510,6 @@ local function UpdateItemFilter(button, bagID, slotID, info)
     local icon = button:GetItemButtonIconTexture()
     icon:SetDesaturated(dimmed or (info and info.isLocked) or false)
 
-    local ov = overlays[button]
     if dimmed and not ov.filterShade then
         -- Above the icon on BORDER, below stack counts and other item indicators.
         local shade = button:CreateTexture(nil, "BORDER", nil, 1)
@@ -577,7 +575,7 @@ local function RefreshItemFilter()
         if (itemFilter and button:IsVisible()) or wasDimmed then
             local bagID, slotID = button:GetBagID(), button:GetID()
             local info = bagID and slotID and C_Container.GetContainerItemInfo(bagID, slotID)
-            UpdateItemFilter(button, bagID, slotID, info)
+            UpdateItemFilter(button, ov, bagID, slotID, info)
             local dimmed = dimmedIcons[button]
             if db and db.bagRarityBorders and wasDimmed ~= dimmed then
                 UpdateItemBorder(ov, db, info and info.quality, dimmed)
@@ -797,7 +795,7 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
     ov.junk:Hide()
     ov.upgrade:Hide()
 
-    if not button.fuiSample then UpdateItemFilter(button, bagID, slotID, info) end
+    if not button.fuiSample then UpdateItemFilter(button, ov, bagID, slotID, info) end
     local quality = info and info.quality
 
     if button.IconBorder then button.IconBorder:SetAlpha(0) end
@@ -855,8 +853,26 @@ local FILTER_ICON_MASKS = {
 }
 local filterButtons = {}
 local overflowButton, normalSearchWidth
-local resourceLabel = BAG_FILTER_REAGENTS or "Resources"
-local consumableLabel = BAG_FILTER_CONSUMABLES or "Consumables"
+local overflowLabels = {
+    resources = BAG_FILTER_REAGENTS or "Resources",
+    consumables = BAG_FILTER_CONSUMABLES or "Consumables",
+}
+
+local function ShowFilterTooltip(button)
+    local mode = button.filterMode
+    local enabled = " (" .. (VIDEO_OPTIONS_ENABLED or "Enabled") .. ")"
+    GameTooltip:SetOwner(button, "ANCHOR_TOP")
+    if mode and mode == itemFilter then
+        GameTooltip:SetText(button.filterTooltip .. enabled)
+        local click = GetBindingText and GetBindingText("BUTTON1") or "Left Click"
+        GameTooltip:AddLine(click .. " — " .. L["Reset"], 1, 1, 1)
+    else
+        GameTooltip:SetText(button.filterTooltip)
+        local activeLabel = not mode and overflowLabels[itemFilter]
+        if activeLabel then GameTooltip:AddLine(activeLabel .. enabled, 1, 1, 1) end
+    end
+    GameTooltip:Show()
+end
 
 local function SetCompactFilterRim(texture, atlas)
     local width = atlas.rightTexCoord - atlas.leftTexCoord
@@ -879,10 +895,11 @@ local function SetFilterButtonActive(button, active)
         button:SetBackdropBorderColor(color.r, color.g, color.b, 1)
     end
     button.icon:SetAlpha(active and 1 or button.iconIdleAlpha)
+    if GameTooltip:IsShown() and GameTooltip:IsOwned(button) then ShowFilterTooltip(button) end
 end
 
 local function OverflowActive()
-    return itemFilter == "resources" or itemFilter == "consumables"
+    return overflowLabels[itemFilter] ~= nil
 end
 
 local function ToggleItemFilter(mode)
@@ -959,11 +976,9 @@ local function CreateFilterButton(frame, filter, tooltip, atlasName, textureFile
     button.iconIdleAlpha = atlasName and 0.7 or 1
     icon:SetAlpha(button.iconIdleAlpha)
     button.icon = icon
-    button:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(tooltip)
-        GameTooltip:Show()
-    end)
+    button.filterMode = filter
+    button.filterTooltip = tooltip
+    button:SetScript("OnEnter", ShowFilterTooltip)
     button:SetScript("OnLeave", GameTooltip_Hide)
     if filter then button:SetScript("OnClick", function() ToggleItemFilter(filter) end) end
     return button
@@ -973,8 +988,8 @@ local function OpenExtraFilters(button)
     SetFilterButtonActive(button, OverflowActive())
     MenuUtil.CreateContextMenu(button, function(_, root)
         local function IsActive(mode) return itemFilter == mode end
-        root:CreateCheckbox(resourceLabel, IsActive, ToggleItemFilter, "resources")
-        root:CreateCheckbox(consumableLabel, IsActive, ToggleItemFilter, "consumables")
+        root:CreateCheckbox(overflowLabels.resources, IsActive, ToggleItemFilter, "resources")
+        root:CreateCheckbox(overflowLabels.consumables, IsActive, ToggleItemFilter, "consumables")
     end)
 end
 
@@ -1010,9 +1025,9 @@ local function PlaceFilterButtons(frame, searchUpdated)
         filterButtons.quest:SetPoint("RIGHT", sort, "LEFT", 0, 0)
         filterButtons.equipment = CreateFilterButton(frame, "equipment", BAG_FILTER_EQUIPMENT or "Equipment",
             nil, "Interface\\Icons\\INV_Chest_Chain_05")
-        filterButtons.resources = CreateFilterButton(frame, "resources", resourceLabel,
+        filterButtons.resources = CreateFilterButton(frame, "resources", overflowLabels.resources,
             nil, "Interface\\Icons\\INV_Ingot_02")
-        filterButtons.consumables = CreateFilterButton(frame, "consumables", consumableLabel,
+        filterButtons.consumables = CreateFilterButton(frame, "consumables", overflowLabels.consumables,
             nil, "Interface\\Icons\\INV_Potion_49")
     end
     for _, button in pairs(filterButtons) do
