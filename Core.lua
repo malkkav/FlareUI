@@ -170,7 +170,7 @@ function ns.PixelSize(frame)
     return factor / scale
 end
 
--- The pixel-exact layouts (combo segments, the quest tracker's lines) again after a UI scale or
+-- The pixel-exact layouts (combo segments, XP bar bubbles, the quest tracker's lines) again after a UI scale or
 -- display change, out of combat
 do
     local watcher = CreateFrame("Frame")
@@ -180,7 +180,7 @@ do
             return
         end
         watcher:UnregisterEvent("PLAYER_REGEN_ENABLED")
-        for _, module in ipairs({ ns.ResourceBars, ns.UnitFrames }) do
+        for _, module in ipairs({ ns.ResourceBars, ns.UnitFrames, ns.XPBar }) do
             if module and module.initialized and module.Refresh then ns.SafeCall("Relayout Refresh", module.Refresh, module) end
         end
         local ot = ns.ObjectiveTracker
@@ -434,7 +434,7 @@ local defaults = {
             },
 
             -- the FlareUI XP Bar (Modules/XPBar.lua), placed in Edit Mode; off leaves Blizzard's bars alone
-            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Forever", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", layouts = {} },
+            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Forever", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", bubbles = false, layouts = {} },
 
             -- Typography
             hotkeyFont = { face = "Arial Narrow", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },

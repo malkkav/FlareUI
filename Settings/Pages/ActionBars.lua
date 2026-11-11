@@ -84,6 +84,8 @@ S:Row{ key = "ab.xpQuest", tab = "xp", kind = "choice", choices = { "off", "done
         if v ~= "off" then S:SetPath("actionbars.xpbar.questXPMode", v) end
     end,
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
+S:Row{ key = "ab.xpBubbles", tab = "xp", path ="actionbars.xpbar.bubbles", parent = "ab.xpBar",
+    apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
 
 -- Hide Blizzard elements (also removed from Edit Mode)
 local function Hide(key, path)

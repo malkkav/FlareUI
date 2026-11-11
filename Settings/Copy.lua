@@ -304,6 +304,12 @@ ns.Copy = {
             section = "ab.experience",
             tip = L["Place and size it in Edit Mode."],
         },
+        ["ab.xpBubbles"] = {
+            desc = L["Splits the XP bar into 20 bubbles of 5% each, as on the classic XP bar. Reputation and honor get them too."],
+            label = L["Show Bubbles"],
+            section = "ab.experience",
+            tags = { "xp bar dividers", "ticks", "segments" },
+        },
         ["ab.xpNumbers"] = {
             choices = { L["Current / Max"], L["Percent"], L["Current / Max (Percent)"], L["Remaining"] },
             desc = L["The XP bar's number format, also used for reputation and honor."],
