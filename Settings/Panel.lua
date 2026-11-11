@@ -400,11 +400,13 @@ local function PaintSwitch(s)
     if on then
         s.rim:SetColor(0.85, 0.70, 0.42)
         s.stone:SetVertexColor(0.95, 0.72, 0.36)
-        s.knob:SetVertexColor(0.98, 0.94, 0.81)
+        s.knob:SetVertexColor(0.95, 0.80, 0.52)
+        s.knobStone:SetVertexColor(0.62, 0.52, 0.40)
     else
         if s.hovered then s.rim:SetColor(0.69, 0.54, 0.31) else s.rim:SetColor(0.35, 0.27, 0.16) end
         s.stone:SetVertexColor(0.34, 0.30, 0.26)
-        s.knob:SetVertexColor(0.52, 0.48, 0.42)
+        s.knob:SetVertexColor(0.55, 0.45, 0.30)
+        s.knobStone:SetVertexColor(0.36, 0.32, 0.27)
     end
     local x = on and 23 or 3
     s.knob:ClearAllPoints()
@@ -437,9 +439,19 @@ local function Switch(parent)
     s.knobShadow:SetTexture(CIRCLE)
     s.knobShadow:SetSize(16, 16)
     s.knobShadow:SetVertexColor(0, 0, 0, 0.55)
+    -- the knob (11-11 Marcus): a thin bronze rim round a disc of the background's rock
     s.knob = s:CreateTexture(nil, "ARTWORK", nil, 2)
     s.knob:SetTexture(CIRCLE)
     s.knob:SetSize(14, 14)
+    s.knobStone = s:CreateTexture(nil, "ARTWORK", nil, 3)
+    s.knobStone:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock")
+    s.knobStone:SetTexCoord(0.2, 0.32, 0.2, 0.32)
+    s.knobStone:SetPoint("CENTER", s.knob, "CENTER")
+    s.knobStone:SetSize(12, 12)
+    s.knobMask = s:CreateMaskTexture()
+    s.knobMask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    s.knobMask:SetAllPoints(s.knobStone)
+    s.knobStone:AddMaskTexture(s.knobMask)
     -- a click changes the state without SetChecked: PostClick paints it (OnClick belongs to the row)
     hooksecurefunc(s, "SetChecked", PaintSwitch)
     s:SetScript("PostClick", PaintSwitch)
@@ -2439,8 +2451,10 @@ local function BuildWindow()
     version:SetPoint("LEFT", title, "RIGHT", 8, -2)
     version:SetTextColor(0.64, 0.6, 0.54)
     version:SetText(C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "")
+    -- on the frame's top right corner, above the frame art (11-11 Marcus)
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    close:SetPoint("RIGHT", frame, "TOPRIGHT", -EDGE + 4, -HEADER_ROW_Y)
+    close:SetPoint("CENTER", frame, "TOPRIGHT", 1, 3)
+    close:SetFrameLevel(frame:GetFrameLevel() + 40)
 
     -- columns
     local body = CreateFrame("Frame", nil, frame)
@@ -2522,7 +2536,8 @@ local function BuildWindow()
     -- search
     local search = CreateFrame("EditBox", nil, frame, "SearchBoxTemplate")
     search:SetSize(230, 24)
-    search:SetPoint("RIGHT", close, "LEFT", -12, 0)
+    -- where the close button was: the header row's right end
+    search:SetPoint("RIGHT", frame, "TOPRIGHT", -EDGE - 4, -HEADER_ROW_Y)
     search.Instructions:SetText(S:WindowText("searchPlaceholder", L["Search settings"]))
     -- the page redraws once typing pauses for a moment, not on every key
     local searchToken = 0
