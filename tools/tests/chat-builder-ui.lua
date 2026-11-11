@@ -78,67 +78,57 @@ local f=loadfile('Settings/ChatBuilder.lua');if f then f('FlareUI',ns) end
 assert(ns.ChatBuilderEditor,'chat builder editor is missing')
 local host,side=new('Frame'),new('Frame');side:SetWidth(260)
 ns.ChatBuilderEditor.Build(host,side);host:Show();ns.ChatBuilderEditor.Refresh()
-local categories={}
-for _,o in ipairs(objects) do if o.kind=='DropdownButton' then
-    o.menu(o,{CreateRadio=function(_,name,checked,action) categories[name]=action end})
-end end
-local visible,rightColumn=0,false
-for _,o in ipairs(objects) do
-    if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then
-        visible=visible+1;assert(o.standardSwitch)
-        if o.parent.point and type(o.parent.point[2])=='number' and o.parent.point[2]>0 then rightColumn=true end
-    end
+local dropdowns={}
+for _,o in ipairs(objects) do if o.kind=='DropdownButton' then dropdowns[#dropdowns+1]=o end end
+local layout,addLayout,category=unpack(dropdowns)
+local function choose(dd,label)
+    local choices={};dd.menu(dd,{CreateRadio=function(_,name,checked,action) choices[name]=action end})
+    assert(choices[label],'missing choice '..label);choices[label]()
 end
-assert(visible>4 and rightColumn,'default view shows grouped filters in two columns')
-assert(not pcall(click,'Duplicate'),'advanced actions start hidden')
-assert(not pcall(click,'Create window'),'chooser starts hidden')
+assert(not pcall(click,'More options') and not pcall(click,'Use a preset'),'no extra menus or preset screen')
 click('Social');click('Move up');assert(ns.ChatBuilder:Windows()[3].id==3)
 click('Rename');accept('Friends');assert(GetChatWindowInfo(3)=='Friends')
-click('More options');click('Save as preset');accept('Friends preset')
-local saved;for _,p in ipairs(ns.ChatBuilder:Presets()) do if p.name=='Friends preset' then saved=p end end
-assert(saved)
+local function selectedHandle() for _,h in ipairs(ns.ChatBuilder:Windows()) do if h.id==3 then return h end end end
 local search,nameBox
 for _,o in ipairs(objects) do if o.kind=='EditBox' then if o:IsVisible() then search=o else nameBox=o end end end
-assert(search and nameBox);search:SetText('loot')
+assert(search and nameBox)
+search:SetText('loot')
 local loot
 for _,o in ipairs(objects) do if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then assert(o.parent.entry.key=='LOOT');loot=o end end
 assert(loot);loot.parent.scripts.OnMouseUp(loot.parent,'LeftButton')
-local function selectedHandle() for _,h in ipairs(ns.ChatBuilder:Windows()) do if h.id==3 then return h end end end
-assert(ns.ChatBuilder:Read(selectedHandle()).activeMessages.LOOT,'filter edits apply immediately')
-search:SetText('');categories['Public Channels']()
+assert(ns.ChatBuilder:Read(selectedHandle()).activeMessages.LOOT)
+search:SetText('');choose(category,'Public Channels')
 for _,o in ipairs(objects) do if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then assert(o.parent.entry.kind=='channel') end end
-categories['All categories']()
--- Applying a preset requires an explicit confirmation, captured for the selected window.
-click('Use a preset');assert(not pcall(click,'Rename'),'editor is hidden while choosing')
-click('Empty');click('Apply preset')
-assert(ns.ChatBuilder:Read(selectedHandle()).messages.LOOT,'preview and confirmation alone preserve filters')
-accept();assert(not ns.ChatBuilder:Read(selectedHandle()).messages.LOOT)
-click('Use a preset');click('Friends preset');click('Rename preset');accept('Private preset')
-assert(ns.ChatBuilder:Preset(saved.id).name=='Private preset')
-click('Delete preset');assert(ns.ChatBuilder:Preset(saved.id));accept();assert(not ns.ChatBuilder:Preset(saved.id));click('Cancel')
--- Creation chooses a starting point and editable name in one view; Cancel never creates.
+choose(category,'All categories')
+-- Starting layouts only preview; Apply is the explicit destructive boundary.
+choose(layout,'Empty');assert(ns.ChatBuilder:Read(selectedHandle()).messages.LOOT,'preview preserves actual routing')
+for _,o in ipairs(objects) do if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then assert(not o:IsEnabled(),'preview cannot accidentally edit live routing') end end
+click('Cancel');assert(ns.ChatBuilder:Read(selectedHandle()).messages.LOOT,'cancel leaves current settings intact')
+choose(layout,'Empty');click('Apply layout');assert(not ns.ChatBuilder:Read(selectedHandle()).messages.LOOT)
+choose(layout,'Social');click('General');assert(not pcall(click,'Apply layout'),'switching window cancels pending layout')
+click('Friends');choose(layout,'Social');click('Apply layout');assert(ns.ChatBuilder:Read(selectedHandle()).activeMessages.GUILD)
+-- Add is an inline name/layout form, with the selected window still visible.
 FCF_Close(ChatFrame4);ns.ChatBuilderEditor.Refresh()
 local countWindows=#ns.ChatBuilder:Windows()
-click('Add window');click('Social');assert(nameBox:GetText()=='Social')
-click('Edit name');assert(ns.Dialogs.CHAT_BUILDER_NAME.padInput,'name editing supports controller input');accept('My own name');click('Loot');assert(nameBox:GetText()=='My own name','preset changes preserve a user-entered name')
+click('Add window');assert(not layout:IsVisible(),'existing-window layout is hidden while adding')
+choose(addLayout,'Social');assert(nameBox:GetText()=='Social')
+click('Edit name');assert(ns.Dialogs.CHAT_BUILDER_NAME.padInput);accept('My own name');choose(addLayout,'Loot')
+assert(nameBox:GetText()=='My own name','changing a starting layout preserves a user-entered name')
 click('Cancel');assert(#ns.ChatBuilder:Windows()==countWindows)
-click('Add window');click('Empty');nameBox:SetText('Empty test');click('Create window')
+click('Add window');choose(addLayout,'Empty');nameBox:SetText('Empty test');click('Create window')
 assert(GetChatWindowInfo(4)=='Empty test' and #({GetChatWindowMessages(4)})==0)
 click('Delete window');accept();click('Friends')
-click('Add window');click('Social');nameBox:SetText('Preset copy');click('Create window')
+click('Add window');choose(addLayout,'Social');nameBox:SetText('Preset copy');click('Create window')
 assert(GetChatWindowInfo(4)=='Preset copy')
-local groups={};for _,g in ipairs({GetChatWindowMessages(4)}) do groups[g]=true end
-assert(groups.GUILD,'created window uses selected preset immediately')
+local groups={};for _,g in ipairs({GetChatWindowMessages(4)}) do groups[g]=true end;assert(groups.GUILD)
 click('Delete window');accept();click('Friends');click('Duplicate');accept('Duplicate test')
 assert(GetChatWindowInfo(4)=='Duplicate test');click('Delete window');accept();click('Friends')
--- Stale native close/reuse cannot redirect an outstanding apply confirmation.
-click('Use a preset');click('Social');click('Apply preset');FCF_Close(ChatFrame3);accept()
-assert(GetChatWindowInfo(3)=='Friends');click('Cancel')
-click('General');assert(not pcall(click,'Pop out') and not pcall(click,'Delete window'),'primary protection')
-click('Combat Log');assert(not pcall(click,'Use a preset'),'combat log protection')
--- Leaving the page closes the chooser and restores the editor on return.
-click('General');click('Use a preset');host:Hide();side:Show();host:Show()
-assert(not pcall(click,'Apply preset'));click('More options')
+-- Native close invalidates a pending preview rather than redirecting it to another window.
+choose(layout,'Empty');FCF_Close(ChatFrame3);ns.ChatBuilderEditor.Refresh();assert(not pcall(click,'Apply layout'))
+click('General');assert(not pcall(click,'Pop out') and not pcall(click,'Delete window'))
+click('Combat Log');assert(not layout:IsEnabled() and not pcall(click,'Duplicate'))
+local nativeVisible=false;for _,o in ipairs(objects) do if o:GetText()=='Open Blizzard Settings' and o:IsVisible() then nativeVisible=true end end;assert(nativeVisible)
+click('General');choose(layout,'Social');host:Hide();side:Show();host:Show();assert(not pcall(click,'Apply layout'))
 for _,key in ipairs({'GetChatWindowMessages','GetChatWindowChannels'}) do
     local original=_G[key];_G[key]=nil;assert(pcall(ns.ChatBuilderEditor.Refresh));_G[key]=original
 end
@@ -163,4 +153,4 @@ assert(not page.right:IsShown() and panel.middleBox.point[3]=='BOTTOMRIGHT','spa
 hide();assert(page.right:IsShown() and panel.middleBox.point[3]=='BOTTOMLEFT','leaving restores normal settings geometry')
 show({key='chat'},{key='windows',spanRight=true,custom=function() built=built+1 end});assert(built==1,'custom host reused')
 hide()
-print('PASS: simplified chat editor, chooser, presets, protections, and settings layout lifecycle')
+print('PASS: single-screen chat editor, inline add, layout preview/apply, protections, and settings lifecycle')

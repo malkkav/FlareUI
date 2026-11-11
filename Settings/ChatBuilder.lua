@@ -48,6 +48,7 @@ local function Confirm(title,accept) ns.ShowDialog("CHAT_BUILDER_CONFIRM",title,
 local function Select(id)
     selected=nil
     for _, h in ipairs(B:Windows()) do if h.id==id then selected=h end end
+    ui.previewID=nil;ui.previewTarget=nil;ui.adding=false
     ui.notice=nil;ui.filters:SetVerticalScroll(0);Refresh()
 end
 local function Scroll(parent)
@@ -85,16 +86,12 @@ local function Rename()
     end)
 end
 local function ApplyPreset()
-    local h,id=ui.chooserTarget or selected,presetID;local preview=B:PreviewPreset(id)
-    if not h or not preview then return end
-    local message=L["Replace the supported content filters in %s? Its name, position, and docking will stay the same."]:format(h.name)
-    if #preview.skipped>0 then message=message.."\n\n"..L["Skipped unavailable:"].." "..table.concat(preview.skipped,", ") end
-    Confirm(message,function()
-        local result,err=B:ApplyPreset(h,id)
-        if result then ui.chooser:Hide();ui.editor:Show() end
-        Report(result,err)
-        if result and #result.skipped>0 then ui.notice=L["Skipped unavailable:"].." "..table.concat(result.skipped,", ");Refresh() end
-    end)
+    local h,id=ui.previewTarget,ui.previewID
+    if not h or not id then return end
+    local result,err=B:ApplyPreset(h,id)
+    if result then ui.previewID=nil;ui.previewTarget=nil end
+    Report(result,err)
+    if result and #result.skipped>0 then ui.notice=L["Skipped unavailable:"].." "..table.concat(result.skipped,", ");Refresh() end
 end
 local function FilterRow(i)
     local row=ui.filterRows[i];if row then return row end
@@ -200,56 +197,50 @@ local function RenderWindows(windows)
     for i=#windows+1,#ui.windowRows do ui.windowRows[i]:Hide() end
     ui.windows.content:SetHeight(math.max(1,#windows*54))
 end
-local descriptions = {
-    general=L["Everyday chat, groups, and quest dialogue."],
-    social=L["Conversations, guild chat, and achievements."],
-    group=L["Party, raid, instance, and battleground communication."],
-    loot=L["Loot, currency, crafting, and character progress."],
-    trade=L["Trade channels and private replies."],
-    blank=L["An empty starting point for your own filters."],
-}
-local function CloseChooser()
-    ui.chooser:Hide();ui.editor:Show();ui.name:ClearFocus();ui.chooserTarget=nil;Refresh()
-end
-local function RenderChooser()
-    if not ui.chooser:IsShown() then return end
-    if not B:Preset(presetID) then presetID="general" end
-    local presets=B:Presets()
-    for i,p in ipairs(presets) do
-        local row=ui.choices[i]
-        if not row then
-            row=ns.SettingsPanel.Plate(ui.choiceList.content)
-            row:SetHeight(52);row:SetPoint("TOPLEFT",0,-(i-1)*58);row:SetPoint("TOPRIGHT",-4,-(i-1)*58)
-            row.Text:ClearAllPoints();row.Text:SetPoint("TOPLEFT",12,-7);row.Text:SetPoint("TOPRIGHT",-12,-7);row.Text:SetJustifyH("LEFT")
-            row.detail=Text(row,"","GameFontHighlightSmall");row.detail:SetPoint("TOPLEFT",12,-27);row.detail:SetPoint("TOPRIGHT",-12,-27)
-            row:SetScript("OnClick",function()
-                ns.ButtonSound();presetID=row.preset.id
-                if ui.chooserMode=="create" and (ui.name:GetText()=="" or ui.name:GetText()==ui.suggestedName) then
-                    ui.suggestedName=row.preset.id=="blank" and L["New window"] or row.preset.name;ui.name:SetText(ui.suggestedName)
-                end
-                Refresh()
-            end)
-            ui.choices[i]=row
+local function LayoutSets(id)
+    local p=B:Preset(id);local messages,channels={},{}
+    if not p then return messages,channels end
+    local wanted={}
+    for _,key in ipairs(p.messages) do wanted[key]=true end
+    for _,key in ipairs(p.channels) do wanted[key]=true end
+    for _,category in ipairs(B:Categories()) do for _,entry in ipairs(category.entries) do
+        if not entry.disabled and wanted[entry.key] then
+            local values=entry.kind=="message" and messages or channels;values[entry.key]=true
         end
-        row.preset=p;row:SetFontString(row.Text);row:SetText(p.id=="blank" and L["Empty"] or p.name)
-        row.detail:SetText(p.builtin and descriptions[p.id] or L["Your saved chat filters."])
-        row:SetSelected(p.id==presetID);row:Show()
-    end
-    for i=#presets+1,#ui.choices do ui.choices[i]:Hide() end
-    ui.choiceList.content:SetHeight(math.max(1,#presets*58))
-    local p=B:Preset(presetID);local ok=B:Status()
-    ui.renamePreset:SetShown(not p.builtin);ui.deletePreset:SetShown(not p.builtin)
-    ui.renamePreset:SetEnabled(ok and not p.builtin);ui.deletePreset:SetEnabled(ok and not p.builtin)
-    ui.choose:SetEnabled(ok and (ui.chooserMode~="create" or (FCF_CanOpenNewWindow and FCF_CanOpenNewWindow())))
+    end end
+    return messages,channels
 end
-local function OpenChooser(mode)
-    ui.chooserMode=mode;ui.chooserTarget=mode=="apply" and selected or nil;presetID="general";ui.notice=nil
-    ui.chooserTitle:SetText(mode=="create" and L["Add a chat window"] or L["Use a preset"])
-    ui.chooserHelp:SetText(mode=="create" and L["Choose a starting point. You can change it later."] or L["Choose filters for %s. You will confirm before replacing them."]:format(selected.name))
-    ui.nameLabel:SetShown(mode=="create");ui.name:SetShown(mode=="create");ui.editName:SetShown(mode=="create")
-    ui.suggestedName=B:Preset(presetID).name;ui.name:SetText(ui.suggestedName)
-    ui.choose:SetText(mode=="create" and L["Create window"] or L["Apply preset"])
-    ui.editor:Hide();ui.chooser:Show();ui.choiceList:SetVerticalScroll(0);Refresh()
+local function Matches(a,b)
+    for key in pairs(a) do if not b[key] then return false end end
+    for key in pairs(b) do if not a[key] then return false end end
+    return true
+end
+local function CurrentLayout(state)
+    if state then for _,p in ipairs(B:Presets()) do
+        local messages,channels=LayoutSets(p.id)
+        if Matches(state.messages,messages) and Matches(state.channels,channels) then return p.id,p.id=="blank" and L["Empty"] or p.name end
+    end end
+    return "custom",L["Custom"]
+end
+local function PreviewLayout(id)
+    ui.adding=false
+    ui.previewID=id~="custom" and id or nil;ui.previewTarget=ui.previewID and selected or nil
+    ui.notice=nil;ui.search:SetText("");activeCategory="all";selectedOnly=false;ui.filters:SetVerticalScroll(0);Refresh()
+end
+local function LayoutDropdown(parent,onSelect,includeCustom,current)
+    local dd=CreateFrame("DropdownButton",nil,parent,"WowStyle1DropdownTemplate");ns.SettingsPanel.SkinDropdown(dd);dd:SetHeight(26)
+    local function Choices()
+        local out={};if includeCustom then out[1]={id="custom",name=L["Custom"]} end
+        for _,p in ipairs(B:Presets()) do out[#out+1]={id=p.id,name=p.id=="blank" and L["Empty"] or p.name} end
+        return out
+    end
+    dd:SetupMenu(function(_,root)
+        for _,p in ipairs(Choices()) do root:CreateRadio(p.name,function() return current()==p.id end,function() onSelect(p.id) end) end
+    end)
+    dd.padCycle=function(delta)
+        local choices=Choices();for i,p in ipairs(choices) do if p.id==current() then onSelect(choices[((i-1+delta)%#choices)+1].id);return end end
+    end
+    return dd
 end
 function Refresh()
     if not ui or not ui.host:IsShown() then return end
@@ -257,12 +248,36 @@ function Refresh()
     for _,h in ipairs(windows) do if selected and h.id==selected.id and h.generation==selected.generation then found=h end end
     selected=found or windows[1]
     local state=SelectedState();local ok,reason=B:Status();local editable=ok and state and not selected.special and true or false
-    RenderWindows(windows);RenderFilters(state,editable)
+    if ui.previewTarget and (not selected or selected.id~=ui.previewTarget.id or selected.generation~=ui.previewTarget.generation or selected.name~=ui.previewTarget.name) then ui.previewID=nil;ui.previewTarget=nil end
+    if ui.previewID and not B:Preset(ui.previewID) then ui.previewID=nil;ui.previewTarget=nil end
+    local shownState=state
+    if ui.previewID and state then
+        shownState={messages={},channels={}}
+        for key,value in pairs(state.messages) do shownState.messages[key]=value end
+        for key,value in pairs(state.channels) do shownState.channels[key]=value end
+        local messages,channels=LayoutSets(ui.previewID)
+        for _,category in ipairs(B:Categories()) do for _,entry in ipairs(category.entries) do if not entry.disabled then
+            local values=entry.kind=="message" and shownState.messages or shownState.channels
+            local wanted=entry.kind=="message" and messages or channels;values[entry.key]=wanted[entry.key]
+        end end end
+    end
+    RenderWindows(windows);RenderFilters(shownState,editable and not ui.previewID)
+    local currentID,currentName=CurrentLayout(state)
+    ui.currentLayout=currentID
+    local preview=ui.previewID and B:PreviewPreset(ui.previewID)
+    ui.layout:SetDefaultText(preview and (ui.previewID=="blank" and L["Empty"] or preview.preset.name) or currentName);ui.layout:SetEnabled(editable and not ui.adding)
+    ui.layout:SetShown(not ui.adding);ui.layoutLabel:SetShown(not ui.adding)
+    ui.applyLayout:SetShown(preview~=nil);ui.cancelLayout:SetShown(preview~=nil);ui.applyLayout:SetEnabled(editable)
+    ui.previewNote:SetShown(preview~=nil)
+    ui.previewNote:SetText(preview and L["Preview only. Apply layout to replace this window's filters, or Cancel."] or "")
+    ui.addForm:SetShown(ui.adding and true or false)
+    ui.filtersArea:SetPoint("TOPLEFT",0,ui.adding and -208 or (preview and -148 or -112))
+    ui.addLayout:SetDefaultText(presetID=="blank" and L["Empty"] or B:Preset(presetID).name)
     ui.title:SetText(selected and selected.name or L["Select a chat window"])
     ui.moveUp:SetEnabled(selected and B:MoveTarget(selected,-1)~=nil);ui.moveDown:SetEnabled(selected and B:MoveTarget(selected,1)~=nil)
     ui.rename:SetEnabled(editable);ui.close:SetEnabled(editable and not selected.primary)
     ui.dock:SetEnabled(editable and not selected.primary);ui.dock:SetText(selected and selected.docked and L["Pop out"] or L["Dock"])
-    ui.native:SetEnabled(ok and selected~=nil);ui.save:SetEnabled(editable);ui.usePreset:SetEnabled(editable)
+    ui.native:SetEnabled(ok and selected~=nil);ui.native:SetShown(selected and selected.special and true or false)
     ui.new:SetEnabled(ok and FCF_CanOpenNewWindow and FCF_CanOpenNewWindow() and true or false);ui.duplicate:SetEnabled(editable and ui.new:IsEnabled())
     ui.selectedOnly:SetChecked(selectedOnly);ui.category:SetEnabled(not selectedOnly)
     local status=reason or L["Changes apply immediately."]
@@ -271,13 +286,19 @@ function Refresh()
         local source=ns.Tweaks:GetSyncSourceLabel()
         if source and not ns.Tweaks:IsSyncSource() then status=status.."\n"..L["Blizzard settings sync is enabled. Future changes from %s may replace this character's chat settings."]:format(source) end
     end
-    ui.status:SetText(ui.notice or status);ui.chooserNotice:SetText(ui.notice or "");RenderChooser()
+    if preview then
+        status=L["Preview only. Apply layout to replace this window's filters, or Cancel."]
+        if #preview.skipped>0 then status=status.."\n"..L["Skipped unavailable:"].." "..table.concat(preview.skipped,", ") end
+    end
+    ui.status:SetPoint("BOTTOMRIGHT",selected and selected.special and -214 or 0,0)
+    ui.status:SetText(ui.notice or status)
+    ui.create:SetEnabled(ui.new:IsEnabled())
 end
 function Editor.Build(host,side)
-    ui={host=host,windowRows={},filterRows={},choices={}}
+    ui={host=host,windowRows={},filterRows={}}
     local editor=CreateFrame("Frame",nil,host);editor:SetAllPoints();ui.editor=editor
     local title=Text(editor,L["Your chat windows"],"GameFontNormal");title:SetPoint("TOPLEFT",0,0)
-    ui.new=Button(editor,L["Add window"],148,function() OpenChooser("create") end);ui.new:SetPoint("TOPLEFT",0,-26)
+    ui.new=Button(editor,L["Add window"],148,function() ui.adding=true;ui.previewID=nil;ui.previewTarget=nil;presetID="general";ui.suggestedName=B:Preset(presetID).name;ui.name:SetText(ui.suggestedName);ui.notice=nil;Refresh() end);ui.new:SetPoint("TOPLEFT",0,-26)
     ui.windows=Scroll(editor);ui.windows:SetPoint("TOPLEFT",0,-62);ui.windows:SetPoint("BOTTOMLEFT",0,34);ui.windows:SetWidth(148)
     ui.moveUp=Button(editor,L["Move up"],71,function() Act(function() return B:Move(selected,-1) end) end);ui.moveUp:SetPoint("BOTTOMLEFT",0,0)
     ui.moveDown=Button(editor,L["Move down"],71,function() Act(function() return B:Move(selected,1) end) end);ui.moveDown:SetPoint("LEFT",ui.moveUp,"RIGHT",6,0)
@@ -287,18 +308,39 @@ function Editor.Build(host,side)
     ui.title=Text(body,"","GameFontNormalLarge");ui.title:SetPoint("TOPLEFT",0,0);ui.title:SetPoint("TOPRIGHT",-100,0)
     ui.rename=Button(body,L["Rename"],82,Rename);ui.rename:SetPoint("TOPRIGHT",0,0)
     ui.dock=Button(body,L["Pop out"],100,function() local h=selected;Act(function() return B:SetDocked(h,not h.docked) end) end);ui.dock:SetPoint("TOPLEFT",0,-32)
-    ui.usePreset=Button(body,L["Use a preset"],160,function() OpenChooser("apply") end);ui.usePreset:SetPoint("LEFT",ui.dock,"RIGHT",8,0)
-    local options=CreateFrame("Frame",nil,body);options:SetPoint("TOPLEFT",0,-64);options:SetPoint("TOPRIGHT",0,-64);options:SetHeight(60);options:Hide()
-    local filtersArea=CreateFrame("Frame",nil,body);filtersArea:SetPoint("TOPLEFT",0,-72);filtersArea:SetPoint("BOTTOMRIGHT",0,0)
-    ui.more=Button(body,L["More options"],140,function() options:SetShown(not options:IsShown());filtersArea:SetPoint("TOPLEFT",0,options:IsShown() and -136 or -72) end);ui.more:SetPoint("LEFT",ui.usePreset,"RIGHT",8,0)
-    ui.duplicate=Button(options,L["Duplicate"],130,DuplicateWindow);ui.duplicate:SetPoint("TOPLEFT",0,0)
-    ui.close=Button(options,L["Delete window"],130,function()
-        local h=selected;if h then Confirm(L["Delete %s? Its chat-window configuration will be removed."]:format(h.name),function() Act(function() return B:Close(h) end) end) end
+    ui.duplicate=Button(body,L["Duplicate"],110,DuplicateWindow);ui.duplicate:SetPoint("LEFT",ui.dock,"RIGHT",8,0)
+    ui.close=Button(body,L["Delete window"],130,function()
+        local h=selected;if h then Confirm(L["Delete %s? Its chat-window configuration will be removed."]:format(h.name),function() ui.previewID=nil;Act(function() return B:Close(h) end) end) end
     end);ui.close:SetPoint("LEFT",ui.duplicate,"RIGHT",8,0)
-    ui.save=Button(options,L["Save as preset"],160,function()
-        local h=selected;if h then AskName(L["Save these filters as a new preset"],h.name,function(name) local p,err=B:SavePreset(h,name);Report(p,err) end) end
-    end);ui.save:SetPoint("LEFT",ui.close,"RIGHT",8,0)
-    ui.native=Button(options,L["Open Blizzard Settings"],206,function() Act(function() return B:OpenBlizzard(selected) end) end);ui.native:SetPoint("TOPLEFT",0,-30)
+    local layoutLabel=Text(body,L["Starting layout"],"GameFontNormal");ui.layoutLabel=layoutLabel;layoutLabel:SetPoint("TOPLEFT",0,-72)
+    ui.layout=LayoutDropdown(body,PreviewLayout,true,function() return ui.previewID or ui.currentLayout or "custom" end)
+    ui.layout:SetWidth(200);ui.layout:SetPoint("LEFT",layoutLabel,"RIGHT",12,0)
+    ui.applyLayout=Button(body,L["Apply layout"],110,ApplyPreset);ui.applyLayout:SetPoint("LEFT",ui.layout,"RIGHT",8,0)
+    ui.cancelLayout=Button(body,L["Cancel"],74,function() ui.previewID=nil;ui.previewTarget=nil;ui.notice=nil;Refresh() end);ui.cancelLayout:SetPoint("LEFT",ui.applyLayout,"RIGHT",6,0)
+    ui.previewNote=Text(body,"","GameFontHighlightSmall");ui.previewNote:SetPoint("TOPLEFT",0,-94);ui.previewNote:SetPoint("TOPRIGHT",0,-94);ui.previewNote:SetHeight(40)
+    local add=CreateFrame("Frame",nil,body,"BackdropTemplate");ui.addForm=add;add:SetPoint("TOPLEFT",0,-64);add:SetPoint("TOPRIGHT",0,-64);add:SetHeight(132);ns.SettingsPanel.Box(add,0.5);add:Hide()
+    local nameLabel=Text(add,L["Window name"],"GameFontNormal");nameLabel:SetPoint("TOPLEFT",10,-10)
+    ui.name=CreateFrame("EditBox",nil,add,"InputBoxTemplate");ui.name:SetAutoFocus(false);ui.name:SetMaxLetters(31);ui.name:SetFontObject(ns.SettingsPanel.FONT.GameFontHighlight)
+    ui.name:SetHeight(24);ui.name:SetPoint("TOPLEFT",130,-6);ui.name:SetPoint("TOPRIGHT",-108,-6)
+    ui.editName=Button(add,L["Edit name"],86,function() AskName(L["Window name"],ui.name:GetText(),function(name) ui.name:SetText(name or "") end) end);ui.editName:SetPoint("TOPRIGHT",-10,-6)
+    local addLabel=Text(add,L["Starting layout"],"GameFontNormal");addLabel:SetPoint("TOPLEFT",10,-46)
+    ui.addLayout=LayoutDropdown(add,function(id)
+        presetID=id
+        if ui.name:GetText()=="" or ui.name:GetText()==ui.suggestedName then ui.suggestedName=id=="blank" and L["New window"] or B:Preset(id).name;ui.name:SetText(ui.suggestedName) end
+        Refresh()
+    end,false,function() return presetID end);ui.addLayout:SetWidth(220);ui.addLayout:SetPoint("TOPLEFT",124,-38)
+    local addHelp=Text(add,L["Creates a new window. Your existing windows stay unchanged."],"GameFontHighlightSmall");addHelp:SetPoint("TOPLEFT",10,-72);addHelp:SetPoint("TOPRIGHT",-10,-72)
+    ui.create=Button(add,L["Create window"],140,function()
+        local h,result=B:Create(ui.name:GetText(),presetID)
+        if not h then Report(nil,result);return end
+        selected=h;ui.adding=false;ui.notice=L["Window created. Filters are active."]
+        if #result.skipped>0 then ui.notice=ui.notice.."\n"..L["Skipped unavailable:"].." "..table.concat(result.skipped,", ") end
+        ui.name:ClearFocus();Refresh()
+    end);ui.create:SetPoint("BOTTOMLEFT",10,8)
+    local function CancelAdd() ui.adding=false;ui.name:ClearFocus();Refresh() end
+    local cancel=Button(add,L["Cancel"],86,CancelAdd);cancel:SetPoint("LEFT",ui.create,"RIGHT",8,0);ui.name:SetScript("OnEscapePressed",CancelAdd)
+    local filtersArea=CreateFrame("Frame",nil,body);ui.filtersArea=filtersArea;filtersArea:SetPoint("TOPLEFT",0,-112);filtersArea:SetPoint("BOTTOMRIGHT",0,0)
+    ui.native=Button(filtersArea,L["Open Blizzard Settings"],206,function() Act(function() return B:OpenBlizzard(selected) end) end);ui.native:SetPoint("BOTTOMRIGHT",0,0)
     local contentTitle=Text(filtersArea,L["What appears here"],"GameFontNormal");contentTitle:SetPoint("TOPLEFT",0,0)
     ui.search=CreateFrame("EditBox",nil,filtersArea,"SearchBoxTemplate");ui.search:SetAutoFocus(false);ui.search:SetMaxLetters(80);ui.search:SetFontObject(ns.SettingsPanel.FONT.GameFontHighlight)
     if ui.search.Instructions then ui.search.Instructions:SetText(L["Find a message or channel"]) end
@@ -327,35 +369,8 @@ function Editor.Build(host,side)
     ui.filters:HookScript("OnSizeChanged",function() if ui.empty then Refresh() end end)
     ui.empty=Text(filtersArea);ui.empty:SetPoint("TOPLEFT",8,-132);ui.empty:SetPoint("TOPRIGHT",-24,-132)
     ui.status=Text(filtersArea,"","GameFontHighlightSmall");ui.status:SetPoint("BOTTOMLEFT",0,0);ui.status:SetPoint("BOTTOMRIGHT",0,0);ui.status:SetHeight(56)
-    local chooser=CreateFrame("Frame",nil,host);chooser:SetAllPoints();ui.chooser=chooser;chooser:Hide()
-    local card=CreateFrame("Frame",nil,chooser,"BackdropTemplate");card:SetPoint("TOP",0,0);card:SetPoint("BOTTOM",0,0);card:SetWidth(500);ns.SettingsPanel.Box(card,0.9)
-    ui.chooserTitle=Text(card,"","GameFontNormalLarge");ui.chooserTitle:SetPoint("TOPLEFT",16,-14)
-    ui.chooserHelp=Text(card);ui.chooserHelp:SetPoint("TOPLEFT",16,-40);ui.chooserHelp:SetPoint("TOPRIGHT",-16,-40);ui.chooserHelp:SetHeight(36)
-    ui.choiceList=Scroll(card);ui.choiceList:SetPoint("TOPLEFT",16,-84);ui.choiceList:SetPoint("BOTTOMRIGHT",-24,158)
-    ui.nameLabel=Text(card,L["Window name"],"GameFontNormal");ui.nameLabel:SetPoint("BOTTOMLEFT",16,130)
-    ui.name=CreateFrame("EditBox",nil,card,"InputBoxTemplate");ui.name:SetAutoFocus(false);ui.name:SetMaxLetters(31);ui.name:SetFontObject(ns.SettingsPanel.FONT.GameFontHighlight)
-    ui.name:SetHeight(24);ui.name:SetPoint("BOTTOMLEFT",22,100);ui.name:SetPoint("BOTTOMRIGHT",-110,100);ui.name:SetScript("OnEscapePressed",CloseChooser)
-    ui.editName=Button(card,L["Edit name"],86,function()
-        AskName(L["Window name"],ui.name:GetText(),function(name) ui.name:SetText(name or "") end)
-    end);ui.editName:SetPoint("BOTTOMRIGHT",-16,100)
-    ui.renamePreset=Button(card,L["Rename preset"],118,function()
-        local id=presetID;local p=B:Preset(id);if p and not p.builtin then AskName(L["Rename saved preset"],p.name,function(name) Act(function() return B:RenamePreset(id,name) end) end) end
-    end);ui.renamePreset:SetPoint("BOTTOMLEFT",16,66)
-    ui.deletePreset=Button(card,L["Delete preset"],118,function()
-        local id=presetID;local p=B:Preset(id);if p and not p.builtin then Confirm(L["Delete preset %s? Existing chat windows will not change."]:format(p.name),function() Act(function() return B:DeletePreset(id) end) end) end
-    end);ui.deletePreset:SetPoint("LEFT",ui.renamePreset,"RIGHT",8,0)
-    ui.chooserNotice=Text(card,"","GameFontHighlightSmall");ui.chooserNotice:SetPoint("BOTTOMLEFT",16,36);ui.chooserNotice:SetPoint("BOTTOMRIGHT",-16,36);ui.chooserNotice:SetHeight(28)
-    local cancel=Button(card,L["Cancel"],110,CloseChooser);cancel:SetPoint("BOTTOMLEFT",16,8)
-    ui.choose=Button(card,L["Create window"],170,function()
-        if ui.chooserMode=="apply" then ApplyPreset();return end
-        local h,result=B:Create(ui.name:GetText(),presetID)
-        if not h then Report(nil,result);return end
-        selected=h;ui.notice=L["Window created. Filters are active."]
-        if #result.skipped>0 then ui.notice=ui.notice.."\n"..L["Skipped unavailable:"].." "..table.concat(result.skipped,", ") end
-        CloseChooser()
-    end);ui.choose:SetPoint("BOTTOMRIGHT",-16,8)
     host:SetScript("OnShow",function() B:Watch(Refresh);Refresh() end)
-    host:SetScript("OnHide",function() B:Unwatch(Refresh);ui.search:ClearFocus();ui.name:ClearFocus();ui.chooser:Hide();ui.editor:Show();ui.chooserTarget=nil end)
+    host:SetScript("OnHide",function() B:Unwatch(Refresh);ui.search:ClearFocus();ui.name:ClearFocus();ui.adding=false;ui.previewID=nil;ui.previewTarget=nil end)
     B:Watch(Refresh)
 end
 Editor.Refresh=function() Refresh() end
