@@ -1245,6 +1245,8 @@ function OT:Render()
             line.text:SetWordWrap(wrap)
             line.text:SetMaxLines(wrap and 0 or 1)
         end
+        -- Measure wrapped text without the height limit left by the previous layout.
+        if wrap then line.text:SetHeight(0) end
         if line.ftText ~= text then
             line.ftText = text
             line.text:SetText(text)
@@ -1258,12 +1260,14 @@ function OT:Render()
             line:SetWidth(w)
             line.text:SetWidth(w)
         end
-        local h = math_max(FontHeight(cfg, 12), math_floor(line.text:GetStringHeight() + 0.5))
-        if line.ftHeight ~= h then
+        local textHeight = wrap and math.ceil(line.text:GetHeight()) or math_floor(line.text:GetStringHeight() + 0.5)
+        local h = math_max(FontHeight(cfg, 12), textHeight)
+        local heightChanged = line.ftHeight ~= h
+        if heightChanged then
             line.ftHeight = h
             line:SetHeight(h)
-            line.text:SetHeight(h)
         end
+        if wrap or heightChanged then line.text:SetHeight(h) end
         line:ClearAllPoints()
         line.ftY = y
         -- the mouse area reaches the band's edges and the gap to the next line
