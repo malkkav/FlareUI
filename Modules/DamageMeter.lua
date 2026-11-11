@@ -2238,9 +2238,49 @@ function DamageMeter:LeaveChatTab()
 end
 
 --------------------------------------------------
+-- 23b. EDIT MODE DIALOG
+-- Visibility, Transparency and Background leave the meter's Edit Mode dialog: FlareUI's own
+-- Visibility overrules the first (VISIBILITY above) and its skin replaces the other two, so they did
+-- nothing there and players set them in vain (11-11). Done on the dialog's own rows after Blizzard
+-- builds them (as Minimap.lua trims the minimap's), never in Blizzard's table: addon-written entries
+-- there would taint Edit Mode. Their stored values are left as they are, unused.
+--------------------------------------------------
+local function TrimMeterDialog(dialog)
+    local system = dialog and dialog.attachedToSystem
+    if not (system and system.system == Enum.EditModeSystem.DamageMeter and dialog.Settings) then return end
+    local db = GetDb()
+    if not (db and db.enabled) then return end
+    local setting = Enum.EditModeDamageMeterSetting
+    local hidden = {
+        [setting.Visibility] = true,
+        [setting.Transparency] = true,
+        [setting.BackgroundTransparency] = true,
+    }
+    local changed = false
+    for _, row in ipairs({ dialog.Settings:GetChildren() }) do
+        if row:IsShown() and row.setting and hidden[row.setting] then
+            row:Hide()
+            changed = true
+        end
+    end
+    if changed then
+        dialog.Settings:Layout()
+        if dialog.Layout then dialog:Layout() end
+    end
+end
+
+local function HookMeterDialog()
+    local dialog = _G.EditModeSystemSettingsDialog
+    if not (dialog and Enum.EditModeSystem.DamageMeter and Enum.EditModeDamageMeterSetting) or dialog.FlareUI_MeterTrim then return end
+    dialog.FlareUI_MeterTrim = true
+    hooksecurefunc(dialog, "UpdateSettings", TrimMeterDialog)
+end
+
+--------------------------------------------------
 -- 24. INIT
 --------------------------------------------------
 function DamageMeter:Init()
+    HookMeterDialog()
     -- EDIT_MODE_LAYOUTS_UPDATED fires while Edit Mode is open, where Refresh does nothing
     if _G.EditModeManagerFrame and not self._editModeHooked then
         self._editModeHooked = true
