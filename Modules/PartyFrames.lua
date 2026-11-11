@@ -752,7 +752,13 @@ local function UpdatePortrait(f)
 end
 
 local function UpdateCast(f, event, by, barID)
-    if f.Cast then K.UpdateCastBar(f.Cast, f.Cast.isEnabled(), event, by, barID) end
+    if not f.Cast then return end
+    -- a settings preview's sample has no unit: the Edit Mode sample cast
+    if f.fuiSample then
+        if f.Cast.isEnabled() then K.ShowSampleCast(f.Cast) else f.Cast:Hide() end
+        return
+    end
+    K.UpdateCastBar(f.Cast, f.Cast.isEnabled(), event, by, barID)
 end
 
 local ApplyPreview, HidePreviewExtras   -- section 9
@@ -770,6 +776,8 @@ end
 
 local function UpdateAll(f)
     -- (a settings preview's sample always shows the Edit Mode values)
+    -- (a sample is drawn only once laid out: its OnShow can come first)
+    if f.fuiSample and not f.fuiLaid then return end
     if IsEditing() or f.fuiSample then
         ApplyPreview(f)
         UpdateRing(f)
@@ -2940,6 +2948,7 @@ function PF.SampleTile(parent, ctx, sample, index)
 end
 function PF.DrawSampleTile(f)
     LayoutMember(f)
+    f.fuiLaid = true
     UpdateAll(f)
     f:Show()
     return f:GetWidth(), f:GetHeight()

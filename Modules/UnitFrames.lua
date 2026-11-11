@@ -4725,6 +4725,7 @@ UF.Kit = {
     GetHealthColor = GetHealthColor, GetPowerColor = GetPowerColor,
     HardHide = HardHide, SetIconArt = SetIconArt, HasAtlas = HasAtlas,
     CreateCastBar = CreateCastBar, LayoutCastBar = LayoutCastBar, UpdateCastBar = UpdateCastBar,
+    ShowSampleCast = ShowSampleCast,
     InitAuraButton = InitAuraButton, HasAuraSupport = HasAuraSupport,
     ApplyRangeAlpha = UF.ApplyRangeAlpha,
     CreateManaCost = UF.CreateManaCost, CostsMana = CostsMana, GetTimerFormatter = GetTimerFormatter,
