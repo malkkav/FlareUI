@@ -720,7 +720,7 @@ local function SetDiscHole(f, ring, on, size)
     end
     if size then ring.DiscHole:SetSize(size * DISC_HOLE_SHARE, size * DISC_HOLE_SHARE) end
     if on == (ring.discHoleOn or false) then return end
-    for _, region in ipairs({ ring.Art, f.Portrait.Tex, ring.Status, ring.Flash, ring.Boss, ring.Tint }) do
+    for _, region in ipairs({ ring.Art, ring.Patch, f.Portrait.Tex, ring.Status, ring.Flash, ring.Boss, ring.Tint }) do
         if on then region:AddMaskTexture(ring.DiscHole) else region:RemoveMaskTexture(ring.DiscHole) end
     end
     ring.discHoleOn = on
@@ -739,6 +739,15 @@ local function Build(f)
     ring.Art:AddMaskTexture(ring.Mask)
     ring.artMasked = true
     ring.PlateMask = ring:CreateMaskTexture()
+    -- FlareUI Style: Blizzard's art runs the ring's lower half on the bars' side into the plate's rails,
+    -- which the clean circle cuts away (the ring looked thinner there, 11-11). The ring's upper
+    -- quarter on that side, flipped down, covers it: the same art, the same circle, kept to that quarter.
+    ring.Patch = ring:CreateTexture(nil, "ARTWORK", nil, 1)
+    ring.Patch:AddMaskTexture(ring.Mask)
+    ring.PatchMask = ring:CreateMaskTexture()
+    ring.PatchMask:SetTexture("Interface\\Buttons\\WHITE8x8", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    ring.Patch:AddMaskTexture(ring.PatchMask)
+    ring.Patch:Hide()
 
     -- the portrait's mask, the same shape
     ring.PortraitMask = f.Portrait:CreateMaskTexture()
@@ -879,6 +888,20 @@ function Ring.Layout(f)
         ring.hasArt = Crop(ring.Art, art, g.side)
     end
     ring:SetShown(ring.hasArt)
+    -- FlareUI Style's patch over the bars' side's lower quarter (Build): the art flipped top to bottom
+    if not plate and ring.hasArt then
+        local ulx, uly, llx, lly, urx, ury, lrx, lry = ring.Art:GetTexCoord()
+        ring.Patch:SetTexture(ring.Art:GetTexture())
+        ring.Patch:SetTexCoord(llx, lly, ulx, uly, lrx, lry, urx, ury)
+        ring.Patch:ClearAllPoints()
+        ring.Patch:SetAllPoints(ring.Art)
+        ring.PatchMask:ClearAllPoints()
+        ring.PatchMask:SetPoint(left and "TOPLEFT" or "TOPRIGHT", ring, "CENTER", 0, 0)
+        ring.PatchMask:SetPoint(left and "BOTTOMRIGHT" or "BOTTOMLEFT", ring, left and "BOTTOMRIGHT" or "BOTTOMLEFT", 0, 0)
+        ring.Patch:Show()
+    else
+        ring.Patch:Hide()
+    end
     if plate then
         -- the whole art past the plate's end; before it only the ring, as the art's copy of the plate's
         -- rails rounds differently from the plate and shows a step. The file is 2.5 radii wide.
