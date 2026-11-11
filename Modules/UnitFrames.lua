@@ -1621,7 +1621,11 @@ local function UpdateCastBar(cast, enabled, event, by, barID)
         color = channeling and CAST_CHANNEL or CAST_COLOR
     end
     color = KICK.Color(cast) or color
-    if canaccessvalue(notInterruptible) then
+    if cast.standalone or cast.unit == "player" then
+        -- your own cast never takes the uninterruptible grey: it's for casts you could kick, and some
+        -- of yours are flagged so, which read as the range grey (a player's report 11-11)
+        cast:SetStatusBarColor(color[1], color[2], color[3])
+    elseif canaccessvalue(notInterruptible) then
         if notInterruptible then color = CAST_NOINTERRUPT end
         cast:SetStatusBarColor(color[1], color[2], color[3])
     else
