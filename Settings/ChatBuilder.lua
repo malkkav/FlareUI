@@ -262,8 +262,8 @@ function Editor.Build(host,side)
     ui.rename=Button(body,L["Rename"],82,Rename);ui.rename:SetPoint("TOPLEFT",0,-28)
     ui.duplicate=Button(body,L["Duplicate"],86,DuplicateWindow);ui.duplicate:SetPoint("LEFT",ui.rename,"RIGHT",6,0)
     ui.dock=Button(body,L["Pop out"],82,function() local h=selected;Act(function() return B:SetDocked(h,not h.docked) end) end);ui.dock:SetPoint("LEFT",ui.duplicate,"RIGHT",6,0)
-    ui.close=Button(body,L["Close window"],110,function()
-        local h=selected;if h then Confirm(L["Close %s? Its chat-window configuration will be removed."]:format(h.name),function() Act(function() return B:Close(h) end) end) end
+    ui.close=Button(body,L["Delete window"],110,function()
+        local h=selected;if h then Confirm(L["Delete %s? Its chat-window configuration will be removed."]:format(h.name),function() Act(function() return B:Close(h) end) end) end
     end);ui.close:SetPoint("LEFT",ui.dock,"RIGHT",6,0)
     ui.search=CreateFrame("EditBox",nil,body,"SearchBoxTemplate");ui.search:SetAutoFocus(false);ui.search:SetMaxLetters(80)
     ui.search:SetFontObject(ns.SettingsPanel.FONT.GameFontHighlight)
