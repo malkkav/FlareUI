@@ -504,21 +504,34 @@ end
 local preview = {}
 local previewRow
 
-local function ShowVisual(row, value)
+-- the page's own picture (its tab's), or nil for the page's art
+local function PageSpec()
+    local tab = currentTab[current]
+    if current == 'qol' then
+        tab = tab or 'gameplay'
+        if tab == 'bags' then return { kind = 'bags', key = 'qol.bagsOverview' } end
+        if tab == 'nameplates' then return { kind = 'nameplate', key = 'qol.npOverview' } end
+        return nil
+    end
+    if current == 'au' and tab == 'reminders' then return { kind = 'reminders', key = 'au.remindersOverview' } end
+    if current == 'ab' and tab == 'xp' then return { kind = 'xp', key = 'ab.xpOverview' } end
+    return ns.SettingsPreview.Module(current)
+end
+
+-- 11-10 (Marcus): a picture shows the current settings only; hovering never tries a value on
+local function ShowVisual(row)
     if not preview.canvas then return end
     if preview.module ~= current or preview.tab ~= currentTab[current] then
         preview.spec = nil; preview.helpRow = nil; preview.module = current; preview.tab = currentTab[current]
     end
-    if preview.dirty and not row and preview.spec and S.rows then
+    if preview.dirty and not row and preview.spec and S.rows and S.rows[preview.spec.key] then
         preview.spec = ns.SettingsPreview.Resolve(S.rows[preview.spec.key]) or preview.spec
     end
-    local spec = ns.SettingsPreview.Resolve(row, value) or preview.spec or ns.SettingsPreview.Module(current)
-    if not row and not spec and current == 'qol' then
-        local tab = currentTab[current] or 'gameplay'
-        if tab == 'bags' then spec = { kind = 'bags', key = 'qol.bagsOverview' }
-        elseif tab == 'nameplates' then spec = { kind = 'nameplate', key = 'qol.npOverview' } end
-    end
-    if not row and current == 'au' and currentTab[current] == 'reminders' then spec = preview.spec or {kind='reminders',key='au.remindersOverview'} end
+    -- a row without a picture shows the page's
+    local spec
+    if row then spec = ns.SettingsPreview.Resolve(row) or PageSpec()
+    else spec = preview.spec or PageSpec() end
+    local value
     -- One stable composition for the whole Action Bars page. Only dropdown exploration carries
     -- a temporary value; ordinary hover changes the explanation, not the scene or animation.
     if spec and spec.kind == 'actions' and value == nil then spec = { kind = 'actions', key = 'ab.overview' } end
@@ -531,7 +544,11 @@ local function ShowVisual(row, value)
     else shown = ns.SettingsPreview.Show(preview.canvas, spec) end
     preview.dirty = nil
     preview.picture:SetShown(not shown)
-    if preview.pause then preview.pause:SetShown(shown and true or false) end
+    -- as tall as what it shows
+    if shown then
+        local h = ns.SettingsPreview.Measure(preview.canvas)
+        preview.canvas.frame:SetHeight(math.max(24, math.min(preview.canvas.height, h + 8)))
+    end
     preview.title:ClearAllPoints()
     preview.title:SetPoint("TOPLEFT", shown and preview.canvas.frame or preview.picture, "BOTTOMLEFT", 0, -12)
     preview.title:SetPoint("RIGHT", -PAD, 0)
@@ -587,7 +604,7 @@ local Build = {}     -- kind -> function(f): adds the control once
 local Fill = {}      -- kind -> function(f, row): shows the row's values
 
 local function RowEnter(self)
-    if self.row then ShowRowPreview(self.row, ns.SettingsPreview.HoverValue(self.row)) end
+    if self.row then ShowRowPreview(self.row) end
     self.hover:Show()
 end
 
@@ -2449,20 +2466,9 @@ local function BuildWindow()
     preview.picture:SetTexture(PICTURE)
     preview.picture:SetSize(RIGHT_W - 2 * PAD, RIGHT_W - 2 * PAD)
     preview.canvas = ns.SettingsPreview.Create(right, RIGHT_W - 2 * PAD, RIGHT_W - 2 * PAD)   -- 256 square
-    preview.canvas.frame:SetPoint("TOP", 0, -32)
+    -- (11-10: no "Preview" label or Pause button; the picture starts at the top)
+    preview.canvas.frame:SetPoint("TOP", 0, -PAD)
     preview.canvas.frame:Hide()
-    local previewLabel = Text(right, "GameFontHighlightSmall")
-    previewLabel:SetPoint("TOPLEFT", PAD, -12); previewLabel:SetText(L["Preview"])
-    previewLabel:SetTextColor(0.76, 0.70, 0.59)
-    preview.pause = CreateFrame("Button", nil, right)
-    preview.pause:SetSize(48, 20); preview.pause:SetPoint("TOPRIGHT", -PAD, -6)
-    preview.pause:SetNormalFontObject("GameFontHighlightSmall")
-    preview.pause:SetText(L["Pause"])
-    preview.pause:SetScript("OnClick", function(self)
-        ns.SettingsPreview.paused = not ns.SettingsPreview.paused
-        self:SetText(ns.SettingsPreview.paused and L["Play"] or L["Pause"])
-        preview.dirty = true; ShowVisual(nil)
-    end)
     preview.title = Text(right, "GameFontNormalLarge")
     preview.title:SetTextColor(1, 0.83, 0.47)
     preview.title:SetPoint("TOPLEFT", preview.picture, "BOTTOMLEFT", 0, -12)

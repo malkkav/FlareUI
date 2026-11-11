@@ -4076,11 +4076,17 @@ function UF.CreateSample(parent, unit)
 end
 
 -- Lays the sample out in a style ("flareui", "forever", "addon"); returns its extent past the
--- frame (the ring stands out): { width, height, left, top }, or nil when it cannot be drawn
-function UF.DrawSample(f, style)
+-- frame (the ring stands out): { width, height, left, top }, or nil when it cannot be drawn.
+-- opts.noClassColor: the palette's health colour instead of the class's (the palette's preview)
+function UF.DrawSample(f, style, opts)
     local unit = f.fuiUnit
-    local setup = ns.UFRing and ns.UFRing.SampleUnitDb(style, unit) or GetUnitDb(unit)
+    local setup = ns.UFRing and ns.UFRing.SampleUnitDb(style, unit)
+    if not setup then
+        local live = GetUnitDb(unit)
+        setup = live and setmetatable({}, { __index = live })
+    end
     if not setup then return nil end
+    if opts and opts.noClassColor then setup.classColor = false end
     ns.UFSample = { style = style, units = { [unit] = setup } }
     local ok, result = pcall(function()
         LayoutFrame(f)

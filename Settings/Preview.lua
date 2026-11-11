@@ -14,13 +14,13 @@ local function Route(kind, prefix, keys)
 end
 Route('unit', 'uf', 'frameStyle palette fullNames simplePet simpleTargetOf')
 Route('unitAuras', 'uf', 'auraShape auraSwipe auraTimer auraTimerColor')
-Route('auras', 'ab', 'skinCDM')
 Route('auras', 'au', 'shape swipe timer timerColor arrive')
 Route('minimap', 'mm', 'style bag clockStats microMenu coordsHover bagHover')
 Route('chat', 'ch', 'opacity border editBoxOpacity editBox lineHeight formatNPC formatPlayer timestamps channelNames raceIcons classIcons linkIcons whisperMarkers nameColon levels social channels menu volume copyButton combatLog minAlpha')
 Route('tooltip', 'tt', 'scale anchor healthBar borders classNames showThreat showTarget showGuild showGuildRank hideFaction shortItemStats ids compareShift showWorld showFrames showBars')
 Route('tracker', 'qt', 'opacity border zoneHeaders tags wrap count hideLevel focusButtons playButtons minimizeButton colorNames')
 Route('meter', 'dm', 'opacity border minAlpha chatTab combatTimer readyCheck countdown threatValue pullLine pullFlash tankLead')
+Route('actions', 'ab', 'skinCDM')
 Route('actions', 'ab', 'statusColours procGlow gryphonsBehind hideMacroText hideKeybinds cleanKeybinds buttonArt dimOnCooldown hideGryphons')
 Route('actions', 'ab', 'xpBar xpText xpNumbers xpQuest')
 Route('frames', 'uf', 'main party raid boss castbar tot tof')
@@ -32,12 +32,36 @@ Route('lootFeed', 'qol', 'lootFeed lootFeedPosition lootFeedQuality lootFeedMone
 Route('mouseRing', 'qol', 'mouseRingShow mouseRingSize mouseRingThickness mouseRingClassColor mouseRingCast mouseRingGCD mouseRingSwing mouseRingRange mouseRingHideTurning')
 Route('radial', 'rm', 'scale names')
 
--- Only the named visual toggle groups demonstrate the opposite state on hover.
-function P.HoverValue(row)
-    local kind = routes[row.key]
-    if row.kind == 'toggle' and (kind == 'tooltip' or kind == 'bags' or kind == 'nameplate') then
-        return not row:Get()
+-- How tall the drawn picture is, from the canvas's top to the lowest thing shown (the panel sizes
+-- the picture to it). A sample unit frame's ring and plate hang past the frame itself.
+function P.Measure(canvas)
+    local top = canvas.frame:GetTop()
+    if not top then return canvas.height end
+    local scale = canvas.frame:GetEffectiveScale()
+    local bottom = top
+    local function visit(region)
+        if not (region and region:IsShown()) then return end
+        if region.GetText and region:GetObjectType() == 'FontString' and (region:GetText() or '') == '' then return end
+        local b = region:GetBottom()
+        if b then
+            b = b * region:GetEffectiveScale() / scale
+            if b < bottom then bottom = b end
+        end
     end
+    local function walk(c)
+        for _, object in pairs(c.objects) do
+            local sub = object.FlareUIPreviewCanvas
+            if sub and sub ~= c then
+                if object:IsShown() then walk(sub) end
+            else
+                visit(object)
+                if object.RingFrame then visit(object.RingFrame) end
+                if object.PlateFrame then visit(object.PlateFrame) end
+            end
+        end
+    end
+    walk(canvas)
+    return math.ceil(top - bottom)
 end
 function P.Resolve(row, value)
     if not row then return nil end

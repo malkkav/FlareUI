@@ -1351,6 +1351,7 @@ L["The objectives under each quest."] = "Цели, показанные под �
 L["The power bar's height."] = "Высота полосы ресурса."
 L["The profile in use."] = "Текущий профиль."
 L["The quest log can't be opened from the tracker in combat."] = "В бою журнал заданий нельзя открыть из трекера."
+L["The quick brown fox jumps over the lazy dog"] = "Съешь же ещё этих мягких французских булок, да выпей чаю"
 L["The radial's button again"] = "Повторное нажатие кнопки меню"
 L["The raid's main tanks in a small frame of their own (set by the raid leader)."] = "Основные танки рейда в отдельных небольших фреймах. Танков назначает лидер рейда."
 L["The rest is set up here."] = "Остальное настраивается здесь."

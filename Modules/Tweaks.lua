@@ -541,7 +541,10 @@ local function Me()
     local guid, name = ns.PlayerGUID(), UnitName("player")
     if not (guid and name) then return nil end
     local _, class = UnitClass("player")
-    return { guid = guid, name = name, realm = GetRealmName(), class = class }
+    -- full: first and second name, for the options' label (11-10)
+    local _, surname = UnitName("player")
+    local full = (type(surname) == "string" and surname ~= "") and (name .. " " .. surname) or name
+    return { guid = guid, name = name, full = full, realm = GetRealmName(), class = class }
 end
 
 local function IsSource(store)
@@ -549,11 +552,10 @@ local function IsSource(store)
     return type(source) == "table" and guid ~= nil and source.guid == guid
 end
 
--- "Name - Realm" for display
+-- the character's name for display (first and second name; no realm, 11-10 Marcus)
 local function SourceLabel(source)
     if type(source) ~= "table" then return nil end
-    local name = source.name or "?"
-    return source.realm and (name .. " - " .. source.realm) or name
+    return source.full or source.name or "?"
 end
 
 local function GetSyncStore()
@@ -872,6 +874,11 @@ end
 
 function Tweaks:GetSyncSourceLabel()
     local store = GetSyncStore()
+    -- a source saved before full names were kept: this character fills its own in
+    if store and IsSource(store) and not store.source.full then
+        local me = Me()
+        if me then store.source.full = me.full end
+    end
     return store and SourceLabel(store.source) or nil
 end
 

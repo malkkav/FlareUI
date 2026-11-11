@@ -27,7 +27,7 @@ ns.Copy = {
         },
         ch = {
             desc = L["A cleaner chat frame with a customisable header."],
-            tabs = { L["Damage"], L["Threat"], L["Fonts"] },
+            tabs = { L["Frame"], L["Tweaks"], L["Fonts"] },
             title = L["Chat"],
         },
         dm = {
@@ -36,7 +36,7 @@ ns.Copy = {
             banner2Button = L["Open Edit Mode"],
             bannerButton = L["Turn It On"],
             desc = L["Blizzard's damage meter in a FlareUI frame, with a threat view."],
-            tabs = { L["Frame"], L["Tweaks"], L["Fonts"] },
+            tabs = { L["Damage"], L["Threat"], L["Fonts"] },
             title = L["Meters"],
         },
         mm = {

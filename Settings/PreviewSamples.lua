@@ -68,7 +68,7 @@ end
 -- 11-10 pilot: the unit frames' own code draws the frame (UnitFrames' UF.CreateSample and DrawSample),
 -- in the style given, scaled to width (and to maxHeight); centred unless x is given. Returns the
 -- frame and the height it takes. (palette: the live one is the frames' own)
-local function Unit(c, id, style, unit, y, width, palette, x, maxHeight)
+local function Unit(c, id, style, unit, y, width, palette, x, maxHeight, opts)
     local UF = ns.UnitFrames
     if not (UF and UF.CreateSample) then return nil, 0 end
     c.samples = c.samples or {}
@@ -83,9 +83,10 @@ local function Unit(c, id, style, unit, y, width, palette, x, maxHeight)
     f:SetScale(1)
     f:SetAlpha(1)
     f:Show()
-    local e = UF.DrawSample(f, style)
+    local e = UF.DrawSample(f, style, opts)
     if not e or e.width <= 0 or e.height <= 0 then f:Hide() return nil, 0 end
-    local k = width / e.width
+    -- never larger than the real frame
+    local k = math.min(1, width / e.width)
     if maxHeight then k = math.min(k, maxHeight / e.height) end
     f:SetScale(k)
     local left = x or (c.width - e.width * k) / 2
@@ -94,29 +95,25 @@ local function Unit(c, id, style, unit, y, width, palette, x, maxHeight)
     return f, e.height * k
 end
 
+-- 11-10 (Marcus): only what the option changes. Frame Style, Colour Palette, Full Player Names and
+-- the page: the player. Simple Pet Frame: the pet. Simple "Target Of": target of target and of focus.
 function R.unit(c, spec)
     local style = spec.key == 'uf.frameStyle' and spec.value or (ns.UFRing and ns.UFRing.Style() or 'addon')
-    local palette = ns.UnitFrames.PALETTES[Get('unitframes.palette', 'flareui')] or ns.UnitFrames.PALETTES.flareui
-    local card = c.height < 120
-    local width = c.width - (card and 8 or 16)
-    Unit(c, 'playerSample', style, 'player', card and 3 or 30, width, palette, nil, card and c.height - 6 or 80)
-    if card then return end
-    if spec.key == 'uf.overview' or spec.key == 'uf.frameStyle' or spec.key == 'uf.palette' then
-        c:Text('playerLabel', L["Player"], 8, 8)
-        local w = math.min(100, (c.width - 24) / 2)
-        c:Text('petLabel', L["Pet"], 8, 115, w)
-        c:Text('targetOfLabel', L["Target of Target"], c.width / 2 + 4, 115, w, { size = 9 })
-        Unit(c, 'petOverview', (Get('unitframes.simplePet', true) or style == 'addon') and 'addon' or style, 'pet', 140, w, palette, 8)
-        Unit(c, 'targetOfOverview', (Get('unitframes.simpleTargetOf', true) or style == 'addon') and 'addon' or style, 'targettarget', 140, w, palette, c.width / 2 + 4)
-        Note(c); return
+    if c.height < 120 then
+        Unit(c, 'playerSample', style, 'player', 3, c.width - 8, nil, nil, c.height - 6)
+        return
     end
-    c:Text('playerLabel', L["Player"], 8, 8)
-    local pet = spec.key == 'uf.simplePet'
-    local small = pet or spec.key == 'uf.simpleTargetOf'
-    c:Text('smallLabel', pet and L["Pet"] or small and L["Target of Target"] or L["Target"], 8, 110)
-    local simple = small and (spec.value == true or style == 'addon')
-    local companion = Unit(c, 'companionSample', simple and 'addon' or style, pet and 'pet' or small and 'targettarget' or 'target', 128, small and width * 0.5 or math.min(width, 170), palette)
-    Note(c)
+    local function Small(path) return (Get(path, true) or style == 'addon') and 'addon' or style end
+    if spec.key == 'uf.simplePet' then
+        Unit(c, 'petSample', Small('unitframes.simplePet'), 'pet', 4, c.width - 16)
+    elseif spec.key == 'uf.simpleTargetOf' then
+        local s = Small('unitframes.simpleTargetOf')
+        local _, h = Unit(c, 'totSample', s, 'targettarget', 4, c.width - 16)
+        Unit(c, 'tofSample', s, 'focustarget', 4 + h + 12, c.width - 16)
+    else
+        -- the palette's preview shows its own health colour (Class Colours would hide it)
+        Unit(c, 'playerSample', style, 'player', 4, c.width - 16, nil, nil, nil, { noClassColor = spec.key == 'uf.palette' })
+    end
 end
 
 -- Compact frame specimens: inset fills and a foreground border keep the art legible
@@ -134,11 +131,15 @@ function R.frames(c, spec)
     local colors = { { 0.41, 0.8, 0.94 }, { 0.77, 0.12, 0.23 }, { 1, 0.49, 0.04 }, { 0.67, 0.83, 0.45 }, { 0.8, 0.8, 0.82 } }
     local palette = ns.UnitFrames.PALETTES[Get('unitframes.palette', 'flareui')] or ns.UnitFrames.PALETTES.flareui
     if key == 'main' or key == 'tot' or key == 'tof' then
+        -- the real frames, in the style in use
         local style = ns.UFRing and ns.UFRing.Style() or 'addon'
-        local width = math.min(c.width - 24, 168)
-        local unit = key == 'main' and 'player' or 'targettarget'
-        if key ~= 'main' and Get('unitframes.simpleTargetOf', true) then style = 'addon' end
-        Unit(c, 'cardUnit', style, unit, 3, width, palette)
+        if key == 'main' then
+            local _, h = Unit(c, 'framePlayer', style, 'player', 4, c.width - 16)
+            Unit(c, 'frameTarget', style, 'target', 4 + h + 12, c.width - 16)
+        else
+            if Get('unitframes.simpleTargetOf', true) then style = 'addon' end
+            Unit(c, 'frameSmall', style, key == 'tot' and 'targettarget' or 'focustarget', 4, c.width - 16)
+        end
     elseif key == 'castbar' then
         local width, height = math.min(180, c.width - 20), 24
         local x, y = (c.width - width) / 2, 24
@@ -231,12 +232,6 @@ end
 
 local auraIcons = { 'Spell_Holy_WordFortitude', 'Spell_Holy_DivineSpirit', 'Spell_Nature_Regeneration' }
 local function Auras(c, unit, spec)
-    Heading(c, unit and L["Player"] or L["Buffs & Debuffs"])
-    if unit then
-        local style = ns.UFRing and ns.UFRing.Style() or 'addon'
-        local palette = ns.UnitFrames.PALETTES[Get('unitframes.palette', 'flareui')] or ns.UnitFrames.PALETTES.flareui
-        Unit(c, 'auraPlayer', style, 'player', 30, math.min(190, c.width - 16), palette)
-    end
     local prefix = unit and 'unitframes.' or 'auras.'
     local style = Get(prefix .. (unit and 'auraStyle' or 'style'), 'round')
     local timer = Get(prefix .. (unit and 'auraTimer' or 'timer'), 'below')
@@ -256,7 +251,7 @@ local function Auras(c, unit, spec)
     local colored = Get(prefix .. (unit and 'auraTimerColor' or 'timerColor'), false)
     for i, name in ipairs(auraIcons) do
         local b = c:Object('aura' .. i, 'Frame')
-        b:SetPoint('TOPLEFT', unit and 48 + (i - 1) * 42 or 16 + (i - 1) * 66, unit and -115 or -65)
+        b:SetPoint('TOPLEFT', unit and 16 + (i - 1) * 42 or 16 + (i - 1) * 66, -8)
         -- Use the production aura renderer, including its masks, timer placement and swipe textures.
         ns.AuraLook.Style(b, { preview = true, size = unit and 30 or 46, style = style, swipe = swipe, timer = timer,
             font = font, countFont = countFont, timerSize = timerSize })
@@ -269,11 +264,6 @@ local function Auras(c, unit, spec)
         b.FlareUI_PreviewTimer:SetTextColor(1, colored and i == 1 and 0.2 or 1, colored and i == 1 and 0.2 or 1)
         b.FlareUI_Cooldown:SetCooldown(GetTime() - i * 2, 12)
     end
-    if spec.key == 'ab.skinCDM' then
-        c:Text('cdmTitle', L["Cooldown Manager"], 12, 136)
-        c:Bar('cdmBar', 12, 160, c.width - 24, 18, 0.65, { 1, 0.5, 0.25 }, Get('auras.skinCDM') and 'FlareUI Flat' or 'Blizzard')
-        if Get('auras.skinCDM') then c:Box('cdmBorder', 12, 160, c.width - 24, 18, 'FlareUI Thin', 0) end
-    end
     local arrive = Get('auras.arrive')
     local elapsed = 0
     c:Animate(function(_, dt)
@@ -281,7 +271,7 @@ local function Auras(c, unit, spec)
         if spec.key == 'au.arrive' and arrive then
             local progress = math.min(1, (elapsed % 4) * 2)
             c.objects.aura3:SetAlpha(progress)
-            c.objects.aura3:ClearAllPoints(); c.objects.aura3:SetPoint('TOPLEFT', 148, -65 + (1 - progress) * 12)
+            c.objects.aura3:ClearAllPoints(); c.objects.aura3:SetPoint('TOPLEFT', 148, -8 + (1 - progress) * 12)
         end
         for i = 1, 3 do c.objects['aura' .. i].FlareUI_PreviewTimer:SetText(math.max(1, math.ceil(12 - ((elapsed + i * 2) % 12))) .. 's') end
         if elapsed < 12 then return end
@@ -379,7 +369,8 @@ function R.tooltip(c, spec)
     else
         if Get('tooltips.showGuild') then lines[#lines + 1] = '<Dawnwatch>' .. (Get('tooltips.showGuildRank') and ' · ' .. L["Member"] or '') end
         lines[#lines + 1] = L["Level 60 Mage"]
-        if not Get('tooltips.hideFaction') then lines[#lines + 1] = L["Horde"] end
+        -- in the faction's colour, as the tooltip shows it
+        if not Get('tooltips.hideFaction') then lines[#lines + 1] = '|cffff3333' .. L["Horde"] .. '|r' end
         if Get('tooltips.showTarget') then lines[#lines + 1] = L["Target"] .. ': Aeloria' end
         if Get('tooltips.showThreat') then lines[#lines + 1] = L["Threat"] .. ': 65%' end
     end
@@ -394,34 +385,28 @@ function R.tooltip(c, spec)
     local bottom = 48 + math.max(content:GetStringHeight(), #lines * (displayFont.size + 1))
     box:SetHeight(bottom + (not item and not Get('tooltips.hideHealthBar') and 22 or 4))
     if not item and not Get('tooltips.hideHealthBar') then
-        c:Bar('tooltipHealth', 13, bottom, c.width - 26, 12, 0.8, ns.HEALTH_GREEN)
-        c:Text('tooltipHealthText', '3,840 / 4,800', 20, bottom, c.width - 40, { size = 9 })
+        -- the bar runs the tooltip's whole width, its empty part dark
+        c:Bar('tooltipHealthBack', 11, bottom, c.width - 22, 12, 1, { 0.12, 0.12, 0.12 })
+        c:Bar('tooltipHealth', 11, bottom, c.width - 22, 12, 0.8, ns.HEALTH_GREEN):SetFrameLevel(c.frame:GetFrameLevel() + 3)
+        c:Text('tooltipHealthText', '3,840 / 4,800', 16, bottom, c.width - 32, { size = 9 })
     end
+    -- Compare with Shift: the item and the one equipped, side by side, whichever way it is set
     if spec.key == 'tt.compareShift' then
-        c.frame:SetScale(0.72)
+        c.frame:SetScale(0.6)
         c.frame:ClearAllPoints(); c.frame:SetPoint('TOPLEFT', 0, 0)
-        local compare = Get('tooltips.compareShift', true)
-        outer:Text('compareHint', compare and L["Hold Shift to compare"] or L["Comparison shown automatically"], 8, 186, outer.width - 16, { size = 10 })
-        if not compare then
-            outer:Box('comparison', outer.width * 0.58, 90, outer.width * 0.4, 72, 'FlareUI Thin', 1)
-            outer:Text('comparisonText', L["Equipped"] .. '\n' .. L["Cloth"] .. '\n+8 ' .. L["Intellect"], outer.width * 0.58 + 5, 98, outer.width * 0.4 - 10, { size = 9 })
+        local x, w = outer.width * 0.6 - 2, outer.width * 0.4 - 4
+        local box2 = outer:Object('comparison', 'Frame', 'BackdropTemplate')
+        box2:SetPoint('TOPLEFT', x, -5); box2:SetSize(w, 70)
+        box2:SetFrameLevel(outer.frame:GetFrameLevel() + 5)
+        local layout = NineSliceUtil and NineSliceUtil.GetLayout('TooltipDefaultLayout')
+        if layout then
+            NineSliceUtil.ApplyLayout(box2, layout)
+            for _, name in ipairs({ 'TopLeftCorner', 'TopRightCorner', 'BottomLeftCorner', 'BottomRightCorner', 'TopEdge', 'BottomEdge', 'LeftEdge', 'RightEdge' }) do
+                if box2[name] then box2[name]:SetVertexColor(0.8, 0.6, 0.34, 1) end
+            end
+            if box2.Center then box2.Center:SetVertexColor(0.05, 0.05, 0.06, 0.9) end
         end
-    end
-    local visibilityPath = ({ ['tt.showWorld'] = 'tooltips.visibility.worldUnits', ['tt.showFrames'] = 'tooltips.visibility.frameUnits', ['tt.showBars'] = 'tooltips.visibility.actionBars' })[spec.key]
-    if visibilityPath then
-        local mode = Get(visibilityPath, 'always')
-        if mode == 'never' then c.frame:Hide() end
-        outer:Text('visibilityExample', mode == 'never' and L["Tooltip hidden"] or mode == 'combat' and L["Out of combat: tooltip visible"] or L["Tooltip visible in and out of combat"], 8, 183, outer.width - 16, { size = 10 })
-        if spec.key == 'tt.showBars' and mode ~= 'never' then
-            c.objects.tooltipTitle:SetText(L["Frostbolt"])
-            c.objects.tooltipText:SetText('60 ' .. L["Mana"] .. '\n2.5 ' .. L["Seconds"])
-            c.objects.tooltip:SetHeight(90)
-            if c.objects.tooltipHealth then c.objects.tooltipHealth:Hide(); c.objects.tooltipHealthText:Hide() end
-        end
-    end
-    if spec.key == 'tt.anchor' then
-        c:Text('cursor', '+', Get('tooltips.anchor') == 'cursorOffset' and 4 or c.width - 24, 184, 20)
-        c:Text('anchorLabel', Get('tooltips.anchor') == 'cursorOffset' and L["At the cursor"] or L["Default position"], 24, 184, c.width - 48, { size = 10 })
+        outer:Text('comparisonText', '|cff999999' .. L["Equipped"] .. '|r\n|cff1eff00' .. L["Cloth"] .. '|r\n+8 ' .. L["Intellect"], x + 7, 12, w - 14, { size = 9 })
     end
     Note(outer)
 end
@@ -706,13 +691,12 @@ function R.radial(c, spec)
     Note(c)
 end
 
+-- a font setting: one line in that font, in a FlareUI border (11-10, Marcus)
 function R.font(c, spec)
     local cfg = Font(spec.font)
-    Heading(c, L["Font Preview"])
-    c:Text('fontName', 'Flareui · Aeloria', 12, 53, c.width - 24, cfg)
-    c:Text('fontNumbers', '12,345 / 20,000  65%', 12, 98, c.width - 24, cfg)
-    c:Text('fontTime', '9s  24s  1m  12:30', 12, 143, c.width - 24, cfg)
-    Note(c)
+    local text = c:Text('fontSample', L["The quick brown fox jumps over the lazy dog"], 16, 16, c.width - 32, cfg)
+    text:SetJustifyH('CENTER')
+    c:Box('fontBox', 4, 4, c.width - 8, text:GetStringHeight() + 24, 'FlareUI Thin', 0.9)
 end
 
 
