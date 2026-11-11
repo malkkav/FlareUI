@@ -992,7 +992,7 @@ Build.range = function(f)
         local choices = f.rangeChoices
         local choice = choices and choices[math.max(1, math.min(#choices, math.floor(value + 0.5)))]
         if not choice then return end
-        f.rangeChoice = choice; f.value:SetText(choice.text)
+        f.rangeChoice = choice; f.value:SetText(choice.text); FitText(f.value, f.value:GetWidth())
         if f.rangeDragging then ShowRowPreview(f.row, choice.value) else Commit() end
     end)
     ForwardHover(slider, f)
@@ -1013,7 +1013,18 @@ Fill.range = function(f, row)
     f.control:SetMinMaxValues(1, math.max(1, #f.rangeChoices))
     f.control:SetValue(selected)
     f.control:PaintFill()
+    -- (11-11) the value box as wide as the longest choice (Russian "По умолчанию" ran past 48 px),
+    -- 48 to 96 px, the slider moving left to make room; past 96 the text shrinks
+    local widest = 0
+    for _, choice in ipairs(f.rangeChoices) do
+        f.value:SetTextScale(1); f.value:SetText(choice.text)
+        widest = math.max(widest, f.value:GetUnboundedStringWidth() or 0)
+    end
+    local valueW = math.min(96, math.max(48, math.ceil(widest) + 2))
+    f.value:SetWidth(valueW)
+    f.control:ClearAllPoints(); f.control:SetPoint("RIGHT", -(valueW + 10), 0)
     f.value:SetText(f.rangeChoice and f.rangeChoice.text or '')
+    FitText(f.value, valueW)
     f.rangeFilling = nil
     f:SetHeight(ROW_H)
 end

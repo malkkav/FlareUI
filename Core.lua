@@ -424,7 +424,7 @@ local defaults = {
             gryphonsBehind = false,     -- Gryphons Behind Bars: the end caps draw under the bars
             dimOnCooldown = false,      -- Dim on cooldown: icons grey while a real cooldown (not the GCD) runs
             autoRanks = false,          -- Update Spell Ranks: a new rank replaces the old one on the bars
-            stealthPaging = true,       -- Auto-Paging for Stealth: bar 1 to page 7 (rogue Stealth) or 8 (druid Prowl)
+            keepStealthPage = false,    -- Keep Page 1 in Stealth: bar 1 holds page 1 (druids: Cat Form's) in Stealth / Prowl
             noStancePaging = false,     -- No Auto-Paging for Stances: warriors' bar 1 stays on its page
 
             -- Status colouring (one row sets both)
@@ -648,7 +648,7 @@ local defaults = {
             timer = "below",            -- below (under the icon) | bottom (along its bottom edge)
             timerColor = false,         -- the timer turns yellow, then red, as it runs out
             arrive = false,             -- new icons fade in while dropping into place
-            skinCDM = true,             -- Skin Cooldown Manager: Blizzard's Tracked Bars and Tracked Buffs in FlareUI's look
+            skinCDM = false,            -- (off by default since 11-11) Skin Cooldown Manager: Blizzard's Tracked Bars and Tracked Buffs in FlareUI's look
             sort = "applied", reverse = false, mineFirst = true,   -- Aura Ordering (both frames)
             -- Buff Reminders (BuffReminders.lua): your class's missing buffs; Group Buffs all / party / self,
             -- Icon Size, Remind Before It Ends in minutes, set in Edit Mode
@@ -776,6 +776,8 @@ local defaults = {
             lootFeedPosition = "cursor", -- cursor (starts at the pointer) | placed (the Edit Mode spot)
             lootFeedSkills = false,     -- skill-ups too ("Mining 76")
             lootFeedFont = { face = "Friz Quadrata TT", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
+            hideFlagCarriers = false,   -- Hide Clutter > Flag Carrier Frames (Movers.lua): CVar showArenaEnemyFrames
+            zoneTextFont = { face = "" },  -- Zone Text font (ZoneText.lua): "" keeps Blizzard's; face only
             mouseRingSize = 40,         -- the ring's diameter
             mouseRingThickness = 3,     -- its line, the same at any size
             mouseRingShow = "off",      -- Mouse Ring (MouseRing.lua): off | always | combat | rightclick (while the right button is held)
@@ -2048,9 +2050,12 @@ local secureHideHeader
 local function SecureReHide(frame)
     if frame.FlareUI_SecureReHide or not frame:IsProtected() or not SecureHandlerWrapScript then return end
     secureHideHeader = secureHideHeader or CreateFrame("Frame", nil, UIParent, "SecureHandlerBaseTemplate")
-    local ok = pcall(SecureHandlerWrapScript, frame, "OnShow", secureHideHeader, [[
-        if self:GetAttribute("flareui-hide") then self:Hide() end
-    ]])
+    -- (11-11) the hide runs after Blizzard's own OnShow: the stance bar's OnShow runs Update, which
+    -- showed it again after a hide done before it, and in a fight nothing hid it until the fight ended.
+    -- The pre-snippet only passes a message so the post-snippet runs.
+    local ok = pcall(SecureHandlerWrapScript, frame, "OnShow", secureHideHeader,
+        [[ if self:GetAttribute("flareui-hide") then return nil, "hide" end ]],
+        [[ if self:GetAttribute("flareui-hide") then self:Hide() end ]])
     if ok then frame.FlareUI_SecureReHide = true end
 end
 

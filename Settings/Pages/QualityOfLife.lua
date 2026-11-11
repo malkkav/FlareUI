@@ -125,7 +125,11 @@ S:Row{ key = "qol.lootFeedPosition", kind = "choice", tab = "bags", parent = "qo
 -- FONTS: the loot feed's lines (live: lines already up and the Edit Mode samples take it too)
 S:FontRows{ module = "qol", tab = "fonts", section = "qol.fonts", fonts = {
     { key = "lootFeed", path = "tweaks.lootFeedFont" },
-}, apply = function() if ns.LootFeed and ns.LootFeed.ApplyFont then ns.LootFeed:ApplyFont() end end }
+    { key = "zoneText", path = "tweaks.zoneTextFont", faceOnly = true },
+}, apply = function()
+    if ns.LootFeed and ns.LootFeed.ApplyFont then ns.LootFeed:ApplyFont() end
+    if ns.ZoneText then ns.ZoneText:Apply() end
+end }
 
 -- Controller: the Gamepad mode prompt and rumble (GamepadMode.lua)
 S:Row{ key = "qol.gamepadPrompt", half = true, tab = "gameplay", path = "tweaks.gamepadPrompt" }
@@ -167,3 +171,5 @@ S:Row{ key = "qol.hideErrors", tab = "interface", path = "tweaks.hideErrors", re
 S:Row{ key = "qol.hideZoneText", tab = "interface", path = "tweaks.hideZoneText", reload = true }
 S:Row{ key = "qol.hideTips", tab = "interface", path = "tweaks.hideTips", apply = Refresh }
 S:Row{ key = "qol.hideFrameNumbers", tab = "interface", path = "tweaks.hidePortraitNumbers", apply = Refresh }
+S:Row{ key = "qol.hideFlagCarriers", tab = "interface", path = "tweaks.hideFlagCarriers",
+    apply = function() if ns.ApplyFlagCarriers then ns.ApplyFlagCarriers() end end }

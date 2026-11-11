@@ -49,6 +49,14 @@ function S:FontRows(def)
             row.previewFont = font.path
             S:Row(row)
         end
+        -- faceOnly (Zone Text): the face alone, Default ("") first, keeping Blizzard's font
+        if font.faceOnly then
+            Control("face", { kind = "dropdown", dropdownWidth = 150, choices = function()
+                local list = Faces()
+                table.insert(list, 1, { "", ns.L["Default"] })
+                return list
+            end })
+        else
         Control("face", { kind = "dropdown", choices = Faces, dropdownWidth = 150 })
         Control("size", { kind = "choice", choices = font.autoSize and AUTO_SIZES or SIZES })
         Control("flags", { kind = "choice", choices = { "NONE", "OUTLINE", "THICKOUTLINE" } })
@@ -66,5 +74,6 @@ function S:FontRows(def)
                     S:SetPath(font.path .. ".shadowY", -offset)
                 end
             end })
+        end
     end
 end

@@ -929,7 +929,8 @@ local function LayoutTabs(window, view)
     local ref = window.FlareUI_DMSkin or GetWindowHeader(window)
     if not (dd and dd.TypeName and ref) then return end
     local path, size, flags = ns.GetWantedFont(dd.TypeName)
-    if path then ns.SetFont(view.tab.Text, path, size, flags) end
+    -- a family: a Latin-only header font keeps Blizzard's Cyrillic face for the Russian title
+    if path then ns.SetFontFamily(view.tab.Text, path, size, flags) end
     view.tab.Text:SetShadowOffset(dd.TypeName:GetShadowOffset())
     view.tab.Text:SetShadowColor(dd.TypeName:GetShadowColor())
     view.tab:ClearAllPoints()

@@ -63,7 +63,7 @@ S:Row{ key = "ab.gryphonsBehind", section = "ab.buttonAppearance", path = "actio
 S:Row{ key = "ab.autoRanks", section = "ab.spellBehavior", path = "actionbars.autoRanks", half = true,
     apply = function() if ns.ActionBars.CatchUpRanks then ns.ActionBars:CatchUpRanks() end end }
 S:Row{ key = "ab.stopAutoAdd", section = "ab.spellBehavior", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
-S:Row{ key = "ab.stealthPaging", section = "ab.spellBehavior", path = "actionbars.stealthPaging", apply = Refresh, half = true }
+S:Row{ key = "ab.keepStealthPage", section = "ab.spellBehavior", path = "actionbars.keepStealthPage", apply = Refresh, half = true }
 S:Row{ key = "ab.noStancePaging", section = "ab.spellBehavior", path = "actionbars.noStancePaging", apply = Refresh, half = true }
 
 -- the FlareUI XP Bar: off leaves Blizzard's bars alone, so turning it on or off reloads; its options sit

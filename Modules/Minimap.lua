@@ -949,12 +949,19 @@ function MM.LiftMapButtons()
     for _, parent in ipairs({ MinimapFrame, _G.MinimapBackdrop }) do
         for _, child in ipairs(parent and { parent:GetChildren() } or {}) do LiftButton(child, strata, want) end
     end
+    -- LibDBIcon's buttons (the ones Keep on the Minimap leaves out of the drawer) go a whole strata
+    -- above the border: one level above it still left them under its edge (11-11, reported twice).
+    -- Other map buttons (gathering pins) stay in the border's strata, under the world map.
     local lib = LibStub and LibStub("LibDBIcon-1.0", true)
     if lib and lib.GetButtonList then
+        local above = strata
+        for name, rank in pairs(STRATA_RANK) do
+            if rank == (STRATA_RANK[strata] or 0) + 1 then above = name end
+        end
         for _, name in ipairs(lib:GetButtonList() or {}) do
             local button = lib:GetMinimapButton(name)
             -- (one in the addon drawer is parked off the map)
-            if button and button:GetParent() == MinimapFrame then LiftButton(button, strata, want) end
+            if button and button:GetParent() == MinimapFrame then LiftButton(button, above, want) end
         end
     end
     lifting = false

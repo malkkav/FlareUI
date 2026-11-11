@@ -71,7 +71,8 @@ local ELEMENTS = {
     -- keeps the value and sets it through apply (an alpha left by the health curve can't be read back);
     -- health: Missing Health, from that unit
     -- instant: no Fade Speed (always instant); noOpacity: no Faded Opacity (faded right out)
-    { key = "uf_player", unit = "player", module = "unitframes", own = true, noGroup = true, instant = true, health = "player" },
+    -- mana: Missing Mana too (the player frame only, 11-11)
+    { key = "uf_player", unit = "player", module = "unitframes", own = true, noGroup = true, instant = true, health = "player", mana = true },
     { key = "uf_pet", unit = "pet", module = "unitframes", own = true, noGroup = true, instant = true, health = "pet" },
     { key = "uf_target", unit = "target", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
     { key = "uf_targettarget", unit = "targettarget", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
@@ -501,6 +502,10 @@ local SHOW_SPEC = { exclusive = { "always", "mouseover" }, tokens = Conditions.B
 local HEALTH_TOKENS = { unpack(Conditions.BAR_TOKENS) }
 HEALTH_TOKENS[#HEALTH_TOKENS + 1] = "health"
 local HEALTH_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = HEALTH_TOKENS, legacy = SHOW_SPEC.legacy, empty = "mouseover" }
+-- and the player frame while you're missing mana (ticked with Missing Health: either bar under full)
+local MANA_TOKENS = { unpack(HEALTH_TOKENS) }
+MANA_TOKENS[#MANA_TOKENS + 1] = "mana"
+local MANA_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = MANA_TOKENS, legacy = SHOW_SPEC.legacy, empty = "mouseover" }
 -- a swing bar's Only When In Use clears the rest, as Always and Mouseover do
 local INUSE_SPEC = { exclusive = { "always", "mouseover", "inuse" }, tokens = Conditions.BAR_TOKENS, legacy = SHOW_SPEC.legacy, empty = "mouseover" }
 -- a gryphon's Same as Action Bar 1 clears the rest too
@@ -508,6 +513,7 @@ local CAP_SPEC = { exclusive = { "bar1", "always", "mouseover" }, tokens = Condi
 local function SpecOf(key)
     local e = ELEMENT_BY_KEY[key]
     if e and e.cap then return CAP_SPEC end
+    if e and e.mana then return MANA_SPEC end
     if e and e.health then return HEALTH_SPEC end
     if e and e.inuse then return INUSE_SPEC end
     return SHOW_SPEC
@@ -707,6 +713,7 @@ local function BuildElementSettings(key)
                 local values = Values("ab.bar.show", SHOW_VALUES, function(v) return v end)
                 local e = ELEMENT_BY_KEY[key]
                 if e and e.health then values[#values + 1] = { text = L["Missing Health"], value = "health", isRadio = true } end
+                if e and e.mana then values[#values + 1] = { text = L["Missing Mana"], value = "mana", isRadio = true } end
                 if e and e.cap then table_insert(values, 1, { text = L["Same as Action Bar 1"], value = "bar1", isRadio = true }) end
                 if e and e.inuse then
                     -- with the two that clear the rest, above the line
@@ -875,42 +882,94 @@ local HIDE_KEYS = {
 local unitValues, healthCurves = {}, {}   -- key -> the fader's last value; key -> its curve
 local healthMembers = {}                  -- members applied through the curve, rebuilt by Refresh
 
-local function UnitApplier(data, unit, health)
+-- Missing Mana (the player frame, 11-11) the same way, through UnitPowerPercent: mana can be secret
+-- too. With both ticked the frame shows while either is under full. Two secret answers can't be
+-- joined in Lua, so a readable one decides (missing: shown; full: the other's answer counts), and with
+-- both secret the frame shows.
+local manaCurves = {}
+local MANA = Enum.PowerType and Enum.PowerType.Mana or 0
+local function Readable(v) return v ~= nil and not (issecretvalue and issecretvalue(v)) end
+
+-- a class with no mana reads as 0 of 0 (missing): learned while the max is readable, else by class
+local hasMana
+local function HasMana()
+    local ok, max = pcall(UnitPowerMax, "player", MANA)
+    if ok and Readable(max) then hasMana = max > 0 end
+    if hasMana == nil then
+        local _, class = UnitClass("player")
+        hasMana = class ~= "WARRIOR" and class ~= "ROGUE"
+    end
+    return hasMana
+end
+
+-- 1 below full, alpha at full
+local function StepCurve(store, key, alpha)
+    local curve = store[key]
+    if not curve then
+        curve = C_CurveUtil.CreateCurve()
+        curve:SetType(Enum.LuaCurveType.Step)
+        store[key] = curve
+    end
+    curve:ClearPoints()
+    curve:AddPoint(0, 1)
+    curve:AddPoint(1, alpha)
+    return curve
+end
+
+local function UnitApplier(data, unit, health, mana)
     return function(alpha)
         data.value, unitValues[data.key] = alpha, alpha
         local holder = data.frame
-        if not health or alpha >= 0.999 then holder:SetAlpha(alpha) return end
-        local curve = healthCurves[data.key]
-        if not curve then
-            curve = C_CurveUtil.CreateCurve()
-            curve:SetType(Enum.LuaCurveType.Step)
-            healthCurves[data.key] = curve
+        if not (health or mana) or alpha >= 0.999 then holder:SetAlpha(alpha) return end
+        local h, m
+        if health then
+            local ok, value = pcall(UnitHealthPercent, unit, false, StepCurve(healthCurves, data.key, alpha))
+            if ok and value ~= nil then h = value end
         end
-        curve:ClearPoints()
-        curve:AddPoint(0, 1)
-        curve:AddPoint(1, alpha)
-        local ok, value = pcall(UnitHealthPercent, unit, false, curve)
-        if ok and value ~= nil then holder:SetAlpha(value) else holder:SetAlpha(alpha) end
+        if mana and HasMana() then
+            local ok, value = pcall(UnitPowerPercent, "player", MANA, false, StepCurve(manaCurves, data.key, alpha))
+            if ok and value ~= nil then m = value end
+        end
+        if h == nil and m == nil then holder:SetAlpha(alpha) return end
+        if m == nil then holder:SetAlpha(h) return end
+        if h == nil then holder:SetAlpha(m) return end
+        -- both: a curve answers 1 while its bar is missing some
+        if Readable(h) then holder:SetAlpha(h >= 0.999 and 1 or m)
+        elseif Readable(m) then holder:SetAlpha(m >= 0.999 and 1 or h)
+        else holder:SetAlpha(1) end
     end
 end
 
 local healthWatch = CreateFrame("Frame")
-healthWatch:SetScript("OnEvent", function(_, event, unit)
+healthWatch:SetScript("OnEvent", function(_, event, unit, powerType)
     -- (UNIT_PET: a new pet's health)
     if event == "UNIT_PET" then unit = "pet" end
+    local power = event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER"
+    if power and powerType ~= "MANA" then return end
     for _, data in ipairs(healthMembers) do
-        if data.healthUnit == unit then data.apply(data.value) end
+        if (power and data.manaWatch) or (not power and data.healthUnit == unit) then data.apply(data.value) end
     end
 end)
-local function WatchHealth(on)
+local function WatchHealth(on, mana)
     if on and not healthWatch.on then
         healthWatch:RegisterUnitEvent("UNIT_HEALTH", "player", "pet")
         healthWatch:RegisterUnitEvent("UNIT_MAXHEALTH", "player", "pet")
         healthWatch:RegisterUnitEvent("UNIT_PET", "player")
     elseif not on and healthWatch.on then
         healthWatch:UnregisterAllEvents()
+        healthWatch.mana = nil
     end
     healthWatch.on = on
+    if on and mana ~= healthWatch.mana then
+        if mana then
+            healthWatch:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
+            healthWatch:RegisterUnitEvent("UNIT_MAXPOWER", "player")
+        else
+            healthWatch:UnregisterEvent("UNIT_POWER_UPDATE")
+            healthWatch:UnregisterEvent("UNIT_MAXPOWER")
+        end
+        healthWatch.mana = mana
+    end
 end
 
 local function AddMember(groupName, data)
@@ -970,6 +1029,7 @@ function Visibility:Refresh()
     Fader.watchesMouseover = false
     Fader.fading = false
     healthMembers = {}
+    local watchMana = false
 
     local fcm = ns.db.profile.fcm
     capsFollowBar1 = {}
@@ -1003,11 +1063,14 @@ function Visibility:Refresh()
                                    fadeTime = e.instant and 0 or ns.FadeTime(self:GetFadeSpeed(key)),
                                    minAlpha = e.noOpacity and 0 or self:GetMinAlpha(key) / 100 }
                     if e.own then
-                        local health = e.health and Conditions.Has(show, "health", HEALTH_SPEC) or false
+                        local health = e.health and Conditions.Has(show, "health", SpecOf(key)) or false
+                        local mana = e.mana and Conditions.Has(show, "mana", SpecOf(key)) or false
                         data.healthUnit = health and e.health or nil
+                        data.manaWatch = mana or nil
+                        if mana then watchMana = true end
                         data.value = unitValues[key] or 1
-                        data.apply = UnitApplier(data, e.health, health)
-                        if health then healthMembers[#healthMembers + 1] = data end
+                        data.apply = UnitApplier(data, e.health, health, mana)
+                        if health or mana then healthMembers[#healthMembers + 1] = data end
                         -- the holder put right at once: an alpha left by the curve can't be read back
                         data.apply(data.value)
                     end
@@ -1018,7 +1081,7 @@ function Visibility:Refresh()
         end
     end
 
-    WatchHealth(#healthMembers > 0)
+    WatchHealth(#healthMembers > 0, watchMana)
     MarkAllDirty()
 end
 

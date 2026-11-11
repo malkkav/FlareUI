@@ -885,7 +885,7 @@ ns.CooldownManagerOn = CDM.BlizzardOn
 
 function CDM.On()
     local db = GetDb()
-    return db and db.enabled and db.skinCDM ~= false and not ns.IsGamepadUI() and CDM.BlizzardOn() or false
+    return db and db.enabled and db.skinCDM == true and not ns.IsGamepadUI() and CDM.BlizzardOn() or false
 end
 
 function CDM.Pieces(frame)

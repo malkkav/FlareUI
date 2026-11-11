@@ -1099,7 +1099,6 @@ end
 local SAMPLE_CHANNEL_SPELL = 5143
 local function ShowSampleCast(cast)
     UF.EndCastFlash(cast)
-    cast.rangeSpell, cast.outOfRange = nil, nil
     local own = cast.unit == "player"
     local channel = false
     if own then
@@ -1268,25 +1267,47 @@ end
 -- (a channel ends on the left). Pushback: how far the cast was set back ("+0.5") or the channel cut
 -- short ("-0.5"), kept from the cast's first end time.
 UF.LAG_COLOR, UF.DELAY_COLOR = { 1, 0.15, 0.1, 0.45 }, { 1, 0.3, 0.25 }
--- Your own cast greys out while the target is out of the spell's range (a spell that can't go on
--- the target, a heal on an enemy, answers nil and keeps its colour). Only with Range Check on (off by
--- default, 11-11: players took the grey for a bug): the standalone bar's in playerCastbar, the
--- player frame's bar with the frame's settings.
-UF.CAST_OUT_OF_RANGE = { 0.5, 0.5, 0.5 }
-function UF.CastRangeOn(cast)
-    local db = GetDb()
-    local pc
-    if cast.standalone then pc = db and db.playerCastbar else pc = GetUnitDb("player") end
-    return pc and pc.castRange or false
-end
-function UF.CastRangeCheck(cast)
-    local id = UF.CastRangeOn(cast) and cast.rangeSpell
-    local r = id and UnitExists("target") and C_Spell.IsSpellInRange(id, "target")
-    local out = (canaccessvalue(r) and r == false) or false
-    if out == cast.outOfRange then return end
-    cast.outOfRange = out
-    local c = out and UF.CAST_OUT_OF_RANGE or cast.rangeColor
-    if c then cast:SetStatusBarColor(c[1], c[2], c[3]) end
+-- (11-11) The cast bar's Range Check is gone: your own cast never turns grey. With the option off
+-- it greyed every cast (its "off" read as "out of range").
+
+-- Blizzard's own player cast bar (FlareUI's Player Cast Bar switch off, the default) draws a cast
+-- flagged "can't be interrupted" in its grey art, and Forever flags many of your own casts so: every
+-- cast looked greyed out (players took it for a range grey, 11-11). Your own cast gets the normal
+-- (or channel) art back after Blizzard picks it; the grey stays for casts you could kick. Only the
+-- bar's texture is touched, never its fields (taint).
+do
+    local wasChannel   -- the last cast put right: its finish (cast info gone by then) too
+    local function OwnCastLook(bar, isFull)
+        local types, infos = _G.CastingBarType, _G.CastingBarTypeInfo
+        if not (types and infos) then return end
+        local castNoKick = select(8, UnitCastingInfo("player"))
+        local channel = false
+        if castNoKick == nil then
+            castNoKick = select(7, UnitChannelInfo("player"))
+            channel = castNoKick ~= nil
+        end
+        if castNoKick == nil and isFull and wasChannel ~= nil then
+            -- the finish of a cast put right: still the grey type (not Interrupted)
+            local barType = bar.barType
+            if not (canaccessvalue(barType) and barType == types.Uninterruptable) then wasChannel = nil return end
+            castNoKick, channel, wasChannel = true, wasChannel, nil
+        elseif not (canaccessvalue(castNoKick) and castNoKick) then
+            wasChannel = nil
+            return
+        else
+            wasChannel = channel
+        end
+        local info = types and infos and infos[channel and types.Channel or types.Standard]
+        if not info then return end
+        if bar.classicStyleCastBar then
+            local color = isFull and info.classicFullColor or info.classicFillColor
+            if color then bar:SetStatusBarColor(color:GetRGB()) end
+        else
+            bar:SetStatusBarTexture(isFull and info.full or info.filling)
+        end
+    end
+    local bar = _G.PlayerCastingBarFrame
+    if bar and bar.UpdateBarFillTexture then hooksecurefunc(bar, "UpdateBarFillTexture", OwnCastLook) end
 end
 
 -- The cast bar's marks in Forever's bronze: a bronze line with a dark shade beside it, so it reads
@@ -1637,22 +1658,6 @@ local function UpdateCastBar(cast, enabled, event, by, barID)
         cast:GetStatusBarTexture():SetVertexColorFromBoolean(notInterruptible, cast.noInterruptColor, cast.baseColor)
     end
     cast:Show()
-    -- your own cast: greyed while the target is out of range, checked while the bar shows
-    if unit == "player" then
-        cast.rangeSpell = canaccessvalue(spellID) and spellID or nil
-        cast.rangeColor, cast.outOfRange = color, nil
-        UF.CastRangeCheck(cast)
-        if not cast.rangeTicker then
-            cast.rangeTicker = C_Timer.NewTicker(0.2, function()
-                if not cast:IsShown() then
-                    cast.rangeTicker:Cancel()
-                    cast.rangeTicker = nil
-                    return
-                end
-                if not cast.flashing then UF.CastRangeCheck(cast) end
-            end)
-        end
-    end
     -- your own cast: if its STOP is ever lost, one more look a second past its end clears the bar
     if unit == "player" and canaccessvalue(endMs) and type(endMs) == "number" then
         if cast.safetyTimer then cast.safetyTimer:Cancel() end
@@ -4435,8 +4440,6 @@ local function BuildPlayerCastSettings()
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
         UF.BgOpacitySetting(UF.BAR_BG_OPACITY, get("bgOpacity", UF.BAR_BG_OPACITY), set("bgOpacity")),
-        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = false, get = get("castRange", false), set = set("castRange"),
-          desc = L["The bar turns grey while your target is out of the spell's range."] },
         { name = L["Channel Ticks"], kind = LEM.SettingType.Checkbox, default = false, get = get("channelTicks", false), set = set("channelTicks"),
           desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
         { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueMark", false), set = set("queueMark"),
@@ -4701,8 +4704,6 @@ local function BuildSettings(unit)
                   desc = L["The end of the bar your latency covers, in red: start the next spell there and it is sent as this one lands."] },
                 { name = L["Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = flag("pushback", false), set = set("pushback"),
                   desc = L["How far being hit has set your cast back (\"+0.5\") or cut your channel short, next to the timer."] },
-                { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = false, get = flag("castRange", false), set = set("castRange"),
-                  desc = L["The bar turns grey while your target is out of the spell's range."] },
                 { name = L["Channel Ticks"], kind = LEM.SettingType.Checkbox, default = false, get = flag("channelTicks", false), set = set("channelTicks"),
                   desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
                 { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = flag("queueMark", false), set = set("queueMark"),

@@ -259,6 +259,13 @@ ns.Copy = {
             label = L["Totem Bar"],
             section = "ab.hideBlizzardElements",
         },
+        ["ab.keepStealthPage"] = {
+            desc = L["Rogues and druids: Action Bar 1 keeps the same buttons in Stealth or Prowl, instead of the game's stealth page."],
+            label = L["Keep Page 1 in Stealth"],
+            section = "ab.spellBehavior",
+            tags = { "no auto-paging for stealth" },
+            tip = L["Druids keep their Cat Form page while prowling."],
+        },
         ["ab.noStancePaging"] = {
             desc = L["Warriors: Action Bar 1 keeps the same buttons in every stance."],
             label = L["Keep Bar 1 in Stances"],
@@ -284,13 +291,6 @@ ns.Copy = {
             desc = L["Buttons change colour when you can't use them:\n* Red: target out of range\n* Blue: not enough mana or energy\n* Grey: unusable right now"],
             label = L["Status Colouring"],
             section = "ab.buttonAppearance",
-        },
-        ["ab.stealthPaging"] = {
-            desc = L["Rogues and druids: Action Bar 1 switches to its own page in Stealth or Prowl."],
-            label = L["Auto Paging for Stealth"],
-            section = "ab.spellBehavior",
-            tags = { "auto-paging for stealth" },
-            tip = L["The new page starts empty: fill it while stealthed."],
         },
         ["ab.stopAutoAdd"] = {
             desc = L["New spells you learn aren't placed on your bars."],
@@ -1024,6 +1024,10 @@ ns.Copy = {
             desc = L["The lines that float up as you loot."],
             label = L["Loot Feed"],
         },
+        ["qol.font.zoneText"] = {
+            desc = L["The zone's name that appears as you enter a new area. Default keeps Blizzard's font; its size stays."],
+            label = L["Zone Text"],
+        },
         ["qol.gamepadPrompt"] = {
             desc = L["Pressing a controller button asks whether to switch to Blizzard's Gamepad UI."],
             label = L["Gamepad Mode Prompt"],
@@ -1036,6 +1040,12 @@ ns.Copy = {
             reload = true,
             section = "qol.hideClutter",
             tip = L["Bags full, not enough money and quest log full still show."],
+        },
+        ["qol.hideFlagCarriers"] = {
+            desc = L["Hides the two frames for the flag carriers under the minimap in battlegrounds."],
+            label = L["Flag Carrier Frames"],
+            section = "qol.hideClutter",
+            tip = L["Blizzard's own setting: changes out of combat."],
         },
         ["qol.hideFrameNumbers"] = {
             desc = L["Hides on Blizzard's frames:\n* Damage numbers on your portrait\n* Health and power numbers"],

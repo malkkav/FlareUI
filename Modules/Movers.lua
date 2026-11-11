@@ -45,6 +45,35 @@ local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.tweaks
 end
 
+-- FLAG CARRIER FRAMES (Quality of Life > Hide Clutter, off; 11-11, a player's question): in a
+-- battleground Blizzard's old arena frames show the two flag carriers under the minimap
+-- (Deprecated_ArenaUI). They are protected unit buttons in Blizzard's right-hand layout, so they are
+-- hidden through Blizzard's own CVar, out of combat (its change shows or hides them), not moved.
+-- Switching off gives the CVar back once; it is the player's again after that (quiet defaults).
+function ns.ApplyFlagCarriers()
+    local global = ns.db and ns.db.global
+    if not global then return end
+    if InCombatLockdown() then
+        local wait = CreateFrame("Frame")
+        wait:RegisterEvent("PLAYER_REGEN_ENABLED")
+        wait:SetScript("OnEvent", function(self) self:UnregisterAllEvents(); ns.ApplyFlagCarriers() end)
+        return
+    end
+    local db = GetDb()
+    if db and db.hideFlagCarriers then
+        if C_CVar.GetCVar("showArenaEnemyFrames") ~= "0" then C_CVar.SetCVar("showArenaEnemyFrames", "0") end
+        global.flagCarriersSet = true
+    elseif global.flagCarriersSet then
+        global.flagCarriersSet = nil
+        C_CVar.SetCVar("showArenaEnemyFrames", "1")
+    end
+end
+do
+    local login = CreateFrame("Frame")
+    login:RegisterEvent("PLAYER_LOGIN")
+    login:SetScript("OnEvent", function() ns.ApplyFlagCarriers() end)
+end
+
 --------------------------------------------------
 -- 3. POSITION (per Edit Mode layout)
 --------------------------------------------------

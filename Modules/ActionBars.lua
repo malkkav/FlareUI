@@ -984,11 +984,13 @@ end)
 -- would swap it, so page keys and vehicle, override or temporary shapeshift bars stay Blizzard's.
 --------------------------------------------------
 local CLASS_PAGING = {
-    -- only while bar 1 shows page 1: Shift+number (or the page keys) still turn pages in stealth
-    ROGUE = { key = "stealthPaging", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth] 7; default" },
-    -- Druids: Prowl (Cat Form) gets page 8, Classic's prowl page, which is free (Blizzard pages Cat
-    -- Form itself to 7). [stealth] is Shadowmeld too, as for rogues.
-    DRUID = { key = "stealthPaging", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth] 8; default" },
+    -- Keep Page 1 in Stealth (11-11): Forever now pages bar 1 in Stealth itself, so the old Auto
+    -- Paging for Stealth is turned round: the toggle holds page 1 while the game would swap it. Only
+    -- while bar 1 shows page 1: Shift+number (or the page keys) still turn pages. [stealth] is
+    -- Shadowmeld too; a rogue's stealth page is bonus bar 1 (held too, should it outlast Stealth).
+    ROGUE = { key = "keepStealthPage", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth] 1; [actionbar:1,bonusbar:1] 1; default" },
+    -- Druids: Prowl keeps Cat Form's page (7, Blizzard's), Shadowmeld in caster form page 1
+    DRUID = { key = "keepStealthPage", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth,form] 7; [actionbar:1,stealth] 1; default" },
     WARRIOR = { key = "noStancePaging", driver = "[possessbar][overridebar][vehicleui][shapeshift] default; [actionbar:1,bonusbar:1/2/3] 1; default" },
 }
 local PAGE_SNIPPET = [[
@@ -1015,6 +1017,12 @@ local function ApplyClassPaging()
         if db.autoPagingBar ~= 1 then db.noStancePaging = true end
         db.autoPagingBar = nil
     end
+    -- Auto Paging for Stealth turned off (bar 1 stayed put in stealth) becomes Keep Page 1 in
+    -- Stealth on, now that the game pages it (11-11)
+    if db.stealthPaging ~= nil then
+        if db.stealthPaging == false then db.keepStealthPage = true end
+        db.stealthPaging = nil
+    end
     local _, class = UnitClass("player")
     local paging = CLASS_PAGING[class]
     if not paging then return end
@@ -1026,6 +1034,56 @@ local function ApplyClassPaging()
     end
     -- off again: "default" hands the buttons back to their bar's own page
     if classPager then RegisterStateDriver(classPager, "page", on and paging.driver or "default") end
+end
+
+-- The spellbook's "not on your bars" glow (11-11, a player's report): in a stance Blizzard counts the
+-- stance's page as bar 1 and page 1 as hidden. While Keep Bar 1 in Stances holds page 1 it's the other
+-- way round, so a spell put on bar 1 kept glowing and one left on the hidden stance page didn't. After
+-- Blizzard's own answer each spell's glow is put right; Blizzard's functions are left alone (taint).
+do
+    local NOT_MISSING = 1
+    -- the warrior toggle holding page 1 right now: the driver's own conditions
+    local function HoldingPageOne()
+        if not classPager then return false end
+        local db = GetBarConfig()
+        local _, class = UnitClass("player")
+        if not (db and db.enabled and db.noStancePaging and class == "WARRIOR") then return false end
+        if not C_ActionBar.HasBonusActionBar() or GetActionBarPage() ~= 1 then return false end
+        return not (C_ActionBar.HasOverrideActionBar() or C_ActionBar.HasVehicleActionBar()
+            or C_ActionBar.HasTempShapeshiftActionBar() or (HasPossessBar and HasPossessBar()))
+    end
+    -- on a bar you can see: page 1, or a shown extra bar (never the hidden stance page)
+    local function OnShownBar(slots)
+        for _, slot in ipairs(slots) do
+            local page = math.floor((slot - 1) / 12) + 1
+            if page == 1 then return true end
+            local bar = MultiActionBar_GetBarForPage and MultiActionBar_GetBarForPage(page)
+            if bar and bar:IsShown() then return true end
+        end
+        return false
+    end
+    local function FixGlow(item)
+        if not (item.HasValidData and item:HasValidData() and item:IsShown()) then return end
+        local anim = item.Button and item.Button.ActionBarHighlight and item.Button.ActionBarHighlight.Anim
+        local info = item.spellBookItemInfo
+        local spellID = info and (info.spellID or info.actionID)
+        if not (anim and spellID and item.elementData and item.elementData.showActionBarStatus) then return end
+        if item.spellGrabbed or item.inClickBindMode or not HoldingPageOne() then return end
+        if C_Spell.IsSpellPassive(spellID) then return end
+        local slots = C_ActionBar.FindSpellActionButtons(spellID, Enum.ActionBarSet.Mkb)
+        if not slots then return end          -- on no bar: Blizzard's answer stands (stance buttons too)
+        local missing = not OnShownBar(slots) and C_ActionBar.IsHighestSpellRank(spellID)
+        if missing then
+            if item.actionBarStatus == NOT_MISSING then item:UpdateSynchronizedAnimState(anim, true) end
+        elseif anim:IsPlaying() then
+            anim:Stop()
+        end
+    end
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_PlayerSpells", function()
+        if SpellBookItemMixin and SpellBookItemMixin.UpdateActionBarAnim then
+            hooksecurefunc(SpellBookItemMixin, "UpdateActionBarAnim", FixGlow)
+        end
+    end)
 end
 
 --------------------------------------------------

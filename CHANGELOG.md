@@ -1,3 +1,30 @@
+# FlareUI 6.0.2
+
+**Restart the game fully after updating** (not just /reload): this version adds a new file.
+
+## New
+- Player frame: **Missing Mana** in its **Visibility** list (Edit Mode). Tick it with **Missing Health** and the frame shows while either bar is below full. Thanks for the request!
+- Quality of Life › Fonts: **Zone Text** (Default) changes the font of the zone name that appears as you enter a new area. Its size stays Blizzard's. Thanks for the request!
+- Quality of Life › Hide Clutter: **Flag Carrier Frames** (off) hides the two flag carrier frames under the minimap in battlegrounds. Thanks for the question!
+
+## Changed
+- Action bars: **Auto Paging for Stealth** is now **Keep Page 1 in Stealth** (off). The game now turns Action Bar 1 to its stealth page by itself; this option keeps your normal buttons instead. Thanks for the report!
+  - Druids keep their Cat Form page while prowling.
+  - If you had Auto Paging for Stealth off, Keep Page 1 in Stealth starts on.
+- Action bars: **Skin Cooldown Manager** is now off by default. Turn it on in **Bar Appearance**.
+
+## Fixed
+- Player cast bar: your casts never turn grey. Thanks for the report!
+  - **Range Check** is gone from the cast bar: with it off, every cast turned grey.
+  - Blizzard's own cast bar keeps its normal colour for your casts too.
+- Action bars: a hidden **Stance Bar** stays hidden in combat. It came back, for example when Stealth came off cooldown, until the fight ended. Thanks for the report!
+- Action bars: with **Keep Bar 1 in Stances**, the spellbook's "not on your bars" glow matches the bar you see. Thanks for the report!
+- Minimap: addon buttons you keep on the minimap with the addon drawer sit above the map border. Thanks for the report!
+- Russian: the Damage Meter's **Threat** tab and the **Open Configuration** button in Blizzard's options no longer show squares. Thanks for the report!
+- Settings: slider values such as **Default** next to Bags › **Columns** no longer get cut off in long translations. Thanks for the report!
+- Unit frames, FlareUI Style: the last bit of shadow at the top of the portrait ring is gone.
+- Radial menu: a **Party Spell** slice shows the spell's name while you're alone, not your own name.
+
 # FlareUI 6.0.1
 
 ## Changed
