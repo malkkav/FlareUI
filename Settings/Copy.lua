@@ -945,6 +945,11 @@ ns.Copy = {
             section = "qol.bags",
             tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
         },
+        ["qol.bagCategoryFilters"] = {
+            desc = L["Show the category filter buttons next to bag sorting."],
+            label = FILTERS or FILTER or L["Filters"],
+            section = "qol.bags",
+        },
         ["qol.bagJunkIcon"] = {
             desc = L["Grey items worth money show a coin all the time, not only at a vendor."],
             label = L["Junk Coin"],

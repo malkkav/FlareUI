@@ -798,6 +798,7 @@ local defaults = {
             bagReagent = false,         -- Crafting Bag in Backpack: the crafting (reagent) bag there too
             bagThickBorders = false,    -- FlareUI Thick in place of the always-on Thin border
             bagRarityBorders = true,    -- slot borders in the item's quality colour
+            bagCategoryFilters = true,
             bagJunkIcon = true,         -- the junk coin on grey items always, not only at a vendor
             bagUpgradeArrow = true,     -- green arrow on gear that beats what you wear (Bags.lua Upgrade)
             hideErrors = false,

@@ -852,11 +852,31 @@ local FILTER_ICON_MASKS = {
     consumables = "BagFilterConsumables.tga",
 }
 local filterButtons = {}
-local overflowButton, normalSearchWidth
-local overflowLabels = {
+local overflowButton, splitFilterButton, normalSearchWidth
+local filterLabels = {
+    quest = L["Quest Items"],
+    equipment = BAG_FILTER_EQUIPMENT or "Equipment",
     resources = BAG_FILTER_REAGENTS or "Resources",
     consumables = BAG_FILTER_CONSUMABLES or "Consumables",
 }
+local overflowFilterModes = { "resources", "consumables" }
+local splitFilterModes = { "quest", "equipment", "resources", "consumables" }
+
+local function SupportsBagFilters()
+    return C_Container.GetContainerItemQuestInfo and C_Item.GetItemInventoryTypeByID
+        and Enum.InventoryType and not Bags:GetOtherBagAddon()
+end
+
+local function BagFiltersEnabled()
+    local db = GetDb()
+    return not (db and db.bagCategoryFilters == false)
+end
+
+local function GetActiveMenuFilterLabel(button)
+    for _, mode in ipairs(button.filterMenuModes) do
+        if itemFilter == mode then return filterLabels[mode] end
+    end
+end
 
 local function ShowFilterTooltip(button)
     local mode = button.filterMode
@@ -868,7 +888,7 @@ local function ShowFilterTooltip(button)
         GameTooltip:AddLine(click .. " — " .. L["Reset"], 1, 1, 1)
     else
         GameTooltip:SetText(button.filterTooltip)
-        local activeLabel = not mode and overflowLabels[itemFilter]
+        local activeLabel = not mode and GetActiveMenuFilterLabel(button)
         if activeLabel then GameTooltip:AddLine(activeLabel .. enabled, 1, 1, 1) end
     end
     GameTooltip:Show()
@@ -898,24 +918,30 @@ local function SetFilterButtonActive(button, active)
     if GameTooltip:IsShown() and GameTooltip:IsOwned(button) then ShowFilterTooltip(button) end
 end
 
-local function OverflowActive()
-    return overflowLabels[itemFilter] ~= nil
+local function UpdateMenuFilterButton(button)
+    SetFilterButtonActive(button, GetActiveMenuFilterLabel(button) ~= nil)
 end
 
-local function ToggleItemFilter(mode)
-    itemFilter = itemFilter ~= mode and mode or nil
+local function SetItemFilter(mode)
+    if itemFilter == mode then return end
+    itemFilter = mode
     for filter, button in pairs(filterButtons) do SetFilterButtonActive(button, filter == itemFilter) end
-    if overflowButton then SetFilterButtonActive(overflowButton, OverflowActive()) end
+    if overflowButton then UpdateMenuFilterButton(overflowButton) end
+    if splitFilterButton then UpdateMenuFilterButton(splitFilterButton) end
     RefreshItemFilter()
 end
 
-local function CreateFilterButton(frame, filter, tooltip, atlasName, textureFile)
+local function ToggleItemFilter(mode)
+    if BagFiltersEnabled() then SetItemFilter(itemFilter ~= mode and mode or nil) end
+end
+
+local function CreateFilterButton(frame, filter, tooltip, atlasName, textureFile, compact)
     local button = CreateFrame("CheckButton", nil, frame, "BackdropTemplate")
     local rimUp, rimDown = C_Texture.GetAtlasInfo(FILTER_RIM_UP), C_Texture.GetAtlasInfo(FILTER_RIM_DOWN)
     local rimFile = rimUp and (rimUp.file or rimUp.filename)
-    if rimUp and rimDown and (filter or (rimFile and (rimDown.file or rimDown.filename))) then
+    if rimUp and rimDown and (not compact or (rimFile and (rimDown.file or rimDown.filename))) then
         button.rim = button:CreateTexture(nil, "BACKGROUND")
-        if filter then
+        if not compact then
             button.rim:SetAtlas(FILTER_RIM_UP, false)
             button.rim:SetPoint("CENTER")
         else
@@ -925,7 +951,7 @@ local function CreateFilterButton(frame, filter, tooltip, atlasName, textureFile
         end
         -- The sort button's frame and broom share one atlas. Cover the center before drawing our icon.
         local center = button:CreateTexture(nil, "ARTWORK", nil, -1)
-        if filter and rimFile then
+        if not compact and rimFile then
             -- Use the clean patch of background above and to the left of the broom.
             local width = rimUp.rightTexCoord - rimUp.leftTexCoord
             local height = rimUp.bottomTexCoord - rimUp.topTexCoord
@@ -984,18 +1010,45 @@ local function CreateFilterButton(frame, filter, tooltip, atlasName, textureFile
     return button
 end
 
-local function OpenExtraFilters(button)
-    SetFilterButtonActive(button, OverflowActive())
+local function OpenFilterMenu(button)
+    UpdateMenuFilterButton(button)
     MenuUtil.CreateContextMenu(button, function(_, root)
         local function IsActive(mode) return itemFilter == mode end
-        root:CreateCheckbox(overflowLabels.resources, IsActive, ToggleItemFilter, "resources")
-        root:CreateCheckbox(overflowLabels.consumables, IsActive, ToggleItemFilter, "consumables")
+        for _, mode in ipairs(button.filterMenuModes) do
+            root:CreateCheckbox(filterLabels[mode], IsActive, ToggleItemFilter, mode)
+        end
     end)
 end
 
-local function HideFilterButtons()
+local function CreateFilterMenuButton(frame, modes, compact)
+    local atlas = "bags-icon-multiple"
+    if not compact and C_Texture.GetAtlasInfo("Map-Filter-Button") then atlas = "Map-Filter-Button" end
+    local button = CreateFilterButton(frame, nil, FILTERS or FILTER or "Filters", atlas,
+        "Interface\\Buttons\\UI-ScrollDownButton-Up", compact)
+    button.filterMenuModes = modes
+    button:SetScript("OnClick", OpenFilterMenu)
+    return button
+end
+
+local function HideCombinedFilterButtons()
     for _, button in pairs(filterButtons) do button:Hide() end
     if overflowButton then overflowButton:Hide() end
+end
+
+local function HideFilterButtons()
+    HideCombinedFilterButtons()
+    if splitFilterButton then splitFilterButton:Hide() end
+end
+
+local function SizeFilterButton(button, width, height, sortWidth, sortHeight, sortHighlight)
+    button:SetSize(width, height)
+    if button.rim then button.rim:SetSize(sortWidth, sortHeight) end
+    if sortHighlight then
+        local highlight = button:GetHighlightTexture()
+        highlight:ClearAllPoints()
+        highlight:SetPoint("CENTER")
+        highlight:SetSize(sortHighlight:GetSize())
+    end
 end
 
 local function PlaceFilterButtons(frame, searchUpdated)
@@ -1009,37 +1062,57 @@ local function PlaceFilterButtons(frame, searchUpdated)
     local sortPoint, sortParent, _, sortX = sort:GetPoint(1)
     if searchPoint ~= "TOPLEFT" or sortPoint ~= "TOPRIGHT" or searchParent ~= frame or sortParent ~= frame then return end
     if searchUpdated or not normalSearchWidth then normalSearchWidth = search:GetWidth() end
+    if not BagFiltersEnabled() then
+        HideFilterButtons()
+        search:SetWidth(normalSearchWidth)
+        return
+    end
     local sortWidth, sortHeight = sort:GetSize()
     local sortHighlight = sort:GetHighlightTexture()
-    -- Keep the compact button spacing while drawing the full native sort frame.
+    -- Match the visible sort rim and keep the background patch inside it.
     local buttonWidth = sortWidth * (1 - 2 * FILTER_RIM_X_TRIM)
     local buttonHeight = sortHeight * (1 - 2 * FILTER_RIM_Y_TRIM)
-    local available = frame:GetWidth() + sortX - sortWidth - buttonWidth - FILTER_SEARCH_GAP - searchX
+    local sortLeft = frame:GetWidth() + sortX - sortWidth
+    if frame:IsBackpack() then
+        HideCombinedFilterButtons()
+        local available = sortLeft - buttonWidth - FILTER_SEARCH_GAP - searchX
+        if available <= 0 then
+            if splitFilterButton then splitFilterButton:Hide() end
+            return
+        end
+        if not splitFilterButton then
+            splitFilterButton = CreateFilterMenuButton(frame, splitFilterModes)
+            local iconWidth, iconHeight = splitFilterButton.icon:GetSize()
+            splitFilterButton.icon:SetSize(iconWidth * 0.75, iconHeight * 0.75)
+            splitFilterButton:SetPoint("RIGHT", sort, "LEFT", 0, 0)
+        end
+        SizeFilterButton(splitFilterButton, buttonWidth, buttonHeight, sortWidth, sortHeight, sortHighlight)
+        UpdateMenuFilterButton(splitFilterButton)
+        splitFilterButton:Show()
+        search:SetWidth(math.min(normalSearchWidth, available))
+        return
+    end
+    if splitFilterButton then splitFilterButton:Hide() end
+    local available = sortLeft - buttonWidth - FILTER_SEARCH_GAP - searchX
     if available <= 0 then
-        HideFilterButtons()
+        HideCombinedFilterButtons()
         return
     end
     if not filterButtons.quest then
-        filterButtons.quest = CreateFilterButton(frame, "quest", L["Quest Items"], "QuestNormal",
+        filterButtons.quest = CreateFilterButton(frame, "quest", filterLabels.quest, "QuestNormal",
             "Interface\\GossipFrame\\AvailableQuestIcon")
         filterButtons.quest:SetPoint("RIGHT", sort, "LEFT", 0, 0)
-        filterButtons.equipment = CreateFilterButton(frame, "equipment", BAG_FILTER_EQUIPMENT or "Equipment",
+        filterButtons.equipment = CreateFilterButton(frame, "equipment", filterLabels.equipment,
             nil, "Interface\\Icons\\INV_Chest_Chain_05")
-        filterButtons.resources = CreateFilterButton(frame, "resources", overflowLabels.resources,
+        filterButtons.resources = CreateFilterButton(frame, "resources", filterLabels.resources,
             nil, "Interface\\Icons\\INV_Ingot_02")
-        filterButtons.consumables = CreateFilterButton(frame, "consumables", overflowLabels.consumables,
+        filterButtons.consumables = CreateFilterButton(frame, "consumables", filterLabels.consumables,
             nil, "Interface\\Icons\\INV_Potion_49")
+        if itemFilter then SetFilterButtonActive(filterButtons[itemFilter], true) end
     end
     for _, button in pairs(filterButtons) do
         if button:GetParent() ~= frame then button:SetParent(frame) end
-        button:SetSize(buttonWidth, buttonHeight)
-        if button.rim then button.rim:SetSize(sortWidth, sortHeight) end
-        if sortHighlight then
-            local highlight = button:GetHighlightTexture()
-            highlight:ClearAllPoints()
-            highlight:SetPoint("CENTER")
-            highlight:SetSize(sortHighlight:GetSize())
-        end
+        SizeFilterButton(button, buttonWidth, buttonHeight, sortWidth, sortHeight, sortHighlight)
     end
     filterButtons.quest:Show()
     local equipment = filterButtons.equipment
@@ -1050,7 +1123,7 @@ local function PlaceFilterButtons(frame, searchUpdated)
         equipment:SetPoint("RIGHT", filterButtons.quest, "LEFT", -FILTER_BUTTON_GAP, 0)
         available = remaining
     else
-        -- In the separate backpack, use the space below the portrait to keep search readable.
+        -- Use the space below the portrait if a narrow frame leaves too little room beside search.
         equipment:SetPoint("RIGHT", search, "LEFT", -FILTER_SEARCH_GAP, -3)
     end
     equipment:Show()
@@ -1066,16 +1139,14 @@ local function PlaceFilterButtons(frame, searchUpdated)
     else
         -- Leave the search box and the two primary buttons in place on the narrow backpack.
         if not overflowButton then
-            overflowButton = CreateFilterButton(frame, nil, FILTERS or FILTER or "Filters", "bags-icon-multiple",
-                "Interface\\Buttons\\UI-ScrollDownButton-Up")
+            overflowButton = CreateFilterMenuButton(frame, overflowFilterModes, true)
             overflowButton.icon:SetSize(10, 10)
-            overflowButton:SetScript("OnClick", OpenExtraFilters)
         elseif overflowButton:GetParent() ~= frame then
             overflowButton:SetParent(frame)
         end
         overflowButton:SetSize(12, buttonHeight)
         overflowButton:SetPoint("RIGHT", equipmentOnLeft and equipment or search, "LEFT", -3, equipmentOnLeft and 0 or -3)
-        SetFilterButtonActive(overflowButton, OverflowActive())
+        UpdateMenuFilterButton(overflowButton)
         overflowButton:Show()
     end
     search:SetWidth(math.min(normalSearchWidth, available))
@@ -1089,8 +1160,7 @@ end
 function Bags:Init()
     if self.initialized then return end
     self.initialized = true
-    local useFilterButtons = C_Container.GetContainerItemQuestInfo and C_Item.GetItemInventoryTypeByID
-        and Enum.InventoryType and not self:GetOtherBagAddon()
+    local useFilterButtons = SupportsBagFilters()
     for _, frame in ipairs(BagFrames()) do
         if frame.UpdateItems then hooksecurefunc(frame, "UpdateItems", UpdateFrameItems) end
         if useFilterButtons and frame.UpdateSearchBox then
@@ -1158,6 +1228,9 @@ end
 -- tainted): a layout switched off goes back to Blizzard's the next time the bags open.
 function Bags:Refresh()
     if not self.initialized then return end
+    if not BagFiltersEnabled() then SetItemFilter(nil) end
+    local search = _G.BagItemSearchBox
+    if SupportsBagFilters() and search and search:IsVisible() then PlaceFilterButtons(search:GetParent()) end
     for _, frame in ipairs(BagFrames()) do
         if frame:IsShown() then
             if frame == Combined() then Relayout(frame) end

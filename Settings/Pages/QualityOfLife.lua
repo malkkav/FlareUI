@@ -97,6 +97,7 @@ S:Row{ key = "qol.bagButtons", half = true, tab = "bags", path = "tweaks.bagButt
 -- the keyring and the crafting bag as sections of the combined backpack (Bags.lua 0)
 S:Row{ key = "qol.bagKeyring", half = true, tab = "bags", path = "tweaks.bagKeyring", apply = RefreshBags, disabled = NotCombined }
 S:Row{ key = "qol.bagReagent", half = true, tab = "bags", path = "tweaks.bagReagent", apply = RefreshBags, disabled = NotCombined }
+S:Row{ key = "qol.bagCategoryFilters", tab = "bags", path = "tweaks.bagCategoryFilters", apply = RefreshBags, disabled = BagAddon }
 S:Row{ key = "qol.bagRarityBorders", half = true, tab = "bags", path = "tweaks.bagRarityBorders", apply = RefreshBags, disabled = BagAddon }
 S:Row{ key = "qol.bagThickBorders", half = true, tab = "bags", path = "tweaks.bagThickBorders", apply = RefreshBags, disabled = BagAddon }
 S:Row{ key = "qol.bagJunkIcon", half = true, tab = "bags", path = "tweaks.bagJunkIcon", apply = RefreshBags, disabled = BagAddon }
