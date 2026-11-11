@@ -2531,6 +2531,8 @@ local function BuildWindow()
     middleBox:SetPoint("TOPLEFT", left, "TOPRIGHT", GAP, 0)
     middleBox:SetPoint("BOTTOMRIGHT", right, "BOTTOMLEFT", -GAP, 0)
     Box(middleBox, 0.18)
+    -- (a custom tab that draws its own boxes, the radial editor, hides these two while it shows)
+    Panel.middleBox, Panel.rightBox, Panel.INNER = middleBox, right, INNER
     local middle = CreateFrame("Frame", nil, middleBox)
     middle:SetPoint("TOPLEFT", INNER, -INNER)
     middle:SetPoint("BOTTOMRIGHT", -INNER, INNER)

@@ -891,6 +891,23 @@ end
 
 -- a section box behind the contents, as the settings pages' (11-11 Marcus): on the host's parent, under it
 local sectionBoxes = {}
+-- the page's middle and right boxes step aside while the editor shows: its own boxes take their place
+local function PageBoxes(hide)
+    for _, box in ipairs({ ns.SettingsPanel.middleBox, ns.SettingsPanel.rightBox }) do
+        if box then
+            if hide then
+                if not box.ftSaved then
+                    box.ftSaved = { { box:GetBackdropColor() }, { box:GetBackdropBorderColor() } }
+                end
+                box:SetBackdropColor(0, 0, 0, 0)
+                box:SetBackdropBorderColor(0, 0, 0, 0)
+            elseif box.ftSaved then
+                box:SetBackdropColor(unpack(box.ftSaved[1]))
+                box:SetBackdropBorderColor(unpack(box.ftSaved[2]))
+            end
+        end
+    end
+end
 local function SectionBox(host)
     local box = CreateFrame("Frame", nil, host:GetParent(), "BackdropTemplate")
     ns.SettingsPanel.Box(box, 0.32)
@@ -1036,12 +1053,15 @@ local function BuildRadialColumn(host, column)
     end)
     host.undoButton:SetPoint("BOTTOMRIGHT", previewArea, "TOPRIGHT", 0, 1)
     -- two boxes: the radials (and what opens here), and the live preview with its title
+    -- (11-11 Marcus: they take the column box's place, edge to edge, top to bottom)
     local listBox = SectionBox(col)
-    listBox:SetPoint("TOPLEFT", col, "TOPLEFT", -BOX_PAD, BOX_PAD)
-    listBox:SetPoint("BOTTOMRIGHT", previewArea, "TOPRIGHT", BOX_PAD, 24 + BOX_PAD + 2 * BOX_GAP)
+    listBox:SetPoint("TOPLEFT", column, "TOPLEFT")
+    listBox:SetPoint("TOPRIGHT", column, "TOPRIGHT")
+    listBox:SetPoint("BOTTOM", previewArea, "TOP", 0, 24 + BOX_PAD + 2 * BOX_GAP)
     local previewBox = SectionBox(col)
-    previewBox:SetPoint("TOPLEFT", previewArea, "TOPLEFT", -BOX_PAD, 24 + BOX_PAD)
-    previewBox:SetPoint("BOTTOMRIGHT", previewArea, "BOTTOMRIGHT", BOX_PAD, -BOX_PAD + 4)
+    previewBox:SetPoint("TOP", previewArea, "TOP", 0, 24 + BOX_PAD)
+    previewBox:SetPoint("LEFT", column, "LEFT")
+    previewBox:SetPoint("BOTTOMRIGHT", column, "BOTTOMRIGHT")
 end
 
 local function BuildDetails(host, width)
@@ -1204,15 +1224,18 @@ local function BuildLower(host, height, width)
     -- the radial's buttons, in order; the title and icons centred in the section, which runs on to the
     -- window's column line (BUTTONS_NUDGE past the host's edge)
     -- three boxes: the radial's form on top, the Catalog and the buttons below (11-11 Marcus)
-    local formBox = SectionBox(host)
-    formBox:SetPoint("TOPLEFT", host, "TOPLEFT", x - BOX_PAD, BOX_PAD)
-    formBox:SetPoint("BOTTOMRIGHT", host, "TOPLEFT", x + width + BOX_PAD, -(top - 10 - 2 * BOX_GAP))
+    local inner = ns.SettingsPanel.INNER or 10
+    local page = ns.SettingsPanel.middleBox
+    local topBox = SectionBox(host)
+    topBox:SetPoint("TOPLEFT", page, "TOPLEFT")
+    topBox:SetPoint("TOPRIGHT", page, "TOPRIGHT")
+    topBox:SetPoint("BOTTOM", host, "TOP", 0, -(top - 10 - 2 * BOX_GAP))
     local catalogBox = SectionBox(host)
-    catalogBox:SetPoint("TOPLEFT", host, "TOPLEFT", x - BOX_PAD, -(top - 10))
-    catalogBox:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", buttonsX - 8 - BOX_GAP, -BOX_PAD)
+    catalogBox:SetPoint("TOPLEFT", host, "TOPLEFT", -inner, -(top - 10))
+    catalogBox:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", buttonsX - 8 - BOX_GAP, -inner)
     local buttonsBox = SectionBox(host)
     buttonsBox:SetPoint("TOPLEFT", host, "TOPLEFT", buttonsX - 8 + BOX_GAP, -(top - 10))
-    buttonsBox:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", x + width + BOX_PAD, -BOX_PAD)
+    buttonsBox:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT")
     local buttonsTitle = Text(host, "GameFontNormal", L["Buttons"])
     buttonsTitle:SetJustifyH("CENTER")
     buttonsTitle:SetPoint("TOP", host, "TOPLEFT", (buttonsX - 8 + x + width) / 2 + BUTTONS_NUDGE, -top)
@@ -1371,15 +1394,18 @@ local function BuildEmbedded(host, column)
 
     -- opening takes the Undo snapshot; leaving keeps the edits
     for _, box in ipairs(sectionBoxes) do box:SetShown(host:IsShown()) end
+    PageBoxes(host:IsShown())
     host:SetScript("OnShow", function()
         browseCache = {}
         host.column:Show()
         for _, box in ipairs(sectionBoxes) do box:Show() end
+        PageBoxes(true)
         TakeSnapshot()
     end)
     host:SetScript("OnHide", function()
         host.column:Hide()
         for _, box in ipairs(sectionBoxes) do box:Hide() end
+        PageBoxes(false)
         dirty, snapshot = false, nil
         if popup then popup:Hide() end
         if RM() then RM():HidePreview() end
