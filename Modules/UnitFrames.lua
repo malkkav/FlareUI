@@ -4256,11 +4256,13 @@ function UF.DrawSample(f, style, opts)
 end
 
 -- The FlareUI Player Cast Bar's sample: its own bar and layout, casting the Edit Mode sample on a loop
--- while it shows
-function UF.CreateCastSample(parent)
+-- while it shows. unit "target" (Pick Your Colours, 11-11): the target frame's cast bar instead, in
+-- its own look, as long as the frame
+function UF.CreateCastSample(parent, unit)
     local holder = CreateFrame("Frame", nil, parent)
-    holder.Cast = CreateCastBar(holder, "player", true)
-    holder.Cast.standalone = true
+    holder.unit = unit or "player"
+    holder.Cast = CreateCastBar(holder, holder.unit, true)
+    holder.Cast.standalone = holder.unit == "player"
     holder:SetScript("OnHide", function(self)
         if self.ticker then self.ticker:Cancel(); self.ticker = nil end
     end)
@@ -4269,7 +4271,14 @@ end
 
 function UF.DrawCastSample(holder)
     local db = GetDb()
-    local style = GetCastStyle(db and db.playerCastbar or {}, true)
+    local style
+    if holder.unit and holder.unit ~= "player" then
+        local udb = GetUnitDb(holder.unit) or {}
+        style = GetCastStyle(udb, false)
+        style.width = (udb.width or 220) - 2 * INSET - (style.icon and (style.height + CAST_ICON_GAP) or 0)
+    else
+        style = GetCastStyle(db and db.playerCastbar or {}, true)
+    end
     local _, PADDING = BorderFit(style.height, style.border and GetBorderFile(style.borderTexture))
     local iconOffset = style.icon and (style.height + CAST_ICON_GAP) or 0
     holder:SetSize(style.width + iconOffset + 2 * PADDING, style.height + 2 * PADDING)

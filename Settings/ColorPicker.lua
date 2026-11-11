@@ -101,7 +101,7 @@ local PARTS = {
     health = "health", grey = "health", hostile = "health", neutral = "health", friendly = "health",
     mana = "power", rage = "power", energy = "power", focus = "power",
     cast = "cast", castChannel = "cast", castNoInterrupt = "cast", interrupted = "cast",
-    playerCast = "cast", playerChannel = "cast",
+    playerCast = "playerCast", playerChannel = "playerCast",
 }
 local function PartOf(key)
     if key:match("^class:") then return "health" end
@@ -182,6 +182,39 @@ local function LayRows(rows)
     end
 end
 
+-- Incoming heals and a shield after the sample's health (the samples have no unit to predict from):
+-- two strips past the fill, in the colours in use
+local function HealOverlay(f)
+    local UF, health = ns.UnitFrames, f.Health
+    if not health then return end
+    local o = f.fuiPickHeals
+    if not o then
+        o = CreateFrame("Frame", nil, health)
+        o.heal = o:CreateTexture(nil, "ARTWORK", nil, 1)
+        o.absorb = o:CreateTexture(nil, "ARTWORK", nil, 2)
+        f.fuiPickHeals = o
+    end
+    o:SetFrameLevel(health:GetFrameLevel() + 1)
+    o:SetAllPoints(health)
+    local fill = health:GetStatusBarTexture()
+    local inset = health.FlareUI_PlateInset
+    local length = inset and inset.length or health:GetWidth()
+    local reverse = health.GetReverseFill and health:GetReverseFill()
+    local near, far = reverse and "RIGHT" or "LEFT", reverse and "LEFT" or "RIGHT"
+    local file = fill and fill:GetTexture()
+    for i, part in ipairs({ { o.heal, UF.HEAL_COLOR, 0.12 }, { o.absorb, UF.ABSORB_COLOR, 0.10 } }) do
+        local tex, c, share = part[1], part[2], part[3]
+        tex:ClearAllPoints()
+        local after = i == 1 and fill or o.heal
+        tex:SetPoint("TOP" .. near, after, "TOP" .. far, 0, 0)
+        tex:SetPoint("BOTTOM" .. near, after, "BOTTOM" .. far, 0, 0)
+        tex:SetWidth(math.max(1, length * share))
+        if file then tex:SetTexture(file) else tex:SetColorTexture(1, 1, 1) end
+        tex:SetVertexColor(c[1], c[2], c[3], 1)
+    end
+    o:Show()
+end
+
 local function UnitSample(id, unit, style)
     local UF = ns.UnitFrames
     local f = samples[id]
@@ -211,38 +244,44 @@ local function DrawUnitPreviews()
                     bar:SetStatusBarColor(c[1], c[2], c[3])
                 end
             end
+            HealOverlay(f)
             units[#units + 1] = Item(f, e)
         end
     end
-    local cast
+    -- the cast bars: yours under the player, the target's under the target
+    local casts = {}
     if UF.CreateCastSample then
-        cast = samples.cast
-        if not cast then
-            cast = UF.CreateCastSample(window.preview)
-            samples.cast = cast
-            -- the sample recolours itself on each loop: the shown colour over it
-            if cast and cast.Cast then
-                local busy
-                hooksecurefunc(cast.Cast, "SetStatusBarColor", function(bar)
-                    local key = shown.uf.cast
-                    if busy or not key then return end
-                    busy = true
-                    local c = UF.Color(key)
-                    bar:SetStatusBarColor(c[1], c[2], c[3])
-                    busy = false
-                end)
+        for _, info in ipairs({ { "player", "playerCast" }, { "target", "cast" } }) do
+            local unit, part = info[1], info[2]
+            local cast = samples["cast:" .. unit]
+            if not cast then
+                cast = UF.CreateCastSample(window.preview, unit)
+                samples["cast:" .. unit] = cast
+                -- the sample recolours itself on each loop: the shown colour over it
+                if cast and cast.Cast then
+                    local busy
+                    hooksecurefunc(cast.Cast, "SetStatusBarColor", function(bar)
+                        local key = shown.uf[part]
+                        if busy or not key then return end
+                        busy = true
+                        local c = UF.Color(key)
+                        bar:SetStatusBarColor(c[1], c[2], c[3])
+                        busy = false
+                    end)
+                end
             end
-        end
-        if cast then
-            cast:SetScale(1)
-            UF.DrawCastSample(cast)
-            local key = shown.uf.cast
-            if key and cast.Cast then local c = UF.Color(key); cast.Cast:SetStatusBarColor(c[1], c[2], c[3]) end
+            if cast then
+                cast:SetScale(1)
+                UF.DrawCastSample(cast)
+                local key = shown.uf[part]
+                if key and cast.Cast then local c = UF.Color(key); cast.Cast:SetStatusBarColor(c[1], c[2], c[3]) end
+                casts[#casts + 1] = Item(cast)
+            end
         end
     end
     LayRows({
         Row(units, 1, 1.6),
-        Row({ cast and Item(cast) }, 0.7, 1.6),
+        Row(casts, 1, 1.6),
     })
 end
 
