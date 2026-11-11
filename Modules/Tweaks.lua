@@ -1480,12 +1480,21 @@ end
 -- Where the tag sits: the plate's level box when it shows, otherwise the health bar. The second
 -- return is what sizes and layers it: the level box whenever there is one (with Hide Level it is only
 -- invisible, so the tag keeps its usual size and stays above the plate), otherwise the health bar.
+-- the health bar itself (PlateAnchor gives the cast bar's container first, which sits under it even
+-- while nothing is cast: with Hide Level the badge sat below the bar, a player's report 11-11)
+local function QuestTagBar(plate)
+    local unitFrame = plate.UnitFrame
+    local bar = unitFrame and unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar
+    if bar and not bar:IsForbidden() then return bar end
+    return PlateAnchor(plate)
+end
+
 local function QuestTagAnchor(plate)
     local unitFrame = plate.UnitFrame
     local level = unitFrame and unitFrame.PlayerLevelDiffFrame
     local db = GetDb()
     if db and db.nameplateHideLevel then
-        local bar = PlateAnchor(plate)
+        local bar = QuestTagBar(plate)
         if level and not level:IsForbidden() then return bar, level end
         return bar, bar
     end
@@ -1503,7 +1512,7 @@ local function QuestTagAnchor(plate)
         end
         if level:IsShown() then return level, level end
     end
-    local bar = PlateAnchor(plate)
+    local bar = QuestTagBar(plate)
     return bar, bar
 end
 
