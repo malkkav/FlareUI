@@ -2228,7 +2228,11 @@ f:SetScript("OnEvent", function(self, event, ...)
         local function OnProfileChanged()
             -- the character's choice, kept by GUID (AceDB's own record is keyed by a name that can
             -- read "Unknown" while the game starts; PLAYER_LOGIN below puts the choice back)
-            if ns.PlayerGUID() and ns.db then ns.CharDB().profileName = ns.db:GetCurrentProfile() end
+            if ns.PlayerGUID() and ns.db then
+                ns.CharDB().profileName = ns.db:GetCurrentProfile()
+                -- after the reload: offered the new profile's Edit Mode layout (ProfileLayout.lua)
+                ns.CharDB().offerLayout = true
+            end
             local panel = ns.SettingsPanel
             if panel and panel:IsShown() then panel:Refresh() end
             if not ns.reloading then ns.ShowDialog("FLAREUI_RELOAD") end
@@ -2254,6 +2258,8 @@ f:SetScript("OnEvent", function(self, event, ...)
         -- character with no choice kept yet takes the profile it opened with.
         local char = ns.CharDB()
         local wanted, currentProfile = char.profileName, ns.db:GetCurrentProfile()
+        -- a character's first FlareUI login: offered its profile's Edit Mode layout (ProfileLayout.lua)
+        if wanted == nil and ns.PlayerGUID() then char.offerLayout = true end
         if type(wanted) == "string" and wanted ~= currentProfile then
             local exists = false
             for _, name in ipairs(ns.db:GetProfiles() or {}) do

@@ -20,6 +20,18 @@ local function FreeName(text)
     return text
 end
 
+-- New asks first: a copy of the profile in use (the Duplicate dialog) or FlareUI's defaults. Escape
+-- doesn't answer it (it would pick defaults): either choice leads to a name dialog that can cancel.
+ns.Dialogs["FLAREUI_NEW_PROFILE_FROM"] = {
+    text = L["Start the new profile as a copy of |cffffff00%s|r, or from FlareUI's defaults?"],
+    button1 = L["Copy"],
+    button2 = L["Defaults"],
+    OnAccept = function(data)
+        if data and data.from then ns.ShowDialog("FLAREUI_DUPLICATE_PROFILE", data.from, data) end
+    end,
+    OnCancel = function() ns.ShowDialog("FLAREUI_NEW_PROFILE") end,
+}
+
 ns.Dialogs["FLAREUI_NEW_PROFILE"] = {
     text = L["Name the new profile. It starts from FlareUI's defaults."],
     button1 = L["Create"],
@@ -508,7 +520,7 @@ S:Module{
 -- the profile dropdown spans the width of the New / Rename / Duplicate / Delete buttons under it
 local BUTTON_W, BUTTON_GAP = 108, 6
 local PROFILE_W = BUTTON_W * 3 + BUTTON_GAP * 2
-local MANAGE_W = (PROFILE_W - BUTTON_GAP * 3) / 4
+local MANAGE_W = (PROFILE_W - BUTTON_GAP * 2) / 3
 
 S:Row{
     key = "adv.profiles", kind = "dropdown", choices = Profiles, dropdownWidth = PROFILE_W,
@@ -520,14 +532,13 @@ S:Row{
     key = "adv.manage", kind = "buttons", labelFn = function() return "" end,
     fitButtonsWidth = PROFILE_W,
     buttons = {
-        { text = L["New"], width = MANAGE_W, onClick = function() ns.ShowDialog("FLAREUI_NEW_PROFILE") end },
+        { text = L["New"], width = MANAGE_W, onClick = function()
+              local current = ns.db and ns.db:GetCurrentProfile()
+              if current then ns.ShowDialog("FLAREUI_NEW_PROFILE_FROM", current, { from = current }) end
+          end },
         { text = L["Rename"], width = MANAGE_W, onClick = function()
               local current = ns.db and ns.db:GetCurrentProfile()
               if current then ns.ShowDialog("FLAREUI_RENAME_PROFILE", current, { from = current }) end
-          end },
-        { text = L["Duplicate"], width = MANAGE_W, onClick = function()
-              local current = ns.db and ns.db:GetCurrentProfile()
-              if current then ns.ShowDialog("FLAREUI_DUPLICATE_PROFILE", current, { from = current }) end
           end },
         -- its list is a Blizzard menu, which hangs the client when addon code opens it in the Gamepad UI
         { text = L["Delete"], width = MANAGE_W, disabled = function() return #Others() == 0 or ns.IsGamepadUI() end,
@@ -542,6 +553,9 @@ S:Row{
           end },
     },
 }
+
+-- what a profile holds, and where the rest comes from (ProfileLayout.lua)
+S:Row{ key = "adv.holds", kind = "text" }
 
 -- Export / Import: two buttons as wide as the three above
 local SHARE_W = (BUTTON_W * 3 + BUTTON_GAP) / 2

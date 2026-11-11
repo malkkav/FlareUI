@@ -1051,6 +1051,8 @@ end
 function internal:TriggerCallback(frame, ...)
 	if lib.frameCallbacks[frame] then
 		securecallfunction(lib.frameCallbacks[frame], frame, layoutNames[lib.activeLayout], ...)
+		-- FlareUI: any frame moved (the profile's home layout, ProfileLayout.lua)
+		if lib.onAnyMove then securecallfunction(lib.onAnyMove, layoutNames[lib.activeLayout]) end
 	end
 end
 

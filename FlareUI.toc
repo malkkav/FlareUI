@@ -48,6 +48,7 @@ Locales\zhTW.lua
 Core.lua
 Import.lua
 Dialog.lua
+ProfileLayout.lua
 GamepadMode.lua
 Media.lua
 EditModeOverlays.lua

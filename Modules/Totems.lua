@@ -56,8 +56,8 @@ local function GetLayoutStore(layoutName)
     if not db then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     db.totemLayouts = db.totemLayouts or {}
-    db.totemLayouts[layoutName] = db.totemLayouts[layoutName] or {}
-    return db.totemLayouts[layoutName]
+    -- (a layout with no spot of its own reads the profile's home layout's: ProfileLayout.lua)
+    return ns.LayoutHome(db.totemLayouts, layoutName)
 end
 
 local function ApplyPosition(layoutName)

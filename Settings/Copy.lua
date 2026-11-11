@@ -342,12 +342,18 @@ ns.Copy = {
             section = "about.yourFriendlyUiOverhowl",
             text = L["Hope you enjoy FlareUI! Found a bug or have an idea? Give me a holler through the links below"],
         },
+        ["adv.holds"] = {
+            kind = "text",
+            label = L["What a Profile Holds"],
+            section = "adv.profile",
+            text = L["* In it: every FlareUI setting, and where FlareUI's frames sit on any Edit Mode layout\n* Not in it: Blizzard's bars and frames, which come with your Edit Mode layout\n* Switching profiles offers the layout the profile was set up on. From another character, copy it with Copy Layout Code (About) or Sync Blizz UI (Settings)."],
+        },
         ["adv.manage"] = {
-            desc = L["* New: FlareUI's defaults\n* Rename: a new name for the profile in use\n* Duplicate: a copy of the profile in use\n* Delete: removes a profile you aren't using"],
+            desc = L["* New: a copy of the profile in use, or FlareUI's defaults\n* Rename: a new name for the profile in use\n* Delete: removes a profile you aren't using"],
             info = L["Manage Profiles"],
             label = L["Manage Profiles"],
             section = "adv.profile",
-            tip = L["New and Duplicate switch to the new profile and reload. Rename needs no reload."],
+            tip = L["New switches to the new profile and reloads. Rename needs no reload."],
         },
         ["adv.profiles"] = {
             desc = L["The profile in use."],

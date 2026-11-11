@@ -1952,8 +1952,8 @@ local function GetLayoutStore(layoutName)
     if not party then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     party.layouts = party.layouts or {}
-    party.layouts[layoutName] = party.layouts[layoutName] or {}
-    return party.layouts[layoutName]
+    -- (a layout with no spot of its own reads the profile's home layout's: ProfileLayout.lua)
+    return ns.LayoutHome(party.layouts, layoutName)
 end
 
 local function ApplyPosition(layoutName)

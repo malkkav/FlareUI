@@ -749,8 +749,8 @@ local function GetLayoutStore(layoutName)
     if not rdb then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     rdb.layouts = rdb.layouts or {}
-    rdb.layouts[layoutName] = rdb.layouts[layoutName] or {}
-    return rdb.layouts[layoutName]
+    -- (a layout with no spot of its own reads the profile's home layout's: ProfileLayout.lua)
+    return ns.LayoutHome(rdb.layouts, layoutName)
 end
 
 local function ApplyPosition(holder, layoutName)

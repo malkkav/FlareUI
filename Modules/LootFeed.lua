@@ -304,8 +304,8 @@ local function GetLayoutStore(layoutName)
     if not db then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     db.lootFeedLayouts = db.lootFeedLayouts or {}
-    db.lootFeedLayouts[layoutName] = db.lootFeedLayouts[layoutName] or {}
-    return db.lootFeedLayouts[layoutName]
+    -- (a layout with no spot of its own reads the profile's home layout's: ProfileLayout.lua)
+    return ns.LayoutHome(db.lootFeedLayouts, layoutName)
 end
 
 local function ApplyPosition(layoutName)

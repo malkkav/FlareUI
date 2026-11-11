@@ -51,9 +51,12 @@ local function GetLayoutStore(key, layoutName)
     if not db then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     db.moverLayouts = db.moverLayouts or {}
-    db.moverLayouts[layoutName] = db.moverLayouts[layoutName] or {}
-    local store = db.moverLayouts[layoutName]
-    store[key] = store[key] or {}
+    -- (a layout with no spot of its own starts from the profile's home layout's: ProfileLayout.lua)
+    local store = ns.LayoutHome(db.moverLayouts, layoutName)
+    if rawget(store, key) == nil then
+        local home = store[key]
+        store[key] = type(home) == "table" and CopyTable(home) or {}
+    end
     return store[key]
 end
 
