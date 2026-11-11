@@ -120,6 +120,10 @@ local function OnUpdate(self, elapsed)
     if #lines == 0 then self:SetScript("OnUpdate", nil) end
 end
 
+local function ItemText(count, label)
+    return count > 1 and (label .. " x" .. count) or label
+end
+
 -- plain: label is the whole text (a skill-up), and a repeat replaces it instead of counting up
 local function Add(key, icon, label, count, r, g, b, plain)
     if not holder then return end
@@ -128,7 +132,7 @@ local function Add(key, icon, label, count, r, g, b, plain)
         if key and line.key == key and line.age < JOIN then
             line.count = line.count + count
             line.age = math_min(line.age, FADE_IN)
-            Fill(line, icon, plain and label or ("+" .. line.count .. " " .. label), r or 1, g or 1, b or 1)
+            Fill(line, icon, plain and label or ItemText(line.count, label), r or 1, g or 1, b or 1)
             return
         end
     end
@@ -142,7 +146,7 @@ local function Add(key, icon, label, count, r, g, b, plain)
     end
     local line = tremove(pool) or NewLine(holder)
     line.key, line.count, line.age, line.y = key, count, 0, 0
-    Fill(line, icon, (key and not plain) and ("+" .. count .. " " .. label) or label, r or 1, g or 1, b or 1)
+    Fill(line, icon, (key and not plain) and ItemText(count, label) or label, r or 1, g or 1, b or 1)
     line:ClearAllPoints()
     line:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, 0)
     line:SetAlpha(0)
@@ -345,12 +349,12 @@ local function ShowPreview()
         local line = preview.lines[i]
         local icon = C_Item.GetItemIconByID and C_Item.GetItemIconByID(id)
         local name = C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
-        Fill(line, icon, "+" .. count .. " " .. (name or ""), 1, 1, 1)
+        Fill(line, icon, ItemText(count, name or ""), 1, 1, 1)
         -- not in the game's item cache yet: the name comes once it loads
         if not name and Item and Item.CreateFromItemID then
             Item:CreateFromItemID(id):ContinueOnItemLoad(function()
                 local loaded = C_Item.GetItemNameByID(id)
-                if loaded and line:IsVisible() then Fill(line, icon, "+" .. count .. " " .. loaded, 1, 1, 1) end
+                if loaded and line:IsVisible() then Fill(line, icon, ItemText(count, loaded), 1, 1, 1) end
             end)
         end
     end
