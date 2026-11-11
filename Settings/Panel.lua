@@ -2125,6 +2125,105 @@ end)
 --------------------------------------------------
 -- 7. THE WINDOW
 --------------------------------------------------
+--------------------------------------------------
+-- 6b. THE WINDOW'S STONE AND FRAME (11-11): Marcus picked the natural rock and the character select's
+-- heavy bronze frame (rivets on the top corners only). /fui bg [n] and /fui frame [n] still try the
+-- others on the open window (temporary; nothing is saved)
+--------------------------------------------------
+local LOOK_BG = {
+    { "Rock, bronze tint (now)", file = "Interface\\FrameGeneral\\UI-Background-Rock", tile = true, desat = true, tint = { 0.85, 0.68, 0.47 }, wash = 0.3 },
+    { "Rock, natural", file = "Interface\\FrameGeneral\\UI-Background-Rock", tile = true, wash = 0.35 },
+    { "Marble", file = "Interface\\FrameGeneral\\UI-Background-Marble", tile = true, wash = 0.3 },
+    { "Heavy bronze stone (character select)", atlas = "heavybronze-frame-background", wash = 0.1 },
+    { "Character panel stone", atlas = "character-panel-background", wash = 0.1 },
+    { "Stat stone", atlas = "UI-Character-Info-Stat-StoneBG3", wash = 0.2 },
+    { "Group finder", atlas = "groupfinder-background", wash = 0.2 },
+    { "Black market tile", file = "Interface\\BlackMarket\\BlackMarketBackground-Tile", tile = true, wash = 0.25 },
+    { "Dark dialog", file = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark", tile = true, wash = 0 },
+    { "Encounter journal", file = "Interface\\EncounterJournal\\UI-EJ-BACKGROUND-Default", wash = 0.25 },
+    { "Quest log", atlas = "QuestLog-main-background", wash = 0.15 },
+}
+local LOOK_FRAME = { "Tooltip edge (now)", "FlareUI Thick", "Heavy bronze (character select)" }
+local lookBg, lookFrame = 2, 3   -- the picks, drawn as the window is built
+
+local function TryBackground(n)
+    local o = LOOK_BG[n]
+    local art, wash = frame.ftArt, frame.ftWash
+    if o.atlas then
+        if not C_Texture.GetAtlasInfo(o.atlas) then return false end
+        art:SetHorizTile(false); art:SetVertTile(false)
+        art:SetAtlas(o.atlas)
+    else
+        art:SetTexture(o.file, o.tile and "REPEAT" or nil, o.tile and "REPEAT" or nil)
+        art:SetTexCoord(0, 1, 0, 1)
+        art:SetHorizTile(o.tile and true or false); art:SetVertTile(o.tile and true or false)
+    end
+    art:SetDesaturated(o.desat and true or false)
+    local t = o.tint or { 1, 1, 1 }
+    art:SetVertexColor(t[1], t[2], t[3])
+    wash:SetColorTexture(0.05, 0.038, 0.026, o.wash or 0.3)
+    return true
+end
+
+local function TryFrame(n)
+    local style = ns.WINDOW_STYLE
+    if frame.ftBronze then frame.ftBronze:Hide() end
+    if n == 1 then
+        frame:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16 })
+        frame:SetBackdropBorderColor(style.border[1], style.border[2], style.border[3], 1)
+    elseif n == 2 then
+        local file = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thick.tga"
+        frame:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, 16) })
+        local c = ns.BORDER_COLOR
+        frame:SetBackdropBorderColor(c.r, c.g, c.b, 1)
+    else
+        if not C_Texture.GetAtlasInfo("heavybronze-frame-basic") then return false end
+        frame:SetBackdrop(nil)
+        local b = frame.ftBronze
+        if not b then
+            -- as the character select list draws it: the frame stretched past the edges, brackets on the corners
+            b = CreateFrame("Frame", nil, frame)
+            b:SetAllPoints()
+            b:SetFrameLevel(frame:GetFrameLevel() + 30)
+            b.edge = b:CreateTexture(nil, "BORDER")
+            b.edge:SetAtlas("heavybronze-frame-basic")
+            -- as a nine-slice, so the long sides keep the bars' thickness (it is drawn far bigger than
+            -- the character list it was made for)
+            if b.edge.SetTextureSliceMargins then
+                pcall(b.edge.SetTextureSliceMargins, b.edge, 24, 24, 24, 24)
+                if Enum.UITextureSliceMode then pcall(b.edge.SetTextureSliceMode, b.edge, Enum.UITextureSliceMode.Stretched) end
+            end
+            -- the same on every side, over the stone's edge
+            b.edge:SetPoint("TOPLEFT", -10, 10)
+            b.edge:SetPoint("BOTTOMRIGHT", 10, -10)
+            -- the rivets on the top corners only (11-11 Marcus)
+            for _, c in ipairs({ { "TL", "TOPLEFT" }, { "TR", "TOPRIGHT" } }) do
+                local t = b:CreateTexture(nil, "ARTWORK")
+                t:SetAtlas("heavybronze-horz-cornerbracket-" .. c[1], true)
+                t:SetPoint(c[2], b.edge, c[2])
+            end
+            frame.ftBronze = b
+        end
+        b:Show()
+    end
+    return true
+end
+
+-- kind: "bg" or "frame"; n: a number, or nil for the next one
+function Panel:TryLook(kind, n)
+    if not (frame and frame:IsShown()) then self:Open() end
+    local list = kind == "frame" and LOOK_FRAME or LOOK_BG
+    local index = tonumber(n) or ((kind == "frame" and lookFrame or lookBg) % #list + 1)
+    if index < 1 or index > #list then
+        print("|cff00ccffFlareUI:|r 1-" .. #list)
+        return
+    end
+    local ok = kind == "frame" and TryFrame(index) or (kind ~= "frame" and TryBackground(index))
+    if kind == "frame" then lookFrame = index else lookBg = index end
+    local name = type(list[index]) == "table" and list[index][1] or list[index]
+    print(("|cff00ccffFlareUI:|r %s %d/%d: %s%s"):format(kind == "frame" and "frame" or "background", index, #list, name, ok and "" or " |cffff6060(missing in this client)|r"))
+end
+
 local function BuildWindow()
     local style = ns.WINDOW_STYLE
     -- (11-11 Marcus: after a reload each page opens on its first tab; the tabs once kept go)
@@ -2177,6 +2276,8 @@ local function BuildWindow()
     glow:SetColorTexture(1, 1, 1)
     glow:SetGradient("VERTICAL", CreateColor(0.55, 0.41, 0.22, 0), CreateColor(0.55, 0.41, 0.22, 0.20))
     frame.ftArt, frame.ftWash = art, wash
+    TryBackground(lookBg)
+    if not TryFrame(lookFrame) then TryFrame(1) end   -- (the tooltip edge where the client lacks the art)
     local shade = frame:CreateTexture(nil, "BACKGROUND", nil, 3)
     shade:SetPoint("BOTTOMLEFT", art)
     shade:SetPoint("BOTTOMRIGHT", art)
@@ -2595,97 +2696,6 @@ local function BuildWindow()
         end,
         start = function() return page.scroll:IsShown() and page.scroll or nil end,
     })
-end
-
---------------------------------------------------
--- 7b. LOOK TESTS (11-11, temporary): /fui bg [n] and /fui frame [n] try stones and outer borders
--- on the open window, for Marcus to pick from; nothing is saved
---------------------------------------------------
-local LOOK_BG = {
-    { "Rock, bronze tint (now)", file = "Interface\\FrameGeneral\\UI-Background-Rock", tile = true, desat = true, tint = { 0.85, 0.68, 0.47 }, wash = 0.3 },
-    { "Rock, natural", file = "Interface\\FrameGeneral\\UI-Background-Rock", tile = true, wash = 0.35 },
-    { "Marble", file = "Interface\\FrameGeneral\\UI-Background-Marble", tile = true, wash = 0.3 },
-    { "Heavy bronze stone (character select)", atlas = "heavybronze-frame-background", wash = 0.1 },
-    { "Character panel stone", atlas = "character-panel-background", wash = 0.1 },
-    { "Stat stone", atlas = "UI-Character-Info-Stat-StoneBG3", wash = 0.2 },
-    { "Group finder", atlas = "groupfinder-background", wash = 0.2 },
-    { "Black market tile", file = "Interface\\BlackMarket\\BlackMarketBackground-Tile", tile = true, wash = 0.25 },
-    { "Dark dialog", file = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark", tile = true, wash = 0 },
-    { "Encounter journal", file = "Interface\\EncounterJournal\\UI-EJ-BACKGROUND-Default", wash = 0.25 },
-    { "Quest log", atlas = "QuestLog-main-background", wash = 0.15 },
-}
-local LOOK_FRAME = { "Tooltip edge (now)", "FlareUI Thick", "Heavy bronze (character select)" }
-local lookBg, lookFrame = 1, 1
-
-local function TryBackground(n)
-    local o = LOOK_BG[n]
-    local art, wash = frame.ftArt, frame.ftWash
-    if o.atlas then
-        if not C_Texture.GetAtlasInfo(o.atlas) then return false end
-        art:SetHorizTile(false); art:SetVertTile(false)
-        art:SetAtlas(o.atlas)
-    else
-        art:SetTexture(o.file, o.tile and "REPEAT" or nil, o.tile and "REPEAT" or nil)
-        art:SetTexCoord(0, 1, 0, 1)
-        art:SetHorizTile(o.tile and true or false); art:SetVertTile(o.tile and true or false)
-    end
-    art:SetDesaturated(o.desat and true or false)
-    local t = o.tint or { 1, 1, 1 }
-    art:SetVertexColor(t[1], t[2], t[3])
-    wash:SetColorTexture(0.05, 0.038, 0.026, o.wash or 0.3)
-    return true
-end
-
-local function TryFrame(n)
-    local style = ns.WINDOW_STYLE
-    if frame.ftBronze then frame.ftBronze:Hide() end
-    if n == 1 then
-        frame:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16 })
-        frame:SetBackdropBorderColor(style.border[1], style.border[2], style.border[3], 1)
-    elseif n == 2 then
-        local file = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thick.tga"
-        frame:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, 16) })
-        local c = ns.BORDER_COLOR
-        frame:SetBackdropBorderColor(c.r, c.g, c.b, 1)
-    else
-        if not C_Texture.GetAtlasInfo("heavybronze-frame-basic") then return false end
-        frame:SetBackdrop(nil)
-        local b = frame.ftBronze
-        if not b then
-            -- as the character select list draws it: the frame stretched past the edges, brackets on the corners
-            b = CreateFrame("Frame", nil, frame)
-            b:SetAllPoints()
-            b:SetFrameLevel(frame:GetFrameLevel() + 30)
-            b.edge = b:CreateTexture(nil, "BORDER")
-            b.edge:SetAtlas("heavybronze-frame-basic")
-            b.edge:SetPoint("TOPLEFT", -9, 15)
-            b.edge:SetPoint("BOTTOMRIGHT", 9, -15)
-            for _, c in ipairs({ { "TL", "TOPLEFT" }, { "TR", "TOPRIGHT" }, { "BL", "BOTTOMLEFT" }, { "BR", "BOTTOMRIGHT" } }) do
-                local t = b:CreateTexture(nil, "ARTWORK")
-                t:SetAtlas("heavybronze-horz-cornerbracket-" .. c[1], true)
-                t:SetPoint(c[2], b.edge, c[2])
-            end
-            frame.ftBronze = b
-        end
-        b:Show()
-    end
-    return true
-end
-
--- kind: "bg" or "frame"; n: a number, or nil for the next one
-function Panel:TryLook(kind, n)
-    if not frame then BuildWindow() end
-    if not frame:IsShown() then self:Open() end
-    local list = kind == "frame" and LOOK_FRAME or LOOK_BG
-    local index = tonumber(n) or ((kind == "frame" and lookFrame or lookBg) % #list + 1)
-    if index < 1 or index > #list then
-        print("|cff00ccffFlareUI:|r 1-" .. #list)
-        return
-    end
-    local ok = kind == "frame" and TryFrame(index) or (kind ~= "frame" and TryBackground(index))
-    if kind == "frame" then lookFrame = index else lookBg = index end
-    local name = type(list[index]) == "table" and list[index][1] or list[index]
-    print(("|cff00ccffFlareUI:|r %s %d/%d: %s%s"):format(kind == "frame" and "frame" or "background", index, #list, name, ok and "" or " |cffff6060(missing in this client)|r"))
 end
 
 --------------------------------------------------
