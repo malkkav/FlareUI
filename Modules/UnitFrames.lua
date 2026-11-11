@@ -2957,8 +2957,7 @@ function UF.UpdateThreatPercent(f)
         if ring then
             ApplyFont(text, db and db.font, UF.THREAT_RING_SIZE)
             text:SetJustifyH("CENTER")
-            local inward = (ns.UFRing.Side and ns.UFRing.Side(f) == "LEFT") and 1 or -1
-            text:SetPoint("BOTTOM", ring, "TOP", inward * ring:GetWidth() * UF.THREAT_RING_NUDGE, 2)
+            f.threatNudgeWidth = nil   -- placed below, once the ring has its size
         else
             -- the health value, then the threat: the texts beside it move over for it
             ApplyFont(text, db and db.font, 0)
@@ -2971,6 +2970,17 @@ function UF.UpdateThreatPercent(f)
                 text:SetPoint("RIGHT", f.Health, "RIGHT", -TEXT_INSET, 0)
                 f.HealthText:SetPoint("RIGHT", text, "LEFT", 0, 0)
             end
+        end
+    end
+    -- the ring's number: placed again whenever the ring's width changes (it has none at the first layout).
+    -- Side is the ring's side of the frame, so the frame is the other way.
+    if ring then
+        local width = ring:GetWidth() or 0
+        if width > 0 and f.threatNudgeWidth ~= width then
+            f.threatNudgeWidth = width
+            local towardsFrame = (ns.UFRing.Side and ns.UFRing.Side(f) == "LEFT") and 1 or -1
+            text:ClearAllPoints()
+            text:SetPoint("BOTTOM", ring, "TOP", towardsFrame * width * UF.THREAT_RING_NUDGE, 2)
         end
     end
     text:Show()
