@@ -48,6 +48,9 @@ local function NewBadge(parent)
     badge.Glow:ClearAllPoints()
     badge.Glow:SetPoint("TOPLEFT", badge.Label, -6, 4)
     badge.Glow:SetPoint("BOTTOMRIGHT", badge.Label, 6, -4)
+    -- room for the label in this language ("НОВИНКА" is wider than "NEW")
+    local w = (badge.Label:GetUnboundedStringWidth() or 0) * NEW_SCALE
+    if w > NEW_W then NEW_W = math.ceil(w) end
     return badge
 end
 
@@ -281,6 +284,37 @@ local function Text(parent, font, justify)
     local fs = parent:CreateFontString(nil, "OVERLAY", PANEL_FONT[font] or font)
     fs:SetJustifyH(justify or "LEFT")
     return fs
+end
+
+-- LONG TRANSLATIONS (11-11, Russian ran past buttons, card titles and the left list): a text too
+-- wide for its room first wraps onto up to maxLines lines, then shrinks, down to MIN_TEXT_SCALE.
+-- width: the room it has; maxLines: 1 (the default) keeps it on one line. Call again after SetText.
+local MIN_TEXT_SCALE = 0.7
+local function FitText(fs, width, maxLines)
+    if not (fs and width and width > 1) then return end
+    maxLines = maxLines or 1
+    fs:SetTextScale(1)
+    local full = fs:GetUnboundedStringWidth() or 0
+    if full <= width then return end
+    if maxLines <= 1 then
+        fs:SetTextScale(math.max(MIN_TEXT_SCALE, width / full))
+        return
+    end
+    -- wrapped: smaller until it fits in maxLines and its longest word fits the width
+    local longest = 0
+    local text = fs:GetText() or ""
+    for word in text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gmatch("%S+") do
+        longest = math.max(longest, #word)
+    end
+    local scale = 1
+    while scale > MIN_TEXT_SCALE do
+        fs:SetTextScale(scale)
+        local lines = fs:GetNumLines() or 1
+        local wordW = full * longest / math.max(1, #text)   -- (roughly: the longest word's share)
+        if lines <= maxLines and wordW * scale <= width then return end
+        scale = scale - 0.05
+    end
+    fs:SetTextScale(MIN_TEXT_SCALE)
 end
 
 -- A dark box with a bronze edge: the left list, the page and the right column
@@ -518,6 +552,14 @@ local function SkinButton(b)
     end
     b:HookScript("OnSizeChanged", FitFont)
     FitFont(b)
+    -- a long label shrinks to fit the button (FitText)
+    local function FitLabel(self)
+        local label = self:GetFontString()
+        if label then FitText(label, (self:GetWidth() or 0) - 2 * THICK_INSET - 6, 1) end
+    end
+    hooksecurefunc(b, "SetText", FitLabel)
+    b:HookScript("OnSizeChanged", FitLabel)
+    FitLabel(b)
     b:SetHighlightFontObject(_G[PANEL_FONT.GameFontHighlight])
     b:SetDisabledFontObject(_G[PANEL_FONT.GameFontDisable])
     b:HookScript("OnEnter", function(self)
@@ -527,6 +569,7 @@ local function SkinButton(b)
     return b
 end
 Panel.SkinButton = SkinButton
+Panel.FitText = FitText
 ns.SkinButton = SkinButton   -- FlareUI's other windows (dialogs, tour, About, radial editor)
 local function PanelButton(parent)
     return SkinButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
@@ -1623,6 +1666,7 @@ local function SectionHeader(parent, text, y, sectionKey)
     h:ClearAllPoints()
     h:SetPoint("TOPLEFT", rowInset, y)
     h:SetWidth(CONTENT_W - 2 * rowInset)
+    FitText(h.text, CONTENT_W - 2 * rowInset - 6 - (h.reset:IsShown() and (h.reset:GetWidth() + 38) or 30), 1)
     h:Show()
     used[#used + 1] = h
     return SECTION_H
@@ -2050,7 +2094,9 @@ function UpdateNav()
             b.showNew = showNew
             b.newBadge:SetShown(showNew)
             local badgeWidth = showNew and (NEW_W + NEW_GAP) or 0
-            b.text:SetWidth(b:GetWidth() - NAV_TEXT_INSET - (b.rightInset or NAV_RIGHT_INSET) - badgeWidth)
+            local room = b:GetWidth() - NAV_TEXT_INSET - (b.rightInset or NAV_RIGHT_INSET) - badgeWidth
+            b.text:SetWidth(room)
+            FitText(b.text, room, 2)
             b:SetHeight(math.max(NAV_H, math.ceil(b.text:GetStringHeight()) + 8))
         end
     end
@@ -2170,10 +2216,11 @@ local function BuildNav(left)
             b.text = Text(b, "GameFontHighlight")
             b.text:SetPoint("LEFT", NAV_TEXT_INSET, 0)
             -- (room for the module's switch at the right, when it has one)
-            b.rightInset = module.enabled and NAV_RIGHT_INSET + 30 or NAV_RIGHT_INSET
+            b.rightInset = module.enabled and NAV_RIGHT_INSET + 36 or NAV_RIGHT_INSET
             b.text:SetWidth(buttonWidth - NAV_TEXT_INSET - b.rightInset)
             b.text:SetWordWrap(true)
             b.text:SetText(module:Title())
+            FitText(b.text, buttonWidth - NAV_TEXT_INSET - b.rightInset, 2)
             b.newBadge = NewBadge(b)
             if module.enabled then
                 -- a quick switch for the module (11-11 Marcus), as the page title's: modules start at

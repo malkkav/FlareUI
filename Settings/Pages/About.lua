@@ -48,6 +48,8 @@ local function Card(host, title, width)
     t:SetPoint("TOPLEFT", CARD_PAD, -12)
     t:SetTextColor(0.91, 0.77, 0.42)
     t:SetText(title or "")
+    -- a long title (Russian) shrinks to the card's width
+    if ns.SettingsPanel.FitText then ns.SettingsPanel.FitText(t, width - 2 * CARD_PAD, 1) end
     local rule = card:CreateTexture(nil, "ARTWORK")
     rule:SetColorTexture(0.47, 0.36, 0.22, 0.8)
     rule:SetHeight(1)
