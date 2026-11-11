@@ -119,6 +119,22 @@ local function FlattenLoot(container, height)
     sizingLoot = false
 end
 
+-- Blizzard's grey roll-frame edge in the frames' bronze (11-11 Marcus): greyed, then tinted, so the
+-- art keeps its shading. The sample's and every real roll frame's (GroupLootFrame1-4, made at load).
+local function BronzeLootBorder(texture)
+    if not texture then return end
+    local c = ns.BORDER_COLOR
+    texture:SetDesaturated(true)
+    texture:SetVertexColor(c.r * 1.25, c.g * 1.25, c.b * 1.25)
+end
+
+local function BronzeLootFrames()
+    for i = 1, (_G.NUM_GROUP_LOOT_FRAMES or 4) do
+        local frame = _G["GroupLootFrame" .. i]
+        if frame then BronzeLootBorder(frame.Border) end
+    end
+end
+
 local function CreateLootPreview(holder)
     local p = holder.preview
     local bg = p:CreateTexture(nil, "BACKGROUND")
@@ -130,6 +146,7 @@ local function CreateLootPreview(holder)
     border:SetPoint("CENTER")
     border:SetTexture("Interface\\LootFrame\\LootToast")
     border:SetTexCoord(0.00097656, 0.28027344, 0.43750000, 0.73437500)
+    BronzeLootBorder(border)
 
     local icon = p:CreateTexture(nil, "ARTWORK")
     icon:SetSize(34, 34)
@@ -319,6 +336,7 @@ function MOV:Init()
         hooksecurefunc(loot, "SetPoint", PlaceLoot)
         hooksecurefunc(loot, "SetHeight", FlattenLoot)
         PlaceLoot()
+        BronzeLootFrames()
     end
 
     local base = _G.AlertFrame
