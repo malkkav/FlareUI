@@ -4141,7 +4141,7 @@ end
 -- opts.noClassColor: the palette's health colour instead of the class's (the palette's preview)
 function UF.DrawSample(f, style, opts)
     local unit = f.fuiUnit
-    local setup = ns.UFRing and ns.UFRing.SampleUnitDb(style, unit)
+    local setup = ns.UFRing and ns.UFRing.SampleUnitDb(style, unit, opts and opts.preset)
     if not setup then
         local live = GetUnitDb(unit)
         setup = live and setmetatable({}, { __index = live })

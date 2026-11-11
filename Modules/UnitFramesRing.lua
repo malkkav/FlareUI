@@ -1739,11 +1739,25 @@ end
 -- 11-10: a style's setup for a unit, for a settings preview's sample. Never written to the profile:
 -- writes land on the returned table. The setup in use for the style in use; else the style's stored
 -- setup, or the preset a first switch would apply, over the defaults.
-function Ring.SampleUnitDb(style, unit)
+-- preset: the style's own look only (the Frame Style cards, 11-11): the card picked drew the player's
+-- live setup and changed shape as it was picked
+function Ring.SampleUnitDb(style, unit, preset)
     local db = GetDb()
     if not db or not STYLE_SLOT[style] then return nil end
     local base
-    if style == Ring.Style() then
+    if preset then
+        local defaults = ns.defaults and ns.defaults.profile and ns.defaults.profile.unitframes
+        defaults = defaults and defaults.units and defaults.units[unit] or {}
+        local layer = {}
+        if style ~= "addon" then
+            for k, v in pairs(FOREVER[unit] or {}) do layer[k] = v end
+            if style == "forever" then
+                for k, v in pairs(PLATE_PRESET[unit] or {}) do layer[k] = v end
+                if Ring.PLATE_UNITS[unit] and not SMALL_FRAMES[unit] then ApplyPlateScale(layer, Ring.PlateDefaultScale(unit)) end
+            end
+        end
+        base = setmetatable(layer, { __index = defaults })
+    elseif style == Ring.Style() then
         base = db.units and db.units[unit]
     else
         local defaults = ns.defaults and ns.defaults.profile and ns.defaults.profile.unitframes

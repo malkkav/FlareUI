@@ -11,6 +11,7 @@ local S = ns.Settings
 -- With the reload bar below (42) it fits 768 units; a smaller screen scales it down (FitScale).
 local WIDTH, HEIGHT = 1180, 700
 local HEADER_H, FOOTER_H = 46, 34
+local FOOTER_RISE = 18   -- the reload bar's top the window's bronze frame covers
 local LEFT_W, RIGHT_W = 200, 280
 local PAD = 12
 local EDGE, GAP, INNER = 14, 8, 10   -- body to window edge, between the three boxes, inside the middle box
@@ -997,7 +998,8 @@ Fill.styles = function(f, row)
             b.label = Text(b, "GameFontNormalSmall", "CENTER")
             b.label:SetPoint("BOTTOMLEFT", 6, 8); b.label:SetPoint("BOTTOMRIGHT", -6, 8)
             b.tick = Text(b, "GameFontNormal", "RIGHT")
-            b.tick:SetPoint("TOPRIGHT", -7, -6); b.tick:SetText("|TInterface\\Buttons\\UI-CheckBox-Check:14|t")
+            -- bottom right, beside the name: clear of the sample above
+            b.tick:SetPoint("BOTTOMRIGHT", -7, 7); b.tick:SetText("|TInterface\\Buttons\\UI-CheckBox-Check:14|t")
             b.canvas = ns.SettingsPreview.Create(b, 100, 65)
             b.canvas.frame:SetPoint("TOPLEFT", 6, -6)
             b:SetScript("OnEnter", function(self)
@@ -2243,7 +2245,7 @@ Panel.OnResize = PlaceSecureReload   -- a wide tab moved the reload button
 local function FitScale(scale)
     local w, h = UIParent:GetWidth(), UIParent:GetHeight()
     if not (frame and w and h and w > 0 and h > 0) then return scale end
-    return math.min(scale, w / (frame:GetWidth() + 16), h / (HEIGHT + FOOTER_H + 24))
+    return math.min(scale, w / (frame:GetWidth() + 16), h / (HEIGHT + FOOTER_H + FOOTER_RISE + 24))
 end
 
 local function ApplyPanelScale()
@@ -2276,10 +2278,12 @@ local function UpdateFooter()
         local text = S:WindowText("reloadFooter", L["{n} change(s) need a reload"])
         frame.footerText:SetText(text:gsub("{n}", n))
         frame.reload:Show()
+        frame.footer.alert:Show()
         frame.footer:Show()
     elseif notice then
         frame.footerText:SetText(notice)
         frame.reload:Hide()
+        frame.footer.alert:Hide()
         frame.footer:Show()
     else
         frame.footerText:SetText("")
@@ -2884,18 +2888,28 @@ local function BuildWindow()
     local footer = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     footer:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, 4)
     footer:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, 4)
-    footer:SetHeight(FOOTER_H + 8)
+    -- taller than the bar it shows: the window's bronze frame covers its top (FOOTER_RISE), and the
+    -- frame's bottom right rivet hangs past it
+    footer:SetHeight(FOOTER_H + 8 + FOOTER_RISE)
     footer:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16 })
     footer:SetBackdropBorderColor(style.border[1], style.border[2], style.border[3], 1)
     ns.Fade(footer, 4, { 0.16, 0.13, 0.08, 0.98 }, { 0.07, 0.06, 0.04, 0.98 })
+    -- changes that need a reload: the bar turns red, as a warning should
+    footer.alert = footer:CreateTexture(nil, "BACKGROUND", nil, 2)
+    footer.alert:SetPoint("TOPLEFT", 4, -4)
+    footer.alert:SetPoint("BOTTOMRIGHT", -4, 4)
+    footer.alert:SetColorTexture(1, 1, 1)
+    footer.alert:SetGradient("VERTICAL", CreateColor(0.32, 0.03, 0.02, 0.85), CreateColor(0.55, 0.07, 0.04, 0.85))
+    footer.alert:Hide()
     footer:Hide()
     frame.footer = footer
     -- clamps the window with its bar
-    frame:SetClampRectInsets(0, 0, 0, -(FOOTER_H + 4))
+    frame:SetClampRectInsets(0, 0, 0, -(FOOTER_H + 4 + FOOTER_RISE))
+    -- centred in the part below the bronze frame; the button clear of the rivet
     frame.footerText = Text(footer, "GameFontHighlight")
-    frame.footerText:SetPoint("LEFT", PAD + 4, -1)
+    frame.footerText:SetPoint("LEFT", PAD + 4, -FOOTER_RISE / 2 - 1)
     frame.reload = PanelButton(footer)
-    frame.reload:SetPoint("RIGHT", -PAD, -1)
+    frame.reload:SetPoint("RIGHT", -PAD - 10, -FOOTER_RISE / 2 - 1)
     frame.reload:SetText(S:WindowText("reloadFooter2", L["Reload Now"]))
     frame.reload:SetSize(ButtonWidthForText(frame.reload, 130), 22)
     frame.reload:SetScript("OnClick", function()

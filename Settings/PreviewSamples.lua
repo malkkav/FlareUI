@@ -125,7 +125,12 @@ end
 function R.unit(c, spec)
     local style = spec.key == 'uf.frameStyle' and spec.value or (ns.UFRing and ns.UFRing.Style() or 'addon')
     if c.height < 120 then
-        Unit(c, 'playerSample', style, 'player', 3, c.width - 8, nil, nil, c.height - 6)
+        -- a Frame Style card: the style's own look (not the setup in use), centred in the card
+        local opts = { preset = true }
+        local _, h = Unit(c, 'playerSample', style, 'player', 3, c.width - 8, nil, nil, c.height - 6, opts)
+        if h and h > 0 and h < c.height - 6 then
+            Unit(c, 'playerSample', style, 'player', (c.height - h) / 2, c.width - 8, nil, nil, c.height - 6, opts)
+        end
         return
     end
     local function Small(path) return (Get(path, true) or style == 'addon') and 'addon' or style end
