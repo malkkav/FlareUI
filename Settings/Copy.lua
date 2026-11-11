@@ -865,7 +865,7 @@ ns.Copy = {
             desc = L["Every addon's minimap button in one drawer. Click the day/night badge to open it."],
             label = L["Addon Button Drawer"],
             section = "mm.tweaks",
-            tip = L["Drag and drop buttons to reorder them."],
+            tip = L["Drag and drop buttons to reorder them. Shift+Right-Click one to keep it on the minimap."],
         },
         ["mm.bagHover"] = {
             desc = L["The drawer opens while you point at the day/night badge and closes when you move away. Clicking still works."],

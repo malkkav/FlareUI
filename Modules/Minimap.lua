@@ -914,19 +914,50 @@ end
 -- ones on its edge. Any Button child of the map at or under the border goes one above it; the border
 -- keeps its level over the map. Addons add buttons whenever they like: checked again whenever the map
 -- has a new child (a light 2-second count), and after loading screens.
+-- 11-11 (a player's report, buttons left out of MinimapButtonButton under the border): buttons on
+-- MinimapBackdrop and every LibDBIcon button count too, whatever their parent, and one an addon later
+-- sets back under the border (its own level or strata) is lifted again a frame later.
+local STRATA_RANK = { BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4, DIALOG = 5, FULLSCREEN = 6,
+    FULLSCREEN_DIALOG = 7, TOOLTIP = 8 }
+local liftHooked = setmetatable({}, { __mode = "k" })
+local function LiftButton(child, strata, want)
+    if not (child and child.IsObjectType and child:IsObjectType("Button")) or (child.IsForbidden and child:IsForbidden())
+            or (InCombatLockdown() and child:IsProtected()) or not child:IsShown() then
+        return
+    end
+    local mine = child:GetFrameStrata()
+    local below = (STRATA_RANK[mine] or 0) < (STRATA_RANK[strata] or 0)
+    if below then child:SetFrameStrata(strata) end
+    if (below or mine == strata) and child:GetFrameLevel() <= want then child:SetFrameLevel(want + 1) end
+    if not liftHooked[child] then
+        liftHooked[child] = true
+        local function Again() C_Timer.After(0, MM.LiftMapButtons) end
+        hooksecurefunc(child, "SetFrameLevel", Again)
+        hooksecurefunc(child, "SetFrameStrata", Again)
+        child:HookScript("OnShow", Again)
+    end
+end
+
+local lifting = false
 function MM.LiftMapButtons()
     local art = MM.Frame
-    if not art then return end
+    if not art or lifting then return end
+    lifting = true
     local want = MinimapFrame:GetFrameLevel() + 2
     if art:GetFrameLevel() ~= want then art:SetFrameLevel(want) end
     local strata = art:GetFrameStrata()
-    for _, child in ipairs({ MinimapFrame:GetChildren() }) do
-        if child.IsObjectType and child:IsObjectType("Button") and not (child.IsForbidden and child:IsForbidden())
-                and not (InCombatLockdown() and child:IsProtected())
-                and child:GetFrameStrata() == strata and child:GetFrameLevel() <= want then
-            child:SetFrameLevel(want + 1)
+    for _, parent in ipairs({ MinimapFrame, _G.MinimapBackdrop }) do
+        for _, child in ipairs(parent and { parent:GetChildren() } or {}) do LiftButton(child, strata, want) end
+    end
+    local lib = LibStub and LibStub("LibDBIcon-1.0", true)
+    if lib and lib.GetButtonList then
+        for _, name in ipairs(lib:GetButtonList() or {}) do
+            local button = lib:GetMinimapButton(name)
+            -- (one in the addon drawer is parked off the map)
+            if button and button:GetParent() == MinimapFrame then LiftButton(button, strata, want) end
         end
     end
+    lifting = false
 end
 
 local function WatchMapButtons()
