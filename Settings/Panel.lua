@@ -2144,11 +2144,12 @@ local function BuildNav(left)
             b.dot:SetPoint("LEFT", 10, 0)
             b.text = Text(b, "GameFontHighlight")
             b.text:SetPoint("LEFT", NAV_TEXT_INSET, 0)
+            -- (room for the module's switch at the right, when it has one)
+            b.rightInset = module.enabled and NAV_RIGHT_INSET + 30 or NAV_RIGHT_INSET
             b.text:SetWidth(buttonWidth - NAV_TEXT_INSET - b.rightInset)
             b.text:SetWordWrap(true)
             b.text:SetText(module:Title())
             b.newBadge = NewBadge(b)
-            b.rightInset = NAV_RIGHT_INSET
             if module.enabled then
                 -- a quick switch for the module (11-11 Marcus), as the page title's: modules start at
                 -- login, so it asks for a reload
@@ -2163,7 +2164,6 @@ local function BuildNav(left)
                     if current == module.key then Panel:Refresh() end
                 end)
                 b.toggle = toggle
-                b.rightInset = NAV_RIGHT_INSET + 30
                 b.newBadge:SetPoint("RIGHT", toggle, "LEFT", -4 / NEW_SCALE, 0)
             else
                 b.newBadge:SetPoint("RIGHT", -NAV_RIGHT_INSET / NEW_SCALE, 0)
