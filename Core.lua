@@ -1790,6 +1790,31 @@ function ns.BronzeIcon.Apply(icon, path, color)
 end
 
 --------------------------------------------------
+-- 6c. UNDOCKED CHAT WINDOWS BACK ON THEIR SPOTS
+-- Blizzard puts an undocked window back early in the load, from its saved spot as a share of the
+-- screen; at that moment the screen (or UIParent's scale) is not yet what it will be, and the window
+-- lands lower than it was left, over the main chat (a player's report 11-11). Placed again with
+-- Blizzard's own function once the load has settled.
+--------------------------------------------------
+function ns.RestoreUndockedChat()
+    for i = 2, NUM_CHAT_WINDOWS do
+        local cf = _G["ChatFrame" .. i]
+        if cf and cf.isInitialized and not cf.isDocked and not cf.isTemporary
+            and cf ~= DEFAULT_CHAT_FRAME and not cf:IsForbidden() and FCF_RestorePositionAndDimensions then
+            FCF_RestorePositionAndDimensions(cf)
+        end
+    end
+end
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent", function(self)
+        self:UnregisterAllEvents()
+        C_Timer.After(1, ns.RestoreUndockedChat)
+    end)
+end
+
+--------------------------------------------------
 -- 7. EDIT MODE SELECTION BOXES
 -- For Blizzard systems FlareUI redraws (chat, minimap): the selection box and screen clamp go on the
 -- visible border, not Blizzard's larger frame. bounds() returns the reference frame and the offsets

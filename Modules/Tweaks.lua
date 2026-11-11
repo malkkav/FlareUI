@@ -2917,7 +2917,11 @@ do
             if math.abs((tonumber(GetCVar("uiscale")) or 0) - value) > 0.0001 then
                 SetCVar("uiscale", ("%.6f"):format(value))
             end
-            UIParent:SetScale(value)
+            if math.abs(UIParent:GetScale() - value) > 0.0001 then
+                UIParent:SetScale(value)
+                -- the undocked chat windows were put back at the old scale
+                ns.RestoreUndockedChat()
+            end
         elseif g.uiScaleBack then
             -- the engine scales UIParent from the two CVars again
             local back = g.uiScaleBack
