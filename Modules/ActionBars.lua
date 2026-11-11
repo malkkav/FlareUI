@@ -196,8 +196,8 @@ end
 
 --------------------------------------------------
 -- 6b. FLAREUI BORDERS (Bar Appearance, actionbars.flareBorders, off; 11-11, a player's request)
--- Only the frame changes (11-11 Marcus): Blizzard's bronze frame goes invisible and FlareUI Thin, the
--- unit frames' border, goes where it was. The icon, its rounded corners, the slot art and every other
+-- Only the frame changes (11-11 Marcus): Blizzard's bronze frame goes invisible and FlareUI Frames, the
+-- chat and meter windows' border, goes where it was. The icon, its rounded corners, the slot art and every other
 -- part of the button stay Blizzard's. Off shows Blizzard's frame again.
 --------------------------------------------------
 local function SkinBorder(button, on)
@@ -213,8 +213,9 @@ local function SkinBorder(button, on)
         end
         local b = button.FlareUI_Border
         local LSM = LibStub("LibSharedMedia-3.0")
-        local file = LSM:Fetch("border", "FlareUI Thin")
-        b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, 10) })
+        -- (11-11: FlareUI Frames, the chat and meter windows' border; FlareUI Thin looked too faint here)
+        local file = LSM:Fetch("border", "FlareUI Frames")
+        b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, 12) })
         local c = ns.BORDER_COLOR
         b:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
         -- over the cooldown swipe, under the texts' frame
