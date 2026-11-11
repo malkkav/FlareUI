@@ -23,7 +23,7 @@ Route('meter', 'dm', 'opacity border minAlpha chatTab combatTimer readyCheck cou
 Route('actions', 'ab', 'skinCDM buttonScale')
 Route('actionSkin', 'ab', 'flareBorders')
 Route('actions', 'ab', 'statusColours procGlow gryphonsBehind hideMacroText hideKeybinds cleanKeybinds buttonArt dimOnCooldown hideGryphons')
-Route('xp', 'ab', 'xpBar xpText xpNumbers xpQuest')
+Route('xp', 'ab', 'xpBar xpText xpNumbers xpQuest xpBubbles')
 Route('frames', 'uf', 'main party raid boss castbar tot tof')
 Route('resources', 'rb', 'health power mana combo swingMain swingOff swingRanged')
 Route('bags', 'qol', 'bagColumns bagGaps bagButtons bagRarityBorders bagThickBorders bagJunkIcon bagUpgradeArrow petFood bagKeyring bagReagent')
