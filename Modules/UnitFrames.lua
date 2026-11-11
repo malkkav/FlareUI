@@ -307,6 +307,9 @@ local function GetDb()
 end
 
 local function GetUnitDb(unit)
+    -- while a settings preview lays out a sample (UF.DrawSample): the sample's own setup
+    local sample = ns.UFSample
+    if sample and sample.units[unit] then return sample.units[unit] end
     local db = GetDb()
     return db and db.units and db.units[unit]
 end
@@ -725,13 +728,13 @@ local function UpdateHealth(f, glide)
     local udb = GetUnitDb(unit)
     local bar = f.Health
 
-    -- Edit Mode: sample health in the unit's colour when there is one
-    if ns.EditPreviewing() then
+    -- Edit Mode (and a settings preview's sample): sample health in the unit's colour when there is one
+    if f.fuiSample or ns.EditPreviewing() then
         f.colorClass = nil   -- the colour below is the sample's: the next tick sets it again
         local health = (UNITS[unit].sample or {}).health or 0.75
         bar:SetMinMaxValues(0, 1)
         bar:SetValue(health)
-        if UnitExists(unit) then
+        if UnitExists(unit) and not f.fuiSample then
             bar:SetStatusBarColor(GetHealthColor(unit, ns.ClassColorsOn(udb)))
         elseif unit == "pet" then
             local c = REACTION[5]
@@ -1716,7 +1719,7 @@ local function UpdatePortrait(f)
         portrait:Hide()
         return
     end
-    local unit = UnitExists(f.fuiUnit) and f.fuiUnit or "player"
+    local unit = not f.fuiSample and UnitExists(f.fuiUnit) and f.fuiUnit or "player"
     local tex = portrait.Tex
     local class
     if mode == "class" then
@@ -3363,7 +3366,8 @@ end
 local function LayoutFrame(f)
     local db, udb = GetDb(), GetUnitDb(f.fuiUnit)
     if not db or not udb then return end
-    if InCombatLockdown() then pendingLayout = true return end
+    -- (a preview's sample is not secure: it can be laid out in a fight)
+    if InCombatLockdown() and not f.fuiSample then pendingLayout = true return end
 
     local width, height = udb.width or 220, udb.height or 44
     local powerHeight = udb.powerHeight or 8
@@ -3373,7 +3377,9 @@ local function LayoutFrame(f)
     if plate then
         -- no stored Scale: the default (ring and height)
         if udb.plateScale == nil then
-            ns.UFRing.SetPlateScale(f.fuiUnit, ns.UFRing.PlateDefaultScale(f.fuiUnit))
+            -- (a sample's setup takes it, never the profile)
+            if f.fuiSample then ns.UFRing.ApplyPlateScale(udb, ns.UFRing.PlateDefaultScale(f.fuiUnit))
+            else ns.UFRing.SetPlateScale(f.fuiUnit, ns.UFRing.PlateDefaultScale(f.fuiUnit)) end
             height = udb.height
         end
         local minW, minH = ns.UFRing.PlateMinSize(f)
@@ -3527,6 +3533,9 @@ local function LayoutFrame(f)
             ICON_UI.Place(f.Happiness, size, size, "CENTER", f.Health, "CENTER", 0, 0)
         end
     end
+
+    -- a settings preview's sample stops here: no cast bar, auras or icons
+    if f.fuiSample then return end
 
     -- cast bar hangs off the frame
     if f.Cast then
@@ -3850,29 +3859,8 @@ local function OnLeave(f)
     if not GameTooltip:IsForbidden() then GameTooltip:Hide() end
 end
 
-local function CreateUnitFrame(unit)
-    local info = UNITS[unit]
-    -- on its own fade holder (section 14), which stays on UIParent's scale
-    local holder = CreateFrame("Frame", nil, UIParent)
-    -- the whole screen: Edit Mode measures a moved frame against its parent (it catches no mouse)
-    holder:SetAllPoints(UIParent)
-    UF.fadeHolders[unit] = holder
-    local f = CreateFrame("Button", "FlareUI_UF_" .. info.key, holder, "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate")
-    f.fuiUnit = unit
-    f:SetFrameStrata("LOW")
-    f:SetAttribute("unit", unit)
-    f:SetAttribute("*type1", "target")
-    f:SetAttribute("*type2", "togglemenu")
-    f:RegisterForClicks("AnyUp")
-    if type(f.SetRolesets) == "function" then pcall(f.SetRolesets, f, "unitFrames") end
-    _G.ClickCastFrames = _G.ClickCastFrames or {}
-    _G.ClickCastFrames[f] = true
-    f:SetClampedToScreen(true)
-    f.editModeName = "FlareUI " .. info.label
-    -- stack order: the frames higher in the list draw above the ones after them, so two frames
-    -- that touch never mix their borders
-    f:SetFrameLevel(10 + (10 - (info.order or 9)) * 20)
-
+-- The frame's bars, border, texts and their layers (the real frames' and the previews' samples)
+local function BuildBody(f)
     local level = f:GetFrameLevel()
     f.Health = CreateBar(f, level + 1)
     f.Power = CreateBar(f, level + 1)
@@ -3904,6 +3892,49 @@ local function CreateUnitFrame(unit)
     f.Separator:SetTexture(SEPARATOR_TEXTURE)
     f.Separator:SetVertexColor(1, 1, 1, 1)
     f.Separator:Hide()
+end
+
+-- the portrait square and its divider
+local function BuildPortrait(f)
+    local level = f:GetFrameLevel()
+    -- at the bars' level, under the border; the divider is the separator art turned upright
+    f.Portrait = CreateFrame("Frame", nil, f)
+    f.Portrait:SetFrameLevel(level + 1)
+    f.Portrait.Tex = f.Portrait:CreateTexture(nil, "ARTWORK")
+    f.Portrait.Tex:SetAllPoints()
+    f.Portrait:Hide()
+    f.PortraitDivider = f.Overlay:CreateTexture(nil, "ARTWORK")
+    f.PortraitDivider:SetTexture(SEPARATOR_TEXTURE)
+    f.PortraitDivider:SetTexCoord(0, 0, 1, 0, 0, 1, 1, 1)
+    f.PortraitDivider:SetVertexColor(1, 1, 1, 1)
+    f.PortraitDivider:Hide()
+end
+
+local function CreateUnitFrame(unit)
+    local info = UNITS[unit]
+    -- on its own fade holder (section 14), which stays on UIParent's scale
+    local holder = CreateFrame("Frame", nil, UIParent)
+    -- the whole screen: Edit Mode measures a moved frame against its parent (it catches no mouse)
+    holder:SetAllPoints(UIParent)
+    UF.fadeHolders[unit] = holder
+    local f = CreateFrame("Button", "FlareUI_UF_" .. info.key, holder, "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate")
+    f.fuiUnit = unit
+    f:SetFrameStrata("LOW")
+    f:SetAttribute("unit", unit)
+    f:SetAttribute("*type1", "target")
+    f:SetAttribute("*type2", "togglemenu")
+    f:RegisterForClicks("AnyUp")
+    if type(f.SetRolesets) == "function" then pcall(f.SetRolesets, f, "unitFrames") end
+    _G.ClickCastFrames = _G.ClickCastFrames or {}
+    _G.ClickCastFrames[f] = true
+    f:SetClampedToScreen(true)
+    f.editModeName = "FlareUI " .. info.label
+    -- stack order: the frames higher in the list draw above the ones after them, so two frames
+    -- that touch never mix their borders
+    f:SetFrameLevel(10 + (10 - (info.order or 9)) * 20)
+
+    BuildBody(f)
+    local level, overlay = f:GetFrameLevel(), f.Overlay
 
     if unit == "player" and PlayerClass() == "DRUID" then
         f.ShiftMana = CreateBar(f, level + 1)
@@ -3920,17 +3951,7 @@ local function CreateUnitFrame(unit)
     end
 
     if info.portrait then
-        -- at the bars' level, under the border; the divider is the separator art turned upright
-        f.Portrait = CreateFrame("Frame", nil, f)
-        f.Portrait:SetFrameLevel(level + 1)
-        f.Portrait.Tex = f.Portrait:CreateTexture(nil, "ARTWORK")
-        f.Portrait.Tex:SetAllPoints()
-        f.Portrait:Hide()
-        f.PortraitDivider = overlay:CreateTexture(nil, "ARTWORK")
-        f.PortraitDivider:SetTexture(SEPARATOR_TEXTURE)
-        f.PortraitDivider:SetTexCoord(0, 0, 1, 0, 0, 1, 1, 1)
-        f.PortraitDivider:SetVertexColor(1, 1, 1, 1)
-        f.PortraitDivider:Hide()
+        BuildPortrait(f)
         pcall(f.RegisterUnitEvent, f, "UNIT_PORTRAIT_UPDATE", unit)
         pcall(f.RegisterUnitEvent, f, "UNIT_MODEL_CHANGED", unit)
     end
@@ -4035,6 +4056,52 @@ local function CreateUnitFrame(unit)
 
     frames[unit] = f
     return f
+end
+
+--------------------------------------------------
+-- 15b. SAMPLES FOR THE SETTINGS PREVIEWS (11-10)
+-- A plain frame (no unit, no clicks, no events) built and laid out by the real frames' own code, so
+-- a preview shows exactly what the frame looks like. ns.UFSample holds the style and the setup
+-- while it is laid out; nothing is written to the profile.
+--------------------------------------------------
+function UF.CreateSample(parent, unit)
+    local info = UNITS[unit]
+    if not info then return nil end
+    local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    f.fuiUnit, f.fuiSample = unit, true
+    f:EnableMouse(false)
+    BuildBody(f)
+    if info.portrait then BuildPortrait(f) end
+    return f
+end
+
+-- Lays the sample out in a style ("flareui", "forever", "addon"); returns its extent past the
+-- frame (the ring stands out): { width, height, left, top }, or nil when it cannot be drawn
+function UF.DrawSample(f, style)
+    local unit = f.fuiUnit
+    local setup = ns.UFRing and ns.UFRing.SampleUnitDb(style, unit) or GetUnitDb(unit)
+    if not setup then return nil end
+    ns.UFSample = { style = style, units = { [unit] = setup } }
+    local ok, result = pcall(function()
+        LayoutFrame(f)
+        ApplySample(f)
+        if unit == "player" then f.Name:SetText(ns.UnitDisplayName("player") or "") end
+        UpdatePortrait(f)
+        local w, h = f:GetSize()
+        local left, right, top = 0, 0, 0
+        if ns.UFRing and ns.UFRing.Applies(f) and f.RingFrame then
+            local over = ns.UFRing.Overhang(f)
+            if ns.UFRing.Side(f) == "LEFT" then left = over else right = over end
+            top = math.max(0, (f.RingFrame:GetHeight() - h) / 2) + 4
+        end
+        return { width = w + left + right, height = h + 2 * top, left = left, top = top }
+    end)
+    ns.UFSample = nil
+    if not ok then
+        if geterrorhandler then geterrorhandler()(result) end
+        return nil
+    end
+    return result
 end
 
 --------------------------------------------------

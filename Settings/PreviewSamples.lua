@@ -65,70 +65,41 @@ local function Round(c, id, texture)
     c.masks[id]:ClearAllPoints(); c.masks[id]:SetAllPoints(texture)
 end
 
-local function Unit(c, id, style, unit, y, width, palette, x)
-    c.units = c.units or {}
-    local u = c.units[id]
-    if not u then u = P.Create(c.frame, 280, 100); c.units[id] = u; c.objects[id] = u.frame end
-    u:Reset(); u.frame:Show(); u.frame:SetAlpha(1)
-    local left = unit == 'player' or unit == 'pet'
-    local plate = style == 'forever'
-    local plain = style == 'addon'
-    local nativeWidth, nativeHeight = plate and 194 or plain and 238 or 280, plate and 68 or plain and 63 or 80
-    local nativeLeft, nativeTop = plain and 1 or 0, plate and 0 or plain and 21 or 10
-    local k = width / nativeWidth
-    u.frame:SetScale(k); u.frame:ClearAllPoints(); u.frame:SetPoint('TOPLEFT', c.frame, 'TOPLEFT', (x or (c.width - width) / 2) / k - nativeLeft, -(y + (width * 0.36 - nativeHeight * k) / 2) / k + nativeTop)
-    local bx, by, bw, bh, ph = plain and 4 or left and 70 or 4, 24, plain and 232 or 200, 44, 12
-    local targetOf = unit == 'targettarget'
-    if plain and targetOf then bh, ph = 56, 0 end
-    local squarePortrait = plain and P.activeSpec and P.activeSpec.kind == 'unitDetail' and Get('unitframes.units.' .. unit .. '.portrait', 'none') ~= 'none'
-    if squarePortrait then bx, bw = 52, 184 end
-    local portraitX, portraitY, portraitSize = left and 0 or 200, 10, 80
-    if plate then
-        local p = ns.UFRing and ns.UFRing.SamplePlate
-        local health = p and p.health or { 4, 125, 29, 42 }
-        bx, by, bw, bh, ph = left and 194 - health[2] or health[1], health[3], health[2] - health[1], health[4] - health[3], 8
-        portraitX, portraitY, portraitSize = left and 4 or 128, 2, 62
+-- 11-10 pilot: the unit frames' own code draws the frame (UnitFrames' UF.CreateSample and DrawSample),
+-- in the style given, scaled to width (and to maxHeight); centred unless x is given. Returns the
+-- frame and the height it takes. (palette: the live one is the frames' own)
+local function Unit(c, id, style, unit, y, width, palette, x, maxHeight)
+    local UF = ns.UnitFrames
+    if not (UF and UF.CreateSample) then return nil, 0 end
+    c.samples = c.samples or {}
+    local key = id .. ':' .. unit
+    local f = c.samples[key]
+    if not f then
+        f = UF.CreateSample(c.frame, unit)
+        if not f then return nil, 0 end
+        c.samples[key] = f
+        c.objects[key] = f
     end
-    if squarePortrait then portraitX, portraitY, portraitSize = 4, 24, 44 end
-    if not plain or squarePortrait then
-        local face = u:Texture('portrait', unit == 'pet' and 'Interface\\Icons\\Ability_Hunter_Pet_Wolf' or plate and 'Interface\\Icons\\ClassIcon_Mage' or 'Interface\\CHARACTERFRAME\\TEMPORARYPORTRAIT-MALE-SCOURGE', portraitX + portraitSize * 0.07, portraitY + portraitSize * 0.07, portraitSize * 0.86, portraitSize * 0.86)
-        -- Class/pet icons include a square bevel in their pixels. Crop that out
-        -- before the circular mask; character portrait textures have no icon bevel.
-        if plate or unit == 'pet' then face:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
-        if not squarePortrait then Round(u, 'portrait', face) end
-    end
-    if not plate then u:Box('border', bx - 3, by - 3, bw + 6, bh + ph + 7, 'FlareUI Thin', 1) end
-    local settings = Get('unitframes.units.' .. unit, {})
-    local color = palette.health
-    if unit ~= 'pet' and ns.ClassColorsOn and ns.ClassColorsOn(settings) and RAID_CLASS_COLORS then
-        local class = RAID_CLASS_COLORS.MAGE
-        if class then color = { class.r, class.g, class.b } end
-    end
-    local health = u:Bar('health', bx, by, bw, bh, 0.82, color, 'FlareUI Forever')
-    health:SetFrameLevel(u.frame:GetFrameLevel() + 1)
-    local powerY = plate and 45 or by + bh + 1
-    if ph > 0 then
-        local power = u:Bar('power', bx, powerY, bw, ph, 0.65, unit == 'pet' and { 1, 0.5, 0.25 } or palette.mana, 'FlareUI Forever')
-        power:SetFrameLevel(u.frame:GetFrameLevel() + 1)
-    end
-    if not plain then
-        local art = u:Texture(plate and 'plateArt' or 'ringArt', nil, plate and 0 or portraitX, plate and 0 or portraitY, plate and 194 or portraitSize, plate and 68 or portraitSize, not plate)
-        if ns.UFRing and ns.UFRing.SampleArt then ns.UFRing.SampleArt(art, left and 'LEFT' or 'RIGHT', plate) end
-        if not plate then Round(u, 'ring', art) end
-    end
-    local name = unit == 'pet' and L["Wolf"] or unit ~= 'player' and 'Thorne' or (Get('unitframes.fullNames') and 'Aeloria Dawnwhisper' or 'Aeloria')
-    u:Text('name', name, bx + 5, plate and 13 or by + 6, bw - 48, { size = plate and 10 or 13, flags = 'OUTLINE' }):SetWordWrap(false)
-    if not (plain and targetOf) then u:Text('healthText', '82%', bx + bw - 40, by + (plate and 1 or 6), 38, { size = plate and 9 or 12, flags = 'OUTLINE' }) end
-    if ph > 0 then u:Text('powerText', '65', bx + bw - 26, powerY, 25, { size = plate and 8 or 10, flags = 'OUTLINE' }) end
-    return u, nativeHeight * k
+    f:SetScale(1)
+    f:SetAlpha(1)
+    f:Show()
+    local e = UF.DrawSample(f, style)
+    if not e or e.width <= 0 or e.height <= 0 then f:Hide() return nil, 0 end
+    local k = width / e.width
+    if maxHeight then k = math.min(k, maxHeight / e.height) end
+    f:SetScale(k)
+    local left = x or (c.width - e.width * k) / 2
+    f:ClearAllPoints()
+    f:SetPoint('TOPLEFT', c.frame, 'TOPLEFT', (left + e.left * k) / k, -(y + e.top * k) / k)
+    return f, e.height * k
 end
 
 function R.unit(c, spec)
     local style = spec.key == 'uf.frameStyle' and spec.value or (ns.UFRing and ns.UFRing.Style() or 'addon')
     local palette = ns.UnitFrames.PALETTES[Get('unitframes.palette', 'flareui')] or ns.UnitFrames.PALETTES.flareui
     local card = c.height < 120
-    local width = math.min(c.width - 16, card and (c.height - 6) / 0.36 or 190)
-    local main = Unit(c, 'playerSample', style, 'player', card and 3 or 25, width, palette)
+    local width = c.width - (card and 8 or 16)
+    Unit(c, 'playerSample', style, 'player', card and 3 or 30, width, palette, nil, card and c.height - 6 or 80)
     if card then return end
     if spec.key == 'uf.overview' or spec.key == 'uf.frameStyle' or spec.key == 'uf.palette' then
         c:Text('playerLabel', L["Player"], 8, 8)
@@ -146,35 +117,6 @@ function R.unit(c, spec)
     local simple = small and (spec.value == true or style == 'addon')
     local companion = Unit(c, 'companionSample', simple and 'addon' or style, pet and 'pet' or small and 'targettarget' or 'target', 128, small and width * 0.5 or math.min(width, 170), palette)
     Note(c)
-end
-
--- Focused appearance specimen; live portrait APIs supply the character when available.
-function R.unitDetail(c, spec)
-    local unit = spec.key:match('^uf%.(.-)Portrait$') or spec.key:match('^uf%.(.-)Level$') or 'player'
-    local style = ns.UFRing and ns.UFRing.Style() or 'addon'
-    local small = unit == 'pet' or unit == 'targettarget' or unit == 'focustarget'
-    if small and (style == 'addon' or Get(unit == 'pet' and 'unitframes.simplePet' or 'unitframes.simpleTargetOf', true)) then style = 'addon' end
-    local palette = ns.UnitFrames.PALETTES[Get('unitframes.palette', 'flareui')] or ns.UnitFrames.PALETTES.flareui
-    local labels = {player=L["Player"],target=L["Target"],focus=L["Focus"],pet=L["Pet"],targettarget=L["Target of Target"],focustarget=L["Target of Focus"]}
-    Heading(c, labels[unit])
-    local u = Unit(c, 'detailUnit', style, unit, 55, math.min(190, c.width - 20), palette)
-    local portrait = u.objects.portrait
-    local mode = Get('unitframes.units.' .. unit .. '.portrait', 'none')
-    if portrait and portrait:IsShown() then
-        if mode == 'class' then
-            local _, class = UnitClass('player')
-            portrait:SetTexture('Interface\\Icons\\ClassIcon_' .. (class or 'Mage'))
-            portrait:SetTexCoord(0.08,0.92,0.08,0.92)
-        elseif SetPortraitTexture then
-            SetPortraitTexture(portrait, UnitExists(unit) and unit or 'player')
-            portrait:SetTexCoord(0,1,0,1)
-        end
-    end
-    local level = Get('unitframes.units.' .. unit .. '.showLevel', true)
-    if level then
-        local number = UnitLevel and UnitLevel('player') or 60
-        c:Text('detailLevel', L["Level"] .. ' ' .. tostring(number), 10, 140, c.width - 20)
-    end
 end
 
 -- Compact frame specimens: inset fills and a foreground border keep the art legible
