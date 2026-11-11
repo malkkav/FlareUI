@@ -36,7 +36,7 @@ local canaccessvalue = canaccessvalue
 -- 3. CONSTANTS & DATA
 --------------------------------------------------
 local RANGE_INDICATOR = _G.RANGE_INDICATOR
-local BUTTON_SCALE = 1.06   -- Bar Scale's default (actionbars.buttonScale)
+local BUTTON_SCALE = 1.11   -- Bar Scale's default (actionbars.buttonScale; 1.06 until 11-11)
 
 -- text offsets from the button's corner: hotkey top right, count bottom right, macro name bottom
 local HOTKEY_X, HOTKEY_Y = -4, -4
@@ -234,10 +234,30 @@ local function SkinBorder(button, on)
     end
 end
 
+-- every bar's buttons: the bars above, the totem bar (its action buttons and its summon / recall),
+-- and the vehicle and override bar (an addon of its own, loaded on demand). The Extra Action and
+-- zone ability buttons keep their own decorated art.
+local function SkinnedButtons()
+    local list = {}
+    for _, b in ipairs(GetAllActionButtons()) do list[#list + 1] = b end
+    for i = 1, 12 do list[#list + 1] = _G["MultiCastActionButton" .. i] end
+    list[#list + 1] = _G.MultiCastSummonSpellButton
+    list[#list + 1] = _G.MultiCastRecallSpellButton
+    local override = _G.OverrideActionBar
+    for i = 1, 6 do list[#list + 1] = override and override["SpellButton" .. i] end
+    return list
+end
+
 local function UpdateBordersAll()
     local db = GetBarConfig()
     local on = db and db.enabled and db.flareBorders or false
-    for _, button in ipairs(GetAllActionButtons()) do
+    if on and not ActionBars.overrideWatched and EventUtil and EventUtil.ContinueOnAddOnLoaded then
+        ActionBars.overrideWatched = true
+        EventUtil.ContinueOnAddOnLoaded("Blizzard_OverrideActionBar", function()
+            if not InCombatLockdown() then UpdateBordersAll() end
+        end)
+    end
+    for _, button in pairs(SkinnedButtons()) do
         -- Blizzard's art update sets the frame again: hidden again after it
         if on and not button.FlareUI_BorderHooked and button.UpdateButtonArt then
             button.FlareUI_BorderHooked = true

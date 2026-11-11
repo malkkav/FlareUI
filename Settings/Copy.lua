@@ -105,7 +105,7 @@ ns.Copy = {
             section = "ab.buttonAppearance",
         },
         ["ab.buttonScale"] = {
-            desc = L["The size of every action button. 106% is FlareUI's default."],
+            desc = L["The size of every action button. 111% is FlareUI's default."],
             label = L["Bar Scale"],
             section = "ab.barAppearance",
             tags = { "button scale", "action bar size" },
@@ -186,8 +186,8 @@ ns.Copy = {
             tip = L["Always clears the others; nothing ticked means Always. Setup mode always shows them."],
         },
         ["ab.flareBorders"] = {
-            desc = L["FlareUI's thin border, as on the unit frames, in place of the buttons' bronze frame. The rest of the button stays as it is."],
-            label = L["FlareUI Borders"],
+            desc = L["FlareUI's border in place of the bronze frame on every bar's buttons: the main bars, pet, stance, possess, totem and vehicle bars. The rest of the button stays as it is."],
+            label = L["Skin Action Bars"],
             section = "ab.barAppearance",
             tags = { "button border", "skin action bars" },
         },

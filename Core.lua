@@ -408,8 +408,8 @@ local defaults = {
         -- [[ ACTION BARS MODULE ]]
         actionbars = {
             enabled = false,
-            flareBorders = false,       -- Bar Appearance: FlareUI Thin borders on the buttons (ActionBars.lua 6b)
-            buttonScale = 1.06,         -- Bar Scale: every button's scale (FlareUI 1.0's per-bar scales, then fixed at 1.06)
+            flareBorders = true,        -- Skin Action Bars: FlareUI Frames in place of the buttons' frame (ActionBars.lua 6b)
+            buttonScale = 1.11,         -- Bar Scale: every button's scale (FlareUI 1.0's per-bar scales, fixed at 1.06 until 11-11)
 
             -- General
             cleanKeybinds = true,
