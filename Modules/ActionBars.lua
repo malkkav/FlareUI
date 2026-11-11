@@ -202,7 +202,7 @@ end
 --------------------------------------------------
 -- the border's fit, tuned by eye (11-11): how far it reaches past the button's edge (negative: in),
 -- and its thickness. Neighbouring buttons' borders met in the gap between them at 3 px out.
-local FLARE_BORDER_OUT, FLARE_BORDER_EDGE = 0, 14
+local FLARE_BORDER_OUT, FLARE_BORDER_EDGE = 0, 16
 
 local function SkinBorder(button, on)
     local icon = button.icon or button.Icon
