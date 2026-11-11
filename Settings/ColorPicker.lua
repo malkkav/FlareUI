@@ -98,17 +98,69 @@ local window, kindNow
 --------------------------------------------------
 local samples = {}
 
-local function Place(frame, x, y, maxW, maxH)
-    if not frame then return 0 end
-    frame:SetScale(1)
-    local w, h = frame:GetSize()
-    if not (w and w > 0 and h and h > 0) then return 0 end
-    local k = math.min(1, maxW / w, (maxH or h) / h)
-    frame:SetScale(k)
-    frame:ClearAllPoints()
-    frame:SetPoint("TOPLEFT", window.preview, "TOPLEFT", x / k, -y / k)
-    frame:Show()
-    return h * k
+
+-- The box is filled row by row (11-11): each row's frames sized up to fill its width (no more than
+-- maxK), side by side in equal columns, then the whole stack shrunk if it is too tall and centred.
+-- An item: { frame, ex = { left, top, width, height } } (ex: the drawn extents, the frame's TOPLEFT
+-- inset by left / top inside them)
+local ROW_GAP, COL_GAP = 18, 24
+
+local function Item(frame, ex)
+    if not frame then return nil end
+    if not ex then
+        local w, h = frame:GetSize()
+        if not (w and w > 0 and h and h > 0) then return nil end
+        ex = { left = 0, top = 0, width = w, height = h }
+    end
+    return { frame = frame, ex = ex }
+end
+
+-- a row: its items, how much of the width they may take, and their largest scale
+local function Row(items, share, maxK)
+    local list = {}
+    for _, it in ipairs(items) do if it then list[#list + 1] = it end end
+    if #list == 0 then return nil end
+    return { items = list, share = share or 1, maxK = maxK or 1.5 }
+end
+
+local function LayRows(rows)
+    local preview = window.preview
+    local W, H = preview:GetWidth(), preview:GetHeight()
+    local innerW, innerH = W - 2 * PAD, H - 2 * PAD
+    local laid, total = {}, 0
+    for _, row in ipairs(rows) do
+        if row then
+            local n = #row.items
+            local colW = (innerW * row.share - COL_GAP * (n - 1)) / n
+            local k, h = row.maxK, 0
+            for _, it in ipairs(row.items) do k = math.min(k, colW / it.ex.width) end
+            for _, it in ipairs(row.items) do h = math.max(h, it.ex.height * k) end
+            laid[#laid + 1] = { row = row, k = k, h = h, colW = colW }
+            total = total + h
+        end
+    end
+    if #laid == 0 then return end
+    local gaps = ROW_GAP * (#laid - 1)
+    local s = math.min(1, (innerH - gaps) / total)
+    local y = PAD + (innerH - total * s - gaps) / 2
+    for _, r in ipairs(laid) do
+        local k, n = r.k * s, #r.row.items
+        local colW = r.colW
+        -- the columns as one block, centred
+        local blockW = colW * n + COL_GAP * (n - 1)
+        if n == 1 then colW = r.row.items[1].ex.width * k; blockW = colW end
+        local x0 = PAD + (innerW - blockW) / 2
+        for i, it in ipairs(r.row.items) do
+            local ex, f = it.ex, it.frame
+            local x = x0 + (i - 1) * (colW + COL_GAP) + (colW - ex.width * k) / 2
+            local top = y + (r.h * s - ex.height * k) / 2
+            f:SetScale(k)
+            f:ClearAllPoints()
+            f:SetPoint("TOPLEFT", preview, "TOPLEFT", (x + ex.left * k) / k, -(top + ex.top * k) / k)
+            f:Show()
+        end
+        y = y + r.h * s + ROW_GAP
+    end
 end
 
 local function UnitSample(id, unit, style)
@@ -119,70 +171,80 @@ local function UnitSample(id, unit, style)
         samples[id] = f
     end
     if not f then return nil end
+    f:SetScale(1)
     local e = UF.DrawSample(f, style)
     if not e then f:Hide() return nil end
     return f, e
 end
 
+-- the party, five tiles in a row as the tile kit draws them (the portrait ring stands out on its side)
+local function PartyBox()
+    local PF = ns.PartyFrames
+    if not (PF and PF.SampleTile) then return nil end
+    local box = samples.party
+    if not box then
+        box = CreateFrame("Frame", nil, window.preview)
+        box.tiles = {}
+        for i = 1, 5 do box.tiles[i] = PF.SampleTile(box, nil, nil, i) end
+        samples.party = box
+    end
+    box:SetScale(1)
+    local left, right, tw, th, vgap = 0, 0, 0, 0, 0
+    for _, t in ipairs(box.tiles) do
+        tw, th = PF.DrawSampleTile(t)
+        if t.ringKind and ns.UFRing and ns.UFRing.Overhang then
+            local over = ns.UFRing.Overhang(t)
+            if t.ringSide == "RIGHT" then right = math.max(right, over) else left = math.max(left, over) end
+            vgap = math.max(vgap, (t.RingFrame and t.RingFrame:GetHeight() or 0) - th)
+        end
+    end
+    if not (tw > 0 and th > 0) then return nil end
+    local step = left + tw + right + 8
+    for i, t in ipairs(box.tiles) do
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", box, "TOPLEFT", left + (i - 1) * step, -(vgap / 2 + 12))
+    end
+    -- (12 above: the leader crown and the skull stand over the tiles)
+    box:SetSize(5 * step - 8, th + vgap + 12)
+    return Item(box)
+end
+
 local function DrawUnitPreviews()
-    local UF, PF = ns.UnitFrames, ns.PartyFrames
+    local UF = ns.UnitFrames
     local style = ns.UFRing and ns.UFRing.Style() or "addon"
-    local width = window.preview:GetWidth() - 2 * PAD
-    local y = PAD
+    local units = {}
     for _, unit in ipairs({ "player", "target" }) do
         local f, e = UnitSample("unit:" .. unit, unit, style)
-        if f and e then
-            local k = math.min(1, width / e.width)
-            f:SetScale(k)
-            f:ClearAllPoints()
-            f:SetPoint("TOPLEFT", window.preview, "TOPLEFT", (PAD + e.left * k) / k, -(y + e.top * k) / k)
-            f:Show()
-            y = y + e.height * k + 10
-        end
+        if f and e then units[#units + 1] = Item(f, e) end
     end
-    -- the party, as the tiles draw it (a few classes)
-    if PF and PF.SampleTile then
-        local box = samples.party
-        if not box then
-            box = CreateFrame("Frame", nil, window.preview)
-            box.tiles = {}
-            for i = 1, 5 do box.tiles[i] = PF.SampleTile(box, nil, nil, i) end
-            samples.party = box
-        end
-        local tw, th, gap = 0, 0, 6
-        for _, t in ipairs(box.tiles) do tw, th = PF.DrawSampleTile(t) end
-        for i, t in ipairs(box.tiles) do
-            t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", box, "TOPLEFT", (i - 1) * (tw + gap), 0)
-        end
-        box:SetSize(5 * tw + 4 * gap, th)
-        y = y + Place(box, PAD, y, width) + 12
-    end
-    -- your cast bar, casting
+    local cast
     if UF.CreateCastSample then
-        local cast = samples.cast
+        cast = samples.cast
         if not cast then cast = UF.CreateCastSample(window.preview); samples.cast = cast end
-        if cast then
-            UF.DrawCastSample(cast)
-            Place(cast, PAD, y, width)
-        end
+        if cast then cast:SetScale(1); UF.DrawCastSample(cast) end
     end
+    LayRows({
+        Row(units, 1, 1.6),
+        Row({ PartyBox() }, 1, 1.6),
+        Row({ cast and Item(cast) }, 0.7, 1.6),
+    })
 end
 
 local function DrawResourcePreviews()
     local RB = ns.ResourceBars
     if not (RB and RB.CreateSample) then return end
     RB.ApplyPalette()
-    local width = window.preview:GetWidth() - 2 * PAD
-    local y = PAD
+    local rows = {}
     for _, key in ipairs({ "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged" }) do
         local holder = samples["rb:" .. key]
         if not holder then holder = RB.CreateSample(window.preview, key); samples["rb:" .. key] = holder end
         if holder then
+            holder:SetScale(1)
             RB.DrawSample(holder)
-            y = y + Place(holder, PAD, y, width) + 10
+            rows[#rows + 1] = Row({ Item(holder) }, 0.8, 2)
         end
     end
+    LayRows(rows)
 end
 
 local function DrawPreviews()
