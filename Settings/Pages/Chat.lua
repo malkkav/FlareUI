@@ -12,7 +12,7 @@ end
 
 S:Module{ key = "ch", group = "interface", order = 10, enabled = "chat.enabled", tabs = {
     { key = "frame" }, { key = "tweaks" }, { key = "fonts" },
-    { key = "builder", label = L["Builder"], wide = true, preview = true,
+    { key = "builder", label = L["Builder"], preview = true,
         custom = function(host, side) ns.ChatBuilderEditor.Build(host, side) end,
         refresh = function() ns.ChatBuilderEditor.Refresh() end },
 } }

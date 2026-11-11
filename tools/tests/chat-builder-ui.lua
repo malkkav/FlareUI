@@ -75,6 +75,23 @@ local f=loadfile('Settings/ChatBuilder.lua');if f then f('FlareUI',ns) end
 assert(ns.ChatBuilderEditor,'chat builder editor is missing')
 local host,side=new('Frame'),new('Frame');side:SetWidth(260)
 ns.ChatBuilderEditor.Build(host,side);host:Show();ns.ChatBuilderEditor.Refresh()
+local visible, rightColumn = 0, false
+for _,o in ipairs(objects) do
+    if o.kind=='CheckButton' and o:IsVisible() then
+        local key=o.parent.entry.key
+        assert(key=='SAY' or key=='GUILD' or key=='OFFICER' or key=='WHISPER','default view must show only Conversations')
+        visible=visible+1
+        if o.parent.point and type(o.parent.point[2])=='number' and o.parent.point[2]>0 then rightColumn=true end
+    end
+end
+assert(visible>0 and rightColumn,'filters must use two compact columns')
+local categoryDrop
+for _,o in ipairs(objects) do if o.kind=='DropdownButton' then categoryDrop=o;break end end
+local categories={}
+categoryDrop.menu(categoryDrop,{CreateRadio=function(_,name,checked,action) categories[name:match('^(.-)  %(')]=action end})
+categories['Public Channels']()
+for _,o in ipairs(objects) do if o.kind=='CheckButton' and o:IsVisible() then assert(o.parent.entry.kind=='channel','category selection must show only its own filters') end end
+categories.Groups()
 click('Social');click('Rename');local before=GetChatWindowInfo(3)
 assert(before=='Social','opening rename must not mutate');accept('Friends');assert(GetChatWindowInfo(3)=='Friends')
 click('Save preset');accept('Friends preset')
@@ -96,6 +113,7 @@ for _,h in ipairs(ns.ChatBuilder:Windows()) do if h.id==3 then selectedHandle=h 
 assert(ns.ChatBuilder:Read(selectedHandle).messages.LOOT,'checkbox must change selected window saved filter')
 assert(search:HasFocus() and search:GetText()=='loot','refresh preserves search input and focus')
 search:SetText('')
+categories.Conversations()
 for _,o in ipairs(objects) do
     if o.kind=='Button' and o:GetText()=='All' and o.parent.category=='conversations' and o:IsVisible() then o.scripts.OnClick(o);break end
 end
@@ -124,4 +142,12 @@ for _,key in ipairs({'GetChatWindowMessages','GetChatWindowChannels'}) do
     assert(pcall(ns.ChatBuilderEditor.Refresh),'missing client API must render a disabled availability screen')
     _G[key]=original
 end
+-- Exercise page registration rather than grepping for a width flag.
+local registered
+ns.Settings={Module=function(_,definition) registered=definition end,Row=function() end,On=function() end,
+    FontRows=function() end,OpacityChoices=function() return {} end,MinAlphaChoices=function() return {} end}
+assert(loadfile('Settings/Pages/Chat.lua'))('FlareUI',ns)
+local builderTab
+for _,tab in ipairs(registered.tabs) do if tab.key=='builder' then builderTab=tab end end
+assert(builderTab and not builderTab.wide,'Builder must retain the standard settings-panel width')
 print('PASS: chat builder UI selection, dialogs, preset persistence, shared appearance, and lifecycle')

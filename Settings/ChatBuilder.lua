@@ -3,7 +3,7 @@ local L, B = ns.L, ns.ChatBuilder
 local Editor = {}
 ns.ChatBuilderEditor = Editor
 local ui, selected, presetID = nil, nil, "general"
-local collapsed = {}
+local activeCategory = "conversations"
 local Refresh
 
 local function Text(parent, value, size)
@@ -95,11 +95,9 @@ local function ApplyPreset()
 end
 local function FilterRow(i)
     local row=ui.filterRows[i];if row then return row end
-    row=CreateFrame("Frame",nil,ui.filters.content);row:SetHeight(28)
-    row.expand=Button(row,"",210,function()
-        collapsed[row.category]=not collapsed[row.category];Refresh()
-    end)
-    row.expand:SetPoint("LEFT",0,0)
+    row=CreateFrame("Frame",nil,ui.filters.content);row:SetHeight(32)
+    row.heading=Text(row,"","GameFontNormalSmall")
+    row.heading:SetPoint("LEFT",4,0);row.heading:SetPoint("RIGHT",-108,0)
     row.all=Button(row,L["All"],48,function() Act(function() return B:SetCategory(selected,row.category,true) end) end)
     row.all:SetPoint("RIGHT",-52,0)
     row.none=Button(row,L["None"],48,function() Act(function() return B:SetCategory(selected,row.category,false) end) end)
@@ -120,39 +118,43 @@ end
 local function RenderFilters(state,enabled)
     local search=ui.search:GetText():lower():match("^%s*(.-)%s*$")
     local count,y=0,0
+    local width=math.max(100,ui.filters:GetWidth())
+    local cellWidth=(width-10)/2
     for _, category in ipairs(B:Categories()) do
         local matches,total,on={},0,0
         for _, entry in ipairs(category.entries) do
             total=total+1
             local checked=state and (entry.kind=="message" and state.messages[entry.key] or entry.kind=="channel" and state.channels[entry.key])
             if checked then on=on+1 end
-            if search=="" or category.name:lower():find(search,1,true) or entry.label:lower():find(search,1,true) then matches[#matches+1]=entry end
+            if (search=="" and category.key==activeCategory) or (search~="" and (category.name:lower():find(search,1,true) or entry.label:lower():find(search,1,true))) then matches[#matches+1]=entry end
         end
-        if #matches>0 or (search=="" and category.key=="channels") then
+        if category.key==activeCategory then ui.category:SetDefaultText(category.name.."  ("..on.."/"..total..")") end
+        if #matches>0 or (search=="" and category.key==activeCategory) then
             count=count+1;local row=FilterRow(count);row.category=category.key;row.entry=nil
-            row:ClearAllPoints();row:SetPoint("TOPLEFT",0,-y);row:SetPoint("TOPRIGHT",0,-y)
-            row.check:Hide();row.label:Hide();row.expand:Show();row.all:Show();row.none:Show()
-            row.expand:SetText((collapsed[category.key] and search=="" and "+ " or "− ")..category.name.."  "..on.."/"..total)
-            row.expand:SetWidth(math.max(130,ui.filters:GetWidth()-110))
+            row:ClearAllPoints();row:SetPoint("TOPLEFT",0,-y);row:SetWidth(width)
+            row.check:Hide();row.label:Hide();row.heading:Show();row.all:Show();row.none:Show()
+            row.heading:SetText(category.name.."  "..on.."/"..total)
             row.all:SetEnabled(enabled and total>0);row.none:SetEnabled(enabled and total>0);row:Show();y=y+34
-            if not collapsed[category.key] or search~="" then
-                for _, entry in ipairs(matches) do
+                for index, entry in ipairs(matches) do
                     count=count+1;row=FilterRow(count);row.entry=entry;row.category=nil
-                    row:ClearAllPoints();row:SetPoint("TOPLEFT",0,-y);row:SetPoint("TOPRIGHT",0,-y)
-                    row.expand:Hide();row.all:Hide();row.none:Hide();row.label:Show();row.check:Show()
+                    local column=(index-1)%2
+                    local line=math.floor((index-1)/2)
+                    row:ClearAllPoints();row:SetPoint("TOPLEFT",column*(cellWidth+10),-y-line*32);row:SetWidth(cellWidth)
+                    row.heading:Hide();row.all:Hide();row.none:Hide();row.label:Show();row.check:Show()
                     row.label:SetText(entry.label)
                     local checked=state and (entry.kind=="message" and state.messages[entry.key] or entry.kind=="channel" and state.channels[entry.key])
                     row.check:SetChecked(checked and true or false);row.check:SetEnabled(enabled and not entry.disabled)
                     row.label:SetTextColor(entry.disabled and 0.5 or 0.88,entry.disabled and 0.5 or 0.85,entry.disabled and 0.5 or 0.79)
-                    row:Show();y=y+30
+                    row:Show()
                 end
-            end
+            y=y+math.ceil(#matches/2)*32+8
         end
     end
     for i=count+1,#ui.filterRows do ui.filterRows[i]:Hide() end
     ui.filters.content:SetHeight(math.max(y,1))
     ui.filters:SetVerticalScroll(math.min(ui.filters:GetVerticalScroll(),ui.filters:GetVerticalScrollRange()))
-    ui.empty:SetShown(count==0)
+    ui.empty:SetText(search=="" and L["No available filters in this category."] or L["No matching filters."])
+    ui.empty:SetShown(count==0 or (search=="" and count==1))
 end
 local function RenderWindows(windows)
     for i,h in ipairs(windows) do
@@ -203,7 +205,7 @@ function Refresh()
     ui.renamePreset:SetEnabled(ok and not preset.builtin);ui.deletePreset:SetEnabled(ok and not preset.builtin)
     ui.preset:SetEnabled(ok and true or false)
     ui.reload:SetShown(B:Pending());ui.reload:SetEnabled(ok and true or false)
-    local status=reason or (B:Pending() and L["Saved filters pending · Reload to Apply. Blizzard settings are available again after reloading."] or L["Filters match the active chat windows."])
+    local status=reason or (B:Pending() and L["Saved filters pending. Reload to Apply before opening Blizzard settings."] or L["Filters match the active chat windows."])
     if ok and selected and selected.special then status=L["Combat Log uses its own filters. Open Blizzard Settings to edit them."] end
     if ok and ns.Tweaks and ns.db.profile.tweaks and ns.db.profile.tweaks.syncUI and ns.Tweaks.GetSyncSourceLabel then
         local source=ns.Tweaks:GetSyncSourceLabel()
@@ -238,10 +240,33 @@ function Editor.Build(host,side)
     ui.searchButton=Button(body,L["Search"],90,function()
         AskName(L["Search chat filters (leave blank to show all)"],ui.search:GetText(),function(text) ui.search:SetText(text or "") end)
     end);ui.searchButton:SetPoint("TOPRIGHT",0,-62)
-    ui.filters=Scroll(body);ui.filters:SetPoint("TOPLEFT",0,-96);ui.filters:SetPoint("BOTTOMRIGHT",-22,124)
+    ui.category=CreateFrame("DropdownButton",nil,body,"WowStyle1DropdownTemplate")
+    ui.category:SetHeight(26);ui.category:SetPoint("TOPLEFT",0,-96);ui.category:SetPoint("TOPRIGHT",0,-96)
+    ui.category:SetupMenu(function(_,root)
+        local state=SelectedState()
+        for _,category in ipairs(B:Categories()) do
+            local on=0
+            for _,entry in ipairs(category.entries) do
+                local values=state and (entry.kind=="message" and state.messages or state.channels)
+                if values and values[entry.key] then on=on+1 end
+            end
+            root:CreateRadio(category.name.."  ("..on.."/"..#category.entries..")",function() return activeCategory==category.key end,function()
+                activeCategory=category.key;ui.filters:SetVerticalScroll(0);ui.search:SetText("");Refresh()
+            end)
+        end
+    end)
+    ui.category.padCycle=function(delta)
+        local categories=B:Categories()
+        for i,category in ipairs(categories) do if category.key==activeCategory then
+            activeCategory=categories[((i-1+delta)%#categories)+1].key
+            ui.filters:SetVerticalScroll(0);ui.search:SetText("");Refresh();break
+        end end
+    end
+    ui.filters=Scroll(body);ui.filters:SetPoint("TOPLEFT",0,-132);ui.filters:SetPoint("BOTTOMRIGHT",-22,96)
     ui.filters.content:SetWidth(380)
-    ui.empty=Text(body,L["No matching filters."]);ui.empty:SetPoint("TOPLEFT",8,-130)
-    ui.status=Text(body);ui.status:SetPoint("BOTTOMLEFT",0,52);ui.status:SetPoint("BOTTOMRIGHT",0,52);ui.status:SetHeight(62)
+    ui.filters:HookScript("OnSizeChanged",function() if ui.empty then Refresh() end end)
+    ui.empty=Text(body,L["No matching filters."]);ui.empty:SetPoint("TOPLEFT",8,-180);ui.empty:SetPoint("TOPRIGHT",-24,-180)
+    ui.status=Text(body);ui.status:SetPoint("BOTTOMLEFT",0,48);ui.status:SetPoint("BOTTOMRIGHT",0,48);ui.status:SetHeight(44)
     ui.reload=Button(body,L["Reload to Apply"],150,function() ns.ShowDialog("CHAT_BUILDER_RELOAD") end);ui.reload:SetPoint("BOTTOMLEFT",0,18)
 
     local heading=Text(side,L["Presets"],"GameFontNormalLarge");heading:SetPoint("TOPLEFT",4,-4)

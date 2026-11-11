@@ -10,6 +10,8 @@ The test build has separate addon preferences (`FlareUI_Chat2_DB`, `FlareUI_Chat
 
 Open **FlareUI → Chat → Builder**. Select a window, then choose which messages and joined channels it displays. Use the preset menu to inspect General, Social, Group, Loot, Trade, or Blank; **New window** creates a window from the selected preset. **Load into selected window** replaces that window's supported filters after confirmation. **Save preset** creates an account-wide template from the saved selections.
 
+Builder keeps the standard settings-panel dimensions. Choose one content category from the selector to see a compact two-column checklist; each category shows its selected/total count. Search spans all categories, and clearing it returns to the selected category. All/None continues to affect the entire named category, including when search hides some entries.
+
 Filters are saved immediately, but require **Reload to Apply** before becoming active. Multiple changes can be made before one reload. The builder does not write Blizzard's live routing tables. The native-settings button is disabled while any ordinary window has pending filters to avoid presenting stale native checkboxes. Existing tab context menus remain available; reload before using their filter configuration after builder edits.
 
 The primary window cannot be closed or popped out. Combat Log has a native-settings link instead of ordinary filters. Temporary whisper windows and the damage-meter pseudo-tab are not editable. Existing Frame, Tweaks, and Fonts settings still apply to all windows. Channel toggles never join or leave channels. Message colors remain in Blizzard settings.
@@ -49,7 +51,7 @@ Fully restart the client after installing: new files were added to the TOC. Keep
 
 1. Enable Lua errors or BugSack. Open Builder with existing customized tabs; verify checked saved filters and normal active filters agree before editing.
 2. Create Social, Group, Loot, and Trade windows; check unavailable channel notices, rename, dock/pop out, and close an ordinary window. Verify General and Combat Log protections and the maximum-window-capacity message.
-3. Toggle an individual filter, All/None, search, collapse categories, and apply a preset. Verify other windows are untouched. Reload, send/receive representative chat, and confirm routing and saved state across another reload/login.
+3. Toggle an individual filter, All/None, switch categories, search across categories, and apply a preset. Verify other windows are untouched. Reload, send/receive representative chat, and confirm routing and saved state across another reload/login.
 4. Save and reuse a custom preset on another character. Move zones or change channel ordering and verify template channel identities; no channel should be joined or left automatically.
 5. After applying changes and reloading, edit in Blizzard settings, return to Builder, and verify refreshed selections. Check pending filters remain clearly marked if the native context-menu route is used before reload.
 6. Switch Builder → Radial Editor → ordinary settings → Builder; no controls should leak between tabs. Test long localized labels, small-screen scaling, keyboard search, and controller navigation into scrolled filters/preset choices.

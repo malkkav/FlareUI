@@ -949,6 +949,7 @@ L["Newest, longest left or Z first."] = true
 L["Next"] = true
 L["No \"will bind to you\" question when you:\n* Loot an item\n* Roll Need or Greed"] = true
 L["No addon buttons"] = true
+L["No available filters in this category."] = true
 L["No bar picked: Fake CM is off."] = true
 L["No chat bubbles in dungeons, raids and battlegrounds."] = true
 L["No chat window slots are available."] = true
@@ -1257,7 +1258,7 @@ L["Save FlareUI's settings under a name, switch between them, or start fresh."] 
 L["Save History"] = true
 L["Save preset"] = true
 L["Save these filters as a new preset"] = true
-L["Saved filters pending · Reload to Apply. Blizzard settings are available again after reloading."] = true
+L["Saved filters pending. Reload to Apply before opening Blizzard settings."] = true
 L["Saved history ends here"] = true
 L["Saved history, so a reload keeps your chat"] = true
 L["Saved preset · shared across your characters"] = true
