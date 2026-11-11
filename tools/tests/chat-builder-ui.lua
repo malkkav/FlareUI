@@ -95,6 +95,25 @@ for _,o in ipairs(objects) do
     if o.kind=='ScrollFrame' then assert(o.standardScroll,'builder must use settings scrollbars') end
     if o.kind=='DropdownButton' then assert(o.standardDropdown,'builder must use settings dropdown styling') end
 end
+local previewHeader
+for _,o in ipairs(objects) do
+    if o.kind=='Button' and o:GetText():find('+ Conversations',1,true) then previewHeader=o end
+end
+assert(previewHeader,'preset preview groups messages by category')
+local publicPreview
+for _,o in ipairs(objects) do if o.kind=='Button' and o.parent.alwaysOpen then publicPreview=o.parent end end
+assert(publicPreview and publicPreview.text:IsVisible(),'public-channel names remain visible without expanding')
+assert(not previewHeader.parent.text:IsVisible(),'preview groups start collapsed')
+local beforeMessages=table.concat({GetChatWindowMessages(1)},',')
+previewHeader.scripts.OnClick(previewHeader)
+assert(previewHeader.parent.text:IsVisible(),'preview groups expand')
+assert(table.concat({GetChatWindowMessages(1)},',')==beforeMessages,'preview expansion never changes routing')
+previewHeader.scripts.OnClick(previewHeader)
+for _,o in ipairs(objects) do
+    if o.kind=='Button' and (o:GetText()=='Save as preset' or o:GetText()=='Open Blizzard Settings') then
+        assert(o.parent.parent==host,'window actions belong beside the selected window')
+    end
+end
 local categoryDrop
 for _,o in ipairs(objects) do if o.kind=='DropdownButton' then categoryDrop=o;break end end
 local categories={}
@@ -104,7 +123,7 @@ for _,o in ipairs(objects) do if o.kind=='CheckButton' and o:IsVisible() and o.p
 categories.Groups()
 local social=click('Social');click('Move up');assert(ns.ChatBuilder:Windows()[3].id==3,'UI reorders selected dock tab');click('Move down');assert(ns.ChatBuilder:Windows()[4].id==3);click('Move up');assert(click('Social').isSelected,'selected window must be highlighted');click('Rename');local before=GetChatWindowInfo(3)
 assert(before=='Social','opening rename must not mutate');accept('Friends');assert(GetChatWindowInfo(3)=='Friends')
-click('Save preset');accept('Friends preset')
+click('Save as preset');accept('Friends preset')
 local found;for _,p in ipairs(ns.ChatBuilder:Presets()) do if p.name=='Friends preset' then found=p end end
 assert(found,'save action must persist preset')
 local search
@@ -140,16 +159,20 @@ for _,o in ipairs(objects) do
 end
 assert(ns.ChatBuilder:Read(selectedHandle).messages.OFFICER,'category action includes individual supported groups')
 local dropdown
-for _,o in ipairs(objects) do if o.kind=='DropdownButton' then dropdown=o end end
+for _,o in ipairs(objects) do if o.kind=='DropdownButton' and o:GetText()~='Manage' then dropdown=o end end
 local options={};dropdown.menu(dropdown,{CreateRadio=function(_,name,checked,action) options[name]=action end})
 assert(options.Blank);options.Blank()
-click('Replace window filters')
+click('Apply to selected window')
 assert(ns.ChatBuilder:Read(selectedHandle).messages.LOOT,'opening preset confirmation must not apply it')
 accept();assert(not ns.ChatBuilder:Read(selectedHandle).messages.LOOT,'accepting preset replaces supported filters')
 assert(not pcall(click,'Delete preset'),'built-in presets cannot be deleted')
-options['Friends preset']();click('Rename preset');accept('Private preset')
+local function manageAction(name)
+    click('Manage');click(name)
+end
+assert(not pcall(manageAction,'Delete preset'),'built-in management must be hidden')
+options['Friends preset']();manageAction('Rename preset');accept('Private preset')
 assert(ns.ChatBuilder:Preset(found.id).name=='Private preset')
-click('Delete preset');assert(ns.ChatBuilder:Preset(found.id),'confirmation alone preserves preset')
+manageAction('Delete preset');assert(ns.ChatBuilder:Preset(found.id),'confirmation alone preserves preset')
 accept();assert(not ns.ChatBuilder:Preset(found.id),'confirmed delete removes only the preset')
 -- Free the fixture's final window slot, then exercise the distinct creation actions.
 FCF_Close(ChatFrame4);ns.ChatBuilderEditor.Refresh()
@@ -160,7 +183,7 @@ click('Delete window');accept();click('Friends')
 options.Social();click('New window');accept('Empty')
 assert(#({GetChatWindowMessages(4)})==0,'New window is blank regardless of selected preset')
 click('Delete window');accept();click('Friends')
-click('Create from preset');accept('Preset copy')
+click('Create new window');accept('Preset copy')
 local groups={};for _,g in ipairs({GetChatWindowMessages(4)}) do groups[g]=true end
 assert(groups.GUILD,'Create from preset applies the selected template immediately')
 click('Delete window');accept();click('Friends')
@@ -169,7 +192,7 @@ click('Delete window');assert(select(7,GetChatWindowInfo(3)),'opening close conf
 FCF_Close(ChatFrame3);accept();assert(GetChatWindowInfo(3)=='Friends')
 assert(not pcall(click,'Frame'),'redundant appearance navigation must be absent')
 local count=#objects;host:Hide();side:Show();ns.ChatBuilderEditor.Refresh();assert(#objects==count,'hidden editor must not build more controls')
-for _,o in ipairs(objects) do if o:GetText()=='Save preset' then assert(not o:IsVisible(),'sidebar controls must hide when another custom tab uses the shared side host') end end
+for _,o in ipairs(objects) do if o:GetText()=='Save as preset' then assert(not o:IsVisible(),'sidebar controls must hide when another custom tab uses the shared side host') end end
 host:Show();ns.ChatBuilderEditor.Refresh();assert(#objects<=count+5,'refresh must reuse controls')
 for _,key in ipairs({'GetChatWindowMessages','GetChatWindowChannels'}) do
     local original=_G[key];_G[key]=nil

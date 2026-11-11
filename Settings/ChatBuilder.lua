@@ -5,6 +5,7 @@ ns.ChatBuilderEditor = Editor
 local ui, selected, presetID = nil, nil, "general"
 local activeCategory = "conversations"
 local selectedOnly = false
+local expanded = {}
 local Refresh
 
 local function Text(parent, value, size)
@@ -59,7 +60,7 @@ local function Scroll(parent)
         s:SetVerticalScroll(math.max(0,math.min(s:GetVerticalScrollRange(),s:GetVerticalScroll()+delta)))
     end
     s.PadScroll=function(_,delta) move(delta*36) end
-    s:SetScript("OnSizeChanged",function(self,w) content:SetWidth(math.max(40,w)) end)
+    s:HookScript("OnSizeChanged",function(self,w) content:SetWidth(math.max(40,w)) end)
     return s
 end
 local function SelectedState()
@@ -136,6 +137,7 @@ local function FilterRow(i)
     end)
     local function Enter()
         if row.entry then row.hover:Show() end
+        if GameTooltip and row.category=="channels" then GameTooltip:SetOwner(row,"ANCHOR_RIGHT");GameTooltip:SetText(L["Channel toggles change this window only; they never join or leave channels."],nil,nil,nil,nil,true);GameTooltip:Show() end
         if GameTooltip and row.entry then GameTooltip:SetOwner(row.check,"ANCHOR_RIGHT");GameTooltip:SetText(row.entry.label);GameTooltip:Show() end
     end
     local function Leave() row.hover:Hide();if GameTooltip then GameTooltip:Hide() end end
@@ -208,16 +210,73 @@ local function RenderWindows(windows)
     for i=#windows+1,#ui.windowRows do ui.windowRows[i]:Hide() end
     ui.windows.content:SetHeight(math.max(1,#windows*54))
 end
+local descriptions = {
+    general=L["Everyday chat, groups, and quest dialogue."],
+    social=L["Conversations, guild chat, and achievements."],
+    group=L["Party, raid, instance, and battleground communication."],
+    loot=L["Loot, currency, crafting, and character progress."],
+    trade=L["Trade channels and private replies."],
+    blank=L["An empty starting point for your own filters."],
+}
 local function PresetSummary()
     local preview=B:PreviewPreset(presetID)
     if not preview then presetID="general";preview=B:PreviewPreset(presetID) end
+    if ui.summaryPreset~=presetID then
+        ui.summaryPreset=presetID;expanded={};ui.manageExpanded=false;ui.presetScroll:SetVerticalScroll(0)
+    end
     ui.preset:SetDefaultText(preview.preset.name)
-    local lines={preview.preset.builtin and L["Built-in preset · editable after loading"] or L["Saved preset · shared across your characters"],"",L["Included:"]}
-    lines[#lines+1]=#preview.included>0 and table.concat(preview.included,"\n") or L["No supported content selected."]
-    if #preview.skipped>0 then lines[#lines+1]="\n"..L["Skipped unavailable:"];lines[#lines+1]=table.concat(preview.skipped,"\n") end
-    ui.summary:SetText(table.concat(lines,"\n"))
-    ui.summary:SetHeight(ui.summary:GetStringHeight())
-    ui.presetScroll.content:SetHeight(ui.summary:GetStringHeight()+12)
+    ui.presetKind:SetText(preview.preset.builtin and L["Built-in"] or L["Custom"])
+    ui.description:SetText(preview.preset.builtin and descriptions[presetID] or L["Saved filters shared across your characters."])
+    local selectedMessages={};for _,key in ipairs(preview.preset.messages) do selectedMessages[key]=true end
+    local groups={}
+    for _,category in ipairs(B:Categories()) do
+        if category.key~="channels" then
+            local names={}
+            for _,entry in ipairs(category.entries) do if selectedMessages[entry.key] and not entry.disabled then names[#names+1]=entry.label end end
+            if #names>0 then groups[#groups+1]={key=category.key,name=category.name,names=names} end
+        end
+    end
+    local channelLabels={}
+    for _,entry in ipairs(B:Channels()) do channelLabels[entry.key]=entry.label end
+    local channels={}
+    for _,key in ipairs(preview.preset.channels) do channels[#channels+1]=channelLabels[key] or ns.ChatBuilderCatalog.channelNames[key] or key end
+    if #channels>0 then groups[#groups+1]={key="channels",name=L["Public Channels"],names=channels,alwaysOpen=true} end
+    local y=0
+    for i,group in ipairs(groups) do
+        local row=ui.presetRows[i]
+        if not row then
+            row=CreateFrame("Frame",nil,ui.presetScroll.content)
+            row.header=Button(row,"",220,function()
+                if not row.alwaysOpen then expanded[row.key]=not expanded[row.key];Refresh() end
+            end)
+            row.header:SetPoint("TOPLEFT",0,0);row.header:SetPoint("TOPRIGHT",0,0)
+            row.text=Text(row,"","GameFontHighlightSmall")
+            row.text:SetPoint("TOPLEFT",8,-30);row.text:SetPoint("TOPRIGHT",-6,-30)
+            -- Only the public-channel heading needs the routing explanation.
+            row.header:HookScript("OnEnter",function(self)
+                if row.alwaysOpen and GameTooltip then GameTooltip:SetOwner(self,"ANCHOR_RIGHT");GameTooltip:SetText(L["Channel toggles change this window only; they never join or leave channels."],nil,nil,nil,nil,true);GameTooltip:Show() end
+            end)
+            row.header:HookScript("OnLeave",function() if GameTooltip then GameTooltip:Hide() end end)
+            ui.presetRows[i]=row
+        end
+        row.key=group.key;row.alwaysOpen=group.alwaysOpen
+        row:ClearAllPoints();row:SetPoint("TOPLEFT",0,-y);row:SetPoint("TOPRIGHT",-4,-y)
+        local open=group.alwaysOpen or expanded[group.key]
+        row.header:SetText((group.alwaysOpen and "" or (open and "- " or "+ "))..group.name.." ("..#group.names..")")
+        row.text:SetText(open and table.concat(group.names,"\n") or "")
+        row.text:SetShown(open and true or false)
+        local height=open and (34+row.text:GetStringHeight()) or 28
+        row.text:SetHeight(open and row.text:GetStringHeight() or 1)
+        row:SetHeight(height);row:Show()
+        y=y+height+6
+    end
+    for i=#groups+1,#ui.presetRows do ui.presetRows[i]:Hide() end
+    local note=#preview.skipped>0 and (L["Skipped unavailable:"].."\n"..table.concat(preview.skipped,", ")) or (#groups==0 and L["No supported content selected."] or "")
+    ui.summary:SetText(note);ui.summary:ClearAllPoints();ui.summary:SetPoint("TOPLEFT",4,-y);ui.summary:SetPoint("TOPRIGHT",-4,-y)
+    local height=note~="" and ui.summary:GetStringHeight() or 0
+    ui.summary:SetHeight(math.max(1,height));ui.summary:SetShown(note~="")
+    ui.presetScroll.content:SetHeight(math.max(1,y+height+8))
+    ui.presetScroll:SetVerticalScroll(math.min(ui.presetScroll:GetVerticalScroll(),ui.presetScroll:GetVerticalScrollRange()))
     return preview.preset
 end
 function Refresh()
@@ -241,7 +300,11 @@ function Refresh()
     ui.new:SetEnabled(ok and FCF_CanOpenNewWindow and FCF_CanOpenNewWindow() and true or false)
     ui.createPreset:SetEnabled(ui.new:IsEnabled())
     ui.duplicate:SetEnabled(editable and ui.new:IsEnabled())
+    ui.manage:SetShown(not preset.builtin);ui.manage:SetEnabled(ok and not preset.builtin)
+    local managing=not preset.builtin and ui.manageExpanded
+    ui.renamePreset:SetShown(managing);ui.deletePreset:SetShown(managing)
     ui.renamePreset:SetEnabled(ok and not preset.builtin);ui.deletePreset:SetEnabled(ok and not preset.builtin)
+    ui.presetScroll:SetPoint("BOTTOMRIGHT",-24,managing and 162 or 126)
     ui.preset:SetEnabled(ok and true or false)
     ui.selectedOnly:SetChecked(selectedOnly)
     ui.category:SetEnabled(not selectedOnly)
@@ -259,7 +322,7 @@ function Editor.Build(host,side)
     local column=CreateFrame("Frame",nil,side)
     column:SetAllPoints()
     side=column
-    ui={host=host,side=side,windowRows={},filterRows={}}
+    ui={host=host,side=side,windowRows={},filterRows={},presetRows={}}
     local title=Text(host,L["Chat windows"],"GameFontNormal");title:SetPoint("TOPLEFT",0,0)
     ui.new=Button(host,L["New window"],148,function() NewWindow("blank") end);ui.new:SetPoint("TOPLEFT",0,-26)
     ui.windows=Scroll(host);ui.windows:SetPoint("TOPLEFT",0,-62);ui.windows:SetPoint("BOTTOMLEFT",0,34);ui.windows:SetWidth(148)
@@ -279,21 +342,28 @@ function Editor.Build(host,side)
     ui.close=Button(body,L["Delete window"],110,function()
         local h=selected;if h then Confirm(L["Delete %s? Its chat-window configuration will be removed."]:format(h.name),function() Act(function() return B:Close(h) end) end) end
     end);ui.close:SetPoint("LEFT",ui.dock,"RIGHT",6,0)
+    ui.save=Button(body,L["Save as preset"],160,function()
+        local h=selected;if h then AskName(L["Save these filters as a new preset"],h.name,function(name)
+            local p,err=B:SavePreset(h,name);if p then presetID=p.id end;Report(p,err)
+        end) end
+    end);ui.save:SetPoint("TOPLEFT",0,-58)
+    ui.native=Button(body,L["Open Blizzard Settings"],206,function() Act(function() return B:OpenBlizzard(selected) end) end)
+    ui.native:SetPoint("LEFT",ui.save,"RIGHT",6,0)
     ui.search=CreateFrame("EditBox",nil,body,"SearchBoxTemplate");ui.search:SetAutoFocus(false);ui.search:SetMaxLetters(80)
     ui.search:SetFontObject(ns.SettingsPanel.FONT.GameFontHighlight)
     if ui.search.Instructions then ui.search.Instructions:SetText(L["Search chat filters"]) end
-    ui.search:SetSize(200,24);ui.search:SetPoint("TOPLEFT",6,-62);ui.search:SetPoint("TOPRIGHT",-98,-62)
+    ui.search:SetSize(200,24);ui.search:SetPoint("TOPLEFT",6,-92);ui.search:SetPoint("TOPRIGHT",-98,-92)
     ui.search:SetScript("OnEscapePressed",function(self) self:ClearFocus() end)
     ui.search:SetScript("OnEnterPressed",function(self) self:ClearFocus() end)
     ui.search:HookScript("OnTextChanged",function() if ui and ui.filters then Refresh() end end)
     ui.searchButton=Button(body,L["Search"],90,function()
         AskName(L["Search chat filters (leave blank to show all)"],ui.search:GetText(),function(text) ui.search:SetText(text or "") end)
-    end);ui.searchButton:SetPoint("TOPRIGHT",0,-62)
+    end);ui.searchButton:SetPoint("TOPRIGHT",0,-92)
     ui.category=CreateFrame("DropdownButton",nil,body,"WowStyle1DropdownTemplate")
     ns.SettingsPanel.SkinDropdown(ui.category)
-    ui.category:SetHeight(26);ui.category:SetPoint("TOPLEFT",0,-96);ui.category:SetPoint("TOPRIGHT",-142,-96)
+    ui.category:SetHeight(26);ui.category:SetPoint("TOPLEFT",0,-126);ui.category:SetPoint("TOPRIGHT",-142,-126)
     local selectedRow=CreateFrame("Frame",nil,body)
-    selectedRow:SetSize(134,26);selectedRow:SetPoint("TOPRIGHT",0,-96);selectedRow:EnableMouse(true)
+    selectedRow:SetSize(134,26);selectedRow:SetPoint("TOPRIGHT",0,-126);selectedRow:EnableMouse(true)
     ui.selectedOnly=ns.SettingsPanel.Switch(selectedRow);ui.selectedOnly:SetPoint("RIGHT",0,0)
     local selectedLabel=Text(selectedRow,L["Selected only"])
     selectedLabel:SetPoint("LEFT",0,0);selectedLabel:SetPoint("RIGHT",ui.selectedOnly,"LEFT",-6,0)
@@ -323,10 +393,10 @@ function Editor.Build(host,side)
             ui.filters:SetVerticalScroll(0);ui.search:SetText("");Refresh();break
         end end
     end
-    ui.filters=Scroll(body);ui.filters:SetPoint("TOPLEFT",0,-132);ui.filters:SetPoint("BOTTOMRIGHT",-22,70)
+    ui.filters=Scroll(body);ui.filters:SetPoint("TOPLEFT",0,-162);ui.filters:SetPoint("BOTTOMRIGHT",-22,70)
     ui.filters.content:SetWidth(380)
     ui.filters:HookScript("OnSizeChanged",function() if ui.empty then Refresh() end end)
-    ui.empty=Text(body,L["No matching filters."]);ui.empty:SetPoint("TOPLEFT",8,-180);ui.empty:SetPoint("TOPRIGHT",-24,-180)
+    ui.empty=Text(body,L["No matching filters."]);ui.empty:SetPoint("TOPLEFT",8,-210);ui.empty:SetPoint("TOPRIGHT",-24,-210)
     ui.status=Text(body);ui.status:SetPoint("BOTTOMLEFT",0,10);ui.status:SetPoint("BOTTOMRIGHT",0,10);ui.status:SetHeight(50)
 
     local heading=Text(side,L["Presets"],"GameFontNormalLarge");heading:SetPoint("TOPLEFT",4,-4)
@@ -338,27 +408,28 @@ function Editor.Build(host,side)
     ui.preset.padCycle=function(delta)
         local presets=B:Presets();for i,p in ipairs(presets) do if p.id==presetID then presetID=presets[((i-1+delta)%#presets)+1].id;Refresh();break end end
     end
-    ui.presetScroll=Scroll(side);ui.presetScroll:SetPoint("TOPLEFT",6,-68);ui.presetScroll:SetPoint("BOTTOMRIGHT",-24,220)
+    ui.presetKind=Text(side,"","GameFontDisableSmall");ui.presetKind:SetPoint("TOPLEFT",6,-68)
+    ui.description=Text(side);ui.description:SetPoint("TOPLEFT",6,-96);ui.description:SetPoint("TOPRIGHT",-10,-96);ui.description:SetHeight(48)
+    ui.presetScroll=Scroll(side);ui.presetScroll:SetPoint("TOPLEFT",6,-152);ui.presetScroll:SetPoint("BOTTOMRIGHT",-24,126)
     ui.summary=Text(ui.presetScroll.content);ui.summary:SetPoint("TOPLEFT",0,0);ui.summary:SetPoint("TOPRIGHT",-4,0)
     ui.presetScroll.content:SetWidth(220)
-    ui.createPreset=Button(side,L["Create from preset"],242,function() NewWindow(presetID) end);ui.createPreset:SetPoint("BOTTOMLEFT",4,184)
+    ui.createPreset=Button(side,L["Create new window"],242,function() NewWindow(presetID) end);ui.createPreset:SetPoint("BOTTOMLEFT",4,92)
     Tip(ui.createPreset,L["Create a new chat window using the selected preset."])
-    ui.apply=Button(side,L["Replace window filters"],242,ApplyPreset);ui.apply:SetPoint("BOTTOMLEFT",4,154)
-    ui.save=Button(side,L["Save preset"],242,function()
-        local h=selected;if h then AskName(L["Save these filters as a new preset"],h.name,function(name)
-            local p,err=B:SavePreset(h,name);if p then presetID=p.id end;Report(p,err)
-        end) end
-    end);ui.save:SetPoint("BOTTOMLEFT",4,124)
+    ui.apply=Button(side,L["Apply to selected window"],242,ApplyPreset);ui.apply:SetPoint("BOTTOMLEFT",4,62)
+    -- Real buttons keep management accessible through the settings controller navigator.
+    ui.manage=Button(side,L["Manage"],100,function() ui.manageExpanded=not ui.manageExpanded;Refresh() end)
+    ui.manage:SetPoint("TOPRIGHT",-10,-62)
     ui.renamePreset=Button(side,L["Rename preset"],118,function()
-        local id=presetID;local p=B:Preset(id);if p then AskName(L["Rename saved preset"],p.name,function(name) Act(function() return B:RenamePreset(id,name) end) end) end
-    end);ui.renamePreset:SetPoint("BOTTOMLEFT",4,94)
+        local id=presetID;local p=B:Preset(id);if not p or p.builtin then return end
+        ui.manageExpanded=false;Refresh()
+        AskName(L["Rename saved preset"],p.name,function(name) Act(function() return B:RenamePreset(id,name) end) end)
+    end);ui.renamePreset:SetPoint("BOTTOMLEFT",4,128)
     ui.deletePreset=Button(side,L["Delete preset"],118,function()
-        local id=presetID;local p=B:Preset(id);if p then Confirm(L["Delete preset %s? Existing chat windows will not change."]:format(p.name),function() Act(function() return B:DeletePreset(id) end) end) end
+        local id=presetID;local p=B:Preset(id);if not p or p.builtin then return end
+        ui.manageExpanded=false;Refresh()
+        Confirm(L["Delete preset %s? Existing chat windows will not change."]:format(p.name),function() Act(function() return B:DeletePreset(id) end) end)
     end);ui.deletePreset:SetPoint("LEFT",ui.renamePreset,"RIGHT",6,0)
-    ui.feedback=Text(side);ui.feedback:SetPoint("BOTTOMLEFT",6,64);ui.feedback:SetWidth(240);ui.feedback:SetHeight(24)
-    ui.native=Button(side,L["Open Blizzard Settings"],242,function() Act(function() return B:OpenBlizzard(selected) end) end);ui.native:SetPoint("BOTTOMLEFT",4,38)
-    local channelHelp=Text(side,L["Channel toggles change this window only; they never join or leave channels."])
-    channelHelp:SetPoint("BOTTOMLEFT",6,0);channelHelp:SetSize(240,32)
+    ui.feedback=Text(side,"","GameFontHighlightSmall");ui.feedback:SetPoint("BOTTOMLEFT",6,0);ui.feedback:SetPoint("BOTTOMRIGHT",-10,0);ui.feedback:SetHeight(54)
     host:SetScript("OnShow",function() side:Show();B:Watch(Refresh);Refresh() end)
     host:SetScript("OnHide",function() side:Hide();B:Unwatch(Refresh);ui.search:ClearFocus() end)
     B:Watch(Refresh)
