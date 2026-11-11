@@ -1019,7 +1019,12 @@ local function RetryFonts()
     end
 end
 
-function ns.SetFont(fontString, path, size, flags)
+-- Text Scale (Settings page, account-wide, 11-11): every FlareUI font size times this, set as FlareUI
+-- loads (a change reloads). 1 leaves every size as it is. The settings window keeps its own sizes
+-- (ns.SetFontUnscaled): its layout is fixed.
+ns.TEXT_SCALE = 1
+
+local function SetFontRaw(fontString, path, size, flags)
     pendingFonts[fontString] = nil
     if fontString:SetFont(path, size, flags) ~= false then return end
     fontString:SetFont(BaseFont(), size, flags)
@@ -1028,6 +1033,12 @@ function ns.SetFont(fontString, path, size, flags)
     retryTicks = 0
     retryTicker = retryTicker or C_Timer.NewTicker(RETRY_SECONDS, RetryFonts)
 end
+
+function ns.SetFont(fontString, path, size, flags)
+    if size and ns.TEXT_SCALE ~= 1 then size = size * ns.TEXT_SCALE end
+    return SetFontRaw(fontString, path, size, flags)
+end
+ns.SetFontUnscaled = SetFontRaw
 
 -- Font families for text other players write (names, meter rows, tooltips). The game draws a whole
 -- string with one member of a family, picked by its letters: the chosen font for Latin text, and for
@@ -1065,6 +1076,7 @@ function ns.SetFontFamily(fontString, path, size, flags)
     if not (CreateFontFamily and fontString.SetFontObject and path and size) then
         return ns.SetFont(fontString, path, size, flags)
     end
+    if ns.TEXT_SCALE ~= 1 then size = size * ns.TEXT_SCALE end
     local key = path .. "|" .. size .. "|" .. flags
     local family = F.built[key]
     if not family then
@@ -1075,7 +1087,7 @@ function ns.SetFontFamily(fontString, path, size, flags)
         end
         F.count = F.count + 1
         local ok, made = pcall(CreateFontFamily, "FlareUI_FontFamily" .. F.count, members)
-        if not (ok and made) then return ns.SetFont(fontString, path, size, flags) end
+        if not (ok and made) then return SetFontRaw(fontString, path, size, flags) end
         family, F.built[key] = made, made
     end
     fontString:SetFontObject(family)
@@ -1083,7 +1095,7 @@ end
 
 -- Blizzard's own font objects (tooltip text): set member by member, so the Cyrillic and Chinese /
 -- Korean members keep a face that has their letters, at the new size
-function ns.SetFontObjectFace(fontObject, path, size, flags)
+local function SetFontObjectFaceRaw(fontObject, path, size, flags)
     flags = flags or ""
     fontObject:SetFont(path, size, flags)
     if not fontObject.GetFontObjectForAlphabet then return end
@@ -1098,6 +1110,31 @@ function ns.SetFontObjectFace(fontObject, path, size, flags)
             end
         end
     end
+end
+
+function ns.SetFontObjectFace(fontObject, path, size, flags)
+    if size and ns.TEXT_SCALE ~= 1 then size = size * ns.TEXT_SCALE end
+    return SetFontObjectFaceRaw(fontObject, path, size, flags)
+end
+
+-- Text Scale on Blizzard's own text: every font object the game has, once, as FlareUI loads (before
+-- any module sets a font). All sizes are read first: an object can inherit another's, which would
+-- otherwise be scaled twice.
+function ns.ScaleGameFonts(k)
+    if not (GetFonts and k and k ~= 1) then return end
+    local ok, names = pcall(GetFonts)
+    if not (ok and type(names) == "table") then return end
+    local found = {}
+    for _, name in ipairs(names) do
+        local font = type(name) == "string" and _G[name] or name
+        -- FlareUI's own (the settings window's) keep their sizes
+        local ours = type(name) == "string" and name:find("^FlareUI")
+        if not ours and type(font) == "table" and font.GetFont and font.SetFont then
+            local path, size, flags = font:GetFont()
+            if path and type(size) == "number" and size > 0 then found[#found + 1] = { font, path, size, flags } end
+        end
+    end
+    for _, f in ipairs(found) do pcall(SetFontObjectFaceRaw, f[1], f[2], f[3] * k, f[4]) end
 end
 
 -- The font a string shows or is waiting for, for copying its look to another string
@@ -2172,6 +2209,13 @@ f:SetScript("OnEvent", function(self, event, ...)
 
         ns.db = db
         ns.defaults = defaults
+
+        -- Text Scale: FlareUI's sizes and the game's font objects, before anything sets a font
+        local textScale = tonumber(db.global.textScale)
+        if textScale and textScale ~= 1 and textScale >= 0.5 and textScale <= 2 then
+            ns.TEXT_SCALE = textScale
+            ns.ScaleGameFonts(textScale)
+        end
 
         -- Older manual settings may have no language saved until the dropdown was used.
         local global = db.global

@@ -1248,6 +1248,13 @@ ns.Copy = {
             section = "qol.convenience",
             tip = L["Hold Shift to talk to them as usual."],
         },
+        ["qol.textScale"] = {
+            desc = L["Makes all text larger or smaller, for every character. Frames keep their size."],
+            label = L["Text Scale"],
+            reload = true,
+            section = "qol.scale",
+            tip = L["Handy with Pixel Perfect, where text is small. Long labels may not fit above 120%."],
+        },
         ["qol.trainAll"] = {
             desc = L["A Train All button at class and profession trainers."],
             label = L["Train All Skills"],
@@ -1259,7 +1266,7 @@ ns.Copy = {
             label = L["UI Scale"],
             reload = true,
             section = "qol.scale",
-            tip = L["Changing it reloads the interface."],
+            tip = L["Pixel Perfect keeps borders and thin lines sharpest; text is sharp at any scale. Changing it reloads the interface."],
         },
         ["qol.uiScaleCustom"] = {
             desc = L["The scale Custom uses. 100% is Blizzard's default size."],

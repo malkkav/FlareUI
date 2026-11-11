@@ -88,6 +88,17 @@ S:Row{
     end,
     set = function(percent) local g = Global(); if g then g.uiScaleCustom = percent / 100 end end,
 }
+-- Text Scale: all text larger or smaller, frames as they are (Core.lua ns.TEXT_SCALE), account-wide
+local TEXT_CHOICES = {}
+for percent = 80, 150, 5 do TEXT_CHOICES[#TEXT_CHOICES + 1] = { percent, percent .. "%" } end
+S:Row{
+    key = "qol.textScale", kind = "choice", module = "language", choices = TEXT_CHOICES, reload = true,
+    get = function()
+        local g = Global()
+        return math.floor((g and tonumber(g.textScale) or 1) * 20 + 0.5) * 5
+    end,
+    set = function(percent) local g = Global(); if g then g.textScale = percent ~= 100 and percent / 100 or nil end end,
+}
 
 
 S:Row{

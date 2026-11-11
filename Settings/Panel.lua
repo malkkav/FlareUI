@@ -252,25 +252,25 @@ for blizzard, def in pairs({
     local name = "FlareUI_Panel" .. def[1]
     local font = CreateFont(name)
     if _G[blizzard] then font:CopyFontObject(_G[blizzard]) end
-    ns.SetFont(font, def[2], def[3], "")
+    ns.SetFontUnscaled(font, def[2], def[3], "")
     PANEL_FONT[blizzard] = name
 end
 Panel.FONT = PANEL_FONT
 -- the button text: the page titles' gold rather than Blizzard's yellow (11-11 Marcus)
 local BUTTON_FONT = CreateFont("FlareUI_PanelButton")
 if _G.GameFontNormal then BUTTON_FONT:CopyFontObject(_G.GameFontNormal) end
-ns.SetFont(BUTTON_FONT, BODY_FONT, 14, "")
+ns.SetFontUnscaled(BUTTON_FONT, BODY_FONT, 14, "")
 BUTTON_FONT:SetTextColor(1, 0.83, 0.47)
 local BUTTON_FONT_SMALL = CreateFont("FlareUI_PanelButtonSmall")
 if _G.GameFontNormal then BUTTON_FONT_SMALL:CopyFontObject(_G.GameFontNormal) end
-ns.SetFont(BUTTON_FONT_SMALL, BODY_FONT, 12, "")
+ns.SetFontUnscaled(BUTTON_FONT_SMALL, BODY_FONT, 12, "")
 BUTTON_FONT_SMALL:SetTextColor(1, 0.83, 0.47)
 -- 11-11 (Marcus): the titles in Blizzard's Friz Quadrata, closer to Forever's own windows (Marcellus
 -- still ships, for the players' font choices); a Russian client keeps Roboto Condensed Bold
 local function ApplyTitleFont()
     if GetLocale() == "ruRU" then return end
-    ns.SetFont(_G.FlareUI_PanelTitle, "Fonts\\FRIZQT__.TTF", 17, "")
-    ns.SetFont(_G.FlareUI_PanelTitleHuge, "Fonts\\FRIZQT__.TTF", 22, "")
+    ns.SetFontUnscaled(_G.FlareUI_PanelTitle, "Fonts\\FRIZQT__.TTF", 17, "")
+    ns.SetFontUnscaled(_G.FlareUI_PanelTitleHuge, "Fonts\\FRIZQT__.TTF", 22, "")
 end
 -- at load too: the setup tour can show before the settings window is ever built
 ApplyTitleFont()
