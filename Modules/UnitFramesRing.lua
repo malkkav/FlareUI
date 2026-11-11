@@ -52,7 +52,7 @@ local PORTRAIT_BACK_SHARE = 0.94
 -- on the bars' side) doesn't show (11-11). The art's rim reaches further out on the outer side, so
 -- the circle is larger and moved outwards: its edge stays CLEAN_RING_BARS of the ring's diameter
 -- from the centre on the bars' side and reaches CLEAN_RING_OUTER on the outer side (rim and shadow)
-local CLEAN_RING_BARS, CLEAN_RING_OUTER = 0.515, 0.585
+local CLEAN_RING_BARS, CLEAN_RING_OUTER = 0.49, 0.585
 -- Blizzard's combo arc round its 61.1 px target ring (Camelot ComboFrame.lua POINT_LAYOUT_DATA),
 -- started higher while the PvP crest shows; radius in the points' scale, shift from the centre
 local RING_COMBO = { radius = 66, start = -10, pvpStart = 2, step = 21, scale = 0.6, shift = { 2, 2 } }
