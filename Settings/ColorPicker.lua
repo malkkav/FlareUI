@@ -93,6 +93,25 @@ local KINDS = {
 
 local window, kindNow
 
+-- The colour last picked shows on the samples (11-11): a health colour on the player's and target's
+-- health bars, a power colour on their power bars, a cast colour on the cast bar, whatever the
+-- class you play (shown: part -> key, per window kind)
+local shown = { uf = {}, rb = {} }
+local PARTS = {
+    health = "health", grey = "health", hostile = "health", neutral = "health", friendly = "health",
+    mana = "power", rage = "power", energy = "power", focus = "power",
+    cast = "cast", castChannel = "cast", castNoInterrupt = "cast", interrupted = "cast",
+    playerCast = "cast", playerChannel = "cast",
+}
+local function PartOf(key)
+    if key:match("^class:") then return "health" end
+    return PARTS[key]
+end
+local function Show(key)
+    local part = kindNow == "uf" and PartOf(key)
+    if part then shown.uf[part] = key end
+end
+
 --------------------------------------------------
 -- 1. PREVIEWS (the modules' own samples, as the settings pages' pictures)
 --------------------------------------------------
@@ -177,55 +196,52 @@ local function UnitSample(id, unit, style)
     return f, e
 end
 
--- the party, five tiles in a row as the tile kit draws them (the portrait ring stands out on its side)
-local function PartyBox()
-    local PF = ns.PartyFrames
-    if not (PF and PF.SampleTile) then return nil end
-    local box = samples.party
-    if not box then
-        box = CreateFrame("Frame", nil, window.preview)
-        box.tiles = {}
-        for i = 1, 5 do box.tiles[i] = PF.SampleTile(box, nil, nil, i) end
-        samples.party = box
-    end
-    box:SetScale(1)
-    local left, right, tw, th, vgap = 0, 0, 0, 0, 0
-    for _, t in ipairs(box.tiles) do
-        tw, th = PF.DrawSampleTile(t)
-        if t.ringKind and ns.UFRing and ns.UFRing.Overhang then
-            local over = ns.UFRing.Overhang(t)
-            if t.ringSide == "RIGHT" then right = math.max(right, over) else left = math.max(left, over) end
-            vgap = math.max(vgap, (t.RingFrame and t.RingFrame:GetHeight() or 0) - th)
-        end
-    end
-    if not (tw > 0 and th > 0) then return nil end
-    local step = left + tw + right + 8
-    for i, t in ipairs(box.tiles) do
-        t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", box, "TOPLEFT", left + (i - 1) * step, -(vgap / 2 + 12))
-    end
-    -- (12 above: the leader crown and the skull stand over the tiles)
-    box:SetSize(5 * step - 8, th + vgap + 12)
-    return Item(box)
-end
-
 local function DrawUnitPreviews()
     local UF = ns.UnitFrames
     local style = ns.UFRing and ns.UFRing.Style() or "addon"
     local units = {}
+    local own = shown.uf
     for _, unit in ipairs({ "player", "target" }) do
         local f, e = UnitSample("unit:" .. unit, unit, style)
-        if f and e then units[#units + 1] = Item(f, e) end
+        if f and e then
+            for part, bar in pairs({ health = f.Health, power = f.Power }) do
+                local key = own[part]
+                if key and bar then
+                    local c = UF.Color(key)
+                    bar:SetStatusBarColor(c[1], c[2], c[3])
+                end
+            end
+            units[#units + 1] = Item(f, e)
+        end
     end
     local cast
     if UF.CreateCastSample then
         cast = samples.cast
-        if not cast then cast = UF.CreateCastSample(window.preview); samples.cast = cast end
-        if cast then cast:SetScale(1); UF.DrawCastSample(cast) end
+        if not cast then
+            cast = UF.CreateCastSample(window.preview)
+            samples.cast = cast
+            -- the sample recolours itself on each loop: the shown colour over it
+            if cast and cast.Cast then
+                local busy
+                hooksecurefunc(cast.Cast, "SetStatusBarColor", function(bar)
+                    local key = shown.uf.cast
+                    if busy or not key then return end
+                    busy = true
+                    local c = UF.Color(key)
+                    bar:SetStatusBarColor(c[1], c[2], c[3])
+                    busy = false
+                end)
+            end
+        end
+        if cast then
+            cast:SetScale(1)
+            UF.DrawCastSample(cast)
+            local key = shown.uf.cast
+            if key and cast.Cast then local c = UF.Color(key); cast.Cast:SetStatusBarColor(c[1], c[2], c[3]) end
+        end
     end
     LayRows({
         Row(units, 1, 1.6),
-        Row({ PartyBox() }, 1, 1.6),
         Row({ cast and Item(cast) }, 0.7, 1.6),
     })
 end
@@ -273,6 +289,7 @@ end
 
 local function SetColor(key, c)
     local kind = KINDS[kindNow]
+    Show(key)
     kind.store()[key] = c and { c[1], c[2], c[3] } or nil
     kind.apply()
     Repaint()
@@ -290,6 +307,8 @@ local function PickColor(row)
         end,
         cancelFunc = function() SetColor(row.key, before) end,
     }
+    Show(row.key)
+    DrawPreviews()
     if ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow then
         ColorPickerFrame:SetupColorPickerAndShow(info)
     end
