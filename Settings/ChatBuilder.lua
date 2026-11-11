@@ -278,14 +278,13 @@ function Refresh()
     ui.layout:SetDefaultText(preview and (ui.previewID=="blank" and L["Empty"] or preview.preset.name) or currentName);ui.layout:SetEnabled(editable and not ui.adding)
     ui.layout:SetShown(not ui.adding);ui.layoutLabel:SetShown(not ui.adding)
     ui.applyLayout:SetShown(preview~=nil);ui.cancelLayout:SetShown(preview~=nil);ui.applyLayout:SetEnabled(editable)
-    ui.previewNote:SetShown(preview~=nil)
-    ui.previewNote:SetText(preview and L["Preview only. Apply layout to replace this window's filters, or Cancel."] or "")
+    ui.previewBadge:SetShown(ui.adding or preview~=nil)
+    ui.previewBadge.text:SetText(ui.adding and L["New window preview"] or L["Layout preview"])
     ui.addForm:SetShown(ui.adding and true or false)
-    ui.filtersArea:SetPoint("TOPLEFT",0,ui.adding and -176 or (preview and -148 or -112))
     ui.addLayout:SetDefaultText(presetID=="blank" and L["Empty"] or B:Preset(presetID).name)
     local draftName=ui.name:GetText():match("^%s*(.-)%s*$")
     ui.title:SetText(ui.adding and (draftName~="" and L["New window: %s"]:format(draftName) or L["New window"]) or (selected and selected.name or L["Select a chat window"]))
-    ui.contentTitle:SetText(ui.adding and L["Preview for new window"] or L["What appears here"])
+    ui.contentTitle:SetText(L["Messages & channels"])
     for _,control in ipairs({ui.rename,ui.close,ui.dock,ui.duplicate}) do control:SetShown(not ui.adding) end
     ui.moveUp:SetEnabled(not ui.adding and selected and B:MoveTarget(selected,-1)~=nil);ui.moveDown:SetEnabled(not ui.adding and selected and B:MoveTarget(selected,1)~=nil)
     ui.rename:SetEnabled(editable);ui.close:SetEnabled(editable and not selected.primary)
@@ -294,23 +293,31 @@ function Refresh()
     local canCreate=ok and FCF_CanOpenNewWindow and FCF_CanOpenNewWindow() and true or false
     ui.new:SetEnabled(canCreate and not ui.adding);ui.duplicate:SetEnabled(editable and canCreate)
     ui.selectedOnly:SetChecked(selectedOnly);ui.category:SetEnabled(not selectedOnly)
-    local status=reason or L["Changes apply immediately."]
+    local actionOffset=preview and 38 or 0
+    ui.dock:SetPoint("TOPLEFT",0,-174-actionOffset)
+    ui.duplicate:SetPoint("TOPLEFT",0,-206-actionOffset)
+    ui.close:SetPoint("TOPLEFT",0,-238-actionOffset)
+    local status=reason or ""
     if ok and selected and selected.special then status=L["Combat Log uses its own filters. Open Blizzard Settings to edit them."] end
     if ok and ns.Tweaks and ns.db.profile.tweaks and ns.db.profile.tweaks.syncUI and ns.Tweaks.GetSyncSourceLabel then
         local source=ns.Tweaks:GetSyncSourceLabel()
         if source and not ns.Tweaks:IsSyncSource() then status=status.."\n"..L["Blizzard settings sync is enabled. Future changes from %s may replace this character's chat settings."]:format(source) end
     end
     if preview then
-        status=L["Preview only. Apply layout to replace this window's filters, or Cancel."]
         if #preview.skipped>0 then status=status.."\n"..L["Skipped unavailable:"].." "..table.concat(preview.skipped,", ") end
     end
     if ui.adding then
-        status=reason or L["Preview only. Create window to add this chat window; existing windows are unchanged."]
+        status=reason or ""
         local draft=B:PreviewPreset(presetID)
         if draft and #draft.skipped>0 then status=status.."\n"..L["Skipped unavailable:"].." "..table.concat(draft.skipped,", ") end
     end
-    ui.status:SetPoint("BOTTOMRIGHT",not ui.adding and selected and selected.special and -214 or 0,0)
-    ui.status:SetText(ui.notice or status)
+    local notice=(ui.notice or status):gsub("^%s+", "")
+    ui.noticeScroll:SetPoint("TOPLEFT",0,ui.adding and -310 or (preview and -316 or (selected and selected.special and -310 or -278)))
+    if ui.lastNotice~=notice then ui.noticeScroll:SetVerticalScroll(0);ui.lastNotice=notice end
+    ui.noticeScroll:SetShown(notice~="")
+    ui.status:SetText(notice);ui.status:SetHeight(ui.status:GetStringHeight())
+    ui.noticeScroll.content:SetHeight(ui.status:GetStringHeight()+4)
+    ui.noticeScroll:SetVerticalScroll(math.min(ui.noticeScroll:GetVerticalScroll(),ui.noticeScroll:GetVerticalScrollRange()))
     ui.create:SetEnabled(canCreate)
 end
 function Editor.Build(host,side)
@@ -323,45 +330,57 @@ function Editor.Build(host,side)
     ui.moveDown=Button(editor,L["Move down"],71,function() Act(function() return B:Move(selected,1) end) end);ui.moveDown:SetPoint("LEFT",ui.moveUp,"RIGHT",6,0)
     Tip(ui.moveUp,L["Move this docked tab left. General and Combat Log keep their positions."])
     Tip(ui.moveDown,L["Move this docked tab right. Pop-out windows are positioned by dragging them."])
-    local body=CreateFrame("Frame",nil,editor);body:SetPoint("TOPLEFT",180,0);body:SetPoint("BOTTOMRIGHT",0,0)
-    ui.title=Text(body,"","GameFontNormalLarge");ui.title:SetPoint("TOPLEFT",0,0);ui.title:SetPoint("TOPRIGHT",-100,0)
-    ui.rename=Button(body,L["Rename"],82,Rename);ui.rename:SetPoint("TOPRIGHT",0,0)
-    ui.dock=Button(body,L["Pop out"],100,function() local h=selected;Act(function() return B:SetDocked(h,not h.docked) end) end);ui.dock:SetPoint("TOPLEFT",0,-32)
-    ui.duplicate=Button(body,L["Duplicate"],110,DuplicateWindow);ui.duplicate:SetPoint("LEFT",ui.dock,"RIGHT",8,0)
-    ui.close=Button(body,L["Delete window"],130,function()
+    -- Three columns share one selection: windows, filters, and window controls.
+    local body=CreateFrame("Frame",nil,editor);body:SetPoint("TOPRIGHT",0,0);body:SetPoint("BOTTOMRIGHT",0,0);body:SetWidth(216)
+    local settingsTitle=Text(body,L["Window settings"],"GameFontNormal");settingsTitle:SetPoint("TOPLEFT",0,0)
+    ui.title=Text(body,"","GameFontNormalLarge");ui.title:SetPoint("TOPLEFT",0,-24);ui.title:SetPoint("TOPRIGHT",0,-24);ui.title:SetHeight(36)
+    ui.rename=Button(body,L["Rename"],216,Rename);ui.rename:SetPoint("TOPLEFT",0,-66)
+    ui.dock=Button(body,L["Pop out"],216,function() local h=selected;Act(function() return B:SetDocked(h,not h.docked) end) end);ui.dock:SetPoint("TOPLEFT",0,-174)
+    ui.duplicate=Button(body,L["Duplicate"],216,DuplicateWindow);ui.duplicate:SetPoint("TOPLEFT",0,-206)
+    ui.close=Button(body,L["Delete window"],216,function()
         local h=selected;if h then Confirm(L["Delete %s? Its chat-window configuration will be removed."]:format(h.name),function() ui.previewID=nil;Act(function() return B:Close(h) end) end) end
-    end);ui.close:SetPoint("LEFT",ui.duplicate,"RIGHT",8,0)
-    local layoutLabel=Text(body,L["Starting layout"],"GameFontNormal");ui.layoutLabel=layoutLabel;layoutLabel:SetPoint("TOPLEFT",0,-72)
+    end);ui.close:SetPoint("TOPLEFT",0,-238)
+    local layoutLabel=Text(body,L["Starting layout"],"GameFontNormal");ui.layoutLabel=layoutLabel;layoutLabel:SetPoint("TOPLEFT",0,-104)
     ui.layout=LayoutDropdown(body,PreviewLayout,true,function() return ui.previewID or ui.currentLayout or "custom" end)
-    ui.layout:SetWidth(200);ui.layout:SetPoint("LEFT",layoutLabel,"RIGHT",12,0)
-    ui.applyLayout=Button(body,L["Apply layout"],110,ApplyPreset);ui.applyLayout:SetPoint("LEFT",ui.layout,"RIGHT",8,0)
-    ui.cancelLayout=Button(body,L["Cancel"],74,function() ui.previewID=nil;ui.previewTarget=nil;ui.notice=nil;Refresh() end);ui.cancelLayout:SetPoint("LEFT",ui.applyLayout,"RIGHT",6,0)
-    ui.previewNote=Text(body,"","GameFontHighlightSmall");ui.previewNote:SetPoint("TOPLEFT",0,-94);ui.previewNote:SetPoint("TOPRIGHT",0,-94);ui.previewNote:SetHeight(40)
-    local add=CreateFrame("Frame",nil,body,"BackdropTemplate");ui.addForm=add;add:SetPoint("TOPLEFT",0,-32);add:SetPoint("TOPRIGHT",0,-32);add:SetHeight(132);ns.SettingsPanel.Box(add,0.5);add:Hide()
-    local nameLabel=Text(add,L["Window name"],"GameFontNormal");nameLabel:SetPoint("TOPLEFT",10,-10)
+    ui.layout:SetWidth(216);ui.layout:SetPoint("TOPLEFT",0,-126)
+    ui.applyLayout=Button(body,L["Apply layout"],110,ApplyPreset);ui.applyLayout:SetPoint("TOPLEFT",0,-164)
+    ui.cancelLayout=Button(body,L["Cancel"],100,function() ui.previewID=nil;ui.previewTarget=nil;ui.notice=nil;Refresh() end);ui.cancelLayout:SetPoint("LEFT",ui.applyLayout,"RIGHT",6,0)
+    local add=CreateFrame("Frame",nil,body,"BackdropTemplate");ui.addForm=add;add:SetPoint("TOPLEFT",0,-66);add:SetPoint("TOPRIGHT",0,-66);add:SetHeight(232);add:Hide()
+    local nameLabel=Text(add,L["Window name"],"GameFontNormal");nameLabel:SetPoint("TOPLEFT",0,0)
     ui.name=CreateFrame("EditBox",nil,add,"InputBoxTemplate");ui.name:SetAutoFocus(false);ui.name:SetMaxLetters(31);ui.name:SetFontObject(ns.SettingsPanel.FONT.GameFontHighlight)
-    ui.name:SetHeight(24);ui.name:SetPoint("TOPLEFT",130,-6);ui.name:SetPoint("TOPRIGHT",-108,-6)
+    ui.name:SetHeight(24);ui.name:SetPoint("TOPLEFT",6,-24);ui.name:SetPoint("TOPRIGHT",0,-24)
     ui.name:HookScript("OnTextChanged",function() if ui.status and ui.adding then Refresh() end end)
-    ui.editName=Button(add,L["Edit name"],86,function() AskName(L["Window name"],ui.name:GetText(),function(name) ui.name:SetText(name or "") end) end);ui.editName:SetPoint("TOPRIGHT",-10,-6)
-    local addLabel=Text(add,L["Starting layout"],"GameFontNormal");addLabel:SetPoint("TOPLEFT",10,-46)
+    ui.editName=Button(add,L["Edit name"],86,function() AskName(L["Window name"],ui.name:GetText(),function(name) ui.name:SetText(name or "") end) end);ui.editName:SetPoint("TOPRIGHT",0,-54)
+    local addLabel=Text(add,L["Starting layout"],"GameFontNormal");addLabel:SetPoint("TOPLEFT",0,-94)
     ui.addLayout=LayoutDropdown(add,function(id)
         presetID=id
         if ui.name:GetText()=="" or ui.name:GetText()==ui.suggestedName then ui.suggestedName=id=="blank" and L["New window"] or B:Preset(id).name;ui.name:SetText(ui.suggestedName) end
         Refresh()
-    end,false,function() return presetID end);ui.addLayout:SetWidth(220);ui.addLayout:SetPoint("TOPLEFT",124,-38)
-    local addHelp=Text(add,L["Creates a new window. Your existing windows stay unchanged."],"GameFontHighlightSmall");addHelp:SetPoint("TOPLEFT",10,-72);addHelp:SetPoint("TOPRIGHT",-10,-72)
-    ui.create=Button(add,L["Create window"],140,function()
+    end,false,function() return presetID end);ui.addLayout:SetWidth(216);ui.addLayout:SetPoint("TOPLEFT",0,-116)
+    ui.create=Button(add,L["Create window"],216,function()
         local h,result=B:Create(ui.name:GetText(),presetID)
         if not h then Report(nil,result);return end
         selected=h;ui.adding=false;ui.revealSelected=true;ui.notice=L["Window created. Filters are active."]
         if #result.skipped>0 then ui.notice=ui.notice.."\n"..L["Skipped unavailable:"].." "..table.concat(result.skipped,", ") end
         ui.name:ClearFocus();Refresh()
-    end);ui.create:SetPoint("BOTTOMLEFT",10,8)
+    end);ui.create:SetPoint("TOPLEFT",0,-156)
     local function CancelAdd() ui.adding=false;ui.name:ClearFocus();Refresh() end
-    local cancel=Button(add,L["Cancel"],86,CancelAdd);cancel:SetPoint("LEFT",ui.create,"RIGHT",8,0);ui.name:SetScript("OnEscapePressed",CancelAdd)
-    local filtersArea=CreateFrame("Frame",nil,body);ui.filtersArea=filtersArea;filtersArea:SetPoint("TOPLEFT",0,-112);filtersArea:SetPoint("BOTTOMRIGHT",0,0)
-    ui.native=Button(filtersArea,L["Open Blizzard Settings"],206,function() Act(function() return B:OpenBlizzard(selected) end) end);ui.native:SetPoint("BOTTOMRIGHT",0,0)
+    local cancel=Button(add,L["Cancel"],216,CancelAdd);cancel:SetPoint("TOPLEFT",0,-188);ui.name:SetScript("OnEscapePressed",CancelAdd)
+    Tip(ui.create,L["Creates a new window. Your existing windows stay unchanged."])
+    Tip(ui.applyLayout,L["Replace this window's supported filters with the previewed layout."])
+    local filtersArea=CreateFrame("Frame",nil,editor);ui.filtersArea=filtersArea
+    filtersArea:SetPoint("TOPLEFT",172,0);filtersArea:SetPoint("BOTTOMRIGHT",body,"BOTTOMLEFT",-24,0)
+    ui.native=Button(body,L["Open Blizzard Settings"],216,function() Act(function() return B:OpenBlizzard(selected) end) end);ui.native:SetPoint("TOPLEFT",0,-272)
     local contentTitle=Text(filtersArea,L["What appears here"],"GameFontNormal");ui.contentTitle=contentTitle;contentTitle:SetPoint("TOPLEFT",0,0)
+    ui.previewBadge=CreateFrame("Frame",nil,filtersArea);ui.previewBadge:SetSize(150,20);ui.previewBadge:SetPoint("TOPRIGHT",0,0);ui.previewBadge:EnableMouse(true)
+    ui.previewBadge.text=Text(ui.previewBadge,"","GameFontNormalSmall");ui.previewBadge.text:SetAllPoints();ui.previewBadge.text:SetJustifyH("RIGHT")
+    ui.previewBadge:SetScript("OnEnter",function(self)
+        if GameTooltip then
+            GameTooltip:SetOwner(self,"ANCHOR_RIGHT")
+            GameTooltip:SetText(ui.adding and L["Preview only. Create window to add this chat window; existing windows are unchanged."] or L["Preview only. Apply layout to replace this window's filters, or Cancel."],nil,nil,nil,nil,true);GameTooltip:Show()
+        end
+    end)
+    ui.previewBadge:SetScript("OnLeave",function() if GameTooltip then GameTooltip:Hide() end end)
     ui.search=CreateFrame("EditBox",nil,filtersArea,"SearchBoxTemplate");ui.search:SetAutoFocus(false);ui.search:SetMaxLetters(80);ui.search:SetFontObject(ns.SettingsPanel.FONT.GameFontHighlight)
     if ui.search.Instructions then ui.search.Instructions:SetText(L["Find a message or channel"]) end
     ui.search:SetSize(200,24);ui.search:SetPoint("TOPLEFT",6,-26);ui.search:SetPoint("TOPRIGHT",-98,-26)
@@ -385,10 +404,11 @@ function Editor.Build(host,side)
         local keys={"all"};for _,cat in ipairs(B:Categories()) do keys[#keys+1]=cat.key end
         for i,key in ipairs(keys) do if key==activeCategory then activeCategory=keys[((i-1+delta)%#keys)+1];ui.search:SetText("");Refresh();break end end
     end
-    ui.filters=Scroll(filtersArea);ui.filters:SetPoint("TOPLEFT",0,-94);ui.filters:SetPoint("BOTTOMRIGHT",-16,64)
+    ui.filters=Scroll(filtersArea);ui.filters:SetPoint("TOPLEFT",0,-94);ui.filters:SetPoint("BOTTOMRIGHT",-16,0)
     ui.filters:HookScript("OnSizeChanged",function() if ui.empty then Refresh() end end)
     ui.empty=Text(filtersArea);ui.empty:SetPoint("TOPLEFT",8,-132);ui.empty:SetPoint("TOPRIGHT",-24,-132)
-    ui.status=Text(filtersArea,"","GameFontHighlightSmall");ui.status:SetPoint("BOTTOMLEFT",0,0);ui.status:SetPoint("BOTTOMRIGHT",0,0);ui.status:SetHeight(56)
+    ui.noticeScroll=Scroll(body);ui.noticeScroll:SetPoint("TOPLEFT",0,-278);ui.noticeScroll:SetPoint("BOTTOMRIGHT",-10,0)
+    ui.status=Text(ui.noticeScroll.content,"","GameFontHighlightSmall");ui.status:SetPoint("TOPLEFT",0,0);ui.status:SetPoint("TOPRIGHT",0,0);ui.status:SetJustifyV("TOP")
     host:SetScript("OnShow",function() B:Watch(Refresh);Refresh() end)
     host:SetScript("OnHide",function() B:Unwatch(Refresh);ui.search:ClearFocus();ui.name:ClearFocus();ui.adding=false;ui.previewID=nil;ui.previewTarget=nil end)
     B:Watch(Refresh)

@@ -78,6 +78,14 @@ local f=loadfile('Settings/ChatBuilder.lua');if f then f('FlareUI',ns) end
 assert(ns.ChatBuilderEditor,'chat builder editor is missing')
 local host,side=new('Frame'),new('Frame');side:SetWidth(260)
 ns.ChatBuilderEditor.Build(host,side);host:Show();ns.ChatBuilderEditor.Refresh()
+local originalStatus=ns.ChatBuilder.Status
+ns.ChatBuilder.Status=function() return nil,'Long warning' end;ns.ChatBuilderEditor.Refresh()
+local noticeScroll
+for _,o in ipairs(objects) do if o.kind=='FontString' and o:GetText()=='Long warning' then noticeScroll=o.parent.parent end end
+assert(noticeScroll);noticeScroll:SetVerticalScroll(100)
+ns.ChatBuilder.Status=function() return nil,'New error' end;ns.ChatBuilderEditor.Refresh()
+assert(noticeScroll:GetVerticalScroll()==0,'new notices must start visible after scrolling an older message')
+ns.ChatBuilder.Status=originalStatus;ns.ChatBuilderEditor.Refresh()
 local dropdowns={}
 for _,o in ipairs(objects) do if o.kind=='DropdownButton' then dropdowns[#dropdowns+1]=o end end
 local layout,addLayout,category=unpack(dropdowns)
@@ -92,6 +100,15 @@ local function selectedHandle() for _,h in ipairs(ns.ChatBuilder:Windows()) do i
 local search,nameBox
 for _,o in ipairs(objects) do if o.kind=='EditBox' then if o:IsVisible() then search=o else nameBox=o end end end
 assert(search and nameBox)
+local filterScroll
+for _,o in ipairs(objects) do if o.kind=='CheckButton' and o.parent.entry then filterScroll=o.parent.parent.parent;break end end
+assert(filterScroll and filterScroll.point[1]=='BOTTOMRIGHT' and filterScroll.point[3]==0,'filter list uses the bottom edge with no status footer')
+local middle=filterScroll.parent
+local rename;for _,o in ipairs(objects) do if o.kind=='Button' and o:GetText()=='Rename' then rename=o end end
+assert(rename.parent~=middle and rename.parent.parent==middle.parent,'window actions occupy a separate right column')
+local layoutAnchor=middle.point
+assert(layoutAnchor[1]=='BOTTOMRIGHT' and layoutAnchor[3]=='BOTTOMLEFT','middle ends before the right control column')
+
 search:SetText('loot')
 local loot
 for _,o in ipairs(objects) do if o.kind=='CheckButton' and o:IsVisible() and o.parent.entry then assert(o.parent.entry.key=='LOOT');loot=o end end
@@ -112,6 +129,10 @@ FCF_Close(ChatFrame4);ns.ChatBuilderEditor.Refresh()
 local countWindows=#ns.ChatBuilder:Windows()
 local beforeDraft=table.concat({GetChatWindowMessages(3)},',')
 click('Add window');assert(not layout:IsVisible(),'existing-window layout is hidden while adding')
+assert(middle.point==layoutAnchor and filterScroll.point[3]==0,'creation does not shrink the channel selection area')
+local previewBadge=false
+for _,o in ipairs(objects) do if o:IsVisible() and o:GetText()=='New window preview' then previewBadge=true end end
+assert(previewBadge,'draft has a compact preview label')
 assert(not pcall(click,'Rename') and not pcall(click,'Delete window') and not pcall(click,'Duplicate'),'old window actions hidden during creation')
 for _,o in ipairs(objects) do if o.window then assert(not o.isSelected,'no existing window looks selected during a draft') end end
 choose(addLayout,'Party & Raid')
