@@ -4378,12 +4378,12 @@ local function BuildPlayerCastSettings()
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
         UF.BgOpacitySetting(UF.BAR_BG_OPACITY, get("bgOpacity", UF.BAR_BG_OPACITY), set("bgOpacity")),
+        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = false, get = get("castRange", false), set = set("castRange"),
+          desc = L["The bar turns grey while your target is out of the spell's range."] },
         { name = L["Channel Ticks"], kind = LEM.SettingType.Checkbox, default = false, get = get("channelTicks", false), set = set("channelTicks"),
           desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
         { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueMark", false), set = set("queueMark"),
           desc = L["A mark near the end of the bar: press your next spell after it and it goes off as soon as this one ends."] },
-        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = false, get = get("castRange", false), set = set("castRange"),
-          desc = L["The bar turns grey while your target is out of the spell's range."] },
     })
     -- last: Visibility and Faded Opacity (Visibility.lua; Always by default)
     if ns.Visibility and ns.Visibility.PlayerCastSettings then
@@ -4644,12 +4644,12 @@ local function BuildSettings(unit)
                   desc = L["The end of the bar your latency covers, in red: start the next spell there and it is sent as this one lands."] },
                 { name = L["Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = flag("pushback", false), set = set("pushback"),
                   desc = L["How far being hit has set your cast back (\"+0.5\") or cut your channel short, next to the timer."] },
+                { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = false, get = flag("castRange", false), set = set("castRange"),
+                  desc = L["The bar turns grey while your target is out of the spell's range."] },
                 { name = L["Channel Ticks"], kind = LEM.SettingType.Checkbox, default = false, get = flag("channelTicks", false), set = set("channelTicks"),
                   desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
                 { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = flag("queueMark", false), set = set("queueMark"),
                   desc = L["A mark near the end of the bar: press your next spell after it and it goes off as soon as this one ends."] },
-                { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = false, get = flag("castRange", false), set = set("castRange"),
-                  desc = L["The bar turns grey while your target is out of the spell's range."] },
             }
             for _, item in ipairs(extras) do
                 item.hidden = noCast
