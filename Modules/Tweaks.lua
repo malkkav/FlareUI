@@ -669,6 +669,12 @@ local function QueueSaveSync()
     syncSaveTimer = C_Timer.NewTimer(5, function() syncSaveTimer = nil; SaveSync() end)
 end
 
+-- Builder edits use saved chat APIs; capture them for the existing source only.
+-- SaveSync keeps the user's sync toggle and source-character ownership intact.
+function Tweaks:ChatBuilderChanged()
+    SaveSync()
+end
+
 -- Copies the source's snapshot onto this character, once per snapshot
 local function LoadSync()
     local db = GetDb()
@@ -849,6 +855,7 @@ local function RunLoadSync()
 end
 
 local function InitSyncUI()
+    Tweaks.chatBuilderSyncPending = true
     SyncEvents:RegisterEvent("PLAYER_LOGOUT", SaveSync)
     -- Enemy Nameplates in Combat Only flips its CVar at every fight; the snapshot takes the player's
     -- own value from the forced-CVar memory, so those writes need no new snapshot
@@ -862,6 +869,7 @@ local function InitSyncUI()
     C_Timer.After(3, function()
         -- a no-op when this character is the source, or when none is set yet
         RunLoadSync()
+        Tweaks.chatBuilderSyncPending = false
         -- the source's first snapshot; with no source yet, this character becomes it
         C_Timer.After(1, SaveSync)
     end)

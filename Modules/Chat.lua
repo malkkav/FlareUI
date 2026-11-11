@@ -3483,6 +3483,7 @@ function Chat:Init()
         self:RegisterEvent("PLAYER_LEAVING_WORLD", "SaveHistory")
         Chat.historyEventsRegistered = true
     end
+    self.started = true
 end
 
 --------------------------------------------------

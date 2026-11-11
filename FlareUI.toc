@@ -55,6 +55,8 @@ EditModeOverlays.lua
 
 # Modules (Logic)
 Modules\Chat.lua
+Modules\ChatBuilderCatalog.lua
+Modules\ChatBuilder.lua
 Modules\DamageMeter.lua
 Modules\ActionBars.lua
 Modules\ProcGlow.lua
@@ -91,6 +93,7 @@ TaintWatch.lua
 Settings\EditModeLayout.lua
 Settings\Welcome.lua
 Settings\RadialEditor.lua
+Settings\ChatBuilder.lua
 Settings\Copy.lua
 Settings\WhatsNew.lua
 Settings\Registry.lua
