@@ -860,13 +860,14 @@ function Ring.Layout(f)
 
     ring:ClearAllPoints()
     ring:SetSize(g.D, g.D)
-    -- Forever Style: Blizzard's whole ring, shadow and all, where the art has it against the plate.
-    -- FlareUI Style: a clean circle, as the art's join to the plate has nothing to meet there.
+    -- Both styles: Blizzard's whole ring, shadow and all, cut to the ring only where the plate's band
+    -- meets it (PLATE.maskLeft / maskRight). FlareUI Style had a clean circle, which cut the art's
+    -- own join on the bars' side and left the rim thin there (11-11): it now crops as Forever Style.
     local plate = Ring.Plate(f)
     ring:SetPoint("CENTER", f, left and "LEFT" or "RIGHT", left and g.centre or -g.centre, plate and PLATE.ringRise * g.s or 0)
     local art = ART[Kind(f)]
     ring.Art:ClearAllPoints()
-    if plate then
+    do
         -- out to the atlas's own edges, at the same scale; the plate takes over on the bars' side
         local box = art.box
         local w, h = g.D / (box[2] - box[1]), g.D / (box[4] - box[3])
@@ -874,12 +875,9 @@ function Ring.Layout(f)
         ring.Art:SetPoint("TOPLEFT", ring, "TOPLEFT", left and -out or 0, box[3] * h)
         ring.Art:SetPoint("BOTTOMRIGHT", ring, "BOTTOMRIGHT", left and 0 or out, -(1 - box[4]) * h)
         ring.hasArt = Crop(ring.Art, art, g.side, { box[1], 1, 0, 1 })
-    else
-        ring.Art:SetAllPoints()
-        ring.hasArt = Crop(ring.Art, art, g.side)
     end
     ring:SetShown(ring.hasArt)
-    if plate then
+    do
         -- the whole art past the plate's end; before it only the ring, as the art's copy of the plate's
         -- rails rounds differently from the plate and shows a step. The file is 2.5 radii wide.
         ring.PlateMask:SetTexture(left and PLATE.maskLeft or PLATE.maskRight, "CLAMPTOWHITE", "CLAMPTOWHITE")
@@ -887,14 +885,10 @@ function Ring.Layout(f)
         ring.PlateMask:SetPoint("CENTER", ring, "CENTER")
         ring.PlateMask:SetSize(g.R * 2.5, g.R * 2.5)
     end
-    if plate and ring.artMasked then
+    if ring.artMasked then
         ring.Art:RemoveMaskTexture(ring.Mask)
         ring.Art:AddMaskTexture(ring.PlateMask)
         ring.artMasked = false
-    elseif not plate and not ring.artMasked then
-        ring.Art:RemoveMaskTexture(ring.PlateMask)
-        ring.Art:AddMaskTexture(ring.Mask)
-        ring.artMasked = true
     end
     -- the tint follows the art exactly
     ring.Tint:SetTexture(ring.Art:GetTexture())
