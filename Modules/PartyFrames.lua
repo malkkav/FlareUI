@@ -2224,7 +2224,16 @@ ApplyPreview = function(f)
     end
     local ptMode = TilePowerMode(f, st)
     K.FormatBarText(f.PowerText, ptMode, math_floor((data.power or 1) * 9000), math_floor((data.power or 1) * 100), 9000)
-    if f.HealBar then f.HealBar:SetValue(0); f.AbsorbBar:SetValue(0); K.HideShieldGlow(f.ShieldGlow) end
+    -- a sample incoming heal and shield past the health, as the unit frames' samples show (they read
+    -- as missing on party frames without: a player's question 11-11); none on the dead
+    if f.HealBar then
+        local on = not data.dead
+        f.HealBar:SetMinMaxValues(0, 1)
+        f.AbsorbBar:SetMinMaxValues(0, 1)
+        f.HealBar:SetValue(on and 0.12 or 0)
+        f.AbsorbBar:SetValue(on and 0.15 or 0)
+        K.HideShieldGlow(f.ShieldGlow)
+    end
 
     -- the icons at their size again (Blizzard's role routine narrows the role icon to 1 px when the
     -- unit has no role)
