@@ -22,6 +22,22 @@ S:Module{
     editSystems = function() return ns.Visibility and ns.Visibility.EditSystems and ns.Visibility:EditSystems() or {} end,
 }
 
+-- BAR APPEARANCE (11-11): the bars as a whole, above the buttons' own look
+S:Row{ key = "ab.flareBorders", section = "ab.barAppearance", path = "actionbars.flareBorders", apply = Refresh, half = true }
+-- Blizzard's Cooldown Manager restyled (Auras.lua 9b, so it needs Buffs & Debuffs on); off needs a
+-- reload to give Blizzard's look back
+S:Row{ key = "ab.skinCDM", section = "ab.barAppearance", path = "auras.skinCDM", reload = true, half = true,
+    disabled = function() return not S:GetPath("auras.enabled") end }
+-- every button's scale, as FlareUI 1.0's per-bar scales once (fixed at 106% since)
+local SCALES = {}
+for percent = 70, 150, 2 do SCALES[#SCALES + 1] = { percent / 100, percent .. "%" } end
+S:Row{ key = "ab.buttonScale", kind = "range", section = "ab.barAppearance", choices = SCALES, apply = Refresh,
+    get = function()
+        local v = tonumber(S:GetPath("actionbars.buttonScale")) or 1.06
+        return math.floor(v * 50 + 0.5) / 50
+    end,
+    set = function(v) S:SetPath("actionbars.buttonScale", v) end }
+
 -- in pairs (half rows): the button's state, its art, its text, the spells, paging
 S:Row{
     key = "ab.statusColours", section = "ab.buttonAppearance", apply = Refresh, half = true,
@@ -44,10 +60,6 @@ S:Row{ key = "ab.autoRanks", section = "ab.spellBehavior", path = "actionbars.au
 S:Row{ key = "ab.stopAutoAdd", section = "ab.spellBehavior", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
 S:Row{ key = "ab.stealthPaging", section = "ab.spellBehavior", path = "actionbars.stealthPaging", apply = Refresh, half = true }
 S:Row{ key = "ab.noStancePaging", section = "ab.spellBehavior", path = "actionbars.noStancePaging", apply = Refresh, half = true }
--- last in Button Appearance, beside Gryphons Behind Bars: Blizzard's Cooldown Manager restyled (Auras.lua 9b,
--- so it needs Buffs & Debuffs on); off needs a reload to give Blizzard's look back
-S:Row{ key = "ab.skinCDM", section = "ab.buttonAppearance", path = "auras.skinCDM", reload = true, half = true,
-    disabled = function() return not S:GetPath("auras.enabled") end }
 
 -- the FlareUI XP Bar: off leaves Blizzard's bars alone, so turning it on or off reloads; its options sit
 -- under it and grey out while it's off

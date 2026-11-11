@@ -104,6 +104,13 @@ ns.Copy = {
             label = L["Show Button Art"],
             section = "ab.buttonAppearance",
         },
+        ["ab.buttonScale"] = {
+            desc = L["The size of every action button. 106% is FlareUI's default."],
+            label = L["Bar Scale"],
+            section = "ab.barAppearance",
+            tags = { "button scale", "action bar size" },
+            tip = L["Edit Mode's Icon Size still sizes each bar on top of it."],
+        },
         ["ab.cleanKeybinds"] = {
             desc = L["Shorter key labels:\n* SM4: Shift + Mouse Button 4\n* SP: Spacebar\n* WU: Mouse Wheel Up"],
             label = L["Clean Keybind Text"],
@@ -177,6 +184,12 @@ ns.Copy = {
             section = "ab.fakeCooldownManager",
             tags = { "show condition", "show", "view conditions", "show when" },
             tip = L["Always clears the others; nothing ticked means Always. Setup mode always shows them."],
+        },
+        ["ab.flareBorders"] = {
+            desc = L["Square buttons in FlareUI's thin border, as the unit frames, in place of Blizzard's frame."],
+            label = L["FlareUI Borders"],
+            section = "ab.barAppearance",
+            tags = { "button border", "skin action bars" },
         },
         ["ab.font.count"] = {
             desc = L["Item counts and charges."],
@@ -263,7 +276,7 @@ ns.Copy = {
             desc = L["Blizzard's Cooldown Manager in FlareUI's look:\n* Tracked Bars like FlareUI's cast bars\n* Tracked Buffs like FlareUI's buffs"],
             label = L["Skin Cooldown Manager"],
             reload = true,
-            section = "ab.buttonAppearance",
+            section = "ab.barAppearance",
             tags = { "cooldown manager", "tracked bars", "tracked buffs", "cdm" },
             tip = L["Needs Buffs & Debuffs on. Size, layout and tracking stay in Blizzard's Cooldown Manager."],
         },
@@ -1939,6 +1952,7 @@ ns.Copy = {
         },
     },
     sections = {
+        ["ab.barAppearance"] = L["Bar Appearance"],
         ["ab.buttonAppearance"] = L["Button Appearance"],
         ["ab.buttonText"] = L["Button Text"],
         ["ab.experience"] = L["XP Bar"],

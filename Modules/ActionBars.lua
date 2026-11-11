@@ -36,7 +36,7 @@ local canaccessvalue = canaccessvalue
 -- 3. CONSTANTS & DATA
 --------------------------------------------------
 local RANGE_INDICATOR = _G.RANGE_INDICATOR
-local BUTTON_SCALE = 1.06
+local BUTTON_SCALE = 1.06   -- Bar Scale's default (actionbars.buttonScale)
 
 -- text offsets from the button's corner: hotkey top right, count bottom right, macro name bottom
 local HOTKEY_X, HOTKEY_Y = -4, -4
@@ -192,6 +192,67 @@ local function ApplyButtonArt(button)
     button:SetPushedAtlas("UI-HUD-ActionBar-IconFrame-Down")
     button.PushedTexture:SetDrawLayer("OVERLAY")
     button.PushedTexture:SetSize(w, h)
+end
+
+--------------------------------------------------
+-- 6b. FLAREUI BORDERS (Bar Appearance, actionbars.flareBorders, off; 11-11, a player's request)
+-- Blizzard's round-cornered frame goes invisible, the icon is square (its rounded mask off, its edge
+-- trimmed) and FlareUI Thin, the unit frames' border, goes round it. Off puts all of it back.
+--------------------------------------------------
+local function SkinBorder(button, on)
+    local icon = button.icon or button.Icon
+    if not (icon and button.NormalTexture) then return end
+    if on then
+        if not button.FlareUI_Border then
+            local b = CreateFrame("Frame", nil, button, "BackdropTemplate")
+            b:SetPoint("TOPLEFT", -2, 2)
+            b:SetPoint("BOTTOMRIGHT", 2, -2)
+            button.FlareUI_Border = b
+        end
+        local b = button.FlareUI_Border
+        local LSM = LibStub("LibSharedMedia-3.0")
+        local file = LSM:Fetch("border", "FlareUI Thin")
+        b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, 10) })
+        local c = ns.BORDER_COLOR
+        b:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
+        -- over the cooldown swipe, under the texts' frame
+        b:SetFrameLevel(button:GetFrameLevel() + 2)
+        b:Show()
+        button.NormalTexture:SetAlpha(0)
+        if button.IconMask and not button.FlareUI_MaskOff then
+            icon:RemoveMaskTexture(button.IconMask)
+            button.FlareUI_MaskOff = true
+        end
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        if button.SlotArt then button.SlotArt:SetAlpha(0) end
+        button.FlareUI_Bordered = true
+    elseif button.FlareUI_Bordered then
+        if button.FlareUI_Border then button.FlareUI_Border:Hide() end
+        button.NormalTexture:SetAlpha(1)
+        if button.IconMask and button.FlareUI_MaskOff then
+            icon:AddMaskTexture(button.IconMask)
+            button.FlareUI_MaskOff = nil
+        end
+        icon:SetTexCoord(0, 1, 0, 1)
+        if button.SlotArt then button.SlotArt:SetAlpha(1) end
+        button.FlareUI_Bordered = nil
+    end
+end
+
+local function UpdateBordersAll()
+    local db = GetBarConfig()
+    local on = db and db.enabled and db.flareBorders or false
+    for _, button in ipairs(GetAllActionButtons()) do
+        -- Blizzard's art update sets the frame again: hidden again after it
+        if on and not button.FlareUI_BorderHooked and button.UpdateButtonArt then
+            button.FlareUI_BorderHooked = true
+            hooksecurefunc(button, "UpdateButtonArt", function(self)
+                local now = GetBarConfig()
+                if now and now.enabled and now.flareBorders then SkinBorder(self, true) end
+            end)
+        end
+        SkinBorder(button, on)
+    end
 end
 
 local function UpdateButtonArtAll()
@@ -1045,6 +1106,7 @@ function ActionBars:Refresh(event)
 
     UpdateGryphonLayer(db)
     UpdateButtonArtAll()
+    UpdateBordersAll()
     SetupRangeColors()
     SetupCooldowns()
     wipe(fcmButtons)
@@ -1059,7 +1121,7 @@ function ActionBars:Refresh(event)
 
     local buttons = GetAllActionButtons()
     for _, btn in ipairs(buttons) do
-        btn:SetScale(BUTTON_SCALE)
+        btn:SetScale(math.max(0.5, math.min(2, tonumber(db.buttonScale) or BUTTON_SCALE)))
         UpdateButtonText(btn)
         -- one-off repaint; the hooks keep it current
         OnUpdateUsable(btn)
