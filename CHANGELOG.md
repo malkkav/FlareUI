@@ -1,3 +1,15 @@
+# FlareUI 6.0.1
+
+## Changed
+- Action bars: **Skin Cooldown Manager** follows Blizzard's own Cooldown Manager switch. While the Cooldown Manager is off, FlareUI leaves it alone and the option is greyed out. Thanks for the report!
+- Settings: a tab's NEW badge sits centred on the tab's top edge.
+
+## Fixed
+- Player cast bar: your own casts keep their normal colour. Some spells turned the bar grey, whatever **Range Check** was set to. Thanks for the report!
+- Nameplates: with **Hide Level**, crowd control icons sit right beside the health bar again, without a gap. Thanks for the report!
+- Unit frames, FlareUI Style: the portrait ring's rim is clean at the bottom, and nothing shows through beside the portrait.
+- Settings: long translations, such as Russian, no longer run past buttons, card titles, section headers or the page list. Text wraps, then shrinks to fit.
+
 # FlareUI 6.0
 
 **Restart the game fully after updating** (not just /reload): this version adds new files.
