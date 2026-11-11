@@ -273,8 +273,7 @@ local function Plate(texture, frame)
     end
 end
 
--- Square style (11-11 Marcus): the zone / clock plate without its bronze edge, only the plate. (The
--- tracking and calendar buttons, cut the same way, looked broken: they keep their art.) The
+-- Square style (11-11 Marcus): each header element without its bronze edge, only what it shows. The
 -- art is cut HEADER_CROP pixels in on every side and drawn that much smaller, so icons and plate keep
 -- their size. owner: the frame the art fills. The plate's ends are no longer sliced (nothing left to keep).
 function MM.CropHeaderArt(texture, owner)
@@ -291,6 +290,17 @@ function MM.CropHeaderArt(texture, owner)
     texture:ClearAllPoints()
     texture:SetPoint("TOPLEFT", owner, "TOPLEFT", inset, -inset)
     texture:SetPoint("BOTTOMRIGHT", owner, "BOTTOMRIGHT", -inset, inset)
+end
+
+-- the button's art, cropped again each time Blizzard sets its atlas (a state change resets the crop)
+local function KeepCropped(button)
+    for _, key in ipairs({ "StateTexture", "AddTexture" }) do
+        local texture = button and button[key]
+        if texture then
+            MM.CropHeaderArt(texture, button)
+            hooksecurefunc(texture, "SetAtlas", function(self) MM.CropHeaderArt(self, button) end)
+        end
+    end
 end
 
 -- The bar behind the zone text and clock: Forever's cluster has no BorderTop, and the zone button's
@@ -347,9 +357,11 @@ local function StyleHeader()
     tracking.Button:ClearAllPoints()
     tracking.Button:SetAllPoints(tracking)
     FitButtonArt(tracking.Button)
+    KeepCropped(tracking.Button)
     local calendar = _G.GameTimeFrame
     calendar:SetSize(HEADER_HEIGHT, HEADER_HEIGHT)
     FitButtonArt(calendar)
+    KeepCropped(calendar)
 
     -- the plate is the header's; the zone button's mouse-over glow spreads over all of it
     local zoneButton, zoneText = Cluster.ZoneTextButton, _G.MinimapZoneText
@@ -1297,6 +1309,8 @@ do
         sq.Art = art
         sq.Tracking = ArtFrame(sq, TRACKING_ATLAS, HEADER_HEIGHT)
         sq.Calendar = ArtFrame(sq, CALENDAR_ATLAS, HEADER_HEIGHT)
+        MM.CropHeaderArt(sq.Tracking.Art, sq.Tracking)
+        MM.CropHeaderArt(sq.Calendar.Art, sq.Calendar)
         sq.Header = CreateHeader(sq)
         ZoneAndClock(sq.Header)
         local row = sq:GetFrameLevel() + ROW_LEVEL
