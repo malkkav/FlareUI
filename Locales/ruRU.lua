@@ -576,6 +576,7 @@ L["FlareUI's own frames already sit where the layout expects them"] = "Фрей�
 L["FlareUI's own quest tracker."] = "Собственный трекер заданий FlareUI."
 L["FlareUI's own XP bar, with your watched reputation or honor beside it. Off brings back Blizzard's bars."] = "Полоса опыта FlareUI. Рядом с ней отображается отслеживаемая репутация или честь. При выключении возвращаются стандартные полосы Blizzard."
 L["FlareUI's square minimap, or Forever's own round one."] = "Квадратная миникарта FlareUI или штатная круглая миникарта Forever."
+L["FlareUI's thin border, as on the unit frames, in place of the buttons' bronze frame. The rest of the button stays as it is."] = "Тонкая рамка FlareUI, как у рамок юнитов, вместо бронзовой рамки кнопок. Остальное в кнопке не меняется."
 L["FlareUI's XP bar, with your watched reputation or honor beside it.\n* Off: Blizzard's bars"] = "Полоса опыта FlareUI, рядом — отслеживаемая репутация или честь.\n* Выкл.: полосы Blizzard"
 L["Flashes the taskbar and plays a sound for:\n* Ready checks\n* Summons and resurrections\n* Group invites\n* Dungeon queues"] = "Значок игры на панели задач мигает и звучит сигнал при следующих событиях:\n* Проверка готовности\n* Призыв и воскрешение\n* Приглашение в группу\n* Срабатывание очереди в подземелье"
 L["Flips the frame to face the player frame. In FlareUI and Forever Style, only the bars flip."] = "Разворачивает фрейм к фрейму игрока. В стилях FlareUI и Forever разворачиваются только полосы."

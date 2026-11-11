@@ -140,6 +140,7 @@ L["Find Herbs or Find Minerals is off while you know one."] = "Trova erbe o Trov
 L["First names and surnames:\n* Player and target frames: always\n* Party and focus frames: in Forever Style"] = "Nomi e cognomi:\n* Frame giocatore e bersaglio: sempre\n* Frame gruppo e focus: in Forever Style"
 L["FlareUI Borders"] = "Bordi FlareUI"
 L["FlareUI Loot Feed"] = "FlareUI: bottino ricevuto"
+L["FlareUI's thin border, as on the unit frames, in place of the buttons' bronze frame. The rest of the button stays as it is."] = "Il bordo sottile di FlareUI, come sui riquadri unità, al posto della cornice di bronzo dei pulsanti. Il resto del pulsante non cambia."
 L["FlareUI's XP bar, with your watched reputation or honor beside it.\n* Off: Blizzard's bars"] = "La barra XP di FlareUI, con accanto la reputazione o l'onore che segui.\n* Disattivo: barre di Blizzard"
 L["Flips the frame to face the player frame. In FlareUI and Forever Style, only the bars flip."] = "Specchia il frame verso il frame giocatore. In FlareUI e Forever Style si specchiano solo le barre."
 L["Font Preview"] = "Anteprima font"

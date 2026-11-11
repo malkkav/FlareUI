@@ -186,7 +186,7 @@ ns.Copy = {
             tip = L["Always clears the others; nothing ticked means Always. Setup mode always shows them."],
         },
         ["ab.flareBorders"] = {
-            desc = L["Square buttons in FlareUI's thin border, as the unit frames, in place of Blizzard's frame."],
+            desc = L["FlareUI's thin border, as on the unit frames, in place of the buttons' bronze frame. The rest of the button stays as it is."],
             label = L["FlareUI Borders"],
             section = "ab.barAppearance",
             tags = { "button border", "skin action bars" },

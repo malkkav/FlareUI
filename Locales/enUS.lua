@@ -515,6 +515,7 @@ L["FlareUI's files didn't load completely. Restart the game. If this keeps happe
 L["FlareUI's own frames already sit where the layout expects them"] = true
 L["FlareUI's own quest tracker."] = true
 L["FlareUI's square minimap, or Forever's own round one."] = true
+L["FlareUI's thin border, as on the unit frames, in place of the buttons' bronze frame. The rest of the button stays as it is."] = true
 L["FlareUI's XP bar, with your watched reputation or honor beside it.\n* Off: Blizzard's bars"] = true
 L["Flashes the taskbar and plays a sound for:\n* Ready checks\n* Summons and resurrections\n* Group invites\n* Dungeon queues"] = true
 L["Flips the frame to face the player frame. In FlareUI and Forever Style, only the bars flip."] = true
@@ -1235,7 +1236,6 @@ L["Spells"] = true
 L["Spells, items, mounts, macros and raid markers"] = true
 L["Spirit regeneration resumes when the spark ends."] = true
 L["Square"] = true
-L["Square buttons in FlareUI's thin border, as the unit frames, in place of Blizzard's frame."] = true
 L["Stack"] = true
 L["Stack Count"] = true
 L["Stamina"] = true

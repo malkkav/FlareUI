@@ -196,8 +196,9 @@ end
 
 --------------------------------------------------
 -- 6b. FLAREUI BORDERS (Bar Appearance, actionbars.flareBorders, off; 11-11, a player's request)
--- Blizzard's round-cornered frame goes invisible, the icon is square (its rounded mask off, its edge
--- trimmed) and FlareUI Thin, the unit frames' border, goes round it. Off puts all of it back.
+-- Only the frame changes (11-11 Marcus): Blizzard's bronze frame goes invisible and FlareUI Thin, the
+-- unit frames' border, goes where it was. The icon, its rounded corners, the slot art and every other
+-- part of the button stay Blizzard's. Off shows Blizzard's frame again.
 --------------------------------------------------
 local function SkinBorder(button, on)
     local icon = button.icon or button.Icon
@@ -205,8 +206,9 @@ local function SkinBorder(button, on)
     if on then
         if not button.FlareUI_Border then
             local b = CreateFrame("Frame", nil, button, "BackdropTemplate")
-            b:SetPoint("TOPLEFT", -2, 2)
-            b:SetPoint("BOTTOMRIGHT", 2, -2)
+            -- over the edge Blizzard's frame drew
+            b:SetPoint("TOPLEFT", -3, 3)
+            b:SetPoint("BOTTOMRIGHT", 3, -3)
             button.FlareUI_Border = b
         end
         local b = button.FlareUI_Border
@@ -219,22 +221,10 @@ local function SkinBorder(button, on)
         b:SetFrameLevel(button:GetFrameLevel() + 2)
         b:Show()
         button.NormalTexture:SetAlpha(0)
-        if button.IconMask and not button.FlareUI_MaskOff then
-            icon:RemoveMaskTexture(button.IconMask)
-            button.FlareUI_MaskOff = true
-        end
-        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        if button.SlotArt then button.SlotArt:SetAlpha(0) end
         button.FlareUI_Bordered = true
     elseif button.FlareUI_Bordered then
         if button.FlareUI_Border then button.FlareUI_Border:Hide() end
         button.NormalTexture:SetAlpha(1)
-        if button.IconMask and button.FlareUI_MaskOff then
-            icon:AddMaskTexture(button.IconMask)
-            button.FlareUI_MaskOff = nil
-        end
-        icon:SetTexCoord(0, 1, 0, 1)
-        if button.SlotArt then button.SlotArt:SetAlpha(1) end
         button.FlareUI_Bordered = nil
     end
 end
