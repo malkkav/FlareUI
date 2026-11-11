@@ -28,6 +28,7 @@ end
 -- a Copy Layout Code button; greyed with a tooltip while there is no code yet
 function Layout.Button(parent, width)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    if ns.SkinButton then ns.SkinButton(b) end
     b:SetText(ns.L["Copy Layout Code"])
     b:SetSize(ns.Settings.ButtonWidthForText(b, width or 160), 24)
     b:SetMotionScriptsWhileDisabled(true)

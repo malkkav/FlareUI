@@ -73,17 +73,37 @@ end
 local function LibDBIcon() return LibStub and LibStub("LibDBIcon-1.0", true) end
 local function LibDataBroker() return LibStub and LibStub("LibDataBroker-1.1", true) end
 
+-- Keep on the Minimap (11-11, a player's request): Shift+Right-Click a LibDBIcon addon's icon in the
+-- drawer and its own button stays on the minimap (minimap.bagKeep["ldb:<name>"]); the icon stays in
+-- the drawer, dimmed, and the same click puts it back. Only LibDBIcon's: other addons' buttons lose
+-- their place on the map when they move into the drawer.
+local MM_Lift = function() if ns.Minimap and ns.Minimap.LiftMapButtons then ns.Minimap.LiftMapButtons() end end
+local function Kept(name)
+    local db = GetDb()
+    return db and type(db.bagKeep) == "table" and db.bagKeep["ldb:" .. name] or false
+end
+
 -- A LibDBIcon button off the minimap, without touching LibDBIcon's settings
-local function ParkIcon(frame)
-    if not frame or parked[frame] then return end
+local function ParkIcon(frame, name)
+    if not frame or parked[frame] or (name and Kept(name)) then return end
     parked[frame] = true
     frame:SetParent(hiddenParent)
+end
+
+-- back on the minimap where LibDBIcon keeps it
+local function UnparkIcon(frame, name)
+    if not (frame and parked[frame]) then return end
+    parked[frame] = nil
+    frame:SetParent(Minimap)
+    local lib = LibDBIcon()
+    if lib and lib.Refresh then pcall(lib.Refresh, lib, name) end
+    if MM_Lift then MM_Lift() end
 end
 
 local function ParkAllIcons()
     local lib = LibDBIcon()
     if not lib then return end
-    for _, name in ipairs(lib:GetButtonList() or {}) do ParkIcon(lib:GetMinimapButton(name)) end
+    for _, name in ipairs(lib:GetButtonList() or {}) do ParkIcon(lib:GetMinimapButton(name), name) end
 end
 
 -- A button LibDBIcon really made; look-alike names without the library count as foreign buttons
@@ -235,7 +255,7 @@ local function CollectEntries()
             local object = ldb:GetDataObjectByName(name)
             local frame = lib:GetMinimapButton(name)
             if object and frame then
-                ParkIcon(frame)
+                ParkIcon(frame, name)
                 local label = StripText(object.label or object.text or name)
                 entries[#entries + 1] = { kind = "ldb", name = name, label = label ~= "" and label or name,
                                           object = object, frame = frame }
@@ -312,6 +332,14 @@ local function AnchorTooltip(owner)
     end
 end
 
+-- the Keep on the Minimap line under an LibDBIcon icon's tooltip
+local function KeepHint(e)
+    if e.kind ~= "ldb" then return end
+    GameTooltip:AddLine(Kept(e.name) and L["Shift+Right-Click: back in the drawer"] or L["Shift+Right-Click: keep on the minimap"],
+        0.5, 0.5, 0.5)
+    GameTooltip:Show()
+end
+
 local function OnIconEnter(self)
     local e = self.entry
     if not e then return end
@@ -328,6 +356,7 @@ local function OnIconEnter(self)
             GameTooltip:AddLine(e.label)
             GameTooltip:Show()
         end
+        if GameTooltip:IsShown() then KeepHint(e) end
     elseif e.kind == "compartment" then
         if e.data.funcOnEnter then
             e.data.funcOnEnter(self)
@@ -359,6 +388,23 @@ end
 local function OnIconClick(self, mouseButton)
     local e = self.entry
     if not e or Bag.justDragged then return end
+    -- Keep on the Minimap, or back in the drawer
+    if e.kind == "ldb" and mouseButton == "RightButton" and IsShiftKeyDown() then
+        local db = GetDb()
+        if not db then return end
+        db.bagKeep = type(db.bagKeep) == "table" and db.bagKeep or {}
+        local id = "ldb:" .. e.name
+        if db.bagKeep[id] then
+            db.bagKeep[id] = nil
+            ParkIcon(e.frame, e.name)
+        else
+            db.bagKeep[id] = true
+            UnparkIcon(e.frame, e.name)
+        end
+        Bag:Layout()
+        OnIconEnter(self)
+        return
+    end
     GameTooltip:Hide()
     C_Timer.After(0, function()
         if not AnyMenuOpen() then Bag:Close() end
@@ -370,13 +416,10 @@ local function OnIconClick(self, mouseButton)
     end
 end
 
--- The bag's own button for a LibDBIcon or compartment entry, in the action button look
-local function GetIconButton(i)
-    local b = buttons[i]
-    if b then return b end
-    b = CreateFrame("Button", nil, panel)
+-- The action button look of the bag's own icons (also the settings preview's sample)
+function Bag.NewIconButton(parent)
+    local b = CreateFrame("Button", nil, parent)
     b:SetSize(C.BUTTON, C.BUTTON)
-    b:RegisterForClicks("AnyUp")
     b.icon = b:CreateTexture(nil, "BACKGROUND")
     b.icon:SetAllPoints()
     local mask = b:CreateMaskTexture()
@@ -393,6 +436,15 @@ local function GetIconButton(i)
         t:SetPoint("TOPLEFT")
         t:SetSize(31.6 * art, 30.9 * art)
     end
+    return b
+end
+
+-- The bag's own button for a LibDBIcon or compartment entry
+local function GetIconButton(i)
+    local b = buttons[i]
+    if b then return b end
+    b = Bag.NewIconButton(panel)
+    b:RegisterForClicks("AnyUp")
     b:SetScript("OnEnter", OnIconEnter)
     b:SetScript("OnLeave", OnIconLeave)
     b:SetScript("OnClick", OnIconClick)
@@ -490,6 +542,8 @@ function Bag:Layout()
             frame = GetIconButton(used)
             frame.entry = e
             SetIcon(frame.icon, e.kind == "ldb" and e.object.icon or e.data.icon, e.kind == "ldb" and e.object or nil)
+            -- kept on the minimap: dimmed here
+            frame:SetAlpha(e.kind == "ldb" and Kept(e.name) and 0.4 or 1)
             frame:ClearAllPoints()
             frame:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y)
             -- back under the drag handles (a dragged icon is lifted)
@@ -631,19 +685,24 @@ local function OpenOnHover()
     hoverWatch:Show()
 end
 
+-- The panel's backdrop on any BackdropTemplate frame (also the settings preview's sample)
+function Bag.StylePanel(f)
+    local bg = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
+    local edge = LSM:IsValid("border", C.BORDER) and LSM:Fetch("border", C.BORDER) or nil
+    f:SetBackdrop({ bgFile = bg, edgeFile = edge, tile = false, tileSize = 0,
+        edgeSize = ns.BorderEdgeSize(edge, 16), insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+    f:SetBackdropColor(1, 1, 1, C.OPACITY)
+    local b = ns.BORDER_COLOR
+    f:SetBackdropBorderColor(b.r, b.g, b.b, b.a)
+end
+
 local function CreatePanel()
     panel = CreateFrame("Frame", "FlareUI_MinimapBag", UIParent, "BackdropTemplate")
     panel:SetFrameStrata("HIGH")
     panel:SetClampedToScreen(true)
     panel:EnableMouse(true)
     panel:Hide()
-    local bg = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
-    local edge = LSM:IsValid("border", C.BORDER) and LSM:Fetch("border", C.BORDER) or nil
-    panel:SetBackdrop({ bgFile = bg, edgeFile = edge, tile = false, tileSize = 0,
-        edgeSize = ns.BorderEdgeSize(edge, 16), insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-    panel:SetBackdropColor(1, 1, 1, C.OPACITY)
-    local b = ns.BORDER_COLOR
-    panel:SetBackdropBorderColor(b.r, b.g, b.b, b.a)
+    Bag.StylePanel(panel)
 
     panel.empty = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     panel.empty:SetPoint("CENTER")
@@ -692,7 +751,7 @@ function Bag:Init()
     -- run while addons finish loading
     local lib = LibDBIcon()
     if lib and lib.RegisterCallback then
-        lib.RegisterCallback(Bag, "LibDBIcon_IconCreated", function(_, button) ParkIcon(button) end)
+        lib.RegisterCallback(Bag, "LibDBIcon_IconCreated", function(_, button, name) ParkIcon(button, name) end)
     end
     local function Sweep()
         ParkAllIcons()
@@ -711,4 +770,55 @@ function Bag:Init()
         pending = true
         C_Timer.After(0.5, function() pending = false; Sweep() end)
     end)
+end
+
+--------------------------------------------------
+-- 6. SETTINGS PREVIEW SAMPLE (drawn under the Minimap module's sample)
+-- The panel's look and grid with one row of icons: the player's own LibDBIcon icons, only read (no
+-- button is parked or adopted), else stand-ins
+--------------------------------------------------
+local SAMPLE_ICONS = { "Interface\\Icons\\INV_Misc_Bag_08", "Interface\\Icons\\INV_Misc_Book_09",
+                       "Interface\\Icons\\INV_Misc_Map_01", "Interface\\Icons\\INV_Misc_Gear_01" }
+
+function Bag.CreateSample(parent)
+    local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    f.fuiSample = true
+    f:EnableMouse(false)
+    Bag.StylePanel(f)
+    f.icons = {}
+    for i = 1, C.COLUMNS do
+        local b = Bag.NewIconButton(f)
+        b:EnableMouse(false)
+        f.icons[i] = b
+    end
+    return f
+end
+
+function Bag.DrawSample(f)
+    local objects = {}
+    local lib, ldb = LibDBIcon(), LibDataBroker()
+    if lib and ldb then
+        for _, name in ipairs(lib:GetButtonList() or {}) do
+            local object = ldb:GetDataObjectByName(name)
+            if object and object.icon then objects[#objects + 1] = object end
+            if #objects >= C.COLUMNS then break end
+        end
+    end
+    local count = #objects > 0 and #objects or #SAMPLE_ICONS
+    local step = C.BUTTON + C.SPACING
+    for i, b in ipairs(f.icons) do
+        if i <= count then
+            local object = objects[i]
+            SetIcon(b.icon, object and object.icon or SAMPLE_ICONS[i], object)
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", f, "TOPLEFT", C.PAD + (i - 1) * step, -C.PAD)
+            b:Show()
+        else
+            b:Hide()
+        end
+    end
+    local width, height = C.PAD * 2 + count * step - C.SPACING, C.PAD * 2 + C.BUTTON
+    f:SetSize(width, height)
+    f:Show()
+    return width, height
 end

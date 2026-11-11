@@ -20,7 +20,7 @@ local function Frame(key, path, frameName)
 end
 
 S:Module{
-    key = "uf", group = "HUD", order = 20, enabled = "unitframes.enabled",
+    key = "uf", group = "combat", order = 20, enabled = "unitframes.enabled",
     tabs = { { key = "settings" }, { key = "fonts" } },
     -- the frames behind the shared Player / Pet / Target / Focus row
     editFrames = {
@@ -59,18 +59,35 @@ Frame("tof", "unitframes.units.focustarget.enabled", "FlareUI_UF_TargetOfFocus")
 
 -- each style keeps its own unit frames setup (UnitFramesRing.lua), loaded on reload
 S:Row{
-    key = "uf.frameStyle", kind = "choice", reload = true, choices = { "flareui", "forever", "addon" },
+    key = "uf.frameStyle", kind = "styles", reload = true, choices = { "flareui", "forever", "addon" },
     get = function() return ns.UFRing and ns.UFRing.Style() or "addon" end,
     set = function(value)
         if ns.UFRing then ns.UFRing.SetStyle(value) end
     end,
 }
+-- Colour Palette: FlareUI, Blizzard or Custom (11-11). Custom starts from the palette picked before it
+-- (customBase) and shows Pick Your Colours (Settings/ColorPicker.lua).
+local function ApplyPalette()
+    if ns.UnitFrames and ns.UnitFrames.ApplyPalette then ns.UnitFrames.ApplyPalette() end
+    Refresh()
+    if ns.PartyFrames and ns.PartyFrames.Refresh then ns.PartyFrames:Refresh() end
+    -- Resource Bars that follow this palette
+    if ns.ResourceBars and ns.ResourceBars.Refresh then ns.ResourceBars:Refresh() end
+end
 S:Row{
-    key = "uf.palette", kind = "choice", path = "unitframes.palette", choices = { "flareui", "blizzard" },
-    apply = function()
-        if ns.UnitFrames and ns.UnitFrames.ApplyPalette then ns.UnitFrames.ApplyPalette() end
-        Refresh()
+    key = "uf.palette", kind = "choice", choices = { "flareui", "blizzard", "custom" },
+    get = function() return S:GetPath("unitframes.palette") or "flareui" end,
+    set = function(value)
+        local before = S:GetPath("unitframes.palette") or "flareui"
+        if value == "custom" and before ~= "custom" then S:SetPath("unitframes.customBase", before) end
+        S:SetPath("unitframes.palette", value)
     end,
+    apply = ApplyPalette,
+}
+S:Row{
+    key = "uf.pickColors", kind = "button", parent = "uf.palette",
+    hidden = function() return S:GetPath("unitframes.palette") ~= "custom" end,
+    apply = function() if ns.ColorPicker then ns.ColorPicker.Open("uf") end end,
 }
 -- (each frame's fading is in its Edit Mode dialog: Visibility.lua, UnitFrames.lua section 14)
 S:Row{ key = "uf.fullNames", path = "unitframes.fullNames", apply = Refresh }

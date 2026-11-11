@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 5.1.2
+## Version: 6.0
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -48,6 +48,7 @@ Locales\zhTW.lua
 Core.lua
 Import.lua
 Dialog.lua
+ProfileLayout.lua
 GamepadMode.lua
 Media.lua
 EditModeOverlays.lua
@@ -93,6 +94,8 @@ Settings\RadialEditor.lua
 Settings\Copy.lua
 Settings\WhatsNew.lua
 Settings\Registry.lua
+Settings\Preview.lua
+Settings\PreviewSamples.lua
 Settings\Fonts.lua
 Settings\Pages\About.lua
 Settings\Pages\ActionBars.lua
@@ -110,3 +113,4 @@ Settings\Pages\Advanced.lua
 Settings\Pages\Language.lua
 Settings\PadNav.lua
 Settings\Panel.lua
+Settings\ColorPicker.lua

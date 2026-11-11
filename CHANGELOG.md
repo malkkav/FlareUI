@@ -1,3 +1,84 @@
+# FlareUI 6.0
+
+**Restart the game fully after updating** (not just /reload): this version adds new files.
+
+FlareUI 6.0 brings a whole new settings window. We rebuilt it from the ground up, with one goal: make it as easy to use as we can. Every page now shows a live example of what it changes, drawn by the real frames, so you see the result before you leave the window. Options sit in clear sections, search takes you straight to them, and the whole window wears WoW: Forever's own bronze and stone. Tell us what still feels hard to find. Thanks to Jeor for starting this!
+
+## Highlights
+- **A new settings window**: live previews, clearer pages, better search, and a look that matches the game.
+- **Custom colours**: pick your own colour for every unit frame and resource bar.
+- **Profiles follow you**: a profile now brings its frame positions to every character that uses it.
+
+## Settings window
+- Every page shows a live preview of what it changes, drawn by the real frames in your current style.
+- A new **Settings** page holds **Sync**, **Move Any Window**, **UI Scale** and **Language**.
+- Search shows how many options it found; press **Enter** to jump to the first one.
+- Module switches sit in the list on the left, so you can turn a module on or off without opening it.
+- A new look: WoW: Forever's heavy bronze frame, a stone background, stone switches and round game icons.
+- The **setup tour** (/fui tour) has the same look.
+
+## New
+- Unit frames: **Colour Palette** gets **Custom**. **Pick Your Colours** opens a window with every bar colour and live samples beside them. Thanks for the request!
+  - Click a colour to change it; right-click it to go back to the palette's own. **Reset All** clears them.
+  - Custom starts from the palette you had.
+- Resource bars: their own **Colour Palette** (FlareUI, Blizzard or Custom), in the new **Look** section. Until you change it, it follows the unit frames' palette. Thanks for the request!
+- Settings: **Text Scale** (100%), under **UI Scale**, makes all text larger or smaller without changing the frames. Thanks for the question!
+- Action bars: a new **Bar Appearance** section. Thanks for the request!
+  - **Skin Action Bars** (on) gives every bar's buttons FlareUI's bronze frame.
+  - **Bar Scale** (111%) sizes every button, in 0.5% steps.
+  - **Skin Cooldown Manager** moved here, and now frames the Essential and Utility cooldown icons too.
+- Buff Reminders: more reminders.
+  - Druids: **Thorns**.
+  - Paladins: **Righteous Fury** while you're the group's tank, and an aura when none is on.
+  - Warriors: a stance when you have none.
+  - Warlocks: a **Healthstone** in your bags.
+  - Pets left on **Passive**. Click the icon to set them to Defensive.
+  - **Camping and Rest** (off): Forever's camp benefits and the Cozy Sleeping Bag's Well-Rested. Click to use the bag.
+  - **Gathering Tracking** (off): Find Herbs or Find Minerals when it's off.
+- Buff Reminders: right-click an icon to **Hide Until Reload** or **Never Remind Me**. **Hidden Reminders** brings them back.
+- Buff Reminders: **Remind Before It Ends** can be set apart for dungeons and raids.
+- Buff Reminders: **Group Buff Filters** hide group buffs while you're a tank, healer, damage dealer or have no role (all off).
+- Buff Reminders, in Edit Mode:
+  - **Count Text** (Missing / Total, Missing Only or Off), **Spacing** and **Opacity**.
+  - **Growth** can start from the middle.
+  - A **Fading** section: **Visibility** (Solo, In a Party, In a Raid, **In Combat**), **Hide in Rested Areas**, **Fade Speed** and **Opacity**.
+- Loot Feed: **Show Skill-Ups** (off) adds skill gains, like "Mining 76", to the feed. Thanks for the request!
+- Loot Feed: font, size, outline and shadow, in a new **Quality of Life › Fonts** tab. Thanks for the request!
+- Tooltips › Show Tooltips: **On Buffs/Debuffs** (Always) and **On Party/Raid Auras** (Never). Set the second to Always or Hide in Combat to see tooltips on party and raid aura icons. Thanks for the request!
+- Swing timers: **Bar Text** and **Timer** (both on), in Edit Mode's **Look**, hide the swing's name or the seconds left. Thanks for the request!
+- Player cast bar: **Range Check** (off) greys the bar while your target is out of range. It's in the cast bar's **Look** and in the player frame's **Cast Bar** section. Thanks for the question!
+- Minimap: in the addon button drawer, **Shift+Right-Click** an icon to keep that addon's button on the minimap. Do it again to put it back. Thanks for the request!
+- Loot rolls and toasts: **Scale** in their Edit Mode dialogs.
+- Edit Mode: the Quest Tracker, Totems, Buffs/Debuffs, XP Bar and Buff Reminders get a **Frame** section. The tracker, the auras and the XP bar get a **Fading** section.
+
+## Changed
+- Profiles: a profile's frame positions now follow it to characters on other Edit Mode layouts. Thanks for the report!
+  - Switching profiles offers the Edit Mode layout it was set up on, or explains how to copy it.
+  - **New** asks whether to copy your current profile or start from defaults. **Duplicate** is gone.
+  - The Profiles page explains what a profile holds.
+- Shields: the part that doesn't fit after your health (all of it at full health) now shows over the health bar, from its end backwards. You see how much shield is left as you're hit. Unit frames, party and raid frames, and the Health resource bar. Thanks for the request!
+- Buff Reminders: the **Blessing**, **Thorns** and **Pet Reminders** rows are gone, to keep the page short.
+  - Pick who gets your Blessing or Thorns (**Tanks Only**, **Only Me** or **Everyone**) from the icon's right-click menu.
+  - Pets you turned off, and Thorns set to Off, carry over as hidden reminders.
+- Buff Reminders: **Visibility**, **Hide in Rested Areas** and **Opacity** moved to the Edit Mode **Fading** section.
+- Party and raid frames: Edit Mode samples show an incoming heal and a shield, as the unit frames' do. Thanks for the question!
+- Unit frames, FlareUI Style: the portrait ring keeps its full rim on the bars' side, as in Forever Style.
+- Edit Mode: every FlareUI dialog's sections start closed after a reload.
+- Edit Mode: **Range Check** is the first switch in **Look** and **Show Level** the first in **Frame**. **Spell Pushback** comes before **Latency Zone**.
+- Edit Mode: the ring's threat number sits over the middle of the ring.
+- Loot rolls: a bronze border.
+- Battleground objectives: a tidier Edit Mode sample, and the real scores sit on FlareUI's Thick plate.
+- Damage Meter: Blizzard's Edit Mode dialog for the meter no longer shows **Visibility**, **Transparency** or **Background**. They did nothing with FlareUI's meter: use **Settings › Damage Meter**. Thanks for the report!
+- UI Scale: its tip now says **Pixel Perfect** is about sharp borders. Text is sharp at any scale.
+
+## Fixed
+- Unit frames: no more blocked-action errors when a druid shapeshifts in combat with the ring styles. Thanks for the report!
+- Chat: undocked windows, such as World, no longer come back lower after login, over the main chat's tabs. Thanks for the report!
+- Nameplates: with **Hide Level**, the quest badge sits beside the health bar, not under it. Thanks for the report!
+- XP bar: the border draws over the bar, so its corners no longer show square ends. Thanks for the report!
+- Minimap: addon buttons on the square minimap's edge no longer sit under its border. Thanks for the report!
+- Bags: empty slots in **Integrated Bag Buttons** no longer show an "Equip Container" tooltip.
+
 # FlareUI 5.1.2
 
 ## New
@@ -457,69 +538,6 @@ Biggest update for FlareUI yet. Every single aspect of the addon is improved in 
 - `/fui perf`: the report's "highest" column is labelled "highest 1 s average".
 - Several safety checks on values the game keeps secret in combat and instances.
 
-# FlareUI 4.3
-
-Radials that know which character they belong to, a cleaner Radial Menu page, an official FlareUI Edit Mode layout, a round minimap and two action bar tweaks.
-
-**Restart the game fully after updating** (not just /reload): this version adds a new file.
-
-## New
-- Radial Menu: each radial has its own **Available to** (all characters, all Alliance or Horde characters, all characters of a class, or only this character) and its own **Key**, shared by every character that gets it. Your characters pick up their radials at login, so a Druid radial stays on your Druids. Two radials can share a key: on a character that gets both, the narrower one wins. Tick **Only this character** to give one character its own key.
-- Radial Menu: **Copy** a radial (handy for a Horde or class version), and **Create macro** right next to its key.
-- Minimap: **Style**, Square (the default) or Round, Forever's own round minimap, thanks to parchinskiy. Needs a reload.
-- The **FlareUI Edit Mode layout**: copy its code from the bottom of the About page (or the new page in the setup tour) and import it in Edit Mode to set your screen up like ours.
-- Action Bars, Tweaks: **Steady attack highlight** (on): Attack, Auto Shot and Shoot stay lit in red while they're on, instead of blinking.
-- Action Bars, Tweaks: **Gryphons behind bars** (off): the art at each end of the main bar sits behind your bars instead of over them.
-
-## Changed
-- Radial Menu page: one Radials tab with your radials on the right, what opens on this character below them, and a bigger editor with a two-column Catalog. The Keybinds tab is gone: your keys were moved onto your radials and every character keeps the keys it had.
-- Radial Menu now sits below Quality of Life in the settings list.
-- Party frames: new default places for Forever Style and FlareUI Style (frames you already moved stay where they are).
-- Quest Tracker: an empty tracker says why, instead of looking minimized.
-
-## Fixed
-- Action bar 1: the page arrows no longer hide under the left gryphon.
-- Pet bar with Show button art: the frames no longer hang over each other.
-
-# FlareUI 4.2
-
-Stack counts get their own font, chat windows can be made click-through from the tab menu, and every aura frame now follows one shared set of rules, which fixes several aura bugs.
-
-## New
-- Buffs & Debuffs and Unit Frames: **Aura stacks** font on the Fonts tab, with face, size, outline and shadow for stack counts, separate from the timers. It starts as a copy of your timer font, so nothing changes until you edit it. On unit frames its size can be **Auto** (the default), sized to the icon.
-- Chat: **Make Uninteractable** in the chat tab's right-click menu, Blizzard's own option. Links in that window stop reacting and it can't be resized. Docked windows switch together. Right-click the tab again to undo it.
-
-## Changed
-- Unit Frames, Aura timers font: its Size now works. **Auto** (the default) keeps sizing the timer to the icon.
-- Party, raid and main tank frames: with dispel icons on, a debuff you can dispel shows only as its dispel icon, no longer a second time in the debuff row, like Blizzard's raid frames.
-- Boss frames pick their debuffs the same way as the target frame, no longer by party-frame rules.
-- The "Restore your Edit Mode layout?" prompt after switching characters now reloads your interface to finish the switch.
-
-## Fixed
-- Target, focus and pet: **Only My Debuffs** hid other players' debuffs on friendly units and on yourself. It now filters enemies only, like Blizzard's target frame.
-- Action bars could vanish in combat until the fight ended after restoring an Edit Mode layout from FlareUI's prompt.
-- A Lua error when opening Edit Mode in combat or in an instance with Buffs & Debuffs on.
-- Party and raid frames: the dispel highlight added a hidden slot each time you changed its look in Edit Mode.
-- Pet frame: Hide Buffs no longer hides timed buffs while the pet is far away, like target and focus.
-
-# FlareUI 4.1
-
-Your damage meter as a chat tab, a real Clear All for raid markers, and two fixes.
-
-## New
-- Damage Meter: **Meter tab in the chat**, off by default, thanks to Gregory Duhamel. A Meter tab joins your chat tabs and shows Blizzard's meter inside the chat window, at the chat's size. Click a chat tab to get the chat back, in combat too. A chat tab whose messages arrive while the meter covers them lights up. Find it in Settings > Damage Meter > Meter Tab, with:
-  - **Open the Meter tab**: When clicked, In combat (back to the chat after the fight, the default), In group or At login.
-  - **Ignore chat fade**: the chat window stays up while the Meter tab is open.
-  - While the tab is on, the meter's own Visibility waits, and it doesn't show in the Gamepad UI.
-- Radial menu: **Clear All Markers** removes every raid marker on players and enemies at once. Add it from the Markers category in the radial menu editor. New radials get it on their own.
-
-## Changed
-- Radial menu: the two old clear slices now say what they do: **Clear Target's Marker** and **Clear World Markers** (the flares on the ground). If your "Clear All" slice never removed the marks over heads, it was Clear World Markers: swap it for Clear All Markers.
-- Combat + Attackable Target (Fake Cooldown Manager, fading bars and Resource Bars): a dead target no longer counts, so clicking a corpse to loot it doesn't bring the bars back.
-
-## Fixed
-- Player cast bar with Cinematic: it no longer stays hidden after a login or /reload.
-
 ---
 
-Older versions (4.0 and before): [CHANGELOG-history.md](CHANGELOG-history.md).
+Older versions (4.3 and before): [CHANGELOG-history.md](CHANGELOG-history.md).

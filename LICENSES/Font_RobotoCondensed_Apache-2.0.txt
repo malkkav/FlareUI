@@ -1,4 +1,4 @@
-Roboto Condensed (Media/Fonts/RobotoCondensed-Regular.ttf)
+Roboto Condensed (Media/Fonts/RobotoCondensed-Regular.ttf, RobotoCondensed-Bold.ttf)
 Copyright 2011 Google Inc. All Rights Reserved.
 Licensed under the Apache License, Version 2.0:
 

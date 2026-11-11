@@ -39,6 +39,9 @@ local ASSETS = {
         ["Cabin Condensed"]  = "Fonts/CabinCondensed-Regular.ttf",
         ["Barlow Condensed"] = "Fonts/BarlowCondensed-Regular.ttf",
         ["Roboto Condensed"] = "Fonts/RobotoCondensed-Regular.ttf",
+        ["Roboto Condensed Bold"] = "Fonts/RobotoCondensed-Bold.ttf",
+        -- the settings window's titles (11-10 panel rework); Latin only
+        ["Marcellus"]        = "Fonts/Marcellus-Regular.ttf",
     },
 }
 
@@ -50,6 +53,8 @@ local FONT_ALPHABETS = {
     ["Cabin Condensed"]  = LSM.LOCALE_BIT_western,
     ["Barlow Condensed"] = LSM.LOCALE_BIT_western,
     ["Roboto Condensed"] = LATIN_CYRILLIC,
+    ["Roboto Condensed Bold"] = LATIN_CYRILLIC,
+    ["Marcellus"]        = LSM.LOCALE_BIT_western,
 }
 
 for mediaType, entries in pairs(ASSETS) do

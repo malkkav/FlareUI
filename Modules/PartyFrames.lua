@@ -487,6 +487,7 @@ local function UpdateHealPrediction(f)
     local max = UnitHealthMax(unit)
     heal:SetMinMaxValues(0, max)
     absorb:SetMinMaxValues(0, max)
+    K.SetOverAbsorb(f.OverAbsorb, unit, max)
     local calc = f.HealCalc
     if calc and UnitGetDetailedHealPrediction then
         if pcall(UnitGetDetailedHealPrediction, unit, "player", calc) then
@@ -752,7 +753,11 @@ local function UpdatePortrait(f)
 end
 
 local function UpdateCast(f, event, by, barID)
-    if f.Cast then K.UpdateCastBar(f.Cast, f.Cast.isEnabled(), event, by, barID) end
+    if not f.Cast then return end
+    -- a settings preview's sample has no unit: the Edit Mode sample cast
+    -- (a settings preview's sample shows the frame only)
+    if f.fuiSample then f.Cast:Hide() return end
+    K.UpdateCastBar(f.Cast, f.Cast.isEnabled(), event, by, barID)
 end
 
 local ApplyPreview, HidePreviewExtras   -- section 9
@@ -769,7 +774,10 @@ local function RefreshAurasOnNewUnit(f)
 end
 
 local function UpdateAll(f)
-    if IsEditing() then
+    -- (a settings preview's sample always shows the Edit Mode values)
+    -- (a sample is drawn only once laid out: its OnShow can come first)
+    if f.fuiSample and not f.fuiLaid then return end
+    if IsEditing() or f.fuiSample then
         ApplyPreview(f)
         UpdateRing(f)
         return
@@ -941,11 +949,40 @@ local function PassClicks(button)
     if button.SetPropagateMouseClicks then pcall(button.SetPropagateMouseClicks, button, true) end
 end
 
--- Party and raid tiles show no aura tooltips: hovering an icon falls through to the tile (its unit
--- tooltip, mouseover healing). Clicks still reach the icon. Boss tiles keep theirs.
+-- Party and raid tiles' aura tooltips: Tooltips > On Party/Raid Auras (tooltips.visibility.groupAuras).
+-- Never (the default): hovering an icon falls through to the tile (its unit tooltip, mouseover
+-- healing). Always: the icons take the mouse. Hide in Combat: only out of a fight, switched as one
+-- starts (PLAYER_REGEN_DISABLED, the last moment before lockdown) and ends, so mouseover healing
+-- works in it. Clicks reach the tile either way. Boss tiles keep theirs. (11-11, a player's request)
+local groupAuraButtons = setmetatable({}, { __mode = "k" })
+local inFight = false
+local function GroupAuraMouse()
+    local db = ns.db and ns.db.profile and ns.db.profile.tooltips
+    local mode = db and db.enabled and db.visibility and db.visibility.groupAuras or "never"
+    return mode == "always" or (mode == "combat" and not inFight)
+end
+
 local function NoAuraTooltip(f, button)
     if f and f.ctx and f.ctx.hostile then return end
-    if button.SetMouseMotionEnabled then pcall(button.SetMouseMotionEnabled, button, false) end
+    groupAuraButtons[button] = true
+    if button.SetMouseMotionEnabled then pcall(button.SetMouseMotionEnabled, button, GroupAuraMouse()) end
+end
+
+function PF.ApplyAuraMouse()
+    local on = GroupAuraMouse()
+    for button in pairs(groupAuraButtons) do
+        if button.SetMouseMotionEnabled then pcall(button.SetMouseMotionEnabled, button, on) end
+    end
+end
+
+do
+    local fight = CreateFrame("Frame")
+    fight:RegisterEvent("PLAYER_REGEN_DISABLED")
+    fight:RegisterEvent("PLAYER_REGEN_ENABLED")
+    fight:SetScript("OnEvent", function(_, event)
+        inFight = event == "PLAYER_REGEN_DISABLED"
+        if next(groupAuraButtons) then PF.ApplyAuraMouse() end
+    end)
 end
 
 -- A dispel type's symbol, drawn by Blizzard from the aura
@@ -1439,6 +1476,9 @@ local function LayoutHealClip(f)
     if absorbTex == "" then absorbTex = st.texture end
     absorb:SetStatusBarTexture(K.GetBarTexture(absorbTex))
     absorb:SetStatusBarColor(K.ABSORB_COLOR[1], K.ABSORB_COLOR[2], K.ABSORB_COLOR[3], K.ABSORB_COLOR[4])
+    heal:SetStatusBarColor(K.HEAL_COLOR[1], K.HEAL_COLOR[2], K.HEAL_COLOR[3], K.HEAL_COLOR[4])   -- (the Colour Palette may have changed it)
+    -- the shield with no room after the health, over it (UnitFrames.lua UF.CreateOverAbsorb)
+    K.PlaceOverAbsorb(f.OverAbsorb, health, width, mirror, K.GetBarTexture(absorbTex))
 end
 
 local function CastStyle(st)
@@ -1601,7 +1641,7 @@ end
 local function LayoutMember(f)
     local st = TS(f)
     if not st then return end
-    if InCombatLockdown() then pendingLayout = true return end
+    if InCombatLockdown() and not f.fuiSample then pendingLayout = true return end
     -- FlareUI Style's ring, or back to the plain tile
     local kind = RingKind(f)
     if kind then
@@ -1913,8 +1953,8 @@ local function GetLayoutStore(layoutName)
     if not party then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     party.layouts = party.layouts or {}
-    party.layouts[layoutName] = party.layouts[layoutName] or {}
-    return party.layouts[layoutName]
+    -- (a layout with no spot of its own reads the profile's home layout's: ProfileLayout.lua)
+    return ns.LayoutHome(party.layouts, layoutName)
 end
 
 local function ApplyPosition(layoutName)
@@ -2217,7 +2257,17 @@ ApplyPreview = function(f)
     end
     local ptMode = TilePowerMode(f, st)
     K.FormatBarText(f.PowerText, ptMode, math_floor((data.power or 1) * 9000), math_floor((data.power or 1) * 100), 9000)
-    if f.HealBar then f.HealBar:SetValue(0); f.AbsorbBar:SetValue(0); K.HideShieldGlow(f.ShieldGlow) end
+    -- a sample incoming heal and shield past the health, as the unit frames' samples show (they read
+    -- as missing on party frames without: a player's question 11-11); none on the dead
+    if f.HealBar then
+        local on = not data.dead
+        f.HealBar:SetMinMaxValues(0, 1)
+        f.AbsorbBar:SetMinMaxValues(0, 1)
+        f.HealBar:SetValue(on and 0.12 or 0)
+        f.AbsorbBar:SetValue(on and 0.15 or 0)
+        K.HideShieldGlow(f.ShieldGlow)
+        K.SetOverAbsorb(f.OverAbsorb, nil, 1, on and 0.15 or 0)
+    end
 
     -- the icons at their size again (Blizzard's role routine narrows the role icon to 1 px when the
     -- unit has no role)
@@ -2259,7 +2309,8 @@ ApplyPreview = function(f)
     K.ResetBorderTint(f.Border)
     UpdatePortrait(f)
     UpdateCast(f)
-    ApplyPreviewExtras(f, data)
+    -- the icons and auras of Edit Mode's sample; a settings preview shows the frame alone
+    if f.fuiSample then HidePreviewExtras(f) else ApplyPreviewExtras(f, data) end
 
     local p = not f.ctx and pets[f.index]
     if p then
@@ -2423,13 +2474,14 @@ local function BuildTile(f, unit)
     absorb:SetValue(0)
     f.HealClip, f.HealBar, f.AbsorbBar = clip, heal, absorb
     f.ShieldGlow = K.CreateShieldGlow(f.Health, clip)
+    f.OverAbsorb = K.CreateOverAbsorb(f.Health, clip)
     if CreateUnitHealPredictionCalculator then
         local ok, calc = pcall(CreateUnitHealPredictionCalculator)
         if ok and calc then f.HealCalc = calc end
     end
 
     if not f.ctx or f.ctx.castbar then
-        f.Cast = K.CreateCastBar(f, unit)
+        f.Cast = K.CreateCastBar(f, unit, f.fuiSample)
         f.Cast.isEnabled = function() local st = TS(f); return st and st.castbar and true or false end
     end
 
@@ -2923,6 +2975,27 @@ PF.Tile = {
     PlacesClash = PlacesClash, ABOVE_PLACES = ABOVE_PLACES, BELOW_PLACES = BELOW_PLACES,
     IconShown = IconShown, IconStore = IconStore, LanesExtent = LanesExtent,
 }
+
+-- A settings preview's sample tile (11-10): a plain button with no unit, mouse or auras, built and laid
+-- out by the tile kit, showing the Edit Mode sample. ctx: the owner's (raid, boss), or nil for the
+-- party; index: the party sample's place (PREVIEW)
+function PF.SampleTile(parent, ctx, sample, index)
+    local f = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    f.ctx, f.sample, f.index = ctx, sample, index
+    f.noAuras, f.fuiSample = true, true
+    BuildTile(f, nil)
+    f:EnableMouse(false)
+    f:SetScript("OnEnter", nil)
+    f:SetScript("OnLeave", nil)
+    return f
+end
+function PF.DrawSampleTile(f)
+    LayoutMember(f)
+    f.fuiLaid = true
+    UpdateAll(f)
+    f:Show()
+    return f:GetWidth(), f:GetHeight()
+end
 
 -- The aura places for a dropdown, without one (the party frames have no Left of the Frame, the
 -- boss frames no Right of the Frame: that side faces the screen's edge)

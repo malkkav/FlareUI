@@ -92,6 +92,8 @@ UF.PALETTES = {
         hostile = { 0.87, 0.27, 0.27 }, neutral = { 0.93, 0.78, 0.25 }, friendly = { 0.30, 0.78, 0.30 },
         cast = { 0.80, 0.60, 0.36 }, castNoInterrupt = { 0.55, 0.55, 0.55 }, castChannel = { 0.30, 0.65, 0.90 },
         playerCast = { 0.36, 0.56, 0.78 }, playerChannel = { 0.50, 0.75, 0.88 },
+        interrupted = { 0.85, 0.12, 0.10 }, latency = { 1, 0.15, 0.1 },
+        heal = { 11/255, 136/255, 105/255 }, absorb = { 0.67, 0.78, 0.92 },
         -- health bars only, kept apart from these classes' mana and energy bars; names keep the real colours
         classHealth = { SHAMAN = { 0.00, 0.32, 0.62 }, ROGUE = { 0.90, 0.80, 0.25 } },
     },
@@ -101,32 +103,96 @@ UF.PALETTES = {
         hostile = { 1, 0, 0 }, neutral = { 1, 1, 0 }, friendly = { 0, 1, 0 },
         cast = { 1, 0.7, 0 }, castNoInterrupt = { 0.7, 0.7, 0.7 }, castChannel = { 0, 1, 0 },
         playerCast = { 1, 0.7, 0 }, playerChannel = { 0, 1, 0 },
+        interrupted = { 0.85, 0.12, 0.10 }, latency = { 1, 0.15, 0.1 },
+        heal = { 11/255, 136/255, 105/255 }, absorb = { 0.67, 0.78, 0.92 },
         texture = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Flat-Bright",
     },
 }
 
--- The palette's own health bar colour for a class, or nil for the class's real colour
+-- COLOUR PALETTE: FlareUI, Blizzard, or Custom (11-11): Custom keeps the colours the player picked
+-- (unitframes.customColors, key -> { r, g, b }) over the palette it started from (customBase). Keys:
+-- the palettes' own, "class:<CLASS>" (health bars), "rage" / "energy" / "focus" (power bars).
+-- Resource Bars has the same three under its own settings (ResourceBars.lua RB.ApplyPalette).
+UF.CLASSES = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
+UF.POWER_KEYS = { rage = "RAGE", energy = "ENERGY", focus = "FOCUS" }
+
+-- a palette's colour for a key, as { r, g, b }: classes their real colour unless the palette has its
+-- own, power its Blizzard colour
+function UF.PaletteColor(key, paletteName)
+    local p = UF.PALETTES[paletteName] or UF.PALETTES.flareui
+    local class = key:match("^class:(.+)$")
+    if class then
+        local own = p.classHealth and p.classHealth[class]
+        if own then return own end
+        local c = C_ClassColor and C_ClassColor.GetClassColor(class)
+        if c then return { c.r, c.g, c.b } end
+        return p.health
+    end
+    local token = UF.POWER_KEYS[key]
+    if token then
+        local c = _G.PowerBarColor and _G.PowerBarColor[token]
+        if c and c.r then return { c.r, c.g, c.b } end
+        return (UF.POWER_FALLBACK and UF.POWER_FALLBACK[token]) or p.mana
+    end
+    return p[key]
+end
+
+-- the colour in use for a key (a custom one first)
+function UF.Color(key)
+    local db = ns.db and ns.db.profile and ns.db.profile.unitframes
+    if UF.palette == "custom" then
+        local own = db and db.customColors and db.customColors[key]
+        if type(own) == "table" and own[1] then return own end
+    end
+    return UF.PaletteColor(key, UF.basePalette or "flareui")
+end
+
+-- The health bar colour for a class in use, or nil for the class's real colour
 function ns.ClassHealthOverride(classFile)
-    local overrides = UF.PALETTES[UF.palette or "flareui"].classHealth
+    if UF.palette == "custom" then
+        local db = ns.db and ns.db.profile and ns.db.profile.unitframes
+        local own = db and db.customColors and db.customColors["class:" .. tostring(classFile)]
+        if type(own) == "table" and own[1] then return own end
+    end
+    local overrides = UF.PALETTES[UF.basePalette or "flareui"].classHealth
     return overrides and overrides[classFile]
 end
 
 function UF.ApplyPalette()
     local db = ns.db and ns.db.profile and ns.db.profile.unitframes
-    UF.palette = (db and db.palette == "blizzard") and "blizzard" or "flareui"
-    local p = UF.PALETTES[UF.palette]
-    local function set(dst, src) dst[1], dst[2], dst[3] = src[1], src[2], src[3] end
-    set(ns.HEALTH_GREEN, p.health)
-    set(ns.MANA_BLUE, p.mana)
-    set(GREY, p.grey)
+    local palette = db and db.palette
+    if palette ~= "blizzard" and palette ~= "custom" then palette = "flareui" end
+    UF.palette = palette
+    UF.basePalette = palette == "custom" and (db.customBase == "blizzard" and "blizzard" or "flareui") or palette
+    local function set(dst, src) if dst and src then dst[1], dst[2], dst[3] = src[1], src[2], src[3] end end
+    local C = UF.Color
+    set(ns.HEALTH_GREEN, C("health"))
+    set(ns.MANA_BLUE, C("mana"))
+    set(GREY, C("grey"))
     for reaction = 1, 8 do
-        set(REACTION[reaction], reaction <= 3 and p.hostile or reaction == 4 and p.neutral or p.friendly)
+        set(REACTION[reaction], reaction <= 3 and C("hostile") or reaction == 4 and C("neutral") or C("friendly"))
     end
-    set(CAST_COLOR, p.cast)
-    set(CAST_NOINTERRUPT, p.castNoInterrupt)
-    set(CAST_CHANNEL, p.castChannel)
-    set(PLAYER_CAST_COLOR, p.playerCast)
-    set(PLAYER_CAST_CHANNEL, p.playerChannel)
+    set(CAST_COLOR, C("cast"))
+    set(CAST_NOINTERRUPT, C("castNoInterrupt"))
+    set(CAST_CHANNEL, C("castChannel"))
+    set(PLAYER_CAST_COLOR, C("playerCast"))
+    set(PLAYER_CAST_CHANNEL, C("playerChannel"))
+    set(UF.INTERRUPT_COLOR, C("interrupted"))
+    set(UF.LAG_COLOR, C("latency"))
+    set(UF.HEAL_COLOR, C("heal"))
+    set(UF.ABSORB_COLOR, C("absorb"))
+    -- custom power colours only: the others keep Blizzard's
+    local power
+    if palette == "custom" and db.customColors then
+        for key, token in pairs(UF.POWER_KEYS) do
+            local own = db.customColors[key]
+            if type(own) == "table" and own[1] then power = power or {}; power[token] = own end
+        end
+    end
+    ns.POWER_OVERRIDE = power
+    -- a new version on every apply: a custom colour changes nothing else (the player's health keeps its
+    -- colour until it differs)
+    UF.paletteVersion = (UF.paletteVersion or 0) + 1
 end
 
 -- Power colours when PowerBarColor lacks one
@@ -142,6 +208,7 @@ local POWER_FALLBACK = {
     FURY        = { 0.79, 0.26, 0.99 },
     PAIN        = { 1.00, 0.61, 0.00 },
 }
+UF.POWER_FALLBACK = POWER_FALLBACK   -- (UF.PaletteColor, above)
 
 -- Unit definitions. `driver` is the visibility condition; player is always shown.
 local UNITS = {
@@ -307,6 +374,9 @@ local function GetDb()
 end
 
 local function GetUnitDb(unit)
+    -- while a settings preview lays out a sample (UF.DrawSample): the sample's own setup
+    local sample = ns.UFSample
+    if sample and sample.units[unit] then return sample.units[unit] end
     local db = GetDb()
     return db and db.units and db.units[unit]
 end
@@ -413,7 +483,7 @@ local percentCurve = CurveConstants.ScaleTo100
 -- An unknown name falls back to FlareUI Forever; mirrored: its right-to-left gradient file
 local function GetBarTexture(name, mirrored)
     if not (name and name ~= "" and LSM:IsValid("statusbar", name)) then name = DEFAULT_TEXTURE end
-    if name == "FlareUI Flat" and UF.palette == "blizzard" then return UF.PALETTES.blizzard.texture end
+    if name == "FlareUI Flat" and UF.basePalette == "blizzard" then return UF.PALETTES.blizzard.texture end
     if mirrored and name == "FlareUI Forever" then return "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mirrored.tga" end
     if mirrored and name == "FlareUI Forever (Light)" then return "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Bright-Mirrored.tga" end
     return LSM:Fetch("statusbar", name) or "Interface\\TargetingFrame\\UI-StatusBar"
@@ -725,13 +795,13 @@ local function UpdateHealth(f, glide)
     local udb = GetUnitDb(unit)
     local bar = f.Health
 
-    -- Edit Mode: sample health in the unit's colour when there is one
-    if ns.EditPreviewing() then
+    -- Edit Mode (and a settings preview's sample): sample health in the unit's colour when there is one
+    if f.fuiSample or ns.EditPreviewing() then
         f.colorClass = nil   -- the colour below is the sample's: the next tick sets it again
         local health = (UNITS[unit].sample or {}).health or 0.75
         bar:SetMinMaxValues(0, 1)
         bar:SetValue(health)
-        if UnitExists(unit) then
+        if UnitExists(unit) and not f.fuiSample then
             bar:SetStatusBarColor(GetHealthColor(unit, ns.ClassColorsOn(udb)))
         elseif unit == "pet" then
             local c = REACTION[5]
@@ -761,9 +831,9 @@ local function UpdateHealth(f, glide)
         local _, file = UnitClass(unit)
         if canaccessvalue(file) then classFile = file end
     end
-    if not (classFile and f.colorClass == classFile and f.colorPalette == UF.palette and f.colorClassOn == classOn) then
+    if not (classFile and f.colorClass == classFile and f.colorPalette == UF.paletteVersion and f.colorClassOn == classOn) then
         bar:SetStatusBarColor(GetHealthColor(unit, classOn))
-        f.colorClass, f.colorPalette, f.colorClassOn = classFile, UF.palette, classOn
+        f.colorClass, f.colorPalette, f.colorClassOn = classFile, UF.paletteVersion, classOn
     end
 
     local mode = udb and udb.healthText or "percent"
@@ -899,12 +969,13 @@ local function GetCastStyle(udb, standalone)
     }
 end
 
-local function CreateCastBar(parent, unit)
+-- sample: a settings preview's (no Edit Mode selection, not in castBars)
+local function CreateCastBar(parent, unit, sample)
     local cast = CreateBar(parent, parent:GetFrameLevel() + 1)
     cast.unit = unit
     cast:SetMinMaxValues(0, 1)
     cast:Hide()
-    LEM:AddSelectionArea(cast)
+    if not sample then LEM:AddSelectionArea(cast) end
 
     cast.Backdrop = CreateFrame("Frame", nil, cast, "BackdropTemplate")
     cast.Backdrop:SetFrameLevel(cast:GetFrameLevel() - 1)
@@ -941,7 +1012,7 @@ local function CreateCastBar(parent, unit)
     cast:HookScript("OnShow", ShownChanged)
     cast:HookScript("OnHide", ShownChanged)
 
-    castBars[#castBars + 1] = cast
+    if not sample then castBars[#castBars + 1] = cast end
     return cast
 end
 
@@ -1198,10 +1269,18 @@ end
 -- short ("-0.5"), kept from the cast's first end time.
 UF.LAG_COLOR, UF.DELAY_COLOR = { 1, 0.15, 0.1, 0.45 }, { 1, 0.3, 0.25 }
 -- Your own cast greys out while the target is out of the spell's range (a spell that can't go on
--- the target, a heal on an enemy, answers nil and keeps its colour)
+-- the target, a heal on an enemy, answers nil and keeps its colour). Only with Range Check on (off by
+-- default, 11-11: players took the grey for a bug): the standalone bar's in playerCastbar, the
+-- player frame's bar with the frame's settings.
 UF.CAST_OUT_OF_RANGE = { 0.5, 0.5, 0.5 }
+function UF.CastRangeOn(cast)
+    local db = GetDb()
+    local pc
+    if cast.standalone then pc = db and db.playerCastbar else pc = GetUnitDb("player") end
+    return pc and pc.castRange or false
+end
 function UF.CastRangeCheck(cast)
-    local id = cast.rangeSpell
+    local id = UF.CastRangeOn(cast) and cast.rangeSpell
     local r = id and UnitExists("target") and C_Spell.IsSpellInRange(id, "target")
     local out = (canaccessvalue(r) and r == false) or false
     if out == cast.outOfRange then return end
@@ -1716,7 +1795,7 @@ local function UpdatePortrait(f)
         portrait:Hide()
         return
     end
-    local unit = UnitExists(f.fuiUnit) and f.fuiUnit or "player"
+    local unit = not f.fuiSample and UnitExists(f.fuiUnit) and f.fuiUnit or "player"
     local tex = portrait.Tex
     local class
     if mode == "class" then
@@ -2533,6 +2612,8 @@ local QUEST_FILE      = "Interface\\GossipFrame\\AvailableQuestIcon"
 -- Blizzard's CUF_MY_HEAL_PREDICTION_COLOR, opaque: the overlays only cover the empty part of the bar
 local HEAL_COLOR      = { 11/255, 136/255, 105/255, 1 }   -- #0B8869, incoming heals
 local ABSORB_COLOR    = { 0.67, 0.78, 0.92, 1 }           -- damage absorbs, the shield art's steel blue
+-- (the Colour Palette writes into these: UF.ApplyPalette)
+UF.HEAL_COLOR, UF.ABSORB_COLOR = HEAL_COLOR, ABSORB_COLOR
 local HEAL_TEXTURE    = "FlareUI Forever"
 local ABSORB_TEXTURE  = "FlareUI Striped"
 
@@ -2629,6 +2710,7 @@ local function CreateIndicators(f)
         absorb:SetValue(0)
         f.HealClip, f.HealBar, f.AbsorbBar = clip, heal, absorb
         f.ShieldGlow = UF.CreateShieldGlow(f.Health, clip)
+        f.OverAbsorb = UF.CreateOverAbsorb(f.Health, clip)
         if CreateUnitHealPredictionCalculator then
             local ok, calc = pcall(CreateUnitHealPredictionCalculator)
             if ok and calc then f.HealCalc = calc end
@@ -2756,7 +2838,57 @@ local function LayoutIndicators(f)
         if absorbTex == "" then absorbTex = udb and udb.texture end
         absorb:SetStatusBarTexture(GetBarTexture(absorbTex))
         absorb:SetStatusBarColor(unpack(ABSORB_COLOR))
+        heal:SetStatusBarColor(unpack(HEAL_COLOR))   -- (the Colour Palette may have changed it)
+        UF.PlaceOverAbsorb(f.OverAbsorb, health, width, mirror, GetBarTexture(absorbTex))
     end
+end
+
+-- SHIELD OVER THE HEALTH (11-11, a player's request): the shield that has no room after the health
+-- (all of it at full health) is drawn back from the health's end, over the health, so a shield on
+-- the pull shows how much is left as it is hit. Without comparing (secret) values: a bar as long as
+-- the whole health bar, anchored where the health starts and filled from its far end with the whole
+-- shield, inside a clip frame over the health fill. Only its part over the health shows: the shield
+-- minus the health missing, ending where the health ends. The part after the health is AbsorbBar's.
+function UF.CreateOverAbsorb(health, clip)
+    local over = CreateFrame("Frame", nil, health)
+    over:SetClipsChildren(true)
+    over:SetFrameLevel((clip or health):GetFrameLevel() + 2)
+    local bar = CreateFrame("StatusBar", nil, over)
+    bar:SetMinMaxValues(0, 1)
+    bar:SetValue(0)
+    over.Bar = bar
+    return over
+end
+
+function UF.PlaceOverAbsorb(over, health, width, mirror, texture)
+    if not over then return end
+    local fill = health:GetStatusBarTexture()
+    local near = mirror and "RIGHT" or "LEFT"
+    over:ClearAllPoints()
+    over:SetAllPoints(fill)
+    local bar = over.Bar
+    bar:ClearAllPoints()
+    bar:SetPoint("TOP" .. near, fill, "TOP" .. near, 0, 0)
+    bar:SetPoint("BOTTOM" .. near, fill, "BOTTOM" .. near, 0, 0)
+    bar:SetWidth(width)
+    bar:SetReverseFill(not mirror)
+    bar:SetStatusBarTexture(texture)
+    -- a little see-through: the health colour still reads under it
+    bar:SetStatusBarColor(ABSORB_COLOR[1], ABSORB_COLOR[2], ABSORB_COLOR[3], 0.75)
+end
+
+-- value nil: none (Edit Mode samples pass theirs on a 0..1 health)
+function UF.SetOverAbsorb(over, unit, max, value)
+    if not over then return end
+    local bar = over.Bar
+    if value then
+        bar:SetMinMaxValues(0, max or 1)
+        bar:SetValue(value)
+        return
+    end
+    if not unit then bar:SetValue(0) return end
+    pcall(bar.SetMinMaxValues, bar, 0, max)
+    if not pcall(function() bar:SetValue(UnitGetTotalAbsorbs(unit)) end) then bar:SetValue(0) end
 end
 
 -- Over-shield glow: shields never draw past the bar (the calculator clamps them to the health
@@ -2822,12 +2954,14 @@ function UpdateHealPrediction(f)
         heal:SetValue(0.12)
         absorb:SetValue(0.15)
         UF.HideShieldGlow(f.ShieldGlow)
+        UF.SetOverAbsorb(f.OverAbsorb, nil, 1, 0.15)
         return
     end
     local unit = f.fuiUnit
     local max = UnitHealthMax(unit)
     heal:SetMinMaxValues(0, max)
     absorb:SetMinMaxValues(0, max)
+    UF.SetOverAbsorb(f.OverAbsorb, unit, max)
     -- the calculator hands back (possibly secret) numbers that SetValue accepts as-is
     local calc = f.HealCalc
     if calc and UnitGetDetailedHealPrediction then
@@ -2865,6 +2999,9 @@ end
 -- The text is placed once per layout (f.threatLaid, cleared by LayoutFrame), not on every threat event.
 UF.THREAT_PERCENT_UNITS = { target = true, focus = true }
 UF.THREAT_RING_SIZE = 8   -- added to the frame font's size above the ring
+-- the ring's frame is the box round its art, shadow and all, wider on its outer side: the number moves
+-- this share of the ring's width towards the frame, over the ring's middle (11-11, read off a screenshot)
+UF.THREAT_RING_NUDGE = 0   -- (tests 11-11: 0 sat ~10 px right of centre?, 0.08 ~8 px left, 0.045 tried)
 function UF.UpdateThreatPercent(f)
     local unit = f.fuiUnit
     if not UF.THREAT_PERCENT_UNITS[unit] then return end
@@ -2890,7 +3027,7 @@ function UF.UpdateThreatPercent(f)
         if ring then
             ApplyFont(text, db and db.font, UF.THREAT_RING_SIZE)
             text:SetJustifyH("CENTER")
-            text:SetPoint("BOTTOM", ring, "TOP", 0, 2)
+            f.threatNudgeWidth = nil   -- placed below, once the ring has its size
         else
             -- the health value, then the threat: the texts beside it move over for it
             ApplyFont(text, db and db.font, 0)
@@ -2903,6 +3040,17 @@ function UF.UpdateThreatPercent(f)
                 text:SetPoint("RIGHT", f.Health, "RIGHT", -TEXT_INSET, 0)
                 f.HealthText:SetPoint("RIGHT", text, "LEFT", 0, 0)
             end
+        end
+    end
+    -- the ring's number: placed again whenever the ring's width changes (it has none at the first layout).
+    -- Side is the ring's side of the frame, so the frame is the other way.
+    if ring then
+        local width = ring:GetWidth() or 0
+        if width > 0 and f.threatNudgeWidth ~= width then
+            f.threatNudgeWidth = width
+            local towardsFrame = (ns.UFRing.Side and ns.UFRing.Side(f) == "LEFT") and 1 or -1
+            text:ClearAllPoints()
+            text:SetPoint("BOTTOM", ring, "TOP", towardsFrame * width * UF.THREAT_RING_NUDGE, 2)
         end
     end
     text:Show()
@@ -3363,7 +3511,8 @@ end
 local function LayoutFrame(f)
     local db, udb = GetDb(), GetUnitDb(f.fuiUnit)
     if not db or not udb then return end
-    if InCombatLockdown() then pendingLayout = true return end
+    -- (a preview's sample is not secure: it can be laid out in a fight)
+    if InCombatLockdown() and not f.fuiSample then pendingLayout = true return end
 
     local width, height = udb.width or 220, udb.height or 44
     local powerHeight = udb.powerHeight or 8
@@ -3373,7 +3522,9 @@ local function LayoutFrame(f)
     if plate then
         -- no stored Scale: the default (ring and height)
         if udb.plateScale == nil then
-            ns.UFRing.SetPlateScale(f.fuiUnit, ns.UFRing.PlateDefaultScale(f.fuiUnit))
+            -- (a sample's setup takes it, never the profile)
+            if f.fuiSample then ns.UFRing.ApplyPlateScale(udb, ns.UFRing.PlateDefaultScale(f.fuiUnit))
+            else ns.UFRing.SetPlateScale(f.fuiUnit, ns.UFRing.PlateDefaultScale(f.fuiUnit)) end
             height = udb.height
         end
         local minW, minH = ns.UFRing.PlateMinSize(f)
@@ -3528,6 +3679,9 @@ local function LayoutFrame(f)
         end
     end
 
+    -- a settings preview's sample stops here: no cast bar, auras or icons
+    if f.fuiSample then return end
+
     -- cast bar hangs off the frame
     if f.Cast then
         local leftExtra, rightExtra
@@ -3591,8 +3745,8 @@ local function GetLayoutStore(layoutName)
     if not db then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     db.layouts = db.layouts or {}
-    db.layouts[layoutName] = db.layouts[layoutName] or {}
-    return db.layouts[layoutName]
+    -- (a layout with no spot of its own reads the profile's home layout's: ProfileLayout.lua)
+    return ns.LayoutHome(db.layouts, layoutName)
 end
 
 local function ApplyPosition(f, layoutName)
@@ -3850,29 +4004,8 @@ local function OnLeave(f)
     if not GameTooltip:IsForbidden() then GameTooltip:Hide() end
 end
 
-local function CreateUnitFrame(unit)
-    local info = UNITS[unit]
-    -- on its own fade holder (section 14), which stays on UIParent's scale
-    local holder = CreateFrame("Frame", nil, UIParent)
-    -- the whole screen: Edit Mode measures a moved frame against its parent (it catches no mouse)
-    holder:SetAllPoints(UIParent)
-    UF.fadeHolders[unit] = holder
-    local f = CreateFrame("Button", "FlareUI_UF_" .. info.key, holder, "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate")
-    f.fuiUnit = unit
-    f:SetFrameStrata("LOW")
-    f:SetAttribute("unit", unit)
-    f:SetAttribute("*type1", "target")
-    f:SetAttribute("*type2", "togglemenu")
-    f:RegisterForClicks("AnyUp")
-    if type(f.SetRolesets) == "function" then pcall(f.SetRolesets, f, "unitFrames") end
-    _G.ClickCastFrames = _G.ClickCastFrames or {}
-    _G.ClickCastFrames[f] = true
-    f:SetClampedToScreen(true)
-    f.editModeName = "FlareUI " .. info.label
-    -- stack order: the frames higher in the list draw above the ones after them, so two frames
-    -- that touch never mix their borders
-    f:SetFrameLevel(10 + (10 - (info.order or 9)) * 20)
-
+-- The frame's bars, border, texts and their layers (the real frames' and the previews' samples)
+local function BuildBody(f)
     local level = f:GetFrameLevel()
     f.Health = CreateBar(f, level + 1)
     f.Power = CreateBar(f, level + 1)
@@ -3904,6 +4037,49 @@ local function CreateUnitFrame(unit)
     f.Separator:SetTexture(SEPARATOR_TEXTURE)
     f.Separator:SetVertexColor(1, 1, 1, 1)
     f.Separator:Hide()
+end
+
+-- the portrait square and its divider
+local function BuildPortrait(f)
+    local level = f:GetFrameLevel()
+    -- at the bars' level, under the border; the divider is the separator art turned upright
+    f.Portrait = CreateFrame("Frame", nil, f)
+    f.Portrait:SetFrameLevel(level + 1)
+    f.Portrait.Tex = f.Portrait:CreateTexture(nil, "ARTWORK")
+    f.Portrait.Tex:SetAllPoints()
+    f.Portrait:Hide()
+    f.PortraitDivider = f.Overlay:CreateTexture(nil, "ARTWORK")
+    f.PortraitDivider:SetTexture(SEPARATOR_TEXTURE)
+    f.PortraitDivider:SetTexCoord(0, 0, 1, 0, 0, 1, 1, 1)
+    f.PortraitDivider:SetVertexColor(1, 1, 1, 1)
+    f.PortraitDivider:Hide()
+end
+
+local function CreateUnitFrame(unit)
+    local info = UNITS[unit]
+    -- on its own fade holder (section 14), which stays on UIParent's scale
+    local holder = CreateFrame("Frame", nil, UIParent)
+    -- the whole screen: Edit Mode measures a moved frame against its parent (it catches no mouse)
+    holder:SetAllPoints(UIParent)
+    UF.fadeHolders[unit] = holder
+    local f = CreateFrame("Button", "FlareUI_UF_" .. info.key, holder, "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate")
+    f.fuiUnit = unit
+    f:SetFrameStrata("LOW")
+    f:SetAttribute("unit", unit)
+    f:SetAttribute("*type1", "target")
+    f:SetAttribute("*type2", "togglemenu")
+    f:RegisterForClicks("AnyUp")
+    if type(f.SetRolesets) == "function" then pcall(f.SetRolesets, f, "unitFrames") end
+    _G.ClickCastFrames = _G.ClickCastFrames or {}
+    _G.ClickCastFrames[f] = true
+    f:SetClampedToScreen(true)
+    f.editModeName = "FlareUI " .. info.label
+    -- stack order: the frames higher in the list draw above the ones after them, so two frames
+    -- that touch never mix their borders
+    f:SetFrameLevel(10 + (10 - (info.order or 9)) * 20)
+
+    BuildBody(f)
+    local level, overlay = f:GetFrameLevel(), f.Overlay
 
     if unit == "player" and PlayerClass() == "DRUID" then
         f.ShiftMana = CreateBar(f, level + 1)
@@ -3920,17 +4096,7 @@ local function CreateUnitFrame(unit)
     end
 
     if info.portrait then
-        -- at the bars' level, under the border; the divider is the separator art turned upright
-        f.Portrait = CreateFrame("Frame", nil, f)
-        f.Portrait:SetFrameLevel(level + 1)
-        f.Portrait.Tex = f.Portrait:CreateTexture(nil, "ARTWORK")
-        f.Portrait.Tex:SetAllPoints()
-        f.Portrait:Hide()
-        f.PortraitDivider = overlay:CreateTexture(nil, "ARTWORK")
-        f.PortraitDivider:SetTexture(SEPARATOR_TEXTURE)
-        f.PortraitDivider:SetTexCoord(0, 0, 1, 0, 0, 1, 1, 1)
-        f.PortraitDivider:SetVertexColor(1, 1, 1, 1)
-        f.PortraitDivider:Hide()
+        BuildPortrait(f)
         pcall(f.RegisterUnitEvent, f, "UNIT_PORTRAIT_UPDATE", unit)
         pcall(f.RegisterUnitEvent, f, "UNIT_MODEL_CHANGED", unit)
     end
@@ -4038,6 +4204,92 @@ local function CreateUnitFrame(unit)
 end
 
 --------------------------------------------------
+-- 15b. SAMPLES FOR THE SETTINGS PREVIEWS (11-10)
+-- A plain frame (no unit, no clicks, no events) built and laid out by the real frames' own code, so
+-- a preview shows exactly what the frame looks like. ns.UFSample holds the style and the setup
+-- while it is laid out; nothing is written to the profile.
+--------------------------------------------------
+function UF.CreateSample(parent, unit)
+    local info = UNITS[unit]
+    if not info then return nil end
+    local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    f.fuiUnit, f.fuiSample = unit, true
+    f:EnableMouse(false)
+    BuildBody(f)
+    if info.portrait then BuildPortrait(f) end
+    return f
+end
+
+-- Lays the sample out in a style ("flareui", "forever", "addon"); returns its extent past the
+-- frame (the ring stands out): { width, height, left, top }, or nil when it cannot be drawn.
+-- opts.noClassColor: the palette's health colour instead of the class's (the palette's preview)
+function UF.DrawSample(f, style, opts)
+    local unit = f.fuiUnit
+    local setup = ns.UFRing and ns.UFRing.SampleUnitDb(style, unit, opts and opts.preset)
+    if not setup then
+        local live = GetUnitDb(unit)
+        setup = live and setmetatable({}, { __index = live })
+    end
+    if not setup then return nil end
+    if opts and opts.noClassColor then setup.classColor = false end
+    ns.UFSample = { style = style, units = { [unit] = setup } }
+    local ok, result = pcall(function()
+        LayoutFrame(f)
+        ApplySample(f)
+        if unit == "player" then f.Name:SetText(ns.UnitDisplayName("player") or "") end
+        UpdatePortrait(f)
+        local w, h = f:GetSize()
+        local left, right, top = 0, 0, 0
+        if ns.UFRing and ns.UFRing.Applies(f) and f.RingFrame then
+            local over = ns.UFRing.Overhang(f)
+            if ns.UFRing.Side(f) == "LEFT" then left = over else right = over end
+            top = math.max(0, (f.RingFrame:GetHeight() - h) / 2) + 4
+        end
+        return { width = w + left + right, height = h + 2 * top, left = left, top = top }
+    end)
+    ns.UFSample = nil
+    if not ok then
+        if geterrorhandler then geterrorhandler()(result) end
+        return nil
+    end
+    return result
+end
+
+-- The FlareUI Player Cast Bar's sample: its own bar and layout, casting the Edit Mode sample on a loop
+-- while it shows. unit "target" (Pick Your Colours, 11-11): the target frame's cast bar instead, in
+-- its own look, as long as the frame
+function UF.CreateCastSample(parent, unit)
+    local holder = CreateFrame("Frame", nil, parent)
+    holder.unit = unit or "player"
+    holder.Cast = CreateCastBar(holder, holder.unit, true)
+    holder.Cast.standalone = holder.unit == "player"
+    holder:SetScript("OnHide", function(self)
+        if self.ticker then self.ticker:Cancel(); self.ticker = nil end
+    end)
+    return holder
+end
+
+function UF.DrawCastSample(holder)
+    local db = GetDb()
+    local style
+    if holder.unit and holder.unit ~= "player" then
+        local udb = GetUnitDb(holder.unit) or {}
+        style = GetCastStyle(udb, false)
+        style.width = (udb.width or 220) - 2 * INSET - (style.icon and (style.height + CAST_ICON_GAP) or 0)
+    else
+        style = GetCastStyle(db and db.playerCastbar or {}, true)
+    end
+    local _, PADDING = BorderFit(style.height, style.border and GetBorderFile(style.borderTexture))
+    local iconOffset = style.icon and (style.height + CAST_ICON_GAP) or 0
+    holder:SetSize(style.width + iconOffset + 2 * PADDING, style.height + 2 * PADDING)
+    LayoutCastBar(holder.Cast, style, holder, "FILL")
+    ShowSampleCast(holder.Cast)
+    if holder.ticker then holder.ticker:Cancel() end
+    holder.ticker = C_Timer.NewTicker(SAMPLE_CAST_SECONDS, function() ShowSampleCast(holder.Cast) end)
+    return holder:GetWidth(), holder:GetHeight()
+end
+
+--------------------------------------------------
 -- 16. EDIT MODE SETTINGS
 --------------------------------------------------
 -- Media dropdown values: FlareUI's own, then a divider and other addons' (ns.AddonMedia). A function,
@@ -4070,49 +4322,9 @@ local function BuildBorderValues(withFrameDefault)
         withFrameDefault and { text = L["Frame Border"], value = "", isRadio = true } or nil)
 end
 
--- Edit Mode dialogs in collapsible sections, in a fixed order for every FlareUI frame:
---   (Party / Raid: the group)  Frame  Look  Cast Bar  Auras  Icons  Pet
--- Open state is shared by all frames (editSections); a section with every setting hidden hides too.
---   local Section, settings = EditSections(); Section("Frame", { ... }); return settings
--- (helpers inside: the main chunk is near Lua's 200 locals)
+-- Edit Mode dialogs in collapsible sections (Core.lua ns.EditSections: open state for the session)
 local function EditSections()
-    local function IsHidden(hidden, ...)
-        if type(hidden) == "function" then return hidden(...) end
-        return hidden and true or false
-    end
-    local function EditSectionOpen(key)
-        local db = GetDb()
-        return db and db.editSections and db.editSections[key] or false
-    end
-    local settings = {}
-    local function Section(key, items)
-        if #items == 0 then return end
-        ns.OrderEditSettings(items)   -- dropdowns, sliders, switches; the same order on every frame
-        local own = {}
-        for i, item in ipairs(items) do own[i] = item.hidden end
-        settings[#settings + 1] = { name = "|cffffd100" .. L[key] .. "|r", kind = LEM.SettingType.Expander, default = false,
-            get = function() return EditSectionOpen(key) end,
-            set = function(_, value)
-                local db = GetDb()
-                if not db then return end
-                db.editSections = db.editSections or {}
-                db.editSections[key] = value and true or nil
-            end,
-            hidden = function(...)
-                for i = 1, #items do
-                    if not IsHidden(own[i], ...) then return false end
-                end
-                return true
-            end }
-        for i, item in ipairs(items) do
-            item.hidden = function(...)
-                if not EditSectionOpen(key) then return true end
-                return IsHidden(own[i], ...)
-            end
-            settings[#settings + 1] = item
-        end
-    end
-    return Section, settings
+    return ns.EditSections()
 end
 
 --------------------------------------------------
@@ -4219,6 +4431,8 @@ local function BuildPlayerCastSettings()
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
         UF.BgOpacitySetting(UF.BAR_BG_OPACITY, get("bgOpacity", UF.BAR_BG_OPACITY), set("bgOpacity")),
+        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = false, get = get("castRange", false), set = set("castRange"),
+          desc = L["The bar turns grey while your target is out of the spell's range."] },
         { name = L["Channel Ticks"], kind = LEM.SettingType.Checkbox, default = false, get = get("channelTicks", false), set = set("channelTicks"),
           desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
         { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueMark", false), set = set("queueMark"),
@@ -4483,6 +4697,8 @@ local function BuildSettings(unit)
                   desc = L["The end of the bar your latency covers, in red: start the next spell there and it is sent as this one lands."] },
                 { name = L["Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = flag("pushback", false), set = set("pushback"),
                   desc = L["How far being hit has set your cast back (\"+0.5\") or cut your channel short, next to the timer."] },
+                { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = false, get = flag("castRange", false), set = set("castRange"),
+                  desc = L["The bar turns grey while your target is out of the spell's range."] },
                 { name = L["Channel Ticks"], kind = LEM.SettingType.Checkbox, default = false, get = flag("channelTicks", false), set = set("channelTicks"),
                   desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
                 { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = flag("queueMark", false), set = set("queueMark"),
@@ -4626,10 +4842,12 @@ UF.Kit = {
     GetHealthColor = GetHealthColor, GetPowerColor = GetPowerColor,
     HardHide = HardHide, SetIconArt = SetIconArt, HasAtlas = HasAtlas,
     CreateCastBar = CreateCastBar, LayoutCastBar = LayoutCastBar, UpdateCastBar = UpdateCastBar,
+    ShowSampleCast = ShowSampleCast,
     InitAuraButton = InitAuraButton, HasAuraSupport = HasAuraSupport,
     ApplyRangeAlpha = UF.ApplyRangeAlpha,
     CreateManaCost = UF.CreateManaCost, CostsMana = CostsMana, GetTimerFormatter = GetTimerFormatter,
-    IsDead = UF.IsDead, CreateShieldGlow = UF.CreateShieldGlow, PlaceShieldGlow = UF.PlaceShieldGlow, SetShieldGlow = UF.SetShieldGlow, HideShieldGlow = UF.HideShieldGlow,
+    IsDead = UF.IsDead, CreateShieldGlow = UF.CreateShieldGlow, PlaceShieldGlow = UF.PlaceShieldGlow,
+    CreateOverAbsorb = UF.CreateOverAbsorb, PlaceOverAbsorb = UF.PlaceOverAbsorb, SetOverAbsorb = UF.SetOverAbsorb, SetShieldGlow = UF.SetShieldGlow, HideShieldGlow = UF.HideShieldGlow,
     BuildTextureValues = BuildTextureValues, BuildBorderValues = BuildBorderValues, BuildAbsorbValues = BuildTextureValues, EditSections = EditSections,
     ThreatColor = ThreatColor,
 }

@@ -94,6 +94,8 @@ local ctx = {
     classic = true, mirror = true, hostile = true, castbar = true,
     ringKind = "boss",   -- the portrait ring in the ring styles (PartyFrames.lua RingKind)
 }
+-- for the settings previews' sample tiles
+BF.PreviewCtx, BF.PreviewSamples = ctx, SAMPLES
 
 -- FlareUI Style and Forever Style both use the ring
 local function RingStyle()
@@ -203,8 +205,8 @@ local function LayoutStore(layoutName)
     if not db then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     db.layouts = db.layouts or {}
-    db.layouts[layoutName] = db.layouts[layoutName] or {}
-    return db.layouts[layoutName]
+    -- (a layout with no spot of its own reads the profile's home layout's: ProfileLayout.lua)
+    return ns.LayoutHome(db.layouts, layoutName)
 end
 
 local function ApplyPosition(layoutName)

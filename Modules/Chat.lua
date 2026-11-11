@@ -643,14 +643,8 @@ function Lines.HasAtlas(name)
     return known
 end
 
--- Race and Class Icons for a GUID ("" when the game doesn't know the player yet)
-function Lines.SenderIcons(guid, size, race, class)
-    local key = guid .. size .. (race and "r" or "") .. (class and "c" or "")
-    local cached = Lines.icons[key]
-    if cached then return cached end
-    local ok, _, classFile, _, raceFile, sex = pcall(GetPlayerInfoByGUID, guid)
-    if not (ok and canaccessvalue(classFile) and canaccessvalue(raceFile) and canaccessvalue(sex)) then return "" end
-    if type(classFile) ~= "string" then return "" end
+-- The race and class icon markup for a race file, sex (3 = female) and class file
+function Lines.IconMarkup(raceFile, sex, classFile, size, race, class)
     local out = ""
     local function Add(atlas)
         if atlas and Lines.HasAtlas(atlas) then out = out .. "|A:" .. atlas .. ":" .. size .. ":" .. size .. "|a" end
@@ -659,6 +653,18 @@ function Lines.SenderIcons(guid, size, race, class)
         Add(GetRaceAtlas(raceFile:lower(), sex == 3 and "female" or "male"))
     end
     if class and GetClassAtlas then Add(GetClassAtlas(classFile)) end
+    return out
+end
+
+-- Race and Class Icons for a GUID ("" when the game doesn't know the player yet)
+function Lines.SenderIcons(guid, size, race, class)
+    local key = guid .. size .. (race and "r" or "") .. (class and "c" or "")
+    local cached = Lines.icons[key]
+    if cached then return cached end
+    local ok, _, classFile, _, raceFile, sex = pcall(GetPlayerInfoByGUID, guid)
+    if not (ok and canaccessvalue(classFile) and canaccessvalue(raceFile) and canaccessvalue(sex)) then return "" end
+    if type(classFile) ~= "string" then return "" end
+    local out = Lines.IconMarkup(raceFile, sex, classFile, size, race, class)
     -- a city's worth of senders, then the list starts over
     Lines.iconCount = Lines.iconCount + 1
     if Lines.iconCount > 4000 then
@@ -740,16 +746,25 @@ function Lines.SenderName(event, decorated, _, sender, ...)
         -- the class colour, where Blizzard's own class colouring is off for this chat type
         if guid and not name:find("|c", 1, true) then
             local ok, _, classFile = pcall(GetPlayerInfoByGUID, guid)
-            local color = ok and canaccessvalue(classFile) and type(classFile) == "string" and C_ClassColor.GetClassColor(classFile)
-            if color then name = color:WrapTextInColorCode(name) end
+            if ok and canaccessvalue(classFile) and type(classFile) == "string" then
+                name = Lines.DressName(db, name, classFile, nil)
+            end
         end
     end
-    if db.showLevel then
-        local level = Lines.LevelFor(guid, sender)
-        if level then
-            local c = GetQuestDifficultyColor and GetQuestDifficultyColor(level)
-            name = (c and ColorCode(c.r, c.g, c.b) or "|cffffffff") .. "(" .. level .. ")|r " .. name
-        end
+    if db.showLevel then name = Lines.DressName(db, name, nil, Lines.LevelFor(guid, sender)) end
+    return name
+end
+
+-- The class colour (Better Player Names, where the name has no colour yet) and the "(42)" in front
+-- (Level Before Names); also the settings preview's fake senders
+function Lines.DressName(db, name, classFile, level)
+    if classFile and db.formatPlayer and not name:find("|c", 1, true) then
+        local color = C_ClassColor.GetClassColor(classFile)
+        if color then name = color:WrapTextInColorCode(name) end
+    end
+    if level and db.showLevel then
+        local c = GetQuestDifficultyColor and GetQuestDifficultyColor(level)
+        name = (c and ColorCode(c.r, c.g, c.b) or "|cffffffff") .. "(" .. level .. ")|r " .. name
     end
     return name
 end
@@ -783,6 +798,37 @@ function Lines.RewriteNPC(body, chatType, args)
     return NPC_COLOR .. "[" .. sender .. "]" .. verb .. "|r " .. body:sub(#header + 1)
 end
 
+-- One line rewritten: stamp is Blizzard's timestamp split off (or ""), body the rest. icons: the
+-- sender's race / class icons when already known (the settings preview's fake senders), else read
+-- from the line's GUID. at: the time Better Timestamps shows (now when nil).
+function Lines.Build(db, stamp, body, chatType, args, size, sayTag, icons, at)
+    local senderIcons = db.raceIcons or db.classIcons
+    if sayTag then
+        local rewritten = Lines.RewriteSender(body, chatType)
+        if rewritten ~= body then body = sayTag .. rewritten end
+    elseif db.shortChannels then
+        body = Lines.ShortenChannel(body, chatType, db.channelNames == "short" and "short" or "number")
+    end
+    if args then
+        if NPC_EVENTS[chatType] then
+            if db.formatNPC then body = Lines.RewriteNPC(body, chatType, args) end
+        elseif db.formatPlayer and not sayTag and NAME_EVENTS[chatType] == "full" then
+            body = Lines.RewriteSender(body, chatType)
+        end
+        if db.whisperMarkers and Lines.marks[chatType] then body = Lines.RewriteWhisper(body, chatType) end
+        if senderIcons and NAME_EVENTS[chatType] then
+            if icons == nil then
+                local guid = Arg(args, 12, "string")
+                icons = guid and guid ~= "" and Lines.SenderIcons(guid, size, db.raceIcons, db.classIcons) or ""
+            end
+            if icons ~= "" then body = Lines.AddSenderIcons(body, icons) end
+        end
+    end
+    if db.linkIcons then body = Lines.LinkIcons(body, size) end
+    if db.betterTimestamps then stamp = GetTimestamp(at) end
+    return stamp .. body
+end
+
 local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, eventArgs)
     local db = GetDb()
     if not (db and event) then return end
@@ -808,28 +854,7 @@ local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, ev
         -- Keep Blizzard's timestamp ahead of the new Say prefix, even if it isn't replaced.
         local stamp, body = "", message
         if db.betterTimestamps or sayTag then stamp, body = Lines.SplitStamp(message) end
-        if sayTag then
-            local rewritten = Lines.RewriteSender(body, chatType)
-            if rewritten ~= body then body = sayTag .. rewritten end
-        elseif db.shortChannels then
-            body = Lines.ShortenChannel(body, chatType, db.channelNames == "short" and "short" or "number")
-        end
-        if args then
-            if NPC_EVENTS[chatType] then
-                if db.formatNPC then body = Lines.RewriteNPC(body, chatType, args) end
-            elseif db.formatPlayer and not sayTag and NAME_EVENTS[chatType] == "full" then
-                body = Lines.RewriteSender(body, chatType)
-            end
-            if db.whisperMarkers and Lines.marks[chatType] then body = Lines.RewriteWhisper(body, chatType) end
-            if senderIcons and NAME_EVENTS[chatType] then
-                local guid = Arg(args, 12, "string")
-                local icons = guid and guid ~= "" and Lines.SenderIcons(guid, size, db.raceIcons, db.classIcons) or ""
-                if icons ~= "" then body = Lines.AddSenderIcons(body, icons) end
-            end
-        end
-        if db.linkIcons then body = Lines.LinkIcons(body, size) end
-        if db.betterTimestamps then stamp = GetTimestamp() end
-        line = stamp .. body
+        line = Lines.Build(db, stamp, body, chatType, args, size, sayTag)
         Lines.lastIn, Lines.lastEvent, Lines.lastOut, Lines.lastAt = message, event, line, now
         Lines.lastSayTag, Lines.lastSize = sayTag, size
     end
@@ -1178,6 +1203,16 @@ end
 
 local function KillTexture(tex) if tex then tex:SetAlpha(0) end end
 
+-- A header button's icon in struck bronze (also the settings preview's sample buttons)
+function Chat.HeaderIcon(btn, iconPath)
+    if not btn.FlareUI_Icon then
+        btn.FlareUI_Icon = btn:CreateTexture(nil, "ARTWORK")
+        btn.FlareUI_Icon:SetAllPoints()
+    end
+    btn.FlareUI_Color = HEADER_ICON_COLOR
+    ns.BronzeIcon.Apply(btn.FlareUI_Icon, iconPath, HEADER_ICON_COLOR)
+end
+
 -- An error inside (reported) must not leave the guard up: every later call would be skipped
 function Chat:StyleHeaderButtons(chatFrame)
     if self.isStyling then return end
@@ -1232,13 +1267,7 @@ function Chat:StyleHeaderButtonsBody(chatFrame)
             end
         end
 
-        if not btn.FlareUI_Icon then
-            btn.FlareUI_Icon = btn:CreateTexture(nil, "ARTWORK")
-            btn.FlareUI_Icon:SetAllPoints()
-        end
-
-        btn.FlareUI_Color = HEADER_ICON_COLOR
-        ns.BronzeIcon.Apply(btn.FlareUI_Icon, iconPath, HEADER_ICON_COLOR)
+        Chat.HeaderIcon(btn, iconPath)
         btn.FlareUI_Icon:Show()
 
         if not btn.FlareUI_TextureHooked then
@@ -1982,6 +2011,13 @@ end
 local TAB_IDLE_ALPHA = 0.6
 local SECRET_TAB_WIDTH = 90   -- Blizzard's own docked width for these tabs
 
+-- A tab's text, selected or at rest (also the settings previews' sample tabs)
+function Chat.PaintTab(text, selected)
+    local c = selected and TAB_ACTIVE_COLOR or TAB_INACTIVE_COLOR
+    text:SetTextColor(c.r, c.g, c.b, c.a)
+    text:SetAlpha(selected and 1 or TAB_IDLE_ALPHA)
+end
+
 local function CursorX(region)
     return GetCursorPosition() / region:GetEffectiveScale()
 end
@@ -2196,14 +2232,8 @@ function Chat:UpdateCustomTabs(chatFrame, db)
             btn.isSelected = isSelected
             btn.isUnread = meterUnread[frame] or nil
 
-            if isSelected then
-                local c = TAB_ACTIVE_COLOR
-                btn.Text:SetTextColor(c.r, c.g, c.b, c.a)
-                btn.Text:SetAlpha(1)
-            else
-                local c = TAB_INACTIVE_COLOR
-                btn.Text:SetTextColor(c.r, c.g, c.b, c.a)
-                btn.Text:SetAlpha(TAB_IDLE_ALPHA)
+            Chat.PaintTab(btn.Text, isSelected)
+            if not isSelected then
                 btn.isFlashing = realTab.glow and realTab.glow:IsShown() or nil
                 if btn.isFlashing then
                     -- the player's whisper colour, as set in Blizzard's chat settings. Only a whisper
@@ -2254,9 +2284,7 @@ function Chat:UpdateCustomTabs(chatFrame, db)
         meterBtn.Text:ClearAllPoints()
         meterBtn.Text:SetPoint("CENTER", meterBtn, "CENTER", 0, TAB_TEXT_Y)
         meterBtn.isSelected = meterActive
-        local c = meterActive and TAB_ACTIVE_COLOR or TAB_INACTIVE_COLOR
-        meterBtn.Text:SetTextColor(c.r, c.g, c.b, c.a)
-        meterBtn.Text:SetAlpha(meterActive and 1 or TAB_IDLE_ALPHA)
+        Chat.PaintTab(meterBtn.Text, meterActive)
         meterBtn:ClearAllPoints()
         if prevBtn then
             meterBtn:SetPoint("LEFT", prevBtn, "RIGHT", 4, 0)
@@ -2500,6 +2528,16 @@ function EditExtras.Setup(eb)
     end, EditExtras)
 end
 
+-- The edit box's look on its backdrop frame: black fill inside the chat's border (also the settings
+-- preview's sample box)
+function Chat.EditBoxBackdrop(bg, db)
+    local edgeFile = GetBorderFile(db)
+    local inset = BORDER_INSET
+    bg:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = edgeFile, tile = true, tileSize = 16, edgeSize = ns.BorderEdgeSize(edgeFile, BORDER_SIZE), insets = { left = inset, right = inset, top = inset, bottom = inset } })
+    bg:SetBackdropColor(0, 0, 0, db.editBoxOpacity or 1)
+    bg:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1)
+end
+
 function Chat:StyleEditBox(chatFrame, db)
     if not chatFrame or chatFrame:IsForbidden() then return end
     local eb = chatFrame.editBox or _G[chatFrame:GetName() .. "EditBox"]
@@ -2560,12 +2598,7 @@ function Chat:StyleEditBox(chatFrame, db)
         bg:SetPoint("BOTTOMRIGHT", eb, "BOTTOMRIGHT", 2, -2)
     end
 
-    -- black fill inside the chat's border
-    local edgeFile = GetBorderFile(db)
-    local inset = BORDER_INSET
-    bg:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = edgeFile, tile = true, tileSize = 16, edgeSize = ns.BorderEdgeSize(edgeFile, BORDER_SIZE), insets = { left = inset, right = inset, top = inset, bottom = inset } })
-    bg:SetBackdropColor(0, 0, 0, db.editBoxOpacity or 1)
-    bg:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1)
+    Chat.EditBoxBackdrop(bg, db)
 
     eb:SetHistoryLines(100)
     eb:SetAltArrowKeyMode(false)
@@ -2581,6 +2614,13 @@ end
 -- 14. WINDOW SKIN
 --------------------------------------------------
 
+-- The speaker for the master volume now
+function Chat.VolumeIcon()
+    local vol = tonumber(C_CVar.GetCVar("Sound_MasterVolume")) or 0
+    if vol <= 0 then return ICON_MUTE elseif vol <= 0.3 then return ICON_LOW elseif vol <= 0.7 then return ICON_MEDIUM end
+    return ICON_HIGH
+end
+
 function Chat:SetupVolumeButton(chatFrame, db)
     if not chatFrame.FlareUI_Skin then return end
     if not HeaderButtonShown(db, "volume") or IsPopped(chatFrame) then
@@ -2590,11 +2630,8 @@ function Chat:SetupVolumeButton(chatFrame, db)
 
     local btn = chatFrame.FlareUI_VolumeBtn
     local function UpdateIcon()
-        local vol = tonumber(C_CVar.GetCVar("Sound_MasterVolume")) or 0
         local color = HEADER_ICON_COLOR
-
-        local tex
-        if vol <= 0 then tex = ICON_MUTE elseif vol <= 0.3 then tex = ICON_LOW elseif vol <= 0.7 then tex = ICON_MEDIUM else tex = ICON_HIGH end
+        local tex = Chat.VolumeIcon()
         if btn then
             -- struck bronze, like the other header icons
             if not btn.FlareUI_Icon then
@@ -2670,6 +2707,18 @@ function Chat:SetupVolumeButton(chatFrame, db)
     EnableHeaderDrag(btn, "volume")
 
     UpdateIcon()
+end
+
+-- The window's skin: dark dialog background at the chat's opacity, FlareUI's border (also the
+-- settings previews' sample windows, here and in the damage meter's Meter tab)
+function Chat.WindowBackdrop(skin, db)
+    local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
+    local borderTexture = GetBorderFile(db)
+    local inset         = BORDER_INSET
+    skin:SetBackdrop({ bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = ns.BorderEdgeSize(borderTexture, BORDER_SIZE), insets = { left = inset, right = inset, top = inset, bottom = inset } })
+    skin:SetBackdropColor(1, 1, 1, db.opacity or 1)
+    local border = ns.BORDER_COLOR
+    skin:SetBackdropBorderColor(border.r, border.g, border.b, border.a)
 end
 
 local function CreateOrGetSkinFrame(chatFrame)
@@ -2770,13 +2819,7 @@ function Chat:StyleChatFrame(chatFrame, db)
     end
 
     local skin = CreateOrGetSkinFrame(chatFrame)
-    local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
-    local borderTexture = GetBorderFile(db)
-    local inset         = BORDER_INSET
-    skin:SetBackdrop({ bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = ns.BorderEdgeSize(borderTexture, BORDER_SIZE), insets = { left = inset, right = inset, top = inset, bottom = inset } })
-    skin:SetBackdropColor(1, 1, 1, db.opacity or 1)
-    local border = ns.BORDER_COLOR
-    skin:SetBackdropBorderColor(border.r, border.g, border.b, border.a)
+    Chat.WindowBackdrop(skin, db)
 
     if not chatFrame.FlareUI_FontHooked then
         chatFrame.FlareUI_FontHooked = true
@@ -3645,4 +3688,308 @@ function Chat:RefreshAll()
     Chat:RefreshMeterTab()   -- its hover watch follows a changed Visibility
     -- the meter takes the skin's size and place: its own pass at login may have come first
     if ns.DamageMeter and ns.DamageMeter.Refresh then ns.DamageMeter:Refresh() end
+end
+
+--------------------------------------------------
+-- 21. SETTINGS PREVIEW SAMPLE
+-- A chat window for the settings panel's picture, drawn by this module's own look: the skin, tab
+-- row, header buttons and edit box, and lines from fake senders put through the same rewriting as
+-- real ones. A plain frame: no events, no mouse, Blizzard's chat untouched.
+--------------------------------------------------
+Chat.sampleLook = {
+    TEXT_WIDTH = 250, TEXT_HEIGHT = 190,   -- the window's text area (narrow and tall: the preview shows it near its real size)
+    EDIT_HEIGHT = 32,                      -- Blizzard's edit box
+    TAB_BAR_MARGIN = 20, TAB_BUTTON_ROOM = 30,
+    COPY_SIZE = 18,
+    -- race file, sex (2 male, 3 female), class file, level
+    senders = {
+        Thrallbro = { "Orc", 2, "WARRIOR", 60 },
+        Mankrikfan = { "Tauren", 2, "DRUID", 24 },
+        Tankyboi = { "Dwarf", 2, "PALADIN", 19 },
+        Leeroy = { "Human", 2, "PALADIN", 60 },
+        Healbot = { "NightElf", 3, "PRIEST", 58 },
+    },
+}
+
+-- The tab row as UpdateCustomTabs draws it: tabs = { { text, selected }, ... } left to right on strip
+function Chat.DrawSampleTabs(strip, tabs, db)
+    strip.ftTabs = strip.ftTabs or {}
+    local path, size, flags = GetFontData(db.tabFont)
+    local prev
+    for i, tab in ipairs(tabs) do
+        local btn = strip.ftTabs[i]
+        if not btn then
+            btn = CreateFrame("Frame", nil, strip)
+            btn:SetHeight(24)
+            btn.Text = btn:CreateFontString(nil, "OVERLAY")
+            strip.ftTabs[i] = btn
+        end
+        ns.SetFont(btn.Text, path, size, flags)
+        ns.ApplyShadow(btn.Text, db.tabFont)
+        btn.Text:SetText(tab[1])
+        btn:SetWidth(btn.Text:GetStringWidth() + 14)
+        btn.Text:ClearAllPoints()
+        btn.Text:SetPoint("CENTER", btn, "CENTER", 0, TAB_TEXT_Y)
+        Chat.PaintTab(btn.Text, tab[2])
+        btn:ClearAllPoints()
+        if prev then btn:SetPoint("LEFT", prev, "RIGHT", 4, 0) else btn:SetPoint("LEFT", strip, "LEFT", 0, 0) end
+        btn:Show()
+        prev = btn
+    end
+    for i = #tabs + 1, #strip.ftTabs do strip.ftTabs[i]:Hide() end
+end
+
+-- The sample window's size: its text area with the skin's padding and the tab row
+function Chat.SampleWindowSize()
+    local look = Chat.sampleLook
+    return look.TEXT_WIDTH + 2 * TEXT_PADDING, look.TEXT_HEIGHT + 2 * TEXT_PADDING + HEADER_HEIGHT
+end
+
+-- The sample's tabs: General, the Combat Log unless hidden, Trade, and the Meter tab while it is
+-- available. meterSelected: the damage meter's sample, on its Meter tab.
+function Chat.SampleTabs(db, meterSelected)
+    local tabs = { { L["General"], not meterSelected } }
+    if not db.hideCombatLog then tabs[#tabs + 1] = { L["Combat Log"], false } end
+    tabs[#tabs + 1] = { _G.TRADE or L["Trade"], false }
+    if meterSelected or MeterTabAvailable() then tabs[#tabs + 1] = { L["Meter"], meterSelected and true or false } end
+    return tabs
+end
+
+-- A skinned window with its tab row, separator and header buttons (CreateOrGetSkinFrame,
+-- CreateCustomTabBar, StyleHeaderButtons). Also the damage meter's Meter tab sample.
+function Chat.CreateSampleWindow(parent)
+    local skin = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    skin:EnableMouse(false)
+    local line = skin:CreateTexture(nil, "OVERLAY")
+    line:SetTexture(SEPARATOR)
+    line:SetHeight(8)
+    -- where CreateOrGetSkinFrame puts it, measured from the skin rather than the text
+    line:SetPoint("TOPLEFT", skin, "TOPLEFT", BORDER_INSET + 2, -HEADER_HEIGHT)
+    line:SetPoint("TOPRIGHT", skin, "TOPRIGHT", -(BORDER_INSET + 2), -HEADER_HEIGHT)
+    skin.Separator = line
+    local strip = CreateFrame("Frame", nil, skin)
+    strip:SetHeight(24)
+    strip:SetClipsChildren(true)   -- the real bar is a scroll frame: what doesn't fit is cut off
+    skin.TabStrip = strip
+    skin.Buttons = {}
+    for _, key in ipairs(HEADER_ORDER) do
+        local btn = CreateFrame("Frame", nil, skin)
+        local side = key == "volume" and 28 or 22
+        btn:SetSize(side, side)
+        btn:SetScale(HEADER_ICON_SCALE)
+        skin.Buttons[key] = btn
+    end
+    return skin
+end
+
+-- Laid out at width x height with the chat's current settings; tabs as for Chat.DrawSampleTabs
+function Chat.DrawSampleWindow(skin, db, width, height, tabs)
+    skin:SetSize(width, height)
+    Chat.WindowBackdrop(skin, db)
+    local icons = { social = ICON_SOCIAL, channel = ICON_CHANNELS, menu = ICON_MENU, volume = Chat.VolumeIcon() }
+    local shown = 0
+    for key, btn in pairs(skin.Buttons) do
+        if HeaderButtonShown(db, key) then
+            shown = shown + 1
+            Chat.HeaderIcon(btn, icons[key])
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPRIGHT", skin, "TOPRIGHT", HeaderButtonX(db, key), HEADER_ICON_Y)
+            btn:Show()
+        else
+            btn:Hide()
+        end
+    end
+    -- room for the header buttons, as UpdateCustomTabs leaves it
+    local look = Chat.sampleLook
+    local strip = skin.TabStrip
+    strip:ClearAllPoints()
+    strip:SetPoint("TOPLEFT", skin, "TOPLEFT", 10, 0)
+    strip:SetPoint("TOPRIGHT", skin, "TOPRIGHT", -look.TAB_BAR_MARGIN - shown * look.TAB_BUTTON_ROOM, 0)
+    Chat.DrawSampleTabs(strip, tabs, db)
+    skin:Show()
+end
+
+-- One fake line as Blizzard's chat would print it, then through FlareUI's rewriting (RewriteStoredLine
+-- and the sender name filter), with the sender's icons known instead of read from a GUID
+function Chat.SampleLine(db, spec, size)
+    local look = Chat.sampleLook
+    local chatType, who, text = spec[1], spec[2], spec[3]
+    local at = time() - (spec.ago or 0)
+    local sender = look.senders[who]
+    local key = _G[Lines.getKeys[chatType]]
+    if type(key) ~= "string" then key = "%s: " end
+    text = text:gsub("%%", "%%%%")
+    local body
+    if NPC_EVENTS[chatType] or not sender then
+        body = string_format(key .. text, who, who)
+    else
+        local name = who
+        local info = ChatTypeInfo[spec.info or chatType]
+        local color = C_ClassColor.GetClassColor(sender[3])
+        if info and info.colorNameByClass and color then name = color:WrapTextInColorCode(name) end
+        name = Lines.DressName(db, name, sender[3], sender[4])
+        local link = "|Hplayer:" .. who .. ":0:" .. chatType .. "|h[" .. name .. "]|h"
+        body = string_format(key .. text, link)
+    end
+    if spec.channel then
+        body = "|Hchannel:channel:" .. spec.channel .. "|h[" .. spec.channel .. ". " .. spec.channelName .. "]|h " .. body
+    end
+    local fmt = StampFormats()
+    local blizzardStamp = fmt and BetterDate(fmt, at) or ""
+
+    -- the same switches RewriteStoredLine checks before it changes anything
+    local sayTag = chatType == "SAY" and db.formatPlayer and (db.shortChannels and SHORT_SAY_TAG or SAY_TAG)
+    local senderIcons = db.raceIcons or db.classIcons
+    if not (sayTag or db.shortChannels or db.formatPlayer or db.formatNPC or db.betterTimestamps or senderIcons
+            or db.linkIcons or db.whisperMarkers) then
+        return blizzardStamp .. body
+    end
+    local stamp, rest = "", blizzardStamp .. body
+    if db.betterTimestamps or sayTag then stamp, rest = blizzardStamp, body end
+    local icons = ""
+    if senderIcons and sender then
+        icons = Lines.IconMarkup(sender[1], sender[2], sender[3], size, db.raceIcons, db.classIcons)
+    end
+    return Lines.Build(db, stamp, rest, chatType, { [2] = who }, size, sayTag, icons, at)
+end
+
+-- The lines, oldest first: chat type, sender, text; channels also their number, name and colour key
+function Chat.SampleLines()
+    local itemName = C_Item.GetItemNameByID and C_Item.GetItemNameByID(2589) or L["Linen Cloth"]
+    local linen = "|cffffffff|Hitem:2589::::::::1:::::::::|h[" .. itemName .. "]|h|r"
+    return {
+        { "CHANNEL", "Thrallbro", L["WTB %s x20, paying well"]:format(linen), channel = 2, channelName = L["Trade - City"], info = "CHANNEL2", ago = 300 },
+        { "SAY", "Mankrikfan", L["anyone know where Mankrik's wife is?"], ago = 240 },
+        { "CHANNEL", "Tankyboi", L["LF1M tank for Deadmines, must bring snacks"], channel = 4, channelName = L["LookingForGroup"], info = "CHANNEL4", ago = 180 },
+        { "MONSTER_SAY", L["Kobold Tunneler"], L["You no take candle!"], ago = 120 },
+        { "GUILD", "Leeroy", L["Alright chums, let's do this."], ago = 60 },
+        { "WHISPER", "Healbot", L["inv pls, I have water"], ago = 20 },
+        { "WHISPER_INFORM", "Healbot", L["omw, don't pull yet"], ago = 0 },
+    }
+end
+
+function Chat.CreateSample(parent, kind)
+    if kind ~= nil and kind ~= "chat" then return nil end
+    local f = CreateFrame("Frame", nil, parent)
+    f.fuiSample = true
+    f:EnableMouse(false)
+    f.Window = Chat.CreateSampleWindow(f)
+    f.Text = CreateFrame("Frame", nil, f.Window)
+    f.Lines = {}
+    for i = 1, 7 do
+        local fs = f.Text:CreateFontString(nil, "ARTWORK")
+        fs:SetJustifyH("LEFT")
+        fs:SetWordWrap(true)
+        f.Lines[i] = fs
+    end
+    f.Copy = f.Text:CreateTexture(nil, "OVERLAY")
+    f.Copy:SetTexture(COPY_ICON)
+    f.Copy:SetAlpha(COPY_ALPHA)
+    -- the edit box: its backdrop under its text, as StyleEditBox has it
+    f.Edit = CreateFrame("Frame", nil, f)
+    f.Edit:SetFrameLevel(f:GetFrameLevel() + 10)   -- over the lines, as the opened box is
+    f.Edit.Bg = CreateFrame("Frame", nil, f.Edit, "BackdropTemplate")
+    f.Edit.Bg:SetPoint("TOPLEFT", f.Edit, "TOPLEFT", -2, 2)
+    f.Edit.Bg:SetPoint("BOTTOMRIGHT", f.Edit, "BOTTOMRIGHT", 2, -2)
+    f.Edit.Bg:SetFrameLevel(f.Edit:GetFrameLevel() + 1)
+    local textHolder = CreateFrame("Frame", nil, f.Edit)
+    textHolder:SetAllPoints()
+    textHolder:SetFrameLevel(f.Edit:GetFrameLevel() + 2)
+    f.Edit.Header = textHolder:CreateFontString(nil, "OVERLAY")
+    f.Edit.Header:SetPoint("LEFT", f.Edit, "LEFT", 15, 0)   -- Blizzard's header inset
+    f.Edit.Typed = textHolder:CreateFontString(nil, "OVERLAY")
+    f.Edit.Typed:SetPoint("LEFT", f.Edit.Header, "RIGHT", 0, 0)
+    f.Edit.Typed:SetPoint("RIGHT", f.Edit, "RIGHT", -10, 0)
+    f.Edit.Typed:SetJustifyH("LEFT")
+    f.Edit.Typed:SetWordWrap(false)
+    f:Hide()
+    return f
+end
+
+function Chat.DrawSample(f)
+    local db = GetDb()
+    if not db then f:Hide() return 0, 0 end
+    local look = Chat.sampleLook
+    local width, height = Chat.SampleWindowSize()
+
+    -- Edit Box Position: outside the window it is EDIT_BOX_GAP away, its backdrop 2 px past it
+    local position = db.editBoxPosition or "inside"
+    local outside = (position == "above" or position == "below") and (EDIT_BOX_GAP + 2 + look.EDIT_HEIGHT + 2) or 0
+    local top = position == "above" and outside or 0
+
+    f.Window:ClearAllPoints()
+    f.Window:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -top)
+    Chat.DrawSampleWindow(f.Window, db, width, height, Chat.SampleTabs(db))
+
+    local text = f.Text
+    text:ClearAllPoints()
+    text:SetPoint("TOPLEFT", f.Window, "TOPLEFT", TEXT_PADDING, -(TEXT_PADDING + HEADER_HEIGHT))
+    text:SetSize(look.TEXT_WIDTH, look.TEXT_HEIGHT)
+
+    f.Copy:SetShown(db.copyButton and true or false)
+    f.Copy:ClearAllPoints()
+    f.Copy:SetSize(look.COPY_SIZE, look.COPY_SIZE)
+    f.Copy:SetPoint("TOPRIGHT", text, "TOPRIGHT", -2, -2)
+
+    -- the lines, newest at the bottom, in the chat font; over an open edit box inside the window they
+    -- move up as EditExtras.PushFor moves them
+    local path, size, flags = Chat:MessageFont(nil, db)
+    local spacing = db.increaseLineHeight and EXTRA_LINE_SPACING or 0
+    local up = position == "inside" and (30 + EditExtras.PUSH_GAP) or 0
+    for _, fs in ipairs(f.Lines) do
+        ns.SetFont(fs, path, size, flags)
+        ns.ApplyShadow(fs, db.chatFont)
+        fs:SetWidth(look.TEXT_WIDTH)
+    end
+    local iconSize = Lines.IconSize(f.Lines[1])
+    local specs = Chat.SampleLines()
+    local used, prev = up, nil
+    for i = #specs, 1, -1 do
+        local fs, spec = f.Lines[i], specs[i]
+        local info = ChatTypeInfo[spec.info or spec[1]] or ChatTypeInfo.SAY
+        fs:SetText(Chat.SampleLine(db, spec, iconSize))
+        if info then fs:SetTextColor(info.r, info.g, info.b) end
+        fs:ClearAllPoints()
+        if prev then
+            fs:SetPoint("BOTTOMLEFT", prev, "TOPLEFT", 0, spacing)
+        else
+            fs:SetPoint("BOTTOMLEFT", text, "BOTTOMLEFT", 0, up)
+        end
+        used = used + fs:GetStringHeight() + (prev and spacing or 0)
+        -- a line that would stick out of the top is left out, as the chat scrolls it away
+        fs:SetShown(used <= look.TEXT_HEIGHT)
+        prev = fs
+    end
+
+    local eb = f.Edit
+    eb:ClearAllPoints()
+    eb:SetHeight(look.EDIT_HEIGHT)
+    if position == "below" then
+        eb:SetPoint("TOPLEFT", f.Window, "BOTTOMLEFT", 2, -(EDIT_BOX_GAP + 2))
+        eb:SetPoint("TOPRIGHT", f.Window, "BOTTOMRIGHT", -2, -(EDIT_BOX_GAP + 2))
+    elseif position == "above" then
+        eb:SetPoint("BOTTOMLEFT", f.Window, "TOPLEFT", 2, EDIT_BOX_GAP + 2)
+        eb:SetPoint("BOTTOMRIGHT", f.Window, "TOPRIGHT", -2, EDIT_BOX_GAP + 2)
+    else
+        eb:SetPoint("TOPLEFT", text, "BOTTOMLEFT", -2, 30)
+        eb:SetPoint("TOPRIGHT", text, "BOTTOMRIGHT", 2, 30)
+    end
+    Chat.EditBoxBackdrop(eb.Bg, db)
+    local ePath, eSize, eFlags = GetFontData(db.editBoxFont)
+    for _, fs in ipairs({ eb.Header, eb.Typed }) do
+        ns.SetFont(fs, ePath, eSize, eFlags)
+        ns.ApplyShadow(fs, db.editBoxFont)
+    end
+    local say = ChatTypeInfo.SAY
+    eb.Header:SetText(_G.CHAT_SAY_SEND or L["Say: "])
+    eb.Typed:SetText(L["brb, buying more snacks"])
+    if say then
+        eb.Header:SetTextColor(say.r, say.g, say.b)
+        eb.Typed:SetTextColor(say.r, say.g, say.b)
+    end
+    eb:Show()
+
+    f:SetSize(width, height + outside)
+    f:Show()
+    return width, height + outside
 end

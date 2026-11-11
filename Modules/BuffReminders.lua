@@ -54,6 +54,8 @@ local REMINDERS = {
     },
     DRUID = {
         { key = "wild", cast = WILD, buffs = Join(WILD, { 21850, 21849 }), group = true },
+        -- Thorns (11-10, a druid asked): kept on whoever the Thorns setting picks, tanks by default
+        { key = "thorns", cast = { 9910, 9756, 8914, 1075, 782, 467 }, group = true, pick = "thorns" },
     },
     WARLOCK = {
         { key = "armor", cast = { 11735, 11734, 11733, 1086, 706, 696, 687 } },
@@ -68,13 +70,34 @@ local REMINDERS = {
     },
     PALADIN = {
         { key = "blessing", blessing = true, group = true },
+        -- a tank's threat buff, only while your group role is tank
+        { key = "fury", cast = { 25780 }, role = "TANK" },
+        -- any aura on (Devotion, Retribution, Concentration, the resistances, Sanctity): Devotion to cast
+        { key = "aura", cast = { 10293, 10292, 1032, 10291, 643, 10290, 465 },
+          buffs = { 10293, 10292, 1032, 10291, 643, 10290, 465, 10301, 10300, 10299, 10298, 7294, 19746, 19896, 19895,
+                    19876, 19898, 19897, 19888, 19900, 19899, 19891, 20218 } },
+    },
+    WARRIOR = {
+        -- no stance at all (Battle Stance to cast)
+        { key = "stance", stance = true, cast = { 2457 } },
     },
     HUNTER = {
         { key = "pet", pet = "HUNTER" },
     },
 }
--- the warlock's pet joins its armor
+-- the warlock's pet joins its armor, then a healthstone in the bags (Create Healthstone, best rank)
 table.insert(REMINDERS.WARLOCK, { key = "pet", pet = "WARLOCK" })
+table.insert(REMINDERS.WARLOCK, { key = "healthstone", healthstone = true, cast = { 11730, 11729, 5699, 6202, 6201 } })
+local HEALTHSTONES = { 5512, 5511, 5509, 5510, 9421, 19004, 19005, 19006, 19007, 19008, 19009, 19010, 19011, 19012, 19013 }
+-- Camping and Rest (Forever, off): Camp Benefits from a campfire, and while levelling with a Cozy
+-- Sleeping Bag in the bags, three Well-Rested stacks (click to use the bag). Gathering Tracking (off):
+-- Find Herbs or Find Minerals off while you know one. (IDs from EnhanceQoL's Forever data.)
+local CAMP_BUFF, SLEEPING_BAG, WELL_RESTED = 1229741, 211527, 429959
+local EXTRAS = {
+    { key = "camp", camp = true, buffs = { CAMP_BUFF }, icon = CAMP_BUFF },
+    { key = "sleepingBag", bag = true },
+    { key = "gathering", gathering = true, cast = { 2383, 8387, 2580, 8388 } },
+}
 -- food and flask, for every class
 local CONSUMABLES = {
     { key = "food", consumable = true, buffs = { 19705 }, icon = 19705 },                       -- Well Fed
@@ -183,6 +206,22 @@ local function Resolve()
                                     icon = SpellIcon(castID or def.icon) }
         end
     end
+    for _, def in ipairs(EXTRAS) do
+        local castID
+        for _, id in ipairs(def.cast or {}) do
+            if Known(id) then castID = id break end
+        end
+        -- gathering needs a known tracking spell; the camp and the bag are checked as they come
+        if castID or not def.cast then
+            local names = {}
+            for _, id in ipairs(def.buffs or def.cast or {}) do
+                local name = SpellName(id)
+                if name then names[name] = true end
+            end
+            local icon = def.bag and (C_Item.GetItemIconByID and C_Item.GetItemIconByID(SLEEPING_BAG)) or SpellIcon(castID or def.icon)
+            active[#active + 1] = { def = def, castID = castID, names = names, icon = icon }
+        end
+    end
     for _, def in ipairs(CONSUMABLES) do
         local names = {}
         for _, id in ipairs(def.buffs) do
@@ -194,9 +233,46 @@ local function Resolve()
 end
 
 -- the reminders the settings leave on
-local function Enabled(entry)
+-- Right-click an icon: hide that reminder until reload, or for good (db.hidden, "CLASS:key", so a mage's
+-- and a warlock's armour stay apart); the Buff Reminders tab shows them all again
+local dismissed = {}
+function BR.HideKey(entry)
+    local _, class = UnitClass("player")
+    return (class or "") .. ":" .. (entry.def and entry.def.key or "")
+end
+function BR.HiddenCount()
     local db = GetDb() or {}
-    if entry.def.pet then return db.pets ~= false end
+    local n = 0
+    for _ in pairs(db.hidden or {}) do n = n + 1 end
+    for _ in pairs(dismissed) do n = n + 1 end
+    return n
+end
+function BR.ShowHidden()
+    local db = GetDb()
+    if db then db.hidden = nil end
+    wipe(dismissed)
+    BR.Update()
+end
+
+local Enabled
+-- the reminders the settings leave on, for From the Middle's room
+function BR.EnabledCount()
+    local n = 0
+    for _, entry in ipairs(active) do if Enabled(entry) then n = n + 1 end end
+    return math.min(n, 12)
+end
+
+function Enabled(entry)
+    local db = GetDb() or {}
+    local hideKey = BR.HideKey(entry)
+    if dismissed[hideKey] or (db.hidden and db.hidden[hideKey]) then return false end
+
+    if entry.def.camp or entry.def.bag then return db.camping == true end
+    if entry.def.gathering then return db.gathering == true end
+    if entry.def.role and not ns.EditPreviewing() then
+        local ok, role = pcall(UnitGroupRolesAssigned, "player")
+        return ok and Readable(role) and role == entry.def.role or false
+    end
     if entry.def.consumable then
         local mode = db.consumables or "off"
         if mode == "off" then return false end
@@ -289,9 +365,26 @@ end
 local function Readable2(a, b) return Readable(a) and Readable(b) end
 
 -- the pet's state: the spell that fixes it and the unit to cast on, or nil when all is well
+-- the pet set to Passive (the pet bar's mode button lit): its icon
+local function PetPassive()
+    if not GetPetActionInfo then return nil end
+    for i = 1, (NUM_PET_ACTION_SLOTS or 10) do
+        local name, texture, isToken, isActive = GetPetActionInfo(i)
+        if (name == "PET_MODE_PASSIVE" or name == "PET_ACTION_MODE_PASSIVE") and isActive then
+            return (isToken and _G[texture]) or texture or 132311
+        end
+    end
+end
+
+-- the pet's state: the spell that fixes it and the unit to cast on, or nil when all is well; a pet
+-- left on Passive answers with a macro (/petdefensive) and the mode's icon
 local function PetFix(entry)
     if IsMounted() then return nil end
     local exists = UnitExists("pet")
+    if exists and not UnitIsDead("pet") then
+        local passive = PetPassive()
+        if passive then return nil, "pet", "/petdefensive", passive end
+    end
     if entry.def.pet == "HUNTER" then
         if exists and UnitIsDead("pet") then return Known(REVIVE_PET) and REVIVE_PET, "player" end
         if not exists then return Known(CALL_PET) and CALL_PET, "player" end
@@ -308,6 +401,17 @@ local function PetFix(entry)
     for _, id in ipairs(WARLOCK_SUMMONS) do
         if Known(id) then return id, "player" end
     end
+end
+
+-- a tank: by group role (the group finder's), or a raid's main tank
+local function IsTank(unit)
+    local ok, role = pcall(UnitGroupRolesAssigned, unit)
+    if ok and Readable(role) and role == "TANK" then return true end
+    if GetPartyAssignment then
+        local okA, main = pcall(GetPartyAssignment, "MAINTANK", unit)
+        if okA and Readable(main) and main then return true end
+    end
+    return false
 end
 
 -- Only When You're the Only Provider: someone else in the group of your class gives it already
@@ -334,14 +438,54 @@ local units = {}
 local function Check(entry, before)
     local def = entry.def
     if (def.group or def.blessing) and (GetDb() or {}).onlyProvider and OtherProvider() then return 0, 0 end
+    -- the role filters (When It Shows): your group role hides the group buffs, never your own
+    if def.group or def.blessing then
+        local db = GetDb() or {}
+        local ok, role = pcall(UnitGroupRolesAssigned, "player")
+        role = ok and Readable(role) and role or "NONE"
+        if (role == "TANK" and db.hideTank) or (role == "HEALER" and db.hideHealer)
+                or (role == "DAMAGER" and db.hideDamage) or (role == "NONE" and db.hideNoRole) then
+            return 0, 0
+        end
+    end
     if def.weapon then
         local missing, running = WeaponMissing(before)
         return missing and 1 or 0, 1, "player", nil, nil, running
     end
     if def.pet then
-        local fix, unit = PetFix(entry)
+        local fix, unit, macro, icon = PetFix(entry)
+        if macro then return 1, 1, unit, nil, icon, false, { macro = macro } end
         if not fix then return 0, 1 end
         return 1, 1, unit, fix, SpellIcon(fix)
+    end
+    if def.stance then
+        local form = GetShapeshiftForm and GetShapeshiftForm() or 1
+        return (Readable(form) and form == 0) and 1 or 0, 1, "player"
+    end
+    if def.healthstone then
+        for _, id in ipairs(HEALTHSTONES) do
+            if (C_Item.GetItemCount and C_Item.GetItemCount(id) or 0) > 0 then return 0, 1 end
+        end
+        return 1, 1, "player"
+    end
+    if def.bag then
+        -- while levelling, with the bag on you: fewer than three Well-Rested stacks
+        if UnitLevel("player") >= 60 or (C_Item.GetItemCount and C_Item.GetItemCount(SLEEPING_BAG) or 0) == 0 then return 0, 1 end
+        local stacks = 0
+        local ok, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, WELL_RESTED)
+        if ok and aura and Readable(aura.applications) then stacks = aura.applications or 0 end
+        if stacks >= 3 then return 0, 1 end
+        return 1, 1, "player", nil, nil, false, { item = "item:" .. SLEEPING_BAG }
+    end
+    if def.gathering then
+        -- the minimap's tracking list where the client has one, else the tracking buff
+        if C_Minimap and C_Minimap.GetNumTrackingTypes and C_Minimap.GetTrackingInfo then
+            for i = 1, C_Minimap.GetNumTrackingTypes() do
+                local info = C_Minimap.GetTrackingInfo(i)
+                if info and info.active and info.spellID and tContains(def.cast, info.spellID) then return 0, 1 end
+            end
+        end
+        return HasBuff("player", entry.names, 0) and 0 or 1, 1, "player"
     end
     if def.blessing then
         local missing, total, first, firstBlessing, gone = 0, 0, nil, nil, false
@@ -366,8 +510,17 @@ local function Check(entry, before)
         return fine and 0 or 1, 1, "player", nil, nil, running
     end
     local missing, total, first, gone = 0, 0, nil, false
+    -- Thorns: tanks (their group role, or the raid's main tanks; alone, yourself), you, or everyone
+    local pick = def.pick and ((GetDb() or {})[def.pick] or "tank")
+    local grouped = IsInGroup()
     for _, unit in ipairs(GroupUnits(units)) do
-        if Reachable(unit) then
+        local wanted = true
+        if pick == "self" then
+            wanted = unit == "player" or UnitIsUnit(unit, "player")
+        elseif pick == "tank" then
+            wanted = (not grouped and (unit == "player" or UnitIsUnit(unit, "player"))) or IsTank(unit)
+        end
+        if wanted and Reachable(unit) then
             local _, class = UnitClass(unit)
             if not (def.casters and NO_MANA[class]) then
                 total = total + 1
@@ -386,11 +539,8 @@ end
 --------------------------------------------------
 -- 4. ICONS
 --------------------------------------------------
-local function Icon(i)
-    local b = icons[i]
-    if b then return b end
-    b = CreateFrame("Button", "FlareUI_BuffReminder" .. i, row, "SecureActionButtonTemplate")
-    b:RegisterForClicks("AnyUp", "AnyDown")
+-- an icon's look (icon, count, pulse, glow), on the secure button or a settings preview's plain frame
+function BR.BuildIcon(b)
     b.icon = b:CreateTexture(nil, "ARTWORK")
     b.pieces = {}
     -- the count sits over the icon's border (a frame two levels up)
@@ -422,15 +572,66 @@ local function Icon(i)
     glowFade:SetDuration(0.6)
     glowFade:SetSmoothing("IN_OUT")
     b.glowPulse = glowPulse
+    return b
+end
+
+local function Icon(i)
+    local b = icons[i]
+    if b then return b end
+    b = CreateFrame("Button", "FlareUI_BuffReminder" .. i, row, "SecureActionButtonTemplate")
+    b:RegisterForClicks("AnyUp", "AnyDown")
+    BR.BuildIcon(b)
+    -- right-click: no cast (an empty macro), the hide menu instead
+    b:SetAttribute("type2", "macro")
+    b:SetAttribute("macrotext2", "")
+    b:HookScript("OnMouseUp", function(self, button) if button == "RightButton" then BR.Menu(self) end end)
     b:SetScript("OnEnter", function(self)
-        if not self.spellID then return end
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetSpellByID(self.spellID)
+        if self.spellID then GameTooltip:SetSpellByID(self.spellID) end
+        GameTooltip:AddLine(L["Right-click to hide this reminder."], 0.6, 0.6, 0.6)
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", GameTooltip_Hide)
     icons[i] = b
     return b
+end
+
+function BR.Menu(owner)
+    local entry = owner.entry
+    if not (entry and entry.def and MenuUtil and MenuUtil.CreateContextMenu) or InCombatLockdown() then return end
+    local key = BR.HideKey(entry)
+    MenuUtil.CreateContextMenu(owner, function(_, root)
+        root:CreateTitle(owner.spellID and SpellName(owner.spellID) or L["Buff Reminders"])
+        root:CreateButton(L["Hide Until Reload"], function()
+            dismissed[key] = true
+            BR.Update()
+        end)
+        root:CreateButton(L["Never Remind Me"], function()
+            local db = GetDb()
+            if not db then return end
+            db.hidden = db.hidden or {}
+            db.hidden[key] = true
+            BR.Update()
+        end)
+        -- a reminder's own choice lives here, not in the settings (11-10, Marcus: no settings bloat)
+        local db = GetDb()
+        if not db then return end
+        local function Radio(text, field, value)
+            root:CreateRadio(text, function() return (db[field] or (field == "thorns" and "tank" or "auto")) == value end,
+                function() db[field] = value; BR.Update() end)
+        end
+        if entry.def.blessing then
+            root:CreateDivider()
+            root:CreateTitle(L["Blessing"])
+            for _, choice in ipairs(BR.BlessingChoices()) do Radio(choice[2], "blessing", choice[1]) end
+        elseif entry.def.pick == "thorns" then
+            root:CreateDivider()
+            root:CreateTitle(L["Keep It On"])
+            Radio(L["Tanks Only"], "thorns", "tank")
+            Radio(L["Only Me"], "thorns", "self")
+            Radio(L["Everyone"], "thorns", "all")
+        end
+    end)
 end
 
 local function StyleIcon(b, size)
@@ -447,19 +648,46 @@ local function StyleIcon(b, size)
 end
 
 -- shows: { { entry, missing, total, unit }, ... }
-local function Show(shows)
+-- sample: a settings preview's plain frame, which holds its own icons (no clicks, no attributes)
+local function Show(shows, sample)
     local db = GetDb() or {}
     local size = db.size or 36
-    local spacing = 6
+    local spacing = db.spacing or 6
     local vertical = db.orientation == "VERTICAL"
     local back = db.grow == "BACK"   -- left in a row, up in a column
+    local list, parentRow, frame = icons, row, holder
+    if sample then list, parentRow, frame = sample.icons, sample, sample end
+    -- From the Middle: the frame keeps room for every reminder that could show, and the icons sit in
+    -- its middle, so a placed frame grows both ways from its centre
+    local slots = #shows
+    if db.grow == "CENTER" and not sample then slots = math_max(slots, BR.EnabledCount()) end
+    local offset = (slots - #shows) * (size + spacing) / 2
+    if sample or not BR.fading then frame:SetAlpha((db.alpha or 100) / 100) end
     for i, s in ipairs(shows) do
-        local b = Icon(i)
+        local b
+        if sample then
+            b = list[i]
+            if not b then
+                b = BR.BuildIcon(CreateFrame("Frame", nil, sample))
+                b:EnableMouse(false)
+                list[i] = b
+            end
+        else
+            b = Icon(i)
+        end
         StyleIcon(b, size)
         local castID = s.castID or s.entry.castID
         b.icon:SetTexture(s.icon or s.entry.icon)
         b.spellID = castID
-        if castID then
+        if sample then
+            -- a picture only
+        elseif s.action and s.action.macro then
+            b:SetAttribute("type", "macro")
+            b:SetAttribute("macrotext", s.action.macro)
+        elseif s.action and s.action.item then
+            b:SetAttribute("type", "item")
+            b:SetAttribute("item", s.action.item)
+        elseif castID then
             b:SetAttribute("type", "spell")
             -- by name: the game casts your highest rank (imbues list only their first rank's ID)
             b:SetAttribute("spell", SpellName(castID) or castID)
@@ -467,14 +695,20 @@ local function Show(shows)
         else
             b:SetAttribute("type", nil)
         end
-        b.count:SetText(s.total > 1 and (s.missing .. "/" .. s.total) or "")
+        -- Count Text: missing / total, the missing alone, or none
+        local countMode = db.countText or "both"
+        local countText = ""
+        if s.total > 1 and countMode == "both" then countText = s.missing .. "/" .. s.total
+        elseif s.total > 1 and countMode == "missing" then countText = tostring(s.missing) end
+        b.count:SetText(countText)
+        b.entry = s.entry.def and s.entry or nil   -- for the right-click menu (not on Edit Mode's samples)
         -- Orientation and Growth: the first icon at the edge the row grows away from
-        local step = (i - 1) * (size + spacing)
+        local step = offset + (i - 1) * (size + spacing)
         b:ClearAllPoints()
         if vertical then
-            if back then b:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, step) else b:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -step) end
+            if back then b:SetPoint("BOTTOMLEFT", parentRow, "BOTTOMLEFT", 0, step) else b:SetPoint("TOPLEFT", parentRow, "TOPLEFT", 0, -step) end
         else
-            if back then b:SetPoint("TOPRIGHT", row, "TOPRIGHT", -step, 0) else b:SetPoint("TOPLEFT", row, "TOPLEFT", step, 0) end
+            if back then b:SetPoint("TOPRIGHT", parentRow, "TOPRIGHT", -step, 0) else b:SetPoint("TOPLEFT", parentRow, "TOPLEFT", step, 0) end
         end
         b:Show()
         if not b.pulse:IsPlaying() then b.pulse:Play() end
@@ -490,14 +724,40 @@ local function Show(shows)
             b.glow:Hide()
         end
     end
-    for i = #shows + 1, #icons do
-        icons[i].pulse:Stop()
-        icons[i].glowPulse:Stop()
-        icons[i]:Hide()
+    for i = #shows + 1, #list do
+        list[i].pulse:Stop()
+        list[i].glowPulse:Stop()
+        list[i]:Hide()
     end
-    local n = math_max(#shows, 1)
+    local n = math_max(slots, 1)
     local length = n * size + (n - 1) * spacing
-    if vertical then holder:SetSize(size, length) else holder:SetSize(length, size) end
+    if vertical then frame:SetSize(size, length) else frame:SetSize(length, size) end
+    return frame:GetWidth(), frame:GetHeight()
+end
+
+-- a settings preview's row: Edit Mode's samples (Fortitude missing on 2 of 5, Arcane Intellect running
+-- out) and a pet reminder, in the current look; kind is unused
+function BR.CreateSample(parent)
+    local f = CreateFrame("Frame", nil, parent)
+    f.fuiSample = true
+    f.icons = {}
+    f:EnableMouse(false)
+    f:SetFrameLevel(parent:GetFrameLevel() + 1)
+    f:SetSize(36, 36)
+    return f
+end
+
+function BR.DrawSample(f)
+    local _, class = UnitClass("player")
+    local pet = SpellIcon(class == "WARLOCK" and 688 or CALL_PET)
+    local shows = {
+        { entry = { icon = SpellIcon(1243) }, missing = 2, total = 5, unit = "player", running = false },
+        { entry = { icon = SpellIcon(1459) }, missing = 1, total = 5, unit = "player", running = true },
+        { entry = { icon = pet }, missing = 1, total = 1, unit = "player", running = false },
+    }
+    local w, h = Show(shows, f)
+    f:Show()
+    return w, h
 end
 
 --------------------------------------------------
@@ -543,7 +803,7 @@ function BR.Update()
             if Enabled(entry) then
                 local s = Entry(#shows + 1)
                 s.entry, s.missing, s.total, s.unit = entry, entry.def.group and 2 or 1, entry.def.group and 5 or 1, "player"
-                s.castID, s.icon, s.running = nil, nil, false
+                s.castID, s.icon, s.running, s.action = nil, nil, false, nil
                 shows[#shows + 1] = s
             end
         end
@@ -552,18 +812,23 @@ function BR.Update()
         while #shows < 2 do
             local s = Entry(#shows + 1)
             s.entry, s.missing, s.total, s.unit = { icon = SpellIcon(samples[#shows + 1]) }, 2, 5, "player"
-            s.castID, s.icon, s.running = nil, nil, false
+            s.castID, s.icon, s.running, s.action = nil, nil, false, nil
             shows[#shows + 1] = s
         end
     elseif ShowsHere(db) and not UnitIsDeadOrGhost("player") and not AurasLocked() and not UnitOnTaxi("player") then
-        local before = (db.before or 2) * 60
+        -- Remind Before It Ends, or its dungeon / raid choice when set ("same" or none: the main one)
+        local minutes = db.before or 2
+        local inInstance, kind = IsInInstance()
+        local special = inInstance and ((kind == "party" and db.beforeDungeon) or (kind == "raid" and db.beforeRaid))
+        if type(special) == "number" then minutes = special end
+        local before = minutes * 60
         for _, entry in ipairs(active) do
             if Enabled(entry) then
-                local missing, total, unit, castID, icon, running = Check(entry, before)
+                local missing, total, unit, castID, icon, running, action = Check(entry, before)
                 if missing > 0 then
                     local s = Entry(#shows + 1)
                     s.entry, s.missing, s.total, s.unit = entry, missing, total, unit
-                    s.castID, s.icon, s.running = castID, icon, running and true or false
+                    s.castID, s.icon, s.running, s.action = castID, icon, running and true or false, action
                     shows[#shows + 1] = s
                 end
             end
@@ -583,7 +848,43 @@ function BR.Update()
         shownKeys = now
         if fresh then BR.PlayAlert() end
     end
-    Show(shows)
+    BR.ShowFaded(shows, db)
+end
+
+-- Fade Speed (Fading section): the row fades in as reminders appear where there were none, and out
+-- as the last goes. The icons are secure buttons: the empty row is drawn after the fade, out of a fight
+-- only (a fight starting meanwhile leaves it to PLAYER_REGEN_ENABLED's update).
+local fadeTimer
+function BR.ShowFaded(list, db)
+    local t = ns.FadeTime and ns.FadeTime(db.fadeSpeed) or 0
+    local target = (db.alpha or 100) / 100
+    local had = BR.shownCount or 0
+    BR.shownCount = #list
+    if fadeTimer then fadeTimer:Cancel(); fadeTimer = nil end
+    if t <= 0 or (ns.EditPreviewing and ns.EditPreviewing()) then
+        BR.fading = nil
+        Show(list)
+        return
+    end
+    if #list > 0 then
+        Show(list)
+        if had == 0 then
+            BR.fading = true
+            UIFrameFadeIn(holder, t, 0, target)
+            fadeTimer = C_Timer.NewTimer(t, function() fadeTimer = nil; BR.fading = nil end)
+        end
+    elseif had > 0 then
+        BR.fading = true
+        UIFrameFadeOut(holder, t, holder:GetAlpha(), 0)
+        fadeTimer = C_Timer.NewTimer(t, function()
+            fadeTimer = nil
+            BR.fading = nil
+            if InCombatLockdown() then return end
+            Show(list)
+        end)
+    else
+        Show(list)
+    end
 end
 
 -- UNIT_AURA comes often: one check a moment later
@@ -605,8 +906,8 @@ local function GetLayoutStore(layoutName)
     if not db then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     db.layouts = db.layouts or {}
-    db.layouts[layoutName] = db.layouts[layoutName] or {}
-    return db.layouts[layoutName]
+    -- (a layout with no spot of its own reads the profile's home layout's: ProfileLayout.lua)
+    return ns.LayoutHome(db.layouts, layoutName)
 end
 
 local function ApplyPosition(layoutName)
@@ -644,8 +945,9 @@ local function BuildSettings()
         end
     end
     local function Vertical() local db = GetDb(); return db and db.orientation == "VERTICAL" end
-    -- the layout only: what it watches is in Settings > Buffs & Debuffs > Buff Reminders
-    return ns.OrderEditSettings({
+    -- the layout and where it shows: what it watches is in Settings > Buffs & Debuffs > Buff Reminders
+    local Section, settings = ns.EditSections()
+    Section("Frame", {
         { name = L["Orientation"], kind = LEM.SettingType.Dropdown, default = "HORIZONTAL",
           values = { { text = L["Horizontal"], value = "HORIZONTAL", isRadio = true }, { text = L["Vertical"], value = "VERTICAL", isRadio = true } },
           get = get("orientation", "HORIZONTAL"),
@@ -654,15 +956,62 @@ local function BuildSettings()
         { name = L["Growth"], kind = LEM.SettingType.Dropdown, default = "FORWARD",
           values = function()
               if Vertical() then
-                  return { { text = L["Down"], value = "FORWARD", isRadio = true }, { text = L["Up"], value = "BACK", isRadio = true } }
+                  return { { text = L["Down"], value = "FORWARD", isRadio = true }, { text = L["Up"], value = "BACK", isRadio = true },
+                           { text = L["From the Middle"], value = "CENTER", isRadio = true } }
               end
-              return { { text = L["Right"], value = "FORWARD", isRadio = true }, { text = L["Left"], value = "BACK", isRadio = true } }
+              return { { text = L["Right"], value = "FORWARD", isRadio = true }, { text = L["Left"], value = "BACK", isRadio = true },
+                       { text = L["From the Middle"], value = "CENTER", isRadio = true } }
           end,
           desc = L["Which way the icons go from the first one."],
           get = get("grow", "FORWARD"), set = set("grow") },
+        { name = L["Count Text"], kind = LEM.SettingType.Dropdown, default = "both",
+          values = { { text = L["Missing / Total"], value = "both", isRadio = true },
+                     { text = L["Missing Only"], value = "missing", isRadio = true },
+                     { text = L["Off"], value = "none", isRadio = true } },
+          desc = L["The number on a group buff's icon: how many are missing, of how many."],
+          get = get("countText", "both"), set = set("countText") },
         { name = L["Icon Size"], kind = LEM.SettingType.Slider, default = 36, minValue = 20, maxValue = 64, valueStep = 1,
           get = get("size", 36), set = set("size") },
+        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = 6, minValue = 0, maxValue = 20, valueStep = 1,
+          get = get("spacing", 6), set = set("spacing") },
     })
+    -- FADING (11-11, from the settings page's When It Shows and Hiding, as the other frames' Fading):
+    -- Visibility ticks where it shows (Solo / In a Party / In a Raid, any of them), and In Combat off
+    -- hides it in a fight (as the fight starts: its icons are secure buttons). Only Provider and the
+    -- role switches stay on the settings page: they pick group buffs, not where the frame shows.
+    local SHOW = { { "solo", "showSolo" }, { "party", "showParty" }, { "raid", "showRaid" }, { "combat", "showCombat" } }
+    local function On(field) local db = GetDb(); return not (db and db[field] == false) end
+    Section("Fading", {
+        { name = L["Visibility"], kind = LEM.SettingType.Dropdown, multiple = true,
+          values = { { text = L["Solo"], value = "solo" }, { text = L["In a Party"], value = "party" },
+                     { text = L["In a Raid"], value = "raid" }, { text = L["In Combat"], value = "combat" } },
+          desc = L["Where the reminders show: alone, in a party, in a raid. In Combat off hides them in fights."],
+          get = function()
+              local list = {}
+              for _, s in ipairs(SHOW) do if On(s[2]) then list[#list + 1] = s[1] end end
+              return list
+          end,
+          set = function(_, value)
+              local db = GetDb()
+              if not db then return end
+              for _, s in ipairs(SHOW) do
+                  if s[1] == value then db[s[2]] = not On(s[2]) end
+              end
+              BR.Update()
+          end },
+        { name = L["Hide in Rested Areas"], kind = LEM.SettingType.Checkbox, default = false,
+          desc = L["Nothing shows in towns and inns."],
+          get = function() local db = GetDb(); return db and db.hideRested or false end, set = set("hideRested") },
+        { name = L["Fade Speed"], kind = LEM.SettingType.Dropdown, default = "instant",
+          values = { { text = L["Instant"], value = "instant", isRadio = true }, { text = L["Fast"], value = "fast", isRadio = true },
+                     { text = L["Slow"], value = "slow", isRadio = true } },
+          desc = L["How fast it appears and disappears.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
+          get = get("fadeSpeed", "instant"), set = set("fadeSpeed") },
+        { name = L["Opacity"], kind = LEM.SettingType.Slider, default = 100, minValue = 20, maxValue = 100, valueStep = 5,
+          -- plain numbers, as Faded Opacity: "100%" ran past the dialog's edge (11-10)
+          get = get("alpha", 100), set = set("alpha") },
+    })
+    return settings
 end
 
 --------------------------------------------------
@@ -680,6 +1029,14 @@ function BR:Init()
     local db = AurasDb()
     if not db then return end
     db.reminder = db.reminder or {}
+    -- Pet Reminders off and Thorns Off (their settings rows, gone 11-10) become hidden reminders
+    local r = db.reminder
+    if r.pets == false or r.thorns == "off" then
+        r.hidden = r.hidden or {}
+        if r.pets == false then r.hidden["HUNTER:pet"], r.hidden["WARLOCK:pet"] = true, true end
+        if r.thorns == "off" then r.hidden["DRUID:thorns"] = true; r.thorns = nil end
+        r.pets = nil
+    end
     Resolve()
 
     holder = CreateFrame("Frame", "FlareUI_BuffReminders", UIParent)
@@ -703,14 +1060,23 @@ function BR:Init()
         pcall(events.RegisterEvent, events, event)
     end
     pcall(events.RegisterEvent, events, "WEAPON_ENCHANT_CHANGED")
-    for _, event in ipairs({ "ZONE_CHANGED_NEW_AREA", "PLAYER_MOUNT_DISPLAY_CHANGED", "PLAYER_UPDATE_RESTING" }) do
+    for _, event in ipairs({ "ZONE_CHANGED_NEW_AREA", "PLAYER_MOUNT_DISPLAY_CHANGED", "PLAYER_UPDATE_RESTING",
+                             "UPDATE_SHAPESHIFT_FORM", "PET_BAR_UPDATE", "BAG_UPDATE_DELAYED", "MINIMAP_UPDATE_TRACKING" }) do
         pcall(events.RegisterEvent, events, event)
     end
     pcall(events.RegisterUnitEvent, events, "UNIT_PET", "player")
     pcall(events.RegisterUnitEvent, events, "UNIT_HEALTH", "pet")
     pcall(events.RegisterUnitEvent, events, "UNIT_SPELLCAST_SUCCEEDED", "player")
     events:RegisterEvent("UNIT_AURA")
+    -- Visibility without In Combat: hidden as a fight starts (the last moment its secure icons can be)
+    events:RegisterEvent("PLAYER_REGEN_DISABLED")
     events:SetScript("OnEvent", function(_, event, unit, _, spellID)
+        if event == "PLAYER_REGEN_DISABLED" then
+            local db = GetDb()
+            if db and db.showCombat == false and not (ns.EditPreviewing and ns.EditPreviewing()) then holder:Hide() end
+            return
+        end
+        if event == "PLAYER_REGEN_ENABLED" and not holder:IsShown() then holder:Show() end
         if event == "SPELLS_CHANGED" or event == "PLAYER_LEVEL_UP" then Resolve() end
         -- a warlock's summon is remembered for the next time the pet is gone
         if event == "UNIT_SPELLCAST_SUCCEEDED" then

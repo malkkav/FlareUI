@@ -4,7 +4,7 @@ local S = ns.Settings
 
 --------------------------------------------------
 -- QUALITY OF LIFE
--- Settings for Modules/Tweaks.lua in Gameplay, Interface and Advanced tabs. Options that replace
+-- Settings for Modules/Tweaks.lua in Gameplay, Bags, Nameplates and Interface tabs. Options that replace
 -- Blizzard scripts ask for a reload; the rest apply live.
 --------------------------------------------------
 local function Refresh()
@@ -27,62 +27,11 @@ local function WayTaken()
 end
 
 S:Module{
-    key = "qol", group = "Tools", order = 20, enabled = "tweaks.enabled",
-    tabs = { { key = "gameplay" }, { key = "bags" }, { key = "interface" }, { key = "advanced" } },
+    key = "qol", group = "interface", order = 40, enabled = "tweaks.enabled",
+    tabs = { { key = "gameplay" }, { key = "bags" }, { key = "nameplates" }, { key = "interface" }, { key = "fonts" } },
 }
 
--- ADVANCED ---------------------------------------
--- Sync Blizz UI: copies one character's Blizzard settings to the others
-S:Row{ key = "qol.sync", tab = "advanced", path = "tweaks.syncUI", reload = true, section = "qol.syncBlizzUi" }
-S:Row{
-    key = "qol.source", kind = "button", tab = "advanced", parent = "qol.sync", section = "qol.syncBlizzUi",
-    labelFn = function()
-        local label = ns.Tweaks and ns.Tweaks.GetSyncSourceLabel and ns.Tweaks:GetSyncSourceLabel()
-        return label and L["Current source: %s"]:format(label) or L["No source yet."]
-    end,
-    buttonText = L["Make This Character the Source"],
-    fitButtonText = true,
-    disabled = function() return ns.Tweaks and ns.Tweaks.IsSyncSource and ns.Tweaks:IsSyncSource() or false end,
-    apply = function() ns.ShowDialog("FLAREUI_SYNC_SOURCE") end,
-}
-
--- The whole interface's scale (Tweaks.lua 17b), as EnhanceQoL's: a preset applied as you log in,
--- account-wide; Custom opens its own scale row
-local SCALE_PRESETS = { "blizzard", "auto", "custom", "4k", "1440p", "1440p125", "1080p", "1080p125" }
-local CUSTOM_CHOICES = {}
-for percent = 30, 200, 5 do CUSTOM_CHOICES[#CUSTOM_CHOICES + 1] = { percent, percent .. "%" } end
-local function Global() return ns.db and ns.db.global end
-S:Row{
-    key = "qol.uiScale", kind = "choice", tab = "advanced", choices = SCALE_PRESETS, reload = true,
-    get = function() local g = Global(); return g and g.uiScale or "blizzard" end,
-    set = function(preset)
-        local g = Global()
-        if not g then return end
-        g.uiScale = preset ~= "blizzard" and preset or nil
-        -- Custom starts from the scale in use, as EnhanceQoL's
-        if preset == "custom" and not g.uiScaleCustom then g.uiScaleCustom = UIParent:GetScale() end
-    end,
-}
-S:Row{
-    key = "qol.uiScaleCustom", kind = "choice", tab = "advanced", parent = "qol.uiScale", choices = CUSTOM_CHOICES, reload = true,
-    hidden = function() local g = Global(); return not (g and g.uiScale == "custom") end,
-    get = function()
-        local g = Global()
-        local value = g and tonumber(g.uiScaleCustom) or 1
-        return math.max(30, math.min(200, math.floor(value * 20 + 0.5) * 5))
-    end,
-    set = function(percent) local g = Global(); if g then g.uiScaleCustom = percent / 100 end end,
-}
-
--- one switch for moving windows and placing loot rolls / toasts
-S:Row{
-    key = "qol.move", tab = "advanced", reload = true,
-    get = function() return S:GetPath("tweaks.moveAnyFrame") end,
-    set = function(on)
-        S:SetPath("tweaks.moveAnyFrame", on)
-        S:SetPath("tweaks.moveLootToasts", on)
-    end,
-}
+-- (Sync Blizz UI, Move Any Window and UI Scale moved to the Settings page, Language.lua, 11-11)
 
 -- GAMEPLAY ---------------------------------------
 -- Convenience first, in pairs: quests, the map, NPCs, then fishing
@@ -141,7 +90,7 @@ local function BagAddon() return ns.Bags and ns.Bags.GetOtherBagAddon and ns.Bag
 local function NotCombined() return BagAddon() or not (ns.Bags and ns.Bags:IsCombined()) end
 local BAG_COLUMNS = { { 0, L["Default"] } }
 for n = 6, 20 do BAG_COLUMNS[#BAG_COLUMNS + 1] = { n, tostring(n) } end
-S:Row{ key = "qol.bagColumns", kind = "choice", tab = "bags", path = "tweaks.bagColumns", choices = BAG_COLUMNS,
+S:Row{ key = "qol.bagColumns", kind = "range", tab = "bags", path = "tweaks.bagColumns", choices = BAG_COLUMNS,
     apply = RefreshBags, disabled = NotCombined }
 S:Row{ key = "qol.bagGaps", half = true, tab = "bags", path = "tweaks.bagGaps", apply = RefreshBags, disabled = NotCombined }
 S:Row{ key = "qol.bagButtons", half = true, tab = "bags", path = "tweaks.bagButtons", apply = RefreshBags, disabled = NotCombined }
@@ -169,9 +118,14 @@ local function NoFeed() return not S:GetPath("tweaks.lootFeed") end
 S:Row{ key = "qol.lootFeedQuality", kind = "choice", tab = "bags", parent = "qol.lootFeed", path = "tweaks.lootFeedQuality",
     choices = LOOT_QUALITY, disabled = NoFeed }
 S:Row{ key = "qol.lootFeedMoney", tab = "bags", parent = "qol.lootFeed", path = "tweaks.lootFeedMoney", disabled = NoFeed }
+S:Row{ key = "qol.lootFeedSkills", tab = "bags", parent = "qol.lootFeed", path = "tweaks.lootFeedSkills", disabled = NoFeed }
 S:Row{ key = "qol.lootFeedPosition", kind = "choice", tab = "bags", parent = "qol.lootFeed", path = "tweaks.lootFeedPosition",
     choices = { "cursor", "placed" }, disabled = NoFeed,
     apply = function() if ns.LootFeed and ns.LootFeed.Refresh then ns.LootFeed:Refresh() end end }
+-- FONTS: the loot feed's lines (live: lines already up and the Edit Mode samples take it too)
+S:FontRows{ module = "qol", tab = "fonts", section = "qol.fonts", fonts = {
+    { key = "lootFeed", path = "tweaks.lootFeedFont" },
+}, apply = function() if ns.LootFeed and ns.LootFeed.ApplyFont then ns.LootFeed:ApplyFont() end end }
 
 -- Controller: the Gamepad mode prompt and rumble (GamepadMode.lua)
 S:Row{ key = "qol.gamepadPrompt", half = true, tab = "gameplay", path = "tweaks.gamepadPrompt" }
@@ -185,19 +139,19 @@ S:Row{ key = "qol.rumbleProcs", half = true, tab = "gameplay", path = "tweaks.ru
 -- INTERFACE --------------------------------------
 -- whether enemy plates show at all first, then what goes on them, then their text
 -- (Blizzard's own enemy plates, so another nameplate addon does not grey it out)
-S:Row{ key = "qol.npCombat", tab = "interface", path = "tweaks.combatPlates", apply = Refresh }
-S:Row{ key = "qol.npCombo", tab = "interface", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon }
-S:Row{ key = "qol.npQuest", tab = "interface", path = "tweaks.nameplateQuest", apply = Refresh, disabled = QuestBadgeTaken }
-S:Row{ key = "qol.npNames", tab = "interface", path = "tweaks.nameplateHideNames", apply = Refresh, disabled = NameplateAddon }
+S:Row{ key = "qol.npCombat", tab = "nameplates", path = "tweaks.combatPlates", apply = Refresh }
+S:Row{ key = "qol.npCombo", tab = "nameplates", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon }
+S:Row{ key = "qol.npQuest", tab = "nameplates", path = "tweaks.nameplateQuest", apply = Refresh, disabled = QuestBadgeTaken }
+S:Row{ key = "qol.npNames", tab = "nameplates", path = "tweaks.nameplateHideNames", apply = Refresh, disabled = NameplateAddon }
 -- live when switched on; switching off leaves visible plates' bars wide until Blizzard re-lays
 -- them, so the reload bar offers a reload
-S:Row{ key = "qol.npLevel", tab = "interface", path = "tweaks.nameplateHideLevel", disabled = NameplateAddon,
+S:Row{ key = "qol.npLevel", tab = "nameplates", path = "tweaks.nameplateHideLevel", disabled = NameplateAddon,
     apply = function(on)
         Refresh()
         S:TrackReload("qol.npLevel", on and "on" or "off", "on")
     end }
 -- the level moves in front of the name: needs the box hidden and the names shown
-S:Row{ key = "qol.npLevelName", tab = "interface", path = "tweaks.nameplateLevelName", parent = "qol.npLevel", apply = Refresh,
+S:Row{ key = "qol.npLevelName", tab = "nameplates", path = "tweaks.nameplateLevelName", parent = "qol.npLevel", apply = Refresh,
     disabled = function()
         return NameplateAddon() or not S:GetPath("tweaks.nameplateHideLevel") or S:GetPath("tweaks.nameplateHideNames") and true or false
     end }

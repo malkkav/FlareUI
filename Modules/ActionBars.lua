@@ -36,7 +36,7 @@ local canaccessvalue = canaccessvalue
 -- 3. CONSTANTS & DATA
 --------------------------------------------------
 local RANGE_INDICATOR = _G.RANGE_INDICATOR
-local BUTTON_SCALE = 1.06
+local BUTTON_SCALE = 1.11   -- Bar Scale's default (actionbars.buttonScale; 1.06 until 11-11)
 
 -- text offsets from the button's corner: hotkey top right, count bottom right, macro name bottom
 local HOTKEY_X, HOTKEY_Y = -4, -4
@@ -194,6 +194,82 @@ local function ApplyButtonArt(button)
     button.PushedTexture:SetSize(w, h)
 end
 
+--------------------------------------------------
+-- 6b. FLAREUI BORDERS (Bar Appearance, actionbars.flareBorders, off; 11-11, a player's request)
+-- Only the frame changes (11-11 Marcus): Blizzard's bronze frame goes invisible and FlareUI Frames, the
+-- chat and meter windows' border, goes where it was. The icon, its rounded corners, the slot art and every other
+-- part of the button stay Blizzard's. Off shows Blizzard's frame again.
+--------------------------------------------------
+-- the border's fit, tuned by eye (11-11): how far it reaches past the button's edge (negative: in),
+-- and its thickness. Neighbouring buttons' borders met in the gap between them at 3 px out.
+local FLARE_BORDER_OUT, FLARE_BORDER_EDGE = 0, 16
+
+local function SkinBorder(button, on)
+    local icon = button.icon or button.Icon
+    if not (icon and button.NormalTexture) then return end
+    if on then
+        if not button.FlareUI_Border then
+            local b = CreateFrame("Frame", nil, button, "BackdropTemplate")
+            button.FlareUI_Border = b
+        end
+        local b = button.FlareUI_Border
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", -FLARE_BORDER_OUT, FLARE_BORDER_OUT)
+        b:SetPoint("BOTTOMRIGHT", FLARE_BORDER_OUT, -FLARE_BORDER_OUT)
+        local LSM = LibStub("LibSharedMedia-3.0")
+        -- (11-11: FlareUI Frames, the chat and meter windows' border; FlareUI Thin looked too faint here)
+        local file = LSM:Fetch("border", "FlareUI Frames")
+        b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, FLARE_BORDER_EDGE) })
+        local c = ns.BORDER_COLOR
+        b:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
+        -- over the cooldown swipe, under the texts' frame
+        b:SetFrameLevel(button:GetFrameLevel() + 2)
+        b:Show()
+        button.NormalTexture:SetAlpha(0)
+        button.FlareUI_Bordered = true
+    elseif button.FlareUI_Bordered then
+        if button.FlareUI_Border then button.FlareUI_Border:Hide() end
+        button.NormalTexture:SetAlpha(1)
+        button.FlareUI_Bordered = nil
+    end
+end
+
+-- every bar's buttons: the bars above, the totem bar (its action buttons and its summon / recall),
+-- and the vehicle and override bar (an addon of its own, loaded on demand). The Extra Action and
+-- zone ability buttons keep their own decorated art.
+local function SkinnedButtons()
+    local list = {}
+    for _, b in ipairs(GetAllActionButtons()) do list[#list + 1] = b end
+    for i = 1, 12 do list[#list + 1] = _G["MultiCastActionButton" .. i] end
+    list[#list + 1] = _G.MultiCastSummonSpellButton
+    list[#list + 1] = _G.MultiCastRecallSpellButton
+    local override = _G.OverrideActionBar
+    for i = 1, 6 do list[#list + 1] = override and override["SpellButton" .. i] end
+    return list
+end
+
+local function UpdateBordersAll()
+    local db = GetBarConfig()
+    local on = db and db.enabled and db.flareBorders or false
+    if on and not ActionBars.overrideWatched and EventUtil and EventUtil.ContinueOnAddOnLoaded then
+        ActionBars.overrideWatched = true
+        EventUtil.ContinueOnAddOnLoaded("Blizzard_OverrideActionBar", function()
+            if not InCombatLockdown() then UpdateBordersAll() end
+        end)
+    end
+    for _, button in pairs(SkinnedButtons()) do
+        -- Blizzard's art update sets the frame again: hidden again after it
+        if on and not button.FlareUI_BorderHooked and button.UpdateButtonArt then
+            button.FlareUI_BorderHooked = true
+            hooksecurefunc(button, "UpdateButtonArt", function(self)
+                local now = GetBarConfig()
+                if now and now.enabled and now.flareBorders then SkinBorder(self, true) end
+            end)
+        end
+        SkinBorder(button, on)
+    end
+end
+
 local function UpdateButtonArtAll()
     local db = GetBarConfig()
     local force = db and db.enabled and db.buttonArt
@@ -317,6 +393,49 @@ local function UpdateButtonText(button)
             ns.ApplyShadow(name, font)
         end
     end
+end
+
+-- A settings preview's sample button (11-10): Blizzard's own action button look (ActionButtonTemplate,
+-- not secure), styled by FlareUI as the bars are, with action slot i's real keybind. No mouse.
+local sampleButtons = 0
+function ActionBars.CreateSampleButton(parent, slot)
+    sampleButtons = sampleButtons + 1
+    -- the template's children are named after the button
+    -- (its OnLoad runs Blizzard's art and flyout updates on a button with no action: guarded)
+    local ok, b = pcall(CreateFrame, "CheckButton", "FlareUI_PreviewActionButton" .. sampleButtons, parent, "ActionButtonTemplate")
+    if not ok or not b then return nil end
+    b.commandName = "ACTIONBUTTON" .. slot
+    b:EnableMouse(false)
+    return b
+end
+
+-- icon: a texture, or nil for an empty slot (where Show Button Art shows). skin: Skin Action Bars'
+-- border forced on or off (the option's own before / after preview), nil for the setting
+function ActionBars.DrawSampleButton(b, icon, macro, skin)
+    local db = GetBarConfig() or {}
+    if icon then
+        b.icon:SetTexture(icon)
+        b.icon:SetDesaturated(false)
+        b.icon:SetVertexColor(1, 1, 1)
+        b.icon:Show()
+    else
+        b.icon:Hide()
+    end
+    if db.buttonArt then
+        ApplyButtonArt(b)
+    elseif not icon then
+        -- an empty slot without the art: its border stays, the background goes
+        if b.SlotArt then b.SlotArt:Hide() end
+        if b.SlotBackground then b.SlotBackground:Hide() end
+    end
+    if b.NormalTexture then b.NormalTexture:SetAlpha(1) end
+    if skin == nil then skin = db.flareBorders and true or false end
+    SkinBorder(b, skin)
+    if b.Name then b.Name:SetText(icon and macro or "") end
+    UpdateButtonText(b)
+    if b.Count then b.Count:SetText("") end
+    b:Show()
+    return b:GetSize()
 end
 
 --------------------------------------------------
@@ -1005,6 +1124,7 @@ function ActionBars:Refresh(event)
 
     UpdateGryphonLayer(db)
     UpdateButtonArtAll()
+    UpdateBordersAll()
     SetupRangeColors()
     SetupCooldowns()
     wipe(fcmButtons)
@@ -1019,7 +1139,7 @@ function ActionBars:Refresh(event)
 
     local buttons = GetAllActionButtons()
     for _, btn in ipairs(buttons) do
-        btn:SetScale(BUTTON_SCALE)
+        btn:SetScale(math.max(0.5, math.min(2, tonumber(db.buttonScale) or BUTTON_SCALE)))
         UpdateButtonText(btn)
         -- one-off repaint; the hooks keep it current
         OnUpdateUsable(btn)

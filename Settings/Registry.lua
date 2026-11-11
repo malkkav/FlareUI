@@ -19,55 +19,32 @@ function Settings.ButtonWidthForText(button, minWidth)
     return math.max(minWidth, math.ceil(textWidth) + 24)
 end
 
-local GROUPS = { "top", "HUD", "Info", "Tools", "bottom" }
+local GROUPS = { "top", "combat", "map", "interface", "bottom" }   -- 11-10 regrouping
 
 -- Rows that get a NEW badge, by row key -> the version that added them ("2.5"). The badge shows while
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["ab.skinCDM"] = "5.1",
-    ["au.reminderBefore"] = "5.1",
-    ["au.reminderBlessing"] = "5.1",
-    ["au.reminderConsumables"] = "5.1",
-    ["au.reminderGlow"] = "5.1",
-    ["au.reminderGlowExpiring"] = "5.1",
-    ["au.reminderGroup"] = "5.1",
-    ["au.reminderParty"] = "5.1",
-    ["au.reminderPets"] = "5.1",
-    ["au.reminderProvider"] = "5.1",
-    ["au.reminderRaid"] = "5.1",
-    ["au.reminderRested"] = "5.1",
-    ["au.reminderSolo"] = "5.1",
-    ["au.reminderSound"] = "5.1",
-    ["au.reminders"] = "5.1",
-    ["ch.channelNames"] = "5.1",
-    ["ch.classIcons"] = "5.1",
-    ["ch.linkIcons"] = "5.1",
-    ["ch.nameColon"] = "5.1",
-    ["ch.raceIcons"] = "5.1",
-    ["ch.whisperMarkers"] = "5.1",
-    ["mm.bagHover"] = "5.1",
-    ["mm.nodeScanNote"] = "5.1",
-    ["qol.bagKeyring"] = "5.1",
-    ["qol.bagReagent"] = "5.1",
-    ["qol.lootFeed"] = "5.1",
-    ["qol.lootFeedMoney"] = "5.1",
-    ["qol.lootFeedPosition"] = "5.1",
-    ["qol.lootFeedQuality"] = "5.1",
-    ["qol.merchantWide"] = "5.1",
-    ["qol.mouseRingCast"] = "5.1",
-    ["qol.mouseRingClassColor"] = "5.1",
-    ["qol.mouseRingGCD"] = "5.1",
-    ["qol.mouseRingHideTurning"] = "5.1",
-    ["qol.mouseRingRange"] = "5.1",
-    ["qol.mouseRingShow"] = "5.1",
-    ["qol.mouseRingSize"] = "5.1",
-    ["qol.mouseRingSwing"] = "5.1",
-    ["qol.mouseRingThickness"] = "5.1",
-    ["qol.padTracker"] = "5.1",
-    ["qol.uiScale"] = "5.1",
-    ["qol.uiScaleCustom"] = "5.1",
-    ["qt.colorNames"] = "5.1",
+    ["ab.buttonScale"] = "6.0",
+    ["ab.flareBorders"] = "6.0",
+    ["adv.holds"] = "6.0",
+    ["au.reminderBeforeDungeon"] = "6.0",
+    ["au.reminderBeforeRaid"] = "6.0",
+    ["au.reminderCamping"] = "6.0",
+    ["au.reminderGathering"] = "6.0",
+    ["au.reminderHidden"] = "6.0",
+    ["au.reminderHideDamage"] = "6.0",
+    ["au.reminderHideHealer"] = "6.0",
+    ["au.reminderHideNoRole"] = "6.0",
+    ["au.reminderHideTank"] = "6.0",
+    ["qol.font.lootFeed"] = "6.0",
+    ["qol.lootFeedSkills"] = "6.0",
+    ["qol.textScale"] = "6.0",
+    ["rb.palette"] = "6.0",
+    ["rb.pickColors"] = "6.0",
+    ["tt.showAuras"] = "6.0",
+    ["tt.showGroupAuras"] = "6.0",
+    ["uf.pickColors"] = "6.0",
 }
 
 --------------------------------------------------
@@ -345,6 +322,80 @@ function Row:Set(value)
     Settings:Fire("RowChanged", self)
 end
 
+-- Section resets use profile defaults, never another profile or the current values.
+function Settings:DefaultPath(path)
+    local value = ns.defaults and ns.defaults.profile
+    for part in path:gmatch('[^.]+') do
+        if type(value) ~= 'table' then return nil end
+        value = value[part]
+    end
+    return value
+end
+local resetPaths = {
+    ['uf.main']='unitframes.units.player.enabled',
+    ['ab.statusColours']='actionbars.colors.enableRange',
+    ['qol.move']='tweaks.moveAnyFrame', ['qol.camera']='tweaks.maxCameraZoom',
+    ['tt.anchor']='tooltips.anchor', ['tt.borders']='tooltips.borderByReaction',
+    ['tt.ids']='tooltips.showItemID', ['tt.showWorld']='tooltips.visibility.worldUnits',
+}
+function Row:ResetValue()
+    local path = self.path or resetPaths[self.key]
+    if self.resetValue then return self.resetValue() end
+    if path then return Settings:DefaultPath(path) end
+    local function D(p) return Settings:DefaultPath(p) end
+    local key = self.key
+    if self.previewFont and key:match('%.shadow$') then
+        if not D(self.previewFont .. '.enableShadow') then return 'none' end
+        return (D(self.previewFont .. '.shadowX') or 1) >= 2 and 'strong' or 'soft'
+    end
+    if key == 'rm.pad' or key == 'rm.padRelease' then return true end
+    if key == 'rm.padRepeat' then return false end
+    if self.kind == 'keybind' then return '' end
+    if key == 'uf.frameStyle' then return not D('unitframes.foreverStyle') and 'addon' or D('unitframes.plateStyle') and 'forever' or 'flareui' end
+    if key == 'ch.channelNames' then return D('chat.channelNames') or (D('chat.shortChannels') and 'number' or 'full') end
+    if key == 'qol.uiScale' then return 'blizzard' end
+    if key == 'qol.uiScaleCustom' then return 100 end
+    if key == 'tt.healthBar' then return not D('tooltips.hideHealthBar') end
+    if key == 'tt.classNames' then return D('tooltips.nameColor') == 'class' end
+    local hide = ({['ch.social']='chat.socialHide',['ch.channels']='chat.channelHide',['ch.menu']='chat.menuHide'})[key]
+    if hide then return not D(hide) end
+    if key == 'ab.xpQuest' then return D('actionbars.xpbar.questXP') and (D('actionbars.xpbar.questXPMode') or 'done') or 'off' end
+    if key == 'qt.sort' then
+        return D('objectivetracker.sortByLevel') and 'level' or D('objectivetracker.sortByProgress') and 'progress' or D('objectivetracker.zoneFirst') and 'zone' or 'distance'
+    end
+    if key == 'qt.minimizeButton' then return D('objectivetracker.minimizeStyle') == 'button' end
+    if key == 'qt.minInstances' then return D('objectivetracker.autoMinimize.dungeon') == 'minimize' end
+    if key == 'qt.minCombat' then return D('objectivetracker.autoMinimize.combat') == 'minimize' end
+end
+-- What a section's Reset changes: only rows the player can see and use, that differ from their
+-- default. Never a keybind (it would unbind a key), a row that needs a reload (a frame switch, the
+-- frame style, UI Scale: too big for a one-click reset), or one marked noReset. (11-10 review of PR #19)
+local NO_RESET_KINDS = { expander = true, button = true, buttons = true, text = true, legend = true, keybind = true }
+function Settings:SectionDefaults(moduleKey, sectionKey, tab)
+    local module = self.modules[moduleKey]
+    local section = module and module.sectionByKey[sectionKey]
+    local list = {}
+    for _, row in ipairs(section and section.rows or {}) do
+        local onTab = not tab or (row.tab or (module.tabs and module.tabs[1].key) or 'settings') == tab
+        if onTab and not NO_RESET_KINDS[row.kind] and not row.reload and not row.noReset
+                and not row:IsHidden() and not row:IsDisabled() then
+            local value = row:ResetValue()
+            if value ~= nil and row:Get() ~= value then list[#list + 1] = { row = row, value = value } end
+        end
+    end
+    return list
+end
+function Settings:CanResetSection(moduleKey, sectionKey, tab)
+    return #self:SectionDefaults(moduleKey, sectionKey, tab) > 0
+end
+function Settings:ResetSection(moduleKey, sectionKey, tab)
+    -- not in a fight: some setters move frames
+    if InCombatLockdown() then return end
+    -- Snapshot before setters run: a style change can rebuild controls and other defaults.
+    local changes = self:SectionDefaults(moduleKey, sectionKey, tab)
+    for _, change in ipairs(changes) do change.row:Set(change.value) end
+end
+
 -- Frame Border choices: None, FlareUI's border, then other addons' borders; rebuilt on each open
 function Settings:BorderChoices()
     local list = { { "None", L["None"] }, { "FlareUI Frames", "FlareUI Frames" } }
@@ -413,7 +464,7 @@ end
 -- switches, then keybinds, buttons and legends. A row with a parent sits under it, among its siblings
 -- in the same order; lead = true keeps a row on top (a switch the others read the other way round);
 -- rank = n places a row by hand (Fake CM's Visibility: 3.5, between the bar switches and the button).
-local KIND_RANK = { text = 0, choice = 1, dropdown = 1, toggle = 3, frame = 3, keybind = 4, button = 4, buttons = 4,
+local KIND_RANK = { text = 0, styles = 1, choice = 1, range = 1, dropdown = 1, toggle = 3, frame = 3, keybind = 4, button = 4, buttons = 4,
                     editmode = 4, legend = 5, expander = 5 }
 local function RowRank(row)
     if row.lead then return -1 end
@@ -444,7 +495,7 @@ local function InsertOrdered(list, row)
 end
 
 -- def: key ("module.row"), kind, path ("db.path") or get/set, choices, parent, tab, section, half,
--- reload, apply, hidden, disabled, lead, rank, gapAbove. Kinds: toggle, choice, dropdown, keybind, button, buttons, frame,
+-- reload, apply, hidden, disabled, lead, rank, gapAbove. Kinds: toggle, choice, range, dropdown, keybind, button, buttons, frame,
 -- expander, editmode, legend (built in Settings/Panel.lua), text (custom-page copy, never drawn or searched)
 function Settings:Row(def)
     assert(type(def.key) == "string", "Settings:Row needs a key")
@@ -501,7 +552,8 @@ local function ContextText(row)
     if module and module.tabs and row.tab then
         local names = Settings:ModuleText(module.key, "tabs") or {}
         for i, tab in ipairs(module.tabs) do
-            if tab.key == row.tab and names[i] then parts[#parts + 1] = names[i] end
+            local name = tab.label or names[i]
+            if tab.key == row.tab and name then parts[#parts + 1] = name end
         end
     end
     local section = module and row.section and module.sectionByKey[row.section]
@@ -592,7 +644,7 @@ function Settings:Search(text)
         if module.tabs then
             local names = self:ModuleText(key, "tabs") or {}
             for i, tab in ipairs(module.tabs) do
-                local name = names[i]
+                local name = tab.label or names[i]
                 if name and AllWords(self:Fold(name), words) then
                     places[#places + 1] = PlaceResult(module, name, tab.key, nil)
                 end

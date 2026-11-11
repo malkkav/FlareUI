@@ -10,7 +10,7 @@ local S = ns.Settings
 local function RM() return ns.RadialMenu end
 
 S:Module{
-    key = "rm", group = "Tools", order = 30, enabled = "radialmenu.enabled",
+    key = "rm", group = "interface", order = 30, enabled = "radialmenu.enabled",
     tabs = {
         {
             -- the radials list and the live preview take the info panel's column (preview)
@@ -35,7 +35,7 @@ S:Row{ key = "rm.position", kind = "choice", tab = "options", path = "radialmenu
 S:Row{ key = "rm.activation", kind = "choice", tab = "options", path = "radialmenu.activation", choices = { "hold", "toggle" }, apply = ApplyOpening }
 local SCALES = {}
 for _, v in ipairs({ 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5 }) do SCALES[#SCALES + 1] = { v, (v * 100) .. "%" } end
-S:Row{ key = "rm.scale", kind = "choice", tab = "options", path = "radialmenu.scale", choices = SCALES }
+S:Row{ key = "rm.scale", kind = "range", tab = "options", path = "radialmenu.scale", choices = SCALES }
 S:Row{ key = "rm.names", tab = "options", path = "radialmenu.showNames" }
 S:Row{
     key = "rm.pad", tab = "options",

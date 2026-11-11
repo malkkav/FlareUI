@@ -174,7 +174,8 @@ end
 
 local function StyleButton(button, look)
     local size, round = look.size, look.style == "round"
-    styledButtons[button] = true
+    -- the settings window's sample auras stay out: Edit Mode's preview timers are not theirs
+    if not look.preview then styledButtons[button] = true end
     button:SetSize(size, look.cellHeight or CellHeight(size))
 
     if not button.FlareUI_Area then
@@ -776,8 +777,8 @@ local function GetLayoutStore(layoutName)
     if not db then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     db.layouts = db.layouts or {}
-    db.layouts[layoutName] = db.layouts[layoutName] or {}
-    return db.layouts[layoutName]
+    -- (a layout with no spot of its own reads the profile's home layout's: ProfileLayout.lua)
+    return ns.LayoutHome(db.layouts, layoutName)
 end
 
 local function ApplyPosition(kind, layoutName)
@@ -840,8 +841,8 @@ local function BuildSettings(kind)
             AU:Refresh()
         end
     end
-    -- dropdowns, sliders, switches (ns.OrderEditSettings)
-    return ns.OrderEditSettings({
+    -- one Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua)
+    return ns.EditSection("Frame", {
         { name = L["Icon Size"], kind = LEM.SettingType.Slider, default = defaults.size or 30, minValue = 16, maxValue = 64, valueStep = 1,
           get = get("size"), set = set("size") },
         { name = L["Icons per Row"], kind = LEM.SettingType.Slider, default = defaults.perRow or 12, minValue = 1, maxValue = 40, valueStep = 1,
@@ -864,7 +865,8 @@ end
 
 --------------------------------------------------
 -- 9b. BLIZZARD'S COOLDOWN MANAGER (Skin Cooldown Manager, on with this module)
--- The Tracked Bars and Tracked Buffs icons in FlareUI's look: the bars as FlareUI's cast bars (the
+-- The Tracked Bars and Tracked Buffs icons in FlareUI's look (and the Essential / Utility cooldown
+-- icons with the action buttons' FlareUI Borders, 11-11): the bars as FlareUI's cast bars (the
 -- unit frames' bar texture, a thin bronze border, the cast bar font), the icons as FlareUI's buffs
 -- (Aura Icon Shape, Aura Swipe, the stack font). Blizzard keeps driving its own pooled frames; it sets
 -- only values, text and the spark after a frame is made, so each one is styled once as it is
@@ -1005,7 +1007,28 @@ function CDM.StyleBar(item)
     end
 end
 
-CDM.VIEWERS = { BuffBarCooldownViewer = CDM.StyleBar, BuffIconCooldownViewer = CDM.StyleBuffIcon }
+-- An Essential or Utility cooldown icon, as the action buttons with FlareUI Borders (ActionBars.lua
+-- 6b, 11-11 Marcus): Blizzard's ring off and FlareUI Frames on the icon's edge, the rest Blizzard's
+CDM.BUTTON_BORDER, CDM.BUTTON_EDGE = "FlareUI Frames", 16
+function CDM.StyleCooldownIcon(item)
+    local p = CDM.Pieces(item)
+    for _, region in ipairs({ item:GetRegions() }) do
+        if region.GetAtlas and region:GetAtlas() == CDM.OVERLAY then region:SetAlpha(0) end
+    end
+    if not p.frameBorder then p.frameBorder = CreateFrame("Frame", nil, item, "BackdropTemplate") end
+    local b = p.frameBorder
+    b:ClearAllPoints()
+    b:SetAllPoints(item)
+    local file = LibStub("LibSharedMedia-3.0"):Fetch("border", CDM.BUTTON_BORDER)
+    b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, CDM.BUTTON_EDGE) })
+    local c = ns.BORDER_COLOR
+    b:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
+    -- over the cooldown swipe
+    b:SetFrameLevel(item:GetFrameLevel() + 2)
+end
+
+CDM.VIEWERS = { BuffBarCooldownViewer = CDM.StyleBar, BuffIconCooldownViewer = CDM.StyleBuffIcon,
+                EssentialCooldownViewer = CDM.StyleCooldownIcon, UtilityCooldownViewer = CDM.StyleCooldownIcon }
 
 -- every frame showing now (a settings change, or the viewer was already up)
 function CDM.StyleAll()

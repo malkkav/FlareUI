@@ -38,7 +38,7 @@ Icons (Media/Icons/)
       Icons8 ("stopwatch"), free licence with attribution .... https://icons8.com
 
 Fonts (Media/Fonts/)
-  Asap Condensed, Barlow Condensed, Cabin Condensed, Fira Sans Extra Condensed
+  Asap Condensed, Barlow Condensed, Cabin Condensed, Fira Sans Extra Condensed, Marcellus
       SIL Open Font License 1.1 ............................ Fonts_OFL-1.1.txt
   Roboto Condensed
       Google Inc., Apache License 2.0 ...................... Font_RobotoCondensed_Apache-2.0.txt

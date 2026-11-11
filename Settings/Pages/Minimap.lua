@@ -9,14 +9,14 @@ local function Refresh()
     if ns.Minimap and ns.Minimap.Refresh then ns.Minimap:Refresh() end
 end
 
-S:Module{ key = "mm", group = "HUD", order = 75, enabled = "minimap.enabled",
+S:Module{ key = "mm", group = "map", order = 10, enabled = "minimap.enabled",
     tabs = { { key = "settings" }, { key = "fonts" } },
     -- the minimap's fade settings sit in Blizzard's minimap dialog
     editSystems = function()
         return Enum.EditModeSystem and { { system = Enum.EditModeSystem.Minimap, name = _G.MINIMAP_LABEL or "Minimap" } } or {}
     end }
 
-S:Row{ key = "mm.style", kind = "choice", path = "minimap.style", choices = { "square", "round" }, reload = true }
+S:Row{ key = "mm.style", kind = "styles", path = "minimap.style", choices = { "square", "round" }, reload = true, hideLabel = true }
 S:Row{ key = "mm.zoom", kind = "choice", path = "minimap.autoZoom", choices = { 0, 5, 10, 30 }, apply = Refresh }
 -- the two for the pointer on the map together, then the clock, then the drawer
 S:Row{ key = "mm.coordsHover", path = "minimap.coordsOnHover", apply = Refresh }

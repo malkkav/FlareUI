@@ -13,8 +13,8 @@ local function Refresh()
 end
 
 S:Module{
-    key = "ab", group = "HUD", order = 10, enabled = "actionbars.enabled",
-    tabs = { { key = "settings" }, { key = "fcm" }, { key = "fonts" } },
+    key = "ab", group = "combat", order = 10, enabled = "actionbars.enabled",
+    tabs = { { key = "settings" }, { key = "xp" }, { key = "visibility" }, { key = "fcm" }, { key = "fonts" } },
     -- Blizzard's bars: no FlareUI frame to select, so plain Edit Mode
     editMode = function() return nil end,
     -- the XP bar is FlareUI's own frame; each bar's fade settings sit in Blizzard's bar dialogs
@@ -22,43 +22,59 @@ S:Module{
     editSystems = function() return ns.Visibility and ns.Visibility.EditSystems and ns.Visibility:EditSystems() or {} end,
 }
 
+-- BAR APPEARANCE (11-11): the bars as a whole, above the buttons' own look
+S:Row{ key = "ab.flareBorders", section = "ab.barAppearance", path = "actionbars.flareBorders", apply = Refresh, half = true }
+-- Blizzard's Cooldown Manager restyled (Auras.lua 9b, so it needs Buffs & Debuffs on); off needs a
+-- reload to give Blizzard's look back
+S:Row{ key = "ab.skinCDM", section = "ab.barAppearance", path = "auras.skinCDM", reload = true, half = true,
+    disabled = function() return not S:GetPath("auras.enabled") end }
+-- every button's scale, as FlareUI 1.0's per-bar scales once (fixed at 106% since; 111% the default from 11-11)
+local SCALES = {}
+-- in half-percent steps (11-11 Marcus: it is that precise); kept as tenths of a percent so no float drifts
+for tenths = 700, 1500, 5 do
+    local percent = tenths / 10
+    SCALES[#SCALES + 1] = { tenths / 1000, (percent % 1 == 0 and ("%d"):format(percent) or ("%.1f"):format(percent)) .. "%" }
+end
+S:Row{ key = "ab.buttonScale", kind = "range", section = "ab.barAppearance", choices = SCALES, apply = Refresh,
+    get = function()
+        local v = tonumber(S:GetPath("actionbars.buttonScale")) or 1.11
+        return math.floor(v * 200 + 0.5) * 5 / 1000
+    end,
+    set = function(v) S:SetPath("actionbars.buttonScale", v) end }
+
 -- in pairs (half rows): the button's state, its art, its text, the spells, paging
 S:Row{
-    key = "ab.statusColours", apply = Refresh, half = true,
+    key = "ab.statusColours", section = "ab.buttonAppearance", apply = Refresh, half = true,
     get = function() return S:GetPath("actionbars.colors.enableRange") end,
     set = function(on)
         S:SetPath("actionbars.colors.enableRange", on)
         S:SetPath("actionbars.colors.unusable.desaturate", on)
     end,
 }
-S:Row{ key = "ab.dimOnCooldown", path = "actionbars.dimOnCooldown", apply = Refresh, half = true }
-S:Row{ key = "ab.procGlow", path = "actionbars.procGlow", half = true,
+S:Row{ key = "ab.dimOnCooldown", section = "ab.buttonAppearance", path = "actionbars.dimOnCooldown", apply = Refresh, half = true }
+S:Row{ key = "ab.procGlow", section = "ab.buttonAppearance", path = "actionbars.procGlow", half = true,
     apply = function() if ns.ProcGlow then ns.ProcGlow:Refresh() end end }
-S:Row{ key = "ab.buttonArt", path = "actionbars.buttonArt", apply = Refresh, half = true }
-S:Row{ key = "ab.hideKeybinds", path = "actionbars.hideHotkeys", apply = Refresh, half = true }
-S:Row{ key = "ab.cleanKeybinds", path = "actionbars.cleanKeybinds", apply = Refresh, half = true }
-S:Row{ key = "ab.hideMacroText", path = "actionbars.hideMacroText", apply = Refresh, half = true }
-S:Row{ key = "ab.gryphonsBehind", path = "actionbars.gryphonsBehind", apply = Refresh, half = true }
-S:Row{ key = "ab.autoRanks", path = "actionbars.autoRanks", half = true,
+S:Row{ key = "ab.buttonArt", section = "ab.buttonAppearance", path = "actionbars.buttonArt", apply = Refresh, half = true }
+S:Row{ key = "ab.hideKeybinds", section = "ab.buttonText", path = "actionbars.hideHotkeys", apply = Refresh, half = true }
+S:Row{ key = "ab.cleanKeybinds", section = "ab.buttonText", path = "actionbars.cleanKeybinds", apply = Refresh, half = true }
+S:Row{ key = "ab.hideMacroText", section = "ab.buttonText", path = "actionbars.hideMacroText", apply = Refresh, half = true }
+S:Row{ key = "ab.gryphonsBehind", section = "ab.buttonAppearance", path = "actionbars.gryphonsBehind", apply = Refresh, half = true }
+S:Row{ key = "ab.autoRanks", section = "ab.spellBehavior", path = "actionbars.autoRanks", half = true,
     apply = function() if ns.ActionBars.CatchUpRanks then ns.ActionBars:CatchUpRanks() end end }
-S:Row{ key = "ab.stopAutoAdd", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
-S:Row{ key = "ab.stealthPaging", path = "actionbars.stealthPaging", apply = Refresh, half = true }
-S:Row{ key = "ab.noStancePaging", path = "actionbars.noStancePaging", apply = Refresh, half = true }
--- last in Tweaks: Blizzard's Cooldown Manager restyled (Auras.lua 9b, so it needs Buffs & Debuffs on);
--- off needs a reload to give Blizzard's look back
-S:Row{ key = "ab.skinCDM", path = "auras.skinCDM", reload = true,
-    disabled = function() return not S:GetPath("auras.enabled") end }
+S:Row{ key = "ab.stopAutoAdd", section = "ab.spellBehavior", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
+S:Row{ key = "ab.stealthPaging", section = "ab.spellBehavior", path = "actionbars.stealthPaging", apply = Refresh, half = true }
+S:Row{ key = "ab.noStancePaging", section = "ab.spellBehavior", path = "actionbars.noStancePaging", apply = Refresh, half = true }
 
 -- the FlareUI XP Bar: off leaves Blizzard's bars alone, so turning it on or off reloads; its options sit
 -- under it and grey out while it's off
 
-S:Row{ key = "ab.xpBar", path = "actionbars.xpbar.enabled", reload = true }
-S:Row{ key = "ab.xpText", kind = "choice", path = "actionbars.xpbar.textMode", choices = { "HOVER", "ALWAYS" }, parent = "ab.xpBar",
+S:Row{ key = "ab.xpBar", tab = "xp", path = "actionbars.xpbar.enabled", reload = true }
+S:Row{ key = "ab.xpText", tab = "xp", kind = "choice", path = "actionbars.xpbar.textMode", choices = { "HOVER", "ALWAYS" }, parent = "ab.xpBar",
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
-S:Row{ key = "ab.xpNumbers", kind = "choice", path = "actionbars.xpbar.textFormat", choices = { "VALUES", "PERCENT", "BOTH", "REMAINING" }, parent = "ab.xpBar",
+S:Row{ key = "ab.xpNumbers", tab = "xp", kind = "choice", path = "actionbars.xpbar.textFormat", choices = { "VALUES", "PERCENT", "BOTH", "REMAINING" }, parent = "ab.xpBar",
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
 -- one choice for both settings: Off clears questXP, the rest set it and pick the quests counted
-S:Row{ key = "ab.xpQuest", kind = "choice", choices = { "off", "done", "all", "zone" }, parent = "ab.xpBar",
+S:Row{ key = "ab.xpQuest", tab = "xp", kind = "choice", choices = { "off", "done", "all", "zone" }, parent = "ab.xpBar",
     get = function()
         if not S:GetPath("actionbars.xpbar.questXP") then return "off" end
         return S:GetPath("actionbars.xpbar.questXPMode") or "done"
@@ -71,7 +87,7 @@ S:Row{ key = "ab.xpQuest", kind = "choice", choices = { "off", "done", "all", "z
 
 -- Hide Blizzard elements (also removed from Edit Mode)
 local function Hide(key, path)
-    S:Row{ key = "ab." .. key, path = "visibility." .. path, apply = Refresh, section = "ab.hideBlizzardElements", half = true }
+    S:Row{ key = "ab." .. key, path = "visibility." .. path, apply = Refresh, tab = "visibility", section = "ab.hideBlizzardElements", half = true }
 end
 Hide("hideMicroMenu", "hideMicroMenu")
 Hide("hideBagBar", "hideBagBar")

@@ -34,6 +34,9 @@ ns.MANA_BLUE = { 0.18, 0.48, 1.00 }   -- bright, to stand out from the deep blue
 
 -- A power's bar colour (r, g, b), or nil when Blizzard has none for it
 function ns.PowerColor(token, powerType)
+    -- Colour Palette: Custom's own power colours (UnitFrames.lua UF.ApplyPalette)
+    local own = ns.POWER_OVERRIDE and token and ns.POWER_OVERRIDE[token]
+    if own then return own[1], own[2], own[3] end
     if token == "MANA" or (token == nil and powerType == 0) then
         return ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3]
     end
@@ -408,6 +411,8 @@ local defaults = {
         -- [[ ACTION BARS MODULE ]]
         actionbars = {
             enabled = false,
+            flareBorders = true,        -- Skin Action Bars: FlareUI Frames in place of the buttons' frame (ActionBars.lua 6b)
+            buttonScale = 1.11,         -- Bar Scale: every button's scale (FlareUI 1.0's per-bar scales, fixed at 1.06 until 11-11)
 
             -- General
             cleanKeybinds = true,
@@ -511,7 +516,7 @@ local defaults = {
             -- as a copy of the timer font (ns.SeedFont)
             auraFont = { face = "Friz Quadrata TT", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             auraCountFont = { face = "Friz Quadrata TT", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
-            editSections = {},          -- Edit Mode sections left open (shared by every frame)
+            editSections = {},          -- (unused since 11-11: open sections are per session, Core.lua ns.EditSections)
             -- resource bars (Modules/ResourceBars.lua); positions in layouts[layout][bar]
             resource = {
                 enabled = false,        -- the Resource Bars module (Settings: its own page)
@@ -649,9 +654,12 @@ local defaults = {
             -- Icon Size, Remind Before It Ends in minutes, set in Edit Mode
             reminders = false,
             reminder = { group = "all", size = 36, before = 2, orientation = "HORIZONTAL", grow = "FORWARD",
-                         blessing = "auto", consumables = "off", pets = true,
+                         blessing = "auto", consumables = "off", pets = true, thorns = "tank", camping = false, gathering = false,
+                         hideTank = false, hideHealer = false, hideDamage = false, hideNoRole = false,
+                         countText = "both", spacing = 6, alpha = 100,
                          -- When It Shows, Alerts (the Buff Reminders tab)
                          showSolo = true, showParty = true, showRaid = true, hideRested = false, onlyProvider = false,
+                         showCombat = true, fadeSpeed = "instant",   -- Edit Mode's Fading section (11-11)
                          sound = "off", glowMissing = false, glowExpiring = false,
                          layouts = {} },
             font = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -699,6 +707,8 @@ local defaults = {
                 worldObjects = "always",
                 frameUnits = "always",
                 actionBars = "always",
+                auras = "always",       -- every buff and debuff icon's tooltip
+                groupAuras = "never",   -- party and raid aura icons: never takes the mouse (PartyFrames.lua)
             },
         },
 
@@ -764,6 +774,8 @@ local defaults = {
             lootFeedQuality = 0,        -- items below this quality are left out (0 = Poor: all)
             lootFeedMoney = true,       -- money too
             lootFeedPosition = "cursor", -- cursor (starts at the pointer) | placed (the Edit Mode spot)
+            lootFeedSkills = false,     -- skill-ups too ("Mining 76")
+            lootFeedFont = { face = "Friz Quadrata TT", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             mouseRingSize = 40,         -- the ring's diameter
             mouseRingThickness = 3,     -- its line, the same at any size
             mouseRingShow = "off",      -- Mouse Ring (MouseRing.lua): off | always | combat | rightclick (while the right button is held)
@@ -1013,7 +1025,12 @@ local function RetryFonts()
     end
 end
 
-function ns.SetFont(fontString, path, size, flags)
+-- Text Scale (Settings page, account-wide, 11-11): every FlareUI font size times this, set as FlareUI
+-- loads (a change reloads). 1 leaves every size as it is. The settings window keeps its own sizes
+-- (ns.SetFontUnscaled): its layout is fixed.
+ns.TEXT_SCALE = 1
+
+local function SetFontRaw(fontString, path, size, flags)
     pendingFonts[fontString] = nil
     if fontString:SetFont(path, size, flags) ~= false then return end
     fontString:SetFont(BaseFont(), size, flags)
@@ -1022,6 +1039,12 @@ function ns.SetFont(fontString, path, size, flags)
     retryTicks = 0
     retryTicker = retryTicker or C_Timer.NewTicker(RETRY_SECONDS, RetryFonts)
 end
+
+function ns.SetFont(fontString, path, size, flags)
+    if size and ns.TEXT_SCALE ~= 1 then size = size * ns.TEXT_SCALE end
+    return SetFontRaw(fontString, path, size, flags)
+end
+ns.SetFontUnscaled = SetFontRaw
 
 -- Font families for text other players write (names, meter rows, tooltips). The game draws a whole
 -- string with one member of a family, picked by its letters: the chosen font for Latin text, and for
@@ -1059,6 +1082,7 @@ function ns.SetFontFamily(fontString, path, size, flags)
     if not (CreateFontFamily and fontString.SetFontObject and path and size) then
         return ns.SetFont(fontString, path, size, flags)
     end
+    if ns.TEXT_SCALE ~= 1 then size = size * ns.TEXT_SCALE end
     local key = path .. "|" .. size .. "|" .. flags
     local family = F.built[key]
     if not family then
@@ -1069,7 +1093,7 @@ function ns.SetFontFamily(fontString, path, size, flags)
         end
         F.count = F.count + 1
         local ok, made = pcall(CreateFontFamily, "FlareUI_FontFamily" .. F.count, members)
-        if not (ok and made) then return ns.SetFont(fontString, path, size, flags) end
+        if not (ok and made) then return SetFontRaw(fontString, path, size, flags) end
         family, F.built[key] = made, made
     end
     fontString:SetFontObject(family)
@@ -1077,7 +1101,7 @@ end
 
 -- Blizzard's own font objects (tooltip text): set member by member, so the Cyrillic and Chinese /
 -- Korean members keep a face that has their letters, at the new size
-function ns.SetFontObjectFace(fontObject, path, size, flags)
+local function SetFontObjectFaceRaw(fontObject, path, size, flags)
     flags = flags or ""
     fontObject:SetFont(path, size, flags)
     if not fontObject.GetFontObjectForAlphabet then return end
@@ -1092,6 +1116,31 @@ function ns.SetFontObjectFace(fontObject, path, size, flags)
             end
         end
     end
+end
+
+function ns.SetFontObjectFace(fontObject, path, size, flags)
+    if size and ns.TEXT_SCALE ~= 1 then size = size * ns.TEXT_SCALE end
+    return SetFontObjectFaceRaw(fontObject, path, size, flags)
+end
+
+-- Text Scale on Blizzard's own text: every font object the game has, once, as FlareUI loads (before
+-- any module sets a font). All sizes are read first: an object can inherit another's, which would
+-- otherwise be scaled twice.
+function ns.ScaleGameFonts(k)
+    if not (GetFonts and k and k ~= 1) then return end
+    local ok, names = pcall(GetFonts)
+    if not (ok and type(names) == "table") then return end
+    local found = {}
+    for _, name in ipairs(names) do
+        local font = type(name) == "string" and _G[name] or name
+        -- FlareUI's own (the settings window's) keep their sizes
+        local ours = type(name) == "string" and name:find("^FlareUI")
+        if not ours and type(font) == "table" and font.GetFont and font.SetFont then
+            local path, size, flags = font:GetFont()
+            if path and type(size) == "number" and size > 0 then found[#found + 1] = { font, path, size, flags } end
+        end
+    end
+    for _, f in ipairs(found) do pcall(SetFontObjectFaceRaw, f[1], f[2], f[3] * k, f[4]) end
 end
 
 -- The font a string shows or is waiting for, for copying its look to another string
@@ -1534,10 +1583,12 @@ do
         "Icon Size", "Icons per Row", "Totems per Row", "Max Icons", "Spacing", "Group Spacing", "Quest Spacing",
         "Background Opacity", "Cast Bar Height", "Buff Size", "Debuff Size",
         -- switches
+        -- (11-11 Marcus) first of their sections' switches: Range Check (Look) and Show Level (Frame)
+        "Range Check", "Show Level",
         "Sort by Role", "Show Player", "Hide Player Frame in a Party", "Group Numbers", "Main Tank Frames",
-        "Show Threat", "Combo Points@switch", "Show Level", "Mirror", "Portrait@switch", "Power Bar for Mana Users Only",
+        "Show Threat", "Combo Points@switch", "Mirror", "Portrait@switch", "Power Bar for Mana Users Only",
         "Five-Second Rule", "Mana on Shapeshift", "GCD Spark", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
-        "Hide Icon", "Hide Spell Timer", "Latency Zone", "Spell Pushback", "Channel Ticks", "Spell Queue Window",
+        "Hide Icon", "Hide Spell Timer", "Spell Pushback", "Latency Zone", "Channel Ticks", "Spell Queue Window",
         "Class Colours", "Low Health Colour", "Smooth Bar Animations",
         "Only My Buffs", "Only My Debuffs", "Dispellable Debuffs Only", "Highlight Purgeable Buffs",
         "Reverse Order", "Your Auras First",
@@ -1575,6 +1626,51 @@ do
         for i, k in ipairs(keyed) do items[i] = k.item end
         return items
     end
+end
+
+-- Edit Mode dialogs in collapsible sections, in a fixed order for every FlareUI frame:
+--   (Party / Raid: the group)  Frame  Look  Cast Bar  Auras  Icons  Pet  Fading
+-- Open state is shared by all frames, for the session: every dialog starts closed after a reload
+-- (11-11; it used to be saved). A section with every setting hidden hides too.
+--   local Section, settings = ns.EditSections(); Section("Frame", { ... }); return settings
+-- ns.EditSection(key, items): one section's settings, for a dialog that is one section.
+ns.editSectionsOpen = {}
+function ns.EditSections()
+    local LEM = LibStub("FlareEditMode")
+    local open = ns.editSectionsOpen
+    local function IsHidden(hidden, ...)
+        if type(hidden) == "function" then return hidden(...) end
+        return hidden and true or false
+    end
+    local settings = {}
+    local function Section(key, items)
+        if #items == 0 then return end
+        ns.OrderEditSettings(items)   -- dropdowns, sliders, switches; the same order on every frame
+        local own = {}
+        for i, item in ipairs(items) do own[i] = item.hidden end
+        settings[#settings + 1] = { name = "|cffffd100" .. ns.L[key] .. "|r", kind = LEM.SettingType.Expander, default = false,
+            get = function() return open[key] or false end,
+            set = function(_, value) open[key] = value and true or nil end,
+            hidden = function(...)
+                for i = 1, #items do
+                    if not IsHidden(own[i], ...) then return false end
+                end
+                return true
+            end }
+        for i, item in ipairs(items) do
+            item.hidden = function(...)
+                if not open[key] then return true end
+                return IsHidden(own[i], ...)
+            end
+            settings[#settings + 1] = item
+        end
+    end
+    return Section, settings
+end
+function ns.EditSection(key, items)
+    local Section, settings = ns.EditSections()
+    Section(key, items)
+    return settings
 end
 
 -- Show conditions ticked as toggles in a dropdown (Edit Mode's Show, and settings rows with toggles).
@@ -1785,6 +1881,31 @@ function ns.BronzeIcon.Apply(icon, path, color)
     icon.FlareUI_Light:SetTexture(path)
     icon.FlareUI_Light:SetVertexColor(B.LIGHT[1], B.LIGHT[2], B.LIGHT[3], B.LIGHT[4])
     B.Paint(icon, color, false)
+end
+
+--------------------------------------------------
+-- 6c. UNDOCKED CHAT WINDOWS BACK ON THEIR SPOTS
+-- Blizzard puts an undocked window back early in the load, from its saved spot as a share of the
+-- screen; at that moment the screen (or UIParent's scale) is not yet what it will be, and the window
+-- lands lower than it was left, over the main chat (a player's report 11-11). Placed again with
+-- Blizzard's own function once the load has settled.
+--------------------------------------------------
+function ns.RestoreUndockedChat()
+    for i = 2, NUM_CHAT_WINDOWS do
+        local cf = _G["ChatFrame" .. i]
+        if cf and cf.isInitialized and not cf.isDocked and not cf.isTemporary
+            and cf ~= DEFAULT_CHAT_FRAME and not cf:IsForbidden() and FCF_RestorePositionAndDimensions then
+            FCF_RestorePositionAndDimensions(cf)
+        end
+    end
+end
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent", function(self)
+        self:UnregisterAllEvents()
+        C_Timer.After(1, ns.RestoreUndockedChat)
+    end)
 end
 
 --------------------------------------------------
@@ -2142,6 +2263,13 @@ f:SetScript("OnEvent", function(self, event, ...)
         ns.db = db
         ns.defaults = defaults
 
+        -- Text Scale: FlareUI's sizes and the game's font objects, before anything sets a font
+        local textScale = tonumber(db.global.textScale)
+        if textScale and textScale ~= 1 and textScale >= 0.5 and textScale <= 2 then
+            ns.TEXT_SCALE = textScale
+            ns.ScaleGameFonts(textScale)
+        end
+
         -- Older manual settings may have no language saved until the dropdown was used.
         local global = db.global
         if global.useGameLanguage == false and global.language == nil then
@@ -2153,7 +2281,11 @@ f:SetScript("OnEvent", function(self, event, ...)
         local function OnProfileChanged()
             -- the character's choice, kept by GUID (AceDB's own record is keyed by a name that can
             -- read "Unknown" while the game starts; PLAYER_LOGIN below puts the choice back)
-            if ns.PlayerGUID() and ns.db then ns.CharDB().profileName = ns.db:GetCurrentProfile() end
+            if ns.PlayerGUID() and ns.db then
+                ns.CharDB().profileName = ns.db:GetCurrentProfile()
+                -- after the reload: offered the new profile's Edit Mode layout (ProfileLayout.lua)
+                ns.CharDB().offerLayout = true
+            end
             local panel = ns.SettingsPanel
             if panel and panel:IsShown() then panel:Refresh() end
             if not ns.reloading then ns.ShowDialog("FLAREUI_RELOAD") end
@@ -2179,6 +2311,8 @@ f:SetScript("OnEvent", function(self, event, ...)
         -- character with no choice kept yet takes the profile it opened with.
         local char = ns.CharDB()
         local wanted, currentProfile = char.profileName, ns.db:GetCurrentProfile()
+        -- a character's first FlareUI login: offered its profile's Edit Mode layout (ProfileLayout.lua)
+        if wanted == nil and ns.PlayerGUID() then char.offerLayout = true end
         if type(wanted) == "string" and wanted ~= currentProfile then
             local exists = false
             for _, name in ipairs(ns.db:GetProfiles() or {}) do

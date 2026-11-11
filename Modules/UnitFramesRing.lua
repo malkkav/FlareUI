@@ -322,6 +322,9 @@ local function GetDb()
 end
 
 local function UnitDb(unit)
+    -- a settings preview's sample, while it is laid out (UnitFrames' UF.DrawSample)
+    local sample = ns.UFSample
+    if sample and sample.units[unit] then return sample.units[unit] end
     local db = GetDb()
     return db and db.units and db.units[unit]
 end
@@ -350,6 +353,7 @@ local function IconOn(f, key, default)
 end
 
 function Ring.On()
+    if ns.UFSample then return ns.UFSample.style ~= "addon" end
     local db = GetDb()
     if not db then return false end
     if not db.styleStart then Ring.StartStyle(db) end
@@ -389,6 +393,7 @@ end
 -- The style in use: "forever" (the ring on Forever's frame plate), "flareui" (the ring beside
 -- FlareUI's bars) or "addon" (no ring)
 function Ring.Style()
+    if ns.UFSample then return ns.UFSample.style end
     if not Ring.On() then return "addon" end
     local db = GetDb()
     return db.plateStyle and "forever" or "flareui"
@@ -572,6 +577,13 @@ local function Crop(tex, artInfo, side, box)
     return true
 end
 
+-- Settings specimens use the same atlas coordinates as live frames, without registering units,
+-- changing the active style, or borrowing any protected frame.
+function Ring.SampleArt(tex, side, plate)
+    return Crop(tex, ART.target, side, plate and { 0, 1, 0, 1 } or nil)
+end
+Ring.SamplePlate = PLATE
+
 local function SetAtlasSafe(tex, atlas)
     if atlas and C_Texture.GetAtlasInfo(atlas) then
         tex:SetAtlas(atlas, false)
@@ -619,6 +631,33 @@ local function PlaceHitButton(hit, f, g, dx, dy, w, h)
     hit:SetPoint("CENTER", f, left and "LEFT" or "RIGHT", (left and g.centre or -g.centre) + dx, dy)
     hit:SetFrameLevel(f:GetFrameLevel() + 1)
     hit:EnableMouse(not LEM:IsInEditMode())
+end
+
+-- A hit button placed (when f is given) and shown or hidden. They are secure: in a fight the change waits
+-- for its end (a druid's shapeshift re-lays the bars in combat when Shift Mana comes or goes: blocked
+-- ClearAllPoints, a player's report 11-11). The ring itself doesn't move then, so nothing is missed.
+local hitWaiting, hitEvents = {}, nil
+local function SetHit(hit, shown, f, g, dx, dy, w, h)
+    if InCombatLockdown() then
+        local wait = hitWaiting[hit] or {}
+        wait.shown = shown
+        if f then wait.f, wait.g, wait.dx, wait.dy, wait.w, wait.h = f, g, dx, dy, w, h end
+        hitWaiting[hit] = wait
+        if not hitEvents then
+            hitEvents = CreateFrame("Frame")
+            hitEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
+            hitEvents:SetScript("OnEvent", function()
+                for button, w8 in pairs(hitWaiting) do
+                    hitWaiting[button] = nil
+                    SetHit(button, w8.shown, w8.f, w8.g, w8.dx, w8.dy, w8.w, w8.h)
+                end
+            end)
+        end
+        return
+    end
+    hitWaiting[hit] = nil
+    if f then PlaceHitButton(hit, f, g, dx, dy, w, h) end
+    hit:SetShown(shown and true or false)
 end
 
 -- The frame runs on under the ring, which hid its end until the frame faded. A round hole cut in
@@ -766,10 +805,13 @@ local function Build(f)
     -- the PvP countdown's OnUpdate, set while it runs
     ring.Ticker = CreateFrame("Frame", nil, ring)
 
-    ring.Hit = NewHitButton(f)
-    ring.DiscHit = NewHitButton(f)
-    LEM:AddSelectionArea(ring.Hit)
-    LEM:AddSelectionArea(ring.DiscHit)
+    -- (a preview's sample takes no clicks)
+    if not f.fuiSample then
+        ring.Hit = NewHitButton(f)
+        ring.DiscHit = NewHitButton(f)
+        LEM:AddSelectionArea(ring.Hit)
+        LEM:AddSelectionArea(ring.DiscHit)
+    end
 
     f.RingFrame = ring
     return ring
@@ -797,7 +839,7 @@ function Ring.Layout(f)
     local level = f:GetFrameLevel()
     local left = g.side == "LEFT"
     local blizz = BLIZZ[Kind(f)]
-    frames[f] = true
+    if not f.fuiSample then frames[f] = true end
 
     -- bottom to top above the frame's own levels: portrait, ring, icons, level disc, PvP crest (the
     -- combo gems above all)
@@ -818,13 +860,14 @@ function Ring.Layout(f)
 
     ring:ClearAllPoints()
     ring:SetSize(g.D, g.D)
-    -- Forever Style: Blizzard's whole ring, shadow and all, where the art has it against the plate.
-    -- FlareUI Style: a clean circle, as the art's join to the plate has nothing to meet there.
+    -- Both styles: Blizzard's whole ring, shadow and all, cut to the ring only where the plate's band
+    -- meets it (PLATE.maskLeft / maskRight). FlareUI Style had a clean circle, which cut the art's
+    -- own join on the bars' side and left the rim thin there (11-11): it now crops as Forever Style.
     local plate = Ring.Plate(f)
     ring:SetPoint("CENTER", f, left and "LEFT" or "RIGHT", left and g.centre or -g.centre, plate and PLATE.ringRise * g.s or 0)
     local art = ART[Kind(f)]
     ring.Art:ClearAllPoints()
-    if plate then
+    do
         -- out to the atlas's own edges, at the same scale; the plate takes over on the bars' side
         local box = art.box
         local w, h = g.D / (box[2] - box[1]), g.D / (box[4] - box[3])
@@ -832,12 +875,9 @@ function Ring.Layout(f)
         ring.Art:SetPoint("TOPLEFT", ring, "TOPLEFT", left and -out or 0, box[3] * h)
         ring.Art:SetPoint("BOTTOMRIGHT", ring, "BOTTOMRIGHT", left and 0 or out, -(1 - box[4]) * h)
         ring.hasArt = Crop(ring.Art, art, g.side, { box[1], 1, 0, 1 })
-    else
-        ring.Art:SetAllPoints()
-        ring.hasArt = Crop(ring.Art, art, g.side)
     end
     ring:SetShown(ring.hasArt)
-    if plate then
+    do
         -- the whole art past the plate's end; before it only the ring, as the art's copy of the plate's
         -- rails rounds differently from the plate and shows a step. The file is 2.5 radii wide.
         ring.PlateMask:SetTexture(left and PLATE.maskLeft or PLATE.maskRight, "CLAMPTOWHITE", "CLAMPTOWHITE")
@@ -845,14 +885,10 @@ function Ring.Layout(f)
         ring.PlateMask:SetPoint("CENTER", ring, "CENTER")
         ring.PlateMask:SetSize(g.R * 2.5, g.R * 2.5)
     end
-    if plate and ring.artMasked then
+    if ring.artMasked then
         ring.Art:RemoveMaskTexture(ring.Mask)
         ring.Art:AddMaskTexture(ring.PlateMask)
         ring.artMasked = false
-    elseif not plate and not ring.artMasked then
-        ring.Art:RemoveMaskTexture(ring.PlateMask)
-        ring.Art:AddMaskTexture(ring.Mask)
-        ring.artMasked = true
     end
     -- the tint follows the art exactly
     ring.Tint:SetTexture(ring.Art:GetTexture())
@@ -860,8 +896,9 @@ function Ring.Layout(f)
     ring.Tint:ClearAllPoints()
     for i = 1, ring.Art:GetNumPoints() do ring.Tint:SetPoint(ring.Art:GetPoint(i)) end
     ring.TintMask:SetSize(g.D * TINT_RIM_SHARE, g.D * TINT_RIM_SHARE)
-    PlaceHitButton(ring.Hit, f, g, 0, 0, g.D, g.D)
-    ring.Hit:Show()
+    if ring.Hit then
+        SetHit(ring.Hit, true, f, g, 0, 0, g.D, g.D)
+    end
 
     local size = g.D * PORTRAIT_SHARE
     f.Portrait:ClearAllPoints()
@@ -920,8 +957,10 @@ function Ring.LayoutLevel(f, g)
     ring.Disc:SetShown(udb and udb.showLevel and true or false)
     SetDiscHole(f, ring, placed and ring.Disc:IsShown(), w * LEVEL_SCALE)
     local dx, dy, dw, dh = Place(f, g, e)
-    if dx then PlaceHitButton(ring.DiscHit, f, g, dx, dy, dw, dh) end
-    ring.DiscHit:SetShown(dx and ring.Disc:IsShown() or false)
+    if ring.DiscHit then
+        if dx then SetHit(ring.DiscHit, ring.Disc:IsShown(), f, g, dx, dy, dw, dh)
+        else SetHit(ring.DiscHit, false) end
+    end
     f.Level:SetParent(ring.Disc)
     f.Level:ClearAllPoints()
     f.Level:SetJustifyH("CENTER")
@@ -1052,7 +1091,7 @@ function Ring.UpdatePlate(f)
     local plate = f.PlateFrame
     if not (plate and plate:IsShown()) then return end
     local unit = f.fuiUnit
-    if unit == "player" or unit == "pet" or not UnitExists(unit) then
+    if unit == "player" or unit == "pet" or f.fuiSample or not UnitExists(unit) then
         plate.Strip:Hide()
         return
     end
@@ -1084,8 +1123,8 @@ function Ring.Reset(f)
     local level = f:GetFrameLevel()
     ring:Hide()
     RemoveBarHole(ring)
-    ring.Hit:Hide()
-    ring.DiscHit:Hide()
+    if ring.Hit then SetHit(ring.Hit, false) end
+    if ring.DiscHit then SetHit(ring.DiscHit, false) end
     f.Level:SetAlpha(1)
     f.Portrait:SetFrameLevel(level + 1)
     f.Overlay:SetFrameLevel(level + 5)
@@ -1193,6 +1232,12 @@ function Ring.Update(f)
     local ring = f.RingFrame
     if not ring or not Ring.Applies(f) then return end
     Ring.UpdatePlate(f)
+    -- a preview's sample has no unit state to show
+    if f.fuiSample then return end
+    -- Keep badge art, hit region and portrait cutout in sync after a live setting change.
+    local udb = Db(f)
+    local showLevel = udb and udb.showLevel and true or false
+    if not InCombatLockdown() and ring.Disc:IsShown() ~= showLevel then Ring.LayoutLevel(f) end
     local unit, kind = f.fuiUnit, Kind(f)
     local blizz = BLIZZ[kind]
     local exists = Readable(UnitExists(unit))
@@ -1689,6 +1734,50 @@ function Ring.SetStyle(style)
     RestoreSwitches(db, switches)
     db.foreverStyle = style ~= "addon"
     db.plateStyle = style == "forever"
+end
+
+-- 11-10: a style's setup for a unit, for a settings preview's sample. Never written to the profile:
+-- writes land on the returned table. The setup in use for the style in use; else the style's stored
+-- setup, or the preset a first switch would apply, over the defaults.
+-- preset: the style's own look only (the Frame Style cards, 11-11): the card picked drew the player's
+-- live setup and changed shape as it was picked
+function Ring.SampleUnitDb(style, unit, preset)
+    local db = GetDb()
+    if not db or not STYLE_SLOT[style] then return nil end
+    local base
+    if preset then
+        local defaults = ns.defaults and ns.defaults.profile and ns.defaults.profile.unitframes
+        defaults = defaults and defaults.units and defaults.units[unit] or {}
+        local layer = {}
+        if style ~= "addon" then
+            for k, v in pairs(FOREVER[unit] or {}) do layer[k] = v end
+            if style == "forever" then
+                for k, v in pairs(PLATE_PRESET[unit] or {}) do layer[k] = v end
+                if Ring.PLATE_UNITS[unit] and not SMALL_FRAMES[unit] then ApplyPlateScale(layer, Ring.PlateDefaultScale(unit)) end
+            end
+        end
+        base = setmetatable(layer, { __index = defaults })
+    elseif style == Ring.Style() then
+        base = db.units and db.units[unit]
+    else
+        local defaults = ns.defaults and ns.defaults.profile and ns.defaults.profile.unitframes
+        defaults = defaults and defaults.units and defaults.units[unit] or {}
+        local stored = db.styleProfiles and db.styleProfiles[STYLE_SLOT[style]]
+        local own = stored and stored.units and stored.units[unit]
+        local layer = {}
+        if own then
+            for k, v in pairs(own) do layer[k] = v end
+        elseif style ~= "addon" then
+            for k, v in pairs(FOREVER[unit] or {}) do layer[k] = v end
+            if style == "forever" then
+                for k, v in pairs(PLATE_PRESET[unit] or {}) do layer[k] = v end
+                if Ring.PLATE_UNITS[unit] and not SMALL_FRAMES[unit] then ApplyPlateScale(layer, Ring.PlateDefaultScale(unit)) end
+            end
+        end
+        base = setmetatable(layer, { __index = defaults })
+    end
+    if not base then return nil end
+    return setmetatable({}, { __index = base })
 end
 
 --------------------------------------------------

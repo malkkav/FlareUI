@@ -211,6 +211,8 @@ local tankCtx = {
     PreviewData = function(f) return f.sample or SAMPLES[1] end,
     ReadyHold = function() return readyHold end,
 }
+-- for the settings previews' sample tiles
+RF.PreviewCtx, RF.PreviewSamples = raidCtx, SAMPLES
 
 local function Mode()
     local db = GetDb()
@@ -709,8 +711,8 @@ local function LayoutStore(key, layoutName)
     if not db then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     db[key] = db[key] or {}
-    db[key][layoutName] = db[key][layoutName] or {}
-    return db[key][layoutName]
+    -- (a layout with no spot of its own reads the profile's home layout's: ProfileLayout.lua)
+    return ns.LayoutHome(db[key], layoutName)
 end
 
 local function ApplyPosition(layoutName)

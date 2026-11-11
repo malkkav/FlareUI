@@ -7,14 +7,30 @@ local S = ns.Settings
 -- The window built from the registry: modules on the left, the page's rows in the middle, the
 -- hovered row's text on the right, the reload bar below. Built on first open.
 --------------------------------------------------
-local WIDTH, HEIGHT = 960, 716   -- with the reload bar below (46), fits 768 units (UI scale 1)
-local HEADER_H, FOOTER_H = 34, 34
-local LEFT_W, RIGHT_W = 190, 250
+-- 11-10 rework (Development/Research/Settings Panel Report): wider, after EnhanceQoL's layout.
+-- With the reload bar below (42) it fits 768 units; a smaller screen scales it down (FitScale).
+local WIDTH, HEIGHT = 1180, 700
+local HEADER_H, FOOTER_H = 46, 34
+local FOOTER_RISE = 8    -- the reload bar's extra height for the top the window's bronze frame covers
+local LEFT_W, RIGHT_W = 200, 280
 local PAD = 12
-local ROW_H, SECTION_H = 26, 30
+local EDGE, GAP, INNER = 14, 8, 10   -- body to window edge, between the three boxes, inside the middle box
+local ROW_H, SECTION_H = 36, 34
+-- 11-10 batch C: rows on dark plates with a gap between them, each section in its own box
+local ROW_GAP, HALF_GAP = 4, 8
+local SEC_X, SEC_TOP, SEC_BOTTOM, SEC_GAP = 10, 2, 10, 10   -- inside a section box; between boxes
+local rowInset = 0   -- where rows start: SEC_X inside section boxes, 0 for search results
+-- kinds drawn on a plate (text blocks, legends, style cards and headings are not)
+local PLATED = { toggle = true, choice = true, dropdown = true, range = true, frame = true, button = true,
+    keybind = true, buttons = true, editmode = true }
 local INDENT = 18
--- window minus borders, both side columns, their padding and the scroll line
-local CONTENT_W = WIDTH - 12 - LEFT_W - RIGHT_W - 2 * PAD - 14
+-- the header row's middle: halfway down the band above the boxes, past the border's 4 px line
+local HEADER_ROW_Y = math.floor((4 + HEADER_H + EDGE) / 2) + 1
+-- the middle box's inside (the page) and, less the scroll line, the rows' width
+local MIDDLE_W = WIDTH - 2 * EDGE - LEFT_W - RIGHT_W - 2 * GAP - 2 * INNER
+local CONTENT_W = MIDDLE_W - 14
+local LOGO = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Art\\Icon.png"
+local WHITE = "Interface\\Buttons\\WHITE8X8"
 local PICTURE = "Interface\\AddOns\\FlareUI\\Media\\Art\\Banner.png"
 
 local BRONZE_MUTED = { 0.61, 0.48, 0.29 }
@@ -35,6 +51,24 @@ local function NewBadge(parent)
     return badge
 end
 
+-- a section's Reset, confirmed (the section's name in the question)
+ns.Dialogs = ns.Dialogs or {}
+ns.Dialogs["FLAREUI_RESET_SECTION"] = {
+    text = L["Reset the %s options to their defaults?"],
+    button1 = L["Reset"],
+    button2 = L["Cancel"],
+    OnAccept = function(data)
+        if not data or InCombatLockdown() then return end
+        -- one redraw for the whole section, not one per option
+        local panel = ns.SettingsPanel
+        panel.toggleHold = true
+        S:ResetSection(data.module, data.section, data.tab)
+        panel.toggleHold = nil
+        if panel.toggleRefreshPending then panel.toggleRefreshPending = nil; panel:Refresh() end
+    end,
+    hideOnEscape = true,
+}
+
 local Panel = {}
 Panel.NewBadge = NewBadge
 ns.SettingsPanel = Panel
@@ -45,7 +79,8 @@ local searchText = ""
 local navButtons = {}   -- module key -> left list button
 local pools = {}        -- row kind -> list of row frames
 local used = {}         -- row frames on the page
-local currentTab = {}   -- module key -> tab key shown
+local currentTab = {}   -- module key -> tab key shown, for the session (a reload opens each page on its first tab)
+local scrollOf = {}     -- module key -> where its page was scrolled, for the session
 local customHosts = {}  -- "module.tab" -> a custom tab's frame
 
 --------------------------------------------------
@@ -198,16 +233,431 @@ local function Line(parent, layer)
     return t
 end
 
+-- The window's own fonts (11-10): Roboto Condensed for text, Marcellus for titles. Marcellus has no
+-- Russian letters: a Russian client's titles take Roboto Condensed Bold. Each copies the Blizzard font
+-- it stands for first, so it has a face while its file loads (ns.SetFont waits for it).
+local FONT_DIR = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Fonts\\"
+local BODY_FONT = FONT_DIR .. "RobotoCondensed-Regular.ttf"
+local TITLE_FONT = FONT_DIR .. (GetLocale() == "ruRU" and "RobotoCondensed-Bold.ttf" or "Marcellus-Regular.ttf")
+local PANEL_FONT = {}   -- Blizzard font object name -> the window's own
+for blizzard, def in pairs({
+    GameFontHighlight      = { "Text",      BODY_FONT,  14 },
+    GameFontHighlightSmall = { "TextSmall", BODY_FONT,  13 },
+    GameFontNormal         = { "Gold",      BODY_FONT,  14 },
+    GameFontNormalSmall    = { "GoldSmall", BODY_FONT,  13 },
+    GameFontDisable        = { "Grey",      BODY_FONT,  14 },
+    GameFontDisableSmall   = { "GreySmall", BODY_FONT,  12 },
+    GameFontNormalLarge    = { "Title",     TITLE_FONT, 17 },
+    GameFontNormalHuge     = { "TitleHuge", TITLE_FONT, 22 },
+}) do
+    local name = "FlareUI_Panel" .. def[1]
+    local font = CreateFont(name)
+    if _G[blizzard] then font:CopyFontObject(_G[blizzard]) end
+    ns.SetFontUnscaled(font, def[2], def[3], "")
+    PANEL_FONT[blizzard] = name
+end
+Panel.FONT = PANEL_FONT
+-- the button text: the page titles' gold rather than Blizzard's yellow (11-11 Marcus)
+local BUTTON_FONT = CreateFont("FlareUI_PanelButton")
+if _G.GameFontNormal then BUTTON_FONT:CopyFontObject(_G.GameFontNormal) end
+ns.SetFontUnscaled(BUTTON_FONT, BODY_FONT, 14, "")
+BUTTON_FONT:SetTextColor(1, 0.83, 0.47)
+local BUTTON_FONT_SMALL = CreateFont("FlareUI_PanelButtonSmall")
+if _G.GameFontNormal then BUTTON_FONT_SMALL:CopyFontObject(_G.GameFontNormal) end
+ns.SetFontUnscaled(BUTTON_FONT_SMALL, BODY_FONT, 12, "")
+BUTTON_FONT_SMALL:SetTextColor(1, 0.83, 0.47)
+-- 11-11 (Marcus): the titles in Blizzard's Friz Quadrata, closer to Forever's own windows (Marcellus
+-- still ships, for the players' font choices); a Russian client keeps Roboto Condensed Bold
+local function ApplyTitleFont()
+    if GetLocale() == "ruRU" then return end
+    ns.SetFontUnscaled(_G.FlareUI_PanelTitle, "Fonts\\FRIZQT__.TTF", 17, "")
+    ns.SetFontUnscaled(_G.FlareUI_PanelTitleHuge, "Fonts\\FRIZQT__.TTF", 22, "")
+end
+-- at load too: the setup tour can show before the settings window is ever built
+ApplyTitleFont()
+
 local function Text(parent, font, justify)
-    local fs = parent:CreateFontString(nil, "OVERLAY", font or "GameFontHighlight")
+    font = font or "GameFontHighlight"
+    local fs = parent:CreateFontString(nil, "OVERLAY", PANEL_FONT[font] or font)
     fs:SetJustifyH(justify or "LEFT")
     return fs
+end
+
+-- A dark box with a bronze edge: the left list, the page and the right column
+-- FlareUI Thin (8 px edge) for every box, button and tab in the window (11-10, Marcus)
+local THIN = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thin.tga"
+local THIN_EDGE, THIN_INSET = 8, 4   -- fills start 4 px in: under the border's rounded corners
+local EDGE_COLOR = { 0.55, 0.42, 0.24 }       -- resting
+local EDGE_HOVER = { 0.78, 0.6, 0.34 }        -- under the pointer
+local EDGE_LIT = { 1, 0.84, 0.5 }             -- selected
+local function ThinBackdrop(f, withFill)
+    f:SetBackdrop({ bgFile = withFill and WHITE or nil, edgeFile = THIN, edgeSize = THIN_EDGE,
+        insets = { left = THIN_INSET, right = THIN_INSET, top = THIN_INSET, bottom = THIN_INSET } })
+    f:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1)
+end
+
+-- the Thin edge on its own frame over f, so f's fill textures sit under it; f.edge
+local function ThinEdge(f)
+    local edge = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    edge:SetAllPoints()
+    edge:SetFrameLevel(f:GetFrameLevel() + 1)
+    ThinBackdrop(edge)
+    f.edge = edge
+    return edge
+end
+
+-- FlareUI Thick (12 px edge), on its own frame over f as ThinEdge: tabs, buttons and dropdowns (11-11
+-- Marcus: heavier, closer to Forever's own panels)
+local THICK = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thick.tga"
+local THICK_EDGE, THICK_INSET = 12, 3
+local function ThickEdge(f)
+    local edge = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    edge:SetAllPoints()
+    edge:SetFrameLevel(f:GetFrameLevel() + 1)
+    edge:SetBackdrop({ edgeFile = THICK, edgeSize = THICK_EDGE })
+    edge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1)
+    f.edge = edge
+    return edge
+end
+
+-- a highlight or a selection: the option rows' rounded box (our art, 8 px corners as a nine-slice)
+local ROUND_RECT = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\RoundRect.tga"
+local function Rounded(tex, r, g, b, a)
+    tex:SetTexture(ROUND_RECT)
+    if tex.SetTextureSliceMargins then
+        tex:SetTextureSliceMargins(8, 8, 8, 8)
+        if Enum.UITextureSliceMode then tex:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched) end
+    end
+    if r then tex:SetVertexColor(r, g, b, a or 1) end
+    return tex
+end
+Panel.Rounded = Rounded
+Panel.ThickEdge = function(f) return ThickEdge(f) end
+
+local function Box(f, alpha)
+    ThinBackdrop(f, true)
+    f:SetBackdropColor(0, 0, 0, alpha or 0.28)
+end
+Panel.Box = Box
+
+-- A bronze plate button: the page's tabs and the window's Settings / What's New. Lit when selected.
+local function Plate(parent, font)
+    local b = CreateFrame("Button", nil, parent)
+    ThickEdge(b)
+    b.fill = b:CreateTexture(nil, "BACKGROUND")
+    b.fill:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
+    b.fill:SetPoint("BOTTOMRIGHT", -THICK_INSET, THICK_INSET)
+    b.fill:SetColorTexture(1, 1, 1)
+    b.shine = b:CreateTexture(nil, "BORDER")
+    b.shine:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
+    b.shine:SetPoint("TOPRIGHT", -THICK_INSET, -THICK_INSET)
+    b.shine:SetHeight(1)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints(b.fill)
+    hl:SetColorTexture(1, 0.9, 0.7, 0.06)
+    b.Text = Text(b, font or "GameFontHighlightSmall", "CENTER")
+    b.Text:SetPoint("LEFT", 8, 0)
+    b.Text:SetPoint("RIGHT", -8, 0)
+    b.Text:SetWordWrap(false)
+    function b:SetSelected(selected)
+        self.isSelected = selected and true or false
+        if selected then
+            self.fill:SetGradient("VERTICAL", CreateColor(0.24, 0.17, 0.09, 1), CreateColor(0.42, 0.31, 0.16, 1))
+            self.edge:SetBackdropBorderColor(EDGE_LIT[1], EDGE_LIT[2], EDGE_LIT[3], 1)
+            self.shine:SetColorTexture(1, 0.9, 0.67, 0.28)
+            self.Text:SetTextColor(1, 0.89, 0.63)
+        else
+            self.fill:SetGradient("VERTICAL", CreateColor(0.09, 0.065, 0.04, 1), CreateColor(0.2, 0.145, 0.085, 1))
+            self.edge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1)
+            self.shine:SetColorTexture(1, 0.9, 0.67, 0.07)
+            self.Text:SetTextColor(0.85, 0.79, 0.66)
+        end
+    end
+    b:SetScript("OnEnter", function(self)
+        if self.isSelected then return end
+        self.edge:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1)
+        self.Text:SetTextColor(1, 0.96, 0.84)
+    end)
+    b:SetScript("OnLeave", function(self) self:SetSelected(self.isSelected) end)
+    b:SetSelected(false)
+    return b
+end
+Panel.Plate = Plate
+
+-- The controls kit (11-10, batch B), drawn from one smooth disc (tools/panelart.js)
+local CIRCLE = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Circle.tga"
+local GOLD = { 0.91, 0.77, 0.42 }
+
+-- A pill of the disc: two half discs and a stretched middle, so the ends stay round at any width.
+-- height is the frame's; inset draws it that much inside (a fill inside its rim).
+local function Pill(parent, layer, sub, inset, height)
+    local half = (height - 2 * inset) / 2
+    local p = {}
+    p.l = parent:CreateTexture(nil, layer, nil, sub)
+    p.l:SetTexture(CIRCLE)
+    p.l:SetTexCoord(0, 0.5, 0, 1)
+    p.l:SetPoint("TOPLEFT", inset, -inset)
+    p.l:SetPoint("BOTTOMLEFT", inset, inset)
+    p.l:SetWidth(half)
+    p.r = parent:CreateTexture(nil, layer, nil, sub)
+    p.r:SetTexture(CIRCLE)
+    p.r:SetTexCoord(0.5, 1, 0, 1)
+    p.r:SetPoint("TOPRIGHT", -inset, -inset)
+    p.r:SetPoint("BOTTOMRIGHT", -inset, inset)
+    p.r:SetWidth(half)
+    p.m = parent:CreateTexture(nil, layer, nil, sub)
+    p.m:SetTexture(CIRCLE)
+    p.m:SetTexCoord(0.49, 0.51, 0, 1)
+    p.m:SetPoint("TOPLEFT", p.l, "TOPRIGHT")
+    p.m:SetPoint("BOTTOMRIGHT", p.r, "BOTTOMLEFT")
+    function p:SetColor(r, g, b, a)
+        for _, t in ipairs({ self.l, self.m, self.r }) do t:SetVertexColor(r, g, b, a or 1) end
+    end
+    -- top and bottom colours, { r, g, b }
+    function p:SetGradient(top, bottom)
+        for _, t in ipairs({ self.l, self.m, self.r }) do
+            t:SetGradient("VERTICAL", CreateColor(bottom[1], bottom[2], bottom[3], 1), CreateColor(top[1], top[2], top[3], 1))
+        end
+    end
+    return p
+end
+Panel.Pill = Pill
+
+-- The on / off switch (11-11 Marcus: more physical): a 40 x 20 bronze-rimmed track of the game's rock,
+-- cut to a pill (Media/Panel/PillMask.tga) and shaded along its top so it sits into the panel; dark
+-- stone with a grey knob when off, the stone warmed gold with a light knob on the right when on. The
+-- knob casts a small shadow. A plain CheckButton: SetChecked / GetChecked / Click work as before.
+local PILL_MASK = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PillMask.tga"
+local function PaintSwitch(s)
+    local on = s:GetChecked()
+    if on then
+        s.rim:SetColor(0.85, 0.70, 0.42)
+        s.stone:SetVertexColor(0.95, 0.72, 0.36)
+        s.knob:SetVertexColor(0.86, 0.79, 0.64)
+    else
+        if s.hovered then s.rim:SetColor(0.69, 0.54, 0.31) else s.rim:SetColor(0.35, 0.27, 0.16) end
+        s.stone:SetVertexColor(0.34, 0.30, 0.26)
+        s.knob:SetVertexColor(0.58, 0.53, 0.46)
+    end
+    local x = on and 23 or 3
+    s.knob:ClearAllPoints()
+    s.knob:SetPoint("LEFT", x, 0)
+    s.knobShadow:ClearAllPoints()
+    s.knobShadow:SetPoint("CENTER", s.knob, "CENTER", 1, -1.5)
+end
+local function Switch(parent)
+    local s = CreateFrame("CheckButton", nil, parent)
+    s:SetSize(40, 20)
+    s.rim = Pill(s, "BACKGROUND", 1, 0, 20)
+    -- the stone, 1 px inside the rim, cut to the pill
+    s.stone = s:CreateTexture(nil, "BACKGROUND", nil, 2)
+    s.stone:SetPoint("TOPLEFT", 1, -1)
+    s.stone:SetPoint("BOTTOMRIGHT", -1, 1)
+    s.stone:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
+    s.stone:SetHorizTile(true)
+    s.stone:SetVertTile(true)
+    s.mask = s:CreateMaskTexture()
+    s.mask:SetTexture(PILL_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    s.mask:SetAllPoints(s.stone)
+    s.stone:AddMaskTexture(s.mask)
+    -- the recess: shade along the top
+    s.recess = s:CreateTexture(nil, "BACKGROUND", nil, 3)
+    s.recess:SetAllPoints(s.stone)
+    s.recess:SetColorTexture(1, 1, 1)
+    s.recess:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0), CreateColor(0, 0, 0, 0.6))
+    s.recess:AddMaskTexture(s.mask)
+    s.knobShadow = s:CreateTexture(nil, "ARTWORK", nil, 1)
+    s.knobShadow:SetTexture(CIRCLE)
+    s.knobShadow:SetSize(16, 16)
+    s.knobShadow:SetVertexColor(0, 0, 0, 0.55)
+    -- the knob: a clean disc, darker than white (11-11 Marcus: the stone one was too busy)
+    s.knob = s:CreateTexture(nil, "ARTWORK", nil, 2)
+    s.knob:SetTexture(CIRCLE)
+    s.knob:SetSize(14, 14)
+    -- a click changes the state without SetChecked: PostClick paints it (OnClick belongs to the row)
+    hooksecurefunc(s, "SetChecked", PaintSwitch)
+    s:SetScript("PostClick", PaintSwitch)
+    s:SetMotionScriptsWhileDisabled(true)
+    s:SetScript("OnEnter", function(self) self.hovered = true PaintSwitch(self) end)
+    s:SetScript("OnLeave", function(self) self.hovered = nil PaintSwitch(self) end)
+    s:SetScript("OnDisable", function(self) self:SetAlpha(0.45) end)
+    s:SetScript("OnEnable", function(self) self:SetAlpha(1) end)
+    PaintSwitch(s)
+    return s
+end
+Panel.Switch = Switch
+
+-- Blizzard's panel button as a bronze plate (its own art hidden); gold text, white on hover
+local function SkinButton(b)
+    for _, r in ipairs({ b:GetRegions() }) do
+        if r:IsObjectType("Texture") then r:SetAlpha(0) end
+    end
+    if b.NineSlice then b.NineSlice:Hide() end
+    b.fEdge = ThickEdge(b)
+    b.fFill = b:CreateTexture(nil, "BACKGROUND", nil, 2)
+    b.fFill:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
+    b.fFill:SetPoint("BOTTOMRIGHT", -THICK_INSET, THICK_INSET)
+    b.fFill:SetColorTexture(1, 1, 1)
+    b.fFill:SetGradient("VERTICAL", CreateColor(0.09, 0.065, 0.04, 1), CreateColor(0.24, 0.17, 0.10, 1))
+    b.fShine = b:CreateTexture(nil, "BACKGROUND", nil, 3)
+    b.fShine:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
+    b.fShine:SetPoint("TOPRIGHT", -THICK_INSET, -THICK_INSET)
+    b.fShine:SetHeight(1)
+    b.fShine:SetColorTexture(1, 0.9, 0.67, 0.12)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints(b.fFill)
+    hl:SetColorTexture(1, 0.9, 0.7, 0.07)
+    b:SetNormalFontObject(BUTTON_FONT)
+    -- (the short ones, 22 px and under, a size smaller: 11-11 Marcus)
+    local function FitFont(self)
+        local small = (self:GetHeight() or 0) <= 22.5
+        if self.ftSmallFont ~= small then
+            self.ftSmallFont = small
+            self:SetNormalFontObject(small and BUTTON_FONT_SMALL or BUTTON_FONT)
+        end
+    end
+    b:HookScript("OnSizeChanged", FitFont)
+    FitFont(b)
+    b:SetHighlightFontObject(_G[PANEL_FONT.GameFontHighlight])
+    b:SetDisabledFontObject(_G[PANEL_FONT.GameFontDisable])
+    b:HookScript("OnEnter", function(self)
+        if self:IsEnabled() then self.fEdge:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1) end
+    end)
+    b:HookScript("OnLeave", function(self) self.fEdge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1) end)
+    return b
+end
+Panel.SkinButton = SkinButton
+ns.SkinButton = SkinButton   -- FlareUI's other windows (dialogs, tour, About, radial editor)
+local function PanelButton(parent)
+    return SkinButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
+end
+
+-- Blizzard's dropdown button as a bronze-rimmed pill with a gold arrow
+local function SkinDropdown(dd)
+    for _, r in ipairs({ dd:GetRegions() }) do
+        if r:IsObjectType("Texture") and r ~= dd.Arrow then r:SetAlpha(0) end
+    end
+    -- (11-11 Marcus: squared and heavier, its middle the buttons' brown, as Forever's own dropdowns)
+    dd.fEdge = ThickEdge(dd)
+    dd.fFill = dd:CreateTexture(nil, "BACKGROUND", nil, 2)
+    dd.fFill:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
+    dd.fFill:SetPoint("BOTTOMRIGHT", -THICK_INSET, THICK_INSET)
+    dd.fFill:SetColorTexture(1, 1, 1)
+    dd.fFill:SetGradient("VERTICAL", CreateColor(0.09, 0.065, 0.04, 1), CreateColor(0.24, 0.17, 0.10, 1))
+    if dd.Arrow then
+        dd.Arrow:SetAlpha(0)
+        dd.fChevron = dd:CreateTexture(nil, "OVERLAY")
+        dd.fChevron:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Chevron.tga")
+        dd.fChevron:SetSize(14, 14)
+        dd.fChevron:SetPoint("RIGHT", -10, 0)
+        dd.fChevron:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
+        if dd.Text then
+            dd.Text:ClearAllPoints()
+            dd.Text:SetPoint("LEFT", 12, 0)
+            dd.Text:SetPoint("RIGHT", dd.fChevron, "LEFT", -6, 0)
+            dd.Text:SetJustifyH("LEFT")
+        end
+    end
+    if dd.Text then
+        dd.Text:SetFontObject(_G[PANEL_FONT.GameFontHighlightSmall])
+        -- the buttons' gold (11-11 Marcus); Blizzard's template sets its own colour on each state change
+        local function TextColor(self)
+            if self:IsEnabled() then self.Text:SetTextColor(1, 0.83, 0.47) else self.Text:SetTextColor(0.5, 0.5, 0.5) end
+        end
+        if dd.OnButtonStateChanged then hooksecurefunc(dd, "OnButtonStateChanged", TextColor) end
+        dd:HookScript("OnEnable", TextColor)
+        dd:HookScript("OnDisable", TextColor)
+        TextColor(dd)
+    end
+    dd:HookScript("OnEnter", function(self) self.fEdge:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1) end)
+    dd:HookScript("OnLeave", function(self) self.fEdge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1) end)
+end
+Panel.SkinDropdown = SkinDropdown
+
+-- a stepper's arrows: gold, on small round bronze plates
+local function SkinArrow(b)
+    for _, r in ipairs({ b:GetRegions() }) do
+        if r:IsObjectType("Texture") then
+            r:SetDesaturated(true)
+            r:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
+        end
+    end
+    local rim = b:CreateTexture(nil, "BACKGROUND", nil, -2)
+    rim:SetTexture(CIRCLE)
+    rim:SetSize(22, 22)
+    rim:SetPoint("CENTER")
+    rim:SetVertexColor(0.47, 0.36, 0.22)
+    local fill = b:CreateTexture(nil, "BACKGROUND", nil, -1)
+    fill:SetTexture(CIRCLE)
+    fill:SetSize(20, 20)
+    fill:SetPoint("CENTER")
+    fill:SetVertexColor(0.14, 0.10, 0.06)
 end
 
 --------------------------------------------------
 -- 2. RIGHT COLUMN
 --------------------------------------------------
 local preview = {}
+local previewRow
+
+-- the page's own picture (its tab's), or nil for the page's art
+local function PageSpec()
+    local tab = currentTab[current]
+    if current == 'qol' then
+        tab = tab or 'gameplay'
+        if tab == 'bags' then return { kind = 'bags', key = 'qol.bagsOverview' } end
+        if tab == 'nameplates' then return { kind = 'nameplate', key = 'qol.npOverview' } end
+        return nil
+    end
+    if current == 'au' and tab == 'reminders' then return { kind = 'reminders', key = 'au.remindersOverview' } end
+    if current == 'ab' and tab == 'xp' then return { kind = 'xp', key = 'ab.xpOverview' } end
+    if current == 'dm' and tab == 'threat' then return { kind = 'meter', key = 'dm.threatOverview' } end
+    return ns.SettingsPreview.Module(current)
+end
+
+-- 11-10 (Marcus): a picture shows the current settings only; hovering never tries a value on
+local function ShowVisual(row)
+    if not preview.canvas then return end
+    if preview.module ~= current or preview.tab ~= currentTab[current] then
+        preview.spec = nil; preview.helpRow = nil; preview.module = current; preview.tab = currentTab[current]
+    end
+    if preview.dirty and not row and preview.spec and S.rows and S.rows[preview.spec.key] then
+        preview.spec = ns.SettingsPreview.Resolve(S.rows[preview.spec.key]) or preview.spec
+    end
+    -- a row without a picture shows the page's
+    local spec
+    if row then spec = ns.SettingsPreview.Resolve(row) or PageSpec()
+    else spec = preview.spec or PageSpec() end
+    local value
+    -- One stable composition for the whole Action Bars page. Only dropdown exploration carries
+    -- a temporary value; ordinary hover changes the explanation, not the scene or animation.
+    if spec and spec.kind == 'actions' and value == nil then spec = { kind = 'actions', key = 'ab.overview' } end
+    local old = preview.spec
+    local same = old and spec and old.kind == spec.kind and old.key == spec.key and old.value == spec.value
+        and old.path == spec.path and old.font == spec.font
+    preview.spec = spec
+    local shown
+    if same and not preview.dirty and not preview.canvas.invalidated and preview.canvas.frame:IsShown() then shown = true
+    else shown = ns.SettingsPreview.Show(preview.canvas, spec) end
+    preview.dirty = nil
+    preview.picture:SetShown(not shown)
+    -- as tall as what it shows; a frame shown this moment has no place on screen until the next
+    -- frame, so it is measured again then
+    if shown then
+        local canvas = preview.canvas
+        local function Fit()
+            if not canvas.frame:IsShown() then return end
+            -- what a sample says it takes, else measured on screen
+            local h = canvas.used or ns.SettingsPreview.Measure(canvas)
+            if h then canvas.frame:SetHeight(math.max(24, math.min(canvas.height, h + 8))) end
+        end
+        Fit()
+        C_Timer.After(0, Fit)
+    end
+    preview.title:ClearAllPoints()
+    preview.title:SetPoint("TOPLEFT", shown and preview.canvas.frame or preview.picture, "BOTTOMLEFT", 0, -12)
+    preview.title:SetPoint("RIGHT", -PAD, 0)
+end
 
 local function ShowPreview(title, desc, tip)
     preview.title:SetText(title or "")
@@ -217,12 +667,29 @@ end
 
 -- nothing hovered: the picture and a hint
 local function ShowModulePreview()
+    previewRow = nil
+    ShowVisual(nil)
+    local help = preview.helpRow
+    if help then
+        local title = S:Text(help.key, "info")
+        if not title or title == "" then title = help:Label() end
+        ShowPreview(title, help:Description(), help:Tip())
+        return
+    end
+    -- About: a word for the players
+    if current == "about" then
+        ShowPreview(L["Thank You!"], L["To everyone who downloaded FlareUI, sent feedback, reported bugs or helped a friend set it up: thank you. FlareUI gets better every week because of you."])
+        return
+    end
     ShowPreview(S:WindowText("infoPanelNothingHovered", L["Info Panel"]),
         S:WindowText("infoPanelNothingHovered2", L["Hover any option to see how it works!"]))
 end
 
 -- title: the row's info text, else its label, else its section title
-local function ShowRowPreview(row)
+local function ShowRowPreview(row, value)
+    previewRow = row
+    ShowVisual(row, value)
+    preview.helpRow = row
     local title = S:Text(row.key, "info")
     if not title or title == "" then title = row:Label() end
     if not title or title == "" then
@@ -233,7 +700,7 @@ end
 
 -- for custom tabs' own controls
 function Panel:ShowPreview(title, desc, tip)
-    if preview.picture then ShowPreview(title, desc, tip) end
+    if preview.picture then previewRow = nil; ShowVisual(nil); ShowPreview(title, desc, tip) end
 end
 function Panel:ShowModulePreview()
     if preview.picture then ShowModulePreview() end
@@ -253,7 +720,10 @@ end
 
 local function RowLeave(self)
     self.hover:Hide()
-    ShowModulePreview()
+    -- Keep a visual row visible after hover; cards revert from the hovered variant to the saved
+    -- selection. Behaviour-only rows retain the existing explanation/picture behaviour.
+    if self.row and ns.SettingsPreview.Resolve(self.row) then ShowRowPreview(self.row)
+    else ShowModulePreview() end
 end
 
 local function NewRowFrame(parent, kind)
@@ -262,10 +732,26 @@ local function NewRowFrame(parent, kind)
     f:EnableMouse(true)
     f:SetScript("OnEnter", RowEnter)
     f:SetScript("OnLeave", RowLeave)
+    f.plate = f:CreateTexture(nil, "BACKGROUND", nil, -1)
+    f.plate:SetAllPoints()
+    f.plate:SetColorTexture(0, 0, 0, 0.26)
+    f.plate:SetAlpha(0)   -- (11-11 Marcus: no dark box at rest; only the hover shows the row)
     f.hover = f:CreateTexture(nil, "BACKGROUND")
     f.hover:SetAllPoints()
-    f.hover:SetColorTexture(1, 0.82, 0, 0.06)
+    -- a rounded box: our own 32 px art, 8 px corners kept as a nine-slice
+    f.hover:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\RoundRect.tga")
+    if f.hover.SetTextureSliceMargins then
+        f.hover:SetTextureSliceMargins(8, 8, 8, 8)
+        if Enum.UITextureSliceMode then f.hover:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched) end
+    end
+    f.hover:SetVertexColor(0.79, 0.65, 0.35, 0.14)
     f.hover:Hide()
+    -- a click anywhere on a switch's row flips it (the switch takes its own clicks)
+    f:SetScript("OnMouseUp", function(self, button)
+        if button ~= "LeftButton" or not (self.kind == "toggle" or self.kind == "frame") then return end
+        local c = self.control
+        if c and c:IsVisible() and c:IsEnabled() and self.row and not self.row:IsDisabled() then c:Click() end
+    end)
     f.crumb = Text(f, "GameFontDisableSmall")
     f.crumb:SetWordWrap(true)
     f.label = Text(f, "GameFontHighlight")
@@ -329,6 +815,9 @@ local function OnToggleMenuClosed()
 end
 local function SetupChoiceMenu(dropdown, f)
     dropdown:RegisterCallback(DropdownButtonMixin.Event.OnMenuClose, OnToggleMenuClosed, dropdown)
+    dropdown:RegisterCallback(DropdownButtonMixin.Event.OnMenuClose, function()
+        if f.row then ShowRowPreview(f.row) end
+    end, f)
     dropdown:SetupMenu(function(_, root)
         local row = f.row
         if not row then return end
@@ -340,7 +829,16 @@ local function SetupChoiceMenu(dropdown, f)
                 root:CreateCheckbox(c.text, IsTicked, Tick, c)
             else
                 c.row = row
-                root:CreateRadio(c.text, IsChoice, PickChoice, c)
+                local option = root:CreateRadio(c.text, IsChoice, PickChoice, c)
+                option:SetOnEnter(function() ShowRowPreview(row, c.value) end)
+                option:SetOnLeave(function() ShowRowPreview(row) end)
+                if row.previewFont and row.key:match('%.face$') then
+                    option:AddInitializer(function(button)
+                        if button.fontString then
+                            ns.SetFontFamily(button.fontString, ns.GetFontPath(c.value), 13, '')
+                        end
+                    end)
+                end
             end
         end
     end)
@@ -348,9 +846,8 @@ end
 
 -- toggle
 Build.toggle = function(f)
-    local check = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-    check:SetSize(26, 26)
-    check:SetPoint("RIGHT", -4, 0)
+    local check = Switch(f)
+    check:SetPoint("RIGHT", -6, 0)
     check:SetScript("OnClick", function(self)
         local on = self:GetChecked() and true or false
         PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
@@ -376,10 +873,13 @@ Build.choice = function(f)
     stepper.Dropdown:SetPoint("RIGHT", stepper.IncrementButton, "LEFT", -5, 0)
     stepper.DecrementButton:ClearAllPoints()
     stepper.DecrementButton:SetPoint("RIGHT", stepper.Dropdown, "LEFT", -5, 0)
+    SkinDropdown(stepper.Dropdown)
+    SkinArrow(stepper.IncrementButton)
+    SkinArrow(stepper.DecrementButton)
     ForwardHover(stepper.Dropdown, f)
     ForwardHover(stepper.IncrementButton, f)
     ForwardHover(stepper.DecrementButton, f)
-    f:SetHeight(ROW_H + 8)
+    f:SetHeight(ROW_H)
     f.stepper = stepper
     f.control = stepper
     SetupChoiceMenu(stepper.Dropdown, f)
@@ -388,7 +888,176 @@ Fill.choice = function(f, row)
     -- narrower on half rows
     f.stepper.Dropdown:SetWidth(row.half and 96 or 180)
     f.stepper.Dropdown:GenerateMenu()
-    f:SetHeight(ROW_H + 8)
+    f:SetHeight(ROW_H)
+end
+
+
+-- Discrete numeric settings keep their registered choices, including Default/Auto.
+-- Dragging previews without writes; releasing commits once. Keyboard changes commit directly.
+Build.range = function(f)
+    -- a dark 8 px pill with a bronze rim, gold up to a gold diamond (11-10 kit)
+    local slider = CreateFrame("Slider", nil, f)
+    slider:SetOrientation("HORIZONTAL")
+    slider:SetSize(146, 18)
+    slider:SetPoint("RIGHT", -58, 0)
+    slider:SetValueStep(1)
+    slider:SetObeyStepOnDrag(true)
+    slider:SetHitRectInsets(-4, -4, -4, -4)
+    local track = CreateFrame("Frame", nil, slider)
+    track:SetPoint("LEFT")
+    track:SetPoint("RIGHT")
+    track:SetHeight(8)
+    local rim = Pill(track, "BACKGROUND", 1, 0, 8)
+    rim:SetColor(0.35, 0.27, 0.16)
+    local inner = Pill(track, "BACKGROUND", 2, 1, 8)
+    inner:SetColor(0.05, 0.043, 0.031)
+    slider.goldFill = track:CreateTexture(nil, "ARTWORK")
+    slider.goldFill:SetPoint("TOPLEFT", 1, -1)
+    slider.goldFill:SetPoint("BOTTOMLEFT", 1, 1)
+    slider.goldFill:SetColorTexture(1, 1, 1)
+    slider.goldFill:SetGradient("VERTICAL", CreateColor(0.64, 0.48, 0.21, 1), CreateColor(0.91, 0.77, 0.42, 1))
+    slider:SetThumbTexture(WHITE)
+    local thumb = slider:GetThumbTexture()
+    thumb:SetSize(10, 10)
+    thumb:SetRotation(math.rad(45))
+    thumb:SetVertexColor(0.98, 0.9, 0.66)
+    local edge = slider:CreateTexture(nil, "OVERLAY", nil, -1)
+    edge:SetTexture(WHITE)
+    edge:SetSize(13, 13)
+    edge:SetRotation(math.rad(45))
+    edge:SetVertexColor(0.35, 0.27, 0.16)
+    edge:SetPoint("CENTER", thumb)
+    thumb:SetDrawLayer("OVERLAY", 1)
+    function slider:PaintFill()
+        local lo, hi = self:GetMinMaxValues()
+        local frac = hi > lo and (self:GetValue() - lo) / (hi - lo) or 0
+        self.goldFill:SetWidth(math.max(1, frac * (self:GetWidth() - 10) + 4))
+    end
+    f.value = Text(f, "GameFontNormal", "RIGHT")
+    f.value:SetPoint("RIGHT", -4, 0); f.value:SetWidth(48); f.value:SetWordWrap(false)
+    -- (only a real change is written: a saved value off the list, say from an old import, stays until moved)
+    local function Commit()
+        if f.row and f.rangeChoice and not f.row:IsDisabled() and f.rangeChoice.value ~= f.row:Get() then
+            f.row:Set(f.rangeChoice.value)
+        end
+    end
+    slider:SetScript("OnMouseDown", function() f.rangeDragging = true end)
+    slider:SetScript("OnMouseUp", function() f.rangeDragging = nil; Commit() end)
+    slider:SetScript("OnValueChanged", function(self, value)
+        self:PaintFill()
+        if f.rangeFilling or not f.row then return end
+        local choices = f.rangeChoices
+        local choice = choices and choices[math.max(1, math.min(#choices, math.floor(value + 0.5)))]
+        if not choice then return end
+        f.rangeChoice = choice; f.value:SetText(choice.text)
+        if f.rangeDragging then ShowRowPreview(f.row, choice.value) else Commit() end
+    end)
+    ForwardHover(slider, f)
+    -- the gamepad grabs it (A) and steps it with left / right (PadNav)
+    slider.padCycle = function(delta)
+        if not f.row or f.row:IsDisabled() then return end
+        local lo, hi = slider:GetMinMaxValues()
+        slider:SetValue(math.max(lo, math.min(hi, slider:GetValue() + delta)))
+    end
+    f.control = slider
+end
+Fill.range = function(f, row)
+    f.rangeFilling = true; f.rangeDragging = nil
+    f.rangeChoices = row:Choices()
+    local selected = 1
+    for i, choice in ipairs(f.rangeChoices) do if choice.value == row:Get() then selected = i end end
+    f.rangeChoice = f.rangeChoices[selected]
+    f.control:SetMinMaxValues(1, math.max(1, #f.rangeChoices))
+    f.control:SetValue(selected)
+    f.control:PaintFill()
+    f.value:SetText(f.rangeChoice and f.rangeChoice.text or '')
+    f.rangeFilling = nil
+    f:SetHeight(ROW_H)
+end
+
+-- Only the two major style choices use cards. The remaining options keep their existing controls.
+Build.styles = function(f)
+    f.cards = {}
+end
+Fill.styles = function(f, row)
+    local choices = row:Choices()
+    local minimap = row.key == 'mm.style'
+    local gap = minimap and 10 or 6
+    local width = (f:GetWidth() - 12 - (#choices - 1) * gap) / #choices
+    if minimap then width = math.min(168, width) end
+    -- the row of cards is centred (the minimap's are narrower than the row)
+    local startX = math.max(6, (f:GetWidth() - (#choices * width + (#choices - 1) * gap)) / 2)
+    local cardHeight = minimap and 180 or 92
+    local previewHeight = minimap and 148 or 62
+    local crumbed = (f.crumb:GetText() or "") ~= ""
+    local top = crumbed and 32 or 20
+    if row.hideLabel and not crumbed then top = 6 end
+    f.label:SetShown(not row.hideLabel or crumbed)
+    f.label:ClearAllPoints(); f.label:SetPoint("TOPLEFT", 6, -(top - 20))
+    f:SetHeight(top + cardHeight + 8)
+    for i, choice in ipairs(choices) do
+        local b = f.cards[i]
+        if not b then
+            b = CreateFrame("Button", nil, f, "BackdropTemplate")
+            local edgeFile = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thick.tga"
+            b:SetBackdrop({ edgeFile = edgeFile, edgeSize = ns.BorderEdgeSize(edgeFile, 12) })
+            b.plate = b:CreateTexture(nil, "BACKGROUND")
+            b.plate:SetPoint("TOPLEFT", 3, -3)
+            b.plate:SetPoint("BOTTOMRIGHT", -3, 3)
+            b.plate:SetColorTexture(1, 1, 1)
+            b.label = Text(b, "GameFontNormalSmall", "CENTER")
+            b.label:SetPoint("BOTTOMLEFT", 6, 8); b.label:SetPoint("BOTTOMRIGHT", -6, 8)
+            b.tick = Text(b, "GameFontNormal", "RIGHT")
+            -- bottom right, beside the name: clear of the sample above
+            b.tick:SetPoint("BOTTOMRIGHT", -7, 7); b.tick:SetText("|TInterface\\Buttons\\UI-CheckBox-Check:14|t")
+            b.canvas = ns.SettingsPreview.Create(b, 100, 65)
+            b.canvas.frame:SetPoint("TOPLEFT", 6, -6)
+            b:SetScript("OnEnter", function(self)
+                self.hovered = true
+                if self.Paint then self:Paint() end
+                if f.row then ShowRowPreview(f.row, self.value) end
+            end)
+            b:SetScript("OnLeave", function(self)
+                self.hovered = nil
+                if self.Paint then self:Paint() end
+                if f.row then ShowRowPreview(f.row) end
+            end)
+            function b:Paint()
+                local c = ns.BORDER_COLOR
+                if self.selected then
+                    self:SetBackdropBorderColor(1, 0.84, 0.5, 1)
+                    self.plate:SetGradient("VERTICAL", CreateColor(0.13, 0.095, 0.055, 1), CreateColor(0.29, 0.21, 0.12, 1))
+                elseif self.hovered then
+                    self:SetBackdropBorderColor(c.r * 1.2, c.g * 1.2, c.b * 1.2, 1)
+                    self.plate:SetGradient("VERTICAL", CreateColor(0.1, 0.075, 0.045, 1), CreateColor(0.21, 0.155, 0.09, 1))
+                else
+                    self:SetBackdropBorderColor(c.r * 0.8, c.g * 0.8, c.b * 0.8, 1)
+                    self.plate:SetGradient("VERTICAL", CreateColor(0.07, 0.055, 0.035, 1), CreateColor(0.15, 0.11, 0.065, 1))
+                end
+                self.label:SetTextColor(self.selected and 1 or 0.85, self.selected and 0.89 or 0.79, self.selected and 0.63 or 0.66)
+            end
+            b:SetScript("OnClick", function(self)
+                if f.row and not f.row:IsDisabled() then ns.ButtonSound(); f.row:Set(self.value) end
+            end)
+            f.cards[i] = b
+        end
+        b.value = choice.value
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", startX + (i - 1) * (width + gap), -top)
+        b:SetSize(width, cardHeight)
+        b.label:SetText(choice.text)
+        b.canvas.width, b.canvas.height = width - 12, previewHeight
+        b.canvas.isStyleCard = true
+        b.canvas.frame:SetSize(width - 12, previewHeight)
+        ns.SettingsPreview.Style(b.canvas, row, choice.value)
+        local selected = row:Get() == choice.value
+        b.selected = selected
+        b:Paint()
+        b.tick:SetShown(selected)
+        b:SetEnabled(not row:IsDisabled()); b:SetAlpha(row:IsDisabled() and 0.45 or 1)
+        b:Show()
+    end
+    for i = #choices + 1, #f.cards do f.cards[i]:Hide() end
 end
 
 -- dropdown (long lists). row.sideButtons = { left = def, right = def } puts buttons beside it,
@@ -396,7 +1065,7 @@ end
 local function SideButton(f, side)
     local key = side .. "Button"
     if not f[key] then
-        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        local b = PanelButton(f)
         b:SetHeight(22)
         b:SetScript("OnClick", function(self)
             ns.ButtonSound()
@@ -412,6 +1081,7 @@ Build.dropdown = function(f)
     local dd = CreateFrame("DropdownButton", nil, f, "WowStyle1DropdownTemplate")
     dd:SetWidth(200)
     dd:SetPoint("RIGHT", -4, 0)
+    SkinDropdown(dd)
     ForwardHover(dd, f)
     f.control = dd
     SetupChoiceMenu(dd, f)
@@ -451,7 +1121,7 @@ local ButtonWidthForText = S.ButtonWidthForText
 
 -- button
 Build.button = function(f)
-    local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    local b = PanelButton(f)
     b:SetSize(200, 22)
     b:SetPoint("RIGHT", -4, 0)
     b:SetScript("OnClick", function()
@@ -670,7 +1340,7 @@ Fill.buttons = function(f, row)
         local i, def = n, defs[n]
         local b = f.buttons[i]
         if not b then
-            b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+            b = PanelButton(f)
             b:SetHeight(BUTTON_HEIGHT)
             b:SetScript("OnClick", function(self)
                 ns.ButtonSound()
@@ -695,7 +1365,21 @@ end
 
 -- Edit button, greyed in combat
 local function EditButton(f, onClick)
-    local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    local b = CreateFrame("Button", nil, f)
+    -- the panel buttons' look: the Thick edge over the brown fill
+    ThickEdge(b)
+    local fill = b:CreateTexture(nil, "BACKGROUND")
+    fill:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
+    fill:SetPoint("BOTTOMRIGHT", -THICK_INSET, THICK_INSET)
+    fill:SetColorTexture(1, 1, 1)
+    fill:SetGradient("VERTICAL", CreateColor(0.09, 0.065, 0.04, 1), CreateColor(0.24, 0.17, 0.10, 1))
+    b:HookScript("OnEnter", function(self) if self:IsEnabled() then self.edge:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1) end end)
+    b:HookScript("OnLeave", function(self) self.edge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 1) end)
+    local label = Text(b, "FlareUI_PanelButton", "CENTER")   -- the titles' gold, like the panel buttons
+    label:SetAllPoints(); b:SetFontString(label)
+    b:SetScript("OnDisable", function(self) self:SetAlpha(0.4) end)
+    b:SetScript("OnEnable", function(self) self:SetAlpha(1) end)
+    b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
     b:SetSize(80, 22)
     b:SetText(S:WindowText("editModeButtonOnAFrameRow", L["Edit"]))
     b:SetScript("OnClick", function()
@@ -791,6 +1475,7 @@ local function SetRowEnabled(f, enabled)
 end
 
 local function RowLabelSpace(f, row)
+    if row.kind == "styles" then return f:GetWidth() - 24 end
     -- Use the first visible control, not the width of its container.
     local control = f.control or f.edit
     if f.stepper then
@@ -815,6 +1500,7 @@ local function FillRow(f, row, crumb)
     f.crumb:SetTextColor(GRAY_FONT_COLOR:GetRGB())
     f.crumbLink:SetShown(crumb ~= nil)
     f:SetHeight(crumb and ROW_H + 12 or ROW_H)
+    f.plate:SetShown(PLATED[row.kind] and true or false)
     if f.flashAnim then f.flashAnim:Stop() end
     if Fill[row.kind] then Fill[row.kind](f, row) end
     SetRowEnabled(f, not row:IsDisabled())
@@ -886,16 +1572,38 @@ local function SectionHeader(parent, text, y, sectionKey)
         h = CreateFrame("Frame", nil, parent)
         h:SetHeight(SECTION_H)
         h.kind = key
-        h.text = Text(h, "GameFontNormal")
-        h.text:SetPoint("BOTTOMLEFT", 6, 6)
+        h.text = Text(h, "GameFontNormalLarge")
+        h.text:SetPoint("BOTTOMLEFT", 6, 8)
+        h.text:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
         h.sign = Text(h, "GameFontNormal")
         h.sign:SetPoint("BOTTOMRIGHT", -10, 6)
+        h.reset = CreateFrame("Button", nil, h)
+        h.reset:SetPoint("BOTTOMRIGHT", -30, 6)
+        h.reset.label = Text(h.reset, "GameFontNormalSmall", "RIGHT")
+        h.reset.label:SetPoint("RIGHT")
+        h.reset.label:SetText(L["Reset"])
+        h.reset:SetSize(math.ceil(h.reset.label:GetStringWidth() or 30) + 6, 18)
+        h.reset:SetMotionScriptsWhileDisabled(true)
+        function h.reset:Paint()
+            if not self:IsEnabled() then self.label:SetTextColor(0.43, 0.40, 0.34)
+            elseif self.hovered then self.label:SetTextColor(1, 1, 1)
+            else self.label:SetTextColor(GOLD[1], GOLD[2], GOLD[3]) end
+        end
+        h.reset:SetScript("OnEnter", function(self) self.hovered = true self:Paint() end)
+        h.reset:SetScript("OnLeave", function(self) self.hovered = nil self:Paint() end)
+        -- asks first: a section can hold many options
+        h.reset:SetScript("OnClick", function(self)
+            local owner = self:GetParent()
+            ns.ShowDialog("FLAREUI_RESET_SECTION", owner.text:GetText() or "",
+                { module = current, section = owner.sectionKey, tab = owner.resetTab })
+        end)
+        h.text:SetPoint("RIGHT", h.reset, "LEFT", -8, 0)
         h.line = Line(h)
         h.line:SetPoint("BOTTOMLEFT", 0, 2)
         h.line:SetPoint("BOTTOMRIGHT", 0, 2)
         h.hover = h:CreateTexture(nil, "BACKGROUND")
         h.hover:SetAllPoints()
-        h.hover:SetColorTexture(1, 0.82, 0, 0.06)
+        Rounded(h.hover, 1, 0.82, 0, 0.07)
         h.hover:Hide()
         h:EnableMouse(true)
         h:SetScript("OnEnter", function(self) self.hover:Show() end)
@@ -904,11 +1612,17 @@ local function SectionHeader(parent, text, y, sectionKey)
     end
     h:SetParent(parent)
     h.sectionKey = sectionKey
+    local active = S.modules[current] and Panel:ActiveTab(S.modules[current])
+    h.resetTab = active and active.key
+    -- (pages marked noReset have none: Profiles, Settings)
+    h.reset:SetShown(sectionKey ~= nil and not (S.modules[current] and S.modules[current].noReset))
+    h.reset:SetEnabled(sectionKey and S:CanResetSection(current, sectionKey, h.resetTab) or false)
+    h.reset:Paint()
     h.sign:SetText(sectionKey and (closedSections[sectionKey] and "+" or "-") or "")
     h.text:SetText(text)
     h:ClearAllPoints()
-    h:SetPoint("TOPLEFT", 0, y)
-    h:SetWidth(CONTENT_W)
+    h:SetPoint("TOPLEFT", rowInset, y)
+    h:SetWidth(CONTENT_W - 2 * rowInset)
     h:Show()
     used[#used + 1] = h
     return SECTION_H
@@ -916,49 +1630,124 @@ end
 
 -- lays rows out from y down and returns the new y; half rows pair up except in search results.
 -- row.gapAbove: extra space over a full-width row (not in search results)
+-- a section's box: from its heading to its last row, under both (Thin edge, darker than the page)
+local function SectionBox(parent, top, bottom)
+    local key = "secbox"
+    pools[key] = pools[key] or {}
+    local b = table.remove(pools[key])
+    if not b then
+        b = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+        b.kind = key
+        Box(b, 0.32)
+    end
+    b:SetParent(parent)
+    b:SetFrameLevel(parent:GetFrameLevel())
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", 0, top)
+    b:SetSize(CONTENT_W, math.max(1, top - bottom))
+    b:Show()
+    used[#used + 1] = b
+end
+
 local function PlaceRows(parent, rows, y, crumbOf)
     local firstHalf
     for _, row in ipairs(rows) do
         local f = Acquire(parent, row.kind)
         f:ClearAllPoints()
+        local width = CONTENT_W - 2 * rowInset
         if row.half and not crumbOf then
             local col = firstHalf and 1 or 0
             -- a half row keeps to its column even under a parent (the parent still greys it)
-            local w = math.floor(CONTENT_W / 2)
-            f:SetPoint("TOPLEFT", col * w, y)
-            f:SetWidth(w - (col == 0 and 8 or 0))
+            local w = math.floor((width - HALF_GAP) / 2)
+            f:SetPoint("TOPLEFT", rowInset + col * (w + HALF_GAP), y)
+            f:SetWidth(w)
             FillRow(f, row)
             if row == page.jumpRow then page.jumpFrame, page.jumpTop = f, -y end
             if firstHalf then
                 local height = math.max(firstHalf:GetHeight(), f:GetHeight())
                 firstHalf:SetHeight(height)
                 f:SetHeight(height)
-                y = y - height
+                y = y - height - ROW_GAP
                 firstHalf = nil
             else
                 firstHalf = f
             end
         else
             if firstHalf then
-                y = y - firstHalf:GetHeight()
+                y = y - firstHalf:GetHeight() - ROW_GAP
                 firstHalf = nil
             end
             if row.gapAbove and not crumbOf then y = y - row.gapAbove end
             local indent = row.parent and INDENT or 0
-            f:SetPoint("TOPLEFT", indent, y)
-            f:SetWidth(CONTENT_W - indent)
+            f:SetPoint("TOPLEFT", rowInset + indent, y)
+            f:SetWidth(width - indent)
             FillRow(f, row, crumbOf and crumbOf(row))
             if row == page.jumpRow and not crumbOf then page.jumpFrame, page.jumpTop = f, -y end
-            y = y - f:GetHeight()
+            y = y - f:GetHeight() - ROW_GAP
         end
     end
-    if firstHalf then y = y - firstHalf:GetHeight() end
+    if firstHalf then y = y - firstHalf:GetHeight() - ROW_GAP end
     return y
 end
+
+-- 11-11 (Marcus): the pages' icons as Blizzard's own, in the round aura look (the talent node mask and
+-- ring, tinted bronze, as Auras.lua's round style); /fui icons switches back to the line icons
+local GAME_ICONS = {
+    about = "INV_Misc_Book_09", adv = "INV_Scroll_03", language = "Trade_Engineering",
+    ab = "INV_Sword_04", uf = "INV_Misc_Head_Human_01", rb = "INV_Potion_54", au = "Spell_Holy_WordFortitude",
+    mm = "INV_Misc_Map_01", qt = "INV_Misc_Note_06",
+    ch = "INV_Letter_15", dm = "Ability_DualWield", tt = "INV_Misc_Spyglass_03", rm = "INV_Misc_Orb_05", qol = "INV_Misc_Bag_08",
+}
+local RING_MASK, RING_ART, RING_TINT = "talents-node-circle-mask", "talents-node-circle-gray", { 0.72, 0.56, 0.38 }
+local function GameIcons()
+    -- (the look tests' saved switch, 11-11, retired)
+    if ns.db and ns.db.global then ns.db.global.panelLineIcons = nil end
+    return true
+end
+-- an icon texture in the round look: masked to the circle, the ring over it (made once per texture)
+local function RingIcon(tex, parent)
+    if not tex.ftRingMask then
+        tex.ftRingMask = parent:CreateMaskTexture()
+        tex.ftRingMask:SetAtlas(RING_MASK, TextureKitConstants and TextureKitConstants.IgnoreAtlasSize)
+        tex.ftRingMask:SetAllPoints(tex)
+        tex:AddMaskTexture(tex.ftRingMask)
+        tex.ftRing = parent:CreateTexture(nil, "OVERLAY")
+        tex.ftRing:SetAtlas(RING_ART, TextureKitConstants and TextureKitConstants.IgnoreAtlasSize)
+        tex.ftRing:SetAllPoints(tex)
+        tex.ftRing:SetVertexColor(RING_TINT[1], RING_TINT[2], RING_TINT[3])
+    end
+    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    tex.ftRing:Show()
+end
+-- a module's game icon in the round aura look, size x size, on parent (the tour's summary)
+Panel.ModuleIcon = function(parent, key, size)
+    local tex = parent:CreateTexture(nil, "ARTWORK")
+    tex:SetSize(size, size)
+    tex:SetTexture("Interface\\Icons\\" .. (GAME_ICONS[key] or "INV_Misc_QuestionMark"))
+    RingIcon(tex, parent)
+    return tex
+end
+
 
 local function UpdateHeader(module)
     page.title:SetText(module:Title())
     page.desc:SetText(module:Description() or "")
+    page.plateIcon:SetTexture(module.navIcon or LOGO)
+    if module.navIconTint then page.plateIcon:SetVertexColor(1, 0.83, 0.47) else page.plateIcon:SetVertexColor(1, 1, 1) end
+    -- the game's icons: round and ringed on a plate of their own size, the square plate's edge hidden
+    local ring = module.navIconRound == "ring"
+    if ring then
+        page.plateIcon:SetSize(40, 40)
+        RingIcon(page.plateIcon, page.plateIcon:GetParent())
+        page.plateIcon:GetParent():SetBackdropBorderColor(0, 0, 0, 0)
+        page.plateIcon:GetParent():SetBackdropColor(0, 0, 0, 0)
+    else
+        page.plateIcon:SetSize(26, 26)
+        page.plateIcon:SetTexCoord(0, 1, 0, 1)
+        if page.plateIcon.ftRing then page.plateIcon.ftRing:Hide() end
+        page.plateIcon:GetParent():SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1)
+        page.plateIcon:GetParent():SetBackdropColor(0.13, 0.095, 0.055, 1)
+    end
     local hasSwitch = module.enabled ~= nil
     page.switch:SetShown(hasSwitch)
     page.switch:SetChecked(module:IsOn())
@@ -967,27 +1756,21 @@ local function UpdateHeader(module)
     if module.headerButton then customText, customClick = module.headerButton() end
     page.editMode.customClick = customClick
     page.editMode:SetShown((customText or editText) and true or false)
-    local titleRightInset = 4
+    local rightInset = 4
     if customText or editText then
         page.editMode:SetText(customText or editText)
         page.editMode:SetWidth((page.editMode:GetTextWidth() or 120) + 30)
         page.editMode:SetEnabled(customText ~= nil or (S:CanEditFrames() and true or false))
-        titleRightInset = page.editMode:GetWidth() + 8
+        rightInset = page.editMode:GetWidth() + 8
     end
-    local titleLeftInset = hasSwitch and page.switch:GetWidth() + 2 or 4
-    local titleWidth = math.max(1, page.header:GetWidth() - titleLeftInset - titleRightInset)
-    page.title:SetWidth(titleWidth)
-    page.title:ClearAllPoints()
-    local titleWraps = page.title:GetUnboundedStringWidth() > titleWidth
-    if hasSwitch and not titleWraps then
-        page.title:SetPoint("LEFT", page.switch, "RIGHT", 4, 0)
-    else
-        page.title:SetPoint("TOPLEFT", titleLeftInset, -4)
-    end
-    local titleExtra = titleWraps and math.max(0, math.ceil(page.title:GetStringHeight()) - 22) or 0
-    page.desc:SetPoint("TOPLEFT", 4, -36 - titleExtra)
+    -- icon plate, the title with the module's switch after it, the description under both
+    local room = math.max(1, (page.header:GetWidth() or CONTENT_W) - 54 - rightInset - (hasSwitch and page.switch:GetWidth() + 8 or 0))
+    page.title:SetWidth(0)
+    if page.title:GetUnboundedStringWidth() > room then page.title:SetWidth(room) end
+    page.desc:SetPoint("RIGHT", page.header, "RIGHT", -rightInset, 0)
     page.banner:Hide()
-    local height = 64 + titleExtra
+    local textH = math.ceil((page.title:GetStringHeight() or 22) + 4 + (page.desc:GetStringHeight() or 0))
+    local height = math.max(52, textH + 10)
     if module.banner and module:IsOn() then
         local text, button, onClick = module.banner()
         if text then
@@ -1005,6 +1788,9 @@ local function UpdateHeader(module)
             -- a longer text wraps, and the banner grows with it
             local bannerHeight = math.max(30, math.ceil(page.banner.text:GetStringHeight()) + 12)
             page.banner:SetHeight(bannerHeight)
+            page.banner:ClearAllPoints()
+            page.banner:SetPoint("TOPLEFT", page.header, "TOPLEFT", 0, -height)
+            page.banner:SetPoint("RIGHT", page.header, "RIGHT")
             page.banner:Show()
             height = height + bannerHeight + 6
         end
@@ -1015,14 +1801,14 @@ local function UpdateHeader(module)
     -- the row must fit the page (four tabs with NEW badges ran past it, 11-10): each tab is its name,
     -- some padding and, with a badge, room on both sides so the name stays centred. Too wide, the
     -- padding shrinks first (down to 10), then the tabs' badges go (the rows' own stay).
-    local TAB_PAD, TAB_PAD_MIN, TAB_GAP, TAB_LEFT = 40, 10, 5, 8
+    local TAB_PAD, TAB_PAD_MIN, TAB_GAP, TAB_LEFT = 28, 12, 4, 0
     local shown, textW, isNew = {}, {}, {}
     for i, b in ipairs(page.tabButtons) do
         local tab = module.tabs and module:IsOn() and module.tabs[i]
         b:SetShown(tab and true or false)
         if tab then
             b.tabKey = tab.key
-            b.Text:SetText(names[i] or tab.key)
+            b.Text:SetText(tab.label or names[i] or tab.key)
             shown[#shown + 1] = i
             textW[i] = b.Text:GetStringWidth() or 60
             isNew[i] = module:HasNew(tab.key) and true or false
@@ -1054,8 +1840,8 @@ local function UpdateHeader(module)
         b:SetWidth(textW[i] + pad + (new and 2 * (NEW_W + NEW_GAP) or 0))
     end
     local tabbed = module.tabs and module:IsOn()
-    page.tabLine:SetShown(tabbed and true or false)
-    if tabbed then height = height + 40 end
+    page.tabLine:SetShown(false)   -- (11-11 Marcus: no line between the tabs and the boxes)
+    if tabbed then height = height + 32 end
     page.header:SetHeight(height)
 end
 
@@ -1083,8 +1869,8 @@ local function SetWide(wide)
     end
     if Panel.OnResize then Panel.OnResize() end
 end
-Panel.WIDE_W = WIDTH + WIDE_EXTRA - 12 - LEFT_W - RIGHT_W - 2 * PAD   -- a wide tab's middle width
-Panel.MIDDLE_W = WIDTH - 12 - LEFT_W - RIGHT_W - 2 * PAD               -- a custom tab's middle width
+Panel.WIDE_W = MIDDLE_W + WIDE_EXTRA   -- a wide tab's middle width
+Panel.MIDDLE_W = MIDDLE_W              -- a custom tab's middle width
 Panel.RIGHT_W, Panel.PAD = RIGHT_W, PAD
 
 local function HideCustom()
@@ -1099,13 +1885,16 @@ local function ShowCustom(module, tab)
     local host = customHosts[id]
     if not host then
         host = CreateFrame("Frame", nil, page.root)
-        host:SetPoint("TOPLEFT", page.header, "BOTTOMLEFT", 0, -4)
+        host:SetPoint("TOPLEFT", page.header, "BOTTOMLEFT", 0, -14)
         host:SetPoint("BOTTOMRIGHT", page.root, "BOTTOMRIGHT", 0, 0)
         customHosts[id] = host
         tab.custom(host, preview.host)
     end
     host:Show()
     if tab.preview then
+        if preview.canvas then preview.canvas:Reset(); preview.canvas.frame:Hide() end
+        previewRow = nil
+        if preview.pause then preview.pause:Hide() end
         for _, region in ipairs({ preview.picture, preview.title, preview.desc, preview.tip }) do region:Hide() end
         preview.host:Show()
     end
@@ -1117,8 +1906,10 @@ local newVisit      -- the page and tab whose NEW badges are showing
 
 function Panel:Refresh()
     if not frame or not frame:IsShown() or self.opening then return end
+    preview.dirty = true
     ReleaseAll()
     HideCustom()
+    ShowModulePreview()
     -- only a wide custom tab, shown (not search results or a module that is off), widens the window
     do
         local module = searchText == "" and S.modules[current]
@@ -1138,10 +1929,12 @@ function Panel:Refresh()
         local results = S:Search(searchText)
         -- a word of one or two letters matches most rows: the first ones are shown
         local MAX_RESULTS = 60
-        local cut = #results > MAX_RESULTS
+        local found = #results
         for i = #results, MAX_RESULTS + 1, -1 do results[i] = nil end
-        page.searchTitle:SetText(cut and L["First %d results for \"%s\""]:format(MAX_RESULTS, searchText)
-            or L["Results for \"%s\""]:format(searchText))
+        -- how many matched (11-11); Enter goes to the first
+        page.searchTitle:SetText(L["%d found for \"%s\""]:format(found, searchText)
+            .. (found > MAX_RESULTS and ("  " .. GRAY_FONT_COLOR:WrapTextInColorCode(L["(first %d shown)"]:format(MAX_RESULTS))) or "")
+            .. (found > 0 and ("  " .. GRAY_FONT_COLOR:WrapTextInColorCode(L["Enter: go to the first"])) or ""))
         page.searchTitle:Show()
         y = -24
         if #results == 0 then
@@ -1162,7 +1955,7 @@ function Panel:Refresh()
         page.searchTitle:Hide()
         page.empty:Hide()
         page.header:Show()
-        page.scroll:SetPoint("TOPLEFT", page.header, "BOTTOMLEFT", 0, -4)
+        page.scroll:SetPoint("TOPLEFT", page.header, "BOTTOMLEFT", 0, -10)
         local module = S.modules[current]
         if not module then return end
         -- leaving a page or tab takes its seen badges away
@@ -1187,13 +1980,19 @@ function Panel:Refresh()
                 page.scroll:Hide()
                 ShowCustom(module, tab)
             else
+                rowInset = SEC_X
                 for _, section in ipairs(module:Sections(tab and tab.key)) do
-                    if section.title then y = y - SectionHeader(content, section.title, y, section.key) end
+                    local top = y
+                    y = y - SEC_TOP
+                    if section.title then y = y - SectionHeader(content, section.title, y, section.key) - 4 end
                     if not (section.title and closedSections[section.key]) then
                         y = PlaceRows(content, section.rows, y)
                     end
-                    y = y - 6
+                    y = y - SEC_BOTTOM + ROW_GAP
+                    SectionBox(content, top, y)
+                    y = y - SEC_GAP
                 end
+                rowInset = 0
             end
             content:SetHeight(math.max(1, -y + 8))
             return
@@ -1206,17 +2005,25 @@ end
 --------------------------------------------------
 -- 5. LEFT COLUMN
 --------------------------------------------------
-local NAV_TEXT_INSET, NAV_RIGHT_INSET = 20, 6
+local NAV_TEXT_INSET, NAV_RIGHT_INSET, NAV_H = 36, 6, 30
 
 function UpdateNav()
     for key, b in pairs(navButtons) do
         local module = S.modules[key]
         local on = module:IsOn()
-        b.selected:SetShown(key == current and searchText == "")
+        if b.toggle then b.toggle:SetChecked(on) end
+        local selected = key == current and searchText == ""
+        b.selected:SetShown(selected)
+        b.bar:SetShown(selected)
+        b.edge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], selected and 1 or 0)
         if module.navIcon then
             b.dot:SetTexture(module.navIcon)
+            if module.navIconRound == "ring" then
+                -- the round aura look, a little larger than the line icons
+                b.dot:SetSize(24, 24)
+                RingIcon(b.dot, b)
             -- game icon cropped to a circle
-            if module.navIconRound and not b.dotMask then
+            elseif module.navIconRound and not b.dotMask then
                 b.dotMask = b:CreateMaskTexture()
                 b.dotMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
                 b.dotMask:SetAllPoints(b.dot)
@@ -1224,20 +2031,25 @@ function UpdateNav()
                 b.dot:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             end
             b.dot:SetDesaturated(false)
-            b.dot:SetVertexColor(1, 1, 1)
+            if not module.navIconTint then b.dot:SetVertexColor(1, 1, 1)
+            elseif selected then b.dot:SetVertexColor(1, 0.83, 0.47)
+            elseif on then b.dot:SetVertexColor(0.69, 0.54, 0.31)
+            else b.dot:SetVertexColor(0.45, 0.42, 0.38) end
             b.dot:Show()
         else
             b.dot:SetShown(module.enabled ~= nil)
             b.dot:SetVertexColor(on and 0.35 or 0.4, on and 0.85 or 0.4, on and 0.35 or 0.4)
         end
-        b.text:SetTextColor((on and HIGHLIGHT_FONT_COLOR or GRAY_FONT_COLOR):GetRGB())
+        if selected then b.text:SetTextColor(1, 0.89, 0.63)
+        elseif on then b.text:SetTextColor(0.85, 0.80, 0.70)
+        else b.text:SetTextColor(GRAY_FONT_COLOR:GetRGB()) end
         local showNew = on and module:HasNew()
         if b.showNew ~= showNew then
             b.showNew = showNew
             b.newBadge:SetShown(showNew)
             local badgeWidth = showNew and (NEW_W + NEW_GAP) or 0
-            b.text:SetWidth(b:GetWidth() - NAV_TEXT_INSET - NAV_RIGHT_INSET - badgeWidth)
-            b:SetHeight(math.max(24, math.ceil(b.text:GetStringHeight()) + 6))
+            b.text:SetWidth(b:GetWidth() - NAV_TEXT_INSET - (b.rightInset or NAV_RIGHT_INSET) - badgeWidth)
+            b:SetHeight(math.max(NAV_H, math.ceil(b.text:GetStringHeight()) + 8))
         end
     end
 end
@@ -1247,6 +2059,7 @@ function Panel:Select(key)
     if key ~= current then
         S:EndNewVisit()
         newVisit = nil
+        if current and page.scroll then scrollOf[current] = page.scroll:GetVerticalScroll() end
     end
     current = key
     -- lets the shown module preview itself
@@ -1259,6 +2072,14 @@ function Panel:Select(key)
     page.scroll:SetVerticalScroll(0)
     UpdateNav()
     self:Refresh()
+    -- back where this page was left (the scroll range is known once the rows are placed)
+    local back = scrollOf[key]
+    if back and back > 0 then
+        C_Timer.After(0, function()
+            if current ~= key then return end
+            page.scroll:SetVerticalScroll(math.min(back, page.scroll:GetVerticalScrollRange() or 0))
+        end)
+    end
 end
 
 -- From a search result: the row's page and tab, its section unfolded, scrolled to and flashed
@@ -1290,39 +2111,86 @@ end
 
 local function BuildNav(left)
     -- Anchor each row to the one above so badge changes can reflow the list.
-    local anchor, anchorPoint, x, gap = left, "TOPLEFT", PAD, PAD - 4
-    local buttonWidth = LEFT_W - 2 * PAD
-    local GROUP_LABEL = { HUD = L["HUD"], Info = L["Info"], Tools = L["Tools"] }
+    local anchor, anchorPoint, x, gap = left, "TOPLEFT", 6, 8
+    local buttonWidth = LEFT_W - 12
+    -- groups (11-10): About, Profiles and Language on top without a heading, then these
+    local GROUP_LABEL = {
+        combat = S:WindowText("leftListGroups", L["Combat"]),
+        map = S:WindowText("leftListGroups2", L["Map & Quests"]),
+        interface = S:WindowText("leftListGroups3", L["Interface"]),
+    }
     for _, group in ipairs(S:Groups()) do
         local label = GROUP_LABEL[group.group]
         if label then
             local g = Text(left, "GameFontDisableSmall")
-            g:SetPoint("TOPLEFT", anchor, anchorPoint, x + 4, -gap - 8)
+            g:SetPoint("TOPLEFT", anchor, anchorPoint, x + 8, -gap - 12)
+            g:SetTextColor(0.66, 0.55, 0.36)
             g:SetText(label)
-            gap = gap + 24
+            gap = gap + 30
         elseif group.group == "bottom" then
             gap = gap + 10
         end
         for _, module in ipairs(group.modules) do
+            local icons = { about=true, adv=true, language=true, ab=true, uf=true, rb=true, au=true, dm=true,
+                mm=true, qt=true, ch=true, tt=true, rm=true, qol=true }
+            if GameIcons() and GAME_ICONS[module.key] then
+                module.navIcon = "Interface\\Icons\\" .. GAME_ICONS[module.key]
+                module.navIconRound = "ring"
+                module.navIconTint = false
+            elseif icons[module.key] then
+                module.navIcon = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Icons\\" .. module.key .. ".tga"
+                module.navIconRound = false
+                module.navIconTint = true
+            end
+            -- the open page sits on a warm plate with a gold bar at its left edge
             local b = CreateFrame("Button", nil, left)
-            b:SetSize(buttonWidth, 24)
+            b:SetSize(buttonWidth, NAV_H)
             b:SetPoint("TOPLEFT", anchor, anchorPoint, x, -gap)
+            ThinEdge(b)
+            b.edge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], 0)
             b.selected = b:CreateTexture(nil, "BACKGROUND")
-            b.selected:SetAllPoints()
-            b.selected:SetColorTexture(1, 0.82, 0, 0.12)
-            b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
-            b:GetHighlightTexture():SetAlpha(0.25)
+            b.selected:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
+            b.selected:SetPoint("BOTTOMRIGHT", -THIN_INSET, THIN_INSET)
+            Rounded(b.selected)
+            b.selected:SetGradient("HORIZONTAL", CreateColor(0.47, 0.36, 0.22, 0.55), CreateColor(0.24, 0.17, 0.09, 0.30))
+            b.bar = b:CreateTexture(nil, "ARTWORK")
+            b.bar:SetColorTexture(0.91, 0.77, 0.42)
+            b.bar:SetPoint("TOPLEFT", 0, -5)
+            b.bar:SetPoint("BOTTOMLEFT", 0, 5)
+            b.bar:SetWidth(3)
+            b:SetHighlightTexture(ROUND_RECT)
+            Rounded(b:GetHighlightTexture(), 0.79, 0.65, 0.35, 0.12)
             b.dot = b:CreateTexture(nil, "ARTWORK")
             b.dot:SetTexture("Interface\\COMMON\\Indicator-Green")
             b.dot:SetDesaturated(true)
-            b.dot:SetSize(14, 14)
-            b.dot:SetPoint("LEFT", 2, 0)
+            b.dot:SetSize(18, 18)
+            b.dot:SetPoint("LEFT", 10, 0)
             b.text = Text(b, "GameFontHighlight")
             b.text:SetPoint("LEFT", NAV_TEXT_INSET, 0)
+            -- (room for the module's switch at the right, when it has one)
+            b.rightInset = module.enabled and NAV_RIGHT_INSET + 30 or NAV_RIGHT_INSET
+            b.text:SetWidth(buttonWidth - NAV_TEXT_INSET - b.rightInset)
             b.text:SetWordWrap(true)
             b.text:SetText(module:Title())
             b.newBadge = NewBadge(b)
-            b.newBadge:SetPoint("RIGHT", -NAV_RIGHT_INSET / NEW_SCALE, 0)
+            if module.enabled then
+                -- a quick switch for the module (11-11 Marcus), as the page title's: modules start at
+                -- login, so it asks for a reload
+                local toggle = Switch(b)
+                toggle:SetScale(0.7)
+                toggle:SetPoint("RIGHT", -8 / 0.7, 0)
+                toggle:SetScript("OnClick", function(self)
+                    local on = self:GetChecked() and true or false
+                    PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+                    module:SetOn(on)
+                    UpdateNav()
+                    if current == module.key then Panel:Refresh() end
+                end)
+                b.toggle = toggle
+                b.newBadge:SetPoint("RIGHT", toggle, "LEFT", -4 / NEW_SCALE, 0)
+            else
+                b.newBadge:SetPoint("RIGHT", -NAV_RIGHT_INSET / NEW_SCALE, 0)
+            end
             b:SetScript("OnClick", function()
                 PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
                 Panel:Select(module.key)
@@ -1350,6 +2218,7 @@ local function PlaceSecureReload()
     if not secureReload then
         secureReload = CreateFrame("Button", "FlareUI_SettingsReload", ns.SecureReloadParent(), "SecureActionButtonTemplate, UIPanelButtonTemplate")
         secureReload:SetFrameStrata("FULLSCREEN_DIALOG")
+        SkinButton(secureReload)
         -- acts on the press, whatever ActionButtonUseKeyDown says, so PreClick runs once and in step
         secureReload:RegisterForClicks("AnyDown")
         secureReload:SetAttribute("useOnKeyDown", true)
@@ -1382,10 +2251,17 @@ Panel.OnResize = PlaceSecureReload   -- a wide tab moved the reload button
 
 -- Window scale: Shift + mouse wheel over the window, 70% to 130%, kept for the account. The window
 -- keeps its centre. Out of combat only: the secure reload button can't follow it in a fight.
+-- the player's scale, made smaller when the window wouldn't fit the screen (with its reload bar)
+local function FitScale(scale)
+    local w, h = UIParent:GetWidth(), UIParent:GetHeight()
+    if not (frame and w and h and w > 0 and h > 0) then return scale end
+    return math.min(scale, w / (frame:GetWidth() + 16), h / (HEIGHT + FOOTER_H + FOOTER_RISE + 24))
+end
+
 local function ApplyPanelScale()
     if not frame then return end
     local global = ns.db and ns.db.global
-    local scale = global and global.panelScale or 1
+    local scale = FitScale(global and global.panelScale or 1)
     local x, y = frame:GetCenter()
     local old = frame:GetScale()
     frame:SetScale(scale)
@@ -1412,10 +2288,12 @@ local function UpdateFooter()
         local text = S:WindowText("reloadFooter", L["{n} change(s) need a reload"])
         frame.footerText:SetText(text:gsub("{n}", n))
         frame.reload:Show()
+        frame.footer.alert:Show()
         frame.footer:Show()
     elseif notice then
         frame.footerText:SetText(notice)
         frame.reload:Hide()
+        frame.footer.alert:Hide()
         frame.footer:Show()
     else
         frame.footerText:SetText("")
@@ -1439,13 +2317,164 @@ end)
 --------------------------------------------------
 -- 7. THE WINDOW
 --------------------------------------------------
+-- The look for FlareUI's other windows (the setup tour): the same stone, glow and shade, the heavy bronze
+-- frame with its rivets top left and bottom right, and a close button in its top right corner (returned).
+-- Without the frame's art (a client that lacks it), the tooltip edge.
+function Panel.DressWindow(f)
+    f:SetBackdrop(nil)
+    local art = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+    art:SetPoint("TOPLEFT", 3, 8)
+    art:SetPoint("BOTTOMRIGHT", -3, -8)
+    art:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
+    art:SetHorizTile(true)
+    art:SetVertTile(true)
+    local wash = f:CreateTexture(nil, "BACKGROUND", nil, 2)
+    wash:SetAllPoints(art)
+    wash:SetColorTexture(0.05, 0.038, 0.026, 0.35)
+    local glow = f:CreateTexture(nil, "BACKGROUND", nil, 3)
+    glow:SetPoint("TOPLEFT", art)
+    glow:SetPoint("TOPRIGHT", art)
+    glow:SetHeight(220)
+    glow:SetColorTexture(1, 1, 1)
+    glow:SetGradient("VERTICAL", CreateColor(0.55, 0.41, 0.22, 0), CreateColor(0.55, 0.41, 0.22, 0.20))
+    local shade = f:CreateTexture(nil, "BACKGROUND", nil, 3)
+    shade:SetPoint("BOTTOMLEFT", art)
+    shade:SetPoint("BOTTOMRIGHT", art)
+    shade:SetHeight(240)
+    shade:SetColorTexture(1, 1, 1)
+    shade:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0.5), CreateColor(0, 0, 0, 0))
+    local edge
+    if C_Texture.GetAtlasInfo("heavybronze-frame-basic") then
+        local b = CreateFrame("Frame", nil, f)
+        b:SetAllPoints()
+        b:SetFrameLevel(f:GetFrameLevel() + 30)
+        -- the frame stands past the window: kept on screen with it
+        f:SetClampRectInsets(-9, 9, 15, -15)
+        edge = b:CreateTexture(nil, "BORDER")
+        edge:SetAtlas("heavybronze-frame-basic")
+        edge:SetPoint("TOPLEFT", -9, 15)
+        edge:SetPoint("BOTTOMRIGHT", 9, -15)
+        for _, c in ipairs({ { "TL", "TOPLEFT" }, { "BR", "BOTTOMRIGHT" } }) do
+            local t = b:CreateTexture(nil, "ARTWORK")
+            t:SetAtlas("heavybronze-horz-cornerbracket-" .. c[1], true)
+            t:SetPoint(c[2], edge, c[2])
+        end
+    else
+        art:SetPoint("TOPLEFT", 3, -3)
+        art:SetPoint("BOTTOMRIGHT", -3, 3)
+        f:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16 })
+        local c = ns.WINDOW_STYLE.border
+        f:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+    end
+    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    if edge then close:SetPoint("TOPRIGHT", edge, "TOPRIGHT", -2, -2) else close:SetPoint("TOPRIGHT", -4, -4) end
+    close:SetFrameLevel(f:GetFrameLevel() + 40)
+    return close
+end
+
+-- A picture's bronze rim and soft shade (the Info Panel dog's), behind tex on parent; pad: how much
+-- larger than the picture the rim is drawn
+function Panel.RimPicture(parent, tex, pad)
+    local w, h = tex:GetSize()
+    local rim = parent:CreateTexture(nil, "ARTWORK", nil, -2)
+    rim:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PictureRim.tga")
+    rim:SetPoint("CENTER", tex, "CENTER")
+    rim:SetSize(w + pad, h + pad)
+    rim:SetVertexColor(0.78, 0.6, 0.34)
+    local shade = parent:CreateTexture(nil, "ARTWORK", nil, -3)
+    shade:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PictureShade.tga")
+    shade:SetPoint("CENTER", tex, "CENTER")
+    shade:SetSize(w + pad + 14, h + pad + 14)
+    shade:SetVertexColor(0, 0, 0, 1)
+    return rim, shade
+end
+
+--------------------------------------------------
+-- 6b. THE WINDOW'S STONE AND FRAME (11-11): Marcus picked the natural rock and the character select's
+-- heavy bronze frame (rivets top left and bottom right), from look tests since retired
+--------------------------------------------------
+local LOOK_BG = {
+    { "Rock, bronze tint (now)", file = "Interface\\FrameGeneral\\UI-Background-Rock", tile = true, desat = true, tint = { 0.85, 0.68, 0.47 }, wash = 0.3 },
+    { "Rock, natural", file = "Interface\\FrameGeneral\\UI-Background-Rock", tile = true, wash = 0.35 },
+}
+local LOOK_FRAME = { "Tooltip edge (now)", "FlareUI Thick", "Heavy bronze (character select)" }
+local lookBg, lookFrame = 2, 3   -- the picks, drawn as the window is built
+
+local function TryBackground(n)
+    local o = LOOK_BG[n]
+    local art, wash = frame.ftArt, frame.ftWash
+    if o.atlas then
+        if not C_Texture.GetAtlasInfo(o.atlas) then return false end
+        art:SetHorizTile(false); art:SetVertTile(false)
+        art:SetAtlas(o.atlas)
+    else
+        art:SetTexture(o.file, o.tile and "REPEAT" or nil, o.tile and "REPEAT" or nil)
+        art:SetTexCoord(0, 1, 0, 1)
+        art:SetHorizTile(o.tile and true or false); art:SetVertTile(o.tile and true or false)
+    end
+    art:SetDesaturated(o.desat and true or false)
+    local t = o.tint or { 1, 1, 1 }
+    art:SetVertexColor(t[1], t[2], t[3])
+    wash:SetColorTexture(0.05, 0.038, 0.026, o.wash or 0.3)
+    return true
+end
+
+local function TryFrame(n)
+    local style = ns.WINDOW_STYLE
+    if frame.ftBronze then frame.ftBronze:Hide() end
+    -- the stone reaches under the heavy bronze frame's top and bottom bars; the others sit on its edge
+    local art, under = frame.ftArt, n == 3 and 8 or -3
+    if art then
+        art:ClearAllPoints()
+        art:SetPoint("TOPLEFT", 3, under)
+        art:SetPoint("BOTTOMRIGHT", -3, -under)
+    end
+    if n == 1 then
+        frame:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16 })
+        frame:SetBackdropBorderColor(style.border[1], style.border[2], style.border[3], 1)
+    elseif n == 2 then
+        local file = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thick.tga"
+        frame:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, 16) })
+        local c = ns.BORDER_COLOR
+        frame:SetBackdropBorderColor(c.r, c.g, c.b, 1)
+    else
+        if not C_Texture.GetAtlasInfo("heavybronze-frame-basic") then return false end
+        frame:SetBackdrop(nil)
+        local b = frame.ftBronze
+        if not b then
+            -- as the character select list draws it: the frame stretched past the edges, brackets on the corners
+            b = CreateFrame("Frame", nil, frame)
+            b:SetAllPoints()
+            b:SetFrameLevel(frame:GetFrameLevel() + 30)
+            b.edge = b:CreateTexture(nil, "BORDER")
+            b.edge:SetAtlas("heavybronze-frame-basic")
+            -- where the character select list draws it, stretched (11-11: the nine-slice try broke it)
+            b.edge:SetPoint("TOPLEFT", -9, 15)
+            b.edge:SetPoint("BOTTOMRIGHT", 9, -15)
+            -- the rivets top left and bottom right; the close button takes the top right corner (11-11 Marcus)
+            for _, c in ipairs({ { "TL", "TOPLEFT" }, { "BR", "BOTTOMRIGHT" } }) do
+                local t = b:CreateTexture(nil, "ARTWORK")
+                t:SetAtlas("heavybronze-horz-cornerbracket-" .. c[1], true)
+                t:SetPoint(c[2], b.edge, c[2])
+            end
+            b.edge.ftCorner = true
+            frame.ftBronze = b
+        end
+        b:Show()
+    end
+    return true
+end
+
 local function BuildWindow()
     local style = ns.WINDOW_STYLE
+    ApplyTitleFont()
+    -- (11-11 Marcus: after a reload each page opens on its first tab; the tabs once kept go)
+    if ns.db and ns.db.global then ns.db.global.settingsTabs = nil end
     frame = CreateFrame("Frame", "FlareUI_SettingsPanel", UIParent, "BackdropTemplate")
     frame:SetSize(WIDTH, HEIGHT)
     frame:SetPoint("CENTER")
     -- the scale the player set (Shift + mouse wheel anywhere over the window)
-    frame:SetScale(ns.db and ns.db.global and ns.db.global.panelScale or 1)
+    frame:SetScale(FitScale(ns.db and ns.db.global and ns.db.global.panelScale or 1))
     frame:EnableMouseWheel(true)
     frame:SetScript("OnMouseWheel", function(_, delta)
         if IsShiftKeyDown() then Panel.ScaleStep(delta) end
@@ -1468,16 +2497,36 @@ local function BuildWindow()
     end)
     frame:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16 })
     frame:SetBackdropBorderColor(style.border[1], style.border[2], style.border[3], 1)
-    -- Collections tile under a black wash
+    -- FlareUI's own ground (11-10): the game's rock tile in warm dark bronze, a glow under the header,
+    -- a shade toward the bottom. 3 px in, under the border's line, so no gap shows between them.
+    local BG_INSET = 3
     local art = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    art:SetPoint("TOPLEFT", 5, -5)
-    art:SetPoint("BOTTOMRIGHT", -5, 5)
-    art:SetTexture("Interface\\Collections\\CollectionsBackgroundTile", "REPEAT", "REPEAT")
+    -- (11-11) up and down under the frame's top and bottom bars, which sit further out than its sides
+    art:SetPoint("TOPLEFT", BG_INSET, 8)
+    art:SetPoint("BOTTOMRIGHT", -BG_INSET, -8)
+    art:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
     art:SetHorizTile(true)
     art:SetVertTile(true)
+    art:SetDesaturated(true)
+    art:SetVertexColor(0.85, 0.68, 0.47)
     local wash = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
     wash:SetAllPoints(art)
-    wash:SetColorTexture(0, 0, 0, 0.5)
+    wash:SetColorTexture(0.05, 0.038, 0.026, 0.3)
+    local glow = frame:CreateTexture(nil, "BACKGROUND", nil, 3)
+    glow:SetPoint("TOPLEFT", art)
+    glow:SetPoint("TOPRIGHT", art)
+    glow:SetHeight(260)
+    glow:SetColorTexture(1, 1, 1)
+    glow:SetGradient("VERTICAL", CreateColor(0.55, 0.41, 0.22, 0), CreateColor(0.55, 0.41, 0.22, 0.20))
+    frame.ftArt, frame.ftWash = art, wash
+    TryBackground(lookBg)
+    if not TryFrame(lookFrame) then TryFrame(1) end   -- (the tooltip edge where the client lacks the art)
+    local shade = frame:CreateTexture(nil, "BACKGROUND", nil, 3)
+    shade:SetPoint("BOTTOMLEFT", art)
+    shade:SetPoint("BOTTOMRIGHT", art)
+    shade:SetHeight(300)
+    shade:SetColorTexture(1, 1, 1)
+    shade:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0.5), CreateColor(0, 0, 0, 0))
     frame:Hide()
     tinsert(UISpecialFrames, "FlareUI_SettingsPanel")
     frame:SetScript("OnShow", function()
@@ -1498,32 +2547,63 @@ local function BuildWindow()
         end
     end)
 
-    -- header
-    local title = Text(frame, "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", PAD + 4, -12)
+    -- header (56): the logo, name and version, the Settings / What's New plates; search and close right
+    local headerBg = frame:CreateTexture(nil, "BACKGROUND", nil, 4)
+    headerBg:SetPoint("TOPLEFT", BG_INSET, -BG_INSET)
+    headerBg:SetPoint("TOPRIGHT", -BG_INSET, -BG_INSET)
+    headerBg:SetHeight(HEADER_H + EDGE - BG_INSET)
+    headerBg:SetColorTexture(1, 1, 1)
+    headerBg:SetGradient("VERTICAL", CreateColor(0.08, 0.06, 0.04, 0.25), CreateColor(0.24, 0.17, 0.09, 0.6))
+    local logo = frame:CreateTexture(nil, "ARTWORK", nil, 2)
+    logo:SetTexture(LOGO)
+    logo:SetSize(38, 38)
+    -- centred on the header row; its rim's outer edge on the left list's border line (11-11 Marcus)
+    logo:SetPoint("TOPLEFT", EDGE + 6, -(HEADER_ROW_Y - 19))
+    local logoMask = frame:CreateMaskTexture()
+    logoMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    logoMask:SetAllPoints(logo)
+    logo:AddMaskTexture(logoMask)
+    local logoRim = frame:CreateTexture(nil, "ARTWORK", nil, 1)
+    logoRim:SetTexture(CIRCLE)
+    logoRim:SetSize(44, 44)
+    logoRim:SetPoint("CENTER", logo)
+    logoRim:SetVertexColor(0.78, 0.6, 0.34)
+    local logoShade = frame:CreateTexture(nil, "ARTWORK", nil, 0)
+    logoShade:SetTexture(CIRCLE)
+    logoShade:SetSize(46, 46)
+    logoShade:SetPoint("CENTER", logo)
+    logoShade:SetVertexColor(0, 0, 0, 0.6)
+    local title = Text(frame, "GameFontNormalHuge")
+    title:SetPoint("LEFT", logo, "RIGHT", 10, 1)
+    title:SetTextColor(1, 0.83, 0.47)
     title:SetText(L["FlareUI"])
     local version = Text(frame, "GameFontDisableSmall")
-    version:SetPoint("LEFT", title, "RIGHT", 8, -1)
+    version:SetPoint("LEFT", title, "RIGHT", 8, -2)
+    version:SetTextColor(0.64, 0.6, 0.54)
     version:SetText(C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "")
+    -- on the frame's top right corner, above the frame art (11-11 Marcus)
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", -4, -4)
-    local headerLine = Line(frame)
-    headerLine:SetPoint("TOPLEFT", 6, -HEADER_H)
-    headerLine:SetPoint("TOPRIGHT", -6, -HEADER_H)
+    -- in the frame art's own top right corner (the heavy bronze frame), else the window's
+    if frame.ftBronze and frame.ftBronze:IsShown() then
+        close:SetPoint("TOPRIGHT", frame.ftBronze.edge, "TOPRIGHT", -2, -2)
+    else
+        close:SetPoint("CENTER", frame, "TOPRIGHT", -5, -3)
+    end
+    close:SetFrameLevel(frame:GetFrameLevel() + 40)
 
     -- columns
     local body = CreateFrame("Frame", nil, frame)
-    body:SetPoint("TOPLEFT", 6, -HEADER_H - 1)
-    body:SetPoint("BOTTOMRIGHT", -6, 6)
+    body:SetPoint("TOPLEFT", EDGE, -HEADER_H - EDGE)
+    body:SetPoint("BOTTOMRIGHT", -EDGE, EDGE)
     frame.body = body
 
-    -- Settings | What's new
+    -- Settings | What's new, after the version
     frame.topTabs = {}
     for i, mode in ipairs({ "settings", "whatsnew" }) do
-        local b = CreateFrame("Button", nil, frame, "MinimalTabTemplate")
-        b:SetHeight(30)
+        local b = Plate(frame, "GameFontHighlight")
+        b:SetHeight(28)
         b.Text:SetText(S:WindowText(i == 1 and "tabs" or "tabs2", i == 1 and L["Settings"] or L["What's New"]))
-        b:SetWidth((b.Text:GetStringWidth() or 80) + 40)
+        b:SetWidth((b.Text:GetStringWidth() or 80) + 32)
         b.mode = mode
         b:SetScript("OnClick", function(self)
             PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
@@ -1531,67 +2611,78 @@ local function BuildWindow()
         end)
         frame.topTabs[i] = b
     end
-    frame.topTabs[2]:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -40, -HEADER_H)
-    frame.topTabs[1]:SetPoint("BOTTOMRIGHT", frame.topTabs[2], "BOTTOMLEFT", -5, 0)
+    -- Settings / What's New start at the middle box's left edge (11-11 Marcus)
+    frame.topTabs[1]:SetPoint("LEFT", frame, "TOPLEFT", EDGE + LEFT_W + GAP, -HEADER_ROW_Y)
+    frame.topTabs[2]:SetPoint("LEFT", frame.topTabs[1], "RIGHT", 6, 0)
 
     -- What's new: every version's notes, newest first
     local news = CreateFrame("Frame", nil, frame)
     news:SetAllPoints(body)
     news:Hide()
     local newsScroll = CreateFrame("ScrollFrame", nil, news)
-    newsScroll:SetPoint("TOPLEFT", PAD + 6, -PAD)
-    newsScroll:SetPoint("BOTTOMRIGHT", -PAD - 16, PAD)
+    newsScroll:SetPoint("TOPLEFT", PAD, -PAD)
+    newsScroll:SetPoint("BOTTOMRIGHT", -PAD - 28, PAD)
+    -- (11-11 Marcus) each version in a box of its own, as the settings' sections, clear of the scroll line
+    local NEWS_W, NEWS_PAD = WIDTH - 2 * EDGE - 2 * PAD - 40, 16
     local newsContent = CreateFrame("Frame", nil, newsScroll)
-    newsContent:SetSize(WIDTH - 2 * PAD - 40, 1)
+    newsContent:SetSize(NEWS_W, 1)
     newsScroll:SetScrollChild(newsContent)
     Panel.AttachScrollLine(newsScroll, news)
     local y = 0
     for _, entry in ipairs(ns.WhatsNew or {}) do
-        local title = Text(newsContent, "GameFontNormalHuge")
-        title:SetPoint("TOPLEFT", 0, y)
+        local box = CreateFrame("Frame", nil, newsContent, "BackdropTemplate")
+        Box(box, 0.32)
+        box:SetPoint("TOPLEFT", 0, y)
+        box:SetWidth(NEWS_W)
+        local title = Text(box, "GameFontNormalHuge")
+        title:SetPoint("TOPLEFT", NEWS_PAD, -NEWS_PAD + 2)
         title:SetText(L["FlareUI"] .. " " .. entry.version)
-        y = y - 34
-        local body = Text(newsContent, "GameFontHighlight")
-        body:SetPoint("TOPLEFT", 0, y)
-        body:SetWidth(WIDTH - 2 * PAD - 40)
+        local body = Text(box, "GameFontHighlight")
+        body:SetPoint("TOPLEFT", NEWS_PAD, -NEWS_PAD - 34)
+        body:SetWidth(NEWS_W - 2 * NEWS_PAD)
         body:SetSpacing(4)
         body:SetText(entry.text)
-        y = y - (body:GetStringHeight() or 0) - 30
+        local h = NEWS_PAD + 34 + (body:GetStringHeight() or 0) + NEWS_PAD
+        box:SetHeight(h)
+        y = y - h - 12
     end
     newsContent:SetHeight(math.max(1, -y))
     frame.news = news
 
-    local left = CreateFrame("Frame", nil, body)
+    -- three boxes: the left list, the page, the right column
+    local left = CreateFrame("Frame", nil, body, "BackdropTemplate")
     left:SetPoint("TOPLEFT")
     left:SetPoint("BOTTOMLEFT")
     left:SetWidth(LEFT_W)
-    local leftLine = Line(body)
-    leftLine:SetSize(1, 1)
-    leftLine:SetPoint("TOPLEFT", left, "TOPRIGHT")
-    leftLine:SetPoint("BOTTOMLEFT", left, "BOTTOMRIGHT")
+    Box(left, 0.28)
 
-    local right = CreateFrame("Frame", nil, body)
+    local right = CreateFrame("Frame", nil, body, "BackdropTemplate")
     right:SetPoint("TOPRIGHT")
     right:SetPoint("BOTTOMRIGHT")
     right:SetWidth(RIGHT_W)
-    local rightBg = right:CreateTexture(nil, "BACKGROUND")
-    rightBg:SetAllPoints()
-    rightBg:SetColorTexture(0, 0, 0, 0.25)
-    local rightLine = Line(body)
+    Box(right, 0.28)
+    local rightLine = right:CreateTexture(nil, "BACKGROUND")   -- kept for custom tabs; the box has the edge
     rightLine:SetSize(1, 1)
     rightLine:SetPoint("TOPRIGHT", right, "TOPLEFT")
-    rightLine:SetPoint("BOTTOMRIGHT", right, "BOTTOMLEFT")
+    rightLine:SetAlpha(0)
 
-    local middle = CreateFrame("Frame", nil, body)
-    middle:SetPoint("TOPLEFT", left, "TOPRIGHT", PAD, -PAD)
-    middle:SetPoint("BOTTOMRIGHT", right, "BOTTOMLEFT", -PAD, PAD)
+    local middleBox = CreateFrame("Frame", nil, body, "BackdropTemplate")
+    middleBox:SetPoint("TOPLEFT", left, "TOPRIGHT", GAP, 0)
+    middleBox:SetPoint("BOTTOMRIGHT", right, "BOTTOMLEFT", -GAP, 0)
+    Box(middleBox, 0.18)
+    -- (a custom tab that draws its own boxes, the radial editor, hides these two while it shows)
+    Panel.middleBox, Panel.rightBox, Panel.INNER = middleBox, right, INNER
+    local middle = CreateFrame("Frame", nil, middleBox)
+    middle:SetPoint("TOPLEFT", INNER, -INNER)
+    middle:SetPoint("BOTTOMRIGHT", -INNER, INNER)
     page.root = middle
     page.body, page.right, page.rightLine = body, right, rightLine
 
     -- search
-    local search = CreateFrame("EditBox", nil, left, "SearchBoxTemplate")
-    search:SetSize(LEFT_W - 2 * PAD - 4, 22)
-    search:SetPoint("BOTTOMLEFT", PAD + 4, PAD - 2)
+    local search = CreateFrame("EditBox", nil, frame, "SearchBoxTemplate")
+    search:SetSize(RIGHT_W - 6, 24)   -- the right column's width (the template's own left inset aside)
+    -- where the close button was: the header row's right end
+    search:SetPoint("RIGHT", frame, "TOPRIGHT", -EDGE, -HEADER_ROW_Y)
     search.Instructions:SetText(S:WindowText("searchPlaceholder", L["Search settings"]))
     -- the page redraws once typing pauses for a moment, not on every key
     local searchToken = 0
@@ -1609,6 +2700,16 @@ local function BuildWindow()
             Panel:Refresh()
         end)
     end)
+    -- Enter: straight to the first result, flashed
+    search:HookScript("OnEnterPressed", function(self)
+        local text = strtrim(self:GetText() or "")
+        if text == "" then return end
+        -- the redraw still waiting from the typing would undo the jump
+        searchToken = searchToken + 1
+        local first = S:Search(text)[1]
+        if first then Panel:JumpTo(first) end
+        self:ClearFocus()
+    end)
     frame.search = search
     BuildNav(left)
 
@@ -1618,11 +2719,23 @@ local function BuildWindow()
     header:SetPoint("TOPRIGHT")
     header:SetHeight(64)
     page.header = header
-    page.switch = CreateFrame("CheckButton", nil, header, "UICheckButtonTemplate")
-    page.switch:SetSize(30, 30)
-    page.switch:SetPoint("TOPLEFT", -2, 2)
+    -- icon plate, then the title (Marcellus) with the module's switch after it
+    local plate = CreateFrame("Frame", nil, header, "BackdropTemplate")
+    plate:SetSize(42, 42)
+    plate:SetPoint("TOPLEFT", 0, -2)
+    ThinBackdrop(plate, true)
+    plate:SetBackdropColor(0.13, 0.095, 0.055, 1)
+    plate:SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1)
+    page.plateIcon = plate:CreateTexture(nil, "ARTWORK")
+    page.plateIcon:SetSize(26, 26)
+    page.plateIcon:SetPoint("CENTER")
+    page.plate = plate
     page.title = Text(header, "GameFontNormalHuge")
+    page.title:SetTextColor(1, 0.83, 0.47)
     page.title:SetWordWrap(true)
+    page.title:SetPoint("TOPLEFT", plate, "TOPRIGHT", 12, -2)
+    page.switch = Switch(header)
+    page.switch:SetPoint("LEFT", page.title, "RIGHT", 10, 0)
     page.switch:SetScript("OnClick", function(self)
         local on = self:GetChecked() and true or false
         PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
@@ -1631,7 +2744,7 @@ local function BuildWindow()
         Panel:Refresh()
     end)
     -- Edit Mode button: the module's main frame, or plain Edit Mode for Blizzard's bars
-    page.editMode = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
+    page.editMode = PanelButton(header)
     page.editMode:SetHeight(22)
     page.editMode:SetPoint("TOPRIGHT", 0, -2)
     page.editMode:SetScript("OnClick", function(self)
@@ -1650,17 +2763,17 @@ local function BuildWindow()
     end)
     page.editMode:Hide()
     page.desc = Text(header, "GameFontHighlightSmall")
-    page.desc:SetPoint("TOPLEFT", 4, -36)
+    page.desc:SetPoint("TOPLEFT", page.title, "BOTTOMLEFT", 0, -4)
     page.desc:SetPoint("RIGHT", -4, 0)
-    page.desc:SetTextColor(0.62, 0.62, 0.62)
+    page.desc:SetTextColor(0.64, 0.6, 0.54)
 
     local banner = CreateFrame("Frame", nil, header, "BackdropTemplate")
     banner:SetHeight(30)
-    banner:SetPoint("TOPLEFT", page.desc, "BOTTOMLEFT", -4, -6)
+    banner:SetPoint("TOPLEFT", 0, -52)
     banner:SetPoint("RIGHT")
     banner:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
     banner:SetBackdropColor(0.5, 0.35, 0, 0.35)
-    banner.button = CreateFrame("Button", nil, banner, "UIPanelButtonTemplate")
+    banner.button = PanelButton(banner)
     banner.button:SetHeight(22)
     banner.text = Text(banner, "GameFontNormal")
     banner.text:SetPoint("LEFT", 8, 0)
@@ -1677,13 +2790,14 @@ local function BuildWindow()
 
     -- module tabs
     page.tabButtons = {}
-    for i = 1, 4 do
-        local b = CreateFrame("Button", nil, header, "MinimalTabTemplate")
-        b:SetHeight(37)
-        if i == 1 then b:SetPoint("BOTTOMLEFT", 8, 0) else b:SetPoint("BOTTOMLEFT", page.tabButtons[i - 1], "BOTTOMRIGHT", 5, 0) end
+    for i = 1, 5 do
+        local b = Plate(header, "GameFontHighlight")
+        b:SetHeight(26)
+        if i == 1 then b:SetPoint("BOTTOMLEFT", 0, 0) else b:SetPoint("BOTTOMLEFT", page.tabButtons[i - 1], "BOTTOMRIGHT", 4, 0) end
         b:SetScript("OnClick", function(self)
             PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
             currentTab[current] = self.tabKey
+            scrollOf[current] = nil
             page.scroll:SetVerticalScroll(0)
             Panel:Refresh()
         end)
@@ -1691,13 +2805,14 @@ local function BuildWindow()
         page.tabButtons[i] = b
     end
     page.tabLine = Line(header)
+    page.tabLine:SetColorTexture(0.47, 0.36, 0.22, 1)
     page.tabLine:SetPoint("BOTTOMLEFT", 0, 0)
     page.tabLine:SetPoint("BOTTOMRIGHT", 0, 0)
     page.tabLine:Hide()
 
     -- scrolling rows
     local scroll = CreateFrame("ScrollFrame", nil, middle)
-    scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
+    scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -10)
     scroll:SetPoint("BOTTOMRIGHT", -14, 0)
     local content = CreateFrame("Frame", nil, scroll)
     content:SetSize(1, 1)
@@ -1718,7 +2833,7 @@ local function BuildWindow()
     off.text = Text(off, "GameFontHighlight", "CENTER")
     off.text:SetPoint("TOP", 0, -10)
     off.text:SetWidth(380)
-    local turnOn = CreateFrame("Button", nil, off, "UIPanelButtonTemplate")
+    local turnOn = PanelButton(off)
     turnOn:SetSize(160, 26)
     turnOn:SetPoint("TOP", off.text, "BOTTOM", 0, -16)
     turnOn:SetText(S:WindowText("moduleOffCard2", L["Turn On"]))
@@ -1739,7 +2854,34 @@ local function BuildWindow()
     preview.picture:SetPoint("TOP", 0, -PAD)
     preview.picture:SetTexture(PICTURE)
     preview.picture:SetSize(RIGHT_W - 2 * PAD, RIGHT_W - 2 * PAD)
+    -- the dog's bronze rim and soft shade, as the header logo's (11-11 Marcus); they come and go with it
+    local pictureRim = right:CreateTexture(nil, "ARTWORK", nil, -2)
+    -- (our 256 px ring, shown near its own size: smooth, 11-11)
+    pictureRim:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PictureRim.tga")
+    pictureRim:SetPoint("CENTER", preview.picture, "CENTER")
+    pictureRim:SetSize(RIGHT_W - 2 * PAD - 2, RIGHT_W - 2 * PAD - 2)   -- about 5 px of bronze past the art
+    pictureRim:SetVertexColor(0.78, 0.6, 0.34)
+    local pictureShade = right:CreateTexture(nil, "ARTWORK", nil, -3)
+    pictureShade:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PictureShade.tga")
+    pictureShade:SetPoint("CENTER", preview.picture, "CENTER")
+    pictureShade:SetSize(RIGHT_W - 2 * PAD + 12, RIGHT_W - 2 * PAD + 12)
+    pictureShade:SetVertexColor(0, 0, 0, 1)
+    local function FollowPicture()
+        local shown = preview.picture:IsShown()
+        pictureRim:SetShown(shown)
+        pictureShade:SetShown(shown)
+    end
+    hooksecurefunc(preview.picture, "Show", FollowPicture)
+    hooksecurefunc(preview.picture, "Hide", FollowPicture)
+    hooksecurefunc(preview.picture, "SetShown", FollowPicture)
+    preview.canvas = ns.SettingsPreview.Create(right, RIGHT_W - 2 * PAD, RIGHT_W - 2 * PAD)   -- 256 square
+    -- (11-10: no "Preview" label or Pause button; the picture starts at the top)
+    preview.canvas.frame:SetPoint("TOP", 0, -PAD)
+    preview.canvas.frame:Hide()
+    -- the gamepad never stops on the pictures' sample buttons (they are only pictures)
+    preview.canvas.frame.padSkip = true
     preview.title = Text(right, "GameFontNormalLarge")
+    preview.title:SetTextColor(1, 0.83, 0.47)
     preview.title:SetPoint("TOPLEFT", preview.picture, "BOTTOMLEFT", 0, -12)
     preview.title:SetPoint("RIGHT", -PAD, 0)
     preview.desc = Text(right, "GameFontHighlight")
@@ -1756,18 +2898,28 @@ local function BuildWindow()
     local footer = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     footer:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, 4)
     footer:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, 4)
-    footer:SetHeight(FOOTER_H + 8)
+    -- taller than the bar it shows: the window's bronze frame covers its top (FOOTER_RISE), and the
+    -- frame's bottom right rivet hangs past it
+    footer:SetHeight(FOOTER_H + 8 + FOOTER_RISE)
     footer:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16 })
     footer:SetBackdropBorderColor(style.border[1], style.border[2], style.border[3], 1)
-    ns.Fade(footer, 4, { 0.42, 0.09, 0.06, 0.97 }, { 0.24, 0.04, 0.03, 0.97 })
+    ns.Fade(footer, 4, { 0.16, 0.13, 0.08, 0.98 }, { 0.07, 0.06, 0.04, 0.98 })
+    -- changes that need a reload: the bar turns red, as a warning should
+    footer.alert = footer:CreateTexture(nil, "BACKGROUND", nil, 2)
+    footer.alert:SetPoint("TOPLEFT", 4, -4)
+    footer.alert:SetPoint("BOTTOMRIGHT", -4, 4)
+    footer.alert:SetColorTexture(1, 1, 1)
+    footer.alert:SetGradient("VERTICAL", CreateColor(0.32, 0.03, 0.02, 0.85), CreateColor(0.55, 0.07, 0.04, 0.85))
+    footer.alert:Hide()
     footer:Hide()
     frame.footer = footer
     -- clamps the window with its bar
-    frame:SetClampRectInsets(0, 0, 0, -(FOOTER_H + 4))
+    frame:SetClampRectInsets(0, 0, 0, -(FOOTER_H + 4 + FOOTER_RISE))
+    -- centred in the part below the bronze frame; the button clear of the rivet
     frame.footerText = Text(footer, "GameFontHighlight")
-    frame.footerText:SetPoint("LEFT", PAD + 4, -1)
-    frame.reload = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
-    frame.reload:SetPoint("RIGHT", -PAD, -1)
+    frame.footerText:SetPoint("LEFT", PAD + 4, -FOOTER_RISE / 2 - 1)
+    frame.reload = PanelButton(footer)
+    frame.reload:SetPoint("RIGHT", -PAD - 10, -FOOTER_RISE / 2 - 1)
     frame.reload:SetText(S:WindowText("reloadFooter2", L["Reload Now"]))
     frame.reload:SetSize(ButtonWidthForText(frame.reload, 130), 22)
     frame.reload:SetScript("OnClick", function()
@@ -1775,8 +2927,10 @@ local function BuildWindow()
         ns.ShowDialog("FLAREUI_RELOAD")
     end)
 
-    S:On("RowChanged", function()
+    S:On("RowChanged", function(row)
         if Panel.toggleHold then Panel.toggleRefreshPending = true else Panel:Refresh() end
+        -- Refresh recycles row controls; re-render only when this was a visual settings change.
+        if frame:IsShown() and ns.SettingsPreview.Resolve(row) then ShowRowPreview(row) end
     end)
     S:On("ReloadChanged", UpdateFooter)
 

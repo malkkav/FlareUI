@@ -445,12 +445,14 @@ local function FillSection(section, info, width)
     section:Show()
 end
 
-local function UpdateFlare()
+-- target: a settings preview's sample (always the Edit Mode sample), else the bar
+local function UpdateFlare(target)
+    local flare = type(target) == "table" and target or flare
     if not flare then return end
     local db = GetDb()
     local left, right
     local gained = false
-    if LEM:IsInEditMode() then
+    if flare.fuiSample or (LEM and LEM:IsInEditMode()) then
         left, right = SampleSections()
     else
         if GameRulesUtil.CanShowExperienceBar() then gained = TrackXP() end
@@ -458,7 +460,7 @@ local function UpdateFlare()
     end
     if not left then flare:Hide() return end
 
-    local width, height = db.width or 560, db.height or 14
+    local width, height = flare.sampleWidth or db.width or 560, flare.sampleHeight or db.height or 14
     local leftWidth = right and width / 2 or width
     flare.Left:ClearAllPoints()
     flare.Left:SetPoint("TOPLEFT", flare, "TOPLEFT", FLARE_INSET, -FLARE_INSET)
@@ -479,15 +481,16 @@ local function UpdateFlare()
     flare:Show()
 end
 
-local function LayoutFlare()
+local function LayoutFlare(target)
+    local flare = type(target) == "table" and target or flare
     if not flare then return end
     local db = GetDb()
     local texture = GetTexture()
-    flare:SetSize((db.width or 560) + 2 * FLARE_INSET, (db.height or 14) + 2 * FLARE_INSET)
+    flare:SetSize((flare.sampleWidth or db.width or 560) + 2 * FLARE_INSET, (flare.sampleHeight or db.height or 14) + 2 * FLARE_INSET)
     local file = LSM:Fetch("border", BORDER_NAME)
-    flare.Border:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, BORDER_SIZE),
-        bgFile = "Interface\\Buttons\\WHITE8x8", insets = { left = FLARE_INSET, right = FLARE_INSET, top = FLARE_INSET, bottom = FLARE_INSET } })
-    flare.Border:SetBackdropColor(0, 0, 0, 0.8)
+    -- the edge only: it draws over the fill (whose square corners showed past its rounded ones, a
+    -- player's report 11-11); the dark background is its own texture under the sections (BuildParts)
+    flare.Border:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, BORDER_SIZE) })
     flare.Border:SetBackdropBorderColor(BORDER_COLOR[1], BORDER_COLOR[2], BORDER_COLOR[3], 1)
     for _, section in ipairs({ flare.Left, flare.Right }) do
         section:SetStatusBarTexture(texture)
@@ -502,8 +505,10 @@ local function LayoutFlare()
         section.Text:SetShown(db.textMode == "ALWAYS")
     end
     -- the quest log only matters with Show Quest XP on (it changes often)
-    if db.questXP then pcall(flare.RegisterEvent, flare, "QUEST_LOG_UPDATE") else flare:UnregisterEvent("QUEST_LOG_UPDATE") end
-    UpdateFlare()
+    if not flare.fuiSample then
+        if db.questXP then pcall(flare.RegisterEvent, flare, "QUEST_LOG_UPDATE") else flare:UnregisterEvent("QUEST_LOG_UPDATE") end
+    end
+    UpdateFlare(flare)
 end
 
 -- Position, per Edit Mode layout
@@ -511,8 +516,8 @@ local function FlareStore(layoutName)
     local db = GetDb()
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     db.layouts = db.layouts or {}
-    db.layouts[layoutName] = db.layouts[layoutName] or {}
-    return db.layouts[layoutName]
+    -- (a layout with no spot of its own reads the profile's home layout's: ProfileLayout.lua)
+    return ns.LayoutHome(db.layouts, layoutName)
 end
 
 local function PlaceFlare(layoutName)
@@ -551,25 +556,52 @@ local FLARE_EVENTS = {
 local QUEST_XP_EVENTS = { QUEST_LOG_UPDATE = true, PLAYER_LEVEL_UP = true, PLAYER_ENTERING_WORLD = true, UNIT_LEVEL = true,
     ZONE_CHANGED_NEW_AREA = true }
 
+-- the bar's border, two sections and the pip between them (the bar's and the previews' samples)
+local function BuildParts(f)
+    f.Border = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    f.Border:SetAllPoints()
+    f.Left = CreateSection(f)
+    f.Right = CreateSection(f)
+    f.Left:SetFrameLevel(f:GetFrameLevel() + 2)
+    f.Right:SetFrameLevel(f:GetFrameLevel() + 2)
+    -- the edge over the sections (their texts sit at +4, the pip at +5), the dark background under them
+    f.Border:SetFrameLevel(f:GetFrameLevel() + 3)
+    f.Bg = f:CreateTexture(nil, "BACKGROUND")
+    f.Bg:SetPoint("TOPLEFT", FLARE_INSET, -FLARE_INSET)
+    f.Bg:SetPoint("BOTTOMRIGHT", -FLARE_INSET, FLARE_INSET)
+    f.Bg:SetColorTexture(0, 0, 0, 0.8)
+    local pipHolder = CreateFrame("Frame", nil, f)
+    pipHolder:SetAllPoints()
+    pipHolder:SetFrameLevel(f:GetFrameLevel() + 5)
+    f.Pip = pipHolder:CreateTexture(nil, "OVERLAY")
+    f.Pip:SetAtlas(PIP_ATLAS)
+    f.Pip:SetPoint("CENTER", f, "CENTER", 0, 0)
+    f.Pip:Hide()
+end
+
+-- a settings preview's sample: the bar's own parts and layout, with the Edit Mode values (no events,
+-- no mouse)
+function XPB.CreateSample(parent)
+    local f = CreateFrame("Frame", nil, parent)
+    f.fuiSample = true
+    -- shorter and thicker than the bar, so it reads in the preview
+    f.sampleWidth, f.sampleHeight = 240, 20
+    BuildParts(f)
+    f.Left:EnableMouse(false)
+    f.Right:EnableMouse(false)
+    return f
+end
+function XPB.DrawSample(f)
+    LayoutFlare(f)
+    return f:GetWidth(), f:GetHeight()
+end
+
 local function BuildFlare()
     LEM = LibStub("FlareEditMode")
     flare = CreateFrame("Frame", FLARE_NAME, UIParent)
     flare:SetFrameStrata("LOW")
     flare:SetClampedToScreen(true)
-    flare.Border = CreateFrame("Frame", nil, flare, "BackdropTemplate")
-    flare.Border:SetAllPoints()
-    flare.Left = CreateSection(flare)
-    flare.Right = CreateSection(flare)
-    flare.Border:SetFrameLevel(flare:GetFrameLevel())
-    flare.Left:SetFrameLevel(flare:GetFrameLevel() + 2)
-    flare.Right:SetFrameLevel(flare:GetFrameLevel() + 2)
-    local pipHolder = CreateFrame("Frame", nil, flare)
-    pipHolder:SetAllPoints()
-    pipHolder:SetFrameLevel(flare:GetFrameLevel() + 5)
-    flare.Pip = pipHolder:CreateTexture(nil, "OVERLAY")
-    flare.Pip:SetAtlas(PIP_ATLAS)
-    flare.Pip:SetPoint("CENTER", flare, "CENTER", 0, 0)
-    flare.Pip:Hide()
+    BuildParts(flare)
 
     -- events come in bursts; one update per frame
     local queued = false
@@ -602,8 +634,8 @@ local function BuildFlare()
     end)
 
     LEM:AddFrame(flare, OnFlareMoved, FLARE_DEFAULT, FLARE_LABEL)
-    -- dropdowns, sliders, switches (ns.OrderEditSettings)
-    LEM:AddFrameSettings(flare, ns.OrderEditSettings({
+    -- one Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua)
+    LEM:AddFrameSettings(flare, ns.EditSection("Frame", {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = 560, minValue = 200, maxValue = 1200, valueStep = 2,
           get = function() return GetDb().width or 560 end, set = function(_, value) GetDb().width = value; LayoutFlare() end },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 14, minValue = 6, maxValue = 30, valueStep = 1,

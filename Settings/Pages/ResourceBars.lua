@@ -25,7 +25,7 @@ local BARS = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swi
 
 -- the header button opens Edit Mode on the first bar that exists
 S:Module{
-    key = "rb", group = "HUD", order = 30, enabled = "unitframes.resource.enabled",
+    key = "rb", group = "combat", order = 30, enabled = "unitframes.resource.enabled",
     tabs = { { key = "settings" }, { key = "fonts" } },
     editMode = function()
         for _, key in ipairs(BARS) do
@@ -45,6 +45,23 @@ Bar("swingRanged")
 local function Refresh()
     if ns.ResourceBars and ns.ResourceBars.Refresh then ns.ResourceBars:Refresh() end
 end
+
+-- Colour Palette, Resource Bars' own (11-11): until set, the unit frames' (ResourceBars.lua RB.PaletteName)
+S:Row{
+    key = "rb.palette", kind = "choice", choices = { "flareui", "blizzard", "custom" },
+    get = function() return ns.ResourceBars and ns.ResourceBars.PaletteName and ns.ResourceBars.PaletteName() or "flareui" end,
+    set = function(value)
+        local before = ns.ResourceBars and ns.ResourceBars.PaletteName and ns.ResourceBars.PaletteName() or "flareui"
+        if value == "custom" and before ~= "custom" then S:SetPath("unitframes.resource.customBase", before) end
+        S:SetPath("unitframes.resource.palette", value)
+    end,
+    apply = Refresh,
+}
+S:Row{
+    key = "rb.pickColors", kind = "button", parent = "rb.palette",
+    hidden = function() return not (ns.ResourceBars and ns.ResourceBars.PaletteName and ns.ResourceBars.PaletteName() == "custom") end,
+    apply = function() if ns.ColorPicker then ns.ColorPicker.Open("rb") end end,
+}
 
 S:FontRows{ module = "rb", tab = "fonts", section = "rb.fonts", apply = Refresh, fonts = {
     { key = "text", path = "unitframes.resource.font" },

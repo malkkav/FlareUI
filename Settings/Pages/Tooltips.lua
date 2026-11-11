@@ -17,11 +17,11 @@ local function Both(keys)
     }
 end
 
-S:Module{ key = "tt", group = "Info", order = 30, enabled = "tooltips.enabled", tabs = { { key = "settings" }, { key = "fonts" } } }
+S:Module{ key = "tt", group = "interface", order = 20, enabled = "tooltips.enabled", tabs = { { key = "settings" }, { key = "fonts" } } }
 
 local SCALES = {}
 for i = 5, 15 do SCALES[#SCALES + 1] = { i / 10, (i * 10) .. "%" } end
-S:Row{ key = "tt.scale", kind = "choice", path = "tooltips.scale", choices = SCALES, apply = Refresh }
+S:Row{ key = "tt.scale", kind = "range", path = "tooltips.scale", choices = SCALES, apply = Refresh }
 
 local anchor = Both({ "tooltips.anchor", "tooltips.anchorFrames" })
 S:Row{ key = "tt.anchor", kind = "choice", choices = { "default", "cursorOffset" },
@@ -54,6 +54,10 @@ local world = Both({ "tooltips.visibility.worldUnits", "tooltips.visibility.worl
 S:Row{ key = "tt.showWorld", kind = "choice", choices = SHOW, get = world.get, set = world.set, apply = Refresh }
 S:Row{ key = "tt.showFrames", kind = "choice", choices = SHOW, path = "tooltips.visibility.frameUnits", apply = Refresh }
 S:Row{ key = "tt.showBars", kind = "choice", choices = SHOW, path = "tooltips.visibility.actionBars", apply = Refresh }
+S:Row{ key = "tt.showAuras", kind = "choice", choices = SHOW, path = "tooltips.visibility.auras", apply = Refresh }
+-- party and raid aura icons only take the mouse when this lets them (PartyFrames.lua)
+S:Row{ key = "tt.showGroupAuras", kind = "choice", choices = SHOW, path = "tooltips.visibility.groupAuras",
+    apply = function() if ns.PartyFrames and ns.PartyFrames.ApplyAuraMouse then ns.PartyFrames.ApplyAuraMouse() end end }
 
 S:FontRows{ module = "tt", tab = "fonts", section = "tt.fonts", apply = Refresh, fonts = {
     { key = "title", path = "tooltips.titleFont" },

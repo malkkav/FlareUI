@@ -15,8 +15,8 @@ local function BlizzardMeterOn()
 end
 
 S:Module{
-    key = "dm", group = "Info", order = 20, enabled = "damagemeter.enabled",
-    tabs = { { key = "settings" }, { key = "tweaks" }, { key = "fonts" } },   -- "settings" is the Frame tab
+    key = "dm", group = "interface", order = 15, enabled = "damagemeter.enabled",
+    tabs = { { key = "settings" }, { key = "threat" }, { key = "fonts" } },   -- "settings" is the Damage tab
     -- FlareUI's meter restyles Blizzard's, which needs "Enable Damage Meter" on
     banner = function()
         if not BlizzardMeterOn() then
@@ -45,7 +45,7 @@ S:On("PageShown", function(key)
     if ns.DamageMeter and ns.DamageMeter.SetSettingsPreview then ns.DamageMeter:SetSettingsPreview(key == "dm") end
 end)
 
-S:Row{ key = "dm.opacity", kind = "choice", path = "damagemeter.opacity", choices = S:OpacityChoices(), apply = Refresh, section = "dm.frame" }
+S:Row{ key = "dm.opacity", kind = "range", path = "damagemeter.opacity", choices = S:OpacityChoices(), apply = Refresh, section = "dm.frame" }
 
 local function ApplyVisibility()
     if ns.DamageMeter and ns.DamageMeter.ApplyVisibility then ns.DamageMeter:ApplyVisibility() end
@@ -68,6 +68,15 @@ S:Row{ key = "dm.minAlpha", kind = "choice", path = "damagemeter.minAlpha", choi
 S:Row{ key = "dm.border", kind = "choice", path = "damagemeter.borderTexture", choices = S.BorderChoices,
     apply = Refresh, section = "dm.frame" }
 
+S:Row{ key = "dm.mouseover", path = "damagemeter.showOnMouseover", apply = ApplyVisibility,
+    disabled = function() return AlwaysVisible() or InChat() end, section = "dm.tweaks", half = true }
+S:Row{ key = "dm.matchChat", path = "damagemeter.matchChatSize", apply = Refresh, section = "dm.tweaks", half = true,
+    hidden = ChatOff, disabled = InChat }
+S:Row{ key = "dm.resetOnInstance", path = "damagemeter.resetOnInstance", section = "dm.tweaks", half = true }
+S:Row{ key = "dm.combatTimer", path = "damagemeter.combatTimer", apply = Refresh, section = "dm.tweaks", half = true }
+S:Row{ key = "dm.readyCheck", path = "damagemeter.readyCheckButton", apply = Refresh, section = "dm.tweaks", half = true }
+S:Row{ key = "dm.countdown", path = "damagemeter.countdownButton", apply = Refresh, section = "dm.tweaks", half = true }
+
 S:Row{ key = "dm.chatTab", path = "damagemeter.chatTab", apply = Refresh, section = "dm.meterTab", hidden = ChatOff }
 -- the two below sit under the Meter Tab switch (parent): its options, greyed while it is off
 S:Row{ key = "dm.chatTabIgnoreFade", path = "damagemeter.chatTabIgnoreFade", apply = Refresh, section = "dm.meterTab", parent = "dm.chatTab",
@@ -75,24 +84,16 @@ S:Row{ key = "dm.chatTabIgnoreFade", path = "damagemeter.chatTabIgnoreFade", app
 S:Row{ key = "dm.chatTabOpen", kind = "choice", path = "damagemeter.chatTabOpen", choices = { "click", "combat", "group", "login" },
     apply = ApplyVisibility, section = "dm.meterTab", parent = "dm.chatTab", hidden = ChatOff, disabled = NotInChat }
 
-S:Row{ key = "dm.mouseover", path = "damagemeter.showOnMouseover", apply = ApplyVisibility,
-    disabled = function() return AlwaysVisible() or InChat() end, tab = "tweaks", section = "dm.tweaks", half = true }
-S:Row{ key = "dm.matchChat", path = "damagemeter.matchChatSize", apply = Refresh, tab = "tweaks", section = "dm.tweaks", half = true,
-    hidden = ChatOff, disabled = InChat }
-S:Row{ key = "dm.resetOnInstance", path = "damagemeter.resetOnInstance", tab = "tweaks", section = "dm.tweaks", half = true }
-S:Row{ key = "dm.combatTimer", path = "damagemeter.combatTimer", apply = Refresh, tab = "tweaks", section = "dm.tweaks", half = true }
-S:Row{ key = "dm.readyCheck", path = "damagemeter.readyCheckButton", apply = Refresh, tab = "tweaks", section = "dm.tweaks", half = true }
-S:Row{ key = "dm.countdown", path = "damagemeter.countdownButton", apply = Refresh, tab = "tweaks", section = "dm.tweaks", half = true }
 -- Threat tab options: a change shows the Threat tab, with sample rows when nothing is targeted
 local function PreviewThreat()
     if ns.DamageMeter and ns.DamageMeter.PreviewThreat then ns.DamageMeter.PreviewThreat() end
 end
 S:Row{ key = "dm.threatValue", kind = "choice", path = "damagemeter.threatValueDisplay",
-    choices = { "both", "percent", "value" }, apply = PreviewThreat, tab = "tweaks", section = "dm.threat" }
-S:Row{ key = "dm.threatCombat", path = "damagemeter.autoThreat", apply = Refresh, tab = "tweaks", section = "dm.threat", half = true }
-S:Row{ key = "dm.pullLine", path = "damagemeter.threatPullLine", apply = PreviewThreat, tab = "tweaks", section = "dm.threat", half = true }
-S:Row{ key = "dm.pullFlash", path = "damagemeter.threatPullFlash", apply = PreviewThreat, tab = "tweaks", section = "dm.threat", half = true }
-S:Row{ key = "dm.tankLead", path = "damagemeter.threatTankLead", apply = PreviewThreat, tab = "tweaks", section = "dm.threat", half = true }
+    choices = { "both", "percent", "value" }, apply = PreviewThreat, tab = "threat", section = "dm.threat" }
+S:Row{ key = "dm.threatCombat", path = "damagemeter.autoThreat", apply = Refresh, tab = "threat", section = "dm.threat", half = true }
+S:Row{ key = "dm.pullLine", path = "damagemeter.threatPullLine", apply = PreviewThreat, tab = "threat", section = "dm.threat", half = true }
+S:Row{ key = "dm.pullFlash", path = "damagemeter.threatPullFlash", apply = PreviewThreat, tab = "threat", section = "dm.threat", half = true }
+S:Row{ key = "dm.tankLead", path = "damagemeter.threatTankLead", apply = PreviewThreat, tab = "threat", section = "dm.threat", half = true }
 
 S:FontRows{ module = "dm", tab = "fonts", section = "dm.fonts", apply = Refresh, fonts = {
     { key = "header", path = "damagemeter.headerFont" },

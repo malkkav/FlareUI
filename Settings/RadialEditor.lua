@@ -32,6 +32,7 @@ local Fade = ns.Fade
 -- sound replaces the Game Menu click; false leaves the sound to onClick
 local function RedButton(parent, text, width, onClick, sound)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    if ns.SkinButton then ns.SkinButton(b) end
     b:SetSize(width, 22)
     b:SetText(text)
     b:SetScript("OnClick", function(...)
@@ -58,7 +59,7 @@ local function CreateList(parent, width, columns, rows, cellHeight, buildCell, f
 
         cell.Highlight = cell:CreateTexture(nil, "BACKGROUND")
         cell.Highlight:SetAllPoints()
-        cell.Highlight:SetColorTexture(BRONZE[1], BRONZE[2], BRONZE[3], 0.25)
+        ns.SettingsPanel.Rounded(cell.Highlight, BRONZE[1], BRONZE[2], BRONZE[3], 0.25)
         cell.Highlight:Hide()
 
         cell.Icon = cell:CreateTexture(nil, "ARTWORK")
@@ -74,7 +75,7 @@ local function CreateList(parent, width, columns, rows, cellHeight, buildCell, f
 
         -- a bronze wash instead of Blizzard's blue square
         cell:SetHighlightTexture("Interface\\Buttons\\WHITE8x8")
-        cell:GetHighlightTexture():SetColorTexture(BRONZE[1], BRONZE[2], BRONZE[3], 0.18)
+        ns.SettingsPanel.Rounded(cell:GetHighlightTexture(), BRONZE[1], BRONZE[2], BRONZE[3], 0.18)
 
         if buildCell then buildCell(cell) end
         list.cells[i] = cell
@@ -844,16 +845,18 @@ end
 -- The window keeps the other pages' size. The right column: the radials, what opens on this
 -- character and the live preview (with Undo). The middle: the selected radial's name and actions
 -- (Rename, Copy, Macro, Delete), one row for who gets it and its key, then the Catalog (a category
--- menu over a two-column grid) and the radial's buttons.
+-- menu over a three-column grid) and the radial's buttons, each part in its own box.
 --------------------------------------------------
 local COLUMN_PAD = 12            -- the radials' inset in the panel's right column
-local LIST_W = 226               -- the radials list: the right column (250) less its insets
+local LIST_W = 256               -- the radials list: the right column (280) less its insets
 local DETAIL_X = 0               -- the selected radial's column
 local RADIAL_ROW_H = 22
 local BUTTON_LIST_W = 64         -- the radial's buttons
 local BUTTON_ROW_H = 36
 local BUTTON_RIM = 30            -- a button's round icon in the list
-local GRID_ROW_H = 30            -- the Catalog's two columns
+local GRID_ROW_H = 30            -- the Catalog's rows (three columns)
+local BOX_PAD = 8                -- (11-11) a section box reaches this far round its contents
+local BOX_GAP = 4                -- half the space between two boxes
 local GRID_RIM = 24              -- a Catalog entry's round icon
 local PREVIEW_H = 206            -- RadialMenu's PREVIEW_BOX (200) and a margin
 local OVERVIEW_H = 130           -- "On this character": its title and up to six lines
@@ -862,7 +865,7 @@ local FORM_TOP = 34              -- labels; their controls sit 14 lower
 -- (switching modes reloads, so this holds for the session)
 local PAD_ROW = ns.IsGamepadUI()
 local PAD_TOP = 82               -- its labels
-local LOWER_TOP = PAD_ROW and 144 or 98   -- Catalog and buttons start here
+local LOWER_TOP = PAD_ROW and 150 or 104  -- Catalog and buttons start here (room under the form, 11-11)
 local LINE_ABOVE = 13                       -- the line under the form sits this far above them
 
 -- a tooltip from the copy document: label, description, tip
@@ -884,6 +887,35 @@ local function Text(parent, font, text)
     if text then fs:SetText(text) end
     fs:SetJustifyH("LEFT")
     return fs
+end
+
+-- a section box behind the contents, as the settings pages' (11-11 Marcus): on the host's parent, under it
+local sectionBoxes = {}
+-- the page's middle and right boxes step aside while the editor shows: its own boxes take their place
+local function PageBoxes(hide)
+    for _, box in ipairs({ ns.SettingsPanel.middleBox, ns.SettingsPanel.rightBox }) do
+        if box then
+            if hide then
+                if not box.ftSaved then
+                    box.ftSaved = { { box:GetBackdropColor() }, { box:GetBackdropBorderColor() } }
+                end
+                box:SetBackdropColor(0, 0, 0, 0)
+                box:SetBackdropBorderColor(0, 0, 0, 0)
+            elseif box.ftSaved then
+                box:SetBackdropColor(unpack(box.ftSaved[1]))
+                box:SetBackdropBorderColor(unpack(box.ftSaved[2]))
+            end
+        end
+    end
+end
+local function SectionBox(host)
+    local box = CreateFrame("Frame", nil, host:GetParent(), "BackdropTemplate")
+    ns.SettingsPanel.Box(box, 0.32)
+    box:SetFrameLevel(math.max(0, host:GetFrameLevel() - 1))
+    -- it lives on the parent, so the editor shows and hides it with itself (BuildEmbedded)
+    box:Hide()
+    sectionBoxes[#sectionBoxes + 1] = box
+    return box
 end
 
 local function Divider(parent)
@@ -1020,10 +1052,16 @@ local function BuildRadialColumn(host, column)
         Refresh()
     end)
     host.undoButton:SetPoint("BOTTOMRIGHT", previewArea, "TOPRIGHT", 0, 1)
-    local line = Divider(col)
-    line:SetHeight(1)
-    line:SetPoint("BOTTOMLEFT", previewArea, "TOPLEFT", -COLUMN_PAD, 27)
-    line:SetPoint("BOTTOMRIGHT", previewArea, "TOPRIGHT", COLUMN_PAD, 27)
+    -- two boxes: the radials (and what opens here), and the live preview with its title
+    -- (11-11 Marcus: they take the column box's place, edge to edge, top to bottom)
+    local listBox = SectionBox(col)
+    listBox:SetPoint("TOPLEFT", column, "TOPLEFT")
+    listBox:SetPoint("TOPRIGHT", column, "TOPRIGHT")
+    listBox:SetPoint("BOTTOM", previewArea, "TOP", 0, 24 + BOX_PAD + 2 * BOX_GAP)
+    local previewBox = SectionBox(col)
+    previewBox:SetPoint("TOP", previewArea, "TOP", 0, 24 + BOX_PAD)
+    previewBox:SetPoint("LEFT", column, "LEFT")
+    previewBox:SetPoint("BOTTOMRIGHT", column, "BOTTOMRIGHT")
 end
 
 local function BuildDetails(host, width)
@@ -1167,10 +1205,7 @@ local function BuildDetails(host, width)
         Hover(host.barButton, "rm.padBar")
     end
 
-    local line = Divider(host)
-    line:SetHeight(1)
-    line:SetPoint("TOPLEFT", x, -LOWER_TOP + LINE_ABOVE)
-    line:SetPoint("TOPRIGHT", 0, -LOWER_TOP + LINE_ABOVE)
+    -- (11-11: the form has its own box, BuildLower; no line under it)
 
     -- nothing to show: every radial deleted
     local empty = Text(host, "GameFontDisable", L["No radials yet. Create one with + New radial."])
@@ -1188,7 +1223,24 @@ local function BuildLower(host, height, width)
 
     -- the radial's buttons, in order; the title and icons centred in the section, which runs on to the
     -- window's column line (BUTTONS_NUDGE past the host's edge)
-    VLine(host, buttonsX - 8)
+    -- three boxes: the radial's form on top, the Catalog and the buttons below (11-11 Marcus)
+    -- a line between the tabs and the radial's name (11-11 Marcus: this tab only)
+    local tabLine = Divider(host)
+    tabLine:SetHeight(1)
+    tabLine:SetPoint("TOPLEFT", host, "TOPLEFT", x, 6)
+    tabLine:SetPoint("TOPRIGHT", host, "TOPLEFT", x + width, 6)
+    local inner = ns.SettingsPanel.INNER or 10
+    local page = ns.SettingsPanel.middleBox
+    local topBox = SectionBox(host)
+    topBox:SetPoint("TOPLEFT", page, "TOPLEFT")
+    topBox:SetPoint("TOPRIGHT", page, "TOPRIGHT")
+    topBox:SetPoint("BOTTOM", host, "TOP", 0, -(top - 10 - 2 * BOX_GAP))
+    local catalogBox = SectionBox(host)
+    catalogBox:SetPoint("TOPLEFT", host, "TOPLEFT", -inner, -(top - 10))
+    catalogBox:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", buttonsX - 8 - BOX_GAP, -inner)
+    local buttonsBox = SectionBox(host)
+    buttonsBox:SetPoint("TOPLEFT", host, "TOPLEFT", buttonsX - 8 + BOX_GAP, -(top - 10))
+    buttonsBox:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT")
     local buttonsTitle = Text(host, "GameFontNormal", L["Buttons"])
     buttonsTitle:SetJustifyH("CENTER")
     buttonsTitle:SetPoint("TOP", host, "TOPLEFT", (buttonsX - 8 + x + width) / 2 + BUTTONS_NUDGE, -top)
@@ -1266,33 +1318,69 @@ local function BuildLower(host, height, width)
     end)
     host.dropZone = dropZone
 
-    -- the Catalog: its category menu beside the title, a two-column grid, search at the bottom right
+    -- the Catalog: its categories as small text links right of the title (11-11 Marcus, instead of a
+    -- dropdown): right-aligned, split by slashes in the page title's gold, the open one yellow and the
+    -- rest grey, on a second line when they don't fit; then a three-column grid, search at the bottom
     local catalogTitle = Text(host, "GameFontNormal", L["Catalog"])
     catalogTitle:SetPoint("TOPLEFT", catX + 4, -top)
-    local category = CreateFrame("DropdownButton", nil, host, "WowStyle1DropdownTemplate")
-    category:SetWidth(160)
-    category:SetPoint("TOPRIGHT", host, "TOPLEFT", catX + gridW, -top + 4)
-    category:SetupMenu(function(_, root)
-        for _, c in ipairs(CATEGORIES) do
-            root:CreateRadio(c.label, function() return activeCategory == c.key end, function()
-                activeCategory = c.key
-                host.search:SetText("")
-                RefreshBrowse()
-            end)
+    local LINK_H, SLASH_W = 16, 14
+    local rightX, maxW = catX + gridW - 10, gridW - 100   -- (in line with the search box)
+    local links, slashes = {}, {}
+    for i, c in ipairs(CATEGORIES) do
+        local link = CreateFrame("Button", nil, host)
+        link:SetNormalFontObject("GameFontNormalSmall")
+        link:SetText(c.label)
+        link:SetSize(link:GetFontString():GetStringWidth() + 2, LINK_H)
+        link.key = c.key
+        link:SetScript("OnClick", function()
+            ns.ButtonSound()
+            activeCategory = c.key
+            host.search:SetText("")
+            RefreshBrowse()
+        end)
+        link:SetScript("OnEnter", function(self)
+            if self.key ~= activeCategory then self:GetFontString():SetTextColor(0.9, 0.9, 0.9) end
+        end)
+        link:SetScript("OnLeave", function() host.PaintCategories() end)
+        links[i] = link
+        -- the slash before it (between it and the one on its left)
+        local slash = Text(host, "GameFontNormalSmall", "/")
+        slash:SetTextColor(1, 0.83, 0.47)
+        slashes[i] = slash
+    end
+    -- right to left, a new line when the next one would pass the title's room
+    local x, line, lineOf = rightX, 0, {}
+    for i = #links, 1, -1 do
+        local w = links[i]:GetWidth()
+        local gap = (i < #links and lineOf[i + 1] == line) and SLASH_W or 0
+        if i < #links and x - gap - w < rightX - maxW then line, x, gap = line + 1, rightX, 0 end
+        x = x - gap
+        links[i]:SetPoint("TOPRIGHT", host, "TOPLEFT", x, -top - line * LINK_H)
+        lineOf[i] = line
+        x = x - w
+    end
+    for i = 2, #links do
+        local slash = slashes[i]
+        -- shown between links i - 1 and i when they share a line
+        if lineOf[i - 1] == lineOf[i] then
+            slash:SetPoint("CENTER", links[i], "LEFT", -SLASH_W / 2, 0)
+            slash:Show()
+        else
+            slash:Hide()
         end
-    end)
-    host.categoryDrop = category
-    category.padCycle = function(delta)
-        local at = 1
-        for i, c in ipairs(CATEGORIES) do if c.key == activeCategory then at = i end end
-        activeCategory = CATEGORIES[((at - 1 + delta) % #CATEGORIES) + 1].key
-        host.search:SetText("")
-        RefreshBrowse()
+    end
+    slashes[1]:Hide()
+    local extra = line * LINK_H   -- the grid starts lower by the extra lines
+    host.PaintCategories = function()
+        for _, link in ipairs(links) do
+            local on = link.key == activeCategory
+            link:GetFontString():SetTextColor(on and 1 or 0.5, on and 0.82 or 0.5, on and 0 or 0.5)
+        end
     end
 
     -- below the grid: how to edit (left) and the search (right)
-    local gridRows = math.max(4, math.floor((height - top - 26 - 44) / GRID_ROW_H))
-    local browseList = CreateList(host, gridW, 2, gridRows, GRID_ROW_H,
+    local gridRows = math.max(4, math.floor((height - top - 26 - extra - 44) / GRID_ROW_H))
+    local browseList = CreateList(host, gridW, 3, gridRows, GRID_ROW_H,
         function(cell)
             MakeRound(cell, GRID_RIM)
             cell.Icon:ClearAllPoints()
@@ -1319,19 +1407,19 @@ local function BuildLower(host, height, width)
             ApplyIcon(cell, icon)
             cell.Text:SetText(name)
         end)
-    browseList:SetPoint("TOPLEFT", catX, -top - 26)
+    browseList:SetPoint("TOPLEFT", catX, -top - 26 - extra)
     host.browseList = browseList
 
     local search = CreateFrame("EditBox", nil, host, "SearchBoxTemplate")
     -- level with the settings search in the left column
     search:SetSize(180, 22)
-    search:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", catX + gridW, -2)
+    search:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", catX + gridW - 10, 4)
     search:HookScript("OnTextChanged", function() if host:IsShown() then RefreshBrowse() end end)
     host.search = search
 
     local hint = Text(host, "GameFontDisableSmall", L["Click or drag from Catalog to add. Drag reorders, right-click removes."])
-    hint:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", catX + 4, -2)
-    hint:SetWidth(gridW - 180 - 16)
+    hint:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", catX + 4, 6)
+    hint:SetWidth(gridW - 180 - 26)
     hint:SetJustifyV("BOTTOM")
     hint:SetSpacing(1)
 end
@@ -1346,13 +1434,19 @@ local function BuildEmbedded(host, column)
     BuildLower(host, height, width)
 
     -- opening takes the Undo snapshot; leaving keeps the edits
+    for _, box in ipairs(sectionBoxes) do box:SetShown(host:IsShown()) end
+    PageBoxes(host:IsShown())
     host:SetScript("OnShow", function()
         browseCache = {}
         host.column:Show()
+        for _, box in ipairs(sectionBoxes) do box:Show() end
+        PageBoxes(true)
         TakeSnapshot()
     end)
     host:SetScript("OnHide", function()
         host.column:Hide()
+        for _, box in ipairs(sectionBoxes) do box:Hide() end
+        PageBoxes(false)
         dirty, snapshot = false, nil
         if popup then popup:Hide() end
         if RM() then RM():HidePreview() end
@@ -1372,7 +1466,7 @@ function RefreshBrowse()
     for _, c in ipairs(CATEGORIES) do
         if c.key == activeCategory then category = c end
     end
-    editor.categoryDrop:GenerateMenu()
+    editor.PaintCategories()
     editor.categoryNote = category and category.note
 
     -- cached per opening; Radials depends on the edited radial and is rebuilt each time

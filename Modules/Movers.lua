@@ -29,7 +29,9 @@ local LEM = LibStub("FlareEditMode")
 local ROLL_W, ROLL_H, ROLL_BOTTOM = 277, 67, 16.5
 local TOAST_W, TOAST_H, TOAST_BOTTOM = 312, 89, 20
 -- the battleground scores: Blizzard's container sits at TOP 0,-15 and grows down from its top
-local OBJ_W, OBJ_H = 240, 40
+local OBJ_W, OBJ_H = 180, 36   -- (the sample's size: only the scores, 11-11)
+-- FlareUI Thick round the scores (the sample and the real ones), PAD out from what they show
+local OBJ_BORDER, OBJ_EDGE, OBJ_PAD = "FlareUI Thick", 16, 6
 
 local DEFAULTS = {
     loot  = { point = "BOTTOM", x = 0, y = 173 },   -- between the player cast bar and the action bars
@@ -51,9 +53,12 @@ local function GetLayoutStore(key, layoutName)
     if not db then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     db.moverLayouts = db.moverLayouts or {}
-    db.moverLayouts[layoutName] = db.moverLayouts[layoutName] or {}
-    local store = db.moverLayouts[layoutName]
-    store[key] = store[key] or {}
+    -- (a layout with no spot of its own starts from the profile's home layout's: ProfileLayout.lua)
+    local store = ns.LayoutHome(db.moverLayouts, layoutName)
+    if rawget(store, key) == nil then
+        local home = store[key]
+        store[key] = type(home) == "table" and CopyTable(home) or {}
+    end
     return store[key]
 end
 
@@ -114,6 +119,22 @@ local function FlattenLoot(container, height)
     sizingLoot = false
 end
 
+-- Blizzard's grey roll-frame edge in the frames' bronze (11-11 Marcus): greyed, then tinted, so the
+-- art keeps its shading. The sample's and every real roll frame's (GroupLootFrame1-4, made at load).
+local function BronzeLootBorder(texture)
+    if not texture then return end
+    local c = ns.BORDER_COLOR
+    texture:SetDesaturated(true)
+    texture:SetVertexColor(c.r * 1.25, c.g * 1.25, c.b * 1.25)
+end
+
+local function BronzeLootFrames()
+    for i = 1, (_G.NUM_GROUP_LOOT_FRAMES or 4) do
+        local frame = _G["GroupLootFrame" .. i]
+        if frame then BronzeLootBorder(frame.Border) end
+    end
+end
+
 local function CreateLootPreview(holder)
     local p = holder.preview
     local bg = p:CreateTexture(nil, "BACKGROUND")
@@ -125,6 +146,7 @@ local function CreateLootPreview(holder)
     border:SetPoint("CENTER")
     border:SetTexture("Interface\\LootFrame\\LootToast")
     border:SetTexCoord(0.00097656, 0.28027344, 0.43750000, 0.73437500)
+    BronzeLootBorder(border)
 
     local icon = p:CreateTexture(nil, "ARTWORK")
     icon:SetSize(34, 34)
@@ -213,6 +235,77 @@ local function CreateToastPreview(holder)
 end
 
 --------------------------------------------------
+-- 5b. SCALE (Edit Mode, 11-11 Marcus): the loot rolls' and the toasts' size. Blizzard's frames hang
+-- from UIParent, so each one takes the scale as it shows; the holder and its sample grow with it.
+--------------------------------------------------
+local function Scale(key)
+    local db = GetDb()
+    local v = db and tonumber(db[key == "loot" and "lootScale" or "toastScale"]) or 1
+    return math.max(0.5, math.min(2, v))
+end
+
+local function ScaleHolder(key, w, h)
+    local holder = holders[key]
+    if not holder then return end
+    local scale = Scale(key)
+    holder:SetSize(w * scale, h * scale)
+    holder.preview:SetScale(scale)
+end
+
+local function ScaleLootFrames()
+    local scale = Scale("loot")
+    for i = 1, (_G.NUM_GROUP_LOOT_FRAMES or 4) do
+        local frame = _G["GroupLootFrame" .. i]
+        if frame and not (InCombatLockdown() and frame:IsProtected()) then frame:SetScale(scale) end
+    end
+end
+
+-- every toast as Blizzard shows it: the queued kinds as each comes out of its pool, the single ones now
+local function ScaleToast(frame)
+    if frame and frame.SetScale then frame:SetScale(Scale("toast")) end
+end
+local function ScaleToasts()
+    local base = _G.AlertFrame
+    for _, sub in ipairs(base and base.alertFrameSubSystems or {}) do
+        if sub.alertFramePool and sub.alertFramePool.EnumerateActive then
+            for frame in sub.alertFramePool:EnumerateActive() do ScaleToast(frame) end
+        elseif sub.alertFrame then
+            ScaleToast(sub.alertFrame)
+        end
+    end
+end
+local function HookToastScale()
+    local base = _G.AlertFrame
+    for _, sub in ipairs(base and base.alertFrameSubSystems or {}) do
+        if sub.ShowAlert and not sub.FlareUI_Scaled then
+            sub.FlareUI_Scaled = true
+            hooksecurefunc(sub, "ShowAlert", function(self)
+                if self.alertFramePool and self.alertFramePool.EnumerateActive then
+                    for frame in self.alertFramePool:EnumerateActive() do ScaleToast(frame) end
+                end
+            end)
+        end
+    end
+    ScaleToasts()
+end
+
+-- the Edit Mode dialogs' Scale (11-11: a Toast Sample dropdown with Blizzard's other toasts was tried and
+-- removed, Forever lacks their pieces)
+local function ScaleSetting(key, w, h, apply)
+    local field = key == "loot" and "lootScale" or "toastScale"
+    return { name = L["Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
+        formatter = function(value) return value .. "%" end,
+        get = function() return math.floor(Scale(key) * 100 + 0.5) end,
+        set = function(_, value)
+            local db = GetDb()
+            if not db then return end
+            db[field] = value ~= 100 and value / 100 or nil
+            ScaleHolder(key, w, h)
+            apply()
+        end }
+end
+
+--------------------------------------------------
 -- 6. BATTLEGROUND OBJECTIVES
 -- The top-centre widget container (flag and base scores, resources, timers). A plain frame, not an
 -- Edit Mode system or a managed frame: it goes back on the holder after anything places it.
@@ -237,23 +330,62 @@ local function PlaceObjectives()
     placingObjectives = false
 end
 
--- a faction icon and its score, twice
+-- The dark plate in FlareUI Thick (11-11 Marcus): the sample's, and the one behind the real scores
+local function ObjectivesBox(frame)
+    local file = LibStub("LibSharedMedia-3.0"):Fetch("border", OBJ_BORDER)
+    local inset = 4
+    frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = file, edgeSize = ns.BorderEdgeSize(file, OBJ_EDGE),
+        insets = { left = inset, right = inset, top = inset, bottom = inset } })
+    frame:SetBackdropColor(0, 0, 0, 0.6)
+    local c = ns.BORDER_COLOR
+    frame:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
+end
+
+-- a faction emblem and its score, twice, each pair centred in its half, icon and text on one line
+-- (the old target-frame emblems sat off-centre in their art: the PvP currency ones are square)
 local function CreateObjectivesPreview(holder)
     local p = holder.preview
-    local bg = p:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0, 0, 0, 0.35)
-    local function Side(icon, score, x)
-        local t = p:CreateTexture(nil, "ARTWORK")
-        t:SetSize(36, 36)
-        t:SetPoint("CENTER", x - 14, -2)
+    local box = CreateFrame("Frame", nil, p, "BackdropTemplate")
+    box:SetAllPoints()
+    ObjectivesBox(box)
+    local ICON, GAP = 22, 5
+    local function Side(icon, score, half)
+        local t = box:CreateTexture(nil, "ARTWORK")
+        t:SetSize(ICON, ICON)
         t:SetTexture(icon)
-        local n = p:CreateFontString(nil, "ARTWORK", "GameFontHighlightLarge")
-        n:SetPoint("LEFT", t, "RIGHT", -6, 2)
+        local n = box:CreateFontString(nil, "ARTWORK", "GameFontHighlightLarge")
         n:SetText(score)
+        local width = ICON + GAP + (n:GetUnboundedStringWidth() or 30)
+        t:SetPoint("LEFT", box, "CENTER", half * OBJ_W / 4 - width / 2, 0)
+        n:SetPoint("LEFT", t, "RIGHT", GAP, 0)
     end
-    Side("Interface\\TargetingFrame\\UI-PVP-Alliance", "2 / 3", -50)
-    Side("Interface\\TargetingFrame\\UI-PVP-Horde", "1 / 3", 50)
+    Side("Interface\\PVPFrame\\PVP-Currency-Alliance", "2 / 3", -1)
+    Side("Interface\\PVPFrame\\PVP-Currency-Horde", "1 / 3", 1)
+end
+
+-- the real scores' plate: behind Blizzard's container, as large as what it shows, only while it shows
+-- something (a frame of its own: the container's widgets are Blizzard's)
+local objectivesBox
+local function UpdateObjectivesBox()
+    local container = _G.UIWidgetTopCenterContainerFrame
+    if not (container and objectivesBox) then return end
+    local w, h = container:GetSize()
+    local showing = container:IsVisible() and (container.numWidgetsShowing or 1) > 0 and (w or 0) > 2 and (h or 0) > 2
+    objectivesBox:SetShown(showing and true or false)
+end
+
+local function CreateObjectivesBox(container)
+    objectivesBox = CreateFrame("Frame", "FlareUI_BattlegroundObjectivesBox", UIParent, "BackdropTemplate")
+    objectivesBox:SetPoint("TOPLEFT", container, "TOPLEFT", -OBJ_PAD, OBJ_PAD)
+    objectivesBox:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", OBJ_PAD, -OBJ_PAD)
+    ObjectivesBox(objectivesBox)
+    ns.CopyStrata(objectivesBox, container)
+    objectivesBox:SetFrameLevel(math.max(0, container:GetFrameLevel() - 1))
+    objectivesBox:EnableMouse(false)
+    container:HookScript("OnShow", UpdateObjectivesBox)
+    container:HookScript("OnHide", UpdateObjectivesBox)
+    container:HookScript("OnSizeChanged", UpdateObjectivesBox)
+    UpdateObjectivesBox()
 end
 
 --------------------------------------------------
@@ -271,15 +403,24 @@ function MOV:Init()
 
     local loot = _G.GroupLootContainer
     if loot then
-        CreateLootPreview(CreateHolder("loot", "FlareUI_LootRolls", "FlareUI Loot Rolls", ROLL_W, ROLL_H))
+        local holder = CreateHolder("loot", "FlareUI_LootRolls", "FlareUI Loot Rolls", ROLL_W, ROLL_H)
+        CreateLootPreview(holder)
+        ScaleHolder("loot", ROLL_W, ROLL_H)
+        ScaleLootFrames()
+        LEM:AddFrameSettings(holder, ns.EditSection("Frame", { ScaleSetting("loot", ROLL_W, ROLL_H, ScaleLootFrames) }))
         hooksecurefunc(loot, "SetPoint", PlaceLoot)
         hooksecurefunc(loot, "SetHeight", FlattenLoot)
         PlaceLoot()
+        BronzeLootFrames()
     end
 
     local base = _G.AlertFrame
     if base then
-        CreateToastPreview(CreateHolder("toast", "FlareUI_Toasts", "FlareUI Toasts", TOAST_W, TOAST_H))
+        local holder = CreateHolder("toast", "FlareUI_Toasts", "FlareUI Toasts", TOAST_W, TOAST_H)
+        CreateToastPreview(holder)
+        ScaleHolder("toast", TOAST_W, TOAST_H)
+        HookToastScale()
+        LEM:AddFrameSettings(holder, ns.EditSection("Frame", { ScaleSetting("toast", TOAST_W, TOAST_H, ScaleToasts) }))
         PlaceToasts()
         hooksecurefunc(base, "UpdateAnchors", RewalkToasts)
     end
@@ -290,6 +431,7 @@ function MOV:Init()
             "FlareUI Battleground Objectives", OBJ_W, OBJ_H))
         hooksecurefunc(objectives, "SetPoint", PlaceObjectives)
         PlaceObjectives()
+        CreateObjectivesBox(objectives)
         -- a placement held back by combat
         local regen = CreateFrame("Frame")
         regen:RegisterEvent("PLAYER_REGEN_ENABLED")

@@ -65,6 +65,9 @@ local C = {
     NO_FONT = {},           -- a font setting with nothing set (only ever read)
 }
 
+-- Shared with the settings specimen so its palette follows the live tracker.
+OT.SampleColors = { TITLE = C.TITLE, TITLE_FOCUS = C.TITLE_FOCUS, ZONE = C.ZONE, OBJECTIVE = C.OBJECTIVE }
+
 -- Blizzard's strings where it has them
 local TEXT = {
     quests = _G.QUESTS_LABEL or "Quests",
@@ -98,6 +101,8 @@ local state = {
     arriving = {}, seen = {}, tops = {}, sheens = {},
     zoneCounts = {}, fonts = {},   -- reused by every render
 }
+-- builders shared by the tracker and the settings preview's sample (OT.CreateSample)
+local Build = {}
 
 local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.objectivetracker
@@ -149,8 +154,8 @@ local function GetLayoutStore(layoutName)
     if not db then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     db.layouts = db.layouts or {}
-    db.layouts[layoutName] = db.layouts[layoutName] or {}
-    return db.layouts[layoutName]
+    -- (a layout with no spot of its own reads the profile's home layout's: ProfileLayout.lua)
+    return ns.LayoutHome(db.layouts, layoutName)
 end
 
 -- Where the frame stands now: right when its centre is on the right half; top when its top edge is
@@ -264,15 +269,16 @@ local function GetBorderFile(db)
     return LSM:Fetch("border", name)
 end
 
-local function ApplyBackdrop()
+-- the window's backdrop (frame: the tracker, or the settings preview's sample)
+local function ApplyBackdrop(frame)
     local db = GetDb()
     local bg = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
     local edge = GetBorderFile(db)
-    holder:SetBackdrop({ bgFile = bg, edgeFile = edge, tile = false, tileSize = 0,
+    frame:SetBackdrop({ bgFile = bg, edgeFile = edge, tile = false, tileSize = 0,
         edgeSize = ns.BorderEdgeSize(edge, 16), insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-    holder:SetBackdropColor(1, 1, 1, db and db.opacity or 0.6)
+    frame:SetBackdropColor(1, 1, 1, db and db.opacity or 0.6)
     local b = ns.BORDER_COLOR
-    holder:SetBackdropBorderColor(b.r, b.g, b.b, b.a)
+    frame:SetBackdropBorderColor(b.r, b.g, b.b, b.a)
 end
 
 --------------------------------------------------
@@ -383,15 +389,20 @@ end
 
 -- Timer bars: a thin bar under each quest timer, pooled on the list
 local timerBars, timerBarsUsed = {}, 0
-local function GetTimerBar(i)
-    local bar = timerBars[i]
-    if bar then return bar end
-    bar = CreateFrame("StatusBar", nil, content)
+function Build.TimerBar(parent)
+    local bar = CreateFrame("StatusBar", nil, parent)
     bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
     bar:SetMinMaxValues(0, 1)
     local bg = bar:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetColorTexture(0, 0, 0, 0.5)
+    return bar
+end
+
+local function GetTimerBar(i)
+    local bar = timerBars[i]
+    if bar then return bar end
+    bar = Build.TimerBar(content)
     timerBars[i] = bar
     return bar
 end
@@ -847,13 +858,51 @@ local function UnhoverLater()
     end
 end
 
-local function GetLine(i)
-    local line = lines[i]
-    if line then return line end
-    line = CreateFrame("Button", nil, content)
+function Build.Line(parent)
+    local line = CreateFrame("Button", nil, parent)
     line.text = line:CreateFontString(nil, "OVERLAY")
     line.text:SetJustifyH("LEFT")
     line.text:SetPoint("TOPLEFT", line, "TOPLEFT")
+    return line
+end
+
+-- A line's font, wrap, text, colour and width. A line remembers what it was given last (ft*), and
+-- only what differs is written: most lines read the same from one render to the next. Answers the
+-- line's height.
+function Build.LineLook(line, text, kind, cfg, color, w, wrap)
+    -- a new font: text and colour are written again too
+    if ApplyFont(line.text, cfg, kind == "objective" and 11 or 12) then line.ftText, line.ftColor = false, false end
+    if line.ftWrap ~= wrap then
+        line.ftWrap = wrap
+        line.text:SetWordWrap(wrap)
+        line.text:SetMaxLines(wrap and 0 or 1)
+    end
+    if line.ftText ~= text then
+        line.ftText = text
+        line.text:SetText(text)
+    end
+    if line.ftColor ~= color then
+        line.ftColor = color
+        SetColor(line.text, color)
+    end
+    if line.ftWidth ~= w then
+        line.ftWidth = w
+        line:SetWidth(w)
+        line.text:SetWidth(w)
+    end
+    local h = math_max(FontHeight(cfg, 12), math_floor(line.text:GetStringHeight() + 0.5))
+    if line.ftHeight ~= h then
+        line.ftHeight = h
+        line:SetHeight(h)
+        line.text:SetHeight(h)
+    end
+    return h
+end
+
+local function GetLine(i)
+    local line = lines[i]
+    if line then return line end
+    line = Build.Line(content)
     line:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
     line:SetScript("OnClick", OnLineClick)
     line:SetScript("OnEnter", function(self)
@@ -969,14 +1018,19 @@ local function SlideDistance()
 end
 
 -- The focus and play buttons, left of a title; pointing at one counts as pointing at the quest
-local function LineButton(line, key)
-    local b = line[key]
-    if b then return b end
-    b = CreateFrame("Button", nil, line)
+function Build.LineButton(line)
+    local b = CreateFrame("Button", nil, line)
     b:SetSize(C.BUTTON_SIZE, C.BUTTON_SIZE)
     b.icon = b:CreateTexture(nil, "ARTWORK")
     b.icon:SetAllPoints()
     b:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    return b
+end
+
+local function LineButton(line, key)
+    local b = line[key]
+    if b then return b end
+    b = Build.LineButton(line)
     b:RegisterForClicks("LeftButtonUp")
     b:SetScript("OnEnter", function(self) local p = self:GetParent(); p:GetScript("OnEnter")(p) end)
     b:SetScript("OnLeave", function(self) local p = self:GetParent(); p:GetScript("OnLeave")(p) end)
@@ -1188,6 +1242,64 @@ local PREVIEW = {
     { level = 24, tags = " d", title = "The Night Watch", objectives = { { text = "0/12 Skeletal Warrior slain" }, { text = "0/6 Skeletal Mage slain" } } },
 }
 
+-- the quest's own difficulty, as the quest log colours it; the sample quests have only a level
+function Build.DifficultyColor(level, questID)
+    if questID and HaveQuestData(questID) then
+        return GetDifficultyColor(C_PlayerInfo.GetContentDifficultyQuestForPlayer(questID))
+    end
+    return GetQuestDifficultyColor(level)
+end
+
+-- Colour Names by Difficulty: the name in its level's colour, unless complete or focused (one
+-- table per colour, so a line keeps its colour between renders)
+function Build.TitleColor(db, level, questID, focus, done)
+    if focus then return C.TITLE_FOCUS end
+    if done then return C.TITLE_DONE end
+    if not (db.colorNames and level) then return C.TITLE end
+    local c = Build.DifficultyColor(level, questID)
+    local key = string_format("%.3f %.3f %.3f", c.r, c.g, c.b)
+    state.difficultyColors = state.difficultyColors or {}
+    local color = state.difficultyColors[key]
+    if not color then
+        color = { c.r, c.g, c.b }
+        state.difficultyColors[key] = color
+    end
+    return color
+end
+
+function Build.TitleText(db, level, tags, title, collapsed, questID)
+    local prefix = ""
+    if level then
+        local c = Build.DifficultyColor(level, questID)
+        local shownLevel = db.hideLevel and "" or level
+        local shownTags = db.showTags and tags or ""
+        if shownLevel == "" then shownTags = shownTags:gsub("^ +", "") end
+        if shownLevel ~= "" or shownTags ~= "" then
+            prefix = string_format("|cff%02x%02x%02x", Byte(c.r), Byte(c.g), Byte(c.b)) .. "[" .. shownLevel .. shownTags .. "]|r "
+        end
+    end
+    return prefix .. title .. (collapsed and ("  " .. ColorCode(C.DIM) .. "+|r") or "")
+end
+
+-- The header's title (with the count), the zone switch and the minimize button, placed
+function Build.LayoutHeader(head, db, count, max, minimized)
+    local title = TEXT.quests
+    if db.showCount then title = title .. "  " .. ColorCode(C.DIM) .. (max and (count .. "/" .. max) or count) .. "|r" end
+    head.title:SetText(title)
+    head.zone.text:SetText(db.zoneOnly and L["Zone"] or L["All"])
+    head.zone:SetSize(head.zone.text:GetStringWidth() + 6, C.HEADER - 6)
+
+    -- title on the left; the zone switch and the minimize button on the right
+    local button = head.minimize
+    button:ClearAllPoints()
+    head.title:ClearAllPoints()
+    head.zone:ClearAllPoints()
+    button:SetPoint("RIGHT", head, "RIGHT", 0, 0)
+    head.zone:SetPoint("RIGHT", button, "LEFT", -6, 0)
+    head.title:SetPoint("LEFT", head, "LEFT", C.PAD - C.HEADER_INSET, 0)
+    button:SetPlus(minimized)
+end
+
 function OT:Render()
     state.pending = false
     local db = GetDb()
@@ -1203,21 +1315,7 @@ function OT:Render()
     -- header
     ReadLog()   -- the one walk of the quest log this render reads
     local count, max = QuestCount()
-    local title = TEXT.quests
-    if db.showCount then title = title .. "  " .. ColorCode(C.DIM) .. (max and (count .. "/" .. max) or count) .. "|r" end
-    header.title:SetText(title)
-    header.zone.text:SetText(db.zoneOnly and L["Zone"] or L["All"])
-    header.zone:SetSize(header.zone.text:GetStringWidth() + 6, C.HEADER - 6)
-
-    -- title on the left; the zone switch and the minimize button on the right
-    local button = header.minimize
-    button:ClearAllPoints()
-    header.title:ClearAllPoints()
-    header.zone:ClearAllPoints()
-    button:SetPoint("RIGHT", header, "RIGHT", 0, 0)
-    header.zone:SetPoint("RIGHT", button, "LEFT", -6, 0)
-    header.title:SetPoint("LEFT", header, "LEFT", C.PAD - C.HEADER_INSET, 0)
-    button:SetPlus(minimized)
+    Build.LayoutHeader(header, db, count, max, minimized)
 
     -- content
     local n, y = 0, 0
@@ -1231,39 +1329,11 @@ function OT:Render()
     fonts.header, fonts.title, fonts.objective = db.headerFont, db.titleFont, db.objectiveFont
     local wrap = db.wrapText ~= false
 
-    -- A pooled line remembers what it was given last (ft*), and only what differs is written: most
-    -- lines read the same from one render to the next. (Justify and the text's anchor: GetLine.)
+    -- (what a pooled line was given last is kept: Build.LineLook)
     local function AddLine(text, kind, color, indent)
         n = n + 1
         local line = GetLine(n)
-        local w = width - (indent or 0)
-        local cfg = fonts[kind]
-        -- a new font: text and colour are written again too
-        if ApplyFont(line.text, cfg, kind == "objective" and 11 or 12) then line.ftText, line.ftColor = false, false end
-        if line.ftWrap ~= wrap then
-            line.ftWrap = wrap
-            line.text:SetWordWrap(wrap)
-            line.text:SetMaxLines(wrap and 0 or 1)
-        end
-        if line.ftText ~= text then
-            line.ftText = text
-            line.text:SetText(text)
-        end
-        if line.ftColor ~= color then
-            line.ftColor = color
-            SetColor(line.text, color)
-        end
-        if line.ftWidth ~= w then
-            line.ftWidth = w
-            line:SetWidth(w)
-            line.text:SetWidth(w)
-        end
-        local h = math_max(FontHeight(cfg, 12), math_floor(line.text:GetStringHeight() + 0.5))
-        if line.ftHeight ~= h then
-            line.ftHeight = h
-            line:SetHeight(h)
-            line.text:SetHeight(h)
-        end
+        local h = Build.LineLook(line, text, kind, fonts[kind], color, width - (indent or 0), wrap)
         line:ClearAllPoints()
         line.ftY = y
         -- the mouse area reaches the band's edges and the gap to the next line
@@ -1290,43 +1360,9 @@ function OT:Render()
         return line
     end
 
-    -- the quest's own difficulty, as the quest log colours it; the sample quests have only a level
-    local function DifficultyColor(level, questID)
-        if questID and HaveQuestData(questID) then
-            return GetDifficultyColor(C_PlayerInfo.GetContentDifficultyQuestForPlayer(questID))
-        end
-        return GetQuestDifficultyColor(level)
-    end
-
-    -- Colour Names by Difficulty: the name in its level's colour, unless complete or focused (one
-    -- table per colour, so a line keeps its colour between renders)
-    state.difficultyColors = state.difficultyColors or {}
-    local function TitleColor(level, questID, focus, done)
-        if focus then return C.TITLE_FOCUS end
-        if done then return C.TITLE_DONE end
-        if not (db.colorNames and level) then return C.TITLE end
-        local c = DifficultyColor(level, questID)
-        local key = string_format("%.3f %.3f %.3f", c.r, c.g, c.b)
-        local color = state.difficultyColors[key]
-        if not color then
-            color = { c.r, c.g, c.b }
-            state.difficultyColors[key] = color
-        end
-        return color
-    end
-
+    local function TitleColor(level, questID, focus, done) return Build.TitleColor(db, level, questID, focus, done) end
     local function TitleText(level, tags, title, collapsed, questID)
-        local prefix = ""
-        if level then
-            local c = DifficultyColor(level, questID)
-            local shownLevel = db.hideLevel and "" or level
-            local shownTags = db.showTags and tags or ""
-            if shownLevel == "" then shownTags = shownTags:gsub("^ +", "") end
-            if shownLevel ~= "" or shownTags ~= "" then
-                prefix = string_format("|cff%02x%02x%02x", Byte(c.r), Byte(c.g), Byte(c.b)) .. "[" .. shownLevel .. shownTags .. "]|r "
-            end
-        end
-        return prefix .. title .. (collapsed and ("  " .. ColorCode(C.DIM) .. "+|r") or "")
+        return Build.TitleText(db, level, tags, title, collapsed, questID)
     end
 
     -- What a complete quest says: click to finish, its own closing text, where to go, or "ready"
@@ -1768,16 +1804,21 @@ function OT:UpdateScrollBar()
     track:SetShown(scrollable)
     thumb:SetShown(scrollable)
     if not scrollable then return end
-    local px = ns.PixelSize(holder)
-    local x = -(C.SCROLLBAR_INSET)
-    track:ClearAllPoints()
-    track:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", x - px, 0)
-    track:SetSize(px, listHeight)
-    local thumbHeight = math_max(C.SCROLLBAR_MIN, listHeight * listHeight / contentHeight)
     local range = contentHeight - listHeight
     local offset = range > 0 and math_min(1, math_max(0, scroll:GetVerticalScroll() / range)) or 0
+    Build.PlaceScrollBar(track, thumb, scroll, holder, contentHeight, listHeight, offset)
+end
+
+-- The track down the list's right margin and the thumb on it, offset 0 (top) to 1 (bottom)
+function Build.PlaceScrollBar(track, thumb, list, window, contentHeight, listHeight, offset)
+    local px = ns.PixelSize(window)
+    local x = -(C.SCROLLBAR_INSET)
+    track:ClearAllPoints()
+    track:SetPoint("TOPRIGHT", list, "TOPRIGHT", x - px, 0)
+    track:SetSize(px, listHeight)
+    local thumbHeight = math_max(C.SCROLLBAR_MIN, listHeight * listHeight / contentHeight)
     thumb:ClearAllPoints()
-    thumb:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", x, -(listHeight - thumbHeight) * offset)
+    thumb:SetPoint("TOPRIGHT", list, "TOPRIGHT", x, -(listHeight - thumbHeight) * offset)
     thumb:SetSize(px * 3, thumbHeight)
 end
 
@@ -2050,8 +2091,8 @@ local function BuildSettings()
             OT:Render()
         end
     end
-    -- dropdowns, sliders, switches (ns.OrderEditSettings)
-    return ns.OrderEditSettings({
+    -- one Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua)
+    return ns.EditSection("Frame", {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = C.WIDTH, minValue = 180, maxValue = 500, valueStep = 5,
           get = get("width", C.WIDTH), set = set("width") },
         { name = L["Max Height"], kind = LEM.SettingType.Slider, default = C.MAX_HEIGHT, minValue = 150, maxValue = 1000, valueStep = 10,
@@ -2165,6 +2206,47 @@ local function CreateBoxButton(parent, name, size)
     return b
 end
 
+-- The header band (title, zone switch, minimize button) and the divider under it, on a window: the
+-- tracker's, or the settings preview's sample. No clicks or tooltips here.
+function Build.Header(window)
+    local head = CreateFrame("Frame", nil, window)
+    head:SetPoint("TOPLEFT", C.HEADER_INSET, -3)
+    head:SetPoint("TOPRIGHT", -C.HEADER_INSET, -3)
+    head:SetHeight(C.HEADER - 3)
+    head.title = head:CreateFontString(nil, "OVERLAY")
+    head.minimize = CreateBoxButton(head, nil, C.BOX)
+    local zone = CreateFrame("Button", nil, head)
+    zone.text = zone:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    zone.text:SetPoint("CENTER")
+    head.zone = zone
+
+    local line = window:CreateTexture(nil, "ARTWORK")
+    line:SetTexture("Interface\\Common\\UI-TooltipDivider-Transparent")
+    line:SetPoint("TOPLEFT", window, "TOPLEFT", C.HEADER_INSET, -C.HEADER + 2)
+    line:SetPoint("TOPRIGHT", window, "TOPRIGHT", -C.HEADER_INSET, -C.HEADER + 2)
+    line:SetHeight(8)
+    return head, line
+end
+
+function Build.StyleHeader(head, db)
+    ApplyFont(head.title, db.headerFont, 13)
+    SetColor(head.title, C.TITLE)
+    head.zone.text:SetTextColor(C.DIM[1], C.DIM[2], C.DIM[3])
+end
+
+-- the scroll bar: a faint track down the list's right margin and a bronze thumb on it
+function Build.ScrollBar(window)
+    window.ScrollTrack = window:CreateTexture(nil, "ARTWORK")
+    window.ScrollTrack:SetColorTexture(C.BOX_COLOR[1], C.BOX_COLOR[2], C.BOX_COLOR[3], 0.25)
+    window.ScrollThumb = window:CreateTexture(nil, "OVERLAY")
+    window.ScrollThumb:SetColorTexture(C.BOX_COLOR[1], C.BOX_COLOR[2], C.BOX_COLOR[3], 1)
+    for _, t in ipairs({ window.ScrollTrack, window.ScrollThumb }) do
+        t:SetSnapToPixelGrid(false)
+        t:SetTexelSnappingBias(0)
+        t:Hide()
+    end
+end
+
 local function CreateFrames()
     holder = CreateFrame("Frame", "FlareUI_ObjectiveTracker", UIParent, "BackdropTemplate")
     holder:SetFrameStrata("LOW")
@@ -2172,14 +2254,9 @@ local function CreateFrames()
     holder:SetSize(C.WIDTH, C.HEADER)
     holder:EnableMouse(true)
 
-    header = CreateFrame("Frame", nil, holder)
-    header:SetPoint("TOPLEFT", C.HEADER_INSET, -3)
-    header:SetPoint("TOPRIGHT", -C.HEADER_INSET, -3)
-    header:SetHeight(C.HEADER - 3)
+    header, divider = Build.Header(holder)
 
-    header.title = header:CreateFontString(nil, "OVERLAY")
-
-    local minimize = CreateBoxButton(header, nil, C.BOX)
+    local minimize = header.minimize
     minimize:SetScript("OnClick", function() OT:ToggleMinimized() end)
     minimize:SetScript("OnEnter", function(self)
         ns.OwnGameTooltip(self, "ANCHOR_LEFT")
@@ -2187,11 +2264,8 @@ local function CreateFrames()
         GameTooltip:Show()
     end)
     minimize:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    header.minimize = minimize
 
-    local zone = CreateFrame("Button", nil, header)
-    zone.text = zone:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    zone.text:SetPoint("CENTER")
+    local zone = header.zone
     zone:SetScript("OnClick", function(self)
         local db = GetDb()
         db.zoneOnly = not db.zoneOnly
@@ -2209,13 +2283,6 @@ local function CreateFrames()
         self.text:SetTextColor(C.DIM[1], C.DIM[2], C.DIM[3])
         GameTooltip:Hide()
     end)
-    header.zone = zone
-
-    divider = holder:CreateTexture(nil, "ARTWORK")
-    divider:SetTexture("Interface\\Common\\UI-TooltipDivider-Transparent")
-    divider:SetPoint("TOPLEFT", holder, "TOPLEFT", C.HEADER_INSET, -C.HEADER + 2)
-    divider:SetPoint("TOPRIGHT", holder, "TOPRIGHT", -C.HEADER_INSET, -C.HEADER + 2)
-    divider:SetHeight(8)
 
     scroll = CreateFrame("ScrollFrame", nil, holder)
     scroll:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -C.HEADER - C.LIST_TOP)
@@ -2238,16 +2305,7 @@ local function CreateFrames()
         OT:UpdateItemButtons()
     end)
 
-    -- the scroll bar: a faint track down the list's right margin and a bronze thumb on it
-    holder.ScrollTrack = holder:CreateTexture(nil, "ARTWORK")
-    holder.ScrollTrack:SetColorTexture(C.BOX_COLOR[1], C.BOX_COLOR[2], C.BOX_COLOR[3], 0.25)
-    holder.ScrollThumb = holder:CreateTexture(nil, "OVERLAY")
-    holder.ScrollThumb:SetColorTexture(C.BOX_COLOR[1], C.BOX_COLOR[2], C.BOX_COLOR[3], 1)
-    for _, t in ipairs({ holder.ScrollTrack, holder.ScrollThumb }) do
-        t:SetSnapToPixelGrid(false)
-        t:SetTexelSnappingBias(0)
-        t:Hide()
-    end
+    Build.ScrollBar(holder)
 
     -- the lone "+" of Minimize Style "button"
     miniButton = CreateBoxButton(UIParent, "FlareUI_ObjectiveTrackerButton", C.LONE)
@@ -2267,10 +2325,8 @@ end
 function OT:ApplyLook()
     if not holder then return end
     local db = GetDb()
-    ApplyBackdrop()
-    ApplyFont(header.title, db.headerFont, 13)
-    SetColor(header.title, C.TITLE)
-    header.zone.text:SetTextColor(C.DIM[1], C.DIM[2], C.DIM[3])
+    ApplyBackdrop(holder)
+    Build.StyleHeader(header, db)
 end
 
 function OT:Refresh()
@@ -2374,4 +2430,223 @@ end
 -- Key Bindings > AddOns > FlareUI > Minimize / Expand Quest Tracker
 function FlareUI_ToggleObjectiveTracker()
     if OT.initialized then OT:ToggleMinimized() end
+end
+
+--------------------------------------------------
+-- 14. SETTINGS PREVIEW SAMPLE
+-- The tracker as Render draws it, on its own frames, from the same builders: header, lines, title
+-- buttons, timer bar, scroll bar, backdrop. Kinds: "full" (default) and "header" (as minimized,
+-- with the current Minimize Style). Sample quests only; no clicks, tooltips or item buttons.
+--------------------------------------------------
+do
+    local SAMPLE_COUNT = 6
+    -- built on first draw, so the strings come from a loaded locale
+    local quests
+    local function SampleQuests()
+        if quests then return quests end
+        quests = {
+            { zone = L["Elwynn Forest"] },
+            { level = 6, title = L["Hogger's Tax Return"], timer = 285, timerTotal = 300, objectives = {
+                { text = L["2/5 Questionable deductions explained"] },
+                { text = L["0/1 Receipt for 'Emergency Gnoll Snacks'"] } } },
+            { level = 8, title = L["Murloc Diction Lessons"], focus = true, objectives = {
+                { text = L["4/8 Murlocs saying 'Hello' clearly"] },
+                { text = L["0/1 Agreed spelling of 'Mrglglgl'"] } } },
+            { level = 5, title = L["Mankrik's Wife, Again"], done = true, ready = L["Return to Mankrik. Gently."], objectives = {
+                { text = L["1/1 Wife found (she was in Goldshire)"], finished = true } } },
+            { zone = L["Westfall"] },
+            { level = 12, tags = "+ g5", title = L["Leeroy's Time Management Seminar"], objectives = {
+                { text = L["1/1 Name shouted"], finished = true },
+                { text = L["0/1 Excuses accepted by Garrosh"] },
+                { text = L["0/1 Plan with 32.33% odds rehearsed"] } } },
+            { level = 14, title = L["Gnomeregan Is Fine, Actually"], objectives = {
+                { text = L["3/8 Leper gnomes reassured"] },
+                { text = L["0/1 Glow described as 'cosy'"] } } },
+            { level = 11, tags = " d", title = L["The Lich King's Missing Left Boot"], objectives = {
+                { text = L["6/10 Kobold candles confiscated"] },
+                { text = L["0/1 Left boot found in the Deadmines"] } } },
+        }
+        return quests
+    end
+
+    function OT.CreateSample(parent, kind)
+        local f = CreateFrame("Frame", nil, parent)
+        f.fuiSample = true
+        f:EnableMouse(false)
+        f.kind = kind == "header" and "header" or "full"
+        local window = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        window:SetPoint("TOPLEFT")
+        window:EnableMouse(false)
+        f.Window = window
+        f.Header, f.Divider = Build.Header(window)
+        f.Header.minimize:EnableMouse(false)
+        f.Header.zone:EnableMouse(false)
+        -- the list, cut at Max Height as the real one's scroll frame cuts it
+        local list = CreateFrame("Frame", nil, window)
+        list:SetClipsChildren(true)
+        list:SetPoint("TOPLEFT", window, "TOPLEFT", 0, -C.HEADER - C.LIST_TOP)
+        list:SetPoint("RIGHT", window, "RIGHT", 0, 0)
+        f.List = list
+        f.Content = CreateFrame("Frame", nil, list)
+        f.Content:SetPoint("TOPLEFT")
+        Build.ScrollBar(window)
+        f.Lines, f.Bars = {}, {}
+        -- the lone "+" of Minimize Style "button"
+        f.Lone = CreateBoxButton(f, nil, C.LONE)
+        f.Lone:SetPlus(true)
+        f.Lone:EnableMouse(false)
+        f.Lone:SetPoint("TOPLEFT")
+        f.Lone:Hide()
+        return f
+    end
+
+    -- the title's focus and voice buttons, as AddTitleButtons places them (previews show the voice
+    -- button on every quest)
+    local function TitleButtons(line, db, focused)
+        local x = -3
+        if line.focusButton then line.focusButton:Hide() end
+        if line.playButton then line.playButton:Hide() end
+        if db.focusButtons then
+            local b = line.focusButton or Build.LineButton(line)
+            line.focusButton = b
+            b:EnableMouse(false)
+            b.icon:SetTexture(focused and "Interface\\Common\\Indicator-Yellow" or "Interface\\Common\\Indicator-Gray")
+            b:ClearAllPoints()
+            b:SetPoint("TOPRIGHT", line, "TOPLEFT", x, 0)
+            b:Show()
+            x = x - C.BUTTON_ROOM
+        end
+        if db.playButtons then
+            local b = line.playButton or Build.LineButton(line)
+            line.playButton = b
+            b:EnableMouse(false)
+            PaintPlayButton(b)
+            b:ClearAllPoints()
+            b:SetPoint("TOPRIGHT", line, "TOPLEFT", x, 0)
+            b:Show()
+        end
+    end
+
+    local function DrawList(f, db, width)
+        local n, y, lastBottom, bars = 0, 0, 0, 0
+        local inner = width - C.PAD * 2
+        local wrap = db.wrapText ~= false
+        local fonts = { header = db.headerFont, title = db.titleFont, objective = db.objectiveFont }
+        local questGap = db.questGap or C.QUEST_GAP
+        local titleRoom = (db.focusButtons and C.BUTTON_ROOM or 0) + (db.playButtons and C.BUTTON_ROOM or 0)
+        local objectiveIndent = C.INDENT + titleRoom
+
+        local function AddLine(text, kind, color, indent)
+            n = n + 1
+            local line = f.Lines[n]
+            if not line then
+                line = Build.Line(f.Content)
+                line:EnableMouse(false)
+                f.Lines[n] = line
+            end
+            local h = Build.LineLook(line, text, kind, fonts[kind], color, inner - (indent or 0), wrap)
+            line:ClearAllPoints()
+            line:SetPoint("TOPLEFT", f.Content, "TOPLEFT", C.PAD + (indent or 0), y)
+            if line.focusButton then line.focusButton:Hide() end
+            if line.playButton then line.playButton:Hide() end
+            line:Show()
+            lastBottom = y - h
+            y = y - h - C.LINE_GAP
+            return line
+        end
+
+        for _, s in ipairs(SampleQuests()) do
+            if s.zone then
+                if db.zoneHeaders then
+                    if n > 0 then y = y - C.GROUP_GAP end
+                    AddLine(s.zone, "header", C.ZONE)
+                    y = y - C.ZONE_GAP
+                end
+            else
+                -- Auto-Collapse Completed folds the finished one
+                local collapsed = s.done and db.collapseCompleted
+                local line = AddLine(Build.TitleText(db, s.level, s.tags or "", s.title, collapsed), "title",
+                    Build.TitleColor(db, s.level, nil, s.focus, s.done), titleRoom)
+                TitleButtons(line, db, s.focus)
+                if s.timer then
+                    local color = C.TIMER[#C.TIMER]
+                    local timer = AddLine(TimerText(s.timer), "objective", color, objectiveIndent)
+                    bars = bars + 1
+                    local bar = f.Bars[bars] or Build.TimerBar(f.Content)
+                    f.Bars[bars] = bar
+                    bar:ClearAllPoints()
+                    bar:SetPoint("TOPLEFT", timer, "BOTTOMLEFT", 0, -1)
+                    bar:SetSize(math_max(20, inner - objectiveIndent - 4), 3)
+                    bar:SetValue(s.timer / s.timerTotal)
+                    bar:SetStatusBarColor(color[1], color[2], color[3], 0.9)
+                    bar:Show()
+                    lastBottom = lastBottom - 5
+                    y = y - 5
+                end
+                if not collapsed then
+                    if s.done then
+                        AddLine(s.ready, "objective", C.TITLE_DONE, objectiveIndent)
+                    else
+                        for _, o in ipairs(s.objectives) do
+                            if not (db.hideFinished and o.finished) then
+                                AddLine(o.text, "objective", o.finished and C.OBJECTIVE_DONE or C.OBJECTIVE, objectiveIndent)
+                            end
+                        end
+                    end
+                end
+                y = y - questGap
+            end
+        end
+        for i = n + 1, #f.Lines do f.Lines[i]:Hide() end
+        for i = bars + 1, #f.Bars do f.Bars[i]:Hide() end
+        return math_max(1, -lastBottom)
+    end
+
+    function OT.DrawSample(f)
+        local db = GetDb() or {}
+        local width = db.width or C.WIDTH
+        local window, head = f.Window, f.Header
+        local minimized = f.kind == "header"
+        if minimized and db.minimizeStyle == "button" then
+            window:Hide()
+            f.Lone:Show()
+            local w, h = f.Lone:GetSize()
+            f:SetSize(w, h)
+            f:Show()
+            return w, h
+        end
+        f.Lone:Hide()
+        ApplyBackdrop(window)
+        Build.StyleHeader(head, db)
+        local max = C_QuestLog.GetMaxNumQuestsCanAccept and C_QuestLog.GetMaxNumQuestsCanAccept() or nil
+        Build.LayoutHeader(head, db, SAMPLE_COUNT, max, minimized)
+        window:SetWidth(width)
+        window:Show()
+        local track, thumb = window.ScrollTrack, window.ScrollThumb
+        local height
+        if minimized then
+            -- minimized, the header keeps the same 3 px below it as above it
+            f.List:Hide()
+            f.Divider:Hide()
+            track:Hide()
+            thumb:Hide()
+            height = C.HEADER + 3
+        else
+            local contentHeight = DrawList(f, db, width)
+            local listHeight = math_min(contentHeight, db.maxHeight or C.MAX_HEIGHT)
+            f.Content:SetSize(width, contentHeight)
+            f.List:SetHeight(math_max(1, listHeight))
+            f.List:Show()
+            f.Divider:Show()
+            local scrollable = contentHeight > listHeight + 1
+            track:SetShown(scrollable)
+            thumb:SetShown(scrollable)
+            if scrollable then Build.PlaceScrollBar(track, thumb, f.List, window, contentHeight, listHeight, 0) end
+            height = C.HEADER + C.LIST_TOP + listHeight + C.LIST_BOTTOM
+        end
+        window:SetHeight(height)
+        f:SetSize(width, height)
+        f:Show()
+        return width, height
+    end
 end

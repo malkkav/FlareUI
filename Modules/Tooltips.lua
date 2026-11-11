@@ -58,6 +58,7 @@ local CAT_WORLD_UNIT   = "worldUnits"
 local CAT_WORLD_OBJECT = "worldObjects"
 local CAT_FRAME_UNIT   = "frameUnits"
 local CAT_ACTION       = "actionBars"
+local CAT_AURA         = "auras"
 
 --------------------------------------------------
 -- 4. SAFETY
@@ -123,15 +124,16 @@ local function GetClassColor(unit)
     return { color.r, color.g, color.b }
 end
 
-local function GetUnitBorderColor(unit)
+-- classColor / reactionColor: a settings preview's made-up unit (the real tooltip passes the unit only)
+local function GetUnitBorderColor(unit, classColor, reactionColor)
     local db = GetDb()
     if not db then return nil end
     if db.borderByClass then
-        local class = GetClassColor(unit)
+        local class = classColor or GetClassColor(unit)
         if class then return class end
     end
     if db.borderByReaction then
-        return GetReactionColor(unit)
+        return reactionColor or GetReactionColor(unit)
     end
     return nil
 end
@@ -513,6 +515,7 @@ local function OnTooltipSetSpell(tip, data)
 end
 
 local function OnTooltipSetAura(tip, data)
+    if tip == GameTooltip and not tip:IsForbidden() and HideIfNeeded(tip, CAT_AURA) then return end
     if not SafeToTouch(tip) then return end
     ApplyColors(tip, nil)
     AddIdLine(tip, "showSpellID", L["Spell ID"], data)
@@ -549,18 +552,21 @@ end
 --------------------------------------------------
 -- 11. PUBLIC
 --------------------------------------------------
+-- One font setting on a font object (or a settings preview's font string)
+function TIP.ApplyFontTo(fontObject, fontDb, sizeOffset)
+    if not (fontObject and fontDb) then return end
+    local flags = fontDb.flags or "NONE"
+    if flags == "NONE" then flags = "" end
+    -- member by member: other alphabets keep a face that has their letters
+    ns.SetFontObjectFace(fontObject, ns.GetFontPath(fontDb.face or "Friz Quadrata TT"), (fontDb.size or 12) + (sizeOffset or 0), flags)
+    ns.ApplyShadow(fontObject, fontDb)
+end
+
 -- Blizzard's tooltip font objects; small lines two points under the content size
 local function ApplyFonts()
     local db = GetDb()
     if not db then return end
-    local function Apply(fontObject, fontDb, sizeOffset)
-        if not (fontObject and fontDb) then return end
-        local flags = fontDb.flags or "NONE"
-        if flags == "NONE" then flags = "" end
-        -- member by member: other alphabets keep a face that has their letters
-        ns.SetFontObjectFace(fontObject, ns.GetFontPath(fontDb.face or "Friz Quadrata TT"), (fontDb.size or 12) + (sizeOffset or 0), flags)
-        ns.ApplyShadow(fontObject, fontDb)
-    end
+    local Apply = TIP.ApplyFontTo
     Apply(_G.GameTooltipHeaderText, db.titleFont)
     Apply(_G.GameTooltipText, db.contentFont)
     Apply(_G.GameTooltipTextSmall, db.contentFont, -2)
@@ -646,4 +652,220 @@ function TIP:Init()
     ApplyCompare()
     ApplyFonts()
     ApplyScaleToAll()
+end
+
+--------------------------------------------------
+-- 12. SETTINGS PREVIEW SAMPLE
+-- A made-up tooltip in the module's own look (border, background, colours, fonts). It is a plain
+-- frame with the tooltip's NineSlice: a GameTooltip needs an owner to lay out its lines.
+--------------------------------------------------
+do
+    local PAD, GAP, SPACING, WRAP = 10, 15, 2, 230
+    local SAMPLE_CLASS = "MAGE"
+
+    local function NewTip(parent)
+        local tip = CreateFrame("Frame", nil, parent, "TooltipBackdropTemplate")
+        tip.fuiSample = true
+        tip:EnableMouse(false)
+        tip:SetFrameLevel(parent:GetFrameLevel() + 1)
+        if NineSliceUtil and NineSliceUtil.GetLayout then
+            pcall(NineSliceUtil.ApplyLayout, tip.NineSlice, NineSliceUtil.GetLayout("TooltipDefaultLayout"))
+        end
+        tip.left, tip.right = {}, {}
+        -- the health bar as Blizzard's template has it: under the tooltip, its full width
+        local bar = CreateFrame("StatusBar", nil, tip)
+        bar:SetHeight(8)
+        bar:SetPoint("TOPLEFT", tip, "BOTTOMLEFT", 2, -1)
+        bar:SetPoint("TOPRIGHT", tip, "BOTTOMRIGHT", -2, -1)
+        bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-TargetingFrame-BarFill")
+        bar:SetStatusBarColor(0, 1, 0)
+        bar:SetMinMaxValues(0, 1)
+        bar:SetValue(1)
+        bar:Hide()
+        tip.bar = bar
+        return tip
+    end
+
+    local function LineString(tip, side, i)
+        local fs = tip[side][i]
+        if not fs then
+            fs = tip:CreateFontString(nil, "ARTWORK", "GameTooltipText")
+            tip[side][i] = fs
+        end
+        return fs
+    end
+
+    -- lines: { text, r, g, b, title = true, wrap = true, right = text, rr, rg, rb }
+    local function Fill(tip, lines, showBar)
+        local db = GetDb() or {}
+        local width, height = 0, PAD
+        for i, line in ipairs(lines) do
+            local left = LineString(tip, "left", i)
+            left:SetFontObject(line.title and "GameTooltipHeaderText" or "GameTooltipText")
+            TIP.ApplyFontTo(left, line.title and db.titleFont or db.contentFont)
+            left:SetWidth(line.wrap and WRAP or 0)
+            left:SetWordWrap(line.wrap and true or false)
+            left:SetJustifyH("LEFT")
+            left:SetText(line[1])
+            left:SetTextColor(line[2] or 1, line[3] or 1, line[4] or 1)
+            left:ClearAllPoints()
+            left:SetPoint("TOPLEFT", tip, "TOPLEFT", PAD, -height)
+            left:Show()
+            local w = left:GetStringWidth()
+            if line.wrap and w > WRAP then w = WRAP end
+            local h = left:GetStringHeight()
+            local right = LineString(tip, "right", i)
+            if line.right then
+                right:SetFontObject("GameTooltipText")
+                TIP.ApplyFontTo(right, db.contentFont)
+                right:SetText(line.right)
+                right:SetTextColor(line.rr or 1, line.rg or 1, line.rb or 1)
+                right:ClearAllPoints()
+                right:SetPoint("TOPRIGHT", tip, "TOPRIGHT", -PAD, -height)
+                right:Show()
+                w = w + GAP + right:GetStringWidth()
+                h = math.max(h, right:GetStringHeight())
+            else
+                right:Hide()
+            end
+            if w > width then width = w end
+            height = height + h + SPACING
+        end
+        for i = #lines + 1, #tip.left do tip.left[i]:Hide() end
+        for i = #lines + 1, #tip.right do tip.right[i]:Hide() end
+        width = math.ceil(width + PAD * 2)
+        height = math.ceil(height - SPACING + PAD)
+        tip:SetSize(width, height)
+        tip.bar:SetShown(showBar and true or false)
+        tip:Show()
+        return width, height + (showBar and 9 or 0)
+    end
+
+    local function ClassColorOf(classFile)
+        local c = C_ClassColor and C_ClassColor.GetClassColor(classFile)
+        return c and { c.r, c.g, c.b } or { 1, 1, 1 }
+    end
+
+    local function RaceName(raceID, fallback)
+        local info = C_CreatureInfo and C_CreatureInfo.GetRaceInfo and C_CreatureInfo.GetRaceInfo(raceID)
+        return info and info.raceName or fallback
+    end
+
+    -- a friendly player, as the unit post-call leaves the tooltip
+    local function UnitLines(db)
+        local class = ClassColorOf(SAMPLE_CLASS)
+        local className = (_G.LOCALIZED_CLASS_NAMES_MALE and _G.LOCALIZED_CLASS_NAMES_MALE[SAMPLE_CLASS]) or "Mage"
+        local horde = Readable(UnitFactionGroup("player")) == "Horde"
+        local name = "Elaria"
+        if db.nameColor == "class" then name = ColorToHex(class[1], class[2], class[3]) .. name .. "|r" end
+        local lines = { { name, title = true } }
+        if db.showGuild ~= false then
+            local guild = "<Dawnwatch>"
+            if db.showGuildRank then guild = guild .. " (" .. (_G.GUILD_RANK1_DESC or "Officer") .. ")" end
+            lines[#lines + 1] = { guild }
+        end
+        -- "Level N" in the difficulty colour, the rest white with the class name (ColorLevelLine)
+        local level = 60
+        local head = (_G.LEVEL or "Level") .. " " .. level
+        local difficulty = LevelColor(level)
+        local text = difficulty and (ColorToHex(difficulty.r, difficulty.g, difficulty.b) .. head .. "|r") or head
+        local race = horde and RaceName(5, "Undead") or RaceName(1, "Human")
+        lines[#lines + 1] = { text .. "|cffffffff " .. race .. " " .. className .. "|r" }
+        if not db.hideFaction then
+            local f = FACTION_LINE_COLORS[horde and 1 or 2]
+            lines[#lines + 1] = { f.hex .. (_G[f.word] or (horde and "Horde" or "Alliance")) .. "|r" }
+        end
+        if db.showTarget then
+            lines[#lines + 1] = { (_G.TARGET or "Target") .. ": |cffff4040" .. (_G.YOU or "You") .. "|r" }
+        end
+        return lines, class
+    end
+
+    local function Format(pattern, fallback, ...)
+        if type(pattern) ~= "string" then return fallback end
+        local ok, text = pcall(string.format, pattern, ...)
+        return ok and text or fallback
+    end
+
+    -- an epic item (equipped: the rare one it is compared with)
+    local function ItemLines(db, equipped)
+        local id = equipped and 16808 or 16914
+        local r, g, b = C_Item.GetItemQualityColor(equipped and 3 or 4)
+        r, g, b = r or 1, g or 1, b or 1
+        local name = Readable((C_Item.GetItemInfo(id)))
+        if type(name) ~= "string" then name = equipped and "Felheart Horns" or "Netherwind Crown" end
+        local lines = {}
+        if equipped then lines[1] = { _G.CURRENTLY_EQUIPPED or "Currently Equipped", 0.5, 0.5, 0.5 } end
+        lines[#lines + 1] = { name, r, g, b, title = not equipped }
+        local cloth = C_Item.GetItemSubClassInfo and C_Item.GetItemSubClassInfo(4, 1)
+        local armor = equipped and 81 or 87
+        lines[#lines + 1] = { _G.ITEM_BIND_ON_PICKUP or "Binds when picked up" }
+        lines[#lines + 1] = { _G.INVTYPE_HEAD or "Head", right = type(cloth) == "string" and cloth or "Cloth" }
+        lines[#lines + 1] = { Format(_G.ARMOR_TEMPLATE, armor .. " Armor", armor) }
+        lines[#lines + 1] = { "+" .. (equipped and 20 or 16) .. " " .. (_G.SPELL_STAT3_NAME or "Stamina") }
+        lines[#lines + 1] = { "+" .. (equipped and 10 or 16) .. " " .. (_G.SPELL_STAT4_NAME or "Intellect") }
+        lines[#lines + 1] = { Format(_G.DURABILITY_TEMPLATE, "Durability 70 / 70", 70, 70) }
+        lines[#lines + 1] = { Format(_G.ITEM_MIN_LEVEL, "Requires Level 60", 60) }
+        -- Simplified Item Stats (ItemStats.lua) writes the short form
+        local power = equipped and 15 or 26
+        if db.shortItemStats then
+            lines[#lines + 1] = { "+" .. power .. " " .. (_G.ITEM_MOD_SPELL_POWER_SHORT or "Spell Power"), 0, 1, 0 }
+        else
+            lines[#lines + 1] = { Format(_G.TOOLTIP_ITEM_STAT_SPELL_POWER_INCREASE,
+                "Equip: Increases damage and healing done by magical spells and effects by up to " .. power .. ".", power),
+                0, 1, 0, wrap = true }
+        end
+        if db.showItemID then
+            lines[#lines + 1] = { " ", right = L["Item ID"] .. " " .. id, rr = 0.5, rg = 0.5, rb = 0.5 }
+        end
+        local border
+        if db.borderByQuality then border = { Mute(r, g, b) } end
+        return lines, border
+    end
+
+    local function DrawTip(tip, kind, equipped)
+        local db = GetDb() or {}
+        local w, h
+        if kind == "unit" then
+            local lines, class = UnitLines(db)
+            w, h = Fill(tip, lines, not db.hideHealthBar)
+            ApplyColors(tip, GetUnitBorderColor(nil, class, REACTION_COLORS[5]))
+        else
+            local lines, border = ItemLines(db, equipped)
+            w, h = Fill(tip, lines, false)
+            ApplyColors(tip, border)
+        end
+        return w, h
+    end
+
+    -- kind: "unit" (default), "item" or "compare" (the item beside the one it is compared with)
+    function TIP.CreateSample(parent, kind)
+        kind = kind or "unit"
+        if kind == "compare" then
+            local holder = CreateFrame("Frame", nil, parent)
+            holder.fuiSample, holder.fuiKind = true, kind
+            holder:EnableMouse(false)
+            holder:SetFrameLevel(parent:GetFrameLevel() + 1)
+            holder.item, holder.equipped = NewTip(holder), NewTip(holder)
+            return holder
+        end
+        local tip = NewTip(parent)
+        tip.fuiKind = kind
+        return tip
+    end
+
+    function TIP.DrawSample(f, kind)
+        kind = kind or f.fuiKind or "unit"
+        if kind ~= "compare" then return DrawTip(f, kind) end
+        local w1, h1 = DrawTip(f.item, "item")
+        local w2, h2 = DrawTip(f.equipped, "item", true)
+        f.item:ClearAllPoints()
+        f.item:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+        f.equipped:ClearAllPoints()
+        f.equipped:SetPoint("TOPLEFT", f.item, "TOPRIGHT", 4, 0)
+        local w, h = w1 + 4 + w2, math.max(h1, h2)
+        f:SetSize(w, h)
+        f:Show()
+        return w, h
+    end
 end
