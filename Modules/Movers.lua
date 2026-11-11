@@ -29,7 +29,9 @@ local LEM = LibStub("FlareEditMode")
 local ROLL_W, ROLL_H, ROLL_BOTTOM = 277, 67, 16.5
 local TOAST_W, TOAST_H, TOAST_BOTTOM = 312, 89, 20
 -- the battleground scores: Blizzard's container sits at TOP 0,-15 and grows down from its top
-local OBJ_W, OBJ_H = 240, 40
+local OBJ_W, OBJ_H = 180, 36   -- (the sample's size: only the scores, 11-11)
+-- FlareUI Thick round the scores (the sample and the real ones), PAD out from what they show
+local OBJ_BORDER, OBJ_EDGE, OBJ_PAD = "FlareUI Thick", 16, 6
 
 local DEFAULTS = {
     loot  = { point = "BOTTOM", x = 0, y = 173 },   -- between the player cast bar and the action bars
@@ -240,23 +242,62 @@ local function PlaceObjectives()
     placingObjectives = false
 end
 
--- a faction icon and its score, twice
+-- The dark plate in FlareUI Thick (11-11 Marcus): the sample's, and the one behind the real scores
+local function ObjectivesBox(frame)
+    local file = LibStub("LibSharedMedia-3.0"):Fetch("border", OBJ_BORDER)
+    local inset = 4
+    frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = file, edgeSize = ns.BorderEdgeSize(file, OBJ_EDGE),
+        insets = { left = inset, right = inset, top = inset, bottom = inset } })
+    frame:SetBackdropColor(0, 0, 0, 0.6)
+    local c = ns.BORDER_COLOR
+    frame:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
+end
+
+-- a faction emblem and its score, twice, each pair centred in its half, icon and text on one line
+-- (the old target-frame emblems sat off-centre in their art: the PvP currency ones are square)
 local function CreateObjectivesPreview(holder)
     local p = holder.preview
-    local bg = p:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0, 0, 0, 0.35)
-    local function Side(icon, score, x)
-        local t = p:CreateTexture(nil, "ARTWORK")
-        t:SetSize(36, 36)
-        t:SetPoint("CENTER", x - 14, -2)
+    local box = CreateFrame("Frame", nil, p, "BackdropTemplate")
+    box:SetAllPoints()
+    ObjectivesBox(box)
+    local ICON, GAP = 22, 5
+    local function Side(icon, score, half)
+        local t = box:CreateTexture(nil, "ARTWORK")
+        t:SetSize(ICON, ICON)
         t:SetTexture(icon)
-        local n = p:CreateFontString(nil, "ARTWORK", "GameFontHighlightLarge")
-        n:SetPoint("LEFT", t, "RIGHT", -6, 2)
+        local n = box:CreateFontString(nil, "ARTWORK", "GameFontHighlightLarge")
         n:SetText(score)
+        local width = ICON + GAP + (n:GetUnboundedStringWidth() or 30)
+        t:SetPoint("LEFT", box, "CENTER", half * OBJ_W / 4 - width / 2, 0)
+        n:SetPoint("LEFT", t, "RIGHT", GAP, 0)
     end
-    Side("Interface\\TargetingFrame\\UI-PVP-Alliance", "2 / 3", -50)
-    Side("Interface\\TargetingFrame\\UI-PVP-Horde", "1 / 3", 50)
+    Side("Interface\\PVPFrame\\PVP-Currency-Alliance", "2 / 3", -1)
+    Side("Interface\\PVPFrame\\PVP-Currency-Horde", "1 / 3", 1)
+end
+
+-- the real scores' plate: behind Blizzard's container, as large as what it shows, only while it shows
+-- something (a frame of its own: the container's widgets are Blizzard's)
+local objectivesBox
+local function UpdateObjectivesBox()
+    local container = _G.UIWidgetTopCenterContainerFrame
+    if not (container and objectivesBox) then return end
+    local w, h = container:GetSize()
+    local showing = container:IsVisible() and (container.numWidgetsShowing or 1) > 0 and (w or 0) > 2 and (h or 0) > 2
+    objectivesBox:SetShown(showing and true or false)
+end
+
+local function CreateObjectivesBox(container)
+    objectivesBox = CreateFrame("Frame", "FlareUI_BattlegroundObjectivesBox", UIParent, "BackdropTemplate")
+    objectivesBox:SetPoint("TOPLEFT", container, "TOPLEFT", -OBJ_PAD, OBJ_PAD)
+    objectivesBox:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", OBJ_PAD, -OBJ_PAD)
+    ObjectivesBox(objectivesBox)
+    ns.CopyStrata(objectivesBox, container)
+    objectivesBox:SetFrameLevel(math.max(0, container:GetFrameLevel() - 1))
+    objectivesBox:EnableMouse(false)
+    container:HookScript("OnShow", UpdateObjectivesBox)
+    container:HookScript("OnHide", UpdateObjectivesBox)
+    container:HookScript("OnSizeChanged", UpdateObjectivesBox)
+    UpdateObjectivesBox()
 end
 
 --------------------------------------------------
@@ -293,6 +334,7 @@ function MOV:Init()
             "FlareUI Battleground Objectives", OBJ_W, OBJ_H))
         hooksecurefunc(objectives, "SetPoint", PlaceObjectives)
         PlaceObjectives()
+        CreateObjectivesBox(objectives)
         -- a placement held back by combat
         local regen = CreateFrame("Frame")
         regen:RegisterEvent("PLAYER_REGEN_ENABLED")
