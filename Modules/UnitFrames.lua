@@ -1202,10 +1202,18 @@ end
 -- short ("-0.5"), kept from the cast's first end time.
 UF.LAG_COLOR, UF.DELAY_COLOR = { 1, 0.15, 0.1, 0.45 }, { 1, 0.3, 0.25 }
 -- Your own cast greys out while the target is out of the spell's range (a spell that can't go on
--- the target, a heal on an enemy, answers nil and keeps its colour)
+-- the target, a heal on an enemy, answers nil and keeps its colour). Only with Range Check on (off by
+-- default, 11-11: players took the grey for a bug): the standalone bar's in playerCastbar, the
+-- player frame's bar with the frame's settings.
 UF.CAST_OUT_OF_RANGE = { 0.5, 0.5, 0.5 }
+function UF.CastRangeOn(cast)
+    local db = GetDb()
+    local pc
+    if cast.standalone then pc = db and db.playerCastbar else pc = GetUnitDb("player") end
+    return pc and pc.castRange or false
+end
 function UF.CastRangeCheck(cast)
-    local id = cast.rangeSpell
+    local id = UF.CastRangeOn(cast) and cast.rangeSpell
     local r = id and UnitExists("target") and C_Spell.IsSpellInRange(id, "target")
     local out = (canaccessvalue(r) and r == false) or false
     if out == cast.outOfRange then return end
@@ -4374,6 +4382,8 @@ local function BuildPlayerCastSettings()
           desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
         { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueMark", false), set = set("queueMark"),
           desc = L["A mark near the end of the bar: press your next spell after it and it goes off as soon as this one ends."] },
+        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = false, get = get("castRange", false), set = set("castRange"),
+          desc = L["The bar turns grey while your target is out of the spell's range."] },
     })
     -- last: Visibility and Faded Opacity (Visibility.lua; Always by default)
     if ns.Visibility and ns.Visibility.PlayerCastSettings then
@@ -4638,6 +4648,8 @@ local function BuildSettings(unit)
                   desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
                 { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = flag("queueMark", false), set = set("queueMark"),
                   desc = L["A mark near the end of the bar: press your next spell after it and it goes off as soon as this one ends."] },
+                { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = false, get = flag("castRange", false), set = set("castRange"),
+                  desc = L["The bar turns grey while your target is out of the spell's range."] },
             }
             for _, item in ipairs(extras) do
                 item.hidden = noCast

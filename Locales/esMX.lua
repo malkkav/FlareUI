@@ -1435,6 +1435,7 @@ L["That isn't a FlareUI profile string."] = "Eso no es un código de perfil de F
 L["that radial is full (%d buttons)."] = "ese menú radial está lleno (%d botones)."
 L["The art at each end of the main bar sits behind your action bars instead of over them."] = "El arte de cada extremo de la barra principal queda detrás de tus barras de acción en lugar de encima."
 L["The bar turns gold while Heroic Strike, Cleave, Maul or Raptor Strike waits for the next swing."] = "La barra se vuelve dorada mientras Golpe heroico, Rajar, Magullar o Golpe de raptor esperan al siguiente golpe."
+L["The bar turns grey while your target is out of the spell's range."] = "La barra se vuelve gris mientras tu objetivo está fuera del alcance del hechizo."
 L["The bar turns red while your health is under 30%."] = "La barra se vuelve roja mientras tu salud esté por debajo del 30%."
 L["The bar turns red while your target is out of reach of this attack. Off, it keeps its colour."] = "La barra se vuelve roja mientras tu objetivo está fuera del alcance de este ataque. Desactivado, mantiene su color."
 L["The bar's size."] = "El tamaño de la barra."

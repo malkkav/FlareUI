@@ -1278,6 +1278,7 @@ L["Thank You!"] = true
 L["That isn't a FlareUI profile string."] = true
 L["that radial is full (%d buttons)."] = true
 L["The bar turns gold while Heroic Strike, Cleave, Maul or Raptor Strike waits for the next swing."] = true
+L["The bar turns grey while your target is out of the spell's range."] = true
 L["The bar turns red while your health is under 30%."] = true
 L["The bar turns red while your target is out of reach of this attack. Off, it keeps its colour."] = true
 L["The bar's size."] = true

@@ -1433,6 +1433,7 @@ L["That isn't a FlareUI profile string."] = "Это не строка профи
 L["that radial is full (%d buttons)."] = "в круговом меню больше нет места (%d кнопок)."
 L["The art at each end of the main bar sits behind your action bars instead of over them."] = "Грифоны по краям основной панели отображаются за панелями команд."
 L["The bar turns gold while Heroic Strike, Cleave, Maul or Raptor Strike waits for the next swing."] = "Полоса становится золотистой, пока «Удар героя», «Рассекающий удар», «Трепка» или «Удар ящера» ожидает следующего взмаха."
+L["The bar turns grey while your target is out of the spell's range."] = "Полоса становится серой, пока цель вне дальности заклинания."
 L["The bar turns red while your health is under 30%."] = "Полоса становится красной, когда здоровье опускается ниже 30%."
 L["The bar turns red while your target is out of reach of this attack. Off, it keeps its colour."] = "Полоса краснеет, пока цель вне досягаемости этой атаки. Если выключено, цвет не меняется."
 L["The bar's size."] = "Размер полосы."
