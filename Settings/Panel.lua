@@ -1823,7 +1823,7 @@ local function ShowCustom(module, tab)
     local host = customHosts[id]
     if not host then
         host = CreateFrame("Frame", nil, page.root)
-        host:SetPoint("TOPLEFT", page.header, "BOTTOMLEFT", 0, -4)
+        host:SetPoint("TOPLEFT", page.header, "BOTTOMLEFT", 0, -14)
         host:SetPoint("BOTTOMRIGHT", page.root, "BOTTOMRIGHT", 0, 0)
         customHosts[id] = host
         tab.custom(host, preview.host)
@@ -1893,7 +1893,7 @@ function Panel:Refresh()
         page.searchTitle:Hide()
         page.empty:Hide()
         page.header:Show()
-        page.scroll:SetPoint("TOPLEFT", page.header, "BOTTOMLEFT", 0, -4)
+        page.scroll:SetPoint("TOPLEFT", page.header, "BOTTOMLEFT", 0, -10)
         local module = S.modules[current]
         if not module then return end
         -- leaving a page or tab takes its seen badges away
@@ -2671,7 +2671,7 @@ local function BuildWindow()
 
     -- scrolling rows
     local scroll = CreateFrame("ScrollFrame", nil, middle)
-    scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
+    scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -10)
     scroll:SetPoint("BOTTOMRIGHT", -14, 0)
     local content = CreateFrame("Frame", nil, scroll)
     content:SetSize(1, 1)

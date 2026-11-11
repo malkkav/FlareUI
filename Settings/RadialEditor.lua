@@ -890,14 +890,14 @@ local function Text(parent, font, text)
 end
 
 -- a section box behind the contents, as the settings pages' (11-11 Marcus): on the host's parent, under it
+local sectionBoxes = {}
 local function SectionBox(host)
     local box = CreateFrame("Frame", nil, host:GetParent(), "BackdropTemplate")
     ns.SettingsPanel.Box(box, 0.32)
     box:SetFrameLevel(math.max(0, host:GetFrameLevel() - 1))
-    -- it lives on the parent, so it follows the host (the Options tab hides the host)
-    box:SetShown(host:IsShown())
-    host:HookScript("OnShow", function() box:Show() end)
-    host:HookScript("OnHide", function() box:Hide() end)
+    -- it lives on the parent, so the editor shows and hides it with itself (BuildEmbedded)
+    box:Hide()
+    sectionBoxes[#sectionBoxes + 1] = box
     return box
 end
 
@@ -1206,12 +1206,12 @@ local function BuildLower(host, height, width)
     -- three boxes: the radial's form on top, the Catalog and the buttons below (11-11 Marcus)
     local formBox = SectionBox(host)
     formBox:SetPoint("TOPLEFT", host, "TOPLEFT", x - BOX_PAD, BOX_PAD)
-    formBox:SetPoint("BOTTOMRIGHT", host, "TOPLEFT", x + width + BOX_PAD, -(top - LINE_ABOVE + BOX_GAP))
+    formBox:SetPoint("BOTTOMRIGHT", host, "TOPLEFT", x + width + BOX_PAD, -(top - 10 - 2 * BOX_GAP))
     local catalogBox = SectionBox(host)
-    catalogBox:SetPoint("TOPLEFT", host, "TOPLEFT", x - BOX_PAD, -(top - LINE_ABOVE + 3 * BOX_GAP))
+    catalogBox:SetPoint("TOPLEFT", host, "TOPLEFT", x - BOX_PAD, -(top - 10))
     catalogBox:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", buttonsX - 8 - BOX_GAP, -BOX_PAD)
     local buttonsBox = SectionBox(host)
-    buttonsBox:SetPoint("TOPLEFT", host, "TOPLEFT", buttonsX - 8 + BOX_GAP, -(top - LINE_ABOVE + 3 * BOX_GAP))
+    buttonsBox:SetPoint("TOPLEFT", host, "TOPLEFT", buttonsX - 8 + BOX_GAP, -(top - 10))
     buttonsBox:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", x + width + BOX_PAD, -BOX_PAD)
     local buttonsTitle = Text(host, "GameFontNormal", L["Buttons"])
     buttonsTitle:SetJustifyH("CENTER")
@@ -1349,12 +1349,12 @@ local function BuildLower(host, height, width)
     local search = CreateFrame("EditBox", nil, host, "SearchBoxTemplate")
     -- level with the settings search in the left column
     search:SetSize(180, 22)
-    search:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", catX + gridW, -2)
+    search:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", catX + gridW, 4)
     search:HookScript("OnTextChanged", function() if host:IsShown() then RefreshBrowse() end end)
     host.search = search
 
     local hint = Text(host, "GameFontDisableSmall", L["Click or drag from Catalog to add. Drag reorders, right-click removes."])
-    hint:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", catX + 4, -2)
+    hint:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", catX + 4, 6)
     hint:SetWidth(gridW - 180 - 16)
     hint:SetJustifyV("BOTTOM")
     hint:SetSpacing(1)
@@ -1370,13 +1370,16 @@ local function BuildEmbedded(host, column)
     BuildLower(host, height, width)
 
     -- opening takes the Undo snapshot; leaving keeps the edits
+    for _, box in ipairs(sectionBoxes) do box:SetShown(host:IsShown()) end
     host:SetScript("OnShow", function()
         browseCache = {}
         host.column:Show()
+        for _, box in ipairs(sectionBoxes) do box:Show() end
         TakeSnapshot()
     end)
     host:SetScript("OnHide", function()
         host.column:Hide()
+        for _, box in ipairs(sectionBoxes) do box:Hide() end
         dirty, snapshot = false, nil
         if popup then popup:Hide() end
         if RM() then RM():HidePreview() end
