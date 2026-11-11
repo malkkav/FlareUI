@@ -293,47 +293,6 @@ function MM.CropHeaderArt(texture, owner)
     texture:SetPoint("BOTTOMRIGHT", owner, "BOTTOMRIGHT", -inset, inset)
 end
 
--- Square style (11-11 Marcus): retail's borderless header art, where the client has it: the plain
--- magnifier and the calendar page with today's date, each with its up / mouse-over / pressed art.
--- Blizzard's buttons and clicks stay; their own atlas, set again on each state change, is swapped
--- back for ours. A client without the art keeps Forever's.
-local RETAIL_ART = {
-    tracking = function(state) return "ui-hud-minimap-tracking-" .. state end,
-    calendar = function(state)
-        local day = C_DateAndTime and C_DateAndTime.GetCurrentCalendarTime and C_DateAndTime.GetCurrentCalendarTime()
-        return ("ui-hud-calendar-%d-%s"):format(day and day.monthDay or 1, state)
-    end,
-}
-function MM.RetailArt(kind, state)
-    local atlas = RETAIL_ART[kind](state or "up")
-    return C_Texture.GetAtlasInfo(atlas) and atlas or nil
-end
-
-local function UseRetailArt(button, kind)
-    if not (button and button.StateTexture and MM.RetailArt(kind)) then return end
-    local setting = false
-    local function Apply()
-        local state = (button.ftDown and "down") or (button:IsMouseOver() and "mouseover") or "up"
-        local atlas = MM.RetailArt(kind, state) or MM.RetailArt(kind)
-        setting = true
-        button.StateTexture:SetAtlas(atlas)
-        -- Blizzard's hover / press glow, in the new art's shape
-        if button.AddTexture then button.AddTexture:SetAtlas(MM.RetailArt(kind)) end
-        setting = false
-    end
-    hooksecurefunc(button.StateTexture, "SetAtlas", function() if not setting then Apply() end end)
-    if button.AddTexture then
-        hooksecurefunc(button.AddTexture, "SetAtlas", function() if not setting then Apply() end end)
-    end
-    button:HookScript("OnEnter", Apply)
-    button:HookScript("OnLeave", function() button.ftDown = nil; Apply() end)
-    button:HookScript("OnMouseDown", function() button.ftDown = true; Apply() end)
-    button:HookScript("OnMouseUp", function() button.ftDown = nil; Apply() end)
-    -- the calendar's date turns over at midnight
-    if kind == "calendar" then C_Timer.NewTicker(60, Apply) end
-    Apply()
-end
-
 -- The bar behind the zone text and clock: Forever's cluster has no BorderTop, and the zone button's
 -- own plate is a fixed width (also the settings preview's sample header)
 local function CreateHeader(parent)
@@ -389,11 +348,9 @@ local function StyleHeader()
     tracking.Button:ClearAllPoints()
     tracking.Button:SetAllPoints(tracking)
     FitButtonArt(tracking.Button)
-    UseRetailArt(tracking.Button, "tracking")
     local calendar = _G.GameTimeFrame
     calendar:SetSize(HEADER_HEIGHT, HEADER_HEIGHT)
     FitButtonArt(calendar)
-    UseRetailArt(calendar, "calendar")
 
     -- the plate is the header's; the zone button's mouse-over glow spreads over all of it
     local zoneButton, zoneText = Cluster.ZoneTextButton, _G.MinimapZoneText
@@ -1339,9 +1296,8 @@ do
         art:SetFrameLevel(sq:GetFrameLevel() + 2)
         NineSliceUtil.ApplyLayout(art, BorderLayout())
         sq.Art = art
-        -- retail's borderless art where the client has it, as the real header (UseRetailArt)
-        sq.Tracking = ArtFrame(sq, MM.RetailArt("tracking") or TRACKING_ATLAS, HEADER_HEIGHT)
-        sq.Calendar = ArtFrame(sq, MM.RetailArt("calendar") or CALENDAR_ATLAS, HEADER_HEIGHT)
+        sq.Tracking = ArtFrame(sq, TRACKING_ATLAS, HEADER_HEIGHT)
+        sq.Calendar = ArtFrame(sq, CALENDAR_ATLAS, HEADER_HEIGHT)
         sq.Header = CreateHeader(sq)
         ZoneAndClock(sq.Header)
         local row = sq:GetFrameLevel() + ROW_LEVEL
