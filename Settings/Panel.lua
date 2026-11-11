@@ -400,13 +400,11 @@ local function PaintSwitch(s)
     if on then
         s.rim:SetColor(0.85, 0.70, 0.42)
         s.stone:SetVertexColor(0.95, 0.72, 0.36)
-        s.knob:SetVertexColor(0.98, 0.86, 0.60)
-        s.knobStone:SetVertexColor(0.92, 0.84, 0.68)
+        s.knob:SetVertexColor(0.86, 0.79, 0.64)
     else
         if s.hovered then s.rim:SetColor(0.69, 0.54, 0.31) else s.rim:SetColor(0.35, 0.27, 0.16) end
         s.stone:SetVertexColor(0.34, 0.30, 0.26)
-        s.knob:SetVertexColor(0.72, 0.62, 0.44)
-        s.knobStone:SetVertexColor(0.66, 0.61, 0.53)
+        s.knob:SetVertexColor(0.58, 0.53, 0.46)
     end
     local x = on and 23 or 3
     s.knob:ClearAllPoints()
@@ -439,19 +437,10 @@ local function Switch(parent)
     s.knobShadow:SetTexture(CIRCLE)
     s.knobShadow:SetSize(16, 16)
     s.knobShadow:SetVertexColor(0, 0, 0, 0.55)
-    -- the knob (11-11 Marcus): a thin bronze rim round a disc of the background's rock
+    -- the knob: a clean disc, darker than white (11-11 Marcus: the stone one was too busy)
     s.knob = s:CreateTexture(nil, "ARTWORK", nil, 2)
     s.knob:SetTexture(CIRCLE)
     s.knob:SetSize(14, 14)
-    s.knobStone = s:CreateTexture(nil, "ARTWORK", nil, 3)
-    s.knobStone:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock")
-    s.knobStone:SetTexCoord(0.2, 0.32, 0.2, 0.32)
-    s.knobStone:SetPoint("CENTER", s.knob, "CENTER")
-    s.knobStone:SetSize(12, 12)
-    s.knobMask = s:CreateMaskTexture()
-    s.knobMask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-    s.knobMask:SetAllPoints(s.knobStone)
-    s.knobStone:AddMaskTexture(s.knobMask)
     -- a click changes the state without SetChecked: PostClick paints it (OnClick belongs to the row)
     hooksecurefunc(s, "SetChecked", PaintSwitch)
     s:SetScript("PostClick", PaintSwitch)
@@ -2316,12 +2305,13 @@ local function TryFrame(n)
             -- where the character select list draws it, stretched (11-11: the nine-slice try broke it)
             b.edge:SetPoint("TOPLEFT", -9, 15)
             b.edge:SetPoint("BOTTOMRIGHT", 9, -15)
-            -- the rivets on the top corners only (11-11 Marcus)
-            for _, c in ipairs({ { "TL", "TOPLEFT" }, { "TR", "TOPRIGHT" } }) do
+            -- the rivets top left and bottom right; the close button takes the top right corner (11-11 Marcus)
+            for _, c in ipairs({ { "TL", "TOPLEFT" }, { "BR", "BOTTOMRIGHT" } }) do
                 local t = b:CreateTexture(nil, "ARTWORK")
                 t:SetAtlas("heavybronze-horz-cornerbracket-" .. c[1], true)
                 t:SetPoint(c[2], b.edge, c[2])
             end
+            b.edge.ftCorner = true
             frame.ftBronze = b
         end
         b:Show()
@@ -2461,7 +2451,12 @@ local function BuildWindow()
     version:SetText(C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "")
     -- on the frame's top right corner, above the frame art (11-11 Marcus)
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    close:SetPoint("CENTER", frame, "TOPRIGHT", -5, -3)
+    -- in the frame art's own top right corner (the heavy bronze frame), else the window's
+    if frame.ftBronze and frame.ftBronze:IsShown() then
+        close:SetPoint("TOPRIGHT", frame.ftBronze.edge, "TOPRIGHT", -2, -2)
+    else
+        close:SetPoint("CENTER", frame, "TOPRIGHT", -5, -3)
+    end
     close:SetFrameLevel(frame:GetFrameLevel() + 40)
 
     -- columns

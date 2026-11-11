@@ -845,7 +845,7 @@ end
 -- The window keeps the other pages' size. The right column: the radials, what opens on this
 -- character and the live preview (with Undo). The middle: the selected radial's name and actions
 -- (Rename, Copy, Macro, Delete), one row for who gets it and its key, then the Catalog (a category
--- menu over a two-column grid) and the radial's buttons.
+-- menu over a three-column grid) and the radial's buttons, each part in its own box.
 --------------------------------------------------
 local COLUMN_PAD = 12            -- the radials' inset in the panel's right column
 local LIST_W = 256               -- the radials list: the right column (280) less its insets
@@ -854,7 +854,9 @@ local RADIAL_ROW_H = 22
 local BUTTON_LIST_W = 64         -- the radial's buttons
 local BUTTON_ROW_H = 36
 local BUTTON_RIM = 30            -- a button's round icon in the list
-local GRID_ROW_H = 30            -- the Catalog's two columns
+local GRID_ROW_H = 30            -- the Catalog's rows (three columns)
+local BOX_PAD = 8                -- (11-11) a section box reaches this far round its contents
+local BOX_GAP = 4                -- half the space between two boxes
 local GRID_RIM = 24              -- a Catalog entry's round icon
 local PREVIEW_H = 206            -- RadialMenu's PREVIEW_BOX (200) and a margin
 local OVERVIEW_H = 130           -- "On this character": its title and up to six lines
@@ -885,6 +887,18 @@ local function Text(parent, font, text)
     if text then fs:SetText(text) end
     fs:SetJustifyH("LEFT")
     return fs
+end
+
+-- a section box behind the contents, as the settings pages' (11-11 Marcus): on the host's parent, under it
+local function SectionBox(host)
+    local box = CreateFrame("Frame", nil, host:GetParent(), "BackdropTemplate")
+    ns.SettingsPanel.Box(box, 0.32)
+    box:SetFrameLevel(math.max(0, host:GetFrameLevel() - 1))
+    -- it lives on the parent, so it follows the host (the Options tab hides the host)
+    box:SetShown(host:IsShown())
+    host:HookScript("OnShow", function() box:Show() end)
+    host:HookScript("OnHide", function() box:Hide() end)
+    return box
 end
 
 local function Divider(parent)
@@ -1021,10 +1035,13 @@ local function BuildRadialColumn(host, column)
         Refresh()
     end)
     host.undoButton:SetPoint("BOTTOMRIGHT", previewArea, "TOPRIGHT", 0, 1)
-    local line = Divider(col)
-    line:SetHeight(1)
-    line:SetPoint("BOTTOMLEFT", previewArea, "TOPLEFT", -COLUMN_PAD, 27)
-    line:SetPoint("BOTTOMRIGHT", previewArea, "TOPRIGHT", COLUMN_PAD, 27)
+    -- two boxes: the radials (and what opens here), and the live preview with its title
+    local listBox = SectionBox(col)
+    listBox:SetPoint("TOPLEFT", col, "TOPLEFT", -BOX_PAD, BOX_PAD)
+    listBox:SetPoint("BOTTOMRIGHT", previewArea, "TOPRIGHT", BOX_PAD, 24 + BOX_PAD + 2 * BOX_GAP)
+    local previewBox = SectionBox(col)
+    previewBox:SetPoint("TOPLEFT", previewArea, "TOPLEFT", -BOX_PAD, 24 + BOX_PAD)
+    previewBox:SetPoint("BOTTOMRIGHT", previewArea, "BOTTOMRIGHT", BOX_PAD, -BOX_PAD + 4)
 end
 
 local function BuildDetails(host, width)
@@ -1168,10 +1185,7 @@ local function BuildDetails(host, width)
         Hover(host.barButton, "rm.padBar")
     end
 
-    local line = Divider(host)
-    line:SetHeight(1)
-    line:SetPoint("TOPLEFT", x, -LOWER_TOP + LINE_ABOVE)
-    line:SetPoint("TOPRIGHT", 0, -LOWER_TOP + LINE_ABOVE)
+    -- (11-11: the form has its own box, BuildLower; no line under it)
 
     -- nothing to show: every radial deleted
     local empty = Text(host, "GameFontDisable", L["No radials yet. Create one with + New radial."])
@@ -1189,7 +1203,16 @@ local function BuildLower(host, height, width)
 
     -- the radial's buttons, in order; the title and icons centred in the section, which runs on to the
     -- window's column line (BUTTONS_NUDGE past the host's edge)
-    VLine(host, buttonsX - 8)
+    -- three boxes: the radial's form on top, the Catalog and the buttons below (11-11 Marcus)
+    local formBox = SectionBox(host)
+    formBox:SetPoint("TOPLEFT", host, "TOPLEFT", x - BOX_PAD, BOX_PAD)
+    formBox:SetPoint("BOTTOMRIGHT", host, "TOPLEFT", x + width + BOX_PAD, -(top - LINE_ABOVE + BOX_GAP))
+    local catalogBox = SectionBox(host)
+    catalogBox:SetPoint("TOPLEFT", host, "TOPLEFT", x - BOX_PAD, -(top - LINE_ABOVE + 3 * BOX_GAP))
+    catalogBox:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", buttonsX - 8 - BOX_GAP, -BOX_PAD)
+    local buttonsBox = SectionBox(host)
+    buttonsBox:SetPoint("TOPLEFT", host, "TOPLEFT", buttonsX - 8 + BOX_GAP, -(top - LINE_ABOVE + 3 * BOX_GAP))
+    buttonsBox:SetPoint("BOTTOMRIGHT", host, "BOTTOMLEFT", x + width + BOX_PAD, -BOX_PAD)
     local buttonsTitle = Text(host, "GameFontNormal", L["Buttons"])
     buttonsTitle:SetJustifyH("CENTER")
     buttonsTitle:SetPoint("TOP", host, "TOPLEFT", (buttonsX - 8 + x + width) / 2 + BUTTONS_NUDGE, -top)
@@ -1267,7 +1290,7 @@ local function BuildLower(host, height, width)
     end)
     host.dropZone = dropZone
 
-    -- the Catalog: its category menu beside the title, a two-column grid, search at the bottom right
+    -- the Catalog: its category menu beside the title, a three-column grid, search at the bottom right
     local catalogTitle = Text(host, "GameFontNormal", L["Catalog"])
     catalogTitle:SetPoint("TOPLEFT", catX + 4, -top)
     local category = CreateFrame("DropdownButton", nil, host, "WowStyle1DropdownTemplate")
@@ -1293,7 +1316,7 @@ local function BuildLower(host, height, width)
 
     -- below the grid: how to edit (left) and the search (right)
     local gridRows = math.max(4, math.floor((height - top - 26 - 44) / GRID_ROW_H))
-    local browseList = CreateList(host, gridW, 2, gridRows, GRID_ROW_H,
+    local browseList = CreateList(host, gridW, 3, gridRows, GRID_ROW_H,
         function(cell)
             MakeRound(cell, GRID_RIM)
             cell.Icon:ClearAllPoints()
