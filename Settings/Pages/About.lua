@@ -10,7 +10,6 @@ local S = ns.Settings
 local CREDIT_LINKS = {
     clari = "https://clariturela.itch.io/",
     sampconrad = "https://www.curseforge.com/members/sampconrad/projects",
-    sampconradGitHub = "https://github.com/sampconrad",
     jeor = "https://github.com/Jeor",
     parchinskiy = "https://github.com/parchinskiy",
 }
@@ -81,8 +80,9 @@ local function Build(host)
     local thanks, y = Card(host, S:SectionText("about.yourFriendlyUiOverhowl"), width)
     thanks:SetPoint("TOPLEFT", 0, -2)
     local note = S:Text("about.links", "text", true) or ""
-    local _, after = Body(thanks, (S:Text("about.thanks", "text", true) or "") .. " "
-        .. GRAY_FONT_COLOR:WrapTextInColorCode("(" .. note .. ")") .. ".", y)
+    -- the links' note on a line of its own (11-11)
+    local _, after = Body(thanks, (S:Text("about.thanks", "text", true) or "") .. ".\n"
+        .. GRAY_FONT_COLOR:WrapTextInColorCode("(" .. note .. ")"), y)
     y = after - 14
     local previous
     for _, net in ipairs(NETWORKS) do
@@ -104,8 +104,7 @@ local function Build(host)
     credits:SetPoint("TOPLEFT", thanks, "BOTTOMLEFT", 0, -CARD_GAP)
     local text = Gold(S:Text("about.credits", "text", true))
     text = text:gsub(GOLD .. "Clari Turela|r", Link("Clari Turela", CREDIT_LINKS.clari))
-    text = text:gsub(GOLD .. "sampconrad|r", Link("sampconrad", CREDIT_LINKS.sampconrad)
-        .. " (" .. Link("GitHub", CREDIT_LINKS.sampconradGitHub) .. ")")
+    text = text:gsub(GOLD .. "sampconrad|r", Link("sampconrad", CREDIT_LINKS.sampconrad))
     text = text:gsub(GOLD .. "Jeor|r", Link("Jeor", CREDIT_LINKS.jeor))
     text = text:gsub(GOLD .. "parchinskiy|r", Link("parchinskiy", CREDIT_LINKS.parchinskiy))
     local _, creditsEnd = Body(credits, text, cy)
