@@ -61,6 +61,7 @@ local CLOCK_WIDTH   = 40
 local PLATE_ATLAS   = "ui-hud-minimap-header-button"
 local PLATE_SLICE   = 12     -- end size, in art pixels
 local PLATE_INSET   = 6      -- zone text and clock inset from the plate's ends
+local HEADER_CROP   = 4      -- art pixels of each header element's bronze edge, cut off (square, 11-11)
 local SUN_SCALE     = 0.9    -- day/night badge scale
 local SUN_OVERHANG  = 6      -- badge overhang past the map's corner
 local MAIL_GAP      = 3      -- title band to mail icon
@@ -272,6 +273,36 @@ local function Plate(texture, frame)
     end
 end
 
+-- Square style (11-11 Marcus): each header element without its bronze edge, only what it shows. The
+-- art is cut HEADER_CROP pixels in on every side and drawn that much smaller, so icons and plate keep
+-- their size. owner: the frame the art fills. The plate's ends are no longer sliced (nothing left to keep).
+function MM.CropHeaderArt(texture, owner)
+    local info = C_Texture.GetAtlasInfo(texture:GetAtlas() or "")
+    if not (info and info.width and info.width > 0 and info.height and info.height > 0) then return end
+    local l, r, t, b = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
+    local cx, cy = HEADER_CROP / info.width * (r - l), HEADER_CROP / info.height * (b - t)
+    if texture.ClearTextureSlice then pcall(texture.ClearTextureSlice, texture)
+    elseif texture.SetTextureSliceMargins then texture:SetTextureSliceMargins(0, 0, 0, 0) end
+    texture:SetTexCoord(l + cx, r - cx, t + cy, b - cy)
+    local height = owner:GetHeight()
+    if not height or height <= 0 then height = HEADER_HEIGHT end
+    local inset = HEADER_CROP * height / info.height
+    texture:ClearAllPoints()
+    texture:SetPoint("TOPLEFT", owner, "TOPLEFT", inset, -inset)
+    texture:SetPoint("BOTTOMRIGHT", owner, "BOTTOMRIGHT", -inset, inset)
+end
+
+-- the button's art, cropped again each time Blizzard sets its atlas (a state change resets the crop)
+local function KeepCropped(button)
+    for _, key in ipairs({ "StateTexture", "AddTexture" }) do
+        local texture = button and button[key]
+        if texture then
+            MM.CropHeaderArt(texture, button)
+            hooksecurefunc(texture, "SetAtlas", function(self) MM.CropHeaderArt(self, button) end)
+        end
+    end
+end
+
 -- The bar behind the zone text and clock: Forever's cluster has no BorderTop, and the zone button's
 -- own plate is a fixed width (also the settings preview's sample header)
 local function CreateHeader(parent)
@@ -279,6 +310,7 @@ local function CreateHeader(parent)
     header:SetHeight(HEADER_HEIGHT)
     header.Plate = header:CreateTexture(nil, "BACKGROUND")
     Plate(header.Plate, header)
+    MM.CropHeaderArt(header.Plate, header)
     return header
 end
 
@@ -325,14 +357,19 @@ local function StyleHeader()
     tracking.Button:ClearAllPoints()
     tracking.Button:SetAllPoints(tracking)
     FitButtonArt(tracking.Button)
+    KeepCropped(tracking.Button)
     local calendar = _G.GameTimeFrame
     calendar:SetSize(HEADER_HEIGHT, HEADER_HEIGHT)
     FitButtonArt(calendar)
+    KeepCropped(calendar)
 
     -- the plate is the header's; the zone button's mouse-over glow spreads over all of it
     local zoneButton, zoneText = Cluster.ZoneTextButton, _G.MinimapZoneText
     if zoneButton.StateTexture then zoneButton.StateTexture:SetParent(hiddenParent) end
-    if zoneButton.AddTexture then Plate(zoneButton.AddTexture, header) end
+    if zoneButton.AddTexture then
+        Plate(zoneButton.AddTexture, header)
+        MM.CropHeaderArt(zoneButton.AddTexture, header)
+    end
     PlaceZone()
     zoneText:ClearAllPoints()
     zoneText:SetPoint("TOPLEFT", zoneButton, "TOPLEFT", PLATE_INSET, 0)
@@ -1272,6 +1309,8 @@ do
         sq.Art = art
         sq.Tracking = ArtFrame(sq, TRACKING_ATLAS, HEADER_HEIGHT)
         sq.Calendar = ArtFrame(sq, CALENDAR_ATLAS, HEADER_HEIGHT)
+        MM.CropHeaderArt(sq.Tracking.Art, sq.Tracking)
+        MM.CropHeaderArt(sq.Calendar.Art, sq.Calendar)
         sq.Header = CreateHeader(sq)
         ZoneAndClock(sq.Header)
         local row = sq:GetFrameLevel() + ROW_LEVEL
