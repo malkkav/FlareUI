@@ -1628,11 +1628,56 @@ local function PlaceRows(parent, rows, y, crumbOf)
     return y
 end
 
+-- 11-11 (Marcus): the pages' icons as Blizzard's own, in the round aura look (the talent node mask and
+-- ring, tinted bronze, as Auras.lua's round style); /fui icons switches back to the line icons
+local GAME_ICONS = {
+    about = "INV_Misc_Book_09", adv = "INV_Scroll_03", language = "Trade_Engineering",
+    ab = "INV_Sword_04", uf = "INV_Misc_Head_Human_01", rb = "INV_Potion_54", au = "Spell_Holy_WordFortitude",
+    mm = "INV_Misc_Map_01", qt = "INV_Misc_Note_06",
+    ch = "INV_Letter_15", dm = "Ability_DualWield", tt = "INV_Misc_Spyglass_03", rm = "INV_Misc_Orb_05", qol = "INV_Misc_Bag_08",
+}
+local RING_MASK, RING_ART, RING_TINT = "talents-node-circle-mask", "talents-node-circle-gray", { 0.72, 0.56, 0.38 }
+local function GameIcons()
+    return not (ns.db and ns.db.global and ns.db.global.panelLineIcons)
+end
+-- an icon texture in the round look: masked to the circle, the ring over it (made once per texture)
+local function RingIcon(tex, parent)
+    if not tex.ftRingMask then
+        tex.ftRingMask = parent:CreateMaskTexture()
+        tex.ftRingMask:SetAtlas(RING_MASK, TextureKitConstants and TextureKitConstants.IgnoreAtlasSize)
+        tex.ftRingMask:SetAllPoints(tex)
+        tex:AddMaskTexture(tex.ftRingMask)
+        tex.ftRing = parent:CreateTexture(nil, "OVERLAY")
+        tex.ftRing:SetAtlas(RING_ART, TextureKitConstants and TextureKitConstants.IgnoreAtlasSize)
+        tex.ftRing:SetAllPoints(tex)
+        tex.ftRing:SetVertexColor(RING_TINT[1], RING_TINT[2], RING_TINT[3])
+    end
+    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    tex.ftRing:Show()
+end
+Panel.GameIcons = function(on)
+    if ns.db and ns.db.global then ns.db.global.panelLineIcons = not on or nil end
+end
+
 local function UpdateHeader(module)
     page.title:SetText(module:Title())
     page.desc:SetText(module:Description() or "")
     page.plateIcon:SetTexture(module.navIcon or LOGO)
     if module.navIconTint then page.plateIcon:SetVertexColor(1, 0.83, 0.47) else page.plateIcon:SetVertexColor(1, 1, 1) end
+    -- the game's icons: round and ringed on a plate of their own size, the square plate's edge hidden
+    local ring = module.navIconRound == "ring"
+    if ring then
+        page.plateIcon:SetSize(40, 40)
+        RingIcon(page.plateIcon, page.plateIcon:GetParent())
+        page.plateIcon:GetParent():SetBackdropBorderColor(0, 0, 0, 0)
+        page.plateIcon:GetParent():SetBackdropColor(0, 0, 0, 0)
+    else
+        page.plateIcon:SetSize(26, 26)
+        page.plateIcon:SetTexCoord(0, 1, 0, 1)
+        if page.plateIcon.ftRing then page.plateIcon.ftRing:Hide() end
+        page.plateIcon:GetParent():SetBackdropBorderColor(EDGE_HOVER[1], EDGE_HOVER[2], EDGE_HOVER[3], 1)
+        page.plateIcon:GetParent():SetBackdropColor(0.13, 0.095, 0.055, 1)
+    end
     local hasSwitch = module.enabled ~= nil
     page.switch:SetShown(hasSwitch)
     page.switch:SetChecked(module:IsOn())
@@ -1902,8 +1947,12 @@ function UpdateNav()
         b.edge:SetBackdropBorderColor(EDGE_COLOR[1], EDGE_COLOR[2], EDGE_COLOR[3], selected and 1 or 0)
         if module.navIcon then
             b.dot:SetTexture(module.navIcon)
+            if module.navIconRound == "ring" then
+                -- the round aura look, a little larger than the line icons
+                b.dot:SetSize(24, 24)
+                RingIcon(b.dot, b)
             -- game icon cropped to a circle
-            if module.navIconRound and not b.dotMask then
+            elseif module.navIconRound and not b.dotMask then
                 b.dotMask = b:CreateMaskTexture()
                 b.dotMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
                 b.dotMask:SetAllPoints(b.dot)
@@ -2013,7 +2062,11 @@ local function BuildNav(left)
         for _, module in ipairs(group.modules) do
             local icons = { about=true, adv=true, language=true, ab=true, uf=true, rb=true, au=true, dm=true,
                 mm=true, qt=true, ch=true, tt=true, rm=true, qol=true }
-            if icons[module.key] then
+            if GameIcons() and GAME_ICONS[module.key] then
+                module.navIcon = "Interface\\Icons\\" .. GAME_ICONS[module.key]
+                module.navIconRound = "ring"
+                module.navIconTint = false
+            elseif icons[module.key] then
                 module.navIcon = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Icons\\" .. module.key .. ".tga"
                 module.navIconRound = false
                 module.navIconTint = true
