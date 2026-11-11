@@ -2929,6 +2929,9 @@ end
 -- The text is placed once per layout (f.threatLaid, cleared by LayoutFrame), not on every threat event.
 UF.THREAT_PERCENT_UNITS = { target = true, focus = true }
 UF.THREAT_RING_SIZE = 8   -- added to the frame font's size above the ring
+-- the ring's frame is the box round its art, shadow and all, wider on its outer side: the number moves
+-- this share of the ring's width towards the frame, over the ring's middle (11-11, read off a screenshot)
+UF.THREAT_RING_NUDGE = 0.08
 function UF.UpdateThreatPercent(f)
     local unit = f.fuiUnit
     if not UF.THREAT_PERCENT_UNITS[unit] then return end
@@ -2954,7 +2957,8 @@ function UF.UpdateThreatPercent(f)
         if ring then
             ApplyFont(text, db and db.font, UF.THREAT_RING_SIZE)
             text:SetJustifyH("CENTER")
-            text:SetPoint("BOTTOM", ring, "TOP", 0, 2)
+            local inward = (ns.UFRing.Side and ns.UFRing.Side(f) == "LEFT") and 1 or -1
+            text:SetPoint("BOTTOM", ring, "TOP", inward * ring:GetWidth() * UF.THREAT_RING_NUDGE, 2)
         else
             -- the health value, then the threat: the texts beside it move over for it
             ApplyFont(text, db and db.font, 0)

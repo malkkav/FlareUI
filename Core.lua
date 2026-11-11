@@ -1580,10 +1580,12 @@ do
         "Icon Size", "Icons per Row", "Totems per Row", "Max Icons", "Spacing", "Group Spacing", "Quest Spacing",
         "Background Opacity", "Cast Bar Height", "Buff Size", "Debuff Size",
         -- switches
+        -- (11-11 Marcus) first of their sections' switches: Range Check (Look) and Show Level (Frame)
+        "Range Check", "Show Level",
         "Sort by Role", "Show Player", "Hide Player Frame in a Party", "Group Numbers", "Main Tank Frames",
-        "Show Threat", "Combo Points@switch", "Show Level", "Mirror", "Portrait@switch", "Power Bar for Mana Users Only",
+        "Show Threat", "Combo Points@switch", "Mirror", "Portrait@switch", "Power Bar for Mana Users Only",
         "Five-Second Rule", "Mana on Shapeshift", "GCD Spark", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
-        "Hide Icon", "Hide Spell Timer", "Latency Zone", "Spell Pushback", "Channel Ticks", "Spell Queue Window",
+        "Hide Icon", "Hide Spell Timer", "Spell Pushback", "Latency Zone", "Channel Ticks", "Spell Queue Window",
         "Class Colours", "Low Health Colour", "Smooth Bar Animations",
         "Only My Buffs", "Only My Debuffs", "Dispellable Debuffs Only", "Highlight Purgeable Buffs",
         "Reverse Order", "Your Auras First",
