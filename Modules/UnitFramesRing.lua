@@ -44,6 +44,15 @@ ART.focustarget = ART.target
 local CIRCLE_MASK   = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 local SMALL_CIRCLE  = "UI-HUD-UnitFrame-SmallCircle"
 local PORTRAIT_SHARE = 0.86   -- the portrait inside the ring, of its diameter
+-- A dark disc behind the portrait, out under the rim (11-11, seen on a green screen): the art's
+-- opening is off-centre and wider than the portrait at the bottom and outer side (0.84-0.90 of the
+-- radius), so the world showed through a thin crescent there
+local PORTRAIT_BACK_SHARE = 0.94
+-- FlareUI Style (no plate): the whole art, cut to a circle so the art's join to the plate (a tail
+-- on the bars' side) doesn't show (11-11). The art's rim reaches further out on the outer side, so
+-- the circle is larger and moved outwards: its edge stays CLEAN_RING_BARS of the ring's diameter
+-- from the centre on the bars' side and reaches CLEAN_RING_OUTER on the outer side (rim and shadow)
+local CLEAN_RING_BARS, CLEAN_RING_OUTER = 0.515, 0.585
 -- Blizzard's combo arc round its 61.1 px target ring (Camelot ComboFrame.lua POINT_LAYOUT_DATA),
 -- started higher while the PvP crest shows; radius in the points' scale, shift from the centre
 local RING_COMBO = { radius = 66, start = -10, pvpStart = 2, step = 21, scale = 0.6, shift = { 2, 2 } }
@@ -720,7 +729,7 @@ local function SetDiscHole(f, ring, on, size)
     end
     if size then ring.DiscHole:SetSize(size * DISC_HOLE_SHARE, size * DISC_HOLE_SHARE) end
     if on == (ring.discHoleOn or false) then return end
-    for _, region in ipairs({ ring.Art, f.Portrait.Tex, ring.Status, ring.Flash, ring.Boss, ring.Tint }) do
+    for _, region in ipairs({ ring.Art, f.Portrait.Tex, ring.PortraitBack, ring.Status, ring.Flash, ring.Boss, ring.Tint }) do
         if on then region:AddMaskTexture(ring.DiscHole) else region:RemoveMaskTexture(ring.DiscHole) end
     end
     ring.discHoleOn = on
@@ -744,6 +753,13 @@ local function Build(f)
     ring.PortraitMask = f.Portrait:CreateMaskTexture()
     ring.PortraitMask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     ring.PortraitMask:SetAllPoints(f.Portrait)
+    ring.PortraitBack = f.Portrait:CreateTexture(nil, "BACKGROUND", nil, -8)
+    ring.PortraitBack:SetColorTexture(0, 0, 0, 1)
+    ring.PortraitBackMask = f.Portrait:CreateMaskTexture()
+    ring.PortraitBackMask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    ring.PortraitBackMask:SetAllPoints(ring.PortraitBack)
+    ring.PortraitBack:AddMaskTexture(ring.PortraitBackMask)
+    ring.PortraitBack:Hide()
 
     -- the glows: resting / combat status (player) and the threat flash
     ring.Status = GlowTexture(ring)
@@ -885,10 +901,21 @@ function Ring.Layout(f)
         ring.PlateMask:SetPoint("CENTER", ring, "CENTER")
         ring.PlateMask:SetSize(g.R * 2.5, g.R * 2.5)
     end
-    if ring.artMasked then
+    if not plate then
+        ring.Mask:ClearAllPoints()
+        local size = (CLEAN_RING_BARS + CLEAN_RING_OUTER) * g.D
+        local shift = (CLEAN_RING_OUTER - CLEAN_RING_BARS) / 2 * g.D
+        ring.Mask:SetPoint("CENTER", ring, "CENTER", left and -shift or shift, 0)
+        ring.Mask:SetSize(size, size)
+    end
+    if plate and ring.artMasked then
         ring.Art:RemoveMaskTexture(ring.Mask)
         ring.Art:AddMaskTexture(ring.PlateMask)
         ring.artMasked = false
+    elseif not plate and not ring.artMasked then
+        ring.Art:RemoveMaskTexture(ring.PlateMask)
+        ring.Art:AddMaskTexture(ring.Mask)
+        ring.artMasked = true
     end
     -- the tint follows the art exactly
     ring.Tint:SetTexture(ring.Art:GetTexture())
@@ -904,6 +931,10 @@ function Ring.Layout(f)
     f.Portrait:ClearAllPoints()
     f.Portrait:SetSize(size, size)
     f.Portrait:SetPoint("CENTER", ring, "CENTER", 0, 0)
+    ring.PortraitBack:ClearAllPoints()
+    ring.PortraitBack:SetSize(g.D * PORTRAIT_BACK_SHARE, g.D * PORTRAIT_BACK_SHARE)
+    ring.PortraitBack:SetPoint("CENTER", ring, "CENTER", 0, 0)
+    ring.PortraitBack:Show()
     if not f.Portrait.ringMasked then
         f.Portrait.Tex:AddMaskTexture(ring.PortraitMask)
         f.Portrait.ringMasked = true
@@ -1135,6 +1166,7 @@ function Ring.Reset(f)
         local region = f[key]
         if region then region:SetParent(region.ringHome or f.Overlay) end
     end
+    ring.PortraitBack:Hide()
     if f.Portrait.ringMasked then
         f.Portrait.Tex:RemoveMaskTexture(ring.PortraitMask)
         f.Portrait.ringMasked = nil
