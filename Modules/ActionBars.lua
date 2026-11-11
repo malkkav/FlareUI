@@ -347,12 +347,11 @@ function ActionBars.DrawSampleButton(b, icon, macro)
     if db.buttonArt then
         ApplyButtonArt(b)
     elseif not icon then
-        -- an empty slot without the art: nothing there
+        -- an empty slot without the art: its border stays, the background goes
         if b.SlotArt then b.SlotArt:Hide() end
         if b.SlotBackground then b.SlotBackground:Hide() end
-        if b.NormalTexture then b.NormalTexture:SetAlpha(0) end
     end
-    if b.NormalTexture and (icon or db.buttonArt) then b.NormalTexture:SetAlpha(1) end
+    if b.NormalTexture then b.NormalTexture:SetAlpha(1) end
     if b.Name then b.Name:SetText(icon and macro or "") end
     UpdateButtonText(b)
     if b.Count then b.Count:SetText("") end

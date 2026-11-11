@@ -67,7 +67,7 @@ end
 
 -- A module's own sample frame (made once per canvas): drawn by draw(f), which returns its size, then
 -- scaled down to fit (never up) and centred at y. Returns the frame and the height it takes.
-local function Sample(c, id, create, draw, y, width)
+local function Sample(c, id, create, draw, y, width, maxHeight)
     c.samples = c.samples or {}
     local f = c.samples[id]
     if not f then
@@ -81,7 +81,7 @@ local function Sample(c, id, create, draw, y, width)
     f:Show()
     local w, h = draw(f)
     if not w or w <= 0 or not h or h <= 0 then f:Hide() return nil, 0 end
-    local k = math.min(1, (width or c.width - 16) / w)
+    local k = math.min(1, (width or c.width - 16) / w, (maxHeight or c.height - y - 4) / h)
     f:SetScale(k)
     f:ClearAllPoints()
     f:SetPoint('TOPLEFT', c.frame, 'TOPLEFT', (c.width - w * k) / 2 / k, -y / k)
@@ -134,8 +134,22 @@ function R.unit(c, spec)
         local _, h = Unit(c, 'totSample', s, 'targettarget', 4, c.width - 16)
         Unit(c, 'tofSample', s, 'focustarget', 4 + h + 12, c.width - 16)
     else
-        -- the palette's preview shows its own health colour (Class Colours would hide it)
-        Unit(c, 'playerSample', style, 'player', 4, c.width - 16, nil, nil, nil, { noClassColor = spec.key == 'uf.palette' })
+        local frame = Unit(c, 'playerSample', style, 'player', 4, c.width - 16)
+        -- Colour Palette (11-11 Marcus): FlareUI's colours shown washed, Blizzard's bright
+        if frame and spec.key == 'uf.palette' then
+            local flare = Get('unitframes.palette', 'flareui') ~= 'blizzard'
+            for _, bar in ipairs({ frame.Health, frame.Power }) do
+                local r, g, b = bar:GetStatusBarColor()
+                if flare then
+                    local grey = (r + g + b) / 3
+                    r, g, b = r + (grey - r) * 0.45, g + (grey - g) * 0.45, b + (grey - b) * 0.45
+                else
+                    local top = math.max(r, g, b, 0.01)
+                    r, g, b = r / top, g / top, b / top
+                end
+                bar:SetStatusBarColor(r, g, b)
+            end
+        end
     end
 end
 
@@ -172,12 +186,12 @@ function R.frames(c, spec)
         if not (PF and PF.SampleTile) then return end
         local ctx, samples, count, columns
         if key == 'raid' then
-            ctx, samples, count, columns = ns.RaidFrames and ns.RaidFrames.PreviewCtx, ns.RaidFrames and ns.RaidFrames.PreviewSamples, 10, 5
+            ctx, samples, count, columns = ns.RaidFrames and ns.RaidFrames.PreviewCtx, ns.RaidFrames and ns.RaidFrames.PreviewSamples, 25, 5
         elseif key == 'boss' then
             ctx, samples, count, columns = ns.BossFrames and ns.BossFrames.PreviewCtx, ns.BossFrames and ns.BossFrames.PreviewSamples, 3, 1
             if not ctx then return end
         else
-            count, columns = 4, 1
+            count, columns = 3, 1
         end
         if key == 'raid' and not ctx then return end
         Sample(c, 'tiles:' .. key, function(parent)
@@ -289,7 +303,7 @@ local function Auras(c, unit, spec)
     local colored = Get(prefix .. (unit and 'auraTimerColor' or 'timerColor'), false)
     for i, name in ipairs(auraIcons) do
         local b = c:Object('aura' .. i, 'Frame')
-        b:SetPoint('TOPLEFT', unit and 16 + (i - 1) * 42 or 16 + (i - 1) * 66, -8)
+        b:SetPoint('TOPLEFT', (c.width - (unit and 2 * 42 + 30 or 2 * 66 + 46)) / 2 + (i - 1) * (unit and 42 or 66), -16)
         -- Use the production aura renderer, including its masks, timer placement and swipe textures.
         ns.AuraLook.Style(b, { preview = true, size = unit and 30 or 46, style = style, swipe = swipe, timer = timer,
             font = font, countFont = countFont, timerSize = timerSize })
@@ -309,7 +323,7 @@ local function Auras(c, unit, spec)
         if spec.key == 'au.arrive' and arrive then
             local progress = math.min(1, (elapsed % 4) * 2)
             c.objects.aura3:SetAlpha(progress)
-            c.objects.aura3:ClearAllPoints(); c.objects.aura3:SetPoint('TOPLEFT', 148, -8 + (1 - progress) * 12)
+            c.objects.aura3:ClearAllPoints(); c.objects.aura3:SetPoint('TOPLEFT', (c.width - (2 * 66 + 46)) / 2 + 2 * 66, -16 + (1 - progress) * 12)
         end
         for i = 1, 3 do c.objects['aura' .. i].FlareUI_PreviewTimer:SetText(math.max(1, math.ceil(12 - ((elapsed + i * 2) % 12))) .. 's') end
         if elapsed < 12 then return end
@@ -571,7 +585,7 @@ end
 -- the real XP bar (Edit Mode sample values)
 function R.xp(c)
     local XPB = ns.XPBar
-    if XPB and XPB.CreateSample then Sample(c, 'xpSample', XPB.CreateSample, XPB.DrawSample, 4) end
+    if XPB and XPB.CreateSample then Sample(c, 'xpSample', XPB.CreateSample, XPB.DrawSample, 14) end
 end
 
 function R.resources(c, spec)

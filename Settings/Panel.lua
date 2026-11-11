@@ -544,10 +544,17 @@ local function ShowVisual(row)
     else shown = ns.SettingsPreview.Show(preview.canvas, spec) end
     preview.dirty = nil
     preview.picture:SetShown(not shown)
-    -- as tall as what it shows
+    -- as tall as what it shows; a frame shown this moment has no place on screen until the next
+    -- frame, so it is measured again then
     if shown then
-        local h = ns.SettingsPreview.Measure(preview.canvas)
-        preview.canvas.frame:SetHeight(math.max(24, math.min(preview.canvas.height, h + 8)))
+        local canvas = preview.canvas
+        local function Fit()
+            if not canvas.frame:IsShown() then return end
+            local h = ns.SettingsPreview.Measure(canvas)
+            if h then canvas.frame:SetHeight(math.max(24, math.min(canvas.height, h + 8))) end
+        end
+        Fit()
+        C_Timer.After(0, Fit)
     end
     preview.title:ClearAllPoints()
     preview.title:SetPoint("TOPLEFT", shown and preview.canvas.frame or preview.picture, "BOTTOMLEFT", 0, -12)

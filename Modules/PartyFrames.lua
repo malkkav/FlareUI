@@ -754,10 +754,8 @@ end
 local function UpdateCast(f, event, by, barID)
     if not f.Cast then return end
     -- a settings preview's sample has no unit: the Edit Mode sample cast
-    if f.fuiSample then
-        if f.Cast.isEnabled() then K.ShowSampleCast(f.Cast) else f.Cast:Hide() end
-        return
-    end
+    -- (a settings preview's sample shows the frame only)
+    if f.fuiSample then f.Cast:Hide() return end
     K.UpdateCastBar(f.Cast, f.Cast.isEnabled(), event, by, barID)
 end
 
@@ -2268,7 +2266,8 @@ ApplyPreview = function(f)
     K.ResetBorderTint(f.Border)
     UpdatePortrait(f)
     UpdateCast(f)
-    ApplyPreviewExtras(f, data)
+    -- the icons and auras of Edit Mode's sample; a settings preview shows the frame alone
+    if f.fuiSample then HidePreviewExtras(f) else ApplyPreviewExtras(f, data) end
 
     local p = not f.ctx and pets[f.index]
     if p then

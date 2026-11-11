@@ -460,7 +460,7 @@ local function UpdateFlare(target)
     end
     if not left then flare:Hide() return end
 
-    local width, height = db.width or 560, db.height or 14
+    local width, height = flare.sampleWidth or db.width or 560, flare.sampleHeight or db.height or 14
     local leftWidth = right and width / 2 or width
     flare.Left:ClearAllPoints()
     flare.Left:SetPoint("TOPLEFT", flare, "TOPLEFT", FLARE_INSET, -FLARE_INSET)
@@ -486,7 +486,7 @@ local function LayoutFlare(target)
     if not flare then return end
     local db = GetDb()
     local texture = GetTexture()
-    flare:SetSize((db.width or 560) + 2 * FLARE_INSET, (db.height or 14) + 2 * FLARE_INSET)
+    flare:SetSize((flare.sampleWidth or db.width or 560) + 2 * FLARE_INSET, (flare.sampleHeight or db.height or 14) + 2 * FLARE_INSET)
     local file = LSM:Fetch("border", BORDER_NAME)
     flare.Border:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, BORDER_SIZE),
         bgFile = "Interface\\Buttons\\WHITE8x8", insets = { left = FLARE_INSET, right = FLARE_INSET, top = FLARE_INSET, bottom = FLARE_INSET } })
@@ -579,6 +579,8 @@ end
 function XPB.CreateSample(parent)
     local f = CreateFrame("Frame", nil, parent)
     f.fuiSample = true
+    -- shorter and thicker than the bar, so it reads in the preview
+    f.sampleWidth, f.sampleHeight = 240, 20
     BuildParts(f)
     f.Left:EnableMouse(false)
     f.Right:EnableMouse(false)

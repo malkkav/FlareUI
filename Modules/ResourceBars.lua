@@ -802,11 +802,14 @@ local function CreateHolder(key, parent)
     local holder = CreateFrame("Frame", not parent and ("FlareUI_Resource_" .. key) or nil, parent or UIParent)
     holder.key = key
     holder.fuiSample = parent and true or nil
-    holder:SetFrameStrata("MEDIUM")
-    holder:SetClampedToScreen(true)
-    holder.editModeName = "FlareUI " .. info.label
-    for index, k in ipairs(BAR_ORDER) do
-        if k == key then holder:SetFrameLevel(10 + (#BAR_ORDER - index) * 10) end
+    -- (a preview's sample stays in its parent's strata and above it)
+    if not parent then
+        holder:SetFrameStrata("MEDIUM")
+        holder:SetClampedToScreen(true)
+        holder.editModeName = "FlareUI " .. info.label
+        for index, k in ipairs(BAR_ORDER) do
+            if k == key then holder:SetFrameLevel(10 + (#BAR_ORDER - index) * 10) end
+        end
     end
     local level = holder:GetFrameLevel()
 

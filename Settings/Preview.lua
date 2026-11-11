@@ -35,8 +35,9 @@ Route('radial', 'rm', 'scale names')
 -- How tall the drawn picture is, from the canvas's top to the lowest thing shown (the panel sizes
 -- the picture to it). A sample unit frame's ring and plate hang past the frame itself.
 function P.Measure(canvas)
+    -- (the height is set while measuring: a picture taller than before still measures from the top)
     local top = canvas.frame:GetTop()
-    if not top then return canvas.height end
+    if not top then return nil end
     local scale = canvas.frame:GetEffectiveScale()
     local bottom = top
     local function visit(region)
