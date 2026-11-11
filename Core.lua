@@ -766,6 +766,8 @@ local defaults = {
             lootFeedQuality = 0,        -- items below this quality are left out (0 = Poor: all)
             lootFeedMoney = true,       -- money too
             lootFeedPosition = "cursor", -- cursor (starts at the pointer) | placed (the Edit Mode spot)
+            lootFeedSkills = false,     -- skill-ups too ("Mining 76")
+            lootFeedFont = { face = "Friz Quadrata TT", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             mouseRingSize = 40,         -- the ring's diameter
             mouseRingThickness = 3,     -- its line, the same at any size
             mouseRingShow = "off",      -- Mouse Ring (MouseRing.lua): off | always | combat | rightclick (while the right button is held)

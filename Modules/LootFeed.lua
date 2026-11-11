@@ -9,6 +9,8 @@ local L = ns.L
 -- turned into patterns, so every language works and other players' loot never matches); money from
 -- the rise in your gold paired with the chat's money line, so a split shows only your share. A repeat
 -- of the same item joins its line. Placed in Edit Mode ("FlareUI Loot Feed", samples while it's open).
+-- Its font is in Quality of Life > Fonts (tweaks.lootFeedFont); Show Skill-Ups adds "Mining 76" lines
+-- from the chat's skill lines (11-11, a player's request).
 --------------------------------------------------
 local LF = {}
 ns.LootFeed = LF
@@ -25,7 +27,7 @@ local WIDTH, HEIGHT = 220, 132
 local LIFE = 4.5          -- seconds a line lives
 local RISE = 40           -- pixels a second
 local FADE_IN, FADE_OUT = 0.2, 1
-local SPACING = 22        -- between lines
+local SPACING = 22        -- between lines (more for a font over 14)
 local MAX_LINES = 6
 local JOIN = 1.5          -- a repeat this soon joins the line
 local PAIR = 1.5          -- the gold rise and the chat's money line arrive this close together
@@ -66,12 +68,28 @@ local function NewLine(parent)
     return line
 end
 
+-- Quality of Life > Fonts > Loot Feed
+local function Font()
+    local db = GetDb()
+    return db and db.lootFeedFont or {}
+end
+
+-- room per line: the font's size and a gap, never under the icon's
+local function Spacing()
+    return math_max(SPACING, (Font().size or 14) + 8)
+end
+
+-- r, g, b nil: the line keeps its colour (a font change)
 local function Fill(line, icon, text, r, g, b)
     line.icon:SetTexture(icon or 134400)
     -- FlareUI's font goes on with the text in place (a blank string can't show if a font took)
     line.text:SetText(text)
-    ns.SetFont(line.text, ns.GetFontPath("Friz Quadrata TT"), 14, "OUTLINE")
-    line.text:SetTextColor(r or 1, g or 1, b or 1)
+    local font = Font()
+    local flags = font.flags or "OUTLINE"
+    if flags == "NONE" then flags = "" end
+    ns.SetFont(line.text, ns.GetFontPath(font.face or "Friz Quadrata TT"), font.size or 14, flags)
+    ns.ApplyShadow(line.text, font)
+    if r then line.text:SetTextColor(r, g, b) end
 end
 
 local function Release(i)
@@ -87,7 +105,7 @@ local function OnUpdate(self, elapsed)
         local line = lines[i]
         line.age = line.age + elapsed
         line.y = line.y + RISE * elapsed
-        if below then line.y = math_max(line.y, below.y + SPACING) end
+        if below then line.y = math_max(line.y, below.y + Spacing()) end
         below = line
     end
     for i = #lines, 1, -1 do
@@ -102,14 +120,15 @@ local function OnUpdate(self, elapsed)
     if #lines == 0 then self:SetScript("OnUpdate", nil) end
 end
 
-local function Add(key, icon, label, count, r, g, b)
+-- plain: label is the whole text (a skill-up), and a repeat replaces it instead of counting up
+local function Add(key, icon, label, count, r, g, b, plain)
     if not holder then return end
     -- the same item again, still near the bottom: its count grows
     for _, line in ipairs(lines) do
         if key and line.key == key and line.age < JOIN then
             line.count = line.count + count
             line.age = math_min(line.age, FADE_IN)
-            Fill(line, icon, "+" .. line.count .. " " .. label, r, g, b)
+            Fill(line, icon, plain and label or ("+" .. line.count .. " " .. label), r or 1, g or 1, b or 1)
             return
         end
     end
@@ -123,7 +142,7 @@ local function Add(key, icon, label, count, r, g, b)
     end
     local line = tremove(pool) or NewLine(holder)
     line.key, line.count, line.age, line.y = key, count, 0, 0
-    Fill(line, icon, key and ("+" .. count .. " " .. label) or label, r, g, b)
+    Fill(line, icon, (key and not plain) and ("+" .. count .. " " .. label) or label, r or 1, g or 1, b or 1)
     line:ClearAllPoints()
     line:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, 0)
     line:SetAlpha(0)
@@ -224,6 +243,26 @@ local function OnLoot(text, guid)
 end
 
 --------------------------------------------------
+-- 2b. SKILL-UPS (Show Skill-Ups): the chat's "Your skill in Mining has increased to 76."
+--------------------------------------------------
+local skillPattern
+local SKILL_ICON = "Interface\\Icons\\INV_Misc_Book_09"
+local function OnSkill(text)
+    local db = GetDb()
+    if not (db and db.lootFeedSkills) or type(text) ~= "string" or (issecretvalue and issecretvalue(text)) then return end
+    if skillPattern == nil then skillPattern = Pattern(_G.SKILL_RANK_UP) or false end
+    if not skillPattern then return end
+    local a, b = text:match(skillPattern)
+    if not (a and b) then return end
+    -- the skill and its new rank, whatever order the language puts them in
+    local name, rank = a, b
+    if tonumber(a) and not tonumber(b) then name, rank = b, a end
+    -- a profession's own icon where its name is a spell's (Mining, Herbalism...), else a book
+    local icon = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(name) or SKILL_ICON
+    Add("skill:" .. name, icon, name .. " " .. rank, 0, 0.45, 0.75, 1, true)
+end
+
+--------------------------------------------------
 -- 3. MONEY (the rise in your gold, when the chat says it was loot)
 --------------------------------------------------
 local lastMoney, gain, gainAt, chatAt = 0, 0, 0, 0
@@ -293,26 +332,29 @@ local function ShowPreview()
         preview.lines = {}
         for i = 1, #SAMPLES + 1 do
             local line = NewLine(preview)
-            line:SetPoint("BOTTOMLEFT", preview, "BOTTOMLEFT", 0, (#SAMPLES + 1 - i) * SPACING)
             preview.lines[i] = line
         end
         holder.preview = preview
+    end
+    for i, line in ipairs(preview.lines) do
+        line:ClearAllPoints()
+        line:SetPoint("BOTTOMLEFT", preview, "BOTTOMLEFT", 0, (#SAMPLES + 1 - i) * Spacing())
     end
     for i, s in ipairs(SAMPLES) do
         local id, count = s[1], s[2]
         local line = preview.lines[i]
         local icon = C_Item.GetItemIconByID and C_Item.GetItemIconByID(id)
         local name = C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
-        Fill(line, icon, "+" .. count .. " " .. (name or ""))
+        Fill(line, icon, "+" .. count .. " " .. (name or ""), 1, 1, 1)
         -- not in the game's item cache yet: the name comes once it loads
         if not name and Item and Item.CreateFromItemID then
             Item:CreateFromItemID(id):ContinueOnItemLoad(function()
                 local loaded = C_Item.GetItemNameByID(id)
-                if loaded and line:IsVisible() then Fill(line, icon, "+" .. count .. " " .. loaded) end
+                if loaded and line:IsVisible() then Fill(line, icon, "+" .. count .. " " .. loaded, 1, 1, 1) end
             end)
         end
     end
-    Fill(preview.lines[#SAMPLES + 1], MONEY_ICON, GetMoneyString and GetMoneyString(12345, true) or "1 23 45")
+    Fill(preview.lines[#SAMPLES + 1], MONEY_ICON, GetMoneyString and GetMoneyString(12345, true) or "1 23 45", 1, 1, 1)
     preview:Show()
 end
 
@@ -323,6 +365,15 @@ end
 function LF:Refresh()
     if not holder then return end
     if not AtCursor() then ApplyPosition() end
+end
+
+-- Fonts changed: the lines up now and the Edit Mode samples
+function LF:ApplyFont()
+    if not holder then return end
+    for _, line in ipairs(lines) do
+        Fill(line, line.icon:GetTexture(), line.text:GetText() or "")
+    end
+    if holder.preview and holder.preview:IsShown() then ShowPreview() end
 end
 
 function LF:ShouldLoad()
@@ -354,9 +405,12 @@ function LF:Init()
     events:RegisterEvent("CHAT_MSG_LOOT")
     events:RegisterEvent("CHAT_MSG_MONEY")
     events:RegisterEvent("PLAYER_MONEY")
+    events:RegisterEvent("CHAT_MSG_SKILL")
     events:SetScript("OnEvent", function(_, event, text, ...)
         if event == "CHAT_MSG_LOOT" then
             OnLoot(text, (select(11, ...)))   -- the 12th argument: the looter's GUID
+        elseif event == "CHAT_MSG_SKILL" then
+            OnSkill(text)
         elseif event == "CHAT_MSG_MONEY" then
             OnMoneyChat()
         else

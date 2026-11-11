@@ -760,6 +760,8 @@ function R.lootFeed(c, spec)
     if quality<=2 then entries[#entries+1]={icon='INV_Sword_04',text='|cff1eff00'..L["Sword"]..'|r'} end
     if quality>=3 then entries[#entries+1]={icon='INV_Chest_Cloth_25',text='|cffa335ee'..L["Robes of the Archmage"]..'|r'} end
     if Get('tweaks.lootFeedMoney',true) then entries[#entries+1]={icon='INV_Misc_Coin_01',text='12 |cffffd700'..L["Gold"]..'|r'} end
+    -- Show Skill-Ups: the game's own name for Mining
+    if Get('tweaks.lootFeedSkills') then entries[#entries+1]={icon='Trade_Mining',text='|cff73bfff'..((C_Spell.GetSpellName and C_Spell.GetSpellName(2575)) or 'Mining')..' 76|r'} end
     for i,e in ipairs(entries) do Icon(c,'feedIcon'..i,e.icon,x,65+i*28,20); c:Text('feedText'..i,e.text,x+25,68+i*28,c.width-x-30,{size=10}) end
     local elapsed=0
     c:Animate(function(_,dt)

@@ -28,7 +28,7 @@ Route('resources', 'rb', 'health power mana combo swingMain swingOff swingRanged
 Route('bags', 'qol', 'bagColumns bagGaps bagButtons bagRarityBorders bagThickBorders bagJunkIcon bagUpgradeArrow petFood bagKeyring bagReagent')
 Route('nameplate', 'qol', 'npCombo npQuest npNames npLevel npLevelName npCombat')
 Route('reminders', 'au', 'reminders reminderGroup reminderBefore reminderConsumables reminderCamping reminderGathering reminderGlow reminderGlowExpiring')
-Route('lootFeed', 'qol', 'lootFeed lootFeedPosition lootFeedQuality lootFeedMoney')
+Route('lootFeed', 'qol', 'lootFeed lootFeedPosition lootFeedQuality lootFeedMoney lootFeedSkills')
 Route('mouseRing', 'qol', 'mouseRingShow mouseRingSize mouseRingThickness mouseRingClassColor mouseRingCast mouseRingGCD mouseRingSwing mouseRingRange mouseRingHideTurning')
 Route('radial', 'rm', 'scale names')
 

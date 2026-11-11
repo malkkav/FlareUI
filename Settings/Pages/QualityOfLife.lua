@@ -28,7 +28,7 @@ end
 
 S:Module{
     key = "qol", group = "interface", order = 40, enabled = "tweaks.enabled",
-    tabs = { { key = "gameplay" }, { key = "bags" }, { key = "nameplates" }, { key = "interface" } },
+    tabs = { { key = "gameplay" }, { key = "bags" }, { key = "nameplates" }, { key = "interface" }, { key = "fonts" } },
 }
 
 -- (Sync Blizz UI, Move Any Window and UI Scale moved to the Settings page, Language.lua, 11-11)
@@ -118,9 +118,14 @@ local function NoFeed() return not S:GetPath("tweaks.lootFeed") end
 S:Row{ key = "qol.lootFeedQuality", kind = "choice", tab = "bags", parent = "qol.lootFeed", path = "tweaks.lootFeedQuality",
     choices = LOOT_QUALITY, disabled = NoFeed }
 S:Row{ key = "qol.lootFeedMoney", tab = "bags", parent = "qol.lootFeed", path = "tweaks.lootFeedMoney", disabled = NoFeed }
+S:Row{ key = "qol.lootFeedSkills", tab = "bags", parent = "qol.lootFeed", path = "tweaks.lootFeedSkills", disabled = NoFeed }
 S:Row{ key = "qol.lootFeedPosition", kind = "choice", tab = "bags", parent = "qol.lootFeed", path = "tweaks.lootFeedPosition",
     choices = { "cursor", "placed" }, disabled = NoFeed,
     apply = function() if ns.LootFeed and ns.LootFeed.Refresh then ns.LootFeed:Refresh() end end }
+-- FONTS: the loot feed's lines (live: lines already up and the Edit Mode samples take it too)
+S:FontRows{ module = "qol", tab = "fonts", section = "qol.fonts", fonts = {
+    { key = "lootFeed", path = "tweaks.lootFeedFont" },
+}, apply = function() if ns.LootFeed and ns.LootFeed.ApplyFont then ns.LootFeed:ApplyFont() end end }
 
 -- Controller: the Gamepad mode prompt and rumble (GamepadMode.lua)
 S:Row{ key = "qol.gamepadPrompt", half = true, tab = "gameplay", path = "tweaks.gamepadPrompt" }

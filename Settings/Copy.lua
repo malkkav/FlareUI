@@ -46,7 +46,7 @@ ns.Copy = {
         },
         qol = {
             desc = L["Small helpers that save you clicks."],
-            tabs = { L["Gameplay"], L["Bags and Looting"], L["Nameplates"], L["Interface"] },
+            tabs = { L["Gameplay"], L["Bags and Looting"], L["Nameplates"], L["Interface"], L["Fonts"] },
             title = L["Quality of Life"],
         },
         qt = {
@@ -1021,6 +1021,10 @@ ns.Copy = {
             section = "qol.convenience",
             tip = L["Your volumes return when you move, fight or stop fishing for a while."],
         },
+        ["qol.font.lootFeed"] = {
+            desc = L["The lines that float up as you loot."],
+            label = L["Loot Feed"],
+        },
         ["qol.gamepadPrompt"] = {
             desc = L["Pressing a controller button asks whether to switch to Blizzard's Gamepad UI."],
             label = L["Gamepad Mode Prompt"],
@@ -1070,6 +1074,11 @@ ns.Copy = {
         ["qol.lootFeedQuality"] = {
             desc = L["Items below this quality are left out."],
             label = L["Minimum Quality"],
+            section = "qol.lootFeedSection",
+        },
+        ["qol.lootFeedSkills"] = {
+            desc = L["Skill gains show too, such as \"Mining 76\"."],
+            label = L["Show Skill-Ups"],
             section = "qol.lootFeedSection",
         },
         ["qol.mailBook"] = {
