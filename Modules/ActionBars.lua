@@ -409,8 +409,9 @@ function ActionBars.CreateSampleButton(parent, slot)
     return b
 end
 
--- icon: a texture, or nil for an empty slot (where Show Button Art shows)
-function ActionBars.DrawSampleButton(b, icon, macro)
+-- icon: a texture, or nil for an empty slot (where Show Button Art shows). skin: Skin Action Bars'
+-- border forced on or off (the option's own before / after preview), nil for the setting
+function ActionBars.DrawSampleButton(b, icon, macro, skin)
     local db = GetBarConfig() or {}
     if icon then
         b.icon:SetTexture(icon)
@@ -428,6 +429,8 @@ function ActionBars.DrawSampleButton(b, icon, macro)
         if b.SlotBackground then b.SlotBackground:Hide() end
     end
     if b.NormalTexture then b.NormalTexture:SetAlpha(1) end
+    if skin == nil then skin = db.flareBorders and true or false end
+    SkinBorder(b, skin)
     if b.Name then b.Name:SetText(icon and macro or "") end
     UpdateButtonText(b)
     if b.Count then b.Count:SetText("") end

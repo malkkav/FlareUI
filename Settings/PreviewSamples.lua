@@ -591,6 +591,55 @@ function R.actions(c, spec)
     end, 4)
 end
 
+-- Skin Action Bars (11-11 Marcus): the same buttons twice, Blizzard's bronze frame above and FlareUI's
+-- border below, the one in use named in gold; two hold spells, the next is empty (its slot art shows)
+local SKIN_ICONS = { 'Spell_Frost_FrostBolt02', 'Spell_Holy_Heal', false, 'Spell_Nature_Lightning' }
+function R.actionSkin(c, spec)
+    local AB = ns.ActionBars
+    if not (AB and AB.CreateSampleButton) then return end
+    local on = Get('actionbars.flareBorders', true) and true or false
+    Sample(c, 'actionSkinRows', function(parent)
+        local box = CreateFrame('Frame', nil, parent)
+        box.rows = {}
+        for r = 1, 2 do
+            local row = { buttons = {} }
+            for i = 1, #SKIN_ICONS do row.buttons[i] = AB.CreateSampleButton(box, i) end
+            if #row.buttons < #SKIN_ICONS then return nil end
+            -- the settings window's own font (Roboto Condensed)
+            local font = ns.SettingsPanel and ns.SettingsPanel.FONT and ns.SettingsPanel.FONT.GameFontNormal
+            row.label = box:CreateFontString(nil, 'OVERLAY', font or 'GameFontNormal')
+            row.label:SetJustifyH('LEFT')
+            box.rows[r] = row
+        end
+        return box
+    end, function(box)
+        local gap, size, labelH = 6, 45, 20
+        local y = 4
+        for r, row in ipairs(box.rows) do
+            local skinned = r == 2
+            row.label:SetText(skinned and (ns.Settings and ns.Settings:Text('ab.flareBorders', 'label') or 'Skin Action Bars') or L["Blizzard"])
+            local active = skinned == on
+            row.label:SetTextColor(active and 1 or 0.6, active and 0.83 or 0.6, active and 0.47 or 0.6)
+            row.label:ClearAllPoints()
+            row.label:SetPoint('TOPLEFT', box, 'TOPLEFT', 8, -y)
+            y = y + labelH
+            for i, b in ipairs(row.buttons) do
+                local name = SKIN_ICONS[i]
+                local w = AB.DrawSampleButton(b, name and ('Interface\\Icons\\' .. name) or nil, L["Spell"], skinned)
+                size = w or size
+                b:ClearAllPoints()
+                b:SetPoint('TOPLEFT', box, 'TOPLEFT', 8 + (i - 1) * (size + gap), -y)
+                if b.cooldown then b.cooldown:Clear() end
+                -- the one not in use, a little faded
+                b:SetAlpha(active and 1 or 0.55)
+            end
+            y = y + size + 14
+        end
+        box:SetSize(16 + #SKIN_ICONS * size + (#SKIN_ICONS - 1) * gap, y)
+        return box:GetSize()
+    end, 4)
+end
+
 -- the real XP bar (Edit Mode sample values)
 function R.xp(c)
     local XPB = ns.XPBar
