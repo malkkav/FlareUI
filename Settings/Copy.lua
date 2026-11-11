@@ -322,7 +322,7 @@ ns.Copy = {
             kind = "text",
             label = L["Credits"],
             section = "about.credits",
-            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings window's previews and new look.\n* |cffffd100parchinskiy|r for the round minimap.\n* Licences for the libraries and code FlareUI builds on are in its LICENSES folder."],
+            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings' new look idea.\n* |cffffd100parchinskiy|r for the round minimap.\n* Licences for the libraries and code FlareUI builds on are in its LICENSES folder."],
         },
         ["about.layout"] = {
             kind = "text",
