@@ -94,6 +94,8 @@ local ctx = {
     classic = true, mirror = true, hostile = true, castbar = true,
     ringKind = "boss",   -- the portrait ring in the ring styles (PartyFrames.lua RingKind)
 }
+-- for the settings previews' sample tiles
+BF.PreviewCtx, BF.PreviewSamples = ctx, SAMPLES
 
 -- FlareUI Style and Forever Style both use the ring
 local function RingStyle()

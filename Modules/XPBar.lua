@@ -445,12 +445,14 @@ local function FillSection(section, info, width)
     section:Show()
 end
 
-local function UpdateFlare()
+-- target: a settings preview's sample (always the Edit Mode sample), else the bar
+local function UpdateFlare(target)
+    local flare = type(target) == "table" and target or flare
     if not flare then return end
     local db = GetDb()
     local left, right
     local gained = false
-    if LEM:IsInEditMode() then
+    if flare.fuiSample or (LEM and LEM:IsInEditMode()) then
         left, right = SampleSections()
     else
         if GameRulesUtil.CanShowExperienceBar() then gained = TrackXP() end
@@ -479,7 +481,8 @@ local function UpdateFlare()
     flare:Show()
 end
 
-local function LayoutFlare()
+local function LayoutFlare(target)
+    local flare = type(target) == "table" and target or flare
     if not flare then return end
     local db = GetDb()
     local texture = GetTexture()
@@ -502,8 +505,10 @@ local function LayoutFlare()
         section.Text:SetShown(db.textMode == "ALWAYS")
     end
     -- the quest log only matters with Show Quest XP on (it changes often)
-    if db.questXP then pcall(flare.RegisterEvent, flare, "QUEST_LOG_UPDATE") else flare:UnregisterEvent("QUEST_LOG_UPDATE") end
-    UpdateFlare()
+    if not flare.fuiSample then
+        if db.questXP then pcall(flare.RegisterEvent, flare, "QUEST_LOG_UPDATE") else flare:UnregisterEvent("QUEST_LOG_UPDATE") end
+    end
+    UpdateFlare(flare)
 end
 
 -- Position, per Edit Mode layout
@@ -551,25 +556,45 @@ local FLARE_EVENTS = {
 local QUEST_XP_EVENTS = { QUEST_LOG_UPDATE = true, PLAYER_LEVEL_UP = true, PLAYER_ENTERING_WORLD = true, UNIT_LEVEL = true,
     ZONE_CHANGED_NEW_AREA = true }
 
+-- the bar's border, two sections and the pip between them (the bar's and the previews' samples)
+local function BuildParts(f)
+    f.Border = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    f.Border:SetAllPoints()
+    f.Left = CreateSection(f)
+    f.Right = CreateSection(f)
+    f.Border:SetFrameLevel(f:GetFrameLevel())
+    f.Left:SetFrameLevel(f:GetFrameLevel() + 2)
+    f.Right:SetFrameLevel(f:GetFrameLevel() + 2)
+    local pipHolder = CreateFrame("Frame", nil, f)
+    pipHolder:SetAllPoints()
+    pipHolder:SetFrameLevel(f:GetFrameLevel() + 5)
+    f.Pip = pipHolder:CreateTexture(nil, "OVERLAY")
+    f.Pip:SetAtlas(PIP_ATLAS)
+    f.Pip:SetPoint("CENTER", f, "CENTER", 0, 0)
+    f.Pip:Hide()
+end
+
+-- a settings preview's sample: the bar's own parts and layout, with the Edit Mode values (no events,
+-- no mouse)
+function XPB.CreateSample(parent)
+    local f = CreateFrame("Frame", nil, parent)
+    f.fuiSample = true
+    BuildParts(f)
+    f.Left:EnableMouse(false)
+    f.Right:EnableMouse(false)
+    return f
+end
+function XPB.DrawSample(f)
+    LayoutFlare(f)
+    return f:GetWidth(), f:GetHeight()
+end
+
 local function BuildFlare()
     LEM = LibStub("FlareEditMode")
     flare = CreateFrame("Frame", FLARE_NAME, UIParent)
     flare:SetFrameStrata("LOW")
     flare:SetClampedToScreen(true)
-    flare.Border = CreateFrame("Frame", nil, flare, "BackdropTemplate")
-    flare.Border:SetAllPoints()
-    flare.Left = CreateSection(flare)
-    flare.Right = CreateSection(flare)
-    flare.Border:SetFrameLevel(flare:GetFrameLevel())
-    flare.Left:SetFrameLevel(flare:GetFrameLevel() + 2)
-    flare.Right:SetFrameLevel(flare:GetFrameLevel() + 2)
-    local pipHolder = CreateFrame("Frame", nil, flare)
-    pipHolder:SetAllPoints()
-    pipHolder:SetFrameLevel(flare:GetFrameLevel() + 5)
-    flare.Pip = pipHolder:CreateTexture(nil, "OVERLAY")
-    flare.Pip:SetAtlas(PIP_ATLAS)
-    flare.Pip:SetPoint("CENTER", flare, "CENTER", 0, 0)
-    flare.Pip:Hide()
+    BuildParts(flare)
 
     -- events come in bursts; one update per frame
     local queued = false

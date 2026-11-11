@@ -319,6 +319,47 @@ local function UpdateButtonText(button)
     end
 end
 
+-- A settings preview's sample button (11-10): Blizzard's own action button look (ActionButtonTemplate,
+-- not secure), styled by FlareUI as the bars are, with action slot i's real keybind. No mouse.
+local sampleButtons = 0
+function ActionBars.CreateSampleButton(parent, slot)
+    sampleButtons = sampleButtons + 1
+    -- the template's children are named after the button
+    -- (its OnLoad runs Blizzard's art and flyout updates on a button with no action: guarded)
+    local ok, b = pcall(CreateFrame, "CheckButton", "FlareUI_PreviewActionButton" .. sampleButtons, parent, "ActionButtonTemplate")
+    if not ok or not b then return nil end
+    b.commandName = "ACTIONBUTTON" .. slot
+    b:EnableMouse(false)
+    return b
+end
+
+-- icon: a texture, or nil for an empty slot (where Show Button Art shows)
+function ActionBars.DrawSampleButton(b, icon, macro)
+    local db = GetBarConfig() or {}
+    if icon then
+        b.icon:SetTexture(icon)
+        b.icon:SetDesaturated(false)
+        b.icon:SetVertexColor(1, 1, 1)
+        b.icon:Show()
+    else
+        b.icon:Hide()
+    end
+    if db.buttonArt then
+        ApplyButtonArt(b)
+    elseif not icon then
+        -- an empty slot without the art: nothing there
+        if b.SlotArt then b.SlotArt:Hide() end
+        if b.SlotBackground then b.SlotBackground:Hide() end
+        if b.NormalTexture then b.NormalTexture:SetAlpha(0) end
+    end
+    if b.NormalTexture and (icon or db.buttonArt) then b.NormalTexture:SetAlpha(1) end
+    if b.Name then b.Name:SetText(icon and macro or "") end
+    UpdateButtonText(b)
+    if b.Count then b.Count:SetText("") end
+    b:Show()
+    return b:GetSize()
+end
+
 --------------------------------------------------
 -- 8. RANGE & STATUS COLORING
 -- Post-hooks on UpdateUsable and ActionButton_UpdateRangeIndicator reuse the values Blizzard passed,

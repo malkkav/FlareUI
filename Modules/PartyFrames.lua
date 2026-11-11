@@ -769,7 +769,8 @@ local function RefreshAurasOnNewUnit(f)
 end
 
 local function UpdateAll(f)
-    if IsEditing() then
+    -- (a settings preview's sample always shows the Edit Mode values)
+    if IsEditing() or f.fuiSample then
         ApplyPreview(f)
         UpdateRing(f)
         return
@@ -1601,7 +1602,7 @@ end
 local function LayoutMember(f)
     local st = TS(f)
     if not st then return end
-    if InCombatLockdown() then pendingLayout = true return end
+    if InCombatLockdown() and not f.fuiSample then pendingLayout = true return end
     -- FlareUI Style's ring, or back to the plain tile
     local kind = RingKind(f)
     if kind then
@@ -2429,7 +2430,7 @@ local function BuildTile(f, unit)
     end
 
     if not f.ctx or f.ctx.castbar then
-        f.Cast = K.CreateCastBar(f, unit)
+        f.Cast = K.CreateCastBar(f, unit, f.fuiSample)
         f.Cast.isEnabled = function() local st = TS(f); return st and st.castbar and true or false end
     end
 
@@ -2923,6 +2924,26 @@ PF.Tile = {
     PlacesClash = PlacesClash, ABOVE_PLACES = ABOVE_PLACES, BELOW_PLACES = BELOW_PLACES,
     IconShown = IconShown, IconStore = IconStore, LanesExtent = LanesExtent,
 }
+
+-- A settings preview's sample tile (11-10): a plain button with no unit, mouse or auras, built and laid
+-- out by the tile kit, showing the Edit Mode sample. ctx: the owner's (raid, boss), or nil for the
+-- party; index: the party sample's place (PREVIEW)
+function PF.SampleTile(parent, ctx, sample, index)
+    local f = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    f.ctx, f.sample, f.index = ctx, sample, index
+    f.noAuras, f.fuiSample = true, true
+    BuildTile(f, nil)
+    f:EnableMouse(false)
+    f:SetScript("OnEnter", nil)
+    f:SetScript("OnLeave", nil)
+    return f
+end
+function PF.DrawSampleTile(f)
+    LayoutMember(f)
+    UpdateAll(f)
+    f:Show()
+    return f:GetWidth(), f:GetHeight()
+end
 
 -- The aura places for a dropdown, without one (the party frames have no Left of the Frame, the
 -- boss frames no Right of the Frame: that side faces the screen's edge)

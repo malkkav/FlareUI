@@ -902,12 +902,13 @@ local function GetCastStyle(udb, standalone)
     }
 end
 
-local function CreateCastBar(parent, unit)
+-- sample: a settings preview's (no Edit Mode selection, not in castBars)
+local function CreateCastBar(parent, unit, sample)
     local cast = CreateBar(parent, parent:GetFrameLevel() + 1)
     cast.unit = unit
     cast:SetMinMaxValues(0, 1)
     cast:Hide()
-    LEM:AddSelectionArea(cast)
+    if not sample then LEM:AddSelectionArea(cast) end
 
     cast.Backdrop = CreateFrame("Frame", nil, cast, "BackdropTemplate")
     cast.Backdrop:SetFrameLevel(cast:GetFrameLevel() - 1)
@@ -944,7 +945,7 @@ local function CreateCastBar(parent, unit)
     cast:HookScript("OnShow", ShownChanged)
     cast:HookScript("OnHide", ShownChanged)
 
-    castBars[#castBars + 1] = cast
+    if not sample then castBars[#castBars + 1] = cast end
     return cast
 end
 
@@ -4108,6 +4109,31 @@ function UF.DrawSample(f, style, opts)
         return nil
     end
     return result
+end
+
+-- The FlareUI Player Cast Bar's sample: its own bar and layout, casting the Edit Mode sample on a loop
+-- while it shows
+function UF.CreateCastSample(parent)
+    local holder = CreateFrame("Frame", nil, parent)
+    holder.Cast = CreateCastBar(holder, "player", true)
+    holder.Cast.standalone = true
+    holder:SetScript("OnHide", function(self)
+        if self.ticker then self.ticker:Cancel(); self.ticker = nil end
+    end)
+    return holder
+end
+
+function UF.DrawCastSample(holder)
+    local db = GetDb()
+    local style = GetCastStyle(db and db.playerCastbar or {}, true)
+    local _, PADDING = BorderFit(style.height, style.border and GetBorderFile(style.borderTexture))
+    local iconOffset = style.icon and (style.height + CAST_ICON_GAP) or 0
+    holder:SetSize(style.width + iconOffset + 2 * PADDING, style.height + 2 * PADDING)
+    LayoutCastBar(holder.Cast, style, holder, "FILL")
+    ShowSampleCast(holder.Cast)
+    if holder.ticker then holder.ticker:Cancel() end
+    holder.ticker = C_Timer.NewTicker(SAMPLE_CAST_SECONDS, function() ShowSampleCast(holder.Cast) end)
+    return holder:GetWidth(), holder:GetHeight()
 end
 
 --------------------------------------------------

@@ -359,14 +359,15 @@ local function UpdateCombo(holder)
         holder.count = count
         LayoutCombo(holder)
     end
-    local points = IsEditing() and 3 or GetComboPoints("player", "target")
+    local editing = IsEditing() or holder.fuiSample
+    local points = editing and 3 or GetComboPoints("player", "target")
     if not ClassicCombo() then
         for i = 1, count do holder.segments[i]:SetValue(points) end
         return
     end
-    local animate = holder.lastPoints ~= nil and not IsEditing()
+    local animate = holder.lastPoints ~= nil and not editing
     for i = 1, count do ns.SetComboPoint(holder.gems[i], points, animate) end
-    holder.lastPoints = (not IsEditing() and readable(points)) or nil
+    holder.lastPoints = (not editing and readable(points)) or nil
 end
 
 -- The swing bar's colour: out of range, else Waiting State (idle, auto attack on), else Queued
@@ -795,10 +796,12 @@ end
 --------------------------------------------------
 -- 8. FRAME CREATION
 --------------------------------------------------
-local function CreateHolder(key)
+-- parent: a settings preview's sample (no name, not in bars, shows the Edit Mode sample values)
+local function CreateHolder(key, parent)
     local info = BARS[key]
-    local holder = CreateFrame("Frame", "FlareUI_Resource_" .. key, UIParent)
+    local holder = CreateFrame("Frame", not parent and ("FlareUI_Resource_" .. key) or nil, parent or UIParent)
     holder.key = key
+    holder.fuiSample = parent and true or nil
     holder:SetFrameStrata("MEDIUM")
     holder:SetClampedToScreen(true)
     holder.editModeName = "FlareUI " .. info.label
@@ -870,7 +873,7 @@ local function CreateHolder(key)
     if info.kind == "power" or info.kind == "mana" then
         -- the mana a spell being cast will cost, shaded at the fill's end (as on the player frame)
         holder.ManaCost = K.CreateManaCost(holder.Bar, function()
-            if IsEditing() then return 0.15 end   -- the Edit Mode sample (the bar runs 0 to 1 then)
+            if IsEditing() or holder.fuiSample then return 0.15 end   -- the Edit Mode sample (the bar runs 0 to 1 then)
             return RB.manaCost
         end, function()
             if info.kind == "mana" then return ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3] end
@@ -951,8 +954,20 @@ local function CreateHolder(key)
     end
 
     holder:Hide()
-    bars[key] = holder
+    if not parent then bars[key] = holder end
     return holder
+end
+
+-- a settings preview's sample of a bar: its own build, layout and Edit Mode values
+function RB.CreateSample(parent, key)
+    if not BARS[key] then return nil end
+    return CreateHolder(key, parent)
+end
+function RB.DrawSample(holder)
+    LayoutBar(holder)
+    ApplyPreview(holder)
+    holder:Show()
+    return holder:GetWidth(), holder:GetHeight()
 end
 
 --------------------------------------------------

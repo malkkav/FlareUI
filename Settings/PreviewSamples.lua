@@ -65,6 +65,29 @@ local function Round(c, id, texture)
     c.masks[id]:ClearAllPoints(); c.masks[id]:SetAllPoints(texture)
 end
 
+-- A module's own sample frame (made once per canvas): drawn by draw(f), which returns its size, then
+-- scaled down to fit (never up) and centred at y. Returns the frame and the height it takes.
+local function Sample(c, id, create, draw, y, width)
+    c.samples = c.samples or {}
+    local f = c.samples[id]
+    if not f then
+        f = create(c.frame)
+        if not f then return nil, 0 end
+        c.samples[id] = f
+        c.objects[id] = f
+    end
+    f:SetScale(1)
+    f:SetAlpha(1)
+    f:Show()
+    local w, h = draw(f)
+    if not w or w <= 0 or not h or h <= 0 then f:Hide() return nil, 0 end
+    local k = math.min(1, (width or c.width - 16) / w)
+    f:SetScale(k)
+    f:ClearAllPoints()
+    f:SetPoint('TOPLEFT', c.frame, 'TOPLEFT', (c.width - w * k) / 2 / k, -y / k)
+    return f, h * k
+end
+
 -- 11-10 pilot: the unit frames' own code draws the frame (UnitFrames' UF.CreateSample and DrawSample),
 -- in the style given, scaled to width (and to maxHeight); centred unless x is given. Returns the
 -- frame and the height it takes. (palette: the live one is the frames' own)
@@ -141,32 +164,47 @@ function R.frames(c, spec)
             Unit(c, 'frameSmall', style, key == 'tot' and 'targettarget' or 'focustarget', 4, c.width - 16)
         end
     elseif key == 'castbar' then
-        local width, height = math.min(180, c.width - 20), 24
-        local x, y = (c.width - width) / 2, 24
-        local icon = Icon(c, 'castIcon', 'Spell_Frost_FrostBolt02', x + 2, y + 2, 20)
-        CardBorder(c, 'castIconBorder', x, y, 24, 24)
-        local bx, bw = x + 28, width - 28
-        CardBorder(c, 'castBorder', bx, y, bw, height)
-        c:Bar('cast', bx + 4, y + 4, bw - 8, height - 8, 0.65, { 0.36, 0.56, 0.78 }, 'FlareUI Flat')
-        c:Text('castLabel', L["Frostbolt"], bx + 8, y + 7, bw - 60, { size = 10, flags = 'OUTLINE' }):SetWordWrap(false)
-        c:Text('castTime', '1.6 / 2.5', bx + bw - 51, y + 7, 43, { size = 9, flags = 'OUTLINE' }):SetJustifyH('RIGHT')
+        local UF = ns.UnitFrames
+        if UF and UF.CreateCastSample then Sample(c, 'castSample', UF.CreateCastSample, UF.DrawCastSample, 4) end
     else
-        local raid, boss = key == 'raid', key == 'boss'
-        local columns, rows = raid and 5 or 1, raid and 4 or boss and 3 or 4
-        local width = raid and math.min(34, (c.width - 24) / 5 - 4) or math.min(158, c.width - 32)
-        local height, gap = math.min(18, math.floor((c.height - 9) / 4)), 3
-        local left = (c.width - columns * (width + gap) + gap) / 2
-        local top = (c.height - (rows * height + (rows - 1) * gap)) / 2
-        for i = 1, columns * rows do
-            local x, y = left + ((i - 1) % columns) * (width + gap), top + math.floor((i - 1) / columns) * (height + gap)
-            local color = boss and { 0.77, 0.23, 0.23 } or colors[(i - 1) % #colors + 1]
-            CardBorder(c, 'groupBorder' .. i, x, y, width, height)
-            c:Bar('groupHealth' .. i, x + 4, y + 4, width - 8, height - 9, 0.95 - (i % 4) * 0.12, color, 'FlareUI Flat')
-            c:Bar('groupPower' .. i, x + 4, y + height - 5, width - 8, 1, 0.7, palette.mana, 'FlareUI Flat')
-            if not raid then
-                c:Text('groupName' .. i, (boss and L["Boss"] or L["Party"]) .. ' ' .. i, x + 7, y + 4, width - 14, { size = 8, flags = 'OUTLINE' }):SetWordWrap(false)
-            end
+        -- the tiles themselves (the tile kit's samples), in the style in use
+        local PF = ns.PartyFrames
+        if not (PF and PF.SampleTile) then return end
+        local ctx, samples, count, columns
+        if key == 'raid' then
+            ctx, samples, count, columns = ns.RaidFrames and ns.RaidFrames.PreviewCtx, ns.RaidFrames and ns.RaidFrames.PreviewSamples, 10, 5
+        elseif key == 'boss' then
+            ctx, samples, count, columns = ns.BossFrames and ns.BossFrames.PreviewCtx, ns.BossFrames and ns.BossFrames.PreviewSamples, 3, 1
+            if not ctx then return end
+        else
+            count, columns = 4, 1
         end
+        if key == 'raid' and not ctx then return end
+        Sample(c, 'tiles:' .. key, function(parent)
+            local box = CreateFrame('Frame', nil, parent)
+            box.tiles = {}
+            for i = 1, count do box.tiles[i] = PF.SampleTile(box, ctx, samples and samples[i], i) end
+            return box
+        end, function(box)
+            local gap, left, right, tw, th = 6, 0, 0, 0, 0
+            for _, t in ipairs(box.tiles) do
+                tw, th = PF.DrawSampleTile(t)
+                -- the portrait ring stands out on its side
+                if t.ringKind and ns.UFRing then
+                    local over = ns.UFRing.Overhang(t)
+                    if t.ringSide == 'RIGHT' then right = math.max(right, over) else left = math.max(left, over) end
+                    gap = math.max(gap, (t.RingFrame and t.RingFrame:GetHeight() or 0) - th + 6)
+                end
+            end
+            for i, t in ipairs(box.tiles) do
+                local col, row = (i - 1) % columns, math.floor((i - 1) / columns)
+                t:ClearAllPoints()
+                t:SetPoint('TOPLEFT', box, 'TOPLEFT', left + col * (tw + 4), -(gap / 2 + row * (th + gap)))
+            end
+            local rows = math.ceil(count / columns)
+            box:SetSize(left + right + columns * tw + (columns - 1) * 4, rows * th + rows * gap)
+            return box:GetSize()
+        end, 4)
     end
 end
 
@@ -480,108 +518,68 @@ function R.meter(c, spec)
     Note(c)
 end
 
-function R.actions(outer, spec)
-    Heading(outer, L["Action Bars"])
-    if not outer.actionCanvas then
-        outer.actionCanvas = P.Create(outer.frame, 400, 180)
-        outer.objects.actionCanvasFrame = outer.actionCanvas.frame
-    end
-    local c = outer.actionCanvas
-    c:Reset(); c.frame:Show()
-    local scale = (outer.width - 8) / 400
-    c.frame:SetScale(scale); c.frame:ClearAllPoints()
-    c.frame:SetPoint('TOPLEFT', outer.frame, 'TOPLEFT', 4 / scale, -38 / scale)
-    local behind = Get('actionbars.gryphonsBehind')
-    if not Get('visibility.hideEndCaps') then
-        local caps = c:Object('endCaps', 'Frame')
-        caps:SetAllPoints(c.frame)
-        caps:SetFrameLevel(c.frame:GetFrameLevel() + (behind and 0 or 30))
-        if not caps.left then
-            caps.left = caps:CreateTexture(nil, 'ARTWORK'); caps.right = caps:CreateTexture(nil, 'ARTWORK')
+-- Action Bars (11-10 Marcus): a few real buttons, as FlareUI styles them, and an empty slot (Show
+-- Button Art shows there). Status Colouring: out of range and out of mana; Dim on Cooldown; the proc glow.
+local ACTION_ICONS = { 'Spell_Frost_FrostBolt02', 'Spell_Fire_FireBolt02', 'Spell_Holy_Heal', 'Spell_Nature_Lightning' }
+function R.actions(c, spec)
+    local AB = ns.ActionBars
+    if not (AB and AB.CreateSampleButton) then return end
+    Sample(c, 'actionRow', function(parent)
+        local box = CreateFrame('Frame', nil, parent)
+        box.buttons = {}
+        for i = 1, 5 do box.buttons[#box.buttons + 1] = AB.CreateSampleButton(box, i) end
+        if #box.buttons < 5 then return nil end
+        return box
+    end, function(box)
+        local gap, size = 6, 45
+        for i, b in ipairs(box.buttons) do
+            local icon = ACTION_ICONS[i] and ('Interface\\Icons\\' .. ACTION_ICONS[i]) or nil
+            local w = AB.DrawSampleButton(b, icon, L["Spell"])
+            size = w or size
+            b:ClearAllPoints()
+            b:SetPoint('TOPLEFT', box, 'TOPLEFT', 8 + (i - 1) * (size + gap), -8)
+            if b.cooldown then b.cooldown:Clear() end
         end
-        for i, t in ipairs({ caps.left, caps.right }) do
-            local atlas = 'ui-hud-actionbar-gryphon-' .. (i == 1 and 'left' or 'right')
-            local info = C_Texture.GetAtlasInfo(atlas)
-            local height = 100
-            if info then
-                t:SetAtlas(atlas)
-                height = math.min(130, 100 * info.height / info.width)
-            else
-                -- The legacy Dwarf texture is the gryphon; Human is a different lion end cap.
-                t:SetTexture('Interface\\MainMenuBar\\UI-MainMenuBar-EndCap-Dwarf')
-                t:SetTexCoord(i == 1 and 0 or 1, i == 1 and 1 or 0, 0, 1)
-            end
-            t:ClearAllPoints(); t:SetPoint('TOPLEFT', i == 1 and 0 or 300, -(150 - height)); t:SetSize(100, height)
+        local range = Get('actionbars.colors.enableRange')
+        -- the second on cooldown (dimmed with Dim on Cooldown), the third out of range, the fourth out of mana
+        local cd = box.buttons[2]
+        if cd.cooldown then cd.cooldown:SetCooldown(GetTime() - 4, 12) end
+        if Get('actionbars.dimOnCooldown') then cd.icon:SetDesaturated(true); cd.icon:SetVertexColor(0.5, 0.5, 0.5) end
+        if range then
+            box.buttons[3].icon:SetVertexColor(1, 0.25, 0.25)
+            box.buttons[4].icon:SetVertexColor(0.35, 0.45, 1)
         end
-    end
-    for i, name in ipairs({ 'Spell_Frost_FrostBolt02', 'Spell_Fire_FireBolt02', 'Spell_Holy_Heal', 'INV_Misc_QuestionMark' }) do
-        local x, y, size = 87 + (i - 1) * 56, 90, 52
-        local icon = c:Texture('action' .. i, 'Interface\\Icons\\' .. name, x, y, size, size, true)
-        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        if i == 2 and Get('actionbars.dimOnCooldown') then icon:SetDesaturated(true); icon:SetVertexColor(0.45, 0.45, 0.45) end
-        if i == 3 and Get('actionbars.colors.enableRange') then icon:SetVertexColor(1, 0.2, 0.2) end
-        if Get('actionbars.buttonArt') then
-            local border = c:Texture('actionBorder' .. i, nil, x - 2, y - 2, size + 4, size + 4, true)
-            if C_Texture.GetAtlasInfo('UI-HUD-ActionBar-IconFrame') then border:SetAtlas('UI-HUD-ActionBar-IconFrame') end
+        -- Proc Glow on the first
+        local first = box.buttons[1]
+        if Get('actionbars.procGlow') then
+            if not box.glow then box.glow = CreateFrame('Frame', nil, first, 'ActionButtonSpellAlertTemplate') end
+            local glow = box.glow
+            glow:ClearAllPoints()
+            glow:SetPoint('CENTER', first, 'CENTER')
+            glow:SetSize(size * 1.4, size * 1.4)
+            glow:Show()
+            if glow.ProcLoop then glow.ProcLoop:Play() end
+        elseif box.glow then
+            if box.glow.ProcLoop then box.glow.ProcLoop:Stop() end
+            box.glow:Hide()
         end
-        if not Get('actionbars.hideHotkeys') then c:Text('hotkey' .. i, Get('actionbars.cleanKeybinds') and 'S-' .. i or 'SHIFT-' .. i, x, y, size, Font('actionbars.hotkeyFont')) end
-        if not Get('actionbars.hideMacroText') then c:Text('macro' .. i, L["Spell"], x, y + 37, size, Font('actionbars.macroFont')) end
-    end
-    if Get('actionbars.procGlow') then
-        local glow = c:Object('procGlow', 'Frame', 'ActionButtonSpellAlertTemplate')
-        glow:SetPoint('TOPLEFT', 77, -80); glow:SetSize(72, 72)
-        glow:SetFrameLevel(c.frame:GetFrameLevel() + 25)
-        if glow.ProcStartAnim then glow.ProcStartAnim:Play() end
-    end
-    local mode = Get('actionbars.xpbar.textFormat', 'VALUES')
-    outer:Bar('xp', 12, 167, outer.width - 24, 16, 0.65, { 0.55, 0.25, 0.8 }, Get('actionbars.xpbar.texture'))
-    if Get('actionbars.xpbar.questXP') then
-        local share = ({ done = 0.12, all = 0.30, zone = 0.19 })[Get('actionbars.xpbar.questXPMode', 'done')] or 0.12
-        outer:Bar('questXp', 12 + (outer.width - 24) * 0.65, 167, (outer.width - 24) * share, 16, 1, { 0.8, 0.65, 0.2 })
-    end
-    outer:Text('xpText', ({ VALUES = '6,500 / 10,000', PERCENT = '65%', BOTH = '6,500 / 10,000 (65%)', REMAINING = '3,500' })[mode], 16, 169, outer.width - 32, { size = 10 })
-    Note(outer)
+        box:SetSize(16 + 5 * size + 4 * gap, size + 16)
+        return box:GetSize()
+    end, 4)
 end
 
+-- the real XP bar (Edit Mode sample values)
 function R.xp(c)
-    Heading(c, L["Experience"])
-    c:Bar('xp', 10, 85, c.width - 20, 22, 0.65, { 0.55, 0.25, 0.8 }, Get('actionbars.xpbar.texture'))
-    local mode = Get('actionbars.xpbar.textFormat', 'VALUES')
-    c:Text('xpText', ({ VALUES = '6,500 / 10,000', PERCENT = '65%', BOTH = '6,500 / 10,000 (65%)', REMAINING = '3,500' })[mode], 14, 90, c.width - 28)
-    if Get('actionbars.xpbar.questXP') then c:Bar('questXp', c.width * 0.65, 85, 30, 22, 1, { 0.8, 0.65, 0.2 }) end
-    Note(c)
+    local XPB = ns.XPBar
+    if XPB and XPB.CreateSample then Sample(c, 'xpSample', XPB.CreateSample, XPB.DrawSample, 4) end
 end
 
 function R.resources(c, spec)
-    Heading(c, L["Resource Bars"])
     local key = spec.key:match('^rb%.(.+)$') or 'health'
     if key == 'overview' then key = 'health' end
-    local db = Get('unitframes.resource.bars.' .. key, {})
-    if key == 'combo' then
-        for i = 1, 5 do
-            local point = c.objects['comboPoint' .. i]
-            if not point then point = ns.CreateComboPoint(c.frame, i, 22, false); c.objects['comboPoint' .. i] = point end
-            point:ClearAllPoints(); point:SetPoint('TOPLEFT', 18 + (i - 1) * 38, -83)
-            ns.SetComboPoint(point, 3, false); point:Show()
-        end
-    else
-        local color = key == 'health' and ns.HEALTH_GREEN or key:find('swing') and { 0.86, 0.65, 0.39 } or ns.MANA_BLUE
-        c:Bar('resource', 10, 85, c.width - 20, 24, 0.65, color, db.texture)
-        c:Box('resourceBorder', 10, 85, c.width - 20, 24, db.border, 0)
-        c:Text('resourceText', key:find('swing') and '1.8 / 2.6' or '65%', 16, 91, c.width - 32, Font('unitframes.resource.font'))
-    end
-    local enabled = Get('unitframes.resource.bars.' .. key .. '.enabled', true)
-    if not enabled then c.frame:SetAlpha(0.4) end
-    if key:find('swing') and enabled then
-        local elapsed = 0
-        local duration = key == 'swingMain' and 2.6 or key == 'swingOff' and 1.8 or 2.4
-        c:Animate(function(_, dt)
-            elapsed = (elapsed + dt) % duration
-            c.objects.resource:SetValue(elapsed / duration)
-            c.objects.resourceText:SetText(string.format('%.1f / %.1f', elapsed, duration))
-        end)
-    end
-    Note(c)
+    local RB = ns.ResourceBars
+    if not (RB and RB.CreateSample) then return end
+    Sample(c, 'rb:' .. key, function(parent) return RB.CreateSample(parent, key) end, RB.DrawSample, 4)
 end
 
 function R.bags(c)

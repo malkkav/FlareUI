@@ -211,6 +211,8 @@ local tankCtx = {
     PreviewData = function(f) return f.sample or SAMPLES[1] end,
     ReadyHold = function() return readyHold end,
 }
+-- for the settings previews' sample tiles
+RF.PreviewCtx, RF.PreviewSamples = raidCtx, SAMPLES
 
 local function Mode()
     local db = GetDb()
