@@ -46,6 +46,23 @@ local function Refresh()
     if ns.ResourceBars and ns.ResourceBars.Refresh then ns.ResourceBars:Refresh() end
 end
 
+-- Colour Palette, Resource Bars' own (11-11): until set, the unit frames' (ResourceBars.lua RB.PaletteName)
+S:Row{
+    key = "rb.palette", kind = "choice", choices = { "flareui", "blizzard", "custom" },
+    get = function() return ns.ResourceBars and ns.ResourceBars.PaletteName and ns.ResourceBars.PaletteName() or "flareui" end,
+    set = function(value)
+        local before = ns.ResourceBars and ns.ResourceBars.PaletteName and ns.ResourceBars.PaletteName() or "flareui"
+        if value == "custom" and before ~= "custom" then S:SetPath("unitframes.resource.customBase", before) end
+        S:SetPath("unitframes.resource.palette", value)
+    end,
+    apply = Refresh,
+}
+S:Row{
+    key = "rb.pickColors", kind = "button", parent = "rb.palette",
+    hidden = function() return not (ns.ResourceBars and ns.ResourceBars.PaletteName and ns.ResourceBars.PaletteName() == "custom") end,
+    apply = function() if ns.ColorPicker then ns.ColorPicker.Open("rb") end end,
+}
+
 S:FontRows{ module = "rb", tab = "fonts", section = "rb.fonts", apply = Refresh, fonts = {
     { key = "text", path = "unitframes.resource.font" },
 } }

@@ -37,7 +37,7 @@ local FSR_SPARK = "Interface\\CastingBar\\UI-CastingBar-Spark"
 local SWING_SPARK = "Interface\\CastingBar\\UI-CastingBar-Spark"
 
 local COLORS = {
-    combo      = ns.COMBO_COLOR,
+    combo      = { ns.COMBO_COLOR[1], ns.COMBO_COLOR[2], ns.COMBO_COLOR[3] },   -- (its own: the palette writes it)
     swingMain  = { 0.86, 0.65, 0.39 },
     swingOff   = { 0.72, 0.54, 0.32 },
     swingRanged = { 0.45, 0.68, 0.40 },
@@ -120,6 +120,88 @@ end
 -- Low Health Colour: a red layer over the fill, its alpha from your health through a step curve
 -- (health is secret, so no comparison in Lua): shown under LOW_HEALTH of your health
 local LOW_HEALTH = { at = 0.3, color = { 0.85, 0.1, 0.1 } }
+
+-- COLOUR PALETTE (Resource Bars' own, 11-11): FlareUI, Blizzard or Custom, as the unit frames' but
+-- kept apart (unitframes.resource.palette; until set, the unit frames' choice). Custom keeps the
+-- picked colours (customColors) over the palette it started from (customBase).
+RB.COLOR_DEFAULTS = {
+    low = { 0.85, 0.1, 0.1 }, combo = { ns.COMBO_COLOR[1], ns.COMBO_COLOR[2], ns.COMBO_COLOR[3] },
+    swingMain = { 0.86, 0.65, 0.39 }, swingOff = { 0.72, 0.54, 0.32 }, swingRanged = { 0.45, 0.68, 0.40 },
+    outOfRange = { 0.78, 0.28, 0.24 }, queued = { 1.00, 0.82, 0.25 }, waiting = { 0.45, 0.45, 0.45 },
+    zone = { 1, 0.2, 0.15 },
+}
+local RBC = {}   -- the colours in use, key -> { r, g, b }
+RB.colors = RBC
+
+function RB.PaletteName()
+    local rdb = GetResourceDb()
+    local palette = rdb and rdb.palette
+    if palette == nil then
+        local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
+        palette = uf and uf.palette
+        -- (the unit frames' Custom is theirs: Resource Bars follow the palette it started from)
+        if palette == "custom" then palette = uf.customBase end
+    end
+    if palette ~= "blizzard" and palette ~= "custom" then palette = "flareui" end
+    return palette
+end
+
+-- a palette's colour for a key: the unit frames' table for what they share, Resource Bars' own for the rest
+function RB.PaletteColor(key, paletteName)
+    local UF = ns.UnitFrames
+    if key == "classHealth" then
+        local _, class = UnitClass("player")
+        return UF.PaletteColor("class:" .. (class or "WARRIOR"), paletteName)
+    elseif key == "druidMana" then
+        return UF.PaletteColor("mana", paletteName)
+    end
+    return RB.COLOR_DEFAULTS[key] or UF.PaletteColor(key, paletteName)
+end
+
+function RB.ApplyPalette()
+    local UF = ns.UnitFrames
+    if not (UF and UF.PaletteColor) then return end
+    local rdb = GetResourceDb()
+    local palette = RB.PaletteName()
+    local base = palette == "custom" and (rdb and rdb.customBase == "blizzard" and "blizzard" or "flareui") or palette
+    RB.palette, RB.basePalette = palette, base
+    local custom = palette == "custom" and rdb and rdb.customColors or nil
+    for _, key in ipairs({ "health", "classHealth", "low", "mana", "rage", "energy", "druidMana", "combo",
+                           "swingMain", "swingOff", "swingRanged", "outOfRange", "queued", "waiting", "zone",
+                           "heal", "absorb" }) do
+        local own = custom and custom[key]
+        local c = (type(own) == "table" and own[1]) and own or RB.PaletteColor(key, base)
+        RBC[key] = RBC[key] or {}
+        RBC[key][1], RBC[key][2], RBC[key][3] = c[1], c[2], c[3]
+    end
+    -- the tables the bars read
+    for _, key in ipairs({ "combo", "swingMain", "swingOff", "swingRanged", "outOfRange", "queued", "waiting" }) do
+        COLORS[key][1], COLORS[key][2], COLORS[key][3] = RBC[key][1], RBC[key][2], RBC[key][3]
+    end
+    LOW_HEALTH.color[1], LOW_HEALTH.color[2], LOW_HEALTH.color[3] = RBC.low[1], RBC.low[2], RBC.low[3]
+end
+
+-- the health bar's colour: your class with Class Colours, else the palette's health
+function RB.HealthColor()
+    local c = HealthClassColors() and RBC.classHealth or RBC.health
+    if not c then return K.GetHealthColor("player", HealthClassColors()) end
+    return c[1], c[2], c[3]
+end
+
+-- the power bar's colour: the palette's mana, rage or energy, else Blizzard's
+local RB_POWER = { MANA = "mana", RAGE = "rage", ENERGY = "energy" }
+function RB.PowerColor()
+    local _, token = UnitPowerType("player")
+    local key = canaccessvalue(token) and RB_POWER[token]
+    local c = key and RBC[key]
+    if c then return c[1], c[2], c[3] end
+    return K.GetPowerColor("player")
+end
+
+local function DruidManaColor()
+    local c = RBC.druidMana or ns.MANA_BLUE
+    return c[1], c[2], c[3]
+end
 function LOW_HEALTH.Alpha()
     if not LOW_HEALTH.curve then
         LOW_HEALTH.curve = C_CurveUtil.CreateCurve()
@@ -266,7 +348,7 @@ end
 local function UpdateHealth(holder, glide)
     local bar = holder.Bar
     bar:SetMinMaxValues(0, UnitHealthMax("player"))
-    bar:SetStatusBarColor(K.GetHealthColor("player", HealthClassColors()))
+    bar:SetStatusBarColor(RB.HealthColor())
     holder.ready = true
     local cfg = Cfg("health")
     if holder.LowHealth then
@@ -311,7 +393,7 @@ local function UpdatePower(holder, glide)
     local bar = holder.Bar
     local powerType = UnitPowerType("player")
     bar:SetMinMaxValues(0, UnitPowerMax("player", powerType))
-    bar:SetStatusBarColor(K.GetPowerColor("player"))
+    bar:SetStatusBarColor(RB.PowerColor())
     holder.ready, holder.powerType = true, readable(powerType)
     SetPowerValue(holder, powerType, glide, true)
     if holder.ManaCost then holder.ManaCost:Refresh(powerType) end
@@ -330,7 +412,7 @@ end
 local function UpdateMana(holder, glide)
     local bar = holder.Bar
     bar:SetMinMaxValues(0, UnitPowerMax("player", MANA))
-    bar:SetStatusBarColor(ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3])
+    bar:SetStatusBarColor(DruidManaColor())
     holder.ready = true
     SetPowerValue(holder, MANA, glide, true)
     if holder.ManaCost then holder.ManaCost:Refresh(MANA) end
@@ -392,6 +474,8 @@ local function SwingZone(holder)
     if not zone then return end
     local cfg, d = Cfg(holder.key), holder.swingDuration
     if cfg and cfg.standStill and d and d > 0 then
+        local z = RBC.zone
+        if z then zone:SetColorTexture(z[1], z[2], z[3], 0.35) end
         zone:SetWidth(math_max(1, holder.Bar:GetWidth() * math_min(STAND_STILL / d, 1)))
         zone:Show()
     else
@@ -501,7 +585,7 @@ local function ApplyPreview(holder)
         -- Low Health Colour: the sample is low and red
         local low = cfg.lowHealth and holder.LowHealth
         bar:SetValue(low and 0.25 or 0.75)
-        bar:SetStatusBarColor(K.GetHealthColor("player", HealthClassColors()))
+        bar:SetStatusBarColor(RB.HealthColor())
         SetText(holder, cfg.text or "both", low and 6000 or 18000, low and 25 or 75, 24000)
         if holder.HealBar then holder.HealBar:SetValue(0); holder.AbsorbBar:SetValue(0); K.HideShieldGlow(holder.ShieldGlow); K.SetOverAbsorb(holder.OverAbsorb) end
         if holder.LowHealth then
@@ -514,7 +598,7 @@ local function ApplyPreview(holder)
         end
     elseif kind == "power" then
         bar:SetValue(0.6)
-        bar:SetStatusBarColor(K.GetPowerColor("player"))
+        bar:SetStatusBarColor(RB.PowerColor())
         SetText(holder, cfg.text or "value", 60, 60)
         if holder.ManaCost then holder.ManaCost:Refresh(UnitPowerType("player")) end   -- the sample cost
         -- GCD Spark: a still sample
@@ -524,7 +608,7 @@ local function ApplyPreview(holder)
         end
     elseif kind == "mana" then
         bar:SetValue(0.4)
-        bar:SetStatusBarColor(ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3])
+        bar:SetStatusBarColor(DruidManaColor())
         SetText(holder, cfg.text or "value", 1600, 40)
         if holder.ManaCost then holder.ManaCost:Refresh(MANA) end
     elseif kind == "swing" then
@@ -738,7 +822,9 @@ local function LayoutBar(holder)
         absorb:SetPoint("BOTTOMLEFT", healFill, "BOTTOMRIGHT", 0, 0)
         K.PlaceShieldGlow(holder.ShieldGlow, bar, false)
         absorb:SetStatusBarTexture(K.GetBarTexture(K.ABSORB_TEXTURE))
-        absorb:SetStatusBarColor(K.ABSORB_COLOR[1], K.ABSORB_COLOR[2], K.ABSORB_COLOR[3], K.ABSORB_COLOR[4])
+        local a, h = RBC.absorb or K.ABSORB_COLOR, RBC.heal or K.HEAL_COLOR
+        absorb:SetStatusBarColor(a[1], a[2], a[3], K.ABSORB_COLOR[4])
+        heal:SetStatusBarColor(h[1], h[2], h[3], K.HEAL_COLOR[4])
         -- the shield with no room after the health, over it (UnitFrames.lua UF.CreateOverAbsorb)
         K.PlaceOverAbsorb(holder.OverAbsorb, bar, width, false, K.GetBarTexture(K.ABSORB_TEXTURE))
     end
@@ -886,8 +972,8 @@ local function CreateHolder(key, parent)
             if IsEditing() or holder.fuiSample then return 0.15 end   -- the Edit Mode sample (the bar runs 0 to 1 then)
             return RB.manaCost
         end, function()
-            if info.kind == "mana" then return ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3] end
-            return K.GetPowerColor("player")
+            if info.kind == "mana" then return DruidManaColor() end
+            return RB.PowerColor()
         end)
     end
 
@@ -1418,6 +1504,7 @@ end
 
 function RB:Refresh()
     if not self.initialized then return end
+    RB.ApplyPalette()
     for _, key in ipairs(BAR_ORDER) do
         local holder = bars[key]
         if holder then
@@ -1480,6 +1567,7 @@ end
 function RB:Init()
     if self.initialized or not K then return end
     self.initialized = true
+    RB.ApplyPalette()
     RB.SeedVisibility()
     EventUtil.ContinueOnAddOnLoaded("Blizzard_CombatText", RaiseCombatText)
 

@@ -143,7 +143,7 @@ function R.unit(c, spec)
     else
         local frame = Unit(c, 'playerSample', style, 'player', 4, c.width - 16)
         -- Colour Palette (11-11 Marcus): FlareUI's colours shown washed, Blizzard's bright
-        if frame and spec.key == 'uf.palette' then
+        if frame and spec.key == 'uf.palette' and Get('unitframes.palette', 'flareui') ~= 'custom' then
             local flare = Get('unitframes.palette', 'flareui') ~= 'blizzard'
             for _, bar in ipairs({ frame.Health, frame.Power }) do
                 local r, g, b = bar:GetStatusBarColor()

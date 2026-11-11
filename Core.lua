@@ -34,6 +34,9 @@ ns.MANA_BLUE = { 0.18, 0.48, 1.00 }   -- bright, to stand out from the deep blue
 
 -- A power's bar colour (r, g, b), or nil when Blizzard has none for it
 function ns.PowerColor(token, powerType)
+    -- Colour Palette: Custom's own power colours (UnitFrames.lua UF.ApplyPalette)
+    local own = ns.POWER_OVERRIDE and token and ns.POWER_OVERRIDE[token]
+    if own then return own[1], own[2], own[3] end
     if token == "MANA" or (token == nil and powerType == 0) then
         return ns.MANA_BLUE[1], ns.MANA_BLUE[2], ns.MANA_BLUE[3]
     end

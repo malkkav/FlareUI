@@ -92,6 +92,8 @@ UF.PALETTES = {
         hostile = { 0.87, 0.27, 0.27 }, neutral = { 0.93, 0.78, 0.25 }, friendly = { 0.30, 0.78, 0.30 },
         cast = { 0.80, 0.60, 0.36 }, castNoInterrupt = { 0.55, 0.55, 0.55 }, castChannel = { 0.30, 0.65, 0.90 },
         playerCast = { 0.36, 0.56, 0.78 }, playerChannel = { 0.50, 0.75, 0.88 },
+        interrupted = { 0.85, 0.12, 0.10 }, latency = { 1, 0.15, 0.1 },
+        heal = { 11/255, 136/255, 105/255 }, absorb = { 0.67, 0.78, 0.92 },
         -- health bars only, kept apart from these classes' mana and energy bars; names keep the real colours
         classHealth = { SHAMAN = { 0.00, 0.32, 0.62 }, ROGUE = { 0.90, 0.80, 0.25 } },
     },
@@ -101,32 +103,96 @@ UF.PALETTES = {
         hostile = { 1, 0, 0 }, neutral = { 1, 1, 0 }, friendly = { 0, 1, 0 },
         cast = { 1, 0.7, 0 }, castNoInterrupt = { 0.7, 0.7, 0.7 }, castChannel = { 0, 1, 0 },
         playerCast = { 1, 0.7, 0 }, playerChannel = { 0, 1, 0 },
+        interrupted = { 0.85, 0.12, 0.10 }, latency = { 1, 0.15, 0.1 },
+        heal = { 11/255, 136/255, 105/255 }, absorb = { 0.67, 0.78, 0.92 },
         texture = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Flat-Bright",
     },
 }
 
--- The palette's own health bar colour for a class, or nil for the class's real colour
+-- COLOUR PALETTE: FlareUI, Blizzard, or Custom (11-11): Custom keeps the colours the player picked
+-- (unitframes.customColors, key -> { r, g, b }) over the palette it started from (customBase). Keys:
+-- the palettes' own, "class:<CLASS>" (health bars), "rage" / "energy" / "focus" (power bars).
+-- Resource Bars has the same three under its own settings (ResourceBars.lua RB.ApplyPalette).
+UF.CLASSES = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
+UF.POWER_KEYS = { rage = "RAGE", energy = "ENERGY", focus = "FOCUS" }
+
+-- a palette's colour for a key, as { r, g, b }: classes their real colour unless the palette has its
+-- own, power its Blizzard colour
+function UF.PaletteColor(key, paletteName)
+    local p = UF.PALETTES[paletteName] or UF.PALETTES.flareui
+    local class = key:match("^class:(.+)$")
+    if class then
+        local own = p.classHealth and p.classHealth[class]
+        if own then return own end
+        local c = C_ClassColor and C_ClassColor.GetClassColor(class)
+        if c then return { c.r, c.g, c.b } end
+        return p.health
+    end
+    local token = UF.POWER_KEYS[key]
+    if token then
+        local c = _G.PowerBarColor and _G.PowerBarColor[token]
+        if c and c.r then return { c.r, c.g, c.b } end
+        return (UF.POWER_FALLBACK and UF.POWER_FALLBACK[token]) or p.mana
+    end
+    return p[key]
+end
+
+-- the colour in use for a key (a custom one first)
+function UF.Color(key)
+    local db = ns.db and ns.db.profile and ns.db.profile.unitframes
+    if UF.palette == "custom" then
+        local own = db and db.customColors and db.customColors[key]
+        if type(own) == "table" and own[1] then return own end
+    end
+    return UF.PaletteColor(key, UF.basePalette or "flareui")
+end
+
+-- The health bar colour for a class in use, or nil for the class's real colour
 function ns.ClassHealthOverride(classFile)
-    local overrides = UF.PALETTES[UF.palette or "flareui"].classHealth
+    if UF.palette == "custom" then
+        local db = ns.db and ns.db.profile and ns.db.profile.unitframes
+        local own = db and db.customColors and db.customColors["class:" .. tostring(classFile)]
+        if type(own) == "table" and own[1] then return own end
+    end
+    local overrides = UF.PALETTES[UF.basePalette or "flareui"].classHealth
     return overrides and overrides[classFile]
 end
 
 function UF.ApplyPalette()
     local db = ns.db and ns.db.profile and ns.db.profile.unitframes
-    UF.palette = (db and db.palette == "blizzard") and "blizzard" or "flareui"
-    local p = UF.PALETTES[UF.palette]
-    local function set(dst, src) dst[1], dst[2], dst[3] = src[1], src[2], src[3] end
-    set(ns.HEALTH_GREEN, p.health)
-    set(ns.MANA_BLUE, p.mana)
-    set(GREY, p.grey)
+    local palette = db and db.palette
+    if palette ~= "blizzard" and palette ~= "custom" then palette = "flareui" end
+    UF.palette = palette
+    UF.basePalette = palette == "custom" and (db.customBase == "blizzard" and "blizzard" or "flareui") or palette
+    local function set(dst, src) if dst and src then dst[1], dst[2], dst[3] = src[1], src[2], src[3] end end
+    local C = UF.Color
+    set(ns.HEALTH_GREEN, C("health"))
+    set(ns.MANA_BLUE, C("mana"))
+    set(GREY, C("grey"))
     for reaction = 1, 8 do
-        set(REACTION[reaction], reaction <= 3 and p.hostile or reaction == 4 and p.neutral or p.friendly)
+        set(REACTION[reaction], reaction <= 3 and C("hostile") or reaction == 4 and C("neutral") or C("friendly"))
     end
-    set(CAST_COLOR, p.cast)
-    set(CAST_NOINTERRUPT, p.castNoInterrupt)
-    set(CAST_CHANNEL, p.castChannel)
-    set(PLAYER_CAST_COLOR, p.playerCast)
-    set(PLAYER_CAST_CHANNEL, p.playerChannel)
+    set(CAST_COLOR, C("cast"))
+    set(CAST_NOINTERRUPT, C("castNoInterrupt"))
+    set(CAST_CHANNEL, C("castChannel"))
+    set(PLAYER_CAST_COLOR, C("playerCast"))
+    set(PLAYER_CAST_CHANNEL, C("playerChannel"))
+    set(UF.INTERRUPT_COLOR, C("interrupted"))
+    set(UF.LAG_COLOR, C("latency"))
+    set(UF.HEAL_COLOR, C("heal"))
+    set(UF.ABSORB_COLOR, C("absorb"))
+    -- custom power colours only: the others keep Blizzard's
+    local power
+    if palette == "custom" and db.customColors then
+        for key, token in pairs(UF.POWER_KEYS) do
+            local own = db.customColors[key]
+            if type(own) == "table" and own[1] then power = power or {}; power[token] = own end
+        end
+    end
+    ns.POWER_OVERRIDE = power
+    -- a new version on every apply: a custom colour changes nothing else (the player's health keeps its
+    -- colour until it differs)
+    UF.paletteVersion = (UF.paletteVersion or 0) + 1
 end
 
 -- Power colours when PowerBarColor lacks one
@@ -142,6 +208,7 @@ local POWER_FALLBACK = {
     FURY        = { 0.79, 0.26, 0.99 },
     PAIN        = { 1.00, 0.61, 0.00 },
 }
+UF.POWER_FALLBACK = POWER_FALLBACK   -- (UF.PaletteColor, above)
 
 -- Unit definitions. `driver` is the visibility condition; player is always shown.
 local UNITS = {
@@ -416,7 +483,7 @@ local percentCurve = CurveConstants.ScaleTo100
 -- An unknown name falls back to FlareUI Forever; mirrored: its right-to-left gradient file
 local function GetBarTexture(name, mirrored)
     if not (name and name ~= "" and LSM:IsValid("statusbar", name)) then name = DEFAULT_TEXTURE end
-    if name == "FlareUI Flat" and UF.palette == "blizzard" then return UF.PALETTES.blizzard.texture end
+    if name == "FlareUI Flat" and UF.basePalette == "blizzard" then return UF.PALETTES.blizzard.texture end
     if mirrored and name == "FlareUI Forever" then return "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mirrored.tga" end
     if mirrored and name == "FlareUI Forever (Light)" then return "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Bright-Mirrored.tga" end
     return LSM:Fetch("statusbar", name) or "Interface\\TargetingFrame\\UI-StatusBar"
@@ -764,9 +831,9 @@ local function UpdateHealth(f, glide)
         local _, file = UnitClass(unit)
         if canaccessvalue(file) then classFile = file end
     end
-    if not (classFile and f.colorClass == classFile and f.colorPalette == UF.palette and f.colorClassOn == classOn) then
+    if not (classFile and f.colorClass == classFile and f.colorPalette == UF.paletteVersion and f.colorClassOn == classOn) then
         bar:SetStatusBarColor(GetHealthColor(unit, classOn))
-        f.colorClass, f.colorPalette, f.colorClassOn = classFile, UF.palette, classOn
+        f.colorClass, f.colorPalette, f.colorClassOn = classFile, UF.paletteVersion, classOn
     end
 
     local mode = udb and udb.healthText or "percent"
@@ -2545,6 +2612,8 @@ local QUEST_FILE      = "Interface\\GossipFrame\\AvailableQuestIcon"
 -- Blizzard's CUF_MY_HEAL_PREDICTION_COLOR, opaque: the overlays only cover the empty part of the bar
 local HEAL_COLOR      = { 11/255, 136/255, 105/255, 1 }   -- #0B8869, incoming heals
 local ABSORB_COLOR    = { 0.67, 0.78, 0.92, 1 }           -- damage absorbs, the shield art's steel blue
+-- (the Colour Palette writes into these: UF.ApplyPalette)
+UF.HEAL_COLOR, UF.ABSORB_COLOR = HEAL_COLOR, ABSORB_COLOR
 local HEAL_TEXTURE    = "FlareUI Forever"
 local ABSORB_TEXTURE  = "FlareUI Striped"
 
@@ -2769,6 +2838,7 @@ local function LayoutIndicators(f)
         if absorbTex == "" then absorbTex = udb and udb.texture end
         absorb:SetStatusBarTexture(GetBarTexture(absorbTex))
         absorb:SetStatusBarColor(unpack(ABSORB_COLOR))
+        heal:SetStatusBarColor(unpack(HEAL_COLOR))   -- (the Colour Palette may have changed it)
         UF.PlaceOverAbsorb(f.OverAbsorb, health, width, mirror, GetBarTexture(absorbTex))
     end
 end

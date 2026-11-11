@@ -1476,6 +1476,7 @@ local function LayoutHealClip(f)
     if absorbTex == "" then absorbTex = st.texture end
     absorb:SetStatusBarTexture(K.GetBarTexture(absorbTex))
     absorb:SetStatusBarColor(K.ABSORB_COLOR[1], K.ABSORB_COLOR[2], K.ABSORB_COLOR[3], K.ABSORB_COLOR[4])
+    heal:SetStatusBarColor(K.HEAL_COLOR[1], K.HEAL_COLOR[2], K.HEAL_COLOR[3], K.HEAL_COLOR[4])   -- (the Colour Palette may have changed it)
     -- the shield with no room after the health, over it (UnitFrames.lua UF.CreateOverAbsorb)
     K.PlaceOverAbsorb(f.OverAbsorb, health, width, mirror, K.GetBarTexture(absorbTex))
 end

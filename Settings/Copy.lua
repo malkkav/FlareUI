@@ -1460,6 +1460,18 @@ ns.Copy = {
             section = "rb.bars",
             tip = L["In caster form, Power shows your mana."],
         },
+        ["rb.palette"] = {
+            choices = { L["FlareUI"], L["Blizzard"], L["Custom"] },
+            desc = L["The resource bars' colours, apart from the unit frames':\n* FlareUI: softer, darker tones\n* Blizzard: the game's own\n* Custom: your own, starting from the palette you had"],
+            label = L["Colour Palette"],
+            section = "rb.look",
+        },
+        ["rb.pickColors"] = {
+            desc = L["Every resource bar colour in one window, with the bars beside them."],
+            label = L["Pick Your Colours"],
+            section = "rb.look",
+            tip = L["Right-click a colour to give it back to the palette."],
+        },
         ["rb.power"] = {
             desc = L["Your rage, energy, mana or focus."],
             label = L["Power"],
@@ -1849,8 +1861,8 @@ ns.Copy = {
             section = "uf.frames",
         },
         ["uf.palette"] = {
-            choices = { L["FlareUI"], L["Blizzard"] },
-            desc = L["The colours of every unit frame bar:\n* FlareUI: softer, darker tones\n* Blizzard: the game's own"],
+            choices = { L["FlareUI"], L["Blizzard"], L["Custom"] },
+            desc = L["The colours of every unit frame bar:\n* FlareUI: softer, darker tones\n* Blizzard: the game's own\n* Custom: your own, starting from the palette you had"],
             label = L["Colour Palette"],
             section = "uf.look",
         },
@@ -1915,6 +1927,12 @@ ns.Copy = {
             choices = { L["Classic"], L["Raid Style"] },
             desc = L["How party frames look:\n* Classic: like the player frame\n* Raid Style: compact tiles"],
             label = L["Style"],
+        },
+        ["uf.pickColors"] = {
+            desc = L["Every unit frame colour in one window, with the frames beside them."],
+            label = L["Pick Your Colours"],
+            section = "uf.look",
+            tip = L["Right-click a colour to give it back to the palette."],
         },
         ["uf.player.fsr"] = {
             desc = L["After you spend mana, a spark crosses the bar for five seconds."],
@@ -1998,6 +2016,7 @@ ns.Copy = {
         ["qt.minimizeIn"] = L["Minimize"],
         ["qt.quests"] = L["Quests"],
         ["rb.bars"] = L["Bars"],
+        ["rb.look"] = L["Look"],
         ["rm.controller"] = L["Controller"],
         ["rm.look"] = L["Look"],
         ["rm.opening"] = L["Opening"],
