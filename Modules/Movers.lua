@@ -216,8 +216,86 @@ local function RewalkToasts(container)
     walking = false
 end
 
-local function CreateToastPreview(holder)
+-- Toast Sample (Edit Mode, 11-11 Marcus): the recipe toast drawn here, or Blizzard's own achievement,
+-- loot won and money toasts (their templates, their text and icons filled in here: Blizzard's set-up
+-- functions play the toast's sound). A kind the client can't make falls back to the recipe.
+local TOAST_KINDS = { "recipe", "achievement", "loot", "money" }
+local TOAST_LABELS = { recipe = L["Recipe"], achievement = L["Achievement"], loot = L["Loot Won"], money = L["Money"] }
+local SAMPLE_ITEM = 2589   -- Linen Cloth (Blizzard's toast reads its name and icon)
+
+local function ToastTemplate(parent, template, fill)
+    local ok, frame = pcall(CreateFrame, "ContainedAlertFrame", nil, parent, template)
+    if not (ok and frame) then return nil end
+    -- a picture only: no clicks, no fading out, never the alert queue's
+    for _, script in ipairs({ "OnEnter", "OnLeave", "OnClick", "OnHide", "OnShow" }) do pcall(frame.SetScript, frame, script, nil) end
+    frame:EnableMouse(false)
+    for _, key in ipairs({ "animIn", "waitAndAnimOut" }) do
+        if frame[key] then frame[key]:Stop() end
+    end
+    frame:SetAlpha(1)
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", parent, "CENTER")
+    if not pcall(fill, frame) then frame:Hide() return nil end
+    frame:Hide()
+    return frame
+end
+
+local TOAST_FILL = {
+    achievement = function(f)
+        f.Name:SetText(L["Sample Achievement"])
+        if f.Shield and f.Shield.Points then f.Shield.Points:SetText("10") end
+        if f.Shield and f.Shield.Icon then f.Shield.Icon:Show() end
+        if f.Icon and f.Icon.Texture then f.Icon.Texture:SetTexture("Interface\\Icons\\Achievement_Level_10") end
+        if f.GuildName then f.GuildName:Hide() end
+        if f.GuildBanner then f.GuildBanner:Hide() end
+        if f.GuildBorder then f.GuildBorder:Hide() end
+    end,
+    loot = function(f)
+        if f.PvPBackground then f.PvPBackground:Hide() end
+        if f.RatedPvPBackground then f.RatedPvPBackground:Hide() end
+        if f.BGAtlas then f.BGAtlas:Hide() end
+        if f.Background then f.Background:Show() end
+        local name = C_Item.GetItemNameByID and C_Item.GetItemNameByID(SAMPLE_ITEM) or L["Sample Item"]
+        f.ItemName:SetText(name or L["Sample Item"])
+        f.ItemName:SetVertexColor(1, 1, 1)
+        if f.RollTypeIcon then f.RollTypeIcon:Hide() end
+        if f.RollValue then f.RollValue:Hide() end
+        local item = f.lootItem
+        local icon = item and (item.Icon or item.icon)
+        if icon then icon:SetTexture(C_Item.GetItemIconByID(SAMPLE_ITEM) or 134400) end
+    end,
+    money = function(f)
+        f.Amount:SetText(GetMoneyString and GetMoneyString(123456, true) or "12g 34s 56c")
+    end,
+}
+local TOAST_TEMPLATES = { achievement = "AchievementAlertFrameTemplate", loot = "LootWonAlertFrameTemplate",
+                          money = "MoneyWonAlertFrameTemplate" }
+
+local function GetToastKind()
+    local db = GetDb()
+    local kind = db and db.toastSample
+    return TOAST_LABELS[kind] and kind or "recipe"
+end
+
+-- the chosen kind shown, the rest hidden (each made on first use)
+local function ShowToastKind(holder)
     local p = holder.preview
+    local kind = GetToastKind()
+    p.kinds = p.kinds or {}
+    if kind ~= "recipe" and p.kinds[kind] == nil then
+        p.kinds[kind] = ToastTemplate(p, TOAST_TEMPLATES[kind], TOAST_FILL[kind]) or false
+    end
+    if not p.kinds[kind] then kind = "recipe" end
+    p.recipe:SetShown(kind == "recipe")
+    for k, frame in pairs(p.kinds) do
+        if frame then frame:SetShown(k == kind) end
+    end
+end
+
+local function CreateToastPreview(holder)
+    local p = CreateFrame("Frame", nil, holder.preview)
+    p:SetAllPoints()
+    holder.preview.recipe = p
     local bg = p:CreateTexture(nil, "BACKGROUND")
     bg:SetAtlas("recipetoast-bg", true)
     bg:SetPoint("CENTER")
@@ -232,6 +310,76 @@ local function CreateToastPreview(holder)
     name:SetPoint("TOPLEFT", 98, -34)
     name:SetPoint("BOTTOMRIGHT", -32, 17)
     name:SetText(L["Sample Recipe"])
+end
+
+--------------------------------------------------
+-- 5b. SCALE (Edit Mode, 11-11 Marcus): the loot rolls' and the toasts' size. Blizzard's frames hang
+-- from UIParent, so each one takes the scale as it shows; the holder and its sample grow with it.
+--------------------------------------------------
+local function Scale(key)
+    local db = GetDb()
+    local v = db and tonumber(db[key == "loot" and "lootScale" or "toastScale"]) or 1
+    return math.max(0.5, math.min(2, v))
+end
+
+local function ScaleHolder(key, w, h)
+    local holder = holders[key]
+    if not holder then return end
+    local scale = Scale(key)
+    holder:SetSize(w * scale, h * scale)
+    holder.preview:SetScale(scale)
+end
+
+local function ScaleLootFrames()
+    local scale = Scale("loot")
+    for i = 1, (_G.NUM_GROUP_LOOT_FRAMES or 4) do
+        local frame = _G["GroupLootFrame" .. i]
+        if frame and not (InCombatLockdown() and frame:IsProtected()) then frame:SetScale(scale) end
+    end
+end
+
+-- every toast as Blizzard shows it: the queued kinds as each comes out of its pool, the single ones now
+local function ScaleToast(frame)
+    if frame and frame.SetScale then frame:SetScale(Scale("toast")) end
+end
+local function ScaleToasts()
+    local base = _G.AlertFrame
+    for _, sub in ipairs(base and base.alertFrameSubSystems or {}) do
+        if sub.alertFramePool and sub.alertFramePool.EnumerateActive then
+            for frame in sub.alertFramePool:EnumerateActive() do ScaleToast(frame) end
+        elseif sub.alertFrame then
+            ScaleToast(sub.alertFrame)
+        end
+    end
+end
+local function HookToastScale()
+    local base = _G.AlertFrame
+    for _, sub in ipairs(base and base.alertFrameSubSystems or {}) do
+        if sub.ShowAlert and not sub.FlareUI_Scaled then
+            sub.FlareUI_Scaled = true
+            hooksecurefunc(sub, "ShowAlert", function(self)
+                if self.alertFramePool and self.alertFramePool.EnumerateActive then
+                    for frame in self.alertFramePool:EnumerateActive() do ScaleToast(frame) end
+                end
+            end)
+        end
+    end
+    ScaleToasts()
+end
+
+-- the Edit Mode dialogs: Scale (both), Toast Sample (the toasts)
+local function ScaleSetting(key, w, h, apply)
+    local field = key == "loot" and "lootScale" or "toastScale"
+    return { name = L["Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
+        formatter = function(value) return value .. "%" end,
+        get = function() return math.floor(Scale(key) * 100 + 0.5) end,
+        set = function(_, value)
+            local db = GetDb()
+            if not db then return end
+            db[field] = value ~= 100 and value / 100 or nil
+            ScaleHolder(key, w, h)
+            apply()
+        end }
 end
 
 --------------------------------------------------
@@ -332,7 +480,11 @@ function MOV:Init()
 
     local loot = _G.GroupLootContainer
     if loot then
-        CreateLootPreview(CreateHolder("loot", "FlareUI_LootRolls", "FlareUI Loot Rolls", ROLL_W, ROLL_H))
+        local holder = CreateHolder("loot", "FlareUI_LootRolls", "FlareUI Loot Rolls", ROLL_W, ROLL_H)
+        CreateLootPreview(holder)
+        ScaleHolder("loot", ROLL_W, ROLL_H)
+        ScaleLootFrames()
+        LEM:AddFrameSettings(holder, ns.EditSection("Frame", { ScaleSetting("loot", ROLL_W, ROLL_H, ScaleLootFrames) }))
         hooksecurefunc(loot, "SetPoint", PlaceLoot)
         hooksecurefunc(loot, "SetHeight", FlattenLoot)
         PlaceLoot()
@@ -341,7 +493,24 @@ function MOV:Init()
 
     local base = _G.AlertFrame
     if base then
-        CreateToastPreview(CreateHolder("toast", "FlareUI_Toasts", "FlareUI Toasts", TOAST_W, TOAST_H))
+        local holder = CreateHolder("toast", "FlareUI_Toasts", "FlareUI Toasts", TOAST_W, TOAST_H)
+        CreateToastPreview(holder)
+        ShowToastKind(holder)
+        ScaleHolder("toast", TOAST_W, TOAST_H)
+        HookToastScale()
+        local kinds = {}
+        for _, kind in ipairs(TOAST_KINDS) do kinds[#kinds + 1] = { text = TOAST_LABELS[kind], value = kind, isRadio = true } end
+        LEM:AddFrameSettings(holder, ns.EditSection("Frame", {
+            { name = L["Toast Sample"], kind = LEM.SettingType.Dropdown, default = "recipe", values = kinds,
+              desc = L["Which toast Edit Mode shows here, to place and size the real ones by."],
+              get = GetToastKind,
+              set = function(_, value)
+                  local db = GetDb()
+                  if db then db.toastSample = value ~= "recipe" and value or nil end
+                  ShowToastKind(holder)
+              end },
+            ScaleSetting("toast", TOAST_W, TOAST_H, ScaleToasts),
+        }))
         PlaceToasts()
         hooksecurefunc(base, "UpdateAnchors", RewalkToasts)
     end
