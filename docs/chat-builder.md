@@ -8,11 +8,11 @@ The test build has separate addon preferences (`FlareUI_Chat2_DB`, `FlareUI_Chat
 
 ## Using the builder
 
-Open **FlareUI → Chat → Builder**. Select a window, then choose which messages and joined channels it displays. Use the preset menu to inspect General, Social, Group, Loot, Trade, or Blank; **New window** creates a window from the selected preset. **Load into selected window** replaces that window's supported filters after confirmation. **Save preset** creates an account-wide template from the saved selections.
+Open **FlareUI → Chat → Builder**. Select a window, then choose which messages and joined channels it displays. Use the preset menu to inspect General, Social, Group, Loot, Trade, or Blank; **New window** creates an empty window, **Duplicate** copies the selected window into a new one, and **Create from preset** creates a window from the selected preset. **Replace window filters** replaces that window's supported filters after confirmation. **Save preset** creates an account-wide template from the saved selections.
 
-Builder keeps the standard settings-panel dimensions. Choose one content category from the selector to see a compact two-column checklist; each category shows its selected/total count. Search spans all categories, and clearing it returns to the selected category. All/None continues to affect the entire named category, including when search hides some entries.
+Builder keeps the standard settings-panel dimensions and reuses its fonts, switches, dropdowns, selected buttons, and slim scrollbars. The selected window is highlighted and named in the editing header. **Selected only** shows enabled filters across all categories. Appearance remains in the existing Frame, Tweaks, and Fonts tabs. Choose one content category from the selector to see a compact two-column checklist; each category shows its selected/total count. Search spans all categories, and clearing it returns to the selected category. All/None continues to affect the entire named category, including when search hides some entries.
 
-Filters are saved immediately, but require **Reload to Apply** before becoming active. Multiple changes can be made before one reload. The builder does not write Blizzard's live routing tables. The native-settings button is disabled while any ordinary window has pending filters to avoid presenting stale native checkboxes. Existing tab context menus remain available; reload before using their filter configuration after builder edits.
+Filters update active routing and saved settings immediately through Blizzard's chat-frame methods. No reload is required. Native settings remain available after edits. A rejected batch attempts to restore its previous selections; any restoration failure is reported.
 
 The primary window cannot be closed or popped out. Combat Log has a native-settings link instead of ordinary filters. Temporary whisper windows and the damage-meter pseudo-tab are not editable. Existing Frame, Tweaks, and Fonts settings still apply to all windows. Channel toggles never join or leave channels. Message colors remain in Blizzard settings.
 
@@ -22,7 +22,7 @@ Custom presets live in `FlareUI2_DB`'s AceDB global `chatBuilderPresets` store, 
 
 Implementation checked against the `forever` branch of Blizzard's extracted UI source:
 
-- [ChatFrameMixin](https://github.com/Gethe/wow-ui-source/blob/forever/Interface/AddOns/Blizzard_ChatFrameBase/Shared/ChatFrame.lua): group/channel methods mutate live `messageTypeList`, `channelList`, and event registrations as well as saved settings. Builder uses the underlying saved-setting functions only; `GetChatWindowChannels` is consumed as name/zone-ID pairs.
+- [ChatFrameMixin](https://github.com/Gethe/wow-ui-source/blob/forever/Interface/AddOns/Blizzard_ChatFrameBase/Shared/ChatFrame.lua): group/channel methods mutate live `messageTypeList`, `channelList`, and event registrations as well as saved settings. Builder calls those native methods and verifies both active routing and saved settings; `GetChatWindowChannels` is consumed as name/zone-ID pairs.
 - [Chat configuration](https://github.com/Gethe/wow-ui-source/blob/forever/Interface/AddOns/Blizzard_ChatFrame/Mainline/ChatConfigFrame.lua): message groups, PvP token aliases, voice availability, `GetChannelList` triples, and regional-channel disabled state.
 - [Floating chat windows](https://github.com/Gethe/wow-ui-source/blob/forever/Interface/AddOns/Blizzard_ChatFrameBase/Mainline/FloatingChatFrame.lua): `FCF_OpenNewWindow(name, noDefaultChannels)`, `FCF_Close`, and window renaming. Dock/pop-out actions reuse FlareUI's Chat module.
 - [Chat constants](https://github.com/Gethe/wow-ui-source/blob/forever/Interface/AddOns/Blizzard_APIDocumentationGenerated/ChatConstantsDocumentation.lua) and [Chat info](https://github.com/Gethe/wow-ui-source/blob/forever/Interface/AddOns/Blizzard_APIDocumentationGenerated/ChatInfoDocumentation.lua): channel identifiers resolve to `zoneChannelID`; session `localID` is display/order data, never preset identity.
@@ -43,7 +43,7 @@ node tools/tests/build-testing.cjs
 git diff --check
 ```
 
-The backend fixture keeps saved settings and active routing separate. Tests cover isolated edits, rollback on client rejection, explicit pending state, unknown-filter preservation, unavailable/localized/reordered channels, preset CRUD, name validation, stale confirmations, protected windows, module/combat guards, and unavailable APIs. The UI harness exercises real editor callbacks with fake frame primitives; it covers search, category toggles, preset confirmation/management, appearance links, sidebar ownership, control reuse, and unavailable-client rendering. These tests do not reproduce WoW's secure execution or visual layout engine.
+The backend fixture keeps saved settings and active routing separate. Tests cover isolated edits, rollback on client rejection, immediate active/saved agreement, duplicate windows, unknown-filter preservation, unavailable/localized/reordered channels, preset CRUD, name validation, stale confirmations, protected windows, module/combat guards, and unavailable APIs. The UI harness exercises real editor callbacks with fake frame primitives; it covers search, category toggles, preset confirmation/management, selected-only filtering, distinct creation actions, standard controls, sidebar ownership, control reuse, and unavailable-client rendering. These tests do not reproduce WoW's secure execution or visual layout engine.
 
 ## In-client verification (pending)
 
@@ -51,9 +51,9 @@ Fully restart the client after installing: new files were added to the TOC. Keep
 
 1. Enable Lua errors or BugSack. Open Builder with existing customized tabs; verify checked saved filters and normal active filters agree before editing.
 2. Create Social, Group, Loot, and Trade windows; check unavailable channel notices, rename, dock/pop out, and close an ordinary window. Verify General and Combat Log protections and the maximum-window-capacity message.
-3. Toggle an individual filter, All/None, switch categories, search across categories, and apply a preset. Verify other windows are untouched. Reload, send/receive representative chat, and confirm routing and saved state across another reload/login.
+3. Toggle an individual filter, All/None, switch categories, search across categories, and apply a preset. Verify other windows are untouched. Send/receive representative chat immediately without reloading, then confirm persistence after a reload/login.
 4. Save and reuse a custom preset on another character. Move zones or change channel ordering and verify template channel identities; no channel should be joined or left automatically.
-5. After applying changes and reloading, edit in Blizzard settings, return to Builder, and verify refreshed selections. Check pending filters remain clearly marked if the native context-menu route is used before reload.
+5. After applying changes, edit in Blizzard settings, return to Builder, and verify refreshed selections without a reload.
 6. Switch Builder → Radial Editor → ordinary settings → Builder; no controls should leak between tabs. Test long localized labels, small-screen scaling, keyboard search, and controller navigation into scrolled filters/preset choices.
 7. Enter combat with a dialog open; confirmation must refuse mutations. Close/reuse its target window through native controls before confirming; the stale operation must be rejected.
 8. With Sync Blizz UI enabled, verify source changes persist, non-source notices are clear, and the initial sync does not overwrite an in-progress builder edit. Check taint logs and BugSack after reload, docking, and channel changes.

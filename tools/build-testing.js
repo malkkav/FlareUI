@@ -65,7 +65,7 @@ if (chatBuild) {
     `Install this FlareUI_Chat folder in _forever_/Interface/AddOns.\n` +
     `Fully restart WoW after installing. Disable FlareUI and FlareUI_Testing for the test character, then enable FlareUI_Chat.\n` +
     `Open /flareuichat (or /fuichat), then Chat > Builder.\n` +
-    `Chat filter changes are saved immediately; use Reload to Apply to activate them.\n\n` +
+    `Chat filter changes apply immediately and are saved; no reload is needed.\n\n` +
     `Addon preferences use FlareUI_Chat2_DB and FlareUI_Chat_DB, separately from production FlareUI.\n` +
     `Blizzard's chat windows and filters remain the character's normal chat settings, shared when switching addons.\n` +
     `No presets are applied automatically. Existing windows are read when the builder opens.\n` +

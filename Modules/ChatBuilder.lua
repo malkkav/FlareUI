@@ -132,11 +132,12 @@ function B:Read(handle)
     local window, err = Current(handle); if not window then return nil, err end
     local messages = Set({GetChatWindowMessages(window.id)})
     local channels, channelNames = SavedChannels(window.id)
-    local activeMessages, activeChannels = Set(window.frame.messageTypeList), {}
+    local activeMessages, activeChannels, activeChannelNames = Set(window.frame.messageTypeList), {}, {}
     for i, name in pairs(window.frame.channelList or {}) do
-        activeChannels[ChannelKey(name, (window.frame.zoneChannelList or {})[i])] = true
+        local key=ChannelKey(name, (window.frame.zoneChannelList or {})[i])
+        activeChannels[key],activeChannelNames[key] = true,name
     end
-    return {messages=messages,channels=channels,channelNames=channelNames,activeMessages=activeMessages,activeChannels=activeChannels,
+    return {messages=messages,channels=channels,channelNames=channelNames,activeMessages=activeMessages,activeChannels=activeChannels,activeChannelNames=activeChannelNames,
         pending=not Same(messages, activeMessages) or not Same(channels,activeChannels),window=window}
 end
 function B:Pending()
@@ -146,31 +147,56 @@ function B:Pending()
     end
     return false
 end
-local function Filter(handle, kind, key, enabled)
+-- Use the same frame methods as Blizzard's configuration, not direct routing-table writes.
+local function WriteFilter(handle, kind, key, enabled, channelName, savedEnabled)
+    if savedEnabled == nil then savedEnabled = enabled end
     local state = B:Read(handle)
-    local allowed
-    for _, category in ipairs(B:Categories()) do
-        for _, entry in ipairs(category.entries) do if entry.kind == kind and entry.key == key then allowed = entry end end
-    end
-    if not allowed or allowed.disabled then return nil, L["This filter is unavailable."] end
+    local frame=handle.frame
     if kind == "message" then
-        if (state.messages[key] or false) ~= enabled then
-            local fn = enabled and AddChatWindowMessages or RemoveChatWindowMessages
+        if (state.activeMessages[key] or false) ~= enabled then
+            local method=enabled and frame.AddMessageGroup or frame.RemoveMessageGroup
+            if type(method)~="function" or not pcall(method,frame,key) then return nil,L["The client could not apply this filter."] end
+            if key=="VOICE_TEXT" then
+                local voice=enabled and frame.RegisterEvent or frame.UnregisterEvent
+                if voice then voice(frame,"VOICE_CHAT_CHANNEL_TRANSCRIBING_CHANGED") end
+            end
+        end
+        -- A previous saved-only edit may differ from the live state. Persist without inserting twice.
+        state=B:Read(handle)
+        if (state.messages[key] or false) ~= savedEnabled then
+            local fn = savedEnabled and AddChatWindowMessages or RemoveChatWindowMessages
             local ok = pcall(fn,handle.id,key)
             if not ok then return nil,L["The client could not save this filter."] end
         end
     else
-        if (state.channels[key] or false) ~= enabled then
+        if (state.activeChannels[key] or false) ~= enabled then
+            local method=enabled and frame.AddChannel or frame.RemoveChannel
+            local name=enabled and channelName or state.activeChannelNames[key] or channelName
+            if type(method)~="function" or not pcall(method,frame,name) then return nil,L["The client could not apply this filter."] end
+        end
+        state=B:Read(handle)
+        if (state.channels[key] or false) ~= savedEnabled then
             local ok
-            if enabled then ok=pcall(AddChatWindowChannel,handle.id,allowed.name)
-            else ok=pcall(RemoveChatWindowChannel,handle.id,state.channelNames[key] or allowed.name) end
+            if savedEnabled then ok=pcall(AddChatWindowChannel,handle.id,channelName)
+            else ok=pcall(RemoveChatWindowChannel,handle.id,state.channelNames[key] or channelName) end
             if not ok then return nil,L["The client could not save this filter."] end
         end
     end
     local after=B:Read(handle)
     local saved=kind=="message" and after.messages or after.channels
-    if (saved[key] or false)~=enabled then return nil,L["The client could not save this filter."] end
+    local active=kind=="message" and after.activeMessages or after.activeChannels
+    if (saved[key] or false)~=savedEnabled or (active[key] or false)~=enabled then return nil,L["The client could not apply this filter."] end
     return true
+end
+local function Filter(handle, kind, key, enabled)
+    for _, category in ipairs(B:Categories()) do
+        for _, entry in ipairs(category.entries) do
+            if entry.kind==kind and entry.key==key and not entry.disabled then
+                return WriteFilter(handle,kind,key,enabled,entry.name)
+            end
+        end
+    end
+    return nil,L["This filter is unavailable."]
 end
 -- Snapshot before a batch; rejected writes must not leave half a preset applied.
 local function ChangeFilters(window, changes)
@@ -182,10 +208,12 @@ local function ChangeFilters(window, changes)
             for j=i,1,-1 do
                 local old=changes[j]
                 local saved=old.kind=="message" and before.messages or before.channels
-                if not Filter(window,old.kind,old.key,saved[old.key] and true or false) then restored=false end
+                local active=old.kind=="message" and before.activeMessages or before.activeChannels
+                local name=before.activeChannelNames[old.key] or before.channelNames[old.key]
+                if not WriteFilter(window,old.kind,old.key,active[old.key] and true or false,name,saved[old.key] and true or false) then restored=false end
             end
             SavedChanged()
-            return nil,restored and err or L["Some filters could not be restored. Review the saved selections before reloading."]
+            return nil,restored and err or L["Some filters could not be restored. Review this window's selections."]
         end
     end
     SavedChanged()
@@ -322,6 +350,33 @@ function B:Rename(handle,name)
     if not FCF_SetWindowName then return nil,L["Chat configuration is unavailable on this client."] end
     FCF_SetWindowName(window.frame,name);SavedChanged();return true
 end
+function B:Duplicate(handle,name)
+    local source,err=Guard(handle);if not source then return nil,err end
+    local snapshot=self:Read(source)
+    local target;target,err=self:Create(name,"blank");if not target then return nil,err end
+    local result={skipped={}}
+    local function CopyFilter(kind,key,channelName)
+        local ok,message=WriteFilter(target,kind,key,true,channelName)
+        if not ok then self:Close(target);return nil,message end
+        return true
+    end
+    for key in pairs(snapshot.activeMessages) do
+        if ChatTypeGroup and ChatTypeGroup[key] then
+            local ok;ok,err=CopyFilter("message",key)
+            if not ok then return nil,err end
+        else result.skipped[#result.skipped+1]=key end
+    end
+    local channels={};for _,entry in ipairs(self:Channels()) do channels[entry.key]=entry end
+    for key in pairs(snapshot.channels) do
+        local channel=channels[key]
+        if channel and not channel.disabled then
+            local ok;ok,err=CopyFilter("channel",key,channel.name)
+            if not ok then return nil,err end
+        else result.skipped[#result.skipped+1]=snapshot.channelNames[key] or key end
+    end
+    SavedChanged()
+    return target,result
+end
 function B:Close(handle)
     local window,err=Guard(handle);if not window then return nil,err end
     if window.primary then return nil,L["The primary chat window cannot be closed."] end
@@ -337,7 +392,6 @@ function B:SetDocked(handle,enabled)
 end
 function B:OpenBlizzard(handle)
     local window,err=Guard(handle,true);if not window then return nil,err end
-    if self:Pending() then return nil,L["Reload to activate saved filters before opening Blizzard settings."] end
     if not ChatConfigFrame then return nil,L["Chat configuration is unavailable on this client."] end
     CURRENT_CHAT_FRAME_ID=window.id
     ShowUIPanel(ChatConfigFrame)

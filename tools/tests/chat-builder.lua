@@ -1,4 +1,4 @@
--- Saved client state is deliberately separate from live routing in this fixture.
+-- Client methods update both live routing and persisted settings, as Forever's mixins do.
 local function set(list) local t = {}; for _, v in pairs(list) do t[v] = true end; return t end
 local function list(t) local a = {}; for k in pairs(t) do a[#a+1] = k end; table.sort(a); return a end
 local hooks, frames, windows = {}, {}, {}
@@ -14,6 +14,22 @@ local function addWindow(id, name, special)
     local f = {id=id, messageTypeList={'SAY','FUTURE_GROUP'},channelList={'Général','Unknown'},zoneChannelList={1,0},isDocked=true}
     function f:GetID() return self.id end
     function f:IsForbidden() return false end
+    function f:AddMessageGroup(group)
+        table.insert(self.messageTypeList,group)
+        AddChatWindowMessages(self.id,group)
+    end
+    function f:RemoveMessageGroup(group)
+        for i,g in pairs(self.messageTypeList) do if g==group then self.messageTypeList[i]=nil end end
+        RemoveChatWindowMessages(self.id,group)
+    end
+    function f:AddChannel(name)
+        local zone=AddChatWindowChannel(self.id,name)
+        if zone then local i=1;while self.channelList[i] do i=i+1 end;self.channelList[i]=name;self.zoneChannelList[i]=zone end
+    end
+    function f:RemoveChannel(name)
+        for i,n in pairs(self.channelList) do if n==name then self.channelList[i]=nil;self.zoneChannelList[i]=nil end end
+        RemoveChatWindowChannel(self.id,name)
+    end
     frames[id], _G['ChatFrame'..id] = f, f
     return f
 end
@@ -34,7 +50,7 @@ local function fire(name,...) for _,f in ipairs(hooks[name] or {}) do f(...) end
 hooksecurefunc = function(name,fn) hooks[name]=hooks[name] or {};table.insert(hooks[name],fn) end
 CreateFrame = function() return {SetScript=function(self,k,v) self[k]=v end,RegisterEvent=function() end,UnregisterAllEvents=function() end} end
 C_Timer = {After=function(_,fn) fn() end}
-FCF_CanOpenNewWindow = function() return windows[4]==nil end
+FCF_CanOpenNewWindow = function() return windows[4]==nil or not windows[4].shown end
 FCF_OpenNewWindow = function(name,blank) if not FCF_CanOpenNewWindow() then return end;local f=addWindow(4,name);windows[4].messages={};windows[4].channels={};f.messageTypeList={};f.channelList={};f.zoneChannelList={};fire('FCF_OpenNewWindow',name,blank);return f,4 end
 FCF_Close = function(f) windows[f.id].shown=false;windows[f.id].docked=false;fire('FCF_Close',f) end
 FCF_SetWindowName = function(f,name) windows[f.id].name=name;fire('FCF_SetWindowName',f,name) end
@@ -49,8 +65,11 @@ local function handle(id) for _,h in ipairs(B:Windows()) do if h.id==id then ret
 local h=assert(handle(3))
 assert(B:SetFilter(h,'message','GUILD',true))
 assert(windows[3].messages.GUILD and not windows[1].messages.GUILD, 'toggle must affect selected window only')
-assert(not set(frames[3].messageTypeList).GUILD, 'saved edits must not write live routing tables')
-assert(B:Read(h).pending and B:Pending(), 'pending reload must be visible')
+assert(set(frames[3].messageTypeList).GUILD, 'filter edits must update active routing immediately')
+assert(not B:Read(h).pending, 'live and saved filters must agree without reload')
+assert(B:SetFilter(h,'message','GUILD',true))
+local guildCount=0;for _,g in pairs(frames[3].messageTypeList) do if g=='GUILD' then guildCount=guildCount+1 end end
+assert(guildCount==1,'reapplying a filter must not duplicate native routing entries')
 assert(B:SetFilter(h,'message','GUILD',false)); assert(not B:Read(h).pending, 'reverting to live state clears pending')
 assert(B:ApplyPreset(h,'blank')); assert(windows[3].messages.FUTURE_GROUP, 'preserve unknown groups')
 assert(windows[3].channels.Unknown==0, 'preserve unavailable channel assignments')
@@ -72,6 +91,14 @@ assert(B:RenamePreset(saved.id,'Renamed')); assert(B:DeletePreset(saved.id));ass
 local before=windows[3].messages.SAY
 ns.db.global.chatBuilderPresets.items.bad={id='bad',name='bad',messages='broken',channels={}}
 assert(not B:ApplyPreset(h,'bad'));assert(windows[3].messages.SAY==before, 'invalid preset must not partially apply')
+local duplicate,copyResult=B:Duplicate(h,'Social copy')
+assert(duplicate and duplicate.id==4,'duplicate creates a separate named window')
+assert(windows[4].name=='Social copy' and windows[3].name=='Social')
+assert(windows[4].messages.FUTURE_GROUP,'duplicate preserves supported native groups outside builder catalog')
+assert(not B:Read(duplicate).pending,'duplicated filters must be live immediately')
+assert(#copyResult.skipped>0,'duplicate reports unavailable channel assignments')
+assert(not B:Duplicate(h,'No room'),'duplicate respects client capacity')
+assert(B:Close(duplicate))
 local created=assert(B:Create('New','blank')); assert(created.id==4)
 assert(not B:Create('Full','blank'));assert(windows[3].name=='Social', 'capacity failure preserves existing windows')
 assert(B:Close(h)); windows[3].shown=true;windows[3].docked=true
@@ -79,20 +106,29 @@ assert(not B:Rename(h,'Stale'), 'closed/reused frame must reject old handle even
 h=assert(handle(3));assert(B:SetDocked(h,false));assert(not windows[3].docked)
 assert(B:SetDocked(h,true));assert(windows[3].docked)
 local savedAdd = AddChatWindowMessages
+frames[3]:RemoveMessageGroup('GUILD')
 AddChatWindowMessages=function() end
-windows[3].messages.GUILD=nil
 assert(not B:SetFilter(h,'message','GUILD',true), 'a rejected write must not report success')
 AddChatWindowMessages=savedAdd
-windows[3].messages.SAY=nil;windows[3].messages.GUILD=nil
+frames[3]:RemoveMessageGroup('SAY');frames[3]:RemoveMessageGroup('GUILD')
 AddChatWindowMessages=function(id,g) if g=='GUILD' then error('client rejected change') end;savedAdd(id,g) end
 local ok,result=pcall(function() return B:ApplyPreset(h,'social') end)
 assert(ok and not result,'client errors must be reported without escaping UI callbacks')
 assert(not windows[3].messages.SAY,'partial preset writes must roll back')
+assert(not set(frames[3].messageTypeList).SAY,'rollback must restore active routing too')
+AddChatWindowMessages=savedAdd
+-- Saved-only edits from UI sync or an older builder must survive a failed transaction exactly.
+frames[3]:RemoveMessageGroup('SAY');savedAdd(3,'SAY')
+AddChatWindowMessages=function(id,g) if g=='GUILD' then error('client rejected change') end;savedAdd(id,g) end
+assert(not B:ApplyPreset(h,'social'))
+assert(windows[3].messages.SAY and not set(frames[3].messageTypeList).SAY,'rollback preserves distinct saved and active snapshots')
 AddChatWindowMessages=savedAdd
 ns.Tweaks={syncLoading=true};assert(not B:SetFilter(h,'message','SAY',true));ns.Tweaks=nil
 local savedChannelPreset=assert(B:SavePreset(h,'Offline channels'))
 assert(set(savedChannelPreset.channels)['name:unknown'],'saved templates retain unavailable channel assignments')
-assert(not B:OpenBlizzard(h),'native configuration must not present stale active state while filters are pending')
+ChatConfigFrame={ChatTabManager={UpdateSelection=function(_,id) assert(id==3) end}}
+ShowUIPanel=function() end
+assert(B:OpenBlizzard(h),'native settings remain available without a reload')
 local getMessages=GetChatWindowMessages;GetChatWindowMessages=nil
 local readOK,readResult=pcall(function() return B:Read(h) end)
 assert(readOK and readResult==nil,'unsupported clients must return unavailable state instead of throwing')
