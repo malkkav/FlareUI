@@ -261,17 +261,16 @@ local BUTTON_FONT = CreateFont("FlareUI_PanelButton")
 if _G.GameFontNormal then BUTTON_FONT:CopyFontObject(_G.GameFontNormal) end
 ns.SetFont(BUTTON_FONT, BODY_FONT, 14, "")
 BUTTON_FONT:SetTextColor(1, 0.83, 0.47)
--- 11-11 (Marcus, to try): the titles in Blizzard's Friz Quadrata; /fui titlefont switches back to
--- Marcellus after a reload. Set once the saved settings are there (BuildWindow).
+local BUTTON_FONT_SMALL = CreateFont("FlareUI_PanelButtonSmall")
+if _G.GameFontNormal then BUTTON_FONT_SMALL:CopyFontObject(_G.GameFontNormal) end
+ns.SetFont(BUTTON_FONT_SMALL, BODY_FONT, 12, "")
+BUTTON_FONT_SMALL:SetTextColor(1, 0.83, 0.47)
+-- 11-11 (Marcus): the titles in Blizzard's Friz Quadrata, closer to Forever's own windows (Marcellus
+-- still ships, for the players' font choices); a Russian client keeps Roboto Condensed Bold
 local function ApplyTitleFont()
     if GetLocale() == "ruRU" then return end
-    local marcellus = ns.db and ns.db.global and ns.db.global.panelTitleFont == "marcellus"
-    local file = marcellus and TITLE_FONT or "Fonts\\FRIZQT__.TTF"
-    ns.SetFont(_G.FlareUI_PanelTitle, file, 17, "")
-    ns.SetFont(_G.FlareUI_PanelTitleHuge, file, 22, "")
-end
-Panel.TitleFont = function(name)
-    if ns.db and ns.db.global then ns.db.global.panelTitleFont = name end
+    ns.SetFont(_G.FlareUI_PanelTitle, "Fonts\\FRIZQT__.TTF", 17, "")
+    ns.SetFont(_G.FlareUI_PanelTitleHuge, "Fonts\\FRIZQT__.TTF", 22, "")
 end
 
 local function Text(parent, font, justify)
@@ -505,6 +504,16 @@ local function SkinButton(b)
     hl:SetAllPoints(b.fFill)
     hl:SetColorTexture(1, 0.9, 0.7, 0.07)
     b:SetNormalFontObject(BUTTON_FONT)
+    -- (the short ones, 22 px and under, a size smaller: 11-11 Marcus)
+    local function FitFont(self)
+        local small = (self:GetHeight() or 0) <= 22.5
+        if self.ftSmallFont ~= small then
+            self.ftSmallFont = small
+            self:SetNormalFontObject(small and BUTTON_FONT_SMALL or BUTTON_FONT)
+        end
+    end
+    b:HookScript("OnSizeChanged", FitFont)
+    FitFont(b)
     b:SetHighlightFontObject(_G[PANEL_FONT.GameFontHighlight])
     b:SetDisabledFontObject(_G[PANEL_FONT.GameFontDisable])
     b:HookScript("OnEnter", function(self)
@@ -1979,6 +1988,7 @@ function UpdateNav()
     for key, b in pairs(navButtons) do
         local module = S.modules[key]
         local on = module:IsOn()
+        if b.toggle then b.toggle:SetChecked(on) end
         local selected = key == current and searchText == ""
         b.selected:SetShown(selected)
         b.bar:SetShown(selected)
@@ -2015,7 +2025,7 @@ function UpdateNav()
             b.showNew = showNew
             b.newBadge:SetShown(showNew)
             local badgeWidth = showNew and (NEW_W + NEW_GAP) or 0
-            b.text:SetWidth(b:GetWidth() - NAV_TEXT_INSET - NAV_RIGHT_INSET - badgeWidth)
+            b.text:SetWidth(b:GetWidth() - NAV_TEXT_INSET - (b.rightInset or NAV_RIGHT_INSET) - badgeWidth)
             b:SetHeight(math.max(NAV_H, math.ceil(b.text:GetStringHeight()) + 8))
         end
     end
@@ -2134,11 +2144,30 @@ local function BuildNav(left)
             b.dot:SetPoint("LEFT", 10, 0)
             b.text = Text(b, "GameFontHighlight")
             b.text:SetPoint("LEFT", NAV_TEXT_INSET, 0)
-            b.text:SetWidth(buttonWidth - NAV_TEXT_INSET - NAV_RIGHT_INSET)
+            b.text:SetWidth(buttonWidth - NAV_TEXT_INSET - b.rightInset)
             b.text:SetWordWrap(true)
             b.text:SetText(module:Title())
             b.newBadge = NewBadge(b)
-            b.newBadge:SetPoint("RIGHT", -NAV_RIGHT_INSET / NEW_SCALE, 0)
+            b.rightInset = NAV_RIGHT_INSET
+            if module.enabled then
+                -- a quick switch for the module (11-11 Marcus), as the page title's: modules start at
+                -- login, so it asks for a reload
+                local toggle = Switch(b)
+                toggle:SetScale(0.7)
+                toggle:SetPoint("RIGHT", -8 / 0.7, 0)
+                toggle:SetScript("OnClick", function(self)
+                    local on = self:GetChecked() and true or false
+                    PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+                    module:SetOn(on)
+                    UpdateNav()
+                    if current == module.key then Panel:Refresh() end
+                end)
+                b.toggle = toggle
+                b.rightInset = NAV_RIGHT_INSET + 30
+                b.newBadge:SetPoint("RIGHT", toggle, "LEFT", -4 / NEW_SCALE, 0)
+            else
+                b.newBadge:SetPoint("RIGHT", -NAV_RIGHT_INSET / NEW_SCALE, 0)
+            end
             b:SetScript("OnClick", function()
                 PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
                 Panel:Select(module.key)

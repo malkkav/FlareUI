@@ -170,11 +170,6 @@ loader:SetScript("OnEvent", function(self)
             ns.ErrorsCommand(msg:sub(8))
         elseif msg == "taint" or msg:find("^taint%s") then
             ns.TaintWatch.Command(msg:sub(6))   -- a developer's Gamepad UI probe (TaintWatch.lua)
-        elseif msg == "titlefont" then
-            -- (11-11, temporary) the settings window's titles: Friz Quadrata or Marcellus
-            local marcellus = ns.db and ns.db.global and ns.db.global.panelTitleFont == "marcellus"
-            ns.SettingsPanel.TitleFont(marcellus and "friz" or "marcellus")
-            print("|cff00ccffFlareUI:|r " .. (marcellus and "Friz Quadrata" or "Marcellus") .. " titles after a /reload")
         elseif msg == "icons" then
             -- (11-11, temporary) the settings pages' icons: the game's round ones or the line ones
             local line = ns.db and ns.db.global and ns.db.global.panelLineIcons
