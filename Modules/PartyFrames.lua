@@ -487,6 +487,7 @@ local function UpdateHealPrediction(f)
     local max = UnitHealthMax(unit)
     heal:SetMinMaxValues(0, max)
     absorb:SetMinMaxValues(0, max)
+    K.SetOverAbsorb(f.OverAbsorb, unit, max)
     local calc = f.HealCalc
     if calc and UnitGetDetailedHealPrediction then
         if pcall(UnitGetDetailedHealPrediction, unit, "player", calc) then
@@ -1446,6 +1447,8 @@ local function LayoutHealClip(f)
     if absorbTex == "" then absorbTex = st.texture end
     absorb:SetStatusBarTexture(K.GetBarTexture(absorbTex))
     absorb:SetStatusBarColor(K.ABSORB_COLOR[1], K.ABSORB_COLOR[2], K.ABSORB_COLOR[3], K.ABSORB_COLOR[4])
+    -- the shield with no room after the health, over it (UnitFrames.lua UF.CreateOverAbsorb)
+    K.PlaceOverAbsorb(f.OverAbsorb, health, width, mirror, K.GetBarTexture(absorbTex))
 end
 
 local function CastStyle(st)
@@ -2233,6 +2236,7 @@ ApplyPreview = function(f)
         f.HealBar:SetValue(on and 0.12 or 0)
         f.AbsorbBar:SetValue(on and 0.15 or 0)
         K.HideShieldGlow(f.ShieldGlow)
+        K.SetOverAbsorb(f.OverAbsorb, nil, 1, on and 0.15 or 0)
     end
 
     -- the icons at their size again (Blizzard's role routine narrows the role icon to 1 px when the
@@ -2440,6 +2444,7 @@ local function BuildTile(f, unit)
     absorb:SetValue(0)
     f.HealClip, f.HealBar, f.AbsorbBar = clip, heal, absorb
     f.ShieldGlow = K.CreateShieldGlow(f.Health, clip)
+    f.OverAbsorb = K.CreateOverAbsorb(f.Health, clip)
     if CreateUnitHealPredictionCalculator then
         local ok, calc = pcall(CreateUnitHealPredictionCalculator)
         if ok and calc then f.HealCalc = calc end

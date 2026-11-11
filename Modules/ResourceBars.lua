@@ -232,6 +232,7 @@ local function UpdateHealPrediction(holder)
     local max = UnitHealthMax("player")
     heal:SetMinMaxValues(0, max)
     absorb:SetMinMaxValues(0, max)
+    K.SetOverAbsorb(holder.OverAbsorb, "player", max)
     local calc = holder.HealCalc
     if calc and UnitGetDetailedHealPrediction and pcall(UnitGetDetailedHealPrediction, "player", "player", calc) then
         local okH, incoming = pcall(calc.GetIncomingHeals, calc)
@@ -502,7 +503,7 @@ local function ApplyPreview(holder)
         bar:SetValue(low and 0.25 or 0.75)
         bar:SetStatusBarColor(K.GetHealthColor("player", HealthClassColors()))
         SetText(holder, cfg.text or "both", low and 6000 or 18000, low and 25 or 75, 24000)
-        if holder.HealBar then holder.HealBar:SetValue(0); holder.AbsorbBar:SetValue(0); K.HideShieldGlow(holder.ShieldGlow) end
+        if holder.HealBar then holder.HealBar:SetValue(0); holder.AbsorbBar:SetValue(0); K.HideShieldGlow(holder.ShieldGlow); K.SetOverAbsorb(holder.OverAbsorb) end
         if holder.LowHealth then
             if low then
                 LOW_HEALTH.Place(holder)
@@ -735,6 +736,8 @@ local function LayoutBar(holder)
         K.PlaceShieldGlow(holder.ShieldGlow, bar, false)
         absorb:SetStatusBarTexture(K.GetBarTexture(K.ABSORB_TEXTURE))
         absorb:SetStatusBarColor(K.ABSORB_COLOR[1], K.ABSORB_COLOR[2], K.ABSORB_COLOR[3], K.ABSORB_COLOR[4])
+        -- the shield with no room after the health, over it (UnitFrames.lua UF.CreateOverAbsorb)
+        K.PlaceOverAbsorb(holder.OverAbsorb, bar, width, false, K.GetBarTexture(K.ABSORB_TEXTURE))
     end
 end
 
@@ -860,6 +863,7 @@ local function CreateHolder(key, parent)
         absorb:SetValue(0)
         holder.HealClip, holder.HealBar, holder.AbsorbBar = clip, heal, absorb
         holder.ShieldGlow = K.CreateShieldGlow(holder.Bar, clip)
+        holder.OverAbsorb = K.CreateOverAbsorb(holder.Bar, clip)
         -- Low Health Colour: on its own frame (its alpha may be secret; a texture's would not draw)
         local low = CreateFrame("Frame", nil, holder.Bar)
         low:SetFrameLevel(holder.Bar:GetFrameLevel() + 1)

@@ -2633,6 +2633,7 @@ local function CreateIndicators(f)
         absorb:SetValue(0)
         f.HealClip, f.HealBar, f.AbsorbBar = clip, heal, absorb
         f.ShieldGlow = UF.CreateShieldGlow(f.Health, clip)
+        f.OverAbsorb = UF.CreateOverAbsorb(f.Health, clip)
         if CreateUnitHealPredictionCalculator then
             local ok, calc = pcall(CreateUnitHealPredictionCalculator)
             if ok and calc then f.HealCalc = calc end
@@ -2760,7 +2761,56 @@ local function LayoutIndicators(f)
         if absorbTex == "" then absorbTex = udb and udb.texture end
         absorb:SetStatusBarTexture(GetBarTexture(absorbTex))
         absorb:SetStatusBarColor(unpack(ABSORB_COLOR))
+        UF.PlaceOverAbsorb(f.OverAbsorb, health, width, mirror, GetBarTexture(absorbTex))
     end
+end
+
+-- SHIELD OVER THE HEALTH (11-11, a player's request): the shield that has no room after the health
+-- (all of it at full health) is drawn back from the health's end, over the health, so a shield on
+-- the pull shows how much is left as it is hit. Without comparing (secret) values: a bar as long as
+-- the whole health bar, anchored where the health starts and filled from its far end with the whole
+-- shield, inside a clip frame over the health fill. Only its part over the health shows: the shield
+-- minus the health missing, ending where the health ends. The part after the health is AbsorbBar's.
+function UF.CreateOverAbsorb(health, clip)
+    local over = CreateFrame("Frame", nil, health)
+    over:SetClipsChildren(true)
+    over:SetFrameLevel((clip or health):GetFrameLevel() + 2)
+    local bar = CreateFrame("StatusBar", nil, over)
+    bar:SetMinMaxValues(0, 1)
+    bar:SetValue(0)
+    over.Bar = bar
+    return over
+end
+
+function UF.PlaceOverAbsorb(over, health, width, mirror, texture)
+    if not over then return end
+    local fill = health:GetStatusBarTexture()
+    local near = mirror and "RIGHT" or "LEFT"
+    over:ClearAllPoints()
+    over:SetAllPoints(fill)
+    local bar = over.Bar
+    bar:ClearAllPoints()
+    bar:SetPoint("TOP" .. near, fill, "TOP" .. near, 0, 0)
+    bar:SetPoint("BOTTOM" .. near, fill, "BOTTOM" .. near, 0, 0)
+    bar:SetWidth(width)
+    bar:SetReverseFill(not mirror)
+    bar:SetStatusBarTexture(texture)
+    -- a little see-through: the health colour still reads under it
+    bar:SetStatusBarColor(ABSORB_COLOR[1], ABSORB_COLOR[2], ABSORB_COLOR[3], 0.75)
+end
+
+-- value nil: none (Edit Mode samples pass theirs on a 0..1 health)
+function UF.SetOverAbsorb(over, unit, max, value)
+    if not over then return end
+    local bar = over.Bar
+    if value then
+        bar:SetMinMaxValues(0, max or 1)
+        bar:SetValue(value)
+        return
+    end
+    if not unit then bar:SetValue(0) return end
+    pcall(bar.SetMinMaxValues, bar, 0, max)
+    if not pcall(function() bar:SetValue(UnitGetTotalAbsorbs(unit)) end) then bar:SetValue(0) end
 end
 
 -- Over-shield glow: shields never draw past the bar (the calculator clamps them to the health
@@ -2826,12 +2876,14 @@ function UpdateHealPrediction(f)
         heal:SetValue(0.12)
         absorb:SetValue(0.15)
         UF.HideShieldGlow(f.ShieldGlow)
+        UF.SetOverAbsorb(f.OverAbsorb, nil, 1, 0.15)
         return
     end
     local unit = f.fuiUnit
     local max = UnitHealthMax(unit)
     heal:SetMinMaxValues(0, max)
     absorb:SetMinMaxValues(0, max)
+    UF.SetOverAbsorb(f.OverAbsorb, unit, max)
     -- the calculator hands back (possibly secret) numbers that SetValue accepts as-is
     local calc = f.HealCalc
     if calc and UnitGetDetailedHealPrediction then
@@ -4729,7 +4781,8 @@ UF.Kit = {
     InitAuraButton = InitAuraButton, HasAuraSupport = HasAuraSupport,
     ApplyRangeAlpha = UF.ApplyRangeAlpha,
     CreateManaCost = UF.CreateManaCost, CostsMana = CostsMana, GetTimerFormatter = GetTimerFormatter,
-    IsDead = UF.IsDead, CreateShieldGlow = UF.CreateShieldGlow, PlaceShieldGlow = UF.PlaceShieldGlow, SetShieldGlow = UF.SetShieldGlow, HideShieldGlow = UF.HideShieldGlow,
+    IsDead = UF.IsDead, CreateShieldGlow = UF.CreateShieldGlow, PlaceShieldGlow = UF.PlaceShieldGlow,
+    CreateOverAbsorb = UF.CreateOverAbsorb, PlaceOverAbsorb = UF.PlaceOverAbsorb, SetOverAbsorb = UF.SetOverAbsorb, SetShieldGlow = UF.SetShieldGlow, HideShieldGlow = UF.HideShieldGlow,
     BuildTextureValues = BuildTextureValues, BuildBorderValues = BuildBorderValues, BuildAbsorbValues = BuildTextureValues, EditSections = EditSections,
     ThreatColor = ThreatColor,
 }
