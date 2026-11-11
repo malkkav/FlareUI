@@ -1,6 +1,6 @@
 # Unified chat builder
 
-Status: proposed for user approval.
+Status: approved by the user; implemented on `feat/chat-builder`, pending in-client verification.
 
 ## Intent and agreed scope
 
