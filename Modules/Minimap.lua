@@ -54,7 +54,7 @@ local MASKS = { EMPTY = "Interface\\AddOns\\FlareUI\\Media\\Art\\Empty", FOREVER
 local BAND_HEIGHT   = 22     -- title band depth over the map
 local HEADER_HEIGHT = 19     -- Forever's header buttons (23 px art), a little smaller
 local HEADER_TOP    = 2      -- header row inset from the map's top edge
-local HEADER_SIDE   = 9      -- ... and from its sides (both the same: 6 until 11-11, moved in a little)
+local HEADER_SIDE   = 6      -- ... and from its sides
 local HEADER_GAP    = 2
 local CLOCK_WIDTH   = 40
 -- Forever's zone plate, stretched along the whole bar with its ends kept whole
@@ -315,8 +315,7 @@ local clockWidth = CLOCK_WIDTH
 local function PlaceZone()
     local zoneButton, header = Cluster.ZoneTextButton, MM.Header
     zoneButton:ClearAllPoints()
-    -- the zone text as far in from the plate's left end as the clock from its right (11-11)
-    zoneButton:SetPoint("TOPLEFT", header, "TOPLEFT", 0, 0)
+    zoneButton:SetPoint("TOPLEFT", header, "TOPLEFT", HEADER_GAP, 0)
     zoneButton:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -clockWidth, 0)
     Raise(zoneButton)
 end
@@ -415,7 +414,7 @@ local function PlaceIndicators()
     local indicators = Cluster.IndicatorFrame
     Raise(indicators)
     indicators:ClearAllPoints()
-    indicators:SetPoint("TOPLEFT", MM.Frame, "TOPLEFT", 6, -(BAND_HEIGHT + MAIL_GAP))
+    indicators:SetPoint("TOPLEFT", MM.Frame, "TOPLEFT", HEADER_SIDE, -(BAND_HEIGHT + MAIL_GAP))
 end
 
 -- One size up and in Blizzard's gold, once per font string
@@ -1436,7 +1435,7 @@ do
             local header = f.Square.Header
             local clockWidth = MM.ClockWidth(plate.Clock)
             plate.Zone:ClearAllPoints()
-            plate.Zone:SetPoint("TOPLEFT", header, "TOPLEFT", PLATE_INSET, 0)
+            plate.Zone:SetPoint("TOPLEFT", header, "TOPLEFT", HEADER_GAP + PLATE_INSET, 0)
             plate.Zone:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -clockWidth, 0)
             plate.Clock:ClearAllPoints()
             plate.Clock:SetPoint("RIGHT", header, "RIGHT", -PLATE_INSET, 0)
