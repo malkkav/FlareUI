@@ -634,8 +634,8 @@ local function BuildFlare()
     end)
 
     LEM:AddFrame(flare, OnFlareMoved, FLARE_DEFAULT, FLARE_LABEL)
-    -- dropdowns, sliders, switches (ns.OrderEditSettings)
-    LEM:AddFrameSettings(flare, ns.OrderEditSettings({
+    -- one Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua)
+    LEM:AddFrameSettings(flare, ns.EditSection("Frame", {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = 560, minValue = 200, maxValue = 1200, valueStep = 2,
           get = function() return GetDb().width or 560 end, set = function(_, value) GetDb().width = value; LayoutFlare() end },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 14, minValue = 6, maxValue = 30, valueStep = 1,

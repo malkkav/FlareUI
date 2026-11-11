@@ -841,7 +841,8 @@ local function AddEditModeSettings()
         local settings = frame and LEM.GetFrameSettings and LEM:GetFrameSettings(frame)
         if settings then
             frameAdded[key] = true
-            for _, setting in ipairs(WithVisibilityTitle(BuildElementSettings(key))) do table_insert(settings, setting) end
+            -- a Fading section that opens and closes like the frame's own (Core.lua ns.EditSections)
+            for _, setting in ipairs(ns.EditSection("Fading", BuildElementSettings(key))) do table_insert(settings, setting) end
         end
     end
 end

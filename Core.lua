@@ -511,7 +511,7 @@ local defaults = {
             -- as a copy of the timer font (ns.SeedFont)
             auraFont = { face = "Friz Quadrata TT", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             auraCountFont = { face = "Friz Quadrata TT", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
-            editSections = {},          -- Edit Mode sections left open (shared by every frame)
+            editSections = {},          -- (unused since 11-11: open sections are per session, Core.lua ns.EditSections)
             -- resource bars (Modules/ResourceBars.lua); positions in layouts[layout][bar]
             resource = {
                 enabled = false,        -- the Resource Bars module (Settings: its own page)
@@ -1618,6 +1618,51 @@ do
         for i, k in ipairs(keyed) do items[i] = k.item end
         return items
     end
+end
+
+-- Edit Mode dialogs in collapsible sections, in a fixed order for every FlareUI frame:
+--   (Party / Raid: the group)  Frame  Look  Cast Bar  Auras  Icons  Pet  Fading
+-- Open state is shared by all frames, for the session: every dialog starts closed after a reload
+-- (11-11; it used to be saved). A section with every setting hidden hides too.
+--   local Section, settings = ns.EditSections(); Section("Frame", { ... }); return settings
+-- ns.EditSection(key, items): one section's settings, for a dialog that is one section.
+ns.editSectionsOpen = {}
+function ns.EditSections()
+    local LEM = LibStub("FlareEditMode")
+    local open = ns.editSectionsOpen
+    local function IsHidden(hidden, ...)
+        if type(hidden) == "function" then return hidden(...) end
+        return hidden and true or false
+    end
+    local settings = {}
+    local function Section(key, items)
+        if #items == 0 then return end
+        ns.OrderEditSettings(items)   -- dropdowns, sliders, switches; the same order on every frame
+        local own = {}
+        for i, item in ipairs(items) do own[i] = item.hidden end
+        settings[#settings + 1] = { name = "|cffffd100" .. ns.L[key] .. "|r", kind = LEM.SettingType.Expander, default = false,
+            get = function() return open[key] or false end,
+            set = function(_, value) open[key] = value and true or nil end,
+            hidden = function(...)
+                for i = 1, #items do
+                    if not IsHidden(own[i], ...) then return false end
+                end
+                return true
+            end }
+        for i, item in ipairs(items) do
+            item.hidden = function(...)
+                if not open[key] then return true end
+                return IsHidden(own[i], ...)
+            end
+            settings[#settings + 1] = item
+        end
+    end
+    return Section, settings
+end
+function ns.EditSection(key, items)
+    local Section, settings = ns.EditSections()
+    Section(key, items)
+    return settings
 end
 
 -- Show conditions ticked as toggles in a dropdown (Edit Mode's Show, and settings rows with toggles).

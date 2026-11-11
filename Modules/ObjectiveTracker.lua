@@ -2091,8 +2091,8 @@ local function BuildSettings()
             OT:Render()
         end
     end
-    -- dropdowns, sliders, switches (ns.OrderEditSettings)
-    return ns.OrderEditSettings({
+    -- one Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua)
+    return ns.EditSection("Frame", {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = C.WIDTH, minValue = 180, maxValue = 500, valueStep = 5,
           get = get("width", C.WIDTH), set = set("width") },
         { name = L["Max Height"], kind = LEM.SettingType.Slider, default = C.MAX_HEIGHT, minValue = 150, maxValue = 1000, valueStep = 10,

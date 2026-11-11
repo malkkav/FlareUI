@@ -311,8 +311,8 @@ local function BuildSettings()
     -- the ring styles have their own defaults
     local style = ns.UFRing and ns.UFRing.On() and ns.UFRing.DefaultTotems() or {}
     local size, perRow = style.size or DEFAULT_SIZE, style.perRow or DEFAULT_PER_ROW
-    -- dropdowns, sliders, switches (ns.OrderEditSettings)
-    return ns.OrderEditSettings({
+    -- one Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua)
+    return ns.EditSection("Frame", {
         { name = L["Size"], kind = LEM.SettingType.Slider, default = size, minValue = 50, maxValue = 200, valueStep = 5,
           get = get("size", size), set = set("size") },
         { name = L["Totems per Row"], kind = LEM.SettingType.Slider, default = perRow, minValue = 1, maxValue = MAX, valueStep = 1,

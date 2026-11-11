@@ -4229,49 +4229,9 @@ local function BuildBorderValues(withFrameDefault)
         withFrameDefault and { text = L["Frame Border"], value = "", isRadio = true } or nil)
 end
 
--- Edit Mode dialogs in collapsible sections, in a fixed order for every FlareUI frame:
---   (Party / Raid: the group)  Frame  Look  Cast Bar  Auras  Icons  Pet
--- Open state is shared by all frames (editSections); a section with every setting hidden hides too.
---   local Section, settings = EditSections(); Section("Frame", { ... }); return settings
--- (helpers inside: the main chunk is near Lua's 200 locals)
+-- Edit Mode dialogs in collapsible sections (Core.lua ns.EditSections: open state for the session)
 local function EditSections()
-    local function IsHidden(hidden, ...)
-        if type(hidden) == "function" then return hidden(...) end
-        return hidden and true or false
-    end
-    local function EditSectionOpen(key)
-        local db = GetDb()
-        return db and db.editSections and db.editSections[key] or false
-    end
-    local settings = {}
-    local function Section(key, items)
-        if #items == 0 then return end
-        ns.OrderEditSettings(items)   -- dropdowns, sliders, switches; the same order on every frame
-        local own = {}
-        for i, item in ipairs(items) do own[i] = item.hidden end
-        settings[#settings + 1] = { name = "|cffffd100" .. L[key] .. "|r", kind = LEM.SettingType.Expander, default = false,
-            get = function() return EditSectionOpen(key) end,
-            set = function(_, value)
-                local db = GetDb()
-                if not db then return end
-                db.editSections = db.editSections or {}
-                db.editSections[key] = value and true or nil
-            end,
-            hidden = function(...)
-                for i = 1, #items do
-                    if not IsHidden(own[i], ...) then return false end
-                end
-                return true
-            end }
-        for i, item in ipairs(items) do
-            item.hidden = function(...)
-                if not EditSectionOpen(key) then return true end
-                return IsHidden(own[i], ...)
-            end
-            settings[#settings + 1] = item
-        end
-    end
-    return Section, settings
+    return ns.EditSections()
 end
 
 --------------------------------------------------

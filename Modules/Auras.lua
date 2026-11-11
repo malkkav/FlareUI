@@ -841,8 +841,8 @@ local function BuildSettings(kind)
             AU:Refresh()
         end
     end
-    -- dropdowns, sliders, switches (ns.OrderEditSettings)
-    return ns.OrderEditSettings({
+    -- one Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua)
+    return ns.EditSection("Frame", {
         { name = L["Icon Size"], kind = LEM.SettingType.Slider, default = defaults.size or 30, minValue = 16, maxValue = 64, valueStep = 1,
           get = get("size"), set = set("size") },
         { name = L["Icons per Row"], kind = LEM.SettingType.Slider, default = defaults.perRow or 12, minValue = 1, maxValue = 40, valueStep = 1,

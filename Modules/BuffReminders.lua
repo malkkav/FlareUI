@@ -910,7 +910,8 @@ local function BuildSettings()
     end
     local function Vertical() local db = GetDb(); return db and db.orientation == "VERTICAL" end
     -- the layout only: what it watches is in Settings > Buffs & Debuffs > Buff Reminders
-    return ns.OrderEditSettings({
+    -- one Frame section (dropdowns, sliders, switches)
+    return ns.EditSection("Frame", {
         { name = L["Orientation"], kind = LEM.SettingType.Dropdown, default = "HORIZONTAL",
           values = { { text = L["Horizontal"], value = "HORIZONTAL", isRadio = true }, { text = L["Vertical"], value = "VERTICAL", isRadio = true } },
           get = get("orientation", "HORIZONTAL"),
