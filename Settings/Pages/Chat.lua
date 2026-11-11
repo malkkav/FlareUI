@@ -1,5 +1,6 @@
 local _, ns = ...
 local S = ns.Settings
+local L = ns.L
 
 --------------------------------------------------
 -- CHAT
@@ -9,7 +10,16 @@ local function Refresh()
     if ns.Chat and ns.Chat.RefreshAll then ns.Chat:RefreshAll() end
 end
 
-S:Module{ key = "ch", group = "interface", order = 10, enabled = "chat.enabled", tabs = { { key = "frame" }, { key = "tweaks" }, { key = "fonts" } } }
+S:Module{ key = "ch", group = "interface", order = 10, enabled = "chat.enabled", tabs = {
+    { key = "frame" }, { key = "tweaks" }, { key = "fonts" },
+    { key = "builder", label = L["Builder"], wide = true, preview = true,
+        custom = function(host, side) ns.ChatBuilderEditor.Build(host, side) end,
+        refresh = function() ns.ChatBuilderEditor.Refresh() end },
+} }
+
+-- Search entry for the custom editor; text lives here rather than generated panel copy.
+S:Row{ key = "ch.builder", tab = "builder", kind = "button", labelFn = function() return L["Chat windows, channels, filters and presets"] end,
+    buttonText = L["Open"], apply = function() ns.SettingsPanel:Open("ch", "builder") end }
 
 -- chat windows stay shown on this page so Frame Opacity can be seen
 S:On("PageShown", function(key)
