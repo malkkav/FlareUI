@@ -174,6 +174,7 @@ local function FillExtraButton(b)
         SetItemButtonQuality(b, info and info.quality, info and info.hyperlink, false, info and info.isBound)
         SetItemButtonCount(b, info and info.stackCount)
         SetItemButtonDesaturated(b, info and info.isLocked)
+        b:UpdateNewItem(info and info.quality)
         b:UpdateCooldown(texture)
         b:SetReadable(info and info.isReadable)
         b:SetMatchesSearch(not (info and info.isFiltered))
@@ -194,6 +195,17 @@ local function FillExtras()
         if e.holder:IsShown() then
             for _, b in pairs(e.buttons) do
                 if b:IsShown() then FillExtraButton(b) end
+            end
+        end
+    end
+end
+
+local function ClearExtraNewItems()
+    -- OnHide runs after the backpack is hidden. IsShown still identifies its displayed slots.
+    for bagID, e in pairs(extras) do
+        if e.holder:IsShown() then
+            for slot, b in pairs(e.buttons) do
+                if b:IsShown() then C_NewItems.RemoveNewItem(bagID, slot) end
             end
         end
     end
@@ -1149,6 +1161,7 @@ function Bags:Init()
         if combined.UpdateFrameSize then hooksecurefunc(combined, "UpdateFrameSize", Relayout) end
         if combined.UpdateItemLayout then hooksecurefunc(combined, "UpdateItemLayout", Relayout) end
         combined:HookScript("OnShow", function() Bags:PlaceBagButtons() end)
+        combined:HookScript("OnHide", ClearExtraNewItems)
     end
     -- the bags move when they open or the screen changes: the buttons pick their side again
     hooksecurefunc("UpdateContainerFrameAnchors", function()
@@ -1158,7 +1171,7 @@ function Bags:Init()
     -- the keyring and crafting bag sections follow their items
     local bagEvents = CreateFrame("Frame")
     if useFilterButtons then bagEvents:RegisterEvent("QUEST_LOG_UPDATE") end
-    for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_UPDATE_COOLDOWN", "ITEM_LOCK_CHANGED", "INVENTORY_SEARCH_UPDATE",
+    for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_NEW_ITEMS_UPDATED", "BAG_UPDATE_COOLDOWN", "ITEM_LOCK_CHANGED", "INVENTORY_SEARCH_UPDATE",
                              "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED" }) do
         pcall(bagEvents.RegisterEvent, bagEvents, event)
     end
