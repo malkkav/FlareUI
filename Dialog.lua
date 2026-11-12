@@ -27,6 +27,7 @@ local WIDTH     = 360
 local PADDING   = 18
 local BUTTON_W  = 130
 local BUTTON_H  = 24
+local BUTTON_GAP = 12
 
 local frame, current, currentData
 
@@ -81,8 +82,8 @@ end
 local function GetReloadButton()
     if reloadButton then return reloadButton end
     reloadButton = CreateFrame("Button", "FlareUIDialogReload", ns.SecureReloadParent(), "SecureActionButtonTemplate, UIPanelButtonTemplate")
-    if ns.SkinButton then ns.SkinButton(reloadButton) end
     reloadButton:SetSize(BUTTON_W, BUTTON_H)
+    if ns.SkinButton then ns.SkinButton(reloadButton) end
     -- above the dialog's strata, or the toplevel dialog takes the click
     reloadButton:SetFrameStrata("TOOLTIP")
     -- mouse and bound key both act on the press, whatever ActionButtonUseKeyDown says. The dialog
@@ -188,8 +189,8 @@ end
 --------------------------------------------------
 local function CreateDialogButton(parent, onClick)
     local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    if ns.SkinButton then ns.SkinButton(button) end
     button:SetSize(BUTTON_W, BUTTON_H)
+    if ns.SkinButton then ns.SkinButton(button) end
     button:SetScript("OnClick", onClick)
     return button
 end
@@ -250,38 +251,46 @@ local function Build()
 end
 
 local function Layout(def, text)
-    local textWidth = WIDTH - 2 * PADDING
+    frame.Button1:SetText(PadLabel(PAD_YES, def.button1 or OKAY or "Okay", def.padInput))
+    local yesWidth = ns.Settings.ButtonWidthForText(frame.Button1, BUTTON_W)
+    frame.Button1:SetWidth(yesWidth)
+    local secondButtonSpace = 0
+    if def.button2 then
+        frame.Button2:SetText(PadLabel(PAD_NO, def.button2, def.padInput))
+        local noWidth = ns.Settings.ButtonWidthForText(frame.Button2, BUTTON_W)
+        frame.Button2:SetWidth(noWidth)
+        secondButtonSpace = BUTTON_GAP + noWidth
+    end
+
+    local alertOffset = def.showAlert and 20 or 0
+    local sideSpace = 2 * (PADDING + alertOffset)
+    local width = math.max(WIDTH, sideSpace + yesWidth + secondButtonSpace)
+    frame:SetWidth(width)
     frame.Alert:SetShown(def.showAlert and true or false)
-    if def.showAlert then textWidth = textWidth - 40 end
     frame.Text:ClearAllPoints()
-    frame.Text:SetPoint("TOP", frame, "TOP", def.showAlert and 20 or 0, -PADDING)
-    frame.Text:SetWidth(textWidth)
+    frame.Text:SetPoint("TOP", frame, "TOP", alertOffset, -PADDING)
+    frame.Text:SetWidth(width - sideSpace)
     frame.Text:SetText(text)
 
-    local below = frame.Text
     local height = PADDING + frame.Text:GetStringHeight()
     if def.hasEditBox then
         frame.EditBox:ClearAllPoints()
         frame.EditBox:SetPoint("TOP", frame.Text, "BOTTOM", 0, -12)
         frame.EditBox:Show()
-        below = frame.EditBox
         height = height + 12 + frame.EditBox:GetHeight()
     else
         frame.EditBox:Hide()
     end
 
-    frame.Button1:SetText(PadLabel(PAD_YES, def.button1 or OKAY or "Okay", def.padInput))
     frame.Button1:Show()
     frame.Button1:ClearAllPoints()
+    frame.Button1:SetPoint("TOP", frame, "TOP", alertOffset - secondButtonSpace / 2, -height - 16)
     if def.button2 then
-        frame.Button2:SetText(PadLabel(PAD_NO, def.button2, def.padInput))
         frame.Button2:Show()
-        frame.Button1:SetPoint("TOPRIGHT", below, "BOTTOM", -6, -16)
         frame.Button2:ClearAllPoints()
-        frame.Button2:SetPoint("TOPLEFT", below, "BOTTOM", 6, -16)
+        frame.Button2:SetPoint("LEFT", frame.Button1, "RIGHT", BUTTON_GAP, 0)
     else
         frame.Button2:Hide()
-        frame.Button1:SetPoint("TOP", below, "BOTTOM", 0, -16)
     end
     frame:SetHeight(height + 16 + BUTTON_H + PADDING)
 end
@@ -323,7 +332,8 @@ function ns.ShowDialog(key, textArg, data)
         if type(macro) == "function" then macro = macro(data) end
         -- never reload or switch layouts mid-fight, from the dialog or a binding it left behind
         GetReloadButton():SetAttribute("macrotext", "/stopmacro [combat]\n" .. (macro or "/reload"))
-        GetReloadButton():SetText(frame.Button1:GetText())
+        reloadButton:SetWidth(frame.Button1:GetWidth())
+        reloadButton:SetText(frame.Button1:GetText())
         secureReload = true
         SetOverrideBindingClick(frame, true, "ENTER", "FlareUIDialogReload", "LeftButton")
         if padSecure then

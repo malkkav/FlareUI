@@ -14,9 +14,29 @@ local Settings = {
 }
 ns.Settings = Settings
 
-function Settings.ButtonWidthForText(button, minWidth)
-    local textWidth = button:GetFontString():GetUnboundedStringWidth()
-    return math.max(minWidth, math.ceil(textWidth) + 24)
+local buttonTextMeasure
+local function MeasureButtonFont(text, font)
+    if not font then return 0 end
+    if not buttonTextMeasure then
+        buttonTextMeasure = UIParent:CreateFontString(nil, "ARTWORK")
+        buttonTextMeasure:Hide()
+    end
+    buttonTextMeasure:SetFontObject(font)
+    buttonTextMeasure:SetText(text)
+    return buttonTextMeasure:GetUnboundedStringWidth() or 0
+end
+
+function Settings.ButtonWidthForText(button, minWidth, padding)
+    local text = button:GetText()
+    local label = button:GetFontString()
+    local textWidth = math.max(
+        label:GetUnboundedStringWidth() or 0,
+        MeasureButtonFont(text, label:GetFontObject()),
+        MeasureButtonFont(text, button:GetNormalFontObject()),
+        MeasureButtonFont(text, button:GetHighlightFontObject()),
+        MeasureButtonFont(text, button:GetDisabledFontObject())
+    )
+    return math.max(minWidth, math.ceil(textWidth) + (padding or 24))
 end
 
 local GROUPS = { "top", "combat", "map", "interface", "bottom" }   -- 11-10 regrouping

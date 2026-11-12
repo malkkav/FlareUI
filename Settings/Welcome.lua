@@ -331,9 +331,10 @@ function BuildPage.welcome(page)
     local skip = PanelButton(page, L["Skip, I know what I'm doing"], minWidth, 28, CloseTour)
     skip:SetPoint("TOP", start, "BOTTOM", 0, -10)
 
+    local padding = 40
     local width = math.max(
-        ns.Settings.ButtonWidthForText(start, minWidth),
-        ns.Settings.ButtonWidthForText(skip, minWidth)
+        ns.Settings.ButtonWidthForText(start, minWidth, padding),
+        ns.Settings.ButtonWidthForText(skip, minWidth, padding)
     )
     start:SetWidth(width)
     skip:SetWidth(width)

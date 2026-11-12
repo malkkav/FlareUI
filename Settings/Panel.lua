@@ -1851,7 +1851,7 @@ local function UpdateHeader(module)
     local rightInset = 4
     if customText or editText then
         page.editMode:SetText(customText or editText)
-        page.editMode:SetWidth((page.editMode:GetTextWidth() or 120) + 30)
+        page.editMode:SetWidth(ButtonWidthForText(page.editMode, 0, 30))
         page.editMode:SetEnabled(customText ~= nil or (S:CanEditFrames() and true or false))
         rightInset = page.editMode:GetWidth() + 8
     end
@@ -2334,9 +2334,10 @@ local function PlaceSecureReload()
     local x, y = button:GetCenter()
     if frame:IsShown() and button:IsVisible() and x then
         local scale = button:GetEffectiveScale() / UIParent:GetEffectiveScale()
-        secureReload:SetSize(button:GetWidth() * scale, button:GetHeight() * scale)
+        secureReload:SetScale(scale)
+        secureReload:SetSize(button:GetSize())
         secureReload:ClearAllPoints()
-        secureReload:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x * scale, y * scale)
+        secureReload:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
         secureReload:SetText(button:GetText())
         secureReload:SetAlpha(1)
         secureReload:Show()

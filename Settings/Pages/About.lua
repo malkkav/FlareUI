@@ -37,7 +37,7 @@ local LINK = "|cffffd479"
 local function Gold(text) return (text or ""):gsub("|cffffd100", GOLD) end
 local function Link(text, url) return "|Hurl:" .. url .. "|h" .. LINK .. text .. "|r|h" end
 
-local CARD_PAD, CARD_GAP = 14, 10
+local CARD_PAD, CARD_GAP, PAGE_PAD = 14, 10, 2
 
 -- a box with a gold title and a rule; returns it and the y where its content starts
 local function Card(host, title, width)
@@ -45,22 +45,25 @@ local function Card(host, title, width)
     ns.SettingsPanel.Box(card, 0.34)
     card:SetWidth(width)
     local t = card:CreateFontString(nil, "OVERLAY", "FlareUI_PanelTitle")
-    t:SetPoint("TOPLEFT", CARD_PAD, -12)
+    local titleY = -12
+    t:SetPoint("TOPLEFT", CARD_PAD, titleY)
+    t:SetWidth(width - 2 * CARD_PAD)
+    t:SetJustifyH("LEFT")
+    t:SetWordWrap(true)
     t:SetTextColor(0.91, 0.77, 0.42)
     t:SetText(title or "")
-    -- a long title (Russian) shrinks to the card's width
-    if ns.SettingsPanel.FitText then ns.SettingsPanel.FitText(t, width - 2 * CARD_PAD, 1) end
+    local ruleY = math.min(-38, titleY - math.ceil(t:GetStringHeight()) - 8)
     local rule = card:CreateTexture(nil, "ARTWORK")
     rule:SetColorTexture(0.47, 0.36, 0.22, 0.8)
     rule:SetHeight(1)
-    rule:SetPoint("TOPLEFT", CARD_PAD, -38)
-    rule:SetPoint("TOPRIGHT", -CARD_PAD, -38)
+    rule:SetPoint("TOPLEFT", CARD_PAD, ruleY)
+    rule:SetPoint("TOPRIGHT", -CARD_PAD, ruleY)
     card:SetHyperlinksEnabled(true)
     card:SetScript("OnHyperlinkClick", function(_, link)
         local url = link:match("^url:(.+)$")
         if url then ns.ButtonSound() CopyLink(url) end
     end)
-    return card, -50
+    return card, ruleY - 12
 end
 
 local function Body(card, text, y, font)
@@ -75,12 +78,19 @@ local function Body(card, text, y, font)
 end
 
 local function Build(host)
-    local width = ns.SettingsPanel.MIDDLE_W or host:GetWidth()
+    local panel = ns.SettingsPanel
+    local width = panel.MIDDLE_W or host:GetWidth()
     local half = math.floor((width - CARD_GAP) / 2)
 
+    local scroll = CreateFrame("ScrollFrame", nil, host)
+    scroll:SetAllPoints(host)
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetWidth(width)
+    scroll:SetScrollChild(content)
+
     -- thanks and the links
-    local thanks, y = Card(host, S:SectionText("about.yourFriendlyUiOverhowl"), width)
-    thanks:SetPoint("TOPLEFT", 0, -2)
+    local thanks, y = Card(content, S:SectionText("about.yourFriendlyUiOverhowl"), width)
+    thanks:SetPoint("TOPLEFT", 0, -PAGE_PAD)
     local note = S:Text("about.links", "text", true) or ""
     -- the links' note on a line of its own (11-11)
     local _, after = Body(thanks, (S:Text("about.thanks", "text", true) or "") .. ".\n"
@@ -104,7 +114,7 @@ local function Build(host)
     thanks:SetHeight(-(y - 26) + CARD_PAD)
 
     -- credits (left) and the Edit Mode layout (right), side by side
-    local credits, cy = Card(host, S:SectionText("about.credits"), half)
+    local credits, cy = Card(content, S:SectionText("about.credits"), half)
     credits:SetPoint("TOPLEFT", thanks, "BOTTOMLEFT", 0, -CARD_GAP)
     local text = Gold(S:Text("about.credits", "text", true))
     text = text:gsub(GOLD .. "Clari Turela|r", Link("Clari Turela", CREDIT_LINKS.clari))
@@ -113,7 +123,7 @@ local function Build(host)
     text = text:gsub(GOLD .. "parchinskiy|r", Link("parchinskiy", CREDIT_LINKS.parchinskiy))
     local _, creditsEnd = Body(credits, text, cy)
 
-    local layout, ly = Card(host, S:SectionText("about.editModeLayout"), width - half - CARD_GAP)
+    local layout, ly = Card(content, S:SectionText("about.editModeLayout"), width - half - CARD_GAP)
     layout:SetPoint("TOPLEFT", credits, "TOPRIGHT", CARD_GAP, 0)
     local _, layoutEnd = Body(layout, Gold(S:Format(S:Text("about.layout", "text", true))), ly)
     local copy = ns.EditModeLayout.Button(layout)
@@ -125,10 +135,13 @@ local function Build(host)
     layout:SetHeight(pairH)
 
     -- slash commands
-    local commands, sy = Card(host, S:Text("about.commands", "label") or "", width)
+    local commands, sy = Card(content, S:Text("about.commands", "label") or "", width)
     commands:SetPoint("TOPLEFT", credits, "BOTTOMLEFT", 0, -CARD_GAP)
     local _, commandsEnd = Body(commands, Gold(S:Format(S:Text("about.commands", "text", true))), sy, "FlareUI_PanelTextSmall")
     commands:SetHeight(-commandsEnd + CARD_PAD)
+
+    content:SetHeight(thanks:GetHeight() + pairH + commands:GetHeight() + 2 * (CARD_GAP + PAGE_PAD))
+    panel.AttachScrollLine(scroll, host)
 end
 
 S:Module{
