@@ -659,7 +659,7 @@ end
 
 -- Hover mode: how long the pointer may be away from the badge and the drawer before it closes. A
 -- menu an icon opened, or an icon being dragged, keeps it open.
-local HOVER_CLOSE = 0.5
+local HOVER_CLOSE = 0.15   -- (0.5 until 11-11: too slow, Marcus)
 local hoverWatch = CreateFrame("Frame")
 hoverWatch:Hide()
 hoverWatch:SetScript("OnUpdate", function(self, elapsed)

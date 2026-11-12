@@ -1137,7 +1137,7 @@ end
 local lootTaken = false
 local function FastLoot(_, autoLoot)
     local db = GetDb()
-    if lootTaken or not (autoLoot and db and db.fasterLoot) then return end
+    if lootTaken or not (autoLoot and db and db.fasterLoot and ns.BagModuleOn()) then return end
     -- an event that comes before the slots are filled must not use up this window's one go
     if GetNumLootItems() == 0 then return end
     lootTaken = true
@@ -1990,7 +1990,7 @@ local DELETE_DIALOGS = { DELETE_GOOD_ITEM = true, DELETE_GOOD_QUEST_ITEM = true 
 local function InitAutoDelete()
     hooksecurefunc("StaticPopup_Show", function(which)
         local db = GetDb()
-        if not (db and db.autoDelete and DELETE_DIALOGS[which]) then return end
+        if not (db and db.autoDelete and DELETE_DIALOGS[which] and ns.BagModuleOn()) then return end
         local dialog = StaticPopup_FindVisible(which)
         local editBox = dialog and dialog:GetEditBox()
         if editBox then
@@ -2793,7 +2793,7 @@ end
 local PAW = "Interface\\Icons\\Ability_Hunter_BeastTraining"
 local function MarkPetFood(container)
     local db = GetDb()
-    local hasPet = db and db.petFood and UnitExists("pet") and select(2, UnitClass("player")) == "HUNTER"
+    local hasPet = db and db.petFood and ns.BagModuleOn() and UnitExists("pet") and select(2, UnitClass("player")) == "HUNTER"
     -- nothing to mark, and no mark to take back
     if not hasPet and not Tweaks.petFoodMarked then return end
     for _, button in container:EnumerateValidItems() do
@@ -2844,7 +2844,7 @@ local function InitLootConfirm()
     pcall(frame.RegisterEvent, frame, "CONFIRM_DISENCHANT_ROLL")
     frame:SetScript("OnEvent", function(_, event, id, rollType)
         local db = GetDb()
-        if not (db and db.skipLootConfirm) then return end
+        if not (db and db.skipLootConfirm and ns.BagModuleOn()) then return end
         -- after Blizzard's own dialog is up, so it can be closed
         C_Timer.After(0, function()
             if event == "LOOT_BIND_CONFIRM" then

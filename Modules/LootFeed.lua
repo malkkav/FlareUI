@@ -382,7 +382,7 @@ end
 
 function LF:ShouldLoad()
     local db = GetDb()
-    return db and db.enabled ~= false and db.lootFeed or false
+    return db and ns.BagModuleOn() and db.lootFeed or false
 end
 
 function LF:Init()

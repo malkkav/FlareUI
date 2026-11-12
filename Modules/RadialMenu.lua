@@ -532,7 +532,8 @@ end
 -- Quest Items: the usable items of the quests in your log, tracked quests first, as one button whose
 -- choices are the items (LB / RB or the mouse wheel step through them, as a sub-radial's). It is gone
 -- while no quest has an item, and comes back with one.
-RM.QUEST_ITEMS_ICON = "Interface\\GossipFrame\\AvailableQuestIcon"
+-- (the scroll the bags' Quest Items filter uses; the gossip "!" looked bad in the round frame, 11-12)
+RM.QUEST_ITEMS_ICON = "Interface\\Icons\\INV_Scroll_03"
 ACTIONS.questitems = function(entry)
     local children, taken = {}, {}
     local function Add(logIndex)
@@ -2286,6 +2287,173 @@ function RM:GetRadialOrder()
     return store and store.radialOrder or {}
 end
 
+-- GROUPS (11-12, Marcus): radials gathered under a named, foldable row in the editor's list. A
+-- radial's group is radial.group (store.groups[gid] = { name }); a group's radials stay next to each
+-- other in radialOrder, where its first one is, so the list order (and which radial a shared key
+-- opens) is the order seen. A group with no radial left is gone. Folded or open: per character
+-- (CharDB().radialGroupsClosed).
+local function NormalizeGroups(store)
+    store.groups = store.groups or {}
+    local order, radials = store.radialOrder, store.radials
+    local used = {}
+    for _, id in ipairs(order) do
+        local r = radials[id]
+        if r and r.group and not store.groups[r.group] then r.group = nil end
+        if r and r.group then used[r.group] = true end
+    end
+    for gid in pairs(store.groups) do if not used[gid] then store.groups[gid] = nil end end
+    local out, done = {}, {}
+    for _, id in ipairs(order) do
+        if not done[id] then
+            local gid = radials[id] and radials[id].group
+            if gid then
+                for _, other in ipairs(order) do
+                    if not done[other] and radials[other] and radials[other].group == gid then
+                        out[#out + 1], done[other] = other, true
+                    end
+                end
+            else
+                out[#out + 1], done[id] = id, true
+            end
+        end
+    end
+    wipe(order)
+    for i, id in ipairs(out) do order[i] = id end
+end
+
+local function GroupsChanged(self)
+    syncDirty = true
+    NormalizeGroups(GetStore())
+    self:LoadActiveRadial()
+end
+
+function RM:GetGroup(gid)
+    local store = GetStore()
+    return store and store.groups and store.groups[gid]
+end
+
+function RM:GetGroups()
+    local store = GetStore()
+    return store and store.groups or {}
+end
+
+-- a group's first and last place in radialOrder
+local function GroupSpan(order, radials, gid)
+    local first, last
+    for i, id in ipairs(order) do
+        if radials[id] and radials[id].group == gid then first = first or i; last = i end
+    end
+    return first, last
+end
+
+-- a new group holding the radial, where the radial is
+function RM:CreateGroupWith(id, name)
+    local store = GetStore()
+    if not (store and store.radials[id]) then return nil end
+    store.groups = store.groups or {}
+    store.nextGroupID = store.nextGroupID or 1
+    local gid = "g" .. store.nextGroupID
+    store.nextGroupID = store.nextGroupID + 1
+    store.groups[gid] = { name = name }
+    store.radials[id].group = gid
+    GroupsChanged(self)
+    return gid
+end
+
+function RM:RenameGroup(gid, name)
+    local group = self:GetGroup(gid)
+    if group and name and name ~= "" then group.name = name; syncDirty = true end
+end
+
+-- its radials stay where they are, out of any group
+function RM:Ungroup(gid)
+    local store = GetStore()
+    if not store then return end
+    for _, data in pairs(store.radials) do
+        if data.group == gid then data.group = nil end
+    end
+    if store.groups then store.groups[gid] = nil end
+    GroupsChanged(self)
+end
+
+-- into a group (at its end) or, gid nil, out of its group (just under it)
+function RM:SetRadialGroup(id, gid)
+    local store = GetStore()
+    local data = store and store.radials[id]
+    if not data or data.group == gid then return end
+    local order = store.radialOrder
+    local anchor = gid or data.group
+    data.group = gid
+    for i, other in ipairs(order) do if other == id then table.remove(order, i) break end end
+    local _, last = GroupSpan(order, store.radials, anchor)
+    table.insert(order, last and (last + 1) or (#order + 1), id)
+    GroupsChanged(self)
+end
+
+-- the radials list's drag (11-12, Marcus): id moves to where target is, and into target's group
+-- (or out of its own, onto a radial outside one)
+function RM:MoveRadial(id, target)
+    local store = GetStore()
+    local order = self:GetRadialOrder()
+    local from, to
+    for i, other in ipairs(order) do
+        if other == id then from = i end
+        if other == target then to = i end
+    end
+    if not (from and to) or from == to then return false end
+    local data, targetData = store.radials[id], store.radials[target]
+    if data and targetData then data.group = targetData.group end
+    table.remove(order, from)
+    table.insert(order, to, id)
+    GroupsChanged(self)
+    return true
+end
+
+-- a whole group to where target is (a radial id, or a group's "group:gid")
+function RM:MoveGroup(gid, target)
+    local store = GetStore()
+    if not store then return false end
+    local order, radials = store.radialOrder, store.radials
+    local targetGroup = target and target:match("^group:(.+)$")
+    if targetGroup == gid then return false end
+    -- dropped on one of its own radials: nowhere to go
+    if not targetGroup and radials[target] and radials[target].group == gid then return false end
+    -- the unit the target belongs to: its group, or the radial alone
+    local function UnitOf()
+        if targetGroup then return GroupSpan(order, radials, targetGroup) end
+        local tg = radials[target] and radials[target].group
+        if tg then return GroupSpan(order, radials, tg) end
+        for i, id in ipairs(order) do if id == target then return i, i end end
+    end
+    local blockFirst = GroupSpan(order, radials, gid)
+    local tFirst = UnitOf()
+    if not (blockFirst and tFirst) then return false end
+    local down = blockFirst < tFirst
+    local block = {}
+    for i = #order, 1, -1 do
+        local id = order[i]
+        if radials[id] and radials[id].group == gid then table.insert(block, 1, table.remove(order, i)) end
+    end
+    local first, last = UnitOf()
+    if not first then return false end
+    local at = down and (last + 1) or first
+    for i, id in ipairs(block) do table.insert(order, at + i - 1, id) end
+    GroupsChanged(self)
+    return true
+end
+
+-- folded or open, per character
+function RM:IsGroupOpen(gid)
+    local me = ns.CharDB and ns.CharDB()
+    return not (me and me.radialGroupsClosed and me.radialGroupsClosed[gid])
+end
+function RM:SetGroupOpen(gid, open)
+    local me = ns.CharDB and ns.CharDB()
+    if not me then return end
+    me.radialGroupsClosed = me.radialGroupsClosed or {}
+    me.radialGroupsClosed[gid] = (not open) or nil
+end
+
 -- A to Z, any case
 function RM:GetRadialsByName()
     local ids = {}
@@ -2355,6 +2523,7 @@ function RM:DeleteRadial(id)
     for i, other in ipairs(store.radialOrder) do
         if other == id then table.remove(store.radialOrder, i) break end
     end
+    NormalizeGroups(store)   -- a group left empty goes
     local charDB = ns.CharDB()
     if charDB.radialKeyOverride then charDB.radialKeyOverride[id] = nil end
     -- its gamepad bar macro goes too (deleting a macro empties its bar slots)

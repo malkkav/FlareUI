@@ -1,3 +1,76 @@
+# FlareUI 6.0.3
+
+**Restart the game fully after updating** (not just /reload): this version adds a new file.
+
+**Please check your settings.** Some defaults changed in this version (listed under **Defaults**). Options you already set yourself keep your choice; options you never touched take the new default.
+
+## Highlights
+- **Bags & Looting** is now its own page, with its own switch.
+- **Flight Timer** and **Paladin Seals**: two new resource bars.
+- **Weapon buffs** in Buff Reminders: warlock stones, off-hand weapons, and clicks that put poisons and imbues on the right hand.
+
+## New
+- Bags & Looting: a page of its own, out of Quality of Life.
+  - **Bags** tab: **Bag Window**, **Item Slots** and **Tools** sections.
+  - **Looting** tab: **Faster Auto Loot**, **Skip Loot Confirmations** and the **Loot Feed**.
+  - **Fonts** tab: **Bag Items** and **Loot Feed**.
+  - Your settings carry over. Its switch starts on if you had Quality of Life on.
+- Bags & Looting › Bags: **Category Filters** (off). A button beside the cleanup button opens a drawer: **Quest Items**, **Equipment**, **Materials** or **Consumables**. Everything else dims. Right-click the button to clear it. Thanks to parchinskiy for the idea!
+- Bags & Looting › Fonts: **Bag Items** (Default) sets the font of the stack counts and cooldown numbers on your bag items.
+- Resource bars: **Flight Timer** (off). A bar while you're on a flight path, with where you're going and the time left.
+  - Each route is learned the first time you fly it. Until then the bar counts up.
+  - Learned times also show on the flight map when you point at a destination.
+- Resource bars: **Paladin Seals** (off). One bar with your seal's name and time left, in that seal's own colour. Pick each seal's colour in **Bar Colours**.
+- Buff Reminders: weapon buffs. Thanks for the report!
+  - Warlocks: a **Firestone** or **Spellstone** reminder. Click to make one, or to put one from your bags on your weapon.
+  - Off-hand weapons get their own reminder, for rogues and dual-wielding shamans.
+  - Only your class's own weapon buff counts: a sharpening stone no longer hides a poison or imbue reminder.
+  - Rogues: click to put a poison from your bags on that hand.
+  - Shamans: click to put the imbue on that hand.
+  - Right-click an icon to pick which poison, imbue or stone goes on each hand (**Last Used** by default).
+- Action bars: **Active Highlight** (off), in **Button Appearance**. Your stance or form, a queued Heroic Strike, Cleave, Maul or Raptor Strike, and a repeating Auto Shot get a gold edge and a light. Queued attacks pulse. Thanks for the request!
+- Action bars › XP Bar: **Show Bubbles** (off) divides the XP, reputation and honor bars into 20 parts, like the classic bar. Thanks to mateuszmalek!
+- Edit Mode: Blizzard's **Totem Bar** gets **Size** and a **Fading** section with fade groups, like the action bars. Thanks for the request!
+- Minimap: **Framerate** (off): your framerate at the bottom right of the map, **Always** or **On Mouseover**. Thanks for the request!
+- Damage Meter: **Fade Delay** (Instant), after **Faded Opacity**: how long the meter stays before it fades.
+- Radial menu: drag radials in the **Radials** list to reorder them.
+- Radial menu: **groups**. Right-click a radial to **Add to New Group...**, move it to a group or take it out.
+  - Click a group's row (or its **+ / −**) to fold or open it.
+  - Right-click a group to **Rename...** or **Ungroup** it.
+  - Drag radials into a group, and drag a group to move it.
+- Radial menu: a **Professions** catalog with your professions and Smelting, Disenchant, Find Herbs, Find Minerals, Basic Campfire and Pick Lock.
+- Fonts: every font on every **Fonts** tab has a **Reset** button.
+
+## Changed
+- Unit frames and resource bars: **Colour Palette** is now **Frame Colours** and **Bar Colours**: a **Pick Your Colours** button you always see.
+  - In its window, the palette list at the bottom offers **FlareUI** (default), **Blizzard** and **Custom**.
+  - Change any colour and the palette becomes **Custom**. **Reset** gives your colours back.
+  - **Apply** saves and closes. Closing with unsaved colours asks whether to keep them.
+- Minimap: **Coordinates on Mouseover** is now **Coordinates**: **Off**, **Always** or **On Mouseover**. It is the same option as Blizzard's own coordinates. If you had Coordinates on Mouseover off, you get **Always**.
+- Minimap: the addon drawer's **Open on Mouseover** closes sooner after the pointer leaves.
+- Quest tracker: **Colour Names by Difficulty** is now **Colour by Difficulty**.
+- Loot Feed: a single item shows just its name, and several show "Name x3". Thanks to Nico-Mayer!
+- Radial menu: a new radial is available to **All Characters** by default.
+- Radial menu: **Quest Items** has a new icon.
+- Settings: options reordered on the Action Bars, Minimap, Quest Tracker, Tooltips and Damage Meter pages, so related ones sit together.
+- Quality of Life has a new icon; the bag icon went to Bags & Looting.
+
+## Defaults
+- On: **Party Frames** and **Raid Frames** (with Unit Frames), Buffs & Debuffs **Timer Colour** and **Arrival Animation**, Damage Meter **Pull Warning** and **Pull Aggro Line**.
+- Off: Action bars **Stop Auto-Add Spells**, Minimap **Middle-Click Menu**, Quest tracker **Completed Last** and **Auto Minimize in Instances**, Tooltips **Show Threat**, **Map Pins on "/way"**, **Gamepad Mode Prompt**, and every bag option.
+- Chat, Damage Meter and Quest Tracker: **Frame Opacity** 60%.
+- Minimap: **Coordinates** On Mouseover.
+- New default spots for Buff Reminders, toasts, loot rolls, Combo Points, the swing timers and the new bars.
+
+## Fixed
+- Minimap: clicking the map in a battleground no longer causes a blocked-action error. Thanks for the report!
+- Quest tracker: **Sort By** By Zone no longer reorders quests by distance as you move. Thanks for the report!
+- Quest tracker: **Wrap Long Text** no longer cuts off a longer objective. Thanks to parchinskiy!
+- Gamepad UI: settings dropdowns opened with the mouse no longer cause an error. Thanks for the report!
+- Action bars: with **Clean Keybind Text** off, long key names stay on one line instead of covering the icon. Thanks for the report!
+- Radial menu: the **Available To** list of a new radial opens over its popup, not under it.
+- Radial menu: the selected button's highlight in the **Buttons** list sits centred.
+
 # FlareUI 6.0.2
 
 **Restart the game fully after updating** (not just /reload): this version adds a new file.

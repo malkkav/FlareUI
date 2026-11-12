@@ -43,7 +43,14 @@ S:Row{ key = "ab.buttonScale", kind = "range", section = "ab.barAppearance", cho
     end,
     set = function(v) S:SetPath("actionbars.buttonScale", v) end }
 
--- in pairs (half rows): the button's state, its art, its text, the spells, paging
+-- Gryphons Behind Bars: last in Bar Appearance (11-11, Marcus)
+S:Row{ key = "ab.gryphonsBehind", section = "ab.barAppearance", path = "actionbars.gryphonsBehind", apply = Refresh, half = true }
+
+-- in pairs (half rows, 11-11 Marcus): Show Button Art | Proc Glow, Status Colouring | Dim On Cooldown;
+-- then the text (Hide Keybinds | Hide Macro Text, Clean Keybind Text), the spells, paging
+S:Row{ key = "ab.buttonArt", section = "ab.buttonAppearance", path = "actionbars.buttonArt", apply = Refresh, half = true }
+S:Row{ key = "ab.procGlow", section = "ab.buttonAppearance", path = "actionbars.procGlow", half = true,
+    apply = function() if ns.ProcGlow then ns.ProcGlow:Refresh() end end }
 S:Row{
     key = "ab.statusColours", section = "ab.buttonAppearance", apply = Refresh, half = true,
     get = function() return S:GetPath("actionbars.colors.enableRange") end,
@@ -53,13 +60,10 @@ S:Row{
     end,
 }
 S:Row{ key = "ab.dimOnCooldown", section = "ab.buttonAppearance", path = "actionbars.dimOnCooldown", apply = Refresh, half = true }
-S:Row{ key = "ab.procGlow", section = "ab.buttonAppearance", path = "actionbars.procGlow", half = true,
-    apply = function() if ns.ProcGlow then ns.ProcGlow:Refresh() end end }
-S:Row{ key = "ab.buttonArt", section = "ab.buttonAppearance", path = "actionbars.buttonArt", apply = Refresh, half = true }
+S:Row{ key = "ab.activeHighlight", section = "ab.buttonAppearance", path = "actionbars.activeHighlight", apply = Refresh, half = true }
 S:Row{ key = "ab.hideKeybinds", section = "ab.buttonText", path = "actionbars.hideHotkeys", apply = Refresh, half = true }
-S:Row{ key = "ab.cleanKeybinds", section = "ab.buttonText", path = "actionbars.cleanKeybinds", apply = Refresh, half = true }
 S:Row{ key = "ab.hideMacroText", section = "ab.buttonText", path = "actionbars.hideMacroText", apply = Refresh, half = true }
-S:Row{ key = "ab.gryphonsBehind", section = "ab.buttonAppearance", path = "actionbars.gryphonsBehind", apply = Refresh, half = true }
+S:Row{ key = "ab.cleanKeybinds", section = "ab.buttonText", path = "actionbars.cleanKeybinds", apply = Refresh, half = true }
 S:Row{ key = "ab.autoRanks", section = "ab.spellBehavior", path = "actionbars.autoRanks", half = true,
     apply = function() if ns.ActionBars.CatchUpRanks then ns.ActionBars:CatchUpRanks() end end }
 S:Row{ key = "ab.stopAutoAdd", section = "ab.spellBehavior", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }

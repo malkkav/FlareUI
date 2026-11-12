@@ -3,7 +3,7 @@ local L = ns.L
 
 --------------------------------------------------
 -- RESOURCE BARS
--- Health, power, druid mana, combo point and swing timer bars, each an Edit Mode frame. Replaces the
+-- Health, power, druid mana, combo point, swing timer, flight timer and seal bars, each an Edit Mode frame. Replaces the
 -- Personal Resource Display and Blizzard's swing timers. Secret-safe: values go straight into
 -- widgets, readable() guards every Lua test.
 --------------------------------------------------
@@ -44,21 +44,28 @@ local COLORS = {
     outOfRange = { 0.78, 0.28, 0.24 },
     queued     = { 1.00, 0.82, 0.25 },   -- Queued Attack Colour: an on-next-swing attack is queued
     waiting    = { 0.45, 0.45, 0.45 },   -- Waiting State: auto attack on, no swing running
+    flight     = { 0.40, 0.62, 0.86 },   -- Flight Timer
 }
 
 -- textSize: added to the Fonts tab size
-local BAR_ORDER = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged" }
+local BAR_ORDER = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged", "flight", "seal" }
 local BARS = {
     health      = { kind = "health", label = L["Health Bar"],      default = { point = "CENTER", x = 0, y = -148 }, textSize = 2 },
     power       = { kind = "power",  label = L["Power Bar"],       default = { point = "CENTER", x = 0, y = -180 }, textSize = 2 },
-    mana        = { kind = "mana",   label = L["Druid Mana"],      default = { point = "CENTER", x = 0, y = -202 }, textSize = 2 },
-    combo       = { kind = "combo",  label = L["Combo Points"],    default = { point = "CENTER", x = 0, y = -108 } },
-    swingMain   = { kind = "swing",  label = L["Main-Hand Swing"], default = { point = "CENTER", x = 0, y = -258 }, textSize = 0,
+    -- right under the power bar, the health-to-power gap apart (11-11)
+    mana        = { kind = "mana",   label = L["Druid Mana"],      default = { point = "CENTER", x = 0, y = -212 }, textSize = 2 },
+    -- from here on the default spots are Marcus's own (11-12)
+    combo       = { kind = "combo",  label = L["Combo Points"],    default = { point = "CENTER", x = 0, y = -88 } },
+    swingMain   = { kind = "swing",  label = L["Main-Hand Swing"], default = { point = "CENTER", x = 0, y = -288 }, textSize = 0,
                     swingType = SWING and SWING.MainHand, text = _G.SWING_TIMER_MAIN_HAND or "Main Hand" },
-    swingOff    = { kind = "swing",  label = L["Off-Hand Swing"],  default = { point = "CENTER", x = 0, y = -286 }, textSize = 0,
+    swingOff    = { kind = "swing",  label = L["Off-Hand Swing"],  default = { point = "BOTTOM", x = 0, y = 276 }, textSize = 0,
                     swingType = SWING and SWING.OffHand, text = _G.SWING_TIMER_OFF_HAND or "Off Hand" },
-    swingRanged = { kind = "swing",  label = L["Ranged Swing"],    default = { point = "BOTTOM", x = 0, y = 276 }, textSize = 0,
+    swingRanged = { kind = "swing",  label = L["Ranged Swing"],    default = { point = "BOTTOM", x = 0, y = 250 }, textSize = 0,
                     swingType = SWING and SWING.Ranged, text = _G.SWING_TIMER_RANGED or "Ranged" },
+    -- a paladin's seal and its time left, in the seal's own colour (section 10c)
+    seal        = { kind = "seal",   label = L["Paladin Seals"],   default = { point = "CENTER", x = 0, y = -262 }, textSize = 0 },
+    -- a flight path's progress (section 10b), shown only while you fly
+    flight      = { kind = "flight", label = L["Flight Timer"],    default = { point = "BOTTOM", x = 0, y = 222 }, textSize = 0 },
 }
 
 -- Visibility (the action bars' Show conditions, Fade Group, Fade Speed, Faded Opacity, and Missing
@@ -128,7 +135,9 @@ RB.COLOR_DEFAULTS = {
     low = { 0.85, 0.1, 0.1 }, combo = { ns.COMBO_COLOR[1], ns.COMBO_COLOR[2], ns.COMBO_COLOR[3] },
     swingMain = { 0.86, 0.65, 0.39 }, swingOff = { 0.72, 0.54, 0.32 }, swingRanged = { 0.45, 0.68, 0.40 },
     outOfRange = { 0.78, 0.28, 0.24 }, queued = { 1.00, 0.82, 0.25 }, waiting = { 0.45, 0.45, 0.45 },
-    zone = { 1, 0.2, 0.15 },
+    zone = { 1, 0.2, 0.15 }, flight = { 0.40, 0.62, 0.86 },
+    -- the seals (Seals bar), each its own colour
+    sealRighteousness = { 0.51, 0.875, 0.922 }, sealCrusader = { 1, 0.647, 0.459 }, sealCommand = { 0.969, 0.49, 0.133 }, sealJustice = { 0.62, 0.502, 0.302 }, sealLight = { 0.98, 0.816, 0.38 }, sealWisdom = { 0.098, 0.584, 1 }, sealFury = { 0.91, 0.224, 0 }, sealMartyrdom = { 0.65, 0.35, 0.85 },
 }
 local RBC = {}   -- the colours in use, key -> { r, g, b }
 RB.colors = RBC
@@ -168,14 +177,15 @@ function RB.ApplyPalette()
     local custom = palette == "custom" and rdb and rdb.customColors or nil
     for _, key in ipairs({ "health", "classHealth", "low", "mana", "rage", "energy", "druidMana", "combo",
                            "swingMain", "swingOff", "swingRanged", "outOfRange", "queued", "waiting", "zone",
-                           "heal", "absorb" }) do
+                           "heal", "absorb", "flight",
+                           "sealRighteousness", "sealCrusader", "sealCommand", "sealJustice", "sealLight", "sealWisdom", "sealFury", "sealMartyrdom" }) do
         local own = custom and custom[key]
         local c = (type(own) == "table" and own[1]) and own or RB.PaletteColor(key, base)
         RBC[key] = RBC[key] or {}
         RBC[key][1], RBC[key][2], RBC[key][3] = c[1], c[2], c[3]
     end
     -- the tables the bars read
-    for _, key in ipairs({ "combo", "swingMain", "swingOff", "swingRanged", "outOfRange", "queued", "waiting" }) do
+    for _, key in ipairs({ "combo", "swingMain", "swingOff", "swingRanged", "outOfRange", "queued", "waiting", "flight" }) do
         COLORS[key][1], COLORS[key][2], COLORS[key][3] = RBC[key][1], RBC[key][2], RBC[key][3]
     end
     LOW_HEALTH.color[1], LOW_HEALTH.color[2], LOW_HEALTH.color[3] = RBC.low[1], RBC.low[2], RBC.low[3]
@@ -275,6 +285,8 @@ local function IsAvailable(holder)
         return BuildsComboPoints()
     elseif info.kind == "swing" then
         return HasSwingWeapon(info.swingType)
+    elseif info.kind == "seal" then
+        return ClassFile() == "PALADIN"
     end
     return true
 end
@@ -291,6 +303,8 @@ local function ShouldShow(holder)
     local cfg = Cfg(holder.key)
     if not cfg then return false end
     if IsEditing() then return true end
+    -- the flight bar: only on a flight path
+    if BARS[holder.key].kind == "flight" then return RB.Flight and RB.Flight.now and true or false end
     -- a swing proves the weapon, so no availability check (attack speeds can be secret); Waiting
     -- State keeps the bar up while auto attack is on
     if RB.InUse(holder.key) then
@@ -567,7 +581,9 @@ local function UpdateBar(holder)
     elseif kind == "power" then UpdatePower(holder)
     elseif kind == "mana" then UpdateMana(holder)
     elseif kind == "combo" then UpdateCombo(holder)
-    elseif kind == "swing" then UpdateSwing(holder) end
+    elseif kind == "swing" then UpdateSwing(holder)
+    elseif kind == "flight" and RB.Flight then RB.Flight.Update(holder)
+    elseif kind == "seal" and RB.Seal then RB.Seal.Update(holder) end
 end
 
 -- Edit Mode sample values
@@ -611,6 +627,18 @@ local function ApplyPreview(holder)
         bar:SetStatusBarColor(DruidManaColor())
         SetText(holder, cfg.text or "value", 1600, 40)
         if holder.ManaCost then holder.ManaCost:Refresh(MANA) end
+    elseif kind == "seal" then
+        -- a sample Seal of Righteousness, half run out (the real seals' bars wait in their container)
+        if RB.Seal then RB.Seal.Preview(holder) end
+    elseif kind == "flight" then
+        -- a sample flight two thirds of the way
+        holder:SetScript("OnUpdate", nil)
+        holder.Label:SetText(L["Flight Timer"])
+        holder.Spark:Show()
+        bar:SetValue(0.65)
+        holder.Text:SetText("0:42")
+        local c = COLORS.flight
+        bar:SetStatusBarColor(c[1], c[2], c[3])
     elseif kind == "swing" then
         holder:SetScript("OnUpdate", nil)
         holder.swingEnd = nil
@@ -668,7 +696,7 @@ local function ApplyAllVisibility(newTarget)
         if holder then
             local kind = BARS[key].kind
             local was = holder:IsShown()
-            if kind == "swing" or (kind == "combo" and newTarget) or not was then
+            if kind == "swing" or kind == "flight" or kind == "seal" or (kind == "combo" and newTarget) or not was then
                 ApplyShown(holder)
             else
                 holder:SetShown(ShouldShow(holder))
@@ -783,7 +811,7 @@ local function LayoutBar(holder)
 
     K.ApplyFont(holder.Text, font)
     holder.Text:ClearAllPoints()
-    if kind == "swing" then
+    if kind == "swing" or kind == "flight" or kind == "seal" then
         K.ApplyFont(holder.Label, font)
         holder.Label:ClearAllPoints()
         holder.Label:SetPoint("LEFT", bar, "LEFT", K.TEXT_INSET, 0)
@@ -828,6 +856,7 @@ local function LayoutBar(holder)
         -- the shield with no room after the health, over it (UnitFrames.lua UF.CreateOverAbsorb)
         K.PlaceOverAbsorb(holder.OverAbsorb, bar, width, false, K.GetBarTexture(K.ABSORB_TEXTURE))
     end
+    if kind == "seal" and RB.Seal then RB.Seal.Layout(holder, cfg, font) end
 end
 
 --------------------------------------------------
@@ -1033,7 +1062,7 @@ local function CreateHolder(key, parent)
         holder.FsrSpark = fsr
     end
 
-    if info.kind == "swing" then
+    if info.kind == "swing" or info.kind == "flight" or info.kind == "seal" then
         holder.Label = overlay:CreateFontString(nil, "OVERLAY")
         holder.Label:SetJustifyH("LEFT")
         holder.Spark = holder.Bar:CreateTexture(nil, "OVERLAY")
@@ -1164,11 +1193,14 @@ local function BuildSettings(key)
           hidden = function() return info.kind ~= "swing" end },
         -- the swing timers' two texts, each on its own (11-11, a player's request)
         { name = L["Bar Text"], kind = LEM.SettingType.Checkbox, default = true, get = get("showLabel", true), set = set("showLabel"),
-          desc = L["The swing's name on the left of the bar."],
-          hidden = function() return info.kind ~= "swing" end },
+          desc = info.kind == "flight" and L["Where you're flying, on the left of the bar."]
+              or info.kind == "seal" and L["The seal's name on the left of the bar."] or L["The swing's name on the left of the bar."],
+          hidden = function() return info.kind ~= "swing" and info.kind ~= "flight" and info.kind ~= "seal" end },
         { name = L["Timer"], kind = LEM.SettingType.Checkbox, default = true, get = get("showTimer", true), set = set("showTimer"),
-          desc = L["The seconds left on the right of the bar (and Waiting)."],
-          hidden = function() return info.kind ~= "swing" end },
+          desc = info.kind == "flight" and L["The time left on the right of the bar. A route you haven't flown yet counts up while it's learned."]
+              or info.kind == "seal" and L["The seal's time left on the right of the bar."]
+              or L["The seconds left on the right of the bar (and Waiting)."],
+          hidden = function() return info.kind ~= "swing" and info.kind ~= "flight" and info.kind ~= "seal" end },
         (function()
             -- only the bars that hold a value: combo points are steps, swing timers already run smoothly
             local item = K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars"))
@@ -1477,6 +1509,381 @@ local EVENTS = {
 }
 
 --------------------------------------------------
+-- 10b. FLIGHT TIMER (11-11, Marcus; the idea after Leatrix Plus, nothing taken)
+-- Forever tells no flight's length, so each route is learned: the first flight counts up, landing
+-- keeps its time (account-wide, db.global.flightTimes, "From > To" by the nodes' names), and every
+-- later flight fills the bar with the time left. A flight is caught as it is picked (TakeTaxiNode on
+-- the flight map) and timed from take-off (UnitOnTaxi) to landing. Not kept: a flight left early
+-- (TaxiRequestEarlyLanding), one under 10 seconds, or one not caught from the start (a login in the
+-- air without the record a reload leaves). Hovering a destination on the flight map adds its time.
+--------------------------------------------------
+local Flight = {}
+RB.Flight = Flight
+local FLIGHT_MIN = 10           -- shorter flights are not kept
+local FLIGHT_CATCH = 15         -- seconds after the pick for take-off
+local FLIGHT_RESUME = 3600      -- a reload's record older than this is dropped
+
+local function FlightStore()
+    local global = ns.db and ns.db.global
+    if not global then return {} end
+    global.flightTimes = global.flightTimes or {}
+    return global.flightTimes
+end
+
+local function Clock(seconds)
+    seconds = math_max(0, math_floor(seconds + 0.5))
+    return string.format("%d:%02d", math_floor(seconds / 60), seconds % 60)
+end
+Flight.Clock = Clock
+
+-- the flight map's node you stand at, and a route's key
+local function HereName()
+    if not (NumTaxiNodes and TaxiNodeGetType) then return nil end
+    for i = 1, NumTaxiNodes() do
+        if TaxiNodeGetType(i) == "CURRENT" then return TaxiNodeName(i) end
+    end
+end
+local function RouteKey(from, to) return from .. " > " .. to end
+
+-- the learned time from here to a slot on the open flight map, or nil
+function Flight.TimeTo(slot)
+    local here, there = HereName(), TaxiNodeName and TaxiNodeName(slot)
+    if not (here and there) or here == there then return nil end
+    return FlightStore()[RouteKey(here, there)]
+end
+
+-- "Ironforge, Dun Morogh": the place, not its zone
+local function ShortName(name)
+    return name and (name:match("^([^,]+)") or name) or ""
+end
+
+local function FlightOnUpdate(holder, elapsed)
+    holder.flightTick = (holder.flightTick or 0) + elapsed
+    local now = Flight.now
+    if not now then return end
+    local flown = GetTime() - now.start
+    if now.total and now.total > 0 then
+        holder.Bar:SetValue(math_min(flown / now.total, 1))
+    end
+    if holder.flightTick < 0.2 then return end
+    holder.flightTick = 0
+    if now.total and now.total > 0 then
+        holder.Text:SetText(Clock(now.total - flown))
+    elseif now.keep then
+        holder.Text:SetText(string.format(L["Learning %s"], Clock(flown)))
+    else
+        -- caught mid-air (a login without a record): the time flown, nothing learned
+        holder.Text:SetText(Clock(flown))
+    end
+end
+
+function Flight.Update(holder)
+    local now = Flight.now
+    if not now then
+        holder:SetScript("OnUpdate", nil)
+        return
+    end
+    local c = COLORS.flight
+    holder.Bar:SetStatusBarColor(c[1], c[2], c[3])
+    holder.Bar:SetMinMaxValues(0, 1)
+    holder.Bar:SetValue(0)
+    holder.Label:SetText(now.dest and ShortName(now.dest) or L["Flight Timer"])
+    holder.Spark:SetShown(now.total and now.total > 0 or false)
+    holder.flightTick = 1   -- the text at once
+    holder:SetScript("OnUpdate", FlightOnUpdate)
+    FlightOnUpdate(holder, 0)
+end
+
+local flightTicker
+local function FlightShown()
+    if bars.flight then ApplyShown(bars.flight) end
+end
+
+local function TakeOff(pending, startedAt)
+    local global = ns.db and ns.db.global
+    Flight.now = { key = pending and pending.key, dest = pending and pending.dest, start = startedAt or GetTime(),
+                   total = pending and pending.key and FlightStore()[pending.key], keep = pending and pending.key and true or false }
+    Flight.pending = nil
+    if global and pending and pending.key then
+        global.flightNow = { key = pending.key, dest = pending.dest, epoch = time() - (GetTime() - Flight.now.start) }
+    end
+    FlightShown()
+end
+
+local function Land()
+    local now = Flight.now
+    Flight.now = nil
+    local global = ns.db and ns.db.global
+    if global then global.flightNow = nil end
+    if now and now.keep and now.key then
+        local flown = GetTime() - now.start
+        if flown >= FLIGHT_MIN then FlightStore()[now.key] = math_floor(flown + 0.5) end
+    end
+    FlightShown()
+end
+
+local function FlightCheck()
+    local onTaxi = UnitOnTaxi("player")
+    if Flight.pending then
+        if onTaxi then TakeOff(Flight.pending)
+        elseif GetTime() - Flight.pending.at > FLIGHT_CATCH then Flight.pending = nil end
+    elseif Flight.now and not onTaxi then
+        Land()
+    elseif not Flight.now and onTaxi then
+        -- in the air with nothing caught (a login or reload): a reload's record carries on, else count up
+        local global = ns.db and ns.db.global
+        local record = global and global.flightNow
+        if record and record.epoch and time() - record.epoch < FLIGHT_RESUME then
+            TakeOff({ key = record.key, dest = record.dest }, GetTime() - (time() - record.epoch))
+        else
+            TakeOff(nil)
+        end
+    end
+    -- a light check while something is under way; the control events do the rest
+    local busy = Flight.pending or Flight.now
+    if busy and not flightTicker then
+        flightTicker = C_Timer.NewTicker(0.5, FlightCheck)
+    elseif not busy and flightTicker then
+        flightTicker:Cancel()
+        flightTicker = nil
+    end
+end
+
+-- the flight map's pins and the old taxi frame's buttons: the learned time under the cost
+local function AddFlightTime(slot)
+    local seconds = slot and Flight.TimeTo(slot)
+    if not seconds then return end
+    GameTooltip_AddNormalLine(GameTooltip, string.format(L["Flight time: %s"], Clock(seconds)))
+    GameTooltip:Show()
+end
+
+function Flight.Init()
+    if Flight.initialized then return end
+    Flight.initialized = true
+    if TakeTaxiNode then
+        hooksecurefunc("TakeTaxiNode", function(slot)
+            local here, there = HereName(), TaxiNodeName and TaxiNodeName(slot)
+            if here and there and here ~= there then
+                Flight.pending = { key = RouteKey(here, there), dest = there, at = GetTime() }
+                FlightCheck()
+            end
+        end)
+    end
+    if TaxiRequestEarlyLanding then
+        hooksecurefunc("TaxiRequestEarlyLanding", function() if Flight.now then Flight.now.keep = false end end)
+    end
+    if TaxiNodeOnButtonEnter then
+        hooksecurefunc("TaxiNodeOnButtonEnter", function(button) AddFlightTime(button and button:GetID()) end)
+    end
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_FlightMap", function()
+        local mixin = _G.FlightMap_FlightPointPinMixin
+        if mixin and mixin.OnMouseEnter then
+            hooksecurefunc(mixin, "OnMouseEnter", function(pin)
+                local data = pin.taxiNodeData
+                if data and data.state == Enum.FlightPathState.Reachable then AddFlightTime(data.slotIndex) end
+            end)
+        end
+    end)
+    local events = CreateFrame("Frame")
+    for _, event in ipairs({ "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED", "PLAYER_ENTERING_WORLD", "TAXIMAP_CLOSED" }) do
+        pcall(events.RegisterEvent, events, event)
+    end
+    events:SetScript("OnEvent", function() C_Timer.After(0.2, FlightCheck) end)
+    FlightCheck()
+end
+
+--------------------------------------------------
+-- 10c. SEALS (11-11, Marcus; the idea after SealBar, its seal IDs only: it has no licence)
+-- One bar for the paladin's seal: its name, the time left, the fill running down, each seal in its
+-- own colour (Bar Colours), no icon. A seal's aura is secret in a fight, so the game draws it: an
+-- AuraContainer (as Auras.lua's) holds one group per seal, filtered by the seal's spell IDs, and each
+-- group's button binds a bar of FlareUI's look (SetDurationBar, SetDurationText). That bar sits on
+-- the button, so it is up exactly while that seal is. The holder is only the Edit Mode frame (and its
+-- sample); its fades reach the bars through the container, its child. Made out of a fight only.
+-- A rank not listed is learned out of a fight by the seal's name (db.global.sealAuraIDs), from the
+-- next login.
+--------------------------------------------------
+local Seal = { parts = {} }
+RB.Seal = Seal
+local SEALS = {
+    { key = "sealRighteousness", id = 20293, ranks = { 20154, 21084, 20287, 20288, 20289, 20290, 20291, 20292, 27155 } },
+    { key = "sealCrusader", id = 20308, ranks = { 21082, 20162, 20305, 20306, 20307, 27158 } },
+    { key = "sealCommand", id = 20920, ranks = { 20375, 20915, 20918, 20919, 27170 } },
+    { key = "sealJustice", id = 20164, ranks = {  } },
+    { key = "sealLight", id = 20349, ranks = { 20165, 20347, 20348, 27160 } },
+    { key = "sealWisdom", id = 20357, ranks = { 20166, 20356, 27166 } },
+    { key = "sealFury", id = 20423, ranks = { 1311649, 1311656, 20163, 20419, 20421, 20422 } },
+    { key = "sealMartyrdom", id = 407798, ranks = {  } },
+}
+
+local function SealName(seal)
+    return C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(seal.id) or nil
+end
+
+local function SealIDs(seal)
+    local set = { [seal.id] = true }
+    for _, id in ipairs(seal.ranks) do set[id] = true end
+    local learned = ns.db and ns.db.global and ns.db.global.sealAuraIDs
+    for id, key in pairs(learned or {}) do if key == seal.key then set[id] = true end end
+    return set
+end
+
+-- one seal's bar, in the holder's look (section 6's sizes, texture, border, font)
+local function LayoutPart(part, holder, cfg, font)
+    local height = cfg.height or 14
+    local PADDING = BarPadding(cfg, height)
+    part:ClearAllPoints()
+    part:SetAllPoints(holder)
+    part.Backdrop:SetBackdrop({ bgFile = K.BACKDROP_FILE, insets = { left = PADDING, right = PADDING, top = PADDING, bottom = PADDING } })
+    part.Backdrop:SetBackdropColor(0, 0, 0, K.BG_OPACITY)
+    K.ApplyBorderStyle(part.Border, K.GetBorderFile(cfg.border or DEFAULT_BAR_BORDER), height + 2 * K.INSET)
+    local texture = K.GetBarTexture(cfg.texture)
+    part.Bar:SetStatusBarTexture(texture)
+    part.Bar.bg:SetTexture(texture)
+    K.SetBarBackground(part.Bar, cfg.bgOpacity)
+    part.Bar:ClearAllPoints()
+    part.Bar:SetPoint("TOPLEFT", part, "TOPLEFT", PADDING, -PADDING)
+    part.Bar:SetPoint("BOTTOMRIGHT", part, "BOTTOMRIGHT", -PADDING, PADDING)
+    local c = RBC[part.seal.key] or { 1, 1, 1 }
+    part.Bar:SetStatusBarColor(c[1], c[2], c[3])
+    K.ApplyFont(part.Label, font)
+    part.Label:ClearAllPoints()
+    part.Label:SetPoint("LEFT", part.Bar, "LEFT", K.TEXT_INSET, 0)
+    part.Label:SetText(SealName(part.seal) or "")
+    part.Label:SetShown(cfg.showLabel ~= false)
+    K.ApplyFont(part.Time, font)
+    part.Time:ClearAllPoints()
+    part.Time:SetPoint("RIGHT", part.Bar, "RIGHT", -K.TEXT_INSET, 0)
+    part.Time:SetShown(cfg.showTimer ~= false)
+end
+
+local function SealInit(seal, holder)
+    return function(button)
+        local part = CreateFrame("Frame", nil, button)
+        part.seal = seal
+        local level = holder:GetFrameLevel()
+        part:SetFrameLevel(level)
+        part.Backdrop = CreateFrame("Frame", nil, part, "BackdropTemplate")
+        part.Backdrop:SetAllPoints()
+        part.Backdrop:SetFrameLevel(level)
+        part.Border = CreateFrame("Frame", nil, part, "BackdropTemplate")
+        part.Border:SetAllPoints()
+        part.Border:SetFrameLevel(level + 3)
+        part.Bar = K.CreateBar(part, level + 1)
+        part.Bar:SetMinMaxValues(0, 1)
+        local overlay = CreateFrame("Frame", nil, part)
+        overlay:SetAllPoints()
+        overlay:SetFrameLevel(level + 4)
+        part.Label = overlay:CreateFontString(nil, "OVERLAY")
+        part.Label:SetJustifyH("LEFT")
+        part.Label:SetWordWrap(false)
+        part.Time = overlay:CreateFontString(nil, "OVERLAY")
+        part.Time:SetJustifyH("RIGHT")
+        Seal.parts[seal.key] = part
+        local cfg = Cfg("seal") or {}
+        local rdb = GetResourceDb()
+        LayoutPart(part, holder, cfg, rdb and rdb.font)
+        -- the game fills the bar and writes the time (both secret in a fight)
+        local E = Enum or {}
+        pcall(button.SetDurationBar, button, part.Bar, {
+            direction = E.StatusBarTimerDirection and E.StatusBarTimerDirection.RemainingTime,
+            interpolation = E.StatusBarInterpolation and E.StatusBarInterpolation.Immediate,
+        })
+        pcall(button.SetDurationText, button, part.Time)
+    end
+end
+
+local function BuildContainer(holder)
+    if Seal.container or Seal.failed then return end
+    if InCombatLockdown() then Seal.pendingBuild = true return end
+    Seal.pendingBuild = nil
+    if C_AddOns.DoesAddOnExist("Blizzard_AuraContainer") and not C_AddOns.IsAddOnLoaded("Blizzard_AuraContainer") then
+        pcall(C_AddOns.LoadAddOn, "Blizzard_AuraContainer")
+    end
+    local ok, container = pcall(CreateFrame, "AuraContainer", nil, holder, "CustomAuraContainerTemplate")
+    if not (ok and type(container) == "table" and container.AddAuraGroup) then Seal.failed = true return end
+    Seal.container = container
+    container:SetUnit("player")
+    container:SetSize(1, 1)
+    container:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
+    local E = Enum or {}
+    for _, seal in ipairs(SEALS) do
+        if SealName(seal) then
+            pcall(container.AddAuraGroup, container, seal.key, "HELPFUL", {
+                maxFrameCount = 1,
+                candidateFilters = { includeSpellIDs = SealIDs(seal) },
+                sortMethod = E.AuraContainerSortMethod and E.AuraContainerSortMethod.Default,
+                sortDirection = E.AuraContainerSortDirection and E.AuraContainerSortDirection.Normal,
+                initializeFrame = SealInit(seal, holder),
+                layout = { elementWidth = 1, elementHeight = 1, elementSpacing = 0, lineSpacing = 0 },
+            })
+        end
+    end
+end
+
+-- the holder's own art is the Edit Mode sample only; the live bars are the seals'
+local function SampleShown(holder, shown)
+    holder.Backdrop:SetShown(shown)
+    holder.Border:SetShown(shown)
+    holder.Bar:SetShown(shown)
+    holder.Text:SetShown(shown and Cfg("seal").showTimer ~= false)
+    holder.Label:SetShown(shown and Cfg("seal").showLabel ~= false)
+end
+
+function Seal.Update(holder)
+    SampleShown(holder, false)
+    BuildContainer(holder)
+    if Seal.container and not InCombatLockdown() then
+        Seal.container:Show()
+        pcall(Seal.container.SetEnabled, Seal.container, true)
+    end
+end
+
+function Seal.Preview(holder)
+    -- (a settings preview's sample leaves the live bars alone)
+    if not holder.fuiSample and Seal.container and not InCombatLockdown() then pcall(Seal.container.SetEnabled, Seal.container, false) end
+    SampleShown(holder, true)
+    local sample = SEALS[1]
+    holder.Label:SetText(SealName(sample) or L["Paladin Seals"])
+    holder.Text:SetText("18")
+    holder.Bar:SetMinMaxValues(0, 1)
+    holder.Bar:SetValue(0.6)
+    local c = RBC[sample.key] or { 1, 1, 1 }
+    holder.Bar:SetStatusBarColor(c[1], c[2], c[3])
+end
+
+function Seal.Layout(holder, cfg, font)
+    if holder.fuiSample then return end
+    for _, part in pairs(Seal.parts) do LayoutPart(part, holder, cfg, font) end
+end
+
+-- out of a fight: a seal aura with a spell ID not listed, by its name (from the next login)
+function Seal.Learn()
+    if ClassFile() ~= "PALADIN" or InCombatLockdown() then return end
+    if C_Secrets and C_Secrets.ShouldAurasBeSecret then
+        local ok, secret = pcall(C_Secrets.ShouldAurasBeSecret)
+        if not ok or not canaccessvalue(secret) or secret then return end
+    end
+    local global = ns.db and ns.db.global
+    if not global then return end
+    local byName = {}
+    for _, seal in ipairs(SEALS) do
+        local name = SealName(seal)
+        if name then byName[name] = seal end
+    end
+    for i = 1, 40 do
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+        if not ok or not aura then break end
+        local name, id = readable(aura.name), readable(aura.spellId)
+        local seal = name and byName[name]
+        if seal and id and not SealIDs(seal)[id] then
+            global.sealAuraIDs = global.sealAuraIDs or {}
+            global.sealAuraIDs[id] = seal.key
+        end
+    end
+end
+
+--------------------------------------------------
 -- 11. PUBLIC
 --------------------------------------------------
 -- the bar Visibility fades (nil when it was not made: off at login)
@@ -1519,6 +1926,7 @@ end
 local function BarOn(key)
     local cfg = Cfg(key)
     if key == "mana" and ClassFile() ~= "DRUID" then return false end
+    if key == "seal" and ClassFile() ~= "PALADIN" then return false end
     return cfg and cfg.enabled and true or false
 end
 
@@ -1596,5 +2004,18 @@ function RB:Init()
 
     HideBlizzardCounterparts()
     EnableSwingRange()
+    if bars.flight then Flight.Init() end
+    if bars.seal then
+        local sealEvents = CreateFrame("Frame")
+        sealEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
+        sealEvents:RegisterUnitEvent("UNIT_AURA", "player")
+        sealEvents:SetScript("OnEvent", function(_, event)
+            if event == "PLAYER_REGEN_ENABLED" and Seal.pendingBuild then ApplyShown(bars.seal) end
+            if not Seal.learnPending then
+                Seal.learnPending = true
+                C_Timer.After(1, function() Seal.learnPending = nil; Seal.Learn() end)
+            end
+        end)
+    end
     self:Refresh()
 end

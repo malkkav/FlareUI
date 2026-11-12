@@ -40,10 +40,10 @@ S:Row{
     get = function() return S:GetPath("tooltips.nameColor") == "class" end,
     set = function(on) S:SetPath("tooltips.nameColor", on and "class" or "none") end,
 }
-S:Row{ half = true, key = "tt.showTarget", path = "tooltips.showTarget", apply = Refresh }
-S:Row{ half = true, key = "tt.showThreat", path = "tooltips.showThreat" }
 S:Row{ half = true, key = "tt.showGuild", path = "tooltips.showGuild", apply = Refresh }
 S:Row{ half = true, key = "tt.showGuildRank", path = "tooltips.showGuildRank", parent = "tt.showGuild", apply = Refresh }
+S:Row{ half = true, key = "tt.showTarget", path = "tooltips.showTarget", apply = Refresh }
+S:Row{ half = true, key = "tt.showThreat", path = "tooltips.showThreat" }
 S:Row{ half = true, key = "tt.hideFaction", path = "tooltips.hideFaction", apply = Refresh }
 S:Row{ half = true, key = "tt.ids", get = ids.get, set = ids.set, apply = Refresh }
 S:Row{ half = true, key = "tt.shortItemStats", path = "tooltips.shortItemStats" }

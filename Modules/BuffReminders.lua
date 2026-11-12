@@ -59,14 +59,16 @@ local REMINDERS = {
     },
     WARLOCK = {
         { key = "armor", cast = { 11735, 11734, 11733, 1086, 706, 696, 687 } },
+        -- Firestone / Spellstone on the weapon (11-11, a warlock asked)
+        { key = "stone", weapon = "stone" },
     },
     SHAMAN = {
         -- Water Shield and Earth Shield count too
         { key = "shield", cast = { 10432, 10431, 8134, 945, 905, 325, 324 }, buffs = { 10432, 10431, 8134, 945, 905, 325, 324, 408510, 408514 } },
-        { key = "imbue", weapon = true, cast = { 8232, 8024, 8017, 8033 } },
+        { key = "imbue", weapon = "imbue" },
     },
     ROGUE = {
-        { key = "poison", weapon = true, icon = 2842 },
+        { key = "poison", weapon = "poison" },
     },
     PALADIN = {
         { key = "blessing", blessing = true, group = true },
@@ -125,13 +127,64 @@ local GLOW_MISSING, GLOW_EXPIRING = { 1, 0.82, 0.25 }, { 1, 0.45, 0.1 }
 -- classes that never use mana
 local NO_MANA = { WARRIOR = true, ROGUE = true }
 
+-- WEAPON BUFFS (11-11, after a warlock's report): a shaman's imbue, a rogue's poison, a warlock's
+-- Firestone / Spellstone, each checked on the main hand and on an off-hand weapon (shields and held
+-- items skipped). Only the class's own enchants count (a sharpening stone or a permanent enchant never
+-- does). Forever's enchant IDs, by family: the shaman and rogue ones after EnhanceQoL's Forever data
+-- (game IDs only), the stones from PrettyTooltip's data (MIT). Click: the imbue (the off-hand: cast, then
+-- the off-hand), a poison or stone from the bags (use it, then the weapon), or Create Firestone /
+-- Spellstone when none is in the bags. Which one: the icon's right-click menu, per hand; Last Used
+-- (the default) is the one last seen on that hand.
+local WEAPON_FAMILIES = {
+    imbue = {
+        rockbiter = { 1, 6, 29, 503, 683, 1663, 1664, 7568 }, flametongue = { 3, 4, 5, 523, 1665, 1666, 7567 },
+        frostbrand = { 2, 12, 524, 1667, 1668, 7566 }, windfury = { 283, 284, 525, 1669, 7569 }, earthliving = { 6910, 6985 },
+    },
+    poison = {
+        deadly = { 7, 8, 626, 627, 2630 }, instant = { 323, 324, 325, 623, 624, 625 }, crippling = { 22, 603 },
+        mindNumbing = { 23, 35, 643 }, wound = { 703, 704, 705, 706 },
+        leeching = { 6912 }, sebacious = { 7254 }, numbing = { 7255 }, atrophic = { 7256 }, occult = { 7542, 7651 },
+    },
+    stone = { firestone = { 1803, 1823, 1824, 1825 }, spellstone = { 8059, 8060, 8061 } },
+}
+-- enchant ID -> family, per kind
+local WEAPON_ENCHANTS = {}
+for kind, families in pairs(WEAPON_FAMILIES) do
+    WEAPON_ENCHANTS[kind] = {}
+    for family, ids in pairs(families) do
+        for _, id in ipairs(ids) do WEAPON_ENCHANTS[kind][id] = family end
+    end
+end
+-- what a click can put on: imbues by their first rank (cast by name: your best rank), poisons and
+-- stones by their items, best first (rank 1's item carries the plain name, for the menu)
+local WEAPON_OPTIONS = {
+    imbue = {
+        { key = "windfury", cast = 8232 }, { key = "flametongue", cast = 8024 },
+        { key = "rockbiter", cast = 8017 }, { key = "frostbrand", cast = 8033 },
+    },
+    poison = {
+        { key = "instant", items = { 8928, 8927, 8926, 6950, 6949, 6947 } },
+        { key = "deadly", items = { 20844, 8985, 8984, 2893, 2892 } },
+        { key = "crippling", items = { 3776, 3775 } },
+        { key = "mindNumbing", items = { 9186, 6951, 5237 } },
+        { key = "wound", items = { 10922, 10921, 10920, 10918 } },
+    },
+    stone = {
+        { key = "firestone", items = { 13701, 13700, 13699, 1254 }, create = { 17953, 17952, 17951, 6366 }, name = 13699 },
+        { key = "spellstone", items = { 13603, 13602, 5522 }, create = { 17728, 17727, 2362 }, name = 5522 },
+    },
+}
+local POISONS = 2842             -- the rogue's Poisons skill: the reminder waits for it
+local PERMANENT = Enum and Enum.ItemEnchantType and Enum.ItemEnchantType.Permanent or 1
+local WEAPON_SLOT = { [16] = 0, [17] = 1 }   -- Enum.WeaponSlot MainHand / OffHand
+
 --------------------------------------------------
 -- 2. STATE
 --------------------------------------------------
 local holder, row          -- holder: the Edit Mode frame (hidden in a fight); row: the icons' parent
 local icons = {}           -- [i] = secure button
 local active = {}          -- this class's reminders, spell names resolved
-local DEFAULTS = { point = "CENTER", x = 0, y = 189 }   -- Marcus's own spot (11-10)
+local DEFAULTS = { point = "CENTER", x = -423, y = -140 }   -- Marcus's own spot (11-11)
 
 local function Readable(v) return canaccessvalue == nil or canaccessvalue(v) end
 
@@ -152,6 +205,65 @@ local function SpellIcon(id)
     return C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(id) or 134400
 end
 
+local function ItemCount(id) return C_Item.GetItemCount and C_Item.GetItemCount(id) or 0 end
+local function ItemIcon(id) return C_Item.GetItemIconByID and C_Item.GetItemIconByID(id) or 134400 end
+
+-- a weapon option you can put on: an imbue you know, a stone you can make or have, any poison
+local function BestCreate(o)
+    for _, id in ipairs(o.create or {}) do if Known(id) then return id end end
+end
+local function OptionKnown(kind, o)
+    if kind == "imbue" then return Known(o.cast) end
+    if kind == "stone" then
+        if BestCreate(o) then return true end
+        for _, id in ipairs(o.items) do if ItemCount(id) > 0 then return true end end
+        return false
+    end
+    return true
+end
+function BR.WeaponOptionLabel(kind, o)
+    if kind == "imbue" then return SpellName(o.cast) or o.key end
+    local id = o.name or o.items[#o.items]
+    return C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or o.key
+end
+
+-- an off-hand that takes a weapon buff: a weapon (not a shield or a held item)
+local function OffHandWeapon()
+    local id = GetInventoryItemID("player", 17)
+    if not id or not C_Item.GetItemInfoInstant then return false end
+    local classID = select(6, C_Item.GetItemInfoInstant(id))
+    return classID == (Enum and Enum.ItemClass and Enum.ItemClass.Weapon or 2)
+end
+
+-- the menu's choice for a hand ("imbueMain", "poisonOff", ...), and the remembered one for Last Used
+local function WeaponField(entry) return entry.def.weapon .. (entry.slot == 17 and "Off" or "Main") end
+local function LastWeapons()
+    local me = ns.CharDB and ns.CharDB()
+    if not me then return {} end
+    me.lastWeapon = me.lastWeapon or {}
+    return me.lastWeapon
+end
+
+-- the option a click puts on that hand: the menu's pick, else the last one seen there, else the
+-- first you can (a rogue: Instant on the main hand, Deadly on the off-hand)
+local function PickWeapon(entry)
+    local kind = entry.def.weapon
+    local db = GetDb() or {}
+    local wanted = db[WeaponField(entry)]
+    if not wanted or wanted == "auto" then
+        wanted = LastWeapons()[WeaponField(entry)]
+        if not wanted and kind == "poison" then wanted = entry.slot == 17 and "deadly" or "instant" end
+    end
+    local first
+    for _, o in ipairs(WEAPON_OPTIONS[kind]) do
+        if OptionKnown(kind, o) then
+            if o.key == wanted then return o end
+            first = first or o
+        end
+    end
+    return first
+end
+
 -- the class's reminders with the spell to cast (highest known rank) and the aura names that count
 local function Resolve()
     wipe(active)
@@ -161,10 +273,30 @@ local function Resolve()
         for _, id in ipairs(def.cast or {}) do
             if Known(id) then castID = id break end
         end
-        -- a rogue's poisons have no spell to know: the reminder is there from level 20
-        local usable = castID or (def.weapon and not def.cast and UnitLevel("player") >= 20)
+        local usable = castID
         local entry
-        if def.blessing then
+        if def.weapon then
+            -- one reminder per hand, once something can go on (a rogue: once Poisons is known)
+            local kind, any = def.weapon, nil
+            for _, o in ipairs(WEAPON_OPTIONS[kind]) do
+                if C_Item.RequestLoadItemDataByID then
+                    local nameID = o.name or (o.items and o.items[#o.items])
+                    if nameID then C_Item.RequestLoadItemDataByID(nameID) end
+                end
+                if not any and OptionKnown(kind, o) then any = o end
+            end
+            if kind == "poison" and not Known(POISONS) then any = nil end
+            if any then
+                local icon = kind == "imbue" and SpellIcon(any.cast)
+                    or kind == "poison" and SpellIcon(POISONS)
+                    or ItemIcon(any.name)
+                for _, slot in ipairs({ 16, 17 }) do
+                    active[#active + 1] = { def = def, slot = slot, key = def.key .. (slot == 17 and "Off" or ""),
+                                            names = {}, icon = icon, tipSpell = kind == "poison" and POISONS or nil }
+                end
+            end
+            usable = false
+        elseif def.blessing then
             -- each known blessing: its best rank and the names that cover it
             local known = {}
             for _, key in ipairs(BLESSING_ORDER) do
@@ -238,7 +370,7 @@ end
 local dismissed = {}
 function BR.HideKey(entry)
     local _, class = UnitClass("player")
-    return (class or "") .. ":" .. (entry.def and entry.def.key or "")
+    return (class or "") .. ":" .. (entry.key or entry.def and entry.def.key or "")
 end
 function BR.HiddenCount()
     local db = GetDb() or {}
@@ -267,6 +399,8 @@ function Enabled(entry)
     local hideKey = BR.HideKey(entry)
     if dismissed[hideKey] or (db.hidden and db.hidden[hideKey]) then return false end
 
+    -- the off-hand's reminder: only with a weapon there
+    if entry.slot == 17 and not OffHandWeapon() then return false end
     if entry.def.camp or entry.def.bag then return db.camping == true end
     if entry.def.gathering then return db.gathering == true end
     if entry.def.role and not ns.EditPreviewing() then
@@ -332,20 +466,58 @@ local function HasBuff(unit, names, before)
     return false, false
 end
 
--- the main hand's timed enchant (Forever's C_Item.GetWeaponEnchantInfo, slot 0 = main hand)
-local function WeaponMissing(before)
-    -- nothing to coat: no main hand weapon
-    if not GetInventoryItemID("player", 16) then return false end
+-- a hand's weapon buff of one kind (Forever's C_Item.GetWeaponEnchantInfo): missing, running out, and
+-- the family seen there. Anything the game hides from addons, or can't tell, counts as there (quiet).
+local function WeaponMissing(slot, kind, before)
+    -- nothing to coat: no weapon in that hand
+    if not GetInventoryItemID("player", slot) then return false end
+    if slot == 17 and not OffHandWeapon() then return false end
     if not (C_Item and C_Item.GetWeaponEnchantInfo) then return false end
-    local ok, enchants = pcall(C_Item.GetWeaponEnchantInfo, 0)
-    if not ok then return false end
-    local some = false
-    for _, e in ipairs(enchants or {}) do
-        local left = e.hasEnchant and (e.timeLeft or 0) / 1000 or 0
-        if left > before then return false end
-        if left > 0 then some = true end
+    local ok, enchants = pcall(C_Item.GetWeaponEnchantInfo, WEAPON_SLOT[slot])
+    if not ok or not Readable(enchants) or type(enchants) ~= "table" then return false end
+    local families = WEAPON_ENCHANTS[kind]
+    local some, family = false, nil
+    for _, e in ipairs(enchants) do
+        if not Readable(e) or type(e) ~= "table" then return false end
+        local has, enchantType, id, left = e.hasEnchant, e.enchantType, e.enchantID, e.timeLeft
+        if not (Readable(has) and Readable(enchantType) and Readable(id) and Readable(left)) then return false end
+        -- a timed enchant of this kind (no ID: can't tell, so it counts)
+        if has and enchantType ~= PERMANENT and (id == nil or families[id]) then
+            family = family or (id and families[id])
+            local seconds = (left or 0) / 1000
+            if seconds > before then return false, false, family end
+            if seconds > 0 then some = true end
+        end
     end
-    return true, some
+    return true, some, family
+end
+
+-- what a click puts on a bare hand: the spell (an imbue, Create Firestone), its icon, and a macro
+-- for an item from the bags (use it, then the weapon) or an off-hand imbue (cast, then the off-hand)
+local function WeaponFix(entry)
+    local kind, slot = entry.def.weapon, entry.slot
+    local o = PickWeapon(entry)
+    if not o then return nil end
+    if kind == "imbue" then
+        if slot == 17 then
+            return o.cast, SpellIcon(o.cast), { macro = "/cast " .. (SpellName(o.cast) or "") .. "\n/use 17" }
+        end
+        return o.cast, SpellIcon(o.cast)
+    end
+    -- the picked one from the bags, best first; a rogue: else any poison there
+    local tries = { o }
+    if kind == "poison" then for _, other in ipairs(WEAPON_OPTIONS.poison) do tries[#tries + 1] = other end end
+    for _, t in ipairs(tries) do
+        for _, item in ipairs(t.items) do
+            if ItemCount(item) > 0 then
+                return nil, ItemIcon(item), { macro = "/use item:" .. item .. "\n/use " .. slot, tipItem = item }
+            end
+        end
+    end
+    -- a stone you can make
+    local create = BestCreate(o)
+    if create then return create, SpellIcon(create) end
+    return nil, nil, { none = true }
 end
 
 -- the blessing a member should have, among the ones you know
@@ -449,8 +621,16 @@ local function Check(entry, before)
         end
     end
     if def.weapon then
-        local missing, running = WeaponMissing(before)
-        return missing and 1 or 0, 1, "player", nil, nil, running
+        local missing, running, family = WeaponMissing(entry.slot, def.weapon, before)
+        -- remembered for Last Used (only the ones a click can put on)
+        if family then
+            for _, o in ipairs(WEAPON_OPTIONS[def.weapon]) do
+                if o.key == family then LastWeapons()[WeaponField(entry)] = family end
+            end
+        end
+        if not missing then return 0, 1 end
+        local castID, icon, action = WeaponFix(entry)
+        return 1, 1, "player", castID, icon, running, action
     end
     if def.pet then
         local fix, unit, macro, icon = PetFix(entry)
@@ -587,7 +767,11 @@ local function Icon(i)
     b:HookScript("OnMouseUp", function(self, button) if button == "RightButton" then BR.Menu(self) end end)
     b:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        if self.spellID then GameTooltip:SetSpellByID(self.spellID) end
+        if self.tipItem then GameTooltip:SetItemByID(self.tipItem)
+        elseif self.spellID or self.tipSpell then GameTooltip:SetSpellByID(self.spellID or self.tipSpell) end
+        -- a weapon buff: which hand, and nothing to put on
+        if self.hand then GameTooltip:AddLine(self.hand, 1, 0.82, 0) end
+        if self.none then GameTooltip:AddLine(L["None in your bags."], 1, 0.3, 0.3) end
         GameTooltip:AddLine(L["Right-click to hide this reminder."], 0.6, 0.6, 0.6)
         GameTooltip:Show()
     end)
@@ -624,6 +808,15 @@ function BR.Menu(owner)
             root:CreateDivider()
             root:CreateTitle(L["Blessing"])
             for _, choice in ipairs(BR.BlessingChoices()) do Radio(choice[2], "blessing", choice[1]) end
+        elseif entry.def.weapon then
+            -- per hand: Last Used, or one you can put on
+            local kind = entry.def.weapon
+            root:CreateDivider()
+            root:CreateTitle(entry.slot == 17 and (INVTYPE_WEAPONOFFHAND or "Off Hand") or (INVTYPE_WEAPONMAINHAND or "Main Hand"))
+            Radio(L["Last Used"], WeaponField(entry), "auto")
+            for _, o in ipairs(WEAPON_OPTIONS[kind]) do
+                if OptionKnown(kind, o) then Radio(BR.WeaponOptionLabel(kind, o), WeaponField(entry), o.key) end
+            end
         elseif entry.def.pick == "thorns" then
             root:CreateDivider()
             root:CreateTitle(L["Keep It On"])
@@ -679,6 +872,9 @@ local function Show(shows, sample)
         local castID = s.castID or s.entry.castID
         b.icon:SetTexture(s.icon or s.entry.icon)
         b.spellID = castID
+        b.tipSpell, b.tipItem = s.entry.tipSpell, s.action and s.action.tipItem
+        b.none = s.action and s.action.none
+        b.hand = s.entry.slot and (s.entry.slot == 17 and (INVTYPE_WEAPONOFFHAND or "Off Hand") or (INVTYPE_WEAPONMAINHAND or "Main Hand"))
         if sample then
             -- a picture only
         elseif s.action and s.action.macro then
@@ -839,7 +1035,7 @@ function BR.Update()
         local fresh = false
         local now = {}
         for _, s in ipairs(shows) do
-            local key = s.entry.def and s.entry.def.key
+            local key = s.entry.def and (s.entry.key or s.entry.def.key)
             if key then
                 now[key] = true
                 if not shownKeys[key] then fresh = true end
@@ -1061,7 +1257,8 @@ function BR:Init()
     end
     pcall(events.RegisterEvent, events, "WEAPON_ENCHANT_CHANGED")
     for _, event in ipairs({ "ZONE_CHANGED_NEW_AREA", "PLAYER_MOUNT_DISPLAY_CHANGED", "PLAYER_UPDATE_RESTING",
-                             "UPDATE_SHAPESHIFT_FORM", "PET_BAR_UPDATE", "BAG_UPDATE_DELAYED", "MINIMAP_UPDATE_TRACKING" }) do
+                             "UPDATE_SHAPESHIFT_FORM", "PET_BAR_UPDATE", "BAG_UPDATE_DELAYED", "MINIMAP_UPDATE_TRACKING",
+                             "PLAYER_EQUIPMENT_CHANGED" }) do
         pcall(events.RegisterEvent, events, event)
     end
     pcall(events.RegisterUnitEvent, events, "UNIT_PET", "player")

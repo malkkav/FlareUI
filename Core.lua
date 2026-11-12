@@ -382,7 +382,7 @@ local defaults = {
 
             -- Frame (Blizzard dark dialog background + the chosen border, tinted ns.BORDER_COLOR)
             borderTexture = "FlareUI Frames",
-            opacity = 0.5,
+            opacity = 0.6,
 
             -- Edit Box (fixed look: black background + tooltip border tinted ns.BORDER_COLOR)
             editBoxOpacity = 1.0,
@@ -420,8 +420,9 @@ local defaults = {
             hideMacroText = true,
             procGlow = false,           -- Blizzard's proc glow on reaction abilities and flagged procs
             buttonArt = true,
-            stopAutoAddSpells = true,
+            stopAutoAddSpells = false,
             gryphonsBehind = false,     -- Gryphons Behind Bars: the end caps draw under the bars
+            activeHighlight = false,    -- Active Highlight: the checked button (stance, queued attack) drawn plainly
             dimOnCooldown = false,      -- Dim on cooldown: icons grey while a real cooldown (not the GCD) runs
             autoRanks = false,          -- Update Spell Ranks: a new rank replaces the old one on the bars
             keepStealthPage = false,    -- Keep Page 1 in Stealth: bar 1 holds page 1 (druids: Cat Form's) in Stealth / Prowl
@@ -453,8 +454,9 @@ local defaults = {
             enabled = false,
             fadeSpeed = "instant",      -- instant | fast | slow: every show and hide (Visibility, mouseover)
             minAlpha = 0,               -- Faded Opacity: how far the meter fades out (0 to 0.9)
+            fadeDelay = 0,              -- Fade Delay: seconds it stays up before fading (0 = Instant)
 
-            opacity = 0.5,
+            opacity = 0.6,
             borderTexture = "FlareUI Frames",
             barFont = { face = "Friz Quadrata TT", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- the title row: Damage Meter / Threat, the session and its timer (in the header's gold)
@@ -470,8 +472,8 @@ local defaults = {
             chatTabOpen = "combat",     -- the Meter tab opens on its own: click | combat | group | login
             autoThreat = false,         -- the Threat tab when combat starts, Blizzard's view when it ends
             resetOnInstance = false,    -- clear the meter on entering a new dungeon or raid
-            threatPullLine = false,     -- Threat tab: a line on the bars where you would pull the mob
-            threatPullFlash = false,    -- Threat tab: your bar flashes as you near that line
+            threatPullLine = true,      -- Threat tab: a line on the bars where you would pull the mob
+            threatPullFlash = true,     -- Threat tab: your bar flashes as you near that line
             threatTankLead = false,     -- Threat tab: the tank's row shows its lead over second place
             threatValueDisplay = "percent", -- Threat tab: "both" / "percent" / "value"
         },
@@ -484,8 +486,9 @@ local defaults = {
             buttonBag = true,           -- the badge opens a bag with every addon's minimap button (MinimapBag.lua)
             bagHover = false,           -- Open on Mouseover: pointing at the badge opens the bag (MinimapBag.lua)
             clockStats = true,          -- framerate and latency in the clock's tooltip
-            microMenu = true,           -- middle-click the map: a list of Blizzard's panels
-            coordsOnHover = true,       -- the coordinates under the map show only while pointing at it
+            microMenu = false,          -- middle-click the map: a list of Blizzard's panels (off since 11-11)
+            coords = "hover",           -- Coordinates: off | always | hover (with Blizzard's own option, Minimap.lua MM.CoordsMode)
+            fps = "off",                -- Framerate at the map's bottom right: off | always | hover (Minimap.lua MM.SetupFps)
             -- Fonts tab: the zone name and the clock (Forever's own look by default)
             zoneFont  = { face = "Friz Quadrata TT", size = 10, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             clockFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -530,11 +533,13 @@ local defaults = {
                     swingMain   = { enabled = false, show = "inuse",        width = 220, height = 12 },
                     swingOff    = { enabled = false, show = "inuse",        width = 220, height = 12 },
                     swingRanged = { enabled = false, show = "inuse",        width = 220, height = 12 },
+                    flight      = { enabled = false, show = "always",       width = 220, height = 14 },   -- Flight Timer (11-11)
+                    seal        = { enabled = false, show = "always",       width = 220, height = 14 },   -- Seals, paladins (11-11)
                 },
             },
             -- party frames (Modules/PartyFrames.lua): two styles, each with its own settings
             party = {
-                enabled = false,
+                enabled = true,             -- (11-11) on with the Unit Frames module
                 style = "classic",          -- classic | raid
                 showPlayer = true, pets = false, sortByRole = true,
                 hidePlayerInParty = false,  -- Hide Player Frame while in party (with Show Player)
@@ -566,7 +571,7 @@ local defaults = {
             -- raid frames (Modules/RaidFrames.lua): the Raid-Style tile for everyone in a raid, main tank
             -- frames
             raid = {
-                enabled = false,
+                enabled = true,             -- (11-11) on with the Unit Frames module
                 layouts = {}, tankLayouts = {},
                 sort = "GROUP",            -- GROUP | ROLE | CLASS
                 orientation = "ROWS",      -- ROWS (each group a row, stacked) | COLUMNS
@@ -646,8 +651,8 @@ local defaults = {
             style = "round",            -- square | round
             swipe = "both",             -- both (default) | icon (over the icon) | border (around the edge) | none
             timer = "below",            -- below (under the icon) | bottom (along its bottom edge)
-            timerColor = false,         -- the timer turns yellow, then red, as it runs out
-            arrive = false,             -- new icons fade in while dropping into place
+            timerColor = true,          -- the timer turns yellow, then red, as it runs out (on since 11-11)
+            arrive = true,               -- new icons fade in while dropping into place
             skinCDM = false,            -- (off by default since 11-11) Skin Cooldown Manager: Blizzard's Tracked Bars and Tracked Buffs in FlareUI's look
             sort = "applied", reverse = false, mineFirst = true,   -- Aura Ordering (both frames)
             -- Buff Reminders (BuffReminders.lua): your class's missing buffs; Group Buffs all / party / self,
@@ -687,7 +692,7 @@ local defaults = {
 
             -- content
             nameColor = "class",          -- none | class
-            showThreat = true,          -- Blizzard's threat line on enemy tooltips
+            showThreat = false,         -- Blizzard's threat line on enemy tooltips (off since 11-11)
             showTarget = false,
             showGuild = true,           -- Blizzard's guild line on players
             showGuildRank = false,      -- the rank after the guild's name
@@ -727,7 +732,7 @@ local defaults = {
             width = 250,
             maxHeight = 300,
             borderTexture = "FlareUI Frames",
-            opacity = 0.5,
+            opacity = 0.6,
             minimizeStyle = "header",   -- "header": the header stays; "button": only a "+" button
             padBlizzard = false,        -- Gamepad UI: Blizzard's tracker instead of this one (reload)
             hideEmpty = true,           -- nothing tracked: no tracker
@@ -746,12 +751,12 @@ local defaults = {
             playButtons = false,        -- a voice-line button before each quest, with the Spoken addon
             collapseCompleted = false,  -- finished and failed quests fold, unless a timer runs
             hideFinished = false,       -- finished objectives leave the list
-            completedLast = true,
+            completedLast = false,
             showTags = true,
             wrapText = true,
             showRecipes = true,
             -- on the way in, and open again on the way out: "minimize" or "none"
-            autoMinimize = { dungeon = "minimize", raid = "minimize", pvp = "minimize", arena = "minimize", combat = "none" },
+            autoMinimize = { dungeon = "none", raid = "none", pvp = "none", arena = "none", combat = "none" },   -- (none since 11-11)
             headerFont = { face = "Friz Quadrata TT", size = 13, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             titleFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             objectiveFont = { face = "Friz Quadrata TT", size = 11, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -762,7 +767,7 @@ local defaults = {
         tweaks = {
             enabled = false,
             moveAnyFrame = true,        -- drag any Blizzard panel by its header; positions in frames{}
-            way = true,                 -- /way map pins
+            way = false,                -- /way map pins (off since 11-11)
             syncUI = false,             -- account-wide copy of character-specific Blizzard settings
             sellJunk = false,
             autoRepair = false,
@@ -792,16 +797,21 @@ local defaults = {
             nameplateHideLevel = false, -- Blizzard's level box on the right of nameplates hidden
             nameplateHideNames = false, -- unit names on Blizzard's nameplates hidden
             nameplateLevelName = false, -- with the level box hidden: the level before the plate's name
-            -- Bags and Looting (Modules/Bags.lua): all off leaves Blizzard's bag windows alone
+            -- Bags & Looting (its own module since 11-12, Settings/Pages/BagsLooting.lua): its switch
+            -- (ns.BagModuleOn); all off leaves Blizzard's bag windows alone
+            bagModule = false,
             bagColumns = 0,             -- combined backpack columns; 0 = Blizzard's (10)
-            bagGaps = true,             -- each bag starts a new row, with a gap
-            bagButtons = true,          -- bag slot buttons down the combined backpack's side
+            bagGaps = false,            -- each bag starts a new row, with a gap
+            bagButtons = false,         -- bag slot buttons down the combined backpack's side
             bagKeyring = false,         -- Keyring in Backpack: the keyring as a section of the combined backpack
             bagReagent = false,         -- Crafting Bag in Backpack: the crafting (reagent) bag there too
+            bagFilters = false,         -- Category Filters: a filter button and drawer by the bag search (Bags.lua 4b)
+            -- Bag Items font (Bags.lua StyleIconTexts): stack counts and cooldown numbers; face "" keeps Blizzard's
+            bagItemFont = { face = "", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             bagThickBorders = false,    -- FlareUI Thick in place of the always-on Thin border
-            bagRarityBorders = true,    -- slot borders in the item's quality colour
-            bagJunkIcon = true,         -- the junk coin on grey items always, not only at a vendor
-            bagUpgradeArrow = true,     -- green arrow on gear that beats what you wear (Bags.lua Upgrade)
+            bagRarityBorders = false,   -- slot borders in the item's quality colour
+            bagJunkIcon = false,        -- the junk coin on grey items always, not only at a vendor
+            bagUpgradeArrow = false,    -- green arrow on gear that beats what you wear (Bags.lua Upgrade)
             hideErrors = false,
             hideZoneText = false,
             hidePortraitNumbers = false,
@@ -812,7 +822,7 @@ local defaults = {
             petFood = false,            -- Pet Food in Bags: a paw on food the hunter pet eats
             skipLootConfirm = false,    -- Skip Loot Confirmations: bind-on-loot and roll dialogs
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
-            gamepadPrompt = true,       -- Gamepad mode prompt: offer Blizzard's Gamepad UI on a controller press
+            gamepadPrompt = false,      -- Gamepad mode prompt: offer Blizzard's Gamepad UI on a controller press
             rumbleAlerts = false,       -- Rumble on alerts: the controller rumbles for ready checks, queue invites ...
             rumbleProcs = false,        -- Rumble on procs: a short rumble when a spell lights up
             mapFade = false,            -- Fade Map While Moving: Blizzard's mapFade CVar
@@ -887,6 +897,14 @@ local AURA_TIME_BANDS = {
     { from = 91, div = 60, unit = "m" },
     { from = 0, div = 1, unit = "s" },
 }
+
+-- Bags & Looting's switch (11-12). Until it is set, it follows Quality of Life's, where these options lived.
+function ns.BagModuleOn()
+    local tweaks = ns.db and ns.db.profile and ns.db.profile.tweaks
+    if not tweaks then return false end
+    if rawget(tweaks, "bagModule") == nil then tweaks.bagModule = rawget(tweaks, "enabled") == true end
+    return tweaks.bagModule == true
+end
 
 -- For a time Lua can read (weapon enchants)
 function ns.FormatAuraTime(seconds)

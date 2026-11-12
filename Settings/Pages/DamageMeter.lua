@@ -65,6 +65,9 @@ S:Row{ key = "dm.fadeSpeed", kind = "choice", path = "damagemeter.fadeSpeed", ch
 -- how far it fades: 0% to 90%. Not in the chat, where the meter tab takes the chat's fade
 S:Row{ key = "dm.minAlpha", kind = "choice", path = "damagemeter.minAlpha", choices = S:MinAlphaChoices(),
     apply = ApplyVisibility, disabled = function() return AlwaysVisible() or InChat() end, section = "dm.frame" }
+-- how long it stays before it fades (11-11, as the chat's Fade Delay)
+S:Row{ key = "dm.fadeDelay", kind = "choice", path = "damagemeter.fadeDelay", choices = { 0, 5, 10, 15, 30 },
+    apply = ApplyVisibility, disabled = function() return AlwaysVisible() or InChat() end, section = "dm.frame" }
 S:Row{ key = "dm.border", kind = "choice", path = "damagemeter.borderTexture", choices = S.BorderChoices,
     apply = Refresh, section = "dm.frame" }
 
@@ -91,9 +94,9 @@ end
 S:Row{ key = "dm.threatValue", kind = "choice", path = "damagemeter.threatValueDisplay",
     choices = { "both", "percent", "value" }, apply = PreviewThreat, tab = "threat", section = "dm.threat" }
 S:Row{ key = "dm.threatCombat", path = "damagemeter.autoThreat", apply = Refresh, tab = "threat", section = "dm.threat", half = true }
-S:Row{ key = "dm.pullLine", path = "damagemeter.threatPullLine", apply = PreviewThreat, tab = "threat", section = "dm.threat", half = true }
-S:Row{ key = "dm.pullFlash", path = "damagemeter.threatPullFlash", apply = PreviewThreat, tab = "threat", section = "dm.threat", half = true }
 S:Row{ key = "dm.tankLead", path = "damagemeter.threatTankLead", apply = PreviewThreat, tab = "threat", section = "dm.threat", half = true }
+S:Row{ key = "dm.pullFlash", path = "damagemeter.threatPullFlash", apply = PreviewThreat, tab = "threat", section = "dm.threat", half = true }
+S:Row{ key = "dm.pullLine", path = "damagemeter.threatPullLine", apply = PreviewThreat, tab = "threat", section = "dm.threat", half = true }
 
 S:FontRows{ module = "dm", tab = "fonts", section = "dm.fonts", apply = Refresh, fonts = {
     { key = "header", path = "damagemeter.headerFont" },

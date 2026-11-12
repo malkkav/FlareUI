@@ -35,22 +35,23 @@ S:Row{
         S:SetPath("objectivetracker.sortByLevel", mode == "level")
         S:SetPath("objectivetracker.sortByProgress", mode == "progress")
         S:SetPath("objectivetracker.zoneFirst", mode == "zone")
-        S:SetPath("objectivetracker.sortByDistance", mode == "zone" or mode == "distance")
+        S:SetPath("objectivetracker.sortByDistance", mode == "distance")
     end,
 }
 
 local function Display(key, path)
     S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, apply = Refresh, section = "qt.display", half = true }
 end
--- in pairs: what is listed, the tracker itself, the level and its colour, the text, the buttons
-Display("zoneHeaders", "zoneHeaders")
-Display("recipes", "showRecipes")
+-- in pairs (11-11, Marcus): Quest Count | Hide When Empty, Zone Headings | Wrap Long Text,
+-- Hide Quest Level | Colour by Difficulty, Quest Tags | Tracked Recipes, Focus Buttons | Voice Buttons
 Display("count", "showCount")
 Display("hideEmpty", "hideEmpty")
+Display("zoneHeaders", "zoneHeaders")
+Display("wrap", "wrapText")
 Display("hideLevel", "hideLevel")
 Display("colorNames", "colorNames")
 Display("tags", "showTags")
-Display("wrap", "wrapText")
+Display("recipes", "showRecipes")
 Display("focusButtons", "focusButtons")
 S:Row{ key = "qt.playButtons", path = "objectivetracker.playButtons", apply = Refresh, section = "qt.display", half = true,
     hidden = function() return not _G.Spoken end }

@@ -1,5 +1,6 @@
 local _, ns = ...
 local S = ns.Settings
+local L = ns.L
 
 --------------------------------------------------
 -- RESOURCE BARS
@@ -20,8 +21,12 @@ local function NotDruid()
     local _, class = UnitClass("player")
     return class ~= "DRUID"
 end
+local function NotPaladin()
+    local _, class = UnitClass("player")
+    return class ~= "PALADIN"
+end
 
-local BARS = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged" }
+local BARS = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged", "seal", "flight" }
 
 -- the header button opens Edit Mode on the first bar that exists
 S:Module{
@@ -41,25 +46,17 @@ Bar("combo")
 Bar("swingMain")
 Bar("swingOff")
 Bar("swingRanged")
+Bar("seal", { hidden = NotPaladin })
+Bar("flight")
 
 local function Refresh()
     if ns.ResourceBars and ns.ResourceBars.Refresh then ns.ResourceBars:Refresh() end
 end
 
 -- Colour Palette, Resource Bars' own (11-11): until set, the unit frames' (ResourceBars.lua RB.PaletteName)
+-- (11-11) only the button, always shown; the palettes are picked in its window (Settings/ColorPicker.lua)
 S:Row{
-    key = "rb.palette", kind = "choice", choices = { "flareui", "blizzard", "custom" },
-    get = function() return ns.ResourceBars and ns.ResourceBars.PaletteName and ns.ResourceBars.PaletteName() or "flareui" end,
-    set = function(value)
-        local before = ns.ResourceBars and ns.ResourceBars.PaletteName and ns.ResourceBars.PaletteName() or "flareui"
-        if value == "custom" and before ~= "custom" then S:SetPath("unitframes.resource.customBase", before) end
-        S:SetPath("unitframes.resource.palette", value)
-    end,
-    apply = Refresh,
-}
-S:Row{
-    key = "rb.pickColors", kind = "button", parent = "rb.palette",
-    hidden = function() return not (ns.ResourceBars and ns.ResourceBars.PaletteName and ns.ResourceBars.PaletteName() == "custom") end,
+    key = "rb.pickColors", kind = "button", buttonText = L["Pick Your Colours"],
     apply = function() if ns.ColorPicker then ns.ColorPicker.Open("rb") end end,
 }
 

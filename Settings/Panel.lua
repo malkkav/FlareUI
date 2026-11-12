@@ -648,8 +648,14 @@ local function PageSpec()
     local tab = currentTab[current]
     if current == 'qol' then
         tab = tab or 'gameplay'
-        if tab == 'bags' then return { kind = 'bags', key = 'qol.bagsOverview' } end
         if tab == 'nameplates' then return { kind = 'nameplate', key = 'qol.npOverview' } end
+        return nil
+    end
+    -- Bags & Looting: the bags picture, the loot feed's on Looting
+    if current == 'bl' then
+        tab = tab or 'bags'
+        if tab == 'bags' then return { kind = 'bags', key = 'bl.bagsOverview' } end
+        if tab == 'looting' then return { kind = 'lootFeed', key = 'bl.lootOverview' } end
         return nil
     end
     if current == 'au' and tab == 'reminders' then return { kind = 'reminders', key = 'au.remindersOverview' } end
@@ -885,6 +891,36 @@ local function SetupChoiceMenu(dropdown, f)
             end
         end
     end)
+    -- the Gamepad UI: FlareUI's plain list in place of Blizzard's menu (PadNav.GuardDropdown)
+    if ns.PadNav and ns.PadNav.GuardDropdown then
+        ns.PadNav.GuardDropdown(dropdown, function()
+            local row, entries = f.row, {}
+            if not row then return entries end
+            for _, c in ipairs(row:Choices()) do
+                if c.divider then
+                    entries[#entries + 1] = { divider = true }
+                else
+                    c.row = row
+                    local e = { text = c.text, multi = row.toggles ~= nil }
+                    if row.toggles then
+                        e.checked, e.pick = function() return IsTicked(c) end, function() Tick(c) end
+                    else
+                        e.checked, e.pick = function() return IsChoice(c) end, function() PickChoice(c) end
+                        e.onEnter = function() ShowRowPreview(row, c.value) end
+                        e.onLeave = function() ShowRowPreview(row) end
+                    end
+                    if row.previewFont and row.key:match('%.face$') then
+                        e.font = function(fs) ns.SetFontFamily(fs, ns.GetFontPath(c.value), 13, '') end
+                    end
+                    entries[#entries + 1] = e
+                end
+            end
+            return entries
+        end, function()
+            OnToggleMenuClosed()
+            if f.row then ShowRowPreview(f.row) end
+        end)
+    end
 end
 
 -- toggle
@@ -1751,7 +1787,8 @@ local GAME_ICONS = {
     about = "INV_Misc_Book_09", adv = "INV_Scroll_03", language = "Trade_Engineering",
     ab = "INV_Sword_04", uf = "INV_Misc_Head_Human_01", rb = "INV_Potion_54", au = "Spell_Holy_WordFortitude",
     mm = "INV_Misc_Map_01", qt = "INV_Misc_Note_06",
-    ch = "INV_Letter_15", dm = "Ability_DualWield", tt = "INV_Misc_Spyglass_03", rm = "INV_Misc_Orb_05", qol = "INV_Misc_Bag_08",
+    ch = "INV_Letter_15", dm = "Ability_DualWield", tt = "INV_Misc_Spyglass_03", rm = "INV_Misc_Orb_05", qol = "INV_Misc_Wrench_01",
+    bl = "INV_Misc_Bag_08",   -- (Quality of Life's bag went to Bags & Looting, 11-12)
 }
 local RING_MASK, RING_ART, RING_TINT = "talents-node-circle-mask", "talents-node-circle-gray", { 0.72, 0.56, 0.38 }
 local function GameIcons()
@@ -2191,7 +2228,7 @@ local function BuildNav(left)
         end
         for _, module in ipairs(group.modules) do
             local icons = { about=true, adv=true, language=true, ab=true, uf=true, rb=true, au=true, dm=true,
-                mm=true, qt=true, ch=true, tt=true, rm=true, qol=true }
+                mm=true, qt=true, ch=true, tt=true, rm=true, qol=true, bl=true }
             if GameIcons() and GAME_ICONS[module.key] then
                 module.navIcon = "Interface\\Icons\\" .. GAME_ICONS[module.key]
                 module.navIconRound = "ring"

@@ -7,6 +7,8 @@ local L = ns.L
 --   * Columns and Gaps between bags: the combined backpack's grid, laid out again after Blizzard's
 --     (hooksecurefunc on its UpdateFrameSize / UpdateItemLayout, so Blizzard's code runs untouched)
 --   * Integrated bag buttons: the four bag slots down the combined backpack's side
+--   * Category Filters: a button beside the cleanup button opens a drawer of categories; the one
+--     picked dims every other item (section 4b; the dimming after parchinskiy's PR #22)
 --   * Thicker borders, Rarity colours, Junk coin and Upgrade arrow: drawn on an overlay of each item
 -- Every option is off by default, and off leaves Blizzard's windows as they are, except the slot
 -- borders: FlareUI Thin round every slot always. When another bag addon owns the windows, nothing
@@ -29,6 +31,8 @@ local OTHER_BAG_ADDONS = { "LiteBag", "Bagnon", "Baganator", "ArkInventory", "Ad
 
 local overlays = {}                 -- item button -> its overlay
 local bagButtons = {}
+local itemFilter
+local dimmedIcons = {}
 
 local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.tweaks
@@ -458,12 +462,69 @@ end
 -- 3. ITEM OVERLAYS
 -- Slot borders, always on: FlareUI Thin round each slot in place of Blizzard's glow; Thicker
 -- borders swaps it for FlareUI Thick. Bronze, or with Rarity colours the item's exact quality colour
--- (grey to orange; empty slots stay bronze).
+-- (grey to orange; empty slots and items dimmed by a filter stay bronze).
 -- Junk coin: grey items worth money show Blizzard's coin always, not only at a vendor.
 -- Upgrade arrow: gear that beats what you wear shows Blizzard's green arrow in the bottom right.
 --------------------------------------------------
 -- edge size and outset per border: each art's bright band lands on the slot's edge
 local BORDERS = { thin = { "FlareUI Thin", 8, 3 }, thick = { "FlareUI Thick", 16, 2 } }
+
+local function UpdateFilteredQuestBorder(button, ov, bagID, slotID, dimmed)
+    local mark = button.IconQuestTexture
+    if not mark then return end
+    local quest = dimmed and mark:IsShown() and C_Container.GetContainerItemQuestInfo(bagID, slotID)
+    local isBorder = quest and (quest.questID or quest.isQuestItem) and not (quest.questID and not quest.isActive)
+    if isBorder then
+        if ov.questBorderAlpha == nil then ov.questBorderAlpha = mark:GetAlpha() end
+        mark:SetAlpha(0)
+    elseif ov.questBorderAlpha ~= nil then
+        mark:SetAlpha(ov.questBorderAlpha)
+        ov.questBorderAlpha = nil
+    end
+end
+
+local function UpdateItemFilter(button, ov, bagID, slotID, info)
+    local dimmed
+    if itemFilter and info and not GamepadUI() then
+        if itemFilter == "quest" then
+            local quest = C_Container.GetContainerItemQuestInfo(bagID, slotID)
+            dimmed = quest and not (quest.isQuestItem or quest.questID)
+        elseif info.itemID and itemFilter == "equipment" then
+            local slotType = C_Item.GetItemInventoryTypeByID(info.itemID)
+            local types = Enum.InventoryType
+            dimmed = slotType == types.IndexNonEquipType or slotType == types.IndexBagType
+                or slotType == types.IndexQuiverType or slotType == types.IndexAmmoType
+        elseif info.itemID then
+            local classID, subclassID = select(6, C_Item.GetItemInfoInstant(info.itemID))
+            if classID ~= nil then
+                local classes = Enum.ItemClass
+                if itemFilter == "resources" then
+                    local reagent = Enum.ItemReagentSubclass and Enum.ItemReagentSubclass.Reagent
+                    dimmed = classID ~= classes.Tradegoods
+                        and not (reagent and classID == classes.Reagent and subclassID == reagent)
+                elseif itemFilter == "consumables" then
+                    dimmed = classID ~= classes.Consumable
+                end
+            end
+        end
+    end
+    if not (dimmed or dimmedIcons[button]) then return end
+    dimmedIcons[button] = dimmed or nil
+    local icon = button:GetItemButtonIconTexture()
+    icon:SetDesaturated(dimmed or (info and info.isLocked) or false)
+
+    if dimmed and not ov.filterShade then
+        -- Above the icon on BORDER, below stack counts and other item indicators.
+        local shade = button:CreateTexture(nil, "BORDER", nil, 1)
+        shade:SetAllPoints(icon)
+        shade:SetColorTexture(0, 0, 0, 0.52)
+        if button.Mask then shade:AddMaskTexture(button.Mask) end
+        ov.filterShade = shade
+    end
+    if ov.filterShade then ov.filterShade:SetShown(dimmed == true) end
+    UpdateFilteredQuestBorder(button, ov, bagID, slotID, dimmed)
+end
+
 local function GetOverlay(button)
     -- a settings preview's button keeps its own (it never joins the overlays list)
     local ov = overlays[button] or button.fuiOverlay
@@ -497,6 +558,33 @@ local function ShowBorder(ov, style, r, g, b)
     end
     border:SetBackdropBorderColor(r, g, b, 1)
     ov.border:Show()
+end
+
+local function UpdateItemBorder(ov, db, quality, dimmed)
+    local style = db.bagThickBorders and "thick" or "thin"
+    if db.bagRarityBorders and quality and not dimmed then
+        local r, g, b = C_Item.GetItemQualityColor(quality)
+        ShowBorder(ov, style, r, g, b)
+    else
+        local c = ns.BORDER_COLOR
+        ShowBorder(ov, style, c.r, c.g, c.b)
+    end
+end
+
+local function RefreshItemFilter()
+    local db = GetDb()
+    for button, ov in pairs(overlays) do
+        local wasDimmed = dimmedIcons[button]
+        if (itemFilter and button:IsVisible()) or wasDimmed then
+            local bagID, slotID = button:GetBagID(), button:GetID()
+            local info = bagID and slotID and C_Container.GetContainerItemInfo(bagID, slotID)
+            UpdateItemFilter(button, ov, bagID, slotID, info)
+            local dimmed = dimmedIcons[button]
+            if db and db.bagRarityBorders and wasDimmed ~= dimmed then
+                UpdateItemBorder(ov, db, info and info.quality, dimmed)
+            end
+        end
+    end
 end
 
 -- Upgrade arrow: Forever has no "is an upgrade" check (Blizzard's flyout asks for one that is never
@@ -700,10 +788,37 @@ function UpdateButton(button, db)
     Bags.DecorateButton(button, db, info, bagID, slotID)
 end
 
+-- Bag Items font (Quality of Life > Fonts, 11-11): the text on the bag icons, the stack count and
+-- the cooldown's number. Default ("") keeps Blizzard's; going back to Default restores the font object
+-- FlareUI replaced.
+local blizzardFont = {}   -- font string -> Blizzard's font object
+local function StyleIconText(fs, font)
+    if not fs then return end
+    local face = font and font.face or ""
+    if face == "" then
+        local object = blizzardFont[fs]
+        if object then
+            fs:SetFontObject(object)
+            blizzardFont[fs] = nil
+        end
+        return
+    end
+    if not blizzardFont[fs] then blizzardFont[fs] = fs:GetFontObject() or NumberFontNormal end
+    local flags = font.flags or "OUTLINE"
+    if flags == "NONE" then flags = "" end
+    ns.SetFont(fs, ns.GetFontPath(face), font.size or 14, flags)
+    ns.ApplyShadow(fs, font)
+end
+function Bags.StyleIconTexts(button, db)
+    StyleIconText(button.Count, db.bagItemFont)
+    local cooldown = button.Cooldown or (button.GetName and button:GetName() and _G[button:GetName() .. "Cooldown"])
+    if cooldown and cooldown.GetCountdownFontString then StyleIconText(cooldown:GetCountdownFontString(), db.bagItemFont) end
+end
+
 -- info: the slot's item (C_Container's, or a settings preview's made-up one, whose sampleUpgrade
 -- stands for the upgrade check)
 function Bags.DecorateButton(button, db, info, bagID, slotID)
-    local thick, rarity = db.bagThickBorders, db.bagRarityBorders
+    Bags.StyleIconTexts(button, db)
     local junk, upgrade = db.bagJunkIcon, db.bagUpgradeArrow
     local ov = GetOverlay(button)
     ov:Show()
@@ -711,17 +826,11 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
     ov.junk:Hide()
     ov.upgrade:Hide()
 
+    if not button.fuiSample then UpdateItemFilter(button, ov, bagID, slotID, info) end
     local quality = info and info.quality
 
     if button.IconBorder then button.IconBorder:SetAlpha(0) end
-    local style = thick and "thick" or "thin"
-    if rarity and quality then
-        local r, g, b = C_Item.GetItemQualityColor(quality)
-        ShowBorder(ov, style, r, g, b)
-    else
-        local c = ns.BORDER_COLOR
-        ShowBorder(ov, style, c.r, c.g, c.b)
-    end
+    UpdateItemBorder(ov, db, quality, dimmedIcons[button])
 
     if not info then return end
     if junk and quality == Enum.ItemQuality.Poor and not info.hasNoValue then ov.junk:Show() end
@@ -764,16 +873,263 @@ local function BagFrames()
     return list
 end
 
-function Bags:ShouldLoad()
+--------------------------------------------------
+-- 4b. CATEGORY FILTERS (Bags and Looting > Category Filters, off; 11-11, after parchinskiy's PR #22)
+-- One button left of Blizzard's cleanup button, in the cleanup button's
+-- own frame. A click opens a drawer upward: Quest Items, Equipment, Materials and Consumables, the
+-- same buttons stacked. Picking one dims every other item (section 3, UpdateItemFilter) and the button
+-- takes that category's icon with a gold edge. Right-click clears the filter. Off, the cleanup button
+-- and the search box go back to Blizzard's spots.
+--------------------------------------------------
+local Filter = {
+    W = 28, H = 26,         -- Blizzard's cleanup button
+    ICON_W = 17, ICON_H = 16,   -- the broom's area inside its frame
+    GAP = 2,                -- between the filter and cleanup buttons
+    STACK = -5,             -- between the drawer's buttons: their frames' clear edges overlap, a sliver apart (11-11)
+    SORT_X = -9, SORT_Y = -34,  -- Blizzard's spot for the cleanup button (ContainerFrame.lua)
+    SEARCH_GAP = 6,         -- the search box's right art reaches past its edge
+    MAIN_ICON = "Interface\\Icons\\INV_Misc_Spyglass_03",
+    -- (11-11 Marcus) shapes that read at the small size: a quest scroll, a sword, a hammer, a green potion
+    CATEGORIES = {
+        { key = "quest", icon = "Interface\\Icons\\INV_Scroll_03", label = L["Quest Items"] },
+        { key = "equipment", icon = "Interface\\Icons\\INV_Sword_27", label = L["Equipment"] },
+        { key = "resources", icon = "Interface\\Icons\\INV_Hammer_20", label = L["Materials"] },
+        { key = "consumables", icon = "Interface\\Icons\\INV_Potion_93", label = L["Consumables"] },
+    },
+    GOLD = { 1, 0.82, 0.3 },
+    bases = {},             -- bag frame -> Blizzard's search box spot { x, y, width }
+}
+Bags.Filter = Filter
+
+function Filter.On()
     local db = GetDb()
-    return not (db and db.enabled == false)
+    return db and db.bagFilters and not Bags:GetOtherBagAddon() and not GamepadUI()
+        and C_Container.GetContainerItemQuestInfo and C_Item.GetItemInventoryTypeByID and true or false
+end
+
+-- a button in the cleanup button's own frame, the icon over the broom in its middle
+function Filter.NewButton(parent, iconFile)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(Filter.W, Filter.H)
+    b:SetNormalAtlas("bags-button-autosort-up")
+    b:SetPushedAtlas("bags-button-autosort-down")
+    -- (11-11 Marcus: the same look as the cleanup button) the icon only fills the broom's area,
+    -- rounded like it, so the frame's dark rim shows all round
+    b.icon = b:CreateTexture(nil, "OVERLAY")
+    b.icon:SetSize(Filter.ICON_W, Filter.ICON_H)
+    b.icon:SetPoint("CENTER", 0, 0)
+    b.icon:SetTexture(iconFile)
+    b.icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
+    local mask = b:CreateMaskTexture()
+    mask:SetAtlas("UI-HUD-ActionBar-IconFrame-Mask", TextureKitConstants and TextureKitConstants.IgnoreAtlasSize)
+    mask:SetAllPoints(b.icon)
+    b.icon:AddMaskTexture(mask)
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    local hl = b:GetHighlightTexture()
+    hl:ClearAllPoints()
+    hl:SetPoint("CENTER")
+    hl:SetSize(24, 23)
+    -- pressed: the icon sinks with the frame
+    b:SetScript("OnMouseDown", function(self) self.icon:SetPoint("CENTER", 1, -1) end)
+    b:SetScript("OnMouseUp", function(self) self.icon:SetPoint("CENTER", 0, 0) end)
+    -- the gold edge while its filter is on: Blizzard's item border glow, softly
+    b.edge = b:CreateTexture(nil, "OVERLAY", nil, 2)
+    b.edge:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+    b.edge:SetBlendMode("ADD")
+    b.edge:SetPoint("CENTER")
+    b.edge:SetSize(Filter.W * 1.75, Filter.H * 1.75)
+    b.edge:SetVertexColor(unpack(Filter.GOLD))
+    b.edge:SetAlpha(0.75)
+    b.edge:Hide()
+    return b
+end
+
+function Filter.Close()
+    if Filter.drawer then Filter.drawer:Hide() end
+end
+
+function Filter.Open()
+    if not Filter.drawer then return end
+    for _, b in ipairs(Filter.drawer.buttons) do b.edge:SetShown(b.key == itemFilter) end
+    Filter.drawer:Show()
+end
+
+-- the main button: the active category's icon with the gold edge, else the spyglass
+function Filter.Paint()
+    local main = Filter.main
+    if not main then return end
+    local icon = Filter.MAIN_ICON
+    for _, c in ipairs(Filter.CATEGORIES) do if c.key == itemFilter then icon = c.icon end end
+    main.icon:SetTexture(icon)
+    main.edge:SetShown(itemFilter ~= nil)
+end
+
+function Filter.Set(mode)
+    itemFilter = mode
+    Filter.Paint()
+    RefreshItemFilter()
+end
+
+function Filter.Tooltip(main)
+    -- as the cleanup button's: a white title, yellow text (the active category in green)
+    GameTooltip:SetOwner(main)
+    GameTooltip_SetTitle(GameTooltip, L["Filter Items"], HIGHLIGHT_FONT_COLOR)
+    for _, c in ipairs(Filter.CATEGORIES) do
+        if c.key == itemFilter then GameTooltip_AddColoredLine(GameTooltip, c.label, GREEN_FONT_COLOR) end
+    end
+    GameTooltip_AddNormalLine(GameTooltip, L["Left-click: pick a category. Right-click: clear the filter."])
+    GameTooltip:Show()
+end
+
+function Filter.Create(frame)
+    local main = Filter.NewButton(frame, Filter.MAIN_ICON)
+    main:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    main:SetScript("OnClick", function(self, button)
+        if button == "RightButton" then
+            Filter.Close()
+            if itemFilter then Filter.Set(nil) end
+        elseif Filter.drawer:IsShown() then
+            Filter.Close()
+        else
+            Filter.Open()
+        end
+        if GameTooltip:IsOwned(self) then Filter.Tooltip(self) end
+    end)
+    main:SetScript("OnEnter", Filter.Tooltip)
+    main:SetScript("OnLeave", GameTooltip_Hide)
+    main:SetScript("OnHide", Filter.Close)
+    Filter.main = main
+
+    -- the drawer: the category buttons stacked upward from the main one, nothing round them
+    local n = #Filter.CATEGORIES
+    local drawer = CreateFrame("Frame", nil, main)
+    drawer:SetSize(Filter.W, n * Filter.H + (n - 1) * Filter.STACK)
+    drawer:SetPoint("BOTTOM", main, "TOP", 0, Filter.STACK)
+    drawer:SetFrameStrata("DIALOG")
+    drawer:Hide()
+    drawer.buttons = {}
+    for i, c in ipairs(Filter.CATEGORIES) do
+        local b = Filter.NewButton(drawer, c.icon)
+        b.key = c.key
+        b:SetPoint("BOTTOM", drawer, "BOTTOM", 0, (i - 1) * (Filter.H + Filter.STACK))
+        b:SetScript("OnClick", function()
+            Filter.Close()
+            Filter.Set(itemFilter ~= c.key and c.key or nil)
+        end)
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip_SetTitle(GameTooltip, c.label, HIGHLIGHT_FONT_COLOR)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", GameTooltip_Hide)
+        drawer.buttons[i] = b
+    end
+    Filter.drawer = drawer
+    -- a click anywhere else closes the drawer
+    local watch = CreateFrame("Frame", nil, drawer)
+    watch:SetScript("OnEvent", function()
+        if not (drawer:IsMouseOver() or main:IsMouseOver()) then Filter.Close() end
+    end)
+    drawer:SetScript("OnShow", function() watch:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
+    drawer:SetScript("OnHide", function() watch:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
+    Filter.Paint()
+end
+
+-- the cleanup button and the search box back where Blizzard put them, and the button away
+function Filter.Restore()
+    local search, sort = _G.BagItemSearchBox, _G.BagItemAutoSortButton
+    local frame = Filter.moved
+    local base = frame and Filter.bases[frame]
+    if frame and search and search:GetParent() == frame and base then
+        search:ClearAllPoints()
+        search:SetPoint("TOPLEFT", frame, "TOPLEFT", base.x, base.y)
+        search:SetWidth(base.width)
+    end
+    if frame and sort and sort:GetParent() == frame then
+        sort:ClearAllPoints()
+        sort:SetPoint("TOPRIGHT", frame, "TOPRIGHT", Filter.SORT_X, Filter.SORT_Y)
+    end
+    Filter.moved = nil
+    if Filter.main then Filter.main:Hide() end
+end
+
+-- searchUpdated: Blizzard just placed the search box and the cleanup button (their spots are read again)
+function Filter.Place(frame, searchUpdated)
+    local search, sort = _G.BagItemSearchBox, _G.BagItemAutoSortButton
+    if not (frame and search and sort and search:GetParent() == frame and sort:GetParent() == frame) then return end
+    if not Filter.On() or not (search:IsShown() and sort:IsShown()) then
+        Filter.Restore()
+        return
+    end
+    if searchUpdated or not Filter.bases[frame] then
+        local point, rel, _, x, y = search:GetPoint(1)
+        -- (Blizzard's own spots are TOPLEFT on the bag; anything else is left alone)
+        if point ~= "TOPLEFT" or rel ~= frame or search:GetNumPoints() > 1 then Filter.Restore() return end
+        if Filter.moved == frame and not searchUpdated then return end
+        Filter.bases[frame] = { x = x, y = y, width = search:GetWidth() }
+    end
+    local base = Filter.bases[frame]
+    -- the cleanup button in Blizzard's spot, the filter button just left of it (11-11 Marcus)
+    if not Filter.main then Filter.Create(frame) end
+    local main = Filter.main
+    if main:GetParent() ~= frame then main:SetParent(frame) end
+    main:ClearAllPoints()
+    main:SetPoint("TOPRIGHT", sort, "TOPLEFT", -Filter.GAP, 0)
+    -- every button the cleanup button's own size, whatever Blizzard sets it to
+    local w, h = sort:GetSize()
+    if w and w > 0 then
+        main:SetSize(w, h)
+        for i, d in ipairs(Filter.drawer.buttons) do
+            d:SetSize(w, h)
+            d:SetPoint("BOTTOM", Filter.drawer, "BOTTOM", 0, (i - 1) * (h + Filter.STACK))
+        end
+        Filter.drawer:SetSize(w, #Filter.drawer.buttons * (h + Filter.STACK) - Filter.STACK)
+    end
+    main:Show()
+    sort:ClearAllPoints()
+    sort:SetPoint("TOPRIGHT", frame, "TOPRIGHT", Filter.SORT_X, Filter.SORT_Y)
+    -- the search box ends before the filter button
+    local room = frame:GetWidth() + Filter.SORT_X - 2 * Filter.W - Filter.GAP - Filter.SEARCH_GAP - base.x
+    search:SetWidth(math_max(40, math.min(base.width, room)))
+    Filter.moved = frame
+    Filter.Paint()
+end
+
+-- Category Filters switched on or off in the settings
+function Filter.Refresh()
+    if not Filter.On() then
+        Filter.Close()
+        if itemFilter then Filter.Set(nil) end
+        Filter.Restore()
+        return
+    end
+    local search = _G.BagItemSearchBox
+    if search and search:IsVisible() then Filter.Place(search:GetParent(), true) end
+end
+
+-- with Bags & Looting on (its own module since 11-12)
+function Bags:ShouldLoad()
+    return ns.BagModuleOn()
 end
 
 function Bags:Init()
     if self.initialized then return end
     self.initialized = true
+    local useFilterButtons = C_Container.GetContainerItemQuestInfo and C_Item.GetItemInventoryTypeByID
+        and Enum.InventoryType and not self:GetOtherBagAddon()
     for _, frame in ipairs(BagFrames()) do
         if frame.UpdateItems then hooksecurefunc(frame, "UpdateItems", UpdateFrameItems) end
+        -- Category Filters: the button follows Blizzard's search box (it's placed again on each open)
+        if useFilterButtons and frame.UpdateSearchBox then
+            hooksecurefunc(frame, "UpdateSearchBox", function(bag) Filter.Place(bag, true) end)
+        end
+    end
+    if useFilterButtons then
+        -- Blizzard also updates icon saturation on its own when a bag slot locks or unlocks.
+        hooksecurefunc("SetItemButtonDesaturated", function(button, locked)
+            if not locked and dimmedIcons[button] then button:GetItemButtonIconTexture():SetDesaturated(true) end
+        end)
+        Filter.Refresh()
     end
     local combined = Combined()
     if combined then
@@ -788,11 +1144,16 @@ function Bags:Init()
     end)
     -- the keyring and crafting bag sections follow their items
     local bagEvents = CreateFrame("Frame")
+    if useFilterButtons then bagEvents:RegisterEvent("QUEST_LOG_UPDATE") end
     for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_UPDATE_COOLDOWN", "ITEM_LOCK_CHANGED", "INVENTORY_SEARCH_UPDATE",
                              "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED" }) do
         pcall(bagEvents.RegisterEvent, bagEvents, event)
     end
     bagEvents:SetScript("OnEvent", function(_, event)
+        if event == "QUEST_LOG_UPDATE" then
+            if itemFilter == "quest" then RefreshItemFilter() end
+            return
+        end
         if not next(extras) and not (KeyringWanted() or ReagentWanted()) then return end
         local frame = Combined()
         if not (frame and frame:IsShown()) then return end

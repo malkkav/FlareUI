@@ -289,6 +289,93 @@ local function UpdateButtonArtAll()
 end
 
 --------------------------------------------------
+-- 6b. ACTIVE HIGHLIGHT (Button Appearance, off; 11-12, a player's request)
+-- Blizzard marks the active stance or form, a queued Heroic Strike / Cleave / Maul / Raptor Strike,
+-- a repeating Auto Shot or wand and the spell being cast as "checked", with a faint yellow square.
+-- This follows that same checked state (a post-hook on each button's SetChecked) and draws it
+-- plainly: a gold edge and a light over the icon, pulsing while an attack waits for the next swing.
+-- Looks only: nothing secure is touched, so it works in a fight.
+--------------------------------------------------
+local ACTIVE_COLOR = { 1, 0.82, 0.25 }
+local QUEUED_SPELLS = { 78, 845, 6807, 2973 }   -- Heroic Strike, Cleave, Maul, Raptor Strike (every rank, by name)
+local queuedNames
+local function QueuedName(name)
+    if not queuedNames then
+        queuedNames = {}
+        for _, id in ipairs(QUEUED_SPELLS) do
+            local n = C_Spell.GetSpellName(id)
+            if n then queuedNames[n] = true end
+        end
+    end
+    return name and queuedNames[name] or false
+end
+
+-- an on-next-swing attack on this button
+local function HoldsQueuedAttack(button)
+    local action = button.action
+    if not (action and GetActionInfo) then return false end
+    local kind, id = GetActionInfo(action)
+    if kind ~= "spell" or not id then return false end
+    return QueuedName(C_Spell.GetSpellName(id))
+end
+
+local function ActiveOverlay(button)
+    local ov = button.FlareUI_Active
+    if ov then return ov end
+    ov = CreateFrame("Frame", nil, button, "BackdropTemplate")
+    ov:SetAllPoints(button)
+    ov:SetFrameLevel(button:GetFrameLevel() + 2)
+    ov:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
+    ov:SetBackdropBorderColor(ACTIVE_COLOR[1], ACTIVE_COLOR[2], ACTIVE_COLOR[3], 1)
+    ov.light = ov:CreateTexture(nil, "OVERLAY")
+    ov.light:SetTexture("Interface\\Buttons\\CheckButtonHilight")
+    ov.light:SetBlendMode("ADD")
+    ov.light:SetAllPoints(button.icon or button)
+    ov.light:SetAlpha(0.55)
+    local pulse = ov:CreateAnimationGroup()
+    pulse:SetLooping("BOUNCE")
+    local fade = pulse:CreateAnimation("Alpha")
+    fade:SetFromAlpha(1)
+    fade:SetToAlpha(0.35)
+    fade:SetDuration(0.45)
+    fade:SetSmoothing("IN_OUT")
+    ov.pulse = pulse
+    ov:Hide()
+    button.FlareUI_Active = ov
+    return ov
+end
+
+local function UpdateActive(button)
+    local db = GetBarConfig()
+    local on = db and db.enabled and db.activeHighlight and button:GetChecked() and true or false
+    if not on then
+        local ov = button.FlareUI_Active
+        if ov then ov.pulse:Stop(); ov:Hide() end
+        return
+    end
+    local ov = ActiveOverlay(button)
+    ov:Show()
+    if HoldsQueuedAttack(button) then
+        if not ov.pulse:IsPlaying() then ov.pulse:Play() end
+    else
+        ov.pulse:Stop()
+        ov:SetAlpha(1)
+    end
+end
+
+local function UpdateActiveAll()
+    local db = GetBarConfig()
+    local on = db and db.enabled and db.activeHighlight
+    for _, button in pairs(SkinnedButtons()) do
+        if on and not button.FlareUI_ActiveHooked and button.SetChecked then
+            button.FlareUI_ActiveHooked = true
+            hooksecurefunc(button, "SetChecked", UpdateActive)
+        end
+        if button.FlareUI_ActiveHooked then UpdateActive(button) end
+    end
+end
+
+--------------------------------------------------
 -- 7. TYPOGRAPHY & TEXT
 --------------------------------------------------
 -- Applied in order to the raw (never localised) binding key: NUMPAD before PLUS, SPACEBAR before SPACE
@@ -351,13 +438,16 @@ local function UpdateHotkeyText(button)
     -- off: Blizzard's own text, so switching off needs no reload; a controller button keeps
     -- Blizzard's icon either way
     local pad = IsBindingForGamePad and IsBindingForGamePad(key)
-    if db.cleanKeybinds and not pad then hotkey:SetText(ShortenKey(key)) else hotkey:SetText(GetBindingText(key, 1)) end
+    local clean = db.cleanKeybinds and not pad
+    if clean then hotkey:SetText(ShortenKey(key)) else hotkey:SetText(GetBindingText(key, 1)) end
     hotkey:Show()
     hotkey:ClearAllPoints()
     hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", HOTKEY_X, HOTKEY_Y)
     -- Blizzard's box fits its own small font: the button's width and the text's own height, so a
-    -- larger keybind font isn't cut off
-    hotkey:SetSize(math.max(1, button:GetWidth() - 2), 0)
+    -- larger keybind font isn't cut off. Off (11-11): one line inside the border, as Blizzard's own
+    -- box, so a long name ("Middle Mouse") is cut short instead of wrapping over the icon
+    hotkey:SetWordWrap(false)
+    hotkey:SetSize(math.max(1, button:GetWidth() - (clean and 2 or 8)), 0)
 end
 
 local function UpdateButtonText(button)
@@ -1181,8 +1271,10 @@ function ActionBars:Refresh(event)
     ApplyClassPaging()
 
     UpdateGryphonLayer(db)
+    if ActionBars.ApplyTotemScale then ActionBars.ApplyTotemScale() end   -- a profile's totem bar Size
     UpdateButtonArtAll()
     UpdateBordersAll()
+    UpdateActiveAll()
     SetupRangeColors()
     SetupCooldowns()
     wipe(fcmButtons)
@@ -1217,6 +1309,39 @@ function ActionBars:Refresh(event)
         self:ApplyClickthrough(not self.fcm.unlockMode)
         self:StartDragDetection()
     end
+end
+
+--------------------------------------------------
+-- 13b. TOTEM BAR SIZE (11-11, a shaman asked)
+-- Blizzard's Totem Bar has no Edit Mode settings, so no Size: FlareUI adds one to its dialog (Visibility.lua
+-- puts it above Fading). 100% never touches the bar; its buttons are secure, so out of a fight only
+-- (OnCombatEnd tries again).
+--------------------------------------------------
+local function ApplyTotemScale()
+    local bar, db = _G.MultiCastActionBarFrame, GetBarConfig()
+    if not (bar and db and db.enabled) then return end
+    local scale = (db.totemScale or 100) / 100
+    if scale == 1 and not bar.FlareUI_Scaled then return end
+    if InCombatLockdown() then ActionBars._pendingTotemScale = true return end
+    ActionBars._pendingTotemScale = nil
+    bar:SetScale(scale)
+    bar.FlareUI_Scaled = scale ~= 1 or nil
+end
+ActionBars.ApplyTotemScale = ApplyTotemScale
+
+function ActionBars.TotemSizeSetting()
+    local LEM = LibStub("FlareEditMode")
+    return {
+        name = L["Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
+        formatter = function(value) return value .. "%" end,
+        get = function() local db = GetBarConfig(); return db and db.totemScale or 100 end,
+        set = function(_, value)
+            local db = GetBarConfig()
+            if not db then return end
+            db.totemScale = value ~= 100 and value or nil
+            ApplyTotemScale()
+        end,
+    }
 end
 
 function ActionBars:Init()
@@ -1258,6 +1383,7 @@ function ActionBars:OnCombatEnd()
         self:Refresh()
     end
     if #pendingRanks > 0 then FlushRanks() end
+    if self._pendingTotemScale then ApplyTotemScale() end
 end
 
 -- after Blizzard's own hotkey update

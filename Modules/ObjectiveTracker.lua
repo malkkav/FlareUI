@@ -303,6 +303,13 @@ local function CurrentZoneNames()
     AddZoneName(GetSubZoneText())
 end
 
+-- By Distance only. By Zone (zoneFirst) keeps quest log order inside each zone: it used to sort by
+-- distance there too, so quests jumped around while you ran through the zone (11-11, a player's report).
+-- Old settings have sortByDistance on with By Zone: the check is here, not in the saved value.
+function OT.SortsByDistance(db)
+    return db and db.sortByDistance and not db.zoneFirst or false
+end
+
 local function Distance(questID)
     local distSq, onContinent = C_QuestLog.GetDistanceSqToQuest(questID)
     return (distSq and onContinent) and distSq or math_huge
@@ -439,9 +446,10 @@ local function CollectQuests(db)
         if info.isHeader then
             header = info.title
         elseif info.ftWatched then
-            local distance = db.sortByDistance and Distance(info.questID) or 0
+            local byDistance = OT.SortsByDistance(db)
+            local distance = byDistance and Distance(info.questID) or 0
             -- every watched quest, listed or not: one coming into its zone has moved nearer too
-            if db.sortByDistance then
+            if byDistance then
                 watched = watched + 1
                 sortIDs[watched], sortDist[watched] = info.questID, distance
             end
@@ -459,7 +467,7 @@ local function CollectQuests(db)
             end
         end
     end
-    state.sortCount = db.sortByDistance and watched or nil
+    state.sortCount = OT.SortsByDistance(db) and watched or nil
 
     -- a group's place: current zone, then its nearest quest, then log order
     wipe(groupRank)
@@ -1861,7 +1869,7 @@ end
 -- Distance changes while moving: redraw only when the order would change
 local function OnSortTick()
     local db = GetDb()
-    if not (db and db.sortByDistance and holder and holder:IsVisible() and scroll:IsShown()) then return end
+    if not (OT.SortsByDistance(db) and holder and holder:IsVisible() and scroll:IsShown()) then return end
     -- the order can only move once a watched quest is nearer or farther than the last sort saw it
     -- (standing still, nothing has); everything else that changes it comes with an event
     local count = state.sortCount

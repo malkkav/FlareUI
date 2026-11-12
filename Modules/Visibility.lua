@@ -53,6 +53,8 @@ local ELEMENTS = {
     { key = "bar8", frame = "MultiBar7", system = "ActionBar", index = "ExtraBar3" },
     { key = "pet", frame = "PetActionBar", system = "ActionBar", index = "PetActionBar" },
     { key = "stance", frame = "StanceBar", system = "ActionBar", index = "StanceBar" },
+    -- Blizzard's shaman Totem Bar (11-11, a shaman asked): fade groups, and a Size row (ActionBars.lua)
+    { key = "totem", frame = "MultiCastActionBarFrame", system = "TotemActionBar" },
     -- The gryphons: on Forever each is its own Edit Mode system and ignores bar 1's alpha. By default
     -- each follows bar 1 (Same as Action Bar 1, "bar1"); any other choice, or a fade group, detaches it.
     { key = "capLeft", cap = "LeftEndCap", system = "MainActionBarEndCap", index = "EndCapLeft",
@@ -91,6 +93,8 @@ local ELEMENTS = {
     { key = "rb_swingMain", bar = "swingMain", own = true, inuse = true },
     { key = "rb_swingOff", bar = "swingOff", own = true, inuse = true },
     { key = "rb_swingRanged", bar = "swingRanged", own = true, inuse = true },
+    { key = "rb_flight", bar = "flight", own = true },   -- the Flight Timer: it shows only in flight itself
+    { key = "rb_seal", bar = "seal", own = true },       -- Seals: a seal's bar shows only while that seal is up
 }
 local ELEMENT_BY_KEY = {}
 for _, e in ipairs(ELEMENTS) do ELEMENT_BY_KEY[e.key] = e end
@@ -556,6 +560,8 @@ local function CheckMember(data, editMode, spellbook)
     if data.key == "quest" and ns.ObjectiveTracker.IsMouseOverExtras and ns.ObjectiveTracker:IsMouseOverExtras() then return true end
     -- a unit frame's holder has no size: its frame (and a ring style's portrait) is what's pointed at
     if data.mouse then return data.mouse() end
+    -- the totem bar's flyout (a totem's list) stands above the bar: shown while it's open
+    if data.key == "totem" and _G.MultiCastFlyoutFrame and _G.MultiCastFlyoutFrame:IsShown() then return true end
     return data.frame:IsMouseOver() or (data.isBar and FlyoutOver(data.frame))
 end
 
@@ -837,7 +843,12 @@ local function AddEditModeSettings()
                             end,
                         })
                     end
-                    LEM:AddSystemSettings(system, WithVisibilityTitle(rows), index)
+                    rows = WithVisibilityTitle(rows)
+                    -- the totem bar: Blizzard gives it no Size, FlareUI does (above Fading)
+                    if e.key == "totem" and ns.ActionBars and ns.ActionBars.TotemSizeSetting then
+                        table_insert(rows, 1, ns.ActionBars.TotemSizeSetting())
+                    end
+                    LEM:AddSystemSettings(system, rows, index)
                 end
             end
         end

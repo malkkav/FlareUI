@@ -1981,6 +1981,14 @@ local function NormalizeChoices(db)
     end
 end
 
+-- Fade Delay (11-11, as the chat's): the meter stays up this many seconds after its Visibility stops
+-- showing it, then fades. Back to showing in the meantime: the wait is dropped.
+local function CancelFadeDelay()
+    if DamageMeter.fadeDelayTimer then DamageMeter.fadeDelayTimer:Cancel() end
+    DamageMeter.fadeDelayTimer = nil
+end
+local function FadeDelay(db) return math_max(0, tonumber(db.fadeDelay) or 0) end
+
 local function ApplyVisibilityBody(meter)
     local db = GetDb()
     if applying or not (db and db.enabled) then return end
@@ -2006,6 +2014,7 @@ local function ApplyVisibilityBody(meter)
     local editing = (type(meter.IsEditing) == "function" and meter:IsEditing()) or (IsEditModeActive() and MeterAllowed())
     meter.FlareUI_MouseHidden = nil
     if editing or DamageMeter.settingsPreview then
+        CancelFadeDelay()
         -- a fade under way (or Show on Mouseover's driver) would take it down again
         fadeTarget, hideWhenFaded = 1, false
         fadeDriver:Hide()
@@ -2018,12 +2027,23 @@ local function ApplyVisibilityBody(meter)
         if DamageMeter.viewBackPending then DamageMeter.ShowDamageViews() end
         meter.FlareUI_Up = false
     elseif VisibilityRule(db.visibility or "always", meter) then
+        CancelFadeDelay()
         -- from where a fade out left it, or from nothing when it was hidden
         if not wasUp and not meter:IsShown() then meter:SetAlpha(0) end
         -- held back in a fight (ShowMeter): it stays down, and comes up with its fade after it
         local shown = ShowMeter(meter)
         meter.FlareUI_Up = shown
         if shown then FadeMeter(meter, 1) end
+    elseif wasUp and meter:IsShown() and FadeDelay(db) > 0 and not DamageMeter.fadeDelayDone then
+        -- Fade Delay: it stays up for a while, then this check runs again and lets it go
+        if not DamageMeter.fadeDelayTimer then
+            DamageMeter.fadeDelayTimer = C_Timer.NewTimer(FadeDelay(db), function()
+                DamageMeter.fadeDelayTimer = nil
+                DamageMeter.fadeDelayDone = true
+                DamageMeter:ApplyVisibility()
+                DamageMeter.fadeDelayDone = nil
+            end)
+        end
     elseif db.showOnMouseover then
         if not wasUp and not meter:IsShown() then meter:SetAlpha(0) end
         if ShowMeter(meter) then

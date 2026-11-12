@@ -641,27 +641,104 @@ local function ShowCoords(shown)
     if coords then coords:SetAlpha(shown and 1 or 0) end
 end
 
-local function UpdateCoordsHover()
+-- FRAMERATE (11-11, a controller player asked): the framerate at the map's bottom right, in the
+-- coordinates' look, always or only while pointing at the map (Framerate: off by default). Updated
+-- once a second while it shows.
+local fpsText, fpsTicker
+local FPS_INSET = 6             -- in from the coordinates' gap at the corner
+local function FpsMode()
     local db = GetDb()
-    if not (db and db.coordsOnHover) then
+    return db and db.fps or "off"
+end
+
+-- Coordinates (11-11): Off, Always or On Mouseover, one with Blizzard's own option (the
+-- minimapShowPlayerCoords CVar): off here turns it off there, and off there reads as Off here.
+-- Up to 11-11 a switch (coordsOnHover): off was Always.
+local function CoordsCVarOn()
+    local value = C_CVar and C_CVar.GetCVar and C_CVar.GetCVar("minimapShowPlayerCoords")
+    return value ~= "0"
+end
+function MM.CoordsMode()
+    local db = GetDb()
+    if not CoordsCVarOn() then return "off" end
+    local mode = db and db.coords
+    if mode ~= "always" and mode ~= "hover" then mode = "hover" end
+    return mode
+end
+function MM.SetCoordsMode(mode)
+    local db = GetDb()
+    if not db then return end
+    db.coords = mode
+    if C_CVar and C_CVar.SetCVar then pcall(C_CVar.SetCVar, "minimapShowPlayerCoords", mode == "off" and "0" or "1") end
+end
+
+-- what pointing at the map shows: the coordinates and the framerate, each set to On Mouseover
+local function HoverWanted()
+    local db = GetDb()
+    return db and (MM.CoordsMode() == "hover" or db.fps == "hover") or false
+end
+local function ShowHovered(over)
+    local db = GetDb() or {}
+    ShowCoords(MM.CoordsMode() ~= "hover" or over)
+    if fpsText then fpsText:SetAlpha((db.fps ~= "hover" or over) and 1 or 0) end
+end
+
+local function UpdateCoordsHover()
+    if not HoverWanted() then
         if hoverTicker then hoverTicker:Cancel(); hoverTicker = nil end
-        ShowCoords(true)
+        ShowHovered(true)
         return
     end
     -- mid-scan the coordinates are the scan's to hide (Lueur puts back what it found at the end)
     if Scan.Busy() then return end
     local over = Cluster:IsMouseOver()
-    ShowCoords(over)
+    ShowHovered(over)
     if not over and hoverTicker then hoverTicker:Cancel(); hoverTicker = nil end
 end
 
 local function OnMapEnter()
-    local db = GetDb()
-    if not (db and db.coordsOnHover) then return end
+    if not HoverWanted() then return end
     -- the hidden map slid under the pointer by a node addon's scan is not the player pointing at it
     if Scan.Busy() or not Cluster:IsMouseOver() then return end
-    ShowCoords(true)
+    ShowHovered(true)
     if not hoverTicker then hoverTicker = C_Timer.NewTicker(0.2, UpdateCoordsHover) end
+end
+
+local function UpdateFps()
+    if fpsText then fpsText:SetText(string.format("%.0f", GetFramerate())) end
+end
+
+function MM.SetupFps()
+    local mode = FpsMode()
+    if mode == "off" then
+        if fpsText then fpsText:Hide() end
+        if fpsTicker then fpsTicker:Cancel(); fpsTicker = nil end
+        return
+    end
+    if not fpsText then
+        local holder = CreateFrame("Frame", nil, MM.Frame or MinimapFrame)
+        holder:SetAllPoints(MM.Frame or MinimapFrame)
+        Raise(holder)
+        fpsText = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        fpsText:SetJustifyH("RIGHT")
+        -- the coordinates' font and gold (their text, else Blizzard's small font a size up)
+        local coords = CoordsFrame()
+        local source = coords and coords.CoordText
+        local font, size, flags = (source or fpsText):GetFont()
+        if font and size then fpsText:SetFont(font, (source and source.FlareUI_Styled) and size or size + COORDS.FONT_STEP, flags) end
+        local c = NORMAL_FONT_COLOR
+        fpsText:SetTextColor(c.r, c.g, c.b)
+    end
+    -- level with the coordinates' text (their box sits COORDS.GAP up, the text in its middle), a little
+    -- in from the corner (11-11, Marcus)
+    local coords = CoordsFrame()
+    local mid = COORDS.GAP + ((coords and coords:GetHeight()) or 12) / 2
+    fpsText:ClearAllPoints()
+    fpsText:SetPoint("RIGHT", MM.Frame or MinimapFrame, "BOTTOMRIGHT", -(COORDS.GAP + FPS_INSET), mid)
+    fpsText:Show()
+    UpdateFps()
+    if not fpsTicker then fpsTicker = C_Timer.NewTicker(1, UpdateFps) end
+    UpdateCoordsHover()
 end
 
 -- Middle-click Menu: Blizzard's panels as secure buttons, each a macro clicking the micro button (a
@@ -760,52 +837,60 @@ local function ToggleMenu()
     menu:Show()
 end
 
--- Square style: one surface over the whole square, so the corners zoom and ping too (Blizzard pings
--- only inside the round map it draws); the middle button opens the menu
+-- One surface over the map. Pings stay Blizzard's own: Minimap:PingLocation is protected in
+-- battlegrounds (11-11, ADDON_ACTION_BLOCKED in Warsong Gulch), so FlareUI never calls it or wraps the
+-- map's click handler; the surface passes every click through to the map but the middle button, which
+-- opens the menu while Middle-click Menu is on. Square style: the wheel zooms on the corners too.
+local surface
+function MM.UpdateMapMouse()
+    if not surface or InCombatLockdown() then return end   -- SetPassThroughButtons is blocked in a fight
+    local db = GetDb()
+    local menu = db and db.microMenu
+    if surface.SetPassThroughButtons then
+        if menu then
+            surface:SetPassThroughButtons("LeftButton", "RightButton", "Button4", "Button5")
+        else
+            surface:SetPassThroughButtons("LeftButton", "RightButton", "MiddleButton", "Button4", "Button5")
+        end
+    end
+    -- round style with the menu off: nothing for the surface to do
+    surface:EnableMouse(menu or squareStyle or false)
+end
+
 local function CreateMapSurface()
-    local surface = CreateFrame("Frame", nil, MinimapFrame)
+    surface = CreateFrame("Frame", nil, MinimapFrame)
     surface:SetAllPoints(MinimapFrame)
     surface:SetFrameLevel(MinimapFrame:GetFrameLevel())   -- under the buttons and pins on the map
-    surface:EnableMouse(true)
-    surface:EnableMouseWheel(true)
     -- clicks and the wheel only: the pointer's hover stays the map's own, as the game's dot tooltip
     -- and node addons (Gathercraft reads the mouse focus) need
     if surface.SetMouseMotionEnabled then surface:SetMouseMotionEnabled(false) end
     if surface.SetPropagateMouseMotion then surface:SetPropagateMouseMotion(true) end
-    -- a node addon's scan holds the hidden map under the pointer: the wheel goes to the camera
-    Scan.OnChange = function(busy) surface:EnableMouseWheel(not busy) end
-    surface:SetScript("OnMouseWheel", function(_, delta)
-        if delta > 0 then Minimap_ZoomIn() elseif delta < 0 then Minimap_ZoomOut() end
-    end)
+    if squareStyle then
+        surface:EnableMouseWheel(true)
+        -- a node addon's scan holds the hidden map under the pointer: the wheel goes to the camera
+        Scan.OnChange = function(busy) surface:EnableMouseWheel(not busy) end
+        surface:SetScript("OnMouseWheel", function(_, delta)
+            if delta > 0 then Minimap_ZoomIn() elseif delta < 0 then Minimap_ZoomOut() end
+        end)
+    end
     surface:SetScript("OnMouseUp", function(_, button)
-        if button == "MiddleButton" then ToggleMenu() return end
-        if button ~= "LeftButton" then return end
-        local x, y = GetCursorPosition()
-        local scale = MinimapFrame:GetEffectiveScale()
-        local cx, cy = MinimapFrame:GetCenter()
-        if not cx then return end
-        pcall(MinimapFrame.PingLocation, MinimapFrame, x / scale - cx, y / scale - cy)
+        if button == "MiddleButton" then ToggleMenu() end
     end)
-end
-
--- Blizzard's map pings on any button (Minimap:OnClick on OnMouseUp), and clicks can land on it rather
--- than the square surface, so its handler is wrapped: the middle button opens the menu instead of
--- pinging while Middle-click Menu is on. The map is not a protected frame.
-local function WrapMapClick()
-    local blizzard = MinimapFrame:GetScript("OnMouseUp")
-    MinimapFrame:SetScript("OnMouseUp", function(self, button, ...)
-        local db = GetDb()
-        if button == "MiddleButton" and db and db.microMenu then ToggleMenu() return end
-        if blizzard then return blizzard(self, button, ...) end
-    end)
+    MM.UpdateMapMouse()
+    -- a reload in a fight: once it ends
+    if InCombatLockdown() then
+        local wait = CreateFrame("Frame")
+        wait:RegisterEvent("PLAYER_REGEN_ENABLED")
+        wait:SetScript("OnEvent", function(self) self:UnregisterAllEvents(); MM.UpdateMapMouse() end)
+    end
 end
 
 local function SetupMapMouse()
-    if squareStyle then CreateMapSurface() end
-    WrapMapClick()
+    CreateMapSurface()
     MinimapFrame:HookScript("OnEnter", OnMapEnter)
     Cluster:HookScript("OnEnter", OnMapEnter)
     UpdateCoordsHover()
+    MM.SetupFps()
 end
 
 local function AddEditModeSettings()
@@ -1159,6 +1244,9 @@ function MM:Init()
     end
     local db = GetDb()
     squareStyle = not db or db.style ~= "round"
+    -- Coordinates on Mouseover (a switch up to 11-11) set off: Always
+    if db and rawget(db, "coords") == nil and rawget(db, "coordsOnHover") == false then db.coords = "always" end
+    if db then db.coordsOnHover = nil end
 
     hooksecurefunc("GameTime_UpdateTooltip", AddClockStats)
     -- filled on enter, not on Blizzard's next tick
@@ -1440,7 +1528,7 @@ do
         -- Blizzard shows coordinates unless its own option is off; FlareUI only on hover with Coordinates on Hover
         local coords = f.Coords
         local cvar = C_CVar and C_CVar.GetCVar and C_CVar.GetCVar("minimapShowPlayerCoords")
-        coords:SetShown(not db.coordsOnHover and cvar ~= "0")
+        coords:SetShown((db.coords == "always") and cvar ~= "0")
         coords:SetText(CoordsText())
         coords:ClearAllPoints()
         if square then

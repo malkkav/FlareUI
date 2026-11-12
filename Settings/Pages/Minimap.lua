@@ -18,10 +18,17 @@ S:Module{ key = "mm", group = "map", order = 10, enabled = "minimap.enabled",
 
 S:Row{ key = "mm.style", kind = "styles", path = "minimap.style", choices = { "square", "round" }, reload = true, hideLabel = true }
 S:Row{ key = "mm.zoom", kind = "choice", path = "minimap.autoZoom", choices = { 0, 5, 10, 30 }, apply = Refresh }
--- the two for the pointer on the map together, then the clock, then the drawer
-S:Row{ key = "mm.coordsHover", path = "minimap.coordsOnHover", apply = Refresh }
-S:Row{ key = "mm.microMenu", path = "minimap.microMenu" }
+-- Coordinates, one with Blizzard's own option (Minimap.lua MM.CoordsMode), then the framerate at
+-- the map's corner (MM.SetupFps); then the clock's tooltip, the middle-click menu, the drawer
+S:Row{ key = "mm.coords", kind = "choice", choices = { "off", "always", "hover" },
+    get = function() return ns.Minimap and ns.Minimap.CoordsMode and ns.Minimap.CoordsMode() or "hover" end,
+    set = function(value) if ns.Minimap and ns.Minimap.SetCoordsMode then ns.Minimap.SetCoordsMode(value) end end,
+    resetValue = function() return "hover" end, apply = Refresh }
+S:Row{ key = "mm.fps", kind = "choice", path = "minimap.fps", choices = { "off", "always", "hover" },
+    apply = function() if ns.Minimap and ns.Minimap.SetupFps then ns.Minimap.SetupFps() end end }
 S:Row{ key = "mm.clockStats", path = "minimap.clockStats" }
+S:Row{ key = "mm.microMenu", path = "minimap.microMenu",
+    apply = function() if ns.Minimap and ns.Minimap.UpdateMapMouse then ns.Minimap.UpdateMapMouse() end end }
 S:Row{ key = "mm.bag", path = "minimap.buttonBag", reload = true }
 -- under the drawer: it opens on the pointer instead of a click (live)
 S:Row{ key = "mm.bagHover", path = "minimap.bagHover", parent = "mm.bag",

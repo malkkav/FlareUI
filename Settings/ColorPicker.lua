@@ -6,7 +6,8 @@ local L = ns.L
 -- The Custom Colour Palette's own window: every colour the unit frames (or the resource bars) draw,
 -- each a row with its swatch, and the frames themselves beside them (the modules' settings-preview
 -- samples), repainted on every change. A click opens Blizzard's colour picker; a right-click gives
--- the row back to the palette Custom started from. The colours: unitframes.customColors and
+-- the row back to the palette Custom started from. The settings' Colour Palette row is only the button
+-- that opens it (11-11): the palettes themselves are picked here, in the foot; Apply keeps the changes. The colours: unitframes.customColors and
 -- unitframes.resource.customColors (UnitFrames.lua UF.ApplyPalette, ResourceBars.lua RB.ApplyPalette).
 --------------------------------------------------
 local CP = {}
@@ -46,6 +47,18 @@ local function ResourceRows()
             { "outOfRange", L["Out of Range"] }, { "queued", L["Queued Attack Colour"] }, { "waiting", L["Waiting State"] },
             { "zone", L["Stand-Still Zone"] } } },
         { L["Heals and Shields"], { { "heal", L["Incoming Heals"] }, { "absorb", L["Shields"] } } },
+        { L["Paladin Seals"], (function()
+            -- each seal by its own name (a seal this client lacks is left out)
+            local list = {}
+            for _, s in ipairs({ { "sealRighteousness", 20293 }, { "sealCrusader", 20308 }, { "sealCommand", 20920 },
+                                 { "sealJustice", 20164 }, { "sealLight", 20349 }, { "sealWisdom", 20357 },
+                                 { "sealFury", 20423 }, { "sealMartyrdom", 407798 } }) do
+                local name = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(s[2])
+                if name then list[#list + 1] = { s[1], name } end
+            end
+            return list
+        end)() },
+        { L["Flight Timer"], { { "flight", L["Flight Timer"] } } },
     }
 end
 
@@ -59,6 +72,16 @@ local KINDS = {
             return db.customColors
         end,
         color = function(key) return ns.UnitFrames.Color(key) end,
+        palette = function()
+            local p = ns.db.profile.unitframes.palette
+            return (p == "blizzard" or p == "custom") and p or "flareui"
+        end,
+        base = function() return ns.db.profile.unitframes.customBase end,
+        setPalette = function(p, base)
+            local db = ns.db.profile.unitframes
+            db.palette = p
+            if base then db.customBase = base end
+        end,
         apply = function()
             ns.UnitFrames.ApplyPalette()
             if ns.UnitFrames.Refresh then ns.UnitFrames:Refresh() end
@@ -81,6 +104,14 @@ local KINDS = {
             local RB = ns.ResourceBars
             RB.ApplyPalette()
             return RB.colors[key] or { 1, 1, 1 }
+        end,
+        -- until set, the unit frames' palette (RB.PaletteName)
+        palette = function() return ns.ResourceBars.PaletteName() end,
+        base = function() return ns.db.profile.unitframes.resource.customBase end,
+        setPalette = function(p, base)
+            local db = ns.db.profile.unitframes.resource
+            db.palette = p
+            if base then db.customBase = base end
         end,
         apply = function()
             local RB = ns.ResourceBars
@@ -320,18 +351,111 @@ local function Repaint()
             local c = kind.color(row.key)
             row.swatch:SetColorTexture(c[1], c[2], c[3])
             row.hex:SetText(Hex(c))
-            row.own:SetShown(kind.store()[row.key] ~= nil)
+            row.own:SetShown(kind.palette() == "custom" and kind.store()[row.key] ~= nil)
         end
     end
     DrawPreviews()
+end
+
+-- PALETTES (11-11, Marcus): the foot's dropdown picks FlareUI (the default), Blizzard or Custom, shown
+-- at once. FlareUI and Blizzard drop your own colours; Custom with nothing changed draws FlareUI's.
+-- Changing any colour makes it Custom (from the palette shown). Reset (only on Custom with changes)
+-- gives every colour back. Apply keeps it all and closes; closing any other way puts back what the
+-- window opened with.
+local PALETTES = { "flareui", "blizzard", "custom" }
+local function PaletteText(p)
+    return p == "blizzard" and L["Blizzard"] or p == "custom" and L["Custom"] or L["FlareUI"]
+end
+-- the palette in use for the open window (none yet while it is being built: the dropdown builds its
+-- menu as it is set up)
+local function CurrentPalette() return kindNow and KINDS[kindNow].palette() or "flareui" end
+
+local function UpdatePaletteControls()
+    if not window then return end
+    local kind = kindNow and KINDS[kindNow]
+    window.reset:SetShown(kind and kind.palette() == "custom" and next(kind.store()) ~= nil or false)
+    window.palette:GenerateMenu()
+end
+
+local function Changed()
+    KINDS[kindNow].apply()
+    Repaint()
+    UpdatePaletteControls()
 end
 
 local function SetColor(key, c)
     local kind = KINDS[kindNow]
     Show(key)
     kind.store()[key] = c and { c[1], c[2], c[3] } or nil
+    if c and kind.palette() ~= "custom" then kind.setPalette("custom", kind.palette()) end
+    Changed()
+end
+
+local function PickPalette(p)
+    local kind = KINDS[kindNow]
+    if p == kind.palette() then return end
+    if p == "custom" then
+        kind.setPalette("custom", "flareui")
+    else
+        wipe(kind.store())
+        kind.setPalette(p, p)
+    end
+    Changed()
+end
+
+-- what the window opened with, put back unless Apply closed it
+local function Snapshot()
+    local kind = KINDS[kindNow]
+    local copy = {}
+    for key, c in pairs(kind.store()) do copy[key] = { c[1], c[2], c[3] } end
+    window.saved = { kind = kindNow, palette = kind.palette(), base = kind.base(), store = copy }
+end
+local function Restore()
+    local s = window.saved
+    window.saved = nil
+    if not s then return end
+    local kind = KINDS[s.kind]
+    local store = kind.store()
+    wipe(store)
+    for key, c in pairs(s.store) do store[key] = c end
+    kind.setPalette(s.palette, s.base)
     kind.apply()
-    Repaint()
+end
+
+-- anything changed since the window opened (the palette or a colour)
+local function Dirty()
+    local s = window and window.saved
+    if not s then return false end
+    local kind = KINDS[s.kind]
+    if kind.palette() ~= s.palette then return true end
+    local store = kind.store()
+    for key, c in pairs(store) do
+        local o = s.store[key]
+        if not o or o[1] ~= c[1] or o[2] ~= c[2] or o[3] ~= c[3] then return true end
+    end
+    for key in pairs(s.store) do if not store[key] then return true end end
+    return false
+end
+
+-- Escape or the close button with changes not applied: Apply keeps them, Discard drops them
+ns.Dialogs = ns.Dialogs or {}
+ns.Dialogs["FLAREUI_COLORS_UNSAVED"] = {
+    text = L["You changed colours without applying them."],
+    button1 = L["Apply"],
+    button2 = L["Discard"],
+    OnAccept = function()
+        if not window then return end
+        window.saved = nil
+        window:Hide()
+    end,
+    OnCancel = function()
+        if not window then return end
+        window.discard = true
+        window:Hide()
+    end,
+}
+local function TryClose()
+    if Dirty() then ns.ShowDialog("FLAREUI_COLORS_UNSAVED") else window:Hide() end
 end
 
 local function PickColor(row)
@@ -435,7 +559,7 @@ local function Build()
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     local close = Panel.DressWindow(f)
-    close:SetScript("OnClick", function() f:Hide() end)
+    close:SetScript("OnClick", TryClose)
     tinsert(UISpecialFrames, "FlareUI_ColorPickerWindow")
 
     f.title = f:CreateFontString(nil, "OVERLAY", Panel.FONT.GameFontNormalHuge or "GameFontNormalHuge")
@@ -467,22 +591,70 @@ local function Build()
     f.preview:SetAllPoints()
     f.preview:SetClipsChildren(true)
 
-    -- the foot: what a click does, and Reset All
+    -- the foot: what a click does, then Reset (Custom with changes only), the palettes and Apply
     f.hint = f:CreateFontString(nil, "OVERLAY", Panel.FONT.GameFontDisableSmall or "GameFontDisableSmall")
     f.hint:SetPoint("BOTTOMLEFT", 26, 28)
     f.hint:SetText(L["Click a colour to change it; right-click gives it back to the palette."])
-    local reset = Panel.SkinButton(CreateFrame("Button", nil, f, "UIPanelButtonTemplate"))
-    reset:SetSize(140, 28)
-    reset:SetPoint("BOTTOMRIGHT", -24, 20)
-    reset:SetText(L["Reset All"])
-    reset:SetScript("OnClick", function()
+    f.apply = Panel.SkinButton(CreateFrame("Button", nil, f, "UIPanelButtonTemplate"))
+    f.apply:SetSize(100, 28)
+    f.apply:SetPoint("BOTTOMRIGHT", -24, 20)
+    f.apply:SetText(L["Apply"])
+    f.apply:SetScript("OnClick", function()
         ns.ButtonSound()
-        local kind = KINDS[kindNow]
-        wipe(kind.store())
-        kind.apply()
-        Repaint()
+        f.saved = nil   -- kept
+        f:Hide()
     end)
-    f:SetScript("OnHide", function() if ColorPickerFrame and ColorPickerFrame:IsShown() then ColorPickerFrame:Hide() end end)
+    f.palette = CreateFrame("DropdownButton", nil, f, "WowStyle1DropdownTemplate")
+    f.palette:SetWidth(150)
+    f.palette:SetPoint("RIGHT", f.apply, "LEFT", -8, 0)
+    if Panel.SkinDropdown then Panel.SkinDropdown(f.palette) end
+    local function Picked(p) return CurrentPalette() == p end
+    f.palette:SetupMenu(function(_, root)
+        for _, p in ipairs(PALETTES) do
+            root:CreateRadio(PaletteText(p), function() return Picked(p) end, function() PickPalette(p) end)
+        end
+    end)
+    f.palette:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip_SetTitle(GameTooltip, L["Colour Palette"], HIGHLIGHT_FONT_COLOR)
+        GameTooltip_AddNormalLine(GameTooltip, L["FlareUI is the default. Change any colour and it becomes Custom. Apply keeps your choice."])
+        GameTooltip:Show()
+    end)
+    f.palette:HookScript("OnLeave", GameTooltip_Hide)
+    -- the Gamepad UI: FlareUI's plain list in place of Blizzard's menu (PadNav.GuardDropdown)
+    if ns.PadNav and ns.PadNav.GuardDropdown then
+        ns.PadNav.GuardDropdown(f.palette, function()
+            local entries = {}
+            for _, p in ipairs(PALETTES) do
+                entries[#entries + 1] = { text = PaletteText(p), checked = function() return Picked(p) end,
+                                          pick = function() PickPalette(p) end }
+            end
+            return entries
+        end)
+    end
+    f.reset = Panel.SkinButton(CreateFrame("Button", nil, f, "UIPanelButtonTemplate"))
+    f.reset:SetSize(100, 28)
+    f.reset:SetPoint("RIGHT", f.palette, "LEFT", -12, 0)
+    f.reset:SetText(L["Reset"])
+    f.reset:SetScript("OnClick", function()
+        ns.ButtonSound()
+        wipe(KINDS[kindNow].store())
+        Changed()
+    end)
+    f:SetScript("OnHide", function()
+        if ColorPickerFrame and ColorPickerFrame:IsShown() then ColorPickerFrame:Hide() end
+        -- Escape (UISpecialFrames) with changes not applied: back up, and ask
+        if not f.discard and Dirty() then
+            C_Timer.After(0, function()
+                f:Show()
+                ns.ShowDialog("FLAREUI_COLORS_UNSAVED")
+            end)
+            return
+        end
+        -- closed without Apply (nothing changed, or Discard): back to what it opened with
+        f.discard = nil
+        Restore()
+    end)
     return f
 end
 
@@ -490,9 +662,16 @@ end
 function CP.Open(kind)
     if not KINDS[kind] then return end
     window = window or Build()
+    -- another kind's window still open: its changes are asked about first
+    if window:IsShown() and kindNow ~= kind then
+        if Dirty() then ns.ShowDialog("FLAREUI_COLORS_UNSAVED") return end
+        window:Hide()
+    end
     kindNow = kind
+    if not window.saved then Snapshot() end
     window.sub:SetText(KINDS[kind].title())
     BuildList()
+    UpdatePaletteControls()
     window:Show()
     window:Raise()
     -- the samples measure the window once it is laid out

@@ -19,6 +19,7 @@ local BG_TOP       = { 0.085, 0.075, 0.060, 0.95 }
 local BG_BOTTOM    = { 0.015, 0.015, 0.015, 0.95 }
 
 local editor, editingID, selectedButton, dragging, activeCategory
+local RadialDrag, RadialRowMenu, GroupMenu   -- the radials list's drag and its group menus (before BuildRadialColumn)
 local browseCache = {}   -- category -> its entries, built once per opening
 local snapshot, dirty
 
@@ -360,6 +361,36 @@ AddCategory("items", L["Items"], function()
                 seen[itemID] = true
                 out[#out + 1] = { kind = "item", id = itemID }
             end
+        end
+    end
+    return out
+end)
+
+-- Professions (11-12, Marcus): every profession you know, at its best rank (each opens its window),
+-- then the profession spells around them: Smelting, Disenchant, the tracking, a campfire, Pick Lock.
+-- Ranks highest first; a spell you don't know is left out.
+local PROFESSION_SPELLS = {
+    { 11611, 3464, 3101, 2259 },     -- Alchemy
+    { 9785, 3538, 3100, 2018 },      -- Blacksmithing
+    { 13920, 7413, 7412, 7411 },     -- Enchanting
+    { 12656, 4038, 4037, 4036 },     -- Engineering
+    { 10662, 3811, 3104, 2108 },     -- Leatherworking
+    { 12180, 3910, 3909, 3908 },     -- Tailoring
+    { 18260, 3413, 3102, 2550 },     -- Cooking
+    { 10846, 7924, 3274, 3273 },     -- First Aid
+    { 18248, 7732, 7731, 7620 },     -- Fishing
+    { 2656 },                        -- Smelting (Mining)
+    { 13262 },                       -- Disenchant
+    { 2580 },                        -- Find Minerals
+    { 2383 },                        -- Find Herbs
+    { 818 },                         -- Basic Campfire
+    { 1804 },                        -- Pick Lock
+}
+AddCategory("professions", L["Professions"], function()
+    local out = {}
+    for _, ranks in ipairs(PROFESSION_SPELLS) do
+        for _, id in ipairs(ranks) do
+            if IsPlayerSpell(id) then out[#out + 1] = { kind = "spell", id = id } break end
         end
     end
     return out
@@ -728,7 +759,9 @@ local popup
 local function ShowNamePopup(renaming)
     if not popup then
         popup = CreateFrame("Frame", "FlareUI_RadialEditorNewRadial", UIParent, "BackdropTemplate")
-        popup:SetFrameStrata("FULLSCREEN_DIALOG")
+        -- FULLSCREEN: over the settings window (DIALOG) and under Blizzard's menus (FULLSCREEN_DIALOG),
+        -- so the Available To list opens over it (it opened under it, 11-12)
+        popup:SetFrameStrata("FULLSCREEN")
         popup:SetToplevel(true)
         popup:EnableMouse(true)
         popup:SetBackdrop({ edgeFile = LSM:Fetch("border", "Blizzard Tooltip"), edgeSize = 16 })
@@ -765,6 +798,17 @@ local function ShowNamePopup(renaming)
             end
         end)
         popup.scopeDrop = scopeDrop
+        -- the Gamepad UI: FlareUI's plain list in place of Blizzard's menu (PadNav.GuardDropdown)
+        if ns.PadNav and ns.PadNav.GuardDropdown then
+            ns.PadNav.GuardDropdown(scopeDrop, function()
+                local entries = {}
+                for _, s in ipairs(RM():GetScopeChoices()) do
+                    entries[#entries + 1] = { text = ScopeText(s), checked = function() return popup.scope == s end,
+                                              pick = function() popup.scope = s end }
+                end
+                return entries
+            end)
+        end
 
         local function Accept()
             local name = strtrim(box:GetText())
@@ -795,9 +839,9 @@ local function ShowNamePopup(renaming)
     popup.renaming = renaming and true or nil
     popup.label:SetText(renaming and L["Rename the radial"] or L["Name the new radial"])
     popup.accept:SetText(renaming and L["Rename"] or L["Create"])
-    -- a new radial starts on this character only: nothing reaches the others unasked
+    -- a new radial starts on every character (11-12, Marcus: All, not only this one)
     local choices = RM():GetScopeChoices()
-    popup.scope = choices[#choices]
+    popup.scope = choices[1]
     popup.scopeLabel:SetShown(not renaming)
     popup.scopeDrop:SetShown(not renaming)
     popup.scopeDrop:GenerateMenu()
@@ -959,6 +1003,137 @@ local function SelectRadial(id)
     Refresh()
 end
 
+-- dragging in the radials list: a radial or a group ("group:gid"), its name under the cursor.
+-- A radial dropped on a radial takes its place (and its group); on a group's row it joins the group.
+-- A group dropped on a row moves there with its radials.
+RadialDrag = {}
+function RadialDrag.Start(payload)
+    local gid = payload:match("^group:(.+)$")
+    local data = gid and RM():GetGroup(gid) or (not gid and RM():GetRadial(payload))
+    if not data then return end
+    RadialDrag.payload = payload
+    local g = RadialDrag.ghost
+    if not g then
+        g = CreateFrame("Frame", nil, UIParent)
+        g:SetFrameStrata("TOOLTIP")
+        g:SetSize(10, 16)
+        g.text = g:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        g.text:SetPoint("LEFT")
+        g:SetScript("OnUpdate", function(self)
+            local scale = UIParent:GetEffectiveScale()
+            local x, y = GetCursorPosition()
+            self:ClearAllPoints()
+            self:SetPoint("LEFT", UIParent, "BOTTOMLEFT", x / scale + 12, y / scale)
+        end)
+        RadialDrag.ghost = g
+    end
+    g.text:SetText(data.name or "")
+    g:Show()
+end
+function RadialDrag.Stop(list)
+    local payload = RadialDrag.payload
+    RadialDrag.payload = nil
+    if RadialDrag.ghost then RadialDrag.ghost:Hide() end
+    if not (payload and list) then return end
+    local gid = payload:match("^group:(.+)$")
+    for _, cell in ipairs(list.cells) do
+        local item = cell:IsShown() and cell:IsMouseOver() and cell.item
+        if item and (item.id or item.group) then
+            local moved = false
+            if gid then
+                local target = item.id or ("group:" .. item.group)
+                if target ~= payload then moved = RM():MoveGroup(gid, target) end
+            elseif item.group then
+                local data = RM():GetRadial(payload)
+                if data and data.group ~= item.group then RM():SetRadialGroup(payload, item.group); moved = true end
+            elseif item.id ~= payload then
+                moved = RM():MoveRadial(payload, item.id)
+            end
+            if moved then ns.ButtonSound() Refresh() end
+            return
+        end
+    end
+end
+
+-- GROUP MENUS (11-12): a radial's right-click puts it in a new group, another group, or out of its
+-- own; a group's renames or ungroups it. Blizzard's menu, FlareUI's own list in the Gamepad UI.
+local function ShowRowMenu(owner, title, entries)
+    if ns.IsGamepadUI() and ns.PadNav and ns.PadNav.OpenList then
+        local list = {}
+        for _, e in ipairs(entries) do
+            if not e.divider then list[#list + 1] = { text = e.text, pick = e.func } end
+        end
+        ns.PadNav.OpenList(owner, list)
+        return
+    end
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+    MenuUtil.CreateContextMenu(owner, function(_, root)
+        root:CreateTitle(title)
+        for _, e in ipairs(entries) do
+            if e.divider then root:CreateDivider() else root:CreateButton(e.text, e.func) end
+        end
+    end)
+end
+
+ns.Dialogs = ns.Dialogs or {}
+ns.Dialogs["FLAREUI_RADIAL_GROUP"] = {
+    text = "%s",
+    button1 = _G.ACCEPT or "Accept",
+    button2 = L["Cancel"],
+    hasEditBox = true,
+    maxLetters = 40,
+    editText = function(data)
+        local group = data and data.gid and RM():GetGroup(data.gid)
+        return group and group.name or L["New Group"]
+    end,
+    OnAccept = function(data, text)
+        text = text and strtrim(text) or ""
+        if text == "" or not data then return end
+        if data.gid then
+            RM():RenameGroup(data.gid, text)
+        elseif data.id then
+            RM():CreateGroupWith(data.id, text)
+        end
+        Refresh()
+    end,
+    hideOnEscape = true,
+}
+
+function RadialRowMenu(owner, id)
+    local rm = RM()
+    local data = rm:GetRadial(id)
+    if not data then return end
+    local entries = {
+        { text = L["Add to New Group..."], func = function()
+            ns.ShowDialog("FLAREUI_RADIAL_GROUP", L["Name the group"], { id = id })
+        end },
+    }
+    -- the other groups, by name
+    local others = {}
+    for gid, group in pairs(rm:GetGroups()) do
+        if gid ~= data.group then others[#others + 1] = { gid = gid, name = group.name or "" } end
+    end
+    table.sort(others, function(a, b) return a.name:lower() < b.name:lower() end)
+    for _, o in ipairs(others) do
+        entries[#entries + 1] = { text = L["Move to %s"]:format(o.name), func = function() rm:SetRadialGroup(id, o.gid) Refresh() end }
+    end
+    if data.group then
+        entries[#entries + 1] = { text = L["Remove from Group"], func = function() rm:SetRadialGroup(id, nil) Refresh() end }
+    end
+    ShowRowMenu(owner, data.name, entries)
+end
+
+function GroupMenu(owner, gid)
+    local group = RM():GetGroup(gid)
+    if not group then return end
+    ShowRowMenu(owner, group.name, {
+        { text = L["Rename..."], func = function()
+            ns.ShowDialog("FLAREUI_RADIAL_GROUP", L["Name the group"], { gid = gid })
+        end },
+        { text = L["Ungroup"], func = function() RM():Ungroup(gid) Refresh() end },
+    })
+end
+
 -- the radials and "On this character" fill the panel's right column, where other pages show their
 -- info panel; host keeps the references
 local function BuildRadialColumn(host, column)
@@ -983,10 +1158,31 @@ local function BuildRadialColumn(host, column)
             cell.Key:SetJustifyH("RIGHT")
             cell.Text:SetFontObject("GameFontHighlight")
             cell.Text:SetPoint("RIGHT", cell.Key, "LEFT", -4, 0)
-            cell:SetScript("OnClick", function(self)
-                if self.item and self.item.id then ns.ButtonSound() SelectRadial(self.item.id) end
+            -- left: a radial to edit, a group folds or opens; right: the group menus
+            cell:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            cell:SetScript("OnClick", function(self, mouseButton)
+                local item = self.item
+                if not item then return end
+                if item.group then
+                    if mouseButton == "RightButton" then GroupMenu(self, item.group) return end
+                    ns.ButtonSound()
+                    RM():SetGroupOpen(item.group, not RM():IsGroupOpen(item.group))
+                    Refresh()
+                elseif item.id then
+                    if mouseButton == "RightButton" then RadialRowMenu(self, item.id) return end
+                    ns.ButtonSound()
+                    SelectRadial(item.id)
+                end
             end)
             cell:SetScript("OnEnter", function(self)
+                if self.item and self.item.group then
+                    ns.OwnGameTooltip(self, "ANCHOR_RIGHT")
+                    local group = RM():GetGroup(self.item.group)
+                    GameTooltip:AddLine(group and group.name or "", 1, 1, 1)
+                    GameTooltip:AddLine(L["Click to open or close. Right-click to rename or ungroup. Drag to move."], 0.8, 0.8, 0.8, true)
+                    GameTooltip:Show()
+                    return
+                end
                 local id = self.item and self.item.id
                 local data = id and RM():GetRadial(id)
                 if not data then return end
@@ -999,10 +1195,21 @@ local function BuildRadialColumn(host, column)
                 GameTooltip:Show()
             end)
             cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            -- drag a radial over another to put it there (11-12, Marcus); a name follows the cursor
+            cell:RegisterForDrag("LeftButton")
+            cell:SetScript("OnDragStart", function(self)
+                local item = self.item
+                if not (item and (item.id or item.group)) then return end
+                GameTooltip:Hide()
+                RadialDrag.Start(item.id or ("group:" .. item.group))
+            end)
+            cell:SetScript("OnDragStop", function() RadialDrag.Stop(host.radialList) end)
         end,
         function(cell, item)
             if item.header then
                 cell.Icon:Hide()
+                cell.Icon:ClearAllPoints()
+                cell.Icon:SetPoint("LEFT", 4, 0)
                 cell.Key:SetText("")
                 cell.Text:SetText("|cff9d8462" .. item.header .. "|r")
                 cell.Highlight:Hide()
@@ -1010,6 +1217,20 @@ local function BuildRadialColumn(host, column)
                 return
             end
             cell:EnableMouse(true)
+            -- a group: its name and count, + / − at the right (11-12)
+            if item.group then
+                local group = RM():GetGroup(item.group)
+                cell.Icon:Hide()
+                cell.Icon:ClearAllPoints()
+                cell.Icon:SetPoint("LEFT", 4, 0)
+                cell.Text:SetText("|cffffd100" .. (group and group.name or "") .. "|r |cff9d8462(" .. item.count .. ")|r")
+                cell.Key:SetText("|cffffd100" .. (item.open and "−" or "+") .. "|r")
+                cell.Highlight:Hide()
+                return
+            end
+            -- a group's radials sit in under it
+            cell.Icon:ClearAllPoints()
+            cell.Icon:SetPoint("LEFT", item.indent and 18 or 4, 0)
             local data = RM():GetRadial(item.id)
             cell.Icon:SetShown(ApplyScopeIcon(cell.Icon, data.scope))
             cell.Icon:SetDesaturated(not item.available)
@@ -1120,6 +1341,21 @@ local function BuildDetails(host, width)
     end)
     Hover(scope, "rm.scope")
     host.scopeDrop = scope
+    if ns.PadNav and ns.PadNav.GuardDropdown then
+        ns.PadNav.GuardDropdown(scope, function()
+            local entries, data = {}, editingID and RM():GetRadial(editingID)
+            if not data then return entries end
+            local choices = RM():GetScopeChoices()
+            local listed = false
+            for _, s in ipairs(choices) do if s == (data.scope or "") then listed = true end end
+            if not listed and data.scope then table.insert(choices, data.scope) end
+            for _, s in ipairs(choices) do
+                entries[#entries + 1] = { text = ScopeText(s, data), checked = function() return (data.scope or "") == s end,
+                                          pick = function() RM():SetRadialScope(editingID, s); Changed(); Refresh() end }
+            end
+            return entries
+        end)
+    end
     -- the controller steps through who gets it (its menu can't open from addon code there)
     scope.padCycle = function(delta)
         local data = editingID and RM():GetRadial(editingID)
@@ -1256,6 +1492,14 @@ local function BuildLower(host, height, width)
             cell.Text:Hide()
             cell.Icon:ClearAllPoints()
             cell.Icon:SetPoint("CENTER", cell, "LEFT", (x + width - buttonsX - 8) / 2 + BUTTONS_NUDGE, 0)
+            -- the selected and hover highlights centred on the icon, across the box (they hugged the
+            -- cell's left side, 11-12 Marcus)
+            local across = math.max(BUTTON_ROW_H, (x + width - buttonsX - 8) - 16)
+            for _, hl in ipairs({ cell.Highlight, cell:GetHighlightTexture() }) do
+                hl:ClearAllPoints()
+                hl:SetPoint("CENTER", cell.Icon, "CENTER")
+                hl:SetSize(across, BUTTON_ROW_H - 2)
+            end
             MakeRound(cell, BUTTON_RIM)
             cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
             cell:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -1493,13 +1737,33 @@ end
 local function RefreshRadialColumn(perRadial)
     local rm = RM()
     local here, other = {}, {}
+    -- groups (11-12): a row before their first radial here, then their radials unless folded; the
+    -- radials not on this character stay ungrouped under the header
+    local counts, placed = {}, {}
     for _, id in ipairs(rm:GetRadialOrder()) do
-        if rm:GetRadial(id) then
+        local data = rm:GetRadial(id)
+        if data and data.group and rm:IsRadialAvailable(id) then counts[data.group] = (counts[data.group] or 0) + 1 end
+    end
+    for _, id in ipairs(rm:GetRadialOrder()) do
+        local data = rm:GetRadial(id)
+        if data then
             local available = rm:IsRadialAvailable(id)
             local key = available and rm:GetRadialKey(id) or rm:GetSharedKey(id)
             local beatenBy = perRadial[id] and perRadial[id].beatenBy
             local item = { id = id, available = available, key = key, beaten = beatenBy ~= nil, beatenBy = beatenBy }
-            if available then here[#here + 1] = item else other[#other + 1] = item end
+            local gid = available and data.group and rm:GetGroup(data.group) and data.group
+            if gid then
+                local open = rm:IsGroupOpen(gid)
+                if not placed[gid] then
+                    placed[gid] = true
+                    here[#here + 1] = { group = gid, count = counts[gid] or 0, open = open }
+                end
+                if open then item.indent = true; here[#here + 1] = item end
+            elseif available then
+                here[#here + 1] = item
+            else
+                other[#other + 1] = item
+            end
         end
     end
     if #other > 0 then

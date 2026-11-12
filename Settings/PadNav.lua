@@ -467,3 +467,141 @@ function PadNav.Attach(window, options)
     end)
     if window:IsShown() then Start() end
 end
+
+--------------------------------------------------
+-- LISTS IN THE GAMEPAD UI (11-11, a player's ADDON_ACTION_FORBIDDEN)
+-- Blizzard's menus can't be opened from addon code in the Gamepad UI: showing one hands the
+-- controller navigation an untrusted call, which ends in a blocked protected call blamed on FlareUI
+-- (SetPreferredGamepadInteractTarget). A dropdown's own mouse handler can't be replaced, so a catcher
+-- button lies over it and opens this plain list instead, built from the same choices.
+-- entries: { text, checked(), pick(), multi (stays open), divider, onEnter(), onLeave(), font(fs) }
+--------------------------------------------------
+PadNav.LIST_ROWS, PadNav.LIST_ROW_H = 16, 20
+
+function PadNav.CloseList()
+    local list = PadNav.list
+    if list and list:IsShown() then list:Hide() end
+end
+
+function PadNav.OpenList(owner, entries, onClose)
+    local list = PadNav.list
+    if not list then
+        list = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+        list:SetFrameStrata("FULLSCREEN_DIALOG")
+        list:SetClampedToScreen(true)
+        list:EnableMouse(true)
+        list:EnableMouseWheel(true)
+        list:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        list:SetBackdropColor(0.05, 0.04, 0.03, 0.97)
+        local c = ns.BORDER_COLOR
+        list:SetBackdropBorderColor(c.r, c.g, c.b, 1)
+        list.rows = {}
+        for i = 1, PadNav.LIST_ROWS do
+            local b = CreateFrame("Button", nil, list)
+            b:SetHeight(PadNav.LIST_ROW_H)
+            b:SetPoint("TOPLEFT", 4, -4 - (i - 1) * PadNav.LIST_ROW_H)
+            b:SetPoint("TOPRIGHT", -4, -4 - (i - 1) * PadNav.LIST_ROW_H)
+            b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+            b.tick = b:CreateTexture(nil, "ARTWORK")
+            b.tick:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+            b.tick:SetSize(16, 16)
+            b.tick:SetPoint("LEFT", 2, 0)
+            b.text = b:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+            b.text:SetPoint("LEFT", 22, 0)
+            b.text:SetPoint("RIGHT", -4, 0)
+            b.text:SetJustifyH("LEFT")
+            b.text:SetWordWrap(false)
+            b.line = b:CreateTexture(nil, "ARTWORK")
+            b.line:SetColorTexture(c.r, c.g, c.b, 0.6)
+            b.line:SetHeight(1)
+            b.line:SetPoint("LEFT", 6, 0)
+            b.line:SetPoint("RIGHT", -6, 0)
+            b:SetScript("OnClick", function(self)
+                local e = self.entry
+                if not e or e.divider then return end
+                if e.pick then e.pick() end
+                if e.multi then PadNav.FillList() else PadNav.CloseList() end
+            end)
+            b:SetScript("OnEnter", function(self) if self.entry and self.entry.onEnter then self.entry.onEnter() end end)
+            b:SetScript("OnLeave", function(self) if self.entry and self.entry.onLeave then self.entry.onLeave() end end)
+            list.rows[i] = b
+        end
+        list:SetScript("OnMouseWheel", function(_, delta)
+            local maxOffset = math.max(0, #list.entries - PadNav.LIST_ROWS)
+            list.offset = math.max(0, math.min(maxOffset, list.offset - delta * 3))
+            PadNav.FillList()
+        end)
+        -- a click anywhere else closes it
+        list:SetScript("OnEvent", function(self)
+            if not (self:IsMouseOver() or (self.owner and self.owner:IsMouseOver())) then self:Hide() end
+        end)
+        list:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
+        list:SetScript("OnHide", function(self)
+            self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+            local done = self.onClose
+            self.onClose, self.owner = nil, nil
+            if done then done() end
+        end)
+        PadNav.list = list
+    end
+    -- the same owner again: it closes, as Blizzard's menu does
+    if list:IsShown() then
+        local same = list.owner == owner
+        list:Hide()
+        if same then return end
+    end
+    list.entries, list.offset, list.owner, list.onClose = entries, 0, owner, onClose
+    -- start at the ticked choice
+    for i, e in ipairs(entries) do
+        if e.checked and e.checked() and not e.multi then
+            list.offset = math.max(0, math.min(i - 1, #entries - PadNav.LIST_ROWS))
+            break
+        end
+    end
+    list:SetWidth(math.max(160, owner:GetWidth()))
+    list:SetHeight(math.min(#entries, PadNav.LIST_ROWS) * PadNav.LIST_ROW_H + 8)
+    list:ClearAllPoints()
+    list:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -2)
+    PadNav.FillList()
+    list:Show()
+end
+
+function PadNav.FillList()
+    local list = PadNav.list
+    if not list then return end
+    for i, b in ipairs(list.rows) do
+        local e = list.entries[list.offset + i]
+        b.entry = e
+        if e then
+            b.line:SetShown(e.divider == true)
+            b.text:SetShown(not e.divider)
+            b.tick:SetShown(not e.divider and e.checked and e.checked() or false)
+            if not e.divider then
+                b.text:SetText(e.text or "")
+                if e.font then e.font(b.text) else b.text:SetFontObject("GameFontHighlight") end
+            end
+            b:Show()
+        else
+            b:Hide()
+        end
+    end
+end
+
+-- a catcher over a dropdown in the Gamepad UI: clicks open the plain list (build() answers its entries)
+function PadNav.GuardDropdown(dropdown, build, onClose)
+    if not ns.IsGamepadUI() or dropdown.padCatcher then return end
+    local catcher = CreateFrame("Button", nil, dropdown)
+    catcher:SetAllPoints()
+    catcher:SetFrameLevel(dropdown:GetFrameLevel() + 5)
+    catcher:SetScript("OnClick", function()
+        if not dropdown:IsEnabled() then return end
+        PadNav.OpenList(dropdown, build(), function()
+            if onClose then onClose() end
+            -- the shown choice, as Blizzard's menu updates it
+            if dropdown.GenerateMenu then dropdown:GenerateMenu() end
+        end)
+    end)
+    catcher:SetScript("OnEnter", function() local s = dropdown:GetScript("OnEnter"); if s then s(dropdown) end end)
+    catcher:SetScript("OnLeave", function() local s = dropdown:GetScript("OnLeave"); if s then s(dropdown) end end)
+    dropdown.padCatcher = catcher
+end

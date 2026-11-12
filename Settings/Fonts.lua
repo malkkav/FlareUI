@@ -44,6 +44,13 @@ function S:FontRows(def)
             row.key = heading .. "." .. field
             if not row.get then row.path = font.path .. "." .. field end
             row.parent, row.tab, row.section, row.hidden, row.apply = heading, def.tab, def.section, Closed, def.apply
+            -- optional (the bags' font): Default keeps Blizzard's and greys the rest; disabled (def's or the font's) greys all
+            local own = row.disabled
+            row.disabled = function()
+                if (def.disabled and def.disabled()) or (font.disabled and font.disabled()) then return true end
+                if field ~= "face" and font.optional and (S:GetPath(font.path .. ".face") or "") == "" then return true end
+                return own and own() or false
+            end
             row.collapsedBy = heading   -- searchable while folded; a search result opens the heading
             row.half = true
             row.previewFont = font.path
@@ -57,7 +64,11 @@ function S:FontRows(def)
                 return list
             end })
         else
-        Control("face", { kind = "dropdown", choices = Faces, dropdownWidth = 150 })
+        Control("face", { kind = "dropdown", dropdownWidth = 150, choices = not font.optional and Faces or function()
+            local list = Faces()
+            table.insert(list, 1, { "", ns.L["Default"] })
+            return list
+        end })
         Control("size", { kind = "choice", choices = font.autoSize and AUTO_SIZES or SIZES })
         Control("flags", { kind = "choice", choices = { "NONE", "OUTLINE", "THICKOUTLINE" } })
         -- one choice sets the shadow and its offset
@@ -75,5 +86,30 @@ function S:FontRows(def)
                 end
             end })
         end
+        -- Reset (11-11, Marcus): this font's fields back to the profile's defaults
+        local FIELDS = { "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }
+        local function Changed()
+            for _, field in ipairs(FIELDS) do
+                local default = S:DefaultPath(font.path .. "." .. field)
+                if default ~= nil and S:GetPath(font.path .. "." .. field) ~= default then return true end
+            end
+            return false
+        end
+        S:Row{
+            key = heading .. ".reset", kind = "button", center = true, buttonWidth = 160,
+            parent = heading, tab = def.tab, section = def.section, hidden = Closed, collapsedBy = heading,
+            previewFont = font.path,
+            disabled = function()
+                return (def.disabled and def.disabled()) or (font.disabled and font.disabled()) or not Changed()
+            end,
+            apply = function()
+                for _, field in ipairs(FIELDS) do
+                    local default = S:DefaultPath(font.path .. "." .. field)
+                    if default ~= nil then S:SetPath(font.path .. "." .. field, default) end
+                end
+                if def.apply then def.apply() end
+                if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
+            end,
+        }
     end
 end

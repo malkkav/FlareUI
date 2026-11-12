@@ -4,7 +4,8 @@ local S = ns.Settings
 
 --------------------------------------------------
 -- QUALITY OF LIFE
--- Settings for Modules/Tweaks.lua in Gameplay, Bags, Nameplates and Interface tabs. Options that replace
+-- Settings for Modules/Tweaks.lua in Gameplay, Nameplates and Interface tabs (Bags and Looting became
+-- its own module, BagsLooting.lua, 11-12). Options that replace
 -- Blizzard scripts ask for a reload; the rest apply live.
 --------------------------------------------------
 local function Refresh()
@@ -28,7 +29,7 @@ end
 
 S:Module{
     key = "qol", group = "interface", order = 40, enabled = "tweaks.enabled",
-    tabs = { { key = "gameplay" }, { key = "bags" }, { key = "nameplates" }, { key = "interface" }, { key = "fonts" } },
+    tabs = { { key = "gameplay" }, { key = "nameplates" }, { key = "interface" }, { key = "fonts" } },
 }
 
 -- (Sync Blizz UI, Move Any Window and UI Scale moved to the Settings page, Language.lua, 11-11)
@@ -82,52 +83,10 @@ S:Row{ key = "qol.mouseRingSwing", half = true, tab = "gameplay", parent = "qol.
 S:Row{ key = "qol.mouseRingRange", half = true, tab = "gameplay", parent = "qol.mouseRingShow", path = "tweaks.mouseRingRange",
     apply = RefreshRing, disabled = NoRing }
 
--- BAGS AND LOOTING ------------------------------
--- Bags: the bag rows (Modules/Bags.lua). Another bag addon greys them all; the layout rows also need
--- Blizzard's Combined Bags.
-local function RefreshBags() if ns.Bags then ns.Bags:Refresh() end end
-local function BagAddon() return ns.Bags and ns.Bags.GetOtherBagAddon and ns.Bags:GetOtherBagAddon() and true or false end
-local function NotCombined() return BagAddon() or not (ns.Bags and ns.Bags:IsCombined()) end
-local BAG_COLUMNS = { { 0, L["Default"] } }
-for n = 6, 20 do BAG_COLUMNS[#BAG_COLUMNS + 1] = { n, tostring(n) } end
-S:Row{ key = "qol.bagColumns", kind = "range", tab = "bags", path = "tweaks.bagColumns", choices = BAG_COLUMNS,
-    apply = RefreshBags, disabled = NotCombined }
-S:Row{ key = "qol.bagGaps", half = true, tab = "bags", path = "tweaks.bagGaps", apply = RefreshBags, disabled = NotCombined }
-S:Row{ key = "qol.bagButtons", half = true, tab = "bags", path = "tweaks.bagButtons", apply = RefreshBags, disabled = NotCombined }
--- the keyring and the crafting bag as sections of the combined backpack (Bags.lua 0)
-S:Row{ key = "qol.bagKeyring", half = true, tab = "bags", path = "tweaks.bagKeyring", apply = RefreshBags, disabled = NotCombined }
-S:Row{ key = "qol.bagReagent", half = true, tab = "bags", path = "tweaks.bagReagent", apply = RefreshBags, disabled = NotCombined }
-S:Row{ key = "qol.bagRarityBorders", half = true, tab = "bags", path = "tweaks.bagRarityBorders", apply = RefreshBags, disabled = BagAddon }
-S:Row{ key = "qol.bagThickBorders", half = true, tab = "bags", path = "tweaks.bagThickBorders", apply = RefreshBags, disabled = BagAddon }
-S:Row{ key = "qol.bagJunkIcon", half = true, tab = "bags", path = "tweaks.bagJunkIcon", apply = RefreshBags, disabled = BagAddon }
-S:Row{ key = "qol.bagUpgradeArrow", half = true, tab = "bags", path = "tweaks.bagUpgradeArrow", apply = RefreshBags, disabled = BagAddon }
--- two more on what is in your bags (no bag addon greys them: they are not Bags.lua's)
-S:Row{ key = "qol.petFood", half = true, tab = "bags", path = "tweaks.petFood", apply = Refresh }
-S:Row{ key = "qol.delete", half = true, tab = "bags", path = "tweaks.autoDelete", apply = Refresh }
--- Looting
-S:Row{ key = "qol.fastLoot", half = true, tab = "bags", path = "tweaks.fasterLoot", apply = Refresh }
-S:Row{ key = "qol.skipLoot", half = true, tab = "bags", path = "tweaks.skipLootConfirm" }
--- Loot Feed: what you loot floats up beside you (LootFeed.lua); placed in Edit Mode
-S:Row{ key = "qol.lootFeed", tab = "bags", path = "tweaks.lootFeed", reload = true }
-local LOOT_QUALITY = {}
--- Poor (0) is the lowest, so it lets every item through: named All Items (a player read it as grey only)
-for quality = 0, 4 do
-    LOOT_QUALITY[#LOOT_QUALITY + 1] = { quality, quality == 0 and L["All Items"] or _G["ITEM_QUALITY" .. quality .. "_DESC"] or tostring(quality) }
-end
-local function NoFeed() return not S:GetPath("tweaks.lootFeed") end
-S:Row{ key = "qol.lootFeedQuality", kind = "choice", tab = "bags", parent = "qol.lootFeed", path = "tweaks.lootFeedQuality",
-    choices = LOOT_QUALITY, disabled = NoFeed }
-S:Row{ key = "qol.lootFeedMoney", tab = "bags", parent = "qol.lootFeed", path = "tweaks.lootFeedMoney", disabled = NoFeed }
-S:Row{ key = "qol.lootFeedSkills", tab = "bags", parent = "qol.lootFeed", path = "tweaks.lootFeedSkills", disabled = NoFeed }
-S:Row{ key = "qol.lootFeedPosition", kind = "choice", tab = "bags", parent = "qol.lootFeed", path = "tweaks.lootFeedPosition",
-    choices = { "cursor", "placed" }, disabled = NoFeed,
-    apply = function() if ns.LootFeed and ns.LootFeed.Refresh then ns.LootFeed:Refresh() end end }
--- FONTS: the loot feed's lines (live: lines already up and the Edit Mode samples take it too)
+-- FONTS: Zone Text (the bag and loot feed fonts went with Bags & Looting, 11-12)
 S:FontRows{ module = "qol", tab = "fonts", section = "qol.fonts", fonts = {
-    { key = "lootFeed", path = "tweaks.lootFeedFont" },
     { key = "zoneText", path = "tweaks.zoneTextFont", faceOnly = true },
 }, apply = function()
-    if ns.LootFeed and ns.LootFeed.ApplyFont then ns.LootFeed:ApplyFont() end
     if ns.ZoneText then ns.ZoneText:Apply() end
 end }
 

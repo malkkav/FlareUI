@@ -34,8 +34,8 @@ local OBJ_W, OBJ_H = 180, 36   -- (the sample's size: only the scores, 11-11)
 local OBJ_BORDER, OBJ_EDGE, OBJ_PAD = "FlareUI Thick", 16, 6
 
 local DEFAULTS = {
-    loot  = { point = "BOTTOM", x = 0, y = 173 },   -- between the player cast bar and the action bars
-    toast = { point = "TOP", x = 0, y = -158 },
+    loot  = { point = "BOTTOM", x = 0, y = 140 },   -- between the player cast bar and the action bars (Marcus's, 11-11)
+    toast = { point = "TOP", x = 0, y = -161 },     -- (Marcus's, 11-11)
     objectives = { point = "TOP", x = 0, y = -15 },   -- Blizzard's own spot
 }
 

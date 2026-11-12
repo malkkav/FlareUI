@@ -685,6 +685,8 @@ local function ApplyChoices()
         local module = S.modules[key]
         if module then module:SetOn(c[key]) end
     end
+    -- Bags & Looting came out of Quality of Life (11-12): the tour's Quality of Life tick sets both
+    if S.modules.bl then S.modules.bl:SetOn(c.qol) end
     if c.uf then S.rows["uf.frameStyle"]:Set(c.style) end
     if c.qol then
         S.rows["qol.move"]:Set(c.move and true or false)

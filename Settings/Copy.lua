@@ -25,6 +25,11 @@ ns.Copy = {
             tabs = { L["Settings"], L["Buff Reminders"], L["Fonts"] },
             title = L["Buffs & Debuffs"],
         },
+        bl = {
+            desc = L["Your bags and what you loot."],
+            tabs = { L["Bags"], L["Looting"], L["Fonts"] },
+            title = L["Bags & Looting"],
+        },
         ch = {
             desc = L["A cleaner chat frame with a customisable header."],
             tabs = { L["Frame"], L["Tweaks"], L["Fonts"] },
@@ -46,7 +51,7 @@ ns.Copy = {
         },
         qol = {
             desc = L["Small helpers that save you clicks."],
-            tabs = { L["Gameplay"], L["Bags and Looting"], L["Nameplates"], L["Interface"], L["Fonts"] },
+            tabs = { L["Gameplay"], L["Nameplates"], L["Interface"], L["Fonts"] },
             title = L["Quality of Life"],
         },
         qt = {
@@ -80,6 +85,12 @@ ns.Copy = {
         },
     },
     rows = {
+        ["ab.activeHighlight"] = {
+            desc = L["A gold edge and a light on the active button:\n* Your stance or form\n* A queued Heroic Strike, Cleave, Maul or Raptor Strike (it pulses)\n* Auto Shot and wands while they repeat"],
+            label = L["Active Highlight"],
+            section = "ab.buttonAppearance",
+            tags = { "active stance", "queued attack", "checked" },
+        },
         ["ab.autoRanks"] = {
             desc = L["A newly learned rank replaces the lower rank on your bars."],
             label = L["Update Spell Ranks"],
@@ -206,7 +217,7 @@ ns.Copy = {
         ["ab.gryphonsBehind"] = {
             desc = L["The end art of the main bar sits behind your action bars, not over them."],
             label = L["Gryphons Behind Bars"],
-            section = "ab.buttonAppearance",
+            section = "ab.barAppearance",
         },
         ["ab.hideBagBar"] = {
             desc = L["Hides the bag buttons."],
@@ -547,6 +558,121 @@ ns.Copy = {
             label = L["Timer Colour"],
             section = "au.general",
         },
+        ["bl.bagButtons"] = {
+            desc = L["Your bag slots down the side of the combined backpack:\n* Drag bags in and out\n* Point at one to light its items"],
+            label = L["Integrated Bag Buttons"],
+            section = "bl.bagWindow",
+            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
+        },
+        ["bl.bagColumns"] = {
+            desc = L["Slots per row in the combined backpack. Default keeps Blizzard's 10."],
+            label = L["Columns"],
+            section = "bl.bagWindow",
+            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
+        },
+        ["bl.bagFilters"] = {
+            desc = L["A button beside the bags' cleanup button opens a drawer: Quest Items, Equipment, Materials or Consumables. Everything else dims."],
+            label = L["Category Filters"],
+            section = "bl.tools",
+            tags = { "bag filter", "sort", "category" },
+            tip = L["Right-click the button to clear the filter."],
+        },
+        ["bl.bagGaps"] = {
+            desc = L["Each bag starts a new row in the combined backpack, with a gap above it."],
+            label = L["Gaps Between Bags"],
+            section = "bl.bagWindow",
+            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
+        },
+        ["bl.bagJunkIcon"] = {
+            desc = L["Grey items worth money show a coin all the time, not only at a vendor."],
+            label = L["Junk Coin"],
+            section = "bl.itemSlots",
+        },
+        ["bl.bagKeyring"] = {
+            desc = L["Your keys sit at the bottom of the combined backpack instead of in a keyring window."],
+            label = L["Keyring in Backpack"],
+            section = "bl.bagWindow",
+            tip = L["Needs Combined Bags on in Blizzard's options (Controls). Shows once you've had a key."],
+        },
+        ["bl.bagRarityBorders"] = {
+            desc = L["Frames every item in its quality colour."],
+            label = L["Rarity Colours"],
+            section = "bl.itemSlots",
+            tip = L["Empty slots stay bronze."],
+        },
+        ["bl.bagReagent"] = {
+            desc = L["Your crafting material bag sits at the bottom of the combined backpack instead of in its own window."],
+            label = L["Crafting Bag in Backpack"],
+            section = "bl.bagWindow",
+            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
+        },
+        ["bl.bagThickBorders"] = {
+            desc = L["Bag slots get FlareUI's thick frame instead of the thin one."],
+            label = L["Thicker Borders"],
+            section = "bl.itemSlots",
+        },
+        ["bl.bagUpgradeArrow"] = {
+            desc = L["A green arrow marks gear that beats what you wear."],
+            label = L["Upgrade Arrow"],
+            section = "bl.itemSlots",
+            tip = L["A rough guide from stats: main stat first, then Stamina, then other ratings. Special effects aren't judged."],
+        },
+        ["bl.delete"] = {
+            desc = L["Fills in DELETE when you destroy a valuable item."],
+            label = L["Auto Type \"delete\""],
+            section = "bl.tools",
+            tags = { "auto-type \"delete\"" },
+        },
+        ["bl.fastLoot"] = {
+            desc = L["Loots everything at once, without the loot window."],
+            label = L["Faster Auto Loot"],
+            section = "bl.looting",
+        },
+        ["bl.font.bagItems"] = {
+            desc = L["The stack counts and cooldown numbers on your bag items. Default keeps Blizzard's font."],
+            label = L["Bag Items"],
+        },
+        ["bl.font.lootFeed"] = {
+            desc = L["The lines that float up as you loot."],
+            label = L["Loot Feed"],
+        },
+        ["bl.lootFeed"] = {
+            desc = L["What you loot floats up beside your cursor or a spot you choose, so you don't have to read the chat."],
+            label = L["Loot Feed"],
+            reload = true,
+            section = "bl.lootFeedSection",
+        },
+        ["bl.lootFeedMoney"] = {
+            desc = L["Looted money shows too."],
+            label = L["Show Money"],
+            section = "bl.lootFeedSection",
+        },
+        ["bl.lootFeedPosition"] = {
+            choices = { L["At the Cursor"], L["Where Placed"] },
+            desc = L["Where the feed appears:\n* At the Cursor: beside the pointer, where you looted\n* Where Placed: where you put it in Edit Mode"],
+            label = L["Position"],
+            section = "bl.lootFeedSection",
+        },
+        ["bl.lootFeedQuality"] = {
+            desc = L["Items below this quality are left out."],
+            label = L["Minimum Quality"],
+            section = "bl.lootFeedSection",
+        },
+        ["bl.lootFeedSkills"] = {
+            desc = L["Skill gains show too, such as \"Mining 76\"."],
+            label = L["Show Skill-Ups"],
+            section = "bl.lootFeedSection",
+        },
+        ["bl.petFood"] = {
+            desc = L["A paw marks the food your hunter pet eats."],
+            label = L["Pet Food Marker"],
+            section = "bl.itemSlots",
+        },
+        ["bl.skipLoot"] = {
+            desc = L["No \"will bind to you\" question when you:\n* Loot an item\n* Roll Need or Greed"],
+            label = L["Skip Loot Confirmations"],
+            section = "bl.looting",
+        },
         ["ch.border"] = {
             desc = L["The border around the chat and its edit box."],
             label = L["Border"],
@@ -756,6 +882,13 @@ ns.Copy = {
             section = "dm.tweaks",
             tip = L["Shows while you're in a group."],
         },
+        ["dm.fadeDelay"] = {
+            choices = { L["Instant"], L["5 Seconds"], L["10 Seconds"], L["15 Seconds"], L["30 Seconds"] },
+            desc = L["How long the meter stays before it fades."],
+            label = L["Fade Delay"],
+            section = "dm.frame",
+            tip = L["Needs a Visibility other than Always."],
+        },
         ["dm.fadeSpeed"] = {
             choices = { L["Instant"], L["Fast"], L["Slow"] },
             desc = L["How fast the meter appears and disappears.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
@@ -851,6 +984,10 @@ ns.Copy = {
             desc = L["A dark outline around the letters."],
             label = L["Outline"],
         },
+        ["font.reset"] = {
+            desc = L["Puts this font back to its defaults."],
+            label = L["Reset"],
+        },
         ["font.shadow"] = {
             choices = { L["None"], L["Soft"], L["Strong"] },
             desc = L["A drop shadow under the letters.\n* Soft: 1 pixel away\n* Strong: 2 pixels away"],
@@ -876,11 +1013,13 @@ ns.Copy = {
             label = L["FPS and Latency on Clock"],
             section = "mm.tweaks",
         },
-        ["mm.coordsHover"] = {
-            desc = L["Your coordinates under the minimap show only while you point at it."],
-            label = L["Coordinates on Mouseover"],
+        ["mm.coords"] = {
+            choices = { L["Off"], L["Always"], L["On Mouseover"] },
+            desc = L["Your coordinates under the minimap."],
+            label = L["Coordinates"],
             section = "mm.tweaks",
             tags = { "coordinates on hover" },
+            tip = L["The same as Blizzard's own Coordinates option: turning one off turns off the other."],
         },
         ["mm.font.clock"] = {
             desc = L["The time at the right end of the bar."],
@@ -889,6 +1028,13 @@ ns.Copy = {
         ["mm.font.zone"] = {
             desc = L["The zone's name along the top of the minimap."],
             label = L["Zone Name"],
+        },
+        ["mm.fps"] = {
+            choices = { L["Off"], L["Always"], L["On Mouseover"] },
+            desc = L["Your framerate at the minimap's bottom right."],
+            label = L["Framerate"],
+            section = "mm.tweaks",
+            tags = { "fps frames per second performance" },
         },
         ["mm.microMenu"] = {
             desc = L["Middle-click the minimap for a menu of game panels: character, spellbook, talents, quest log and more."],
@@ -933,58 +1079,6 @@ ns.Copy = {
             section = "qol.convenience",
             tip = L["Hold Shift to stop it. Reward choices, gold costs and repeatable quests wait for you."],
         },
-        ["qol.bagButtons"] = {
-            desc = L["Your bag slots down the side of the combined backpack:\n* Drag bags in and out\n* Point at one to light its items"],
-            label = L["Integrated Bag Buttons"],
-            section = "qol.bags",
-            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
-        },
-        ["qol.bagColumns"] = {
-            desc = L["Slots per row in the combined backpack. Default keeps Blizzard's 10."],
-            label = L["Columns"],
-            section = "qol.bags",
-            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
-        },
-        ["qol.bagGaps"] = {
-            desc = L["Each bag starts a new row in the combined backpack, with a gap above it."],
-            label = L["Gaps Between Bags"],
-            section = "qol.bags",
-            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
-        },
-        ["qol.bagJunkIcon"] = {
-            desc = L["Grey items worth money show a coin all the time, not only at a vendor."],
-            label = L["Junk Coin"],
-            section = "qol.bags",
-        },
-        ["qol.bagKeyring"] = {
-            desc = L["Your keys sit at the bottom of the combined backpack instead of in a keyring window."],
-            label = L["Keyring in Backpack"],
-            section = "qol.bags",
-            tip = L["Needs Combined Bags on in Blizzard's options (Controls). Shows once you've had a key."],
-        },
-        ["qol.bagRarityBorders"] = {
-            desc = L["Frames every item in its quality colour."],
-            label = L["Rarity Colours"],
-            section = "qol.bags",
-            tip = L["Empty slots stay bronze."],
-        },
-        ["qol.bagReagent"] = {
-            desc = L["Your crafting material bag sits at the bottom of the combined backpack instead of in its own window."],
-            label = L["Crafting Bag in Backpack"],
-            section = "qol.bags",
-            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
-        },
-        ["qol.bagThickBorders"] = {
-            desc = L["Bag slots get FlareUI's thick frame instead of the thin one."],
-            label = L["Thicker Borders"],
-            section = "qol.bags",
-        },
-        ["qol.bagUpgradeArrow"] = {
-            desc = L["A green arrow marks gear that beats what you wear."],
-            label = L["Upgrade Arrow"],
-            section = "qol.bags",
-            tip = L["A rough guide from stats: main stat first, then Stamina, then other ratings. Special effects aren't judged."],
-        },
         ["qol.bulkBuy"] = {
             desc = L["Shift-click a vendor item to buy many at once, even items that don't stack:\n* Stack: fills in one stack\n* MAX: fills in the most you can buy"],
             label = L["Enhanced Vendor Purchases"],
@@ -997,22 +1091,11 @@ ns.Copy = {
             label = L["Better Camera"],
             section = "qol.camera",
         },
-        ["qol.delete"] = {
-            desc = L["Fills in DELETE when you destroy a valuable item."],
-            label = L["Auto Type \"delete\""],
-            section = "qol.bags",
-            tags = { "auto-type \"delete\"" },
-        },
         ["qol.durability"] = {
             desc = L["Warns you when your gear drops below 50% durability."],
             label = L["Durability Warning"],
             section = "qol.vendor",
             tip = L["Thrown weapons don't count: they lose durability with every throw."],
-        },
-        ["qol.fastLoot"] = {
-            desc = L["Loots everything at once, without the loot window."],
-            label = L["Faster Auto Loot"],
-            section = "qol.looting",
         },
         ["qol.fishCast"] = {
             desc = L["With a fishing pole equipped, right-click the world twice quickly to cast Fishing."],
@@ -1025,10 +1108,6 @@ ns.Copy = {
             label = L["Fishing Sounds"],
             section = "qol.convenience",
             tip = L["Your volumes return when you move, fight or stop fishing for a while."],
-        },
-        ["qol.font.lootFeed"] = {
-            desc = L["The lines that float up as you loot."],
-            label = L["Loot Feed"],
         },
         ["qol.font.zoneText"] = {
             desc = L["The zone's name that appears as you enter a new area. Default keeps Blizzard's font; its size stays."],
@@ -1068,33 +1147,6 @@ ns.Copy = {
             label = L["Zone Text"],
             reload = true,
             section = "qol.hideClutter",
-        },
-        ["qol.lootFeed"] = {
-            desc = L["What you loot floats up beside your cursor or a spot you choose, so you don't have to read the chat."],
-            label = L["Loot Feed"],
-            reload = true,
-            section = "qol.lootFeedSection",
-        },
-        ["qol.lootFeedMoney"] = {
-            desc = L["Looted money shows too."],
-            label = L["Show Money"],
-            section = "qol.lootFeedSection",
-        },
-        ["qol.lootFeedPosition"] = {
-            choices = { L["At the Cursor"], L["Where Placed"] },
-            desc = L["Where the feed appears:\n* At the Cursor: beside the pointer, where you looted\n* Where Placed: where you put it in Edit Mode"],
-            label = L["Position"],
-            section = "qol.lootFeedSection",
-        },
-        ["qol.lootFeedQuality"] = {
-            desc = L["Items below this quality are left out."],
-            label = L["Minimum Quality"],
-            section = "qol.lootFeedSection",
-        },
-        ["qol.lootFeedSkills"] = {
-            desc = L["Skill gains show too, such as \"Mining 76\"."],
-            label = L["Show Skill-Ups"],
-            section = "qol.lootFeedSection",
         },
         ["qol.mailBook"] = {
             desc = L["A button beside Send Mail's \"To:\" lists:\n* The last character you mailed\n* Your other characters here"],
@@ -1214,11 +1266,6 @@ ns.Copy = {
             section = "qol.controller",
             tip = L["Off: FlareUI's tracker stays, without its right-click menus."],
         },
-        ["qol.petFood"] = {
-            desc = L["A paw marks the food your hunter pet eats."],
-            label = L["Pet Food Marker"],
-            section = "qol.bags",
-        },
         ["qol.repair"] = {
             desc = L["Repairs your gear at vendors that can."],
             label = L["Auto Repair"],
@@ -1240,11 +1287,6 @@ ns.Copy = {
             desc = L["Sells your grey items when you open a vendor."],
             label = L["Auto Sell Junk"],
             section = "qol.vendor",
-        },
-        ["qol.skipLoot"] = {
-            desc = L["No \"will bind to you\" question when you:\n* Loot an item\n* Roll Need or Greed"],
-            label = L["Skip Loot Confirmations"],
-            section = "qol.looting",
         },
         ["qol.source"] = {
             desc = L["Every other character copies its settings from this one."],
@@ -1310,7 +1352,7 @@ ns.Copy = {
         },
         ["qt.colorNames"] = {
             desc = L["Quest names in their difficulty colour. Completed and focused quests stay green and blue."],
-            label = L["Colour Names by Difficulty"],
+            label = L["Colour by Difficulty"],
             section = "qt.display",
         },
         ["qt.completedLast"] = {
@@ -1456,6 +1498,13 @@ ns.Copy = {
             label = L["Combo Points"],
             section = "rb.bars",
         },
+        ["rb.flight"] = {
+            desc = L["A bar while you're on a flight path: where you're going and the time left."],
+            label = L["Flight Timer"],
+            section = "rb.bars",
+            tags = { "flight path taxi timer" },
+            tip = L["Each route is learned the first time you fly it. Its time then shows on the flight map too."],
+        },
         ["rb.font.text"] = {
             desc = L["Numbers and labels on the resource bars."],
             label = L["Bar Text"],
@@ -1476,22 +1525,24 @@ ns.Copy = {
             section = "rb.bars",
             tip = L["In caster form, Power shows your mana."],
         },
-        ["rb.palette"] = {
-            choices = { L["FlareUI"], L["Blizzard"], L["Custom"] },
-            desc = L["The resource bars' colours, apart from the unit frames':\n* FlareUI: softer, darker tones\n* Blizzard: the game's own\n* Custom: your own, starting from the palette you had"],
-            label = L["Colour Palette"],
-            section = "rb.look",
-        },
         ["rb.pickColors"] = {
-            desc = L["Every resource bar colour in one window, with the bars beside them."],
-            label = L["Pick Your Colours"],
+            desc = L["Every resource bar colour in one window, with the bars beside them. Suggested palettes there: FlareUI (the default) and Blizzard."],
+            label = L["Bar Colours"],
             section = "rb.look",
-            tip = L["Right-click a colour to give it back to the palette."],
+            tags = { "colour palette colors custom blizzard" },
+            tip = L["Until you pick one, the bars follow the unit frames' palette. Change any colour and it becomes Custom."],
         },
         ["rb.power"] = {
             desc = L["Your rage, energy, mana or focus."],
             label = L["Power"],
             section = "rb.bars",
+        },
+        ["rb.seal"] = {
+            desc = L["Your paladin seal and its time left, each seal in its own colour."],
+            label = L["Paladin Seals"],
+            section = "rb.bars",
+            tags = { "seal tracker paladin" },
+            tip = L["Pick each seal's colour in Bar Colours."],
         },
         ["rb.swingMain"] = {
             desc = L["A timer for each weapon's next swing."],
@@ -1876,12 +1927,6 @@ ns.Copy = {
             label = L["Main Frames"],
             section = "uf.frames",
         },
-        ["uf.palette"] = {
-            choices = { L["FlareUI"], L["Blizzard"], L["Custom"] },
-            desc = L["The colours of every unit frame bar:\n* FlareUI: softer, darker tones\n* Blizzard: the game's own\n* Custom: your own, starting from the palette you had"],
-            label = L["Colour Palette"],
-            section = "uf.look",
-        },
         ["uf.party"] = {
             desc = L["Your party, in one of two styles:\n* Classic: like the player frame\n* Raid Style: compact tiles"],
             label = L["Party Frames"],
@@ -1945,10 +1990,11 @@ ns.Copy = {
             label = L["Style"],
         },
         ["uf.pickColors"] = {
-            desc = L["Every unit frame colour in one window, with the frames beside them."],
-            label = L["Pick Your Colours"],
+            desc = L["Every unit frame colour in one window, with the frames beside them. Suggested palettes there: FlareUI (softer, darker tones, the default) and Blizzard (the game's own)."],
+            label = L["Frame Colours"],
             section = "uf.look",
-            tip = L["Right-click a colour to give it back to the palette."],
+            tags = { "colour palette colors custom blizzard" },
+            tip = L["Change any colour and the palette becomes Custom. Right-click a colour to give it back."],
         },
         ["uf.player.fsr"] = {
             desc = L["After you spend mana, a spark crosses the bar for five seconds."],
@@ -2003,6 +2049,11 @@ ns.Copy = {
         ["au.reminderAlerts"] = L["Alerts"],
         ["au.reminderHiding"] = L["Group Buff Filters"],
         ["au.reminderSection"] = L["Buff Reminders"],
+        ["bl.bagWindow"] = L["Bag Window"],
+        ["bl.itemSlots"] = L["Item Slots"],
+        ["bl.lootFeedSection"] = L["Loot Feed"],
+        ["bl.looting"] = L["Looting"],
+        ["bl.tools"] = L["Tools"],
         ["ch.editBoxSection"] = L["Edit Box"],
         ["ch.formatting"] = L["Formatting |cffff4040(Outside Instances Only)|r"],
         ["ch.frame"] = L["Frame"],
@@ -2014,14 +2065,11 @@ ns.Copy = {
         ["dm.tweaks"] = L["Tweaks"],
         ["mm.styleSection"] = L["Style"],
         ["mm.tweaks"] = L["Tweaks"],
-        ["qol.bags"] = L["Bags"],
         ["qol.camera"] = L["Camera"],
         ["qol.controller"] = L["Gamepad"],
         ["qol.convenience"] = L["Convenience"],
         ["qol.cursor"] = L["Cursor"],
         ["qol.hideClutter"] = L["Hide Clutter"],
-        ["qol.lootFeedSection"] = L["Loot Feed"],
-        ["qol.looting"] = L["Looting"],
         ["qol.nameplates"] = L["Nameplates"],
         ["qol.scale"] = L["Interface Scale"],
         ["qol.syncBlizzUi"] = L["Sync Blizz UI"],

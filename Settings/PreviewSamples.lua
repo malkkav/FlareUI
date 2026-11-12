@@ -143,7 +143,7 @@ function R.unit(c, spec)
     else
         local frame = Unit(c, 'playerSample', style, 'player', 4, c.width - 16)
         -- Colour Palette (11-11 Marcus): FlareUI's colours shown washed, Blizzard's bright
-        if frame and spec.key == 'uf.palette' and Get('unitframes.palette', 'flareui') ~= 'custom' then
+        if frame and spec.key == 'uf.pickColors' and Get('unitframes.palette', 'flareui') ~= 'custom' then
             local flare = Get('unitframes.palette', 'flareui') ~= 'blizzard'
             for _, bar in ipairs({ frame.Health, frame.Power }) do
                 local r, g, b = bar:GetStatusBarColor()
@@ -258,7 +258,8 @@ function R.minimap(outer, spec)
     local round = style == 'round'
     c:Text('zoneName', L["Deathknell"], round and 76 or x + 12, round and 48 or y + 8, round and 128 or size - 80, { size = 12 })
     c:Text('stats', '17:49', round and 108 or x + size - 60, round and 224 or y + 8, 65, { size = 11 })
-    if not Get('minimap.coordsOnHover') then c:Text('coords', '48.2, 36.7', x + 65, y + size - 20, 130, { size = 12 }) end
+    if Get('minimap.coords', 'hover') == 'always' then c:Text('coords', '48.2, 36.7', x + 65, y + size - 20, 130, { size = 12 }) end
+    if Get('minimap.fps', 'off') == 'always' then c:Text('fps', '60', x + size - 48, y + size - 20, 30, { size = 12 }) end
     -- Icons live on the overlay frame, above every border/backdrop frame.
     c:Texture('dayNight', P.MEDIA .. 'Previews\\Sun.tga', 10, 237, 32, 32, true)
     if spec.key == 'mm.bagHover' and not card then c:Texture('drawerPointer',P.MEDIA..'Previews\\Cursor.tga',20,243,24,32,true) end
@@ -804,7 +805,7 @@ end
 
 function R.lootFeed(c, spec)
     Heading(c,L["Loot Feed"])
-    if spec.key == 'qol.lootFeed' and not Get('tweaks.lootFeed') then c:Text('feedOff',L["Disabled"],12,90); return end
+    if spec.key == 'bl.lootFeed' and not Get('tweaks.lootFeed') then c:Text('feedOff',L["Disabled"],12,90); return end
     local atCursor=Get('tweaks.lootFeedPosition','cursor')=='cursor'
     local x=atCursor and 36 or 12
     if atCursor then c:Texture('feedCursor',P.MEDIA..'Previews\\Cursor.tga',8,98,24,32,true) end
