@@ -1,3 +1,22 @@
+# FlareUI 6.2 (unreleased)
+
+**Restart the game fully after updating** (not just /reload): this version adds a new file.
+
+## Highlights
+- **Buff Reminders** gets a new Reminders tab: your reminder bar as it looks in game, a spellbook to pick from, and the picked reminder's own settings.
+
+## New
+- Buff Reminders: pick what to be reminded of from a spellbook. The tabs are your class's reminders, each spellbook line, your bags and upkeep (supplies, durability, trinkets, camping, gathering). Click a buff to put it on the bar.
+  - Any spell in your spellbook that isn't harmful can be a reminder, and so can a consumable in your bags. No more typing spell IDs.
+  - Spells you haven't learned yet and spells that leave no buff are greyed out.
+- Buff Reminders: each reminder can have its own **Check On** (Me, Party, Raid), **Remind Me** (how long before it runs out) and **Show** (Always, Instances, Raids). **Use Defaults** puts it back.
+- Buff Reminders: move a reminder left or right on the bar. The blessing, weapon buff per hand, and who keeps Thorns or the Soulstone can be picked on the page too, as well as with a right-click.
+
+## Changed
+- Buff Reminders: **When and Where** is now **Defaults**: the values a reminder takes until it has its own.
+- Buff Reminders: Extra Buffs, Weapon Oil / Stone, Food and Flask, Elixirs and More, Low Supplies, Low Durability, Worn Trinkets, Camping and Rest, Gathering Tracking, Add Custom Reminder and Hidden Reminders are gone from the settings: put the reminder on the bar instead. Your bar starts with what you had on.
+- Buff Reminders: right-click **Never Remind Me** takes the reminder off the bar.
+
 # FlareUI 6.1
 
 **Restart the game fully after updating** (not just /reload): this version adds a new file.

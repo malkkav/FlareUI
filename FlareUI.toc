@@ -92,6 +92,7 @@ TaintWatch.lua
 Settings\EditModeLayout.lua
 Settings\Welcome.lua
 Settings\RadialEditor.lua
+Settings\BuffRemindersEditor.lua
 Settings\Copy.lua
 Settings\WhatsNew.lua
 Settings\Registry.lua

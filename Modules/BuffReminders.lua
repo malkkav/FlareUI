@@ -13,6 +13,9 @@ local L = ns.L
 -- raids, or always; icons only, nothing to click). When It Shows: Solo / Party / Raid, Hide in Rested
 -- Areas, Only When You're the Only Provider (a group buff no one else of your class gives). Alerts: a
 -- sound when a reminder appears, a gold glow on missing buffs, an orange one on buffs running out.
+-- The bar (6.2): what is watched is an ordered list per class (db.bar[CLASS]), picked on the settings
+-- page from a spellbook (Settings/BuffRemindersEditor.lua); who, when and where can be set per
+-- reminder (db.opts[CLASS][id]), else the Defaults tab's values count.
 --------------------------------------------------
 local BR = {}
 ns.BuffReminders = BR
@@ -110,6 +113,10 @@ table.insert(REMINDERS.WARLOCK, { key = "healthstone", healthstone = true, cast 
 table.insert(REMINDERS.WARLOCK, { key = "soulstone", soulstone = true, cast = { 20757, 20756, 20755, 20752, 693 } })
 -- Soul Link (talent): only while a pet is out
 table.insert(REMINDERS.WARLOCK, { key = "soulLink", cast = { 19028 }, needPet = true })
+-- a class's own reminder (its Where default is Class Buffs')
+for _, defs in pairs(REMINDERS) do
+    for _, def in ipairs(defs) do def.classDef = true end
+end
 -- Demonic Sacrifice's buffs (Imp, Voidwalker, Succubus, Felhunter): one up, no pet is wanted
 local SACRIFICE_BUFFS = { 18789, 18790, 18791, 18792 }
 local SOULSTONES = { 16896, 16895, 16893, 16892, 5232 }                -- Major to Minor
@@ -154,6 +161,7 @@ local ELIXIRS = {
     { key = "lungJuice", items = { 8411 }, buff = 10668 }, { key = "cerebral", items = { 8423 }, buff = 10692 },
     { key = "gizzard", items = { 8424 }, buff = 10693 }, { key = "rumsey", items = { 21151 }, buff = 25804 },
 }
+for _, def in ipairs(ELIXIRS) do def.elixir = true end
 
 -- Low Supplies (11-12, off): a reagent below its minimum, once you know the spell that needs it
 -- (item, minimum, the spells that use it); a hunter's ammo is counted on its own
@@ -305,6 +313,21 @@ end
 
 local function ItemCount(id) return C_Item.GetItemCount and C_Item.GetItemCount(id) or 0 end
 local function ItemIcon(id) return C_Item.GetItemIconByID and C_Item.GetItemIconByID(id) or 134400 end
+local function ItemName(id)
+    local name = C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
+    if not name and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
+    return name
+end
+local function PlayerClass() local _, class = UnitClass("player"); return class end
+
+-- a reminder's id on the bar: its key; an elixir's and your own carry a prefix (an elixir's key can be
+-- a class buff's: Fortitude)
+function BR.BarId(def)
+    if not def then return nil end
+    if def.elixir then return "elixir:" .. def.key end
+    if def.custom then return "custom:" .. tostring(def.stored and def.stored.uid or def.key) end
+    return def.key
+end
 
 -- a weapon option you can put on: an imbue you know, a stone you can make or have, any poison
 local function BestCreate(o)
@@ -520,7 +543,6 @@ local function Resolve()
     active[#active + 1] = { def = { key = "durability", durability = true }, names = {}, icon = DURABILITY_ICON }
     active[#active + 1] = { def = { key = "trinket", trinket = true }, names = {}, icon = ItemIcon(12846) }
     for _, def in ipairs(ELIXIRS) do
-        def.elixir = true
         local names = {}
         local name = SpellName(def.buff)
         if name then names[name] = true end
@@ -535,31 +557,21 @@ local function Resolve()
         end
         active[#active + 1] = { def = def, names = names, icon = SpellIcon(def.icon) }
     end
+    -- each one's place on the bar (a weapon kind's two hands share one), and its place in this list
+    for i, entry in ipairs(active) do
+        entry.barId, entry.pos = BR.BarId(entry.def), i
+    end
 end
 
 BR.Resolve = function() Resolve() end
 
--- the reminders the settings leave on
--- Right-click an icon: hide that reminder until reload, or for good (db.hidden, "CLASS:key", so a mage's
--- and a warlock's armour stay apart); the Buff Reminders tab shows them all again
+-- Right-click an icon: hide that reminder until reload, snooze it, or take it off the bar ("CLASS:key",
+-- so a mage's and a warlock's armour stay apart). db.hidden (6.1's Never Remind Me) is read once, by
+-- BR.DefaultBar.
 local dismissed = {}
 local snoozed = {}   -- Snooze Until Recast: hidden until the buff is seen again
 function BR.HideKey(entry)
-    local _, class = UnitClass("player")
-    return (class or "") .. ":" .. (entry.key or entry.def and entry.def.key or "")
-end
-function BR.HiddenCount()
-    local db = GetDb() or {}
-    local n = 0
-    for _ in pairs(db.hidden or {}) do n = n + 1 end
-    for _ in pairs(dismissed) do n = n + 1 end
-    return n
-end
-function BR.ShowHidden()
-    local db = GetDb()
-    if db then db.hidden = nil end
-    wipe(dismissed)
-    BR.Update()
+    return (PlayerClass() or "") .. ":" .. (entry.key or entry.def and entry.def.key or "")
 end
 
 -- where a kind of reminder shows: "always", "instance" (dungeons and raids) or "raid"
@@ -570,61 +582,38 @@ local function InScope(mode)
     return inInstance and (kind == "party" or kind == "raid") or false
 end
 
--- Custom Reminders (11-12): your own, per class (db.custom[class]): spell IDs or names and item IDs,
--- any one of them counts. A click casts the first spell you know, else uses the first item in your bags.
+-- Your own reminders (11-12; 6.2: picked from the spellbook or the bags), per class (db.custom[class]):
+-- { uid, spells = { IDs or names }, items = { IDs } }, any one of them counts. A click casts the first
+-- spell you know, else uses the first item in your bags. The uid is its id on the bar ("custom:uid").
 local function CustomList(create)
     local db = GetDb()
     if not db then return nil end
-    local _, class = UnitClass("player")
+    local class = PlayerClass()
     if create then
         db.custom = db.custom or {}
         db.custom[class] = db.custom[class] or {}
     end
-    return db.custom and db.custom[class]
-end
-function BR.CustomCount()
-    local list = CustomList()
-    return list and #list or 0
-end
--- "1459, 23028" / "Arcane Intellect" / "item:13452": spells (by ID or name) and items
-function BR.AddCustom(text)
-    if type(text) ~= "string" then return end
-    local spells, items = {}, {}
-    for raw in text:gmatch("[^,;]+") do
-        local part = strtrim(raw)
-        local itemID = tonumber(part:match("^item:(%d+)$"))
-        local number = tonumber(part)
-        if itemID then
-            items[#items + 1] = itemID
-        elseif number and C_Spell.GetSpellName(number) then
-            spells[#spells + 1] = number
-        elseif number and C_Item.GetItemInfoInstant and C_Item.GetItemInfoInstant(number) then
-            items[#items + 1] = number
-        elseif part ~= "" and not number then
-            spells[#spells + 1] = part
+    local list = db.custom and db.custom[class]
+    for _, c in ipairs(list or {}) do
+        if not c.uid then
+            db.customSeq = (db.customSeq or 0) + 1
+            c.uid = db.customSeq
         end
     end
-    if #spells == 0 and #items == 0 then return end
-    local list = CustomList(true)
-    list[#list + 1] = { spells = spells, items = items }
-    BR.Resolve()
-    BR.Update()
+    return list
 end
-function BR.ClearCustom()
-    local db = GetDb()
-    local _, class = UnitClass("player")
-    if db and db.custom then db.custom[class] = nil end
-    BR.Resolve()
-    BR.Update()
-end
-local function RemoveCustom(def)
-    local list = CustomList()
-    if not list then return end
-    for i, c in ipairs(list) do
-        if c == def.stored then table.remove(list, i) break end
+-- your own reminder that is exactly this one spell (any rank: by name) or this one item, if there is one
+function BR.FindOwn(spellID, itemID)
+    local name = spellID and SpellName(spellID)
+    for _, c in ipairs(CustomList() or {}) do
+        local s, i = c.spells or {}, c.items or {}
+        if spellID and #s == 1 and #i == 0 then
+            local mine = type(s[1]) == "number" and SpellName(s[1]) or s[1]
+            if s[1] == spellID or (name and mine == name) then return "custom:" .. c.uid, c end
+        elseif itemID and #i == 1 and #s == 0 and i[1] == itemID then
+            return "custom:" .. c.uid, c
+        end
     end
-    BR.Resolve()
-    BR.Update()
 end
 function BR.CustomEntries(out)
     for i, c in ipairs(CustomList() or {}) do
@@ -649,7 +638,216 @@ function BR.CustomEntries(out)
     end
 end
 
-local Enabled
+--------------------------------------------------
+-- THE BAR (6.2)
+-- db.bar[CLASS]: the reminders that are on, in the order they show. Made once per class from the 6.1
+-- settings (BR.DefaultBar), so an update shows what showed before. Changes tell the settings page.
+--------------------------------------------------
+local listeners = {}
+function BR.OnChanged(fn) listeners[#listeners + 1] = fn end
+local function Changed()
+    for _, fn in ipairs(listeners) do
+        local ok, err = pcall(fn)
+        if not ok then geterrorhandler()(err) end
+    end
+end
+
+-- what 6.1 showed: the class's buffs (less the ones never to remind of, plus the ticked Extra Buffs),
+-- then the old Reminders tab's switches, then your own
+function BR.DefaultBar(class)
+    local db = GetDb() or {}
+    local hidden = db.hidden or {}
+    local list, seen = {}, {}
+    local function Add(id, hideKey)
+        if seen[id] or hidden[class .. ":" .. (hideKey or id)] then return end
+        seen[id] = true
+        list[#list + 1] = id
+    end
+    local extras = ns.Conditions.Set(db.extras or "")
+    for _, def in ipairs(REMINDERS[class] or {}) do
+        if not def.optIn or extras[def.key] then Add(def.key) end
+    end
+    if db.camping then Add("camp"); Add("sleepingBag") end
+    if db.gathering then Add("gathering") end
+    if db.weaponOil then Add("oil") end
+    if (db.consumables or "off") ~= "off" then
+        Add("food"); Add("flask")
+        local ticked = ns.Conditions.Set(db.elixirs or "")
+        for _, def in ipairs(ELIXIRS) do
+            if ticked[def.key] then Add("elixir:" .. def.key, def.key) end
+        end
+    end
+    if db.supplies then
+        for _, s in ipairs(SUPPLIES[class] or {}) do Add("supply" .. s.item) end
+        if class == "HUNTER" then Add("ammo") end
+    end
+    if db.durability then Add("durability") end
+    if db.trinkets then Add("trinket") end
+    for i, c in ipairs(db.custom and db.custom[class] or {}) do
+        if c.uid then Add("custom:" .. c.uid, "custom" .. i) end
+    end
+    return list
+end
+
+function BR.Bar()
+    local db = GetDb()
+    if not db then return {} end
+    local class = PlayerClass()
+    db.bar = db.bar or {}
+    if not db.bar[class] then
+        CustomList()   -- (gives your own their uids first)
+        db.bar[class] = BR.DefaultBar(class)
+    end
+    return db.bar[class]
+end
+
+-- id -> place on the bar, rebuilt when the bar is edited or another profile's is read
+local barIndex, barFor = {}, nil
+local function BarIndex()
+    local list = BR.Bar()
+    if list ~= barFor then
+        barFor = list
+        wipe(barIndex)
+        for i, id in ipairs(list) do barIndex[id] = i end
+    end
+    return barIndex
+end
+function BR.OnBar(id) return id ~= nil and BarIndex()[id] ~= nil end
+local function BarEdited()
+    barFor = nil
+    BR.Update()
+    Changed()
+end
+
+function BR.AddToBar(id)
+    if not id then return end
+    if not BR.OnBar(id) then
+        local list = BR.Bar()
+        list[#list + 1] = id
+        BarEdited()
+    end
+    return id
+end
+
+-- your own from a spell or an item (the one you already have for it, else a new one)
+function BR.AddOwn(spellID, itemID)
+    local id = BR.FindOwn(spellID, itemID)
+    if not id then
+        local list = CustomList(true)
+        if not list then return end
+        local db = GetDb()
+        db.customSeq = (db.customSeq or 0) + 1
+        list[#list + 1] = { uid = db.customSeq, spells = { spellID }, items = { itemID } }
+        id = "custom:" .. db.customSeq
+        Resolve()
+    end
+    return BR.AddToBar(id)
+end
+
+function BR.RemoveFromBar(id)
+    if not id then return end
+    local list = BR.Bar()
+    for i, have in ipairs(list) do
+        if have == id then table.remove(list, i) break end
+    end
+    local db = GetDb()
+    local class = PlayerClass()
+    if db and db.opts and db.opts[class] then db.opts[class][id] = nil end
+    -- your own goes for good (picking it again makes it anew)
+    local uid = tonumber(id:match("^custom:(%d+)$") or "")
+    if uid then
+        local custom = CustomList()
+        for i, c in ipairs(custom or {}) do
+            if c.uid == uid then table.remove(custom, i) break end
+        end
+        Resolve()
+    end
+    BarEdited()
+end
+
+function BR.MoveOnBar(id, delta)
+    local list = BR.Bar()
+    for i, have in ipairs(list) do
+        if have == id then
+            local j = i + delta
+            if j < 1 or j > #list then return end
+            list[i], list[j] = list[j], list[i]
+            BarEdited()
+            return
+        end
+    end
+end
+
+--------------------------------------------------
+-- PER REMINDER: WHO, WHEN, WHERE (6.2)
+-- db.opts[CLASS][id] = { who = "all"|"party"|"self", before = minutes, where = "always"|"instance"|"raid" };
+-- a field not set takes the Defaults tab's value (Group Buffs, Remind Before It Ends, Where)
+--------------------------------------------------
+local function DefaultBefore()
+    local db = GetDb() or {}
+    local minutes = db.before or 2
+    local inInstance, kind = IsInInstance()
+    local special = inInstance and ((kind == "party" and db.beforeDungeon) or (kind == "raid" and db.beforeRaid))
+    if type(special) == "number" then minutes = special end
+    return minutes
+end
+local function DefaultWhere(def)
+    local db = GetDb() or {}
+    if def.weapon then return db.weaponScope or "always" end
+    if def.pet then return db.petScope or "always" end
+    if def.elixir or def.consumable then return db.consumablesWhere or "instance" end
+    if def.classDef then return db.classScope or "always" end
+    return "always"
+end
+local function OptsFor(id, create)
+    local db = GetDb()
+    if not (db and id) then return nil end
+    local class = PlayerClass()
+    if create then
+        db.opts = db.opts or {}
+        db.opts[class] = db.opts[class] or {}
+        db.opts[class][id] = db.opts[class][id] or {}
+    end
+    return db.opts and db.opts[class] and db.opts[class][id]
+end
+-- the value, and true when it is the reminder's own (not the default)
+function BR.Opt(def, id, field)
+    local o = OptsFor(id)
+    if o and o[field] ~= nil then return o[field], true end
+    if field == "who" then return (GetDb() or {}).group or "all", false end
+    if field == "before" then return DefaultBefore(), false end
+    return DefaultWhere(def or {}), false
+end
+local function Opt(entry, field) return BR.Opt(entry.def, entry.barId, field) end
+function BR.SetOpt(id, field, value)
+    local o = OptsFor(id, true)
+    if not o then return end
+    o[field] = value
+    BR.Update()
+    Changed()
+end
+function BR.ResetOpts(id)
+    local db = GetDb()
+    local class = PlayerClass()
+    if db and db.opts and db.opts[class] then db.opts[class][id] = nil end
+    BR.Update()
+    Changed()
+end
+function BR.HasOwnOpts(id)
+    local o = OptsFor(id)
+    return o ~= nil and next(o) ~= nil
+end
+-- which of the three a reminder takes: who for group buffs (not Battle Shout's party), when for the
+-- ones that run out, where for all
+function BR.OptFields(def)
+    def = def or {}
+    local who = (def.group or def.blessing or def.soulstone) and not def.party
+    local untimed = def.supply or def.ammo or def.durability or def.trinket or def.pet or def.healthstone
+        or def.stance or def.bag or def.camp or def.gathering or def.soulstone or def.aspect
+    return { who = who and true or false, before = not untimed, where = true }
+end
+
+local Enabled, Ordered
 -- the reminders the settings leave on, for From the Middle's room
 function BR.EnabledCount()
     local n = 0
@@ -658,29 +856,11 @@ function BR.EnabledCount()
 end
 
 function Enabled(entry)
-    local db = GetDb() or {}
-    local hideKey = BR.HideKey(entry)
-    if dismissed[hideKey] or (db.hidden and db.hidden[hideKey]) then return false end
-
+    if dismissed[BR.HideKey(entry)] then return false end
+    if not BarIndex()[entry.barId] then return false end
     -- the off-hand's reminder: only with a weapon there
     if entry.slot == 17 and not OffHandWeapon() then return false end
-    if entry.def.camp or entry.def.bag then return db.camping == true end
-    if entry.def.gathering then return db.gathering == true end
-    if (entry.def.supply or entry.def.ammo) and db.supplies ~= true then return false end
-    if entry.def.durability and db.durability ~= true then return false end
-    if entry.def.trinket and db.trinkets ~= true then return false end
-    if entry.def.optIn and not ns.Conditions.Set(db.extras or "")[entry.def.key] then return false end
-    if entry.def.weapon == "oil" and db.weaponOil ~= true then return false end
-    -- Weapon Buffs, Pets and the class's own buffs: where they show (11-12)
-    if entry.def.weapon and not InScope(db.weaponScope) then return false end
-    if entry.def.pet and not InScope(db.petScope) then return false end
-    if entry.classBuff and not entry.def.weapon and not entry.def.pet and not InScope(db.classScope) then return false end
-    -- an elixir: ticked in Elixirs and More, and where food and flask show
-    if entry.def.elixir then
-        local mode = db.consumables or "off"
-        if mode == "off" or not ns.Conditions.Set(db.elixirs or "")[entry.def.key] then return false end
-        return InScope(mode)
-    end
+    if not InScope(Opt(entry, "where")) then return false end
     if entry.def.notRole and not ns.EditPreviewing() then
         local ok, role = pcall(UnitGroupRolesAssigned, "player")
         if ok and Readable(role) and role == entry.def.notRole then return false end
@@ -689,21 +869,16 @@ function Enabled(entry)
         local ok, role = pcall(UnitGroupRolesAssigned, "player")
         return ok and Readable(role) and role == entry.def.role or false
     end
-    if entry.def.consumable then
-        local mode = db.consumables or "off"
-        if mode == "off" then return false end
-        return InScope(mode)
-    end
     return true
 end
 
 --------------------------------------------------
 -- 3. WHO IS MISSING WHAT
 --------------------------------------------------
-local function GroupUnits(out)
+-- scope: the reminder's Check On ("all", "party" or "self")
+local function GroupUnits(out, scope)
     wipe(out)
-    local db = GetDb()
-    local scope = db and db.group or "all"
+    scope = scope or "all"
     if scope ~= "self" and IsInRaid() then
         if scope == "all" then
             for i = 1, GetNumGroupMembers() do out[#out + 1] = "raid" .. i end
@@ -942,6 +1117,7 @@ local units = {}
 -- reminder's own: a blessing or a pet's), and whether nothing is missing, only running out
 local function Check(entry, before)
     local def = entry.def
+    local who = Opt(entry, "who")
     if (def.group or def.blessing) and (GetDb() or {}).onlyProvider and OtherProvider() then return 0, 0 end
     -- the role filters (When It Shows): your group role hides the group buffs, never your own
     if def.group or def.blessing then
@@ -1000,7 +1176,7 @@ local function Check(entry, before)
         end
         local target
         local wanted = (GetDb() or {}).soulstone or "healer"
-        for _, unit in ipairs(GroupUnits(units)) do
+        for _, unit in ipairs(GroupUnits(units, who)) do
             if Reachable(unit) then
                 if HasBuff(unit, names, 0) then return 0, 1 end
                 if not target then
@@ -1118,7 +1294,7 @@ local function Check(entry, before)
     end
     if def.blessing then
         local missing, total, first, firstBlessing, gone = 0, 0, nil, nil, false
-        for _, unit in ipairs(GroupUnits(units)) do
+        for _, unit in ipairs(GroupUnits(units, who)) do
             if Reachable(unit) then
                 local b = BlessingFor(entry, unit)
                 if b then
@@ -1142,7 +1318,7 @@ local function Check(entry, before)
     -- Thorns: tanks (their group role, or the raid's main tanks; alone, yourself), you, or everyone
     local pick = def.pick and ((GetDb() or {})[def.pick] or "tank")
     local grouped = IsInGroup()
-    local list = GroupUnits(units)
+    local list = GroupUnits(units, who)
     -- a party-wide buff (Battle Shout): you and your party, in a raid too
     if def.party and #list > 5 then
         wipe(list)
@@ -1256,52 +1432,64 @@ function BR.Menu(owner)
                 BR.Update()
             end)
         end
-        if entry.def.custom then
-            root:CreateButton(L["Remove This Reminder"], function() RemoveCustom(entry.def) end)
-        end
-        root:CreateButton(L["Never Remind Me"], function()
-            local db = GetDb()
-            if not db then return end
-            db.hidden = db.hidden or {}
-            db.hidden[key] = true
-            BR.Update()
-        end)
-        -- a reminder's own choice lives here, not in the settings (11-10, Marcus: no settings bloat)
-        local db = GetDb()
-        if not db then return end
-        local function Radio(text, field, value)
-            root:CreateRadio(text, function() return (db[field] or (field == "thorns" and "tank" or field == "soulstone" and "healer" or "auto")) == value end,
-                function() db[field] = value; BR.Update() end)
-        end
-        if entry.def.blessing then
+        root:CreateButton(L["Never Remind Me"], function() BR.RemoveFromBar(entry.barId) end)
+        -- the reminder's own choices (the settings page's inspector shows the same: BR.Choices)
+        for _, g in ipairs(BR.Choices(entry.def, entry.slot)) do
             root:CreateDivider()
-            root:CreateTitle(L["Blessing"])
-            for _, choice in ipairs(BR.BlessingChoices()) do Radio(choice[2], "blessing", choice[1]) end
-        elseif entry.def.weapon then
-            -- per hand: Last Used, or one you can put on
-            local kind = entry.def.weapon
-            root:CreateDivider()
-            root:CreateTitle(entry.slot == 17 and (INVTYPE_WEAPONOFFHAND or "Off Hand") or (INVTYPE_WEAPONMAINHAND or "Main Hand"))
-            Radio(L["Last Used"], WeaponField(entry), "auto")
-            Radio(L["Any Weapon Buff"], WeaponField(entry), "any")
-            for _, o in ipairs(WEAPON_CHOICES[kind]) do
-                if OptionKnown(kind, o) or db[WeaponField(entry)] == o.key then
-                    Radio(BR.WeaponOptionLabel(kind, o), WeaponField(entry), o.key)
-                end
+            root:CreateTitle(g.title)
+            for _, o in ipairs(g.options) do
+                root:CreateRadio(o.text, function() return BR.GetChoice(g) == o.value end,
+                    function() BR.SetChoice(g, o.value) end)
             end
-        elseif entry.def.soulstone then
-            root:CreateDivider()
-            root:CreateTitle(L["Keep It On"])
-            Radio(L["Healers"], "soulstone", "healer")
-            Radio(L["Only Me"], "soulstone", "self")
-        elseif entry.def.pick == "thorns" then
-            root:CreateDivider()
-            root:CreateTitle(L["Keep It On"])
-            Radio(L["Tanks Only"], "thorns", "tank")
-            Radio(L["Only Me"], "thorns", "self")
-            Radio(L["Everyone"], "thorns", "all")
         end
     end)
+end
+
+-- a reminder's own choices, as groups of radios: { title, field, default, options = { { value, text } } }
+-- (the blessing, each hand's weapon buff, who keeps the Soulstone or Thorns); slot: one hand only
+function BR.Choices(def, slot)
+    local out = {}
+    if not def then return out end
+    local function Group(title, field, default, options)
+        local g = { title = title, field = field, default = default, options = {} }
+        for _, o in ipairs(options) do g.options[#g.options + 1] = { value = o[1], text = o[2] } end
+        out[#out + 1] = g
+        return g
+    end
+    if def.blessing then
+        Group(L["Blessing"], "blessing", "auto", BR.BlessingChoices())
+    elseif def.weapon then
+        -- per hand: Last Used, Any, or one you can put on
+        local kind = def.weapon
+        local db = GetDb() or {}
+        for _, s in ipairs(slot and { slot } or { 16, 17 }) do
+            local field = kind .. (s == 17 and "Off" or "Main")
+            local options = { { "auto", L["Last Used"] }, { "any", L["Any Weapon Buff"] } }
+            for _, o in ipairs(WEAPON_CHOICES[kind]) do
+                if OptionKnown(kind, o) or db[field] == o.key then
+                    options[#options + 1] = { o.key, BR.WeaponOptionLabel(kind, o) }
+                end
+            end
+            Group(s == 17 and (INVTYPE_WEAPONOFFHAND or "Off Hand") or (INVTYPE_WEAPONMAINHAND or "Main Hand"),
+                field, "auto", options)
+        end
+    elseif def.soulstone then
+        Group(L["Keep It On"], "soulstone", "healer", { { "healer", L["Healers"] }, { "self", L["Only Me"] } })
+    elseif def.pick == "thorns" then
+        Group(L["Keep It On"], "thorns", "tank", { { "tank", L["Tanks Only"] }, { "self", L["Only Me"] }, { "all", L["Everyone"] } })
+    end
+    return out
+end
+function BR.GetChoice(g)
+    local db = GetDb() or {}
+    return db[g.field] or g.default
+end
+function BR.SetChoice(g, value)
+    local db = GetDb()
+    if not db then return end
+    db[g.field] = value
+    BR.Update()
+    Changed()
 end
 
 local function StyleIcon(b, size)
@@ -1511,13 +1699,29 @@ function BR.PlayAlert(sample)
     PlaySound(id, "Master")
 end
 
+-- the reminders on the bar, in its order (a weapon's main hand before its off-hand)
+local ordered = {}
+function Ordered()
+    local index = BarIndex()
+    wipe(ordered)
+    for _, entry in ipairs(active) do
+        if index[entry.barId] then ordered[#ordered + 1] = entry end
+    end
+    table.sort(ordered, function(a, b)
+        local ia, ib = index[a.barId], index[b.barId]
+        if ia ~= ib then return ia < ib end
+        return a.pos < b.pos
+    end)
+    return ordered
+end
+
 function BR.Update()
     if not holder or InCombatLockdown() then return end
     wipe(shows)
     local db = GetDb() or {}
     if ns.EditPreviewing and ns.EditPreviewing() then
-        -- Edit Mode: every reminder of the class, so the row can be placed
-        for _, entry in ipairs(active) do
+        -- Edit Mode: every reminder on the bar, so the row can be placed
+        for _, entry in ipairs(Ordered()) do
             if Enabled(entry) then
                 local s = Entry(#shows + 1)
                 s.entry, s.missing, s.total, s.unit = entry, entry.def.group and 2 or 1, entry.def.group and 5 or 1, "player"
@@ -1537,14 +1741,10 @@ function BR.Update()
         end
     elseif ShowsHere(db) and not UnitIsDeadOrGhost("player") and not AurasLocked() and not UnitOnTaxi("player")
             and not (db.hideMounted and IsMounted()) then
-        -- Remind Before It Ends, or its dungeon / raid choice when set ("same" or none: the main one)
-        local minutes = db.before or 2
-        local inInstance, kind = IsInInstance()
-        local special = inInstance and ((kind == "party" and db.beforeDungeon) or (kind == "raid" and db.beforeRaid))
-        if type(special) == "number" then minutes = special end
-        local before = minutes * 60
-        for _, entry in ipairs(active) do
+        for _, entry in ipairs(Ordered()) do
             if Enabled(entry) then
+                -- Remind Me (the reminder's own, else Remind Before It Ends or its dungeon / raid choice)
+                local before = (Opt(entry, "before") or 0) * 60
                 local missing, total, unit, castID, icon, running, action, left, charges = Check(entry, before)
                 -- snoozed: quiet until the buff is back
                 local snoozeKey = BR.HideKey(entry)
@@ -1577,6 +1777,7 @@ function BR.Update()
         if fresh then BR.PlayAlert() end
     end
     BR.ShowFaded(shows, db)
+    Changed()
 end
 
 -- Fade Speed (Fading section): the row fades in as reminders appear where there were none, and out
@@ -1652,45 +1853,276 @@ local function OnMoved(_, layoutName, point, x, y)
     store.point, store.x, store.y = point, math_floor(x + 0.5), math_floor(y + 0.5)
 end
 
--- the Blessing row's choices (Settings > Buffs & Debuffs): Automatic, then each blessing by its name
--- Elixirs and More's list: None, then every item by its name in your language
-function BR.ElixirChoices()
-    local list = { { "none", L["None"] }, { divider = true } }
-    for _, def in ipairs(ELIXIRS) do
-        local id = def.items[1]
-        if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
-        list[#list + 1] = { def.key, C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or def.key }
+--------------------------------------------------
+-- 6b. THE SETTINGS PAGE'S PICTURE (Settings/BuffRemindersEditor.lua, 6.2)
+-- Each reminder's name, icon and what counts; its state now (for the bar's picture); and the
+-- spellbook to pick from: the class's own, a tab per spellbook line, the bags, upkeep.
+--------------------------------------------------
+local function FindDef(list, id)
+    for _, def in ipairs(list or {}) do if def.key == id then return def end end
+end
+-- the reminder with this id, and its resolved entry when the character has it
+function BR.DefById(id)
+    if not id then return nil end
+    for _, entry in ipairs(active) do
+        if entry.barId == id then return entry.def, entry end
     end
-    return list
-end
--- Extra Buffs: the class reminders that are off until ticked, by their spell names
-local OPT_IN = { { "shadowProt", 976 }, { "moonkin", 24858 } }
-function BR.ExtraChoices()
-    local list = { { "none", L["None"] }, { divider = true } }
-    for _, o in ipairs(OPT_IN) do list[#list + 1] = { o[1], SpellName(o[2]) or o[1] } end
-    return list
-end
-function BR.ExtraKeys()
-    local keys = {}
-    for _, o in ipairs(OPT_IN) do keys[#keys + 1] = o[1] end
-    return keys
-end
-function BR.ElixirKeys()
-    local keys = {}
-    for _, def in ipairs(ELIXIRS) do keys[#keys + 1] = def.key end
-    return keys
+    local elixir = id:match("^elixir:(.+)$")
+    if elixir then return FindDef(ELIXIRS, elixir) end
+    local def = FindDef(REMINDERS[PlayerClass()], id) or FindDef(EXTRAS, id) or FindDef(CONSUMABLES, id)
+    if def then return def end
+    local item = tonumber(id:match("^supply(%d+)$") or "")
+    if item then
+        for _, s in ipairs(SUPPLIES[PlayerClass()] or {}) do
+            if s.item == item then return { key = id, supply = s } end
+        end
+    end
+    if id == "ammo" then return { key = id, ammo = true } end
+    if id == "durability" then return { key = id, durability = true } end
+    if id == "trinket" then return { key = id, trinket = true } end
 end
 
-ns.Dialogs = ns.Dialogs or {}
-ns.Dialogs["FLAREUI_BR_CUSTOM"] = {
-    text = L["A spell or buff to keep up: its name or spell ID. Several, separated by commas, count as one (any of them). An item: item:ID."],
-    button1 = L["Add"],
-    button2 = L["Cancel"],
-    hasEditBox = true,
-    maxLetters = 200,
-    OnAccept = function(_, text) BR.AddCustom(text) end,
-    hideOnEscape = true,
-}
+local function CustomName(def)
+    local c = def.stored or {}
+    local s = c.spells and c.spells[1]
+    if type(s) == "number" then return SpellName(s) end
+    if type(s) == "string" then return s end
+    local item = c.items and c.items[1]
+    return item and ItemName(item)
+end
+
+local function DefName(def, entry)
+    if def.weapon == "imbue" then return L["Weapon Imbue"] end
+    if def.weapon == "poison" then return SpellName(POISONS) or L["Poisons"] end
+    if def.weapon == "stone" then return L["Firestone / Spellstone"] end
+    if def.weapon == "oil" then return L["Weapon Oil / Stone"] end
+    if def.blessing then return L["Blessing"] end
+    if def.pet then return L["Pet"] end
+    if def.healthstone then return L["Healthstone"] end
+    if def.soulstone then return SpellName(693) or L["Soulstone"] end
+    if def.stance then return L["Stance"] end
+    if def.aspect then return L["Aspect"] end
+    if def.camp then return SpellName(CAMP_BUFF) or L["Camp Benefits"] end
+    if def.bag then return ItemName(SLEEPING_BAG) or L["Sleeping Bag"] end
+    if def.gathering then return L["Gathering Tracking"] end
+    if def.key == "food" then return SpellName(19705) or L["Well Fed"] end
+    if def.key == "flask" then return L["Flask"] end
+    if def.elixir then return ItemName(def.items[1]) or def.key end
+    if def.supply then return ItemName(def.supply.item) or L["Low Supplies"] end
+    if def.ammo then return L["Ammo"] end
+    if def.durability then return L["Low Durability"] end
+    if def.trinket then return L["Worn Trinkets"] end
+    if def.custom then return CustomName(def) or L["Your Own"] end
+    -- (your best rank's name: a mage's armour is whichever you know best)
+    local id = entry and entry.castID or (def.cast and def.cast[#def.cast])
+    return id and SpellName(id) or def.key
+end
+
+local function DefIcon(def, entry)
+    if entry and entry.icon then return entry.icon end
+    if def.weapon == "imbue" then return SpellIcon(8017) end
+    if def.weapon == "poison" then return SpellIcon(POISONS) end
+    if def.weapon == "stone" then return ItemIcon(1254) end
+    if def.weapon == "oil" then return ItemIcon(20749) end
+    if def.blessing then return SpellIcon(19740) end
+    if def.pet then return SpellIcon(PlayerClass() == "WARLOCK" and 688 or CALL_PET) end
+    if def.healthstone then return ItemIcon(5512) end
+    if def.elixir then return ItemIcon(def.items[1]) end
+    if def.supply then return ItemIcon(def.supply.item) end
+    if def.ammo then return "Interface\\Icons\\INV_Ammo_Arrow_02" end
+    if def.durability then return DURABILITY_ICON end
+    if def.trinket then return ItemIcon(12846) end
+    if def.bag then return ItemIcon(SLEEPING_BAG) end
+    if def.camp then return SpellIcon(CAMP_BUFF) end
+    if def.icon then return SpellIcon(def.icon) end
+    if def.cast then return SpellIcon(def.cast[1]) end
+    return 134400
+end
+
+-- what counts as kept up, in a few words
+local function DefCounts(def)
+    if def.weapon then return L["A weapon buff on each hand"] end
+    if def.blessing then return L["A blessing on each group member"] end
+    if def.pet then return L["Your pet: out, alive and well"] end
+    if def.healthstone then return L["A Healthstone in your bags"] end
+    if def.soulstone then return L["A Soulstone on someone in your group"] end
+    if def.stance then return L["Any stance"] end
+    if def.aspect then return L["Any aspect"] end
+    if def.camp then return L["Camp Benefits from a campfire"] end
+    if def.bag then return L["Three Well-Rested stacks while levelling"] end
+    if def.gathering then return L["Herb or mineral tracking on"] end
+    if def.key == "food" then return L["Any Well Fed buff"] end
+    if def.key == "flask" then return L["Any of the four flasks"] end
+    if def.elixir then return L["Its buff on you"] end
+    if def.supply then return L["At least %d in your bags"]:format(def.supply.min) end
+    if def.ammo then return L["At least %d in your bags"]:format(AMMO_MIN) end
+    if def.durability then return L["Every item above 20% durability"] end
+    if def.trinket then return L["No open-world trinket worn in a dungeon or raid"] end
+    if def.custom then return L["A buff with its name on you"] end
+    if def.party then return L["On you and your party"] end
+    if def.casters then return L["On the mana users in your group"] end
+    if def.group then return L["On you and your group"] end
+    return L["On you"]
+end
+
+-- { def, entry, name, icon, counts, known }
+function BR.Display(id)
+    local def, entry = BR.DefById(id)
+    if not def then return { name = tostring(id), icon = 134400, counts = "", known = false } end
+    return { def = def, entry = entry, name = DefName(def, entry), icon = DefIcon(def, entry),
+             counts = DefCounts(def), known = entry ~= nil }
+end
+
+-- the reminder's state now, for the bar's picture: status "missing", "expiring", "up" or "unknown" (not
+-- learned), and a caption (2/5, 1:42, 64%); where it shows is not asked (the picture shows them all)
+local STATUS_RANK = { unknown = 0, up = 1, expiring = 2, missing = 3 }
+function BR.PreviewState(id)
+    local best
+    for _, entry in ipairs(active) do
+        if entry.barId == id and not (entry.slot == 17 and not OffHandWeapon()) then
+            local ok, missing, total, _, _, _, running, action, left = pcall(Check, entry, (Opt(entry, "before") or 0) * 60)
+            if ok and missing then
+                local state
+                if missing > 0 and running then
+                    state = { status = "expiring", caption = left and ns.FormatAuraTime(math_max(0, left)) or L["Running Out"] }
+                elseif missing > 0 then
+                    local caption = (action and action.durability and (action.durability .. "%"))
+                        or ((total or 0) > 1 and (missing .. "/" .. total)) or L["Missing"]
+                    state = { status = "missing", caption = caption }
+                else
+                    state = { status = "up", caption = (total or 0) == 0 and "-" or L["Up"] }
+                end
+                if not best or STATUS_RANK[state.status] > STATUS_RANK[best.status] then best = state end
+            end
+        end
+    end
+    return best or { status = "unknown", caption = L["Not Learned"] }
+end
+
+local function Harmful(spellID)
+    if C_Spell.IsSpellHarmful then return C_Spell.IsSpellHarmful(spellID) and true or false end
+    if IsHarmfulSpell then
+        local ok, harmful = pcall(IsHarmfulSpell, SpellName(spellID))
+        return ok and harmful and true or false
+    end
+    return false
+end
+
+-- the spellbook to pick from: { { key, label, icon, classIcon, items = { entry } } }; an entry is a
+-- built-in reminder ({ id }) or a spell or item to make your own of ({ spell | item, id when you have
+-- it }), with name, icon, sub and state: "add", "none" (not a buff) or "locked" (not learned)
+function BR.Catalog()
+    local class = PlayerClass()
+    local tabs = {}
+    local function Built(id)
+        local d = BR.Display(id)
+        return { id = id, name = d.name, icon = d.icon, sub = d.counts, state = d.known and "add" or "locked" }
+    end
+    local function Tab(key, label, icon)
+        local t = { key = key, label = label, icon = icon, items = {} }
+        tabs[#tabs + 1] = t
+        return t
+    end
+
+    -- the class's own, all of them (the ones not learned yet greyed)
+    local classTab = Tab("class", LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[class] or class)
+    classTab.classIcon = class
+    for _, def in ipairs(REMINDERS[class] or {}) do classTab.items[#classTab.items + 1] = Built(def.key) end
+
+    -- the spellbook, a tab per line: a built-in reminder's spell stands for it; any other spell that
+    -- isn't harmful can be your own (a buff with its name is watched for)
+    local builtIn = {}
+    for _, def in ipairs(REMINDERS[class] or {}) do
+        for _, list in ipairs({ def.cast or {}, def.buffs or {} }) do
+            for _, sid in ipairs(list) do
+                local n = SpellName(sid)
+                if n then builtIn[n] = def.key end
+            end
+        end
+    end
+    for _, sid in ipairs(FindDef(EXTRAS, "gathering").cast) do
+        local n = SpellName(sid)
+        if n then builtIn[n] = "gathering" end
+    end
+    if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines then
+        local bank = Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player
+        for line = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+            local info = C_SpellBook.GetSpellBookSkillLineInfo(line)
+            if info and not info.shouldHide and not info.offSpecID then
+                local tab = Tab("line" .. line, info.name, info.iconID)
+                local at = {}   -- name or id -> its place (ranks: the last one, your best, stays)
+                for offset = 1, info.numSpellBookItems or 0 do
+                    local item = C_SpellBook.GetSpellBookItemInfo(info.itemIndexOffset + offset, bank)
+                    local sid = item and item.spellID
+                    if sid and not item.isPassive and item.itemType ~= Enum.SpellBookItemType.FutureSpell then
+                        local name = SpellName(sid)
+                        if name then
+                            local e
+                            if builtIn[name] then
+                                e = Built(builtIn[name])
+                            else
+                                local harmful = Harmful(sid)
+                                e = { spell = sid, id = BR.FindOwn(sid), name = name, icon = SpellIcon(sid),
+                                      sub = harmful and L["Not a buff"] or L["A buff with its name on you"],
+                                      state = harmful and "none" or "add" }
+                            end
+                            local key = e.id or name
+                            if at[key] then tab.items[at[key]] = e else
+                                tab.items[#tab.items + 1] = e
+                                at[key] = #tab.items
+                            end
+                        end
+                    end
+                end
+                if #tab.items == 0 then tabs[#tabs] = nil end
+            end
+        end
+    end
+
+    -- the bags: oils, food and flasks, the elixirs (the ones you carry first), then any other
+    -- consumable that gives a buff
+    local bags = Tab("bags", L["Bags"], 133633)
+    local listed = {}
+    for _, id in ipairs({ "oil", "food", "flask" }) do bags.items[#bags.items + 1] = Built(id) end
+    for pass = 1, 2 do
+        for _, def in ipairs(ELIXIRS) do
+            local n = ItemCount(def.items[1])
+            if (pass == 1) == (n > 0) then
+                local e = Built("elixir:" .. def.key)
+                if n > 0 then e.sub = L["%d in your bags"]:format(n) end
+                bags.items[#bags.items + 1] = e
+            end
+            listed[def.items[1]] = true
+        end
+    end
+    if C_Container and C_Container.GetContainerNumSlots then
+        local consumable = Enum.ItemClass and Enum.ItemClass.Consumable or 0
+        for bag = 0, 4 do
+            for slot = 1, (C_Container.GetContainerNumSlots(bag) or 0) do
+                local info = C_Container.GetContainerItemInfo(bag, slot)
+                local itemID = info and info.itemID
+                if itemID and not listed[itemID] then
+                    listed[itemID] = true
+                    local spellName = C_Item.GetItemSpell and C_Item.GetItemSpell(itemID)
+                    local classID = C_Item.GetItemInfoInstant and select(6, C_Item.GetItemInfoInstant(itemID))
+                    if spellName and classID == consumable then
+                        bags.items[#bags.items + 1] = { item = itemID, id = BR.FindOwn(nil, itemID),
+                            name = ItemName(itemID) or spellName, icon = ItemIcon(itemID),
+                            sub = L["%d in your bags"]:format(ItemCount(itemID)), state = "add" }
+                    end
+                end
+            end
+        end
+    end
+
+    -- upkeep: what isn't a buff
+    local upkeep = Tab("upkeep", L["Upkeep"], DURABILITY_ICON)
+    for _, s in ipairs(SUPPLIES[class] or {}) do upkeep.items[#upkeep.items + 1] = Built("supply" .. s.item) end
+    local rest = { "durability", "trinket", "camp", "sleepingBag", "gathering" }
+    if class == "HUNTER" then table.insert(rest, 1, "ammo") end
+    for _, id in ipairs(rest) do upkeep.items[#upkeep.items + 1] = Built(id) end
+    return tabs
+end
 
 function BR.BlessingChoices()
     local list = { { "auto", L["Automatic"] } }
@@ -1831,6 +2263,8 @@ function BR:Init()
         if r.thorns == "off" then r.hidden["DRUID:thorns"] = true; r.thorns = nil end
         r.pets = nil
     end
+    -- 6.2: Food and Flask's on / off is the bar's now; where it showed is the consumables' default
+    if r.consumablesWhere == nil and r.consumables and r.consumables ~= "off" then r.consumablesWhere = r.consumables end
     Resolve()
 
     holder = CreateFrame("Frame", "FlareUI_BuffReminders", UIParent)
