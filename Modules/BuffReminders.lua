@@ -63,7 +63,7 @@ local REMINDERS = {
         { key = "wild", cast = WILD, buffs = Join(WILD, { 21850, 21849 }), group = true },
         -- Thorns (11-10, a druid asked): kept on whoever the Thorns setting picks, tanks by default
         { key = "thorns", cast = { 9910, 9756, 8914, 1075, 782, 467 }, group = true, pick = "thorns" },
-        { key = "omen", cast = { 16864 } },   -- Omen of Clarity (talent)
+        -- (11-13, Marcus) no Omen of Clarity: on Forever it's a random proc, nothing to keep up
         -- Moonkin Form (talent): only when ticked in Extra Buffs (druids leave it to heal)
         { key = "moonkin", cast = { 24858 }, optIn = true },
     },
@@ -110,8 +110,14 @@ table.insert(REMINDERS.WARLOCK, { key = "healthstone", healthstone = true, cast 
 table.insert(REMINDERS.WARLOCK, { key = "soulstone", soulstone = true, cast = { 20757, 20756, 20755, 20752, 693 } })
 -- Soul Link (talent): only while a pet is out
 table.insert(REMINDERS.WARLOCK, { key = "soulLink", cast = { 19028 }, needPet = true })
--- Demonic Sacrifice's buffs (Imp, Voidwalker, Succubus, Felhunter): one up, no pet is wanted
+-- Demonic Sacrifice's buffs (Imp, Voidwalker, Succubus, Felhunter): one up, no pet is wanted, unless
+-- Demonic Pact is known (11-13, a warlock's report): with it the buff stays while another pet is
+-- summoned, so the buff AND a pet (and Soul Link on it) are all wanted. needSpell: shown only once
+-- that spell is known too.
 local SACRIFICE_BUFFS = { 18789, 18790, 18791, 18792 }
+local DEMONIC_PACT = 425464
+table.insert(REMINDERS.WARLOCK, { key = "sacrifice", cast = { 18788 }, buffs = SACRIFICE_BUFFS,
+    needSpell = DEMONIC_PACT, needPet = true })
 local SOULSTONES = { 16896, 16895, 16893, 16892, 5232 }                -- Major to Minor
 local SOULSTONE_BUFFS = { 20707, 20762, 20763, 20764, 20765 }          -- Soulstone Resurrection
 -- trinkets for the open world, still worn in a dungeon or raid (11-12): the Argent Dawn ones, Carrot on a Stick
@@ -493,7 +499,7 @@ local function Resolve()
             if Known(id) then castID = id break end
         end
         -- gathering needs a known tracking spell; the camp and the bag are checked as they come
-        if castID or not def.cast then
+        if (castID or not def.cast) and not (def.needSpell and not Known(def.needSpell)) then
             local names = {}
             for _, id in ipairs(def.buffs or def.cast or {}) do
                 local name = SpellName(id)
@@ -555,6 +561,48 @@ function BR.HiddenCount()
     for _ in pairs(dismissed) do n = n + 1 end
     return n
 end
+-- a reminder's name, kept with it when hidden so the Hidden Reminders list can show it (11-13)
+function BR.EntryLabel(entry, owner)
+    local name = owner and owner.spellID and SpellName(owner.spellID)
+        or (entry.castID and SpellName(entry.castID)) or next(entry.names or {})
+    return name or (entry.key or (entry.def and entry.def.key)) or "?"
+end
+-- Hidden Reminders (11-13, a player: one by one): every hidden one, ticked; unticking brings it back
+local hiddenTokens = {}
+function BR.HiddenTokens() return hiddenTokens end
+function BR.HiddenChoices()
+    local db = GetDb() or {}
+    local list, seen = {}, {}
+    wipe(hiddenTokens)
+    local function Add(key, value)
+        if seen[key] then return end
+        seen[key] = true
+        local label = type(value) == "string" and value or (key:match(":(.+)$") or key)
+        hiddenTokens[#hiddenTokens + 1] = key
+        list[#list + 1] = { key, label }
+    end
+    for key, value in pairs(db.hidden or {}) do Add(key, value) end
+    for key, value in pairs(dismissed) do Add(key, value) end
+    table.sort(list, function(a, b) return a[2]:lower() < b[2]:lower() end)
+    return list
+end
+function BR.HiddenValue()
+    local ticked = {}
+    for _, key in ipairs(hiddenTokens) do ticked[#ticked + 1] = key end
+    return #ticked > 0 and table.concat(ticked, ",") or "none"
+end
+function BR.SetHidden(value)
+    local db = GetDb()
+    local ticked = ns.Conditions.Set(value or "")
+    for _, key in ipairs(hiddenTokens) do
+        if not ticked[key] then
+            if db and db.hidden then db.hidden[key] = nil end
+            dismissed[key] = nil
+        end
+    end
+    if db and db.hidden and not next(db.hidden) then db.hidden = nil end
+    BR.Update()
+end
 function BR.ShowHidden()
     local db = GetDb()
     if db then db.hidden = nil end
@@ -607,6 +655,39 @@ function BR.AddCustom(text)
     if #spells == 0 and #items == 0 then return end
     local list = CustomList(true)
     list[#list + 1] = { spells = spells, items = items }
+    BR.Resolve()
+    BR.Update()
+end
+-- Custom Reminders (11-13, a player: one by one): this class's own, ticked; unticking removes one
+local customTokens = {}
+function BR.CustomTokens() return customTokens end
+local function CustomLabel(c)
+    local parts = {}
+    for _, s in ipairs(c.spells or {}) do parts[#parts + 1] = type(s) == "number" and (SpellName(s) or tostring(s)) or tostring(s) end
+    for _, id in ipairs(c.items or {}) do
+        parts[#parts + 1] = (C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)) or ("item:" .. id)
+    end
+    return #parts > 0 and table.concat(parts, " / ") or "?"
+end
+function BR.CustomChoices()
+    local list = {}
+    wipe(customTokens)
+    for i, c in ipairs(CustomList() or {}) do
+        customTokens[#customTokens + 1] = "c" .. i
+        list[#list + 1] = { "c" .. i, CustomLabel(c) }
+    end
+    return list
+end
+function BR.CustomValue()
+    return #customTokens > 0 and table.concat(customTokens, ",") or "none"
+end
+function BR.SetCustom(value)
+    local list = CustomList()
+    if not list then return end
+    local ticked = ns.Conditions.Set(value or "")
+    for i = #list, 1, -1 do
+        if not ticked["c" .. i] then table.remove(list, i) end
+    end
     BR.Resolve()
     BR.Update()
 end
@@ -840,8 +921,12 @@ end
 
 -- the pet's state: the spell that fixes it and the unit to cast on, or nil when all is well; a pet
 -- left on Passive answers with a macro (/petdefensive) and the mode's icon
+local PET_SETTLE = 2.5   -- seconds the pet's state is left alone after a dismount or a new pet
 local function PetFix(entry)
     if IsMounted() then return nil end
+    -- (11-13, a player: the Passive Pet reminder flashed on dismounting) right after a dismount or a
+    -- pet appearing the pet bar still reads Passive for a moment: quiet until it has caught up
+    if GetTime() - (BR.petSettleAt or 0) < PET_SETTLE then return nil end
     local exists = UnitExists("pet")
     if exists and not UnitIsDead("pet") then
         local passive = PetPassive()
@@ -857,8 +942,9 @@ local function PetFix(entry)
         return nil
     end
     if exists then return nil end
-    -- a pet given up for Demonic Sacrifice: its buff stands in for it (unreadable: quiet)
-    for _, id in ipairs(SACRIFICE_BUFFS) do
+    -- a pet given up for Demonic Sacrifice: its buff stands in for it (unreadable: quiet); with
+    -- Demonic Pact the buff stays with a new pet out, so a pet is still wanted
+    for _, id in ipairs(Known(DEMONIC_PACT) and {} or SACRIFICE_BUFFS) do
         local ok, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, id)
         if not ok or not Readable(aura) or aura then return nil end
     end
@@ -1246,7 +1332,7 @@ function BR.Menu(owner)
     MenuUtil.CreateContextMenu(owner, function(_, root)
         root:CreateTitle(owner.spellID and SpellName(owner.spellID) or L["Buff Reminders"])
         root:CreateButton(L["Hide Until Reload"], function()
-            dismissed[key] = true
+            dismissed[key] = BR.EntryLabel(entry, owner)
             BR.Update()
         end)
         -- (a buff only: something to see come back)
@@ -1263,7 +1349,7 @@ function BR.Menu(owner)
             local db = GetDb()
             if not db then return end
             db.hidden = db.hidden or {}
-            db.hidden[key] = true
+            db.hidden[key] = BR.EntryLabel(entry, owner)
             BR.Update()
         end)
         -- a reminder's own choice lives here, not in the settings (11-10, Marcus: no settings bloat)
@@ -1884,6 +1970,11 @@ function BR:Init()
             return
         end
         if event == "SPELLS_CHANGED" or event == "PLAYER_LEVEL_UP" then Resolve() end
+        -- the pet's state settles a moment after these (PetFix); looked at again once it has
+        if (event == "PLAYER_MOUNT_DISPLAY_CHANGED" and not IsMounted()) or event == "UNIT_PET" then
+            BR.petSettleAt = GetTime()
+            C_Timer.After(PET_SETTLE + 0.1, function() if BR.Update then BR.Update() end end)
+        end
         -- a warlock's summon is remembered for the next time the pet is gone
         if event == "UNIT_SPELLCAST_SUCCEEDED" then
             if Readable(spellID) and tContains(WARLOCK_SUMMONS, spellID) then

@@ -1642,7 +1642,11 @@ local function UpdateCastBar(cast, enabled, event, by, barID)
         color = channeling and CAST_CHANNEL or CAST_COLOR
     end
     color = KICK.Color(cast) or color
-    if cast.standalone or cast.unit == "player" then
+    -- (11-13, Marcus: grey on a cooking cast, targeting himself) your own cast on the target or focus
+    -- bar, and any profession cast, are no kick either: they skip the grey as the player bar's do
+    local own = cast.unit and cast.unit ~= "player" and UnitIsUnit(cast.unit, "player")
+    own = (canaccessvalue(own) and own) or (canaccessvalue(isTradeskill) and isTradeskill) or false
+    if cast.standalone or cast.unit == "player" or own then
         -- your own cast never takes the uninterruptible grey: it's for casts you could kick, and some
         -- of yours are flagged so, which read as the range grey (a player's report 11-11)
         cast:SetStatusBarColor(color[1], color[2], color[3])

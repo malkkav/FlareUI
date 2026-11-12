@@ -45,30 +45,9 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }   -- 11-10 regr
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["bl.bagWithCharacter"] = "6.1",
-    ["bl.font.freeSlots"] = "6.1",
-    ["br.classScope"] = "6.1",
-    ["br.custom"] = "6.1",
-    ["br.customClear"] = "6.1",
-    ["br.durability"] = "6.1",
-    ["br.elixirs"] = "6.1",
-    ["br.extras"] = "6.1",
-    ["br.petScope"] = "6.1",
-    ["br.playstyle"] = "6.1",
-    ["br.readyCheck"] = "6.1",
-    ["br.supplies"] = "6.1",
-    ["br.trinkets"] = "6.1",
-    ["br.weaponOil"] = "6.1",
-    ["br.weaponScope"] = "6.1",
-    ["mm.bagAddons"] = "6.1",
-    ["qol.syncHideAlerts"] = "6.1",
-    ["tt.posAuras"] = "6.1",
-    ["tt.posBars"] = "6.1",
-    ["tt.posFrames"] = "6.1",
-    ["tt.posGroupAuras"] = "6.1",
-    ["tt.posOther"] = "6.1",
-    ["tt.posWorld"] = "6.1",
-    ["tt.showOther"] = "6.1",
+    ["bl.lootFeedAlign"] = "6.2",
+    ["mm.squareHeader"] = "6.2",
+    ["tt.opacity"] = "6.2",
 }
 
 --------------------------------------------------
@@ -312,9 +291,37 @@ function Row:IsHidden()
     return self.hidden and self.hidden() or false
 end
 
+-- (11-13, Marcus: "anything that has restrictions on gamepad should get this warning") what Blizzard's
+-- Gamepad UI keeps FlareUI from doing: the modules and rows the code itself turns off there (Bags.lua
+-- layout and filters, Auras / BuffReminders ShouldLoad, Tweaks' quest, mail, merchant and camera
+-- helpers, Tooltips' visibility and mouseover, the meter's chat tab...). Greyed there, and their
+-- section or page says why (Panel.lua GamepadNote).
+Settings.GAMEPAD_OFF_MODULES = { au = true, br = true }
+Settings.GAMEPAD_OFF = {
+    ["bl.bagColumns"] = true, ["bl.bagGaps"] = true, ["bl.bagKeyring"] = true, ["bl.bagReagent"] = true,
+    ["bl.bagFilters"] = true, ["bl.bagWithCharacter"] = true,
+    ["ab.skinCDM"] = true, ["dm.chatTab"] = true, ["dm.chatTabIgnoreFade"] = true, ["tt.mouseover"] = true,
+    ["qol.autoAcceptQuests"] = true, ["qol.autoTurnInQuests"] = true, ["qol.mailBook"] = true,
+    ["qol.bulkBuy"] = true, ["qol.merchantWide"] = true, ["qol.fishCast"] = true, ["qol.camera"] = true,
+    ["qol.move"] = true,
+}
+function Settings:GamepadOff(row)
+    if not row then return false end
+    if self.GAMEPAD_OFF[row.key] or self.GAMEPAD_OFF_MODULES[row.module] then return true end
+    -- the Tooltips page's Visibility tab: shows and mouseover by kind
+    return row.module == "tt" and row.tab == "visibility" or false
+end
+function Settings:SectionGamepadOff(section)
+    for _, row in ipairs(section and section.rows or {}) do
+        if self:GamepadOff(row) then return true end
+    end
+    return false
+end
+
 -- Greyed when its own check says so or its parent row is off
 function Row:IsDisabled()
     if self.disabled and self.disabled() then return true end
+    if ns.IsGamepadUI and ns.IsGamepadUI() and Settings:GamepadOff(self) then return true end
     -- a row of a module that is off (found by search) does nothing until the module is on
     local module = Settings.modules[self.module]
     if module and module.IsOn and not module:IsOn() then return true end

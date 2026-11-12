@@ -2305,10 +2305,12 @@ end
 
 function Chat:HideBlizzardTabs()
 
-    -- In the Gamepad UI the dock's tabs stay shown but invisible: Tab Settings (Y) opens on them
+    -- The dock's tabs stay shown but invisible and deaf to the mouse (the dock itself is parked off
+    -- screen outside the Gamepad UI, see ParkDock). In the Gamepad UI Tab Settings (Y) opens on them.
+    -- (11-13) Never Hide() them: other addons list chat windows by their visible tabs, and TSM's
+    -- settings asserted when its saved "General" tab was missing from that list.
     local dock = _G.GeneralDockManager
     if dock and dock.scrollFrame then
-        if not ns.IsGamepadUI() then dock.scrollFrame:Hide() end
         dock.scrollFrame:SetAlpha(0)
     end
 
@@ -2317,19 +2319,11 @@ function Chat:HideBlizzardTabs()
         dock.overflowButton:SetAlpha(0)
     end
 
-    local gamepad = ns.IsGamepadUI()
     for _, chatFrame in Windows() do
         local tab = chatFrame and _G[chatFrame:GetName() .. "Tab"]
         if tab then
             tab:SetAlpha(0)
             tab:EnableMouse(false)
-            if not tab.FlareUI_ModernKilled and not gamepad then
-                tab:SetScript("OnShow", function(self)
-                    self:Hide()
-                end)
-                tab:Hide()
-                tab.FlareUI_ModernKilled = true
-            end
         end
     end
 end

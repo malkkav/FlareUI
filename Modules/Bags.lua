@@ -26,8 +26,11 @@ local BAG_GAP = 12                  -- Gaps between bags: the extra space above 
 local DEFAULT_COLUMNS = 10          -- Blizzard's combined backpack
 local BAG_BUTTON_SIZE = 26
 local BAG_BUTTON_GAP  = 0           -- vertical offset between bag buttons: the rims touch
-local OTHER_BAG_ADDONS = { "LiteBag", "Bagnon", "Baganator", "ArkInventory", "AdiBags", "BetterBags",
-                           "EnhanceQoLBags", "EllesmereUIBags", "Inventorian", "Combuctor", "cargBags_Nivaya" }
+-- Bag addons FlareUI's bag code stands down for (11-13: Bags:ShouldLoad, a player's Bagnon cleanup
+-- report): the ones in Research plus the other big bag replacements
+local OTHER_BAG_ADDONS = { "LiteBag", "Bagnon", "Bagnonium", "Baganator", "ArkInventory", "AdiBags", "BetterBags",
+                           "EnhanceQoLBags", "EllesmereUIBags", "Inventorian", "Combuctor", "cargBags_Nivaya",
+                           "BagSmith", "Sorted", "BaudBag", "OneBag3", "Bagshui", "DJBags" }
 
 local overlays = {}                 -- item button -> its overlay
 local bagButtons = {}
@@ -1113,9 +1116,11 @@ function Filter.Refresh()
     if search and search:IsVisible() then Filter.Place(search:GetParent(), true) end
 end
 
--- with Bags & Looting on (its own module since 11-12)
+-- with Bags & Looting on (its own module since 11-12), and no bag addon of another kind (11-13): then
+-- FlareUI never touches the bags, so the addon's own layout and cleanup are left alone. The looting
+-- side (Fast Auto-Loot, Loot Feed, loot confirms) is elsewhere and keeps working.
 function Bags:ShouldLoad()
-    return ns.BagModuleOn()
+    return ns.BagModuleOn() and not self:GetOtherBagAddon()
 end
 
 function Bags:Init()

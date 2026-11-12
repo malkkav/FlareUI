@@ -482,6 +482,7 @@ local defaults = {
         minimap = {
             enabled = false,
             style = "square",
+            squareHeader = "headerless", -- Header (square style): headerless | art (Minimap.lua HEADER_STYLES, 11-13)
             autoZoom = 5,               -- seconds before zooming back out (0 = off)
             buttonBag = true,           -- the badge opens a bag with every addon's minimap button (MinimapBag.lua)
             bagHover = false,           -- Open on Mouseover: pointing at the badge opens the bag (MinimapBag.lua)
@@ -689,6 +690,7 @@ local defaults = {
 
             -- look
             scale = 1,
+            opacity = 1,                -- Frame Opacity: the background's (11-13, a player asked; Marcus: 100% by default, was a fixed 0.9)
             borderByReaction = true,
             borderByClass = true,
             borderByQuality = true,
@@ -793,6 +795,7 @@ local defaults = {
             lootFeedQuality = 0,        -- items below this quality are left out (0 = Poor: all)
             lootFeedMoney = true,       -- money too
             lootFeedPosition = "cursor", -- cursor (starts at the pointer) | placed (the Edit Mode spot)
+            lootFeedAlign = "left",     -- Alignment: left | right (icon on the right, text before it; 11-13)
             lootFeedSkills = false,     -- skill-ups too ("Mining 76")
             lootFeedFont = { face = "Friz Quadrata TT", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             hideFlagCarriers = false,   -- Hide Clutter > Flag Carrier Frames (Movers.lua): CVar showArenaEnemyFrames

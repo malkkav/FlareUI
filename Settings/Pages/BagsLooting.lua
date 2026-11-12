@@ -65,6 +65,8 @@ S:Row{ key = "bl.lootFeedSkills", tab = "looting", parent = "bl.lootFeed", path 
 S:Row{ key = "bl.lootFeedPosition", kind = "choice", tab = "looting", parent = "bl.lootFeed", path = "tweaks.lootFeedPosition",
     choices = { "cursor", "placed" }, disabled = NoFeed,
     apply = function() if ns.LootFeed and ns.LootFeed.Refresh then ns.LootFeed:Refresh() end end }
+S:Row{ key = "bl.lootFeedAlign", kind = "choice", tab = "looting", parent = "bl.lootFeed", path = "tweaks.lootFeedAlign",
+    choices = { "left", "right" }, disabled = NoFeed }
 
 -- FONTS: the bag icons' text and the loot feed's lines (live)
 S:FontRows{ module = "bl", tab = "fonts", section = "bl.fonts", fonts = {

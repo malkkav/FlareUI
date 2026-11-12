@@ -277,11 +277,11 @@ ns.Copy = {
             section = "ab.hideBlizzardElements",
         },
         ["ab.keepStealthPage"] = {
-            desc = L["Rogues and druids: Action Bar 1 keeps the same buttons in Stealth or Prowl, instead of the game's stealth page."],
+            desc = L["Rogues and druids: Action Bar 1 keeps the same buttons in Stealth or Prowl, instead of the stealth page."],
             label = L["Keep Page 1 in Stealth"],
             section = "ab.spellBehavior",
             tags = { "no auto-paging for stealth" },
-            tip = L["Druids keep their Cat Form page while prowling."],
+            tip = L["Druids keep their Cat Form page while prowling. Off, Prowl turns to the prowl page, as Stealth does for rogues."],
         },
         ["ab.noStancePaging"] = {
             desc = L["Warriors: Action Bar 1 keeps the same buttons in every stance."],
@@ -570,6 +570,12 @@ ns.Copy = {
             reload = true,
             section = "bl.lootFeedSection",
         },
+        ["bl.lootFeedAlign"] = {
+            choices = { L["Left"], L["Right"] },
+            desc = L["Which side the icons sit on:\n* Left: icon, then the text\n* Right: the text, then the icon, lined up on the right (at the cursor: to its left)"],
+            label = L["Alignment"],
+            section = "bl.lootFeedSection",
+        },
         ["bl.lootFeedMoney"] = {
             desc = L["Looted money shows too."],
             label = L["Show Money"],
@@ -646,7 +652,7 @@ ns.Copy = {
             tip = L["Right-click its icon to remove it."],
         },
         ["br.customClear"] = {
-            desc = L["Removes this class's custom reminders."],
+            desc = L["This class's own reminders. Untick one to remove it; None removes them all."],
             label = L["Custom Reminders"],
             section = "br.yourOwn",
         },
@@ -682,7 +688,7 @@ ns.Copy = {
             tip = L["Right-click an icon to hide it, or to pick a paladin's blessing, who gets Thorns or what goes on each weapon."],
         },
         ["br.hidden"] = {
-            desc = L["Brings back every reminder you hid with a right-click."],
+            desc = L["The reminders you hid with a right-click. Untick one to bring it back; None brings them all back."],
             label = L["Hidden Reminders"],
             section = "br.yourOwn",
         },
@@ -1128,6 +1134,13 @@ ns.Copy = {
             label = L["Gathering Addons"],
             section = "mm.tweaks",
             text = L["Lueur, NodeSight and Nodeworthy scan for nodes by moving the minimap under your cursor: while they do, the map and its icons can flash. That comes from them, not FlareUI."],
+        },
+        ["mm.squareHeader"] = {
+            choices = { L["Headerless"], L["Bordered"] },
+            desc = L["The top of the square minimap: its buttons and zone name on the map itself, or in the frame's bronze title bar."],
+            label = L["Header"],
+            section = "mm.styleSection",
+            tip = L["Square style only."],
         },
         ["mm.style"] = {
             choices = { L["Square"], L["Round"] },
@@ -1786,6 +1799,12 @@ ns.Copy = {
             section = "tt.look",
             tags = { "anchor", "cursor", "tooltip position", "mouse" },
             tip = L["Sets every tooltip at once. The Visibility tab can make exceptions."],
+        },
+        ["tt.opacity"] = {
+            desc = L["How dark the tooltips' background is."],
+            label = L["Frame Opacity"],
+            section = "tt.look",
+            tags = { "tooltip opacity transparency background" },
         },
         ["tt.posAuras"] = {
             desc = L["At your mouse instead of the default spot. Follows Mouseover on the Settings tab; a change here is an exception for this one."],

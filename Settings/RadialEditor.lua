@@ -1611,7 +1611,7 @@ local function BuildLower(host, height, width)
         links[i] = link
         -- the slash before it (between it and the one on its left)
         local slash = Text(host, "GameFontNormalSmall", "/")
-        slash:SetTextColor(1, 0.83, 0.47)
+        slash:SetTextColor(1, 0.82, 0)   -- (WoW yellow, 11-13)
         slashes[i] = slash
     end
     -- one line always (11-12 Marcus), right up to the title: the slashes' gaps close in first, then the

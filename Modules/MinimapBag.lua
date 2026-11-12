@@ -166,6 +166,15 @@ local function SourceAddon(frame)
     return type(location) == "string" and location:match("AddOns[\\/]([^\\/]+)") or nil
 end
 
+-- Compartment titles ("Lorever") are matched to button names ("LoreverMinimapButton") loosely:
+-- lower case, letters and digits only, the usual button words dropped
+local NAME_NOISE = { "libdbicon10", "minimapbutton", "minimap", "button", "btn", "icon", "ldb", "broker" }
+local function NameKey(text)
+    local key = StripText(text):lower():gsub("[^%w]", "")
+    for _, word in ipairs(NAME_NOISE) do key = key:gsub(word, "") end
+    return key
+end
+
 -- An adopted button's id in the saved order: its frame name, else the addon that made it
 local function FrameId(frame)
     return frame:GetName() or SourceAddon(frame) or L["Addon button"]
@@ -177,19 +186,16 @@ local function FrameLabel(frame)
     local label = object and StripText(object.label or object.text) or ""
     if label ~= "" then return label end
     local name = frame:GetName()
-    if name then return (name:gsub("^LibDBIcon10_", "")) end
     local addon = SourceAddon(frame)
+    if name then
+        name = name:gsub("^LibDBIcon10_", "")
+        -- (11-13) its addon's title when it names the same addon: "Social Diary", not "SocialDiaryMinimapButton"
+        local title = addon and StripText(C_AddOns.GetAddOnTitle(addon) or "") or ""
+        if title ~= "" and NameKey(title) ~= "" and NameKey(title) == NameKey(name) then return title end
+        return name
+    end
     local title = addon and StripText(C_AddOns.GetAddOnTitle(addon)) or ""
     return title ~= "" and title or FrameId(frame)
-end
-
--- Compartment titles ("Lorever") are matched to button names ("LoreverMinimapButton") loosely:
--- lower case, letters and digits only, the usual button words dropped
-local NAME_NOISE = { "libdbicon10", "minimapbutton", "minimap", "button", "btn", "icon", "ldb", "broker" }
-local function NameKey(text)
-    local key = StripText(text):lower():gsub("[^%w]", "")
-    for _, word in ipairs(NAME_NOISE) do key = key:gsub(word, "") end
-    return key
 end
 
 -- "Graphics Enhanced Forever" -> "gef", for buttons named by the initials
@@ -347,18 +353,24 @@ local function EntryId(e) return e.kind .. ":" .. e.name end
 local tokenIds = {}   -- token -> { id, ... }
 function Bag.AddonChoices()
     if not next(known) then pcall(CollectEntries) end
-    local list, byLabel = {}, {}
+    local list, byKey = {}, {}
     wipe(tokenIds)
+    -- one row per addon (11-13, Marcus: BtWQuests listed twice): its compartment entry, data object and
+    -- own button are matched loosely by name (NameKey: "BtWQuests" = "BtWQuestsMinimapButton"), shown by
+    -- the shortest of their labels
     for id, label in pairs(known) do
-        local key = label:lower()
-        local token = byLabel[key]
-        if not token then
-            token = key:gsub(",", " ")
-            byLabel[key] = token
-            tokenIds[token] = {}
-            list[#list + 1] = { token, label }
+        local key = NameKey(label)
+        if key == "" then key = label:lower():gsub("[,%s]", "") end
+        local row = byKey[key]
+        if not row then
+            row = { key, label }
+            byKey[key] = row
+            tokenIds[key] = {}
+            list[#list + 1] = row
+        elseif #label < #row[2] then
+            row[2] = label
         end
-        table.insert(tokenIds[token], id)
+        table.insert(tokenIds[key], id)
     end
     table.sort(list, function(a, b) return a[2]:lower() < b[2]:lower() end)
     return list
@@ -384,6 +396,21 @@ function Bag.SetInDrawer(value)
             for _, id in ipairs(ids) do db.bagLeave[id] = true end
         end
     end
+    if ns.Minimap and ns.Minimap.UpdateFlareButton then ns.Minimap.UpdateFlareButton() end
+end
+
+-- FlareUI itself (its compartment entry): out of the drawer, it gets a minimap button of its own
+-- (Minimap.lua MM.UpdateFlareButton); its right-click puts it back here
+local FLARE_ID = "compartment:FlareUI"   -- (the TOC title, as the compartment lists it)
+function Bag.FlareOut()
+    return Bag:IsOn() and Left(FLARE_ID)
+end
+function Bag.PutFlareBack()
+    local db = GetDb()
+    if db and type(db.bagLeave) == "table" then db.bagLeave[FLARE_ID] = nil end
+    if panel and panel:IsShown() then Bag:Layout() end
+    if ns.Minimap and ns.Minimap.UpdateFlareButton then ns.Minimap.UpdateFlareButton() end
+    if ns.SettingsPanel and ns.SettingsPanel.Refresh then pcall(ns.SettingsPanel.Refresh, ns.SettingsPanel) end
 end
 
 --------------------------------------------------
@@ -577,6 +604,11 @@ function Bag:Layout()
             -- the addon's own button, moved into the cell
             frame = e.frame
             frame:SetParent(panel)
+            -- (11-13, a player: Social Diary's button dimmed and dead in the drawer) a button that fixed
+            -- its own strata and level (Social Diary: MEDIUM 8, SetFixedFrameStrata/Level) kept them
+            -- under the panel; the drawer holds it until a reload, so they're unfixed while it's here
+            if frame.HasFixedFrameStrata and frame:HasFixedFrameStrata() then frame:SetFixedFrameStrata(false) end
+            if frame.HasFixedFrameLevel and frame:HasFixedFrameLevel() then frame:SetFixedFrameLevel(false) end
             -- its own strata or a lower level would put it under the panel
             ns.CopyStrata(frame, panel)
             frame:SetFrameLevel(panel:GetFrameLevel() + 2)

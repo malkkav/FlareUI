@@ -40,6 +40,13 @@ local DEFAULTS = { point = "CENTER", x = 220, y = 0 }   -- right of your charact
 -- rise; "placed" keeps the Edit Mode spot, and only then does Edit Mode show the frame
 local CURSOR_X, CURSOR_Y = 18, -8
 
+-- Alignment (lootFeedAlign, 11-13, a player asked): "right" puts the icon on the right, the text
+-- before it, and stacks the lines from the holder's right edge (at the cursor: left of the pointer)
+local function RightAligned()
+    local db = ns.db and ns.db.profile and ns.db.profile.tweaks
+    return db and db.lootFeedAlign == "right" or false
+end
+
 local function AtCursor()
     local db = ns.db and ns.db.profile and ns.db.profile.tweaks
     return not (db and db.lootFeedPosition == "placed")
@@ -82,15 +89,24 @@ end
 
 -- r, g, b nil: the line keeps its colour (a font change)
 local function Fill(line, icon, text, r, g, b)
-    -- false: no icon, the text starts at the line's left
+    -- false: no icon, the text starts at the line's left (its right, aligned right)
+    local right = RightAligned()
     line.icon:SetShown(icon ~= false)
+    line.icon:ClearAllPoints()
+    line.icon:SetPoint(right and "RIGHT" or "LEFT")
     line.text:ClearAllPoints()
+    line.text:SetJustifyH(right and "RIGHT" or "LEFT")
     if icon == false then
-        line.text:SetPoint("LEFT", line, "LEFT", 0, 0)
+        line.text:SetPoint(right and "RIGHT" or "LEFT", line, right and "RIGHT" or "LEFT", 0, 0)
     else
         line.icon:SetTexture(icon or 134400)
-        line.text:SetPoint("LEFT", line.icon, "RIGHT", 5, 0)
+        if right then
+            line.text:SetPoint("RIGHT", line.icon, "LEFT", -5, 0)
+        else
+            line.text:SetPoint("LEFT", line.icon, "RIGHT", 5, 0)
+        end
     end
+    line.anchor = right and "BOTTOMRIGHT" or "BOTTOMLEFT"
     -- FlareUI's font goes on with the text in place (a blank string can't show if a font took)
     line.text:SetText(text)
     local font = Font()
@@ -122,7 +138,9 @@ local function OnUpdate(self, elapsed)
         if line.age >= LIFE or line.y > HEIGHT - ICON then
             Release(i)
         else
-            line:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, line.y)
+            local anchor = line.anchor or "BOTTOMLEFT"
+            if line.placedAt ~= anchor then line:ClearAllPoints(); line.placedAt = anchor end
+            line:SetPoint(anchor, holder, anchor, 0, line.y)
             line:SetAlpha(math_min(1, line.age / FADE_IN, (LIFE - line.age) / FADE_OUT))
         end
     end
@@ -151,13 +169,18 @@ local function Add(key, icon, label, count, r, g, b, plain)
         local x, y = GetCursorPosition()
         local scale = UIParent:GetEffectiveScale()
         holder:ClearAllPoints()
-        holder:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + CURSOR_X, y / scale + CURSOR_Y)
+        if RightAligned() then
+            holder:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMLEFT", x / scale - CURSOR_X, y / scale + CURSOR_Y)
+        else
+            holder:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + CURSOR_X, y / scale + CURSOR_Y)
+        end
     end
     local line = tremove(pool) or NewLine(holder)
     line.key, line.count, line.age, line.y = key, count, 0, 0
     Fill(line, icon, (key and not plain) and ItemText(count, label) or label, r or 1, g or 1, b or 1)
     line:ClearAllPoints()
-    line:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, 0)
+    line:SetPoint(line.anchor or "BOTTOMLEFT", holder, line.anchor or "BOTTOMLEFT", 0, 0)
+    line.placedAt = line.anchor or "BOTTOMLEFT"
     line:SetAlpha(0)
     line:Show()
     lines[#lines + 1] = line
@@ -351,7 +374,8 @@ local function ShowPreview()
     end
     for i, line in ipairs(preview.lines) do
         line:ClearAllPoints()
-        line:SetPoint("BOTTOMLEFT", preview, "BOTTOMLEFT", 0, (#SAMPLES + 1 - i) * Spacing())
+        local anchor = RightAligned() and "BOTTOMRIGHT" or "BOTTOMLEFT"   -- (Alignment, as the real lines)
+        line:SetPoint(anchor, preview, anchor, 0, (#SAMPLES + 1 - i) * Spacing())
     end
     for i, s in ipairs(SAMPLES) do
         local id, count = s[1], s[2]

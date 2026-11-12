@@ -51,28 +51,36 @@ Row{ key = "br.trinkets", half = true, tab = "reminders", path = "auras.reminder
 Row{ key = "br.camping", half = true, tab = "reminders", path = "auras.reminder.camping" }
 Row{ key = "br.gathering", half = true, tab = "reminders", path = "auras.reminder.gathering" }
 -- Your Own: add a custom reminder, remove this class's, bring back the hidden ones
-Row{ key = "br.custom", kind = "button", half = true, center = true, tab = "reminders",
+Row{ key = "br.custom", kind = "button", center = true, tab = "reminders",
     apply = function() ns.ShowDialog("FLAREUI_BR_CUSTOM") end }
-Row{ key = "br.customClear", kind = "button", half = true, center = true, tab = "reminders",
-    labelFn = function()
-        local n = BR() and BR().CustomCount and BR().CustomCount() or 0
-        return n > 0 and L["Remove %d Custom Reminders"]:format(n) or L["No Custom Reminders"]
-    end,
-    disabled = function() return not (BR() and BR().CustomCount and BR().CustomCount() > 0) end,
-    apply = function()
-        if BR() and BR().ClearCustom then BR().ClearCustom() end
-        if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
-    end }
-Row{ key = "br.hidden", kind = "button", center = true, tab = "reminders",
-    labelFn = function()
-        local n = BR() and BR().HiddenCount and BR().HiddenCount() or 0
-        return n > 0 and L["Show %d Hidden Reminders"]:format(n) or L["No Hidden Reminders"]
-    end,
-    disabled = function() return not (BR() and BR().HiddenCount and BR().HiddenCount() > 0) end,
-    apply = function()
-        if BR() and BR().ShowHidden then BR().ShowHidden() end
-        if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
-    end }
+-- (11-13, a player: "just a single button that removes them all") one by one: each list ticks what's
+-- there; unticking one removes that custom reminder or brings that hidden one back. None: all of them.
+local customTokens, hiddenTokens = {}, {}
+local function ListRow(key, choicesFn, tokensFn, valueFn, setFn)
+    Row{ key = key, kind = "dropdown", tab = "reminders",
+        choices = function()
+            local list = BR() and BR()[choicesFn]() or {}
+            local tokens = key == "br.customClear" and customTokens or hiddenTokens
+            wipe(tokens)
+            for _, c in ipairs(list) do tokens[#tokens + 1] = c[1] end
+            table.insert(list, 1, { divider = true })
+            table.insert(list, 1, { "none", L["None"] })
+            return list
+        end,
+        toggles = { exclusive = { "none" }, tokens = key == "br.customClear" and customTokens or hiddenTokens, empty = "none" },
+        get = function()
+            if not BR() then return "none" end
+            BR()[choicesFn]()
+            return BR()[valueFn]()
+        end,
+        set = function(value)
+            if BR() then BR()[setFn](value) end
+            if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
+        end,
+        disabled = function() return not (BR() and #BR()[choicesFn]() > 0) end }
+end
+ListRow("br.customClear", "CustomChoices", "CustomTokens", "CustomValue", "SetCustom")
+ListRow("br.hidden", "HiddenChoices", "HiddenTokens", "HiddenValue", "SetHidden")
 
 -- WHEN AND WHERE ------------------------------
 -- Timing: before it ends, and apart for dungeons and raids ("same": the main one)

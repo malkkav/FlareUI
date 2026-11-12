@@ -22,6 +22,7 @@ S:Module{ key = "tt", group = "interface", order = 20, enabled = "tooltips.enabl
 local SCALES = {}
 for i = 5, 15 do SCALES[#SCALES + 1] = { i / 10, (i * 10) .. "%" } end
 S:Row{ key = "tt.scale", kind = "range", path = "tooltips.scale", choices = SCALES, apply = Refresh }
+S:Row{ key = "tt.opacity", kind = "range", path = "tooltips.opacity", choices = S:OpacityChoices(), apply = Refresh }
 -- Mouseover: every tooltip at the pointer, or none; the Visibility tab makes exceptions (11-12)
 S:Row{ key = "tt.mouseover", apply = Refresh, resetValue = function() return false end,
     get = function() return ns.Tooltips and ns.Tooltips.Mouseover and ns.Tooltips.Mouseover() or false end,

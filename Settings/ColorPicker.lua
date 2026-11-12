@@ -604,10 +604,9 @@ local function Build()
         f.saved = nil   -- kept
         f:Hide()
     end)
-    f.palette = CreateFrame("DropdownButton", nil, f, "WowStyle1DropdownTemplate")
+    f.palette = CreateFrame("DropdownButton", nil, f, "WowStyle2DropdownTemplate")   -- (Blizzard's own, as the settings window's, 11-13)
     f.palette:SetWidth(150)
     f.palette:SetPoint("RIGHT", f.apply, "LEFT", -8, 0)
-    if Panel.SkinDropdown then Panel.SkinDropdown(f.palette) end
     local function Picked(p) return CurrentPalette() == p end
     f.palette:SetupMenu(function(_, root)
         for _, p in ipairs(PALETTES) do

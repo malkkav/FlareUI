@@ -15,8 +15,8 @@ local LOGO = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png"
 local CIRCLE = "Interface\\AddOns\\FlareUI\\Media\\Panel\\Circle.tga"
 local WHITE = "Interface\\Buttons\\WHITE8x8"
 
-local TITLE_GOLD = { 1, 0.83, 0.47 }      -- page titles (the settings window's)
-local SECTION_GOLD = { 0.91, 0.77, 0.42 } -- card titles (its section titles)
+local TITLE_GOLD = { 1, 0.82, 0 }         -- page titles: WoW's yellow, as the settings window's (11-13)
+local SECTION_GOLD = { 1, 0.82, 0 }       -- card titles, as its section titles (11-13)
 local MUTED = { 0.72, 0.68, 0.61 }
 
 local function Kit() return ns.SettingsPanel end
@@ -367,7 +367,7 @@ function BuildPage.unitFrames(page)
         card.plate = card:CreateTexture(nil, "BACKGROUND")
         card.plate:SetPoint("TOPLEFT", 4, -4)
         card.plate:SetPoint("BOTTOMRIGHT", -4, 4)
-        card.plate:SetColorTexture(1, 1, 1)
+        Kit().Rounded(card.plate)
         card.value = style.value
         -- the frame itself, in this style
         local well = CreateFrame("Frame", nil, card)

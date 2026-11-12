@@ -50,11 +50,32 @@ local SQUARE_MASK   = "Interface\\BUTTONS\\WHITE8X8"
 -- (Hide would stop node addons' scans); Forever's own round mask (Blizzard_Minimap\Camelot)
 local MASKS = { EMPTY = "Interface\\AddOns\\FlareUI\\Media\\Art\\Empty", FOREVER = "ui-hud-minimap-frame-generic-mask" }
 
--- The frame's top edge is a title band over the map; the header row is centred in it
-local BAND_HEIGHT   = 22     -- title band depth over the map
+-- Header (minimap.squareHeader, 11-13 Marcus): two looks for the frame's top.
+-- * Headerless (default): the border lies under the map, so its title bar is covered and the header
+--   row sits on the terrain; the top edge comes down onto the map's top.
+-- * Bordered: the title bar and its corners draw over the map, a band the header row sits in (the
+--   look before 6.1.1).
+-- band: how far below the frame's top the mail and other indicators start; headerTop: the header row's
+-- inset from the frame's top; drop: the top edge lowered onto the map; over: top pieces above the map.
+-- (Tried and rolled back 11-13: a top made of the bottom edge upside down, a taller Headerless map,
+-- its top corners above the map. Marcus: this version is the best.)
+-- bronze (11-13, Marcus): Headerless framed in the settings window's border instead, the character
+-- select's heavy bronze frame without its rivets, over the map; the metal frame's pieces stay (unseen)
+-- to measure the Edit Mode box, and come back if the client lacks the atlas.
+local HEADER_STYLES = {
+    headerless = { band = 27, headerTop = 7, drop = 3, over = false, bronze = true, side = 10, shift = -1 },
+    art        = { band = 22, headerTop = 2, drop = 0, over = true, side = 6 },
+}
+local BRONZE_ATLAS = "heavybronze-frame-basic"
+-- the bronze frame this far past the map frame's edges, per side: measured against Bordered's metal
+-- frame on Marcus's screenshots (11-13) so both styles cover the same box
+local BRONZE_OUT   = { left = 9, right = 7, top = 11, bottom = 8 }   -- (top +1: Marcus 11-13)
+local function HeaderStyle(db)
+    db = db or (ns.db and ns.db.profile and ns.db.profile.minimap)
+    return HEADER_STYLES[db and db.squareHeader or "headerless"] or HEADER_STYLES.headerless
+end
 local HEADER_HEIGHT = 19     -- Forever's header buttons (23 px art), a little smaller
-local HEADER_TOP    = 2      -- header row inset from the map's top edge
-local HEADER_SIDE   = 6      -- ... and from its sides
+local HEADER_SIDE   = 6      -- header row inset from the frame's sides
 local HEADER_GAP    = 2
 local CLOCK_WIDTH   = 40
 -- Forever's zone plate, stretched along the whole bar with its ends kept whole
@@ -62,7 +83,7 @@ local PLATE_ATLAS   = "ui-hud-minimap-header-button"
 local PLATE_SLICE   = 12     -- end size, in art pixels
 local PLATE_INSET   = 6      -- zone text and clock inset from the plate's ends
 local SUN_SCALE     = 0.9    -- day/night badge scale
-local SUN_OVERHANG  = 6      -- badge overhang past the map's corner
+local SUN_OVERHANG  = 9      -- badge overhang past the map's corner (11-13 Marcus: 3 more, to pop out)
 local MAIL_GAP      = 3      -- title band to mail icon
 -- Player coordinates: a size up, in gold, clear of the frame art
 local COORDS = {
@@ -186,7 +207,8 @@ local function SquareHybridMinimap()
 end
 
 -- A copy of Blizzard's layout with its left side moved out to the map's edge
-local function BorderLayout()
+local function BorderLayout(style)
+    style = style or HeaderStyle()
     local layout = {}
     for key, value in pairs(NineSliceUtil.GetLayout(BORDER_LAYOUT)) do
         if type(value) == "table" then
@@ -199,7 +221,44 @@ local function BorderLayout()
     for _, key in ipairs({ "TopLeftCorner", "BottomLeftCorner" }) do
         if layout[key] then layout[key].x = (layout[key].x or 0) + LEFT_SHIFT end
     end
+    -- Headerless: the top edge down onto the map's top (11-13, Marcus: a black gap showed between them
+    -- once the border went under the map); it hangs between the top corners, so it moves with them
+    for _, key in ipairs({ "TopLeftCorner", "TopRightCorner" }) do
+        if layout[key] then layout[key].y = (layout[key].y or 0) - style.drop end
+    end
     return layout
+end
+
+-- The border in the chosen Header style. It lies under the map (since 11-13), but some pieces reach in
+-- over the map and draw on `above`, a frame just over the map in its strata (addon buttons are MEDIUM,
+-- above both): always the sides, the bottom and its corners (the map cut their inner shadow and its
+-- square corners across them), and with Bordered the title bar and its corners too. The pieces stay
+-- border.TopEdge etc. for measuring.
+local TOP_PIECES = { "TopEdge", "TopLeftCorner", "TopRightCorner" }
+local function ApplyBorder(border, above, style)
+    style = style or HeaderStyle()
+    NineSliceUtil.ApplyLayout(border, BorderLayout(style))
+    -- (11-13, Marcus) the sides and bottom too: their inner shadow falls over the map's edges, and the
+    -- map cut it off while they lay under it
+    for _, key in ipairs({ "BottomLeftCorner", "BottomRightCorner", "LeftEdge", "RightEdge", "BottomEdge" }) do
+        if border[key] then border[key]:SetParent(above) end
+    end
+    for _, key in ipairs(TOP_PIECES) do
+        if border[key] then border[key]:SetParent(style.over and above or border) end
+    end
+    -- Headerless in the heavy bronze frame (BRONZE_ATLAS): Blizzard's own frames stretch it to any size
+    local bronze = style.bronze and C_Texture.GetAtlasInfo(BRONZE_ATLAS) and true or false
+    if bronze and not above.Bronze then
+        above.Bronze = above:CreateTexture(nil, "BORDER")
+        above.Bronze:SetAtlas(BRONZE_ATLAS)
+        above.Bronze:SetPoint("TOPLEFT", border, "TOPLEFT", -BRONZE_OUT.left, BRONZE_OUT.top)
+        above.Bronze:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", BRONZE_OUT.right, -BRONZE_OUT.bottom)
+    end
+    if above.Bronze then above.Bronze:SetShown(bronze) end
+    for _, key in ipairs({ "TopLeftCorner", "TopRightCorner", "BottomLeftCorner", "BottomRightCorner",
+                           "TopEdge", "BottomEdge", "LeftEdge", "RightEdge" }) do
+        if border[key] then border[key]:SetAlpha(bronze and 0 or 1) end
+    end
 end
 
 local function CreateMapArt()
@@ -219,9 +278,20 @@ local function CreateMapArt()
     local border = CreateFrame("Frame", nil, frame)
     border:SetAllPoints(frame)
     border:SetFrameStrata("BACKGROUND")
-    NineSliceUtil.ApplyLayout(border, BorderLayout())
+    local above = CreateFrame("Frame", nil, frame)
+    above:SetAllPoints(frame)
+    above:SetFrameStrata(MinimapFrame:GetFrameStrata())
+    above:SetFrameLevel(MinimapFrame:GetFrameLevel() + 1)
+    ApplyBorder(border, above)
     MM.Frame = frame
     MM.Border = border
+    MM.BorderAbove = above
+    -- the addon buttons left out of the drawer, above the border (MM.LiftMapButtons): on the art frame,
+    -- so they show, hide and fade with the map's frame, never with the map a node addon moves
+    local holder = CreateFrame("Frame", nil, frame)
+    holder:SetAllPoints(frame)
+    holder:SetFrameStrata("MEDIUM")
+    MM.ButtonHolder = holder
 
     -- black where the map texture has no data. On the cluster, so it draws under the map, and placed
     -- where the map sits (ApplyLayout) rather than anchored to it: some node addons move the invisible
@@ -381,9 +451,12 @@ function MM.PlaceHeaderRow(frame, tracking, header, calendar)
     tracking:ClearAllPoints()
     calendar:ClearAllPoints()
     header:ClearAllPoints()
-    tracking:SetPoint("TOPLEFT", frame, "TOPLEFT", HEADER_SIDE, -HEADER_TOP)
+    local side = HeaderStyle().side or HEADER_SIDE   -- (11-13: the bronze frame's sides are thicker: the zone bar narrows)
+    -- shift: the row centred on the frame art, not the map (the bronze reaches 9 out on the left, 7 on
+    -- the right: its centre is 1 left of the map's; 11-13 Marcus "super centered")
+    tracking:SetPoint("TOPLEFT", frame, "TOPLEFT", side + (HeaderStyle().shift or 0), -HeaderStyle().headerTop)
     header:SetPoint("LEFT", tracking, "RIGHT", HEADER_GAP, 0)
-    header:SetWidth(MAP_SIZE - 2 * HEADER_SIDE - tracking:GetWidth() - calendar:GetWidth() - 2 * HEADER_GAP)
+    header:SetWidth(MAP_SIZE - 2 * side - tracking:GetWidth() - calendar:GetWidth() - 2 * HEADER_GAP)
     calendar:SetPoint("LEFT", header, "RIGHT", HEADER_GAP, 0)
 end
 
@@ -397,7 +470,8 @@ local function PlaceIndicators()
     local indicators = Cluster.IndicatorFrame
     Raise(indicators)
     indicators:ClearAllPoints()
-    indicators:SetPoint("TOPLEFT", MM.Frame, "TOPLEFT", HEADER_SIDE, -(BAND_HEIGHT + MAIL_GAP))
+    local style = HeaderStyle()
+    indicators:SetPoint("TOPLEFT", MM.Frame, "TOPLEFT", style.side or HEADER_SIDE, -(style.band + MAIL_GAP))
 end
 
 -- One size up and in Blizzard's gold, once per font string
@@ -555,7 +629,7 @@ local function EditModeSize()
 end
 
 function MM:UpdateLayout()
-    if not self.initialized then return end
+    if not self.initialized or MM.MapAway() then return end   -- (a HUD has the map: WatchMapHome)
     -- (the minimap and its cluster are not protected on Forever: this runs in a fight too)
     if not squareStyle then
         StyleCoords()
@@ -587,6 +661,8 @@ function MM:UpdateLayout()
     -- and its empty mask (the map hidden under the cursor) stays until it is home
     if Scan.Busy() then Scan.Later("mask", ApplySquareMap) else ApplySquareMap() end
 
+    -- the Header style (Headerless / Bordered) can change at any time
+    if MM.Border and MM.BorderAbove then ApplyBorder(MM.Border, MM.BorderAbove) end
     PlaceHeader()
     PlaceIndicators()
     PlaceCoords()
@@ -940,6 +1016,7 @@ end
 
 -- The square map can't rotate: rotateMinimap goes off at load and whenever a layout sets it
 local function KeepMapUnrotated()
+    if MM.MapAway() then return end   -- (a HUD that has the map may rotate it)
     if GetCVarBool("rotateMinimap") then SetCVar("rotateMinimap", "0") end
 end
 
@@ -994,6 +1071,7 @@ Scan.OnEnd = function() SetMask() end
 
 local function KeepMask(_, texture)
     if texture ~= MASKS.EMPTY then Scan.hidden = false end
+    if MM.MapAway() then return end   -- (a HUD has the map: its mask is its own)
     if maskGuard then return end
     if texture ~= MASKS.EMPTY and Scan.Away() then HideMapDirect() return end
     -- (a mask set mid-scan, another addon's empty one maybe, is not the round one to keep)
@@ -1056,10 +1134,9 @@ local function LiftButton(child, strata, want)
     end
     if not liftHooked[child] then
         liftHooked[child] = true
-        local function Again() C_Timer.After(0, MM.LiftMapButtons) end
-        hooksecurefunc(child, "SetFrameLevel", Again)
-        hooksecurefunc(child, "SetFrameStrata", Again)
-        child:HookScript("OnShow", Again)
+        hooksecurefunc(child, "SetFrameLevel", MM.LiftSoon)
+        hooksecurefunc(child, "SetFrameStrata", MM.LiftSoon)
+        child:HookScript("OnShow", MM.LiftSoon)
     end
     local mine = child:GetFrameStrata()
     local below = (STRATA_RANK[mine] or 0) < (STRATA_RANK[strata] or 0)
@@ -1068,9 +1145,35 @@ local function LiftButton(child, strata, want)
 end
 
 local lifting = false
+
+-- 11-13 (a player: the game hangs turning GatherLite's HUD or FarmHud on or off, since 6.1.1): a HUD
+-- takes the map, re-parents and re-levels it and every child, and moves hundreds of gathering pins.
+-- Each change queued a whole lift pass of its own, and FlareUI pulled the pins back over its border
+-- against the HUD. Now one pass waits at most, and nothing here touches the map while it is away from
+-- its home (MM.MapAway); it is all put back once when the map comes home (WatchMapHome).
+local liftPending, placePending = false, false
+function MM.LiftSoon()
+    if liftPending then return end
+    liftPending = true
+    C_Timer.After(0, function() liftPending = false; MM.LiftMapButtons() end)
+end
+function MM.PlaceSoon()
+    if placePending then return end
+    placePending = true
+    C_Timer.After(0, function() placePending = false; MM.PlaceAllButtons() end)
+end
+function MM.MapAway()
+    return MM.mapHome ~= nil and MinimapFrame:GetParent() ~= MM.mapHome
+end
+
+-- a LibDBIcon button on the map: still the map's child, or moved to the button holder (below)
+function MM.OnMap(button)
+    local parent = button and button:GetParent()
+    return parent ~= nil and (parent == MinimapFrame or parent == MM.ButtonHolder)
+end
 function MM.LiftMapButtons()
     local art = MM.Frame
-    if not art or lifting then return end
+    if not art or lifting or MM.MapAway() then return end
     lifting = true
     local want = MinimapFrame:GetFrameLevel() + 2
     if art:GetFrameLevel() ~= want then art:SetFrameLevel(want) end
@@ -1081,6 +1184,9 @@ function MM.LiftMapButtons()
     -- LibDBIcon's buttons (the ones Keep on the Minimap leaves out of the drawer) go a whole strata
     -- above the border: one level above it still left them under its edge (11-11, reported twice).
     -- Other map buttons (gathering pins) stay in the border's strata, under the world map.
+    -- 11-13 (/fui mapdebug: BigWigs MEDIUM 8 under the LOW 4 bronze edge): the map draws its children
+    -- with itself, whatever their strata, so a border over the map covered them all. Those buttons now
+    -- hang on MM.ButtonHolder, above the border, still anchored to the map where LibDBIcon puts them.
     local lib = LibStub and LibStub("LibDBIcon-1.0", true)
     if lib and lib.GetButtonList then
         local above = strata
@@ -1090,7 +1196,11 @@ function MM.LiftMapButtons()
         for _, name in ipairs(lib:GetButtonList() or {}) do
             local button = lib:GetMinimapButton(name)
             -- (one in the addon drawer is parked off the map)
-            if button and button:GetParent() == MinimapFrame then LiftButton(button, above, want) end
+            if button and MM.OnMap(button) then
+                local holder = MM.ButtonHolder
+                if holder and button:GetParent() ~= holder then button:SetParent(holder) end
+                LiftButton(button, above, want)
+            end
         end
     end
     lifting = false
@@ -1112,9 +1222,13 @@ function MM.DebugLayers()
     print("|cffffd100FlareUI map layers|r (square style: " .. tostring(squareStyle) .. ")")
     Line("map", MinimapFrame)
     Line("border", MM.Frame)
+    Line("edges (sides, bottom, bronze)", MM.BorderAbove)
     for _, parent in ipairs({ MinimapFrame, _G.MinimapBackdrop, Cluster }) do
         for _, child in ipairs(parent and { parent:GetChildren() } or {}) do
-            if child.IsObjectType and child:IsObjectType("Button") then Line("  btn", child) end
+            -- (11-13) frames too: some addons make their map button a plain Frame
+            if child.IsObjectType and child:IsObjectType("Frame") and child ~= MM.Frame then
+                Line(child:IsObjectType("Button") and "  btn" or "  frame", child)
+            end
         end
     end
     -- every LibDBIcon button, parked in the drawer or not, and LibDBIcon's own hide setting
@@ -1148,6 +1262,7 @@ end
 -- Buttons the drawer holds are never touched.
 local STACK = { first = 34, step = 32 }   -- from the left corner past the sundial; one button and a gap
 local buttonName = setmetatable({}, { __mode = "k" })   -- LibDBIcon button -> its name
+MM.extraButtons = {}   -- FlareUI's own minimap button: name -> button (MM.UpdateFlareButton)
 local placing = false
 
 local function Spots()
@@ -1167,12 +1282,15 @@ end
 -- the packed row: the buttons with no spot of their own, in name order
 local function StackIndex(button)
     local lib = LibStub and LibStub("LibDBIcon-1.0", true)
-    if not lib then return 1 end
     local names, spots = {}, Spots()
-    for _, name in ipairs(lib:GetButtonList() or {}) do
+    for _, name in ipairs(lib and lib:GetButtonList() or {}) do
         local b = lib:GetMinimapButton(name)
         local held = ns.MinimapBag and ns.MinimapBag.Holds and ns.MinimapBag.Holds(name)
-        if b and not held and not spots[name] and b:GetParent() == MinimapFrame and b:IsShown() then names[#names + 1] = name end
+        if b and not held and not spots[name] and MM.OnMap(b) and b:IsShown() then names[#names + 1] = name end
+    end
+    -- FlareUI's own button (MM.extraButtons) in the same row
+    for name, b in pairs(MM.extraButtons) do
+        if not spots[name] and MM.OnMap(b) and b:IsShown() then names[#names + 1] = name end
     end
     table.sort(names)
     for i, name in ipairs(names) do if name == buttonName[button] then return i end end
@@ -1180,13 +1298,16 @@ local function StackIndex(button)
 end
 
 local function PlaceButton(button)
-    if placing or not button or not squareStyle then return end
+    if placing or not button or not squareStyle or MM.MapAway() then return end
     local name = buttonName[button]
-    if not name or button:GetParent() ~= MinimapFrame then return end
+    if not name or not MM.OnMap(button) then return end
     local half = math.min(MinimapFrame:GetWidth(), MinimapFrame:GetHeight()) / 2
     if half <= 0 then return end
     local x, y
-    if button:GetScript("OnUpdate") then
+    if button.FlareUI_DragAngle then
+        -- FlareUI's own button being dragged: the pointer's angle, on the square
+        x, y = EdgePoint(button.FlareUI_DragAngle, half)
+    elseif button:GetScript("OnUpdate") then
         -- being dragged: LibDBIcon's angle, on the square
         local _, _, _, px, py = button:GetPoint(1)
         if not (px and py) or (px == 0 and py == 0) then return end
@@ -1221,6 +1342,7 @@ local function SaveSpot(button)
 end
 
 function MM.PlaceAllButtons()
+    for _, b in pairs(MM.extraButtons) do PlaceButton(b) end
     local lib = LibStub and LibStub("LibDBIcon-1.0", true)
     if not (lib and lib.GetButtonList) then return end
     for _, name in ipairs(lib:GetButtonList() or {}) do PlaceButton(lib:GetMinimapButton(name)) end
@@ -1235,11 +1357,119 @@ function MM.PullButtonsIn()
             buttonName[button] = name
             hooksecurefunc(button, "SetPoint", PlaceButton)
             button:HookScript("OnDragStop", SaveSpot)
-            button:HookScript("OnShow", function() C_Timer.After(0, MM.PlaceAllButtons) end)
-            button:HookScript("OnHide", function() C_Timer.After(0, MM.PlaceAllButtons) end)
+            button:HookScript("OnShow", MM.PlaceSoon)
+            button:HookScript("OnHide", MM.PlaceSoon)
         end
     end
     MM.PlaceAllButtons()
+end
+
+-- FlareUI's own minimap button (11-13, Marcus): only while the addon drawer is on and FlareUI is
+-- unticked in Addons in the Drawer (else FlareUI is the drawer's compartment entry). Left-click opens
+-- the settings, right-click puts FlareUI back in the drawer (and the button goes). It sits and drags
+-- like the LibDBIcon buttons: in the packed row on the square map, its spot saved as "FlareUI".
+local FLARE_NAME, FLARE_ROUND_ANGLE = "FlareUI", 225   -- (round map: bottom left until dragged)
+
+local function CursorAngle()
+    local x, y = GetCursorPosition()
+    local scale = MinimapFrame:GetEffectiveScale()
+    local midX, midY = MinimapFrame:GetCenter()
+    if not (midX and scale and scale > 0) then return FLARE_ROUND_ANGLE end
+    return math.deg(math.atan2(y / scale - midY, x / scale - midX)) % 360
+end
+
+local function PlaceFlare(b)
+    if squareStyle then PlaceButton(b) return end
+    -- the round map: on a circle just outside the edge, as LibDBIcon puts buttons there
+    local angle = math.rad(b.FlareUI_DragAngle or Spots()[FLARE_NAME] or FLARE_ROUND_ANGLE)
+    local r = MinimapFrame:GetWidth() / 2 + 5
+    b:ClearAllPoints()
+    b:SetPoint("CENTER", MinimapFrame, "CENTER", math.cos(angle) * r, math.sin(angle) * r)
+end
+
+local function FlareButton()
+    if MM.flareButton then return MM.flareButton end
+    -- (named ^FlareUI: the drawer never adopts it)
+    local b = CreateFrame("Button", "FlareUIMinimapButton", MinimapFrame)
+    b:SetSize(31, 31)
+    b:SetFrameStrata("MEDIUM")
+    b:SetFrameLevel(8)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    b:RegisterForDrag("LeftButton")
+    local ground = b:CreateTexture(nil, "BACKGROUND")
+    ground:SetSize(24, 24)
+    ground:SetPoint("CENTER")
+    ground:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    local icon = b:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(20, 20)
+    icon:SetPoint("CENTER")
+    icon:SetTexture("Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png")
+    local mask = b:CreateMaskTexture()
+    mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetAllPoints(icon)
+    icon:AddMaskTexture(mask)
+    local ring = b:CreateTexture(nil, "OVERLAY")
+    ring:SetSize(50, 50)
+    ring:SetPoint("TOPLEFT")
+    ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+    b:SetScript("OnEnter", function(self)
+        ns.OwnGameTooltip(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine(L["FlareUI"])
+        GameTooltip:AddLine(L["Left-click: open settings"], 1, 1, 1)
+        GameTooltip:AddLine(L["Right-click: put back in the drawer"], 1, 1, 1)
+        GameTooltip:AddLine(L["Drag to move this button."], 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetScript("OnClick", function(_, mouse)
+        if mouse == "RightButton" then
+            if ns.MinimapBag and ns.MinimapBag.PutFlareBack then ns.MinimapBag.PutFlareBack() end
+        elseif ns.SettingsPanel then
+            ns.SettingsPanel:Toggle()
+        end
+    end)
+    local function Dragging(self)
+        self.FlareUI_DragAngle = CursorAngle()
+        PlaceFlare(self)
+    end
+    b:SetScript("OnDragStart", function(self)
+        GameTooltip:Hide()
+        self:SetScript("OnUpdate", Dragging)
+    end)
+    b:SetScript("OnDragStop", function(self)
+        self:SetScript("OnUpdate", nil)
+        Spots()[FLARE_NAME] = CursorAngle()
+        self.FlareUI_DragAngle = nil
+        if squareStyle then MM.PlaceAllButtons() else PlaceFlare(self) end
+    end)
+    buttonName[b] = FLARE_NAME
+    MM.flareButton = b
+    return b
+end
+
+function MM.UpdateFlareButton()
+    local bag = ns.MinimapBag
+    local want = MM.initialized and bag and bag.FlareOut and bag.FlareOut()
+    if not want then
+        if MM.flareButton then MM.flareButton:Hide() end
+        if squareStyle then MM.PlaceSoon() end   -- (the packed row closes up)
+        return
+    end
+    local b = FlareButton()
+    -- on the square map, above the border with the other left-out buttons (MM.ButtonHolder)
+    local parent = squareStyle and MM.ButtonHolder or MinimapFrame
+    if b:GetParent() ~= parent then
+        b:SetParent(parent)
+        b:SetFrameStrata("MEDIUM")
+    end
+    b:Show()
+    if squareStyle then
+        MM.extraButtons[FLARE_NAME] = b
+        MM.PlaceAllButtons()
+    else
+        PlaceFlare(b)
+    end
 end
 
 local function WatchMapButtons()
@@ -1275,7 +1505,35 @@ local function WatchMapButtons()
     events:SetScript("OnEvent", function() C_Timer.After(1, MM.LiftMapButtons) end)
 end
 
+-- The map's home parent, and its return from a HUD (MM.MapAway): the layout, mask, rotation and
+-- buttons put back once, a frame after the HUD has finished restoring it
+local function WatchMapHome()
+    MM.mapHome = MinimapFrame:GetParent()
+    local wasAway, pending = false, false
+    local function Check()
+        pending = false
+        if MM.MapAway() then wasAway = true return end
+        if not wasAway then return end
+        wasAway = false
+        KeepMapUnrotated()
+        MM:Refresh()
+        MM.LiftMapButtons()
+        MM.PlaceAllButtons()
+    end
+    local function Soon()
+        if pending then return end
+        pending = true
+        C_Timer.After(0, Check)
+    end
+    -- GatherLite's HUD calls the map's own SetParent; FarmHud calls the method directly (no hook
+    -- fires) but hides and shows the map as it puts it back
+    hooksecurefunc(MinimapFrame, "SetParent", Soon)
+    MinimapFrame:HookScript("OnShow", Soon)
+    MinimapFrame:HookScript("OnHide", Soon)
+end
+
 local function InitSquare()
+    WatchMapHome()
     KeepMapSquare()
     RemoveEditModeSettings()
     KeepMapUnrotated()
@@ -1482,6 +1740,7 @@ function MM:Init()
         self:UpdateTrackerScale()
     end)
     self.initialized = true
+    C_Timer.After(0, MM.UpdateFlareButton)   -- (FlareUI's own button: the drawer starts in this same pass)
 
     EventUtil.ContinueOnAddOnLoaded("Blizzard_ObjectiveTracker", function() self:UpdateTrackerScale() end)
     EventUtil.ContinueOnAddOnLoaded("Blizzard_WorldMap", RestyleWorldMapCoords)
@@ -1563,17 +1822,26 @@ do
         sq:SetPoint("TOPLEFT")
         sq:SetSize(MAP_SIZE + 2 * FRAME_PAD, MAP_SIZE + 2 * FRAME_PAD)
         local inner = MAP_SIZE - 2 * MAP_CROP
-        local back = sq:CreateTexture(nil, "BACKGROUND")
-        back:SetPoint("CENTER")
-        back:SetSize(inner, inner)
-        back:SetColorTexture(0, 0, 0, 1)
-        sq.Terrain = Terrain(sq, inner)
+        -- layered as the real map (11-13): the border under the terrain, the pieces that reach over the
+        -- map (bottom corners; Bordered's title bar) above it
         local art = CreateFrame("Frame", nil, sq)
         art:SetPoint("CENTER")
         art:SetSize(MAP_SIZE, MAP_SIZE)
-        art:SetFrameLevel(sq:GetFrameLevel() + 2)
-        NineSliceUtil.ApplyLayout(art, BorderLayout())
+        art:SetFrameLevel(sq:GetFrameLevel() + 1)
         sq.Art = art
+        local map = CreateFrame("Frame", nil, sq)
+        map:SetAllPoints(art)
+        map:SetFrameLevel(sq:GetFrameLevel() + 2)
+        local back = map:CreateTexture(nil, "BACKGROUND")
+        back:SetPoint("CENTER")
+        back:SetSize(inner, inner)
+        back:SetColorTexture(0, 0, 0, 1)
+        sq.Terrain = Terrain(map, inner)
+        local corners = CreateFrame("Frame", nil, sq)
+        corners:SetAllPoints(art)
+        corners:SetFrameLevel(sq:GetFrameLevel() + 3)
+        ApplyBorder(art, corners)
+        sq.Above = corners
         sq.Tracking = ArtFrame(sq, TRACKING_ATLAS, HEADER_HEIGHT)
         sq.Calendar = ArtFrame(sq, CALENDAR_ATLAS, HEADER_HEIGHT)
         sq.Header = CreateHeader(sq)
@@ -1710,6 +1978,10 @@ do
         ApplyFont(plate.Clock, db.clockFont)
         plate.Clock:SetText(clock)
         if square then
+            -- the Header style (Headerless / Bordered), as the real map
+            local sq = f.Square
+            ApplyBorder(sq.Art, sq.Above)
+            MM.PlaceHeaderRow(sq.Art, sq.Tracking, sq.Header, sq.Calendar)
             -- the zone text runs up to the clock, which grows with its time (StyleHeader)
             local header = f.Square.Header
             local clockWidth = MM.ClockWidth(plate.Clock)

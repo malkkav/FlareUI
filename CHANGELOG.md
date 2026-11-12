@@ -1,3 +1,44 @@
+# FlareUI 6.2
+
+## Highlights
+- **A settings window that looks like Blizzard's**: Friz Quadrata text, WoW's yellow titles, and Blizzard's own checkboxes, dropdowns, sliders, buttons and scroll bars.
+- **Minimap › Header**: pick a headerless square minimap in a heavy bronze frame, or the bordered one with its title bar.
+
+## New
+- Minimap › Style: **Header** (Headerless), for the square minimap.
+  - **Headerless**: the map framed in the heavy bronze border of the settings window, its buttons and zone name on the map.
+  - **Bordered**: the frame's bronze title bar over the map, the buttons and zone name in it, as before 6.1.1.
+  - Both are the same size, so switching doesn't move your minimap.
+- Minimap: a **FlareUI button** when you untick FlareUI in **Addons in the Drawer**. Left-click opens the settings, right-click puts FlareUI back in the drawer, drag it along the edge to move it. It never shows while the drawer is off.
+- Tooltips › Look: **Frame Opacity** (100%), under Scale. Thanks for the request!
+- Loot Feed: **Alignment** (Left). Right puts the icons on the right, with the text before them. Thanks for the request!
+- Buff Reminders, warlocks with Demonic Sacrifice and Demonic Pact: a **Demonic Sacrifice** reminder while you have none of its buffs, and your pet and Soul Link are still asked for. Thanks for the report!
+- What's New: **Don't Show on Login** (off), at the bottom of the page. These notes then stay here instead of opening after an update. Thanks for the report!
+- Settings, in Gamepad mode: options the Gamepad UI doesn't let FlareUI run are greyed, with a red note saying so. Thanks for the report!
+
+## Changed
+- Settings window: a new, more Blizzard-like look.
+  - All text in Friz Quadrata, the game's own font, in white, with titles in WoW's yellow.
+  - Blizzard's own checkboxes, choice arrows, dropdowns, sliders and scroll bars.
+  - Buttons and tabs in Blizzard's grey with a bronze rim.
+  - The plain stone background, with darker boxes so the options read more easily.
+  - The module list on the left has no checkboxes; turn a module on or off beside its page title.
+- Buff Reminders › Your Own: **Custom Reminders** and **Hidden Reminders** are now lists. Untick one to remove it or bring it back; **None** does them all. Thanks for the request!
+- Bags & Looting: FlareUI leaves your bags alone while a bag addon runs (Bagnon, Baganator, AdiBags, ArkInventory, BetterBags, BagSmith and more), so its sorting and cleanup work as they should. Looting features keep working. Thanks for the report!
+- Action bars: druids' Prowl turns Action Bar 1 to the prowl page again, as Stealth does for rogues. **Keep Page 1 in Stealth** still keeps your Cat Form page.
+- Minimap › Addons in the Drawer: one line per addon, under its real name.
+- Buff Reminders: druids no longer get an Omen of Clarity reminder. It's a random proc on Forever, nothing to keep up.
+
+## Fixed
+- Minimap: the game no longer hangs when you turn GatherLite's HUD or FarmHud on or off. Thanks for the report!
+- Minimap: Social Diary's button works in the addon drawer again. Thanks for the report!
+- Minimap, square style: the border's shadow and corners are no longer cut off by the map.
+- Chat: TradeSkillMaster's settings no longer show an error on their General page. Thanks for the report!
+- Tooltips: Russian clients show a player's class again. Thanks for the report!
+- Fast Auto-Loot no longer stops working until a reload. Thanks for the report!
+- Cast bars: your own casts and profession casts no longer turn grey on the target or focus bar. Casts you can't interrupt still do.
+- Buff Reminders: the Passive Pet reminder no longer flashes as you dismount. Thanks for the report!
+
 # FlareUI 6.1.1
 
 ## New

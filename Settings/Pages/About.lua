@@ -30,10 +30,10 @@ local function CopyLink(url)
     end
 end
 
--- 11-10 rework: the page as bronze cards in the window's fonts; highlights in the window's gold,
--- names that copy a link in light gold
-local GOLD = "|cffe9c46a"
-local LINK = "|cffffd479"
+-- 11-10 rework: the page as bronze cards in the window's fonts; highlights in WoW yellow (11-13),
+-- names that copy a link too
+local GOLD = "|cffffd100"   -- (11-13, Marcus: WoW's yellow, as the window's titles; was e9c46a)
+local LINK = "|cffffd100"   -- (11-13: yellow too)
 local function Gold(text) return (text or ""):gsub("|cffffd100", GOLD) end
 local function Link(text, url) return "|Hurl:" .. url .. "|h" .. LINK .. text .. "|r|h" end
 
@@ -50,7 +50,7 @@ local function Card(host, title, width)
     t:SetWidth(width - 2 * CARD_PAD)
     t:SetJustifyH("LEFT")
     t:SetWordWrap(true)
-    t:SetTextColor(0.91, 0.77, 0.42)
+    t:SetTextColor(1, 0.82, 0)   -- card titles in WoW yellow (11-13)
     t:SetText(title or "")
     local ruleY = math.min(-38, titleY - math.ceil(t:GetStringHeight()) - 8)
     local rule = card:CreateTexture(nil, "ARTWORK")

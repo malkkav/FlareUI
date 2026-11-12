@@ -18,6 +18,10 @@ S:Module{ key = "mm", group = "map", order = 10, enabled = "minimap.enabled",
     end }
 
 S:Row{ key = "mm.style", kind = "styles", path = "minimap.style", choices = { "square", "round" }, reload = true, hideLabel = true }
+-- the square frame's top (11-13 Marcus): the header row on the map (Headerless) or in the frame's title
+-- bar (Bordered); live. Square style only
+S:Row{ key = "mm.squareHeader", kind = "choice", path = "minimap.squareHeader", choices = { "headerless", "art" },
+    hidden = function() return S:GetPath("minimap.style") == "round" end, apply = Refresh }
 S:Row{ key = "mm.zoom", kind = "choice", path = "minimap.autoZoom", choices = { 0, 5, 10, 30 }, apply = Refresh }
 -- Coordinates, one with Blizzard's own option (Minimap.lua MM.CoordsMode), then the framerate at
 -- the map's corner (MM.SetupFps); then the clock's tooltip, the middle-click menu, the drawer

@@ -149,7 +149,9 @@ local function ApplyColors(tip, borderColor)
     applyingBackdrop = true
 
     local bg = BACKGROUND
-    pcall(tip.NineSlice.SetCenterColor, tip.NineSlice, bg[1], bg[2], bg[3], bg[4])
+    local db = GetDb()
+    local alpha = db and tonumber(db.opacity) or bg[4]   -- Frame Opacity (Look)
+    pcall(tip.NineSlice.SetCenterColor, tip.NineSlice, bg[1], bg[2], bg[3], alpha)
 
     local c = borderColor or DEFAULT_BORDER_COLOR
     pcall(tip.NineSlice.SetBorderColor, tip.NineSlice, c[1], c[2], c[3], 1)
@@ -291,7 +293,7 @@ local function ColorLevelLine(tip, unit)
             if rest ~= "" then out = out .. reaction .. rest .. "|r" end
             if tag then out = out .. " " .. tag end
             line:SetText(out)
-            return
+            return true
         end
     end
 end
@@ -478,8 +480,9 @@ local function OnTooltipSetUnit(tip)
     ScrubLines(tip)
     ColorName(tip, unit)
     ApplyGuildLine(tip, unit)
-    ColorLevelLine(tip, unit)
-    RemoveClassLine(tip, unit)
+    -- the class line goes only once it is on the level line: on a client whose level line does not
+    -- start with LEVEL (ruRU: "60-го уровня") it stays where it is (11-13, a player report)
+    if ColorLevelLine(tip, unit) then RemoveClassLine(tip, unit) end
     ColorFactionLine(tip)
     ApplyColors(tip, GetUnitBorderColor(unit))
 end

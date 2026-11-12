@@ -1134,13 +1134,17 @@ local function ApplyCamera()
 end
 
 -- LOOT_READY says whether to auto-loot: every slot is taken at once, on the first event only
-local lootTaken = false
+-- (11-13, a player: "Fast Auto-Loot seems broken") the one go per window was cleared only by
+-- LOOT_CLOSED, so one missed close left it used up until a reload. It's now a moment long: the same
+-- window's second event (LOOT_OPENED after LOOT_READY) is still skipped, and any later window loots.
+local lootTakenAt = 0
 local function FastLoot(_, autoLoot)
     local db = GetDb()
-    if lootTaken or not (autoLoot and db and db.fasterLoot and ns.BagModuleOn()) then return end
+    if not (autoLoot and db and db.fasterLoot and ns.BagModuleOn()) then return end
+    if GetTime() - lootTakenAt < 0.5 then return end   -- (half a second: the same window)
     -- an event that comes before the slots are filled must not use up this window's one go
     if GetNumLootItems() == 0 then return end
-    lootTaken = true
+    lootTakenAt = GetTime()
     for slot = GetNumLootItems(), 1, -1 do LootSlot(slot) end
 end
 
@@ -1163,7 +1167,7 @@ local function InitCameraLoot()
     Tweaks.ApplyMapFade()
     Tweaks:RegisterEvent("LOOT_READY", FastLoot)
     Tweaks:RegisterEvent("LOOT_OPENED", FastLoot)   -- the second chance, same payload (autoLoot first)
-    Tweaks:RegisterEvent("LOOT_CLOSED", function() lootTaken = false end)
+    Tweaks:RegisterEvent("LOOT_CLOSED", function() lootTakenAt = 0 end)
 end
 
 --------------------------------------------------
