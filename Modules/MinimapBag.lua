@@ -73,31 +73,31 @@ end
 local function LibDBIcon() return LibStub and LibStub("LibDBIcon-1.0", true) end
 local function LibDataBroker() return LibStub and LibStub("LibDataBroker-1.1", true) end
 
--- Keep on the Minimap (11-11, a player's request): Shift+Right-Click a LibDBIcon addon's icon in the
--- drawer and its own button stays on the minimap (minimap.bagKeep["ldb:<name>"]); the icon stays in
--- the drawer, dimmed, and the same click puts it back. Only LibDBIcon's: other addons' buttons lose
--- their place on the map when they move into the drawer.
-local MM_Lift = function() if ns.Minimap and ns.Minimap.LiftMapButtons then ns.Minimap.LiftMapButtons() end end
-local function Kept(name)
+-- Addons in the Drawer (11-13, Marcus: replaces Shift+Right-Click "Keep on the Minimap", which clashed
+-- with addons' own right-click menus): a list on the Minimap page. An addon unticked there
+-- (minimap.bagLeave[id], id "ldb:<name>" / "frame:<name>" / "compartment:<title>") is left alone: its
+-- button isn't parked, moved or redrawn, and it has no icon in the drawer. Ticked is the default, so a
+-- new addon goes in. The old bagKeep choices become left-alone ones, once.
+local known = {}   -- id -> label, every addon the drawer has seen (for the settings list)
+local function Left(id)
     local db = GetDb()
-    return db and type(db.bagKeep) == "table" and db.bagKeep["ldb:" .. name] or false
+    if not db then return false end
+    if type(db.bagKeep) == "table" then
+        db.bagLeave = type(db.bagLeave) == "table" and db.bagLeave or {}
+        for keptId in pairs(db.bagKeep) do db.bagLeave[keptId] = true end
+        db.bagKeep = nil
+    end
+    return type(db.bagLeave) == "table" and db.bagLeave[id] or false
 end
+local function Kept(name) return Left("ldb:" .. name) end
+-- the drawer takes this LibDBIcon button (Minimap.lua leaves its place alone)
+function Bag.Holds(name) return Bag:IsOn() and not Kept(name) end
 
 -- A LibDBIcon button off the minimap, without touching LibDBIcon's settings
 local function ParkIcon(frame, name)
     if not frame or parked[frame] or (name and Kept(name)) then return end
     parked[frame] = true
     frame:SetParent(hiddenParent)
-end
-
--- back on the minimap where LibDBIcon keeps it
-local function UnparkIcon(frame, name)
-    if not (frame and parked[frame]) then return end
-    parked[frame] = nil
-    frame:SetParent(Minimap)
-    local lib = LibDBIcon()
-    if lib and lib.Refresh then pcall(lib.Refresh, lib, name) end
-    if MM_Lift then MM_Lift() end
 end
 
 local function ParkAllIcons()
@@ -252,13 +252,33 @@ local function CollectEntries()
     local lib, ldb = LibDBIcon(), LibDataBroker()
     if lib and ldb then
         for _, name in ipairs(lib:GetButtonList() or {}) do
-            local object = ldb:GetDataObjectByName(name)
             local frame = lib:GetMinimapButton(name)
+            -- (11-13, the research: an addon can register its button under another name than its data
+            -- object, RareScanner's "RareScannerMinimapIcon" for "RareScannerLDB": the button carries it)
+            local object = ldb:GetDataObjectByName(name) or (frame and type(frame.dataObject) == "table" and frame.dataObject)
             if object and frame then
-                ParkIcon(frame, name)
                 local label = StripText(object.label or object.text or name)
-                entries[#entries + 1] = { kind = "ldb", name = name, label = label ~= "" and label or name,
-                                          object = object, frame = frame }
+                label = label ~= "" and label or name
+                known["ldb:" .. name] = label
+                -- one unticked by the name of its compartment entry (the list had both) is left alone too
+                if Left("compartment:" .. label) and not Kept(name) then
+                    local db = GetDb()
+                    if db then db.bagLeave["ldb:" .. name] = true end
+                end
+                -- left alone but parked earlier this session: back on the minimap where LibDBIcon keeps it
+                -- (its points cleared first: LibDBIcon's placing never clears them)
+                if Kept(name) and parked[frame] then
+                    parked[frame] = nil
+                    frame:SetParent(Minimap)
+                    frame:ClearAllPoints()
+                    if lib.Refresh then pcall(lib.Refresh, lib, name) end
+                    if ns.Minimap and ns.Minimap.PullButtonsIn then ns.Minimap.PullButtonsIn() end
+                end
+                -- (left alone: still "seen", so its compartment entry doesn't slip into the drawer)
+                if not Kept(name) then
+                    ParkIcon(frame, name)
+                    entries[#entries + 1] = { kind = "ldb", name = name, label = label, object = object, frame = frame }
+                end
                 seen[name:lower()] = true
                 seen[label:lower()] = true
             end
@@ -275,13 +295,15 @@ local function CollectEntries()
     end
     if #found <= C.MAX_FOREIGN then
         for _, child in ipairs(found) do
-            if child:IsShown() then adopted[child] = true end
+            known["frame:" .. FrameId(child)] = FrameLabel(child)
+            if child:IsShown() and not Left("frame:" .. FrameId(child)) then adopted[child] = true end
         end
     end
     for frame in pairs(adopted) do
         -- one its addon has hidden since gets no cell (the panel's being hidden doesn't count)
         if frame:IsShown() then
             local label = FrameLabel(frame)
+            known["frame:" .. FrameId(frame)] = label
             entries[#entries + 1] = { kind = "frame", name = FrameId(frame), label = label, frame = frame }
             seen[label:lower()] = true
         end
@@ -292,7 +314,10 @@ local function CollectEntries()
         local label = StripText(data.text)
         if label ~= "" and not seen[label:lower()] and not AlreadyListed(data, label) then
             seen[label:lower()] = true
-            entries[#entries + 1] = { kind = "compartment", name = label, label = label, data = data }
+            known["compartment:" .. label] = label
+            if not Left("compartment:" .. label) then
+                entries[#entries + 1] = { kind = "compartment", name = label, label = label, data = data }
+            end
         end
     end
 
@@ -315,6 +340,52 @@ end
 
 local function EntryId(e) return e.kind .. ":" .. e.name end
 
+-- Addons in the Drawer's list: every addon seen, A to Z, as { token, label } (a comma in an id would
+-- split the saved list, so tokens have none), and the drawer's choice for each
+-- (11-13: one addon can be there twice, its button and its compartment entry, e.g. RareScanner: one tick
+-- box per name covers both, so unticking it really leaves the button alone)
+local tokenIds = {}   -- token -> { id, ... }
+function Bag.AddonChoices()
+    if not next(known) then pcall(CollectEntries) end
+    local list, byLabel = {}, {}
+    wipe(tokenIds)
+    for id, label in pairs(known) do
+        local key = label:lower()
+        local token = byLabel[key]
+        if not token then
+            token = key:gsub(",", " ")
+            byLabel[key] = token
+            tokenIds[token] = {}
+            list[#list + 1] = { token, label }
+        end
+        table.insert(tokenIds[token], id)
+    end
+    table.sort(list, function(a, b) return a[2]:lower() < b[2]:lower() end)
+    return list
+end
+function Bag.InDrawer()
+    local list = {}
+    for _, c in ipairs(Bag.AddonChoices()) do
+        local inside = true
+        for _, id in ipairs(tokenIds[c[1]] or {}) do
+            if Left(id) then inside = false end
+        end
+        if inside then list[#list + 1] = c[1] end
+    end
+    return #list > 0 and table.concat(list, ",") or "none"
+end
+function Bag.SetInDrawer(value)
+    local db = GetDb()
+    if not db then return end
+    local ticked = ns.Conditions.Set(value or "")
+    db.bagLeave = {}
+    for token, ids in pairs(tokenIds) do
+        if not ticked[token] then
+            for _, id in ipairs(ids) do db.bagLeave[id] = true end
+        end
+    end
+end
+
 --------------------------------------------------
 -- 3. THE PANEL
 --------------------------------------------------
@@ -330,14 +401,6 @@ local function AnchorTooltip(owner)
     else
         GameTooltip:SetPoint("TOPLEFT", owner, "BOTTOMRIGHT", 0, 2)
     end
-end
-
--- the Keep on the Minimap line under an LibDBIcon icon's tooltip
-local function KeepHint(e)
-    if e.kind ~= "ldb" then return end
-    GameTooltip:AddLine(Kept(e.name) and L["Shift+Right-Click: back in the drawer"] or L["Shift+Right-Click: keep on the minimap"],
-        0.5, 0.5, 0.5)
-    GameTooltip:Show()
 end
 
 local function OnIconEnter(self)
@@ -356,7 +419,6 @@ local function OnIconEnter(self)
             GameTooltip:AddLine(e.label)
             GameTooltip:Show()
         end
-        if GameTooltip:IsShown() then KeepHint(e) end
     elseif e.kind == "compartment" then
         if e.data.funcOnEnter then
             e.data.funcOnEnter(self)
@@ -388,23 +450,6 @@ end
 local function OnIconClick(self, mouseButton)
     local e = self.entry
     if not e or Bag.justDragged then return end
-    -- Keep on the Minimap, or back in the drawer
-    if e.kind == "ldb" and mouseButton == "RightButton" and IsShiftKeyDown() then
-        local db = GetDb()
-        if not db then return end
-        db.bagKeep = type(db.bagKeep) == "table" and db.bagKeep or {}
-        local id = "ldb:" .. e.name
-        if db.bagKeep[id] then
-            db.bagKeep[id] = nil
-            ParkIcon(e.frame, e.name)
-        else
-            db.bagKeep[id] = true
-            UnparkIcon(e.frame, e.name)
-        end
-        Bag:Layout()
-        OnIconEnter(self)
-        return
-    end
     GameTooltip:Hide()
     C_Timer.After(0, function()
         if not AnyMenuOpen() then Bag:Close() end
@@ -543,7 +588,7 @@ function Bag:Layout()
             frame.entry = e
             SetIcon(frame.icon, e.kind == "ldb" and e.object.icon or e.data.icon, e.kind == "ldb" and e.object or nil)
             -- kept on the minimap: dimmed here
-            frame:SetAlpha(e.kind == "ldb" and Kept(e.name) and 0.4 or 1)
+            frame:SetAlpha(1)
             frame:ClearAllPoints()
             frame:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y)
             -- back under the drag handles (a dragged icon is lifted)

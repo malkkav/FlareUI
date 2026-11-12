@@ -1,5 +1,6 @@
 local _, ns = ...
 local S = ns.Settings
+local L = ns.L
 
 --------------------------------------------------
 -- MINIMAP
@@ -33,6 +34,23 @@ S:Row{ key = "mm.bag", path = "minimap.buttonBag", reload = true }
 -- under the drawer: it opens on the pointer instead of a click (live)
 S:Row{ key = "mm.bagHover", path = "minimap.bagHover", parent = "mm.bag",
     disabled = function() return not S:GetPath("minimap.buttonBag") end }
+-- which addons go in it (ticked) and which are left alone on the minimap (11-13); a reload puts a
+-- button back where its addon keeps it
+local bagTokens = {}
+S:Row{ key = "mm.bagAddons", kind = "dropdown", path = "minimap.bagLeave", parent = "mm.bag", reload = true,
+    disabled = function() return not S:GetPath("minimap.buttonBag") end,
+    choices = function()
+        local list = ns.MinimapBag and ns.MinimapBag.AddonChoices and ns.MinimapBag.AddonChoices() or {}
+        wipe(bagTokens)
+        for _, c in ipairs(list) do bagTokens[#bagTokens + 1] = c[1] end
+        -- None first (no addon in the drawer), as the other toggle lists
+        table.insert(list, 1, { divider = true })
+        table.insert(list, 1, { "none", L["None"] })
+        return list
+    end,
+    toggles = { exclusive = { "none" }, tokens = bagTokens, empty = "none" },
+    get = function() return ns.MinimapBag and ns.MinimapBag.InDrawer and ns.MinimapBag.InDrawer() or "" end,
+    set = function(value) if ns.MinimapBag and ns.MinimapBag.SetInDrawer then ns.MinimapBag.SetInDrawer(value) end end }
 
 -- while a gathering addon that moves the map to scan is loaded: the flashing is its own (Minimap.lua)
 S:Row{ key = "mm.nodeScanNote", kind = "text",

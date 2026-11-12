@@ -8,6 +8,7 @@ local _, ns = ...
 -- ns.Dialogs[key] fields:
 --   text                  "%s" takes ns.ShowDialog's textArg
 --   button1, button2      yes / no labels (button2 optional)
+--   button3, OnAlt(data)  an optional third answer after the two (11-13)
 --   OnAccept(data, text)  on yes; text is the edit box's
 --   OnCancel(data)        on no, Escape or the right face button
 --   hasEditBox, maxLetters, editText(data)
@@ -41,6 +42,15 @@ end
 
 local function Close()
     if frame then frame:Hide() end
+end
+
+-- the third button: its own answer, no reload
+local function AnswerAlt()
+    local def, data = current, currentData
+    current, currentData = nil, nil
+    Close()
+    ns.ButtonSound()
+    if def and def.OnAlt then def.OnAlt(data) end
 end
 
 local function Answer(yes)
@@ -232,6 +242,7 @@ local function Build()
 
     frame.Button1 = CreateDialogButton(frame, function() Answer(true) end)
     frame.Button2 = CreateDialogButton(frame, function() Answer(false) end)
+    frame.Button3 = CreateDialogButton(frame, AnswerAlt)
     -- a name, so a controller binding can click "no" (padSecure)
     frame.PadNo = CreateFrame("Button", "FlareUIDialogPadNo", frame)
     frame.PadNo:SetScript("OnClick", function() Answer(false) end)
@@ -260,6 +271,12 @@ local function Layout(def, text)
         local noWidth = ns.Settings.ButtonWidthForText(frame.Button2, BUTTON_W)
         frame.Button2:SetWidth(noWidth)
         secondButtonSpace = BUTTON_GAP + noWidth
+    end
+    if def.button3 then
+        frame.Button3:SetText(def.button3)
+        local altWidth = ns.Settings.ButtonWidthForText(frame.Button3, BUTTON_W)
+        frame.Button3:SetWidth(altWidth)
+        secondButtonSpace = secondButtonSpace + BUTTON_GAP + altWidth
     end
 
     local alertOffset = def.showAlert and 20 or 0
@@ -291,6 +308,13 @@ local function Layout(def, text)
         frame.Button2:SetPoint("LEFT", frame.Button1, "RIGHT", BUTTON_GAP, 0)
     else
         frame.Button2:Hide()
+    end
+    if def.button3 then
+        frame.Button3:Show()
+        frame.Button3:ClearAllPoints()
+        frame.Button3:SetPoint("LEFT", def.button2 and frame.Button2 or frame.Button1, "RIGHT", BUTTON_GAP, 0)
+    else
+        frame.Button3:Hide()
     end
     frame:SetHeight(height + 16 + BUTTON_H + PADDING)
 end

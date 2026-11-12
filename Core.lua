@@ -1781,10 +1781,13 @@ do
     function C.Toggle(value, choice, spec)
         if IsExclusive(spec, choice) then return choice end
         local set = IsExclusive(spec, value) and {} or C.Set(value, spec)
+        -- spec.rivals: two choices that can't be ticked together; ticking one unticks the other
+        local rival = spec.rivals and spec.rivals[choice]
         local list = {}
         for _, token in ipairs(spec.tokens) do
             local on = set[token]
             if token == choice then on = not on end
+            if rival and token == rival and not set[choice] then on = false end
             if on then list[#list + 1] = token end
         end
         return #list > 0 and table.concat(list, ",") or spec.empty
@@ -2290,6 +2293,10 @@ ns.Dialogs["FLAREUI_SYNC_RELOAD"] = {
     reloads = true,   -- in combat the macro can't run: yes says how to reload
     hideOnEscape = true,
     padSecure = true,
+    -- (11-13, Marcus) no more of these pop-ups on any character: syncs still apply and finish at the next
+    -- reload. Settings > Sync Blizz UI > Hide Pop-up Alerts (global.syncHideAlerts) is the same switch
+    button3 = L["Hide These Alerts"],
+    OnAlt = function() if ns.db and ns.db.global then ns.db.global.syncHideAlerts = true end end,
 }
 
 -- the settings window closed with changes that need a reload

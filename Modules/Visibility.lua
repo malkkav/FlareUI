@@ -536,7 +536,11 @@ local HEALTH_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = HEALTH_TOKENS, l
 -- and the player frame while you're missing mana (ticked with Missing Health: either bar under full)
 local MANA_TOKENS = { unpack(HEALTH_TOKENS) }
 MANA_TOKENS[#MANA_TOKENS + 1] = "mana"
-local MANA_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = MANA_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
+-- (11-13) Missing Health and Missing Mana can't be ticked together: Forever hides both values from
+-- addons, and two hidden values can't be combined into "either is missing" (/fui fadedebug showed both
+-- hidden out of combat, so the frame stayed shown). Ticking one unticks the other.
+local MANA_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = MANA_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always",
+                    rivals = { health = "mana", mana = "health" } }
 -- a swing bar's Only When In Use clears the rest, as Always does
 local INUSE_SPEC = { exclusive = { "always", "inuse" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 -- a gryphon's Same as Action Bar 1 clears the rest too
@@ -747,6 +751,8 @@ local function BuildElementSettings(key)
             values = (function()
                 local values = Values("ab.bar.show", SHOW_VALUES, function(v) return v end)
                 local e = ELEMENT_BY_KEY[key]
+                -- (11-13, Marcus) a line above the pair that can't be ticked together (the player frame)
+                if e and e.health and e.mana then values[#values + 1] = { isDivider = true } end
                 if e and e.health then values[#values + 1] = { text = L["Missing Health"], value = "health", isRadio = true } end
                 if e and e.mana then values[#values + 1] = { text = L["Missing Mana"], value = "mana", isRadio = true } end
                 if e and e.cap then table_insert(values, 1, { text = L["Same as Action Bar 1"], value = "bar1", isRadio = true }) end
@@ -760,8 +766,11 @@ local function BuildElementSettings(key)
             end)(),
             get = function() return ShowSelection(key) end,
             set = function(_, value) ToggleShow(key, value) end,
-            desc = ELEMENT_BY_KEY[key] and ELEMENT_BY_KEY[key].inuse
-                and L["Only When In Use: the bar appears when this weapon swings and leaves soon after the swings stop."] or nil,
+            desc = (ELEMENT_BY_KEY[key] and ELEMENT_BY_KEY[key].inuse
+                and L["Only When In Use: the bar appears when this weapon swings and leaves soon after the swings stop."])
+                or (ELEMENT_BY_KEY[key] and ELEMENT_BY_KEY[key].mana
+                and L["Missing Health and Missing Mana can't be ticked together: the game hides both from addons, so they can't be combined."])
+                or nil,
         },
         {
             name = L["Fade Speed"], kind = LEM.SettingType.Dropdown, default = "instant", values = SPEED_VALUES,
@@ -1010,6 +1019,25 @@ local function UnitApplier(data, unit, health, mana)
     end
 end
 
+-- /fui fadedebug: the player frame's Visibility, each condition, the health and mana answers (hidden
+-- from addons or not) and the opacity it gets, for a report
+function Visibility:DebugPlayer()
+    local function S(x) if x == nil then return "nil" end; if issecretvalue and issecretvalue(x) then return "hidden" end; return tostring(x) end
+    local show = self:GetShow("uf_player")
+    print("|cffffd100FlareUI fade|r player frame, Visibility: " .. tostring(show))
+    print("  in combat " .. S(UnitAffectingCombat("player")) .. ", target " .. S(UnitExists("target")) .. ", group " .. S(IsInGroup())
+        .. ", mounted " .. S(IsMounted()))
+    local member
+    for _, data in ipairs(healthMembers) do if data.key == "uf_player" then member = data end end
+    if not member then print("  not on the health / mana watch") return end
+    print("  fader value " .. S(member.value) .. ", faded opacity " .. S(member.minAlpha) .. ", health " .. S(member.healthUnit)
+        .. ", mana " .. S(member.manaWatch) .. ", has mana " .. S(HasMana()))
+    local okH, h = pcall(UnitHealthPercent, "player", false, StepCurve(healthCurves, "dbgH", 0))
+    local okM, m = pcall(UnitPowerPercent, "player", MANA, false, StepCurve(manaCurves, "dbgM", 0))
+    print("  health curve " .. (okH and S(h) or "error") .. ", mana curve " .. (okM and S(m) or "error")
+        .. ", frame alpha " .. S(member.frame:GetAlpha()))
+end
+
 local healthWatch = CreateFrame("Frame")
 healthWatch:SetScript("OnEvent", function(_, event, unit, powerType)
     -- (UNIT_PET: a new pet's health)
@@ -1145,6 +1173,8 @@ function Visibility:Refresh()
                         -- (a linked pet: the player's Missing Health / Mana show the pair; the pet's own health doesn't)
                         local health = not linkPet and e.health and Conditions.Has(show, "health", SpecOf(key)) or false
                         local mana = not linkPet and e.mana and Conditions.Has(show, "mana", SpecOf(key)) or false
+                        -- a setup from before they were exclusive with both: Missing Mana stays
+                        if health and mana then health = false end
                         data.healthUnit = health and e.health or nil
                         data.manaWatch = mana or nil
                         if mana then watchMana = true end

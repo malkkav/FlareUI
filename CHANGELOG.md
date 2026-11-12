@@ -1,3 +1,22 @@
+# FlareUI 6.1.1
+
+## New
+- Minimap: **Addons in the Drawer** (all), under **Addon Button Drawer**: tick the addons whose buttons go in the drawer. The others are left alone on the minimap, where their addon puts them. Changes take effect after a reload.
+  - It replaces Shift+Right-Click on drawer icons, which clashed with addons' own right-click menus. Buttons you kept on the minimap that way stay out of the drawer.
+- Settings › Sync Blizz UI: **Hide Pop-up Alerts** (off): syncs still happen, with no pop-up asking to reload, on every character. The pop-up's new **Hide These Alerts** button turns it on.
+
+## Changed
+- Minimap, square style: addon buttons left out of the drawer sit on the border, packed along the bottom from beside the sundial. Drag one along the border and it stays where you drop it, through every reload. Thanks for the report!
+- Minimap, square style: the bronze border is drawn under the map, so no addon button can end up beneath it.
+- Unit frames › player frame › Visibility: **Missing Health** and **Missing Mana** can no longer be ticked together; ticking one unticks the other. The game hides both from addons, so the two can't be combined. If you had both, Missing Mana stays. Thanks for the report!
+- Action bars: **Active Highlight** follows the button's own frame, round corners and all, instead of a square. Thanks for the report!
+
+## Fixed
+- Minimap: the **Middle-Click Menu** opens again. Other clicks ping the map as usual. Thanks for the report!
+- Minimap: addon buttons no longer move around on every reload, and RareScanner's button shows again when left out of the drawer. Thanks for the report!
+- Resource bars: Blizzard's own swing timer no longer appears in busy fights when FlareUI's swing bars are on. Thanks for the report!
+- Unit frames: the player frame now fades as it should with Missing Health and Missing Mana both set (see Changed). Thanks for the report!
+
 # FlareUI 6.1
 
 **Restart the game fully after updating** (not just /reload): this version adds a new file.

@@ -1075,7 +1075,14 @@ ns.Copy = {
             desc = L["Every addon's minimap button in one drawer. Click the day/night badge to open it."],
             label = L["Addon Button Drawer"],
             section = "mm.tweaks",
-            tip = L["Drag and drop buttons to reorder them. Shift+Right-Click one to keep it on the minimap."],
+            tip = L["Drag and drop buttons to reorder them. Pick which addons go in it with Addons in the Drawer."],
+        },
+        ["mm.bagAddons"] = {
+            desc = L["Tick the addons whose buttons go in the drawer. The others are left alone on the minimap, where their addon puts them."],
+            label = L["Addons in the Drawer"],
+            section = "mm.tweaks",
+            tags = { "minimap buttons", "addon buttons", "keep on minimap" },
+            tip = L["A reload puts a button back. New addons go in the drawer."],
         },
         ["mm.bagHover"] = {
             desc = L["The drawer opens while you point at the day/night badge and closes when you move away. Clicking still works."],
@@ -1372,6 +1379,12 @@ ns.Copy = {
             label = L["Sync Blizz UI"],
             reload = true,
             section = "qol.syncBlizzUi",
+        },
+        ["qol.syncHideAlerts"] = {
+            desc = L["Syncs still happen, with no pop-up asking to reload. They take effect at your next reload."],
+            label = L["Hide Pop-up Alerts"],
+            section = "qol.syncBlizzUi",
+            tip = L["For every character."],
         },
         ["qol.taxiMap"] = {
             desc = L["Talking to a flight master opens the flight map at once, unless they have a quest for you."],

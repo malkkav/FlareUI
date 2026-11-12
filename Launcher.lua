@@ -167,6 +167,12 @@ loader:SetScript("OnEvent", function(self)
             ns.ShowTour()
         elseif msg == "perf" or msg:find("^perf%s") then
             ns.Perf.Command(raw:sub(5))   -- keeps the recording name's case
+        elseif msg == "fadedebug" then
+            -- a developer's probe: the player frame's fading (Visibility.lua)
+            if ns.Visibility and ns.Visibility.DebugPlayer then ns.Visibility:DebugPlayer() end
+        elseif msg == "mapdebug" then
+            -- a developer's probe: the square map's border and every button around it (Minimap.lua)
+            if ns.Minimap and ns.Minimap.DebugLayers then ns.Minimap.DebugLayers() end
         elseif msg == "errors" or msg:find("^errors%s") then
             ns.ErrorsCommand(msg:sub(8))
         elseif msg == "taint" or msg:find("^taint%s") then

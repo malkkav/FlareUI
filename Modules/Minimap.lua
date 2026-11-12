@@ -212,8 +212,16 @@ local function CreateMapArt()
     frame:SetSize(MAP_SIZE, MAP_SIZE)
     frame:SetFrameStrata(MinimapFrame:GetFrameStrata())
     frame:SetFrameLevel(MinimapFrame:GetFrameLevel() + 2)
-    NineSliceUtil.ApplyLayout(frame, BorderLayout())
+    -- the bronze border itself on a frame of its own in the lowest strata (11-13, after four reports of
+    -- addon buttons under it): under the map and everything on and around it, as ElvUI and BasicMinimap
+    -- draw theirs, so no button can ever sit beneath it. The frame above keeps holding the tracking
+    -- button, indicators, coordinates and sun at their own levels.
+    local border = CreateFrame("Frame", nil, frame)
+    border:SetAllPoints(frame)
+    border:SetFrameStrata("BACKGROUND")
+    NineSliceUtil.ApplyLayout(border, BorderLayout())
     MM.Frame = frame
+    MM.Border = border
 
     -- black where the map texture has no data. On the cluster, so it draws under the map, and placed
     -- where the map sits (ApplyLayout) rather than anchored to it: some node addons move the invisible
@@ -853,12 +861,25 @@ local function InBattleground()
 end
 
 -- (EnableMouse on FlareUI's own plain frame: allowed in a fight too)
+-- 11-13 (the menu still only pinged): the surface sat at the map's own level, so the map took the clicks
+-- first. Now it sits well above (as EllesmereUI's middle-click catcher, the idea only) and lets
+-- through, to Blizzard's untouched map, every button it doesn't use:
+-- * the middle button is the menu's while it's on (in a battleground too: no ping is involved);
+-- * the square style takes the left and right buttons outside battlegrounds to ping its corners;
+--   the round map and battlegrounds leave them to Blizzard.
+-- (SetPassThroughButtons can't change in a fight: the last setting stays until it ends.)
 function MM.UpdateMapMouse()
     if not surface then return end
     local db = GetDb()
-    local menu = db and db.microMenu
-    -- the round map with the menu off has nothing for the surface to add: Blizzard's map clicks itself
-    surface:EnableMouse(not InBattleground() and (squareStyle or menu) and true or false)
+    local menu = db and db.microMenu and true or false
+    local ownPings = squareStyle and not InBattleground()
+    surface:EnableMouse(menu or ownPings)
+    if surface.SetPassThroughButtons and not InCombatLockdown() then
+        local through = { "Button4", "Button5" }
+        if not ownPings then through[#through + 1] = "LeftButton"; through[#through + 1] = "RightButton" end
+        if not menu then through[#through + 1] = "MiddleButton" end
+        surface:SetPassThroughButtons(unpack(through))
+    end
 end
 
 local function Ping()
@@ -875,7 +896,7 @@ end
 local function CreateMapSurface()
     surface = CreateFrame("Frame", nil, MinimapFrame)
     surface:SetAllPoints(MinimapFrame)
-    surface:SetFrameLevel(MinimapFrame:GetFrameLevel())   -- under the buttons and pins on the map
+    surface:SetFrameLevel(MinimapFrame:GetFrameLevel() + 10)   -- above the map, which would take the clicks first
     -- clicks and the wheel only: the pointer's hover stays the map's own, as the game's dot tooltip
     -- and node addons (Gathercraft reads the mouse focus) need
     if surface.SetMouseMotionEnabled then surface:SetMouseMotionEnabled(false) end
@@ -889,16 +910,19 @@ local function CreateMapSurface()
         end)
     end
     surface:SetScript("OnMouseUp", function(_, button)
-        if InBattleground() then return end
         local db = GetDb()
-        if button == "MiddleButton" and db and db.microMenu then ToggleMenu() return end
-        Ping()
+        if button == "MiddleButton" then
+            if db and db.microMenu then ToggleMenu() end
+            return
+        end
+        if squareStyle and not InBattleground() then Ping() end
     end)
     MM.UpdateMapMouse()
     -- a battleground's start or end
     local events = CreateFrame("Frame")
     events:RegisterEvent("PLAYER_ENTERING_WORLD")
     events:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+    events:RegisterEvent("PLAYER_REGEN_ENABLED")
     events:SetScript("OnEvent", MM.UpdateMapMouse)
 end
 
@@ -1022,15 +1046,14 @@ end
 local STRATA_RANK = { BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4, DIALOG = 5, FULLSCREEN = 6,
     FULLSCREEN_DIALOG = 7, TOOLTIP = 8 }
 local liftHooked = setmetatable({}, { __mode = "k" })
+-- 11-13 (reported a third time): a button hidden when it was checked was skipped and never watched, so
+-- one an addon shows later (or makes hidden first) stayed under the border. Hidden ones are lifted and
+-- watched too.
 local function LiftButton(child, strata, want)
     if not (child and child.IsObjectType and child:IsObjectType("Button")) or (child.IsForbidden and child:IsForbidden())
-            or (InCombatLockdown() and child:IsProtected()) or not child:IsShown() then
+            or (InCombatLockdown() and child:IsProtected()) then
         return
     end
-    local mine = child:GetFrameStrata()
-    local below = (STRATA_RANK[mine] or 0) < (STRATA_RANK[strata] or 0)
-    if below then child:SetFrameStrata(strata) end
-    if (below or mine == strata) and child:GetFrameLevel() <= want then child:SetFrameLevel(want + 1) end
     if not liftHooked[child] then
         liftHooked[child] = true
         local function Again() C_Timer.After(0, MM.LiftMapButtons) end
@@ -1038,6 +1061,10 @@ local function LiftButton(child, strata, want)
         hooksecurefunc(child, "SetFrameStrata", Again)
         child:HookScript("OnShow", Again)
     end
+    local mine = child:GetFrameStrata()
+    local below = (STRATA_RANK[mine] or 0) < (STRATA_RANK[strata] or 0)
+    if below then child:SetFrameStrata(strata) end
+    if (below or mine == strata) and child:GetFrameLevel() <= want then child:SetFrameLevel(want + 1) end
 end
 
 local lifting = false
@@ -1069,13 +1096,177 @@ function MM.LiftMapButtons()
     lifting = false
 end
 
+-- /fui mapdebug: the border's layer, then every button on the map, its backdrop and the cluster, with
+-- where it sits, so a report says why one is under the border
+function MM.DebugLayers()
+    local function Line(label, f)
+        if not f then return end
+        local name = f.GetName and f:GetName() or tostring(f)
+        local p = f.GetParent and f:GetParent()
+        local pn = p and (p.GetName and p:GetName() or "?") or "-"
+        local l, t = f:GetLeft(), f:GetTop()
+        print(("%s %s [%s] %s %d %s %s at %s,%s"):format(label, name, pn, f:GetFrameStrata(), f:GetFrameLevel(),
+            f:IsShown() and "shown" or "hidden", f.IsObjectType and f:GetObjectType() or "?",
+            l and math.floor(l) or "-", t and math.floor(t) or "-"))
+    end
+    print("|cffffd100FlareUI map layers|r (square style: " .. tostring(squareStyle) .. ")")
+    Line("map", MinimapFrame)
+    Line("border", MM.Frame)
+    for _, parent in ipairs({ MinimapFrame, _G.MinimapBackdrop, Cluster }) do
+        for _, child in ipairs(parent and { parent:GetChildren() } or {}) do
+            if child.IsObjectType and child:IsObjectType("Button") then Line("  btn", child) end
+        end
+    end
+    -- every LibDBIcon button, parked in the drawer or not, and LibDBIcon's own hide setting
+    local lib = LibStub and LibStub("LibDBIcon-1.0", true)
+    if lib then
+        print("LibDBIcon radius " .. tostring(lib.radius) .. ", buttons:")
+        for _, name in ipairs(lib.GetButtonList and lib:GetButtonList() or {}) do
+            local b = lib:GetMinimapButton(name)
+            local hide = b and b.db and b.db.hide
+            Line("  ldb " .. name .. (hide and " (hidden by its addon)" or ""), b)
+        end
+    end
+    local db = ns.db and ns.db.profile and ns.db.profile.minimap
+    local left = {}
+    for id in pairs(type(db and db.bagLeave) == "table" and db.bagLeave or {}) do left[#left + 1] = id end
+    print("left out of the drawer: " .. (#left > 0 and table.concat(left, ", ") or "none"))
+end
+
+-- Square style: LibDBIcon places every button's centre BUTTON_RADIUS from the map's edge at an angle it
+-- saves (never the distance), 5 px outside by default, so on a square map with FlareUI's border its
+-- buttons straddle the border and go back there on every reload, wherever they were dragged (11-13,
+-- /fui mapdebug: they were above the border all along). LibDBIcon's own SetButtonRadius pulls every
+-- button inside the square, the way minimap replacements do; LibDBIcon keeps placing them there.
+-- Square style: where LibDBIcon's buttons sit (11-13, after several rounds with Marcus). LibDBIcon places
+-- them on a circle (the shape it was told was round), at a saved angle, and the order addons load in
+-- changed them on every reload. FlareUI places them itself, every time LibDBIcon does (SetPoint):
+-- * by default they sit packed along the bottom border, from just right of the sundial, in name
+--   order (then up the right side when the bottom is full), centred on the border line, above it;
+-- * a button the player drags follows the pointer along the square's edge, and where it's dropped is
+--   saved in FlareUI's own settings (minimap.buttonSpots[name], an angle) and kept from then on.
+-- Buttons the drawer holds are never touched.
+local STACK = { first = 34, step = 32 }   -- from the left corner past the sundial; one button and a gap
+local buttonName = setmetatable({}, { __mode = "k" })   -- LibDBIcon button -> its name
+local placing = false
+
+local function Spots()
+    local db = GetDb()
+    if not db then return {} end
+    db.buttonSpots = type(db.buttonSpots) == "table" and db.buttonSpots or {}
+    return db.buttonSpots
+end
+
+-- an angle (LibDBIcon's degrees) on the square's edge, centred on the border line
+local function EdgePoint(angle, half)
+    local x, y = math.cos(math.rad(angle)), math.sin(math.rad(angle))
+    local reach = math.max(math.abs(x), math.abs(y))
+    return x / reach * half, y / reach * half
+end
+
+-- the packed row: the buttons with no spot of their own, in name order
+local function StackIndex(button)
+    local lib = LibStub and LibStub("LibDBIcon-1.0", true)
+    if not lib then return 1 end
+    local names, spots = {}, Spots()
+    for _, name in ipairs(lib:GetButtonList() or {}) do
+        local b = lib:GetMinimapButton(name)
+        local held = ns.MinimapBag and ns.MinimapBag.Holds and ns.MinimapBag.Holds(name)
+        if b and not held and not spots[name] and b:GetParent() == MinimapFrame and b:IsShown() then names[#names + 1] = name end
+    end
+    table.sort(names)
+    for i, name in ipairs(names) do if name == buttonName[button] then return i end end
+    return #names + 1
+end
+
+local function PlaceButton(button)
+    if placing or not button or not squareStyle then return end
+    local name = buttonName[button]
+    if not name or button:GetParent() ~= MinimapFrame then return end
+    local half = math.min(MinimapFrame:GetWidth(), MinimapFrame:GetHeight()) / 2
+    if half <= 0 then return end
+    local x, y
+    if button:GetScript("OnUpdate") then
+        -- being dragged: LibDBIcon's angle, on the square
+        local _, _, _, px, py = button:GetPoint(1)
+        if not (px and py) or (px == 0 and py == 0) then return end
+        x, y = EdgePoint(math.deg(math.atan2(py, px)), half)
+    elseif Spots()[name] then
+        x, y = EdgePoint(Spots()[name], half)
+    else
+        -- packed along the bottom, then up the right side
+        local along = STACK.first + (StackIndex(button) - 1) * STACK.step
+        if along <= 2 * half then
+            x, y = -half + along, -half
+        else
+            x, y = half, -half + (along - 2 * half)
+        end
+    end
+    local _, _, _, cx, cy = button:GetPoint(1)
+    if cx and cy and math.abs(cx - x) < 0.5 and math.abs(cy - y) < 0.5 then return end
+    placing = true
+    button:ClearAllPoints()
+    button:SetPoint("CENTER", MinimapFrame, "CENTER", x, y)
+    placing = false
+end
+
+-- a drop saves the spot (the angle of where it was let go)
+local function SaveSpot(button)
+    local name = buttonName[button]
+    local _, _, _, px, py = button:GetPoint(1)
+    if name and px and py and not (px == 0 and py == 0) then
+        Spots()[name] = math.deg(math.atan2(py, px)) % 360
+        MM.PlaceAllButtons()
+    end
+end
+
+function MM.PlaceAllButtons()
+    local lib = LibStub and LibStub("LibDBIcon-1.0", true)
+    if not (lib and lib.GetButtonList) then return end
+    for _, name in ipairs(lib:GetButtonList() or {}) do PlaceButton(lib:GetMinimapButton(name)) end
+end
+
+function MM.PullButtonsIn()
+    local lib = LibStub and LibStub("LibDBIcon-1.0", true)
+    if not (lib and lib.GetButtonList) then return end
+    for _, name in ipairs(lib:GetButtonList() or {}) do
+        local button = lib:GetMinimapButton(name)
+        if button and not buttonName[button] then
+            buttonName[button] = name
+            hooksecurefunc(button, "SetPoint", PlaceButton)
+            button:HookScript("OnDragStop", SaveSpot)
+            button:HookScript("OnShow", function() C_Timer.After(0, MM.PlaceAllButtons) end)
+            button:HookScript("OnHide", function() C_Timer.After(0, MM.PlaceAllButtons) end)
+        end
+    end
+    MM.PlaceAllButtons()
+end
+
 local function WatchMapButtons()
+    MM.PullButtonsIn()
+    -- the library can arrive with an addon loading after FlareUI
+    local loader = CreateFrame("Frame")
+    loader:RegisterEvent("ADDON_LOADED")
+    loader:RegisterEvent("PLAYER_LOGIN")
+    loader:SetScript("OnEvent", function() MM.PullButtonsIn() end)
     MM.LiftMapButtons()
+    -- LibDBIcon tells when it makes a button (an addon registering late)
+    local lib = LibStub and LibStub("LibDBIcon-1.0", true)
+    if lib and lib.RegisterCallback then
+        pcall(lib.RegisterCallback, MM, "LibDBIcon_IconCreated", function()
+            C_Timer.After(0, function() MM.PullButtonsIn(); MM.LiftMapButtons() end)
+        end)
+    end
     MM.mapChildren = MinimapFrame:GetNumChildren()
+    -- a new child at once (2 s), and every 6 s anyway: an addon can re-parent, re-layer or show a button
+    -- without anything to hook (a light walk of the map's children)
+    local beats = 0
     C_Timer.NewTicker(2, function()
         local count = MinimapFrame:GetNumChildren()
-        if count ~= MM.mapChildren then
+        beats = beats + 1
+        if count ~= MM.mapChildren or beats >= 3 then
             MM.mapChildren = count
+            beats = 0
             MM.LiftMapButtons()
         end
     end)
@@ -1096,7 +1287,8 @@ local function InitSquare()
     -- Edit Mode's box on the border art's edge strips, less their shadow outside the gold line
     ns.FitEditModeBox(Cluster, function()
         local art = MM.Frame
-        local leftEdge, rightEdge, topEdge, bottomEdge = art and art.LeftEdge, art and art.RightEdge, art and art.TopEdge, art and art.BottomEdge
+        local pieces = MM.Border or art
+        local leftEdge, rightEdge, topEdge, bottomEdge = pieces and pieces.LeftEdge, pieces and pieces.RightEdge, pieces and pieces.TopEdge, pieces and pieces.BottomEdge
         if not (art and art:GetLeft() and leftEdge and rightEdge and topEdge and bottomEdge and leftEdge:GetLeft()) then return nil end
         local cut = BORDER_SHADOW
         return art, leftEdge:GetLeft() + cut.left - art:GetLeft(), topEdge:GetTop() - cut.top - art:GetTop(),
@@ -1112,7 +1304,7 @@ local TRACKER_LINE_WIDTH = 288
 
 -- The map's outer width in the tracker's parent's units
 local function FrameOuterWidth(tracker)
-    local frame = MM.Frame
+    local frame = MM.Border or MM.Frame   -- (the border pieces live on MM.Border since 11-13)
     if not squareStyle then frame = Cluster.MinimapContainer end
     if not frame then return end
     local width

@@ -827,7 +827,7 @@ local function LoadSync()
 
     -- A watched CVar runs Blizzard's callback inside this call and taints what it writes (the raid
     -- frame options): any change asks for a clean reload, after the action bar pass.
-    if changed > 0 or layoutChanged or chatChanged then
+    if (changed > 0 or layoutChanged or chatChanged) and not (ns.db.global and ns.db.global.syncHideAlerts) then
         C_Timer.After(6, function()
             if not InCombatLockdown() then
                 ns.ShowDialog("FLAREUI_SYNC_RELOAD", sourceName, { layout = layoutIndex })

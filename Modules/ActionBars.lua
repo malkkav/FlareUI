@@ -361,16 +361,19 @@ end
 local function ActiveOverlay(button)
     local ov = button.FlareUI_Active
     if ov then return ov end
+    -- (11-13, a player report: the square edge didn't match the frame) the edge is the button's own
+    -- frame in gold, set in UpdateActive; the light takes the icon's rounded mask
     ov = CreateFrame("Frame", nil, button, "BackdropTemplate")
     ov:SetAllPoints(button)
-    ov:SetFrameLevel(button:GetFrameLevel() + 2)
-    ov:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
-    ov:SetBackdropBorderColor(ACTIVE_COLOR[1], ACTIVE_COLOR[2], ACTIVE_COLOR[3], 1)
+    ov:SetFrameLevel(button:GetFrameLevel() + 3)
+    ov.frame = ov:CreateTexture(nil, "OVERLAY", nil, 6)
+    ov.frame:SetBlendMode("ADD")
     ov.light = ov:CreateTexture(nil, "OVERLAY")
     ov.light:SetTexture("Interface\\Buttons\\CheckButtonHilight")
     ov.light:SetBlendMode("ADD")
     ov.light:SetAllPoints(button.icon or button)
     ov.light:SetAlpha(0.55)
+    if button.IconMask then pcall(ov.light.AddMaskTexture, ov.light, button.IconMask) end
     local pulse = ov:CreateAnimationGroup()
     pulse:SetLooping("BOUNCE")
     local fade = pulse:CreateAnimation("Alpha")
@@ -393,6 +396,30 @@ local function UpdateActive(button)
         return
     end
     local ov = ActiveOverlay(button)
+    -- the edge: the frame the button wears right now, in gold
+    local c = ACTIVE_COLOR
+    if button.FlareUI_Bordered then
+        local LSM = LibStub("LibSharedMedia-3.0")
+        local file = LSM:Fetch("border", "FlareUI Frames")
+        ov:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, FLARE_BORDER_EDGE) })
+        ov:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+        ov.frame:Hide()
+    else
+        ov:SetBackdrop(nil)
+        local normal = button.NormalTexture
+        local atlas = normal and normal.GetAtlas and normal:GetAtlas()
+        if atlas then
+            ov.frame:SetAtlas(atlas)
+            ov.frame:ClearAllPoints()
+            ov.frame:SetPoint("CENTER", normal, "CENTER")
+            ov.frame:SetSize(normal:GetSize())
+            ov.frame:SetDesaturated(true)
+            ov.frame:SetVertexColor(c[1], c[2], c[3], 1)
+            ov.frame:Show()
+        else
+            ov.frame:Hide()
+        end
+    end
     ov:Show()
     if HoldsQueuedAttack(button) then
         if not ov.pulse:IsPlaying() then ov.pulse:Play() end

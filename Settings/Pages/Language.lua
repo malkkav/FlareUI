@@ -51,6 +51,16 @@ S:Row{
     apply = function() ns.ShowDialog("FLAREUI_SYNC_SOURCE") end,
 }
 
+-- Hide Pop-up Alerts (off): syncs happen without their reload pop-up, on every character (account-wide);
+-- the pop-up's Hide These Alerts turns it on
+S:Row{
+    key = "qol.syncHideAlerts", module = "language", parent = "qol.sync", section = "qol.syncBlizzUi",
+    get = function() return ns.db and ns.db.global and ns.db.global.syncHideAlerts == true or false end,
+    set = function(on) if ns.db and ns.db.global then ns.db.global.syncHideAlerts = on and true or nil end end,
+    resetValue = function() return false end,
+    disabled = function() return not S:GetPath("tweaks.syncUI") end,
+}
+
 -- one switch for moving windows and placing loot rolls / toasts
 S:Row{
     key = "qol.move", module = "language", reload = true,

@@ -1954,7 +1954,21 @@ local function HideBlizzardCounterparts()
         local wanted = false
         for _, key in ipairs(entry.bars or {}) do if BarOn(key) then wanted = true end end
         if wanted then
-            local function hide() if _G[entry.frame] then K.HardHide(entry.frame) end end
+            local function hide()
+                local frame = _G[entry.frame]
+                if not frame then return end
+                K.HardHide(entry.frame)
+                -- (11-13, a player report: Blizzard's swing timer showed in busy fights) these bars are
+                -- run by Blizzard's SwingTimerManagerFrame, not their own events, and the bottom frame
+                -- manager can take one back under its own parent mid-fight, out of the hidden parent; so
+                -- they are also kept fully transparent and mouse-deaf, which holds in a fight too
+                if entry.addon == "Blizzard_SwingTimer" and not frame.FlareUI_Invisible then
+                    frame.FlareUI_Invisible = true
+                    frame:SetAlpha(0)
+                    if frame.EnableMouse then pcall(frame.EnableMouse, frame, false) end
+                    hooksecurefunc(frame, "SetAlpha", function(f, alpha) if alpha ~= 0 then f:SetAlpha(0) end end)
+                end
+            end
             if _G[entry.frame] then
                 hide()
             elseif EventUtil and EventUtil.ContinueOnAddOnLoaded then
