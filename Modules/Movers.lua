@@ -117,8 +117,13 @@ local function CreateHolder(key, globalName, label, width, height)
     holder.preview:SetAllPoints()
     holder.preview:Hide()
     holders[key] = holder
-    ApplyPosition(key)
+    -- in Edit Mode first: a placement that fails (11-12, a player lost the loot rolls' and toasts'
+    -- overlays) must not take the frame out of Edit Mode with it
     LEM:AddFrame(holder, Mover(key), DEFAULTS[key], label)
+    if not pcall(ApplyPosition, key) then
+        holder:ClearAllPoints()
+        holder:SetPoint(DEFAULTS[key].point, UIParent, DEFAULTS[key].point, DEFAULTS[key].x, DEFAULTS[key].y)
+    end
     -- the selection box over the sample panel
     local selection = LEM.frameSelections and LEM.frameSelections[holder]
     if selection then selection:SetFrameLevel(holder.preview:GetFrameLevel() + 10) end

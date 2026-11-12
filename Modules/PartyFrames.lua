@@ -965,6 +965,7 @@ end
 local function NoAuraTooltip(f, button)
     if f and f.ctx and f.ctx.hostile then return end
     groupAuraButtons[button] = true
+    ns.MarkAuraTooltip(button, "group")
     if button.SetMouseMotionEnabled then pcall(button.SetMouseMotionEnabled, button, GroupAuraMouse()) end
 end
 

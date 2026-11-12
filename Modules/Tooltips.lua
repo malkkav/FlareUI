@@ -59,6 +59,7 @@ local CAT_WORLD_OBJECT = "worldObjects"
 local CAT_FRAME_UNIT   = "frameUnits"
 local CAT_ACTION       = "actionBars"
 local CAT_AURA         = "auras"
+local CAT_OTHER        = "other"   -- Everything Else (11-12)
 
 --------------------------------------------------
 -- 4. SAFETY
@@ -528,6 +529,8 @@ local function OnTooltipShow(tip)
     local unitName = tip:GetUnit()
     if issecretvalue(unitName) or unitName then return end
     if MouseIsOverWorld() and HideIfNeeded(tip, CAT_WORLD_OBJECT) then return end
+    -- Everything Else: a tooltip in Blizzard's spot for anything but the world, units and action bars
+    if tip.fuiOther and HideIfNeeded(tip, CAT_OTHER) then return end
     -- Blizzard shows a tooltip after its post-calls: an item keeps the quality border just set
     if not tip:IsTooltipType(Enum.TooltipDataType.Item) then ApplyColors(tip, nil) end
     HideHealthBar()
@@ -536,16 +539,89 @@ end
 --------------------------------------------------
 -- 10. ANCHORING
 --------------------------------------------------
+-- Per kind (11-12, a player asked): the world (anchor), unit frames (anchorFrames), action bars
+-- (anchorBars) and everything else in Blizzard's spot (anchorOther); the last two start as the unit
+-- frames' choice, which was everything off the world before
+local function AnchorKind(tooltip, parent)
+    if MouseIsOverWorld() then return "world" end
+    if OwnerIsActionButton(tooltip) then return "bars" end
+    if parent.IsForbidden and parent:IsForbidden() then return "other" end
+    local unit = parent.unit
+    if not (canaccessvalue(unit) and unit) and parent.GetAttribute then unit = parent:GetAttribute("unit") end
+    if canaccessvalue(unit) and type(unit) == "string" then return "frames" end
+    return "other"
+end
+
+-- Mouseover on Buffs/Debuffs and Party/Raid Auras: an aura icon's tooltip, once Blizzard has given it its
+-- owner, is turned to follow the pointer. Only the anchor type changes, after Blizzard's call.
+-- Mouseover (11-12): one main switch (tooltips.mouseover, Settings > Look) for every kind, and per kind
+-- an exception (tooltips.mouseoverKinds[kind], the Visibility tab) while it differs. Kinds: world,
+-- frames, bars, auras, groupAuras, other. The per-kind anchors of the day before convert once.
+local MOUSEOVER_KINDS = { "world", "frames", "bars", "auras", "groupAuras", "other" }
+TIP.MOUSEOVER_KINDS = MOUSEOVER_KINDS
+local function ConvertAnchors(db)
+    if db.mouseoverSet then return end
+    db.mouseoverSet = true
+    local function On(v) return v == "cursorOffset" end
+    local old = { world = On(db.anchor), frames = On(db.anchorFrames),
+                  bars = On(db.anchorBars or db.anchorFrames), other = On(db.anchorOther or db.anchorFrames),
+                  auras = On(db.anchorAuras), groupAuras = On(db.anchorGroupAuras) }
+    db.mouseover = old.world
+    db.mouseoverKinds = {}
+    for _, kind in ipairs(MOUSEOVER_KINDS) do
+        if old[kind] ~= old.world then db.mouseoverKinds[kind] = old[kind] end
+    end
+end
+function TIP.Mouseover(kind)
+    local db = GetDb()
+    if not db then return false end
+    ConvertAnchors(db)
+    local own = kind and db.mouseoverKinds and db.mouseoverKinds[kind]
+    if own ~= nil then return own end
+    return db.mouseover == true
+end
+-- a kind's switch: the same as the main one is no exception
+function TIP.SetKindMouseover(kind, on)
+    local db = GetDb()
+    if not db then return end
+    ConvertAnchors(db)
+    db.mouseoverKinds = db.mouseoverKinds or {}
+    if (on and true or false) == (db.mouseover == true) then db.mouseoverKinds[kind] = nil else db.mouseoverKinds[kind] = on and true or false end
+end
+-- the main switch: every kind follows it again
+function TIP.SetMouseover(on)
+    local db = GetDb()
+    if not db then return end
+    ConvertAnchors(db)
+    db.mouseover = on and true or false
+    db.mouseoverKinds = {}
+end
+
+local function OnAuraTipOwner(tip, owner)
+    local kind = owner and ns.auraTipKind[owner]
+    if not kind or ns.IsGamepadUI() then return end
+    if TIP.Mouseover(kind == "group" and "groupAuras" or "auras") then pcall(tip.SetAnchorType, tip, "ANCHOR_CURSOR_RIGHT") end
+end
+local function HookAuraTooltips()
+    for _, tip in ipairs({ GameTooltip, _G.AuraButtonTooltip }) do
+        if tip and not tip.fuiAuraHooked and not (tip.IsForbidden and tip:IsForbidden()) then
+            tip.fuiAuraHooked = true
+            hooksecurefunc(tip, "SetOwner", OnAuraTipOwner)
+        end
+    end
+end
+
 local function ApplyAnchor(tooltip, parent)
     local db = GetDb()
     if not (db and tooltip and parent) then return end
     if tooltip ~= GameTooltip then return end
+    local kind = AnchorKind(tooltip, parent)
+    -- Everything Else's Show is checked as it shows (OnTooltipShow)
+    tooltip.fuiOther = kind == "other" or nil
 
     -- the Gamepad UI has no cursor to follow
     if ns.IsGamepadUI() then return end
-    local overWorld = MouseIsOverWorld()
-    local mode = overWorld and db.anchor or db.anchorFrames
-    if mode == "default" then return end
+    if not TIP.Mouseover(kind) then return end
     tooltip:SetOwner(parent, "ANCHOR_CURSOR_RIGHT", 0, 0)
 end
 
@@ -642,12 +718,18 @@ function TIP:Init()
     end
 
     GameTooltip:HookScript("OnShow", OnTooltipShow)
+    GameTooltip:HookScript("OnHide", function(tip) tip.fuiOther = nil end)
 
     -- Blizzard restyles tooltips often: the colours go back on after each restyle
     hooksecurefunc("SharedTooltip_SetBackdropStyle", function(tip)
         if tip == GameTooltip or tip == _G.ItemRefTooltip then ApplyColors(tip, nil) end
     end)
     hooksecurefunc("GameTooltip_SetDefaultAnchor", ApplyAnchor)
+    HookAuraTooltips()
+    -- (the aura containers' own tooltip comes with Blizzard_AuraContainer)
+    if EventUtil and EventUtil.ContinueOnAddOnLoaded then
+        EventUtil.ContinueOnAddOnLoaded("Blizzard_AuraContainer", HookAuraTooltips)
+    end
 
     ApplyCompare()
     ApplyFonts()

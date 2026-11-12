@@ -46,6 +46,13 @@ local REMINDERS = {
     PRIEST = {
         { key = "fortitude", cast = FORTITUDE, buffs = Join(FORTITUDE, { 21564, 21562 }), group = true },
         { key = "innerFire", cast = { 10952, 10951, 1006, 602, 7128, 588 } },
+        -- talent spells (11-12, a player asked): once the talent teaches the spell, it is known.
+        -- Divine Spirit as a group buff on mana users; Shadowform not while your role is healer
+        { key = "spirit", cast = { 27841, 14819, 14818, 14752 }, buffs = { 27841, 14819, 14818, 14752, 27681 },
+          group = true, casters = true },
+        { key = "shadowform", cast = { 15473 }, notRole = "HEALER" },
+        -- Shadow Protection on the group: only when ticked in Extra Buffs (11-12)
+        { key = "shadowProt", cast = { 10958, 10957, 976 }, buffs = { 10958, 10957, 976, 27683 }, group = true, optIn = true },
     },
     MAGE = {
         { key = "intellect", cast = INTELLECT, buffs = Join(INTELLECT, { 23028 }), group = true, casters = true },
@@ -56,6 +63,9 @@ local REMINDERS = {
         { key = "wild", cast = WILD, buffs = Join(WILD, { 21850, 21849 }), group = true },
         -- Thorns (11-10, a druid asked): kept on whoever the Thorns setting picks, tanks by default
         { key = "thorns", cast = { 9910, 9756, 8914, 1075, 782, 467 }, group = true, pick = "thorns" },
+        { key = "omen", cast = { 16864 } },   -- Omen of Clarity (talent)
+        -- Moonkin Form (talent): only when ticked in Extra Buffs (druids leave it to heal)
+        { key = "moonkin", cast = { 24858 }, optIn = true },
     },
     WARLOCK = {
         { key = "armor", cast = { 11735, 11734, 11733, 1086, 706, 696, 687 } },
@@ -82,14 +92,32 @@ local REMINDERS = {
     WARRIOR = {
         -- no stance at all (Battle Stance to cast)
         { key = "stance", stance = true, cast = { 2457 } },
+        -- Battle Shout: you and your party (it reaches no further)
+        { key = "shout", cast = { 25289, 11551, 11550, 11549, 6192, 5242, 6673 }, group = true, party = true },
     },
     HUNTER = {
         { key = "pet", pet = "HUNTER" },
+        { key = "trueshot", cast = { 20906, 20905, 19506 } },   -- Trueshot Aura (talent)
+        -- no aspect up (any counts); a click casts the last fighting aspect seen, else Hawk (11-12)
+        { key = "aspect", aspect = true, cast = { 25296, 14322, 14321, 14320, 14319, 14318, 13165, 13163 },
+          buffs = { 25296, 14322, 14321, 14320, 14319, 14318, 13165, 13163, 5118, 13159, 20190, 20043, 13161 } },
     },
 }
 -- the warlock's pet joins its armor, then a healthstone in the bags (Create Healthstone, best rank)
 table.insert(REMINDERS.WARLOCK, { key = "pet", pet = "WARLOCK" })
 table.insert(REMINDERS.WARLOCK, { key = "healthstone", healthstone = true, cast = { 11730, 11729, 5699, 6202, 6201 } })
+-- a Soulstone on a healer (or on yourself; the icon's right-click menu), in a group (11-12)
+table.insert(REMINDERS.WARLOCK, { key = "soulstone", soulstone = true, cast = { 20757, 20756, 20755, 20752, 693 } })
+-- Soul Link (talent): only while a pet is out
+table.insert(REMINDERS.WARLOCK, { key = "soulLink", cast = { 19028 }, needPet = true })
+-- Demonic Sacrifice's buffs (Imp, Voidwalker, Succubus, Felhunter): one up, no pet is wanted
+local SACRIFICE_BUFFS = { 18789, 18790, 18791, 18792 }
+local SOULSTONES = { 16896, 16895, 16893, 16892, 5232 }                -- Major to Minor
+local SOULSTONE_BUFFS = { 20707, 20762, 20763, 20764, 20765 }          -- Soulstone Resurrection
+-- trinkets for the open world, still worn in a dungeon or raid (11-12): the Argent Dawn ones, Carrot on a Stick
+local WORLD_TRINKETS = { 12846, 13209, 19812, 11122 }
+-- the aspects a click may put back (Cheetah and Pack are never remembered: they daze)
+local FIGHT_ASPECTS = { { 25296, 14322, 14321, 14320, 14319, 14318, 13165 }, { 13163 }, { 20190, 20043 }, { 13161 } }
 local HEALTHSTONES = { 5512, 5511, 5509, 5510, 9421, 19004, 19005, 19006, 19007, 19008, 19009, 19010, 19011, 19012, 19013 }
 -- Camping and Rest (Forever, off): Camp Benefits from a campfire, and while levelling with a Cozy
 -- Sleeping Bag in the bags, three Well-Rested stacks (click to use the bag). Gathering Tracking (off):
@@ -99,12 +127,50 @@ local EXTRAS = {
     { key = "camp", camp = true, buffs = { CAMP_BUFF }, icon = CAMP_BUFF },
     { key = "sleepingBag", bag = true },
     { key = "gathering", gathering = true, cast = { 2383, 8387, 2580, 8388 } },
+    -- Weapon Oil / Stone (off, every class; 11-12): an oil or stone on each hand
+    { key = "oil", weapon = "oil" },
 }
 -- food and flask, for every class
 local CONSUMABLES = {
-    { key = "food", consumable = true, buffs = { 19705 }, icon = 19705 },                       -- Well Fed
+    -- Well Fed, and the foods whose buff has its own name (Grilled Squid, Nightfin Soup, Runn Tum Tuber
+    -- Surprise, Dirge's Chimaerok Chops, Blessed Sunfruit and its juice)
+    { key = "food", consumable = true, buffs = { 19705, 18192, 18194, 22730, 25661, 18125, 18141 }, icon = 19705 },
     { key = "flask", consumable = true, buffs = { 17626, 17627, 17628, 17629 }, icon = 17626 },  -- the four flasks
 }
+
+-- Elixirs and More (11-12): the raid consumables a player ticks in the settings. Item (best first), and
+-- the buff it gives (Classic IDs, unverified on Forever; the item's own spell name counts too)
+local ELIXIRS = {
+    { key = "mongoose", items = { 13452 }, buff = 17538 }, { key = "giants", items = { 9206 }, buff = 11405 },
+    { key = "greaterAgility", items = { 9187 }, buff = 11334 }, { key = "bruteForce", items = { 13453 }, buff = 17537 },
+    { key = "greaterArcane", items = { 13454 }, buff = 17539 }, { key = "shadowPower", items = { 9264 }, buff = 11474 },
+    { key = "greaterFirepower", items = { 21546 }, buff = 26276 }, { key = "frostPower", items = { 17708 }, buff = 21920 },
+    { key = "fortitude", items = { 3825 }, buff = 3593 }, { key = "superiorDefense", items = { 13445 }, buff = 11348 },
+    { key = "sages", items = { 13447 }, buff = 17535 }, { key = "mageblood", items = { 20007 }, buff = 24363 },
+    { key = "trollsBlood", items = { 20004 }, buff = 24361 }, { key = "zanzaSpirit", items = { 20079 }, buff = 24382 },
+    { key = "zanzaSwiftness", items = { 20081 }, buff = 24383 }, { key = "jujuPower", items = { 12451 }, buff = 16323 },
+    { key = "jujuMight", items = { 12460 }, buff = 16329 }, { key = "firewater", items = { 12820 }, buff = 17038 },
+    { key = "roids", items = { 8410 }, buff = 10667 }, { key = "scorpok", items = { 8412 }, buff = 10669 },
+    { key = "lungJuice", items = { 8411 }, buff = 10668 }, { key = "cerebral", items = { 8423 }, buff = 10692 },
+    { key = "gizzard", items = { 8424 }, buff = 10693 }, { key = "rumsey", items = { 21151 }, buff = 25804 },
+}
+
+-- Low Supplies (11-12, off): a reagent below its minimum, once you know the spell that needs it
+-- (item, minimum, the spells that use it); a hunter's ammo is counted on its own
+local SUPPLIES = {
+    WARLOCK = { { item = 6265, min = 3, spells = { 693, 20752, 20755, 20756, 20757, 698, 6201, 11730 } } },   -- Soul Shard
+    MAGE    = { { item = 17020, min = 10, spells = { 23028 } } },              -- Arcane Powder (Arcane Brilliance)
+    PRIEST  = { { item = 17029, min = 10, spells = { 21562, 21564 } },         -- Sacred Candle (Prayer of Fortitude)
+                { item = 17028, min = 10, spells = { 27681 } } },             -- Holy Candle (Prayer of Spirit)
+    DRUID   = { { item = 17026, min = 10, spells = { 21849, 21850 } } },       -- Wild Thornroot (Gift of the Wild)
+    PALADIN = { { item = 21177, min = 20, spells = { 25782, 25916, 25894, 25918, 25898, 25890, 25895, 25899 } } },   -- Symbol of Kings
+    SHAMAN  = { { item = 17030, min = 1, spells = { 20608 } } },               -- Ankh (Reincarnation)
+    ROGUE   = { { item = 5140, min = 5, spells = { 1856, 1857 } } },           -- Flash Powder (Vanish)
+}
+local AMMO_MIN = 200
+local AMMO_WEAPONS = { [2] = true, [3] = true, [18] = true }   -- bows, guns, crossbows
+local DURABILITY_BELOW = 0.2
+local DURABILITY_ICON = "Interface\\Icons\\INV_Hammer_20"   -- a repair hammer
 
 -- Paladin blessings: ranks (highest first) and their Greater versions, which count as covered too
 local BLESSINGS = {
@@ -174,6 +240,37 @@ local WEAPON_OPTIONS = {
         { key = "spellstone", items = { 13603, 13602, 5522 }, create = { 17728, 17727, 2362 }, name = 5522 },
     },
 }
+-- Oils and stones (11-12, a warlock used wizard oil): offered on every weapon reminder's menu while
+-- they are in the bags, and seen as that hand's buff. Item, then Forever's enchant ID (PrettyTooltip's
+-- Forever data, via the 11-12 buff reminders research).
+local WEAPON_OILS = {
+    { 20749, 2628, nil, "wizard" }, { 20750, 2627, nil, "wizard" }, { 20746, 2626, nil, "wizard" }, { 20744, 2623, nil, "wizard" },
+    { 20748, 2629, nil, "mana" }, { 20747, 2625, nil, "mana" }, { 20745, 2624, nil, "mana" },
+    { 23123, 2685, nil, "wizard" }, { 3824, 25 }, { 3829, 26 },           -- Blessed Wizard, Shadow, Frost Oil
+    { 18262, 2506, nil, "stone" }, { 23122, 2684, nil, "stone" },         -- Elemental, Consecrated stone
+    { 12404, 1643, "blade", "stone" }, { 7964, 483, "blade", "stone" }, { 2871, 14, "blade", "stone" }, { 2863, 13, "blade", "stone" },
+    { 2862, 40, "blade", "stone" },
+    { 12643, 1703, "blunt", "stone" }, { 7965, 484, "blunt", "stone" }, { 3241, 21, "blunt", "stone" }, { 3240, 20, "blunt", "stone" },
+    { 3239, 19, "blunt", "stone" },
+}
+local OIL_OPTIONS, OIL_ENCHANTS = {}, {}
+for _, o in ipairs(WEAPON_OILS) do
+    local key = "oil" .. o[1]
+    OIL_OPTIONS[#OIL_OPTIONS + 1] = { key = key, items = { o[1] }, name = o[1], oil = true, edge = o[3], group = o[4] }
+    OIL_ENCHANTS[o[2]] = key
+end
+-- a kind's menu: its own options, then the oils and stones
+local WEAPON_CHOICES = {}
+for kind, list in pairs(WEAPON_OPTIONS) do WEAPON_CHOICES[kind] = Join(list, OIL_OPTIONS) end
+-- the Weapon Oil / Stone reminder (any class, off): its own kind, the oils and stones alone
+WEAPON_OPTIONS.oil, WEAPON_CHOICES.oil, WEAPON_ENCHANTS.oil = OIL_OPTIONS, OIL_OPTIONS, OIL_ENCHANTS
+-- maces and staves take weightstones, the rest sharpening stones (Enum.ItemWeaponSubclass)
+local BLUNT = { [4] = true, [5] = true, [10] = true }
+-- Playstyle (11-12): which oils the Weapon Oil / Stone reminder reaches for first; Automatic goes by class
+local PLAYSTYLE_OILS = { caster = { "wizard", "mana" }, healer = { "mana", "wizard" }, melee = { "stone" }, tank = { "stone" } }
+local CLASS_PLAYSTYLE = { WARRIOR = "melee", ROGUE = "melee", HUNTER = "melee", PALADIN = "melee",
+                          MAGE = "caster", WARLOCK = "caster", PRIEST = "caster", DRUID = "caster", SHAMAN = "caster" }
+local LOW_CHARGES = 15   -- a poison with this few charges left counts as running out
 local POISONS = 2842             -- the rogue's Poisons skill: the reminder waits for it
 local PERMANENT = Enum and Enum.ItemEnchantType and Enum.ItemEnchantType.Permanent or 1
 local WEAPON_SLOT = { [16] = 0, [17] = 1 }   -- Enum.WeaponSlot MainHand / OffHand
@@ -194,7 +291,8 @@ local function AurasLocked()
     return not ok or not Readable(secret) or secret == true
 end
 
-local function Known(id) return id and IsPlayerSpell(id) end
+local function Known(id) return id and ns.IsPlayerSpell(id) end
+local ClassOption   -- below: a key of the kind's own options
 
 local function SpellName(id)
     local name = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id)
@@ -213,6 +311,7 @@ local function BestCreate(o)
     for _, id in ipairs(o.create or {}) do if Known(id) then return id end end
 end
 local function OptionKnown(kind, o)
+    if o.oil then return ItemCount(o.items[1]) > 0 end
     if kind == "imbue" then return Known(o.cast) end
     if kind == "stone" then
         if BestCreate(o) then return true end
@@ -222,7 +321,7 @@ local function OptionKnown(kind, o)
     return true
 end
 function BR.WeaponOptionLabel(kind, o)
-    if kind == "imbue" then return SpellName(o.cast) or o.key end
+    if kind == "imbue" and not o.oil then return SpellName(o.cast) or o.key end
     local id = o.name or o.items[#o.items]
     return C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or o.key
 end
@@ -250,24 +349,63 @@ local function PickWeapon(entry)
     local kind = entry.def.weapon
     local db = GetDb() or {}
     local wanted = db[WeaponField(entry)]
-    if not wanted or wanted == "auto" then
+    if not wanted or wanted == "auto" or wanted == "any" then
         wanted = LastWeapons()[WeaponField(entry)]
         if not wanted and kind == "poison" then wanted = entry.slot == 17 and "deadly" or "instant" end
     end
+    -- the oil reminder with nothing picked or seen: the playstyle's oils first, in its order
+    if kind == "oil" and (not wanted or not ClassOption(kind, wanted)) then
+        for _, group in ipairs(PLAYSTYLE_OILS[BR.Playstyle()] or {}) do
+            for _, o in ipairs(OIL_OPTIONS) do
+                if o.group == group and OptionKnown(kind, o) and BR.OilSuits(o, entry.slot) then return o end
+            end
+        end
+    end
     local first
-    for _, o in ipairs(WEAPON_OPTIONS[kind]) do
+    for _, o in ipairs(WEAPON_CHOICES[kind]) do
         if OptionKnown(kind, o) then
             if o.key == wanted then return o end
-            first = first or o
+            -- the first of the class's own (an oil only when picked or last used); the oil reminder:
+            -- the first that suits the weapon
+            if not o.oil or (kind == "oil" and BR.OilSuits(o, entry.slot)) then first = first or o end
         end
     end
     return first
+end
+
+-- the playstyle: the setting, else your group role, else your class
+function BR.Playstyle()
+    local style = (GetDb() or {}).playstyle or "auto"
+    if style ~= "auto" then return style end
+    local ok, role = pcall(UnitGroupRolesAssigned, "player")
+    if ok and Readable(role) then
+        if role == "HEALER" then return "healer" end
+        if role == "TANK" then return "tank" end
+    end
+    local _, class = UnitClass("player")
+    return CLASS_PLAYSTYLE[class] or "melee"
+end
+
+-- a stone for the edge of the weapon in that hand (oils suit any)
+function BR.OilSuits(o, slot)
+    if not o.edge then return true end
+    local id = GetInventoryItemID("player", slot)
+    if not id or not C_Item.GetItemInfoInstant then return true end
+    local sub = select(7, C_Item.GetItemInfoInstant(id))
+    if not Readable(sub) or sub == nil then return true end
+    return (o.edge == "blunt") == (BLUNT[sub] == true)
+end
+
+-- the kind's own option with this key (a Firestone, a poison, an imbue), not an oil
+function ClassOption(kind, key)
+    for _, o in ipairs(WEAPON_OPTIONS[kind]) do if o.key == key then return o end end
 end
 
 -- the class's reminders with the spell to cast (highest known rank) and the aura names that count
 local function Resolve()
     wipe(active)
     local _, class = UnitClass("player")
+    local classStart = #active + 1
     for _, def in ipairs(REMINDERS[class] or {}) do
         local castID
         for _, id in ipairs(def.cast or {}) do
@@ -286,6 +424,9 @@ local function Resolve()
                 if not any and OptionKnown(kind, o) then any = o end
             end
             if kind == "poison" and not Known(POISONS) then any = nil end
+            if C_Item.RequestLoadItemDataByID then
+                for _, o in ipairs(OIL_OPTIONS) do C_Item.RequestLoadItemDataByID(o.name) end
+            end
             if any then
                 local icon = kind == "imbue" and SpellIcon(any.cast)
                     or kind == "poison" and SpellIcon(POISONS)
@@ -338,7 +479,15 @@ local function Resolve()
                                     icon = SpellIcon(castID or def.icon) }
         end
     end
+    -- the class's own (Where > Class Buffs)
+    for i = classStart, #active do active[i].classBuff = true end
     for _, def in ipairs(EXTRAS) do
+      if def.weapon then
+        for _, slot in ipairs({ 16, 17 }) do
+            active[#active + 1] = { def = def, slot = slot, key = def.key .. (slot == 17 and "Off" or ""),
+                                    names = {}, icon = ItemIcon(20749) }
+        end
+      else
         local castID
         for _, id in ipairs(def.cast or {}) do
             if Known(id) then castID = id break end
@@ -353,6 +502,30 @@ local function Resolve()
             local icon = def.bag and (C_Item.GetItemIconByID and C_Item.GetItemIconByID(SLEEPING_BAG)) or SpellIcon(castID or def.icon)
             active[#active + 1] = { def = def, castID = castID, names = names, icon = icon }
         end
+      end
+    end
+    BR.CustomEntries(active)
+    -- Low Supplies: the class's reagents, a hunter's ammo
+    for _, s in ipairs(SUPPLIES[class] or {}) do
+        local needed = false
+        for _, id in ipairs(s.spells) do if Known(id) then needed = true break end end
+        if needed then
+            active[#active + 1] = { def = { key = "supply" .. s.item, supply = s }, names = {}, icon = ItemIcon(s.item),
+                                    tipItem = s.item }
+        end
+    end
+    if class == "HUNTER" then
+        active[#active + 1] = { def = { key = "ammo", ammo = true }, names = {}, icon = "Interface\\Icons\\INV_Ammo_Arrow_02" }
+    end
+    active[#active + 1] = { def = { key = "durability", durability = true }, names = {}, icon = DURABILITY_ICON }
+    active[#active + 1] = { def = { key = "trinket", trinket = true }, names = {}, icon = ItemIcon(12846) }
+    for _, def in ipairs(ELIXIRS) do
+        def.elixir = true
+        local names = {}
+        local name = SpellName(def.buff)
+        if name then names[name] = true end
+        if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(def.items[1]) end
+        active[#active + 1] = { def = def, names = names, icon = ItemIcon(def.items[1]) }
     end
     for _, def in ipairs(CONSUMABLES) do
         local names = {}
@@ -364,10 +537,13 @@ local function Resolve()
     end
 end
 
+BR.Resolve = function() Resolve() end
+
 -- the reminders the settings leave on
 -- Right-click an icon: hide that reminder until reload, or for good (db.hidden, "CLASS:key", so a mage's
 -- and a warlock's armour stay apart); the Buff Reminders tab shows them all again
 local dismissed = {}
+local snoozed = {}   -- Snooze Until Recast: hidden until the buff is seen again
 function BR.HideKey(entry)
     local _, class = UnitClass("player")
     return (class or "") .. ":" .. (entry.key or entry.def and entry.def.key or "")
@@ -384,6 +560,93 @@ function BR.ShowHidden()
     if db then db.hidden = nil end
     wipe(dismissed)
     BR.Update()
+end
+
+-- where a kind of reminder shows: "always", "instance" (dungeons and raids) or "raid"
+local function InScope(mode)
+    if not mode or mode == "always" or ns.EditPreviewing() then return true end
+    local inInstance, kind = IsInInstance()
+    if mode == "raid" then return inInstance and kind == "raid" or false end
+    return inInstance and (kind == "party" or kind == "raid") or false
+end
+
+-- Custom Reminders (11-12): your own, per class (db.custom[class]): spell IDs or names and item IDs,
+-- any one of them counts. A click casts the first spell you know, else uses the first item in your bags.
+local function CustomList(create)
+    local db = GetDb()
+    if not db then return nil end
+    local _, class = UnitClass("player")
+    if create then
+        db.custom = db.custom or {}
+        db.custom[class] = db.custom[class] or {}
+    end
+    return db.custom and db.custom[class]
+end
+function BR.CustomCount()
+    local list = CustomList()
+    return list and #list or 0
+end
+-- "1459, 23028" / "Arcane Intellect" / "item:13452": spells (by ID or name) and items
+function BR.AddCustom(text)
+    if type(text) ~= "string" then return end
+    local spells, items = {}, {}
+    for raw in text:gmatch("[^,;]+") do
+        local part = strtrim(raw)
+        local itemID = tonumber(part:match("^item:(%d+)$"))
+        local number = tonumber(part)
+        if itemID then
+            items[#items + 1] = itemID
+        elseif number and C_Spell.GetSpellName(number) then
+            spells[#spells + 1] = number
+        elseif number and C_Item.GetItemInfoInstant and C_Item.GetItemInfoInstant(number) then
+            items[#items + 1] = number
+        elseif part ~= "" and not number then
+            spells[#spells + 1] = part
+        end
+    end
+    if #spells == 0 and #items == 0 then return end
+    local list = CustomList(true)
+    list[#list + 1] = { spells = spells, items = items }
+    BR.Resolve()
+    BR.Update()
+end
+function BR.ClearCustom()
+    local db = GetDb()
+    local _, class = UnitClass("player")
+    if db and db.custom then db.custom[class] = nil end
+    BR.Resolve()
+    BR.Update()
+end
+local function RemoveCustom(def)
+    local list = CustomList()
+    if not list then return end
+    for i, c in ipairs(list) do
+        if c == def.stored then table.remove(list, i) break end
+    end
+    BR.Resolve()
+    BR.Update()
+end
+function BR.CustomEntries(out)
+    for i, c in ipairs(CustomList() or {}) do
+        local def = { key = "custom" .. i, custom = true, stored = c, items = c.items or {} }
+        local names, castID, icon = {}, nil, nil
+        for _, s in ipairs(c.spells or {}) do
+            local id = type(s) == "number" and s or nil
+            if not id and C_Spell.GetSpellInfo then
+                local info = C_Spell.GetSpellInfo(s)
+                id = info and info.spellID
+            end
+            local name = id and SpellName(id) or (type(s) == "string" and s)
+            if name then names[name] = true end
+            if id and not castID and Known(id) then castID = id end
+            icon = icon or (id and SpellIcon(id))
+        end
+        for _, item in ipairs(def.items) do
+            if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(item) end
+            icon = icon or ItemIcon(item)
+        end
+        out[#out + 1] = { def = def, names = names, castID = castID, icon = icon or 134400 }
+    end
 end
 
 local Enabled
@@ -403,6 +666,25 @@ function Enabled(entry)
     if entry.slot == 17 and not OffHandWeapon() then return false end
     if entry.def.camp or entry.def.bag then return db.camping == true end
     if entry.def.gathering then return db.gathering == true end
+    if (entry.def.supply or entry.def.ammo) and db.supplies ~= true then return false end
+    if entry.def.durability and db.durability ~= true then return false end
+    if entry.def.trinket and db.trinkets ~= true then return false end
+    if entry.def.optIn and not ns.Conditions.Set(db.extras or "")[entry.def.key] then return false end
+    if entry.def.weapon == "oil" and db.weaponOil ~= true then return false end
+    -- Weapon Buffs, Pets and the class's own buffs: where they show (11-12)
+    if entry.def.weapon and not InScope(db.weaponScope) then return false end
+    if entry.def.pet and not InScope(db.petScope) then return false end
+    if entry.classBuff and not entry.def.weapon and not entry.def.pet and not InScope(db.classScope) then return false end
+    -- an elixir: ticked in Elixirs and More, and where food and flask show
+    if entry.def.elixir then
+        local mode = db.consumables or "off"
+        if mode == "off" or not ns.Conditions.Set(db.elixirs or "")[entry.def.key] then return false end
+        return InScope(mode)
+    end
+    if entry.def.notRole and not ns.EditPreviewing() then
+        local ok, role = pcall(UnitGroupRolesAssigned, "player")
+        if ok and Readable(role) and role == entry.def.notRole then return false end
+    end
     if entry.def.role and not ns.EditPreviewing() then
         local ok, role = pcall(UnitGroupRolesAssigned, "player")
         return ok and Readable(role) and role == entry.def.role or false
@@ -410,10 +692,7 @@ function Enabled(entry)
     if entry.def.consumable then
         local mode = db.consumables or "off"
         if mode == "off" then return false end
-        if mode == "instance" and not ns.EditPreviewing() then
-            local inInstance, kind = IsInInstance()
-            return inInstance and (kind == "party" or kind == "raid") or false
-        end
+        return InScope(mode)
     end
     return true
 end
@@ -460,7 +739,7 @@ local function HasBuff(unit, names, before)
             local expires = aura.expirationTime
             if not Readable(expires) or not expires or expires == 0 then return true, false end
             local fine = expires - now > before
-            return fine, not fine
+            return fine, not fine, expires - now
         end
     end
     return false, false
@@ -468,7 +747,8 @@ end
 
 -- a hand's weapon buff of one kind (Forever's C_Item.GetWeaponEnchantInfo): missing, running out, and
 -- the family seen there. Anything the game hides from addons, or can't tell, counts as there (quiet).
-local function WeaponMissing(slot, kind, before)
+-- mode: "auto" (the class's own or an oil / stone), "any" (any timed enchant) or "class" (the class's own)
+local function WeaponMissing(slot, kind, before, mode)
     -- nothing to coat: no weapon in that hand
     if not GetInventoryItemID("player", slot) then return false end
     if slot == 17 and not OffHandWeapon() then return false end
@@ -476,20 +756,29 @@ local function WeaponMissing(slot, kind, before)
     local ok, enchants = pcall(C_Item.GetWeaponEnchantInfo, WEAPON_SLOT[slot])
     if not ok or not Readable(enchants) or type(enchants) ~= "table" then return false end
     local families = WEAPON_ENCHANTS[kind]
-    local some, family = false, nil
+    local some, family, soonest, lowCharges = false, nil, nil, nil
     for _, e in ipairs(enchants) do
         if not Readable(e) or type(e) ~= "table" then return false end
         local has, enchantType, id, left = e.hasEnchant, e.enchantType, e.enchantID, e.timeLeft
         if not (Readable(has) and Readable(enchantType) and Readable(id) and Readable(left)) then return false end
-        -- a timed enchant of this kind (no ID: can't tell, so it counts)
-        if has and enchantType ~= PERMANENT and (id == nil or families[id]) then
-            family = family or (id and families[id])
+        -- a timed enchant of this kind (no ID: can't tell, so it counts), an oil or stone (not when the
+        -- class's own was picked), or any at all (Any Weapon Buff)
+        local counts = id == nil or families[id] or (mode ~= "class" and OIL_ENCHANTS[id]) or mode == "any"
+        if has and enchantType ~= PERMANENT and counts then
+            family = family or (id and (families[id] or OIL_ENCHANTS[id]))
             local seconds = (left or 0) / 1000
-            if seconds > before then return false, false, family end
-            if seconds > 0 then some = true end
+            -- a poison running low on charges counts as running out
+            local charges = e.charges
+            local low = Readable(charges) and charges and charges > 0 and charges <= LOW_CHARGES
+            if seconds > before and not low then return false, false, family end
+            if seconds > 0 then
+                some = true
+                soonest = seconds
+                lowCharges = low and charges or nil
+            end
         end
     end
-    return true, some, family
+    return true, some, family, soonest, lowCharges
 end
 
 -- what a click puts on a bare hand: the spell (an imbue, Create Firestone), its icon, and a macro
@@ -497,8 +786,9 @@ end
 local function WeaponFix(entry)
     local kind, slot = entry.def.weapon, entry.slot
     local o = PickWeapon(entry)
-    if not o then return nil end
-    if kind == "imbue" then
+    -- (the oil reminder with no oil or stone in the bags)
+    if not o then return nil, nil, { none = true } end
+    if kind == "imbue" and not o.oil then
         if slot == 17 then
             return o.cast, SpellIcon(o.cast), { macro = "/cast " .. (SpellName(o.cast) or "") .. "\n/use 17" }
         end
@@ -567,6 +857,11 @@ local function PetFix(entry)
         return nil
     end
     if exists then return nil end
+    -- a pet given up for Demonic Sacrifice: its buff stands in for it (unreadable: quiet)
+    for _, id in ipairs(SACRIFICE_BUFFS) do
+        local ok, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, id)
+        if not ok or not Readable(aura) or aura then return nil end
+    end
     local me = ns.CharDB and ns.CharDB()
     local last = me and me.lastSummon
     if last and Known(last) then return last, "player" end
@@ -604,6 +899,44 @@ local function OtherProvider()
     return false
 end
 
+-- Hunter Aspect: the aspect up now (remembered when it's one to fight with), and the one a click casts
+local function AspectNames()
+    if BR.aspectNames then return BR.aspectNames end
+    local names = {}
+    for i, ranks in ipairs(FIGHT_ASPECTS) do
+        for _, id in ipairs(ranks) do
+            local n = SpellName(id)
+            if n then names[n] = i end
+        end
+    end
+    BR.aspectNames = names
+    return names
+end
+function BR.AspectUp(entry)
+    local fight = AspectNames()
+    for i = 1, 40 do
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+        if not ok or not aura then return false end
+        local name = aura.name
+        if not Readable(name) then return true end
+        if entry.names[name] then
+            local me = ns.CharDB and ns.CharDB()
+            if me and fight[name] then me.lastAspect = fight[name] end
+            return true
+        end
+    end
+    return false
+end
+function BR.AspectToCast()
+    local me = ns.CharDB and ns.CharDB()
+    local wanted = me and me.lastAspect
+    for _, i in ipairs({ wanted or 1, 1, 2 }) do
+        for _, id in ipairs(FIGHT_ASPECTS[i] or {}) do
+            if Known(id) then return id, SpellIcon(id) end
+        end
+    end
+end
+
 local units = {}
 -- each active reminder's missing / total, the first unit to cast on, the spell (when it is not the
 -- reminder's own: a blessing or a pet's), and whether nothing is missing, only running out
@@ -621,16 +954,131 @@ local function Check(entry, before)
         end
     end
     if def.weapon then
-        local missing, running, family = WeaponMissing(entry.slot, def.weapon, before)
+        local pick = (GetDb() or {})[WeaponField(entry)] or "auto"
+        local mode = pick == "any" and "any" or (ClassOption(def.weapon, pick) and "class") or "auto"
+        local missing, running, family, seconds, charges = WeaponMissing(entry.slot, def.weapon, before, mode)
         -- remembered for Last Used (only the ones a click can put on)
         if family then
-            for _, o in ipairs(WEAPON_OPTIONS[def.weapon]) do
+            for _, o in ipairs(WEAPON_CHOICES[def.weapon]) do
                 if o.key == family then LastWeapons()[WeaponField(entry)] = family end
             end
         end
         if not missing then return 0, 1 end
         local castID, icon, action = WeaponFix(entry)
-        return 1, 1, "player", castID, icon, running, action
+        return 1, 1, "player", castID, icon, running, action, running and seconds or nil, running and charges or nil
+    end
+    if def.custom then
+        -- the item's spell name counts too, once the item has loaded
+        if not entry.itemNames and C_Item.GetItemSpell then
+            local all = true
+            for _, item in ipairs(def.items) do
+                local spellName = C_Item.GetItemSpell(item)
+                if spellName then entry.names[spellName] = true else all = false end
+            end
+            entry.itemNames = all or nil
+        end
+        if not next(entry.names) then return 0, 0 end
+        local fine, running, left = HasBuff("player", entry.names, before)
+        if fine then return 0, 1 end
+        if entry.castID then return 1, 1, "player", nil, nil, running, nil, running and left or nil end
+        for _, item in ipairs(def.items) do
+            if ItemCount(item) > 0 then
+                return 1, 1, "player", nil, ItemIcon(item), running, { item = "item:" .. item, tipItem = item }, running and left or nil
+            end
+        end
+        return 1, 1, "player", nil, nil, running, def.items[1] and { none = true, tipItem = def.items[1] } or nil,
+            running and left or nil
+    end
+    if def.soulstone then
+        if not IsInGroup() and (GetDb() or {}).soulstone ~= "self" then return 0, 0 end
+        -- one soulstone at a time: anyone with its buff from anyone counts
+        local names = BR.soulstoneNames
+        if not names then
+            names = {}
+            for _, id in ipairs(SOULSTONE_BUFFS) do local n = SpellName(id) if n then names[n] = true end end
+            BR.soulstoneNames = names
+        end
+        local target
+        local wanted = (GetDb() or {}).soulstone or "healer"
+        for _, unit in ipairs(GroupUnits(units)) do
+            if Reachable(unit) then
+                if HasBuff(unit, names, 0) then return 0, 1 end
+                if not target then
+                    if wanted == "self" then
+                        if unit == "player" or UnitIsUnit(unit, "player") then target = unit end
+                    else
+                        local ok, role = pcall(UnitGroupRolesAssigned, unit)
+                        if ok and Readable(role) and role == "HEALER" then target = unit end
+                    end
+                end
+            end
+        end
+        if not target then return 0, 0 end
+        for _, item in ipairs(SOULSTONES) do
+            if ItemCount(item) > 0 then
+                -- used recently: the stone is on its cooldown, nothing to do yet
+                local start = C_Container and C_Container.GetItemCooldown and C_Container.GetItemCooldown(item)
+                if Readable(start) and start and start > 0 then return 0, 1 end
+                return 1, 1, target, nil, ItemIcon(item), false, { item = "item:" .. item, tipItem = item, unit = target }
+            end
+        end
+        return 1, 1, "player", entry.castID
+    end
+    if def.trinket then
+        local inInstance, kind = IsInInstance()
+        if not (inInstance and (kind == "party" or kind == "raid")) and not ns.EditPreviewing() then return 0, 1 end
+        for _, slot in ipairs({ 13, 14 }) do
+            local id = GetInventoryItemID("player", slot)
+            if id and tContains(WORLD_TRINKETS, id) then
+                return 1, 1, "player", nil, ItemIcon(id), false, { tipItem = id }
+            end
+        end
+        return 0, 1
+    end
+    if def.supply then
+        local n = ItemCount(def.supply.item)
+        if n >= def.supply.min then return 0, 1 end
+        return 1, 1, "player", nil, nil, false, { tipItem = def.supply.item }
+    end
+    if def.ammo then
+        local ranged = GetInventoryItemID("player", 18)
+        if not ranged or not C_Item.GetItemInfoInstant then return 0, 1 end
+        local _, _, _, _, _, classID, subID = C_Item.GetItemInfoInstant(ranged)
+        if classID ~= 2 or not AMMO_WEAPONS[subID] then return 0, 1 end
+        local ammo = GetInventoryItemID("player", 0)
+        local n = ammo and ItemCount(ammo) or 0
+        if n >= AMMO_MIN then return 0, 1 end
+        return 1, 1, "player", nil, ammo and ItemIcon(ammo) or nil, false, ammo and { tipItem = ammo } or nil
+    end
+    if def.durability then
+        local lowest = 1
+        for slot = 1, 19 do
+            local cur, max = GetInventoryItemDurability(slot)
+            if Readable2(cur, max) and cur and max and max > 0 then lowest = math.min(lowest, cur / max) end
+        end
+        if lowest >= DURABILITY_BELOW then return 0, 1 end
+        return 1, 1, "player", nil, nil, false, { durability = math_floor(lowest * 100) }
+    end
+    if def.elixir then
+        -- the item's own spell name counts too (once the item has loaded)
+        if not entry.itemNames and C_Item.GetItemSpell then
+            local spellName = C_Item.GetItemSpell(def.items[1])
+            if spellName then entry.names[spellName] = true; entry.itemNames = true end
+        end
+        local fine, running, left = HasBuff("player", entry.names, before)
+        if fine then return 0, 1 end
+        for _, item in ipairs(def.items) do
+            if ItemCount(item) > 0 then
+                return 1, 1, "player", nil, ItemIcon(item), running, { item = "item:" .. item, tipItem = item },
+                    running and left or nil
+            end
+        end
+        return 1, 1, "player", nil, nil, running, { none = true, tipItem = def.items[1] }, running and left or nil
+    end
+    if def.aspect then
+        local up = BR.AspectUp(entry)
+        if up then return 0, 1 end
+        return 1, 1, "player", BR.AspectToCast()
     end
     if def.pet then
         local fix, unit, macro, icon = PetFix(entry)
@@ -638,6 +1086,7 @@ local function Check(entry, before)
         if not fix then return 0, 1 end
         return 1, 1, unit, fix, SpellIcon(fix)
     end
+    if def.needPet and not UnitExists("pet") then return 0, 0 end
     if def.stance then
         local form = GetShapeshiftForm and GetShapeshiftForm() or 1
         return (Readable(form) and form == 0) and 1 or 0, 1, "player"
@@ -686,14 +1135,21 @@ local function Check(entry, before)
         return missing, total, first, firstBlessing and firstBlessing.castID, firstBlessing and firstBlessing.icon, not gone
     end
     if not def.group then
-        local fine, running = HasBuff("player", entry.names, before)
-        return fine and 0 or 1, 1, "player", nil, nil, running
+        local fine, running, left = HasBuff("player", entry.names, before)
+        return fine and 0 or 1, 1, "player", nil, nil, running, nil, running and left or nil
     end
     local missing, total, first, gone = 0, 0, nil, false
     -- Thorns: tanks (their group role, or the raid's main tanks; alone, yourself), you, or everyone
     local pick = def.pick and ((GetDb() or {})[def.pick] or "tank")
     local grouped = IsInGroup()
-    for _, unit in ipairs(GroupUnits(units)) do
+    local list = GroupUnits(units)
+    -- a party-wide buff (Battle Shout): you and your party, in a raid too
+    if def.party and #list > 5 then
+        wipe(list)
+        list[1] = "player"
+        for i = 1, 4 do list[#list + 1] = "party" .. i end
+    end
+    for _, unit in ipairs(list) do
         local wanted = true
         if pick == "self" then
             wanted = unit == "player" or UnitIsUnit(unit, "player")
@@ -729,6 +1185,9 @@ function BR.BuildIcon(b)
     over:SetFrameLevel(b:GetFrameLevel() + 5)
     b.count = over:CreateFontString(nil, "OVERLAY")
     b.count:SetPoint("BOTTOM", b, "BOTTOM", 0, 2)
+    -- time left on a buff running out (or a poison's charges), at the top
+    b.time = over:CreateFontString(nil, "OVERLAY")
+    b.time:SetPoint("TOP", b, "TOP", 0, -2)
     -- a slow pulse says "missing"
     local pulse = b.icon:CreateAnimationGroup()
     pulse:SetLooping("BOUNCE")
@@ -790,6 +1249,16 @@ function BR.Menu(owner)
             dismissed[key] = true
             BR.Update()
         end)
+        -- (a buff only: something to see come back)
+        if next(entry.names or {}) or entry.def.weapon or entry.def.blessing then
+            root:CreateButton(L["Snooze Until Recast"], function()
+                snoozed[key] = true
+                BR.Update()
+            end)
+        end
+        if entry.def.custom then
+            root:CreateButton(L["Remove This Reminder"], function() RemoveCustom(entry.def) end)
+        end
         root:CreateButton(L["Never Remind Me"], function()
             local db = GetDb()
             if not db then return end
@@ -801,7 +1270,7 @@ function BR.Menu(owner)
         local db = GetDb()
         if not db then return end
         local function Radio(text, field, value)
-            root:CreateRadio(text, function() return (db[field] or (field == "thorns" and "tank" or "auto")) == value end,
+            root:CreateRadio(text, function() return (db[field] or (field == "thorns" and "tank" or field == "soulstone" and "healer" or "auto")) == value end,
                 function() db[field] = value; BR.Update() end)
         end
         if entry.def.blessing then
@@ -814,9 +1283,17 @@ function BR.Menu(owner)
             root:CreateDivider()
             root:CreateTitle(entry.slot == 17 and (INVTYPE_WEAPONOFFHAND or "Off Hand") or (INVTYPE_WEAPONMAINHAND or "Main Hand"))
             Radio(L["Last Used"], WeaponField(entry), "auto")
-            for _, o in ipairs(WEAPON_OPTIONS[kind]) do
-                if OptionKnown(kind, o) then Radio(BR.WeaponOptionLabel(kind, o), WeaponField(entry), o.key) end
+            Radio(L["Any Weapon Buff"], WeaponField(entry), "any")
+            for _, o in ipairs(WEAPON_CHOICES[kind]) do
+                if OptionKnown(kind, o) or db[WeaponField(entry)] == o.key then
+                    Radio(BR.WeaponOptionLabel(kind, o), WeaponField(entry), o.key)
+                end
             end
+        elseif entry.def.soulstone then
+            root:CreateDivider()
+            root:CreateTitle(L["Keep It On"])
+            Radio(L["Healers"], "soulstone", "healer")
+            Radio(L["Only Me"], "soulstone", "self")
         elseif entry.def.pick == "thorns" then
             root:CreateDivider()
             root:CreateTitle(L["Keep It On"])
@@ -834,9 +1311,11 @@ local function StyleIcon(b, size)
     if AU and AU.StyleIcon then
         AU.StyleIcon(b, b.icon, b.pieces, (db and db.style or "round") == "round")
         AU.StackFont(b.count)
+        AU.StackFont(b.time)
     else
         b.icon:SetAllPoints()
         b.count:SetFontObject(NumberFontNormal)
+        b.time:SetFontObject(NumberFontNormal)
     end
 end
 
@@ -883,6 +1362,7 @@ local function Show(shows, sample)
         elseif s.action and s.action.item then
             b:SetAttribute("type", "item")
             b:SetAttribute("item", s.action.item)
+            b:SetAttribute("unit", s.action.unit)
         elseif castID then
             b:SetAttribute("type", "spell")
             -- by name: the game casts your highest rank (imbues list only their first rank's ID)
@@ -896,7 +1376,17 @@ local function Show(shows, sample)
         local countText = ""
         if s.total > 1 and countMode == "both" then countText = s.missing .. "/" .. s.total
         elseif s.total > 1 and countMode == "missing" then countText = tostring(s.missing) end
+        -- a click that uses an item from the bags: how many are left (11-12)
+        local item = s.action and s.action.tipItem
+        if countText == "" and item and not sample then
+            local n = ItemCount(item)
+            if n > 0 or (s.entry.def and s.entry.def.supply) then countText = tostring(n) end
+        end
+        if s.action and s.action.durability then countText = s.action.durability .. "%" end
         b.count:SetText(countText)
+        b.expires = (s.left and not sample) and (GetTime() + s.left) or nil
+        b.charges = s.charges
+        BR.TimeText(b)
         b.entry = s.entry.def and s.entry or nil   -- for the right-click menu (not on Edit Mode's samples)
         -- Orientation and Growth: the first icon at the edge the row grows away from
         local step = offset + (i - 1) * (size + spacing)
@@ -910,6 +1400,8 @@ local function Show(shows, sample)
         if not b.pulse:IsPlaying() then b.pulse:Play() end
         -- Alerts: the glow
         local glow = (s.running and db.glowExpiring) and GLOW_EXPIRING or ((not s.running) and db.glowMissing) and GLOW_MISSING
+        -- a ready check (Ready Check Alert): every reminder glows for a few seconds
+        if not sample and BR.readyUntil and GetTime() < BR.readyUntil then glow = GLOW_MISSING end
         if glow then
             b.glow:SetSize(size * 1.9, size * 1.9)
             b.glow:SetVertexColor(glow[1], glow[2], glow[3])
@@ -920,7 +1412,9 @@ local function Show(shows, sample)
             b.glow:Hide()
         end
     end
+    if not sample then BR.WatchTimes() end
     for i = #shows + 1, #list do
+        list[i].expires, list[i].charges = nil, nil
         list[i].pulse:Stop()
         list[i].glowPulse:Stop()
         list[i]:Hide()
@@ -929,6 +1423,34 @@ local function Show(shows, sample)
     local length = n * size + (n - 1) * spacing
     if vertical then frame:SetSize(size, length) else frame:SetSize(length, size) end
     return frame:GetWidth(), frame:GetHeight()
+end
+
+-- the time left (or a poison's charges) on a running-out icon, kept counting while any is shown
+function BR.TimeText(b)
+    -- Time Left (Edit Mode > Alerts, on)
+    if (GetDb() or {}).timeLeft == false then b.time:SetText("") return end
+    if b.charges then
+        b.time:SetText(b.charges .. "x")
+    elseif b.expires then
+        b.time:SetText(ns.FormatAuraTime(math_max(0, b.expires - GetTime())) or "")
+    else
+        b.time:SetText("")
+    end
+end
+local timeWatch
+function BR.WatchTimes()
+    local any = false
+    for _, b in ipairs(icons) do if b:IsShown() and b.expires and not b.charges then any = true end end
+    if not timeWatch then
+        timeWatch = CreateFrame("Frame")
+        timeWatch.elapsed = 0
+    end
+    timeWatch:SetScript("OnUpdate", any and function(self, elapsed)
+        self.elapsed = self.elapsed + elapsed
+        if self.elapsed < 0.5 then return end
+        self.elapsed = 0
+        for _, b in ipairs(icons) do if b:IsShown() and b.expires then BR.TimeText(b) end end
+    end or nil)
 end
 
 -- a settings preview's row: Edit Mode's samples (Fortitude missing on 2 of 5, Arcane Intellect running
@@ -1000,6 +1522,7 @@ function BR.Update()
                 local s = Entry(#shows + 1)
                 s.entry, s.missing, s.total, s.unit = entry, entry.def.group and 2 or 1, entry.def.group and 5 or 1, "player"
                 s.castID, s.icon, s.running, s.action = nil, nil, false, nil
+                s.left, s.charges = nil, nil
                 shows[#shows + 1] = s
             end
         end
@@ -1009,9 +1532,11 @@ function BR.Update()
             local s = Entry(#shows + 1)
             s.entry, s.missing, s.total, s.unit = { icon = SpellIcon(samples[#shows + 1]) }, 2, 5, "player"
             s.castID, s.icon, s.running, s.action = nil, nil, false, nil
+            s.left, s.charges = nil, nil
             shows[#shows + 1] = s
         end
-    elseif ShowsHere(db) and not UnitIsDeadOrGhost("player") and not AurasLocked() and not UnitOnTaxi("player") then
+    elseif ShowsHere(db) and not UnitIsDeadOrGhost("player") and not AurasLocked() and not UnitOnTaxi("player")
+            and not (db.hideMounted and IsMounted()) then
         -- Remind Before It Ends, or its dungeon / raid choice when set ("same" or none: the main one)
         local minutes = db.before or 2
         local inInstance, kind = IsInInstance()
@@ -1020,11 +1545,18 @@ function BR.Update()
         local before = minutes * 60
         for _, entry in ipairs(active) do
             if Enabled(entry) then
-                local missing, total, unit, castID, icon, running, action = Check(entry, before)
+                local missing, total, unit, castID, icon, running, action, left, charges = Check(entry, before)
+                -- snoozed: quiet until the buff is back
+                local snoozeKey = BR.HideKey(entry)
+                if snoozed[snoozeKey] then
+                    if missing == 0 then snoozed[snoozeKey] = nil end
+                    missing = 0
+                end
                 if missing > 0 then
                     local s = Entry(#shows + 1)
                     s.entry, s.missing, s.total, s.unit = entry, missing, total, unit
                     s.castID, s.icon, s.running, s.action = castID, icon, running and true or false, action
+                    s.left, s.charges = left, charges
                     shows[#shows + 1] = s
                 end
             end
@@ -1121,6 +1653,45 @@ local function OnMoved(_, layoutName, point, x, y)
 end
 
 -- the Blessing row's choices (Settings > Buffs & Debuffs): Automatic, then each blessing by its name
+-- Elixirs and More's list: None, then every item by its name in your language
+function BR.ElixirChoices()
+    local list = { { "none", L["None"] }, { divider = true } }
+    for _, def in ipairs(ELIXIRS) do
+        local id = def.items[1]
+        if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
+        list[#list + 1] = { def.key, C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or def.key }
+    end
+    return list
+end
+-- Extra Buffs: the class reminders that are off until ticked, by their spell names
+local OPT_IN = { { "shadowProt", 976 }, { "moonkin", 24858 } }
+function BR.ExtraChoices()
+    local list = { { "none", L["None"] }, { divider = true } }
+    for _, o in ipairs(OPT_IN) do list[#list + 1] = { o[1], SpellName(o[2]) or o[1] } end
+    return list
+end
+function BR.ExtraKeys()
+    local keys = {}
+    for _, o in ipairs(OPT_IN) do keys[#keys + 1] = o[1] end
+    return keys
+end
+function BR.ElixirKeys()
+    local keys = {}
+    for _, def in ipairs(ELIXIRS) do keys[#keys + 1] = def.key end
+    return keys
+end
+
+ns.Dialogs = ns.Dialogs or {}
+ns.Dialogs["FLAREUI_BR_CUSTOM"] = {
+    text = L["A spell or buff to keep up: its name or spell ID. Several, separated by commas, count as one (any of them). An item: item:ID."],
+    button1 = L["Add"],
+    button2 = L["Cancel"],
+    hasEditBox = true,
+    maxLetters = 200,
+    OnAccept = function(_, text) BR.AddCustom(text) end,
+    hideOnEscape = true,
+}
+
 function BR.BlessingChoices()
     local list = { { "auto", L["Automatic"] } }
     for _, key in ipairs(BLESSING_ORDER) do
@@ -1177,6 +1748,22 @@ local function BuildSettings()
     -- role switches stay on the settings page: they pick group buffs, not where the frame shows.
     local SHOW = { { "solo", "showSolo" }, { "party", "showParty" }, { "raid", "showRaid" }, { "combat", "showCombat" } }
     local function On(field) local db = GetDb(); return not (db and db[field] == false) end
+    -- Alerts you see on the icons (11-12, from the settings page): the glows and the time left
+    local function Bool(key, default)
+        return function() local db = GetDb(); if not db or db[key] == nil then return default end; return db[key] == true end
+    end
+    local function SetBool(key)
+        return function(_, value) local db = GetDb(); if db then db[key] = value and true or false end; BR.Update() end
+    end
+    Section("Alerts", {
+        { name = L["Glow When Missing"], kind = LEM.SettingType.Checkbox, default = false,
+          desc = L["A gold glow round a missing buff."], get = Bool("glowMissing", false), set = SetBool("glowMissing") },
+        { name = L["Glow When Running Out"], kind = LEM.SettingType.Checkbox, default = false,
+          desc = L["An orange glow round a buff about to run out."], get = Bool("glowExpiring", false), set = SetBool("glowExpiring") },
+        { name = L["Time Left"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The time left on a buff about to run out, at the top of its icon."],
+          get = Bool("timeLeft", true), set = SetBool("timeLeft") },
+    })
     Section("Fading", {
         { name = L["Visibility"], kind = LEM.SettingType.Dropdown, multiple = true,
           values = { { text = L["Solo"], value = "solo" }, { text = L["In a Party"], value = "party" },
@@ -1198,6 +1785,10 @@ local function BuildSettings()
         { name = L["Hide in Rested Areas"], kind = LEM.SettingType.Checkbox, default = false,
           desc = L["Nothing shows in towns and inns."],
           get = function() local db = GetDb(); return db and db.hideRested or false end, set = set("hideRested") },
+        -- (from the settings page, 11-12: when the frame shows belongs here)
+        { name = L["Hide While Mounted"], kind = LEM.SettingType.Checkbox, default = false,
+          desc = L["No reminders while you ride."],
+          get = function() local db = GetDb(); return db and db.hideMounted or false end, set = set("hideMounted") },
         { name = L["Fade Speed"], kind = LEM.SettingType.Dropdown, default = "instant",
           values = { { text = L["Instant"], value = "instant", isRadio = true }, { text = L["Fast"], value = "fast", isRadio = true },
                      { text = L["Slow"], value = "slow", isRadio = true } },
@@ -1215,9 +1806,16 @@ end
 --------------------------------------------------
 function BR:GetFrame() return holder end
 
+-- its own page and switch since 11-12, no longer under Buffs & Debuffs' switch: anyone who had the
+-- reminders on with Buffs & Debuffs off (so never saw them) keeps them off, once
 function BR:ShouldLoad()
     local db = AurasDb()
-    return db and db.enabled and db.reminders and not ns.IsGamepadUI() or false
+    if not db then return false end
+    if db.remindersOwnSwitch == nil then
+        db.remindersOwnSwitch = true
+        if db.reminders and not db.enabled then db.reminders = false end
+    end
+    return db.reminders and not ns.IsGamepadUI() or false
 end
 
 function BR:Init()
@@ -1256,6 +1854,7 @@ function BR:Init()
         pcall(events.RegisterEvent, events, event)
     end
     pcall(events.RegisterEvent, events, "WEAPON_ENCHANT_CHANGED")
+    pcall(events.RegisterEvent, events, "READY_CHECK")
     for _, event in ipairs({ "ZONE_CHANGED_NEW_AREA", "PLAYER_MOUNT_DISPLAY_CHANGED", "PLAYER_UPDATE_RESTING",
                              "UPDATE_SHAPESHIFT_FORM", "PET_BAR_UPDATE", "BAG_UPDATE_DELAYED", "MINIMAP_UPDATE_TRACKING",
                              "PLAYER_EQUIPMENT_CHANGED" }) do
@@ -1274,6 +1873,16 @@ function BR:Init()
             return
         end
         if event == "PLAYER_REGEN_ENABLED" and not holder:IsShown() then holder:Show() end
+        -- Ready Check Alert: the row glows for 8 seconds and the sound plays once
+        if event == "READY_CHECK" then
+            local db = GetDb()
+            if not (db and db.readyCheck) then return end
+            BR.readyUntil = GetTime() + 8
+            BR.Update()
+            if row and next(shownKeys) then BR.PlayAlert(true) end
+            C_Timer.After(8.1, function() BR.readyUntil = nil; BR.Update() end)
+            return
+        end
         if event == "SPELLS_CHANGED" or event == "PLAYER_LEVEL_UP" then Resolve() end
         -- a warlock's summon is remembered for the next time the pet is gone
         if event == "UNIT_SPELLCAST_SUCCEEDED" then

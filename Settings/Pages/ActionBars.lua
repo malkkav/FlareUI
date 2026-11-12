@@ -111,10 +111,10 @@ for i = 1, 8 do
         section = "ab.fakeCooldownManager", half = true }
 end
 S:Row{
-    -- toggles as on the bars (ns.Conditions), with no Mouseover: nothing ticked is Always
+    -- toggles as on the bars (ns.Conditions), Mouseover one of them (11-12): nothing ticked is Always
     key = "ab.fcmShow", kind = "dropdown", tab = "fcm", path = "fcm.show", section = "ab.fakeCooldownManager",
-    choices = { "always", { divider = true }, "combat", "hastarget", "attackable", "ingroup", "unmounted" }, apply = Refresh,
-    toggles = { exclusive = { "always" }, tokens = ns.Conditions.BAR_TOKENS, legacy = ns.Conditions.BAR_LEGACY, empty = "always" },
+    choices = { "always", { divider = true }, "mouseover", "combat", "hastarget", "attackable", "ingroup", "unmounted" }, apply = Refresh,
+    toggles = { exclusive = { "always" }, tokens = ns.Conditions.MOUSE_TOKENS, legacy = ns.Conditions.BAR_LEGACY, empty = "always" },
     -- under the bar switches (pick the bars, then when they show, then set them up), a line's space
     -- from the switches and from the button below
     rank = 3.5, gapAbove = 12,

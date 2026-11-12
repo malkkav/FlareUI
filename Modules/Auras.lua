@@ -752,6 +752,7 @@ local function LayoutKind(kind)
         -- Aura Ordering (Order Applied by default); the container compares, never addon code
         sortMethod = sortMethod, sortDirection = sortDirection,
         initializeFrame = function(button)
+            ns.MarkAuraTooltip(button, "solo")
             StyleButton(button, look)
             HookButton(button, look)
             SetArrival(button, look.arrive)
@@ -1198,7 +1199,18 @@ function AU:Init()
         pcall(events.RegisterEvent, events, event)
     end
     pcall(events.RegisterUnitEvent, events, "UNIT_INVENTORY_CHANGED", "player")
+    -- death and coming back (11-12, a player report: a sharpening stone's icon was gone after dying,
+    -- though the stone was still on): the enchants are read again then, and once more a moment later,
+    -- since no weapon event follows the resurrection
+    local AFTER_DEATH = { PLAYER_DEAD = true, PLAYER_ALIVE = true, PLAYER_UNGHOST = true, PLAYER_ENTERING_WORLD = true }
+    for event in pairs(AFTER_DEATH) do pcall(events.RegisterEvent, events, event) end
     events:SetScript("OnEvent", function(_, event)
+        if AFTER_DEATH[event] then
+            UpdateEnchants("buffs")
+            C_Timer.After(1, function() UpdateEnchants("buffs") end)
+            C_Timer.After(3, function() UpdateEnchants("buffs") end)
+            return
+        end
         -- a fight starting: the real icons come back while they still can (lockdown starts after this)
         if event == "PLAYER_REGEN_DISABLED" then
             if settingsPreview then ApplySettingsPreview(false) end

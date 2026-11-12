@@ -32,7 +32,8 @@ local MAX_LINES = 6
 local JOIN = 1.5          -- a repeat this soon joins the line
 local PAIR = 1.5          -- the gold rise and the chat's money line arrive this close together
 local ICON = 18
-local MONEY_ICON = "Interface\\Icons\\INV_Misc_Coin_02"
+-- money has no icon: its text is the coins themselves (11-12, a player read the gold icon as gold looted)
+local MONEY_ICON = false
 local DEFAULTS = { point = "CENTER", x = 220, y = 0 }   -- right of your character
 -- At the Cursor (lootFeedPosition "cursor", the default): the feed starts where the pointer is as the
 -- first line comes (the corpse you just clicked), a little to its right, and stays there while lines
@@ -81,7 +82,15 @@ end
 
 -- r, g, b nil: the line keeps its colour (a font change)
 local function Fill(line, icon, text, r, g, b)
-    line.icon:SetTexture(icon or 134400)
+    -- false: no icon, the text starts at the line's left
+    line.icon:SetShown(icon ~= false)
+    line.text:ClearAllPoints()
+    if icon == false then
+        line.text:SetPoint("LEFT", line, "LEFT", 0, 0)
+    else
+        line.icon:SetTexture(icon or 134400)
+        line.text:SetPoint("LEFT", line.icon, "RIGHT", 5, 0)
+    end
     -- FlareUI's font goes on with the text in place (a blank string can't show if a font took)
     line.text:SetText(text)
     local font = Font()

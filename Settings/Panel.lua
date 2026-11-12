@@ -658,7 +658,8 @@ local function PageSpec()
         if tab == 'looting' then return { kind = 'lootFeed', key = 'bl.lootOverview' } end
         return nil
     end
-    if current == 'au' and tab == 'reminders' then return { kind = 'reminders', key = 'au.remindersOverview' } end
+    -- Buff Reminders (its own page since 11-12): the reminder row on every tab
+    if current == 'br' then return { kind = 'reminders', key = 'br.remindersOverview' } end
     if current == 'ab' and tab == 'xp' then return { kind = 'xp', key = 'ab.xpOverview' } end
     if current == 'dm' and tab == 'threat' then return { kind = 'meter', key = 'dm.threatOverview' } end
     return ns.SettingsPreview.Module(current)
@@ -1789,6 +1790,7 @@ local GAME_ICONS = {
     mm = "INV_Misc_Map_01", qt = "INV_Misc_Note_06",
     ch = "INV_Letter_15", dm = "Ability_DualWield", tt = "INV_Misc_Spyglass_03", rm = "INV_Misc_Orb_05", qol = "INV_Misc_Wrench_01",
     bl = "INV_Misc_Bag_08",   -- (Quality of Life's bag went to Bags & Looting, 11-12)
+    br = "INV_Misc_PocketWatch_01",   -- Buff Reminders, its own page (11-12)
 }
 local RING_MASK, RING_ART, RING_TINT = "talents-node-circle-mask", "talents-node-circle-gray", { 0.72, 0.56, 0.38 }
 local function GameIcons()

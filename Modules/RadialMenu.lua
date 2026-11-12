@@ -234,7 +234,7 @@ local GUILD_ICON = "Interface\\Icons\\INV_Shirt_GuildTabard_01"
 
 -- the player's own spells, and the pet's
 local function Known(spellID)
-    if IsPlayerSpell(spellID) then return true end
+    if ns.IsPlayerSpell(spellID) then return true end
     if C_SpellBook.IsSpellKnownOrInSpellBook then
         return C_SpellBook.IsSpellKnownOrInSpellBook(spellID, Enum.SpellBookSpellBank.Pet) == true
     end
@@ -259,7 +259,7 @@ function RM.BestRank(name)
             for offset = 1, count do
                 local item = C_SpellBook.GetSpellBookItemInfo(lineInfo.itemIndexOffset + offset, bank)
                 local id = item and item.spellID
-                local spellName = id and IsPlayerSpell(id) and C_Spell.GetSpellName(id)
+                local spellName = id and ns.IsPlayerSpell(id) and C_Spell.GetSpellName(id)
                 if spellName then
                     local rank = RankOf(id)
                     if not rankOf[spellName] or rank > rankOf[spellName] then

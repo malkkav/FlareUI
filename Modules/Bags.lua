@@ -809,6 +809,12 @@ local function StyleIconText(fs, font)
     ns.SetFont(fs, ns.GetFontPath(face), font.size or 14, flags)
     ns.ApplyShadow(fs, font)
 end
+-- the free bag slots on the backpack button (Bags and Looting > Fonts > Free Bag Slots, 11-12)
+function Bags.StyleFreeSlots()
+    local db = GetDb()
+    local backpack = _G.MainMenuBarBackpackButton
+    if db and backpack and backpack.FreeSlots then StyleIconText(backpack.FreeSlots, db.bagFreeSlotsFont) end
+end
 function Bags.StyleIconTexts(button, db)
     StyleIconText(button.Count, db.bagItemFont)
     local cooldown = button.Cooldown or (button.GetName and button:GetName() and _G[button:GetName() .. "Cooldown"])
@@ -1115,6 +1121,8 @@ end
 function Bags:Init()
     if self.initialized then return end
     self.initialized = true
+    Bags.FollowWindows()   -- section 4c
+    Bags.StyleFreeSlots()
     local useFilterButtons = C_Container.GetContainerItemQuestInfo and C_Item.GetItemInventoryTypeByID
         and Enum.InventoryType and not self:GetOtherBagAddon()
     for _, frame in ipairs(BagFrames()) do
@@ -1183,6 +1191,7 @@ end
 -- tainted): a layout switched off goes back to Blizzard's the next time the bags open.
 function Bags:Refresh()
     if not self.initialized then return end
+    Bags.StyleFreeSlots()
     for _, frame in ipairs(BagFrames()) do
         if frame:IsShown() then
             if frame == Combined() then Relayout(frame) end
@@ -1191,6 +1200,44 @@ function Bags:Refresh()
     end
     self:PlaceBagButtons()
     ParkReagentWindow()
+end
+
+--------------------------------------------------
+-- 4c. BAGS WITH OTHER WINDOWS (11-12, a player's request)
+-- Forever's bank and guild bank don't open the bags as the vendor and mailbox do: with this module
+-- on they always do. The character window does with Open with Character Window (off). Blizzard's own
+-- OpenAllBags / CloseAllBags(frame): bags that were open already stay open when the window closes.
+-- Not in the Gamepad UI, whose bags are its own.
+--------------------------------------------------
+local function OpenWith(frame)
+    if GamepadUI() or not OpenAllBags then return end
+    -- after the window's own OnShow (the panel manager may still be placing it)
+    C_Timer.After(0, function()
+        if frame:IsShown() then OpenAllBags(frame) end
+    end)
+end
+
+local function CloseWith(frame)
+    if CloseAllBags and not GamepadUI() then CloseAllBags(frame) end
+end
+
+local function Follow(frame, wanted)
+    if type(frame) ~= "table" or not frame.HookScript or frame.FlareUI_BagsFollow then return end
+    frame.FlareUI_BagsFollow = true
+    frame:HookScript("OnShow", function(f) if not wanted or wanted() then OpenWith(f) end end)
+    frame:HookScript("OnHide", CloseWith)
+end
+
+function Bags.FollowWindows()
+    Follow(_G.BankFrame)
+    Follow(_G.CharacterFrame, function()
+        local db = GetDb()
+        return db and db.bagWithCharacter
+    end)
+    -- the guild bank loads on demand
+    if EventUtil and EventUtil.ContinueOnAddOnLoaded then
+        EventUtil.ContinueOnAddOnLoaded("Blizzard_GuildBankUI", function() Follow(_G.GuildBankFrame) end)
+    end
 end
 
 --------------------------------------------------

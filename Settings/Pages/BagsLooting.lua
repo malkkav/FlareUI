@@ -44,6 +44,8 @@ S:Row{ key = "bl.petFood", half = true, tab = "bags", path = "tweaks.petFood", a
 S:Row{ key = "bl.bagFilters", half = true, tab = "bags", path = "tweaks.bagFilters", disabled = BagAddon,
     apply = function() if ns.Bags and ns.Bags.Filter then ns.Bags.Filter.Refresh() end end }
 S:Row{ key = "bl.delete", half = true, tab = "bags", path = "tweaks.autoDelete", apply = Refresh }
+-- the bags open and close with the character window (Bags.lua 4c; the bank and guild bank always do)
+S:Row{ key = "bl.bagWithCharacter", half = true, tab = "bags", path = "tweaks.bagWithCharacter" }
 
 -- LOOTING ----------------------------------------
 S:Row{ key = "bl.fastLoot", half = true, tab = "looting", path = "tweaks.fasterLoot", apply = Refresh }
@@ -68,8 +70,11 @@ S:Row{ key = "bl.lootFeedPosition", kind = "choice", tab = "looting", parent = "
 S:FontRows{ module = "bl", tab = "fonts", section = "bl.fonts", fonts = {
     -- the stack counts and cooldown numbers on the bag icons (Bags.lua StyleIconTexts)
     { key = "bagItems", path = "tweaks.bagItemFont", optional = true, disabled = BagAddon },
+    -- the free bag slots on the backpack button (11-12, a player asked: too small to read)
+    { key = "freeSlots", path = "tweaks.bagFreeSlotsFont", optional = true },
     { key = "lootFeed", path = "tweaks.lootFeedFont" },
 }, apply = function()
     if ns.Bags and ns.Bags.Refresh then ns.Bags:Refresh() end
+    if ns.Bags and ns.Bags.StyleFreeSlots then ns.Bags.StyleFreeSlots() end
     if ns.LootFeed and ns.LootFeed.ApplyFont then ns.LootFeed:ApplyFont() end
 end }

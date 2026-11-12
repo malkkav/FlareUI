@@ -2001,6 +2001,8 @@ end
 -- initializeFrame: a pooled button's visuals, built once; the button drives them. look: the Buffs /
 -- Debuffs look (ns.AuraLook), else the plain style.
 local function InitAuraButton(button, size, isDebuff, unit, font, showTimer, look)
+    -- (a party or raid tile's marks itself "group" after this: PartyFrames NoAuraTooltip)
+    ns.MarkAuraTooltip(button, "solo")
     if look then
         ns.AuraLook.Style(button, look)
         ns.AuraLook.Hook(button, look)
@@ -3873,7 +3875,7 @@ function BookByName()
         for offset = 1, count do
             local item = C_SpellBook.GetSpellBookItemInfo(lineInfo.itemIndexOffset + offset, bank)
             local id = item and item.spellID
-            local name = id and IsPlayerSpell(id) and C_Spell.GetSpellName(id)
+            local name = id and ns.IsPlayerSpell(id) and C_Spell.GetSpellName(id)
             if name then
                 local rank = RankOf(id)
                 if not rankOf[name] or rank > rankOf[name] then best[name], rankOf[name] = id, rank end

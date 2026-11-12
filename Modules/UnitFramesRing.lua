@@ -112,10 +112,12 @@ BLIZZ.pet = {
     centre = BLIZZ.player.centre, D = BLIZZ.player.D, side = "LEFT",
     level = BLIZZ.player.level,
 }
--- The styled target of target and target of focus: the target frame, small, with no icons on the ring
+-- The styled target of target and target of focus: small, with no icons on the ring. The ring on the
+-- left, as Blizzard's own and the pet's (11-12, a player report): their bars and texts are laid out for
+-- a portrait on the left, so a ring on the right covered the bar's end and its text
 BLIZZ.targettarget = {
-    centre = BLIZZ.target.centre, D = BLIZZ.target.D, side = "RIGHT",
-    level = BLIZZ.target.level,
+    centre = BLIZZ.player.centre, D = BLIZZ.player.D, side = "LEFT",
+    level = BLIZZ.player.level,
 }
 BLIZZ.focustarget = BLIZZ.targettarget
 -- the small frames' size, of the frame they follow, and their Portrait Size default

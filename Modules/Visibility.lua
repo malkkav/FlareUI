@@ -222,8 +222,34 @@ local function ForEachFrameOfKey(key, func, ...)
     end
 end
 
+-- 11-12: Mouseover became a condition ticked with the others. Before, any condition also showed the
+-- element under the pointer: once per profile, every condition choice gets Mouseover ticked, so
+-- nothing changes until the player unticks it (Fake CM never followed the pointer: left alone)
+local function MigrateMouseToken(db)
+    db.mouseToken = true
+    local C = ns.Conditions
+    local function Add(show)
+        show = type(show) == "string" and (C.BAR_LEGACY[show] or show) or show
+        if type(show) ~= "string" or show == "always" or show == "inuse" or show == "bar1" or show == "" then return nil end
+        local set = C.Set(show)
+        if set.mouseover then return nil end
+        local list = { "mouseover" }
+        for token in show:gmatch("[^,]+") do list[#list + 1] = token end
+        return table.concat(list, ",")
+    end
+    for _, cfg in pairs(db.elements or {}) do
+        if type(cfg) == "table" then cfg.show = Add(cfg.show) or cfg.show end
+    end
+    for i = 1, 5 do
+        local group = db.groups and db.groups[i]
+        if type(group) == "table" then group.show = Add(group.show) or group.show end
+    end
+end
+
 local function GetDb()
-    return ns.db and ns.db.profile and ns.db.profile.visibility
+    local db = ns.db and ns.db.profile and ns.db.profile.visibility
+    if db and not db.mouseToken then MigrateMouseToken(db) end
+    return db
 end
 
 local function ActionBarsOn()
@@ -498,22 +524,23 @@ local function FlyoutOver(bar)
     return false
 end
 
--- A Visibility is "always", "mouseover" (only pointing at it shows it), or the conditions ticked in
--- its dropdown joined by commas ("combat,unmounted"): any one of them shows the element (ns.Conditions)
+-- A Visibility is "always", or the conditions ticked in its dropdown joined by commas
+-- ("mouseover,combat"): any one of them shows the element (ns.Conditions). Mouseover is one of those
+-- conditions (11-12): nothing shows under the pointer unless it is ticked. Nothing ticked is Always.
 local Conditions = ns.Conditions
-local SHOW_SPEC = { exclusive = { "always", "mouseover" }, tokens = Conditions.BAR_TOKENS, legacy = Conditions.BAR_LEGACY, empty = "mouseover" }
+local SHOW_SPEC = { exclusive = { "always" }, tokens = Conditions.MOUSE_TOKENS, legacy = Conditions.BAR_LEGACY, empty = "always" }
 -- the player and pet frames also show while their unit is missing health (section 6b)
-local HEALTH_TOKENS = { unpack(Conditions.BAR_TOKENS) }
+local HEALTH_TOKENS = { unpack(Conditions.MOUSE_TOKENS) }
 HEALTH_TOKENS[#HEALTH_TOKENS + 1] = "health"
-local HEALTH_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = HEALTH_TOKENS, legacy = SHOW_SPEC.legacy, empty = "mouseover" }
+local HEALTH_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = HEALTH_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 -- and the player frame while you're missing mana (ticked with Missing Health: either bar under full)
 local MANA_TOKENS = { unpack(HEALTH_TOKENS) }
 MANA_TOKENS[#MANA_TOKENS + 1] = "mana"
-local MANA_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = MANA_TOKENS, legacy = SHOW_SPEC.legacy, empty = "mouseover" }
--- a swing bar's Only When In Use clears the rest, as Always and Mouseover do
-local INUSE_SPEC = { exclusive = { "always", "mouseover", "inuse" }, tokens = Conditions.BAR_TOKENS, legacy = SHOW_SPEC.legacy, empty = "mouseover" }
+local MANA_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = MANA_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
+-- a swing bar's Only When In Use clears the rest, as Always does
+local INUSE_SPEC = { exclusive = { "always", "inuse" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 -- a gryphon's Same as Action Bar 1 clears the rest too
-local CAP_SPEC = { exclusive = { "bar1", "always", "mouseover" }, tokens = Conditions.BAR_TOKENS, legacy = SHOW_SPEC.legacy, empty = "mouseover" }
+local CAP_SPEC = { exclusive = { "bar1", "always" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 local function SpecOf(key)
     local e = ELEMENT_BY_KEY[key]
     if e and e.cap then return CAP_SPEC end
@@ -552,16 +579,18 @@ local function CheckMember(data, editMode, spellbook)
     -- every action bar shows while something is dragged onto them, or the spellbook is open
     if data.isBar and ((fcmState and fcmState.wasDragging) or spellbook) then return true end
     if data.fcm then
-        return (fcmState and fcmState.unlockMode) or ShowRule(data.show)
+        return (fcmState and fcmState.unlockMode) or ShowRule(data.show) or (data.mouseOK and data.frame:IsMouseOver()) or false
     end
     if ShowRule(data.show) then return true end
     -- shown while its own settings page is open
     if data.owner and data.owner.IsSettingsPreview and data.owner:IsSettingsPreview() then return true end
+    -- the totem bar's flyout (a totem's list) stands above the bar: shown while it's open
+    if data.key == "totem" and _G.MultiCastFlyoutFrame and _G.MultiCastFlyoutFrame:IsShown() then return true end
+    -- the pointer counts only with Mouseover ticked (11-12: some players don't want it)
+    if not data.mouseOK then return false end
     if data.key == "quest" and ns.ObjectiveTracker.IsMouseOverExtras and ns.ObjectiveTracker:IsMouseOverExtras() then return true end
     -- a unit frame's holder has no size: its frame (and a ring style's portrait) is what's pointed at
     if data.mouse then return data.mouse() end
-    -- the totem bar's flyout (a totem's list) stands above the bar: shown while it's open
-    if data.key == "totem" and _G.MultiCastFlyoutFrame and _G.MultiCastFlyoutFrame:IsShown() then return true end
     return data.frame:IsMouseOver() or (data.isBar and FlyoutOver(data.frame))
 end
 
@@ -671,7 +700,7 @@ end
 --------------------------------------------------
 -- 7. EDIT MODE SETTINGS
 --------------------------------------------------
--- Always and Mouseover each clear the rest; the conditions after the line are toggles
+-- Always clears the rest; the conditions after the line (Mouseover first) are toggles
 local SHOW_VALUES = { "always", "mouseover", "combat", "hastarget", "attackable", "ingroup", "unmounted" }
 local GROUP_VALUES = { 0, 1, 2, 3, 4, 5 }
 
@@ -680,7 +709,7 @@ local function Values(copyKey, list, fallback)
     local values = {}
     for i, value in ipairs(list) do
         values[#values + 1] = { text = names[i] or fallback(value), value = value, isRadio = true }
-        if value == "mouseover" then values[#values + 1] = { isDivider = true } end
+        if value == "always" then values[#values + 1] = { isDivider = true } end
     end
     return values
 end
@@ -761,12 +790,42 @@ end
 
 -- for the unit frames' Fading section (UnitFrames.lua BuildSettings): no fade group, no title
 -- no Fade Speed either (they fade at once), and Faded Opacity on the player and pet only
+-- Link Pet Frame (the player frame's Fading, 11-12, a player's idea): the pet frame fades with the
+-- player frame, on the player's settings; pointing at either shows both. The pet's own Fading hides.
+function Visibility:PetLinked()
+    local db = GetDb()
+    return db and db.petFollowsPlayer == true or false
+end
+
 function Visibility:UnitFrameSettings(unit)
     local key = "uf_" .. unit
     local rows = BuildElementSettings(key)
     local e = ELEMENT_BY_KEY[key]
     local kept = { rows[2] }   -- Visibility (1 Fade Group, 3 Fade Speed, 4 Faded Opacity)
     if not (e and e.noOpacity) then kept[#kept + 1] = rows[4] end
+    if unit == "pet" then
+        local function Linked() return Visibility:PetLinked() end
+        for _, row in ipairs(kept) do
+            local own = row.hidden
+            row.hidden = function(...)
+                if Linked() then return true end
+                if type(own) == "function" then return own(...) end
+                return own and true or false
+            end
+        end
+    elseif unit == "player" then
+        kept[#kept + 1] = {
+            name = L["Link Pet Frame"], kind = LEM.SettingType.Checkbox, default = false,
+            get = function() return Visibility:PetLinked() end,
+            set = function(_, value)
+                local db = GetDb()
+                if not db then return end
+                db.petFollowsPlayer = value and true or nil
+                Visibility:Refresh()
+            end,
+            desc = L["The pet frame fades with the player frame, on these settings. Pointing at either shows both."],
+        }
+    end
     return kept
 end
 
@@ -1056,11 +1115,18 @@ function Visibility:Refresh()
             local isBar = key:match("^bar[1-8]$") ~= nil
             local fcmBar = isBar and fcm and fcm.bars and fcm.bars[key]
             if fcmBar and fcmBar.enabled then
-                -- Fake CM bars: their own rule, one group, no mouse
-                AddMember("fcm", { key = key, frame = frame, isBar = true, fcm = true, show = fcm.show or "combat",
+                -- Fake CM bars: their own rule, one group; the pointer only with Mouseover ticked
+                local fcmShow = fcm.show or "combat"
+                local mouseOK = Conditions.Has(fcmShow, "mouseover", SHOW_SPEC)
+                AddMember("fcm", { key = key, frame = frame, isBar = true, fcm = true, show = fcmShow, mouseOK = mouseOK,
                                    fadeTime = ns.FadeTime(self:GetFadeSpeed(key)), minAlpha = 0 })
+                if mouseOK then Fader.watchesMouseover = true end
             else
                 local show = self:GetShow(key)
+                -- Link Pet Frame: the pet takes the player frame's choices and fades in its group
+                local linkPet = key == "uf_pet" and self:PetLinked() and ElementOn(ELEMENT_BY_KEY.uf_player)
+                local settingsKey = linkPet and "uf_player" or key
+                if linkPet then show = self:GetShow("uf_player") end
                 if show == "always" or show == "inuse" then
                     ApplyElementAlpha(frame, key, 1)
                     if e.own then unitValues[key] = 1 end
@@ -1071,11 +1137,14 @@ function Visibility:Refresh()
                     local mouse = unit and function() return ns.UnitFrames:IsMouseOverUnit(unit) end or nil
                     if e.noGroup then group = 0 end
                     local data = { key = key, frame = frame, isBar = isBar, show = show, owner = owner, mouse = mouse,
-                                   fadeTime = e.instant and 0 or ns.FadeTime(self:GetFadeSpeed(key)),
-                                   minAlpha = e.noOpacity and 0 or self:GetMinAlpha(key) / 100 }
+                                   fadeTime = e.instant and 0 or ns.FadeTime(self:GetFadeSpeed(settingsKey)),
+                                   minAlpha = e.noOpacity and 0 or self:GetMinAlpha(settingsKey) / 100 }
+                    -- the pointer shows it only with Mouseover ticked
+                    data.mouseOK = Conditions.Has(show, "mouseover", SpecOf(settingsKey))
                     if e.own then
-                        local health = e.health and Conditions.Has(show, "health", SpecOf(key)) or false
-                        local mana = e.mana and Conditions.Has(show, "mana", SpecOf(key)) or false
+                        -- (a linked pet: the player's Missing Health / Mana show the pair; the pet's own health doesn't)
+                        local health = not linkPet and e.health and Conditions.Has(show, "health", SpecOf(key)) or false
+                        local mana = not linkPet and e.mana and Conditions.Has(show, "mana", SpecOf(key)) or false
                         data.healthUnit = health and e.health or nil
                         data.manaWatch = mana or nil
                         if mana then watchMana = true end
@@ -1085,7 +1154,7 @@ function Visibility:Refresh()
                         -- the holder put right at once: an alpha left by the curve can't be read back
                         data.apply(data.value)
                     end
-                    AddMember(group > 0 and ("group" .. group) or key, data)
+                    AddMember(linkPet and "uf_player" or (group > 0 and ("group" .. group) or key), data)
                     Fader.watchesMouseover = true
                 end
             end

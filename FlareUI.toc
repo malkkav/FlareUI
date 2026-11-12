@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 6.0.3
+## Version: 6.1
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -106,6 +106,7 @@ Settings\Pages\Chat.lua
 Settings\Pages\DamageMeter.lua
 Settings\Pages\Tooltips.lua
 Settings\Pages\Auras.lua
+Settings\Pages\BuffReminders.lua
 Settings\Pages\Minimap.lua
 Settings\Pages\QuestTracker.lua
 Settings\Pages\RadialMenu.lua

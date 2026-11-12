@@ -633,7 +633,8 @@ local defaults = {
         -- show: always | mouseover | combat | target | harm. A group (1-5) owns its members' show.
         visibility = {
             elements = VisibilityElements(),
-            groups = { { show = "combat" }, { show = "combat" }, { show = "combat" }, { show = "combat" }, { show = "combat" } },
+            groups = { { show = "combat,mouseover" }, { show = "combat,mouseover" }, { show = "combat,mouseover" },
+                       { show = "combat,mouseover" }, { show = "combat,mouseover" } },
             fadeSpeed = "instant",      -- instant | fast | slow (ns.FadeTime)
             hideBagBar = false,
             hideMicroMenu = false,
@@ -643,6 +644,7 @@ local defaults = {
             hideRaidManager = false,
             hideTotemBar = false,
             hideEndCaps = false,
+            petFollowsPlayer = false,   -- Link Pet Frame: the pet frame fades with the player frame (11-12)
         },
 
         -- [[ AURAS MODULE ]] the player's buffs and debuffs (Modules/Auras.lua)
@@ -660,6 +662,11 @@ local defaults = {
             reminders = false,
             reminder = { group = "all", size = 36, before = 2, orientation = "HORIZONTAL", grow = "FORWARD",
                          blessing = "auto", consumables = "off", pets = true, thorns = "tank", camping = false, gathering = false,
+                         weaponOil = false,   -- Weapon Oil / Stone (11-12)
+                         elixirs = "none", weaponScope = "always", petScope = "always", readyCheck = false,   -- 11-12
+                         classScope = "always", timeLeft = true,   -- Where > Class Buffs; Edit Mode > Alerts > Time Left (11-12)
+                         supplies = false, durability = false,   -- Low Supplies, Low Durability (11-12)
+                         trinkets = false, extras = "none", hideMounted = false, playstyle = "auto", soulstone = "healer",   -- 11-12
                          hideTank = false, hideHealer = false, hideDamage = false, hideNoRole = false,
                          countText = "both", spacing = 6, alpha = 100,
                          -- When It Shows, Alerts (the Buff Reminders tab)
@@ -705,6 +712,12 @@ local defaults = {
             -- anchor: default | cursorOffset (shown as "Cursor"); Blizzard's corner by default
             anchor = "default",
             anchorFrames = "default",
+            -- anchorBars, anchorOther: unset follows anchorFrames (11-12, per kind of tooltip)
+            anchorAuras = "default",        -- buff and debuff icons (Mouseover: at the pointer)
+            anchorGroupAuras = "default",   -- party and raid tiles' aura icons
+            -- Mouseover (11-12): the main switch; mouseoverKinds[kind] = an exception; the anchors above
+            -- convert into these once (mouseoverSet), Tooltips.lua TIP.Mouseover
+            mouseover = false,
 
             -- visibility: always | combat | never; every tooltip shows by default, as with Blizzard
             visibility = {
@@ -712,6 +725,7 @@ local defaults = {
                 worldObjects = "always",
                 frameUnits = "always",
                 actionBars = "always",
+                other = "always",       -- Everything Else (11-12)
                 auras = "always",       -- every buff and debuff icon's tooltip
                 groupAuras = "never",   -- party and raid aura icons: never takes the mouse (PartyFrames.lua)
             },
@@ -806,8 +820,11 @@ local defaults = {
             bagKeyring = false,         -- Keyring in Backpack: the keyring as a section of the combined backpack
             bagReagent = false,         -- Crafting Bag in Backpack: the crafting (reagent) bag there too
             bagFilters = false,         -- Category Filters: a filter button and drawer by the bag search (Bags.lua 4b)
+            bagWithCharacter = false,   -- Open with Character Window: the bags open and close with it (Bags.lua 4c)
             -- Bag Items font (Bags.lua StyleIconTexts): stack counts and cooldown numbers; face "" keeps Blizzard's
             bagItemFont = { face = "", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
+            -- Free Bag Slots font: the count on the backpack button; face "" keeps Blizzard's (11-12)
+            bagFreeSlotsFont = { face = "", size = 16, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             bagThickBorders = false,    -- FlareUI Thick in place of the always-on Thin border
             bagRarityBorders = false,   -- slot borders in the item's quality colour
             bagJunkIcon = false,        -- the junk coin on grey items always, not only at a vendor
@@ -978,6 +995,14 @@ end
 
 -- GameTooltip for FlareUI's own buttons. Another owner's tooltip is hidden first: Blizzard clears its
 -- health, money and progress bars only in OnHide.
+-- FlareUI's aura icons (Blizzard's aura containers draw them): "solo" or "group", for Tooltips'
+-- Mouseover on Buffs/Debuffs and Party/Raid Auras (Tooltips.lua). Only noted here, never written on
+-- the buttons, which show their tooltips through Blizzard's own code.
+ns.auraTipKind = setmetatable({}, { __mode = "k" })
+function ns.MarkAuraTooltip(button, kind)
+    if button then ns.auraTipKind[button] = kind end
+end
+
 function ns.OwnGameTooltip(owner, anchor)
     if GameTooltip:IsShown() and not GameTooltip:IsOwned(owner) then GameTooltip:Hide() end
     GameTooltip:SetOwner(owner, anchor)
@@ -1697,6 +1722,24 @@ end
 -- A value is one of the spec's exclusive choices ("always"), or the ticked tokens joined by commas
 -- ("combat,ingroup"), any one of which shows the frame. spec = { exclusive = { ... }, tokens = { ... },
 -- empty = the value when nothing is ticked, legacy = { old single value = "its,tokens" } }.
+-- Each layout's own store. ProfileLayout.lua (6.0) puts the real one over this; this stand-in keeps every
+-- Edit Mode frame working when that file didn't load (an update read with /reload, not a restart)
+ns.LayoutHome = ns.LayoutHome or function(layouts, name)
+    layouts[name] = layouts[name] or {}
+    return layouts[name]
+end
+
+-- A spell the player knows. IsPlayerSpell is one of Blizzard's deprecated globals on Forever: it exists
+-- only while the loadDeprecationFallbacks setting is on (Blizzard_DeprecatedSpellBook), so C_SpellBook first
+function ns.IsPlayerSpell(id)
+    if not id then return false end
+    if C_SpellBook and C_SpellBook.IsSpellKnown then
+        local bank = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or 0
+        return C_SpellBook.IsSpellKnown(id, bank) and true or false
+    end
+    return IsPlayerSpell and IsPlayerSpell(id) or false
+end
+
 ns.Conditions = {}
 do
     local C = ns.Conditions
@@ -1750,6 +1793,8 @@ do
     -- The bars' conditions (action bars and the frames faded with them, Fake CM, resource bars). The
     -- single choices from before the toggles each meant "in combat, or ...".
     C.BAR_TOKENS = { "combat", "hastarget", "attackable", "ingroup", "unmounted" }
+    -- the faded elements' and Fake CM's: Mouseover is a condition ticked with the others (11-12)
+    C.MOUSE_TOKENS = { "mouseover", "combat", "hastarget", "attackable", "ingroup", "unmounted" }
     C.BAR_LEGACY = { target = "combat,hastarget", harm = "combat,attackable", nomount = "combat,unmounted", group = "combat,ingroup" }
 end
 
@@ -1831,7 +1876,7 @@ do
         local _, class = UnitClass("player")
         local list = ranged and (RANGED[class] or { 75, 5019 }) or (MELEE[class] or AUTO_ATTACK)
         for _, id in ipairs(list) do
-            if id == 6603 or IsPlayerSpell(id) then
+            if id == 6603 or ns.IsPlayerSpell(id) then
                 local ok, v = pcall(C_Spell.IsSpellInRange, id, "target")
                 if ok and Answer(v) ~= nil then return v end
             end

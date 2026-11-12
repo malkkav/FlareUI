@@ -290,10 +290,9 @@ end
 
 --------------------------------------------------
 -- 6b. ACTIVE HIGHLIGHT (Button Appearance, off; 11-12, a player's request)
--- Blizzard marks the active stance or form, a queued Heroic Strike / Cleave / Maul / Raptor Strike,
--- a repeating Auto Shot or wand and the spell being cast as "checked", with a faint yellow square.
--- This follows that same checked state (a post-hook on each button's SetChecked) and draws it
--- plainly: a gold edge and a light over the icon, pulsing while an attack waits for the next swing.
+-- The active stance or form, a queued Heroic Strike / Cleave / Maul / Raptor Strike, auto attack and a
+-- repeating Auto Shot or wand, drawn plainly: a gold edge and a light over the icon, pulsing while an
+-- attack waits for the next swing. Worked out on events and on each SetChecked (IsActiveButton below).
 -- Looks only: nothing secure is touched, so it works in a fight.
 --------------------------------------------------
 local ACTIVE_COLOR = { 1, 0.82, 0.25 }
@@ -310,13 +309,53 @@ local function QueuedName(name)
     return name and queuedNames[name] or false
 end
 
+-- the spell's name on an action slot (a macro: the spell it casts)
+local function ActionSpellName(action)
+    if not (action and GetActionInfo) then return nil end
+    local kind, id = GetActionInfo(action)
+    if kind == "macro" and id and GetMacroSpell then id = GetMacroSpell(id); kind = id and "spell" end
+    if kind ~= "spell" or not id then return nil end
+    return C_Spell.GetSpellName(id)
+end
+
 -- an on-next-swing attack on this button
 local function HoldsQueuedAttack(button)
+    return QueuedName(ActionSpellName(button.action))
+end
+
+-- the active stance / form / aura's spell name (rank-free), nil out of one
+local function ActiveFormName()
+    local form = GetShapeshiftForm and GetShapeshiftForm()
+    if not form or form == 0 or not GetShapeshiftFormInfo then return nil end
+    local _, _, _, spellID = GetShapeshiftFormInfo(form)
+    return spellID and C_Spell.GetSpellName(spellID) or nil
+end
+
+-- What the highlight shows, worked out here rather than read from Blizzard's checked state (11-12, a
+-- player report). That state also marks a spell for the moment it's cast, and on Forever it is
+-- sometimes left on until the button is refreshed (pointing at it): Rend, Thunder Clap and others stayed
+-- lit. As LibActionButton does, the action is asked directly, on events: the active stance or form, a
+-- queued on-next-swing attack, auto attack and a repeating Auto Shot or wand. The stance and pet bars
+-- (no action slot) keep Blizzard's checked state, which follows the form and the pet's mode.
+local function ActionActive(action)
+    if not C_ActionBar.HasAction(action) then return false end
+    if C_ActionBar.IsAutoRepeatAction(action) then return true end
+    local current = C_ActionBar.IsCurrentAction(action)
+    if current and C_ActionBar.IsAttackAction(action) then return true end
+    local name = ActionSpellName(action)
+    if not name then return false end
+    if current and QueuedName(name) then return true end
+    return name == ActiveFormName()
+end
+
+local function IsActiveButton(button)
     local action = button.action
-    if not (action and GetActionInfo) then return false end
-    local kind, id = GetActionInfo(action)
-    if kind ~= "spell" or not id then return false end
-    return QueuedName(C_Spell.GetSpellName(id))
+    if type(action) ~= "number" or not (C_ActionBar and C_ActionBar.HasAction) then
+        return button.GetChecked and button:GetChecked() and true or false
+    end
+    -- (the slot APIs error on a slot number out of range)
+    local ok, active = pcall(ActionActive, action)
+    return ok and active or false
 end
 
 local function ActiveOverlay(button)
@@ -347,7 +386,7 @@ end
 
 local function UpdateActive(button)
     local db = GetBarConfig()
-    local on = db and db.enabled and db.activeHighlight and button:GetChecked() and true or false
+    local on = db and db.enabled and db.activeHighlight and IsActiveButton(button) or false
     if not on then
         local ov = button.FlareUI_Active
         if ov then ov.pulse:Stop(); ov:Hide() end
@@ -363,6 +402,27 @@ local function UpdateActive(button)
     end
 end
 
+local activeButtons = {}   -- every hooked button, for the event refresh
+local function RefreshActive()
+    for button in pairs(activeButtons) do UpdateActive(button) end
+end
+
+-- an event: every button now, once more the next frame and a moment later (the game's answers can
+-- trail the event: a queued attack used, a cast ended)
+local ACTIVE_EVENTS = { "ACTIONBAR_UPDATE_STATE", "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_PAGE_CHANGED",
+    "UPDATE_BONUS_ACTIONBAR", "UPDATE_SHAPESHIFT_FORM", "UPDATE_SHAPESHIFT_FORMS", "START_AUTOREPEAT_SPELL",
+    "STOP_AUTOREPEAT_SPELL", "PLAYER_ENTER_COMBAT", "PLAYER_LEAVE_COMBAT", "PLAYER_REGEN_ENABLED" }
+local ACTIVE_UNIT_EVENTS = { "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED",
+    "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_FAILED_QUIET" }
+local activeEvents, activeLater
+local function OnActiveEvent()
+    RefreshActive()
+    if activeLater then return end
+    activeLater = true
+    C_Timer.After(0, RefreshActive)
+    C_Timer.After(0.3, function() activeLater = nil; RefreshActive() end)
+end
+
 local function UpdateActiveAll()
     local db = GetBarConfig()
     local on = db and db.enabled and db.activeHighlight
@@ -370,9 +430,16 @@ local function UpdateActiveAll()
         if on and not button.FlareUI_ActiveHooked and button.SetChecked then
             button.FlareUI_ActiveHooked = true
             hooksecurefunc(button, "SetChecked", UpdateActive)
+            activeButtons[button] = true
         end
         if button.FlareUI_ActiveHooked then UpdateActive(button) end
     end
+    if on and not activeEvents then
+        activeEvents = CreateFrame("Frame")
+        for _, event in ipairs(ACTIVE_EVENTS) do pcall(activeEvents.RegisterEvent, activeEvents, event) end
+        for _, event in ipairs(ACTIVE_UNIT_EVENTS) do pcall(activeEvents.RegisterUnitEvent, activeEvents, event, "player") end
+    end
+    if activeEvents then activeEvents:SetScript("OnEvent", on and OnActiveEvent or nil) end
 end
 
 --------------------------------------------------

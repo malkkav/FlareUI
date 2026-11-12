@@ -16,7 +16,8 @@ local function FilesLoaded()
         if not LibStub(name, true) then return false end
     end
     -- the saved settings, and the settings panel (the TOC's last file)
-    return ns.db ~= nil and ns.SettingsPanel ~= nil
+    -- (and ProfileLayout.lua, new in 6.0: an update needs a restart, not a /reload, for new files)
+    return ns.db ~= nil and ns.SettingsPanel ~= nil and ns.profileLayoutLoaded == true
 end
 
 local function ShowMessage()

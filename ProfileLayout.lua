@@ -14,6 +14,7 @@ local L = ns.L
 --    has it, otherwise where to get it (Copy Layout Code, Sync Blizz UI).
 --------------------------------------------------
 local LEM = LibStub("FlareEditMode")
+ns.profileLayoutLoaded = true   -- LoadCheck.lua: a file added since the game started is missing
 
 -- the layout name with the most saved spots, for profiles saved before home layouts were kept
 local GUESS_ROOTS = { { "unitframes", "layouts" }, { "party", "layouts" }, { "resourcebars", "layouts" },

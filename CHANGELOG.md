@@ -1,3 +1,61 @@
+# FlareUI 6.1
+
+**Restart the game fully after updating** (not just /reload): this version adds a new file.
+
+## Highlights
+- **Buff Reminders** is now its own page, with much more to track: talent buffs, weapon oils and stones, elixirs, supplies, durability and your own custom reminders.
+- **Mouseover** is now a Visibility condition you tick, so bars and frames show on hover only when you want them to.
+- **Tooltips** get a Visibility tab: when each kind shows, and which ones follow your mouse.
+
+## New
+- Buff Reminders: its own page in the Combat group, with its own switch. Your settings carry over.
+  - **Reminders** tab: Class Buffs, Weapons, Consumables, Upkeep and Your Own.
+  - **When and Where** tab: when a buff counts as running out, where each kind shows, and which group buffs to hide.
+  - **Alerts** tab: **Sound** and **Ready Check Alert**.
+  - Its Edit Mode window gains **Alerts** (**Glow When Missing**, **Glow When Running Out**, **Time Left**) and **Hide While Mounted**.
+  - It no longer needs Buffs & Debuffs to be on.
+- Buff Reminders: talent and class buffs, once you know the spell. Thanks for the request!
+  - Priest: **Divine Spirit** on your group, and **Shadowform** (not while you're the healer).
+  - Druid: **Omen of Clarity**. Hunter: **Trueshot Aura** and an **Aspect** reminder (a click puts your last one back).
+  - Warlock: **Soul Link** while your pet is out, and a **Soulstone** on your group's healer.
+  - Warrior: **Battle Shout** on you and your party.
+- Buff Reminders: **Extra Buffs** (none) adds **Shadow Protection** and **Moonkin Form** when ticked.
+- Buff Reminders: **Weapon Oil / Stone** (off), for every class. Click to use one from your bags; right-click to pick which. Sharpening stones go on blades, weightstones on maces and staves.
+- Buff Reminders: **Playstyle** (Automatic) picks which oil or stone comes first: stones for melee and tanks, wizard oil for casters, mana oil for healers.
+- Buff Reminders: **Elixirs and More**: tick the elixirs, Zanza, juju and Blasted Lands buffs you want kept up. Click to use one from your bags.
+- Buff Reminders: **Low Supplies** (off) for reagents and ammo, **Low Durability** (off) below 20%, and **Worn Trinkets** (off) for an Argent Dawn trinket or Carrot on a Stick still on in a dungeon or raid.
+- Buff Reminders: **Add Custom Reminder**: your own reminder by spell name or ID, or an item. Right-click its icon to remove it.
+- Buff Reminders: right-click an icon to **Snooze Until Recast**.
+- Buff Reminders: where each kind shows: **Class Buffs**, **Weapon Buffs**, **Pets** and **Consumables**, each Always, In Dungeons and Raids, or In Raids.
+- Buff Reminders: icons that use an item show how many you have; a buff running out shows its time left; a poison low on charges counts as running out.
+- Tooltips: a **Visibility** tab.
+  - **Visibility**: World, Unit Frames, Action/Data Bars, Buffs/Debuffs, Party/Raid Auras and the new **Everything Else** (the minimap, menus and more): Always, Hide in Combat or Never.
+  - **Mouseover**: which of them appear at your mouse. Each follows the main **Mouseover** on the Settings tab; a change here is an exception for that kind. Thanks for the request!
+- Edit Mode › player frame › Fading: **Link Pet Frame** (off): the pet frame fades with the player frame, and pointing at either shows both. Thanks for the idea!
+- Bags & Looting: **Open with Character Window** (off): your bags open and close with the character window. Thanks for the request!
+- Bags & Looting › Fonts: **Free Bag Slots** (Default): the font of the free-slot count on the backpack button. Thanks for the request!
+
+## Changed
+- Visibility: **Mouseover** is now a condition you tick with the others, on every faded bar and frame and on Fake CM. Without it, pointing at a faded frame doesn't show it.
+  - If you had conditions set, Mouseover is ticked for you, so nothing changes until you untick it.
+  - Nothing ticked now means Always.
+- Tooltips: **Anchor** is now **Mouseover**, a switch on the Settings tab for every tooltip at once. Your choice carries over.
+- Bags & Looting: the bank and guild bank now open your bags, as the vendor and mailbox do.
+- Minimap: the **Middle-Click Menu** works as before 6.0.3 again: a middle click opens the menu without a ping, and the square map's corners ping. In battlegrounds the game keeps the map's clicks to itself, so there's no menu there.
+- Loot Feed: money shows just the coins you looted, without the gold icon. Thanks for the request!
+- Unit frames: in the ring styles, Target of Target and Target of Focus have their portrait on the left, so the bar runs left to right clear of it.
+- Radial menu: the catalog's sections stay on one line, and an empty catalog says why.
+- Buff Reminders: Food and Flask is a switch, with its place under When and Where.
+- Buff Reminders: an oil or stone on a warlock's weapon no longer brings up the Firestone reminder. Thanks for the report!
+
+## Fixed
+- Action bars: **Active Highlight** no longer leaves spells like Rend or Thunder Clap lit after you use them. Thanks for the report!
+- Buffs: a sharpening stone's or oil's icon no longer disappears after you die. Thanks for the report!
+- Buff Reminders: food buffs not called "Well Fed" (Nightfin Soup, Grilled Squid and more) count, and Demonic Sacrifice no longer asks for your pet.
+- Edit Mode: FlareUI's loot rolls, toasts and other frames keep working after an update read with /reload; FlareUI now tells you to restart instead. Thanks for the report!
+- Radial menu: the **Professions** catalog finds your professions.
+- Settings: longer translations fit their buttons, and the About page scrolls. Thanks to parchinskiy!
+
 # FlareUI 6.0.3
 
 **Restart the game fully after updating** (not just /reload): this version adds a new file.

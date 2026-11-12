@@ -304,8 +304,9 @@ end
 --------------------------------------------------
 local CATEGORIES = {}
 
-local function AddCategory(key, label, build, note)
-    CATEGORIES[#CATEGORIES + 1] = { key = key, label = label, build = build, note = note }
+-- empty: what the grid says when the category has nothing for this character (11-12)
+local function AddCategory(key, label, build, note, empty)
+    CATEGORIES[#CATEGORIES + 1] = { key = key, label = label, build = build, note = note, empty = empty }
 end
 
 AddCategory("panels", L["Panels"], function()
@@ -337,7 +338,7 @@ AddCategory("spells", L["Spells"], function()
     local out = {}
     ForEachBookSpell(function(spellID) out[#out + 1] = { kind = "spell", id = spellID } end)
     return out
-end)
+end, nil, L["No spells in your spellbook yet."])
 
 -- Party: your helpful spells, each spread over the group (a button per person, RadialMenu.lua
 -- ACTIONS.partycast)
@@ -347,7 +348,7 @@ AddCategory("party", L["Party"], function()
         if C_Spell.IsSpellHelpful(spellID) then out[#out + 1] = { kind = "partycast", id = spellID } end
     end)
     return out
-end, L["A button for you and each party member: aim at a person to cast on them."])
+end, L["A button for you and each party member: aim at a person to cast on them."], L["No helpful spells to cast on others yet."])
 
 AddCategory("items", L["Items"], function()
     -- first: the button that fills itself with your quests' items
@@ -386,15 +387,36 @@ local PROFESSION_SPELLS = {
     { 818 },                         -- Basic Campfire
     { 1804 },                        -- Pick Lock
 }
+-- (11-12: the IDs alone found nothing on Forever, whose profession spells can carry other IDs: each one
+-- is also looked up by its name in your spellbook, which answers with the rank you have)
+local function KnownProfessionSpell(ranks)
+    for _, id in ipairs(ranks) do
+        if ns.IsPlayerSpell(id) then return id end
+    end
+    local name = C_Spell.GetSpellName(ranks[1])
+    local info = name and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(name)
+    local id = info and info.spellID
+    if id and C_SpellBook.FindSpellBookSlotForSpell and C_SpellBook.FindSpellBookSlotForSpell(id) then return id end
+    if id and ns.IsPlayerSpell(id) then return id end
+end
 AddCategory("professions", L["Professions"], function()
     local out = {}
-    for _, ranks in ipairs(PROFESSION_SPELLS) do
-        for _, id in ipairs(ranks) do
-            if IsPlayerSpell(id) then out[#out + 1] = { kind = "spell", id = id } break end
-        end
+    -- by name too: every spell in your book whose name is one of these (any rank, any ID)
+    local names, found = {}, {}
+    for i, ranks in ipairs(PROFESSION_SPELLS) do
+        local name = C_Spell.GetSpellName(ranks[1])
+        if name then names[name] = i end
+    end
+    ForEachBookSpell(function(spellID)
+        local i = names[C_Spell.GetSpellName(spellID) or ""]
+        if i and not found[i] then found[i] = spellID end
+    end)
+    for i, ranks in ipairs(PROFESSION_SPELLS) do
+        local id = found[i] or KnownProfessionSpell(ranks)
+        if id then out[#out + 1] = { kind = "spell", id = id } end
     end
     return out
-end)
+end, nil, L["Nothing here yet: learn a profession and its spells appear here."])
 
 AddCategory("macros", L["Macros"], function()
     local out = {}
@@ -410,7 +432,7 @@ AddCategory("macros", L["Macros"], function()
         if name then out[#out + 1] = { kind = "macro", name = name, icon = icon, text = body } end
     end
     return out
-end)
+end, nil, L["No macros yet: make one with /macro and it appears here."])
 
 AddCategory("markers", L["Markers"], function()
     local out = {}
@@ -440,7 +462,7 @@ AddCategory("mounts", L["Mounts"], function()
         if isCollected then out[#out + 1] = { kind = "mount", id = mountID } end
     end
     return out
-end)
+end, nil, L["No mounts yet."])
 
 -- a radial that contains the edited one, at any depth, is left out of the list
 local function ContainsRadial(radialID, targetID, depth)
@@ -461,7 +483,7 @@ AddCategory("radials", L["Radials"], function()
         if not ContainsRadial(id, editingID) then out[#out + 1] = { kind = "subradial", radial = id } end
     end
     return out
-end, L["Creates sub-radials. Use the mouse wheel while hovering it in the radial menu to flip through its buttons."])
+end, L["Creates sub-radials. Use the mouse wheel while hovering it in the radial menu to flip through its buttons."], L["No other radials yet: make one and it can open from here."])
 
 --------------------------------------------------
 -- 5. DRAG
@@ -1564,11 +1586,11 @@ local function BuildLower(host, height, width)
 
     -- the Catalog: its categories as small text links right of the title (11-11 Marcus, instead of a
     -- dropdown): right-aligned, split by slashes in the page title's gold, the open one yellow and the
-    -- rest grey, on a second line when they don't fit; then a three-column grid, search at the bottom
+    -- rest grey, always on one line; then a three-column grid, search at the bottom
     local catalogTitle = Text(host, "GameFontNormal", L["Catalog"])
     catalogTitle:SetPoint("TOPLEFT", catX + 4, -top)
     local LINK_H, SLASH_W = 16, 14
-    local rightX, maxW = catX + gridW - 10, gridW - 100   -- (in line with the search box)
+    local rightX = catX + gridW - 10   -- (in line with the search box)
     local links, slashes = {}, {}
     for i, c in ipairs(CATEGORIES) do
         local link = CreateFrame("Button", nil, host)
@@ -1592,14 +1614,30 @@ local function BuildLower(host, height, width)
         slash:SetTextColor(1, 0.83, 0.47)
         slashes[i] = slash
     end
-    -- right to left, a new line when the next one would pass the title's room
+    -- one line always (11-12 Marcus), right up to the title: the slashes' gaps close in first, then the
+    -- links' text gets smaller until they fit
+    local room = rightX - (catX + 4 + catalogTitle:GetStringWidth() + 6)
+    local function Total(gap)
+        local sum = 0
+        for _, link in ipairs(links) do sum = sum + link:GetWidth() end
+        return sum + (#links - 1) * gap
+    end
+    if Total(SLASH_W) > room then SLASH_W = math.max(8, math.floor((room - Total(0)) / math.max(1, #links - 1))) end
+    if Total(SLASH_W) > room then
+        local k = math.max(0.6, (room - (#links - 1) * SLASH_W) / Total(0))
+        for _, link in ipairs(links) do
+            local fs = link:GetFontString()
+            local face, size, flags = fs:GetFont()
+            if face and size then fs:SetFont(face, size * k, flags) end
+            link:SetSize(fs:GetStringWidth() + 2, LINK_H)
+        end
+    end
     local x, line, lineOf = rightX, 0, {}
     for i = #links, 1, -1 do
         local w = links[i]:GetWidth()
-        local gap = (i < #links and lineOf[i + 1] == line) and SLASH_W or 0
-        if i < #links and x - gap - w < rightX - maxW then line, x, gap = line + 1, rightX, 0 end
+        local gap = i < #links and SLASH_W or 0
         x = x - gap
-        links[i]:SetPoint("TOPRIGHT", host, "TOPLEFT", x, -top - line * LINK_H)
+        links[i]:SetPoint("TOPRIGHT", host, "TOPLEFT", x, -top)
         lineOf[i] = line
         x = x - w
     end
@@ -1730,6 +1768,18 @@ function RefreshBrowse()
         entries = shown
     end
     editor.browseList:SetData(entries)
+    -- an empty grid says why: nothing found by the search, or nothing in this category yet
+    local list = editor.browseList
+    if not list.emptyText then
+        list.emptyText = list:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        list.emptyText:SetPoint("TOPLEFT", 8, -14)
+        list.emptyText:SetPoint("TOPRIGHT", -8, -14)
+        list.emptyText:SetJustifyH("CENTER")
+    end
+    -- (a category without its own message: a plain one)
+    local why = #entries == 0 and (filter ~= "" and L["Nothing matches your search."] or (category and category.empty) or L["Nothing here yet."]) or nil
+    list.emptyText:SetText(why or "")
+    list.emptyText:SetShown(why ~= nil)
 end
 
 -- the radials column: the ones this character gets in list order, then the others under a header;

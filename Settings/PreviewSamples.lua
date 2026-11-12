@@ -1,7 +1,7 @@
 local _, ns = ...
 local P, S, L = ns.SettingsPreview, ns.Settings, ns.L
 local R = P.renderers
-local aliases = { ['ch.channelNames'] = 'chat.channelNames', ['tt.anchor'] = 'tooltips.anchor', ['tt.ids'] = 'tooltips.showItemID', ['tt.showWorld'] = 'tooltips.visibility.worldUnits' }
+local aliases = { ['ch.channelNames'] = 'chat.channelNames', ['tt.anchor'] = 'tooltips.anchor', ['tt.posWorld'] = 'tooltips.anchor', ['tt.ids'] = 'tooltips.showItemID', ['tt.showWorld'] = 'tooltips.visibility.worldUnits' }
 local function Get(path, default)
     local spec = P.activeSpec
     if spec and spec.value ~= nil then
@@ -775,7 +775,7 @@ end
 -- Examples for the 5.1 visual additions; no protected actions or live settings are used.
 function R.reminders(c, spec)
     Heading(c, L["Buff Reminders"])
-    if spec.key == 'au.reminders' and not Get('auras.reminders') then
+    if not Get('auras.reminders') then
         c:Text('remindersOff', L["Disabled"], 12, 90); return
     end
     -- pets and the blessing are picked in the icon's right-click menu now, so a pet always shows

@@ -837,24 +837,39 @@ local function ToggleMenu()
     menu:Show()
 end
 
--- One surface over the map. Pings stay Blizzard's own: Minimap:PingLocation is protected in
--- battlegrounds (11-11, ADDON_ACTION_BLOCKED in Warsong Gulch), so FlareUI never calls it or wraps the
--- map's click handler; the surface passes every click through to the map but the middle button, which
--- opens the menu while Middle-click Menu is on. Square style: the wheel zooms on the corners too.
+-- Clicks on the map (11-12, second rework: as before 6.0.3, locked in battlegrounds). A surface of
+-- FlareUI's own lies over the map and takes its clicks, so Blizzard's click handler is never replaced,
+-- wrapped or hooked:
+-- * outside battlegrounds it does what FlareUI always did: the middle button opens the menu (no ping),
+--   any other button pings (the square style's corners too; the round map only inside its circle, as
+--   Blizzard's own), and the square style zooms with the wheel.
+-- * in a battleground it lets every click through (Minimap:PingLocation is protected there, 11-11
+--   ADDON_ACTION_BLOCKED in Warsong Gulch): Blizzard's untouched map pings, there is no menu, and the
+--   square's corners don't ping. The wheel still zooms.
 local surface
+local function InBattleground()
+    local inInstance, kind = IsInInstance()
+    return inInstance and kind == "pvp" or false
+end
+
+-- (EnableMouse on FlareUI's own plain frame: allowed in a fight too)
 function MM.UpdateMapMouse()
-    if not surface or InCombatLockdown() then return end   -- SetPassThroughButtons is blocked in a fight
+    if not surface then return end
     local db = GetDb()
     local menu = db and db.microMenu
-    if surface.SetPassThroughButtons then
-        if menu then
-            surface:SetPassThroughButtons("LeftButton", "RightButton", "Button4", "Button5")
-        else
-            surface:SetPassThroughButtons("LeftButton", "RightButton", "MiddleButton", "Button4", "Button5")
-        end
-    end
-    -- round style with the menu off: nothing for the surface to do
-    surface:EnableMouse(menu or squareStyle or false)
+    -- the round map with the menu off has nothing for the surface to add: Blizzard's map clicks itself
+    surface:EnableMouse(not InBattleground() and (squareStyle or menu) and true or false)
+end
+
+local function Ping()
+    local x, y = GetCursorPosition()
+    local scale = MinimapFrame:GetEffectiveScale()
+    local cx, cy = MinimapFrame:GetCenter()
+    if not cx then return end
+    x, y = x / scale - cx, y / scale - cy
+    -- the round map: inside its circle only, as Blizzard's own click
+    if not squareStyle and math.sqrt(x * x + y * y) >= MinimapFrame:GetWidth() / 2 then return end
+    pcall(MinimapFrame.PingLocation, MinimapFrame, x, y)
 end
 
 local function CreateMapSurface()
@@ -874,15 +889,17 @@ local function CreateMapSurface()
         end)
     end
     surface:SetScript("OnMouseUp", function(_, button)
-        if button == "MiddleButton" then ToggleMenu() end
+        if InBattleground() then return end
+        local db = GetDb()
+        if button == "MiddleButton" and db and db.microMenu then ToggleMenu() return end
+        Ping()
     end)
     MM.UpdateMapMouse()
-    -- a reload in a fight: once it ends
-    if InCombatLockdown() then
-        local wait = CreateFrame("Frame")
-        wait:RegisterEvent("PLAYER_REGEN_ENABLED")
-        wait:SetScript("OnEvent", function(self) self:UnregisterAllEvents(); MM.UpdateMapMouse() end)
-    end
+    -- a battleground's start or end
+    local events = CreateFrame("Frame")
+    events:RegisterEvent("PLAYER_ENTERING_WORLD")
+    events:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+    events:SetScript("OnEvent", MM.UpdateMapMouse)
 end
 
 local function SetupMapMouse()
