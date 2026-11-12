@@ -778,16 +778,21 @@ function R.reminders(c, spec)
     if not Get('auras.reminders') then
         c:Text('remindersOff', L["Disabled"], 12, 90); return
     end
-    -- pets and the blessing are picked in the icon's right-click menu now, so a pet always shows
-    local names = {'Spell_Holy_WordFortitude', 'Spell_Holy_MagicalSentry', 'Ability_Hunter_BeastCall'}
-    if Get('auras.reminder.consumables', 'off') ~= 'off' then names[#names+1]='INV_Potion_41' end
-    if Get('auras.reminder.camping', false) then names[#names+1]='Spell_Fire_Fire' end
-    if Get('auras.reminder.gathering', false) then names[#names+1]='INV_Misc_Flower_02' end
-    -- as many as fit the picture
+    -- the first reminders on your bar (6.2), as many as fit the picture
+    local names = {}
+    local BRm = ns.BuffReminders
+    if BRm and BRm.Bar and BRm.Display then
+        for _, id in ipairs(BRm.Bar()) do names[#names+1] = BRm.Display(id).icon end
+    end
+    if #names == 0 then
+        names = {'Interface\\Icons\\Spell_Holy_WordFortitude', 'Interface\\Icons\\Spell_Holy_MagicalSentry', 'Interface\\Icons\\Ability_Hunter_BeastCall'}
+    end
     for i = #names, math.max(1, math.floor((c.width - 12) / 48)) + 1, -1 do names[i] = nil end
-    for i, name in ipairs(names) do
+    for i, icon in ipairs(names) do
         local x=12+(i-1)*48
-        Icon(c,'reminderIcon'..i,name,x,65,38)
+        local t=c:Texture('reminderIcon'..i,nil,x,65,38,38,true)
+        t:SetTexture(icon)
+        t:SetTexCoord(0.08,0.92,0.08,0.92)
         local glow=Get(i==2 and 'auras.reminder.glowExpiring' or 'auras.reminder.glowMissing',false)
         if glow then
             local edge=c:Box('reminderGlow'..i,x-2,63,42,42,'FlareUI Thin',0)
