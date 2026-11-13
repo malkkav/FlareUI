@@ -87,6 +87,19 @@ end
 -- open but moved off the screen, so the key opens and closes everything as before.
 --------------------------------------------------
 local extras = {}   -- bagID -> { holder = frame, buttons = { [slot] = button } }
+local highlightedExtraBag
+
+local function UpdateExtraBagHighlight(bagID, section)
+    local highlighted = bagID == highlightedExtraBag and section.holder:IsShown()
+    for _, button in pairs(section.buttons) do
+        button.BagIndicator:SetShown(highlighted and button:IsShown())
+    end
+end
+
+local function SetExtraBagHighlight(bagID)
+    highlightedExtraBag = bagID
+    for id, section in pairs(extras) do UpdateExtraBagHighlight(id, section) end
+end
 
 local function KeyringID() return Enum.BagIndex and Enum.BagIndex.Keyring end
 local function ReagentID() return Enum.BagIndex and Enum.BagIndex.ReagentBag end
@@ -185,7 +198,10 @@ end
 
 local function HideExtras(except)
     for bagID, e in pairs(extras) do
-        if not (except and except[bagID]) then e.holder:Hide() end
+        if not (except and except[bagID]) then
+            e.holder:Hide()
+            if bagID == highlightedExtraBag then UpdateExtraBagHighlight(bagID, e) end
+        end
     end
 end
 
@@ -329,6 +345,7 @@ local function Relayout(frame)
         if col > 0 then col, row = 0, row + 1 end
         gapCount = gapCount + 1
         e.holder:Show()
+        if bagID == highlightedExtraBag then UpdateExtraBagHighlight(bagID, e) end
         shownBags[bagID] = true
     end
     HideExtras(shownBags)
@@ -1341,8 +1358,30 @@ function Bags:Init()
         if combined.UpdateItemLayout then hooksecurefunc(combined, "UpdateItemLayout", Relayout) end
         -- (after the re-layout: the window's new width)
         if combined.UpdateFrameSize then hooksecurefunc(combined, "UpdateFrameSize", function(f) Bags.FitSearchBox(f) end) end
+        if combined.SetItemsMatchingBagHighlighted then
+            hooksecurefunc(combined, "SetItemsMatchingBagHighlighted", function(_, bagID, highlight)
+                if highlight and not GamepadUI() then
+                    SetExtraBagHighlight(bagID)
+                elseif bagID == highlightedExtraBag then
+                    SetExtraBagHighlight(nil)
+                end
+            end)
+        end
+        -- The mouse keyring button shows its tooltip without firing Blizzard's bag hover events.
+        local keyring = _G.KeyRingButton
+        if keyring then
+            keyring:HookScript("OnEnter", function()
+                if combined:IsShown() and not GamepadUI() then SetExtraBagHighlight(KeyringID()) end
+            end)
+            local function ClearKeyringHighlight()
+                if highlightedExtraBag == KeyringID() then SetExtraBagHighlight(nil) end
+            end
+            keyring:HookScript("OnLeave", ClearKeyringHighlight)
+            keyring:HookScript("OnHide", ClearKeyringHighlight)
+        end
         combined:HookScript("OnShow", function() Bags:PlaceBagButtons() end)
         combined:HookScript("OnHide", ClearExtraNewItems)
+        combined:HookScript("OnHide", function() SetExtraBagHighlight(nil) end)
     end
     -- the bags move when they open or the screen changes: the buttons pick their side again
     hooksecurefunc("UpdateContainerFrameAnchors", function()
