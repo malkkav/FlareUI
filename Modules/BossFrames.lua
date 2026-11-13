@@ -340,12 +340,16 @@ local function BuildSettings()
         { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "value", values = K.POWER_TEXT_MODES,
           get = function() local db = GetDb(); return K.PowerTextMode(db and db.powerText) end, set = set("powerText") },
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = get("showLevel"), set = set("showLevel") },
-        { name = L["Mirror"], kind = LEM.SettingType.Checkbox, default = D.mirror ~= false,
+        { name = L["Mirror Bars"], kind = LEM.SettingType.Checkbox, default = D.mirror ~= false,
           get = function() return get("mirror")() ~= false end, set = set("mirror"),
-          desc = L["Laid out as the target frame: portrait on the right, bars filling from the right. In FlareUI and Forever Style, only the bars' direction."] },
+          desc = L["Laid out like the target frame: portrait on the right, bars filling from the right. In FlareUI and Forever Style, only the bars flip."] },
         -- the ring always has a portrait
         { name = L["Portrait"], kind = LEM.SettingType.Checkbox, default = D.portrait or false, get = get("portrait"), set = set("portrait"),
           hidden = RingStyle },
+        -- (in Frame since 6.3.3: it changes how the frame behaves, not how it looks)
+        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The frame fades while the unit is out of range."],
+          get = function() return get("rangeCheck")() ~= false end, set = set("rangeCheck") },
     })
 
     Section("Look", {
@@ -364,9 +368,6 @@ local function BuildSettings()
             return item
         end)(),
         K.SmoothBarsSetting(get("smoothBars"), set("smoothBars")),
-        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
-          desc = L["The frame fades while the unit is out of your range. Off, it always shows in full."],
-          get = function() return get("rangeCheck")() ~= false end, set = set("rangeCheck") },
     })
 
     local function noCast() return get("castbar")() == false end
@@ -378,19 +379,19 @@ local function BuildSettings()
         { name = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
           get = get("castBorderTexture"), set = set("castBorderTexture"),
           hidden = function() return noCast() or K.NoBorderOptions() end,
-          desc = L["Frame Border uses the frame's own border."] },
+          desc = L["The cast bar's border. Frame Border matches the frame's own border."] },
         { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight or 14, minValue = 8, maxValue = 30, valueStep = 1,
           get = get("castHeight"), set = set("castHeight"), hidden = noCast },
-        { name = L["Hide Icon"], kind = LEM.SettingType.Checkbox, default = false,
-          get = function() return get("castIcon")() == false end,
-          set = function(layoutName, value) set("castIcon")(layoutName, not value) end,
+        { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true,
+          get = function() return get("castIcon")() ~= false end,
+          set = function(layoutName, value) set("castIcon")(layoutName, value and true or false) end,
           hidden = noCast,
-          desc = L["No spell icon left of the bar."] },
-        { name = L["Hide Spell Timer"], kind = LEM.SettingType.Checkbox, default = false,
-          get = function() return get("castTimer")() == false end,
-          set = function(layoutName, value) set("castTimer")(layoutName, not value) end,
+          desc = L["The spell's icon, left of the bar."] },
+        { name = L["Show Spell Timer"], kind = LEM.SettingType.Checkbox, default = true,
+          get = function() return get("castTimer")() ~= false end,
+          set = function(layoutName, value) set("castTimer")(layoutName, value and true or false) end,
           hidden = noCast,
-          desc = L["No time left at the right end of the bar."] },
+          desc = L["The time left, at the right end of the bar."] },
     })
 
     -- no Right of the Frame (the frames sit at the screen's right edge); clashing places grey out
@@ -411,11 +412,11 @@ local function BuildSettings()
             end
         end
     end
-    Section("Auras", {
+    Section("Auras", ns.AuraOrder.With({
         { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = D.buffs, values = places, generator = Place("buffs", "debuffs"),
           get = get("buffs"), set = set("buffs"), desc = L["Every buff on the boss, such as enrages and shields."] },
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = places, generator = Place("debuffs", "buffs"),
-          get = get("debuffs"), set = set("debuffs"), desc = L["Debuffs on the boss: only your own with Only My Debuffs."] },
+          get = get("debuffs"), set = set("debuffs"), desc = L["Debuffs on the boss. With Only My Debuffs, just yours."] },
         K.HideBuffsSetting("PERMANENT", function() return get("hideBuffs")() or "PERMANENT" end, set("hideBuffs")),
         { name = L["Buff Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
           get = function() return ns.AuraSize(GetDb(), false, D.auraSize) end, set = set("buffSize") },
@@ -426,14 +427,11 @@ local function BuildSettings()
         { name = L["Highlight Purgeable Buffs"], kind = LEM.SettingType.Checkbox, default = false,
           get = function() return get("purgeHighlight")() and true or false end, set = set("purgeHighlight"),
           desc = L["Buffs and enrages that you or your group can purge, dispel or soothe come first, with Blizzard's stealable border."] },
-    })
-    Section("Aura Ordering", ns.AuraOrder.Items(get, set))
+    }, get, set))
 
     Section("Icons", {
         { name = L["Raid Markers"], kind = LEM.SettingType.Checkbox, default = D.raidIcon ~= false, get = get("raidIcon"), set = set("raidIcon") },
     })
-    -- always last: the frames' fonts (11-13, UnitFrames.lua UF.FontItems)
-    if ns.UnitFrames and ns.UnitFrames.FontItems then Section("Fonts", ns.UnitFrames.FontItems("boss", true, true)) end
     return settings
 end
 

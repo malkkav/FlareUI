@@ -57,7 +57,7 @@ local function InChat() return S:GetPath("damagemeter.chatTab") and not ChatOff(
 local function NotInChat() return not InChat() end
 
 S:Row{ key = "dm.visibility", kind = "choice", path = "damagemeter.visibility",
-    choices = { "always", "combat", "group", "hidden" }, apply = ApplyVisibility, disabled = InChat, section = "dm.frame" }
+    choices = { "always", "combat", "group", "instance", "hidden" }, apply = ApplyVisibility, disabled = InChat, section = "dm.frame" }
 local function AlwaysVisible() return (S:GetPath("damagemeter.visibility") or "always") == "always" end
 -- in the chat the tab fades the meter in and out at this speed
 S:Row{ key = "dm.fadeSpeed", kind = "choice", path = "damagemeter.fadeSpeed", choices = { "instant", "fast", "slow" },
@@ -97,6 +97,10 @@ S:Row{ key = "dm.threatWindow", path = "damagemeter.threatWindow", tab = "threat
         Refresh()
         if on and ns.DamageMeter and ns.DamageMeter.PlaceThreatWindow then ns.DamageMeter.PlaceThreatWindow() end
     end }
+-- the separate window's own Visibility (11-13, a player's request): only less often than the meter
+S:Row{ key = "dm.threatVisibility", kind = "choice", path = "damagemeter.threatVisibility",
+    choices = { "meter", "instance", "group", "combat" }, apply = Refresh, tab = "threat", section = "dm.threat",
+    disabled = function() return not S:GetPath("damagemeter.threatWindow") end }
 S:Row{ key = "dm.threatValue", kind = "choice", path = "damagemeter.threatValueDisplay",
     choices = { "both", "percent", "value" }, apply = PreviewThreat, tab = "threat", section = "dm.threat" }
 S:Row{ key = "dm.threatCombat", path = "damagemeter.autoThreat", apply = Refresh, tab = "threat", section = "dm.threat", half = true,

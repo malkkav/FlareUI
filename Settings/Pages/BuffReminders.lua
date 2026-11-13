@@ -14,7 +14,7 @@ local function BR() return ns.BuffReminders end
 
 S:Module{
     key = "br", group = "combat", order = 51, enabled = "auras.reminders",
-    tabs = { { key = "reminders" }, { key = "when" }, { key = "alerts" } },
+    tabs = { { key = "reminders" }, { key = "when" }, { key = "alerts" }, { key = "fonts" } },
     editMode = function() return BR() and BR().GetFrame and BR():GetFrame() end,
 }
 
@@ -134,3 +134,15 @@ Row{ key = "br.hideRoles", kind = "dropdown", tab = "when",
 Row{ key = "br.sound", kind = "choice", tab = "alerts", path = "auras.reminder.sound", choices = { "off", "raidwarning", "alarm", "whisper" },
     apply = function() Refresh(); if BR() and BR().PlayAlert then BR().PlayAlert(true) end end }
 Row{ key = "br.readyCheck", tab = "alerts", path = "auras.reminder.readyCheck" }
+
+-- FONTS (11-13, back from Edit Mode): the counts and the time left on each icon
+local function FontsApply() if BR() and BR().Refresh then BR():Refresh() end end
+local function ReminderFont(key, name)
+    return {
+        key = name,
+        font = function() return BR() and BR().Font(key) end,
+        default = function() return S:DefaultPath("auras.reminder." .. key) end,
+    }
+end
+S:FontRows{ module = "br", tab = "fonts", section = "br.fonts", apply = FontsApply,
+    fonts = { ReminderFont("countFont", "counts"), ReminderFont("timeFont", "time") } }

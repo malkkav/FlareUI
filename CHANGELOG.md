@@ -1,3 +1,62 @@
+# FlareUI 6.4
+
+**Restart the game fully after updating** (not just /reload): this version adds a new file.
+
+Fonts moved out of Edit Mode and back to the settings panel. Borders can now be turned off entirely, and party and raid frames can sit flush against each other. Every line of settings text got shorter, too.
+
+## New
+- Borders: **None** is the first choice in every Border list.
+  - Unit frames, party, raid and boss frames
+  - Cast bars, resource bars and the XP bar
+- XP bar: **Border** (FlareUI Thin), in its Edit Mode window.
+- Forever Style: every frame off the bronze plate now has Border options.
+  - Simple pet, simple target of target and target of focus
+  - Raid Style party frames and raid frames
+  - Party pet and target frames, and their cast bars
+- Party frames, Raid Style:
+  - **Power Text** (None)
+  - **Power Bar for Mana Users Only** (off)
+  - **Dispel Icons** (Middle of the Health Bar) now has a place, like on the raid frames
+  - Three more aura places: **Inside, Centre**, **Inside, Centre Left** and **Inside, Centre Right**
+- Raid frames: **Absorb Texture** (FlareUI Striped).
+- Target and focus frames: **Flip Portrait** (off), in FlareUI and Forever Style.
+- Meters:
+  - **Visibility**: a new **In an Instance** choice.
+  - Threat › **Visibility** (With the Meter) for the separate threat window: With the Meter, In an Instance, In a Group or In Combat.
+- `/fui saylog`: checks that every Say and Yell line reaches your chat, and flags any that don't.
+
+## Changed
+- Fonts are back on the settings panel, out of Edit Mode.
+  - New **Fonts** tabs: Unit Frames, Resource Bars, Buffs & Debuffs, Buff Reminders, Minimap and Quest Tracker.
+  - One section per frame. Every section starts closed.
+  - Each font has its own **Reset**, on its heading.
+  - **Apply to All** and **Apply to Both** are gone. **Global Font** gives every font one face.
+  - Your fonts carry over.
+- Party and raid frames: **Spacing** is measured between the bars, so 0 makes them touch.
+  - Raid Style party frames and raid frames, including **Group Spacing** and the main tank frames.
+  - Your current spacing is adjusted, so your frames stay where they are.
+- Switches that add a part now say **Show**, and are on by default.
+  - Cast bars: **Show Icon** and **Show Spell Timer**
+  - Action bars: **Show Keybind Text** and **Show Macro Text**
+  - Quest Tracker: **Show Quest Level** and **Show Completed Objectives**
+  - Your settings carry over.
+- Edit Mode, unit frames:
+  - **Mirror** is now **Mirror Bars**.
+  - The **Aura Ordering** section is gone. **Sort By** sits under Debuffs in Auras; **Reverse Order** and **Your Auras First** sit under Only My Buffs / Debuffs.
+  - **Range Check** moved from Look to Frame.
+- Settings text: shorter, plainer descriptions and tips everywhere, in every language.
+- XP bar: rested XP starts after quest XP instead of hiding behind it, and is light blue.
+
+## Fixed
+- Unit frames: changing **Aura Timer** shows or hides the timers at once, not only after a reload.
+- Party frames: **Reset To Default** from Raid Style no longer stretches the Classic frames.
+  - Frames already stretched: select them in Classic and press Reset To Default once.
+- Fishing: **Double-Click to Fish** catches the second click every time.
+- Bags:
+  - The search box fits the window at fewer **Columns**.
+  - With a two-handed weapon, upgrade arrows only compare main-hand and off-hand items.
+  - Closing the backpack with B also closes the reagent bag, so your next bank visit opens your bags.
+
 # FlareUI 6.3.2
 
 ## Changed

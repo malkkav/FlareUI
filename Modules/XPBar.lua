@@ -34,6 +34,8 @@ local TRACK_COLOR   = { 0.15, 0.15, 0.15, 0.9 }
 -- Blizzard's XP purple and rested blue
 local COLOR_XP     = { 0.58, 0.00, 0.55 }          -- #94008C
 local COLOR_RESTED = { 0.00, 0.39, 0.88 }          -- #0063E0
+-- the rested bonus ahead of the fill: light blue, apart from the fill's own blue (11-13, a player)
+local COLOR_REST_BONUS = { 0.40, 0.80, 1.00 }      -- #66CCFF
 -- Quest XP: what the quests ready to hand in would give
 local COLOR_QUEST  = { 1.00, 0.76, 0.10 }
 
@@ -292,7 +294,7 @@ local function ShowSectionTooltip(section)
         GameTooltip:AddDoubleLine(L["XP"], ("%s / %s (%d%%)"):format(BreakUpLargeNumbers(info.value), BreakUpLargeNumbers(info.max), Pct(info.value, info.max)), 1, 1, 1, 1, 1, 1)
         GameTooltip:AddDoubleLine(L["To next level"], BreakUpLargeNumbers(math.max(0, info.max - info.value)), 1, 1, 1, 1, 1, 1)
         if info.rested and info.rested > 0 then
-            GameTooltip:AddDoubleLine(L["Rested"], ("%s (%d%%)"):format(BreakUpLargeNumbers(info.rested), Pct(info.rested, info.max)), 1, 1, 1, COLOR_RESTED[1] + 0.3, COLOR_RESTED[2] + 0.3, 1)
+            GameTooltip:AddDoubleLine(L["Rested"], ("%s (%d%%)"):format(BreakUpLargeNumbers(info.rested), Pct(info.rested, info.max)), 1, 1, 1, COLOR_REST_BONUS[1], COLOR_REST_BONUS[2], COLOR_REST_BONUS[3])
         end
         if (info.quest or 0) > 0 then
             GameTooltip:AddDoubleLine(L["Quests ready to hand in"], BreakUpLargeNumbers(info.quest), 1, 1, 1, COLOR_QUEST[1], COLOR_QUEST[2], COLOR_QUEST[3])
@@ -349,8 +351,9 @@ local function CreateSection(parent)
     track:SetAllPoints()
     section.Track = track
 
-    -- rested XP: from the left edge to where the bonus would take the fill
-    local rested = section:CreateTexture(nil, "BORDER")
+    -- rested XP: from the left edge to where the bonus would take the fill, after the quest XP
+    -- (under it: each layer starts at the left edge, the later ones lower down)
+    local rested = section:CreateTexture(nil, "BORDER", nil, -1)
     rested:SetPoint("TOPLEFT")
     rested:SetPoint("BOTTOMLEFT")
     rested:Hide()
@@ -464,10 +467,11 @@ local function FillSection(section, info, width)
     if smooth and forward and section:IsShown() then section:SetValue(fraction, smooth) else section:SetValue(fraction) end
     local r, g, b = info.color[1], info.color[2], info.color[3]
     section:SetStatusBarColor(r, g, b, 1)
+    -- rested after the quest XP (11-13, a player: from the fill it hid behind the quests)
     if info.rested and info.rested > 0 then
-        local reach = math.min(1, (info.value + info.rested) / info.max)
+        local reach = math.min(1, (info.value + (info.quest or 0) + (info.questOpen or 0) + info.rested) / info.max)
         section.Rested:SetWidth(math.max(1, reach * width))
-        section.Rested:SetVertexColor(r, g, b, REST_ALPHA)
+        section.Rested:SetVertexColor(COLOR_REST_BONUS[1], COLOR_REST_BONUS[2], COLOR_REST_BONUS[3], REST_ALPHA + 0.15)
         section.Rested:Show()
     else
         section.Rested:Hide()
@@ -538,11 +542,18 @@ local function LayoutFlare(target)
     local db = GetDb()
     local texture = GetTexture()
     flare:SetSize((flare.sampleWidth or db.width or 560) + 2 * FLARE_INSET, (flare.sampleHeight or db.height or 14) + 2 * FLARE_INSET)
-    local file = LSM:Fetch("border", BORDER_NAME)
-    -- the edge only: it draws over the fill (whose square corners showed past its rounded ones, a
-    -- player's report 11-11); the dark background is its own texture under the sections (BuildParts)
-    flare.Border:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, BORDER_SIZE) })
-    flare.Border:SetBackdropBorderColor(BORDER_COLOR[1], BORDER_COLOR[2], BORDER_COLOR[3], 1)
+    -- Border (11-13, Marcus): its own choice, None first; an unknown name falls back to FlareUI Thin
+    local name = db.border or BORDER_NAME
+    if name ~= "None" and not LSM:IsValid("border", name) then name = BORDER_NAME end
+    if name == "None" then
+        flare.Border:SetBackdrop(nil)
+    else
+        local file = LSM:Fetch("border", name)
+        -- the edge only: it draws over the fill (whose square corners showed past its rounded ones, a
+        -- player's report 11-11); the dark background is its own texture under the sections (BuildParts)
+        flare.Border:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, BORDER_SIZE) })
+        flare.Border:SetBackdropBorderColor(BORDER_COLOR[1], BORDER_COLOR[2], BORDER_COLOR[3], 1)
+    end
     for _, section in ipairs({ flare.Left, flare.Right }) do
         section:SetStatusBarTexture(texture)
         -- the gain flash covers the fill only (the fill region exists once the texture is set)
@@ -693,6 +704,9 @@ local function BuildFlare()
           get = function() return GetDb().height or 14 end, set = function(_, value) GetDb().height = value; LayoutFlare() end },
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = TEXTURE_NAME, values = TextureValues(),
           get = function() return GetDb().texture or TEXTURE_NAME end, set = function(_, value) GetDb().texture = value; LayoutFlare() end },
+        -- (11-13: None first, then FlareUI's and other addons' borders, as on the unit frames)
+        { name = L["Border"], kind = LEM.SettingType.Dropdown, default = BORDER_NAME, values = ns.UnitFrames.Kit.BuildBorderValues(false),
+          get = function() return GetDb().border or BORDER_NAME end, set = function(_, value) GetDb().border = value; LayoutFlare() end },
     }))
     LEM:RegisterCallback("layout", function(layoutName) PlaceFlare(layoutName) end)
     LEM:RegisterCallback("enter", UpdateFlare)

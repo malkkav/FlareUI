@@ -70,7 +70,10 @@ function P.Resolve(row, value)
     local kind = row.previewFont and 'font' or routes[row.key]
     if not kind then return nil end
     if value == nil then value = row:Get() end
-    return { kind = kind, key = row.key, value = value, path = row.path, font = row.previewFont, temporary = row.kind == 'toggle' and value ~= row:Get() }
+    -- (an inverted Show switch previews the saved "hide" value it stands for)
+    local saved = value
+    if row.invert and type(value) == "boolean" then saved = not value end
+    return { kind = kind, key = row.key, value = saved, path = row.path, font = row.previewFont, temporary = row.kind == 'toggle' and value ~= row:Get() }
 end
 
 local defaults = { uf = 'unit', mm = 'minimap', ch = 'chat', tt = 'tooltip', qt = 'tracker',

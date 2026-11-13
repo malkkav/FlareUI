@@ -11,6 +11,7 @@ local function Refresh()
 end
 
 S:Module{ key = "mm", group = "map", order = 10, enabled = "minimap.enabled",
+    tabs = { { key = "settings" }, { key = "fonts" } },
     -- the minimap's fade settings sit in Blizzard's minimap dialog
     editSystems = function()
         return Enum.EditModeSystem and { { system = Enum.EditModeSystem.Minimap, name = _G.MINIMAP_LABEL or "Minimap" } } or {}
@@ -79,6 +80,10 @@ S:Row{ key = "mm.nodeScanNote", kind = "text",
 S:Row{ key = "mm.hudNote", kind = "text",
     hidden = function() return not (ns.Minimap and ns.Minimap.LoadedHUDs and #ns.Minimap.LoadedHUDs() > 0) end }
 
--- Fonts (11-13): each frame's are in its Edit Mode dialog, the last section there
-S:Row{ key = "mm.fontsEditMode", kind = "button", section = "mm.fonts", buttonText = L["Open Edit Mode"],
-    apply = function() S:OpenEditMode("mm") end }
+-- FONTS (11-13, back from Edit Mode)
+S:FontRows{ module = "mm", tab = "fonts", section = "mm.fonts",
+    apply = function() if ns.Minimap and ns.Minimap.ApplyFonts then ns.Minimap:ApplyFonts() end end, fonts = {
+    { key = "zone", path = "minimap.zoneFont" },
+    { key = "clock", path = "minimap.clockFont" },
+    { key = "info", path = "minimap.infoFont" },
+} }

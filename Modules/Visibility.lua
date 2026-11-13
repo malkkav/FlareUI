@@ -832,7 +832,7 @@ function Visibility:UnitFrameSettings(unit)
                 db.petFollowsPlayer = value and true or nil
                 Visibility:Refresh()
             end,
-            desc = L["The pet frame fades with the player frame, on these settings. Pointing at either shows both."],
+            desc = L["The pet frame fades with the player frame, using these settings. Pointing at either shows both."],
         }
     end
     return kept

@@ -1271,6 +1271,25 @@ function Filter.Place(frame, searchUpdated)
     Filter.Paint()
 end
 
+-- The search box fitted to the window (6.3.3, a player's report): Blizzard gives the combined backpack's
+-- a fixed 330 width, so with fewer Columns it ran past the window, over the cleanup button. It keeps
+-- Blizzard's width when there's room, else ends before the cleanup button. (Category Filters fit it
+-- themselves, before their filter button: Filter.Place.) searchUpdated: Blizzard just placed it.
+function Bags.FitSearchBox(frame, searchUpdated)
+    local search, sort = _G.BagItemSearchBox, _G.BagItemAutoSortButton
+    if not (frame and search and search:GetParent() == frame and search:IsShown()) then return end
+    if Filter.On() then Filter.Place(frame, searchUpdated) return end
+    -- (the Gamepad UI anchors both its edges: it fits already)
+    if search:GetNumPoints() ~= 1 then return end
+    local point, rel, _, x = search:GetPoint(1)
+    if point ~= "TOPLEFT" or rel ~= frame then return end
+    if searchUpdated or not frame.fuiSearchWidth then frame.fuiSearchWidth = search:GetWidth() end
+    -- the cleanup button sits 9 from the right edge; the box's right art reaches a little past it
+    local right = (sort and sort:IsShown() and sort:GetParent() == frame) and (sort:GetWidth() + 9) or 4
+    local room = frame:GetWidth() - x - right - Filter.SEARCH_GAP - 4
+    search:SetWidth(math_max(40, math.min(frame.fuiSearchWidth, room)))
+end
+
 -- Category Filters switched on or off in the settings
 function Filter.Refresh()
     if not Filter.On() then
@@ -1302,6 +1321,8 @@ function Bags:Init()
         and Enum.InventoryType and not self:GetOtherBagAddon()
     for _, frame in ipairs(BagFrames()) do
         if frame.UpdateItems then hooksecurefunc(frame, "UpdateItems", UpdateFrameItems) end
+        -- the search box fits the window, whatever its Columns
+        if frame.UpdateSearchBox then hooksecurefunc(frame, "UpdateSearchBox", function(bag) Bags.FitSearchBox(bag, true) end) end
         -- Category Filters: the button follows Blizzard's search box (it's placed again on each open)
         if useFilterButtons and frame.UpdateSearchBox then
             hooksecurefunc(frame, "UpdateSearchBox", function(bag) Filter.Place(bag, true) end)
@@ -1318,6 +1339,8 @@ function Bags:Init()
     if combined then
         if combined.UpdateFrameSize then hooksecurefunc(combined, "UpdateFrameSize", Relayout) end
         if combined.UpdateItemLayout then hooksecurefunc(combined, "UpdateItemLayout", Relayout) end
+        -- (after the re-layout: the window's new width)
+        if combined.UpdateFrameSize then hooksecurefunc(combined, "UpdateFrameSize", function(f) Bags.FitSearchBox(f) end) end
         combined:HookScript("OnShow", function() Bags:PlaceBagButtons() end)
         combined:HookScript("OnHide", ClearExtraNewItems)
     end
@@ -1402,7 +1425,7 @@ function Bags:Refresh()
     Bags.StyleMoney()
     for _, frame in ipairs(BagFrames()) do
         if frame:IsShown() then
-            if frame == Combined() then Relayout(frame) end
+            if frame == Combined() then Relayout(frame); Bags.FitSearchBox(frame) end
             UpdateFrameItems(frame)
         end
     end

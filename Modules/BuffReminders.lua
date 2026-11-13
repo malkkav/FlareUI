@@ -1505,6 +1505,13 @@ function BR.Menu(owner)
 end
 
 -- Once per profile: the Counts and Timers fonts start as the Buffs frame's stack font they used
+-- the counts' and timers' fonts, for the page's Fonts tab (key "countFont" or "timeFont", 11-13)
+function BR.Font(key)
+    BR.SeedFonts()
+    local rdb = GetDb()
+    return rdb and rdb[key]
+end
+
 function BR.SeedFonts()
     local rdb = GetDb()
     if not rdb or rawget(rdb, "fontsSeeded") then return end
@@ -1967,7 +1974,7 @@ local function BuildSettings()
           values = { { text = L["Missing / Total"], value = "both", isRadio = true },
                      { text = L["Missing Only"], value = "missing", isRadio = true },
                      { text = L["Off"], value = "none", isRadio = true } },
-          desc = L["The number on a group buff's icon: how many are missing, of how many."],
+          desc = L["The number on a group buff's icon: how many are missing it, out of how many."],
           get = get("countText", "both"), set = set("countText") },
         { name = L["Icon Size"], kind = LEM.SettingType.Slider, default = 36, minValue = 20, maxValue = 64, valueStep = 1,
           get = get("size", 36), set = set("size") },
@@ -2030,15 +2037,6 @@ local function BuildSettings()
           -- plain numbers, as Faded Opacity: "100%" ran past the dialog's edge (11-10)
           get = get("alpha", 100), set = set("alpha") },
     })
-    -- always last: the counts' and timers' fonts (11-13)
-    local reminderDefaults = ns.defaults and ns.defaults.profile and ns.defaults.profile.auras and ns.defaults.profile.auras.reminder or {}
-    Section("Fonts", ns.EditFonts({
-        id = "br",
-        texts = { { key = "countFont", name = L["Counts"] }, { key = "timeFont", name = L["Time Left"] } },
-        font = function(key) BR.SeedFonts(); local rdb = GetDb(); return rdb and rdb[key] end,
-        default = function(key) return reminderDefaults[key] end,
-        apply = function() BR:Refresh() end,
-    }))
     return settings
 end
 

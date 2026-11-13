@@ -44,32 +44,8 @@ local function OptionalFaces()
 end
 
 -- Every font the Fonts tabs set, for the Settings page's Fonts section (Use Global Font
--- Everywhere, Reset All Fonts, the Global Font's refresh): { path, def } in the order made
+-- Everywhere, Reset All Fonts, the Global Font's refresh): { def, Get, Set, Default } in the order made
 S.allFonts = {}
--- and every Edit Mode Fonts section's (ns.EditFonts, below), by spec id: { texts, font, default, apply, group }
-S.editFonts = {}
-
--- each Edit Mode font table once, with its default and its spec
-local function EachEditFont(fn)
-    for _, spec in pairs(S.editFonts) do
-        for _, text in ipairs(spec.texts) do
-            local font = spec.font(text.key)
-            if font then fn(font, spec.default(text.key), spec) end
-        end
-    end
-end
--- the Edit Mode sections' restyles, one per group (every unit frame shares one)
-local function ApplyEditFonts()
-    local done = {}
-    for _, spec in pairs(S.editFonts) do
-        local group = spec.group or spec.id
-        if not done[group] then
-            done[group] = true
-            local ok, err = pcall(spec.apply)
-            if not ok then geterrorhandler()(err) end
-        end
-    end
-end
 local FIELDS = { "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }
 
 -- every module that shows one of these fonts restyles, once each; first Blizzard's own text, if
@@ -78,24 +54,23 @@ function S:ApplyAllFonts(fromGame)
     if not fromGame and ns.GameFonts and ns.GameFonts.Apply then ns.GameFonts.Apply(false) end
     local done = {}
     for _, font in ipairs(self.allFonts) do
-        -- the def's apply is read now: a def may set it after its font list
+        -- the def's apply is read now: a def may set it after its font list; one run per apply
+        -- (every unit frame section shares one)
         local def = font.def
         -- an off module isn't running: it takes its fonts as it starts
         local module = self.modules[def.module]
-        if def.apply and not done[def] and not (module and not module:IsOn()) then
-            done[def] = true
+        if def.apply and not done[def.apply] and not (module and not module:IsOn()) then
+            done[def.apply] = true
             local ok, err = pcall(def.apply)
             if not ok then geterrorhandler()(err) end
         end
     end
-    ApplyEditFonts()
     if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
 end
 
--- every font's face set to Global (the Fonts tabs' and the Edit Mode sections')
+-- every font's face set to Global
 function S:UseGlobalFontEverywhere()
-    for _, font in ipairs(self.allFonts) do self:SetPath(font.path .. ".face", ns.GLOBAL_FONT) end
-    EachEditFont(function(font) font.face = ns.GLOBAL_FONT end)
+    for _, font in ipairs(self.allFonts) do font.Set("face", ns.GLOBAL_FONT) end
     self:ApplyAllFonts()
 end
 
@@ -109,17 +84,11 @@ function S:AnyFontChanged()
     end
     for _, font in ipairs(self.allFonts) do
         for _, field in ipairs(FIELDS) do
-            local default = self:DefaultPath(font.path .. "." .. field)
-            if default ~= nil and self:GetPath(font.path .. "." .. field) ~= default then return true end
+            local default = font.Default(field)
+            if default ~= nil and font.Get(field) ~= default then return true end
         end
     end
-    local changed = false
-    EachEditFont(function(font, default)
-        for _, field in ipairs(FIELDS) do
-            if default and default[field] ~= nil and font[field] ~= default[field] then changed = true end
-        end
-    end)
-    return changed
+    return false
 end
 
 -- every font, and the Global Font, back to the profile's defaults
@@ -128,44 +97,94 @@ function S:ResetAllFonts()
     if ns.GameFonts and ns.GameFonts.SaveCombatPath then ns.GameFonts.SaveCombatPath() end
     for _, font in ipairs(self.allFonts) do
         for _, field in ipairs(FIELDS) do
-            local default = self:DefaultPath(font.path .. "." .. field)
-            if default ~= nil then self:SetPath(font.path .. "." .. field, default) end
+            local default = font.Default(field)
+            if default ~= nil then font.Set(field, default) end
         end
     end
-    EachEditFont(function(font, default)
-        if default then for _, field in ipairs(FIELDS) do font[field] = default[field] end end
-    end)
     self:ApplyAllFonts()
 end
 
--- def: module, tab, section, apply, fonts ({ { key = "text", path = "chat.chatFont" }, ... });
--- a font with autoSize adds the Auto size (0)
+-- def: module, tab, section, apply, prefix, fonts; each font one of:
+--   { key = "text", path = "chat.chatFont" }                    a saved path in the profile
+--   { key = "names", font = fn -> table, default = fn -> table }  a table found when asked (the unit
+--       frames' fonts are saved per frame style; others are seeded first)
+-- Font options: autoSize (adds the Auto size, 0), label (fn: a heading the copy hasn't), hidden,
+-- optional, faceOnly, disabled. Each heading has its own Reset (11-13, Marcus: as the sections';
+-- no Apply to All: the Global Font gives every font one face).
+-- prefix (11-13, fonts back from Edit Mode): several sections of one module with the same texts
+-- ("player", "target"...): the row keys become "uf.font.player_names", whose copy falls back to
+-- "uf.font.names".
 function S:FontRows(def)
+    local function RowKey(name) return def.module .. ".font." .. (def.prefix and (def.prefix .. "_") or "") .. name end
     for _, font in ipairs(def.fonts) do
-        S.allFonts[#S.allFonts + 1] = { path = font.path, def = def }
-        local heading = def.module .. ".font." .. font.key
-        local function Closed() return not open[heading] end
+        local Get, Set, Default
+        if font.font then
+            Get = function(field) local t = font.font(); if t then return t[field] end end
+            Set = function(field, value) local t = font.font(); if t then t[field] = value end end
+            Default = function(field) local d = font.default and font.default(); if d then return d[field] end end
+        else
+            Get = function(field) return S:GetPath(font.path .. "." .. field) end
+            Set = function(field, value) S:SetPath(font.path .. "." .. field, value) end
+            Default = function(field) return S:DefaultPath(font.path .. "." .. field) end
+        end
+        S.allFonts[#S.allFonts + 1] = { def = def, Get = Get, Set = Set, Default = Default }
+        -- the settings preview reads a path, or the table itself (PreviewSamples.lua Font)
+        local preview = font.path or font.font
+        local heading = RowKey(font.key)
+        local function Closed() return not open[heading] or (font.hidden and font.hidden()) or false end
+        local function Disabled()
+            return (def.disabled and def.disabled()) or (font.disabled and font.disabled()) or false
+        end
+        local function Changed()
+            for _, field in ipairs(FIELDS) do
+                local default = Default(field)
+                if default ~= nil and Get(field) ~= default then return true end
+            end
+            return false
+        end
         S:Row{
             key = heading, kind = "expander", tab = def.tab, section = def.section,
-            previewFont = font.path,
+            previewFont = preview, labelFn = font.label, hidden = font.hidden,
             get = function() return true end,   -- never greys out its child rows
             isOpen = function() return open[heading] end,
             toggle = function() open[heading] = not open[heading] end,
+            -- the heading's Reset (Panel.lua Fill.expander): this font back to the profile's defaults
+            reset = {
+                can = function() return not Disabled() and Changed() end,
+                run = function()
+                    for _, field in ipairs(FIELDS) do
+                        local default = Default(field)
+                        if default ~= nil then Set(field, default) end
+                    end
+                    if def.apply then
+                        local ok, err = pcall(def.apply)
+                        if not ok then geterrorhandler()(err) end
+                    end
+                end,
+            },
         }
         local function Control(field, row)
             row.key = heading .. "." .. field
-            if not row.get then row.path = font.path .. "." .. field end
+            if font.font then
+                if not row.get then
+                    row.get = function() return Get(field) end
+                    row.set = function(value) Set(field, value) end
+                end
+                row.resetValue = row.resetValue or function() return Default(field) end
+            elseif not row.get then
+                row.path = font.path .. "." .. field
+            end
             row.parent, row.tab, row.section, row.hidden, row.apply = heading, def.tab, def.section, Closed, def.apply
             -- optional (the bags' font): Default keeps Blizzard's and greys the rest; disabled (def's or the font's) greys all
             local own = row.disabled
             row.disabled = function()
-                if (def.disabled and def.disabled()) or (font.disabled and font.disabled()) then return true end
-                if field ~= "face" and font.optional and (S:GetPath(font.path .. ".face") or "") == "" then return true end
+                if Disabled() then return true end
+                if field ~= "face" and font.optional and (Get("face") or "") == "" then return true end
                 return own and own() or false
             end
             row.collapsedBy = heading   -- searchable while folded; a search result opens the heading
             row.half = true
-            row.previewFont = font.path
+            row.previewFont = preview
             S:Row(row)
         end
         -- faceOnly (Zone Text): the face alone, Default ("") first, keeping Blizzard's font
@@ -178,195 +197,23 @@ function S:FontRows(def)
         -- one choice sets the shadow and its offset
         Control("shadow", { kind = "choice", choices = { "none", "soft", "strong" },
             get = function()
-                if not S:GetPath(font.path .. ".enableShadow") then return "none" end
-                return (S:GetPath(font.path .. ".shadowX") or 1) >= 2 and "strong" or "soft"
+                if not Get("enableShadow") then return "none" end
+                return (Get("shadowX") or 1) >= 2 and "strong" or "soft"
             end,
             set = function(value)
                 local offset = SHADOWS[value]
-                S:SetPath(font.path .. ".enableShadow", offset ~= nil)
+                Set("enableShadow", offset ~= nil)
                 if offset then
-                    S:SetPath(font.path .. ".shadowX", offset)
-                    S:SetPath(font.path .. ".shadowY", -offset)
+                    Set("shadowX", offset)
+                    Set("shadowY", -offset)
                 end
+            end,
+            resetValue = function()
+                if not Default("enableShadow") then return "none" end
+                return (Default("shadowX") or 1) >= 2 and "strong" or "soft"
             end })
         end
-        -- Reset (11-11, Marcus): this font's fields back to the profile's defaults
-        local function Changed()
-            for _, field in ipairs(FIELDS) do
-                local default = S:DefaultPath(font.path .. "." .. field)
-                if default ~= nil and S:GetPath(font.path .. "." .. field) ~= default then return true end
-            end
-            return false
-        end
-        S:Row{
-            key = heading .. ".reset", kind = "button", center = true, buttonWidth = 160,
-            parent = heading, tab = def.tab, section = def.section, hidden = Closed, collapsedBy = heading,
-            previewFont = font.path,
-            disabled = function()
-                return (def.disabled and def.disabled()) or (font.disabled and font.disabled()) or not Changed()
-            end,
-            apply = function()
-                for _, field in ipairs(FIELDS) do
-                    local default = S:DefaultPath(font.path .. "." .. field)
-                    if default ~= nil then S:SetPath(font.path .. "." .. field, default) end
-                end
-                if def.apply then def.apply() end
-                if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
-            end,
-        }
     end
-end
-
---------------------------------------------------
--- EDIT MODE FONTS SECTION (11-13, fonts phase 3)
--- A frame's fonts in its Edit Mode dialog, always the last section: Text picks which of the frame's
--- texts the rows below edit (hidden with one text), then Font, Outline, Shadow and Size, then
--- Apply to All (this frame's fonts on its siblings) and Reset Fonts. Edit Mode's Reset To Default
--- resets them all through the Text row.
---   spec.id       unique key: the Text row's choice is kept per id for the session
---   spec.texts    { { key = "names", name = L["Names"], autoSize = true? }, ... }
---   spec.font     function(textKey) -> the saved, writable font table
---   spec.default  function(textKey) -> its default table (read only)
---   spec.apply    function() restyles the frame (and whatever shares its fonts)
---   spec.all      optional { text = the button's label, desc = what it does, run = function() end }
---   spec.group    optional: specs sharing one restyle (all unit frames: "uf")
---------------------------------------------------
-local editPicks = {}   -- spec.id -> the picked text's key, for the session
-local SHADOW_OFFSETS = { soft = 1, strong = 2 }
-
-ns.Dialogs = ns.Dialogs or {}
-ns.Dialogs["FLAREUI_FONTS_APPLY_ALL"] = {
-    text = ns.L["Copy this frame's fonts to every frame of its kind?\n\n%s"],
-    button1 = ns.L["Apply"],
-    button2 = ns.L["Cancel"],
-    OnAccept = function(data)
-        if data and data.run then data.run() end
-        local LEM = LibStub("FlareEditMode", true)
-        if LEM and LEM.RefreshOpenSettings then LEM:RefreshOpenSettings() end
-    end,
-    hideOnEscape = true,
-}
-
-function ns.EditFonts(spec)
-    S.editFonts[spec.id] = spec   -- for the Settings page's Fonts buttons and the Global Font
-    local L = ns.L
-    local LEM = LibStub("FlareEditMode")
-    local T = LEM.SettingType
-    local texts = spec.texts
-    local function Current()
-        local key = editPicks[spec.id]
-        for _, text in ipairs(texts) do
-            if text.key == key then return text end
-        end
-        return texts[1]
-    end
-    local function Font() return spec.font(Current().key) end
-    local function Apply()
-        local ok, err = pcall(spec.apply)
-        if not ok then geterrorhandler()(err) end
-    end
-    local function Changed()
-        for _, text in ipairs(texts) do
-            local font, default = spec.font(text.key), spec.default(text.key)
-            for _, field in ipairs(FIELDS) do
-                if font and default and default[field] ~= nil and font[field] ~= default[field] then return true end
-            end
-        end
-        return false
-    end
-    local function ResetAll()
-        for _, text in ipairs(texts) do
-            local font, default = spec.font(text.key), spec.default(text.key)
-            if font and default then
-                for _, field in ipairs(FIELDS) do font[field] = default[field] end
-            end
-        end
-        Apply()
-    end
-    local function Later() C_Timer.After(0, function() LEM:RefreshOpenSettings() end) end
-
-    local size   -- the Size row: its range follows the picked text (Auto on aura texts)
-    local items = {}
-    local choices = {}
-    for _, text in ipairs(texts) do choices[#choices + 1] = { text = text.name, value = text.key } end
-    items[#items + 1] = {
-        name = L["Text"], kind = T.Dropdown, default = texts[1].key, values = choices,
-        desc = L["Which text the rows below change."],
-        hidden = #texts < 2,
-        get = function() return Current().key end,
-        set = function(_, value, fromReset)
-            -- Edit Mode's Reset To Default: every font of the frame
-            if fromReset then ResetAll() return end
-            editPicks[spec.id] = value
-            size.minValue = Current().autoSize and 0 or 6
-            Later()
-        end,
-    }
-    items[#items + 1] = {
-        name = L["Font"], kind = T.Dropdown, default = ns.GLOBAL_FONT, height = 300,
-        desc = L["The typeface. Global follows the Global Font on the Settings page."],
-        values = function()
-            local list = { { text = L["Global (%s)"]:format(ns.GlobalFontFace()), value = ns.GLOBAL_FONT, fontFace = ns.GLOBAL_FONT } }
-            for _, name in ipairs(LSM:List("font")) do list[#list + 1] = { text = name, value = name, fontFace = name } end
-            return list
-        end,
-        get = function() local f = Font(); return f and f.face end,
-        set = function(_, value, fromReset)
-            if fromReset then return end
-            local f = Font(); if f then f.face = value; Apply() end
-        end,
-    }
-    items[#items + 1] = {
-        name = L["Outline"], kind = T.Dropdown, default = "OUTLINE",
-        desc = L["A dark outline around the letters."],
-        values = { { text = L["None"], value = "NONE" }, { text = L["Outline"], value = "OUTLINE" },
-                   { text = L["Thick Outline"], value = "THICKOUTLINE" } },
-        get = function() local f = Font(); return f and (f.flags or "NONE") end,
-        set = function(_, value, fromReset)
-            if fromReset then return end
-            local f = Font(); if f then f.flags = value; Apply() end
-        end,
-    }
-    items[#items + 1] = {
-        name = L["Shadow"], kind = T.Dropdown, default = "soft",
-        desc = L["A drop shadow under the letters.\n* Soft: 1 pixel away\n* Strong: 2 pixels away"],
-        values = { { text = L["None"], value = "none" }, { text = L["Soft"], value = "soft" }, { text = L["Strong"], value = "strong" } },
-        get = function()
-            local f = Font()
-            if not (f and f.enableShadow) then return "none" end
-            return (f.shadowX or 1) >= 2 and "strong" or "soft"
-        end,
-        set = function(_, value, fromReset)
-            if fromReset then return end
-            local f = Font()
-            if not f then return end
-            local offset = SHADOW_OFFSETS[value]
-            f.enableShadow = offset ~= nil
-            if offset then f.shadowX, f.shadowY = offset, -offset end
-            Apply()
-        end,
-    }
-    size = {
-        name = L["Size"], kind = T.Slider, default = 12, minValue = Current().autoSize and 0 or 6, maxValue = 32, valueStep = 1,
-        desc = L["The text size."],
-        formatter = function(value) return value == 0 and L["Auto"] or tostring(value) end,
-        get = function() local f = Font(); return f and f.size or 12 end,
-        set = function(_, value, fromReset)
-            if fromReset then return end
-            local f = Font(); if f then f.size = value; Apply() end
-        end,
-    }
-    items[#items + 1] = size
-    local buttons = {}
-    if spec.all then
-        buttons[#buttons + 1] = { text = spec.all.text, desc = spec.all.desc,
-            click = function() ns.ShowDialog("FLAREUI_FONTS_APPLY_ALL", spec.all.desc or "", { run = spec.all.run }) end }
-    end
-    buttons[#buttons + 1] = { text = L["Reset Fonts"], desc = L["This frame's fonts back to their defaults."],
-        disabled = function() return not Changed() end,
-        click = function() ResetAll(); Later() end }
-    items[#items + 1] = { name = "", kind = T.Buttons, buttons = buttons }
-    return items
 end
 
 --------------------------------------------------

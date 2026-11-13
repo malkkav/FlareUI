@@ -2,8 +2,8 @@ local _, ns = ...
 
 --------------------------------------------------
 -- FISHING (Quality of Life > Convenience)
--- Double-click to fish: with a fishing pole in hand, a quick second right-click on the world casts
--- Fishing. The click goes to a secure button through an override binding set for that one click,
+-- Double-click to fish: with a fishing pole in hand, two quick right-clicks on the world cast
+-- Fishing. The first arms an override binding that hands the second click to a secure button,
 -- out of combat only.
 -- Fishing sounds: from the first cast until you move, fight or zone, the music and ambience go down
 -- and sound effects up, so the splash is heard. Your volumes come back after, and at the next login
@@ -90,8 +90,11 @@ end
 -- Double-click to fish
 --------------------------------------------------
 local button, owner
-local armed, armedAt, lastRightClick = false, 0, 0
+local armed, armedAt = false, 0
+local press   -- the right button's last press on the world: { at, x, y }
+local CLICK = { quick = 0.25, travel = 12 }   -- a click: shorter than this (else the camera turns), moved less (px)
 
+-- the binding goes back; a second click still held keeps it until it comes up
 local function Disarm()
     if armed and not InCombatLockdown() then ClearOverrideBindings(owner) end
     armed = false
@@ -100,52 +103,95 @@ end
 local function BuildButton()
     if button then return end
     button = CreateFrame("Button", BUTTON_NAME, UIParent, "SecureActionButtonTemplate")
-    -- the binding is set while the second click is already down: its release casts
+    -- the whole second click comes through the binding (armed by the first): it casts as it comes up,
+    -- whatever Cast on Key Down says
     button:RegisterForClicks("AnyUp")
     button:SetAttribute("type", "spell")
-    -- (11-13, "does not work at all") a secure button casts on the press when Cast on Key Down
-    -- (ActionButtonUseKeyDown, on by default) is on, and this one only ever gets the release: it casts
-    -- on the release whatever that setting says
     button:SetAttribute("useOnKeyDown", false)
     button:Hide()
     button:SetScript("PostClick", Disarm)
-    owner = CreateFrame("Frame")
+    -- the binding's owner drops it the moment a fight starts: secure, as plain code can't then
+    owner = CreateFrame("Frame", nil, UIParent, "SecureHandlerStateTemplate")
+    owner:SetAttribute("_onstate-combat", [[ if newstate == "combat" then self:ClearBindings() end ]])
+    RegisterStateDriver(owner, "combat", "[combat] combat; peace")
 end
 
--- GLOBAL_MOUSE_DOWN comes before the click goes to a binding, so the binding set here takes this
--- very click (a hook on WorldFrame's own OnMouseDown may never fire). On the world only.
-local function OnWorldMouseDown(mouseButton)
-    if mouseButton ~= "RightButton" then return end
+-- the cursor over the world itself, no frame in the way
+local function OnWorld()
     local foci = GetMouseFoci and GetMouseFoci()
-    local focus = foci and foci[1]
-    if focus and focus ~= WorldFrame then return end
+    if foci then
+        for _, focus in ipairs(foci) do
+            if focus ~= WorldFrame then return false end
+        end
+        return true
+    end
+    local focus = GetMouseFocus and GetMouseFocus()
+    return focus == nil or focus == WorldFrame
+end
+
+local function CanCast(db)
+    return db and db.fishCast and button and not ns.IsGamepadUI() and not InCombatLockdown()
+        and not UnitChannelInfo("player")   -- the line is out: a right-click reels in
+        and not UnitExists("mouseover") and not IsModifierKeyDown() and PoleInHand()
+end
+
+-- (6.3.3, "it's actually not working") The first quick right-click on the world arms the cast: for
+-- DOUBLE_CLICK seconds the right button is bound to the cast button, so the second click goes to it
+-- whole, press and release. Before, the binding was set during the second press itself, which the
+-- game doesn't always hand over (Forever Fishing's way of arming, written anew)
+local function OnRightMouse(event)
     local db = GetDb()
-    if not (db and db.fishCast) or ns.IsGamepadUI() or not button then return end
-    local now = GetTime()
-    -- a right-click that reels in (the line is out) never starts a double-click
-    if UnitChannelInfo("player") then
-        lastRightClick = 0
+    if event == "GLOBAL_MOUSE_DOWN" then
+        if armed then return end   -- the second press: the binding's
+        if OnWorld() and CanCast(db) then
+            local x, y = GetCursorPosition()
+            press = { at = GetTime(), x = x, y = y }
+        else
+            press = nil
+        end
         return
     end
-    local double = now - lastRightClick < DOUBLE_CLICK
-    lastRightClick = double and 0 or now
-    if not double or InCombatLockdown() or UnitExists("mouseover") or not PoleInHand() then return end
+    -- GLOBAL_MOUSE_UP
+    if armed then
+        -- the second click's release (it casts; PostClick disarms): disarmed next frame anyway
+        C_Timer.After(0, Disarm)
+        return
+    end
+    local p = press
+    press = nil
+    if not p or GetTime() - p.at > CLICK.quick or not CanCast(db) then return end
+    local x, y = GetCursorPosition()
+    if (x - p.x) ^ 2 + (y - p.y) ^ 2 > CLICK.travel ^ 2 then return end
     local name = FishingName()
     if not (name and C_Spell.GetSpellInfo(name)) then return end
     button:SetAttribute("spell", name)
     SetOverrideBindingClick(owner, true, "BUTTON2", BUTTON_NAME)
-    armed, armedAt = true, now
-    C_Timer.After(DISARM_AFTER, function()
-        if armed and GetTime() - armedAt >= DISARM_AFTER - 0.05 then Disarm() end
-    end)
+    armed, armedAt = true, GetTime()
+    local at = armedAt
+    local function Expire()
+        if not armed or armedAt ~= at then return end
+        -- a second press already down keeps the binding until it comes up
+        if IsMouseButtonDown("RightButton") then C_Timer.After(0.2, Expire) else Disarm() end
+    end
+    C_Timer.After(DOUBLE_CLICK, Expire)
+end
+
+local function OnMouse(event, mouseButton)
+    if mouseButton == "RightButton" then
+        OnRightMouse(event)
+    elseif event == "GLOBAL_MOUSE_DOWN" then
+        -- another button breaks the pair
+        press = nil
+        Disarm()
+    end
 end
 
 --------------------------------------------------
 -- Events and switches
 --------------------------------------------------
 events:SetScript("OnEvent", function(_, event, ...)
-    if event == "GLOBAL_MOUSE_DOWN" then
-        OnWorldMouseDown((...))
+    if event == "GLOBAL_MOUSE_DOWN" or event == "GLOBAL_MOUSE_UP" then
+        OnMouse(event, (...))
         return
     end
     local spellID = select(3, ...)
@@ -161,7 +207,8 @@ events:SetScript("OnEvent", function(_, event, ...)
     elseif event == "PLAYER_REGEN_ENABLED" then
         Fishing:Apply()   -- a switch flipped in combat
     elseif event == "PLAYER_REGEN_DISABLED" then
-        if armed then ClearOverrideBindings(owner); armed = false end
+        -- (the owner's secure driver has already dropped the binding)
+        armed, press = false, nil
         EndSession()
     else
         -- PLAYER_STARTED_MOVING, PLAYER_LEAVING_WORLD
@@ -187,12 +234,14 @@ function Fishing:Apply()
     events:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player")
     events:RegisterEvent("PLAYER_REGEN_DISABLED")
     events:RegisterEvent("PLAYER_LEAVING_WORLD")
-    -- (the Gamepad UI is left out at each click: OnWorldMouseDown)
+    -- (the Gamepad UI is left out at each click: CanCast)
     if cast then
         BuildButton()
         events:RegisterEvent("GLOBAL_MOUSE_DOWN")
+        events:RegisterEvent("GLOBAL_MOUSE_UP")
     else
         events:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+        events:UnregisterEvent("GLOBAL_MOUSE_UP")
     end
 end
 

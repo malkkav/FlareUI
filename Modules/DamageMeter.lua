@@ -144,6 +144,8 @@ function DamageMeter:SetSettingsPreview(on)
         if not on then DamageMeter.EndThreatPreview() end
         DamageMeter.RedrawThreat()
     end
+    -- the separate threat window shows on the page whatever its Visibility
+    if DamageMeter.ApplyThreatWindow then DamageMeter.ApplyThreatWindow() end
     -- with the Meter tab in the chat, the page opens that tab, and leaving it goes back to the chat
     -- tab that was up (unless a tab was clicked meanwhile)
     if self:ChatTabAvailable() then
@@ -1668,6 +1670,9 @@ do
     local function EditMode(editing)
         if not Solo.view then return end
         Solo.view.sample = editing and true or nil
+        -- (its Visibility lets it show in Edit Mode, and takes over again after)
+        if Solo.Apply then Solo.Apply() end
+        if Solo.view then Solo.view.sample = editing and true or nil end
         Redraw()
     end
 
@@ -1754,13 +1759,41 @@ do
         Place()
     end
 
-    -- shown with Separate Window on (and not hidden by the radial's Toggle Threat Meter)
+    -- Visibility (Threat tab, 11-13, a player's request): the window's own rule on top of the meter's
+    -- (a child of the meter, it can only show less): "meter" as the meter, or only in an instance, in
+    -- a group or in a fight. Edit Mode and the settings preview always show it. An addon frame, so it
+    -- shows and hides in a fight too.
+    local RULES = {
+        instance = function() return IsInInstance() and true or false end,
+        group = function() return IsInGroup() and true or false end,
+        combat = function() return InCombatLockdown() or UnitAffectingCombat("player") and true or false end,
+    }
+    local function RuleAllows(db)
+        local rule = RULES[db.threatVisibility or "meter"]
+        if not rule or IsEditModeActive() or DamageMeter.settingsPreview then return true end
+        return rule()
+    end
+    local ruleEvents = CreateFrame("Frame")
+    for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "GROUP_ROSTER_UPDATE",
+                             "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA" }) do
+        ruleEvents:RegisterEvent(event)
+    end
+    function DamageMeter.ApplyThreatWindow() if Solo.Apply then Solo.Apply() end end
+    ruleEvents:SetScript("OnEvent", function()
+        local db = GetDb()
+        -- the meter's own In an Instance: checked again as the zone changes
+        if db and db.enabled and db.visibility == "instance" then DamageMeter:ApplyVisibility() end
+        if db and db.threatWindow and RULES[db.threatVisibility or "meter"] and Solo.Apply then Solo.Apply() end
+    end)
+
+    -- shown with Separate Window on (and not hidden by the radial's Toggle Threat Meter) while its
+    -- Visibility allows
     function Solo.Apply()
         local db = GetDb()
         local want = db and db.enabled and db.threatWindow and true or false
         if want and not Create() then return end
         if not Solo.frame then return end
-        local shown = want and not Solo.hidden
+        local shown = want and not Solo.hidden and RuleAllows(db)
         Solo.frame:SetShown(shown)
         Solo.view.showing = shown
         if want then
@@ -2049,6 +2082,8 @@ local VISIBILITY = {
     combat = function(meter) return meter:IsPlayerInCombat() end,
     hidden = function() return false end,
     group  = function(meter) return meter:IsPlayerInGroup() end,
+    -- dungeons, raids, battlegrounds and arenas (11-13, as the threat window's)
+    instance = function() return IsInInstance() and true or false end,
 }
 -- Visibility is one rule, or rules ticked as toggles joined by commas (ns.Conditions): any one shows it
 local function VisibilityRule(value, meter)
@@ -2186,7 +2221,7 @@ end
 
 -- Visibility and Open the Meter Tab are single choices. A test build saved them as ticked toggles
 -- ("combat,group", "mouseover" for Show on Mouseover): those read back once as the nearest choice.
-local SINGLE_VISIBILITY = { always = true, combat = true, group = true, hidden = true }
+local SINGLE_VISIBILITY = { always = true, combat = true, group = true, instance = true, hidden = true }
 local SINGLE_TAB_OPEN = { click = true, combat = true, group = true, login = true }
 local function NormalizeChoices(db)
     local v = db.visibility

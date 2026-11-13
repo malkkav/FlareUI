@@ -145,7 +145,9 @@ local function ApplyPreviewTimerNow(button)
     if not (text and preview) then return end
     local on = Previewing() and button.FlareUI_TimerShown
     preview:SetShown(on and true or false)
-    text:SetAlpha((button.FlareUI_TimerShown and not on) and 1 or 0)
+    -- the timer's own frame (the text may refuse it), else the text (a button styled before 6.3.3)
+    local holder = button.FlareUI_TimerFrame or text
+    holder:SetAlpha((button.FlareUI_TimerShown and not on) and 1 or 0)
 end
 
 -- Blizzard locks its aura buttons against addon code while auras are secret (combat, instances:
@@ -155,15 +157,11 @@ end
 local lockedButtons = setmetatable({}, { __mode = "k" })
 local retryTicker
 -- (11-13, found by /fui perf trace: each failed try is an error, and a lock covers every button,
--- so trying them all cost 6-9 ms a second while it held) nothing is tried while auras are secret,
--- and the first button still locked ends the round
-local function AurasSecret()
-    if not (C_Secrets and C_Secrets.ShouldAurasBeSecret) then return false end
-    local ok, secret = pcall(C_Secrets.ShouldAurasBeSecret)
-    return ok and secret == true
-end
+-- so trying them all cost 6-9 ms a second while it held) the first button still locked ends the
+-- round: one try a second while the lock holds. (6.3 also skipped every round while the game called
+-- auras secret, which on Forever can be nearly always: the timers Edit Mode hid for its samples
+-- never came back, on every unit frame. 6.3.3)
 local function RetryLockedButtons()
-    if AurasSecret() then return end
     for button in pairs(lockedButtons) do
         if not pcall(ApplyPreviewTimerNow, button) then return end
         lockedButtons[button] = nil
@@ -229,7 +227,13 @@ local function StyleButton(button, look)
         count:SetJustifyH("RIGHT")
         button.FlareUI_Count = count
 
-        local duration = overlay:CreateFontString(nil, "OVERLAY")
+        -- the timer on a frame of its own, shown and hidden as a whole (Aura Timer, Edit Mode's samples):
+        -- once Blizzard writes a (secret) duration into the text, the text itself refuses addon changes
+        -- such as SetAlpha, so a timer turned on or off later never showed or hid (6.3.3)
+        local timerFrame = CreateFrame("Frame", nil, overlay)
+        timerFrame:SetAllPoints(overlay)
+        button.FlareUI_TimerFrame = timerFrame
+        local duration = timerFrame:CreateFontString(nil, "OVERLAY")
         duration:SetDrawLayer("OVERLAY", 3)
         duration:SetJustifyH("CENTER")
         button.FlareUI_Duration = duration
@@ -324,19 +328,27 @@ local function StyleButton(button, look)
     ns.ApplyShadow(durationText, font)
     countText:ClearAllPoints()
     countText:SetPoint("TOPRIGHT", area, "TOPRIGHT", round and 1 or -1, round and 1 or -1)
-    durationText:ClearAllPoints()
-    if look.timer == "below" then
-        durationText:SetPoint("TOP", area, "BOTTOM", 0, -1)
-    elseif look.timer == "middle" then
-        durationText:SetPoint("CENTER", area, "CENTER", 0, 0)
-    else
-        durationText:SetPoint("BOTTOM", area, "BOTTOM", 0, 2)
+    -- the timer and its Edit Mode sample, placed alike (never read back from the timer: once it holds a
+    -- secret duration, GetPoint on it errors, which stopped every restyle before the timer showed or
+    -- hid, so Aura Timer only changed at a reload; 6.3.3)
+    local function PlaceTimer(text)
+        text:ClearAllPoints()
+        if look.timer == "below" then
+            text:SetPoint("TOP", area, "BOTTOM", 0, -1)
+        elseif look.timer == "middle" then
+            text:SetPoint("CENTER", area, "CENTER", 0, 0)
+        else
+            text:SetPoint("BOTTOM", area, "BOTTOM", 0, 2)
+        end
     end
-    -- no timer: Blizzard still shows and fills the text, so it is hidden by alpha
+    PlaceTimer(durationText)
+    -- no timer: Blizzard still shows and fills the text, so it is hidden by alpha (its frame's)
     button.FlareUI_TimerShown = look.timer ~= "none"
+    ApplyPreviewTimer(button)
     local preview = button.FlareUI_PreviewTimer
     if not preview then
-        preview = durationText:GetParent():CreateFontString(nil, "OVERLAY")
+        -- (on the overlay, not the timer's frame: it shows while the real timer hides)
+        preview = button.FlareUI_Overlay:CreateFontString(nil, "OVERLAY")
         preview:SetDrawLayer("OVERLAY", 3)
         button.FlareUI_PreviewTimer = preview
         SAMPLE_TIMERS.next = (SAMPLE_TIMERS.next or 0) % #SAMPLE_TIMERS + 1
@@ -348,9 +360,8 @@ local function StyleButton(button, look)
     -- never copied from the real timer: it sits at alpha 0 while previewing, and its colour reads back with that
     preview:SetTextColor(1, 1, 1, 1)
     ns.ApplyShadow(preview, look.font)
-    preview:ClearAllPoints()
-    for i = 1, durationText:GetNumPoints() do preview:SetPoint(durationText:GetPoint(i)) end
-    ApplyPreviewTimer(button)
+    PlaceTimer(preview)
+    ApplyPreviewTimer(button)   -- (again: the sample now exists, for its own show / hide)
 
     -- Highlight Purgeable Buffs: Blizzard's stealable border round a buff that can be purged
     local glow = button.FlareUI_Stealable
@@ -433,6 +444,14 @@ local function SetArrival(button, on)
         button.FlareUI_Arrive = g
     end
     pcall(button.AddAuraShownAnimation, button, g)
+end
+
+-- Buffs' and Debuffs' own fonts, for the page's Fonts tab (Settings/Pages/Auras.lua, 11-13):
+-- key "font" (timers) or "countFont" (stacks)
+function AU.KindFont(kind, key)
+    AU.SeedKindFonts()
+    local k = KindDb(kind)
+    return k and k[key]
 end
 
 -- Each frame's fonts (11-13): once per profile, the buffs and the debuffs start from the shared ones
@@ -899,28 +918,6 @@ local function BuildSettings(kind)
         { name = L["Aura Timer"], kind = LEM.SettingType.Dropdown, default = "below", values = TIMER_VALUES,
           get = shared("timer", "below"), set = setShared("timer") },
     })
-    -- the frame's own fonts; Apply to Both copies them to the other frame (buffs <-> debuffs)
-    local other = kind == "buffs" and "debuffs" or "buffs"
-    local function Kind(k) AU.SeedKindFonts(); return KindDb(k) end
-    local auraDefaults = ns.defaults and ns.defaults.profile and ns.defaults.profile.auras or {}
-    Section("Fonts", ns.EditFonts({
-        id = "au." .. kind, group = "au",
-        texts = { { key = "font", name = L["Aura Timers"] }, { key = "countFont", name = L["Aura Stacks"] } },
-        font = function(key) local k = Kind(kind); return k and k[key] end,
-        default = function(key) return auraDefaults[kind] and auraDefaults[kind][key] end,
-        apply = function() AU:Refresh() end,
-        all = { text = L["Apply to Both"], desc = L["The other frame (Buffs or Debuffs) takes this frame's fonts."],
-                run = function()
-                    local from, to = Kind(kind), Kind(other)
-                    if not (from and to) then return end
-                    for _, key in ipairs({ "font", "countFont" }) do
-                        for _, field in ipairs({ "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }) do
-                            to[key][field] = from[key][field]
-                        end
-                    end
-                    AU:Refresh()
-                end },
-    }))
     return settings
 end
 

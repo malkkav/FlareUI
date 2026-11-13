@@ -136,6 +136,13 @@ local function Cfg(key)
     return rdb.bars[key]
 end
 
+-- a bar's text font, for the page's Fonts tab (Settings/Pages/ResourceBars.lua, 11-13)
+function RB.BarFont(key)
+    RB.SeedFonts()
+    local cfg = Cfg(key)
+    return cfg and cfg.font
+end
+
 -- The health bar's own Class Colours; until set it follows the player frame's
 local function HealthClassColors()
     local cfg = Cfg("health")
@@ -1164,7 +1171,7 @@ local function BuildSettings(key)
     end
     if info.kind == "power" or info.kind == "mana" then
         add({ name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false, get = get("fsr", false), set = set("fsr"),
-              desc = L["A spark crosses the bar for five seconds after a spell that costs mana: spirit regen comes back when it ends."] })
+              desc = L["A spark crosses the bar for five seconds after you spend mana. Spirit regeneration starts again when it ends."] })
     end
     -- at the bottom of Frame: each bar's own extras (off by default)
     if key == "power" then
@@ -1173,7 +1180,7 @@ local function BuildSettings(key)
     end
     if key == "swingRanged" then
         add({ name = L["Stand-Still Zone"], kind = LEM.SettingType.Checkbox, default = false, get = get("standStill", false), set = set("standStill"),
-              desc = L["Marks the swing's last half second: Auto Shot and wands need you standing still then."] })
+              desc = L["Marks the swing's last half second. Auto Shot and wands need you to stand still then."] })
     end
     if key == "swingMain" then
         add({ name = L["Queued Attack Colour"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueTint", false), set = set("queueTint"),
@@ -1181,7 +1188,7 @@ local function BuildSettings(key)
     end
     if info.kind == "swing" then
         add({ name = L["Waiting State"], kind = LEM.SettingType.Checkbox, default = false, get = get("waiting", false), set = set("waiting"),
-              desc = L["With auto attack on but no swing running (the target out of reach), the bar shows full and grey, saying Waiting."] })
+              desc = L["When auto attack is on but you can't swing (the target is out of reach), the bar shows full and grey, with Waiting."] })
     end
     -- classic gems have no Look
     local Section, settings = K.EditSections()
@@ -1207,7 +1214,7 @@ local function BuildSettings(key)
           hidden = function() return info.kind ~= "health" end },
         -- the swing timers: the out-of-range colour, as the unit frames' range fading
         { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true, get = get("rangeCheck", true), set = set("rangeCheck"),
-          desc = L["The bar turns red while your target is out of reach of this attack. Off, it keeps its colour."],
+          desc = L["The bar turns red while your target is out of reach of this attack."],
           hidden = function() return info.kind ~= "swing" end },
         -- the swing timers' two texts, each on its own (11-11, a player's request)
         { name = L["Bar Text"], kind = LEM.SettingType.Checkbox, default = true, get = get("showLabel", true), set = set("showLabel"),
@@ -1229,30 +1236,6 @@ local function BuildSettings(key)
     -- last: Fade Group, Visibility, Fade Speed and Faded Opacity, as on the action bars (Visibility.lua)
     if ns.Visibility and ns.Visibility.ResourceBarSettings then
         Section("Fading", ns.Visibility:ResourceBarSettings(key))
-    end
-    -- always last: the bar's text font (11-13); Apply to All: every bar with text takes it
-    if info.textSize then
-        Section("Fonts", ns.EditFonts({
-            id = "rb." .. key, group = "rb",
-            texts = { { key = "font", name = L["Bar Text"] } },
-            font = function() RB.SeedFonts(); local cfg = Cfg(key); return cfg and cfg.font end,
-            default = function() return defaults.font end,
-            apply = function() RB:Refresh() end,
-            all = { text = L["Apply to All"], desc = L["Every resource bar takes this bar's font."],
-                    run = function()
-                        local from = Cfg(key)
-                        from = from and from.font
-                        if not from then return end
-                        for other, otherInfo in pairs(BARS) do
-                            local to = other ~= key and otherInfo.textSize and Cfg(other)
-                            to = to and to.font
-                            if to then
-                                for _, field in ipairs({ "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }) do to[field] = from[field] end
-                            end
-                        end
-                        RB:Refresh()
-                    end },
-        }))
     end
     return settings
 end

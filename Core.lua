@@ -74,12 +74,19 @@ function ns.AuraOrder.Options(sort, reverse, mineFirst)
 end
 
 -- The Edit Mode "Aura Ordering" rows; get(key) / set(key) are the dialog's own accessors
+-- (6.3.3, Marcus) no Aura Ordering section any more: its rows join the Auras section (Sort By below
+-- Debuffs, Reverse Order and Your Auras First below Only My Buffs / Debuffs: ns.OrderEditSettings)
+function ns.AuraOrder.With(items, get, set, defaultSort)
+    for _, item in ipairs(ns.AuraOrder.Items(get, set, defaultSort)) do items[#items + 1] = item end
+    return items
+end
+
 function ns.AuraOrder.Items(get, set, defaultSort)
     local LEM = LibStub("FlareEditMode")
     defaultSort = defaultSort or "default"
     local function Sort() return get("auraSort")() or defaultSort end
     return {
-        { name = L["Sort By"], kind = LEM.SettingType.Dropdown, default = defaultSort,
+        { name = L["Sort By"], kind = LEM.SettingType.Dropdown, default = defaultSort, canon = "Aura Sort By",
           values = { { text = L["Default"], value = "default", isRadio = true }, { text = L["Order Applied"], value = "applied", isRadio = true },
                      { text = L["Time Left"], value = "time", isRadio = true }, { text = L["Name"], value = "name", isRadio = true } },
           get = Sort, set = set("auraSort"),
@@ -351,8 +358,8 @@ local function FCMBars()
     return t
 end
 
--- Unit frame fonts (11-13, fonts phase 3): each frame's own texts, set in its Edit Mode dialog
--- (Settings/Fonts.lua ns.EditFonts). Frames: player, target, focus, pet, targettarget, focustarget,
+-- Unit frame fonts (11-13, fonts phase 3): each frame's own texts, set on the Unit Frames page's
+-- Fonts tab, a section per frame (Settings/Pages/UnitFrames.lua). Frames: player, target, focus, pet, targettarget, focustarget,
 -- party, raid, boss. Saved per frame style (unitframes.frameFonts isn't a shared key).
 do
     local function Font(size) return { face = "__global", size = size, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } end
@@ -454,7 +461,7 @@ local defaults = {
             },
 
             -- the FlareUI XP Bar (Modules/XPBar.lua), placed in Edit Mode; off leaves Blizzard's bars alone
-            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Forever", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", bubbles = false, layouts = {} },
+            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Forever", border = "FlareUI Thin", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", bubbles = false, layouts = {} },
 
             -- Typography
             hotkeyFont = { face = "Arial Narrow", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -485,7 +492,7 @@ local defaults = {
             combatTimer = true,         -- Blizzard's "[mm:ss]" session timer in the title row
             readyCheckButton = true,    -- Ready Check button in the header
             countdownButton = true,     -- Countdown button in the header
-            visibility = "always",      -- always | combat | group | hidden (overrules Blizzard's Edit Mode one)
+            visibility = "always",      -- always | combat | group | instance | hidden (overrules Blizzard's Edit Mode one)
             showOnMouseover = false,    -- while the visibility hides the meter, it shows under the mouse
             matchChatSize = false,      -- the meter takes the chat frame's size (Edit Mode's is overridden)
             chatTab = false,            -- a Meter tab with the chat's tabs: the meter in the chat window (Chat module on)
@@ -498,6 +505,7 @@ local defaults = {
             threatTankLead = false,     -- Threat tab: the tank's row shows its lead over second place
             threatValueDisplay = "percent", -- Threat tab: "both" / "percent" / "value"
             threatWindow = false,       -- Separate Window: threat in its own window, no Threat tab (11-13)
+            threatVisibility = "meter", -- its Visibility: meter (as the meter) / instance / group / combat
         },
 
         -- [[ MINIMAP MODULE ]]
@@ -588,7 +596,7 @@ local defaults = {
                     targetWidth = 100, targetHeight = 25, targetBorder = "FlareUI Thin",
                 },
                 raid = {
-                    width = 200, height = 70, powerHeight = 6, spacing = 4, healthText = "none",
+                    width = 200, height = 70, powerHeight = 6, spacing = 12, healthText = "none",
                     texture = "FlareUI Forever", border = "FlareUI Thin",
                     absorbTexture = "FlareUI Striped",
                     debuffs = "INSIDE_BOTTOMRIGHT", buffs = "INSIDE_BOTTOMLEFT", dispels = "PORTRAIT",
@@ -605,10 +613,10 @@ local defaults = {
                 layouts = {}, tankLayouts = {},
                 sort = "GROUP",            -- GROUP | ROLE | CLASS
                 orientation = "ROWS",      -- ROWS (each group a row, stacked) | COLUMNS
-                spacing = 2, groupSpacing = 2, groupNumbers = false,
+                spacing = 10, groupSpacing = 10, groupNumbers = false, absorbTexture = "FlareUI Striped",
                 width = 90, height = 60,
                 -- the main tank frames: their own size, and these of their own (the rest is the raid's)
-                mainTanks = { enabled = false, w = 182, h = 60, spacing = 2,
+                mainTanks = { enabled = false, w = 182, h = 60, spacing = 10,
                               buffs = "INSIDE_LEFT", debuffs = "INSIDE_RIGHT", auraSize = 14,
                               hideBuffs = "PERMANENT", onlyMyBuffs = true, dispellableOnly = false },
                 powerHeight = 6, healthText = "none", texture = "FlareUI Forever", border = "FlareUI Thin",
@@ -1699,7 +1707,7 @@ do
         "Fade Group", "Visibility", "Fade Speed", "Portrait", "Health Text", "Power Text", "Text", "Combo Points",
         "Bar Texture", "Border", "Absorb Texture",
         "Cast Bar Position", "Cast Bar Texture", "Cast Bar Border",
-        "Buffs", "Debuffs", "Hide Buffs", "Dispel Highlight", "Dispel Icons", "Aura Swipe", "Aura Timer",
+        "Buffs", "Debuffs", "@Aura Sort By", "Hide Buffs", "Dispel Highlight", "Dispel Icons", "Aura Swipe", "Aura Timer",
         "Happiness Position", "Pet Border", "Target Border",
         -- sliders
         "Scale", "Size", "Width", "Height", "Max Height", "Power Bar Height", "Portrait Size",
@@ -1710,12 +1718,12 @@ do
         -- (11-11 Marcus) first of their sections' switches: Range Check (Look) and Show Level (Frame)
         "Range Check", "Show Level",
         "Sort by Role", "Show Player", "Hide Player Frame in a Party", "Group Numbers", "Main Tank Frames",
-        "Show Threat", "Combo Points@switch", "Mirror", "Portrait@switch", "Power Bar for Mana Users Only",
+        "Show Threat", "Combo Points@switch", "Flip Portrait", "Mirror Bars", "Portrait@switch", "Power Bar for Mana Users Only",
         "Five-Second Rule", "Mana on Shapeshift", "GCD Spark", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
-        "Hide Icon", "Hide Spell Timer", "Spell Pushback", "Latency Zone", "Channel Ticks", "Spell Queue Window",
+        "Show Icon", "Show Spell Timer", "Spell Pushback", "Latency Zone", "Channel Ticks", "Spell Queue Window",
         "Class Colours", "Low Health Colour", "Smooth Bar Animations",
-        "Only My Buffs", "Only My Debuffs", "Dispellable Debuffs Only", "Highlight Purgeable Buffs",
-        "Reverse Order", "Your Auras First",
+        "Only My Buffs", "Only My Debuffs", "Reverse Order", "Your Auras First",
+        "Dispellable Debuffs Only", "Highlight Purgeable Buffs",
     }
     local LEAD = { "Cast Bar", "Cast Bars" }
     -- "Name@switch": the place of a name that is a dropdown on some frames and a switch on others
@@ -1731,7 +1739,7 @@ do
             canon, lead = {}, {}
             for i, name in ipairs(CANON) do
                 local base, switch = name:match("^(.-)(@switch)$")
-                local key = switch and (ns.L[base] .. "@switch") or ns.L[name]
+                local key = name:sub(1, 1) == "@" and name or switch and (ns.L[base] .. "@switch") or ns.L[name]
                 canon[key] = canon[key] or i
             end
             for _, name in ipairs(LEAD) do lead[ns.L[name]] = true end
@@ -1739,7 +1747,8 @@ do
         local keyed = {}
         for i, item in ipairs(items) do
             local rank = lead[item.name] and 0 or KindRank(item.kind)
-            local place = (rank == 3 and canon[(item.name or "") .. "@switch"]) or canon[item.name] or (1000 + i)
+            local place = (item.canon and canon["@" .. item.canon]) or (rank == 3 and canon[(item.name or "") .. "@switch"])
+                or canon[item.name] or (1000 + i)
             keyed[i] = { item = item, rank = rank, place = place, i = i }
         end
         table.sort(keyed, function(a, b)

@@ -25,8 +25,9 @@ local function Get(path, default)
     if v == nil then return default end
     return v
 end
+-- (path: a profile path, or a function giving the font table: the unit frames' per-style fonts)
 local function Font(path)
-    local cfg = Get(path, {})
+    local cfg = type(path) == "function" and (path() or {}) or Get(path, {})
     local spec = P.activeSpec
     if spec and spec.font == path and spec.value ~= nil then
         local copy = {}; for k, v in pairs(cfg) do copy[k] = v end

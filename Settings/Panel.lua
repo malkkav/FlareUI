@@ -1488,10 +1488,40 @@ Build.expander = function(f)
     end)
     ForwardHover(b, f)
     f.control = b
+    -- a font heading's Reset (11-13, Marcus): as on the section headings, beside the sign; one font,
+    -- so no question first
+    local reset = CreateFrame("Button", nil, b)
+    reset:SetPoint("RIGHT", b.sign, "LEFT", -12, 0)
+    reset.label = Text(reset, "GameFontNormalSmall", "RIGHT")
+    reset.label:SetPoint("RIGHT")
+    reset.label:SetText(L["Reset"])
+    reset:SetSize(math.ceil(reset.label:GetStringWidth() or 30) + 6, 18)
+    reset:SetMotionScriptsWhileDisabled(true)
+    function reset:Paint()
+        if not self:IsEnabled() then self.label:SetTextColor(0.43, 0.40, 0.34)
+        elseif self.hovered then self.label:SetTextColor(1, 1, 1)
+        else self.label:SetTextColor(TITLE_YELLOW[1], TITLE_YELLOW[2], TITLE_YELLOW[3]) end
+    end
+    reset:SetScript("OnEnter", function(self) self.hovered = true self:Paint() RowEnter(f) end)
+    reset:SetScript("OnLeave", function(self) self.hovered = nil self:Paint() RowLeave(f) end)
+    reset:SetScript("OnClick", function()
+        local row = f.row
+        if not (row and row.reset) or InCombatLockdown() then return end
+        ns.ButtonSound()
+        row.reset.run()
+        Panel:Refresh()
+    end)
+    b.reset = reset
 end
 Fill.expander = function(f, row)
     local open = row.isOpen and row.isOpen()
     f.control.sign:SetText(open and "-" or "+")
+    local reset = f.control.reset
+    reset:SetShown(row.reset ~= nil)
+    if row.reset then
+        reset:SetEnabled(not row:IsDisabled() and row.reset.can() or false)
+        reset:Paint()
+    end
 end
 
 -- editmode: an Edit Mode setting found by search
@@ -1530,7 +1560,7 @@ local function RowLabelSpace(f, row)
     elseif row.kind == "buttons" and row.buttons and #row.buttons > 0 then
         control = f.buttons[1]
     elseif row.kind == "expander" then
-        control = f.control.sign
+        control = f.control.reset:IsShown() and f.control.reset or f.control.sign
     end
     local left = f:GetLeft()
     local right = control and control:GetLeft() or f:GetRight()
@@ -1600,12 +1630,13 @@ end
 local page = {}
 
 -- clicking a section heading folds it; kept for the session
-local closedSections = {}   -- section key -> true
+-- (true closed, false opened by hand; a Fonts tab's sections start closed, 11-13 Marcus)
+local closedSections = {}   -- section key -> true / false
 
 local function SectionClick(h)
     if not h.sectionKey then return end
     ns.ButtonSound()
-    closedSections[h.sectionKey] = not closedSections[h.sectionKey] or nil
+    closedSections[h.sectionKey] = not closedSections[h.sectionKey]
     Panel:Refresh()
 end
 
@@ -2059,6 +2090,9 @@ function Panel:Refresh()
                 local wholePage = pad and S.GAMEPAD_OFF_MODULES[module.key]
                 if wholePage then y = y - GamepadNote(content, y) end
                 for _, section in ipairs(module:Sections(tab and tab.key)) do
+                    if tab and tab.key == "fonts" and section.title and closedSections[section.key] == nil then
+                        closedSections[section.key] = true
+                    end
                     local top = y
                     y = y - SEC_TOP
                     if section.title then y = y - SectionHeader(content, section.title, y, section.key) - 4 end
@@ -2169,7 +2203,7 @@ function Panel:JumpTo(row)
     PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
     if row.kind ~= "editmode" then
         if module.tabs then currentTab[module.key] = row.tab or module.tabs[1].key end
-        if row.section then closedSections[row.section] = nil end
+        if row.section then closedSections[row.section] = false end
         -- a row folded under a closed heading: the heading opens
         local heading = row.collapsedBy and S.rows[row.collapsedBy]
         if heading and heading.isOpen and heading.toggle and not heading.isOpen() then heading.toggle() end

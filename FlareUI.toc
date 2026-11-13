@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 6.3.2
+## Version: 6.4
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -90,6 +90,7 @@ Modules\RadialMenu.lua
 Launcher.lua
 Perf.lua
 TaintWatch.lua
+SayLog.lua
 Settings\EditModeLayout.lua
 Settings\Welcome.lua
 Settings\RadialEditor.lua

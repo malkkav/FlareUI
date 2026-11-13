@@ -45,30 +45,26 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }   -- 11-10 regr
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["ab.borderlessBags"] = "6.3",
-    ["ab.borderlessMenu"] = "6.3",
-    ["ab.collapsibleBags"] = "6.3",
-    ["ab.font.xp"] = "6.3",
-    ["au.fontsEditMode"] = "6.3",
-    ["bl.bagItemLevel"] = "6.3",
-    ["bl.bagUncollected"] = "6.3",
-    ["bl.font.money"] = "6.3",
-    ["dm.threatWindow"] = "6.3",
-    ["fonts.buttons"] = "6.3",
-    ["fonts.combat.face"] = "6.3",
-    ["fonts.gameText"] = "6.3",
-    ["fonts.global.face"] = "6.3",
-    ["fonts.nameplate.face"] = "6.3",
-    ["mm.fontsEditMode"] = "6.3",
-    ["mm.hudNote"] = "6.3",
-    ["mm.latency"] = "6.3",
-    ["qt.fontsEditMode"] = "6.3",
-    ["rb.fontsEditMode"] = "6.3",
-    ["rm.font.counts"] = "6.3",
-    ["rm.font.labels"] = "6.3",
-    ["rm.subRadials"] = "6.3",
-    ["tt.itemLevel"] = "6.3",
-    ["uf.fontsEditMode"] = "6.3",
+    ["au.font.count"] = "6.4",
+    ["au.font.timer"] = "6.4",
+    ["br.font.counts"] = "6.4",
+    ["br.font.time"] = "6.4",
+    ["dm.threatVisibility"] = "6.4",
+    ["mm.font.clock"] = "6.4",
+    ["mm.font.info"] = "6.4",
+    ["mm.font.zone"] = "6.4",
+    ["qt.font.header"] = "6.4",
+    ["qt.font.objectives"] = "6.4",
+    ["qt.font.titles"] = "6.4",
+    ["rb.font.text"] = "6.4",
+    ["uf.font.auraCount"] = "6.4",
+    ["uf.font.auras"] = "6.4",
+    ["uf.font.cast"] = "6.4",
+    ["uf.font.castTime"] = "6.4",
+    ["uf.font.health"] = "6.4",
+    ["uf.font.level"] = "6.4",
+    ["uf.font.names"] = "6.4",
+    ["uf.font.power"] = "6.4",
 }
 
 --------------------------------------------------
@@ -89,6 +85,11 @@ function Settings:Text(key, field, optional)
     if not (row and row[field]) then
         local control = key:match("%.font%.[^.]+%.(%w+)$")
         if control then row = CopyRow("font." .. control) end
+    end
+    -- a section's own copy of a shared text ("uf.font.player_names" -> "uf.font.names", 11-13)
+    if not (row and row[field]) then
+        local base, name = key:match("^(.-%.font%.)[^._]+_([^._]+)$")
+        if base then row = CopyRow(base .. name) end
     end
     local text = row and row[field]
     if text == nil and field == "label" and not optional then return key end
@@ -351,9 +352,15 @@ function Row:IsDisabled()
     return false
 end
 
+-- invert (11-13): a Show switch over a saved "hide" value (Show Keybind Text over hideHotkeys): the
+-- switch reads and writes the opposite, so saved setups stay as they were
 function Row:Get()
     if self.get then return self.get() end
-    if self.path then return Settings:GetPath(self.path) end
+    if self.path then
+        local value = Settings:GetPath(self.path)
+        if self.invert then return not value end
+        return value
+    end
 end
 
 function Row:Set(value)
@@ -363,7 +370,7 @@ function Row:Set(value)
     if self.set then
         self.set(value)
     elseif self.path then
-        Settings:SetPath(self.path, value)
+        if self.invert then Settings:SetPath(self.path, not value) else Settings:SetPath(self.path, value) end
     end
     if self.reload then
         Settings:TrackReload(self.key, value, self.startValue)
@@ -394,6 +401,7 @@ local resetPaths = {
 function Row:ResetValue()
     local path = self.path or resetPaths[self.key]
     if self.resetValue then return self.resetValue() end
+    if path and self.invert and self.path then return not Settings:DefaultPath(path) end
     if path then return Settings:DefaultPath(path) end
     local function D(p) return Settings:DefaultPath(p) end
     local key = self.key

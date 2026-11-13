@@ -12,7 +12,8 @@ end
 
 local function Holder() return _G.FlareUI_ObjectiveTracker end
 
-S:Module{ key = "qt", group = "map", order = 20, enabled = "objectivetracker.enabled", editMode = Holder }
+S:Module{ key = "qt", group = "map", order = 20, enabled = "objectivetracker.enabled", editMode = Holder,
+    tabs = { { key = "settings" }, { key = "fonts" } } }
 
 -- the tracker stays shown on this page (sample quests when empty) so Frame Opacity can be seen
 S:On("PageShown", function(key)
@@ -40,16 +41,17 @@ S:Row{
     end,
 }
 
-local function Display(key, path)
-    S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, apply = Refresh, section = "qt.display", half = true }
+-- invert: a Show switch over a saved "hide" value (Show Quest Level, 11-13)
+local function Display(key, path, invert)
+    S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, invert = invert, apply = Refresh, section = "qt.display", half = true }
 end
 -- in pairs (11-11, Marcus): Quest Count | Hide When Empty, Zone Headings | Wrap Long Text,
--- Hide Quest Level | Colour by Difficulty, Quest Tags | Tracked Recipes, Focus Buttons | Voice Buttons
+-- Show Quest Level | Colour by Difficulty, Quest Tags | Tracked Recipes, Focus Buttons | Voice Buttons
 Display("count", "showCount")
 Display("hideEmpty", "hideEmpty")
 Display("zoneHeaders", "zoneHeaders")
 Display("wrap", "wrapText")
-Display("hideLevel", "hideLevel")
+Display("hideLevel", "hideLevel", true)
 Display("colorNames", "colorNames")
 Display("tags", "showTags")
 Display("recipes", "showRecipes")
@@ -57,13 +59,13 @@ Display("focusButtons", "focusButtons")
 S:Row{ key = "qt.playButtons", path = "objectivetracker.playButtons", apply = Refresh, section = "qt.display", half = true,
     hidden = function() return not _G.Spoken end }
 
-local function Quests(key, path)
-    S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, apply = Refresh, section = "qt.quests", half = true }
+local function Quests(key, path, invert)
+    S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, invert = invert, apply = Refresh, section = "qt.quests", half = true }
 end
 -- the three about completed quests
 Quests("completedLast", "completedLast")
 Quests("collapseCompleted", "collapseCompleted")
-Quests("hideFinished", "hideFinished")
+Quests("hideFinished", "hideFinished", true)   -- Show Completed Objectives
 -- Minimize: one switch sets every instance type
 local INSTANCES = { "dungeon", "raid", "pvp", "arena" }
 S:Row{
@@ -89,6 +91,9 @@ S:Row{
 local trackerKey = S:BindingAccessors("FLAREUI_TRACKER")
 S:Row{ key = "qt.minimizeKey", kind = "keybind", get = trackerKey.get, set = trackerKey.set, section = "qt.minimizeIn" }
 
--- Fonts (11-13): each frame's are in its Edit Mode dialog, the last section there
-S:Row{ key = "qt.fontsEditMode", kind = "button", section = "qt.fonts", buttonText = L["Open Edit Mode"],
-    apply = function() S:OpenEditMode("qt") end }
+-- FONTS (11-13, back from Edit Mode)
+S:FontRows{ module = "qt", tab = "fonts", section = "qt.fonts", apply = Refresh, fonts = {
+    { key = "header", path = "objectivetracker.headerFont" },
+    { key = "titles", path = "objectivetracker.titleFont" },
+    { key = "objectives", path = "objectivetracker.objectiveFont" },
+} }

@@ -653,7 +653,11 @@ local function GetBarTexture(name, mirrored)
 end
 
 -- An unknown border name falls back to the default
+-- "None" (11-13, Marcus: first in every Border list): no border file; ApplyBorderStyle then clears the
+-- edge and the bars keep their place
+UF.NO_BORDER = "None"
 local function GetBorderFile(name)
+    if name == UF.NO_BORDER then return nil end
     if not (name and name ~= "" and LSM:IsValid("border", name)) then name = DEFAULT_BORDER end
     return LSM:Fetch("border", name) or BORDER_FILE
 end
@@ -683,6 +687,8 @@ end
 -- height: the bordered frame's height (BorderFit's rule). The thick edge fades on its inner side,
 -- leaving a see-through seam, so it sits one scaled pixel in, over the bars' edges.
 local function ApplyBorderStyle(border, edgeFile, height)
+    -- None: no edge at all (its tint calls do nothing without a backdrop)
+    if not edgeFile then border:SetBackdrop(nil) return end
     local edge, thick = BORDER_SIZE, true
     if ns.BorderEdgeSize(edgeFile, BORDER_SIZE) ~= BORDER_SIZE then
         edge, thick = ns.BorderEdgeSize(edgeFile, BORDER_SIZE), false
@@ -745,7 +751,7 @@ function UF.HideBuffsSetting(default, get, set)
             { text = L["Longer Than 1 Minute"], value = "60", isRadio = true },
         },
         get = get, set = set,
-        desc = L["Buffs left off this frame, by their full duration. Every choice but Off also hides permanent buffs."] }
+        desc = L["Leaves long buffs off this frame:\n* Permanent: buffs with no duration\n* Longer Than: buffs whose full duration is longer, and permanent ones"] }
 end
 
 -- Right below Absorb Texture
@@ -1133,7 +1139,8 @@ local function GetTimerFormatter()
 end
 
 -- style: { height, icon, timer, name, texture, border, borderTexture, width }
-local function GetCastStyle(udb, standalone)
+-- plate: the frame is on Forever's plate, whose cast bar keeps the plate's border
+local function GetCastStyle(udb, standalone, plate)
     if standalone then
         return {
             width = udb.width or 250, height = udb.height or 25,
@@ -1151,7 +1158,7 @@ local function GetCastStyle(udb, standalone)
         height = udb.castHeight or CAST_HEIGHT,
         icon = udb.castIcon ~= false, timer = udb.castTimer ~= false, name = true,
         texture = castTexture, border = true,
-        borderTexture = ns.UFRing and ns.UFRing.Border(castBorder) or castBorder,
+        borderTexture = plate and ns.UFRing and ns.UFRing.Border(castBorder) or castBorder,
         bgOpacity = udb.bgOpacity,
     }
 end
@@ -2012,7 +2019,10 @@ local function UpdatePortrait(f)
     else
         SetPortraitTexture(tex, unit, true)
         local udb = GetUnitDb(f.fuiUnit)
-        if udb and UF.LayoutMirrored(f) and PortraitFacesRight(unit) then
+        local flip = udb and UF.LayoutMirrored(f) and PortraitFacesRight(unit) or false
+        -- Flip Portrait (target and focus, the ring styles): the other way round
+        if udb and udb.flipPortrait and ns.UFRing and ns.UFRing.Style() ~= "addon" then flip = not flip end
+        if flip then
             tex:SetTexCoord(1, 0, 0, 1)
             portrait.flipUntil = GetTime() + 1
             portrait:SetScript("OnUpdate", KeepPortraitFlipped)
@@ -3740,7 +3750,8 @@ local function LayoutFrame(f)
         f:SetBackdrop(nil)
         f.Border:Hide()
     else
-        local edgeFile = GetBorderFile(ns.UFRing and ns.UFRing.Border(udb.border) or udb.border)
+        -- (off Forever's plate every frame picks its own border, Forever Style too: 11-13)
+        local edgeFile = GetBorderFile(udb.border or DEFAULT_BORDER)
         f:SetBackdrop({ bgFile = BACKDROP_FILE, insets = { left = PADDING, right = PADDING, top = PADDING, bottom = PADDING } })
         f:SetBackdropColor(0, 0, 0, BG_OPACITY)
         -- the border's own frame sits above the bars
@@ -3917,7 +3928,7 @@ local function LayoutFrame(f)
             local clear = ns.UFRing.Clearance(f, CAST_GAP)
             if ns.UFRing.Side(f) == "LEFT" then leftExtra = clear else rightExtra = clear end
         end
-        local castStyle = GetCastStyle(udb, false)
+        local castStyle = GetCastStyle(udb, false, ns.UFRing and ns.UFRing.Plate(f))
         castStyle.fontKey = f.fuiUnit
         LayoutCastBar(f.Cast, castStyle, f, udb.castbarPosition == "TOP" and "TOP" or "BOTTOM", leftExtra, rightExtra)
         -- the auras on its side move out while it shows (in a fight too: they are not protected)
@@ -4503,7 +4514,7 @@ function UF.DrawCastSample(holder)
     local style
     if holder.unit and holder.unit ~= "player" then
         local udb = GetUnitDb(holder.unit) or {}
-        style = GetCastStyle(udb, false)
+        style = GetCastStyle(udb, false, ns.UFRing and ns.UFRing.Plate(frames[holder.unit]))
         style.width = (udb.width or 220) - 2 * INSET - (style.icon and (style.height + CAST_ICON_GAP) or 0)
         style.fontKey = holder.unit
     else
@@ -4548,9 +4559,15 @@ local function BuildTextureValues()
 end
 
 -- Border Texture values (Frame Border first on the cast bars)
+-- None first, then (cast bars) Frame Border, then FlareUI's and other addons' borders
 local function BuildBorderValues(withFrameDefault)
-    return UF.MediaValues("border", { "FlareUI Thick", "FlareUI Thin" },
+    local list = UF.MediaValues("border", { "FlareUI Thick", "FlareUI Thin" },
         withFrameDefault and { text = L["Frame Border"], value = "", isRadio = true } or nil)
+    return function()
+        local values = list()
+        table.insert(values, 1, { text = L["None"], value = UF.NO_BORDER, isRadio = true })
+        return values
+    end
 end
 
 -- Edit Mode dialogs in collapsible sections (Core.lua ns.EditSections: open state for the session)
@@ -4639,25 +4656,24 @@ local function BuildPlayerCastSettings()
             if playerCastHolder then UpdateCastBar(playerCastHolder.Cast, IsCastEnabled(playerCastHolder.Cast)) end
         end
     end
-    -- the switches hide a part: on means the saved icon / timer is off
-    local function hide(key)
-        return function() local c = GetPlayerCastDb(); return c and c[key] == false or false end,
-               function(layoutName, value) set(key)(layoutName, not value) end
+    -- Show Icon / Show Spell Timer (11-13, were Hide ...: FlareUI builds the bar, each part is an addition)
+    local function show(key)
+        return function() local c = GetPlayerCastDb(); return not (c and c[key] == false) end, set(key)
     end
-    local getHideIcon, setHideIcon = hide("icon")
-    local getHideTimer, setHideTimer = hide("timer")
+    local getShowIcon, setShowIcon = show("icon")
+    local getShowTimer, setShowTimer = show("timer")
     local Section, settings = EditSections()
     Section("Frame", {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = 250, minValue = 100, maxValue = 600, valueStep = 2, get = get("width", 250), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 25, minValue = 8, maxValue = 48, valueStep = 1, get = get("height", 25), set = set("height") },
-        { name = L["Hide Icon"], kind = LEM.SettingType.Checkbox, default = false, get = getHideIcon, set = setHideIcon,
-          desc = L["No spell icon left of the bar."] },
-        { name = L["Hide Spell Timer"], kind = LEM.SettingType.Checkbox, default = false, get = getHideTimer, set = setHideTimer,
-          desc = L["No time left at the right end of the bar."] },
+        { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true, get = getShowIcon, set = setShowIcon,
+          desc = L["The spell's icon, left of the bar."] },
+        { name = L["Show Spell Timer"], kind = LEM.SettingType.Checkbox, default = true, get = getShowTimer, set = setShowTimer,
+          desc = L["The time left, at the right end of the bar."] },
         { name = L["Latency Zone"], kind = LEM.SettingType.Checkbox, default = true, get = get("latencyZone", true), set = set("latencyZone"),
-          desc = L["The end of the bar your latency covers, in red: start the next spell there and it is sent as this one lands."] },
+          desc = L["Your latency, in red at the end of the bar. Press your next spell there and it goes off as this one ends."] },
         { name = L["Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = get("pushback", false), set = set("pushback"),
-          desc = L["How far being hit has set your cast back (\"+0.5\") or cut your channel short, next to the timer."] },
+          desc = L["Next to the timer: how far hits pushed your cast back or cut your channel short, like \"+0.5\"."] },
     })
     Section("Look", {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
@@ -4666,33 +4682,12 @@ local function BuildPlayerCastSettings()
         { name = L["Channel Ticks"], kind = LEM.SettingType.Checkbox, default = false, get = get("channelTicks", false), set = set("channelTicks"),
           desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
         { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueMark", false), set = set("queueMark"),
-          desc = L["A mark near the end of the bar: press your next spell after it and it goes off as soon as this one ends."] },
+          desc = L["A mark near the end of the bar. Press your next spell after it and it goes off right as this one ends."] },
     })
     -- last: Visibility and Faded Opacity (Visibility.lua; Always by default)
     if ns.Visibility and ns.Visibility.PlayerCastSettings then
         Section("Fading", ns.Visibility:PlayerCastSettings())
     end
-    -- always last: the spell name and time font (11-13); Apply to All: every unit frame takes it too
-    Section("Fonts", ns.EditFonts({
-        id = "uf.playercast", group = "uf",
-        texts = { { key = "cast", name = L["Cast Name"] }, { key = "castTime", name = L["Cast Countdown"] } },
-        font = function(element) return UF.FontDb("playercast", element) end,
-        default = function(element) return ns.UF_FONT_DEFAULTS[element] end,
-        apply = function() UF:Refresh() end,
-        all = { text = L["Apply to All"], desc = L["Every unit frame's cast bar takes this font."],
-                run = function()
-                    for _, element in ipairs({ "cast", "castTime" }) do
-                        local from = UF.FontDb("playercast", element)
-                        for _, key in ipairs(UF.FONT_KEYS) do
-                            local to = from and key ~= "playercast" and UF.FontDb(key, element)
-                            if to then
-                                for _, field in ipairs({ "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }) do to[field] = from[field] end
-                            end
-                        end
-                    end
-                    UF:Refresh()
-                end },
-    }))
     return settings
 end
 
@@ -4821,7 +4816,7 @@ local function BuildSettings(unit)
     end
     if UF.THREAT_PERCENT_UNITS[unit] then
         settings[#settings + 1] = { name = L["Show Threat"], kind = LEM.SettingType.Checkbox, default = false,
-            desc = L["Your threat on this unit as a percent, in the threat colours: above the portrait ring, or after the health value in Addon Style."],
+            desc = L["Your threat on this unit as a percent, in threat colours. Above the portrait ring, or after the health value in Addon Style."],
             get = function() local u = GetUnitDb(unit); return u and u.threatPercent or false end,
             set = function(_, value)
                 local u = GetUnitDb(unit)
@@ -4833,16 +4828,31 @@ local function BuildSettings(unit)
     end
     -- (the ring styles show it in the ring's disc, which goes with it)
     settings[#settings + 1] = { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = defaults.showLevel ~= false, get = get("showLevel"), set = set("showLevel") }
+    -- Flip Portrait (6.3.3, a player's request): the portrait faces the other way, in the ring styles
+    -- (Addon Style's Mirror already turns it); above Mirror
+    if unit == "target" or unit == "focus" then
+        settings[#settings + 1] = { name = L["Flip Portrait"], kind = LEM.SettingType.Checkbox, default = false,
+            desc = L["The portrait faces the other way."],
+            get = function() local u = GetUnitDb(unit); return u and u.flipPortrait == true or false end,
+            set = function(_, value)
+                local u = GetUnitDb(unit)
+                if not u then return end
+                u.flipPortrait = value or nil
+                local f = frames[unit]
+                if f then UpdatePortrait(f) end
+            end,
+            hidden = function() return not (ns.UFRing and ns.UFRing.Style() ~= "addon") end }
+    end
     if info.mirrorable then
         -- flips text order and bar fill so the frame faces the player frame
-        settings[#settings + 1] = { name = L["Mirror"], kind = LEM.SettingType.Checkbox, default = defaults.mirror or false, get = function() local u = GetUnitDb(unit); return u and u.mirror or false end,
+        settings[#settings + 1] = { name = L["Mirror Bars"], kind = LEM.SettingType.Checkbox, default = defaults.mirror or false, get = function() local u = GetUnitDb(unit); return u and u.mirror or false end,
             set = function(_, value) local u = GetUnitDb(unit); if not u then return end; u.mirror = value; local f = frames[unit]; if f then LayoutFrame(f); AttachExtras(f); UpdateAll(f) end end }
     end
     if unit == "player" then
         settings[#settings + 1] = { name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false,
             get = function() local u = GetUnitDb(unit); return u and u.fsr == true or false end,
             set = function(_, value) local u = GetUnitDb(unit); if not u then return end; u.fsr = value; UpdateFsrSpark() end,
-            desc = L["A spark crosses the bar for five seconds after a spell that costs mana: spirit regen comes back when it ends."] }
+            desc = L["A spark crosses the bar for five seconds after you spend mana. Spirit regeneration starts again when it ends."] }
         settings[#settings + 1] = { name = L["Mana on Shapeshift"], kind = LEM.SettingType.Checkbox, default = false,
             get = function() local u = GetUnitDb(unit); return u and u.shiftMana == true or false end,
             set = function(_, value)
@@ -4851,8 +4861,21 @@ local function BuildSettings(unit)
                 local f = frames[unit]
                 if f and f.ShiftMana then UF.UpdateShiftMana(f) end
             end,
-            desc = L["Druids: in a form that doesn't use mana, a thin mana bar shows below the power bar and the health bar gets shorter."],
+            desc = L["Druids: a thin mana bar under the power bar, in forms without mana. The health bar gets shorter to make room."],
             hidden = onPlate }
+    end
+    -- Range Check: the frames that fade out of range (target and focus); in Frame since 6.3.3 (Marcus:
+    -- it changes how the frame behaves, not how it looks)
+    if tContains(UF.RANGE_UNITS, unit) then
+        settings[#settings + 1] = { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
+            desc = L["The frame fades while the unit is out of range."],
+            get = function() local u = GetUnitDb(unit); return not (u and u.rangeCheck == false) end,
+            set = function(_, value)
+                local u = GetUnitDb(unit)
+                if not u then return end
+                u.rangeCheck = value
+                UF.ApplyRangeAlpha(frames[unit], unit)
+            end }
     end
     -- everything above is the frame itself, and gets the first section
     local frameItems = settings
@@ -4866,8 +4889,9 @@ local function BuildSettings(unit)
           get = function() local u = GetUnitDb(unit); return u and u.texture or DEFAULT_TEXTURE end, set = set("texture") },
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BORDER, values = BuildBorderValues(false),
           get = function() local u = GetUnitDb(unit); return u and u.border or DEFAULT_BORDER end, set = set("border"),
-          -- Forever Style: one fixed border (the plate's own on its frames)
-          hidden = function() return ns.UFRing and ns.UFRing.PlateOn() or false end },
+          -- Forever Style's plate has its own frame; every other frame (simple pet, simple target of
+          -- target) picks a border in every style (11-13, Marcus)
+          hidden = onPlate },
     }
     -- the absorb overlay, on frames with heal prediction; "" is the frame's own texture
     if info.indicators and info.indicators.heals then
@@ -4895,18 +4919,6 @@ local function BuildSettings(unit)
     if not info.poll then
         lookItems[#lookItems + 1] = UF.SmoothBarsSetting(function() local u = GetUnitDb(unit); return u and u.smoothBars end, set("smoothBars"))
     end
-    -- Range Check: the frames that fade out of range (target and focus)
-    if tContains(UF.RANGE_UNITS, unit) then
-        lookItems[#lookItems + 1] = { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
-            desc = L["The frame fades while the unit is out of your range. Off, it always shows in full."],
-            get = function() local u = GetUnitDb(unit); return not (u and u.rangeCheck == false) end,
-            set = function(_, value)
-                local u = GetUnitDb(unit)
-                if not u then return end
-                u.rangeCheck = value
-                UF.ApplyRangeAlpha(frames[unit], unit)
-            end }
-    end
     Section("Look", lookItems)
 
     if info.castbar then
@@ -4926,20 +4938,20 @@ local function BuildSettings(unit)
               get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture"), hidden = noCast },
             { name = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
               get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture"),
-              desc = L["Frame Border uses the frame's own border."],
-              hidden = function() return noCast() or (ns.UFRing and ns.UFRing.PlateOn()) or false end },
+              desc = L["The cast bar's border. Frame Border matches the frame's own border."],
+              hidden = function() return noCast() or onPlate() end },
             { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = defaults.castHeight or CAST_HEIGHT, minValue = 8, maxValue = 40, valueStep = 1,
               get = function() local u = GetUnitDb(unit); return u and u.castHeight or CAST_HEIGHT end, set = set("castHeight"), hidden = noCast },
-            { name = L["Hide Icon"], kind = LEM.SettingType.Checkbox, default = false,
-              get = function() local u = GetUnitDb(unit); return u and u.castIcon == false or false end,
-              set = function(layoutName, value) set("castIcon")(layoutName, not value) end,
+            { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true,
+              get = function() local u = GetUnitDb(unit); return not (u and u.castIcon == false) end,
+              set = set("castIcon"),
               hidden = noCast,
-              desc = L["No spell icon left of the bar."] },
-            { name = L["Hide Spell Timer"], kind = LEM.SettingType.Checkbox, default = false,
-              get = function() local u = GetUnitDb(unit); return u and u.castTimer == false or false end,
-              set = function(layoutName, value) set("castTimer")(layoutName, not value) end,
+              desc = L["The spell's icon, left of the bar."] },
+            { name = L["Show Spell Timer"], kind = LEM.SettingType.Checkbox, default = true,
+              get = function() local u = GetUnitDb(unit); return not (u and u.castTimer == false) end,
+              set = set("castTimer"),
               hidden = noCast,
-              desc = L["No time left at the right end of the bar."] },
+              desc = L["The time left, at the right end of the bar."] },
         }
         if unit == "player" then
             -- the FlareUI Player Cast Bar's extras, on the bar on the player frame too
@@ -4948,13 +4960,13 @@ local function BuildSettings(unit)
             end
             local extras = {
                 { name = L["Latency Zone"], kind = LEM.SettingType.Checkbox, default = true, get = flag("latencyZone", true), set = set("latencyZone"),
-                  desc = L["The end of the bar your latency covers, in red: start the next spell there and it is sent as this one lands."] },
+                  desc = L["Your latency, in red at the end of the bar. Press your next spell there and it goes off as this one ends."] },
                 { name = L["Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = flag("pushback", false), set = set("pushback"),
-                  desc = L["How far being hit has set your cast back (\"+0.5\") or cut your channel short, next to the timer."] },
+                  desc = L["Next to the timer: how far hits pushed your cast back or cut your channel short, like \"+0.5\"."] },
                 { name = L["Channel Ticks"], kind = LEM.SettingType.Checkbox, default = false, get = flag("channelTicks", false), set = set("channelTicks"),
                   desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
                 { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = flag("queueMark", false), set = set("queueMark"),
-                  desc = L["A mark near the end of the bar: press your next spell after it and it goes off as soon as this one ends."] },
+                  desc = L["A mark near the end of the bar. Press your next spell after it and it goes off right as this one ends."] },
             }
             for _, item in ipairs(extras) do
                 item.hidden = noCast
@@ -5012,8 +5024,7 @@ local function BuildSettings(unit)
                 get = function() local u = GetUnitDb(unit); return u and u.purgeHighlight or false end, set = set("purgeHighlight"),
                 desc = L["Buffs that you or your group can purge or dispel come first, with Blizzard's stealable border."] }
         end
-        Section("Auras", auraItems)
-        Section("Aura Ordering", ns.AuraOrder.Items(get, set))
+        Section("Auras", ns.AuraOrder.With(auraItems, get, set))
     end
 
     -- one switch per icon; where they sit is fixed
@@ -5058,50 +5069,22 @@ local function BuildSettings(unit)
     if ns.Visibility and ns.Visibility.UnitFrameSettings then
         Section("Fading", ns.Visibility:UnitFrameSettings(unit))
     end
-    -- always last: the frame's fonts (11-13)
-    Section("Fonts", UF.FontItems(unit, UNITS[unit].castbar, UNITS[unit].auras))
     return settings
 end
 
--- Edit Mode's Fonts section for a unit frame, party, raid or boss (11-13): the texts it has, Apply to
--- All Unit Frames (this frame's fonts on every other) and Reset Fonts (Settings/Fonts.lua ns.EditFonts)
+-- Each frame's fonts (11-13): set on the Unit Frames page's Fonts tab, a section per frame
+-- (Settings/Pages/UnitFrames.lua)
 UF.FONT_TEXTS = { names = L["Names"], health = L["Health Text"], level = L["Level"], power = L["Power Text"],
                   cast = L["Cast Name"], castTime = L["Cast Countdown"], auras = L["Aura Timers"], auraCount = L["Aura Stacks"] }
-function UF.CopyFonts(from)
-    if not GetDb() then return end
-    local fields = { "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }
-    for _, key in ipairs(UF.FONT_KEYS) do
-        if key ~= from then
-            for element in pairs(ns.UF_FONT_DEFAULTS) do
-                local src, dst = UF.FontDb(from, element), UF.FontDb(key, element)
-                if src and dst then
-                    for _, field in ipairs(fields) do dst[field] = src[field] end
-                end
-            end
-        end
-    end
-    UF:Refresh()
-end
-function UF.FontItems(key, castbar, auras)
-    local texts = {}
-    local elements = { "names", "health", "level", "power" }
-    if castbar then elements[#elements + 1] = "cast"; elements[#elements + 1] = "castTime" end
-    if auras then elements[#elements + 1] = "auras"; elements[#elements + 1] = "auraCount" end
-    for _, element in ipairs(elements) do
-        texts[#texts + 1] = { key = element, name = UF.FONT_TEXTS[element], autoSize = element == "auras" or element == "auraCount" }
-    end
-    return ns.EditFonts({
-        id = "uf." .. key, texts = texts, group = "uf",   -- (one restyle for every unit frame)
-        font = function(element) return UF.FontDb(key, element) end,
-        default = function(element) return ns.UF_FONT_DEFAULTS[element] end,
-        apply = function()
-            UF:Refresh()
-            -- the totem timers take the player's Aura Timers font (Totems.lua)
-            if ns.Totems and ns.Totems.ApplyLayout then ns.Totems.ApplyLayout() end
-        end,
-        all = { text = L["Apply to All"], desc = L["Every unit frame takes this frame's fonts: player, target, focus, pets, party, raid and boss."],
-                run = function() UF.CopyFonts(key) end },
-    })
+-- the texts a frame has, in order (key: a unit, "party", "raid", "boss" or "playercast")
+local FRAME_TEXTS = { party = { castbar = true, auras = true }, raid = { auras = true }, boss = { castbar = true, auras = true } }
+function UF.FontElements(key)
+    if key == "playercast" then return { "cast", "castTime" } end
+    local info = UNITS[key] or FRAME_TEXTS[key] or {}
+    local list = { "names", "health", "level", "power" }
+    if info.castbar then list[#list + 1] = "cast"; list[#list + 1] = "castTime" end
+    if info.auras then list[#list + 1] = "auras"; list[#list + 1] = "auraCount" end
+    return list
 end
 
 local function RegisterEditMode(f)

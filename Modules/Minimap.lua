@@ -1071,16 +1071,6 @@ end
 
 local function AddEditModeSettings()
     local rows = ns.Visibility and ns.Visibility:MinimapSettings() or {}
-    -- always last: the zone name, clock and info text fonts (11-13)
-    local mmDefaults = ns.defaults and ns.defaults.profile and ns.defaults.profile.minimap or {}
-    for _, row in ipairs(ns.EditSection("Fonts", ns.EditFonts({
-        id = "mm",
-        texts = { { key = "zoneFont", name = L["Zone Name"] }, { key = "clockFont", name = L["Clock"] },
-                  { key = "infoFont", name = L["Info Text"] } },
-        font = function(key) local db = GetDb(); return db and db[key] end,
-        default = function(key) return mmDefaults[key] end,
-        apply = function() MM:ApplyFonts() end,
-    }))) do rows[#rows + 1] = row end
     LEM:AddSystemSettings(Enum.EditModeSystem.Minimap, rows)
 end
 

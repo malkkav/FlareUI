@@ -31,6 +31,7 @@ local BARS = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swi
 -- the header button opens Edit Mode on the first bar that exists
 S:Module{
     key = "rb", group = "combat", order = 30, enabled = "unitframes.resource.enabled",
+    tabs = { { key = "settings" }, { key = "fonts" } },
     editMode = function()
         for _, key in ipairs(BARS) do
             if _G["FlareUI_Resource_" .. key] then return _G["FlareUI_Resource_" .. key] end
@@ -59,6 +60,18 @@ S:Row{
     apply = function() if ns.ColorPicker then ns.ColorPicker.Open("rb") end end,
 }
 
--- Fonts (11-13): each frame's are in its Edit Mode dialog, the last section there
-S:Row{ key = "rb.fontsEditMode", kind = "button", section = "rb.fonts", buttonText = L["Open Edit Mode"],
-    apply = function() S:OpenEditMode("rb") end }
+-- FONTS (11-13, back from Edit Mode): each bar's text font under the bar's name
+local BAR_NAMES = { health = L["Health Bar"], power = L["Power Bar"], mana = L["Druid Mana"],
+    swingMain = L["Main-Hand Swing"], swingOff = L["Off-Hand Swing"], swingRanged = L["Ranged Swing"],
+    seal = L["Paladin Seals"], flight = L["Flight Timer"] }
+local BAR_HIDDEN = { mana = NotDruid, seal = NotPaladin }
+local barFonts = {}
+for _, key in ipairs(BARS) do
+    -- (the combo points have no text)
+    if BAR_NAMES[key] then barFonts[#barFonts + 1] = {
+        key = key .. "_text", label = function() return BAR_NAMES[key] end, hidden = BAR_HIDDEN[key],
+        font = function() return ns.ResourceBars.BarFont(key) end,
+        default = function() return S:DefaultPath("unitframes.resource.bars." .. key .. ".font") end,
+    } end
+end
+S:FontRows{ module = "rb", tab = "fonts", section = "rb.fonts", apply = Refresh, fonts = barFonts }

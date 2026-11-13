@@ -181,7 +181,7 @@ end
 
 -- The tile settings: the raid db plus fixed values (no cast bar, one row of three auras, striped
 -- absorbs)
-local FIXED = { castbar = false, auraMax = 3, auraPerRow = 3, absorbTexture = "FlareUI Striped" }
+local FIXED = { castbar = false, auraMax = 3, auraPerRow = 3 }
 -- main tank settings of their own (db.mainTanks), falling back to the raid's
 local TANK_OWN = { powerHeight = true, buffs = true, debuffs = true, dispels = true, dispelHighlight = true,
                    auraSize = true, buffSize = true, debuffSize = true, hideBuffs = true, onlyMyBuffs = true, dispellableOnly = true,
@@ -469,11 +469,27 @@ end
 --------------------------------------------------
 -- 5. LAYOUT
 --------------------------------------------------
+-- Spacing, Group Spacing and the main tanks' Spacing are measured between the bars (11-13, Marcus): 0
+-- makes the bars touch (the tiles' margins, where the borders sit, overlap). Saved values gain the
+-- two margins once, so a setup looks as it did (raid.barSpacing).
+local function Gaps(db)
+    local pad = 2 * K.INSET
+    if not rawget(db, "barSpacing") then
+        if rawget(db, "spacing") ~= nil then db.spacing = db.spacing + pad end
+        if rawget(db, "groupSpacing") ~= nil then db.groupSpacing = db.groupSpacing + pad end
+        local mt = rawget(db, "mainTanks")
+        if type(mt) == "table" and rawget(mt, "spacing") ~= nil then mt.spacing = mt.spacing + pad end
+        db.barSpacing = true
+    end
+    local tanks = db.mainTanks and db.mainTanks.spacing or 10
+    return (db.spacing or 10) - pad, (db.groupSpacing or 10) - pad, tanks - pad
+end
+
 -- the frame's own size: the largest raid, so its centre (where the raid grows from) stays put
 local function HolderSize()
     local db = GetDb()
     local w, h = TileSize()
-    local gap, ggap = db.spacing or 4, db.groupSpacing or 10
+    local gap, ggap = Gaps(db)
     h = h + LabelRoom()
     if Rows() then
         return GROUP_SIZE * w + (GROUP_SIZE - 1) * gap, MAX_GROUPS * h + (MAX_GROUPS - 1) * ggap
@@ -509,7 +525,7 @@ end
 local function LayoutGroups()
     local db = GetDb()
     local w, hh = TileSize()
-    local gap, ggap = db.spacing or 4, db.groupSpacing or 10
+    local gap, ggap = Gaps(db)
     local mode = Mode()
     holder:SetAttribute("mode", mode)
     holder:SetAttribute("rows", Rows())
@@ -557,7 +573,7 @@ local function LayoutTanks()
     if not tankHolder then return end
     local db = GetDb()
     local w, hh = TankSize()
-    local gap = db.mainTanks and db.mainTanks.spacing or 2
+    local _, _, gap = Gaps(db)
     -- Tank Targets below the frames: the room for them between the tanks
     if TT.Place() == "BOTTOM" then gap = gap + TT.HEIGHT + TT.GAP end
     local h = headers.tanks
@@ -588,7 +604,7 @@ end
 local function PlacePreview()
     local db = GetDb()
     local w, hh = TileSize()
-    local gap, ggap = db.spacing or 4, db.groupSpacing or 10
+    local gap, ggap = Gaps(db)
     local groups = SAMPLE_RAIDS[sampleRaid] or 5
     local rows = Rows()
     local room = LabelRoom()
@@ -667,7 +683,7 @@ local function PlacePreview()
     end
 
     local tw, th = TankSize()
-    local tgap = db.mainTanks and db.mainTanks.spacing or 2
+    local _, _, tgap = Gaps(db)
     -- Tank Targets below the frames take room between them, as live
     if TT.Place() == "BOTTOM" then tgap = tgap + TT.HEIGHT + TT.GAP end
     local tanksUp = Grow() == "UP"
@@ -850,7 +866,7 @@ local function AuraItems(get, set, d, view)
               { text = L["Longer Than 1 Minute"], value = "60", isRadio = true },
           },
           get = get("hideBuffs", "PERMANENT"), set = set("hideBuffs"),
-          desc = L["Buffs left off the raid frames, by their full duration. Every choice but Off also hides permanent buffs."] },
+          desc = L["Leaves long buffs off the raid frames:\n* Permanent: buffs with no duration\n* Longer Than: buffs whose full duration is longer, and permanent ones"] },
         { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = d.dispelHighlight or "mine",
           values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
                      { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
@@ -905,7 +921,7 @@ local function BuildSettings()
         { name = L["Growth"], kind = LEM.SettingType.Dropdown, default = "CENTER",
           values = { { text = L["From the Middle"], value = "CENTER", isRadio = true },
                      { text = L["Down"], value = "DOWN", isRadio = true }, { text = L["Up"], value = "UP", isRadio = true } },
-          desc = L["Which way the raid grows as groups join, groups in rows. The main tank frames follow it."],
+          desc = L["Which way the raid grows as groups join, one row per group. The main tank frames follow it."],
           get = get("grow", "CENTER"), set = set("grow"),
           hidden = function() return not Rows() end },
         { name = L["Sort By"], kind = LEM.SettingType.Dropdown, default = "GROUP",
@@ -916,10 +932,13 @@ local function BuildSettings()
         { name = L["Groups"], kind = LEM.SettingType.Dropdown, default = "ROWS",
           values = { { text = L["Rows"], value = "ROWS", isRadio = true }, { text = L["Columns"], value = "COLUMNS", isRadio = true } },
           get = get("orientation", "ROWS"), set = set("orientation") },
-        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = d.spacing or 4, minValue = 0, maxValue = 20, valueStep = 1,
-          get = get("spacing", 4), set = set("spacing") },
-        { name = L["Group Spacing"], kind = LEM.SettingType.Slider, default = d.groupSpacing or 10, minValue = 0, maxValue = 40, valueStep = 1,
-          get = get("groupSpacing", 10), set = set("groupSpacing") },
+        -- (between the bars: 0 makes them touch; Gaps migrates old values first)
+        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = d.spacing or 10, minValue = 0, maxValue = 40, valueStep = 1,
+          get = function() Gaps(GetDb()); return get("spacing", 10)() end, set = set("spacing"),
+          desc = L["The gap between the bars. 0 makes them touch."] },
+        { name = L["Group Spacing"], kind = LEM.SettingType.Slider, default = d.groupSpacing or 10, minValue = 0, maxValue = 60, valueStep = 1,
+          get = function() Gaps(GetDb()); return get("groupSpacing", 10)() end, set = set("groupSpacing"),
+          desc = L["The gap between the groups, measured between the bars."] },
         { name = L["Group Numbers"], kind = LEM.SettingType.Checkbox, default = d.groupNumbers ~= false, get = get("groupNumbers", false), set = set("groupNumbers"),
           hidden = function() return Mode() ~= "group" end },
         { name = L["Main Tank Frames"], kind = LEM.SettingType.Checkbox, default = false,
@@ -947,26 +966,30 @@ local function BuildSettings()
           get = get("powerText", "none"), set = set("powerText") },
         { name = L["Power Bar for Mana Users Only"], kind = LEM.SettingType.Checkbox, default = false,
           get = get("powerManaOnly", false), set = set("powerManaOnly"),
-          desc = L["Power bars only for classes that use mana: warriors and rogues get the room for health."] },
+          desc = L["Power bars only for classes that use mana. Warriors and rogues get the room for health instead."] },
+        -- (in Frame since 6.3.3: it changes how the frame behaves, not how it looks; main tanks follow it)
+        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The frame fades while the unit is out of range."],
+          get = get("rangeCheck", true), set = set("rangeCheck") },
     })
 
     Section("Look", {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = d.texture, values = K.BuildTextureValues(),
           get = get("texture", d.texture), set = set("texture") },
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = d.border, values = K.BuildBorderValues(false),
-          get = get("border", d.border), set = set("border"), hidden = K.NoBorderOptions },
+          -- (every style, Forever Style too: raid tiles are never on its plate, 11-13)
+          get = get("border", d.border), set = set("border") },
+        -- (11-13, was always striped; the main tanks follow it)
+        { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = d.absorbTexture or "FlareUI Striped", values = K.BuildAbsorbValues(),
+          get = get("absorbTexture", "FlareUI Striped"), set = set("absorbTexture"),
+          desc = L["The texture of the shield (absorb) over the health bar."] },
         -- (main tanks follow it)
         K.BgOpacitySetting(K.BAR_BG_OPACITY, get("bgOpacity", K.BAR_BG_OPACITY), set("bgOpacity")),
         K.ClassColorSetting(function() return ns.ClassColorsOn(GetDb()) end, set("classColor")),
         K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars")),
-        -- (main tanks follow it)
-        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
-          desc = L["The frame fades while the unit is out of your range. Off, it always shows in full."],
-          get = get("rangeCheck", true), set = set("rangeCheck") },
     })
 
-    Section("Auras", AuraItems(get, set, d, raidView))
-    Section("Aura Ordering", ns.AuraOrder.Items(get, set))
+    Section("Auras", ns.AuraOrder.With(AuraItems(get, set, d, raidView), get, set))
 
     local iconItems = {}
     local sample = { ctx = raidCtx }   -- the icon switches read the raid settings through it
@@ -981,8 +1004,6 @@ local function BuildSettings()
             end }
     end
     Section("Icons", iconItems)
-    -- always last: the frames' fonts (11-13, UnitFrames.lua UF.FontItems)
-    if ns.UnitFrames and ns.UnitFrames.FontItems then Section("Fonts", ns.UnitFrames.FontItems("raid", false, true)) end
     return settings
 end
 
@@ -1019,7 +1040,10 @@ local function BuildTankSettings()
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 60, minValue = 20, maxValue = 100, valueStep = 1, get = get("h", 60), set = set("h") },
         { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = d.powerHeight or 4, minValue = 0, maxValue = 15, valueStep = 1,
           get = get("powerHeight", 4), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
-        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = 2, minValue = 0, maxValue = 20, valueStep = 1, get = get("spacing", 2), set = set("spacing") },
+        -- (between the bars, as the raid's Spacing: 0 makes them touch)
+        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = 10, minValue = 0, maxValue = 40, valueStep = 1,
+          get = function() Gaps(GetDb()); return get("spacing", 10)() end, set = set("spacing"),
+          desc = L["The gap between the bars. 0 makes them touch."] },
         { name = L["Tank Targets"], kind = LEM.SettingType.Dropdown, default = "OFF",
           values = { { text = L["Off"], value = "OFF", isRadio = true },
                      { text = L["Bottom of the Frame"], value = "BOTTOM", isRadio = true },
@@ -1027,10 +1051,7 @@ local function BuildTankSettings()
           get = get("tankTargets", "OFF"), set = set("tankTargets"),
           desc = L["What each main tank is targeting, in a small frame below or right of theirs."] },
     })
-    Section("Auras", AuraItems(get, set, d, tankView))
-    Section("Aura Ordering", ns.AuraOrder.Items(get, set))
-    -- always last: the frames' fonts (11-13, UnitFrames.lua UF.FontItems)
-    if ns.UnitFrames and ns.UnitFrames.FontItems then Section("Fonts", ns.UnitFrames.FontItems("raid", false, true)) end
+    Section("Auras", ns.AuraOrder.With(AuraItems(get, set, d, tankView), get, set))
     return settings
 end
 

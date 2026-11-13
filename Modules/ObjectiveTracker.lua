@@ -2117,7 +2117,7 @@ local function BuildSettings()
         { name = L["Anchor"], kind = LEM.SettingType.Dropdown, default = "auto",
           values = { { text = L["Automatic"], value = "auto", isRadio = true },
                      { text = L["Top"], value = "TOP", isRadio = true }, { text = L["Bottom"], value = "BOTTOM", isRadio = true } },
-          desc = L["The edge the tracker is held by: Top grows it downward, Bottom upward. Automatic picks the edge nearest the screen's."],
+          desc = L["The edge that stays put as the tracker grows:\n* Automatic: whichever edge is nearer the edge of the screen\n* Top: grows downward\n* Bottom: grows upward"],
           get = function()
               local db = GetDb()
               local anchor = db and db.anchor
@@ -2132,15 +2132,6 @@ local function BuildSettings()
               OT:Render()
           end },
     })
-    local otDefaults = ns.defaults and ns.defaults.profile and ns.defaults.profile.objectivetracker or {}
-    Section("Fonts", ns.EditFonts({
-        id = "qt",
-        texts = { { key = "headerFont", name = L["Header"] }, { key = "titleFont", name = L["Quest Names"] },
-                  { key = "objectiveFont", name = L["Objectives"] } },
-        font = function(key) local db = GetDb(); return db and db[key] end,
-        default = function(key) return otDefaults[key] end,
-        apply = function() OT:Refresh() end,
-    }))
     return settings
 end
 

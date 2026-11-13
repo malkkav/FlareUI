@@ -21,6 +21,7 @@ end
 
 S:Module{
     key = "uf", group = "combat", order = 20, enabled = "unitframes.enabled",
+    tabs = { { key = "settings" }, { key = "fonts" } },
     -- the frames behind the shared Player / Pet / Target / Focus row
     editFrames = {
         function() return _G.FlareUI_UF_Player end, function() return _G.FlareUI_UF_Target end,
@@ -82,6 +83,28 @@ S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", cho
 S:Row{ key = "uf.auraTimerColor", path = "unitframes.auraTimerColor", apply = Refresh,
     disabled = function() return (S:GetPath("unitframes.auraTimer") or "none") == "none" end }
 
--- Fonts (11-13): each frame's are in its Edit Mode dialog, the last section there
-S:Row{ key = "uf.fontsEditMode", kind = "button", section = "uf.fonts", buttonText = L["Open Edit Mode"],
-    apply = function() S:OpenEditMode("uf") end }
+-- FONTS (11-13, back from Edit Mode): a section per frame, each text a heading; saved per frame
+-- style (UnitFrames.lua UF.FontDb).
+local function FontsApply()
+    if ns.UnitFrames and ns.UnitFrames.Refresh then ns.UnitFrames:Refresh() end
+    -- the totem timers take the player's Aura Timers font (Totems.lua)
+    if ns.Totems and ns.Totems.ApplyLayout then ns.Totems.ApplyLayout() end
+end
+local FONT_FRAMES = {
+    { "player", "uf.fontsPlayer" }, { "target", "uf.fontsTarget" }, { "focus", "uf.fontsFocus" },
+    { "pet", "uf.fontsPet" }, { "targettarget", "uf.fontsTot" }, { "focustarget", "uf.fontsTof" },
+    { "playercast", "uf.fontsCast" }, { "party", "uf.fontsParty" }, { "raid", "uf.fontsRaid" }, { "boss", "uf.fontsBoss" },
+}
+local UFM = ns.UnitFrames
+for _, frame in ipairs(FONT_FRAMES) do
+    local key = frame[1]
+    local fonts = {}
+    for _, element in ipairs(UFM.FontElements(key)) do
+        fonts[#fonts + 1] = {
+            key = element, autoSize = element == "auras" or element == "auraCount",
+            font = function() return UFM.FontDb(key, element) end,
+            default = function() return ns.UF_FONT_DEFAULTS[element] end,
+        }
+    end
+    S:FontRows{ module = "uf", tab = "fonts", section = frame[2], prefix = key, apply = FontsApply, fonts = fonts }
+end
