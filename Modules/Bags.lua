@@ -1402,7 +1402,11 @@ function Bags:Refresh()
     Bags.StyleMoney()
     for _, frame in ipairs(BagFrames()) do
         if frame:IsShown() then
-            if frame == Combined() then Relayout(frame) end
+            if frame == Combined() then
+                local oldWidth = frame:GetWidth()
+                Relayout(frame)
+                if frame:GetWidth() ~= oldWidth and Filter.On() then Filter.Place(frame) end
+            end
             UpdateFrameItems(frame)
         end
     end
