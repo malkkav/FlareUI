@@ -756,7 +756,7 @@ function Upgrade:Is(bagID, slotID, link)
     -- with a two-hander on, the off hand is not free
     local mainLink = GetInventoryItemLink("player", 16)
     local twoHanded = mainLink and select(4, C_Item.GetItemInfoInstant(mainLink)) == "INVTYPE_2HWEAPON"
-    if twoHanded and slots[1] ~= 18 then
+    if twoHanded and (slots[1] == 16 or slots[1] == 17) then
         if slots[1] == 17 then return false end
         slots = { 16 }
     end
