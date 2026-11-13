@@ -2098,10 +2098,11 @@ end
 local fadeDriver = CreateFrame("Frame")
 fadeDriver:Hide()
 local fadeTarget, hideWhenFaded = 1, false
+local autoFading = false
 
 -- runs every frame under Show on Mouseover, so the window callback is made once
 local mouseOverWindow = false
-local function CheckWindowMouse(window) if window:IsMouseOver() then mouseOverWindow = true end end
+local function CheckWindowMouse(window) if window:IsShown() and window:IsMouseOver() then mouseOverWindow = true end end
 
 local function MeterUnderMouse(meter)
     if meter:IsMouseOver() then return true end
@@ -2156,17 +2157,22 @@ local function DownAlpha()
 end
 
 local function FadeStep(self, meter, elapsed)
-    -- at rest under Show on Mouseover it stays on watch: a check every 0.1 s is enough (the bags and
-    -- map are only looked at once the pointer is over the meter)
+    -- While waiting for the cursor, a check every 0.1 s is enough.
     self.restWait = (self.restWait or 0) + elapsed
     if self.atRest and self.restWait < 0.1 then return end
     elapsed = self.restWait
     self.restWait = 0
     local target = fadeTarget
     if meter.FlareUI_MouseHidden then target = (MeterUnderMouse(meter) and not PanelsInTheWay()) and 1 or DownAlpha() end
+    local alpha = meter:GetAlpha()
+    -- Hold a visible meter during auto-hide. Once it reaches its faded opacity, only Show on Mouseover can reveal it.
+    if autoFading and meter:IsShown() and alpha > target and MeterUnderMouse(meter) then
+        -- Discard this frame's time so the fade resumes smoothly on the next frame.
+        self.atRest = false
+        return
+    end
     local db = GetDb()
     local time = ns.FadeTime(db and db.fadeSpeed)
-    local alpha = meter:GetAlpha()
     if time <= 0 then
         alpha = target
     elseif alpha < target then
@@ -2177,6 +2183,7 @@ local function FadeStep(self, meter, elapsed)
     self.atRest = alpha == target and meter:GetAlpha() == target
     if not self.atRest then meter:SetAlpha(alpha) end
     if alpha ~= target then return end
+    autoFading = false
     if target < 1 and DamageMeter.viewBackPending then DamageMeter.ShowDamageViews() end
     if hideWhenFaded and target == 0 then
         hideWhenFaded = false
@@ -2206,8 +2213,10 @@ function DamageMeter.FadingOut()
 end
 
 -- Fades toward target (hide: once at 0); the first step runs now, so an instant change lands first
-local function FadeMeter(meter, target, hide)
+local function FadeMeter(meter, target, hide, autoHide)
     fadeTarget, hideWhenFaded = target, hide and true or false
+    autoFading = autoHide and true or false
+    fadeDriver.atRest, fadeDriver.restWait = false, 0
     fadeDriver:Show()
     FadeStep(fadeDriver, meter, 0)
 end
@@ -2265,7 +2274,7 @@ local function ApplyVisibilityBody(meter)
         return
     end
     -- whether the meter was up (shown, not faded out) before Blizzard's check: a fade starts from there
-    local wasUp = meter.FlareUI_Up
+    local wasUp = meter.FlareUI_Up or autoFading
     -- Edit Mode open: always up, its "Damage Meter" box ticked or not; Blizzard's switch off stays off
     local editing = (type(meter.IsEditing) == "function" and meter:IsEditing()) or (IsEditModeActive() and MeterAllowed())
     meter.FlareUI_MouseHidden = nil
@@ -2273,12 +2282,14 @@ local function ApplyVisibilityBody(meter)
         CancelFadeDelay()
         -- a fade under way (or Show on Mouseover's driver) would take it down again
         fadeTarget, hideWhenFaded = 1, false
+        autoFading = false
         fadeDriver:Hide()
         ShowMeter(meter)
         meter:SetAlpha(1)
         meter.FlareUI_Up = true
     elseif not MeterAllowed() then
         hideWhenFaded = false
+        autoFading = false
         meter:Hide()
         if DamageMeter.viewBackPending then DamageMeter.ShowDamageViews() end
         meter.FlareUI_Up = false
@@ -2290,7 +2301,23 @@ local function ApplyVisibilityBody(meter)
         local shown = ShowMeter(meter)
         meter.FlareUI_Up = shown
         if shown then FadeMeter(meter, 1) end
-    elseif wasUp and meter:IsShown() and FadeDelay(db) > 0 and not DamageMeter.fadeDelayDone then
+    elseif wasUp and not meter:IsShown() and not (meter:GetAlpha() > DownAlpha()
+        and MeterUnderMouse(meter) and not PanelsInTheWay() and ShowMeter(meter)) then
+        -- Blizzard already hid it. Start at the faded opacity if the settings keep the frame up.
+        CancelFadeDelay()
+        autoFading, hideWhenFaded = false, false
+        fadeDriver:Hide()
+        if DamageMeter.viewBackPending then DamageMeter.ShowDamageViews() end
+        meter.FlareUI_Up = false
+        local down = DownAlpha()
+        if db.showOnMouseover or down > 0 then
+            meter:SetAlpha(down)
+            if ShowMeter(meter) and db.showOnMouseover then
+                meter.FlareUI_MouseHidden = true
+                FadeMeter(meter, down)
+            end
+        end
+    elseif wasUp and not autoFading and FadeDelay(db) > 0 and not DamageMeter.fadeDelayDone then
         -- Fade Delay: it stays up for a while, then this check runs again and lets it go
         if not DamageMeter.fadeDelayTimer then
             DamageMeter.fadeDelayTimer = C_Timer.NewTimer(FadeDelay(db), function()
@@ -2311,14 +2338,15 @@ local function ApplyVisibilityBody(meter)
         -- Faded Opacity: faded, not gone (held back in a fight like any show, ShowMeter)
         meter.FlareUI_Up = false
         if not wasUp and not meter:IsShown() then meter:SetAlpha(0) end
-        if ShowMeter(meter) then FadeMeter(meter, DownAlpha()) end
+        if ShowMeter(meter) then FadeMeter(meter, DownAlpha(), false, wasUp) end
     elseif wasUp then
         -- it was up: on screen for its fade out, hidden at the end (already hidden: nothing to fade)
         meter.FlareUI_Up = false
-        if meter:IsShown() then
-            FadeMeter(meter, 0, true)
+        if ShowMeter(meter) then
+            FadeMeter(meter, 0, true, true)
         else
             hideWhenFaded = false
+            autoFading = false
         end
     else
         hideWhenFaded = false
@@ -2359,7 +2387,9 @@ function DamageMeter:ApplyVisibility()
     local meter = _G.DamageMeter
     if not meter then return end
     -- in the chat the tab decides, not Blizzard's verdict (the meter is never hidden there)
-    if not self:ChatTabAvailable() and not InCombatLockdown() and type(meter.ShouldBeShown) == "function" then
+    -- An expired fade delay starts the fade from the currently shown frame.
+    if not (self.fadeDelayDone and meter:IsShown()) and not self:ChatTabAvailable()
+        and not InCombatLockdown() and type(meter.ShouldBeShown) == "function" then
         local ok, should = pcall(meter.ShouldBeShown, meter)
         if ok and (not should or not InFight()) then meter:SetShown(should and true or false) end
     end
@@ -2456,6 +2486,7 @@ function ApplyChatTab(meter, db)
     end
     meter.FlareUI_MouseHidden = nil
     hideWhenFaded = false
+    autoFading = false
     -- never hidden (a fight allows alpha, not Show); its first showing starts from nothing
     if not meter:IsShown() then meter:SetAlpha(0) end
     if not ShowMeter(meter) then
