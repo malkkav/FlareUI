@@ -12,6 +12,7 @@
 ## Category-frFR: Interface
 ## Category-itIT: Interfaccia
 ## Category-koKR: 인터페이스
+## Category-nlNL: Gebruikersinterface
 ## Category-ptBR: Interface
 ## Category-ruRU: Интерфейс
 ## Category-zhCN: 界面
@@ -41,6 +42,7 @@ Locales\esMX.lua
 Locales\frFR.lua
 Locales\itIT.lua
 Locales\koKR.lua
+Locales\nlNL.lua
 Locales\ptBR.lua
 Locales\ruRU.lua
 Locales\zhCN.lua
