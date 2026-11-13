@@ -698,6 +698,32 @@ local function GetBindingKeyForButton(button)
     return key
 end
 
+-- Blizzard's range dot: the "●" a button without a key shows while you have a target, red out of
+-- range (6.3.2). Status Colouring on: no dot, the button's own red says it. Off: Blizzard's dot, in
+-- Arial Narrow (Blizzard's keybind font) at the Keybinds size, as a chosen face may have no "●" and
+-- draw a "?" box (a player's screenshot).
+local function RangeDotWanted(db)
+    return not (db and db.colors and db.colors.enableRange)
+end
+local function SetRangeDot(hotkey, db)
+    if RangeDotWanted(db) then
+        local font = db and db.hotkeyFont or {}
+        ns.SetFont(hotkey, "Fonts\\ARIALN.TTF", font.size or 12, (font.flags == "NONE" and "") or font.flags or "OUTLINE")
+        hotkey.fuiRangeDot = true
+        hotkey:SetText(RANGE_INDICATOR)
+    else
+        hotkey:SetText("")
+    end
+    hotkey:Hide()   -- (Blizzard shows the dot with a target)
+end
+-- the pet bar's buttons: only the dot, their keys are looked up another way
+function ActionBars.PetRangeDot(button)
+    local hotkey = button and button.HotKey
+    if not hotkey then return end
+    local text = hotkey:GetText()
+    if text == RANGE_INDICATOR or (text or "") == "" then SetRangeDot(hotkey, GetBarConfig()) end
+end
+
 local function FontArgs(font)
     return ns.GetFontPath(font.face), font.size, (font.flags == "NONE" and "") or font.flags or "OUTLINE"
 end
@@ -709,13 +735,17 @@ local function UpdateHotkeyText(button)
     local db = GetBarConfig()
     if not db then return end
 
-    if db.hideHotkeys then
-        hotkey:Hide()
-        return
-    end
     local key = GetBindingKeyForButton(button)
     if not key or key == "" then
-        hotkey:SetText(RANGE_INDICATOR)
+        SetRangeDot(hotkey, db)
+        return
+    end
+    -- a key after a range dot: the Keybinds font back
+    if hotkey.fuiRangeDot then
+        hotkey.fuiRangeDot = nil
+        ns.SetFont(hotkey, FontArgs(db.hotkeyFont or {}))
+    end
+    if db.hideHotkeys then
         hotkey:Hide()
         return
     end
@@ -1647,6 +1677,8 @@ function ActionBars:Init()
         if not btn.FlareUI_ButtonHooked then
             btn.FlareUI_ButtonHooked = true
             if btn.UpdateHotkeys then ActionBars:SecureHook(btn, "UpdateHotkeys", UpdateHotkeyText) end
+            -- (the pet bar's buttons set theirs in SetHotkeys: the range dot as on the others)
+            if btn.SetHotkeys and not btn.UpdateHotkeys then ActionBars:SecureHook(btn, "SetHotkeys", ActionBars.PetRangeDot) end
             if btn.UpdateUsable then ActionBars:SecureHook(btn, "UpdateUsable", OnUpdateUsable) end
             if btn.UpdateAction then ActionBars:SecureHook(btn, "UpdateAction", OnUpdateAction) end
         end

@@ -58,13 +58,16 @@ function dropdownMixin:Setup(data)
 		end)
 	elseif data.values then
 		self.Dropdown:SetupMenu(function(_, rootDescription)
-			if data.height then
-				rootDescription:SetScrollMode(data.height)
-			end
-
 			local values = data.values
 			if type(values) == 'function' then
 				values = values()
+			end
+
+			if data.height then
+				rootDescription:SetScrollMode(data.height)
+			elseif #values > 20 then
+				-- FlareUI: a long list (media packs: hundreds of textures or fonts) scrolls, 20 entries tall
+				rootDescription:SetScrollMode(20 * 20)
 			end
 
 			for _, value in next, values do

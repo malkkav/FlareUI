@@ -1,3 +1,13 @@
+# FlareUI 6.3.2
+
+## Changed
+- Action bars: buttons without a keybind no longer show Blizzard's range dot while **Status Colouring** is on; the button turns red out of range instead. With Status Colouring off, the dot is back. Thanks for the report!
+
+## Fixed
+- Action bars: the range dot no longer shows as a "?" box with some keybind fonts. Thanks for the report!
+- Settings and Edit Mode: long dropdowns, such as fonts from a font pack, scroll after 20 entries instead of running off the screen. Thanks for the report!
+- Bags: **Uncollected Appearances** only marks weapons and armour that can change your look.
+
 # FlareUI 6.3.1
 
 ## Fixed

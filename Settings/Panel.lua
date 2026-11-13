@@ -826,7 +826,11 @@ local function SetupChoiceMenu(dropdown, f)
     dropdown:SetupMenu(function(_, root)
         local row = f.row
         if not row then return end
-        for _, c in ipairs(row:Choices()) do
+        local choices = row:Choices()
+        -- a long list (font packs bring hundreds of fonts) scrolls, 20 entries tall (6.3.2, a player's
+        -- request): without it the menu ran off the screen with no way to reach the rest
+        if #choices > 20 and root.SetScrollMode then root:SetScrollMode(20 * 20) end
+        for _, c in ipairs(choices) do
             if c.divider then
                 root:CreateDivider()
             elseif row.toggles then

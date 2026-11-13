@@ -863,9 +863,19 @@ local function ItemLevelOf(link)
     return level or nil
 end
 
+-- (6.3.2, a player's screenshot: the mark showed on potions, scrolls and spells' items) only weapons
+-- and armour worn where it shows can have an appearance; Forever's appearance lookup answers for
+-- anything, so the item's kind is checked first
+local NO_APPEARANCE = { [""] = true, INVTYPE_NECK = true, INVTYPE_FINGER = true, INVTYPE_TRINKET = true,
+    INVTYPE_BAG = true, INVTYPE_QUIVER = true, INVTYPE_AMMO = true, INVTYPE_RELIC = true, INVTYPE_NON_EQUIP_IGNORE = true }
 local function Uncollected(link)
     local known = uncollected[link]
     if known ~= nil then return known end
+    local _, _, _, equipLoc, _, classID = C_Item.GetItemInfoInstant(link)
+    if not (classID == 2 or classID == 4) or NO_APPEARANCE[equipLoc or ""] then   -- 2 weapon, 4 armour
+        uncollected[link] = false
+        return false
+    end
     local T = C_TransmogCollection
     if not (T and T.GetItemInfo) then return false end
     local ok, _, sourceID = pcall(T.GetItemInfo, link)
