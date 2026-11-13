@@ -31,7 +31,6 @@ local BARS = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swi
 -- the header button opens Edit Mode on the first bar that exists
 S:Module{
     key = "rb", group = "combat", order = 30, enabled = "unitframes.resource.enabled",
-    tabs = { { key = "settings" }, { key = "fonts" } },
     editMode = function()
         for _, key in ipairs(BARS) do
             if _G["FlareUI_Resource_" .. key] then return _G["FlareUI_Resource_" .. key] end
@@ -60,6 +59,6 @@ S:Row{
     apply = function() if ns.ColorPicker then ns.ColorPicker.Open("rb") end end,
 }
 
-S:FontRows{ module = "rb", tab = "fonts", section = "rb.fonts", apply = Refresh, fonts = {
-    { key = "text", path = "unitframes.resource.font" },
-} }
+-- Fonts (11-13): each frame's are in its Edit Mode dialog, the last section there
+S:Row{ key = "rb.fontsEditMode", kind = "button", section = "rb.fonts", buttonText = L["Open Edit Mode"],
+    apply = function() S:OpenEditMode("rb") end }

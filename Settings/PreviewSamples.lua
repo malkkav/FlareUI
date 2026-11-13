@@ -242,12 +242,21 @@ function R.minimap(outer, spec)
     local scale = math.min((outer.width - 12) / 280, (outer.height - (card and 4 or 36)) / 280)
     c.frame:SetScale(scale); c.frame:ClearAllPoints()
     c.frame:SetPoint('TOPLEFT', outer.frame, 'TOPLEFT', (outer.width - 280 * scale) / (2 * scale), 0)
-    local style = spec.key == 'mm.style' and spec.value or Get('minimap.style', 'square')
+    -- (11-13) three looks: Headerless and Bordered (the square map's two tops) and Round
+    local look = spec.key == 'mm.style' and spec.value
+    if not look then
+        look = Get('minimap.style', 'square') == 'round' and 'round' or (Get('minimap.squareHeader', 'headerless') == 'art' and 'bordered' or 'headerless')
+    end
+    local style = look == 'round' and 'round' or 'square'
     local size, x, y = 244, 18, 18
     local terrain = c:Texture(style == 'round' and 'roundTerrain' or 'squareTerrain', P.MEDIA .. 'Art\\Tour\\Minimap.png', x, y, size, size)
     terrain:SetDrawLayer('BACKGROUND')
     terrain:SetTexCoord(35 / 512, 247 / 512, 35 / 512, 247 / 512)
-    if style == 'square' then
+    if look == 'bordered' then
+        -- the frame's title bar over the map, the zone and clock in it
+        c:Box('mapBorder', x - 4, y - 4, size + 8, size + 8, 'FlareUI Frames', 0)
+        c:Box('mapHeader', x - 2, y - 2, size + 4, 29, 'FlareUI Frames', 1)
+    elseif style == 'square' then
         c:Box('mapBorder', x - 4, y - 4, size + 8, size + 8, 'FlareUI Frames', 0)
         c:Box('mapHeader', x + 2, y + 2, size - 4, 25, 'FlareUI Thin', 0.9)
     else
@@ -259,7 +268,17 @@ function R.minimap(outer, spec)
     c:Text('zoneName', L["Deathknell"], round and 76 or x + 12, round and 48 or y + 8, round and 128 or size - 80, { size = 12 })
     c:Text('stats', '17:49', round and 108 or x + size - 60, round and 224 or y + 8, 65, { size = 11 })
     if Get('minimap.coords', 'hover') == 'always' then c:Text('coords', '48.2, 36.7', x + 65, y + size - 20, 130, { size = 12 }) end
-    if Get('minimap.fps', 'off') == 'always' then c:Text('fps', '60', x + size - 48, y + size - 20, 30, { size = 12 }) end
+    -- framerate and latency, stacked as on the map (the one shown always at the bottom)
+    local fps, lat = Get('minimap.fps', 'off'), Get('minimap.latency', 'off')
+    local lines = {}
+    local function Latency() lines[#lines + 1] = '36 (w) ms'; lines[#lines + 1] = '32 (h) ms' end
+    if fps ~= 'off' and lat ~= 'off' then
+        if fps == 'always' and lat == 'hover' then lines[1] = '60 fps'; Latency() else Latency(); lines[#lines + 1] = '60 fps' end
+    elseif fps ~= 'off' then lines[1] = '60 fps'
+    elseif lat ~= 'off' then Latency() end
+    for i, text in ipairs(lines) do
+        c:Text('stat' .. i, text, x + size - 86, y + size - 20 - (i - 1) * 15, 76, { size = 12 }):SetJustifyH('RIGHT')
+    end
     -- Icons live on the overlay frame, above every border/backdrop frame.
     c:Texture('dayNight', P.MEDIA .. 'Previews\\Sun.tga', 10, 237, 32, 32, true)
     if spec.key == 'mm.bagHover' and not card then c:Texture('drawerPointer',P.MEDIA..'Previews\\Cursor.tga',20,243,24,32,true) end
@@ -889,7 +908,10 @@ local OWN = {
     -- the style cards keep their drawing (they show a style that may not be the one in use)
     -- a style card shows its own style
     minimap = { 'Minimap', function(spec, c)
-        if c.isStyleCard or c.height < 120 then return spec.value == 'round' and 'round' or 'square' end
+        if c.isStyleCard or c.height < 120 then
+            local v = spec.value
+            return (v == 'round' or v == 'bordered' or v == 'headerless') and v or 'square'
+        end
         return spec.key == 'mm.microMenu' and 'menu' or 'map'
     end },
 }

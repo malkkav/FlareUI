@@ -408,7 +408,7 @@ local function UpdateHealth(f, glide)
     elseif mode == "none" then
         text:SetText("")
     else
-        K.FormatBarText(text, mode, UnitHealth(unit), UnitHealthPercent(unit, true, K.percentCurve), UnitHealthMax(unit))
+        K.FormatBarText(text, mode, UnitHealth(unit), UnitHealthPercent(unit, true, K.percentCurve), UnitHealthMax(unit), unit)
     end
 end
 
@@ -684,10 +684,13 @@ local function UpdateTarget(f)
             hl.PlateGlow = hl:CreateTexture(nil, "OVERLAY")
             hl.PlateGlow:SetBlendMode("ADD")
         end
-        pcall(hl.PlateGlow.SetAtlas, hl.PlateGlow, ns.UFRing.STRIP_ATLAS, false)
-        hl.PlateGlow:SetVertexColor(1, 1, 1, 0.9)
-        hl.PlateGlow:ClearAllPoints()
-        hl.PlateGlow:SetAllPoints(plate)
+        if hl.plateFor ~= plate then
+            hl.plateFor = plate
+            pcall(hl.PlateGlow.SetAtlas, hl.PlateGlow, ns.UFRing.STRIP_ATLAS, false)
+            hl.PlateGlow:SetVertexColor(1, 1, 1, 0.9)
+            hl.PlateGlow:ClearAllPoints()
+            hl.PlateGlow:SetAllPoints(plate)
+        end
         hl.PlateGlow:Show()
     elseif hl.PlateGlow then
         hl.PlateGlow:Hide()
@@ -1004,10 +1007,13 @@ local function InitDispelIcon(button, size, inside)
     NoAuraTooltip(nil, button)   -- (dispel icons: party and raid tiles only)
 end
 
+-- a tile's fonts (11-13): its context's (raid, boss), else the party frames'
+function PF.FontKey(f) return f and f.ctx and f.ctx.fontKey or "party" end
+
 -- inside the frame: no timer, whatever the Aura Timer setting (it would cover the bars and names)
-local function LaneLook(size, isDebuff, inside)
+local function LaneLook(size, isDebuff, inside, f)
     local timer = inside and "none" or UFAura("auraTimer", "none")
-    return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, UFAura("auraStyle", "square"), "both", timer)
+    return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, UFAura("auraStyle", "square"), "both", timer, PF.FontKey(f))
 end
 
 -- Where a place's auras start and which way they grow
@@ -1170,7 +1176,7 @@ local function ConfigurePosition(f, pos, lanes)
     if portrait then max, perRow = 4, 2 end
     local inside = portrait or pos:find("^INSIDE") ~= nil
     local showTimer = not inside and UFAura("auraTimer", "none") ~= "none"
-    local font = db and db.font
+    local font = K.Font(PF.FontKey(f), "auras")
     local unit = f.fuiUnit
     -- Aura Ordering: the buffs and debuffs rows (dispel icons keep Blizzard's)
     local order = TS(f)
@@ -1181,7 +1187,7 @@ local function ConfigurePosition(f, pos, lanes)
         local sorted = lane.key == "buffs" or lane.key == "debuffs" or lane.key == "purge"
         -- each kind at its own size (the portrait grid keeps its cell)
         local size = portrait and size or ns.AuraSize(st, isDebuff, 18)
-        local look = kind ~= "dispels" and LaneLook(size, isDebuff, inside) or nil
+        local look = kind ~= "dispels" and LaneLook(size, isDebuff, inside, f) or nil
         if look and lane.stealable then look.stealable = true end   -- Highlight Purgeable Buffs (boss tiles)
         local lookSig = ns.AuraGroups.Sig(kind, size, isDebuff, inside, font, showTimer, look)
         local key, err = ns.AuraGroups.Add(container, entry, lane.key, lookSig, lane.filter, {
@@ -1241,8 +1247,8 @@ local function ConfigureAuras(f)
     -- rebuilt only when what shapes the groups changes: the places and sizes, plus the lanes and a
     -- look as computed, so a new aura rule or look setting can't be missed here
     local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.buffSize, st.debuffSize, st.width, st.height, st.powerHeight, st.portrait, st.ringSize, (DispelGrid(f)), f.ringKind, AuraGrid(st),
-        ns.AuraGroups.Sig(UFAura("font")), st.castbar, st.castHeight, OnPlate(f), IsEditing(), st.auraSort, st.auraReverse, st.auraMineFirst,
-        ns.AuraGroups.Sig(lanes), ns.AuraGroups.Sig(LaneLook(10, false, false)))
+        ns.AuraGroups.Sig(K.Font(PF.FontKey(f), "auras")), st.castbar, st.castHeight, OnPlate(f), IsEditing(), st.auraSort, st.auraReverse, st.auraMineFirst,
+        ns.AuraGroups.Sig(lanes), ns.AuraGroups.Sig(LaneLook(10, false, false, f)))
     if f.auraSignature == sig then return end
     f.auraSignature = sig
     local perPos = {}
@@ -1497,14 +1503,13 @@ end
 
 local function LayoutTexts(f)
     local st, raid = TS(f), RaidTile(f)
-    local db = K.GetDb()
-    local font = db and db.font
+    local key = PF.FontKey(f)
     -- FlareUI Style: the level is in the ring's disc (UnitFramesRing.lua lays it out)
     local levelOnRing = f.ringKind ~= nil
-    K.ApplyFont(f.Name, font)
-    if not levelOnRing then K.ApplyFont(f.Level, font) end
-    K.ApplyFont(f.HealthText, font)
-    K.ApplyFont(f.PowerText, db and (db.fontPower or db.font))
+    K.ApplyFont(f.Name, K.Font(key, "names"))
+    if not levelOnRing then K.ApplyFont(f.Level, K.Font(key, "level")) end
+    K.ApplyFont(f.HealthText, K.Font(key, "health"))
+    K.ApplyFont(f.PowerText, K.Font(key, "power"))
     local health, power = f.Health, f.Power
     local T = K.TEXT_INSET
     f.Name:ClearAllPoints()
@@ -1698,7 +1703,9 @@ local function LayoutMember(f)
             local clear = ns.UFRing.Clearance(f, K.CAST_GAP)
             if f.ringSide == "LEFT" then leftExtra = clear else rightExtra = clear end
         end
-        K.LayoutCastBar(f.Cast, CastStyle(st), f, "BOTTOM", leftExtra, rightExtra)
+        local castStyle = CastStyle(st)
+        castStyle.fontKey = PF.FontKey(f)
+        K.LayoutCastBar(f.Cast, castStyle, f, "BOTTOM", leftExtra, rightExtra)
         -- the auras below move down while it shows (in a fight too: they are not protected)
         f.Cast.onShownChanged = f.Cast.onShownChanged or function()
             for _, pos in ipairs(BELOW_PLACES) do
@@ -1773,8 +1780,8 @@ local function LayoutPet(p)
     p.Health:ClearAllPoints()
     p.Health:SetPoint("TOPLEFT", p, "TOPLEFT", PADDING, -PADDING)
     p.Health:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -PADDING, PADDING)
-    local db = K.GetDb()
-    K.ApplyFont(p.Name, ScaledFont(db and db.font, math_max(8, math_min((db and db.font and db.font.size) or 12, height - 4))))
+    local names = K.Font("party", "names")
+    K.ApplyFont(p.Name, ScaledFont(names, math_max(8, math_min(names.size or 12, height - 4))))
     p.Name:ClearAllPoints()
     p.Name:SetPoint("LEFT", p.Health, "LEFT", K.TEXT_INSET, 0)
     p.Name:SetPoint("RIGHT", p.Health, "RIGHT", -K.TEXT_INSET, 0)
@@ -1815,8 +1822,8 @@ local function LayoutTarget(t)
     t.Health:ClearAllPoints()
     t.Health:SetPoint("TOPLEFT", t, "TOPLEFT", PADDING, -PADDING)
     t.Health:SetPoint("BOTTOMRIGHT", t, "BOTTOMRIGHT", -PADDING, PADDING)
-    local db = K.GetDb()
-    K.ApplyFont(t.Name, ScaledFont(db and db.font, math_max(8, math_min((db and db.font and db.font.size) or 12, height - 2 * PADDING - 4))))
+    local names = K.Font("party", "names")
+    K.ApplyFont(t.Name, ScaledFont(names, math_max(8, math_min(names.size or 12, height - 2 * PADDING - 4))))
     t.Name:ClearAllPoints()
     t.Name:SetPoint("LEFT", t.Health, "LEFT", K.TEXT_INSET, 0)
     t.Name:SetPoint("RIGHT", t.Health, "RIGHT", -K.TEXT_INSET, 0)
@@ -2055,7 +2062,7 @@ local function PreviewAura(f, n, size, isDebuff, texture, dispelKey)
         b = CreateFrame("Frame", nil, f)
         f.previewAuras[n] = b
     end
-    local look = LaneLook(size, isDebuff, true)
+    local look = LaneLook(size, isDebuff, true, f)
     if look and ns.AuraLook then
         ns.AuraLook.Style(b, look)
         b.FlareUI_Icon:SetTexture(texture)
@@ -2904,6 +2911,8 @@ local function BuildSettings()
         { name = L["Target Border"], kind = LEM.SettingType.Dropdown, default = D.targetBorder, values = K.BuildBorderValues(false),
           get = getS("targetBorder"), set = setS("targetBorder"), hidden = function() return noTargets() or K.NoBorderOptions() end },
     })
+    -- always last: the frames' fonts (11-13, UnitFrames.lua UF.FontItems)
+    if ns.UnitFrames and ns.UnitFrames.FontItems then Section("Fonts", ns.UnitFrames.FontItems("party", true, true)) end
     return settings
 end
 

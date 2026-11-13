@@ -80,13 +80,19 @@ function dropdownMixin:Setup(data)
 						widget = self,
 					})
 				else
-					rootDescription:CreateRadio(value.text, get, set, {
+					local radio = rootDescription:CreateRadio(value.text, get, set, {
 						get = data.get,
 						set = data.set,
 						value = value.value or value.text,
 						multiple = data.multiple,
 						widget = self,
 					})
+					-- FlareUI: { fontFace = "Name" } draws the choice in that font (the Fonts sections)
+					if value.fontFace and radio and radio.AddInitializer and ns.SetFontFamily and ns.GetFontPath then
+						radio:AddInitializer(function(button)
+							if button.fontString then ns.SetFontFamily(button.fontString, ns.GetFontPath(value.fontFace), 13, '') end
+						end)
+					end
 				end
 			end
 		end)

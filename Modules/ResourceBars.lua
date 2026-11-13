@@ -82,9 +82,9 @@ local POWER_TEXT_VALUES = {
 local TEXT_VALUES = {
     { text = L["Off"],             value = "none",    isRadio = true },
     { text = L["Percent"],         value = "percent", isRadio = true },
+    { text = L["Percent | Value"], value = "both",    isRadio = true },
     { text = L["Value"],           value = "value",   isRadio = true },
-    { text = L["Value | Percent"], value = "both",    isRadio = true },
-    { text = L["Current (Max)"],   value = "valuemax", isRadio = true },
+    { text = L["Value [Max]"],     value = "valuemax", isRadio = true },
 }
 
 local bars = {}            -- key -> holder
@@ -107,6 +107,25 @@ end
 local function PlayerClassColors()
     local db = K.GetDb()
     return ns.ClassColorsOn(db and db.units and db.units.player)
+end
+
+-- Each bar's font (11-13): once per profile, every bar with text starts from the shared font plus its
+-- old size step (textSize)
+function RB.SeedFonts()
+    local rdb = GetResourceDb()
+    if not rdb or rawget(rdb, "barFontsSeeded") then return end
+    rdb.barFontsSeeded = true
+    local from = rdb.font
+    if type(from) ~= "table" then return end
+    for key, info in pairs(BARS) do
+        local to = info.textSize and rdb.bars and rdb.bars[key] and rdb.bars[key].font
+        if type(to) == "table" then
+            for _, field in ipairs({ "face", "flags", "enableShadow", "shadowX", "shadowY" }) do
+                if from[field] ~= nil then to[field] = from[field] end
+            end
+            to.size = (from.size or 10) + info.textSize
+        end
+    end
 end
 
 local function Cfg(key)
@@ -317,7 +336,7 @@ end
 --------------------------------------------------
 -- 5. UPDATERS
 --------------------------------------------------
--- max: only the health bar's Current (Max) uses it (the unit frames' formats)
+-- max: only the health bar's Value [Max] uses it (the unit frames' formats)
 local function SetText(holder, mode, value, percent, max)
     K.FormatBarText(holder.Text, mode, value, percent, max)
 end
@@ -789,10 +808,9 @@ local function LayoutBar(holder)
     local kind = info.kind
     local PADDING = BarPadding(cfg, cfg.height or 14)
     ApplyFrameLook(holder, cfg)
-    local rdb = GetResourceDb()
-    local font = rdb and rdb.font
-    -- the Fonts tab size plus the bar's textSize
-    if info.textSize and font then font = setmetatable({ size = (font.size or 10) + info.textSize }, { __index = font }) end
+    -- the bar's own font (Edit Mode > Fonts)
+    RB.SeedFonts()
+    local font = cfg.font
 
     if kind == "combo" then
         holder.count = ComboCount()
@@ -1211,6 +1229,30 @@ local function BuildSettings(key)
     -- last: Fade Group, Visibility, Fade Speed and Faded Opacity, as on the action bars (Visibility.lua)
     if ns.Visibility and ns.Visibility.ResourceBarSettings then
         Section("Fading", ns.Visibility:ResourceBarSettings(key))
+    end
+    -- always last: the bar's text font (11-13); Apply to All: every bar with text takes it
+    if info.textSize then
+        Section("Fonts", ns.EditFonts({
+            id = "rb." .. key, group = "rb",
+            texts = { { key = "font", name = L["Bar Text"] } },
+            font = function() RB.SeedFonts(); local cfg = Cfg(key); return cfg and cfg.font end,
+            default = function() return defaults.font end,
+            apply = function() RB:Refresh() end,
+            all = { text = L["Apply to All"], desc = L["Every resource bar takes this bar's font."],
+                    run = function()
+                        local from = Cfg(key)
+                        from = from and from.font
+                        if not from then return end
+                        for other, otherInfo in pairs(BARS) do
+                            local to = other ~= key and otherInfo.textSize and Cfg(other)
+                            to = to and to.font
+                            if to then
+                                for _, field in ipairs({ "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }) do to[field] = from[field] end
+                            end
+                        end
+                        RB:Refresh()
+                    end },
+        }))
     end
     return settings
 end
@@ -1781,8 +1823,8 @@ local function SealInit(seal, holder)
         part.Time:SetJustifyH("RIGHT")
         Seal.parts[seal.key] = part
         local cfg = Cfg("seal") or {}
-        local rdb = GetResourceDb()
-        LayoutPart(part, holder, cfg, rdb and rdb.font)
+        RB.SeedFonts()
+        LayoutPart(part, holder, cfg, cfg.font)
         -- the game fills the bar and writes the time (both secret in a fight)
         local E = Enum or {}
         pcall(button.SetDurationBar, button, part.Bar, {

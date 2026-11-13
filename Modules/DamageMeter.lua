@@ -828,6 +828,7 @@ local THREAT_EVENTS = { "UNIT_THREAT_LIST_UPDATE", "UNIT_THREAT_SITUATION_UPDATE
     "GROUP_ROSTER_UPDATE", "UNIT_PET", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }
 
 local views = {}                 -- session window -> its threat tab, hit area, list and state
+local Solo = {}                  -- Threat > Separate Window (16b): frame, view, proxy, hidden
 local UpdateThreatViews          -- defined below the list code
 
 -- canaccessvalue first: a secret is never compared, not even with nil
@@ -1227,7 +1228,7 @@ threatDriver:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 local function WatchThreat()
-    local any = false
+    local any = Solo.view and Solo.view.showing or false
     for _, view in pairs(views) do if view.showing then any = true end end
     if any == threatWatching then return end
     threatWatching = any
@@ -1253,24 +1254,28 @@ local function ViewSeen(view)
 end
 
 -- A list nobody can see is not redrawn, only marked stale; staleOnly redraws just those once seen
-function UpdateThreatViews(staleOnly)
-    threatDriver.stale = nil
-    for window, view in pairs(views) do
-        if view.showing and (view.stale or not staleOnly) then
-            if ViewSeen(view) then
-                view.stale = nil
-                SafeCall(UpdateThreatView, window, view)
-            else
-                view.stale = true
-                threatDriver.stale = true
-            end
+local function UpdateOne(window, view, staleOnly)
+    if view.showing and (view.stale or not staleOnly) then
+        if ViewSeen(view) then
+            view.stale = nil
+            SafeCall(UpdateThreatView, window, view)
+        else
+            view.stale = true
+            threatDriver.stale = true
         end
     end
+end
+function UpdateThreatViews(staleOnly)
+    threatDriver.stale = nil
+    for window, view in pairs(views) do UpdateOne(window, view, staleOnly) end
+    if Solo.view then UpdateOne(Solo.proxy, Solo.view, staleOnly) end
 end
 
 local function SetView(window, showThreat)
     local view = views[window]
     if not view then return end
+    local db = GetDb()
+    if db and db.threatWindow then showThreat = false end
     view.showing = showThreat and true or false
     view.frame:SetShown(view.showing)
     SetBlizzardListShown(window, not view.showing)
@@ -1303,6 +1308,7 @@ function DamageMeter.PreviewThreat()
     for window, view in pairs(views) do
         if view.showing then SafeCall(UpdateThreatView, window, view) else SetView(window, true) end
     end
+    if Solo.view and Solo.view.showing then SafeCall(UpdateThreatView, Solo.proxy, Solo.view) end
 end
 
 function DamageMeter.EndThreatPreview()
@@ -1310,12 +1316,20 @@ function DamageMeter.EndThreatPreview()
     DamageMeter.threatPreviewing = nil
     local threat = ThreatPicked()
     for window in pairs(views) do SetView(window, threat) end
+    if Solo.view and Solo.view.showing then SafeCall(UpdateThreatView, Solo.proxy, Solo.view) end
+end
+
+-- Settings: Separate Window just switched on
+function DamageMeter.PlaceThreatWindow()
+    if Solo.Apply then Solo.Apply() end
+    if Solo.PlaceBesideMeter then SafeCall(Solo.PlaceBesideMeter) end
 end
 
 function DamageMeter.RedrawThreat()
     for window, view in pairs(views) do
         if view.showing then SafeCall(UpdateThreatView, window, view) end
     end
+    if Solo.view and Solo.view.showing then SafeCall(UpdateThreatView, Solo.proxy, Solo.view) end
 end
 
 -- The toggle flips every window from what is on screen, not from the saved pick
@@ -1327,6 +1341,12 @@ end
 
 -- The radial menu's "Toggle Threat Meter" runs this
 function FlareUI_ToggleThreatMeter()
+    local db = GetDb()
+    if db and db.threatWindow and Solo.Apply then
+        Solo.hidden = not Solo.hidden
+        Solo.Apply()
+        return
+    end
     if next(views) then
         ToggleThreatViews()
     else
@@ -1550,7 +1570,207 @@ local function ApplyThreatTab(window)
     if db then
         for _, row in ipairs(view.rows) do ApplyBarFont(row, db) end
     end
-    SetView(window, view.showing)
+    -- Separate Window: no Threat tab on the meter (its list has a window of its own)
+    local separate = db and db.threatWindow and true or false
+    view.tab:SetShown(not separate)
+    view.hit:SetShown(not separate)
+    SetView(window, (not separate) and (view.showing or ThreatPicked()))
+end
+
+--------------------------------------------------
+-- 16b. SEPARATE THREAT WINDOW (Threat > Separate Window, 11-13, a player's request)
+-- The threat list in a window of its own, in the meter's look: moved and sized in Edit Mode, with
+-- sample rows there. A child of Blizzard's meter, so it shows, hides and fades with it (Visibility,
+-- Show on Mouseover). Its bars follow the first meter window's bar settings (height, spacing,
+-- icons, style, class colours); its size starts as that window's.
+--------------------------------------------------
+do
+    local LEM = LibStub("FlareEditMode")
+    local DEFAULTS = { point = "CENTER", x = 320, y = -160 }
+    local MIN_W, MAX_W, MIN_H, MAX_H = 150, 600, 60, 500
+
+    local function Source() return _G.DamageMeterSessionWindow1 end
+    -- what the rows ask the window for (FillRow, UpdateThreatView)
+    Solo.proxy = {
+        GetBarHeight = function() local w = Source(); return w and w.GetBarHeight and w:GetBarHeight() or 24 end,
+        GetBarSpacing = function() local w = Source(); return w and w.GetBarSpacing and w:GetBarSpacing() or 2 end,
+        GetTextScale = function() local w = Source(); return w and w.GetTextScale and w:GetTextScale() or 1 end,
+        ShouldShowBarIcons = function() local w = Source(); return w and w.ShouldShowBarIcons and w:ShouldShowBarIcons() or false end,
+        GetStyle = function() local w = Source(); return w and w.GetStyle and w:GetStyle() or Enum.DamageMeterStyle.Default end,
+        ShouldUseClassColor = function() local w = Source(); return w and w.ShouldUseClassColor and w:ShouldUseClassColor() or false end,
+    }
+
+    local function Redraw()
+        if Solo.view and Solo.view.showing then SafeCall(UpdateThreatView, Solo.proxy, Solo.view) end
+    end
+
+    -- per Edit Mode layout, as every FlareUI frame
+    local function Store(layoutName)
+        local db = GetDb()
+        if not db then return nil end
+        layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
+        db.threatWindowLayouts = db.threatWindowLayouts or {}
+        return ns.LayoutHome(db.threatWindowLayouts, layoutName)
+    end
+    local function Place(layoutName)
+        local f = Solo.frame
+        if not f then return end
+        local store = Store(layoutName)
+        local pos = (store and store.point) and store or DEFAULTS
+        f:ClearAllPoints()
+        f:SetPoint(pos.point, UIParent, pos.point, pos.x or 0, pos.y or 0)
+    end
+    local function OnMoved(_, layoutName, point, x, y)
+        local store = Store(layoutName)
+        if not store then return end
+        store.point, store.x, store.y = point, math.floor(x + 0.5), math.floor(y + 0.5)
+    end
+
+    local function Size()
+        local db, f = GetDb(), Solo.frame
+        if not (db and f) then return end
+        if not db.threatWindowWidth then
+            local w = Source()
+            local width, height = w and w:GetWidth(), w and w:GetHeight()
+            db.threatWindowWidth = (width and width > 0) and math.floor(width + 0.5) or 300
+            db.threatWindowHeight = (height and height > 0) and math.floor(height + 0.5) or 150
+        end
+        f:SetSize(math.max(MIN_W, math.min(MAX_W, db.threatWindowWidth)),
+                  math.max(MIN_H, math.min(MAX_H, db.threatWindowHeight or 150)))
+    end
+
+    local function Look()
+        local db, f = GetDb(), Solo.frame
+        if not (db and f) then return end
+        DamageMeter.SkinBackdrop(f.skin, db)
+        DamageMeter.PaintSkin(f.skin, db, false)
+        local fontDb = DamageMeter.HeaderFontDb(db)
+        local path, size, flags = GetFontData(fontDb)
+        ns.SetFont(f.title, path, size, flags)
+        ApplyFontEffects(f.title, fontDb)
+        for _, row in ipairs(Solo.view.rows) do ApplyBarFont(row, db) end
+    end
+
+    local function Settings()
+        local Section, settings = ns.EditSections()
+        local function get(key, default) return function() local db = GetDb(); return db and db[key] or default end end
+        local function set(key) return function(_, value) local db = GetDb(); if db then db[key] = value; Size() end end end
+        Section("Frame", {
+            { name = L["Width"], kind = LEM.SettingType.Slider, default = 300, minValue = MIN_W, maxValue = MAX_W, valueStep = 1,
+              get = get("threatWindowWidth", 300), set = set("threatWindowWidth") },
+            { name = L["Height"], kind = LEM.SettingType.Slider, default = 150, minValue = MIN_H, maxValue = MAX_H, valueStep = 1,
+              get = get("threatWindowHeight", 150), set = set("threatWindowHeight") },
+        })
+        return settings
+    end
+
+    -- Edit Mode: sample rows (a tank, you near the pull line, two more), whatever is targeted
+    local function EditMode(editing)
+        if not Solo.view then return end
+        Solo.view.sample = editing and true or nil
+        Redraw()
+    end
+
+    local function Create()
+        local meter = _G.DamageMeter
+        if Solo.frame then return true end
+        if not (meter and Source()) then return false end
+        local f = CreateFrame("Frame", "FlareUI_ThreatMeter", meter)
+        f:SetClampedToScreen(true)
+        local skin = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        skin:SetPoint("TOPLEFT", f, "TOPLEFT", -SKIN_PADDING, SKIN_PADDING)
+        skin:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", SKIN_PADDING, -SKIN_PADDING)
+        skin:SetFrameLevel(math_max(f:GetFrameLevel() - 1, 0))
+        local line = skin:CreateTexture(nil, "OVERLAY")
+        line:SetTexture(SEPARATOR)
+        line:SetHeight(8)
+        line:SetPoint("TOPLEFT", skin, "TOPLEFT", 3, -HEADER_HEIGHT)
+        line:SetPoint("TOPRIGHT", skin, "TOPRIGHT", -3, -HEADER_HEIGHT)
+        f.skin = skin
+        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")   -- (a font before SetText; Look sets the header font)
+        f.title:SetPoint("LEFT", skin, "TOPLEFT", TITLE_LEFT, ROW_CENTER_Y)
+        f.title:SetText(L["Threat"])
+
+        -- the list, as the tab's
+        local list = CreateFrame("Frame", nil, f)
+        list:SetPoint("TOPLEFT", skin, "TOPLEFT", 6, -CONTENT_TOP)
+        list:SetPoint("BOTTOMRIGHT", skin, "BOTTOMRIGHT", -6, 6)
+        list:EnableMouseWheel(true)
+        list.Empty = list:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        list.Empty:SetPoint("CENTER")
+        local view = { rows = {}, showing = false, frame = list, solo = true }
+        list:SetScript("OnMouseWheel", function(_, delta)
+            local offset = math_max(0, (view.offset or 0) - delta)
+            if offset == (view.offset or 0) then return end
+            view.offset = offset
+            Redraw()
+        end)
+        local overlay = CreateFrame("Frame", nil, list)
+        overlay:SetAllPoints()
+        overlay:SetFrameLevel(list:GetFrameLevel() + 30)
+        local pull = overlay:CreateTexture(nil, "OVERLAY", nil, 7)
+        pull:SetColorTexture(1, 0.2, 0.15, 0.95)
+        pull:SetWidth(2)
+        pull:Hide()
+        view.pullLine = pull
+        Solo.frame, Solo.view = f, view
+        -- a new size fits a new number of rows
+        f:SetScript("OnSizeChanged", Redraw)
+
+        Size()
+        Place()
+        LEM:AddFrame(f, OnMoved, DEFAULTS, L["Threat Meter"])
+        LEM:AddFrameSettings(f, Settings())
+        LEM:RegisterCallback("layout", function(layoutName) Place(layoutName) end)
+        LEM:RegisterCallback("enter", function() EditMode(true) end)
+        LEM:RegisterCallback("exit", function() EditMode(false) end)
+        return true
+    end
+
+    -- Separate Window switched on (11-13, Marcus): the window right above the meter's first window
+    -- when that sits in the lower half of the screen, else right below it; saved as its spot in this
+    -- Edit Mode layout, so Edit Mode can move it from there
+    local BESIDE_GAP = 8   -- between the two windows' borders (each reaches 2 px out)
+    function Solo.PlaceBesideMeter()
+        local f, src = Solo.frame, Source()
+        if not (f and src) then return end
+        local left, bottom, _, height = src:GetRect()
+        if not (left and bottom and height) then return end
+        local srcScale, fScale = src:GetEffectiveScale(), f:GetEffectiveScale()
+        local uiScale = UIParent:GetEffectiveScale()
+        left, bottom = left * srcScale, bottom * srcScale
+        local top = bottom + height * srcScale
+        local screenHeight = UIParent:GetHeight() * uiScale
+        local gap = BESIDE_GAP * uiScale
+        local newBottom
+        if (bottom + top) / 2 < screenHeight / 2 then
+            newBottom = top + gap                                -- the meter low: above it
+        else
+            newBottom = bottom - gap - f:GetHeight() * fScale    -- the meter high: below it
+        end
+        local store = Store()
+        if not store then return end
+        store.point, store.x, store.y = "BOTTOMLEFT", math.floor(left / fScale + 0.5), math.floor(newBottom / fScale + 0.5)
+        Place()
+    end
+
+    -- shown with Separate Window on (and not hidden by the radial's Toggle Threat Meter)
+    function Solo.Apply()
+        local db = GetDb()
+        local want = db and db.enabled and db.threatWindow and true or false
+        if want and not Create() then return end
+        if not Solo.frame then return end
+        local shown = want and not Solo.hidden
+        Solo.frame:SetShown(shown)
+        Solo.view.showing = shown
+        if want then
+            Size()
+            Look()
+            Solo.view.sample = IsEditModeActive() or nil
+        end
+        Redraw()
+        WatchThreat()
+    end
 end
 
 --------------------------------------------------
@@ -1738,6 +1958,7 @@ function DamageMeter:Refresh()
     for _, window in ipairs(GetSessionWindows()) do
         self:ApplyToWindow(window)
     end
+    SafeCall(Solo.Apply)
     HookChatSize()
     local inChat = ChatTabOn()
     if db.matchChatSize or inChat then

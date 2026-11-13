@@ -154,9 +154,19 @@ end
 -- otherwise stay frozen on a real icon after Edit Mode ends in a fight)
 local lockedButtons = setmetatable({}, { __mode = "k" })
 local retryTicker
+-- (11-13, found by /fui perf trace: each failed try is an error, and a lock covers every button,
+-- so trying them all cost 6-9 ms a second while it held) nothing is tried while auras are secret,
+-- and the first button still locked ends the round
+local function AurasSecret()
+    if not (C_Secrets and C_Secrets.ShouldAurasBeSecret) then return false end
+    local ok, secret = pcall(C_Secrets.ShouldAurasBeSecret)
+    return ok and secret == true
+end
 local function RetryLockedButtons()
+    if AurasSecret() then return end
     for button in pairs(lockedButtons) do
-        if pcall(ApplyPreviewTimerNow, button) then lockedButtons[button] = nil end
+        if not pcall(ApplyPreviewTimerNow, button) then return end
+        lockedButtons[button] = nil
     end
     if not next(lockedButtons) and retryTicker then
         retryTicker:Cancel()
@@ -425,17 +435,36 @@ local function SetArrival(button, on)
     pcall(button.AddAuraShownAnimation, button, g)
 end
 
+-- Each frame's fonts (11-13): once per profile, the buffs and the debuffs start from the shared ones
+function AU.SeedKindFonts()
+    local db = GetDb()
+    if not db or rawget(db, "kindFontsSeeded") then return end
+    ns.SeedFont(db, "font", "countFont", "countFontSeeded")
+    db.kindFontsSeeded = true
+    for kind in pairs(KINDS) do
+        local kdb = db[kind]
+        for _, key in ipairs({ "font", "countFont" }) do
+            local from, to = db[key], kdb and kdb[key]
+            if type(from) == "table" and type(to) == "table" then
+                for _, field in ipairs({ "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }) do
+                    if from[field] ~= nil then to[field] = from[field] end
+                end
+            end
+        end
+    end
+end
+
 -- A snapshot of one frame's settings for the buttons Blizzard initialises
 local function Look(kind)
     local db, kdb = GetDb(), KindDb(kind)
-    ns.SeedFont(db, "font", "countFont", "countFontSeeded")
+    AU.SeedKindFonts()
     return {
         size = kdb.size or 30,
         style = db.style or "square",
         swipe = db.swipe or "both",
         timer = db.timer or "below",
-        font = db.font,
-        countFont = db.countFont,
+        font = kdb.font or db.font,
+        countFont = kdb.countFont or db.countFont,
         isDebuff = KINDS[kind].isDebuff,
         colors = ColorMap(KINDS[kind].isDebuff, db.style == "round", db.swipe == "border"),
         arrive = db.arrive and true or false,
@@ -448,14 +477,16 @@ end
 ns.AuraLook = {
     Style = StyleButton,
     Hook = HookButton,
-    ForUnit = function(size, isDebuff, canCancel, style, swipe, timer)
+    -- fontKey (11-13): whose Aura Timers and Aura Stacks fonts (UnitFrames.lua UF.Font), player's by default
+    ForUnit = function(size, isDebuff, canCancel, style, swipe, timer, fontKey)
         local uf = ns.db and ns.db.profile and ns.db.profile.unitframes or {}
-        ns.SeedFont(uf, "auraFont", "auraCountFont", "auraCountFontSeeded", true)
+        local UFM = ns.UnitFrames
         style, timer = style or "square", timer or "below"
         -- Aura swipe (Unit Frames settings), for every unit, party, raid and boss frame
         swipe = uf.auraSwipe or swipe or "both"
         local autoSize = math_max(7, math_floor(size * 0.4 + 0.5))
-        local timerFont, countFont = uf.auraFont or {}, uf.auraCountFont or uf.auraFont or {}
+        local timerFont = UFM and UFM.Font and UFM.Font(fontKey, "auras") or uf.auraFont or {}
+        local countFont = UFM and UFM.Font and UFM.Font(fontKey, "auraCount") or uf.auraCountFont or timerFont
         local timerSize = (timerFont.size or 0) > 0 and timerFont.size or math_max(8, autoSize - 1)
         local countSize = (countFont.size or 0) > 0 and countFont.size or autoSize
         return {
@@ -684,7 +715,10 @@ local function UpdateEnchants(kind)
         local e = list[i]
         local b = e and EnchantButton(holder, i) or holder.enchants[i]
         if e then
-            StyleButton(b, look)
+            -- (11-13 performance pass) restyled only after a layout (a look or size change), not on
+            -- every inventory event: poison charges and durability fire those often in fights
+            local stamp = holder.lookStamp or 0
+            if b.FlareUI_LookStamp ~= stamp then StyleButton(b, look); b.FlareUI_LookStamp = stamp end
             local icon = GetInventoryItemTexture("player", e.weapon.inv)
             if GetCVarBool and GetCVarBool("displayTemporaryEnchantIcon") and (e.iconID or 0) > 0 then icon = e.iconID end
             b.FlareUI_Icon:SetTexture(icon or 134400)
@@ -766,6 +800,7 @@ local function LayoutKind(kind)
 
     pcall(container.SetEnabled, container, true)
     UpdatePreview(kind)
+    holder.lookStamp = (holder.lookStamp or 0) + 1   -- the enchant icons restyle once (UpdateEnchants)
     UpdateEnchants(kind)
     pcall(container.UpdateAllAuras, container)
 end
@@ -842,8 +877,10 @@ local function BuildSettings(kind)
             AU:Refresh()
         end
     end
-    -- one Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua)
-    return ns.EditSection("Frame", {
+    -- the Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua), then
+    -- the Fonts section, always last (11-13)
+    local Section, settings = ns.EditSections()
+    Section("Frame", {
         { name = L["Icon Size"], kind = LEM.SettingType.Slider, default = defaults.size or 30, minValue = 16, maxValue = 64, valueStep = 1,
           get = get("size"), set = set("size") },
         { name = L["Icons per Row"], kind = LEM.SettingType.Slider, default = defaults.perRow or 12, minValue = 1, maxValue = 40, valueStep = 1,
@@ -862,6 +899,29 @@ local function BuildSettings(kind)
         { name = L["Aura Timer"], kind = LEM.SettingType.Dropdown, default = "below", values = TIMER_VALUES,
           get = shared("timer", "below"), set = setShared("timer") },
     })
+    -- the frame's own fonts; Apply to Both copies them to the other frame (buffs <-> debuffs)
+    local other = kind == "buffs" and "debuffs" or "buffs"
+    local function Kind(k) AU.SeedKindFonts(); return KindDb(k) end
+    local auraDefaults = ns.defaults and ns.defaults.profile and ns.defaults.profile.auras or {}
+    Section("Fonts", ns.EditFonts({
+        id = "au." .. kind, group = "au",
+        texts = { { key = "font", name = L["Aura Timers"] }, { key = "countFont", name = L["Aura Stacks"] } },
+        font = function(key) local k = Kind(kind); return k and k[key] end,
+        default = function(key) return auraDefaults[kind] and auraDefaults[kind][key] end,
+        apply = function() AU:Refresh() end,
+        all = { text = L["Apply to Both"], desc = L["The other frame (Buffs or Debuffs) takes this frame's fonts."],
+                run = function()
+                    local from, to = Kind(kind), Kind(other)
+                    if not (from and to) then return end
+                    for _, key in ipairs({ "font", "countFont" }) do
+                        for _, field in ipairs({ "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }) do
+                            to[key][field] = from[key][field]
+                        end
+                    end
+                    AU:Refresh()
+                end },
+    }))
+    return settings
 end
 
 --------------------------------------------------
@@ -937,8 +997,9 @@ end
 
 function CDM.StackFont(fontString)
     local db = GetDb()
-    ns.SeedFont(db, "font", "countFont", "countFontSeeded")
-    local font = db.countFont or db.font or {}
+    AU.SeedKindFonts()
+    -- the Buffs frame's Aura Stacks font (the tracked buffs are buffs)
+    local font = (db.buffs and db.buffs.countFont) or db.countFont or {}
     local flags = font.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end
     ns.SetFont(fontString, ns.GetFontPath(font.face or "Friz Quadrata TT"), font.size or 11, flags)
@@ -1005,9 +1066,12 @@ function CDM.StyleBar(item)
     p.barBorder:ClearAllPoints()
     p.barBorder:SetAllPoints(p.backdrop)
     K.ApplyBorderStyle(p.barBorder, edgeFile, height + 2 * K.INSET)
-    local castFont = uf.fontCast or uf.font
+    -- the player frame's Cast Name and Cast Countdown fonts
+    local UFM = ns.UnitFrames
+    local castFont = UFM and UFM.Font and UFM.Font("player", "cast") or uf.fontCast
+    local timeFont = UFM and UFM.Font and UFM.Font("player", "castTime") or uf.fontCast
     if bar.Name then K.ApplyFont(bar.Name, castFont) end
-    if bar.Duration then K.ApplyFont(bar.Duration, castFont) end
+    if bar.Duration then K.ApplyFont(bar.Duration, timeFont) end
     local icon = item.Icon
     if icon and icon.Icon then
         CDM.StyleIcon(icon, icon.Icon, CDM.Pieces(icon), GetDb().style == "round")

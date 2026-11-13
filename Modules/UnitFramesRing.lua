@@ -160,7 +160,9 @@ local SHARED_KEYS = { enabled = true, foreverStyle = true, plateStyle = true, st
                       raid = true, resource = true, styleStart = true, tileStyle = true, plateTiles = true,
                       simplePet = true, simpleTargetOf = true, palette = true, visibility = true, classColor = true, fullNames = true,
                       auraStyle = true, auraTimer = true, font = true, fontPower = true, fontCast = true, auraFont = true,
-                      auraCountFont = true, auraCountFontSeeded = true, styleSavesThin = true }
+                      auraCountFont = true, auraCountFontSeeded = true, styleSavesThin = true,
+                      -- (frameFonts, each frame's fonts, is NOT shared: every style keeps its own)
+                      frameFontsSeeded = true, castTimeSeeded = true }
 -- a stored setup may lack these
 local TILE_KEYS = { party = true, boss = true }
 
@@ -1379,7 +1381,10 @@ function Ring.UpdateThreat(f)
     end
     if status and status > 0 and GetThreatStatusColor and not ns.EditPreviewing() and IconOn(f, "threatGlow", true) then
         local r, gg, b = GetThreatStatusColor(status)
-        ApplyTint(ring, { r, gg, b })
+        local c = ring.threatRGB or {}
+        ring.threatRGB = c
+        c[1], c[2], c[3] = r, gg, b
+        ApplyTint(ring, c)
     else
         ApplyTint(ring, ring.statusColor)
     end

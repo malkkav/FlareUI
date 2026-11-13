@@ -22,7 +22,6 @@ ns.Copy = {
         au = {
             desc = L["Your buffs and debuffs in FlareUI's style."],
             editButton = L["Edit Auras in Edit Mode"],
-            tabs = { L["Settings"], L["Fonts"] },
             title = L["Buffs & Debuffs"],
         },
         bl = {
@@ -52,7 +51,6 @@ ns.Copy = {
         },
         mm = {
             desc = L["A minimap with square and round styles."],
-            tabs = { L["Settings"], L["Fonts"] },
             title = L["Minimap"],
         },
         qol = {
@@ -63,18 +61,16 @@ ns.Copy = {
         qt = {
             desc = L["FlareUI's own quest tracker."],
             editButton = L["Edit Tracker in Edit Mode"],
-            tabs = { L["Settings"], L["Fonts"] },
             title = L["Quest Tracker"],
         },
         rb = {
             desc = L["Resource bars you can place anywhere."],
             editButton = L["Edit Resources in Edit Mode"],
-            tabs = { L["Settings"], L["Fonts"] },
             title = L["Resource Bars"],
         },
         rm = {
             desc = L["A ring of spells, items, macros and more. Hold the key, point, release."],
-            tabs = { L["Radials"], L["Options"] },
+            tabs = { L["Radials"], L["Options"], L["Fonts"] },
             title = L["Radial Menu"],
         },
         tt = {
@@ -86,7 +82,6 @@ ns.Copy = {
             desc = L["Player, target, focus, pet and party frames in FlareUI's style."],
             editButton = L["Edit Frames in Edit Mode"],
             editNote = L["Size, health text, portrait, auras and icons are set in Edit Mode."],
-            tabs = { L["Settings"], L["Fonts"] },
             title = L["Unit Frames"],
         },
     },
@@ -116,6 +111,18 @@ ns.Copy = {
             tags = { "show condition", "show", "view conditions", "show when" },
             tip = L["Always clears the others; nothing ticked means Always. Opening your spellbook always shows it."],
         },
+        ["ab.borderlessBags"] = {
+            desc = L["No frame round the bag bar, and no dividers between the bags. Its frame only fits the default place."],
+            label = L["Borderless Bag Bar"],
+            section = "ab.barAppearance",
+            tags = { "bag bar border", "bag frame" },
+        },
+        ["ab.borderlessMenu"] = {
+            desc = L["No frame round the micro menu. Its frame only fits the default place."],
+            label = L["Borderless Micro Menu"],
+            section = "ab.barAppearance",
+            tags = { "micro menu border", "menu frame" },
+        },
         ["ab.buttonArt"] = {
             desc = L["Blizzard's slot frame on every button of bars 1 to 8 and the pet bar, even where a bar hides its art."],
             label = L["Show Button Art"],
@@ -132,6 +139,13 @@ ns.Copy = {
             desc = L["Shorter key labels:\n* SM4: Shift + Mouse Button 4\n* SP: Spacebar\n* WU: Mouse Wheel Up"],
             label = L["Clean Keybind Text"],
             section = "ab.buttonText",
+        },
+        ["ab.collapsibleBags"] = {
+            desc = L["An arrow beside the backpack folds the other bag slots away, and opens them again. They open by themselves while you carry an item, so you can put it in a bag."],
+            label = L["Collapsible Bag Bar"],
+            section = "ab.barAppearance",
+            tags = { "bag bar", "collapse bags", "fold bags", "expand bags" },
+            tip = L["Needs Borderless Bag Bar. Edit Mode's Orientation and Direction for the bag bar turn the arrow too."],
         },
         ["ab.dimOnCooldown"] = {
             desc = L["Buttons dim while on cooldown."],
@@ -211,14 +225,23 @@ ns.Copy = {
         ["ab.font.count"] = {
             desc = L["Item counts and charges."],
             label = L["Stack Count"],
+            section = "ab.fonts",
         },
         ["ab.font.keybinds"] = {
             desc = L["The key on each button."],
             label = L["Keybinds"],
+            section = "ab.fonts",
         },
         ["ab.font.macro"] = {
             desc = L["Macro names on buttons."],
             label = L["Macro Names"],
+            section = "ab.fonts",
+        },
+        ["ab.font.xp"] = {
+            desc = L["The numbers on the XP and reputation bar."],
+            label = L["Bar Text"],
+            section = "ab.fontsXp",
+            tags = { "xp bar font", "experience text" },
         },
         ["ab.gryphonsBehind"] = {
             desc = L["The end art of the main bar sits behind your action bars, not over them."],
@@ -425,13 +448,11 @@ ns.Copy = {
             section = "au.general",
             tip = L["With a sort that moves icons, it may play on the last slot."],
         },
-        ["au.font.count"] = {
-            desc = L["The stack count on each icon."],
-            label = L["Aura Stacks"],
-        },
-        ["au.font.timer"] = {
-            desc = L["The time left on each icon."],
-            label = L["Aura Timers"],
+        ["au.fontsEditMode"] = {
+            desc = L["The Buffs and Debuffs fonts are in their Edit Mode dialogs: select one, then open Fonts, the last section. Apply to Both there gives the other the same fonts."],
+            label = L["Fonts"],
+            section = "au.fonts",
+            tags = { "font", "fonts", "text size", "typeface" },
         },
         ["au.mineFirst"] = {
             desc = L["Your own auras lead the row. Works with Time Left or Name."],
@@ -499,6 +520,12 @@ ns.Copy = {
             section = "bl.bagWindow",
             tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
         },
+        ["bl.bagItemLevel"] = {
+            desc = L["Weapons and armour show their item level in the bottom left corner, in their quality's colour: in your bags and on the character sheet."],
+            label = L["Item Level"],
+            section = "bl.itemSlots",
+            tip = L["On the character sheet it works with another bag addon too."],
+        },
         ["bl.bagJunkIcon"] = {
             desc = L["Grey items worth money show a coin all the time, not only at a vendor."],
             label = L["Junk Coin"],
@@ -525,6 +552,11 @@ ns.Copy = {
         ["bl.bagThickBorders"] = {
             desc = L["Bag slots get FlareUI's thick frame instead of the thin one."],
             label = L["Thicker Borders"],
+            section = "bl.itemSlots",
+        },
+        ["bl.bagUncollected"] = {
+            desc = L["An eye in the top right corner marks gear whose appearance you haven't collected yet and can learn."],
+            label = L["Uncollected Appearances"],
             section = "bl.itemSlots",
         },
         ["bl.bagUpgradeArrow"] = {
@@ -554,15 +586,24 @@ ns.Copy = {
         ["bl.font.bagItems"] = {
             desc = L["The stack counts and cooldown numbers on your bag items. Default keeps Blizzard's font."],
             label = L["Bag Items"],
+            section = "bl.fonts",
         },
         ["bl.font.freeSlots"] = {
             desc = L["The number of free bag slots on the backpack button. Default keeps Blizzard's font."],
             label = L["Free Bag Slots"],
+            section = "bl.fonts",
             tags = { "free slots", "bag space", "backpack" },
         },
         ["bl.font.lootFeed"] = {
             desc = L["The lines that float up as you loot."],
             label = L["Loot Feed"],
+            section = "bl.fontsLoot",
+        },
+        ["bl.font.money"] = {
+            desc = L["The gold, silver and copper at the bottom of your bags. Default keeps Blizzard's font."],
+            label = L["Gold"],
+            section = "bl.fonts",
+            tags = { "money", "gold amount", "coins" },
         },
         ["bl.lootFeed"] = {
             desc = L["What you loot floats up beside your cursor or a spot you choose, so you don't have to read the chat."],
@@ -820,14 +861,17 @@ ns.Copy = {
         ["ch.font.editBox"] = {
             desc = L["What you type."],
             label = L["Edit Box"],
+            section = "ch.fonts",
         },
         ["ch.font.tabs"] = {
             desc = L["Chat tab names."],
             label = L["Tabs"],
+            section = "ch.fonts",
         },
         ["ch.font.text"] = {
             desc = L["Messages in every chat window."],
             label = L["Chat Text"],
+            section = "ch.fonts",
         },
         ["ch.formatNPC"] = {
             desc = L["NPC speech starts with an orange [Name] instead of \"Name says:\"."],
@@ -978,10 +1022,12 @@ ns.Copy = {
         ["dm.font.bars"] = {
             desc = L["Names and numbers on the bars."],
             label = L["Bars"],
+            section = "dm.fonts",
         },
         ["dm.font.header"] = {
             desc = L["The title row: Damage Meter or Threat, the session and its timer."],
             label = L["Header"],
+            section = "dm.fonts",
         },
         ["dm.matchChat"] = {
             desc = L["The meter takes the chat's width and height."],
@@ -1047,6 +1093,12 @@ ns.Copy = {
             section = "dm.threat",
             tags = { "threat value display" },
         },
+        ["dm.threatWindow"] = {
+            desc = L["Threat in a window of its own instead of a tab on the Damage Meter. Move and size it in Edit Mode; it shows and hides with the Damage Meter."],
+            label = L["Separate Window"],
+            section = "dm.threat",
+            tags = { "threat window", "threat meter", "separate threat" },
+        },
         ["dm.visibility"] = {
             choices = { L["Always"], L["In Combat"], L["In a Group"], L["Hidden"] },
             desc = L["When the meter shows.\n* In Combat: during fights\n* In a Group: while you're in a group\n* Hidden: never on its own"],
@@ -1056,7 +1108,7 @@ ns.Copy = {
             tip = L["Works with Show on Mouseover. With the Meter tab on, the tab decides."],
         },
         ["font.face"] = {
-            desc = L["The typeface."],
+            desc = L["The typeface. Global follows the Global Font on the Settings page."],
             label = L["Font"],
         },
         ["font.flags"] = {
@@ -1076,6 +1128,38 @@ ns.Copy = {
         ["font.size"] = {
             desc = L["The text size."],
             label = L["Size"],
+        },
+        ["fonts.buttons"] = {
+            desc = L["* Use Global Font Everywhere: every FlareUI font set to Global, so all text uses the Global Font. Sizes, outlines and shadows stay as they are.\n* Reset All Fonts: every FlareUI font, and the Global Font, back to its defaults."],
+            label = L["Reset All Fonts"],
+            section = "language.fonts",
+            tags = { "use global font everywhere", "reset all fonts", "same font", "all fonts" },
+        },
+        ["fonts.combat.face"] = {
+            desc = L["The damage and healing numbers over what you hit. Default keeps Blizzard's font."],
+            label = L["Combat Text Font"],
+            section = "language.fonts",
+            tags = { "damage font", "damage numbers", "floating combat text", "sct" },
+            tip = L["The game reads it as you log in: it changes the next time you log in."],
+        },
+        ["fonts.gameText"] = {
+            desc = L["Blizzard's own text takes the Global Font too: menus, windows, quest text, nameplates, combat text and more. Sizes and outlines stay as they are."],
+            label = L["Game Text"],
+            section = "language.fonts",
+            tags = { "blizzard font", "all text", "game font", "interface font", "ui font" },
+            tip = L["Russian, Korean and Chinese letters keep a font that has them. FlareUI's own font choices still go over it."],
+        },
+        ["fonts.global.face"] = {
+            desc = L["The font for every FlareUI text set to Global, in one place. Pick Global in any Fonts tab to make that text follow it."],
+            label = L["Font"],
+            section = "language.fonts",
+            tags = { "global font", "all text", "every font", "typeface" },
+        },
+        ["fonts.nameplate.face"] = {
+            desc = L["The names on Blizzard's nameplates. Default keeps their font (or the Global Font, with Game Text on)."],
+            label = L["Nameplate Font"],
+            section = "language.fonts",
+            tags = { "nameplate font", "plate names" },
         },
         ["mm.bag"] = {
             desc = L["Every addon's minimap button in one drawer. Click the day/night badge to open it."],
@@ -1108,13 +1192,11 @@ ns.Copy = {
             tags = { "coordinates on hover" },
             tip = L["The same as Blizzard's own Coordinates option: turning one off turns off the other."],
         },
-        ["mm.font.clock"] = {
-            desc = L["The time at the right end of the bar."],
-            label = L["Clock"],
-        },
-        ["mm.font.zone"] = {
-            desc = L["The zone's name along the top of the minimap."],
-            label = L["Zone Name"],
+        ["mm.fontsEditMode"] = {
+            desc = L["The zone name, clock and info text fonts are in the minimap's Edit Mode dialog: select the minimap, then open Fonts, the last section."],
+            label = L["Fonts"],
+            section = "mm.fonts",
+            tags = { "font", "fonts", "text size", "typeface" },
         },
         ["mm.fps"] = {
             choices = { L["Off"], L["Always"], L["On Mouseover"] },
@@ -1122,6 +1204,19 @@ ns.Copy = {
             label = L["Framerate"],
             section = "mm.tweaks",
             tags = { "fps frames per second performance" },
+        },
+        ["mm.hudNote"] = {
+            kind = "text",
+            label = L["Farming HUDs"],
+            section = "mm.tweaks",
+            text = L["ForeverFarmHUD and FarmHud move the minimap into their HUD while it is on. FlareUI puts its own minimap back when you turn the HUD off; if it still looks wrong, type /reload."],
+        },
+        ["mm.latency"] = {
+            choices = { L["Off"], L["Always"], L["On Mouseover"] },
+            desc = L["Your latency at the minimap's bottom right: home on top, world below. With Framerate, the one shown always sits at the bottom."],
+            label = L["Latency"],
+            section = "mm.tweaks",
+            tags = { "ms ping lag latency home world" },
         },
         ["mm.microMenu"] = {
             desc = L["Middle-click the minimap for a menu of game panels: character, spellbook, talents, quest log and more."],
@@ -1135,18 +1230,10 @@ ns.Copy = {
             section = "mm.tweaks",
             text = L["Lueur, NodeSight and Nodeworthy scan for nodes by moving the minimap under your cursor: while they do, the map and its icons can flash. That comes from them, not FlareUI."],
         },
-        ["mm.squareHeader"] = {
-            choices = { L["Headerless"], L["Bordered"] },
-            desc = L["The top of the square minimap: its buttons and zone name on the map itself, or in the frame's bronze title bar."],
-            label = L["Header"],
-            section = "mm.styleSection",
-            tip = L["Square style only."],
-        },
         ["mm.style"] = {
-            choices = { L["Square"], L["Round"] },
-            desc = L["FlareUI's square minimap, or Forever's own round one."],
+            choices = { L["Square (Clean)"], L["Square (Header)"], L["Round"] },
+            desc = L["FlareUI's square minimap with its buttons and zone name on the map (Clean) or in the frame's bronze title bar (Header), or Forever's own round one. Changing to or from Round reloads the interface."],
             label = L["Style"],
-            reload = true,
             section = "mm.styleSection",
         },
         ["mm.zoom"] = {
@@ -1206,6 +1293,7 @@ ns.Copy = {
         ["qol.font.zoneText"] = {
             desc = L["The zone's name that appears as you enter a new area. Default keeps Blizzard's font; its size stays."],
             label = L["Zone Text"],
+            section = "qol.fonts",
         },
         ["qol.gamepadPrompt"] = {
             desc = L["Pressing a controller button asks whether to switch to Blizzard's Gamepad UI."],
@@ -1418,8 +1506,8 @@ ns.Copy = {
             section = "qol.convenience",
         },
         ["qol.uiScale"] = {
-            choices = { L["Blizzard's"], L["Pixel Perfect"], L["Custom"], L["4K"], L["1440p"], L["1440p at 125%"], L["1080p"], L["1080p at 125%"] },
-            desc = L["The size of the whole interface, for every character:\n* Blizzard's: the game's own UI Scale setting\n* Pixel Perfect: one interface pixel per screen pixel\n* 4K, 1440p, 1080p: pixel perfect for that screen (at 125% for Windows' 125% scaling)\n* Custom: any scale, beyond Blizzard's slider"],
+            choices = { L["Off"], L["Pixel Perfect"], L["Custom"], L["4K"], L["1440p"], L["1440p at 125%"], L["1080p"], L["1080p at 125%"] },
+            desc = L["The size of the whole interface, for every character:\n* Off: FlareUI leaves it alone, and Blizzard's UI Scale setting works\n* Pixel Perfect: one interface pixel per screen pixel\n* 4K, 1440p, 1080p: pixel perfect for that screen (at 125% for Windows' 125% scaling)\n* Custom: any scale, beyond Blizzard's slider\nAny choice but Off replaces Blizzard's UI Scale each time you log in."],
             label = L["UI Scale"],
             reload = true,
             section = "qol.scale",
@@ -1470,17 +1558,11 @@ ns.Copy = {
             label = L["Focus Buttons"],
             section = "qt.display",
         },
-        ["qt.font.header"] = {
-            desc = L["\"Quests\" and the zone headings."],
-            label = L["Header"],
-        },
-        ["qt.font.objectives"] = {
-            desc = L["The objectives under each quest."],
-            label = L["Objectives"],
-        },
-        ["qt.font.titles"] = {
-            desc = L["Quest names."],
-            label = L["Quest Names"],
+        ["qt.fontsEditMode"] = {
+            desc = L["The tracker's fonts are in its Edit Mode dialog: select the tracker, then open Fonts, the last section."],
+            label = L["Fonts"],
+            section = "qt.fonts",
+            tags = { "font", "fonts", "text size", "typeface" },
         },
         ["qt.hideEmpty"] = {
             desc = L["No tracker while nothing is tracked."],
@@ -1605,9 +1687,11 @@ ns.Copy = {
             tags = { "flight path taxi timer" },
             tip = L["Each route is learned the first time you fly it. Its time then shows on the flight map too."],
         },
-        ["rb.font.text"] = {
-            desc = L["Numbers and labels on the resource bars."],
-            label = L["Bar Text"],
+        ["rb.fontsEditMode"] = {
+            desc = L["Each bar's font is in its Edit Mode dialog: select a bar, then open Fonts, the last section. Apply to All there gives every bar the same font."],
+            label = L["Fonts"],
+            section = "rb.fonts",
+            tags = { "font", "fonts", "text size", "typeface" },
         },
         ["rb.health"] = {
             desc = L["Your health as its own bar."],
@@ -1615,7 +1699,7 @@ ns.Copy = {
             section = "rb.bars",
         },
         ["rb.health.text"] = {
-            choices = { L["Off"], L["Percent"], L["Value"], L["Value | Percent"], L["Current (Max)"] },
+            choices = { L["Off"], L["Percent"], L["Percent | Value"], L["Value"], L["Value [Max]"] },
             desc = L["The numbers on the health bar."],
             label = L["Health Text"],
         },
@@ -1669,6 +1753,16 @@ ns.Copy = {
         ["rm.copy"] = {
             desc = L["Copies the radial with its buttons and reach, without a key. Handy for a Horde or class version."],
             label = L["Copy"],
+        },
+        ["rm.font.counts"] = {
+            desc = L["Item counts and spell charges on the buttons."],
+            label = L["Counts"],
+            section = "rm.fonts",
+        },
+        ["rm.font.labels"] = {
+            desc = L["The name of the button you point at."],
+            label = L["Button Names"],
+            section = "rm.fonts",
         },
         ["rm.key"] = {
             desc = L["Opens this radial on every character that gets it."],
@@ -1753,6 +1847,12 @@ ns.Copy = {
             label = L["Available To"],
             tip = L["A new radial starts on this character only."],
         },
+        ["rm.subRadials"] = {
+            choices = { L["Reset on Close"], L["Remember"] },
+            desc = L["Which button a sub-radial shows when you open the radial again:\n* Reset on Close: its first button\n* Remember: the one you scrolled to last"],
+            label = L["Sub-Radials"],
+            section = "rm.opening",
+        },
         ["tt.borders"] = {
             desc = L["Tooltip borders in the colour of:\n* A player's class\n* A creature's reaction\n* An item's quality"],
             label = L["Coloured Borders"],
@@ -1772,10 +1872,12 @@ ns.Copy = {
         ["tt.font.text"] = {
             desc = L["Every other line."],
             label = L["Text"],
+            section = "tt.fonts",
         },
         ["tt.font.title"] = {
             desc = L["The first line: a name or an item."],
             label = L["Title"],
+            section = "tt.fonts",
         },
         ["tt.healthBar"] = {
             desc = L["The health bar under unit tooltips."],
@@ -1792,6 +1894,12 @@ ns.Copy = {
             label = L["Show IDs"],
             section = "tt.tweaks",
             tip = L["Handy for macros and bug reports."],
+        },
+        ["tt.itemLevel"] = {
+            desc = L["A weapon's or armour's item level at the bottom of its tooltip."],
+            label = L["Show Item Level"],
+            section = "tt.tweaks",
+            tags = { "ilvl", "item level" },
         },
         ["tt.mouseover"] = {
             desc = L["Every tooltip appears at your mouse and follows it. Off: in Blizzard's spot, or beside the icon."],
@@ -1957,7 +2065,7 @@ ns.Copy = {
             tip = L["On the cast bar's side, they sit beyond it."],
         },
         ["uf.*.healthText"] = {
-            choices = { L["Off"], L["Percent"], L["Value"], L["Value | Percent"], L["Current (Max)"], L["Current (Max) | Percent"], L["Health Lost"] },
+            choices = { L["Off"], L["Percent"], L["Percent | Value"], L["Value"], L["Value [Max]"], L["Value | Health Lost"], L["Health Lost"] },
             desc = L["The numbers on the health bar."],
             label = L["Health Text"],
         },
@@ -1988,7 +2096,7 @@ ns.Copy = {
             tip = L["0 removes the power bar."],
         },
         ["uf.*.powerText"] = {
-            choices = { L["Off"], L["Percent"], L["Value"], L["Value | Percent"], L["Current (Max)"], L["Current (Max) | Percent"] },
+            choices = { L["Off"], L["Percent"], L["Percent | Value"], L["Value"], L["Value [Max]"] },
             desc = L["The number on the power bar."],
             label = L["Power Text"],
         },
@@ -2033,33 +2141,17 @@ ns.Copy = {
             tags = { "castbar", "standalone cast bar", "blizzard cast bar" },
             tip = L["For a cast bar on the player frame, turn on Cast Bar in its Edit Mode options."],
         },
-        ["uf.font.auraCount"] = {
-            desc = L["The stack count on unit frame auras."],
-            label = L["Aura Stacks"],
-            tip = L["Auto sizes the text to the icon."],
-        },
-        ["uf.font.auras"] = {
-            desc = L["The time left on unit frame auras."],
-            label = L["Aura Timers"],
-            tip = L["Auto sizes the text to the icon."],
-        },
-        ["uf.font.castBar"] = {
-            desc = L["Spell names and times on cast bars."],
-            label = L["Cast Bar"],
-        },
-        ["uf.font.names"] = {
-            desc = L["Names, levels and health text."],
-            label = L["Names and Health"],
-        },
-        ["uf.font.power"] = {
-            desc = L["Power bar text."],
-            label = L["Power"],
+        ["uf.fontsEditMode"] = {
+            desc = L["Each frame's fonts are in its Edit Mode dialog: select a frame, then open Fonts, the last section. Apply to All there gives every unit frame the same fonts."],
+            label = L["Fonts"],
+            section = "uf.fonts",
+            tags = { "font", "fonts", "text size", "typeface" },
         },
         ["uf.frameStyle"] = {
             choices = { L["FlareUI"], L["Forever"], L["Addon"] },
             desc = L["The look of the player, target, focus, party and boss frames:\n* FlareUI: the bronze ring beside FlareUI's bars\n* Forever: Blizzard's bronze frame and portrait ring\n* Addon: plain frames, the most options"],
             label = L["Frame Style"],
-            section = "uf.look",
+            section = "uf.frameStyleSection",
             tip = L["Each style keeps its own setup."],
         },
         ["uf.fullNames"] = {
@@ -2178,11 +2270,13 @@ ns.Copy = {
         },
     },
     sections = {
-        ["ab.barAppearance"] = L["Bar Appearance"],
+        ["ab.barAppearance"] = L["Bars Appearance"],
         ["ab.buttonAppearance"] = L["Button Appearance"],
         ["ab.buttonText"] = L["Button Text"],
         ["ab.experience"] = L["XP Bar"],
         ["ab.fakeCooldownManager"] = L["Fake Cooldown Manager (FCM)"],
+        ["ab.fonts"] = L["Action Bars"],
+        ["ab.fontsXp"] = L["XP Bar"],
         ["ab.hideBlizzardElements"] = L["Hide Bars"],
         ["ab.spellBehavior"] = L["Spell Behavior"],
         ["about.credits"] = L["Credits"],
@@ -2191,8 +2285,11 @@ ns.Copy = {
         ["adv.profile"] = L["Profile"],
         ["adv.reset"] = L["Reset"],
         ["au.auraOrdering"] = L["Aura Ordering"],
+        ["au.fonts"] = L["Fonts"],
         ["au.general"] = L["General"],
         ["bl.bagWindow"] = L["Bag Window"],
+        ["bl.fonts"] = L["Bags"],
+        ["bl.fontsLoot"] = L["Looting"],
         ["bl.itemSlots"] = L["Item Slots"],
         ["bl.lootFeedSection"] = L["Loot Feed"],
         ["bl.looting"] = L["Looting"],
@@ -2207,20 +2304,25 @@ ns.Copy = {
         ["br.where"] = L["Where"],
         ["br.yourOwn"] = L["Your Own"],
         ["ch.editBoxSection"] = L["Edit Box"],
+        ["ch.fonts"] = L["Chat"],
         ["ch.formatting"] = L["Formatting |cffff4040(Outside Instances Only)|r"],
         ["ch.frame"] = L["Frame"],
         ["ch.header"] = L["Header Buttons"],
         ["ch.tweaks"] = L["Tweaks"],
+        ["dm.fonts"] = L["Meters"],
         ["dm.frame"] = L["Frame"],
         ["dm.meterTab"] = L["Meter Tab"],
         ["dm.threat"] = L["Threat Meter"],
         ["dm.tweaks"] = L["Tweaks"],
+        ["language.fonts"] = L["Global Font"],
+        ["mm.fonts"] = L["Fonts"],
         ["mm.styleSection"] = L["Style"],
         ["mm.tweaks"] = L["Tweaks"],
         ["qol.camera"] = L["Camera"],
         ["qol.controller"] = L["Gamepad"],
         ["qol.convenience"] = L["Convenience"],
         ["qol.cursor"] = L["Cursor"],
+        ["qol.fonts"] = L["Screen Text"],
         ["qol.hideClutter"] = L["Hide Clutter"],
         ["qol.nameplates"] = L["Nameplates"],
         ["qol.scale"] = L["Interface Scale"],
@@ -2228,20 +2330,26 @@ ns.Copy = {
         ["qol.vendor"] = L["Vendor"],
         ["qol.windows"] = L["Windows"],
         ["qt.display"] = L["Display"],
+        ["qt.fonts"] = L["Fonts"],
         ["qt.frame"] = L["Frame"],
         ["qt.minimizeIn"] = L["Minimize"],
         ["qt.quests"] = L["Quests"],
         ["rb.bars"] = L["Bars"],
+        ["rb.fonts"] = L["Fonts"],
         ["rb.look"] = L["Look"],
         ["rm.controller"] = L["Controller"],
+        ["rm.fonts"] = L["Radial Menu"],
         ["rm.look"] = L["Look"],
         ["rm.opening"] = L["Opening"],
         ["rm.radialMacros"] = L["Radial Macros"],
+        ["tt.fonts"] = L["Tooltips"],
         ["tt.look"] = L["Look"],
         ["tt.mouseoverSection"] = L["Mouseover"],
         ["tt.tweaks"] = L["Tweaks"],
         ["tt.visibilitySection"] = L["Visibility"],
         ["uf.auras"] = L["Auras"],
+        ["uf.fonts"] = L["Fonts"],
+        ["uf.frameStyleSection"] = L["Frame Style"],
         ["uf.frames"] = L["Enable Frames"],
         ["uf.look"] = L["Look"],
     },

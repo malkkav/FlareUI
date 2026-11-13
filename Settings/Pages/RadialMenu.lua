@@ -21,6 +21,7 @@ S:Module{
             refresh = function() if ns.RadialEditorEmbed then ns.RadialEditorEmbed.Refresh() end end,
         },
         { key = "options" },
+        { key = "fonts" },
     },
 }
 
@@ -31,8 +32,15 @@ for _, key in ipairs({ "rm.scope", "rm.key", "rm.ownKey", "rm.padStick", "rm.pad
 end
 
 local function ApplyOpening() if RM() and RM().ApplyOpening then RM():ApplyOpening() end end
+
+-- Fonts tab (11-13): the hovered button's name and the counts (RadialMenu.lua RM.StyleButtonFonts)
+S:FontRows{ module = "rm", tab = "fonts", section = "rm.fonts", fonts = {
+    { key = "labels", path = "radialmenu.labelFont" },
+    { key = "counts", path = "radialmenu.countFont" },
+}, apply = function() if RM() and RM().ApplyFonts then RM():ApplyFonts() end end }
 S:Row{ key = "rm.position", kind = "choice", tab = "options", path = "radialmenu.position", choices = { "cursor", "center" }, apply = ApplyOpening }
 S:Row{ key = "rm.activation", kind = "choice", tab = "options", path = "radialmenu.activation", choices = { "hold", "toggle" }, apply = ApplyOpening }
+S:Row{ key = "rm.subRadials", kind = "choice", tab = "options", path = "radialmenu.subRadials", choices = { "reset", "remember" }, apply = ApplyOpening }
 local SCALES = {}
 for _, v in ipairs({ 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5 }) do SCALES[#SCALES + 1] = { v, (v * 100) .. "%" } end
 S:Row{ key = "rm.scale", kind = "range", tab = "options", path = "radialmenu.scale", choices = SCALES }

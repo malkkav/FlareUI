@@ -351,8 +351,24 @@ local function FCMBars()
     return t
 end
 
+-- Unit frame fonts (11-13, fonts phase 3): each frame's own texts, set in its Edit Mode dialog
+-- (Settings/Fonts.lua ns.EditFonts). Frames: player, target, focus, pet, targettarget, focustarget,
+-- party, raid, boss. Saved per frame style (unitframes.frameFonts isn't a shared key).
+do
+    local function Font(size) return { face = "__global", size = size, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } end
+    ns.UF_FONT_DEFAULTS = {
+        -- cast: the spell's name; castTime: its countdown (11-13, apart; they shared one font before)
+        names = Font(12), health = Font(12), level = Font(12), power = Font(10), cast = Font(12), castTime = Font(12),
+        auras = Font(0), auraCount = Font(0),   -- 0: Auto, sized to the icon
+    }
+end
+
 local defaults = {
     profile = {
+        -- Global Font (Settings page > Fonts, 11-13): the face every font set to Global ("__global") uses
+        -- Game Text, Nameplate Font and Combat Text Font (11-13, Settings/Fonts.lua ns.GameFonts): off and
+        -- Default ("") leave Blizzard's fonts alone; combat.path: the chosen file, kept for the next login
+        fonts = { global = { face = "Friz Quadrata TT" }, gameText = false, nameplate = { face = "" }, combat = { face = "" } },
         editModeOverlaysHidden = false,   -- eye button on the HUD Edit Mode window (EditModeOverlays.lua)
 
         -- [[ CHAT MODULE ]]
@@ -404,8 +420,8 @@ local defaults = {
 
             -- Typography
             chatFont = { face = "Arial Narrow", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
-            tabFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
-            editBoxFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            tabFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            editBoxFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
         },
 
         -- [[ ACTION BARS MODULE ]]
@@ -422,6 +438,9 @@ local defaults = {
             buttonArt = true,
             stopAutoAddSpells = false,
             gryphonsBehind = false,     -- Gryphons Behind Bars: the end caps draw under the bars
+            borderlessMenu = false,     -- Borderless Micro Menu: no frame art round the micro menu (11-13)
+            borderlessBags = false,     -- Borderless Bag Bar: no frame art or dividers on the bag bar (11-13)
+            collapsibleBags = false,    -- Collapsible Bag Bar (with Borderless Bag Bar): an arrow folds the bag slots away (11-13)
             activeHighlight = false,    -- Active Highlight: the checked button (stance, queued attack) drawn plainly
             dimOnCooldown = false,      -- Dim on cooldown: icons grey while a real cooldown (not the GCD) runs
             autoRanks = false,          -- Update Spell Ranks: a new rank replaces the old one on the bars
@@ -441,6 +460,8 @@ local defaults = {
             hotkeyFont = { face = "Arial Narrow", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             countFont = { face = "Arial Narrow", size = 14, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             macroFont = { face = "Arial Narrow", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            -- the XP bar's numbers (11-13; they used the Keybinds font before: starts as a copy, XPBar.lua)
+            xpFont = { face = "Arial Narrow", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
         },
 
         -- [[ FAKE COOLDOWN MANAGER (FCM) ]]
@@ -458,9 +479,9 @@ local defaults = {
 
             opacity = 0.6,
             borderTexture = "FlareUI Frames",
-            barFont = { face = "Friz Quadrata TT", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            barFont = { face = "__global", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- the title row: Damage Meter / Threat, the session and its timer (in the header's gold)
-            headerFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            headerFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             combatTimer = true,         -- Blizzard's "[mm:ss]" session timer in the title row
             readyCheckButton = true,    -- Ready Check button in the header
             countdownButton = true,     -- Countdown button in the header
@@ -476,6 +497,7 @@ local defaults = {
             threatPullFlash = true,     -- Threat tab: your bar flashes as you near that line
             threatTankLead = false,     -- Threat tab: the tank's row shows its lead over second place
             threatValueDisplay = "percent", -- Threat tab: "both" / "percent" / "value"
+            threatWindow = false,       -- Separate Window: threat in its own window, no Threat tab (11-13)
         },
 
         -- [[ MINIMAP MODULE ]]
@@ -490,9 +512,12 @@ local defaults = {
             microMenu = false,          -- middle-click the map: a list of Blizzard's panels (off since 11-11)
             coords = "hover",           -- Coordinates: off | always | hover (with Blizzard's own option, Minimap.lua MM.CoordsMode)
             fps = "off",                -- Framerate at the map's bottom right: off | always | hover (Minimap.lua MM.SetupFps)
+            latency = "off",            -- Latency (home over world) with it: off | always | hover (11-13)
             -- Fonts tab: the zone name and the clock (Forever's own look by default)
-            zoneFont  = { face = "Friz Quadrata TT", size = 10, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
-            clockFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            zoneFont  = { face = "__global", size = 10, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            clockFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            -- coordinates, framerate and latency (11-13; Blizzard's small font a size up before)
+            infoFont = { face = "__global", size = 11, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
         },
 
         -- [[ UNIT FRAMES MODULE ]]
@@ -509,33 +534,37 @@ local defaults = {
             auraSwipe = "both",         -- both | icon (over the icon) | border (around the edge) | none
             -- The look is set per frame in Edit Mode (units.* below).
             -- font: level, name and health; fontPower: power value; fontCast: spell name and timer.
-            font      = { face = "Friz Quadrata TT", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
-            fontPower = { face = "Friz Quadrata TT", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
-            fontCast  = { face = "Friz Quadrata TT", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            font      = { face = "__global", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            fontPower = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            fontCast  = { face = "__global", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- positions per Edit Mode layout: layouts[name][unit] = { point, x, y }
             layouts = {},
             -- Blizzard's totem frame on FlareUI Totems (Modules/Totems.lua): size in %, totems per row
             totems = { size = 90, perRow = 4, swipe = "both", timer = "none" },
             -- aura timers and stack counts; size 0 (Auto) follows the icon size. The stack font starts
             -- as a copy of the timer font (ns.SeedFont)
-            auraFont = { face = "Friz Quadrata TT", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
-            auraCountFont = { face = "Friz Quadrata TT", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            auraFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            auraCountFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            -- each frame's fonts (above: the shared ones they started from, kept for the first copy)
+            frameFonts = { ["**"] = ns.UF_FONT_DEFAULTS },
             editSections = {},          -- (unused since 11-11: open sections are per session, Core.lua ns.EditSections)
             -- resource bars (Modules/ResourceBars.lua); positions in layouts[layout][bar]
             resource = {
                 enabled = false,        -- the Resource Bars module (Settings: its own page)
-                font = { face = "Friz Quadrata TT", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+                font = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
                 layouts = {},
                 bars = {
-                    health      = { enabled = false, show = "combat", width = 220, height = 16, text = "both" },
-                    power       = { enabled = false, show = "combat", width = 220, height = 16, text = "value", fsr = false },
-                    mana        = { enabled = false, show = "combat", width = 220, height = 16, text = "value", fsr = false },
+                    -- font: each bar's own (Edit Mode > Fonts, 11-13; the shared font above, plus the bar's
+                    -- old size step, is what it started from)
+                    health      = { enabled = false, show = "combat", width = 220, height = 16, text = "both", font = { face = "__global", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
+                    power       = { enabled = false, show = "combat", width = 220, height = 16, text = "value", fsr = false, font = { face = "__global", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
+                    mana        = { enabled = false, show = "combat", width = 220, height = 16, text = "value", fsr = false, font = { face = "__global", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
                     combo       = { enabled = false, show = "combat", width = 220, height = 12 },
-                    swingMain   = { enabled = false, show = "inuse",        width = 220, height = 12 },
-                    swingOff    = { enabled = false, show = "inuse",        width = 220, height = 12 },
-                    swingRanged = { enabled = false, show = "inuse",        width = 220, height = 12 },
-                    flight      = { enabled = false, show = "always",       width = 220, height = 14 },   -- Flight Timer (11-11)
-                    seal        = { enabled = false, show = "always",       width = 220, height = 14 },   -- Seals, paladins (11-11)
+                    swingMain   = { enabled = false, show = "inuse",        width = 220, height = 12, font = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
+                    swingOff    = { enabled = false, show = "inuse",        width = 220, height = 12, font = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
+                    swingRanged = { enabled = false, show = "inuse",        width = 220, height = 12, font = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
+                    flight      = { enabled = false, show = "always",       width = 220, height = 14, font = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },   -- Flight Timer (11-11)
+                    seal        = { enabled = false, show = "always",       width = 220, height = 14, font = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },   -- Seals, paladins (11-11)
                 },
             },
             -- party frames (Modules/PartyFrames.lua): two styles, each with its own settings
@@ -670,17 +699,23 @@ local defaults = {
                          trinkets = false, extras = "none", hideMounted = false, playstyle = "auto", soulstone = "healer",   -- 11-12
                          hideTank = false, hideHealer = false, hideDamage = false, hideNoRole = false,
                          countText = "both", spacing = 6, alpha = 100,
+                         -- Edit Mode > Fonts (11-13): the counts and the time left (the Buffs stack font before)
+                         countFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 }, timeFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
                          -- When It Shows, Alerts (the Buff Reminders tab)
                          showSolo = true, showParty = true, showRaid = true, hideRested = false, onlyProvider = false,
                          showCombat = true, fadeSpeed = "instant",   -- Edit Mode's Fading section (11-11)
                          sound = "off", glowMissing = false, glowExpiring = false,
                          layouts = {} },
-            font = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            font = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- stack counts; starts as a copy of the timer font (ns.SeedFont)
-            countFont = { face = "Friz Quadrata TT", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            countFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- per frame, set in Edit Mode
-            buffs   = { size = 26, perRow = 9, max = 27, spacing = 4, grow = "LEFT", wrap = "DOWN" },
-            debuffs = { size = 30, perRow = 8, max = 16, spacing = 4, grow = "LEFT", wrap = "UP" },
+            -- (font / countFont: each frame's own since 11-13, set in its Edit Mode Fonts section; the
+            -- shared ones above are what they started from)
+            buffs   = { size = 26, perRow = 9, max = 27, spacing = 4, grow = "LEFT", wrap = "DOWN",
+                        font = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 }, countFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
+            debuffs = { size = 30, perRow = 8, max = 16, spacing = 4, grow = "LEFT", wrap = "UP",
+                        font = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 }, countFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
             layouts = {},
         },
 
@@ -696,8 +731,8 @@ local defaults = {
             borderByQuality = true,
             hideHealthBar = true,
             -- fonts: Blizzard's tooltip fonts (GameTooltipHeaderText / GameTooltipText), shadow on
-            titleFont   = { face = "Friz Quadrata TT", size = 14, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
-            contentFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            titleFont   = { face = "__global", size = 14, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            contentFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
 
             -- content
             nameColor = "class",          -- none | class
@@ -707,6 +742,7 @@ local defaults = {
             showGuildRank = false,      -- the rank after the guild's name
             hideFaction = false,
             shortItemStats = false,     -- "+12 Spell Power" for the long Equip: stat lines (ItemStats.lua)
+            itemLevel = false,          -- Show Item Level: weapons' and armour's level on their tooltip (11-13)
             compareShift = false,       -- comparison tooltips only while Shift is held (off since 11-10, Marcus)
             showItemID = false,
             showSpellID = false,
@@ -739,7 +775,11 @@ local defaults = {
             showNames = true,           -- the hovered button names its action
             position = "cursor",        -- cursor | center: where a mouse radial opens
             activation = "hold",        -- hold (release to use) | toggle (press to open, click to use)
+            subRadials = "reset",       -- reset | remember: a sub-radial's button when the radial opens again
             scale = 1,                  -- Radial Scale: the whole radial's size
+            -- Fonts tab (11-13): the hovered button's name and the counts (as Blizzard's fonts were)
+            labelFont = { face = "__global", size = 16, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            countFont = { face = "Arial Narrow", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
         },
 
         -- [[ QUEST TRACKER MODULE ]] minimized and collapsed state per character (CharDB().objectiveTracker)
@@ -773,9 +813,9 @@ local defaults = {
             showRecipes = true,
             -- on the way in, and open again on the way out: "minimize" or "none"
             autoMinimize = { dungeon = "none", raid = "none", pvp = "none", arena = "none", combat = "none" },   -- (none since 11-11)
-            headerFont = { face = "Friz Quadrata TT", size = 13, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
-            titleFont = { face = "Friz Quadrata TT", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
-            objectiveFont = { face = "Friz Quadrata TT", size = 11, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            headerFont = { face = "__global", size = 13, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            titleFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            objectiveFont = { face = "__global", size = 11, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             layouts = {},
         },
 
@@ -797,7 +837,7 @@ local defaults = {
             lootFeedPosition = "cursor", -- cursor (starts at the pointer) | placed (the Edit Mode spot)
             lootFeedAlign = "left",     -- Alignment: left | right (icon on the right, text before it; 11-13)
             lootFeedSkills = false,     -- skill-ups too ("Mining 76")
-            lootFeedFont = { face = "Friz Quadrata TT", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
+            lootFeedFont = { face = "__global", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             hideFlagCarriers = false,   -- Hide Clutter > Flag Carrier Frames (Movers.lua): CVar showArenaEnemyFrames
             zoneTextFont = { face = "" },  -- Zone Text font (ZoneText.lua): "" keeps Blizzard's; face only
             mouseRingSize = 40,         -- the ring's diameter
@@ -828,10 +868,14 @@ local defaults = {
             bagItemFont = { face = "", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             -- Free Bag Slots font: the count on the backpack button; face "" keeps Blizzard's (11-12)
             bagFreeSlotsFont = { face = "", size = 16, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
+            -- the gold, silver and copper at the bags' foot (11-13): "" keeps Blizzard's font
+            bagMoneyFont = { face = "", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             bagThickBorders = false,    -- FlareUI Thick in place of the always-on Thin border
             bagRarityBorders = false,   -- slot borders in the item's quality colour
             bagJunkIcon = false,        -- the junk coin on grey items always, not only at a vendor
             bagUpgradeArrow = false,    -- green arrow on gear that beats what you wear (Bags.lua Upgrade)
+            bagItemLevel = false,       -- Item Level: weapons' and armour's level, bottom left (11-13)
+            bagUncollected = false,     -- Uncollected Appearance: an eye, top right (11-13)
             hideErrors = false,
             hideZoneText = false,
             hidePortraitNumbers = false,
@@ -1025,6 +1069,16 @@ local function BaseFont()
     return _G.STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
 end
 
+-- Global Font (11-13): a font whose face is ns.GLOBAL_FONT uses the profile's Global Font. Every
+-- font reads its face through ns.GetFontPath, so this one value changes all of them.
+ns.GLOBAL_FONT = "__global"
+function ns.GlobalFontFace()
+    local fonts = ns.db and ns.db.profile and ns.db.profile.fonts
+    local face = fonts and fonts.global and fonts.global.face
+    if type(face) ~= "string" or face == "" or face == ns.GLOBAL_FONT then return "Friz Quadrata TT" end
+    return face
+end
+
 -- Font path from LibSharedMedia, the client's own font when the name or file is unknown.
 -- A known file need not be loaded yet: use ns.SetFont, which waits for it.
 -- Only found paths are remembered (a name not registered yet may be later); a registered name keeps its
@@ -1034,6 +1088,8 @@ do
     local function Forget() wipe(foundPaths) end
 
     function ns.GetFontPath(face)
+        -- Global: the Global Font's face (Settings page > Fonts)
+        if face == ns.GLOBAL_FONT then face = ns.GlobalFontFace() end
         local path = face ~= nil and foundPaths[face]
         if path then return path end
         local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
@@ -1088,7 +1144,20 @@ local function SetFontRaw(fontString, path, size, flags)
     retryTicker = retryTicker or C_Timer.NewTicker(RETRY_SECONDS, RetryFonts)
 end
 
+-- FlareUI in Russian on a client of another language (11-13: boxes in place of letters): the game's
+-- Latin fonts lack Cyrillic, so every FlareUI font goes through a family (ns.SetFontFamily), whose
+-- Russian member has the letters. Decided once the locale files have loaded.
+function ns.FontFamiliesAlways()
+    if ns.fontFamiliesAlways == nil and ns.LoadedLocale then
+        ns.fontFamiliesAlways = GetLocale() ~= "ruRU" and ns.LoadedLocale() == "ruRU"
+    end
+    return ns.fontFamiliesAlways
+end
+
 function ns.SetFont(fontString, path, size, flags)
+    if ns.FontFamiliesAlways() and CreateFontFamily and fontString.SetFontObject and path and size then
+        return ns.SetFontFamily(fontString, path, size, flags)
+    end
     if size and ns.TEXT_SCALE ~= 1 then size = size * ns.TEXT_SCALE end
     return SetFontRaw(fontString, path, size, flags)
 end
@@ -1170,6 +1239,8 @@ function ns.SetFontObjectFace(fontObject, path, size, flags)
     if size and ns.TEXT_SCALE ~= 1 then size = size * ns.TEXT_SCALE end
     return SetFontObjectFaceRaw(fontObject, path, size, flags)
 end
+-- a size already scaled (Settings/Fonts.lua ns.GameFonts: Blizzard's own sizes, read back)
+ns.SetFontObjectFaceUnscaled = SetFontObjectFaceRaw
 
 -- Text Scale on Blizzard's own text: every font object the game has, once, as FlareUI loads (before
 -- any module sets a font). All sizes are read first: an object can inherit another's, which would
@@ -1236,6 +1307,8 @@ function ns.AuraGroups.Sig(...)
     local function add(value, depth)
         if type(value) ~= "table" then
             parts[#parts + 1] = tostring(value)
+            -- a Global face: the Global Font's own, so changing it rebuilds the look
+            if value == ns.GLOBAL_FONT then parts[#parts + 1] = ns.GlobalFontFace() end
             return
         end
         if depth > 3 then parts[#parts + 1] = "{}" return end
@@ -1252,7 +1325,10 @@ function ns.AuraGroups.Sig(...)
             end
         end
         for _, field in ipairs(FONT_FIELDS) do
-            if rawget(value, field) == nil and value[field] ~= nil then parts[#parts + 1] = field .. "=" .. tostring(value[field]) end
+            if rawget(value, field) == nil and value[field] ~= nil then
+                parts[#parts + 1] = field .. "=" .. tostring(value[field])
+                if value[field] == ns.GLOBAL_FONT then parts[#parts + 1] = ns.GlobalFontFace() end
+            end
         end
         parts[#parts + 1] = "}"
     end
@@ -1697,6 +1773,7 @@ function ns.EditSections()
         local own = {}
         for i, item in ipairs(items) do own[i] = item.hidden end
         settings[#settings + 1] = { name = "|cffffd100" .. ns.L[key] .. "|r", kind = LEM.SettingType.Expander, default = false,
+            editSection = key,   -- (Visibility.lua puts Fading before the Fonts section, which stays last)
             get = function() return open[key] or false end,
             set = function(_, value) open[key] = value and true or nil end,
             hidden = function(...)
@@ -2346,6 +2423,12 @@ f:SetScript("OnEvent", function(self, event, ...)
         if textScale and textScale ~= 1 and textScale >= 0.5 and textScale <= 2 then
             ns.TEXT_SCALE = textScale
             ns.ScaleGameFonts(textScale)
+        end
+        -- Global Font > Game Text, Combat Text and Nameplates (Settings/Fonts.lua, 11-13): before any
+        -- module sets a font, so FlareUI's own fonts still go over Blizzard's
+        if ns.GameFonts and ns.GameFonts.OnLoad then
+            local ok, err = pcall(ns.GameFonts.OnLoad)
+            if not ok then geterrorhandler()(err) end
         end
 
         -- Older manual settings may have no language saved until the dropdown was used.

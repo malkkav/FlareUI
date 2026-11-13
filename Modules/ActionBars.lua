@@ -396,6 +396,15 @@ local function UpdateActive(button)
         return
     end
     local ov = ActiveOverlay(button)
+    -- (11-13 performance pass) already lit the same way: nothing to redo. The events behind this fire
+    -- dozens of times a second in a fight, and each pass rebuilt every lit button's border.
+    -- UpdateActiveAll clears fuiAtlas so a settings or scale change repaints.
+    local bordered = button.FlareUI_Bordered or false
+    local normalTex = button.NormalTexture
+    local atlasNow = not bordered and normalTex and normalTex.GetAtlas and normalTex:GetAtlas() or nil
+    local queued = HoldsQueuedAttack(button) and true or false
+    if ov:IsShown() and ov.fuiBordered == bordered and ov.fuiAtlas == atlasNow and ov.fuiQueued == queued then return end
+    ov.fuiBordered, ov.fuiAtlas, ov.fuiQueued = bordered, atlasNow, queued
     -- the edge: the frame the button wears right now, in gold
     local c = ACTIVE_COLOR
     if button.FlareUI_Bordered then
@@ -459,7 +468,10 @@ local function UpdateActiveAll()
             hooksecurefunc(button, "SetChecked", UpdateActive)
             activeButtons[button] = true
         end
-        if button.FlareUI_ActiveHooked then UpdateActive(button) end
+        if button.FlareUI_ActiveHooked then
+            if button.FlareUI_Active then button.FlareUI_Active.fuiAtlas = false end   -- (repaint)
+            UpdateActive(button)
+        end
     end
     if on and not activeEvents then
         activeEvents = CreateFrame("Frame")
@@ -467,6 +479,184 @@ local function UpdateActiveAll()
         for _, event in ipairs(ACTIVE_UNIT_EVENTS) do pcall(activeEvents.RegisterUnitEvent, activeEvents, event, "player") end
     end
     if activeEvents then activeEvents:SetScript("OnEvent", on and OnActiveEvent or nil) end
+end
+
+--------------------------------------------------
+-- 6c. MICRO MENU AND BAG BAR (Bars Appearance, 11-13, a player's request)
+-- Borderless Micro Menu / Borderless Bag Bar: Forever's frame art round each (and the bag bar's
+-- dividers) goes invisible; that art only fits the bars' default places.
+-- Collapsible Bag Bar (needs Borderless Bag Bar: the frame would stay at full length round a folded
+-- bar): an arrow by the backpack folds the bag slots away, as retail's. Forever left
+-- Blizzard's own toggle out of its bag bar (BagsBar.hideExpandToggle), so the arrow is FlareUI's, in
+-- Blizzard's art. The fold is Blizzard's own "expandBagBar" setting, and Blizzard's bag manager opens
+-- it by itself while an item is on the cursor (so it can go in a bag). Nothing is hooked until one of
+-- them is on: off leaves Blizzard's bars alone.
+--------------------------------------------------
+do
+    local arrow, hooked, artTouched, collapsible = nil, false, false, false
+    local borderlessMenu, borderlessBags = false, false
+    local folded = setmetatable({}, { __mode = "k" })   -- bag buttons FlareUI hid
+
+    local function Manager() return _G.MainMenuBarBagManager end
+    local function Expanded()
+        local m = Manager()
+        return not (m and m.ShouldBarExpand) or m:ShouldBarExpand() and true or false
+    end
+
+    -- the frame art (alpha only: Blizzard's code never sees a change)
+    local function DividerArt()
+        local bar = _G.BagsBar
+        if not (bar and (borderlessBags or artTouched)) then return end
+        local a = borderlessBags and 0 or 1
+        for _, pool in ipairs({ bar.HorizontalDividersPool or false, bar.VerticalDividersPool or false }) do
+            if pool then for divider in pool:EnumerateActive() do divider:SetAlpha(a) end end
+        end
+    end
+    local function SetArt()
+        local menu, bar = _G.MicroMenu, _G.BagsBar
+        local m, b = borderlessMenu and 0 or 1, borderlessBags and 0 or 1
+        if menu and menu.BorderArt then menu.BorderArt:SetAlpha(m) end
+        if menu and menu.BackgroundArt then menu.BackgroundArt:SetAlpha(m) end
+        if bar and bar.BorderArt then bar.BorderArt:SetAlpha(b) end
+        DividerArt()
+    end
+
+    -- the arrow points the way the slots go out (expanded) or come back (folded), as Blizzard's
+    local function Rotation(bar)
+        local expanded = Expanded()
+        if bar:IsHorizontal() then
+            if bar:IsDirectionLeft() then return expanded and math.pi or 0 end
+            return expanded and 0 or math.pi
+        end
+        local up, down = 3 * math.pi / 2, math.pi / 2
+        if bar:IsDirectionUp() then return expanded and down or up end
+        return expanded and up or down
+    end
+
+    -- after Blizzard's layout: the arrow by the backpack, the first bag slot past it
+    local function PlaceArrow()
+        local bar, backpack, m = _G.BagsBar, _G.MainMenuBarBackpackButton, Manager()
+        if not (arrow and collapsible and bar and backpack and m) then return end
+        local point, relativePoint, x, y = bar:GetBagButtonAnchorPoints()
+        local horizontal = bar:IsHorizontal()
+        arrow:SetSize(horizontal and 10 or 16, horizontal and 16 or 10)
+        arrow:ClearAllPoints()
+        arrow:SetPoint(point, backpack, relativePoint, 0, 0)
+        local rotation = Rotation(bar)
+        arrow.Art:SetRotation(rotation)
+        arrow.Glow:SetRotation(rotation)
+        for _, button in m:EnumerateBagButtons() do
+            if button ~= backpack and button:IsShown() then
+                button:ClearAllPoints()
+                button:SetPoint(point, arrow, relativePoint, x, y)
+                break
+            end
+        end
+        arrow:Show()
+    end
+
+    local function CanTouch(button) return not (InCombatLockdown() and button:IsProtected()) end
+
+    -- folded: every bag slot but the backpack hidden (and remembered, so only those come back)
+    local function Fold(collapse)
+        local bar, backpack, m = _G.BagsBar, _G.MainMenuBarBackpackButton, Manager()
+        if not (bar and m) then return end
+        local changed = false
+        for _, button in m:EnumerateBagButtons() do
+            if button ~= backpack and CanTouch(button) then
+                if collapse and button:IsShown() then
+                    folded[button] = true
+                    button:Hide()
+                    changed = true
+                elseif not collapse and folded[button] then
+                    folded[button] = nil
+                    button:Show()
+                    changed = true
+                end
+            end
+        end
+        if changed then bar:Layout() else PlaceArrow() end
+    end
+
+    local function Arrow()
+        if arrow then return arrow end
+        arrow = CreateFrame("Button", "FlareUI_BagBarToggle", _G.BagsBar)
+        arrow:SetFrameLevel(_G.BagsBar:GetFrameLevel() + 5)
+        arrow.Art = arrow:CreateTexture(nil, "ARTWORK")
+        arrow.Art:SetAtlas("bag-arrow")
+        arrow.Art:SetSize(10, 16)
+        arrow.Art:SetPoint("CENTER")
+        arrow.Glow = arrow:CreateTexture(nil, "HIGHLIGHT")
+        arrow.Glow:SetAtlas("bag-arrow")
+        arrow.Glow:SetSize(10, 16)
+        arrow.Glow:SetPoint("CENTER")
+        arrow.Glow:SetBlendMode("ADD")
+        arrow.Glow:SetAlpha(0.4)
+        arrow:RegisterForClicks("LeftButtonUp")
+        arrow:SetScript("OnClick", function()
+            local m = Manager()
+            if m and m.ToggleExpandBar then m:ToggleExpandBar() end
+        end)
+        arrow:SetScript("OnMouseDown", function(self) self.Art:SetPoint("CENTER", 1, -1) end)
+        arrow:SetScript("OnMouseUp", function(self) self.Art:SetPoint("CENTER") end)
+        return arrow
+    end
+
+    local function Hook()
+        if hooked then return end
+        local bar, m = _G.BagsBar, Manager()
+        if not (bar and m) then return end
+        hooked = true
+        hooksecurefunc(bar, "Layout", PlaceArrow)
+        if bar.UpdateDividers then hooksecurefunc(bar, "UpdateDividers", DividerArt) end
+        -- the arrow's click, or an item picked up or put down
+        EventRegistry:RegisterCallback("MainMenuBarManager.OnExpandChanged", function()
+            if collapsible then Fold(not Expanded()) end
+        end, ActionBars)
+        -- a slot Blizzard shows again while folded (a bag equipped, the keyring) folds too
+        for _, button in m:EnumerateBagButtons() do
+            if button ~= _G.MainMenuBarBackpackButton then
+                button:HookScript("OnShow", function(self)
+                    if collapsible and not Expanded() and CanTouch(self) then
+                        folded[self] = true
+                        self:Hide()
+                    end
+                end)
+            end
+        end
+    end
+
+    function ActionBars.ApplyMenuBags()
+        local db = GetBarConfig()
+        local on = db and db.enabled
+        -- (11-13: Borderless Menu and Bags split in two)
+        if db and db.borderlessMenuBags ~= nil then
+            if db.borderlessMenuBags then db.borderlessMenu, db.borderlessBags = true, true end
+            db.borderlessMenuBags = nil
+        end
+        local wantMenu = on and db.borderlessMenu and true or false
+        local wantBags = on and db.borderlessBags and true or false
+        local wantCollapse = wantBags and db.collapsibleBags and true or false
+        if not (wantMenu or wantBags or hooked) then return end
+        Hook()
+        if not hooked then return end
+        borderlessMenu, borderlessBags = wantMenu, wantBags
+        if wantMenu or wantBags or artTouched then
+            SetArt()
+            artTouched = wantMenu or wantBags
+        end
+        local was = collapsible
+        collapsible = wantCollapse
+        if collapsible then
+            Arrow()
+            Fold(not Expanded())
+            PlaceArrow()
+        elseif was then
+            if arrow then arrow:Hide() end
+            Fold(false)
+            _G.BagsBar:Layout()   -- the first slot back on the backpack
+        end
+    end
 end
 
 --------------------------------------------------
@@ -1372,6 +1562,7 @@ function ActionBars:Refresh(event)
 
     UpdateGryphonLayer(db)
     if ActionBars.ApplyTotemScale then ActionBars.ApplyTotemScale() end   -- a profile's totem bar Size
+    ActionBars.ApplyMenuBags()
     UpdateButtonArtAll()
     UpdateBordersAll()
     UpdateActiveAll()

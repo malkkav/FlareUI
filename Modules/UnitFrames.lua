@@ -288,31 +288,77 @@ local CAST_EVENTS = {
     "UNIT_SPELLCAST_CHANNEL_STOP", "UNIT_SPELLCAST_INTERRUPTIBLE", "UNIT_SPELLCAST_NOT_INTERRUPTIBLE",
 }
 
--- Health Text and Power Text share these (Power Text has no Health Lost). Saved names: "both" is
--- Value | Percent, "valuemax" Current (Max).
+-- Health Text and Power Text share these (Power Text has no Health Lost options). Naming (11-13,
+-- Marcus): "Value" is always the current amount, "Max" the maximum, and the percent comes first, as
+-- on Blizzard's frames. Order: the percent options, then the value options, then Health Lost.
+-- Saved names: "both" is Percent | Value, "valuemax" Value [Max], "valuelost" Value | Health Lost.
+-- "valuemaxpct" (Current (Max) | Percent, removed 11-13) reads as Value [Max] (UF.MigrateTextModes).
+local SPLIT_MODE = { text = L["Percent <  > Value"], value = "split", isRadio = true }
 local HEALTH_TEXT_MODES = {
     { text = L["Off"],                      value = "none",        isRadio = true },
     { text = L["Percent"],                  value = "percent",     isRadio = true },
+    { text = L["Percent | Value"],          value = "both",        isRadio = true },
     { text = L["Value"],                    value = "value",       isRadio = true },
-    { text = L["Value | Percent"],          value = "both",        isRadio = true },
-    { text = L["Current (Max)"],            value = "valuemax",    isRadio = true },
-    { text = L["Current (Max) | Percent"],  value = "valuemaxpct", isRadio = true },
+    { text = L["Value [Max]"],              value = "valuemax",    isRadio = true },
+    { text = L["Value | Health Lost"],      value = "valuelost",   isRadio = true },
     { text = L["Health Lost"],              value = "lost",        isRadio = true },
 }
+-- Forever Style adds Percent <  > Value (11-13, a player's request, like Blizzard's own frames), on
+-- health and power: the percent at the bar's left end, the whole value, never shortened, at its right
+-- end. It goes after Percent | Value, with the other percent options.
+local function WithSplit(list)
+    local out = {}
+    for _, mode in ipairs(list) do
+        out[#out + 1] = mode
+        if mode.value == "both" then out[#out + 1] = SPLIT_MODE end
+    end
+    return out
+end
+local PLATE_HEALTH_TEXT_MODES = WithSplit(HEALTH_TEXT_MODES)
+
+-- a split's left half (the percent), in its bar text's font: HealthTextLeft or PowerTextLeft
+function UF.SplitText(f, key)
+    key = key or "HealthText"
+    local main = f[key]
+    local left = f[key .. "Left"]
+    if not left then
+        left = main:GetParent():CreateFontString(nil, "OVERLAY")
+        left:SetJustifyH("LEFT")
+        f[key .. "Left"] = left
+    end
+    local face, size, flags = main:GetFont()
+    if face then left:SetFont(face, size, flags) end
+    left:SetShadowColor(main:GetShadowColor())
+    left:SetShadowOffset(main:GetShadowOffset())
+    left:SetTextColor(main:GetTextColor())
+    return left
+end
 
 -- The text for every mode but Health Lost. cur and max go through ns.ShortNumber (in full up to 9999) and percent is
 -- 0-100; all three can be secret, which SetFormattedText takes as they are.
-function UF.FormatBarText(fs, mode, cur, percent, max)
+function UF.FormatBarText(fs, mode, cur, percent, max, unit)
     if mode == "percent" then
         fs:SetFormattedText("%.0f%%", percent)
     elseif mode == "value" then
         fs:SetText(ns.ShortNumber(cur))
-    elseif mode == "both" then
-        fs:SetFormattedText("%s | %.0f%%", ns.ShortNumber(cur), percent)
-    elseif mode == "valuemax" then
-        fs:SetFormattedText("%s (%s)", ns.ShortNumber(cur), ns.ShortNumber(max))
-    elseif mode == "valuemaxpct" then
-        fs:SetFormattedText("%s (%s) | %.0f%%", ns.ShortNumber(cur), ns.ShortNumber(max), percent)
+    elseif mode == "valuelost" then
+        -- Value | Health Lost: "1234 | -216", the value alone at full health. A secret amount lost
+        -- can't be checked for 0 in Lua, so it shows as it is.
+        local lost
+        if unit then
+            lost = UnitHealthMissing(unit, true)
+        elseif canaccessvalue(cur) and canaccessvalue(max) and cur and max then
+            lost = max - cur
+        end
+        if lost == nil or (canaccessvalue(lost) and lost <= 0) then
+            fs:SetText(ns.ShortNumber(cur))
+        else
+            fs:SetFormattedText("%s | -%s", ns.ShortNumber(cur), ns.ShortNumber(lost))
+        end
+    elseif mode == "both" or mode == "split" then
+        fs:SetFormattedText("%.0f%% | %s", percent, ns.ShortNumber(cur))
+    elseif mode == "valuemax" or mode == "valuemaxpct" then
+        fs:SetFormattedText("%s [%s]", ns.ShortNumber(cur), ns.ShortNumber(max))
     else
         fs:SetText("")
     end
@@ -341,13 +387,36 @@ end
 -- Power Text: Health Text's modes but Health Lost. A saved true or false (a checkbox's) reads as Value.
 UF.POWER_TEXT_MODES = {}
 for _, mode in ipairs(HEALTH_TEXT_MODES) do
-    if mode.value ~= "lost" then UF.POWER_TEXT_MODES[#UF.POWER_TEXT_MODES + 1] = mode end
+    if mode.value ~= "lost" and mode.value ~= "valuelost" then UF.POWER_TEXT_MODES[#UF.POWER_TEXT_MODES + 1] = mode end
 end
-local POWER_MODE = { none = true, percent = true, value = true, both = true, valuemax = true, valuemaxpct = true }
+local PLATE_POWER_TEXT_MODES = WithSplit(UF.POWER_TEXT_MODES)
+local POWER_MODE = { none = true, percent = true, value = true, both = true, valuemax = true, valuemaxpct = true, split = true }
 function UF.IsPowerTextMode(v) return POWER_MODE[v] or false end
 function UF.PowerTextMode(v)
+    if v == "valuemaxpct" then return "valuemax" end
     if POWER_MODE[v] then return v end
     return "value"
+end
+
+-- Current (Max) | Percent was removed (11-13): saved choices become Value [Max], once per profile,
+-- in every frame's settings (unit, party, raid and boss frames keep healthText / powerText)
+function UF.MigrateTextModes()
+    local profile = ns.db and ns.db.profile
+    if not profile or profile.textModes1113 then return end
+    profile.textModes1113 = true
+    local seen = {}
+    local function Walk(t, depth)
+        if seen[t] or depth > 8 then return end
+        seen[t] = true
+        for k, v in pairs(t) do
+            if (k == "healthText" or k == "powerText") and v == "valuemaxpct" then
+                t[k] = "valuemax"
+            elseif type(v) == "table" then
+                Walk(v, depth + 1)
+            end
+        end
+    end
+    Walk(profile, 0)
 end
 -- percent from the client's curve (power can be secret)
 function UF.SetPowerText(fs, unit, powerType, mode)
@@ -365,12 +434,106 @@ end
 -- 4. HELPERS
 --------------------------------------------------
 local frames = {}          -- unit -> frame
-local pendingLayout = false
+local pendingLayout = false   -- false, or the name of the last layout step a fight put off (UF.lastPendingWhy, for /fui perf trace)
 local LayoutAuras          -- defined in 7
 
 local function GetDb()
     if not ns.db or not ns.db.profile or not ns.db.profile.unitframes then return nil end
     return ns.db.profile.unitframes
+end
+
+-- Each frame's fonts (11-13, fonts phase 3), set in its Edit Mode Fonts section and saved per frame
+-- style (unitframes.frameFonts). Keys: the single frames' units, then party, raid and boss.
+-- Elements: names, health, level, power, cast, auras, auraCount (Core.lua ns.UF_FONT_DEFAULTS).
+UF.FONT_KEYS = { "player", "target", "focus", "pet", "targettarget", "focustarget", "party", "raid", "boss", "playercast" }
+local SEED_FROM = { names = "font", health = "font", level = "font", power = "fontPower", cast = "fontCast",
+                    castTime = "fontCast", auras = "auraFont", auraCount = "auraCountFont" }
+-- Once per profile: every frame, in every saved frame style, starts from the shared fonts it used
+function UF.SeedFrameFonts()
+    local db = GetDb()
+    if not db or rawget(db, "frameFontsSeeded") then return end
+    db.frameFontsSeeded = true
+    ns.SeedFont(db, "auraFont", "auraCountFont", "auraCountFontSeeded", true)
+    local fields = { "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }
+    local function Into(fonts, raw)
+        for _, key in ipairs(UF.FONT_KEYS) do
+            local frame = fonts[key]
+            if raw and frame == nil then frame = {}; fonts[key] = frame end
+            for element, old in pairs(SEED_FROM) do
+                local from = db[old]
+                local to = frame[element]
+                if raw and to == nil then to = {}; frame[element] = to end
+                if type(from) == "table" then
+                    for _, field in ipairs(fields) do
+                        if from[field] ~= nil then to[field] = from[field] end
+                    end
+                end
+            end
+        end
+    end
+    Into(db.frameFonts, false)
+    for _, slot in pairs(db.styleProfiles or {}) do
+        if type(slot) == "table" and slot.frameFonts == nil then
+            slot.frameFonts = {}
+            Into(slot.frameFonts, true)
+        end
+    end
+    db.castTimeSeeded = true   -- (castTime came from fontCast above)
+end
+-- Once per profile (11-13): the cast countdown, split off the spell name's font, starts as its copy
+-- on every frame and in every saved frame style
+function UF.SeedCastTime()
+    local db = GetDb()
+    if not db or rawget(db, "castTimeSeeded") then return end
+    db.castTimeSeeded = true
+    local fields = { "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }
+    local function Copy(frame, raw)
+        local from = frame and frame.cast
+        if type(from) ~= "table" then return end
+        local to = frame.castTime
+        if raw and to == nil then to = {}; frame.castTime = to end
+        for _, field in ipairs(fields) do
+            if from[field] ~= nil then to[field] = from[field] end
+        end
+    end
+    for _, key in ipairs(UF.FONT_KEYS) do Copy(db.frameFonts[key], false) end
+    for _, slot in pairs(db.styleProfiles or {}) do
+        if type(slot) == "table" and type(slot.frameFonts) == "table" then
+            for _, frame in pairs(slot.frameFonts) do
+                if type(frame) == "table" then Copy(frame, true) end
+            end
+        end
+    end
+end
+-- the saved, writable table (nil before the profile loads): the Edit Mode Fonts section writes here
+function UF.FontDb(key, element)
+    UF.Font(key, element)   -- seeds first
+    local db = GetDb()
+    local fonts = db and db.frameFonts
+    local frame = fonts and fonts[key or "player"]
+    return frame and frame[element]
+end
+-- the font of one text on one frame (key: a unit, "party", "raid", "boss" or "playercast": the
+-- FlareUI Player Cast Bar, 11-13)
+function UF.Font(key, element)
+    if not UF.fontsSeeded then
+        UF.fontsSeeded = GetDb() ~= nil
+        UF.SeedFrameFonts()
+        UF.SeedCastTime()
+    end
+    local db = GetDb()
+    local fonts = db and db.frameFonts
+    -- the Player Cast Bar's own fonts (added after the first copy): it starts as the player frame's
+    if key == "playercast" and fonts and rawget(fonts, "playercast") == nil then
+        local from, to = fonts.player, fonts.playercast
+        for element in pairs(ns.UF_FONT_DEFAULTS) do
+            for _, field in ipairs({ "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }) do
+                to[element][field] = from[element][field]
+            end
+        end
+    end
+    local frame = fonts and fonts[key or "player"]
+    return frame and frame[element] or ns.UF_FONT_DEFAULTS[element]
 end
 
 local function GetUnitDb(unit)
@@ -812,8 +975,14 @@ local function UpdateHealth(f, glide)
         end
         local mode = udb and udb.healthText or "percent"
         f.HealthText:SetAlpha(1)
+        local left = f.HealthTextLeft
         if mode == "lost" then
             UF.SetSampleHealthLost(f.HealthText, health)
+        elseif mode == "split" and left and left:IsShown() then
+            left:SetFormattedText("%.0f%%", health * 100)
+            f.HealthText:SetFormattedText("%d", math_floor(health * 24000))
+        elseif mode == "split" then
+            UF.FormatBarText(f.HealthText, "both", math_floor(health * 24000), health * 100, 24000)
         else
             UF.FormatBarText(f.HealthText, mode, math_floor(health * 24000), health * 100, 24000)
         end
@@ -839,6 +1008,8 @@ local function UpdateHealth(f, glide)
     local mode = udb and udb.healthText or "percent"
     local text = f.HealthText
     text:SetAlpha(1)
+    local left = f.HealthTextLeft
+    if left then left:SetText("") end
     if not UnitIsConnected(unit) then
         text:SetText(OFFLINE_TEXT)
     elseif UF.IsDead(unit) then
@@ -847,8 +1018,15 @@ local function UpdateHealth(f, glide)
         UF.SetHealthLost(text, unit)
     elseif mode == "none" then
         text:SetText("")
+    elseif mode == "split" and left and left:IsShown() then
+        -- (secret numbers go into the text as they are)
+        left:SetFormattedText("%.0f%%", UnitHealthPercent(unit, true, percentCurve))
+        text:SetFormattedText("%d", UnitHealth(unit))
+    elseif mode == "split" then
+        -- off the plate (another style): Percent | Value
+        UF.FormatBarText(text, "both", UnitHealth(unit), UnitHealthPercent(unit, true, percentCurve), UnitHealthMax(unit))
     else
-        UF.FormatBarText(text, mode, UnitHealth(unit), UnitHealthPercent(unit, true, percentCurve), UnitHealthMax(unit))
+        UF.FormatBarText(text, mode, UnitHealth(unit), UnitHealthPercent(unit, true, percentCurve), UnitHealthMax(unit), unit)
     end
 end
 
@@ -862,8 +1040,17 @@ local function UpdatePower(f, glide)
     bar:SetStatusBarColor(GetPowerColor(unit))
     if f.ManaCost then f.ManaCost:Refresh(powerType) end
     if f.ShiftMana then UF.UpdateShiftMana(f) end
+    local pleft = f.PowerTextLeft
+    if pleft then pleft:SetText("") end
+    local pmode = udb and UF.PowerTextMode(udb.powerText)
     if udb and UnitIsConnected(unit) and not UF.IsDead(unit) then
-        UF.SetPowerText(f.PowerText, unit, powerType, UF.PowerTextMode(udb.powerText))
+        if pmode == "split" and pleft and pleft:IsShown() then
+            -- Percent <  > Value on the plate (secret numbers go in as they are)
+            pleft:SetFormattedText("%.0f%%", UnitPowerPercent(unit, powerType, false, CurveConstants.ScaleTo100))
+            f.PowerText:SetFormattedText("%d", UnitPower(unit, powerType))
+        else
+            UF.SetPowerText(f.PowerText, unit, powerType, pmode)
+        end
     else
         f.PowerText:SetText("")
     end
@@ -1077,8 +1264,9 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
         cast.Border:Hide()
     end
 
-    ApplyFont(cast.Text, db.fontCast or db.font)
-    ApplyFont(cast.Time, db.fontCast or db.font)
+    -- the frame's Cast Name and Cast Countdown fonts (its style says whose frame: UF.Font)
+    ApplyFont(cast.Text, UF.Font(style.fontKey or "player", "cast"))
+    ApplyFont(cast.Time, UF.Font(style.fontKey or "player", "castTime"))
     cast.Time:ClearAllPoints()
     cast.Time:SetPoint("RIGHT", cast, "RIGHT", -TEXT_INSET, 0)
     cast.Time:SetShown(style.timer)
@@ -2128,7 +2316,7 @@ local function ConfigureAuraCorner(f, corner, lanes)
     else
         lineSize = math.max(largest, math_floor(f:GetWidth() / 2) - INSET - 4)
     end
-    local unit, font = f.fuiUnit, db and db.font
+    local unit, font = f.fuiUnit, UF.Font(f.fuiUnit, "auras")
     local auraTimer = db and db.auraTimer or "none"
     local showTimer = auraTimer ~= "none"
     local sortMethod, sortDirection = ns.AuraOrder.Options(udb.auraSort, udb.auraReverse, udb.auraMineFirst)
@@ -2137,7 +2325,7 @@ local function ConfigureAuraCorner(f, corner, lanes)
         local size = ns.AuraSize(udb, isDebuff, 20)
         -- as many per row as fit at this lane's size
         local max = 2 * math.max(2, math_floor((lineSize + AURA_SPACING) / (size + AURA_SPACING)))
-        local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, unit == "player", db and db.auraStyle or "square", "both", auraTimer)
+        local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, unit == "player", db and db.auraStyle or "square", "both", auraTimer, unit)
         if look and lane.stealable then look.stealable = true end   -- Highlight Purgeable Buffs
         local key, err = ns.AuraGroups.Add(container, entry, lane.key, ns.AuraGroups.Sig(size, isDebuff, font, showTimer, look), ns.AuraPolicy.FilterFor(lane, unit), {
             maxFrameCount = max,
@@ -2223,7 +2411,7 @@ end
 LayoutAuras = function(f)
     local udb = GetUnitDb(f.fuiUnit)
     if not udb or not f.Auras then return end
-    if InCombatLockdown() then pendingLayout = true return end
+    if InCombatLockdown() then pendingLayout = "LayoutAuras" return end
     local perCorner = {}
     for _, corner in ipairs(AURA_CORNERS) do perCorner[corner] = {} end
     -- what each lane shows comes from ns.AuraPolicy (filters, Hide Buffs, Only My Debuffs / Buffs);
@@ -2506,9 +2694,10 @@ function UF.CreateManaCost(bar, getAmount, getColor)
                 self:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT")
             end
         end
-        self:SetWidth(bar:GetWidth())
-        self:SetReverseFill(not reverse)
-        self:SetStatusBarTexture(fill:GetTexture())
+        local w, tex = bar:GetWidth(), fill:GetTexture()
+        if self.fuiW ~= w then self.fuiW = w; self:SetWidth(w) end
+        if self.fuiRev ~= reverse then self.fuiRev = reverse; self:SetReverseFill(not reverse) end
+        if self.fuiTex ~= tex then self.fuiTex = tex; self:SetStatusBarTexture(tex) end
         local r, g, b = getColor()
         self:SetStatusBarColor(r * 0.6, g * 0.6, b * 0.6)
         self:SetMinMaxValues(bar:GetMinMaxValues())
@@ -3040,12 +3229,12 @@ function UF.UpdateThreatPercent(f)
         local db = GetDb()
         text:ClearAllPoints()
         if ring then
-            ApplyFont(text, db and db.font, UF.THREAT_RING_SIZE)
+            ApplyFont(text, UF.Font(f.fuiUnit, "health"), UF.THREAT_RING_SIZE)
             text:SetJustifyH("CENTER")
             f.threatNudgeWidth = nil   -- placed below, once the ring has its size
         else
             -- the health value, then the threat: the texts beside it move over for it
-            ApplyFont(text, db and db.font, 0)
+            ApplyFont(text, UF.Font(f.fuiUnit, "health"), 0)
             if mirrored then
                 text:SetJustifyH("LEFT")
                 text:SetPoint("LEFT", f.HealthText, "RIGHT", 0, 0)
@@ -3527,7 +3716,7 @@ local function LayoutFrame(f)
     local db, udb = GetDb(), GetUnitDb(f.fuiUnit)
     if not db or not udb then return end
     -- (a preview's sample is not secure: it can be laid out in a fight)
-    if InCombatLockdown() and not f.fuiSample then pendingLayout = true return end
+    if InCombatLockdown() and not f.fuiSample then pendingLayout = "LayoutFrame" return end
 
     local width, height = udb.width or 220, udb.height or 44
     local powerHeight = udb.powerHeight or 8
@@ -3590,13 +3779,14 @@ local function LayoutFrame(f)
     local fontDelta = (ns.UFRing and ns.UFRing.Applies(f)) and -1 or 0
     -- the small plate of target of target and target of focus: smaller still
     if UNITS[f.fuiUnit].poll and ns.UFRing and ns.UFRing.Plate(f) then fontDelta = -3 end
-    ApplyFont(f.Name, db.font, fontDelta)
-    ApplyFont(f.Level, db.font, fontDelta)
-    ApplyFont(f.HealthText, db.font, fontDelta)
-    ApplyFont(f.PowerText, db.fontPower or db.font, fontDelta)
+    local key = f.fuiUnit
+    ApplyFont(f.Name, UF.Font(key, "names"), fontDelta)
+    ApplyFont(f.Level, UF.Font(key, "level"), fontDelta)
+    ApplyFont(f.HealthText, UF.Font(key, "health"), fontDelta)
+    ApplyFont(f.PowerText, UF.Font(key, "power"), fontDelta)
     if f.ShiftManaText then
         -- the power text's font and size; a small one on the thin strip (power bar off)
-        local font = db.fontPower or db.font
+        local font = UF.Font(key, "power")
         if UF.ShiftManaHeight(f) > UF.SHIFT_MANA_HEIGHT then
             ApplyFont(f.ShiftManaText, font, fontDelta)
         else
@@ -3612,6 +3802,9 @@ local function LayoutFrame(f)
     f.Name:ClearAllPoints()
     f.HealthText:ClearAllPoints()
     f.PowerText:ClearAllPoints()
+    -- (Percent <  > Value shows them on the plate)
+    if f.HealthTextLeft then f.HealthTextLeft:Hide() end
+    if f.PowerTextLeft then f.PowerTextLeft:Hide() end
     f.threatLaid = nil   -- Show Threat's text is placed again against the new anchors
     -- ring styles: the level is in the ring's disc
     local ringOn = ns.UFRing and ns.UFRing.Applies(f)
@@ -3655,11 +3848,30 @@ local function LayoutFrame(f)
         f.Name:SetPoint("RIGHT", nameBox, "RIGHT", -TEXT_INSET, 0)
         f.Name:SetJustifyH("CENTER")
         f.HealthText:ClearAllPoints()
-        f.HealthText:SetPoint("CENTER", health, "CENTER", 0, 0)
-        f.HealthText:SetJustifyH("CENTER")
+        if udb.healthText == "split" then
+            -- Percent <  > Value: the percent at the left end, the value at the right end
+            f.HealthText:SetPoint("RIGHT", health, "RIGHT", -TEXT_INSET, 0)
+            f.HealthText:SetJustifyH("RIGHT")
+            local left = UF.SplitText(f)
+            left:ClearAllPoints()
+            left:SetPoint("LEFT", health, "LEFT", TEXT_INSET, 0)
+            left:Show()
+        else
+            f.HealthText:SetPoint("CENTER", health, "CENTER", 0, 0)
+            f.HealthText:SetJustifyH("CENTER")
+        end
         f.PowerText:ClearAllPoints()
-        f.PowerText:SetPoint("CENTER", power, "CENTER", 0, 0)
-        f.PowerText:SetJustifyH("CENTER")
+        if UF.PowerTextMode(udb.powerText) == "split" then
+            f.PowerText:SetPoint("RIGHT", power, "RIGHT", -TEXT_INSET, 0)
+            f.PowerText:SetJustifyH("RIGHT")
+            local pleft = UF.SplitText(f, "PowerText")
+            pleft:ClearAllPoints()
+            pleft:SetPoint("LEFT", power, "LEFT", TEXT_INSET, 0)
+            pleft:Show()
+        else
+            f.PowerText:SetPoint("CENTER", power, "CENTER", 0, 0)
+            f.PowerText:SetJustifyH("CENTER")
+        end
     end
     -- (the plate's power bar is always tall enough for its number)
     f.PowerText:SetShown(UF.PowerTextMode(udb.powerText) ~= "none" and (nameBox or powerHeight >= 10) and true or false)
@@ -3705,7 +3917,9 @@ local function LayoutFrame(f)
             local clear = ns.UFRing.Clearance(f, CAST_GAP)
             if ns.UFRing.Side(f) == "LEFT" then leftExtra = clear else rightExtra = clear end
         end
-        LayoutCastBar(f.Cast, GetCastStyle(udb, false), f, udb.castbarPosition == "TOP" and "TOP" or "BOTTOM", leftExtra, rightExtra)
+        local castStyle = GetCastStyle(udb, false)
+        castStyle.fontKey = f.fuiUnit
+        LayoutCastBar(f.Cast, castStyle, f, udb.castbarPosition == "TOP" and "TOP" or "BOTTOM", leftExtra, rightExtra)
         -- the auras on its side move out while it shows (in a fight too: they are not protected)
         f.Cast.onShownChanged = function() PositionAuraContainers(f) end
     end
@@ -3719,7 +3933,7 @@ end
 -- PlayerBottomManagedFrameContainer (anchored to PlayerFrame) goes under the player frame.
 --------------------------------------------------
 local function AttachExtras(f)
-    if InCombatLockdown() then pendingLayout = true return end
+    if InCombatLockdown() then pendingLayout = "AttachExtras" return end
     if f.fuiUnit == "player" then
         local container = _G.PlayerBottomManagedFrameContainer
         if container then
@@ -3765,7 +3979,7 @@ local function GetLayoutStore(layoutName)
 end
 
 local function ApplyPosition(f, layoutName)
-    if InCombatLockdown() then pendingLayout = true return end
+    if InCombatLockdown() then pendingLayout = "ApplyPosition" return end
     local store = GetLayoutStore(layoutName)
     local pos = store and store[f.fuiUnit] or DEFAULT_POSITIONS[f.fuiUnit]
     -- 5.1 to 5.1.1: a frame moved in Edit Mode was measured against its fade holder, which had no size,
@@ -3790,7 +4004,7 @@ end
 -- 13. VISIBILITY (state drivers; in Edit Mode every frame shows)
 --------------------------------------------------
 local function ApplyVisibility(f)
-    if InCombatLockdown() then pendingLayout = true return end
+    if InCombatLockdown() then pendingLayout = "ApplyVisibility" return end
     local info = UNITS[f.fuiUnit]
     local party = GetDb() and GetDb().party
     -- the party frames must be on and showing the player, or there'd be no frame of yours left
@@ -4291,8 +4505,10 @@ function UF.DrawCastSample(holder)
         local udb = GetUnitDb(holder.unit) or {}
         style = GetCastStyle(udb, false)
         style.width = (udb.width or 220) - 2 * INSET - (style.icon and (style.height + CAST_ICON_GAP) or 0)
+        style.fontKey = holder.unit
     else
         style = GetCastStyle(db and db.playerCastbar or {}, true)
+        style.fontKey = "playercast"
     end
     local _, PADDING = BorderFit(style.height, style.border and GetBorderFile(style.borderTexture))
     local iconOffset = style.icon and (style.height + CAST_ICON_GAP) or 0
@@ -4357,8 +4573,9 @@ local function LayoutPlayerCastBar()
     local holder = playerCastHolder
     local cfg = GetPlayerCastDb()
     if not holder or not cfg then return end
-    if InCombatLockdown() then pendingLayout = true return end
+    if InCombatLockdown() then pendingLayout = "LayoutPlayerCastBar" return end
     local style = GetCastStyle(cfg, true)
+    style.fontKey = "playercast"
     local _, PADDING = BorderFit(style.height, style.border and GetBorderFile(style.borderTexture))
     local iconOffset = style.icon and (style.height + CAST_ICON_GAP) or 0
     holder:SetSize(style.width + iconOffset + 2 * PADDING, style.height + 2 * PADDING)
@@ -4455,6 +4672,27 @@ local function BuildPlayerCastSettings()
     if ns.Visibility and ns.Visibility.PlayerCastSettings then
         Section("Fading", ns.Visibility:PlayerCastSettings())
     end
+    -- always last: the spell name and time font (11-13); Apply to All: every unit frame takes it too
+    Section("Fonts", ns.EditFonts({
+        id = "uf.playercast", group = "uf",
+        texts = { { key = "cast", name = L["Cast Name"] }, { key = "castTime", name = L["Cast Countdown"] } },
+        font = function(element) return UF.FontDb("playercast", element) end,
+        default = function(element) return ns.UF_FONT_DEFAULTS[element] end,
+        apply = function() UF:Refresh() end,
+        all = { text = L["Apply to All"], desc = L["Every unit frame's cast bar takes this font."],
+                run = function()
+                    for _, element in ipairs({ "cast", "castTime" }) do
+                        local from = UF.FontDb("playercast", element)
+                        for _, key in ipairs(UF.FONT_KEYS) do
+                            local to = from and key ~= "playercast" and UF.FontDb(key, element)
+                            if to then
+                                for _, field in ipairs({ "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }) do to[field] = from[field] end
+                            end
+                        end
+                    end
+                    UF:Refresh()
+                end },
+    }))
     return settings
 end
 
@@ -4537,9 +4775,12 @@ local function BuildSettings(unit)
             end,
             get = function() local u = GetUnitDb(unit); return u and u.portrait or "none" end, set = set("portrait") }
     end
-    settings[#settings + 1] = { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = defaults.healthText or "percent", values = HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") }
+    -- Percent <  > Value only in Forever Style (a style change reloads, so this list is fixed for the session)
+    local healthModes = (ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and PLATE_HEALTH_TEXT_MODES or HEALTH_TEXT_MODES
+    settings[#settings + 1] = { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = defaults.healthText or "percent", values = healthModes, get = get("healthText"), set = set("healthText") }
     settings[#settings + 1] = { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "value", values = UF.POWER_TEXT_MODES,
         get = function() local u = GetUnitDb(unit); return UF.PowerTextMode(u and u.powerText) end, set = set("powerText") }
+    settings[#settings].values = (ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and PLATE_POWER_TEXT_MODES or UF.POWER_TEXT_MODES
     if info.comboPoints then
         local function refreshCombo()
             local f = frames[unit]
@@ -4817,7 +5058,50 @@ local function BuildSettings(unit)
     if ns.Visibility and ns.Visibility.UnitFrameSettings then
         Section("Fading", ns.Visibility:UnitFrameSettings(unit))
     end
+    -- always last: the frame's fonts (11-13)
+    Section("Fonts", UF.FontItems(unit, UNITS[unit].castbar, UNITS[unit].auras))
     return settings
+end
+
+-- Edit Mode's Fonts section for a unit frame, party, raid or boss (11-13): the texts it has, Apply to
+-- All Unit Frames (this frame's fonts on every other) and Reset Fonts (Settings/Fonts.lua ns.EditFonts)
+UF.FONT_TEXTS = { names = L["Names"], health = L["Health Text"], level = L["Level"], power = L["Power Text"],
+                  cast = L["Cast Name"], castTime = L["Cast Countdown"], auras = L["Aura Timers"], auraCount = L["Aura Stacks"] }
+function UF.CopyFonts(from)
+    if not GetDb() then return end
+    local fields = { "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }
+    for _, key in ipairs(UF.FONT_KEYS) do
+        if key ~= from then
+            for element in pairs(ns.UF_FONT_DEFAULTS) do
+                local src, dst = UF.FontDb(from, element), UF.FontDb(key, element)
+                if src and dst then
+                    for _, field in ipairs(fields) do dst[field] = src[field] end
+                end
+            end
+        end
+    end
+    UF:Refresh()
+end
+function UF.FontItems(key, castbar, auras)
+    local texts = {}
+    local elements = { "names", "health", "level", "power" }
+    if castbar then elements[#elements + 1] = "cast"; elements[#elements + 1] = "castTime" end
+    if auras then elements[#elements + 1] = "auras"; elements[#elements + 1] = "auraCount" end
+    for _, element in ipairs(elements) do
+        texts[#texts + 1] = { key = element, name = UF.FONT_TEXTS[element], autoSize = element == "auras" or element == "auraCount" }
+    end
+    return ns.EditFonts({
+        id = "uf." .. key, texts = texts, group = "uf",   -- (one restyle for every unit frame)
+        font = function(element) return UF.FontDb(key, element) end,
+        default = function(element) return ns.UF_FONT_DEFAULTS[element] end,
+        apply = function()
+            UF:Refresh()
+            -- the totem timers take the player's Aura Timers font (Totems.lua)
+            if ns.Totems and ns.Totems.ApplyLayout then ns.Totems.ApplyLayout() end
+        end,
+        all = { text = L["Apply to All"], desc = L["Every unit frame takes this frame's fonts: player, target, focus, pets, party, raid and boss."],
+                run = function() UF.CopyFonts(key) end },
+    })
 end
 
 local function RegisterEditMode(f)
@@ -4830,6 +5114,7 @@ end
 --------------------------------------------------
 -- Building blocks the party, raid and boss frames and the resource bars share with these frames
 UF.Kit = {
+    Font = UF.Font,   -- a frame's text font (party, raid and boss tiles: PartyFrames.lua PF.FontKey)
     -- Forever Style's fixed border, and whether border options are hidden (Forever Style: always);
     -- Background Opacity's bar background and its Edit Mode slider
     Border = function(name) return ns.UFRing and ns.UFRing.Border(name) or name end,
@@ -4865,7 +5150,7 @@ UF.Kit = {
 
 function UF:Refresh()
     if not self.initialized then return end
-    if InCombatLockdown() then pendingLayout = true return end
+    if InCombatLockdown() then pendingLayout = "Refresh" return end
     pendingLayout = false
     -- one frame failing to lay out must not leave the others (or the cast bar) half-built
     local function guard(label, fn, ...)
@@ -4907,7 +5192,7 @@ function UF:RefreshPartyHide()
 end
 
 function UF:PLAYER_REGEN_ENABLED()
-    if pendingLayout then self:Refresh() end
+    if pendingLayout then UF.lastPendingWhy = pendingLayout self:Refresh() end
 end
 
 function UF:PLAYER_ENTERING_WORLD()
@@ -4924,6 +5209,7 @@ function UF:Init()
     if self.initialized then return end
     local db = GetDb()
     if not db then return end
+    UF.MigrateTextModes()
     UF.ApplyPalette()
     UF.MigrateOldFade()
     -- a saved Hide Auras on the focus frame becomes Buffs and Debuffs Off

@@ -76,6 +76,9 @@ end
 
 local function ApplySavedPosition(frame)
     if moveSuspended or IsMaximized(frame) then return end
+    -- Bag windows held off screen must keep their temporary anchor.
+    local bags = ns.Bags
+    if bags and bags.IsNativeBagWindowParked and bags:IsNativeBagWindowParked(frame) then return end
     local store = GetFrameStore(frame.moveName)
     if not store then return end
     if not CanTouch(frame) then movePending[frame] = true return end
@@ -411,7 +414,8 @@ local function BagPortraitMouseUp(portrait, button)
 end
 
 local function SetupBagTitle(frame)
-    if frame.bagRouterFixed then return end
+    if frame.bagRouterFixed or frame.bagRouterChecked then return end
+    frame.bagRouterChecked = true   -- the router comes with the frame: a frame without one never gets one
     for _, child in ipairs({ frame:GetChildren() }) do
         if child.routeToSibling == "PortraitButton" and child.SetScript then
             child:SetScript("OnMouseDown", BagRouterMouseDown)
@@ -852,8 +856,11 @@ local function InitSyncUI()
     SyncEvents:RegisterEvent("PLAYER_LOGOUT", SaveSync)
     -- Enemy Nameplates in Combat Only flips its CVar at every fight; the snapshot takes the player's
     -- own value from the forced-CVar memory, so those writes need no new snapshot
+    -- only the settings the snapshot keeps: the game writes other CVars on its own all the time
+    local watched = {}
+    for _, n in ipairs(SYNC_CVARS) do watched[n:lower()] = true end
     SyncEvents:RegisterEvent("CVAR_UPDATE", function(_, name)
-        if name ~= "nameplateShowEnemies" then QueueSaveSync() end
+        if type(name) == "string" and name ~= "nameplateShowEnemies" and watched[name:lower()] then QueueSaveSync() end
     end)
     SyncEvents:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", QueueSaveSync)
     SyncEvents:RegisterEvent("UPDATE_CHAT_WINDOWS", QueueSaveSync)
@@ -1540,10 +1547,15 @@ function UpdateQuestTag(unit)
     -- the box's height in the tag's own units (the level box does not share the plate's scale)
     local size = look:GetHeight() * look:GetEffectiveScale() / tag:GetEffectiveScale() * QUEST_TAG_HEIGHT
     if not (size > 0) then size = QUEST_TAG_SIZE end
-    tag:SetSize(size * QuestTagAspect(), size)
-    tag:ClearAllPoints()
-    -- beside the box, clear of its edge (the art has its own margin, so no gap is added)
-    tag:SetPoint("LEFT", anchor, "RIGHT", 0, 0)
+    local w = size * QuestTagAspect()
+    -- the same box and size as last time: the tag is already there
+    if tag.fuiAnchor ~= anchor or tag.fuiW ~= w or tag.fuiH ~= size then
+        tag.fuiAnchor, tag.fuiW, tag.fuiH = anchor, w, size
+        tag:SetSize(w, size)
+        tag:ClearAllPoints()
+        -- beside the box, clear of its edge (the art has its own margin, so no gap is added)
+        tag:SetPoint("LEFT", anchor, "RIGHT", 0, 0)
+    end
     ns.CopyStrata(tag, look)   -- the level box draws at HIGH
     tag:SetFrameLevel(look:GetFrameLevel() + 5)
     tag:Show()

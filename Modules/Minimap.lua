@@ -71,6 +71,8 @@ local BRONZE_ATLAS = "heavybronze-frame-basic"
 -- frame on Marcus's screenshots (11-13) so both styles cover the same box
 local BRONZE_OUT   = { left = 9, right = 7, top = 11, bottom = 8 }   -- (top +1: Marcus 11-13)
 local function HeaderStyle(db)
+    -- (a style card's sample draws its own header, whatever the one in use: MM.sampleHeader)
+    if MM.sampleHeader then return HEADER_STYLES[MM.sampleHeader] or HEADER_STYLES.headerless end
     db = db or (ns.db and ns.db.profile and ns.db.profile.minimap)
     return HEADER_STYLES[db and db.squareHeader or "headerless"] or HEADER_STYLES.headerless
 end
@@ -116,7 +118,16 @@ function MM:ApplyFonts()
     ApplyFont(_G.MinimapZoneText, db.zoneFont)
     ApplyFont(_G.TimeManagerClockTicker, db.clockFont)
     if self.FitClock then self.FitClock() end
+    -- Info Text (11-13): the coordinates, framerate and latency
+    local coords = Cluster.MinimapContainer and Cluster.MinimapContainer.PlayerCoords
+    if coords and coords.CoordText then
+        ApplyFont(coords.CoordText, db.infoFont)
+        coords:SetHeight((db.infoFont and db.infoFont.size or 11) * (ns.TEXT_SCALE or 1) + 2)
+    end
+    for fontString in pairs(MM.infoTexts) do ApplyFont(fontString, db.infoFont) end
 end
+-- the framerate and latency texts, made when first shown (NewStat)
+MM.infoTexts = {}
 
 -- Node addons' scans (Lueur, NodeSight, Nodeworthy): since Forever build 70862 the minimap tooltip
 -- only reads the real mouse, so they slide the hidden map under the cursor with AdjustPointsOffset
@@ -376,15 +387,21 @@ local function PlaceZone()
     Raise(zoneButton)
 end
 
+-- Forever's round art, parked: an alpha of 0 isn't enough, as any addon tinting it with
+-- SetVertexColor sets the alpha too (BetterBlizzFrames does at every login). Forever's skin shows a
+-- round underlay whenever rotateMinimap is on. Parked again when a HUD gives the map back.
+local function ParkRoundArt()
+    for _, art in ipairs({ _G.MinimapCompassTexture, _G.MinimapCompassTextureUnderlay }) do
+        if art and (art:GetParent() ~= hiddenParent or art:IsShown()) then Remove(art) end
+    end
+end
+
 local function StyleHeader()
-    -- Forever's round art, parked: an alpha of 0 isn't enough, as any addon tinting it with
-    -- SetVertexColor sets the alpha too (BetterBlizzFrames does at every login). Kept there if moved.
     local compass = _G.MinimapCompassTexture
     Remove(compass)
     hooksecurefunc(compass, "SetParent", function(self, parent)
         if parent ~= hiddenParent then self:SetParent(hiddenParent) end
     end)
-    -- Forever's skin shows a round underlay whenever rotateMinimap is on
     Remove(_G.MinimapCompassTextureUnderlay)
     Remove(MinimapFrame.ZoomIn)
     Remove(MinimapFrame.ZoomOut)
@@ -489,7 +506,10 @@ local function StyleCoords()
     if not coords then return end
     local text = coords.CoordText
     RestyleCoordText(text)
-    local size = text and select(2, text:GetFont()) or 10
+    -- Info Text font (Minimap > Fonts), over the size-up above
+    local db = GetDb()
+    if text and db and db.infoFont then ApplyFont(text, db.infoFont) end
+    local size = text and select(2, ns.GetWantedFont(text)) or 10
     coords:SetHeight(size + 2)
     return coords
 end
@@ -725,14 +745,18 @@ local function ShowCoords(shown)
     if coords then coords:SetAlpha(shown and 1 or 0) end
 end
 
--- FRAMERATE (11-11, a controller player asked): the framerate at the map's bottom right, in the
--- coordinates' look, always or only while pointing at the map (Framerate: off by default). Updated
--- once a second while it shows.
-local fpsText, fpsTicker
+-- FRAMERATE AND LATENCY (11-11 a controller player asked; latency 11-13 Marcus): at the map's bottom
+-- right in the coordinates' look, each always or only while pointing at the map (both off by
+-- default). One stack from the bottom up: the latency's two lines (world, home over it) and the
+-- framerate; the one shown always sits at the bottom, the mouseover one above it, and with both the
+-- same the framerate goes above the latency. Updated once a second while shown.
+local stats = {}                -- fps, home, world: font strings
+local statsTicker
 local FPS_INSET = 6             -- in from the coordinates' gap at the corner
-local function FpsMode()
+local function StatMode(key)
     local db = GetDb()
-    return db and db.fps or "off"
+    local mode = db and db[key]
+    return (mode == "always" or mode == "hover") and mode or "off"
 end
 
 -- Coordinates (11-11): Off, Always or On Mouseover, one with Blizzard's own option (the
@@ -759,12 +783,13 @@ end
 -- what pointing at the map shows: the coordinates and the framerate, each set to On Mouseover
 local function HoverWanted()
     local db = GetDb()
-    return db and (MM.CoordsMode() == "hover" or db.fps == "hover") or false
+    return db and (MM.CoordsMode() == "hover" or db.fps == "hover" or db.latency == "hover") or false
 end
 local function ShowHovered(over)
-    local db = GetDb() or {}
     ShowCoords(MM.CoordsMode() ~= "hover" or over)
-    if fpsText then fpsText:SetAlpha((db.fps ~= "hover" or over) and 1 or 0) end
+    if stats.fps then stats.fps:SetAlpha((StatMode("fps") ~= "hover" or over) and 1 or 0) end
+    local latency = (StatMode("latency") ~= "hover" or over) and 1 or 0
+    if stats.home then stats.home:SetAlpha(latency); stats.world:SetAlpha(latency) end
 end
 
 local function UpdateCoordsHover()
@@ -788,40 +813,74 @@ local function OnMapEnter()
     if not hoverTicker then hoverTicker = C_Timer.NewTicker(0.2, UpdateCoordsHover) end
 end
 
-local function UpdateFps()
-    if fpsText then fpsText:SetText(string.format("%.0f", GetFramerate())) end
+local function UpdateStats()
+    if stats.fps and stats.fps:IsShown() then stats.fps:SetFormattedText("%.0f fps", GetFramerate()) end
+    if stats.home and stats.home:IsShown() then
+        local _, _, home, world = GetNetStats()
+        stats.home:SetFormattedText("%d (h) ms", home or 0)
+        stats.world:SetFormattedText("%d (w) ms", world or 0)
+    end
+end
+
+local function NewStat(holder)
+    local fs = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fs:SetJustifyH("RIGHT")
+    -- the coordinates' font and gold (their text, else Blizzard's small font a size up)
+    local coords = CoordsFrame()
+    local source = coords and coords.CoordText
+    local font, size, flags = (source or fs):GetFont()
+    if font and size then fs:SetFont(font, (source and source.FlareUI_Styled) and size or size + COORDS.FONT_STEP, flags) end
+    local c = NORMAL_FONT_COLOR
+    fs:SetTextColor(c.r, c.g, c.b)
+    local db = GetDb()
+    if db and db.infoFont then ApplyFont(fs, db.infoFont) end
+    MM.infoTexts[fs] = true
+    fs:Hide()
+    return fs
 end
 
 function MM.SetupFps()
-    local mode = FpsMode()
-    if mode == "off" then
-        if fpsText then fpsText:Hide() end
-        if fpsTicker then fpsTicker:Cancel(); fpsTicker = nil end
+    local fps, latency = StatMode("fps"), StatMode("latency")
+    for _, fs in pairs(stats) do fs:Hide() end
+    if fps == "off" and latency == "off" then
+        if statsTicker then statsTicker:Cancel(); statsTicker = nil end
+        UpdateCoordsHover()
         return
     end
-    if not fpsText then
+    if not stats.fps then
         local holder = CreateFrame("Frame", nil, MM.Frame or MinimapFrame)
         holder:SetAllPoints(MM.Frame or MinimapFrame)
         Raise(holder)
-        fpsText = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        fpsText:SetJustifyH("RIGHT")
-        -- the coordinates' font and gold (their text, else Blizzard's small font a size up)
-        local coords = CoordsFrame()
-        local source = coords and coords.CoordText
-        local font, size, flags = (source or fpsText):GetFont()
-        if font and size then fpsText:SetFont(font, (source and source.FlareUI_Styled) and size or size + COORDS.FONT_STEP, flags) end
-        local c = NORMAL_FONT_COLOR
-        fpsText:SetTextColor(c.r, c.g, c.b)
+        stats.fps, stats.home, stats.world = NewStat(holder), NewStat(holder), NewStat(holder)
     end
-    -- level with the coordinates' text (their box sits COORDS.GAP up, the text in its middle), a little
-    -- in from the corner (11-11, Marcus)
+    -- bottom up: the latency's lines (world, then home) and the framerate; the one shown always at
+    -- the bottom when the other is On Mouseover
+    local order = {}
+    local function Latency() order[#order + 1] = stats.world; order[#order + 1] = stats.home end
+    if fps ~= "off" and latency ~= "off" then
+        if fps == "always" and latency == "hover" then
+            order[1] = stats.fps; Latency()
+        else
+            Latency(); order[#order + 1] = stats.fps
+        end
+    elseif fps ~= "off" then
+        order[1] = stats.fps
+    else
+        Latency()
+    end
+    -- the bottom line level with the coordinates' text (their box sits COORDS.GAP up, the text in its
+    -- middle), a little in from the corner (11-11, Marcus); each next line a text height above
     local coords = CoordsFrame()
     local mid = COORDS.GAP + ((coords and coords:GetHeight()) or 12) / 2
-    fpsText:ClearAllPoints()
-    fpsText:SetPoint("RIGHT", MM.Frame or MinimapFrame, "BOTTOMRIGHT", -(COORDS.GAP + FPS_INSET), mid)
-    fpsText:Show()
-    UpdateFps()
-    if not fpsTicker then fpsTicker = C_Timer.NewTicker(1, UpdateFps) end
+    local _, size = stats.fps:GetFont()
+    local step = math.floor((size or 12) + 2)
+    for i, fs in ipairs(order) do
+        fs:ClearAllPoints()
+        fs:SetPoint("RIGHT", MM.Frame or MinimapFrame, "BOTTOMRIGHT", -(COORDS.GAP + FPS_INSET), mid + (i - 1) * step)
+        fs:Show()
+    end
+    UpdateStats()
+    if not statsTicker then statsTicker = C_Timer.NewTicker(1, UpdateStats) end
     UpdateCoordsHover()
 end
 
@@ -1011,7 +1070,18 @@ local function SetupMapMouse()
 end
 
 local function AddEditModeSettings()
-    if ns.Visibility then LEM:AddSystemSettings(Enum.EditModeSystem.Minimap, ns.Visibility:MinimapSettings()) end
+    local rows = ns.Visibility and ns.Visibility:MinimapSettings() or {}
+    -- always last: the zone name, clock and info text fonts (11-13)
+    local mmDefaults = ns.defaults and ns.defaults.profile and ns.defaults.profile.minimap or {}
+    for _, row in ipairs(ns.EditSection("Fonts", ns.EditFonts({
+        id = "mm",
+        texts = { { key = "zoneFont", name = L["Zone Name"] }, { key = "clockFont", name = L["Clock"] },
+                  { key = "infoFont", name = L["Info Text"] } },
+        font = function(key) local db = GetDb(); return db and db[key] end,
+        default = function(key) return mmDefaults[key] end,
+        apply = function() MM:ApplyFonts() end,
+    }))) do rows[#rows + 1] = row end
+    LEM:AddSystemSettings(Enum.EditModeSystem.Minimap, rows)
 end
 
 -- The square map can't rotate: rotateMinimap goes off at load and whenever a layout sets it
@@ -1109,7 +1179,21 @@ local function InstallSquareHooks()
     hooksecurefunc(Cluster, "SetSize", SizeCluster)
     hooksecurefunc(Cluster, "SetHeaderUnderneath", function() MM:UpdateLayout() end)
     -- Forever's config pass (rotateMinimap, layout) drops the zone button to its own frame level
-    if Cluster.UpdateMinimapConfig then hooksecurefunc(Cluster, "UpdateMinimapConfig", PlaceZone) end
+    -- (11-13, ForeverFarmHUD: putting rotateMinimap back runs it as the HUD lets go) it also sizes the
+    -- map's container to the round art and sets the round mask: the whole square layout goes back on,
+    -- once, on the next frame
+    if Cluster.UpdateMinimapConfig then
+        local configPending = false
+        hooksecurefunc(Cluster, "UpdateMinimapConfig", function()
+            PlaceZone()
+            if configPending then return end
+            configPending = true
+            C_Timer.After(0, function()
+                configPending = false
+                if not MM.MapAway() then MM:Refresh() end
+            end)
+        end)
+    end
     hooksecurefunc("MiniMapIndicatorFrame_UpdatePosition", PlaceIndicators)
 end
 
@@ -1127,7 +1211,22 @@ local liftHooked = setmetatable({}, { __mode = "k" })
 -- 11-13 (reported a third time): a button hidden when it was checked was skipped and never watched, so
 -- one an addon shows later (or makes hidden first) stayed under the border. Hidden ones are lifted and
 -- watched too.
+-- (11-13 performance pass, a player's "5-second lag splits") map pins are left alone: gathering and
+-- quest addons (HereBeDragons) put hundreds or thousands of pins on the map and show / hide them every
+-- frame while you move. Each was hooked and re-levelled, and each show started a full pass over every
+-- pin. The map draws its children with itself anyway (see LiftMapButtons), so lifting them did nothing.
+MM.PIN_LIBS = { "HereBeDragons-Pins-2.0", "HereBeDragons-Pins-1.0" }
+function MM.IsMapPin(frame)
+    for i = 1, #MM.PIN_LIBS do
+        local pins = LibStub and LibStub(MM.PIN_LIBS[i], true)
+        if pins and ((pins.minimapPins and pins.minimapPins[frame]) or (pins.activeMinimapPins and pins.activeMinimapPins[frame])) then
+            return true
+        end
+    end
+    return false
+end
 local function LiftButton(child, strata, want)
+    if MM.IsMapPin(child) then return end
     if not (child and child.IsObjectType and child:IsObjectType("Button")) or (child.IsForbidden and child:IsForbidden())
             or (InCombatLockdown() and child:IsProtected()) then
         return
@@ -1153,7 +1252,8 @@ local lifting = false
 -- its home (MM.MapAway); it is all put back once when the map comes home (WatchMapHome).
 local liftPending, placePending = false, false
 function MM.LiftSoon()
-    if liftPending then return end
+    -- (a pass's own re-layering fires the hooks: no second pass for frames it just handled)
+    if liftPending or lifting then return end
     liftPending = true
     C_Timer.After(0, function() liftPending = false; MM.LiftMapButtons() end)
 end
@@ -1515,10 +1615,19 @@ local function WatchMapHome()
         if MM.MapAway() then wasAway = true return end
         if not wasAway then return end
         wasAway = false
-        KeepMapUnrotated()
-        MM:Refresh()
-        MM.LiftMapButtons()
-        MM.PlaceAllButtons()
+        local function Home()
+            if MM.MapAway() then return end
+            KeepMapUnrotated()
+            -- a HUD shows again what it hid (ForeverFarmHUD: Forever's compass ring among them)
+            ParkRoundArt()
+            MM:Refresh()
+            MM.LiftMapButtons()
+            MM.PlaceAllButtons()
+        end
+        Home()
+        -- (11-13, ForeverFarmHUD) a HUD can put its zoom, rotation and other settings back after the
+        -- map itself: once more when it has finished
+        C_Timer.After(0.5, Home)
     end
     local function Soon()
         if pending then return end
@@ -1687,17 +1796,36 @@ ns.Dialogs["FLAREUI_NODE_SCAN"] = {
     hideOnEscape = true,   -- (one button: the game's own Okay)
 }
 
+-- Farming HUDs (11-13, ForeverFarmHUD report) take the real minimap into a big see-through map in
+-- the middle of the screen while they are on, and put it back when turned off. FlareUI stands back
+-- meanwhile (MM.MapAway) and lays its map out again after (WatchMapHome).
+MM.HUDS = { "ForeverFarmHUD", "FarmHud" }
+function MM.LoadedHUDs()
+    local list = {}
+    for _, name in ipairs(MM.HUDS) do
+        if C_AddOns.IsAddOnLoaded(name) then list[#list + 1] = C_AddOns.GetAddOnMetadata(name, "Title") or name end
+    end
+    return list
+end
+
+ns.Dialogs["FLAREUI_MAP_HUD"] = {
+    text = L["%s moves the minimap into its farming HUD while the HUD is on. The map is then the addon's: FlareUI puts its own minimap back when you turn the HUD off.\n\nIf the minimap still looks wrong after that, type /reload."],
+    hideOnEscape = true,
+}
+
 function MM.NoticeScanners()
     local global = ns.db and ns.db.global
     if not global then return end
     global.nodeScanNotice = global.nodeScanNotice or {}
-    for _, name in ipairs(MM.SCANNERS) do
-        if C_AddOns.IsAddOnLoaded(name) and not global.nodeScanNotice[name] then
-            global.nodeScanNotice[name] = true
-            local title = C_AddOns.GetAddOnMetadata(name, "Title") or name
-            -- a moment after login, once the screen has settled
-            C_Timer.After(6, function() ns.ShowDialog("FLAREUI_NODE_SCAN", title) end)
-            return   -- one notice at a time; another such addon gets its own next login
+    for _, group in ipairs({ { MM.SCANNERS, "FLAREUI_NODE_SCAN" }, { MM.HUDS, "FLAREUI_MAP_HUD" } }) do
+        for _, name in ipairs(group[1]) do
+            if C_AddOns.IsAddOnLoaded(name) and not global.nodeScanNotice[name] then
+                global.nodeScanNotice[name] = true
+                local title = C_AddOns.GetAddOnMetadata(name, "Title") or name
+                -- a moment after login, once the screen has settled
+                C_Timer.After(6, function() ns.ShowDialog(group[2], title) end)
+                return   -- one notice at a time; another such addon gets its own next login
+            end
         end
     end
 end
@@ -1920,6 +2048,10 @@ do
         f.kind = kind == "menu" and "menu" or "map"
         -- the style cards: their own style, whatever the one in use
         if kind == "square" or kind == "round" then f.forceStyle = kind end
+        -- (11-13) the three cards: Square (Clean) and Square (Header) each with its own top
+        if kind == "headerless" or kind == "bordered" then
+            f.forceStyle, f.forceHeader = "square", kind == "bordered" and "art" or "headerless"
+        end
         if f.kind == "menu" then
             -- the real menu's rows, without their secure clicks
             f.Menu = CreateFrame("Frame", nil, f, "BackdropTemplate")
@@ -1977,11 +2109,14 @@ do
         plate.Zone:SetTextColor(r, g, b)
         ApplyFont(plate.Clock, db.clockFont)
         plate.Clock:SetText(clock)
+        if f.Coords then ApplyFont(f.Coords, db.infoFont) end
         if square then
-            -- the Header style (Headerless / Bordered), as the real map
+            -- the Header style (Headerless / Bordered), as the real map, or the card's own
             local sq = f.Square
+            MM.sampleHeader = f.forceHeader
             ApplyBorder(sq.Art, sq.Above)
             MM.PlaceHeaderRow(sq.Art, sq.Tracking, sq.Header, sq.Calendar)
+            MM.sampleHeader = nil
             -- the zone text runs up to the clock, which grows with its time (StyleHeader)
             local header = f.Square.Header
             local clockWidth = MM.ClockWidth(plate.Clock)

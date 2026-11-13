@@ -43,8 +43,14 @@ S:Row{ key = "ab.buttonScale", kind = "range", section = "ab.barAppearance", cho
     end,
     set = function(v) S:SetPath("actionbars.buttonScale", v) end }
 
--- Gryphons Behind Bars: last in Bar Appearance (11-11, Marcus)
+-- Gryphons Behind Bars: last in Bars Appearance before the menu and bag bar rows (11-11, Marcus)
 S:Row{ key = "ab.gryphonsBehind", section = "ab.barAppearance", path = "actionbars.gryphonsBehind", apply = Refresh, half = true }
+-- the micro menu and the bag bar (11-13, a player's request)
+S:Row{ key = "ab.borderlessMenu", section = "ab.barAppearance", path = "actionbars.borderlessMenu", apply = Refresh, half = true }
+S:Row{ key = "ab.borderlessBags", section = "ab.barAppearance", path = "actionbars.borderlessBags", apply = Refresh, half = true }
+-- (greyed until Borderless Bag Bar is on: Blizzard's frame stays full length round a folded bar)
+S:Row{ key = "ab.collapsibleBags", section = "ab.barAppearance", path = "actionbars.collapsibleBags", apply = Refresh, half = true,
+    disabled = function() return not S:GetPath("actionbars.borderlessBags") end }
 
 -- in pairs (half rows, 11-11 Marcus): Show Button Art | Proc Glow, Status Colouring | Dim On Cooldown;
 -- then the text (Hide Keybinds | Hide Macro Text, Clean Keybind Text), the spells, paging
@@ -129,4 +135,9 @@ S:FontRows{ module = "ab", tab = "fonts", section = "ab.fonts", apply = Refresh,
     { key = "keybinds", path = "actionbars.hotkeyFont" },
     { key = "count", path = "actionbars.countFont" },
     { key = "macro", path = "actionbars.macroFont" },
+} }
+-- the XP bar's numbers in a section of their own (11-13)
+S:FontRows{ module = "ab", tab = "fonts", section = "ab.fontsXp",
+    apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end, fonts = {
+    { key = "xp", path = "actionbars.xpFont" },
 } }

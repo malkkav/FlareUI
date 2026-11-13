@@ -211,7 +211,12 @@ end
 -- Forever's own windows, in full white with Blizzard's solid shadow. A Russian client takes Friz's
 -- Cyrillic file. Roboto Condensed (11-10 to 11-13) read too sharp to players; it and Marcellus still
 -- ship, for the players' font choices. Each copies the Blizzard font it stands for first.
-local PANEL_FACE = GetLocale() == "ruRU" and "Fonts\\FRIZQT___CYR.TTF" or "Fonts\\FRIZQT__.TTF"
+-- (11-13) FlareUI set to Russian on another client too: the addon's language counts, not only the
+-- game's (the Cyrillic file has the Latin letters as well). Other alphabets keep their faces: the
+-- font objects below are set member by member (ns.SetFontObjectFaceUnscaled).
+local RUSSIAN = GetLocale() == "ruRU" or (ns.LoadedLocale and ns.LoadedLocale() == "ruRU")
+local PANEL_FACE = RUSSIAN and "Fonts\\FRIZQT___CYR.TTF" or "Fonts\\FRIZQT__.TTF"
+local SetPanelFont = ns.SetFontObjectFaceUnscaled or ns.SetFontUnscaled
 local BODY_FONT, TITLE_FONT = PANEL_FACE, PANEL_FACE
 local TEXT_WHITE = { 1, 1, 1 }
 local function Shade(font)
@@ -232,7 +237,7 @@ for blizzard, def in pairs({
     local name = "FlareUI_Panel" .. def[1]
     local font = CreateFont(name)
     if _G[blizzard] then font:CopyFontObject(_G[blizzard]) end
-    ns.SetFontUnscaled(font, def[2], def[3], "")
+    SetPanelFont(font, def[2], def[3], "")
     Shade(font)
     if def[4] then font:SetTextColor(def[4][1], def[4][2], def[4][3]) end
     PANEL_FONT[blizzard] = name
@@ -241,18 +246,18 @@ Panel.FONT = PANEL_FONT
 -- the button text: the page titles' gold rather than Blizzard's yellow (11-11 Marcus)
 local BUTTON_FONT = CreateFont("FlareUI_PanelButton")
 if _G.GameFontNormal then BUTTON_FONT:CopyFontObject(_G.GameFontNormal) end
-ns.SetFontUnscaled(BUTTON_FONT, BODY_FONT, 13, "")
+SetPanelFont(BUTTON_FONT, BODY_FONT, 13, "")
 BUTTON_FONT:SetTextColor(1, 0.82, 0)   -- (Blizzard's yellow, as its buttons', 11-13)
 Shade(BUTTON_FONT)
 local BUTTON_FONT_SMALL = CreateFont("FlareUI_PanelButtonSmall")
 if _G.GameFontNormal then BUTTON_FONT_SMALL:CopyFontObject(_G.GameFontNormal) end
-ns.SetFontUnscaled(BUTTON_FONT_SMALL, BODY_FONT, 11, "")
+SetPanelFont(BUTTON_FONT_SMALL, BODY_FONT, 11, "")
 BUTTON_FONT_SMALL:SetTextColor(1, 0.82, 0)
 Shade(BUTTON_FONT_SMALL)
 -- (kept for its callers: the titles are Friz already)
 local function ApplyTitleFont()
-    ns.SetFontUnscaled(_G.FlareUI_PanelTitle, TITLE_FONT, 17, "")
-    ns.SetFontUnscaled(_G.FlareUI_PanelTitleHuge, TITLE_FONT, 22, "")
+    SetPanelFont(_G.FlareUI_PanelTitle, TITLE_FONT, 17, "")
+    SetPanelFont(_G.FlareUI_PanelTitleHuge, TITLE_FONT, 22, "")
 end
 -- at load too: the setup tour can show before the settings window is ever built
 ApplyTitleFont()
@@ -704,7 +709,8 @@ local Fill = {}      -- kind -> function(f, row): shows the row's values
 
 local function RowEnter(self)
     if self.row then ShowRowPreview(self.row) end
-    self.hover:Show()
+    -- (11-13, Marcus) the style cards light up on their own: no row highlight behind them
+    if self.kind ~= "styles" then self.hover:Show() end
 end
 
 local function RowLeave(self)
@@ -1373,6 +1379,22 @@ Fill.buttons = function(f, row)
     end
     for i = #defs + 1, #f.buttons do f.buttons[i]:Hide() end
     if row.fitButtonsWidth and #defs > 1 then FitButtonGroup(f, row.fitButtonsWidth, #defs) end
+    -- centre = true: the group centred on the line; buttonGap widens the space between them
+    if row.center or row.buttonGap then
+        local gap, total = row.buttonGap or BUTTON_GAP, 0
+        for i = 1, #defs do total = total + f.buttons[i]:GetWidth() end
+        total = total + gap * (#defs - 1)
+        local x = row.center and -total / 2 or nil
+        for i = 1, #defs do
+            local b = f.buttons[i]
+            b:ClearAllPoints()
+            if i == 1 then
+                if x then b:SetPoint("LEFT", f, "CENTER", x, 0) else b:SetPoint("RIGHT", f, "RIGHT", -4 - (total - b:GetWidth()), 0) end
+            else
+                b:SetPoint("LEFT", f.buttons[i - 1], "RIGHT", gap, 0)
+            end
+        end
+    end
 end
 
 -- Edit button, greyed in combat

@@ -103,13 +103,22 @@ local function BuildButton()
     -- the binding is set while the second click is already down: its release casts
     button:RegisterForClicks("AnyUp")
     button:SetAttribute("type", "spell")
+    -- (11-13, "does not work at all") a secure button casts on the press when Cast on Key Down
+    -- (ActionButtonUseKeyDown, on by default) is on, and this one only ever gets the release: it casts
+    -- on the release whatever that setting says
+    button:SetAttribute("useOnKeyDown", false)
     button:Hide()
     button:SetScript("PostClick", Disarm)
     owner = CreateFrame("Frame")
 end
 
-local function OnWorldMouseDown(_, mouseButton)
+-- GLOBAL_MOUSE_DOWN comes before the click goes to a binding, so the binding set here takes this
+-- very click (a hook on WorldFrame's own OnMouseDown may never fire). On the world only.
+local function OnWorldMouseDown(mouseButton)
     if mouseButton ~= "RightButton" then return end
+    local foci = GetMouseFoci and GetMouseFoci()
+    local focus = foci and foci[1]
+    if focus and focus ~= WorldFrame then return end
     local db = GetDb()
     if not (db and db.fishCast) or ns.IsGamepadUI() or not button then return end
     local now = GetTime()
@@ -134,7 +143,12 @@ end
 --------------------------------------------------
 -- Events and switches
 --------------------------------------------------
-events:SetScript("OnEvent", function(_, event, _, _, spellID)
+events:SetScript("OnEvent", function(_, event, ...)
+    if event == "GLOBAL_MOUSE_DOWN" then
+        OnWorldMouseDown((...))
+        return
+    end
+    local spellID = select(3, ...)
     if event == "UNIT_SPELLCAST_CHANNEL_START" then
         if canaccessvalue(spellID) and spellID and C_Spell.GetSpellName(spellID) == FishingName() then
             StartSession()
@@ -155,7 +169,6 @@ events:SetScript("OnEvent", function(_, event, _, _, spellID)
     end
 end)
 
-local worldHooked = false
 function Fishing:Apply()
     if InCombatLockdown() then
         events:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -174,11 +187,12 @@ function Fishing:Apply()
     events:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player")
     events:RegisterEvent("PLAYER_REGEN_DISABLED")
     events:RegisterEvent("PLAYER_LEAVING_WORLD")
-    -- never in the Gamepad UI: a hook there can run inside its secure navigation
-    if cast and not worldHooked and not ns.IsGamepadUI() then
+    -- (the Gamepad UI is left out at each click: OnWorldMouseDown)
+    if cast then
         BuildButton()
-        worldHooked = true
-        WorldFrame:HookScript("OnMouseDown", OnWorldMouseDown)
+        events:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    else
+        events:UnregisterEvent("GLOBAL_MOUSE_DOWN")
     end
 end
 

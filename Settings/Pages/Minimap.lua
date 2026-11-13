@@ -11,17 +11,30 @@ local function Refresh()
 end
 
 S:Module{ key = "mm", group = "map", order = 10, enabled = "minimap.enabled",
-    tabs = { { key = "settings" }, { key = "fonts" } },
     -- the minimap's fade settings sit in Blizzard's minimap dialog
     editSystems = function()
         return Enum.EditModeSystem and { { system = Enum.EditModeSystem.Minimap, name = _G.MINIMAP_LABEL or "Minimap" } } or {}
     end }
 
-S:Row{ key = "mm.style", kind = "styles", path = "minimap.style", choices = { "square", "round" }, reload = true, hideLabel = true }
--- the square frame's top (11-13 Marcus): the header row on the map (Headerless) or in the frame's title
--- bar (Bordered); live. Square style only
-S:Row{ key = "mm.squareHeader", kind = "choice", path = "minimap.squareHeader", choices = { "headerless", "art" },
-    hidden = function() return S:GetPath("minimap.style") == "round" end, apply = Refresh }
+-- Style (11-13 Marcus): three cards. Headerless and Bordered are the square map's two tops
+-- (minimap.squareHeader, live); Round is Forever's own map (minimap.style, a reload to or from it)
+local startRound
+local function StyleNow()
+    if S:GetPath("minimap.style") == "round" then return "round" end
+    return S:GetPath("minimap.squareHeader") == "art" and "bordered" or "headerless"
+end
+S:Row{ key = "mm.style", kind = "styles", choices = { "headerless", "bordered", "round" }, hideLabel = true,
+    get = StyleNow,
+    set = function(value)
+        if startRound == nil then startRound = S:GetPath("minimap.style") == "round" end
+        local round = value == "round"
+        S:SetPath("minimap.style", round and "round" or "square")
+        if not round then S:SetPath("minimap.squareHeader", value == "bordered" and "art" or "headerless") end
+        -- only the round map needs a reload (the square one changes its top live)
+        S:TrackReload("mm.style", round, startRound)
+        if not round and not startRound then Refresh() end
+    end,
+    resetValue = function() return "headerless" end }
 S:Row{ key = "mm.zoom", kind = "choice", path = "minimap.autoZoom", choices = { 0, 5, 10, 30 }, apply = Refresh }
 -- Coordinates, one with Blizzard's own option (Minimap.lua MM.CoordsMode), then the framerate at
 -- the map's corner (MM.SetupFps); then the clock's tooltip, the middle-click menu, the drawer
@@ -30,6 +43,9 @@ S:Row{ key = "mm.coords", kind = "choice", choices = { "off", "always", "hover" 
     set = function(value) if ns.Minimap and ns.Minimap.SetCoordsMode then ns.Minimap.SetCoordsMode(value) end end,
     resetValue = function() return "hover" end, apply = Refresh }
 S:Row{ key = "mm.fps", kind = "choice", path = "minimap.fps", choices = { "off", "always", "hover" },
+    apply = function() if ns.Minimap and ns.Minimap.SetupFps then ns.Minimap.SetupFps() end end }
+-- Latency (11-13 Marcus): home over world, under the framerate or in its place (MM.SetupFps)
+S:Row{ key = "mm.latency", kind = "choice", path = "minimap.latency", choices = { "off", "always", "hover" },
     apply = function() if ns.Minimap and ns.Minimap.SetupFps then ns.Minimap.SetupFps() end end }
 S:Row{ key = "mm.clockStats", path = "minimap.clockStats" }
 S:Row{ key = "mm.microMenu", path = "minimap.microMenu",
@@ -59,8 +75,10 @@ S:Row{ key = "mm.bagAddons", kind = "dropdown", path = "minimap.bagLeave", paren
 -- while a gathering addon that moves the map to scan is loaded: the flashing is its own (Minimap.lua)
 S:Row{ key = "mm.nodeScanNote", kind = "text",
     hidden = function() return not (ns.Minimap and ns.Minimap.LoadedScanners and #ns.Minimap.LoadedScanners() > 0) end }
+-- while a farming HUD that takes the minimap is loaded (ForeverFarmHUD, FarmHud)
+S:Row{ key = "mm.hudNote", kind = "text",
+    hidden = function() return not (ns.Minimap and ns.Minimap.LoadedHUDs and #ns.Minimap.LoadedHUDs() > 0) end }
 
-S:FontRows{ module = "mm", tab = "fonts", section = "mm.fonts", apply = Refresh, fonts = {
-    { key = "zone", path = "minimap.zoneFont" },
-    { key = "clock", path = "minimap.clockFont" },
-} }
+-- Fonts (11-13): each frame's are in its Edit Mode dialog, the last section there
+S:Row{ key = "mm.fontsEditMode", kind = "button", section = "mm.fonts", buttonText = L["Open Edit Mode"],
+    apply = function() S:OpenEditMode("mm") end }

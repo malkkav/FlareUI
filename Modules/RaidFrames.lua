@@ -205,11 +205,13 @@ local raidCtx = {
     Settings = function() return raidView end,
     PreviewData = function(f) return f.sample or SAMPLES[1] end,
     ReadyHold = function() return readyHold end,
+    fontKey = "raid",   -- the raid frames' fonts (PartyFrames.lua PF.FontKey)
 }
 local tankCtx = {
     Settings = function() return tankView end,
     PreviewData = function(f) return f.sample or SAMPLES[1] end,
     ReadyHold = function() return readyHold end,
+    fontKey = "raid",
 }
 -- for the settings previews' sample tiles
 RF.PreviewCtx, RF.PreviewSamples = raidCtx, SAMPLES
@@ -316,7 +318,7 @@ function TT.PlaceSample(f, w, hh)
     end
     local db, kdb = GetDb(), K.GetDb()
     s.Health:SetStatusBarTexture(K.GetBarTexture(db and db.texture))
-    K.ApplyFont(s.Name, kdb and kdb.font, -2)
+    K.ApplyFont(s.Name, K.Font("raid", "names"), -2)
     s:ClearAllPoints()
     if place == "RIGHT" then
         s:SetPoint("TOPLEFT", f, "TOPRIGHT", TT.GAP, 0)
@@ -346,7 +348,7 @@ function TT.Layout()
             t:SetSize(w, TT.HEIGHT)
         end
         t.Health:SetStatusBarTexture(tex)
-        K.ApplyFont(t.Name, kdb and kdb.font, -2)
+        K.ApplyFont(t.Name, K.Font("raid", "names"), -2)
         local unit = f:GetAttribute("unit")
         t:SetAttribute("unit", unit and (unit .. "target") or nil)
         if place == "OFF" or IsEditing() then
@@ -413,13 +415,12 @@ end
 local function LabelRoom()
     local db = GetDb()
     if not (db and db.groupNumbers and Mode() == "group" and Rows()) then return 0 end
-    local font = K.GetDb() and K.GetDb().font
+    local font = K.Font("raid", "names")
     return ((font and font.size) or 12) + 4
 end
 
 local function StyleGroupLabel(label, k)
-    local font = K.GetDb() and K.GetDb().font
-    K.ApplyFont(label, font)
+    K.ApplyFont(label, K.Font("raid", "names"))
     label:SetText(L["Group %d"]:format(k))
     label:SetTextColor(1, 0.82, 0)
     label:SetJustifyH("LEFT")
@@ -980,6 +981,8 @@ local function BuildSettings()
             end }
     end
     Section("Icons", iconItems)
+    -- always last: the frames' fonts (11-13, UnitFrames.lua UF.FontItems)
+    if ns.UnitFrames and ns.UnitFrames.FontItems then Section("Fonts", ns.UnitFrames.FontItems("raid", false, true)) end
     return settings
 end
 
@@ -1026,6 +1029,8 @@ local function BuildTankSettings()
     })
     Section("Auras", AuraItems(get, set, d, tankView))
     Section("Aura Ordering", ns.AuraOrder.Items(get, set))
+    -- always last: the frames' fonts (11-13, UnitFrames.lua UF.FontItems)
+    if ns.UnitFrames and ns.UnitFrames.FontItems then Section("Fonts", ns.UnitFrames.FontItems("raid", false, true)) end
     return settings
 end
 
@@ -1102,9 +1107,15 @@ local GLOBAL_EVENTS = {
 -- Range comes from UNIT_IN_RANGE_UPDATE; every second the tiles re-check it (in case an event was
 -- missed) and their aura reach, which has no event
 local function StartRangeTicker()
-    C_Timer.NewTicker(RANGE_INTERVAL, function()
+    -- one fifth of the tiles per tick, so a 40-man raid never checks them all in one frame
+    local slice = 0
+    C_Timer.NewTicker(RANGE_INTERVAL / 5, function()
         if not holder:IsShown() or IsEditing() then return end
-        ForTiles(Tile.UpdateRange)
+        slice = slice % 5 + 1
+        for i = slice, #tiles, 5 do
+            local f = tiles[i]
+            if f.fuiUnit and f:IsVisible() then Tile.UpdateRange(f) end
+        end
     end)
     -- Tank Targets: a tank's target has no event of its own
     C_Timer.NewTicker(0.3, function()

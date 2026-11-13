@@ -16,7 +16,6 @@ end
 
 S:Module{
     key = "au", group = "combat", order = 50, enabled = "auras.enabled",
-    tabs = { { key = "settings" }, { key = "fonts" } },
     editMode = Holder("buffs"),
     editFrames = { Holder("buffs"), Holder("debuffs") },
 }
@@ -43,7 +42,6 @@ S:Row{ key = "au.mineFirst", path = "auras.mineFirst", apply = Refresh, disabled
 
 -- (Buff Reminders: its own page since 11-12, Settings/Pages/BuffReminders.lua)
 
-S:FontRows{ module = "au", tab = "fonts", section = "au.fonts", apply = Refresh, fonts = {
-    { key = "timer", path = "auras.font" },
-    { key = "count", path = "auras.countFont" },
-} }
+-- Fonts (11-13): each frame's are in its Edit Mode dialog, the last section there
+S:Row{ key = "au.fontsEditMode", kind = "button", section = "au.fonts", buttonText = L["Open Edit Mode"],
+    apply = function() S:OpenEditMode("au") end }

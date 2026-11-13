@@ -269,7 +269,7 @@ local function MissingMedia(profile, roots)
         for key, value in pairs(t) do
             if type(value) == "table" then
                 Walk(value, depth + 1)
-            elseif type(value) == "string" and MEDIA_FIELDS[key] and value ~= "" and value ~= "None" then
+            elseif type(value) == "string" and MEDIA_FIELDS[key] and value ~= "" and value ~= "None" and value ~= ns.GLOBAL_FONT then
                 local kind = MEDIA_FIELDS[key]
                 if not seen[kind .. value] and not LSM:IsValid(kind, value) then
                     seen[kind .. value] = true

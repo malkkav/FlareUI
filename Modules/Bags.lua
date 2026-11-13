@@ -174,6 +174,7 @@ local function FillExtraButton(b)
         SetItemButtonQuality(b, info and info.quality, info and info.hyperlink, false, info and info.isBound)
         SetItemButtonCount(b, info and info.stackCount)
         SetItemButtonDesaturated(b, info and info.isLocked)
+        b:UpdateNewItem(info and info.quality)
         b:UpdateCooldown(texture)
         b:SetReadable(info and info.isReadable)
         b:SetMatchesSearch(not (info and info.isFiltered))
@@ -199,8 +200,24 @@ local function FillExtras()
     end
 end
 
+local function ClearExtraNewItems()
+    -- OnHide runs after the backpack is hidden. IsShown still identifies its displayed slots.
+    for bagID, e in pairs(extras) do
+        if e.holder:IsShown() then
+            for slot, b in pairs(e.buttons) do
+                if b:IsShown() then C_NewItems.RemoveNewItem(bagID, slot) end
+            end
+        end
+    end
+end
+
 -- Blizzard's own crafting bag window, while its section is in the backpack: open but off the screen
 local parked = {}
+
+function Bags:IsNativeBagWindowParked(frame)
+    return parked[frame] ~= nil
+end
+
 local function ParkReagentWindow()
     for i = 1, (NUM_CONTAINER_FRAMES or 13) do
         local frame = _G["ContainerFrame" .. i]
@@ -221,6 +238,32 @@ local function ParkReagentWindow()
             end
         end
     end
+end
+
+local function RouteEmbeddedBagClick(button, wantsSection)
+    local onClick = button and button:GetScript("OnClick")
+    if not onClick then return end
+
+    button:SetScript("OnClick", function(self, mouseButton, down)
+        local backpack = Combined()
+        if down or (mouseButton ~= "LeftButton" and mouseButton ~= "RightButton")
+            or GetCursorInfo() or IsModifiedClick() or KeybindFrames_InQuickKeybindMode()
+            or not (backpack and Bags:IsCombined() and LayoutWanted() and wantsSection()) then
+            return onClick(self, mouseButton, down)
+        end
+        if not ContainerFrame_AllowedToOpenBags() then return end
+
+        if backpack:IsShown() then
+            local reagentID = ReagentID()
+            local reagent = reagentID and ContainerFrameUtil_GetShownFrameForID(reagentID)
+            if reagent and parked[reagent] ~= nil and ReagentWanted() then CloseBag(reagentID) end
+            CloseBackpack()
+        else
+            OpenBackpack()
+            -- Keep the embedded reagent window in Blizzard's count of open bags.
+            if backpack:IsShown() and ReagentWanted() then OpenBag(ReagentID()) end
+        end
+    end)
 end
 
 --------------------------------------------------
@@ -545,6 +588,15 @@ local function GetOverlay(button)
     ov.upgrade:SetAtlas("bags-greenarrow", true)
     ov.upgrade:SetPoint("BOTTOMRIGHT", -1, 1)
     ov.upgrade:Hide()
+    -- Item Level (bottom left) and Uncollected Appearance (top right, across from the junk coin)
+    ov.ilvl = ov:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    ov.ilvl:SetPoint("BOTTOMLEFT", 2, 2)
+    ov.ilvl:Hide()
+    ov.eye = ov:CreateTexture(nil, "OVERLAY", nil, 7)
+    ov.eye:SetAtlas("transmog-icon-hidden")
+    ov.eye:SetSize(14, 14)
+    ov.eye:SetPoint("TOPRIGHT", -1, -1)
+    ov.eye:Hide()
     if button.fuiSample then button.fuiOverlay = ov else overlays[button] = ov end
     return ov
 end
@@ -558,8 +610,12 @@ local function ShowBorder(ov, style, r, g, b)
         border:SetPoint("TOPLEFT", -def[3], def[3])
         border:SetPoint("BOTTOMRIGHT", def[3], -def[3])
         border:SetBackdrop({ edgeFile = LibStub("LibSharedMedia-3.0"):Fetch("border", def[1]), edgeSize = def[2] })
+        border.r = nil
     end
-    border:SetBackdropBorderColor(r, g, b, 1)
+    if border.r ~= r or border.g ~= g or border.b ~= b then
+        border.r, border.g, border.b = r, g, b
+        border:SetBackdropBorderColor(r, g, b, 1)
+    end
     ov.border:Show()
 end
 
@@ -785,6 +841,68 @@ local function ShowUpgrade(ov, bagID, slotID, link)
     if Upgrade:Is(bagID, slotID, link) then ov.upgrade:Show() end
 end
 
+-- ITEM LEVEL AND UNCOLLECTED APPEARANCE (11-13, a player's request): read once per item link, the
+-- appearances again when the collection changes (Bags:Init). Item level on weapons and armour only,
+-- not on shirts and tabards (level 1). An appearance counts as collected when this item's source or
+-- any other with the same look is; the eye shows only where this character could learn it.
+local itemLevels, uncollected = {}, {}
+function Bags.ForgetAppearances() wipe(uncollected) end
+
+local function ItemLevelOf(link)
+    local level = itemLevels[link]
+    if level == nil then
+        local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(link)
+        level = false
+        if classID == Enum.ItemClass.Weapon or classID == Enum.ItemClass.Armor then
+            local ok, value = pcall(C_Item.GetDetailedItemLevelInfo, link)
+            if not (ok and type(value) == "number") then return nil end   -- (not loaded yet: asked again)
+            if value > 1 then level = value end
+        end
+        itemLevels[link] = level
+    end
+    return level or nil
+end
+
+local function Uncollected(link)
+    local known = uncollected[link]
+    if known ~= nil then return known end
+    local T = C_TransmogCollection
+    if not (T and T.GetItemInfo) then return false end
+    local ok, _, sourceID = pcall(T.GetItemInfo, link)
+    if not (ok and sourceID) then
+        uncollected[link] = false
+        return false
+    end
+    local okS, source = pcall(T.GetSourceInfo, sourceID)
+    local okA, appearance = pcall(T.GetAppearanceInfoBySource, sourceID)
+    if (okS and source and source.isCollected) or (okA and appearance and appearance.appearanceIsCollected) then
+        uncollected[link] = false
+        return false
+    end
+    local okC, hasData, canCollect = pcall(T.PlayerCanCollectSource, sourceID)
+    if not okC or hasData == false then return false end   -- (asked again next time)
+    known = canCollect and true or false
+    uncollected[link] = known
+    return known
+end
+
+local function ShowItemLevel(ov, level, quality)
+    ov.ilvl:SetText(level)
+    local r, g, b = C_Item.GetItemQualityColor(quality or 1)
+    ov.ilvl:SetTextColor(r or 1, g or 1, b or 1)
+    ov.ilvl:Show()
+end
+
+-- what needs the item's data: the upgrade arrow, its level, its appearance
+local function ShowItemData(ov, db, bagID, slotID, link, quality)
+    if db.bagUpgradeArrow then ShowUpgrade(ov, bagID, slotID, link) end
+    if db.bagItemLevel then
+        local level = ItemLevelOf(link)
+        if level then ShowItemLevel(ov, level, quality) end
+    end
+    if db.bagUncollected and Uncollected(link) then ov.eye:Show() end
+end
+
 function UpdateButton(button, db)
     local bagID, slotID = button:GetBagID(), button:GetID()
     local info = bagID and slotID and C_Container.GetContainerItemInfo(bagID, slotID)
@@ -799,6 +917,7 @@ local function StyleIconText(fs, font)
     if not fs then return end
     local face = font and font.face or ""
     if face == "" then
+        fs.fuiFont = nil
         local object = blizzardFont[fs]
         if object then
             fs:SetFontObject(object)
@@ -809,10 +928,36 @@ local function StyleIconText(fs, font)
     if not blizzardFont[fs] then blizzardFont[fs] = fs:GetFontObject() or NumberFontNormal end
     local flags = font.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end
-    ns.SetFont(fs, ns.GetFontPath(face), font.size or 14, flags)
+    local size = font.size or 14
+    -- the file, not the face: a Global face changes file with the Global Font
+    local path = ns.GetFontPath(face)
+    -- the same look on the same font (nothing reset it): nothing to do
+    local c = fs.fuiFont
+    if c and c.path == path and c.size == size and c.flags == flags and c.sh == font.enableShadow
+        and c.x == font.shadowX and c.y == font.shadowY and c.got == fs:GetFont() then return end
+    ns.SetFont(fs, path, size, flags)
     ns.ApplyShadow(fs, font)
+    fs.fuiFont = { path = path, size = size, flags = flags, sh = font.enableShadow, x = font.shadowX, y = font.shadowY, got = fs:GetFont() }
 end
 -- the free bag slots on the backpack button (Bags and Looting > Fonts > Free Bag Slots, 11-12)
+-- the money at the bags' foot (Bags and Looting > Fonts > Gold, 11-13): Blizzard's gold, silver and
+-- copper texts on the combined bags and the backpack; their widths follow the new text
+function Bags.StyleMoney()
+    local db = GetDb()
+    if not db then return end
+    for _, frame in ipairs({ _G.ContainerFrameCombinedBags, _G.ContainerFrame1 }) do
+        local money = frame and (frame.MoneyFrame or _G[(frame:GetName() or "") .. "MoneyFrame"])
+        if money then
+            for _, key in ipairs({ "GoldButton", "SilverButton", "CopperButton" }) do
+                local button = money[key]
+                local text = button and (button.Text or (button.GetFontString and button:GetFontString()))
+                if text then StyleIconText(text, db.bagMoneyFont) end
+            end
+            if money:IsVisible() and MoneyFrame_UpdateMoney then pcall(MoneyFrame_UpdateMoney, money) end
+        end
+    end
+end
+
 function Bags.StyleFreeSlots()
     local db = GetDb()
     local backpack = _G.MainMenuBarBackpackButton
@@ -834,6 +979,8 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
     ov.border:Hide()
     ov.junk:Hide()
     ov.upgrade:Hide()
+    ov.ilvl:Hide()
+    ov.eye:Hide()
 
     if not button.fuiSample then UpdateItemFilter(button, ov, bagID, slotID, info) end
     local quality = info and info.quality
@@ -843,19 +990,25 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
 
     if not info then return end
     if junk and quality == Enum.ItemQuality.Poor and not info.hasNoValue then ov.junk:Show() end
-    if upgrade and info.sampleUpgrade then
-        ov.upgrade:Show()
-    elseif upgrade and info.hyperlink then
+    if button.fuiSample then
+        if upgrade and info.sampleUpgrade then ov.upgrade:Show() end
+        if db.bagItemLevel and info.sampleItemLevel then
+            StyleIconText(ov.ilvl, db.bagItemFont)
+            ShowItemLevel(ov, info.sampleItemLevel, quality)
+        end
+        if db.bagUncollected and info.sampleUncollected then ov.eye:Show() end
+    elseif (upgrade or db.bagItemLevel or db.bagUncollected) and info.hyperlink then
+        if db.bagItemLevel then StyleIconText(ov.ilvl, db.bagItemFont) end
         local link = info.hyperlink
         if C_Item.IsItemDataCachedByID(info.itemID) then
-            ShowUpgrade(ov, bagID, slotID, link)
+            ShowItemData(ov, db, bagID, slotID, link, quality)
         else
             -- the slot may hold something else by the time the data comes
             local item = Item:CreateFromItemLink(link)
             item:ContinueOnItemLoad(function()
                 local now = C_Container.GetContainerItemInfo(bagID, slotID)
                 if now and now.hyperlink == link and button:GetBagID() == bagID and button:GetID() == slotID then
-                    ShowUpgrade(ov, bagID, slotID, link)
+                    ShowItemData(ov, db, bagID, slotID, link, quality)
                 end
             end)
         end
@@ -1126,8 +1279,11 @@ end
 function Bags:Init()
     if self.initialized then return end
     self.initialized = true
+    RouteEmbeddedBagClick(_G.KeyRingButton, KeyringWanted)
+    RouteEmbeddedBagClick(_G.CharacterReagentBag0Slot, ReagentWanted)
     Bags.FollowWindows()   -- section 4c
     Bags.StyleFreeSlots()
+    Bags.StyleMoney()
     local useFilterButtons = C_Container.GetContainerItemQuestInfo and C_Item.GetItemInventoryTypeByID
         and Enum.InventoryType and not self:GetOtherBagAddon()
     for _, frame in ipairs(BagFrames()) do
@@ -1149,6 +1305,7 @@ function Bags:Init()
         if combined.UpdateFrameSize then hooksecurefunc(combined, "UpdateFrameSize", Relayout) end
         if combined.UpdateItemLayout then hooksecurefunc(combined, "UpdateItemLayout", Relayout) end
         combined:HookScript("OnShow", function() Bags:PlaceBagButtons() end)
+        combined:HookScript("OnHide", ClearExtraNewItems)
     end
     -- the bags move when they open or the screen changes: the buttons pick their side again
     hooksecurefunc("UpdateContainerFrameAnchors", function()
@@ -1158,7 +1315,7 @@ function Bags:Init()
     -- the keyring and crafting bag sections follow their items
     local bagEvents = CreateFrame("Frame")
     if useFilterButtons then bagEvents:RegisterEvent("QUEST_LOG_UPDATE") end
-    for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_UPDATE_COOLDOWN", "ITEM_LOCK_CHANGED", "INVENTORY_SEARCH_UPDATE",
+    for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_NEW_ITEMS_UPDATED", "BAG_UPDATE_COOLDOWN", "ITEM_LOCK_CHANGED", "INVENTORY_SEARCH_UPDATE",
                              "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED" }) do
         pcall(bagEvents.RegisterEvent, bagEvents, event)
     end
@@ -1185,10 +1342,33 @@ function Bags:Init()
         "CHARACTER_POINTS_CHANGED", "SKILL_LINES_CHANGED", "UPDATE_INVENTORY_DURABILITY" }) do
         pcall(events.RegisterEvent, events, event)
     end
-    events:SetScript("OnEvent", function(_, event)
-        Upgrade:Reset(RE_ASK_WEAR[event])
+    -- durability never changes an item's stats, only what can be worn; one refresh per frame
+    local queued = false
+    -- a newly learned appearance takes its eye off every item with that look
+    local wardrobe = CreateFrame("Frame")
+    for _, event in ipairs({ "TRANSMOG_COLLECTION_UPDATED", "TRANSMOG_COLLECTION_SOURCE_ADDED", "TRANSMOG_COLLECTION_SOURCE_REMOVED" }) do
+        pcall(wardrobe.RegisterEvent, wardrobe, event)
+    end
+    local wardrobeQueued = false
+    wardrobe:SetScript("OnEvent", function()
+        Bags.ForgetAppearances()
         local db = GetDb()
-        if db and db.bagUpgradeArrow then Bags:Refresh() end
+        if not (db and db.bagUncollected) or wardrobeQueued then return end
+        wardrobeQueued = true
+        C_Timer.After(0.2, function()
+            wardrobeQueued = false
+            Bags:Refresh()
+        end)
+    end)
+    events:SetScript("OnEvent", function(_, event)
+        if event == "UPDATE_INVENTORY_DURABILITY" then wipe(Upgrade.usable) else Upgrade:Reset(RE_ASK_WEAR[event]) end
+        local db = GetDb()
+        if not (db and db.bagUpgradeArrow) or queued then return end
+        queued = true
+        C_Timer.After(0, function()
+            queued = false
+            Bags:Refresh()
+        end)
     end)
 end
 
@@ -1197,6 +1377,7 @@ end
 function Bags:Refresh()
     if not self.initialized then return end
     Bags.StyleFreeSlots()
+    Bags.StyleMoney()
     for _, frame in ipairs(BagFrames()) do
         if frame:IsShown() then
             if frame == Combined() then Relayout(frame) end
@@ -1263,9 +1444,9 @@ do
         } },
         { bag = 0, slots = 16, items = {
             [1] = { icon = ICON .. "INV_Misc_Rune_01", quality = 1 },
-            [2] = { icon = ICON .. "INV_Sword_04", quality = 2, upgrade = true },
-            [3] = { icon = ICON .. "INV_Chest_Cloth_17", quality = 3 },
-            [4] = { icon = ICON .. "INV_Jewelry_Ring_15", quality = 4 },
+            [2] = { icon = ICON .. "INV_Sword_04", quality = 2, upgrade = true, ilvl = 24 },
+            [3] = { icon = ICON .. "INV_Chest_Cloth_17", quality = 3, ilvl = 31, uncollected = true },
+            [4] = { icon = ICON .. "INV_Jewelry_Ring_15", quality = 4, ilvl = 40 },
             [5] = { icon = ICON .. "INV_Misc_Food_15", quality = 1, count = 20, petFood = true },
             [6] = { icon = ICON .. "INV_Potion_51", quality = 1, count = 5 },
             [7] = { icon = ICON .. "INV_Fabric_Linen_01", quality = 1, count = 12 },
@@ -1311,7 +1492,8 @@ do
     local function Fill(b, item, db)
         SetItemButtonTexture(b, item and item.icon)
         SetItemButtonCount(b, item and item.count)
-        local info = item and { quality = item.quality, sampleUpgrade = item.upgrade } or nil
+        local info = item and { quality = item.quality, sampleUpgrade = item.upgrade,
+                                sampleItemLevel = item.ilvl, sampleUncollected = item.uncollected } or nil
         Bags.DecorateButton(b, db, info)
         b.paw:SetShown(item and item.petFood and db.petFood and true or false)
         b:SetSize(SLOT_SIZE, SLOT_SIZE)
@@ -1471,4 +1653,77 @@ do
         f:Show()
         return fullW, fullH
     end
+end
+
+--------------------------------------------------
+-- CHARACTER SHEET ITEM LEVEL (11-13, a player's request): Item Level also puts each worn item's
+-- level in the bottom left of its slot. On its own, outside Bags:Init, so it works beside a bag addon.
+--------------------------------------------------
+do
+    local SLOTS = { "Head", "Neck", "Shoulder", "Back", "Chest", "Shirt", "Tabard", "Wrist", "Hands", "Waist",
+                    "Legs", "Feet", "Finger0", "Finger1", "Trinket0", "Trinket1", "MainHand", "SecondaryHand", "Ranged" }
+    local labels = {}
+
+    local function Wanted()
+        local db = GetDb()
+        return ns.BagModuleOn() and db and db.bagItemLevel and true or false
+    end
+
+    local function Label(button)
+        local fs = labels[button]
+        if not fs then
+            fs = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+            fs:SetPoint("BOTTOMLEFT", 2, 2)
+            fs:SetDrawLayer("OVERLAY", 7)
+            labels[button] = fs
+        end
+        return fs
+    end
+
+    local function UpdateSlot(button)
+        local slotID = button:GetID()
+        local link = slotID and GetInventoryItemLink("player", slotID)
+        local fs = Label(button)
+        fs:Hide()
+        if not (link and Wanted()) then return end
+        StyleIconText(fs, GetDb().bagItemFont)
+        local itemID = GetInventoryItemID("player", slotID)
+        if itemID and not C_Item.IsItemDataCachedByID(itemID) then
+            -- not in the cache yet: once it is
+            local item = Item:CreateFromItemLink(link)
+            item:ContinueOnItemLoad(function()
+                if GetInventoryItemLink("player", slotID) == link then UpdateSlot(button) end
+            end)
+            return
+        end
+        local level = ItemLevelOf(link)
+        if not level then return end
+        local quality = GetInventoryItemQuality("player", slotID)
+        fs:SetText(level)
+        local r, g, b = C_Item.GetItemQualityColor(quality or 1)
+        fs:SetTextColor(r or 1, g or 1, b or 1)
+        fs:Show()
+    end
+
+    function Bags.UpdateCharacterLevels()
+        local frame = _G.CharacterFrame
+        if not (frame and frame:IsShown()) and not next(labels) then return end
+        for _, name in ipairs(SLOTS) do
+            local button = _G["Character" .. name .. "Slot"]
+            if button then UpdateSlot(button) end
+        end
+    end
+
+    local events = CreateFrame("Frame")
+    events:RegisterEvent("PLAYER_LOGIN")
+    events:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_LOGIN" then
+            events:RegisterUnitEvent("UNIT_INVENTORY_CHANGED", "player")
+            events:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+            if _G.CharacterFrame then _G.CharacterFrame:HookScript("OnShow", Bags.UpdateCharacterLevels) end
+            return
+        end
+        local frame = _G.CharacterFrame
+        if frame and frame:IsShown() then Bags.UpdateCharacterLevels() end
+    end)
 end

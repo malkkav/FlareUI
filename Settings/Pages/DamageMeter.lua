@@ -91,9 +91,16 @@ S:Row{ key = "dm.chatTabOpen", kind = "choice", path = "damagemeter.chatTabOpen"
 local function PreviewThreat()
     if ns.DamageMeter and ns.DamageMeter.PreviewThreat then ns.DamageMeter.PreviewThreat() end
 end
+-- switched on: the window appears right above or below the meter (DamageMeter.PlaceThreatWindow)
+S:Row{ key = "dm.threatWindow", path = "damagemeter.threatWindow", tab = "threat", section = "dm.threat",
+    apply = function(on)
+        Refresh()
+        if on and ns.DamageMeter and ns.DamageMeter.PlaceThreatWindow then ns.DamageMeter.PlaceThreatWindow() end
+    end }
 S:Row{ key = "dm.threatValue", kind = "choice", path = "damagemeter.threatValueDisplay",
     choices = { "both", "percent", "value" }, apply = PreviewThreat, tab = "threat", section = "dm.threat" }
-S:Row{ key = "dm.threatCombat", path = "damagemeter.autoThreat", apply = Refresh, tab = "threat", section = "dm.threat", half = true }
+S:Row{ key = "dm.threatCombat", path = "damagemeter.autoThreat", apply = Refresh, tab = "threat", section = "dm.threat", half = true,
+    disabled = function() return S:GetPath("damagemeter.threatWindow") and true or false end }
 S:Row{ key = "dm.tankLead", path = "damagemeter.threatTankLead", apply = PreviewThreat, tab = "threat", section = "dm.threat", half = true }
 S:Row{ key = "dm.pullFlash", path = "damagemeter.threatPullFlash", apply = PreviewThreat, tab = "threat", section = "dm.threat", half = true }
 S:Row{ key = "dm.pullLine", path = "damagemeter.threatPullLine", apply = PreviewThreat, tab = "threat", section = "dm.threat", half = true }

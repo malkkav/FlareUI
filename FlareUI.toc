@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 6.2
+## Version: 6.3
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -28,6 +28,7 @@
 # ----------------------------------------------------
 LoadCheck.lua
 Libs\Libs.xml
+PerfTrace.lua
 
 # ----------------------------------------------------
 # Addon Files

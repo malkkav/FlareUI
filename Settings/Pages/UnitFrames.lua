@@ -21,7 +21,6 @@ end
 
 S:Module{
     key = "uf", group = "combat", order = 20, enabled = "unitframes.enabled",
-    tabs = { { key = "settings" }, { key = "fonts" } },
     -- the frames behind the shared Player / Pet / Target / Focus row
     editFrames = {
         function() return _G.FlareUI_UF_Player end, function() return _G.FlareUI_UF_Target end,
@@ -59,7 +58,8 @@ Frame("tof", "unitframes.units.focustarget.enabled", "FlareUI_UF_TargetOfFocus")
 
 -- each style keeps its own unit frames setup (UnitFramesRing.lua), loaded on reload
 S:Row{
-    key = "uf.frameStyle", kind = "styles", reload = true, choices = { "flareui", "forever", "addon" },
+    -- (hideLabel: the row has a section of its own, Frame Style, 11-13)
+    key = "uf.frameStyle", kind = "styles", reload = true, hideLabel = true, choices = { "flareui", "forever", "addon" },
     get = function() return ns.UFRing and ns.UFRing.Style() or "addon" end,
     set = function(value)
         if ns.UFRing then ns.UFRing.SetStyle(value) end
@@ -82,10 +82,6 @@ S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", cho
 S:Row{ key = "uf.auraTimerColor", path = "unitframes.auraTimerColor", apply = Refresh,
     disabled = function() return (S:GetPath("unitframes.auraTimer") or "none") == "none" end }
 
-S:FontRows{ module = "uf", tab = "fonts", section = "uf.fonts", apply = Refresh, fonts = {
-    { key = "names", path = "unitframes.font" },
-    { key = "power", path = "unitframes.fontPower" },
-    { key = "castBar", path = "unitframes.fontCast" },
-    { key = "auras", path = "unitframes.auraFont", autoSize = true },
-    { key = "auraCount", path = "unitframes.auraCountFont", autoSize = true },
-} }
+-- Fonts (11-13): each frame's are in its Edit Mode dialog, the last section there
+S:Row{ key = "uf.fontsEditMode", kind = "button", section = "uf.fonts", buttonText = L["Open Edit Mode"],
+    apply = function() S:OpenEditMode("uf") end }

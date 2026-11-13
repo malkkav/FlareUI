@@ -68,7 +68,9 @@ local REMINDERS = {
         { key = "moonkin", cast = { 24858 }, optIn = true },
     },
     WARLOCK = {
-        { key = "armor", cast = { 11735, 11734, 11733, 1086, 706, 696, 687 } },
+        -- (11-13: Fel Armor, Forever's, counts as the armor too; EnhanceQoL's Forever data)
+        { key = "armor", cast = { 11735, 11734, 11733, 1086, 706, 696, 687 },
+          buffs = { 403619, 11735, 11734, 11733, 1086, 706, 696, 687 } },
         -- Firestone / Spellstone on the weapon (11-11, a warlock asked)
         { key = "stone", weapon = "stone" },
     },
@@ -85,7 +87,8 @@ local REMINDERS = {
         -- a tank's threat buff, only while your group role is tank
         { key = "fury", cast = { 25780 }, role = "TANK" },
         -- any aura on (Devotion, Retribution, Concentration, the resistances, Sanctity): Devotion to cast
-        { key = "aura", cast = { 10293, 10292, 1032, 10291, 643, 10290, 465 },
+        -- (own: another paladin's aura never stands in for yours, 11-13 as EllesmereUI)
+        { key = "aura", own = true, cast = { 10293, 10292, 1032, 10291, 643, 10290, 465 },
           buffs = { 10293, 10292, 1032, 10291, 643, 10290, 465, 10301, 10300, 10299, 10298, 7294, 19746, 19896, 19895,
                     19876, 19898, 19897, 19888, 19900, 19899, 19891, 20218 } },
     },
@@ -97,10 +100,12 @@ local REMINDERS = {
     },
     HUNTER = {
         { key = "pet", pet = "HUNTER" },
-        { key = "trueshot", cast = { 20906, 20905, 19506 } },   -- Trueshot Aura (talent)
+        { key = "trueshot", cast = { 20906, 20905, 19506, 1299348, 1299346 } },   -- Trueshot Aura (talent; Forever's ranks too)
         -- no aspect up (any counts); a click casts the last fighting aspect seen, else Hawk (11-12)
         { key = "aspect", aspect = true, cast = { 25296, 14322, 14321, 14320, 14319, 14318, 13165, 13163 },
-          buffs = { 25296, 14322, 14321, 14320, 14319, 14318, 13165, 13163, 5118, 13159, 20190, 20043, 13161 } },
+          -- (11-13) Forever's own aspects too: Viper (34074, 415423), 469145 and Beast's new ranks
+          buffs = { 25296, 14322, 14321, 14320, 14319, 14318, 13165, 13163, 5118, 13159, 20190, 20043, 13161,
+                    34074, 415423, 469145, 1299445, 1299446, 1299447 } },
     },
 }
 -- the warlock's pet joins its armor, then a healthstone in the bags (Create Healthstone, best rank)
@@ -123,7 +128,8 @@ local SOULSTONE_BUFFS = { 20707, 20762, 20763, 20764, 20765 }          -- Soulst
 -- trinkets for the open world, still worn in a dungeon or raid (11-12): the Argent Dawn ones, Carrot on a Stick
 local WORLD_TRINKETS = { 12846, 13209, 19812, 11122 }
 -- the aspects a click may put back (Cheetah and Pack are never remembered: they daze)
-local FIGHT_ASPECTS = { { 25296, 14322, 14321, 14320, 14319, 14318, 13165 }, { 13163 }, { 20190, 20043 }, { 13161 } }
+local FIGHT_ASPECTS = { { 25296, 14322, 14321, 14320, 14319, 14318, 13165 }, { 13163 }, { 20190, 20043 },
+                        { 13161, 1299447, 1299446, 1299445 } }
 local HEALTHSTONES = { 5512, 5511, 5509, 5510, 9421, 19004, 19005, 19006, 19007, 19008, 19009, 19010, 19011, 19012, 19013 }
 -- Camping and Rest (Forever, off): Camp Benefits from a campfire, and while levelling with a Cozy
 -- Sleeping Bag in the bags, three Well-Rested stacks (click to use the bag). Gathering Tracking (off):
@@ -140,7 +146,9 @@ local EXTRAS = {
 local CONSUMABLES = {
     -- Well Fed, and the foods whose buff has its own name (Grilled Squid, Nightfin Soup, Runn Tum Tuber
     -- Surprise, Dirge's Chimaerok Chops, Blessed Sunfruit and its juice)
-    { key = "food", consumable = true, buffs = { 19705, 18192, 18194, 22730, 25661, 18125, 18141 }, icon = 19705 },
+    -- (11-13) Well Fed by name; the six by ID, as their names are shared ("Mana Regeneration" is also
+    -- Elixir of Mageblood's, which hid this reminder)
+    { key = "food", consumable = true, buffs = { 19705 }, ids = { 18192, 18194, 22730, 25661, 18125, 18141 }, icon = 19705 },
     { key = "flask", consumable = true, buffs = { 17626, 17627, 17628, 17629 }, icon = 17626 },  -- the four flasks
 }
 
@@ -230,9 +238,12 @@ end
 -- what a click can put on: imbues by their first rank (cast by name: your best rank), poisons and
 -- stones by their items, best first (rank 1's item carries the plain name, for the menu)
 local WEAPON_OPTIONS = {
+    -- (11-13) every rank, as EllesmereUI: knowing any one counts
     imbue = {
-        { key = "windfury", cast = 8232 }, { key = "flametongue", cast = 8024 },
-        { key = "rockbiter", cast = 8017 }, { key = "frostbrand", cast = 8033 },
+        { key = "windfury", cast = 8232, ranks = { 8232, 8235, 10486, 16362 } },
+        { key = "flametongue", cast = 8024, ranks = { 8024, 8027, 8030, 16339, 16341, 16342 } },
+        { key = "rockbiter", cast = 8017, ranks = { 8017, 8018, 8019, 10399, 16314, 16315, 16316 } },
+        { key = "frostbrand", cast = 8033, ranks = { 8033, 8038, 10456, 16355, 16356 } },
     },
     poison = {
         { key = "instant", items = { 8928, 8927, 8926, 6950, 6949, 6947 } },
@@ -253,8 +264,11 @@ local WEAPON_OILS = {
     { 20749, 2628, nil, "wizard" }, { 20750, 2627, nil, "wizard" }, { 20746, 2626, nil, "wizard" }, { 20744, 2623, nil, "wizard" },
     { 20748, 2629, nil, "mana" }, { 20747, 2625, nil, "mana" }, { 20745, 2624, nil, "mana" },
     { 23123, 2685, nil, "wizard" }, { 3824, 25 }, { 3829, 26 },           -- Blessed Wizard, Shadow, Frost Oil
+    { 287979, nil, nil, "wizard" },                                       -- (Forever's own wizard oil, 11-13)
+    { 287980, nil, nil, "stone" },                                        -- (Forever's own, 11-13)
     { 18262, 2506, nil, "stone" }, { 23122, 2684, nil, "stone" },         -- Elemental, Consecrated stone
     { 12404, 1643, "blade", "stone" }, { 7964, 483, "blade", "stone" }, { 2871, 14, "blade", "stone" }, { 2863, 13, "blade", "stone" },
+    { 287978, nil, "blade", "stone" },                                    -- (Forever's own sharpening stone, 11-13)
     { 2862, 40, "blade", "stone" },
     { 12643, 1703, "blunt", "stone" }, { 7965, 484, "blunt", "stone" }, { 3241, 21, "blunt", "stone" }, { 3240, 20, "blunt", "stone" },
     { 3239, 19, "blunt", "stone" },
@@ -263,7 +277,7 @@ local OIL_OPTIONS, OIL_ENCHANTS = {}, {}
 for _, o in ipairs(WEAPON_OILS) do
     local key = "oil" .. o[1]
     OIL_OPTIONS[#OIL_OPTIONS + 1] = { key = key, items = { o[1] }, name = o[1], oil = true, edge = o[3], group = o[4] }
-    OIL_ENCHANTS[o[2]] = key
+    if o[2] then OIL_ENCHANTS[o[2]] = key end   -- (Forever's own items: no enchant ID known)
 end
 -- a kind's menu: its own options, then the oils and stones
 local WEAPON_CHOICES = {}
@@ -276,9 +290,17 @@ local BLUNT = { [4] = true, [5] = true, [10] = true }
 local PLAYSTYLE_OILS = { caster = { "wizard", "mana" }, healer = { "mana", "wizard" }, melee = { "stone" }, tank = { "stone" } }
 local CLASS_PLAYSTYLE = { WARRIOR = "melee", ROGUE = "melee", HUNTER = "melee", PALADIN = "melee",
                           MAGE = "caster", WARLOCK = "caster", PRIEST = "caster", DRUID = "caster", SHAMAN = "caster" }
-local LOW_CHARGES = 15   -- a poison with this few charges left counts as running out
+-- a poison with this few charges left counts as running out (11-13: was 15, a third of a classic
+-- poison's 40-60 charges, so a rogue saw it most of every fight)
+local LOW_CHARGES = 5
 local POISONS = 2842             -- the rogue's Poisons skill: the reminder waits for it
 local PERMANENT = Enum and Enum.ItemEnchantType and Enum.ItemEnchantType.Permanent or 1
+-- Forever gives the class's own weapon buffs (poisons, imbues, Firestone / Spellstone) the Imbue type
+-- and oils and stones the Temporary one (11-13, as EllesmereUI reads them): the type says whose a
+-- buff is, so a poison counts whatever its enchant ID (new or reworked ones included). The IDs only
+-- name the family (Last Used).
+local IMBUE = Enum and Enum.ItemEnchantType and Enum.ItemEnchantType.Imbue or 3
+local TEMPORARY = Enum and Enum.ItemEnchantType and Enum.ItemEnchantType.Temporary or 2
 local WEAPON_SLOT = { [16] = 0, [17] = 1 }   -- Enum.WeaponSlot MainHand / OffHand
 
 --------------------------------------------------
@@ -318,7 +340,10 @@ local function BestCreate(o)
 end
 local function OptionKnown(kind, o)
     if o.oil then return ItemCount(o.items[1]) > 0 end
-    if kind == "imbue" then return Known(o.cast) end
+    if kind == "imbue" then
+        for _, id in ipairs(o.ranks or { o.cast }) do if Known(id) then return true end end
+        return false
+    end
     if kind == "stone" then
         if BestCreate(o) then return true end
         for _, id in ipairs(o.items) do if ItemCount(id) > 0 then return true end end
@@ -429,7 +454,16 @@ local function Resolve()
                 end
                 if not any and OptionKnown(kind, o) then any = o end
             end
-            if kind == "poison" and not Known(POISONS) then any = nil end
+            if kind == "poison" and not Known(POISONS) then
+                -- (11-13) the Poisons skill, or a poison in the bags: Forever reworked poisons
+                local inBags = false
+                for _, o in ipairs(WEAPON_OPTIONS.poison) do
+                    for _, item in ipairs(o.items or {}) do
+                        if ItemCount(item) > 0 then inBags = true end
+                    end
+                end
+                if not inBags then any = nil end
+            end
             if C_Item.RequestLoadItemDataByID then
                 for _, o in ipairs(OIL_OPTIONS) do C_Item.RequestLoadItemDataByID(o.name) end
             end
@@ -810,14 +844,61 @@ end
 
 -- true when the unit has one of the names with more than `before` seconds left; second: it has it,
 -- but it is running out (Remind Before It Ends)
-local function HasBuff(unit, names, before)
+-- (11-13 performance pass) looked up by name, not walked: walking made a table for every aura on
+-- every unit, up to 3 times a second in a raid, and that garbage fed periodic stutters
+-- own: only a buff the player cast counts (a source the game hides counts as yours: quiet)
+local function Mine(a)
+    local source = a.sourceUnit
+    if not Readable(source) or not source then return true end
+    local ok, same = pcall(UnitIsUnit, source, "player")
+    return not ok or not Readable(same) or same
+end
+local function HasBuff(unit, names, before, own)
     local now = GetTime()
-    for i = 1, 40 do
-        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HELPFUL")
-        if not ok or not aura then return false, false end
-        local name = aura.name
-        if Readable(name) and names[name] then
-            local expires = aura.expirationTime
+    local aura
+    for name in pairs(names) do
+        local ok, a = pcall(C_UnitAuras.GetAuraDataBySpellName, unit, name, "HELPFUL")
+        if ok and a and (not own or not Readable(a) or Mine(a)) then aura = a break end
+    end
+    if not aura then return false, false end
+    local expires = aura.expirationTime
+    if not Readable(expires) or not expires or expires == 0 then return true, false end
+    local fine = expires - now > before
+    return fine, not fine, expires - now
+end
+
+-- an option of this kind whose icon is the enchant's (11-13: Forever's reworked poisons have enchant
+-- IDs FlareUI doesn't list; their icon still says which one it is, for Last Used)
+local iconFamilies = {}
+local function FamilyByIcon(kind, iconID)
+    if not (Readable(iconID) and iconID and iconID ~= 0 and WEAPON_OPTIONS[kind]) then return nil end
+    local map = iconFamilies[kind]
+    if not map then
+        map = {}
+        for _, o in ipairs(WEAPON_OPTIONS[kind]) do
+            for _, item in ipairs(o.items or {}) do
+                local icon = C_Item.GetItemIconByID and C_Item.GetItemIconByID(item)
+                if icon then map[icon] = map[icon] or o.key end
+            end
+            if o.cast then
+                local icon = C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(o.cast)
+                if icon then map[icon] = map[icon] or o.key end
+            end
+        end
+        iconFamilies[kind] = map
+    end
+    return map[iconID]
+end
+
+-- the player's buff by spell ID (names can be shared: Elixir of Mageblood and Nightfin Soup are both
+-- "Mana Regeneration"). Unreadable: there (quiet)
+local function HasBuffByID(ids, before)
+    local now = GetTime()
+    for _, id in ipairs(ids) do
+        local ok, a = pcall(C_UnitAuras.GetPlayerAuraBySpellID, id)
+        if not ok or not Readable(a) then return true, false end
+        if a then
+            local expires = a.expirationTime
             if not Readable(expires) or not expires or expires == 0 then return true, false end
             local fine = expires - now > before
             return fine, not fine, expires - now
@@ -830,8 +911,11 @@ end
 -- the family seen there. Anything the game hides from addons, or can't tell, counts as there (quiet).
 -- mode: "auto" (the class's own or an oil / stone), "any" (any timed enchant) or "class" (the class's own)
 local function WeaponMissing(slot, kind, before, mode)
-    -- nothing to coat: no weapon in that hand
-    if not GetInventoryItemID("player", slot) then return false end
+    -- nothing to coat: no weapon in that hand, or a fishing pole
+    local item = GetInventoryItemID("player", slot)
+    if not item then return false end
+    local _, _, _, _, _, classID, subID = C_Item.GetItemInfoInstant(item)
+    if classID == 2 and subID == 20 then return false end
     if slot == 17 and not OffHandWeapon() then return false end
     if not (C_Item and C_Item.GetWeaponEnchantInfo) then return false end
     local ok, enchants = pcall(C_Item.GetWeaponEnchantInfo, WEAPON_SLOT[slot])
@@ -842,16 +926,20 @@ local function WeaponMissing(slot, kind, before, mode)
         if not Readable(e) or type(e) ~= "table" then return false end
         local has, enchantType, id, left = e.hasEnchant, e.enchantType, e.enchantID, e.timeLeft
         if not (Readable(has) and Readable(enchantType) and Readable(id) and Readable(left)) then return false end
-        -- a timed enchant of this kind (no ID: can't tell, so it counts), an oil or stone (not when the
-        -- class's own was picked), or any at all (Any Weapon Buff)
-        local counts = id == nil or families[id] or (mode ~= "class" and OIL_ENCHANTS[id]) or mode == "any"
+        -- a timed enchant of this kind (by its type, or a known ID; no ID: can't tell, so it counts), an
+        -- oil or stone (not when the class's own was picked), or any at all (Any Weapon Buff)
+        local own = families[id] or (kind == "oil" and enchantType == TEMPORARY) or (kind ~= "oil" and enchantType == IMBUE)
+        local oil = OIL_ENCHANTS[id] or enchantType == TEMPORARY
+        local counts = id == nil or own or (mode ~= "class" and oil) or mode == "any"
         if has and enchantType ~= PERMANENT and counts then
-            family = family or (id and (families[id] or OIL_ENCHANTS[id]))
+            family = family or (id and (families[id] or OIL_ENCHANTS[id])) or FamilyByIcon(kind, e.enchantIconID)
             local seconds = (left or 0) / 1000
-            -- a poison running low on charges counts as running out
+            -- a poison nearly out of charges counts as running out, unless Remind Before It Ends is
+            -- Only When Missing (11-13, a rogue's report: it showed the reminder all along)
             local charges = e.charges
-            local low = Readable(charges) and charges and charges > 0 and charges <= LOW_CHARGES
-            if seconds > before and not low then return false, false, family end
+            local low = before > 0 and Readable(charges) and charges and charges > 0 and charges <= LOW_CHARGES
+            -- (no time given: it's on, and nothing says it ends soon)
+            if (seconds > before or seconds <= 0) and not low then return false, false, family end
             if seconds > 0 then
                 some = true
                 soonest = seconds
@@ -944,9 +1032,14 @@ local function PetFix(entry)
     if exists then return nil end
     -- a pet given up for Demonic Sacrifice: its buff stands in for it (unreadable: quiet); with
     -- Demonic Pact the buff stays with a new pet out, so a pet is still wanted
-    for _, id in ipairs(Known(DEMONIC_PACT) and {} or SACRIFICE_BUFFS) do
-        local ok, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, id)
-        if not ok or not Readable(aura) or aura then return nil end
+    -- (11-13: by name, so a reworked buff still counts)
+    if not Known(DEMONIC_PACT) then
+        local names = {}
+        for _, id in ipairs(SACRIFICE_BUFFS) do
+            local name = SpellName(id)
+            if name then names[name] = true end
+        end
+        if next(names) and HasBuff("player", names, 0) then return nil end
     end
     local me = ns.CharDB and ns.CharDB()
     local last = me and me.lastSummon
@@ -1005,7 +1098,8 @@ function BR.AspectUp(entry)
         if not ok or not aura then return false end
         local name = aura.name
         if not Readable(name) then return true end
-        if entry.names[name] then
+        -- (11-13) another hunter's Aspect of the Pack is not yours
+        if entry.names[name] and Mine(aura) then
             local me = ns.CharDB and ns.CharDB()
             if me and fight[name] then me.lastAspect = fight[name] end
             return true
@@ -1127,6 +1221,7 @@ local function Check(entry, before)
         return 1, 1, "player", nil, nil, false, { tipItem = def.supply.item }
     end
     if def.ammo then
+        if UnitUsesAmmo and not UnitUsesAmmo("player") then return 0, 1 end
         local ranged = GetInventoryItemID("player", 18)
         if not ranged or not C_Item.GetItemInfoInstant then return 0, 1 end
         local _, _, _, _, _, classID, subID = C_Item.GetItemInfoInstant(ranged)
@@ -1148,10 +1243,21 @@ local function Check(entry, before)
     if def.elixir then
         -- the item's own spell name counts too (once the item has loaded)
         if not entry.itemNames and C_Item.GetItemSpell then
-            local spellName = C_Item.GetItemSpell(def.items[1])
+            local spellName, spellID = C_Item.GetItemSpell(def.items[1])
             if spellName then entry.names[spellName] = true; entry.itemNames = true end
+            if spellID then entry.itemSpellID = spellID end
         end
-        local fine, running, left = HasBuff("player", entry.names, before)
+        -- (11-13) by spell ID where the game knows one: a name can be another buff's too (Elixir of
+        -- Mageblood and Nightfin Soup are both "Mana Regeneration"); by name only when no ID resolves
+        local ids = {}
+        if def.buff and SpellName(def.buff) then ids[#ids + 1] = def.buff end
+        if entry.itemSpellID and entry.itemSpellID ~= def.buff then ids[#ids + 1] = entry.itemSpellID end
+        local fine, running, left
+        if #ids > 0 then
+            fine, running, left = HasBuffByID(ids, before)
+        else
+            fine, running, left = HasBuff("player", entry.names, before)
+        end
         if fine then return 0, 1 end
         for _, item in ipairs(def.items) do
             if ItemCount(item) > 0 then
@@ -1198,6 +1304,9 @@ local function Check(entry, before)
             for i = 1, C_Minimap.GetNumTrackingTypes() do
                 local info = C_Minimap.GetTrackingInfo(i)
                 if info and info.active and info.spellID and tContains(def.cast, info.spellID) then return 0, 1 end
+                -- (11-13) Forever has one tracking slot for spells: a class tracker on (Track Beasts,
+                -- Sense Undead...) leaves no room, so nothing to remind; Find Treasure stacks with it
+                if info and info.active and info.type == "spell" and info.spellID and info.spellID ~= 2481 then return 0, 1 end
             end
         end
         return HasBuff("player", entry.names, 0) and 0 or 1, 1, "player"
@@ -1221,7 +1330,12 @@ local function Check(entry, before)
         return missing, total, first, firstBlessing and firstBlessing.castID, firstBlessing and firstBlessing.icon, not gone
     end
     if not def.group then
-        local fine, running, left = HasBuff("player", entry.names, before)
+        -- buffs that can only be told apart by ID (the foods with their own buff): on, or can't tell
+        for _, id in ipairs(def.ids or {}) do
+            local ok, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, id)
+            if not ok or not Readable(aura) or aura then return 0, 1 end
+        end
+        local fine, running, left = HasBuff("player", entry.names, before, def.own)
         return fine and 0 or 1, 1, "player", nil, nil, running, nil, running and left or nil
     end
     local missing, total, first, gone = 0, 0, nil, false
@@ -1390,14 +1504,46 @@ function BR.Menu(owner)
     end)
 end
 
+-- Once per profile: the Counts and Timers fonts start as the Buffs frame's stack font they used
+function BR.SeedFonts()
+    local rdb = GetDb()
+    if not rdb or rawget(rdb, "fontsSeeded") then return end
+    rdb.fontsSeeded = true
+    local au = AurasDb()
+    local from = au and ((au.buffs and au.buffs.countFont) or au.countFont)
+    if type(from) ~= "table" then return end
+    for _, key in ipairs({ "countFont", "timeFont" }) do
+        for _, field in ipairs({ "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }) do
+            if from[field] ~= nil then rdb[key][field] = from[field] end
+        end
+    end
+end
+
 local function StyleIcon(b, size)
-    b:SetSize(size, size)
     local db = AurasDb()
+    -- (11-13 performance pass) only when the look changed: Show runs up to 3 times a second in a raid,
+    -- and each restyle made tables and set fonts; BR:Refresh (every look or font change) bumps the stamp
+    local round = (db and db.style or "round") == "round"
+    if b.fuiSize == size and b.fuiRound == round and b.fuiStamp == BR.styleStamp then return end
+    b.fuiSize, b.fuiRound, b.fuiStamp = size, round, BR.styleStamp
+    b:SetSize(size, size)
     local AU = ns.Auras
     if AU and AU.StyleIcon then
         AU.StyleIcon(b, b.icon, b.pieces, (db and db.style or "round") == "round")
-        AU.StackFont(b.count)
-        AU.StackFont(b.time)
+        -- the reminders' own Counts and Timers fonts (Edit Mode > Fonts, 11-13)
+        BR.SeedFonts()
+        local rdb = GetDb()
+        for _, part in ipairs({ { b.count, rdb and rdb.countFont }, { b.time, rdb and rdb.timeFont } }) do
+            local fs, font = part[1], part[2]
+            if font then
+                local flags = font.flags or ""
+                if flags == "NONE" then flags = "" end
+                ns.SetFont(fs, ns.GetFontPath(font.face or ns.GLOBAL_FONT), font.size or 11, flags)
+                ns.ApplyShadow(fs, font)
+            else
+                AU.StackFont(fs)
+            end
+        end
     else
         b.icon:SetAllPoints()
         b.count:SetFontObject(NumberFontNormal)
@@ -1884,6 +2030,15 @@ local function BuildSettings()
           -- plain numbers, as Faded Opacity: "100%" ran past the dialog's edge (11-10)
           get = get("alpha", 100), set = set("alpha") },
     })
+    -- always last: the counts' and timers' fonts (11-13)
+    local reminderDefaults = ns.defaults and ns.defaults.profile and ns.defaults.profile.auras and ns.defaults.profile.auras.reminder or {}
+    Section("Fonts", ns.EditFonts({
+        id = "br",
+        texts = { { key = "countFont", name = L["Counts"] }, { key = "timeFont", name = L["Time Left"] } },
+        font = function(key) BR.SeedFonts(); local rdb = GetDb(); return rdb and rdb[key] end,
+        default = function(key) return reminderDefaults[key] end,
+        apply = function() BR:Refresh() end,
+    }))
     return settings
 end
 
@@ -1983,7 +2138,8 @@ function BR:Init()
             end
             return
         end
-        if event == "UNIT_AURA" and unit and not (unit == "player" or unit == "pet" or unit:find("^party") or unit:find("^raid")) then return end
+        -- (party1..4 and raid1..40 only: their pets are never checked)
+        if event == "UNIT_AURA" and unit and not (unit == "player" or unit == "pet" or unit:find("^party%d") or unit:find("^raid%d")) then return end
         if event == "PLAYER_REGEN_ENABLED" then ApplyPosition() end
         Soon()
     end)
@@ -1994,5 +2150,6 @@ end
 
 -- Buffs & Debuffs' look changed (Aura Icon Shape, the stack font)
 function BR:Refresh()
+    BR.styleStamp = (BR.styleStamp or 0) + 1   -- icons restyle once (StyleIcon)
     BR.Update()
 end

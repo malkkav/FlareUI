@@ -93,6 +93,7 @@ local ctx = {
     ReadyHold = function() return nil end,
     classic = true, mirror = true, hostile = true, castbar = true,
     ringKind = "boss",   -- the portrait ring in the ring styles (PartyFrames.lua RingKind)
+    fontKey = "boss",    -- the boss frames' fonts (PartyFrames.lua PF.FontKey)
 }
 -- for the settings previews' sample tiles
 BF.PreviewCtx, BF.PreviewSamples = ctx, SAMPLES
@@ -431,6 +432,8 @@ local function BuildSettings()
     Section("Icons", {
         { name = L["Raid Markers"], kind = LEM.SettingType.Checkbox, default = D.raidIcon ~= false, get = get("raidIcon"), set = set("raidIcon") },
     })
+    -- always last: the frames' fonts (11-13, UnitFrames.lua UF.FontItems)
+    if ns.UnitFrames and ns.UnitFrames.FontItems then Section("Fonts", ns.UnitFrames.FontItems("boss", true, true)) end
     return settings
 end
 

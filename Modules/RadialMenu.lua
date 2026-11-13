@@ -620,6 +620,29 @@ RM.MAX_BUTTONS = MAX_BUTTONS
 -- 6. RADIAL FRAME
 --------------------------------------------------
 -- parent: a settings preview's wheel (the radial otherwise)
+-- Radial Menu > Fonts (11-13): the hovered button's name (a family: spell names in any alphabet) and
+-- the counts. Table fields, not locals: this file is near Lua's 200-locals limit.
+RM.fontButtons = setmetatable({}, { __mode = "k" })
+function RM.StyleButtonFonts(button)
+    RM.fontButtons[button] = true
+    local db = ns.db and ns.db.profile and ns.db.profile.radialmenu
+    if not db then return end
+    for _, part in ipairs({ { button.Label, db.labelFont, 16, true }, { button.Count, db.countFont, 14 } }) do
+        local fontString, font, size, family = part[1], part[2], part[3], part[4]
+        if fontString and font then
+            local flags = font.flags or ""
+            if flags == "NONE" then flags = "" end
+            local path = ns.GetFontPath(font.face or ns.GLOBAL_FONT)
+            if family then ns.SetFontFamily(fontString, path, font.size or size, flags)
+            else ns.SetFont(fontString, path, font.size or size, flags) end
+            ns.ApplyShadow(fontString, font)
+        end
+    end
+end
+function RM:ApplyFonts()
+    for button in pairs(RM.fontButtons) do RM.StyleButtonFonts(button) end
+end
+
 local function CreateRadialButton(index, parent)
     local button = CreateFrame("Frame", nil, parent or radial)
     button:SetSize(ICON_SIZE, ICON_SIZE)
@@ -674,6 +697,7 @@ local function CreateRadialButton(index, parent)
     button.Label:SetShadowColor(0, 0, 0, 1)
     button.Label:SetShadowOffset(1, -1)
     button.Label:Hide()
+    RM.StyleButtonFonts(button)
 
     button.Dots = {}   -- a sub-radial's page dots
 
@@ -1317,6 +1341,14 @@ end
 -- mode: "hold" (the keybind), "click" (a macro) or "pad" (the stick press)
 local function OpenRadial(radialID, mode)
     if isOpen then CloseRadial() end
+    -- Sub-Radials, Reset on Close: the art starts on each first button too, as the secure layer does
+    if Option("subRadials", "reset") ~= "remember" then
+        for _, list in pairs(resolvedCache) do
+            for _, info in ipairs(list) do
+                if info.children then info.childIndex = 1 end
+            end
+        end
+    end
     StopAnimation()
     openMode = mode or "hold"
     if radialID then
@@ -1497,6 +1529,7 @@ local OPEN_CLICK_SNIPPET = [[
     -- no radial assigned (Toggle with every radial deleted)
     if not id then return false end
     if (self:GetAttribute(id .. "-count") or 0) == 0 then return false end
+    if self:GetAttribute("flare-subreset") then CHILD = newtable() end
     ACTIVE, MODE, ROOT, DEPTH = id, "click", id, 0
     self:GetFrameRef("wheel"):Show()
     self:RunAttribute("flare-openpoint")
@@ -1519,6 +1552,7 @@ local CLOSE_PAD_SNIPPET = [[
 -- self is the header; ... = the radial id. Opens it in controller mode.
 local OPEN_PAD_SNIPPET = [[
     local id = ...
+    if self:GetAttribute("flare-subreset") then CHILD = newtable() end
     ACTIVE, MODE, STICKY = id, "pad", nil
     HELD = newtable()
     -- the camera stick is held only while open (see GuardStick)
@@ -1669,6 +1703,7 @@ local CLICK_SNIPPET = [[
             if not control:RunAttribute("flare-openclick", id) then control:CallMethod("OnSecureClose") end
             return false
         end
+        if control:GetAttribute("flare-subreset") then CHILD = newtable() end
         ACTIVE, MODE, HOLD = id, "hold", id
         -- for the length of the hold: the key with a modifier pressed since still lets go of it,
         -- and Escape cancels
@@ -1851,22 +1886,24 @@ end
 -- stale key; a deleted radial is left with a count of 0.
 function SyncSecure()
     if not header or InCombatLockdown() then return end
+    -- only what changed: a full rewrite is hundreds of attributes
+    local function Set(k, v) if header:GetAttribute(k) ~= v then header:SetAttribute(k, v) end end
     for id in pairs(syncedIDs) do
         if not resolvedCache[id] then
-            header:SetAttribute(id .. "-count", 0)
+            Set(id .. "-count", 0)
             syncedIDs[id] = nil
         end
     end
     for id, list in pairs(resolvedCache) do
-        header:SetAttribute(id .. "-count", #list)
+        Set(id .. "-count", #list)
         for i, info in ipairs(list) do
             local children = info.children or { info }
-            header:SetAttribute(id .. "-s" .. i .. "-n", #children)
-            header:SetAttribute(id .. "-s" .. i .. "-sub", info.radialID)
+            Set(id .. "-s" .. i .. "-n", #children)
+            Set(id .. "-s" .. i .. "-sub", info.radialID)
             for c, child in ipairs(children) do
                 local prefix = id .. "-s" .. i .. "-" .. c .. "-"
                 for key in ACTION_KEYS:gmatch("%S+") do
-                    header:SetAttribute(prefix .. key, child.attributes[key])
+                    Set(prefix .. key, child.attributes[key])
                 end
             end
         end
@@ -1875,17 +1912,19 @@ function SyncSecure()
     local byTag = MacroTags()
     for tag in pairs(syncedTags) do
         if not byTag[tag] then
-            header:SetAttribute("tag-" .. tag, nil)
+            Set("tag-" .. tag, nil)
             syncedTags[tag] = nil
         end
     end
     for tag, id in pairs(byTag) do
-        header:SetAttribute("tag-" .. tag, id)
+        Set("tag-" .. tag, id)
         syncedTags[tag] = true
     end
-    header:SetAttribute("flare-assigned", RM:GetDefaultRadialID())
-    header:SetAttribute("flare-center", Option("position", "cursor") == "center")
-    header:SetAttribute("flare-toggle", Option("activation", "hold") == "toggle")
+    Set("flare-assigned", RM:GetDefaultRadialID())
+    Set("flare-center", Option("position", "cursor") == "center")
+    Set("flare-toggle", Option("activation", "hold") == "toggle")
+    -- Sub-Radials: Reset on Close starts every sub-radial on its first button at each open
+    Set("flare-subreset", Option("subRadials", "reset") ~= "remember")
     -- sub-radials restart on their first child, as the art does
     SecureHandlerExecute(header, "CHILD = newtable()")
 end
@@ -3103,9 +3142,10 @@ function RM:Init()
     pcall(self.RegisterEvent, self, "NEUTRAL_FACTION_SELECT_RESULT", function() self:AvailabilityChanged() end)
     -- an item button resolves once its name is cached; the event fires for every item loaded
     local relayoutQueued = false
-    self:RegisterEvent("ITEM_DATA_LOAD_RESULT", function(_, itemID)
+    self:RegisterEvent("ITEM_DATA_LOAD_RESULT", function(_, itemID, success)
         if not awaitedItems[itemID] then return end
         awaitedItems[itemID] = nil
+        if success == false then return end   -- no data came: nothing new to show
         if relayoutQueued then return end
         relayoutQueued = true
         C_Timer.After(0.1, function()

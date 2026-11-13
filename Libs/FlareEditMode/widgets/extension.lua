@@ -101,7 +101,8 @@ function extensionMixin:ResetSettings()
 	if num > 0 then
 		for _, data in next, settings do
 			if data.set then
-				data.set(lib:GetActiveLayoutName(), data.default)
+				-- FlareUI: true = a reset, as the frame dialog's (the Fonts section resets every font then)
+				data.set(lib:GetActiveLayoutName(), data.default, true)
 			end
 		end
 

@@ -110,6 +110,61 @@ S:Row{
     set = function(percent) local g = Global(); if g then g.textScale = percent ~= 100 and percent / 100 or nil end end,
 }
 
+-- Global Font (11-13): the face of every font set to Global (Core.lua ns.GlobalFontFace), then the
+-- two all-font buttons side by side (Settings/Fonts.lua)
+S:Row{
+    key = "fonts.global.face", kind = "dropdown", module = "language", dropdownWidth = 150,
+    path = "fonts.global.face", previewFont = "fonts.global",
+    choices = function() return S.FontFaces() end,
+    apply = function() S:ApplyAllFonts() end,
+}
+-- Blizzard's own text (11-13, Settings/Fonts.lua ns.GameFonts): off / Default leave it as it is
+local function BlizzardFaces()
+    local list = S.FontFaces()
+    table.insert(list, 1, { ns.GLOBAL_FONT, L["Global (%s)"]:format(ns.GlobalFontFace()) })
+    table.insert(list, 1, { "", L["Default"] })
+    return list
+end
+S:Row{
+    key = "fonts.gameText", module = "language", path = "fonts.gameText",
+    apply = function() S:ApplyAllFonts() end,
+}
+S:Row{
+    key = "fonts.nameplate.face", kind = "dropdown", module = "language", dropdownWidth = 150,
+    path = "fonts.nameplate.face", previewFont = "fonts.nameplate", choices = BlizzardFaces,
+    apply = function() S:ApplyAllFonts() end,
+}
+S:Row{
+    key = "fonts.combat.face", kind = "dropdown", module = "language", dropdownWidth = 150,
+    path = "fonts.combat.face", previewFont = "fonts.combat", choices = BlizzardFaces,
+    -- the game reads it as you log in: the file is saved now, for then
+    apply = function() if ns.GameFonts then ns.GameFonts.SaveCombatPath() end end,
+}
+ns.Dialogs["FLAREUI_FONTS_USE_GLOBAL"] = {
+    text = L["Set every FlareUI font to the Global Font?\n\nEach font keeps its size, outline and shadow."],
+    button1 = L["Use Global Font"],
+    button2 = L["Cancel"],
+    OnAccept = function() S:UseGlobalFontEverywhere() end,
+    hideOnEscape = true,
+}
+ns.Dialogs["FLAREUI_FONTS_RESET"] = {
+    text = L["Put every FlareUI font, and the Global Font, back to its defaults?"],
+    button1 = L["Reset"],
+    button2 = L["Cancel"],
+    OnAccept = function() S:ResetAllFonts() end,
+    hideOnEscape = true,
+}
+S:Row{
+    key = "fonts.buttons", kind = "buttons", module = "language", labelFn = function() return "" end,
+    center = true, buttonGap = 16,
+    buttons = {
+        { text = L["Use Global Font Everywhere"], width = 220,
+          onClick = function() ns.ShowDialog("FLAREUI_FONTS_USE_GLOBAL") end },
+        { text = L["Reset All Fonts"], width = 220, disabled = function() return not S:AnyFontChanged() end,
+          onClick = function() ns.ShowDialog("FLAREUI_FONTS_RESET") end },
+    },
+}
+
 
 S:Row{
     key = "language.useGame", lead = true,   -- on top: the language list below only counts while it is off

@@ -864,7 +864,8 @@ function Visibility:MinimapSettings()
     local rows = BuildElementSettings("minimap")
     table.remove(rows, 4)   -- Faded Opacity
     table.remove(rows, 1)   -- Fade group
-    return WithVisibilityTitle(rows)
+    -- a Fading section that opens and closes like the other dialogs' (11-13, Marcus: starts closed)
+    return ns.EditSection("Fading", rows)
 end
 
 -- The Blizzard systems these settings go into, for the settings search (Settings/Registry.lua)
@@ -928,7 +929,15 @@ local function AddEditModeSettings()
         if settings then
             frameAdded[key] = true
             -- a Fading section that opens and closes like the frame's own (Core.lua ns.EditSections)
-            for _, setting in ipairs(ns.EditSection("Fading", BuildElementSettings(key))) do table_insert(settings, setting) end
+            -- before the Fonts section, which is always last (11-13)
+            local at = #settings + 1
+            for i, setting in ipairs(settings) do
+                if setting.editSection == "Fonts" then at = i break end
+            end
+            for _, setting in ipairs(ns.EditSection("Fading", BuildElementSettings(key))) do
+                table_insert(settings, at, setting)
+                at = at + 1
+            end
         end
     end
 end
@@ -989,9 +998,15 @@ local function StepCurve(store, key, alpha)
         curve:SetType(Enum.LuaCurveType.Step)
         store[key] = curve
     end
-    curve:ClearPoints()
-    curve:AddPoint(0, 1)
-    curve:AddPoint(1, alpha)
+    -- (11-13 performance pass) rebuilt only when the alpha changes, not on every health tick
+    -- (the alpha kept in FlareUI's own table: the curve is Blizzard's object)
+    local seen = key .. "_alpha"
+    if store[seen] ~= alpha then
+        curve:ClearPoints()
+        curve:AddPoint(0, 1)
+        curve:AddPoint(1, alpha)
+        store[seen] = alpha
+    end
     return curve
 end
 

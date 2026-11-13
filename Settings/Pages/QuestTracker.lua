@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 local S = ns.Settings
 
 --------------------------------------------------
@@ -11,7 +12,7 @@ end
 
 local function Holder() return _G.FlareUI_ObjectiveTracker end
 
-S:Module{ key = "qt", group = "map", order = 20, enabled = "objectivetracker.enabled", editMode = Holder, tabs = { { key = "settings" }, { key = "fonts" } } }
+S:Module{ key = "qt", group = "map", order = 20, enabled = "objectivetracker.enabled", editMode = Holder }
 
 -- the tracker stays shown on this page (sample quests when empty) so Frame Opacity can be seen
 S:On("PageShown", function(key)
@@ -88,8 +89,6 @@ S:Row{
 local trackerKey = S:BindingAccessors("FLAREUI_TRACKER")
 S:Row{ key = "qt.minimizeKey", kind = "keybind", get = trackerKey.get, set = trackerKey.set, section = "qt.minimizeIn" }
 
-S:FontRows{ module = "qt", tab = "fonts", section = "qt.fonts", apply = Refresh, fonts = {
-    { key = "header", path = "objectivetracker.headerFont" },
-    { key = "titles", path = "objectivetracker.titleFont" },
-    { key = "objectives", path = "objectivetracker.objectiveFont" },
-} }
+-- Fonts (11-13): each frame's are in its Edit Mode dialog, the last section there
+S:Row{ key = "qt.fontsEditMode", kind = "button", section = "qt.fonts", buttonText = L["Open Edit Mode"],
+    apply = function() S:OpenEditMode("qt") end }

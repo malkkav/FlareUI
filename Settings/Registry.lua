@@ -45,9 +45,30 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }   -- 11-10 regr
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["bl.lootFeedAlign"] = "6.2",
-    ["mm.squareHeader"] = "6.2",
-    ["tt.opacity"] = "6.2",
+    ["ab.borderlessBags"] = "6.3",
+    ["ab.borderlessMenu"] = "6.3",
+    ["ab.collapsibleBags"] = "6.3",
+    ["ab.font.xp"] = "6.3",
+    ["au.fontsEditMode"] = "6.3",
+    ["bl.bagItemLevel"] = "6.3",
+    ["bl.bagUncollected"] = "6.3",
+    ["bl.font.money"] = "6.3",
+    ["dm.threatWindow"] = "6.3",
+    ["fonts.buttons"] = "6.3",
+    ["fonts.combat.face"] = "6.3",
+    ["fonts.gameText"] = "6.3",
+    ["fonts.global.face"] = "6.3",
+    ["fonts.nameplate.face"] = "6.3",
+    ["mm.fontsEditMode"] = "6.3",
+    ["mm.hudNote"] = "6.3",
+    ["mm.latency"] = "6.3",
+    ["qt.fontsEditMode"] = "6.3",
+    ["rb.fontsEditMode"] = "6.3",
+    ["rm.font.counts"] = "6.3",
+    ["rm.font.labels"] = "6.3",
+    ["rm.subRadials"] = "6.3",
+    ["tt.itemLevel"] = "6.3",
+    ["uf.fontsEditMode"] = "6.3",
 }
 
 --------------------------------------------------

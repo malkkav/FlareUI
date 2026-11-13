@@ -263,8 +263,12 @@ local function OnUpdate(_, elapsed)
         if not frame:IsShown() then frame:Show() end
         local x, y = GetCursorPosition()
         local scale = UIParent:GetEffectiveScale()
-        frame:ClearAllPoints()
-        frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+        -- (11-13 performance pass) re-anchored only when the pointer or the scale moved
+        if x ~= frame.fuiX or y ~= frame.fuiY or scale ~= frame.fuiScale then
+            frame.fuiX, frame.fuiY, frame.fuiScale = x, y, scale
+            frame:ClearAllPoints()
+            frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+        end
         UpdateArcs()
     elseif frame:IsShown() then
         frame:Hide()

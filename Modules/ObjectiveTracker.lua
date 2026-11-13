@@ -2103,8 +2103,10 @@ local function BuildSettings()
             OT:Render()
         end
     end
-    -- one Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua)
-    return ns.EditSection("Frame", {
+    -- the Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua), then the
+    -- Fonts section, always last (11-13)
+    local Section, settings = ns.EditSections()
+    Section("Frame", {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = C.WIDTH, minValue = 180, maxValue = 500, valueStep = 5,
           get = get("width", C.WIDTH), set = set("width") },
         { name = L["Max Height"], kind = LEM.SettingType.Slider, default = C.MAX_HEIGHT, minValue = 150, maxValue = 1000, valueStep = 10,
@@ -2130,6 +2132,16 @@ local function BuildSettings()
               OT:Render()
           end },
     })
+    local otDefaults = ns.defaults and ns.defaults.profile and ns.defaults.profile.objectivetracker or {}
+    Section("Fonts", ns.EditFonts({
+        id = "qt",
+        texts = { { key = "headerFont", name = L["Header"] }, { key = "titleFont", name = L["Quest Names"] },
+                  { key = "objectiveFont", name = L["Objectives"] } },
+        font = function(key) local db = GetDb(); return db and db[key] end,
+        default = function(key) return otDefaults[key] end,
+        apply = function() OT:Refresh() end,
+    }))
+    return settings
 end
 
 --------------------------------------------------

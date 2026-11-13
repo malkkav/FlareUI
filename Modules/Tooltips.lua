@@ -384,6 +384,29 @@ local function AddTargetLine(tip, unit)
 end
 
 -- "Item ID 12345" / "Spell ID 678" in grey; a secret id is left out
+-- Show Item Level (11-13, a player's request): weapons and armour, in Blizzard's gold, unless the game
+-- already put its own item level line in
+local ITEM_LEVEL_LINE = Enum.TooltipDataLineType and Enum.TooltipDataLineType.ItemLevel
+local function AddItemLevelLine(tip, data)
+    local db = GetDb()
+    if not (db and db.itemLevel) then return end
+    local lines = data and data.lines
+    if ITEM_LEVEL_LINE and type(lines) == "table" then
+        for _, line in ipairs(lines) do
+            if canaccessvalue(line) and type(line) == "table" and line.type == ITEM_LEVEL_LINE then return end
+        end
+    end
+    local _, link = TooltipUtil.GetDisplayedItem(tip)
+    if not (canaccessvalue(link) and link) then return end
+    local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(link)
+    if classID ~= Enum.ItemClass.Weapon and classID ~= Enum.ItemClass.Armor then return end
+    local ok, level = pcall(C_Item.GetDetailedItemLevelInfo, link)
+    if not (ok and canaccessvalue(level) and type(level) == "number" and level > 1) then return end
+    local c = NORMAL_FONT_COLOR
+    tip:AddLine((_G.ITEM_LEVEL or L["Item Level %d"]):format(level), c.r, c.g, c.b)
+    if tip:IsShown() then tip:Show() end
+end
+
 local function AddIdLine(tip, key, label, data)
     local db = GetDb()
     local id = data and data.id
@@ -509,6 +532,7 @@ local function OnTooltipSetItem(tip, data)
         end
     end
     ApplyColors(tip, color)
+    AddItemLevelLine(tip, data)
     AddIdLine(tip, "showItemID", L["Item ID"], data)
 end
 

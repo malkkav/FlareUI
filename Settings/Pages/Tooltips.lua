@@ -49,6 +49,7 @@ S:Row{ half = true, key = "tt.showThreat", path = "tooltips.showThreat" }
 S:Row{ half = true, key = "tt.hideFaction", path = "tooltips.hideFaction", apply = Refresh }
 S:Row{ half = true, key = "tt.ids", get = ids.get, set = ids.set, apply = Refresh }
 S:Row{ half = true, key = "tt.shortItemStats", path = "tooltips.shortItemStats" }
+S:Row{ half = true, key = "tt.itemLevel", path = "tooltips.itemLevel" }
 S:Row{ half = true, key = "tt.compareShift", path = "tooltips.compareShift", apply = Refresh }
 
 -- VISIBILITY TAB (11-12): when each kind of tooltip shows, then whether it sits at the pointer.

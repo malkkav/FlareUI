@@ -328,7 +328,7 @@ end
 local function ScaleSetting(key, w, h, apply)
     local field = key == "loot" and "lootScale" or "toastScale"
     return { name = L["Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
-        formatter = function(value) return value .. "%" end,
+        -- plain numbers, as the unit frames' Scale: "100%" ran past the dialog's edge (11-13)
         get = function() return math.floor(Scale(key) * 100 + 0.5) end,
         set = function(_, value)
             local db = GetDb()

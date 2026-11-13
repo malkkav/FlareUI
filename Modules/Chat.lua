@@ -3426,14 +3426,24 @@ function Chat:Init()
             end
             EditExtras.FollowDock()
         end
+        -- one pass per frame, however many dock updates and alert flashes came in it
+        local afterDockPending = false
+        local function AfterDockTabsSoon()
+            if afterDockPending then return end
+            afterDockPending = true
+            C_Timer.After(0, function()
+                afterDockPending = false
+                AfterDockTabs()
+            end)
+        end
         Chat:SecureHook("FCFDock_UpdateTabs", function()
             local db = GetDb()
             if db then HandleCombatLog(db) end
-            C_Timer.After(0, AfterDockTabs)
+            AfterDockTabsSoon()
         end)
 
         -- a tab's alert colour starts and stops without a dock update
-        local function AfterAlertFlash() C_Timer.After(0, AfterDockTabs) end
+        local AfterAlertFlash = AfterDockTabsSoon
         Chat:SecureHook("FCF_StartAlertFlash", AfterAlertFlash)
         Chat:SecureHook("FCF_StopAlertFlash", AfterAlertFlash)
 

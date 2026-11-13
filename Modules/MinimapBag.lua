@@ -20,6 +20,7 @@ local C = {
     BUTTON = 24,              -- one icon
     SPACING = 4,
     COLUMNS = 6,
+    PIN_LIBS = { "HereBeDragons-Pins-2.0", "HereBeDragons-Pins-1.0" },   -- (one table, not one per check)
     PAD = 9,                  -- inside the panel's border
     GAP = 6,                  -- between the badge and the panel
     BORDER = "FlareUI Frames",
@@ -115,7 +116,7 @@ end
 
 -- A minimap pin registered with HereBeDragons
 local function IsMapPin(frame)
-    for _, major in ipairs({ "HereBeDragons-Pins-2.0", "HereBeDragons-Pins-1.0" }) do
+    for _, major in ipairs(C.PIN_LIBS) do
         local pins = LibStub and LibStub(major, true)
         if pins and ((pins.minimapPins and pins.minimapPins[frame]) or (pins.activeMinimapPins and pins.activeMinimapPins[frame])) then
             return true
@@ -139,7 +140,8 @@ end
 -- Blizzard's, LibDBIcon's, FlareUI's or a map pin
 local function IsForeignButton(frame)
     if not (frame and frame.IsObjectType and frame:IsObjectType("Button")) then return false end
-    if frame:IsForbidden() or frame:IsProtected() then return false end
+    -- (11-13 performance pass) pins first: the cheapest test, and gathering addons add thousands
+    if frame:IsForbidden() or frame:IsProtected() or IsMapPin(frame) then return false end
     local name = frame:GetName()
     if name then
         if IsLibDBIconButton(frame, name) then return false end
@@ -154,7 +156,6 @@ local function IsForeignButton(frame)
     elseif not HasButtonBorder(frame) then
         return false
     end
-    if IsMapPin(frame) then return false end
     if not (frame:GetScript("OnClick") or frame:GetScript("OnMouseUp")) then return false end
     local w, h = frame:GetSize()
     return (w or 0) > 8 and (w or 0) <= 48 and (h or 0) > 8 and (h or 0) <= 48

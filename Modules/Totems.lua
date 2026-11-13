@@ -167,6 +167,16 @@ local function StyleTotem(button, cd, text, ring)
             text:SetPoint("TOP", button, "BOTTOM", 0, 5)
         end
         text:SetAlpha(timer == "none" and 0 or 1)
+        -- the Unit Frames' Aura Timers font (11-13): its face, outline and shadow; Auto keeps Blizzard's size
+        -- (the player frame's: totems are the player's)
+        local font = ns.UnitFrames and ns.UnitFrames.Font and ns.UnitFrames.Font("player", "auras")
+        if font then
+            local flags = font.flags or ""
+            if flags == "NONE" then flags = "" end
+            local size = (font.size and font.size > 0) and font.size or 10
+            ns.SetFont(text, ns.GetFontPath(font.face or ns.GLOBAL_FONT), size, flags)
+            ns.ApplyShadow(text, font)
+        end
     end
 end
 
@@ -291,6 +301,7 @@ local function ApplyLayout()
         ArrangeTotems()
     end
 end
+TOT.ApplyLayout = ApplyLayout   -- the Unit Frames' Fonts tab restyles the timers (11-13)
 
 local function BuildSettings()
     local function get(key, default)

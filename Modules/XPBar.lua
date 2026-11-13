@@ -66,8 +66,11 @@ local function TextureValues()
     return values
 end
 
+-- Action Bars > Fonts > XP Bar (11-13): its own font, first a copy of the Keybinds font it used
 local function ApplyFont(fontString)
-    local fontDb = ns.db and ns.db.profile.actionbars and ns.db.profile.actionbars.hotkeyFont
+    local ab = ns.db and ns.db.profile.actionbars
+    if ab then ns.SeedFont(ab, "hotkeyFont", "xpFont", "xpFontSeeded") end
+    local fontDb = ab and ab.xpFont
     local flags = fontDb and fontDb.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end
     ns.SetFont(fontString, ns.GetFontPath(fontDb and fontDb.face or "Friz Quadrata TT"), fontDb and fontDb.size or 12, flags)

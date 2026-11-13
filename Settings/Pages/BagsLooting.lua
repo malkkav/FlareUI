@@ -36,6 +36,10 @@ S:Row{ key = "bl.bagThickBorders", half = true, tab = "bags", path = "tweaks.bag
 S:Row{ key = "bl.bagRarityBorders", half = true, tab = "bags", path = "tweaks.bagRarityBorders", apply = RefreshBags, disabled = BagAddon }
 S:Row{ key = "bl.bagJunkIcon", half = true, tab = "bags", path = "tweaks.bagJunkIcon", apply = RefreshBags, disabled = BagAddon }
 S:Row{ key = "bl.bagUpgradeArrow", half = true, tab = "bags", path = "tweaks.bagUpgradeArrow", apply = RefreshBags, disabled = BagAddon }
+-- (not greyed beside a bag addon: the character sheet's item levels are its own, Bags.lua)
+S:Row{ key = "bl.bagItemLevel", half = true, tab = "bags", path = "tweaks.bagItemLevel",
+    apply = function() RefreshBags(); if ns.Bags and ns.Bags.UpdateCharacterLevels then ns.Bags.UpdateCharacterLevels() end end }
+S:Row{ key = "bl.bagUncollected", half = true, tab = "bags", path = "tweaks.bagUncollected", apply = RefreshBags, disabled = BagAddon }
 -- (Tweaks.lua's, so no bag addon greys it)
 S:Row{ key = "bl.petFood", half = true, tab = "bags", path = "tweaks.petFood", apply = Refresh }
 
@@ -74,9 +78,15 @@ S:FontRows{ module = "bl", tab = "fonts", section = "bl.fonts", fonts = {
     { key = "bagItems", path = "tweaks.bagItemFont", optional = true, disabled = BagAddon },
     -- the free bag slots on the backpack button (11-12, a player asked: too small to read)
     { key = "freeSlots", path = "tweaks.bagFreeSlotsFont", optional = true },
-    { key = "lootFeed", path = "tweaks.lootFeedFont" },
+    -- the gold, silver and copper at the bags' foot (11-13, Marcus)
+    { key = "money", path = "tweaks.bagMoneyFont", optional = true, disabled = BagAddon },
 }, apply = function()
     if ns.Bags and ns.Bags.Refresh then ns.Bags:Refresh() end
     if ns.Bags and ns.Bags.StyleFreeSlots then ns.Bags.StyleFreeSlots() end
+end }
+-- the loot feed in a section of its own (11-13)
+S:FontRows{ module = "bl", tab = "fonts", section = "bl.fontsLoot", fonts = {
+    { key = "lootFeed", path = "tweaks.lootFeedFont" },
+}, apply = function()
     if ns.LootFeed and ns.LootFeed.ApplyFont then ns.LootFeed:ApplyFont() end
 end }

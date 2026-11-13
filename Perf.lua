@@ -9,6 +9,7 @@ local ADDON_NAME, ns = ...
 --   /fui perf stop         stop and save it
 --   /fui perf report       every saved recording in a window, ready to copy
 --   /fui perf clear        forget the saved recordings
+--   /fui perf trace        start / stop a trace (PerfTrace.lua; needs the trace build)
 -- A recording samples twice a second: the profiler's average over the last 60 frames for FlareUI, all
 -- addons and the whole game, plus FPS, split by combat. Spikes come from the profiler's own counters
 -- (frames over 1/5/10/50/100 ms), read at start and stop. Memory is read only out of combat, because
@@ -313,6 +314,8 @@ function Perf.Command(args)
         Stop()
     elseif word == "report" then
         ShowReport()
+    elseif word == "trace" then
+        ns.T.Toggle()
     elseif word == "clear" then
         if active then
             active.ticker:Cancel()
