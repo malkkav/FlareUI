@@ -223,6 +223,32 @@ local function ParkReagentWindow()
     end
 end
 
+local function RouteEmbeddedBagClick(button, wantsSection)
+    local onClick = button and button:GetScript("OnClick")
+    if not onClick then return end
+
+    button:SetScript("OnClick", function(self, mouseButton, down)
+        local backpack = Combined()
+        if down or (mouseButton ~= "LeftButton" and mouseButton ~= "RightButton")
+            or GetCursorInfo() or IsModifiedClick() or KeybindFrames_InQuickKeybindMode()
+            or not (backpack and Bags:IsCombined() and LayoutWanted() and wantsSection()) then
+            return onClick(self, mouseButton, down)
+        end
+        if not ContainerFrame_AllowedToOpenBags() then return end
+
+        if backpack:IsShown() then
+            local reagentID = ReagentID()
+            local reagent = reagentID and ContainerFrameUtil_GetShownFrameForID(reagentID)
+            if reagent and parked[reagent] ~= nil and ReagentWanted() then CloseBag(reagentID) end
+            CloseBackpack()
+        else
+            OpenBackpack()
+            -- Keep the embedded reagent window in Blizzard's count of open bags.
+            if backpack:IsShown() and ReagentWanted() then OpenBag(ReagentID()) end
+        end
+    end)
+end
+
 --------------------------------------------------
 -- 1. COMBINED BACKPACK LAYOUT
 -- Blizzard's order (bags from the last to the backpack, slots from the last; filled from the bottom
@@ -1126,6 +1152,8 @@ end
 function Bags:Init()
     if self.initialized then return end
     self.initialized = true
+    RouteEmbeddedBagClick(_G.KeyRingButton, KeyringWanted)
+    RouteEmbeddedBagClick(_G.CharacterReagentBag0Slot, ReagentWanted)
     Bags.FollowWindows()   -- section 4c
     Bags.StyleFreeSlots()
     local useFilterButtons = C_Container.GetContainerItemQuestInfo and C_Item.GetItemInventoryTypeByID
