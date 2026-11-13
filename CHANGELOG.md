@@ -1,3 +1,8 @@
+# FlareUI 6.3.1
+
+## Fixed
+- Blizzard's own text keeps its sizes again. FlareUI's settings window was changing the size of the game's fonts as soon as it loaded: buff timers, window titles, quest text and more. The new font options weren't the cause; they stay off unless you pick them. Thanks for the report!
+
 # FlareUI 6.3
 
 **Restart the game fully after updating** (not just /reload): this version adds a new file.

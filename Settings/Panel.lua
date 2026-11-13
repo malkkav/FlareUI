@@ -210,55 +210,65 @@ end
 -- The window's fonts (11-13, Marcus): Blizzard's Friz Quadrata for everything, as the 5.x window and
 -- Forever's own windows, in full white with Blizzard's solid shadow. A Russian client takes Friz's
 -- Cyrillic file. Roboto Condensed (11-10 to 11-13) read too sharp to players; it and Marcellus still
--- ship, for the players' font choices. Each copies the Blizzard font it stands for first.
--- (11-13) FlareUI set to Russian on another client too: the addon's language counts, not only the
--- game's (the Cyrillic file has the Latin letters as well). Other alphabets keep their faces: the
--- font objects below are set member by member (ns.SetFontObjectFaceUnscaled).
+-- ship, for the players' font choices.
+-- (6.3.1) The window's font objects are FlareUI's own, built from scratch: never copies of Blizzard's.
+-- A copy (CopyFontObject) shares its letter sets with Blizzard's font, so setting the copy changed
+-- GameFontNormal & co. for the whole game (6.3: buff timers, window titles and quest text resized
+-- for every player). Each is a font family of its own: Friz for Latin letters, Friz's Cyrillic file
+-- for Russian (FlareUI in Russian on any client), Blizzard's faces for Korean and Chinese.
 local RUSSIAN = GetLocale() == "ruRU" or (ns.LoadedLocale and ns.LoadedLocale() == "ruRU")
 local PANEL_FACE = RUSSIAN and "Fonts\\FRIZQT___CYR.TTF" or "Fonts\\FRIZQT__.TTF"
-local SetPanelFont = ns.SetFontObjectFaceUnscaled or ns.SetFontUnscaled
 local BODY_FONT, TITLE_FONT = PANEL_FACE, PANEL_FACE
 local TEXT_WHITE = { 1, 1, 1 }
 local function Shade(font)
     font:SetShadowColor(0, 0, 0, 1)
     font:SetShadowOffset(1, -1)
 end
+-- one of the window's fonts: name, face, size, colour (white when nil: Blizzard's yellow is set after)
+local function PanelFont(name, face, size, color)
+    local F = ns.FontFamily
+    local font
+    if CreateFontFamily and F then
+        local members = {}
+        for _, alphabet in ipairs(F.alphabets) do
+            local file = alphabet == "roman" and face or F.stock[alphabet]
+            if alphabet == "russian" then file = "Fonts\\FRIZQT___CYR.TTF" end
+            members[#members + 1] = { alphabet = alphabet, file = file, height = size, flags = "" }
+        end
+        local ok, made = pcall(CreateFontFamily, name, members)
+        if ok then font = made end
+    end
+    if not font then
+        font = CreateFont(name)
+        font:SetFont(face, size, "")
+    end
+    Shade(font)
+    local c = color or TEXT_WHITE
+    font:SetTextColor(c[1], c[2], c[3])
+    return font
+end
+local GOLD, GREY = { 1, 0.82, 0 }, { 0.5, 0.5, 0.5 }
 local PANEL_FONT = {}   -- Blizzard font object name -> the window's own
 for blizzard, def in pairs({
     GameFontHighlight      = { "Text",      BODY_FONT,  13, TEXT_WHITE },
     GameFontHighlightSmall = { "TextSmall", BODY_FONT,  12, TEXT_WHITE },
-    GameFontNormal         = { "Gold",      BODY_FONT,  13 },
-    GameFontNormalSmall    = { "GoldSmall", BODY_FONT,  12 },
-    GameFontDisable        = { "Grey",      BODY_FONT,  13 },
-    GameFontDisableSmall   = { "GreySmall", BODY_FONT,  11 },
-    GameFontNormalLarge    = { "Title",     TITLE_FONT, 17 },
-    GameFontNormalHuge     = { "TitleHuge", TITLE_FONT, 22 },
+    GameFontNormal         = { "Gold",      BODY_FONT,  13, GOLD },
+    GameFontNormalSmall    = { "GoldSmall", BODY_FONT,  12, GOLD },
+    GameFontDisable        = { "Grey",      BODY_FONT,  13, GREY },
+    GameFontDisableSmall   = { "GreySmall", BODY_FONT,  11, GREY },
+    GameFontNormalLarge    = { "Title",     TITLE_FONT, 17, GOLD },
+    GameFontNormalHuge     = { "TitleHuge", TITLE_FONT, 22, GOLD },
 }) do
     local name = "FlareUI_Panel" .. def[1]
-    local font = CreateFont(name)
-    if _G[blizzard] then font:CopyFontObject(_G[blizzard]) end
-    SetPanelFont(font, def[2], def[3], "")
-    Shade(font)
-    if def[4] then font:SetTextColor(def[4][1], def[4][2], def[4][3]) end
+    PanelFont(name, def[2], def[3], def[4])
     PANEL_FONT[blizzard] = name
 end
 Panel.FONT = PANEL_FONT
--- the button text: the page titles' gold rather than Blizzard's yellow (11-11 Marcus)
-local BUTTON_FONT = CreateFont("FlareUI_PanelButton")
-if _G.GameFontNormal then BUTTON_FONT:CopyFontObject(_G.GameFontNormal) end
-SetPanelFont(BUTTON_FONT, BODY_FONT, 13, "")
-BUTTON_FONT:SetTextColor(1, 0.82, 0)   -- (Blizzard's yellow, as its buttons', 11-13)
-Shade(BUTTON_FONT)
-local BUTTON_FONT_SMALL = CreateFont("FlareUI_PanelButtonSmall")
-if _G.GameFontNormal then BUTTON_FONT_SMALL:CopyFontObject(_G.GameFontNormal) end
-SetPanelFont(BUTTON_FONT_SMALL, BODY_FONT, 11, "")
-BUTTON_FONT_SMALL:SetTextColor(1, 0.82, 0)
-Shade(BUTTON_FONT_SMALL)
--- (kept for its callers: the titles are Friz already)
-local function ApplyTitleFont()
-    SetPanelFont(_G.FlareUI_PanelTitle, TITLE_FONT, 17, "")
-    SetPanelFont(_G.FlareUI_PanelTitleHuge, TITLE_FONT, 22, "")
-end
+-- the button text: Blizzard's yellow, as its buttons' (11-13)
+local BUTTON_FONT = PanelFont("FlareUI_PanelButton", BODY_FONT, 13, GOLD)
+local BUTTON_FONT_SMALL = PanelFont("FlareUI_PanelButtonSmall", BODY_FONT, 11, GOLD)
+-- (kept for its callers: the titles are made at their sizes above)
+local function ApplyTitleFont() end
 -- at load too: the setup tour can show before the settings window is ever built
 ApplyTitleFont()
 
