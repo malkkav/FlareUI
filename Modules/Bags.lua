@@ -240,6 +240,12 @@ local function ParkReagentWindow()
     end
 end
 
+local function CloseParkedReagentWindow()
+    local reagentID = ReagentID()
+    local reagent = reagentID and ContainerFrameUtil_GetShownFrameForID(reagentID)
+    if reagent and parked[reagent] ~= nil and ReagentWanted() then CloseBag(reagentID) end
+end
+
 local function RouteEmbeddedBagClick(button, wantsSection)
     local onClick = button and button:GetScript("OnClick")
     if not onClick then return end
@@ -254,9 +260,7 @@ local function RouteEmbeddedBagClick(button, wantsSection)
         if not ContainerFrame_AllowedToOpenBags() then return end
 
         if backpack:IsShown() then
-            local reagentID = ReagentID()
-            local reagent = reagentID and ContainerFrameUtil_GetShownFrameForID(reagentID)
-            if reagent and parked[reagent] ~= nil and ReagentWanted() then CloseBag(reagentID) end
+            CloseParkedReagentWindow()
             CloseBackpack()
         else
             OpenBackpack()
@@ -1312,6 +1316,14 @@ function Bags:Init()
         Bags:PlaceBagButtons()
         ParkReagentWindow()
     end)
+    if combined and ToggleBackpack_Combined then
+        -- ToggleAllBags closes and counts the reagent bag itself.
+        hooksecurefunc("ToggleBackpack_Combined", function()
+            if not combined:IsShown() and Bags:IsCombined() and LayoutWanted() then
+                CloseParkedReagentWindow()
+            end
+        end)
+    end
     -- the keyring and crafting bag sections follow their items
     local bagEvents = CreateFrame("Frame")
     if useFilterButtons then bagEvents:RegisterEvent("QUEST_LOG_UPDATE") end
