@@ -1,0 +1,31 @@
+# Posts one version's CHANGELOG.md section to the Discord changelog forum, run by hand from the
+# Actions tab: for a test, or to post an older release. Releases post on their own (release.yml).
+name: Post a changelog to Discord
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to post, as in CHANGELOG.md ("6.2")
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Post the changelog to Discord
+        run: node tools/discord-changelog.js "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
+          DISCORD_CHANGELOG_WEBHOOK: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
+          DISCORD_TAG_MAJOR: ${{ vars.DISCORD_TAG_MAJOR }}
+          DISCORD_TAG_UPDATE: ${{ vars.DISCORD_TAG_UPDATE }}
+          DISCORD_TAG_HOTFIX: ${{ vars.DISCORD_TAG_HOTFIX }}
+          DISCORD_TAG_RESTART: ${{ vars.DISCORD_TAG_RESTART }}
+          DISCORD_TAG_DEFAULTS: ${{ vars.DISCORD_TAG_DEFAULTS }}

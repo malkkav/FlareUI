@@ -17,6 +17,7 @@ jobs:
       CF_API_KEY: ${{ secrets.CF_API_KEY }}
       WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
       GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+      DISCORD_CHANGELOG_WEBHOOK: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}   # read by the step's if: below
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7
@@ -25,3 +26,17 @@ jobs:
 
       - name: Package and upload
         uses: BigWigsMods/packager@v2
+
+      # The tag's CHANGELOG.md section becomes a post in the Discord changelog forum
+      # (tools/discord-changelog.js). Skipped without the webhook secret; a Discord failure never
+      # marks the release as failed.
+      - name: Post the changelog to Discord
+        if: ${{ env.DISCORD_CHANGELOG_WEBHOOK != '' }}
+        continue-on-error: true
+        run: node tools/discord-changelog.js "$GITHUB_REF_NAME"
+        env:
+          DISCORD_TAG_MAJOR: ${{ vars.DISCORD_TAG_MAJOR }}
+          DISCORD_TAG_UPDATE: ${{ vars.DISCORD_TAG_UPDATE }}
+          DISCORD_TAG_HOTFIX: ${{ vars.DISCORD_TAG_HOTFIX }}
+          DISCORD_TAG_RESTART: ${{ vars.DISCORD_TAG_RESTART }}
+          DISCORD_TAG_DEFAULTS: ${{ vars.DISCORD_TAG_DEFAULTS }}
