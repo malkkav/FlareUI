@@ -76,6 +76,9 @@ end
 
 local function ApplySavedPosition(frame)
     if moveSuspended or IsMaximized(frame) then return end
+    -- Bag windows held off screen must keep their temporary anchor.
+    local bags = ns.Bags
+    if bags and bags.IsNativeBagWindowParked and bags:IsNativeBagWindowParked(frame) then return end
     local store = GetFrameStore(frame.moveName)
     if not store then return end
     if not CanTouch(frame) then movePending[frame] = true return end

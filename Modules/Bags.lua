@@ -201,6 +201,11 @@ end
 
 -- Blizzard's own crafting bag window, while its section is in the backpack: open but off the screen
 local parked = {}
+
+function Bags:IsNativeBagWindowParked(frame)
+    return parked[frame] ~= nil
+end
+
 local function ParkReagentWindow()
     for i = 1, (NUM_CONTAINER_FRAMES or 13) do
         local frame = _G["ContainerFrame" .. i]
