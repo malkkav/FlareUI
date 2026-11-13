@@ -80,7 +80,19 @@ local function LibDataBroker() return LibStub and LibStub("LibDataBroker-1.1", t
 -- button isn't parked, moved or redrawn, and it has no icon in the drawer. Ticked is the default, so a
 -- new addon goes in. The old bagKeep choices become left-alone ones, once.
 local known = {}   -- id -> label, every addon the drawer has seen (for the settings list)
+
+-- OneForAll's "Collect minimap buttons" (OneForAllDB.qol.mmCollect) gathers the same buttons, but only
+-- from the minimap: while it is on, the addon buttons stay there for it (6.4.1, a player: its bar
+-- was empty). The drawer keeps the addon compartment entries. Read as the drawer builds: a change
+-- in OneForAll applies at the next reload.
+function Bag.OtherCollector()
+    local loaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("OneForAll")
+    local qol = type(_G.OneForAllDB) == "table" and type(_G.OneForAllDB.qol) == "table" and _G.OneForAllDB.qol
+    return (loaded and qol and qol.mmCollect == true) and true or false
+end
+
 local function Left(id)
+    if Bag.OtherCollector() and type(id) == "string" and (id:find("^ldb:") or id:find("^frame:")) then return true end
     local db = GetDb()
     if not db then return false end
     if type(db.bagKeep) == "table" then

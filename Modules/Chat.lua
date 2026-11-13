@@ -1661,11 +1661,14 @@ local function ParkDock(dock)
     dock:ClearAllPoints()
     local host = _G.ChatFrame1 and _G.ChatFrame1.FlareUI_Skin
     if ns.IsGamepadUI() and host then
+        -- (6.4.1) the Gamepad UI uses Blizzard's own tabs, clickable: a tab FlareUI selected from its
+        -- own button left the game's chat state marked as an addon's, and closing a chat box with Esc
+        -- then broke the controller (a player's report: ADDON FORBIDDEN SetPreferredGamepadInteractTarget)
         dock:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
         dock:SetPoint("TOPRIGHT", host, "TOPRIGHT", 0, 0)
         for i = 1, NUM_CHAT_WINDOWS do
             local tab = _G["ChatFrame" .. i .. "Tab"]
-            if tab then tab:EnableMouse(false) end
+            if tab then tab:EnableMouse(true) end
         end
     else
         dock:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", -10000, -10000)
@@ -2137,6 +2140,8 @@ function Chat:UpdateCustomTabs(chatFrame, db)
 
     for _, btn in ipairs(scrollFrame.buttons) do btn:Hide() end
     if scrollFrame.meterButton then scrollFrame.meterButton:Hide() end
+    -- Gamepad UI (6.4.1): Blizzard's own tabs take the clicks (HideBlizzardTabs); no FlareUI bar
+    if ns.IsGamepadUI() then scrollFrame:Hide() return end
 
     local dock = _G.GeneralDockManager
     local dockedFrames = dock and dock.DOCKED_CHAT_FRAMES
@@ -2304,6 +2309,20 @@ function Chat:UpdateCustomTabs(chatFrame, db)
 end
 
 function Chat:HideBlizzardTabs()
+    -- Gamepad UI (6.4.1): Blizzard's tabs are the tab bar, so a click selects a window the game's own
+    -- way (see ParkDock); FlareUI's bar stays hidden (UpdateCustomTabs)
+    if ns.IsGamepadUI() then
+        local gdock = _G.GeneralDockManager
+        if gdock and gdock.scrollFrame then gdock.scrollFrame:SetAlpha(1) end
+        for _, chatFrame in Windows() do
+            local tab = chatFrame and _G[chatFrame:GetName() .. "Tab"]
+            if tab and not tab:IsForbidden() then
+                tab:EnableMouse(true)
+                if _G.FCFTab_UpdateAlpha then FCFTab_UpdateAlpha(chatFrame) else tab:SetAlpha(1) end
+            end
+        end
+        return
+    end
 
     -- The dock's tabs stay shown but invisible and deaf to the mouse (the dock itself is parked off
     -- screen outside the Gamepad UI, see ParkDock). In the Gamepad UI Tab Settings (Y) opens on them.
@@ -3450,7 +3469,7 @@ function Chat:Init()
         -- Blizzard passes the chat frame, not its tab
         Chat:SecureHook("FCFTab_UpdateAlpha", function(chatFrame)
             local tab = chatFrame and _G[chatFrame:GetName() .. "Tab"]
-            if not tab or tab:IsForbidden() then return end
+            if not tab or tab:IsForbidden() or ns.IsGamepadUI() then return end
             tab:SetAlpha(0)
         end)
 

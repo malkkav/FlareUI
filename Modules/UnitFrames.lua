@@ -1600,6 +1600,45 @@ function UF.PlaceChannelTicks(cast, show, spellID, startMs, endMs)
     end
 end
 
+-- Latency Zone, measured per cast (6.4.1, a player: "not even close"): the time from your spell's
+-- request (UNIT_SPELLCAST_SENT) to the server starting it, which is what the zone stands for. The
+-- network figure (GetNetStats) is a rolling average refreshed every few seconds, so it only stands
+-- in until a cast has been measured. A request made during a cast or the global cooldown waited
+-- in the queue: its time is not taken. A reading lasts a minute, then the average returns.
+UF.lag = {}
+do
+    local GCD_SPELL = 61304
+    local function Queued()
+        local cast = UnitCastingInfo("player") or UnitChannelInfo("player")
+        if not canaccessvalue(cast) or cast ~= nil then return true end
+        local cd = C_Spell.GetSpellCooldown(GCD_SPELL)
+        local s, d = cd and cd.startTime, cd and cd.duration
+        if not (canaccessvalue(s) and canaccessvalue(d) and s and d) then return true end
+        local now = GetTime()
+        return s > 0 and s < now - 0.05 and s + d > now
+    end
+    local watch = CreateFrame("Frame")
+    watch:RegisterUnitEvent("UNIT_SPELLCAST_SENT", "player")
+    watch:SetScript("OnEvent", function()
+        UF.lag.sentAt, UF.lag.queued = GetTimePreciseSec(), Queued()
+    end)
+end
+-- the latency in ms for the cast now on the bar; isStart: its start event (takes the measurement)
+function UF.CastLatency(isStart)
+    local lag, now = UF.lag, GetTimePreciseSec()
+    if isStart then
+        local sent = lag.sentAt
+        lag.sentAt = nil
+        if sent and not lag.queued then
+            local ms = (now - sent) * 1000
+            if ms > 5 and ms < 1500 then lag.last, lag.lastAt = ms, now end
+        end
+    end
+    if lag.last and now - lag.lastAt < 60 then return lag.last end
+    local _, _, home, world = GetNetStats()
+    return (world and world > 0) and world or home
+end
+
 -- delayMs: UnitCastingInfo's delay so far (never secret); a channel has none, so it is tracked here
 function UF.UpdatePlayerCastExtras(cast, event, channeling, castBarID, startMs, endMs, delayMs, spellID)
     if cast.unit ~= "player" then return end
@@ -1613,9 +1652,8 @@ function UF.UpdatePlayerCastExtras(cast, event, channeling, castBarID, startMs, 
         zone:SetColorTexture(1, 1, 1, 1)
         cast.LagZone = zone
     end
-    -- world latency, or home latency while the world figure reads 0
-    local _, _, home, world = GetNetStats()
-    local lag = (world and world > 0) and world or home
+    -- this cast's measured latency (UF.CastLatency), the network average until one is measured
+    local lag = UF.CastLatency(event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START")
     -- the player cast bar's switches: Latency Zone (on by default), Spell Queue Window, Channel
     -- Ticks, Spell Pushback. The standalone bar keeps them in playerCastbar, the bar on the player
     -- frame with the frame's own settings.

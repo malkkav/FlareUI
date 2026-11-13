@@ -191,15 +191,24 @@ if ToggleMinimap then
 end
 
 -- The cooldown-finished flash draws at full strength whatever the bar's alpha: a bar faded below
--- half has it off on its buttons, set again only when the alpha crosses half
+-- half has it off on its buttons, set again only when the alpha crosses half. Back up, a button gets
+-- its own setting back, never the flash forced on (6.4.1, a player: every button flashed as the
+-- global cooldown ended; Blizzard's action buttons have it off)
 local blingOn = setmetatable({}, { __mode = "k" })
+local ownBling = setmetatable({}, { __mode = "k" })   -- cooldown -> its setting before FlareUI's first change
 local function SetBarBling(frame, alpha)
     local on = alpha > 0.5
     if blingOn[frame] == on then return end
     blingOn[frame] = on
     for _, button in ipairs(frame.actionButtons or {}) do
         local cd = button.cooldown
-        if cd and cd.SetDrawBling then cd:SetDrawBling(on) end
+        if cd and cd.SetDrawBling then
+            if ownBling[cd] == nil then
+                local own = cd.GetDrawBling and cd:GetDrawBling()
+                ownBling[cd] = own and true or false
+            end
+            cd:SetDrawBling(on and ownBling[cd])
+        end
     end
 end
 

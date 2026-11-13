@@ -74,8 +74,10 @@ local LAYOUT_SNIPPET = [[
     local gap, ggap = self:GetAttribute("gap"), self:GetAttribute("groupGap")
     local room = rows and (self:GetAttribute("labelRoom") or 0) or 0
     h = h + room
-    -- Growth (rows only): from the middle, or from the top / bottom of the frame (its full height)
-    local grow = rows and self:GetAttribute("grow") or "CENTER"
+    -- Growth: from the middle, or from one end of the frame (its full size). Rows: DOWN from the top,
+    -- UP from the bottom; columns (6.4.1, a player: stuck in the middle): DOWN from the left (Right),
+    -- UP from the right (Left)
+    local grow = self:GetAttribute("grow") or "CENTER"
     local used = 0
     local order = newtable()
     for k = 1, 8 do
@@ -500,7 +502,8 @@ end
 local function ConfigureHeader(h, w, hh, gap, ggap)
     local rows = Rows()
     -- the raid's rows of five stack from the frame's bottom on Growth Up
-    local columnAnchor = rows and (h == headers.all and Grow() == "UP" and "BOTTOM" or "TOP") or "LEFT"
+    local columnAnchor = rows and (h == headers.all and Grow() == "UP" and "BOTTOM" or "TOP")
+        or (h == headers.all and Grow() == "UP" and "RIGHT" or "LEFT")
     h:SetAttribute("_ignore", "batch")
     h:SetAttribute("tileWidth", w)
     h:SetAttribute("tileHeight", hh)
@@ -553,13 +556,15 @@ local function LayoutGroups()
         local sort = db.sort or "GROUP"
         all:SetAttribute("groupBy", sort == "CLASS" and "CLASS" or "ASSIGNEDROLE")
         all:SetAttribute("groupingOrder", sort == "CLASS" and CLASS_ORDER or ROLE_ORDER)
-        -- Growth: the rows of five stack from the frame's top or bottom (or round its middle)
-        local grow = Rows() and Grow() or "CENTER"
+        -- Growth: the rows of five stack from the frame's top or bottom, the columns from its left or
+        -- right (or round its middle)
+        local grow = Grow()
+        local rows = Rows()
         all:ClearAllPoints()
         if grow == "DOWN" then
-            all:SetPoint("TOP", holder, "TOP")
+            all:SetPoint(rows and "TOP" or "LEFT", holder, rows and "TOP" or "LEFT")
         elseif grow == "UP" then
-            all:SetPoint("BOTTOM", holder, "BOTTOM")
+            all:SetPoint(rows and "BOTTOM" or "RIGHT", holder, rows and "BOTTOM" or "RIGHT")
         else
             all:SetPoint("CENTER", holder, "CENTER")
         end
@@ -581,7 +586,7 @@ local function LayoutTanks()
     h:SetAttribute("tileWidth", w)
     h:SetAttribute("tileHeight", hh)
     -- the raid's Growth Up stacks them from the bottom
-    local up = Grow() == "UP"
+    local up = Rows() and Grow() == "UP"
     h:SetAttribute("point", up and "BOTTOM" or "TOP")
     h:SetAttribute("yOffset", up and gap or -gap)
     h:SetAttribute("_ignore", nil)
@@ -612,7 +617,7 @@ local function PlacePreview()
     local across = GROUP_SIZE * (rows and w or hh) + (GROUP_SIZE - 1) * gap
     local total = groups * span + (groups - 1) * ggap
     -- Role and Class sorts fill rows of five in order, as the live header does
-    local grow = rows and Grow() or "CENTER"
+    local grow = Grow()
     local full = MAX_GROUPS * span + (MAX_GROUPS - 1) * ggap
     local count = groups * GROUP_SIZE
     local order = {}
@@ -686,7 +691,7 @@ local function PlacePreview()
     local _, _, tgap = Gaps(db)
     -- Tank Targets below the frames take room between them, as live
     if TT.Place() == "BOTTOM" then tgap = tgap + TT.HEIGHT + TT.GAP end
-    local tanksUp = Grow() == "UP"
+    local tanksUp = Rows() and Grow() == "UP"
     for i, f in ipairs(tankPreview) do
         f:ClearAllPoints()
         if tanksUp then
@@ -918,12 +923,18 @@ local function BuildSettings()
               sampleRaid = value
               Refresh()
           end },
+        -- (columns too since 6.4.1; there Down / Up read as Right / Left, as on the party frames in a row)
         { name = L["Growth"], kind = LEM.SettingType.Dropdown, default = "CENTER",
-          values = { { text = L["From the Middle"], value = "CENTER", isRadio = true },
-                     { text = L["Down"], value = "DOWN", isRadio = true }, { text = L["Up"], value = "UP", isRadio = true } },
-          desc = L["Which way the raid grows as groups join, one row per group. The main tank frames follow it."],
-          get = get("grow", "CENTER"), set = set("grow"),
-          hidden = function() return not Rows() end },
+          values = function()
+              if not Rows() then
+                  return { { text = L["From the Middle"], value = "CENTER", isRadio = true },
+                           { text = L["Right"], value = "DOWN", isRadio = true }, { text = L["Left"], value = "UP", isRadio = true } }
+              end
+              return { { text = L["From the Middle"], value = "CENTER", isRadio = true },
+                       { text = L["Down"], value = "DOWN", isRadio = true }, { text = L["Up"], value = "UP", isRadio = true } }
+          end,
+          desc = L["Which way the raid grows as groups join. Rows grow down or up, columns right or left. The main tank frames follow rows."],
+          get = get("grow", "CENTER"), set = set("grow") },
         { name = L["Sort By"], kind = LEM.SettingType.Dropdown, default = "GROUP",
           values = { { text = L["Group"], value = "GROUP", isRadio = true }, { text = L["Role"], value = "ROLE", isRadio = true },
                      { text = L["Class"], value = "CLASS", isRadio = true } },
@@ -931,7 +942,12 @@ local function BuildSettings()
           get = get("sort", "GROUP"), set = set("sort") },
         { name = L["Groups"], kind = LEM.SettingType.Dropdown, default = "ROWS",
           values = { { text = L["Rows"], value = "ROWS", isRadio = true }, { text = L["Columns"], value = "COLUMNS", isRadio = true } },
-          get = get("orientation", "ROWS"), set = set("orientation") },
+          get = get("orientation", "ROWS"),
+          -- (Growth's choices read Right / Left for columns: the dialog redraws them)
+          set = function(layoutName, value)
+              set("orientation")(layoutName, value)
+              if LEM.RefreshOpenSettings then LEM:RefreshOpenSettings() end
+          end },
         -- (between the bars: 0 makes them touch; Gaps migrates old values first)
         { name = L["Spacing"], kind = LEM.SettingType.Slider, default = d.spacing or 10, minValue = 0, maxValue = 40, valueStep = 1,
           get = function() Gaps(GetDb()); return get("spacing", 10)() end, set = set("spacing"),

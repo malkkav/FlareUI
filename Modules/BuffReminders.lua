@@ -644,12 +644,49 @@ function BR.ShowHidden()
     BR.Update()
 end
 
--- where a kind of reminder shows: "always", "instance" (dungeons and raids) or "raid"
+-- where a kind of reminder shows: "always", "instance" (dungeons and raids), "raid", or "mouseover"
+-- (everywhere, its icon unseen until you point at the row: BR.ApplyHover)
 local function InScope(mode)
-    if not mode or mode == "always" or ns.EditPreviewing() then return true end
+    if not mode or mode == "always" or mode == "mouseover" or ns.EditPreviewing() then return true end
     local inInstance, kind = IsInInstance()
     if mode == "raid" then return inInstance and kind == "raid" or false end
     return inInstance and (kind == "party" or kind == "raid") or false
+end
+
+-- On Mouseover (6.4.1, a player: poisons out of sight until wanted): the Where choice of this
+-- reminder's kind
+function BR.KindMode(entry, db)
+    local def = entry and entry.def
+    if not (def and db) then return nil end
+    if def.weapon then return db.weaponScope end
+    if def.pet then return db.petScope end
+    if def.elixir or def.consumable then return db.consumables end
+    if entry.classBuff then return db.classScope end
+    return nil
+end
+
+-- The On Mouseover icons: unseen (alpha 0, still there to point at and click) until the pointer is
+-- on any reminder icon; a moment after it leaves them all they go again
+BR.hovered = false
+function BR.ApplyHover()
+    for _, b in ipairs(BR.iconList or {}) do
+        if b.FlareUI_OnHover then b:SetAlpha(BR.hovered and 1 or 0) else b:SetAlpha(1) end
+    end
+end
+function BR.HoverEnter()
+    if BR.hoverTimer then BR.hoverTimer:Cancel(); BR.hoverTimer = nil end
+    if not BR.hovered then BR.hovered = true; BR.ApplyHover() end
+end
+function BR.HoverLeave()
+    if BR.hoverTimer then BR.hoverTimer:Cancel() end
+    BR.hoverTimer = C_Timer.NewTimer(0.3, function()
+        BR.hoverTimer = nil
+        for _, b in ipairs(BR.iconList or {}) do
+            if b:IsShown() and b:IsMouseOver() then return end
+        end
+        BR.hovered = false
+        BR.ApplyHover()
+    end)
 end
 
 -- Custom Reminders (11-12): your own, per class (db.custom[class]): spell IDs or names and item IDs,
@@ -1419,6 +1456,11 @@ local function Icon(i)
     if b then return b end
     b = CreateFrame("Button", "FlareUI_BuffReminder" .. i, row, "SecureActionButtonTemplate")
     b:RegisterForClicks("AnyUp", "AnyDown")
+    -- On Mouseover: pointing at any icon shows the hidden ones (BR.ApplyHover)
+    BR.iconList = BR.iconList or {}
+    BR.iconList[#BR.iconList + 1] = b
+    b:HookScript("OnEnter", function() BR.HoverEnter() end)
+    b:HookScript("OnLeave", function() BR.HoverLeave() end)
     BR.BuildIcon(b)
     -- right-click: no cast (an empty macro), the hide menu instead
     b:SetAttribute("type2", "macro")
@@ -1636,6 +1678,11 @@ local function Show(shows, sample)
             if back then b:SetPoint("TOPRIGHT", parentRow, "TOPRIGHT", -step, 0) else b:SetPoint("TOPLEFT", parentRow, "TOPLEFT", step, 0) end
         end
         b:Show()
+        -- On Mouseover (not on Edit Mode's samples or a preview)
+        if not sample then
+            b.FlareUI_OnHover = BR.KindMode(s.entry, db) == "mouseover" and not (ns.EditPreviewing and ns.EditPreviewing()) or nil
+            b:SetAlpha((b.FlareUI_OnHover and not BR.hovered) and 0 or 1)
+        end
         if not b.pulse:IsPlaying() then b.pulse:Play() end
         -- Alerts: the glow
         local glow = (s.running and db.glowExpiring) and GLOW_EXPIRING or ((not s.running) and db.glowMissing) and GLOW_MISSING
@@ -1809,7 +1856,8 @@ function BR.Update()
             local key = s.entry.def and (s.entry.key or s.entry.def.key)
             if key then
                 now[key] = true
-                if not shownKeys[key] then fresh = true end
+                -- (an On Mouseover reminder stays quiet: it is out of sight on purpose)
+                if not shownKeys[key] and BR.KindMode(s.entry, db) ~= "mouseover" then fresh = true end
             end
         end
         shownKeys = now

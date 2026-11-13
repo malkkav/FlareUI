@@ -95,8 +95,8 @@ local function BeforeFor(key, path)
 end
 BeforeFor("br.beforeDungeon", "auras.reminder.beforeDungeon")
 BeforeFor("br.beforeRaid", "auras.reminder.beforeRaid")
--- Where: four kinds, the same three choices, in two columns
-local WHERE = { "always", "instance", "raid" }
+-- Where: four kinds, the same four choices, in two columns (On Mouseover: 6.4.1)
+local WHERE = { "always", "instance", "raid", "mouseover" }
 Row{ key = "br.classScope", kind = "choice", half = true, tab = "when", path = "auras.reminder.classScope", choices = WHERE }
 Row{ key = "br.weaponScope", kind = "choice", half = true, tab = "when", path = "auras.reminder.weaponScope", choices = WHERE }
 Row{ key = "br.petScope", kind = "choice", half = true, tab = "when", path = "auras.reminder.petScope", choices = WHERE }

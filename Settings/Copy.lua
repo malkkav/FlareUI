@@ -676,7 +676,7 @@ ns.Copy = {
             section = "br.upkeep",
         },
         ["br.classScope"] = {
-            choices = { L["Always"], L["In Dungeons and Raids"], L["In Raids"] },
+            choices = { L["Always"], L["In Dungeons and Raids"], L["In Raids"], L["On Mouseover"] },
             desc = L["Where reminders show for your class's own buffs."],
             label = L["Class Buffs"],
             section = "br.where",
@@ -687,7 +687,7 @@ ns.Copy = {
             section = "br.consumablesSection",
         },
         ["br.consumablesWhere"] = {
-            choices = { L["Always"], L["In Dungeons and Raids"], L["In Raids"] },
+            choices = { L["Always"], L["In Dungeons and Raids"], L["In Raids"], L["On Mouseover"] },
             desc = L["Where reminders show for food, flasks and elixirs."],
             label = L["Consumables"],
             section = "br.where",
@@ -757,7 +757,7 @@ ns.Copy = {
             section = "br.groupBuffs",
         },
         ["br.petScope"] = {
-            choices = { L["Always"], L["In Dungeons and Raids"], L["In Raids"] },
+            choices = { L["Always"], L["In Dungeons and Raids"], L["In Raids"], L["On Mouseover"] },
             desc = L["Where reminders show for a missing, dead or hurt pet."],
             label = L["Pets"],
             section = "br.where",
@@ -805,10 +805,11 @@ ns.Copy = {
             tip = L["Right-click the icon to pick which one. Sharpening stones go on blades, weightstones on maces and staves."],
         },
         ["br.weaponScope"] = {
-            choices = { L["Always"], L["In Dungeons and Raids"], L["In Raids"] },
+            choices = { L["Always"], L["In Dungeons and Raids"], L["In Raids"], L["On Mouseover"] },
             desc = L["Where reminders show for weapon buffs: poisons, imbues, stones and oils."],
             label = L["Weapon Buffs"],
             section = "br.where",
+            tip = L["On Mouseover keeps the icons hidden until you point at the reminder row."],
         },
         ["ch.border"] = {
             desc = L["The border around the chat and its edit box. None hides it."],

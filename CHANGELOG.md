@@ -1,3 +1,23 @@
+# FlareUI 6.4.1
+
+A round of fixes from your reports, plus one small option for poison users.
+
+## New
+- Buff Reminders › When and Where: **On Mouseover** is a new **Where** choice for Class Buffs, Weapon Buffs, Pets and Consumables.
+  - Those icons stay hidden until you point at the reminder row.
+  - They can still be clicked, and they don't play the reminder sound.
+
+## Changed
+- Gamepad mode: the chat uses Blizzard's own tabs.
+- Raid frames: with **Groups** set to Columns, **Growth** is back, as From the Middle, Right or Left.
+- Meters: hovering the meter while it fades holds it in place. Moving away lets the fade finish.
+- Minimap: while OneForAll's **Collect minimap buttons** is on, FlareUI leaves addon buttons on the minimap for it.
+
+## Fixed
+- Gamepad mode: closing a chat box with Esc no longer breaks the controller.
+- Player cast bar: **Latency Zone** shows each cast's real delay, not the game's slow network average.
+- Action bars: buttons no longer flash as the global cooldown ends on bars with a **Visibility** or a **Fade Group**.
+
 # FlareUI 6.4
 
 **Restart the game fully after updating** (not just /reload): this version adds a new file.
