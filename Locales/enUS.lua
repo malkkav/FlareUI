@@ -1624,7 +1624,6 @@ L["Try These Next"] = true
 L["Turn It On"] = true
 L["Turn On"] = true
 L["turn on the Damage Meter in the FlareUI settings (and Blizzard's damage meter) to use the threat view."] = true
-L["Turned off, Action Bar 1 drops its bar art too, as if its Hide Bar Art were on in Edit Mode."] = true
 L["Turning it off restores your own setting."] = true
 L["Turns in your finished quests when you talk to the NPC."] = true
 L["Turns the order around: newest, longest left or Z first."] = true

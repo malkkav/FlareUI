@@ -271,7 +271,6 @@ L["Blizzard's meter in a FlareUI frame"] = "Blizzards meter in een FlareUI-frame
 L["Blizzard's own text takes the Global Font too: menus, windows, quest text, nameplates, combat text and more. Sizes and outlines stay as they are."] = "Blizzards eigen tekst neemt ook het globale lettertype over: menu's, vensters, questtekst, naamplaatjes, gevechtstekst en meer. Groottes en omlijningen blijven zoals ze zijn."
 L["Blizzard's own Visibility for the meter, in Edit Mode, hides it at the start of some fights, and FlareUI can't bring it back until the fight ends. Set it to Always there and let FlareUI's Visibility decide."] = "Blizzards eigen Zichtbaarheid voor de meter, in Edit Mode, verbergt deze aan het begin van sommige gevechten, en FlareUI kan deze pas terughalen als het gevecht eindigt. Stel deze daar in op Altijd en laat FlareUI's Zichtbaarheid bepalen."
 L["Blizzard's slot frame on every button of bars 1 to 8 and the pet bar, even where a bar hides its art."] = "Blizzards knopkader op elke knop van balk 1 t/m 8 en de petbalk, zelfs wanneer een balk de eigen illustratie verbergt."
-L["Turned off, Action Bar 1 drops its bar art too, as if its Hide Bar Art were on in Edit Mode."] = "Uit: Actiebalk 1 verliest ook zijn balkart, alsof Balkart verbergen aanstaat in Edit Mode."
 L["Border"] = "Rand"
 L["Borderless Bag Bar"] = "Randloze tassenbalk"
 L["Borderless Micro Menu"] = "Randloos micromenu"
