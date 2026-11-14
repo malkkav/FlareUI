@@ -1963,14 +1963,13 @@ end
 -- 20. REFRESH ALL
 --------------------------------------------------
 function DamageMeter:Refresh()
-    if InCombatLockdown() then
+    if InFight() then
         self._pendingRefresh = true
         return
     end
 
     local db = GetDb()
     if not db or not db.enabled then return end
-    self:SetupMouseover()
     -- several events can ask in the same frame: one pass now, and one more a frame later for what
     -- the rest brought (at login the loading screen holds every timer, then lands them all in one
     -- frame: the chat's skin arrives there after the first pass)
@@ -1991,6 +1990,7 @@ function DamageMeter:Refresh()
     for _, window in ipairs(GetSessionWindows()) do
         self:ApplyToWindow(window)
     end
+    self:SetupMouseover()
     SafeCall(Solo.Apply)
     HookChatSize()
     local inChat = ChatTabOn()
@@ -2026,7 +2026,7 @@ end
 function DamageMeter:ADDON_LOADED(event, addonName)
     if addonName == "Blizzard_DamageMeter" then
         HookEntryFonts()
-        C_Timer.After(0, function() self:Refresh() end)
+        SafeCall(self.Refresh, self)
         C_Timer.After(0.5, function() self:Refresh() end)
     end
 end
@@ -2371,7 +2371,12 @@ function DamageMeter:SetupMouseover()
     hooksecurefunc(meter, "UpdateShownState", ApplyVisibility)
     -- a window opened from Blizzard's settings menu gets the skin too
     if type(meter.SetupSessionWindow) == "function" then
-        hooksecurefunc(meter, "SetupSessionWindow", function()
+        hooksecurefunc(meter, "SetupSessionWindow", function(_, _, windowData)
+            local window = windowData and windowData.sessionWindow
+            -- Style the initialized session even when the meter itself is hidden.
+            if window and not InFight() then
+                SafeCall(DamageMeter.ApplyToWindow, DamageMeter, window)
+            end
             C_Timer.After(0, function() DamageMeter:Refresh() end)
         end)
     end
@@ -2620,7 +2625,7 @@ function DamageMeter:Init()
         end)
     end
 
-    C_Timer.After(0, function() self:Refresh() end)
+    SafeCall(self.Refresh, self)
     C_Timer.After(1, function() self:Refresh() end)
 end
 
