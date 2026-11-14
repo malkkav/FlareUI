@@ -1214,6 +1214,12 @@ ns.Copy = {
             tags = { "coordinates on hover" },
             tip = L["Linked to Blizzard's own Coordinates option: turning one off turns off the other."],
         },
+        ["mm.finderEye"] = {
+            desc = L["A small eye on the minimap opens the group finder, in place of Blizzard's large queue eye."],
+            label = L["Group Finder Eye"],
+            section = "mm.tweaks",
+            tip = L["In a queue, point at the eye to see the queue, and right-click it for the queue menu."],
+        },
         ["mm.flareButton"] = {
             desc = L["FlareUI's own button, for opening these settings. With the Addon Button Drawer on, it sits in the drawer."],
             label = L["FlareUI Minimap Button"],

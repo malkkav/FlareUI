@@ -55,6 +55,9 @@ S:Row{ key = "mm.microMenu", path = "minimap.microMenu",
 -- (live; its right-click turns it off)
 S:Row{ key = "mm.flareButton", path = "minimap.flareButton",
     apply = function() if ns.MinimapBag and ns.MinimapBag.FlareChanged then ns.MinimapBag.FlareChanged() end end }
+-- Group Finder Eye: a small eye in place of Blizzard's queue eye (live, MinimapEye.lua)
+S:Row{ key = "mm.finderEye", path = "minimap.finderEye",
+    apply = function() if ns.MinimapEye and ns.MinimapEye.Update then ns.MinimapEye.Update() end end }
 S:Row{ key = "mm.bag", path = "minimap.buttonBag", reload = true }
 -- under the drawer: it opens on the pointer instead of a click (live)
 S:Row{ key = "mm.bagHover", path = "minimap.bagHover", parent = "mm.bag",

@@ -75,6 +75,7 @@ Modules\Auras.lua
 Modules\BuffReminders.lua
 Modules\Minimap.lua
 Modules\MinimapBag.lua
+Modules\MinimapEye.lua
 Modules\TweaksCVars.lua
 Modules\Tweaks.lua
 Modules\JunkDelete.lua

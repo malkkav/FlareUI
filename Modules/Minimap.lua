@@ -1735,6 +1735,12 @@ function MM:Refresh()
     self:UpdateTrackerScale()
     self:ApplyFonts()
     UpdateCoordsHover()
+    if ns.MinimapEye then ns.MinimapEye.Place() end
+end
+
+-- The style in use until the next reload (minimap.style is latched at startup)
+function MM.IsSquare()
+    return squareStyle
 end
 
 -- The zone map (Shift+M, Blizzard_BattlefieldMap): FlareUI Thin in bronze instead of Blizzard's gold
@@ -1856,6 +1862,7 @@ function MM:Init()
         Cluster.MinimapContainer:HookScript("OnSizeChanged", function() self:UpdateTrackerScale() end)
     end
     KeepSunPlaced()   -- both styles
+    if ns.MinimapEye then ns.MinimapEye.Init() end   -- Group Finder Eye, above the badge (MinimapEye.lua)
     AddEditModeSettings()
     Scan.Watch()
     WatchMask()   -- the round style too: a faded-out map keeps its empty mask
