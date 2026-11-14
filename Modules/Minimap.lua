@@ -1862,7 +1862,7 @@ function MM:Init()
         Cluster.MinimapContainer:HookScript("OnSizeChanged", function() self:UpdateTrackerScale() end)
     end
     KeepSunPlaced()   -- both styles
-    if ns.MinimapEye then ns.MinimapEye.Init() end   -- Group Finder Eye, above the badge (MinimapEye.lua)
+    if ns.MinimapEye then ns.MinimapEye.Init() end   -- Group Finder Icon, above the badge (MinimapEye.lua)
     AddEditModeSettings()
     Scan.Watch()
     WatchMask()   -- the round style too: a faded-out map keeps its empty mask

@@ -3,7 +3,7 @@ local L = ns.L
 
 --------------------------------------------------
 -- GROUP FINDER EYE
--- With Group Finder Eye on (minimap.finderEye), a small eye on the minimap in place of Blizzard's
+-- With Group Finder Icon on (minimap.finderEye), a small icon on the minimap in place of Blizzard's
 -- large queue eye. Square style: above the day/night badge. Round style: on Blizzard's eye.
 -- Left-click opens the group finder. In a queue the eye moves as Blizzard's does, pointing at it
 -- shows the queue and a right-click opens Blizzard's queue menu.
@@ -267,7 +267,7 @@ end
 --------------------------------------------------
 -- 7. PUBLIC
 --------------------------------------------------
--- Settings > Minimap > Group Finder Eye (live)
+-- Settings > Minimap > Group Finder Icon (live)
 function Eye.Update()
     UpdateGameEye()
     UpdateShown()
