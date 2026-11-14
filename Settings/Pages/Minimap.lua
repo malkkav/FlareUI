@@ -51,6 +51,10 @@ S:Row{ key = "mm.latency", kind = "choice", path = "minimap.latency", choices = 
 S:Row{ key = "mm.clockStats", path = "minimap.clockStats" }
 S:Row{ key = "mm.microMenu", path = "minimap.microMenu",
     apply = function() if ns.Minimap and ns.Minimap.UpdateMapMouse then ns.Minimap.UpdateMapMouse() end end }
+-- FlareUI Minimap Button (11-14, Marcus): FlareUI's own button, on the minimap or in the drawer
+-- (live; its right-click turns it off)
+S:Row{ key = "mm.flareButton", path = "minimap.flareButton",
+    apply = function() if ns.MinimapBag and ns.MinimapBag.FlareChanged then ns.MinimapBag.FlareChanged() end end }
 S:Row{ key = "mm.bag", path = "minimap.buttonBag", reload = true }
 -- under the drawer: it opens on the pointer instead of a click (live)
 S:Row{ key = "mm.bagHover", path = "minimap.bagHover", parent = "mm.bag",

@@ -132,6 +132,7 @@ ns.Copy = {
             desc = L["Blizzard's slot frame on every button of bars 1 to 8 and the pet bar, even where a bar hides its art."],
             label = L["Show Button Art"],
             section = "ab.buttonAppearance",
+            tip = L["Turned off, Action Bar 1 drops its bar art too, as if its Hide Bar Art were on in Edit Mode."],
         },
         ["ab.buttonScale"] = {
             desc = L["The size of every action button. 111% is FlareUI's default."],
@@ -556,6 +557,11 @@ ns.Copy = {
             section = "bl.bagWindow",
             tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
         },
+        ["bl.bagSkinSlots"] = {
+            desc = L["Bag slots get FlareUI's bronze border. Turn it off to keep Blizzard's own, for example when another addon skins your bags."],
+            label = L["Skin Item Slots"],
+            section = "bl.itemSlots",
+        },
         ["bl.bagThickBorders"] = {
             desc = L["Bag slots get FlareUI's thick frame instead of the thin one."],
             label = L["Thicker Borders"],
@@ -565,12 +571,6 @@ ns.Copy = {
             desc = L["An eye in the top right corner marks gear whose appearance you haven't collected yet and can learn."],
             label = L["Uncollected Appearances"],
             section = "bl.itemSlots",
-        },
-        ["bl.bagUpgradeArrow"] = {
-            desc = L["A green arrow marks gear that beats what you wear."],
-            label = L["Upgrade Arrow"],
-            section = "bl.itemSlots",
-            tip = L["A rough guide from stats: main stat first, then Stamina, then other ratings. Special effects aren't judged."],
         },
         ["bl.bagWithCharacter"] = {
             desc = L["Your bags open with the character window and close with it."],
@@ -600,6 +600,11 @@ ns.Copy = {
             label = L["Free Bag Slots"],
             section = "bl.fonts",
             tags = { "free slots", "bag space", "backpack" },
+        },
+        ["bl.font.itemLevel"] = {
+            desc = L["The item level numbers on your bag items and the character sheet. Default keeps Blizzard's font."],
+            label = L["Item Level"],
+            section = "bl.fonts",
         },
         ["bl.font.lootFeed"] = {
             desc = L["The lines that float up as you loot."],
@@ -1210,6 +1215,12 @@ ns.Copy = {
             tags = { "coordinates on hover" },
             tip = L["Linked to Blizzard's own Coordinates option: turning one off turns off the other."],
         },
+        ["mm.flareButton"] = {
+            desc = L["FlareUI's own button, for opening these settings. With the Addon Button Drawer on, it sits in the drawer."],
+            label = L["FlareUI Minimap Button"],
+            section = "mm.tweaks",
+            tip = L["Right-click the button to hide it. Untick FlareUI in Addons in the Drawer to keep it on the minimap."],
+        },
         ["mm.font.clock"] = {
             desc = L["The time on the map's clock."],
             label = L["Clock"],
@@ -1298,6 +1309,12 @@ ns.Copy = {
             desc = L["The camera zooms out further, and faster."],
             label = L["Better Camera"],
             section = "qol.camera",
+        },
+        ["qol.deleteJunkFull"] = {
+            desc = L["With your bags full, clicking an item in the loot window first deletes your cheapest grey item to make room."],
+            label = L["Delete Junk When Full"],
+            section = "qol.convenience",
+            tip = L["The game only lets addons delete items when you click, so it never happens on its own. The chat tells you what was deleted."],
         },
         ["qol.durability"] = {
             desc = L["Warns you when your gear drops below 50% durability."],
@@ -1496,6 +1513,12 @@ ns.Copy = {
             desc = L["Sells your grey items when you open a vendor."],
             label = L["Auto Sell Junk"],
             section = "qol.vendor",
+        },
+        ["qol.skipGossip"] = {
+            desc = L["Bankers, vendors, trainers, innkeepers and flight masters open their window at once when they have nothing else to say."],
+            label = L["Skip Gossip"],
+            section = "qol.convenience",
+            tip = L["Hold Shift to talk normally. It never skips in dungeons or raids."],
         },
         ["qol.source"] = {
             desc = L["Every other character copies its settings from this one."],

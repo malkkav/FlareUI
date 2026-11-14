@@ -331,6 +331,8 @@ local function CollectEntries()
     local compartment = AddonCompartmentFrame
     for _, data in ipairs(compartment and compartment.registeredAddons or {}) do
         local label = StripText(data.text)
+        -- FlareUI's own entry only while FlareUI Minimap Button is on (Bag.FlareOn)
+        if label == "FlareUI" and not Bag.FlareOn() then label = "" end
         if label ~= "" and not seen[label:lower()] and not AlreadyListed(data, label) then
             seen[label:lower()] = true
             known["compartment:" .. label] = label
@@ -412,18 +414,23 @@ function Bag.SetInDrawer(value)
     if ns.Minimap and ns.Minimap.UpdateFlareButton then ns.Minimap.UpdateFlareButton() end
 end
 
--- FlareUI itself (its compartment entry): out of the drawer, it gets a minimap button of its own
--- (Minimap.lua MM.UpdateFlareButton); its right-click puts it back here
+-- FlareUI itself (its compartment entry). (11-14, Marcus) FlareUI Minimap Button (minimap.flareButton,
+-- on) says whether FlareUI has a button at all; the drawer only says where: in it, unless unticked in
+-- Addons in the Drawer, then on the minimap (Minimap.lua MM.UpdateFlareButton). Off, it is in neither.
 local FLARE_ID = "compartment:FlareUI"   -- (the TOC title, as the compartment lists it)
-function Bag.FlareOut()
-    return Bag:IsOn() and Left(FLARE_ID)
-end
-function Bag.PutFlareBack()
+function Bag.FlareOn()
     local db = GetDb()
-    if db and type(db.bagLeave) == "table" then db.bagLeave[FLARE_ID] = nil end
-    if panel and panel:IsShown() then Bag:Layout() end
+    return db ~= nil and db.flareButton ~= false
+end
+-- FlareUI in the drawer right now
+function Bag.FlareIn()
+    return Bag.initialized and Bag:IsOn() and Bag.FlareOn() and not Left(FLARE_ID) or false
+end
+-- the option changed: the drawer redrawn if open, the minimap button shown or hidden
+function Bag.FlareChanged()
+    known[FLARE_ID] = nil   -- (CollectEntries puts it back while the option is on)
+    if panel and panel:IsShown() then Bag:Layout() else pcall(CollectEntries) end
     if ns.Minimap and ns.Minimap.UpdateFlareButton then ns.Minimap.UpdateFlareButton() end
-    if ns.SettingsPanel and ns.SettingsPanel.Refresh then pcall(ns.SettingsPanel.Refresh, ns.SettingsPanel) end
 end
 
 --------------------------------------------------

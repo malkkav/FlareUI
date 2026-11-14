@@ -26,7 +26,7 @@ Route('actions', 'ab', 'statusColours procGlow gryphonsBehind hideMacroText hide
 Route('xp', 'ab', 'xpBar xpText xpNumbers xpQuest xpBubbles')
 Route('frames', 'uf', 'main party raid boss castbar tot tof')
 Route('resources', 'rb', 'health power mana combo swingMain swingOff swingRanged seal flight')
-Route('bags', 'bl', 'bagColumns bagGaps bagButtons bagRarityBorders bagThickBorders bagJunkIcon bagUpgradeArrow petFood bagKeyring bagReagent')
+Route('bags', 'bl', 'bagColumns bagGaps bagButtons bagRarityBorders bagThickBorders bagJunkIcon petFood bagKeyring bagReagent')
 Route('nameplate', 'qol', 'npCombo npQuest npNames npLevel npLevelName npCombat')
 Route('reminders', 'au', 'reminders reminderGroup reminderBefore reminderConsumables reminderCamping reminderGathering reminderGlow reminderGlowExpiring')
 Route('lootFeed', 'bl', 'lootFeed lootFeedPosition lootFeedQuality lootFeedMoney lootFeedSkills')

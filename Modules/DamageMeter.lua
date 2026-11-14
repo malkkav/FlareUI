@@ -1620,7 +1620,7 @@ do
         local store = Store(layoutName)
         local pos = (store and store.point) and store or DEFAULTS
         f:ClearAllPoints()
-        f:SetPoint(pos.point, UIParent, pos.point, pos.x or 0, pos.y or 0)
+        f:SetPoint(pos.point, f:GetParent(), pos.point, pos.x or 0, pos.y or 0)
     end
     local function OnMoved(_, layoutName, point, x, y)
         local store = Store(layoutName)
@@ -1680,7 +1680,13 @@ do
         local meter = _G.DamageMeter
         if Solo.frame then return true end
         if not (meter and Source()) then return false end
-        local f = CreateFrame("Frame", "FlareUI_ThreatMeter", meter)
+        -- (11-14, a player's report: it snapped with Snap off, the arrow keys moved it diagonally, and
+        -- it moved after /reload) Edit Mode measures and anchors a frame against its parent, and the
+        -- meter is far smaller than the screen it was placed on. A screen-sized holder under the meter
+        -- keeps it hiding with the meter and gives Edit Mode the whole screen.
+        local holder = CreateFrame("Frame", nil, meter)
+        holder:SetAllPoints(UIParent)
+        local f = CreateFrame("Frame", "FlareUI_ThreatMeter", holder)
         f:SetClampedToScreen(true)
         local skin = CreateFrame("Frame", nil, f, "BackdropTemplate")
         skin:SetPoint("TOPLEFT", f, "TOPLEFT", -SKIN_PADDING, SKIN_PADDING)

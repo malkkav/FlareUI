@@ -2055,6 +2055,17 @@ local function InitAutoQuests()
     end
 
     local TAXI_ICON = 132057   -- the flight master's gossip icon (Interface\GossipFrame\TaxiGossipIcon)
+    -- Skip Gossip's icons, looked up by name once (a missing file gives nil and is left out)
+    function Tweaks.IsServiceGossip(option)
+        if not Tweaks.serviceIcons then
+            Tweaks.serviceIcons = { [TAXI_ICON] = true }
+            for _, name in ipairs({ "Banker", "Binder", "Taxi", "Trainer", "Vendor", "Tabard", "Petition", "BattleMaster" }) do
+                local id = GetFileIDFromPath and GetFileIDFromPath("Interface/GossipFrame/" .. name .. "GossipIcon")
+                if id then Tweaks.serviceIcons[id] = true end
+            end
+        end
+        return Tweaks.serviceIcons[option.overrideIconID or option.icon] or false
+    end
     local handlers = {}
     function handlers.GOSSIP_SHOW()
         if On("autoTurnInQuests") then
@@ -2073,6 +2084,21 @@ local function InitAutoQuests()
                 end
             end
         end
+        -- Skip Gossip (11-14, a player's request): an NPC with nothing to say but one service (banker,
+        -- vendor, trainer, innkeeper...) opens it at once, as Blizzard already does for options it marks.
+        -- Not in instances (a lone option there can start an event), never twice in one talk, Shift
+        -- talks normally. Only service icons count: a chat option can lead anywhere.
+        if On("skipGossip") and not IsInInstance() and #C_GossipInfo.GetAvailableQuests() == 0 and #C_GossipInfo.GetActiveQuests() == 0 then
+            local options = C_GossipInfo.GetOptions() or {}
+            local option = #options == 1 and options[1]
+            if option and option.gossipOptionID and Tweaks.IsServiceGossip(option)
+                and (not Enum.GossipOptionStatus or option.status == Enum.GossipOptionStatus.Available)
+                and Tweaks.gossipPicked ~= option.gossipOptionID then
+                Tweaks.gossipPicked = option.gossipOptionID
+                C_GossipInfo.SelectOption(option.gossipOptionID)
+                return
+            end
+        end
         -- a flight master with nothing else to say opens the flight map at once (Shift talks normally)
         if On("taxiMap") and #C_GossipInfo.GetAvailableQuests() == 0 and #C_GossipInfo.GetActiveQuests() == 0 then
             for _, option in ipairs(C_GossipInfo.GetOptions() or {}) do
@@ -2083,6 +2109,8 @@ local function InitAutoQuests()
             end
         end
     end
+    -- (a new talk may pick again)
+    function handlers.GOSSIP_CLOSED() Tweaks.gossipPicked = nil end
     function handlers.QUEST_GREETING()
         if On("autoTurnInQuests") then
             for i = 1, GetNumActiveQuests() do
@@ -2444,7 +2472,10 @@ end
 local function NoteCharacter()
     local me = ns.CharDB and ns.CharDB()
     if not me then return end
-    me.mailName = UnitName("player")
+    -- first name and surname: Forever's mail needs both, and UnitName gives them apart (11-14, a
+    -- player's report: Your Characters filled in the first name only)
+    local name, surname = UnitName("player")
+    me.mailName = (type(surname) == "string" and surname ~= "") and (name .. " " .. surname) or name
     me.realm = GetRealmName()
     me.faction = UnitFactionGroup("player")
     me.class = select(2, UnitClass("player"))

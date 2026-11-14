@@ -9,7 +9,7 @@ local L = ns.L
 --   * Integrated bag buttons: the four bag slots down the combined backpack's side
 --   * Category Filters: a button beside the cleanup button opens a drawer of categories; the one
 --     picked dims every other item (section 4b; the dimming after parchinskiy's PR #22)
---   * Thicker borders, Rarity colours, Junk coin and Upgrade arrow: drawn on an overlay of each item
+--   * Thicker borders, Rarity colours and Junk coin: drawn on an overlay of each item
 -- Every option is off by default, and off leaves Blizzard's windows as they are, except the slot
 -- borders: FlareUI Thin round every slot always. When another bag addon owns the windows, nothing
 -- here runs.
@@ -531,7 +531,6 @@ end
 -- borders swaps it for FlareUI Thick. Bronze, or with Rarity colours the item's exact quality colour
 -- (grey to orange; empty slots and items dimmed by a filter stay bronze).
 -- Junk coin: grey items worth money show Blizzard's coin always, not only at a vendor.
--- Upgrade arrow: gear that beats what you wear shows Blizzard's green arrow in the bottom right.
 --------------------------------------------------
 -- edge size and outset per border: each art's bright band lands on the slot's edge
 local BORDERS = { thin = { "FlareUI Thin", 8, 3 }, thick = { "FlareUI Thick", 16, 2 } }
@@ -605,10 +604,6 @@ local function GetOverlay(button)
     ov.junk:SetAtlas("bags-junkcoin", true)
     ov.junk:SetPoint("TOPLEFT", 1, 0)
     ov.junk:Hide()
-    ov.upgrade = ov:CreateTexture(nil, "OVERLAY", nil, 7)
-    ov.upgrade:SetAtlas("bags-greenarrow", true)
-    ov.upgrade:SetPoint("BOTTOMRIGHT", -1, 1)
-    ov.upgrade:Hide()
     -- Item Level (bottom left) and Uncollected Appearance (top right, across from the junk coin)
     ov.ilvl = ov:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     ov.ilvl:SetPoint("BOTTOMLEFT", 2, 2)
@@ -660,206 +655,11 @@ local function RefreshItemFilter()
             local info = bagID and slotID and C_Container.GetContainerItemInfo(bagID, slotID)
             UpdateItemFilter(button, ov, bagID, slotID, info)
             local dimmed = dimmedIcons[button]
-            if db and db.bagRarityBorders and wasDimmed ~= dimmed then
+            if db and db.bagSkinSlots ~= false and db.bagRarityBorders and wasDimmed ~= dimmed then
                 UpdateItemBorder(ov, db, info and info.quality, dimmed)
             end
         end
     end
-end
-
--- Upgrade arrow: Forever has no "is an upgrade" check (Blizzard's flyout asks for one that is never
--- filled), so FlareUI scores items itself with light stat weights: your main stat counts 1, Stamina 0.5,
--- secondary ratings 0.4, armour a tie-breaker. Only gear the tooltip doesn't mark red (wrong armour
--- type, level, class) counts, and it is compared with what you wear there (the weaker of two rings,
--- trinkets or dual-wielded weapons; both hands against a two-hander).
--- 11-10 (a level 15 warrior saw the arrow on grey cloth bracers over green mail ones), after EnhanceQoL's
--- Forever rules (the idea only): a worn item whose stats can't be read blocks the arrow instead of
--- scoring 0; the game's own C_PlayerInfo.CanUseItem decides what can be worn (the red tooltip as a
--- fallback); and armour (cloth to plate, shields, cloaks) is only an upgrade when it loses no stat,
--- its armour included, against the piece it replaces.
-local Upgrade = { score = {}, usable = {}, stats = {} }
-Bags.Upgrade = Upgrade
-
-local STAT_KEY = { [1] = "ITEM_MOD_STRENGTH_SHORT", [2] = "ITEM_MOD_AGILITY_SHORT", [4] = "ITEM_MOD_INTELLECT_SHORT" }
--- the main stats a class can use; hybrids take the one the character has most of
-local CLASS_STATS = {
-    WARRIOR = { 1 }, PALADIN = { 1, 4 }, DEATHKNIGHT = { 1 }, HUNTER = { 2 }, ROGUE = { 2 }, DEMONHUNTER = { 2 },
-    SHAMAN = { 2, 4 }, DRUID = { 2, 4 }, MONK = { 2, 4 }, PRIEST = { 4 }, MAGE = { 4 }, WARLOCK = { 4 }, EVOKER = { 4 },
-}
-local SLOTS = {
-    INVTYPE_HEAD = { 1 }, INVTYPE_NECK = { 2 }, INVTYPE_SHOULDER = { 3 }, INVTYPE_CHEST = { 5 }, INVTYPE_ROBE = { 5 },
-    INVTYPE_WAIST = { 6 }, INVTYPE_LEGS = { 7 }, INVTYPE_FEET = { 8 }, INVTYPE_WRIST = { 9 }, INVTYPE_HAND = { 10 },
-    INVTYPE_FINGER = { 11, 12 }, INVTYPE_TRINKET = { 13, 14 }, INVTYPE_CLOAK = { 15 },
-    INVTYPE_WEAPON = { 16, 17 }, INVTYPE_2HWEAPON = { 16 }, INVTYPE_WEAPONMAINHAND = { 16 },
-    INVTYPE_WEAPONOFFHAND = { 17 }, INVTYPE_SHIELD = { 17 }, INVTYPE_HOLDABLE = { 17 },
-    -- Forever keeps the ranged slot (18) apart from the hands
-    INVTYPE_RANGED = { 18 }, INVTYPE_RANGEDRIGHT = { 18 }, INVTYPE_THROWN = { 18 }, INVTYPE_RELIC = { 18 },
-}
--- off-hand items that are not weapons: a one-hander is never weighed against them
-local OFF_HAND_GEAR = { INVTYPE_SHIELD = true, INVTYPE_HOLDABLE = true }
-
--- the item without its enchant or gems: what it is, not what was added to it (random suffixes stay)
-local function BaseLink(link)
-    return (link:gsub("(|Hitem:%d+):[^:|]*:[^:|]*:[^:|]*:[^:|]*:[^:|]*", "%1:::::"))
-end
-
-function Upgrade:MainStat()
-    if self.mainStat then return self.mainStat end
-    local spec = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization and C_SpecializationInfo.GetSpecialization()
-    if spec and spec > 0 then
-        local primary = select(6, C_SpecializationInfo.GetSpecializationInfo(spec))
-        if STAT_KEY[primary] then self.mainStat = primary return primary end
-    end
-    local best, bestValue = 4, -1
-    for _, stat in ipairs(CLASS_STATS[select(2, UnitClass("player"))] or { 1, 2, 4 }) do
-        local value = UnitStat("player", stat) or 0
-        if value > bestValue then best, bestValue = stat, value end
-    end
-    self.mainStat = best
-    return best
-end
-
-function Upgrade:Score(link)
-    if not link then return nil end
-    local original = link
-    link = BaseLink(link)
-    local cached = self.score[link]
-    if cached then return cached end
-    -- an uncached item has no stats yet: asked for, and scored on a later pass
-    local itemID = C_Item.GetItemInfoInstant(link)
-    if itemID and not C_Item.IsItemDataCachedByID(itemID) then C_Item.RequestLoadItemDataByID(itemID) return nil end
-    -- the full link (a random suffix's stats come with it); none read yet is "unknown", not 0
-    local stats = C_Item.GetItemStats(original)
-    if not stats or next(stats) == nil then return nil end
-    self.stats[link] = stats
-    local main = self:MainStat()
-    local physical = main ~= 4
-    local score, damage, healing = 0, 0, 0
-    for key, value in pairs(stats) do
-        if type(value) == "number" then
-            local w = 0
-            if key == STAT_KEY[main] then w = 1
-            elseif key == "ITEM_MOD_STAMINA_SHORT" then w = 0.5
-            elseif key == "ITEM_MOD_DAMAGE_PER_SECOND_SHORT" then w = physical and 2 or 0
-            elseif key == "ITEM_MOD_ATTACK_POWER_SHORT" then w = physical and 0.5 or 0
-            elseif key == "ITEM_MOD_SPELL_POWER_SHORT" then w = physical and 0 or 1
-            elseif key == "RESISTANCE0_NAME" then w = 0.001
-            elseif key:find("RATING", 1, true) or key:find("VERSATILITY", 1, true) then w = 0.4
-            elseif not physical then
-                -- caster gear: healing and spell damage (one school counts half), mana per 5 and Spirit
-                if key:find("HEALING_DONE", 1, true) then healing = healing + value
-                elseif key == "ITEM_MOD_SPELL_DAMAGE_DONE_SHORT" then damage = damage + value
-                elseif key:find("_DAMAGE_DONE", 1, true) then damage = damage + value * 0.5
-                elseif key:find("POWER_REGEN0", 1, true) then w = 2
-                elseif key == "ITEM_MOD_SPIRIT_SHORT" then w = 0.3
-                end
-            end
-            score = score + value * w
-        end
-    end
-    -- a healer and a damage caster each want one of the two: the bigger one counts
-    score = score + math_max(damage, healing)
-    self.score[link] = score
-    return score
-end
-
-local function IsRed(color)
-    return color and color.r and color.r > 0.95 and color.g < 0.2 and color.b < 0.2
-end
-
--- the tooltip marks what this character can't wear in red
-function Upgrade:CanWear(bagID, slotID, link)
-    local known = self.usable[link]
-    if known ~= nil then return known end
-    -- the game's answer first: proficiency, level and class
-    local itemID = C_Item.GetItemInfoInstant(link)
-    if itemID and C_PlayerInfo and C_PlayerInfo.CanUseItem then
-        local ok, can = pcall(C_PlayerInfo.CanUseItem, itemID)
-        if ok and can == false then
-            self.usable[link] = false
-            return false
-        end
-    end
-    local ok, data = pcall(C_TooltipInfo.GetBagItem, bagID, slotID)
-    if not ok or not data or not data.lines then return nil end
-    local wear = true
-    for _, line in ipairs(data.lines) do
-        if IsRed(line.leftColor) or IsRed(line.rightColor) then wear = false break end
-    end
-    self.usable[link] = wear
-    return wear
-end
-
-local function EquippedScore(slot)
-    local link = GetInventoryItemLink("player", slot)
-    if not link then return 0, true end
-    -- not loaded yet, or its stats unreadable: no arrow (it would count as an empty slot)
-    return Upgrade:Score(link) or math.huge, false
-end
-
--- armour: cloth, leather, mail, plate, shields (cloaks are cloth)
-local ARMOUR = { [1] = true, [2] = true, [3] = true, [4] = true, [6] = true }
--- no stat lower than on the worn piece, its armour included (an upgrade, not a trade-off)
-function Upgrade:LosesNothing(link, slot)
-    local worn = GetInventoryItemLink("player", slot)
-    if not worn then return true end
-    local mine, theirs = self.stats[BaseLink(link)], self.stats[BaseLink(worn)]
-    if not (mine and theirs) then return false end
-    for stat, value in pairs(theirs) do
-        if type(value) == "number" and value > (mine[stat] or 0) then return false end
-    end
-    return true
-end
-
--- true when the bag item beats what is worn in its slot
-function Upgrade:Is(bagID, slotID, link)
-    local equipLoc = select(4, C_Item.GetItemInfoInstant(link))
-    local slots = SLOTS[equipLoc]
-    if not slots then return false end
-    if not self:CanWear(bagID, slotID, link) then return false end
-    local score = self:Score(link)
-    if not score then return false end
-    if equipLoc == "INVTYPE_2HWEAPON" then
-        local main, mainEmpty = EquippedScore(16)
-        local off = EquippedScore(17)
-        return mainEmpty or score > main + off
-    end
-    if equipLoc == "INVTYPE_WEAPON" then
-        -- a one-hander only weighs against the off hand when a weapon is held there (never a shield)
-        local offLink = GetInventoryItemLink("player", 17)
-        local offGear = offLink and OFF_HAND_GEAR[select(4, C_Item.GetItemInfoInstant(offLink))]
-        if offGear or not (CanDualWield and CanDualWield()) then slots = { 16 } end
-    end
-    -- with a two-hander on, the off hand is not free
-    local mainLink = GetInventoryItemLink("player", 16)
-    local twoHanded = mainLink and select(4, C_Item.GetItemInfoInstant(mainLink)) == "INVTYPE_2HWEAPON"
-    if twoHanded and (slots[1] == 16 or slots[1] == 17) then
-        if slots[1] == 17 then return false end
-        slots = { 16 }
-    end
-    local worst, empty, worstSlot
-    for _, slot in ipairs(slots) do
-        local s, isEmpty = EquippedScore(slot)
-        if isEmpty then empty = true end
-        if not worst or s < worst then worst, worstSlot = s, slot end
-    end
-    if empty then return true end
-    if not (score > worst) then return false end
-    local classID, subclassID = select(6, C_Item.GetItemInfoInstant(link))
-    if classID == 4 and ARMOUR[subclassID] and worstSlot and not self:LosesNothing(link, worstSlot) then return false end
-    return true
-end
-
--- talents, level and new gear change the answers
-function Upgrade:Reset(full)
-    self.mainStat = nil
-    if full then wipe(self.usable) end
-    wipe(self.score)
-    wipe(self.stats)
-end
-
-local function ShowUpgrade(ov, bagID, slotID, link)
-    if Upgrade:Is(bagID, slotID, link) then ov.upgrade:Show() end
 end
 
 -- ITEM LEVEL AND UNCOLLECTED APPEARANCE (11-13, a player's request): read once per item link, the
@@ -924,9 +724,9 @@ local function ShowItemLevel(ov, level, quality)
     ov.ilvl:Show()
 end
 
--- what needs the item's data: the upgrade arrow, its level, its appearance
+-- what needs the item's data: its level, its appearance. (11-14, Marcus) The Upgrade Arrow is gone:
+-- its stat guesses made bad suggestions; Pawn and other addons do it properly.
 local function ShowItemData(ov, db, bagID, slotID, link, quality)
-    if db.bagUpgradeArrow then ShowUpgrade(ov, bagID, slotID, link) end
     if db.bagItemLevel then
         local level = ItemLevelOf(link)
         if level then ShowItemLevel(ov, level, quality) end
@@ -1000,36 +800,39 @@ function Bags.StyleIconTexts(button, db)
     if cooldown and cooldown.GetCountdownFontString then StyleIconText(cooldown:GetCountdownFontString(), db.bagItemFont) end
 end
 
--- info: the slot's item (C_Container's, or a settings preview's made-up one, whose sampleUpgrade
--- stands for the upgrade check)
+-- info: the slot's item (C_Container's, or a settings preview's made-up one)
 function Bags.DecorateButton(button, db, info, bagID, slotID)
     Bags.StyleIconTexts(button, db)
-    local junk, upgrade = db.bagJunkIcon, db.bagUpgradeArrow
+    local junk = db.bagJunkIcon
     local ov = GetOverlay(button)
     ov:Show()
     ov.border:Hide()
     ov.junk:Hide()
-    ov.upgrade:Hide()
     ov.ilvl:Hide()
     ov.eye:Hide()
 
     if not button.fuiSample then UpdateItemFilter(button, ov, bagID, slotID, info) end
     local quality = info and info.quality
 
-    if button.IconBorder then button.IconBorder:SetAlpha(0) end
-    UpdateItemBorder(ov, db, quality, dimmedIcons[button])
+    -- Skin Item Slots (tweaks.bagSkinSlots, on; 11-14, a player whose bag skin's slots the border
+    -- didn't fit): off, Blizzard's own quality border stays and FlareUI draws none
+    if db.bagSkinSlots ~= false then
+        if button.IconBorder then button.IconBorder:SetAlpha(0) end
+        UpdateItemBorder(ov, db, quality, dimmedIcons[button])
+    elseif button.IconBorder then
+        button.IconBorder:SetAlpha(1)
+    end
 
     if not info then return end
     if junk and quality == Enum.ItemQuality.Poor and not info.hasNoValue then ov.junk:Show() end
     if button.fuiSample then
-        if upgrade and info.sampleUpgrade then ov.upgrade:Show() end
         if db.bagItemLevel and info.sampleItemLevel then
-            StyleIconText(ov.ilvl, db.bagItemFont)
+            StyleIconText(ov.ilvl, db.bagItemLevelFont)
             ShowItemLevel(ov, info.sampleItemLevel, quality)
         end
         if db.bagUncollected and info.sampleUncollected then ov.eye:Show() end
-    elseif (upgrade or db.bagItemLevel or db.bagUncollected) and info.hyperlink then
-        if db.bagItemLevel then StyleIconText(ov.ilvl, db.bagItemFont) end
+    elseif (db.bagItemLevel or db.bagUncollected) and info.hyperlink then
+        if db.bagItemLevel then StyleIconText(ov.ilvl, db.bagItemLevelFont) end
         local link = info.hyperlink
         if C_Item.IsItemDataCachedByID(info.itemID) then
             ShowItemData(ov, db, bagID, slotID, link, quality)
@@ -1418,16 +1221,6 @@ function Bags:Init()
             FillExtras()
         end
     end)
-    -- new gear, a level or a talent change re-scores the Upgrade arrow; a level, a new weapon skill or
-    -- a repair also asks again what can be worn
-    local RE_ASK_WEAR = { PLAYER_LEVEL_UP = true, SKILL_LINES_CHANGED = true, UPDATE_INVENTORY_DURABILITY = true }
-    local events = CreateFrame("Frame")
-    for _, event in ipairs({ "PLAYER_EQUIPMENT_CHANGED", "PLAYER_LEVEL_UP", "PLAYER_SPECIALIZATION_CHANGED",
-        "CHARACTER_POINTS_CHANGED", "SKILL_LINES_CHANGED", "UPDATE_INVENTORY_DURABILITY" }) do
-        pcall(events.RegisterEvent, events, event)
-    end
-    -- durability never changes an item's stats, only what can be worn; one refresh per frame
-    local queued = false
     -- a newly learned appearance takes its eye off every item with that look
     local wardrobe = CreateFrame("Frame")
     for _, event in ipairs({ "TRANSMOG_COLLECTION_UPDATED", "TRANSMOG_COLLECTION_SOURCE_ADDED", "TRANSMOG_COLLECTION_SOURCE_REMOVED" }) do
@@ -1441,16 +1234,6 @@ function Bags:Init()
         wardrobeQueued = true
         C_Timer.After(0.2, function()
             wardrobeQueued = false
-            Bags:Refresh()
-        end)
-    end)
-    events:SetScript("OnEvent", function(_, event)
-        if event == "UPDATE_INVENTORY_DURABILITY" then wipe(Upgrade.usable) else Upgrade:Reset(RE_ASK_WEAR[event]) end
-        local db = GetDb()
-        if not (db and db.bagUpgradeArrow) or queued then return end
-        queued = true
-        C_Timer.After(0, function()
-            queued = false
             Bags:Refresh()
         end)
     end)
@@ -1513,7 +1296,7 @@ end
 --------------------------------------------------
 -- 5. SETTINGS PREVIEW SAMPLE
 -- A made-up combined backpack: Blizzard's bag frame art, plain item buttons with made-up items laid
--- out and decorated by the code above (columns, gaps, borders, junk coin, upgrade arrow), the
+-- out and decorated by the code above (columns, gaps, borders, junk coin), the
 -- keyring and crafting bag sections, the round bag buttons down the side and the money line.
 -- No secure buttons, no events, nothing in the module's lists.
 --------------------------------------------------
@@ -1528,7 +1311,7 @@ do
         } },
         { bag = 0, slots = 16, items = {
             [1] = { icon = ICON .. "INV_Misc_Rune_01", quality = 1 },
-            [2] = { icon = ICON .. "INV_Sword_04", quality = 2, upgrade = true, ilvl = 24 },
+            [2] = { icon = ICON .. "INV_Sword_04", quality = 2, ilvl = 24 },
             [3] = { icon = ICON .. "INV_Chest_Cloth_17", quality = 3, ilvl = 31, uncollected = true },
             [4] = { icon = ICON .. "INV_Jewelry_Ring_15", quality = 4, ilvl = 40 },
             [5] = { icon = ICON .. "INV_Misc_Food_15", quality = 1, count = 20, petFood = true },
@@ -1576,7 +1359,7 @@ do
     local function Fill(b, item, db)
         SetItemButtonTexture(b, item and item.icon)
         SetItemButtonCount(b, item and item.count)
-        local info = item and { quality = item.quality, sampleUpgrade = item.upgrade,
+        local info = item and { quality = item.quality,
                                 sampleItemLevel = item.ilvl, sampleUncollected = item.uncollected } or nil
         Bags.DecorateButton(b, db, info)
         b.paw:SetShown(item and item.petFood and db.petFood and true or false)
@@ -1770,7 +1553,7 @@ do
         local fs = Label(button)
         fs:Hide()
         if not (link and Wanted()) then return end
-        StyleIconText(fs, GetDb().bagItemFont)
+        StyleIconText(fs, GetDb().bagItemLevelFont)
         local itemID = GetInventoryItemID("player", slotID)
         if itemID and not C_Item.IsItemDataCachedByID(itemID) then
             -- not in the cache yet: once it is

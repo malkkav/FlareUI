@@ -514,6 +514,7 @@ local defaults = {
             style = "square",
             squareHeader = "headerless", -- Header (square style): headerless | art (Minimap.lua HEADER_STYLES, 11-13)
             autoZoom = 5,               -- seconds before zooming back out (0 = off)
+            flareButton = true,         -- FlareUI Minimap Button: FlareUI's own button, on the map or in the drawer (Minimap.lua MM.UpdateFlareButton)
             buttonBag = true,           -- the badge opens a bag with every addon's minimap button (MinimapBag.lua)
             bagHover = false,           -- Open on Mouseover: pointing at the badge opens the bag (MinimapBag.lua)
             clockStats = true,          -- framerate and latency in the clock's tooltip
@@ -875,13 +876,14 @@ local defaults = {
             -- Bag Items font (Bags.lua StyleIconTexts): stack counts and cooldown numbers; face "" keeps Blizzard's
             bagItemFont = { face = "", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             -- Free Bag Slots font: the count on the backpack button; face "" keeps Blizzard's (11-12)
+            bagItemLevelFont = { face = "", size = 12, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },   -- Item Level's numbers (bags and character sheet)
             bagFreeSlotsFont = { face = "", size = 16, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             -- the gold, silver and copper at the bags' foot (11-13): "" keeps Blizzard's font
             bagMoneyFont = { face = "", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
+            bagSkinSlots = true,        -- Skin Item Slots: FlareUI's border on the slots (off: Blizzard's own, for bag skins)
             bagThickBorders = false,    -- FlareUI Thick in place of the always-on Thin border
             bagRarityBorders = false,   -- slot borders in the item's quality colour
             bagJunkIcon = false,        -- the junk coin on grey items always, not only at a vendor
-            bagUpgradeArrow = false,    -- green arrow on gear that beats what you wear (Bags.lua Upgrade)
             bagItemLevel = false,       -- Item Level: weapons' and armour's level, bottom left (11-13)
             bagUncollected = false,     -- Uncollected Appearance: an eye, top right (11-13)
             hideErrors = false,
@@ -898,6 +900,8 @@ local defaults = {
             rumbleAlerts = false,       -- Rumble on alerts: the controller rumbles for ready checks, queue invites ...
             rumbleProcs = false,        -- Rumble on procs: a short rumble when a spell lights up
             mapFade = false,            -- Fade Map While Moving: Blizzard's mapFade CVar
+            skipGossip = false,         -- Skip Gossip: a lone banker / vendor / trainer... option is picked at once (Tweaks.lua GOSSIP_SHOW)
+            deleteJunkWhenFull = false, -- Delete Junk When Full: bags full, a loot click deletes the cheapest grey item first (JunkDelete.lua)
             taxiMap = false,            -- Open Flight Map at Once: a flight master with no quests skips its talk
             fishCast = false,           -- Double-click to fish: a second right-click casts with a pole in hand
             fishSound = false,          -- Fishing sounds: music and ambience down, effects up while fishing

@@ -1078,7 +1078,7 @@ end
 
 -- An Essential or Utility cooldown icon, as the action buttons with FlareUI Borders (ActionBars.lua
 -- 6b, 11-11 Marcus): Blizzard's ring off and FlareUI Frames on the icon's edge, the rest Blizzard's
-CDM.BUTTON_BORDER, CDM.BUTTON_EDGE = "FlareUI Frames", 16
+CDM.BUTTON_BORDER, CDM.BUTTON_EDGE, CDM.BUTTON_SIZE = "FlareUI Frames", 16, 50   -- (Essential's icon size)
 function CDM.StyleCooldownIcon(item)
     local p = CDM.Pieces(item)
     for _, region in ipairs({ item:GetRegions() }) do
@@ -1089,7 +1089,11 @@ function CDM.StyleCooldownIcon(item)
     b:ClearAllPoints()
     b:SetAllPoints(item)
     local file = LibStub("LibSharedMedia-3.0"):Fetch("border", CDM.BUTTON_BORDER)
-    b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, CDM.BUTTON_EDGE) })
+    -- (11-14, a player's report: Essential and Utility looked like two borders) the edge follows the
+    -- icon's size: Utility icons are 30 px to Essential's 50, and a 16 px edge covered most of them
+    local width = item:GetWidth()
+    local share = (width and width > 0) and math.min(1, width / CDM.BUTTON_SIZE) or 1
+    b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, math.floor(CDM.BUTTON_EDGE * share + 0.5)) })
     local c = ns.BORDER_COLOR
     b:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
     -- over the cooldown swipe

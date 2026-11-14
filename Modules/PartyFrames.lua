@@ -1243,7 +1243,8 @@ local function ConfigurePosition(f, pos, lanes)
     end
     ns.AuraGroups.Finish(container, entry)
     PlaceAuraContainer(f, pos, container, size, perRow)
-    container:SetFrameLevel(f:GetFrameLevel() + 6)
+    -- (FlareUI Style lifts them over the ring's elite art: f.auraLift, UnitFramesRing.lua Ring.Layout)
+    container:SetFrameLevel(f:GetFrameLevel() + (f.auraLift or 6))
     -- the portrait's grid: over it and under the ready check (the ring's icons: +11)
     if portrait then container:SetFrameLevel(f:GetFrameLevel() + (f.ringKind and 10 or 7)) end
     pcall(container.SetEnabled, container, true)

@@ -1658,6 +1658,7 @@ local AIM_SNIPPET = ([[
     local state = GetGamePadState()
     local stick = state and state.sticks and state.sticks[control:GetAttribute("flare-padstick") or 2]
     if not stick then return false end
+    if control:GetAttribute("flare-padlog") then control:CallMethod("OnSecureAimLog", button, down, stick.len, next(HELD) or "", STICKY or 0) end
     if stick.len >= %s then
         local interval = 2 * math.pi / count
         local angle = math.atan2(stick.y, stick.x)
@@ -2029,6 +2030,13 @@ local function CreateSecureLayer()
     aimButton:SetAttribute("pressAndHoldAction", false)
     SecureHandlerWrapScript(aimButton, "OnClick", header, AIM_SNIPPET, CLEAR_SNIPPET)
     header.OnSecureSticky = function(_, index) padSticky = index end
+    -- /fui padlog (11-14): each right-stick direction event while a controller radial is open, for
+    -- "Release the stick to use" reports: which key, press or release, how far out, what is still held
+    header.OnSecureAimLog = function(_, button, down, len, held, sticky)
+        print(("FlareUI pad: %s %s  stick %.2f  held %s  aim %s  release-to-use %s"):format(tostring(button),
+            down and "down" or "up", len or 0, held ~= "" and tostring(held) or "-", tostring(sticky),
+            header:GetAttribute("flare-padrelease") and "on" or "off"))
+    end
     -- the button a controller radial used last (Press again to repeat lights it when nothing is aimed)
     header.OnSecureLast = function(_, radialID, prefix)
         local index = prefix and tonumber(prefix:match("%-s(%d+)%-%d+%-$"))
@@ -2953,6 +2961,14 @@ function RM.UpdateTriggerSticks()
 end
 
 -- Release the stick to use (store.padRelease): on unless switched off
+-- /fui padlog: the aim log on or off (out of combat: a secure attribute)
+function RM.PadLogCommand()
+    if not header or InCombatLockdown() then print("FlareUI: try again out of combat.") return end
+    local on = not header:GetAttribute("flare-padlog")
+    header:SetAttribute("flare-padlog", on or nil)
+    print("FlareUI pad log " .. (on and "on" or "off"))
+end
+
 function RM:IsPadReleaseOn()
     local store = GetStore()
     return store ~= nil and store.padRelease ~= false

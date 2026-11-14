@@ -45,26 +45,11 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }   -- 11-10 regr
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["au.font.count"] = "6.4",
-    ["au.font.timer"] = "6.4",
-    ["br.font.counts"] = "6.4",
-    ["br.font.time"] = "6.4",
-    ["dm.threatVisibility"] = "6.4",
-    ["mm.font.clock"] = "6.4",
-    ["mm.font.info"] = "6.4",
-    ["mm.font.zone"] = "6.4",
-    ["qt.font.header"] = "6.4",
-    ["qt.font.objectives"] = "6.4",
-    ["qt.font.titles"] = "6.4",
-    ["rb.font.text"] = "6.4",
-    ["uf.font.auraCount"] = "6.4",
-    ["uf.font.auras"] = "6.4",
-    ["uf.font.cast"] = "6.4",
-    ["uf.font.castTime"] = "6.4",
-    ["uf.font.health"] = "6.4",
-    ["uf.font.level"] = "6.4",
-    ["uf.font.names"] = "6.4",
-    ["uf.font.power"] = "6.4",
+    ["bl.bagSkinSlots"] = "6.5",
+    ["bl.font.itemLevel"] = "6.5",
+    ["mm.flareButton"] = "6.5",
+    ["qol.deleteJunkFull"] = "6.5",
+    ["qol.skipGossip"] = "6.5",
 }
 
 --------------------------------------------------

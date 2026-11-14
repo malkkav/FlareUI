@@ -49,16 +49,44 @@ function ns.HomeLayout()
     return p.homeLayout
 end
 
--- A layout's store (layouts[name], made if missing), reading the home layout's for what it lacks
-local fallbackMeta = setmetatable({}, { __mode = "k" })   -- home store -> its metatable
+-- The other layout in this store list with the most spots saved
+local function FullestOther(layouts, name)
+    local best, most = nil, 0
+    for other, store in pairs(layouts) do
+        if other ~= name and type(store) == "table" then
+            local n = 0
+            for _ in pairs(store) do n = n + 1 end
+            if n > most then best, most = store, n end
+        end
+    end
+    return best
+end
+
+-- A layout's store (layouts[name], made if missing), reading the home layout's for what it lacks.
+-- (11-14, a player's report: switching between two layouts sent the XP bar and party frames back to
+-- their defaults) Moving one frame in a second layout made it the home, and the home read nothing:
+-- every frame never moved there sat at its default. The home now reads the previous home's spots
+-- (or, when no previous home was kept, the fullest other layout's). Reads go one level only (rawget),
+-- so two layouts reading each other never loop.
+local fallbackMeta = setmetatable({}, { __mode = "k" })   -- source store -> its metatable
 function ns.LayoutHome(layouts, name)
     layouts[name] = layouts[name] or {}
     local store = layouts[name]
     local home = ns.HomeLayout()
     local from = home and home ~= name and rawget(layouts, home)
+    if type(from) ~= "table" then
+        local p = ns.db and ns.db.profile
+        local prev = p and p.homeLayoutPrev
+        from = type(prev) == "string" and prev ~= name and rawget(layouts, prev)
+        if type(from) ~= "table" then from = FullestOther(layouts, name) end
+    end
     if type(from) == "table" then
         local meta = fallbackMeta[from]
-        if not meta then meta = { __index = from }; fallbackMeta[from] = meta end
+        if not meta then
+            local source = from
+            meta = { __index = function(_, key) return rawget(source, key) end }
+            fallbackMeta[from] = meta
+        end
         setmetatable(store, meta)
     else
         setmetatable(store, nil)
@@ -69,7 +97,10 @@ end
 -- every FlareUI frame moved in Edit Mode: that layout is the profile's home
 LEM.onAnyMove = function(layoutName)
     local p = ns.db and ns.db.profile
-    if p and type(layoutName) == "string" then p.homeLayout = layoutName end
+    if not (p and type(layoutName) == "string") then return end
+    local old = ns.HomeLayout()
+    if old and old ~= layoutName then p.homeLayoutPrev = old end
+    p.homeLayout = layoutName
 end
 
 --------------------------------------------------

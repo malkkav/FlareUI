@@ -38,6 +38,9 @@ S:Module{
 -- Convenience first, in pairs: quests, the map, NPCs, then fishing
 S:Row{ key = "qol.autoAcceptQuests", half = true, tab = "gameplay", path = "tweaks.autoAcceptQuests" }
 S:Row{ key = "qol.autoTurnInQuests", half = true, tab = "gameplay", path = "tweaks.autoTurnInQuests" }
+-- (11-14, a player's request) the lone banker / vendor / trainer option, and room for loot when the bags are full
+S:Row{ key = "qol.skipGossip", half = true, tab = "gameplay", path = "tweaks.skipGossip" }
+S:Row{ key = "qol.deleteJunkFull", half = true, tab = "gameplay", path = "tweaks.deleteJunkWhenFull" }
 S:Row{ key = "qol.way", half = true, tab = "gameplay", path = "tweaks.way", reload = true, disabled = WayTaken }
 S:Row{ key = "qol.mapFade", half = true, tab = "gameplay", path = "tweaks.mapFade", apply = Refresh }
 S:Row{ key = "qol.taxiMap", half = true, tab = "gameplay", path = "tweaks.taxiMap" }

@@ -2122,6 +2122,194 @@ local function OnTabDragStop(self)
     MoveDockedWindow(self.chatFrame, target and target.chatFrame)
 end
 
+-- SECURE TAB CLICKS (11-14). A FlareUI tab used to call FCF_Tab_OnClick from addon code. That tainted
+-- the dock's selected window, so Blizzard's own dock update (a whisper window opening, a tab switch)
+-- later ran tainted in a fight and its ChatFrame1:Hide was blocked: chat vanished until /reload. The
+-- chat window is protected only when a protected frame is tied to it (an Edit Mode frame snapped to
+-- it), so few players saw it. Each docked tab now has an invisible secure button over it that clicks
+-- Blizzard's real tab, so the switch runs as Blizzard's code. The boxes sit on UIParent at fixed spots
+-- (anchored to the tab bar they would make it protected), move only out of combat, and pass hover, drag
+-- and right click on to the FlareUI tab under them.
+local TabHit = { bars = {}, dirty = false }
+
+local function TabSwitchAllowed(btn)
+    return btn and btn.realTab and btn.chatFrame and not btn.justDragged and not IsPopped(btn.chatFrame)
+        and not (_G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown())
+end
+
+-- What a selection does besides Blizzard's switch
+local function AfterTabSwitch(btn)
+    if Chat:MeterTabActive() then Chat:SelectMeterTab(false) end
+    local picked = btn.chatFrame
+    C_Timer.After(0.01, function()
+        local chatDb = GetDb()
+        if chatDb then Chat:UpdateCustomTabs(_G.ChatFrame1, chatDb) end
+        -- the picked tab into view if it is cut off, on the bar now shown
+        C_Timer.After(0.02, function() Chat:ScrollTabIntoView(picked) end)
+    end)
+end
+
+local function DockProtected()
+    local dock = _G.GeneralDockManager
+    for _, frame in ipairs(dock and dock.DOCKED_CHAT_FRAMES or {}) do
+        if frame:IsProtected() then return true end
+    end
+    return false
+end
+
+-- A tab with no box over it (made in a fight): the old addon-code switch, after the fight if the chat
+-- window is protected now
+function TabHit.Fallback(btn, button)
+    if InCombatLockdown() and DockProtected() then
+        TabHit.pending = btn
+        return
+    end
+    _G.FCF_Tab_OnClick(btn.realTab, button)
+    AfterTabSwitch(btn)
+end
+
+local function HitPreClick(self)
+    if InCombatLockdown() then return end
+    local btn = self.tab
+    self:SetAttribute("clickbutton", btn and btn.realTab or nil)
+    self:SetAttribute("type1", TabSwitchAllowed(btn) and "click" or nil)
+end
+
+local function HitPostClick(self, button)
+    local btn = self.tab
+    if not (btn and btn:IsVisible()) then return end
+    if button == "RightButton" then
+        Chat:OpenContextMenu(btn, btn.chatFrame)
+    elseif self:GetAttribute("type1") == "click" and TabSwitchAllowed(btn) then
+        AfterTabSwitch(btn)
+    end
+end
+
+local function HitFor(scrollFrame, index)
+    local hits = scrollFrame.FlareUI_Hits
+    if not hits then
+        hits = {}
+        scrollFrame.FlareUI_Hits = hits
+    end
+    if hits[index] or InCombatLockdown() then return hits[index] end
+    local hit = CreateFrame("Button", nil, UIParent, "SecureActionButtonTemplate")
+    hit:SetFrameStrata(scrollFrame:GetFrameStrata())
+    hit:SetFrameLevel(scrollFrame:GetFrameLevel() + 10)
+    hit:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    hit:RegisterForDrag("LeftButton")
+    hit:SetAttribute("useOnKeyDown", false)
+    hit:SetScript("PreClick", HitPreClick)
+    hit:SetScript("PostClick", HitPostClick)
+    hit:SetScript("OnEnter", function(self)
+        local btn = self.tab
+        local f = btn and btn:IsVisible() and btn:GetScript("OnEnter")
+        if f then f(btn) end
+    end)
+    hit:SetScript("OnLeave", function(self)
+        local btn = self.tab
+        local f = btn and btn:GetScript("OnLeave")
+        if f then f(btn) end
+    end)
+    hit:SetScript("OnDragStart", function(self) if self.tab and self.tab:IsVisible() then OnTabDragStart(self.tab) end end)
+    hit:SetScript("OnDragStop", function(self) if self.tab then OnTabDragStop(self.tab) end end)
+    hit:Hide()
+    hits[index] = hit
+    return hit
+end
+
+-- Puts every box over its tab, cut to the part of the tab the bar shows. Out of combat only.
+function TabHit.Sync()
+    if InCombatLockdown() then
+        TabHit.dirty = true
+        return
+    end
+    TabHit.dirty = false
+    local uiScale = UIParent:GetEffectiveScale()
+    for scrollFrame in pairs(TabHit.bars) do
+        local barShown = scrollFrame.FlareUI_Docked and scrollFrame:IsVisible() and not ns.IsGamepadUI()
+        local sl, sr = scrollFrame:GetLeft(), scrollFrame:GetRight()
+        local ss = scrollFrame:GetEffectiveScale()
+        local count = math_max(#scrollFrame.buttons, scrollFrame.FlareUI_Hits and #scrollFrame.FlareUI_Hits or 0)
+        for i = 1, count do
+            local btn = scrollFrame.buttons[i]
+            local wanted = barShown and sl and btn and btn:IsShown() and btn.realTab
+            local hit = wanted and HitFor(scrollFrame, i) or (scrollFrame.FlareUI_Hits and scrollFrame.FlareUI_Hits[i])
+            if hit then
+                local placed = false
+                if wanted then
+                    local bl, br, bb, bt = btn:GetLeft(), btn:GetRight(), btn:GetBottom(), btn:GetTop()
+                    if bl and br and bb and bt then
+                        local bs = btn:GetEffectiveScale()
+                        local left, right = math_max(bl * bs, sl * ss), math_min(br * bs, sr * ss)
+                        if right - left >= 4 then
+                            hit.tab = btn
+                            hit:SetAttribute("clickbutton", btn.realTab)
+                            hit:SetAttribute("type1", "click")
+                            hit:ClearAllPoints()
+                            hit:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left / uiScale, bb * bs / uiScale)
+                            hit:SetSize((right - left) / uiScale, (bt - bb) * bs / uiScale)
+                            hit:Show()
+                            placed = true
+                        end
+                    end
+                end
+                if not placed then
+                    hit:Hide()
+                    hit.tab = nil
+                end
+            end
+        end
+        scrollFrame.FlareUI_HitLeft, scrollFrame.FlareUI_HitBottom = sl, scrollFrame:GetBottom()
+    end
+end
+
+function TabHit.SyncSoon()
+    if TabHit.queued then return end
+    TabHit.queued = true
+    C_Timer.After(0, function()
+        TabHit.queued = false
+        TabHit.Sync()
+    end)
+end
+
+-- A bar joins the boxes' list on its first lay-out; the events and the slow check start with the first
+function TabHit.Watch(scrollFrame)
+    if TabHit.bars[scrollFrame] then return end
+    TabHit.bars[scrollFrame] = true
+    scrollFrame:HookScript("OnShow", TabHit.SyncSoon)
+    scrollFrame:HookScript("OnHide", TabHit.SyncSoon)
+    scrollFrame:HookScript("OnSizeChanged", TabHit.SyncSoon)
+    scrollFrame:HookScript("OnHorizontalScroll", TabHit.SyncSoon)
+    if TabHit.driver then return end
+    local driver = CreateFrame("Frame")
+    TabHit.driver = driver
+    driver:RegisterEvent("PLAYER_REGEN_ENABLED")
+    driver:RegisterEvent("UI_SCALE_CHANGED")
+    driver:RegisterEvent("DISPLAY_SIZE_CHANGED")
+    driver:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_ENABLED" then
+            local btn = TabHit.pending
+            TabHit.pending = nil
+            if btn and btn:IsVisible() and TabSwitchAllowed(btn) then TabHit.Fallback(btn, "LeftButton") end
+        end
+        TabHit.SyncSoon()
+    end)
+    if _G.EditModeManagerFrame then
+        _G.EditModeManagerFrame:HookScript("OnHide", TabHit.SyncSoon)
+        _G.EditModeManagerFrame:HookScript("OnShow", TabHit.SyncSoon)
+    end
+    -- the chat window moved (dragged, Edit Mode, another addon): two position reads twice a second
+    C_Timer.NewTicker(0.5, function()
+        if InCombatLockdown() then return end
+        for bar in pairs(TabHit.bars) do
+            if bar:IsVisible() and (bar:GetLeft() ~= bar.FlareUI_HitLeft or bar:GetBottom() ~= bar.FlareUI_HitBottom) then
+                TabHit.Sync()
+                return
+            end
+        end
+    end)
+end
+
 function Chat:UpdateCustomTabs(chatFrame, db)
     local scrollFrame = chatFrame.FlareUI_TabBar
     local scrollChild = chatFrame.FlareUI_TabChild
@@ -2129,6 +2317,10 @@ function Chat:UpdateCustomTabs(chatFrame, db)
 
     -- room for the header buttons, which stay on the dock
     local popped = IsPopped(chatFrame)
+    -- the secure boxes over the tabs follow every lay-out (SECURE TAB CLICKS)
+    scrollFrame.FlareUI_Docked = not popped
+    TabHit.Watch(scrollFrame)
+    TabHit.SyncSoon()
     local btnCount = 0
     if not popped then
         for _, key in ipairs(HEADER_ORDER) do
@@ -2179,16 +2371,10 @@ function Chat:UpdateCustomTabs(chatFrame, db)
                         Chat:OpenContextMenu(self, self.chatFrame)
                     -- a popped window has only its own tab. In Edit Mode the main window stays shown:
                     -- its selection box and size options hide with it, and docked windows share its size
-                    elseif not IsPopped(self.chatFrame) and not (_G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()) then
-                        _G.FCF_Tab_OnClick(self.realTab, button)
-                        if Chat:MeterTabActive() then Chat:SelectMeterTab(false) end
-                        local picked = self.chatFrame
-                        C_Timer.After(0.01, function()
-                            local chatDb = GetDb()
-                            if chatDb then Chat:UpdateCustomTabs(_G.ChatFrame1, chatDb) end
-                            -- the picked tab into view if it is cut off, on the bar now shown
-                            C_Timer.After(0.02, function() Chat:ScrollTabIntoView(picked) end)
-                        end)
+                    -- a docked tab is clicked through its secure box (SECURE TAB CLICKS); this runs
+                    -- only for a tab made in a fight, before its box exists
+                    elseif TabSwitchAllowed(self) then
+                        TabHit.Fallback(self, button)
                     end
                 end)
 
@@ -2308,6 +2494,23 @@ function Chat:UpdateCustomTabs(chatFrame, db)
     end
 end
 
+-- (11-14, a player's screenshot) an undocked window showed Blizzard's tab over FlareUI's: Blizzard fades
+-- that tab in and out on mouse-over and new lines (UIFrameFadeIn / Out) and sets it to full on undocking.
+-- Docked tabs sit in the parked dock, so theirs never showed. Any alpha Blizzard gives a tab goes
+-- straight back to 0 (looks only; the Gamepad UI keeps Blizzard's tabs, see below).
+local function KeepTabInvisible(tab)
+    if tab.FlareUI_AlphaKept then return end
+    tab.FlareUI_AlphaKept = true
+    hooksecurefunc(tab, "SetAlpha", function(self, alpha)
+        if self.FlareUI_AlphaSetting or alpha == 0 or ns.IsGamepadUI() then return end
+        local db = GetDb()
+        if not (db and db.enabled) then return end
+        self.FlareUI_AlphaSetting = true
+        self:SetAlpha(0)
+        self.FlareUI_AlphaSetting = nil
+    end)
+end
+
 function Chat:HideBlizzardTabs()
     -- Gamepad UI (6.4.1): Blizzard's tabs are the tab bar, so a click selects a window the game's own
     -- way (see ParkDock); FlareUI's bar stays hidden (UpdateCustomTabs)
@@ -2341,6 +2544,7 @@ function Chat:HideBlizzardTabs()
     for _, chatFrame in Windows() do
         local tab = chatFrame and _G[chatFrame:GetName() .. "Tab"]
         if tab then
+            KeepTabInvisible(tab)
             tab:SetAlpha(0)
             tab:EnableMouse(false)
         end

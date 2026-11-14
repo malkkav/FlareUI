@@ -163,8 +163,47 @@ local function RestoreButtonArt(button)
     button.FlareUI_ArtOrig = nil
 end
 
+-- Show Button Art off (11-14, players' report): bar 1 kept Blizzard's bar art unless its own Hide Bar
+-- Art (Edit Mode) was on, so it alone still had the slot frames and art strip. FlareUI never writes that
+-- Edit Mode setting (addon code changing a layout taints it), so it does what the setting does instead:
+-- bar 1's buttons get the plain slot look (Blizzard's UpdateButtonArt with hideBarArt), and the bar's
+-- frame art and dividers go invisible (alpha only). With Hide Bar Art already on nothing changes.
+local function BareBarOne(db)
+    return db and db.enabled and not db.buttonArt and true or false
+end
+local function ApplyBareButton(button)
+    local bar = button.bar
+    if not (bar and bar == _G.MainActionBar and button.SlotArt and button.SlotBackground) then return end
+    if bar.hideBarArt then
+        -- Blizzard's own setting does it now: nothing to put back later
+        button.FlareUI_ArtOrig, button.FlareUI_ArtBare = nil, nil
+        return
+    end
+    SnapshotButtonArt(button)
+    button.FlareUI_ArtBare = true
+    button.SlotArt:Hide()
+    button.SlotBackground:Show()
+    button:SetNormalAtlas("UI-HUD-ActionBar-IconFrame-AddRow")
+    button.NormalTexture:SetDrawLayer("OVERLAY")
+    button.NormalTexture:SetSize(51, 51)
+    button:SetPushedAtlas("UI-HUD-ActionBar-IconFrame-AddRow-Down")
+    button.PushedTexture:SetDrawLayer("OVERLAY")
+    button.PushedTexture:SetSize(51, 51)
+end
+-- the bar's frame art and the dividers between its buttons
+local function BareBarArt(on)
+    local bar = _G.MainActionBar
+    if not bar then return end
+    local a = on and 0 or 1
+    if bar.BorderArt then bar.BorderArt:SetAlpha(a) end
+    for _, pool in ipairs({ bar.HorizontalDividersPool or false, bar.VerticalDividersPool or false }) do
+        if pool then for divider in pool:EnumerateActive() do divider:SetAlpha(a) end end
+    end
+end
+
 local function ApplyButtonArt(button)
     local db = GetBarConfig()
+    if BareBarOne(db) then ApplyBareButton(button) return end
     if not db or not db.enabled or not db.buttonArt then return end
     if not button or not button.SlotArt or not button.SlotBackground or not button.NormalTexture or not button.PushedTexture then return end
 
@@ -280,12 +319,28 @@ local function UpdateButtonArtAll()
             hooksecurefunc(button, "UpdateButtonArt", ApplyButtonArt)
         end
         if force then
+            if button.FlareUI_ArtBare then RestoreButtonArt(button); button.FlareUI_ArtBare = nil end
             ApplyButtonArt(button)
-        elseif button.FlareUI_ArtForced then
-            RestoreButtonArt(button)
+        else
+            if button.FlareUI_ArtForced then RestoreButtonArt(button) end
+            if BareBarOne(db) then
+                ApplyBareButton(button)
+            elseif button.FlareUI_ArtBare then
+                RestoreButtonArt(button)
+                button.FlareUI_ArtBare = nil
+            end
         end
         button.FlareUI_ArtForced = force or nil
     end
+    -- bar 1's frame art and dividers (Blizzard redraws the dividers on every layout: hidden after it)
+    local bar = _G.MainActionBar
+    if bar and not ActionBars.bareDividersHooked and type(bar.UpdateDividers) == "function" then
+        ActionBars.bareDividersHooked = true
+        hooksecurefunc(bar, "UpdateDividers", function() if BareBarOne(GetBarConfig()) then BareBarArt(true) end end)
+    end
+    local bare = BareBarOne(db)
+    if bare or ActionBars.bareArt then BareBarArt(bare) end
+    ActionBars.bareArt = bare or nil
 end
 
 --------------------------------------------------
@@ -1448,16 +1503,20 @@ end
 
 -- The spellbook's "not on your bars" glow (11-11, a player's report): in a stance Blizzard counts the
 -- stance's page as bar 1 and page 1 as hidden. While Keep Bar 1 in Stances holds page 1 it's the other
--- way round, so a spell put on bar 1 kept glowing and one left on the hidden stance page didn't. After
+-- way round, so a spell put on bar 1 kept glowing and one left on the hidden stance page didn't. The
+-- same for a rogue's Keep Page 1 in Stealth (11-14, a player's report): Stealth's page is a bonus bar
+-- too. Druids are left out: Prowl holds Cat Form's page, the one Blizzard counts already. After
 -- Blizzard's own answer each spell's glow is put right; Blizzard's functions are left alone (taint).
 do
     local NOT_MISSING = 1
-    -- the warrior toggle holding page 1 right now: the driver's own conditions
+    -- the warrior or rogue toggle holding page 1 right now: the driver's own conditions
+    local HOLDS_PAGE_ONE = { WARRIOR = "noStancePaging", ROGUE = "keepStealthPage" }
     local function HoldingPageOne()
         if not classPager then return false end
         local db = GetBarConfig()
         local _, class = UnitClass("player")
-        if not (db and db.enabled and db.noStancePaging and class == "WARRIOR") then return false end
+        local key = HOLDS_PAGE_ONE[class]
+        if not (db and db.enabled and key and db[key]) then return false end
         if not C_ActionBar.HasBonusActionBar() or GetActionBarPage() ~= 1 then return false end
         return not (C_ActionBar.HasOverrideActionBar() or C_ActionBar.HasVehicleActionBar()
             or C_ActionBar.HasTempShapeshiftActionBar() or (HasPossessBar and HasPossessBar()))

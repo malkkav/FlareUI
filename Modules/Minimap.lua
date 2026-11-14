@@ -1454,10 +1454,11 @@ function MM.PullButtonsIn()
     MM.PlaceAllButtons()
 end
 
--- FlareUI's own minimap button (11-13, Marcus): only while the addon drawer is on and FlareUI is
--- unticked in Addons in the Drawer (else FlareUI is the drawer's compartment entry). Left-click opens
--- the settings, right-click puts FlareUI back in the drawer (and the button goes). It sits and drags
--- like the LibDBIcon buttons: in the packed row on the square map, its spot saved as "FlareUI".
+-- FlareUI's own minimap button (11-13, Marcus; 11-14 its own option): with FlareUI Minimap Button on
+-- (minimap.flareButton), on the minimap unless the drawer holds FlareUI (MinimapBag.lua Bag.FlareIn).
+-- Left-click opens the settings, right-click turns the option off (back on only in the settings). It
+-- sits and drags like the LibDBIcon buttons: in the packed row on the square map, its spot saved as
+-- "FlareUI".
 local FLARE_NAME, FLARE_ROUND_ANGLE = "FlareUI", 225   -- (round map: bottom left until dragged)
 
 local function CursorAngle()
@@ -1507,14 +1508,20 @@ local function FlareButton()
         ns.OwnGameTooltip(self, "ANCHOR_LEFT")
         GameTooltip:AddLine(L["FlareUI"])
         GameTooltip:AddLine(L["Left-click: open settings"], 1, 1, 1)
-        GameTooltip:AddLine(L["Right-click: put back in the drawer"], 1, 1, 1)
+        GameTooltip:AddLine(L["Right-click: hide this button"], 1, 1, 1)
         GameTooltip:AddLine(L["Drag to move this button."], 1, 1, 1)
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     b:SetScript("OnClick", function(_, mouse)
         if mouse == "RightButton" then
-            if ns.MinimapBag and ns.MinimapBag.PutFlareBack then ns.MinimapBag.PutFlareBack() end
+            local db = GetDb()
+            if not db then return end
+            GameTooltip:Hide()
+            db.flareButton = false
+            if ns.MinimapBag and ns.MinimapBag.FlareChanged then ns.MinimapBag.FlareChanged() else MM.UpdateFlareButton() end
+            print("|cff00ccffFlareUI:|r " .. L["Minimap button hidden. Turn it back on in Settings > Minimap > FlareUI Minimap Button."])
+            if ns.SettingsPanel and ns.SettingsPanel.Refresh then pcall(ns.SettingsPanel.Refresh, ns.SettingsPanel) end
         elseif ns.SettingsPanel then
             ns.SettingsPanel:Toggle()
         end
@@ -1540,7 +1547,8 @@ end
 
 function MM.UpdateFlareButton()
     local bag = ns.MinimapBag
-    local want = MM.initialized and bag and bag.FlareOut and bag.FlareOut()
+    local db = GetDb()
+    local want = MM.initialized and db and db.flareButton ~= false and not (bag and bag.FlareIn and bag.FlareIn())
     if not want then
         if MM.flareButton then MM.flareButton:Hide() end
         if squareStyle then MM.PlaceSoon() end   -- (the packed row closes up)

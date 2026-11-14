@@ -32,10 +32,12 @@ S:Row{ key = "bl.bagKeyring", half = true, tab = "bags", path = "tweaks.bagKeyri
 S:Row{ key = "bl.bagReagent", half = true, tab = "bags", path = "tweaks.bagReagent", apply = RefreshBags, disabled = NotCombined }
 
 -- BAGS: the item slots --------------------------
-S:Row{ key = "bl.bagThickBorders", half = true, tab = "bags", path = "tweaks.bagThickBorders", apply = RefreshBags, disabled = BagAddon }
-S:Row{ key = "bl.bagRarityBorders", half = true, tab = "bags", path = "tweaks.bagRarityBorders", apply = RefreshBags, disabled = BagAddon }
+-- Skin Item Slots (11-14): FlareUI's slot border on or off; the two border looks grey out with it
+local function NoSlotSkin() return BagAddon() or not S:GetPath("tweaks.bagSkinSlots") end
+S:Row{ key = "bl.bagSkinSlots", half = true, tab = "bags", path = "tweaks.bagSkinSlots", apply = RefreshBags, disabled = BagAddon }
+S:Row{ key = "bl.bagRarityBorders", half = true, tab = "bags", path = "tweaks.bagRarityBorders", apply = RefreshBags, disabled = NoSlotSkin }
+S:Row{ key = "bl.bagThickBorders", half = true, tab = "bags", path = "tweaks.bagThickBorders", apply = RefreshBags, disabled = NoSlotSkin }
 S:Row{ key = "bl.bagJunkIcon", half = true, tab = "bags", path = "tweaks.bagJunkIcon", apply = RefreshBags, disabled = BagAddon }
-S:Row{ key = "bl.bagUpgradeArrow", half = true, tab = "bags", path = "tweaks.bagUpgradeArrow", apply = RefreshBags, disabled = BagAddon }
 -- (not greyed beside a bag addon: the character sheet's item levels are its own, Bags.lua)
 S:Row{ key = "bl.bagItemLevel", half = true, tab = "bags", path = "tweaks.bagItemLevel",
     apply = function() RefreshBags(); if ns.Bags and ns.Bags.UpdateCharacterLevels then ns.Bags.UpdateCharacterLevels() end end }
@@ -76,6 +78,9 @@ S:Row{ key = "bl.lootFeedAlign", kind = "choice", tab = "looting", parent = "bl.
 S:FontRows{ module = "bl", tab = "fonts", section = "bl.fonts", fonts = {
     -- the stack counts and cooldown numbers on the bag icons (Bags.lua StyleIconTexts)
     { key = "bagItems", path = "tweaks.bagItemFont", optional = true, disabled = BagAddon },
+    -- Item Level's numbers, in the bags and on the character sheet (11-14, Marcus): shown while it's on
+    { key = "itemLevel", path = "tweaks.bagItemLevelFont", optional = true,
+      hidden = function() return not S:GetPath("tweaks.bagItemLevel") end },
     -- the free bag slots on the backpack button (11-12, a player asked: too small to read)
     { key = "freeSlots", path = "tweaks.bagFreeSlotsFont", optional = true },
     -- the gold, silver and copper at the bags' foot (11-13, Marcus)

@@ -177,6 +177,9 @@ loader:SetScript("OnEvent", function(self)
             ns.ErrorsCommand(msg:sub(8))
         elseif msg == "taint" or msg:find("^taint%s") then
             ns.TaintWatch.Command(msg:sub(6))   -- a developer's Gamepad UI probe (TaintWatch.lua)
+        elseif msg == "padlog" then
+            -- a developer's probe: the controller radial's stick events (RadialMenu.lua)
+            if ns.RadialMenu and ns.RadialMenu.PadLogCommand then ns.RadialMenu.PadLogCommand() end
         elseif msg == "saylog" or msg:find("^saylog%s") then
             ns.SayLog.Command(msg:sub(7))   -- a Say / Yell line check for missing-chat reports (SayLog.lua)
         elseif msg == "range" then

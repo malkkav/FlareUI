@@ -63,7 +63,7 @@ local RAID_ICON_SHARE = 0.5  -- raid marker: mid health bar, this share of the b
 local HAPPINESS_SHARE = 0.7  -- pet happiness face: mid health bar, this share of the bar's height
 
 local DEAD_TEXT     = _G.DEAD or "Dead"
-local GHOST_TEXT    = _G.GHOST or "Ghost"
+local GHOST_TEXT    = _G.GHOST or L["Ghost"]   -- (Forever has no GHOST string: translated here)
 local OFFLINE_TEXT  = _G.PLAYER_OFFLINE or "Offline"
 
 -- Reaction colours (FACTION_BAR_COLORS' shape)
@@ -293,24 +293,33 @@ local CAST_EVENTS = {
 -- on Blizzard's frames. Order: the percent options, then the value options, then Health Lost.
 -- Saved names: "both" is Percent | Value, "valuemax" Value [Max], "valuelost" Value | Health Lost.
 -- "valuemaxpct" (Current (Max) | Percent, removed 11-13) reads as Value [Max] (UF.MigrateTextModes).
+-- "valuepct" is Value | Percent (11-14, a player missed the value-first order).
 local SPLIT_MODE = { text = L["Percent <  > Value"], value = "split", isRadio = true }
+-- Value <  > Percent (11-14, Marcus): the same two ends the other way round, after Value | Percent
+local SPLIT_VP_MODE = { text = L["Value <  > Percent"], value = "splitvp", isRadio = true }
+-- the two Forever Style split modes; off the plate each reads as its | mode
+local SPLIT_MODES = { split = "both", splitvp = "valuepct" }
+function UF.IsSplitMode(mode) return SPLIT_MODES[mode] ~= nil end
 local HEALTH_TEXT_MODES = {
     { text = L["Off"],                      value = "none",        isRadio = true },
     { text = L["Percent"],                  value = "percent",     isRadio = true },
     { text = L["Percent | Value"],          value = "both",        isRadio = true },
     { text = L["Value"],                    value = "value",       isRadio = true },
     { text = L["Value [Max]"],              value = "valuemax",    isRadio = true },
+    { text = L["Value | Percent"],          value = "valuepct",    isRadio = true },
     { text = L["Value | Health Lost"],      value = "valuelost",   isRadio = true },
     { text = L["Health Lost"],              value = "lost",        isRadio = true },
 }
 -- Forever Style adds Percent <  > Value (11-13, a player's request, like Blizzard's own frames), on
 -- health and power: the percent at the bar's left end, the whole value, never shortened, at its right
--- end. It goes after Percent | Value, with the other percent options.
+-- end. It goes after Percent | Value, with the other percent options; Value <  > Percent after
+-- Value | Percent.
 local function WithSplit(list)
     local out = {}
     for _, mode in ipairs(list) do
         out[#out + 1] = mode
         if mode.value == "both" then out[#out + 1] = SPLIT_MODE end
+        if mode.value == "valuepct" then out[#out + 1] = SPLIT_VP_MODE end
     end
     return out
 end
@@ -357,6 +366,8 @@ function UF.FormatBarText(fs, mode, cur, percent, max, unit)
         end
     elseif mode == "both" or mode == "split" then
         fs:SetFormattedText("%.0f%% | %s", percent, ns.ShortNumber(cur))
+    elseif mode == "valuepct" or mode == "splitvp" then
+        fs:SetFormattedText("%s | %.0f%%", ns.ShortNumber(cur), percent)
     elseif mode == "valuemax" or mode == "valuemaxpct" then
         fs:SetFormattedText("%s [%s]", ns.ShortNumber(cur), ns.ShortNumber(max))
     else
@@ -390,7 +401,7 @@ for _, mode in ipairs(HEALTH_TEXT_MODES) do
     if mode.value ~= "lost" and mode.value ~= "valuelost" then UF.POWER_TEXT_MODES[#UF.POWER_TEXT_MODES + 1] = mode end
 end
 local PLATE_POWER_TEXT_MODES = WithSplit(UF.POWER_TEXT_MODES)
-local POWER_MODE = { none = true, percent = true, value = true, both = true, valuemax = true, valuemaxpct = true, split = true }
+local POWER_MODE = { none = true, percent = true, value = true, both = true, valuepct = true, valuemax = true, valuemaxpct = true, split = true, splitvp = true }
 function UF.IsPowerTextMode(v) return POWER_MODE[v] or false end
 function UF.PowerTextMode(v)
     if v == "valuemaxpct" then return "valuemax" end
@@ -987,8 +998,11 @@ local function UpdateHealth(f, glide)
         elseif mode == "split" and left and left:IsShown() then
             left:SetFormattedText("%.0f%%", health * 100)
             f.HealthText:SetFormattedText("%d", math_floor(health * 24000))
-        elseif mode == "split" then
-            UF.FormatBarText(f.HealthText, "both", math_floor(health * 24000), health * 100, 24000)
+        elseif mode == "splitvp" and left and left:IsShown() then
+            left:SetFormattedText("%d", math_floor(health * 24000))
+            f.HealthText:SetFormattedText("%.0f%%", health * 100)
+        elseif UF.IsSplitMode(mode) then
+            UF.FormatBarText(f.HealthText, SPLIT_MODES[mode], math_floor(health * 24000), health * 100, 24000)
         else
             UF.FormatBarText(f.HealthText, mode, math_floor(health * 24000), health * 100, 24000)
         end
@@ -1028,9 +1042,12 @@ local function UpdateHealth(f, glide)
         -- (secret numbers go into the text as they are)
         left:SetFormattedText("%.0f%%", UnitHealthPercent(unit, true, percentCurve))
         text:SetFormattedText("%d", UnitHealth(unit))
-    elseif mode == "split" then
-        -- off the plate (another style): Percent | Value
-        UF.FormatBarText(text, "both", UnitHealth(unit), UnitHealthPercent(unit, true, percentCurve), UnitHealthMax(unit))
+    elseif mode == "splitvp" and left and left:IsShown() then
+        left:SetFormattedText("%d", UnitHealth(unit))
+        text:SetFormattedText("%.0f%%", UnitHealthPercent(unit, true, percentCurve))
+    elseif UF.IsSplitMode(mode) then
+        -- off the plate (another style): Percent | Value or Value | Percent
+        UF.FormatBarText(text, SPLIT_MODES[mode], UnitHealth(unit), UnitHealthPercent(unit, true, percentCurve), UnitHealthMax(unit))
     else
         UF.FormatBarText(text, mode, UnitHealth(unit), UnitHealthPercent(unit, true, percentCurve), UnitHealthMax(unit), unit)
     end
@@ -1054,6 +1071,9 @@ local function UpdatePower(f, glide)
             -- Percent <  > Value on the plate (secret numbers go in as they are)
             pleft:SetFormattedText("%.0f%%", UnitPowerPercent(unit, powerType, false, CurveConstants.ScaleTo100))
             f.PowerText:SetFormattedText("%d", UnitPower(unit, powerType))
+        elseif pmode == "splitvp" and pleft and pleft:IsShown() then
+            pleft:SetFormattedText("%d", UnitPower(unit, powerType))
+            f.PowerText:SetFormattedText("%.0f%%", UnitPowerPercent(unit, powerType, false, CurveConstants.ScaleTo100))
         else
             UF.SetPowerText(f.PowerText, unit, powerType, pmode)
         end
@@ -2328,7 +2348,7 @@ local function PrecreateAuraContainers(f)
         local ok, container = pcall(CreateFrame, "AuraContainer", nil, f, AURA_CONTAINER_TEMPLATE)
         if ok and container then
             pcall(container.SetUnit, container, f.fuiUnit)
-            container:SetFrameLevel(f:GetFrameLevel() + 4)
+            container:SetFrameLevel(f:GetFrameLevel() + (f.auraLift or 4))
             container:Hide()
             f.Auras[corner] = { container = container }
         end
@@ -2444,6 +2464,33 @@ function AURA.Clash(a, b)
     return (a:find("^TOP") ~= nil) == (b:find("^TOP") ~= nil) and (AURA.FULL[a] or AURA.FULL[b]) or false
 end
 
+function UF.RestackAuras(f)
+    if f.Auras then
+        for _, entry in pairs(f.Auras) do entry.container:SetFrameLevel(f:GetFrameLevel() + (f.auraLift or 4)) end
+    end
+    -- the boss and party tiles' places (PartyFrames.lua ConfigurePosition); the portrait's grid keeps
+    -- its own level, under the ready check
+    if f.AuraPos then
+        for pos, entry in pairs(f.AuraPos) do
+            if pos ~= "PORTRAIT" then entry.container:SetFrameLevel(f:GetFrameLevel() + (f.auraLift or 6)) end
+        end
+    end
+    -- the frame's cast bar too (11-14, the same report: placed above the frame it went under the
+    -- dragon), its pieces kept in their order above it: backdrop, bar, border, text
+    local cast = f.Cast
+    if cast and cast:GetParent() == f then
+        local base = f:GetFrameLevel() + (f.auraLift or 1)
+        local delta = base - cast:GetFrameLevel()
+        if delta ~= 0 then
+            local children = { cast:GetChildren() }
+            local levels = {}
+            for i, child in ipairs(children) do levels[i] = child:GetFrameLevel() end
+            cast:SetFrameLevel(base)
+            for i, child in ipairs(children) do child:SetFrameLevel(math.max(0, levels[i] + delta)) end
+        end
+    end
+end
+
 local function PositionAuraContainers(f)
     if not f.Auras then return end
     for corner, entry in pairs(f.Auras) do
@@ -2452,7 +2499,8 @@ local function PositionAuraContainers(f)
         c:ClearAllPoints()
         c:SetPoint((isTop and "BOTTOM" or "TOP") .. (isLeft and "LEFT" or "RIGHT"), f,
             (isTop and "TOP" or "BOTTOM") .. (isLeft and "LEFT" or "RIGHT"), x, y)
-        c:SetFrameLevel(f:GetFrameLevel() + 4)
+        -- (FlareUI Style lifts them over the ring's art: f.auraLift, UnitFramesRing.lua Ring.Layout)
+        c:SetFrameLevel(f:GetFrameLevel() + (f.auraLift or 4))
     end
 end
 
@@ -3897,8 +3945,9 @@ local function LayoutFrame(f)
         f.Name:SetPoint("RIGHT", nameBox, "RIGHT", -TEXT_INSET, 0)
         f.Name:SetJustifyH("CENTER")
         f.HealthText:ClearAllPoints()
-        if udb.healthText == "split" then
-            -- Percent <  > Value: the percent at the left end, the value at the right end
+        if UF.IsSplitMode(udb.healthText) then
+            -- Percent <  > Value: the percent at the left end, the value at the right end (Value <  >
+            -- Percent the other way round: the same two texts, filled the other way)
             f.HealthText:SetPoint("RIGHT", health, "RIGHT", -TEXT_INSET, 0)
             f.HealthText:SetJustifyH("RIGHT")
             local left = UF.SplitText(f)
@@ -3910,7 +3959,7 @@ local function LayoutFrame(f)
             f.HealthText:SetJustifyH("CENTER")
         end
         f.PowerText:ClearAllPoints()
-        if UF.PowerTextMode(udb.powerText) == "split" then
+        if UF.IsSplitMode(UF.PowerTextMode(udb.powerText)) then
             f.PowerText:SetPoint("RIGHT", power, "RIGHT", -TEXT_INSET, 0)
             f.PowerText:SetJustifyH("RIGHT")
             local pleft = UF.SplitText(f, "PowerText")

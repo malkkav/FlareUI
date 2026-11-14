@@ -703,7 +703,6 @@ function R.bags(c)
         end
         if i == 3 then c:Text('bagStack', '5', x + size * 0.55, y + size * 0.5, size * 0.45, { size = math.max(8, size * 0.4) }) end
         if i == 1 and Get('tweaks.bagJunkIcon') then c:Texture('junk', P.MEDIA .. 'Previews\\Coin.tga', x, y, size * 0.5, size * 0.5, true) end
-        if i == 2 and Get('tweaks.bagUpgradeArrow') then c:Texture('upgrade', P.MEDIA .. 'Previews\\Upgrade.tga', x + size * 0.5, y + size * 0.5, size * 0.5, size * 0.5, true) end
     end
     local extraY = 45 + 3 * size + 2 * gap + groupGap + 7
     for _, group in ipairs({{'tweaks.bagKeyring', L["Keyring"], 'INV_Misc_Key_01'}, {'tweaks.bagReagent', L["Crafting Bag"], 'INV_Fabric_Linen_01'}}) do

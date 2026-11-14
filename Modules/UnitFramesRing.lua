@@ -868,6 +868,11 @@ function Ring.Layout(f)
     ring.Icons:SetFrameLevel(level + 11)
     ring.Disc:SetFrameLevel(level + 12)
     ring.PvP:SetFrameLevel(level + 13)
+    -- (11-14, a CurseForge report) FlareUI Style: the auras and the cast bar over the ring, the elite / rare frame and
+    -- the combo gems (+14), so the bottom corners' icons aren't hidden under the dragon. Forever
+    -- Style keeps them under: its plate holds the art clear of them.
+    f.auraLift = not Ring.Plate(f) and 15 or nil
+    if ns.UnitFrames and ns.UnitFrames.RestackAuras then ns.UnitFrames.RestackAuras(f) end
     for _, key in ipairs(RING_ICONS) do
         local region = f[key]
         if region then
@@ -1163,6 +1168,8 @@ function Ring.Reset(f)
     f.Level:SetAlpha(1)
     f.Portrait:SetFrameLevel(level + 1)
     f.Overlay:SetFrameLevel(level + 5)
+    f.auraLift = nil
+    if ns.UnitFrames and ns.UnitFrames.RestackAuras then ns.UnitFrames.RestackAuras(f) end
     f.Level:SetParent(f.Overlay)
     ring.Disc:Hide()
     SetDiscHole(f, ring, false)
