@@ -30,6 +30,7 @@ Route('bags', 'bl', 'bagColumns bagGaps bagButtons bagRarityBorders bagThickBord
 Route('nameplate', 'qol', 'npCombo npQuest npNames npLevel npLevelName npCombat')
 Route('reminders', 'au', 'reminders reminderGroup reminderBefore reminderConsumables reminderCamping reminderGathering reminderGlow reminderGlowExpiring')
 Route('lootFeed', 'bl', 'lootFeed lootFeedPosition lootFeedQuality lootFeedMoney lootFeedSkills')
+Route('lootRolls', 'bl', 'lootRolls lootRollsHidePass')
 Route('mouseRing', 'qol', 'mouseRingShow mouseRingSize mouseRingThickness mouseRingClassColor mouseRingCast mouseRingGCD mouseRingSwing mouseRingRange mouseRingHideTurning')
 Route('radial', 'rm', 'scale names')
 
