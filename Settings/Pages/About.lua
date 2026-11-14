@@ -19,7 +19,7 @@ local NETWORKS = {
     { name = "CurseForge", url = "https://www.curseforge.com/wow/addons/flareui" },
     { name = "Wago.io", url = "https://addons.wago.io/addons/flareui" },
     { name = "GitHub", url = "https://github.com/malkkav/FlareUI" },
-    { name = "Discord", url = "https://discord.gg/AHqeck4VNS" },
+    { name = "Discord", url = "https://discord.gg/p5sydKP2wE" },
 }
 
 local function CopyLink(url)
