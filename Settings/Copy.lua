@@ -132,7 +132,6 @@ ns.Copy = {
             desc = L["Blizzard's slot frame on every button of bars 1 to 8 and the pet bar, even where a bar hides its art."],
             label = L["Show Button Art"],
             section = "ab.buttonAppearance",
-            tip = L["Turned off, Action Bar 1 drops its bar art too, as if its Hide Bar Art were on in Edit Mode."],
         },
         ["ab.buttonScale"] = {
             desc = L["The size of every action button. 111% is FlareUI's default."],

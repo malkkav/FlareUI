@@ -228,7 +228,6 @@ L["Blizzard's damage meter is off. FlareUI's meter needs it."] = "Включит
 L["Blizzard's meter in a FlareUI frame"] = "Счётчик Blizzard во фрейме FlareUI"
 L["Blizzard's own Visibility for the meter, in Edit Mode, hides it at the start of some fights, and FlareUI can't bring it back until the fight ends. Set it to Always there and let FlareUI's Visibility decide."] = "Штатная настройка видимости счётчика в режиме редактирования скрывает его в начале некоторых боёв. FlareUI сможет вернуть счётчик только после боя. Выберите там «Всегда», чтобы видимостью управлял FlareUI."
 L["Blizzard's slot frame on every button of bars 1 to 8 and the pet bar, even where a bar hides its art."] = "Рамка ячейки Blizzard на каждой кнопке панелей 1–8 и панели питомца, даже если панель скрывает оформление."
-L["Turned off, Action Bar 1 drops its bar art too, as if its Hide Bar Art were on in Edit Mode."] = "Если выключено, Панель команд 1 тоже теряет оформление, как при включённом «Скрыть оформление панели» в режиме редактирования."
 L["Border"] = "Рамка"
 L["Boss"] = "Босс"
 L["Boss Frames"] = "Фреймы боссов"

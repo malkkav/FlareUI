@@ -163,47 +163,8 @@ local function RestoreButtonArt(button)
     button.FlareUI_ArtOrig = nil
 end
 
--- Show Button Art off (11-14, players' report): bar 1 kept Blizzard's bar art unless its own Hide Bar
--- Art (Edit Mode) was on, so it alone still had the slot frames and art strip. FlareUI never writes that
--- Edit Mode setting (addon code changing a layout taints it), so it does what the setting does instead:
--- bar 1's buttons get the plain slot look (Blizzard's UpdateButtonArt with hideBarArt), and the bar's
--- frame art and dividers go invisible (alpha only). With Hide Bar Art already on nothing changes.
-local function BareBarOne(db)
-    return db and db.enabled and not db.buttonArt and true or false
-end
-local function ApplyBareButton(button)
-    local bar = button.bar
-    if not (bar and bar == _G.MainActionBar and button.SlotArt and button.SlotBackground) then return end
-    if bar.hideBarArt then
-        -- Blizzard's own setting does it now: nothing to put back later
-        button.FlareUI_ArtOrig, button.FlareUI_ArtBare = nil, nil
-        return
-    end
-    SnapshotButtonArt(button)
-    button.FlareUI_ArtBare = true
-    button.SlotArt:Hide()
-    button.SlotBackground:Show()
-    button:SetNormalAtlas("UI-HUD-ActionBar-IconFrame-AddRow")
-    button.NormalTexture:SetDrawLayer("OVERLAY")
-    button.NormalTexture:SetSize(51, 51)
-    button:SetPushedAtlas("UI-HUD-ActionBar-IconFrame-AddRow-Down")
-    button.PushedTexture:SetDrawLayer("OVERLAY")
-    button.PushedTexture:SetSize(51, 51)
-end
--- the bar's frame art and the dividers between its buttons
-local function BareBarArt(on)
-    local bar = _G.MainActionBar
-    if not bar then return end
-    local a = on and 0 or 1
-    if bar.BorderArt then bar.BorderArt:SetAlpha(a) end
-    for _, pool in ipairs({ bar.HorizontalDividersPool or false, bar.VerticalDividersPool or false }) do
-        if pool then for divider in pool:EnumerateActive() do divider:SetAlpha(a) end end
-    end
-end
-
 local function ApplyButtonArt(button)
     local db = GetBarConfig()
-    if BareBarOne(db) then ApplyBareButton(button) return end
     if not db or not db.enabled or not db.buttonArt then return end
     if not button or not button.SlotArt or not button.SlotBackground or not button.NormalTexture or not button.PushedTexture then return end
 
@@ -319,28 +280,12 @@ local function UpdateButtonArtAll()
             hooksecurefunc(button, "UpdateButtonArt", ApplyButtonArt)
         end
         if force then
-            if button.FlareUI_ArtBare then RestoreButtonArt(button); button.FlareUI_ArtBare = nil end
             ApplyButtonArt(button)
-        else
-            if button.FlareUI_ArtForced then RestoreButtonArt(button) end
-            if BareBarOne(db) then
-                ApplyBareButton(button)
-            elseif button.FlareUI_ArtBare then
-                RestoreButtonArt(button)
-                button.FlareUI_ArtBare = nil
-            end
+        elseif button.FlareUI_ArtForced then
+            RestoreButtonArt(button)
         end
         button.FlareUI_ArtForced = force or nil
     end
-    -- bar 1's frame art and dividers (Blizzard redraws the dividers on every layout: hidden after it)
-    local bar = _G.MainActionBar
-    if bar and not ActionBars.bareDividersHooked and type(bar.UpdateDividers) == "function" then
-        ActionBars.bareDividersHooked = true
-        hooksecurefunc(bar, "UpdateDividers", function() if BareBarOne(GetBarConfig()) then BareBarArt(true) end end)
-    end
-    local bare = BareBarOne(db)
-    if bare or ActionBars.bareArt then BareBarArt(bare) end
-    ActionBars.bareArt = bare or nil
 end
 
 --------------------------------------------------

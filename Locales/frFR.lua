@@ -2074,7 +2074,6 @@ L["On Mouseover keeps the icons hidden until you point at the reminder row."] = 
 
 -- Ready for when the unit frames ask L["Ghost"] (GHOST is missing on the Forever client)
 L["Ghost"] = "Fantôme"
-L["Turned off, Action Bar 1 drops its bar art too, as if its Hide Bar Art were on in Edit Mode."] = "Désactivé, la barre d'action 1 perd aussi son habillage, comme si son option Masquer l'habillage de la barre était cochée dans le Mode Édition."
 L["Skin Item Slots"] = "Habiller les emplacements"
 L["Bag slots get FlareUI's bronze border. Turn it off to keep Blizzard's own, for example when another addon skins your bags."] = "Les emplacements de sacs prennent la bordure bronze de FlareUI. Désactivez-la pour garder celle de Blizzard, par exemple si un autre addon habille vos sacs."
 L["Value | Percent"] = "Valeur | Pourcentage"
