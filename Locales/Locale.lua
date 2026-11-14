@@ -23,6 +23,7 @@ local languages = {
     { "frFR", "Français" },
     { "itIT", "Italiano" },
     { "koKR", "한국어" },
+    { "nlNL", "Nederlands" },
     { "ptBR", "Português (Brasil)" },
     { "ruRU", "Русский" },
     { "zhCN", "简体中文" },

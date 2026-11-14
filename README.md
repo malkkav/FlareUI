@@ -11,7 +11,7 @@ Download FlareUI from [CurseForge](https://www.curseforge.com/wow/addons/flareui
 `World of Warcraft\_classic_beta_\Interface\AddOns\FlareUI`.
 In game, type `/fui` to open the settings.
 
-FlareUI speaks English, Spanish (Spain and Latin America), French, Italian, Brazilian Portuguese and Russian.
+FlareUI speaks English, Spanish (Spain and Latin America), French, Italian, Dutch, Brazilian Portuguese and Russian.
 It follows your game client's language, or pick one in Settings › Language. Untranslated phrases fall back to English.
 
 ## Bugs and ideas
