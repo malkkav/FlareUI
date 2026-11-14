@@ -7,7 +7,8 @@
 // heading where possible, else between lines.
 // Env: DISCORD_CHANGELOG_WEBHOOK (the forum channel's webhook; without it the chunks are only
 // printed, a dry run). Forum tags, each optional (a tag's ID; a missing one is just not put on):
-//   DISCORD_TAG_MAJOR / _UPDATE / _HOTFIX   from the version: X.0 / X.Y / X.Y.Z
+//   DISCORD_TAG_MAJOR / _UPDATE / _HOTFIX   X.0 = Major, X.Y = Update; X.Y.Z = Update when its section
+//                                           has a "## New" heading (new toggles), else Hotfix (11-14)
 //   DISCORD_TAG_RESTART    the section has the "Restart the game fully" line
 //   DISCORD_TAG_DEFAULTS   the section has the "Please check your settings" line
 'use strict';
@@ -21,7 +22,9 @@ const webhook = process.env.DISCORD_CHANGELOG_WEBHOOK;
 // the forum tags this release gets: [name, its ID or undefined]
 function Tags(ver, body) {
   const parts = ver.split('.');
-  const kind = parts.length >= 3 ? 'HOTFIX' : (parts.length === 1 || parts[1] === '0') ? 'MAJOR' : 'UPDATE';
+  // (11-14, Marcus) small additions now ship as X.Y.Z too: one with a New section is still an Update
+  const hasNew = /^## New\b/m.test(body);
+  const kind = parts.length >= 3 ? (hasNew ? 'UPDATE' : 'HOTFIX') : (parts.length === 1 || parts[1] === '0') ? 'MAJOR' : 'UPDATE';
   const tags = [kind];
   if (/restart the game fully/i.test(body)) tags.push('RESTART');
   if (/please check your settings/i.test(body)) tags.push('DEFAULTS');
