@@ -18,6 +18,7 @@ local function PrintCommands()
     if ns.FCMActive() then Line("/fui cm", L["Toggle Fake CM setup mode."]) end
     Line("/fui pad", L["Switch Gamepad mode on or off."])
     Line("/fui tour", L["Run the setup tour."])
+    Line("/fui loot", L["Open the loot history."])
     Line("/fui perf", L["Measure FlareUI's performance (type it alone for the commands)."])
     Line("/fui errors", L["Errors FlareUI caught, to copy into a bug report (\"/fui errors clear\" empties the list)."])
     local qol = ns.db and ns.db.profile.tweaks
@@ -163,6 +164,8 @@ loader:SetScript("OnEvent", function(self)
             ns.ToggleFCMSetupMode()
         elseif msg == "pad" or msg == "gamepad" then
             ns.ToggleGamepadMode()
+        elseif msg == "loot" then
+            FlareUI_ToggleLootHistory()
         elseif msg == "tour" then
             ns.ShowTour()
         elseif msg == "perf" or msg:find("^perf%s") then

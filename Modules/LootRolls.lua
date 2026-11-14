@@ -863,6 +863,13 @@ function LR:ToggleHistory()
     history:SetShown(not history:IsShown())
 end
 
+-- also with Loot Roll Results off: Bindings.xml, the radial menu's Loot History panel, /fui loot and
+-- the settings button
+BINDING_NAME_FLAREUI_LOOT_HISTORY = L["Loot History"]
+function FlareUI_ToggleLootHistory()
+    LR:ToggleHistory()
+end
+
 --------------------------------------------------
 -- 7. EDIT MODE SAMPLES: one roll still open, one won (Shadowfang, Tail Spike)
 --------------------------------------------------

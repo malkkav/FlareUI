@@ -60,6 +60,8 @@ S:Row{ key = "bl.lootRolls", tab = "looting", path = "tweaks.lootRolls", reload 
 S:Row{ key = "bl.lootRollsHidePass", tab = "looting", parent = "bl.lootRolls", path = "tweaks.lootRollsHidePass",
     disabled = function() return not S:GetPath("tweaks.lootRolls") end,
     apply = function() if ns.LootRolls and ns.LootRolls.Refresh then ns.LootRolls:Refresh() end end }
+S:Row{ key = "bl.lootHistory", kind = "button", tab = "looting", parent = "bl.lootRolls", buttonText = L["Open"],
+    apply = function() FlareUI_ToggleLootHistory() end }
 -- Loot Feed: what you loot floats up beside you (LootFeed.lua); placed in Edit Mode
 S:Row{ key = "bl.lootFeed", tab = "looting", path = "tweaks.lootFeed", reload = true }
 local LOOT_QUALITY = {}

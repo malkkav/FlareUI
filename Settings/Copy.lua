@@ -662,6 +662,12 @@ ns.Copy = {
             section = "bl.lootRollsSection",
             tip = L["Read from the game's loot history. Placed and scaled in Edit Mode as \"FlareUI Loot Rolls\"."],
         },
+        ["bl.lootHistory"] = {
+            desc = L["Every loot roll you took part in: the item, the winner and everyone's roll, kept per character."],
+            label = L["Loot History"],
+            section = "bl.lootRollsSection",
+            tip = L["`/fui loot`, a key binding or a panel in the radial menu open it too."],
+        },
         ["bl.lootRollsHidePass"] = {
             desc = L["A roll you pass on, or let run out, leaves the loot roll window at once. It still goes to the history."],
             label = L["Hide Passed Rolls"],
