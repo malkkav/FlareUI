@@ -151,7 +151,12 @@ local function ApplyColors(tip, borderColor)
     local bg = BACKGROUND
     local db = GetDb()
     local alpha = db and tonumber(db.opacity) or bg[4]   -- Frame Opacity (Look)
-    pcall(tip.NineSlice.SetCenterColor, tip.NineSlice, bg[1], bg[2], bg[3], alpha)
+    -- (11-14, a player's report) Frame Opacity is the background texture's own alpha, not its colour's:
+    -- ClassicUI Forever's Bronze theme draws a copy of the background that follows the texture's alpha
+    -- only, so a colour alpha left that copy solid black
+    pcall(tip.NineSlice.SetCenterColor, tip.NineSlice, bg[1], bg[2], bg[3], 1)
+    local center = tip.NineSlice.Center
+    if center and center.SetAlpha then pcall(center.SetAlpha, center, alpha) end
 
     local c = borderColor or DEFAULT_BORDER_COLOR
     pcall(tip.NineSlice.SetBorderColor, tip.NineSlice, c[1], c[2], c[3], 1)

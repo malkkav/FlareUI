@@ -224,6 +224,59 @@ local function ShowHint()
 end
 
 --------------------------------------------------
+-- 3c. HUD TOOLTIP SAMPLE
+-- (11-14, a player) Blizzard's HUD Tooltip mover is an empty box: with the overlays hidden (eye) there
+-- was nothing to see or grab. A sample tooltip fills it while it shows. Our own frame anchored to it
+-- (nothing added to Blizzard's), drawn under the mover's selection and deaf to the mouse, so drags
+-- still reach the mover.
+--------------------------------------------------
+local tooltipSample
+
+local function SyncTooltipSample()
+    local box = _G.GameTooltipDefaultContainer
+    if not (tooltipSample and box) then return end
+    tooltipSample:SetShown(box:IsShown())
+end
+
+local function MakeTooltipSample()
+    local box = _G.GameTooltipDefaultContainer
+    if tooltipSample or not box then return end
+    local f = CreateFrame("Frame", nil, UIParent)
+    tooltipSample = f
+    f:SetAllPoints(box)
+    f:SetFrameStrata(box:GetFrameStrata())
+    f:SetFrameLevel(math.max(0, box:GetFrameLevel() - 1))
+    f:EnableMouse(false)
+    f:Hide()
+
+    f.NineSlice = CreateFrame("Frame", nil, f, "NineSlicePanelTemplate")
+    f.NineSlice:SetAllPoints()
+    if NineSliceUtil and NineSliceUtil.GetLayout then
+        pcall(NineSliceUtil.ApplyLayout, f.NineSlice, NineSliceUtil.GetLayout("TooltipDefaultLayout"))
+    end
+    if f.NineSlice.SetCenterColor then
+        local r, g, b = 0.05, 0.05, 0.06
+        if TOOLTIP_DEFAULT_BACKGROUND_COLOR then r, g, b = TOOLTIP_DEFAULT_BACKGROUND_COLOR:GetRGB() end
+        f.NineSlice:SetCenterColor(r, g, b, 0.9)
+    end
+
+    local title = f:CreateFontString(nil, "ARTWORK", "GameTooltipHeaderText")
+    title:SetPoint("TOPLEFT", 12, -12)
+    title:SetPoint("RIGHT", -12, 0)
+    title:SetJustifyH("LEFT")
+    title:SetText(HUD_EDIT_MODE_HUD_TOOLTIP_LABEL or L["Tooltips"])
+    local line = f:CreateFontString(nil, "ARTWORK", "GameTooltipText")
+    line:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
+    line:SetPoint("RIGHT", -12, 0)
+    line:SetJustifyH("LEFT")
+    line:SetTextColor(1, 1, 1)
+    line:SetText(L["Tooltips show here. Drag this to move them."])
+
+    box:HookScript("OnShow", SyncTooltipSample)
+    box:HookScript("OnHide", SyncTooltipSample)
+end
+
+--------------------------------------------------
 -- 4. HOOKS
 --------------------------------------------------
 local function OnEditModeShown()
@@ -231,6 +284,8 @@ local function OnEditModeShown()
     CreateEye()
     UpdateEye()
     ShowHint()
+    MakeTooltipSample()
+    SyncTooltipSample()
     -- after Blizzard and the libraries show their selections
     if IsHidden() then C_Timer.After(0, ApplyOverlays) end
 end

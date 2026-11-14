@@ -1655,8 +1655,8 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
     end)
 end
 
--- Blizzard's tab dock stays alive but out of sight. In the Gamepad UI the tab menu (Y) opens on the
--- real tab, so the dock lies invisible across the chat header, its tabs deaf to the mouse.
+-- Blizzard's tab dock stays alive but out of sight. In the Gamepad UI its tabs are the tab bar (shown,
+-- clickable, across the chat header; Tab Settings (Y) opens on them).
 local function ParkDock(dock)
     dock:ClearAllPoints()
     local host = _G.ChatFrame1 and _G.ChatFrame1.FlareUI_Skin
@@ -1686,7 +1686,9 @@ function Chat:KillGeneralDockManager()
         else
             dock:SetWidth(1); dock:SetHeight(1)
         end
-        dock:SetAlpha(0)
+        -- (11-14, a player's report) the Gamepad UI's tab bar is Blizzard's own tabs (6.4.1), which sit
+        -- in this dock: at alpha 0 they were still clickable but invisible. Hidden outside the Gamepad UI only.
+        dock:SetAlpha(ns.IsGamepadUI() and 1 or 0)
         dock:EnableMouse(false)
         dock:SetScript("OnUpdate", nil); dock:SetScript("OnEnter", nil); dock:SetScript("OnLeave", nil)
 

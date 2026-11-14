@@ -1760,7 +1760,7 @@ ns.Copy = {
             desc = L["Your mana while in cat or bear form."],
             label = L["Druid Mana"],
             section = "rb.bars",
-            tip = L["In caster form, Power shows your mana."],
+            tip = L["In caster form, Power shows your mana. For a mana bar on your player frame, tick Mana on Shapeshift in its Edit Mode settings."],
         },
         ["rb.pickColors"] = {
             desc = L["Every resource bar colour in one window, next to the bars. Palettes:\n* FlareUI (default)\n* Blizzard"],

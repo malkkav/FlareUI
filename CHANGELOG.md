@@ -1,3 +1,23 @@
+# FlareUI 6.5.1
+
+A quick round of fixes. Gamepad players get their chat tabs back, and FlareUI now gets along with ClassicUI Forever.
+
+## New
+- Edit Mode: the **HUD Tooltip** box shows a sample tooltip. You can still see and drag it with the overlays hidden (the eye button).
+
+## Changed
+- Action bars: **Show Button Art** no longer hides Action Bar 1's bar art. Edit Mode's **Hide Bar Art** controls it again, as before 6.5.
+- Profiles: pasting an Edit Mode layout code into **Import** now tells you where it goes: Esc › Edit Mode › Layout › Import.
+- Resource Bars › **Druid Mana**: the tip now points to **Mana on Shapeshift** in the player frame's Edit Mode settings, for a mana bar on the frame itself.
+- French: the 6.5 phrases now match the rest of the translation, by Braincell80.
+
+## Fixed
+- Gamepad mode: the chat tabs show again. They worked, but you couldn't see them.
+- About: the Discord button opens a working invite.
+- With ClassicUI Forever:
+  - Faded action bars no longer show up when you point at another bar.
+  - Tooltip **Frame Opacity** works.
+
 # FlareUI 6.5
 
 **Restart the game fully after updating** (not just /reload): this version adds new files.

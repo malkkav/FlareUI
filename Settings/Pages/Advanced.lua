@@ -484,6 +484,13 @@ ns.Dialogs["FLAREUI_IMPORT_PROFILE"] = {
     OnAccept = function(_, text)
         local payload = ReadString(text)
         if not (payload and ns.db and ns.db.sv) then
+            -- (11-14, a player) the About page's Edit Mode layout code pasted here: say where it goes.
+            -- Blizzard's layout code is plain text: "5 0 59 ..." then each system anchored to UIParent
+            local raw = type(text) == "string" and strtrim(text) or ""
+            if raw:match("^%d+ %d+ %d+ ") and raw:find("UIParent", 1, true) then
+                UIErrorsFrame:AddMessage(L["That's an Edit Mode layout code. Import it in Esc > Edit Mode > Layout > Import."], 1, 0.82, 0)
+                return
+            end
             UIErrorsFrame:AddMessage(L["That isn't a FlareUI profile string."], 1, 0.1, 0.1)
             return
         end

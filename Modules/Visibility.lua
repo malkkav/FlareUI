@@ -212,8 +212,36 @@ local function SetBarBling(frame, alpha)
     end
 end
 
+-- (11-14, a player's report) ClassicUI Forever moves each bar's buttons out of the bar into its own
+-- holder frames, and copies the bar's alpha onto the holder only now and then (its layout and fade
+-- passes). A faded bar then showed whatever alpha was copied last: bars 4 and 5 popped up on a stance
+-- bar hover. With the buttons taken, FlareUI fades the buttons themselves and leaves the bar at 1, so
+-- the holder never copies a stale value. Checked each time: the other addon moves them after login.
+local function ButtonsTaken(frame)
+    local button = frame.actionButtons and frame.actionButtons[1]
+    if not button then return false end
+    local parent = button:GetParent()
+    for _ = 1, 4 do
+        if not parent then return true end
+        if parent == frame then return false end
+        parent = parent:GetParent()
+    end
+    return true
+end
+
 local function ApplyElementAlpha(frame, key, alpha)
-    frame:SetAlpha(alpha)
+    if frame.actionButtons and ButtonsTaken(frame) then
+        frame.FlareUI_FadeAlpha = alpha
+        frame:SetAlpha(1)
+        for _, button in ipairs(frame.actionButtons) do button:SetAlpha(alpha) end
+    else
+        if frame.FlareUI_FadeAlpha then
+            -- the buttons came back (the other addon turned off): theirs back to full, the bar fades again
+            frame.FlareUI_FadeAlpha = nil
+            for _, button in ipairs(frame.actionButtons or {}) do button:SetAlpha(1) end
+        end
+        frame:SetAlpha(alpha)
+    end
     if frame.actionButtons then SetBarBling(frame, alpha) end
     if key == "bar1" then ForEachEndCap(SetFollowingCapAlpha, alpha) end
     if key == "minimap" then SetMinimapDrawn(alpha) end
@@ -604,7 +632,14 @@ local function CheckMember(data, editMode, spellbook)
     if data.key == "quest" and ns.ObjectiveTracker.IsMouseOverExtras and ns.ObjectiveTracker:IsMouseOverExtras() then return true end
     -- a unit frame's holder has no size: its frame (and a ring style's portrait) is what's pointed at
     if data.mouse then return data.mouse() end
-    return data.frame:IsMouseOver() or (data.isBar and FlyoutOver(data.frame))
+    if data.frame:IsMouseOver() or (data.isBar and FlyoutOver(data.frame)) then return true end
+    -- buttons another addon moved out of the bar can sit away from the bar's own frame
+    if data.frame.FlareUI_FadeAlpha then
+        for _, button in ipairs(data.frame.actionButtons) do
+            if button:IsVisible() and button:IsMouseOver() then return true end
+        end
+    end
+    return false
 end
 
 -- an event may have changed a condition: every group is checked again this frame
@@ -677,7 +712,8 @@ Fader.UpdateScript = function(self, elapsed)
                 local frame = data.frame
                 local targetAlpha = effectiveShow and 1 or data.minAlpha
                 -- (a member with its own apply keeps its value: its alpha can be secret)
-                local currentAlpha = data.apply and data.value or frame:GetAlpha()
+                -- (a bar whose buttons another addon took keeps its fade in FlareUI_FadeAlpha, see ButtonsTaken)
+                local currentAlpha = data.apply and data.value or frame.FlareUI_FadeAlpha or frame:GetAlpha()
                 if math_abs(currentAlpha - targetAlpha) > 0.005 then
                     groupFading = true
                     local change = data.fadeTime > 0 and elapsed / data.fadeTime or 1
@@ -1161,7 +1197,7 @@ function Visibility:Refresh()
         if e.cap and frame and ElementOn(e) and self:GetShow(key) == "bar1" then
             capsFollowBar1[frame] = true
             local bar1 = GetFrame("bar1")
-            local alpha = bar1 and bar1:GetAlpha()
+            local alpha = bar1 and (bar1.FlareUI_FadeAlpha or bar1:GetAlpha())
             frame:SetAlpha(type(alpha) == "number" and canaccessvalue(alpha) and alpha or 1)
         elseif ElementOn(e) and frame and frame.GetAlpha then
             local isBar = key:match("^bar[1-8]$") ~= nil
