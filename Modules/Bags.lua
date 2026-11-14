@@ -172,8 +172,6 @@ function Bags.GridPoint(b, anchor, col, row, gapCount, stepX, stepY)
     b:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -col * stepX, 4 + row * stepY + gapCount * BAG_GAP)
 end
 
-local UpdateButton   -- section 3
-
 -- Blizzard's item update (ContainerFrameMixin:UpdateItems), for one of FlareUI's buttons
 local function FillExtraButton(b)
     local bagID, slot = b:GetBagID(), b:GetID()
@@ -193,7 +191,7 @@ local function FillExtraButton(b)
         b:SetMatchesSearch(not (info and info.isFiltered))
     end)
     local db = GetDb()
-    if db and UpdateButton then UpdateButton(b, db) end
+    if db then Bags.DecorateButton(b, db, info, bagID, slot) end
 end
 
 local function HideExtras(except)
@@ -205,7 +203,7 @@ local function HideExtras(except)
     end
 end
 
--- refills the shown sections (bag updates, cooldowns, locks, the search box)
+-- refills the shown sections (bag updates, cooldowns, the search box)
 local function FillExtras()
     for _, e in pairs(extras) do
         if e.holder:IsShown() then
@@ -734,7 +732,7 @@ local function ShowItemData(ov, db, bagID, slotID, link, quality)
     if db.bagUncollected and Uncollected(link) then ov.eye:Show() end
 end
 
-function UpdateButton(button, db)
+local function UpdateButton(button, db)
     local bagID, slotID = button:GetBagID(), button:GetID()
     local info = bagID and slotID and C_Container.GetContainerItemInfo(bagID, slotID)
     Bags.DecorateButton(button, db, info, bagID, slotID)
@@ -1206,9 +1204,19 @@ function Bags:Init()
                              "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED" }) do
         pcall(bagEvents.RegisterEvent, bagEvents, event)
     end
-    bagEvents:SetScript("OnEvent", function(_, event)
+    bagEvents:SetScript("OnEvent", function(_, event, bagID, slotID)
         if event == "QUEST_LOG_UPDATE" then
             if itemFilter == "quest" then RefreshItemFilter() end
+            return
+        end
+        if event == "ITEM_LOCK_CHANGED" then
+            local section = slotID and extras[bagID]
+            local button = section and section.holder:IsShown() and section.buttons[slotID]
+            local frame = button and Combined()
+            if frame and frame:IsShown() and button:IsShown() then
+                local info = C_Container.GetContainerItemInfo(bagID, slotID)
+                SetItemButtonDesaturated(button, info and info.isLocked)
+            end
             return
         end
         if not next(extras) and not (KeyringWanted() or ReagentWanted()) then return end
