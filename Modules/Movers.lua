@@ -436,7 +436,7 @@ function MOV:Init()
     self.initialized = true
 
     local loot = _G.GroupLootContainer
-    if loot then
+    if loot and not (ns.LootRolls and ns.LootRolls:ShouldLoad()) then
         local holder = CreateHolder("loot", "FlareUI_LootRolls", "FlareUI Loot Rolls", ROLL_W, ROLL_H)
         CreateLootPreview(holder)
         ScaleHolder("loot", ROLL_W, ROLL_H)

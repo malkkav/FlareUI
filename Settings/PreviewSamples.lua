@@ -849,6 +849,75 @@ function R.lootFeed(c, spec)
     end)
 end
 
+function R.lootRolls(c, spec)
+    Heading(c,L["Loot Rolls"])
+    if spec.key == 'bl.lootRolls' and not Get('tweaks.lootRolls') then c:Text('rollsOff',L["Disabled"],12,90); return end
+    local x, w = 8, c.width - 16
+    local hidePass = Get('tweaks.lootRollsHidePass', true)
+    local rows = hidePass and 2 or 3
+    local h = 30 + 58 + rows * 26 + 8
+    c:Box('rollsWin', x, 30, w, h, 'FlareUI Thick', 0.9)
+    c:Text('rollsTitle', '|cffffd100' .. L["Loot Rolls"] .. '|r |cff808080(3)|r', x + 12, 39, w - 50, {size=11})
+    local hist = c:Texture('rollsHist', P.MEDIA .. 'Icons\\DMSegments.tga', x + w - 26, 36, 14, 14, true)
+    hist:SetVertexColor(0.61, 0.48, 0.29)
+    local line = c:Texture('rollsLine', nil, x + 10, 56, w - 20, 1, true)
+    local b = ns.BORDER_COLOR
+    line:SetColorTexture(b.r, b.g, b.b, 0.45)
+
+    -- the full card: the roll still to decide
+    local cy = 62
+    Icon(c, 'rollsIcon', 'INV_Sword_04', x + 11, cy, 40)
+    c:Text('rollsName', '|cff0070dd' .. L["Sample Item"] .. '|r', x + 60, cy + 1, w - 150, {size=11})
+    c:Text('rollsMine', '|cffff8040' .. (ITEM_BIND_ON_PICKUP or '') .. '|r', x + 60, cy + 16, w - 80, {size=9})
+    c:Text('rollsLead', L["Leading: %s"]:format('|cfff58cbaArvel|r |cffffd100' .. 87 .. '|r'), x + 60, cy + 28, w - 80, {size=9})
+    for i, choice in ipairs({'pass', 'greed', 'need'}) do
+        Atlas(c, 'rollsBtn' .. choice, 'lootroll-toast-icon-' .. choice .. '-up', x + w - 12 - i * 25, cy - 3, 24, 24)
+    end
+    c:Bar('rollsTimer', x + 11, cy + 46, w - 48, 6, 0.7, {1, 0.75, 0.1}, 'FlareUI Forever')
+    c:Text('rollsTime', '18', x + w - 33, cy + 44, 24, {size=9})
+    local split = c:Texture('rollsSplit', nil, x + 10, cy + 57, w - 20, 1, true)
+    split:SetColorTexture(b.r, b.g, b.b, 0.35)
+
+    -- the rows: one still open, one you chose on, and with Hide Passed Rolls off one you passed
+    local ry = cy + 62
+    local list = {
+        { id = 'a', icon = 'INV_Misc_Gem_Emerald_01', name = '|cff1eff00' .. L["Sample Item"] .. '|r', open = true },
+        { id = 'b', icon = 'INV_Chest_Cloth_25', name = '|cff1eff00' .. L["Sample Item"] .. '|r', choice = 'greed',
+          result = '|cff69ccf0Miri|r |cff40ff40' .. 64 .. '|r |cff999999(23)|r' },
+    }
+    if not hidePass then
+        list[3] = { id = 'c', icon = 'INV_Fabric_Linen_01', name = '|cffffffff' .. L["Linen Cloth"] .. '|r', choice = 'pass',
+            result = '|cffabd473Dorn|r |cff40ff40' .. 71 .. '|r' }
+    end
+    for i, r in ipairs(list) do
+        local y = ry + (i - 1) * 26
+        Icon(c, 'rollsRowIcon' .. r.id, r.icon, x + 11, y, 20)
+        c:Text('rollsRowName' .. r.id, r.name, x + 38, y + 5, r.open and w - 140 or w - 175, {size=9})
+        if r.open then
+            c:Text('rollsRowTime' .. r.id, '25', x + w - 100, y + 5, 20, {size=9})
+            for j, choice in ipairs({'pass', 'greed', 'need'}) do
+                Atlas(c, 'rollsRowBtn' .. r.id .. choice, 'lootroll-toast-icon-' .. choice .. '-up', x + w - 10 - j * 20, y, 20, 20)
+            end
+            c:Bar('rollsRowTimer' .. r.id, x + 38, y + 22, w - 48, 2, 0.85, {1, 0.75, 0.1}, 'FlareUI Forever')
+        else
+            c:Text('rollsRowResult' .. r.id, r.result, x + w - 165, y + 5, 120, {size=9})
+            Atlas(c, 'rollsRowChoice' .. r.id, 'lootroll-toast-icon-' .. r.choice .. '-up', x + w - 43, y + 3, 15, 15)
+            c:Texture('rollsRowClose' .. r.id, 'Interface\\Buttons\\UI-StopButton', x + w - 25, y + 4, 13, 13, true)
+            c.objects['rollsRowResult' .. r.id]:SetJustifyH('RIGHT')
+        end
+    end
+
+    local elapsed = 0
+    c:Animate(function(_, dt)
+        elapsed = (elapsed + dt) % 12
+        local fraction = 1 - elapsed / 12
+        local bar = c.objects.rollsTimer
+        bar:SetValue(fraction)
+        if fraction < 0.5 then bar:SetStatusBarColor(0.9, 0.2, 0.15) else bar:SetStatusBarColor(1, 0.75, 0.1) end
+        c.objects.rollsTime:SetText(math.ceil(fraction * 30))
+    end)
+end
+
 function R.mouseRing(c,spec)
     Heading(c,L["Mouse Ring"])
     c:Texture('mouseCursor',P.MEDIA..'Previews\\Cursor.tga',c.width/2-6,95,24,32,true)

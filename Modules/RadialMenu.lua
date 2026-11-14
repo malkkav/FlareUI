@@ -227,6 +227,8 @@ local MICRO_PANELS = {
                     macrotext = "/run FlareUI_ToggleSettings()" },
     threat      = { order = 13, label = L["Toggle Threat Meter"], icon = "Interface\\Icons\\Ability_Physical_Taunt",
                     macrotext = "/run FlareUI_ToggleThreatMeter()" },
+    loothistory = { order = 14, label = L["Loot History"], icon = "Interface\\Icons\\INV_Box_02",
+                    macrotext = "/run FlareUI_ToggleLootHistory()" },
 }
 RM.MICRO_PANELS = MICRO_PANELS
 

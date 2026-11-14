@@ -23,6 +23,9 @@ Code
   party progress tooltip)
       BetterQuestTracker by deface, MIT License
       https://github.com/wouter-intveld/BetterQuestTracker .... BetterQuestTracker.txt
+  The roll and loot history handling in Modules/LootRolls.lua
+      ForeverLootRoll by AKIMRX, MIT License
+      https://www.curseforge.com/wow/addons/foreverlootroll ... ForeverLootRoll.txt
   The buff proc spell IDs and the Cooldown Manager reading idea in Modules/ProcGlow.lua
       ProcDoc by wsmaxcy, free to use, modify or share (its README)
       https://github.com/wsmaxcy/ProcDoc

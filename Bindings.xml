@@ -5,4 +5,7 @@
 	<Binding name="FLAREUI_TRACKER" category="BINDING_HEADER_FLAREUI">
 		FlareUI_ToggleObjectiveTracker()
 	</Binding>
+	<Binding name="FLAREUI_LOOT_HISTORY" category="BINDING_HEADER_FLAREUI">
+		FlareUI_ToggleLootHistory()
+	</Binding>
 </Bindings>
