@@ -82,6 +82,7 @@ Modules\Fishing.lua
 Modules\Bags.lua
 Modules\Movers.lua
 Modules\LootFeed.lua
+Modules\LootRolls.lua
 Modules\ZoneText.lua
 Modules\MouseRing.lua
 Modules\Tooltips.lua

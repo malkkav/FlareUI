@@ -655,6 +655,18 @@ ns.Copy = {
             label = L["Pet Food Marker"],
             section = "bl.itemSlots",
         },
+        ["bl.lootRolls"] = {
+            desc = L["FlareUI's loot roll window in place of Blizzard's roll frames:\n* Need, Greed and Pass for each item\n* Everyone's choice and roll, live\n* The winner, then a history of finished rolls"],
+            label = L["Loot Roll Results"],
+            reload = true,
+            section = "bl.lootRollsSection",
+            tip = L["Read from the game's loot history. Placed and scaled in Edit Mode as \"FlareUI Loot Rolls\"."],
+        },
+        ["bl.lootRollsHidePass"] = {
+            desc = L["A roll you pass on, or let run out, leaves the loot roll window at once. It still goes to the history."],
+            label = L["Hide Passed Rolls"],
+            section = "bl.lootRollsSection",
+        },
         ["bl.skipLoot"] = {
             desc = L["No \"will bind to you\" question when you:\n* Loot an item\n* Roll Need or Greed"],
             label = L["Skip Loot Confirmations"],
@@ -2384,6 +2396,7 @@ ns.Copy = {
         ["bl.fontsLoot"] = L["Looting"],
         ["bl.itemSlots"] = L["Item Slots"],
         ["bl.lootFeedSection"] = L["Loot Feed"],
+        ["bl.lootRollsSection"] = L["Loot Rolls"],
         ["bl.looting"] = L["Looting"],
         ["bl.tools"] = L["Tools"],
         ["br.alertsSection"] = L["Alerts"],
