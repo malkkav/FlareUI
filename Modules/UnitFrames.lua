@@ -303,7 +303,7 @@ local SPLIT_MODE = { text = L["Percent <  > Value"], value = "split", isRadio = 
 -- Value <  > Percent (11-14, Marcus): the same two ends the other way round, after Value | Percent
 local SPLIT_VP_MODE = { text = L["Value <  > Percent"], value = "splitvp", isRadio = true }
 -- the two Forever Style split modes; off the plate each reads as its | mode
-local SPLIT_MODES = { split = "both", splitvp = "valuepct" }
+local SPLIT_MODES = { split = "both", splitvp = "valuepct", custom = "custom" }
 function UF.IsSplitMode(mode) return SPLIT_MODES[mode] ~= nil end
 local HEALTH_TEXT_MODES = {
     { text = L["Off"],                      value = "none",        isRadio = true },
@@ -346,6 +346,66 @@ function UF.SplitText(f, key)
     left:SetShadowOffset(main:GetShadowOffset())
     left:SetTextColor(main:GetTextColor())
     return left
+end
+
+-- Custom formats are compiled once per font string when their template changes. Only the
+-- public template is parsed; potentially secret unit values go straight to SetFormattedText.
+UF.CUSTOM_DEFAULTS = { Left = "[value] / [max]", Right = "[percent]" }
+UF.CUSTOM_KEYS = {
+    healthText = { Left = "healthTextCustomLeft", Right = "healthTextCustomRight" },
+    powerText = { Left = "powerTextCustomLeft", Right = "powerTextCustomRight" },
+}
+UF.CUSTOM_TAGS = { value = 1, max = 2, percent = 3 }
+UF.CUSTOM_SPECS = { "%d", "%d", "%.0f%%" }
+function UF.CustomTemplate(db, key, side)
+    local value = db and db[UF.CUSTOM_KEYS[key][side]]
+    if type(value) ~= "string" then return UF.CUSTOM_DEFAULTS[side] end
+    return #value > 200 and value:sub(1, 200) or value
+end
+
+function UF.FormatCustomText(fs, template, cur, percent, max)
+    local compiled = fs.fuiCustomFormat
+    if not compiled or compiled.template ~= template then
+        compiled = { template = template, tokens = {}, args = {} }
+        -- Escape literal percent signs before inserting our own format specifiers. Unknown tags
+        -- remain literal text, so typos never turn into executable Lua or invalid format strings.
+        compiled.format = template:gsub("%%", "%%%%"):gsub("%[([%a]+)%]", function(tag)
+            local token = UF.CUSTOM_TAGS[tag]
+            if not token then return "[" .. tag .. "]" end
+            compiled.tokens[#compiled.tokens + 1] = token
+            return UF.CUSTOM_SPECS[token]
+        end)
+        compiled.count = #compiled.tokens
+        fs.fuiCustomFormat = compiled
+    end
+    local tokens, args = compiled.tokens, compiled.args
+    for i = 1, compiled.count do
+        local token = tokens[i]
+        if token == 1 then args[i] = cur
+        elseif token == 2 then args[i] = max
+        else args[i] = percent end
+    end
+    fs:SetFormattedText(compiled.format, unpack(args, 1, compiled.count))
+end
+
+function UF.SetCustomBarText(fs, left, db, key, cur, percent, max)
+    local keys = UF.CUSTOM_KEYS[key]
+    local rawLeft, rawRight = db and db[keys.Left], db and db[keys.Right]
+    local layout = fs.fuiCustomLayout
+    if not layout or layout.key ~= key or layout.rawLeft ~= rawLeft or layout.rawRight ~= rawRight then
+        local l = UF.CustomTemplate(db, key, "Left")
+        local r = UF.CustomTemplate(db, key, "Right")
+        layout = { key = key, rawLeft = rawLeft, rawRight = rawRight, left = l, right = r,
+            joined = l == "" and r or (r == "" and l or l .. " | " .. r) }
+        fs.fuiCustomLayout = layout
+    end
+    if left and left:IsShown() then
+        UF.FormatCustomText(left, layout.left, cur, percent, max)
+        UF.FormatCustomText(fs, layout.right, cur, percent, max)
+    else
+        -- Other styles have one text region. Join only when settings change, not on every tick.
+        UF.FormatCustomText(fs, layout.joined, cur, percent, max)
+    end
 end
 
 -- The text for every mode but Health Lost. cur and max go through ns.ShortNumber (in full up to 9999) and percent is
@@ -406,7 +466,7 @@ for _, mode in ipairs(HEALTH_TEXT_MODES) do
     if mode.value ~= "lost" and mode.value ~= "valuelost" then UF.POWER_TEXT_MODES[#UF.POWER_TEXT_MODES + 1] = mode end
 end
 local PLATE_POWER_TEXT_MODES = WithSplit(UF.POWER_TEXT_MODES)
-local POWER_MODE = { none = true, percent = true, value = true, both = true, valuepct = true, valuemax = true, valuemaxpct = true, split = true, splitvp = true }
+local POWER_MODE = { none = true, percent = true, value = true, both = true, valuepct = true, valuemax = true, valuemaxpct = true, split = true, splitvp = true, custom = true }
 function UF.IsPowerTextMode(v) return POWER_MODE[v] or false end
 function UF.PowerTextMode(v)
     if v == "valuemaxpct" then return "valuemax" end
@@ -1062,7 +1122,9 @@ local function UpdateHealth(f, glide)
         local mode = udb and udb.healthText or "percent"
         f.HealthText:SetAlpha(1)
         local left = f.HealthTextLeft
-        if mode == "lost" then
+        if mode == "custom" then
+            UF.SetCustomBarText(f.HealthText, left, udb, "healthText", math_floor(health * 24000), health * 100, 24000)
+        elseif mode == "lost" then
             UF.SetSampleHealthLost(f.HealthText, health)
         elseif mode == "split" and left and left:IsShown() then
             left:SetFormattedText("%.0f%%", health * 100)
@@ -1098,11 +1160,16 @@ local function UpdateHealth(f, glide)
     local text = f.HealthText
     text:SetAlpha(1)
     local left = f.HealthTextLeft
-    if left then left:SetText("") end
+    -- Custom fills both ends itself; avoid clearing and immediately redrawing its left text.
+    if left and mode ~= "custom" then left:SetText("") end
     if not UnitIsConnected(unit) then
+        if left and mode == "custom" then left:SetText("") end
         text:SetText(OFFLINE_TEXT)
     elseif UF.IsDead(unit) then
+        if left and mode == "custom" then left:SetText("") end
         text:SetText(UnitIsGhost(unit) and GHOST_TEXT or DEAD_TEXT)
+    elseif mode == "custom" then
+        UF.SetCustomBarText(text, left, udb, "healthText", UnitHealth(unit), UnitHealthPercent(unit, true, percentCurve), UnitHealthMax(unit))
     elseif mode == "lost" then
         UF.SetHealthLost(text, unit)
     elseif mode == "none" then
@@ -1133,10 +1200,13 @@ local function UpdatePower(f, glide)
     if f.ManaCost then f.ManaCost:Refresh(powerType) end
     if f.ShiftMana then UF.UpdateShiftMana(f) end
     local pleft = f.PowerTextLeft
-    if pleft then pleft:SetText("") end
     local pmode = udb and UF.PowerTextMode(udb.powerText)
+    if pleft and pmode ~= "custom" then pleft:SetText("") end
     if udb and UnitIsConnected(unit) and not UF.IsDead(unit) then
-        if pmode == "split" and pleft and pleft:IsShown() then
+        if pmode == "custom" then
+            UF.SetCustomBarText(f.PowerText, pleft, udb, "powerText", UnitPower(unit, powerType),
+                UnitPowerPercent(unit, powerType, false, CurveConstants.ScaleTo100), UnitPowerMax(unit, powerType))
+        elseif pmode == "split" and pleft and pleft:IsShown() then
             -- Percent <  > Value on the plate (secret numbers go in as they are)
             pleft:SetFormattedText("%.0f%%", UnitPowerPercent(unit, powerType, false, CurveConstants.ScaleTo100))
             f.PowerText:SetFormattedText("%d", UnitPower(unit, powerType))
@@ -1147,6 +1217,7 @@ local function UpdatePower(f, glide)
             UF.SetPowerText(f.PowerText, unit, powerType, pmode)
         end
     else
+        if pleft and pmode == "custom" then pleft:SetText("") end
         f.PowerText:SetText("")
     end
 end
@@ -2197,7 +2268,12 @@ local function ApplySample(f)
     local r, g, b = ns.PowerColor(s.powerToken or "MANA")
     f.Power:SetStatusBarColor(r or ns.MANA_BLUE[1], g or ns.MANA_BLUE[2], b or ns.MANA_BLUE[3])
     local ptMode = UF.PowerTextMode(udb and udb.powerText)
-    UF.FormatBarText(f.PowerText, ptMode, math_floor(power * 3000), math_floor(power * 100), 3000)
+    local left = f.PowerTextLeft
+    if ptMode == "custom" then
+        UF.SetCustomBarText(f.PowerText, left, udb, "powerText", math_floor(power * 3000), math_floor(power * 100), 3000)
+    else
+        UF.FormatBarText(f.PowerText, ptMode, math_floor(power * 3000), math_floor(power * 100), 3000)
+    end
 end
 
 local function UpdateAll(f)
@@ -3881,7 +3957,12 @@ function UF.UpdateShiftMana(f)
     bar:SetStatusBarColor(r or ns.MANA_BLUE[1], g or ns.MANA_BLUE[2], b or ns.MANA_BLUE[3])
     -- the number follows Power Text, as on the power bar
     if udb and not UnitIsDeadOrGhost("player") then
-        UF.SetPowerText(f.ShiftManaText, "player", mana, UF.PowerTextMode(udb.powerText))
+        if udb.powerText == "custom" then
+            UF.SetCustomBarText(f.ShiftManaText, nil, udb, "powerText", UnitPower("player", mana),
+                UnitPowerPercent("player", mana, false, CurveConstants.ScaleTo100), UnitPowerMax("player", mana))
+        else
+            UF.SetPowerText(f.ShiftManaText, "player", mana, UF.PowerTextMode(udb.powerText))
+        end
     else
         f.ShiftManaText:SetText("")
     end
@@ -4888,6 +4969,20 @@ local function BuildPlayerCastSettings()
     return settings
 end
 
+ns.Dialogs["FLAREUI_UF_CUSTOM_TEXT"] = {
+    text = "%s",
+    button1 = _G.ACCEPT or "Accept", button2 = L["Cancel"],
+    hasEditBox = true, maxLetters = 200, hideOnEscape = true,
+    editText = function(data) return UF.CustomTemplate(GetUnitDb(data.unit), data.key, data.side) end,
+    OnAccept = function(data, text)
+        local db = GetUnitDb(data.unit)
+        if not db then return end
+        db[data.key .. "Custom" .. data.side] = (text or ""):sub(1, 200)
+        local f = frames[data.unit]
+        if f then LayoutFrame(f); UpdateAll(f) end
+    end,
+}
+
 local function BuildSettings(unit)
     local info = UNITS[unit]
     local function get(key) return function() local u = GetUnitDb(unit); return u and u[key] end end
@@ -4969,10 +5064,36 @@ local function BuildSettings(unit)
     end
     -- Percent <  > Value only in Forever Style (a style change reloads, so this list is fixed for the session)
     local healthModes = (ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and PLATE_HEALTH_TEXT_MODES or HEALTH_TEXT_MODES
-    settings[#settings + 1] = { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = defaults.healthText or "percent", values = healthModes, get = get("healthText"), set = set("healthText") }
+    local function customModes(modes)
+        local out = {}
+        for i, mode in ipairs(modes) do out[i] = mode end
+        out[#out + 1] = { text = L["Custom"], value = "custom", isRadio = true }
+        return out
+    end
+    settings[#settings + 1] = { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = defaults.healthText or "percent", values = customModes(healthModes), get = get("healthText"), set = set("healthText") }
     settings[#settings + 1] = { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "value", values = UF.POWER_TEXT_MODES,
         get = function() local u = GetUnitDb(unit); return UF.PowerTextMode(u and u.powerText) end, set = set("powerText") }
-    settings[#settings].values = (ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and PLATE_POWER_TEXT_MODES or UF.POWER_TEXT_MODES
+    settings[#settings].values = customModes((ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and PLATE_POWER_TEXT_MODES or UF.POWER_TEXT_MODES)
+    for _, key in ipairs({ "healthText", "powerText" }) do
+        local buttons = {}
+        for _, side in ipairs({ "Left", "Right" }) do
+            buttons[#buttons + 1] = {
+                text = key == "healthText"
+                    and (side == "Left" and L["Health: Left Text"] or L["Health: Right Text"])
+                    or (side == "Left" and L["Power: Left Text"] or L["Power: Right Text"]),
+                click = function()
+                    ns.ShowDialog("FLAREUI_UF_CUSTOM_TEXT",
+                        L["Use [value], [max] and [percent]. Leave empty to hide this side."],
+                        { unit = unit, key = key, side = side })
+                end,
+            }
+        end
+        settings[#settings + 1] = {
+            name = key == "healthText" and L["Custom Health Text"] or L["Custom Power Text"],
+            kind = LEM.SettingType.Buttons, buttons = buttons,
+            hidden = function() local db = GetUnitDb(unit); return not db or db[key] ~= "custom" end,
+        }
+    end
     if info.comboPoints then
         local function refreshCombo()
             local f = frames[unit]
