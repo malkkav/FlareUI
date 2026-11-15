@@ -217,11 +217,13 @@ local function Place()
     local sun = MinimapCluster.DielFrame
     local x, y
     if ns.Minimap.IsSquare() and sun then
-        -- centred on the border line, as Minimap.lua PlaceButton puts the addon buttons
+        -- centred on the border line, as Minimap.lua PlaceButton puts the addon buttons. The border's
+        -- frame, not the map: node addons slide the map under the cursor while they scan
+        local art = ns.Minimap.Frame or Minimap
         local _, _, sunTop = ScreenRect(sun)
-        local mapLeft = Minimap:GetLeft()
+        local mapLeft = art:GetLeft()
         if sunTop and mapLeft then
-            x = mapLeft * Minimap:GetEffectiveScale()
+            x = mapLeft * art:GetEffectiveScale()
             y = sunTop + (SUN_GAP + BUTTON_SIZE / 2) * own
         end
     else
@@ -244,7 +246,8 @@ end
 
 local function UpdateShown()
     if not CanChange(UpdateShown) then return end
-    local show = Wanted() and MinimapCluster:IsShown() and not Editing()
+    -- the map too: the Toggle Minimap key hides it and leaves the cluster shown
+    local show = Wanted() and MinimapCluster:IsShown() and Minimap:IsShown() and not Editing()
     button:SetShown(show)
     if show then
         Fade()
@@ -292,6 +295,8 @@ function Eye.Init()
     EventRegistry:RegisterCallback("EditMode.Exit", Eye.Update)
     MinimapCluster:HookScript("OnShow", UpdateShown)
     MinimapCluster:HookScript("OnHide", UpdateShown)
+    Minimap:HookScript("OnShow", UpdateShown)
+    Minimap:HookScript("OnHide", UpdateShown)
     hooksecurefunc(MinimapCluster, "SetAlpha", Fade)
     local events = CreateFrame("Frame")
     events:RegisterEvent("UI_SCALE_CHANGED")
