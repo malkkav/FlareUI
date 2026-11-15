@@ -1456,11 +1456,35 @@ ns.Copy = {
             section = "qol.convenience",
             tip = L["A character shows up once you've logged in on it."],
         },
+        ["qol.mapCoords"] = {
+            desc = L["The cursor's position and your own, under the world map."],
+            label = L["Map Coordinates"],
+            section = "qol.convenience",
+            tags = { "world map coords" },
+        },
         ["qol.mapFade"] = {
             desc = L["The world map turns see-through while you move."],
             label = L["Fade Map While Moving"],
             section = "qol.convenience",
             tip = L["Turning it off restores your own setting."],
+        },
+        ["qol.mapGrip"] = {
+            desc = L["A grip in the world map's bottom right corner: drag it to make the map bigger or smaller. Right-click it for 100%."],
+            label = L["Map Resize Grip"],
+            section = "qol.convenience",
+            tags = { "world map size", "map scale" },
+            tip = L["On the windowed map, with Move Any Frame on. Ctrl + mouse wheel over the map does the same."],
+        },
+        ["qol.mapNoBackdrop"] = {
+            desc = L["Hides the black screen behind the full-screen world map, so the game stays in view round it."],
+            label = L["Hide Map Backdrop"],
+            section = "qol.convenience",
+        },
+        ["qol.mapZoneLevels"] = {
+            desc = L["The level range after a zone's name when you point at it on a continent's map, such as Duskwood (18-30):\n* Red: you are below it\n* Yellow: you are in it\n* Green: you are past it"],
+            label = L["Zone Levels"],
+            section = "qol.convenience",
+            tags = { "zone level range" },
         },
         ["qol.merchantKnown"] = {
             desc = L["Recipes and items you already know are greyed out at vendors."],

@@ -79,6 +79,7 @@ Modules\MinimapBag.lua
 Modules\MinimapEye.lua
 Modules\TweaksCVars.lua
 Modules\Tweaks.lua
+Modules\WorldMap.lua
 Modules\JunkDelete.lua
 Modules\Fishing.lua
 Modules\Bags.lua

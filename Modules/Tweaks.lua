@@ -147,6 +147,9 @@ local function SetFrameScale(frame, scale)
     end
 end
 
+-- (the world map's resize grip: WorldMap.lua)
+Tweaks.SetFrameScale = SetFrameScale
+
 local function OnDragStart(handle)
     local frame = handle.moveTarget or handle
     moveDragWatch:Hide()
@@ -3052,6 +3055,7 @@ function Tweaks:Refresh()
     Tweaks.ApplyMapFade()
     Tweaks.ApplyKeyDown()
     if ns.Fishing then ns.Fishing:Apply() end
+    if ns.WorldMap then ns.WorldMap.Apply() end
     ApplyPortraitNumbers()
     ApplyTips()
     if (GetDb() or {}).hideLootAlerts then Tweaks.ApplyLootAlerts() end
@@ -3123,6 +3127,7 @@ function Tweaks:Init()
     InitPetFood()
     InitLootConfirm()
     InitCombatPlates()
+    if ns.WorldMap then ns.WorldMap.Apply() end
     ApplyNameplateCombo()
     ApplyQuestTags()
     ApplyHideLevelAll()

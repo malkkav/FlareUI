@@ -23,6 +23,11 @@ local function QuestBadgeTaken()
 end
 
 -- greys the /way row: TomTom keeps the command
+-- greys the world map rows while a map addon dresses the map itself
+local function MapTaken()
+    return ns.WorldMap and ns.WorldMap.Taken() and true or false
+end
+
 local function WayTaken()
     return ns.Tweaks and ns.Tweaks.TomTomOwnsWay and ns.Tweaks:TomTomOwnsWay() or false
 end
@@ -43,6 +48,12 @@ S:Row{ key = "qol.skipGossip", half = true, tab = "gameplay", path = "tweaks.ski
 S:Row{ key = "qol.deleteJunkFull", half = true, tab = "gameplay", path = "tweaks.deleteJunkWhenFull" }
 S:Row{ key = "qol.way", half = true, tab = "gameplay", path = "tweaks.way", reload = true, disabled = WayTaken }
 S:Row{ key = "qol.mapFade", half = true, tab = "gameplay", path = "tweaks.mapFade", apply = Refresh }
+-- the world map (WorldMap.lua); the grip sets Move Any Frame's saved scale, so it needs that on
+S:Row{ key = "qol.mapGrip", half = true, tab = "gameplay", path = "tweaks.mapGrip", apply = Refresh,
+    disabled = function() return MapTaken() or not S:GetPath("tweaks.moveAnyFrame") end }
+S:Row{ key = "qol.mapCoords", half = true, tab = "gameplay", path = "tweaks.mapCoords", apply = Refresh, disabled = MapTaken }
+S:Row{ key = "qol.mapNoBackdrop", half = true, tab = "gameplay", path = "tweaks.mapNoBackdrop", apply = Refresh, disabled = MapTaken }
+S:Row{ key = "qol.mapZoneLevels", half = true, tab = "gameplay", path = "tweaks.mapZoneLevels", apply = Refresh, disabled = MapTaken }
 S:Row{ key = "qol.taxiMap", half = true, tab = "gameplay", path = "tweaks.taxiMap" }
 S:Row{ key = "qol.trainAll", half = true, tab = "gameplay", path = "tweaks.trainAll", apply = Refresh }
 S:Row{ key = "qol.mailBook", half = true, tab = "gameplay", path = "tweaks.mailBook", apply = Refresh }
