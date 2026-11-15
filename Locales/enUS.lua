@@ -129,6 +129,7 @@ L["A small icon on the minimap in place of Blizzard's large queue eye. Like Bliz
 L["A sound when a reminder appears. Picking one plays it."] = true
 L["A spark crosses the bar during the global cooldown."] = true
 L["A spark crosses the bar for five seconds after you spend mana. Spirit regeneration starts again when it ends."] = true
+L["A spark crosses your health bar over each main-hand swing: your next swing lands as it reaches the end."] = true
 L["A spell or buff to keep up: its name or spell ID. Several, separated by commas, count as one (any of them). An item: item:ID."] = true
 L["A square map with Forever's day and night cycle"] = true
 L["A tab you click stays up until the condition changes, like a fight ending."] = true
@@ -1465,6 +1466,7 @@ L["Style"] = true
 L["Sub-Radials"] = true
 L["Summon / Resurrect / Phase"] = true
 L["Surnames after first names on:\n* Player and target frames\n* Party and focus frames, in Forever Style"] = true
+L["Swing Timer"] = true
 L["Swing Timers"] = true
 L["Switch"] = true
 L["Switch Gamepad mode on or off."] = true

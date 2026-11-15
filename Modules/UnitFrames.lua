@@ -2963,6 +2963,57 @@ local function InitFsrSpark()
 end
 
 --------------------------------------------------
+-- 8b2. SWING TIMER (11-15, a player's request)
+-- A spark crosses the player's health bar over each main-hand swing, as the Five-Second Rule's does
+-- the mana bar: the next swing lands as it reaches the end. PLAYER_SWING gives the swing's length as
+-- it starts. One table: the file is near Lua's 200 locals.
+--------------------------------------------------
+local SwingSpark = {}   -- finish, duration: the main-hand swing running now
+
+function SwingSpark.Move(holder)
+    local duration = SwingSpark.duration
+    local remaining = SwingSpark.finish and (SwingSpark.finish - GetTime())
+    if not remaining or remaining <= 0 or not (duration and duration > 0) then
+        SwingSpark.finish = nil
+        holder:Hide()
+        return
+    end
+    local bar = holder:GetParent()
+    local width = bar:GetWidth()
+    local x = width * math.max(0, 1 - remaining / duration)
+    if bar:GetReverseFill() then x = width - x end
+    holder.Spark:SetPoint("CENTER", bar, "LEFT", x, 0)
+end
+
+function SwingSpark.Create(f)
+    if not f.Health then return end
+    f.SwingSpark = NewFsrHolder(f.Health)
+    f.SwingSpark:SetScript("OnUpdate", SwingSpark.Move)
+end
+
+function SwingSpark.Update()
+    local f = frames.player
+    local holder = f and f.SwingSpark
+    if not holder then return end
+    if SwingSpark.finish and GetTime() >= SwingSpark.finish then SwingSpark.finish = nil end
+    local u = GetUnitDb("player")
+    holder:SetShown(u and u.swing == true and SwingSpark.finish ~= nil and f.Health:IsShown() or false)
+end
+
+function SwingSpark.Init()
+    local mainHand = Enum.PlayerSwingType and Enum.PlayerSwingType.MainHand
+    if mainHand == nil then return end
+    local events = CreateFrame("Frame")
+    if not pcall(events.RegisterEvent, events, "PLAYER_SWING") then return end
+    events:SetScript("OnEvent", function(_, _, duration, swingType)
+        if swingType ~= mainHand or not canaccessvalue(duration) then return end
+        if type(duration) ~= "number" or duration <= 0 then return end
+        SwingSpark.finish, SwingSpark.duration = GetTime() + duration, duration
+        SwingSpark.Update()
+    end)
+end
+
+--------------------------------------------------
 -- 8c. PET HAPPINESS
 -- Blizzard's own indicator (PetFrameHappinessTemplate) mid health bar. Clicks pass through to the
 -- frame; the hover keeps its tooltip. Edit Mode shows the happy face.
@@ -4673,7 +4724,10 @@ local function CreateUnitFrame(unit)
     -- Damage Trail (made for every frame but the polled ones: off it stays hidden); in the heal
     -- clip when there is one, under the heals
     if not info.poll then f.DamageTrail = UF.CreateDamageTrail(f.Health, f.HealClip) end
-    if unit == "player" then CreateFsrSpark(f) end
+    if unit == "player" then
+        CreateFsrSpark(f)
+        SwingSpark.Create(f)
+    end
     if info.happiness then CreateHappiness(f) end
     PrecreateAuraContainers(f)
 
@@ -5179,6 +5233,10 @@ local function BuildSettings(unit)
             get = function() local u = GetUnitDb(unit); return u and u.fsr == true or false end,
             set = function(_, value) local u = GetUnitDb(unit); if not u then return end; u.fsr = value; UpdateFsrSpark() end,
             desc = L["A spark crosses the bar for five seconds after you spend mana. Spirit regeneration starts again when it ends."] }
+        settings[#settings + 1] = { name = L["Swing Timer"], kind = LEM.SettingType.Checkbox, default = false,
+            get = function() local u = GetUnitDb(unit); return u and u.swing == true or false end,
+            set = function(_, value) local u = GetUnitDb(unit); if not u then return end; u.swing = value; SwingSpark.Update() end,
+            desc = L["A spark crosses your health bar over each main-hand swing: your next swing lands as it reaches the end."] }
         settings[#settings + 1] = { name = L["Mana on Shapeshift"], kind = LEM.SettingType.Checkbox, default = false,
             get = function() local u = GetUnitDb(unit); return u and u.shiftMana == true or false end,
             set = function(_, value)
@@ -5597,7 +5655,10 @@ function UF:Init()
     end
     UF.ApplyPlayerCastMode()
     HookExtras()
-    if frames.player then InitFsrSpark() end
+    if frames.player then
+        InitFsrSpark()
+        SwingSpark.Init()
+    end
     self.initialized = true
     -- out of range fading on target and focus (no event for their range); a new spellbook re-picks
     -- the spells it measures with
