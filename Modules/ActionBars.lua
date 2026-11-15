@@ -339,7 +339,7 @@ end
 -- lit. As LibActionButton does, the action is asked directly, on events: the active stance or form, a
 -- queued on-next-swing attack, auto attack and a repeating Auto Shot or wand. The stance and pet bars
 -- (no action slot) keep Blizzard's checked state, which follows the form and the pet's mode.
-local function ActionActive(action)
+local function ActionActive(action, state)
     if not C_ActionBar.HasAction(action) then return false end
     if C_ActionBar.IsAutoRepeatAction(action) then return true end
     local current = C_ActionBar.IsCurrentAction(action)
@@ -347,16 +347,17 @@ local function ActionActive(action)
     local name = ActionSpellName(action)
     if not name then return false end
     if current and QueuedName(name) then return true end
+    if type(state) == "table" then return name == state.form end
     return name == ActiveFormName()
 end
 
-local function IsActiveButton(button)
+local function IsActiveButton(button, state)
     local action = button.action
     if type(action) ~= "number" or not (C_ActionBar and C_ActionBar.HasAction) then
         return button.GetChecked and button:GetChecked() and true or false
     end
     -- (the slot APIs error on a slot number out of range)
-    local ok, active = pcall(ActionActive, action)
+    local ok, active = pcall(ActionActive, action, state)
     return ok and active or false
 end
 
@@ -389,9 +390,9 @@ local function ActiveOverlay(button)
     return ov
 end
 
-local function UpdateActive(button)
+local function UpdateActive(button, state)
     local db = GetBarConfig()
-    local on = db and db.enabled and db.activeHighlight and IsActiveButton(button) or false
+    local on = db and db.enabled and db.activeHighlight and IsActiveButton(button, state) or false
     if not on then
         local ov = button.FlareUI_Active
         if ov then ov.pulse:Stop(); ov:Hide() end
@@ -441,23 +442,28 @@ local function UpdateActive(button)
 end
 
 local activeButtons = {}   -- every hooked button, for the event refresh
+local activeState = {}
 local function RefreshActive()
-    for button in pairs(activeButtons) do UpdateActive(button) end
+    local ok, form = pcall(ActiveFormName)
+    activeState.form = ok and form or nil
+    for button in pairs(activeButtons) do UpdateActive(button, activeState) end
 end
 
--- an event: every button now, once more the next frame and a moment later (the game's answers can
--- trail the event: a queued attack used, a cast ended)
+-- Coalesce event bursts into one pass next frame. Keep the later safety pass: the game's
+-- answers can trail the event (a queued attack used, a cast ended).
 local ACTIVE_EVENTS = { "ACTIONBAR_UPDATE_STATE", "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_PAGE_CHANGED",
     "UPDATE_BONUS_ACTIONBAR", "UPDATE_SHAPESHIFT_FORM", "UPDATE_SHAPESHIFT_FORMS", "START_AUTOREPEAT_SPELL",
     "STOP_AUTOREPEAT_SPELL", "PLAYER_ENTER_COMBAT", "PLAYER_LEAVE_COMBAT", "PLAYER_REGEN_ENABLED" }
 local ACTIVE_UNIT_EVENTS = { "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED",
     "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_FAILED_QUIET" }
-local activeEvents, activeLater
+local activeEvents, activeLater, activeQueued
 local function OnActiveEvent()
-    RefreshActive()
+    if not activeQueued then
+        activeQueued = true
+        C_Timer.After(0, function() activeQueued = nil; RefreshActive() end)
+    end
     if activeLater then return end
     activeLater = true
-    C_Timer.After(0, RefreshActive)
     C_Timer.After(0.3, function() activeLater = nil; RefreshActive() end)
 end
 
