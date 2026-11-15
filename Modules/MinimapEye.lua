@@ -106,8 +106,8 @@ button:SetSize(BUTTON_SIZE, BUTTON_SIZE)
 button:SetFrameStrata("MEDIUM")
 button:SetFrameLevel(8)
 button:Hide()
--- a mouse press on a secure button always acts on the release
-button:RegisterForClicks("AnyUp")
+-- both press and release: a secure button acts on the one ActionButtonUseKeyDown names (on by default)
+button:RegisterForClicks("AnyUp", "AnyDown")
 -- the micro menu's own button runs the game's checks: a disabled finder, Kiosk mode, Quick Keybind
 button:SetAttribute("type1", "click")
 button:SetAttribute("clickbutton1", LFDMicroButton)
