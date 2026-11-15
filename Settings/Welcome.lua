@@ -60,6 +60,19 @@ local function PanelButton(parent, text, width, height, onClick)
     return b
 end
 
+-- Blizzard's button globals follow the game client. When the player selected a
+-- different FlareUI language, use that language's phrase instead; otherwise
+-- keep the game's own wording (including its localized Back/Next/Close text).
+local function WelcomeButtonText(key, translated, globalName, fallback)
+    local selectedLocale = ns.LoadedLocale and ns.LoadedLocale()
+    local gameLocale = GetLocale and GetLocale()
+    if selectedLocale and gameLocale and selectedLocale ~= gameLocale and translated
+        and (translated ~= key or selectedLocale == "enUS") then
+        return translated
+    end
+    return _G[globalName] or fallback
+end
+
 -- the window's own fonts: Blizzard's names map to the settings window's (Panel.FONT)
 local FONT_FOR = { GameFontHighlightMedium = "GameFontHighlight" }
 local function Say(parent, font, text, width)
@@ -119,7 +132,7 @@ local function ShowSmallWelcome()
         ns.SettingsPanel:Open()
     end)
     open:SetPoint("BOTTOMRIGHT", small, "BOTTOM", -5, 24)
-    local close = PanelButton(small, CLOSE or "Close", 150, 28, function() small:Hide() end)
+    local close = PanelButton(small, WelcomeButtonText("Close", L["Close"], "CLOSE", "Close"), 150, 28, function() small:Hide() end)
     close:SetPoint("BOTTOMLEFT", small, "BOTTOM", 5, 24)
     -- the controller: D-pad between the two buttons, A presses, B closes (PadNav.lua)
     if ns.PadNav then ns.PadNav.Attach(small, { close = function() small:Hide() end }) end
@@ -860,9 +873,9 @@ local function BuildTour()
     local footer = CreateFrame("Frame", nil, w)
     footer:SetAllPoints()
     tour.footer = footer
-    local back = PanelButton(footer, BACK or "Back", 112, 30, function() tour.Show(tour.step - 1) end)
+    local back = PanelButton(footer, WelcomeButtonText("Back", L["Back"], "BACK", "Back"), 112, 30, function() tour.Show(tour.step - 1) end)
     back:SetPoint("BOTTOMLEFT", SIDE, 24)
-    tour.next = PanelButton(footer, NEXT or "Next", 112, 30, NextStep)
+    tour.next = PanelButton(footer, WelcomeButtonText("Next", L["Next"], "NEXT", "Next"), 112, 30, NextStep)
     tour.next:SetPoint("BOTTOMRIGHT", -SIDE, 24)
     tour.skip = PanelButton(footer, L["Skip the Rest"], 140, 30, function() tour.Show(#PAGES) end)
     tour.skip:SetPoint("BOTTOM", 0, 24)

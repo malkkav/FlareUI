@@ -1173,12 +1173,15 @@ local function SetFontRaw(fontString, path, size, flags)
     retryTicker = retryTicker or C_Timer.NewTicker(RETRY_SECONDS, RetryFonts)
 end
 
--- FlareUI in Russian on a client of another language (11-13: boxes in place of letters): the game's
--- Latin fonts lack Cyrillic, so every FlareUI font goes through a family (ns.SetFontFamily), whose
--- Russian member has the letters. Decided once the locale files have loaded.
+-- FlareUI in Russian, Korean or Chinese on a client of another language (11-13: boxes in place of
+-- letters): the client's usual font may lack the selected language's alphabet, so every FlareUI font
+-- goes through a family (ns.SetFontFamily), whose matching Blizzard member has the letters. Decided
+-- once the locale files have loaded; same-language clients already have the selected alphabet.
+local FONT_FAMILY_LOCALES = { koKR = true, ruRU = true, zhCN = true, zhTW = true }
 function ns.FontFamiliesAlways()
     if ns.fontFamiliesAlways == nil and ns.LoadedLocale then
-        ns.fontFamiliesAlways = GetLocale() ~= "ruRU" and ns.LoadedLocale() == "ruRU"
+        local selectedLocale = ns.LoadedLocale()
+        ns.fontFamiliesAlways = (FONT_FAMILY_LOCALES[selectedLocale] and selectedLocale ~= GetLocale()) or false
     end
     return ns.fontFamiliesAlways
 end
