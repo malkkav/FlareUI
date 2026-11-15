@@ -1013,9 +1013,12 @@ local function UpdateLevel(f)
     if not (udb and udb.showLevel) then f.Level:SetText("") return end
     local level = UnitLevel(unit)
     local classification = Readable(UnitClassification(unit))
+    -- ring styles: the number only, as on Blizzard's frame; the ring's dragon and star show the rank,
+    -- and "21+" does not fit the disc
+    local ring = ns.UFRing and ns.UFRing.Applies(f)
     local suffix = ""
-    if classification == "elite" or classification == "rareelite" then suffix = "+" end
-    if classification == "rare" or classification == "rareelite" then suffix = "R" .. suffix end
+    if not ring and (classification == "elite" or classification == "rareelite") then suffix = "+" end
+    if not ring and (classification == "rare" or classification == "rareelite") then suffix = "R" .. suffix end
     if canaccessvalue(level) and level then
         if level < 0 then
             f.Level:SetText("??")
