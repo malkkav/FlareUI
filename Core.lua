@@ -519,6 +519,7 @@ local defaults = {
             bagHover = false,           -- Open on Mouseover: pointing at the badge opens the bag (MinimapBag.lua)
             clockStats = true,          -- framerate and latency in the clock's tooltip
             microMenu = false,          -- middle-click the map: a list of Blizzard's panels (off since 11-11)
+            finderEye = false,          -- Group Finder Icon: a small icon in place of Blizzard's queue eye (MinimapEye.lua)
             coords = "hover",           -- Coordinates: off | always | hover (with Blizzard's own option, Minimap.lua MM.CoordsMode)
             fps = "off",                -- Framerate at the map's bottom right: off | always | hover (Minimap.lua MM.SetupFps)
             latency = "off",            -- Latency (home over world) with it: off | always | hover (11-13)

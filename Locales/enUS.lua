@@ -118,6 +118,7 @@ L["A short tag after the quest name:\n* + for elite\n* g3 for a group of 3\n* d 
 L["A short time in blue before each message, like <12:30>."] = true
 L["A small frame for each pet, under its owner."] = true
 L["A small frame for each pet: under its owner, or beside it. Its size is in the Pet section."] = true
+L["A small icon on the minimap opens the group finder, in place of Blizzard's large queue eye."] = true
 L["A sound when a reminder appears. Picking one plays it."] = true
 L["A spark crosses the bar during the global cooldown."] = true
 L["A spark crosses the bar for five seconds after you spend mana. Spirit regeneration starts again when it ends."] = true
@@ -640,6 +641,7 @@ L["Group %d"] = true
 L["Group Buffs"] = true
 L["Group buffs show only when no one else of your class is in the group."] = true
 L["Group Finder"] = true
+L["Group Finder Icon"] = true
 L["Group keeps each raid group together. Role and Class fill rows of five, tanks or classes first."] = true
 L["Group Numbers"] = true
 L["Group Spacing"] = true
@@ -754,6 +756,7 @@ L["Import shows the string's version, UI scale and any fonts or textures you're 
 L["Imported"] = true
 L["In a Group"] = true
 L["In a Party"] = true
+L["In a queue, point at the icon to see the queue, and right-click it for the queue menu."] = true
 L["In a Raid"] = true
 L["In an Instance"] = true
 L["In caster form, Power shows your mana. For a mana bar on your player frame, tick Mana on Shapeshift in its Edit Mode settings."] = true
