@@ -609,7 +609,7 @@ local function SilenceEQoLMoon()
     PlaceSun()
 end
 
--- Every way to place it puts it straight back, and a check every frame catches the calls these hooks
+-- Every way to place it puts it straight back, and a throttled safety check catches calls these hooks
 -- never see (a method taken from the frame metatable, or a parent moved under it).
 local function KeepSunPlaced()
     local sun = Cluster.DielFrame
@@ -618,8 +618,14 @@ local function KeepSunPlaced()
     for _, method in ipairs({ "SetPoint", "SetAllPoints", "ClearAllPoints", "SetScale", "SetParent" }) do
         if sun[method] then hooksecurefunc(sun, method, PlaceSun) end
     end
-    MM.sunGuard = CreateFrame("Frame")
-    MM.sunGuard:SetScript("OnUpdate", function()
+    -- The map's visibility also sleeps this guard; hooks still repair direct changes immediately.
+    MM.sunGuard = CreateFrame("Frame", nil, MinimapFrame)
+    MM.sunGuard.elapsed = 0
+    MM.sunGuard:SetScript("OnShow", function(self) self.elapsed = 0; PlaceSun() end)
+    MM.sunGuard:SetScript("OnUpdate", function(self, elapsed)
+        self.elapsed = self.elapsed + elapsed
+        if self.elapsed < 0.1 then return end
+        self.elapsed = 0
         if not placingSun and SunMoved(sun) then PlaceSun() end
     end)
     PlaceSun()

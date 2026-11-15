@@ -291,7 +291,7 @@ end
 local zoneNames, questBuf, groupRank, groupBest, groupOrder = {}, {}, {}, {}, {}
 -- the quest log as last read; each watched quest's distance as the last sort saw it
 local logBuf, sortIDs, sortDist = {}, {}, {}
-local sortNew, sortRankOld, sortRankNew = {}, {}, {}   -- scratch for the distance check (OnSortTick)
+local sortNew, sortRankOld = {}, {}   -- cached order and scratch for the distance check (OnSortTick)
 
 local function AddZoneName(z)
     if z and z ~= "" then zoneNames[z] = true end
@@ -470,6 +470,7 @@ local function CollectQuests(db)
         end
     end
     state.sortCount = OT.SortsByDistance(db) and watched or nil
+    state.sortRanksReady = nil   -- CollectQuests replaced the distance snapshot
 
     -- a group's place: current zone, then its nearest quest, then log order
     wipe(groupRank)
@@ -1914,15 +1915,17 @@ local function OnSortTick()
             if sortNew[i] ~= sortDist[i] then same = false end
         end
         if same then return end
-        -- moving changes the distances all the time, but the order only when two quests swap: the
-        -- watched quests ranked by the old and the new distances. Unchanged, the log isn't read again
-        for i = 1, count do sortRankOld[i], sortRankNew[i] = i, i end
-        for i = count + 1, #sortRankOld do sortRankOld[i], sortRankNew[i] = nil, nil end
-        table.sort(sortRankOld, ByOldDistance)
-        table.sort(sortRankNew, ByNewDistance)
+        -- Keep the previous rank order. It remains valid while every adjacent pair is still
+        -- ordered by the new distances; no new sort is needed just because the player moved.
+        if not state.sortRanksReady then
+            for i = 1, count do sortRankOld[i] = i end
+            for i = count + 1, #sortRankOld do sortRankOld[i] = nil end
+            table.sort(sortRankOld, ByOldDistance)
+            state.sortRanksReady = true
+        end
         local swapped = false
-        for i = 1, count do
-            if sortRankOld[i] ~= sortRankNew[i] then swapped = true break end
+        for i = 2, count do
+            if ByNewDistance(sortRankOld[i], sortRankOld[i - 1]) then swapped = true break end
         end
         if not swapped then
             for i = 1, count do sortDist[i] = sortNew[i] end

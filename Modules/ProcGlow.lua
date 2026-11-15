@@ -184,6 +184,25 @@ end
 --------------------------------------------------
 local BP = { procs = {}, byID = {}, byName = {}, glowName = {}, cdmProc = {}, hookedViewers = {}, want = {} }
 
+-- Only the nearest readable expiry needs a timer. Buff refreshes/consumption replace it,
+-- rather than leaving one callback behind for every previous expiration time.
+function BP.ScheduleExpiry()
+    local now, soonest = GetTime(), nil
+    for _, proc in ipairs(BP.procs) do
+        local expires = proc.auraUntil
+        if expires and expires > now and expires < math.huge and (not soonest or expires < soonest) then soonest = expires end
+    end
+    if soonest == BP.expiryAt and BP.expiryTimer then return end
+    if BP.expiryTimer then BP.expiryTimer:Cancel(); BP.expiryTimer = nil end
+    BP.expiryAt = soonest
+    if soonest then
+        BP.expiryTimer = C_Timer.NewTimer(soonest - now + 0.05, function()
+            BP.expiryTimer, BP.expiryAt = nil, nil
+            BP.Recompute()
+        end)
+    end
+end
+
 -- the class's procs with their names resolved (on setup and when spells change). A proc keeps its
 -- state: SPELLS_CHANGED can come in a fight, when the buffs can't be read again.
 function BP.Build()
@@ -205,6 +224,7 @@ function BP.Build()
         end
         BP.procs[#BP.procs + 1] = proc
     end
+    BP.ScheduleExpiry()
 end
 
 function BP.ForSpell(id)
@@ -243,13 +263,13 @@ function BP.Recompute()
         if not boosted[name] then boosted[name] = true; changed = true end
     end
     if changed then ScheduleNow() end
+    BP.ScheduleExpiry()
 end
 
 -- Your buffs, while the game lets addons read them. In combat the last reading is kept.
 function BP.ReadAuras()
     if BP.AurasLocked() then return end
     BP.wasLocked = false
-    local now = GetTime()
     for _, proc in ipairs(BP.procs) do
         local aura
         for _, id in ipairs(proc.data.buffs or {}) do
@@ -266,8 +286,6 @@ function BP.ReadAuras()
             -- the game's proc alert only shows with the buff: a missed (or secret) hide ends here
             proc.overlay = false
         elseif Readable(expires) and type(expires) == "number" and expires > 0 then
-            -- one timer per new end time (UNIT_AURA comes often)
-            if proc.auraUntil ~= expires then C_Timer.After(math.max(0, expires - now) + 0.05, BP.Recompute) end
             proc.auraUntil = expires
         else
             proc.auraUntil = math.huge   -- no end time: until it's gone or spent
@@ -410,6 +428,8 @@ function BP.Start()
 end
 
 function BP.Stop()
+    if BP.expiryTimer then BP.expiryTimer:Cancel(); BP.expiryTimer = nil end
+    BP.expiryAt = nil
     if BP.ticker then BP.ticker:Cancel(); BP.ticker = nil end
     for _, proc in ipairs(BP.procs) do
         proc.overlay, proc.cdm, proc.cdmSeen, proc.auraUntil = false, false, false, nil

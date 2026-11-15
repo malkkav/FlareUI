@@ -852,7 +852,8 @@ end
 --------------------------------------------------
 -- 3. WHO IS MISSING WHAT
 --------------------------------------------------
-local function GroupUnits(out)
+local scan = { auras = {}, reach = {}, roster = {}, dirty = {} }
+local function BuildGroupUnits(out)
     wipe(out)
     local db = GetDb()
     local scope = db and db.group or "all"
@@ -869,9 +870,19 @@ local function GroupUnits(out)
     return out
 end
 
+-- A pass shares roster and reachability checks across all reminder kinds. Callers may
+-- narrow/mutate their own list, so copy the roster rather than returning its shared buffer.
+local function GroupUnits(out)
+    if not scan.active then return BuildGroupUnits(out) end
+    if not scan.rosterReady then BuildGroupUnits(scan.roster); scan.rosterReady = true end
+    wipe(out)
+    for i, unit in ipairs(scan.roster) do out[i] = unit end
+    return out
+end
+
 -- someone a buff can reach: there, alive, online, seen and in your phase; with Ignore Members Out of
 -- Range, also within the game's group range check (one it can't make, or keeps secret, counts as in range)
-local function Reachable(unit)
+local function IsReachable(unit)
     if not UnitExists(unit) or UnitIsDeadOrGhost(unit) or not UnitIsConnected(unit) then return false end
     if unit ~= "player" and not UnitIsUnit(unit, "player") then
         if not UnitIsVisible(unit) then return false end
@@ -883,6 +894,34 @@ local function Reachable(unit)
         end
     end
     return true
+end
+
+local function Reachable(unit)
+    if not scan.active then return IsReachable(unit) end
+    local value = scan.reach[unit]
+    if value == nil then value = IsReachable(unit); scan.reach[unit] = value end
+    return value
+end
+
+-- UNIT_AURA dirties only its unit (and aliases). Other events and direct updates rebuild
+-- everything; the periodic full pass still covers missing events and changing aura access.
+local function InvalidateAuraReads()
+    if scan.fullDirty then
+        wipe(scan.auras)
+    else
+        for cachedUnit in pairs(scan.auras) do
+            local clear = scan.dirty[cachedUnit]
+            if not clear then
+                for unit in pairs(scan.dirty) do
+                    local ok, same = pcall(UnitIsUnit, cachedUnit, unit)
+                    if not ok or not canaccessvalue(same) or same then clear = true; break end
+                end
+            end
+            if clear then scan.auras[cachedUnit] = nil end
+        end
+    end
+    wipe(scan.dirty)
+    scan.fullDirty = nil
 end
 
 -- true when the unit has one of the names with more than `before` seconds left; second: it has it,
@@ -897,10 +936,26 @@ local function Mine(a)
     return not ok or not Readable(same) or same
 end
 local function HasBuff(unit, names, before, own)
-    local now = GetTime()
+    local now = scan.active and scan.now or GetTime()
     local aura
+    local reads
+    if scan.active then
+        reads = scan.auras[unit]
+        if not reads then reads = {}; scan.auras[unit] = reads end
+    end
     for name in pairs(names) do
-        local ok, a = pcall(C_UnitAuras.GetAuraDataBySpellName, unit, name, "HELPFUL")
+        local record = reads and reads[name]
+        if record and record.aura then
+            local expires = record.aura.expirationTime
+            if Readable(expires) and type(expires) == "number" and expires > 0 and expires <= now then record = nil end
+        end
+        local ok, a
+        if record then
+            ok, a = record.ok, record.aura
+        else
+            ok, a = pcall(C_UnitAuras.GetAuraDataBySpellName, unit, name, "HELPFUL")
+            if reads and ok then reads[name] = { ok = ok, aura = a } end
+        end
         if ok and a and (not own or not Readable(a) or Mine(a)) then aura = a break end
     end
     if not aura then return false, false end
@@ -1408,8 +1463,12 @@ local function Check(entry, before)
             wanted = (not grouped and (unit == "player" or UnitIsUnit(unit, "player"))) or IsTank(unit)
         end
         if wanted and Reachable(unit) then
-            local _, class = UnitClass(unit)
-            if not (def.casters and NO_MANA[class]) then
+            local caster = true
+            if def.casters then
+                local _, class = UnitClass(unit)
+                caster = not NO_MANA[class]
+            end
+            if caster then
                 total = total + 1
                 local fine, running = HasBuff(unit, entry.names, before)
                 if not fine then
@@ -1685,11 +1744,14 @@ local function Show(shows, sample)
         b.entry = s.entry.def and s.entry or nil   -- for the right-click menu (not on Edit Mode's samples)
         -- Orientation and Growth: the first icon at the edge the row grows away from
         local step = offset + (i - 1) * (size + spacing)
-        b:ClearAllPoints()
-        if vertical then
-            if back then b:SetPoint("BOTTOMLEFT", parentRow, "BOTTOMLEFT", 0, step) else b:SetPoint("TOPLEFT", parentRow, "TOPLEFT", 0, -step) end
-        else
-            if back then b:SetPoint("TOPRIGHT", parentRow, "TOPRIGHT", -step, 0) else b:SetPoint("TOPLEFT", parentRow, "TOPLEFT", step, 0) end
+        if b.fuiRow ~= parentRow or b.fuiStep ~= step or b.fuiVertical ~= vertical or b.fuiBack ~= back then
+            b.fuiRow, b.fuiStep, b.fuiVertical, b.fuiBack = parentRow, step, vertical, back
+            b:ClearAllPoints()
+            if vertical then
+                if back then b:SetPoint("BOTTOMLEFT", parentRow, "BOTTOMLEFT", 0, step) else b:SetPoint("TOPLEFT", parentRow, "TOPLEFT", 0, -step) end
+            else
+                if back then b:SetPoint("TOPRIGHT", parentRow, "TOPRIGHT", -step, 0) else b:SetPoint("TOPLEFT", parentRow, "TOPLEFT", step, 0) end
+            end
         end
         b:Show()
         -- On Mouseover (not on Edit Mode's samples or a preview)
@@ -1811,8 +1873,11 @@ function BR.PlayAlert(sample)
     PlaySound(id, "Master")
 end
 
-function BR.Update()
+function BR.Update(context)
     if not holder or InCombatLockdown() then return end
+    if context ~= scan then wipe(scan.auras) end
+    wipe(scan.reach)
+    scan.active, scan.rosterReady, scan.now = true, false, GetTime()
     wipe(shows)
     local db = GetDb() or {}
     if ns.EditPreviewing and ns.EditPreviewing() then
@@ -1877,6 +1942,7 @@ function BR.Update()
         shownKeys = now
         if fresh then BR.PlayAlert() end
     end
+    scan.active = false
     BR.ShowFaded(shows, db)
 end
 
@@ -1918,12 +1984,15 @@ end
 
 -- UNIT_AURA comes often: one check a moment later
 local pending = false
-local function Soon()
+local function Soon(unit)
+    if InCombatLockdown() then return end
+    if type(unit) == "string" then scan.dirty[unit] = true else scan.fullDirty = true end
     if pending then return end
     pending = true
     C_Timer.After(0.3, function()
         pending = false
-        BR.Update()
+        InvalidateAuraReads()
+        BR.Update(scan)
     end)
 end
 
@@ -2194,7 +2263,7 @@ function BR:Init()
         -- (party1..4 and raid1..40 only: their pets are never checked)
         if event == "UNIT_AURA" and unit and not (unit == "player" or unit == "pet" or unit:find("^party%d") or unit:find("^raid%d")) then return end
         if event == "PLAYER_REGEN_ENABLED" then ApplyPosition() end
-        Soon()
+        if event == "UNIT_AURA" then Soon(unit) else Soon() end
     end)
     -- buffs running out cross the reminder line without an event: a look every 10 seconds; with Ignore
     -- Members Out of Range in a group, every 2.5 (walking in or out of range has no event either)
