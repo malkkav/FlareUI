@@ -20,6 +20,7 @@ end
 local Frame = {}; Frame.__index = Frame
 function CreateFrame() return setmetatable({ shown = true, hooks = {} }, Frame) end
 function Frame:SetPoint() end
+function Frame:SetAllPoints() end
 function Frame:SetSize() end
 function Frame:SetFrameStrata() end
 function Frame:GetFrameStrata() return 'LOW' end
@@ -43,6 +44,7 @@ function hooksecurefunc(object, method, callback)
     end
 end
 function LibStub() return { Embed = function() end } end
+C_Texture = { GetAtlasInfo = function() return nil end }
 NineSliceUtil = { GetLayout = function() return {} end, ApplyLayout = function() end }
 Minimap, MinimapCluster, UIParent = CreateFrame(), CreateFrame(), CreateFrame()
 local ns = { L = {}, modules = {} }
