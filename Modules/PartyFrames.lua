@@ -420,12 +420,16 @@ local function UpdateHealth(f, glide)
     if not glide or (f.ctx and f.ctx.hostile) then bar:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn(st))) end
 
     local mode = st and st.healthText or "percent"
-    local text = f.HealthText
+    local text, left = f.HealthText, f.HealthTextLeft
     text:SetAlpha(1)
     if not UnitIsConnected(unit) then
+        if left then left:SetText("") end
         text:SetText(K.OFFLINE_TEXT)
     elseif K.IsDead(unit) then
+        if left then left:SetText("") end
         text:SetText(UnitIsGhost(unit) and K.GHOST_TEXT or K.DEAD_TEXT)
+    elseif mode == "custom" then
+        K.SetCustomBarText(text, left, st, "healthText", UnitHealth(unit), UnitHealthPercent(unit, true, K.percentCurve), UnitHealthMax(unit))
     elseif mode == "lost" then
         K.SetHealthLost(text, unit)
     elseif mode == "none" then
@@ -485,8 +489,14 @@ local function UpdatePower(f, glide)
     local ptMode = st and TilePowerMode(f, st) or "none"
     if ptMode ~= "none" and UnitIsConnected(unit) and not K.IsDead(unit) then
         f.powerTextMode = ptMode
-        K.SetPowerText(f.PowerText, unit, powerType, f.powerTextMode)
+        if ptMode == "custom" then
+            K.SetCustomBarText(f.PowerText, f.PowerTextLeft, st, "powerText", UnitPower(unit, powerType),
+                UnitPowerPercent(unit, powerType, false, CurveConstants.ScaleTo100), UnitPowerMax(unit, powerType))
+        else
+            K.SetPowerText(f.PowerText, unit, powerType, f.powerTextMode)
+        end
     else
+        if f.PowerTextLeft then f.PowerTextLeft:SetText("") end
         f.PowerText:SetText("")
     end
 end
@@ -499,7 +509,12 @@ local function UpdatePowerValue(f)
     if not f.powerShown then return end
     local unit, st = f.fuiUnit, TS(f)
     ns.SetBarValue(f.Power, UnitPower(unit, powerType), st and st.smoothBars)
-    if f.powerTextMode then K.SetPowerText(f.PowerText, unit, powerType, f.powerTextMode) end
+    if f.powerTextMode == "custom" then
+        K.SetCustomBarText(f.PowerText, f.PowerTextLeft, st, "powerText", UnitPower(unit, powerType),
+            UnitPowerPercent(unit, powerType, false, CurveConstants.ScaleTo100), UnitPowerMax(unit, powerType))
+    elseif f.powerTextMode then
+        K.SetPowerText(f.PowerText, unit, powerType, f.powerTextMode)
+    end
 end
 
 -- Incoming heals and absorbs, clipped to the empty part of the health bar (as UnitFrames.lua)
@@ -1419,6 +1434,7 @@ LayoutBars = function(f)
         ns.UFRing.LayoutPlate(f)
         f.Power:Show()
         f.PowerText:SetShown(TilePowerMode(f, st) ~= "none")
+        if f.PowerTextLeft then f.PowerTextLeft:SetShown(st.powerText == "custom" and f.PowerText:IsShown()) end
         return
     end
     local PADDING = K.INSET
@@ -1471,6 +1487,7 @@ LayoutBars = function(f)
     end
     -- (a raid tile with a slim bar shows it at the health bar's foot: LayoutTexts)
     f.PowerText:SetShown(TilePowerMode(f, st) ~= "none" and showPower and (powerHeight >= 10 or RaidTile(f)))
+    if f.PowerTextLeft then f.PowerTextLeft:SetShown(st.powerText == "custom" and RaidTile(f) and f.PowerText:IsShown()) end
 end
 
 local function LayoutHealClip(f)
@@ -1540,6 +1557,8 @@ local function LayoutTexts(f)
     K.ApplyFont(f.PowerText, K.Font(key, "power"))
     local health, power = f.Health, f.Power
     local T = K.TEXT_INSET
+    if f.HealthTextLeft then f.HealthTextLeft:Hide() end
+    if f.PowerTextLeft then f.PowerTextLeft:Hide() end
     f.Name:ClearAllPoints()
     if not levelOnRing then f.Level:ClearAllPoints() end
     f.HealthText:ClearAllPoints()
@@ -1593,6 +1612,25 @@ local function LayoutTexts(f)
         f.PowerText:ClearAllPoints()
         f.PowerText:SetPoint("CENTER", power, "CENTER", 0, 0)
         f.PowerText:SetJustifyH("CENTER")
+    end
+    -- Raid tiles have a separate name row; Forever Style has its name box. Both can put
+    -- Custom text at the two ends without colliding with the name and level.
+    if (raid or nameBox) and (st.healthText == "custom" or st.powerText == "custom") then
+        local function split(key, ref, bottom, y)
+            local main = f[key]
+            local left = K.SplitText(f, key)
+            main:ClearAllPoints()
+            left:ClearAllPoints()
+            main:SetJustifyH("RIGHT")
+            main:SetPoint(bottom and "BOTTOMRIGHT" or "RIGHT", ref, bottom and "BOTTOMRIGHT" or "RIGHT", -T, y)
+            left:SetPoint(bottom and "BOTTOMLEFT" or "LEFT", ref, bottom and "BOTTOMLEFT" or "LEFT", T, y)
+            left:SetShown(main:IsShown())
+        end
+        if st.healthText == "custom" then split("HealthText", health, false, raid and -4 or 0) end
+        if st.powerText == "custom" then
+            local foot = raid and (st.powerHeight or 0) < 10
+            split("PowerText", foot and health or power, foot, foot and 2 or 0)
+        end
     end
 end
 
@@ -2286,7 +2324,11 @@ ApplyPreview = function(f)
     local mode = st.healthText or "percent"
     f.HealthText:SetAlpha(1)
     if data.dead then
+        if f.HealthTextLeft then f.HealthTextLeft:SetText("") end
         f.HealthText:SetText(K.DEAD_TEXT)
+    elseif mode == "custom" then
+        K.SetCustomBarText(f.HealthText, f.HealthTextLeft, st, "healthText",
+            math_floor((data.health or 1) * 24000), (data.health or 1) * 100, 24000)
     elseif mode == "lost" then
         K.SetSampleHealthLost(f.HealthText, data.health or 1)
     else
@@ -2305,7 +2347,17 @@ ApplyPreview = function(f)
         f.Power:SetStatusBarColor(p[1], p[2], p[3])
     end
     local ptMode = TilePowerMode(f, st)
-    K.FormatBarText(f.PowerText, ptMode, math_floor((data.power or 1) * 9000), math_floor((data.power or 1) * 100), 9000)
+    if ptMode == "custom" then
+        if data.dead then
+            if f.PowerTextLeft then f.PowerTextLeft:SetText("") end
+            f.PowerText:SetText("")
+        else
+            K.SetCustomBarText(f.PowerText, f.PowerTextLeft, st, "powerText",
+                math_floor((data.power or 1) * 9000), math_floor((data.power or 1) * 100), 9000)
+        end
+    else
+        K.FormatBarText(f.PowerText, ptMode, math_floor((data.power or 1) * 9000), math_floor((data.power or 1) * 100), 9000)
+    end
     -- a sample incoming heal and shield past the health, as the unit frames' samples show (they read
     -- as missing on party frames without: a player's question 11-11); none on the dead
     if f.HealBar then
@@ -2835,6 +2887,7 @@ local function BuildSettings()
           end,
           set = setS("portrait"), hidden = classicOnly },
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = getS("healthText"), set = setS("healthText") },
+        K.CustomTextSetting("healthText", OwnS, Refresh),
         -- (Raid Style too since 11-13; its default is None, as on the raid frames: TilePowerMode)
         { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = builtKey == "raid" and "none" or "value", values = K.POWER_TEXT_MODES,
           get = function()
@@ -2846,6 +2899,7 @@ local function BuildSettings()
               return K.PowerTextMode(st and st.powerText)
           end,
           set = setS("powerText") },
+        K.CustomTextSetting("powerText", OwnS, Refresh),
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = getS("showLevel"), set = setS("showLevel") },
         -- (in Frame since 6.3.3: it changes how the frame behaves, not how it looks)
         { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,

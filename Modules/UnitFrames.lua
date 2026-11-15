@@ -314,6 +314,7 @@ local HEALTH_TEXT_MODES = {
     { text = L["Value | Percent"],          value = "valuepct",    isRadio = true },
     { text = L["Value | Health Lost"],      value = "valuelost",   isRadio = true },
     { text = L["Health Lost"],              value = "lost",        isRadio = true },
+    { text = L["Custom"],                   value = "custom",      isRadio = true },
 }
 -- Forever Style adds Percent <  > Value (11-13, a player's request, like Blizzard's own frames), on
 -- health and power: the percent at the bar's left end, the whole value, never shortened, at its right
@@ -4973,15 +4974,37 @@ ns.Dialogs["FLAREUI_UF_CUSTOM_TEXT"] = {
     text = "%s",
     button1 = _G.ACCEPT or "Accept", button2 = L["Cancel"],
     hasEditBox = true, maxLetters = 200, hideOnEscape = true,
-    editText = function(data) return UF.CustomTemplate(GetUnitDb(data.unit), data.key, data.side) end,
+    editText = function(data) return UF.CustomTemplate(data.getDb(), data.key, data.side) end,
     OnAccept = function(data, text)
-        local db = GetUnitDb(data.unit)
+        local db = data.getDb()
         if not db then return end
-        db[data.key .. "Custom" .. data.side] = (text or ""):sub(1, 200)
-        local f = frames[data.unit]
-        if f then LayoutFrame(f); UpdateAll(f) end
+        db[UF.CUSTOM_KEYS[data.key][data.side]] = (text or ""):sub(1, 200)
+        data.refresh()
     end,
 }
+
+-- Shared by unit, party, raid and boss dialogs. Resolve the owning settings at edit time so
+-- style-specific profiles and the raid/boss views keep using their own templates.
+function UF.CustomTextSetting(key, getDb, refresh)
+    local buttons = {}
+    for _, side in ipairs({ "Left", "Right" }) do
+        buttons[#buttons + 1] = {
+            text = key == "healthText"
+                and (side == "Left" and L["Health: Left Text"] or L["Health: Right Text"])
+                or (side == "Left" and L["Power: Left Text"] or L["Power: Right Text"]),
+            click = function()
+                ns.ShowDialog("FLAREUI_UF_CUSTOM_TEXT",
+                    L["Use [value], [max] and [percent]. Leave empty to hide this side."],
+                    { getDb = getDb, refresh = refresh, key = key, side = side })
+            end,
+        }
+    end
+    return {
+        name = key == "healthText" and L["Custom Health Text"] or L["Custom Power Text"],
+        kind = LEM.SettingType.Buttons, buttons = buttons,
+        hidden = function() local db = getDb(); return not db or db[key] ~= "custom" end,
+    }
+end
 
 local function BuildSettings(unit)
     local info = UNITS[unit]
@@ -5064,36 +5087,17 @@ local function BuildSettings(unit)
     end
     -- Percent <  > Value only in Forever Style (a style change reloads, so this list is fixed for the session)
     local healthModes = (ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and PLATE_HEALTH_TEXT_MODES or HEALTH_TEXT_MODES
-    local function customModes(modes)
-        local out = {}
-        for i, mode in ipairs(modes) do out[i] = mode end
-        out[#out + 1] = { text = L["Custom"], value = "custom", isRadio = true }
-        return out
-    end
-    settings[#settings + 1] = { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = defaults.healthText or "percent", values = customModes(healthModes), get = get("healthText"), set = set("healthText") }
+    settings[#settings + 1] = { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = defaults.healthText or "percent", values = healthModes, get = get("healthText"), set = set("healthText") }
     settings[#settings + 1] = { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "value", values = UF.POWER_TEXT_MODES,
         get = function() local u = GetUnitDb(unit); return UF.PowerTextMode(u and u.powerText) end, set = set("powerText") }
-    settings[#settings].values = customModes((ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and PLATE_POWER_TEXT_MODES or UF.POWER_TEXT_MODES)
-    for _, key in ipairs({ "healthText", "powerText" }) do
-        local buttons = {}
-        for _, side in ipairs({ "Left", "Right" }) do
-            buttons[#buttons + 1] = {
-                text = key == "healthText"
-                    and (side == "Left" and L["Health: Left Text"] or L["Health: Right Text"])
-                    or (side == "Left" and L["Power: Left Text"] or L["Power: Right Text"]),
-                click = function()
-                    ns.ShowDialog("FLAREUI_UF_CUSTOM_TEXT",
-                        L["Use [value], [max] and [percent]. Leave empty to hide this side."],
-                        { unit = unit, key = key, side = side })
-                end,
-            }
-        end
-        settings[#settings + 1] = {
-            name = key == "healthText" and L["Custom Health Text"] or L["Custom Power Text"],
-            kind = LEM.SettingType.Buttons, buttons = buttons,
-            hidden = function() local db = GetUnitDb(unit); return not db or db[key] ~= "custom" end,
-        }
+    settings[#settings].values = (ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and PLATE_POWER_TEXT_MODES or UF.POWER_TEXT_MODES
+    local function customDb() return GetUnitDb(unit) end
+    local function refreshCustom()
+        local f = frames[unit]
+        if f then LayoutFrame(f); UpdateAll(f) end
     end
+    settings[#settings + 1] = UF.CustomTextSetting("healthText", customDb, refreshCustom)
+    settings[#settings + 1] = UF.CustomTextSetting("powerText", customDb, refreshCustom)
     if info.comboPoints then
         local function refreshCombo()
             local f = frames[unit]
@@ -5444,6 +5448,7 @@ UF.Kit = {
     SetHealthLost = UF.SetHealthLost, SetSampleHealthLost = UF.SetSampleHealthLost,
     POWER_TEXT_MODES = UF.POWER_TEXT_MODES, PowerTextMode = UF.PowerTextMode, SetPowerText = UF.SetPowerText,
     IsPowerTextMode = UF.IsPowerTextMode, FormatBarText = UF.FormatBarText,
+    SetCustomBarText = UF.SetCustomBarText, CustomTextSetting = UF.CustomTextSetting, SplitText = UF.SplitText,
     DEAD_TEXT = DEAD_TEXT, GHOST_TEXT = GHOST_TEXT, OFFLINE_TEXT = OFFLINE_TEXT,
     percentCurve = percentCurve,
     GetDb = GetDb,
