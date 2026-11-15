@@ -447,6 +447,18 @@ end
 --------------------------------------------------
 local AttachHeaderButtonHooks   -- defined in section 10
 
+-- (11-14, a player's report) the title's click area ends at its text: stretched over the header it
+-- opened its menu on every press, and a second window (which moves outside Edit Mode) had a 3 px drag
+-- spot left. The rest of the header is Blizzard's own drag again.
+local function FitTitleButton(window)
+    local dd = GetWindowTypeDropdown(window)
+    local ref = window.FlareUI_DMSkin or GetWindowHeader(window)
+    if not (dd and dd.TypeName and ref and dd.FlareUI_TitleReserve) then return end
+    local room = (ref:GetWidth() or 0) - dd.FlareUI_TitleReserve
+    local width = TITLE_LEFT + (dd.TypeName:GetUnboundedStringWidth() or 0) + 8
+    dd:SetSize(math_max(math_min(width, room), 1), HEADER_HEIGHT)
+end
+
 local function ApplyHeader(window, db)
     if not window or window:IsForbidden() then return end
     local header = GetWindowHeader(window)
@@ -497,7 +509,14 @@ local function ApplyHeader(window, db)
             if dd and dd.ClearAllPoints then
                 dd:ClearAllPoints()
                 dd:SetPoint("TOPLEFT", ref, "TOPLEFT", 0, 0)
-                dd:SetPoint("BOTTOMRIGHT", ref, "TOPRIGHT", -(ICON_RIGHT + iconsWidth + 8), -HEADER_HEIGHT)
+                -- as wide as the title, never past the icons
+                dd.FlareUI_TitleReserve = ICON_RIGHT + iconsWidth + 8
+                FitTitleButton(window)
+                if dd.TypeName and not dd.FlareUI_FitHooked then
+                    dd.FlareUI_FitHooked = true
+                    hooksecurefunc(dd.TypeName, "SetText", function() SafeCall(FitTitleButton, window) end)
+                    window:HookScript("OnSizeChanged", function() SafeCall(FitTitleButton, window) end)
+                end
             end
             local timer = GetWindowSessionTimer(window)
             if timer and timer.ClearAllPoints then
@@ -715,6 +734,8 @@ local function ApplyHeaderFonts(window)
             end
         end
     end
+    -- a new font, a new title width
+    FitTitleButton(window)
 end
 
 --------------------------------------------------

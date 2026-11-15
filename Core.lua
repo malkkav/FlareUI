@@ -712,7 +712,7 @@ local defaults = {
                          countFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 }, timeFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
                          -- When It Shows, Alerts (the Buff Reminders tab)
                          showSolo = true, showParty = true, showRaid = true, hideRested = false, onlyProvider = false,
-                         showCombat = true, fadeSpeed = "instant",   -- Edit Mode's Fading section (11-11)
+                         fadeSpeed = "instant",   -- Edit Mode's Fading section (11-11)
                          sound = "off", glowMissing = false, glowExpiring = false,
                          layouts = {} },
             font = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -734,6 +734,9 @@ local defaults = {
 
             -- look
             scale = 1,
+            cursorX = 0,                -- Offset X / Offset Y: a mouseover tooltip's distance from the pointer (11-14)
+            cursorY = 0,
+            corner = "auto",            -- Tooltip Corner: auto (Blizzard's nearest corner) | TOPLEFT | TOPRIGHT | BOTTOMLEFT | BOTTOMRIGHT (11-14)
             opacity = 1,                -- Frame Opacity: the background's (11-13, a player asked; Marcus: 100% by default, was a fixed 0.9)
             borderByReaction = true,
             borderByClass = true,
@@ -849,15 +852,6 @@ local defaults = {
             lootFeedFont = { face = "__global", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             hideFlagCarriers = false,   -- Hide Clutter > Flag Carrier Frames (Movers.lua): CVar showArenaEnemyFrames
             zoneTextFont = { face = "" },  -- Zone Text font (ZoneText.lua): "" keeps Blizzard's; face only
-            mouseRingSize = 40,         -- the ring's diameter
-            mouseRingThickness = 3,     -- its line, the same at any size
-            mouseRingShow = "off",      -- Mouse Ring (MouseRing.lua): off | always | combat | rightclick (while the right button is held)
-            mouseRingClassColor = false,
-            mouseRingCast = false,      -- Cast Ring: an arc outside the ring while you cast
-            mouseRingGCD = false,       -- GCD Ring: an arc inside it for the global cooldown
-            mouseRingSwing = false,     -- Swing Ring: your next auto attack (C_SwingTimer)
-            mouseRingRange = false,     -- Out-of-Range Tint: red while the target is past your auto attack
-            mouseRingHideTurning = false, -- no ring while the mouse turns the camera
             nameplateCombo = false,     -- classic combo point gems under the target's nameplate
             nameplateQuest = false,     -- quest badge on enemy nameplates that belong to an active quest
             nameplateHideLevel = false, -- Blizzard's level box on the right of nameplates hidden
@@ -907,6 +901,7 @@ local defaults = {
             fishSound = false,          -- Fishing sounds: music and ambience down, effects up while fishing
             combatPlates = false,       -- Enemy Nameplates in Combat Only
             hideTips = false,
+            hideLootAlerts = false,     -- Hide Clutter > Loot Alerts: Blizzard's loot / upgrade / money pop-ups (Tweaks.lua)
             autoDelete = false,         -- DELETE typed into the destroy-item confirmation
             autoAcceptQuests = false,   -- Auto accept quests
             autoTurnInQuests = false,   -- Auto turn-in quests
@@ -1940,7 +1935,7 @@ end
 -- answers nil near and far, even while attacking (tested 11-10), so this asks the spell book: Auto
 -- Attack (6603) for melee, which Forever answers (confirmed in game 11-10), Auto Shot for hunters, a
 -- wand's Shoot or an attack spell for casters. Melee with no answer falls back to the game's ~10 yard
--- check. Used by the mouse ring's Out-of-Range Colour and the resource bars' swing timers.
+-- check. Used by the resource bars' swing timers.
 do
     local RANGED = {
         HUNTER = { 75 },                     -- Auto Shot
@@ -2206,16 +2201,35 @@ end
 -- from addon code then, so its OnShow is wrapped in a secure snippet that hides it again, in combat
 -- too, while its "flareui-hide" attribute is set. The engine's Hide runs there, not Edit Mode's Lua.
 local secureHideHeader
+-- (11-11) the hide runs after Blizzard's own OnShow: the stance bar's OnShow runs Update, which
+-- showed it again after a hide done before it. The pre-snippet only passes a message so the post runs.
+local BAR_PRE  = [[ if self:GetAttribute("flareui-hide") then return nil, "hide" end ]]
+local BAR_POST = [[ if self:GetAttribute("flareui-hide") then self:Hide() end ]]
+-- (11-14, Vivi) a wrapped snippet runs only on an explicitly protected frame. The stance and pet bars
+-- are protected only through their buttons, so the wrap on the bar never ran and a form change in a
+-- fight brought the hidden stance bar back. Their buttons carry the wrap and hide the bar by reference.
+local BUTTON_PRE  = [[ local bar = self:GetFrameRef("flareui-bar")
+    if bar and bar:GetAttribute("flareui-hide") then return nil, "hide" end ]]
+local BUTTON_POST = [[ local bar = self:GetFrameRef("flareui-bar")
+    if bar and bar:GetAttribute("flareui-hide") then bar:Hide() end ]]
 local function SecureReHide(frame)
     if frame.FlareUI_SecureReHide or not frame:IsProtected() or not SecureHandlerWrapScript then return end
     secureHideHeader = secureHideHeader or CreateFrame("Frame", nil, UIParent, "SecureHandlerBaseTemplate")
-    -- (11-11) the hide runs after Blizzard's own OnShow: the stance bar's OnShow runs Update, which
-    -- showed it again after a hide done before it, and in a fight nothing hid it until the fight ended.
-    -- The pre-snippet only passes a message so the post-snippet runs.
-    local ok = pcall(SecureHandlerWrapScript, frame, "OnShow", secureHideHeader,
-        [[ if self:GetAttribute("flareui-hide") then return nil, "hide" end ]],
-        [[ if self:GetAttribute("flareui-hide") then self:Hide() end ]])
-    if ok then frame.FlareUI_SecureReHide = true end
+    local _, explicit = frame:IsProtected()
+    local done = false
+    if explicit then
+        done = pcall(SecureHandlerWrapScript, frame, "OnShow", secureHideHeader, BAR_PRE, BAR_POST)
+    else
+        -- every button: only the shown ones get OnShow
+        for _, button in pairs(frame.actionButtons or {}) do
+            local _, buttonExplicit = button:IsProtected()
+            if buttonExplicit and pcall(SecureHandlerSetFrameRef, button, "flareui-bar", frame)
+                    and pcall(SecureHandlerWrapScript, button, "OnShow", secureHideHeader, BUTTON_PRE, BUTTON_POST) then
+                done = true
+            end
+        end
+    end
+    if done then frame.FlareUI_SecureReHide = true end
 end
 
 function ns.HideFrameSecurely(frame, shouldHide)

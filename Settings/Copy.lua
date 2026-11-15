@@ -37,6 +37,7 @@ ns.Copy = {
             title = L["Buff Reminders"],
         },
         ch = {
+            banner = L["%s is handling your chat, so FlareUI's chat stays off. Turn %s off to use FlareUI's."],
             desc = L["A cleaner chat frame with a customisable header."],
             tabs = { L["Frame"], L["Tweaks"], L["Fonts"] },
             title = L["Chat"],
@@ -79,7 +80,7 @@ ns.Copy = {
         },
         tt = {
             desc = L["Cleaner tooltips with coloured borders that can follow your mouse."],
-            tabs = { L["Settings"], L["Visibility"], L["Fonts"] },
+            tabs = { L["Settings"], L["Tweaks"], L["Fonts"] },
             title = L["Tooltips"],
         },
         uf = {
@@ -1194,7 +1195,7 @@ ns.Copy = {
             label = L["Addons in the Drawer"],
             section = "mm.tweaks",
             tags = { "minimap buttons", "addon buttons", "keep on minimap" },
-            tip = L["An unticked addon's button goes back to the minimap after a reload. New addons go in the drawer."],
+            tip = L["An unticked addon's button goes back to the minimap after a reload. New addons go in the drawer. While OneForAll's \"Collect minimap buttons\" is on, its bar takes the minimap buttons: only the Addon Compartment entries are listed here."],
         },
         ["mm.bagHover"] = {
             desc = L["The drawer opens while you point at the day/night badge and closes when you move away. Clicking still works."],
@@ -1362,6 +1363,12 @@ ns.Copy = {
             label = L["Frame Numbers"],
             section = "qol.hideClutter",
         },
+        ["qol.hideLootAlerts"] = {
+            desc = L["Hides Blizzard's loot pop-ups: items you win or loot, upgrades and money."],
+            label = L["Loot Alerts"],
+            section = "qol.hideClutter",
+            tags = { "loot toasts", "loot popups", "alerts", "item toasts" },
+        },
         ["qol.hideTips"] = {
             desc = L["Hides Blizzard's tutorial pop-ups."],
             label = L["Contextual Tips"],
@@ -1396,53 +1403,6 @@ ns.Copy = {
             label = L["Wider Vendor Window"],
             reload = true,
             section = "qol.vendor",
-        },
-        ["qol.mouseRingCast"] = {
-            desc = L["A brighter arc over the ring fills as you cast and empties as you channel."],
-            label = L["Cast Ring"],
-            section = "qol.cursor",
-        },
-        ["qol.mouseRingClassColor"] = {
-            desc = L["The ring takes your class colour."],
-            label = L["Class Colours"],
-            section = "qol.cursor",
-        },
-        ["qol.mouseRingGCD"] = {
-            desc = L["An arc just inside the ring shows the global cooldown. Hidden while the cast ring runs."],
-            label = L["GCD Ring"],
-            section = "qol.cursor",
-        },
-        ["qol.mouseRingHideTurning"] = {
-            desc = L["No ring while you hold a mouse button to turn the camera."],
-            label = L["Hide While Turning"],
-            section = "qol.cursor",
-            tip = L["Doesn't apply with While Right-Clicking, which shows the ring while you turn."],
-        },
-        ["qol.mouseRingRange"] = {
-            desc = L["The ring turns red while your target is out of range:\n* Most classes: melee\n* Hunters: Auto Shot\n* Mages, priests and warlocks: a wand or attack spell"],
-            label = L["Out-of-Range Colour"],
-            section = "qol.cursor",
-        },
-        ["qol.mouseRingShow"] = {
-            choices = { L["Off"], L["Always"], L["In Combat"], L["While Right-Clicking"] },
-            desc = L["A bronze ring round your cursor, so you never lose it.\n* While Right-Clicking: marks where the cursor was as you turn the camera"],
-            label = L["Mouse Ring"],
-            section = "qol.cursor",
-        },
-        ["qol.mouseRingSize"] = {
-            desc = L["How wide the ring is. Thickness sets its line."],
-            label = L["Size"],
-            section = "qol.cursor",
-        },
-        ["qol.mouseRingSwing"] = {
-            desc = L["An arc just outside the ring shows your next main-hand or ranged auto attack."],
-            label = L["Swing Ring"],
-            section = "qol.cursor",
-        },
-        ["qol.mouseRingThickness"] = {
-            desc = L["How thick the ring's line is, including the cast, GCD and swing rings."],
-            label = L["Thickness"],
-            section = "qol.cursor",
         },
         ["qol.move"] = {
             desc = L["Move and resize any Blizzard window:\n* Drag the header: move\n* Ctrl + mouse wheel: resize (a plain wheel still zooms the camera)\n* Shift + right-click: reset the position\n* Ctrl + right-click: reset the size"],
@@ -1922,6 +1882,25 @@ ns.Copy = {
             section = "tt.tweaks",
             tip = L["Turning it off restores your own setting."],
         },
+        ["tt.corner"] = {
+            choices = { L["Auto"], L["Bottom Right"], L["Bottom Left"], L["Top Right"], L["Top Left"] },
+            desc = L["Which corner of the HUD Tooltip box the tooltip grows from. Auto: Blizzard picks the nearest one, so the tooltip can switch sides when you move the box."],
+            label = L["Tooltip Corner"],
+            section = "tt.look",
+            tags = { "anchor", "tooltip position", "hud tooltip", "grow" },
+        },
+        ["tt.cursorX"] = {
+            desc = L["How far a mouseover tooltip sits from your mouse, left (-) or right (+), in pixels."],
+            label = L["Offset X"],
+            section = "tt.mouseoverSection",
+            tags = { "cursor offset", "tooltip position", "mouse" },
+        },
+        ["tt.cursorY"] = {
+            desc = L["How far a mouseover tooltip sits from your mouse, down (-) or up (+), in pixels."],
+            label = L["Offset Y"],
+            section = "tt.mouseoverSection",
+            tags = { "cursor offset", "tooltip position", "mouse" },
+        },
         ["tt.font.text"] = {
             desc = L["Every other line."],
             label = L["Text"],
@@ -1955,48 +1934,18 @@ ns.Copy = {
             tags = { "ilvl", "item level" },
         },
         ["tt.mouseover"] = {
-            desc = L["Every tooltip appears at your mouse and follows it. Off: in Blizzard's spot, or beside the icon."],
+            choices = { L["All Tooltips"], L["None"], L["World"], L["Unit Frames"], L["Action/Data Bars"], L["Buffs/Debuffs"], L["Party/Raid Auras"], L["Everything Else"] },
+            desc = L["Which tooltips appear at your mouse and follow it. The rest stay in Blizzard's spot, the HUD Tooltip box you move in Edit Mode."],
             label = L["Mouseover"],
-            section = "tt.look",
-            tags = { "anchor", "cursor", "tooltip position", "mouse" },
-            tip = L["To change one kind of tooltip only, use the Visibility tab. Changing this switch clears those changes."],
+            section = "tt.mouseoverSection",
+            tags = { "anchor", "cursor", "tooltip position", "mouse", "mouseover" },
+            tip = L["All Tooltips and None clear the others. Tick only the kinds you want at your mouse."],
         },
         ["tt.opacity"] = {
             desc = L["How dark the tooltips' background is."],
             label = L["Frame Opacity"],
             section = "tt.look",
             tags = { "tooltip opacity transparency background" },
-        },
-        ["tt.posAuras"] = {
-            desc = L["These tooltips at your mouse instead of the default spot. It matches Mouseover on the Settings tab unless you change it here."],
-            label = L["Buffs/Debuffs"],
-            section = "tt.mouseoverSection",
-        },
-        ["tt.posBars"] = {
-            desc = L["These tooltips at your mouse instead of the default spot. It matches Mouseover on the Settings tab unless you change it here."],
-            label = L["Action/Data Bars"],
-            section = "tt.mouseoverSection",
-        },
-        ["tt.posFrames"] = {
-            desc = L["These tooltips at your mouse instead of the default spot. It matches Mouseover on the Settings tab unless you change it here."],
-            label = L["Unit Frames"],
-            section = "tt.mouseoverSection",
-        },
-        ["tt.posGroupAuras"] = {
-            desc = L["These tooltips at your mouse instead of the default spot. It matches Mouseover on the Settings tab unless you change it here."],
-            label = L["Party/Raid Auras"],
-            section = "tt.mouseoverSection",
-        },
-        ["tt.posOther"] = {
-            desc = L["These tooltips at your mouse instead of the default spot. It matches Mouseover on the Settings tab unless you change it here."],
-            label = L["Everything Else"],
-            section = "tt.mouseoverSection",
-        },
-        ["tt.posWorld"] = {
-            desc = L["These tooltips at your mouse instead of the default spot. It matches Mouseover on the Settings tab unless you change it here."],
-            label = L["World"],
-            section = "tt.mouseoverSection",
-            tags = { "anchor", "cursor", "tooltip position" },
         },
         ["tt.scale"] = {
             choices = { L["50%"], L["60%"], L["70%"], L["80%"], L["90%"], L["100%"], L["110%"], L["120%"], L["130%"], L["140%"], L["150%"] },
@@ -2413,7 +2362,6 @@ ns.Copy = {
         ["qol.camera"] = L["Camera"],
         ["qol.controller"] = L["Gamepad"],
         ["qol.convenience"] = L["Convenience"],
-        ["qol.cursor"] = L["Cursor"],
         ["qol.fonts"] = L["Screen Text"],
         ["qol.hideClutter"] = L["Hide Clutter"],
         ["qol.nameplates"] = L["Nameplates"],

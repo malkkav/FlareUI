@@ -2456,6 +2456,7 @@ local function BuildTile(f, unit)
     f.Name = overlay:CreateFontString(nil, "OVERLAY")
     f.Name:SetWordWrap(false)
     f.Level = overlay:CreateFontString(nil, "OVERLAY")
+    f.Level:SetFontObject(GameFontNormalSmall)   -- never fontless (the ring styles set its own later)
     f.HealthText = overlay:CreateFontString(nil, "OVERLAY")
     f.PowerText = overlay:CreateFontString(nil, "OVERLAY")
 

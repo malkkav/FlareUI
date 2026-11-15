@@ -1,6 +1,21 @@
 # FlareUI changelog history
 
-Versions 6.3 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 6.3.2 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 6.3.2
+
+## Changed
+- Action bars: buttons without a keybind no longer show Blizzard's range dot while **Status Colouring** is on; the button turns red out of range instead. With Status Colouring off, the dot is back. Thanks for the report!
+
+## Fixed
+- Action bars: the range dot no longer shows as a "?" box with some keybind fonts. Thanks for the report!
+- Settings and Edit Mode: long dropdowns, such as fonts from a font pack, scroll after 20 entries instead of running off the screen. Thanks for the report!
+- Bags: **Uncollected Appearances** only marks weapons and armour that can change your look.
+
+# FlareUI 6.3.1
+
+## Fixed
+- Blizzard's own text keeps its sizes again. FlareUI's settings window was changing the size of the game's fonts as soon as it loaded: buff timers, window titles, quest text and more. The new font options weren't the cause; they stay off unless you pick them. Thanks for the report!
 
 # FlareUI 6.3
 

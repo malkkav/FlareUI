@@ -9,7 +9,13 @@ local function Refresh()
     if ns.Chat and ns.Chat.RefreshAll then ns.Chat:RefreshAll() end
 end
 
-S:Module{ key = "ch", group = "interface", order = 10, enabled = "chat.enabled", tabs = { { key = "frame" }, { key = "tweaks" }, { key = "fonts" } } }
+S:Module{ key = "ch", group = "interface", order = 10, enabled = "chat.enabled", tabs = { { key = "frame" }, { key = "tweaks" }, { key = "fonts" } },
+    -- another chat addon is loaded: FlareUI's chat stays off and says why
+    banner = function()
+        local other = ns.Chat and ns.Chat.GetOtherChatAddon and ns.Chat:GetOtherChatAddon()
+        if other then return S:ModuleText("ch", "banner"):format(other, other) end
+    end,
+}
 
 -- chat windows stay shown on this page so Frame Opacity can be seen
 S:On("PageShown", function(key)

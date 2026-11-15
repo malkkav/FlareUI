@@ -1668,7 +1668,13 @@ local AIM_SNIPPET = ([[
             control:CallMethod("OnSecureSticky", index)
         end
     end
-    if down or not control:GetAttribute("flare-padrelease") or next(HELD) or not STICKY then return false end
+    if down or not control:GetAttribute("flare-padrelease") or not STICKY then return false end
+    -- rolling the stick from one direction to the next can leave the first one's release unsent:
+    -- the stick back near the middle is the release, whatever is still marked held
+    if next(HELD) then
+        if stick.len >= 0.3 then return false end
+        HELD = newtable()
+    end
     local prefix = control:RunAttribute("flare-aimed")
     control:RunAttribute("flare-closepad")
     if not prefix then return false end

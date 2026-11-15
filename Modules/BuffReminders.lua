@@ -2030,10 +2030,10 @@ local function BuildSettings()
           get = get("spacing", 6), set = set("spacing") },
     })
     -- FADING (11-11, from the settings page's When It Shows and Hiding, as the other frames' Fading):
-    -- Visibility ticks where it shows (Solo / In a Party / In a Raid, any of them), and In Combat off
-    -- hides it in a fight (as the fight starts: its icons are secure buttons). Only Provider and the
+    -- Visibility ticks where it shows (Solo / In a Party / In a Raid, any of them). It always hides in
+    -- a fight (its icons are secure buttons, and buffs can't be read then). Only Provider and the
     -- role switches stay on the settings page: they pick group buffs, not where the frame shows.
-    local SHOW = { { "solo", "showSolo" }, { "party", "showParty" }, { "raid", "showRaid" }, { "combat", "showCombat" } }
+    local SHOW = { { "solo", "showSolo" }, { "party", "showParty" }, { "raid", "showRaid" } }
     local function On(field) local db = GetDb(); return not (db and db[field] == false) end
     -- Alerts you see on the icons (11-12, from the settings page): the glows and the time left
     local function Bool(key, default)
@@ -2054,8 +2054,8 @@ local function BuildSettings()
     Section("Fading", {
         { name = L["Visibility"], kind = LEM.SettingType.Dropdown, multiple = true,
           values = { { text = L["Solo"], value = "solo" }, { text = L["In a Party"], value = "party" },
-                     { text = L["In a Raid"], value = "raid" }, { text = L["In Combat"], value = "combat" } },
-          desc = L["Where the reminders show: alone, in a party, in a raid. In Combat off hides them in fights."],
+                     { text = L["In a Raid"], value = "raid" } },
+          desc = L["Where the reminders show: alone, in a party, in a raid. They always hide in fights."],
           get = function()
               local list = {}
               for _, s in ipairs(SHOW) do if On(s[2]) then list[#list + 1] = s[1] end end
@@ -2151,14 +2151,7 @@ function BR:Init()
     pcall(events.RegisterUnitEvent, events, "UNIT_HEALTH", "pet")
     pcall(events.RegisterUnitEvent, events, "UNIT_SPELLCAST_SUCCEEDED", "player")
     events:RegisterEvent("UNIT_AURA")
-    -- Visibility without In Combat: hidden as a fight starts (the last moment its secure icons can be)
-    events:RegisterEvent("PLAYER_REGEN_DISABLED")
     events:SetScript("OnEvent", function(_, event, unit, _, spellID)
-        if event == "PLAYER_REGEN_DISABLED" then
-            local db = GetDb()
-            if db and db.showCombat == false and not (ns.EditPreviewing and ns.EditPreviewing()) then holder:Hide() end
-            return
-        end
         if event == "PLAYER_REGEN_ENABLED" and not holder:IsShown() then holder:Show() end
         -- Ready Check Alert: the row glows for 8 seconds and the sound plays once
         if event == "READY_CHECK" then

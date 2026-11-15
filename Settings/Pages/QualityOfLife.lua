@@ -59,33 +59,6 @@ S:Row{
     end,
     apply = Refresh,
 }
--- a bronze ring round the cursor (MouseRing.lua), live
-local function RefreshRing() if ns.MouseRing then ns.MouseRing:Refresh() end end
-local function NoRing() return (S:GetPath("tweaks.mouseRingShow") or "off") == "off" end
-local RING_SIZES = {}
-for size = 20, 120, 10 do RING_SIZES[#RING_SIZES + 1] = size end
--- one choice turns it on and says when it shows; the rest sit under it
-S:Row{ key = "qol.mouseRingShow", kind = "choice", tab = "gameplay", path = "tweaks.mouseRingShow",
-    choices = { "off", "always", "combat", "rightclick" }, apply = RefreshRing }
-S:Row{ key = "qol.mouseRingSize", kind = "choice", tab = "gameplay", parent = "qol.mouseRingShow", path = "tweaks.mouseRingSize",
-    choices = RING_SIZES, apply = RefreshRing, disabled = NoRing }
-S:Row{ key = "qol.mouseRingThickness", kind = "choice", tab = "gameplay", parent = "qol.mouseRingShow", path = "tweaks.mouseRingThickness",
-    choices = { 1, 2, 3, 4, 5, 6, 8, 10 }, apply = RefreshRing, disabled = NoRing }
-S:Row{ key = "qol.mouseRingClassColor", half = true, tab = "gameplay", parent = "qol.mouseRingShow", path = "tweaks.mouseRingClassColor",
-    apply = RefreshRing, disabled = NoRing }
--- no ring while turning: not with While Right-Clicking, which shows it then
-S:Row{ key = "qol.mouseRingHideTurning", half = true, tab = "gameplay", parent = "qol.mouseRingShow", path = "tweaks.mouseRingHideTurning",
-    apply = RefreshRing, disabled = function() return NoRing() or S:GetPath("tweaks.mouseRingShow") == "rightclick" end }
--- the arcs and the range colour, in pairs
-S:Row{ key = "qol.mouseRingCast", half = true, tab = "gameplay", parent = "qol.mouseRingShow", path = "tweaks.mouseRingCast",
-    apply = RefreshRing, disabled = NoRing }
-S:Row{ key = "qol.mouseRingGCD", half = true, tab = "gameplay", parent = "qol.mouseRingShow", path = "tweaks.mouseRingGCD",
-    apply = RefreshRing, disabled = NoRing }
-S:Row{ key = "qol.mouseRingSwing", half = true, tab = "gameplay", parent = "qol.mouseRingShow", path = "tweaks.mouseRingSwing",
-    apply = RefreshRing, disabled = NoRing }
-S:Row{ key = "qol.mouseRingRange", half = true, tab = "gameplay", parent = "qol.mouseRingShow", path = "tweaks.mouseRingRange",
-    apply = RefreshRing, disabled = NoRing }
-
 -- FONTS: Zone Text (the bag and loot feed fonts went with Bags & Looting, 11-12)
 S:FontRows{ module = "qol", tab = "fonts", section = "qol.fonts", fonts = {
     { key = "zoneText", path = "tweaks.zoneTextFont", faceOnly = true },
@@ -132,6 +105,7 @@ S:Row{ key = "qol.merchantWide", tab = "interface", path = "tweaks.merchantWide"
 S:Row{ key = "qol.hideErrors", tab = "interface", path = "tweaks.hideErrors", reload = true }
 S:Row{ key = "qol.hideZoneText", tab = "interface", path = "tweaks.hideZoneText", reload = true }
 S:Row{ key = "qol.hideTips", tab = "interface", path = "tweaks.hideTips", apply = Refresh }
+S:Row{ key = "qol.hideLootAlerts", tab = "interface", path = "tweaks.hideLootAlerts", apply = Refresh }
 S:Row{ key = "qol.hideFrameNumbers", tab = "interface", path = "tweaks.hidePortraitNumbers", apply = Refresh }
 S:Row{ key = "qol.hideFlagCarriers", tab = "interface", path = "tweaks.hideFlagCarriers",
     apply = function() if ns.ApplyFlagCarriers then ns.ApplyFlagCarriers() end end }

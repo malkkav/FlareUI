@@ -370,10 +370,14 @@ function Bag.AddonChoices()
     if not next(known) then pcall(CollectEntries) end
     local list, byKey = {}, {}
     wipe(tokenIds)
+    -- (11-14, a player) while OneForAll collects the minimap buttons, only compartment entries can go in:
+    -- the buttons it takes are not offered (ticking them did nothing)
+    local other = Bag.OtherCollector()
     -- one row per addon (11-13, Marcus: BtWQuests listed twice): its compartment entry, data object and
     -- own button are matched loosely by name (NameKey: "BtWQuests" = "BtWQuestsMinimapButton"), shown by
     -- the shortest of their labels
     for id, label in pairs(known) do
+      if not (other and (id:find("^ldb:") or id:find("^frame:"))) then
         local key = NameKey(label)
         if key == "" then key = label:lower():gsub("[,%s]", "") end
         local row = byKey[key]
@@ -386,6 +390,7 @@ function Bag.AddonChoices()
             row[2] = label
         end
         table.insert(tokenIds[key], id)
+      end
     end
     table.sort(list, function(a, b) return a[2]:lower() < b[2]:lower() end)
     return list

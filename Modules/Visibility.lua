@@ -632,6 +632,9 @@ local function CheckMember(data, editMode, spellbook)
     if data.key == "quest" and ns.ObjectiveTracker.IsMouseOverExtras and ns.ObjectiveTracker:IsMouseOverExtras() then return true end
     -- a unit frame's holder has no size: its frame (and a ring style's portrait) is what's pointed at
     if data.mouse then return data.mouse() end
+    -- a hidden frame still has its place: a bar turned off in Edit Mode (or a pet bar with no pet)
+    -- mustn't bring its group back when the pointer crosses where it would be
+    if not data.frame:IsVisible() then return false end
     if data.frame:IsMouseOver() or (data.isBar and FlyoutOver(data.frame)) then return true end
     -- buttons another addon moved out of the bar can sit away from the bar's own frame
     if data.frame.FlareUI_FadeAlpha then

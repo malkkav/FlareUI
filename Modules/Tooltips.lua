@@ -587,7 +587,7 @@ end
 -- Mouseover on Buffs/Debuffs and Party/Raid Auras: an aura icon's tooltip, once Blizzard has given it its
 -- owner, is turned to follow the pointer. Only the anchor type changes, after Blizzard's call.
 -- Mouseover (11-12): one main switch (tooltips.mouseover, Settings > Look) for every kind, and per kind
--- an exception (tooltips.mouseoverKinds[kind], the Visibility tab) while it differs. Kinds: world,
+-- an exception (tooltips.mouseoverKinds[kind], Settings tab > Mouseover) while it differs. Kinds: world,
 -- frames, bars, auras, groupAuras, other. The per-kind anchors of the day before convert once.
 local MOUSEOVER_KINDS = { "world", "frames", "bars", "auras", "groupAuras", "other" }
 TIP.MOUSEOVER_KINDS = MOUSEOVER_KINDS
@@ -629,10 +629,17 @@ function TIP.SetMouseover(on)
     db.mouseoverKinds = {}
 end
 
+-- Offset X / Offset Y (11-14, a player asked): how far a mouseover tooltip sits from the pointer
+function TIP.CursorOffset()
+    local db = GetDb()
+    if not db then return 0, 0 end
+    return tonumber(db.cursorX) or 0, tonumber(db.cursorY) or 0
+end
+
 local function OnAuraTipOwner(tip, owner)
     local kind = owner and ns.auraTipKind[owner]
     if not kind or ns.IsGamepadUI() then return end
-    if TIP.Mouseover(kind == "group" and "groupAuras" or "auras") then pcall(tip.SetAnchorType, tip, "ANCHOR_CURSOR_RIGHT") end
+    if TIP.Mouseover(kind == "group" and "groupAuras" or "auras") then pcall(tip.SetAnchorType, tip, "ANCHOR_CURSOR_RIGHT", TIP.CursorOffset()) end
 end
 local function HookAuraTooltips()
     for _, tip in ipairs({ GameTooltip, _G.AuraButtonTooltip }) do
@@ -652,9 +659,19 @@ local function ApplyAnchor(tooltip, parent)
     tooltip.fuiOther = kind == "other" or nil
 
     -- the Gamepad UI has no cursor to follow
-    if ns.IsGamepadUI() then return end
-    if not TIP.Mouseover(kind) then return end
-    tooltip:SetOwner(parent, "ANCHOR_CURSOR_RIGHT", 0, 0)
+    if not ns.IsGamepadUI() and TIP.Mouseover(kind) then
+        tooltip:SetOwner(parent, "ANCHOR_CURSOR_RIGHT", TIP.CursorOffset())
+        return
+    end
+    -- Tooltip Corner (11-14, a player asked): Blizzard grows the tooltip from the HUD Tooltip box's
+    -- nearest corner when the box isn't snapped to one, so it jumps sides as the box moves. A fixed
+    -- corner puts the tooltip's same corner on the box's.
+    local corner = db.corner
+    local box = _G.GameTooltipDefaultContainer or _G.SharedTooltipDefaultContainer
+    if corner and corner ~= "auto" and box then
+        tooltip:ClearAllPoints()
+        tooltip:SetPoint(corner, box, corner)
+    end
 end
 
 --------------------------------------------------

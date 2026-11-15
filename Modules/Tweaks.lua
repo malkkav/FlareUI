@@ -1289,6 +1289,25 @@ local function ApplyTips()
     end
 end
 
+-- Hide Clutter > Loot Alerts (11-14, a player asked): Blizzard's loot pop-ups (items won or looted,
+-- upgrades, money) skip their alert while it's on. Each queue's own skip check (the loot one's: the
+-- enableLootToasts CVar) still runs; no CVar is changed, so off leaves nothing to put back.
+local LOOT_ALERT_SYSTEMS = { "LootAlertSystem", "LootUpgradeAlertSystem", "MoneyWonAlertSystem" }
+function Tweaks.ApplyLootAlerts()
+    for _, name in ipairs(LOOT_ALERT_SYSTEMS) do
+        local queue = _G[name]
+        if queue and queue.SetShouldIgnoreAlertsFunction and not queue.FlareUI_LootHooked then
+            queue.FlareUI_LootHooked = true
+            local own = queue.shouldIgnoreAlertsFunc
+            queue:SetShouldIgnoreAlertsFunction(function(...)
+                local d = GetDb()
+                if d and d.hideLootAlerts then return true end
+                return own and own(...) or false
+            end)
+        end
+    end
+end
+
 local function InitHide()
     local db = GetDb()
     if not db then return end
@@ -1296,6 +1315,7 @@ local function InitHide()
     if db.hideZoneText then InitHideZoneText() end
     ApplyPortraitNumbers()
     ApplyTips()
+    if db.hideLootAlerts then Tweaks.ApplyLootAlerts() end
 end
 
 --------------------------------------------------
@@ -2712,7 +2732,9 @@ function Bulk.Init()
         local perBuy = GetMerchantItemMaxStack(index)
         local opened = split:IsShown() and split.owner == button
         if not opened and not (perBuy == 1 and not split:IsShown()) then return end
-        if button.extendedCost or button.showNonrefundablePrompt then return end
+        -- items paid in other items or currencies keep Blizzard's box. Not showNonrefundablePrompt:
+        -- Forever marks nearly every gold item not refundable, which turned this off for all of them
+        if button.extendedCost then return end
         -- Shift+click with the chat box open puts a link in it
         if not opened and ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow() then return end
         local info = C_MerchantFrame.GetItemInfo(index)
@@ -3013,6 +3035,7 @@ function Tweaks:Refresh()
     if ns.Fishing then ns.Fishing:Apply() end
     ApplyPortraitNumbers()
     ApplyTips()
+    if (GetDb() or {}).hideLootAlerts then Tweaks.ApplyLootAlerts() end
     ApplyNameplateCombo()
     ApplyQuestTags()
     ApplyHideLevelAll()

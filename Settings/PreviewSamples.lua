@@ -849,39 +849,6 @@ function R.lootFeed(c, spec)
     end)
 end
 
-function R.mouseRing(c,spec)
-    Heading(c,L["Mouse Ring"])
-    c:Texture('mouseCursor',P.MEDIA..'Previews\\Cursor.tga',c.width/2-6,95,24,32,true)
-    local mode=Get('tweaks.mouseRingShow','off')
-    if mode=='off' and spec.key=='qol.mouseRingShow' then c:Text('mouseOff',L["Disabled"],12,155); return end
-    local size=math.max(20,math.min(120,Get('tweaks.mouseRingSize',40)))
-    local thick=Get('tweaks.mouseRingThickness',3)
-    local color=Get('tweaks.mouseRingRange') and {1,0.15,0.1} or Get('tweaks.mouseRingClassColor') and {0.41,0.8,0.94} or {0.83,0.68,0.43}
-    local function ring(id,diameter,thickness,tint)
-        local t=c:Texture(id,'Interface\\CharacterFrame\\TempPortraitAlphaMask',(c.width-diameter)/2,105-diameter/2,diameter,diameter,true)
-        t:SetVertexColor(unpack(tint))
-        c.mouseMasks=c.mouseMasks or {}
-        local hole=c.mouseMasks[id]
-        if not hole then hole=c.frame:CreateMaskTexture(); hole:SetTexture(P.MEDIA..'Masks\\RingHole.tga','CLAMPTOWHITE','CLAMPTOWHITE'); t:AddMaskTexture(hole); c.mouseMasks[id]=hole end
-        hole:ClearAllPoints(); hole:SetPoint('CENTER',t,'CENTER'); hole:SetSize(math.max(1,diameter-2*thickness)/0.93,math.max(1,diameter-2*thickness)/0.93)
-        return t
-    end
-    ring('mouseRing',size,thick,color)
-    local arcs={}
-    for i,def in ipairs({{'Cast',{1,0.85,0.3}},{'GCD',{0.4,0.8,1}},{'Swing',{1,0.5,0.2}}}) do
-        if Get('tweaks.mouseRing'..def[1]) then
-            local tex=ring('mouseArc'..i,size+8*i,2,def[2])
-            local mask=c.mouseMasks['arc'..i]
-            if not mask then mask=c.frame:CreateMaskTexture(); mask:SetTexture(P.MEDIA..'Radial\\HalfMask.tga','CLAMPTOBLACKADDITIVE','CLAMPTOBLACKADDITIVE'); tex:AddMaskTexture(mask); c.mouseMasks['arc'..i]=mask end
-            mask:SetAllPoints(tex); arcs[#arcs+1]=mask
-        end
-    end
-    c:Text('mouseContext',mode=='combat' and L["In Combat"] or mode=='rightclick' and L["While Right-Clicking"] or L["Always"],12,180,c.width-24,{size=10})
-    if Get('tweaks.mouseRingHideTurning') then c:Text('mouseTurning',L["Hidden while turning"],12,198,c.width-24,{size=9}) end
-    local elapsed=0
-    c:Animate(function(_,dt) elapsed=elapsed+dt; for i,mask in ipairs(arcs) do mask:SetRotation(elapsed*(i+1)) end end)
-end
-
 --------------------------------------------------
 -- MODULES' OWN SAMPLES (11-11)
 -- A module that builds its own sample (M.CreateSample(parent, kind) / M.DrawSample(f, kind), as the

@@ -1005,7 +1005,9 @@ function Ring.LayoutLevel(f, g)
     f.Level:ClearAllPoints()
     f.Level:SetJustifyH("CENTER")
     f.Level:SetPoint("CENTER", ring.Disc, "CENTER", 0, 0)
-    f.Level:SetFont(LEVEL_FONT, math.max(8, math.floor(LEVEL_FONT_SIZE * k + 0.5)), "")
+    -- (11-14) through FlareUI's font setter: a file not loaded yet falls back to the client's font and
+    -- retries; a raw SetFont left the party tiles' level (no font of its own) blank
+    ns.SetFontUnscaled(f.Level, LEVEL_FONT, math.max(8, math.floor(LEVEL_FONT_SIZE * k + 0.5)), "")
     f.Level:SetShadowOffset(1, -1)
     f.Level:SetShadowColor(0, 0, 0, 1)
 end

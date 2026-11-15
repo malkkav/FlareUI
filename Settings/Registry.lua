@@ -45,11 +45,10 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }   -- 11-10 regr
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["bl.bagSkinSlots"] = "6.5",
-    ["bl.font.itemLevel"] = "6.5",
-    ["mm.flareButton"] = "6.5",
-    ["qol.deleteJunkFull"] = "6.5",
-    ["qol.skipGossip"] = "6.5",
+    ["qol.hideLootAlerts"] = "6.6",
+    ["tt.corner"] = "6.6",
+    ["tt.cursorX"] = "6.6",
+    ["tt.cursorY"] = "6.6",
 }
 
 --------------------------------------------------
@@ -315,8 +314,9 @@ Settings.GAMEPAD_OFF = {
 function Settings:GamepadOff(row)
     if not row then return false end
     if self.GAMEPAD_OFF[row.key] or self.GAMEPAD_OFF_MODULES[row.module] then return true end
-    -- the Tooltips page's Visibility tab: shows and mouseover by kind
-    return row.module == "tt" and row.tab == "visibility" or false
+    -- the Tooltips page's Mouseover and Visibility sections: shows and mouseover by kind
+    local section = row.module == "tt" and self:Text(row.key, "section")
+    return section == "tt.mouseoverSection" or section == "tt.visibilitySection"
 end
 function Settings:SectionGamepadOff(section)
     for _, row in ipairs(section and section.rows or {}) do

@@ -83,10 +83,27 @@ local ICON_SOCIAL   = "Interface\\AddOns\\FlareUI\\Media\\Icons\\ChatSocial.tga"
 -- 4. HELPERS
 --------------------------------------------------
 
+-- Chat addons that replace Blizzard's chat windows: while one is loaded FlareUI's chat steps back
+-- (ShouldLoad), and every check below reads as off. Known once at login.
+local OTHER_CHAT_ADDONS = { "Chattynator" }
+function Chat:GetOtherChatAddon()
+    if self.otherAddon == nil then
+        self.otherAddon = false
+        for _, name in ipairs(OTHER_CHAT_ADDONS) do
+            if C_AddOns.IsAddOnLoaded(name) then
+                self.otherAddon = C_AddOns.GetAddOnMetadata(name, "Title") or name
+                break
+            end
+        end
+    end
+    return self.otherAddon or nil
+end
+
 local function GetDb()
     if not ns.db or not ns.db.profile or not ns.db.profile.chat then
         return nil
     end
+    if Chat.otherAddon then return nil end
     return ns.db.profile.chat
 end
 
@@ -2523,7 +2540,8 @@ function Chat:HideBlizzardTabs()
             local tab = chatFrame and _G[chatFrame:GetName() .. "Tab"]
             if tab and not tab:IsForbidden() then
                 tab:EnableMouse(true)
-                if _G.FCFTab_UpdateAlpha then FCFTab_UpdateAlpha(chatFrame) else tab:SetAlpha(1) end
+                -- full strength: Blizzard fades tabs the mouse isn't over, and a controller has no mouse
+                tab:SetAlpha(1)
             end
         end
         return
@@ -3515,15 +3533,16 @@ end
 -- Runs at login even with Chat off (Core asks before it checks the switch): what FlareUI stored while
 -- it was on goes back, as Init would otherwise never run to restore it.
 function Chat:ShouldLoad()
-    local db, global = GetDb(), ns.db and ns.db.global
-    if global and db and not db.enabled then
+    local other = Chat:GetOtherChatAddon()
+    local db, global = ns.db and ns.db.profile and ns.db.profile.chat, ns.db and ns.db.global
+    if global and db and (other or not db.enabled) then
         if global.hiddenBubbles then RestoreBubbles(global) end
         if global.chatStyleBeforeGamepad then
             if C_CVar.GetCVar("chatStyle") == "im" then C_CVar.SetCVar("chatStyle", global.chatStyleBeforeGamepad) end
             global.chatStyleBeforeGamepad = nil
         end
     end
-    return true
+    return not other
 end
 
 function Chat:Init()
@@ -3675,8 +3694,10 @@ function Chat:Init()
         -- Blizzard passes the chat frame, not its tab
         Chat:SecureHook("FCFTab_UpdateAlpha", function(chatFrame)
             local tab = chatFrame and _G[chatFrame:GetName() .. "Tab"]
-            if not tab or tab:IsForbidden() or ns.IsGamepadUI() then return end
-            tab:SetAlpha(0)
+            if not tab or tab:IsForbidden() then return end
+            -- (11-14, a player's report) the Gamepad UI's tabs stay at full strength: Blizzard's
+            -- mouse fade left them faint over a dark window
+            tab:SetAlpha(ns.IsGamepadUI() and 1 or 0)
         end)
 
         -- A new whisper window: Blizzard decides whether it takes the selection (a whisper you start
