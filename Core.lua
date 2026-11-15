@@ -1510,7 +1510,8 @@ do
 
     -- Party, raid, main tank and boss tiles. st: the tile's settings; opts: { hostile, dispelPlace,
     -- editing }. Friendly debuff places take Blizzard's raid frame rules (ProcessAura: boss, role,
-    -- priority and dispellable debuffs); a dispellable one shows once, as a dispel icon when those are on.
+    -- priority and dispellable debuffs); a dispellable one shows in the debuff row and, when they are on,
+    -- as a dispel icon too (11-15, luuksen: as Blizzard's party frames, Debuff or Dispel)
     function AP.TileLanes(st, opts)
         local lanes = {}
         if not st then return lanes end
@@ -1537,13 +1538,9 @@ do
         -- Dispellable Debuffs Only: Blizzard's own rule (its raid frames' option), which keeps boss,
         -- role and priority debuffs and drops only the plain ones you can't dispel. Its place takes the
         -- "processDispellable" policy; the dispel icons, in their own place, keep the usual rules.
-        local debuffCandidates
-        if dispelIcons and processed then
-            debuffCandidates = { processedAuraType = processed.Debuff }
-        end
         lanes[#lanes + 1] = { key = "debuffs", kind = "debuffs", place = st.debuffs, isDebuff = true,
                               policy = st.dispellableOnly and "processDispellable" or "process",
-                              filter = "HARMFUL", candidates = debuffCandidates }
+                              filter = "HARMFUL" }
         if dispelIcons then
             lanes[#lanes + 1] = { key = "dispels", kind = "dispels", place = opts.dispelPlace, isDebuff = true, policy = "process",
                                   filter = "HARMFUL", candidates = processed and { processedAuraType = processed.Dispel } }

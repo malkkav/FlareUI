@@ -1000,10 +1000,13 @@ local function LayoutTabs(window, view)
     view.tab:SetPoint("LEFT", ref, "TOPLEFT", x - 4, ROW_CENTER_Y)
     view.tab:SetSize(view.tab.Text:GetUnboundedStringWidth() + 8, HEADER_HEIGHT)
     -- (11-15, Marcus) a window on its own has no Threat tab: the threat list stays with the first window
-    local db = GetDb()
-    local noTab = (db and db.threatWindow) or (window ~= _G.DamageMeterSessionWindow1 and not row)
-    view.tab:SetShown(not noTab)
-    view.hit:SetShown(not noTab)
+    -- (only a real meter window's view: the settings sample has no hit area and keeps its own tab)
+    if views[window] == view and view.hit then
+        local db = GetDb()
+        local noTab = (db and db.threatWindow) or (window ~= _G.DamageMeterSessionWindow1 and not row)
+        view.tab:SetShown(not noTab)
+        view.hit:SetShown(not noTab)
+    end
     -- docked, the threat list lives on the first window: every row colours from it
     local threatUp = view.showing
     if row then threatUp = Dock.ThreatShown() end
@@ -1680,8 +1683,10 @@ local function ApplyThreatTab(window)
     end
     -- Separate Window: no Threat tab on the meter (its list has a window of its own)
     local separate = db and db.threatWindow and true or false
-    view.tab:SetShown(not separate)
-    view.hit:SetShown(not separate)
+    -- nor on a window on its own (11-15): the threat list stays with the first window
+    local noTab = separate or (window ~= _G.DamageMeterSessionWindow1 and not Dock.Row(window))
+    view.tab:SetShown(not noTab)
+    view.hit:SetShown(not noTab)
     SetView(window, (not separate) and (view.showing or ThreatPicked()))
 end
 

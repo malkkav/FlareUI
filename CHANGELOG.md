@@ -1,3 +1,30 @@
+# FlareUI 6.8.1
+
+A quick follow-up to 6.8: the Damage Meter settings open again, party frames show the debuffs you can dispel, and paladins pick which aura the reminder casts.
+
+## New
+
+### Buff Reminders
+- Right-click the paladin aura reminder for **Aura to Cast**.
+  - **Last Used** (the default): a click casts the last aura you had up, such as Retribution or Concentration after you die.
+  - Or pick one aura to always cast: Devotion, Retribution, Concentration, a resistance aura or Sanctity.
+- Custom reminders: type a food's or potion's name while it's in your bags, and the reminder gets its icon and a click uses it.
+  - To track a food's buff, add the buff's name too, for example `item:4593, Well Fed`.
+
+### Translations
+- French: all the 6.8 text is translated. By Braincell1980.
+
+## Fixed
+
+### Damage Meter
+- The Damage Meter settings page opens again. 6.8 showed an error there.
+- A meter window on its own no longer gets its Threat tab back.
+
+### Party and Raid Frames
+- Debuffs you can dispel show in your **Debuffs** place again while **Dispel Icons** are on.
+  - Before, they only showed as the small type symbol in the middle of the bar.
+  - This affected every party style, the raid frames and the main tank frames.
+
 # FlareUI 6.8
 
 **Restart the game fully after updating** (not just /reload): this version adds new files.
@@ -232,49 +259,3 @@ A quick round of fixes. Gamepad players get their chat tabs back, and FlareUI no
 - With ClassicUI Forever:
   - Faded action bars no longer show up when you point at another bar.
   - Tooltip **Frame Opacity** works.
-
-# FlareUI 6.5
-
-**Restart the game fully after updating** (not just /reload): this version adds new files.
-
-Bankers and vendors stop making small talk, full bags make room for your loot, and FlareUI now speaks Dutch. Plus a big stack of fixes from your Discord reports.
-
-## New
-- Language: **Nederlands** (Dutch), by LouCryox. Pick it in Settings › Language.
-- Quality of Life › Convenience:
-  - **Skip Gossip** (off): bankers, vendors, trainers, innkeepers and flight masters open their window at once when they have nothing else to say. Hold Shift to talk normally. It never skips in dungeons or raids.
-  - **Delete Junk When Full** (off): with your bags full, clicking an item in the loot window first deletes your cheapest grey item to make room. The chat says what was deleted.
-- Minimap: **FlareUI Minimap Button** (on), above **Addon Button Drawer**.
-  - It shows on the minimap, or in the drawer when the drawer is on.
-  - Right-click the button to hide it. Turn the switch back on to bring it back.
-- Bags & Looting › Item Slots: **Skin Item Slots** (on). Turn it off to keep Blizzard's slots, for example when another addon skins your bags.
-- Bags & Looting › Fonts: **Item Level**, for the item level numbers in your bags and on the character sheet. It shows while **Item Level** is on.
-- Unit frames › Health Text and Power Text:
-  - **Value | Percent**
-  - **Value <  > Percent** (Forever Style only): the value at the bar's left end, the percent at its right end.
-- Bags: pointing at the keyring or crafting bag icon lights up its slots in the backpack.
-- `/fui padlog`: prints the right stick's moves while a controller radial is open, for "Release the Stick to Use" reports.
-
-## Changed
-- Action bars: with **Show Button Art** off, Action Bar 1 drops its bar art too, as if its **Hide Bar Art** were on in Edit Mode.
-- Bags: **Upgrade Arrow** is gone. Its guesses weren't reliable. Addons like Pawn do this properly.
-- Bags & Looting › Item Slots: **Rarity Colours** now comes before **Thicker Borders**. Both grey out when **Skin Item Slots** is off.
-- Bags: item level numbers use the new **Item Level** font, not **Bag Items**. If you had set a Bag Items font, set Item Level too.
-- Unit frames: **Value [Max]** now sits right below **Value** in the Health Text and Power Text lists.
-- French: every phrase added since 6.2 reviewed, and wording made consistent, by Braincell80.
-
-## Fixed
-- Chat: switching tabs could make the chat disappear until /reload.
-- Chat: separate chat windows no longer show Blizzard's own tab next to FlareUI's.
-- Edit Mode: switching between layouts no longer sends frames back to their default spots. Frames you never moved in one layout keep their spots from the other.
-- Meters › threat window:
-  - It no longer snaps with **Snap to Elements** off.
-  - The arrow keys move it straight, not diagonally.
-  - It stays put after /reload. Your saved spot may shift once after updating.
-- Meters: the meter is styled from the first fight after a reload.
-- FlareUI Style: auras and cast bars draw above the portrait ring and the elite dragon, instead of under them.
-  - Unit frames, boss frames and party frames
-- Spellbook: with **Keep Page 1 in Stealth**, spells on bar 1 no longer glow as if they weren't on your bars.
-- Cooldown Manager: with **Skin Cooldown Manager** on, the Utility icons' border now matches the Essential icons'.
-- Mail Address Book: **Your Characters** fills in the first and last name. Each alt shows its full name after you log in on it once.
-- Unit frames: "Ghost" is now translated.

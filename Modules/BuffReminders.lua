@@ -88,7 +88,8 @@ local REMINDERS = {
         { key = "fury", cast = { 25780 }, role = "TANK" },
         -- any aura on (Devotion, Retribution, Concentration, the resistances, Sanctity): Devotion to cast
         -- (own: another paladin's aura never stands in for yours, 11-13 as EllesmereUI)
-        { key = "aura", own = true, cast = { 10293, 10292, 1032, 10291, 643, 10290, 465 },
+        -- (11-15, Archy) the right-click menu picks the aura a click casts: Last Used (the default) or one aura
+        { key = "aura", own = true, paladinAura = true, cast = { 10293, 10292, 1032, 10291, 643, 10290, 465 },
           buffs = { 10293, 10292, 1032, 10291, 643, 10290, 465, 10301, 10300, 10299, 10298, 7294, 19746, 19896, 19895,
                     19876, 19898, 19897, 19888, 19900, 19899, 19891, 20218 } },
     },
@@ -130,6 +131,17 @@ local WORLD_TRINKETS = { 12846, 13209, 19812, 11122 }
 -- the aspects a click may put back (Cheetah and Pack are never remembered: they daze)
 local FIGHT_ASPECTS = { { 25296, 14322, 14321, 14320, 14319, 14318, 13165 }, { 13163 }, { 20190, 20043 },
                         { 13161, 1299447, 1299446, 1299445 } }
+-- the paladin auras a click may cast, each highest rank first (11-15): Devotion, Retribution,
+-- Concentration, Shadow / Frost / Fire Resistance, Sanctity
+local PALADIN_AURAS = {
+    { key = "devotion", ranks = { 10293, 10292, 1032, 10291, 643, 10290, 465 } },
+    { key = "retribution", ranks = { 10301, 10300, 10299, 10298, 7294 } },
+    { key = "concentration", ranks = { 19746 } },
+    { key = "shadow", ranks = { 19896, 19895, 19876 } },
+    { key = "frost", ranks = { 19898, 19897, 19888 } },
+    { key = "fire", ranks = { 19900, 19899, 19891 } },
+    { key = "sanctity", ranks = { 20218 } },
+}
 local HEALTHSTONES = { 5512, 5511, 5509, 5510, 9421, 19004, 19005, 19006, 19007, 19008, 19009, 19010, 19011, 19012, 19013 }
 -- Camping and Rest (Forever, off): Camp Benefits from a campfire, and while levelling with a Cozy
 -- Sleeping Bag in the bags, three Well-Rested stacks (click to use the bag). Gathering Tracking (off):
@@ -721,6 +733,11 @@ function BR.AddCustom(text)
             items[#items + 1] = number
         elseif part ~= "" and not number then
             spells[#spells + 1] = part
+            -- (11-15, SMELTN) a food or potion typed by name: when it's an item the game knows (in your
+            -- bags) and not a spell, it's kept as that item too, for its icon and a click to use it
+            local spellInfo = C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(part)
+            local nameItem = not spellInfo and C_Item.GetItemInfoInstant and C_Item.GetItemInfoInstant(part)
+            if type(nameItem) == "number" then items[#items + 1] = nameItem end
         end
     end
     if #spells == 0 and #items == 0 then return end
@@ -1235,6 +1252,68 @@ function BR.AspectToCast()
     end
 end
 
+-- Paladin Aura (11-15, Archy): one of yours up (remembered for Last Used), and the one a click casts
+local function PaladinAuraOf(name)
+    if not BR.paladinAuraNames then
+        local names = {}
+        for _, a in ipairs(PALADIN_AURAS) do
+            for _, id in ipairs(a.ranks) do
+                local n = SpellName(id)
+                if n then names[n] = a.key end
+            end
+        end
+        BR.paladinAuraNames = names
+    end
+    return BR.paladinAuraNames[name]
+end
+function BR.PaladinAuraUp(entry)
+    for i = 1, 40 do
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+        if not ok or not aura then return false end
+        local name = aura.name
+        if not Readable(name) then return true end
+        -- another paladin's aura never stands in for yours
+        if entry.names[name] and Mine(aura) then
+            local key = PaladinAuraOf(name)
+            local me = ns.CharDB and ns.CharDB()
+            if me and key then me.lastPaladinAura = key end
+            return true
+        end
+    end
+    return false
+end
+local function AuraRank(key)
+    for _, a in ipairs(PALADIN_AURAS) do
+        if a.key == key then
+            for _, id in ipairs(a.ranks) do
+                if Known(id) then return id end
+            end
+        end
+    end
+end
+-- the menu's pick, else the last one you had up, else Devotion (the first you know)
+function BR.PaladinAuraToCast()
+    local pick = (GetDb() or {}).paladinAura or "auto"
+    local me = ns.CharDB and ns.CharDB()
+    local id = (pick ~= "auto" and AuraRank(pick)) or (me and me.lastPaladinAura and AuraRank(me.lastPaladinAura))
+    if not id then
+        for _, a in ipairs(PALADIN_AURAS) do
+            id = AuraRank(a.key)
+            if id then break end
+        end
+    end
+    if id then return id, SpellIcon(id) end
+end
+-- for the right-click menu: the auras you know (and the one picked, even if not known)
+function BR.PaladinAuraChoices()
+    local list, pick = {}, (GetDb() or {}).paladinAura
+    for _, a in ipairs(PALADIN_AURAS) do
+        local id = AuraRank(a.key)
+        if id or pick == a.key then list[#list + 1] = { a.key, SpellName(id or a.ranks[#a.ranks]) or a.key } end
+    end
+    return list
+end
+
 local units = {}
 -- each active reminder's missing / total, the first unit to cast on, the spell (when it is not the
 -- reminder's own: a blessing or a pet's), and whether nothing is missing, only running out
@@ -1386,6 +1465,10 @@ local function Check(entry, before)
             end
         end
         return 1, 1, "player", nil, nil, running, { none = true, tipItem = def.items[1] }, running and left or nil
+    end
+    if def.paladinAura then
+        if BR.PaladinAuraUp(entry) then return 0, 1 end
+        return 1, 1, "player", BR.PaladinAuraToCast()
     end
     if def.aspect then
         local up = BR.AspectUp(entry)
@@ -1626,6 +1709,12 @@ function BR.Menu(owner)
                     Radio(BR.WeaponOptionLabel(kind, o), WeaponField(entry), o.key)
                 end
             end
+        elseif entry.def.paladinAura then
+            -- (11-15, Archy) which aura a click casts
+            root:CreateDivider()
+            root:CreateTitle(L["Aura to Cast"])
+            Radio(L["Last Used"], "paladinAura", "auto")
+            for _, choice in ipairs(BR.PaladinAuraChoices()) do Radio(choice[2], "paladinAura", choice[1]) end
         elseif entry.def.soulstone then
             root:CreateDivider()
             root:CreateTitle(L["Keep It On"])

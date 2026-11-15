@@ -768,7 +768,7 @@ ns.Copy = {
             desc = L["Whose buffs it watches."],
             label = L["Group Buffs"],
             section = "br.classBuffs",
-            tip = L["Right-click an icon to hide it, or to pick what it casts: a paladin's blessings for everyone, by class or by player, who gets Thorns, or what goes on each weapon."],
+            tip = L["Right-click an icon to hide it, or to pick what it casts: a paladin's blessings for everyone, by class or by player, which aura a paladin casts, who gets Thorns, or what goes on each weapon."],
         },
         ["br.hidden"] = {
             desc = L["The reminders you hid with a right-click. Untick one to bring it back. None brings them all back."],
