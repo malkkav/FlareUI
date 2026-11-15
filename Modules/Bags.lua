@@ -853,6 +853,13 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
     Bags.StyleIconTexts(button, db)
     local junk = db.bagJunkIcon
     local ov = GetOverlay(button)
+    ov.itemDataDb = db
+    local pending = ov.itemLoad
+    if pending and (button.fuiSample or not info or pending.link ~= info.hyperlink
+        or pending.bagID ~= bagID or pending.slotID ~= slotID or not (db.bagItemLevel or db.bagUncollected)
+        or GetTime() - pending.requestedAt >= 5) then
+        ov.itemLoad = nil
+    end
     ov:Show()
     ov.border:Hide()
     ov.junk:Hide()
@@ -883,14 +890,20 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
         if db.bagItemLevel then StyleIconText(ov.ilvl, db.bagItemLevelFont) end
         local link = info.hyperlink
         if C_Item.IsItemDataCachedByID(info.itemID) then
+            ov.itemLoad = nil
             ShowItemData(ov, db, bagID, slotID, link, quality)
-        else
-            -- the slot may hold something else by the time the data comes
+        elseif not ov.itemLoad then
+            -- One request per slot generation: an older A -> B -> A callback cannot clear or
+            -- paint a newer request, even when the hyperlink happens to match again.
+            local request = { link = link, bagID = bagID, slotID = slotID, requestedAt = GetTime() }
+            ov.itemLoad = request
             local item = Item:CreateFromItemLink(link)
             item:ContinueOnItemLoad(function()
+                if ov.itemLoad ~= request then return end
+                ov.itemLoad = nil
                 local now = C_Container.GetContainerItemInfo(bagID, slotID)
                 if now and now.hyperlink == link and button:GetBagID() == bagID and button:GetID() == slotID then
-                    ShowItemData(ov, db, bagID, slotID, link, quality)
+                    ShowItemData(ov, ov.itemDataDb, bagID, slotID, link, now.quality)
                 end
             end)
         end
