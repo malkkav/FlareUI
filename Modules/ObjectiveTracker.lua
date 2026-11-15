@@ -1431,7 +1431,10 @@ function Build.TitleText(db, level, tags, title, collapsed, questID, done)
             prefix = string_format("|cff%02x%02x%02x", Byte(c.r), Byte(c.g), Byte(c.b)) .. "[" .. shownLevel .. shownTags .. "]|r "
         end
     end
-    local tag = done and (" " .. ColorCode(C.TITLE_DONE) .. L["(Complete)"] .. "|r") or ""
+    -- (11-15, vyf) a language FlareUI hasn't translated it into takes the game's own word (COMPLETE)
+    local word = L["(Complete)"]
+    if word == "(Complete)" and type(COMPLETE) == "string" and COMPLETE ~= "" then word = "(" .. COMPLETE .. ")" end
+    local tag = done and (" " .. ColorCode(C.TITLE_DONE) .. word .. "|r") or ""
     return prefix .. title .. tag .. (collapsed and ("  " .. ColorCode(C.DIM) .. "+|r") or "")
 end
 

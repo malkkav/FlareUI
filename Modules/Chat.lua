@@ -2674,16 +2674,23 @@ end
 -- (11-14, a player's screenshot) an undocked window showed Blizzard's tab over FlareUI's: Blizzard fades
 -- that tab in and out on mouse-over and new lines (UIFrameFadeIn / Out) and sets it to full on undocking.
 -- Docked tabs sit in the parked dock, so theirs never showed. Any alpha Blizzard gives a tab goes
--- straight back to 0 (looks only; the Gamepad UI keeps Blizzard's tabs, see below).
-local function KeepTabInvisible(tab)
+-- straight back to 0 (looks only).
+-- (11-15, a player's report: "still no chat tabs" in the Gamepad UI) the Gamepad UI keeps Blizzard's
+-- tabs as the tab bar, so there any alpha goes straight back to 1 instead. Blizzard's FCF_OnUpdate
+-- fades a chat in while it has the pad and out when the pad leaves (FCF_FadeOutChatFrame), and that
+-- fade-out runs UIFrameFadeOut on the tab down to 0.4 (selected) / 0.2 (others) over two seconds.
+-- The FCFTab_UpdateAlpha hook only caught the one-off set, never the fade's per-frame SetAlpha.
+local function KeepTabAlpha(tab)
     if tab.FlareUI_AlphaKept then return end
     tab.FlareUI_AlphaKept = true
     hooksecurefunc(tab, "SetAlpha", function(self, alpha)
-        if self.FlareUI_AlphaSetting or alpha == 0 or ns.IsGamepadUI() then return end
+        if self.FlareUI_AlphaSetting then return end
+        local want = ns.IsGamepadUI() and 1 or 0
+        if alpha == want then return end
         local db = GetDb()
         if not (db and db.enabled) then return end
         self.FlareUI_AlphaSetting = true
-        self:SetAlpha(0)
+        self:SetAlpha(want)
         self.FlareUI_AlphaSetting = nil
     end)
 end
@@ -2699,6 +2706,7 @@ function Chat:HideBlizzardTabs()
             if tab and not tab:IsForbidden() then
                 tab:EnableMouse(true)
                 -- full strength: Blizzard fades tabs the mouse isn't over, and a controller has no mouse
+                KeepTabAlpha(tab)
                 tab:SetAlpha(1)
             end
         end
@@ -2722,7 +2730,7 @@ function Chat:HideBlizzardTabs()
     for _, chatFrame in Windows() do
         local tab = chatFrame and _G[chatFrame:GetName() .. "Tab"]
         if tab then
-            KeepTabInvisible(tab)
+            KeepTabAlpha(tab)
             tab:SetAlpha(0)
             tab:EnableMouse(false)
         end

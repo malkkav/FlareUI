@@ -523,7 +523,8 @@ end
 -- The source character's per-character Blizzard settings (CVars, Edit Mode layout by name, chat
 -- windows, bag flags...) are kept account-wide (db.global.uiSync), saved on logout and after
 -- changes, and applied at login to every other character once per snapshot. The source is named
--- by GUID.
+-- by GUID. A new snapshot only exists when a value changed, and each value carries the time it last
+-- changed, so another character copies only what is new to it.
 --------------------------------------------------
 local SYNC_CVARS = ns.SYNC_CVARS or {}   -- filled in Modules/TweaksCVars.lua
 local syncSaveTimer
@@ -535,6 +536,14 @@ Tweaks.SYNC_NO_RELOAD = {
     questLogOpen = true, miniWorldMap = true, characterFrameCollapsed = true, closedInfoFrames = true,
     friendsSmallView = true, friendsViewButtons = true, guildRosterView = true,
     miniCommunitiesFrame = true, miniDressUpFrame = true,
+    -- (11-15) tutorials seen, panel tabs and sorts, the raid manager's open state: no reload either
+    closedExtraAbiltyTutorials = true, lastVoidStorageTutorial = true, covenantMissionTutorial = true,
+    orderHallMissionTutorial = true, lastGarrisonMissionTutorial = true, shipyardMissionTutorialAreaBuff = true,
+    shipyardMissionTutorialBlockade = true, shipyardMissionTutorialFirst = true,
+    dangerousShipyardMissionWarningAlreadyShown = true, soulbindsActivatedTutorial = true,
+    soulbindsLandingPageTutorial = true, soulbindsViewedTutorial = true, guildNewsFilter = true,
+    guildRewardsCategory = true, guildRewardsUsable = true, auctionSortByBuyoutPrice = true,
+    auctionSortByUnitPrice = true, raidOptionIsShown = true, showBattlefieldMinimap = true,
 }
 
 -- AceEvent keeps one callback per object per event, so the sync has its own object
@@ -585,8 +594,11 @@ local function SaveSync()
     -- only the source writes; with no source yet, the first character to save becomes it
     if not account.source then account.source = Me() end
     if not IsSource(account) then return end
-    account.snapshot = account.snapshot or {}
-    local store = account.snapshot
+    -- The snapshot is built fresh, then compared with the last one: savedAt (and each part's stamp)
+    -- only moves when a value really changed. Before 11-15 every save got a new savedAt, so each
+    -- session of the source looked like a new snapshot and every alt was asked to reload (Shweep).
+    local old = account.snapshot or {}
+    local store = {}
 
     -- CVars
     store.cvars = {}
@@ -666,7 +678,78 @@ local function SaveSync()
         end
     end
 
-    store.savedAt = GetServerTime()
+    Tweaks.StampSyncSnapshot(account, old, store)
+end
+
+-- Deep compare of two snapshot values (tables by content)
+function Tweaks.SyncSame(a, b)
+    if type(a) ~= type(b) then return false end
+    if type(a) ~= "table" then return a == b end
+    for k, v in pairs(a) do
+        if not Tweaks.SyncSame(v, b[k]) then return false end
+    end
+    for k in pairs(b) do
+        if a[k] == nil then return false end
+    end
+    return true
+end
+
+-- Gives each changed CVar and each changed part the new savedAt as its stamp, keeps the old stamps
+-- of the rest, and stores the snapshot only when something changed. A snapshot from another source
+-- (or one saved before stamps existed and from another source) counts as all new.
+function Tweaks.StampSyncSnapshot(account, old, store)
+    local same = Tweaks.SyncSame
+    local fresh = old.sourceGuid ~= nil and old.sourceGuid ~= account.source.guid
+        or old.sourceGuid == nil and old.savedAt == nil
+    local now = GetServerTime()
+    if old.savedAt and now <= old.savedAt then now = old.savedAt + 1 end
+    local changed = fresh
+    local oldCVars, oldStamps = old.cvars or {}, old.cvarStamps or {}
+    -- a snapshot saved before stamps: its values date from its own savedAt
+    local legacyStamp = old.cvarStamps == nil and old.savedAt or nil
+    store.cvarStamps = {}
+    for name, value in pairs(store.cvars) do
+        if fresh or oldCVars[name] ~= value then
+            store.cvarStamps[name] = now
+            changed = true
+        else
+            store.cvarStamps[name] = oldStamps[name] or legacyStamp
+        end
+    end
+    for name in pairs(oldCVars) do
+        if store.cvars[name] == nil then changed = true end
+    end
+    -- the parts other than CVars; chat filters (messages and channels) apart from the chat look,
+    -- as only the filters need a reload
+    local function Filters(chat)
+        local out = {}
+        for i, w in pairs(chat or {}) do out[i] = { messages = w.messages, channels = w.channels } end
+        return out
+    end
+    local parts = {
+        layout = function(s) return { s.editModeLayout, s.editModeLayoutType } end,
+        chatFilters = function(s) return Filters(s.chat) end,
+        chat = function(s) return s.chat end,
+        bags = function(s) return s.bags end,
+        bagFlags = function(s) return s.bagFlags end,
+        guild = function(s) return s.declineGuildInvites end,
+        actionBars = function(s) return s.actionBars end,
+        chatColors = function(s) return { s.chatColors, s.chatClassNames } end,
+    }
+    local oldPartStamps = old.stamps or {}
+    store.stamps = {}
+    for part, read in pairs(parts) do
+        if fresh or not same(read(old), read(store)) then
+            store.stamps[part] = now
+            changed = true
+        else
+            store.stamps[part] = oldPartStamps[part] or legacyStamp
+        end
+    end
+    if not changed then return end
+    store.sourceGuid = account.source.guid
+    store.savedAt = now
+    account.snapshot = store
 end
 
 local function QueueSaveSync()
@@ -686,16 +769,39 @@ local function LoadSync()
     local sourceName = SourceLabel(account.source) or "another character"
     Tweaks.syncLoading = true
 
+    -- Only what the source changed since the snapshot this character last took is copied (all of it
+    -- the first time). A value this character changed on its own stays until the source changes it.
+    local since = charDB.syncApplied
+    local function IsNew(stamp)
+        return since == nil or (tonumber(stamp) or 0) > since
+    end
+    local stamps = store.stamps or {}
+    local cvarStamps = store.cvarStamps or {}
+    -- a snapshot saved before stamps: everything in it dates from its savedAt
+    if store.cvarStamps == nil then
+        local legacy = store.savedAt
+        stamps = setmetatable({}, { __index = function() return legacy end })
+        cvarStamps = stamps
+    end
+    -- "1" and "1.000000" are the same setting
+    local function SameCVar(a, b)
+        local na, nb = tonumber(a), tonumber(b)
+        if na and nb then return math.abs(na - nb) < 1e-4 end
+        return tostring(a) == tostring(b)
+    end
+
     -- CVars
     local changed = 0
     local forced = ns.db.global and Tweaks.ForcedCVars("combatPlates")
     for name, value in pairs(store.cvars or {}) do
-        if name == "nameplateShowEnemies" and forced and forced.combatPlates ~= nil then
+        if not IsNew(cvarStamps[name]) then
+            -- unchanged at the source since the last copy
+        elseif name == "nameplateShowEnemies" and forced and forced.combatPlates ~= nil then
             -- Enemy Nameplates in Combat Only holds the CVar: the source's value is what comes back later
             forced.combatPlates = tostring(value)
         elseif CVarKnown(name) then
             local ok, current = pcall(GetCVar, name)
-            if ok and tostring(current) ~= tostring(value) then
+            if ok and not SameCVar(current, value) then
                 if pcall(SetCVar, name, value) and not Tweaks.SYNC_NO_RELOAD[name] then changed = changed + 1 end
             end
         end
@@ -745,19 +851,22 @@ local function LoadSync()
         end
         return true
     end
-    if store.chat then
+    local chatLookNew, chatFiltersNew = IsNew(stamps.chat), IsNew(stamps.chatFilters)
+    if store.chat and (chatLookNew or chatFiltersNew) then
         for i, w in pairs(store.chat) do
-            if w.name then pcall(SetChatWindowName, i, w.name) end
-            if w.size and w.size >= 10 then pcall(SetChatWindowSize, i, w.size) end
-            if w.r then pcall(SetChatWindowColor, i, w.r, w.g, w.b) end
-            if w.a then pcall(SetChatWindowAlpha, i, w.a) end
-            pcall(SetChatWindowDocked, i, w.docked or false)
-            pcall(SetChatWindowLocked, i, w.locked or false)
-            pcall(SetChatWindowShown, i, w.shown or false)
-            pcall(SetChatWindowUninteractable, i, w.uninteractable or false)
-            if w.point and w.x then pcall(SetChatWindowSavedPosition, i, w.point, w.x, w.y) end
-            if w.width then pcall(SetChatWindowSavedDimensions, i, w.width, w.height) end
-            if w.messages then
+            if chatLookNew then
+                if w.name then pcall(SetChatWindowName, i, w.name) end
+                if w.size and w.size >= 10 then pcall(SetChatWindowSize, i, w.size) end
+                if w.r then pcall(SetChatWindowColor, i, w.r, w.g, w.b) end
+                if w.a then pcall(SetChatWindowAlpha, i, w.a) end
+                pcall(SetChatWindowDocked, i, w.docked or false)
+                pcall(SetChatWindowLocked, i, w.locked or false)
+                pcall(SetChatWindowShown, i, w.shown or false)
+                pcall(SetChatWindowUninteractable, i, w.uninteractable or false)
+                if w.point and w.x then pcall(SetChatWindowSavedPosition, i, w.point, w.x, w.y) end
+                if w.width then pcall(SetChatWindowSavedDimensions, i, w.width, w.height) end
+            end
+            if w.messages and chatFiltersNew then
                 local ok, current = pcall(function() return { GetChatWindowMessages(i) } end)
                 current = ok and current or {}
                 if not SameSet(current, w.messages) then chatChanged = true end
@@ -765,7 +874,7 @@ local function LoadSync()
                 for _, group in ipairs(w.messages) do pcall(AddChatWindowMessages, i, group) end
             end
             -- only the window assignment; channels are never joined
-            if w.channels then
+            if w.channels and chatFiltersNew then
                 local ok, current = pcall(function() return { GetChatWindowChannels(i) } end)
                 if not SameSet(ok and current or {}, w.channels) then chatChanged = true end
                 for _, name in ipairs(ok and current or {}) do
@@ -784,7 +893,7 @@ local function LoadSync()
 
     -- Bag flags
     local b = store.bags
-    if b then
+    if b and IsNew(stamps.bags) then
         if b.sortRightToLeft ~= nil then pcall(C_Container.SetSortBagsRightToLeft, b.sortRightToLeft) end
         if b.insertLeftToRight ~= nil then pcall(C_Container.SetInsertItemsLeftToRight, b.insertLeftToRight) end
         if b.bankAutosortDisabled ~= nil then pcall(C_Container.SetBankAutosortDisabled, b.bankAutosortDisabled) end
@@ -793,7 +902,7 @@ local function LoadSync()
     end
 
     -- bag slot flags, through the API only (the bag frames refresh themselves)
-    for bag, flags in pairs(store.bagFlags or {}) do
+    for bag, flags in pairs(IsNew(stamps.bagFlags) and store.bagFlags or {}) do
         for flag, set in pairs(flags) do
             local ok, current = pcall(C_Container.GetBagSlotFlag, bag, flag)
             if ok and current ~= set then pcall(C_Container.SetBagSlotFlag, bag, flag, set) end
@@ -801,15 +910,16 @@ local function LoadSync()
     end
 
     local okDecline, decline = pcall(GetAutoDeclineGuildInvites)
-    if store.declineGuildInvites ~= nil and okDecline and decline ~= store.declineGuildInvites then
+    if store.declineGuildInvites ~= nil and IsNew(stamps.guild) and okDecline and decline ~= store.declineGuildInvites then
         pcall(SetAutoDeclineGuildInvites, store.declineGuildInvites)
     end
 
     -- Chat colours and class-coloured names
-    for chatType, c in pairs(store.chatColors or {}) do
+    local colorsNew = IsNew(stamps.chatColors)
+    for chatType, c in pairs(colorsNew and store.chatColors or {}) do
         pcall(ChangeChatColor, chatType, c[1], c[2], c[3])
     end
-    for chatType, byClass in pairs(store.chatClassNames or {}) do
+    for chatType, byClass in pairs(colorsNew and store.chatClassNames or {}) do
         local info = ChatTypeInfo[chatType]
         if info and (info.colorNameByClass and true or false) ~= byClass then
             pcall(SetChatColorNameByClass, chatType, byClass)
@@ -817,7 +927,7 @@ local function LoadSync()
     end
 
     -- action bars: delayed (the server mirrors the toggles back), then redrawn
-    if store.actionBars then
+    if store.actionBars and IsNew(stamps.actionBars) then
         local toggles = store.actionBars
         C_Timer.After(4, function()
             if InCombatLockdown() then return end
@@ -894,6 +1004,8 @@ end
 function Tweaks:MakeSyncSource()
     local store, me = GetSyncStore(), Me()
     if not (store and me) then return end
+    -- a new source sends everything: the old snapshot's values are another character's
+    if not (type(store.source) == "table" and store.source.guid == me.guid) then store.snapshot = nil end
     store.source = me
     -- the source never applies a snapshot, but if it hands the role on it must take the next one
     ns.CharDB().syncApplied = nil

@@ -44,7 +44,9 @@ local function Join(a, b) local t = {} for _, v in ipairs(a) do t[#t + 1] = v en
 
 local REMINDERS = {
     PRIEST = {
-        { key = "fortitude", cast = FORTITUDE, buffs = Join(FORTITUDE, { 21564, 21562 }), group = true },
+        -- (11-15, loraethil) Forever's camping First Aid Kit (item 279968): +34 Stamina, which can't stack
+        -- with Fortitude, so it counts as having it; matched by the kit's name and its use spell's name
+        { key = "fortitude", cast = FORTITUDE, buffs = Join(FORTITUDE, { 21564, 21562 }), group = true, alsoItems = { 279968 } },
         { key = "innerFire", cast = { 10952, 10951, 1006, 602, 7128, 588 } },
         -- talent spells (11-12, a player asked): once the talent teaches the spell, it is known.
         -- Divine Spirit as a group buff on mana users; Shadowform not while your role is healer
@@ -526,6 +528,14 @@ local function Resolve()
             for _, id in ipairs(def.buffs or def.cast or {}) do
                 local name = SpellName(id)
                 if name then names[name] = true end
+            end
+            -- items whose buff stands in for this one (their names once the game has loaded them)
+            for _, item in ipairs(def.alsoItems or {}) do
+                if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(item) end
+                local itemName = C_Item.GetItemNameByID and C_Item.GetItemNameByID(item)
+                if itemName then names[itemName] = true end
+                local spellName = C_Item.GetItemSpell and C_Item.GetItemSpell(item)
+                if spellName then names[spellName] = true end
             end
             active[#active + 1] = { def = def, castID = castID, names = names,
                                     icon = SpellIcon(castID or def.icon) }
@@ -2174,7 +2184,11 @@ ns.Dialogs["FLAREUI_BR_CUSTOM"] = {
     button2 = L["Cancel"],
     hasEditBox = true,
     maxLetters = 200,
-    OnAccept = function(_, text) BR.AddCustom(text) end,
+    OnAccept = function(_, text)
+        BR.AddCustom(text)
+        -- (11-15, MunchieDog) the open settings page shows the new one at once (its list stayed "None")
+        if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
+    end,
     hideOnEscape = true,
 }
 

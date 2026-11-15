@@ -1496,14 +1496,18 @@ do
         -- decides from the filter, so secret auras sort too. Not in Edit Mode (one sample row).
         local candidates = AP.HideBuffs(udb.hideBuffs, editing)
         local purge = udb.purgeHighlight and not editing and (unit == "target" or unit == "focus")
+        -- (11-15, loraethil) enemies only: on a friendly unit the purge row matches nothing (X and !X) and
+        -- every buff shows plainly; the side switches through enemyFilter (AP.UpdateSide), also in a fight
         if purge then
             lanes[#lanes + 1] = { key = "purge", kind = "buffs", place = udb.buffs, isDebuff = false, stealable = true,
-                                  filter = "HELPFUL|RAID_PLAYER_DISPELLABLE", candidates = candidates }
+                                  filter = "HELPFUL|RAID_PLAYER_DISPELLABLE|!RAID_PLAYER_DISPELLABLE",
+                                  enemyFilter = "HELPFUL|RAID_PLAYER_DISPELLABLE", candidates = candidates }
         end
         -- Only My Buffs (player): the PLAYER filter
         lanes[#lanes + 1] = { key = "buffs", kind = "buffs", place = udb.buffs, isDebuff = false, joinPrevious = purge or nil,
-                     filter = purge and "HELPFUL|!RAID_PLAYER_DISPELLABLE"
+                     filter = purge and "HELPFUL"
                          or ((unit == "player" and udb.onlyMyBuffs) and "HELPFUL|PLAYER" or "HELPFUL"),
+                     enemyFilter = purge and "HELPFUL|!RAID_PLAYER_DISPELLABLE" or nil,
                      candidates = candidates }
         return lanes
     end

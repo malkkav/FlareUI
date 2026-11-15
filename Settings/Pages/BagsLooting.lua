@@ -21,6 +21,17 @@ S:Module{
 }
 
 -- BAGS: the window ------------------------------
+-- Combined Backpack (11-15, a player couldn't find why the rows below were greyed): Blizzard's own Use
+-- Combined Bags, switched from here. FlareUI saves nothing: Blizzard's checkbox and this one always agree.
+S:Row{ key = "bl.bagCombined", half = true, tab = "bags", disabled = BagAddon,
+    get = function() return GetCVarBool("combinedBags") and true or false end,
+    set = function(on) SetCVar("combinedBags", on and 1 or 0) end,
+    apply = function()
+        -- the rows below follow once Blizzard has switched (USE_COMBINED_BAGS_CHANGED, Bags.lua)
+        C_Timer.After(0, function()
+            if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
+        end)
+    end }
 local BAG_COLUMNS = { { 0, L["Default"] } }
 for n = 6, 20 do BAG_COLUMNS[#BAG_COLUMNS + 1] = { n, tostring(n) } end
 S:Row{ key = "bl.bagColumns", kind = "range", tab = "bags", path = "tweaks.bagColumns", choices = BAG_COLUMNS,

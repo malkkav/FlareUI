@@ -45,6 +45,7 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }   -- 11-10 regr
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
+    ["bl.bagCombined"] = "6.8",
     ["ch.fadeIn"] = "6.8",
     ["ch.fadeOut"] = "6.8",
     ["ch.unreadGlow"] = "6.8",

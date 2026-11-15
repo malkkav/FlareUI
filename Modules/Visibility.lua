@@ -83,7 +83,9 @@ local ELEMENTS = {
     { key = "uf_focustarget", unit = "focustarget", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
     -- the FlareUI Player Cast Bar: Visibility and Faded Opacity only. Not with Cinematic, which fades it
     -- between fights itself (its bar then ignores the holder's alpha)
-    { key = "uf_playercastbar", castbar = true, module = "unitframes", own = true, noGroup = true, instant = true },
+    -- never (11-15, Sam): a Never choice, so neither FlareUI's bar nor Blizzard's shows (the player frame's
+    -- own Cast Bar can take over); Edit Mode still shows it
+    { key = "uf_playercastbar", castbar = true, module = "unitframes", own = true, noGroup = true, instant = true, never = true },
     -- FlareUI Totems (Totems.lua, 11-15, a player asked): fade groups, and never: a Never choice that
     -- keeps them out for good (Edit Mode still shows them)
     { key = "uf_totems", totems = true, module = "unitframes", never = true },
@@ -1285,6 +1287,7 @@ function Visibility:Refresh()
                     -- out for good; Edit Mode still shows it, to be found and set back
                     local editing = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
                     ApplyElementAlpha(frame, key, editing and 1 or 0)
+                    if e.own then unitValues[key] = editing and 1 or 0 end
                 elseif show == "always" or show == "inuse" then
                     ApplyElementAlpha(frame, key, 1)
                     if e.own then unitValues[key] = 1 end

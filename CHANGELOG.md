@@ -1,3 +1,38 @@
+# FlareUI 6.8.2
+
+A round of fixes from your reports: chat tabs you can see in Gamepad mode, no more reload prompts when you switch to an alt, and two small options from the general chat.
+
+## New
+
+### Bags & Looting
+- Bag Window: **Combined Backpack**, the same as Blizzard's **Use Combined Bags**.
+  - The options below it need it on, so you no longer have to find Blizzard's option to use them.
+
+### Player Cast Bar
+- Its **Visibility** in Edit Mode has a new **Never** choice.
+  - It hides FlareUI's cast bar and keeps Blizzard's hidden too, so only the player frame's own **Cast Bar** shows.
+
+## Fixed
+
+### Chat
+- Gamepad mode: the chat tabs stay fully visible. They faded out each time the controller left the chat.
+
+### Sync Blizz UI
+- Switching from your main to an alt no longer asks for a reload when nothing changed.
+  - An alt only copies settings your main really changed.
+  - It only asks for a reload when one of those needs it.
+
+### Buff Reminders
+- Fortitude: a player with Forever's **First Aid Kit** buff from a campfire counts as having it. The two can't stack.
+- A new custom reminder shows in the settings list right away.
+
+### Unit Frames
+- **Highlight Purgeable Buffs** only applies to enemies. A friendly target's buffs show normally, with no white border.
+
+### Other
+- Flight Timer: a route timed for the first time reads **New Route** and counts up. It used to say "Learning".
+- Quest Tracker: "(Complete)" uses the game's own word in languages FlareUI isn't translated into yet.
+
 # FlareUI 6.8.1
 
 A quick follow-up to 6.8: the Damage Meter settings open again, party frames show the debuffs you can dispel, and paladins pick which aura the reminder casts.
@@ -239,23 +274,3 @@ Tooltips got tidied up, the mouse ring rode off into the sunset, and a big stack
 - Meters: a second meter window drags by its header again. Before, only a tiny spot next to the timer worked.
 - Chat (Gamepad mode): the chat tabs stay fully visible. They stayed faint until you pointed the mouse at them.
 - Radials (controller): **Release the Stick to Use** works when you roll the stick from one direction to the next.
-
-# FlareUI 6.5.1
-
-A quick round of fixes. Gamepad players get their chat tabs back, and FlareUI now gets along with ClassicUI Forever.
-
-## New
-- Edit Mode: the **HUD Tooltip** box shows a sample tooltip. You can still see and drag it with the overlays hidden (the eye button).
-
-## Changed
-- Action bars: **Show Button Art** no longer hides Action Bar 1's bar art. Edit Mode's **Hide Bar Art** controls it again, as before 6.5.
-- Profiles: pasting an Edit Mode layout code into **Import** now tells you where it goes: Esc › Edit Mode › Layout › Import.
-- Resource Bars › **Druid Mana**: the tip now points to **Mana on Shapeshift** in the player frame's Edit Mode settings, for a mana bar on the frame itself.
-- French: the 6.5 phrases now match the rest of the translation, by Braincell80.
-
-## Fixed
-- Gamepad mode: the chat tabs show again. They worked, but you couldn't see them.
-- About: the Discord button opens a working invite.
-- With ClassicUI Forever:
-  - Faded action bars no longer show up when you point at another bar.
-  - Tooltip **Frame Opacity** works.

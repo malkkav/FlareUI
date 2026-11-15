@@ -1645,7 +1645,8 @@ local function FlightOnUpdate(holder, elapsed)
     if now.total and now.total > 0 then
         holder.Text:SetText(Clock(now.total - flown))
     elseif now.keep then
-        holder.Text:SetText(string.format(L["Learning %s"], Clock(flown)))
+        -- (11-15, Shweep: "Learning" read oddly) a route not timed yet: the time so far, counting up
+        holder.Text:SetText(string.format(L["New Route %s"], Clock(flown)))
     else
         -- caught mid-air (a login without a record): the time flown, nothing learned
         holder.Text:SetText(Clock(flown))

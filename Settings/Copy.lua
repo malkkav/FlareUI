@@ -516,6 +516,13 @@ ns.Copy = {
             section = "bl.bagWindow",
             tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
         },
+        ["bl.bagCombined"] = {
+            desc = L["All your bags in one window. The same as Blizzard's Use Combined Bags option."],
+            label = L["Combined Backpack"],
+            section = "bl.bagWindow",
+            tags = { "combined bags", "one bag", "bag window", "use combined bags" },
+            tip = L["The options below need it on."],
+        },
         ["bl.bagFilters"] = {
             choices = { L["Off"], L["Drawer"], L["Buttons"] },
             desc = L["Filter your bags by Quest Items, Equipment, Materials or Consumables. Pick one and everything else dims.\n* Drawer: one button by the cleanup button opens a drawer of filters\n* Buttons: all four filters in a row by the search box, one click each"],
@@ -1789,7 +1796,7 @@ ns.Copy = {
             label = L["Flight Timer"],
             section = "rb.bars",
             tags = { "flight path taxi timer" },
-            tip = L["Each route is learned the first time you fly it. Its time then shows on the flight map too."],
+            tip = L["Each route is timed the first time you fly it: the bar reads New Route and counts up. After that it counts down, and the time shows on the flight map too."],
         },
         ["rb.font.text"] = {
             desc = L["The numbers or time left on this bar."],
@@ -2242,7 +2249,7 @@ ns.Copy = {
             label = L["Player Cast Bar"],
             section = "uf.frames",
             tags = { "castbar", "standalone cast bar", "blizzard cast bar" },
-            tip = L["To put it on the player frame instead, turn on Cast Bar in the player frame's Edit Mode options."],
+            tip = L["To put it on the player frame instead, turn on Cast Bar in the player frame's Edit Mode options, and set this bar's Visibility to Never in Edit Mode. Never hides Blizzard's cast bar too."],
         },
         ["uf.flagCarriers"] = {
             desc = L["Blizzard's frames for the flag carriers in battlegrounds. Move them in Edit Mode."],
