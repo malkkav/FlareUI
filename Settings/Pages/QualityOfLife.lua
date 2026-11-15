@@ -82,6 +82,8 @@ S:Row{ key = "qol.rumbleProcs", half = true, tab = "gameplay", path = "tweaks.ru
 S:Row{ key = "qol.npCombat", tab = "nameplates", path = "tweaks.combatPlates", apply = Refresh }
 S:Row{ key = "qol.npCombo", tab = "nameplates", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon }
 S:Row{ key = "qol.npQuest", tab = "nameplates", path = "tweaks.nameplateQuest", apply = Refresh, disabled = QuestBadgeTaken }
+S:Row{ key = "qol.npTotems", tab = "nameplates", kind = "choice", path = "tweaks.nameplateTotems", choices = { "off", "above", "instead" },
+    apply = Refresh, disabled = NameplateAddon }
 S:Row{ key = "qol.npNames", tab = "nameplates", path = "tweaks.nameplateHideNames", apply = Refresh, disabled = NameplateAddon }
 -- live when switched on; switching off leaves visible plates' bars wide until Blizzard re-lays
 -- them, so the reload bar offers a reload

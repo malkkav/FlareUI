@@ -1515,6 +1515,13 @@ ns.Copy = {
             label = L["Quest Objectives"],
             section = "qol.nameplates",
         },
+        ["qol.npTotems"] = {
+            choices = { L["Off"], L["Above the Nameplate"], L["Instead of the Nameplate"] },
+            desc = L["A totem's icon on its nameplate, so you can see where each totem stands."],
+            label = L["Totem Icons"],
+            section = "qol.nameplates",
+            tip = L["Your own and your group's totems show only with friendly nameplates on."],
+        },
         ["qol.padTracker"] = {
             desc = L["In Gamepad mode, Blizzard's tracker replaces FlareUI's, so D-pad Up, quest items and menus work with the controller."],
             label = L["Force Blizzard Tracker"],

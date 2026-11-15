@@ -720,6 +720,22 @@ end
 
 function R.nameplate(c, spec)
     Heading(c, L["Nameplates"])
+    -- Totem Icons: a Searing Totem's plate (its name in the client's language), the icon above it or
+    -- in its place, at the sizes Tweaks.lua uses (section 10b)
+    if spec.key == 'qol.npTotems' then
+        local mode = Get('tweaks.nameplateTotems', 'off')
+        if mode ~= 'instead' then
+            c:Text('totemName', C_Spell.GetSpellName(3599) or 'Searing Totem', 22, 69)
+            c:Bar('totemPlate', 16, 94, c.width - 32, 17, 1, { 0.8, 0.15, 0.12 })
+        end
+        if mode == 'above' then
+            Icon(c, 'totemIcon', 'Spell_Fire_SearingTotem', (c.width - 24) / 2, 41, 24)
+        elseif mode == 'instead' then
+            Icon(c, 'totemIcon', 'Spell_Fire_SearingTotem', (c.width - 30) / 2, 88, 30)
+        end
+        Note(c)
+        return
+    end
     if spec.key == 'qol.npCombat' and not Get('tweaks.combatPlates') then
         c:Text('combatExample', L["In combat: enemy nameplates hidden"], 16, 90, c.width - 32); return
     elseif spec.key == 'qol.npCombat' then

@@ -872,6 +872,7 @@ local defaults = {
             zoneTextFont = { face = "" },  -- Zone Text font (ZoneText.lua): "" keeps Blizzard's; face only
             nameplateCombo = false,     -- classic combo point gems under the target's nameplate
             nameplateQuest = false,     -- quest badge on enemy nameplates that belong to an active quest
+            nameplateTotems = "off",    -- a totem's spell icon on its nameplate: "off" / "above" / "instead" (of the plate)
             nameplateHideLevel = false, -- Blizzard's level box on the right of nameplates hidden
             nameplateHideNames = false, -- unit names on Blizzard's nameplates hidden
             nameplateLevelName = false, -- with the level box hidden: the level before the plate's name
