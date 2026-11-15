@@ -12,7 +12,7 @@ local unit = read('Modules/UnitFrames.lua')
 local party = read('Modules/PartyFrames.lua')
 local preview = party:sub((assert(party:find('ApplyPreview = function(f)', 1, true))))
 local UF = {}
-assert(loadstring('return function(UF) local unpack = unpack; local ns = {}; local L = setmetatable({}, {__index = function(_, k) return k end});\n'
+assert(loadstring('return function(UF) local unpack = unpack; local ns = {ShortNumber = function(n) if n >= 10000 then return tostring(n / 1000) .. "K" end return tostring(n) end}; local L = setmetatable({}, {__index = function(_, k) return k end});\n'
     .. section(unit, 'local SPLIT_MODE =', '-- Current (Max) | Percent was removed')
     .. '\nUF.testHealthModes = HEALTH_TEXT_MODES; end'))()(UF)
 for _, modes in ipairs({UF.testHealthModes, UF.POWER_TEXT_MODES}) do
@@ -82,10 +82,10 @@ return function(K, region, noop)
         UpdateHealth(f); UpdatePower(f)
         if kind == 'classic' then
             assert(not f.HealthTextLeft and not f.PowerTextLeft)
-            assert(f.HealthText.text == '18000 / 24000 | 75%')
+            assert(f.HealthText.text == '18K / 24K | 75%')
             assert(f.PowerText.text == '80 / 200 | 40%')
         else
-            assert(f.HealthTextLeft.text == '18000 / 24000' and f.HealthText.text == '75%')
+            assert(f.HealthTextLeft.text == '18K / 24K' and f.HealthText.text == '75%')
             assert(f.PowerTextLeft.text == '80 / 200' and f.PowerText.text == '40%')
             assert(f.HealthTextLeft.point[1] == 'LEFT' and f.HealthText.point[1] == 'RIGHT')
             assert(f.HealthTextLeft.clears == 0 and f.PowerTextLeft.clears == 0)
@@ -98,7 +98,7 @@ return function(K, region, noop)
         connected = true; dead = true; UpdateHealth(f); UpdatePower(f)
         assert(f.HealthText.text == 'Dead' and f.PowerText.text == '')
         dead = false; value = 80; UpdateHealth(f); UpdatePower(f)
-        assert(f.HealthText.text == (kind == 'classic' and '18000 / 24000 | 75%' or '75%'))
+        assert(f.HealthText.text == (kind == 'classic' and '18K / 24K | 75%' or '75%'))
         if kind == 'raid' then
             st.powerHeight = 4; LayoutBars(f); LayoutTexts(f)
             assert(f.PowerTextLeft.point[1] == 'BOTTOMLEFT' and f.PowerText.point[1] == 'BOTTOMRIGHT')
@@ -108,7 +108,7 @@ return function(K, region, noop)
             assert(f.PowerText:IsShown() and f.PowerTextLeft:IsShown())
         end
         RenderSample(f, {health = 0.5, power = 0.5})
-        assert(f.HealthText.text == (kind == 'classic' and '12000 / 24000 | 50%' or '50%'))
+        assert(f.HealthText.text == (kind == 'classic' and '12K / 24K | 50%' or '50%'))
         assert(f.PowerText.text == (kind == 'classic' and '4500 / 9000 | 50%' or '50%'))
         RenderSample(f, {health = 0, power = 0, dead = true})
         assert(f.HealthText.text == 'Dead' and f.PowerText.text == '')

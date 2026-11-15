@@ -6,8 +6,16 @@ file:close()
 local first = assert(source:find("UF.CUSTOM_DEFAULTS =", 1, true))
 local last = assert(source:find("-- The text for every mode", first, true))
 local load = loadstring or load
-local UF = assert(load("local UF = {}; local unpack = unpack or table.unpack;\n"
-    .. source:sub(first, last - 1) .. "\nreturn UF"))()
+local shortCalls = 0
+local function shortNumber(n)
+ shortCalls = shortCalls + 1
+ if type(n) ~= "number" then return n end -- opaque client values must not be inspected
+ if n >= 1000000 then return tostring(n / 1000000) .. "M" end
+ if n >= 10000 then return tostring(n / 1000) .. "K" end
+ return tostring(n)
+end
+local UF = assert(load("return function(ns) local UF = {}; local unpack = unpack or table.unpack;\n"
+    .. source:sub(first, last - 1) .. "\nreturn UF end"))()({ShortNumber = shortNumber})
 local function font(shown)
  return { IsShown = function() return shown end,
  SetFormattedText = function(self, fmt, ...) self.text = string.format(fmt, ...) end }
@@ -17,23 +25,23 @@ local function check(template, expected)
  UF.FormatCustomText(f, template, 18000, 75, 24000)
  assert(f.text == expected, template .. ": " .. f.text)
 end
-check("[value] / [max]", "18000 / 24000")
+check("[value] / [max]", "18K / 24K")
 check("[percent]", "75%")
-check("[percent] [value]/[max]", "75% 18000/24000")
+check("[percent] [value]/[max]", "75% 18K/24K")
 check("[percent] [percent]", "75% 75%")
 check("100% %s %d [typo]", "100% %s %d [typo]")
 check("", "")
-check("[value]", "18000")
+check("[value]", "18K")
 local cached = f.fuiCustomFormat
-check("[value]", "18000")
+check("[value]", "18K")
 assert(f.fuiCustomFormat == cached, "cache must be reused")
 UF.SetCustomBarText(f, left, {}, "healthText", 18000, 75, 24000)
-assert(left.text == "18000 / 24000" and f.text == "75%")
+assert(left.text == "18K / 24K" and f.text == "75%")
 local db = {healthTextCustomLeft = "[percent]", healthTextCustomRight = "[value]/[max]"}
 UF.SetCustomBarText(f, left, db, "healthText", 18000, 75, 24000)
-assert(left.text == "75%" and f.text == "18000/24000")
+assert(left.text == "75%" and f.text == "18K/24K")
 UF.SetCustomBarText(f, nil, db, "healthText", 18000, 75, 24000)
-assert(f.text == "75% | 18000/24000")
+assert(f.text == "75% | 18K/24K")
 db.healthTextCustomLeft = ""
 UF.SetCustomBarText(f, nil, db, "healthText", 0, 0, 0)
 assert(f.text == "0/0")
@@ -44,7 +52,7 @@ assert(UF.CustomTemplate({healthTextCustomLeft = false}, "healthText", "Left") =
 assert(#UF.CustomTemplate({healthTextCustomLeft = string.rep("x", 250)}, "healthText", "Left") == 200)
 local cur, pct, max = {}, {}, {}
 local opaque = {SetFormattedText = function(_, fmt, a, b, c)
- assert(fmt == "%d / %d (%.0f%%)")
+ assert(fmt == "%s / %s (%.0f%%)")
  assert(a == cur and b == max and c == pct)
 end}
 UF.FormatCustomText(opaque, "[value] / [max] ([percent])", cur, pct, max)
@@ -119,7 +127,7 @@ return function(UF, font)
     local function update() UpdateHealth(f); UpdatePower(f) end
     update()
     assert(f.HealthTextLeft.clears == 0 and f.PowerTextLeft.clears == 0)
-    assert(f.HealthTextLeft.text == "18000 / 24000" and f.PowerTextLeft.text == "80 / 200")
+    assert(f.HealthTextLeft.text == "18K / 24K" and f.PowerTextLeft.text == "80 / 200")
     connected = false; update()
     assert(f.HealthText.text == "Offline" and f.HealthTextLeft.text == "")
     assert(f.PowerText.text == "" and f.PowerTextLeft.text == "")
@@ -132,3 +140,15 @@ end
 ]]))()
 updateFactory(UF, font)
 print("PASS: live updates avoid redundant clears; offline, death and recovery refresh both ends")
+
+-- Abbreviation is delegated once per used numeric tag, even when repeated.
+local before = shortCalls
+UF.FormatCustomText(main, "[percent]", 10000, 50, 20000)
+assert(shortCalls == before, "percent-only text must not abbreviate unused values")
+UF.FormatCustomText(main, "[value] [value] [max] [max]", 10000, 50, 20000)
+assert(main.text == "10K 10K 20K 20K" and shortCalls == before + 2)
+for _, case in ipairs({{0, "0"}, {9999, "9999"}, {10000, "10K"}, {1500000, "1.5M"}}) do
+ UF.FormatCustomText(main, "[value]", case[1], 0, 0)
+ assert(main.text == case[2])
+end
+print("PASS: abbreviation delegation, thresholds, repeated tags and unused values")

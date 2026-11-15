@@ -350,14 +350,14 @@ function UF.SplitText(f, key)
 end
 
 -- Custom formats are compiled once per font string when their template changes. Only the
--- public template is parsed; potentially secret unit values go straight to SetFormattedText.
+-- public template is parsed; values use the same secret-safe abbreviation helper as other modes.
 UF.CUSTOM_DEFAULTS = { Left = "[value] / [max]", Right = "[percent]" }
 UF.CUSTOM_KEYS = {
     healthText = { Left = "healthTextCustomLeft", Right = "healthTextCustomRight" },
     powerText = { Left = "powerTextCustomLeft", Right = "powerTextCustomRight" },
 }
 UF.CUSTOM_TAGS = { value = 1, max = 2, percent = 3 }
-UF.CUSTOM_SPECS = { "%d", "%d", "%.0f%%" }
+UF.CUSTOM_SPECS = { "%s", "%s", "%.0f%%" }
 function UF.CustomTemplate(db, key, side)
     local value = db and db[UF.CUSTOM_KEYS[key][side]]
     if type(value) ~= "string" then return UF.CUSTOM_DEFAULTS[side] end
@@ -374,16 +374,21 @@ function UF.FormatCustomText(fs, template, cur, percent, max)
             local token = UF.CUSTOM_TAGS[tag]
             if not token then return "[" .. tag .. "]" end
             compiled.tokens[#compiled.tokens + 1] = token
+            if token == 1 then compiled.usesValue = true
+            elseif token == 2 then compiled.usesMax = true end
             return UF.CUSTOM_SPECS[token]
         end)
         compiled.count = #compiled.tokens
         fs.fuiCustomFormat = compiled
     end
     local tokens, args = compiled.tokens, compiled.args
+    -- Format only referenced values, once each even if a tag appears more than once.
+    local value = compiled.usesValue and ns.ShortNumber(cur)
+    local maximum = compiled.usesMax and ns.ShortNumber(max)
     for i = 1, compiled.count do
         local token = tokens[i]
-        if token == 1 then args[i] = cur
-        elseif token == 2 then args[i] = max
+        if token == 1 then args[i] = value
+        elseif token == 2 then args[i] = maximum
         else args[i] = percent end
     end
     fs:SetFormattedText(compiled.format, unpack(args, 1, compiled.count))
