@@ -987,6 +987,8 @@ local function BuildSettings()
         { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The frame fades while the unit is out of range."],
           get = get("rangeCheck", true), set = set("rangeCheck") },
+        -- (11-15, HyonD; main tanks follow it)
+        K.DamageTrailSetting(get("damageTrail", false), set("damageTrail")),
     })
 
     Section("Look", {

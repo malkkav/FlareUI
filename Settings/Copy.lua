@@ -106,7 +106,7 @@ ns.Copy = {
         },
         ["ab.bar.group"] = {
             choices = { L["None"], L["1"], L["2"], L["3"], L["4"], L["5"] },
-            desc = L["Bars in the same fade group:\n* Fade together\n* Share their Visibility, Fade Speed and Faded Opacity"],
+            desc = L["Bars and frames in the same fade group:\n* Fade together\n* Share their Visibility, Fade In Speed, Fade Out Speed and Faded Opacity"],
             label = L["Fade Group"],
             tip = L["For example: one group for your bottom bars, another for your side bars."],
         },
@@ -517,11 +517,12 @@ ns.Copy = {
             tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
         },
         ["bl.bagFilters"] = {
-            desc = L["A button beside the bags' cleanup button opens a drawer of filters:\n* Quest Items\n* Equipment\n* Materials\n* Consumables\nPick one and everything else dims."],
+            choices = { L["Off"], L["Drawer"], L["Buttons"] },
+            desc = L["Filter your bags by Quest Items, Equipment, Materials or Consumables. Pick one and everything else dims.\n* Drawer: one button by the cleanup button opens a drawer of filters\n* Buttons: all four filters in a row by the search box, one click each"],
             label = L["Category Filters"],
             section = "bl.tools",
-            tags = { "bag filter", "sort", "category" },
-            tip = L["Right-click the button to clear the filter."],
+            tags = { "bag filter", "sort", "category", "drawer", "buttons", "quest items", "materials" },
+            tip = L["Buttons needs the combined backpack with room to spare. In a narrow backpack or separate bags you get the drawer. Click the lit filter again, or right-click it, to clear it."],
         },
         ["bl.bagGaps"] = {
             desc = L["Each bag starts a new row in the combined backpack, with a gap above it."],
@@ -630,8 +631,8 @@ ns.Copy = {
             section = "bl.lootFeedSection",
         },
         ["bl.lootFeedAlign"] = {
-            choices = { L["Left"], L["Right"] },
-            desc = L["Which side the icons sit on:\n* Left: icon, then the text\n* Right: the text, then the icon, lined up on the right (at the cursor: to its left)"],
+            choices = { L["Left"], L["Center"], L["Right"] },
+            desc = L["How the lines line up:\n* Left: icon, then the text\n* Center: icon and text centred (at the cursor: right above it)\n* Right: the text, then the icon, lined up on the right (at the cursor: to its left)"],
             label = L["Alignment"],
             section = "bl.lootFeedSection",
         },
@@ -767,7 +768,7 @@ ns.Copy = {
             desc = L["Whose buffs it watches."],
             label = L["Group Buffs"],
             section = "br.classBuffs",
-            tip = L["Right-click an icon to hide it, or to pick a paladin's blessing, who gets Thorns or what goes on each weapon."],
+            tip = L["Right-click an icon to hide it, or to pick what it casts: a paladin's blessings for everyone, by class or by player, who gets Thorns, or what goes on each weapon."],
         },
         ["br.hidden"] = {
             desc = L["The reminders you hid with a right-click. Untick one to bring it back. None brings them all back."],
@@ -799,7 +800,7 @@ ns.Copy = {
             section = "br.classBuffs",
         },
         ["br.provider"] = {
-            desc = L["Group buffs show only when no one else of your class is in the group."],
+            desc = L["Group buffs show only when no one else of your class is in the group. Blessings still show, since paladins split them."],
             label = L["Only Provider"],
             section = "br.groupBuffs",
         },
@@ -891,18 +892,26 @@ ns.Copy = {
             label = L["Edit Box Opacity"],
             section = "ch.editBoxSection",
         },
-        ["ch.fade"] = {
-            choices = { L["Instant"], L["Fast"], L["Slow"] },
-            desc = L["How fast the chat appears and disappears.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
-            label = L["Fade Speed"],
-            section = "ch.frame",
-        },
         ["ch.fadeDelay"] = {
             choices = { L["Instant"], L["5 Seconds"], L["10 Seconds"], L["15 Seconds"], L["30 Seconds"] },
             desc = L["How long the chat stays before it fades."],
             label = L["Fade Delay"],
             section = "ch.frame",
             tip = L["Needs a Visibility other than Always."],
+        },
+        ["ch.fadeIn"] = {
+            choices = { L["Instant"], L["Fast"], L["Slow"] },
+            desc = L["How fast the chat comes back.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
+            label = L["Fade In Speed"],
+            section = "ch.frame",
+            tags = { "fade speed" },
+        },
+        ["ch.fadeOut"] = {
+            choices = { L["Instant"], L["Fast"], L["Slow"] },
+            desc = L["How fast the chat fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
+            label = L["Fade Out Speed"],
+            section = "ch.frame",
+            tags = { "fade speed" },
         },
         ["ch.font.editBox"] = {
             desc = L["What you type."],
@@ -998,6 +1007,14 @@ ns.Copy = {
             label = L["Better Timestamps"],
             section = "ch.formatting",
         },
+        ["ch.unreadGlow"] = {
+            choices = { L["None"], L["Say"], L["Yell"], L["Party"], L["Raid"], L["Guild"], L["Whispers"], L["Channels"] },
+            desc = L["Which messages make a chat tab glow when you're on another tab."],
+            label = L["Tab Glow"],
+            section = "ch.frame",
+            tags = { "unread", "new message", "tab glow", "highlight", "flash", "mute tab", "notification" },
+            tip = L["None turns the glow off. Right-click a tab and pick Mute Tab to keep just that tab from glowing."],
+        },
         ["ch.visibility"] = {
             choices = { L["Always"], L["Chat Interactions"], L["Chat Interactions + In Combat"] },
             desc = L["When the chat stays on screen.\n* Always: never fades\n* Chat Interactions: new messages and typing\n* Chat Interactions + In Combat: also during fights"],
@@ -1058,11 +1075,19 @@ ns.Copy = {
             section = "dm.frame",
             tip = L["Needs a Visibility other than Always."],
         },
-        ["dm.fadeSpeed"] = {
+        ["dm.fadeIn"] = {
             choices = { L["Instant"], L["Fast"], L["Slow"] },
-            desc = L["How fast the meter appears and disappears.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
-            label = L["Fade Speed"],
+            desc = L["How fast the meter comes back.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
+            label = L["Fade In Speed"],
             section = "dm.frame",
+            tags = { "fade speed" },
+        },
+        ["dm.fadeOut"] = {
+            choices = { L["Instant"], L["Fast"], L["Slow"] },
+            desc = L["How fast the meter fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
+            label = L["Fade Out Speed"],
+            section = "dm.frame",
+            tags = { "fade speed" },
         },
         ["dm.font.bars"] = {
             desc = L["Names and numbers on the bars."],
@@ -1247,11 +1272,11 @@ ns.Copy = {
             tip = L["Linked to Blizzard's own Coordinates option: turning one off turns off the other."],
         },
         ["mm.finderEye"] = {
-            desc = L["A small icon on the minimap in place of Blizzard's large queue eye. Click it to open the group finder."],
+            desc = L["A small icon on the minimap in place of Blizzard's large queue eye. Like Blizzard's eye, it only shows while you're in a queue, listed or in a battleground."],
             label = L["Group Finder Icon"],
             section = "mm.tweaks",
             tags = { "queue eye", "lfg", "dungeon finder", "group finder" },
-            tip = L["In a queue it works like Blizzard's eye: point at it to see the queue, click it for the scoreboard or your listing, right-click for the queue menu. On the round minimap, move it in Edit Mode by dragging Blizzard's eye under it."],
+            tip = L["It works like Blizzard's eye: point at it to see the queue, click it for the scoreboard or your listing, right-click for the queue menu. On the round minimap, move it in Edit Mode by dragging Blizzard's eye under it."],
         },
         ["mm.flareButton"] = {
             desc = L["FlareUI's own button, for opening these settings. With the Addon Button Drawer on, it sits in the drawer."],
@@ -1655,6 +1680,13 @@ ns.Copy = {
             label = L["Show Quest Level"],
             section = "qt.display",
         },
+        ["qt.keepFocus"] = {
+            desc = L["A quest you accept doesn't take the focus. The quest you had focused stays focused."],
+            label = L["Keep Quest Focus"],
+            section = "qt.quests",
+            tags = { "super track", "focus", "accept", "new quest" },
+            tip = L["Focus you set yourself always stays."],
+        },
         ["qt.maxHeight"] = {
             desc = L["The tracker's size:\n* Width\n* Max Height: how tall it grows before it scrolls\n* Quest Spacing: the gap between quests"],
             label = L["Max Height"],
@@ -1953,6 +1985,7 @@ ns.Copy = {
             label = L["Tooltip Corner"],
             section = "tt.look",
             tags = { "anchor", "tooltip position", "hud tooltip", "grow" },
+            tip = L["Only for tooltips in the HUD Tooltip box. Tooltips at your mouse use Offset X and Offset Y instead."],
         },
         ["tt.cursorX"] = {
             desc = L["How far a mouseover tooltip sits from your mouse, left (-) or right (+), in pixels."],
@@ -2120,6 +2153,11 @@ ns.Copy = {
             desc = L["The target's combo points:\n* Addon Style: a bar along the top of the health bar\n* FlareUI Style: Classic, Modern or Off"],
             label = L["Combo Points"],
         },
+        ["uf.*.damageTrail"] = {
+            desc = L["Health you lose stays a moment in a light colour, then shrinks away."],
+            label = L["Damage Trail"],
+            tags = { "damage taken", "lost health", "health trail" },
+        },
         ["uf.*.debuffSize"] = {
             desc = L["The size of debuff icons. Each row holds as many as fit."],
             label = L["Debuff Size"],
@@ -2153,7 +2191,7 @@ ns.Copy = {
             label = L["Only My Debuffs"],
         },
         ["uf.*.portrait"] = {
-            choices = { L["None"], L["3D"], L["Class Icon"] },
+            choices = { L["None"], L["2D"], L["Class Icon"] },
             desc = L["What shows in the portrait circle."],
             label = L["Portrait"],
         },
@@ -2205,6 +2243,13 @@ ns.Copy = {
             section = "uf.frames",
             tags = { "castbar", "standalone cast bar", "blizzard cast bar" },
             tip = L["To put it on the player frame instead, turn on Cast Bar in the player frame's Edit Mode options."],
+        },
+        ["uf.flagCarriers"] = {
+            desc = L["Blizzard's frames for the flag carriers in battlegrounds. Move them in Edit Mode."],
+            label = L["Flag Carrier Frames"],
+            section = "uf.frames",
+            tags = { "pvp target frames", "arena frames", "enemy frames", "battleground", "flag carrier", "wsg" },
+            tip = L["Off: they stay under the minimap. To hide them, use Hide Clutter in Quality of Life."],
         },
         ["uf.font.auraCount"] = {
             desc = L["The stack count on buffs and debuffs. Auto sizes it to the icon."],
@@ -2291,6 +2336,11 @@ ns.Copy = {
         ["uf.party.castbars"] = {
             desc = L["A cast bar under each member."],
             label = L["Cast Bars"],
+        },
+        ["uf.party.damageTrail"] = {
+            desc = L["Health you lose stays a moment in a light colour, then shrinks away."],
+            label = L["Damage Trail"],
+            tags = { "damage taken", "lost health", "health trail" },
         },
         ["uf.party.debuffSize"] = {
             desc = L["The size of debuff icons and dispel icons. Each row holds as many as fit."],

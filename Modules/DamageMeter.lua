@@ -454,9 +454,18 @@ local function FitTitleButton(window)
     local dd = GetWindowTypeDropdown(window)
     local ref = window.FlareUI_DMSkin or GetWindowHeader(window)
     if not (dd and dd.TypeName and ref and dd.FlareUI_TitleReserve) then return end
-    local room = (ref:GetWidth() or 0) - dd.FlareUI_TitleReserve
-    local width = TITLE_LEFT + (dd.TypeName:GetUnboundedStringWidth() or 0) + 8
+    -- a docked window's title sits further right, after the tabs before it (section 23b)
+    local textX = dd.FlareUI_TextX or TITLE_LEFT
+    local left = DamageMeter.TitleButtonLeft(textX)
+    local room = (ref:GetWidth() or 0) - dd.FlareUI_TitleReserve - left
+    local width = textX + (dd.TypeName:GetUnboundedStringWidth() or 0) + 8 - left
     dd:SetSize(math_max(math_min(width, room), 1), HEADER_HEIGHT)
+end
+
+-- where the title's click area starts: at the header's edge for the first tab, else just before its text
+function DamageMeter.TitleButtonLeft(textX)
+    if textX == TITLE_LEFT then return 0 end
+    return textX - 4
 end
 
 local function ApplyHeader(window, db)
@@ -508,7 +517,7 @@ local function ApplyHeader(window, db)
             local iconsWidth = ICON_SIZE + (1 + extra) * ICON_SPACING
             if dd and dd.ClearAllPoints then
                 dd:ClearAllPoints()
-                dd:SetPoint("TOPLEFT", ref, "TOPLEFT", 0, 0)
+                dd:SetPoint("TOPLEFT", ref, "TOPLEFT", DamageMeter.TitleButtonLeft(dd.FlareUI_TextX or TITLE_LEFT), 0)
                 -- as wide as the title, never past the icons
                 dd.FlareUI_TitleReserve = ICON_RIGHT + iconsWidth + 8
                 FitTitleButton(window)
@@ -526,7 +535,7 @@ local function ApplyHeader(window, db)
             end
             if dd and dd.TypeName and dd.TypeName.ClearAllPoints then
                 dd.TypeName:ClearAllPoints()
-                dd.TypeName:SetPoint("LEFT", ref, "TOPLEFT", TITLE_LEFT, ROW_CENTER_Y)
+                dd.TypeName:SetPoint("LEFT", ref, "TOPLEFT", dd.FlareUI_TextX or TITLE_LEFT, ROW_CENTER_Y)
                 dd.TypeName:SetPoint("RIGHT", dd, "RIGHT", -4, 0)
                 dd.TypeName:SetJustifyH("LEFT")
             end
@@ -851,6 +860,7 @@ local THREAT_EVENTS = { "UNIT_THREAT_LIST_UPDATE", "UNIT_THREAT_SITUATION_UPDATE
     "GROUP_ROSTER_UPDATE", "UNIT_PET", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }
 
 local views = {}                 -- session window -> its threat tab, hit area, list and state
+local Dock = {}                  -- extra meter windows as tabs of the first (23b)
 local Solo = {}                  -- Threat > Separate Window (16b): frame, view, proxy, hidden
 local UpdateThreatViews          -- defined below the list code
 
@@ -954,14 +964,51 @@ local function LayoutTabs(window, view)
     if not (dd and dd.TypeName and ref) then return end
     local path, size, flags = ns.GetWantedFont(dd.TypeName)
     -- a family: a Latin-only header font keeps Blizzard's Cyrillic face for the Russian title
-    if path then ns.SetFontFamily(view.tab.Text, path, size, flags) end
-    view.tab.Text:SetShadowOffset(dd.TypeName:GetShadowOffset())
-    view.tab.Text:SetShadowColor(dd.TypeName:GetShadowColor())
+    local function Style(fs)
+        if path then ns.SetFontFamily(fs, path, size, flags) end
+        fs:SetShadowOffset(dd.TypeName:GetShadowOffset())
+        fs:SetShadowColor(dd.TypeName:GetShadowColor())
+    end
+    Style(view.tab.Text)
+    -- left to right: the meter windows' tabs (this window's own title where its tab belongs, the
+    -- others as FlareUI tabs, section 23b), then Threat, always last
+    local row = Dock.Row(window)
+    local x, ownX = TITLE_LEFT, TITLE_LEFT   -- where the next tab's text starts
+    if row then
+        for _, other in ipairs(row) do
+            if other == window then
+                ownX = x
+                x = x + dd.TypeName:GetUnboundedStringWidth() + TAB_GAP
+            else
+                local label = Dock.Label(window, other)
+                Style(label.Text)
+                label.Text:SetText(Dock.TitleOf(other))
+                label:ClearAllPoints()
+                label:SetPoint("LEFT", ref, "TOPLEFT", x - 4, ROW_CENTER_Y)
+                label:SetSize(label.Text:GetUnboundedStringWidth() + 8, HEADER_HEIGHT)
+                ColorTab(label.Text, false)
+                label:Show()
+                x = x + label.Text:GetUnboundedStringWidth() + TAB_GAP
+            end
+        end
+    else
+        x = x + dd.TypeName:GetUnboundedStringWidth() + TAB_GAP
+    end
+    Dock.HideLabels(window, row)
+    Dock.PlaceTitle(window, dd, ref, ownX)
     view.tab:ClearAllPoints()
-    view.tab:SetPoint("LEFT", ref, "TOPLEFT", TITLE_LEFT + dd.TypeName:GetUnboundedStringWidth() + TAB_GAP - 4, ROW_CENTER_Y)
+    view.tab:SetPoint("LEFT", ref, "TOPLEFT", x - 4, ROW_CENTER_Y)
     view.tab:SetSize(view.tab.Text:GetUnboundedStringWidth() + 8, HEADER_HEIGHT)
-    ColorTab(dd.TypeName, not view.showing)
-    ColorTab(view.tab.Text, view.showing)
+    -- (11-15, Marcus) a window on its own has no Threat tab: the threat list stays with the first window
+    local db = GetDb()
+    local noTab = (db and db.threatWindow) or (window ~= _G.DamageMeterSessionWindow1 and not row)
+    view.tab:SetShown(not noTab)
+    view.hit:SetShown(not noTab)
+    -- docked, the threat list lives on the first window: every row colours from it
+    local threatUp = view.showing
+    if row then threatUp = Dock.ThreatShown() end
+    ColorTab(dd.TypeName, not threatUp)
+    ColorTab(view.tab.Text, threatUp)
 end
 
 -- Blizzard's list (and its pinned own row) is invisible while Threat is up
@@ -1299,10 +1346,13 @@ local function SetView(window, showThreat)
     if not view then return end
     local db = GetDb()
     if db and db.threatWindow then showThreat = false end
+    -- a docked window shows no threat list: the first window has it, on top (23b); nor does a window
+    -- on its own (11-15)
+    if window ~= _G.DamageMeterSessionWindow1 then showThreat = false end
     view.showing = showThreat and true or false
     view.frame:SetShown(view.showing)
     SetBlizzardListShown(window, not view.showing)
-    LayoutTabs(window, view)
+    if Dock.Row(window) or window.FlareUI_DockLabels then Dock.Stack() else LayoutTabs(window, view) end
     if view.showing then
         view.stale = nil
         UpdateThreatView(window, view)
@@ -1348,6 +1398,23 @@ function DamageMeter.PlaceThreatWindow()
     if Solo.PlaceBesideMeter then SafeCall(Solo.PlaceBesideMeter) end
 end
 
+-- The Threat tab's Move to Own Window (true) and the threat window's Dock as a Tab (false, 23c):
+-- Threat > Separate Window, as if ticked in the settings, which show it. In a fight the meter waits
+-- for its end, as the settings' tick does; the new window is placed then.
+function DamageMeter.SetThreatWindow(on)
+    local db = GetDb()
+    if not db then return end
+    db.threatWindow = on and true or false
+    if InFight() then
+        DamageMeter._pendingRefresh = true
+        if on then DamageMeter.threatPlacePending = true end
+    else
+        DamageMeter:Refresh()
+        if on then DamageMeter.PlaceThreatWindow() end
+    end
+    if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
+end
+
 function DamageMeter.RedrawThreat()
     for window, view in pairs(views) do
         if view.showing then SafeCall(UpdateThreatView, window, view) end
@@ -1389,7 +1456,9 @@ local function CreateThreatView(window)
     hit:SetFrameLevel(dd:GetFrameLevel() + 2)
     hit:RegisterForClicks("LeftButtonUp")
     hit:SetPassThroughButtons("RightButton")
-    hit:SetScript("OnClick", function() PickView(window, false) end)
+    hit:SetScript("OnClick", function()
+        if Dock.Row(window) then Dock.Select(window) else PickView(window, false) end
+    end)
     view.hit = hit
 
     local tab = CreateFrame("Button", nil, window)
@@ -1397,8 +1466,12 @@ local function CreateThreatView(window)
     tab.Text = tab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     tab.Text:SetPoint("LEFT", tab, "LEFT", 4, 0)
     tab.Text:SetText(L["Threat"])
-    tab:RegisterForClicks("LeftButtonUp")
-    tab:SetScript("OnClick", function() PickView(window, true) end)
+    tab:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    tab:SetScript("OnClick", function(self, button)
+        -- right-click: Move to Own Window (Threat > Separate Window, 23c)
+        if button == "RightButton" then Dock.OpenThreatMenu(self, true); return end
+        if Dock.Row(window) then Dock.PickThreat() else PickView(window, true) end
+    end)
     -- the idle tab lifts a little under the mouse, like the chat's
     tab:SetScript("OnEnter", function(self)
         if view.showing then return end
@@ -1435,7 +1508,10 @@ local function CreateThreatView(window)
     view.pullLine = line
 
     -- a new meter type renames the title: the Threat tab follows the new width
-    hooksecurefunc(dd.TypeName, "SetText", function() LayoutTabs(window, view) end)
+    -- docked, the other windows' tabs show this title too
+    hooksecurefunc(dd.TypeName, "SetText", function()
+        if Dock.Row(window) then SafeCall(Dock.Stack) else LayoutTabs(window, view) end
+    end)
 
     views[window] = view
     return view
@@ -1731,6 +1807,12 @@ do
         f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")   -- (a font before SetText; Look sets the header font)
         f.title:SetPoint("LEFT", skin, "TOPLEFT", TITLE_LEFT, ROW_CENTER_Y)
         f.title:SetText(L["Threat"])
+        -- right-click the header: Dock as a Tab (Separate Window off, 23c)
+        local head = CreateFrame("Button", nil, f)
+        head:SetPoint("TOPLEFT", skin, "TOPLEFT", 0, 0)
+        head:SetPoint("BOTTOMRIGHT", skin, "TOPRIGHT", 0, -HEADER_HEIGHT)
+        head:RegisterForClicks("RightButtonUp")
+        head:SetScript("OnClick", function(self) Dock.OpenThreatMenu(self, false) end)
 
         -- the list, as the tab's
         local list = CreateFrame("Frame", nil, f)
@@ -2027,6 +2109,7 @@ function DamageMeter:Refresh()
         self:ApplyToWindow(window)
     end
     self:SetupMouseover()
+    SafeCall(Dock.Update)
     SafeCall(Solo.Apply)
     HookChatSize()
     local inChat = ChatTabOn()
@@ -2052,6 +2135,14 @@ function DamageMeter:PLAYER_REGEN_ENABLED()
     if self.chatTabLeavePending then self:LeaveChatTab() end
     if self._pendingRefresh then
         C_Timer.After(0, function() self:Refresh() end)
+    end
+    -- the Threat tab's Move to Own Window, picked in the fight (23c): placed after that Refresh
+    if self.threatPlacePending then
+        self.threatPlacePending = nil
+        C_Timer.After(0, function()
+            local db = GetDb()
+            if db and db.enabled and db.threatWindow then DamageMeter.PlaceThreatWindow() end
+        end)
     end
 end
 
@@ -2192,6 +2283,10 @@ local function DownAlpha()
     return math_max(0, math_min(0.9, v))
 end
 
+-- Fade In Speed (coming back) / Fade Out Speed (fading away), 11-15: the one fadeSpeed split in two;
+-- an unset fadeIn / fadeOut reads the old fadeSpeed, so nothing changes until a player picks.
+function DamageMeter.FadeSpeed(db, field) return (db and (db[field] or db.fadeSpeed)) or "instant" end
+
 local function FadeStep(self, meter, elapsed)
     -- While waiting for the cursor, a check every 0.1 s is enough.
     self.restWait = (self.restWait or 0) + elapsed
@@ -2208,7 +2303,8 @@ local function FadeStep(self, meter, elapsed)
         return
     end
     local db = GetDb()
-    local time = ns.FadeTime(db and db.fadeSpeed)
+    -- Fade In Speed while coming back, Fade Out Speed while fading away
+    local time = ns.FadeTime(DamageMeter.FadeSpeed(db, alpha < target and "fadeIn" or "fadeOut"))
     if time <= 0 then
         alpha = target
     elseif alpha < target then
@@ -2409,6 +2505,11 @@ function DamageMeter:SetupMouseover()
     if type(meter.SetupSessionWindow) == "function" then
         hooksecurefunc(meter, "SetupSessionWindow", function(_, _, windowData)
             local window = windowData and windowData.sessionWindow
+            -- Blizzard placed it on its own again: docked by the next Refresh (23b)
+            if window then
+                Dock.lastSetup = window
+                SafeCall(Dock.Release, window)
+            end
             -- Style the initialized session even when the meter itself is hidden.
             if window and not InFight() then
                 SafeCall(DamageMeter.ApplyToWindow, DamageMeter, window)
@@ -2416,6 +2517,7 @@ function DamageMeter:SetupMouseover()
             C_Timer.After(0, function() DamageMeter:Refresh() end)
         end)
     end
+    Dock.Hook(meter)
     -- Blizzard re-checks the meter on entering Edit Mode only when its "Damage Meter" box is ticked
     EventRegistry:RegisterCallback("EditMode.Enter", function() DamageMeter:ApplyVisibility() end, DamageMeter)
     EventRegistry:RegisterCallback("EditMode.Exit", function() C_Timer.After(0, function() DamageMeter:ApplyVisibility() end) end, DamageMeter)
@@ -2487,6 +2589,468 @@ function ApplyChatTabStrata(meter, raised)
         Set(window.FlareUI_DMSkin)
         for _, btn in pairs(GROUP_BUTTONS.buttons[window] or {}) do Set(btn) end
     end
+    -- docked tabs that aren't shown go one strata under again (23b)
+    if Dock.List() then SafeCall(Dock.Stack) end
+end
+
+--------------------------------------------------
+-- 23b. METER WINDOWS AS TABS (11-15, Marcus: like the chat's tabs)
+-- Blizzard's extra meter windows (the gear menu's "Show New Window") sit in the first window's place
+-- as tabs in its title row, before the Threat tab, which stays last. Two meter windows at most: at
+-- two the gear menu's "Show New Window" is greyed out (Blizzard allows three; a player who already
+-- has three keeps them, as tabs). Windows open and close only through Blizzard's own menu entries
+-- ("Show New Window", "Hide Window"): run from addon code they would taint the window, whose list
+-- reads secret values in a fight. The first window can't be closed (Blizzard's rule).
+-- Each docked window covers the first. The one shown is up (Blizzard's window alpha, the meter's
+-- strata, the mouse); the others are invisible one strata lower, under it. Every docked window draws
+-- the same tab row: its own title (left-click shows it, right-click is Blizzard's type menu) where
+-- its tab belongs, the other windows as FlareUI tabs, then Threat. Threat lives on the first window.
+--------------------------------------------------
+Dock.MAX = 2
+
+-- Blizzard's count: the meter windows open now
+function Dock.Count()
+    local n = 0
+    for _, w in ipairs(GetSessionWindows()) do
+        if w:IsShown() then n = n + 1 end
+    end
+    return n
+end
+
+-- the windows in the tab row, in Blizzard's order (nil: one window, or the module off)
+function Dock.List()
+    local db = GetDb()
+    if not (db and db.enabled) then return nil end
+    local primary = _G.DamageMeterSessionWindow1
+    if not (primary and primary:IsShown()) then return nil end
+    local list
+    for _, w in ipairs(GetSessionWindows()) do
+        if w ~= primary and w.FlareUI_Docked and w:IsShown() then
+            list = list or { primary }
+            list[#list + 1] = w
+        end
+    end
+    return list
+end
+
+function Dock.Row(window)
+    local list = Dock.List()
+    if list and tContains(list, window) then return list end
+end
+
+-- the threat list is up (on the first window)
+function Dock.ThreatShown()
+    local view = views[_G.DamageMeterSessionWindow1]
+    return view and view.showing or false
+end
+
+-- the window on top: the first while Threat is up, else the picked tab
+function Dock.Top(list)
+    if Dock.ThreatShown() then return list[1] end
+    if Dock.current and tContains(list, Dock.current) then return Dock.current end
+    return list[1]
+end
+
+-- Blizzard's window opacity (its Edit Mode setting)
+function Dock.WindowAlpha()
+    local meter = _G.DamageMeter
+    local alpha = meter and type(meter.GetWindowAlpha) == "function" and meter:GetWindowAlpha()
+    if canaccessvalue(alpha) and type(alpha) == "number" then return alpha end
+    return 1
+end
+
+-- a docked window up (seen, takes the mouse) or down (invisible, a strata under the one up)
+function Dock.Raise(window, up)
+    local meter = _G.DamageMeter
+    local base = meter and meter:GetFrameStrata()
+    if not (canaccessvalue(base) and base) then base = "MEDIUM" end
+    local strata = base
+    if not up then strata = STRATA_ORDER[math_max((tIndexOf(STRATA_ORDER, base) or 3) - 1, 1)] end
+    local function Set(frame)
+        if frame and not frame:IsForbidden() and frame:GetFrameStrata() ~= strata then frame:SetFrameStrata(strata) end
+    end
+    Set(window)
+    Set(window.FlareUI_DMSkin)
+    for _, btn in pairs(GROUP_BUTTONS.buttons[window] or {}) do Set(btn) end
+    window:SetAlpha(up and Dock.WindowAlpha() or 0)
+    local locked = window.IsNonInteractive and window:IsNonInteractive()
+    window:EnableMouse((up and not locked) and true or false)
+    window.FlareUI_DockUp = up and true or false
+end
+
+-- into the first window's place (out of a fight, from Refresh)
+function Dock.Attach(window, primary)
+    window.FlareUI_Docked = true
+    window.FlareUI_FreePlaced = nil
+    window:ClearAllPoints()
+    window:SetAllPoints(primary)
+    window:RegisterForDrag()   -- dragging its header would pull it out
+    local resize = window.GetResizeButton and window:GetResizeButton()
+    if resize then resize:Hide() end   -- and so would its sizing corner
+end
+
+-- out of the row (closed, or set up again by Blizzard): Blizzard's own window again
+function Dock.Release(window)
+    window.FlareUI_FreePlaced = nil   -- a window on its own takes its saved spot again (Dock.Free)
+    if not window.FlareUI_Docked then return end
+    window.FlareUI_Docked = nil
+    window:RegisterForDrag("LeftButton")
+    local resize = window.GetResizeButton and window:GetResizeButton()
+    if resize then resize:Show() end
+    if window.FlareUI_DockUp == false then Dock.Raise(window, true) end
+    window.FlareUI_DockUp = nil
+end
+
+-- the shown tab up, the rest down, and every tab row laid out again
+function Dock.Stack()
+    local list = Dock.List()
+    for _, w in ipairs(GetSessionWindows()) do
+        if w.FlareUI_Docked and not (list and tContains(list, w)) then Dock.Release(w) end
+    end
+    local primary = _G.DamageMeterSessionWindow1
+    if list then
+        -- a window's own threat list (from before it docked) gives way to its meter list
+        for i = 2, #list do
+            local view = views[list[i]]
+            if view and view.showing then
+                view.showing = false
+                view.frame:Hide()
+                SetBlizzardListShown(list[i], true)
+                WatchThreat()
+            end
+        end
+        local top = Dock.Top(list)
+        for _, w in ipairs(list) do SafeCall(Dock.Raise, w, w == top) end
+    elseif primary and primary.FlareUI_DockUp ~= nil then
+        if primary.FlareUI_DockUp == false then Dock.Raise(primary, true) end
+        primary.FlareUI_DockUp = nil
+    end
+    for _, w in ipairs(GetSessionWindows()) do
+        if views[w] then SafeCall(LayoutTabs, w, views[w]) end
+    end
+end
+
+-- Refresh, out of a fight: every open extra window into the first one's place
+function Dock.Update()
+    local primary = _G.DamageMeterSessionWindow1
+    local db = GetDb()
+    if primary and primary:IsShown() and db and db.enabled then
+        for _, w in ipairs(GetSessionWindows()) do
+            if w ~= primary and w:IsShown() then
+                -- a window the player moved to its own window stays out of the row (Dock.Free)
+                if Dock.IsFree(w) then
+                    if Dock.current == w then Dock.current = nil end
+                    SafeCall(Dock.Free, w)
+                else
+                    SafeCall(Dock.Attach, w, primary)
+                end
+            end
+        end
+    end
+    -- a window just opened from the gear menu shows at once, as a new chat tab does
+    local new = Dock.newWindow
+    Dock.newWindow = nil
+    if new and Dock.Row(new) then
+        Dock.Select(new)
+    else
+        Dock.Stack()
+    end
+end
+
+-- a meter tab clicked: that window up (Threat, if it was up, goes down)
+function Dock.Select(window)
+    Dock.current = window
+    local primary = _G.DamageMeterSessionWindow1
+    if views[primary] and views[primary].showing then
+        PickView(primary, false)   -- stacks again through SetView
+    else
+        Dock.Stack()
+    end
+end
+
+function Dock.PickThreat()
+    local primary = _G.DamageMeterSessionWindow1
+    if views[primary] then PickView(primary, true) end
+end
+
+-- another window's tab in this window's row: FlareUI's, as the Threat tab
+function Dock.Label(window, other)
+    window.FlareUI_DockLabels = window.FlareUI_DockLabels or {}
+    local label = window.FlareUI_DockLabels[other]
+    if label then return label end
+    local dd = GetWindowTypeDropdown(window)
+    label = CreateFrame("Button", nil, window)
+    label:SetFrameLevel(dd:GetFrameLevel() + 3)
+    label.Text = label:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label.Text:SetPoint("LEFT", label, "LEFT", 4, 0)
+    label:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    label:SetScript("OnClick", function(self, button)
+        -- right-click: Move to Own Window (the first window is the row's home: it has no menu)
+        if button == "RightButton" then
+            if other ~= _G.DamageMeterSessionWindow1 then Dock.OpenMenu(self, other) end
+            return
+        end
+        Dock.Select(other)
+    end)
+    label:SetScript("OnEnter", function(self)
+        local r, g, b = LightenColor(TAB_INACTIVE.r, TAB_INACTIVE.g, TAB_INACTIVE.b, 0.2)
+        self.Text:SetTextColor(r, g, b)
+    end)
+    label:SetScript("OnLeave", function(self) ColorTab(self.Text, false) end)
+    window.FlareUI_DockLabels[other] = label
+    return label
+end
+
+-- the tabs of windows no longer in this window's row
+function Dock.HideLabels(window, row)
+    for other, label in pairs(window.FlareUI_DockLabels or {}) do
+        if not (row and tContains(row, other)) then label:Hide() end
+    end
+end
+
+function Dock.TitleOf(window)
+    local dd = GetWindowTypeDropdown(window)
+    local text = dd and dd.TypeName and dd.TypeName:GetText()
+    if canaccessvalue(text) and type(text) == "string" then return text end
+    return "?"
+end
+
+-- the window's own title (Blizzard's type button) where its tab belongs; out of a fight, as the header
+function Dock.PlaceTitle(window, dd, ref, textX)
+    if (dd.FlareUI_TextX or TITLE_LEFT) == textX or InCombatLockdown() then return end
+    dd.FlareUI_TextX = textX ~= TITLE_LEFT and textX or nil
+    if dd.TypeName and dd.TypeName.ClearAllPoints then
+        dd.TypeName:ClearAllPoints()
+        dd.TypeName:SetPoint("LEFT", ref, "TOPLEFT", textX, ROW_CENTER_Y)
+        dd.TypeName:SetPoint("RIGHT", dd, "RIGHT", -4, 0)
+    end
+    if dd.ClearAllPoints then
+        dd:ClearAllPoints()
+        dd:SetPoint("TOPLEFT", ref, "TOPLEFT", DamageMeter.TitleButtonLeft(textX), 0)
+        FitTitleButton(window)
+    end
+end
+
+-- the gear menu: "Show New Window" greyed out at two windows (Blizzard's entry, only disabled)
+function Dock.LimitMenu(rootDescription)
+    if Dock.Count() < Dock.MAX then return end
+    local label = _G.DAMAGE_METER_SHOW_NEW_WINDOW
+    if not label then return end
+    for _, desc in rootDescription:EnumerateElementDescriptions() do
+        if MenuUtil.GetElementText(desc) == label then
+            desc:SetEnabled(false)
+            if desc.SetTooltip then
+                desc:SetTooltip(function(tooltip)
+                    GameTooltip_SetTitle(tooltip, label)
+                    GameTooltip_AddNormalLine(tooltip, L["You can have two meter windows. Close one to open another."])
+                end)
+            end
+        end
+    end
+end
+
+-- Blizzard opens and closes the windows; FlareUI follows
+function Dock.Hook(meter)
+    if Dock.hooked then return end
+    Dock.hooked = true
+    if type(meter.ShowNewSecondarySessionWindow) == "function" then
+        hooksecurefunc(meter, "ShowNewSecondarySessionWindow", function()
+            Dock.newWindow = Dock.lastSetup
+        end)
+    end
+    if type(meter.HideSessionWindow) == "function" then
+        hooksecurefunc(meter, "HideSessionWindow", function(_, window)
+            if Dock.current == window then Dock.current = nil end
+            -- closed: the next window opened in its place starts as a tab again
+            if window then Dock.SetFree(window, nil) end
+            SafeCall(Dock.Stack)
+        end)
+    end
+    -- Blizzard's window opacity sets every window: the hidden tabs go invisible again
+    if type(meter.OnWindowAlphaChanged) == "function" then
+        hooksecurefunc(meter, "OnWindowAlphaChanged", function()
+            if Dock.List() then SafeCall(Dock.Stack) end
+        end)
+    end
+end
+
+--------------------------------------------------
+-- 23c. A METER WINDOW ON ITS OWN (11-15, Marcus: players must still be able to use windows apart)
+-- Right-click another window's tab (or a window's own title, or its gear menu): Move to Own Window.
+-- The window leaves the row and is Blizzard's own again (dragged by its header, sized by its corner),
+-- first placed beside the first window, inside the screen. Kept per window number with its spot and
+-- size (damagemeter.freeWindows), so it stays on its own after a /reload; its title's right-click and
+-- its gear menu then offer Dock as a Tab. Closing it (Blizzard's "Hide Window") forgets it: the next
+-- window opened in its place starts as a tab. Moving waits for the end of a fight, as the row's own
+-- placing does (Refresh). The Threat tab's Move to Own Window is Threat > Separate Window; the
+-- separate threat window's Dock as a Tab (right-click its header) turns that off.
+--------------------------------------------------
+Dock.FREE_GAP = 8   -- between the two windows, past their skins
+
+-- Blizzard's window number (DamageMeterSessionWindow<n>)
+function Dock.Index(window)
+    local index = window.GetSessionWindowIndex and window:GetSessionWindowIndex()
+    if type(index) ~= "number" then index = tonumber((window:GetName() or ""):match("(%d+)$")) end
+    return index
+end
+
+-- its saved spot while it is on its own (a table, empty until first placed), else nil
+function Dock.FreeSpot(window)
+    local db = GetDb()
+    local index = Dock.Index(window)
+    return db and index and type(db.freeWindows) == "table" and db.freeWindows[index] or nil
+end
+
+function Dock.IsFree(window)
+    return window ~= _G.DamageMeterSessionWindow1 and Dock.FreeSpot(window) ~= nil
+end
+
+function Dock.SetFree(window, free)
+    local db = GetDb()
+    local index = Dock.Index(window)
+    if not (db and index) then return end
+    if free then
+        if type(db.freeWindows) ~= "table" then db.freeWindows = {} end
+        db.freeWindows[index] = db.freeWindows[index] or {}
+    elseif type(db.freeWindows) == "table" then
+        db.freeWindows[index] = nil
+        if next(db.freeWindows) == nil then db.freeWindows = nil end
+    end
+end
+
+function Dock.Num(value)
+    return canaccessvalue(value) and type(value) == "number" and value or nil
+end
+
+-- where it is now (left and top on the screen, in its own scale) and its size
+function Dock.SaveSpot(window)
+    local spot = Dock.FreeSpot(window)
+    if not spot or window.FlareUI_Docked then return end
+    local left, top = Dock.Num(window:GetLeft()), Dock.Num(window:GetTop())
+    local width, height = Dock.Num(window:GetWidth()), Dock.Num(window:GetHeight())
+    if not (left and top and width and height) or width <= 0 or height <= 0 then return end
+    spot.x, spot.y = math.floor(left + 0.5), math.floor(top + 0.5)
+    spot.w, spot.h = math.floor(width + 0.5), math.floor(height + 0.5)
+end
+
+-- first time on its own: the first window's size, under it when the first window sits in the top half
+-- of the screen, else above it (11-15, Marcus); the other side when there's no room, then inside the screen
+function Dock.SpotBeside(window, spot)
+    local primary = _G.DamageMeterSessionWindow1
+    if not primary then return end
+    local pl, pb, pw, ph = primary:GetRect()
+    pl, pb, pw, ph = Dock.Num(pl), Dock.Num(pb), Dock.Num(pw), Dock.Num(ph)
+    if not (pl and pb and pw and ph) or pw <= 0 or ph <= 0 then return end
+    local k = primary:GetEffectiveScale() / window:GetEffectiveScale()   -- the first window's units to this one's
+    local ui = UIParent:GetEffectiveScale() / window:GetEffectiveScale()
+    local screenW, screenH = UIParent:GetWidth() * ui, UIParent:GetHeight() * ui
+    local width, height = pw * k, ph * k
+    local gap = Dock.FREE_GAP + 2 * SKIN_PADDING
+    local bottomEdge, topEdge = pb * k, (pb + ph) * k
+    local below = (bottomEdge + topEdge) / 2 > screenH / 2
+    local top = below and (bottomEdge - gap) or (topEdge + gap + height)
+    if below and top - height < 0 then
+        top = topEdge + gap + height
+    elseif not below and top > screenH then
+        top = bottomEdge - gap
+    end
+    top = math_max(height, math_min(top, screenH))
+    local left = math_max(0, math_min(pl * k, screenW - width))
+    spot.x, spot.y = math.floor(left + 0.5), math.floor(top + 0.5)
+    spot.w, spot.h = math.floor(width + 0.5), math.floor(height + 0.5)
+end
+
+-- its moves and new sizes are kept (only while it is on its own: docked, it can't be dragged)
+function Dock.HookFree(window)
+    if window.FlareUI_FreeHooked then return end
+    window.FlareUI_FreeHooked = true
+    window:HookScript("OnDragStop", function(self) SafeCall(Dock.SaveSpot, self) end)
+    local resize = window.GetResizeButton and window:GetResizeButton()
+    if resize then resize:HookScript("OnMouseUp", function() SafeCall(Dock.SaveSpot, window) end) end
+end
+
+-- out of the row, on its saved spot (out of a fight, from Dock.Update)
+function Dock.Free(window)
+    if window.FlareUI_Docked then Dock.Release(window) end
+    Dock.HookFree(window)
+    -- its own threat list (from before) gives way to its meter list, and its Threat tab goes
+    if views[window] then SetView(window, false) end
+    if window.FlareUI_FreePlaced then return end
+    local spot = Dock.FreeSpot(window)
+    if not spot then return end
+    if not (spot.x and spot.y and spot.w and spot.h) then Dock.SpotBeside(window, spot) end
+    if not (spot.x and spot.y and spot.w and spot.h) then return end
+    window.FlareUI_FreePlaced = true
+    window:ClearAllPoints()
+    window:SetSize(spot.w, spot.h)
+    window:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", spot.x, spot.y)
+end
+
+-- the menu entries: saved now, placed now or when the fight ends
+function Dock.MoveOut(window)
+    if window == _G.DamageMeterSessionWindow1 then return end
+    Dock.SetFree(window, true)
+    if Dock.current == window then Dock.current = nil end
+    if InFight() then DamageMeter._pendingRefresh = true; return end
+    SafeCall(Dock.Update)
+end
+
+function Dock.MoveIn(window)
+    Dock.SetFree(window, nil)
+    window.FlareUI_FreePlaced = nil
+    if InFight() then DamageMeter._pendingRefresh = true; return end
+    Dock.newWindow = window   -- shown at once, as a window just opened
+    SafeCall(Dock.Update)
+end
+
+-- in a fight the entry says it waits (no print)
+function Dock.FightTip(desc, label)
+    if not (InFight() and desc and desc.SetTooltip) then return end
+    desc:SetTooltip(function(tooltip)
+        GameTooltip_SetTitle(tooltip, label)
+        GameTooltip_AddNormalLine(tooltip, L["Happens when the fight ends."])
+    end)
+end
+
+-- Move to Own Window (a tab) or Dock as a Tab (on its own); the first window gets neither
+function Dock.AddEntries(root, window, divider)
+    if window == _G.DamageMeterSessionWindow1 or not window:IsShown() then return end
+    local free = Dock.IsFree(window)
+    if not free and not Dock.Row(window) then return end
+    if divider then root:CreateDivider() end
+    local label = free and L["Dock as a Tab"] or L["Move to Own Window"]
+    local button = root:CreateButton(label, function()
+        if free then Dock.MoveIn(window) else Dock.MoveOut(window) end
+    end)
+    Dock.FightTip(button, label)
+end
+
+-- FlareUI's own small menu (another window's tab)
+function Dock.OpenMenu(owner, window)
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+    MenuUtil.CreateContextMenu(owner, function(_, root) Dock.AddEntries(root, window, false) end)
+end
+
+-- Blizzard's title and gear menus (Menu.ModifyMenu, from Init): the window whose button opened it
+function Dock.ModifyWindowMenu(owner, root, getPart)
+    local db = GetDb()
+    if not (db and db.enabled and owner) then return end
+    for _, w in ipairs(GetSessionWindows()) do
+        if getPart(w) == owner then
+            Dock.AddEntries(root, w, true)
+            return
+        end
+    end
+end
+
+-- the Threat tab (out = true) or the separate threat window's header (false)
+function Dock.OpenThreatMenu(owner, out)
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+    MenuUtil.CreateContextMenu(owner, function(_, root)
+        local label = out and L["Move to Own Window"] or L["Dock as a Tab"]
+        local button = root:CreateButton(label, function() DamageMeter.SetThreatWindow(out) end)
+        Dock.FightTip(button, label)
+    end)
 end
 
 -- The chat's alpha (its own fading), which the meter shares on the Meter tab
@@ -2654,9 +3218,19 @@ function DamageMeter:Init()
     -- client doesn't have). Menu.ModifyMenu adds to Blizzard's menu without touching it.
     if Menu and Menu.ModifyMenu and not self.gearMenuHooked then
         self.gearMenuHooked = true
-        Menu.ModifyMenu("MENU_DAMAGE_METER_WINDOW_SETTINGS", function(_, rootDescription)
+        -- a window's own title (right-click passes through to Blizzard's type menu): Move to Own Window
+        -- or Dock as a Tab added under Blizzard's entries (23c)
+        Menu.ModifyMenu("MENU_DAMAGE_METER_WINDOW_TRACKED_TYPE", function(owner, rootDescription)
+            SafeCall(Dock.ModifyWindowMenu, owner, rootDescription, GetWindowTypeDropdown)
+        end)
+        Menu.ModifyMenu("MENU_DAMAGE_METER_WINDOW_SETTINGS", function(owner, rootDescription)
             local db = GetDb()
-            if not (db and db.enabled and ns.SettingsPanel) then return end
+            if not (db and db.enabled) then return end
+            -- two meter windows at most (23b)
+            SafeCall(Dock.LimitMenu, rootDescription)
+            -- Move to Own Window / Dock as a Tab (23c)
+            SafeCall(Dock.ModifyWindowMenu, owner, rootDescription, GetWindowSettingsDropdown)
+            if not ns.SettingsPanel then return end
             rootDescription:CreateDivider()
             rootDescription:CreateButton(L["FlareUI Settings"], function() ns.SettingsPanel:Open("dm") end)
         end)

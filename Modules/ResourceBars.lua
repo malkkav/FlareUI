@@ -43,32 +43,37 @@ local COLORS = {
     swingOff   = { 0.72, 0.54, 0.32 },
     swingRanged = { 0.45, 0.68, 0.40 },
     outOfRange = { 0.78, 0.28, 0.24 },
-    queued     = { 1.00, 0.82, 0.25 },   -- Queued Attack Colour: an on-next-swing attack is queued
-    waiting    = { 0.45, 0.45, 0.45 },   -- Waiting State: auto attack on, no swing running
+    -- (11-15) an on-next-swing attack queued: the main-hand bar takes that attack's colour
+    queueHeroic = { 1.00, 0.80, 0.10 },   -- Heroic Strike
+    queueCleave = { 0.30, 0.60, 1.00 },   -- Cleave
+    queueMaul   = { 1.00, 0.42, 0.08 },   -- Maul
+    queueRaptor = { 0.30, 0.85, 0.30 },   -- Raptor Strike
+    waiting   = { 0.45, 0.45, 0.45 },   -- Waiting State: auto attack on, no swing running
     flight     = { 0.40, 0.62, 0.86 },   -- Flight Timer
 }
 
 -- textSize: added to the Fonts tab size
 local BAR_ORDER = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged", "flight", "seal", "timer" }
 local BARS = {
-    health      = { kind = "health", label = L["Health Bar"],      default = { point = "CENTER", x = 0, y = -148 }, textSize = 2 },
-    power       = { kind = "power",  label = L["Power Bar"],       default = { point = "CENTER", x = 0, y = -180 }, textSize = 2 },
+    -- (11-15) every default spot below is Marcus's own, from his "FlareUI" layout
+    health      = { kind = "health", label = L["Health Bar"],      default = { point = "CENTER", x = 0, y = -128 }, textSize = 2 },
+    power       = { kind = "power",  label = L["Power Bar"],       default = { point = "CENTER", x = 0, y = -151 }, textSize = 2 },
     -- right under the power bar, the health-to-power gap apart (11-11)
-    mana        = { kind = "mana",   label = L["Druid Mana"],      default = { point = "CENTER", x = 0, y = -212 }, textSize = 2 },
+    mana        = { kind = "mana",   label = L["Druid Mana"],      default = { point = "CENTER", x = 0, y = -174 }, textSize = 2 },
     -- from here on the default spots are Marcus's own (11-12)
     combo       = { kind = "combo",  label = L["Combo Points"],    default = { point = "CENTER", x = 0, y = -88 } },
-    swingMain   = { kind = "swing",  label = L["Main-Hand Swing"], default = { point = "CENTER", x = 0, y = -288 }, textSize = 0,
+    swingMain   = { kind = "swing",  label = L["Main-Hand Swing"], default = { point = "CENTER", x = 0, y = -282 }, textSize = 0,
                     swingType = SWING and SWING.MainHand, text = _G.SWING_TIMER_MAIN_HAND or "Main Hand" },
-    swingOff    = { kind = "swing",  label = L["Off-Hand Swing"],  default = { point = "BOTTOM", x = 0, y = 276 }, textSize = 0,
+    swingOff    = { kind = "swing",  label = L["Off-Hand Swing"],  default = { point = "BOTTOM", x = 0, y = 289 }, textSize = 0,
                     swingType = SWING and SWING.OffHand, text = _G.SWING_TIMER_OFF_HAND or "Off Hand" },
-    swingRanged = { kind = "swing",  label = L["Ranged Swing"],    default = { point = "BOTTOM", x = 0, y = 250 }, textSize = 0,
+    swingRanged = { kind = "swing",  label = L["Ranged Swing"],    default = { point = "BOTTOM", x = 0, y = 270 }, textSize = 0,
                     swingType = SWING and SWING.Ranged, text = _G.SWING_TIMER_RANGED or "Ranged" },
     -- a paladin's seal and its time left, in the seal's own colour (section 10c)
     seal        = { kind = "seal",   label = L["Paladin Seals"],   default = { point = "CENTER", x = 0, y = -262 }, textSize = 0 },
     -- a flight path's progress (section 10b), shown only while you fly
-    flight      = { kind = "flight", label = L["Flight Timer"],    default = { point = "BOTTOM", x = 0, y = 222 }, textSize = 0 },
+    flight      = { kind = "flight", label = L["Flight Timer"],    default = { point = "TOP", x = 0, y = -100 }, textSize = 0 },
     -- Blizzard's mirror timers (breath, fatigue, feign death, section 10d), on Blizzard's own spot
-    timer       = { kind = "timer",  label = L["Duration Bars"],      default = { point = "TOP", x = 0, y = -100 }, textSize = 0 },
+    timer       = { kind = "timer",  label = L["Duration Bars"],      default = { point = "TOP", x = 0, y = -73 }, textSize = 0 },
 }
 
 -- Visibility (the action bars' Show conditions, Fade Group, Fade Speed, Faded Opacity, and Missing
@@ -163,7 +168,9 @@ local LOW_HEALTH = { at = 0.3, color = { 0.85, 0.1, 0.1 } }
 RB.COLOR_DEFAULTS = {
     low = { 0.85, 0.1, 0.1 }, combo = { ns.COMBO_COLOR[1], ns.COMBO_COLOR[2], ns.COMBO_COLOR[3] },
     swingMain = { 0.86, 0.65, 0.39 }, swingOff = { 0.72, 0.54, 0.32 }, swingRanged = { 0.45, 0.68, 0.40 },
-    outOfRange = { 0.78, 0.28, 0.24 }, queued = { 1.00, 0.82, 0.25 }, waiting = { 0.45, 0.45, 0.45 },
+    outOfRange = { 0.78, 0.28, 0.24 }, waiting = { 0.45, 0.45, 0.45 },
+    -- the queued on-next-swing attacks (11-15), each its own colour
+    queueHeroic = { 1.00, 0.80, 0.10 }, queueCleave = { 0.30, 0.60, 1.00 }, queueMaul = { 1.00, 0.42, 0.08 }, queueRaptor = { 0.30, 0.85, 0.30 },
     zone = { 1, 0.2, 0.15 }, flight = { 0.40, 0.62, 0.86 },
     -- the seals (Seals bar), each its own colour
     sealRighteousness = { 0.51, 0.875, 0.922 }, sealCrusader = { 1, 0.647, 0.459 }, sealCommand = { 0.969, 0.49, 0.133 }, sealJustice = { 0.62, 0.502, 0.302 }, sealLight = { 0.98, 0.816, 0.38 }, sealWisdom = { 0.098, 0.584, 1 }, sealFury = { 0.91, 0.224, 0 }, sealMartyrdom = { 0.65, 0.35, 0.85 },
@@ -206,18 +213,25 @@ function RB.ApplyPalette()
     local palette = RB.PaletteName()
     local base = palette == "custom" and (rdb and rdb.customBase == "blizzard" and "blizzard" or "flareui") or palette
     RB.palette, RB.basePalette = palette, base
+    -- (11-15) the old single Queued Attack Colour, if you picked one, moves to Heroic Strike once
+    local picked = rdb and rdb.customColors
+    if picked and picked.queued ~= nil then
+        if picked.queueHeroic == nil then picked.queueHeroic = picked.queued end
+        picked.queued = nil
+    end
     local custom = palette == "custom" and rdb and rdb.customColors or nil
     for _, key in ipairs({ "health", "classHealth", "low", "mana", "rage", "energy", "druidMana", "combo",
-                           "swingMain", "swingOff", "swingRanged", "outOfRange", "queued", "waiting", "zone",
+                           "swingMain", "swingOff", "swingRanged", "outOfRange", "waiting", "zone",
+                           "queueHeroic", "queueCleave", "queueMaul", "queueRaptor",
                            "heal", "absorb", "flight", "timerBreath", "timerFatigue", "timerFeign",
                            "sealRighteousness", "sealCrusader", "sealCommand", "sealJustice", "sealLight", "sealWisdom", "sealFury", "sealMartyrdom" }) do
-        local own = custom and custom[key]
-        local c = (type(own) == "table" and own[1]) and own or RB.PaletteColor(key, base)
+        local own = custom and custom[key]        local c = (type(own) == "table" and own[1]) and own or RB.PaletteColor(key, base)
         RBC[key] = RBC[key] or {}
         RBC[key][1], RBC[key][2], RBC[key][3] = c[1], c[2], c[3]
     end
     -- the tables the bars read
-    for _, key in ipairs({ "combo", "swingMain", "swingOff", "swingRanged", "outOfRange", "queued", "waiting", "flight" }) do
+    for _, key in ipairs({ "combo", "swingMain", "swingOff", "swingRanged", "outOfRange", "waiting", "flight",
+                           "queueHeroic", "queueCleave", "queueMaul", "queueRaptor" }) do
         COLORS[key][1], COLORS[key][2], COLORS[key][3] = RBC[key][1], RBC[key][2], RBC[key][3]
     end
     LOW_HEALTH.color[1], LOW_HEALTH.color[2], LOW_HEALTH.color[3] = RBC.low[1], RBC.low[2], RBC.low[3]
@@ -504,15 +518,13 @@ local function UpdateCombo(holder)
     holder.lastPoints = (not editing and readable(points)) or nil
 end
 
--- The swing bar's colour: out of range, else Waiting State (idle, auto attack on), else Queued
--- Attack Colour, else its own
+-- The swing bar's colour: out of range, else Waiting State (idle, auto attack on), else the queued
+-- attack's colour (main-hand bar, holder.queued = its colour key), else its own
 local function SwingColor(holder)
     local c = COLORS[holder.key]
     if holder.outOfRange then c = COLORS.outOfRange
     elseif holder.waiting then c = COLORS.waiting
-    elseif holder.queued or holder.previewQueued then
-        local cfg = Cfg(holder.key)
-        if cfg and cfg.queueTint then c = COLORS.queued end
+    elseif holder.queued then c = COLORS[holder.queued] or c
     end
     holder.Bar:SetStatusBarColor(c[1], c[2], c[3])
 end
@@ -588,6 +600,8 @@ local function StartSwing(holder, duration)
     holder.Bar:SetValue(0)
     holder.Spark:Show()
     holder.waiting = false
+    -- (the queued attack just landed, or one is still waiting: asked again as the swing starts)
+    if holder.key == "swingMain" and RB.UpdateQueued then RB.UpdateQueued() end
     SwingColor(holder)
     SwingZone(holder)
     holder:SetScript("OnUpdate", SwingOnUpdate)
@@ -686,7 +700,7 @@ local function ApplyPreview(holder)
         holder.Spark:Show()
         holder.Label:SetText(BARS[holder.key].text)
         holder.waiting = cfg.waiting and true or false
-        holder.previewQueued = (holder.key == "swingMain" and cfg.queueTint) and true or nil
+        holder.queued = nil   -- (the sample in its own colour; asked again after Edit Mode)
         if holder.waiting then
             bar:SetValue(1)
             holder.Spark:Hide()
@@ -713,7 +727,7 @@ local function ApplyShown(holder)
     holder:SetShown(show)
     if not IsEditing() then
         -- the samples' extras go with Edit Mode
-        holder.previewQueued = nil
+        if holder.key == "swingMain" and RB.UpdateQueued then RB.UpdateQueued() end
         if holder.Gcd and holder.Gcd.preview then holder.Gcd.preview = nil holder.Gcd:Hide() end
     end
     if show then
@@ -1194,13 +1208,14 @@ local function BuildSettings(key)
         add({ name = L["GCD Spark"], kind = LEM.SettingType.Checkbox, default = false, get = get("gcd", false), set = set("gcd"),
               desc = L["A spark crosses the bar during the global cooldown."] })
     end
+    -- (11-15, Marcus: togglable) the main-hand bar's colour per queued attack, colours in Bar Colours
+    if key == "swingMain" then
+        add({ name = L["Queued Attack Colour"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueTint", false), set = set("queueTint"),
+              desc = L["While Heroic Strike, Cleave, Maul or Raptor Strike waits for the next swing, the bar takes its colour (set in Bar Colours)."] })
+    end
     if key == "swingRanged" then
         add({ name = L["Stand-Still Zone"], kind = LEM.SettingType.Checkbox, default = false, get = get("standStill", false), set = set("standStill"),
               desc = L["Marks the swing's last half second. Auto Shot and wands need you to stand still then."] })
-    end
-    if key == "swingMain" then
-        add({ name = L["Queued Attack Colour"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueTint", false), set = set("queueTint"),
-              desc = L["The bar turns gold while Heroic Strike, Cleave, Maul or Raptor Strike waits for the next swing."] })
     end
     if info.kind == "swing" then
         add({ name = L["Waiting State"], kind = LEM.SettingType.Checkbox, default = false, get = get("waiting", false), set = set("waiting"),
@@ -1350,21 +1365,38 @@ end
 --   the ranged swing itself
 local AUTO_SHOT = 75
 
--- Queued Attack Colour (main-hand bar): an on-next-swing attack is queued
-local QUEUED_SPELLS = { 78, 845, 6807, 2973 }   -- Heroic Strike, Cleave, Maul, Raptor Strike (by name: every rank)
-local function UpdateQueued()
+-- Queued attacks (main-hand bar, 11-15, always on): while an on-next-swing attack waits, the bar
+-- takes that attack's colour (Bar Colours). Asked on CURRENT_SPELL_CAST_CHANGED /
+-- ACTIONBAR_UPDATE_STATE and when a main-hand swing starts, never per frame; asked by name, so
+-- every rank counts.
+RB.QUEUED_SPELLS = {
+    { 78,   "queueHeroic", "Heroic Strike" },
+    { 845,  "queueCleave", "Cleave" },
+    { 6807, "queueMaul",   "Maul" },
+    { 2973, "queueRaptor", "Raptor Strike" },
+}
+function RB.UpdateQueued()
     local holder = bars.swingMain
     if not holder then return end
-    local cfg, on = Cfg("swingMain"), false
-    if cfg and cfg.queueTint and C_Spell.IsCurrentSpell then
-        for _, id in ipairs(QUEUED_SPELLS) do
-            local name = C_Spell.GetSpellName(id)
-            if name and readable(C_Spell.IsCurrentSpell(name)) then on = true break end
+    local isCurrent = C_Spell.IsCurrentSpell or IsCurrentSpell
+    local names = RB.queuedNames
+    if not names then
+        -- names looked up once (a spell this client lacks is left out)
+        names = {}
+        for i, s in ipairs(RB.QUEUED_SPELLS) do names[i] = C_Spell.GetSpellName(s[1]) or false end
+        RB.queuedNames = names
+    end
+    local key
+    local cfg = Cfg("swingMain")
+    if isCurrent and cfg and cfg.queueTint then
+        for i, s in ipairs(RB.QUEUED_SPELLS) do
+            local name = names[i]
+            if name and readable(isCurrent(name)) then key = s[2] break end
         end
     end
-    if on ~= holder.queued then
-        holder.queued = on
-        SwingColor(holder)
+    if key ~= holder.queued then
+        holder.queued = key
+        if not IsEditing() then SwingColor(holder) end
     end
 end
 
@@ -1451,7 +1483,7 @@ function RB:OnEvent(event, arg1, arg2, arg3)
     elseif event == "SPELL_UPDATE_COOLDOWN" then
         UpdateGcd()
     elseif event == "CURRENT_SPELL_CAST_CHANGED" or event == "ACTIONBAR_UPDATE_STATE" then
-        UpdateQueued()
+        RB.UpdateQueued()
     elseif event == "PLAYER_ENTER_COMBAT" or event == "PLAYER_LEAVE_COMBAT"
         or event == "START_AUTOREPEAT_SPELL" or event == "STOP_AUTOREPEAT_SPELL" then
         for _, key in ipairs(SWING_KEYS) do

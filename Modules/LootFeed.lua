@@ -47,6 +47,13 @@ local function RightAligned()
     return db and db.lootFeedAlign == "right" or false
 end
 
+-- (11-15, a player asked) "center": icon and text centred on the line, the lines stacked from the
+-- holder's bottom centre (at the cursor: right above the pointer). The default since 11-15.
+local function Centered()
+    local db = ns.db and ns.db.profile and ns.db.profile.tweaks
+    return db and db.lootFeedAlign == "center" or false
+end
+
 local function AtCursor()
     local db = ns.db and ns.db.profile and ns.db.profile.tweaks
     return not (db and db.lootFeedPosition == "placed")
@@ -93,8 +100,20 @@ local function Fill(line, icon, text, r, g, b)
     local right = RightAligned()
     line.icon:SetShown(icon ~= false)
     line.icon:ClearAllPoints()
-    line.icon:SetPoint(right and "RIGHT" or "LEFT")
     line.text:ClearAllPoints()
+    if Centered() then
+        -- the text centred, shifted right by half the icon's room so icon and text sit centred together
+        line.text:SetJustifyH("CENTER")
+        if icon == false then
+            line.text:SetPoint("CENTER", line, "CENTER", 0, 0)
+        else
+            line.icon:SetTexture(icon or 134400)
+            line.text:SetPoint("CENTER", line, "CENTER", (ICON + 5) / 2, 0)
+            line.icon:SetPoint("RIGHT", line.text, "LEFT", -5, 0)
+        end
+        line.anchor = "BOTTOM"
+    else
+    line.icon:SetPoint(right and "RIGHT" or "LEFT")
     line.text:SetJustifyH(right and "RIGHT" or "LEFT")
     if icon == false then
         line.text:SetPoint(right and "RIGHT" or "LEFT", line, right and "RIGHT" or "LEFT", 0, 0)
@@ -107,6 +126,7 @@ local function Fill(line, icon, text, r, g, b)
         end
     end
     line.anchor = right and "BOTTOMRIGHT" or "BOTTOMLEFT"
+    end
     -- FlareUI's font goes on with the text in place (a blank string can't show if a font took)
     line.text:SetText(text)
     local font = Font()
@@ -169,7 +189,9 @@ local function Add(key, icon, label, count, r, g, b, plain)
         local x, y = GetCursorPosition()
         local scale = UIParent:GetEffectiveScale()
         holder:ClearAllPoints()
-        if RightAligned() then
+        if Centered() then
+            holder:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", x / scale, y / scale + 16)
+        elseif RightAligned() then
             holder:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMLEFT", x / scale - CURSOR_X, y / scale + CURSOR_Y)
         else
             holder:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + CURSOR_X, y / scale + CURSOR_Y)
@@ -374,7 +396,7 @@ local function ShowPreview()
     end
     for i, line in ipairs(preview.lines) do
         line:ClearAllPoints()
-        local anchor = RightAligned() and "BOTTOMRIGHT" or "BOTTOMLEFT"   -- (Alignment, as the real lines)
+        local anchor = Centered() and "BOTTOM" or RightAligned() and "BOTTOMRIGHT" or "BOTTOMLEFT"   -- (Alignment, as the real lines)
         line:SetPoint(anchor, preview, anchor, 0, (#SAMPLES + 1 - i) * Spacing())
     end
     for i, s in ipairs(SAMPLES) do

@@ -43,9 +43,18 @@ local function ResourceRows()
         { L["Power"], { { "mana", _G.MANA or L["Mana"] }, { "rage", _G.RAGE or "Rage" }, { "energy", _G.ENERGY or "Energy" },
             { "druidMana", L["Druid Mana"] } } },
         { L["Combo Points"], { { "combo", L["Combo Points"] } } },
-        { L["Swing Timers"], { { "swingMain", L["Main-Hand Swing"] }, { "swingOff", L["Off-Hand Swing"] }, { "swingRanged", L["Ranged Swing"] },
-            { "outOfRange", L["Out of Range"] }, { "queued", L["Queued Attack Colour"] }, { "waiting", L["Waiting State"] },
-            { "zone", L["Stand-Still Zone"] } } },
+        { L["Swing Timers"], (function()
+            local list = { { "swingMain", L["Main-Hand Swing"] }, { "swingOff", L["Off-Hand Swing"] }, { "swingRanged", L["Ranged Swing"] },
+                { "outOfRange", L["Out of Range"] }, { "waiting", L["Waiting State"] }, { "zone", L["Stand-Still Zone"] } }
+            -- (11-15) the main-hand bar while an on-next-swing attack waits: each attack by its own
+            -- name, on every class (ResourceBars.lua RB.QUEUED_SPELLS)
+            local RB = ns.ResourceBars
+            for _, s in ipairs(RB and RB.QUEUED_SPELLS or {}) do
+                local name = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(s[1])
+                list[#list + 1] = { s[2], name or s[3] }
+            end
+            return list
+        end)() },
         { L["Heals and Shields"], { { "heal", L["Incoming Heals"] }, { "absorb", L["Shields"] } } },
         { L["Paladin Seals"], (function()
             -- each seal by its own name (a seal this client lacks is left out)

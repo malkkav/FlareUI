@@ -523,8 +523,9 @@ local function PlaceCoords()
 end
 
 -- The world map's coordinates in the same style; one anchor per label so the bigger font is not cut
--- by its 100 px frame
+-- by its 100 px frame. Leatrix Maps has its own coordinate footer there: left alone.
 local function RestyleWorldMapCoords()
+    if C_AddOns.IsAddOnLoaded("Leatrix_Maps") then return end
     local map = _G.WorldMapFrame
     for _, frame in ipairs(map and map.overlayFrames or {}) do
         if frame.PlayerCoords and frame.CursorCoords then

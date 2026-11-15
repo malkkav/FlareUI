@@ -73,6 +73,8 @@ Quests("completedLast", "completedLast")
 Quests("focusedFirst", "focusedFirst")
 Quests("collapseCompleted", "collapseCompleted")
 Quests("hideFinished", "hideFinished", true)   -- Show Completed Objectives
+-- (11-15, Archy) a newly accepted quest gives the focus back; last, alone on its half row
+Quests("keepFocus", "keepFocus")
 -- Minimize: one switch sets every instance type
 local INSTANCES = { "dungeon", "raid", "pvp", "arena" }
 S:Row{

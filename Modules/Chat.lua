@@ -1630,6 +1630,14 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
             end)
         end
 
+        -- Mute Tab (11-15): this window's tab never glows for new lines (the Combat Log's never does)
+        if chatFrame ~= _G.ChatFrame2 then
+            local muted = Chat.TabMuted(chatFrame)
+            rootDescription:CreateButton(muted and L["Unmute Tab"] or L["Mute Tab"], function()
+                Chat.SetTabMuted(chatFrame, not muted)
+            end)
+        end
+
         rootDescription:CreateDivider()
 
         rootDescription:CreateButton(L["Chat Settings"], function()
@@ -1828,6 +1836,9 @@ local function MarkUnread(chatFrame)
         end
     end
 end
+
+-- Mute Tab clears a window's meter mark too (Chat.SetTabMuted)
+function Chat.ClearMeterUnread(chatFrame) meterUnread[chatFrame] = nil end
 
 --------------------------------------------------
 -- 12. TAB BAR
@@ -2040,8 +2051,54 @@ local SECRET_TAB_WIDTH = 90   -- Blizzard's own docked width for these tabs
 -- (fields, not locals: the file is near the main chunk's 200 locals)
 Chat.unread = {}   -- chat frame -> true
 -- (11-15, Marcus: too strong) faint and short: its strength, and the pulse between full and half of it
-Chat.UNREAD_GLOW_ALPHA = 0.22   -- (11-15, Marcus: half again)
+Chat.UNREAD_GLOW_ALPHA = 0.12   -- (11-15, Marcus: half again, then more subtle still)
 Chat.UNREAD_GLOW = "Interface\\ChatFrame\\ChatFrameTab-NewMessage"
+
+-- TAB GLOW (11-15, Marcus): chat.unreadGlow picks which kinds of lines light a tab (toggles; nothing
+-- ticked, "none", lights none), and Mute Tab on a tab's right click keeps one window's tab dark
+-- whatever comes (chat.mutedTabs[window ID] = true; cleared when the window closes, as Blizzard
+-- reuses the ID). The kinds: Chat.GLOW_KIND (section 18).
+Chat.GLOW_TOKENS = { "say", "yell", "party", "raid", "guild", "whisper", "channel" }
+Chat.GLOW_ALL = "say,yell,party,raid,guild,whisper,channel"
+
+function Chat.GlowKindOn(db, kind)
+    if not kind then return false end
+    local value = db and db.unreadGlow
+    if value == nil then value = Chat.GLOW_ALL end
+    return ns.Conditions.Set(value)[kind] == true
+end
+
+function Chat.TabMuted(frame, db)
+    db = db or GetDb()
+    local muted = db and db.mutedTabs
+    return muted ~= nil and frame ~= nil and muted[frame:GetID()] == true
+end
+
+-- muting clears the tab's glow at once
+function Chat.SetTabMuted(frame, on)
+    local db = GetDb()
+    if not (db and frame) then return end
+    if on then
+        db.mutedTabs = db.mutedTabs or {}
+        db.mutedTabs[frame:GetID()] = true
+        Chat.unread[frame] = nil
+        if Chat.ClearMeterUnread then Chat.ClearMeterUnread(frame) end
+    elseif db.mutedTabs then
+        db.mutedTabs[frame:GetID()] = nil
+    end
+    Chat.UnreadChangedSoon()
+end
+
+-- whether this line into this window may light its tab: not muted, its kind ticked
+function Chat.LineGlows(chatFrame, typeID, db)
+    if Chat.TabMuted(chatFrame, db) then return false end
+    return Chat.GlowKindOn(db, Chat.LineKind(typeID))
+end
+
+-- Blizzard's own alert flash (whispers): glows only with Whispers ticked, never on a muted tab
+function Chat.FlashGlows(frame, db)
+    return not Chat.TabMuted(frame, db) and Chat.GlowKindOn(db, "whisper")
+end
 
 function Chat.UnreadGlow(owner, text)
     local glow = owner.FlareUI_UnreadGlow
@@ -2109,13 +2166,14 @@ end
 function Chat.UpdateBlizzardTabDots()
     local dock = _G.GeneralDockManager
     local selected = dock and FCFDock_GetSelectedWindow(dock)
+    local db = GetDb()
     for _, frame in Windows() do
         local tab = frame and not frame:IsForbidden() and _G[frame:GetName() .. "Tab"]
         local text = tab and not tab:IsForbidden() and tab:GetFontString()
         if text then
             local seen = frame == selected or (IsPopped(frame) and frame:IsShown())
-            if seen then Chat.unread[frame] = nil end
-            local flashing = not seen and tab.glow and tab.glow:IsShown() or nil
+            if seen or Chat.TabMuted(frame, db) then Chat.unread[frame] = nil end
+            local flashing = not seen and Chat.FlashGlows(frame, db) and tab.glow and tab.glow:IsShown() or nil
             local shown = not seen and (Chat.unread[frame] or flashing) and ns.IsGamepadUI()
             Chat.ShowUnreadDot(tab, text, shown, Chat.UnreadWhisper(frame, flashing))
         end
@@ -2527,7 +2585,9 @@ function Chat:UpdateCustomTabs(chatFrame, db)
             local isSelected = popped or (not meterActive and FCFDock_GetSelectedWindow(dock) == frame)
             -- the window on screen has been seen (under the Meter tab its lines count as meterUnread)
             if popped or FCFDock_GetSelectedWindow(dock) == frame then Chat.unread[frame] = nil end
-            local flashing = not isSelected and realTab.glow and realTab.glow:IsShown() or nil
+            -- Mute Tab: never lit, whatever came
+            if Chat.TabMuted(frame, db) then Chat.unread[frame] = nil; meterUnread[frame] = nil end
+            local flashing = not isSelected and Chat.FlashGlows(frame, db) and realTab.glow and realTab.glow:IsShown() or nil
             local dotShown = not isSelected and (Chat.unread[frame] or meterUnread[frame] or flashing) or nil
             btn:SetWidth(w)
             btn.Text:ClearAllPoints()
@@ -3274,7 +3334,7 @@ end
 --------------------------------------------------
 -- 16. AUTO-HIDE
 -- With a Visibility other than Always, a window stays up autoHideDelay seconds (Fade Delay) after
--- the last message, hover, edit (or combat), then fades out at the Fade Speed. A message only
+-- the last message, hover, edit (or combat), then fades out at the Fade Out Speed (and comes back at the Fade In Speed). A message only
 -- moves hideAt; one timer per window waits for it. Fades run on one shared OnUpdate that stops when
 -- nothing is fading.
 --------------------------------------------------
@@ -3299,7 +3359,10 @@ local function Fades(db)
 end
 Chat.Fades = Fades
 
-local function FadeDuration(db) return ns.FadeTime(db and db.fadeSpeed) end
+-- Fade In Speed (coming back) / Fade Out Speed (fading away), 11-15: the one fadeSpeed split in two;
+-- an unset fadeIn / fadeOut reads the old fadeSpeed, so nothing changes until a player picks.
+function Chat.FadeSpeed(db, field) return (db and (db[field] or db.fadeSpeed)) or "instant" end
+local function FadeDuration(db, field) return ns.FadeTime(Chat.FadeSpeed(db, field)) end
 local fadeDriver = CreateFrame("Frame")
 fadeDriver:Hide()
 
@@ -3377,7 +3440,7 @@ local function OnHoldExpired(state)
         state.timer = C_Timer.NewTimer(remaining, state.expire)
     else
         -- Faded Opacity: how far the window fades out (0 = gone)
-        FadeTo(state, math_max(0, math_min(0.9, tonumber(db.minAlpha) or 0)), FadeDuration(db))
+        FadeTo(state, math_max(0, math_min(0.9, tonumber(db.minAlpha) or 0)), FadeDuration(db, "fadeOut"))
     end
 end
 
@@ -3401,7 +3464,7 @@ function Chat:ShowChatFrame(chatFrame, db)
     end
     local state = AutoHideState(chatFrame)
     if state.fadeTo ~= 1 and not (state.fadeTo == nil and chatFrame.FlareUI_TargetAlpha == 1) then
-        FadeTo(state, 1, FadeDuration(db))
+        FadeTo(state, 1, FadeDuration(db, "fadeIn"))
     end
     local delay = math_max(0, db.autoHideDelay or 10)
     state.hideAt = GetTime() + (state.fadeTo and state.fadeTime or 0) + delay
@@ -3473,21 +3536,50 @@ end
 -- 18. APPLY
 --------------------------------------------------
 -- every message (combat log lines included) lands here, so it returns early when auto-hide is off
-local function OnChatMessage(chatFrame)
+-- (11-15, a player: General glowed for NPC yells and loot lines) only lines people write light a tab:
+-- said, yelled, party, raid, guild, whispers, channels, instance; never NPCs, loot, money or the system.
+-- Blizzard passes the line's chat type as ChatTypeInfo[type].id (AddMessage's 5th value)
+-- Each people line's Tab Glow kind (chat.unreadGlow): Say also has emotes, Party the instance chat,
+-- Guild the officer chat; CHANNEL1..n count as channel (Chat.LineKind)
+Chat.GLOW_KIND = { SAY = "say", EMOTE = "say", TEXT_EMOTE = "say", YELL = "yell",
+    PARTY = "party", PARTY_LEADER = "party", INSTANCE_CHAT = "party", INSTANCE_CHAT_LEADER = "party",
+    RAID = "raid", RAID_LEADER = "raid", RAID_WARNING = "raid", GUILD = "guild", OFFICER = "guild",
+    WHISPER = "whisper", BN_WHISPER = "whisper", CHANNEL = "channel" }
+function Chat.IsPeopleLine(typeID)
+    return Chat.LineKind(typeID) ~= nil
+end
+-- the line's Tab Glow kind, nil for lines no person wrote
+function Chat.LineKind(typeID)
+    if type(typeID) ~= "number" then return nil end
+    local byID = Chat.chatTypeByID
+    if not byID or not byID[typeID] then
+        byID = byID or {}
+        for name, info in pairs(ChatTypeInfo) do
+            if type(info) == "table" and info.id then byID[info.id] = name end
+        end
+        Chat.chatTypeByID = byID
+    end
+    local name = byID[typeID]
+    if not name then return nil end
+    return Chat.GLOW_KIND[name] or (name:find("^CHANNEL%d") and "channel") or nil
+end
+
+local function OnChatMessage(chatFrame, text, r, g, b, typeID)
     local db = GetDb()
     -- Hide Combat Log: the hidden log still gets every combat line, with nothing to show or wake
     if chatFrame == _G.ChatFrame2 and db and db.hideCombatLog then return end
     UpdateScrollToBottomVisibility(chatFrame)
     -- a line into a hidden window (another tab is selected) marks its tab unread, once; never the
-    -- Combat Log's, which never stops
-    if not Chat.unread[chatFrame] and chatFrame ~= _G.ChatFrame2 and not chatFrame:IsShown() then
+    -- Combat Log's, which never stops; only the kinds ticked in Tab Glow, never on a muted tab
+    if not Chat.unread[chatFrame] and chatFrame ~= _G.ChatFrame2 and not chatFrame:IsShown() and Chat.LineGlows(chatFrame, typeID, db) then
         Chat.unread[chatFrame] = true
         Chat.UnreadChangedSoon()
     end
     -- a line into a window that isn't shown (another tab) doesn't wake the chat: its tab lights up
     if db and Fades(db) and Chat.VisibilityHas(db, "messages") and chatFrame:IsVisible() then Chat:ShowChatFrame(chatFrame, db) end
     -- a line under the Meter tab lights its window's tab (not the Combat Log's, which never stops)
-    if Chat:MeterTabActive() and not meterUnread[chatFrame] and chatFrame ~= _G.ChatFrame2 and chatFrame == SelectedDocked() then
+    if Chat:MeterTabActive() and not meterUnread[chatFrame] and chatFrame ~= _G.ChatFrame2 and chatFrame == SelectedDocked()
+        and Chat.LineGlows(chatFrame, typeID, db) then
         meterUnread[chatFrame] = true
         MarkUnread(chatFrame)
     end
@@ -3736,7 +3828,10 @@ function Chat:Init()
         Chat:SecureHook("FCF_DockFrame", RefreshSoon)
         Chat:SecureHook("FCF_UnDockFrame", RefreshSoon)
 
-        Chat:SecureHook("FCF_Close", function()
+        Chat:SecureHook("FCF_Close", function(frame, fallback)
+            -- a closed window's Mute Tab goes with it: Blizzard gives its ID to the next new window
+            local closed = fallback or frame
+            if closed and closed ~= _G.DEFAULT_CHAT_FRAME and closed.GetID then Chat.SetTabMuted(closed, false) end
             C_Timer.After(0.2, function()
                 local db = GetDb()
                 if not db then return end

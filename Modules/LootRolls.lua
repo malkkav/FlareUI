@@ -36,7 +36,8 @@ local ICON, CARD_H, BUTTON, ROW, CARD_GAP = 40, 52, 21, 15, 9
 local HOLD = 8               -- seconds a card stays after its result
 local RESULT_GRACE = 30      -- seconds after the roll's end to wait for its result
 local ITEM_RETRY_DELAY = 0.25
-local DEFAULTS = { point = "CENTER", x = -320, y = 160 }
+-- (11-15) Marcus's spot, the same as the Movers' loot default (one Edit Mode frame)
+local DEFAULTS = { point = "TOP", x = 0, y = -221 }
 local MOVER_KEY = "loot"     -- tweaks.moverLayouts[layout].loot: the Movers' "FlareUI Loot Rolls" spot
 local HISTORY_ICON = "Interface\\AddOns\\FlareUI\\Media\\Icons\\DMSegments.tga"
 local ICON_COLOR = { r = 0.61, g = 0.48, b = 0.29, a = 1 }

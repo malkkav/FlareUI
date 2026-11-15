@@ -4,8 +4,8 @@ local L = ns.L
 --------------------------------------------------
 -- VISIBILITY
 -- Show conditions (always | mouseover | any of combat, hastarget, attackable, ingroup, unmounted), fade groups 1-5,
--- Fade Speed and Faded Opacity for the action bars, bag bar, micro menu, XP bar, minimap, buffs, debuffs,
--- quest tracker and the player, pet, target, focus and target-of unit frames (no fade groups), set in each element's Edit Mode dialog, plus the Blizzard pieces hidden for good. Fake CM bars follow profile.fcm.show and never the mouse.
+-- Fade In Speed, Fade Out Speed and Faded Opacity for the action bars, bag bar, micro menu, XP bar, minimap, buffs, debuffs,
+-- quest tracker and the player, pet, target, focus and target-of unit frames (fade groups: the player and pet only), set in each element's Edit Mode dialog, plus the Blizzard pieces hidden for good. Fake CM bars follow profile.fcm.show and never the mouse.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -69,13 +69,14 @@ local ELEMENTS = {
     { key = "buffs", module = "auras" },
     { key = "debuffs", module = "auras" },
     { key = "quest", module = "objectivetracker" },
-    -- The unit frames: each on its own, never in a fade group (UnitFrames.lua section 14). own: the fader
-    -- keeps the value and sets it through apply (an alpha left by the health curve can't be read back);
-    -- health: Missing Health, from that unit
-    -- instant: no Fade Speed (always instant); noOpacity: no Faded Opacity (faded right out)
+    -- The unit frames (UnitFrames.lua section 14). own: the fader keeps the value and sets it through
+    -- apply (an alpha left by the health curve can't be read back); health: Missing Health, from that unit
+    -- instant: no fade speeds (always instant); noOpacity: no Faded Opacity (faded right out)
+    -- noGroup: never in a fade group. The player and pet frames can join one (11-15, Marcus): they then
+    -- fade at the group's speeds, and pointing at either brings the whole group back.
     -- mana: Missing Mana too (the player frame only, 11-11)
-    { key = "uf_player", unit = "player", module = "unitframes", own = true, noGroup = true, instant = true, health = "player", mana = true },
-    { key = "uf_pet", unit = "pet", module = "unitframes", own = true, noGroup = true, instant = true, health = "pet" },
+    { key = "uf_player", unit = "player", module = "unitframes", own = true, instant = true, health = "player", mana = true },
+    { key = "uf_pet", unit = "pet", module = "unitframes", own = true, instant = true, health = "pet" },
     { key = "uf_target", unit = "target", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
     { key = "uf_targettarget", unit = "targettarget", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
     { key = "uf_focus", unit = "focus", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
@@ -83,6 +84,9 @@ local ELEMENTS = {
     -- the FlareUI Player Cast Bar: Visibility and Faded Opacity only. Not with Cinematic, which fades it
     -- between fights itself (its bar then ignores the holder's alpha)
     { key = "uf_playercastbar", castbar = true, module = "unitframes", own = true, noGroup = true, instant = true },
+    -- FlareUI Totems (Totems.lua, 11-15, a player asked): fade groups, and never: a Never choice that
+    -- keeps them out for good (Edit Mode still shows them)
+    { key = "uf_totems", totems = true, module = "unitframes", never = true },
     -- The resource bars (ResourceBars.lua), fade groups allowed. They still hide on their own where they
     -- don't apply (druid mana, combo points, a swing bar with no weapon); inuse: a swing bar's Only When In
     -- Use, which the bar shows and hides itself
@@ -119,6 +123,8 @@ local function GetFrame(key)
     elseif ELEMENT_BY_KEY[key] and ELEMENT_BY_KEY[key].cap then
         local caps = _G.MainActionBar and _G.MainActionBar.EndCaps
         return caps and caps[ELEMENT_BY_KEY[key].cap] or nil
+    elseif key == "uf_totems" then
+        return ns.Totems and ns.Totems.initialized and _G.FlareUI_Totems or nil
     elseif key == "uf_playercastbar" then
         local UF = ns.UnitFrames
         return UF and UF.initialized and UF.GetPlayerCastHolder and UF.GetPlayerCastHolder() or nil
@@ -248,6 +254,8 @@ local function ApplyElementAlpha(frame, key, alpha)
     if key == "minimap" then SetMinimapDrawn(alpha) end
     -- the tracker's lone "+" and its quest item buttons sit on UIParent, outside its frame
     if key == "quest" and ns.ObjectiveTracker.SetFadeAlpha then ns.ObjectiveTracker:SetFadeAlpha(alpha) end
+    -- faded right out, the totems can't be right-clicked away unseen
+    if key == "uf_totems" and ns.Totems.SetFaded then ns.Totems.SetFaded(alpha <= 0.01) end
 end
 
 -- "endcaps" is the two gryphon frames
@@ -359,17 +367,21 @@ function Visibility:SetShow(key, show)
     self:Refresh()
 end
 
--- The group an element is in, or nil. A group owns its members' Show, Fade Speed and Faded Opacity.
+-- The group an element is in, or nil. A group owns its members' Show, fade speeds and Faded Opacity.
 local function ElementGroup(key)
     local db, cfg = GetDb(), ElementConfig(key)
     return cfg and cfg.group and cfg.group > 0 and db.groups and db.groups[cfg.group] or nil
 end
 
--- falls back to the profile-wide Fade Speed
-function Visibility:GetFadeSpeed(key)
+-- Fade In Speed (coming back) and Fade Out Speed (fading away), 11-15: the one Fade Speed before
+-- (fadeSpeed) became two. Nothing is rewritten: an owner without its own fadeIn / fadeOut reads its old
+-- fadeSpeed for both, then the profile-wide ones, so nothing changes until a player picks a new speed.
+local function FadeSpeedOf(key, field)
     local db, owner = GetDb(), ElementGroup(key) or ElementConfig(key)
-    return (owner and owner.fadeSpeed) or (db and db.fadeSpeed) or "instant"
+    return (owner and (owner[field] or owner.fadeSpeed)) or (db and (db[field] or db.fadeSpeed)) or "instant"
 end
+function Visibility:GetFadeIn(key) return FadeSpeedOf(key, "fadeIn") end
+function Visibility:GetFadeOut(key) return FadeSpeedOf(key, "fadeOut") end
 
 -- in percent
 function Visibility:GetMinAlpha(key)
@@ -399,7 +411,7 @@ function Visibility:SetGroup(key, group)
     if not (db and cfg) then return end
     group = group or 0
     if group == (cfg.group or 0) then return end
-    local show, speed, minAlpha = self:GetShow(key), self:GetFadeSpeed(key), self:GetMinAlpha(key)
+    local show, fadeIn, fadeOut, minAlpha = self:GetShow(key), self:GetFadeIn(key), self:GetFadeOut(key), self:GetMinAlpha(key)
     -- a gryphon on Same as Action Bar 1 brings bar 1's own choice: a group can't follow bar 1
     if show == "bar1" then show = self:GetShow("bar1") end
     local target = db.groups and db.groups[group]
@@ -408,7 +420,7 @@ function Visibility:SetGroup(key, group)
     elseif target and GroupHasMembers(group, key) then
         target = nil
     end
-    if target then target.show, target.fadeSpeed, target.minAlpha = show, speed, minAlpha end
+    if target then target.show, target.fadeIn, target.fadeOut, target.minAlpha = show, fadeIn, fadeOut, minAlpha end
     cfg.group = group
     self:Refresh()
     -- the dialog's other rows now show the group's values (after the dropdown's own click)
@@ -422,29 +434,36 @@ local function ApplySecureHide(key, shouldHide)
     ForEachFrameOfKey(key, ns.HideFrameSecurely, shouldHide)
 end
 
-local function HideMoverOfFrame(frame)
-    if frame and frame.Selection then
-        if not frame.Selection.FlareUI_HiddenMover then
-            frame.Selection.FlareUI_HiddenMover = true
-            frame.FlareUI_MouseWas = frame:IsMouseEnabled()
-        end
-        frame.Selection:SetAlpha(0)
-        if frame.Selection.Label then frame.Selection.Label:SetAlpha(0) end
-        frame:EnableMouse(false)
-        frame.Selection:EnableMouse(false)
-    end
-end
-
--- only a selection hidden above is restored, with the frame's own mouse setting
+-- only a selection hidden below is restored, with the frame's own mouse setting (and the Edit Mode
+-- eye's choice of shown or hidden boxes, EditModeOverlays.lua)
 local function RestoreMoverOfFrame(frame)
     if frame and frame.Selection and frame.Selection.FlareUI_HiddenMover then
         frame.Selection.FlareUI_HiddenMover = nil
-        frame.Selection:SetAlpha(1)
+        local eyeShut = ns.db and ns.db.profile and ns.db.profile.editModeOverlaysHidden
+        frame.Selection:SetAlpha(eyeShut and 0 or 1)
         if frame.Selection.Label then frame.Selection.Label:SetAlpha(1) end
         frame:EnableMouse(frame.FlareUI_MouseWas ~= false)
         frame.FlareUI_MouseWas = nil
         frame.Selection:EnableMouse(true)
     end
+end
+
+-- (11-15) only on a frame that really is hidden: a bar left on screen (a hide that didn't take) keeps a
+-- selection that can be picked, never a visible bar that Edit Mode can't move
+local function HideMoverOfFrame(frame)
+    if not (frame and frame.Selection) then return end
+    if frame:IsVisible() then
+        RestoreMoverOfFrame(frame)
+        return
+    end
+    if not frame.Selection.FlareUI_HiddenMover then
+        frame.Selection.FlareUI_HiddenMover = true
+        frame.FlareUI_MouseWas = frame:IsMouseEnabled()
+    end
+    frame.Selection:SetAlpha(0)
+    if frame.Selection.Label then frame.Selection.Label:SetAlpha(0) end
+    frame:EnableMouse(false)
+    frame.Selection:EnableMouse(false)
 end
 
 local function HideEditModeMover(key) ForEachFrameOfKey(key, HideMoverOfFrame) end
@@ -460,7 +479,8 @@ local function KeepHiddenInEditMode(frame, settingKey)
     frame:HookScript("OnShow", function(f)
         local db = GetDb()
         local editing = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
-        if db and db[editHideHooked[f]] and editing and not InCombatLockdown() then ns.RawHide(f) end
+        -- (11-15) only while FlareUI still hides it: not after Action Bars went off without a reload
+        if db and db[editHideHooked[f]] and f.FlareUI_Hidden and ActionBarsOn() and editing and not InCombatLockdown() then ns.RawHide(f) end
     end)
 end
 
@@ -583,12 +603,15 @@ local MANA_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = MANA_TOKENS, legac
 local INUSE_SPEC = { exclusive = { "always", "inuse" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 -- a gryphon's Same as Action Bar 1 clears the rest too
 local CAP_SPEC = { exclusive = { "bar1", "always" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
+-- Never (the totems) clears the rest too: out for good, outside Edit Mode
+local NEVER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 local function SpecOf(key)
     local e = ELEMENT_BY_KEY[key]
     if e and e.cap then return CAP_SPEC end
     if e and e.mana then return MANA_SPEC end
     if e and e.health then return HEALTH_SPEC end
     if e and e.inuse then return INUSE_SPEC end
+    if e and e.never then return NEVER_SPEC end
     return SHOW_SPEC
 end
 
@@ -728,7 +751,9 @@ Fader.UpdateScript = function(self, elapsed)
                 local currentAlpha = data.apply and data.value or frame.FlareUI_FadeAlpha or frame:GetAlpha()
                 if math_abs(currentAlpha - targetAlpha) > 0.005 then
                     groupFading = true
-                    local change = data.fadeTime > 0 and elapsed / data.fadeTime or 1
+                    -- coming back at Fade In Speed, fading away at Fade Out Speed
+                    local fadeTime = (currentAlpha < targetAlpha) and data.fadeIn or data.fadeOut
+                    local change = fadeTime > 0 and elapsed / fadeTime or 1
                     local newAlpha = (currentAlpha < targetAlpha) and math_min(targetAlpha, currentAlpha + change) or math_max(targetAlpha, currentAlpha - change)
                     if data.apply then data.apply(newAlpha) else ApplyElementAlpha(frame, data.key, newAlpha) end
                 elseif data.apply and repair then
@@ -793,7 +818,7 @@ local function BuildElementSettings(key)
     -- nothing fades while it's always shown (or a swing bar shows and hides itself)
     local function AlwaysShown()
         local show = Visibility:GetShow(key)
-        return show == "always" or show == "inuse" or show == "bar1"
+        return show == "always" or show == "inuse" or show == "bar1" or show == "never"
     end
     return {
         {
@@ -812,6 +837,7 @@ local function BuildElementSettings(key)
                 if e and e.health and e.mana then values[#values + 1] = { isDivider = true } end
                 if e and e.health then values[#values + 1] = { text = L["Missing Health"], value = "health", isRadio = true } end
                 if e and e.mana then values[#values + 1] = { text = L["Missing Mana"], value = "mana", isRadio = true } end
+                if e and e.never then table_insert(values, 2, { text = L["Never"], value = "never", isRadio = true }) end
                 if e and e.cap then table_insert(values, 1, { text = L["Same as Action Bar 1"], value = "bar1", isRadio = true }) end
                 if e and e.inuse then
                     -- with the two that clear the rest, above the line
@@ -829,12 +855,20 @@ local function BuildElementSettings(key)
                 and L["Missing Health and Missing Mana can't be ticked together: the game hides both from addons, so they can't be combined."])
                 or nil,
         },
+        -- Fade In Speed and Fade Out Speed (11-15, Marcus: the one Fade Speed split in two)
         {
-            name = L["Fade Speed"], kind = LEM.SettingType.Dropdown, default = "instant", values = SPEED_VALUES,
-            get = function() return Visibility:GetFadeSpeed(key) end,
-            set = function(_, value) Visibility:SetElementFade(key, "fadeSpeed", value) end,
+            name = L["Fade In Speed"], kind = LEM.SettingType.Dropdown, default = "instant", values = SPEED_VALUES,
+            get = function() return Visibility:GetFadeIn(key) end,
+            set = function(_, value) Visibility:SetElementFade(key, "fadeIn", value) end,
             hidden = AlwaysShown,
-            desc = L["How fast it appears and disappears.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
+            desc = L["How fast it comes back.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
+        },
+        {
+            name = L["Fade Out Speed"], kind = LEM.SettingType.Dropdown, default = "instant", values = SPEED_VALUES,
+            get = function() return Visibility:GetFadeOut(key) end,
+            set = function(_, value) Visibility:SetElementFade(key, "fadeOut", value) end,
+            hidden = AlwaysShown,
+            desc = L["How fast it fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
         },
         {
             name = L["Faded Opacity"], kind = LEM.SettingType.Slider, default = 0, minValue = 0, maxValue = 100, valueStep = 5,
@@ -854,8 +888,9 @@ local function WithVisibilityTitle(rows)
     return rows
 end
 
--- for the unit frames' Fading section (UnitFrames.lua BuildSettings): no fade group, no title
--- no Fade Speed either (they fade at once), and Faded Opacity on the player and pet only
+-- for the unit frames' Fading section (UnitFrames.lua BuildSettings): no title, Faded Opacity on the
+-- player and pet only. A fade group on the player and pet only (11-15): on their own they fade at once,
+-- so the two speeds show only while they're in a group (they then fade at the group's speeds).
 -- Link Pet Frame (the player frame's Fading, 11-12, a player's idea): the pet frame fades with the
 -- player frame, on the player's settings; pointing at either shows both. The pet's own Fading hides.
 function Visibility:PetLinked()
@@ -867,8 +902,24 @@ function Visibility:UnitFrameSettings(unit)
     local key = "uf_" .. unit
     local rows = BuildElementSettings(key)
     local e = ELEMENT_BY_KEY[key]
-    local kept = { rows[2] }   -- Visibility (1 Fade Group, 3 Fade Speed, 4 Faded Opacity)
-    if not (e and e.noOpacity) then kept[#kept + 1] = rows[4] end
+    -- rows: 1 Fade Group, 2 Visibility, 3 Fade In Speed, 4 Fade Out Speed, 5 Faded Opacity
+    local kept = {}
+    if not (e and e.noGroup) then
+        kept[1] = rows[1]
+        for i = 3, 4 do
+            local own = rows[i].hidden
+            rows[i].hidden = function(...)
+                if Visibility:GetGroup(key) == 0 then return true end
+                return own(...)
+            end
+        end
+        kept[2] = rows[2]
+        kept[3] = rows[3]
+        kept[4] = rows[4]
+    else
+        kept[1] = rows[2]
+    end
+    if not (e and e.noOpacity) then kept[#kept + 1] = rows[5] end
     if unit == "pet" then
         local function Linked() return Visibility:PetLinked() end
         for _, row in ipairs(kept) do
@@ -899,7 +950,7 @@ end
 -- Faded Opacity, hidden with Cinematic (it fades the bar itself)
 function Visibility:PlayerCastSettings()
     local rows = BuildElementSettings("uf_playercastbar")
-    local kept = { rows[2], rows[4] }
+    local kept = { rows[2], rows[5] }   -- Visibility, Faded Opacity
     for _, row in ipairs(kept) do
         local own = row.hidden
         row.hidden = function(...)
@@ -919,7 +970,7 @@ end
 -- for the Minimap module
 function Visibility:MinimapSettings()
     local rows = BuildElementSettings("minimap")
-    table.remove(rows, 4)   -- Faded Opacity
+    table.remove(rows, 5)   -- Faded Opacity
     table.remove(rows, 1)   -- Fade group
     -- a Fading section that opens and closes like the other dialogs' (11-13, Marcus: starts closed)
     return ns.EditSection("Fading", rows)
@@ -980,7 +1031,7 @@ local function AddEditModeSettings()
         end
     end
     -- FlareUI's own frames (XP bar, buffs, debuffs, quest tracker): their rows go after their own
-    for _, key in ipairs({ "xp", "buffs", "debuffs", "quest" }) do
+    for _, key in ipairs({ "xp", "buffs", "debuffs", "quest", "uf_totems" }) do
         local frame = not frameAdded[key] and ElementOn(ELEMENT_BY_KEY[key]) and GetFrame(key)
         local settings = frame and LEM.GetFrameSettings and LEM:GetFrameSettings(frame)
         if settings then
@@ -1158,32 +1209,34 @@ function Visibility:Refresh()
     -- the minimap fades on its own, right out (SetMinimapDrawn), whatever an earlier setup stored
     local minimapCfg = db.elements and db.elements.minimap
     if minimapCfg then minimapCfg.group, minimapCfg.minAlpha = 0, nil end
+    -- A frame hidden for good stays hidden in Edit Mode, its selection made invisible; lifting the hide
+    -- would lose whether the frame comes back when the option goes off.
+    -- (11-15, a warrior's report: the stance bar showed but couldn't be picked in Edit Mode) whatever is
+    -- not hidden, or everything with Action Bars off (or every element off), comes back at once, in Edit
+    -- Mode or not: its parent, its selection and its mouse. Both steps only undo what FlareUI did this
+    -- session, so nothing of Blizzard's is forced. Runs before the ShouldLoad return below.
+    local inEditMode = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
+    local barsOn = ActionBarsOn() and self:ShouldLoad()
+    for _, pair in ipairs(not inCombat and HIDE_KEYS or {}) do
+        local key, settingKey = pair[1], pair[2]
+        local hidden = barsOn and db[settingKey]
+        if hidden then
+            ApplySecureHide(key, true)
+            if inEditMode then
+                ForEachFrameOfKey(key, KeepHiddenInEditMode, settingKey)
+                ForEachFrameOfKey(key, HideFrame)
+                HideEditModeMover(key)
+            end
+        else
+            ApplySecureHide(key, false)
+            RestoreEditModeMover(key)
+        end
+    end
+
     if not self:ShouldLoad() then
         Fader:SetScript("OnUpdate", nil)
         Fader.updateEnabled = false
         return
-    end
-
-    -- A frame hidden for good stays hidden in Edit Mode, its selection made invisible; lifting the hide
-    -- would lose whether the frame comes back when the option goes off
-    local inEditMode = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
-    local barsOn = ActionBarsOn()
-    for _, pair in ipairs((barsOn and not inCombat) and HIDE_KEYS or {}) do
-        local key, settingKey = pair[1], pair[2]
-        local hidden = db[settingKey]
-        if inEditMode then
-            if hidden then
-                ApplySecureHide(key, true)
-                ForEachFrameOfKey(key, KeepHiddenInEditMode, settingKey)
-                ForEachFrameOfKey(key, HideFrame)
-                HideEditModeMover(key)
-            else
-                ApplySecureHide(key, false)
-                RestoreEditModeMover(key)
-            end
-        else
-            ApplySecureHide(key, hidden)
-        end
     end
     if barsOn and not inCombat then
         SetMicroFlashesBlank(db.hideMicroMenu)
@@ -1219,7 +1272,8 @@ function Visibility:Refresh()
                 local fcmShow = fcm.show or "combat"
                 local mouseOK = Conditions.Has(fcmShow, "mouseover", SHOW_SPEC)
                 AddMember("fcm", { key = key, frame = frame, isBar = true, fcm = true, show = fcmShow, mouseOK = mouseOK,
-                                   fadeTime = ns.FadeTime(self:GetFadeSpeed(key)), minAlpha = 0 })
+                                   fadeIn = ns.FadeTime(self:GetFadeIn(key)), fadeOut = ns.FadeTime(self:GetFadeOut(key)),
+                                   minAlpha = 0 })
                 if mouseOK then Fader.watchesMouseover = true end
             else
                 local show = self:GetShow(key)
@@ -1227,7 +1281,11 @@ function Visibility:Refresh()
                 local linkPet = key == "uf_pet" and self:PetLinked() and ElementOn(ELEMENT_BY_KEY.uf_player)
                 local settingsKey = linkPet and "uf_player" or key
                 if linkPet then show = self:GetShow("uf_player") end
-                if show == "always" or show == "inuse" then
+                if show == "never" then
+                    -- out for good; Edit Mode still shows it, to be found and set back
+                    local editing = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
+                    ApplyElementAlpha(frame, key, editing and 1 or 0)
+                elseif show == "always" or show == "inuse" then
                     ApplyElementAlpha(frame, key, 1)
                     if e.own then unitValues[key] = 1 end
                 else
@@ -1236,8 +1294,13 @@ function Visibility:Refresh()
                     local unit = e.unit
                     local mouse = unit and function() return ns.UnitFrames:IsMouseOverUnit(unit) end or nil
                     if e.noGroup then group = 0 end
+                    -- a linked pet fades in the player frame's group, if it has one
+                    if linkPet then group = self:GetGroup("uf_player") end
+                    -- a unit frame fades at once on its own, at its group's speeds in one (11-15)
+                    local instant = e.instant and group == 0
                     local data = { key = key, frame = frame, isBar = isBar, show = show, owner = owner, mouse = mouse,
-                                   fadeTime = e.instant and 0 or ns.FadeTime(self:GetFadeSpeed(settingsKey)),
+                                   fadeIn = instant and 0 or ns.FadeTime(self:GetFadeIn(settingsKey)),
+                                   fadeOut = instant and 0 or ns.FadeTime(self:GetFadeOut(settingsKey)),
                                    minAlpha = e.noOpacity and 0 or self:GetMinAlpha(settingsKey) / 100 }
                     -- the pointer shows it only with Mouseover ticked
                     data.mouseOK = Conditions.Has(show, "mouseover", SpecOf(settingsKey))
@@ -1256,7 +1319,9 @@ function Visibility:Refresh()
                         -- the holder put right at once: an alpha left by the curve can't be read back
                         data.apply(data.value)
                     end
-                    AddMember(linkPet and "uf_player" or (group > 0 and ("group" .. group) or key), data)
+                    -- a fade group's members share one entry: pointing at any of them (a unit frame
+                    -- through its mouse check) brings the whole group back
+                    AddMember(group > 0 and ("group" .. group) or (linkPet and "uf_player") or key, data)
                     Fader.watchesMouseover = true
                 end
             end

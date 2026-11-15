@@ -1,3 +1,131 @@
+# FlareUI 6.8
+
+**Restart the game fully after updating** (not just /reload): this version adds new files.
+
+**Please check your settings.** Some defaults changed in this version (listed under **Defaults**). Options you already set yourself keep your choice; options you never touched take the new default.
+
+A big one. The damage meter learns to dock like chat, health bars show the hits you take, chat tabs stop glowing at trade chat, and the bags get one-click filters again. Five contributors this time: pkejval made a lot of FlareUI do less work, tinker-n-tailor fixed the Group Finder Icon and the level disc, Nico-Mayer polished the loot roll preview, Braincell1980 caught French up, and parchinskiy's original filter buttons are back as an option.
+
+## Highlights
+- **Damage Meter**: extra meter windows dock as tabs on the first window, like chat tabs. Any of them can move out to its own window and back.
+- **Damage Trail** on health bars: the health you lose stays for a moment in a light colour, then shrinks away.
+- **Fade In Speed** and **Fade Out Speed** replace the single Fade Speed everywhere.
+- **Tab Glow**: pick which messages make a chat tab glow, and mute single tabs.
+
+## Defaults
+- Tooltips: **Party/Raid Auras** is now **Always**. The buff and debuff icons on party and raid frames show their tooltip.
+- Loot Feed: **Alignment** is now **Center**.
+- New default spots for the health, power, mana, swing, flight and duration bars, the Loot Roll Window, toasts and the battleground objectives.
+  - Only frames you never moved take the new spot.
+
+## New
+
+### Unit Frames
+- **Damage Trail** (off), in the **Frame** section of the player, target, focus, pet, party, raid and boss frames in Edit Mode.
+  - The health you lose stays for a moment in a light colour, then shrinks away.
+  - Healing has no trail. It works in fights too.
+- **Flag Carrier Frames** (off, needs a reload), in Unit Frames › Enable Frames.
+  - Blizzard's battleground flag carrier frames, moved and placed in Edit Mode as a FlareUI frame.
+  - They start where the first boss frame sits.
+- FlareUI Totems (your totem timers): a **Fading** section in its Edit Mode dialog.
+  - Fade Group, Visibility, Fade In Speed, Fade Out Speed and Faded Opacity, as on the other frames.
+  - Visibility has a new **Never** choice: the totems stay hidden. Edit Mode still shows them.
+  - Totems you can't see can't be right-clicked away by accident.
+- The player and pet frames can join a fade group.
+
+### Damage Meter
+- Extra meter windows dock as tabs on the first window, like chat tabs.
+  - Open and close them from Blizzard's gear menu. You can have up to two meter windows.
+  - The Threat tab is always the last tab.
+- Right-click a docked tab, a window's title or its gear menu: **Move to Own Window**.
+  - The window opens under the first window, or above it when the first window sits low on the screen.
+  - A window on its own has no Threat tab. The threat list stays on the first window.
+  - Its spot and size are saved. Right-click it for **Dock as a Tab** to bring it back.
+  - In a fight, the move waits until the fight ends.
+- Threat: right-click the Threat tab for **Move to Own Window** (the same as Threat › Separate Window). Right-click the threat window's header for **Dock as a Tab**.
+
+### Chat
+- **Tab Glow**, in Chat › Frame: tick which messages make a tab glow.
+  - **Say**, **Yell**, **Party**, **Raid**, **Guild**, **Whispers** and **Channels** (all ticked). **None** turns the glow off.
+- Right-click a chat tab for **Mute Tab**: that tab never glows. The entry then reads **Unmute Tab**.
+  - Mutes are kept after a reload.
+
+### Quest Tracker
+- **Keep Quest Focus** (off), in Quest Tracker › Quests. A quest you accept doesn't take the focus; the quest you had focused stays focused.
+- With Questie loaded, right-click a quest for **Hide Questie Icons** or **Show Questie Icons**. It hides that quest's icons on Questie's map, as Questie's own menu does.
+
+### Bags & Looting
+- **Category Filters** (Bags & Looting › Tools) is now a choice of three (Off):
+  - **Drawer**: the filter button and drawer, as before.
+  - **Buttons**: the four filters in a row by the search box, one click each. Click the lit one again, or right-click it, to clear it. From parchinskiy's first design.
+  - Buttons needs the combined backpack with room to spare. In a narrow backpack or separate bags you get the drawer.
+  - If you had Category Filters on, you get Drawer.
+- Loot Feed: **Alignment** has a new **Center** choice.
+
+### Buff Reminders
+- Right-click the blessing reminder for two new menus:
+  - **By Class**: a different blessing for each class.
+  - **Group Members**: a different blessing for one player.
+  - A player's pick wins over their class's, and the class's over the blessing for everyone.
+
+### Resource Bars
+- Main-hand swing bar: **Queued Attack Colour** (off), in its Edit Mode dialog.
+  - The bar takes a colour for each queued attack: Heroic Strike (gold), Cleave (blue), Maul (orange-red) and Raptor Strike (green).
+  - Pick the colours in **Bar Colours** › Swing Timers. A custom queued colour you had becomes the Heroic Strike colour.
+
+## Changed
+
+### Fading
+- **Fade Speed** is now two options: **Fade In Speed** and **Fade Out Speed**.
+  - In every Edit Mode Fading section, and in the Chat, Damage Meter and Buff Reminders settings.
+  - Your old Fade Speed carries over to both.
+  - A unit frame on its own still fades at once. In a fade group it uses the group's speeds.
+
+### Unit Frames
+- Portrait choices are now **None**, **2D** and **Class Icon**. The picture was called 3D before; it is the same picture.
+- Boss frames: **Portrait** is now a None / 2D choice. It's hidden in the ring styles.
+- With Forever Faces installed, the ring's dark disc hides on 2D portraits, so its 3D faces show again.
+- Ring styles: the level disc shows the number only ("21", not "21+"). The ring's dragon and star already show elite and rare. By tinker-n-tailor.
+
+### Minimap
+- **Group Finder Icon** only shows while you're in a queue, listed in the group finder or in a battleground, like Blizzard's eye. Edit Mode still shows it.
+
+### Chat
+- Tabs only glow for messages people write. NPC lines, loot and system messages no longer light a tab.
+- The glow is softer.
+
+### Bags & Looting
+- The Loot Rolls preview in the settings uses your **Frame Opacity**, the thin border and FlareUI's language. By Nico-Mayer.
+
+### Performance
+- Less repeated work in the action bars, buff reminders (most in raids), the damage meter after fights, bags, the quest tracker, proc glows and the loot roll window. By pkejval.
+
+### Translations
+- French: all the 6.6 and 6.7 text is translated. By Braincell1980.
+
+## Fixed
+
+### Action Bars
+- A hidden stance, pet or possess bar no longer leaves a gap in Edit Mode's bar stack after you change forms.
+- Turning **Hide Stance Bar** off (or the Action Bars module off) brings the bar and its Edit Mode box back at once, without a reload.
+- A stance bar you can see always has a box you can click in Edit Mode.
+- Cooldown numbers show above **FlareUI Borders**.
+
+### Bags
+- Cooldown numbers show above the bag slot overlays.
+- Turning Blizzard's **Use Combined Bags** back on keeps FlareUI's combined backpack.
+
+### Buff Reminders
+- **Ignore Members Out of Range** now works. Outside fights, members past follow distance (about 28 yards) don't count as missing a buff.
+
+### Minimap
+- Clicking the **Group Finder Icon** opens the group finder again. By tinker-n-tailor.
+
+### Other
+- Player cast bar: it draws above the resource bars.
+- World map: with Leatrix Maps loaded, FlareUI no longer moves the world map or restyles its coordinates. Leatrix Maps does both.
+- Quest tracker in Gamepad mode: clicking a quest no longer shows an error. The quest log opens on that quest the next time you open it with your controller, and the D-pad scrolls the tracker.
+
 # FlareUI 6.7
 
 **Restart the game fully after updating** (not just /reload): this version adds new files.
@@ -150,27 +278,3 @@ Bankers and vendors stop making small talk, full bags make room for your loot, a
 - Cooldown Manager: with **Skin Cooldown Manager** on, the Utility icons' border now matches the Essential icons'.
 - Mail Address Book: **Your Characters** fills in the first and last name. Each alt shows its full name after you log in on it once.
 - Unit frames: "Ghost" is now translated.
-
-# FlareUI 6.4.1
-
-A round of fixes from your reports, plus one small option for poison users.
-
-## New
-- Buff Reminders › When and Where: **On Mouseover** is a new **Where** choice for Class Buffs, Weapon Buffs, Pets and Consumables.
-  - Those icons stay hidden until you point at the reminder row.
-  - They can still be clicked, and they don't play the reminder sound.
-
-## Changed
-- Gamepad mode: the chat uses Blizzard's own tabs.
-- Raid frames: with **Groups** set to Columns, **Growth** is back, as From the Middle, Right or Left.
-- Meters: hovering the meter while it fades holds it in place. Moving away lets the fade finish.
-- Minimap: while OneForAll's **Collect minimap buttons** is on, FlareUI leaves addon buttons on the minimap for it.
-
-## Fixed
-- Gamepad mode: closing a chat box with Esc no longer breaks the controller.
-- Player cast bar: **Latency Zone** shows each cast's real delay, not the game's slow network average.
-- Action bars: buttons no longer flash as the global cooldown ends on bars with a **Visibility** or a **Fade Group**.
-
----
-
-Older versions (6.4 and before): [CHANGELOG-history.md](CHANGELOG-history.md).

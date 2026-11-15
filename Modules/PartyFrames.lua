@@ -416,6 +416,7 @@ local function UpdateHealth(f, glide)
     local bar = f.Health
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     ns.SetBarValue(bar, UnitHealth(unit), glide and st and st.smoothBars and not UnitIsDead(unit))
+    K.SetDamageTrail(f.DamageTrail, unit, glide, st and st.damageTrail)
     -- (a plain health change has the same colour, but for a hostile tile going grey when tapped)
     if not glide or (f.ctx and f.ctx.hostile) then bar:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn(st))) end
 
@@ -752,15 +753,19 @@ local function UpdateThreat(f)
     if f.ringKind and ns.UFRing then ns.UFRing.UpdateThreat(f) end
 end
 
+-- "3d" is the stored name of the 2D picture (party and boss tiles). Edit Mode and the settings
+-- samples show yours.
 local function UpdatePortrait(f)
     local portrait = f.Portrait
     local st = TS(f)
     local mode = (not RaidTile(f) and st and st.portrait) or "none"
+    if mode == "model" then mode = "3d" end   -- (11-15) the dropped 3D model draws as 2D
     -- the ring always holds a portrait
     if f.ringKind and mode == "none" then mode = "3d" end
     if mode == "none" then portrait:Hide() return end
-    local unit = (UnitExists(f.fuiUnit) and not IsEditing()) and f.fuiUnit or "player"
+    local unit = (UnitExists(f.fuiUnit) and not IsEditing() and not f.fuiSample) and f.fuiUnit or "player"
     local tex = portrait.Tex
+    if ns.UFRing and ns.UFRing.SyncBack then ns.UFRing.SyncBack(f, mode) end
     local class
     if mode == "class" then
         local isPlayer = UnitIsPlayer(unit)
@@ -1722,6 +1727,7 @@ local function LayoutMember(f)
     K.SetBarBackground(f.Health, bgOpacity)
     K.SetBarBackground(f.Power, bgOpacity)
     LayoutHealClip(f)
+    K.PlaceDamageTrail(f.DamageTrail, Mirrored(f, true))
     LayoutTexts(f)
     LayoutIcons(f)
     if f.Cast then
@@ -2276,6 +2282,7 @@ ApplyPreview = function(f)
     end
     f.Health:SetMinMaxValues(0, 1)
     f.Health:SetValue(data.health or 1)
+    K.SampleDamageTrail(f.DamageTrail, data.health or 1, st.damageTrail and not data.dead)
     if data.rgb then
         f.Health:SetStatusBarColor(data.rgb[1], data.rgb[2], data.rgb[3])
     elseif ns.ClassColorsOn(st) then
@@ -2526,6 +2533,8 @@ local function BuildTile(f, unit)
     f.HealClip, f.HealBar, f.AbsorbBar = clip, heal, absorb
     f.ShieldGlow = K.CreateShieldGlow(f.Health, clip)
     f.OverAbsorb = K.CreateOverAbsorb(f.Health, clip)
+    -- Damage Trail: in the heal clip, under the heals (UnitFrames.lua UF.CreateDamageTrail)
+    f.DamageTrail = K.CreateDamageTrail(f.Health, clip)
     if CreateUnitHealPredictionCalculator then
         local ok, calc = pcall(CreateUnitHealPredictionCalculator)
         if ok and calc then f.HealCalc = calc end
@@ -2824,12 +2833,14 @@ local function BuildSettings()
           minValue = 36, maxValue = 120, valueStep = 1,
           get = function() local st = S(); return st and st.ringSize or (ns.UFRing and ns.UFRing.DefaultSize("party")) or 80 end,
           set = setS("ringSize"), hidden = function() return not RingKind({}) or onPlate() end },
-        -- the ring always holds a portrait (no None; 3D by default)
+        -- the ring always holds a portrait (no None; 2D by default)
+        -- "3d" is the stored name of the 2D picture (kept for saved setups)
         { name = L["Portrait"], kind = LEM.SettingType.Dropdown, default = ringPortrait and "3d" or D.portrait or "none",
-          values = ringPortrait and { { text = L["3D"], value = "3d", isRadio = true }, { text = L["Class Icon"], value = "class", isRadio = true } }
-              or { { text = L["None"], value = "none", isRadio = true }, { text = L["3D"], value = "3d", isRadio = true }, { text = L["Class Icon"], value = "class", isRadio = true } },
+          values = ringPortrait and { { text = L["2D"], value = "3d", isRadio = true }, { text = L["Class Icon"], value = "class", isRadio = true } }
+              or { { text = L["None"], value = "none", isRadio = true }, { text = L["2D"], value = "3d", isRadio = true }, { text = L["Class Icon"], value = "class", isRadio = true } },
           get = function()
               local v = getS("portrait")()
+              if v == "model" then return "3d" end   -- (11-15) the dropped 3D model
               if ringPortrait and (v == nil or v == "none") then return "3d" end
               return v
           end,
@@ -2851,6 +2862,8 @@ local function BuildSettings()
         { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The frame fades while the unit is out of range."],
           get = function() return getS("rangeCheck")() ~= false end, set = setS("rangeCheck") },
+        -- (11-15, HyonD)
+        K.DamageTrailSetting(getS("damageTrail"), setS("damageTrail")),
     })
 
     -- buffs, debuffs and dispel icons never share a place: clashing places grey out

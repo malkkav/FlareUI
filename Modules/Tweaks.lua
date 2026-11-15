@@ -286,8 +286,9 @@ end
 
 local function SetupMovableFrame(name)
     if moveSuspended or moveFrames[name] or MOVE_EXCLUDED[name] then return end
-    -- OpenMap places and scales the map itself, and puts it back whenever anything else changes it
-    if name == "WorldMapFrame" and C_AddOns.IsAddOnLoaded("OpenMap") then return end
+    -- OpenMap and Leatrix Maps place and scale the map themselves, and put it back whenever anything
+    -- else changes it
+    if name == "WorldMapFrame" and (C_AddOns.IsAddOnLoaded("OpenMap") or C_AddOns.IsAddOnLoaded("Leatrix_Maps")) then return end
     local frame = _G[name]
     if type(frame) ~= "table" or not frame.GetObjectType or not frame.StartMoving then return end
     -- a forbidden window (the shop) can't be touched at all

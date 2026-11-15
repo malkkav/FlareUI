@@ -75,7 +75,14 @@ local view = setmetatable({}, { __index = function(_, key)
     local db = GetDb()
     if not db then return nil end
     if FIXED[key] ~= nil then return FIXED[key] end
-    if key == "portrait" then return db.portrait and "3d" or "none" end
+    -- (11-15) Portrait: None / 2D ("3d"); the old switch saved true / false, and the dropped 3D model
+    -- ("model") draws as 2D
+    if key == "portrait" then
+        local v = db.portrait
+        if v == "model" then return "3d" end
+        if type(v) == "string" then return v end
+        return v and "3d" or "none"
+    end
     if key == "icons" then
         ICONS.raidIcon.shown = db.raidIcon ~= false
         return ICONS
@@ -343,13 +350,17 @@ local function BuildSettings()
         { name = L["Mirror Bars"], kind = LEM.SettingType.Checkbox, default = D.mirror ~= false,
           get = function() return get("mirror")() ~= false end, set = set("mirror"),
           desc = L["Laid out like the target frame: portrait on the right, bars filling from the right. In FlareUI and Forever Style, only the bars flip."] },
-        -- the ring always has a portrait
-        { name = L["Portrait"], kind = LEM.SettingType.Checkbox, default = D.portrait or false, get = get("portrait"), set = set("portrait"),
-          hidden = RingStyle },
+        -- None / 2D; the ring always has a (2D) portrait, so the row hides in the ring styles
+        { name = L["Portrait"], kind = LEM.SettingType.Dropdown, default = "none",
+          values = { { text = L["None"], value = "none", isRadio = true }, { text = L["2D"], value = "3d", isRadio = true } },
+          get = function() return view.portrait end,
+          set = set("portrait"), hidden = RingStyle },
         -- (in Frame since 6.3.3: it changes how the frame behaves, not how it looks)
         { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The frame fades while the unit is out of range."],
           get = function() return get("rangeCheck")() ~= false end, set = set("rangeCheck") },
+        -- (11-15, HyonD)
+        K.DamageTrailSetting(get("damageTrail"), set("damageTrail")),
     })
 
     Section("Look", {
@@ -454,6 +465,18 @@ end
 --------------------------------------------------
 function BF:Refresh()
     Refresh()
+end
+
+-- The boss frames' default spot and their holder's height, for frames that start where they do
+-- (FlagCarriers.lua); works with the boss frames off too
+function BF.DefaultSpot()
+    local base = RingStyle() and ns.UFRing.TilePosition("boss") or BASE_POSITION
+    local h = holder and holder:GetHeight()
+    if not (h and h > 1) and K and Tile then
+        local ok, _, step = pcall(Step)
+        if ok and step then h = MAX_BOSSES * step - (view.spacing or 14) end
+    end
+    return base.point, base.x, base.y, h
 end
 
 function BF:ShouldLoad()

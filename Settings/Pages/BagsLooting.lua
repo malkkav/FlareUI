@@ -46,8 +46,19 @@ S:Row{ key = "bl.bagUncollected", half = true, tab = "bags", path = "tweaks.bagU
 S:Row{ key = "bl.petFood", half = true, tab = "bags", path = "tweaks.petFood", apply = Refresh }
 
 -- BAGS: tools ------------------------------------
--- Category Filters: the filter button and drawer by the search box (Bags.lua 4b)
-S:Row{ key = "bl.bagFilters", half = true, tab = "bags", path = "tweaks.bagFilters", disabled = BagAddon,
+-- Category Filters (11-15, issue #26): Off, Drawer (a filter button and drawer by the search box) or
+-- Buttons (the four in a row in a wide combined backpack, else the drawer); Bags.lua 4b. A dropdown,
+-- so a full row on top; the two switches below pair up. The old switch saved true: read as Drawer.
+S:Row{ key = "bl.bagFilters", kind = "choice", tab = "bags", path = "tweaks.bagFilters", disabled = BagAddon,
+    choices = { "off", "drawer", "buttons" },
+    get = function()
+        local v = S:GetPath("tweaks.bagFilters")
+        if v == true or v == "drawer" then return "drawer" end
+        if v == "buttons" then return "buttons" end
+        return "off"
+    end,
+    set = function(v) S:SetPath("tweaks.bagFilters", v) end,
+    resetValue = function() return "off" end,
     apply = function() if ns.Bags and ns.Bags.Filter then ns.Bags.Filter.Refresh() end end }
 S:Row{ key = "bl.delete", half = true, tab = "bags", path = "tweaks.autoDelete", apply = Refresh }
 -- the bags open and close with the character window (Bags.lua 4c; the bank and guild bank always do)
@@ -77,7 +88,7 @@ S:Row{ key = "bl.lootFeedPosition", kind = "choice", tab = "looting", parent = "
     choices = { "cursor", "placed" }, disabled = NoFeed,
     apply = function() if ns.LootFeed and ns.LootFeed.Refresh then ns.LootFeed:Refresh() end end }
 S:Row{ key = "bl.lootFeedAlign", kind = "choice", tab = "looting", parent = "bl.lootFeed", path = "tweaks.lootFeedAlign",
-    choices = { "left", "right" }, disabled = NoFeed }
+    choices = { "left", "center", "right" }, disabled = NoFeed }
 
 -- FONTS: the bag icons' text and the loot feed's lines (live)
 S:FontRows{ module = "bl", tab = "fonts", section = "bl.fonts", fonts = {

@@ -204,6 +204,31 @@ end
 -- and its thickness. Neighbouring buttons' borders met in the gap between them at 3 px out.
 local FLARE_BORDER_OUT, FLARE_BORDER_EDGE = 0, 16
 
+-- (11-15, a player's report) the cooldown numbers are drawn by the cooldown frame, which sits under the
+-- border, so the border hid part of them and long ones ("20 min") slid under the next button's border.
+-- The numbers move to a frame of ours made on the cooldown frame (shown and hidden with it), above every
+-- button's border and just under the hotkey and count texts; the swipe stays under the border.
+function ActionBars.LiftCountdown(button, on)
+    local cd = button.cooldown
+    local fs = cd and cd.GetCountdownFontString and cd:GetCountdownFontString()
+    if not fs then return end
+    if on then
+        local lift = button.FlareUI_CountdownLift
+        if not lift then
+            lift = CreateFrame("Frame", nil, cd)
+            lift:SetAllPoints(cd)
+            button.FlareUI_CountdownLift = lift
+        end
+        local level = button:GetFrameLevel() + 3
+        local texts = button.TextOverlayContainer
+        if texts and texts:GetFrameLevel() - 1 > level then level = texts:GetFrameLevel() - 1 end
+        lift:SetFrameLevel(level)
+        if fs:GetParent() ~= lift then fs:SetParent(lift) end
+    elseif button.FlareUI_CountdownLift and fs:GetParent() ~= cd then
+        fs:SetParent(cd)
+    end
+end
+
 local function SkinBorder(button, on)
     local icon = button.icon or button.Icon
     if not (icon and button.NormalTexture) then return end
@@ -227,10 +252,12 @@ local function SkinBorder(button, on)
         -- over the cooldown swipe, under the texts' frame
         b:SetFrameLevel(button:GetFrameLevel() + 2)
         b:Show()
+        ActionBars.LiftCountdown(button, true)
         button.NormalTexture:SetAlpha(0)
         button.FlareUI_Bordered = true
     elseif button.FlareUI_Bordered then
         if button.FlareUI_Border then button.FlareUI_Border:Hide() end
+        ActionBars.LiftCountdown(button, false)
         button.NormalTexture:SetAlpha(1)
         button.FlareUI_Bordered = nil
     end

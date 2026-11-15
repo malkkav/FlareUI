@@ -45,16 +45,14 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }   -- 11-10 regr
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["bl.font.lootRolls"] = "6.7",
-    ["bl.lootRolls"] = "6.7",
-    ["bl.lootRollsOpacity"] = "6.7",
-    ["br.ignoreRange"] = "6.7",
-    ["mm.bagButtonSize"] = "6.7",
-    ["mm.finderEye"] = "6.7",
-    ["qol.keyDown"] = "6.7",
-    ["qt.autoButtons"] = "6.7",
-    ["qt.focusedFirst"] = "6.7",
-    ["rb.timer"] = "6.7",
+    ["ch.fadeIn"] = "6.8",
+    ["ch.fadeOut"] = "6.8",
+    ["ch.unreadGlow"] = "6.8",
+    ["dm.fadeIn"] = "6.8",
+    ["dm.fadeOut"] = "6.8",
+    ["qt.keepFocus"] = "6.8",
+    ["uf.flagCarriers"] = "6.8",
+    ["uf.party.damageTrail"] = "6.8",
 }
 
 --------------------------------------------------

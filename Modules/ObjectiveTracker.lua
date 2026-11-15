@@ -601,8 +601,45 @@ local function OpenToDetails(questID)
     end
 end
 
+-- The Gamepad UI: FlareUI must not open the quest log itself (a panel opened from addon code
+-- taints the pad's binding stack), so a click picks the quest and the details show when the
+-- player opens the quest log the pad's own way (the radial's Quests & Maps, or its key). Only
+-- the details page changes then, a moment after Blizzard opened the map: nothing is shown or
+-- registered from FlareUI's call. Out of fights only; a pick older than a minute is dropped.
+local PAD_PICK_SECONDS = 60
+
+function OT.PickForQuestLog(questID)
+    if InCombatLockdown() then
+        if UIErrorsFrame then UIErrorsFrame:AddMessage(L["The quest log can't be opened from the tracker in combat."], 1, 0.25, 0.25) end
+        return
+    end
+    state.padPick, state.padPickAt = questID, GetTime()
+    if UIErrorsFrame then UIErrorsFrame:AddMessage(L["Open your quest log to read this quest."], 1, 0.82, 0) end
+    if OT.padPickHooked or not WorldMapFrame then return end
+    OT.padPickHooked = true
+    WorldMapFrame:HookScript("OnShow", function()
+        C_Timer.After(0, function()
+            local id, at = state.padPick, state.padPickAt
+            state.padPick, state.padPickAt = nil, nil
+            if not id or GetTime() - (at or 0) > PAD_PICK_SECONDS or InCombatLockdown() then return end
+            if not (WorldMapFrame:IsShown() and QuestMapFrame and QuestMapFrame_ShowQuestDetails) then return end
+            if not C_QuestLog.GetLogIndexForQuestID(id) then return end
+            if QuestMapFrame.SetDisplayMode and QuestLogDisplayMode then QuestMapFrame:SetDisplayMode(QuestLogDisplayMode.Quests) end
+            QuestMapFrame_ShowQuestDetails(id)
+        end)
+    end)
+end
+
 -- A finished auto-complete quest completes on the click, as on Blizzard's tracker
 local function OpenQuest(questID)
+    if ns.IsGamepadUI() then
+        local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
+        local info = logIndex and C_QuestLog.GetInfo(logIndex)
+        -- completing one opens a quest window: still refused here, as before
+        if info and info.isAutoComplete and C_QuestLog.IsComplete(questID) then CanOpenPanels() return end
+        OT.PickForQuestLog(questID)
+        return
+    end
     if not CanOpenPanels() then return end
     local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
     local info = logIndex and C_QuestLog.GetInfo(logIndex)
@@ -628,7 +665,77 @@ end
 
 local function ToggleFocus(questID)
     local focused = C_SuperTrack.GetSuperTrackedQuestID() == questID
+    if OT.KeepFocusManual then OT.KeepFocusManual() end   -- the player's own choice: Keep Quest Focus leaves it
     C_SuperTrack.SetSuperTrackedQuestID(focused and 0 or questID)
+end
+
+-- Questie's per-quest Hide Icons / Show Icons (11-15, Archy), in our quest menu while Questie runs.
+-- Questie keeps the state (quest.HideIcons + Questie.db.char.TrackerHiddenQuests); this does what its
+-- own tracker menu does. Every Questie call is guarded: an update on its side only drops the entry.
+do
+    local function Module(name)
+        local loader = _G.QuestieLoader
+        if type(loader) ~= "table" then return end
+        local mods = rawget(loader, "_modules")
+        if type(mods) == "table" then   -- read only: ImportModule would create a missing module
+            local m = mods[name]
+            return type(m) == "table" and m or nil
+        end
+        if type(loader.ImportModule) == "function" then
+            local ok, m = pcall(loader.ImportModule, loader, name)
+            if ok and type(m) == "table" then return m end
+        end
+    end
+
+    local function HiddenList()
+        local q = _G.Questie
+        local qdb = type(q) == "table" and rawget(q, "db")
+        local char = type(qdb) == "table" and qdb.char
+        local list = type(char) == "table" and char.TrackerHiddenQuests
+        return type(list) == "table" and list or nil
+    end
+
+    local function GetQuest(questID)
+        local qdb = Module("QuestieDB")
+        if not (qdb and type(qdb.GetQuest) == "function") then return end
+        local ok, quest = pcall(qdb.GetQuest, questID)
+        if ok and type(quest) == "table" then return quest end
+    end
+
+    local function Redraw(show)
+        local qq = Module("QuestieQuest")
+        if not qq then return end
+        if type(qq.ToggleQuestNotes) == "function" then
+            pcall(qq.ToggleQuestNotes, show)
+        elseif type(qq.ToggleNotes) == "function" then   -- older Questie
+            pcall(qq.ToggleNotes, qq, show)
+        end
+    end
+
+    function OT.AddQuestieIconsButton(root, questID)
+        if not (questID and HiddenList() and Module("QuestieQuest")) then return end
+        local quest = GetQuest(questID)
+        if not quest then return end
+        local hidden = quest.HideIcons and true or false
+        -- Questie offers Hide only for a quest it can show on the map; Show always (to undo)
+        if not hidden then
+            local elig = Module("TrackerMapEligibility")
+            if elig and type(elig.RefreshAndGetCapabilities) == "function" then
+                local ok, _, caps = pcall(elig.RefreshAndGetCapabilities, questID)
+                if ok and type(caps) == "table" and not caps.canFocusQuest then return end
+            end
+        end
+        -- our own wording: plain "Hide Icons" doesn't say whose icons in FlareUI's menu
+        local label = hidden and L["Show Questie Icons"] or L["Hide Questie Icons"]
+        root:CreateButton(label, function()
+            local list, q = HiddenList(), GetQuest(questID)
+            if not (list and q) then return end
+            local hide = not q.HideIcons
+            q.HideIcons = hide or nil
+            list[questID] = hide or nil
+            Redraw(not hide)
+        end)
+    end
 end
 
 -- Auto-Collapse Completed: a finished or failed quest with no timer folds until the player opens it
@@ -675,6 +782,7 @@ local function ShowQuestMenu(owner, questID)
             pins[questID] = (not pins[questID]) or nil
             OT:RequestRender()
         end)
+        OT.AddQuestieIconsButton(root, questID)
         root:CreateButton(L["Wowhead Link"], function()
             ns.ShowDialog("FLAREUI_QUEST_LINK", nil, ("https://www.wowhead.com/forever/quest=%d/"):format(questID))
         end)
@@ -1812,6 +1920,66 @@ function OT:QuestAccepted(questID)
     if questID then state.arriving[questID] = GetTime() end
 end
 
+-- Keep Quest Focus (11-15, Archy): when the game focuses a quest the moment it is accepted, the focus
+-- goes back to the quest that had it (or to none). Focus the player sets by hand stays. The focus can
+-- change just before or just after QUEST_ACCEPTED, so both orders are handled.
+do
+    local WINDOW = 2          -- seconds after the accept in which a focus on that quest counts as the game's
+    local cur, curAt = nil, 0 -- quest focused now (0 none) and when it got the focus
+    local before = 0          -- quest focused before that
+    local pending             -- { quest, prev, untilAt } between the accept and the focus
+
+    local function FocusNow()
+        local id = C_SuperTrack.GetSuperTrackedQuestID()
+        return type(id) == "number" and id or 0
+    end
+
+    local function Wanted()
+        local db = GetDb()
+        return db and db.keepFocus
+    end
+
+    -- a frame later, so Blizzard (and Questie) finish their own focus handling first
+    local function Restore(questID, prev)
+        C_Timer.After(0, function()
+            if not Wanted() or FocusNow() ~= questID then return end
+            C_SuperTrack.SetSuperTrackedQuestID(prev or 0)
+        end)
+    end
+
+    function OT.KeepFocusManual()
+        pending = nil
+    end
+
+    function OT.KeepFocusAccepted(questID)
+        if not questID then return end
+        if cur == nil then cur = FocusNow() end
+        if not Wanted() then pending = nil; return end
+        local now = GetTime()
+        if cur == questID and now - curAt < 1 then
+            -- the focus came first: hand it back to the one before
+            pending = nil
+            Restore(questID, before)
+        elseif cur ~= questID then
+            pending = { quest = questID, prev = cur, untilAt = now + WINDOW }
+        end
+    end
+
+    function OT.KeepFocusChanged()
+        local now, id = GetTime(), FocusNow()
+        if cur == nil then cur = id end
+        if id ~= cur then before, cur, curAt = cur, id, now end
+        local p = pending
+        if not p then return end
+        if now > p.untilAt then
+            pending = nil
+        elseif id ~= 0 and id == p.quest then
+            pending = nil
+            if Wanted() then Restore(id, p.prev) end
+        end
+    end
+end
+
 -- Its lines slide off first, and the redraw that closes the gap waits for them
 function OT:QuestTurnedIn(questID)
     if not questID then return end
@@ -2367,6 +2535,64 @@ function Build.ScrollBar(window)
     end
 end
 
+-- delta: wheel steps, up is positive
+function OT.ScrollBy(delta)
+    if not scroll then return end
+    -- in a fight the quest item buttons cannot move with the list: it holds still while they show
+    if InCombatLockdown() and (state.itemsShown or 0) > 0 then return end
+    local max = math_max(0, content:GetHeight() - scroll:GetHeight())
+    scroll:SetVerticalScroll(math_min(max, math_max(0, scroll:GetVerticalScroll() - delta * C.SCROLL_STEP)))
+end
+
+-- Gamepad scroll: in the Gamepad UI, while the cursor (a Steam Deck trackpad, or the pad's
+-- cursor) rests on the list, D-pad Up / Down scroll it, and held they keep going. The right
+-- stick's up / down do the same when the game sends them as buttons. A listener of FlareUI's own
+-- takes those buttons only then, passes every other button on, and goes off when the cursor
+-- leaves or hides, the list fits, Edit Mode opens or a fight starts (never on in a fight).
+local PAD_SCROLL = { PADDUP = 1, PADRSTICKUP = 1, PADDDOWN = -1, PADRSTICKDOWN = -1 }
+local PAD_REPEAT_DELAY, PAD_REPEAT_RATE = 0.35, 0.08
+
+function OT.SetPadScroll(on)
+    local f = OT.padScroll
+    if not f or (f.listening or false) == on then return end
+    if on and InCombatLockdown() then return end
+    f.listening, f.held = on, nil
+    pcall(f.EnableGamePadButton, f, on)
+    if not InCombatLockdown() then f:SetPropagateKeyboardInput(true) end
+end
+
+function OT.BuildPadScroll()
+    if OT.padScroll or not ns.IsGamepadUI() then return end
+    local f = CreateFrame("Frame", nil, holder)
+    f.smartNavigationIgnored = true
+    OT.padScroll = f
+    f:SetScript("OnGamePadButtonDown", function(self, key)
+        local dir = PAD_SCROLL[key]
+        if not InCombatLockdown() then self:SetPropagateKeyboardInput(not dir) end
+        if not dir then return end
+        OT.ScrollBy(dir)
+        self.held, self.nextAt = dir, GetTime() + PAD_REPEAT_DELAY
+    end)
+    f:SetScript("OnGamePadButtonUp", function(self, key)
+        if PAD_SCROLL[key] then self.held = nil end
+        if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+    end)
+    local elapsed = 0
+    f:SetScript("OnUpdate", function(self, dt)
+        if self.held and GetTime() >= self.nextAt then
+            self.nextAt = GetTime() + PAD_REPEAT_RATE
+            OT.ScrollBy(self.held)
+        end
+        elapsed = elapsed + dt
+        if elapsed < 0.1 then return end
+        elapsed = 0
+        OT.SetPadScroll(not InCombatLockdown() and not state.editMode and not Char().minimized
+            and IsCursorVisible() and scroll:IsVisible() and scroll:IsMouseOver()
+            and content:GetHeight() > scroll:GetHeight() + 1)
+    end)
+    f:SetScript("OnHide", function() OT.SetPadScroll(false) end)
+end
+
 local function CreateFrames()
     holder = CreateFrame("Frame", "FlareUI_ObjectiveTracker", UIParent, "BackdropTemplate")
     holder:SetFrameStrata("LOW")
@@ -2417,18 +2643,14 @@ local function CreateFrames()
     content.Highlight:SetColorTexture(1, 1, 1, 0.04)
     content.Highlight:Hide()
     scroll:EnableMouseWheel(true)
-    scroll:SetScript("OnMouseWheel", function(self, delta)
-        -- in a fight the quest item buttons cannot move with the list: it holds still while they show
-        if InCombatLockdown() and (state.itemsShown or 0) > 0 then return end
-        local max = math_max(0, content:GetHeight() - self:GetHeight())
-        self:SetVerticalScroll(math_min(max, math_max(0, self:GetVerticalScroll() - delta * C.SCROLL_STEP)))
-    end)
+    scroll:SetScript("OnMouseWheel", function(_, delta) OT.ScrollBy(delta) end)
     scroll:SetScript("OnVerticalScroll", function()
         OT:UpdateScrollBar()
         OT:UpdateItemButtons()
     end)
 
     Build.ScrollBar(holder)
+    OT.BuildPadScroll()
 
     -- the lone "+" of Minimize Style "button"
     miniButton = CreateBoxButton(UIParent, "FlareUI_ObjectiveTrackerButton", C.LONE)
@@ -2487,6 +2709,7 @@ function OT:Init()
         "QUEST_TURNED_IN",
     }) do events:RegisterEvent(e) end
     events:RegisterUnitEvent("UNIT_QUEST_LOG_CHANGED", "player")
+    OT.KeepFocusChanged()   -- Keep Quest Focus: note the focus we start with
     events:SetScript("OnEvent", function(_, event, arg1)
         if event == "PLAYER_ENTERING_WORLD" then
             ParkBlizzardTracker()
@@ -2502,6 +2725,7 @@ function OT:Init()
             if state.itemsDirty then OT:UpdateItemButtons() end
             return
         elseif event == "PLAYER_REGEN_DISABLED" then
+            OT.SetPadScroll(false)
             OT:CheckContext()
             OT:FreezeForCombat()
             return
@@ -2523,6 +2747,9 @@ function OT:Init()
             state.seen[arg1] = nil
         elseif event == "QUEST_ACCEPTED" then
             OT:QuestAccepted(arg1)
+            OT.KeepFocusAccepted(arg1)
+        elseif event == "SUPER_TRACKING_CHANGED" then
+            OT.KeepFocusChanged()
         elseif event == "QUEST_TURNED_IN" then
             OT:QuestTurnedIn(arg1)
         end

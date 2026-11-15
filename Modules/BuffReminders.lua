@@ -890,7 +890,14 @@ local function IsReachable(unit)
         local db = GetDb()
         if db and db.ignoreRange and UnitInRange then
             local ok, inRange, checked = pcall(UnitInRange, unit)
-            if ok and Readable(inRange) and Readable(checked) and checked and not inRange then return false end
+            if ok and Readable(inRange) and Readable(checked) then
+                if checked and not inRange then return false end
+            elseif CheckInteractDistance and not InCombatLockdown() then
+                -- (11-15, Sile) Forever keeps UnitInRange secret: the follow distance (about 28 yards,
+                -- near a buff's 30) instead, out of a fight; an answer it hides still counts as in range
+                local ok2, near = pcall(CheckInteractDistance, unit, 4)
+                if ok2 and Readable(near) and near == false then return false end
+            end
         end
     end
     return true
@@ -1077,12 +1084,24 @@ local function WeaponFix(entry)
     return nil, nil, { none = true }
 end
 
--- the blessing a member should have, among the ones you know
+-- the blessing a member should have, among the ones you know: the one picked for that player (by
+-- GUID, the right-click menu's Group Members), else for their class (By Class), else the one for
+-- everyone (Automatic: Might for the fighters, Wisdom for the rest), else the first you know
+-- (11-15) a pick you no longer know falls through to the next one
 local function BlessingFor(entry, unit)
     local db = GetDb() or {}
+    local players, classes = db.blessingPlayer, db.blessingClass
+    if players and next(players) then
+        local guid = UnitGUID(unit)
+        local pick = Readable(guid) and guid and players[guid]
+        if pick and pick.key and entry.blessings[pick.key] then return entry.blessings[pick.key] end
+    end
+    local _, class = UnitClass(unit)
+    if not Readable(class) then class = nil end
+    local byClass = class and classes and classes[class]
+    if byClass and entry.blessings[byClass] then return entry.blessings[byClass] end
     local wanted = db.blessing or "auto"
     if wanted == "auto" then
-        local _, class = UnitClass(unit)
         wanted = MIGHT_CLASSES[class] and "might" or "wisdom"
     end
     if entry.blessings[wanted] then return entry.blessings[wanted] end
@@ -1221,7 +1240,9 @@ local units = {}
 -- reminder's own: a blessing or a pet's), and whether nothing is missing, only running out
 local function Check(entry, before)
     local def = entry.def
-    if (def.group or def.blessing) and (GetDb() or {}).onlyProvider and OtherProvider() then return 0, 0 end
+    -- (11-15) never for blessings: two paladins split them, so another paladin doesn't make yours
+    -- needless; the count below only takes members missing the one they should get from you
+    if def.group and not def.blessing and (GetDb() or {}).onlyProvider and OtherProvider() then return 0, 0 end
     -- the role filters (When It Shows): your group role hides the group buffs, never your own
     if def.group or def.blessing then
         local db = GetDb() or {}
@@ -1592,6 +1613,7 @@ function BR.Menu(owner)
             root:CreateDivider()
             root:CreateTitle(L["Blessing"])
             for _, choice in ipairs(BR.BlessingChoices()) do Radio(choice[2], "blessing", choice[1]) end
+            BR.BlessingSubmenus(root, entry, db)
         elseif entry.def.weapon then
             -- per hand: Last Used, or one you can put on
             local kind = entry.def.weapon
@@ -1946,14 +1968,19 @@ function BR.Update(context)
     BR.ShowFaded(shows, db)
 end
 
--- Fade Speed (Fading section): the row fades in as reminders appear where there were none, and out
--- as the last goes. The icons are secure buttons: the empty row is drawn after the fade, out of a fight
--- only (a fight starting meanwhile leaves it to PLAYER_REGEN_ENABLED's update).
+-- Fade In Speed / Fade Out Speed (Fading section): the row fades in as reminders appear where there
+-- were none, and out as the last goes. The icons are secure buttons: the empty row is drawn after the
+-- fade, out of a fight only (a fight starting meanwhile leaves it to PLAYER_REGEN_ENABLED's update).
+-- 11-15: fadeIn / fadeOut replaced the one fadeSpeed; an unset one reads the old fadeSpeed.
+function BR.FadeSpeed(db, field)
+    return (db and (db[field] or db.fadeSpeed)) or "instant"
+end
 local fadeTimer
 function BR.ShowFaded(list, db)
-    local t = ns.FadeTime and ns.FadeTime(db.fadeSpeed) or 0
-    local target = (db.alpha or 100) / 100
     local had = BR.shownCount or 0
+    local rising = #list > 0 and had == 0
+    local t = ns.FadeTime and ns.FadeTime(BR.FadeSpeed(db, rising and "fadeIn" or "fadeOut")) or 0
+    local target = (db.alpha or 100) / 100
     BR.shownCount = #list
     if fadeTimer then fadeTimer:Cancel(); fadeTimer = nil end
     if t <= 0 or (ns.EditPreviewing and ns.EditPreviewing()) then
@@ -2071,6 +2098,108 @@ function BR.BlessingChoices()
     return list
 end
 
+-- the blessing menu's By Class and Group Members (11-15, Marcus): each class gets Default (the choice
+-- above) or a blessing you know, each member Class Default or a blessing you know. Members are kept
+-- by GUID (UnitName is the first name only) with the name they had, so a pick lasts across sessions.
+function BR.BlessingSubmenus(root, entry, db)
+    local names = {}
+    for _, choice in ipairs(BR.BlessingChoices()) do names[choice[1]] = choice[2] end
+    -- the blessings you know, plus one picked before that you no longer know (so it shows ticked)
+    local function Picks(current)
+        local list = {}
+        for _, key in ipairs(BLESSING_ORDER) do
+            if entry.blessings[key] or key == current then list[#list + 1] = key end
+        end
+        return list
+    end
+    local function Colored(class, text)
+        local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+        if not c then return text end
+        return ("|cff%02x%02x%02x%s|r"):format(math_floor(c.r * 255), math_floor(c.g * 255), math_floor(c.b * 255), text)
+    end
+    -- the pick, greyed after the name, so the list reads without opening each one
+    local function Suffix(key) return key and ("  |cff999999" .. (names[key] or key) .. "|r") or "" end
+
+    root:CreateDivider()
+    -- By Class: every class, in the game's order
+    local byClass = root:CreateButton(L["By Class"])
+    local classes = CLASS_SORT_ORDER or { "WARRIOR", "PALADIN", "PRIEST", "SHAMAN", "DRUID", "ROGUE", "MAGE", "WARLOCK", "HUNTER" }
+    for _, class in ipairs(classes) do
+        local saved = db.blessingClass and db.blessingClass[class]
+        local label = LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[class] or class
+        local sub = byClass:CreateButton(Colored(class, label) .. Suffix(saved))
+        local function Is(value)
+            return function() return (db.blessingClass and db.blessingClass[class]) == value end
+        end
+        local function Set(value)
+            return function()
+                db.blessingClass = db.blessingClass or {}
+                db.blessingClass[class] = value
+                BR.Update()
+            end
+        end
+        sub:CreateRadio(L["Default"], Is(nil), Set(nil))
+        for _, key in ipairs(Picks(saved)) do sub:CreateRadio(names[key] or key, Is(key), Set(key)) end
+    end
+
+    -- Group Members: the party or raid now (you too), each in its class colour
+    local units = {}
+    if IsInRaid() then
+        for i = 1, GetNumGroupMembers() do units[#units + 1] = "raid" .. i end
+    elseif IsInGroup() then
+        units[1] = "player"
+        for i = 1, 4 do units[#units + 1] = "party" .. i end
+    end
+    local rows = {}
+    for _, unit in ipairs(units) do
+        if UnitExists(unit) then
+            local guid = UnitGUID(unit)
+            local name = ns.UnitDisplayName and ns.UnitDisplayName(unit) or UnitName(unit)
+            if Readable(guid) and guid and Readable(name) and type(name) == "string" then
+                local _, class = UnitClass(unit)
+                rows[#rows + 1] = { guid = guid, name = name, class = Readable(class) and class or nil }
+            end
+        end
+    end
+    local count = 0
+    for _ in pairs(db.blessingPlayer or {}) do count = count + 1 end
+    if #rows == 0 and count == 0 then return end
+    local group = root:CreateButton(L["Group Members"])
+    if #rows > 15 and group.SetScrollMode then group:SetScrollMode(400) end
+    for _, r in ipairs(rows) do
+        local pick = db.blessingPlayer and db.blessingPlayer[r.guid]
+        if pick then pick.name = r.name end   -- the name kept current
+        local sub = group:CreateButton(Colored(r.class, r.name) .. Suffix(pick and pick.key))
+        local function Is(value)
+            return function()
+                local p = db.blessingPlayer and db.blessingPlayer[r.guid]
+                return (p and p.key) == value
+            end
+        end
+        local function Set(value)
+            return function()
+                if value then
+                    db.blessingPlayer = db.blessingPlayer or {}
+                    db.blessingPlayer[r.guid] = { key = value, name = r.name }
+                elseif db.blessingPlayer then
+                    db.blessingPlayer[r.guid] = nil
+                end
+                BR.Update()
+            end
+        end
+        sub:CreateRadio(L["Class Default"], Is(nil), Set(nil))
+        for _, key in ipairs(Picks(pick and pick.key)) do sub:CreateRadio(names[key] or key, Is(key), Set(key)) end
+    end
+    -- every player pick, those not in the group too
+    if count > 0 then
+        if #rows > 0 then group:CreateDivider() end
+        group:CreateButton(L["Clear Player Choices (%d)"]:format(count), function()
+            if db.blessingPlayer then wipe(db.blessingPlayer) end
+            BR.Update()
+        end)
+    end
+end
+
 local function BuildSettings()
     local function get(key, default) return function() local db = GetDb(); return db and db[key] or default end end
     local function set(key)
@@ -2159,11 +2288,18 @@ local function BuildSettings()
         { name = L["Hide While Mounted"], kind = LEM.SettingType.Checkbox, default = false,
           desc = L["No reminders while you ride."],
           get = function() local db = GetDb(); return db and db.hideMounted or false end, set = set("hideMounted") },
-        { name = L["Fade Speed"], kind = LEM.SettingType.Dropdown, default = "instant",
+        -- Fade In Speed and Fade Out Speed (11-15: the one Fade Speed split in two; an unset one reads
+        -- the old fadeSpeed, so nothing changes until a player picks)
+        { name = L["Fade In Speed"], kind = LEM.SettingType.Dropdown, default = "instant",
           values = { { text = L["Instant"], value = "instant", isRadio = true }, { text = L["Fast"], value = "fast", isRadio = true },
                      { text = L["Slow"], value = "slow", isRadio = true } },
-          desc = L["How fast it appears and disappears.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
-          get = get("fadeSpeed", "instant"), set = set("fadeSpeed") },
+          desc = L["How fast it comes back.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
+          get = function() return BR.FadeSpeed(GetDb(), "fadeIn") end, set = set("fadeIn") },
+        { name = L["Fade Out Speed"], kind = LEM.SettingType.Dropdown, default = "instant",
+          values = { { text = L["Instant"], value = "instant", isRadio = true }, { text = L["Fast"], value = "fast", isRadio = true },
+                     { text = L["Slow"], value = "slow", isRadio = true } },
+          desc = L["How fast it fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
+          get = function() return BR.FadeSpeed(GetDb(), "fadeOut") end, set = set("fadeOut") },
         { name = L["Opacity"], kind = LEM.SettingType.Slider, default = 100, minValue = 20, maxValue = 100, valueStep = 5,
           -- plain numbers, as Faded Opacity: "100%" ran past the dialog's edge (11-10)
           get = get("alpha", 100), set = set("alpha") },

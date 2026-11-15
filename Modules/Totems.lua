@@ -180,6 +180,18 @@ local function StyleTotem(button, cd, text, ring)
     end
 end
 
+-- the live totems take clicks unless the samples cover them or Visibility has faded them right out
+-- (Never, or a fade at 0%): an unseen totem can't be right-clicked away (plain buttons, safe in a fight)
+local previewing, faded = false, false
+local function ApplyMouse()
+    local frame = _G.TotemFrame
+    if not frame then return end
+    local on = not previewing and not faded
+    for _, button in ipairs({ frame:GetChildren() }) do
+        if button.EnableMouse then pcall(button.EnableMouse, button, on) end
+    end
+end
+
 -- After Blizzard's Layout the shown buttons go back into the grid
 local active = {}
 local function ArrangeTotems()
@@ -195,6 +207,7 @@ local function ArrangeTotems()
     for _, button in ipairs(active) do
         StyleTotem(button, button.Icon and button.Icon.Cooldown, button.Duration, button.Border)
     end
+    if previewing or faded then ApplyMouse() end
 end
 
 --------------------------------------------------
@@ -261,19 +274,23 @@ local function CreatePreview()
     holder.preview = preview
 end
 
+function TOT.SetFaded(out)
+    out = out and true or false
+    if out == faded then return end
+    faded = out
+    ApplyMouse()
+end
+
 -- shown: Edit Mode; a fight in it brings the live totems back (ns.OnEditFight)
 local function SetPreview(shown)
     if not holder then return end
     shown = shown and ns.EditPreviewing()
     holder.preview:SetShown(shown)
-    -- live totems step aside while the samples show, and can't be right-clicked away unseen
+    previewing = shown and true or false
+    -- live totems step aside while the samples show
     local frame = _G.TotemFrame
-    if frame then
-        frame:SetAlpha(shown and 0 or 1)
-        for _, button in ipairs({ frame:GetChildren() }) do
-            if button.EnableMouse then pcall(button.EnableMouse, button, not shown) end
-        end
-    end
+    if frame then frame:SetAlpha(shown and 0 or 1) end
+    ApplyMouse()
 end
 
 --------------------------------------------------

@@ -263,7 +263,9 @@ local function UpdateShown()
     -- the map too: the Toggle Minimap key hides it and leaves the cluster shown
     -- (11-15, Marcus) ours shows in Edit Mode too. Round style: it sits on Blizzard's eye, which is the one
     -- dragged there, so ours lets the mouse through and follows it while Edit Mode is open
-    local show = Wanted() and MinimapCluster:IsShown() and Minimap:IsShown()
+    -- (11-15, Marcus, GitHub #57) only while Blizzard's eye would show (a queue, a listing, a
+    -- battleground), as Blizzard's; Edit Mode shows it to be placed
+    local show = Wanted() and (InQueue() or Editing()) and MinimapCluster:IsShown() and Minimap:IsShown()
     local follow = show and Editing() and not ns.Minimap.IsSquare()
     button:SetShown(show)
     button:EnableMouse(not follow)
@@ -320,6 +322,9 @@ function Eye.Init()
     QueueStatusButton:HookScript("OnHide", SyncRightClick)
     -- round style: on Blizzard's eye, whose spot Edit Mode sets; it may have none until it first shows
     QueueStatusButton:HookScript("OnShow", Eye.Place)
+    -- ours comes and goes with Blizzard's eye (#57)
+    QueueStatusButton:HookScript("OnShow", UpdateShown)
+    QueueStatusButton:HookScript("OnHide", UpdateShown)
     EventRegistry:RegisterCallback("EditMode.Enter", Eye.Update)
     EventRegistry:RegisterCallback("EditMode.Exit", Eye.Update)
     MinimapCluster:HookScript("OnShow", UpdateShown)

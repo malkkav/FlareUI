@@ -50,12 +50,14 @@ S:Row{
 }
 -- off, Blizzard's cast bar comes back
 Frame("castbar", "unitframes.playerCastbar.enabled", "FlareUI_UF_PlayerCastBar")
--- two columns: Main | Player Cast Bar, Party | Raid, Boss | Target of Target, Target of Focus
+-- two columns: Main | Player Cast Bar, Party | Raid, Boss | Target of Target, Target of Focus | Flag Carriers
 Frame("party", "unitframes.party.enabled", "FlareUI_Party")
 Frame("raid", "unitframes.raid.enabled", "FlareUI_Raid")
 Frame("boss", "unitframes.boss.enabled", "FlareUI_Boss")
 Frame("tot", "unitframes.units.targettarget.enabled", "FlareUI_UF_TargetOfTarget")
 Frame("tof", "unitframes.units.focustarget.enabled", "FlareUI_UF_TargetOfFocus")
+-- (11-15) Blizzard's battleground flag carrier frames, moved in Edit Mode (FlagCarriers.lua)
+Frame("flagCarriers", "unitframes.flagCarriers.enabled", "FlareUI_FlagCarriers")
 
 -- each style keeps its own unit frames setup (UnitFramesRing.lua), loaded on reload
 S:Row{

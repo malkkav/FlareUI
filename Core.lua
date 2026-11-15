@@ -406,6 +406,7 @@ local defaults = {
             -- Frame (Blizzard dark dialog background + the chosen border, tinted ns.BORDER_COLOR)
             borderTexture = "FlareUI Frames",
             opacity = 0.6,
+            unreadGlow = "say,yell,party,raid,guild,whisper,channel",  -- Tab Glow: kinds of lines that light an unseen tab ("none" = none)
 
             -- Edit Box (fixed look: black background + tooltip border tinted ns.BORDER_COLOR)
             editBoxOpacity = 1.0,
@@ -643,6 +644,8 @@ local defaults = {
                 castbar = true, castHeight = 14, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                 threatGlow = true,          -- Threat Glow (Look): the player's threat on the boss
             },
+            -- Flag Carrier Frames (off; Modules/FlagCarriers.lua): Blizzard's battleground flag carrier frames on an Edit Mode frame
+            flagCarriers = { enabled = false, layouts = {} },
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
             playerCastbar = { enabled = true, width = 250, height = 25, texture = "FlareUI Forever", borderTexture = "FlareUI Thin", icon = true, timer = true, queueMark = false, channelTicks = false, pushback = false, latencyZone = true, spellRank = false },
             units = {
@@ -685,7 +688,8 @@ local defaults = {
             elements = VisibilityElements(),
             groups = { { show = "combat,mouseover" }, { show = "combat,mouseover" }, { show = "combat,mouseover" },
                        { show = "combat,mouseover" }, { show = "combat,mouseover" } },
-            fadeSpeed = "instant",      -- instant | fast | slow (ns.FadeTime)
+            fadeSpeed = "instant",      -- instant | fast | slow (ns.FadeTime). (11-15) Fade In / Fade Out Speed read this while
+                                        -- their own fadeIn / fadeOut are unset: no defaults for those, AceDB would fill them
             hideBagBar = false,
             hideMicroMenu = false,
             hidePetBar = false,
@@ -788,7 +792,7 @@ local defaults = {
                 actionBars = "always",
                 other = "always",       -- Everything Else (11-12)
                 auras = "always",       -- every buff and debuff icon's tooltip
-                groupAuras = "never",   -- party and raid aura icons: never takes the mouse (PartyFrames.lua)
+                groupAuras = "always",  -- party and raid aura icons show their tooltip (11-15, Marcus: players got confused with "never", where the icons let the mouse through to the frame; PartyFrames.lua)
             },
         },
 
@@ -832,6 +836,7 @@ local defaults = {
             hideFinished = false,       -- finished objectives leave the list
             completedLast = false,
             focusedFirst = false,       -- Focused Quest First: the focused quest (and its zone) at the top
+            keepFocus = false,          -- Keep Quest Focus: a newly accepted quest gives the focus back
             autoButtons = false,        -- header "!" / "?" for Quality of Life's Auto Accept / Turn-In Quests
             showTags = true,
             wrapText = true,
@@ -860,7 +865,7 @@ local defaults = {
             lootFeedQuality = 0,        -- items below this quality are left out (0 = Poor: all)
             lootFeedMoney = true,       -- money too
             lootFeedPosition = "cursor", -- cursor (starts at the pointer) | placed (the Edit Mode spot)
-            lootFeedAlign = "left",     -- Alignment: left | right (icon on the right, text before it; 11-13)
+            lootFeedAlign = "center",   -- Alignment: left | center (the default since 11-15) | right (icon on the right, text before it; 11-13)
             lootFeedSkills = false,     -- skill-ups too ("Mining 76")
             lootFeedFont = { face = "__global", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             hideFlagCarriers = false,   -- Hide Clutter > Flag Carrier Frames (Movers.lua): CVar showArenaEnemyFrames
@@ -878,7 +883,7 @@ local defaults = {
             bagButtons = false,         -- bag slot buttons down the combined backpack's side
             bagKeyring = false,         -- Keyring in Backpack: the keyring as a section of the combined backpack
             bagReagent = false,         -- Crafting Bag in Backpack: the crafting (reagent) bag there too
-            bagFilters = false,         -- Category Filters: a filter button and drawer by the bag search (Bags.lua 4b)
+            bagFilters = "off",         -- Category Filters: "off" | "drawer" (button + drawer) | "buttons" (row in a wide combined backpack) (Bags.lua 4b)
             bagWithCharacter = false,   -- Open with Character Window: the bags open and close with it (Bags.lua 4c)
             -- Bag Items font (Bags.lua StyleIconTexts): stack counts and cooldown numbers; face "" keeps Blizzard's
             bagItemFont = { face = "", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
@@ -1670,7 +1675,7 @@ do
     end
 end
 
--- "Fade Speed" choices: seconds per fade
+-- "Fade In Speed" / "Fade Out Speed" choices: seconds per fade
 local FADE_TIMES = { instant = 0, fast = 0.2, slow = 0.4 }
 function ns.FadeTime(speed) return FADE_TIMES[speed] or 0 end
 
@@ -1720,7 +1725,7 @@ do
         -- dropdowns
         "Style", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
         -- a Fade Group decides the rows after it (Fading: Fade Group, Visibility, Fade Speed)
-        "Fade Group", "Visibility", "Fade Speed", "Portrait", "Health Text", "Power Text", "Text", "Combo Points",
+        "Fade Group", "Visibility", "Fade In Speed", "Fade Out Speed", "Portrait", "Health Text", "Power Text", "Text", "Combo Points",
         "Bar Texture", "Border", "Absorb Texture",
         "Cast Bar Position", "Cast Bar Texture", "Cast Bar Border",
         "Buffs", "Debuffs", "@Aura Sort By", "Hide Buffs", "Dispel Highlight", "Dispel Icons", "Aura Swipe", "Aura Timer",
@@ -1737,7 +1742,7 @@ do
         "Show Threat", "Combo Points@switch", "Flip Portrait", "Mirror Bars", "Portrait@switch", "Power Bar for Mana Users Only",
         "Five-Second Rule", "Mana on Shapeshift", "GCD Spark", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
         "Show Icon", "Show Spell Timer", "Show Spell Rank", "Spell Pushback", "Latency Zone", "Channel Ticks", "Spell Queue Window",
-        "Class Colours", "Low Health Colour", "Smooth Bar Animations", "Threat Glow", "Combat Glow",
+        "Class Colours", "Low Health Colour", "Smooth Bar Animations", "Damage Trail", "Threat Glow", "Combat Glow",
         "Only My Buffs", "Only My Debuffs", "Reverse Order", "Your Auras First",
         "Dispellable Debuffs Only", "Highlight Purgeable Buffs",
     }
@@ -2228,17 +2233,33 @@ local BAR_POST = [[ if self:GetAttribute("flareui-hide") then self:Hide() end ]]
 -- Out of combat they move under a hidden parent instead: nothing Blizzard shows in a fight is drawn.
 -- Turning the hiding off puts them back on their own parent (HideFrameSecurely).
 local secureHider
+-- (11-15, after studying Bartender4 / ConsolePort / EllesmereUI) a parked bar Blizzard shows again (any
+-- form change) keeps IsShown() true, and Edit Mode keeps its slot in the bottom stack: a gap under a
+-- default-placed pet bar. Dropped right after Blizzard's own SetShownBase / ShowBase, before its
+-- relayout. Out of combat only; a gap left by a fight closes at its end (the bar's own UpdateVisibility)
+local function KeepParkedBarDown(self, shown)
+    if shown == false or not self.FlareUI_HomeParent or InCombatLockdown() then return end
+    local hide = self.HideBase or self.Hide
+    hide(self)
+end
 local function SecureReHide(frame)
     if not frame:IsProtected() then return end
     local _, explicit = frame:IsProtected()
     if not explicit then
         if frame.actionButtons and not frame.FlareUI_HomeParent and not InCombatLockdown() then
             if not secureHider then
-                secureHider = CreateFrame("Frame", nil, UIParent)
+                -- named, so a /dump of a bar's parent tells "hidden by FlareUI" apart from UIParent
+                secureHider = CreateFrame("Frame", "FlareUI_HiddenBarParent", UIParent)
+                secureHider:SetAllPoints(UIParent)   -- parked bars keep valid rects (Edit Mode snapping)
                 secureHider:Hide()
             end
             frame.FlareUI_HomeParent = frame:GetParent() or UIParent
             frame:SetParent(secureHider)
+            if not frame.FlareUI_ParkHook and frame.SetShownBase then
+                frame.FlareUI_ParkHook = true
+                hooksecurefunc(frame, "SetShownBase", KeepParkedBarDown)
+                hooksecurefunc(frame, "ShowBase", KeepParkedBarDown)
+            end
         end
         return
     end
@@ -2273,13 +2294,18 @@ function ns.HideFrameSecurely(frame, shouldHide)
             SecureReHide(frame)
         end
         ns.RawHide(frame)
-    elseif frame.FlareUI_Hidden then
-        -- only frames hidden here come back, and only if they were shown before
+    elseif frame.FlareUI_Hidden or frame.FlareUI_HomeParent or (secureHider and frame:GetParent() == secureHider) then
+        -- only frames hidden here come back, and only if they were shown before. (11-15, a warrior's
+        -- report: a stance bar shown but not selectable in Edit Mode) a bar still under the hidden parent
+        -- comes back too, whatever its flags say: it must never stay parked with the hiding off
         frame.FlareUI_Hidden = nil
-        if frame:IsProtected() then frame:SetAttribute("flareui-hide", nil) end
-        -- back from the hidden parent (SecureReHide) before it can show again
-        if frame.FlareUI_HomeParent then
-            frame:SetParent(frame.FlareUI_HomeParent)
+        if frame:GetAttribute("flareui-hide") then frame:SetAttribute("flareui-hide", nil) end
+        -- back from the hidden parent (SecureReHide) before it can show again; a bar of Blizzard's goes
+        -- home to UIParent if its own parent wasn't kept
+        if frame.FlareUI_HomeParent or (secureHider and frame:GetParent() == secureHider) then
+            local home = frame.FlareUI_HomeParent
+            if not home or home == secureHider then home = UIParent end
+            frame:SetParent(home)
             frame.FlareUI_HomeParent = nil
         end
         -- an action bar knows whether Blizzard wants it up (a pet bar, not after the pet is gone). The

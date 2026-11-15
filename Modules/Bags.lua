@@ -845,7 +845,28 @@ end
 function Bags.StyleIconTexts(button, db)
     StyleIconText(button.Count, db.bagItemFont)
     local cooldown = button.Cooldown or (button.GetName and button:GetName() and _G[button:GetName() .. "Cooldown"])
-    if cooldown and cooldown.GetCountdownFontString then StyleIconText(cooldown:GetCountdownFontString(), db.bagItemFont) end
+    if cooldown and cooldown.GetCountdownFontString then
+        local fs = cooldown:GetCountdownFontString()
+        StyleIconText(fs, db.bagItemFont)
+        Bags.LiftCountdown(button, cooldown, fs)
+    end
+end
+
+-- (11-15, a player's report) the cooldown numbers are drawn by the cooldown frame, under our slot overlay
+-- (border, junk coin, item level), which hid them. They move to a frame of ours made on the cooldown frame
+-- (shown and hidden with it), above every slot's overlay so long ones can spill over the next slot.
+function Bags.LiftCountdown(button, cooldown, fs)
+    if not fs then return end
+    local ov = overlays[button] or button.fuiOverlay
+    local lift = button.fuiCountdownLift
+    if not lift then
+        lift = CreateFrame("Frame", nil, cooldown)
+        lift:SetAllPoints(cooldown)
+        button.fuiCountdownLift = lift
+    end
+    local level = (ov and ov:GetFrameLevel() or button:GetFrameLevel() + 2) + 1
+    if lift:GetFrameLevel() ~= level then lift:SetFrameLevel(level) end
+    if fs:GetParent() ~= lift then fs:SetParent(lift) end
 end
 
 -- info: the slot's item (C_Container's, or a settings preview's made-up one)
@@ -937,6 +958,11 @@ end
 -- same buttons stacked. Picking one dims every other item (section 3, UpdateItemFilter) and the button
 -- takes that category's icon with a gold edge. Right-click clears the filter. Off, the cleanup button
 -- and the search box go back to Blizzard's spots.
+-- (11-15, parchinskiy's issue #26) The setting is a choice now: Off, Drawer (the above) or Buttons, the
+-- PR's first design: the four category buttons in a row left of the cleanup button, one click to pick,
+-- a click on the lit one clears. Buttons only in the combined backpack, and only while the search box
+-- keeps at least Filter.MIN_SEARCH beside them; otherwise (narrow window, separate bags) the drawer.
+-- The saved value: "off" | "drawer" | "buttons"; the old switch's true reads as "drawer".
 --------------------------------------------------
 local Filter = {
     W = 28, H = 26,         -- Blizzard's cleanup button
@@ -945,6 +971,7 @@ local Filter = {
     STACK = -5,             -- between the drawer's buttons: their frames' clear edges overlap, a sliver apart (11-11)
     SORT_X = -9, SORT_Y = -34,  -- Blizzard's spot for the cleanup button (ContainerFrame.lua)
     SEARCH_GAP = 6,         -- the search box's right art reaches past its edge
+    MIN_SEARCH = 120,       -- Buttons: the search box keeps at least this width, else the drawer (about 12 letters)
     MAIN_ICON = "Interface\\Icons\\INV_Misc_Spyglass_03",
     -- (11-11 Marcus) shapes that read at the small size: a quest scroll, a sword, a hammer, a green potion
     CATEGORIES = {
@@ -958,9 +985,17 @@ local Filter = {
 }
 Bags.Filter = Filter
 
-function Filter.On()
+-- "off", "drawer" or "buttons" (the old switch saved true: the drawer)
+function Filter.Mode()
     local db = GetDb()
-    return db and db.bagFilters and not Bags:GetOtherBagAddon() and not GamepadUI()
+    local v = db and db.bagFilters
+    if v == true or v == "drawer" then return "drawer" end
+    if v == "buttons" then return "buttons" end
+    return "off"
+end
+
+function Filter.On()
+    return Filter.Mode() ~= "off" and not Bags:GetOtherBagAddon() and not GamepadUI()
         and C_Container.GetContainerItemQuestInfo and C_Item.GetItemInventoryTypeByID and true or false
 end
 
@@ -1019,6 +1054,10 @@ function Filter.Paint()
     for _, c in ipairs(Filter.CATEGORIES) do if c.key == itemFilter then icon = c.icon end end
     main.icon:SetTexture(icon)
     main.edge:SetShown(itemFilter ~= nil)
+    -- Buttons: the picked one lit
+    if Filter.row then
+        for _, b in ipairs(Filter.row.buttons) do b.edge:SetShown(b.key == itemFilter) end
+    end
 end
 
 function Filter.Set(mode)
@@ -1089,7 +1128,50 @@ function Filter.Create(frame)
     end)
     drawer:SetScript("OnShow", function() watch:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
     drawer:SetScript("OnHide", function() watch:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
+
+    -- Buttons (issue #26): the same category buttons in a row, left to right, the last one beside the
+    -- cleanup button. A click picks that category, a click on the lit one (or a right-click) clears.
+    local row = CreateFrame("Frame", nil, frame)
+    row:SetSize(n * Filter.W + (n - 1) * Filter.GAP, Filter.H)
+    row:Hide()
+    row.buttons = {}
+    for i, c in ipairs(Filter.CATEGORIES) do
+        local b = Filter.NewButton(row, c.icon)
+        b.key = c.key
+        b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        b:SetScript("OnClick", function(self, button)
+            if button == "RightButton" then
+                if itemFilter then Filter.Set(nil) end
+            else
+                Filter.Set(itemFilter ~= c.key and c.key or nil)
+            end
+            if GameTooltip:IsOwned(self) then self:GetScript("OnEnter")(self) end
+        end)
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self)
+            GameTooltip_SetTitle(GameTooltip, c.label, HIGHLIGHT_FONT_COLOR)
+            if itemFilter == c.key then GameTooltip_AddNormalLine(GameTooltip, L["Click again to clear the filter."]) end
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", GameTooltip_Hide)
+        row.buttons[i] = b
+    end
+    Filter.row = row
     Filter.Paint()
+end
+
+-- the row sized and laid out like the cleanup button (w, h), right edge just left of it
+function Filter.LayoutRow(sort, w, h)
+    local row = Filter.row
+    local n = #row.buttons
+    row:SetSize(n * w + (n - 1) * Filter.GAP, h)
+    row:ClearAllPoints()
+    row:SetPoint("TOPRIGHT", sort, "TOPLEFT", -Filter.GAP, 0)
+    for i, b in ipairs(row.buttons) do
+        b:SetSize(w, h)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * (w + Filter.GAP), 0)
+    end
 end
 
 -- the cleanup button and the search box back where Blizzard put them, and the button away
@@ -1108,6 +1190,7 @@ function Filter.Restore()
     end
     Filter.moved = nil
     if Filter.main then Filter.main:Hide() end
+    if Filter.row then Filter.row:Hide() end
 end
 
 -- searchUpdated: Blizzard just placed the search box and the cleanup button (their spots are read again)
@@ -1142,11 +1225,30 @@ function Filter.Place(frame, searchUpdated)
         end
         Filter.drawer:SetSize(w, #Filter.drawer.buttons * (h + Filter.STACK) - Filter.STACK)
     end
-    main:Show()
     sort:ClearAllPoints()
     sort:SetPoint("TOPRIGHT", frame, "TOPRIGHT", Filter.SORT_X, Filter.SORT_Y)
-    -- the search box ends before the filter button
-    local room = frame:GetWidth() + Filter.SORT_X - 2 * Filter.W - Filter.GAP - Filter.SEARCH_GAP - base.x
+    -- Buttons: the row in the combined backpack when the search box still gets MIN_SEARCH beside it
+    -- (the window's width less the cleanup button, the row and the gaps); else the drawer
+    local bw = (w and w > 0) and w or Filter.W
+    local bh = (h and h > 0) and h or Filter.H
+    local n = #Filter.row.buttons
+    local rowW = n * bw + (n - 1) * Filter.GAP
+    local spare = frame:GetWidth() + Filter.SORT_X - bw - Filter.GAP - rowW - Filter.SEARCH_GAP - base.x
+    local useRow = Filter.Mode() == "buttons" and frame == Combined() and spare >= Filter.MIN_SEARCH
+    local room
+    if useRow then
+        Filter.Close()
+        main:Hide()
+        if Filter.row:GetParent() ~= frame then Filter.row:SetParent(frame) end
+        Filter.LayoutRow(sort, bw, bh)
+        Filter.row:Show()
+        room = spare
+    else
+        Filter.row:Hide()
+        main:Show()
+        -- the search box ends before the filter button
+        room = frame:GetWidth() + Filter.SORT_X - 2 * Filter.W - Filter.GAP - Filter.SEARCH_GAP - base.x
+    end
     search:SetWidth(math_max(40, math.min(base.width, room)))
     Filter.moved = frame
     Filter.Paint()
@@ -1180,7 +1282,12 @@ function Filter.Refresh()
         return
     end
     local search = _G.BagItemSearchBox
-    if search and search:IsVisible() then Filter.Place(search:GetParent(), true) end
+    if search and search:IsVisible() then
+        -- (Blizzard's width back first, so switching Drawer and Buttons never reads our narrowed box)
+        Filter.Close()
+        Filter.Restore()
+        Filter.Place(search:GetParent(), true)
+    end
 end
 
 -- with Bags & Looting on (its own module since 11-12), and no bag addon of another kind (11-13): then
@@ -1262,6 +1369,11 @@ function Bags:Init()
             end
         end)
     end
+    -- (11-15, a player) Blizzard's Use Combined Bags switched: it closes and reopens the bags with its
+    -- own layout, so FlareUI's goes back on a frame later (it came back only on the next relayout)
+    local combinedSwitch = CreateFrame("Frame")
+    combinedSwitch:RegisterEvent("USE_COMBINED_BAGS_CHANGED")
+    combinedSwitch:SetScript("OnEvent", function() C_Timer.After(0, function() Bags:Refresh() end) end)
     -- the keyring and crafting bag sections follow their items
     local bagEvents = CreateFrame("Frame")
     bagEvents:RegisterEvent("PLAYER_ENTERING_WORLD")

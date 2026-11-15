@@ -700,7 +700,7 @@ local function BarHoleRegions(f)
     for _, owner in ipairs({ f, f.Border, f.TargetHighlight and f.TargetHighlight.Border }) do
         for _, piece in ipairs(BAR_HOLE_BACKDROP) do add(owner[piece]) end
     end
-    for _, key in ipairs({ "Health", "Power", "ShiftMana", "HealBar", "AbsorbBar" }) do
+    for _, key in ipairs({ "Health", "Power", "ShiftMana", "HealBar", "AbsorbBar", "DamageTrail" }) do
         local bar = f[key]
         if bar then
             add(bar:GetStatusBarTexture())
@@ -957,11 +957,11 @@ function Ring.Layout(f)
     ring.PortraitBack:ClearAllPoints()
     ring.PortraitBack:SetSize(g.D * PORTRAIT_BACK_SHARE, g.D * PORTRAIT_BACK_SHARE)
     ring.PortraitBack:SetPoint("CENTER", ring, "CENTER", 0, 0)
-    ring.PortraitBack:Show()
     if not f.Portrait.ringMasked then
         f.Portrait.Tex:AddMaskTexture(ring.PortraitMask)
         f.Portrait.ringMasked = true
     end
+    Ring.SyncBack(f)
     if f.PortraitDivider then f.PortraitDivider:Hide() end
 
     -- the glows: a line over the ring's rim
@@ -1024,6 +1024,21 @@ function Ring.LayoutLevel(f, g)
     ns.SetFontUnscaled(f.Level, LEVEL_FONT, math.max(8, math.floor(LEVEL_FONT_SIZE * k + 0.5)), "")
     f.Level:SetShadowOffset(1, -1)
     f.Level:SetShadowColor(0, 0, 0, 1)
+end
+
+-- Forever Faces ("Forever 3D Portraits", folder ForeverFaces) draws its model under our frame: with it
+-- loaded, the ring's black disc goes while the portrait is 2D ("3d"), so its model shows through.
+-- mode: the portrait mode (UnitFrames.lua / PartyFrames.lua); none keeps the last one (a ring layout)
+function Ring.SyncBack(f, mode)
+    local ring = f.RingFrame
+    if not (ring and ring.PortraitBack) then return end
+    if mode then ring.backMode = mode end
+    if Ring.ffOn == nil then
+        Ring.ffOn = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("ForeverFaces") and true or false
+    end
+    -- (only while the ring is on: Ring.Reset hides the disc)
+    if not f.Portrait.ringMasked then return end
+    ring.PortraitBack:SetShown(not (ring.backMode == "3d" and Ring.ffOn))
 end
 
 --------------------------------------------------

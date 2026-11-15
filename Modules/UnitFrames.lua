@@ -565,6 +565,7 @@ end
 local function PortraitMode(f)
     local udb = GetUnitDb(f.fuiUnit)
     local mode = (f.Portrait and udb and udb.portrait) or "none"
+    if mode == "model" then mode = "3d" end   -- (11-15) the dropped 3D model draws as 2D
     if mode == "none" and ns.UFRing and ns.UFRing.Applies(f) then mode = "3d" end
     return mode
 end
@@ -1053,6 +1054,7 @@ local function UpdateHealth(f, glide)
         local health = (UNITS[unit].sample or {}).health or 0.75
         bar:SetMinMaxValues(0, 1)
         bar:SetValue(health)
+        UF.SampleDamageTrail(f.DamageTrail, health, udb and udb.damageTrail and not UNITS[unit].poll)
         if UnitExists(unit) and not f.fuiSample then
             bar:SetStatusBarColor(GetHealthColor(unit, ns.ClassColorsOn(udb)))
         elseif unit == "pet" then
@@ -1084,6 +1086,7 @@ local function UpdateHealth(f, glide)
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     -- a corpse gets no more health ticks, so a glide could stop short of empty
     ns.SetBarValue(bar, UnitHealth(unit), glide and udb and udb.smoothBars and not UNITS[unit].poll and not UnitIsDead(unit))
+    UF.SetDamageTrail(f.DamageTrail, unit, glide, udb and udb.damageTrail and not UNITS[unit].poll)
     -- The player is always connected and a player, so a health tick keeps its colour unless the class
     -- (readable), the palette or Class Colours changed since it was set
     local classOn = ns.ClassColorsOn(udb)
@@ -2141,8 +2144,8 @@ local function KeepPortraitFlipped(portrait)
     if GetTime() > portrait.flipUntil then portrait:SetScript("OnUpdate", nil) end
 end
 
--- 3D is Blizzard's static portrait (square, unmasked). Class Icon falls back to 3D for NPCs and
--- secret classes. A frame with no unit (Edit Mode) shows the player.
+-- 2D ("3d", the stored value) is Blizzard's static portrait (square, unmasked). Class Icon falls
+-- back to 2D for NPCs and secret classes. A frame with no unit (Edit Mode) shows the player.
 local function UpdatePortrait(f)
     local portrait = f.Portrait
     if not portrait then return end
@@ -2153,6 +2156,7 @@ local function UpdatePortrait(f)
     end
     local unit = not f.fuiSample and UnitExists(f.fuiUnit) and f.fuiUnit or "player"
     local tex = portrait.Tex
+    if ns.UFRing and ns.UFRing.SyncBack then ns.UFRing.SyncBack(f, mode) end
     local class
     if mode == "class" then
         local isPlayer = UnitIsPlayer(unit)
@@ -3335,6 +3339,119 @@ function UF.HideShieldGlow(glow)
     if glow then glow.holder:SetAlpha(0) end
 end
 
+-- DAMAGE TRAIL (11-15, HyonD's request): the health just lost stays a moment in a light colour,
+-- then shrinks to the new health. Without comparing (secret) values: a second bar the size of the
+-- health bar, in its texture and fill direction, inside a clip frame over the bar's empty part (the
+-- heal clip when there is one, under the heals and shields). Only its part past the health shows.
+-- Each health change (re)starts a short hold; then the trail glides to the health as it is then
+-- (the client eases secret values). Healing needs nothing: the trail lags under the health fill,
+-- where it is clipped, and catches up. One OnUpdate, only while a trail waits to move.
+UF.TRAIL_DELAY = 0.4    -- seconds the lost health holds after a change
+UF.TRAIL_HOLD = 1.2     -- the most a burst of changes can hold it
+UF.TRAIL_COLOR = { 1, 0.9, 0.75, 0.7 }   -- a warm near-white: reads on green, class and reaction colours
+UF.trailPending = {}    -- trail -> time it starts to move
+
+-- clip: the heal / absorb clip frame of the bar, or nil (the trail makes its own)
+function UF.CreateDamageTrail(health, clip)
+    local own = not clip
+    if own then
+        clip = CreateFrame("Frame", nil, health)
+        clip:SetFrameLevel(health:GetFrameLevel() + 1)
+        clip:SetClipsChildren(true)
+    end
+    local trail = CreateFrame("StatusBar", nil, clip)
+    -- at the clip's own level: the heals (+1) and shields (+2) draw over it
+    trail:SetFrameLevel(clip:GetFrameLevel())
+    trail:SetMinMaxValues(0, 1)
+    trail:SetValue(0)
+    trail:SetAllPoints(health)
+    trail:Hide()
+    trail.clip, trail.ownClip, trail.health = clip, own, health
+    return trail
+end
+
+-- after the health bar's texture, fill direction and place are set (any style: the trail follows
+-- the bar itself). mirror: the bar fills from the right.
+function UF.PlaceDamageTrail(trail, mirror)
+    if not trail then return end
+    local health = trail.health
+    local fill = health:GetStatusBarTexture()
+    if trail.ownClip then
+        -- the bar's empty part, as the heal clip's
+        local clip = trail.clip
+        clip:ClearAllPoints()
+        if mirror then
+            clip:SetPoint("TOPLEFT", health, "TOPLEFT", 0, 0)
+            clip:SetPoint("BOTTOMRIGHT", fill, "BOTTOMLEFT", 0, 0)
+        else
+            clip:SetPoint("TOPLEFT", fill, "TOPRIGHT", 0, 0)
+            clip:SetPoint("BOTTOMRIGHT", health, "BOTTOMRIGHT", 0, 0)
+        end
+    end
+    trail:SetReverseFill(mirror and true or false)
+    trail:SetStatusBarTexture((fill and fill:GetTexture()) or BACKDROP_FILE)
+    local c = UF.TRAIL_COLOR
+    trail:SetStatusBarColor(c[1], c[2], c[3], c[4])
+end
+
+function UF.MoveDamageTrails(self)
+    local now, waiting = GetTime(), false
+    for trail, due in pairs(UF.trailPending) do
+        if now >= due then
+            UF.trailPending[trail] = nil
+            trail.firstAt = nil
+            local unit = trail.unit
+            if unit and trail:IsShown() and UnitExists(unit) then
+                ns.SetBarValue(trail, UnitHealth(unit), true)
+            end
+        else
+            waiting = true
+        end
+    end
+    if not waiting then self:SetScript("OnUpdate", nil) end
+end
+
+-- After the health bar is set. glide: a change on the unit already shown (a new unit, or a frame
+-- just shown, lands at once); on: the frame's Damage Trail switch.
+function UF.SetDamageTrail(trail, unit, glide, on)
+    if not trail then return end
+    if not on then
+        UF.trailPending[trail], trail.firstAt = nil, nil
+        if trail:IsShown() then trail:Hide() end
+        return
+    end
+    trail:Show()
+    trail.unit = unit
+    trail:SetMinMaxValues(0, UnitHealthMax(unit))
+    if not glide or not trail:IsVisible() then
+        UF.trailPending[trail], trail.firstAt = nil, nil
+        trail:SetValue(UnitHealth(unit))
+        return
+    end
+    local now = GetTime()
+    trail.firstAt = trail.firstAt or now
+    UF.trailPending[trail] = math.min(now + UF.TRAIL_DELAY, trail.firstAt + UF.TRAIL_HOLD)
+    if not UF.trailDriver then UF.trailDriver = CreateFrame("Frame") end
+    UF.trailDriver:SetScript("OnUpdate", UF.MoveDamageTrails)
+end
+
+-- Edit Mode: a sample hit just taken, on a 0..1 sample health
+function UF.SampleDamageTrail(trail, health, on)
+    if not trail then return end
+    UF.trailPending[trail], trail.firstAt = nil, nil
+    if not on then trail:Hide() return end
+    trail:SetMinMaxValues(0, 1)
+    trail:SetValue(math.min(1, (health or 1) + 0.15))
+    trail:Show()
+end
+
+-- Frame section switch (default off)
+function UF.DamageTrailSetting(get, set)
+    return { name = L["Damage Trail"], kind = LEM.SettingType.Checkbox, default = false,
+        get = function() return get() and true or false end, set = set,
+        desc = L["Health you lose stays a moment in a light colour, then shrinks away."] }
+end
+
 function UpdateHealPrediction(f)
     local heal, absorb = f.HealBar, f.AbsorbBar
     if not heal then return end
@@ -3982,6 +4099,8 @@ local function LayoutFrame(f)
     UF.SetBarBackground(health, bgOpacity)
     UF.SetBarBackground(power, bgOpacity)
     if f.ShiftMana then UF.SetBarBackground(f.ShiftMana, bgOpacity) end
+    -- the trail follows the health bar's texture and fill (set by now, on the plate too)
+    UF.PlaceDamageTrail(f.DamageTrail, fillMirror)
 
     -- ring styles: text one point smaller
     local fontDelta = (ns.UFRing and ns.UFRing.Applies(f)) and -1 or 0
@@ -4232,8 +4351,9 @@ end
 
 --------------------------------------------------
 -- 14. FADING (Visibility.lua)
--- Each frame sits on a plain holder that Visibility fades, by the Show choice, Fade Speed and Faded
--- Opacity in its Edit Mode dialog (the action bars' rows, without fade groups). The frame's own alpha
+-- Each frame sits on a plain holder that Visibility fades, by the Show choice and Faded Opacity in its
+-- Edit Mode dialog (the action bars' rows). The player and pet frames can join a fade group (11-15): they
+-- then fade at the group's Fade In / Fade Out Speed, and pointing at any member brings the group back. The frame's own alpha
 -- stays the range fading's (14b, set from secret values): the two multiply, and neither reads the other.
 --------------------------------------------------
 UF.fadeHolders = {}   -- unit -> holder
@@ -4550,6 +4670,9 @@ local function CreateUnitFrame(unit)
         ApplyComboMode(f)
     end
     CreateIndicators(f)
+    -- Damage Trail (made for every frame but the polled ones: off it stays hidden); in the heal
+    -- clip when there is one, under the heals
+    if not info.poll then f.DamageTrail = UF.CreateDamageTrail(f.Health, f.HealClip) end
     if unit == "player" then CreateFsrSpark(f) end
     if info.happiness then CreateHappiness(f) end
     PrecreateAuraContainers(f)
@@ -4804,6 +4927,8 @@ local function CreatePlayerCastBar()
     if playerCastHolder then return playerCastHolder end
     local holder = CreateFrame("Frame", "FlareUI_UF_PlayerCastBar", UIParent)
     holder:SetFrameStrata("MEDIUM")
+    -- (11-15, a player: the wand swing bar covered it) above the resource bars, which stack at levels 10-114 in MEDIUM
+    holder:SetFrameLevel(130)
     holder:SetClampedToScreen(true)
     holder.fuiUnit = "playercastbar"
     holder.editModeName = "FlareUI Player Cast Bar"
@@ -4950,9 +5075,10 @@ local function BuildSettings(unit)
     end
     -- (the styled pet always shows its own portrait)
     if info.portrait and not info.styledPet then
+        -- "3d" is the stored name of the 2D picture (kept for saved setups)
         local portraitValues = {
             { text = L["None"],       value = "none",  isRadio = true },
-            { text = L["3D"],         value = "3d",    isRadio = true },
+            { text = L["2D"],         value = "3d",    isRadio = true },
             { text = L["Class Icon"], value = "class", isRadio = true },
         }
         settings[#settings + 1] = { name = L["Portrait"], kind = LEM.SettingType.Dropdown, default = "none",
@@ -4963,12 +5089,12 @@ local function BuildSettings(unit)
                 for _, p in ipairs(portraitValues) do
                     if not (ring and p.value == "none") then
                         rootDescription:CreateRadio(p.text,
-                            function(value) local u = GetUnitDb(unit); local cur = u and u.portrait or "none"; if ring and cur == "none" then cur = "3d" end; return cur == value end,
+                            function(value) local u = GetUnitDb(unit); local cur = u and u.portrait or "none"; if cur == "model" then cur = "3d" end; if ring and cur == "none" then cur = "3d" end; return cur == value end,
                             function(value) data.set(nil, value) end, p.value)
                     end
                 end
             end,
-            get = function() local u = GetUnitDb(unit); return u and u.portrait or "none" end, set = set("portrait") }
+            get = function() local u = GetUnitDb(unit); local v = u and u.portrait or "none"; if v == "model" then v = "3d" end; return v end, set = set("portrait") }
     end
     -- Percent <  > Value only in Forever Style (a style change reloads, so this list is fixed for the session)
     local healthModes = (ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and PLATE_HEALTH_TEXT_MODES or HEALTH_TEXT_MODES
@@ -5076,6 +5202,10 @@ local function BuildSettings(unit)
                 u.rangeCheck = value
                 UF.ApplyRangeAlpha(frames[unit], unit)
             end }
+    end
+    -- (11-15, HyonD; not on target of target and target of focus, which are polled)
+    if not info.poll then
+        settings[#settings + 1] = UF.DamageTrailSetting(get("damageTrail"), set("damageTrail"))
     end
     -- everything above is the frame itself, and gets the first section
     local frameItems = settings
@@ -5279,7 +5409,7 @@ local function BuildSettings(unit)
         end
         Section("Icons", items)
     end
-    -- last: Visibility, Fade Speed and Faded Opacity, as on the action bars (Visibility.lua)
+    -- last: Fade Group (player and pet), Visibility, the fade speeds and Faded Opacity, as on the action bars (Visibility.lua)
     if ns.Visibility and ns.Visibility.UnitFrameSettings then
         Section("Fading", ns.Visibility:UnitFrameSettings(unit))
     end
@@ -5316,7 +5446,7 @@ UF.Kit = {
     -- Background Opacity's bar background and its Edit Mode slider
     Border = function(name) return ns.UFRing and ns.UFRing.Border(name) or name end,
     NoBorderOptions = function() return ns.UFRing and ns.UFRing.PlateOn() or false end,
-    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting, SmoothBarsSetting = UF.SmoothBarsSetting, HideBuffsSetting = UF.HideBuffsSetting, ClassColorSetting = UF.ClassColorSetting,
+    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting, SmoothBarsSetting = UF.SmoothBarsSetting, DamageTrailSetting = UF.DamageTrailSetting, HideBuffsSetting = UF.HideBuffsSetting, ClassColorSetting = UF.ClassColorSetting,
     INSET = INSET, BG_OPACITY = BG_OPACITY, BACKDROP_FILE = BACKDROP_FILE,
     SEPARATOR_TEXTURE = SEPARATOR_TEXTURE, SEPARATOR_HEIGHT = SEPARATOR_HEIGHT, TEXT_INSET = TEXT_INSET,
     CAST_GAP = CAST_GAP, AURA_GAP = AURA_GAP,
@@ -5340,6 +5470,7 @@ UF.Kit = {
     ApplyRangeAlpha = UF.ApplyRangeAlpha,
     CreateManaCost = UF.CreateManaCost, CostsMana = CostsMana, GetTimerFormatter = GetTimerFormatter,
     IsDead = UF.IsDead, CreateShieldGlow = UF.CreateShieldGlow, PlaceShieldGlow = UF.PlaceShieldGlow,
+    CreateDamageTrail = UF.CreateDamageTrail, PlaceDamageTrail = UF.PlaceDamageTrail, SetDamageTrail = UF.SetDamageTrail, SampleDamageTrail = UF.SampleDamageTrail,
     CreateOverAbsorb = UF.CreateOverAbsorb, PlaceOverAbsorb = UF.PlaceOverAbsorb, SetOverAbsorb = UF.SetOverAbsorb, SetShieldGlow = UF.SetShieldGlow, HideShieldGlow = UF.HideShieldGlow,
     BuildTextureValues = BuildTextureValues, BuildBorderValues = BuildBorderValues, BuildAbsorbValues = BuildTextureValues, EditSections = EditSections,
     ThreatColor = ThreatColor, SetBorderGlow = UF.SetBorderGlow,

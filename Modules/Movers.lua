@@ -34,9 +34,10 @@ local OBJ_W, OBJ_H = 180, 36   -- (the sample's size: only the scores, 11-11)
 local OBJ_BORDER, OBJ_EDGE, OBJ_PAD = "FlareUI Thick", 16, 6
 
 local DEFAULTS = {
-    loot  = { point = "BOTTOM", x = 0, y = 140 },   -- between the player cast bar and the action bars (Marcus's, 11-11)
-    toast = { point = "TOP", x = 0, y = -161 },     -- (Marcus's, 11-11)
-    objectives = { point = "TOP", x = 0, y = -15 },   -- Blizzard's own spot
+    -- (11-15) Marcus's own spots, from his "FlareUI" layout; loot: the Loot Roll Window's header too
+    loot  = { point = "TOP", x = 0, y = -221 },
+    toast = { point = "TOP", x = 0, y = -130 },
+    objectives = { point = "TOP", x = 0, y = -31 },
 }
 
 local holders = {}   -- key -> holder frame

@@ -59,9 +59,17 @@ local function NotInChat() return not InChat() end
 S:Row{ key = "dm.visibility", kind = "choice", path = "damagemeter.visibility",
     choices = { "always", "combat", "group", "instance", "hidden" }, apply = ApplyVisibility, disabled = InChat, section = "dm.frame" }
 local function AlwaysVisible() return (S:GetPath("damagemeter.visibility") or "always") == "always" end
--- in the chat the tab fades the meter in and out at this speed
-S:Row{ key = "dm.fadeSpeed", kind = "choice", path = "damagemeter.fadeSpeed", choices = { "instant", "fast", "slow" },
-    apply = ApplyVisibility, disabled = function() return AlwaysVisible() and not InChat() end, section = "dm.frame" }
+-- Fade In Speed / Fade Out Speed (11-15: the one Fade Speed split in two; in the chat the tab fades
+-- the meter in and out at these speeds): an unset one reads the old damagemeter.fadeSpeed
+-- (ns.DamageMeter.FadeSpeed), so saved setups stay as they were until a player picks
+local function FadeRow(key, field)
+    S:Row{ key = key, kind = "choice", path = "damagemeter." .. field, choices = { "instant", "fast", "slow" },
+        get = function() return ns.DamageMeter and ns.DamageMeter.FadeSpeed and ns.DamageMeter.FadeSpeed(S:GetPath("damagemeter"), field) or "instant" end,
+        resetValue = function() return S:DefaultPath("damagemeter.fadeSpeed") or "instant" end,
+        apply = ApplyVisibility, disabled = function() return AlwaysVisible() and not InChat() end, section = "dm.frame" }
+end
+FadeRow("dm.fadeIn", "fadeIn")
+FadeRow("dm.fadeOut", "fadeOut")
 -- how far it fades: 0% to 90%. Not in the chat, where the meter tab takes the chat's fade
 S:Row{ key = "dm.minAlpha", kind = "choice", path = "damagemeter.minAlpha", choices = S:MinAlphaChoices(),
     apply = ApplyVisibility, disabled = function() return AlwaysVisible() or InChat() end, section = "dm.frame" }
