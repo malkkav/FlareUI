@@ -7,6 +7,8 @@ local L = ns.L
 --   * Columns and Gaps between bags: the combined backpack's grid, laid out again after Blizzard's
 --     (hooksecurefunc on its UpdateFrameSize / UpdateItemLayout, so Blizzard's code runs untouched)
 --   * Integrated bag buttons: the four bag slots down the combined backpack's side
+--   * Scale: the combined backpack's size as a whole (section 2b)
+--   * Item Scale: the size of its slots alone, the window fitted round them (section 1)
 --   * Category Filters: a button beside the cleanup button opens a drawer of categories; the one
 --     picked dims every other item (section 4b; the dimming after parchinskiy's PR #22)
 --   * Thicker borders, Rarity colours and Junk coin: drawn on an overlay of each item
@@ -74,6 +76,7 @@ local function LayoutWanted()
     if not db or Bags:GetOtherBagAddon() then return false end
     if GamepadUI() then return false end
     return (db.bagColumns or 0) > 0 or db.bagGaps == true or db.bagKeyring == true or db.bagReagent == true
+        or (tonumber(db.bagItemScale) or 1) ~= 1
 end
 
 --------------------------------------------------
@@ -303,6 +306,8 @@ end
 -- Blizzard's order (bags from the last to the backpack, slots from the last; filled from the bottom
 -- right, right to left, upwards), with its own column count. Gaps between bags start each bag on a new
 -- row with a gap above. The frame's size follows, from Blizzard's own paddings.
+-- Item Scale is each slot's own scale: a slot's anchor offsets are in its own units, so the grid's
+-- steps and gaps grow with it and only the window's size has to be worked out.
 --------------------------------------------------
 -- Blizzard's sort (ContainerFrame.lua SortItems / SortItemsByExtendedState)
 local function SortItems(a, b)
@@ -314,6 +319,21 @@ local function SortItemsExtended(a, b)
     local extA, extB = a:IsExtended(), b:IsExtended()
     if extA ~= extB then return not extA end
     return SortItems(a, b)
+end
+
+local ITEM_SCALE_MIN, ITEM_SCALE_MAX = 0.6, 1.6   -- the Item Scale setting's range (Settings/Pages/BagsLooting.lua)
+local function ItemScale(db)
+    return math.max(ITEM_SCALE_MIN, math.min(ITEM_SCALE_MAX, tonumber(db and db.bagItemScale) or 1))
+end
+
+-- Not in a fight (the slots may be protected there: they keep the scale they have)
+local itemsScaled = false
+local function ScaleItems(items, scale)
+    if InCombatLockdown() then return end
+    for _, button in ipairs(items) do
+        if button:GetScale() ~= scale then button:SetScale(scale) end
+    end
+    itemsScaled = scale ~= 1
 end
 
 local function LayoutColumns(db)
@@ -329,18 +349,19 @@ end
 
 local layingOut = false
 local extraButtonsDeferred = false
-local lastLayoutColumns, lastLayoutGaps, lastLayoutSecured
+local lastLayoutColumns, lastLayoutGaps, lastLayoutSecured, lastLayoutItemScale
 local function Relayout(frame)
     if layingOut or not frame or frame ~= Combined() or not frame:IsShown() then return end
+    local items = {}
+    for _, button in frame:EnumerateValidItems() do items[#items + 1] = button end
     if not (Bags:IsCombined() and LayoutWanted()) then
         extraButtonsDeferred = false
         lastLayoutColumns = nil
         HideExtras()
+        if itemsScaled then ScaleItems(items, 1) end
         return
     end
     local db = GetDb()
-    local items = {}
-    for _, button in frame:EnumerateValidItems() do items[#items + 1] = button end
     if #items == 0 then return end
     local secured = not IsAccountSecured or IsAccountSecured()
     table_sort(items, secured and SortItems or SortItemsExtended)
@@ -351,6 +372,8 @@ local function Relayout(frame)
     local stepX, stepY = w + ITEM_SPACING, h + ITEM_SPACING
     local anchor = frame.MoneyFrame
     if not anchor then return end
+    ScaleItems(items, ItemScale(db))
+    local itemScale = items[1]:GetScale()   -- (the one they have: a fight keeps the old)
 
     layingOut = true
     extraButtonsDeferred = false
@@ -366,6 +389,7 @@ local function Relayout(frame)
             local b = ExtraButton(e, slot)
             if b then
                 b:SetSize(w, h)
+                if not InCombatLockdown() then b:SetScale(itemScale) end
                 Bags.GridPoint(b, anchor, col, row, gapCount, stepX, stepY)
                 b:Show()
                 FillExtraButton(b)
@@ -396,12 +420,12 @@ local function Relayout(frame)
     end
     local rows = row + (col > 0 and 1 or 0)
 
-    local width = columns * w + (columns - 1) * ITEM_SPACING + frame:GetPaddingWidth()
-    local height = rows * h + (rows - 1) * ITEM_SPACING + gapCount * BAG_GAP
+    local width = (columns * w + (columns - 1) * ITEM_SPACING) * itemScale + frame:GetPaddingWidth()
+    local height = (rows * h + (rows - 1) * ITEM_SPACING + gapCount * BAG_GAP) * itemScale
         + frame:GetPaddingHeight() + frame:CalculateExtraHeight()
     frame:SetSize(width, height)
     if NineSliceUtil and NineSliceUtil.UpdateCornerCropping then NineSliceUtil.UpdateCornerCropping(frame, height) end
-    lastLayoutColumns, lastLayoutGaps, lastLayoutSecured = columns, gaps, secured
+    lastLayoutColumns, lastLayoutGaps, lastLayoutSecured, lastLayoutItemScale = columns, gaps, secured, ItemScale(db)
     layingOut = false
     Bags:PlaceBagButtons()
 end
@@ -412,7 +436,8 @@ local function ExtraLayoutChanged(event)
     local db = GetDb()
     local columns = LayoutColumns(db)
     local secured = not IsAccountSecured or IsAccountSecured()
-    if columns ~= lastLayoutColumns or (db.bagGaps == true) ~= lastLayoutGaps or secured ~= lastLayoutSecured then
+    if columns ~= lastLayoutColumns or (db.bagGaps == true) ~= lastLayoutGaps or secured ~= lastLayoutSecured
+        or ItemScale(db) ~= lastLayoutItemScale then
         return true
     end
     return ExtraSectionChanged(KeyringID(), KeyringWanted(), columns)
@@ -570,6 +595,31 @@ function Bags:PlaceBagButtons()
         end
         b:Update()
         b:Show()
+    end
+end
+
+--------------------------------------------------
+-- 2b. SCALE (Bags and Looting > Scale, 100%; 11-15, a player's request)
+-- The combined backpack's size as a whole: slots, art and text together, as Bagnon's Scale slider.
+-- Blizzard sets its own scale on the bags whenever it places them (UpdateContainerFrameAnchors, to
+-- fit the screen), so FlareUI's is set again after it. 100% leaves Blizzard's alone. Not in a fight:
+-- the scale waits for its end.
+--------------------------------------------------
+local SCALE_MIN, SCALE_MAX = 0.6, 1.6   -- the Scale setting's range (Settings/Pages/BagsLooting.lua)
+local scaled = false                    -- FlareUI's scale is on the window
+
+function Bags.ApplyScale()
+    local frame = Combined()
+    if not frame or InCombatLockdown() then return end
+    local db = GetDb()
+    local scale = db and tonumber(db.bagScale) or 1
+    local wanted = scale ~= 1 and Bags:IsCombined() and not Bags:GetOtherBagAddon() and not GamepadUI()
+    if wanted then
+        scaled = true
+        frame:SetScale(math.max(SCALE_MIN, math.min(SCALE_MAX, scale)))
+    elseif scaled then
+        scaled = false
+        frame:SetScale(1)
     end
 end
 
@@ -1329,6 +1379,7 @@ function Bags:Init()
     if combined then
         if combined.UpdateFrameSize then hooksecurefunc(combined, "UpdateFrameSize", Relayout) end
         if combined.UpdateItemLayout then hooksecurefunc(combined, "UpdateItemLayout", Relayout) end
+        combined:HookScript("OnShow", Bags.ApplyScale)   -- section 2b
         -- (after the re-layout: the window's new width)
         if combined.UpdateFrameSize then hooksecurefunc(combined, "UpdateFrameSize", function(f) Bags.FitSearchBox(f) end) end
         if combined.SetItemsMatchingBagHighlighted then
@@ -1358,6 +1409,7 @@ function Bags:Init()
     end
     -- the bags move when they open or the screen changes: the buttons pick their side again
     hooksecurefunc("UpdateContainerFrameAnchors", function()
+        Bags.ApplyScale()   -- (Blizzard has just set its own: section 2b)
         Bags:PlaceBagButtons()
         ParkReagentWindow()
     end)
@@ -1399,6 +1451,7 @@ function Bags:Init()
         end
         -- Slot counts can arrive after login or grow when a bag is replaced.
         if event == "PLAYER_ENTERING_WORLD" then self:UnregisterEvent(event) end
+        if event == "PLAYER_REGEN_ENABLED" then Bags.ApplyScale() end   -- a Scale set in the fight (section 2b)
         local refreshLayout = event == "PLAYER_ENTERING_WORLD" or event == "BAG_CONTAINER_UPDATE"
             or event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED"
         if refreshLayout then WarmExtraButtons() end
@@ -1449,6 +1502,7 @@ function Bags:Refresh()
             UpdateFrameItems(frame)
         end
     end
+    Bags.ApplyScale()
     self:PlaceBagButtons()
     ParkReagentWindow()
 end

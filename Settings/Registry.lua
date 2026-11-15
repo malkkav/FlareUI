@@ -308,7 +308,7 @@ end
 -- section or page says why (Panel.lua GamepadNote).
 Settings.GAMEPAD_OFF_MODULES = { au = true, br = true }
 Settings.GAMEPAD_OFF = {
-    ["bl.bagColumns"] = true, ["bl.bagGaps"] = true, ["bl.bagKeyring"] = true, ["bl.bagReagent"] = true,
+    ["bl.bagColumns"] = true, ["bl.bagScale"] = true, ["bl.bagItemScale"] = true, ["bl.bagGaps"] = true, ["bl.bagKeyring"] = true, ["bl.bagReagent"] = true,
     ["bl.bagFilters"] = true, ["bl.bagWithCharacter"] = true,
     ["ab.skinCDM"] = true, ["dm.chatTab"] = true, ["dm.chatTabIgnoreFade"] = true, ["tt.mouseover"] = true, ["qt.autoButtons"] = true,
     ["qol.autoAcceptQuests"] = true, ["qol.autoTurnInQuests"] = true, ["qol.mailBook"] = true,

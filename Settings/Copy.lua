@@ -536,6 +536,13 @@ ns.Copy = {
             section = "bl.itemSlots",
             tip = L["On the character sheet it works with another bag addon too."],
         },
+        ["bl.bagItemScale"] = {
+            desc = L["The size of the slots in the combined backpack. The window grows or shrinks to fit them."],
+            label = L["Item Scale"],
+            section = "bl.bagWindow",
+            tags = { "slot size", "icon size" },
+            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
+        },
         ["bl.bagJunkIcon"] = {
             desc = L["Grey items worth money show a coin all the time, not only at a vendor."],
             label = L["Junk Coin"],
@@ -557,6 +564,13 @@ ns.Copy = {
             desc = L["Your crafting material bag sits at the bottom of the combined backpack instead of in its own window."],
             label = L["Crafting Bag in Backpack"],
             section = "bl.bagWindow",
+            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
+        },
+        ["bl.bagScale"] = {
+            desc = L["The size of the whole combined backpack: slots, art and text together. 100% is Blizzard's."],
+            label = L["Scale"],
+            section = "bl.bagWindow",
+            tags = { "bag size", "bag scale" },
             tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
         },
         ["bl.bagSkinSlots"] = {

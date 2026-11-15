@@ -880,6 +880,8 @@ local defaults = {
             bagModule = false,
             bagColumns = 0,             -- combined backpack columns; 0 = Blizzard's (10)
             bagGaps = false,            -- each bag starts a new row, with a gap
+            bagScale = 1,               -- the combined backpack's scale (0.6 to 1.6); 1 = Blizzard's
+            bagItemScale = 1,           -- its slots' own scale (0.6 to 1.6), the window fitted round them
             bagButtons = false,         -- bag slot buttons down the combined backpack's side
             bagKeyring = false,         -- Keyring in Backpack: the keyring as a section of the combined backpack
             bagReagent = false,         -- Crafting Bag in Backpack: the crafting (reagent) bag there too

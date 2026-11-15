@@ -25,6 +25,21 @@ local BAG_COLUMNS = { { 0, L["Default"] } }
 for n = 6, 20 do BAG_COLUMNS[#BAG_COLUMNS + 1] = { n, tostring(n) } end
 S:Row{ key = "bl.bagColumns", kind = "range", tab = "bags", path = "tweaks.bagColumns", choices = BAG_COLUMNS,
     apply = RefreshBags, disabled = NotCombined }
+-- the window's scale, in steps of 5% (kept as whole percents so no float drifts)
+local BAG_SCALES = {}
+for percent = 60, 160, 5 do BAG_SCALES[#BAG_SCALES + 1] = { percent / 100, percent .. "%" } end
+S:Row{ key = "bl.bagScale", kind = "range", tab = "bags", choices = BAG_SCALES, apply = RefreshBags, disabled = NotCombined,
+    get = function()
+        local v = tonumber(S:GetPath("tweaks.bagScale")) or 1
+        return math.floor(v * 20 + 0.5) * 5 / 100
+    end,
+    set = function(v) S:SetPath("tweaks.bagScale", v) end }
+S:Row{ key = "bl.bagItemScale", kind = "range", tab = "bags", choices = BAG_SCALES, apply = RefreshBags, disabled = NotCombined,
+    get = function()
+        local v = tonumber(S:GetPath("tweaks.bagItemScale")) or 1
+        return math.floor(v * 20 + 0.5) * 5 / 100
+    end,
+    set = function(v) S:SetPath("tweaks.bagItemScale", v) end }
 S:Row{ key = "bl.bagGaps", half = true, tab = "bags", path = "tweaks.bagGaps", apply = RefreshBags, disabled = NotCombined }
 S:Row{ key = "bl.bagButtons", half = true, tab = "bags", path = "tweaks.bagButtons", apply = RefreshBags, disabled = NotCombined }
 -- the keyring and the crafting bag as sections of the combined backpack (Bags.lua 0)
