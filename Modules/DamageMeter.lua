@@ -123,6 +123,18 @@ local function InFight()
     return not canaccessvalue(busy) or busy and true or false
 end
 
+-- A text's width, or nil. The game hides a region's measures (a secret value) while its anchoring is
+-- secret, also out of a fight: then the last width read stands in, and nil means none was ever read.
+local lastWidth = setmetatable({}, { __mode = "k" })
+local function TextWidth(fontString)
+    local width = fontString:GetUnboundedStringWidth()
+    if canaccessvalue(width) and type(width) == "number" then
+        lastWidth[fontString] = width
+        return width
+    end
+    return lastWidth[fontString]
+end
+
 -- Settings > Damage Meter open: the meter stays shown whatever its visibility, also after Blizzard's
 -- re-checks on combat and group changes. With the module off Blizzard's meter is left alone.
 function DamageMeter:SetSettingsPreview(on)
@@ -457,8 +469,10 @@ local function FitTitleButton(window)
     -- a docked window's title sits further right, after the tabs before it (section 23b)
     local textX = dd.FlareUI_TextX or TITLE_LEFT
     local left = DamageMeter.TitleButtonLeft(textX)
-    local room = (ref:GetWidth() or 0) - dd.FlareUI_TitleReserve - left
-    local width = textX + (dd.TypeName:GetUnboundedStringWidth() or 0) + 8 - left
+    local refWidth, textWidth = ref:GetWidth(), TextWidth(dd.TypeName)
+    if not (canaccessvalue(refWidth) and refWidth and textWidth) then return end
+    local room = refWidth - dd.FlareUI_TitleReserve - left
+    local width = textX + textWidth + 8 - left
     dd:SetSize(math_max(math_min(width, room), 1), HEADER_HEIGHT)
 end
 
@@ -974,31 +988,36 @@ local function LayoutTabs(window, view)
     -- others as FlareUI tabs, section 23b), then Threat, always last
     local row = Dock.Row(window)
     local x, ownX = TITLE_LEFT, TITLE_LEFT   -- where the next tab's text starts
+    -- a width never read (secret since the start) leaves the tabs where they are
+    local titleWidth, threatWidth = TextWidth(dd.TypeName), TextWidth(view.tab.Text)
+    if not (titleWidth and threatWidth) then return end
     if row then
         for _, other in ipairs(row) do
             if other == window then
                 ownX = x
-                x = x + dd.TypeName:GetUnboundedStringWidth() + TAB_GAP
+                x = x + titleWidth + TAB_GAP
             else
                 local label = Dock.Label(window, other)
                 Style(label.Text)
                 label.Text:SetText(Dock.TitleOf(other))
+                local labelWidth = TextWidth(label.Text)
+                if not labelWidth then return end
                 label:ClearAllPoints()
                 label:SetPoint("LEFT", ref, "TOPLEFT", x - 4, ROW_CENTER_Y)
-                label:SetSize(label.Text:GetUnboundedStringWidth() + 8, HEADER_HEIGHT)
+                label:SetSize(labelWidth + 8, HEADER_HEIGHT)
                 ColorTab(label.Text, false)
                 label:Show()
-                x = x + label.Text:GetUnboundedStringWidth() + TAB_GAP
+                x = x + labelWidth + TAB_GAP
             end
         end
     else
-        x = x + dd.TypeName:GetUnboundedStringWidth() + TAB_GAP
+        x = x + titleWidth + TAB_GAP
     end
     Dock.HideLabels(window, row)
     Dock.PlaceTitle(window, dd, ref, ownX)
     view.tab:ClearAllPoints()
     view.tab:SetPoint("LEFT", ref, "TOPLEFT", x - 4, ROW_CENTER_Y)
-    view.tab:SetSize(view.tab.Text:GetUnboundedStringWidth() + 8, HEADER_HEIGHT)
+    view.tab:SetSize(threatWidth + 8, HEADER_HEIGHT)
     -- (11-15, Marcus) a window on its own has no Threat tab: the threat list stays with the first window
     -- (only a real meter window's view: the settings sample has no hit area and keeps its own tab)
     if views[window] == view and view.hit then
