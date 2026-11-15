@@ -316,10 +316,28 @@ local function SortItemsExtended(a, b)
     return SortItems(a, b)
 end
 
+local function LayoutColumns(db)
+    return (db.bagColumns or 0) > 0 and db.bagColumns or DEFAULT_COLUMNS
+end
+
+local function ExtraSectionChanged(bagID, wanted, columns)
+    local section = bagID and extras[bagID]
+    local visible = section and section.holder:IsShown()
+    if not wanted then return visible end
+    return not visible or section.shownSlots ~= ShownSlots(bagID, columns)
+end
+
 local layingOut = false
+local extraButtonsDeferred = false
+local lastLayoutColumns, lastLayoutGaps, lastLayoutSecured
 local function Relayout(frame)
     if layingOut or not frame or frame ~= Combined() or not frame:IsShown() then return end
-    if not (Bags:IsCombined() and LayoutWanted()) then HideExtras() return end
+    if not (Bags:IsCombined() and LayoutWanted()) then
+        extraButtonsDeferred = false
+        lastLayoutColumns = nil
+        HideExtras()
+        return
+    end
     local db = GetDb()
     local items = {}
     for _, button in frame:EnumerateValidItems() do items[#items + 1] = button end
@@ -327,7 +345,7 @@ local function Relayout(frame)
     local secured = not IsAccountSecured or IsAccountSecured()
     table_sort(items, secured and SortItems or SortItemsExtended)
 
-    local columns = (db.bagColumns or 0) > 0 and db.bagColumns or DEFAULT_COLUMNS
+    local columns = LayoutColumns(db)
     local gaps = db.bagGaps == true
     local w, h = items[1]:GetSize()
     local stepX, stepY = w + ITEM_SPACING, h + ITEM_SPACING
@@ -335,12 +353,14 @@ local function Relayout(frame)
     if not anchor then return end
 
     layingOut = true
+    extraButtonsDeferred = false
     local col, row, gapCount, prevBag = 0, 0, 0, nil
     -- the keyring and crafting bag sections first (the bottom rows), each with a gap above it
     local shownBags = {}
     for _, bagID in ipairs(ExtraBags()) do
         local e = Extra(bagID, frame)
         local shown = ShownSlots(bagID, columns)
+        e.shownSlots = shown
         -- the same order as Blizzard's bags: the last slot bottom right
         for slot = shown, 1, -1 do
             local b = ExtraButton(e, slot)
@@ -351,6 +371,8 @@ local function Relayout(frame)
                 FillExtraButton(b)
                 col = col + 1
                 if col >= columns then col, row = 0, row + 1 end
+            else
+                extraButtonsDeferred = true
             end
         end
         for slot, b in pairs(e.buttons) do if slot > shown then b:Hide() end end
@@ -379,8 +401,22 @@ local function Relayout(frame)
         + frame:GetPaddingHeight() + frame:CalculateExtraHeight()
     frame:SetSize(width, height)
     if NineSliceUtil and NineSliceUtil.UpdateCornerCropping then NineSliceUtil.UpdateCornerCropping(frame, height) end
+    lastLayoutColumns, lastLayoutGaps, lastLayoutSecured = columns, gaps, secured
     layingOut = false
     Bags:PlaceBagButtons()
+end
+
+local function ExtraLayoutChanged(event)
+    if event == "PLAYER_REGEN_ENABLED" and extraButtonsDeferred then return true end
+    if not (Bags:IsCombined() and LayoutWanted()) then return true end
+    local db = GetDb()
+    local columns = LayoutColumns(db)
+    local secured = not IsAccountSecured or IsAccountSecured()
+    if columns ~= lastLayoutColumns or (db.bagGaps == true) ~= lastLayoutGaps or secured ~= lastLayoutSecured then
+        return true
+    end
+    return ExtraSectionChanged(KeyringID(), KeyringWanted(), columns)
+        or ExtraSectionChanged(ReagentID(), ReagentWanted(), columns)
 end
 
 --------------------------------------------------
@@ -1243,6 +1279,13 @@ function Bags:Init()
         if refreshLayout then WarmExtraButtons() end
         if not next(extras) and not (KeyringWanted() or ReagentWanted()) then return end
         local frame = Combined()
+        -- On content updates, refill the buttons when the existing layout still fits.
+        if (event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED")
+            and frame and frame:IsShown() and not ExtraLayoutChanged(event)
+        then
+            FillExtras()
+            return
+        end
         if not (frame and frame:IsShown()) then return end
         if refreshLayout then
             Relayout(frame)
