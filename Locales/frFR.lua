@@ -1,9 +1,7 @@
 local _, ns = ...
 local L = ns.LocaleStrings("frFR")
 
---@localization(locale="frFR", format="lua_additive_table", handle-unlocalized="ignore")@
-
--- Maintained translations take precedence over any CurseForge imports above.
+-- Maintained in-repo: French no longer comes from CurseForge, so no @localization substitution keyword is used here.
 -- French by Braincell1980.
 -- (11-13: started from the CurseForge French in the 6.2 release)
 L["\"Quests 14/25\" in the header."] = "« Quêtes 14/25 » dans l'en-tête."
