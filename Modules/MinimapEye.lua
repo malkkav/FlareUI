@@ -217,13 +217,14 @@ local function Place()
     local sun = MinimapCluster.DielFrame
     local x, y
     if ns.Minimap.IsSquare() and sun then
-        -- centred on the border line, as Minimap.lua PlaceButton puts the addon buttons. The border's
-        -- frame, not the map: node addons slide the map under the cursor while they scan
+        -- centred on the map's left edge, as Minimap.lua PlaceButton puts the addon buttons. Measured
+        -- from the border's frame, which sits where the map sits but stays still: node addons slide
+        -- the map under the cursor while they scan
         local art = ns.Minimap.Frame or Minimap
         local _, _, sunTop = ScreenRect(sun)
-        local mapLeft = art:GetLeft()
-        if sunTop and mapLeft then
-            x = mapLeft * art:GetEffectiveScale()
+        local artX = art:GetCenter()
+        if sunTop and artX then
+            x = artX * art:GetEffectiveScale() - Minimap:GetWidth() / 2 * Minimap:GetEffectiveScale()
             y = sunTop + (SUN_GAP + BUTTON_SIZE / 2) * own
         end
     else
