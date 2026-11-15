@@ -7,6 +7,7 @@ local L = ns.L
 --   * Columns and Gaps between bags: the combined backpack's grid, laid out again after Blizzard's
 --     (hooksecurefunc on its UpdateFrameSize / UpdateItemLayout, so Blizzard's code runs untouched)
 --   * Integrated bag buttons: the four bag slots down the combined backpack's side
+--   * Sort Bags on Open: Blizzard's clean-up each time the bags open (section 4d)
 --   * Category Filters: a button beside the cleanup button opens a drawer of categories; the one
 --     picked dims every other item (section 4b; the dimming after parchinskiy's PR #22)
 --   * Thicker borders, Rarity colours and Junk coin: drawn on an overlay of each item
@@ -1305,6 +1306,7 @@ function Bags:Init()
     RouteEmbeddedBagClick(_G.KeyRingButton, KeyringWanted)
     RouteEmbeddedBagClick(_G.CharacterReagentBag0Slot, ReagentWanted)
     Bags.FollowWindows()   -- section 4c
+    Bags.Sort.Hook()       -- section 4d
     Bags.StyleFreeSlots()
     Bags.StyleMoney()
     local useFilterButtons = C_Container.GetContainerItemQuestInfo and C_Item.GetItemInventoryTypeByID
@@ -1488,6 +1490,53 @@ function Bags.FollowWindows()
     -- the guild bank loads on demand
     if EventUtil and EventUtil.ContinueOnAddOnLoaded then
         EventUtil.ContinueOnAddOnLoaded("Blizzard_GuildBankUI", function() Follow(_G.GuildBankFrame) end)
+    end
+end
+
+--------------------------------------------------
+-- 4d. SORT ON OPEN (Bags and Looting > Sort Bags on Open, off; 11-15, a player's request)
+-- Opening the bags runs Blizzard's own clean-up (C_Container.SortBags, the broom button), so its
+-- rules hold: bags set to Ignore This Bag stay as they are. Bags already in order don't move.
+-- Not in a fight, not with something on the cursor, and not at a vendor, the mailbox, the bank, the
+-- auction house or in a trade, where slots moving under the pointer would be a nuisance. Opening
+-- several bags at once sorts once.
+--------------------------------------------------
+local Sort = { EVERY = 1 }   -- seconds between two sorts at the least
+Bags.Sort = Sort
+
+function Sort.On()
+    local db = GetDb()
+    return db and db.bagAutoSort == true and not Bags:GetOtherBagAddon() or false
+end
+
+-- windows where the bags are open to be worked in
+local BUSY_WINDOWS = { "MerchantFrame", "MailFrame", "BankFrame", "GuildBankFrame", "AuctionHouseFrame", "AuctionFrame", "TradeFrame" }
+function Sort.Busy()
+    if InCombatLockdown() or GetCursorInfo() then return true end
+    for _, name in ipairs(BUSY_WINDOWS) do
+        local frame = _G[name]
+        if frame and frame:IsShown() then return true end
+    end
+    return false
+end
+
+-- A bag window has opened: one sort on the next frame (the other bags open in the same moment)
+function Sort.Opened()
+    if Sort.queued or not Sort.On() then return end
+    Sort.queued = true
+    C_Timer.After(0, function()
+        Sort.queued = false
+        local now = GetTime()
+        if not Sort.On() or Sort.Busy() or (Sort.last and now - Sort.last < Sort.EVERY) then return end
+        if not (C_Container and C_Container.SortBags) then return end
+        Sort.last = now
+        pcall(C_Container.SortBags)
+    end)
+end
+
+function Sort.Hook()
+    for _, frame in ipairs(BagFrames()) do
+        frame:HookScript("OnShow", Sort.Opened)
     end
 end
 

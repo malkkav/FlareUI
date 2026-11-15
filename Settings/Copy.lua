@@ -504,6 +504,13 @@ ns.Copy = {
             label = L["Timer Colour"],
             section = "au.general",
         },
+        ["bl.bagAutoSort"] = {
+            desc = L["Tidies your bags each time you open them, as the broom button does. Bags set to Ignore This Bag are left alone."],
+            label = L["Sort Bags on Open"],
+            section = "bl.bagWindow",
+            tags = { "auto sort", "clean up bags" },
+            tip = L["Not in combat, and not at a vendor, mailbox, bank, auction house or in a trade."],
+        },
         ["bl.bagButtons"] = {
             desc = L["Your bag slots down the side of the combined backpack:\n* Drag bags in and out\n* Point at one to highlight its items"],
             label = L["Integrated Bag Buttons"],
