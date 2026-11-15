@@ -716,6 +716,7 @@ local defaults = {
             reminders = false,
             reminder = { group = "all", size = 36, before = 2, orientation = "HORIZONTAL", grow = "FORWARD",
                          blessing = "auto", consumables = "off", pets = true, thorns = "tank", camping = false, gathering = false,
+                         food = true, flask = true, elixirSource = "ticked", elixirMode = "each",   -- Food, Flask, Elixirs to Watch / to Keep Up (11-14)
                          weaponOil = false,   -- Weapon Oil / Stone (11-12)
                          elixirs = "none", weaponScope = "always", petScope = "always", readyCheck = false,   -- 11-12
                          classScope = "always", timeLeft = true,   -- Where > Class Buffs; Edit Mode > Alerts > Time Left (11-12)

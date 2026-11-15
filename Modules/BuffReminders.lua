@@ -9,8 +9,9 @@ local L = ns.L
 -- game lets addons read them. Known spells only, at your highest rank. Also (11-10, after EnhanceQoL's
 -- reminder, the idea only): paladin blessings, picked per member (Blessing: Automatic gives warriors,
 -- rogues and hunters Might and everyone else Wisdom, or one for all); a hunter's or warlock's pet
--- missing, dead or hurt (Pet Reminders, on); food and flask buffs (Food and Flask: off, in dungeons and
--- raids, or always; icons only, nothing to click). When It Shows: Solo / Party / Raid, Hide in Rested
+-- missing, dead or hurt (Pet Reminders, on); food, flask and elixir buffs (Consumables: off, in dungeons
+-- and raids, or always; Food and Flask each with a box; the elixirs ticked or those in your bags, each
+-- or any one of them; a click drinks what you carry). When It Shows: Solo / Party / Raid, Hide in Rested
 -- Areas, Only When You're the Only Provider (a group buff no one else of your class gives). Alerts: a
 -- sound when a reminder appears, a gold glow on missing buffs, an orange one on buffs running out.
 --------------------------------------------------
@@ -160,18 +161,27 @@ local CONSUMABLES = {
     -- Surprise, Dirge's Chimaerok Chops, Blessed Sunfruit and its juice)
     -- (11-13) Well Fed by name; the six by ID, as their names are shared ("Mana Regeneration" is also
     -- Elixir of Mageblood's, which hid this reminder)
-    { key = "food", consumable = true, buffs = { 19705 }, ids = { 18192, 18194, 22730, 25661, 18125, 18141 }, icon = 19705 },
-    { key = "flask", consumable = true, buffs = { 17626, 17627, 17628, 17629 }, icon = 17626 },  -- the four flasks
+    -- switch: its own box under Consumables (11-14, a player levelling with elixirs but no flask yet)
+    { key = "food", consumable = true, switch = "food", buffs = { 19705 }, icon = 19705,
+      ids = { 18192, 18194, 22730, 25661, 18125, 18141 } },
+    -- the four flasks, and their items (11-14): a click drinks the one in your bags
+    { key = "flask", consumable = true, switch = "flask", buffs = { 17626, 17627, 17628, 17629 }, icon = 17626,
+      items = { 13510, 13511, 13512, 13513 } },
 }
 
--- Elixirs and More (11-12): the raid consumables a player ticks in the settings. Item (best first), and
--- the buff it gives (Classic IDs, unverified on Forever; the item's own spell name counts too)
+-- Elixirs and More (11-12): the raid consumables a player ticks in the settings. Items (best first) and
+-- the buff each gives: buff, or buffs for an elixir with lower ranks (11-14, a player levelling on the
+-- minor ones): any rank counts, and a click drinks the best one in your bags. Classic IDs, unverified
+-- on Forever but for the minor elixirs (2378, 673 and 3166 measured there); the items' own spell
+-- names count too
 local ELIXIRS = {
     { key = "mongoose", items = { 13452 }, buff = 17538 }, { key = "giants", items = { 9206 }, buff = 11405 },
     { key = "greaterAgility", items = { 9187 }, buff = 11334 }, { key = "bruteForce", items = { 13453 }, buff = 17537 },
     { key = "greaterArcane", items = { 13454 }, buff = 17539 }, { key = "shadowPower", items = { 9264 }, buff = 11474 },
     { key = "greaterFirepower", items = { 21546 }, buff = 26276 }, { key = "frostPower", items = { 17708 }, buff = 21920 },
-    { key = "fortitude", items = { 3825 }, buff = 3593 }, { key = "superiorDefense", items = { 13445 }, buff = 11348 },
+    { key = "fortitude", items = { 3825, 2458 }, buffs = { 3593, 2378 } },
+    { key = "superiorDefense", items = { 13445, 8951, 3389, 5997 }, buffs = { 11348, 11349, 3220, 673 } },
+    { key = "greaterIntellect", items = { 9179, 3383 }, buffs = { 11396, 3166 } },
     { key = "sages", items = { 13447 }, buff = 17535 }, { key = "mageblood", items = { 20007 }, buff = 24363 },
     { key = "trollsBlood", items = { 20004 }, buff = 24361 }, { key = "zanzaSpirit", items = { 20079 }, buff = 24382 },
     { key = "zanzaSwiftness", items = { 20081 }, buff = 24383 }, { key = "jujuPower", items = { 12451 }, buff = 16323 },
@@ -345,6 +355,17 @@ end
 
 local function ItemCount(id) return C_Item.GetItemCount and C_Item.GetItemCount(id) or 0 end
 local function ItemIcon(id) return C_Item.GetItemIconByID and C_Item.GetItemIconByID(id) or 134400 end
+-- the best of an elixir family's items in your bags (ELIXIRS: items best first)
+local function ElixirInBags(def)
+    for _, item in ipairs(def.items) do
+        if ItemCount(item) > 0 then return item end
+    end
+end
+-- an elixir family the settings watch (Elixirs to Watch, 11-14): ticked in Elixirs and More, or carried
+local function ElixirWatched(def, db)
+    if db.elixirSource == "bags" then return ElixirInBags(def) ~= nil end
+    return ns.Conditions.Set(db.elixirs or "")[def.key] == true
+end
 
 -- a weapon option you can put on: an imbue you know, a stone you can make or have, any poison
 local function BestCreate(o)
@@ -573,12 +594,20 @@ local function Resolve()
     active[#active + 1] = { def = { key = "trinket", trinket = true }, names = {}, icon = ItemIcon(12846) }
     for _, def in ipairs(ELIXIRS) do
         def.elixir = true
+        def.buffs = def.buffs or { def.buff }
         local names = {}
-        local name = SpellName(def.buff)
-        if name then names[name] = true end
-        if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(def.items[1]) end
+        for _, id in ipairs(def.buffs) do
+            local name = SpellName(id)
+            if name then names[name] = true end
+        end
+        for _, item in ipairs(def.items) do
+            if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(item) end
+        end
         active[#active + 1] = { def = def, names = names, icon = ItemIcon(def.items[1]) }
     end
+    -- Those in Your Bags with nothing to drink (11-14): one icon while no elixir is carried nor up
+    active[#active + 1] = { def = { key = "elixirStock", elixirStock = true, label = L["No elixir in your bags."] },
+        names = {}, icon = ItemIcon(3383) }
     for _, def in ipairs(CONSUMABLES) do
         local names = {}
         for _, id in ipairs(def.buffs) do
@@ -611,6 +640,7 @@ end
 function BR.EntryLabel(entry, owner)
     local name = owner and owner.spellID and SpellName(owner.spellID)
         or (entry.castID and SpellName(entry.castID)) or next(entry.names or {})
+        or (entry.def and entry.def.label)
     return name or (entry.key or (entry.def and entry.def.key)) or "?"
 end
 -- Hidden Reminders (11-13, a player: one by one): every hidden one, ticked; unticking brings it back
@@ -672,7 +702,7 @@ function BR.KindMode(entry, db)
     if not (def and db) then return nil end
     if def.weapon then return db.weaponScope end
     if def.pet then return db.petScope end
-    if def.elixir or def.consumable then return db.consumables end
+    if def.elixir or def.elixirStock or def.consumable then return db.consumables end
     if entry.classBuff then return db.classScope end
     return nil
 end
@@ -844,10 +874,10 @@ function Enabled(entry)
     if entry.def.weapon and not InScope(db.weaponScope) then return false end
     if entry.def.pet and not InScope(db.petScope) then return false end
     if entry.classBuff and not entry.def.weapon and not entry.def.pet and not InScope(db.classScope) then return false end
-    -- an elixir: ticked in Elixirs and More, and where food and flask show
+    -- an elixir: watched (ticked in Elixirs and More, or in your bags), and where food and flask show
     if entry.def.elixir then
         local mode = db.consumables or "off"
-        if mode == "off" or not ns.Conditions.Set(db.elixirs or "")[entry.def.key] then return false end
+        if mode == "off" or not ElixirWatched(entry.def, db) then return false end
         return InScope(mode)
     end
     if entry.def.notRole and not ns.EditPreviewing() then
@@ -858,9 +888,14 @@ function Enabled(entry)
         local ok, role = pcall(UnitGroupRolesAssigned, "player")
         return ok and Readable(role) and role == entry.def.role or false
     end
+    if entry.def.elixirStock then
+        local mode = db.consumables or "off"
+        if mode == "off" or db.elixirSource ~= "bags" then return false end
+        return InScope(mode)
+    end
     if entry.def.consumable then
         local mode = db.consumables or "off"
-        if mode == "off" then return false end
+        if mode == "off" or db[entry.def.switch] == false then return false end
         return InScope(mode)
     end
     return true
@@ -1315,6 +1350,34 @@ function BR.PaladinAuraChoices()
 end
 
 local units = {}
+-- an elixir family's buff on you: fine, running out, seconds left (as HasBuff)
+local function ElixirUp(entry, before)
+    local def = entry.def
+    -- the items' own spell names count too (once every item has loaded)
+    if not entry.itemNames and C_Item.GetItemSpell then
+        local all = true
+        entry.itemSpellIDs = entry.itemSpellIDs or {}
+        for _, item in ipairs(def.items) do
+            local spellName, spellID = C_Item.GetItemSpell(item)
+            if spellName then entry.names[spellName] = true else all = false end
+            if spellID and not tContains(entry.itemSpellIDs, spellID) then
+                entry.itemSpellIDs[#entry.itemSpellIDs + 1] = spellID
+            end
+        end
+        entry.itemNames = all or nil
+    end
+    -- (11-13) by spell ID where the game knows one: a name can be another buff's too (Elixir of
+    -- Mageblood and Nightfin Soup are both "Mana Regeneration"); by name only when no ID resolves
+    local ids = {}
+    for _, id in ipairs(def.buffs) do
+        if SpellName(id) then ids[#ids + 1] = id end
+    end
+    for _, id in ipairs(entry.itemSpellIDs or {}) do
+        if not tContains(ids, id) then ids[#ids + 1] = id end
+    end
+    if #ids > 0 then return HasBuffByID(ids, before) end
+    return HasBuff("player", entry.names, before)
+end
 -- each active reminder's missing / total, the first unit to cast on, the spell (when it is not the
 -- reminder's own: a blessing or a pet's), and whether nothing is missing, only running out
 local function Check(entry, before)
@@ -1439,30 +1502,51 @@ local function Check(entry, before)
         if lowest >= DURABILITY_BELOW then return 0, 1 end
         return 1, 1, "player", nil, nil, false, { durability = math_floor(lowest * 100) }
     end
-    if def.elixir then
-        -- the item's own spell name counts too (once the item has loaded)
-        if not entry.itemNames and C_Item.GetItemSpell then
-            local spellName, spellID = C_Item.GetItemSpell(def.items[1])
-            if spellName then entry.names[spellName] = true; entry.itemNames = true end
-            if spellID then entry.itemSpellID = spellID end
+    if def.elixirStock then
+        for _, e in ipairs(active) do
+            if e.def.elixir and ElixirInBags(e.def) then return 0, 1 end
         end
-        -- (11-13) by spell ID where the game knows one: a name can be another buff's too (Elixir of
-        -- Mageblood and Nightfin Soup are both "Mana Regeneration"); by name only when no ID resolves
-        local ids = {}
-        if def.buff and SpellName(def.buff) then ids[#ids + 1] = def.buff end
-        if entry.itemSpellID and entry.itemSpellID ~= def.buff then ids[#ids + 1] = entry.itemSpellID end
-        local fine, running, left
-        if #ids > 0 then
-            fine, running, left = HasBuffByID(ids, before)
-        else
-            fine, running, left = HasBuff("player", entry.names, before)
-        end
-        if fine then return 0, 1 end
-        for _, item in ipairs(def.items) do
-            if ItemCount(item) > 0 then
-                return 1, 1, "player", nil, ItemIcon(item), running, { item = "item:" .. item, tipItem = item },
-                    running and left or nil
+        local running, left
+        for _, e in ipairs(active) do
+            if e.def.elixir then
+                local fine, r, l = ElixirUp(e, before)
+                if fine then return 0, 1 end
+                if r and not running then running, left = true, l end
             end
+        end
+        return 1, 1, "player", nil, nil, running or false, { text = L["No elixir in your bags."] },
+            running and left or nil
+    end
+    if def.elixir then
+        local running, left, item
+        -- Any One of Them (11-14, a player levelling on what drops): the watched elixirs make one
+        -- reminder, on the first of them, fine while any is up, drinking whichever is in your bags
+        local db = GetDb() or {}
+        if db.elixirMode == "any" then
+            local first
+            for _, e in ipairs(active) do
+                if e.def.elixir and ElixirWatched(e.def, db) then first = e break end
+            end
+            if entry ~= first then return 0, 0 end
+            -- (Those in Your Bags: any elixir on you counts, the one you drank the last of too)
+            local carried = db.elixirSource == "bags"
+            for _, e in ipairs(active) do
+                if e.def.elixir and (carried or ElixirWatched(e.def, db)) then
+                    local fine, r, l = ElixirUp(e, before)
+                    if fine then return 0, 1 end
+                    if r and not running then running, left = true, l end
+                    item = item or ElixirInBags(e.def)
+                end
+            end
+        else
+            local fine
+            fine, running, left = ElixirUp(entry, before)
+            if fine then return 0, 1 end
+            item = ElixirInBags(def)
+        end
+        if item then
+            return 1, 1, "player", nil, ItemIcon(item), running, { item = "item:" .. item, tipItem = item },
+                running and left or nil
         end
         return 1, 1, "player", nil, nil, running, { none = true, tipItem = def.items[1] }, running and left or nil
     end
@@ -1539,7 +1623,15 @@ local function Check(entry, before)
             if not ok or not Readable(aura) or aura then return 0, 1 end
         end
         local fine, running, left = HasBuff("player", entry.names, before, def.own)
-        return fine and 0 or 1, 1, "player", nil, nil, running, nil, running and left or nil
+        if fine then return 0, 1 end
+        -- a flask (11-14): a click drinks the one in your bags
+        local item = def.items and ElixirInBags(def)
+        if item then
+            return 1, 1, "player", nil, ItemIcon(item), running, { item = "item:" .. item, tipItem = item },
+                running and left or nil
+        end
+        return 1, 1, "player", nil, nil, running, def.items and { text = L["Flask"], none = true } or nil,
+            running and left or nil
     end
     local missing, total, first, gone = 0, 0, nil, false
     -- Thorns: tanks (their group role, or the raid's main tanks; alone, yourself), you, or everyone
@@ -1647,6 +1739,7 @@ local function Icon(i)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         if self.tipItem then GameTooltip:SetItemByID(self.tipItem)
         elseif self.spellID or self.tipSpell then GameTooltip:SetSpellByID(self.spellID or self.tipSpell) end
+        if self.tipText then GameTooltip:AddLine(self.tipText, 1, 0.82, 0) end
         -- a weapon buff: which hand, and nothing to put on
         if self.hand then GameTooltip:AddLine(self.hand, 1, 0.82, 0) end
         if self.none then GameTooltip:AddLine(L["None in your bags."], 1, 0.3, 0.3) end
@@ -1668,8 +1761,10 @@ function BR.Menu(owner)
             dismissed[key] = BR.EntryLabel(entry, owner)
             BR.Update()
         end)
-        -- (a buff only: something to see come back)
-        if next(entry.names or {}) or entry.def.weapon or entry.def.blessing then
+        -- (a buff only: something to see come back; the elixir stock: an elixir drunk or picked up;
+        -- the sleeping bag: its three Well-Rested stacks)
+        if next(entry.names or {}) or entry.def.weapon or entry.def.blessing or entry.def.elixirStock
+                or entry.def.bag then
             root:CreateButton(L["Snooze Until Recast"], function()
                 snoozed[key] = true
                 BR.Update()
@@ -1817,7 +1912,7 @@ local function Show(shows, sample)
         b.icon:SetTexture(s.icon or s.entry.icon)
         b.spellID = castID
         b.tipSpell, b.tipItem = s.entry.tipSpell, s.action and s.action.tipItem
-        b.none = s.action and s.action.none
+        b.tipText, b.none = s.action and s.action.text, s.action and s.action.none
         b.hand = s.entry.slot and (s.entry.slot == 17 and (INVTYPE_WEAPONOFFHAND or "Off Hand") or (INVTYPE_WEAPONMAINHAND or "Main Hand"))
         if sample then
             -- a picture only

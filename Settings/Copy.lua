@@ -707,8 +707,8 @@ ns.Copy = {
             section = "br.where",
         },
         ["br.consumables"] = {
-            desc = L["An icon while you have no Well Fed buff or no flask. Choose where it shows on the When and Where tab."],
-            label = L["Food and Flask"],
+            desc = L["Icons while you have no Well Fed buff, no flask or none of the elixirs you tick below. Choose where they show on the When and Where tab."],
+            label = L["Food, Flask and Elixirs"],
             section = "br.consumablesSection",
         },
         ["br.consumablesWhere"] = {
@@ -735,8 +735,20 @@ ns.Copy = {
             section = "br.upkeep",
             tags = { "repair", "durability", "broken" },
         },
+        ["br.elixirMode"] = {
+            choices = { L["Each of Them"], L["Any One of Them"] },
+            desc = L["Each of Them: an icon for every watched elixir you lack. Any One of Them: one icon while none of them is on you, gone as soon as one is. A click drinks one from your bags."],
+            label = L["Elixirs to Keep Up"],
+            section = "br.consumablesSection",
+        },
+        ["br.elixirSource"] = {
+            choices = { L["Ticked Ones"], L["Those in Your Bags"] },
+            desc = L["Ticked Ones: the elixirs ticked in Elixirs and More. Those in Your Bags: every elixir you carry, nothing to tick, and one icon while you carry none and have none on you."],
+            label = L["Elixirs to Watch"],
+            section = "br.consumablesSection",
+        },
         ["br.elixirs"] = {
-            desc = L["The elixirs, Zanza, juju and Blasted Lands buffs you want kept up. Click an icon to use one from your bags."],
+            desc = L["The elixirs, Zanza, juju and Blasted Lands buffs you want kept up. Any rank of an elixir counts. Click an icon to use the best one from your bags."],
             label = L["Elixirs and More"],
             section = "br.consumablesSection",
             tags = { "elixir", "flask", "consumables", "zanza", "juju", "mongoose", "giants", "raid buffs" },
@@ -748,6 +760,11 @@ ns.Copy = {
             section = "br.classBuffs",
             tags = { "shadow protection", "moonkin" },
         },
+        ["br.flask"] = {
+            desc = L["An icon while you have no flask. Untick it while levelling, before flasks are yours to drink."],
+            label = L["Flask"],
+            section = "br.consumablesSection",
+        },
         ["br.font.counts"] = {
             desc = L["The number on each icon."],
             label = L["Counts"],
@@ -757,6 +774,11 @@ ns.Copy = {
             desc = L["How long the buff has left, on each icon."],
             label = L["Time Left"],
             section = "br.fonts",
+        },
+        ["br.food"] = {
+            desc = L["An icon while you have no Well Fed buff."],
+            label = L["Food"],
+            section = "br.consumablesSection",
         },
         ["br.gathering"] = {
             desc = L["An icon when you know Find Herbs or Find Minerals but it's off."],

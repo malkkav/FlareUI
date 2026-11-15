@@ -33,17 +33,26 @@ Row{ key = "br.playstyle", kind = "choice", half = true, tab = "reminders", path
     choices = { "auto", "melee", "caster", "healer", "tank" } }
 -- Weapons
 Row{ key = "br.weaponOil", tab = "reminders", path = "auras.reminder.weaponOil" }
--- Consumables: Food and Flask on or off (where it shows is on the When and Where tab), then the elixirs
+-- Consumables on or off (where they show is on the When and Where tab), then Food and Flask each with
+-- their own box (11-14), then the elixirs
 local function ConsumablesOn() return (S:GetPath("auras.reminder.consumables") or "off") ~= "off" end
 Row{ key = "br.consumables", tab = "reminders",
     get = ConsumablesOn,
     set = function(on)
         S:SetPath("auras.reminder.consumables", on and (S:GetPath("auras.reminder.consumablesWhere") or "instance") or "off")
     end }
+-- (rank: before the elixir list, in the switch's own order)
+Row{ key = "br.food", half = true, rank = 0.5, tab = "reminders", path = "auras.reminder.food", parent = "br.consumables" }
+Row{ key = "br.flask", half = true, rank = 0.5, tab = "reminders", path = "auras.reminder.flask", parent = "br.consumables" }
 Row{ key = "br.elixirs", kind = "dropdown", tab = "reminders", path = "auras.reminder.elixirs", parent = "br.consumables",
     choices = function() return BR() and BR().ElixirChoices() or {} end,
     toggles = { exclusive = { "none" }, tokens = BR() and BR().ElixirKeys() or {}, empty = "none" },
     disabled = function() return not ConsumablesOn() end }
+-- which elixirs are watched (the ticked ones, or those in your bags), and whether each or any one is wanted
+Row{ key = "br.elixirSource", kind = "choice", tab = "reminders", path = "auras.reminder.elixirSource", parent = "br.consumables",
+    choices = { "ticked", "bags" }, disabled = function() return not ConsumablesOn() end }
+Row{ key = "br.elixirMode", kind = "choice", tab = "reminders", path = "auras.reminder.elixirMode", parent = "br.consumables",
+    choices = { "each", "any" }, disabled = function() return not ConsumablesOn() end }
 -- Upkeep, in pairs
 Row{ key = "br.supplies", half = true, tab = "reminders", path = "auras.reminder.supplies" }
 Row{ key = "br.durability", half = true, tab = "reminders", path = "auras.reminder.durability" }
@@ -100,7 +109,7 @@ local WHERE = { "always", "instance", "raid", "mouseover" }
 Row{ key = "br.classScope", kind = "choice", half = true, tab = "when", path = "auras.reminder.classScope", choices = WHERE }
 Row{ key = "br.weaponScope", kind = "choice", half = true, tab = "when", path = "auras.reminder.weaponScope", choices = WHERE }
 Row{ key = "br.petScope", kind = "choice", half = true, tab = "when", path = "auras.reminder.petScope", choices = WHERE }
--- Consumables' place: kept while Food and Flask is off, and used again when it comes back on
+-- Consumables' place: kept while the Consumables switch is off, and used again when it comes back on
 Row{ key = "br.consumablesWhere", kind = "choice", half = true, tab = "when", choices = WHERE,
     get = function()
         local mode = S:GetPath("auras.reminder.consumables") or "off"
