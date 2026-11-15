@@ -1467,16 +1467,21 @@ local function LiveSeconds(window)
     if kind == Enum.DamageMeterSessionType.Current and combatStart then return math.floor(GetTime() - combatStart) end
 end
 
--- You, or anyone in your group, still in a fight
+-- Group combat has no single reliable end event. Keep the fallback, but a full roster
+-- scan twice a second is enough; player transitions and roster changes invalidate it at once.
+local groupCombat, groupCheckAt = false, -math.huge
 local function GroupInCombat()
+    local now = GetTime()
+    if now - groupCheckAt < 0.5 then return groupCombat end
+    groupCheckAt, groupCombat = now, false
     local mine = UnitAffectingCombat("player")
-    if canaccessvalue(mine) and mine then return true end
+    if canaccessvalue(mine) and mine then groupCombat = true; return true end
     if not IsInGroup() then return false end
     local prefix, count = "party", GetNumSubgroupMembers()
     if IsInRaid() then prefix, count = "raid", GetNumGroupMembers() end
     for i = 1, count do
         local fighting = UnitAffectingCombat(prefix .. i)
-        if canaccessvalue(fighting) and fighting then return true end
+        if canaccessvalue(fighting) and fighting then groupCombat = true; return true end
     end
     return false
 end
@@ -1486,13 +1491,15 @@ local UpdateLiveTimers
 -- Each window's text, when its second changed; Blizzard's timer shows where FlareUI's has nothing
 local function PaintLiveTimers()
     for window, fs in pairs(liveTimers) do
-        local seconds = LiveSeconds(window)
-        if seconds ~= fs.FlareUI_Second then
-            fs.FlareUI_Second = seconds
-            if seconds then fs:SetText(("[%s] "):format(SecondsToClock(seconds))) end
-            fs:SetShown(seconds ~= nil)
-            local blizzard = GetWindowSessionTimer(window)
-            if blizzard then blizzard:SetAlpha(seconds and 0 or 1) end
+        if window:IsVisible() then
+            local seconds = LiveSeconds(window)
+            if seconds ~= fs.FlareUI_Second then
+                fs.FlareUI_Second = seconds
+                if seconds then fs:SetText(("[%s] "):format(SecondsToClock(seconds))) end
+                fs:SetShown(seconds ~= nil)
+                local blizzard = GetWindowSessionTimer(window)
+                if blizzard then blizzard:SetAlpha(seconds and 0 or 1) end
+            end
         end
     end
 end
@@ -1528,6 +1535,8 @@ end
 -- registered in Init
 local timerEvents = CreateFrame("Frame")
 timerEvents:SetScript("OnEvent", function(_, event)
+    groupCheckAt = -math.huge
+    if event == "GROUP_ROSTER_UPDATE" then UpdateLiveTimers(); return end
     combatStart = event == "PLAYER_REGEN_DISABLED" and GetTime() or nil
     UpdateLiveTimers()
     -- Threat View in Combat. After a fight a fading meter switches back only once faded (no flash of
@@ -2639,6 +2648,7 @@ function DamageMeter:Init()
     GROUP_BUTTONS.events:RegisterEvent("PARTY_LEADER_CHANGED")
     timerEvents:RegisterEvent("PLAYER_REGEN_DISABLED")
     timerEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
+    timerEvents:RegisterEvent("GROUP_ROSTER_UPDATE")
 
     -- the meter's gear menu gets FlareUI's settings (its own "Open Settings" goes to a page this
     -- client doesn't have). Menu.ModifyMenu adds to Blizzard's menu without touching it.
