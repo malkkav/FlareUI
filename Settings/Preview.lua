@@ -30,7 +30,7 @@ Route('bags', 'bl', 'bagColumns bagGaps bagButtons bagRarityBorders bagThickBord
 Route('nameplate', 'qol', 'npCombo npQuest npNames npLevel npLevelName npCombat')
 Route('reminders', 'au', 'reminders reminderGroup reminderBefore reminderConsumables reminderCamping reminderGathering reminderGlow reminderGlowExpiring')
 Route('lootFeed', 'bl', 'lootFeed lootFeedPosition lootFeedQuality lootFeedMoney lootFeedSkills')
-Route('lootRolls', 'bl', 'lootRolls')
+Route('lootRolls', 'bl', 'lootRolls lootRollsOpacity')
 Route('radial', 'rm', 'scale names')
 
 -- How tall the drawn picture is, from the canvas's top to the lowest thing shown (the panel sizes

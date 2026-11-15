@@ -854,7 +854,7 @@ function R.lootRolls(c, spec)
     if spec.key == 'bl.lootRolls' and not Get('tweaks.lootRolls') then c:Text('rollsOff',L["Disabled"],12,90); return end
     local x, w = 8, c.width - 16
     local h = 30 + 58 + 2 * 26 + 8
-    c:Box('rollsWin', x, 30, w, h, 'FlareUI Thick', 0.9)
+    c:Box('rollsWin', x, 30, w, h, 'FlareUI Thin', Get('tweaks.lootRollsOpacity', 1))
     c:Text('rollsTitle', '|cffffd100' .. L["Loot Rolls"] .. '|r |cff808080(2)|r', x + 12, 39, w - 50, {size=11})
     local hist = c:Texture('rollsHist', P.MEDIA .. 'Icons\\DMSegments.tga', x + w - 26, 36, 14, 14, true)
     hist:SetVertexColor(0.61, 0.48, 0.29)
@@ -866,7 +866,7 @@ function R.lootRolls(c, spec)
     local cy = 62
     Icon(c, 'rollsIcon', 'INV_Sword_04', x + 11, cy, 40)
     c:Text('rollsName', '|cff0070dd' .. L["Sample Item"] .. '|r', x + 60, cy + 1, w - 150, {size=11})
-    c:Text('rollsMine', '|cffff8040' .. (ITEM_BIND_ON_PICKUP or '') .. '|r', x + 60, cy + 16, w - 80, {size=9})
+    c:Text('rollsMine', '|cffff8040' .. L["Binds when picked up"] .. '|r', x + 60, cy + 16, w - 80, {size=9})
     c:Text('rollsLead', L["Leading: %s"]:format('|cfff58cbaArvel|r |cffffd100' .. 87 .. '|r'), x + 60, cy + 28, w - 80, {size=9})
     for i, choice in ipairs({'pass', 'greed', 'need'}) do
         Atlas(c, 'rollsBtn' .. choice, 'lootroll-toast-icon-' .. choice .. '-up', x + w - 12 - i * 25, cy - 3, 24, 24)
