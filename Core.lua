@@ -552,7 +552,7 @@ local defaults = {
             -- positions per Edit Mode layout: layouts[name][unit] = { point, x, y }
             layouts = {},
             -- Blizzard's totem frame on FlareUI Totems (Modules/Totems.lua): size in %, totems per row
-            totems = { size = 90, perRow = 4, swipe = "both", timer = "none" },
+            totems = { size = 90, perRow = 4, swipe = "both", timer = "none", inRange = false, inRangeBars = true },   -- inRange: marching ants on a totem whose buff is on you; inRangeBars: on its spell on the bars too
             -- aura timers and stack counts; size 0 (Auto) follows the icon size. The stack font starts
             -- as a copy of the timer font (ns.SeedFont)
             auraFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -1371,13 +1371,21 @@ function ns.AuraGroups.Begin(store)
     store.used = {}
 end
 
+-- Auras are secret (in an instance even out of combat): their names, icons and times can't be read.
+-- An error or an unreadable answer counts as secret.
+function ns.AurasLocked()
+    if not (C_Secrets and C_Secrets.ShouldAurasBeSecret) then return false end
+    local ok, secret = pcall(C_Secrets.ShouldAurasBeSecret)
+    return not ok or (canaccessvalue ~= nil and not canaccessvalue(secret)) or secret == true
+end
+
 -- A new look restyles the lane's group in place: its buttons' initializeFrame (all of FlareUI's can
 -- run again) is handed the new look, and pooled buttons made later get it too. Blizzard locks the
 -- buttons while auras are secret (in an instance even out of combat): a locked button keeps its old
 -- look and is restyled once auras can be read again, so the group is never replaced.
 local staleGroups, staleTicker = {}, nil
 local function RetryStale()
-    if C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() then return end
+    if ns.AurasLocked() then return end
     for group in pairs(staleGroups) do
         for button in pairs(group.stale) do
             if group.init and pcall(group.init, button) then group.stale[button] = nil end

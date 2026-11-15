@@ -325,11 +325,7 @@ local DEFAULTS = { point = "CENTER", x = -423, y = -140 }   -- Marcus's own spot
 
 local function Readable(v) return canaccessvalue == nil or canaccessvalue(v) end
 
-local function AurasLocked()
-    if not (C_Secrets and C_Secrets.ShouldAurasBeSecret) then return false end
-    local ok, secret = pcall(C_Secrets.ShouldAurasBeSecret)
-    return not ok or not Readable(secret) or secret == true
-end
+local AurasLocked = ns.AurasLocked
 
 local function Known(id) return id and ns.IsPlayerSpell(id) end
 local ClassOption   -- below: a key of the kind's own options

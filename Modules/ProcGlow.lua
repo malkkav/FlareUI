@@ -232,10 +232,7 @@ function BP.ForSpell(id)
     return BP.byID[id] or BP.byName[SpellName(id) or ""]
 end
 
-function BP.AurasLocked()
-    local ok, secret = pcall(C_Secrets.ShouldAurasBeSecret)
-    return not ok or not Readable(secret) or secret
-end
+BP.AurasLocked = ns.AurasLocked
 
 function BP.IsOn(proc)
     if proc.overlay then return true end
