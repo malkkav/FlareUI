@@ -514,11 +514,20 @@ local function UpdateTimer(card)
     end
     local fraction = s.duration > 0 and math_min(1, left / s.duration) or 0
     card.timer:SetValue(fraction)
-    if fraction < 0.5 then card.timer:SetStatusBarColor(0.9, 0.2, 0.15) else card.timer:SetStatusBarColor(1, 0.75, 0.1) end
-    card.timeText:SetText(math_ceil(left))
+    local low = fraction < 0.5
+    if card.timerLow ~= low then
+        card.timerLow = low
+        if low then card.timer:SetStatusBarColor(0.9, 0.2, 0.15) else card.timer:SetStatusBarColor(1, 0.75, 0.1) end
+    end
+    local second = math_ceil(left)
+    if card.timerSecond ~= second then
+        card.timerSecond = second
+        card.timeText:SetText(second)
+    end
 end
 
 local function StartTimer(card, s)
+    card.timerLow, card.timerSecond = nil, nil   -- pooled cards must repaint their first tick
     local rolling = TimeLeft(s) ~= nil
     card.timer:SetShown(rolling)
     card.timeText:SetShown(rolling)
