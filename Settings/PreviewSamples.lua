@@ -854,7 +854,7 @@ function R.lootRolls(c, spec)
     if spec.key == 'bl.lootRolls' and not Get('tweaks.lootRolls') then c:Text('rollsOff',L["Disabled"],12,90); return end
     local x, w = 8, c.width - 16
     local h = 30 + 58 + 2 * 26 + 8
-    c:Box('rollsWin', x, 30, w, h, 'FlareUI Thick', Get('tweaks.lootRollsOpacity', 1))
+    c:Box('rollsWin', x, 30, w, h, 'FlareUI Thin', Get('tweaks.lootRollsOpacity', 1))
     c:Text('rollsTitle', '|cffffd100' .. L["Loot Rolls"] .. '|r |cff808080(2)|r', x + 12, 39, w - 50, {size=11})
     local hist = c:Texture('rollsHist', P.MEDIA .. 'Icons\\DMSegments.tga', x + w - 26, 36, 14, 14, true)
     hist:SetVertexColor(0.61, 0.48, 0.29)
