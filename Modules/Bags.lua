@@ -143,6 +143,7 @@ local function Extra(bagID, frame)
     if e then return e end
     e = { buttons = {} }
     e.holder = CreateFrame("Frame", nil, frame)
+    e.holder:Hide()
     e.holder:SetAllPoints(frame)
     e.holder:SetID(bagID)
     extras[bagID] = e
@@ -157,6 +158,19 @@ local function ExtraButton(e, slot)
     Bags.AddSlotArt(b)
     e.buttons[slot] = b
     return b
+end
+
+-- Reserve the enabled sections' buttons without opening the bags. Only the layout shows them.
+local function WarmExtraButtons()
+    if InCombatLockdown() or not ns.BagModuleOn() or not Bags:IsCombined() or not LayoutWanted() then return end
+    local frame = Combined()
+    if not frame then return end
+    for _, bagID in ipairs(ExtraBags()) do
+        local section = Extra(bagID, frame)
+        for slot = 1, C_Container.GetContainerNumSlots(bagID) do
+            ExtraButton(section, slot)
+        end
+    end
 end
 
 -- the empty slot's art (Blizzard draws it behind its own buttons)
@@ -1130,6 +1144,8 @@ end
 function Bags:Init()
     if self.initialized then return end
     self.initialized = true
+    -- Init runs synchronously on PLAYER_LOGIN, which can still be outside lockdown on a combat reload.
+    WarmExtraButtons()
     RouteEmbeddedBagClick(_G.KeyRingButton, KeyringWanted)
     RouteEmbeddedBagClick(_G.CharacterReagentBag0Slot, ReagentWanted)
     Bags.FollowWindows()   -- section 4c
@@ -1199,12 +1215,13 @@ function Bags:Init()
     end
     -- the keyring and crafting bag sections follow their items
     local bagEvents = CreateFrame("Frame")
+    bagEvents:RegisterEvent("PLAYER_ENTERING_WORLD")
     if useFilterButtons then bagEvents:RegisterEvent("QUEST_LOG_UPDATE") end
     for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_NEW_ITEMS_UPDATED", "BAG_UPDATE_COOLDOWN", "ITEM_LOCK_CHANGED", "INVENTORY_SEARCH_UPDATE",
                              "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED" }) do
         pcall(bagEvents.RegisterEvent, bagEvents, event)
     end
-    bagEvents:SetScript("OnEvent", function(_, event, bagID, slotID)
+    bagEvents:SetScript("OnEvent", function(self, event, bagID, slotID)
         if event == "QUEST_LOG_UPDATE" then
             if itemFilter == "quest" then RefreshItemFilter() end
             return
@@ -1219,11 +1236,15 @@ function Bags:Init()
             end
             return
         end
+        -- Slot counts can arrive after login or grow when a bag is replaced.
+        if event == "PLAYER_ENTERING_WORLD" then self:UnregisterEvent(event) end
+        local refreshLayout = event == "PLAYER_ENTERING_WORLD" or event == "BAG_CONTAINER_UPDATE"
+            or event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED"
+        if refreshLayout then WarmExtraButtons() end
         if not next(extras) and not (KeyringWanted() or ReagentWanted()) then return end
         local frame = Combined()
         if not (frame and frame:IsShown()) then return end
-        -- a new bag, more keys or buttons held back by a fight: lay the backpack out again
-        if event == "BAG_CONTAINER_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED" then
+        if refreshLayout then
             Relayout(frame)
         else
             FillExtras()
@@ -1251,6 +1272,7 @@ end
 -- tainted): a layout switched off goes back to Blizzard's the next time the bags open.
 function Bags:Refresh()
     if not self.initialized then return end
+    WarmExtraButtons()
     Bags.StyleFreeSlots()
     Bags.StyleMoney()
     for _, frame in ipairs(BagFrames()) do
