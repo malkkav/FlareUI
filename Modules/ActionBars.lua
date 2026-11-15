@@ -219,9 +219,11 @@ function ActionBars.LiftCountdown(button, on)
             lift:SetAllPoints(cd)
             button.FlareUI_CountdownLift = lift
         end
+        -- (two levels are left under the texts for the aura timers' art, which covers these numbers:
+        -- AuraTimers.lua section 3)
         local level = button:GetFrameLevel() + 3
         local texts = button.TextOverlayContainer
-        if texts and texts:GetFrameLevel() - 1 > level then level = texts:GetFrameLevel() - 1 end
+        if texts and texts:GetFrameLevel() - 3 > level then level = texts:GetFrameLevel() - 3 end
         lift:SetFrameLevel(level)
         if fs:GetParent() ~= lift then fs:SetParent(lift) end
     elseif button.FlareUI_CountdownLift and fs:GetParent() ~= cd then
@@ -1657,6 +1659,7 @@ function ActionBars:Refresh(event)
     end
     UpdatePetColors()
     if ns.ProcGlow then ns.ProcGlow:Refresh() end
+    if ns.AuraTimers then ns.AuraTimers:Refresh() end
 
     -- FCM: click-through unless Setup Mode is on; drag detection for every faded bar
     if ns.db.profile.fcm then

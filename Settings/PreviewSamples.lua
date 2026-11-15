@@ -593,6 +593,20 @@ function R.actions(c, spec)
             box.buttons[3].icon:SetVertexColor(1, 0.25, 0.25)
             box.buttons[4].icon:SetVertexColor(0.35, 0.45, 1)
         end
+        -- Buff & Debuff Timers on the fifth: a buff with 24 of 30 seconds and 3 stacks left (AuraTimers.lua's art)
+        local fifth = box.buttons[5]
+        local AT = ns.AuraTimers
+        if Get('actionbars.auraTimers') and AT and AT.CreateArt then
+            if not box.auraArt then box.auraArt = AT.CreateArt(CreateFrame('Frame', nil, fifth), fifth) end
+            local art = box.auraArt
+            art:SetAllPoints(fifth)
+            art.Swipe:SetCooldown(GetTime() - 6, 30)
+            art.Time:SetText('24')
+            art.Count:SetText('3')
+            art:Show()
+        elseif box.auraArt then
+            box.auraArt:Hide()
+        end
         -- Proc Glow on the first
         local first = box.buttons[1]
         if Get('actionbars.procGlow') then

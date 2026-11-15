@@ -67,6 +67,8 @@ S:Row{
 }
 S:Row{ key = "ab.dimOnCooldown", section = "ab.buttonAppearance", path = "actionbars.dimOnCooldown", apply = Refresh, half = true }
 S:Row{ key = "ab.activeHighlight", section = "ab.buttonAppearance", path = "actionbars.activeHighlight", apply = Refresh, half = true }
+S:Row{ key = "ab.auraTimers", section = "ab.buttonAppearance", path = "actionbars.auraTimers", half = true,
+    apply = function() if ns.AuraTimers then ns.AuraTimers:Refresh() end end }
 -- Show Keybind Text / Show Macro Text (11-13, were Hide ...): on by default, over the saved hide values
 S:Row{ key = "ab.hideKeybinds", section = "ab.buttonText", path = "actionbars.hideHotkeys", invert = true, apply = Refresh, half = true }
 S:Row{ key = "ab.hideMacroText", section = "ab.buttonText", path = "actionbars.hideMacroText", invert = true, apply = Refresh, half = true }

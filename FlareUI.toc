@@ -61,6 +61,7 @@ Modules\Chat.lua
 Modules\DamageMeter.lua
 Modules\ActionBars.lua
 Modules\ProcGlow.lua
+Modules\AuraTimers.lua
 Modules\XPBar.lua
 Modules\Visibility.lua
 Modules\UnitFrames.lua

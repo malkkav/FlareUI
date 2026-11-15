@@ -443,6 +443,7 @@ local defaults = {
             hideHotkeys = false,
             hideMacroText = true,
             procGlow = false,           -- Blizzard's proc glow on reaction abilities and flagged procs
+            auraTimers = false,         -- a spell's buff on you, or your debuff on the target: its time in place of the cooldown (AuraTimers.lua)
             buttonArt = true,
             stopAutoAddSpells = false,
             gryphonsBehind = false,     -- Gryphons Behind Bars: the end caps draw under the bars

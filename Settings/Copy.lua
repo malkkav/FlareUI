@@ -98,6 +98,13 @@ ns.Copy = {
             section = "ab.buttonAppearance",
             tags = { "active stance", "queued attack", "checked" },
         },
+        ["ab.auraTimers"] = {
+            desc = L["While a spell's effect is up, its button shows the time left in gold instead of the cooldown, with its stacks:\n* Your buffs, such as Bloodrage or Lightning Shield\n* Your debuffs on your target, such as Flame Shock"],
+            label = L["Buff & Debuff Timers"],
+            section = "ab.buttonAppearance",
+            tags = { "aura duration timer" },
+            tip = L["Only your own buffs and debuffs count. Works in combat too."],
+        },
         ["ab.autoRanks"] = {
             desc = L["A newly learned rank replaces the lower rank on your bars."],
             label = L["Update Spell Ranks"],

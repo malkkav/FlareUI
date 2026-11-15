@@ -22,7 +22,7 @@ Route('tracker', 'qt', 'opacity border zoneHeaders tags wrap count hideLevel foc
 Route('meter', 'dm', 'opacity border minAlpha chatTab combatTimer readyCheck countdown threatValue pullLine pullFlash tankLead')
 Route('actions', 'ab', 'skinCDM buttonScale')
 Route('actionSkin', 'ab', 'flareBorders')
-Route('actions', 'ab', 'statusColours procGlow gryphonsBehind hideMacroText hideKeybinds cleanKeybinds buttonArt dimOnCooldown hideGryphons')
+Route('actions', 'ab', 'statusColours procGlow auraTimers gryphonsBehind hideMacroText hideKeybinds cleanKeybinds buttonArt dimOnCooldown hideGryphons')
 Route('xp', 'ab', 'xpBar xpText xpNumbers xpQuest xpBubbles')
 Route('frames', 'uf', 'main party raid boss castbar tot tof')
 Route('resources', 'rb', 'health power mana combo swingMain swingOff swingRanged seal flight timer')
