@@ -593,7 +593,7 @@ local function SpecOf(key)
 end
 
 -- also the resource bars' and Fake CM's rule (ns.Visibility.ShowRule)
-local function ShowRule(show)
+local function EvaluateShowRule(show)
     if show == "always" then return true end
     if show == "mouseover" or type(show) ~= "string" then return false end
     local set = Conditions.Set(show, SHOW_SPEC)
@@ -606,6 +606,12 @@ local function ShowRule(show)
     if set.unmounted and not Riding() then return true end
     return false
 end
+local function ShowRule(show, cache)
+    if not cache or type(show) ~= "string" then return EvaluateShowRule(show) end
+    local result = cache[show]
+    if result == nil then result = EvaluateShowRule(show); cache[show] = result end
+    return result
+end
 Visibility.ShowRule = ShowRule
 
 -- the spellbook tab of the spells window, open: spells are dragged from it onto the bars
@@ -615,15 +621,15 @@ local function SpellbookOpen()
 end
 
 -- editMode, spellbook: read once per pass by the caller, not once per member
-local function CheckMember(data, editMode, spellbook)
+local function CheckMember(data, editMode, spellbook, ruleCache)
     if editMode then return true end
     local fcmState = ns.ActionBars and ns.ActionBars.fcm
     -- every action bar shows while something is dragged onto them, or the spellbook is open
     if data.isBar and ((fcmState and fcmState.wasDragging) or spellbook) then return true end
     if data.fcm then
-        return (fcmState and fcmState.unlockMode) or ShowRule(data.show) or (data.mouseOK and data.frame:IsMouseOver()) or false
+        return (fcmState and fcmState.unlockMode) or ShowRule(data.show, ruleCache) or (data.mouseOK and data.frame:IsMouseOver()) or false
     end
-    if ShowRule(data.show) then return true end
+    if ShowRule(data.show, ruleCache) then return true end
     -- shown while its own settings page is open
     if data.owner and data.owner.IsSettingsPreview and data.owner:IsSettingsPreview() then return true end
     -- the totem bar's flyout (a totem's list) stands above the bar: shown while it's open
@@ -665,6 +671,7 @@ local CHECK_INTERVAL = 0.05  -- seconds between condition checks
 -- A group whose members all reached its alpha isn't walked again until its show changes or an event
 -- marks it; this slower pass still walks every group, to put back an alpha changed behind our back
 local REPAIR_INTERVAL = 1
+Fader.ruleCache = {}        -- public condition results, valid for one check pass only
 Fader.shows = {}            -- group -> fading in, from the last condition check
 Fader.counting = {}         -- group -> its fade-out delay is running down
 Fader.settled = {}          -- group -> the show every member had reached on its last walk
@@ -677,6 +684,7 @@ Fader.UpdateScript = function(self, elapsed)
     local tick = self.updateTimer
     local repair = false
     if check then
+        wipe(self.ruleCache)
         self.updateTimer = 0
         self.repairTimer = self.repairTimer + tick
         if self.repairTimer >= REPAIR_INTERVAL then
@@ -698,7 +706,7 @@ Fader.UpdateScript = function(self, elapsed)
             end
             local groupShouldShow = false
             for _, data in ipairs(members) do
-                if CheckMember(data, editMode, spellbook) then groupShouldShow = true break end
+                if CheckMember(data, editMode, spellbook, self.ruleCache) then groupShouldShow = true break end
             end
 
             if not self.delays[groupName] then self.delays[groupName] = 0 end
