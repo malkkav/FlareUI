@@ -135,6 +135,7 @@ Row{ key = "br.hideRoles", kind = "dropdown", tab = "when",
 Row{ key = "br.sound", kind = "choice", tab = "alerts", path = "auras.reminder.sound", choices = { "off", "raidwarning", "alarm", "whisper" },
     apply = function() Refresh(); if BR() and BR().PlayAlert then BR().PlayAlert(true) end end }
 Row{ key = "br.readyCheck", tab = "alerts", path = "auras.reminder.readyCheck" }
+Row{ key = "br.castOnWheel", tab = "alerts", path = "auras.reminder.castOnWheel", apply = Refresh }
 
 -- FONTS (11-13, back from Edit Mode): the counts and the time left on each icon
 local function FontsApply() if BR() and BR().Refresh then BR():Refresh() end end

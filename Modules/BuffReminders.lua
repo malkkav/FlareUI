@@ -2065,6 +2065,7 @@ function BR.Update(context)
     end
     scan.active = false
     BR.ShowFaded(shows, db)
+    if BR.Wheel then BR.Wheel.Set(shows) end   -- section 5b
 end
 
 -- Fade In Speed / Fade Out Speed (Fading section): the row fades in as reminders appear where there
@@ -2121,6 +2122,87 @@ local function Soon(unit)
         BR.Update(scan)
     end)
 end
+
+--------------------------------------------------
+-- 5b. CAST ON MOUSE WHEEL (Buff Reminders > Alerts, off; 11-15, a player's request)
+-- While a reminder's spell is missing, scrolling the mouse wheel casts it, and zooms the camera as the
+-- wheel did. The game only casts from a key or a click, so the wheel's zoom keys are bound, for that
+-- while, to a hidden secure button holding the spell (an override binding: the player's own bindings
+-- are untouched and back the moment it is cleared); the button's PostClick does the zoom.
+-- Only wheel keys bound to the camera's zoom are taken. Only a reminder that casts a plain spell: no
+-- item is used and no macro run by a scroll. With nothing to cast the binding is cleared, so the
+-- wheel is the game's own again. Bindings and a secure button's spell can't change in a fight, and
+-- buffs can't be read there: the binding is cleared as one begins.
+--------------------------------------------------
+local Wheel = { KEYS = { MOUSEWHEELUP = "CAMERAZOOMIN", MOUSEWHEELDOWN = "CAMERAZOOMOUT" } }
+BR.Wheel = Wheel
+
+function Wheel.On()
+    local db = GetDb()
+    return db and db.castOnWheel == true or false
+end
+
+-- the first reminder a scroll may cast: missing (not just running out), and a plain spell
+function Wheel.Pick(list)
+    for _, s in ipairs(list) do
+        local castID = s.castID or (s.entry and s.entry.castID)
+        local action = s.action
+        if castID and not s.running and not (action and (action.item or action.macro or action.none)) then
+            return castID, s.unit or "player"
+        end
+    end
+end
+
+local function Button()
+    local b = Wheel.button
+    if b then return b end
+    b = CreateFrame("Button", "FlareUI_BuffReminderWheel", UIParent, "SecureActionButtonTemplate")
+    b:RegisterForClicks("AnyUp", "AnyDown")
+    -- the zoom the wheel key had; once per scroll (a click can come as a press and a release)
+    b:SetScript("PostClick", function(self, zoom)
+        local now = GetTime()
+        if self.zoomedAt == now then return end
+        self.zoomedAt = now
+        if zoom == "CAMERAZOOMIN" then CameraZoomIn(1) elseif zoom == "CAMERAZOOMOUT" then CameraZoomOut(1) end
+    end)
+    Wheel.button = b
+    return b
+end
+
+function Wheel.Clear()
+    if not Wheel.bound or InCombatLockdown() then return end
+    Wheel.bound = false
+    ClearOverrideBindings(Wheel.button)
+end
+
+-- list: the reminders showing now (out of a fight only: BR.Update)
+function Wheel.Set(list)
+    if InCombatLockdown() then return end
+    local castID, unit
+    if Wheel.On() and not (ns.EditPreviewing and ns.EditPreviewing()) then castID, unit = Wheel.Pick(list) end
+    if not castID then
+        Wheel.Clear()
+        return
+    end
+    local b = Button()
+    b:SetAttribute("type", "spell")
+    -- by name: the game casts your highest rank
+    b:SetAttribute("spell", SpellName(castID) or castID)
+    b:SetAttribute("unit", unit)
+    ClearOverrideBindings(b)
+    Wheel.bound = false
+    for key, zoom in pairs(Wheel.KEYS) do
+        if GetBindingAction(key) == zoom then
+            SetOverrideBindingClick(b, false, key, b:GetName(), zoom)
+            Wheel.bound = true
+        end
+    end
+end
+
+-- a fight begins (this comes just before the lockdown): the wheel is the game's own in it
+Wheel.events = CreateFrame("Frame")
+Wheel.events:RegisterEvent("PLAYER_REGEN_DISABLED")
+Wheel.events:SetScript("OnEvent", Wheel.Clear)
 
 --------------------------------------------------
 -- 6. POSITION (per Edit Mode layout)

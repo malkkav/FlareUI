@@ -707,6 +707,13 @@ ns.Copy = {
             label = L["Camping and Rest"],
             section = "br.upkeep",
         },
+        ["br.castOnWheel"] = {
+            desc = L["While a reminder's buff is missing, scrolling the mouse wheel casts it and still zooms the camera:\n* Out of combat only\n* Spells only: no items or macros\n* Only wheel keys bound to camera zoom"],
+            label = L["Cast on Mouse Wheel"],
+            section = "br.alertsSection",
+            tags = { "scroll to buff", "mouse wheel cast" },
+            tip = L["With nothing missing the wheel is left exactly as it is."],
+        },
         ["br.classScope"] = {
             choices = { L["Always"], L["In Dungeons and Raids"], L["In Raids"], L["On Mouseover"] },
             desc = L["Where reminders show for your class's own buffs."],

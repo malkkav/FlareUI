@@ -717,7 +717,7 @@ local defaults = {
             reminder = { group = "all", size = 36, before = 2, orientation = "HORIZONTAL", grow = "FORWARD",
                          blessing = "auto", consumables = "off", pets = true, thorns = "tank", camping = false, gathering = false,
                          weaponOil = false,   -- Weapon Oil / Stone (11-12)
-                         elixirs = "none", weaponScope = "always", petScope = "always", readyCheck = false,   -- 11-12
+                         elixirs = "none", weaponScope = "always", petScope = "always", readyCheck = false, castOnWheel = false,   -- 11-12; castOnWheel: a scroll of the mouse wheel casts a missing reminder's spell (BuffReminders.lua 5b)
                          classScope = "always", timeLeft = true,   -- Where > Class Buffs; Edit Mode > Alerts > Time Left (11-12)
                          supplies = false, durability = false,   -- Low Supplies, Low Durability (11-12)
                          trinkets = false, extras = "none", hideMounted = false, playstyle = "auto", soulstone = "healer",   -- 11-12
