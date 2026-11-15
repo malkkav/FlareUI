@@ -113,6 +113,7 @@ Row{ key = "br.consumablesWhere", kind = "choice", half = true, tab = "when", ch
     end }
 -- Group Buffs: only the one who gives it, and the roles that hide them (one list for the four switches)
 Row{ key = "br.provider", tab = "when", path = "auras.reminder.onlyProvider" }
+Row{ key = "br.ignoreRange", tab = "when", path = "auras.reminder.ignoreRange" }
 local ROLE_KEYS = { tank = "hideTank", healer = "hideHealer", damage = "hideDamage", norole = "hideNoRole" }
 local ROLE_ORDER = { "tank", "healer", "damage", "norole" }
 Row{ key = "br.hideRoles", kind = "dropdown", tab = "when",

@@ -1743,6 +1743,11 @@ function MM.IsSquare()
     return squareStyle
 end
 
+-- (11-15) a node addon's scan has the map away: fn runs when it is home again (true: it waits)
+function MM.AfterScan(key, fn)
+    if Scan.Busy() then Scan.Later(key, fn) return true end
+end
+
 -- The zone map (Shift+M, Blizzard_BattlefieldMap): FlareUI Thin in bronze instead of Blizzard's gold
 -- frame, on its BorderFrame so Blizzard's opacity slider fades it too; and its tab (shown while the
 -- mouse is on the map) drags it. Blizzard saves a moved tab's place at logout.

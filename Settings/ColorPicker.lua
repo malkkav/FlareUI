@@ -59,6 +59,7 @@ local function ResourceRows()
             return list
         end)() },
         { L["Flight Timer"], { { "flight", L["Flight Timer"] } } },
+        { L["Duration Bars"], { { "timerBreath", L["Breath"] }, { "timerFatigue", L["Fatigue"] }, { "timerFeign", L["Feign Death"] } } },
     }
 end
 

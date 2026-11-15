@@ -2033,6 +2033,95 @@ end
 local TAB_IDLE_ALPHA = 0.6
 local SECRET_TAB_WIDTH = 90   -- Blizzard's own docked width for these tabs
 
+-- UNREAD MARKER (11-14; a glow since 11-15, Marcus: the dot didn't look good): Blizzard's own new-message
+-- glow behind the name of a tab with lines you haven't seen (another tab was selected when they came),
+-- gold, or the whisper pink on whisper tabs and whisper alerts, pulsing softly. It goes when the tab is
+-- selected. On FlareUI's tab bar, and on Blizzard's tabs in the Gamepad UI.
+-- (fields, not locals: the file is near the main chunk's 200 locals)
+Chat.unread = {}   -- chat frame -> true
+-- (11-15, Marcus: too strong) faint and short: its strength, and the pulse between full and half of it
+Chat.UNREAD_GLOW_ALPHA = 0.22   -- (11-15, Marcus: half again)
+Chat.UNREAD_GLOW = "Interface\\ChatFrame\\ChatFrameTab-NewMessage"
+
+function Chat.UnreadGlow(owner, text)
+    local glow = owner.FlareUI_UnreadGlow
+    if not glow then
+        glow = owner:CreateTexture(nil, "BACKGROUND", nil, 7)
+        glow:SetTexture(Chat.UNREAD_GLOW)
+        glow:SetBlendMode("ADD")
+        local pulse = glow:CreateAnimationGroup()
+        pulse:SetLooping("BOUNCE")
+        local fade = pulse:CreateAnimation("Alpha")
+        fade:SetFromAlpha(1)
+        fade:SetToAlpha(0.5)
+        fade:SetDuration(0.9)
+        fade:SetSmoothing("IN_OUT")
+        glow.pulse = pulse
+        owner.FlareUI_UnreadGlow = glow
+    end
+    -- under the name, a little wider than it, as Blizzard's tabs draw it
+    glow:ClearAllPoints()
+    glow:SetPoint("BOTTOMLEFT", text, "BOTTOMLEFT", -6, -4)
+    glow:SetPoint("TOPRIGHT", text, "TOPRIGHT", 6, 0)
+    return glow
+end
+
+-- shown: nil hides; whisper: pink instead of gold
+function Chat.ShowUnreadDot(owner, text, shown, whisper)
+    if not shown then
+        local glow = owner.FlareUI_UnreadGlow
+        if glow then glow.pulse:Stop(); glow:Hide() end
+        return
+    end
+    local glow = Chat.UnreadGlow(owner, text)
+    if whisper then
+        local c = ChatTypeInfo[whisper] or ChatTypeInfo.WHISPER
+        glow:SetVertexColor(c.r or 1, c.g or 0.5, c.b or 1, Chat.UNREAD_GLOW_ALPHA)
+    else
+        -- FlareUI's bronze (the selected tab's colour), not Blizzard's yellow (11-15, Marcus)
+        glow:SetVertexColor(TAB_ACTIVE_COLOR.r, TAB_ACTIVE_COLOR.g, TAB_ACTIVE_COLOR.b, Chat.UNREAD_GLOW_ALPHA)
+    end
+    glow:Show()
+    if not glow.pulse:IsPlaying() then glow.pulse:Play() end
+end
+
+-- the whisper colour a window's dot takes: its own type for a whisper window, WHISPER for an alert
+function Chat.UnreadWhisper(frame, flashing)
+    if frame.chatType == "BN_WHISPER" then return "BN_WHISPER" end
+    if frame.chatType == "WHISPER" or flashing then return "WHISPER" end
+end
+
+-- one tab redraw per frame, however many lines came in it
+function Chat.UnreadChangedSoon()
+    if Chat.unreadPending then return end
+    Chat.unreadPending = true
+    C_Timer.After(0, function()
+        Chat.unreadPending = nil
+        local db = GetDb()
+        if not (db and db.enabled) then return end
+        for _, cf in Windows() do
+            if cf and cf.FlareUI_TabBar then Chat:UpdateCustomTabs(cf, db) end
+        end
+    end)
+end
+
+-- Gamepad UI: Blizzard's tabs are the bar, so they carry the dot
+function Chat.UpdateBlizzardTabDots()
+    local dock = _G.GeneralDockManager
+    local selected = dock and FCFDock_GetSelectedWindow(dock)
+    for _, frame in Windows() do
+        local tab = frame and not frame:IsForbidden() and _G[frame:GetName() .. "Tab"]
+        local text = tab and not tab:IsForbidden() and tab:GetFontString()
+        if text then
+            local seen = frame == selected or (IsPopped(frame) and frame:IsShown())
+            if seen then Chat.unread[frame] = nil end
+            local flashing = not seen and tab.glow and tab.glow:IsShown() or nil
+            local shown = not seen and (Chat.unread[frame] or flashing) and ns.IsGamepadUI()
+            Chat.ShowUnreadDot(tab, text, shown, Chat.UnreadWhisper(frame, flashing))
+        end
+    end
+end
+
 -- A tab's text, selected or at rest (also the settings previews' sample tabs)
 function Chat.PaintTab(text, selected)
     local c = selected and TAB_ACTIVE_COLOR or TAB_INACTIVE_COLOR
@@ -2352,6 +2441,7 @@ function Chat:UpdateCustomTabs(chatFrame, db)
     for _, btn in ipairs(scrollFrame.buttons) do btn:Hide() end
     if scrollFrame.meterButton then scrollFrame.meterButton:Hide() end
     -- Gamepad UI (6.4.1): Blizzard's own tabs take the clicks (HideBlizzardTabs); no FlareUI bar
+    Chat.UpdateBlizzardTabDots()
     if ns.IsGamepadUI() then scrollFrame:Hide() return end
 
     local dock = _G.GeneralDockManager
@@ -2433,18 +2523,23 @@ function Chat:UpdateCustomTabs(chatFrame, db)
                 btn.ftText = readable and tabText or nil
                 btn.ftWidth = w
             end
+            -- on the Meter tab the window Blizzard has selected is shown as any other
+            local isSelected = popped or (not meterActive and FCFDock_GetSelectedWindow(dock) == frame)
+            -- the window on screen has been seen (under the Meter tab its lines count as meterUnread)
+            if popped or FCFDock_GetSelectedWindow(dock) == frame then Chat.unread[frame] = nil end
+            local flashing = not isSelected and realTab.glow and realTab.glow:IsShown() or nil
+            local dotShown = not isSelected and (Chat.unread[frame] or meterUnread[frame] or flashing) or nil
             btn:SetWidth(w)
             btn.Text:ClearAllPoints()
             btn.Text:SetPoint("CENTER", btn, "CENTER", 0, TAB_TEXT_Y)
 
-            -- on the Meter tab the window Blizzard has selected is shown as any other
-            local isSelected = popped or (not meterActive and FCFDock_GetSelectedWindow(dock) == frame)
             btn.isSelected = isSelected
-            btn.isUnread = meterUnread[frame] or nil
+            btn.isUnread = (meterUnread[frame] or (not isSelected and Chat.unread[frame])) or nil
 
             Chat.PaintTab(btn.Text, isSelected)
+            btn.isFlashing = nil
             if not isSelected then
-                btn.isFlashing = realTab.glow and realTab.glow:IsShown() or nil
+                btn.isFlashing = flashing
                 if btn.isFlashing then
                     -- the player's whisper colour, as set in Blizzard's chat settings. Only a whisper
                     -- window knows its type, so Battle.net whispers on a regular tab stay pink.
@@ -2455,6 +2550,9 @@ function Chat:UpdateCustomTabs(chatFrame, db)
                     btn.Text:SetAlpha(1)
                 end
             end
+            Chat.ShowUnreadDot(btn, btn.Text, dotShown, Chat.UnreadWhisper(frame, flashing))
+            -- the name at full strength while it glows
+            if dotShown then btn.Text:SetAlpha(1) end
 
             btn:ClearAllPoints()
             if prevBtn then
@@ -3380,6 +3478,12 @@ local function OnChatMessage(chatFrame)
     -- Hide Combat Log: the hidden log still gets every combat line, with nothing to show or wake
     if chatFrame == _G.ChatFrame2 and db and db.hideCombatLog then return end
     UpdateScrollToBottomVisibility(chatFrame)
+    -- a line into a hidden window (another tab is selected) marks its tab unread, once; never the
+    -- Combat Log's, which never stops
+    if not Chat.unread[chatFrame] and chatFrame ~= _G.ChatFrame2 and not chatFrame:IsShown() then
+        Chat.unread[chatFrame] = true
+        Chat.UnreadChangedSoon()
+    end
     -- a line into a window that isn't shown (another tab) doesn't wake the chat: its tab lights up
     if db and Fades(db) and Chat.VisibilityHas(db, "messages") and chatFrame:IsVisible() then Chat:ShowChatFrame(chatFrame, db) end
     -- a line under the Meter tab lights its window's tab (not the Combat Log's, which never stops)

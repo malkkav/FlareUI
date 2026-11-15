@@ -727,25 +727,29 @@ local function UpdateTarget(f)
     end
 end
 
--- Aggro: the border takes the threat colour (on an enemy tile: the player's threat on that enemy)
+-- Threat Glow (Look, st.threatGlow; 11-15, Marcus): with threat 1-3 the tile's border pulses in the
+-- threat colour, and its portrait ring with it (ring styles). A member: its own aggro; an enemy tile
+-- (boss): the player's threat on it. Forever Style's plate has no border: the ring alone. None in
+-- Edit Mode, but for the aggro test.
 local function UpdateThreat(f)
+    local st = TS(f)
+    local on = not (st and st.threatGlow == false)
     local status
-    if f.ctx and f.ctx.hostile then
-        status = readable(UnitThreatSituation("player", f.fuiUnit))
+    if f.fuiUnit then
+        if on and not IsEditing() then
+            if f.ctx and f.ctx.hostile then
+                status = readable(UnitThreatSituation("player", f.fuiUnit))
+            else
+                status = readable(UnitThreatSituation(f.fuiUnit))
+            end
+        end
+    end
+    if status and status >= 1 and not OnPlate(f) then
+        K.SetBorderGlow(f.Border, K.ThreatColor(status))
     else
-        status = readable(UnitThreatSituation(f.fuiUnit))
+        K.SetBorderGlow(f.Border)
     end
-    -- Forever Style's plate has no border: the ring flashes instead
-    if OnPlate(f) then
-        K.ResetBorderTint(f.Border)
-        ns.UFRing.UpdateThreat(f)
-        return
-    end
-    if status and status >= 1 and not IsEditing() then
-        K.SetBorderTint(f.Border, K.ThreatColor(status))
-    else
-        K.ResetBorderTint(f.Border)
-    end
+    if f.ringKind and ns.UFRing then ns.UFRing.UpdateThreat(f) end
 end
 
 local function UpdatePortrait(f)
@@ -2351,7 +2355,8 @@ ApplyPreview = function(f)
     end)
     f:SetAlpha(1)
     f.TargetHighlight:SetAlpha(0)
-    K.ResetBorderTint(f.Border)
+    -- no Threat Glow on a sample
+    K.SetBorderGlow(f.Border)
     UpdatePortrait(f)
     UpdateCast(f)
     -- the icons and auras of Edit Mode's sample; a settings preview shows the frame alone
@@ -2894,6 +2899,10 @@ local function BuildSettings()
         end)(),
         K.ClassColorSetting(function() return ns.ClassColorsOn(S()) end, setS("classColor")),
         K.SmoothBarsSetting(getS("smoothBars"), setS("smoothBars")),
+        -- (11-15, was the thick aggro edge)
+        { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The border pulses in the threat colour while this member has aggro."],
+          get = function() return getS("threatGlow")() ~= false end, set = setS("threatGlow") },
     })
 
     local function noCast() return not getS("castbar")() end

@@ -236,6 +236,9 @@ local function SyncTooltipSample()
     local box = _G.GameTooltipDefaultContainer
     if not (tooltipSample and box) then return end
     tooltipSample:SetShown(box:IsShown())
+    -- the chat window follows its Background Opacity setting live; so does the sample
+    local chat = ns.db and ns.db.profile and ns.db.profile.chat
+    tooltipSample.backdrop:SetBackdropColor(1, 1, 1, (chat and chat.opacity) or 0.6)
 end
 
 local function MakeTooltipSample()
@@ -249,27 +252,31 @@ local function MakeTooltipSample()
     f:EnableMouse(false)
     f:Hide()
 
-    f.NineSlice = CreateFrame("Frame", nil, f, "NineSlicePanelTemplate")
-    f.NineSlice:SetAllPoints()
-    if NineSliceUtil and NineSliceUtil.GetLayout then
-        pcall(NineSliceUtil.ApplyLayout, f.NineSlice, NineSliceUtil.GetLayout("TooltipDefaultLayout"))
-    end
-    if f.NineSlice.SetCenterColor then
-        local r, g, b = 0.05, 0.05, 0.06
-        if TOOLTIP_DEFAULT_BACKGROUND_COLOR then r, g, b = TOOLTIP_DEFAULT_BACKGROUND_COLOR:GetRGB() end
-        f.NineSlice:SetCenterColor(r, g, b, 0.9)
-    end
+    -- (11-15) FlareUI's look: the chat window's background (Chat.WindowBackdrop: dark dialog texture,
+    -- white tint, at the chat's Background Opacity, default 0.6) inside FlareUI Thin
+    f.backdrop = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    f.backdrop:SetAllPoints()
+    local LSM = LibStub("LibSharedMedia-3.0")
+    local bgFile = LSM:Fetch("background", "Blizzard Dialog Background Dark", true) or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
+    local edgeFile = LSM:Fetch("border", "FlareUI Thin")
+    local inset = 3
+    f.backdrop:SetBackdrop({ bgFile = bgFile, edgeFile = edgeFile, tile = false, tileSize = 0, edgeSize = ns.BorderEdgeSize(edgeFile, 16), insets = { left = inset, right = inset, top = inset, bottom = inset } })
+    local c = ns.BORDER_COLOR
+    f.backdrop:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
+    f.backdrop:SetFrameLevel(f:GetFrameLevel())
 
-    local title = f:CreateFontString(nil, "ARTWORK", "GameTooltipHeaderText")
+    -- the chat's selected tab colour for the title, its unselected tab colour for the line (Chat.lua)
+    local title = f.backdrop:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 12, -12)
     title:SetPoint("RIGHT", -12, 0)
     title:SetJustifyH("LEFT")
+    title:SetTextColor(0.80, 0.60, 0.34)
     title:SetText(HUD_EDIT_MODE_HUD_TOOLTIP_LABEL or L["Tooltips"])
-    local line = f:CreateFontString(nil, "ARTWORK", "GameTooltipText")
+    local line = f.backdrop:CreateFontString(nil, "ARTWORK", "GameTooltipText")
     line:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
     line:SetPoint("RIGHT", -12, 0)
     line:SetJustifyH("LEFT")
-    line:SetTextColor(1, 1, 1)
+    line:SetTextColor(0.56, 0.51, 0.46)
     line:SetText(L["Tooltips show here. Drag this to move them."])
 
     box:HookScript("OnShow", SyncTooltipSample)

@@ -79,6 +79,12 @@ S:Row{ key = "mm.bagAddons", kind = "dropdown", path = "minimap.bagLeave", paren
     toggles = { exclusive = { "none" }, tokens = bagTokens, empty = "none" },
     get = function() return ns.MinimapBag and ns.MinimapBag.InDrawer and ns.MinimapBag.InDrawer() or "" end,
     set = function(value) if ns.MinimapBag and ns.MinimapBag.SetInDrawer then ns.MinimapBag.SetInDrawer(value) end end }
+-- the drawer's buttons bigger, 100% (as before) to 150%; the drawer grows to fit (live, 11-14)
+local BAG_SIZES = {}
+for pct = 100, 150, 10 do BAG_SIZES[#BAG_SIZES + 1] = { pct, pct .. "%" } end
+S:Row{ key = "mm.bagButtonSize", kind = "range", path = "minimap.bagButtonSize", choices = BAG_SIZES, parent = "mm.bag",
+    disabled = function() return not S:GetPath("minimap.buttonBag") end,
+    apply = function() if ns.MinimapBag and ns.MinimapBag.SizeChanged then ns.MinimapBag.SizeChanged() end end }
 
 -- while a gathering addon that moves the map to scan is loaded: the flashing is its own (Minimap.lua)
 S:Row{ key = "mm.nodeScanNote", kind = "text",

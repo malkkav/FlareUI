@@ -45,10 +45,16 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }   -- 11-10 regr
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["qol.hideLootAlerts"] = "6.6",
-    ["tt.corner"] = "6.6",
-    ["tt.cursorX"] = "6.6",
-    ["tt.cursorY"] = "6.6",
+    ["bl.font.lootRolls"] = "6.7",
+    ["bl.lootRolls"] = "6.7",
+    ["bl.lootRollsOpacity"] = "6.7",
+    ["br.ignoreRange"] = "6.7",
+    ["mm.bagButtonSize"] = "6.7",
+    ["mm.finderEye"] = "6.7",
+    ["qol.keyDown"] = "6.7",
+    ["qt.autoButtons"] = "6.7",
+    ["qt.focusedFirst"] = "6.7",
+    ["rb.timer"] = "6.7",
 }
 
 --------------------------------------------------
@@ -306,7 +312,7 @@ Settings.GAMEPAD_OFF_MODULES = { au = true, br = true }
 Settings.GAMEPAD_OFF = {
     ["bl.bagColumns"] = true, ["bl.bagGaps"] = true, ["bl.bagKeyring"] = true, ["bl.bagReagent"] = true,
     ["bl.bagFilters"] = true, ["bl.bagWithCharacter"] = true,
-    ["ab.skinCDM"] = true, ["dm.chatTab"] = true, ["dm.chatTabIgnoreFade"] = true, ["tt.mouseover"] = true,
+    ["ab.skinCDM"] = true, ["dm.chatTab"] = true, ["dm.chatTabIgnoreFade"] = true, ["tt.mouseover"] = true, ["qt.autoButtons"] = true,
     ["qol.autoAcceptQuests"] = true, ["qol.autoTurnInQuests"] = true, ["qol.mailBook"] = true,
     ["qol.bulkBuy"] = true, ["qol.merchantWide"] = true, ["qol.fishCast"] = true, ["qol.camera"] = true,
     ["qol.move"] = true,

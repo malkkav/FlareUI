@@ -3,8 +3,9 @@ local L = ns.L
 
 --------------------------------------------------
 -- RESOURCE BARS
--- Health, power, druid mana, combo point, swing timer, flight timer and seal bars, each an Edit Mode frame. Replaces the
--- Personal Resource Display and Blizzard's swing timers. Secret-safe: values go straight into
+-- Health, power, druid mana, combo point, swing timer, flight timer, seal and timer bars, each an Edit Mode frame.
+-- Replaces the Personal Resource Display, Blizzard's swing timers and its mirror timers (breath, fatigue,
+-- feign death). Secret-safe: values go straight into
 -- widgets, readable() guards every Lua test.
 --------------------------------------------------
 
@@ -48,7 +49,7 @@ local COLORS = {
 }
 
 -- textSize: added to the Fonts tab size
-local BAR_ORDER = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged", "flight", "seal" }
+local BAR_ORDER = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged", "flight", "seal", "timer" }
 local BARS = {
     health      = { kind = "health", label = L["Health Bar"],      default = { point = "CENTER", x = 0, y = -148 }, textSize = 2 },
     power       = { kind = "power",  label = L["Power Bar"],       default = { point = "CENTER", x = 0, y = -180 }, textSize = 2 },
@@ -66,6 +67,8 @@ local BARS = {
     seal        = { kind = "seal",   label = L["Paladin Seals"],   default = { point = "CENTER", x = 0, y = -262 }, textSize = 0 },
     -- a flight path's progress (section 10b), shown only while you fly
     flight      = { kind = "flight", label = L["Flight Timer"],    default = { point = "BOTTOM", x = 0, y = 222 }, textSize = 0 },
+    -- Blizzard's mirror timers (breath, fatigue, feign death, section 10d), on Blizzard's own spot
+    timer       = { kind = "timer",  label = L["Duration Bars"],      default = { point = "TOP", x = 0, y = -100 }, textSize = 0 },
 }
 
 -- Visibility (the action bars' Show conditions, Fade Group, Fade Speed, Faded Opacity, and Missing
@@ -164,6 +167,9 @@ RB.COLOR_DEFAULTS = {
     zone = { 1, 0.2, 0.15 }, flight = { 0.40, 0.62, 0.86 },
     -- the seals (Seals bar), each its own colour
     sealRighteousness = { 0.51, 0.875, 0.922 }, sealCrusader = { 1, 0.647, 0.459 }, sealCommand = { 0.969, 0.49, 0.133 }, sealJustice = { 0.62, 0.502, 0.302 }, sealLight = { 0.98, 0.816, 0.38 }, sealWisdom = { 0.098, 0.584, 1 }, sealFury = { 0.91, 0.224, 0 }, sealMartyrdom = { 0.65, 0.35, 0.85 },
+    -- the timer bars, as Blizzard's mirror timer art: breath the crafting-cast blue, fatigue the cast
+    -- gold, feign death the channel green
+    timerBreath = { 0.20, 0.55, 1.00 }, timerFatigue = { 1.00, 0.70, 0.00 }, timerFeign = { 0.15, 0.80, 0.20 },
 }
 local RBC = {}   -- the colours in use, key -> { r, g, b }
 RB.colors = RBC
@@ -203,7 +209,7 @@ function RB.ApplyPalette()
     local custom = palette == "custom" and rdb and rdb.customColors or nil
     for _, key in ipairs({ "health", "classHealth", "low", "mana", "rage", "energy", "druidMana", "combo",
                            "swingMain", "swingOff", "swingRanged", "outOfRange", "queued", "waiting", "zone",
-                           "heal", "absorb", "flight",
+                           "heal", "absorb", "flight", "timerBreath", "timerFatigue", "timerFeign",
                            "sealRighteousness", "sealCrusader", "sealCommand", "sealJustice", "sealLight", "sealWisdom", "sealFury", "sealMartyrdom" }) do
         local own = custom and custom[key]
         local c = (type(own) == "table" and own[1]) and own or RB.PaletteColor(key, base)
@@ -328,7 +334,12 @@ end
 local function ShouldShow(holder)
     local cfg = Cfg(holder.key)
     if not cfg then return false end
+    -- the timer bars can be switched off live (RB.SetTimerBars): gone at once, Edit Mode too
+    local kind = BARS[holder.key].kind
+    if kind == "timer" and not cfg.enabled then return false end
     if IsEditing() then return true end
+    -- the timer bars: while a timer runs
+    if kind == "timer" then return RB.Timer and RB.Timer.Running() or false end
     -- the flight bar: only on a flight path
     if BARS[holder.key].kind == "flight" then return RB.Flight and RB.Flight.now and true or false end
     -- a swing proves the weapon, so no availability check (attack speeds can be secret); Waiting
@@ -609,7 +620,8 @@ local function UpdateBar(holder)
     elseif kind == "combo" then UpdateCombo(holder)
     elseif kind == "swing" then UpdateSwing(holder)
     elseif kind == "flight" and RB.Flight then RB.Flight.Update(holder)
-    elseif kind == "seal" and RB.Seal then RB.Seal.Update(holder) end
+    elseif kind == "seal" and RB.Seal then RB.Seal.Update(holder)
+    elseif kind == "timer" and RB.Timer then RB.Timer.Update(holder) end
 end
 
 -- Edit Mode sample values
@@ -656,6 +668,9 @@ local function ApplyPreview(holder)
     elseif kind == "seal" then
         -- a sample Seal of Righteousness, half run out (the real seals' bars wait in their container)
         if RB.Seal then RB.Seal.Preview(holder) end
+    elseif kind == "timer" then
+        -- a sample breath bar (the live bars wait under the holder)
+        if RB.Timer then RB.Timer.Preview(holder) end
     elseif kind == "flight" then
         -- a sample flight two thirds of the way
         holder:SetScript("OnUpdate", nil)
@@ -836,7 +851,7 @@ local function LayoutBar(holder)
 
     K.ApplyFont(holder.Text, font)
     holder.Text:ClearAllPoints()
-    if kind == "swing" or kind == "flight" or kind == "seal" then
+    if kind == "swing" or kind == "flight" or kind == "seal" or kind == "timer" then
         K.ApplyFont(holder.Label, font)
         holder.Label:ClearAllPoints()
         holder.Label:SetPoint("LEFT", bar, "LEFT", K.TEXT_INSET, 0)
@@ -882,6 +897,7 @@ local function LayoutBar(holder)
         K.PlaceOverAbsorb(holder.OverAbsorb, bar, width, false, K.GetBarTexture(K.ABSORB_TEXTURE))
     end
     if kind == "seal" and RB.Seal then RB.Seal.Layout(holder, cfg, font) end
+    if kind == "timer" and RB.Timer then RB.Timer.Layout(holder, cfg, font) end
 end
 
 --------------------------------------------------
@@ -1087,7 +1103,7 @@ local function CreateHolder(key, parent)
         holder.FsrSpark = fsr
     end
 
-    if info.kind == "swing" or info.kind == "flight" or info.kind == "seal" then
+    if info.kind == "swing" or info.kind == "flight" or info.kind == "seal" or info.kind == "timer" then
         holder.Label = overlay:CreateFontString(nil, "OVERLAY")
         holder.Label:SetJustifyH("LEFT")
         holder.Spark = holder.Bar:CreateTexture(nil, "OVERLAY")
@@ -1219,13 +1235,15 @@ local function BuildSettings(key)
         -- the swing timers' two texts, each on its own (11-11, a player's request)
         { name = L["Bar Text"], kind = LEM.SettingType.Checkbox, default = true, get = get("showLabel", true), set = set("showLabel"),
           desc = info.kind == "flight" and L["Where you're flying, on the left of the bar."]
-              or info.kind == "seal" and L["The seal's name on the left of the bar."] or L["The swing's name on the left of the bar."],
-          hidden = function() return info.kind ~= "swing" and info.kind ~= "flight" and info.kind ~= "seal" end },
+              or info.kind == "seal" and L["The seal's name on the left of the bar."]
+              or info.kind == "timer" and L["The timer's name on the left of the bar."] or L["The swing's name on the left of the bar."],
+          hidden = function() return info.kind ~= "swing" and info.kind ~= "flight" and info.kind ~= "seal" and info.kind ~= "timer" end },
         { name = L["Timer"], kind = LEM.SettingType.Checkbox, default = true, get = get("showTimer", true), set = set("showTimer"),
           desc = info.kind == "flight" and L["The time left on the right of the bar. A route you haven't flown yet counts up while it's learned."]
               or info.kind == "seal" and L["The seal's time left on the right of the bar."]
+              or info.kind == "timer" and L["The time left on the right of the bar."]
               or L["The seconds left on the right of the bar (and Waiting)."],
-          hidden = function() return info.kind ~= "swing" and info.kind ~= "flight" and info.kind ~= "seal" end },
+          hidden = function() return info.kind ~= "swing" and info.kind ~= "flight" and info.kind ~= "seal" and info.kind ~= "timer" end },
         (function()
             -- only the bars that hold a value: combo points are steps, swing timers already run smoothly
             local item = K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars"))
@@ -1909,6 +1927,306 @@ function Seal.Learn()
 end
 
 --------------------------------------------------
+-- 10d. TIMER BARS (11-14): Blizzard's mirror timers (breath, fatigue, feign death) in the bars' look.
+-- One bar per running timer, in the order they started: the first on the holder's spot, the next ones
+-- under it, flush as the snapper sets bars. Each bar has Blizzard's label on the left and the time left
+-- on the right; a paused timer stands still. The holder is the Edit Mode frame and its sample; the
+-- live bars are its children, so its fades reach them. Values are kept in milliseconds, as the game
+-- gives them, so a secret one still fills the bar.
+-- Blizzard's MirrorTimerContainer (a plain layout frame, not protected) is kept hidden while the bar is
+-- on, its own Show included (Edit Mode's Timer Bars box with it), and given back as Blizzard would
+-- have it when the bar is switched off. Never touched while off.
+--------------------------------------------------
+local Timer = { parts = {}, active = {} }
+RB.Timer = Timer
+-- each timer's colour (Bar Colours); death (spirit release) uses fatigue's gold, as Blizzard's art does
+local TIMER_COLOR = { BREATH = "timerBreath", EXHAUSTION = "timerFatigue", DEATH = "timerFatigue", FEIGNDEATH = "timerFeign" }
+local MIRROR_TIMERS = 3
+
+function Timer.Running()
+    return #Timer.active > 0
+end
+
+-- paused comes as a number (0 or 1) on Forever, a boolean elsewhere
+local function TimerPaused(paused)
+    paused = readable(paused)
+    return paused == true or (type(paused) == "number" and paused > 0)
+end
+
+-- one bar, in the holder's look; slot 1 on the holder, the others each under the last
+local function TimerLayoutPart(part, holder, i, cfg, font)
+    local height = cfg.height or 14
+    local PADDING = BarPadding(cfg, height)
+    part:ClearAllPoints()
+    part:SetSize(holder:GetWidth(), holder:GetHeight())
+    if i == 1 then
+        part:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
+    else
+        part:SetPoint("TOPLEFT", Timer.parts[i - 1], "BOTTOMLEFT", 0, -SNAP_GAP)
+    end
+    part.Backdrop:SetBackdrop({ bgFile = K.BACKDROP_FILE, insets = { left = PADDING, right = PADDING, top = PADDING, bottom = PADDING } })
+    part.Backdrop:SetBackdropColor(0, 0, 0, K.BG_OPACITY)
+    K.ApplyBorderStyle(part.Border, K.GetBorderFile(cfg.border or DEFAULT_BAR_BORDER), height + 2 * K.INSET)
+    local texture = K.GetBarTexture(cfg.texture)
+    part.Bar:SetStatusBarTexture(texture)
+    part.Bar.bg:SetTexture(texture)
+    K.SetBarBackground(part.Bar, cfg.bgOpacity)
+    part.Bar:ClearAllPoints()
+    part.Bar:SetPoint("TOPLEFT", part, "TOPLEFT", PADDING, -PADDING)
+    part.Bar:SetPoint("BOTTOMRIGHT", part, "BOTTOMRIGHT", -PADDING, PADDING)
+    K.ApplyFont(part.Label, font)
+    part.Label:ClearAllPoints()
+    part.Label:SetPoint("LEFT", part.Bar, "LEFT", K.TEXT_INSET, 0)
+    part.Label:SetShown(cfg.showLabel ~= false)
+    K.ApplyFont(part.Time, font)
+    part.Time:ClearAllPoints()
+    part.Time:SetPoint("RIGHT", part.Bar, "RIGHT", -K.TEXT_INSET, 0)
+    part.Time:SetShown(cfg.showTimer ~= false)
+end
+
+local function TimerPart(holder, i)
+    local part = Timer.parts[i]
+    if part then return part end
+    local level = holder:GetFrameLevel()
+    part = CreateFrame("Frame", nil, holder)
+    part:SetFrameLevel(level)
+    part.Backdrop = CreateFrame("Frame", nil, part, "BackdropTemplate")
+    part.Backdrop:SetAllPoints()
+    part.Backdrop:SetFrameLevel(level)
+    part.Border = CreateFrame("Frame", nil, part, "BackdropTemplate")
+    part.Border:SetAllPoints()
+    part.Border:SetFrameLevel(level + 3)
+    part.Bar = K.CreateBar(part, level + 1)
+    local overlay = CreateFrame("Frame", nil, part)
+    overlay:SetAllPoints()
+    overlay:SetFrameLevel(level + 4)
+    part.Label = overlay:CreateFontString(nil, "OVERLAY")
+    part.Label:SetJustifyH("LEFT")
+    part.Label:SetWordWrap(false)
+    part.Time = overlay:CreateFontString(nil, "OVERLAY")
+    part.Time:SetJustifyH("RIGHT")
+    part.Time:SetWordWrap(false)
+    Timer.parts[i] = part
+    local cfg = Cfg("timer") or {}
+    RB.SeedFonts()
+    TimerLayoutPart(part, holder, i, cfg, cfg.font)
+    return part
+end
+
+-- "42", "1:05": whole seconds, rounded up, so 0 shows only as the timer ends
+local function TimerText(seconds)
+    seconds = math.ceil(math_max(0, seconds))
+    if seconds < 60 then return tostring(seconds) end
+    return Clock(seconds)
+end
+
+-- the bar's fill and time left; the text only when the second changes
+local function TimerTick(part, entry)
+    local progress = GetMirrorTimerProgress(entry.name)
+    if canaccessvalue(progress) and progress == nil then progress = entry.value end
+    if canaccessvalue(progress) and progress == nil then return end
+    part.Bar:SetValue(progress)
+    local ms = readable(progress)
+    if not ms then
+        part.Time:SetText("")
+        part.second = nil
+        return
+    end
+    -- a timer that drains faster (scale under -1) runs out sooner than its amount says
+    local seconds = ms / 1000
+    local scale = entry.scale
+    if scale and scale < 0 then seconds = seconds / -scale end
+    local second = math.ceil(seconds)
+    if second ~= part.second then
+        part.second = second
+        part.Time:SetText(TimerText(seconds))
+    end
+end
+
+local function TimerOnUpdate()
+    for i, entry in ipairs(Timer.active) do
+        local part = Timer.parts[i]
+        if part and not entry.paused and i <= MIRROR_TIMERS then TimerTick(part, entry) end
+    end
+end
+
+-- the holder's own art is the Edit Mode sample only; the live bars are the parts
+local function TimerSampleShown(holder, shown)
+    local cfg = Cfg("timer") or {}
+    holder.Backdrop:SetShown(shown)
+    holder.Border:SetShown(shown)
+    holder.Bar:SetShown(shown)
+    holder.Text:SetShown(shown and cfg.showTimer ~= false)
+    holder.Label:SetShown(shown and cfg.showLabel ~= false)
+end
+
+function Timer.Update(holder)
+    TimerSampleShown(holder, false)
+    local ticking = false
+    for i = 1, MIRROR_TIMERS do
+        local entry = Timer.active[i]
+        if entry then
+            local part = TimerPart(holder, i)
+            local c = RBC[TIMER_COLOR[entry.name] or "timerFatigue"] or { 1, 0.7, 0 }
+            part.Bar:SetStatusBarColor(c[1], c[2], c[3])
+            part.Bar:SetMinMaxValues(0, entry.max)
+            part.Label:SetText(entry.label)
+            part.second = nil
+            TimerTick(part, entry)
+            part:Show()
+            if not entry.paused then ticking = true end
+        elseif Timer.parts[i] then
+            Timer.parts[i]:Hide()
+        end
+    end
+    holder:SetScript("OnUpdate", ticking and TimerOnUpdate or nil)
+end
+
+function Timer.Preview(holder)
+    holder:SetScript("OnUpdate", nil)
+    -- (a settings preview's sample leaves the live bars alone)
+    if not holder.fuiSample then
+        for _, part in pairs(Timer.parts) do part:Hide() end
+    end
+    TimerSampleShown(holder, true)
+    holder.Label:SetText(L["Breath"])
+    holder.Text:SetText("42")
+    holder.Spark:Hide()
+    holder.Bar:SetMinMaxValues(0, 1)
+    holder.Bar:SetValue(0.7)
+    local c = RBC.timerBreath or { 0.2, 0.55, 1 }
+    holder.Bar:SetStatusBarColor(c[1], c[2], c[3])
+end
+
+function Timer.Layout(holder, cfg, font)
+    if holder.fuiSample then return end
+    for i = 1, MIRROR_TIMERS do
+        local part = Timer.parts[i]
+        if part then TimerLayoutPart(part, holder, i, cfg, font) end
+    end
+end
+
+local function TimerShown()
+    if bars.timer then ApplyShown(bars.timer) end
+end
+
+local function TimerFind(name)
+    for i, entry in ipairs(Timer.active) do
+        if entry.name == name then return entry, i end
+    end
+end
+
+-- MIRROR_TIMER_START and the login's GetMirrorTimerInfo: name, value, max (ms), scale, paused, label
+local function TimerStart(name, value, max, scale, paused, label)
+    name = readable(name)
+    if not name or name == "UNKNOWN" then return end
+    local entry = TimerFind(name)
+    if not entry then
+        entry = { name = name }
+        Timer.active[#Timer.active + 1] = entry
+    end
+    -- (a secret max or label is passed on as it is, untested: the bar and text take it)
+    if canaccessvalue(max) then
+        entry.max = (type(max) == "number" and max > 0) and max or 1
+    else
+        entry.max = max
+    end
+    if canaccessvalue(label) then entry.label = label or "" else entry.label = label end
+    entry.value = value
+    local s = readable(scale)
+    entry.scale = type(s) == "number" and s or nil
+    entry.paused = TimerPaused(paused)
+end
+
+function Timer.OnEvent(_, event, arg1, arg2, arg3, arg4, arg5, arg6)
+    if event == "MIRROR_TIMER_START" then
+        TimerStart(arg1, arg2, arg3, arg4, arg5, arg6)
+    elseif event == "MIRROR_TIMER_STOP" then
+        local _, index = TimerFind(readable(arg1))
+        if index then table.remove(Timer.active, index) end
+    elseif event == "MIRROR_TIMER_PAUSE" then
+        local entry = TimerFind(readable(arg1))
+        if entry then entry.paused = TimerPaused(arg2) end
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        -- timers already running at login or after a loading screen
+        wipe(Timer.active)
+        for i = 1, MIRROR_TIMERS do
+            local name, value, max, scale, paused, label = GetMirrorTimerInfo(i)
+            if name then TimerStart(name, value, max, scale, paused, label) end
+        end
+    end
+    TimerShown()
+end
+
+-- Blizzard's container: hidden while on (its Show re-hidden), given back when switched off
+local function BlizzardTimers()
+    local container = _G.MirrorTimerContainer
+    if not container or container:IsProtected() then return nil end
+    return container
+end
+
+function Timer.HideBlizzard(hide)
+    local container = BlizzardTimers()
+    if not container then
+        if hide and not Timer.waiting and EventUtil and EventUtil.ContinueOnAddOnLoaded then
+            Timer.waiting = true
+            EventUtil.ContinueOnAddOnLoaded("Blizzard_MirrorTimer", function()
+                if Timer.hiding then Timer.HideBlizzard(true) end
+            end)
+        end
+        Timer.hiding = hide and true or false
+        return
+    end
+    if hide then
+        Timer.hiding = true
+        if not Timer.hooked then
+            Timer.hooked = true
+            container:HookScript("OnShow", function(self) if Timer.hiding then ns.RawHide(self) end end)
+        end
+        ns.RawHide(container)
+    elseif Timer.hiding then
+        Timer.hiding = false
+        -- as Blizzard would have it now: up with a timer running or its Edit Mode box ticked (the
+        -- engine's Show: Edit Mode's own would re-lay its systems from addon code)
+        if not container:IsShown() and container.ShouldShow and container:ShouldShow() then
+            local show = container.ShowBase or container.Show
+            show(container)
+        end
+    end
+end
+
+function Timer.Init()
+    if Timer.initialized then return end
+    Timer.initialized = true
+    local events = CreateFrame("Frame")
+    for _, event in ipairs({ "MIRROR_TIMER_START", "MIRROR_TIMER_STOP", "MIRROR_TIMER_PAUSE", "PLAYER_ENTERING_WORLD" }) do
+        pcall(events.RegisterEvent, events, event)
+    end
+    events:SetScript("OnEvent", Timer.OnEvent)
+    Timer.events = events
+    Timer.HideBlizzard(true)
+    Timer.OnEvent(nil, "PLAYER_ENTERING_WORLD")
+end
+
+-- the settings switch (Settings/Pages/ResourceBars.lua): off at once, Blizzard's timers back; on again
+-- in the same session takes over again if the bar was made at login (else after the reload)
+function RB.SetTimerBars(on)
+    if not RB.initialized then return end
+    local holder = bars.timer
+    if on then
+        if not holder then return end
+        Timer.HideBlizzard(true)
+        ApplyShown(holder)
+    else
+        Timer.HideBlizzard(false)
+        if holder then
+            holder:SetScript("OnUpdate", nil)
+            holder:Hide()
+        end
+    end
+end
+
+--------------------------------------------------
 -- 11. PUBLIC
 --------------------------------------------------
 -- the bar Visibility fades (nil when it was not made: off at login)
@@ -1950,8 +2268,9 @@ end
 
 local function BarOn(key)
     local cfg = Cfg(key)
-    if key == "mana" and ClassFile() ~= "DRUID" then return false end
-    if key == "seal" and ClassFile() ~= "PALADIN" then return false end
+    -- (11-15, Marcus) Druid Mana is built on every class, so anyone can place it in Edit Mode; in play it
+    -- shows only while mana is a second power (ManaIsSecondary: a druid in Bear or Cat Form)
+    -- the same for Seals: placed on any class, shown in play only on a paladin with a seal up
     return cfg and cfg.enabled and true or false
 end
 
@@ -2044,6 +2363,7 @@ function RB:Init()
     HideBlizzardCounterparts()
     EnableSwingRange()
     if bars.flight then Flight.Init() end
+    if bars.timer then Timer.Init() end
     if bars.seal then
         local sealEvents = CreateFrame("Frame")
         sealEvents:RegisterEvent("PLAYER_REGEN_ENABLED")

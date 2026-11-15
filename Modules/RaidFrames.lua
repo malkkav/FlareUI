@@ -1003,6 +1003,10 @@ local function BuildSettings()
         K.BgOpacitySetting(K.BAR_BG_OPACITY, get("bgOpacity", K.BAR_BG_OPACITY), set("bgOpacity")),
         K.ClassColorSetting(function() return ns.ClassColorsOn(GetDb()) end, set("classColor")),
         K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars")),
+        -- (11-15; main tanks follow it)
+        { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The border pulses in the threat colour while this member has aggro."],
+          get = function() return get("threatGlow", true)() ~= false end, set = set("threatGlow") },
     })
 
     Section("Auras", ns.AuraOrder.With(AuraItems(get, set, d, raidView), get, set))

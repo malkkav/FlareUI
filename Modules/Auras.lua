@@ -1006,28 +1006,6 @@ end
 -- the same look for Buff Reminders (BuffReminders.lua)
 AU.StyleIcon, AU.StackFont = CDM.StyleIcon, CDM.StackFont
 
--- A Tracked Buffs icon
-function CDM.StyleBuffIcon(item)
-    local db = GetDb()
-    local round = db.style == "round"
-    local p = CDM.Pieces(item)
-    if item.Icon then CDM.StyleIcon(item, item.Icon, p, round) end
-    local cd = item.Cooldown
-    if cd then
-        -- Blizzard sets the swipe's colour and edge on each refresh, its texture and drawing never
-        local swipe = db.swipe or "both"
-        cd:SetDrawSwipe(swipe ~= "none")
-        if swipe == "border" then
-            cd:SetSwipeTexture(round and SWIPE_ROUND or SWIPE_SQUARE)
-        else
-            cd:SetSwipeTexture(round and SWIPE_DISC or SQUARE_MASK)
-        end
-        cd:SetUseCircularEdge(round)
-    end
-    local count = item.Applications and item.Applications.Applications
-    if count then CDM.StackFont(count) end
-end
-
 -- A Tracked Bar: the bar as a FlareUI cast bar, its icon as a buff
 function CDM.StyleBar(item)
     local K = ns.UnitFrames and ns.UnitFrames.Kit
@@ -1100,7 +1078,15 @@ function CDM.StyleCooldownIcon(item)
     b:SetFrameLevel(item:GetFrameLevel() + 2)
 end
 
-CDM.VIEWERS = { BuffBarCooldownViewer = CDM.StyleBar, BuffIconCooldownViewer = CDM.StyleBuffIcon,
+-- (11-15, a player's report: the Tracked Buffs row had a different border from the cooldowns under it)
+-- Tracked Buffs icons take the cooldown icons' frame border, with FlareUI's stack font
+function CDM.StyleBuffIconFramed(item)
+    CDM.StyleCooldownIcon(item)
+    local count = item.Applications and item.Applications.Applications
+    if count then CDM.StackFont(count) end
+end
+
+CDM.VIEWERS = { BuffBarCooldownViewer = CDM.StyleBar, BuffIconCooldownViewer = CDM.StyleBuffIconFramed,
                 EssentialCooldownViewer = CDM.StyleCooldownIcon, UtilityCooldownViewer = CDM.StyleCooldownIcon }
 
 -- every frame showing now (a settings change, or the viewer was already up)

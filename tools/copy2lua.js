@@ -1,12 +1,12 @@
-// Builds Settings/Copy.lua from the panel copy document (Development/FlareUI 2.0/03-copy.md by default):
+// Builds Settings/Copy.lua from the panel copy document (Development/Docs/settings-copy.md by default):
 // every label, description, tip, choice name, section and module text of the settings panel.
 // The strings are written as L["..."] so tools/enus.js picks them up for CurseForge.
-//   node tools/copy2lua.js [path/to/03-copy.md]
+//   node tools/copy2lua.js [path/to/settings-copy.md]
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const SRC = process.argv[2] || path.resolve(ROOT, '../Development/FlareUI 2.0/03-copy.md');
+const SRC = process.argv[2] || path.resolve(ROOT, '../Development/Docs/settings-copy.md');
 const OUT = path.join(ROOT, 'Settings/Copy.lua');
 
 const lines = fs.readFileSync(SRC, 'utf8').split(/\r?\n/);

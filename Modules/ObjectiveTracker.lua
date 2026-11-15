@@ -43,6 +43,7 @@ local C = {
     SCROLLBAR_MIN = 16,     -- the shortest the thumb gets
     ITEM_SIZE = 22, ITEM_GAP = 3,
     BOX = 12,               -- the header's minimize / expand button
+    AUTO_SIZE = 14,         -- the header's Auto Quest Buttons
     LONE = 18,              -- the lone expand button of Minimize Style "Button Only"
     BOX_COLOR = { 0.50, 0.38, 0.21 },        -- a darker bronze than the frame border
     BOX_COLOR_LIT = { 0.65, 0.49, 0.27 },    -- the frame border's bronze while pointed at
@@ -346,6 +347,7 @@ end
 
 local function ByOrder(a, b)
     if a.ftRank ~= b.ftRank then return a.ftRank < b.ftRank end
+    if a.ftFocus ~= b.ftFocus then return a.ftFocus end   -- Focused Quest First
     if a.ftDone ~= b.ftDone then return not a.ftDone end
     -- by level or progress: 0 for every quest in the other orders
     if a.ftLevel ~= b.ftLevel then return a.ftLevel < b.ftLevel end
@@ -504,6 +506,20 @@ local function CollectQuests(db)
     local pinned = Char().pinned
     for _, q in ipairs(questBuf) do
         if pinned[q.questID] then q.ftRank = -1 end
+    end
+    -- Focused Quest First: the focused quest goes to the top, under any pinned ones. With zone
+    -- headings its whole zone moves up with it (one heading, not two), and it leads that zone
+    local focusedID = db.focusedFirst and C_SuperTrack.GetSuperTrackedQuestID() or nil
+    local focusedHeader
+    for _, q in ipairs(questBuf) do
+        q.ftFocus = focusedID ~= nil and q.questID == focusedID
+        if q.ftFocus and q.ftRank ~= -1 then focusedHeader = q.ftHeader end
+    end
+    if focusedHeader then
+        local headings = db.zoneHeaders and not db.sortByLevel and not db.sortByProgress
+        for _, q in ipairs(questBuf) do
+            if q.ftRank ~= -1 and (q.ftFocus or (headings and q.ftHeader == focusedHeader)) then q.ftRank = -0.5 end
+        end
     end
     table.sort(questBuf, ByOrder)
     -- in a fight with quest item buttons up, the list keeps the order it had when the fight began
@@ -1130,10 +1146,25 @@ local function GetItemButton(i)
         t:SetPoint("TOPLEFT")
         t:SetSize(31.6 * art, 30.9 * art)
     end
-    b.count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-    b.count:SetPoint("BOTTOMRIGHT", -2, 2)
     b.cooldown = CreateFrame("Cooldown", nil, b, "CooldownFrameTemplate")
     b.cooldown:SetAllPoints(b.icon)
+    -- (11-15) FlareUI's frame border, as on the action bars' FlareUI Borders: Blizzard's bronze frame
+    -- goes invisible, FlareUI Frames rounds the icon (not the button, so nothing shows past it), its
+    -- edge scaled to the icon's size like the Cooldown Manager's icons (16 px at 50 px)
+    b:GetNormalTexture():SetAlpha(0)
+    b.border = CreateFrame("Frame", nil, b, "BackdropTemplate")
+    b.border:SetAllPoints(b.icon)
+    local file = LSM:Fetch("border", "FlareUI Frames")
+    b.border:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, math.floor(16 * size / 50 + 0.5)) })
+    local c = ns.BORDER_COLOR
+    b.border:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
+    -- over the cooldown swipe; the count over the border
+    b.border:SetFrameLevel(b:GetFrameLevel() + 2)
+    local texts = CreateFrame("Frame", nil, b)
+    texts:SetAllPoints()
+    texts:SetFrameLevel(b:GetFrameLevel() + 3)
+    b.count = texts:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    b.count:SetPoint("BOTTOMRIGHT", -2, 2)
     b:SetScript("OnEnter", function(self)
         if not self.logIndex then return end
         ns.OwnGameTooltip(self, "ANCHOR_LEFT")
@@ -1279,7 +1310,8 @@ function Build.TitleColor(db, level, questID, focus, done)
     return color
 end
 
-function Build.TitleText(db, level, tags, title, collapsed, questID)
+-- done: a finished quest gets a green "(Complete)" after its name (always; shown when folded too)
+function Build.TitleText(db, level, tags, title, collapsed, questID, done)
     local prefix = ""
     if level then
         local c = Build.DifficultyColor(level, questID)
@@ -1290,7 +1322,8 @@ function Build.TitleText(db, level, tags, title, collapsed, questID)
             prefix = string_format("|cff%02x%02x%02x", Byte(c.r), Byte(c.g), Byte(c.b)) .. "[" .. shownLevel .. shownTags .. "]|r "
         end
     end
-    return prefix .. title .. (collapsed and ("  " .. ColorCode(C.DIM) .. "+|r") or "")
+    local tag = done and (" " .. ColorCode(C.TITLE_DONE) .. L["(Complete)"] .. "|r") or ""
+    return prefix .. title .. tag .. (collapsed and ("  " .. ColorCode(C.DIM) .. "+|r") or "")
 end
 
 -- The header's title (with the count), the zone switch and the minimize button, placed
@@ -1328,6 +1361,7 @@ function OT:Render()
     ReadLog()   -- the one walk of the quest log this render reads
     local count, max = QuestCount()
     Build.LayoutHeader(header, db, count, max, minimized)
+    OT.LayoutAutoButtons(header, db)
 
     -- content
     local n, y = 0, 0
@@ -1373,8 +1407,8 @@ function OT:Render()
     end
 
     local function TitleColor(level, questID, focus, done) return Build.TitleColor(db, level, questID, focus, done) end
-    local function TitleText(level, tags, title, collapsed, questID)
-        return Build.TitleText(db, level, tags, title, collapsed, questID)
+    local function TitleText(level, tags, title, collapsed, questID, done)
+        return Build.TitleText(db, level, tags, title, collapsed, questID, done)
     end
 
     -- What a complete quest says: click to finish, its own closing text, where to go, or "ready"
@@ -1487,7 +1521,7 @@ function OT:Render()
                     end
                 else
                     local color = TitleColor(s.level, nil, s.focus, s.done)
-                    local line = AddLine(TitleText(s.level, s.tags or "", s.title), "title", color, titleRoom)
+                    local line = AddLine(TitleText(s.level, s.tags or "", s.title, nil, nil, s.done), "title", color, titleRoom)
                     AddTitleButtons(line, nil, s.focus)
                     if s.item then
                         line.sampleItem = s.item
@@ -1529,7 +1563,7 @@ function OT:Render()
                     local collapsed = IsCollapsed(q.questID)
                     local complete = C_QuestLog.IsComplete(q.questID)
                     local color = TitleColor(q.difficultyLevel or q.level, q.questID, q.questID == focused, complete)
-                    local line = AddLine(TitleText(q.difficultyLevel or q.level, db.showTags and QuestTags(q) or "", q.title or "?", collapsed, q.questID), "title", color, titleRoom)
+                    local line = AddLine(TitleText(q.difficultyLevel or q.level, db.showTags and QuestTags(q) or "", q.title or "?", collapsed, q.questID, complete), "title", color, titleRoom)
                     line.questID, line.logIndex = q.questID, q.ftLogIndex
                     titleLines[#titleLines + 1] = line
                     AddTitleButtons(line, q.questID, q.questID == focused)
@@ -2221,6 +2255,74 @@ local function CreateBoxButton(parent, name, size)
     return b
 end
 
+-- Auto Quest Buttons (11-14): a "!" and a "?" left of the header's All / Zone switch that turn
+-- Quality of Life's Auto Accept Quests and Auto Turn-In Quests on and off. The same saved switches
+-- (tweaks.*), read live by Tweaks.lua on every quest window, so nothing else needs telling; an open
+-- settings panel is redrawn. Lit when on, grey and dim when off.
+function OT.TweaksDb() return ns.db and ns.db.profile and ns.db.profile.tweaks end
+
+function OT.PaintAutoButton(b)
+    local tweaks = OT.TweaksDb()
+    local on = tweaks and tweaks[b.key] and true or false
+    b.icon:SetDesaturated(not on)
+    b.icon:SetAlpha(on and 1 or (b:IsMouseOver() and 0.75 or 0.45))
+end
+
+function OT.CreateAutoButton(parent, key, texture, title)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(C.AUTO_SIZE, C.AUTO_SIZE)
+    b.key, b.title = key, title
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetAllPoints()
+    b.icon:SetTexture(texture)
+    b:SetScript("OnClick", function(self)
+        local tweaks = OT.TweaksDb()
+        if not tweaks then return end
+        tweaks[self.key] = not tweaks[self.key]
+        PlaySound(tweaks[self.key] and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+        OT.PaintAutoButton(self)
+        if ns.SettingsPanel and ns.SettingsPanel.Refresh then pcall(ns.SettingsPanel.Refresh, ns.SettingsPanel) end
+        if GameTooltip:IsOwned(self) then self:GetScript("OnEnter")(self) end
+    end)
+    b:SetScript("OnEnter", function(self)
+        OT.PaintAutoButton(self)
+        local tweaks = OT.TweaksDb()
+        local on = tweaks and tweaks[self.key]
+        ns.OwnGameTooltip(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine(self.title)
+        if on then
+            GameTooltip:AddLine(L["On"], GREEN_FONT_COLOR.r, GREEN_FONT_COLOR.g, GREEN_FONT_COLOR.b)
+        else
+            GameTooltip:AddLine(L["Off"], 0.5, 0.5, 0.5)
+        end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function(self)
+        GameTooltip:Hide()
+        OT.PaintAutoButton(self)
+    end)
+    b:Hide()
+    return b
+end
+
+-- Shown with the switch on and the Quality of Life module running; not in the Gamepad UI, where
+-- the auto quests stand aside (Blizzard's own quest windows there). After Build.LayoutHeader.
+function OT.LayoutAutoButtons(head, db)
+    local accept, turnIn = head.autoAccept, head.autoTurnIn
+    if not (accept and turnIn) then return end
+    local tweaksModule = ns.modules and ns.modules["Tweaks"]
+    local show = db.autoButtons and tweaksModule and tweaksModule.initialized and not ns.IsGamepadUI() or false
+    accept:SetShown(show)
+    turnIn:SetShown(show)
+    if not show then return end
+    turnIn:ClearAllPoints()
+    turnIn:SetPoint("RIGHT", head.zone, "LEFT", -2, 0)
+    accept:ClearAllPoints()
+    accept:SetPoint("RIGHT", turnIn, "LEFT", -1, 0)
+    OT.PaintAutoButton(accept)
+    OT.PaintAutoButton(turnIn)
+end
+
 -- The header band (title, zone switch, minimize button) and the divider under it, on a window: the
 -- tracker's, or the settings preview's sample. No clicks or tooltips here.
 function Build.Header(window)
@@ -2298,6 +2400,9 @@ local function CreateFrames()
         self.text:SetTextColor(C.DIM[1], C.DIM[2], C.DIM[3])
         GameTooltip:Hide()
     end)
+
+    header.autoAccept = OT.CreateAutoButton(header, "autoAcceptQuests", "Interface/GossipFrame/AvailableQuestIcon", L["Auto Accept Quests"])
+    header.autoTurnIn = OT.CreateAutoButton(header, "autoTurnInQuests", "Interface/GossipFrame/ActiveQuestIcon", L["Auto Turn-In Quests"])
 
     scroll = CreateFrame("ScrollFrame", nil, holder)
     scroll:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -C.HEADER - C.LIST_TOP)
@@ -2580,7 +2685,7 @@ do
             else
                 -- Auto-Collapse Completed folds the finished one
                 local collapsed = s.done and db.collapseCompleted
-                local line = AddLine(Build.TitleText(db, s.level, s.tags or "", s.title, collapsed), "title",
+                local line = AddLine(Build.TitleText(db, s.level, s.tags or "", s.title, collapsed, nil, s.done), "title",
                     Build.TitleColor(db, s.level, nil, s.focus, s.done), titleRoom)
                 TitleButtons(line, db, s.focus)
                 if s.timer then

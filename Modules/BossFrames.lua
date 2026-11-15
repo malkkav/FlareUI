@@ -368,6 +368,10 @@ local function BuildSettings()
             return item
         end)(),
         K.SmoothBarsSetting(get("smoothBars"), set("smoothBars")),
+        -- (11-15)
+        { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The border pulses in the threat colour while you have threat on it."],
+          get = function() return get("threatGlow")() ~= false end, set = set("threatGlow") },
     })
 
     local function noCast() return get("castbar")() == false end

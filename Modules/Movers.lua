@@ -367,10 +367,11 @@ end
 -- The dark plate in FlareUI Thick (11-11 Marcus): the sample's, and the one behind the real scores
 local function ObjectivesBox(frame)
     local file = LibStub("LibSharedMedia-3.0"):Fetch("border", OBJ_BORDER)
-    local inset = 4
+    -- (11-15, Marcus) the background reaches under the border (a gap showed at 4), fully opaque
+    local inset = 2
     frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = file, edgeSize = ns.BorderEdgeSize(file, OBJ_EDGE),
         insets = { left = inset, right = inset, top = inset, bottom = inset } })
-    frame:SetBackdropColor(0, 0, 0, 0.6)
+    frame:SetBackdropColor(0, 0, 0, 1)
     local c = ns.BORDER_COLOR
     frame:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
 end
@@ -435,8 +436,10 @@ function MOV:Init()
     if self.initialized then return end
     self.initialized = true
 
+    -- (with the Loot Roll Window on, LootRolls.lua makes "FlareUI Loot Rolls" instead, on the same
+    -- saved spot, moverLayouts[layout].loot, and scale, tweaks.lootScale)
     local loot = _G.GroupLootContainer
-    if loot then
+    if loot and not (ns.LootRolls and ns.LootRolls:ShouldLoad()) then
         local holder = CreateHolder("loot", "FlareUI_LootRolls", "FlareUI Loot Rolls", ROLL_W, ROLL_H)
         CreateLootPreview(holder)
         ScaleHolder("loot", ROLL_W, ROLL_H)

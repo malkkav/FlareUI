@@ -350,10 +350,11 @@ ns.Copy = {
             tip = L["Place and size it in Edit Mode."],
         },
         ["ab.xpBubbles"] = {
-            desc = L["Splits the XP bar into 20 bubbles of 5% each, as on the classic XP bar. Reputation and honor get them too."],
-            label = L["Show Bubbles"],
+            choices = { L["Off"], L["10"], L["20"] },
+            desc = L["Splits the XP bar into bubbles, as on the classic XP bar: 20 of 5% each, or 10 of 10%. Reputation and honor get them too."],
+            label = L["Bubbles"],
             section = "ab.experience",
-            tags = { "xp bar dividers", "ticks", "segments" },
+            tags = { "xp bar dividers", "ticks", "segments", "show bubbles" },
         },
         ["ab.xpNumbers"] = {
             choices = { L["Current / Max"], L["Percent"], L["Current / Max (Percent)"], L["Remaining"] },
@@ -611,6 +612,11 @@ ns.Copy = {
             label = L["Loot Feed"],
             section = "bl.fontsLoot",
         },
+        ["bl.font.lootRolls"] = {
+            desc = L["The text in the loot roll window. The size is for item names; the smaller lines are two sizes smaller."],
+            label = L["Loot Rolls"],
+            section = "bl.fontsLoot",
+        },
         ["bl.font.money"] = {
             desc = L["The gold, silver and copper at the bottom of your bags. Default keeps Blizzard's font."],
             label = L["Gold"],
@@ -649,6 +655,19 @@ ns.Copy = {
             desc = L["Skill gains show too, such as \"Mining 76\"."],
             label = L["Show Skill-Ups"],
             section = "bl.lootFeedSection",
+        },
+        ["bl.lootRolls"] = {
+            desc = L["FlareUI's loot roll window replaces Blizzard's roll frames:\n* Need, Greed and Pass for each item\n* Everyone's choice and roll as they come in\n* Who leads, then who won"],
+            label = L["Loot Roll Window"],
+            reload = true,
+            section = "bl.lootRollsSection",
+            tags = { "loot roll", "need greed", "group loot", "roll frame" },
+            tip = L["A roll you pass on leaves the window. The icon at the top opens Blizzard's loot history. Placed and scaled in Edit Mode as \"FlareUI Loot Rolls\"."],
+        },
+        ["bl.lootRollsOpacity"] = {
+            desc = L["How dark the loot roll window's background is."],
+            label = L["Frame Opacity"],
+            section = "bl.lootRollsSection",
         },
         ["bl.petFood"] = {
             desc = L["A paw marks the food your hunter pet eats."],
@@ -760,6 +779,12 @@ ns.Copy = {
             desc = L["Your group buffs stay hidden while your group role is one of these. Your own buffs still show."],
             label = L["Hide for My Role"],
             section = "br.groupBuffs",
+        },
+        ["br.ignoreRange"] = {
+            desc = L["Group members too far away don't count as missing a buff, so the reminder waits until they're back in range."],
+            label = L["Ignore Members Out of Range"],
+            section = "br.groupBuffs",
+            tags = { "range", "distance", "far away", "group buffs", "blessings" },
         },
         ["br.petScope"] = {
             choices = { L["Always"], L["In Dungeons and Raids"], L["In Raids"], L["On Mouseover"] },
@@ -1187,20 +1212,26 @@ ns.Copy = {
         ["mm.bag"] = {
             desc = L["Every addon's minimap button in one drawer. Click the day/night badge to open it."],
             label = L["Addon Button Drawer"],
-            section = "mm.tweaks",
+            section = "mm.addonButtons",
             tip = L["Drag and drop buttons to reorder them. Pick which addons go in it with Addons in the Drawer."],
         },
         ["mm.bagAddons"] = {
             desc = L["Tick the addons whose buttons go in the drawer. The others stay on the minimap, where their addon puts them."],
             label = L["Addons in the Drawer"],
-            section = "mm.tweaks",
+            section = "mm.addonButtons",
             tags = { "minimap buttons", "addon buttons", "keep on minimap" },
             tip = L["An unticked addon's button goes back to the minimap after a reload. New addons go in the drawer. While OneForAll's \"Collect minimap buttons\" is on, its bar takes the minimap buttons: only the Addon Compartment entries are listed here."],
+        },
+        ["mm.bagButtonSize"] = {
+            desc = L["Makes the buttons in the drawer bigger. The drawer grows to fit them."],
+            label = L["Drawer Button Size"],
+            section = "mm.addonButtons",
+            tags = { "drawer size", "minimap buttons", "bigger buttons", "button scale" },
         },
         ["mm.bagHover"] = {
             desc = L["The drawer opens while you point at the day/night badge and closes when you move away. Clicking still works."],
             label = L["Open on Mouseover"],
-            section = "mm.tweaks",
+            section = "mm.addonButtons",
         },
         ["mm.clockStats"] = {
             desc = L["Your framerate and latency in the clock's tooltip."],
@@ -1216,15 +1247,16 @@ ns.Copy = {
             tip = L["Linked to Blizzard's own Coordinates option: turning one off turns off the other."],
         },
         ["mm.finderEye"] = {
-            desc = L["A small icon on the minimap opens the group finder, in place of Blizzard's large queue eye."],
+            desc = L["A small icon on the minimap in place of Blizzard's large queue eye. Click it to open the group finder."],
             label = L["Group Finder Icon"],
             section = "mm.tweaks",
-            tip = L["In a queue, point at the icon to see the queue, and right-click it for the queue menu."],
+            tags = { "queue eye", "lfg", "dungeon finder", "group finder" },
+            tip = L["In a queue it works like Blizzard's eye: point at it to see the queue, click it for the scoreboard or your listing, right-click for the queue menu. On the round minimap, move it in Edit Mode by dragging Blizzard's eye under it."],
         },
         ["mm.flareButton"] = {
             desc = L["FlareUI's own button, for opening these settings. With the Addon Button Drawer on, it sits in the drawer."],
             label = L["FlareUI Minimap Button"],
-            section = "mm.tweaks",
+            section = "mm.addonButtons",
             tip = L["Right-click the button to hide it. Untick FlareUI in Addons in the Drawer to keep it on the minimap."],
         },
         ["mm.font.clock"] = {
@@ -1370,10 +1402,10 @@ ns.Copy = {
             section = "qol.hideClutter",
         },
         ["qol.hideLootAlerts"] = {
-            desc = L["Hides Blizzard's loot pop-ups: items you win or loot, upgrades and money."],
-            label = L["Loot Alerts"],
+            desc = L["Hides Blizzard's loot toasts: items you win or loot, upgrades and money."],
+            label = L["Loot Toasts"],
             section = "qol.hideClutter",
-            tags = { "loot toasts", "loot popups", "alerts", "item toasts" },
+            tags = { "loot toasts", "loot alerts", "loot popups", "item toasts" },
         },
         ["qol.hideTips"] = {
             desc = L["Hides Blizzard's tutorial pop-ups."],
@@ -1385,6 +1417,13 @@ ns.Copy = {
             label = L["Zone Text"],
             reload = true,
             section = "qol.hideClutter",
+        },
+        ["qol.keyDown"] = {
+            desc = L["Action bar spells go off when you press the key, not when you let go."],
+            label = L["Cast on Key Press"],
+            section = "qol.convenience",
+            tags = { "key down", "keydown", "press", "faster casting" },
+            tip = L["Turning it off restores your own setting."],
         },
         ["qol.mailBook"] = {
             desc = L["A button beside Send Mail's \"To:\" lists:\n* The last character you mailed\n* Your other characters here"],
@@ -1540,6 +1579,13 @@ ns.Copy = {
             section = "qol.convenience",
             tip = L["For example: /way 45 60 or /way Elwynn Forest 45 60."],
         },
+        ["qt.autoButtons"] = {
+            desc = L["Two buttons in the tracker's header turn Auto Accept Quests and Auto Turn-In Quests on and off."],
+            label = L["Auto Quest Buttons"],
+            section = "qt.display",
+            tags = { "auto accept", "auto turn in", "quest buttons" },
+            tip = L["They change the same switches as the Quality of Life page."],
+        },
         ["qt.border"] = {
             desc = L["The border around the tracker. None hides it."],
             label = L["Border"],
@@ -1571,6 +1617,12 @@ ns.Copy = {
             desc = L["A dot before each quest: click it to focus the quest on the map."],
             label = L["Focus Buttons"],
             section = "qt.display",
+        },
+        ["qt.focusedFirst"] = {
+            desc = L["The quest you focus on the map moves to the top. With zone headings, its zone moves up with it."],
+            label = L["Focused Quest First"],
+            section = "qt.quests",
+            tags = { "super track", "focus", "top" },
         },
         ["qt.font.header"] = {
             desc = L["The tracker's title and its headers."],
@@ -1761,6 +1813,13 @@ ns.Copy = {
             desc = L["A timer for each weapon's next swing."],
             label = L["Ranged Swing"],
             section = "rb.bars",
+        },
+        ["rb.timer"] = {
+            desc = L["Your breath, fatigue and feign death timers as bars in FlareUI's style, in place of Blizzard's."],
+            label = L["Duration Bars"],
+            section = "rb.bars",
+            tags = { "mirror timer breath fatigue feign death underwater drowning" },
+            tip = L["Pick each timer's colour in Bar Colours."],
         },
         ["rm.activation"] = {
             choices = { L["Hold"], L["Toggle"] },
@@ -2338,6 +2397,7 @@ ns.Copy = {
         ["bl.fontsLoot"] = L["Looting"],
         ["bl.itemSlots"] = L["Item Slots"],
         ["bl.lootFeedSection"] = L["Loot Feed"],
+        ["bl.lootRollsSection"] = L["Loot Rolls"],
         ["bl.looting"] = L["Looting"],
         ["bl.tools"] = L["Tools"],
         ["br.alertsSection"] = L["Alerts"],
@@ -2362,6 +2422,7 @@ ns.Copy = {
         ["dm.threat"] = L["Threat Meter"],
         ["dm.tweaks"] = L["Tweaks"],
         ["language.fonts"] = L["Global Font"],
+        ["mm.addonButtons"] = L["Addon Buttons"],
         ["mm.fonts"] = L["Minimap"],
         ["mm.styleSection"] = L["Style"],
         ["mm.tweaks"] = L["Tweaks"],

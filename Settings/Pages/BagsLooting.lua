@@ -5,8 +5,8 @@ local S = ns.Settings
 --------------------------------------------------
 -- BAGS & LOOTING (11-12, out of Quality of Life)
 -- Bags tab: the bag window (Modules/Bags.lua's layout), what is drawn on the item slots, and the
--- tools. Looting tab: Faster Auto Loot, Skip Loot Confirmations (Tweaks.lua) and the Loot Feed
--- (LootFeed.lua). Fonts tab: Bag Items and Loot Feed. The saved values stay in tweaks.*; the module's
+-- tools. Looting tab: Faster Auto Loot, Skip Loot Confirmations (Tweaks.lua), the Loot Roll Window
+-- (LootRolls.lua) and the Loot Feed (LootFeed.lua). Fonts tab: the bags' texts, Loot Rolls and Loot Feed. The saved values stay in tweaks.*; the module's
 -- own switch is tweaks.bagModule (ns.BagModuleOn: on for anyone who had Quality of Life on).
 --------------------------------------------------
 local function Refresh() if ns.Tweaks then ns.Tweaks:Refresh() end end
@@ -56,6 +56,11 @@ S:Row{ key = "bl.bagWithCharacter", half = true, tab = "bags", path = "tweaks.ba
 -- LOOTING ----------------------------------------
 S:Row{ key = "bl.fastLoot", half = true, tab = "looting", path = "tweaks.fasterLoot", apply = Refresh }
 S:Row{ key = "bl.skipLoot", half = true, tab = "looting", path = "tweaks.skipLootConfirm" }
+-- Loot Roll Window: FlareUI's roll window in place of Blizzard's roll frames (LootRolls.lua, PR #43);
+-- placed in Edit Mode. Its own section, alone, so a full row. On and off take a reload.
+S:Row{ key = "bl.lootRolls", tab = "looting", path = "tweaks.lootRolls", reload = true }
+S:Row{ key = "bl.lootRollsOpacity", kind = "range", tab = "looting", path = "tweaks.lootRollsOpacity", choices = S:OpacityChoices(),
+    parent = "bl.lootRolls", apply = function() if ns.LootRolls and ns.LootRolls.ApplyOpacity then ns.LootRolls:ApplyOpacity() end end }
 -- Loot Feed: what you loot floats up beside you (LootFeed.lua); placed in Edit Mode
 S:Row{ key = "bl.lootFeed", tab = "looting", path = "tweaks.lootFeed", reload = true }
 local LOOT_QUALITY = {}
@@ -89,9 +94,11 @@ S:FontRows{ module = "bl", tab = "fonts", section = "bl.fonts", fonts = {
     if ns.Bags and ns.Bags.Refresh then ns.Bags:Refresh() end
     if ns.Bags and ns.Bags.StyleFreeSlots then ns.Bags.StyleFreeSlots() end
 end }
--- the loot feed in a section of its own (11-13)
+-- the loot roll window and the loot feed in a section of their own (11-13; Loot Rolls 11-15)
 S:FontRows{ module = "bl", tab = "fonts", section = "bl.fontsLoot", fonts = {
+    { key = "lootRolls", path = "tweaks.lootRollFont" },
     { key = "lootFeed", path = "tweaks.lootFeedFont" },
 }, apply = function()
+    if ns.LootRolls and ns.LootRolls.ApplyFont then ns.LootRolls:ApplyFont() end
     if ns.LootFeed and ns.LootFeed.ApplyFont then ns.LootFeed:ApplyFont() end
 end }

@@ -869,12 +869,18 @@ local function GroupUnits(out)
     return out
 end
 
--- someone a buff can reach: there, alive, online, seen and in your phase
+-- someone a buff can reach: there, alive, online, seen and in your phase; with Ignore Members Out of
+-- Range, also within the game's group range check (one it can't make, or keeps secret, counts as in range)
 local function Reachable(unit)
     if not UnitExists(unit) or UnitIsDeadOrGhost(unit) or not UnitIsConnected(unit) then return false end
     if unit ~= "player" and not UnitIsUnit(unit, "player") then
         if not UnitIsVisible(unit) then return false end
         if UnitPhaseReason and UnitPhaseReason(unit) then return false end
+        local db = GetDb()
+        if db and db.ignoreRange and UnitInRange then
+            local ok, inRange, checked = pcall(UnitInRange, unit)
+            if ok and Readable(inRange) and Readable(checked) and checked and not inRange then return false end
+        end
     end
     return true
 end
@@ -1107,7 +1113,8 @@ local function OtherProvider()
         for i = 1, 4 do list[#list + 1] = "party" .. i end
     end
     for _, unit in ipairs(list) do
-        if UnitExists(unit) and not UnitIsUnit(unit, "player") and UnitIsConnected(unit) then
+        -- (11-15) only one you can see: a member of your class in another zone gives you nothing
+        if not UnitIsUnit(unit, "player") and Reachable(unit) then
             local _, class = UnitClass(unit)
             if class == mine then return true end
         end
@@ -1378,8 +1385,15 @@ local function Check(entry, before)
     local missing, total, first, gone = 0, 0, nil, false
     -- Thorns: tanks (their group role, or the raid's main tanks; alone, yourself), you, or everyone
     local pick = def.pick and ((GetDb() or {})[def.pick] or "tank")
-    local grouped = IsInGroup()
     local list = GroupUnits(units)
+    -- (11-15, a player: reminders gone in an open-world group) Tanks Only with no tank in the group
+    -- (invite groups have no roles): yourself, as alone
+    local grouped = false
+    if pick == "tank" and IsInGroup() then
+        for _, unit in ipairs(list) do
+            if UnitExists(unit) and IsTank(unit) then grouped = true break end
+        end
+    end
     -- a party-wide buff (Battle Shout): you and your party, in a raid too
     if def.party and #list > 5 then
         wipe(list)
@@ -2182,8 +2196,17 @@ function BR:Init()
         if event == "PLAYER_REGEN_ENABLED" then ApplyPosition() end
         Soon()
     end)
-    -- buffs running out cross the reminder line without an event
-    C_Timer.NewTicker(10, Soon)
+    -- buffs running out cross the reminder line without an event: a look every 10 seconds; with Ignore
+    -- Members Out of Range in a group, every 2.5 (walking in or out of range has no event either)
+    local ticks = 0
+    C_Timer.NewTicker(2.5, function()
+        ticks = ticks + 1
+        local db = GetDb()
+        if ticks >= 4 or (db and db.ignoreRange and IsInGroup() and not InCombatLockdown()) then
+            ticks = 0
+            Soon()
+        end
+    end)
     BR.Update()
 end
 

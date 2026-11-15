@@ -470,6 +470,21 @@ local EMOTES = {
     { token = "SLEEP",   icon = "Spell_Nature_Sleep" },
     { token = "KNEEL",   icon = "Ability_Paladin_BlessedHands" },
     { token = "LEAN",    icon = "Ability_Rogue_Disguise" },
+    -- the chat menu's voice emotes (11-14)
+    { token = "OOM",            icon = "Spell_Shadow_ManaBurn", upper = true },
+    { token = "THANK",          icon = "Spell_Holy_HolyBolt" },
+    { token = "CHEER",          icon = "Achievement_BG_winAB" },
+    { token = "HELLO",          icon = "INV_Misc_GroupNeedMore" },
+    { token = "BYE",            icon = "INV_Misc_Rune_01" },
+    { token = "FOLLOW",         icon = "Ability_Tracking" },
+    { token = "HELPME",         icon = "Spell_Holy_DivineIntervention" },
+    { token = "HEALME",         icon = "Spell_Holy_FlashHeal" },
+    { token = "INCOMING",       icon = "Ability_Hunter_EagleEye" },
+    { token = "ATTACKMYTARGET", icon = "Ability_SteelMelee" },
+    { token = "CHARGE",         icon = "Ability_Warrior_Charge" },
+    { token = "FLEE",           icon = "Ability_Rogue_Sprint" },
+    -- last: asks for any emote command when put on a radial (saved as entry.command)
+    { token = "CUSTOM",         icon = "INV_Misc_Note_01", custom = true },
 }
 RM.EMOTES = EMOTES
 local emoteByToken
@@ -498,11 +513,77 @@ end
 ACTIONS.emote = function(entry)
     local info = entry.emote and EmoteInfo(entry.emote)
     if not info then return nil end
+    local icon = { texture = "Interface\\Icons\\" .. info.icon }
+    local CE = RM.CustomEmote
+    if info.custom then
+        -- the catalog's entry, or a button whose command is still being asked for: does nothing
+        if not entry.command then return L["Custom Emote"], icon, { type = "macro", macrotext = "" } end
+        return CE.Label(entry.command), icon, { type = "macro", macrotext = entry.command }
+    end
     local command = EmoteCommand(info.token)
-    -- "/wave" -> "Wave"
-    local name = command:gsub("^/", "")
-    name = name:sub(1, 1):upper() .. name:sub(2)
-    return name, { texture = "Interface\\Icons\\" .. info.icon }, { type = "macro", macrotext = command }
+    return CE.Label(command, info.upper), icon, { type = "macro", macrotext = command }
+end
+
+-- Custom Emote: put on a radial, it asks for the command; no answer takes the button off again.
+-- It runs as macro text on the radial's secure button, like the emotes above.
+-- (a table, not locals: the file is near the main chunk's 200 locals)
+RM.CustomEmote = { MAX = 100 }
+-- "/wave" -> "Wave", "/oom" -> "OOM"; only the first word of a custom command
+function RM.CustomEmote.Label(command, upper)
+    local name = command:match("^/(%S+)") or command:gsub("^/", "")
+    if upper then return name:upper() end
+    return name:sub(1, 1):upper() .. name:sub(2)
+end
+function RM.CustomEmote.Drop(data)
+    local radial = data and RM:GetRadial(data.id)
+    if not radial then return end
+    for i = #radial.buttons, 1, -1 do
+        if radial.buttons[i] == data.entry then table.remove(radial.buttons, i) end
+    end
+    RM:RadialChanged(data.id)
+    if ns.RadialEditorEmbed then ns.RadialEditorEmbed.Refresh() end
+end
+ns.Dialogs = ns.Dialogs or {}
+ns.Dialogs["FLAREUI_RADIAL_CUSTOM_EMOTE"] = {
+    text = "%s",
+    button1 = _G.ACCEPT or "Accept",
+    button2 = L["Cancel"],
+    hasEditBox = true,
+    maxLetters = RM.CustomEmote.MAX,
+    editText = function() return "/" end,
+    OnAccept = function(data, text)
+        RM.CustomEmote.asking = nil
+        text = text and strtrim(text) or ""
+        -- one line: a slash, then a command
+        if text:find("[\r\n]") or not text:find("^/%S") then
+            print("|cffff9900FlareUI:|r " .. L["an emote must start with / (like /oom)."])
+            RM.CustomEmote.Drop(data)
+            return
+        end
+        data.entry.command = text:sub(1, RM.CustomEmote.MAX)
+        RM:RadialChanged(data.id)
+        if ns.RadialEditorEmbed then ns.RadialEditorEmbed.Refresh() end
+    end,
+    OnCancel = function(data)
+        RM.CustomEmote.asking = nil
+        RM.CustomEmote.Drop(data)
+    end,
+    hideOnEscape = true,
+}
+-- run after an edit: the first Custom Emote on the radial without a command asks for one
+function RM.CustomEmote.Ask(radialID)
+    local CE = RM.CustomEmote
+    if not radialID or (CE.asking and ns.AnyDialogShown and ns.AnyDialogShown()) then return end
+    local radial = RM:GetRadial(radialID)
+    if not radial then return end
+    for _, entry in ipairs(radial.buttons) do
+        if entry.kind == "emote" and entry.emote == "CUSTOM" and not entry.command then
+            CE.asking = true
+            ns.ShowDialog("FLAREUI_RADIAL_CUSTOM_EMOTE", L["Type an emote command, like /oom or /cheer."],
+                { id = radialID, entry = entry })
+            return
+        end
+    end
 end
 
 -- A button standing for another radial: it shows one resolved child at a time and the mouse wheel
@@ -3191,6 +3272,8 @@ dirtyEvents:SetScript("OnEvent", RM.MarkDirty)
 
 function RM:RadialChanged(radialID)
     syncDirty = true
+    -- a Custom Emote just put on the radial asks for its command, once the editor has redrawn
+    if radialID then C_Timer.After(0, function() RM.CustomEmote.Ask(radialID) end) end
     if previewID and (radialID == nil or radialID == previewID) then
         self:RefreshPreview()
         return

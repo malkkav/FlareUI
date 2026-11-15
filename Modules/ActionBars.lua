@@ -214,8 +214,10 @@ local function SkinBorder(button, on)
         end
         local b = button.FlareUI_Border
         b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", -FLARE_BORDER_OUT, FLARE_BORDER_OUT)
-        b:SetPoint("BOTTOMRIGHT", FLARE_BORDER_OUT, -FLARE_BORDER_OUT)
+        -- (11-15, a player's report) round the icon, not the button: the pet bar's icon is larger than
+        -- its 30 px button and showed past a border fitted to the button
+        b:SetPoint("TOPLEFT", icon, "TOPLEFT", -FLARE_BORDER_OUT, FLARE_BORDER_OUT)
+        b:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", FLARE_BORDER_OUT, -FLARE_BORDER_OUT)
         local LSM = LibStub("LibSharedMedia-3.0")
         -- (11-11: FlareUI Frames, the chat and meter windows' border; FlareUI Thin looked too faint here)
         local file = LSM:Fetch("border", "FlareUI Frames")

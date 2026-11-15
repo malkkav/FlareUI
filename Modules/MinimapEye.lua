@@ -5,10 +5,12 @@ local L = ns.L
 -- GROUP FINDER EYE
 -- With Group Finder Icon on (minimap.finderEye), a small icon on the minimap in place of Blizzard's
 -- large queue eye. Square style: above the day/night badge. Round style: on Blizzard's eye.
--- Left-click opens the group finder. In a queue the eye moves as Blizzard's does, pointing at it
--- shows the queue and a right-click opens Blizzard's queue menu.
+-- Out of a queue, a left-click opens the group finder. In a queue it clicks Blizzard's eye, so both
+-- buttons do the same (the battleground scoreboard, your listing...); the eye moves as Blizzard's does,
+-- pointing at it shows the queue and a right-click opens Blizzard's queue menu.
 -- Blizzard's eye stays where it is, unseen and without the mouse: Edit Mode owns it, and a move or a
--- hide from here would taint Edit Mode. In Edit Mode it shows again, to be dragged.
+-- hide from here would taint Edit Mode. In Edit Mode ours stays; on the round style Blizzard's shows
+-- again under it, to be dragged, and ours follows.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -34,7 +36,7 @@ local BUTTON_SIZE = 31
 local GROUND_SIZE = 24
 local ICON_SIZE   = 20
 local RING_SIZE   = 50
-local SUN_GAP     = 2      -- square style: the day/night badge's top to the eye's bottom
+local SUN_GAP     = -4     -- square style: the day/night badge's top to the eye's bottom (11-15, Marcus: closer; the ring art has empty room)
 -- Blizzard's eye picture is 43 wide and its green part about 62 percent of that: at this scale the
 -- green part fills ICON_SIZE, and the gray rim falls outside the round mask
 local EYE_SCALE = ICON_SIZE / (43 * 0.62)
@@ -104,8 +106,8 @@ button:SetSize(BUTTON_SIZE, BUTTON_SIZE)
 button:SetFrameStrata("MEDIUM")
 button:SetFrameLevel(8)
 button:Hide()
--- the template acts on the press or on the release, by the player's key down setting
-button:RegisterForClicks("AnyUp", "AnyDown")
+-- a mouse press on a secure button always acts on the release
+button:RegisterForClicks("AnyUp")
 -- the micro menu's own button runs the game's checks: a disabled finder, Kiosk mode, Quick Keybind
 button:SetAttribute("type1", "click")
 button:SetAttribute("clickbutton1", LFDMicroButton)
@@ -149,6 +151,12 @@ local function Dress()
     local ring = front:CreateTexture(nil, "OVERLAY")
     ring:SetSize(RING_SIZE, RING_SIZE)
     ring:SetPoint("TOPLEFT")
+    -- (11-15, Marcus: too bright) the gold ring greyed and tinted FlareUI's bronze, as the day/night badge's frame
+    -- (11-15, Marcus: then too dark) the bronze brightened by a third: a greyed texture tinted at
+    -- full bronze came out darker than the badge's frame
+    ring:SetDesaturated(true)
+    local c = ns.BORDER_COLOR
+    ring:SetVertexColor(math.min(1, c.r * 1.35), math.min(1, c.g * 1.35), math.min(1, c.b * 1.35))
     ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     button.Eye = eye
 end
@@ -173,11 +181,8 @@ button:SetScript("OnEnter", function(self)
         QueueStatusFrame:ClearAllPoints()
         QueueStatusFrame:SetPoint("RIGHT", self, "LEFT", 0, 28)
         QueueStatusFrame:Show()
-    else
-        ns.OwnGameTooltip(self, "ANCHOR_LEFT")
-        GameTooltip_SetTitle(GameTooltip, LFDMicroButton.tooltipText or L["Group Finder"])
-        GameTooltip:Show()
     end
+    -- (11-15, Marcus) out of a queue no tooltip: the icon says what it is
 end)
 -- also on hide: a button that hides under the pointer gets no leave
 local function Leave(self)
@@ -191,10 +196,14 @@ button:SetScript("OnHide", Leave)
 --------------------------------------------------
 -- 6. PLACE AND STATE
 --------------------------------------------------
--- The right-click opens Blizzard's queue menu, only while there is a queue
+-- (11-15, Marcus: Blizzard's behaviour, all of it) in a queue both clicks are Blizzard's eye's own: the
+-- left one opens what it opens (the scoreboard in a battleground, your listing, your applications), the
+-- right one its queue menu. Out of a queue the left click opens the group finder.
 local function SyncRightClick()
     if CanChange(SyncRightClick) then
-        button:SetAttribute("type2", InQueue() and "click" or nil)
+        local queued = InQueue()
+        button:SetAttribute("clickbutton1", queued and QueueStatusButton or LFDMicroButton)
+        button:SetAttribute("type2", queued and "click" or nil)
     end
 end
 
@@ -220,14 +229,18 @@ local function Place()
         -- centred on the map's left edge, as Minimap.lua PlaceButton puts the addon buttons. Measured
         -- from the border's frame, which sits where the map sits but stays still: node addons slide
         -- the map under the cursor while they scan
+        -- (11-15) its own left edge, not the real map's width: farming HUDs resize the real map
         local art = ns.Minimap.Frame or Minimap
         local _, _, sunTop = ScreenRect(sun)
-        local artX = art:GetCenter()
-        if sunTop and artX then
-            x = artX * art:GetEffectiveScale() - Minimap:GetWidth() / 2 * Minimap:GetEffectiveScale()
+        local artLeft = art:GetLeft()
+        if sunTop and artLeft then
+            x = artLeft * art:GetEffectiveScale()
             y = sunTop + (SUN_GAP + BUTTON_SIZE / 2) * own
         end
     else
+        -- (11-15) Blizzard's eye hangs on the map, which node addons slide while they scan: wait for
+        -- the map to be home, or a moved spot would be kept
+        if ns.Minimap.AfterScan and ns.Minimap.AfterScan("finderEye", Place) then return end
         x, y = ScreenRect(QueueStatusButton)
     end
     if not (x and y) then return end
@@ -248,17 +261,30 @@ end
 local function UpdateShown()
     if not CanChange(UpdateShown) then return end
     -- the map too: the Toggle Minimap key hides it and leaves the cluster shown
-    local show = Wanted() and MinimapCluster:IsShown() and Minimap:IsShown() and not Editing()
+    -- (11-15, Marcus) ours shows in Edit Mode too. Round style: it sits on Blizzard's eye, which is the one
+    -- dragged there, so ours lets the mouse through and follows it while Edit Mode is open
+    local show = Wanted() and MinimapCluster:IsShown() and Minimap:IsShown()
+    local follow = show and Editing() and not ns.Minimap.IsSquare()
     button:SetShown(show)
+    button:EnableMouse(not follow)
+    Eye.follower = Eye.follower or CreateFrame("Frame")
+    Eye.follower:SetScript("OnUpdate", follow and Place or nil)
     if show then
         Fade()
         Place()
     end
 end
 
--- Blizzard's eye: unseen while ours shows, back in Edit Mode or with the option off
+-- Blizzard's eye: unseen while ours shows, back in Edit Mode or with the option off. (11-15) Only an
+-- eye this file took is given back: with the option never on it is left alone, so another addon that
+-- fades or hides it keeps its way (quiet defaults)
+local eyeTaken = false
 local function UpdateGameEye()
-    local seen = not Wanted() or Editing()
+    -- (11-15) in Edit Mode Blizzard's eye comes back only on the round style, to be dragged: on the
+    -- square style ours sits by the day/night badge and Blizzard's spot means nothing
+    local seen = not Wanted() or (Editing() and not ns.Minimap.IsSquare())
+    if seen and not eyeTaken then return end
+    eyeTaken = not seen
     QueueStatusButton:SetAlpha(seen and 1 or 0)
     QueueStatusButton:EnableMouse(seen)
     -- Blizzard's one-time tip about the queue eye points at an eye that is no longer seen, and its
@@ -273,6 +299,8 @@ end
 --------------------------------------------------
 -- Settings > Minimap > Group Finder Icon (live)
 function Eye.Update()
+    -- (11-15) the swap as one: in combat both wait, or Blizzard's eye would go before ours shows
+    if not CanChange(Eye.Update) then return end
     UpdateGameEye()
     UpdateShown()
 end

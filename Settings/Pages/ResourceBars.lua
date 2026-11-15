@@ -5,7 +5,7 @@ local L = ns.L
 --------------------------------------------------
 -- RESOURCE BARS
 -- One switch + Edit row per bar (Modules/ResourceBars.lua); bars are made at login, so switching
--- asks for a reload. Druid mana shows for druids only.
+-- asks for a reload. Druid mana and Seals are on every class (11-15), for Edit Mode.
 --------------------------------------------------
 local function Bar(key, extra)
     local row = {
@@ -17,16 +17,7 @@ local function Bar(key, extra)
     S:Row(row)
 end
 
-local function NotDruid()
-    local _, class = UnitClass("player")
-    return class ~= "DRUID"
-end
-local function NotPaladin()
-    local _, class = UnitClass("player")
-    return class ~= "PALADIN"
-end
-
-local BARS = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged", "seal", "flight" }
+local BARS = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged", "seal", "flight", "timer" }
 
 -- the header button opens Edit Mode on the first bar that exists
 S:Module{
@@ -41,13 +32,20 @@ S:Module{
 
 Bar("health")
 Bar("power")
-Bar("mana", { hidden = NotDruid })
+Bar("mana")   -- every class (11-15): its Edit Mode frame can be placed without a druid
 Bar("combo")
 Bar("swingMain")
 Bar("swingOff")
 Bar("swingRanged")
-Bar("seal", { hidden = NotPaladin })
+Bar("seal")   -- every class (11-15): its Edit Mode frame can be placed without a paladin
 Bar("flight")
+-- Timer Bars (11-14): off works at once (Blizzard's timers come back); on needs the reload
+Bar("timer", {
+    set = function(value)
+        S:SetPath("unitframes.resource.bars.timer.enabled", value)
+        if ns.ResourceBars and ns.ResourceBars.SetTimerBars then ns.ResourceBars.SetTimerBars(value) end
+    end,
+})
 
 local function Refresh()
     if ns.ResourceBars and ns.ResourceBars.Refresh then ns.ResourceBars:Refresh() end
@@ -63,8 +61,8 @@ S:Row{
 -- FONTS (11-13, back from Edit Mode): each bar's text font under the bar's name
 local BAR_NAMES = { health = L["Health Bar"], power = L["Power Bar"], mana = L["Druid Mana"],
     swingMain = L["Main-Hand Swing"], swingOff = L["Off-Hand Swing"], swingRanged = L["Ranged Swing"],
-    seal = L["Paladin Seals"], flight = L["Flight Timer"] }
-local BAR_HIDDEN = { mana = NotDruid, seal = NotPaladin }
+    seal = L["Paladin Seals"], flight = L["Flight Timer"], timer = L["Duration Bars"] }
+local BAR_HIDDEN = {}   -- (11-15) no bar is hidden by class any more
 local barFonts = {}
 for _, key in ipairs(BARS) do
     -- (the combo points have no text)

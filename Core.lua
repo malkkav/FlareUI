@@ -461,7 +461,7 @@ local defaults = {
             },
 
             -- the FlareUI XP Bar (Modules/XPBar.lua), placed in Edit Mode; off leaves Blizzard's bars alone
-            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Forever", border = "FlareUI Thin", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", bubbles = false, layouts = {} },
+            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Forever", border = "FlareUI Thin", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", bubbles = false, layouts = {} },   -- bubbles: false / 10 / 20 (true from the old switch = 20)
 
             -- Typography
             hotkeyFont = { face = "Arial Narrow", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -517,6 +517,7 @@ local defaults = {
             flareButton = true,         -- FlareUI Minimap Button: FlareUI's own button, on the map or in the drawer (Minimap.lua MM.UpdateFlareButton)
             buttonBag = true,           -- the badge opens a bag with every addon's minimap button (MinimapBag.lua)
             bagHover = false,           -- Open on Mouseover: pointing at the badge opens the bag (MinimapBag.lua)
+            bagButtonSize = 100,        -- Drawer Button Size: 100..150 percent of the drawer's buttons (MinimapBag.lua Bag.ButtonSize)
             clockStats = true,          -- framerate and latency in the clock's tooltip
             microMenu = false,          -- middle-click the map: a list of Blizzard's panels (off since 11-11)
             finderEye = false,          -- Group Finder Icon: a small icon in place of Blizzard's queue eye (MinimapEye.lua)
@@ -575,6 +576,7 @@ local defaults = {
                     swingRanged = { enabled = false, show = "inuse",        width = 220, height = 12, font = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
                     flight      = { enabled = false, show = "always",       width = 220, height = 14, font = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },   -- Flight Timer (11-11)
                     seal        = { enabled = false, show = "always",       width = 220, height = 14, font = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },   -- Seals, paladins (11-11)
+                    timer       = { enabled = false, show = "always",       width = 220, height = 14, font = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },   -- Timer Bars: breath, fatigue, feign death (11-14)
                 },
             },
             -- party frames (Modules/PartyFrames.lua): two styles, each with its own settings
@@ -596,6 +598,7 @@ local defaults = {
                     castbar = false, castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                     petHeight = 19, petWidth = 120, petBorder = "FlareUI Thin", icons = {},
                     targetWidth = 100, targetHeight = 25, targetBorder = "FlareUI Thin",
+                    threatGlow = true,          -- Threat Glow (Look): the border pulses with aggro
                 },
                 raid = {
                     width = 200, height = 70, powerHeight = 6, spacing = 12, healthText = "none",
@@ -606,6 +609,7 @@ local defaults = {
                     castbar = false, castHeight = 10, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = false, castTimer = false,
                     petHeight = 14, petWidth = 80, petBorder = "FlareUI Thin", icons = {},
                     targetWidth = 100, targetHeight = 25, targetBorder = "FlareUI Thin",
+                    threatGlow = true,
                 },
             },
             -- raid frames (Modules/RaidFrames.lua): the Raid-Style tile for everyone in a raid, main tank
@@ -625,6 +629,7 @@ local defaults = {
                 debuffs = "INSIDE_RIGHT", buffs = "INSIDE_LEFT", dispels = "INSIDE_BOTTOMRIGHT",
                 auraSize = 12, dispelHighlight = "mine",
                 icons = {},
+                threatGlow = true,          -- Threat Glow (Look; main tanks too)
             },
             -- boss frames (Modules/BossFrames.lua): boss1-5 on the classic party tile, mirrored
             boss = {
@@ -636,36 +641,41 @@ local defaults = {
                 texture = "FlareUI Forever", border = "FlareUI Thick",
                 debuffs = "INSIDE_TOPRIGHT", buffs = "INSIDE_TOPLEFT", auraSize = 16, hideBuffs = "PERMANENT",
                 castbar = true, castHeight = 14, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                threatGlow = true,          -- Threat Glow (Look): the player's threat on the boss
             },
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
-            playerCastbar = { enabled = true, width = 250, height = 25, texture = "FlareUI Forever", borderTexture = "FlareUI Thin", icon = true, timer = true, queueMark = false, channelTicks = false, pushback = false, latencyZone = true },
+            playerCastbar = { enabled = true, width = 250, height = 25, texture = "FlareUI Forever", borderTexture = "FlareUI Thin", icon = true, timer = true, queueMark = false, channelTicks = false, pushback = false, latencyZone = true, spellRank = false },
             units = {
                 player       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true,
                                  texture = "FlareUI Forever", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
                                  -- Cast Bar (off): a cast bar on the player frame, apart from the FlareUI Player Cast Bar
                                  castbar = false, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
-                                 latencyZone = true, pushback = false, channelTicks = false, queueMark = false,
-                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24 },
+                                 latencyZone = true, pushback = false, channelTicks = false, queueMark = false, spellRank = false,
+                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24,
+                                 combatGlow = true },   -- Combat Glow (Look)
                 target       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true, mirror = true,
                                  texture = "FlareUI Forever", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
                                  castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
-                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24, onlyMyDebuffs = true },
+                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24, onlyMyDebuffs = true,
+                                 threatGlow = true },   -- Threat Glow (Look)
                 targettarget = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin" },
                 focus        = { enabled = true, width = 160, height = 35, powerHeight = 0, healthText = "percent", powerText = "value", showLevel = true, mirror = true,
                                  texture = "FlareUI Forever", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
                                  castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
-                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 18, onlyMyDebuffs = true },
+                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 18, onlyMyDebuffs = true,
+                                 threatGlow = true },   -- Threat Glow (Look)
                 focustarget  = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin" },
                 pet          = { enabled = true, width = 120, height = 30, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin",
                                  absorbTexture = "FlareUI Striped",
                                  castbar = false, castbarPosition = "BOTTOM", castHeight = 12, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
-                                 buffs = "OFF", debuffs = "OFF", auraSize = 12, hideBuffs = "PERMANENT" },
+                                 buffs = "OFF", debuffs = "OFF", auraSize = 12, hideBuffs = "PERMANENT",
+                                 threatGlow = true },   -- Threat Glow (Look; the styled pet only)
             },
         },
 
@@ -712,7 +722,7 @@ local defaults = {
                          -- Edit Mode > Fonts (11-13): the counts and the time left (the Buffs stack font before)
                          countFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 }, timeFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
                          -- When It Shows, Alerts (the Buff Reminders tab)
-                         showSolo = true, showParty = true, showRaid = true, hideRested = false, onlyProvider = false,
+                         showSolo = true, showParty = true, showRaid = true, hideRested = false, onlyProvider = false, ignoreRange = false,
                          fadeSpeed = "instant",   -- Edit Mode's Fading section (11-11)
                          sound = "off", glowMissing = false, glowExpiring = false,
                          layouts = {} },
@@ -821,6 +831,8 @@ local defaults = {
             collapseCompleted = false,  -- finished and failed quests fold, unless a timer runs
             hideFinished = false,       -- finished objectives leave the list
             completedLast = false,
+            focusedFirst = false,       -- Focused Quest First: the focused quest (and its zone) at the top
+            autoButtons = false,        -- header "!" / "?" for Quality of Life's Auto Accept / Turn-In Quests
             showTags = true,
             wrapText = true,
             showRecipes = true,
@@ -890,11 +902,15 @@ local defaults = {
             merchantWide = false,       -- Wider Vendor Window: 20 items a page
             petFood = false,            -- Pet Food in Bags: a paw on food the hunter pet eats
             skipLootConfirm = false,    -- Skip Loot Confirmations: bind-on-loot and roll dialogs
+            lootRollsOpacity = 1,       -- its Frame Opacity: the background's (11-15; 100% by default, Marcus: 60% was hard to read)
+            lootRolls = false,          -- Loot Roll Window: FlareUI's loot roll window in place of Blizzard's roll frames (LootRolls.lua); on and off need a reload
+            lootRollFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },   -- Fonts > Loot Rolls: the item names; the small lines two smaller
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
             gamepadPrompt = false,      -- Gamepad mode prompt: offer Blizzard's Gamepad UI on a controller press
             rumbleAlerts = false,       -- Rumble on alerts: the controller rumbles for ready checks, queue invites ...
             rumbleProcs = false,        -- Rumble on procs: a short rumble when a spell lights up
             mapFade = false,            -- Fade Map While Moving: Blizzard's mapFade CVar
+            keyDown = false,            -- Cast on Key Press: Blizzard's ActionButtonUseKeyDown CVar
             skipGossip = false,         -- Skip Gossip: a lone banker / vendor / trainer... option is picked at once (Tweaks.lua GOSSIP_SHOW)
             deleteJunkWhenFull = false, -- Delete Junk When Full: bags full, a loot click deletes the cheapest grey item first (JunkDelete.lua)
             taxiMap = false,            -- Open Flight Map at Once: a flight master with no quests skips its talk
@@ -1720,8 +1736,8 @@ do
         "Sort by Role", "Show Player", "Hide Player Frame in a Party", "Group Numbers", "Main Tank Frames",
         "Show Threat", "Combo Points@switch", "Flip Portrait", "Mirror Bars", "Portrait@switch", "Power Bar for Mana Users Only",
         "Five-Second Rule", "Mana on Shapeshift", "GCD Spark", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
-        "Show Icon", "Show Spell Timer", "Spell Pushback", "Latency Zone", "Channel Ticks", "Spell Queue Window",
-        "Class Colours", "Low Health Colour", "Smooth Bar Animations",
+        "Show Icon", "Show Spell Timer", "Show Spell Rank", "Spell Pushback", "Latency Zone", "Channel Ticks", "Spell Queue Window",
+        "Class Colours", "Low Health Colour", "Smooth Bar Animations", "Threat Glow", "Combat Glow",
         "Only My Buffs", "Only My Debuffs", "Reverse Order", "Your Auras First",
         "Dispellable Debuffs Only", "Highlight Purgeable Buffs",
     }
@@ -2206,31 +2222,31 @@ local secureHideHeader
 -- showed it again after a hide done before it. The pre-snippet only passes a message so the post runs.
 local BAR_PRE  = [[ if self:GetAttribute("flareui-hide") then return nil, "hide" end ]]
 local BAR_POST = [[ if self:GetAttribute("flareui-hide") then self:Hide() end ]]
--- (11-14, Vivi) a wrapped snippet runs only on an explicitly protected frame. The stance and pet bars
--- are protected only through their buttons, so the wrap on the bar never ran and a form change in a
--- fight brought the hidden stance bar back. Their buttons carry the wrap and hide the bar by reference.
-local BUTTON_PRE  = [[ local bar = self:GetFrameRef("flareui-bar")
-    if bar and bar:GetAttribute("flareui-hide") then return nil, "hide" end ]]
-local BUTTON_POST = [[ local bar = self:GetFrameRef("flareui-bar")
-    if bar and bar:GetAttribute("flareui-hide") then bar:Hide() end ]]
+-- (11-15, Vivi) the stance, pet and possess bars are protected only through their buttons: a wrap on
+-- the bar never runs, and one on the buttons fires in the middle of the bar's own show (whose OnShow
+-- runs Update and shows it again), so a form change in a fight still brought the stance bar back.
+-- Out of combat they move under a hidden parent instead: nothing Blizzard shows in a fight is drawn.
+-- Turning the hiding off puts them back on their own parent (HideFrameSecurely).
+local secureHider
 local function SecureReHide(frame)
-    if frame.FlareUI_SecureReHide or not frame:IsProtected() or not SecureHandlerWrapScript then return end
-    secureHideHeader = secureHideHeader or CreateFrame("Frame", nil, UIParent, "SecureHandlerBaseTemplate")
+    if not frame:IsProtected() then return end
     local _, explicit = frame:IsProtected()
-    local done = false
-    if explicit then
-        done = pcall(SecureHandlerWrapScript, frame, "OnShow", secureHideHeader, BAR_PRE, BAR_POST)
-    else
-        -- every button: only the shown ones get OnShow
-        for _, button in pairs(frame.actionButtons or {}) do
-            local _, buttonExplicit = button:IsProtected()
-            if buttonExplicit and pcall(SecureHandlerSetFrameRef, button, "flareui-bar", frame)
-                    and pcall(SecureHandlerWrapScript, button, "OnShow", secureHideHeader, BUTTON_PRE, BUTTON_POST) then
-                done = true
+    if not explicit then
+        if frame.actionButtons and not frame.FlareUI_HomeParent and not InCombatLockdown() then
+            if not secureHider then
+                secureHider = CreateFrame("Frame", nil, UIParent)
+                secureHider:Hide()
             end
+            frame.FlareUI_HomeParent = frame:GetParent() or UIParent
+            frame:SetParent(secureHider)
         end
+        return
     end
-    if done then frame.FlareUI_SecureReHide = true end
+    if frame.FlareUI_SecureReHide or not SecureHandlerWrapScript then return end
+    secureHideHeader = secureHideHeader or CreateFrame("Frame", nil, UIParent, "SecureHandlerBaseTemplate")
+    if pcall(SecureHandlerWrapScript, frame, "OnShow", secureHideHeader, BAR_PRE, BAR_POST) then
+        frame.FlareUI_SecureReHide = true
+    end
 end
 
 function ns.HideFrameSecurely(frame, shouldHide)
@@ -2261,6 +2277,11 @@ function ns.HideFrameSecurely(frame, shouldHide)
         -- only frames hidden here come back, and only if they were shown before
         frame.FlareUI_Hidden = nil
         if frame:IsProtected() then frame:SetAttribute("flareui-hide", nil) end
+        -- back from the hidden parent (SecureReHide) before it can show again
+        if frame.FlareUI_HomeParent then
+            frame:SetParent(frame.FlareUI_HomeParent)
+            frame.FlareUI_HomeParent = nil
+        end
         -- an action bar knows whether Blizzard wants it up (a pet bar, not after the pet is gone). The
         -- engine method: Edit Mode's override would re-lay the bars from addon code
         local wanted = frame.isShownExternal

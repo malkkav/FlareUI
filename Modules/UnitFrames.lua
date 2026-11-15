@@ -221,9 +221,13 @@ local UNITS = {
         partyDriver = "[group:raid] show; [@raid1,exists] show; [group:party] hide; [@party1,exists] hide; show",
         events = { "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE" },
         globalEvents = { PLAYER_UPDATE_RESTING = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true,
-                         PLAYER_FLAGS_CHANGED = "player", PVP_TIMER_UPDATE = true },
+                         PLAYER_FLAGS_CHANGED = "player", PVP_TIMER_UPDATE = true,
+                         -- Combat Glow (UpdateThreat)
+                         PLAYER_REGEN_DISABLED = true, PLAYER_REGEN_ENABLED = true },
         indicators = { rest = true, leader = true, pvp = true, threat = true, heals = true, readyCheck = true,
-                       pvpTimer = true, statusGlow = true, threatGlow = true },
+                       pvpTimer = true },
+        -- Combat Glow (Look): border and ring pulse in a fight, in the threat colour with aggro
+        combatGlow = true,
     },
     target = {
         mirrorable = true,
@@ -235,7 +239,8 @@ local UNITS = {
         castbar = true,
         comboPoints = true,
         indicators = { leader = true, pvp = true, classification = true, highSkull = true, quest = true, threat = true,
-                       heals = true, readyCheck = true, threatGlow = true },
+                       heals = true, readyCheck = true },
+        threatGlow = true,   -- Threat Glow (Look): the player's threat on it
     },
     targettarget = {
         key = "TargetOfTarget", label = L["Target of Target"], order = 3, noRaidIcon = true,
@@ -250,8 +255,8 @@ local UNITS = {
         driver = "[@focus,exists] show; hide",
         globalEvents = { PLAYER_FOCUS_CHANGED = true },
         castbar = true,
-        indicators = { classification = true, highSkull = true, threat = true, heals = true, readyCheck = true,
-                       threatGlow = true },
+        indicators = { classification = true, highSkull = true, threat = true, heals = true, readyCheck = true },
+        threatGlow = true,   -- Threat Glow (Look): the player's threat on it
     },
     focustarget = {
         key = "TargetOfFocus", label = L["Target of Focus"], order = 6, noRaidIcon = true,
@@ -573,8 +578,9 @@ end
 
 -- The frame icons: one Show switch each in Edit Mode (udb.icons[key].shown); their places are fixed
 local ICON_UI = {
+    -- (11-15: Threat Glow and Rest & Combat Glow left for the Look section's Threat Glow / Combat Glow)
     order = { "rest", "leader", "pvp", "pvpTimer", "classification", "highSkull", "quest", "raidIcon", "readyCheck",
-              "statusGlow", "threatGlow", "happiness" },
+              "happiness" },
     defs = {
         rest           = { label = L["Resting"],          field = "RestIcon" },
         leader         = { label = L["Leader"],           field = "LeaderIcon" },
@@ -586,11 +592,8 @@ local ICON_UI = {
         -- noRing: not in the ring styles (the dragon frame shows elites); ring: only in them
         readyCheck     = { label = L["Ready Check"],      field = "ReadyIcon" },
         pvpTimer       = { label = L["PvP Timer"],        default = false },
-        -- threat: the ring's glow, or the border colour
-        statusGlow     = { label = L["Rest & Combat Glow"], ring = true },
         -- the ring's level skull for a "??" unit
         highSkull      = { label = L["High Level Skull"], ring = true },
-        threatGlow     = { label = L["Threat Glow"] },
     },
     -- Blizzard's ready check marks
     READY = {
@@ -645,6 +648,40 @@ function ICON_UI.Shown(unit, key)
     return ICON_UI.defs[key].default ~= false
 end
 
+-- Threat Glow / Combat Glow (Look; udb.threatGlow, udb.combatGlow): on unless saved off
+function UF.GlowOn(unit, key)
+    local udb = GetUnitDb(unit)
+    return not (udb and udb[key] == false)
+end
+
+-- (11-15) Threat Glow and Rest & Combat Glow were Icons switches (udb.icons[key].shown): one saved off
+-- leaves its Look switch off. Once: the old entries go (also in each stored frame style).
+function UF.MigrateGlows()
+    local db = GetDb()
+    if not db then return end
+    local function Units(units)
+        if type(units) ~= "table" then return end
+        for unit, udb in pairs(units) do
+            local icons = type(udb) == "table" and udb.icons
+            if type(icons) == "table" then
+                local threat, status = icons.threatGlow, icons.statusGlow
+                -- (the player's threat now goes with Combat Glow)
+                if unit ~= "player" and type(threat) == "table" and threat.shown == false and rawget(udb, "threatGlow") == nil then
+                    udb.threatGlow = false
+                end
+                if unit == "player" and type(status) == "table" and status.shown == false and rawget(udb, "combatGlow") == nil then
+                    udb.combatGlow = false
+                end
+                icons.threatGlow, icons.statusGlow = nil, nil
+            end
+        end
+    end
+    Units(db.units)
+    for _, slot in pairs(db.styleProfiles or {}) do
+        if type(slot) == "table" then Units(slot.units) end
+    end
+end
+
 function ICON_UI.Place(region, width, height, point, relativeTo, relativePoint, x, y)
     region:ClearAllPoints()
     region:SetSize(width, height)
@@ -681,6 +718,38 @@ end
 
 local function SetBorderTint(border, r, g, b)
     border:SetBackdropBorderColor(r, g, b, 1)
+end
+
+-- Threat Glow / Combat Glow (11-15, Marcus): the frame's own border in a colour, pulsing (the soft
+-- pulse of the portrait ring's tint); no colour stops it and gives the border back its bronze. An
+-- alpha animation on the border's own frame (no children, not secure): fine in a fight.
+UF.GLOW_PULSE = { 0.5, 1, 1.2 }   -- alpha from, to, seconds each way: the ring tint's beat and direction (STATUS_PULSE, dim to bright), so both pulse together
+UF.COMBAT_RGB = { 1.0, 0.22, 0.18 }   -- the ring's combat red (UnitFramesRing.lua STATUS_COMBAT)
+function UF.SetBorderGlow(border, r, g, b)
+    local pulse = border.FlareUI_Pulse
+    if not r then
+        if pulse then pulse:Stop() end
+        border:SetAlpha(1)
+        ResetBorderTint(border)
+        return
+    end
+    SetBorderTint(border, r, g, b)
+    if not pulse then
+        pulse = border:CreateAnimationGroup()
+        pulse:SetLooping("BOUNCE")
+        local fade = pulse:CreateAnimation("Alpha")
+        fade:SetFromAlpha(UF.GLOW_PULSE[1])
+        fade:SetToAlpha(UF.GLOW_PULSE[2])
+        fade:SetDuration(UF.GLOW_PULSE[3])
+        fade:SetSmoothing("IN_OUT")
+        border.FlareUI_Pulse = pulse
+    end
+    if not pulse:IsPlaying() then
+        pulse:Play()
+        -- in step with the frame's ring (UnitFramesRing.lua Ring.SyncPulses)
+        local f = border:GetParent()
+        if ns.UFRing and ns.UFRing.SyncPulses and f then ns.UFRing.SyncPulses(f) end
+    end
 end
 
 -- Edge and inset for a bar of this inner height: under 22 px the 16 px corners overlap, so both
@@ -1659,6 +1728,24 @@ function UF.CastLatency(isStart)
     return (world and world > 0) and world or home
 end
 
+-- Show Spell Rank: your own cast's name with its rank, "Holy Light (R2)". The rank is the number in the
+-- spell's subtext ("Rank 2" in any language); a spell without one keeps its plain name, and so does a
+-- name or spell ID the client keeps secret
+function UF.CastNameWithRank(cast, label, spellID)
+    if cast.unit ~= "player" then return label end
+    local db = GetDb()
+    local pc
+    if cast.standalone then pc = db and db.playerCastbar else pc = GetUnitDb("player") end
+    if not (pc and pc.spellRank) then return label end
+    if not (canaccessvalue(label) and type(label) == "string" and label ~= "") then return label end
+    if not (canaccessvalue(spellID) and spellID) then return label end
+    local ok, subtext = pcall(C_Spell.GetSpellSubtext, spellID)
+    if not (ok and canaccessvalue(subtext) and type(subtext) == "string") then return label end
+    local rank = tonumber(subtext:match("(%d+)"))
+    if not rank then return label end
+    return L["%s (R%d)"]:format(label, rank)
+end
+
 -- delayMs: UnitCastingInfo's delay so far (never secret); a channel has none, so it is tracked here
 function UF.UpdatePlayerCastExtras(cast, event, channeling, castBarID, startMs, endMs, delayMs, spellID)
     if cast.unit ~= "player" then return end
@@ -1884,7 +1971,7 @@ local function UpdateCastBar(cast, enabled, event, by, barID)
     -- `text or name` would boolean-test a secret; only pick when the value is readable
     local label = text
     if canaccessvalue(text) then label = text or name or "" end
-    cast.Text:SetText(label)
+    cast.Text:SetText(UF.CastNameWithRank(cast, label, spellID))
     cast.Icon:SetTexture(UF.CastIcon(texture, spellID, isTradeskill))
 
     local color
@@ -2182,8 +2269,9 @@ local function OnUnitEvent(f, event, arg1, arg2, _, arg4, arg5)
         end
         -- a new power type (a druid's form) lands at once: its value has nothing to do with the old one
         UpdatePower(f, event ~= "UNIT_DISPLAYPOWER")
-    elseif event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_THREAT_SITUATION_UPDATE" then
-        UpdateThreat(f)
+    elseif event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_THREAT_SITUATION_UPDATE"
+        or event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
+        UpdateThreat(f)   -- (the fight's start and end: the player's Combat Glow)
     elseif event == "UNIT_HEAL_PREDICTION" or event == "UNIT_ABSORB_AMOUNT_CHANGED" then
         UpdateHealPrediction(f)
     elseif event == "PLAYER_UPDATE_RESTING" or event == "GROUP_ROSTER_UPDATE" or event == "PARTY_LEADER_CHANGED"
@@ -3383,22 +3471,42 @@ function UF.UpdateThreatPercent(f)
     end
 end
 
--- the frame border takes the threat colour, and its fixed colour when clear (the player's: its
--- highest threat on anything)
+-- Threat Glow (target, focus, the styled pet): the border pulses in the threat colour (target and focus:
+-- the player's threat on the unit; the pet: its own aggro). Combat Glow (player): the border pulses red
+-- in a fight, in the threat colour while the player has threat (its highest on anything). The portrait
+-- ring follows in UnitFramesRing.lua. None in Edit Mode, but for the aggro test.
 function UpdateThreat(f)
     UF.UpdateThreatPercent(f)
     if not f.threatTint then return end
-    if UNITS[f.fuiUnit].noThreatGlow or not ICON_UI.Shown(f.fuiUnit, "threatGlow") then ResetBorderTint(f.Border) return end
+    local unit = f.fuiUnit
+    local info = UNITS[unit]
+    local live = not ns.EditPreviewing()
+    if unit == "player" then
+        if not (info.combatGlow and UF.GlowOn(unit, "combatGlow")) then UF.SetBorderGlow(f.Border) return end
+        local status = live and Readable(UnitThreatSituation("player")) or nil
+        if status and status >= 1 then
+            UF.SetBorderGlow(f.Border, ThreatColor(status))
+        elseif live and Readable(UnitAffectingCombat("player")) then
+            local c = UF.COMBAT_RGB
+            UF.SetBorderGlow(f.Border, c[1], c[2], c[3])
+        else
+            UF.SetBorderGlow(f.Border)
+        end
+        return
+    end
+    if not info.threatGlow or info.noThreatGlow or not UF.GlowOn(unit, "threatGlow") then UF.SetBorderGlow(f.Border) return end
     local status
-    if f.fuiUnit == "player" then
-        status = Readable(UnitThreatSituation("player"))
-    else
-        status = Readable(UnitThreatSituation("player", f.fuiUnit))
+    if live then
+        if unit == "pet" then
+            status = Readable(UnitThreatSituation(unit))
+        else
+            status = Readable(UnitThreatSituation("player", unit))
+        end
     end
     if status and status >= 1 then
-        SetBorderTint(f.Border, ThreatColor(status))
+        UF.SetBorderGlow(f.Border, ThreatColor(status))
     else
-        ResetBorderTint(f.Border)
+        UF.SetBorderGlow(f.Border)
     end
 end
 
@@ -4757,6 +4865,8 @@ local function BuildPlayerCastSettings()
           desc = L["The spell's icon, left of the bar."] },
         { name = L["Show Spell Timer"], kind = LEM.SettingType.Checkbox, default = true, get = getShowTimer, set = setShowTimer,
           desc = L["The time left, at the right end of the bar."] },
+        { name = L["Show Spell Rank"], kind = LEM.SettingType.Checkbox, default = false, get = get("spellRank", false), set = set("spellRank"),
+          desc = L["The rank after the spell's name, like \"Holy Light (R2)\"."] },
         { name = L["Latency Zone"], kind = LEM.SettingType.Checkbox, default = true, get = get("latencyZone", true), set = set("latencyZone"),
           desc = L["Your latency, in red at the end of the bar. Press your next spell there and it goes off as this one ends."] },
         { name = L["Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = get("pushback", false), set = set("pushback"),
@@ -5006,6 +5116,18 @@ local function BuildSettings(unit)
     if not info.poll then
         lookItems[#lookItems + 1] = UF.SmoothBarsSetting(function() local u = GetUnitDb(unit); return u and u.smoothBars end, set("smoothBars"))
     end
+    -- (11-15, were Icons switches: Threat Glow, and the player's Rest & Combat Glow)
+    if info.threatGlow then
+        lookItems[#lookItems + 1] = { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
+            desc = unit == "pet" and L["The border pulses in the threat colour while the unit has aggro."]
+                or L["The border pulses in the threat colour while you have threat on it."],
+            get = function() return UF.GlowOn(unit, "threatGlow") end, set = set("threatGlow") }
+    end
+    if info.combatGlow then
+        lookItems[#lookItems + 1] = { name = L["Combat Glow"], kind = LEM.SettingType.Checkbox, default = true,
+            desc = L["In a fight, the border and portrait pulse red. With aggro, the threat colour shows instead."],
+            get = function() return UF.GlowOn(unit, "combatGlow") end, set = set("combatGlow") }
+    end
     Section("Look", lookItems)
 
     if info.castbar then
@@ -5046,6 +5168,8 @@ local function BuildSettings(unit)
                 return function() local u = GetUnitDb(unit); local v = u and u[key]; if v == nil then return default end; return v end
             end
             local extras = {
+                { name = L["Show Spell Rank"], kind = LEM.SettingType.Checkbox, default = false, get = flag("spellRank", false), set = set("spellRank"),
+                  desc = L["The rank after the spell's name, like \"Holy Light (R2)\"."] },
                 { name = L["Latency Zone"], kind = LEM.SettingType.Checkbox, default = true, get = flag("latencyZone", true), set = set("latencyZone"),
                   desc = L["Your latency, in red at the end of the bar. Press your next spell there and it goes off as this one ends."] },
                 { name = L["Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = flag("pushback", false), set = set("pushback"),
@@ -5215,7 +5339,7 @@ UF.Kit = {
     IsDead = UF.IsDead, CreateShieldGlow = UF.CreateShieldGlow, PlaceShieldGlow = UF.PlaceShieldGlow,
     CreateOverAbsorb = UF.CreateOverAbsorb, PlaceOverAbsorb = UF.PlaceOverAbsorb, SetOverAbsorb = UF.SetOverAbsorb, SetShieldGlow = UF.SetShieldGlow, HideShieldGlow = UF.HideShieldGlow,
     BuildTextureValues = BuildTextureValues, BuildBorderValues = BuildBorderValues, BuildAbsorbValues = BuildTextureValues, EditSections = EditSections,
-    ThreatColor = ThreatColor,
+    ThreatColor = ThreatColor, SetBorderGlow = UF.SetBorderGlow,
 }
 
 function UF:Refresh()
@@ -5282,6 +5406,7 @@ function UF:Init()
     UF.MigrateTextModes()
     UF.ApplyPalette()
     UF.MigrateOldFade()
+    UF.MigrateGlows()
     -- a saved Hide Auras on the focus frame becomes Buffs and Debuffs Off
     local focusDb = db.units and db.units.focus
     if focusDb and focusDb.hideAuras then
@@ -5296,7 +5421,8 @@ function UF:Init()
     if ns.UFRing and ns.UFRing.PetStyled() then
         local pet = UNITS.pet
         pet.portrait, pet.styledPet = true, true
-        pet.indicators.threatGlow = true
+        -- Threat Glow (Look): its own aggro, on the border and the ring
+        pet.threatGlow, pet.indicators.threat = true, true
         DEFAULT_POSITIONS.pet = ns.UFRing.PetPosition()
     end
     -- A pet saved before it had auras, or swapped back in from a stored setup, has none of these

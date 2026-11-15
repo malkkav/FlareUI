@@ -92,8 +92,8 @@ local FLARE_DEFAULT = { point = "TOP", x = 0, y = -1 }
 -- Blizzard's rested XP pip (10 x 14)
 local PIP_ATLAS, PIP_RATIO, PIP_OVERHANG = "UI-HUD-ExperienceBar-Frame-Pip", 10 / 14, 2
 local REST_ALPHA    = 0.4
--- Show Bubbles: the classic XP bar's 20 bubbles of 5%, each divider a dark line with a light edge
-local BUBBLES       = 20
+-- Bubbles: the classic XP bar's 20 bubbles of 5% (or 10 of 10%), each divider a dark line with a light edge
+local BUBBLES       = 20                           -- the most bubbles; the dropdown picks 0, 10 or 20
 local BUBBLE_DARK, BUBBLE_LIGHT = 0.85, 0.28           -- the two lines' alpha
 local COLOR_MAJOR   = COLOR_RESTED                      -- renown factions: Blizzard's blue bar
 local STANDING_BY_REACTION = { "FACTION_RED_COLOR", "FACTION_RED_COLOR", "FACTION_ORANGE_COLOR",
@@ -411,7 +411,7 @@ local function CreateSection(parent)
     flash.anim = anim
     section.Flash = flash
 
-    -- the bubble dividers (Show Bubbles): over the fill and the gain flash, under the text
+    -- the bubble dividers (Bubbles): over the fill and the gain flash, under the text
     section.Bubbles = {}
     for i = 1, BUBBLES - 1 do
         local dark = section:CreateTexture(nil, "OVERLAY", nil, 1)
@@ -425,23 +425,33 @@ local function CreateSection(parent)
     return section
 end
 
--- The dividers on whole screen pixels, one pixel each side of every 5% mark; laid out again only
--- when the width, the UI scale or the switch changes
+-- How many bubbles a saved value asks for: 10 or 20, else none. Before the dropdown it was a switch,
+-- so a saved true still means 20
+local function BubbleCount(value)
+    if value == true then return BUBBLES end
+    local n = tonumber(value)
+    if n == 10 or n == 20 then return n end
+    return 0
+end
+
+-- The dividers on whole screen pixels, one pixel each side of every bubble's edge; laid out again only
+-- when the width, the UI scale or the count changes
 local function LayoutBubbles(section, width)
     local db = GetDb()
-    local on = (db and db.bubbles) and true or false
-    -- a settings preview's sample shows the value the Show Bubbles row previews
+    local count = BubbleCount(db and db.bubbles)
+    -- a settings preview's sample shows the value the Bubbles row previews
     local spec = section:GetParent().fuiSample and ns.SettingsPreview and ns.SettingsPreview.activeSpec
-    if spec and spec.key == "ab.xpBubbles" and spec.value ~= nil then on = spec.value and true or false end
+    if spec and spec.key == "ab.xpBubbles" and spec.value ~= nil then count = BubbleCount(spec.value) end
     local px = ns.PixelSize(section)
-    local key = on and (width .. ":" .. px) or "off"
+    local key = count > 0 and (count .. ":" .. width .. ":" .. px) or "off"
     if section.ftBubbles == key then return end
     section.ftBubbles = key
     local total = math.floor(width / px + 0.5)
     for i, pair in ipairs(section.Bubbles) do
         local dark, light = pair[1], pair[2]
+        local on = i < count
         if on then
-            local x = math.floor(total * i / BUBBLES + 0.5) * px
+            local x = math.floor(total * i / count + 0.5) * px
             dark:ClearAllPoints()
             dark:SetPoint("TOPLEFT", section, "TOPLEFT", x - px, 0)
             dark:SetPoint("BOTTOMLEFT", section, "BOTTOMLEFT", x - px, 0)

@@ -365,6 +365,13 @@ local function IconOn(f, key, default)
     return default or false
 end
 
+-- Threat Glow / Combat Glow (Look; udb.threatGlow, udb.combatGlow, a tile's in its own settings): on
+-- unless saved off
+function Ring.GlowOn(f, key)
+    local udb = Db(f)
+    return not (udb and udb[key] == false)
+end
+
 function Ring.On()
     if ns.UFSample then return ns.UFSample.style ~= "addon" end
     local db = GetDb()
@@ -1049,6 +1056,25 @@ local function BuildPlate(f)
     plate:SetAllPoints(f)
     plate.pieces = {}
     for i = 1, 3 * (#PLATE.cutY - 1) do plate.pieces[i] = plate:CreateTexture(nil, "BACKGROUND") end
+    -- (11-15, Marcus) Threat / Combat Glow on the plate: a lit copy of its art over it, tinted and
+    -- pulsing with the ring's tint (one animation group, so every piece beats together). Added
+    -- light: the bright metal glows, the dark slots stay dark.
+    plate.glow = {}
+    plate.GlowPulse = plate:CreateAnimationGroup()
+    plate.GlowPulse:SetLooping("BOUNCE")
+    for i = 1, #plate.pieces do
+        local g = plate:CreateTexture(nil, "BACKGROUND", nil, 7)
+        g:SetBlendMode("ADD")
+        g:SetDesaturated(true)
+        g:Hide()
+        plate.glow[i] = g
+        local fade = plate.GlowPulse:CreateAnimation("Alpha")
+        fade:SetTarget(g)
+        fade:SetFromAlpha(STATUS_PULSE[1])
+        fade:SetToAlpha(STATUS_PULSE[2])
+        fade:SetDuration(STATUS_PULSE[3])
+        fade:SetSmoothing("IN_OUT")
+    end
     -- the name box's reaction glow, and an anchor for the name
     plate.Strip = plate:CreateTexture(nil, "BORDER")
     plate.NameBox = CreateFrame("Frame", nil, plate)
@@ -1099,6 +1125,10 @@ function Ring.LayoutPlate(f)
                 tex:SetTexCoord(u1, u2, info.topTexCoord + y1 / PLATE.artH * dv, info.topTexCoord + y2 / PLATE.artH * dv)
                 PlaceOnPlate(tex, f, s, flip, x1, x2, y1, y2)
                 tex:Show()
+                local g = plate.glow[i]
+                g:SetTexture(info.file)
+                g:SetTexCoord(u1, u2, info.topTexCoord + y1 / PLATE.artH * dv, info.topTexCoord + y2 / PLATE.artH * dv)
+                PlaceOnPlate(g, f, s, flip, x1, x2, y1, y2)
             end
         end
     end
@@ -1340,14 +1370,20 @@ function Ring.Update(f)
     ring.Skull:SetShown(skull and ring.Disc:IsShown())
     f.Level:SetAlpha(skull and 0 or 1)
 
-    -- the player: the ring tinted red and swords in combat, else gold and the corner piece resting
+    -- the player: the ring tinted red and swords in combat, else gold and the corner piece resting.
+    -- (11-15) The red with Combat Glow (Look), the gold with the Resting icon's Show switch.
     if kind == "player" then
         local combat = Readable(UnitAffectingCombat("player"))
         local resting = not combat and Readable(IsResting())
-        local color = combat and STATUS_COMBAT or resting and STATUS_RESTING or nil
+        local color
+        if combat then
+            color = Ring.GlowOn(f, "combatGlow") and STATUS_COMBAT or nil
+        elseif resting then
+            color = IconOn(f, "rest", true) and STATUS_RESTING or nil
+        end
         ring.Status:Hide()
         -- the tint itself is applied by UpdateThreat below (threat, when there is any, comes first)
-        ring.statusColor = color and IconOn(f, "statusGlow", true) and color or nil
+        ring.statusColor = color
         -- the player's level is white, as on Blizzard's frame
         f.Level:SetTextColor(1, 1, 1)
         ring.Corner:SetShown(resting and true or false)
@@ -1362,33 +1398,67 @@ end
 -- Threat: the ring's border tinted in Blizzard's colours, pulsing (was a separate flash line). Tiles off the plate use their border instead; on
 -- it a party member flashes for its own aggro, a boss for the player's threat on it.
 -- The ring's border tinted and pulsing: the threat colour, else the player's rest / combat colour
-local function ApplyTint(ring, color)
-    if color and ring.hasArt and ring.Tint then
-        ring.Tint:SetVertexColor(color[1], color[2], color[3])
-        ring.Tint:Show()
-        if not ring.Pulse:IsPlaying() then ring.Pulse:Play() end
-    elseif ring.Tint then
-        ring.Tint:Hide()
-        ring.Pulse:Stop()
+-- the plate's lit copy (Forever Style): shown in the tint's colour, or hidden
+function Ring.PlateGlow(f, color)
+    local plate = f and f.PlateFrame
+    if not (plate and plate.glow) then return end
+    local on = color and plate:IsShown()
+    for _, g in ipairs(plate.glow) do
+        if on then g:SetVertexColor(color[1], color[2], color[3]) end
+        g:SetShown(on and true or false)
+    end
+    if not on then plate.GlowPulse:Stop() end
+end
+
+-- (11-15) every pulse of one frame starts together, so the ring, the plate and the border (Threat /
+-- Combat Glow, UnitFrames.lua UF.SetBorderGlow) are bright at the same moment
+function Ring.SyncPulses(f)
+    local ring = f and f.RingFrame
+    local plate = f and f.PlateFrame
+    local border = f and f.Border and f.Border.FlareUI_Pulse
+    for _, group in ipairs({ ring and ring.Tint and ring.Tint:IsShown() and ring.Pulse,
+                             plate and plate.glow and plate.glow[1] and plate.glow[1]:IsShown() and plate.GlowPulse,
+                             border and border:IsPlaying() and border }) do
+        if group then group:Stop(); group:Play() end
     end
 end
 
+local function ApplyTint(ring, color)
+    local f = ring:GetParent()
+    if color and ring.hasArt and ring.Tint then
+        ring.Tint:SetVertexColor(color[1], color[2], color[3])
+        ring.Tint:Show()
+        Ring.PlateGlow(f, color)
+        if not ring.Pulse:IsPlaying() then Ring.SyncPulses(f) end
+    elseif ring.Tint then
+        ring.Tint:Hide()
+        ring.Pulse:Stop()
+        Ring.PlateGlow(f, nil)
+    end
+end
+
+-- (11-15) Threat Glow (Look) on every frame with a ring, tiles too (their border pulses with it,
+-- PartyFrames.lua UpdateThreat); the player's threat goes with Combat Glow. None in Edit Mode.
 function Ring.UpdateThreat(f)
     local ring = f.RingFrame
     if not ring then return end
     ring.Flash:Hide()
-    if f.ringKind and not Ring.Plate(f) then ApplyTint(ring, ring.statusColor) return end
     local unit, kind = f.fuiUnit, Kind(f)
-    local exists = unit and Readable(UnitExists(unit))
     local status
-    if kind == "player" then
-        status = Readable(UnitThreatSituation("player"))
-    elseif kind == "party" or kind == "pet" then
-        status = exists and Readable(UnitThreatSituation(unit)) or nil
-    elseif exists and unit ~= "targettarget" and unit ~= "focustarget" then   -- those two show no threat
-        status = Readable(UnitThreatSituation("player", unit))
+    if unit == "targettarget" or unit == "focustarget"   -- those two show no threat
+        or not Ring.GlowOn(f, kind == "player" and "combatGlow" or "threatGlow") then
+        status = nil
+    elseif not ns.EditPreviewing() then
+        local exists = unit and Readable(UnitExists(unit))
+        if kind == "player" then
+            status = Readable(UnitThreatSituation("player"))
+        elseif kind == "party" or kind == "pet" then
+            status = exists and Readable(UnitThreatSituation(unit)) or nil
+        elseif exists then
+            status = Readable(UnitThreatSituation("player", unit))
+        end
     end
-    if status and status > 0 and GetThreatStatusColor and not ns.EditPreviewing() and IconOn(f, "threatGlow", true) then
+    if status and status > 0 and GetThreatStatusColor then
         local r, gg, b = GetThreatStatusColor(status)
         local c = ring.threatRGB or {}
         ring.threatRGB = c

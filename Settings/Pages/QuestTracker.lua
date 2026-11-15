@@ -58,12 +58,19 @@ Display("recipes", "showRecipes")
 Display("focusButtons", "focusButtons")
 S:Row{ key = "qt.playButtons", path = "objectivetracker.playButtons", apply = Refresh, section = "qt.display", half = true,
     hidden = function() return not _G.Spoken end }
+-- (11-14) the header's "!" and "?" for Quality of Life's Auto Accept / Auto Turn-In Quests
+Display("autoButtons", "autoButtons")
+-- those two switches changed on the Quality of Life page: the header buttons follow
+S:On("RowChanged", function(row)
+    if row and (row.key == "qol.autoAcceptQuests" or row.key == "qol.autoTurnInQuests") then Refresh() end
+end)
 
 local function Quests(key, path, invert)
     S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, invert = invert, apply = Refresh, section = "qt.quests", half = true }
 end
--- the three about completed quests
+-- the order (Completed Last | Focused Quest First), then the two about completed quests
 Quests("completedLast", "completedLast")
+Quests("focusedFirst", "focusedFirst")
 Quests("collapseCompleted", "collapseCompleted")
 Quests("hideFinished", "hideFinished", true)   -- Show Completed Objectives
 -- Minimize: one switch sets every instance type

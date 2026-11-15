@@ -58,6 +58,14 @@ end
 
 -- Open on Mouseover (minimap.bagHover, off): pointing at the badge opens the drawer, and it closes a
 -- moment after the pointer leaves both, as EnhanceQoL's button sink does
+-- Drawer Button Size (11-14): 100..150 percent of C.BUTTON; the panel grows to fit
+function Bag.ButtonSize()
+    local db = GetDb()
+    local pct = tonumber(db and db.bagButtonSize) or 100
+    pct = math.max(100, math.min(150, pct))
+    return math.floor(C.BUTTON * pct / 100 + 0.5)
+end
+
 local function HoverOn()
     local db = GetDb()
     return db and db.bagHover == true or false
@@ -438,6 +446,11 @@ function Bag.FlareChanged()
     if ns.Minimap and ns.Minimap.UpdateFlareButton then ns.Minimap.UpdateFlareButton() end
 end
 
+-- Drawer Button Size changed: an open drawer is laid out again (a closed one is on its next open)
+function Bag.SizeChanged()
+    if panel and panel:IsShown() then Bag:Layout() end
+end
+
 --------------------------------------------------
 -- 3. THE PANEL
 --------------------------------------------------
@@ -514,26 +527,35 @@ local function OnIconClick(self, mouseButton)
 end
 
 -- The action button look of the bag's own icons (also the settings preview's sample)
-function Bag.NewIconButton(parent)
+function Bag.NewIconButton(parent, size)
     local b = CreateFrame("Button", nil, parent)
-    b:SetSize(C.BUTTON, C.BUTTON)
     b.icon = b:CreateTexture(nil, "BACKGROUND")
     b.icon:SetAllPoints()
-    local mask = b:CreateMaskTexture()
-    mask:SetAtlas("UI-HUD-ActionBar-IconFrame-Mask")
-    mask:SetPoint("CENTER", b.icon, "CENTER")
-    mask:SetSize(C.BUTTON * 1.5, C.BUTTON * 1.5)
-    b.icon:AddMaskTexture(mask)
-    local art = C.BUTTON / 30
+    b.mask = b:CreateMaskTexture()
+    b.mask:SetAtlas("UI-HUD-ActionBar-IconFrame-Mask")
+    b.mask:SetPoint("CENTER", b.icon, "CENTER")
+    b.icon:AddMaskTexture(b.mask)
     b:SetNormalAtlas("UI-HUD-ActionBar-IconFrame")
     b:SetPushedAtlas("UI-HUD-ActionBar-IconFrame-Down")
     b:SetHighlightAtlas("UI-HUD-ActionBar-IconFrame-Mouseover")
     for _, t in ipairs({ b:GetNormalTexture(), b:GetPushedTexture(), b:GetHighlightTexture() }) do
         t:ClearAllPoints()
         t:SetPoint("TOPLEFT")
+    end
+    Bag.SizeIconButton(b, size or C.BUTTON)
+    return b
+end
+
+-- the icon, its mask and the frame art at one size (Drawer Button Size)
+function Bag.SizeIconButton(b, size)
+    if b.ftSize == size then return end
+    b.ftSize = size
+    b:SetSize(size, size)
+    b.mask:SetSize(size * 1.5, size * 1.5)
+    local art = size / 30
+    for _, t in ipairs({ b:GetNormalTexture(), b:GetPushedTexture(), b:GetHighlightTexture() }) do
         t:SetSize(31.6 * art, 30.9 * art)
     end
-    return b
 end
 
 -- The bag's own button for a LibDBIcon or compartment entry
@@ -614,7 +636,9 @@ function Bag:Layout()
     local count = #entries
     local columns = math.max(1, math.min(C.COLUMNS, count))
     local rows = math.max(1, math.ceil(count / columns))
-    local step = C.BUTTON + C.SPACING
+    local size = Bag.ButtonSize()
+    local scale = size / C.BUTTON
+    local step = size + C.SPACING
     panel:SetSize(C.PAD * 2 + columns * step - C.SPACING, C.PAD * 2 + rows * step - C.SPACING)
     panel.empty:SetShown(count == 0)
     if count == 0 then panel:SetSize(170, 40) end
@@ -637,11 +661,19 @@ function Bag:Layout()
             -- its own strata or a lower level would put it under the panel
             ns.CopyStrata(frame, panel)
             frame:SetFrameLevel(panel:GetFrameLevel() + 2)
-            frame.FlareUI_BagCell = { x + C.BUTTON / 2, y - C.BUTTON / 2 }
+            -- another addon's button keeps its own art: scaled with Drawer Button Size, and its
+            -- cell's centre given in its own (scaled) units
+            if scale ~= 1 or frame.FlareUI_BagScale then
+                frame.FlareUI_BagScale = frame.FlareUI_BagScale or frame:GetScale()
+                frame:SetScale(frame.FlareUI_BagScale * scale)
+            end
+            local k = 1 / frame:GetScale()
+            frame.FlareUI_BagCell = { (x + size / 2) * k, (y - size / 2) * k }
             PlaceInCell(frame)
         else
             used = used + 1
             frame = GetIconButton(used)
+            Bag.SizeIconButton(frame, size)
             frame.entry = e
             SetIcon(frame.icon, e.kind == "ldb" and e.object.icon or e.data.icon, e.kind == "ldb" and e.object or nil)
             -- kept on the minimap: dimmed here
@@ -662,7 +694,7 @@ function Bag:Layout()
             local col, row = (i - 1) % columns, math.floor((i - 1) / columns)
             catcher:ClearAllPoints()
             catcher:SetPoint("TOPLEFT", panel, "TOPLEFT", C.PAD + col * step, -(C.PAD + row * step))
-            catcher:SetSize(C.BUTTON, C.BUTTON)
+            catcher:SetSize(size, size)
             catcher:SetFrameLevel(panel:GetFrameLevel() + 10)
             catcher:Show()
         end
@@ -714,7 +746,7 @@ local function OnDragStop()
     -- the cell under the cursor, clamped to the bag
     local x, y = CursorInUI()
     local left, top = panel:GetLeft(), panel:GetTop()
-    local step = C.BUTTON + C.SPACING
+    local step = Bag.ButtonSize() + C.SPACING
     local columns = Bag.columns or 1
     local col = math.max(0, math.min(columns - 1, math.floor((x - left - C.PAD) / step)))
     local row = math.max(0, math.floor((top - y - C.PAD) / step))

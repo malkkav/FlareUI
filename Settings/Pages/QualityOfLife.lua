@@ -49,6 +49,7 @@ S:Row{ key = "qol.mailBook", half = true, tab = "gameplay", path = "tweaks.mailB
 S:Row{ key = "qol.alerts", half = true, tab = "gameplay", path = "tweaks.alertSounds" }
 S:Row{ key = "qol.fishCast", half = true, tab = "gameplay", path = "tweaks.fishCast", apply = Refresh }
 S:Row{ key = "qol.fishSound", half = true, tab = "gameplay", path = "tweaks.fishSound", apply = Refresh }
+S:Row{ key = "qol.keyDown", half = true, tab = "gameplay", path = "tweaks.keyDown", apply = Refresh }
 -- one switch for further and faster camera zoom
 S:Row{
     key = "qol.camera", tab = "gameplay",

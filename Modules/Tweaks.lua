@@ -1065,6 +1065,7 @@ Tweaks.FORCED_KEYS = {
     maxZoom = "cameraDistanceMaxZoomFactor", zoomSpeed = "cameraZoomSpeed",
     tips = "showTutorials", combatPlates = "nameplateShowEnemies", mapFade = "mapFade",
     compare = "alwaysCompareItems",   -- the Tooltips module's Compare with Shift
+    keyDown = "ActionButtonUseKeyDown",   -- Cast on Key Press
 }
 
 function Tweaks.SavedPerCharacter(cvar)
@@ -1169,9 +1170,25 @@ function Tweaks.ApplyMapFade()
     end
 end
 
+-- Cast on Key Press: Blizzard's ActionButtonUseKeyDown CVar, which Forever's Options don't offer;
+-- the player's own value comes back when it goes off
+function Tweaks.ApplyKeyDown()
+    local db = GetDb()
+    if not db then return end
+    local forced = ForcedCVars("keyDown")
+    if db.keyDown then
+        if forced.keyDown == nil then forced.keyDown = GetCVar("ActionButtonUseKeyDown") or "0" end
+        pcall(SetCVar, "ActionButtonUseKeyDown", 1)
+    elseif forced.keyDown ~= nil then
+        pcall(SetCVar, "ActionButtonUseKeyDown", forced.keyDown)
+        forced.keyDown = nil
+    end
+end
+
 local function InitCameraLoot()
     ApplyCamera()
     Tweaks.ApplyMapFade()
+    Tweaks.ApplyKeyDown()
     Tweaks:RegisterEvent("LOOT_READY", FastLoot)
     Tweaks:RegisterEvent("LOOT_OPENED", FastLoot)   -- the second chance, same payload (autoLoot first)
     Tweaks:RegisterEvent("LOOT_CLOSED", function() lootTakenAt = 0 end)
@@ -3032,6 +3049,7 @@ function Tweaks:Refresh()
     if not self.initialized then return end
     ApplyCamera()
     Tweaks.ApplyMapFade()
+    Tweaks.ApplyKeyDown()
     if ns.Fishing then ns.Fishing:Apply() end
     ApplyPortraitNumbers()
     ApplyTips()
@@ -3066,6 +3084,8 @@ function Tweaks:ShouldLoad()
         local maxZoom, zoomSpeed, tips, plates = Take("maxZoom"), Take("zoomSpeed"), Take("tips"), Take("combatPlates")
         local mapFade = Take("mapFade")
         if mapFade ~= nil then pcall(SetCVar, "mapFade", mapFade) end
+        local keyDown = Take("keyDown")
+        if keyDown ~= nil then pcall(SetCVar, "ActionButtonUseKeyDown", keyDown) end
         if maxZoom then pcall(SetCVar, "cameraDistanceMaxZoomFactor", Tweaks.StoredCVar(maxZoom, "cameraDistanceMaxZoomFactor")) end
         if zoomSpeed then pcall(SetCVar, "cameraZoomSpeed", Tweaks.StoredCVar(zoomSpeed, "cameraZoomSpeed")) end
         if tips then Tweaks.RestoreTips(tips) end

@@ -96,7 +96,15 @@ S:Row{ key = "ab.xpQuest", tab = "xp", kind = "choice", choices = { "off", "done
         if v ~= "off" then S:SetPath("actionbars.xpbar.questXPMode", v) end
     end,
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
-S:Row{ key = "ab.xpBubbles", tab = "xp", path ="actionbars.xpbar.bubbles", parent = "ab.xpBar",
+-- Bubbles: Off, 10 or 20; the old switch saved true for 20, so true still reads as 20
+S:Row{ key = "ab.xpBubbles", tab = "xp", kind = "choice", choices = { "off", "10", "20" }, parent = "ab.xpBar",
+    get = function()
+        local v = S:GetPath("actionbars.xpbar.bubbles")
+        if v == true or v == 20 then return "20" end
+        if v == 10 then return "10" end
+        return "off"
+    end,
+    set = function(v) S:SetPath("actionbars.xpbar.bubbles", tonumber(v) or false) end,
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
 
 -- Hide Blizzard elements (also removed from Edit Mode)

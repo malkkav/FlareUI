@@ -94,6 +94,7 @@ local ELEMENTS = {
     { key = "rb_swingOff", bar = "swingOff", own = true, inuse = true },
     { key = "rb_swingRanged", bar = "swingRanged", own = true, inuse = true },
     { key = "rb_flight", bar = "flight", own = true },   -- the Flight Timer: it shows only in flight itself
+    { key = "rb_timer", bar = "timer", own = true },     -- Timer Bars: they show only while a timer runs
     { key = "rb_seal", bar = "seal", own = true },       -- Seals: a seal's bar shows only while that seal is up
 }
 local ELEMENT_BY_KEY = {}

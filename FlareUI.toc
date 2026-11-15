@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 6.6
+## Version: 6.7
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -83,6 +83,7 @@ Modules\Fishing.lua
 Modules\Bags.lua
 Modules\Movers.lua
 Modules\LootFeed.lua
+Modules\LootRolls.lua
 Modules\ZoneText.lua
 Modules\Tooltips.lua
 Modules\ItemStats.lua
