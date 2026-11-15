@@ -410,6 +410,13 @@ function Ring.Applies(f)
     return RING_UNITS[f.fuiUnit] and Ring.On() or false
 end
 
+-- the ring shows the unit's rank itself (the elite / rare frame): target, focus and boss, not the
+-- small target of target
+function Ring.ShowsRank(f)
+    local blizz = BLIZZ[Kind(f)]
+    return Ring.Applies(f) and blizz and blizz.boss or false
+end
+
 -- The style in use: "forever" (the ring on Forever's frame plate), "flareui" (the ring beside
 -- FlareUI's bars) or "addon" (no ring)
 function Ring.Style()
