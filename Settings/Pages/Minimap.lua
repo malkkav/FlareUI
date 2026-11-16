@@ -38,19 +38,15 @@ S:Row{ key = "mm.style", kind = "styles", choices = { "headerless", "bordered", 
     end,
     resetValue = function() return "headerless" end }
 S:Row{ key = "mm.zoom", kind = "choice", path = "minimap.autoZoom", choices = { 0, 5, 10, 30 }, apply = Refresh }
--- Coordinates, one with Blizzard's own option (Minimap.lua MM.CoordsMode), then the framerate at
--- the map's corner (MM.SetupFps); then the clock's tooltip, the middle-click menu, the drawer
+-- Coordinates, one with Blizzard's own option (Minimap.lua MM.CoordsMode); then the Info Bar, the
+-- clock's tooltip, the middle-click menu, the drawer
 S:Row{ key = "mm.coords", kind = "choice", choices = { "off", "always", "hover" },
     get = function() return ns.Minimap and ns.Minimap.CoordsMode and ns.Minimap.CoordsMode() or "hover" end,
     set = function(value) if ns.Minimap and ns.Minimap.SetCoordsMode then ns.Minimap.SetCoordsMode(value) end end,
     resetValue = function() return "hover" end, apply = Refresh }
-S:Row{ key = "mm.fps", kind = "choice", path = "minimap.fps", choices = { "off", "always", "hover" },
-    apply = function() if ns.Minimap and ns.Minimap.SetupFps then ns.Minimap.SetupFps() end end }
--- Latency (11-13 Malkkav): home over world, under the framerate or in its place (MM.SetupFps)
-S:Row{ key = "mm.latency", kind = "choice", path = "minimap.latency", choices = { "off", "always", "hover" },
-    apply = function() if ns.Minimap and ns.Minimap.SetupFps then ns.Minimap.SetupFps() end end }
 -- Info Bar (11-16, Ahlen's idea): a bar inside the square map's bottom (Minimap.lua Bar), and under
--- its switch what each of its three cells shows
+-- its switch what each of its three cells shows. The framerate and latency are two of its values:
+-- their own rows (mm.fps, mm.latency) left with it (11-16, Malkkav)
 local function BarOff() return S:GetPath("minimap.style") == "round" or not S:GetPath("minimap.infoBar.enabled") end
 S:Row{ key = "mm.bar", path = "minimap.infoBar.enabled", apply = Refresh,
     disabled = function() return S:GetPath("minimap.style") == "round" end }

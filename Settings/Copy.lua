@@ -1406,25 +1406,11 @@ ns.Copy = {
             label = L["Zone Name"],
             section = "mm.fonts",
         },
-        ["mm.fps"] = {
-            choices = { L["Off"], L["Always"], L["On Mouseover"] },
-            desc = L["Your framerate at the minimap's bottom right."],
-            label = L["Framerate"],
-            section = "mm.mapInfo",
-            tags = { "fps frames per second performance" },
-        },
         ["mm.hudNote"] = {
             kind = "text",
             label = L["Farming HUDs"],
             section = "mm.mapTools",
             text = L["ForeverFarmHUD and FarmHud move the minimap into their HUD while it is on. FlareUI puts its own minimap back when you turn the HUD off; if it still looks wrong, type /reload."],
-        },
-        ["mm.latency"] = {
-            choices = { L["Off"], L["Always"], L["On Mouseover"] },
-            desc = L["Your latency at the minimap's bottom right: home on top, world below. With Framerate on as well, the one set to Always sits at the bottom."],
-            label = L["Latency"],
-            section = "mm.mapInfo",
-            tags = { "ms ping lag latency home world" },
         },
         ["mm.microMenu"] = {
             desc = L["Middle-click the minimap for a menu of game panels: character, spellbook, talents, quest log and more."],

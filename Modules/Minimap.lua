@@ -120,7 +120,7 @@ function MM:ApplyFonts()
     ApplyFont(_G.MinimapZoneText, db.zoneFont)
     ApplyFont(_G.TimeManagerClockTicker, db.clockFont)
     if self.FitClock then self.FitClock() end
-    -- Info Text (11-13): the coordinates, framerate and latency
+    -- Info Text (11-13): the coordinates and the Info Bar
     local coords = Cluster.MinimapContainer and Cluster.MinimapContainer.PlayerCoords
     if coords and coords.CoordText then
         ApplyFont(coords.CoordText, db.infoFont)
@@ -128,7 +128,7 @@ function MM:ApplyFonts()
     end
     for fontString in pairs(MM.infoTexts) do ApplyFont(fontString, db.infoFont) end
 end
--- the framerate and latency texts, made when first shown (NewStat)
+-- the Info Bar's cells, made when first shown (CreateBar)
 MM.infoTexts = {}
 
 -- Node addons' scans (Lueur, NodeSight, Nodeworthy): since Forever build 70862 the minimap tooltip
@@ -506,11 +506,17 @@ end
 -- INFO BAR (11-16, Ahlen's idea on Discord): a plate along the map's bottom, inside the frame, the
 -- header's mirror. Three cells (left, centre, right), each one value picked in Settings > Minimap
 -- (minimap.infoBar), under the Info Bar switch, off by default. Square styles only. It takes no clicks:
--- the map's own go through. The coordinates, framerate and latency at the map's bottom move up above it.
+-- the map's own go through. The coordinates at the map's bottom move up above it. The framerate and
+-- latency are its values since 11-16 (Malkkav): their own options and corner texts are gone (MM:Init
+-- moves whoever showed them to the bar).
 local Bar = { cells = {}, lines = {}, picks = {}, BOTTOM = 8, SUN_ROOM = 30, shown = false }
 local BAR_SIDES = { "left", "center", "right" }
 local BAR_ICONS = { bags = "Interface\\Buttons\\Button-Backpack-Up", durability = "Interface\\Minimap\\Tracking\\Repair" }
 local COIN_COLORS = { "ffffd700", "ffc7c7cf", "ffeda55f" }   -- gold, silver, copper
+-- A value in the cell's own colour while all is well, then a warning and an alert (11-16; orange, as
+-- yellow reads as the cells' gold)
+local BAR_WARN, BAR_ALERT = "|cffff9933", "|cffff4040"
+local BAGS_WARN = 0.85   -- of the slots used; the alert: no slot left
 
 -- the coins that fit a cell: copper goes from 100 gold, silver from 1000
 local function BarMoney()
@@ -539,18 +545,26 @@ local function BarBags()
         end
     end
     -- (the backpack's art fills its square: a pixel down, off the plate's top edge)
-    return ("|T%s:0:0:0:-1|t %d/%d"):format(BAR_ICONS.bags, used, total)
+    local color = (total > 0 and used >= total) and BAR_ALERT or (total > 0 and used / total >= BAGS_WARN) and BAR_WARN or ""
+    return ("|T%s:0:0:0:-1|t %s%d/%d%s"):format(BAR_ICONS.bags, color, used, total, color ~= "" and "|r" or "")
 end
 
--- the most worn piece you wear: orange under half, red under a fifth
+-- the most worn piece you wear, in the colour of Blizzard's own durability warning (the armoured
+-- figure: a piece yellow, then red); without that API, under a fifth (Buff Reminders' line) and broken
 local function BarDurability()
-    local low
+    local low, alert = nil, 0
     for slot = 1, 18 do
         local cur, max = GetInventoryItemDurability(slot)
-        if cur and max and max > 0 and (not low or cur / max < low) then low = cur / max end
+        -- (readable first, as Buff Reminders' durability check)
+        if canaccessvalue(cur) and canaccessvalue(max) and cur and max and max > 0 then
+            if not low or cur / max < low then low = cur / max end
+            local status = GetInventoryAlertStatus and GetInventoryAlertStatus(slot)
+            if type(status) ~= "number" then status = cur == 0 and 2 or cur / max < 0.2 and 1 or 0 end
+            if status > alert then alert = status end
+        end
     end
     if not low then return ("|T%s:0|t -"):format(BAR_ICONS.durability) end
-    local color = low < 0.2 and "|cffff4040" or low < 0.5 and "|cffff9933" or "|cffffffff"
+    local color = alert >= 2 and BAR_ALERT or alert == 1 and BAR_WARN or "|cffffffff"
     return ("|T%s:0|t %s%d%%|r"):format(BAR_ICONS.durability, color, math.floor(low * 100 + 0.5))
 end
 
@@ -667,7 +681,6 @@ function Bar.Update()
             if source.every and (not every or source.every < every) then every = source.every end
         end
     end
-    local changed = shown ~= Bar.shown
     Bar.shown = shown
     Bar.every = every
     if shown then
@@ -688,8 +701,6 @@ function Bar.Update()
         Bar.frame:Hide()
     end
     Bar.Tick()
-    -- the framerate and latency at the corner sit above the bar (the coordinates: PlaceCoords)
-    if changed and MM.SetupFps then MM.SetupFps() end
 end
 
 local function StyleCoords()
@@ -944,20 +955,6 @@ local function ShowCoords(shown)
     if coords then coords:SetAlpha(shown and 1 or 0) end
 end
 
--- FRAMERATE AND LATENCY (11-11 a controller player asked; latency 11-13 Malkkav): at the map's bottom
--- right in the coordinates' look, each always or only while pointing at the map (both off by
--- default). One stack from the bottom up: the latency's two lines (world, home over it) and the
--- framerate; the one shown always sits at the bottom, the mouseover one above it, and with both the
--- same the framerate goes above the latency. Updated once a second while shown.
-local stats = {}                -- fps, home, world: font strings
-local statsTicker
-local FPS_INSET = 6             -- in from the coordinates' gap at the corner
-local function StatMode(key)
-    local db = GetDb()
-    local mode = db and db[key]
-    return (mode == "always" or mode == "hover") and mode or "off"
-end
-
 -- Coordinates (11-11): Off, Always or On Mouseover, one with Blizzard's own option (the
 -- minimapShowPlayerCoords CVar): off here turns it off there, and off there reads as Off here.
 -- Up to 11-11 a switch (coordsOnHover): off was Always.
@@ -979,16 +976,12 @@ function MM.SetCoordsMode(mode)
     if C_CVar and C_CVar.SetCVar then pcall(C_CVar.SetCVar, "minimapShowPlayerCoords", mode == "off" and "0" or "1") end
 end
 
--- what pointing at the map shows: the coordinates and the framerate, each set to On Mouseover
+-- what pointing at the map shows: the coordinates set to On Mouseover
 local function HoverWanted()
-    local db = GetDb()
-    return db and (MM.CoordsMode() == "hover" or db.fps == "hover" or db.latency == "hover") or false
+    return GetDb() and MM.CoordsMode() == "hover" or false
 end
 local function ShowHovered(over)
     ShowCoords(MM.CoordsMode() ~= "hover" or over)
-    if stats.fps then stats.fps:SetAlpha((StatMode("fps") ~= "hover" or over) and 1 or 0) end
-    local latency = (StatMode("latency") ~= "hover" or over) and 1 or 0
-    if stats.home then stats.home:SetAlpha(latency); stats.world:SetAlpha(latency) end
 end
 
 local function UpdateCoordsHover()
@@ -1010,77 +1003,6 @@ local function OnMapEnter()
     if Scan.Busy() or not Cluster:IsMouseOver() then return end
     ShowHovered(true)
     if not hoverTicker then hoverTicker = C_Timer.NewTicker(0.2, UpdateCoordsHover) end
-end
-
-local function UpdateStats()
-    if stats.fps and stats.fps:IsShown() then stats.fps:SetFormattedText("%.0f fps", GetFramerate()) end
-    if stats.home and stats.home:IsShown() then
-        local _, _, home, world = GetNetStats()
-        stats.home:SetFormattedText("%d (h) ms", home or 0)
-        stats.world:SetFormattedText("%d (w) ms", world or 0)
-    end
-end
-
-local function NewStat(holder)
-    local fs = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fs:SetJustifyH("RIGHT")
-    -- the coordinates' font and gold (their text, else Blizzard's small font a size up)
-    local coords = CoordsFrame()
-    local source = coords and coords.CoordText
-    local font, size, flags = (source or fs):GetFont()
-    if font and size then fs:SetFont(font, (source and source.FlareUI_Styled) and size or size + COORDS.FONT_STEP, flags) end
-    local c = NORMAL_FONT_COLOR
-    fs:SetTextColor(c.r, c.g, c.b)
-    local db = GetDb()
-    if db and db.infoFont then ApplyFont(fs, db.infoFont) end
-    MM.infoTexts[fs] = true
-    fs:Hide()
-    return fs
-end
-
-function MM.SetupFps()
-    local fps, latency = StatMode("fps"), StatMode("latency")
-    for _, fs in pairs(stats) do fs:Hide() end
-    if fps == "off" and latency == "off" then
-        if statsTicker then statsTicker:Cancel(); statsTicker = nil end
-        UpdateCoordsHover()
-        return
-    end
-    if not stats.fps then
-        local holder = CreateFrame("Frame", nil, MM.Frame or MinimapFrame)
-        holder:SetAllPoints(MM.Frame or MinimapFrame)
-        Raise(holder)
-        stats.fps, stats.home, stats.world = NewStat(holder), NewStat(holder), NewStat(holder)
-    end
-    -- bottom up: the latency's lines (world, then home) and the framerate; the one shown always at
-    -- the bottom when the other is On Mouseover
-    local order = {}
-    local function Latency() order[#order + 1] = stats.world; order[#order + 1] = stats.home end
-    if fps ~= "off" and latency ~= "off" then
-        if fps == "always" and latency == "hover" then
-            order[1] = stats.fps; Latency()
-        else
-            Latency(); order[#order + 1] = stats.fps
-        end
-    elseif fps ~= "off" then
-        order[1] = stats.fps
-    else
-        Latency()
-    end
-    -- the bottom line level with the coordinates' text (their box sits COORDS.GAP up, the text in its
-    -- middle), a little in from the corner (11-11, Malkkav); each next line a text height above
-    local coords = CoordsFrame()
-    local mid = COORDS.GAP + Bar.Lift() + ((coords and coords:GetHeight()) or 12) / 2   -- (above the Info Bar, 11-16)
-    local _, size = stats.fps:GetFont()
-    local step = math.floor((size or 12) + 2)
-    for i, fs in ipairs(order) do
-        fs:ClearAllPoints()
-        fs:SetPoint("RIGHT", MM.Frame or MinimapFrame, "BOTTOMRIGHT", -(COORDS.GAP + FPS_INSET), mid + (i - 1) * step)
-        fs:Show()
-    end
-    UpdateStats()
-    if not statsTicker then statsTicker = C_Timer.NewTicker(1, UpdateStats) end
-    UpdateCoordsHover()
 end
 
 -- Middle-click Menu: Blizzard's panels as secure buttons, each a macro clicking the micro button (a
@@ -1265,7 +1187,6 @@ local function SetupMapMouse()
     MinimapFrame:HookScript("OnEnter", OnMapEnter)
     Cluster:HookScript("OnEnter", OnMapEnter)
     UpdateCoordsHover()
-    MM.SetupFps()
 end
 
 local function AddEditModeSettings()
@@ -2050,6 +1971,30 @@ function MM:Init()
     -- Coordinates on Mouseover (a switch up to 11-11) set off: Always
     if db and rawget(db, "coords") == nil and rawget(db, "coordsOnHover") == false then db.coords = "always" end
     if db then db.coordsOnHover = nil end
+    -- Framerate and Latency at the map's corner (up to 11-16) are Info Bar values now: whoever showed
+    -- them gets them in the bar. The bar was off: it comes on with those alone; it was on: they take
+    -- its empty cells.
+    if db then
+        local had = {}
+        for _, key in ipairs({ "fps", "latency" }) do
+            local mode = rawget(db, key)
+            if mode == "always" or mode == "hover" then had[#had + 1] = key end
+            db[key] = nil
+        end
+        local bar = db.infoBar
+        if #had > 0 and type(bar) == "table" then
+            if not bar.enabled then
+                bar.enabled, bar.left, bar.center, bar.right = true, had[1], had[2] or "none", "none"
+            else
+                for _, key in ipairs(had) do
+                    local shown = bar.left == key or bar.center == key or bar.right == key
+                    for _, side in ipairs(BAR_SIDES) do
+                        if not shown and (bar[side] or "none") == "none" then bar[side] = key; shown = true end
+                    end
+                end
+            end
+        end
+    end
 
     hooksecurefunc("GameTime_UpdateTooltip", AddClockStats)
     -- filled on enter, not on Blizzard's next tick

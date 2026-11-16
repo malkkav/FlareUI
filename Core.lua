@@ -523,10 +523,9 @@ local defaults = {
             microMenu = false,          -- middle-click the map: a list of Blizzard's panels (off since 11-11)
             finderEye = false,          -- Group Finder Icon: a small icon in place of Blizzard's queue eye (MinimapEye.lua)
             coords = "hover",           -- Coordinates: off | always | hover (with Blizzard's own option, Minimap.lua MM.CoordsMode)
-            fps = "off",                -- Framerate at the map's bottom right: off | always | hover (Minimap.lua MM.SetupFps)
-            latency = "off",            -- Latency (home over world) with it: off | always | hover (11-13)
             -- Info Bar (11-16): a bar inside the square map's bottom, off by default; three cells, each one
-            -- of none | gold | bags | durability | fps | latency | coords (Minimap.lua Bar.sources)
+            -- of none | gold | bags | durability | fps | latency | coords (Minimap.lua Bar.sources). The
+            -- framerate and latency had options of their own up to 11-16 (minimap.fps, .latency: MM:Init)
             infoBar = { enabled = false, left = "bags", center = "gold", right = "durability" },
             -- Fonts tab: the zone name and the clock (Forever's own look by default)
             zoneFont  = { face = "__global", size = 10, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
