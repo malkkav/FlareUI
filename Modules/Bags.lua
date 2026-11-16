@@ -604,9 +604,35 @@ end
 -- Blizzard sets its own scale on the bags whenever it places them (UpdateContainerFrameAnchors, to
 -- fit the screen), so FlareUI's is set again after it. 100% leaves Blizzard's alone. Not in a fight:
 -- the scale waits for its end.
+-- Ctrl+wheel on the window (Move Any Window, Tweaks.lua section 3) is the same setting: it saves here
+-- and not under the window's name, so the slider and the shortcut never disagree.
 --------------------------------------------------
 local SCALE_MIN, SCALE_MAX = 0.6, 1.6   -- the Scale setting's range (Settings/Pages/BagsLooting.lua)
 local scaled = false                    -- FlareUI's scale is on the window
+
+-- the combined backpack, while FlareUI lays it out: its scale is the Scale setting's
+function Bags.OwnsScale(frame)
+    return frame ~= nil and frame == Combined() and Bags:IsCombined() and not Bags:GetOtherBagAddon() and true or false
+end
+
+function Bags.ClampScale(scale)
+    return math.max(SCALE_MIN, math.min(SCALE_MAX, tonumber(scale) or 1))
+end
+
+-- Move Any Window's side: a Ctrl+wheel step (already on the window), or a scale it saved under the
+-- window's name before 2b, taken over once unless the slider was set (adopt)
+function Bags.SaveScale(scale, adopt)
+    local db = GetDb()
+    if not db then return end
+    if adopt then
+        if (tonumber(db.bagScale) or 1) ~= 1 then return end
+        db.bagScale = Bags.ClampScale(scale)
+        Bags.ApplyScale()
+        return
+    end
+    db.bagScale = Bags.ClampScale(scale)
+    scaled = db.bagScale ~= 1
+end
 
 function Bags.ApplyScale()
     local frame = Combined()
@@ -616,7 +642,7 @@ function Bags.ApplyScale()
     local wanted = scale ~= 1 and Bags:IsCombined() and not Bags:GetOtherBagAddon() and not GamepadUI()
     if wanted then
         scaled = true
-        frame:SetScale(math.max(SCALE_MIN, math.min(SCALE_MAX, scale)))
+        frame:SetScale(Bags.ClampScale(scale))
     elseif scaled then
         scaled = false
         frame:SetScale(1)

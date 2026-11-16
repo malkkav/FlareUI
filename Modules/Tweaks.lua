@@ -82,7 +82,10 @@ local function ApplySavedPosition(frame)
     local store = GetFrameStore(frame.moveName)
     if not store then return end
     if not CanTouch(frame) then movePending[frame] = true return end
-    if store.scale and frame:GetScale() ~= store.scale then
+    if bags and bags.OwnsScale and bags.OwnsScale(frame) then
+        -- the combined backpack's scale is the Scale setting (Bags.lua section 2b)
+        if store.scale then bags.SaveScale(store.scale, true) store.scale = nil end
+    elseif store.scale and frame:GetScale() ~= store.scale then
         frame:SetScale(store.scale)
     end
     if store.point then
@@ -132,6 +135,10 @@ end
 local function SetFrameScale(frame, scale)
     scale = math_max(MIN_SCALE, math_min(MAX_SCALE, math_floor(scale * 100 + 0.5) / 100))
     if not CanTouch(frame) then return end
+    -- the combined backpack saves its scale as the Scale setting (Bags.lua section 2b)
+    local bags = ns.Bags
+    local bagScale = bags and bags.OwnsScale and bags.OwnsScale(frame)
+    if bagScale then scale = bags.ClampScale(scale) end
     -- the top-left corner stays put
     local left, top = frame:GetLeft(), frame:GetTop()
     local oldScale = frame:GetScale()
@@ -142,7 +149,12 @@ local function SetFrameScale(frame, scale)
     end
     local store = GetFrameStore(frame.moveName, true)
     if store then
-        store.scale = scale ~= 1 and scale or nil
+        if bagScale then
+            store.scale = nil
+            bags.SaveScale(scale)
+        else
+            store.scale = scale ~= 1 and scale or nil
+        end
         SavePosition(frame)
     end
 end
@@ -212,6 +224,7 @@ local function OnMouseUp(handle, button)
     if IsControlKeyDown() and CanTouch(frame) then
         local store = GetFrameStore(frame.moveName)
         if store then store.scale = nil end
+        if ns.Bags and ns.Bags.OwnsScale and ns.Bags.OwnsScale(frame) then ns.Bags.SaveScale(1) end
         frame:SetScale(1)
         -- a window that was never moved stays where Blizzard's panel layout puts it
         if store and store.point then SavePosition(frame) end
