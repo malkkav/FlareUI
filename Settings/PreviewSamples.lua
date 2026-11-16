@@ -867,57 +867,89 @@ function R.lootRolls(c, spec)
     end
     local function Mark(choice) return '|A:lootroll-toast-icon-' .. choice .. '-up:11:11|a ' end
 
+    -- the window's own sizes (LootRolls.lua): only the width is the canvas's
     local cy = 66
-    local ry = cy + 71
-    local STEP = 31
-    c:Box('rollsWin', x, 30, w, ry + STEP + 26 + 12 - 30, 'FlareUI Thin', Get('tweaks.lootRollsOpacity', 1))
+    local ry = cy + 86
+    local STEP = 36
+    local box = c:Box('rollsWin', x, 30, w, ry + STEP + 32 + 12 - 30, 'FlareUI Thin', 0)
+    if not box.rock then
+        box.rock = box:CreateTexture(nil, 'BACKGROUND', nil, 1)
+        box.rock:SetPoint('TOPLEFT', 3, -3)
+        box.rock:SetPoint('BOTTOMRIGHT', -3, 3)
+        box.rock:SetTexture('Interface\\FrameGeneral\\UI-Background-Rock', 'REPEAT', 'REPEAT')
+        box.rock:SetHorizTile(true)
+        box.rock:SetVertTile(true)
+        box.wash = box:CreateTexture(nil, 'BACKGROUND', nil, 2)
+        box.wash:SetAllPoints(box.rock)
+        box.wash:SetColorTexture(0.05, 0.038, 0.026, 0.45)
+    end
+    local opacity = Get('tweaks.lootRollsOpacity', 1)
+    box.rock:SetAlpha(opacity)
+    box.wash:SetAlpha(opacity)
+    -- on the overlay: the stone would cover a texture of the canvas itself
+    local function Button(id, choice, bx, by, size)
+        local t = c:Texture(id, nil, bx, by, size, size, true)
+        t:SetAtlas('lootroll-toast-icon-' .. choice .. '-up')
+        return t
+    end
     c:Text('rollsTitle', '|cffcc9957' .. L["Loot Rolls"] .. '|r |cff808080(2)|r', left + 2, 39, w - 50, {size=11})
     local hist = c:Texture('rollsHist', P.MEDIA .. 'Icons\\DMSegments.tga', right - 14, 36, 14, 14, true)
     hist:SetVertexColor(0.61, 0.48, 0.29)
     c:Texture('rollsLine', 'Interface\\Common\\UI-TooltipDivider-Transparent', x + 3, 52, w - 6, 8, true)
 
-    -- the full card: the roll still to decide
-    local tx = left + 49
-    Icon(c, 'rollsIcon', 'INV_Sword_04', left, cy, 40)
-    Line('rollsName', '|cff0070dd' .. L["Sample Item"] .. '|r', tx, cy + 1, right - tx - 72, 11)
-    Line('rollsMine', '44  |cffb0b0b0' .. (INVTYPE_WEAPON or '') .. '|r', tx, cy + 16, right - tx, 9)
-    Line('rollsLead', L["Leading: %s"]:format(Mark('need') .. '|cfff58cbaArvel|r |cffffd100' .. 87 .. '|r'), tx, cy + 28, right - tx - 26, 9)
-    Line('rollsCount', '|cff9999993/5|r', right - 24, cy + 28, 24, 9):SetJustifyH('RIGHT')
-    for i, choice in ipairs({'pass', 'greed', 'need'}) do
-        Atlas(c, 'rollsBtn' .. choice, 'lootroll-toast-icon-' .. choice .. '-up', right - i * 22, cy - 3, 21, 21)
+    -- a card's or row's box, over the window's stone
+    local function ItemBox(id, by, height)
+        local f = c:Box(id, left, by, right - left, height, 'FlareUI Thin', 0)
+        f:SetBackdropColor(0, 0, 0, 0.3)
+        f:SetFrameLevel(box:GetFrameLevel() + 1)
     end
-    c:Bar('rollsTimer', left, cy + 50, right - left - 26, 6, 0.7, {1, 0.75, 0.1}, 'FlareUI Forever')
-    Line('rollsTime', '18', right - 20, cy + 48, 20, 9)
-    local split = c:Texture('rollsSplit', nil, left, cy + 63, right - left, 1, true)
+    local il, ir = left + 8, right - 8
+
+    -- a card: a roll still to decide
+    ItemBox('rollsCard', cy, 72)
+    local it, tx = cy + 8, il + 49
+    Icon(c, 'rollsIcon', 'INV_Sword_04', il, it, 40)
+    Line('rollsName', '|cff0070dd' .. L["Sample Item"] .. '|r', tx, it + 1, ir - tx - 58, 11)
+    Line('rollsMine', '44  |cffb0b0b0' .. (INVTYPE_WEAPON or '') .. '|r', tx, it + 16, ir - tx - 94, 9)
+    Line('rollsLead', L["Leading: %s"]:format(Mark('need') .. '|cfff58cbaArvel|r |cffffd100' .. 87 .. '|r'), tx, it + 28, ir - tx - 58, 9)
+    Line('rollsCount', '|cff9999993/5|r', ir - 82, it + 16, 24, 9):SetJustifyH('RIGHT')
+    Button('rollsBtnpass', 'pass', ir - 21, it + 12, 21)
+    Button('rollsBtnneed', 'need', ir - 50, it, 21)
+    Button('rollsBtngreed', 'greed', ir - 50, it + 25, 21)
+    c:Bar('rollsTimer', il, it + 50, ir - il - 26, 6, 0.7, {1, 0.75, 0.1}, 'FlareUI Forever'):SetFrameLevel(box:GetFrameLevel() + 2)
+    Line('rollsTime', '18', ir - 20, it + 48, 20, 9)
+    local split = c:Texture('rollsSplit', nil, left, cy + 79, right - left, 1, true)
     local b = ns.BORDER_COLOR
     split:SetColorTexture(b.r, b.g, b.b, 0.35)
 
-    -- the rows: one still open, one you chose on (a roll you pass on leaves the window)
+    -- the rows: a roll you won (gold), then one you lost (grey, your choice and roll left of the winner)
     local list = {
-        { id = 'a', icon = 'INV_Misc_Gem_Emerald_01', name = '|cff1eff00' .. L["Sample Item"] .. '|r', open = true },
-        { id = 'b', icon = 'INV_Chest_Cloth_25', name = '|cff1eff00' .. L["Sample Item"] .. '|r', choice = 'greed',
+        { id = 'a', icon = 'INV_Misc_Gem_Emerald_01', name = '|cff1eff00' .. L["Sample Item"] .. '|r', won = true,
+          result = Mark('need') .. (UnitName('player') or '') .. ' |cff40ff40' .. 92 .. '|r' },
+        { id = 'b', icon = 'INV_Chest_Cloth_25', name = '|cff999999' .. L["Sample Item"] .. '|r', choice = 'greed',
           result = Mark('greed') .. '|cff69ccf0Miri|r |cff40ff40' .. 64 .. '|r', roll = '|cff999999' .. 23 .. '|r' },
     }
     for i, r in ipairs(list) do
         local y = ry + (i - 1) * STEP
-        Icon(c, 'rollsRowIcon' .. r.id, r.icon, left, y + 2, 20)
-        if r.open then
-            Line('rollsRowName' .. r.id, r.name, left + 27, y + 7, right - left - 27 - 86, 9)
-            Line('rollsRowTime' .. r.id, '25', right - 80, y + 7, 18, 9)
-            for j, choice in ipairs({'pass', 'greed', 'need'}) do
-                Atlas(c, 'rollsRowBtn' .. r.id .. choice, 'lootroll-toast-icon-' .. choice .. '-up', right - j * 20, y + 2, 20, 20)
-            end
-            c:Bar('rollsRowTimer' .. r.id, left + 27, y + 24, right - left - 27, 2, 0.85, {1, 0.75, 0.1}, 'FlareUI Forever')
+        ItemBox('rollsRow' .. r.id, y, 32)
+        Icon(c, 'rollsRowIcon' .. r.id, r.icon, left + 6, y + 6, 20):SetDesaturated(not r.won)
+        if r.won then
+            local gold = c:Texture('rollsRowWon' .. r.id, nil, left + 4, y + 4, right - left - 8, 24, true)
+            gold:SetDrawLayer('OVERLAY', -1)
+            gold:SetColorTexture(1, 1, 1, 1)
+            gold:SetGradient('HORIZONTAL', CreateColor(1, 0.82, 0, 0.28), CreateColor(1, 0.82, 0, 0))
+            Line('rollsRowName' .. r.id, r.name, left + 33, y + 11, ir - left - 33 - 100, 9)
         else
-            -- yours by the item (your choice and roll), the winner on the right
-            Atlas(c, 'rollsRowChoice' .. r.id, 'lootroll-toast-icon-' .. r.choice .. '-up', left + 26, y + 5, 15, 15)
-            Line('rollsRowRoll' .. r.id, r.roll, left + 43, y + 7, 20, 9)
-            Line('rollsRowName' .. r.id, r.name, left + 66, y + 7, right - left - 66 - 88, 9)
-            Line('rollsRowResult' .. r.id, r.result, right - 84, y + 7, 66, 9):SetJustifyH('RIGHT')
-            local close = c:Texture('rollsRowClose' .. r.id, 'Interface\\Buttons\\UI-StopButton', right - 13, y + 6, 13, 13, true)
-            close:SetDesaturated(true)
-            close:SetVertexColor(0.61, 0.48, 0.29)
+            Line('rollsRowName' .. r.id, r.name, left + 33, y + 11, ir - left - 33 - 132, 9)
+            Button('rollsRowChoice' .. r.id, r.choice, ir - 126, y + 8, 15):SetDesaturated(true)
+            Line('rollsRowRoll' .. r.id, r.roll, ir - 109, y + 11, 14, 9)
+            local sep = c:Texture('rollsRowSep' .. r.id, nil, ir - 91, y + 9, 1, 14, true)
+            sep:SetColorTexture(b.r, b.g, b.b, 0.6)
         end
+        Line('rollsRowResult' .. r.id, r.result, ir - 84, y + 11, 66, 9):SetJustifyH('RIGHT')
+        local close = c:Texture('rollsRowClose' .. r.id, 'Interface\\Buttons\\UI-StopButton', ir - 13, y + 9, 13, 13, true)
+        close:SetDesaturated(true)
+        close:SetVertexColor(0.61, 0.48, 0.29)
     end
 
     local elapsed = 0
