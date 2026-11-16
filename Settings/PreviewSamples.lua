@@ -853,51 +853,64 @@ function R.lootRolls(c, spec)
     Heading(c,L["Loot Rolls"])
     if spec.key == 'bl.lootRolls' and not Get('tweaks.lootRolls') then c:Text('rollsOff',L["Disabled"],12,90); return end
     local x, w = 8, c.width - 16
-    local h = 30 + 58 + 2 * 26 + 8
-    c:Box('rollsWin', x, 30, w, h, 'FlareUI Thin', Get('tweaks.lootRollsOpacity', 1))
-    c:Text('rollsTitle', '|cffffd100' .. L["Loot Rolls"] .. '|r |cff808080(2)|r', x + 12, 39, w - 50, {size=11})
-    local hist = c:Texture('rollsHist', P.MEDIA .. 'Icons\\DMSegments.tga', x + w - 26, 36, 14, 14, true)
+    local left, right = x + 12, x + w - 12
+    local function Line(id, text, tx, ty, width, size)
+        local t = c:Text(id, text, tx, ty, width, {size=size})
+        t:SetWordWrap(false)
+        return t
+    end
+    local function Mark(choice) return '|A:lootroll-toast-icon-' .. choice .. '-up:11:11|a ' end
+
+    local cy = 66
+    local ry = cy + 71
+    local STEP = 31
+    c:Box('rollsWin', x, 30, w, ry + STEP + 26 + 12 - 30, 'FlareUI Thin', Get('tweaks.lootRollsOpacity', 1))
+    c:Text('rollsTitle', '|cffcc9957' .. L["Loot Rolls"] .. '|r |cff808080(2)|r', left + 2, 39, w - 50, {size=11})
+    local hist = c:Texture('rollsHist', P.MEDIA .. 'Icons\\DMSegments.tga', right - 14, 36, 14, 14, true)
     hist:SetVertexColor(0.61, 0.48, 0.29)
-    local line = c:Texture('rollsLine', nil, x + 10, 56, w - 20, 1, true)
-    local b = ns.BORDER_COLOR
-    line:SetColorTexture(b.r, b.g, b.b, 0.45)
+    c:Texture('rollsLine', 'Interface\\Common\\UI-TooltipDivider-Transparent', x + 3, 52, w - 6, 8, true)
 
     -- the full card: the roll still to decide
-    local cy = 62
-    Icon(c, 'rollsIcon', 'INV_Sword_04', x + 11, cy, 40)
-    c:Text('rollsName', '|cff0070dd' .. L["Sample Item"] .. '|r', x + 60, cy + 1, w - 150, {size=11})
-    c:Text('rollsMine', '|cffff8040' .. L["Binds when picked up"] .. '|r', x + 60, cy + 16, w - 80, {size=9})
-    c:Text('rollsLead', L["Leading: %s"]:format('|cfff58cbaArvel|r |cffffd100' .. 87 .. '|r'), x + 60, cy + 28, w - 80, {size=9})
+    local tx = left + 49
+    Icon(c, 'rollsIcon', 'INV_Sword_04', left, cy, 40)
+    Line('rollsName', '|cff0070dd' .. L["Sample Item"] .. '|r', tx, cy + 1, right - tx - 72, 11)
+    Line('rollsMine', '44  |cffb0b0b0' .. (INVTYPE_WEAPON or '') .. '|r', tx, cy + 16, right - tx, 9)
+    Line('rollsLead', L["Leading: %s"]:format(Mark('need') .. '|cfff58cbaArvel|r |cffffd100' .. 87 .. '|r'), tx, cy + 28, right - tx - 26, 9)
+    Line('rollsCount', '|cff9999993/5|r', right - 24, cy + 28, 24, 9):SetJustifyH('RIGHT')
     for i, choice in ipairs({'pass', 'greed', 'need'}) do
-        Atlas(c, 'rollsBtn' .. choice, 'lootroll-toast-icon-' .. choice .. '-up', x + w - 12 - i * 25, cy - 3, 24, 24)
+        Atlas(c, 'rollsBtn' .. choice, 'lootroll-toast-icon-' .. choice .. '-up', right - i * 22, cy - 3, 21, 21)
     end
-    c:Bar('rollsTimer', x + 11, cy + 46, w - 48, 6, 0.7, {1, 0.75, 0.1}, 'FlareUI Forever')
-    c:Text('rollsTime', '18', x + w - 33, cy + 44, 24, {size=9})
-    local split = c:Texture('rollsSplit', nil, x + 10, cy + 57, w - 20, 1, true)
+    c:Bar('rollsTimer', left, cy + 50, right - left - 26, 6, 0.7, {1, 0.75, 0.1}, 'FlareUI Forever')
+    Line('rollsTime', '18', right - 20, cy + 48, 20, 9)
+    local split = c:Texture('rollsSplit', nil, left, cy + 63, right - left, 1, true)
+    local b = ns.BORDER_COLOR
     split:SetColorTexture(b.r, b.g, b.b, 0.35)
 
     -- the rows: one still open, one you chose on (a roll you pass on leaves the window)
-    local ry = cy + 62
     local list = {
         { id = 'a', icon = 'INV_Misc_Gem_Emerald_01', name = '|cff1eff00' .. L["Sample Item"] .. '|r', open = true },
         { id = 'b', icon = 'INV_Chest_Cloth_25', name = '|cff1eff00' .. L["Sample Item"] .. '|r', choice = 'greed',
-          result = '|cff69ccf0Miri|r |cff40ff40' .. 64 .. '|r |cff999999(23)|r' },
+          result = Mark('greed') .. '|cff69ccf0Miri|r |cff40ff40' .. 64 .. '|r', roll = '|cff999999' .. 23 .. '|r' },
     }
     for i, r in ipairs(list) do
-        local y = ry + (i - 1) * 26
-        Icon(c, 'rollsRowIcon' .. r.id, r.icon, x + 11, y, 20)
-        c:Text('rollsRowName' .. r.id, r.name, x + 38, y + 5, r.open and w - 140 or w - 175, {size=9})
+        local y = ry + (i - 1) * STEP
+        Icon(c, 'rollsRowIcon' .. r.id, r.icon, left, y + 2, 20)
         if r.open then
-            c:Text('rollsRowTime' .. r.id, '25', x + w - 100, y + 5, 20, {size=9})
+            Line('rollsRowName' .. r.id, r.name, left + 27, y + 7, right - left - 27 - 86, 9)
+            Line('rollsRowTime' .. r.id, '25', right - 80, y + 7, 18, 9)
             for j, choice in ipairs({'pass', 'greed', 'need'}) do
-                Atlas(c, 'rollsRowBtn' .. r.id .. choice, 'lootroll-toast-icon-' .. choice .. '-up', x + w - 10 - j * 20, y, 20, 20)
+                Atlas(c, 'rollsRowBtn' .. r.id .. choice, 'lootroll-toast-icon-' .. choice .. '-up', right - j * 20, y + 2, 20, 20)
             end
-            c:Bar('rollsRowTimer' .. r.id, x + 38, y + 22, w - 48, 2, 0.85, {1, 0.75, 0.1}, 'FlareUI Forever')
+            c:Bar('rollsRowTimer' .. r.id, left + 27, y + 24, right - left - 27, 2, 0.85, {1, 0.75, 0.1}, 'FlareUI Forever')
         else
-            c:Text('rollsRowResult' .. r.id, r.result, x + w - 165, y + 5, 120, {size=9})
-            Atlas(c, 'rollsRowChoice' .. r.id, 'lootroll-toast-icon-' .. r.choice .. '-up', x + w - 43, y + 3, 15, 15)
-            c:Texture('rollsRowClose' .. r.id, 'Interface\\Buttons\\UI-StopButton', x + w - 25, y + 4, 13, 13, true)
-            c.objects['rollsRowResult' .. r.id]:SetJustifyH('RIGHT')
+            -- yours by the item (your choice and roll), the winner on the right
+            Atlas(c, 'rollsRowChoice' .. r.id, 'lootroll-toast-icon-' .. r.choice .. '-up', left + 26, y + 5, 15, 15)
+            Line('rollsRowRoll' .. r.id, r.roll, left + 43, y + 7, 20, 9)
+            Line('rollsRowName' .. r.id, r.name, left + 66, y + 7, right - left - 66 - 88, 9)
+            Line('rollsRowResult' .. r.id, r.result, right - 84, y + 7, 66, 9):SetJustifyH('RIGHT')
+            local close = c:Texture('rollsRowClose' .. r.id, 'Interface\\Buttons\\UI-StopButton', right - 13, y + 6, 13, 13, true)
+            close:SetDesaturated(true)
+            close:SetVertexColor(0.61, 0.48, 0.29)
         end
     end
 
@@ -907,7 +920,8 @@ function R.lootRolls(c, spec)
         local fraction = 1 - elapsed / 12
         local bar = c.objects.rollsTimer
         bar:SetValue(fraction)
-        if fraction < 0.5 then bar:SetStatusBarColor(0.9, 0.2, 0.15) else bar:SetStatusBarColor(1, 0.75, 0.1) end
+        local low = 1 - math.min(1, fraction * 2)
+        bar:SetStatusBarColor(1 - 0.1 * low, 0.75 - 0.55 * low, 0.1 + 0.05 * low)
         c.objects.rollsTime:SetText(math.ceil(fraction * 30))
     end)
 end
