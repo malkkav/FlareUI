@@ -577,7 +577,7 @@ Bar.sources = {
 
 -- how far the texts at the map's bottom move up while the bar is there
 function Bar.Lift()
-    return Bar.shown and ((HeaderStyle().barBottom or Bar.BOTTOM) + HEADER_HEIGHT - 4) or 0
+    return Bar.shown and (Bar.BOTTOM + HEADER_HEIGHT - 4) or 0
 end
 
 function Bar.Fill(timedOnly)
@@ -621,12 +621,11 @@ function Bar.Place()
     local f = Bar.frame
     local style = HeaderStyle()
     local side, shift = style.barSide or style.side or HEADER_SIDE, style.shift or 0
-    local bottom = style.barBottom or Bar.BOTTOM
     local sun = Cluster.DielFrame
     local left = (sun and sun:IsShown()) and Bar.SUN_ROOM or side
     f:ClearAllPoints()
-    f:SetPoint("BOTTOMLEFT", MM.Frame, "BOTTOMLEFT", left + shift, bottom)
-    f:SetPoint("BOTTOMRIGHT", MM.Frame, "BOTTOMRIGHT", -side + shift, bottom)
+    f:SetPoint("BOTTOMLEFT", MM.Frame, "BOTTOMLEFT", left + shift, Bar.BOTTOM)
+    f:SetPoint("BOTTOMRIGHT", MM.Frame, "BOTTOMRIGHT", -side + shift, Bar.BOTTOM)
     Raise(f)
     local cell = (MAP_SIZE - left - side) / #BAR_SIDES
     for i, fs in ipairs(Bar.cells) do
