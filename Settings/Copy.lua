@@ -1340,6 +1340,31 @@ ns.Copy = {
             label = L["Open on Mouseover"],
             section = "mm.addonButtons",
         },
+        ["mm.bar"] = {
+            desc = L["A bar inside the square minimap, along its bottom edge, with up to three values of your choice."],
+            label = L["Info Bar"],
+            section = "mm.mapInfo",
+            tags = { "info bar data panel gold bags durability" },
+            tip = L["Bags counts used and total slots. Durability is your most worn piece."],
+        },
+        ["mm.barCenter"] = {
+            choices = { L["None"], L["Gold"], L["Bags"], L["Durability"], L["Framerate"], L["Latency"], L["Coordinates"] },
+            desc = L["What the middle of the Info Bar shows."],
+            label = L["Center"],
+            section = "mm.mapInfo",
+        },
+        ["mm.barLeft"] = {
+            choices = { L["None"], L["Gold"], L["Bags"], L["Durability"], L["Framerate"], L["Latency"], L["Coordinates"] },
+            desc = L["What the left side of the Info Bar shows."],
+            label = L["Left"],
+            section = "mm.mapInfo",
+        },
+        ["mm.barRight"] = {
+            choices = { L["None"], L["Gold"], L["Bags"], L["Durability"], L["Framerate"], L["Latency"], L["Coordinates"] },
+            desc = L["What the right side of the Info Bar shows."],
+            label = L["Right"],
+            section = "mm.mapInfo",
+        },
         ["mm.clockStats"] = {
             desc = L["Your framerate and latency in the clock's tooltip."],
             label = L["FPS and Latency on Clock"],

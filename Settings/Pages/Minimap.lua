@@ -49,6 +49,16 @@ S:Row{ key = "mm.fps", kind = "choice", path = "minimap.fps", choices = { "off",
 -- Latency (11-13 Malkkav): home over world, under the framerate or in its place (MM.SetupFps)
 S:Row{ key = "mm.latency", kind = "choice", path = "minimap.latency", choices = { "off", "always", "hover" },
     apply = function() if ns.Minimap and ns.Minimap.SetupFps then ns.Minimap.SetupFps() end end }
+-- Info Bar (11-16, Ahlen's idea): a bar inside the square map's bottom (Minimap.lua Bar), and under
+-- its switch what each of its three cells shows
+local function BarOff() return S:GetPath("minimap.style") == "round" or not S:GetPath("minimap.infoBar.enabled") end
+S:Row{ key = "mm.bar", path = "minimap.infoBar.enabled", apply = Refresh,
+    disabled = function() return S:GetPath("minimap.style") == "round" end }
+local BAR_VALUES = { "none", "gold", "bags", "durability", "fps", "latency", "coords" }
+for _, side in ipairs({ "Left", "Center", "Right" }) do
+    S:Row{ key = "mm.bar" .. side, kind = "choice", half = true, parent = "mm.bar",
+        path = "minimap.infoBar." .. side:lower(), choices = BAR_VALUES, apply = Refresh, disabled = BarOff }
+end
 S:Row{ key = "mm.clockStats", path = "minimap.clockStats" }
 S:Row{ key = "mm.microMenu", path = "minimap.microMenu",
     apply = function() if ns.Minimap and ns.Minimap.UpdateMapMouse then ns.Minimap.UpdateMapMouse() end end }

@@ -64,7 +64,9 @@ local MASKS = { EMPTY = "Interface\\AddOns\\FlareUI\\Media\\Art\\Empty", FOREVER
 -- to measure the Edit Mode box, and come back if the client lacks the atlas.
 local HEADER_STYLES = {
     headerless = { band = 27, headerTop = 7, drop = 3, over = false, bronze = true, side = 10, shift = -1 },
-    art        = { band = 22, headerTop = 2, drop = 0, over = true, side = 6 },
+    -- barSide (11-16): the Info Bar's inset from the frame's right; Bordered's header row lies in the
+    -- title bar, wider than the map, so its bar has an inset of its own
+    art        = { band = 22, headerTop = 2, drop = 0, over = true, side = 6, barSide = 10 },
 }
 local BRONZE_ATLAS = "heavybronze-frame-basic"
 -- the bronze frame this far past the map frame's edges, per side: measured against Bordered's metal
@@ -501,6 +503,185 @@ local function RestyleCoordText(text)
     text:SetTextColor(c.r, c.g, c.b)
 end
 
+-- INFO BAR (11-16, Ahlen's idea on Discord): a plate along the map's bottom, inside the frame, the
+-- header's mirror. Three cells (left, centre, right), each one value picked in Settings > Minimap
+-- (minimap.infoBar), under the Info Bar switch, off by default. Square styles only. It takes no clicks:
+-- the map's own go through. The coordinates, framerate and latency at the map's bottom move up above it.
+local Bar = { cells = {}, lines = {}, picks = {}, BOTTOM = 8, SUN_ROOM = 30, shown = false }
+local BAR_SIDES = { "left", "center", "right" }
+local BAR_ICONS = { bags = "Interface\\Buttons\\Button-Backpack-Up", durability = "Interface\\Minimap\\Tracking\\Repair" }
+local COIN_COLORS = { "ffffd700", "ffc7c7cf", "ffeda55f" }   -- gold, silver, copper
+
+-- the coins that fit a cell: copper goes from 100 gold, silver from 1000
+local function BarMoney()
+    local cash = GetMoney() or 0
+    local coins = { math.floor(cash / 10000), math.floor(cash / 100) % 100, cash % 100 }
+    local symbols = { _G.GOLD_AMOUNT_SYMBOL or "g", _G.SILVER_AMOUNT_SYMBOL or "s", _G.COPPER_AMOUNT_SYMBOL or "c" }
+    local last = coins[1] >= 1000 and 1 or coins[1] >= 100 and 2 or 3
+    local parts = {}
+    for i = 1, last do
+        if coins[i] > 0 or #parts > 0 or i == last then
+            parts[#parts + 1] = ("|c%s%d%s|r"):format(COIN_COLORS[i], coins[i], symbols[i])
+        end
+    end
+    return table.concat(parts, " ")
+end
+
+-- used / total over the backpack and the plain bags (a quiver or a herb bag is not room for loot)
+local function BarBags()
+    local used, total = 0, 0
+    for bag = 0, _G.NUM_BAG_SLOTS or 4 do
+        local slots = C_Container.GetContainerNumSlots(bag) or 0
+        local free, family = C_Container.GetContainerNumFreeSlots(bag)
+        if slots > 0 and (family or 0) == 0 then
+            total = total + slots
+            used = used + slots - (free or 0)
+        end
+    end
+    -- (the backpack's art fills its square: a pixel down, off the plate's top edge)
+    return ("|T%s:0:0:0:-1|t %d/%d"):format(BAR_ICONS.bags, used, total)
+end
+
+-- the most worn piece you wear: orange under half, red under a fifth
+local function BarDurability()
+    local low
+    for slot = 1, 18 do
+        local cur, max = GetInventoryItemDurability(slot)
+        if cur and max and max > 0 and (not low or cur / max < low) then low = cur / max end
+    end
+    if not low then return ("|T%s:0|t -"):format(BAR_ICONS.durability) end
+    local color = low < 0.2 and "|cffff4040" or low < 0.5 and "|cffff9933" or "|cffffffff"
+    return ("|T%s:0|t %s%d%%|r"):format(BAR_ICONS.durability, color, math.floor(low * 100 + 0.5))
+end
+
+local function BarCoords()
+    local map = C_Map.GetBestMapForUnit("player")
+    local pos = map and C_Map.GetPlayerMapPosition(map, "player")
+    if not pos then return "-" end   -- (an instance has none)
+    local x, y = pos:GetXY()
+    return ("%.1f, %.1f"):format(x * 100, y * 100)
+end
+
+-- every: seconds between two reads of a value no event tells about
+Bar.sources = {
+    gold       = { text = BarMoney, events = { "PLAYER_MONEY" } },
+    bags       = { text = BarBags, events = { "BAG_UPDATE_DELAYED" } },
+    durability = { text = BarDurability, events = { "UPDATE_INVENTORY_DURABILITY", "PLAYER_EQUIPMENT_CHANGED" } },
+    fps        = { text = function() return ("%.0f fps"):format(GetFramerate()) end, every = 1 },
+    latency    = { text = function()
+        local _, _, home, world = GetNetStats()
+        return ("%d / %d ms"):format(home or 0, world or 0)
+    end, every = 1 },
+    coords     = { text = BarCoords, every = 0.2 },
+}
+
+-- how far the texts at the map's bottom move up while the bar is there
+function Bar.Lift()
+    return Bar.shown and ((HeaderStyle().barBottom or Bar.BOTTOM) + HEADER_HEIGHT - 4) or 0
+end
+
+function Bar.Fill(timedOnly)
+    for i, side in ipairs(BAR_SIDES) do
+        local source = Bar.sources[Bar.picks[side]]
+        if not source then
+            Bar.cells[i]:SetText("")
+        elseif not timedOnly or source.every then
+            Bar.cells[i]:SetText(source.text())
+        end
+    end
+end
+
+local function CreateBar()
+    local f = CreateFrame("Frame", nil, MM.Frame)
+    f:SetHeight(HEADER_HEIGHT)
+    f.Plate = f:CreateTexture(nil, "BACKGROUND")
+    Plate(f.Plate, f)
+    local c = NORMAL_FONT_COLOR
+    for i = 1, #BAR_SIDES do
+        local fs = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        fs:SetWordWrap(false)
+        fs:SetTextColor(c.r, c.g, c.b)
+        local db = GetDb()
+        if db and db.infoFont then ApplyFont(fs, db.infoFont) end
+        MM.infoTexts[fs] = true   -- Info Text font (MM:ApplyFonts)
+        Bar.cells[i] = fs
+        if i > 1 then
+            local line = f:CreateTexture(nil, "ARTWORK")
+            line:SetColorTexture(c.r, c.g, c.b, 0.25)
+            Bar.lines[i - 1] = line
+        end
+    end
+    f:SetScript("OnEvent", function() Bar.Fill() end)
+    Bar.frame = f
+end
+
+-- Right of the sundial when it is there (11-16: tried under it, its left end cut by the badge: ugly),
+-- the header row's inset otherwise; three equal cells
+function Bar.Place()
+    local f = Bar.frame
+    local style = HeaderStyle()
+    local side, shift = style.barSide or style.side or HEADER_SIDE, style.shift or 0
+    local bottom = style.barBottom or Bar.BOTTOM
+    local sun = Cluster.DielFrame
+    local left = (sun and sun:IsShown()) and Bar.SUN_ROOM or side
+    f:ClearAllPoints()
+    f:SetPoint("BOTTOMLEFT", MM.Frame, "BOTTOMLEFT", left + shift, bottom)
+    f:SetPoint("BOTTOMRIGHT", MM.Frame, "BOTTOMRIGHT", -side + shift, bottom)
+    Raise(f)
+    local cell = (MAP_SIZE - left - side) / #BAR_SIDES
+    for i, fs in ipairs(Bar.cells) do
+        fs:ClearAllPoints()
+        fs:SetPoint("CENTER", f, "LEFT", cell * (i - 0.5), 0)
+        fs:SetWidth(cell - 4)
+    end
+    for i, line in ipairs(Bar.lines) do
+        line:ClearAllPoints()
+        line:SetSize(1, HEADER_HEIGHT - 8)
+        line:SetPoint("CENTER", f, "LEFT", cell * i, 0)
+    end
+end
+
+-- The picks can change at any time (Settings > Minimap): events and the ticker follow them
+function Bar.Update()
+    local db = GetDb()
+    local picks = db and db.infoBar or {}
+    local shown, every = false, nil
+    for _, side in ipairs(BAR_SIDES) do
+        local source = squareStyle and MM.Frame and picks.enabled and Bar.sources[picks[side]]
+        Bar.picks[side] = source and picks[side] or nil
+        if source then
+            shown = true
+            if source.every and (not every or source.every < every) then every = source.every end
+        end
+    end
+    local changed = shown ~= Bar.shown
+    Bar.shown = shown
+    if Bar.ticker and (not every or every ~= Bar.every) then Bar.ticker:Cancel(); Bar.ticker = nil end
+    if shown then
+        if not Bar.frame then CreateBar() end
+        local f = Bar.frame
+        f:UnregisterAllEvents()
+        f:RegisterEvent("PLAYER_ENTERING_WORLD")
+        for _, side in ipairs(BAR_SIDES) do
+            for _, event in ipairs(Bar.sources[Bar.picks[side]] and Bar.sources[Bar.picks[side]].events or {}) do
+                f:RegisterEvent(event)
+            end
+        end
+        f:Show()
+        Bar.Place()
+        Bar.Fill()
+        if every and not Bar.ticker then
+            Bar.every = every
+            Bar.ticker = C_Timer.NewTicker(every, function() Bar.Fill(true) end)
+        end
+    elseif Bar.frame then
+        Bar.frame:UnregisterAllEvents()
+        Bar.frame:Hide()
+    end
+    -- the framerate and latency at the corner sit above the bar (the coordinates: PlaceCoords)
+    if changed and MM.SetupFps then MM.SetupFps() end
+end
+
 local function StyleCoords()
     local coords = Cluster.MinimapContainer and Cluster.MinimapContainer.PlayerCoords
     if not coords then return end
@@ -519,7 +700,7 @@ local function PlaceCoords()
     if not coords then return end
     Raise(coords)
     coords:ClearAllPoints()
-    coords:SetPoint("BOTTOM", MM.Frame, "BOTTOM", 0, COORDS.GAP)
+    coords:SetPoint("BOTTOM", MM.Frame, "BOTTOM", 0, COORDS.GAP + Bar.Lift())   -- (above the Info Bar, 11-16)
 end
 
 -- The world map's coordinates in the same style; one anchor per label so the bigger font is not cut
@@ -692,8 +873,9 @@ function MM:UpdateLayout()
     if MM.Border and MM.BorderAbove then ApplyBorder(MM.Border, MM.BorderAbove) end
     PlaceHeader()
     PlaceIndicators()
-    PlaceCoords()
     PlaceSun()
+    Bar.Update()    -- Info Bar (11-16): after the sundial it starts from, before the coordinates it lifts
+    PlaceCoords()
 end
 
 --------------------------------------------------
@@ -878,7 +1060,7 @@ function MM.SetupFps()
     -- the bottom line level with the coordinates' text (their box sits COORDS.GAP up, the text in its
     -- middle), a little in from the corner (11-11, Malkkav); each next line a text height above
     local coords = CoordsFrame()
-    local mid = COORDS.GAP + ((coords and coords:GetHeight()) or 12) / 2
+    local mid = COORDS.GAP + Bar.Lift() + ((coords and coords:GetHeight()) or 12) / 2   -- (above the Info Bar, 11-16)
     local _, size = stats.fps:GetFont()
     local step = math.floor((size or 12) + 2)
     for i, fs in ipairs(order) do

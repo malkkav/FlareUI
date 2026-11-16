@@ -2226,3 +2226,12 @@ L["Wowhead shows the ID in the spell's web address."] = "Wowhead affiche l'ID da
 L["Your Auras"] = "Vos auras"
 L["Your player and pet frames hide while you're in a party, and come back solo and in a raid. Your frame in the party has the same right-click menu, and your pet's happiness."] = "Vos cadres de joueur et de familier se masquent quand vous êtes en groupe, et reviennent en solo et en raid. Votre cadre dans le groupe a le même menu clic droit, et le bonheur de votre familier."
 L["Your player and pet frames hide while you're in a raid, and come back solo and in a party."] = "Vos cadres de joueur et de familier se masquent quand vous êtes en raid, et reviennent en solo et en groupe."
+
+-- (11-16) Minimap: the Info Bar
+L["Info Bar"] = "Barre d'infos"
+L["Durability"] = "Durabilité"
+L["A bar inside the square minimap, along its bottom edge, with up to three values of your choice."] = "Une barre dans la minicarte carrée, le long de son bord inférieur, avec jusqu'à trois valeurs de votre choix."
+L["Bags counts used and total slots. Durability is your most worn piece."] = "Sacs compte les emplacements utilisés sur le total. Durabilité est celle de votre pièce la plus usée."
+L["What the left side of the Info Bar shows."] = "Ce qu'affiche le côté gauche de la barre d'infos."
+L["What the middle of the Info Bar shows."] = "Ce qu'affiche le milieu de la barre d'infos."
+L["What the right side of the Info Bar shows."] = "Ce qu'affiche le côté droit de la barre d'infos."

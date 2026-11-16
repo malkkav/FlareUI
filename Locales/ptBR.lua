@@ -1850,3 +1850,12 @@ L["Each of Them"] = "Cada um"
 L["Any One of Them"] = "Qualquer um"
 L["Each of Them: an icon for every watched elixir you lack. Any One of Them: one icon while none of them is on you, gone as soon as one is. A click drinks one from your bags."] = "Cada um: um ícone para cada elixir vigiado que falta. Qualquer um: um único ícone enquanto nenhum estiver ativo, que some assim que um estiver. Um clique bebe um das bolsas."
 L["No elixir in your bags."] = "Nenhum elixir nas bolsas."
+
+-- (11-16) Minimap: the Info Bar
+L["Info Bar"] = "Barra de informações"
+L["Durability"] = "Durabilidade"
+L["A bar inside the square minimap, along its bottom edge, with up to three values of your choice."] = "Uma barra dentro do minimapa quadrado, ao longo da borda inferior, com até três valores à sua escolha."
+L["Bags counts used and total slots. Durability is your most worn piece."] = "Bolsas conta os espaços usados e o total. Durabilidade é a da sua peça mais desgastada."
+L["What the left side of the Info Bar shows."] = "O que o lado esquerdo da barra de informações mostra."
+L["What the middle of the Info Bar shows."] = "O que o centro da barra de informações mostra."
+L["What the right side of the Info Bar shows."] = "O que o lado direito da barra de informações mostra."
