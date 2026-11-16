@@ -4502,9 +4502,17 @@ function Chat.SampleLine(db, spec, size)
 end
 
 -- The lines, oldest first: chat type, sender, text; channels also their number, name and colour key
-function Chat.SampleLines()
+function Chat.SampleLines(showLinks)
     local itemName = C_Item.GetItemNameByID and C_Item.GetItemNameByID(2589) or L["Linen Cloth"]
     local linen = "|cffffffff|Hitem:2589::::::::1:::::::::|h[" .. itemName .. "]|h|r"
+    if showLinks then
+        local spellName = C_Spell.GetSpellName and C_Spell.GetSpellName(116) or L["Frostbolt"]
+        local frostbolt = "|cff71d5ff|Hspell:116|h[" .. spellName .. "]|h|r"
+        return {
+            { "SAY", "Healbot", L["%s for bandages."]:format(linen), ago = 20 },
+            { "SAY", "Leeroy", L["%s incoming!"]:format(frostbolt), ago = 0 },
+        }
+    end
     return {
         { "CHANNEL", "Thrallbro", L["WTB %s x20, paying well"]:format(linen), channel = 2, channelName = L["Trade - City"], info = "CHANNEL2", ago = 300 },
         { "SAY", "Mankrikfan", L["anyone know where Mankrik's wife is?"], ago = 240 },
@@ -4590,7 +4598,8 @@ function Chat.DrawSample(f)
         fs:SetWidth(look.TEXT_WIDTH)
     end
     local iconSize = Lines.IconSize(f.Lines[1])
-    local specs = Chat.SampleLines()
+    local preview = ns.SettingsPreview and ns.SettingsPreview.activeSpec
+    local specs = Chat.SampleLines(preview and preview.key == "ch.linkIcons")
     local used, prev = up, nil
     for i = #specs, 1, -1 do
         local fs, spec = f.Lines[i], specs[i]
@@ -4608,6 +4617,7 @@ function Chat.DrawSample(f)
         fs:SetShown(used <= look.TEXT_HEIGHT)
         prev = fs
     end
+    for i = #specs + 1, #f.Lines do f.Lines[i]:Hide() end
 
     local eb = f.Edit
     eb:ClearAllPoints()
