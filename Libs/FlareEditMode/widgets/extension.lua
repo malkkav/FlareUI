@@ -83,11 +83,13 @@ function extensionMixin:UpdateSettings()
 	local settings, num = internal:GetSystemSettings(self.systemID, self.subSystemID)
 	local isEmpty = num == 0
 	if not isEmpty then
+		local plan = internal.PlanSections(settings, self:MemoryKey())
 		for index, data in next, settings do
 			local pool = internal:GetPool(data.kind)
 			if pool then
 				local widget = pool:Acquire(self.Settings)
 				widget.layoutIndex = index
+				internal.MarkSection(widget, data, plan)
 				widget:Setup(data)
 
 				table.insert(self.Settings.widgets, widget)
@@ -96,6 +98,7 @@ function extensionMixin:UpdateSettings()
 	end
 
 	self.Settings.ignoreInLayout = isEmpty
+	self.Settings.ResetButton:SetText(internal.ResetSettingsText())
 	self.Settings.ResetButton.layoutIndex = num + 1
 	self.Settings.ResetButton.ignoreInLayout = isEmpty
 	self.Settings.ResetButton:SetEnabled(not isEmpty)
@@ -126,12 +129,22 @@ function extensionMixin:UpdateButtons(numSettings)
 	self.Buttons.ignoreInLayout = isEmpty
 end
 
+-- FlareUI (11-16): the box's memory of the last open section, per Blizzard system
+function extensionMixin:MemoryKey()
+	return 'system:' .. tostring(self.systemID) .. ':' .. tostring(self.subSystemID)
+end
+
+function extensionMixin:SectionClicked(widget, expanded)
+	internal.SectionClicked(self, widget, expanded, self:MemoryKey())
+end
+
 function extensionMixin:ResetSettings()
 	local settings, num = internal:GetSystemSettings(self.systemID, self.subSystemID)
 	if num > 0 then
 		for _, data in next, settings do
-			if data.set then
-				-- FlareUI: true = a reset, as the frame dialog's (the Fonts section resets every font then)
+			-- (FlareUI: section titles keep their open state)
+			if data.set and data.kind ~= lib.SettingType.Expander then
+				-- FlareUI: true = a reset, as the frame dialog's
 				data.set(lib:GetActiveLayoutName(), data.default, true)
 			end
 		end

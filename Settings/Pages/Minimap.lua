@@ -11,7 +11,8 @@ local function Refresh()
 end
 
 S:Module{ key = "mm", group = "map", order = 10, enabled = "minimap.enabled",
-    tabs = { { key = "settings" }, { key = "fonts" } },
+    -- (11-16, UX audit batch 4) Map (Style, Map Info, Map Tools), Addon Buttons, Fonts
+    tabs = { { key = "settings" }, { key = "buttons" }, { key = "fonts" } },
     -- the minimap's fade settings sit in Blizzard's minimap dialog
     editSystems = function()
         return Enum.EditModeSystem and { { system = Enum.EditModeSystem.Minimap, name = _G.MINIMAP_LABEL or "Minimap" } } or {}
@@ -53,20 +54,20 @@ S:Row{ key = "mm.microMenu", path = "minimap.microMenu",
     apply = function() if ns.Minimap and ns.Minimap.UpdateMapMouse then ns.Minimap.UpdateMapMouse() end end }
 -- FlareUI Minimap Button (11-14, Malkkav): FlareUI's own button, on the minimap or in the drawer
 -- (live; its right-click turns it off)
-S:Row{ key = "mm.flareButton", path = "minimap.flareButton",
+S:Row{ key = "mm.flareButton", path = "minimap.flareButton", tab = "buttons",
     apply = function() if ns.MinimapBag and ns.MinimapBag.FlareChanged then ns.MinimapBag.FlareChanged() end end }
 -- Group Finder Icon: a small icon in place of Blizzard's queue eye (live, MinimapEye.lua)
 S:Row{ key = "mm.finderEye", path = "minimap.finderEye",
     apply = function() if ns.MinimapEye and ns.MinimapEye.Update then ns.MinimapEye.Update() end end }
-S:Row{ key = "mm.bag", path = "minimap.buttonBag", reload = true }
--- under the drawer: it opens on the pointer instead of a click (live)
-S:Row{ key = "mm.bagHover", path = "minimap.bagHover", parent = "mm.bag",
+-- (the Addon Button Drawer switch is gone, 11-16 Malkkav: None in Addons in the Drawer turns it off)
+-- the drawer opens on the pointer instead of a click (live)
+S:Row{ key = "mm.bagHover", path = "minimap.bagHover", tab = "buttons",
     disabled = function() return not S:GetPath("minimap.buttonBag") end }
 -- which addons go in it (ticked) and which are left alone on the minimap (11-13); a reload puts a
--- button back where its addon keeps it
+-- button back where its addon keeps it. None is the drawer off (minimap.buttonBag, 11-16): ticking an
+-- addon turns it back on. The list itself is kept while it is off.
 local bagTokens = {}
-S:Row{ key = "mm.bagAddons", kind = "dropdown", path = "minimap.bagLeave", parent = "mm.bag", reload = true,
-    disabled = function() return not S:GetPath("minimap.buttonBag") end,
+S:Row{ key = "mm.bagAddons", kind = "dropdown", reload = true, tab = "buttons",
     choices = function()
         local list = ns.MinimapBag and ns.MinimapBag.AddonChoices and ns.MinimapBag.AddonChoices() or {}
         wipe(bagTokens)
@@ -77,12 +78,19 @@ S:Row{ key = "mm.bagAddons", kind = "dropdown", path = "minimap.bagLeave", paren
         return list
     end,
     toggles = { exclusive = { "none" }, tokens = bagTokens, empty = "none" },
-    get = function() return ns.MinimapBag and ns.MinimapBag.InDrawer and ns.MinimapBag.InDrawer() or "" end,
-    set = function(value) if ns.MinimapBag and ns.MinimapBag.SetInDrawer then ns.MinimapBag.SetInDrawer(value) end end }
+    get = function()
+        if not S:GetPath("minimap.buttonBag") then return "none" end
+        return ns.MinimapBag and ns.MinimapBag.InDrawer and ns.MinimapBag.InDrawer() or "none"
+    end,
+    set = function(value)
+        local on = value ~= nil and value ~= "" and value ~= "none"
+        S:SetPath("minimap.buttonBag", on)
+        if on and ns.MinimapBag and ns.MinimapBag.SetInDrawer then ns.MinimapBag.SetInDrawer(value) end
+    end }
 -- the drawer's buttons bigger, 100% (as before) to 150%; the drawer grows to fit (live, 11-14)
 local BAG_SIZES = {}
 for pct = 100, 150, 10 do BAG_SIZES[#BAG_SIZES + 1] = { pct, pct .. "%" } end
-S:Row{ key = "mm.bagButtonSize", kind = "range", path = "minimap.bagButtonSize", choices = BAG_SIZES, parent = "mm.bag",
+S:Row{ key = "mm.bagButtonSize", kind = "range", path = "minimap.bagButtonSize", choices = BAG_SIZES, tab = "buttons",
     disabled = function() return not S:GetPath("minimap.buttonBag") end,
     apply = function() if ns.MinimapBag and ns.MinimapBag.SizeChanged then ns.MinimapBag.SizeChanged() end end }
 

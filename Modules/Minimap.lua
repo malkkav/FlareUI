@@ -1527,7 +1527,7 @@ local function FlareButton()
             GameTooltip:Hide()
             db.flareButton = false
             if ns.MinimapBag and ns.MinimapBag.FlareChanged then ns.MinimapBag.FlareChanged() else MM.UpdateFlareButton() end
-            print("|cff00ccffFlareUI:|r " .. L["Minimap button hidden. Turn it back on in Settings > Minimap > FlareUI Minimap Button."])
+            print("|cff00ccffFlareUI:|r " .. L["Minimap button hidden. Turn it back on in Settings > Minimap > Addon Buttons."])
             if ns.SettingsPanel and ns.SettingsPanel.Refresh then pcall(ns.SettingsPanel.Refresh, ns.SettingsPanel) end
         elseif ns.SettingsPanel then
             ns.SettingsPanel:Toggle()

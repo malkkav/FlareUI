@@ -5,10 +5,11 @@ local aliases = { ['ch.channelNames'] = 'chat.channelNames', ['tt.anchor'] = 'to
 local function Get(path, default)
     local spec = P.activeSpec
     if spec and spec.value ~= nil then
-        if spec.key == 'tt.healthBar' and path == 'tooltips.hideHealthBar' then return not spec.value end
+        if spec.key == 'tt.healthBar' and path == 'tooltips.hideHealthBar' then return spec.value == 'off' end
+        if spec.key == 'dm.chatTab' and path == 'damagemeter.chatTab' then return spec.value ~= 'off' end
+        if spec.key == 'tt.healthBar' and path == 'tooltips.healthBarPlace' then return spec.value end
         if spec.key == 'tt.classNames' and path == 'tooltips.nameColor' then return spec.value and 'class' or 'none' end
         if spec.key == 'tt.borders' and path:match('^tooltips.borderBy') then return spec.value end
-        if spec.key == 'tt.showGuildRank' and path == 'tooltips.showGuild' then return true end
         if spec.key == 'qol.npLevelName' then
             if path == 'tweaks.nameplateHideLevel' then return true end
             if path == 'tweaks.nameplateHideNames' then return false end
@@ -283,7 +284,7 @@ function R.minimap(outer, spec)
     -- Icons live on the overlay frame, above every border/backdrop frame.
     c:Texture('dayNight', P.MEDIA .. 'Previews\\Sun.tga', 10, 237, 32, 32, true)
     if spec.key == 'mm.bagHover' and not card then c:Texture('drawerPointer',P.MEDIA..'Previews\\Cursor.tga',20,243,24,32,true) end
-    if Get('minimap.buttonBag') and not card and (spec.key == 'mm.bag' or (spec.key == 'mm.bagHover' and Get('minimap.bagHover'))) then
+    if Get('minimap.buttonBag') and not card and (spec.key == 'mm.bagAddons' or (spec.key == 'mm.bagHover' and Get('minimap.bagHover'))) then
         local drawer = c:Box('drawer', 46, 232, 111, 35, 'FlareUI Thin', 0.95)
         drawer:SetFrameLevel(c.overlay:GetFrameLevel() + 1)
         for i, name in ipairs({ 'INV_Misc_Bag_08', 'INV_Misc_Book_09', 'INV_Misc_Map_01' }) do
@@ -330,7 +331,7 @@ local function Auras(c, unit, spec)
     font.size = (font.size or 0) > 0 and font.size or autoSize
     countFont.size = (countFont.size or 0) > 0 and countFont.size or autoSize
     local timerSize = (fontConfig.size or 0) > 0 and fontConfig.size or math.max(8, autoSize - 1)
-    local colored = Get(prefix .. (unit and 'auraTimerColor' or 'timerColor'), false)
+    local colored = true   -- Timer Colour is always on (11-16)
     for i, name in ipairs(auraIcons) do
         local b = c:Object('aura' .. i, 'Frame')
         b:SetPoint('TOPLEFT', (c.width - (unit and 2 * 42 + 30 or 2 * 66 + 46)) / 2 + (i - 1) * (unit and 42 or 66), -16)
@@ -378,7 +379,7 @@ function R.chat(c, spec)
     local sampleName = name
     if Get('chat.classIcons') then sampleName = '|TInterface\\Icons\\ClassIcon_Mage:12|t ' .. sampleName end
     if Get('chat.raceIcons') then sampleName = '|TInterface\\CHARACTERFRAME\\TEMPORARYPORTRAIT-MALE-SCOURGE:12|t ' .. sampleName end
-    local colon = Get('chat.nameColon') and ': ' or ' '
+    local colon = ' '
     for i, line in ipairs({ '|cff40ff40' .. stamp .. channel .. sampleName .. colon .. L["Ready?"] .. '|r',
         '|cff40ff40' .. stamp .. channel .. '[Aeloria]: ' .. L["Ready!"] .. '|r',
         '|cffffd100' .. (Get('chat.formatNPC') and L["Innkeeper"] .. ': ' or L["Innkeeper says: "]) .. L["Welcome!"] .. '|r' }) do
@@ -449,7 +450,7 @@ function R.tooltip(c, spec)
             '+10 ' .. L["Stamina"], L["Requires Level 57"], '|cff1eff00' .. L["Increases spell damage by 40."] .. '|r' }
         if Get('tooltips.showItemID') then lines[#lines + 1] = 'ID: 14152' end
     else
-        if Get('tooltips.showGuild') then lines[#lines + 1] = '<Dawnwatch>' .. (Get('tooltips.showGuildRank') and ' · ' .. L["Member"] or '') end
+        if Get('tooltips.showGuild') then lines[#lines + 1] = '<Dawnwatch>' end
         lines[#lines + 1] = L["Level 60 Mage"]
         -- in the faction's colour, as the tooltip shows it
         if not Get('tooltips.hideFaction') then lines[#lines + 1] = '|cffff3333' .. L["Horde"] .. '|r' end
@@ -465,12 +466,15 @@ function R.tooltip(c, spec)
         content = c:Text('tooltipText', table.concat(lines, '\n'), 16, 42, c.width - 32, displayFont)
     end
     local bottom = 48 + math.max(content:GetStringHeight(), #lines * (displayFont.size + 1))
-    box:SetHeight(bottom + (not item and not Get('tooltips.hideHealthBar') and 22 or 4))
-    if not item and not Get('tooltips.hideHealthBar') then
-        -- the bar runs the tooltip's whole width, its empty part dark
-        c:Bar('tooltipHealthBack', 11, bottom, c.width - 22, 12, 1, { 0.12, 0.12, 0.12 })
-        c:Bar('tooltipHealth', 11, bottom, c.width - 22, 12, 0.8, ns.HEALTH_GREEN):SetFrameLevel(c.frame:GetFrameLevel() + 3)
-        c:Text('tooltipHealthText', '3,840 / 4,800', 16, bottom, c.width - 32, { size = 9 })
+    -- (11-16) Health Bar: FlareUI Forever in a thin FlareUI border, inside the tooltip's bottom or under it
+    local barOn = not item and not Get('tooltips.hideHealthBar')
+    local inside = barOn and Get('tooltips.healthBarPlace') == 'inside'
+    box:SetHeight(bottom + (inside and 22 or 4))
+    if barOn then
+        local y = inside and bottom or bottom + 12
+        c:Bar('tooltipHealthBack', 15, y, c.width - 30, 10, 1, { 0.04, 0.04, 0.04 })
+        c:Bar('tooltipHealth', 15, y, c.width - 30, 10, 0.8, ns.HEALTH_GREEN, 'FlareUI Forever'):SetFrameLevel(c.frame:GetFrameLevel() + 3)
+        c:Box('tooltipHealthEdge', 11, y - 4, c.width - 22, 18, 'FlareUI Thin', 0):SetFrameLevel(c.frame:GetFrameLevel() + 4)
     end
     -- Compare with Shift: the item and the one equipped, side by side, whichever way it is set
     if spec.key == 'tt.compareShift' then
@@ -496,7 +500,7 @@ end
 function R.tracker(c, spec)
     local colors = ns.ObjectiveTracker.SampleColors
     c:Box('trackerBox', 4, 12, c.width - 8, 184, Get('objectivetracker.borderTexture'), Get('objectivetracker.opacity', 0.5))
-    c:Text('trackerTitle', L["Quests"] .. (Get('objectivetracker.showCount') and ' (2)' or ''), 12, 22, c.width - 24, Font('objectivetracker.headerFont')):SetTextColor(unpack(colors.TITLE))
+    c:Text('trackerTitle', L["Quests"] .. ' (2)', 12, 22, c.width - 24, Font('objectivetracker.headerFont')):SetTextColor(unpack(colors.TITLE))
     if spec.key == 'qt.minimizeButton' then
         c.objects.trackerBox:SetHeight(35)
         c.objects.trackerTitle:SetText(Get('objectivetracker.minimizeStyle') == 'button' and '+' or L["Quests"])
@@ -511,13 +515,9 @@ function R.tracker(c, spec)
             c:Texture('questVoice' .. i, P.MEDIA .. 'Previews\\Voice.tga', indent, y + 2, 10, 10, true)
             indent = indent + 13
         end
-        if Get('objectivetracker.focusButtons') then
-            c:Texture('questFocus' .. i, P.MEDIA .. 'Previews\\Focus.tga', indent, y + 2, 10, 10, true)
-            indent = indent + 13
-        end
         local t = c:Text('quest' .. i, text, indent, y, c.width - indent - 12, Font('objectivetracker.titleFont'))
         t:SetTextColor(unpack(i == 1 and colors.TITLE_FOCUS or Get('objectivetracker.colorNames') and {1,0.5,0.25} or colors.TITLE))
-        t:SetWordWrap(Get('objectivetracker.wrapText', true)); t:SetMaxLines(2)
+        t:SetWordWrap(true); t:SetMaxLines(2)
         local h = math.max(18, t:GetStringHeight())
         if y + h + (Font('objectivetracker.objectiveFont').size or 12) > 190 then t:Hide(); break end
         c:Text('objective' .. i, i == 1 and L["Speak to the Marshal"] or '4/8 ' .. L["Kobolds defeated"], 20, y + h, c.width - 32, Font('objectivetracker.objectiveFont')):SetWordWrap(false)
@@ -537,7 +537,7 @@ function R.meter(c, spec)
         c:Bar('meterBar' .. i, 10, y, c.width - 20, 27, 1 - (i - 1) * 0.22, ({ { 0.41, 0.8, 0.94 }, { 0.77, 0.12, 0.23 }, { 1, 0.49, 0.04 } })[i])
         local mode = Get('damagemeter.threatValueDisplay', 'both')
         local value = threat and (mode == 'percent' and '75%' or mode == 'value' and '12.5k' or '12.5k (75%)') or '12.5k'
-        if threat and i == 1 and Get('damagemeter.threatTankLead') then value = value:gsub('75%%', '+25%%') end
+        if threat and i == 1 and Get('damagemeter.threatTankLead') then value = value .. ' (+25%)' end
         c:Text('meterName' .. i, name .. '  ' .. value, 15, y + 6, c.width - 30, Font('damagemeter.barFont')):SetWordWrap(false)
     end
     if threat and Get('damagemeter.threatPullLine') then
@@ -553,11 +553,10 @@ function R.meter(c, spec)
             flash:SetAlpha(0.55 * math.abs(math.sin(elapsed * math.pi / 0.8)))
         end)
     end
-    if threat and Get('damagemeter.threatTankLead') then c:Text('tankLead', L["Tank lead"] .. ': +25%', 12, 178, c.width - 24, { size = 10 }) end
     if spec.key == 'dm.chatTab' and Get('damagemeter.chatTab') then c:Text('meterChatTab', L["General"] .. '  |cffffd100' .. L["Damage"] .. '|r', 12, 7) end
     if Get('damagemeter.combatTimer') then c:Text('combatTime', '01:24', c.width - 52, 34, 46, { size = 10 }) end
-    if Get('damagemeter.readyCheckButton') then c:Texture('readyCheck', P.MEDIA .. 'Icons\\DMReadyCheck', 151, 8, 18, 18) end
-    if Get('damagemeter.countdownButton') then c:Texture('countdown', P.MEDIA .. 'Icons\\DMCountdown', 176, 8, 18, 18) end
+    c:Texture('readyCheck', P.MEDIA .. 'Icons\\DMReadyCheck', 151, 8, 18, 18)
+    c:Texture('countdown', P.MEDIA .. 'Icons\\DMCountdown', 176, 8, 18, 18)
     if spec.key == 'dm.minAlpha' then c.frame:SetAlpha(Get('damagemeter.minAlpha', 0)) end
     Note(c)
 end
@@ -585,10 +584,10 @@ function R.actions(c, spec)
             if b.cooldown then b.cooldown:Clear() end
         end
         local range = Get('actionbars.colors.enableRange')
-        -- the second on cooldown (dimmed with Dim on Cooldown), the third out of range, the fourth out of mana
+        -- the second on cooldown (dimmed with Status Colouring), the third out of range, the fourth out of mana
         local cd = box.buttons[2]
         if cd.cooldown then cd.cooldown:SetCooldown(GetTime() - 4, 12) end
-        if Get('actionbars.dimOnCooldown') then cd.icon:SetDesaturated(true); cd.icon:SetVertexColor(0.5, 0.5, 0.5) end
+        if range then cd.icon:SetDesaturated(true); cd.icon:SetVertexColor(0.5, 0.5, 0.5) end
         if range then
             box.buttons[3].icon:SetVertexColor(1, 0.25, 0.25)
             box.buttons[4].icon:SetVertexColor(0.35, 0.45, 1)
@@ -697,7 +696,7 @@ function R.bags(c)
         border:ClearAllPoints(); border:SetPoint('TOPLEFT', x - outset, -(y - outset)); border:SetSize(size + 2 * outset, size + 2 * outset)
         border:SetBackdrop({ edgeFile = LibStub('LibSharedMedia-3.0'):Fetch('border', thick and 'FlareUI Thick' or 'FlareUI Thin'), edgeSize = (thick and 16 or 8) * scale })
         border:SetFrameLevel(c.overlay:GetFrameLevel() + 1)
-        if Get('tweaks.bagRarityBorders') then border:SetBackdropBorderColor(i % 2 == 0 and 0.1 or 0.64, i % 2 == 0 and 1 or 0.21, i % 2 == 0 and 0.1 or 0.93, 1) end
+        if Get('tweaks.bagSkinSlots') ~= false then border:SetBackdropBorderColor(i % 2 == 0 and 0.1 or 0.64, i % 2 == 0 and 1 or 0.21, i % 2 == 0 and 0.1 or 0.93, 1) end
         if i == 4 and Get('tweaks.petFood') then
             c:Texture('petFood', P.MEDIA .. 'Previews\\Focus.tga', x, y, size * 0.45, size * 0.45, true)
         end

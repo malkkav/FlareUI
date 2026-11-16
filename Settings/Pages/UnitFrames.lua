@@ -81,9 +81,7 @@ S:Row{ key = "uf.simplePet", path = "unitframes.simplePet", reload = true }
 S:Row{ key = "uf.simpleTargetOf", path = "unitframes.simpleTargetOf", reload = true }
 S:Row{ key = "uf.auraShape", kind = "choice", path = "unitframes.auraStyle", choices = { "square", "round" }, apply = Refresh }
 S:Row{ key = "uf.auraSwipe", kind = "choice", path = "unitframes.auraSwipe", choices = { "icon", "border", "both", "none" }, apply = Refresh }
-S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }
-S:Row{ key = "uf.auraTimerColor", path = "unitframes.auraTimerColor", apply = Refresh,
-    disabled = function() return (S:GetPath("unitframes.auraTimer") or "none") == "none" end }
+S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "below", "bottom", "middle", "none" }, apply = Refresh }   -- (Off last, as Buffs & Debuffs' and every Swipe, 11-16)
 
 -- FONTS (11-13, back from Edit Mode): a section per frame, each text a heading; saved per frame
 -- style (UnitFrames.lua UF.FontDb).
@@ -98,6 +96,56 @@ local FONT_FRAMES = {
     { "playercast", "uf.fontsCast" }, { "party", "uf.fontsParty" }, { "raid", "uf.fontsRaid" }, { "boss", "uf.fontsBoss" },
 }
 local UFM = ns.UnitFrames
+-- (11-16, UX audit batch 4) one frame at a time: a Frame picker, then that frame's section only (it was
+-- ten folded sections). Search still finds every frame's fonts; a jump picks the frame first.
+local pickedFont = "player"
+local FONT_FIELDS = { "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }
+S:Row{ key = "uf.fontFrame", kind = "choice", tab = "fonts", section = "uf.fontsPick",
+    choices = function()
+        local list = {}
+        for _, frame in ipairs(FONT_FRAMES) do list[#list + 1] = { frame[1], (ns.Copy.sections or {})[frame[2]] or frame[1] } end
+        return list
+    end,
+    get = function() return pickedFont end,
+    set = function(value) pickedFont = value end,
+    resetValue = function() return pickedFont end }
+-- Copy to All Frames: the picked frame's fonts to every other frame, text by text (only the texts both
+-- have), in the frame style in use; asks first
+ns.Dialogs = ns.Dialogs or {}
+ns.Dialogs["FLAREUI_UF_FONT_COPYALL"] = {
+    text = L["Give every other unit frame the fonts of %s?"],
+    button1 = L["Copy"],
+    button2 = L["Cancel"],
+    OnAccept = function(data)
+        if not data then return end
+        local source = {}
+        for _, element in ipairs(UFM.FontElements(data.frame)) do source[element] = UFM.FontDb(data.frame, element) end
+        for _, frame in ipairs(FONT_FRAMES) do
+            if frame[1] ~= data.frame then
+                for _, element in ipairs(UFM.FontElements(frame[1])) do
+                    local from, to = source[element], UFM.FontDb(frame[1], element)
+                    if from and to then
+                        for _, field in ipairs(FONT_FIELDS) do
+                            if from[field] ~= nil then to[field] = from[field] end
+                        end
+                    end
+                end
+            end
+        end
+        FontsApply()
+        if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
+    end,
+    hideOnEscape = true,
+}
+S:Row{ key = "uf.fontCopyAll", kind = "button", tab = "fonts", section = "uf.fontsPick",
+    buttonText = L["Copy to All Frames"],
+    apply = function()
+        local name = pickedFont
+        for _, frame in ipairs(FONT_FRAMES) do
+            if frame[1] == pickedFont then name = (ns.Copy.sections or {})[frame[2]] or name end
+        end
+        ns.ShowDialog("FLAREUI_UF_FONT_COPYALL", name, { frame = pickedFont })
+    end }
 for _, frame in ipairs(FONT_FRAMES) do
     local key = frame[1]
     local fonts = {}
@@ -108,5 +156,7 @@ for _, frame in ipairs(FONT_FRAMES) do
             default = function() return ns.UF_FONT_DEFAULTS[element] end,
         }
     end
-    S:FontRows{ module = "uf", tab = "fonts", section = frame[2], prefix = key, apply = FontsApply, fonts = fonts }
+    S:FontRows{ module = "uf", tab = "fonts", section = frame[2], prefix = key, apply = FontsApply, fonts = fonts,
+        pageHidden = function() return pickedFont ~= key end,
+        beforeJump = function() pickedFont = key end }
 end

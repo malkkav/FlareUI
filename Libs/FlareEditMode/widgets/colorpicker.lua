@@ -39,6 +39,7 @@ end
 local colorPickerMixin = {}
 function colorPickerMixin:Setup(data)
 	self.setting = data
+	self.Label:SetWidth(lib.internal.LabelWidth(self))   -- FlareUI (dialog.lua LabelWidth)
 	self.Label:SetText(data.name)
 	self:Refresh()
 
@@ -118,7 +119,7 @@ lib.internal:CreatePool(lib.SettingType.ColorPicker, function()
 	-- recreate EditModeSetting* widgets
 	local Label = frame:CreateFontString(nil, 'ARTWORK', 'GameFontHighlightMedium')
 	Label:SetPoint('LEFT')
-	Label:SetSize(100, 32)
+	Label:SetSize(100, 32)   -- (FlareUI: set per box in Setup, dialog.lua LabelWidth)
 	Label:SetJustifyH('LEFT')
 	frame.Label = Label
 

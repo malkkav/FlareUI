@@ -43,7 +43,6 @@ local C = {
     SCROLLBAR_MIN = 16,     -- the shortest the thumb gets
     ITEM_SIZE = 22, ITEM_GAP = 3,
     BOX = 12,               -- the header's minimize / expand button
-    AUTO_SIZE = 14,         -- the header's Auto Quest Buttons
     LONE = 18,              -- the lone expand button of Minimize Style "Button Only"
     BOX_COLOR = { 0.50, 0.38, 0.21 },        -- a darker bronze than the frame border
     BOX_COLOR_LIT = { 0.65, 0.49, 0.27 },    -- the frame border's bronze while pointed at
@@ -965,10 +964,7 @@ local function OnLineClick(self, button)
             ToggleZoneQuests(self.zone)
             return
         end
-        -- Collapsible Zones off: a quest zone's heading is only a label (Professions and a
-        -- scenario's heading still fold)
-        local db = GetDb()
-        if self.questZone and db and db.collapsibleZones == false then return end
+        -- (a quest zone's heading always folds: Collapsible Zones is always on since 11-16, Malkkav)
         local z = Char().collapsedZones
         z[self.zone] = not z[self.zone] or nil
         OT:RequestRender()
@@ -1544,9 +1540,9 @@ function Build.CompleteTag(db) return db.showCompleteTag ~= false end
 
 function Build.DoneColor(db) return Build.CompleteTag(db) and C.TITLE_DONE or C.OBJECTIVE end
 
--- Room left of the titles: a quest icon or a focus dot, and a voice button
+-- Room left of the titles: a quest icon, and a voice button (the focus dots were removed 11-16, Malkkav)
 function Build.TitleRoom(db, showPlay)
-    local first = db.questIcons and C.POI_ROOM or (db.focusButtons and C.BUTTON_ROOM or 0)
+    local first = db.questIcons and C.POI_ROOM or 0
     return first + (showPlay and C.BUTTON_ROOM or 0)
 end
 
@@ -1588,7 +1584,8 @@ end
 -- The header's title (with the count), the zone switch and the minimize button, placed
 function Build.LayoutHeader(head, db, count, max, minimized)
     local title = TEXT.quests
-    if db.showCount then title = title .. "  " .. ColorCode(C.DIM) .. (max and (count .. "/" .. max) or count) .. "|r" end
+    -- the quest count, always (11-16; it was the Quest Count switch)
+    title = title .. "  " .. ColorCode(C.DIM) .. (max and (count .. "/" .. max) or count) .. "|r"
     head.title:SetText(title)
     head.zone.text:SetText(db.zoneOnly and L["Zone"] or L["All"])
     head.zone:SetSize(head.zone.text:GetStringWidth() + 6, C.HEADER - 6)
@@ -1620,7 +1617,6 @@ function OT:Render()
     ReadLog()   -- the one walk of the quest log this render reads
     local count, max = QuestCount()
     Build.LayoutHeader(header, db, count, max, minimized)
-    OT.LayoutAutoButtons(header, db)
 
     -- content
     local n, y = 0, 0
@@ -1632,7 +1628,7 @@ function OT:Render()
     timerBarsUsed = 0
     local fonts = state.fonts
     fonts.header, fonts.title, fonts.objective = db.headerFont, db.titleFont, db.objectiveFont
-    local wrap = db.wrapText ~= false
+    local wrap = true   -- Wrap Long Text, always on since 11-16
 
     -- Show Untracked Quests: lines added while this is on are dimmed
     local dimLines = false
@@ -1658,7 +1654,6 @@ function OT:Render()
         line.questID, line.zone, line.recipeID, line.recipeName, line.logIndex = nil, nil, nil, nil, nil
         line.group, line.sampleItem = nil, nil
         line.popupQuestID, line.popupType, line.timerBar, line.questZone = nil, nil, nil, nil
-        if line.focusButton then line.focusButton:Hide() end
         if line.playButton then line.playButton:Hide() end
         if line.questIcon then line.questIcon:Hide() end
         if line.foldIcon then line.foldIcon:Hide() end
@@ -1691,7 +1686,7 @@ function OT:Render()
 
     -- Collapsible Zones (on by default: a heading click folds it, as before 11-15) adds the fold arrow;
     -- off, quest zones stay open (what was folded is kept for when it is on again)
-    local foldIcons = db.collapsibleZones ~= false
+    local foldIcons = true   -- Collapsible Zones, always on since 11-16
     -- whether a heading is folded: as it was when the fight began while quest item buttons hold the
     -- list still (FreezeForCombat), else the character's choice. questZone: a quest zone's heading
     local function ZoneFolded(name, questZone)
@@ -1758,17 +1753,6 @@ function OT:Render()
             Build.PlaceQuestIcon(b, line, x, fonts.title, done, isFocused)
             b:SetAlpha(dimLines and C.UNTRACKED_ALPHA or 1)
             x = x - C.POI_ROOM
-        elseif db.focusButtons then
-            local b = LineButton(line, "focusButton")
-            b.questID = questID
-            b.icon:SetTexture(isFocused and "Interface\\Common\\Indicator-Yellow" or "Interface\\Common\\Indicator-Gray")
-            b:SetScript("OnClick", function(self)
-                if self.questID and not state.editMode then ToggleFocus(self.questID) end
-            end)
-            b:ClearAllPoints()
-            b:SetPoint("TOPRIGHT", line, "TOPLEFT", x, 0)
-            b:Show()
-            x = x - C.BUTTON_ROOM
         end
         if showPlay and (previewing or HasVoice(questID)) then
             local b = LineButton(line, "playButton")
@@ -1990,8 +1974,8 @@ function OT:Render()
         line.group = key
         if key then
             -- (its buttons stand outside the line)
-            local focusB, playB, iconB = line.focusButton, line.playButton, line.questIcon
-            if line:IsMouseOver() or (focusB and focusB:IsShown() and focusB:IsMouseOver())
+            local playB, iconB = line.playButton, line.questIcon
+            if line:IsMouseOver()
                     or (playB and playB:IsShown() and playB:IsMouseOver())
                     or (iconB and iconB:IsShown() and iconB:IsMouseOver()) then
                 underMouse = key
@@ -2054,7 +2038,8 @@ function OT:Render()
     local tracked = state.logTracked > 0 or inScenario or state.untrackedShown
         or (db.showRecipes and C_TradeSkillUI and C_TradeSkillUI.GetRecipesTracked
             and #C_TradeSkillUI.GetRecipesTracked(false) > 0)
-    local hide = not tracked and db.hideEmpty and not state.editMode and not state.preview
+    -- nothing tracked: no tracker (always since 11-16; it was the Hide When Empty switch)
+    local hide = not tracked and not state.editMode and not state.preview
     holder:SetShown(not lone and not hide)
     if miniButton then
         miniButton:ClearAllPoints()
@@ -2620,73 +2605,8 @@ local function CreateBoxButton(parent, name, size)
     return b
 end
 
--- Auto Quest Buttons (11-14): a "!" and a "?" left of the header's All / Zone switch that turn
--- Quality of Life's Auto Accept Quests and Auto Turn-In Quests on and off. The same saved switches
--- (tweaks.*), read live by Tweaks.lua on every quest window, so nothing else needs telling; an open
--- settings panel is redrawn. Lit when on, grey and dim when off.
-function OT.TweaksDb() return ns.db and ns.db.profile and ns.db.profile.tweaks end
+-- (Auto Quest Buttons, the header's "!" and "?", were removed 11-16, Malkkav)
 
-function OT.PaintAutoButton(b)
-    local tweaks = OT.TweaksDb()
-    local on = tweaks and tweaks[b.key] and true or false
-    b.icon:SetDesaturated(not on)
-    b.icon:SetAlpha(on and 1 or (b:IsMouseOver() and 0.75 or 0.45))
-end
-
-function OT.CreateAutoButton(parent, key, texture, title)
-    local b = CreateFrame("Button", nil, parent)
-    b:SetSize(C.AUTO_SIZE, C.AUTO_SIZE)
-    b.key, b.title = key, title
-    b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetAllPoints()
-    b.icon:SetTexture(texture)
-    b:SetScript("OnClick", function(self)
-        local tweaks = OT.TweaksDb()
-        if not tweaks then return end
-        tweaks[self.key] = not tweaks[self.key]
-        PlaySound(tweaks[self.key] and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-        OT.PaintAutoButton(self)
-        if ns.SettingsPanel and ns.SettingsPanel.Refresh then pcall(ns.SettingsPanel.Refresh, ns.SettingsPanel) end
-        if GameTooltip:IsOwned(self) then self:GetScript("OnEnter")(self) end
-    end)
-    b:SetScript("OnEnter", function(self)
-        OT.PaintAutoButton(self)
-        local tweaks = OT.TweaksDb()
-        local on = tweaks and tweaks[self.key]
-        ns.OwnGameTooltip(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine(self.title)
-        if on then
-            GameTooltip:AddLine(L["On"], GREEN_FONT_COLOR.r, GREEN_FONT_COLOR.g, GREEN_FONT_COLOR.b)
-        else
-            GameTooltip:AddLine(L["Off"], 0.5, 0.5, 0.5)
-        end
-        GameTooltip:Show()
-    end)
-    b:SetScript("OnLeave", function(self)
-        GameTooltip:Hide()
-        OT.PaintAutoButton(self)
-    end)
-    b:Hide()
-    return b
-end
-
--- Shown with the switch on and the Quality of Life module running; not in the Gamepad UI, where
--- the auto quests stand aside (Blizzard's own quest windows there). After Build.LayoutHeader.
-function OT.LayoutAutoButtons(head, db)
-    local accept, turnIn = head.autoAccept, head.autoTurnIn
-    if not (accept and turnIn) then return end
-    local tweaksModule = ns.modules and ns.modules["Tweaks"]
-    local show = db.autoButtons and tweaksModule and tweaksModule.initialized and not ns.IsGamepadUI() or false
-    accept:SetShown(show)
-    turnIn:SetShown(show)
-    if not show then return end
-    turnIn:ClearAllPoints()
-    turnIn:SetPoint("RIGHT", head.zone, "LEFT", -2, 0)
-    accept:ClearAllPoints()
-    accept:SetPoint("RIGHT", turnIn, "LEFT", -1, 0)
-    OT.PaintAutoButton(accept)
-    OT.PaintAutoButton(turnIn)
-end
 
 -- The header band (title, zone switch, minimize button) and the divider under it, on a window: the
 -- tracker's, or the settings preview's sample. No clicks or tooltips here.
@@ -2739,11 +2659,12 @@ function OT.ScrollBy(delta)
 end
 
 -- Gamepad scroll: in the Gamepad UI, while the cursor (a Steam Deck trackpad, or the pad's
--- cursor) rests on the list, D-pad Up / Down scroll it, and held they keep going. The right
--- stick's up / down do the same when the game sends them as buttons. A listener of FlareUI's own
+-- cursor) rests on the list, the right stick's up / down scroll it (when the game sends them as
+-- buttons), and held they keep going. (11-16, Blackthorne's report: D-pad Up / Down scrolled it too,
+-- and a cursor left over the list took them from the gamepad action bar: the D-pad stays the bar's) A listener of FlareUI's own
 -- takes those buttons only then, passes every other button on, and goes off when the cursor
 -- leaves or hides, the list fits, Edit Mode opens or a fight starts (never on in a fight).
-local PAD_SCROLL = { PADDUP = 1, PADRSTICKUP = 1, PADDDOWN = -1, PADRSTICKDOWN = -1 }
+local PAD_SCROLL = { PADRSTICKUP = 1, PADRSTICKDOWN = -1 }
 local PAD_REPEAT_DELAY, PAD_REPEAT_RATE = 0.35, 0.08
 
 function OT.SetPadScroll(on)
@@ -2824,8 +2745,6 @@ local function CreateFrames()
         GameTooltip:Hide()
     end)
 
-    header.autoAccept = OT.CreateAutoButton(header, "autoAcceptQuests", "Interface/GossipFrame/AvailableQuestIcon", L["Auto Accept Quests"])
-    header.autoTurnIn = OT.CreateAutoButton(header, "autoTurnInQuests", "Interface/GossipFrame/ActiveQuestIcon", L["Auto Turn-In Quests"])
 
     scroll = CreateFrame("ScrollFrame", nil, holder)
     scroll:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -C.HEADER - C.LIST_TOP)
@@ -3048,7 +2967,6 @@ do
     -- button on every quest)
     local function TitleButtons(line, db, focused, done)
         local x = -3
-        if line.focusButton then line.focusButton:Hide() end
         if line.playButton then line.playButton:Hide() end
         if line.questIcon then line.questIcon:Hide() end
         if db.questIcons then
@@ -3057,15 +2975,6 @@ do
             b:EnableMouse(false)
             Build.PlaceQuestIcon(b, line, x, db.titleFont, done, focused)
             x = x - C.POI_ROOM
-        elseif db.focusButtons then
-            local b = line.focusButton or Build.LineButton(line)
-            line.focusButton = b
-            b:EnableMouse(false)
-            b.icon:SetTexture(focused and "Interface\\Common\\Indicator-Yellow" or "Interface\\Common\\Indicator-Gray")
-            b:ClearAllPoints()
-            b:SetPoint("TOPRIGHT", line, "TOPLEFT", x, 0)
-            b:Show()
-            x = x - C.BUTTON_ROOM
         end
         if db.playButtons then
             local b = line.playButton or Build.LineButton(line)
@@ -3081,12 +2990,12 @@ do
     local function DrawList(f, db, width)
         local n, y, lastBottom, bars = 0, 0, 0, 0
         local inner = width - C.PAD * 2
-        local wrap = db.wrapText ~= false
+        local wrap = true   -- Wrap Long Text, always on since 11-16
         local fonts = { header = db.headerFont, title = db.titleFont, objective = db.objectiveFont }
         local questGap = db.questGap or C.QUEST_GAP
         local titleRoom = Build.TitleRoom(db, db.playButtons)
         local objectiveIndent = C.INDENT + titleRoom
-        local foldIcons = db.collapsibleZones ~= false
+        local foldIcons = true   -- Collapsible Zones, always on since 11-16
 
         local function AddLine(text, kind, color, indent, rightRoom)
             n = n + 1
@@ -3099,7 +3008,6 @@ do
             local h = Build.LineLook(line, text, kind, fonts[kind], color, inner - (indent or 0) - (rightRoom or 0), wrap)
             line:ClearAllPoints()
             line:SetPoint("TOPLEFT", f.Content, "TOPLEFT", C.PAD + (indent or 0), y)
-            if line.focusButton then line.focusButton:Hide() end
             if line.playButton then line.playButton:Hide() end
             if line.questIcon then line.questIcon:Hide() end
             if line.foldIcon then line.foldIcon:Hide() end

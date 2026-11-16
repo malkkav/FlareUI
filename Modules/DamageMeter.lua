@@ -352,8 +352,8 @@ end
 --------------------------------------------------
 local GROUP_BUTTONS = {
     order = { "countdown", "ready" },   -- right to left, after the segments icon
-    ready = { option = "readyCheckButton", icon = ICON_READY },
-    countdown = { option = "countdownButton", icon = ICON_COUNTDOWN, seconds = 10 },
+    ready = { icon = ICON_READY },
+    countdown = { icon = ICON_COUNTDOWN, seconds = 10 },
     buttons = {},   -- window -> { key = button }
 }
 
@@ -372,7 +372,8 @@ function GROUP_BUTTONS.Shown(db)
     local canReady = GROUP_BUTTONS.CanReadyCheck()
     local applies = { countdown = IsInGroup() and (not IsInRaid() or canReady), ready = canReady }
     for _, key in ipairs(GROUP_BUTTONS.order) do
-        if db and db[GROUP_BUTTONS[key].option] ~= false and applies[key] then list[#list + 1] = key end
+        -- (always since 11-16, Malkkav; they were the Ready Check Button and Countdown Button switches)
+        if db and applies[key] then list[#list + 1] = key end
     end
     return list
 end
@@ -989,12 +990,39 @@ local function LayoutTabs(window, view)
         fs:SetShadowColor(dd.TypeName:GetShadowColor())
     end
     Style(view.tab.Text)
+    -- (11-16, Malkkav: the title moved a few pixels as its tab was picked) the window's own title is drawn
+    -- by FlareUI too, as every other tab: Blizzard's title text goes invisible and its button stays the
+    -- click area (and the type menu). The same kind of text in every state, so nothing shifts.
+    -- (placed exactly as the other tabs and Threat: a box from 4 px before the text, the text 4 px in;
+    -- a text placed straight on the header landed a pixel or two off on the first tab, 11-16)
+    -- (the settings preview's sample window is a stand-in table, not a frame, with a plain title text:
+    -- it keeps drawing that title itself)
+    local realWindow = type(window.GetObjectType) == "function" and type(dd.GetFrameLevel) == "function"
+    local own = realWindow and view.ownTitle or dd.TypeName
+    if realWindow and not view.ownTitle then
+        local host = CreateFrame("Frame", nil, window)
+        host:SetFrameLevel(dd:GetFrameLevel() + 3)
+        host:EnableMouse(false)
+        view.ownHost = host
+        own = host:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        own:SetPoint("LEFT", host, "LEFT", 4, 0)
+        own:SetJustifyH("LEFT")
+        own:SetWordWrap(false)
+        view.ownTitle = own
+        -- the text follows at once (the relayout is CreateThreatView's own SetText hook)
+        hooksecurefunc(dd.TypeName, "SetText", function(fs) own:SetText(fs:GetText()) end)
+    end
+    if own ~= dd.TypeName then
+        Style(own)
+        own:SetText(dd.TypeName:GetText())
+        dd.TypeName:SetAlpha(0)
+    end
     -- left to right: the meter windows' tabs (this window's own title where its tab belongs, the
     -- others as FlareUI tabs, section 23b), then Threat, always last
     local row = Dock.Row(window)
     local x, ownX = TITLE_LEFT, TITLE_LEFT   -- where the next tab's text starts
     -- a width never read (secret since the start) leaves the tabs where they are
-    local titleWidth, threatWidth = TextWidth(dd.TypeName), TextWidth(view.tab.Text)
+    local titleWidth, threatWidth = TextWidth(own), TextWidth(view.tab.Text)
     if not (titleWidth and threatWidth) then return end
     if row then
         for _, other in ipairs(row) do
@@ -1020,6 +1048,11 @@ local function LayoutTabs(window, view)
     end
     Dock.HideLabels(window, row)
     Dock.PlaceTitle(window, dd, ref, ownX)
+    if own ~= dd.TypeName and view.ownHost then
+        view.ownHost:ClearAllPoints()
+        view.ownHost:SetPoint("LEFT", ref, "TOPLEFT", ownX - 4, ROW_CENTER_Y)
+        view.ownHost:SetSize(titleWidth + 8, HEADER_HEIGHT)
+    end
     view.tab:ClearAllPoints()
     view.tab:SetPoint("LEFT", ref, "TOPLEFT", x - 4, ROW_CENTER_Y)
     view.tab:SetSize(threatWidth + 8, HEADER_HEIGHT)
@@ -1029,12 +1062,13 @@ local function LayoutTabs(window, view)
         local db = GetDb()
         local noTab = (db and db.threatWindow) or (window ~= _G.DamageMeterSessionWindow1 and not row)
         view.tab:SetShown(not noTab)
-        view.hit:SetShown(not noTab)
+        -- a docked window that is down keeps it: it is the left-click of its tab (Dock.LiftTitle)
+        view.hit:SetShown(not noTab or window.FlareUI_DockUp == false)
     end
     -- docked, the threat list lives on the first window: every row colours from it
     local threatUp = view.showing
     if row then threatUp = Dock.ThreatShown() end
-    ColorTab(dd.TypeName, not threatUp)
+    ColorTab(own, not threatUp)
     ColorTab(view.tab.Text, threatUp)
 end
 
@@ -1108,20 +1142,24 @@ local function FillRow(row, data, top, window, db, index, height, spacing)
         row.ftRank, row.ftName = data.rank, data.name
         row:GetName():SetText(("%d. %s"):format(data.rank, data.name))
     end
-    -- Tank's Lead: the tank's row shows how far it is ahead of second place, as "+25%"
-    local percent = data.lead or math.floor(data.scaled + 0.5)
+    -- Tank's Lead: after the tank's own numbers, how far it is ahead of second place, as "(+25%)"
+    -- (11-16, Malkkav: beside the percent, not in its place; on by default since)
+    local percent = math.floor(data.scaled + 0.5)
     local display = db.threatValueDisplay or "percent"
-    if row.ftValue ~= data.value or row.ftPercent ~= percent or row.ftLead ~= (data.lead ~= nil) or row.ftDisplay ~= display then
-        row.ftValue, row.ftPercent, row.ftLead, row.ftDisplay = data.value, percent, data.lead ~= nil, display
-        local pct = (data.lead and "+%d%%" or "%d%%"):format(percent)
+    if row.ftValue ~= data.value or row.ftPercent ~= percent or row.ftLead ~= data.lead or row.ftDisplay ~= display then
+        row.ftValue, row.ftPercent, row.ftLead, row.ftDisplay = data.value, percent, data.lead, display
+        local pct = ("%d%%"):format(percent)
         local amount = ns.ShortNumber(data.value / 100)
+        local text
         if display == "percent" then
-            row:GetValue():SetText(pct)
+            text = pct
         elseif display == "value" then
-            row:GetValue():SetText(amount)
+            text = amount
         else
-            row:GetValue():SetText(amount .. "  " .. pct)
+            text = amount .. "  " .. pct
         end
+        if data.lead then text = text .. (" (+%d%%)"):format(data.lead) end
+        row:GetValue():SetText(text)
     end
     -- Pull Warning: your bar flashes as you near the point where you pull the mob
     if data.warn then
@@ -1226,6 +1264,13 @@ local function UpdateThreatView(window, view)
         pull = me.value * 100 / me.scaled
         if db.threatPullFlash and me.scaled >= PULL_WARN then me.warn = true end
     end
+    -- (11-16, Malkkav) Pull Warning Sound: once as the warning starts, in a fight only (not for the
+    -- settings' sample rows); never while you hold the mob, as the warning itself
+    local warning = me and me.warn and UnitAffectingCombat("player") or false
+    if warning and not DamageMeter.pullWarned and db.threatPullSound then
+        PlaySound(SOUNDKIT.RAID_WARNING or 8959, "Master")
+    end
+    DamageMeter.pullWarned = warning and true or nil
     local top = list[1] and list[1].value or 0
     local showPull = db.threatPullLine and pull and true or false
     if showPull and pull > top then top = pull end
@@ -1485,6 +1530,19 @@ local function CreateThreatView(window)
     hit:SetPassThroughButtons("RightButton")
     hit:SetScript("OnClick", function()
         if Dock.Row(window) then Dock.Select(window) else PickView(window, false) end
+    end)
+    -- (11-16) a docked window that isn't up lends its title to the tab in the shown window's row
+    -- (Dock.LiftTitle): pointing at it lights that tab, as pointing at the tab itself did
+    hit:SetScript("OnEnter", function()
+        local label = Dock.ShownLabel(window)
+        if label then
+            local r, g, b = LightenColor(TAB_INACTIVE.r, TAB_INACTIVE.g, TAB_INACTIVE.b, 0.2)
+            label.Text:SetTextColor(r, g, b)
+        end
+    end)
+    hit:SetScript("OnLeave", function()
+        local label = Dock.ShownLabel(window)
+        if label then ColorTab(label.Text, false) end
     end)
     view.hit = hit
 
@@ -2223,6 +2281,14 @@ function DamageMeter:CheckInstanceReset(isReload)
     if C_DamageMeter and C_DamageMeter.ResetAllCombatSessions then pcall(C_DamageMeter.ResetAllCombatSessions) end
 end
 
+-- (11-16, Malkkav) Reset on Leaving a Group: leaving a party or raid clears the meter, as entering a new
+-- dungeon does (Reset on Entering a Dungeon)
+function DamageMeter:GROUP_LEFT()
+    local db = GetDb()
+    if not (db and db.enabled and db.resetOnGroupLeave) then return end
+    if C_DamageMeter and C_DamageMeter.ResetAllCombatSessions then pcall(C_DamageMeter.ResetAllCombatSessions) end
+end
+
 --------------------------------------------------
 -- 22. VISIBILITY AND MOUSEOVER (the meter's Edit Mode Fading, Modules/Visibility.lua)
 -- Applied after each of Blizzard's checks, overruling the Edit Mode dropdown (preset layouts cannot
@@ -2401,16 +2467,9 @@ function MeterAllowed()
     return true
 end
 
--- Open the Meter Tab is a single choice. A test build saved it as ticked toggles: read back once as
--- the nearest choice. (The old Visibility's test-build toggles are read by Visibility.lua's migration.)
-local SINGLE_TAB_OPEN = { click = true, combat = true, group = true, login = true }
-local function NormalizeChoices(db)
-    local open = db.chatTabOpen
-    if open ~= nil and not SINGLE_TAB_OPEN[open] then
-        local set = ns.Conditions.Set(open)
-        db.chatTabOpen = (set.combat and "combat") or (set.group and "group") or (set.login and "login") or "click"
-    end
-end
+-- (11-16, Malkkav) the Meter Tab's opening conditions are ticked toggles again (Meter Tab in the Chat):
+-- In Combat, In a Group and At Login together, or When Clicked alone. Nothing to tidy any more.
+local function NormalizeChoices() end
 
 -- Fade Delay (11-11, as the chat's): the meter stays up this many seconds after its Visibility stops
 -- showing it, then fades. Back to showing in the meantime: the wait is dropped.
@@ -2716,6 +2775,51 @@ function Dock.Raise(window, up)
     window.FlareUI_DockUp = up and true or false
 end
 
+-- (11-16, Malkkav: right-clicking a tab that wasn't up only offered Move to Own Window) A docked window
+-- that isn't up keeps its own title (Blizzard's type button, placed where its tab is, Dock.PlaceTitle)
+-- and its left-click area (view.hit) above the tab in the shown window's row: invisible (the window is
+-- at alpha 0) but there for the mouse. Left-click picks the tab as before; right-click reaches
+-- Blizzard's own type menu from Blizzard's own button, so nothing of the meter is opened or set by
+-- FlareUI (taint). Only the strata and frame levels change, and they go back when it is up again.
+function Dock.LiftTitle(window, lift, top)
+    local dd = GetWindowTypeDropdown(window)
+    if not dd or dd:IsForbidden() then return end
+    local view = views[window]
+    local hit = view and view.hit
+    if lift then
+        local meter = _G.DamageMeter
+        local strata = meter and meter:GetFrameStrata()
+        if not (canaccessvalue(strata) and strata) then strata = "MEDIUM" end
+        dd.FlareUI_LevelWas = dd.FlareUI_LevelWas or dd:GetFrameLevel()
+        local topDD = top and GetWindowTypeDropdown(top)
+        local level = math_max(dd.FlareUI_LevelWas, topDD and topDD:GetFrameLevel() or 0) + 10
+        dd:SetFrameStrata(strata)
+        dd:SetFrameLevel(level)
+        if hit then
+            hit:SetFrameStrata(strata)
+            hit:SetFrameLevel(level + 2)
+        end
+    elseif dd.FlareUI_LevelWas then
+        local strata = window:GetFrameStrata()
+        dd:SetFrameStrata(strata)
+        dd:SetFrameLevel(dd.FlareUI_LevelWas)
+        if hit then
+            hit:SetFrameStrata(strata)
+            hit:SetFrameLevel(dd.FlareUI_LevelWas + 2)
+        end
+        dd.FlareUI_LevelWas = nil
+    end
+end
+
+-- the tab for this window in the row of the window that is up (nil while it is up itself)
+function Dock.ShownLabel(window)
+    local list = Dock.List()
+    if not (list and tContains(list, window)) then return nil end
+    local top = Dock.Top(list)
+    if top == window then return nil end
+    return top.FlareUI_DockLabels and top.FlareUI_DockLabels[window]
+end
+
 -- into the first window's place (out of a fight, from Refresh)
 function Dock.Attach(window, primary)
     window.FlareUI_Docked = true
@@ -2737,6 +2841,7 @@ function Dock.Release(window)
     if resize then resize:Show() end
     if window.FlareUI_DockUp == false then Dock.Raise(window, true) end
     window.FlareUI_DockUp = nil
+    Dock.LiftTitle(window, false)
 end
 
 -- the shown tab up, the rest down, and every tab row laid out again
@@ -2759,6 +2864,8 @@ function Dock.Stack()
         end
         local top = Dock.Top(list)
         for _, w in ipairs(list) do SafeCall(Dock.Raise, w, w == top) end
+        -- the windows down lend their titles to their tabs (Dock.LiftTitle)
+        for _, w in ipairs(list) do SafeCall(Dock.LiftTitle, w, w ~= top, top) end
     elseif primary and primary.FlareUI_DockUp ~= nil then
         if primary.FlareUI_DockUp == false then Dock.Raise(primary, true) end
         primary.FlareUI_DockUp = nil
@@ -3061,6 +3168,15 @@ function Dock.AddEntries(root, window, divider)
         if free then Dock.MoveIn(window) else Dock.MoveOut(window) end
     end)
     Dock.FightTip(button, label)
+    -- (11-16, Malkkav) Close Tab / Close Window: Blizzard's Hide Window (in the window's gear menu,
+    -- out of reach on a tab). Blizzard's call only hides the window and saves that it is hidden; the
+    -- next window opened in its place starts as a tab again (Dock.Hook).
+    local meter = _G.DamageMeter
+    if meter and type(meter.HideSessionWindow) == "function" then
+        root:CreateButton(free and L["Close Window"] or L["Close Tab"], function()
+            SafeCall(meter.HideSessionWindow, meter, window)
+        end)
+    end
 end
 
 -- FlareUI's own small menu (another window's tab)
@@ -3089,6 +3205,235 @@ function Dock.OpenThreatMenu(owner, out)
         local button = root:CreateButton(label, function() DamageMeter.SetThreatWindow(out) end)
         Dock.FightTip(button, label)
     end)
+end
+
+-- Report to Chat (Limoï's idea): the window's top names sent to a chat channel from the menu click
+-- itself (a hardware event, no timers). Out of a fight only: in a fight the meter's values are secret
+-- and the chat may be locked down. A row whose name or number can't be read is left out.
+-- Table fields, not main-chunk locals (near Lua's 200 limit).
+DamageMeter.Report = {
+    LINES = { 3, 5, 10 },
+    MAX_LEN = 254,
+    -- action types: a count, no per-second figure (as Blizzard's own list)
+    NO_RATE = { Interrupts = true, Dispels = true, Deaths = true },
+}
+
+function DamageMeter.Report.Lines()
+    local db = GetDb()
+    local n = db and tonumber(db.reportLines)
+    if n == 3 or n == 5 or n == 10 then return n end
+    return 5
+end
+
+function DamageMeter.Report.Blocked()
+    if InFight() then return true end
+    local lockdown = C_ChatInfo and C_ChatInfo.InChatMessagingLockdown
+    if lockdown then
+        local ok, locked = pcall(lockdown)
+        if ok and (not canaccessvalue(locked) or locked) then return true end
+    end
+    return false
+end
+
+function DamageMeter.Report.Text(value)
+    if canaccessvalue(value) and type(value) == "string" and value ~= "" then return value end
+end
+
+function DamageMeter.Report.TypeKey(meterType)
+    if not (Enum and Enum.DamageMeterType) then return nil end
+    for key, value in pairs(Enum.DamageMeterType) do
+        if value == meterType then return key end
+    end
+end
+
+-- what the window's title shows (Damage Done, Healing Done...)
+function DamageMeter.Report.TypeName(window)
+    local fs = window.GetDamageMeterTypeName and window:GetDamageMeterTypeName()
+    local text = fs and fs.GetText and DamageMeter.Report.Text(fs:GetText())
+    if text then return text end
+    local key = DamageMeter.Report.TypeKey(window.GetDamageMeterType and window:GetDamageMeterType())
+    local names = {
+        DamageDone = _G.DAMAGE_METER_TYPE_DAMAGE_DONE, Dps = _G.DAMAGE_METER_TYPE_DPS,
+        HealingDone = _G.DAMAGE_METER_TYPE_HEALING_DONE, Hps = _G.DAMAGE_METER_TYPE_HPS,
+        Absorbs = _G.DAMAGE_METER_TYPE_ABSORBS, Interrupts = _G.DAMAGE_METER_TYPE_INTERRUPTS,
+        Dispels = _G.DAMAGE_METER_TYPE_DISPELS, DamageTaken = _G.DAMAGE_METER_TYPE_DAMAGE_TAKEN,
+        AvoidableDamageTaken = _G.DAMAGE_METER_TYPE_AVOIDABLE_DAMAGE_TAKEN,
+        Deaths = _G.DAMAGE_METER_TYPE_DEATHS, EnemyDamageTaken = _G.DAMAGE_METER_TYPE_ENEMY_DAMAGE_TAKEN,
+    }
+    return key and names[key] or L["Damage Meter"]
+end
+
+-- Current / Overall, or the past fight's name (as Blizzard's session list names it)
+function DamageMeter.Report.SessionName(window)
+    local id = window.GetSessionID and window:GetSessionID()
+    if id ~= nil then
+        local ok, list = pcall(C_DamageMeter.GetAvailableCombatSessions)
+        if ok and type(list) == "table" then
+            for _, s in ipairs(list) do
+                if s.sessionID == id then
+                    local name = DamageMeter.Report.Text(s.name)
+                    if name then return name end
+                end
+            end
+        end
+        local fmt = _G.DAMAGE_METER_COMBAT_NUMBER
+        return fmt and fmt:format(id) or tostring(id)
+    end
+    local kind = window.GetSessionType and window:GetSessionType()
+    local types = Enum and Enum.DamageMeterSessionType
+    if types and kind == types.Overall then return _G.DAMAGE_METER_OVERALL_SESSION or L["Overall"] end
+    return _G.DAMAGE_METER_CURRENT_SESSION or L["Current"]
+end
+
+function DamageMeter.Report.Session(window)
+    if not C_DamageMeter then return nil end
+    local meterType = window.GetDamageMeterType and window:GetDamageMeterType()
+    if meterType == nil then return nil end
+    local id = window.GetSessionID and window:GetSessionID()
+    local ok, session
+    if id ~= nil then
+        ok, session = pcall(C_DamageMeter.GetCombatSessionFromID, id, meterType)
+    else
+        local kind = window.GetSessionType and window:GetSessionType()
+        if kind == nil then return nil end
+        ok, session = pcall(C_DamageMeter.GetCombatSessionFromType, kind, meterType)
+    end
+    if ok and type(session) == "table" then return session end
+end
+
+function DamageMeter.Report.Duration(window, session)
+    local seconds = Dock.Num(session.durationSeconds)
+    if not seconds then
+        local kind = window.GetSessionType and window:GetSessionType()
+        if kind ~= nil and C_DamageMeter.GetSessionDurationSeconds then
+            local ok, s = pcall(C_DamageMeter.GetSessionDurationSeconds, kind)
+            if ok then seconds = Dock.Num(s) end
+        end
+    end
+    if not seconds then return nil end
+    seconds = math.floor(seconds + 0.5)
+    return ("%d:%02d"):format(math.floor(seconds / 60), seconds % 60)
+end
+
+function DamageMeter.Report.Fit(text)
+    if #text > DamageMeter.Report.MAX_LEN then return text:sub(1, DamageMeter.Report.MAX_LEN) end
+    return text
+end
+
+-- the header and up to 10 rows (11 lines at most), or nil when nothing can be read
+function DamageMeter.Report.Build(window)
+    local session = DamageMeter.Report.Session(window)
+    local sources = session and session.combatSources
+    if type(sources) ~= "table" then return nil end
+    local noRate = DamageMeter.Report.NO_RATE[DamageMeter.Report.TypeKey(window:GetDamageMeterType()) or ""]
+    local rows, rank = {}, 0
+    local want = DamageMeter.Report.Lines()
+    for _, source in ipairs(sources) do
+        if rank >= want then break end
+        local name = DamageMeter.Report.Text(source.name)
+        local amount = Dock.Num(source.totalAmount)
+        local rate = not noRate and Dock.Num(source.amountPerSecond)
+        if name and amount and (noRate or rate) then
+            rank = rank + 1
+            local line = ("%d. %s  %s"):format(rank, name, ns.ShortNumber(math.floor(amount + 0.5)))
+            if rate then line = line .. (" (%s/s)"):format(ns.ShortNumber(math.floor(rate + 0.5))) end
+            rows[#rows + 1] = DamageMeter.Report.Fit(line)
+        end
+    end
+    if #rows == 0 then return nil end
+    local header = ("FlareUI: %s \226\128\147 %s"):format(DamageMeter.Report.TypeName(window), DamageMeter.Report.SessionName(window))
+    local clock = DamageMeter.Report.Duration(window, session)
+    if clock then header = header .. (" (%s)"):format(clock) end
+    table.insert(rows, 1, DamageMeter.Report.Fit(header))
+    return rows
+end
+
+function DamageMeter.Report.Send(window, chatType, target)
+    if DamageMeter.Report.Blocked() then return end
+    local lines = DamageMeter.Report.Build(window)
+    if not lines then
+        print("|cffCC9957FlareUI|r: " .. L["Nothing to report."])
+        return
+    end
+    local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or _G.SendChatMessage
+    for _, line in ipairs(lines) do
+        send(line, chatType, nil, target)
+    end
+end
+
+-- a player of your side as the target: their name with the realm (when it isn't yours)
+function DamageMeter.Report.WhisperTarget()
+    if not (UnitExists("target") and UnitIsPlayer("target")) or UnitIsUnit("target", "player") then return nil end
+    if not UnitCanCooperate("player", "target") then return nil end
+    local name, realm = UnitName("target")
+    name, realm = DamageMeter.Report.Text(name), DamageMeter.Report.Text(realm)
+    if not name then return nil end
+    return realm and (name .. "-" .. realm) or name
+end
+
+-- the submenu: channels (only those usable now), Whisper Target, and Lines
+function DamageMeter.Report.AddMenu(root, window)
+    if not (window and window.GetDamageMeterType and C_DamageMeter) then return end
+    root:CreateDivider()
+    local sub = root:CreateButton(L["Report to Chat"])
+    local blocked = DamageMeter.Report.Blocked()
+    if blocked then
+        sub:SetEnabled(false)
+        if sub.SetTooltip then
+            sub:SetTooltip(function(tooltip)
+                GameTooltip_SetTitle(tooltip, L["Report to Chat"])
+                GameTooltip_AddNormalLine(tooltip, L["Report after combat."])
+            end)
+        end
+        return
+    end
+    local inInstance = IsInInstance()
+    local channels = {
+        { L["Say"], "SAY", inInstance and true or false },
+        { L["Party"], "PARTY", IsInGroup(LE_PARTY_CATEGORY_HOME) },
+        { L["Raid"], "RAID", IsInRaid(LE_PARTY_CATEGORY_HOME) },
+        { L["Instance"], "INSTANCE_CHAT", IsInGroup(LE_PARTY_CATEGORY_INSTANCE) },
+        { L["Guild"], "GUILD", IsInGuild() },
+    }
+    for _, c in ipairs(channels) do
+        local chatType = c[2]
+        local button = sub:CreateButton(c[1], function() DamageMeter.Report.Send(window, chatType) end)
+        if not c[3] then
+            button:SetEnabled(false)
+            if chatType == "SAY" and button.SetTooltip then
+                button:SetTooltip(function(tooltip)
+                    GameTooltip_SetTitle(tooltip, L["Say"])
+                    GameTooltip_AddNormalLine(tooltip, L["Say works only inside an instance."])
+                end)
+            end
+        end
+    end
+    local whisper = sub:CreateButton(L["Whisper Target"], function()
+        local who = DamageMeter.Report.WhisperTarget()
+        if who then DamageMeter.Report.Send(window, "WHISPER", who) end
+    end)
+    if not DamageMeter.Report.WhisperTarget() then whisper:SetEnabled(false) end
+    sub:CreateDivider()
+    sub:CreateTitle(L["Lines"])
+    for _, n in ipairs(DamageMeter.Report.LINES) do
+        sub:CreateRadio(L["Top %d"]:format(n), function() return DamageMeter.Report.Lines() == n end, function()
+            local db = GetDb()
+            if db then db.reportLines = n end
+            return MenuResponse and MenuResponse.Refresh
+        end)
+    end
+end
+
+-- Blizzard's title and gear menus: the window whose button opened it
+function DamageMeter.Report.ModifyWindowMenu(owner, root, getPart)
+    local db = GetDb()
+    if not (db and db.enabled and owner) then return end
+    for _, w in ipairs(GetSessionWindows()) do
+        if getPart(w) == owner then
+            DamageMeter.Report.AddMenu(root, w)
+            return
+        end
+    end
 end
 
 -- The chat's alpha (its own fading), which the meter shares on the Meter tab
@@ -3248,6 +3593,7 @@ function DamageMeter:Init()
     self:RegisterEvent("ADDON_LOADED")
     self:RegisterEvent("PLAYER_ENTERING_WORLD")
     self:RegisterEvent("PLAYER_LEAVING_WORLD")
+    self:RegisterEvent("GROUP_LEFT")
     GROUP_BUTTONS.events:RegisterEvent("GROUP_ROSTER_UPDATE")
     GROUP_BUTTONS.events:RegisterEvent("PARTY_LEADER_CHANGED")
     timerEvents:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -3262,6 +3608,8 @@ function DamageMeter:Init()
         -- or Dock as a Tab added under Blizzard's entries (23c)
         Menu.ModifyMenu("MENU_DAMAGE_METER_WINDOW_TRACKED_TYPE", function(owner, rootDescription)
             SafeCall(Dock.ModifyWindowMenu, owner, rootDescription, GetWindowTypeDropdown)
+            -- Report to Chat
+            SafeCall(DamageMeter.Report.ModifyWindowMenu, owner, rootDescription, GetWindowTypeDropdown)
         end)
         Menu.ModifyMenu("MENU_DAMAGE_METER_WINDOW_SETTINGS", function(owner, rootDescription)
             local db = GetDb()
@@ -3270,6 +3618,8 @@ function DamageMeter:Init()
             SafeCall(Dock.LimitMenu, rootDescription)
             -- Move to Own Window / Dock as a Tab (23c)
             SafeCall(Dock.ModifyWindowMenu, owner, rootDescription, GetWindowSettingsDropdown)
+            -- Report to Chat
+            SafeCall(DamageMeter.Report.ModifyWindowMenu, owner, rootDescription, GetWindowSettingsDropdown)
             if not ns.SettingsPanel then return end
             rootDescription:CreateDivider()
             rootDescription:CreateButton(L["FlareUI Settings"], function() ns.SettingsPanel:Open("dm") end)
@@ -3515,11 +3865,11 @@ function DamageMeter.DrawSample(f, kind)
     DamageMeter.HeaderIcon(f.Icons.settings, ICON_SETTINGS, ICON_DRAW_SIZE.settings, ICON_DRAW_YOFS.settings)
     Place(f.Icons.segments, -(ICON_RIGHT + ICON_SIZE / 2 + ICON_SPACING))
     DamageMeter.HeaderIcon(f.Icons.segments, ICON_SEGMENTS, ICON_DRAW_SIZE.segments, ICON_DRAW_YOFS.segments)
-    -- Ready Check and Countdown by their switches alone (not the group), so the picture shows them
+    -- Ready Check and Countdown always (not by the group), so the picture shows them
     local extra = 0
     for _, key in ipairs(GROUP_BUTTONS.order) do
         local btn = f.Icons[key]
-        if db[GROUP_BUTTONS[key].option] ~= false then
+        if btn then
             extra = extra + 1
             Place(btn, -(ICON_RIGHT + ICON_SIZE / 2 + (extra + 1) * ICON_SPACING))
             DamageMeter.HeaderIcon(btn, GROUP_BUTTONS[key].icon, ICON_DRAW_SIZE[key])

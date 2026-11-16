@@ -29,6 +29,9 @@ Code
   The buff proc spell IDs and the Cooldown Manager reading idea in Modules/ProcGlow.lua
       ProcDoc by wsmaxcy, free to use, modify or share (its README)
       https://github.com/wsmaxcy/ProcDoc
+  The idea behind Bar Edge Glow in Modules/UnitFrames.lua (a line and glow at the fill's
+  front); FlareUI's own code and art, no files copied
+      Smooth Animated Bars by Jordan, MIT License
 
 Art (Media/Bars/)
   FlareUI-Forever.tga, FlareUI-Forever-Mirrored.tga (the FlareUI Forever bar texture),

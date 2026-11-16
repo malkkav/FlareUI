@@ -170,7 +170,8 @@ local ART = {
 local tour = { step = 1, ticks = {}, choices = {} }
 
 -- The module switches the tour sets, in the finish page's order
-local MODULE_KEYS = { "uf", "ab", "au", "rb", "rm", "qol", "ch", "dm", "mm", "qt", "tt" }
+-- (11-16, UX audit J6: Buff Reminders offered, Bags & Looting its own switch, no longer Quality of Life's)
+local MODULE_KEYS = { "uf", "ab", "au", "br", "rb", "rm", "qol", "bl", "ch", "dm", "mm", "qt", "tt" }
 
 local function Title(key)
     return ns.Settings.modules[key]:Title()
@@ -449,7 +450,7 @@ function BuildPage.unitFrames(page)
         end
     end
 
-    local note = Say(page, "GameFontHighlight", L["You can switch any time, and each style keeps its own setup. Party and raid frames are switched on in /fui."], BODY_W)
+    local note = Say(page, "GameFontHighlight", L["You can switch any time, and each style keeps its own setup. Party and raid frames come on too: turn them off in /fui if you use others."], BODY_W)
     note:SetPoint("TOPLEFT", 0, -312)
     note:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
 end
@@ -461,7 +462,9 @@ function BuildPage.bars(page)
     buttons:SetPoint("TOPLEFT", CARD_PAD, -14)
     local entries = {
         { key = "ab", text = L["Blizzard's bars, sharpened: red when out of range, blue with no mana, glows on procs."] },
-        { key = "au", kind = "auras", sample = "au.overview", height = 70, text = L["Your buffs and debuffs in FlareUI's style, with clear timers."] },
+        { key = "au", kind = "auras", sample = "au.overview", height = 70, text = L["Your buffs and debuffs in FlareUI's style, with clear timers."],
+          -- (J6) Buff Reminders in the same card, its own switch over Use It
+          extra = { key = "br", label = L["Buff Reminders"], text = L["Buff Reminders: an icon for each buff you or your group are missing."] } },
         { key = "rb", kind = "resources", sample = "rb.health", height = 40, text = L["Extra health, power, combo point and swing bars to place anywhere. Off to begin with: choose your bars in /fui."] },
     }
     for i, entry in ipairs(entries) do
@@ -469,7 +472,13 @@ function BuildPage.bars(page)
         if entry.kind then Stack(card, Preview(card, entry.kind, entry.sample, card.inner, entry.height)) end
         local text = Stack(card, Say(card, "GameFontHighlight", entry.text, card.inner), 10)
         text:SetTextColor(0.85, 0.82, 0.76)
-        CardTick(card, entry.key)
+        local use = CardTick(card, entry.key)
+        if entry.extra then
+            local extraText = Stack(card, Say(card, "GameFontHighlight", entry.extra.text, card.inner), 8)
+            extraText:SetTextColor(0.85, 0.82, 0.76)
+            local extra = Tick(card, entry.extra.key, entry.extra.label)
+            extra:SetPoint("BOTTOMLEFT", use, "TOPLEFT", 0, 6)
+        end
     end
 end
 
@@ -590,18 +599,22 @@ end
 function BuildPage.qol(page)
     local tick = Tick(page, "qol", L["Use Quality of Life"])
     tick:SetPoint("TOPLEFT", 0, -2)
+    -- (J6) Bags & Looting: its own switch (it followed this one before)
+    local bags = Tick(page, "bl", L["Use Bags & Looting"])
+    bags:SetPoint("TOPLEFT", CARD_W2 + GAP, -2)
     local height = BODY_H - 38
 
     local left = Card(page, 0, -38, CARD_W2, height, L["Move Any Window"])
     Stack(left, Say(left, "GameFontHighlight", L["Drag a Blizzard window by its header to move it. |cffffd100Ctrl|r + mouse wheel resizes it, and |cffffd100Shift|r + right-click puts it back."], left.inner))
-    local move = Tick(left, "move", L["Use It"], "qol")
+    -- (Move Any Window and Sync Blizz UI work with Quality of Life off since 11-16, UX audit J4)
+    local move = Tick(left, "move", L["Use It"])
     Stack(left, move, 10)
     local syncName = Say(left, "GameFontNormalLarge", L["Sync Blizz UI"], left.inner)
     syncName:SetTextColor(SECTION_GOLD[1], SECTION_GOLD[2], SECTION_GOLD[3])
     syncName:SetPoint("TOPLEFT", move, "BOTTOMLEFT", 0, -22)
     local syncText = Say(left, "GameFontHighlight", L["Got alts? Copies one character's interface options, Edit Mode layout, chat and bag settings to your others."], left.inner)
     syncText:SetPoint("TOPLEFT", syncName, "BOTTOMLEFT", 0, -10)
-    local sync = Tick(left, "sync", L["Use It"], "qol")
+    local sync = Tick(left, "sync", L["Use It"])
     sync:SetPoint("TOPLEFT", syncText, "BOTTOMLEFT", 0, -10)
 
     local right = Card(page, CARD_W2 + GAP, -38, CARD_W2, height, L["Also in There"])
@@ -622,7 +635,7 @@ end
 
 -- 10: the choices (each module with its round icon, lit when on), and what to try after the reload
 function BuildPage.finish(page)
-    local summary = Card(page, 0, 0, BODY_W, 214, L["What you turned on"])
+    local summary = Card(page, 0, 0, BODY_W, 244, L["What you turned on"])   -- (13 modules, 11-16)
     local rows = {}
     local columnW = summary.inner / 2
     for i, key in ipairs(MODULE_KEYS) do
@@ -639,7 +652,7 @@ function BuildPage.finish(page)
     local nothing = Say(summary, "GameFontHighlight", L["Nothing is on yet. Go back and tick something, or open the settings later with /fui."], summary.inner)
     nothing:SetPoint("TOPLEFT", CARD_PAD, -48)
 
-    local after = Card(page, 0, -226, BODY_W, BODY_H - 226, L["Try These Next"])
+    local after = Card(page, 0, -256, BODY_W, BODY_H - 256, L["Try These Next"])
     local tips = Stack(after, Say(after, "GameFontHighlight", "", after.inner))
 
     function page.Refresh()
@@ -699,13 +712,12 @@ local function ApplyChoices()
         local module = S.modules[key]
         if module then module:SetOn(c[key]) end
     end
-    -- Bags & Looting came out of Quality of Life (11-12): the tour's Quality of Life tick sets both
-    if S.modules.bl then S.modules.bl:SetOn(c.qol) end
+    -- (Bags & Looting has its own switch since 11-16; Move and Sync no longer need Quality of Life)
     if c.uf then S.rows["uf.frameStyle"]:Set(c.style) end
-    if c.qol then
-        S.rows["qol.move"]:Set(c.move and true or false)
-        S.rows["qol.sync"]:Set(c.sync and true or false)
-    end
+    -- only what changed is written: a re-run never turns off what the player didn't touch
+    local move, sync = c.move and true or false, c.sync and true or false
+    if move ~= (S.rows["qol.move"]:Get() and true or false) then S.rows["qol.move"]:Set(move) end
+    if sync ~= (S.rows["qol.sync"]:Get() and true or false) then S.rows["qol.sync"]:Set(sync) end
     -- FlareUI's meter restyles Blizzard's, which needs its own option on
     if c.dm and not C_CVar.GetCVarBool("damageMeterEnabled") then
         pcall(C_CVar.SetCVar, "damageMeterEnabled", "1")
@@ -894,7 +906,7 @@ local function StartChoices()
     local c = {}
     for _, key in ipairs(MODULE_KEYS) do
         if fresh then
-            c[key] = key ~= "rb"
+            c[key] = key ~= "rb" and key ~= "br"   -- (Resource Bars and Buff Reminders: the player picks them)
         else
             c[key] = S.modules[key] and S.modules[key]:IsOn() or false
         end

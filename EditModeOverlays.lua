@@ -14,6 +14,8 @@ local EYE_TEXTURE_W, EYE_TEXTURE_H = 512, 256
 
 local eyeButton
 local LEM = LibStub("FlareEditMode")
+-- (11-16) the dialogs' Reset Settings button, beside FlareUI Settings and Reset Position (dialog.lua)
+LEM.resetSettingsText = L["Reset Settings"]
 
 --------------------------------------------------
 -- 1. HIDING FLAREUI'S FRAMES IN EDIT MODE
@@ -99,6 +101,64 @@ local function TurnOnNewSwitches()
         end
     end
 end
+
+--------------------------------------------------
+-- 2b. CHECKBOXES OF HIDDEN BARS
+-- (11-16, Malkkav) Action Bars > Hide Bars is for bars a player never wants to see, Edit Mode included:
+-- the bar already stays hidden there (Visibility.lua), and now its checkbox in Edit Mode's list goes
+-- too. Only Blizzard's stance, pet, possess and totem bars have one (the micro menu and bag bar don't).
+-- Blizzard lays the list out in LayoutSettings (on load and when Advanced Options changes); after it,
+-- the checkboxes of hidden bars are hidden and the list laid out again with the same two calls
+-- LayoutSettings ends with. Nothing runs while no bar is hidden, so nothing of Blizzard's is touched.
+--------------------------------------------------
+local HIDDEN_BAR_BOXES = {
+    { box = "StanceBar", setting = "hideStanceBar" },
+    { box = "PetActionBar", setting = "hidePetBar" },
+    { box = "PossessActionBar", setting = "hidePossessBar" },
+    { box = "TotemActionBar", setting = "hideTotemBar" },
+}
+local boxesHidden = {}   -- checkbox -> hidden here
+
+local function BarHidden(setting)
+    local profile = ns.db and ns.db.profile
+    local vis = profile and profile.visibility
+    return vis and vis[setting] and profile.actionbars and profile.actionbars.enabled or false
+end
+
+local function ApplyHiddenBarBoxes()
+    local account = EditModeManagerFrame and EditModeManagerFrame.AccountSettings
+    local boxes = account and account.settingsCheckButtons
+    if not boxes or InCombatLockdown() then return end
+    local changed = false
+    for _, entry in ipairs(HIDDEN_BAR_BOXES) do
+        local box = boxes[entry.box]
+        if box then
+            if BarHidden(entry.setting) then
+                if box:IsShown() then box:Hide(); changed = true end
+                boxesHidden[box] = true
+            elseif boxesHidden[box] then
+                -- back as Blizzard shows it: its game flavour and Advanced Options decide
+                boxesHidden[box] = nil
+                local advanced = EditModeManagerFrame:AreAdvancedOptionsEnabled()
+                local show = not box.shouldHide and (advanced or box.isBasicOption) or false
+                if show ~= box:IsShown() then box:SetShown(show); changed = true end
+            end
+        end
+    end
+    if not changed then return end
+    local scroll = account.SettingsContainer and account.SettingsContainer.ScrollChild
+    for _, key in ipairs({ "BasicOptionsContainer", "AdvancedOptionsContainer" }) do
+        local container = scroll and scroll[key]
+        if container and container.Layout then
+            for _, child in ipairs({ container:GetChildren() }) do
+                if child.Layout then child:Layout() end
+            end
+            container:Layout()
+        end
+    end
+    EditModeManagerFrame:Layout()
+end
+ns.ApplyHiddenBarBoxes = ApplyHiddenBarBoxes
 
 --------------------------------------------------
 -- 3. THE EYE BUTTON
@@ -190,7 +250,9 @@ end
 
 --------------------------------------------------
 -- 3b. FIRST-TIME HINT
--- Says where the options are, until the first frame is clicked (per account, never again after that)
+-- Says where the options are, until the first FlareUI frame is clicked (per account, never again after
+-- that). (11-16, UX audit J8) A Blizzard frame without FlareUI options no longer ends it: an action bar
+-- (FlareUI's options in its dialog while Action Bars is on) does, as FlareUI's own frames.
 --------------------------------------------------
 local hint
 
@@ -288,6 +350,7 @@ end
 --------------------------------------------------
 local function OnEditModeShown()
     addonSelections = nil   -- frames made since the last visit are found again
+    ApplyHiddenBarBoxes()
     CreateEye()
     UpdateEye()
     ShowHint()
@@ -303,12 +366,21 @@ local function Hook()
     hooked = true
     EditModeManagerFrame:HookScript("OnShow", OnEditModeShown)
     -- a selected system can be re-shown by Blizzard; keep it invisible
-    hooksecurefunc(EditModeManagerFrame, "SelectSystem", function()
+    hooksecurefunc(EditModeManagerFrame, "SelectSystem", function(_, systemFrame)
         if IsHidden() then C_Timer.After(0, ApplyOverlays) end
-        HideHint(true)
+        local profile = ns.db and ns.db.profile
+        local bars = profile and profile.actionbars and profile.actionbars.enabled
+        local system = systemFrame and systemFrame.system
+        if bars and Enum.EditModeSystem and canaccessvalue(system) and system == Enum.EditModeSystem.ActionBar then
+            HideHint(true)
+        end
     end)
     -- (nil: the selection was only cleared, as Edit Mode opens)
     LEM:RegisterCallback("select", function(frame) if frame then HideHint(true) end end)
+    -- the hidden bars' checkboxes, after Blizzard shows the list again (Advanced Options)
+    if EditModeManagerFrame.AccountSettings and EditModeManagerFrame.AccountSettings.LayoutSettings then
+        hooksecurefunc(EditModeManagerFrame.AccountSettings, "LayoutSettings", ApplyHiddenBarBoxes)
+    end
     -- the Frames checkboxes (a click, or Blizzard setting them as Edit Mode opens)
     local account = EditModeManagerFrame.AccountSettings
     for _, switch in ipairs(SWITCHES) do

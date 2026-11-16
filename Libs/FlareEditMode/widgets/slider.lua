@@ -25,6 +25,10 @@ end
 local sliderMixin = {}
 function sliderMixin:Setup(data)
 	self.setting = data
+	-- FlareUI (dialog.lua LabelWidth): Blizzard's template is 343 wide for its 100 px label
+	local labelWidth = lib.internal.LabelWidth(self)
+	self.Label:SetWidth(labelWidth)
+	self:SetWidth(243 + labelWidth)
 	self.Label:SetText(data.name)
 	self:Refresh()
 

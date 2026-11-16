@@ -19,6 +19,15 @@ ns.profileLayoutLoaded = true   -- LoadCheck.lua: a file added since the game st
 -- the layout name with the most saved spots, for profiles saved before home layouts were kept
 local GUESS_ROOTS = { { "unitframes", "layouts" }, { "party", "layouts" }, { "resourcebars", "layouts" },
     { "objectivetracker", "layouts" } }
+-- a layout's store with a spot in it (store.values holds per-layout Scales, not spots)
+local function HasSpots(store)
+    if type(store) ~= "table" then return false end
+    for key in pairs(store) do
+        if key ~= "values" then return true end
+    end
+    return false
+end
+
 local function GuessHome(p)
     local counts = {}
     for _, root in ipairs(GUESS_ROOTS) do
@@ -26,7 +35,7 @@ local function GuessHome(p)
         local layouts = type(t) == "table" and rawget(t, root[2])
         if type(layouts) == "table" then
             for name, store in pairs(layouts) do
-                if type(name) == "string" and type(store) == "table" and next(store) then
+                if type(name) == "string" and HasSpots(store) then
                     counts[name] = (counts[name] or 0) + 1
                 end
             end
@@ -56,6 +65,7 @@ local function FullestOther(layouts, name)
         if other ~= name and type(store) == "table" then
             local n = 0
             for _ in pairs(store) do n = n + 1 end
+            if rawget(store, "values") then n = n - 1 end   -- (per-layout Scales, not spots)
             if n > most then best, most = store, n end
         end
     end
@@ -104,6 +114,53 @@ LEM.onAnyMove = function(layoutName)
 end
 
 --------------------------------------------------
+-- VALUES PER LAYOUT (11-16, a player's request: a PC layout and a Steam Deck layout at two UI scales
+-- want two frame Scales)
+-- A frame's Edit Mode value (its Scale) is saved in the layout's own store, beside its spot:
+-- store.values[key]. Unlike spots these never follow the home layout: a layout with no value of its
+-- own uses the frame's base, the value it had before any layout kept its own (saved the first time one
+-- is). So setting Scale in one layout never changes another, and nothing changes until a player sets it.
+--------------------------------------------------
+-- the layout's own value for key, else fallback
+function ns.LayoutValue(layouts, name, key, fallback)
+    local store = type(layouts) == "table" and type(name) == "string" and rawget(layouts, name)
+    local values = type(store) == "table" and rawget(store, "values")
+    local value = type(values) == "table" and values[key]
+    if value == nil then return fallback end
+    return value
+end
+
+function ns.SetLayoutValue(layouts, name, key, value)
+    if type(layouts) ~= "table" or type(name) ~= "string" then return end
+    local store = ns.LayoutHome(layouts, name)
+    -- (rawget: the home layout's values, read through the store's metatable, are never written)
+    local values = rawget(store, "values")
+    if type(values) ~= "table" then
+        values = {}
+        rawset(store, "values", values)
+    end
+    values[key] = value
+end
+
+-- Forever Style's Scale (settings.plateScale, with the ring size and height it sets) per layout.
+-- settings.plateScaleBase: the Scale before any layout kept its own.
+function ns.SetLayoutPlateScale(layouts, name, key, settings, value, default)
+    if not (settings and ns.UFRing) then return end
+    if settings.plateScaleBase == nil then settings.plateScaleBase = settings.plateScale or default or value end
+    ns.SetLayoutValue(layouts, name, key, value)
+    ns.UFRing.ApplyPlateScale(settings, value)
+end
+
+-- The layout's Scale on the settings; true when it changed them (the frame then needs laying out)
+function ns.ApplyLayoutPlateScale(layouts, name, key, settings)
+    if not (settings and ns.UFRing) then return false end
+    local want = tonumber(ns.LayoutValue(layouts, name, key, settings.plateScaleBase))
+    if not want or want == settings.plateScale then return false end
+    ns.UFRing.ApplyPlateScale(settings, want)
+    return true
+end
+
+--------------------------------------------------
 -- THE OFFER
 --------------------------------------------------
 local function ActiveLayout()
@@ -128,7 +185,9 @@ end
 -- (the texts take two names: set as each dialog is shown)
 local SWITCH_TEXT = L["The profile |cffffff00%s|r was set up on the Edit Mode layout |cffffff00%s|r. Switch to it?"]
     .. "\n\n" .. L["This reloads your interface."]
-local MISSING_TEXT = L["The profile |cffffff00%s|r was set up on the Edit Mode layout |cffffff00%s|r, which this character doesn't have. FlareUI's frames follow the profile anyway. For Blizzard's bars, copy that layout from the other character (About > Copy Layout Code) or turn on Sync Blizz UI (Settings page)."]
+local MISSING_TEXT = L["The profile |cffffff00%s|r was set up on the Edit Mode layout |cffffff00%s|r, which this character doesn't have. FlareUI's frames follow the profile anyway. For Blizzard's bars, export that layout in Edit Mode on the other character, or turn on Sync Blizz UI (General page)."]
+-- (11-16, UX audit J7) FlareUI's own layout missing: its code is one click away
+local MISSING_FLAREUI_TEXT = L["The profile |cffffff00%s|r was set up on the Edit Mode layout |cffffff00%s|r, which this character doesn't have. FlareUI's frames follow the profile anyway. For Blizzard's bars, copy FlareUI's layout code and import it in Edit Mode (Layout > Import)."]
 
 ns.Dialogs["FLAREUI_PROFILE_LAYOUT"] = {
     button1 = L["Switch"],
@@ -146,6 +205,12 @@ ns.Dialogs["FLAREUI_PROFILE_LAYOUT_MISSING"] = {
     button1 = OKAY or "Okay",
     hideOnEscape = true,
 }
+ns.Dialogs["FLAREUI_PROFILE_LAYOUT_MISSING_FLAREUI"] = {
+    button1 = L["Copy Layout Code"],
+    button2 = OKAY or "Okay",
+    OnAccept = function() if ns.EditModeLayout then ns.EditModeLayout.Copy() end end,
+    hideOnEscape = true,
+}
 
 local function Offer()
     local char = ns.CharDB()
@@ -161,8 +226,11 @@ local function Offer()
         ns.Dialogs.FLAREUI_PROFILE_LAYOUT.text = SWITCH_TEXT:format(profile, home)
         ns.ShowDialog("FLAREUI_PROFILE_LAYOUT", nil, { index = index, layout = layout })
     else
-        ns.Dialogs.FLAREUI_PROFILE_LAYOUT_MISSING.text = MISSING_TEXT:format(profile, home)
-        ns.ShowDialog("FLAREUI_PROFILE_LAYOUT_MISSING")
+        local flare = type(home) == "string" and home:lower():find("flareui", 1, true)
+            and ns.EditModeLayout and ns.EditModeLayout.Has()
+        local key = flare and "FLAREUI_PROFILE_LAYOUT_MISSING_FLAREUI" or "FLAREUI_PROFILE_LAYOUT_MISSING"
+        ns.Dialogs[key].text = (flare and MISSING_FLAREUI_TEXT or MISSING_TEXT):format(profile, home)
+        ns.ShowDialog(key)
     end
 end
 

@@ -4,9 +4,13 @@ local S = ns.Settings
 
 -- 11-11 (Malkkav): the Language page became Settings, the whole interface's own options: Sync Blizz UI,
 -- Move Any Window and UI Scale (from Quality of Life's Advanced tab), then the language
+-- (11-16, UX audit batch 4) renamed General (no clash with the window's Settings tab), in two tabs:
+-- Interface (scale, Global Font) and Advanced (Sync Blizz UI, Move Any Window, language; 11-16 Malkkav:
+-- "Account" did not fit Move Any Window)
 ns.Copy.modules.language = {
-    title = L["Settings"],
+    title = L["General"],
     desc = L["Options for the whole interface: your characters, windows, scale and language."],
+    tabs = { L["Interface"], L["Advanced"] },
 }
 ns.Copy.sections["language.main"] = L["Language"]
 ns.Copy.rows["language.useGame"] = {
@@ -33,14 +37,15 @@ end
 
 S:Module{
     key = "language", group = "top", order = 3,
+    tabs = { { key = "interface" }, { key = "account" } },
     -- no Reset on its sections (one-off choices, most of them reloading)
     noReset = true,
 }
 
 -- Sync Blizz UI: copies one character's Blizzard settings to the others
-S:Row{ key = "qol.sync", module = "language", path = "tweaks.syncUI", reload = true, section = "qol.syncBlizzUi" }
+S:Row{ key = "qol.sync", module = "language", tab = "account", path = "tweaks.syncUI", reload = true, section = "qol.syncBlizzUi" }
 S:Row{
-    key = "qol.source", kind = "button", module = "language", parent = "qol.sync", section = "qol.syncBlizzUi",
+    key = "qol.source", kind = "button", module = "language", tab = "account", parent = "qol.sync", section = "qol.syncBlizzUi",
     labelFn = function()
         local label = ns.Tweaks and ns.Tweaks.GetSyncSourceLabel and ns.Tweaks:GetSyncSourceLabel()
         return label and L["Current source: %s"]:format(label) or L["No source yet."]
@@ -54,7 +59,7 @@ S:Row{
 -- Hide Pop-up Alerts (off): syncs happen without their reload pop-up, on every character (account-wide);
 -- the pop-up's Hide These Alerts turns it on
 S:Row{
-    key = "qol.syncHideAlerts", module = "language", parent = "qol.sync", section = "qol.syncBlizzUi",
+    key = "qol.syncHideAlerts", module = "language", tab = "account", parent = "qol.sync", section = "qol.syncBlizzUi",
     get = function() return ns.db and ns.db.global and ns.db.global.syncHideAlerts == true or false end,
     set = function(on) if ns.db and ns.db.global then ns.db.global.syncHideAlerts = on and true or nil end end,
     resetValue = function() return false end,
@@ -63,7 +68,7 @@ S:Row{
 
 -- one switch for moving windows and placing loot rolls / toasts
 S:Row{
-    key = "qol.move", module = "language", reload = true,
+    key = "qol.move", module = "language", tab = "account", reload = true,
     get = function() return S:GetPath("tweaks.moveAnyFrame") end,
     set = function(on)
         S:SetPath("tweaks.moveAnyFrame", on)
@@ -89,7 +94,8 @@ S:Row{
     end,
 }
 S:Row{
-    key = "qol.uiScaleCustom", kind = "choice", module = "language", parent = "qol.uiScale", choices = CUSTOM_CHOICES, reload = true,
+    -- (a slider since 11-16; right under UI Scale, shown only on Custom, not indented)
+    key = "qol.uiScaleCustom", kind = "range", module = "language", choices = CUSTOM_CHOICES, reload = true,
     hidden = function() local g = Global(); return not (g and g.uiScale == "custom") end,
     get = function()
         local g = Global()
@@ -102,7 +108,7 @@ S:Row{
 local TEXT_CHOICES = {}
 for percent = 80, 150, 5 do TEXT_CHOICES[#TEXT_CHOICES + 1] = { percent, percent .. "%" } end
 S:Row{
-    key = "qol.textScale", kind = "choice", module = "language", choices = TEXT_CHOICES, reload = true,
+    key = "qol.textScale", kind = "range", module = "language", choices = TEXT_CHOICES, reload = true,   -- (a slider, 11-16)
     get = function()
         local g = Global()
         return math.floor((g and tonumber(g.textScale) or 1) * 20 + 0.5) * 5
@@ -167,7 +173,7 @@ S:Row{
 
 
 S:Row{
-    key = "language.useGame", lead = true,   -- on top: the language list below only counts while it is off
+    key = "language.useGame", lead = true, tab = "account",   -- on top: the language list below only counts while it is off
     get = UseGameLanguage,
     set = function(on)
         local global = ns.db.global
@@ -180,7 +186,7 @@ S:Row{
 }
 
 S:Row{
-    key = "language.override", kind = "dropdown", choices = ns.LanguageChoices,
+    key = "language.override", kind = "dropdown", choices = ns.LanguageChoices, tab = "account",
     get = PreferredLanguage, disabled = UseGameLanguage,
     set = function(locale)
         ns.db.global.language = locale

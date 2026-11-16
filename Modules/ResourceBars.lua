@@ -400,6 +400,10 @@ end
 local function UpdateHealthValue(holder, glide)
     local cfg = Cfg("health")
     ns.SetBarValue(holder.Bar, UnitHealth("player"), glide and cfg and cfg.smoothBars)
+    -- Damage Trail (UnitFrames.lua UF.SetDamageTrail): holds, then glides; lands at once on a full update
+    K.SetDamageTrail(holder.DamageTrail, "player", glide, true)
+    -- Bar Edge Glow: hidden while dead, a bump on each change (UnitFrames.lua UF.BarLook)
+    K.BarLookUpdate(holder.Bar, "player", glide)
     if UnitIsDeadOrGhost("player") then
         holder.Text:SetText(UnitIsGhost("player") and K.GHOST_TEXT or K.DEAD_TEXT)
     else
@@ -426,11 +430,13 @@ local function UpdateFsrSpark()
     local power, mana = bars.power, bars.mana
     if fsrStart and GetTime() - fsrStart >= FSR_SECONDS then fsrStart = nil end
     local onPower = PowerTypeNow() == MANA
+    -- Edit Mode's sample loops a window every five seconds (11-16, Malkkav)
+    local running = fsrStart ~= nil or IsEditing()
     if power and power.FsrSpark then
-        power.FsrSpark:SetShown(fsrStart ~= nil and onPower and power:IsShown() and Cfg("power").fsr == true)
+        power.FsrSpark:SetShown(running and onPower and power:IsShown() and Cfg("power").fsr == true)
     end
     if mana and mana.FsrSpark then
-        mana.FsrSpark:SetShown(fsrStart ~= nil and not onPower and mana:IsShown() and Cfg("mana").fsr == true)
+        mana.FsrSpark:SetShown(running and not onPower and mana:IsShown() and Cfg("mana").fsr == true)
     end
 end
 
@@ -654,8 +660,19 @@ local function ApplyPreview(holder)
         local low = cfg.lowHealth and holder.LowHealth
         bar:SetValue(low and 0.25 or 0.75)
         bar:SetStatusBarColor(RB.HealthColor())
+        -- a sample hit just taken, 15% past the sample health
+        K.SampleDamageTrail(holder.DamageTrail, low and 0.25 or 0.75, true)
+        K.BarLookUpdate(bar, nil, false, false)
         SetText(holder, cfg.text or "both", low and 6000 or 18000, low and 25 or 75, 24000)
-        if holder.HealBar then holder.HealBar:SetValue(0); holder.AbsorbBar:SetValue(0); K.HideShieldGlow(holder.ShieldGlow); K.SetOverAbsorb(holder.OverAbsorb) end
+        -- (11-16, Malkkav) a sample incoming heal and shield, as on the unit frames' samples
+        if holder.HealBar then
+            holder.HealBar:SetMinMaxValues(0, 1)
+            holder.AbsorbBar:SetMinMaxValues(0, 1)
+            holder.HealBar:SetValue(0.12)
+            holder.AbsorbBar:SetValue(0.15)
+            K.HideShieldGlow(holder.ShieldGlow)
+            K.SetOverAbsorb(holder.OverAbsorb, nil, 1, low and 0 or 0.1)
+        end
         if holder.LowHealth then
             if low then
                 LOW_HEALTH.Place(holder)
@@ -903,12 +920,24 @@ local function LayoutBar(holder)
         absorb:SetPoint("TOPLEFT", healFill, "TOPRIGHT", 0, 0)
         absorb:SetPoint("BOTTOMLEFT", healFill, "BOTTOMRIGHT", 0, 0)
         K.PlaceShieldGlow(holder.ShieldGlow, bar, false)
-        absorb:SetStatusBarTexture(K.GetBarTexture(K.ABSORB_TEXTURE))
+        -- Absorb Texture (Look, 11-16): "" is the bar's own texture
+        local absorbTex = cfg.absorbTexture
+        if absorbTex == nil then absorbTex = K.ABSORB_TEXTURE end
+        if absorbTex == "" then absorbTex = cfg.texture or K.DEFAULT_TEXTURE end
+        absorb:SetStatusBarTexture(K.GetBarTexture(absorbTex))
         local a, h = RBC.absorb or K.ABSORB_COLOR, RBC.heal or K.HEAL_COLOR
         absorb:SetStatusBarColor(a[1], a[2], a[3], K.ABSORB_COLOR[4])
         heal:SetStatusBarColor(h[1], h[2], h[3], K.HEAL_COLOR[4])
         -- the shield with no room after the health, over it (UnitFrames.lua UF.CreateOverAbsorb)
-        K.PlaceOverAbsorb(holder.OverAbsorb, bar, width, false, K.GetBarTexture(K.ABSORB_TEXTURE))
+        K.PlaceOverAbsorb(holder.OverAbsorb, bar, width, false, K.GetBarTexture(absorbTex))
+        -- the Damage Trail takes the bar's texture (set above) and fills the same way
+        K.PlaceDamageTrail(holder.DamageTrail, false)
+        -- Bar Edge Glow (UnitFrames.lua UF.BarLook): the bar fills left to right
+        K.BarLook(bar, false, cfg and cfg.barEdgeGlow)
+    end
+    -- Smooth Animated Bars, when installed and on (UnitFrames.lua ns.SAB): the health and power bars
+    if ns.SAB and not holder.fuiSample and (holder.key == "health" or holder.key == "power") then
+        ns.SAB.Want(bar, "player", kind, true, nil, holder.DamageTrail)
     end
     if kind == "seal" and RB.Seal then RB.Seal.Layout(holder, cfg, font) end
     if kind == "timer" and RB.Timer then RB.Timer.Layout(holder, cfg, font) end
@@ -1037,9 +1066,13 @@ local function CreateHolder(key, parent)
         holder.HealClip, holder.HealBar, holder.AbsorbBar = clip, heal, absorb
         holder.ShieldGlow = K.CreateShieldGlow(holder.Bar, clip)
         holder.OverAbsorb = K.CreateOverAbsorb(holder.Bar, clip)
+        -- Damage Trail: in the heal clip, under the heals and shields (UnitFrames.lua UF.CreateDamageTrail)
+        holder.DamageTrail = K.CreateDamageTrail(holder.Bar, clip)
         -- Low Health Colour: on its own frame (its alpha may be secret; a texture's would not draw)
         local low = CreateFrame("Frame", nil, holder.Bar)
-        low:SetFrameLevel(holder.Bar:GetFrameLevel() + 1)
+        -- (+2: over Smooth Animated Bars' liquid at +1, UnitFrames.lua ns.SAB; it covers the fill only,
+        -- the heals and the trail are in the empty part, the over-shield +3 stays above it)
+        low:SetFrameLevel(holder.Bar:GetFrameLevel() + 2)
         low.Tex = low:CreateTexture(nil, "ARTWORK")
         low.Tex:SetAllPoints()
         low:Hide()
@@ -1107,6 +1140,7 @@ local function CreateHolder(key, parent)
         end)
         fsr:SetScript("OnUpdate", function(self)
             local elapsed = fsrStart and (GetTime() - fsrStart)
+            if IsEditing() then elapsed = GetTime() % FSR_SECONDS end
             if not elapsed or elapsed >= FSR_SECONDS then
                 fsrStart = nil
                 self:Hide()
@@ -1208,22 +1242,43 @@ local function BuildSettings(key)
         add({ name = L["GCD Spark"], kind = LEM.SettingType.Checkbox, default = false, get = get("gcd", false), set = set("gcd"),
               desc = L["A spark crosses the bar during the global cooldown."] })
     end
-    -- (11-15, Malkkav: togglable) the main-hand bar's colour per queued attack, colours in Bar Colours
+    -- (11-15, Malkkav: togglable; on by default since 11-16) the main-hand bar's colour per queued
+    -- attack, colours in Bar Colours
     if key == "swingMain" then
-        add({ name = L["Queued Attack Colour"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueTint", false), set = set("queueTint"),
+        add({ name = L["Queued Attack Colour"], kind = LEM.SettingType.Checkbox, default = true, get = get("queueTint", true), set = set("queueTint"),
               desc = L["While Heroic Strike, Cleave, Maul or Raptor Strike waits for the next swing, the bar takes its colour (set in Bar Colours)."] })
     end
     if key == "swingRanged" then
-        add({ name = L["Stand-Still Zone"], kind = LEM.SettingType.Checkbox, default = false, get = get("standStill", false), set = set("standStill"),
+        add({ name = L["Stand-Still Zone"], kind = LEM.SettingType.Checkbox, default = true, get = get("standStill", true), set = set("standStill"),
               desc = L["Marks the swing's last half second. Auto Shot and wands need you to stand still then."] })
     end
     if info.kind == "swing" then
-        add({ name = L["Waiting State"], kind = LEM.SettingType.Checkbox, default = false, get = get("waiting", false), set = set("waiting"),
+        -- the out-of-range colour, as the unit frames' range fading (in Frame since 11-16, Malkkav: it
+        -- changes what the bar tells you, not how it looks; the unit frames' moved there in 6.3.3)
+        add({ name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true, get = get("rangeCheck", true), set = set("rangeCheck"),
+              desc = L["The bar turns red while your target is out of reach of this attack."] })
+        add({ name = L["Waiting State"], kind = LEM.SettingType.Checkbox, default = true, get = get("waiting", true), set = set("waiting"),
               desc = L["When auto attack is on but you can't swing (the target is out of reach), the bar shows full and grey, with Waiting."] })
     end
-    -- classic gems have no Look
+    -- the swing, flight, seal and duration bars' two texts, each on its own (11-11, a player's request).
+    -- In Frame since 11-16 (Malkkav): what a bar tells you belongs with the bar, not with its look.
+    if info.kind == "swing" or info.kind == "flight" or info.kind == "seal" or info.kind == "timer" then
+        add({ name = L["Bar Text"], kind = LEM.SettingType.Checkbox, default = true, get = get("showLabel", true), set = set("showLabel"),
+              desc = info.kind == "flight" and L["Where you're flying, on the left of the bar."]
+                  or info.kind == "seal" and L["The seal's name on the left of the bar."]
+                  or info.kind == "timer" and L["The timer's name on the left of the bar."] or L["The swing's name on the left of the bar."] })
+        add({ name = L["Show Timer"], kind = LEM.SettingType.Checkbox, default = true, get = get("showTimer", true), set = set("showTimer"),
+              desc = info.kind == "flight" and L["The time left on the right of the bar. A route you haven't flown yet counts up while it's learned."]
+                  or info.kind == "seal" and L["The seal's time left on the right of the bar."]
+                  or info.kind == "timer" and L["The time left on the right of the bar."]
+                  or L["The seconds left on the right of the bar (and Waiting)."] })
+    end
+    -- (11-16, Malkkav) the same sections, in the same order, as the unit frames: Size, Text, Look,
+    -- Behaviour, Fading (Core.lua ns.SplitFrameItems). Classic gems have no Look.
     local Section, settings = K.EditSections()
-    Section("Frame", frameItems)
+    local sizeItems, textItems, behaviourItems = ns.SplitFrameItems(frameItems)
+    Section("Size", sizeItems)
+    Section("Text", textItems)
     Section("Look", {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.texture or K.DEFAULT_TEXTURE,
           values = K.BuildTextureValues(), get = get("texture", defaults.texture or K.DEFAULT_TEXTURE), set = set("texture"), hidden = classicOn },
@@ -1234,6 +1289,11 @@ local function BuildSettings(key)
             item.hidden = classicOn
             return item
         end)(),
+        -- the health bar's shields (11-16, Malkkav: as on the unit frames)
+        { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = K.ABSORB_TEXTURE, values = K.BuildAbsorbValues(),
+          get = get("absorbTexture", K.ABSORB_TEXTURE), set = set("absorbTexture"),
+          desc = L["The texture of the shield (absorb) over the health bar."],
+          hidden = function() return info.kind ~= "health" end },
         -- the health bar: Class Colours (until set, the player frame's), then Low Health Colour
         (function()
             local item = K.ClassColorSetting(HealthClassColors, set("classColor"))
@@ -1243,30 +1303,21 @@ local function BuildSettings(key)
         { name = L["Low Health Colour"], kind = LEM.SettingType.Checkbox, default = false, get = get("lowHealth", false), set = set("lowHealth"),
           desc = L["The bar turns red while your health is under 30%."],
           hidden = function() return info.kind ~= "health" end },
-        -- the swing timers: the out-of-range colour, as the unit frames' range fading
-        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true, get = get("rangeCheck", true), set = set("rangeCheck"),
-          desc = L["The bar turns red while your target is out of reach of this attack."],
-          hidden = function() return info.kind ~= "swing" end },
-        -- the swing timers' two texts, each on its own (11-11, a player's request)
-        { name = L["Bar Text"], kind = LEM.SettingType.Checkbox, default = true, get = get("showLabel", true), set = set("showLabel"),
-          desc = info.kind == "flight" and L["Where you're flying, on the left of the bar."]
-              or info.kind == "seal" and L["The seal's name on the left of the bar."]
-              or info.kind == "timer" and L["The timer's name on the left of the bar."] or L["The swing's name on the left of the bar."],
-          hidden = function() return info.kind ~= "swing" and info.kind ~= "flight" and info.kind ~= "seal" and info.kind ~= "timer" end },
-        { name = L["Timer"], kind = LEM.SettingType.Checkbox, default = true, get = get("showTimer", true), set = set("showTimer"),
-          desc = info.kind == "flight" and L["The time left on the right of the bar. A route you haven't flown yet counts up while it's learned."]
-              or info.kind == "seal" and L["The seal's time left on the right of the bar."]
-              or info.kind == "timer" and L["The time left on the right of the bar."]
-              or L["The seconds left on the right of the bar (and Waiting)."],
-          hidden = function() return info.kind ~= "swing" and info.kind ~= "flight" and info.kind ~= "seal" and info.kind ~= "timer" end },
         (function()
             -- only the bars that hold a value: combo points are steps, swing timers already run smoothly
             local item = K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars"))
             item.hidden = function() return info.kind ~= "health" and info.kind ~= "power" and info.kind ~= "mana" end
             return item
         end)(),
+        -- (11-16, Marcus) the health bar's Bar Edge Glow, as on the unit frames (default off)
+        (function()
+            local item = K.BarEdgeGlowSetting(get("barEdgeGlow", false), set("barEdgeGlow"))
+            item.hidden = function() return info.kind ~= "health" end
+            return item
+        end)(),
     })
-    -- last: Fade Group, Visibility, Fade Speed and Faded Opacity, as on the action bars (Visibility.lua)
+    Section("Behaviour", behaviourItems)
+    -- last: Fade Group, Visibility, Show Speed, Hide Speed and Faded Opacity, as on the action bars (Visibility.lua)
     if ns.Visibility and ns.Visibility.ResourceBarSettings then
         Section("Fading", ns.Visibility:ResourceBarSettings(key))
     end

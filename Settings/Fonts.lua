@@ -145,6 +145,7 @@ function S:FontRows(def)
         S:Row{
             key = heading, kind = "expander", tab = def.tab, section = def.section,
             previewFont = preview, labelFn = font.label, hidden = font.hidden,
+            pageHidden = def.pageHidden, beforeJump = def.beforeJump,
             get = function() return true end,   -- never greys out its child rows
             isOpen = function() return open[heading] end,
             toggle = function() open[heading] = not open[heading] end,
@@ -175,6 +176,7 @@ function S:FontRows(def)
                 row.path = font.path .. "." .. field
             end
             row.parent, row.tab, row.section, row.hidden, row.apply = heading, def.tab, def.section, Closed, def.apply
+            row.pageHidden, row.beforeJump = def.pageHidden, def.beforeJump
             -- optional (the bags' font): Default keeps Blizzard's and greys the rest; disabled (def's or the font's) greys all
             local own = row.disabled
             row.disabled = function()

@@ -367,9 +367,9 @@ end
 
 -- Threat Glow / Combat Glow (Look; udb.threatGlow, udb.combatGlow, a tile's in its own settings): on
 -- unless saved off
-function Ring.GlowOn(f, key)
-    local udb = Db(f)
-    return not (udb and udb[key] == false)
+-- (always on since 11-16, Malkkav: the Look switches are gone and a saved "off" no longer counts)
+function Ring.GlowOn()
+    return true
 end
 
 function Ring.On()
@@ -636,8 +636,6 @@ local function NewHitButton(f)
     hit:SetAttribute("*type1", "target")
     hit:SetAttribute("*type2", "togglemenu")
     hit:RegisterForClicks("AnyUp")
-    _G.ClickCastFrames = _G.ClickCastFrames or {}
-    _G.ClickCastFrames[hit] = true
     hit:SetScript("OnEnter", function()
         local script = f:GetScript("OnEnter")
         if script then script(f) end
@@ -646,6 +644,9 @@ local function NewHitButton(f)
         local script = f:GetScript("OnLeave")
         if script then script(f) end
     end)
+    -- after the scripts, as the frames' own (11-16, luuksen's report)
+    _G.ClickCastFrames = _G.ClickCastFrames or {}
+    _G.ClickCastFrames[hit] = true
     return hit
 end
 
@@ -705,6 +706,9 @@ local function BarHoleRegions(f)
         if bar then
             add(bar:GetStatusBarTexture())
             add(bar.bg)
+            -- Bar Edge Glow (UnitFrames.lua UF.BarLook)
+            local look = bar.fuiLook
+            if look then add(look.line) add(look.glow) end
         end
     end
     add(f.Separator)
@@ -713,9 +717,35 @@ local function BarHoleRegions(f)
     return list
 end
 
+-- Smooth Animated Bars (UnitFrames.lua ns.SAB) takes one mask per bar, the first time only: this one,
+-- the frame's for good. It follows the ring hole: cut while ApplyBarHole's is, else it cuts nothing (a
+-- white square, CLAMPTOWHITE past it), so the liquid never shows through the portrait.
+function Ring.SyncSabHole(f)
+    local mask = f and f.FlareUI_SabHole
+    if not mask then return end
+    local ring = f.RingFrame
+    mask:ClearAllPoints()
+    if ring and ring.BarHoleCut then
+        mask:SetTexture(BAR_HOLE_FILE, "CLAMPTOWHITE", "CLAMPTOWHITE")
+        mask:SetAllPoints(ring)
+    else
+        mask:SetTexture("Interface\\Buttons\\WHITE8X8", "CLAMPTOWHITE", "CLAMPTOWHITE")
+        mask:SetAllPoints(f)
+    end
+end
+
+function Ring.SabHole(f)
+    if not f.FlareUI_SabHole then
+        f.FlareUI_SabHole = f:CreateMaskTexture()
+        Ring.SyncSabHole(f)
+    end
+    return f.FlareUI_SabHole
+end
+
 local function RemoveBarHole(ring)
     for region in pairs(ring.BarHoleCut or {}) do region:RemoveMaskTexture(ring.BarHole) end
     ring.BarHoleCut = nil
+    Ring.SyncSabHole(ring:GetParent())
 end
 
 -- after the frame's backdrop and bars are set up: they make the regions it cuts
@@ -733,6 +763,7 @@ local function ApplyBarHole(f, ring)
             ring.BarHoleCut[region] = true
         end
     end
+    Ring.SyncSabHole(f)
 end
 
 -- The same round hole under the level disc, through the ring and portrait, while the disc shows.
@@ -875,17 +906,17 @@ function Ring.Layout(f)
     local blizz = BLIZZ[Kind(f)]
     if not f.fuiSample then frames[f] = true end
 
-    -- bottom to top above the frame's own levels: portrait, ring, icons, level disc, PvP crest (the
-    -- combo gems above all)
+    -- bottom to top above the frame's own levels: portrait, ring, (+11: the Dispel Highlight's copy of
+    -- the ring, Ring.SyncDispelTint), icons, level disc, PvP crest (the combo gems above all)
     f.Portrait:SetFrameLevel(level + 9)
     ring:SetFrameLevel(level + 10)
-    ring.Icons:SetFrameLevel(level + 11)
-    ring.Disc:SetFrameLevel(level + 12)
-    ring.PvP:SetFrameLevel(level + 13)
+    ring.Icons:SetFrameLevel(level + 12)
+    ring.Disc:SetFrameLevel(level + 13)
+    ring.PvP:SetFrameLevel(level + 14)
     -- (11-14, a CurseForge report) FlareUI Style: the auras and the cast bar over the ring, the elite / rare frame and
-    -- the combo gems (+14), so the bottom corners' icons aren't hidden under the dragon. Forever
+    -- the combo gems (+15), so the bottom corners' icons aren't hidden under the dragon. Forever
     -- Style keeps them under: its plate holds the art clear of them.
-    f.auraLift = not Ring.Plate(f) and 15 or nil
+    f.auraLift = not Ring.Plate(f) and 16 or nil
     if ns.UnitFrames and ns.UnitFrames.RestackAuras then ns.UnitFrames.RestackAuras(f) end
     for _, key in ipairs(RING_ICONS) do
         local region = f[key]
@@ -953,6 +984,7 @@ function Ring.Layout(f)
     ring.Tint:ClearAllPoints()
     for i = 1, ring.Art:GetNumPoints() do ring.Tint:SetPoint(ring.Art:GetPoint(i)) end
     ring.TintMask:SetSize(g.D * TINT_RIM_SHARE, g.D * TINT_RIM_SHARE)
+    for holder in pairs(ring.DispelTints or {}) do Ring.SyncDispelTint(ring, holder) end
     if ring.Hit then
         SetHit(ring.Hit, true, f, g, 0, 0, g.D, g.D)
     end
@@ -1464,6 +1496,47 @@ local function ApplyTint(ring, color)
         ring.Pulse:Stop()
         Ring.PlateGlow(f, nil)
     end
+end
+
+-- (11-16, Malkkav) Dispel Highlight on a ring tile: the portrait border again, in grey, for Blizzard to
+-- show and colour with a dispellable debuff (the type can be secret: only Blizzard knows the colour).
+-- parent: the highlight's button, or Edit Mode's sample. It follows the ring's layout.
+function Ring.SyncDispelTint(ring, holder)
+    local tex = holder.Tex
+    tex:SetTexture(ring.Art:GetTexture())
+    tex:SetTexCoord(ring.Art:GetTexCoord())
+    tex:ClearAllPoints()
+    for i = 1, ring.Art:GetNumPoints() do tex:SetPoint(ring.Art:GetPoint(i)) end
+    holder.Mask:SetSize(ring.TintMask:GetSize())
+    -- over the ring's art, under its icons, disc and crest (as the threat tint, 11-16 Malkkav)
+    holder:SetFrameLevel(ring:GetFrameLevel() + 1)
+    holder:SetShown(ring.hasArt and true or false)
+end
+
+-- the grey copy's texture (nil: no ring art on this frame)
+function Ring.DispelTint(f, parent)
+    local ring = f.ringKind and f.RingFrame
+    local holder = parent.FlareUI_RingDispel
+    if not (ring and ring.Tint and ring.hasArt) then
+        if holder then holder:Hide() end
+        return nil
+    end
+    if not holder then
+        holder = CreateFrame("Frame", nil, parent)
+        holder:SetAllPoints(ring)
+        holder.Tex = holder:CreateTexture(nil, "ARTWORK", nil, 7)
+        holder.Tex:SetDesaturated(true)
+        holder.Tex:SetBlendMode("BLEND")
+        holder.Mask = holder:CreateMaskTexture()
+        holder.Mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        holder.Mask:SetPoint("CENTER", ring, "CENTER")
+        holder.Tex:AddMaskTexture(holder.Mask)
+        parent.FlareUI_RingDispel = holder
+    end
+    ring.DispelTints = ring.DispelTints or {}
+    ring.DispelTints[holder] = true
+    Ring.SyncDispelTint(ring, holder)
+    return holder.Tex
 end
 
 -- (11-15) Threat Glow (Look) on every frame with a ring, tiles too (their border pulses with it,

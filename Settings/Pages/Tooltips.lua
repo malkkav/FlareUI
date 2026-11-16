@@ -29,9 +29,17 @@ local SCALES = {}
 for i = 5, 15 do SCALES[#SCALES + 1] = { i / 10, (i * 10) .. "%" } end
 S:Row{ key = "tt.scale", kind = "range", path = "tooltips.scale", choices = SCALES, apply = Refresh }
 S:Row{ key = "tt.opacity", kind = "range", path = "tooltips.opacity", choices = S:OpacityChoices(), apply = Refresh }
-S:Row{ key = "tt.healthBar", apply = Refresh,
-    get = function() return not S:GetPath("tooltips.hideHealthBar") end,
-    set = function(on) S:SetPath("tooltips.hideHealthBar", not on) end }
+-- (Health Bar is content: on the Content tab since 11-16, Malkkav; see Tweak below)
+-- Off, Below the tooltip or Inside it (11-16, Malkkav; a switch before): over hideHealthBar + healthBarPlace
+S:Row{ key = "tt.healthBar", kind = "choice", apply = Refresh, tab = "tweaks", choices = { "off", "below", "inside" },
+    get = function()
+        if S:GetPath("tooltips.hideHealthBar") then return "off" end
+        return S:GetPath("tooltips.healthBarPlace") == "inside" and "inside" or "below"
+    end,
+    set = function(value)
+        S:SetPath("tooltips.hideHealthBar", value == "off")
+        if value ~= "off" then S:SetPath("tooltips.healthBarPlace", value) end
+    end }
 
 -- MOUSEOVER (11-14, Malkkav): one dropdown of toggles. All Tooltips or None clear the rest; ticking kinds
 -- picks only those (each an exception to the main switch, Tooltips.lua TIP.SetKindMouseover); all six
@@ -92,7 +100,6 @@ Tweak{ key = "tt.classNames", apply = Refresh,
     get = function() return S:GetPath("tooltips.nameColor") == "class" end,
     set = function(on) S:SetPath("tooltips.nameColor", on and "class" or "none") end }
 Tweak{ key = "tt.showGuild", path = "tooltips.showGuild", apply = Refresh }
-Tweak{ key = "tt.showGuildRank", path = "tooltips.showGuildRank", parent = "tt.showGuild", apply = Refresh }
 Tweak{ key = "tt.showTarget", path = "tooltips.showTarget", apply = Refresh }
 Tweak{ key = "tt.showThreat", path = "tooltips.showThreat" }
 Tweak{ key = "tt.hideFaction", path = "tooltips.hideFaction", apply = Refresh }

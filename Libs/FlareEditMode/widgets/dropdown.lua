@@ -48,6 +48,7 @@ end
 local dropdownMixin = {}
 function dropdownMixin:Setup(data)
 	self.setting = data
+	self.Label:SetWidth(lib.internal.LabelWidth(self))   -- FlareUI (dialog.lua LabelWidth)
 	self.Label:SetText(data.name)
 	self:Refresh()
 
@@ -90,7 +91,7 @@ function dropdownMixin:Setup(data)
 						multiple = data.multiple,
 						widget = self,
 					})
-					-- FlareUI: { fontFace = "Name" } draws the choice in that font (the Fonts sections)
+					-- FlareUI: { fontFace = "Name" } draws the choice in that font
 					if value.fontFace and radio and radio.AddInitializer and ns.SetFontFamily and ns.GetFontPath then
 						radio:AddInitializer(function(button)
 							if button.fontString then ns.SetFontFamily(button.fontString, ns.GetFontPath(value.fontFace), 13, '') end

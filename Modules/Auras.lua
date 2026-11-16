@@ -487,7 +487,7 @@ local function Look(kind)
         isDebuff = KINDS[kind].isDebuff,
         colors = ColorMap(KINDS[kind].isDebuff, db.style == "round", db.swipe == "border"),
         arrive = db.arrive and true or false,
-        timerColor = db.timerColor and true or false,
+        timerColor = true,   -- always on since 11-16 (Malkkav; it was the Timer Colour switch)
     }
 end
 
@@ -518,7 +518,7 @@ ns.AuraLook = {
             timerSize = timerSize,
             isDebuff = isDebuff,
             cancel = canCancel,
-            timerColor = uf.auraTimerColor and true or false,
+            timerColor = true,   -- always on since 11-16 (it was the Timer Colour switch)
             colors = ColorMap(isDebuff, style == "round", swipe == "border"),
             -- room under the icon: autoSize + 3 on Auto, a chosen size gets its own
             cellHeight = size + ((timer == "below") and ((timerFont.size or 0) > 0 and timerSize + 4 or autoSize + 3) or 0),
@@ -711,14 +711,48 @@ local function EnchantOnUpdate(self, elapsed)
 end
 
 -- Shifts the container by one cell per enchant (out of combat only)
+-- (11-16, Malkkav after valleyheart's report) the buff grid always starts at its corner: weapon enchants
+-- used to take the first cells, which shifted the whole grid, so every row started that many icons in.
+-- They now sit on their own row under the last row of buffs (AU.PlaceEnchants).
 local function PlaceContainer(holder, kdb, corner, width)
     local container = holder.container
-    local n = (not Previewing() and holder.activeEnchants) or 0
     local step = (kdb.size or 30) + (kdb.spacing or 6)
-    holder.enchantShift = n
+    holder.enchantShift = 0
     container:ClearAllPoints()
-    container:SetPoint(corner, holder, corner, n * step * ((kdb.grow == "RIGHT") and 1 or -1), 0)
-    pcall(container.SetFlowLayoutMaximumLineSize, container, math_max(step, width - n * step))
+    container:SetPoint(corner, holder, corner, 0, 0)
+    pcall(container.SetFlowLayoutMaximumLineSize, container, math_max(step, width))
+end
+
+-- The weapon enchant icons, on a row of their own just under your buffs: below the last buff row
+-- (Wrap: Down), or under the first one (Wrap: Up, where the rows climb). The buffs are counted as the
+-- grid shows them (HELPFUL, up to Max Icons); moves when they change (UNIT_AURA).
+function AU.PlaceEnchants(holder, kdb)
+    local buttons = holder and holder.enchants
+    if not (buttons and kdb) then return end
+    local corner = StartCorner(kdb)
+    local step = (kdb.size or 30) + (kdb.spacing or 6)
+    local dir = (kdb.grow == "RIGHT") and 1 or -1
+    local stepY = CellHeight(kdb.size or 30) + (kdb.spacing or 6)
+    local y
+    if kdb.wrap == "UP" then
+        y = -stepY
+    else
+        local count, max = 0, kdb.max or 32
+        for i = 1, max do
+            if not C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL") then break end
+            count = i
+        end
+        local perRow = math_max(1, kdb.perRow or 12)
+        y = -math_ceil(count / perRow) * stepY
+    end
+    local n = 0
+    for _, b in ipairs(buttons) do
+        if b.enchant then
+            b:ClearAllPoints()
+            b:SetPoint(corner, holder, corner, n * step * dir, y)
+            n = n + 1
+        end
+    end
 end
 
 local function UpdateEnchants(kind)
@@ -745,15 +779,13 @@ local function UpdateEnchants(kind)
             b.FlareUI_Count:SetText(e.charges > 1 and tostring(e.charges) or "")
             b.FlareUI_Cooldown:SetCooldown(e.expires - e.duration, e.duration)
             b.enchant = e
-            -- cells shift - n .. shift - 1: inside the room the container left, or just before it
-            b:ClearAllPoints()
-            b:SetPoint(corner, holder, corner, (shift - #list + i - 1) * step * dir, 0)
-            b:Show()
+            b:Show()   -- (placed below, AU.PlaceEnchants)
         elseif b then
             b.enchant = nil
             b:Hide()
         end
     end
+    AU.PlaceEnchants(holder, kdb)
     holder:SetScript("OnUpdate", #list > 0 and EnchantOnUpdate or nil)
     EnchantTimer(holder)
     -- the container makes room once combat allows
@@ -896,8 +928,8 @@ local function BuildSettings(kind)
             AU:Refresh()
         end
     end
-    -- the Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua), then
-    -- the Fonts section, always last (11-13)
+    -- the Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua). Fonts are
+    -- on the settings page's Fonts tab (11-13).
     local Section, settings = ns.EditSections()
     Section("Frame", {
         { name = L["Icon Size"], kind = LEM.SettingType.Slider, default = defaults.size or 30, minValue = 16, maxValue = 64, valueStep = 1,
@@ -1250,12 +1282,19 @@ function AU:Init()
         pcall(events.RegisterEvent, events, event)
     end
     pcall(events.RegisterUnitEvent, events, "UNIT_INVENTORY_CHANGED", "player")
+    -- the enchant row follows the number of buff rows (only while an enchant shows)
+    pcall(events.RegisterUnitEvent, events, "UNIT_AURA", "player")
     -- death and coming back (11-12, a player report: a sharpening stone's icon was gone after dying,
     -- though the stone was still on): the enchants are read again then, and once more a moment later,
     -- since no weapon event follows the resurrection
     local AFTER_DEATH = { PLAYER_DEAD = true, PLAYER_ALIVE = true, PLAYER_UNGHOST = true, PLAYER_ENTERING_WORLD = true }
     for event in pairs(AFTER_DEATH) do pcall(events.RegisterEvent, events, event) end
     events:SetScript("OnEvent", function(_, event)
+        if event == "UNIT_AURA" then
+            local holder = frames.buffs
+            if holder and (holder.activeEnchants or 0) > 0 then AU.PlaceEnchants(holder, KindDb("buffs")) end
+            return
+        end
         if AFTER_DEATH[event] then
             UpdateEnchants("buffs")
             C_Timer.After(1, function() UpdateEnchants("buffs") end)

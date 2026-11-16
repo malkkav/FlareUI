@@ -47,10 +47,9 @@ S:Row{ key = "ch.editBoxOpacity", kind = "range", path = "chat.editBoxOpacity", 
 S:Row{ key = "ch.editBox", kind = "choice", path = "chat.editBoxPosition",
     choices = { "inside", "below", "above" }, apply = Refresh, section = "ch.editBoxSection" }
 
--- in pairs: copying, links and history, what's hidden, the lines
+-- in pairs: copying and history, what's hidden, the lines (Copy Chat Links and Link Tooltips on
+-- Mouseover are always on since 11-16)
 S:Row{ key = "ch.copyButton", tab = "tweaks", path = "chat.copyButton", apply = Refresh, section = "ch.tweaks", half = true }
-S:Row{ key = "ch.copyLinks", tab = "tweaks", path = "chat.copyLinks", apply = Refresh, section = "ch.tweaks", half = true }
-S:Row{ key = "ch.hoverTooltips", tab = "tweaks", path = "chat.hoverTooltips", section = "ch.tweaks", half = true }
 S:Row{ key = "ch.history", tab = "tweaks", path = "chat.saveHistory", apply = Refresh, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.combatLog", tab = "tweaks", path = "chat.hideCombatLog", reload = true, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.noBubbles", tab = "tweaks", path = "chat.hideBubblesInInstance", apply = Refresh, section = "ch.tweaks", half = true }
@@ -63,6 +62,8 @@ local function Format(key, path)
     S:Row{ key = "ch." .. key, tab = "tweaks", path = "chat." .. path, apply = Refresh, section = "ch.formatting", half = true }
 end
 -- Channel Names (the old Short Channel Names switch: on was Number)
+-- (11-16, UX audit 4.1: it was red text in the section title, which read as an error)
+S:Row{ key = "ch.formattingNote", kind = "text", noTitle = true, tab = "tweaks", section = "ch.formatting" }
 S:Row{ key = "ch.channelNames", kind = "choice", tab = "tweaks", section = "ch.formatting", choices = { "full", "short", "number" },
     get = function()
         local mode = S:GetPath("chat.channelNames")
@@ -74,10 +75,9 @@ S:Row{ key = "ch.channelNames", kind = "choice", tab = "tweaks", section = "ch.f
         S:SetPath("chat.shortChannels", mode ~= "full")
     end,
     apply = Refresh }
--- in pairs (Malkkav, 11-10): names | colon, NPCs | whispers, time | link icons, race | class icons;
+-- in pairs (Malkkav, 11-10; Colon After Names removed 11-16): names | NPCs, whispers | time, ...;
 -- the level last
 Format("formatPlayer", "formatPlayer")
-Format("nameColon", "nameColon")
 Format("formatNPC", "formatNPC")
 Format("whisperMarkers", "whisperMarkers")
 Format("timestamps", "betterTimestamps")

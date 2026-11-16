@@ -7,6 +7,8 @@ local L = ns.L
 --   * Columns and Gaps between bags: the combined backpack's grid, laid out again after Blizzard's
 --     (hooksecurefunc on its UpdateFrameSize / UpdateItemLayout, so Blizzard's code runs untouched)
 --   * Integrated bag buttons: the four bag slots down the combined backpack's side
+--   * Bank Window: the bank's Columns, Gaps between bags and Tight spacing (section 4e)
+--   * Hide 2FA Bag Slots and Syndicator work alongside (sections 1b and 3, the gold list)
 --   * Sort Bags on Open: Blizzard's clean-up each time the bags open (section 4d)
 --   * Category Filters: a button beside the cleanup button opens a drawer of categories; the one
 --     picked dims every other item (section 4b; the dimming after parchinskiy's PR #22)
@@ -387,9 +389,22 @@ local function Relayout(frame)
     if #items == 0 then return end
     local secured = not IsAccountSecured or IsAccountSecured()
     table_sort(items, secured and SortItems or SortItemsExtended)
+    -- Hide 2FA Bag Slots: its hidden locked slots stay out of the grid (section 1b)
+    local h2fa = not secured and Bags.H2FA.On()
+    if h2fa then
+        items = Bags.H2FA.Items(items)
+        if #items == 0 then return end
+    end
+
+    -- (11-16) Combine Empty Slots: the filled slots, then one empty slot showing how many are free
+    local combine = Bags.CombineEmptyOn()
+    layingOut = true   -- (its shows and hides must not lay out again)
+    items = Bags.CombineEmpty(items, combine)
+    layingOut = false
+    if #items == 0 then return end
 
     local columns = LayoutColumns(db)
-    local gaps = db.bagGaps == true
+    local gaps = db.bagGaps == true and not (h2fa and Bags.H2FA.Compact()) and not combine
     local w, h = items[1]:GetSize()
     local stepX, stepY = w + ITEM_SPACING, h + ITEM_SPACING
     local anchor = frame.MoneyFrame
@@ -426,6 +441,9 @@ local function Relayout(frame)
         shownBags[bagID] = true
     end
     HideExtras(shownBags)
+    -- (Hide 2FA Bag Slots, without gaps: the rows stay full and the spare room sits bottom right, as
+    -- that addon lays them out)
+    if h2fa and not gaps and col == 0 then col = (columns - #items % columns) % columns end
     for _, button in ipairs(items) do
         local bag = button:GetBagID()
         if gaps and prevBag and bag ~= prevBag then
@@ -460,6 +478,160 @@ local function ExtraLayoutChanged(event)
     end
     return ExtraSectionChanged(KeyringID(), KeyringWanted(), columns)
         or ExtraSectionChanged(ReagentID(), ReagentWanted(), columns)
+end
+
+--------------------------------------------------
+-- 1b. HIDE 2FA BAG SLOTS (11-16, a player's report)
+-- That addon hides the padlocked slots of an account without an authenticator and lays the rest out
+-- again with Blizzard's grid, on the same Blizzard calls FlareUI's layout follows. With a FlareUI
+-- layout on, FlareUI's grid kept a place for each hidden slot (blank rows), or that addon's grid
+-- (Blizzard's columns and height) came after FlareUI's. Now FlareUI's grid leaves the locked slots
+-- out (hidden, as that addon wants), follows its Compact View order (empty slots first from the
+-- bottom right, so the filled ones read first), and its hooks run after that addon's.
+--------------------------------------------------
+Bags.H2FA = {}
+
+function Bags.H2FA.On()
+    local H2FA = Bags.H2FA
+    if H2FA.loaded == nil then
+        H2FA.loaded = C_AddOns.IsAddOnLoaded("Hide2FABagSlots") and true or false
+    end
+    return H2FA.loaded
+end
+
+function Bags.H2FA.Compact()
+    local db = _G.Hide2FABagSlotsDB
+    return type(db) == "table" and db.compact == true
+end
+
+-- the slots without the locked ones (hidden here too: its own hide may come after this layout)
+function Bags.H2FA.Items(items)
+    local kept, filled = {}, {}
+    local compact = Bags.H2FA.Compact()
+    for _, button in ipairs(items) do
+        if button.IsExtended and button:IsExtended() then
+            if button:IsShown() and not (InCombatLockdown() and button:IsProtected()) then button:Hide() end
+        elseif compact and C_Container.GetContainerItemInfo(button:GetBagID(), button:GetID()) then
+            filled[#filled + 1] = button
+        else
+            kept[#kept + 1] = button
+        end
+    end
+    for _, button in ipairs(filled) do kept[#kept + 1] = button end
+    return kept
+end
+
+--------------------------------------------------
+-- 1c. COMBINE EMPTY SLOTS (11-16, Malkkav; an idea from EnhanceQoL's bags, built from scratch)
+-- The backpack shows its filled slots, then a single empty slot with the number of free slots on it;
+-- the other empty slots hide. Off (or the Gamepad UI), every slot shows again. Blizzard's item buttons
+-- are no secure template, but a hide or show is skipped in a fight if one turns out protected: the
+-- layout runs again as the fight ends. A slot filled or emptied re-lays the grid (BAG_UPDATE_DELAYED).
+--------------------------------------------------
+Bags.combineHidden = setmetatable({}, { __mode = "k" })
+Bags.freeText = setmetatable({}, { __mode = "k" })
+
+function Bags.CombineEmptyOn()
+    local db = GetDb()
+    return db and db.bagCombineEmpty and not ns.IsGamepadUI() or false
+end
+
+local function SetSlotShown(button, shown)
+    if button:IsShown() == shown then return end
+    if InCombatLockdown() and button:IsProtected() then return end
+    button:SetShown(shown)
+    Bags.combineHidden[button] = (not shown) or nil
+end
+
+local function SetFreeCount(button, count)
+    local text = Bags.freeText[button]
+    if not count then
+        if text then text:Hide() end
+        return
+    end
+    if not text then
+        text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+        text:SetPoint("CENTER")
+        text:SetTextColor(0.75, 0.72, 0.66)
+        Bags.freeText[button] = text
+    end
+    text:SetText(count)
+    text:Show()
+end
+
+function Bags.CombineEmpty(items, combine)
+    if not combine then
+        -- back to every slot: the ones this hid show again
+        for button in pairs(Bags.combineHidden) do SetSlotShown(button, true) end
+        for button in pairs(Bags.freeText) do SetFreeCount(button, nil) end
+        return items
+    end
+    local kept, spare, free = {}, nil, 0
+    for _, button in ipairs(items) do
+        local info = C_Container.GetContainerItemInfo(button:GetBagID(), button:GetID())
+        if info then
+            kept[#kept + 1] = button
+            SetSlotShown(button, true)
+            SetFreeCount(button, nil)
+        else
+            free = free + 1
+            if spare then
+                SetSlotShown(button, false)
+                SetFreeCount(button, nil)
+            else
+                spare = button
+            end
+        end
+    end
+    if spare then
+        kept[#kept + 1] = spare
+        SetSlotShown(spare, true)
+        SetFreeCount(spare, free)
+    end
+    return kept
+end
+
+--------------------------------------------------
+-- 1d. AUTO OPEN CONTAINERS (11-16, Malkkav; as EllesmereUI and EnhanceQoL offer, built from scratch)
+-- Clams, loot bags and opened lockboxes in your bags open themselves, one at a time with a short wait,
+-- out of a fight and while no vendor, bank, mail, trade, auction or loot window is open. One that
+-- doesn't open (a locked box) is left alone for the session, so it can't loop.
+--------------------------------------------------
+Bags.AutoOpen = { skip = {} }
+
+function Bags.AutoOpen.Blocked()
+    if InCombatLockdown() or UnitIsDeadOrGhost("player") or ns.IsGamepadUI() then return true end
+    for _, name in ipairs({ "MerchantFrame", "BankFrame", "MailFrame", "TradeFrame", "AuctionHouseFrame",
+                            "AuctionFrame", "GuildBankFrame", "LootFrame" }) do
+        local frame = _G[name]
+        if frame and frame:IsShown() then return true end
+    end
+    return false
+end
+
+function Bags.AutoOpen.Next()
+    local A = Bags.AutoOpen
+    local db = GetDb()
+    if A.busy or not (db and db.bagAutoOpen) or A.Blocked() then return end
+    for bag = 0, NUM_BAG_SLOTS or 4 do
+        for slot = 1, C_Container.GetContainerNumSlots(bag) do
+            local info = C_Container.GetContainerItemInfo(bag, slot)
+            local id = info and info.itemID
+            if id and info.hasLoot == true and not info.isLocked and not A.skip[id] then
+                A.busy = true
+                local count = info.stackCount or 1
+                C_Container.UseContainerItem(bag, slot)
+                C_Timer.After(0.6, function()
+                    A.busy = nil
+                    local after = C_Container.GetContainerItemInfo(bag, slot)
+                    -- still there, as many: it didn't open
+                    if after and after.itemID == id and (after.stackCount or 1) >= count then A.skip[id] = true end
+                    C_Timer.After(0.2, Bags.AutoOpen.Next)
+                end)
+                return
+            end
+        end
+    end
 end
 
 --------------------------------------------------
@@ -728,7 +900,7 @@ end
 
 local function UpdateItemBorder(ov, db, quality, dimmed)
     local style = db.bagThickBorders and "thick" or "thin"
-    if db.bagRarityBorders and quality and not dimmed then
+    if quality and not dimmed then   -- (rarity colours always on, 11-16)
         local r, g, b = C_Item.GetItemQualityColor(quality)
         ShowBorder(ov, style, r, g, b)
     else
@@ -746,7 +918,7 @@ local function RefreshItemFilter()
             local info = bagID and slotID and C_Container.GetContainerItemInfo(bagID, slotID)
             UpdateItemFilter(button, ov, bagID, slotID, info)
             local dimmed = dimmedIcons[button]
-            if db and db.bagSkinSlots ~= false and db.bagRarityBorders and wasDimmed ~= dimmed then
+            if db and db.bagSkinSlots ~= false and wasDimmed ~= dimmed then
                 UpdateItemBorder(ov, db, info and info.quality, dimmed)
             end
         end
@@ -876,6 +1048,82 @@ function Bags.StyleMoney()
                 if text then StyleIconText(text, db.bagMoneyFont) end
             end
             if money:IsVisible() and MoneyFrame_UpdateMoney then pcall(MoneyFrame_UpdateMoney, money) end
+        end
+    end
+end
+
+-- Your gold on other characters (11-16, a player's report): with Syndicator installed, pointing at the
+-- money at the bags' foot lists the gold of your characters on this realm (and connected ones), from
+-- Syndicator's saved data, as Baganator does with it. Syndicator only keeps the data: the list was
+-- Baganator's, so with FlareUI's bags (Blizzard's money line, untouched) there was none. Blizzard's
+-- own scripts still run first (a click still opens the currency tab); nothing shows without Syndicator.
+Bags.GoldList = {}
+
+function Bags.GoldList.Show(owner)
+    local api = _G.Syndicator and _G.Syndicator.API
+    if not (api and api.GetAllCharacters and api.GetCharacter and (not api.IsReady or api.IsReady())) then return end
+    local util = _G.Syndicator.Utilities
+    local realms
+    if util and util.GetConnectedRealms then
+        realms = {}
+        for _, r in ipairs(util.GetConnectedRealms() or {}) do realms[r] = true end
+        if not next(realms) then realms = nil end
+    end
+    local lines, total = {}, 0
+    for _, fullName in ipairs(api.GetAllCharacters() or {}) do
+        local data = api.GetCharacter(fullName)
+        local d = data and data.details
+        local shown = d and (d.show and d.show.gold or (not d.show and d.hidden ~= true))
+        if shown and (not realms or realms[d.realmNormalized]) and type(data.money) == "number" then
+            local name = d.character or fullName
+            local colour = d.className and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS)[d.className]
+            if colour and colour.colorStr then name = "|c" .. colour.colorStr .. name .. "|r" end
+            lines[#lines + 1] = { name = name, money = data.money }
+            total = total + data.money
+        end
+    end
+    if api.GetAllGuilds and api.GetGuild then
+        for _, fullName in ipairs(api.GetAllGuilds() or {}) do
+            local data = api.GetGuild(fullName)
+            local d = data and data.details
+            if d and d.show and d.show.gold and (not realms or realms[d.realmNormalized]) and type(data.money) == "number" then
+                lines[#lines + 1] = { name = "<" .. (d.guild or fullName) .. ">", money = data.money }
+                total = total + data.money
+            end
+        end
+    end
+    if #lines == 0 then return end
+    table_sort(lines, function(a, b) return a.money > b.money end)
+    GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+    GameTooltip:AddDoubleLine(L["Gold on This Realm"], GetMoneyString(total, true), nil, nil, nil, 1, 1, 1)
+    GameTooltip:AddLine(" ")
+    for _, line in ipairs(lines) do
+        GameTooltip:AddDoubleLine(line.name, GetMoneyString(line.money, true), 1, 1, 1, 1, 1, 1)
+    end
+    GameTooltip:Show()
+    Bags.GoldList.owner = owner
+end
+
+function Bags.GoldList.Hide(owner)
+    if Bags.GoldList.owner == owner then
+        Bags.GoldList.owner = nil
+        if GameTooltip:GetOwner() == owner then GameTooltip:Hide() end
+    end
+end
+
+-- the gold, silver and copper of the combined bags' and the backpack's money lines (hooked once)
+function Bags.GoldList.Hook()
+    for _, frame in ipairs({ _G.ContainerFrameCombinedBags, _G.ContainerFrame1 }) do
+        local money = frame and (frame.MoneyFrame or _G[(frame:GetName() or "") .. "MoneyFrame"])
+        if money and not money.fuiGoldList then
+            money.fuiGoldList = true
+            for _, key in ipairs({ "GoldButton", "SilverButton", "CopperButton" }) do
+                local button = money[key]
+                if button and button.HookScript then
+                    button:HookScript("OnEnter", function(b) pcall(Bags.GoldList.Show, b) end)
+                    button:HookScript("OnLeave", function(b) Bags.GoldList.Hide(b) end)
+                end
+            end
         end
     end
 end
@@ -1352,6 +1600,8 @@ function Bags:Init()
     Bags.Sort.Hook()       -- section 4d
     Bags.StyleFreeSlots()
     Bags.StyleMoney()
+    Bags.GoldList.Hook()
+    Bags.Bank.Hook()       -- section 4e
     local useFilterButtons = C_Container.GetContainerItemQuestInfo and C_Item.GetItemInventoryTypeByID
         and Enum.InventoryType and not self:GetOtherBagAddon()
     for _, frame in ipairs(BagFrames()) do
@@ -1372,10 +1622,19 @@ function Bags:Init()
     end
     local combined = Combined()
     if combined then
-        if combined.UpdateFrameSize then hooksecurefunc(combined, "UpdateFrameSize", Relayout) end
-        if combined.UpdateItemLayout then hooksecurefunc(combined, "UpdateItemLayout", Relayout) end
-        -- (after the re-layout: the window's new width)
-        if combined.UpdateFrameSize then hooksecurefunc(combined, "UpdateFrameSize", function(f) Bags.FitSearchBox(f) end) end
+        local function HookLayout()
+            if combined.UpdateFrameSize then hooksecurefunc(combined, "UpdateFrameSize", Relayout) end
+            if combined.UpdateItemLayout then hooksecurefunc(combined, "UpdateItemLayout", Relayout) end
+            -- (after the re-layout: the window's new width)
+            if combined.UpdateFrameSize then hooksecurefunc(combined, "UpdateFrameSize", function(f) Bags.FitSearchBox(f) end) end
+            -- Hide 2FA Bag Slots' Compact View lays the slots out again on each item change (section 1b)
+            if Bags.H2FA.On() and combined.UpdateItems then
+                hooksecurefunc(combined, "UpdateItems", function(f) if Bags.H2FA.Compact() then Relayout(f) end end)
+            end
+        end
+        -- Hide 2FA Bag Slots hooks the same calls at login: FlareUI's go on a frame later, so they run
+        -- after its own and FlareUI's grid is the one shown
+        if Bags.H2FA.On() then C_Timer.After(0, HookLayout) else HookLayout() end
         if combined.SetItemsMatchingBagHighlighted then
             hooksecurefunc(combined, "SetItemsMatchingBagHighlighted", function(_, bagID, highlight)
                 if highlight and not GamepadUI() then
@@ -1447,6 +1706,14 @@ function Bags:Init()
             end
             return
         end
+        -- (11-16) Auto Open Containers, and Combine Empty Slots: a filled or emptied slot moves the grid
+        if event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED" then
+            C_Timer.After(0.3, Bags.AutoOpen.Next)
+            if Bags.CombineEmptyOn() or next(Bags.combineHidden) then
+                local combined = Combined()
+                if combined and combined:IsShown() then Relayout(combined) end
+            end
+        end
         -- Slot counts can arrive after login or grow when a bag is replaced.
         if event == "PLAYER_ENTERING_WORLD" then self:UnregisterEvent(event) end
         local refreshLayout = event == "PLAYER_ENTERING_WORLD" or event == "BAG_CONTAINER_UPDATE"
@@ -1505,6 +1772,7 @@ function Bags:Refresh()
     end
     self:PlaceBagButtons()
     ParkReagentWindow()
+    Bags.Bank.Refresh()
 end
 
 --------------------------------------------------
@@ -1590,6 +1858,98 @@ function Sort.Hook()
     for _, frame in ipairs(BagFrames()) do
         frame:HookScript("OnShow", Sort.Opened)
     end
+end
+
+--------------------------------------------------
+-- 4e. BANK WINDOW (Bags and Looting > Bank Window; 11-16, a player's request)
+-- Forever's bank is one window: every bank bag in one grid of 8 columns, in pages of 88 slots, with
+-- wide spaces between the slots. Columns, Gaps Between Bags and Tight Spacing lay the shown page out
+-- again after Blizzard's (hooksecurefunc on its GenerateItemSlotsForSelectedTab), and size the window
+-- to fit; it never gets narrower than Blizzard's, so the bag slots and buttons at its foot keep their
+-- room. Blizzard's pages stay as they are. All off (or in the Gamepad UI), Blizzard's grid is put back
+-- once and left alone. The window grows to the right: Blizzard's window manager still thinks it 560 wide.
+--------------------------------------------------
+local Bank = {
+    X = 47, Y = -63,             -- Blizzard's first slot (BankPanelMixin:GenerateItemSlotsForSelectedTab)
+    GAP_X = 13, GAP_Y = 10,      -- Blizzard's space between slots (useUniformItemSlotSpacing)
+    TIGHT = 5,                   -- the backpack's (ITEM_SPACING)
+    SIDES = 93,                  -- left and right of the grid together
+    BOTTOM = 125,                -- below the grid: the bag slots, the cost and the money
+    COLUMNS = 8, MIN_HEIGHT = 460,
+}
+Bags.Bank = Bank
+
+function Bank.Wanted(db)
+    return db and ((db.bankColumns or 0) > 0 or db.bankGaps == true or db.bankTight == true) or false
+end
+
+function Bank.Layout(panel)
+    local frame = _G.BankFrame
+    if not (frame and panel and panel == frame.BankPanel and panel:IsShown()) then return end
+    if Bags:GetOtherBagAddon() or not panel.EnumerateValidItems then return end
+    if not (C_Bank and C_Bank.ShouldUsePlayerBagsInBank and C_Bank.ShouldUsePlayerBagsInBank()) then return end
+    if InCombatLockdown() and frame:IsProtected() then return end
+    local db = GetDb()
+    -- (not in the Gamepad UI, as the backpack's layout)
+    local wanted = Bank.Wanted(db) and not GamepadUI()
+    if not (wanted or Bank.owned) then return end
+    Bank.baseWidth = Bank.baseWidth or panel:GetWidth()
+
+    -- Blizzard's order: the bank bags in turn, each from its first slot
+    local order = {}
+    for i, tab in ipairs(panel.purchasedBankTabData or {}) do order[tab.ID] = i end
+    local items = {}
+    for button in panel:EnumerateValidItems() do
+        if button:IsShown() and button.GetBankTabID and button.GetContainerSlotID then items[#items + 1] = button end
+    end
+    if #items == 0 then return end
+    table_sort(items, function(a, b)
+        local ta, tb = order[a:GetBankTabID()] or 0, order[b:GetBankTabID()] or 0
+        if ta ~= tb then return ta < tb end
+        return a:GetContainerSlotID() < b:GetContainerSlotID()
+    end)
+
+    local columns = wanted and (db.bankColumns or 0) > 0 and db.bankColumns or Bank.COLUMNS
+    local gaps = wanted and db.bankGaps == true
+    local sx, sy = Bank.GAP_X, Bank.GAP_Y
+    if wanted and db.bankTight == true then sx, sy = Bank.TIGHT, Bank.TIGHT end
+    local w, h = items[1]:GetSize()
+    local gridW = columns * w + (columns - 1) * sx
+    local width = math_max(Bank.baseWidth, gridW + Bank.SIDES)
+    -- a grid narrower than Blizzard's sits in the middle
+    local x0 = Bank.X + math.floor((width - gridW - Bank.SIDES) / 2)
+
+    local col, row, gapCount, prevTab = 0, 0, 0, nil
+    for _, button in ipairs(items) do
+        local tab = button:GetBankTabID()
+        if gaps and prevTab and tab ~= prevTab then
+            if col > 0 then col, row = 0, row + 1 end
+            gapCount = gapCount + 1
+        end
+        button:ClearAllPoints()
+        button:SetPoint("TOPLEFT", panel, "TOPLEFT", x0 + col * (w + sx), Bank.Y - row * (h + sy) - gapCount * BAG_GAP)
+        col = col + 1
+        if col >= columns then col, row = 0, row + 1 end
+        prevTab = tab
+    end
+    local rows = row + (col > 0 and 1 or 0)
+    local height = math_max(Bank.MIN_HEIGHT, -Bank.Y + rows * h + (rows - 1) * sy + gapCount * BAG_GAP + Bank.BOTTOM)
+    panel:SetSize(width, height)
+    frame:SetSize(width, height)
+    Bank.owned = wanted
+end
+
+function Bank.Hook()
+    local panel = _G.BankFrame and _G.BankFrame.BankPanel
+    if not panel or Bank.hooked or not panel.GenerateItemSlotsForSelectedTab then return end
+    Bank.hooked = true
+    hooksecurefunc(panel, "GenerateItemSlotsForSelectedTab", Bank.Layout)
+end
+
+-- live from the options, while the bank is open
+function Bank.Refresh()
+    local panel = _G.BankFrame and _G.BankFrame.BankPanel
+    if panel and panel:IsVisible() then Bank.Layout(panel) end
 end
 
 --------------------------------------------------

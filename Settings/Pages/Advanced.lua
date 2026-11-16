@@ -529,6 +529,10 @@ local BUTTON_W, BUTTON_GAP = 108, 6
 local PROFILE_W = BUTTON_W * 3 + BUTTON_GAP * 2
 local MANAGE_W = (PROFILE_W - BUTTON_GAP * 2) / 3
 
+-- what a profile saves, and where the rest comes from (ProfileLayout.lua): a section of its own above
+-- Profile, its title the section's (11-16, Malkkav); registered first so the section comes first
+S:Row{ key = "adv.holds", kind = "text", noTitle = true, section = "adv.saves" }
+
 S:Row{
     key = "adv.profiles", kind = "dropdown", choices = Profiles, dropdownWidth = PROFILE_W,
     get = function() return ns.db and ns.db:GetCurrentProfile() end,
@@ -561,8 +565,6 @@ S:Row{
     },
 }
 
--- what a profile holds, and where the rest comes from (ProfileLayout.lua)
-S:Row{ key = "adv.holds", kind = "text" }
 
 -- Export / Import: two buttons as wide as the three above
 local SHARE_W = (BUTTON_W * 3 + BUTTON_GAP) / 2
@@ -577,5 +579,5 @@ S:Row{
     },
 }
 
-S:Row{ key = "adv.reset", kind = "button", center = true, section = "adv.reset",
+S:Row{ key = "adv.reset", kind = "button", center = true, section = "adv.profile",   -- (last row of Profile, 11-16)
     apply = function() ns.ShowDialog("FLAREUI_RESET") end }

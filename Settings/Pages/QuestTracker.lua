@@ -13,7 +13,8 @@ end
 local function Holder() return _G.FlareUI_ObjectiveTracker end
 
 S:Module{ key = "qt", group = "map", order = 20, enabled = "objectivetracker.enabled", editMode = Holder,
-    tabs = { { key = "settings" }, { key = "fonts" } } }
+    -- (11-16, UX audit batch 4) Look (Frame, Display) and Behaviour (Quests with Sort By, Minimize)
+    tabs = { { key = "settings" }, { key = "behaviour" }, { key = "fonts" } } }
 
 -- the tracker stays shown on this page (sample quests when empty) so Frame Opacity can be seen
 S:On("PageShown", function(key)
@@ -28,6 +29,7 @@ S:Row{ key = "qt.border", kind = "choice", path = "objectivetracker.borderTextur
 -- one choice over four saved flags: zone (current zone first), distance, level, progress
 S:Row{
     key = "qt.sort", kind = "choice", choices = { "zone", "distance", "level", "progress" }, apply = Refresh,
+    tab = "behaviour", section = "qt.quests",
     get = function()
         if S:GetPath("objectivetracker.sortByLevel") then return "level" end
         if S:GetPath("objectivetracker.sortByProgress") then return "progress" end
@@ -45,13 +47,10 @@ S:Row{
 local function Display(key, path, invert)
     S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, invert = invert, apply = Refresh, section = "qt.display", half = true }
 end
--- in pairs (11-11, Malkkav): Quest Count | Hide When Empty, Zone Headings | Wrap Long Text,
--- Show Quest Level | Colour by Difficulty, Quest Tags | Tracked Recipes, (11-15) Show Complete Tag |
--- Quest Icons, Focus Buttons | Voice Buttons
-Display("count", "showCount")
-Display("hideEmpty", "hideEmpty")
+-- in pairs (11-11, Malkkav; 11-16 Quest Count, Hide When Empty and Wrap Long Text became always on):
+-- Zone Headings | Show Quest Level, Colour by Difficulty | Quest Tags, Tracked Recipes | Show Complete
+-- Tag, Quest Icons | Voice Buttons, Auto Quest Buttons (Focus Buttons removed 11-16, Malkkav)
 Display("zoneHeaders", "zoneHeaders")
-Display("wrap", "wrapText")
 Display("hideLevel", "hideLevel", true)
 Display("colorNames", "colorNames")
 Display("tags", "showTags")
@@ -60,46 +59,37 @@ Display("recipes", "showRecipes")
 Display("completeTag", "showCompleteTag")
 -- (11-15, Haisen) Blizzard's round quest buttons; the focus dots step aside while they are on
 Display("questIcons", "questIcons")
-S:Row{ key = "qt.focusButtons", path = "objectivetracker.focusButtons", apply = Refresh, section = "qt.display", half = true,
-    disabled = function() return S:GetPath("objectivetracker.questIcons") end }
 S:Row{ key = "qt.playButtons", path = "objectivetracker.playButtons", apply = Refresh, section = "qt.display", half = true,
     hidden = function() return not _G.Spoken end }
--- (11-14) the header's "!" and "?" for Quality of Life's Auto Accept / Auto Turn-In Quests
-Display("autoButtons", "autoButtons")
--- those two switches changed on the Quality of Life page: the header buttons follow
-S:On("RowChanged", function(row)
-    if row and (row.key == "qol.autoAcceptQuests" or row.key == "qol.autoTurnInQuests") then Refresh() end
-end)
 
 local function Quests(key, path, invert)
-    S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, invert = invert, apply = Refresh, section = "qt.quests", half = true }
+    S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, invert = invert, apply = Refresh, section = "qt.quests", half = true,
+        tab = "behaviour" }
 end
 -- the order (Completed Last | Focused Quest First), then the two about completed quests
 Quests("completedLast", "completedLast")
 Quests("focusedFirst", "focusedFirst")
 Quests("collapseCompleted", "collapseCompleted")
 Quests("hideFinished", "hideFinished", true)   -- Show Completed Objectives
--- (11-15) the two that need zone headings (none by level or by progress either): Show Untracked
--- Quests (jams) | Collapsible Zones (Relampago; on by default, a heading click folded before)
+-- (11-15) Show Untracked Quests (jams) needs zone headings (none by level or by progress either).
+-- (Collapsible Zones, its pair, is always on since 11-16.)
 local function NoHeadings()
     return not S:GetPath("objectivetracker.zoneHeaders") or S:GetPath("objectivetracker.sortByLevel")
         or S:GetPath("objectivetracker.sortByProgress")
 end
-S:Row{ key = "qt.untracked", path = "objectivetracker.showUntracked", apply = Refresh, section = "qt.quests", half = true,
+S:Row{ key = "qt.untracked", path = "objectivetracker.showUntracked", apply = Refresh, section = "qt.quests", half = true, tab = "behaviour",
     disabled = NoHeadings }
-S:Row{ key = "qt.collapsibleZones", path = "objectivetracker.collapsibleZones", apply = Refresh, section = "qt.quests", half = true,
-    disabled = NoHeadings }
--- (11-15, Archy) a newly accepted quest gives the focus back; last, alone on its half row
+-- (11-15, Archy) a newly accepted quest gives the focus back; paired with Show Untracked Quests
 Quests("keepFocus", "keepFocus")
 -- Minimize: one switch sets every instance type
 local INSTANCES = { "dungeon", "raid", "pvp", "arena" }
 S:Row{
-    key = "qt.minimizeButton", apply = Refresh,
+    key = "qt.minimizeButton", apply = Refresh, tab = "behaviour",
     get = function() return S:GetPath("objectivetracker.minimizeStyle") == "button" end,
     set = function(on) S:SetPath("objectivetracker.minimizeStyle", on and "button" or "header") end,
 }
 S:Row{
-    key = "qt.minInstances", apply = Refresh,
+    key = "qt.minInstances", apply = Refresh, tab = "behaviour",
     get = function() return S:GetPath("objectivetracker.autoMinimize.dungeon") == "minimize" end,
     set = function(on)
         for _, place in ipairs(INSTANCES) do
@@ -108,13 +98,13 @@ S:Row{
     end,
 }
 S:Row{
-    key = "qt.minCombat", apply = Refresh,
+    key = "qt.minCombat", apply = Refresh, tab = "behaviour",
     get = function() return S:GetPath("objectivetracker.autoMinimize.combat") == "minimize" end,
     set = function(on) S:SetPath("objectivetracker.autoMinimize.combat", on and "minimize" or "none") end,
 }
 
 local trackerKey = S:BindingAccessors("FLAREUI_TRACKER")
-S:Row{ key = "qt.minimizeKey", kind = "keybind", get = trackerKey.get, set = trackerKey.set, section = "qt.minimizeIn" }
+S:Row{ key = "qt.minimizeKey", kind = "keybind", get = trackerKey.get, set = trackerKey.set, section = "qt.minimizeIn", tab = "behaviour" }
 
 -- FONTS (11-13, back from Edit Mode)
 S:FontRows{ module = "qt", tab = "fonts", section = "qt.fonts", apply = Refresh, fonts = {

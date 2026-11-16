@@ -948,15 +948,15 @@ local function GroupUnits(out)
     return out
 end
 
--- someone a buff can reach: there, alive, online, seen and in your phase; with Ignore Members Out of
--- Range, also within the game's group range check (one it can't make, or keeps secret, counts as in range)
+-- someone a buff can reach: there, alive, online, seen and in your phase, and within the game's group
+-- range check (one it can't make, or keeps secret, counts as in range). Always since 11-16 (Malkkav;
+-- it was the Ignore Members Out of Range switch).
 local function IsReachable(unit)
     if not UnitExists(unit) or UnitIsDeadOrGhost(unit) or not UnitIsConnected(unit) then return false end
     if unit ~= "player" and not UnitIsUnit(unit, "player") then
         if not UnitIsVisible(unit) then return false end
         if UnitPhaseReason and UnitPhaseReason(unit) then return false end
-        local db = GetDb()
-        if db and db.ignoreRange and UnitInRange then
+        if UnitInRange then
             local ok, inRange, checked = pcall(UnitInRange, unit)
             if ok and Readable(inRange) and Readable(checked) then
                 if checked and not inRange then return false end
@@ -2611,13 +2611,12 @@ function BR:Init()
         if event == "PLAYER_REGEN_ENABLED" then ApplyPosition() end
         if event == "UNIT_AURA" then Soon(unit) else Soon() end
     end)
-    -- buffs running out cross the reminder line without an event: a look every 10 seconds; with Ignore
-    -- Members Out of Range in a group, every 2.5 (walking in or out of range has no event either)
+    -- buffs running out cross the reminder line without an event: a look every 10 seconds; in a group,
+    -- every 2.5 (walking in or out of range has no event either)
     local ticks = 0
     C_Timer.NewTicker(2.5, function()
         ticks = ticks + 1
-        local db = GetDb()
-        if ticks >= 4 or (db and db.ignoreRange and IsInGroup() and not InCombatLockdown()) then
+        if ticks >= 4 or (IsInGroup() and not InCombatLockdown()) then
             ticks = 0
             Soon()
         end

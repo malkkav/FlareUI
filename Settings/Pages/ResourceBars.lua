@@ -59,7 +59,8 @@ S:Row{
 }
 
 -- FONTS (11-13, back from Edit Mode): each bar's text font under the bar's name
-local BAR_NAMES = { health = L["Health Bar"], power = L["Power Bar"], mana = L["Druid Mana"],
+-- (the Bars section's own names, 11-16: it was "Health Bar" / "Power Bar" here)
+local BAR_NAMES = { health = L["Health"], power = L["Power"], mana = L["Druid Mana"],
     swingMain = L["Main-Hand Swing"], swingOff = L["Off-Hand Swing"], swingRanged = L["Ranged Swing"],
     seal = L["Paladin Seals"], flight = L["Flight Timer"], timer = L["Duration Bars"] }
 local BAR_HIDDEN = {}   -- (11-15) no bar is hidden by class any more

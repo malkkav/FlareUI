@@ -160,6 +160,7 @@ local function ApplyColors(tip, borderColor)
 
     local c = borderColor or DEFAULT_BORDER_COLOR
     pcall(tip.NineSlice.SetBorderColor, tip.NineSlice, c[1], c[2], c[3], 1)
+    if TIP.borderColorOf then TIP.borderColorOf[tip] = c end   -- (the health bar's border follows it, 11-16)
 
     applyingBackdrop = false
 end
@@ -178,12 +179,118 @@ local function ApplyScaleToAll()
     end
 end
 
-local function HideHealthBar()
+-- (11-16, Malkkav) FlareUI's look for the unit health bar: the FlareUI Forever texture in a thin FlareUI
+-- border, on a dark back. Used on FlareUI's own bars only (the overlay below, the settings sample).
+function TIP.StyleHealthBar(bar)
+    local LSM = LibStub("LibSharedMedia-3.0", true)
+    local tex = LSM and LSM:Fetch("statusbar", "FlareUI Forever", true)
+    if tex then bar:SetStatusBarTexture(tex) end
+    if bar.fuiBack then return end
+    bar.fuiBack = bar:CreateTexture(nil, "BACKGROUND")
+    bar.fuiBack:SetAllPoints()
+    bar.fuiBack:SetColorTexture(0.04, 0.04, 0.04, 1)
+    local edge = LSM and LSM:Fetch("border", "FlareUI Thin", true)
+    if not edge then return end
+    local border = CreateFrame("Frame", nil, bar, "BackdropTemplate")
+    border:SetPoint("TOPLEFT", -2, 2)
+    border:SetPoint("BOTTOMRIGHT", 2, -2)
+    border:SetFrameLevel(bar:GetFrameLevel() + 1)
+    border:SetBackdrop({ edgeFile = edge, edgeSize = ns.BorderEdgeSize(edge, 8) })
+    local c = ns.BORDER_COLOR
+    border:SetBackdropBorderColor(c.r, c.g, c.b, 1)
+    bar.fuiBorder = border
+end
+
+-- Health Bar (Content tab, 11-16 Malkkav): Off, Below the tooltip or Inside it. FlareUI's own bar does both;
+-- Blizzard's bar (GameTooltipStatusBar) is only ever hidden: writing to it taints, and its health can be
+-- secret. FlareUI's bar reads the same health Blizzard's does (the unit's GUID it watches), and its
+-- border takes the tooltip's border colour. Inside: the tooltip grows at the bottom to hold it.
+local INSIDE_PAD = 14          -- the room Inside adds under the lines
+local INSIDE_X, INSIDE_Y = 10, 10
+function TIP.HealthBarMode(db)
+    db = db or GetDb()
+    if not db or db.hideHealthBar then return "off" end
+    return db.healthBarPlace == "inside" and "inside" or "below"
+end
+-- where a bar of FlareUI's sits on its tooltip
+function TIP.PlaceHealthBar(bar, tip, mode)
+    bar:ClearAllPoints()
+    bar:SetHeight(8)
+    if mode == "inside" then
+        bar:SetPoint("BOTTOMLEFT", tip, "BOTTOMLEFT", INSIDE_X, INSIDE_Y)
+        bar:SetPoint("BOTTOMRIGHT", tip, "BOTTOMRIGHT", -INSIDE_X, INSIDE_Y)
+    else
+        bar:SetPoint("TOPLEFT", tip, "BOTTOMLEFT", 2, -4)
+        bar:SetPoint("TOPRIGHT", tip, "BOTTOMRIGHT", -2, -4)
+    end
+end
+TIP.INSIDE_PAD = INSIDE_PAD
+-- the tooltip border's colour as last set (ApplyColors), for the bar's border
+local borderColorOf = setmetatable({}, { __mode = "k" })
+TIP.borderColorOf = borderColorOf
+-- Blizzard's own colours: green at full health to red at none (HealthBar_OnValueChanged)
+local function HealthColor(value)
+    if not canaccessvalue(value) or type(value) ~= "number" then return 0, 1, 0 end
+    if value > 0.5 then return (1 - value) * 2, 1, 0 end
+    return 1, value * 2, 0
+end
+
+local paddedTip
+local function SetInsidePadding(tip, on)
+    -- (never on a tooltip FlareUI leaves alone: SetPadding there would poison Blizzard's layout, section 4)
+    if on and not SafeToTouch(tip) then on = false end
+    if on then
+        if paddedTip ~= tip then pcall(tip.SetPadding, tip, 0, INSIDE_PAD); paddedTip = tip end
+    elseif paddedTip == tip then
+        pcall(tip.SetPadding, tip, 0, 0); paddedTip = nil
+    end
+end
+TIP.SetInsidePadding = SetInsidePadding
+
+local function SetupHealthOverlay()
+    local blizz, tip = _G.GameTooltipStatusBar, _G.GameTooltip
+    if TIP.healthOverlay or not (blizz and tip) then return end
+    local bar = CreateFrame("StatusBar", nil, tip)
+    bar:SetMinMaxValues(0, 1)
+    TIP.StyleHealthBar(bar)
+    bar:Hide()
+    TIP.healthOverlay = bar
+    -- the Inside room goes with the tooltip (a plain text tooltip after it has none)
+    tip:HookScript("OnHide", function() SetInsidePadding(tip, false) end)
+    local watcher, wait, lastMode, lastColor = CreateFrame("Frame", nil, tip), 0, nil, nil
+    watcher:SetScript("OnUpdate", function(_, elapsed)
+        wait = wait + elapsed
+        if wait < 0.05 then return end
+        wait = 0
+        local mode = TIP.HealthBarMode()
+        local guid = mode ~= "off" and blizz:GetAttribute("guid") or nil
+        if not guid then
+            if bar:IsShown() then bar:Hide() end
+            return
+        end
+        if mode ~= lastMode then lastMode = mode; TIP.PlaceHealthBar(bar, tip, mode) end
+        local value = UnitPercentHealthFromGUID and UnitPercentHealthFromGUID(guid)
+        if value ~= nil then
+            pcall(bar.SetValue, bar, value)
+            bar:SetStatusBarColor(HealthColor(value))
+        end
+        local c = borderColorOf[tip]
+        if c and c ~= lastColor and bar.fuiBorder then
+            lastColor = c
+            bar.fuiBorder:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+        end
+        if not bar:IsShown() then bar:Show() end
+    end)
+end
+
+-- After each unit tooltip: Blizzard's bar hidden (FlareUI's bar takes its place, or none: Off), and
+-- the room for an Inside bar. Hide only: writing to Blizzard's bar taints.
+local function HideHealthBar(isUnit)
     local db = GetDb()
-    local bar = _G.GameTooltipStatusBar
-    if not (db and bar) then return end
-    -- hide only: writing to this bar taints
-    if db.hideHealthBar then bar:Hide() end
+    local bar, tip = _G.GameTooltipStatusBar, _G.GameTooltip
+    if not (db and bar and tip) then return end
+    bar:Hide()
+    SetInsidePadding(tip, isUnit and TIP.HealthBarMode(db) == "inside" and bar:GetAttribute("guid") ~= nil or false)
 end
 
 --------------------------------------------------
@@ -317,23 +424,19 @@ local function RemoveClassLine(tip, unit)
     end
 end
 
--- Show guild name off: no guild line. Show guild ranks: the rank after the name. The line has no type of
+-- Show guild name off: no guild line (Show Guild Ranks was removed 11-16, Malkkav). The line has no type of
 -- its own, so it is found by the guild's name, in whatever form the client writes it.
 local function ApplyGuildLine(tip, unit)
     local db = GetDb()
-    if not db or (db.showGuild ~= false and not db.showGuildRank) then return end
+    if not db or db.showGuild ~= false then return end
     if not Readable(UnitIsPlayer(unit)) then return end
-    local guild, rank = GetGuildInfo(unit)
+    local guild = GetGuildInfo(unit)
     if not (canaccessvalue(guild) and type(guild) == "string" and guild ~= "") then return end
     for i = 2, tip:NumLines() do
         local line = LeftLine(i)
         local text = line and line:GetText()
         if canaccessvalue(text) and type(text) == "string" and text:find(guild, 1, true) then
-            if db.showGuild == false then
-                line:SetText(nil)
-            elseif canaccessvalue(rank) and type(rank) == "string" and rank ~= "" then
-                line:SetText(text .. " (" .. rank .. ")")
-            end
+            line:SetText(nil)
             return
         end
     end
@@ -503,7 +606,7 @@ local function OnTooltipSetUnit(tip)
     if HideIfNeeded(tip, category) then return end
 
     AddTargetLine(tip, unit)
-    HideHealthBar()
+    HideHealthBar(true)
     if not SafeToTouch(tip) then return end
     ScrubLines(tip)
     ColorName(tip, unit)
@@ -565,7 +668,7 @@ local function OnTooltipShow(tip)
     if tip.fuiOther and HideIfNeeded(tip, CAT_OTHER) then return end
     -- Blizzard shows a tooltip after its post-calls: an item keeps the quality border just set
     if not tip:IsTooltipType(Enum.TooltipDataType.Item) then ApplyColors(tip, nil) end
-    HideHealthBar()
+    HideHealthBar(false)
 end
 
 --------------------------------------------------
@@ -738,7 +841,7 @@ function TIP:Refresh()
     ApplyScaleToAll()
     if GameTooltip and GameTooltip:IsShown() then
         ApplyColors(GameTooltip, nil)
-        HideHealthBar()
+        HideHealthBar(true)   -- (a unit tooltip keeps its room: the GUID check decides)
     end
 end
 
@@ -747,6 +850,7 @@ function TIP:Init()
     local db = GetDb()
     if not db then return end
     self.initialized = true
+    SetupHealthOverlay()
 
     -- world object tooltips only fire mouse motion when the world frame tracks it
     WorldFrame:EnableMouseMotion(true)
@@ -808,10 +912,10 @@ do
         bar:SetHeight(8)
         bar:SetPoint("TOPLEFT", tip, "BOTTOMLEFT", 2, -1)
         bar:SetPoint("TOPRIGHT", tip, "BOTTOMRIGHT", -2, -1)
-        bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-TargetingFrame-BarFill")
-        bar:SetStatusBarColor(0, 1, 0)
+        TIP.StyleHealthBar(bar)   -- (FlareUI's look, as the live overlay, 11-16)
+        bar:SetStatusBarColor(0.4, 1, 0)   -- (80%, in Blizzard's green-to-red)
         bar:SetMinMaxValues(0, 1)
-        bar:SetValue(1)
+        bar:SetValue(0.8)
         bar:Hide()
         tip.bar = bar
         return tip
@@ -827,7 +931,8 @@ do
     end
 
     -- lines: { text, r, g, b, title = true, wrap = true, right = text, rr, rg, rb }
-    local function Fill(tip, lines, showBar)
+    -- barMode: the Health Bar's place, "off", "below" or "inside" (11-16)
+    local function Fill(tip, lines, barMode)
         local db = GetDb() or {}
         local width, height = 0, PAD
         for i, line in ipairs(lines) do
@@ -866,8 +971,11 @@ do
         for i = #lines + 1, #tip.right do tip.right[i]:Hide() end
         width = math.ceil(width + PAD * 2)
         height = math.ceil(height - SPACING + PAD)
+        local mode = barMode or "off"
+        if mode == "inside" then height = height + TIP.INSIDE_PAD end
         tip:SetSize(width, height)
-        tip.bar:SetShown(showBar and true or false)
+        if mode ~= "off" then TIP.PlaceHealthBar(tip.bar, tip, mode) end
+        tip.bar:SetShown(mode ~= "off")
         tip:Show()
         return width, height + (showBar and 9 or 0)
     end
@@ -891,9 +999,7 @@ do
         if db.nameColor == "class" then name = ColorToHex(class[1], class[2], class[3]) .. name .. "|r" end
         local lines = { { name, title = true } }
         if db.showGuild ~= false then
-            local guild = "<Dawnwatch>"
-            if db.showGuildRank then guild = guild .. " (" .. (_G.GUILD_RANK1_DESC or "Officer") .. ")" end
-            lines[#lines + 1] = { guild }
+            lines[#lines + 1] = { "<Dawnwatch>" }
         end
         -- "Level N" in the difficulty colour, the rest white with the class name (ColorLevelLine)
         local level = 60
@@ -959,11 +1065,13 @@ do
         local w, h
         if kind == "unit" then
             local lines, class = UnitLines(db)
-            w, h = Fill(tip, lines, not db.hideHealthBar)
+            w, h = Fill(tip, lines, TIP.HealthBarMode(db))
             ApplyColors(tip, GetUnitBorderColor(nil, class, REACTION_COLORS[5]))
+            local c = TIP.borderColorOf[tip]
+            if c and tip.bar.fuiBorder then tip.bar.fuiBorder:SetBackdropBorderColor(c[1], c[2], c[3], 1) end
         else
             local lines, border = ItemLines(db, equipped)
-            w, h = Fill(tip, lines, false)
+            w, h = Fill(tip, lines, "off")
             ApplyColors(tip, border)
         end
         return w, h

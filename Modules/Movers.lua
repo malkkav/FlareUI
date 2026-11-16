@@ -46,11 +46,10 @@ local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.tweaks
 end
 
--- FLAG CARRIER FRAMES (Quality of Life > Hide Clutter, off; 11-11, a player's question): in a
--- battleground Blizzard's old arena frames show the two flag carriers under the minimap
--- (Deprecated_ArenaUI). They are protected unit buttons in Blizzard's right-hand layout, so they are
--- hidden through Blizzard's own CVar, out of combat (its change shows or hides them), not moved.
--- Switching off gives the CVar back once; it is the player's again after that (quiet defaults).
+-- FLAG CARRIER FRAMES: Quality of Life > Hide Clutter > Flag Carrier Frames hid them through
+-- Blizzard's CVar showArenaEnemyFrames (11-11). The row was removed 11-16 (Malkkav: the Unit Frames
+-- page's Flag Carrier Frames covers them). A player who had it on gets the CVar back once, out of
+-- combat; it is theirs again after that (quiet defaults).
 function ns.ApplyFlagCarriers()
     local global = ns.db and ns.db.global
     if not global then return end
@@ -60,11 +59,7 @@ function ns.ApplyFlagCarriers()
         wait:SetScript("OnEvent", function(self) self:UnregisterAllEvents(); ns.ApplyFlagCarriers() end)
         return
     end
-    local db = GetDb()
-    if db and db.hideFlagCarriers then
-        if C_CVar.GetCVar("showArenaEnemyFrames") ~= "0" then C_CVar.SetCVar("showArenaEnemyFrames", "0") end
-        global.flagCarriersSet = true
-    elseif global.flagCarriersSet then
+    if global.flagCarriersSet then
         global.flagCarriersSet = nil
         C_CVar.SetCVar("showArenaEnemyFrames", "1")
     end
@@ -273,9 +268,11 @@ end
 -- 5b. SCALE (Edit Mode, 11-11 Malkkav): the loot rolls' and the toasts' size. Blizzard's frames hang
 -- from UIParent, so each one takes the scale as it shows; the holder and its sample grow with it.
 --------------------------------------------------
+-- (11-16, Malkkav) the battleground objectives too (objectivesScale)
+local SCALE_FIELDS = { loot = "lootScale", toast = "toastScale", objectives = "objectivesScale" }
 local function Scale(key)
     local db = GetDb()
-    local v = db and tonumber(db[key == "loot" and "lootScale" or "toastScale"]) or 1
+    local v = db and tonumber(db[SCALE_FIELDS[key]]) or 1
     return math.max(0.5, math.min(2, v))
 end
 
@@ -327,7 +324,7 @@ end
 -- the Edit Mode dialogs' Scale (11-11: a Toast Sample dropdown with Blizzard's other toasts was tried and
 -- removed, Forever lacks their pieces)
 local function ScaleSetting(key, w, h, apply)
-    local field = key == "loot" and "lootScale" or "toastScale"
+    local field = SCALE_FIELDS[key]
     return { name = L["Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
         -- plain numbers, as the unit frames' Scale: "100%" ran past the dialog's edge (11-13)
         get = function() return math.floor(Scale(key) * 100 + 0.5) end,
@@ -352,6 +349,14 @@ local function EQoLMovesObjectives()
     if type(fns) ~= "table" or type(fns.IsFrameEnabled) ~= "function" then return false end
     local ok, on = pcall(fns.IsFrameEnabled, "UIWidgetTopCenterContainerFrame")
     return ok and on == true
+end
+
+-- Scale: Blizzard's container takes it (out of a fight while it's protected); the plate behind it
+-- follows its corners
+local function ScaleObjectives()
+    local container = _G.UIWidgetTopCenterContainerFrame
+    if not container or (InCombatLockdown() and container:IsProtected()) then return end
+    container:SetScale(Scale("objectives"))
 end
 
 local placingObjectives = false
@@ -430,7 +435,8 @@ end
 -- The Gamepad UI shows its own loot rolls and toasts
 function MOV:ShouldLoad()
     local db = GetDb()
-    return db and db.enabled and db.moveLootToasts ~= false and not ns.IsGamepadUI() or false
+    -- (Move Any Window's part: a General page option, Quality of Life on or off since 11-16, UX audit J4)
+    return db and db.moveLootToasts ~= false and not ns.IsGamepadUI() or false
 end
 
 function MOV:Init()
@@ -465,15 +471,19 @@ function MOV:Init()
 
     local objectives = _G.UIWidgetTopCenterContainerFrame
     if objectives then
-        CreateObjectivesPreview(CreateHolder("objectives", "FlareUI_BattlegroundObjectives",
-            "FlareUI Battleground Objectives", OBJ_W, OBJ_H))
+        local holder = CreateHolder("objectives", "FlareUI_BattlegroundObjectives",
+            "FlareUI Battleground Objectives", OBJ_W, OBJ_H)
+        CreateObjectivesPreview(holder)
+        ScaleHolder("objectives", OBJ_W, OBJ_H)
+        ScaleObjectives()
+        LEM:AddFrameSettings(holder, ns.EditSection("Frame", { ScaleSetting("objectives", OBJ_W, OBJ_H, ScaleObjectives) }))
         hooksecurefunc(objectives, "SetPoint", PlaceObjectives)
         PlaceObjectives()
         CreateObjectivesBox(objectives)
-        -- a placement held back by combat
+        -- a placement or scale held back by combat
         local regen = CreateFrame("Frame")
         regen:RegisterEvent("PLAYER_REGEN_ENABLED")
-        regen:SetScript("OnEvent", PlaceObjectives)
+        regen:SetScript("OnEvent", function() PlaceObjectives(); ScaleObjectives() end)
     end
 
     LEM:RegisterCallback("layout", function(layoutName)

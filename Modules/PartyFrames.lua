@@ -312,15 +312,16 @@ local function PlateStyle()
 end
 local function IsInsidePlace(pos) return type(pos) == "string" and pos:find("^INSIDE") ~= nil end
 
--- The party frames' Dispel Icons switch: up to four on the portrait (or the health bar). Any saved
--- place counts as on; owned tiles use their place setting.
+-- The party frames' Dispel Icons: PORTRAIT (the default) puts up to four on the portrait, two to a
+-- row (in Raid Style, or without a portrait: the health bar's middle); any other place lines them up
+-- there, as the buffs and debuffs (Raid Style since 11-13, Classic since 11-16, Malkkav). Owned tiles
+-- use their place setting.
 local function DispelPlace(f, st)
     if f.ctx then return st.dispels end
-    -- Raid Style (11-13): a place of its own, as on the raid frames; PORTRAIT is the health bar's middle
-    if IsRaidStyle() and st.dispels and st.dispels ~= "PORTRAIT" then
+    if st.dispels and st.dispels ~= "PORTRAIT" then
         return st.dispels ~= "OFF" and st.dispels or nil
     end
-    return (st.dispels and st.dispels ~= "OFF") and "PORTRAIT" or nil
+    return st.dispels and "PORTRAIT" or nil
 end
 
 -- the portrait's middle (the ring's, or the square's), else the health bar's
@@ -416,7 +417,9 @@ local function UpdateHealth(f, glide)
     local bar = f.Health
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     ns.SetBarValue(bar, UnitHealth(unit), glide and st and st.smoothBars and not UnitIsDead(unit))
-    K.SetDamageTrail(f.DamageTrail, unit, glide, st and st.damageTrail)
+    K.SetDamageTrail(f.DamageTrail, unit, glide, true)
+    -- Bar Edge Glow: hidden on the dead, a bump on each change (UnitFrames.lua UF.BarLook)
+    K.BarLookUpdate(bar, unit, glide)
     -- (a plain health change has the same colour, but for a hostile tile going grey when tapped)
     if not glide or (f.ctx and f.ctx.hostile) then bar:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn(st))) end
 
@@ -734,7 +737,7 @@ end
 -- Edit Mode, but for the aggro test.
 local function UpdateThreat(f)
     local st = TS(f)
-    local on = not (st and st.threatGlow == false)
+    local on = true   -- (always since 11-16, Malkkav: no Threat Glow switch)
     local status
     if f.fuiUnit then
         if on and not IsEditing() then
@@ -1309,6 +1312,33 @@ local function ConfigureAuras(f)
     if not hostile then ns.AuraPolicy.Done(f, f.fuiUnit) end
 end
 
+-- (11-16, Malkkav) the dispel highlight pulses like the threat glow, but much faster: it asks for action.
+-- Blizzard's aura button and every frame inside it have secret aspects (no scripts, so no animation
+-- restart on show): one driver of FlareUI's own sets the alpha of the highlight's pieces, ~30 times a
+-- second, skipping tiles that are not on screen. frame: a piece; tile: its tile (nil: always).
+PF.DISPEL_PULSE = { 0.3, 1, 0.2 }   -- low alpha, high alpha, seconds each way
+PF.dispelPulsing = {}
+function PF.DispelPulse(frame, tile)
+    if not frame then return end
+    PF.dispelPulsing[frame] = tile or false
+    if PF.dispelDriver then return end
+    local driver = CreateFrame("Frame")
+    PF.dispelDriver = driver
+    local wait = 0
+    driver:SetScript("OnUpdate", function(_, dt)
+        wait = wait + dt
+        if wait < 0.033 then return end
+        wait = 0
+        local low, high, half = PF.DISPEL_PULSE[1], PF.DISPEL_PULSE[2], PF.DISPEL_PULSE[3]
+        local t = (GetTime() % (2 * half)) / half   -- 0 to 2: up, then down
+        if t > 1 then t = 2 - t end
+        local alpha = low + (high - low) * (0.5 - 0.5 * math.cos(math.pi * t))
+        for piece, owner in pairs(PF.dispelPulsing) do
+            if not owner or owner:IsVisible() then piece:SetAlpha(alpha) end
+        end
+    end)
+end
+
 -- The dispel highlight: a slot in its own container, showing the first aura of its filter (never given
 -- Edit Mode's sample data)
 local function ConfigureDispelHighlight(f)
@@ -1317,7 +1347,9 @@ local function ConfigureDispelHighlight(f)
     local st = TS(f)
     local plate = OnPlate(f)
     -- (border and short heights: the highlight copies the backdrop once, and its edge shrinks under 22)
-    local sig = Signature(st.dispelHighlight, plate, PF.TileBorder(f, st.border), (st.height and st.height < 22 and st.height or 22))
+    -- (and the ring: its portrait border joins the highlight, 11-16)
+    local ringed = f.ringKind and f.RingFrame and f.RingFrame.hasArt and true or false
+    local sig = Signature(st.dispelHighlight, plate, PF.TileBorder(f, st.border), (st.height and st.height < 22 and st.height or 22), ringed)
     if hlEntry.signature == sig then return end
     hlEntry.signature = sig
     local hlContainer = hlEntry.container
@@ -1326,7 +1358,7 @@ local function ConfigureDispelHighlight(f)
     for _, key in pairs(hlEntry.keys) do pcall(hlContainer.SetAuraSlotEnabled, hlContainer, key, false) end
     local highlight = st.dispelHighlight or "mine"
     local styles = Enum.CustomAuraButtonDispelTypeTextureStyle
-    local lookSig = Signature(plate, PF.TileBorder(f, st.border), (st.height and st.height < 22 and st.height or 22))
+    local lookSig = Signature(plate, PF.TileBorder(f, st.border), (st.height and st.height < 22 and st.height or 22), ringed)
     if highlight ~= "off" and styles then
         local filter = highlight == "all" and "HARMFUL|RAID_PLAYER_DISPELLABLE" or "HARMFUL|RAID"
         local reused = hlEntry.keys[lookSig]
@@ -1336,6 +1368,16 @@ local function ConfigureDispelHighlight(f)
         end
         hlEntry.generation = hlEntry.generation + 1
         local key = "dispelhl" .. hlEntry.generation
+        -- the portrait's ring border too, in the debuff type's colour (ring styles)
+        local function AddPortraitDispel(button)
+            local tint = ns.UFRing and ns.UFRing.DispelTint and ns.UFRing.DispelTint(f, button)
+            if not tint then return end
+            tint:Hide()   -- until Blizzard shows it for a dispellable debuff
+            pcall(button.AddDispelTypeTexture, button, tint, {
+                style = styles.PreserveAsset, showWhenHarmful = true, showWhenHelpful = false,
+            })
+            PF.DispelPulse(button.FlareUI_RingDispel, f)
+        end
         local ok = not reused and pcall(hlContainer.AddAuraSlot, hlContainer, key, filter, {
             -- a copy of the frame's border just over it: Blizzard shows and tints its pieces for a
             -- dispellable debuff (the type may be secret)
@@ -1347,12 +1389,17 @@ local function ConfigureDispelHighlight(f)
                 if strip then
                     button:SetAllPoints(strip)
                     button:SetFrameLevel(f.PlateFrame:GetFrameLevel() + 2)
+                    -- (on a frame of FlareUI's own, for the pulse)
                     local glow = button.FlareUI_HighlightStrip
                     if not glow then
-                        glow = button:CreateTexture(nil, "OVERLAY")
-                        glow:SetAllPoints(button)
+                        local holder = CreateFrame("Frame", nil, button)
+                        holder:SetAllPoints(button)
+                        glow = holder:CreateTexture(nil, "OVERLAY")
+                        glow:SetAllPoints(holder)
                         button.FlareUI_HighlightStrip = glow
+                        button.FlareUI_StripHolder = holder
                     end
+                    button.FlareUI_StripHolder:Show()
                     pcall(glow.SetAtlas, glow, ns.UFRing.STRIP_ATLAS, false)
                     if button.FlareUI_HighlightBorder then button.FlareUI_HighlightBorder:Hide() end
                     pcall(button.ClearDispelTypeTextures, button)
@@ -1360,9 +1407,11 @@ local function ConfigureDispelHighlight(f)
                     pcall(button.AddDispelTypeTexture, button, glow, {
                         style = styles.PreserveAsset, showWhenHarmful = true, showWhenHelpful = false,
                     })
+                    AddPortraitDispel(button)
+                    PF.DispelPulse(button.FlareUI_StripHolder, f)
                     return
                 end
-                if button.FlareUI_HighlightStrip then button.FlareUI_HighlightStrip:Hide() end
+                if button.FlareUI_StripHolder then button.FlareUI_StripHolder:Hide() end
                 button:SetAllPoints(f.Border)
                 button:SetFrameLevel(f.Border:GetFrameLevel() + 1)
                 local ring = button.FlareUI_HighlightBorder
@@ -1381,6 +1430,8 @@ local function ConfigureDispelHighlight(f)
                         })
                     end
                 end
+                AddPortraitDispel(button)
+                PF.DispelPulse(ring, f)
             end,
         })
         if ok then hlEntry.keys[lookSig] = key end
@@ -1718,6 +1769,8 @@ local function LayoutMember(f)
     f.Health.bg:SetTexture(texture)
     f.Power.bg:SetTexture(texture)
     f.powerShown = WantsPower(f)
+    -- Bar Edge Glow (UnitFrames.lua UF.BarLook; before the ring style masks it)
+    K.BarLook(f.Health, Mirrored(f, true), st.barEdgeGlow)
     LayoutBars(f)
     if f.ringKind then ns.UFRing.Layout(f) end
     -- the bars' empty part (Background Opacity; on the plate its slot is the background: 0 unless set)
@@ -1754,6 +1807,9 @@ local function LayoutMember(f)
     end
     ConfigureAuras(f)
     ConfigureDispelHighlight(f)
+    -- Smooth Animated Bars, when installed and on (UnitFrames.lua ns.SAB): the party's own tiles'
+    -- health (their units never change), not the raid's or the bosses' tiles, nor a preview's
+    if ns.SAB and not f.ctx and not f.fuiSample then ns.SAB.Want(f.Health, f.fuiUnit, "health", true, f, f.DamageTrail) end
 end
 
 -- Pets and party targets. The bottom row sits below the frame's auras and cast bar (room reserved:
@@ -2254,6 +2310,10 @@ local function ApplyPreviewExtras(f, data)
             hl:SetBackdrop(PF.EdgeBackdrop(f))
             hl:SetBackdropBorderColor(c[1], c[2], c[3], 1)
         end
+        -- (11-16) the portrait's ring border too, and the fast pulse, as the real one
+        local tint = ns.UFRing and ns.UFRing.DispelTint and ns.UFRing.DispelTint(f, hl)
+        if tint then tint:SetVertexColor(c[1], c[2], c[3], 1); tint:Show() end
+        PF.DispelPulse(hl, f)
         hl:Show()
     end
 end
@@ -2282,7 +2342,8 @@ ApplyPreview = function(f)
     end
     f.Health:SetMinMaxValues(0, 1)
     f.Health:SetValue(data.health or 1)
-    K.SampleDamageTrail(f.DamageTrail, data.health or 1, st.damageTrail and not data.dead)
+    K.SampleDamageTrail(f.DamageTrail, data.health or 1, not data.dead)
+    K.BarLookUpdate(f.Health, nil, false, data.dead)
     if data.rgb then
         f.Health:SetStatusBarColor(data.rgb[1], data.rgb[2], data.rgb[3])
     elseif ns.ClassColorsOn(st) then
@@ -2773,13 +2834,8 @@ local function BuildSettings()
           end,
           desc = L["Which way the frames go from the first member."],
           get = getP("grow", "DOWN"), set = setP("grow") },
-        { name = L["Pets"], kind = LEM.SettingType.Dropdown, default = "OFF", values = SIDE_PLACES,
-          get = PetPlace, set = SetPlace("petPlace", "pets"),
-          desc = L["A small frame for each pet: under its owner, or beside it. Its size is in the Pet section."] },
-        { name = L["Party Targets"], kind = LEM.SettingType.Dropdown, default = "OFF", values = SIDE_PLACES,
-          get = TargetPlace, set = SetPlace("targetPlace", "targets"),
-          desc = L["What each member is targeting, in a small frame under theirs or beside it. Click one to target it too. Its size is in the Target section."] },
-        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing, minValue = 0, maxValue = 80, valueStep = 1,
+        -- (11-16, Malkkav: "Frame Gap", as on the raid and boss frames; it was "Spacing")
+        { name = L["Frame Gap"], search = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing, minValue = 0, maxValue = 80, valueStep = 1,
           -- (Raid Style: between the bars, migrated first: PF.Gap)
           get = function() local st, key = S(); if st then PF.Gap(st, key) end; return getS("spacing")() end,
           set = setS("spacing"),
@@ -2807,21 +2863,31 @@ local function BuildSettings()
 
     -- Forever Style (classic look): the plate keeps Blizzard's proportions; Scale sizes it
     local function onPlate() return PlateStyle() and not IsRaidStyle() end
-    Section("Frame", {
+    -- (11-16) the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
+    local frameItems = {
         { name = L["Scale"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.PlateDefaultScale("party") or 100,
           minValue = 75, maxValue = 250, valueStep = 5, formatter = function(value) return value .. "%" end,
           get = function() local st = S(); return st and st.plateScale or (ns.UFRing and ns.UFRing.PlateDefaultScale("party")) or 100 end,
-          set = function(_, value)
+          set = function(layoutName, value)
               -- (a reset that just switched from Raid Style must not size the Classic plate)
               if not onPlate() or builtKey == "raid" then return end
-              ns.UFRing.ApplyPlateScale(OwnS(), value)
+              -- saved for this Edit Mode layout (ProfileLayout.lua)
+              local party, st = GetPartyDb(), OwnS()
+              if party and st and ns.SetLayoutPlateScale then
+                  party.layouts = party.layouts or {}
+                  ns.SetLayoutPlateScale(party.layouts, layoutName or LEM:GetActiveLayoutName() or "Modern", "scale",
+                      st, value, ns.UFRing.PlateDefaultScale("party"))
+              else
+                  ns.UFRing.ApplyPlateScale(st, value)
+              end
               Refresh()
           end,
-          hidden = function() return not onPlate() end },
+          hidden = function() return not onPlate() end,
+          desc = L["Each Edit Mode layout keeps its own Scale."] },
         { name = L["Width"], kind = LEM.SettingType.Slider, default = D.width, minValue = 60, maxValue = 400, valueStep = 2, get = getS("width"), set = setS("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = getS("height"), set = setS("height"),
           hidden = onPlate },
-        { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
+        { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
           get = getS("powerHeight"), set = setS("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end,
           hidden = onPlate },
         -- (Raid Style, as on the raid frames: 11-13)
@@ -2862,9 +2928,10 @@ local function BuildSettings()
         { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The frame fades while the unit is out of range."],
           get = function() return getS("rangeCheck")() ~= false end, set = setS("rangeCheck") },
-        -- (11-15, HyonD)
-        K.DamageTrailSetting(getS("damageTrail"), setS("damageTrail")),
-    })
+    }
+    local sizeItems, textItems, behaviourItems = ns.SplitFrameItems(frameItems)
+    Section("Size", sizeItems)
+    Section("Text", textItems)
 
     -- buffs, debuffs and dispel icons never share a place: clashing places grey out
     local AURA_FIELDS = { "buffs", "debuffs", "dispels" }
@@ -2873,9 +2940,9 @@ local function BuildSettings()
         return function(_, rootDescription, data)
             local st = S()
             for i, p in ipairs(PARTY_PLACES) do
-                -- Raid Style's Dispel Icons: the grid in the health bar's middle, right after Off
+                -- Dispel Icons: the grid on the portrait (Raid Style: the health bar's middle), right after Off
                 if i == 2 and field == "dispels" then
-                    rootDescription:CreateRadio(L["Middle of the Health Bar"],
+                    rootDescription:CreateRadio(IsRaidStyle() and L["Middle of the Health Bar"] or L["On the Portrait"],
                         function(value) local now = S(); return now and now.dispels == value end,
                         function(value) data.set(nil, value) end, "PORTRAIT")
                 end
@@ -2912,23 +2979,23 @@ local function BuildSettings()
         end)(),
         K.ClassColorSetting(function() return ns.ClassColorsOn(S()) end, setS("classColor")),
         K.SmoothBarsSetting(getS("smoothBars"), setS("smoothBars")),
-        -- (11-15, was the thick aggro edge)
-        { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
-          desc = L["The border pulses in the threat colour while this member has aggro."],
-          get = function() return getS("threatGlow")() ~= false end, set = setS("threatGlow") },
+        -- (11-16, Marcus: per style, off)
+        K.BarEdgeGlowSetting(getS("barEdgeGlow"), setS("barEdgeGlow")),
+        -- (Threat Glow is always on since 11-16, Malkkav)
     })
+    Section("Behaviour", behaviourItems)
 
     local function noCast() return not getS("castbar")() end
     Section("Cast Bar", {
-        { name = L["Cast Bars"], kind = LEM.SettingType.Checkbox, default = D.castbar or false, get = getS("castbar"),
+        { name = L["Cast Bar"], kind = LEM.SettingType.Checkbox, default = D.castbar or false, get = getS("castbar"),
           set = function(layoutName, value) setS("castbar")(layoutName, value); LEM:RefreshFrameSettings(holder) end },
-        { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
+        { name = L["Texture"], canon = "Cast Bar Texture", search = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
           get = getS("castTexture"), set = setS("castTexture"), hidden = noCast, },
-        { name = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
+        { name = L["Border"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
           get = getS("castBorderTexture"), set = setS("castBorderTexture"),
           hidden = function() return noCast() or onPlate() end,
           desc = L["The cast bar's border. Frame Border matches the frame's own border."] },
-        { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight, minValue = 8, maxValue = 30, valueStep = 1,
+        { name = L["Height"], canon = "Cast Bar Height", search = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight, minValue = 8, maxValue = 30, valueStep = 1,
           get = getS("castHeight"), set = setS("castHeight"), hidden = noCast },
         { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true,
           get = function() return getS("castIcon")() ~= false end,
@@ -2953,7 +3020,7 @@ local function BuildSettings()
         { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = D.dispelHighlight,
           values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
                      { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
-          desc = L["A dispellable debuff colours the frame's border in its type's colour."],
+          desc = L["A dispellable debuff makes the frame's border pulse in its type's colour. In the ring styles the portrait's ring pulses too."],
           get = getS("dispelHighlight"), set = setS("dispelHighlight") },
         { name = L["Buff Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
           get = function() return ns.AuraSize(S(), false, D.auraSize) end, set = setS("buffSize") },
@@ -2966,20 +3033,16 @@ local function BuildSettings()
           get = function() return getS("dispellableOnly")() and true or false end, set = setS("dispellableOnly"),
           desc = L["Only the debuffs you can dispel, plus boss debuffs and other important ones, as on Blizzard's raid frames."] },
         -- a dispel icon per type you can dispel, on the portrait (or the health bar's middle)
-        builtKey ~= "raid" and
-        { name = L["Dispel Icons"], kind = LEM.SettingType.Checkbox, default = D.dispels ~= "OFF",
-          get = function() local st = S(); local v = st and st.dispels; if v == nil then v = D.dispels end; return v ~= "OFF" end,
-          set = function(_, value) setS("dispels")(nil, value and "PORTRAIT" or "OFF") end,
-          desc = L["An icon for each debuff type you can dispel, two to a row, in the middle of the portrait. Without a portrait, in the middle of the health bar."] }
-        -- Raid Style (11-13): a place, as on the raid frames
-        or { name = L["Dispel Icons"], kind = LEM.SettingType.Dropdown, default = D.dispels, generator = Place("dispels"),
+        -- (11-16, Malkkav) a place in both styles, as the buffs and debuffs: the portrait grid (default) or
+        -- a line anywhere else (Classic was an on / off switch; Raid Style had places since 11-13)
+        { name = L["Dispel Icons"], kind = LEM.SettingType.Dropdown, default = D.dispels, generator = Place("dispels"),
           values = (function()
-              local list = { PARTY_PLACES[1], { text = L["Middle of the Health Bar"], value = "PORTRAIT", isRadio = true } }
+              local list = { PARTY_PLACES[1], { text = L["On the Portrait"], value = "PORTRAIT", isRadio = true } }
               for i = 2, #PARTY_PLACES do list[#list + 1] = PARTY_PLACES[i] end
               return list
           end)(),
           get = getS("dispels"), set = setS("dispels"),
-          desc = L["An icon for each debuff type you can dispel. Middle of the Health Bar puts them two to a row."] },
+          desc = L["An icon for each debuff type you can dispel. On the Portrait puts them two to a row in its middle (without a portrait, or in Raid Style, in the middle of the health bar). Anywhere else they line up."] },
     }, getS, setS))
 
     -- one switch per icon; where they sit is fixed
@@ -2996,20 +3059,23 @@ local function BuildSettings()
     end
     Section("Icons", iconItems)
 
-    -- the pets' frames, under their owners: only while Pets (Party section) is on
+    -- (11-16, Malkkav) the pets' and the members' targets' frames in one section, always there: where
+    -- each shows (Pets, Party Targets; they were in the Party section), then their size and border while on
     local function noPets() return not getP("pets", false)() end
-    Section("Pet", {
+    local function noTargets() return not getP("targets", false)() end
+    Section("Pets & Targets", {
+        { name = L["Pets"], kind = LEM.SettingType.Dropdown, default = "OFF", values = SIDE_PLACES,
+          get = PetPlace, set = SetPlace("petPlace", "pets"),
+          desc = L["A small frame for each pet: under its owner, or beside it."] },
+        { name = L["Party Targets"], kind = LEM.SettingType.Dropdown, default = "OFF", values = SIDE_PLACES,
+          get = TargetPlace, set = SetPlace("targetPlace", "targets"),
+          desc = L["What each member is targeting, in a small frame under theirs or beside it. Click one to target it too."] },
         { name = L["Pet Frame Width"], kind = LEM.SettingType.Slider, default = D.petWidth, minValue = 40, maxValue = 300, valueStep = 2,
           get = getS("petWidth"), set = setS("petWidth"), hidden = noPets },
         { name = L["Pet Frame Height"], kind = LEM.SettingType.Slider, default = D.petHeight, minValue = 10, maxValue = 40, valueStep = 1,
           get = getS("petHeight"), set = setS("petHeight"), hidden = noPets },
         { name = L["Pet Border"], kind = LEM.SettingType.Dropdown, default = D.petBorder, values = K.BuildBorderValues(false),
           get = getS("petBorder"), set = setS("petBorder"), hidden = noPets },
-    })
-
-    -- the members' targets: only while Party Targets (Party section) is on
-    local function noTargets() return not getP("targets", false)() end
-    Section("Target", {
         { name = L["Target Frame Width"], kind = LEM.SettingType.Slider, default = D.targetWidth, minValue = 40, maxValue = 300, valueStep = 2,
           get = getS("targetWidth"), set = setS("targetWidth"), hidden = noTargets },
         { name = L["Target Frame Height"], kind = LEM.SettingType.Slider, default = D.targetHeight, minValue = 12, maxValue = 60, valueStep = 1,
@@ -3268,7 +3334,15 @@ function PF:Init()
 
     for _, event in ipairs(GLOBAL_EVENTS) do self:RegisterEvent(event, "OnGlobalEvent") end
 
-    LEM:RegisterCallback("layout", function(layoutName) ApplyPosition(layoutName) end)
+    LEM:RegisterCallback("layout", function(layoutName)
+        -- Forever Style's Scale, saved per layout (ProfileLayout.lua); Refresh waits for a fight's end
+        local party = GetPartyDb()
+        if party and party.layouts and ns.ApplyLayoutPlateScale and PlateStyle() and not IsRaidStyle()
+            and ns.ApplyLayoutPlateScale(party.layouts, layoutName, "scale", (S())) then
+            Refresh()
+        end
+        ApplyPosition(layoutName)
+    end)
     local function ShowPreview()
         ApplyVisibility()
         LayoutHolder()   -- the sample pets take their room

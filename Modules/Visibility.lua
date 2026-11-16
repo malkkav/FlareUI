@@ -1233,15 +1233,9 @@ local function AddEditModeSettings()
         local settings = frame and LEM.GetFrameSettings and LEM:GetFrameSettings(frame)
         if settings then
             frameAdded[key] = true
-            -- a Fading section that opens and closes like the frame's own (Core.lua ns.EditSections)
-            -- before the Fonts section, which is always last (11-13)
-            local at = #settings + 1
-            for i, setting in ipairs(settings) do
-                if setting.editSection == "Fonts" then at = i break end
-            end
+            -- a Fading section after the frame's own, one of the dialog's sections (one open at a time)
             for _, setting in ipairs(ns.EditSection("Fading", BuildElementSettings(key))) do
-                table_insert(settings, at, setting)
-                at = at + 1
+                settings[#settings + 1] = setting
             end
         end
     end

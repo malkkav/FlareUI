@@ -36,7 +36,7 @@ local canaccessvalue = canaccessvalue
 -- 3. CONSTANTS & DATA
 --------------------------------------------------
 local RANGE_INDICATOR = _G.RANGE_INDICATOR
-local BUTTON_SCALE = 1.11   -- Bar Scale's default (actionbars.buttonScale; 1.06 until 11-11)
+local BUTTON_SCALE = 1.11   -- Button Scale's default (actionbars.buttonScale; 1.06 until 11-11)
 
 -- text offsets from the button's corner: hotkey top right, count bottom right, macro name bottom
 local HOTKEY_X, HOTKEY_Y = -4, -4
@@ -517,6 +517,67 @@ local function UpdateActiveAll()
 end
 
 --------------------------------------------------
+-- 6b2. PET AUTOCAST EDGE (no switch: a readability fix; 11-16, a player's report)
+-- Blizzard marks an autocast-on pet spell (Lash of Pain) with "ants" circling inside the button. On the
+-- 30 px pet button they are a 31 px ring a few pixels thick, so on a small pet bar they all but vanish,
+-- while the same spell on a 45 px action button shows plainly. With FlareUI Borders on, autocast on now
+-- also lights that border in gold, breathing slowly (the Active Highlight edge is steady, so the two read
+-- apart); without them the button keeps Blizzard's own look (11-16, Malkkav: never a plain square). It hangs on
+-- Blizzard's AutoCastOverlay (shown and hidden with it) and follows its ants: looks only, nothing secure.
+--------------------------------------------------
+function ActionBars.PetAutoCastEdge(overlay)
+    local button = overlay:GetParent()
+    local edge = overlay.FlareUI_Edge
+    local db = GetBarConfig()
+    -- (11-16, Malkkav) only FlareUI's own border glows; without FlareUI Borders, Blizzard's ants alone
+    local border = button.FlareUI_Bordered and button.FlareUI_Border
+    local on = db and db.enabled and border and overlay.Shine and overlay.Shine:IsShown() or false
+    if not on then
+        if edge then edge.pulse:Stop(); edge:Hide() end
+        return
+    end
+    if not edge then
+        edge = CreateFrame("Frame", nil, overlay, "BackdropTemplate")
+        edge.frame = edge:CreateTexture(nil, "OVERLAY", nil, 7)
+        edge.frame:SetBlendMode("ADD")
+        edge.frame:SetDesaturated(true)
+        local pulse = edge:CreateAnimationGroup()
+        pulse:SetLooping("BOUNCE")
+        local fade = pulse:CreateAnimation("Alpha")
+        fade:SetFromAlpha(1)
+        fade:SetToAlpha(0.4)
+        fade:SetDuration(0.9)
+        fade:SetSmoothing("IN_OUT")
+        edge.pulse = pulse
+        overlay.FlareUI_Edge = edge
+    end
+    edge:SetFrameLevel(button:GetFrameLevel() + 3)
+    local c = ACTIVE_COLOR
+    -- FlareUI's border glows gold: the same edge, in its shape
+    edge:ClearAllPoints()
+    edge:SetAllPoints(border)
+    local LSM = LibStub("LibSharedMedia-3.0")
+    local file = LSM:Fetch("border", "FlareUI Frames")
+    edge:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, FLARE_BORDER_EDGE) })
+    edge:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+    edge.frame:Hide()
+    edge:Show()
+    if not edge.pulse:IsPlaying() then edge.pulse:Play() end
+end
+
+-- hooked once per pet button; every show, hide and autocast change runs UpdateShineAnim
+function ActionBars.SetupPetAutoCast()
+    for _, button in ipairs(GetButtonsForBarKey("pet")) do
+        local overlay = button.AutoCastOverlay
+        if overlay and overlay.UpdateShineAnim and not overlay.FlareUI_EdgeHooked then
+            overlay.FlareUI_EdgeHooked = true
+            hooksecurefunc(overlay, "UpdateShineAnim", ActionBars.PetAutoCastEdge)
+        end
+        if overlay and overlay.FlareUI_EdgeHooked then ActionBars.PetAutoCastEdge(overlay) end
+    end
+end
+
+--------------------------------------------------
 -- 6c. MICRO MENU AND BAG BAR (Bars Appearance, 11-13, a player's request)
 -- Borderless Micro Menu / Borderless Bag Bar: Forever's frame art round each (and the bag bar's
 -- dividers) goes invisible; that art only fits the bars' default places.
@@ -669,9 +730,14 @@ do
             if db.borderlessMenuBags then db.borderlessMenu, db.borderlessBags = true, true end
             db.borderlessMenuBags = nil
         end
+        -- (11-16, Malkkav: Borderless Bag Bar merged into Collapsible Bag Bar) either one on: on
+        if db and db.borderlessBags ~= nil then
+            if db.borderlessBags then db.collapsibleBags = true end
+            db.borderlessBags = nil
+        end
         local wantMenu = on and db.borderlessMenu and true or false
-        local wantBags = on and db.borderlessBags and true or false
-        local wantCollapse = wantBags and db.collapsibleBags and true or false
+        local wantBags = on and db.collapsibleBags and true or false
+        local wantCollapse = wantBags
         if not (wantMenu or wantBags or hooked) then return end
         Hook()
         if not hooked then return end
@@ -784,10 +850,10 @@ local function UpdateHotkeyText(button)
         hotkey:Hide()
         return
     end
-    -- off: Blizzard's own text, so switching off needs no reload; a controller button keeps
-    -- Blizzard's icon either way
+    -- short key names, always (11-16, Malkkav; it was the Clean Keybind Text switch); a controller
+    -- button keeps Blizzard's icon
     local pad = IsBindingForGamePad and IsBindingForGamePad(key)
-    local clean = db.cleanKeybinds and not pad
+    local clean = not pad
     if clean then hotkey:SetText(ShortenKey(key)) else hotkey:SetText(GetBindingText(key, 1)) end
     hotkey:Show()
     hotkey:ClearAllPoints()
@@ -896,12 +962,14 @@ local BLIZZARD_TINT = {
     unusable = { 0.4, 0.4, 0.4 },
 }
 
--- Dim on cooldown (section 8b) adds to the desaturation: button.FlareUI_OnCD is set while a real
--- cooldown runs
+-- Dimming on cooldown (section 8b) adds to the desaturation: button.FlareUI_OnCD is set while a real
+-- cooldown runs. Part of Status Colouring since 11-16 (Malkkav; it was the Dim on Cooldown switch).
+local function DimsOnCooldown(db)
+    return db and db.enabled and db.colors and db.colors.enableRange or false
+end
 local function CooldownDims(button)
     if not button.FlareUI_OnCD then return false end
-    local db = GetBarConfig()
-    return db and db.enabled and db.dimOnCooldown or false
+    return DimsOnCooldown(GetBarConfig())
 end
 
 local function ApplyStateColor(button, state)
@@ -1107,7 +1175,7 @@ local function OnUpdateCooldown(button)
     local slot = button.action
     if not (button.icon and canaccessvalue(slot) and type(slot) == "number") then return end
     local db = GetBarConfig()
-    local watch = db and db.enabled and (fcmButtons[button] or db.dimOnCooldown)
+    local watch = db and db.enabled and (fcmButtons[button] or DimsOnCooldown(db))
     if not watch and not button.FlareUI_OnCD then return end
 
     local onCD, id = false, nil
@@ -1635,6 +1703,7 @@ function ActionBars:Refresh(event)
     UpdateButtonArtAll()
     UpdateBordersAll()
     UpdateActiveAll()
+    ActionBars.SetupPetAutoCast()
     SetupRangeColors()
     SetupCooldowns()
     wipe(fcmButtons)
@@ -1733,7 +1802,7 @@ function ActionBars:Init()
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "Refresh")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatEnd")
     self:RegisterEvent("UPDATE_EXTRA_ACTIONBAR", "OnExtraActionBarUpdate")
-    self:RegisterEvent("UPDATE_BINDINGS", "OnExtraActionBarUpdate")
+    self:RegisterEvent("UPDATE_BINDINGS", "OnBindingsUpdate")
     self:RegisterEvent("LEARNED_SPELL_IN_SKILL_LINE", "OnSpellLearned")
 end
 
@@ -1749,10 +1818,22 @@ function ActionBars:OnCombatEnd()
 end
 
 -- after Blizzard's own hotkey update
+-- (11-16, SadSeagull's report: action bar 1's keys missing after logging in, back after a reload) the
+-- key bindings can load after the bars were styled, when no key was found yet and the text went
+-- blank: every button reads its key again once the bindings change (the extra button too)
+function ActionBars:OnBindingsUpdate()
+    self:OnExtraActionBarUpdate()
+    C_Timer.After(0, function()
+        local db = GetBarConfig()
+        if not (db and db.enabled) then return end
+        for _, btn in ipairs(GetAllActionButtons()) do UpdateHotkeyText(btn) end
+    end)
+end
+
 function ActionBars:OnExtraActionBarUpdate()
     C_Timer.After(0, function()
         local db = GetBarConfig()
-        if db and db.enabled and db.cleanKeybinds and _G.ExtraActionButton1 then
+        if db and db.enabled and _G.ExtraActionButton1 then
             UpdateHotkeyText(_G.ExtraActionButton1)
         end
     end)

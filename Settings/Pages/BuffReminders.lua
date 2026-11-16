@@ -26,12 +26,13 @@ end
 -- REMINDERS: what it watches ------------------
 -- Class Buffs
 Row{ key = "br.group", kind = "choice", tab = "reminders", path = "auras.reminder.group", choices = { "all", "party", "self" } }
-Row{ key = "br.extras", kind = "dropdown", half = true, tab = "reminders", path = "auras.reminder.extras",
+-- (full rows since 11-16: a dropdown and a choice side by side were cramped)
+Row{ key = "br.extras", kind = "dropdown", tab = "reminders", path = "auras.reminder.extras",
     choices = function() return BR() and BR().ExtraChoices() or {} end,
     toggles = { exclusive = { "none" }, tokens = BR() and BR().ExtraKeys() or {}, empty = "none" } }
-Row{ key = "br.playstyle", kind = "choice", half = true, tab = "reminders", path = "auras.reminder.playstyle",
+Row{ key = "br.playstyle", kind = "choice", tab = "reminders", path = "auras.reminder.playstyle",
     choices = { "auto", "melee", "caster", "healer", "tank" } }
--- Weapons
+-- Weapons: in Consumables & Weapons since 11-16 (its own one-row section before)
 Row{ key = "br.weaponOil", tab = "reminders", path = "auras.reminder.weaponOil" }
 -- Consumables: Food and Flask on or off (where it shows is on the When and Where tab), then the elixirs
 local function ConsumablesOn() return (S:GetPath("auras.reminder.consumables") or "off") ~= "off" end
@@ -57,7 +58,8 @@ Row{ key = "br.trinkets", half = true, tab = "reminders", path = "auras.reminder
 Row{ key = "br.camping", half = true, tab = "reminders", path = "auras.reminder.camping" }
 Row{ key = "br.gathering", half = true, tab = "reminders", path = "auras.reminder.gathering" }
 -- Your Own: add a custom reminder, remove this class's, bring back the hidden ones
-Row{ key = "br.custom", kind = "button", center = true, tab = "reminders",
+-- (11-16: leads Your Own; it is the way in while the lists under it are empty)
+Row{ key = "br.custom", kind = "button", center = true, tab = "reminders", lead = true,
     apply = function() ns.ShowDialog("FLAREUI_BR_CUSTOM") end }
 -- (11-13, a player: "just a single button that removes them all") one by one: each list ticks what's
 -- there; unticking one removes that custom reminder or brings that hidden one back. None: all of them.
@@ -119,7 +121,6 @@ Row{ key = "br.consumablesWhere", kind = "choice", half = true, tab = "when", ch
     end }
 -- Group Buffs: only the one who gives it, and the roles that hide them (one list for the four switches)
 Row{ key = "br.provider", tab = "when", path = "auras.reminder.onlyProvider" }
-Row{ key = "br.ignoreRange", tab = "when", path = "auras.reminder.ignoreRange" }
 local ROLE_KEYS = { tank = "hideTank", healer = "hideHealer", damage = "hideDamage", norole = "hideNoRole" }
 local ROLE_ORDER = { "tank", "healer", "damage", "norole" }
 Row{ key = "br.hideRoles", kind = "dropdown", tab = "when",

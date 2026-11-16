@@ -14,7 +14,8 @@ end
 
 S:Module{
     key = "ab", group = "combat", order = 10, enabled = "actionbars.enabled",
-    tabs = { { key = "settings" }, { key = "xp" }, { key = "visibility" }, { key = "fcm" }, { key = "fonts" } },
+    -- (11-16, Malkkav: XP Bar and Hide Bars in one Other Bars tab, "xp")
+    tabs = { { key = "settings" }, { key = "xp" }, { key = "fcm" }, { key = "fonts" } },
     -- Blizzard's bars: no FlareUI frame to select, so plain Edit Mode
     editMode = function() return nil end,
     -- the XP bar is FlareUI's own frame; each bar's fade settings sit in Blizzard's bar dialogs
@@ -36,24 +37,23 @@ for tenths = 700, 1500, 5 do
     local percent = tenths / 10
     SCALES[#SCALES + 1] = { tenths / 1000, (percent % 1 == 0 and ("%d"):format(percent) or ("%.1f"):format(percent)) .. "%" }
 end
-S:Row{ key = "ab.buttonScale", kind = "range", section = "ab.barAppearance", choices = SCALES, apply = Refresh,
+-- (11-16, Malkkav: "Button Scale" in Button Appearance; it was Bar Scale in Bars Appearance)
+S:Row{ key = "ab.buttonScale", kind = "range", section = "ab.buttonAppearance", choices = SCALES, apply = Refresh,
     get = function()
         local v = tonumber(S:GetPath("actionbars.buttonScale")) or 1.11
         return math.floor(v * 200 + 0.5) * 5 / 1000
     end,
     set = function(v) S:SetPath("actionbars.buttonScale", v) end }
 
--- Gryphons Behind Bars: last in Bars Appearance before the menu and bag bar rows (11-11, Malkkav)
-S:Row{ key = "ab.gryphonsBehind", section = "ab.barAppearance", path = "actionbars.gryphonsBehind", apply = Refresh, half = true }
+-- (Gryphons Behind Bars moved to Quality of Life > Hide Clutter as the Gryphons choice, 11-16)
 -- the micro menu and the bag bar (11-13, a player's request)
 S:Row{ key = "ab.borderlessMenu", section = "ab.barAppearance", path = "actionbars.borderlessMenu", apply = Refresh, half = true }
-S:Row{ key = "ab.borderlessBags", section = "ab.barAppearance", path = "actionbars.borderlessBags", apply = Refresh, half = true }
--- (greyed until Borderless Bag Bar is on: Blizzard's frame stays full length round a folded bar)
-S:Row{ key = "ab.collapsibleBags", section = "ab.barAppearance", path = "actionbars.collapsibleBags", apply = Refresh, half = true,
-    disabled = function() return not S:GetPath("actionbars.borderlessBags") end }
+-- (11-16, Malkkav: Borderless Bag Bar merged in; a folded bar needs the frame gone anyway)
+S:Row{ key = "ab.collapsibleBags", section = "ab.barAppearance", path = "actionbars.collapsibleBags", apply = Refresh, half = true }
 
--- in pairs (half rows, 11-11 Malkkav): Show Button Art | Proc Glow, Status Colouring | Dim On Cooldown;
--- then the text (Hide Keybinds | Hide Macro Text, Clean Keybind Text), the spells, paging
+-- in pairs (half rows, 11-11 Malkkav): Show Button Art | Proc Glow, Status Colouring | Active Highlight
+-- (Dim on Cooldown is part of Status Colouring since 11-16); then the text (Show Keybind Text | Show
+-- Macro Text), the spells, paging
 S:Row{ key = "ab.buttonArt", section = "ab.buttonAppearance", path = "actionbars.buttonArt", apply = Refresh, half = true }
 S:Row{ key = "ab.procGlow", section = "ab.buttonAppearance", path = "actionbars.procGlow", half = true,
     apply = function() if ns.ProcGlow then ns.ProcGlow:Refresh() end end }
@@ -65,12 +65,11 @@ S:Row{
         S:SetPath("actionbars.colors.unusable.desaturate", on)
     end,
 }
-S:Row{ key = "ab.dimOnCooldown", section = "ab.buttonAppearance", path = "actionbars.dimOnCooldown", apply = Refresh, half = true }
 S:Row{ key = "ab.activeHighlight", section = "ab.buttonAppearance", path = "actionbars.activeHighlight", apply = Refresh, half = true }
 -- Show Keybind Text / Show Macro Text (11-13, were Hide ...): on by default, over the saved hide values
-S:Row{ key = "ab.hideKeybinds", section = "ab.buttonText", path = "actionbars.hideHotkeys", invert = true, apply = Refresh, half = true }
-S:Row{ key = "ab.hideMacroText", section = "ab.buttonText", path = "actionbars.hideMacroText", invert = true, apply = Refresh, half = true }
-S:Row{ key = "ab.cleanKeybinds", section = "ab.buttonText", path = "actionbars.cleanKeybinds", apply = Refresh, half = true }
+S:Row{ key = "ab.hideKeybinds", section = "ab.buttonAppearance",   -- (Button Text merged in, last two rows, 11-16 Malkkav)
+    path = "actionbars.hideHotkeys", invert = true, apply = Refresh, half = true }
+S:Row{ key = "ab.hideMacroText", section = "ab.buttonAppearance", path = "actionbars.hideMacroText", invert = true, apply = Refresh, half = true }
 S:Row{ key = "ab.autoRanks", section = "ab.spellBehavior", path = "actionbars.autoRanks", half = true,
     apply = function() if ns.ActionBars.CatchUpRanks then ns.ActionBars:CatchUpRanks() end end }
 S:Row{ key = "ab.stopAutoAdd", section = "ab.spellBehavior", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
@@ -81,12 +80,12 @@ S:Row{ key = "ab.noStancePaging", section = "ab.spellBehavior", path = "actionba
 -- under it and grey out while it's off
 
 S:Row{ key = "ab.xpBar", tab = "xp", path = "actionbars.xpbar.enabled", reload = true }
-S:Row{ key = "ab.xpText", tab = "xp", kind = "choice", path = "actionbars.xpbar.textMode", choices = { "HOVER", "ALWAYS" }, parent = "ab.xpBar",
+S:Row{ key = "ab.xpText", tab = "xp", kind = "choice", path = "actionbars.xpbar.textMode", choices = { "ALWAYS", "HOVER" }, parent = "ab.xpBar",   -- (Always first, 11-16 Malkkav)
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
-S:Row{ key = "ab.xpNumbers", tab = "xp", kind = "choice", path = "actionbars.xpbar.textFormat", choices = { "VALUES", "PERCENT", "BOTH", "REMAINING" }, parent = "ab.xpBar",
+S:Row{ key = "ab.xpNumbers", tab = "xp", kind = "choice", path = "actionbars.xpbar.textFormat", choices = { "VALUES", "BOTH", "PERCENT", "REMAINING" }, parent = "ab.xpBar",   -- (Percent after Current / Max (Percent), 11-16 Malkkav)
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
 -- one choice for both settings: Off clears questXP, the rest set it and pick the quests counted
-S:Row{ key = "ab.xpQuest", tab = "xp", kind = "choice", choices = { "off", "done", "all", "zone" }, parent = "ab.xpBar",
+S:Row{ key = "ab.xpQuest", tab = "xp", kind = "choice", choices = { "off", "all", "done", "zone" }, parent = "ab.xpBar",   -- (All above Completed, 11-16 Malkkav)
     get = function()
         if not S:GetPath("actionbars.xpbar.questXP") then return "off" end
         return S:GetPath("actionbars.xpbar.questXPMode") or "done"
@@ -109,7 +108,7 @@ S:Row{ key = "ab.xpBubbles", tab = "xp", kind = "choice", choices = { "off", "10
 
 -- Hide Blizzard elements (also removed from Edit Mode)
 local function Hide(key, path)
-    S:Row{ key = "ab." .. key, path = "visibility." .. path, apply = Refresh, tab = "visibility", section = "ab.hideBlizzardElements", half = true }
+    S:Row{ key = "ab." .. key, path = "visibility." .. path, apply = Refresh, tab = "xp", section = "ab.hideBlizzardElements", half = true }
 end
 Hide("hideMicroMenu", "hideMicroMenu")
 Hide("hideBagBar", "hideBagBar")
@@ -117,10 +116,11 @@ Hide("hidePetBar", "hidePetBar")
 Hide("hideStanceBar", "hideStanceBar")
 Hide("hideTotemBar", "hideTotemBar")
 Hide("hidePossessBar", "hidePossessBar")
-Hide("hideGryphons", "hideEndCaps")
-Hide("hideRaidManager", "hideRaidManager")
+-- (Gryphons and Raid Manager moved to Quality of Life > Hide Clutter, 11-16, Malkkav: not bars)
 
--- Fake Cooldown Manager tab: no switch, it is on while any bar is picked
+-- Fake Cooldown Manager tab: no switch, it is on while any bar is picked. First a note on what it is and
+-- how to fill it (11-16, Malkkav: from what he told a player), a section of its own above the bars
+S:Row{ key = "ab.fcmNote", kind = "text", noTitle = true, tab = "fcm", section = "ab.fcmAbout" }
 for i = 1, 8 do
     S:Row{ key = "ab.fcmBar" .. i, tab = "fcm", path = "fcm.bars.bar" .. i .. ".enabled", apply = Refresh,
         section = "ab.fakeCooldownManager", half = true }
@@ -130,9 +130,7 @@ S:Row{
     key = "ab.fcmShow", kind = "dropdown", tab = "fcm", path = "fcm.show", section = "ab.fakeCooldownManager",
     choices = { "always", { divider = true }, "mouseover", "combat", "hastarget", "attackable", "ingroup", "unmounted" }, apply = Refresh,
     toggles = { exclusive = { "always" }, tokens = ns.Conditions.MOUSE_TOKENS, legacy = ns.Conditions.BAR_LEGACY, empty = "always" },
-    -- under the bar switches (pick the bars, then when they show, then set them up), a line's space
-    -- from the switches and from the button below
-    rank = 3.5, gapAbove = 12,
+    -- (11-16, Malkkav) above the bar switches: as a dropdown it leads, the bars and Setup Mode follow
 }
 S:Row{
     key = "ab.fcmSetup", kind = "button", tab = "fcm", center = true, section = "ab.fakeCooldownManager", gapAbove = 12,

@@ -1035,6 +1035,21 @@ local function OnMerchantShow()
     local function TryRepair()
         local cost, canRepair = GetRepairAllCost()
         if not (canRepair and cost and cost > 0) then return true end
+        -- (11-16, Malkkav) Repair with Guild Funds: the guild bank pays first when your rank may and its
+        -- daily limit covers it (-1: no limit), as Blizzard's guild repair button; if the bank turns out
+        -- short, your own gold pays a moment later
+        if db.repairGuild and CanGuildBankRepair and CanGuildBankRepair() then
+            local limit = GetGuildBankWithdrawMoney and GetGuildBankWithdrawMoney() or 0
+            if limit < 0 or limit >= cost then
+                RepairAllItems(true)
+                Print(L["Repaired for %s from guild funds."]:format(C_CurrencyInfo.GetCoinText(cost)))
+                C_Timer.After(0.5, function()
+                    local left, can = GetRepairAllCost()
+                    if can and left and left > 0 and GetMoney() >= left and CanMerchantRepair() then RepairAllItems() end
+                end)
+                return true
+            end
+        end
         if GetMoney() < cost then return false end
         RepairAllItems()
         spent = spent + cost
@@ -1102,65 +1117,6 @@ local function InitVendor()
             if db and db.sellJunk then btn:Hide() end
         end)
     end
-end
-
---------------------------------------------------
--- 6. DURABILITY WARNING
--- A chat warning when the worst equipped item drops to 50%, once per dip
---------------------------------------------------
-local DURABILITY_SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10, 16, 17, 18 }   -- armour and weapons
-local DURABILITY_THRESHOLD = 50
-local durabilityWarned = false
-
--- A thrown weapon spends a point of durability per throw: its percentage counts throws left, not wear
-local function IsThrown(slot)
-    if slot ~= INVSLOT_RANGED and slot ~= 18 then return false end
-    local itemID = GetInventoryItemID("player", slot)
-    if not itemID then return false end
-    local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
-    return classID == Enum.ItemClass.Weapon and subclassID == Enum.ItemWeaponSubclass.Thrown
-end
-
-local function LowestDurability()
-    local lowest
-    for _, slot in ipairs(DURABILITY_SLOTS) do
-        local current, max
-        if not IsThrown(slot) then current, max = GetInventoryItemDurability(slot) end
-        if canaccessvalue(current) and canaccessvalue(max) and current and max and max > 0 then
-            local percent = current / max * 100
-            if not lowest or percent < lowest then lowest = percent end
-        end
-    end
-    return lowest
-end
-
-local function CheckDurability()
-    local db = GetDb()
-    if not (db and db.durabilityWarning) then return end
-    local lowest = LowestDurability()
-    if not lowest then return end
-    local threshold = DURABILITY_THRESHOLD
-    if lowest <= threshold then
-        if not durabilityWarned then
-            durabilityWarned = true
-            local text = L["|cffff4040Durability at %d%%|r - time to repair."]:format(math_floor(lowest + 0.5))
-            Print(text)
-            -- also in the middle of the screen with a sound: a chat line is easy to miss in a fight
-            if UIErrorsFrame and UIErrorsFrame.AddMessage then
-                UIErrorsFrame:AddMessage(text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""), 1, 0.25, 0.25)
-            end
-            PlaySound(SOUNDKIT.RAID_WARNING)
-        end
-    elseif lowest > threshold + 5 then
-        durabilityWarned = false   -- re-arm once repaired
-    end
-end
-
-local function InitDurability()
-    Tweaks:RegisterEvent("UPDATE_INVENTORY_DURABILITY", CheckDurability)
-    Tweaks:RegisterEvent("UPDATE_INVENTORY_ALERTS", CheckDurability)   -- items that mend themselves
-    Tweaks:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", CheckDurability)
-    Tweaks:RegisterEvent("PLAYER_ENTERING_WORLD", CheckDurability)
 end
 
 --------------------------------------------------
@@ -3122,8 +3078,9 @@ do
 
     -- the scale the preset asks for, or nil for Blizzard's
     function UIScale.Value()
-        local db, g = GetDb(), ns.db and ns.db.global
-        if not (db and db.enabled and g) then return nil end
+        -- (11-16, UX audit J4: a General page option, so Quality of Life off no longer stops it)
+        local g = ns.db and ns.db.global
+        if not g then return nil end
         local preset = g.uiScale
         if preset == "auto" then
             local _, height = GetPhysicalScreenSize()
@@ -3217,8 +3174,30 @@ function Tweaks:ShouldLoad()
         if zoomSpeed then pcall(SetCVar, "cameraZoomSpeed", Tweaks.StoredCVar(zoomSpeed, "cameraZoomSpeed")) end
         if tips then Tweaks.RestoreTips(tips) end
         if plates ~= nil then pcall(SetCVar, "nameplateShowEnemies", plates) end
+        -- (11-16, UX audit J4) Move Any Window and Sync Blizz UI are General page options: they start
+        -- with Quality of Life off too (with it on, Init starts them)
+        if not Tweaks.accountStarted then
+            Tweaks.accountStarted = true
+            if tweaks.moveAnyFrame then StartMoveAnyFrame() end
+            if tweaks.syncUI then InitSyncUI() end
+        end
     end
     return true
+end
+
+-- (11-16, Malkkav) Accept Resurrections: a resurrection from another player is taken at once, but never
+-- while you or the one casting it is in a fight (then the choice stays yours). Blizzard's pop-up goes
+-- with it as you come back (PLAYER_ALIVE). On the module table: this file is near Lua's local limit.
+function Tweaks.InitAcceptRes()
+    local listener = CreateFrame("Frame")
+    listener:RegisterEvent("RESURRECT_REQUEST")
+    listener:SetScript("OnEvent", function(_, _, inviter)
+        local db = GetDb()
+        if not (db and db.acceptRes) or InCombatLockdown() then return end
+        local fighting = type(inviter) == "string" and select(2, pcall(UnitAffectingCombat, inviter))
+        if canaccessvalue(fighting) and fighting then return end
+        AcceptResurrect()
+    end)
 end
 
 function Tweaks:Init()
@@ -3231,10 +3210,13 @@ function Tweaks:Init()
     if db.moveAnyFrame then StartMoveAnyFrame() end
     if db.syncUI then InitSyncUI() end
     InitVendor()
-    InitDurability()
     InitCameraLoot()
     InitHide()
     InitAutoDelete()
+    -- (11-16) Automate Quests is one switch: a setup with only one of the two on gets both
+    if (db.autoAcceptQuests and true or false) ~= (db.autoTurnInQuests and true or false) then
+        db.autoAcceptQuests, db.autoTurnInQuests = true, true
+    end
     InitAutoQuests()
     InitTrainAll()
     InitBagTooltip()
@@ -3246,6 +3228,7 @@ function Tweaks:Init()
     Bulk.Init()
     Tweaks.WideMerchant.Init()
     InitAlerts()
+    Tweaks.InitAcceptRes()
     InitPetFood()
     InitLootConfirm()
     InitCombatPlates()

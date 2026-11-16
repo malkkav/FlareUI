@@ -316,27 +316,38 @@ local function BuildSettings()
           values = { { text = L["Down"], value = "DOWN", isRadio = true }, { text = L["Up"], value = "UP", isRadio = true } },
           desc = L["Which way the frames go from the first boss."],
           get = get("grow"), set = set("grow") },
-        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing or 14, minValue = 0, maxValue = 80, valueStep = 1,
+        -- (11-16, Malkkav: "Frame Gap", as on the party and raid frames; it was "Spacing")
+        { name = L["Frame Gap"], search = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing or 14, minValue = 0, maxValue = 80, valueStep = 1,
           get = get("spacing"), set = set("spacing"),
           desc = L["The gap between the boss frames."] },
     })
 
     -- Forever Style's plate: sized by Scale
     local function onPlate() return ns.UFRing and ns.UFRing.PlateOn() or false end
-    Section("Frame", {
+    -- (11-16) the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
+    local frameItems = {
         { name = L["Scale"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.PlateDefaultScale("boss") or 100,
           minValue = 75, maxValue = 250, valueStep = 5, formatter = function(value) return value .. "%" end,
           get = function() local db = GetDb(); return db and db.plateScale or (ns.UFRing and ns.UFRing.PlateDefaultScale("boss")) or 100 end,
-          set = function(_, value)
+          set = function(layoutName, value)
               if not onPlate() then return end
-              ns.UFRing.ApplyPlateScale(GetDb(), value)
+              -- saved for this Edit Mode layout (ProfileLayout.lua)
+              local db = GetDb()
+              if db and ns.SetLayoutPlateScale then
+                  db.layouts = db.layouts or {}
+                  ns.SetLayoutPlateScale(db.layouts, layoutName or LEM:GetActiveLayoutName() or "Modern", "scale",
+                      db, value, ns.UFRing.PlateDefaultScale("boss"))
+              else
+                  ns.UFRing.ApplyPlateScale(db, value)
+              end
               Refresh()
           end,
-          hidden = function() return not onPlate() end },
+          hidden = function() return not onPlate() end,
+          desc = L["Each Edit Mode layout keeps its own Scale."] },
         { name = L["Width"], kind = LEM.SettingType.Slider, default = D.width, minValue = 80, maxValue = 400, valueStep = 2, get = get("width"), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = get("height"), set = set("height"),
           hidden = onPlate },
-        { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
+        { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
           get = get("powerHeight"), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end,
           hidden = onPlate },
         { name = L["Portrait Size"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.DefaultSize("boss") or 80,
@@ -359,9 +370,10 @@ local function BuildSettings()
         { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The frame fades while the unit is out of range."],
           get = function() return get("rangeCheck")() ~= false end, set = set("rangeCheck") },
-        -- (11-15, HyonD)
-        K.DamageTrailSetting(get("damageTrail"), set("damageTrail")),
-    })
+    }
+    local sizeItems, textItems, behaviourItems = ns.SplitFrameItems(frameItems)
+    Section("Size", sizeItems)
+    Section("Text", textItems)
 
     Section("Look", {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.texture, values = K.BuildTextureValues(),
@@ -379,23 +391,23 @@ local function BuildSettings()
             return item
         end)(),
         K.SmoothBarsSetting(get("smoothBars"), set("smoothBars")),
-        -- (11-15)
-        { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
-          desc = L["The border pulses in the threat colour while you have threat on it."],
-          get = function() return get("threatGlow")() ~= false end, set = set("threatGlow") },
+        -- (11-16, Marcus)
+        K.BarEdgeGlowSetting(get("barEdgeGlow"), set("barEdgeGlow")),
+        -- (Threat Glow is always on since 11-16, Malkkav)
     })
+    Section("Behaviour", behaviourItems)
 
     local function noCast() return get("castbar")() == false end
     Section("Cast Bar", {
-        { name = L["Cast Bars"], kind = LEM.SettingType.Checkbox, default = D.castbar ~= false, get = get("castbar"),
+        { name = L["Cast Bar"], kind = LEM.SettingType.Checkbox, default = D.castbar ~= false, get = get("castbar"),
           set = function(layoutName, value) set("castbar")(layoutName, value); if holder then LEM:RefreshFrameSettings(holder) end end },
-        { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
+        { name = L["Texture"], canon = "Cast Bar Texture", search = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
           get = get("castTexture"), set = set("castTexture"), hidden = noCast, },
-        { name = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
+        { name = L["Border"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
           get = get("castBorderTexture"), set = set("castBorderTexture"),
           hidden = function() return noCast() or K.NoBorderOptions() end,
           desc = L["The cast bar's border. Frame Border matches the frame's own border."] },
-        { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight or 14, minValue = 8, maxValue = 30, valueStep = 1,
+        { name = L["Height"], canon = "Cast Bar Height", search = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight or 14, minValue = 8, maxValue = 30, valueStep = 1,
           get = get("castHeight"), set = set("castHeight"), hidden = noCast },
         { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true,
           get = function() return get("castIcon")() ~= false end,
@@ -439,9 +451,6 @@ local function BuildSettings()
           get = function() return ns.AuraSize(GetDb(), true, D.auraSize) end, set = set("debuffSize") },
         { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = D.onlyMyDebuffs ~= false,
           get = function() return get("onlyMyDebuffs")() ~= false end, set = set("onlyMyDebuffs") },
-        { name = L["Highlight Purgeable Buffs"], kind = LEM.SettingType.Checkbox, default = false,
-          get = function() return get("purgeHighlight")() and true or false end, set = set("purgeHighlight"),
-          desc = L["Buffs and enrages that you or your group can purge, dispel or soothe come first, with Blizzard's stealable border."] },
     }, get, set))
 
     Section("Icons", {
@@ -565,7 +574,15 @@ function BF:Init()
         end
     end)
 
-    LEM:RegisterCallback("layout", function(layoutName) ApplyPosition(layoutName) end)
+    LEM:RegisterCallback("layout", function(layoutName)
+        -- Forever Style's Scale, saved per layout (ProfileLayout.lua); Refresh waits for a fight's end
+        local db = GetDb()
+        if db and db.layouts and ns.ApplyLayoutPlateScale and ns.UFRing and ns.UFRing.PlateOn()
+            and ns.ApplyLayoutPlateScale(db.layouts, layoutName, "scale", db) then
+            Refresh()
+        end
+        ApplyPosition(layoutName)
+    end)
     local function ShowPreview()
         if not InCombatLockdown() then LayoutHolder() end   -- the samples in all five places
         ApplyVisibility()

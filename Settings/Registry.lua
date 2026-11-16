@@ -63,7 +63,6 @@ Settings.NEW = {
     ["dm.fading"] = "6.9",
     ["qol.cameraMaxZoom"] = "6.9",
     ["qol.cameraZoomSpeed"] = "6.9",
-    ["qt.collapsibleZones"] = "6.9",
     ["qt.completeTag"] = "6.9",
     ["qt.questIcons"] = "6.9",
     ["qt.untracked"] = "6.9",
@@ -176,7 +175,10 @@ function Module:Sections(tabKey)
         local rows = {}
         for _, row in ipairs(section.rows) do
             -- a row without a tab belongs to the first one
-            if not row:IsHidden() and (not self.tabs or (row.tab or self.tabs[1].key) == tabKey) then rows[#rows + 1] = row end
+            -- (pageHidden, 11-16: off the page but still found by search, as the Unit Frames fonts of
+            -- frames other than the picked one)
+            if not row:IsHidden() and not (row.pageHidden and row.pageHidden())
+                and (not self.tabs or (row.tab or self.tabs[1].key) == tabKey) then rows[#rows + 1] = row end
         end
         if #rows > 0 then list[#list + 1] = { key = section.key, title = section.title, rows = rows } end
     end
@@ -324,8 +326,9 @@ Settings.GAMEPAD_OFF_MODULES = { au = true, br = true }
 Settings.GAMEPAD_OFF = {
     ["bl.bagColumns"] = true, ["bl.bagGaps"] = true, ["bl.bagKeyring"] = true, ["bl.bagReagent"] = true,
     ["bl.bagFilters"] = true, ["bl.bagWithCharacter"] = true,
-    ["ab.skinCDM"] = true, ["dm.chatTab"] = true, ["dm.chatTabIgnoreFade"] = true, ["tt.mouseover"] = true, ["qt.autoButtons"] = true,
-    ["qol.autoAcceptQuests"] = true, ["qol.autoTurnInQuests"] = true, ["qol.mailBook"] = true,
+    ["bl.bankColumns"] = true, ["bl.bankGaps"] = true, ["bl.bankTight"] = true,
+    ["ab.skinCDM"] = true, ["dm.chatTab"] = true, ["dm.chatTabIgnoreFade"] = true, ["tt.mouseover"] = true,
+    ["qol.autoAcceptQuests"] = true, ["qol.mailBook"] = true,
     ["qol.bulkBuy"] = true, ["qol.merchantWide"] = true, ["qol.fishCast"] = true, ["qol.cameraZoomSpeed"] = true,
     ["qol.move"] = true,
 }
@@ -348,9 +351,12 @@ function Row:IsDisabled()
     if self.disabled and self.disabled() then return true end
     if ns.IsGamepadUI and ns.IsGamepadUI() and Settings:GamepadOff(self) then return true end
     -- a row of a module that is off (found by search) does nothing until the module is on
-    local module = Settings.modules[self.module]
+    -- (ignoreModule: a row drawn by another module works with its page's module off, 11-16)
+    local module = not self.ignoreModule and Settings.modules[self.module]
     if module and module.IsOn and not module:IsOn() then return true end
-    local parent = self.parent and Settings.rows[self.parent]
+    -- (inverseParent, 11-16: a row that greys while its parent is ON sits under it too; its own
+    -- disabled check decides)
+    local parent = not self.inverseParent and self.parent and Settings.rows[self.parent]
     if parent and not parent:Get() then return true end
     return false
 end
@@ -419,7 +425,7 @@ function Row:ResetValue()
     if key == 'ch.channelNames' then return D('chat.channelNames') or (D('chat.shortChannels') and 'number' or 'full') end
     if key == 'qol.uiScale' then return 'blizzard' end
     if key == 'qol.uiScaleCustom' then return 100 end
-    if key == 'tt.healthBar' then return not D('tooltips.hideHealthBar') end
+    if key == 'tt.healthBar' then return D('tooltips.hideHealthBar') and 'off' or (D('tooltips.healthBarPlace') == 'inside' and 'inside' or 'below') end
     if key == 'tt.classNames' then return D('tooltips.nameColor') == 'class' end
     local hide = ({['ch.social']='chat.socialHide',['ch.channels']='chat.channelHide',['ch.menu']='chat.menuHide'})[key]
     if hide then return not D(hide) end
@@ -530,35 +536,67 @@ end
 -- rank = n places a row by hand (Fake CM's Visibility: 3.5, between the bar switches and the button).
 local KIND_RANK = { text = 0, styles = 1, choice = 1, range = 1, dropdown = 1, toggle = 3, frame = 3, keybind = 4, button = 4, buttons = 4,
                     editmode = 4, legend = 5, expander = 5 }
-local function RowRank(row)
+-- (11-16, UX audit batch 3, layout rule 2.3) a master, the row others name as parent, comes before
+-- the options it turns on: it moves up to the rank of its highest dependent (Combined Backpack over
+-- Columns), never further, so a master among peers stays among them. Its dependents follow it
+-- straight away, indented. The order is rebuilt from the registration order on every new row, so a
+-- master registered after its dependents still comes first.
+local function RowRank(row, masters)
     if row.lead then return -1 end
     if row.rank then return row.rank end
-    return KIND_RANK[row.kind] or 4
+    local rank = KIND_RANK[row.kind] or 4
+    local childRank = masters and masters[row.key]
+    if childRank and childRank < rank then rank = childRank end
+    return rank
 end
-local function InsertOrdered(list, row)
-    local rank = RowRank(row)
-    if row.parent then
-        local at
-        for i, r in ipairs(list) do
-            if r.key == row.parent then at = i end
-        end
-        if at then
-            local last = at
-            while list[last + 1] and list[last + 1].parent == row.parent do last = last + 1 end
-            for i = at + 1, last do
-                if RowRank(list[i]) > rank then table.insert(list, i, row) return end
-            end
-            table.insert(list, last + 1, row)
-            return
+local function OrderSection(section)
+    local added = section.added
+    local keys, masters, children = {}, {}, {}
+    for _, row in ipairs(added) do keys[row.key] = true end
+    for _, row in ipairs(added) do
+        if row.parent and keys[row.parent] and row.parent ~= row.key then
+            local own = row.lead and -1 or row.rank or KIND_RANK[row.kind] or 4
+            masters[row.parent] = math.min(masters[row.parent] or own, own)
+            local list = children[row.parent] or {}
+            children[row.parent] = list
+            list[#list + 1] = row
         end
     end
-    for i, r in ipairs(list) do
-        if not r.parent and RowRank(r) > rank then table.insert(list, i, row) return end
+    local function Sorted(list)
+        local copy = {}
+        for i, row in ipairs(list) do copy[i] = row end
+        table.sort(copy, function(a, b)
+            local ra, rb = RowRank(a, masters), RowRank(b, masters)
+            if ra ~= rb then return ra < rb end
+            return a.addedIndex < b.addedIndex
+        end)
+        return copy
     end
-    list[#list + 1] = row
+    local rows, placed = {}, {}
+    local function Emit(row)
+        if placed[row] then return end
+        placed[row] = true
+        rows[#rows + 1] = row
+        for _, child in ipairs(Sorted(children[row.key] or {})) do Emit(child) end
+    end
+    local roots = {}
+    for _, row in ipairs(added) do
+        if not (row.parent and keys[row.parent] and row.parent ~= row.key) then roots[#roots + 1] = row end
+    end
+    for _, row in ipairs(Sorted(roots)) do Emit(row) end
+    for _, row in ipairs(added) do Emit(row) end   -- (a parent loop: never lost)
+    -- the same table: other code may hold section.rows
+    for i = #section.rows, 1, -1 do section.rows[i] = nil end
+    for i, row in ipairs(rows) do section.rows[i] = row end
+end
+local function InsertOrdered(section, row)
+    section.added = section.added or {}
+    row.addedIndex = #section.added + 1
+    section.added[row.addedIndex] = row
+    OrderSection(section)
 end
 
--- def: key ("module.row"), kind, path ("db.path") or get/set, choices, parent, tab, section, half,
+-- def: key ("module.row"), kind, path ("db.path") or get/set, choices, parent (inverseParent: indent only), tab, section, half,
 -- reload, apply, hidden, disabled, lead, rank, gapAbove. Kinds: toggle, choice, range, dropdown, keybind, button, buttons, frame,
 -- expander, editmode, legend (built in Settings/Panel.lua), text (custom-page copy, never drawn or searched)
 function Settings:Row(def)
@@ -580,7 +618,7 @@ function Settings:Row(def)
         module.sectionByKey[sectionKey] = section
         module.sections[#module.sections + 1] = section
     end
-    InsertOrdered(section.rows, row)
+    InsertOrdered(section, row)
     row.section = sectionKey
     self.rows[row.key] = row
     return row
@@ -852,7 +890,7 @@ function Module:EditModeRows()
         for _, frame in ipairs(ModuleFrames(self)) do
             local frameName = LEM:GetFrameName(frame) or "?"
             for _, setting in ipairs(LEM:GetFrameSettings(frame) or {}) do
-                local name = type(setting.name) == "string" and setting.name
+                local name = type(setting.search) == "string" and setting.search or type(setting.name) == "string" and setting.name
                 if name and setting.kind ~= LEM.SettingType.Divider and setting.kind ~= LEM.SettingType.Expander then
                     rows[#rows + 1] = setmetatable({
                         key = "em:" .. frameName .. ":" .. name, kind = "editmode", module = self.key,
@@ -876,7 +914,7 @@ function Module:EditModeRows()
         end
         local frameName = system.name or "?"
         for _, setting in ipairs(list or {}) do
-            local name = type(setting.name) == "string" and setting.name
+            local name = type(setting.search) == "string" and setting.search or type(setting.name) == "string" and setting.name
             if name and not name:find("|c", 1, true) and setting.kind ~= LEM.SettingType.Divider
                 and setting.kind ~= LEM.SettingType.Expander then
                 rows[#rows + 1] = setmetatable({

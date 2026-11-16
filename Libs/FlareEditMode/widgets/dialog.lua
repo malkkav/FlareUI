@@ -20,17 +20,98 @@ local internal = lib.internal
 
 -- replica of EditModeSystemSettingsDialog
 local dialogMixin = {}
--- FlareUI: the settings list scrolls once it grows past this height
-lib.dialogMaxHeight = lib.dialogMaxHeight or 420
+-- FlareUI: the settings list scrolls once it grows past this height. Unset (the default since 11-16,
+-- Malkkav): the whole dialog takes up to about 65% of the screen's height, the list never under 420.
 function lib:SetDialogMaxHeight(height)
 	lib.dialogMaxHeight = height
+end
+function internal.DialogMaxHeight()
+	if lib.dialogMaxHeight then return lib.dialogMaxHeight end
+	local screen = UIParent:GetHeight() or 768
+	return math.max(420, math.floor(screen * 0.65) - 150)
+end
+
+-- FlareUI (11-16, Malkkav): one section open at a time. Before the widgets are set up, the sections
+-- (Expander rows) are put in order: a box with one section shows it open, as a plain title; otherwise
+-- the first section starts open until the player opens or closes one in that box, which is then
+-- remembered for the session (the open state itself lives in the settings, Core.lua EditSections).
+internal.sectionsTouched = internal.sectionsTouched or {}
+local function IsHiddenData(data, layout)
+	if type(data.hidden) == 'function' then return data.hidden(layout) and true or false end
+	return data.hidden and true or false
+end
+function internal.PlanSections(settings, memoryKey)
+	local layout = lib:GetActiveLayoutName()
+	-- (a static Expander is a note line, like "Bar Visible above also hides this bar": not a section)
+	local first
+	local visible = {}
+	for _, data in next, settings do
+		if data.kind == lib.SettingType.Expander and not IsHiddenData(data, layout) then
+			first = first or data
+			if not data.static then visible[#visible + 1] = data end
+		end
+	end
+	local plan = { first = first, single = #visible == 1 and visible[1] or nil }
+	if plan.single then
+		plan.single.set(layout, true, false)
+	elseif #visible > 1 then
+		local touched = memoryKey ~= nil and internal.sectionsTouched[memoryKey]
+		local seen = false
+		for i, data in ipairs(visible) do
+			local open
+			if touched then
+				open = data.get(layout) and not seen
+			else
+				open = i == 1
+			end
+			if open then seen = true end
+			if (not not data.get(layout)) ~= open then data.set(layout, open, false) end
+		end
+	end
+	return plan
+end
+function internal.MarkSection(widget, data, plan)
+	if data.kind ~= lib.SettingType.Expander then return end
+	widget.single = plan.single == data or nil
+	widget.first = plan.first == data or nil
+end
+-- a section title clicked in a box (dialog or extension): opening it closes the others
+function internal.SectionClicked(box, clicked, expanded, memoryKey)
+	if memoryKey ~= nil then internal.sectionsTouched[memoryKey] = true end
+	if not expanded then return end
+	local layout = lib:GetActiveLayoutName()
+	for _, widget in next, box.Settings.widgets do
+		if widget ~= clicked and widget.setting and widget.setting.kind == lib.SettingType.Expander
+			and not widget.setting.static and widget.setting.get(layout) then
+			widget.setting.set(layout, false, false)
+		end
+	end
+end
+
+-- FlareUI (11-16, Malkkav): the label column of FlareUI's own dialogs is 120 px (100 in Blizzard's),
+-- so labels like "Absorb Texture" or "Group Spacing" stay on one line. The box under Blizzard's own
+-- dialog (the extension) keeps 100, to stay as wide as the dialog above it.
+internal.LABEL_WIDTH, internal.LABEL_WIDTH_BLIZZARD = 120, 100
+function internal.LabelWidth(widget)
+	return internal:GetDialogOf(widget) == internal.dialog and internal.LABEL_WIDTH or internal.LABEL_WIDTH_BLIZZARD
+end
+
+function dialogMixin:SectionClicked(widget, expanded)
+	internal.SectionClicked(self, widget, expanded, self.selection and self.selection.parent)
 end
 
 function dialogMixin:UpdateScroll(resetScroll, offset)
 	local settings = self.Settings
-	settings:Layout()
-	local width, height = settings:GetSize()
-	local maxHeight = lib.dialogMaxHeight or 420
+	local width, height
+	if #(settings.widgets or {}) == 0 then
+		-- (11-16) no settings: an empty list as wide as the buttons under it
+		settings:SetSize(330, 1)
+		width, height = 330, 1
+	else
+		settings:Layout()
+		width, height = settings:GetSize()
+	end
+	local maxHeight = internal.DialogMaxHeight()
 	local scrolling = height > maxHeight
 	-- leave room for the scroll bar inside the dialog's border when it is needed
 	self.Scroll:SetSize(width + (scrolling and 22 or 0), scrolling and maxHeight or height)
@@ -91,11 +172,13 @@ function dialogMixin:UpdateSettings()
 
 	local settings, num = internal:GetFrameSettings(self.selection.parent)
 	if num > 0 then
+		local plan = internal.PlanSections(settings, self.selection.parent)
 		for index, data in next, settings do
 			local pool = internal:GetPool(data.kind)
 			if pool then
 				local widget = pool:Acquire(self.Settings)
 				widget.layoutIndex = index
+				internal.MarkSection(widget, data, plan)
 				widget:Setup(data)
 
 				table.insert(self.Settings.widgets, widget)
@@ -103,9 +186,11 @@ function dialogMixin:UpdateSettings()
 		end
 	end
 
-	self.Settings.ResetButton.layoutIndex = num + 1
+	-- FlareUI (11-16): Reset Settings sits in the button bar under the list (UpdateButtons)
+	self.numSettings = num
+	self.Settings.ResetButton:Hide()
+	self.Settings.ResetButton.ignoreInLayout = true
 	self.Settings.Divider.layoutIndex = num + 2
-	self.Settings.ResetButton:SetEnabled(num > 0)
 end
 
 function dialogMixin:Reset()
@@ -142,8 +227,17 @@ function dialogMixin:UpdateButtons()
 		end
 	end
 
+	-- FlareUI (11-16, Malkkav): one pinned bar under the list: FlareUI Settings, Reset Settings, Reset
+	-- Position. Reset Settings used to scroll at the end of the list.
+	local resetSettings = internal:GetPool('button'):Acquire(self.Buttons)
+	resetSettings.layoutIndex = num + 1
+	resetSettings:SetText(internal.ResetSettingsText())
+	resetSettings:SetOnClickHandler(GenerateClosure(self.ResetSettings, self))
+	resetSettings:Show()
+	resetSettings:SetEnabled((self.numSettings or 0) > 0)
+
 	local resetPosition = internal:GetPool('button'):Acquire(self.Buttons)
-	resetPosition.layoutIndex = num + 1
+	resetPosition.layoutIndex = num + 2
 	resetPosition:SetText(HUD_EDIT_MODE_RESET_POSITION)
 	resetPosition:SetOnClickHandler(GenerateClosure(self.ResetPosition, self))
 	resetPosition:Show()
@@ -151,11 +245,18 @@ function dialogMixin:UpdateButtons()
 	self.Buttons.ResetPositionButton = resetPosition
 end
 
+-- FlareUI: "Reset Settings" in FlareUI's language, set by EditModeOverlays.lua (lib.resetSettingsText);
+-- Blizzard's "Reset To Default" otherwise
+function internal.ResetSettingsText()
+	return lib.resetSettingsText or RESET_TO_DEFAULT
+end
+
 function dialogMixin:ResetSettings()
 	local settings, num = internal:GetFrameSettings(self.selection.parent)
 	if num > 0 then
 		for _, data in next, settings do
-			if data.set then
+			-- (FlareUI: section titles keep their open state)
+			if data.set and data.kind ~= lib.SettingType.Expander then
 				data.set(lib:GetActiveLayoutName(), data.default, true)
 			end
 		end

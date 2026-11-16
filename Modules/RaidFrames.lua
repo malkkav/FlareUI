@@ -861,21 +861,12 @@ local function AuraItems(get, set, d, view)
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = d.debuffs, values = RAID_PLACES, generator = Place("debuffs"),
           get = get("debuffs"), set = set("debuffs"),
           desc = L["Debuffs as Blizzard's raid frames pick them: boss and role debuffs, priority debuffs, and the ones you can dispel."] },
-        { name = L["Hide Buffs"], kind = LEM.SettingType.Dropdown, default = "PERMANENT",
-          values = {
-              { text = L["Off"], value = "OFF", isRadio = true },
-              { text = L["Permanent"], value = "PERMANENT", isRadio = true },
-              { text = L["Longer Than 15 Minutes"], value = "900", isRadio = true },
-              { text = L["Longer Than 10 Minutes"], value = "600", isRadio = true },
-              { text = L["Longer Than 5 Minutes"], value = "300", isRadio = true },
-              { text = L["Longer Than 1 Minute"], value = "60", isRadio = true },
-          },
-          get = get("hideBuffs", "PERMANENT"), set = set("hideBuffs"),
-          desc = L["Leaves long buffs off the raid frames:\n* Permanent: buffs with no duration\n* Longer Than: buffs whose full duration is longer, and permanent ones"] },
+        -- (11-16: the shared Hide Buffs, as on every other frame)
+        K.HideBuffsSetting("PERMANENT", get("hideBuffs", "PERMANENT"), set("hideBuffs")),
         { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = d.dispelHighlight or "mine",
           values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
                      { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
-          desc = L["A dispellable debuff colours the frame's border in its type's colour."],
+          desc = L["A dispellable debuff makes the frame's border pulse in its type's colour. In the ring styles the portrait's ring pulses too."],
           get = get("dispelHighlight", "mine"), set = set("dispelHighlight") },
         { name = L["Dispel Icons"], kind = LEM.SettingType.Dropdown, default = d.dispels, values = RAID_PLACES, generator = Place("dispels"),
           get = get("dispels"), set = set("dispels"),
@@ -935,7 +926,8 @@ local function BuildSettings()
           end,
           desc = L["Which way the raid grows as groups join. Rows grow down or up, columns right or left. The main tank frames follow rows."],
           get = get("grow", "CENTER"), set = set("grow") },
-        { name = L["Sort By"], kind = LEM.SettingType.Dropdown, default = "GROUP",
+        -- ("Group Order" since 11-16: "Sort By" is the aura order everywhere else)
+        { name = L["Group Order"], search = L["Sort By"], kind = LEM.SettingType.Dropdown, default = "GROUP",
           values = { { text = L["Group"], value = "GROUP", isRadio = true }, { text = L["Role"], value = "ROLE", isRadio = true },
                      { text = L["Class"], value = "CLASS", isRadio = true } },
           desc = L["Group keeps each raid group together. Role and Class fill rows of five, tanks or classes first."],
@@ -949,10 +941,10 @@ local function BuildSettings()
               if LEM.RefreshOpenSettings then LEM:RefreshOpenSettings() end
           end },
         -- (between the bars: 0 makes them touch; Gaps migrates old values first)
-        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = d.spacing or 10, minValue = 0, maxValue = 40, valueStep = 1,
+        { name = L["Frame Gap"], search = L["Spacing"], kind = LEM.SettingType.Slider, default = d.spacing or 10, minValue = 0, maxValue = 40, valueStep = 1,
           get = function() Gaps(GetDb()); return get("spacing", 10)() end, set = set("spacing"),
           desc = L["The gap between the bars. 0 makes them touch."] },
-        { name = L["Group Spacing"], kind = LEM.SettingType.Slider, default = d.groupSpacing or 10, minValue = 0, maxValue = 60, valueStep = 1,
+        { name = L["Group Gap"], search = L["Group Spacing"], kind = LEM.SettingType.Slider, default = d.groupSpacing or 10, minValue = 0, maxValue = 60, valueStep = 1,
           get = function() Gaps(GetDb()); return get("groupSpacing", 10)() end, set = set("groupSpacing"),
           desc = L["The gap between the groups, measured between the bars."] },
         { name = L["Group Numbers"], kind = LEM.SettingType.Checkbox, default = d.groupNumbers ~= false, get = get("groupNumbers", false), set = set("groupNumbers"),
@@ -969,12 +961,13 @@ local function BuildSettings()
           desc = L["The raid's main tanks in a small frame of their own (set by the raid leader)."] },
     })
 
-    Section("Frame", {
+    -- (11-16) the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
+    local frameItems = {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = DEFAULT_W, minValue = 40, maxValue = 200, valueStep = 1,
           get = get("width", DEFAULT_W), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = DEFAULT_H, minValue = 20, maxValue = 100, valueStep = 1,
           get = get("height", DEFAULT_H), set = set("height") },
-        { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = d.powerHeight or 4, minValue = 0, maxValue = 15, valueStep = 1,
+        { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = d.powerHeight or 4, minValue = 0, maxValue = 15, valueStep = 1,
           get = get("powerHeight", 4), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = d.healthText or "none", values = K.HEALTH_TEXT_MODES,
           get = get("healthText", "none"), set = set("healthText") },
@@ -987,9 +980,10 @@ local function BuildSettings()
         { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The frame fades while the unit is out of range."],
           get = get("rangeCheck", true), set = set("rangeCheck") },
-        -- (11-15, HyonD; main tanks follow it)
-        K.DamageTrailSetting(get("damageTrail", false), set("damageTrail")),
-    })
+    }
+    local sizeItems, textItems, behaviourItems = ns.SplitFrameItems(frameItems)
+    Section("Size", sizeItems)
+    Section("Text", textItems)
 
     Section("Look", {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = d.texture, values = K.BuildTextureValues(),
@@ -1005,11 +999,11 @@ local function BuildSettings()
         K.BgOpacitySetting(K.BAR_BG_OPACITY, get("bgOpacity", K.BAR_BG_OPACITY), set("bgOpacity")),
         K.ClassColorSetting(function() return ns.ClassColorsOn(GetDb()) end, set("classColor")),
         K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars")),
-        -- (11-15; main tanks follow it)
-        { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
-          desc = L["The border pulses in the threat colour while this member has aggro."],
-          get = function() return get("threatGlow", true)() ~= false end, set = set("threatGlow") },
+        -- (11-16, Marcus; main tanks follow it)
+        K.BarEdgeGlowSetting(get("barEdgeGlow", false), set("barEdgeGlow")),
+        -- (Threat Glow is always on since 11-16, Malkkav)
     })
+    Section("Behaviour", behaviourItems)
 
     Section("Auras", ns.AuraOrder.With(AuraItems(get, set, d, raidView), get, set))
 
@@ -1057,13 +1051,10 @@ local function BuildTankSettings()
         return raidD[k]
     end })
     local Section, settings = K.EditSections()
-    Section("Frame", {
-        { name = L["Width"], kind = LEM.SettingType.Slider, default = 182, minValue = 40, maxValue = 240, valueStep = 1, get = get("w", 182), set = set("w") },
-        { name = L["Height"], kind = LEM.SettingType.Slider, default = 60, minValue = 20, maxValue = 100, valueStep = 1, get = get("h", 60), set = set("h") },
-        { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = d.powerHeight or 4, minValue = 0, maxValue = 15, valueStep = 1,
-          get = get("powerHeight", 4), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
-        -- (between the bars, as the raid's Spacing: 0 makes them touch)
-        { name = L["Spacing"], kind = LEM.SettingType.Slider, default = 10, minValue = 0, maxValue = 40, valueStep = 1,
+    -- (11-16) a group section and Size, as on the raid frames (the rest of their look follows the raid's)
+    Section("Main Tanks", {
+        -- (between the bars, as the raid's Frame Gap: 0 makes them touch)
+        { name = L["Frame Gap"], search = L["Spacing"], kind = LEM.SettingType.Slider, default = 10, minValue = 0, maxValue = 40, valueStep = 1,
           get = function() Gaps(GetDb()); return get("spacing", 10)() end, set = set("spacing"),
           desc = L["The gap between the bars. 0 makes them touch."] },
         { name = L["Tank Targets"], kind = LEM.SettingType.Dropdown, default = "OFF",
@@ -1072,6 +1063,12 @@ local function BuildTankSettings()
                      { text = L["Right of the Frame"], value = "RIGHT", isRadio = true } },
           get = get("tankTargets", "OFF"), set = set("tankTargets"),
           desc = L["What each main tank is targeting, in a small frame below or right of theirs."] },
+    })
+    Section("Size", {
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = 182, minValue = 40, maxValue = 240, valueStep = 1, get = get("w", 182), set = set("w") },
+        { name = L["Height"], kind = LEM.SettingType.Slider, default = 60, minValue = 20, maxValue = 100, valueStep = 1, get = get("h", 60), set = set("h") },
+        { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = d.powerHeight or 4, minValue = 0, maxValue = 15, valueStep = 1,
+          get = get("powerHeight", 4), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
     })
     Section("Auras", ns.AuraOrder.With(AuraItems(get, set, d, tankView), get, set))
     return settings

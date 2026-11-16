@@ -24,6 +24,8 @@ local rowInset = 0   -- where rows start: SEC_X inside section boxes, 0 for sear
 local PLATED = { toggle = true, choice = true, dropdown = true, range = true, frame = true, button = true,
     keybind = true, buttons = true, editmode = true }
 local INDENT = 18
+-- a choice or dropdown box (11-16: the choices lost their arrows; one width for both kinds)
+local BOX_W, BOX_HALF_W = 200, 150
 -- the header row's middle: halfway down the band above the boxes, past the border's 4 px line
 local HEADER_ROW_Y = math.floor((4 + HEADER_H + EDGE) / 2) + 1
 -- the middle box's inside (the page) and, less the scroll line, the rows' width
@@ -599,25 +601,6 @@ local function SkinDropdown(dd)
 end
 Panel.SkinDropdown = SkinDropdown
 
--- a stepper's arrows: gold, on small round bronze plates
-local function SkinArrow(b)
-    for _, r in ipairs({ b:GetRegions() }) do
-        if r:IsObjectType("Texture") then
-            r:SetDesaturated(true)
-            r:SetVertexColor(TITLE_YELLOW[1], TITLE_YELLOW[2], TITLE_YELLOW[3])   -- (WoW yellow, 11-13)
-        end
-    end
-    local rim = b:CreateTexture(nil, "BACKGROUND", nil, -2)
-    rim:SetTexture(CIRCLE)
-    rim:SetSize(22, 22)
-    rim:SetPoint("CENTER")
-    rim:SetVertexColor(0.47, 0.36, 0.22)
-    local fill = b:CreateTexture(nil, "BACKGROUND", nil, -1)
-    fill:SetTexture(CIRCLE)
-    fill:SetSize(20, 20)
-    fill:SetPoint("CENTER")
-    fill:SetVertexColor(0.14, 0.10, 0.06)
-end
 
 --------------------------------------------------
 -- 2. RIGHT COLUMN
@@ -748,7 +731,7 @@ local Fill = {}      -- kind -> function(f, row): shows the row's values
 local function RowEnter(self)
     if self.row then ShowRowPreview(self.row) end
     -- (11-13, Malkkav) the style cards light up on their own: no row highlight behind them
-    if self.kind ~= "styles" then self.hover:Show() end
+    if self.kind ~= "styles" and self.kind ~= "text" then self.hover:Show() end   -- (a note row is never a setting: no light)
 end
 
 local function RowLeave(self)
@@ -914,7 +897,7 @@ end
 -- toggle
 Build.toggle = function(f)
     local check = Switch(f)
-    check:SetPoint("RIGHT", -6, 0)
+    check:SetPoint("RIGHT", -4, 0)   -- (its art sits 2 px inside: it ends where the boxes do, 11-16)
     check:SetScript("OnClick", function(self)
         local on = self:GetChecked() and true or false
         PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
@@ -927,33 +910,49 @@ Fill.toggle = function(f, row)
     f.control:SetChecked(row:Get() and true or false)
 end
 
--- choice: Blizzard's Settings stepper (dropdown with arrows)
+-- (11-16, Malkkav) a down chevron inside a dropdown box, at its right end, so a dropdown never reads as a
+-- button: FlareUI's gold chevron (as the section headers'), brighter on hover, dim when greyed. The
+-- text keeps its centre, clear of it.
+local function BoxArrow(dd)
+    local arrow = dd:CreateTexture(nil, "OVERLAY")
+    arrow:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Chevron.tga")
+    arrow:SetSize(12, 12)
+    arrow:SetPoint("RIGHT", -10, 0)
+    dd.fBoxArrow = arrow
+    if dd.Text then
+        dd.Text:ClearAllPoints()
+        dd.Text:SetPoint("LEFT", 26, 0)
+        dd.Text:SetPoint("RIGHT", -26, 0)
+    end
+    local function Paint(self)
+        if not self:IsEnabled() then arrow:SetVertexColor(0.45, 0.42, 0.36)
+        elseif self:IsMouseOver() then arrow:SetVertexColor(1, 1, 1)
+        else arrow:SetVertexColor(TITLE_YELLOW[1], TITLE_YELLOW[2], TITLE_YELLOW[3]) end
+    end
+    dd:HookScript("OnEnter", Paint)
+    dd:HookScript("OnLeave", Paint)
+    dd:HookScript("OnEnable", Paint)
+    dd:HookScript("OnDisable", Paint)
+    Paint(dd)
+end
+
+-- choice: Blizzard's dropdown box alone, as a dropdown row (11-16, Malkkav: the stepper's two arrows
+-- took room for little use; the box reads better and can be narrower). Same list and preview on hover.
+-- The gamepad still steps it with left / right (PadNav: a dropdown whose row has Choices).
 Build.choice = function(f)
-    local stepper = CreateFrame("Frame", nil, f, "SettingsDropdownWithButtonsTemplate")
-    stepper:SetPoint("RIGHT", 4, 0)
-    if stepper.Label then stepper.Label:Hide() end
-    stepper.Dropdown:SetWidth(180)
-    -- the template places its arrows past its right edge; anchor them to the row so none is clipped
-    stepper.IncrementButton:ClearAllPoints()
-    stepper.IncrementButton:SetPoint("RIGHT", f, "RIGHT", -6, 0)
-    stepper.Dropdown:ClearAllPoints()
-    -- (11-13, Malkkav: the arrows close to the box)
-    stepper.Dropdown:SetPoint("RIGHT", stepper.IncrementButton, "LEFT", -1, 0)
-    stepper.DecrementButton:ClearAllPoints()
-    stepper.DecrementButton:SetPoint("RIGHT", stepper.Dropdown, "LEFT", -1, 0)
-    -- (11-13, Malkkav) Blizzard's own look, colours and all: the box and its arrows are left unskinned
-    ForwardHover(stepper.Dropdown, f)
-    ForwardHover(stepper.IncrementButton, f)
-    ForwardHover(stepper.DecrementButton, f)
+    local dd = CreateFrame("DropdownButton", nil, f, "WowStyle2DropdownTemplate")
+    dd:SetWidth(BOX_W)
+    dd:SetPoint("RIGHT", -6, 0)
+    BoxArrow(dd)
+    ForwardHover(dd, f)
     f:SetHeight(ROW_H)
-    f.stepper = stepper
-    f.control = stepper
-    SetupChoiceMenu(stepper.Dropdown, f)
+    f.control = dd
+    SetupChoiceMenu(dd, f)
 end
 Fill.choice = function(f, row)
     -- narrower on half rows
-    f.stepper.Dropdown:SetWidth(row.half and 96 or 180)
-    f.stepper.Dropdown:GenerateMenu()
+    f.control:SetWidth(row.half and BOX_HALF_W or BOX_W)
+    f.control:GenerateMenu()
     f:SetHeight(ROW_H)
 end
 
@@ -973,7 +972,7 @@ Build.range = function(f)
     -- (the steppers dim at the ends)
     function slider:PaintFill() holder:UpdateStepperStates() end
     f.value = Text(f, "GameFontNormal", "RIGHT")
-    f.value:SetPoint("RIGHT", -4, 0); f.value:SetWidth(48); f.value:SetWordWrap(false)
+    f.value:SetPoint("RIGHT", -6, 0); f.value:SetWidth(48); f.value:SetWordWrap(false)   -- (inside the right edge, 11-16)
     -- (only a real change is written: a saved value off the list, say from an old import, stays until moved)
     local function Commit()
         if f.row and f.rangeChoice and not f.row:IsDisabled() and f.rangeChoice.value ~= f.row:Get() then
@@ -1136,10 +1135,11 @@ local function SideButton(f, side)
     return f[key]
 end
 Build.dropdown = function(f)
-    -- (11-13, Malkkav) Blizzard's own box, as the choice steppers' (WowStyle2), unskinned
+    -- (11-13, Malkkav) Blizzard's own box (WowStyle2), unskinned, the same as a choice row's
     local dd = CreateFrame("DropdownButton", nil, f, "WowStyle2DropdownTemplate")
-    dd:SetWidth(234)
-    dd:SetPoint("RIGHT", -4, 0)
+    dd:SetWidth(BOX_W)
+    dd:SetPoint("RIGHT", -6, 0)
+    BoxArrow(dd)
     ForwardHover(dd, f)
     f.control = dd
     SetupChoiceMenu(dd, f)
@@ -1148,9 +1148,9 @@ local function PlaceSideButtons(f, row)
     local sides = row.sideButtons or {}
     local dd = f.control
     dd:ClearAllPoints()
-    -- (11-13, Malkkav) as wide as a choice stepper with its arrows (box 180 + two arrow buttons), and its
-    -- right edge where theirs is; half rows as a half stepper
-    dd:SetWidth(row.dropdownWidth or (row.half and 150 or 234))
+    -- (11-16) as wide as a choice box (BOX_W), and its
+    -- right edge where theirs is; half rows as a half box
+    dd:SetWidth(row.dropdownWidth or (row.half and BOX_HALF_W or BOX_W))
     for _, side in ipairs({ "right", "left" }) do
         local def = sides[side]
         local b = (def or f[side .. "Button"]) and SideButton(f, side)
@@ -1502,6 +1502,33 @@ Fill.legend = function(f, row)
     f:SetHeight(top + 26 + f.lines:GetStringHeight())
 end
 
+-- text: a note row (11-16, UX audit 4.2.4: only the title was drawn). Its title, then the body from
+-- the copy in small grey text, wrapped; bullets ("* ") as dots. Never a setting.
+Build.text = function(f)
+    f.body = Text(f, "GameFontHighlightSmall")
+    f.body:SetJustifyH("LEFT")
+    f.body:SetWordWrap(true)
+    f.body:SetSpacing(2)
+    f.body:SetTextColor(0.72, 0.70, 0.66)
+end
+Fill.text = function(f, row)
+    local top = (f.crumb:GetText() or "") ~= "" and 18 or 6
+    f.label:ClearAllPoints()
+    f.label:SetPoint("TOPLEFT", 6, -top)
+    -- noTitle: the section's title is the note's (outside search results)
+    local bare = row.noTitle and (f.crumb:GetText() or "") == ""
+    f.label:SetShown(not bare)
+    if bare then top = top - 20 end
+    f.body:ClearAllPoints()
+    f.body:SetPoint("TOPLEFT", 6, -top - 20)
+    f.body:SetWidth(math.max(1, f:GetWidth() - 12))
+    -- (textFn: a note that names something only known in game, as the bag addon in charge, 11-16)
+    local body = (row.textFn and row.textFn()) or S:Text(row.key, "text", true) or ""
+    body = ("\n" .. body):gsub("\n%* ", "\n• "):sub(2)
+    f.body:SetText(S:Format(body))
+    f:SetHeight(top + 26 + math.ceil(f.body:GetStringHeight() or 0))
+end
+
 -- expander: a heading that opens and closes the rows under it
 Build.expander = function(f)
     local b = CreateFrame("Button", nil, f)
@@ -1581,9 +1608,7 @@ local function RowLabelSpace(f, row)
     if row.kind == "styles" then return f:GetWidth() - 24 end
     -- Use the first visible control, not the width of its container.
     local control = f.control or f.edit
-    if f.stepper then
-        control = f.stepper.DecrementButton
-    elseif row.kind == "dropdown" and row.sideButtons and row.sideButtons.left then
+    if row.kind == "dropdown" and row.sideButtons and row.sideButtons.left then
         control = f.leftButton
     elseif row.kind == "buttons" and row.buttons and #row.buttons > 0 then
         control = f.buttons[1]
@@ -1677,12 +1702,17 @@ local function SectionHeader(parent, text, y, sectionKey)
         h:SetHeight(SECTION_H)
         h.kind = key
         h.text = Text(h, "GameFontNormalLarge")
-        h.text:SetPoint("BOTTOMLEFT", 6, 8)
+        h.text:SetPoint("BOTTOMLEFT", 24, 8)
         h.text:SetTextColor(TITLE_YELLOW[1], TITLE_YELLOW[2], TITLE_YELLOW[3])
-        h.sign = Text(h, "GameFontNormal")
-        h.sign:SetPoint("BOTTOMRIGHT", -10, 6)
+        -- (11-16, UX audit 4.1) a chevron left of the title folds the section: down open, right closed.
+        -- It was a bare "-" / "+" at the far right, beside Reset.
+        h.chevron = h:CreateTexture(nil, "OVERLAY")
+        h.chevron:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Chevron.tga")
+        h.chevron:SetSize(14, 14)
+        h.chevron:SetPoint("RIGHT", h.text, "LEFT", -5, 0)
+        h.chevron:SetVertexColor(TITLE_YELLOW[1], TITLE_YELLOW[2], TITLE_YELLOW[3])
         h.reset = CreateFrame("Button", nil, h)
-        h.reset:SetPoint("BOTTOMRIGHT", -30, 6)
+        h.reset:SetPoint("BOTTOMRIGHT", -8, 6)
         h.reset.label = Text(h.reset, "GameFontNormalSmall", "RIGHT")
         h.reset.label:SetPoint("RIGHT")
         h.reset.label:SetText(L["Reset"])
@@ -1714,16 +1744,21 @@ local function SectionHeader(parent, text, y, sectionKey)
     local active = S.modules[current] and Panel:ActiveTab(S.modules[current])
     h.resetTab = active and active.key
     -- (pages marked noReset have none: Profiles, Settings)
-    h.reset:SetShown(sectionKey ~= nil and not (S.modules[current] and S.modules[current].noReset))
-    h.reset:SetEnabled(sectionKey and S:CanResetSection(current, sectionKey, h.resetTab) or false)
+    -- (11-16, UX audit 4.1) Reset shows only when something in the section differs from its default
+    local canReset = sectionKey and S:CanResetSection(current, sectionKey, h.resetTab) or false
+    h.reset:SetShown(canReset and not (S.modules[current] and S.modules[current].noReset) or false)
+    h.reset:SetEnabled(canReset)
     h.reset:Paint()
-    h.sign:SetText(sectionKey and (closedSections[sectionKey] and "+" or "-") or "")
+    h.chevron:SetShown(sectionKey ~= nil)
+    h.chevron:SetRotation(sectionKey and closedSections[sectionKey] and math.pi / 2 or 0)
+    h.text:ClearAllPoints()
+    h.text:SetPoint("BOTTOMLEFT", sectionKey and 24 or 6, 8)
     h.text:SetText(text)
     h:ClearAllPoints()
     h:SetPoint("TOPLEFT", rowInset, y)
     local width = parent:GetWidth() - 2 * rowInset
     h:SetWidth(width)
-    FitText(h.text, width - 6 - (h.reset:IsShown() and (h.reset:GetWidth() + 38) or 30), 1)
+    FitText(h.text, width - 24 - (h.reset:IsShown() and (h.reset:GetWidth() + 16) or 8), 1)
     h:Show()
     used[#used + 1] = h
     return SECTION_H
@@ -1784,10 +1819,17 @@ local function PlaceRows(parent, rows, y, crumbOf)
         local f = Acquire(parent, row.kind)
         f:ClearAllPoints()
         if row.half and not crumbOf then
+            -- (11-16, UX audit 4.2.3) under a parent the pair indents as a full row does; a dependent
+            -- pairs only with rows at its own indent (its master's other dependents)
+            local indent = row.parent and INDENT or 0
+            if firstHalf and firstHalf.halfIndent ~= indent then
+                y = y - firstHalf:GetHeight() - ROW_GAP
+                firstHalf = nil
+            end
+            f.halfIndent = indent
             local col = firstHalf and 1 or 0
-            -- a half row keeps to its column even under a parent (the parent still greys it)
-            local w = math.floor((width - HALF_GAP) / 2)
-            f:SetPoint("TOPLEFT", rowInset + col * (w + HALF_GAP), y)
+            local w = math.floor((width - indent - HALF_GAP) / 2)
+            f:SetPoint("TOPLEFT", rowInset + indent + col * (w + HALF_GAP), y)
             f:SetWidth(w)
             FillRow(f, row)
             if row == page.jumpRow then page.jumpFrame, page.jumpTop = f, -y end
@@ -1861,7 +1903,10 @@ end
 
 local function UpdateHeader(module)
     page.title:SetText(module:Title())
-    page.desc:SetText(module:Description() or "")
+    -- (11-16, UX audit J3) what is set in Edit Mode, in grey under the description, while the module is on
+    local desc, note = module:Description() or "", S:ModuleText(module.key, "editNote")
+    if note and module:IsOn() then desc = desc .. "\n" .. GRAY_FONT_COLOR:WrapTextInColorCode(note) end
+    page.desc:SetText(desc)
     page.plateIcon:SetTexture(module.navIcon or LOGO)
     if module.navIconTint then page.plateIcon:SetVertexColor(1, 0.83, 0.47) else page.plateIcon:SetVertexColor(1, 1, 1) end
     -- the game's icons: round and ringed on a plate of their own size, the square plate's edge hidden
@@ -1924,6 +1969,24 @@ local function UpdateHeader(module)
             page.banner:Show()
             height = height + bannerHeight + 6
         end
+    end
+    -- (11-16, UX audit J2) a module just turned on starts after a reload: said on its page, with the button
+    if not page.banner:IsShown() and module.enabled and module:IsOn() and S.pending["module:" .. module.key] then
+        page.banner.text:SetText(L["FlareUI starts %s after a reload."]:format(module:Title()))
+        page.banner.button:SetText(S:WindowText("reloadFooter2", L["Reload Now"]))
+        page.banner.button:SetShown(true)
+        page.banner.button:SetEnabled(true)
+        page.banner.onClick = function() ns.ShowDialog("FLAREUI_RELOAD") end
+        local buttonWidth = ButtonWidthForText(page.banner.button, 110)
+        page.banner.button:SetWidth(buttonWidth)
+        page.banner.text:SetWidth(CONTENT_W - buttonWidth - 24)
+        local bannerHeight = math.max(30, math.ceil(page.banner.text:GetStringHeight()) + 12)
+        page.banner:SetHeight(bannerHeight)
+        page.banner:ClearAllPoints()
+        page.banner:SetPoint("TOPLEFT", page.header, "TOPLEFT", 0, -height)
+        page.banner:SetPoint("RIGHT", page.header, "RIGHT")
+        page.banner:Show()
+        height = height + bannerHeight + 6
     end
     -- tabs along the bottom of the header
     local names = module.tabs and S:ModuleText(module.key, "tabs") or {}
@@ -2111,6 +2174,11 @@ function Panel:Refresh()
         UpdateHeader(module)
         if module.enabled and not module:IsOn() then
             page.offCard.text:SetText((S:WindowText("moduleOffCard", L["{Module} is off. Its settings appear here once it's on."])):gsub("{Module}", module:Title()))
+            -- (11-16, UX audit J1) what it gives, as bullets, above Turn On
+            local gives = S:ModuleText(module.key, "offCard")
+            if gives then gives = ("\n" .. gives):gsub("\n%* ", "\n• "):sub(2) end
+            page.offCard.list:SetText(gives or "")
+            page.offCard.list:SetShown(gives ~= nil)
             page.offCard:Show()
         else
             local tab = activeTab or module.custom
@@ -2240,6 +2308,8 @@ end
 function Panel:JumpTo(row)
     local module = S.modules[row.module]
     if not module then return end
+    -- (11-16) a row off the page until something is picked (the fonts' Frame picker) picks it first
+    if row.beforeJump then row.beforeJump() end
     PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
     if row.kind ~= "editmode" then
         if module.tabs then currentTab[module.key] = row.tab or module.tabs[1].key end
@@ -3016,13 +3086,19 @@ local function BuildWindow()
     local off = CreateFrame("Frame", nil, middle)
     off:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -20)
     off:SetPoint("RIGHT")
-    off:SetHeight(120)
+    off:SetHeight(220)   -- (room for the bullets, J1)
     off.text = Text(off, "GameFontHighlight", "CENTER")
     off.text:SetPoint("TOP", 0, -10)
     off.text:SetWidth(380)
+    -- what the module gives (J1), left-aligned under the line
+    off.list = Text(off, "GameFontHighlight")
+    off.list:SetPoint("TOP", off.text, "BOTTOM", 0, -12)
+    off.list:SetWidth(380)
+    off.list:SetJustifyH("LEFT")
+    off.list:SetSpacing(4)
     local turnOn = PanelButton(off)
     turnOn:SetSize(160, 26)
-    turnOn:SetPoint("TOP", off.text, "BOTTOM", 0, -16)
+    turnOn:SetPoint("TOP", off.list, "BOTTOM", 0, -16)
     turnOn:SetText(S:WindowText("moduleOffCard2", L["Turn On"]))
     turnOn:SetScript("OnClick", function()
         ns.ButtonSound()

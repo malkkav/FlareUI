@@ -21,6 +21,16 @@ S:Module{
 }
 
 -- BAGS: the window ------------------------------
+-- (11-16, Malkkav: a player couldn't tell why the options were greyed) a note says why, above them:
+-- another bag addon in charge (named), or Blizzard's combined bags off
+S:Row{ key = "bl.bagAddonNote", kind = "text", noTitle = true, tab = "bags", section = "bl.bagWindow",
+    hidden = function() return not BagAddon() end,
+    textFn = function()
+        local name = ns.Bags and ns.Bags.GetOtherBagAddon and ns.Bags:GetOtherBagAddon() or "?"
+        return L["%s is handling your bags: turn it off to use these options."]:format(name)   -- (one line, 11-16)
+    end }
+S:Row{ key = "bl.combinedNote", kind = "text", noTitle = true, tab = "bags", section = "bl.bagWindow",
+    hidden = function() return BagAddon() or (ns.Bags and ns.Bags.IsCombined and ns.Bags:IsCombined()) or false end }
 -- Combined Backpack (11-15, a player couldn't find why the rows below were greyed): Blizzard's own Use
 -- Combined Bags, switched from here. FlareUI saves nothing: Blizzard's checkbox and this one always agree.
 S:Row{ key = "bl.bagCombined", half = true, tab = "bags", disabled = BagAddon,
@@ -41,13 +51,31 @@ S:Row{ key = "bl.bagButtons", half = true, tab = "bags", path = "tweaks.bagButto
 -- the keyring and the crafting bag as sections of the combined backpack (Bags.lua 0)
 S:Row{ key = "bl.bagKeyring", half = true, tab = "bags", path = "tweaks.bagKeyring", apply = RefreshBags, disabled = NotCombined }
 S:Row{ key = "bl.bagReagent", half = true, tab = "bags", path = "tweaks.bagReagent", apply = RefreshBags, disabled = NotCombined }
+-- (11-16) one empty slot with the free count in place of every empty slot (Bags.lua 1c)
+S:Row{ key = "bl.bagCombineEmpty", half = true, tab = "bags", path = "tweaks.bagCombineEmpty", apply = RefreshBags, disabled = NotCombined }
+
+-- BAGS: the bank window (11-16, a player's request; Bags.lua 4e). Forever's bank is one window
+-- whatever Combined Bags says, so only another bag addon greys these.
+local BANK_COLUMNS = { { 0, L["Default"] } }
+for n = 6, 20 do BANK_COLUMNS[#BANK_COLUMNS + 1] = { n, tostring(n) } end
+S:Row{ key = "bl.bankColumns", kind = "range", tab = "bags", path = "tweaks.bankColumns", choices = BANK_COLUMNS,
+    apply = RefreshBags, disabled = BagAddon }
+S:Row{ key = "bl.bankGaps", half = true, tab = "bags", path = "tweaks.bankGaps", apply = RefreshBags, disabled = BagAddon }
+S:Row{ key = "bl.bankTight", half = true, tab = "bags", path = "tweaks.bankTight", apply = RefreshBags, disabled = BagAddon }
 
 -- BAGS: the item slots --------------------------
--- Skin Item Slots (11-14): FlareUI's slot border on or off; the two border looks grey out with it
-local function NoSlotSkin() return BagAddon() or not S:GetPath("tweaks.bagSkinSlots") end
-S:Row{ key = "bl.bagSkinSlots", half = true, tab = "bags", path = "tweaks.bagSkinSlots", apply = RefreshBags, disabled = BagAddon }
-S:Row{ key = "bl.bagRarityBorders", half = true, tab = "bags", path = "tweaks.bagRarityBorders", apply = RefreshBags, disabled = NoSlotSkin }
-S:Row{ key = "bl.bagThickBorders", half = true, tab = "bags", path = "tweaks.bagThickBorders", apply = RefreshBags, disabled = NoSlotSkin }
+-- Skin Item Slots (11-14; one choice since 11-16, Malkkav): Off (Blizzard's slots), Thin Borders or Thick
+-- Borders. A skinned slot always takes its item's quality colour (Rarity Colours had a switch until 11-16).
+S:Row{ key = "bl.bagSkinSlots", kind = "choice", tab = "bags", choices = { "off", "thin", "thick" },
+    apply = RefreshBags, disabled = BagAddon,
+    get = function()
+        if S:GetPath("tweaks.bagSkinSlots") == false then return "off" end
+        return S:GetPath("tweaks.bagThickBorders") and "thick" or "thin"
+    end,
+    set = function(value)
+        S:SetPath("tweaks.bagSkinSlots", value ~= "off")
+        if value ~= "off" then S:SetPath("tweaks.bagThickBorders", value == "thick") end
+    end }
 S:Row{ key = "bl.bagJunkIcon", half = true, tab = "bags", path = "tweaks.bagJunkIcon", apply = RefreshBags, disabled = BagAddon }
 -- (not greyed beside a bag addon: the character sheet's item levels are its own, Bags.lua)
 S:Row{ key = "bl.bagItemLevel", half = true, tab = "bags", path = "tweaks.bagItemLevel",
@@ -76,6 +104,9 @@ S:Row{ key = "bl.delete", half = true, tab = "bags", path = "tweaks.autoDelete",
 S:Row{ key = "bl.bagWithCharacter", half = true, tab = "bags", path = "tweaks.bagWithCharacter" }
 -- (11-15, PR #69 by ronborens) Blizzard's clean-up each time the bags open: a tool, so in Tools
 S:Row{ key = "bl.bagAutoSort", half = true, tab = "bags", path = "tweaks.bagAutoSort", disabled = BagAddon }
+-- (11-16) clams, loot bags and opened lockboxes open themselves (Bags.lua 1d; not beside another bag addon)
+S:Row{ key = "bl.bagAutoOpen", half = true, tab = "bags", path = "tweaks.bagAutoOpen", disabled = BagAddon,
+    apply = function() if ns.Bags and ns.Bags.AutoOpen then ns.Bags.AutoOpen.Next() end end }
 
 -- LOOTING ----------------------------------------
 S:Row{ key = "bl.fastLoot", half = true, tab = "looting", path = "tweaks.fasterLoot", apply = Refresh }

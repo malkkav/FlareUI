@@ -649,10 +649,10 @@ function ICON_UI.Shown(unit, key)
     return ICON_UI.defs[key].default ~= false
 end
 
--- Threat Glow / Combat Glow (Look; udb.threatGlow, udb.combatGlow): on unless saved off
-function UF.GlowOn(unit, key)
-    local udb = GetUnitDb(unit)
-    return not (udb and udb[key] == false)
+-- Threat Glow / Combat Glow: always on since 11-16 (Malkkav; they were Look switches, udb.threatGlow /
+-- udb.combatGlow, and a saved "off" no longer counts)
+function UF.GlowOn()
+    return true
 end
 
 -- (11-15) Threat Glow and Rest & Combat Glow were Icons switches (udb.icons[key].shown): one saved off
@@ -812,7 +812,8 @@ function UF.SetBarBackground(bar, percent)
 end
 
 function UF.BgOpacitySetting(default, get, set)
-    return { name = L["Background Opacity"], kind = LEM.SettingType.Slider, default = default,
+    -- (11-16, Malkkav: "Background Opacity" wrapped onto two lines in Edit Mode)
+    return { name = L["Background"], search = L["Background Opacity"], kind = LEM.SettingType.Slider, default = default,
         minValue = 0, maxValue = 100, valueStep = 5,
         formatter = function(value) return value .. "%" end,
         get = get, set = set,
@@ -843,7 +844,8 @@ end
 
 -- Always right below Background Opacity
 function UF.SmoothBarsSetting(get, set)
-    return { name = L["Smooth Bar Animations"], kind = LEM.SettingType.Checkbox, default = false,
+    -- ("Bar Animations" since 11-16, Malkkav; it was "Smooth Bar Animations")
+    return { name = L["Bar Animations"], search = L["Smooth Bar Animations"], kind = LEM.SettingType.Checkbox, default = false,
         get = function() return get() and true or false end, set = set,
         desc = L["Health and power glide to their new value instead of jumping there."] }
 end
@@ -1054,7 +1056,8 @@ local function UpdateHealth(f, glide)
         local health = (UNITS[unit].sample or {}).health or 0.75
         bar:SetMinMaxValues(0, 1)
         bar:SetValue(health)
-        UF.SampleDamageTrail(f.DamageTrail, health, udb and udb.damageTrail and not UNITS[unit].poll)
+        UF.SampleDamageTrail(f.DamageTrail, health, not UNITS[unit].poll)
+        UF.BarLookUpdate(bar, nil, false, false)
         if UnitExists(unit) and not f.fuiSample then
             bar:SetStatusBarColor(GetHealthColor(unit, ns.ClassColorsOn(udb)))
         elseif unit == "pet" then
@@ -1086,7 +1089,9 @@ local function UpdateHealth(f, glide)
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     -- a corpse gets no more health ticks, so a glide could stop short of empty
     ns.SetBarValue(bar, UnitHealth(unit), glide and udb and udb.smoothBars and not UNITS[unit].poll and not UnitIsDead(unit))
-    UF.SetDamageTrail(f.DamageTrail, unit, glide, udb and udb.damageTrail and not UNITS[unit].poll)
+    UF.SetDamageTrail(f.DamageTrail, unit, glide, not UNITS[unit].poll)
+    -- (the polled frames update on a timer: no change to bump the edge glow for)
+    UF.BarLookUpdate(bar, unit, glide and not UNITS[unit].poll)
     -- The player is always connected and a player, so a health tick keeps its colour unless the class
     -- (readable), the palette or Class Colours changed since it was set
     local classOn = ns.ClassColorsOn(udb)
@@ -1384,8 +1389,8 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
 end
 
 -- Edit Mode: a looping 3 s sample cast so the bar can be placed without a casting unit
--- Your own bar's sample takes turns: a cast (latency zone, pushback, Spell Queue Window) and a
--- channel (Channel Ticks, on Arcane Missiles' tick rate)
+-- Your own bar's sample takes turns: a cast (latency zone, pushback) and a channel (its latency
+-- zone on the left)
 local SAMPLE_CHANNEL_SPELL = 5143
 local function ShowSampleCast(cast)
     UF.EndCastFlash(cast)
@@ -1401,7 +1406,12 @@ local function ShowSampleCast(cast)
     cast:SetTimerDuration(duration, Enum.StatusBarInterpolation.Immediate,
         channel and Enum.StatusBarTimerDirection.RemainingTime or Enum.StatusBarTimerDirection.ElapsedTime)
     SetCastTimer(cast, duration)
-    cast.Text:SetText(channel and L["Sample Channel"] or L["Sample Cast"])
+    -- (11-16, Malkkav: your own sample cast shows a lower rank, "(R2)", as a real one does)
+    if own and not channel then
+        cast.Text:SetText(L["%s (R%d)"]:format(L["Sample Cast"], 2))
+    else
+        cast.Text:SetText(channel and L["Sample Channel"] or L["Sample Cast"])
+    end
     cast.Icon:SetTexture(SAMPLE_CAST_ICON)
     local color
     if cast.standalone or own then
@@ -1547,8 +1557,6 @@ end
 -- The cast bar's extras: on your own bar the latency zone and the pushback, on an enemy's the kick tick
 function UF.HideCastExtras(cast)
     if cast.LagZone then cast.LagZone:Hide() end
-    if cast.QueueMark then cast.QueueMark:Hide() end
-    for _, tick in ipairs(cast.Ticks or {}) do tick:Hide() end
     if cast.Delay then cast.Delay:Hide() end
     if cast.KickHost then cast.KickHost:Hide() end
 end
@@ -1600,101 +1608,6 @@ do
     if bar and bar.UpdateBarFillTexture then hooksecurefunc(bar, "UpdateBarFillTexture", OwnCastLook) end
 end
 
--- The cast bar's marks in Forever's bronze: a bronze line with a dark shade beside it, so it reads
--- as engraved in the bar rather than drawn over it. A frame, so line and shade come and go together.
-UF.BRONZE, UF.BRONZE_SHADE = { 0.80, 0.62, 0.36 }, { 0.12, 0.08, 0.04 }
-UF.BRONZE_DARK = { 0.58, 0.43, 0.24 }
--- color: the line's own bronze (the channel ticks a darker one)
-function UF.BronzeLine(cast, width, alpha, color)
-    local line = CreateFrame("Frame", nil, cast)
-    line:SetFrameLevel(cast:GetFrameLevel() + 1)
-    line:SetWidth(width + 1)
-    local b, d = color or UF.BRONZE, UF.BRONZE_SHADE
-    local bronze = line:CreateTexture(nil, "OVERLAY", nil, 1)
-    bronze:SetColorTexture(b[1], b[2], b[3], alpha)
-    bronze:SetPoint("TOPLEFT")
-    bronze:SetPoint("BOTTOMLEFT")
-    bronze:SetWidth(width)
-    local shade = line:CreateTexture(nil, "OVERLAY", nil, 0)
-    shade:SetColorTexture(d[1], d[2], d[3], alpha * 0.7)
-    shade:SetPoint("TOPLEFT", bronze, "TOPRIGHT")
-    shade:SetPoint("BOTTOMLEFT", bronze, "BOTTOMRIGHT")
-    shade:SetWidth(1)
-    line:Hide()
-    return line
-end
-
--- Spell Queue Window (the player cast bar): where pressing the next spell queues it straight on
-function UF.PlaceQueueMark(cast, show, startMs, endMs)
-    local mark = cast.QueueMark
-    local window = show and C_Spell.GetSpellQueueWindow and C_Spell.GetSpellQueueWindow()
-    local total = endMs - startMs
-    if not (window and window > 0 and total > window) then
-        if mark then mark:Hide() end
-        return
-    end
-    if not mark then
-        mark = UF.BronzeLine(cast, 2, 0.95)
-        cast.QueueMark = mark
-    end
-    local x = cast:GetWidth() * (1 - window / total)
-    mark:ClearAllPoints()
-    mark:SetPoint("TOP", cast, "TOPLEFT", x, 0)
-    mark:SetPoint("BOTTOM", cast, "BOTTOMLEFT", x, 0)
-    mark:Show()
-end
-
--- Channel Ticks (the player cast bar): classic channels and how often each ticks, by name so every
--- rank matches. Only these: a wrong guess would be worse than none.
-UF.CHANNEL_TICK_IDS = {
-    [5143] = 1,   -- Arcane Missiles
-    [10] = 1,     -- Blizzard
-    [689] = 1,    -- Drain Life
-    [5138] = 1,   -- Drain Mana
-    [1120] = 3,   -- Drain Soul
-    [755] = 1,    -- Health Funnel
-    [1949] = 1,   -- Hellfire
-    [5740] = 2,   -- Rain of Fire
-    [15407] = 1,  -- Mind Flay
-    [16914] = 1,  -- Hurricane
-    [740] = 2,    -- Tranquility
-    [1510] = 1,   -- Volley
-}
-function UF.ChannelTickInterval(spellID)
-    if not UF.channelTickNames then
-        UF.channelTickNames = {}
-        for id, interval in pairs(UF.CHANNEL_TICK_IDS) do
-            local name = C_Spell.GetSpellName(id)
-            if name then UF.channelTickNames[name] = interval end
-        end
-    end
-    local name = canaccessvalue(spellID) and spellID and C_Spell.GetSpellName(spellID)
-    return name and UF.channelTickNames[name]
-end
-
-function UF.PlaceChannelTicks(cast, show, spellID, startMs, endMs)
-    cast.Ticks = cast.Ticks or {}
-    local interval = show and UF.ChannelTickInterval(spellID)
-    local count = interval and math.floor((endMs - startMs) / 1000 / interval + 0.5) or 0
-    local width = cast:GetWidth()
-    for i = 1, math.max(count - 1, #cast.Ticks) do
-        local tick = cast.Ticks[i]
-        if i < count then
-            if not tick then
-                tick = UF.BronzeLine(cast, 2, 0.85, UF.BRONZE_DARK)
-                cast.Ticks[i] = tick
-            end
-            local x = width * i / count
-            tick:ClearAllPoints()
-            tick:SetPoint("TOP", cast, "TOPLEFT", x, 0)
-            tick:SetPoint("BOTTOM", cast, "BOTTOMLEFT", x, 0)
-            tick:Show()
-        elseif tick then
-            tick:Hide()
-        end
-    end
-end
-
 -- Latency Zone, measured per cast (6.4.1, a player: "not even close"): the time from your spell's
 -- request (UNIT_SPELLCAST_SENT) to the server starting it, which is what the zone stands for. The
 -- network figure (GetNetStats) is a rolling average refreshed every few seconds, so it only stands
@@ -1734,17 +1647,16 @@ function UF.CastLatency(isStart)
     return (world and world > 0) and world or home
 end
 
--- Show Spell Rank: your own cast's name with its rank, "Holy Light (R2)". The rank is the number in the
--- spell's subtext ("Rank 2" in any language); a spell without one keeps its plain name, and so does a
--- name or spell ID the client keeps secret
+-- Spell rank: your own cast of a lower rank shows it, "Holy Light (R2)". Your highest rank keeps its
+-- plain name. Always on since 11-16 (Malkkav; it was the Show Spell Rank switch). The rank is the
+-- number in the spell's subtext ("Rank 2" in any language); a spell without one keeps its plain name,
+-- and so does a name or spell ID the client keeps secret.
 function UF.CastNameWithRank(cast, label, spellID)
     if cast.unit ~= "player" then return label end
-    local db = GetDb()
-    local pc
-    if cast.standalone then pc = db and db.playerCastbar else pc = GetUnitDb("player") end
-    if not (pc and pc.spellRank) then return label end
     if not (canaccessvalue(label) and type(label) == "string" and label ~= "") then return label end
     if not (canaccessvalue(spellID) and spellID) then return label end
+    local okHigh, highest = pcall(C_ActionBar.IsHighestSpellRank, spellID)
+    if okHigh and canaccessvalue(highest) and highest then return label end
     local ok, subtext = pcall(C_Spell.GetSpellSubtext, spellID)
     if not (ok and canaccessvalue(subtext) and type(subtext) == "string") then return label end
     local rank = tonumber(subtext:match("(%d+)"))
@@ -1767,13 +1679,12 @@ function UF.UpdatePlayerCastExtras(cast, event, channeling, castBarID, startMs, 
     end
     -- this cast's measured latency (UF.CastLatency), the network average until one is measured
     local lag = UF.CastLatency(event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START")
-    -- the player cast bar's switches: Latency Zone (on by default), Spell Queue Window, Channel
-    -- Ticks, Spell Pushback. The standalone bar keeps them in playerCastbar, the bar on the player
-    -- frame with the frame's own settings.
+    -- The Latency Zone always shows (11-16, Malkkav; it was a switch). Spell Pushback is the player cast
+    -- bar's switch: the standalone bar keeps it in playerCastbar, the bar on the player frame with the
+    -- frame's own settings. (Channel Ticks and Spell Queue Window were removed 11-16, Malkkav: both bad.)
     local db = GetDb()
     local pc
     if cast.standalone then pc = db and db.playerCastbar else pc = GetUnitDb("player") end
-    if not (pc and pc.latencyZone) then lag = nil end
     local width = cast:GetWidth()
     local zoneWidth = (lag and lag > 0 and width) and width * math.min(lag / (endMs - startMs), 1) or 0
     if zoneWidth >= 1 then
@@ -1804,10 +1715,6 @@ function UF.UpdatePlayerCastExtras(cast, event, channeling, castBarID, startMs, 
     elseif event == "UNIT_SPELLCAST_DELAYED" or event == "UNIT_SPELLCAST_CHANNEL_UPDATE" then
         cast.pushDelay = (channeling and (cast.pushEnd - endMs) or (endMs - cast.pushEnd)) / 1000
     end
-    -- the standalone bar's marks (Spell Queue Window: casts; Channel Ticks: channels)
-    UF.PlaceQueueMark(cast, pc and not channeling and pc.queueMark, startMs, endMs)
-    UF.PlaceChannelTicks(cast, pc and channeling and pc.channelTicks, spellID, startMs, endMs)
-
     -- Spell Pushback (the player cast bar's switch, off by default)
     if pc and pc.pushback and cast.pushDelay and cast.pushDelay >= 0.05 then
         local face, size, flags = cast.Time:GetFont()
@@ -2787,6 +2694,65 @@ local function ApplyComboMode(f)
     end
 end
 
+-- Edit Mode: the ring styles' gems show a sample of three, for rogues and druids (11-16, Malkkav).
+-- FlareUI's own sample gems sit over Blizzard's (its gems are never touched: what they store feeds
+-- its combo update in a fight). Blizzard's frame hides with no points, on every energy tick: a hook on
+-- its Update shows it again. Leaving Edit Mode clears it; the next power update shows real points.
+function CLASSIC_COMBO.Sample(point, i)
+    local samples = CLASSIC_COMBO.samples or {}
+    CLASSIC_COMBO.samples = samples
+    local sample = samples[i]
+    if not sample then
+        sample = CreateFrame("Frame", nil, point)
+        sample:SetAllPoints(point)
+        sample.Empty = sample:CreateTexture(nil, "ARTWORK", nil, 3)
+        sample.Empty:SetAtlas("uf-roguecp-bg-dis", true)
+        sample.Empty:SetPoint("CENTER")
+        sample.Full = sample:CreateTexture(nil, "ARTWORK", nil, 3)
+        sample.Full:SetAtlas("uf-roguecp-bg", true)
+        sample.Full:SetPoint("CENTER")
+        sample.Gem = sample:CreateTexture(nil, "ARTWORK", nil, 4)
+        sample.Gem:SetAtlas("uf-roguecp-icon-red", true)
+        sample.Gem:SetPoint("CENTER")
+        samples[i] = sample
+    end
+    sample:SetFrameLevel(point:GetFrameLevel() + 5)
+    return sample
+end
+
+function CLASSIC_COMBO.Preview(f)
+    local combo = GetClassicCombo()
+    if not (combo and combo.ComboPoints) then return end
+    local owner = combo:GetParent() == f
+    if ns.EditPreviewing() and not owner then return end
+    if owner and ns.EditPreviewing() and UsesClassicCombo(f) and ShouldShowComboPoints() then
+        local max = combo.maxComboPoints
+        if not (canaccessvalue(max) and max and max > 0) then return end
+        CLASSIC_COMBO.preview = f
+        if not CLASSIC_COMBO.updateHooked and type(combo.Update) == "function" then
+            CLASSIC_COMBO.updateHooked = true
+            hooksecurefunc(combo, "Update", function(self)
+                if CLASSIC_COMBO.preview and not self:IsShown() then self:SetAlpha(1); self:Show() end
+            end)
+        end
+        local first = max - COMBO.previewPoints + 1   -- Blizzard fills the last points first
+        for i, point in ipairs(combo.ComboPoints) do
+            local sample = CLASSIC_COMBO.Sample(point, i)
+            local full = i >= first
+            sample.Empty:SetShown(not full)
+            sample.Full:SetShown(full)
+            sample.Gem:SetShown(full)
+            sample:SetShown(i <= max)
+        end
+        combo:SetAlpha(1)
+        combo:Show()
+    elseif CLASSIC_COMBO.preview then
+        CLASSIC_COMBO.preview = nil
+        for _, sample in pairs(CLASSIC_COMBO.samples or {}) do sample:Hide() end
+        combo:Hide()
+    end
+end
+
 --------------------------------------------------
 -- 8b. FIVE-SECOND RULE
 -- A spark crosses the player's mana bar for five seconds after a mana-costing cast. Mana can be
@@ -2816,8 +2782,14 @@ local function BarShowsMana()
     return canaccessvalue(powerType) and powerType == Enum.PowerType.Mana
 end
 
+-- the seconds into the window; Edit Mode's sample loops one every five seconds (11-16, Malkkav)
+local function FsrElapsed()
+    if ns.EditPreviewing() then return GetTime() % FSR_SECONDS end
+    return fsrStart and (GetTime() - fsrStart)
+end
+
 local function MoveFsrSpark(holder)
-    local elapsed = fsrStart and (GetTime() - fsrStart)
+    local elapsed = FsrElapsed()
     if not elapsed or elapsed >= FSR_SECONDS then
         fsrStart = nil
         holder:Hide()
@@ -2919,7 +2891,7 @@ local function UpdateFsrSpark()
     if not holder then return end
     if fsrStart and GetTime() - fsrStart >= FSR_SECONDS then fsrStart = nil end
     local u = GetUnitDb("player")
-    local running = u and u.fsr == true and fsrStart ~= nil
+    local running = u and u.fsr == true and (fsrStart ~= nil or ns.EditPreviewing())
     local on = running and BarShowsMana()
     holder:SetShown(on and f.Power:IsShown())
     if f.ShiftFsrSpark then f.ShiftFsrSpark:SetShown(running and f.ShiftMana:IsShown() or false) end
@@ -3169,8 +3141,9 @@ local function LayoutIndicators(f)
     if f.QuestIcon and not onRing.quest then
         local info = C_Texture.GetAtlasInfo(QUEST_ATLAS)
         local aspect = (info and info.width > 0 and info.height > 0) and (info.width / info.height) or 1
-        -- mid health bar, under the raid marker
-        ICON_UI.Place(f.QuestIcon, ICON_SIZE.quest * aspect, ICON_SIZE.quest, "CENTER", f.Health, "CENTER", 0, 0)
+        -- on the health bar's right edge (11-16, Malkkav: it sat mid-bar, on the raid marker's spot and the
+        -- health text): centred on the edge, like a badge
+        ICON_UI.Place(f.QuestIcon, ICON_SIZE.quest * aspect, ICON_SIZE.quest, "CENTER", f.Health, "RIGHT", 0, 0)
     end
     if f.ReadyIcon and not onRing.readyCheck then
         -- mid health bar, over the raid marker, sized to the bar
@@ -3339,7 +3312,7 @@ function UF.HideShieldGlow(glow)
     if glow then glow.holder:SetAlpha(0) end
 end
 
--- DAMAGE TRAIL (11-15, HyonD's request): the health just lost stays a moment in a light colour,
+-- DAMAGE TRAIL (11-15, HyonD; always on since 11-16, Marcus: no switch): the health just lost stays a moment in a light colour,
 -- then shrinks to the new health. Without comparing (secret) values: a second bar the size of the
 -- health bar, in its texture and fill direction, inside a clip frame over the bar's empty part (the
 -- heal clip when there is one, under the heals and shields). Only its part past the health shows.
@@ -3412,10 +3385,11 @@ function UF.MoveDamageTrails(self)
 end
 
 -- After the health bar is set. glide: a change on the unit already shown (a new unit, or a frame
--- just shown, lands at once); on: the frame's Damage Trail switch.
+-- just shown, lands at once); on: false hides it (always on since 11-16, Marcus: no switch).
 function UF.SetDamageTrail(trail, unit, glide, on)
     if not trail then return end
-    if not on then
+    -- (off while Smooth Animated Bars' liquid owns the bar: ns.SAB below)
+    if not on or ns.SAB.owned[trail.health] then
         UF.trailPending[trail], trail.firstAt = nil, nil
         if trail:IsShown() then trail:Hide() end
         return
@@ -3439,17 +3413,252 @@ end
 function UF.SampleDamageTrail(trail, health, on)
     if not trail then return end
     UF.trailPending[trail], trail.firstAt = nil, nil
-    if not on then trail:Hide() return end
+    if not on or ns.SAB.owned[trail.health] then trail:Hide() return end
     trail:SetMinMaxValues(0, 1)
     trail:SetValue(math.min(1, (health or 1) + 0.15))
     trail:Show()
 end
 
--- Frame section switch (default off)
-function UF.DamageTrailSetting(get, set)
-    return { name = L["Damage Trail"], kind = LEM.SettingType.Checkbox, default = false,
+-- BAR EDGE GLOW (11-16, Marcus approved; the idea from Smooth Animated Bars by Jordan (MIT): its edge
+-- line and front glow. Our own code and art, Media/Bars/FlareUI-EdgeLine / -EdgeGlow, made by a
+-- script.) A per-frame switch (barEdgeGlow, off) in the Look section of each frame's Edit Mode dialog:
+-- the unit frames (UF.BarEdgeGlowSetting), party / raid / boss tiles (PartyFrames.lua) and the Resource
+-- Bars' health (ResourceBars.lua). No health value is read: everything hangs off the fill texture's
+-- edge, as the Damage Trail's clip does.
+-- A clip frame over the whole bar (one level above it: under the heals at +2 in the heal clip) holds a
+-- bright line just inside the fill's front and a soft glow centred on it. Each health change bumps the
+-- glow for a quarter second (an animation, no OnUpdate). A dead unit's edge is hidden.
+-- A bar Smooth Animated Bars owns (ns.SAB.owned) gets none: its liquid replaces it. Ring styles: the
+-- two textures are in the bar's ring hole list (UnitFramesRing.lua BarHoleRegions, bar.fuiLook).
+UF.LOOK = {
+    LINE = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-EdgeLine",
+    GLOW = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-EdgeGlow",
+    -- (11-16, Malkkav: softer; it was 0.55 / 0.35 / 0.85)
+    LINE_ALPHA = 0.35, GLOW_ALPHA = 0.22, GLOW_PEAK = 0.55,
+}
+
+function UF.CreateBarLook(bar)
+    local level = bar:GetFrameLevel() + 1
+    local look = { bar = bar }
+    -- the whole bar, clipped (the glow never spills onto the border)
+    local edgeClip = CreateFrame("Frame", nil, bar)
+    edgeClip:SetAllPoints(bar)
+    edgeClip:SetFrameLevel(level)
+    edgeClip:SetClipsChildren(true)
+    local edge = CreateFrame("Frame", nil, edgeClip)
+    edge:SetAllPoints(edgeClip)
+    edge:SetFrameLevel(level)
+    local glow = edge:CreateTexture(nil, "ARTWORK")
+    glow:SetTexture(UF.LOOK.GLOW)
+    glow:SetBlendMode("ADD")
+    glow:SetAlpha(UF.LOOK.GLOW_ALPHA)
+    local line = edge:CreateTexture(nil, "OVERLAY")
+    line:SetTexture(UF.LOOK.LINE)
+    line:SetBlendMode("ADD")
+    line:SetAlpha(UF.LOOK.LINE_ALPHA)
+    -- the bump on a health change: up fast, back slower (the glow's own alpha after)
+    local pulse = glow:CreateAnimationGroup()
+    local up = pulse:CreateAnimation("Alpha")
+    up:SetFromAlpha(UF.LOOK.GLOW_ALPHA)
+    up:SetToAlpha(UF.LOOK.GLOW_PEAK)
+    up:SetDuration(0.07)
+    up:SetOrder(1)
+    local down = pulse:CreateAnimation("Alpha")
+    down:SetFromAlpha(UF.LOOK.GLOW_PEAK)
+    down:SetToAlpha(UF.LOOK.GLOW_ALPHA)
+    down:SetDuration(0.18)
+    down:SetOrder(2)
+    -- sizes follow the bar's height
+    edge:SetScript("OnSizeChanged", function(_, _, h)
+        if type(h) ~= "number" or h <= 0 then return end
+        line:SetWidth(h >= 24 and 6 or (h >= 12 and 5 or 4))
+        glow:SetWidth(math.max(14, math.min(36, h * 1.6)))
+    end)
+    edgeClip:Hide()
+    look.edgeClip, look.edge, look.line, look.glow, look.pulse = edgeClip, edge, line, glow, pulse
+    bar.fuiLook = look
+    return look
+end
+
+-- At the bar's layout, after its texture and fill direction are set (before the ring style's
+-- layout, which masks bar.fuiLook's textures). mirror: the bar fills from the right; on: the frame's
+-- Bar Edge Glow switch. Made the first time it is on; off, it is only hidden.
+function UF.BarLook(bar, mirror, on)
+    if not bar then return end
+    bar.fuiLookMirror = mirror and true or false
+    bar.fuiLookOn = on and true or false
+    local edgeOn = bar.fuiLookOn
+    if ns.SAB and ns.SAB.owned[bar] then edgeOn = false end
+    local look = bar.fuiLook
+    if not look then
+        if not edgeOn then return end
+        look = UF.CreateBarLook(bar)
+    end
+    local fill = bar:GetStatusBarTexture()
+    if not fill then edgeOn = false end
+    if edgeOn then
+        local front = mirror and "LEFT" or "RIGHT"
+        local line, glow = look.line, look.glow
+        -- centred on the fill's front, as the glow (11-16, Malkkav: inside the fill it read as a line a
+        -- little before the bar's edge)
+        line:ClearAllPoints()
+        line:SetPoint("TOP", fill, "TOP" .. front, 0, 0)
+        line:SetPoint("BOTTOM", fill, "BOTTOM" .. front, 0, 0)
+        glow:ClearAllPoints()
+        glow:SetPoint("TOP", fill, "TOP" .. front, 0, 0)
+        glow:SetPoint("BOTTOM", fill, "BOTTOM" .. front, 0, 0)
+    else
+        look.pulse:Stop()
+    end
+    look.edgeClip:SetShown(edgeOn)
+end
+
+-- Smooth Animated Bars took or gave back the bar (ns.SAB.Pass)
+function UF.BarLookOwnerChanged(bar)
+    if bar and bar.fuiLookMirror ~= nil then UF.BarLook(bar, bar.fuiLookMirror, bar.fuiLookOn) end
+end
+
+-- After each health update. unit: the bar's unit (nil: a sample, never dead unless dead is given);
+-- changed: a change on the unit already shown (the glow's bump).
+function UF.BarLookUpdate(bar, unit, changed, dead)
+    local look = bar and bar.fuiLook
+    if not (look and look.edgeClip:IsShown()) then return end
+    if unit then dead = UF.IsDead(unit) end
+    if not canaccessvalue(dead) then dead = false end
+    look.edge:SetAlpha(dead and 0 or 1)
+    if changed and not dead and look.edge:IsVisible() then
+        look.pulse:Stop()
+        look.pulse:Play()
+    end
+end
+
+-- Look section switch (default off)
+function UF.BarEdgeGlowSetting(get, set)
+    return { name = L["Bar Edge Glow"], kind = LEM.SettingType.Checkbox, default = false,
         get = function() return get() and true or false end, set = set,
-        desc = L["Health you lose stays a moment in a light colour, then shrinks away."] }
+        desc = L["A bright line and a soft glow at the front of the health bar. It flashes when health changes."] }
+end
+
+-- SMOOTH ANIMATED BARS SUPPORT (11-16, Marcus approved). Smooth Animated Bars (SAB, MIT, its own
+-- addon) puts its liquid on other addons' bars through its public API (SmoothAnimatedBars.AddBar /
+-- RemoveBar / IsEnabled / RegisterCallback, its SmoothAnimatedBars.lua "For other addons"). While SAB
+-- is installed and its "other addons' bars" switch is on, FlareUI hands it the health and power bars
+-- of the player, target, focus, pet and target-of frames, the party tiles' health bars (not raid or
+-- boss tiles: SAB takes at most ten group bars) and the Resource Bars' health and power. No option of
+-- ours: SAB's switch decides, and its callback adds or removes them. Without SAB nothing happens.
+-- SAB adds child frames to the bar (a clip one level above it, LEVEL), makes our fill see-through and
+-- reads our colour and fill direction itself. Our heals and shields stay over it: in the heal clip
+-- (bar +1) they are at +2 / +3, the over-shield at +3, the glow at +4. Our fill keeps moving
+-- (unseen), so they stay anchored to it; Smooth Bar Animations keeps easing it alongside the liquid.
+-- The Damage Trail is off on a bar SAB owns (it would fight the liquid). Ring styles: the bar's
+-- portrait hole goes to SAB as its mask (UnitFramesRing.lua Ring.SabHole). Out of combat only.
+ns.SAB = {
+    bars = {},       -- bar -> { unit, kind, wanted, holeOwner, trail }
+    owned = {},      -- bar -> true while SAB has it from us
+    LEVEL = 1,       -- SAB's clip: one level over the bar, under our heal and shield bars
+    MIN_HEIGHT = 6,  -- thinner bars stay ours: the liquid's waves and bubbles are noise at that size
+}
+
+-- At a frame's layout (again and again is fine). holeOwner: the frame whose ring hole masks the
+-- liquid; trail: the bar's Damage Trail.
+function ns.SAB.Want(bar, unit, kind, wanted, holeOwner, trail)
+    local S = ns.SAB
+    if not bar or S.absent then return end
+    local e = S.bars[bar]
+    if not e then
+        e = {}
+        S.bars[bar] = e
+    end
+    e.unit, e.kind, e.wanted = unit, kind, (wanted and unit) and true or false
+    e.holeOwner, e.trail = holeOwner, trail
+    S.Schedule()
+end
+
+-- One pass next frame (so the bars' sizes are laid out), or after the fight
+function ns.SAB.Schedule()
+    local S = ns.SAB
+    if S.absent or S.queued then return end
+    if not S.events then
+        S.events = CreateFrame("Frame")
+        S.events:RegisterEvent("PLAYER_ENTERING_WORLD")
+        S.events:SetScript("OnEvent", function(self, event)
+            if event == "PLAYER_REGEN_ENABLED" then self:UnregisterEvent(event) end
+            if event == "PLAYER_ENTERING_WORLD" then S.inWorld = true end
+            S.Schedule()
+        end)
+    end
+    S.queued = true
+    C_Timer.After(0, S.Pass)
+end
+
+function ns.SAB.Pass()
+    local S = ns.SAB
+    S.queued = false
+    local api = _G.SmoothAnimatedBars
+    if type(api) ~= "table" then
+        -- not installed (every addon has loaded once the player is in the world): stop for good
+        if S.inWorld then
+            S.absent = true
+            S.events:UnregisterAllEvents()
+            S.bars = {}
+        end
+        return
+    end
+    if InCombatLockdown() then
+        S.events:RegisterEvent("PLAYER_REGEN_ENABLED")
+        return
+    end
+    if not S.hooked then
+        S.hooked = true
+        pcall(api.RegisterCallback, function(event) if event == "enabled" then S.Schedule() end end)
+    end
+    local okOn, on = pcall(api.IsEnabled)
+    on = okOn and on and true or false
+    for bar, e in pairs(S.bars) do
+        local want = on and e.wanted
+        if want then
+            local okH, h = pcall(bar.GetHeight, bar)
+            if okH and type(h) == "number" and h > 0 and h < S.MIN_HEIGHT then want = false end
+        end
+        if want then
+            -- (SAB keeps the mask it gets the first time: always the same one, ring or not)
+            local mask = e.holeOwner and ns.UFRing and ns.UFRing.SabHole and ns.UFRing.SabHole(e.holeOwner)
+            local ok, taken = pcall(api.AddBar, bar, e.unit, e.kind, { name = "FlareUI", level = S.LEVEL, mask = mask })
+            want = (ok and taken) and true or false
+            if not ok then pcall(api.RemoveBar, bar) end
+        elseif S.owned[bar] then
+            pcall(api.RemoveBar, bar)
+        end
+        if want ~= (S.owned[bar] or false) then
+            S.owned[bar] = want or nil
+            S.TrailChanged(e.trail, want)
+            -- our Bar Edge Glow steps aside for the liquid, or comes back
+            UF.BarLookOwnerChanged(bar)
+        end
+    end
+end
+
+-- The Damage Trail of a bar SAB takes (hidden) or gives back (set to the health now, still hidden:
+-- the next health change shows it again without a stale piece gliding away)
+function ns.SAB.TrailChanged(trail, owned)
+    if not trail then return end
+    UF.trailPending[trail], trail.firstAt = nil, nil
+    if owned then
+        trail:Hide()
+        return
+    end
+    local unit = trail.unit
+    if unit and UnitExists(unit) then
+        pcall(trail.SetMinMaxValues, trail, 0, UnitHealthMax(unit))
+        pcall(trail.SetValue, trail, UnitHealth(unit))
+    end
+end
+
+-- A unit frame's health and power bars (not a settings preview's)
+function ns.SAB.UnitFrame(f)
+    if f.fuiSample or ns.SAB.absent then return end
+    ns.SAB.Want(f.Health, f.fuiUnit, "health", true, f, f.DamageTrail)
+    ns.SAB.Want(f.Power, f.fuiUnit, "power", f.Power:IsShown(), f)
 end
 
 function UpdateHealPrediction(f)
@@ -4034,6 +4243,7 @@ function UpdateComboPoints(f)
         local value = ns.EditPreviewing() and COMBO.previewPoints or GetComboPoints("player", "target")
         for i = 1, count do GetComboSegment(f, i):SetValue(value) end
     end
+    CLASSIC_COMBO.Preview(f)
 end
 
 local function LayoutFrame(f)
@@ -4089,6 +4299,8 @@ local function LayoutFrame(f)
         f.ShiftMana.bg:SetTexture(texture)
         f.ShiftMana:SetReverseFill(fillMirror)
     end
+    -- Bar Edge Glow (before LayoutBars: the ring style's layout masks it)
+    UF.BarLook(health, fillMirror, udb.barEdgeGlow)
 
     LayoutBars(f)
     -- the bars' empty part (Background Opacity; after LayoutBars, which hides it on the plate)
@@ -4254,6 +4466,8 @@ local function LayoutFrame(f)
 
     LayoutAuras(f)
     LayoutIndicators(f)
+    -- Smooth Animated Bars, when installed and on (ns.SAB)
+    ns.SAB.UnitFrame(f)
 end
 
 --------------------------------------------------
@@ -4628,8 +4842,6 @@ local function CreateUnitFrame(unit)
     f:SetAttribute("*type2", "togglemenu")
     f:RegisterForClicks("AnyUp")
     if type(f.SetRolesets) == "function" then pcall(f.SetRolesets, f, "unitFrames") end
-    _G.ClickCastFrames = _G.ClickCastFrames or {}
-    _G.ClickCastFrames[f] = true
     f:SetClampedToScreen(true)
     f.editModeName = "FlareUI " .. info.label
     -- stack order: the frames higher in the list draw above the ones after them, so two frames
@@ -4670,7 +4882,7 @@ local function CreateUnitFrame(unit)
         ApplyComboMode(f)
     end
     CreateIndicators(f)
-    -- Damage Trail (made for every frame but the polled ones: off it stays hidden); in the heal
+    -- Damage Trail (always on: made for every frame but the polled ones); in the heal
     -- clip when there is one, under the heals
     if not info.poll then f.DamageTrail = UF.CreateDamageTrail(f.Health, f.HealClip) end
     if unit == "player" then CreateFsrSpark(f) end
@@ -4679,6 +4891,10 @@ local function CreateUnitFrame(unit)
 
     f:SetScript("OnEnter", OnEnter)
     f:SetScript("OnLeave", OnLeave)
+    -- after the scripts: a click-cast addon wraps OnEnter / OnLeave as it registers the frame (11-16,
+    -- luuksen: registered before them, the later SetScript replaced its wrappers)
+    _G.ClickCastFrames = _G.ClickCastFrames or {}
+    _G.ClickCastFrames[f] = true
     f:SetScript("OnEvent", OnUnitEvent)
     for _, event in ipairs(UNIT_EVENTS) do
         pcall(f.RegisterUnitEvent, f, event, unit)
@@ -4985,30 +5201,27 @@ local function BuildPlayerCastSettings()
     end
     local getShowIcon, setShowIcon = show("icon")
     local getShowTimer, setShowTimer = show("timer")
+    -- (11-16, Malkkav) Size, Look, Cast Bar and Fading: the same sections, in the same order, as the
+    -- frames (Show Icon, Show Spell Timer and Spell Pushback are their Cast Bar section's rows too)
     local Section, settings = EditSections()
-    Section("Frame", {
+    Section("Size", {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = 250, minValue = 100, maxValue = 600, valueStep = 2, get = get("width", 250), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 25, minValue = 8, maxValue = 48, valueStep = 1, get = get("height", 25), set = set("height") },
+    })
+    local castItems = {
         { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true, get = getShowIcon, set = setShowIcon,
           desc = L["The spell's icon, left of the bar."] },
         { name = L["Show Spell Timer"], kind = LEM.SettingType.Checkbox, default = true, get = getShowTimer, set = setShowTimer,
           desc = L["The time left, at the right end of the bar."] },
-        { name = L["Show Spell Rank"], kind = LEM.SettingType.Checkbox, default = false, get = get("spellRank", false), set = set("spellRank"),
-          desc = L["The rank after the spell's name, like \"Holy Light (R2)\"."] },
-        { name = L["Latency Zone"], kind = LEM.SettingType.Checkbox, default = true, get = get("latencyZone", true), set = set("latencyZone"),
-          desc = L["Your latency, in red at the end of the bar. Press your next spell there and it goes off as this one ends."] },
         { name = L["Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = get("pushback", false), set = set("pushback"),
           desc = L["Next to the timer: how far hits pushed your cast back or cut your channel short, like \"+0.5\"."] },
-    })
+    }
     Section("Look", {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
         UF.BgOpacitySetting(UF.BAR_BG_OPACITY, get("bgOpacity", UF.BAR_BG_OPACITY), set("bgOpacity")),
-        { name = L["Channel Ticks"], kind = LEM.SettingType.Checkbox, default = false, get = get("channelTicks", false), set = set("channelTicks"),
-          desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
-        { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueMark", false), set = set("queueMark"),
-          desc = L["A mark near the end of the bar. Press your next spell after it and it goes off right as this one ends."] },
     })
+    Section("Cast Bar", castItems)
     -- last: Visibility and Faded Opacity (Visibility.lua; Always by default)
     if ns.Visibility and ns.Visibility.PlayerCastSettings then
         Section("Fading", ns.Visibility:PlayerCastSettings())
@@ -5047,21 +5260,30 @@ local function BuildSettings(unit)
             minValue = info.styledPet and 40 or 75, maxValue = 250, valueStep = 5,
             formatter = function(value) return value .. "%" end,
             get = function() return ns.UFRing.GetPlateScale(unit) end,
-            set = function(_, value)
+            set = function(layoutName, value)
                 -- Forever Style only (Edit Mode's reset runs hidden settings too)
                 if not onPlate() then return end
-                ns.UFRing.SetPlateScale(unit, value)
+                -- saved for this Edit Mode layout (ProfileLayout.lua)
+                local db, udb = GetDb(), GetUnitDb(unit)
+                if db and udb and ns.SetLayoutPlateScale then
+                    db.layouts = db.layouts or {}
+                    ns.SetLayoutPlateScale(db.layouts, layoutName or LEM:GetActiveLayoutName() or "Modern", unit .. "Scale",
+                        udb, value, ns.UFRing.PlateDefaultScale(unit))
+                else
+                    ns.UFRing.SetPlateScale(unit, value)
+                end
                 local f = frames[unit]
                 if f then LayoutFrame(f); UpdateAll(f) end
             end,
-            hidden = function() return not onPlate() end }
+            hidden = function() return not onPlate() end,
+            desc = L["Each Edit Mode layout keeps its own Scale."] }
     end
     -- the ring styles' presets have their own widths
     local width = ns.UFRing and ns.UFRing.On() and ns.UFRing.PresetValue(unit, "width") or defaults.width or 220
     settings[#settings + 1] = { name = L["Width"], kind = LEM.SettingType.Slider, default = width, minValue = 60, maxValue = 500, valueStep = 2, get = get("width"), set = set("width") }
     settings[#settings + 1] = { name = L["Height"], kind = LEM.SettingType.Slider, default = defaults.height or 44, minValue = 16, maxValue = 120, valueStep = 1, get = get("height"), set = setOffPlate("height"),
         hidden = onPlate }
-    settings[#settings + 1] = { name = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = defaults.powerHeight or 8, minValue = 0, maxValue = 40, valueStep = 1, get = get("powerHeight"), set = set("powerHeight"),
+    settings[#settings + 1] = { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = defaults.powerHeight or 8, minValue = 0, maxValue = 40, valueStep = 1, get = get("powerHeight"), set = set("powerHeight"),
         formatter = function(value) return value == 0 and _G.OFF or value end,
         -- Forever Style: the plate has its own power slot
         hidden = onPlate }
@@ -5203,15 +5425,14 @@ local function BuildSettings(unit)
                 UF.ApplyRangeAlpha(frames[unit], unit)
             end }
     end
-    -- (11-15, HyonD; not on target of target and target of focus, which are polled)
-    if not info.poll then
-        settings[#settings + 1] = UF.DamageTrailSetting(get("damageTrail"), set("damageTrail"))
-    end
-    -- everything above is the frame itself, and gets the first section
+    -- everything above is the frame itself: Size and Text first, Behaviour after Look (11-16, Core.lua
+    -- ns.SplitFrameItems)
     local frameItems = settings
     local Section
     Section, settings = EditSections()
-    Section("Frame", frameItems)
+    local sizeItems, textItems, behaviourItems = ns.SplitFrameItems(frameItems)
+    Section("Size", sizeItems)
+    Section("Text", textItems)
 
     -- the bars' texture and the border; the ring styles keep their own border
     local lookItems = {
@@ -5249,19 +5470,11 @@ local function BuildSettings(unit)
     if not info.poll then
         lookItems[#lookItems + 1] = UF.SmoothBarsSetting(function() local u = GetUnitDb(unit); return u and u.smoothBars end, set("smoothBars"))
     end
-    -- (11-15, were Icons switches: Threat Glow, and the player's Rest & Combat Glow)
-    if info.threatGlow then
-        lookItems[#lookItems + 1] = { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
-            desc = unit == "pet" and L["The border pulses in the threat colour while the unit has aggro."]
-                or L["The border pulses in the threat colour while you have threat on it."],
-            get = function() return UF.GlowOn(unit, "threatGlow") end, set = set("threatGlow") }
-    end
-    if info.combatGlow then
-        lookItems[#lookItems + 1] = { name = L["Combat Glow"], kind = LEM.SettingType.Checkbox, default = true,
-            desc = L["In a fight, the border and portrait pulse red. With aggro, the threat colour shows instead."],
-            get = function() return UF.GlowOn(unit, "combatGlow") end, set = set("combatGlow") }
-    end
+    -- (11-16, Marcus: per frame, off)
+    lookItems[#lookItems + 1] = UF.BarEdgeGlowSetting(get("barEdgeGlow"), set("barEdgeGlow"))
+    -- (Threat Glow and Combat Glow are always on since 11-16, Malkkav: no switches)
     Section("Look", lookItems)
+    Section("Behaviour", behaviourItems)
 
     if info.castbar then
         local function castOff() local u = GetUnitDb(unit); return u and u.castbar == false or false end
@@ -5273,16 +5486,16 @@ local function BuildSettings(unit)
                   set("castbar")(layoutName, value)
                   if frames[unit] then LEM:RefreshFrameSettings(frames[unit]) end
               end },
-            { name = L["Cast Bar Position"], kind = LEM.SettingType.Dropdown, default = defaults.castbarPosition or "BOTTOM",
+            { name = L["Position"], canon = "Cast Bar Position", search = L["Cast Bar Position"], kind = LEM.SettingType.Dropdown, default = defaults.castbarPosition or "BOTTOM",
               values = { { text = L["Above"], value = "TOP", isRadio = true }, { text = L["Below"], value = "BOTTOM", isRadio = true } },
               get = get("castbarPosition"), set = set("castbarPosition"), hidden = noCast },
-            { name = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(),
+            { name = L["Texture"], canon = "Cast Bar Texture", search = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(),
               get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture"), hidden = noCast },
-            { name = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
+            { name = L["Border"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
               get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture"),
               desc = L["The cast bar's border. Frame Border matches the frame's own border."],
               hidden = function() return noCast() or onPlate() end },
-            { name = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = defaults.castHeight or CAST_HEIGHT, minValue = 8, maxValue = 40, valueStep = 1,
+            { name = L["Height"], canon = "Cast Bar Height", search = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = defaults.castHeight or CAST_HEIGHT, minValue = 8, maxValue = 40, valueStep = 1,
               get = function() local u = GetUnitDb(unit); return u and u.castHeight or CAST_HEIGHT end, set = set("castHeight"), hidden = noCast },
             { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true,
               get = function() local u = GetUnitDb(unit); return not (u and u.castIcon == false) end,
@@ -5301,16 +5514,8 @@ local function BuildSettings(unit)
                 return function() local u = GetUnitDb(unit); local v = u and u[key]; if v == nil then return default end; return v end
             end
             local extras = {
-                { name = L["Show Spell Rank"], kind = LEM.SettingType.Checkbox, default = false, get = flag("spellRank", false), set = set("spellRank"),
-                  desc = L["The rank after the spell's name, like \"Holy Light (R2)\"."] },
-                { name = L["Latency Zone"], kind = LEM.SettingType.Checkbox, default = true, get = flag("latencyZone", true), set = set("latencyZone"),
-                  desc = L["Your latency, in red at the end of the bar. Press your next spell there and it goes off as this one ends."] },
                 { name = L["Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = flag("pushback", false), set = set("pushback"),
                   desc = L["Next to the timer: how far hits pushed your cast back or cut your channel short, like \"+0.5\"."] },
-                { name = L["Channel Ticks"], kind = LEM.SettingType.Checkbox, default = false, get = flag("channelTicks", false), set = set("channelTicks"),
-                  desc = L["Lines on channelled spells (Arcane Missiles, Drain Life, Mind Flay, Blizzard…) where each tick lands."] },
-                { name = L["Spell Queue Window"], kind = LEM.SettingType.Checkbox, default = false, get = flag("queueMark", false), set = set("queueMark"),
-                  desc = L["A mark near the end of the bar. Press your next spell after it and it goes off right as this one ends."] },
             }
             for _, item in ipairs(extras) do
                 item.hidden = noCast
@@ -5363,11 +5568,6 @@ local function BuildSettings(unit)
         if unit ~= "player" then
             auraItems[#auraItems + 1] = { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = defaults.onlyMyDebuffs or false, get = get("onlyMyDebuffs"), set = set("onlyMyDebuffs") }
         end
-        if unit == "target" or unit == "focus" then
-            auraItems[#auraItems + 1] = { name = L["Highlight Purgeable Buffs"], kind = LEM.SettingType.Checkbox, default = false,
-                get = function() local u = GetUnitDb(unit); return u and u.purgeHighlight or false end, set = set("purgeHighlight"),
-                desc = L["Buffs that you or your group can purge or dispel come first, with Blizzard's stealable border."] }
-        end
         Section("Auras", ns.AuraOrder.With(auraItems, get, set))
     end
 
@@ -5377,6 +5577,7 @@ local function BuildSettings(unit)
         local items = {}
         for _, key in ipairs(icons) do
             local def = ICON_UI.defs[key]
+            if key ~= "happiness" then
             items[#items + 1] = { name = def.label, kind = LEM.SettingType.Checkbox, default = def.default ~= false,
                 hidden = (def.ring and function() return not (ns.UFRing and ns.UFRing.On()) end)
                     or (def.noRing and function() return ns.UFRing and ns.UFRing.On() or false end) or nil,
@@ -5388,22 +5589,37 @@ local function BuildSettings(unit)
                     local f = frames[unit]
                     if f then LayoutFrame(f); UpdateAll(f) end
                 end }
-            -- the pet: where its happiness face sits (while it shows)
-            if key == "happiness" then
-                -- the styled pet: no Left, right by default; none of it on Forever Style
-                local places = { { text = L["Centre"], value = "CENTER", isRadio = true },
-                                 { text = L["Right of the Frame"], value = "RIGHT", isRadio = true } }
-                if not info.styledPet then places[3] = { text = L["Left of the Frame"], value = "LEFT", isRadio = true } end
-                items[#items + 1] = { name = L["Happiness Position"], kind = LEM.SettingType.Dropdown, default = info.styledPet and "RIGHT" or "CENTER",
-                    values = places,
-                    hidden = function() return not ICON_UI.Shown(unit, "happiness") or (info.styledPet and onPlate()) or false end,
-                    get = function() return ICON_UI.HappinessPlace(unit) end,
+            else
+                -- (11-16, Malkkav) the pet's happiness face: one dropdown, Off or where it sits (it was a
+                -- Pet Happiness switch and a Happiness Position dropdown). The styled pet has no Left, and
+                -- on Forever Style's plate the face has a fixed spot: Off or Shown.
+                local function Places()
+                    local list = { { text = L["Off"], value = "OFF", isRadio = true } }
+                    if info.styledPet and onPlate() then
+                        list[2] = { text = L["Shown"], value = "ON", isRadio = true }
+                        return list
+                    end
+                    list[2] = { text = L["Centre"], value = "CENTER", isRadio = true }
+                    list[3] = { text = L["Right of the Frame"], value = "RIGHT", isRadio = true }
+                    if not info.styledPet then list[4] = { text = L["Left of the Frame"], value = "LEFT", isRadio = true } end
+                    return list
+                end
+                items[#items + 1] = { name = def.label, kind = LEM.SettingType.Dropdown,
+                    default = def.default == false and "OFF" or (info.styledPet and "RIGHT" or "CENTER"),
+                    values = Places,
+                    desc = L["Your pet's happiness face, and where it sits."],
+                    get = function()
+                        if not ICON_UI.Shown(unit, "happiness") then return "OFF" end
+                        if info.styledPet and onPlate() then return "ON" end
+                        return ICON_UI.HappinessPlace(unit)
+                    end,
                     set = function(_, value)
                         local store = ICON_UI.Store(unit, "happiness", true)
                         if not store then return end
-                        store.place = value
+                        store.shown = value ~= "OFF"
+                        if value ~= "OFF" and value ~= "ON" then store.place = value end
                         local f = frames[unit]
-                        if f then LayoutFrame(f) end
+                        if f then LayoutFrame(f); UpdateAll(f) end
                     end }
             end
         end
@@ -5446,7 +5662,7 @@ UF.Kit = {
     -- Background Opacity's bar background and its Edit Mode slider
     Border = function(name) return ns.UFRing and ns.UFRing.Border(name) or name end,
     NoBorderOptions = function() return ns.UFRing and ns.UFRing.PlateOn() or false end,
-    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting, SmoothBarsSetting = UF.SmoothBarsSetting, DamageTrailSetting = UF.DamageTrailSetting, HideBuffsSetting = UF.HideBuffsSetting, ClassColorSetting = UF.ClassColorSetting,
+    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting, SmoothBarsSetting = UF.SmoothBarsSetting, BarEdgeGlowSetting = UF.BarEdgeGlowSetting, HideBuffsSetting = UF.HideBuffsSetting, ClassColorSetting = UF.ClassColorSetting,
     INSET = INSET, BG_OPACITY = BG_OPACITY, BACKDROP_FILE = BACKDROP_FILE,
     SEPARATOR_TEXTURE = SEPARATOR_TEXTURE, SEPARATOR_HEIGHT = SEPARATOR_HEIGHT, TEXT_INSET = TEXT_INSET,
     CAST_GAP = CAST_GAP, AURA_GAP = AURA_GAP,
@@ -5471,6 +5687,7 @@ UF.Kit = {
     CreateManaCost = UF.CreateManaCost, CostsMana = CostsMana, GetTimerFormatter = GetTimerFormatter,
     IsDead = UF.IsDead, CreateShieldGlow = UF.CreateShieldGlow, PlaceShieldGlow = UF.PlaceShieldGlow,
     CreateDamageTrail = UF.CreateDamageTrail, PlaceDamageTrail = UF.PlaceDamageTrail, SetDamageTrail = UF.SetDamageTrail, SampleDamageTrail = UF.SampleDamageTrail,
+    BarLook = UF.BarLook, BarLookUpdate = UF.BarLookUpdate,
     CreateOverAbsorb = UF.CreateOverAbsorb, PlaceOverAbsorb = UF.PlaceOverAbsorb, SetOverAbsorb = UF.SetOverAbsorb, SetShieldGlow = UF.SetShieldGlow, HideShieldGlow = UF.HideShieldGlow,
     BuildTextureValues = BuildTextureValues, BuildBorderValues = BuildBorderValues, BuildAbsorbValues = BuildTextureValues, EditSections = EditSections,
     ThreatColor = ThreatColor, SetBorderGlow = UF.SetBorderGlow,
@@ -5613,6 +5830,16 @@ function UF:Init()
     end)
 
     LEM:RegisterCallback("layout", function(layoutName)
+        -- Forever Style's Scale, saved per layout (ProfileLayout.lua); in a fight LayoutFrame waits for its end
+        local db = GetDb()
+        if db and db.layouts and ns.ApplyLayoutPlateScale and ns.UFRing and ns.UFRing.PlateOn() then
+            for unit, f in pairs(frames) do
+                if ns.UFRing.PLATE_UNITS[unit] and ns.UFRing.Plate(f)
+                    and ns.ApplyLayoutPlateScale(db.layouts, layoutName, unit .. "Scale", GetUnitDb(unit)) then
+                    LayoutFrame(f); UpdateAll(f)
+                end
+            end
+        end
         for _, f in pairs(frames) do ApplyPosition(f, layoutName) end
         if playerCastHolder then ApplyPosition(playerCastHolder, layoutName) end
     end)
@@ -5621,12 +5848,14 @@ function UF:Init()
         for _, f in pairs(frames) do LayoutAuras(f) end
         SetAuraPreview(true)
         SetCastPreview(true)
+        UpdateFsrSpark()
     end
     local function EndPreview()
         for _, f in pairs(frames) do ApplyVisibility(f); if f.Combo then UpdateComboPoints(f) end; UpdateHappiness(f); UpdateAll(f) end
         for _, f in pairs(frames) do LayoutAuras(f) end
         SetAuraPreview(false)
         SetCastPreview(false)
+        UpdateFsrSpark()
     end
     LEM:RegisterCallback("enter", ShowPreview)
     LEM:RegisterCallback("exit", EndPreview)
