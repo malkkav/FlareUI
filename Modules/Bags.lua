@@ -298,6 +298,48 @@ local function RouteEmbeddedBagClick(button, wantsSection)
     end)
 end
 
+local reagentClickProxy
+local reagentClickDriver
+
+local function RefreshReagentClickProxy()
+    if InCombatLockdown() then return end
+
+    local reagent = _G.CharacterReagentBag0Slot
+    local backpack = _G.MainMenuBarBackpackButton
+    local scriptedInput = Enum.ForbiddenAspect and Enum.ForbiddenAspect.ScriptedInput
+    local enabled = reagent and backpack and scriptedInput
+        and ns.BagModuleOn() and Combined() and Bags:IsCombined() and LayoutWanted() and ReagentWanted()
+        and not backpack:HasAccessConstraints() and not backpack:HasAnyForbiddenAspects(scriptedInput)
+    if not enabled then
+        if reagentClickDriver then
+            UnregisterStateDriver(reagentClickProxy, "visibility")
+            reagentClickProxy:Hide()
+            reagentClickDriver = false
+        end
+        return
+    end
+    if reagentClickDriver then return end
+
+    if not reagentClickProxy then
+        -- The real mouse click runs the stock backpack handler through Blizzard's secure template.
+        -- Use it in combat only so the native reagent slot keeps its normal drag handling out of combat.
+        local proxy = CreateFrame("Button", "FlareUIReagentBackpackClick", reagent, "SecureActionButtonTemplate")
+        proxy:Hide()
+        proxy:SetAllPoints(reagent)
+        proxy:SetHitRectInsets(reagent:GetHitRectInsets())
+        proxy:SetMouseClickEnabled(true)
+        proxy:SetMouseMotionEnabled(false)
+        proxy:SetPassThroughButtons("MiddleButton", "Button4", "Button5")
+        proxy:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        proxy:SetAttribute("useOnKeyDown", false)
+        proxy:SetAttribute("type", "click")
+        proxy:SetAttribute("clickbutton", backpack)
+        reagentClickProxy = proxy
+    end
+    RegisterStateDriver(reagentClickProxy, "visibility", "[combat] show; hide")
+    reagentClickDriver = true
+end
+
 --------------------------------------------------
 -- 1. COMBINED BACKPACK LAYOUT
 -- Blizzard's order (bags from the last to the backpack, slots from the last; filled from the bottom
@@ -1304,6 +1346,7 @@ function Bags:Init()
     WarmExtraButtons()
     RouteEmbeddedBagClick(_G.KeyRingButton, KeyringWanted)
     RouteEmbeddedBagClick(_G.CharacterReagentBag0Slot, ReagentWanted)
+    RefreshReagentClickProxy()
     Bags.FollowWindows()   -- section 4c
     Bags.StyleFreeSlots()
     Bags.StyleMoney()
@@ -1377,12 +1420,17 @@ function Bags:Init()
     -- the keyring and crafting bag sections follow their items
     local bagEvents = CreateFrame("Frame")
     bagEvents:RegisterEvent("PLAYER_ENTERING_WORLD")
+    bagEvents:RegisterEvent("CVAR_UPDATE")
     if useFilterButtons then bagEvents:RegisterEvent("QUEST_LOG_UPDATE") end
     for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_NEW_ITEMS_UPDATED", "BAG_UPDATE_COOLDOWN", "ITEM_LOCK_CHANGED", "INVENTORY_SEARCH_UPDATE",
                              "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED" }) do
         pcall(bagEvents.RegisterEvent, bagEvents, event)
     end
     bagEvents:SetScript("OnEvent", function(self, event, bagID, slotID)
+        if event == "CVAR_UPDATE" then
+            RefreshReagentClickProxy()
+            return
+        end
         if event == "QUEST_LOG_UPDATE" then
             if itemFilter == "quest" then RefreshItemFilter() end
             return
@@ -1401,7 +1449,10 @@ function Bags:Init()
         if event == "PLAYER_ENTERING_WORLD" then self:UnregisterEvent(event) end
         local refreshLayout = event == "PLAYER_ENTERING_WORLD" or event == "BAG_CONTAINER_UPDATE"
             or event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED"
-        if refreshLayout then WarmExtraButtons() end
+        if refreshLayout then
+            WarmExtraButtons()
+            RefreshReagentClickProxy()
+        end
         if not next(extras) and not (KeyringWanted() or ReagentWanted()) then return end
         local frame = Combined()
         -- On content updates, refill the buttons when the existing layout still fits.
@@ -1441,6 +1492,7 @@ end
 function Bags:Refresh()
     if not self.initialized then return end
     WarmExtraButtons()
+    RefreshReagentClickProxy()
     Bags.StyleFreeSlots()
     Bags.StyleMoney()
     for _, frame in ipairs(BagFrames()) do
