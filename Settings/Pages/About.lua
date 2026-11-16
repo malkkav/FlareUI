@@ -79,11 +79,13 @@ end
 
 local function Build(host)
     local panel = ns.SettingsPanel
-    local width = panel.MIDDLE_W or host:GetWidth()
+    local scrollGutter = 14
+    local width = (panel.MIDDLE_W or host:GetWidth()) - scrollGutter
     local half = math.floor((width - CARD_GAP) / 2)
 
     local scroll = CreateFrame("ScrollFrame", nil, host)
-    scroll:SetAllPoints(host)
+    scroll:SetPoint("TOPLEFT", host, "TOPLEFT")
+    scroll:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -scrollGutter, 0)
     local content = CreateFrame("Frame", nil, scroll)
     content:SetWidth(width)
     scroll:SetScrollChild(content)
