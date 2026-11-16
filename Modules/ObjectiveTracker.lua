@@ -683,10 +683,32 @@ local function LinkToChat(questID)
     if link and not ChatFrameUtil.InsertLink(link) then ChatFrameUtil.OpenChat(link) end
 end
 
+-- (11-16, Celbrund) a focus change makes the world map rebuild its quest pins, which is blocked in
+-- combat when FlareUI started it (ADDON_ACTION_BLOCKED, SetPassThroughButtons): in a fight it waits
+-- for the fight to end
+function OT.SetFocus(questID)
+    if not InCombatLockdown() then
+        C_SuperTrack.SetSuperTrackedQuestID(questID)
+        return
+    end
+    OT.focusAfterCombat = questID
+    if not OT.focusWaiter then
+        OT.focusWaiter = CreateFrame("Frame")
+        OT.focusWaiter:SetScript("OnEvent", function(self)
+            self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+            local id = OT.focusAfterCombat
+            OT.focusAfterCombat = nil
+            if id then C_SuperTrack.SetSuperTrackedQuestID(id) end
+        end)
+    end
+    OT.focusWaiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+end
+
 local function ToggleFocus(questID)
     local focused = C_SuperTrack.GetSuperTrackedQuestID() == questID
+    if OT.focusAfterCombat == questID then focused = true end   -- a second click in the fight undoes the first
     if OT.KeepFocusManual then OT.KeepFocusManual() end   -- the player's own choice: Keep Quest Focus leaves it
-    C_SuperTrack.SetSuperTrackedQuestID(focused and 0 or questID)
+    OT.SetFocus(focused and 0 or questID)
 end
 
 -- Questie's per-quest Hide Icons / Show Icons (11-15, Archy), in our quest menu while Questie runs.
@@ -2138,7 +2160,7 @@ do
     local function Restore(questID, prev)
         C_Timer.After(0, function()
             if not Wanted() or FocusNow() ~= questID then return end
-            C_SuperTrack.SetSuperTrackedQuestID(prev or 0)
+            OT.SetFocus(prev or 0)
         end)
     end
 
