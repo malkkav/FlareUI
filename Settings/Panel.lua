@@ -626,6 +626,13 @@ local function PageSpec()
     return ns.SettingsPreview.Module(current)
 end
 
+local function IsRowHovered(rowKey)
+    for _, option in ipairs(used) do
+        if option.row and option.row.key == rowKey and option:IsVisible() and option:IsMouseOver() then return true end
+    end
+    return false
+end
+
 -- 11-10 (Malkkav): a picture shows the current settings only; hovering never tries a value on
 local function ShowVisual(row)
     if not preview.canvas then return end
@@ -639,6 +646,9 @@ local function ShowVisual(row)
     local spec
     if row then spec = ns.SettingsPreview.Resolve(row) or PageSpec()
     else spec = preview.spec or PageSpec() end
+    if spec and spec.key == "ch.linkIcons" and not IsRowHovered(spec.key) then
+        spec = PageSpec()
+    end
     local value
     -- One stable composition for the whole Action Bars page. Only dropdown exploration carries
     -- a temporary value; ordinary hover changes the explanation, not the scene or animation.
