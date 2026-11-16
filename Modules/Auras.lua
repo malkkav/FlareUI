@@ -738,12 +738,22 @@ function AU.PlaceEnchants(holder, kdb)
         y = -stepY
     else
         local count, max = 0, kdb.max or 32
-        for i = 1, max do
-            if not C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL") then break end
-            count = i
+        -- (11-16, OX1DAT1ON) a secret buff in a fight can't be read by addon code (the call errors):
+        -- the row keeps its last spot until the buffs can be counted again
+        local ok = pcall(function()
+            for i = 1, max do
+                if not C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL") then break end
+                count = i
+            end
+        end)
+        if ok then
+            local perRow = math_max(1, kdb.perRow or 12)
+            y = -math_ceil(count / perRow) * stepY
+            holder.enchantY = y
+        else
+            y = holder.enchantY
+            if not y then return end
         end
-        local perRow = math_max(1, kdb.perRow or 12)
-        y = -math_ceil(count / perRow) * stepY
     end
     local n = 0
     for _, b in ipairs(buttons) do

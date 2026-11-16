@@ -1318,6 +1318,7 @@ end
 -- second, skipping tiles that are not on screen. frame: a piece; tile: its tile (nil: always).
 PF.DISPEL_PULSE = { 0.3, 1, 0.2 }   -- low alpha, high alpha, seconds each way
 PF.dispelPulsing = {}
+PF.dispelSetAlpha = CreateFrame("Frame").SetAlpha   -- the method, called through pcall (a locked piece can't be indexed safely)
 function PF.DispelPulse(frame, tile)
     if not frame then return end
     PF.dispelPulsing[frame] = tile or false
@@ -1333,8 +1334,11 @@ function PF.DispelPulse(frame, tile)
         local t = (GetTime() % (2 * half)) / half   -- 0 to 2: up, then down
         if t > 1 then t = 2 - t end
         local alpha = low + (high - low) * (0.5 - 0.5 * math.cos(math.pi * t))
+        -- (11-16, jams / Боёк / OX1DAT1ON: 300-700 errors a fight, Gnomeregan) a piece inside Blizzard's
+        -- aura button is locked to addon code while the aura in that slot is secret: skip it that tick
+        local setAlpha = PF.dispelSetAlpha
         for piece, owner in pairs(PF.dispelPulsing) do
-            if not owner or owner:IsVisible() then piece:SetAlpha(alpha) end
+            if not owner or owner:IsVisible() then pcall(setAlpha, piece, alpha) end
         end
     end)
 end
