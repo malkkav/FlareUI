@@ -3,10 +3,10 @@ local L = ns.L
 
 --------------------------------------------------
 -- LOOT ROLLS (Bags & Looting > Looting > Loot Roll Window, off; PR #43 by Nico-Mayer, 11-15)
--- FlareUI's loot roll window in place of Blizzard's roll frames. The first roll still to decide gets a
--- full card (Need / Greed / Pass, timer, your roll, the leader); the others are one-line rows, and
+-- FlareUI's loot roll window in place of Blizzard's roll frames. Every roll still to decide gets a
+-- card (Need / Greed / Pass, timer, the leader); the ones you chose on are one-line rows below, and
 -- everyone's roll shows on hover. A roll you passed on or let run out leaves at once; the others hide
--- a few seconds after their result. The header icon opens Blizzard's loot history. Placed and scaled
+-- a few seconds after they are won or lost for you, which can be before the roll ends. The header icon opens Blizzard's loot history. Placed and scaled
 -- in Edit Mode ("FlareUI Loot Rolls", the spot and scale the Movers' roll frame mover had). In the
 -- Gamepad UI the window steps back for Blizzard's gamepad roll frame. Its text uses Bags & Looting >
 -- Fonts > Loot Rolls. Roll handling after ForeverLootRoll by AKIMRX (MIT, LICENSES/ForeverLootRoll.txt).
@@ -30,11 +30,14 @@ local function Tip(owner, anchor)
 end
 
 local W, PAD, HEADER = 300, 12, 26
-local TEXT_W = W - 2 * PAD - 49   -- right of the icon, to the card's right edge
--- (11-15, Malkkav) the Need / Greed / Pass buttons a little smaller: 24 -> 21
-local ICON, CARD_H, BUTTON, ROW, CARD_GAP = 40, 56, 21, 15, 15
-local HOLD = 8               -- seconds a card stays after its result
-local GUARD = 0.3            -- seconds the roll buttons ignore clicks after another roll moves under the pointer
+local BOX_PAD = 8            -- inside the box of a card or row
+local TEXT_W = W - 2 * PAD - 2 * BOX_PAD - 49   -- right of the icon, to the card's right edge
+-- Need over Greed, Pass apart beside the two: side by side, a player rolled Need by mistake
+local ICON, CARD_H, BUTTON, ROW, CARD_GAP = 40, 72, 21, 15, 6
+local BUTTON_GAP, PASS_GAP = 4, 8
+local BUTTON_COL = 2 * BUTTON + PASS_GAP + 8
+local HOLD = 6               -- seconds a row stays once its roll is decided for you
+local GUARD = 0.2            -- seconds a card's roll buttons ignore clicks after it came to rest under the pointer
 local URGENT = 5             -- the last seconds of a roll you have not chosen on: its timer pulses
 local RESULT_GRACE = 30     -- seconds after the roll's end to wait for its result
 local ITEM_RETRY_DELAY = 0.25
@@ -53,9 +56,8 @@ local RANK = { [1] = 1, [4] = 2, [2] = 3, [0] = 4 }
 
 local sessions, order = {}, {}   -- rollID -> session; sessions by start
 local bound = {}                  -- "encounter:lootListKey" -> session, or true once forgotten
-local cards = {}
-local guard, scroll = 0, 0
-local holder, win, more
+local guard, scroll, hold = 0, 0, 0
+local holder, win, more, queued
 local Refresh, BindAll, FitHolder
 
 local function GetDb()
@@ -195,11 +197,17 @@ local function Forget(s)
     Refresh()
 end
 
+-- won or lost, when the roll ends or as soon as that is certain (Outcome): the row leaves after HOLD
+local function Settle(s)
+    if s.settled or s.sample then return end
+    s.settled = true
+    C_Timer.After(HOLD, function() Forget(s) end)
+end
+
 local function Finish(s)
     if s.status == "done" then return end
     s.status = "done"
-    if s.sample then return end
-    C_Timer.After(HOLD, function() Forget(s) end)
+    Settle(s)
 end
 
 local function Close(s)
@@ -393,12 +401,41 @@ end
 --------------------------------------------------
 local function Panel(frame)
     local edge = LSM:Fetch("border", "FlareUI Thin")   -- (11-15, Malkkav: thin, not thick)
-    local bg = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
-    frame:SetBackdrop({ bgFile = bg, edgeFile = edge, tile = false, edgeSize = ns.BorderEdgeSize(edge, 16),
-        insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+    frame:SetBackdrop({ edgeFile = edge, edgeSize = ns.BorderEdgeSize(edge, 16) })
+    local c = ns.BORDER_COLOR
+    frame:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
+    if not frame.skin then
+        local rock = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
+        rock:SetPoint("TOPLEFT", 3, -3)
+        rock:SetPoint("BOTTOMRIGHT", -3, 3)
+        rock:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
+        rock:SetHorizTile(true)
+        rock:SetVertTile(true)
+        local wash = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
+        wash:SetAllPoints(rock)
+        wash:SetColorTexture(0.05, 0.038, 0.026, 0.45)
+        local glow = frame:CreateTexture(nil, "BACKGROUND", nil, 3)
+        glow:SetPoint("TOPLEFT", rock)
+        glow:SetPoint("TOPRIGHT", rock)
+        glow:SetHeight(2 * HEADER)
+        glow:SetColorTexture(1, 1, 1)
+        glow:SetGradient("VERTICAL", CreateColor(0.55, 0.41, 0.22, 0), CreateColor(0.55, 0.41, 0.22, 0.20))
+        local shade = frame:CreateTexture(nil, "BACKGROUND", nil, 3)
+        shade:SetAllPoints(rock)
+        shade:SetColorTexture(1, 1, 1)
+        shade:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0.45), CreateColor(0, 0, 0, 0))
+        frame.skin = { rock, wash, glow, shade }
+    end
     -- Frame Opacity (Bags & Looting, tweaks.lootRollsOpacity; 11-15, Malkkav: as the chat and meter)
     local db = GetDb()
-    frame:SetBackdropColor(1, 1, 1, (db and tonumber(db.lootRollsOpacity)) or 1)
+    local opacity = (db and tonumber(db.lootRollsOpacity)) or 1
+    for _, texture in ipairs(frame.skin) do texture:SetAlpha(opacity) end
+end
+
+local function Box(frame)
+    frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = LSM:Fetch("border", "FlareUI Thin"), edgeSize = 8,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 } })
+    frame:SetBackdropColor(0, 0, 0, 0.3)
     local c = ns.BORDER_COLOR
     frame:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
 end
@@ -451,14 +488,14 @@ end
 
 --------------------------------------------------
 -- 5. CARDS AND ROWS
--- The first roll still to decide gets the full card; every other roll is a one-line row (its own
--- buttons while open, the leader or winner after). A row you chose on can be closed (X); a roll you
--- passed on or let run out leaves at once (always: the Hide Passed Rolls switch went, 11-15).
+-- Every roll still to decide gets a card, up to MAX_CARDS (the rest wait their turn); a roll you
+-- chose on is a one-line row with the leader or winner and no buttons. A row can be closed (X); a
+-- roll you passed on or let run out leaves at once (always: the Hide Passed Rolls switch went, 11-15).
 --------------------------------------------------
-local ROW_H, ROW_GAP, ROW_ICON, ROW_BUTTON, MAX_ROWS = 26, 5, 20, 20, 8
+local ROW_H, ROW_GAP, ROW_ICON, MAX_CARDS, MAX_ROWS = 32, 4, 20, 4, 5
+local ROW_PAD = (ROW_H - ROW_ICON) / 2   -- left of a row's icon as above and below it
 local ROW_W = W - 2 * PAD
-local RESULT_W, ROLL_W = 104, 22
-local MINE_W = 6 + 15 + 2 + ROLL_W   -- your choice and roll, between a row's icon and its name
+local RESULT_W = 104
 
 local function OnButtonEnter(b)
     if not Tip(b, "ANCHOR_RIGHT") then return end
@@ -477,7 +514,7 @@ local function NewButton(card, rollType, size)
     b:SetMotionScriptsWhileDisabled(true)
     b.rollType = rollType
     b:SetScript("OnClick", function()
-        if card.session and GetTime() >= guard then Roll(card.session, rollType) end
+        if card.session and GetTime() >= math_max(guard, card.guard or 0) then Roll(card.session, rollType) end
     end)
     b:SetScript("OnEnter", OnButtonEnter)
     b:SetScript("OnLeave", GameTooltip_Hide)
@@ -491,21 +528,20 @@ local function SetButton(b, shown, enabled, reason)
     b.reason = not enabled and reason and reason > 0 and _G["LOOT_ROLL_INELIGIBLE_REASON" .. reason] or nil
 end
 
-local function RollButtons(card, size, gap)
-    card.pass = NewButton(card, 0, size)
-    card.greed = NewButton(card, 2, size)
-    card.greed:SetPoint("RIGHT", card.pass, "LEFT", -gap, 0)
-    card.need = NewButton(card, 1, size)
-    card.need:SetPoint("RIGHT", card.greed, "LEFT", -gap, 0)
+local function RollButtons(card)
+    card.pass = NewButton(card, 0, BUTTON)
+    card.greed = NewButton(card, 2, BUTTON)
+    card.need = NewButton(card, 1, BUTTON)
+    card.need:SetPoint("TOPRIGHT", -BOX_PAD - BUTTON - PASS_GAP, -BOX_PAD)
+    card.greed:SetPoint("TOP", card.need, "BOTTOM", 0, -BUTTON_GAP)
+    card.pass:SetPoint("LEFT", card.need, "BOTTOMRIGHT", PASS_GAP, -BUTTON_GAP / 2)
 end
 
--- returns whether the buttons show
 local function FillButtons(card, s)
     local open = s.status == "rolling" and s.loaded
     SetButton(card.need, open, s.canNeed, s.reasonNeed)
     SetButton(card.greed, open, s.canGreed, s.reasonGreed)
     SetButton(card.pass, open, true)
-    return open
 end
 
 local function UpdateTimer(card)
@@ -574,8 +610,26 @@ local function Timer(card, height)
     card.timeText = Text(card, "GameFontHighlightSmall", true)
 end
 
+local live = {}                              -- the cards and rows in use (frame -> true)
+local free = { [true] = {}, [false] = {} }   -- the ones to use again: cards, rows
+
+local function Release(card)
+    card.session, card.leaving = nil, nil
+    card.fade:Stop()
+    card.out:Stop()
+    if card.timer then card.timer.pulse:Stop() end
+    card:SetScript("OnUpdate", nil)
+    card:Hide()
+    if live[card] then
+        live[card] = nil
+        local pool = free[card.big]
+        pool[#pool + 1] = card
+    end
+end
+
 -- the item icon with its tooltip and links; everyone's roll on the rest of the card
 local function ItemParts(card, size)
+    Box(card)
     card:EnableMouse(true)
     card.icon = IconButton(card, size)
     card.icon:SetScript("OnEnter", function(self)
@@ -595,9 +649,9 @@ local function ItemParts(card, size)
     card.name = Text(card, "GameFontNormal")
     card.name:SetJustifyH("LEFT")
     card.name:SetWordWrap(false)
-    card.won = card:CreateTexture(nil, "BACKGROUND")
-    card.won:SetPoint("TOPLEFT", -4, 2)
-    card.won:SetPoint("BOTTOMRIGHT", 4, -2)
+    card.won = card:CreateTexture(nil, "BACKGROUND", nil, 1)
+    card.won:SetPoint("TOPLEFT", 4, -4)
+    card.won:SetPoint("BOTTOMRIGHT", -4, 4)
     card.won:SetColorTexture(1, 1, 1, 1)
     card.won:SetGradient("HORIZONTAL", CreateColor(1, 0.82, 0, 0.28), CreateColor(1, 0.82, 0, 0))
     card.fade = card:CreateAnimationGroup()
@@ -605,6 +659,12 @@ local function ItemParts(card, size)
     alpha:SetFromAlpha(0)
     alpha:SetToAlpha(1)
     alpha:SetDuration(0.2)
+    card.out = card:CreateAnimationGroup()
+    card.outAlpha = card.out:CreateAnimation("Alpha")
+    card.outAlpha:SetFromAlpha(1)
+    card.outAlpha:SetToAlpha(0)
+    card.outAlpha:SetDuration(0.25)
+    card.out:SetScript("OnFinished", function() Release(card) end)
 end
 
 local function Hop(region)
@@ -633,22 +693,7 @@ local function Flash(row, r, g, b)
     row.flash.anim:Play()
 end
 
-local live, free = {}, {}   -- the rows in use (row -> true); the ones to use again
-
-local function Release(card)
-    card.session, card.leaving = nil, nil
-    card.fade:Stop()
-    if card.out then card.out:Stop() end
-    card.timer.pulse:Stop()
-    card:SetScript("OnUpdate", nil)
-    card:Hide()
-    if live[card] then
-        live[card] = nil
-        free[#free + 1] = card
-    end
-end
-
--- a row whose roll left the window fades out where it is; the rows below slide up meanwhile
+-- a card or row whose roll left the window fades out where it is; the rows wait for a row's fade (Slide)
 local function Leave(row)
     if row.leaving then return end
     row.leaving, row.session = true, nil
@@ -656,6 +701,7 @@ local function Leave(row)
     row.fade:Stop()
     row.outAlpha:SetFromAlpha(row:GetAlpha())
     row.out:Play()
+    if not row.big then hold = GetTime() + row.outAlpha:GetDuration() end
 end
 
 local function Won(s)
@@ -663,9 +709,7 @@ local function Won(s)
     return type(winner) == "table" and Safe(winner.isSelf) and true or false
 end
 
--- returns whether another roll took this card's place
 local function FillHead(card, s)
-    local moved = card.session ~= nil and card.session ~= s
     if card.session ~= s then card.fade:Play() end
     card.won:SetShown(Won(s))
     card.session, s.card = s, card
@@ -674,7 +718,6 @@ local function FillHead(card, s)
     card.icon.edge:SetBackdropBorderColor(r, g, b, 1)
     card.name:SetText(s.name or _G.RETRIEVING_ITEM_INFO or "")
     card.name:SetTextColor(r, g, b)
-    return moved
 end
 
 local function RefreshTooltip(card, s)
@@ -749,40 +792,39 @@ local function ResultText(s, short)
 end
 
 local function NewCard()
-    local card = CreateFrame("Frame", nil, win)
+    local card = CreateFrame("Frame", nil, win, "BackdropTemplate")
     card:SetSize(ROW_W, CARD_H)
     card.big = true
     ItemParts(card, ICON)
-    card.icon:SetPoint("TOPLEFT")
+    card.icon:SetPoint("TOPLEFT", BOX_PAD, -BOX_PAD)
     card.count = card.icon:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
     card.count:SetPoint("BOTTOMRIGHT", -1, 1)
-    RollButtons(card, BUTTON, 1)
-    card.pass:SetPoint("TOPRIGHT", 0, 3)
+    RollButtons(card)
     card.name:SetPoint("TOPLEFT", card.icon, "TOPRIGHT", 9, -1)
-    card.name:SetWidth(TEXT_W - 3 * (BUTTON + 1) - 4)
+    card.name:SetWidth(TEXT_W - BUTTON_COL)
     card.mine = Text(card, "GameFontHighlightSmall", true)
     card.mine:SetPoint("TOPLEFT", card.name, "BOTTOMLEFT", 0, -3)
-    card.mine:SetWidth(TEXT_W - 20)
+    card.mine:SetWidth(TEXT_W - BUTTON_COL - 34)
     card.mine:SetJustifyH("LEFT")
     card.mine:SetWordWrap(false)
     card.sub = Text(card, "GameFontHighlightSmall", true)
     card.sub:SetPoint("TOPLEFT", card.mine, "BOTTOMLEFT", 0, -2)
-    card.sub:SetWidth(TEXT_W - 40)
+    card.sub:SetWidth(TEXT_W - BUTTON_COL)
     card.sub:SetJustifyH("LEFT")
     card.sub:SetWordWrap(false)
     -- how many of the group have chosen: "3/5"
     card.rolled = Text(card, "GameFontHighlightSmall", true)
-    card.rolled:SetPoint("TOP", card.sub, "TOP")
-    card.rolled:SetPoint("RIGHT", card, "RIGHT")
+    card.rolled:SetPoint("TOP", card.mine, "TOP")
+    card.rolled:SetPoint("RIGHT", card, "RIGHT", -BOX_PAD - BUTTON_COL, 0)
     Timer(card, 6)
-    card.timer:SetPoint("BOTTOMLEFT")
-    card.timer:SetWidth(ROW_W - 26)
+    card.timer:SetPoint("BOTTOMLEFT", BOX_PAD, BOX_PAD)
+    card.timer:SetWidth(ROW_W - 2 * BOX_PAD - 26)
     card.timeText:SetPoint("LEFT", card.timer, "RIGHT", 5, 0)
     return card
 end
 
 local function FillCard(card, s)
-    if FillHead(card, s) then guard = GetTime() + GUARD end
+    FillHead(card, s)
     card.count:SetText((s.count or 1) > 1 and s.count or "")
     card.mine:SetText(MineText(s))
     card.sub:SetText(ResultText(s))
@@ -796,22 +838,17 @@ local function FillCard(card, s)
 end
 
 local function NewRow()
-    local row = CreateFrame("Frame", nil, win)
+    local row = CreateFrame("Frame", nil, win, "BackdropTemplate")
     row:SetSize(ROW_W, ROW_H)
+    row.big = false
     ItemParts(row, ROW_ICON)
-    row.icon:SetPoint("LEFT", 0, 1)
+    row.icon:SetPoint("LEFT", ROW_PAD, 0)
     texts[row.name] = true   -- the rows' item names in the small size
     StyleText(row.name, true)
     row.name:SetPoint("LEFT", row.icon, "RIGHT", 7, 0)
-    RollButtons(row, ROW_BUTTON, 0)
-    row.pass:SetPoint("RIGHT", 0, 1)
-    Timer(row, 2)
-    row.timer:SetPoint("BOTTOMLEFT", ROW_ICON + 7, 0)
-    row.timer:SetWidth(ROW_W - ROW_ICON - 7)
-    row.timeText:SetPoint("RIGHT", row.need, "LEFT", -4, 0)
     row.close = CreateFrame("Button", nil, row)
     row.close:SetSize(14, 14)
-    row.close:SetPoint("RIGHT", 0, 1)
+    row.close:SetPoint("RIGHT", -BOX_PAD, 0)
     row.close:SetNormalTexture("Interface\\Buttons\\UI-StopButton")
     row.close:SetHighlightTexture("Interface\\Buttons\\UI-StopButton", "ADD")
     local cross = row.close:GetNormalTexture()
@@ -831,23 +868,22 @@ local function NewRow()
         GameTooltip:Show()
     end)
     row.close:SetScript("OnLeave", GameTooltip_Hide)
-    -- yours on the left, by the item: your choice and roll (green won, gold leading, grey lost);
-    -- the leader or winner on the right
-    row.chosen = row:CreateTexture(nil, "ARTWORK")
-    row.chosen:SetSize(15, 15)
-    row.chosen:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
-    row.roll = Text(row, "GameFontHighlightSmall", true)
-    row.roll:SetPoint("LEFT", row.chosen, "RIGHT", 2, 0)
-    row.roll:SetWidth(ROLL_W)
-    row.roll:SetJustifyH("LEFT")
+    -- on the right: your choice and roll, a divider, then the leader or winner (yours go when you lead)
     row.result = Text(row, "GameFontHighlightSmall", true)
     row.result:SetPoint("RIGHT", row.close, "LEFT", -6, 0)
-    row.result:SetWidth(RESULT_W)
     row.result:SetJustifyH("RIGHT")
     row.result:SetWordWrap(false)
+    row.sep = Line(row, 0.6)
+    row.sep:SetSize(1, 14)
+    row.sep:SetPoint("RIGHT", row.result, "LEFT", -6, 0)
+    row.roll = Text(row, "GameFontHighlightSmall", true)
+    row.roll:SetPoint("RIGHT", row.sep, "LEFT", -6, 0)
+    row.chosen = row:CreateTexture(nil, "ARTWORK")
+    row.chosen:SetSize(15, 15)
+    row.chosen:SetPoint("RIGHT", row.roll, "LEFT", -2, 0)
     row.flash = row:CreateTexture(nil, "OVERLAY")
-    row.flash:SetPoint("TOPLEFT", -4, 1)
-    row.flash:SetPoint("BOTTOMRIGHT", 4, -1)
+    row.flash:SetPoint("TOPLEFT", 4, -4)
+    row.flash:SetPoint("BOTTOMRIGHT", -4, 4)
     row.flash:SetBlendMode("ADD")
     row.flash:SetAlpha(0)
     row.flash.anim = row.flash:CreateAnimationGroup()
@@ -861,46 +897,68 @@ local function NewRow()
     fall:SetToAlpha(0)
     fall:SetDuration(0.5)
     fall:SetOrder(2)
-    row.out = row:CreateAnimationGroup()
-    row.outAlpha = row.out:CreateAnimation("Alpha")
-    row.outAlpha:SetFromAlpha(1)
-    row.outAlpha:SetToAlpha(0)
-    row.outAlpha:SetDuration(0.25)
-    row.out:SetScript("OnFinished", function() Release(row) end)
     return row
 end
 
--- returns whether the buttons show
+-- whether the leader already beats your choice and roll: the roll is lost before it ends
+local function Beaten(s, choice, roll)
+    local lead = s.drop and Safe(s.drop.currentLeader)
+    if type(lead) ~= "table" or Safe(lead.isSelf) then return false end
+    local mine, theirs = RANK[choice], RANK[StateType(lead.state)]
+    if not mine or not theirs then return false end
+    if theirs ~= mine then return theirs < mine end
+    local leadRoll = Safe(lead.roll)
+    return type(roll) == "number" and type(leadRoll) == "number" and leadRoll > roll
+end
+
+-- the roll is yours before the game says so: you lead and everyone in the group has chosen
+local function Decided(s)
+    local d = s.drop
+    local lead = d and Safe(d.currentLeader)
+    if type(lead) ~= "table" or not Safe(lead.isSelf) then return false end
+    local chose, waiting = SortedRolls(d.rollInfos)
+    return #waiting == 0 and #chose >= math_max(1, GetNumGroupMembers())
+end
+
+-- won, lost: how a roll you chose on stands for you (neither while it is open to both)
+local function Outcome(s)
+    local choice = s.choice or s.pending
+    local won = Won(s) or Decided(s)
+    return won, not won and (s.status == "done" or Beaten(s, choice, choice and MyRoll(s)))
+end
+
 local function FillRow(row, s)
     FillHead(row, s)
-    local open = FillButtons(row, s)
-    local choice = not open and (s.choice or s.pending)
+    local choice = s.choice or s.pending
     local roll = choice and MyRoll(s)
-    local won = Won(s)
-    local done = s.status == "done"
-    row.close:SetShown(s.status ~= "rolling")
-    row.chosen:SetShown(choice and true or false)
-    if choice then row.chosen:SetAtlas(ChoiceAtlas(choice)) end
-    row.roll:SetShown(not open)
-    row.roll:SetText(roll or "")
+    local won, lost = Outcome(s)
     local lead = s.drop and Safe(s.drop.currentLeader)
-    if won then
-        row.roll:SetTextColor(0.25, 1, 0.25)
-    elseif done then
-        row.roll:SetTextColor(0.6, 0.6, 0.6)
-    elseif type(lead) == "table" and Safe(lead.isSelf) then
-        row.roll:SetTextColor(1, 0.82, 0)
-    else
-        row.roll:SetTextColor(1, 1, 1)
-    end
-    row.result:SetShown(not open)
+    local leading = not won and type(lead) == "table" and Safe(lead.isSelf) and true or false
+    local mine = choice and not won and not leading and true or false
+    row.won:SetShown(won)
     row.result:SetText(ResultText(s, true))
-    local nameX = choice and (MINE_W + 5) or 7
-    row.name:SetPoint("LEFT", row.icon, "RIGHT", nameX, 0)
-    row.name:SetWidth(ROW_W - ROW_ICON - nameX - (open and (4 * ROW_BUTTON + 13) or (RESULT_W + 14 + 12)))
-    StartTimer(row, s)
-    row.timeText:SetShown(open)
-    row:SetAlpha((done and not won) and 0.7 or 1)
+    local resultW = math_min(RESULT_W, math_ceil(row.result:GetUnboundedStringWidth() or 0))
+    row.result:SetWidth(math_max(1, resultW))
+    row.chosen:SetShown(mine)
+    row.roll:SetShown(mine)
+    row.sep:SetShown(mine and resultW > 0)
+    local mineW = 0
+    if mine then
+        row.chosen:SetAtlas(ChoiceAtlas(choice))
+        row.chosen:SetDesaturated(lost)
+        row.roll:SetText(roll or "")
+        row.roll:SetTextColor(lost and 0.6 or 1, lost and 0.6 or 1, lost and 0.6 or 1)
+        local rollW = math_ceil(row.roll:GetUnboundedStringWidth() or 0)
+        row.roll:SetWidth(math_max(1, rollW))
+        mineW = 15 + 2 + rollW + 13
+    end
+    row.icon.texture:SetDesaturated(lost)
+    if lost then
+        row.name:SetTextColor(0.6, 0.6, 0.6)
+        row.icon.edge:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+    end
+    row.name:SetWidth(ROW_W - ROW_PAD - BOX_PAD - ROW_ICON - 7 - mineW - (resultW + 14 + 12))
+    row:SetAlpha(lost and 0.6 or 1)
     row:Show()
     if choice and s.fxChoice ~= choice then
         s.fxChoice = choice
@@ -910,12 +968,11 @@ local function FillRow(row, s)
         s.fxRoll = roll
         Hop(row.roll)
     end
-    if done and not s.fxDone then
+    if (won or lost) and not s.fxDone then
         s.fxDone = true
         if won then Flash(row, 1, 0.82, 0) else Flash(row, 1, 1, 1) end
     end
     RefreshTooltip(row, s)
-    return open
 end
 
 local function Shown(s)
@@ -924,21 +981,26 @@ local function Shown(s)
 end
 
 local function Slide(_, elapsed)
+    -- a row that leaves fades out first; then the rows close the gap and the window shrinks.
+    -- The cards never wait: their click guard counts from their last move.
+    local held = GetTime() < hold
     local step = math_min(1, elapsed * 14)
-    local busy = false
+    local busy = held
     for row in pairs(live) do
-        if not row.leaving and row.y ~= row.target then
+        if not row.leaving and row.y ~= row.target and (row.big or not held) then
+            -- a card moves faster and snaps sooner: its buttons wait for it
             local d = row.target - row.y
-            if math.abs(d) < 0.5 then
+            if math.abs(d) < (row.big and 2 or 0.5) then
                 row.y = row.target
             else
-                row.y = row.y + d * step
+                row.y = row.y + d * (row.big and math_min(1, step * 1.5) or step)
                 busy = true
             end
             row:SetPoint("TOPLEFT", PAD, -row.y)
+            if row.big then row.guard = GetTime() + GUARD end
         end
     end
-    if win.h ~= win.target then
+    if win.h ~= win.target and not held then
         local d = win.target - win.h
         if math.abs(d) < 0.5 then
             win.h = win.target
@@ -948,81 +1010,97 @@ local function Slide(_, elapsed)
         end
         win:SetHeight(win.h)
     end
+    -- clamped to the screen, the window shifts as its height changes: the cards move under the pointer
+    local top = win:GetTop()
+    if top and win.top and math.abs(top - win.top) > 0.5 then guard = GetTime() + GUARD end
+    win.top = top
     if not busy then win:SetScript("OnUpdate", nil) end
+end
+
+-- a card or row stays with its roll, so it can slide to a new place instead of jumping there
+local function Place(s, big, y, instant)
+    local frame = s.card
+    if not frame or frame.big ~= big or frame.session ~= s then
+        frame = tremove(free[big]) or (big and NewCard() or NewRow())
+        live[frame] = true
+        frame.y = nil
+    end
+    if big then
+        -- a card that comes or moves may land under the pointer
+        if not frame.y or frame.target ~= y then frame.guard = GetTime() + GUARD end
+        FillCard(frame, s)
+    else
+        FillRow(frame, s)
+    end
+    frame.target = y
+    if instant or not frame.y then
+        frame.y = y
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", PAD, -y)
+    end
+    return frame
 end
 
 function Refresh()
     if not win then return end
-    local list, active = {}, 0
+    local open, rest, lost, listed, active = {}, {}, {}, {}, 0
     for _, s in ipairs(order) do
         if Shown(s) then
-            list[#list + 1] = s
-            if s.status ~= "done" then active = active + 1 end
-        end
-    end
-    local focus
-    for _, s in ipairs(list) do
-        if s.status == "rolling" then
-            focus = s
-            break
-        end
-    end
-
-    local y = HEADER + 10
-    local card = cards[1]
-    if focus then
-        card = card or NewCard()
-        cards[1] = card
-        card:ClearAllPoints()
-        card:SetPoint("TOPLEFT", PAD, -y)
-        FillCard(card, focus)
-        y = y + CARD_H + CARD_GAP
-    elseif card then
-        Release(card)
-    end
-    local splitY = y - math_floor(CARD_GAP / 2) - 1
-    win.split:SetShown(focus ~= nil and #list > 1)
-    win.split:ClearAllPoints()
-    win.split:SetPoint("TOPLEFT", PAD, -splitY)
-    win.split:SetPoint("TOPRIGHT", -PAD, -splitY)
-
-    -- a row stays with its roll, so it can slide to a new place instead of jumping there
-    local instant = LR.previewing or not win:IsShown()
-    local rest, listed = {}, {}
-    for _, s in ipairs(list) do
-        if s ~= focus then
-            rest[#rest + 1] = s
             listed[s] = true
+            if s.status ~= "done" then active = active + 1 end
+            if s.status == "rolling" then
+                open[#open + 1] = s
+            else
+                local won, beaten = Outcome(s)
+                if won or beaten then Settle(s) end
+                local group = beaten and lost or rest
+                group[#group + 1] = s
+            end
         end
     end
+    -- the rolls you lost go under the ones still to settle or won
+    for _, s in ipairs(lost) do rest[#rest + 1] = s end
+
+    local instant = LR.previewing or not win:IsShown()
+    local used = {}
+    local y, tail = HEADER + 10, 0   -- tail: the gap under the last piece
+    for i = 1, math_min(#open, MAX_CARDS) do
+        used[Place(open[i], true, y, instant)] = true
+        y = y + CARD_H + CARD_GAP
+        tail = CARD_GAP
+    end
+    local waiting = #open - MAX_CARDS
+    queued:SetShown(waiting > 0)
+    if waiting > 0 then
+        queued:ClearAllPoints()
+        queued:SetPoint("TOPLEFT", PAD + BOX_PAD, -y)
+        queued:SetText(L["+%d more"]:format(waiting))
+        y = y + ROW
+        tail = ROW_GAP
+    end
+    local split = #open > 0 and #rest > 0
+    win.split:SetShown(split)
+    if split then
+        win.split:ClearAllPoints()
+        win.split:SetPoint("TOPLEFT", PAD, -y - 1)
+        win.split:SetPoint("TOPRIGHT", -PAD, -y - 1)
+        y = y + 8
+    end
+
     -- more rows than fit: the mouse wheel scrolls them (only then, so the camera keeps its wheel)
     local maxScroll = math_max(0, #rest - MAX_ROWS)
     scroll = math_max(0, math_min(scroll, maxScroll))
     win:EnableMouseWheel(maxScroll > 0)
-    local top, used = y, {}
+    local top = y
     for i = scroll + 1, math_min(#rest, scroll + MAX_ROWS) do
-        local s = rest[i]
-        local row = s.card
-        if not row or row.big or row.session ~= s then
-            row = tremove(free) or NewRow()
-            live[row] = true
-            row.y = nil
-        end
-        used[row] = true
-        local open = FillRow(row, s)
-        if open and row.y and row.target ~= y then guard = GetTime() + GUARD end
-        row.target = y
-        if instant or not row.y then
-            row.y = y
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", PAD, -y)
-        end
+        used[Place(rest[i], false, y, instant)] = true
         y = y + ROW_H + ROW_GAP
+        tail = ROW_GAP
     end
-    -- scrolled out of view or now the card: gone at once; a roll that left the window fades out
-    for row in pairs(live) do
-        if not used[row] then
-            if instant or row.session == focus or listed[row.session] then Release(row) else Leave(row) end
+    -- shown another way or out of view: gone at once; a roll that left the window fades out
+    for frame in pairs(live) do
+        if not used[frame] then
+            if instant or listed[frame.session] then Release(frame) else Leave(frame) end
         end
     end
     win.thumb:SetShown(maxScroll > 0)
@@ -1037,26 +1115,28 @@ function Refresh()
     more:SetShown(extra > 0)
     if extra > 0 then
         more:ClearAllPoints()
-        more:SetPoint("TOPLEFT", PAD, -y - 2)
+        more:SetPoint("TOPLEFT", PAD + BOX_PAD, -y - 2)
         more:SetText(L["+%d more"]:format(extra))
         y = y + ROW
     end
     win.count:SetText(active > 0 and ("(" .. active .. ")") or "")
     -- grows at once (a new row is never outside the panel), shrinks with the rows sliding up
-    win.target = y + PAD - ROW_GAP
+    win.target = y + PAD - tail
     if instant or not win.h or win.target > win.h then
         win.h = win.target
         win:SetHeight(win.h)
     end
     win:SetScript("OnUpdate", Slide)
     -- the Gamepad UI has its own roll frame (GamepadGroupLootRollFrame): this one steps back
-    if #list > 0 and not ns.IsGamepadUI() then
+    local total = #open + #rest
+    if total > 0 and not ns.IsGamepadUI() then
         win.out:Stop()
         if not win:IsShown() then
             win:Show()
             win.fade:Play()
+            guard = GetTime() + GUARD
         end
-    elseif #list == 0 and win:IsShown() then
+    elseif total == 0 and win:IsShown() then
         if not win.out:IsPlaying() then win.out:Play() end
     else
         win.out:Stop()
@@ -1066,7 +1146,7 @@ function Refresh()
 end
 
 --------------------------------------------------
--- 6. EDIT MODE SAMPLES: one roll still open, one won (Shadowfang, Tail Spike)
+-- 6. EDIT MODE SAMPLES: one roll still open, one lost (Shadowfang, Tail Spike)
 --------------------------------------------------
 local nextSample = 0
 
@@ -1310,6 +1390,7 @@ function LR:Init()
     line:SetPoint("TOPLEFT", 3, -HEADER + 4)
     line:SetPoint("TOPRIGHT", -3, -HEADER + 4)
     more = Text(win, "GameFontDisableSmall", true)
+    queued = Text(win, "GameFontDisableSmall", true)
     win.split = Line(win, 0.35)
     win.fade = win:CreateAnimationGroup()
     local alpha = win.fade:CreateAnimation("Alpha")
