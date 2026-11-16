@@ -820,6 +820,22 @@ function UF.BgOpacitySetting(default, get, set)
         desc = L["How dark the empty part of the bars is."] }
 end
 
+-- (11-16, Malkkav) Forever Style's Power Height: moves the plate's separator (UnitFramesRing.lua
+-- PlateRows). In the plate's art pixels; the step below the least is Off. read() gives the stored
+-- platePower, store(value) saves it (0 = Off); onPlate() shows it.
+function UF.PlatePowerSetting(read, store, onPlate)
+    local P = ns.UFRing.PLATE_POWER
+    return { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = P.default,
+        minValue = P.min - 1, maxValue = P.max, valueStep = 1,
+        formatter = function(value) return value < P.min and _G.OFF or value end,
+        get = function()
+            local value = ns.UFRing.PlatePowerValue(read())
+            return value == 0 and P.min - 1 or value
+        end,
+        set = function(_, value) store(value < P.min and 0 or value) end,
+        hidden = function() return not onPlate() end }
+end
+
 -- Which buffs a frame leaves out, by their full duration: one choice, as Blizzard's filter for a longest
 -- duration always leaves out the permanent ones too
 function UF.HideBuffsSetting(default, get, set)
@@ -4413,8 +4429,10 @@ local function LayoutFrame(f)
             f.PowerText:SetJustifyH("CENTER")
         end
     end
-    -- (the plate's power bar is always tall enough for its number)
-    f.PowerText:SetShown(UF.PowerTextMode(udb.powerText) ~= "none" and (nameBox or powerHeight >= 10) and true or false)
+    -- (on the plate: by its own Power Height, which may be Off)
+    local roomForText
+    if nameBox then roomForText = ns.UFRing.PlatePowerText(f) else roomForText = powerHeight >= 10 end
+    f.PowerText:SetShown(UF.PowerTextMode(udb.powerText) ~= "none" and roomForText and true or false)
     if ringOn then
         ns.UFRing.LayoutLevel(f)
         -- the classic gems follow the ring's size and side
@@ -5287,6 +5305,19 @@ local function BuildSettings(unit)
         formatter = function(value) return value == 0 and _G.OFF or value end,
         -- Forever Style: the plate has its own power slot
         hidden = onPlate }
+    if ns.UFRing and ns.UFRing.PLATE_UNITS[unit] then
+        settings[#settings + 1] = UF.PlatePowerSetting(
+            function() local u = GetUnitDb(unit); return u and u.platePower end,
+            function(value)
+                -- Forever Style only (Edit Mode's reset runs hidden settings too)
+                if not onPlate() then return end
+                local u = GetUnitDb(unit)
+                if not u then return end
+                u.platePower = value
+                local f = frames[unit]
+                if f then LayoutFrame(f); UpdateAll(f) end
+            end, onPlate)
+    end
     if info.portrait and ns.UFRing then
         -- FlareUI Style's ring (and the portrait in it)
         settings[#settings + 1] = { name = L["Portrait Size"], kind = LEM.SettingType.Slider, default = ns.UFRing.DefaultSize(unit),
@@ -5662,7 +5693,7 @@ UF.Kit = {
     -- Background Opacity's bar background and its Edit Mode slider
     Border = function(name) return ns.UFRing and ns.UFRing.Border(name) or name end,
     NoBorderOptions = function() return ns.UFRing and ns.UFRing.PlateOn() or false end,
-    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting, SmoothBarsSetting = UF.SmoothBarsSetting, BarEdgeGlowSetting = UF.BarEdgeGlowSetting, HideBuffsSetting = UF.HideBuffsSetting, ClassColorSetting = UF.ClassColorSetting,
+    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting, PlatePowerSetting = UF.PlatePowerSetting, SmoothBarsSetting = UF.SmoothBarsSetting, BarEdgeGlowSetting = UF.BarEdgeGlowSetting, HideBuffsSetting = UF.HideBuffsSetting, ClassColorSetting = UF.ClassColorSetting,
     INSET = INSET, BG_OPACITY = BG_OPACITY, BACKDROP_FILE = BACKDROP_FILE,
     SEPARATOR_TEXTURE = SEPARATOR_TEXTURE, SEPARATOR_HEIGHT = SEPARATOR_HEIGHT, TEXT_INSET = TEXT_INSET,
     CAST_GAP = CAST_GAP, AURA_GAP = AURA_GAP,

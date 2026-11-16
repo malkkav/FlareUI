@@ -710,6 +710,7 @@ local defaults = {
             arrive = true,               -- new icons fade in while dropping into place
             skinCDM = false,            -- (off by default since 11-11) Skin Cooldown Manager: Blizzard's Tracked Bars and Tracked Buffs in FlareUI's look
             sort = "applied", reverse = false, mineFirst = true,   -- Aura Ordering (both frames)
+            hidden = {},                -- Hide Auras (11-16): [spellID] = the places it hides on, "auras,player,..." (ns.HiddenAuras)
             -- Buff Reminders (BuffReminders.lua): your class's missing buffs; Group Buffs all / party / self,
             -- Icon Size, Remind Before It Ends in minutes, set in Edit Mode
             reminders = false,
@@ -1519,11 +1520,27 @@ do
                          or ((unit == "player" and udb.onlyMyBuffs) and "HELPFUL|PLAYER" or "HELPFUL"),
                      enemyFilter = purge and "HELPFUL|!RAID_PLAYER_DISPELLABLE" or nil,
                      candidates = candidates }
+        return AP.ApplyHidden(lanes, unit)
+    end
+
+    -- Hide Auras: the spell IDs hidden on this place (ns.HiddenAuras) join each lane's candidate
+    -- filters, on a copy (lanes share their candidates). hiddenStamp: the list's version, so a
+    -- module that caches its lanes' signature (ns.AuraGroups.Sig stops at depth 3) sees the change.
+    function AP.ApplyHidden(lanes, place)
+        local hidden = ns.HiddenAuras.For(place)
+        for _, lane in ipairs(lanes) do
+            lane.hiddenStamp = ns.HiddenAuras.stamp
+            if hidden then
+                local candidates = lane.candidates and CopyTable(lane.candidates) or {}
+                candidates.excludeSpellIDs = hidden
+                lane.candidates = candidates
+            end
+        end
         return lanes
     end
 
     -- Party, raid, main tank and boss tiles. st: the tile's settings; opts: { hostile, dispelPlace,
-    -- editing }. Friendly debuff places take Blizzard's raid frame rules (ProcessAura: boss, role,
+    -- editing, place ("party", "raid" or "boss": Hide Auras) }. Friendly debuff places take Blizzard's raid frame rules (ProcessAura: boss, role,
     -- priority and dispellable debuffs); a dispellable one shows in the debuff row and, when they are on,
     -- as a dispel icon too (11-15, luuksen: as Blizzard's party frames, Debuff or Dispel)
     function AP.TileLanes(st, opts)
@@ -1546,7 +1563,7 @@ do
             lanes[#lanes + 1] = { key = "buffs", kind = "buffs", place = st.buffs, isDebuff = false, policy = "none",
                                   joinPrevious = purge or nil,
                                   filter = purge and "HELPFUL|!RAID_PLAYER_DISPELLABLE" or "HELPFUL", candidates = candidates }
-            return lanes
+            return AP.ApplyHidden(lanes, opts.place)
         end
         local dispelIcons = opts.dispelPlace and opts.dispelPlace ~= "OFF"
         -- Dispellable Debuffs Only: Blizzard's own rule (its raid frames' option), which keeps boss,
@@ -1567,15 +1584,18 @@ do
                               filter = onlyMine and "HELPFUL|PLAYER" or "HELPFUL",
                               candidates = AP.HideBuffs(st.hideBuffs, opts.editing,
                                   (onlyMine and processed) and { processedAuraType = processed.Buff } or nil) }
-        return lanes
+        return AP.ApplyHidden(lanes, opts.place)
     end
 
     -- The Buffs & Debuffs frames (Modules/Auras.lua): the player's whole list, permanent buffs too
     function AP.PlayerListLane(isDebuff)
+        local lane
         if isDebuff then
-            return { key = "debuffs", kind = "debuffs", isDebuff = true, filter = "HARMFUL", policy = "none" }
+            lane = { key = "debuffs", kind = "debuffs", isDebuff = true, filter = "HARMFUL", policy = "none" }
+        else
+            lane = { key = "buffs", kind = "buffs", isDebuff = false, filter = "HELPFUL", policy = "none" }
         end
-        return { key = "buffs", kind = "buffs", isDebuff = false, filter = "HELPFUL", policy = "none" }
+        return AP.ApplyHidden({ lane }, "auras")[1]
     end
 
     -- The policy for a container holding these lanes. It is per container: a place holding any
@@ -1687,6 +1707,74 @@ do
         EachContainer(f, function(container)
             if container:IsShown() then pcall(container.UpdateAllAuras, container) end
         end)
+    end
+end
+
+-- HIDE AURAS (11-16, Malkkav): auras you never want to see, by spell ID, each with the frames it
+-- hides on, saved as auras.hidden[spellID] = "auras,player,pet,..." (ns.Conditions tokens). Blizzard's
+-- aura containers drop them (the excludeSpellIDs candidate filter), so secret auras hide too. The
+-- client allows it for buffs on you, your pet and your group, and for debuffs on enemies; debuffs on
+-- you or a friend only when the spell is never secret (Sated, Exhaustion).
+ns.HiddenAuras = { stamp = 0 }
+do
+    local HA = ns.HiddenAuras
+    -- "auras": the Buffs & Debuffs frames
+    HA.PLACES = { "auras", "player", "pet", "target", "focus", "party", "raid", "boss" }
+    HA.ALL = table.concat(HA.PLACES, ",")
+    local cache, cachedFrom = {}, nil
+
+    function HA.Saved()
+        local auras = ns.db and ns.db.profile and ns.db.profile.auras
+        return auras and auras.hidden
+    end
+
+    -- { [spellID] = true } for this place, or nil when nothing hides there
+    function HA.For(place)
+        if not place then return nil end
+        local saved = HA.Saved()
+        if saved ~= cachedFrom then wipe(cache) cachedFrom = saved end   -- another profile
+        local map = cache[place]
+        if map == nil then
+            map = false
+            for id, places in pairs(saved or {}) do
+                if type(id) == "number" and ns.Conditions.Has(places, place) then
+                    map = map or {}
+                    map[id] = true
+                end
+            end
+            cache[place] = map
+        end
+        return map or nil
+    end
+
+    -- a new one hides everywhere; the list's Hide On narrows it
+    function HA.Add(id)
+        local saved = HA.Saved()
+        if not (saved and type(id) == "number") or saved[id] then return end
+        saved[id] = HA.ALL
+        HA.Changed()
+        if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
+    end
+
+    function HA.Remove(id)
+        local saved = HA.Saved()
+        if not (saved and saved[id]) then return end
+        saved[id] = nil
+        HA.Changed()
+        if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
+    end
+
+    -- after a change to the list: every aura frame takes it
+    function HA.Changed()
+        wipe(cache)
+        HA.stamp = HA.stamp + 1
+        for _, name in ipairs({ "Auras", "UnitFrames", "PartyFrames", "RaidFrames", "BossFrames" }) do
+            local module = ns[name]
+            if module and module.Refresh then
+                local ok, err = pcall(module.Refresh, module)
+                if not ok then geterrorhandler()(err) end
+            end
+        end
     end
 end
 

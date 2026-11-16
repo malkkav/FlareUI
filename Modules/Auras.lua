@@ -834,6 +834,7 @@ local function LayoutKind(kind)
     local lane = ns.AuraPolicy.PlayerListLane(KINDS[kind].isDebuff)
     local key, err = ns.AuraGroups.Add(container, holder.auraGroups, kind, ns.AuraGroups.Sig(look), lane.filter, {
         maxFrameCount = kdb.max or 32,
+        candidateFilters = lane.candidates,   -- Hide Auras
         -- Aura Ordering (Order Applied by default); the container compares, never addon code
         sortMethod = sortMethod, sortDirection = sortDirection,
         initializeFrame = function(button)

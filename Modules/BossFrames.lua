@@ -350,6 +350,14 @@ local function BuildSettings()
         { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
           get = get("powerHeight"), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end,
           hidden = onPlate },
+        K.PlatePowerSetting(function() local db = GetDb(); return db and db.platePower end,
+            function(value)
+                -- (Edit Mode's reset runs hidden settings too)
+                local db = GetDb()
+                if not onPlate() or not db then return end
+                db.platePower = value
+                Refresh()
+            end, onPlate),
         { name = L["Portrait Size"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.DefaultSize("boss") or 80,
           minValue = 36, maxValue = 120, valueStep = 1,
           get = function() local db = GetDb(); return db and db.ringSize or (ns.UFRing and ns.UFRing.DefaultSize("boss")) or 80 end,

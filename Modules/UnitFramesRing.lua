@@ -194,12 +194,38 @@ local PLATE = {
 Ring.PLATE_UNITS = { player = true, target = true, focus = true, party = true, boss = true, pet = true,
                      targettarget = true, focustarget = true }
 Ring.STRIP_ATLAS = PLATE.strip
--- an art y -> where it lands once the rows are squeezed or stretched (rowDelta)
-local function RowY(y)
+-- (11-16, Malkkav) Power Height on the plate: the power slot's height in art pixels; 0 = no power
+-- bar. The separator moves: row 4 (inside the health slot) gives or takes what row 6 (inside the
+-- power slot) takes or gives. Off folds the separator's row (5) and row 6 into row 4, and the power
+-- slot's bottom edge (row 7) closes the health slot.
+Ring.PLATE_POWER = { default = 9, min = 4, max = 15 }
+PLATE.healthFull = { PLATE.health[1], PLATE.health[2], PLATE.health[3], 53, tex = PLATE.health.tex,
+                     mirrored = PLATE.health.mirrored }
+local plateRows = {}
+-- the rows' deltas for a power slot of that height
+local function PlateRows(power)
+    if not power or power == Ring.PLATE_POWER.default then return PLATE.rowDelta end
+    if plateRows[power] then return plateRows[power] end
+    local rows, cy = {}, PLATE.cutY
+    for i, d in ipairs(PLATE.rowDelta) do rows[i] = d end
+    if power == 0 then
+        local r5 = (cy[6] - cy[5]) + rows[5]
+        local r6 = (cy[7] - cy[6]) + rows[6]
+        rows[4], rows[5], rows[6] = rows[4] + r5 + r6, rows[5] - r5, rows[6] - r6
+    else
+        local e = power - Ring.PLATE_POWER.default
+        rows[4], rows[6] = rows[4] - e, rows[6] + e
+    end
+    plateRows[power] = rows
+    return rows
+end
+-- an art y -> where it lands once the rows are squeezed or stretched (rowDelta, or a frame's rows)
+local function RowY(y, rows)
+    rows = rows or PLATE.rowDelta
     local cy, out = PLATE.cutY, PLATE.cutY[1]
     for i = 1, #cy - 1 do
         local a, b = cy[i], cy[i + 1]
-        local length = (b - a) + (PLATE.rowDelta[i] or 0)
+        local length = (b - a) + (rows[i] or 0)
         if y <= b or i == #cy - 1 then return out + (y - a) * length / (b - a) end
         out = out + length
     end
@@ -1090,17 +1116,17 @@ local function EdgeX(x, s)
     if x <= PLATE.cutX[2] then return "LEFT", (x - PLATE.x0) * s end
     return "RIGHT", (x - PLATE.x1) * s
 end
-local function EdgeY(y, s)
-    if y <= PLATE.cutY[2] then return "TOP", (RowY(PLATE.y0) - RowY(y)) * s end
-    return "BOTTOM", (RowY(PLATE.y1) - RowY(y)) * s
+local function EdgeY(y, s, rows)
+    if y <= PLATE.cutY[2] then return "TOP", (RowY(PLATE.y0, rows) - RowY(y, rows)) * s end
+    return "BOTTOM", (RowY(PLATE.y1, rows) - RowY(y, rows)) * s
 end
 
 -- Puts a region over art rect x1..x2, y1..y2 of the plate (flip: mirrored, ring on the left)
 local function PlaceOnPlate(region, f, s, flip, x1, x2, y1, y2)
     local lSide, lx = EdgeX(x1, s)
     local rSide, rx = EdgeX(x2, s)
-    local tSide, ty = EdgeY(y1, s)
-    local bSide, by = EdgeY(y2, s)
+    local tSide, ty = EdgeY(y1, s, f.plateRows)
+    local bSide, by = EdgeY(y2, s, f.plateRows)
     if flip then
         -- the art's left edge becomes the frame's right edge
         local function other(side) return side == "LEFT" and "RIGHT" or "LEFT" end
@@ -1170,6 +1196,8 @@ function Ring.LayoutPlate(f)
     local plate = BuildPlate(f)
     plate:SetFrameLevel(f:GetFrameLevel())
     plate:Show()
+    local power = Ring.PlatePower(f)
+    f.plateRows = PlateRows(power)
     local info = C_Texture.GetAtlasInfo(PLATE.atlas)
     if info and info.file then
         local du, dv = info.rightTexCoord - info.leftTexCoord, info.bottomTexCoord - info.topTexCoord
@@ -1185,7 +1213,8 @@ function Ring.LayoutPlate(f)
                 tex:SetTexture(info.file)
                 tex:SetTexCoord(u1, u2, info.topTexCoord + y1 / PLATE.artH * dv, info.topTexCoord + y2 / PLATE.artH * dv)
                 PlaceOnPlate(tex, f, s, flip, x1, x2, y1, y2)
-                tex:Show()
+                -- (a row folded away by Power Height Off has no height)
+                tex:SetShown((y2 - y1) + (f.plateRows[row] or 0) > 0)
                 local g = plate.glow[i]
                 g:SetTexture(info.file)
                 g:SetTexCoord(u1, u2, info.topTexCoord + y1 / PLATE.artH * dv, info.topTexCoord + y2 / PLATE.artH * dv)
@@ -1204,7 +1233,8 @@ function Ring.LayoutPlate(f)
         local top = n[3] - PLATE.stripTop
         local bottom = PLATE.stripTop + art.height - n[4]
         local boxW = (f:GetWidth() or 0) - ((n[1] - PLATE.x0) + (PLATE.x1 - n[2])) * s
-        local boxH = (f:GetHeight() or 0) - ((RowY(n[3]) - RowY(PLATE.y0)) + (RowY(PLATE.y1) - RowY(n[4]))) * s
+        local rows = f.plateRows
+        local boxH = (f:GetHeight() or 0) - ((RowY(n[3], rows) - RowY(PLATE.y0, rows)) + (RowY(PLATE.y1, rows) - RowY(n[4], rows))) * s
         local kx = boxW / (art.width - left - right)
         local ky = boxH / (art.height - top - bottom)
         plate.Strip:ClearAllPoints()
@@ -1213,10 +1243,33 @@ function Ring.LayoutPlate(f)
     else
         plate.Strip:Hide()
     end
-    PlaceBar(f.Health, f, s, flip, PLATE.health)
-    PlaceBar(f.Power, f, s, flip, PLATE.power)
-    f.Power:Show()
+    if power > 0 then
+        PlaceBar(f.Health, f, s, flip, PLATE.health)
+        PlaceBar(f.Power, f, s, flip, PLATE.power)
+        f.Power:Show()
+    else
+        -- Power Height Off: the health bar down to the power slot's bottom
+        PlaceBar(f.Health, f, s, flip, PLATE.healthFull)
+        f.Power:Hide()
+    end
     Ring.UpdatePlate(f)
+end
+
+-- Forever Style's Power Height (art pixels, 0 = Off) for this frame
+function Ring.PlatePower(f)
+    local udb = Db(f)
+    return Ring.PlatePowerValue(udb and udb.platePower)
+end
+-- a stored platePower, read: nil the default, 0 Off, else within the slider's steps
+function Ring.PlatePowerValue(p)
+    local P = Ring.PLATE_POWER
+    if type(p) ~= "number" then return P.default end
+    if p < P.min then return 0 end
+    return math.min(P.max, math.floor(p + 0.5))
+end
+-- the plate's power number: only on a power bar tall enough for it
+function Ring.PlatePowerText(f)
+    return Ring.PlatePower(f) >= 6
 end
 
 -- the name box's glow in the unit's reaction colour (none on the player's)

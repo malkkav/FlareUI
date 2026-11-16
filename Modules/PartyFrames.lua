@@ -445,8 +445,8 @@ local LayoutBars   -- section 6
 -- holds for a druid in Cat or Bear Form; an unreadable class keeps the bar.
 local NO_MANA = { WARRIOR = true, ROGUE = true }
 local function WantsPower(f, previewClass)
-    -- the plate always has its power bar (LayoutBars)
-    if OnPlate(f) then return true end
+    -- the plate: its own Power Height (LayoutBars)
+    if OnPlate(f) then return ns.UFRing.PlatePower(f) > 0 end
     local st = TS(f)
     if not (st and (st.powerHeight or 0) > 0) then return false end
     if st.powerManaOnly and RaidTile(f) then
@@ -1279,7 +1279,9 @@ local function ConfigureAuras(f)
     -- what each lane shows, and on which rules, comes from ns.AuraPolicy (debuffs first, nearest the
     -- frame); the places and sizes are this module's
     local hostile = f.ctx and f.ctx.hostile or false
-    local lanes = ns.AuraPolicy.TileLanes(st, { hostile = hostile, dispelPlace = DispelPlace(f, st), editing = IsEditing() })
+    -- Hide Auras' place: no ctx = party; the boss frames' ctx is hostile; else raid (main tanks too)
+    local place = not f.ctx and "party" or (hostile and "boss" or "raid")
+    local lanes = ns.AuraPolicy.TileLanes(st, { hostile = hostile, dispelPlace = DispelPlace(f, st), editing = IsEditing(), place = place })
     -- rebuilt only when what shapes the groups changes: the places and sizes, plus the lanes and a
     -- look as computed, so a new aura rule or look setting can't be missed here
     local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.buffSize, st.debuffSize, st.width, st.height, st.powerHeight, st.portrait, st.ringSize, (DispelGrid(f)), f.ringKind, AuraGrid(st),
@@ -1466,15 +1468,15 @@ LayoutBars = function(f)
     local st = TS(f)
     if not st then return end
     if OnPlate(f) then
-        -- the bars in the plate's slots, the ring beside it (UnitFramesRing.lua), the power bar always
+        -- the bars in the plate's slots, the ring beside it (UnitFramesRing.lua); the plate's Power
+        -- Height shows or hides the power bar
         local mirrored = Mirrored(f, true)
         f.Health:SetReverseFill(mirrored)
         f.Power:SetReverseFill(mirrored)
         f.Separator:Hide()
         if f.PortraitDivider then f.PortraitDivider:Hide() end
         ns.UFRing.LayoutPlate(f)
-        f.Power:Show()
-        f.PowerText:SetShown(TilePowerMode(f, st) ~= "none")
+        f.PowerText:SetShown(TilePowerMode(f, st) ~= "none" and ns.UFRing.PlatePowerText(f))
         return
     end
     local PADDING = K.INSET
@@ -2890,6 +2892,14 @@ local function BuildSettings()
         { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
           get = getS("powerHeight"), set = setS("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end,
           hidden = onPlate },
+        K.PlatePowerSetting(function() local st = S(); return st and st.platePower end,
+            function(value)
+                -- (Edit Mode's reset runs hidden settings too)
+                local st = OwnS()
+                if not onPlate() or builtKey == "raid" or not st then return end
+                st.platePower = value
+                Refresh()
+            end, onPlate),
         -- (Raid Style, as on the raid frames: 11-13)
         { name = L["Power Bar for Mana Users Only"], kind = LEM.SettingType.Checkbox, default = false,
           get = function() return getS("powerManaOnly")() and true or false end, set = setS("powerManaOnly"),
