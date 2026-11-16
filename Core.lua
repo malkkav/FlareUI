@@ -736,7 +736,8 @@ local defaults = {
             -- per frame, set in Edit Mode
             -- (font / countFont: each frame's own since 11-13, set on the settings page's Fonts tab; the
             -- shared ones above are what they started from)
-            buffs   = { size = 26, perRow = 9, max = 27, spacing = 4, grow = "LEFT", wrap = "DOWN",
+            buffs   = { size = 30, perRow = 8, max = 16, spacing = 4,   -- (11-16, Malkkav's own setup; was 26 / 9 / 27)
+                        grow = "LEFT", wrap = "DOWN",
                         font = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 }, countFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
             debuffs = { size = 30, perRow = 8, max = 16, spacing = 4, grow = "LEFT", wrap = "UP",
                         font = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 }, countFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },

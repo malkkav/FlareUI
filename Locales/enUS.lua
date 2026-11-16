@@ -20,7 +20,7 @@ L["* An icon for each buff you or your group are missing\n* Food, flasks, elixir
 L["* Auto quests, auto repair and junk selling\n* Camera, nameplate and vendor helpers\n* Hides clutter like error and zone text"] = true
 L["* Blizzard's damage meter in a FlareUI frame\n* A threat view for tanks and damage dealers\n* Extra meter windows that dock as tabs"] = true
 L["* Cleaner tooltips with coloured borders\n* A health bar, target and threat lines if you want them\n* Tooltips that can follow your mouse"] = true
-L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings' new look idea.\n* |cffffd100parchinskiy|r for the round minimap.\n* Licences for the libraries and code FlareUI builds on are in its LICENSES folder."] = true
+L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings' new look idea.\n* |cffffd100parchinskiy|r for the round minimap.\n* |cffffd100Kabaday|r for the help with the loot roll window.\n* Licences for the libraries and code FlareUI builds on are in its LICENSES folder."] = true
 L["* Export: the profile in use as a text string to share\n* Import: paste a string and pick the parts to take, as a new profile or into the one in use"] = true
 L["* FlareUI's bag and bank windows\n* Category filters and item levels\n* A loot roll window and a loot feed"] = true
 L["* FlareUI's borders, proc glows and status colours on your buttons\n* An XP bar, and hide the bars you don't use\n* Fake CM: spare bars as a cooldown tracker"] = true
