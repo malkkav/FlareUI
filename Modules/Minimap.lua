@@ -612,7 +612,21 @@ local function CreateBar()
         end
     end
     f:SetScript("OnEvent", function() Bar.Fill() end)
+    -- a hidden map (the Toggle Minimap key) hides its frame and the bar with it: no reads meanwhile
+    f:SetScript("OnShow", function() Bar.Fill(); Bar.Tick() end)
+    f:SetScript("OnHide", function() Bar.Tick() end)
     Bar.frame = f
+end
+
+-- The ticker of the timed values (Bar.every: the shortest wait among the cells), only while the bar
+-- is on screen
+function Bar.Tick()
+    local every = Bar.frame and Bar.frame:IsVisible() and Bar.every or nil
+    if Bar.ticker and every ~= Bar.ticking then Bar.ticker:Cancel(); Bar.ticker = nil end
+    if every and not Bar.ticker then
+        Bar.ticking = every
+        Bar.ticker = C_Timer.NewTicker(every, function() Bar.Fill(true) end)
+    end
 end
 
 -- Right of the sundial when it is there (11-16: tried under it, its left end cut by the badge: ugly),
@@ -655,7 +669,7 @@ function Bar.Update()
     end
     local changed = shown ~= Bar.shown
     Bar.shown = shown
-    if Bar.ticker and (not every or every ~= Bar.every) then Bar.ticker:Cancel(); Bar.ticker = nil end
+    Bar.every = every
     if shown then
         if not Bar.frame then CreateBar() end
         local f = Bar.frame
@@ -669,14 +683,11 @@ function Bar.Update()
         f:Show()
         Bar.Place()
         Bar.Fill()
-        if every and not Bar.ticker then
-            Bar.every = every
-            Bar.ticker = C_Timer.NewTicker(every, function() Bar.Fill(true) end)
-        end
     elseif Bar.frame then
         Bar.frame:UnregisterAllEvents()
         Bar.frame:Hide()
     end
+    Bar.Tick()
     -- the framerate and latency at the corner sit above the bar (the coordinates: PlaceCoords)
     if changed and MM.SetupFps then MM.SetupFps() end
 end
