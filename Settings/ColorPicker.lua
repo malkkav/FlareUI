@@ -15,6 +15,7 @@ ns.ColorPicker = CP
 
 local WIDTH, HEIGHT = 980, 640
 local LIST_W, ROW_H, PAD = 330, 26, 16
+local LIST_Y, LIST_INSET, LIST_GUTTER = 62, 8, 18
 
 local function CLASS_NAME(class)
     return (LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[class]) or class
@@ -495,8 +496,9 @@ local function BuildList()
     local y = 0
     for _, group in ipairs(KINDS[kindNow].rows()) do
         local head = CreateFrame("Frame", nil, child)
-        head:SetSize(LIST_W - 30, ROW_H)
+        head:SetHeight(ROW_H)
         head:SetPoint("TOPLEFT", 0, -y)
+        head:SetPoint("TOPRIGHT", 0, -y)
         head.text = head:CreateFontString(nil, "OVERLAY", Panel.FONT.GameFontNormalLarge or "GameFontNormalLarge")
         head.text:SetPoint("BOTTOMLEFT", 4, 3)
         head.text:SetText(group[1])
@@ -509,8 +511,9 @@ local function BuildList()
         y = y + ROW_H + 4
         for _, item in ipairs(group[2]) do
             local row = CreateFrame("Button", nil, child)
-            row:SetSize(LIST_W - 30, ROW_H)
+            row:SetHeight(ROW_H)
             row:SetPoint("TOPLEFT", 0, -y)
+            row:SetPoint("TOPRIGHT", 0, -y)
             row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             row.key = item[1]
             local hl = row:CreateTexture(nil, "HIGHLIGHT")
@@ -549,7 +552,11 @@ local function BuildList()
         end
         y = y + 8
     end
-    child:SetSize(LIST_W - 30, y)
+    -- The fixed-height rows can be measured before changing the viewport width.
+    local needsScroll = y > HEIGHT - 2 * (LIST_Y + LIST_INSET)
+    local gutter = needsScroll and LIST_GUTTER or 0
+    window.listScroll:SetPoint("BOTTOMRIGHT", -LIST_INSET - gutter, LIST_INSET)
+    child:SetSize(LIST_W - (needsScroll and 30 or 2 * LIST_INSET), y)
 end
 
 --------------------------------------------------
@@ -581,16 +588,18 @@ local function Build()
 
     -- the list, left
     local listBox = CreateFrame("Frame", nil, f, "BackdropTemplate")
-    listBox:SetPoint("TOPLEFT", 20, -62)
-    listBox:SetPoint("BOTTOMLEFT", 20, 62)
+    listBox:SetPoint("TOPLEFT", 20, -LIST_Y)
+    listBox:SetPoint("BOTTOMLEFT", 20, LIST_Y)
     listBox:SetWidth(LIST_W)
     Panel.Box(listBox, 0.35)
     local scroll = CreateFrame("ScrollFrame", nil, listBox, "ScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", 8, -8)
-    scroll:SetPoint("BOTTOMRIGHT", -26, 8)
+    scroll:SetPoint("TOPLEFT", LIST_INSET, -LIST_INSET)
+    scroll:SetPoint("BOTTOMRIGHT", -LIST_INSET, LIST_INSET)
+    f.listScroll = scroll
     f.listChild = CreateFrame("Frame", nil, scroll)
-    f.listChild:SetSize(LIST_W - 30, 10)
+    f.listChild:SetSize(LIST_W - 2 * LIST_INSET, 10)
     scroll:SetScrollChild(f.listChild)
+    scroll.ScrollBar:SetHideIfUnscrollable(true)
 
     -- the samples, right
     local previewBox = CreateFrame("Frame", nil, f, "BackdropTemplate")

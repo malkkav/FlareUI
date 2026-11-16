@@ -28,7 +28,8 @@ local INDENT = 18
 local HEADER_ROW_Y = math.floor((4 + HEADER_H + EDGE) / 2) + 1
 -- the middle box's inside (the page) and, less the scroll line, the rows' width
 local MIDDLE_W = WIDTH - 2 * EDGE - LEFT_W - RIGHT_W - 2 * GAP - 2 * INNER
-local CONTENT_W = MIDDLE_W - 14
+local SCROLL_GUTTER = 14
+local CONTENT_W = MIDDLE_W - SCROLL_GUTTER
 local LOGO = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Art\\Icon.png"
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 local PICTURE = "Interface\\AddOns\\FlareUI\\Media\\Art\\Banner.png"
@@ -156,6 +157,26 @@ function Panel.AttachScrollLine(scroll, parent, step)
     scroll:HookScript("OnShow", Update)
     scroll:HookScript("OnHide", Update)
     Update()
+end
+
+-- Decide at full width so wrapping caused by the gutter cannot keep it reserved.
+function Panel.LayoutScrollContent(scroll, fullWidth, layout, gutter)
+    local content = scroll:GetScrollChild()
+    local viewportHeight = scroll:GetHeight() or 0
+    local offset = scroll:GetVerticalScroll() or 0
+    content:SetWidth(fullWidth)
+    local height = math.max(1, layout(fullWidth))
+    local inset = 0
+    if viewportHeight > 0 and height - viewportHeight > 0.5 and viewportHeight / height < 0.999 then
+        inset = gutter or SCROLL_GUTTER
+        content:SetWidth(fullWidth - inset)
+        height = math.max(1, layout(fullWidth - inset))
+    end
+    content:SetHeight(height)
+    scroll:UpdateScrollChildRect()
+    offset = math.min(offset, math.max(0, height - viewportHeight))
+    if scroll:GetVerticalScroll() ~= offset then scroll:SetVerticalScroll(offset) end
+    return inset
 end
 
 -- Tooltips over the panel and FlareUI's Edit Mode settings stay opaque black: later background
@@ -1700,8 +1721,9 @@ local function SectionHeader(parent, text, y, sectionKey)
     h.text:SetText(text)
     h:ClearAllPoints()
     h:SetPoint("TOPLEFT", rowInset, y)
-    h:SetWidth(CONTENT_W - 2 * rowInset)
-    FitText(h.text, CONTENT_W - 2 * rowInset - 6 - (h.reset:IsShown() and (h.reset:GetWidth() + 38) or 30), 1)
+    local width = parent:GetWidth() - 2 * rowInset
+    h:SetWidth(width)
+    FitText(h.text, width - 6 - (h.reset:IsShown() and (h.reset:GetWidth() + 38) or 30), 1)
     h:Show()
     used[#used + 1] = h
     return SECTION_H
@@ -1723,7 +1745,7 @@ local function GamepadNote(parent, y)
     n:SetParent(parent)
     n:ClearAllPoints()
     n:SetPoint("TOPLEFT", rowInset, y)
-    local width = CONTENT_W - 2 * rowInset - 12
+    local width = parent:GetWidth() - 2 * rowInset - 12
     n:SetWidth(width)
     n.text:SetWidth(width)
     n.text:SetText(L["These settings are disabled in Gamepad mode due to Blizzard restrictions."])
@@ -1750,17 +1772,17 @@ local function SectionBox(parent, top, bottom)
     b:SetFrameLevel(parent:GetFrameLevel())
     b:ClearAllPoints()
     b:SetPoint("TOPLEFT", 0, top)
-    b:SetSize(CONTENT_W, math.max(1, top - bottom))
+    b:SetSize(parent:GetWidth(), math.max(1, top - bottom))
     b:Show()
     used[#used + 1] = b
 end
 
 local function PlaceRows(parent, rows, y, crumbOf)
     local firstHalf
+    local width = parent:GetWidth() - 2 * rowInset
     for _, row in ipairs(rows) do
         local f = Acquire(parent, row.kind)
         f:ClearAllPoints()
-        local width = CONTENT_W - 2 * rowInset
         if row.half and not crumbOf then
             local col = firstHalf and 1 or 0
             -- a half row keeps to its column even under a parent (the parent still greys it)
@@ -2014,6 +2036,16 @@ end
 local UpdateNav
 local newVisit      -- the page and tab whose NEW badges are showing
 
+local function LayoutPageScroll(layout)
+    local scroll = page.scroll
+    page.scrollLayoutHeight = scroll:GetHeight()
+    local inset = Panel.LayoutScrollContent(scroll, MIDDLE_W, function()
+        ReleaseAll()
+        return layout(page.content)
+    end)
+    scroll:SetPoint("BOTTOMRIGHT", -inset, 0)
+end
+
 function Panel:Refresh()
     if not frame or not frame:IsShown() or self.opening then return end
     preview.dirty = true
@@ -2028,9 +2060,6 @@ function Panel:Refresh()
     end
     page.offCard:Hide()
     page.scroll:Show()
-    local content = page.content
-    content:SetWidth(CONTENT_W)
-    local y = 0
     if searchText ~= "" then
         S:EndNewVisit()
         newVisit = nil
@@ -2046,21 +2075,24 @@ function Panel:Refresh()
             .. (found > MAX_RESULTS and ("  " .. GRAY_FONT_COLOR:WrapTextInColorCode(L["(first %d shown)"]:format(MAX_RESULTS))) or "")
             .. (found > 0 and ("  " .. GRAY_FONT_COLOR:WrapTextInColorCode(L["Enter: go to the first"])) or ""))
         page.searchTitle:Show()
-        y = -24
         if #results == 0 then
             page.empty:SetText(S:WindowText("noResults", L["No settings match."]))
             page.empty:Show()
+            LayoutPageScroll(function() return 32 end)
         else
             page.empty:Hide()
-            y = PlaceRows(content, results, y, function(row)
-                local module = S.modules[row.module]
-                if row.kind == "editmode" then
-                    return module:Title() .. "  ›  " .. row.frameName .. "  ·  " .. L["Edit Mode"]
-                end
-                local section = row.section and ns.Copy.sections[row.section]
-                return module:Title() .. (section and ("  ›  " .. section) or "")
+            LayoutPageScroll(function(content)
+                return 8 - PlaceRows(content, results, -24, function(row)
+                    local module = S.modules[row.module]
+                    if row.kind == "editmode" then
+                        return module:Title() .. "  ›  " .. row.frameName .. "  ·  " .. L["Edit Mode"]
+                    end
+                    local section = row.section and ns.Copy.sections[row.section]
+                    return module:Title() .. (section and ("  ›  " .. section) or "")
+                end)
             end)
         end
+        return
     else
         page.searchTitle:Hide()
         page.empty:Hide()
@@ -2090,35 +2122,36 @@ function Panel:Refresh()
                 page.scroll:Hide()
                 ShowCustom(module, tab)
             else
-                rowInset = SEC_X
-                -- Gamepad mode: a page whose module Blizzard's Gamepad UI keeps off says so once, on top;
-                -- elsewhere each section with such rows says so under its title (S.GAMEPAD_OFF)
+                local sections = module:Sections(tab and tab.key)
                 local pad = ns.IsGamepadUI()
                 local wholePage = pad and S.GAMEPAD_OFF_MODULES[module.key]
-                if wholePage then y = y - GamepadNote(content, y) end
-                for _, section in ipairs(module:Sections(tab and tab.key)) do
-                    if tab and tab.key == "fonts" and section.title and closedSections[section.key] == nil then
-                        closedSections[section.key] = true
+                LayoutPageScroll(function(content)
+                    rowInset = SEC_X
+                    local y = wholePage and -GamepadNote(content, 0) or 0
+                    for _, section in ipairs(sections) do
+                        if tab and tab.key == "fonts" and section.title and closedSections[section.key] == nil then
+                            closedSections[section.key] = true
+                        end
+                        local top = y
+                        y = y - SEC_TOP
+                        if section.title then y = y - SectionHeader(content, section.title, y, section.key) - 4 end
+                        if pad and not wholePage and S:SectionGamepadOff(section) then y = y - GamepadNote(content, y) end
+                        if not (section.title and closedSections[section.key]) then
+                            y = PlaceRows(content, section.rows, y)
+                        end
+                        y = y - SEC_BOTTOM + ROW_GAP
+                        SectionBox(content, top, y)
+                        y = y - SEC_GAP
                     end
-                    local top = y
-                    y = y - SEC_TOP
-                    if section.title then y = y - SectionHeader(content, section.title, y, section.key) - 4 end
-                    if pad and not wholePage and S:SectionGamepadOff(section) then y = y - GamepadNote(content, y) end
-                    if not (section.title and closedSections[section.key]) then
-                        y = PlaceRows(content, section.rows, y)
-                    end
-                    y = y - SEC_BOTTOM + ROW_GAP
-                    SectionBox(content, top, y)
-                    y = y - SEC_GAP
-                end
-                rowInset = 0
+                    rowInset = 0
+                    return 8 - y
+                end)
             end
-            content:SetHeight(math.max(1, -y + 8))
             return
         end
         ShowModulePreview()
     end
-    content:SetHeight(math.max(1, -y + 8))
+    LayoutPageScroll(function() return 8 end)
 end
 
 --------------------------------------------------
@@ -2749,32 +2782,49 @@ local function BuildWindow()
     quietHint:SetText(L["The notes stay here, under What's New."])
     local newsScroll = CreateFrame("ScrollFrame", nil, news)
     newsScroll:SetPoint("TOPLEFT", PAD, -PAD)
-    newsScroll:SetPoint("BOTTOMRIGHT", -PAD - 28, PAD + NEWS_FOOT)
+    newsScroll:SetPoint("BOTTOMRIGHT", -PAD, PAD + NEWS_FOOT)
     -- (11-11 Malkkav) each version in a box of its own, as the settings' sections, clear of the scroll line
-    local NEWS_W, NEWS_PAD = WIDTH - 2 * EDGE - 2 * PAD - 40, 16
+    local NEWS_PAD, NEWS_GUTTER = 16, 40
     local newsContent = CreateFrame("Frame", nil, newsScroll)
-    newsContent:SetSize(NEWS_W, 1)
+    newsContent:SetSize(1, 1)
     newsScroll:SetScrollChild(newsContent)
     Panel.AttachScrollLine(newsScroll, news)
-    local y = 0
+    local newsCards = {}
     for _, entry in ipairs(ns.WhatsNew or {}) do
         local box = CreateFrame("Frame", nil, newsContent, "BackdropTemplate")
         Box(box, 0.40)
-        box:SetPoint("TOPLEFT", 0, y)
-        box:SetWidth(NEWS_W)
         local title = Text(box, "GameFontNormalHuge")
         title:SetPoint("TOPLEFT", NEWS_PAD, -NEWS_PAD + 2)
         title:SetText(L["FlareUI"] .. " " .. entry.version)
-        local body = Text(box, "GameFontHighlight")
-        body:SetPoint("TOPLEFT", NEWS_PAD, -NEWS_PAD - 34)
-        body:SetWidth(NEWS_W - 2 * NEWS_PAD)
-        body:SetSpacing(4)
-        body:SetText(entry.text)
-        local h = NEWS_PAD + 34 + (body:GetStringHeight() or 0) + NEWS_PAD
-        box:SetHeight(h)
-        y = y - h - 12
+        box.notes = Text(box, "GameFontHighlight")
+        box.notes:SetPoint("TOPLEFT", NEWS_PAD, -NEWS_PAD - 34)
+        box.notes:SetSpacing(4)
+        box.notes:SetText(entry.text)
+        newsCards[#newsCards + 1] = box
     end
-    newsContent:SetHeight(math.max(1, -y))
+
+    local function LayoutNews()
+        local width = news:GetWidth() - 2 * PAD
+        if width <= NEWS_GUTTER or newsScroll:GetHeight() <= 0 then return end
+        local inset = Panel.LayoutScrollContent(newsScroll, width, function(cardWidth)
+            local y = 0
+            for _, box in ipairs(newsCards) do
+                box:SetPoint("TOPLEFT", 0, y)
+                box:SetWidth(cardWidth)
+                box.notes:SetWidth(cardWidth - 2 * NEWS_PAD)
+                local h = 2 * NEWS_PAD + 34 + (box.notes:GetStringHeight() or 0)
+                box:SetHeight(h)
+                y = y - h - 12
+            end
+            return -y
+        end, NEWS_GUTTER)
+        -- Keep the existing space between the cards and the scroll bar when it is present.
+        newsScroll:SetPoint("BOTTOMRIGHT", -PAD - math.max(0, inset - PAD), PAD + NEWS_FOOT)
+    end
+    news:HookScript("OnShow", LayoutNews)
+    news:HookScript("OnSizeChanged", function(self)
+        if self:IsVisible() then LayoutNews() end
+    end)
     frame.news = news
 
     -- three boxes: the left list, the page, the right column
@@ -2941,12 +2991,21 @@ local function BuildWindow()
     -- scrolling rows
     local scroll = CreateFrame("ScrollFrame", nil, middle)
     scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -10)
-    scroll:SetPoint("BOTTOMRIGHT", -14, 0)
+    scroll:SetPoint("BOTTOMRIGHT", 0, 0)
     local content = CreateFrame("Frame", nil, scroll)
     content:SetSize(1, 1)
     scroll:SetScrollChild(content)
     Panel.AttachScrollLine(scroll, middle)
     page.scroll, page.content = scroll, content
+    local reflowQueued = false
+    scroll:HookScript("OnSizeChanged", function(self, _, height)
+        if reflowQueued or height == page.scrollLayoutHeight or not self:IsVisible() then return end
+        reflowQueued = true
+        C_Timer.After(0, function()
+            reflowQueued = false
+            if self:IsVisible() and self:GetHeight() ~= page.scrollLayoutHeight then Panel:Refresh() end
+        end)
+    end)
 
     page.searchTitle = Text(middle, "GameFontNormal")
     page.searchTitle:SetPoint("TOPLEFT", 4, -2)

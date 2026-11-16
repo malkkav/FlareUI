@@ -48,7 +48,8 @@ end
 --------------------------------------------------
 local function CreateList(parent, width, columns, rows, cellHeight, buildCell, fillCell)
     local list = CreateFrame("Frame", nil, parent)
-    local cellWidth = (width - 12) / columns
+    local gutter = 12
+    local cellWidth = width / columns
     list.cells, list.data = {}, {}
     list:SetSize(width, rows * cellHeight)
 
@@ -56,7 +57,11 @@ local function CreateList(parent, width, columns, rows, cellHeight, buildCell, f
         local col, row = (i - 1) % columns, math.floor((i - 1) / columns)
         local cell = CreateFrame("Button", nil, list)
         cell:SetSize(cellWidth, cellHeight)
-        cell:SetPoint("TOPLEFT", col * cellWidth, -row * cellHeight)
+        if col == 0 then
+            cell:SetPoint("TOPLEFT", 0, -row * cellHeight)
+        else
+            cell:SetPoint("TOPLEFT", list.cells[i - 1], "TOPRIGHT")
+        end
 
         cell.Highlight = cell:CreateTexture(nil, "BACKGROUND")
         cell.Highlight:SetAllPoints()
@@ -138,6 +143,11 @@ local function CreateList(parent, width, columns, rows, cellHeight, buildCell, f
         self.data = data or {}
         self.maxOffset = math.max(0, math.ceil(#self.data / columns) - rows)
         if self.offset > self.maxOffset then self.offset = self.maxOffset end
+        local nextWidth = (width - (self.maxOffset > 0 and gutter or 0)) / columns
+        if cellWidth ~= nextWidth then
+            cellWidth = nextWidth
+            for _, cell in ipairs(self.cells) do cell:SetWidth(cellWidth) end
+        end
         SyncBar()
         self:Update()
     end
