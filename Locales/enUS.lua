@@ -245,6 +245,7 @@ L["Auto Zoom Out"] = true
 L["Automatic"] = true
 L["Available To"] = true
 L["B still opens your bags."] = true
+L["Back"] = true
 L["Background Opacity"] = true
 L["Bag Bar"] = true
 L["Bag Items"] = true
