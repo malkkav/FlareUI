@@ -2,6 +2,38 @@
 
 Versions 6.4 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
 
+# FlareUI 6.6
+
+Tooltips got tidied up, the mouse ring rode off into the sunset, and a big stack of your Discord reports is fixed.
+
+## New
+- Tooltips › Look: **Tooltip Corner** (Auto). Pick the corner of the HUD Tooltip box your tooltips grow from. Auto keeps Blizzard's nearest corner, which can flip sides when you move the box.
+- Tooltips › Mouseover: **Offset X** and **Offset Y** (0). Move tooltips that follow your mouse up to 50 pixels away from it.
+- Quality of Life › Hide Clutter: **Loot Alerts** (off). Hides Blizzard's loot pop-ups:
+  - items you win or loot
+  - upgrades
+  - money
+
+## Changed
+- Tooltips: the settings are reorganised.
+  - The Settings tab now has **Look**, **Mouseover** and **Visibility**, in that order.
+  - **Mouseover** is one dropdown: **All Tooltips**, **None**, or tick only the kinds you want. It replaces the Mouseover switch and the six switches per kind. Your choices carry over.
+  - The old Visibility tab is now **Tweaks**. It holds the switches for what tooltips show.
+- Quality of Life: the **Mouse Ring** is gone. It made FlareUI heavier, few players used it, and cursor addons do it better.
+- Chat: with Chattynator loaded, FlareUI's chat stays off and leaves the chat to Chattynator. The Chat page says why.
+- Buff Reminders › Visibility: the **In Combat** choice is gone. It did nothing: the reminders always hide in fights.
+- Minimap: while OneForAll's **Collect minimap buttons** is on, **Addons in the Drawer** lists only the addons that can go in the drawer.
+
+## Fixed
+- Action bars: a hidden stance bar no longer comes back when you change forms in a fight. The same goes for a hidden pet bar.
+- Fade groups: a bar that's off (in Edit Mode, or the pet bar with no pet) no longer shows its group when you point at its spot.
+- Quality of Life › Vendor: **Enhanced Vendor Purchases** works again. Shift-click a vendor item to see the Stack and MAX buttons.
+- Bags: sorting no longer stalls with the keyring or crafting bag sections shown, by parchinskiy.
+- Party frames (ring styles): the level number shows in its circle again.
+- Meters: a second meter window drags by its header again. Before, only a tiny spot next to the timer worked.
+- Chat (Gamepad mode): the chat tabs stay fully visible. They stayed faint until you pointed the mouse at them.
+- Radials (controller): **Release the Stick to Use** works when you roll the stick from one direction to the next.
+
 # FlareUI 6.5.1
 
 A quick round of fixes. Gamepad players get their chat tabs back, and FlareUI now gets along with ClassicUI Forever.

@@ -34,7 +34,7 @@ local OBJ_W, OBJ_H = 180, 36   -- (the sample's size: only the scores, 11-11)
 local OBJ_BORDER, OBJ_EDGE, OBJ_PAD = "FlareUI Thick", 16, 6
 
 local DEFAULTS = {
-    -- (11-15) Marcus's own spots, from his "FlareUI" layout; loot: the Loot Roll Window's header too
+    -- (11-15) Malkkav's own spots, from his "FlareUI" layout; loot: the Loot Roll Window's header too
     loot  = { point = "TOP", x = 0, y = -221 },
     toast = { point = "TOP", x = 0, y = -130 },
     objectives = { point = "TOP", x = 0, y = -31 },
@@ -154,7 +154,7 @@ local function FlattenLoot(container, height)
     sizingLoot = false
 end
 
--- Blizzard's grey roll-frame edge in the frames' bronze (11-11 Marcus): greyed, then tinted, so the
+-- Blizzard's grey roll-frame edge in the frames' bronze (11-11 Malkkav): greyed, then tinted, so the
 -- art keeps its shading. The sample's and every real roll frame's (GroupLootFrame1-4, made at load).
 local function BronzeLootBorder(texture)
     if not texture then return end
@@ -270,7 +270,7 @@ local function CreateToastPreview(holder)
 end
 
 --------------------------------------------------
--- 5b. SCALE (Edit Mode, 11-11 Marcus): the loot rolls' and the toasts' size. Blizzard's frames hang
+-- 5b. SCALE (Edit Mode, 11-11 Malkkav): the loot rolls' and the toasts' size. Blizzard's frames hang
 -- from UIParent, so each one takes the scale as it shows; the holder and its sample grow with it.
 --------------------------------------------------
 local function Scale(key)
@@ -365,10 +365,10 @@ local function PlaceObjectives()
     placingObjectives = false
 end
 
--- The dark plate in FlareUI Thick (11-11 Marcus): the sample's, and the one behind the real scores
+-- The dark plate in FlareUI Thick (11-11 Malkkav): the sample's, and the one behind the real scores
 local function ObjectivesBox(frame)
     local file = LibStub("LibSharedMedia-3.0"):Fetch("border", OBJ_BORDER)
-    -- (11-15, Marcus) the background reaches under the border (a gap showed at 4), fully opaque
+    -- (11-15, Malkkav) the background reaches under the border (a gap showed at 4), fully opaque
     local inset = 2
     frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = file, edgeSize = ns.BorderEdgeSize(file, OBJ_EDGE),
         insets = { left = inset, right = inset, top = inset, bottom = inset } })

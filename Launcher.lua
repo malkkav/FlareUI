@@ -127,7 +127,7 @@ local function RegisterOptionsPage()
         open:SetText(L["Open Configuration"])
         -- a family: GameFontNormal's file alone draws Russian as boxes on an English client
         ns.SetFontFamily(open:GetFontString(), (GameFontNormal:GetFont()), 14, "OUTLINE")
-        -- (11-11 Marcus) Blizzard's Options closes as FlareUI's window opens: its own Close, which keeps
+        -- (11-11 Malkkav) Blizzard's Options closes as FlareUI's window opens: its own Close, which keeps
         -- the settings (asking first if some are unapplied) and skips going back to the game menu
         open:SetScript("OnClick", function()
             ns.SettingsPanel:Open()

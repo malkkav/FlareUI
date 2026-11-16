@@ -156,8 +156,10 @@ function DamageMeter:SetSettingsPreview(on)
         if not on then DamageMeter.EndThreatPreview() end
         DamageMeter.RedrawThreat()
     end
-    -- the separate threat window shows on the page whatever its Visibility
+    -- the separate threat window shows on the page whatever its Visibility (IsSettingsPreview, read by
+    -- the Visibility module's fader)
     if DamageMeter.ApplyThreatWindow then DamageMeter.ApplyThreatWindow() end
+    if ns.Visibility and ns.Visibility.Wake then ns.Visibility:Wake() end
     -- with the Meter tab in the chat, the page opens that tab, and leaving it goes back to the chat
     -- tab that was up (unless a tab was clicked meanwhile)
     if self:ChatTabAvailable() then
@@ -174,6 +176,9 @@ function DamageMeter:SetSettingsPreview(on)
     -- Show would leave a faded-out meter at alpha 0)
     DamageMeter:ApplyVisibility()
 end
+
+-- Settings > Meters open (the Visibility module shows the separate threat window then)
+function DamageMeter:IsSettingsPreview() return self.settingsPreview or false end
 
 -- A session window part through its getter, or its key
 local function GetWindowPart(window, getterName, fallbackKey)
@@ -1018,7 +1023,7 @@ local function LayoutTabs(window, view)
     view.tab:ClearAllPoints()
     view.tab:SetPoint("LEFT", ref, "TOPLEFT", x - 4, ROW_CENTER_Y)
     view.tab:SetSize(threatWidth + 8, HEADER_HEIGHT)
-    -- (11-15, Marcus) a window on its own has no Threat tab: the threat list stays with the first window
+    -- (11-15, Malkkav) a window on its own has no Threat tab: the threat list stays with the first window
     -- (only a real meter window's view: the settings sample has no hit area and keeps its own tab)
     if views[window] == view and view.hit then
         local db = GetDb()
@@ -1712,8 +1717,8 @@ end
 --------------------------------------------------
 -- 16b. SEPARATE THREAT WINDOW (Threat > Separate Window, 11-13, a player's request)
 -- The threat list in a window of its own, in the meter's look: moved and sized in Edit Mode, with
--- sample rows there. A child of Blizzard's meter, so it shows, hides and fades with it (Visibility,
--- Show on Mouseover). Its bars follow the first meter window's bar settings (height, spacing,
+-- sample rows there. On Same as Meter (its Edit Mode Fading) a child of Blizzard's meter, so it shows,
+-- hides and fades with it; on its own otherwise (AttachThreatWindow). Its bars follow the first meter window's bar settings (height, spacing,
 -- icons, style, class colours); its size starts as that window's.
 --------------------------------------------------
 do
@@ -1816,6 +1821,7 @@ do
         -- keeps it hiding with the meter and gives Edit Mode the whole screen.
         local holder = CreateFrame("Frame", nil, meter)
         holder:SetAllPoints(UIParent)
+        Solo.holder = holder
         local f = CreateFrame("Frame", "FlareUI_ThreatMeter", holder)
         f:SetClampedToScreen(true)
         local skin = CreateFrame("Frame", nil, f, "BackdropTemplate")
@@ -1871,10 +1877,17 @@ do
         LEM:RegisterCallback("layout", function(layoutName) Place(layoutName) end)
         LEM:RegisterCallback("enter", function() EditMode(true) end)
         LEM:RegisterCallback("exit", function() EditMode(false) end)
+        -- its Fading (on its own or with the meter) as soon as it exists
+        if ns.Visibility and ns.Visibility.Refresh then
+            C_Timer.After(0, function()
+                if ns.Visibility.AddEditModeSettings then ns.Visibility.AddEditModeSettings() end
+                ns.Visibility:Refresh()
+            end)
+        end
         return true
     end
 
-    -- Separate Window switched on (11-13, Marcus): the window right above the meter's first window
+    -- Separate Window switched on (11-13, Malkkav): the window right above the meter's first window
     -- when that sits in the lower half of the screen, else right below it; saved as its spot in this
     -- Edit Mode layout, so Edit Mode can move it from there
     local BESIDE_GAP = 8   -- between the two windows' borders (each reaches 2 px out)
@@ -1901,41 +1914,29 @@ do
         Place()
     end
 
-    -- Visibility (Threat tab, 11-13, a player's request): the window's own rule on top of the meter's
-    -- (a child of the meter, it can only show less): "meter" as the meter, or only in an instance, in
-    -- a group or in a fight. Edit Mode and the settings preview always show it. An addon frame, so it
-    -- shows and hides in a fight too.
-    local RULES = {
-        instance = function() return IsInInstance() and true or false end,
-        group = function() return IsInGroup() and true or false end,
-        combat = function() return InCombatLockdown() or UnitAffectingCombat("player") and true or false end,
-    }
-    local function RuleAllows(db)
-        local rule = RULES[db.threatVisibility or "meter"]
-        if not rule or IsEditModeActive() or DamageMeter.settingsPreview then return true end
-        return rule()
-    end
-    local ruleEvents = CreateFrame("Frame")
-    for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "GROUP_ROSTER_UPDATE",
-                             "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA" }) do
-        ruleEvents:RegisterEvent(event)
+    -- Visibility (11-15, Malkkav: in its Edit Mode dialog's Fading, Modules/Visibility.lua element
+    -- "threat"; before, damagemeter.threatVisibility on the Threat tab). Same as Meter: the holder sits
+    -- under the meter, so the window shows, hides and fades with it. Any other choice or a fade group:
+    -- the holder sits on UIParent and the Visibility module fades the window on its own (an addon
+    -- frame: re-parented in a fight too).
+    function DamageMeter.AttachThreatWindow(withMeter)
+        local holder, meter = Solo.holder, _G.DamageMeter
+        local parent = (withMeter and meter) or UIParent
+        if holder and holder:GetParent() ~= parent then
+            holder:SetParent(parent)
+            holder:SetAllPoints(UIParent)
+        end
     end
     function DamageMeter.ApplyThreatWindow() if Solo.Apply then Solo.Apply() end end
-    ruleEvents:SetScript("OnEvent", function()
-        local db = GetDb()
-        -- the meter's own In an Instance: checked again as the zone changes
-        if db and db.enabled and db.visibility == "instance" then DamageMeter:ApplyVisibility() end
-        if db and db.threatWindow and RULES[db.threatVisibility or "meter"] and Solo.Apply then Solo.Apply() end
-    end)
 
-    -- shown with Separate Window on (and not hidden by the radial's Toggle Threat Meter) while its
-    -- Visibility allows
+    -- shown with Separate Window on (and not hidden by the radial's Toggle Threat Meter); its
+    -- Visibility fades it
     function Solo.Apply()
         local db = GetDb()
         local want = db and db.enabled and db.threatWindow and true or false
         if want and not Create() then return end
         if not Solo.frame then return end
-        local shown = want and not Solo.hidden and RuleAllows(db)
+        local shown = want and not Solo.hidden
         Solo.frame:SetShown(shown)
         Solo.view.showing = shown
         if want then
@@ -2223,29 +2224,16 @@ function DamageMeter:CheckInstanceReset(isReload)
 end
 
 --------------------------------------------------
--- 22. VISIBILITY AND SHOW ON MOUSEOVER (Settings > Damage Meter)
+-- 22. VISIBILITY AND MOUSEOVER (the meter's Edit Mode Fading, Modules/Visibility.lua)
 -- Applied after each of Blizzard's checks, overruling the Edit Mode dropdown (preset layouts cannot
--- save it). Show on Mouseover keeps a hidden meter up at alpha 0 until hovered. One driver fades the
+-- save it). Mouseover keeps a hidden meter up at alpha 0 until hovered. One driver fades the
 -- alpha at the Fade Speed and hides the meter after a fade out.
 --------------------------------------------------
+-- the Meter tab's Open the Meter Tab rules (ApplyChatTab)
 local VISIBILITY = {
-    always = function() return true end,
     combat = function(meter) return meter:IsPlayerInCombat() end,
-    hidden = function() return false end,
     group  = function(meter) return meter:IsPlayerInGroup() end,
-    -- dungeons, raids, battlegrounds and arenas (11-13, as the threat window's)
-    instance = function() return IsInInstance() and true or false end,
 }
--- Visibility is one rule, or rules ticked as toggles joined by commas (ns.Conditions): any one shows it
-local function VisibilityRule(value, meter)
-    local rule = VISIBILITY[value]
-    if rule then return rule(meter) and true or false end
-    for token in pairs(ns.Conditions.Set(value)) do
-        rule = VISIBILITY[token]
-        if rule and rule(meter) then return true end
-    end
-    return false
-end
 local fadeDriver = CreateFrame("Frame")
 fadeDriver:Hide()
 local fadeTarget, hideWhenFaded = 1, false
@@ -2299,17 +2287,46 @@ showRetry:SetScript("OnEvent", function()
     C_Timer.After(0.5, function() DamageMeter:ApplyVisibility() end)
 end)
 
+-- (11-15, Malkkav) The meter's Visibility, fade speeds, Faded Opacity, fade group and Fade Delay are set
+-- in its Edit Mode dialog (Modules/Visibility.lua, element "meter"). The meter still fades itself
+-- here; Visibility only says when it is wanted, in its fade group too, and tells ApplyVisibility when
+-- that changes. Before 11-15 these were damagemeter.visibility, showOnMouseover, fadeSpeed / fadeIn /
+-- fadeOut, minAlpha and fadeDelay (copied over once, Visibility.lua MigrateMovedFades).
+
 -- Faded Opacity: how far the meter fades out (0 = gone). Not for the Meter tab in the chat, where the
 -- tab decides and a faded meter sits under the chat.
 local function DownAlpha()
-    local db = GetDb()
-    local v = db and tonumber(db.minAlpha) or 0
-    return math_max(0, math_min(0.9, v))
+    local V = ns.Visibility
+    local v = V and V.GetMinAlpha and V:GetMinAlpha("meter") or 0
+    return math_max(0, math_min(1, (tonumber(v) or 0) / 100))
 end
 
--- Fade In Speed (coming back) / Fade Out Speed (fading away), 11-15: the one fadeSpeed split in two;
--- an unset fadeIn / fadeOut reads the old fadeSpeed, so nothing changes until a player picks.
-function DamageMeter.FadeSpeed(db, field) return (db and (db[field] or db.fadeSpeed)) or "instant" end
+-- Show Speed (coming back) / Hide Speed (fading away): the meter's, in its group the group's.
+-- On the Meter tab in the chat they still fade it in and out as the tabs switch.
+function DamageMeter.FadeSpeed(_, field)
+    local V = ns.Visibility
+    if not V then return "instant" end
+    if field == "fadeIn" then return V:GetFadeIn("meter") end
+    return V:GetFadeOut("meter")
+end
+
+-- Wanted by its Visibility (or its fade group) now; Mouseover ticked (its own driver then shows it
+-- under the pointer). Edit Mode and the settings page are handled in ApplyVisibility.
+function DamageMeter.Wanted()
+    local V = ns.Visibility
+    if not (V and V.ElementShown) then return true end
+    return V:ElementShown("meter")
+end
+function DamageMeter.MouseShows()
+    local V = ns.Visibility
+    return V and V.HasToken and V:HasToken("meter", "mouseover") or false
+end
+-- the pointer on the meter (in a fade group, it brings the group back)
+function DamageMeter.FadeMouse()
+    local meter = _G.DamageMeter
+    if not (meter and meter:IsVisible()) then return false end
+    return MeterUnderMouse(meter) and not PanelsInTheWay()
+end
 
 local function FadeStep(self, meter, elapsed)
     -- While waiting for the cursor, a check every 0.1 s is enough.
@@ -2327,7 +2344,7 @@ local function FadeStep(self, meter, elapsed)
         return
     end
     local db = GetDb()
-    -- Fade In Speed while coming back, Fade Out Speed while fading away
+    -- Show Speed while coming back, Hide Speed while fading away
     local time = ns.FadeTime(DamageMeter.FadeSpeed(db, alpha < target and "fadeIn" or "fadeOut"))
     if time <= 0 then
         alpha = target
@@ -2384,17 +2401,10 @@ function MeterAllowed()
     return true
 end
 
--- Visibility and Open the Meter Tab are single choices. A test build saved them as ticked toggles
--- ("combat,group", "mouseover" for Show on Mouseover): those read back once as the nearest choice.
-local SINGLE_VISIBILITY = { always = true, combat = true, group = true, instance = true, hidden = true }
+-- Open the Meter Tab is a single choice. A test build saved it as ticked toggles: read back once as
+-- the nearest choice. (The old Visibility's test-build toggles are read by Visibility.lua's migration.)
 local SINGLE_TAB_OPEN = { click = true, combat = true, group = true, login = true }
 local function NormalizeChoices(db)
-    local v = db.visibility
-    if v ~= nil and not SINGLE_VISIBILITY[v] then
-        local set = ns.Conditions.Set(v)
-        if set.mouseover then db.showOnMouseover = true end
-        db.visibility = (set.combat and "combat") or (set.group and "group") or "hidden"
-    end
     local open = db.chatTabOpen
     if open ~= nil and not SINGLE_TAB_OPEN[open] then
         local set = ns.Conditions.Set(open)
@@ -2408,7 +2418,10 @@ local function CancelFadeDelay()
     if DamageMeter.fadeDelayTimer then DamageMeter.fadeDelayTimer:Cancel() end
     DamageMeter.fadeDelayTimer = nil
 end
-local function FadeDelay(db) return math_max(0, tonumber(db.fadeDelay) or 0) end
+local function FadeDelay()
+    local V = ns.Visibility
+    return V and V.GetFadeDelay and V:GetFadeDelay("meter") or 0
+end
 
 local function ApplyVisibilityBody(meter)
     local db = GetDb()
@@ -2449,7 +2462,7 @@ local function ApplyVisibilityBody(meter)
         meter:Hide()
         if DamageMeter.viewBackPending then DamageMeter.ShowDamageViews() end
         meter.FlareUI_Up = false
-    elseif VisibilityRule(db.visibility or "always", meter) then
+    elseif DamageMeter.Wanted() then
         CancelFadeDelay()
         -- from where a fade out left it, or from nothing when it was hidden
         if not wasUp and not meter:IsShown() then meter:SetAlpha(0) end
@@ -2466,24 +2479,25 @@ local function ApplyVisibilityBody(meter)
         if DamageMeter.viewBackPending then DamageMeter.ShowDamageViews() end
         meter.FlareUI_Up = false
         local down = DownAlpha()
-        if db.showOnMouseover or down > 0 then
+        local mouseShows = DamageMeter.MouseShows()
+        if mouseShows or down > 0 then
             meter:SetAlpha(down)
-            if ShowMeter(meter) and db.showOnMouseover then
+            if ShowMeter(meter) and mouseShows then
                 meter.FlareUI_MouseHidden = true
                 FadeMeter(meter, down)
             end
         end
-    elseif wasUp and not autoFading and FadeDelay(db) > 0 and not DamageMeter.fadeDelayDone then
+    elseif wasUp and not autoFading and FadeDelay() > 0 and not DamageMeter.fadeDelayDone then
         -- Fade Delay: it stays up for a while, then this check runs again and lets it go
         if not DamageMeter.fadeDelayTimer then
-            DamageMeter.fadeDelayTimer = C_Timer.NewTimer(FadeDelay(db), function()
+            DamageMeter.fadeDelayTimer = C_Timer.NewTimer(FadeDelay(), function()
                 DamageMeter.fadeDelayTimer = nil
                 DamageMeter.fadeDelayDone = true
                 DamageMeter:ApplyVisibility()
                 DamageMeter.fadeDelayDone = nil
             end)
         end
-    elseif db.showOnMouseover then
+    elseif DamageMeter.MouseShows() then
         if not wasUp and not meter:IsShown() then meter:SetAlpha(0) end
         if ShowMeter(meter) then
             meter.FlareUI_MouseHidden = true
@@ -2618,7 +2632,7 @@ function ApplyChatTabStrata(meter, raised)
 end
 
 --------------------------------------------------
--- 23b. METER WINDOWS AS TABS (11-15, Marcus: like the chat's tabs)
+-- 23b. METER WINDOWS AS TABS (11-15, Malkkav: like the chat's tabs)
 -- Blizzard's extra meter windows (the gear menu's "Show New Window") sit in the first window's place
 -- as tabs in its title row, before the Threat tab, which stays last. Two meter windows at most: at
 -- two the gear menu's "Show New Window" is greyed out (Blizzard allows three; a player who already
@@ -2899,7 +2913,7 @@ function Dock.Hook(meter)
 end
 
 --------------------------------------------------
--- 23c. A METER WINDOW ON ITS OWN (11-15, Marcus: players must still be able to use windows apart)
+-- 23c. A METER WINDOW ON ITS OWN (11-15, Malkkav: players must still be able to use windows apart)
 -- Right-click another window's tab (or a window's own title, or its gear menu): Move to Own Window.
 -- The window leaves the row and is Blizzard's own again (dragged by its header, sized by its corner),
 -- first placed beside the first window, inside the screen. Kept per window number with its spot and
@@ -2958,7 +2972,7 @@ function Dock.SaveSpot(window)
 end
 
 -- first time on its own: the first window's size, under it when the first window sits in the top half
--- of the screen, else above it (11-15, Marcus); the other side when there's no room, then inside the screen
+-- of the screen, else above it (11-15, Malkkav); the other side when there's no room, then inside the screen
 function Dock.SpotBeside(window, spot)
     local primary = _G.DamageMeterSessionWindow1
     if not primary then return end
@@ -3193,6 +3207,8 @@ local function TrimMeterDialog(dialog)
         [setting.Transparency] = true,
         [setting.BackgroundTransparency] = true,
     }
+    -- (11-15, Malkkav) Text Size too: the meter's fonts are in FlareUI's settings (Meters › Fonts)
+    if setting.TextSize then hidden[setting.TextSize] = true end
     local changed = false
     for _, row in ipairs({ dialog.Settings:GetChildren() }) do
         if row:IsShown() and row.setting and hidden[row.setting] then

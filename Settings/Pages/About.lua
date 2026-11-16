@@ -32,7 +32,7 @@ end
 
 -- 11-10 rework: the page as bronze cards in the window's fonts; highlights in WoW yellow (11-13),
 -- names that copy a link too
-local GOLD = "|cffffd100"   -- (11-13, Marcus: WoW's yellow, as the window's titles; was e9c46a)
+local GOLD = "|cffffd100"   -- (11-13, Malkkav: WoW's yellow, as the window's titles; was e9c46a)
 local LINK = "|cffffd100"   -- (11-13: yellow too)
 local function Gold(text) return (text or ""):gsub("|cffffd100", GOLD) end
 local function Link(text, url) return "|Hurl:" .. url .. "|h" .. LINK .. text .. "|r|h" end
@@ -67,7 +67,7 @@ local function Card(host, title, width)
 end
 
 local function Body(card, text, y, font)
-    -- (11-11 Marcus: a little smaller than the rows' text)
+    -- (11-11 Malkkav: a little smaller than the rows' text)
     local fs = card:CreateFontString(nil, "OVERLAY", font or "FlareUI_PanelTextSmall")
     fs:SetPoint("TOPLEFT", CARD_PAD, y)
     fs:SetWidth(card:GetWidth() - 2 * CARD_PAD)
@@ -106,7 +106,7 @@ local function Build(host)
             ns.ButtonSound()
             CopyLink(net.url)
         end)
-        -- centred in the card (11-11 Marcus)
+        -- centred in the card (11-11 Malkkav)
         if previous then b:SetPoint("LEFT", previous, "RIGHT", 8, 0)
         else b:SetPoint("TOPLEFT", (width - (#NETWORKS * 112 + (#NETWORKS - 1) * 8)) / 2, y) end
         previous = b

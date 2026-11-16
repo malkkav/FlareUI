@@ -55,12 +55,12 @@ local COLORS = {
 -- textSize: added to the Fonts tab size
 local BAR_ORDER = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged", "flight", "seal", "timer" }
 local BARS = {
-    -- (11-15) every default spot below is Marcus's own, from his "FlareUI" layout
+    -- (11-15) every default spot below is Malkkav's own, from his "FlareUI" layout
     health      = { kind = "health", label = L["Health Bar"],      default = { point = "CENTER", x = 0, y = -128 }, textSize = 2 },
     power       = { kind = "power",  label = L["Power Bar"],       default = { point = "CENTER", x = 0, y = -151 }, textSize = 2 },
     -- right under the power bar, the health-to-power gap apart (11-11)
     mana        = { kind = "mana",   label = L["Druid Mana"],      default = { point = "CENTER", x = 0, y = -174 }, textSize = 2 },
-    -- from here on the default spots are Marcus's own (11-12)
+    -- from here on the default spots are Malkkav's own (11-12)
     combo       = { kind = "combo",  label = L["Combo Points"],    default = { point = "CENTER", x = 0, y = -88 } },
     swingMain   = { kind = "swing",  label = L["Main-Hand Swing"], default = { point = "CENTER", x = 0, y = -282 }, textSize = 0,
                     swingType = SWING and SWING.MainHand, text = _G.SWING_TIMER_MAIN_HAND or "Main Hand" },
@@ -1208,7 +1208,7 @@ local function BuildSettings(key)
         add({ name = L["GCD Spark"], kind = LEM.SettingType.Checkbox, default = false, get = get("gcd", false), set = set("gcd"),
               desc = L["A spark crosses the bar during the global cooldown."] })
     end
-    -- (11-15, Marcus: togglable) the main-hand bar's colour per queued attack, colours in Bar Colours
+    -- (11-15, Malkkav: togglable) the main-hand bar's colour per queued attack, colours in Bar Colours
     if key == "swingMain" then
         add({ name = L["Queued Attack Colour"], kind = LEM.SettingType.Checkbox, default = false, get = get("queueTint", false), set = set("queueTint"),
               desc = L["While Heroic Strike, Cleave, Maul or Raptor Strike waits for the next swing, the bar takes its colour (set in Bar Colours)."] })
@@ -1584,7 +1584,7 @@ local EVENTS = {
 }
 
 --------------------------------------------------
--- 10b. FLIGHT TIMER (11-11, Marcus; the idea after Leatrix Plus, nothing taken)
+-- 10b. FLIGHT TIMER (11-11, Malkkav; the idea after Leatrix Plus, nothing taken)
 -- Forever tells no flight's length, so each route is learned: the first flight counts up, landing
 -- keeps its time (account-wide, db.global.flightTimes, "From > To" by the nodes' names), and every
 -- later flight fills the bar with the time left. A flight is caught as it is picked (TakeTaxiNode on
@@ -1769,7 +1769,7 @@ function Flight.Init()
 end
 
 --------------------------------------------------
--- 10c. SEALS (11-11, Marcus; the idea after SealBar, its seal IDs only: it has no licence)
+-- 10c. SEALS (11-11, Malkkav; the idea after SealBar, its seal IDs only: it has no licence)
 -- One bar for the paladin's seal: its name, the time left, the fill running down, each seal in its
 -- own colour (Bar Colours), no icon. A seal's aura is secret in a fight, so the game draws it: an
 -- AuraContainer (as Auras.lua's) holds one group per seal, filtered by the seal's spell IDs, and each
@@ -2301,7 +2301,7 @@ end
 
 local function BarOn(key)
     local cfg = Cfg(key)
-    -- (11-15, Marcus) Druid Mana is built on every class, so anyone can place it in Edit Mode; in play it
+    -- (11-15, Malkkav) Druid Mana is built on every class, so anyone can place it in Edit Mode; in play it
     -- shows only while mana is a second power (ManaIsSecondary: a druid in Bear or Cat Form)
     -- the same for Seals: placed on any class, shown in play only on a paladin with a seal up
     return cfg and cfg.enabled and true or false

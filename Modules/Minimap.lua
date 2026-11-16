@@ -50,7 +50,7 @@ local SQUARE_MASK   = "Interface\\BUTTONS\\WHITE8X8"
 -- (Hide would stop node addons' scans); Forever's own round mask (Blizzard_Minimap\Camelot)
 local MASKS = { EMPTY = "Interface\\AddOns\\FlareUI\\Media\\Art\\Empty", FOREVER = "ui-hud-minimap-frame-generic-mask" }
 
--- Header (minimap.squareHeader, 11-13 Marcus): two looks for the frame's top.
+-- Header (minimap.squareHeader, 11-13 Malkkav): two looks for the frame's top.
 -- * Headerless (default): the border lies under the map, so its title bar is covered and the header
 --   row sits on the terrain; the top edge comes down onto the map's top.
 -- * Bordered: the title bar and its corners draw over the map, a band the header row sits in (the
@@ -58,8 +58,8 @@ local MASKS = { EMPTY = "Interface\\AddOns\\FlareUI\\Media\\Art\\Empty", FOREVER
 -- band: how far below the frame's top the mail and other indicators start; headerTop: the header row's
 -- inset from the frame's top; drop: the top edge lowered onto the map; over: top pieces above the map.
 -- (Tried and rolled back 11-13: a top made of the bottom edge upside down, a taller Headerless map,
--- its top corners above the map. Marcus: this version is the best.)
--- bronze (11-13, Marcus): Headerless framed in the settings window's border instead, the character
+-- its top corners above the map. Malkkav: this version is the best.)
+-- bronze (11-13, Malkkav): Headerless framed in the settings window's border instead, the character
 -- select's heavy bronze frame without its rivets, over the map; the metal frame's pieces stay (unseen)
 -- to measure the Edit Mode box, and come back if the client lacks the atlas.
 local HEADER_STYLES = {
@@ -68,8 +68,8 @@ local HEADER_STYLES = {
 }
 local BRONZE_ATLAS = "heavybronze-frame-basic"
 -- the bronze frame this far past the map frame's edges, per side: measured against Bordered's metal
--- frame on Marcus's screenshots (11-13) so both styles cover the same box
-local BRONZE_OUT   = { left = 9, right = 7, top = 11, bottom = 8 }   -- (top +1: Marcus 11-13)
+-- frame on Malkkav's screenshots (11-13) so both styles cover the same box
+local BRONZE_OUT   = { left = 9, right = 7, top = 11, bottom = 8 }   -- (top +1: Malkkav 11-13)
 local function HeaderStyle(db)
     -- (a style card's sample draws its own header, whatever the one in use: MM.sampleHeader)
     if MM.sampleHeader then return HEADER_STYLES[MM.sampleHeader] or HEADER_STYLES.headerless end
@@ -85,7 +85,7 @@ local PLATE_ATLAS   = "ui-hud-minimap-header-button"
 local PLATE_SLICE   = 12     -- end size, in art pixels
 local PLATE_INSET   = 6      -- zone text and clock inset from the plate's ends
 local SUN_SCALE     = 0.9    -- day/night badge scale
-local SUN_OVERHANG  = 9      -- badge overhang past the map's corner (11-13 Marcus: 3 more, to pop out)
+local SUN_OVERHANG  = 9      -- badge overhang past the map's corner (11-13 Malkkav: 3 more, to pop out)
 local MAIL_GAP      = 3      -- title band to mail icon
 -- Player coordinates: a size up, in gold, clear of the frame art
 local COORDS = {
@@ -232,7 +232,7 @@ local function BorderLayout(style)
     for _, key in ipairs({ "TopLeftCorner", "BottomLeftCorner" }) do
         if layout[key] then layout[key].x = (layout[key].x or 0) + LEFT_SHIFT end
     end
-    -- Headerless: the top edge down onto the map's top (11-13, Marcus: a black gap showed between them
+    -- Headerless: the top edge down onto the map's top (11-13, Malkkav: a black gap showed between them
     -- once the border went under the map); it hangs between the top corners, so it moves with them
     for _, key in ipairs({ "TopLeftCorner", "TopRightCorner" }) do
         if layout[key] then layout[key].y = (layout[key].y or 0) - style.drop end
@@ -249,7 +249,7 @@ local TOP_PIECES = { "TopEdge", "TopLeftCorner", "TopRightCorner" }
 local function ApplyBorder(border, above, style)
     style = style or HeaderStyle()
     NineSliceUtil.ApplyLayout(border, BorderLayout(style))
-    -- (11-13, Marcus) the sides and bottom too: their inner shadow falls over the map's edges, and the
+    -- (11-13, Malkkav) the sides and bottom too: their inner shadow falls over the map's edges, and the
     -- map cut it off while they lay under it
     for _, key in ipairs({ "BottomLeftCorner", "BottomRightCorner", "LeftEdge", "RightEdge", "BottomEdge" }) do
         if border[key] then border[key]:SetParent(above) end
@@ -470,7 +470,7 @@ function MM.PlaceHeaderRow(frame, tracking, header, calendar)
     header:ClearAllPoints()
     local side = HeaderStyle().side or HEADER_SIDE   -- (11-13: the bronze frame's sides are thicker: the zone bar narrows)
     -- shift: the row centred on the frame art, not the map (the bronze reaches 9 out on the left, 7 on
-    -- the right: its centre is 1 left of the map's; 11-13 Marcus "super centered")
+    -- the right: its centre is 1 left of the map's; 11-13 Malkkav "super centered")
     tracking:SetPoint("TOPLEFT", frame, "TOPLEFT", side + (HeaderStyle().shift or 0), -HeaderStyle().headerTop)
     header:SetPoint("LEFT", tracking, "RIGHT", HEADER_GAP, 0)
     header:SetWidth(MAP_SIZE - 2 * side - tracking:GetWidth() - calendar:GetWidth() - 2 * HEADER_GAP)
@@ -752,7 +752,7 @@ local function ShowCoords(shown)
     if coords then coords:SetAlpha(shown and 1 or 0) end
 end
 
--- FRAMERATE AND LATENCY (11-11 a controller player asked; latency 11-13 Marcus): at the map's bottom
+-- FRAMERATE AND LATENCY (11-11 a controller player asked; latency 11-13 Malkkav): at the map's bottom
 -- right in the coordinates' look, each always or only while pointing at the map (both off by
 -- default). One stack from the bottom up: the latency's two lines (world, home over it) and the
 -- framerate; the one shown always sits at the bottom, the mouseover one above it, and with both the
@@ -876,7 +876,7 @@ function MM.SetupFps()
         Latency()
     end
     -- the bottom line level with the coordinates' text (their box sits COORDS.GAP up, the text in its
-    -- middle), a little in from the corner (11-11, Marcus); each next line a text height above
+    -- middle), a little in from the corner (11-11, Malkkav); each next line a text height above
     local coords = CoordsFrame()
     local mid = COORDS.GAP + ((coords and coords:GetHeight()) or 12) / 2
     local _, size = stats.fps:GetFont()
@@ -1349,7 +1349,7 @@ end
 -- buttons straddle the border and go back there on every reload, wherever they were dragged (11-13,
 -- /fui mapdebug: they were above the border all along). LibDBIcon's own SetButtonRadius pulls every
 -- button inside the square, the way minimap replacements do; LibDBIcon keeps placing them there.
--- Square style: where LibDBIcon's buttons sit (11-13, after several rounds with Marcus). LibDBIcon places
+-- Square style: where LibDBIcon's buttons sit (11-13, after several rounds with Malkkav). LibDBIcon places
 -- them on a circle (the shape it was told was round), at a saved angle, and the order addons load in
 -- changed them on every reload. FlareUI places them itself, every time LibDBIcon does (SetPoint):
 -- * by default they sit packed along the bottom border, from just right of the sundial, in name
@@ -1461,7 +1461,7 @@ function MM.PullButtonsIn()
     MM.PlaceAllButtons()
 end
 
--- FlareUI's own minimap button (11-13, Marcus; 11-14 its own option): with FlareUI Minimap Button on
+-- FlareUI's own minimap button (11-13, Malkkav; 11-14 its own option): with FlareUI Minimap Button on
 -- (minimap.flareButton), on the minimap unless the drawer holds FlareUI (MinimapBag.lua Bag.FlareIn).
 -- Left-click opens the settings, right-click turns the option off (back on only in the settings). It
 -- sits and drags like the LibDBIcon buttons: in the packed row on the square map, its spot saved as

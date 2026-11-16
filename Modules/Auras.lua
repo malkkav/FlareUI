@@ -1055,7 +1055,7 @@ function CDM.StyleBar(item)
 end
 
 -- An Essential or Utility cooldown icon, as the action buttons with FlareUI Borders (ActionBars.lua
--- 6b, 11-11 Marcus): Blizzard's ring off and FlareUI Frames on the icon's edge, the rest Blizzard's
+-- 6b, 11-11 Malkkav): Blizzard's ring off and FlareUI Frames on the icon's edge, the rest Blizzard's
 CDM.BUTTON_BORDER, CDM.BUTTON_EDGE, CDM.BUTTON_SIZE = "FlareUI Frames", 16, 50   -- (Essential's icon size)
 function CDM.StyleCooldownIcon(item)
     local p = CDM.Pieces(item)

@@ -1,7 +1,6 @@
 local _, ns = ...
 local L = ns.LocaleStrings("zhCN")
 
---@localization(locale="zhCN", format="lua_additive_table", handle-unlocalized="ignore")@
 
 -- Core Chinese translations maintained for FlareUI.
 
@@ -774,7 +773,7 @@ L["How aura icons show their time left."] = "光环图标如何显示剩余时�
 L["How channels show in chat:\n* Full: \"[1. General - Elwynn Forest]\"\n* Short: \"[1. General]\", \"[G]\" for Guild, \"[P]\" for Party\n* Number: \"[1]\", \"[G]\", \"[P]\""] = "频道在聊天中的显示方式：\n* 完整：[1. 综合 - 艾尔文森林]\n* 简短：[1. 综合]，公会显示为 [G]，队伍显示为 [P]\n* 数字：[1]、[G]、[P]"
 L["How dark the chat's background is."] = "聊天背景的暗度。"
 L["How dark the edit box's background is."] = "输入框背景的暗度。"
-L["How dark the empty part of the bars is."] = "动作条空白部分的暗度。"
+L["How dark the empty part of the bars is."] = "状态条空白部分的暗度。"
 L["How dark the loot roll window's background is."] = "拾取掷骰窗口背景的暗度。"
 L["How dark the meter's background is."] = "计量条背景的暗度。"
 L["How dark the tooltips' background is."] = "鼠标提示背景的暗度。"
@@ -1440,7 +1439,7 @@ L["Speak to the Marshal"] = "与元帅交谈"
 L["Spell"] = "法术"
 L["Spell Behavior"] = "法术行为"
 L["Spell ID"] = "法术 ID"
-L["Spell Pushback"] = "法术击退"
+L["Spell Pushback"] = "施法延迟"
 L["Spell Queue Window"] = "法术队列窗口"
 L["Spellbook"] = "法术书"
 L["Spells"] = "法术"

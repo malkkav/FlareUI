@@ -22,7 +22,7 @@ const webhook = process.env.DISCORD_CHANGELOG_WEBHOOK;
 // the forum tags this release gets: [name, its ID or undefined]
 function Tags(ver, body) {
   const parts = ver.split('.');
-  // (11-14, Marcus) small additions now ship as X.Y.Z too: one with a New section is still an Update
+  // (11-14, Malkkav) small additions now ship as X.Y.Z too: one with a New section is still an Update
   const hasNew = /^## New\b/m.test(body);
   const kind = parts.length >= 3 ? (hasNew ? 'UPDATE' : 'HOTFIX') : (parts.length === 1 || parts[1] === '0') ? 'MAJOR' : 'UPDATE';
   const tags = [kind];

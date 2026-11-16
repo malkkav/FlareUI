@@ -22,7 +22,7 @@ local canaccessvalue, issecretvalue = canaccessvalue, issecretvalue
 local LEM = LibStub("FlareEditMode")
 local LSM = LibStub("LibSharedMedia-3.0")
 
--- (11-15, Marcus) no tooltips on the Edit Mode samples: LR.previewing while they show
+-- (11-15, Malkkav) no tooltips on the Edit Mode samples: LR.previewing while they show
 local function Tip(owner, anchor)
     if LR.previewing then return false end
     ns.OwnGameTooltip(owner, anchor)
@@ -31,12 +31,12 @@ end
 
 local W, PAD, HEADER = 300, 10, 26
 local TEXT_W = 300 - 20 - 49   -- right of the icon, to the card's right edge
--- (11-15, Marcus) the Need / Greed / Pass buttons a little smaller: 24 -> 21
+-- (11-15, Malkkav) the Need / Greed / Pass buttons a little smaller: 24 -> 21
 local ICON, CARD_H, BUTTON, ROW, CARD_GAP = 40, 52, 21, 15, 9
 local HOLD = 8               -- seconds a card stays after its result
 local RESULT_GRACE = 30      -- seconds after the roll's end to wait for its result
 local ITEM_RETRY_DELAY = 0.25
--- (11-15) Marcus's spot, the same as the Movers' loot default (one Edit Mode frame)
+-- (11-15) Malkkav's spot, the same as the Movers' loot default (one Edit Mode frame)
 local DEFAULTS = { point = "TOP", x = 0, y = -221 }
 local MOVER_KEY = "loot"     -- tweaks.moverLayouts[layout].loot: the Movers' "FlareUI Loot Rolls" spot
 local HISTORY_ICON = "Interface\\AddOns\\FlareUI\\Media\\Icons\\DMSegments.tga"
@@ -390,11 +390,11 @@ end
 -- 4. FLAREUI PANEL PIECES
 --------------------------------------------------
 local function Panel(frame)
-    local edge = LSM:Fetch("border", "FlareUI Thin")   -- (11-15, Marcus: thin, not thick)
+    local edge = LSM:Fetch("border", "FlareUI Thin")   -- (11-15, Malkkav: thin, not thick)
     local bg = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
     frame:SetBackdrop({ bgFile = bg, edgeFile = edge, tile = false, edgeSize = ns.BorderEdgeSize(edge, 16),
         insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-    -- Frame Opacity (Bags & Looting, tweaks.lootRollsOpacity; 11-15, Marcus: as the chat and meter)
+    -- Frame Opacity (Bags & Looting, tweaks.lootRollsOpacity; 11-15, Malkkav: as the chat and meter)
     local db = GetDb()
     frame:SetBackdropColor(1, 1, 1, (db and tonumber(db.lootRollsOpacity)) or 1)
     local c = ns.BORDER_COLOR
@@ -414,7 +414,7 @@ local function HeaderButton(parent, iconPath, onClick, tooltip)
     b:SetSize(16, 16)
     b.icon = b:CreateTexture(nil, "OVERLAY")
     b.icon:SetPoint("CENTER")
-    b.icon:SetSize(12, 12)   -- (11-15, Marcus: was 16, too big)
+    b.icon:SetSize(12, 12)   -- (11-15, Malkkav: was 16, too big)
     ns.BronzeIcon.Apply(b.icon, iconPath, ICON_COLOR)
     b:SetScript("OnClick", onClick)
     b:SetScript("OnEnter", function(self)
@@ -1040,7 +1040,7 @@ function LR:Init()
     local title = Text(win, "GameFontNormal")
     title:SetPoint("TOPLEFT", PAD + 2, -9)
     title:SetText(L["Loot Rolls"])
-    -- (11-15, Marcus) FlareUI's bronze, as a selected chat tab, not Blizzard's yellow
+    -- (11-15, Malkkav) FlareUI's bronze, as a selected chat tab, not Blizzard's yellow
     title:SetTextColor(0.80, 0.60, 0.34)
     win.count = Text(win, "GameFontDisableSmall", true)
     win.count:SetPoint("LEFT", title, "RIGHT", 5, 0)
@@ -1051,7 +1051,7 @@ function LR:Init()
         end, L["Loot History"])
         historyButton:SetPoint("TOPRIGHT", -PAD + 2, -5)
     end
-    -- (11-15, Marcus) the chat's and Damage Meter's header separator (Blizzard's tooltip divider)
+    -- (11-15, Malkkav) the chat's and Damage Meter's header separator (Blizzard's tooltip divider)
     local line = win:CreateTexture(nil, "OVERLAY")
     line:SetTexture("Interface\\Common\\UI-TooltipDivider-Transparent")
     line:SetHeight(8)

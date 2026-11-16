@@ -19,7 +19,7 @@ end
 
 S:Module{ key = "tt", group = "interface", order = 20, enabled = "tooltips.enabled", tabs = { { key = "settings" }, { key = "tweaks" }, { key = "fonts" } } }
 
--- SETTINGS TAB (11-14, Marcus): Look, then Mouseover (where each kind sits), then Visibility (when each
+-- SETTINGS TAB (11-14, Malkkav): Look, then Mouseover (where each kind sits), then Visibility (when each
 -- kind shows). The Tweaks tab holds the content switches.
 
 -- LOOK: Tooltip Corner first (which corner of the HUD Tooltip box the tooltip grows from, ApplyAnchor)
@@ -33,7 +33,7 @@ S:Row{ key = "tt.healthBar", apply = Refresh,
     get = function() return not S:GetPath("tooltips.hideHealthBar") end,
     set = function(on) S:SetPath("tooltips.hideHealthBar", not on) end }
 
--- MOUSEOVER (11-14, Marcus): one dropdown of toggles. All Tooltips or None clear the rest; ticking kinds
+-- MOUSEOVER (11-14, Malkkav): one dropdown of toggles. All Tooltips or None clear the rest; ticking kinds
 -- picks only those (each an exception to the main switch, Tooltips.lua TIP.SetKindMouseover); all six
 -- ticked is All Tooltips again. Saved as before: tooltips.mouseover + tooltips.mouseoverKinds.
 local KINDS = { "world", "frames", "bars", "auras", "groupAuras", "other" }

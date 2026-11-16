@@ -915,6 +915,13 @@ function Ring.Layout(f)
         ring.Art:SetPoint("BOTTOMRIGHT", ring, "BOTTOMRIGHT", left and 0 or out, -(1 - box[4]) * h)
         ring.hasArt = Crop(ring.Art, art, g.side, { box[1], 1, 0, 1 })
     end
+    -- (11-15, Malkkav) FlareUI Style: Blizzard's gold ring toned down towards the frame's bronze border
+    -- (ns.BORDER_COLOR #A67D45), still a little brighter than it; Forever Style keeps Blizzard's ring
+    if plate then
+        ring.Art:SetVertexColor(1, 1, 1)
+    else
+        ring.Art:SetVertexColor(0.80, 0.70, 0.56)
+    end
     ring:SetShown(ring.hasArt)
     do
         -- the whole art past the plate's end; before it only the ring, as the art's copy of the plate's
@@ -1078,7 +1085,7 @@ local function BuildPlate(f)
     plate:SetAllPoints(f)
     plate.pieces = {}
     for i = 1, 3 * (#PLATE.cutY - 1) do plate.pieces[i] = plate:CreateTexture(nil, "BACKGROUND") end
-    -- (11-15, Marcus) Threat / Combat Glow on the plate: a lit copy of its art over it, tinted and
+    -- (11-15, Malkkav) Threat / Combat Glow on the plate: a lit copy of its art over it, tinted and
     -- pulsing with the ring's tint (one animation group, so every piece beats together). Added
     -- light: the bright metal glows, the dark slots stay dark.
     plate.glow = {}

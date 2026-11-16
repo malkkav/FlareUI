@@ -367,7 +367,7 @@ local function Repaint()
     DrawPreviews()
 end
 
--- PALETTES (11-11, Marcus): the foot's dropdown picks FlareUI (the default), Blizzard or Custom, shown
+-- PALETTES (11-11, Malkkav): the foot's dropdown picks FlareUI (the default), Blizzard or Custom, shown
 -- at once. FlareUI and Blizzard drop your own colours; Custom with nothing changed draws FlareUI's.
 -- Changing any colour makes it Custom (from the palette shown). Reset (only on Custom with changes)
 -- gives every colour back. Apply keeps it all and closes; closing any other way puts back what the

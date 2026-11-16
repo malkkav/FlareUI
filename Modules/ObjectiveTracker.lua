@@ -50,6 +50,10 @@ local C = {
     SORT_TICK = 2,          -- seconds between distance checks
     BUTTON_ROOM = 13,       -- beside a title, for each focus / play button
     BUTTON_SIZE = 12,
+    -- Quest Icons: Blizzard's quest button (20 px on its tracker) at this size, and the room it takes
+    POI_SIZE = 16, POI_ROOM = 17, POI_BLIZZARD = 20,
+    FOLD_ROOM = 16,         -- Collapsible Zones: room right of a heading for its fold arrow
+    UNTRACKED_ALPHA = 0.55, -- Show Untracked Quests: how bright an untracked quest's text is
     -- Quest animations: px a quest slides, seconds for it to move, leave, and for a sheen to cross
     SLIDE = 24, MOVE_TIME = 0.25, LEAVE_TIME = 0.3, SHEEN_TIME = 0.6, SHEEN_WIDTH = 36,
     -- colours: zone headers in FlareUI's tab bronze, titles in Blizzard's tracker gold and blue
@@ -83,6 +87,7 @@ local TEXT = {
     unfocus = _G.STOP_SUPER_TRACK_QUEST or "Stop Focusing",
     openLog = _G.OBJECTIVES_VIEW_IN_QUESTLOG or "Open Quest Log",
     untrack = _G.OBJECTIVES_STOP_TRACKING or "Untrack Quest",
+    track = _G.TRACK_QUEST or "Track Quest",
     share = _G.SHARE_QUEST or "Share Quest",
     abandon = _G.ABANDON_QUEST_ABBREV or "Abandon Quest",
     recipes = _G.PROFESSIONS_TRACKER_HEADER_PROFESSION or "Professions",
@@ -348,6 +353,7 @@ end
 local function ByOrder(a, b)
     if a.ftRank ~= b.ftRank then return a.ftRank < b.ftRank end
     if a.ftFocus ~= b.ftFocus then return a.ftFocus end   -- Focused Quest First
+    if a.ftUntracked ~= b.ftUntracked then return not a.ftUntracked end   -- Show Untracked Quests: after the tracked
     if a.ftDone ~= b.ftDone then return not a.ftDone end
     -- by level or progress: 0 for every quest in the other orders
     if a.ftLevel ~= b.ftLevel then return a.ftLevel < b.ftLevel end
@@ -444,10 +450,23 @@ local function CollectQuests(db)
     wipe(questBuf)
     local header
     local watched = 0
+    -- Show Untracked Quests (11-15, jams): with zone headings, the quests of the zone you are in that
+    -- you don't track are listed too (dimmed, after the tracked ones). Tracking is never changed here
+    local showUntracked = db.showUntracked and db.zoneHeaders and not db.sortByLevel and not db.sortByProgress
+    state.untrackedShown = false
     for _, info in ipairs(logBuf) do
+        local questID = info.questID
+        local loose = showUntracked and not info.isHeader and not info.ftWatched and not info.isHidden
+            and not info.isTask and not info.isBounty and canaccessvalue(questID) and type(questID) == "number" and questID > 0
+        local here
+        if loose then
+            local onMap = C_QuestLog.IsOnMap(questID)
+            here = (header and zoneNames[header]) or (canaccessvalue(onMap) and onMap)
+            loose = here and true or false
+        end
         if info.isHeader then
             header = info.title
-        elseif info.ftWatched then
+        elseif info.ftWatched or loose then
             local byDistance = OT.SortsByDistance(db)
             local distance = byDistance and Distance(info.questID) or 0
             -- every watched quest, listed or not: one coming into its zone has moved nearer too
@@ -455,9 +474,11 @@ local function CollectQuests(db)
                 watched = watched + 1
                 sortIDs[watched], sortDist[watched] = info.questID, distance
             end
-            local here = (header and zoneNames[header]) or C_QuestLog.IsOnMap(info.questID)
+            if here == nil then here = (header and zoneNames[header]) or C_QuestLog.IsOnMap(info.questID) end
             -- a running timer stays listed outside its zone
             if here or not db.zoneOnly or questTimers[info.questID] then
+                info.ftUntracked = loose and true or false
+                if loose then state.untrackedShown = true end
                 info.ftIndex = #questBuf + 1
                 info.ftHeader = header or _G.OTHER or "Other"
                 info.ftHere = here and true or false
@@ -786,7 +807,10 @@ local function ShowQuestMenu(owner, questID)
         root:CreateButton(L["Wowhead Link"], function()
             ns.ShowDialog("FLAREUI_QUEST_LINK", nil, ("https://www.wowhead.com/forever/quest=%d/"):format(questID))
         end)
-        if QuestUtil.CanRemoveQuestWatch() then
+        if C_QuestLog.GetQuestWatchType(questID) == nil then
+            -- an untracked quest (Show Untracked Quests): tracked only when the player picks this
+            root:CreateButton(TEXT.track, function() C_QuestLog.AddQuestWatch(questID) end)
+        elseif QuestUtil.CanRemoveQuestWatch() then
             root:CreateButton(TEXT.untrack, function() C_QuestLog.RemoveQuestWatch(questID) end)
         end
         root:CreateDivider()
@@ -902,6 +926,11 @@ local function QuestTooltip(line, retry)
         end)
     end
     AddPartyProgress(questID)
+    -- Show Untracked Quests: how to track one from here
+    if C_QuestLog.GetQuestWatchType(questID) == nil then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(L["Not tracked. Shift-click to track it."], 0.6, 0.6, 0.6)
+    end
     GameTooltip:Show()
 end
 
@@ -936,6 +965,10 @@ local function OnLineClick(self, button)
             ToggleZoneQuests(self.zone)
             return
         end
+        -- Collapsible Zones off: a quest zone's heading is only a label (Professions and a
+        -- scenario's heading still fold)
+        local db = GetDb()
+        if self.questZone and db and db.collapsibleZones == false then return end
         local z = Char().collapsedZones
         z[self.zone] = not z[self.zone] or nil
         OT:RequestRender()
@@ -964,10 +997,13 @@ local function OnLineClick(self, button)
         GameTooltip:Hide()
         ShowQuestMenu(self, questID)
     elseif IsShiftKeyDown() then
-        -- while typing in chat it links the quest; otherwise it untracks it (the list only holds tracked quests)
+        -- while typing in chat it links the quest; otherwise it untracks it, or tracks an untracked
+        -- one (Show Untracked Quests), as a shift-click in the quest log does
         local link = GetQuestLink(questID)
         if link and ChatFrameUtil.GetActiveWindow() then
             ChatFrameUtil.InsertLink(link)
+        elseif C_QuestLog.GetQuestWatchType(questID) == nil then
+            C_QuestLog.AddQuestWatch(questID)
         elseif QuestUtil.CanRemoveQuestWatch() then
             C_QuestLog.RemoveQuestWatch(questID)
         end
@@ -1173,6 +1209,104 @@ local function LineButton(line, key)
     b:SetScript("OnLeave", function(self) local p = self:GetParent(); p:GetScript("OnLeave")(p) end)
     line[key] = b
     return b
+end
+
+-- Quest Icons (11-15, Haisen): the round quest button of Blizzard's tracker, left of each title: a
+-- yellow "..." while in progress, a "?" when ready to turn in, the focused quest in Blizzard's
+-- selected look (its own ring, brown dots, the outer glow). Blizzard's atlases (Blizzard_POIButton
+-- POIButton.lua) on a button of FlareUI's own: POIButtonTemplate's mixin reaches into map pins,
+-- quest caches and the highlight manager, so none of that runs from here. A click focuses the
+-- quest, or stops focusing it, as ToggleFocus does.
+function Build.SizeAtlas(tex, atlas, k)
+    tex:SetAtlas(atlas, true)
+    local w, h = tex:GetSize()
+    if w and h then tex:SetSize(w * k, h * k) end
+end
+
+function Build.QuestIcon(line)
+    local b = CreateFrame("Button", nil, line)
+    b:SetSize(C.POI_SIZE, C.POI_SIZE)
+    local k = C.POI_SIZE / C.POI_BLIZZARD
+    b.glow = b:CreateTexture(nil, "BACKGROUND")
+    b.glow:SetPoint("CENTER")
+    b.glow:SetBlendMode("ADD")
+    Build.SizeAtlas(b.glow, "UI-QuestPoi-OuterGlow", k)
+    b.ring = b:CreateTexture(nil, "ARTWORK")
+    b.ring:SetPoint("CENTER")
+    b.mark = b:CreateTexture(nil, "OVERLAY")
+    b.mark:SetPoint("CENTER")
+    -- (a Button shows its HIGHLIGHT layer while pointed at)
+    b.lit = b:CreateTexture(nil, "HIGHLIGHT")
+    b.lit:SetPoint("CENTER")
+    b.lit:SetBlendMode("ADD")
+    Build.SizeAtlas(b.lit, "UI-QuestPoi-InnerGlow", k)
+    return b
+end
+
+-- done: ready to turn in; focused: the super-tracked quest; pressed: held down (Blizzard's pressed ring)
+function Build.PaintQuestIcon(b, done, focused, pressed)
+    local k = C.POI_SIZE / C.POI_BLIZZARD
+    Build.SizeAtlas(b.ring, "UI-QuestPoi-QuestNumber" .. (pressed and "-Pressed" or "") .. (focused and "-SuperTracked" or ""), k)
+    local mark = done and "UI-QuestIcon-TurnIn-Normal"
+        or (focused and "Quest-In-Progress-Icon-Brown" or "Quest-In-Progress-Icon-yellow")
+    Build.SizeAtlas(b.mark, mark, k)
+    b.mark:SetPoint("CENTER", pressed and 1 or 0, pressed and -1 or 0)
+    b.glow:SetShown(focused and true or false)
+end
+
+function OT.QuestIconButton(line)
+    local b = line.questIcon
+    if b then return b end
+    b = Build.QuestIcon(line)
+    b:RegisterForClicks("LeftButtonUp")
+    b:SetScript("OnEnter", function(self) local p = self:GetParent(); p:GetScript("OnEnter")(p) end)
+    b:SetScript("OnLeave", function(self) local p = self:GetParent(); p:GetScript("OnLeave")(p) end)
+    b:SetScript("OnMouseDown", function(self) Build.PaintQuestIcon(self, self.ftDone, self.ftFocus, true) end)
+    b:SetScript("OnMouseUp", function(self) Build.PaintQuestIcon(self, self.ftDone, self.ftFocus, false) end)
+    b:SetScript("OnClick", function(self)
+        if not self.questID or state.editMode then return end
+        local focused = C_SuperTrack.GetSuperTrackedQuestID() == self.questID
+        if SOUNDKIT then PlaySound(focused and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON) end
+        ToggleFocus(self.questID)
+    end)
+    line.questIcon = b
+    return b
+end
+
+-- Places a title's quest icon (painted again only when its state changed)
+function Build.PlaceQuestIcon(b, line, x, titleCfg, done, focused)
+    done, focused = done and true or false, focused and true or false
+    if b.ftDone ~= done or b.ftFocus ~= focused then
+        b.ftDone, b.ftFocus = done, focused
+        Build.PaintQuestIcon(b, done, focused, false)
+    end
+    b:ClearAllPoints()
+    b:SetPoint("RIGHT", line, "TOPLEFT", x + 1, -FontHeight(titleCfg, 12) / 2)
+    b:Show()
+end
+
+-- Collapsible Zones: Blizzard's tracker's section arrow (collapse / expand) at a heading's right end
+function Build.FoldIcon(line, show, folded, cfg)
+    local icon = line.foldIcon
+    if not show then
+        if icon then icon:Hide() end
+        return
+    end
+    if not icon then
+        icon = line:CreateTexture(nil, "ARTWORK")
+        line.foldIcon = icon
+    end
+    local h = FontHeight(cfg, 13) - 2
+    local atlas = folded and "ui-questtrackerbutton-secondary-expand" or "ui-questtrackerbutton-secondary-collapse"
+    if icon.ftAtlas ~= atlas or icon.ftH ~= h then
+        icon.ftAtlas, icon.ftH = atlas, h
+        icon:SetAtlas(atlas, true)
+        local w0, h0 = icon:GetSize()
+        if w0 and h0 and h0 > 0 then icon:SetSize(w0 * h / h0, h) else icon:SetSize(h, h) end
+    end
+    icon:ClearAllPoints()
+    icon:SetPoint("LEFT", line, "TOPRIGHT", 2, -(h + 2) / 2)
+    icon:Show()
 end
 
 -- Voice lines from the Spoken addon's quest part, when it is installed, switched on and has this quest
@@ -1404,9 +1538,21 @@ end
 
 -- Colour Names by Difficulty: the name in its level's colour, unless complete or focused (one
 -- table per colour, so a line keeps its colour between renders)
+-- Show Complete Tag (11-15, vyf; on by default): off, a finished quest looks like any other (no green
+-- title, no "(Complete)", its turn-in line in the objectives' colour), as on the old tracker
+function Build.CompleteTag(db) return db.showCompleteTag ~= false end
+
+function Build.DoneColor(db) return Build.CompleteTag(db) and C.TITLE_DONE or C.OBJECTIVE end
+
+-- Room left of the titles: a quest icon or a focus dot, and a voice button
+function Build.TitleRoom(db, showPlay)
+    local first = db.questIcons and C.POI_ROOM or (db.focusButtons and C.BUTTON_ROOM or 0)
+    return first + (showPlay and C.BUTTON_ROOM or 0)
+end
+
 function Build.TitleColor(db, level, questID, focus, done)
     if focus then return C.TITLE_FOCUS end
-    if done then return C.TITLE_DONE end
+    if done and Build.CompleteTag(db) then return C.TITLE_DONE end
     if not (db.colorNames and level) then return C.TITLE end
     local c = Build.DifficultyColor(level, questID)
     local key = string_format("%.3f %.3f %.3f", c.r, c.g, c.b)
@@ -1419,7 +1565,8 @@ function Build.TitleColor(db, level, questID, focus, done)
     return color
 end
 
--- done: a finished quest gets a green "(Complete)" after its name (always; shown when folded too)
+-- done: a finished quest gets a green "(Complete)" after its name (shown when folded too), unless
+-- Show Complete Tag is off
 function Build.TitleText(db, level, tags, title, collapsed, questID, done)
     local prefix = ""
     if level then
@@ -1434,7 +1581,7 @@ function Build.TitleText(db, level, tags, title, collapsed, questID, done)
     -- (11-15, vyf) a language FlareUI hasn't translated it into takes the game's own word (COMPLETE)
     local word = L["(Complete)"]
     if word == "(Complete)" and type(COMPLETE) == "string" and COMPLETE ~= "" then word = "(" .. COMPLETE .. ")" end
-    local tag = done and (" " .. ColorCode(C.TITLE_DONE) .. word .. "|r") or ""
+    local tag = (done and Build.CompleteTag(db)) and (" " .. ColorCode(C.TITLE_DONE) .. word .. "|r") or ""
     return prefix .. title .. tag .. (collapsed and ("  " .. ColorCode(C.DIM) .. "+|r") or "")
 end
 
@@ -1487,11 +1634,18 @@ function OT:Render()
     fonts.header, fonts.title, fonts.objective = db.headerFont, db.titleFont, db.objectiveFont
     local wrap = db.wrapText ~= false
 
-    -- (what a pooled line was given last is kept: Build.LineLook)
-    local function AddLine(text, kind, color, indent)
+    -- Show Untracked Quests: lines added while this is on are dimmed
+    local dimLines = false
+
+    -- (what a pooled line was given last is kept: Build.LineLook); rightRoom: kept free right of the text
+    local function AddLine(text, kind, color, indent, rightRoom)
         n = n + 1
         local line = GetLine(n)
-        local h = Build.LineLook(line, text, kind, fonts[kind], color, width - (indent or 0), wrap)
+        local h = Build.LineLook(line, text, kind, fonts[kind], color, width - (indent or 0) - (rightRoom or 0), wrap)
+        if line.ftDim ~= dimLines then
+            line.ftDim = dimLines
+            line.text:SetAlpha(dimLines and C.UNTRACKED_ALPHA or 1)
+        end
         line:ClearAllPoints()
         line.ftY = y
         -- the mouse area reaches the band's edges and the gap to the next line
@@ -1503,9 +1657,11 @@ function OT:Render()
         line:SetPoint("TOPLEFT", content, "TOPLEFT", line.ftX, y)
         line.questID, line.zone, line.recipeID, line.recipeName, line.logIndex = nil, nil, nil, nil, nil
         line.group, line.sampleItem = nil, nil
-        line.popupQuestID, line.popupType, line.timerBar = nil, nil, nil
+        line.popupQuestID, line.popupType, line.timerBar, line.questZone = nil, nil, nil, nil
         if line.focusButton then line.focusButton:Hide() end
         if line.playButton then line.playButton:Hide() end
+        if line.questIcon then line.questIcon:Hide() end
+        if line.foldIcon then line.foldIcon:Hide() end
         if line.leaving then
             line.leaving = nil
             line.leaveAnim:Stop()
@@ -1533,14 +1689,32 @@ function OT:Render()
         return TEXT.ready
     end
 
+    -- Collapsible Zones (on by default: a heading click folds it, as before 11-15) adds the fold arrow;
+    -- off, quest zones stay open (what was folded is kept for when it is on again)
+    local foldIcons = db.collapsibleZones ~= false
+    -- whether a heading is folded: as it was when the fight began while quest item buttons hold the
+    -- list still (FreezeForCombat), else the character's choice. questZone: a quest zone's heading
+    local function ZoneFolded(name, questZone)
+        if questZone and not foldIcons then return false end
+        local frozen = state.frozenZones
+        if frozen then return frozen[name] and true or false end
+        return char.collapsedZones[name] and true or false
+    end
+    local function AddHeading(text, name, folded, questZone)
+        local line = AddLine(text, "header", C.ZONE, nil, foldIcons and C.FOLD_ROOM or nil)
+        line.zone, line.questZone = name, questZone
+        Build.FoldIcon(line, foldIcons, folded, fonts.header)
+        return line
+    end
+
     -- The running scenario's stage and objectives, which live in the parked tracker
     local function AddScenario()
         local name = C_Scenario.GetInfo()
         local stage, _, numCriteria = C_Scenario.GetStepInfo()
         local title = (canaccessvalue(name) and name) or (canaccessvalue(stage) and stage) or nil
         if not title or title == "" then return false end
-        local collapsed = char.collapsedZones[title]
-        AddLine(title, "header", C.ZONE).zone = title
+        local collapsed = ZoneFolded(title)
+        AddHeading(title, title, collapsed)
         if collapsed then return true end
         y = y - C.ZONE_GAP
         if canaccessvalue(stage) and stage and stage ~= "" and stage ~= title then AddLine(stage, "title", C.TITLE) end
@@ -1571,12 +1745,20 @@ function OT:Render()
     local previewing = state.editMode or state.preview
     local voiceReady = db.playButtons and VoiceOverReady()
     local showPlay = db.playButtons and (previewing or voiceReady)
-    local titleRoom = (db.focusButtons and C.BUTTON_ROOM or 0) + (showPlay and C.BUTTON_ROOM or 0)
+    -- Quest Icons show the focus the Blizzard way: the focus dot steps aside while they are on
+    local questIcons = db.questIcons
+    local titleRoom = Build.TitleRoom(db, showPlay)
     local objectiveIndent = C.INDENT + titleRoom
 
-    local function AddTitleButtons(line, questID, isFocused)
+    local function AddTitleButtons(line, questID, isFocused, done)
         local x = -3
-        if db.focusButtons then
+        if questIcons then
+            local b = OT.QuestIconButton(line)
+            b.questID = questID
+            Build.PlaceQuestIcon(b, line, x, fonts.title, done, isFocused)
+            b:SetAlpha(dimLines and C.UNTRACKED_ALPHA or 1)
+            x = x - C.POI_ROOM
+        elseif db.focusButtons then
             local b = LineButton(line, "focusButton")
             b.questID = questID
             b.icon:SetTexture(isFocused and "Interface\\Common\\Indicator-Yellow" or "Interface\\Common\\Indicator-Gray")
@@ -1628,13 +1810,13 @@ function OT:Render()
                 if s.zone then
                     if db.zoneHeaders then
                         if n > 0 then y = y - C.GROUP_GAP end
-                        AddLine(s.text, "header", C.ZONE)
+                        AddHeading(s.text, nil, false)
                         y = y - C.ZONE_GAP
                     end
                 else
                     local color = TitleColor(s.level, nil, s.focus, s.done)
                     local line = AddLine(TitleText(s.level, s.tags or "", s.title, nil, nil, s.done), "title", color, titleRoom)
-                    AddTitleButtons(line, nil, s.focus)
+                    AddTitleButtons(line, nil, s.focus, s.done)
                     if s.item then
                         line.sampleItem = s.item
                         titleLines[#titleLines + 1] = line
@@ -1663,22 +1845,25 @@ function OT:Render()
             for _, q in ipairs(quests) do
                 empty = false
                 order[#order + 1] = q.questID
-                local zoneCollapsed = headings and char.collapsedZones[q.ftHeader]
+                -- (a folded zone that holds the focused quest stays folded: the player folded it)
+                local zoneCollapsed = headings and ZoneFolded(q.ftHeader, true)
                 if headings and q.ftHeader ~= lastHeader then
                     lastHeader = q.ftHeader
                     if n > 0 then y = y - C.GROUP_GAP end
                     local text = zoneCollapsed and string_format("%s  %s(%d)|r", q.ftHeader, ColorCode(C.DIM), zoneCounts[q.ftHeader]) or q.ftHeader
-                    AddLine(text, "header", C.ZONE).zone = q.ftHeader
+                    AddHeading(text, q.ftHeader, zoneCollapsed, true)
                     if not zoneCollapsed then y = y - C.ZONE_GAP end
                 end
                 if not zoneCollapsed then
+                    dimLines = q.ftUntracked and true or false
                     local collapsed = IsCollapsed(q.questID)
                     local complete = C_QuestLog.IsComplete(q.questID)
                     local color = TitleColor(q.difficultyLevel or q.level, q.questID, q.questID == focused, complete)
                     local line = AddLine(TitleText(q.difficultyLevel or q.level, db.showTags and QuestTags(q) or "", q.title or "?", collapsed, q.questID, complete), "title", color, titleRoom)
                     line.questID, line.logIndex = q.questID, q.ftLogIndex
-                    titleLines[#titleLines + 1] = line
-                    AddTitleButtons(line, q.questID, q.questID == focused)
+                    -- quest item buttons for tracked quests only, as on Blizzard's tracker
+                    if not q.ftUntracked then titleLines[#titleLines + 1] = line end
+                    AddTitleButtons(line, q.questID, q.questID == focused, complete)
                     -- what this quest looked like last time, to tell what has just finished
                     local seen = state.seen[q.questID]
                     local now = { complete = complete }
@@ -1703,7 +1888,7 @@ function OT:Render()
                     end
                     if not collapsed then
                         if complete then
-                            local ready = AddLine(CompleteText(q), "objective", C.TITLE_DONE, objectiveIndent)
+                            local ready = AddLine(CompleteText(q), "objective", Build.DoneColor(db), objectiveIndent)
                             ready.questID = q.questID
                             if seen and seen.complete == false then state.sheens[#state.sheens + 1] = ready end
                         elseif C_QuestLog.IsFailed(q.questID) then
@@ -1743,6 +1928,7 @@ function OT:Render()
                         state.seen[q.questID] = nil   -- nothing is lit for what finished out of sight
                     end
                     y = y - questGap
+                    dimLines = false
                 end
             end
 
@@ -1753,9 +1939,9 @@ function OT:Render()
             if #recipes > 0 then
                 empty = false
                 if n > 0 then y = y - C.GROUP_GAP end
-                local collapsedRecipes = char.collapsedZones[TEXT.recipes]
+                local collapsedRecipes = ZoneFolded(TEXT.recipes)
                 local text = collapsedRecipes and string_format("%s  %s(%d)|r", TEXT.recipes, ColorCode(C.DIM), #recipes) or TEXT.recipes
-                AddLine(text, "header", C.ZONE).zone = TEXT.recipes
+                AddHeading(text, TEXT.recipes, collapsedRecipes)
                 if not collapsedRecipes then
                     y = y - C.ZONE_GAP
                     for _, recipeID in ipairs(recipes) do
@@ -1804,9 +1990,10 @@ function OT:Render()
         line.group = key
         if key then
             -- (its buttons stand outside the line)
-            local focusB, playB = line.focusButton, line.playButton
+            local focusB, playB, iconB = line.focusButton, line.playButton, line.questIcon
             if line:IsMouseOver() or (focusB and focusB:IsShown() and focusB:IsMouseOver())
-                    or (playB and playB:IsShown() and playB:IsMouseOver()) then
+                    or (playB and playB:IsShown() and playB:IsMouseOver())
+                    or (iconB and iconB:IsShown() and iconB:IsMouseOver()) then
                 underMouse = key
             end
             local g = state.groups[key]
@@ -1864,7 +2051,7 @@ function OT:Render()
     -- Minimize Style "button": minimized, only a lone "+" shows at the anchored corner
     local lone = minimized and db.minimizeStyle == "button"
     -- Hide When Empty asks whether anything is tracked, not whether anything was drawn
-    local tracked = state.logTracked > 0 or inScenario
+    local tracked = state.logTracked > 0 or inScenario or state.untrackedShown
         or (db.showRecipes and C_TradeSkillUI and C_TradeSkillUI.GetRecipesTracked
             and #C_TradeSkillUI.GetRecipesTracked(false) > 0)
     local hide = not tracked and db.hideEmpty and not state.editMode and not state.preview
@@ -2153,6 +2340,10 @@ function OT:FreezeForCombat()
         collapsed[questID] = IsCollapsed(questID)
     end
     state.frozenOrder, state.frozenCollapsed = frozen, collapsed
+    -- folded zones hold too (a heading clicked in the fight folds once it ends)
+    local zones = {}
+    for name, v in pairs(Char().collapsedZones) do zones[name] = v end
+    state.frozenZones = zones
 end
 
 function OT:SetMinimized(minimized)
@@ -2722,7 +2913,7 @@ function OT:Init()
         elseif event == "PLAYER_REGEN_ENABLED" then
             ParkBlizzardTracker()
             local wasFrozen = state.frozenOrder ~= nil
-            state.frozenOrder, state.frozenCollapsed = nil, nil
+            state.frozenOrder, state.frozenCollapsed, state.frozenZones = nil, nil, nil
             OT:CheckContext()
             if wasFrozen then OT:Render() end
             if state.itemsDirty then OT:UpdateItemButtons() end
@@ -2855,11 +3046,18 @@ do
 
     -- the title's focus and voice buttons, as AddTitleButtons places them (previews show the voice
     -- button on every quest)
-    local function TitleButtons(line, db, focused)
+    local function TitleButtons(line, db, focused, done)
         local x = -3
         if line.focusButton then line.focusButton:Hide() end
         if line.playButton then line.playButton:Hide() end
-        if db.focusButtons then
+        if line.questIcon then line.questIcon:Hide() end
+        if db.questIcons then
+            local b = line.questIcon or Build.QuestIcon(line)
+            line.questIcon = b
+            b:EnableMouse(false)
+            Build.PlaceQuestIcon(b, line, x, db.titleFont, done, focused)
+            x = x - C.POI_ROOM
+        elseif db.focusButtons then
             local b = line.focusButton or Build.LineButton(line)
             line.focusButton = b
             b:EnableMouse(false)
@@ -2886,10 +3084,11 @@ do
         local wrap = db.wrapText ~= false
         local fonts = { header = db.headerFont, title = db.titleFont, objective = db.objectiveFont }
         local questGap = db.questGap or C.QUEST_GAP
-        local titleRoom = (db.focusButtons and C.BUTTON_ROOM or 0) + (db.playButtons and C.BUTTON_ROOM or 0)
+        local titleRoom = Build.TitleRoom(db, db.playButtons)
         local objectiveIndent = C.INDENT + titleRoom
+        local foldIcons = db.collapsibleZones ~= false
 
-        local function AddLine(text, kind, color, indent)
+        local function AddLine(text, kind, color, indent, rightRoom)
             n = n + 1
             local line = f.Lines[n]
             if not line then
@@ -2897,11 +3096,13 @@ do
                 line:EnableMouse(false)
                 f.Lines[n] = line
             end
-            local h = Build.LineLook(line, text, kind, fonts[kind], color, inner - (indent or 0), wrap)
+            local h = Build.LineLook(line, text, kind, fonts[kind], color, inner - (indent or 0) - (rightRoom or 0), wrap)
             line:ClearAllPoints()
             line:SetPoint("TOPLEFT", f.Content, "TOPLEFT", C.PAD + (indent or 0), y)
             if line.focusButton then line.focusButton:Hide() end
             if line.playButton then line.playButton:Hide() end
+            if line.questIcon then line.questIcon:Hide() end
+            if line.foldIcon then line.foldIcon:Hide() end
             line:Show()
             lastBottom = y - h
             y = y - h - C.LINE_GAP
@@ -2912,7 +3113,8 @@ do
             if s.zone then
                 if db.zoneHeaders then
                     if n > 0 then y = y - C.GROUP_GAP end
-                    AddLine(s.zone, "header", C.ZONE)
+                    local head = AddLine(s.zone, "header", C.ZONE, nil, foldIcons and C.FOLD_ROOM or nil)
+                    Build.FoldIcon(head, foldIcons, false, fonts.header)
                     y = y - C.ZONE_GAP
                 end
             else
@@ -2920,7 +3122,7 @@ do
                 local collapsed = s.done and db.collapseCompleted
                 local line = AddLine(Build.TitleText(db, s.level, s.tags or "", s.title, collapsed, nil, s.done), "title",
                     Build.TitleColor(db, s.level, nil, s.focus, s.done), titleRoom)
-                TitleButtons(line, db, s.focus)
+                TitleButtons(line, db, s.focus, s.done)
                 if s.timer then
                     local color = C.TIMER[#C.TIMER]
                     local timer = AddLine(TimerText(s.timer), "objective", color, objectiveIndent)
@@ -2938,7 +3140,7 @@ do
                 end
                 if not collapsed then
                     if s.done then
-                        AddLine(s.ready, "objective", C.TITLE_DONE, objectiveIndent)
+                        AddLine(s.ready, "objective", Build.DoneColor(db), objectiveIndent)
                     else
                         for _, o in ipairs(s.objectives) do
                             if not (db.hideFinished and o.finished) then

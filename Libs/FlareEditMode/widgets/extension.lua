@@ -35,6 +35,35 @@ function extensionMixin:Update(systemID, subSystemID)
 	self:Layout()
 end
 
+-- after the layout pass has sized the box (never during it: re-anchoring mid-layout left the box with
+-- no size, so its frame and background vanished)
+function extensionMixin:PlaceSoon()
+	if self.placePending then return end
+	self.placePending = true
+	C_Timer.After(0, function()
+		self.placePending = nil
+		self:Place()
+	end)
+end
+
+-- (FlareUI, 11-15, Malkkav) always right under Blizzard's dialog, so the two read as one panel; when
+-- the pair would run off the bottom of the screen (a frame near the bottom, like the chat), Blizzard's
+-- dialog moves up just enough for both to fit. The dialog is not protected and players drag it anyway.
+function extensionMixin:Place()
+	local dialog = EditModeSystemSettingsDialog
+	if not (dialog and self:IsShown()) then return end
+	local ds, s = dialog:GetEffectiveScale(), self:GetEffectiveScale()
+	local top, bottom, left = dialog:GetTop(), dialog:GetBottom(), dialog:GetLeft()
+	local h = self:GetHeight()
+	if not (top and bottom and left and h and h > 0) then return end
+	local short = h * s - bottom * ds          -- screen pixels missing below the dialog
+	if short <= 0 then return end
+	local screenTop = UIParent:GetTop() * UIParent:GetEffectiveScale()
+	local newTop = math.min(top * ds + short, screenTop)
+	dialog:ClearAllPoints()
+	dialog:SetPoint('TOPLEFT', UIParent, 'BOTTOMLEFT', left, newTop / ds)
+end
+
 function extensionMixin:RefreshWidgets()
 	for _, widget in next, self.Settings.widgets do
 		if widget.Refresh then
@@ -44,6 +73,7 @@ function extensionMixin:RefreshWidgets()
 
 	if self:IsShown() then
 		self:Layout()
+		self:PlaceSoon()   -- a section opened or closed: its height changed
 	end
 end
 
@@ -108,6 +138,35 @@ function extensionMixin:ResetSettings()
 
 		self:Update(self.systemID, self.subSystemID)
 	end
+end
+
+-- (FlareUI, 11-15, Malkkav) an Edit Mode dialog next to the frame it belongs to: to its right when there is
+-- room, else to its left, else above or below it; its top level with the frame's; the whole of it on
+-- screen. below: screen pixels that hang under the dialog (FlareUI's box under Blizzard's).
+function internal.PlaceNear(panel, target, below)
+	if not (panel and target and panel:IsShown()) then return end
+	local ts, ps = target:GetEffectiveScale(), panel:GetEffectiveScale()
+	local tl, tr, tt, tb = target:GetLeft(), target:GetRight(), target:GetTop(), target:GetBottom()
+	local pw, ph = panel:GetWidth(), panel:GetHeight()
+	if not (tl and tr and tt and tb and pw and ph and pw > 0) then return end
+	tl, tr, tt, tb = tl * ts, tr * ts, tt * ts, tb * ts
+	pw, ph = pw * ps, ph * ps + (below or 0)
+	local us = UIParent:GetEffectiveScale()
+	local sw, sh = UIParent:GetWidth() * us, UIParent:GetHeight() * us
+	local gap = 12 * us
+	local left, top
+	if tr + gap + pw <= sw then
+		left, top = tr + gap, tt
+	elseif tl - gap - pw >= 0 then
+		left, top = tl - gap - pw, tt
+	else
+		-- a frame as wide as the screen: above it when the room is there, else below it
+		left = math.max(0, math.min(tl, sw - pw))
+		top = (sh - tt >= ph + gap) and (tt + gap + ph) or (tb - gap)
+	end
+	top = math.max(ph, math.min(top, sh))
+	panel:ClearAllPoints()
+	panel:SetPoint('TOPLEFT', UIParent, 'BOTTOMLEFT', left / ps, top / ps)
 end
 
 function internal:CreateExtension()

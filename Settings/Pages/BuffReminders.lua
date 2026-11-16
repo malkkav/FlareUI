@@ -43,7 +43,13 @@ Row{ key = "br.consumables", tab = "reminders",
 Row{ key = "br.elixirs", kind = "dropdown", tab = "reminders", path = "auras.reminder.elixirs", parent = "br.consumables",
     choices = function() return BR() and BR().ElixirChoices() or {} end,
     toggles = { exclusive = { "none" }, tokens = BR() and BR().ElixirKeys() or {}, empty = "none" },
-    disabled = function() return not ConsumablesOn() end }
+    -- (with Those in Your Bags the ticks don't count)
+    disabled = function() return not ConsumablesOn() or S:GetPath("auras.reminder.elixirSource") == "bags" end }
+-- (11-15, PR #63 by GregDuhamel, Celbrund's idea) which elixirs are watched, and each or any one of them
+Row{ key = "br.elixirSource", kind = "choice", half = true, tab = "reminders", path = "auras.reminder.elixirSource", parent = "br.consumables",
+    choices = { "ticked", "bags" }, disabled = function() return not ConsumablesOn() end }
+Row{ key = "br.elixirMode", kind = "choice", half = true, tab = "reminders", path = "auras.reminder.elixirMode", parent = "br.consumables",
+    choices = { "each", "any" }, disabled = function() return not ConsumablesOn() end }
 -- Upkeep, in pairs
 Row{ key = "br.supplies", half = true, tab = "reminders", path = "auras.reminder.supplies" }
 Row{ key = "br.durability", half = true, tab = "reminders", path = "auras.reminder.durability" }

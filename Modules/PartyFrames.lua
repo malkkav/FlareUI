@@ -300,7 +300,7 @@ end
 local function OnPlate(f)
     return f and f.ringKind and ns.UFRing and ns.UFRing.Plate(f) or false
 end
--- A tile's border (11-13, Marcus): off Forever's plate every tile picks its own (Raid Style, raid, the
+-- A tile's border (11-13, Malkkav): off Forever's plate every tile picks its own (Raid Style, raid, the
 -- small pet and target frames), on the plate Forever's fixed one; "None" has no edge
 function PF.TileBorder(f, name)
     if OnPlate(f) then return K.Border(name) end
@@ -728,7 +728,7 @@ local function UpdateTarget(f)
     end
 end
 
--- Threat Glow (Look, st.threatGlow; 11-15, Marcus): with threat 1-3 the tile's border pulses in the
+-- Threat Glow (Look, st.threatGlow; 11-15, Malkkav): with threat 1-3 the tile's border pulses in the
 -- threat colour, and its portrait ring with it (ring styles). A member: its own aggro; an enemy tile
 -- (boss): the player's threat on it. Forever Style's plate has no border: the ring alone. None in
 -- Edit Mode, but for the aggro test.
@@ -857,7 +857,7 @@ local function UpdatePartyTarget(t)
     t.Health:SetMinMaxValues(0, UnitHealthMax(unit))
     t.Health:SetValue(UnitHealth(unit))
     t.Health:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn(TS(t))))
-    t.Name:SetText(SafeName(ns.UnitDisplayName(unit, "party")))
+    t.Name:SetText(SafeName(ns.UnitDisplayName(unit, "targetof")))   -- a party target tile: first name only
 end
 
 -- Health and heal prediction are drawn at most once per frame per tile: in a raid one unit can get
@@ -1871,7 +1871,7 @@ local function LayoutTarget(t)
     end
 end
 
--- The gap between two frames (11-13, Marcus): in Raid Style Spacing is measured between the bars, so
+-- The gap between two frames (11-13, Malkkav): in Raid Style Spacing is measured between the bars, so
 -- 0 makes the bars touch (the tiles' margins, where the borders sit, overlap). Saved Raid Style
 -- spacings gain the two margins once, so a setup looks as it did (party.raid.barSpacing).
 function PF.Gap(st, key)
@@ -2679,7 +2679,7 @@ local RebuildSettings   -- the dialog is rebuilt when the style changes
 
 local function BuildSettings()
     local D = StyleDefaults()
-    -- the style this list was built for (6.3.3, Marcus: Reset To Default from Raid Style broke the
+    -- the style this list was built for (6.3.3, Malkkav: Reset To Default from Raid Style broke the
     -- classic frames). Edit Mode's reset runs every row of the list it has, Style first: Style went
     -- back to Classic, then the other rows wrote Raid Style's defaults into the Classic setup. The
     -- list is rebuilt whenever the style changes, so each row writes to its own style's setup.

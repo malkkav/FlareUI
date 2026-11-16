@@ -45,8 +45,9 @@ S:Row{
 local function Display(key, path, invert)
     S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, invert = invert, apply = Refresh, section = "qt.display", half = true }
 end
--- in pairs (11-11, Marcus): Quest Count | Hide When Empty, Zone Headings | Wrap Long Text,
--- Show Quest Level | Colour by Difficulty, Quest Tags | Tracked Recipes, Focus Buttons | Voice Buttons
+-- in pairs (11-11, Malkkav): Quest Count | Hide When Empty, Zone Headings | Wrap Long Text,
+-- Show Quest Level | Colour by Difficulty, Quest Tags | Tracked Recipes, (11-15) Show Complete Tag |
+-- Quest Icons, Focus Buttons | Voice Buttons
 Display("count", "showCount")
 Display("hideEmpty", "hideEmpty")
 Display("zoneHeaders", "zoneHeaders")
@@ -55,7 +56,12 @@ Display("hideLevel", "hideLevel", true)
 Display("colorNames", "colorNames")
 Display("tags", "showTags")
 Display("recipes", "showRecipes")
-Display("focusButtons", "focusButtons")
+-- (11-15, vyf) on by default: off, finished quests look like any other
+Display("completeTag", "showCompleteTag")
+-- (11-15, Haisen) Blizzard's round quest buttons; the focus dots step aside while they are on
+Display("questIcons", "questIcons")
+S:Row{ key = "qt.focusButtons", path = "objectivetracker.focusButtons", apply = Refresh, section = "qt.display", half = true,
+    disabled = function() return S:GetPath("objectivetracker.questIcons") end }
 S:Row{ key = "qt.playButtons", path = "objectivetracker.playButtons", apply = Refresh, section = "qt.display", half = true,
     hidden = function() return not _G.Spoken end }
 -- (11-14) the header's "!" and "?" for Quality of Life's Auto Accept / Auto Turn-In Quests
@@ -73,6 +79,16 @@ Quests("completedLast", "completedLast")
 Quests("focusedFirst", "focusedFirst")
 Quests("collapseCompleted", "collapseCompleted")
 Quests("hideFinished", "hideFinished", true)   -- Show Completed Objectives
+-- (11-15) the two that need zone headings (none by level or by progress either): Show Untracked
+-- Quests (jams) | Collapsible Zones (Relampago; on by default, a heading click folded before)
+local function NoHeadings()
+    return not S:GetPath("objectivetracker.zoneHeaders") or S:GetPath("objectivetracker.sortByLevel")
+        or S:GetPath("objectivetracker.sortByProgress")
+end
+S:Row{ key = "qt.untracked", path = "objectivetracker.showUntracked", apply = Refresh, section = "qt.quests", half = true,
+    disabled = NoHeadings }
+S:Row{ key = "qt.collapsibleZones", path = "objectivetracker.collapsibleZones", apply = Refresh, section = "qt.quests", half = true,
+    disabled = NoHeadings }
 -- (11-15, Archy) a newly accepted quest gives the focus back; last, alone on its half row
 Quests("keepFocus", "keepFocus")
 -- Minimize: one switch sets every instance type

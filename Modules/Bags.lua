@@ -815,7 +815,7 @@ local function ShowItemLevel(ov, level, quality)
     ov.ilvl:Show()
 end
 
--- what needs the item's data: its level, its appearance. (11-14, Marcus) The Upgrade Arrow is gone:
+-- what needs the item's data: its level, its appearance. (11-14, Malkkav) The Upgrade Arrow is gone:
 -- its stat guesses made bad suggestions; Pawn and other addons do it properly.
 local function ShowItemData(ov, db, bagID, slotID, link, quality)
     if db.bagItemLevel then
@@ -1016,7 +1016,7 @@ local Filter = {
     SEARCH_GAP = 6,         -- the search box's right art reaches past its edge
     MIN_SEARCH = 120,       -- Buttons: the search box keeps at least this width, else the drawer (about 12 letters)
     MAIN_ICON = "Interface\\Icons\\INV_Misc_Spyglass_03",
-    -- (11-11 Marcus) shapes that read at the small size: a quest scroll, a sword, a hammer, a green potion
+    -- (11-11 Malkkav) shapes that read at the small size: a quest scroll, a sword, a hammer, a green potion
     CATEGORIES = {
         { key = "quest", icon = "Interface\\Icons\\INV_Scroll_03", label = L["Quest Items"] },
         { key = "equipment", icon = "Interface\\Icons\\INV_Sword_27", label = L["Equipment"] },
@@ -1048,7 +1048,7 @@ function Filter.NewButton(parent, iconFile)
     b:SetSize(Filter.W, Filter.H)
     b:SetNormalAtlas("bags-button-autosort-up")
     b:SetPushedAtlas("bags-button-autosort-down")
-    -- (11-11 Marcus: the same look as the cleanup button) the icon only fills the broom's area,
+    -- (11-11 Malkkav: the same look as the cleanup button) the icon only fills the broom's area,
     -- rounded like it, so the frame's dark rim shows all round
     b.icon = b:CreateTexture(nil, "OVERLAY")
     b.icon:SetSize(Filter.ICON_W, Filter.ICON_H)
@@ -1252,7 +1252,7 @@ function Filter.Place(frame, searchUpdated)
         Filter.bases[frame] = { x = x, y = y, width = search:GetWidth() }
     end
     local base = Filter.bases[frame]
-    -- the cleanup button in Blizzard's spot, the filter button just left of it (11-11 Marcus)
+    -- the cleanup button in Blizzard's spot, the filter button just left of it (11-11 Malkkav)
     if not Filter.main then Filter.Create(frame) end
     local main = Filter.main
     if main:GetParent() ~= frame then main:SetParent(frame) end

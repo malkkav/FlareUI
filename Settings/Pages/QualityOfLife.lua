@@ -50,16 +50,24 @@ S:Row{ key = "qol.alerts", half = true, tab = "gameplay", path = "tweaks.alertSo
 S:Row{ key = "qol.fishCast", half = true, tab = "gameplay", path = "tweaks.fishCast", apply = Refresh }
 S:Row{ key = "qol.fishSound", half = true, tab = "gameplay", path = "tweaks.fishSound", apply = Refresh }
 S:Row{ key = "qol.keyDown", half = true, tab = "gameplay", path = "tweaks.keyDown", apply = Refresh }
--- one switch for further and faster camera zoom
-S:Row{
-    key = "qol.camera", tab = "gameplay",
-    get = function() return S:GetPath("tweaks.maxCameraZoom") end,
-    set = function(on)
-        S:SetPath("tweaks.maxCameraZoom", on)
-        S:SetPath("tweaks.fasterCameraZoom", on)
-    end,
-    apply = Refresh,
-}
+-- (11-15, Malkkav) Better Camera became two sliders. Each starts at Blizzard's own value; back on it,
+-- FlareUI leaves the game's setting alone (nil). Better Camera's old switch carried over as 2.6 and 50.
+local function CameraSlider(key, path, cvar, choices)
+    local default = ns.Tweaks and ns.Tweaks.CameraDefault and ns.Tweaks.CameraDefault(cvar)
+    S:Row{ key = key, kind = "range", tab = "gameplay", choices = choices,
+        get = function() return S:GetPath(path) or default or choices[1][1] end,
+        set = function(value)
+            if default and math.abs(value - default) < 0.001 then value = nil end
+            S:SetPath(path, value)
+        end,
+        resetValue = function() return default end,
+        apply = Refresh }
+end
+local ZOOM_CHOICES, SPEED_CHOICES = {}, {}
+for n = 10, 26 do ZOOM_CHOICES[#ZOOM_CHOICES + 1] = { n / 10, ("%.1f"):format(n / 10) } end
+for n = 5, 50, 5 do SPEED_CHOICES[#SPEED_CHOICES + 1] = { n, tostring(n) } end
+CameraSlider("qol.cameraMaxZoom", "tweaks.cameraMaxZoom", "cameraDistanceMaxZoomFactor", ZOOM_CHOICES)
+CameraSlider("qol.cameraZoomSpeed", "tweaks.cameraZoomSpeed", "cameraZoomSpeed", SPEED_CHOICES)
 -- FONTS: Zone Text (the bag and loot feed fonts went with Bags & Looting, 11-12)
 S:FontRows{ module = "qol", tab = "fonts", section = "qol.fonts", fonts = {
     { key = "zoneText", path = "tweaks.zoneTextFont", faceOnly = true },

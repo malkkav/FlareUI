@@ -109,7 +109,7 @@ end
 --   { key = "names", font = fn -> table, default = fn -> table }  a table found when asked (the unit
 --       frames' fonts are saved per frame style; others are seeded first)
 -- Font options: autoSize (adds the Auto size, 0), label (fn: a heading the copy hasn't), hidden,
--- optional, faceOnly, disabled. Each heading has its own Reset (11-13, Marcus: as the sections';
+-- optional, faceOnly, disabled. Each heading has its own Reset (11-13, Malkkav: as the sections';
 -- no Apply to All: the Global Font gives every font one face).
 -- prefix (11-13, fonts back from Edit Mode): several sections of one module with the same texts
 -- ("player", "target"...): the row keys become "uf.font.player_names", whose copy falls back to
@@ -277,6 +277,31 @@ local function SetFace(entry, path)
     pcall(ns.SetFontObjectFaceUnscaled, entry.object, path, entry.size, entry.flags)
 end
 
+-- A face's file. A font another addon brings (SharedMedia packs load after FlareUI) isn't registered
+-- yet as FlareUI loads, so the file found at the last login is kept (fonts.files, face -> file) and
+-- used until then: the names over heads take their font early (11-15, Discord: Lexend lost).
+local function FacePath(face)
+    if face == ns.GLOBAL_FONT then face = ns.GlobalFontFace() end
+    local db = FontsDb()
+    local ok, found = pcall(LSM.Fetch, LSM, "font", face, true)
+    if ok and type(found) == "string" and C_UIFileAsset.IsKnownFile(found) then
+        if db then
+            db.files = type(db.files) == "table" and db.files or {}
+            db.files[face] = found
+        end
+        return found
+    end
+    local saved = db and type(db.files) == "table" and db.files[face]
+    if type(saved) == "string" and C_UIFileAsset.IsKnownFile(saved) then return saved end
+    return ns.GetFontPath(face)
+end
+
+-- the same file, however it is written
+local function SameFile(a, b)
+    if type(a) ~= "string" or type(b) ~= "string" then return a == b end
+    return a:lower():gsub("/", "\\") == b:lower():gsub("/", "\\")
+end
+
 -- Game Text and the Nameplate Font onto Blizzard's font objects; restyle: FlareUI's own fonts after
 function GF.Apply(restyle)
     local db = FontsDb()
@@ -287,17 +312,24 @@ function GF.Apply(restyle)
     GF.Snapshot()
     if not GF.original then return end
     if GF.changed then for _, entry in ipairs(GF.original) do Restore(entry) end end
+    GF.gamePath, GF.nameplatePath = nil, nil
+    -- (11-15, Ashiya) the names over characters in the world are drawn with UNIT_NAME_FONT, which the game
+    -- reads as it starts: kept with the Nameplate Font (a full restart shows it), Blizzard's own back when cleared
+    GF.unitNameOriginal = GF.unitNameOriginal or _G.UNIT_NAME_FONT
+    _G.UNIT_NAME_FONT = GF.unitNameOriginal
     if gameText then
-        local path = ns.GetFontPath(ns.GLOBAL_FONT)
+        local path = FacePath(ns.GLOBAL_FONT)
         for _, entry in ipairs(GF.original) do SetFace(entry, path) end
         GF.gamePath = path
     end
     if nameplate ~= "" then
-        local path = ns.GetFontPath(nameplate)
+        local path = FacePath(nameplate)
         for _, name in ipairs(NAMEPLATE_OBJECTS) do
             local entry = GF.byName and GF.byName[name]
             if entry then SetFace(entry, path) end
         end
+        GF.nameplatePath = path
+        if path then _G.UNIT_NAME_FONT = path end
     end
     GF.changed = gameText or nameplate ~= ""
     if restyle then S:ApplyAllFonts(true) end
@@ -325,8 +357,36 @@ function GF.OnLoad()
     GF.Apply(false)
 end
 
+-- Whether Blizzard's fonts no longer show what is picked: the face's file is known only now (another
+-- addon's font), or another addon set Blizzard's font objects after FlareUI (a font or translation addon)
+local function ObjectFile(name)
+    local object = _G[name]
+    if type(object) ~= "table" or not object.GetFont then return nil end
+    local ok, path = pcall(object.GetFont, object)
+    return ok and path or nil
+end
+function GF.Stale()
+    local db = FontsDb()
+    if not db then return false end
+    local nameplate = db.nameplate and db.nameplate.face or ""
+    if db.gameText then
+        local path = FacePath(ns.GLOBAL_FONT)
+        if not SameFile(GF.gamePath, path) or not SameFile(ObjectFile("GameFontNormal"), path) then return true end
+    end
+    if nameplate ~= "" then
+        local path = FacePath(nameplate)
+        if not SameFile(GF.nameplatePath, path) then return true end
+        for _, name in ipairs(NAMEPLATE_OBJECTS) do
+            local file = ObjectFile(name)
+            if file and not SameFile(file, path) then return true end
+        end
+    end
+    return false
+end
+
 -- Once every addon has loaded (other addons' fonts registered by then): the Global Font may only now
--- name a font another addon brings, and the combat text's file is saved for the next login
+-- name a font another addon brings, and the combat text's file is saved for the next login. A frame
+-- later, so it comes after other addons' own PLAYER_ENTERING_WORLD font changes.
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("PLAYER_ENTERING_WORLD")
 loader:SetScript("OnEvent", function(self)
@@ -334,5 +394,7 @@ loader:SetScript("OnEvent", function(self)
     local db = FontsDb()
     if not db then return end
     GF.SaveCombatPath()
-    if db.gameText and GF.gamePath ~= ns.GetFontPath(ns.GLOBAL_FONT) then GF.Apply(true) end
+    C_Timer.After(0, function()
+        if GF.Stale() then GF.Apply(true) end
+    end)
 end)

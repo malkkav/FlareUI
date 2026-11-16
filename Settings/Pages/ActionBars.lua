@@ -31,7 +31,7 @@ S:Row{ key = "ab.skinCDM", section = "ab.barAppearance", path = "auras.skinCDM",
     disabled = function() return not S:GetPath("auras.enabled") or not (ns.CooldownManagerOn and ns.CooldownManagerOn()) end }
 -- every button's scale, as FlareUI 1.0's per-bar scales once (fixed at 106% since; 111% the default from 11-11)
 local SCALES = {}
--- in half-percent steps (11-11 Marcus: it is that precise); kept as tenths of a percent so no float drifts
+-- in half-percent steps (11-11 Malkkav: it is that precise); kept as tenths of a percent so no float drifts
 for tenths = 700, 1500, 5 do
     local percent = tenths / 10
     SCALES[#SCALES + 1] = { tenths / 1000, (percent % 1 == 0 and ("%d"):format(percent) or ("%.1f"):format(percent)) .. "%" }
@@ -43,7 +43,7 @@ S:Row{ key = "ab.buttonScale", kind = "range", section = "ab.barAppearance", cho
     end,
     set = function(v) S:SetPath("actionbars.buttonScale", v) end }
 
--- Gryphons Behind Bars: last in Bars Appearance before the menu and bag bar rows (11-11, Marcus)
+-- Gryphons Behind Bars: last in Bars Appearance before the menu and bag bar rows (11-11, Malkkav)
 S:Row{ key = "ab.gryphonsBehind", section = "ab.barAppearance", path = "actionbars.gryphonsBehind", apply = Refresh, half = true }
 -- the micro menu and the bag bar (11-13, a player's request)
 S:Row{ key = "ab.borderlessMenu", section = "ab.barAppearance", path = "actionbars.borderlessMenu", apply = Refresh, half = true }
@@ -52,7 +52,7 @@ S:Row{ key = "ab.borderlessBags", section = "ab.barAppearance", path = "actionba
 S:Row{ key = "ab.collapsibleBags", section = "ab.barAppearance", path = "actionbars.collapsibleBags", apply = Refresh, half = true,
     disabled = function() return not S:GetPath("actionbars.borderlessBags") end }
 
--- in pairs (half rows, 11-11 Marcus): Show Button Art | Proc Glow, Status Colouring | Dim On Cooldown;
+-- in pairs (half rows, 11-11 Malkkav): Show Button Art | Proc Glow, Status Colouring | Dim On Cooldown;
 -- then the text (Hide Keybinds | Hide Macro Text, Clean Keybind Text), the spells, paging
 S:Row{ key = "ab.buttonArt", section = "ab.buttonAppearance", path = "actionbars.buttonArt", apply = Refresh, half = true }
 S:Row{ key = "ab.procGlow", section = "ab.buttonAppearance", path = "actionbars.procGlow", half = true,

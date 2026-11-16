@@ -367,7 +367,7 @@ AddCategory("items", L["Items"], function()
     return out
 end)
 
--- Professions (11-12, Marcus): every profession you know, at its best rank (each opens its window),
+-- Professions (11-12, Malkkav): every profession you know, at its best rank (each opens its window),
 -- then the profession spells around them: Smelting, Disenchant, the tracking, a campfire, Pick Lock.
 -- Ranks highest first; a spell you don't know is left out.
 local PROFESSION_SPELLS = {
@@ -861,7 +861,7 @@ local function ShowNamePopup(renaming)
     popup.renaming = renaming and true or nil
     popup.label:SetText(renaming and L["Rename the radial"] or L["Name the new radial"])
     popup.accept:SetText(renaming and L["Rename"] or L["Create"])
-    -- a new radial starts on every character (11-12, Marcus: All, not only this one)
+    -- a new radial starts on every character (11-12, Malkkav: All, not only this one)
     local choices = RM():GetScopeChoices()
     popup.scope = choices[1]
     popup.scopeLabel:SetShown(not renaming)
@@ -955,7 +955,7 @@ local function Text(parent, font, text)
     return fs
 end
 
--- a section box behind the contents, as the settings pages' (11-11 Marcus): on the host's parent, under it
+-- a section box behind the contents, as the settings pages' (11-11 Malkkav): on the host's parent, under it
 local sectionBoxes = {}
 -- the page's middle and right boxes step aside while the editor shows: its own boxes take their place
 local function PageBoxes(hide)
@@ -1217,7 +1217,7 @@ local function BuildRadialColumn(host, column)
                 GameTooltip:Show()
             end)
             cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            -- drag a radial over another to put it there (11-12, Marcus); a name follows the cursor
+            -- drag a radial over another to put it there (11-12, Malkkav); a name follows the cursor
             cell:RegisterForDrag("LeftButton")
             cell:SetScript("OnDragStart", function(self)
                 local item = self.item
@@ -1296,7 +1296,7 @@ local function BuildRadialColumn(host, column)
     end)
     host.undoButton:SetPoint("BOTTOMRIGHT", previewArea, "TOPRIGHT", 0, 1)
     -- two boxes: the radials (and what opens here), and the live preview with its title
-    -- (11-11 Marcus: they take the column box's place, edge to edge, top to bottom)
+    -- (11-11 Malkkav: they take the column box's place, edge to edge, top to bottom)
     local listBox = SectionBox(col)
     listBox:SetPoint("TOPLEFT", column, "TOPLEFT")
     listBox:SetPoint("TOPRIGHT", column, "TOPRIGHT")
@@ -1481,8 +1481,8 @@ local function BuildLower(host, height, width)
 
     -- the radial's buttons, in order; the title and icons centred in the section, which runs on to the
     -- window's column line (BUTTONS_NUDGE past the host's edge)
-    -- three boxes: the radial's form on top, the Catalog and the buttons below (11-11 Marcus)
-    -- a line between the tabs and the radial's name (11-11 Marcus: this tab only)
+    -- three boxes: the radial's form on top, the Catalog and the buttons below (11-11 Malkkav)
+    -- a line between the tabs and the radial's name (11-11 Malkkav: this tab only)
     local tabLine = Divider(host)
     tabLine:SetHeight(1)
     tabLine:SetPoint("TOPLEFT", host, "TOPLEFT", x, 6)
@@ -1515,7 +1515,7 @@ local function BuildLower(host, height, width)
             cell.Icon:ClearAllPoints()
             cell.Icon:SetPoint("CENTER", cell, "LEFT", (x + width - buttonsX - 8) / 2 + BUTTONS_NUDGE, 0)
             -- the selected and hover highlights centred on the icon, across the box (they hugged the
-            -- cell's left side, 11-12 Marcus)
+            -- cell's left side, 11-12 Malkkav)
             local across = math.max(BUTTON_ROW_H, (x + width - buttonsX - 8) - 16)
             for _, hl in ipairs({ cell.Highlight, cell:GetHighlightTexture() }) do
                 hl:ClearAllPoints()
@@ -1584,7 +1584,7 @@ local function BuildLower(host, height, width)
     end)
     host.dropZone = dropZone
 
-    -- the Catalog: its categories as small text links right of the title (11-11 Marcus, instead of a
+    -- the Catalog: its categories as small text links right of the title (11-11 Malkkav, instead of a
     -- dropdown): right-aligned, split by slashes in the page title's gold, the open one yellow and the
     -- rest grey, always on one line; then a three-column grid, search at the bottom
     local catalogTitle = Text(host, "GameFontNormal", L["Catalog"])
@@ -1614,7 +1614,7 @@ local function BuildLower(host, height, width)
         slash:SetTextColor(1, 0.82, 0)   -- (WoW yellow, 11-13)
         slashes[i] = slash
     end
-    -- one line always (11-12 Marcus), right up to the title: the slashes' gaps close in first, then the
+    -- one line always (11-12 Malkkav), right up to the title: the slashes' gaps close in first, then the
     -- links' text gets smaller until they fit
     local room = rightX - (catX + 4 + catalogTitle:GetStringWidth() + 6)
     local function Total(gap)

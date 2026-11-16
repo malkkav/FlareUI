@@ -68,7 +68,7 @@ S:Row{
         if ns.UFRing then ns.UFRing.SetStyle(value) end
     end,
 }
--- (11-11, Marcus: players missed the button) the row is only Pick Your Colours, always shown; the
+-- (11-11, Malkkav: players missed the button) the row is only Pick Your Colours, always shown; the
 -- palettes (FlareUI, Blizzard) are picked in its window (Settings/ColorPicker.lua)
 S:Row{
     key = "uf.pickColors", kind = "button", buttonText = L["Pick Your Colours"],

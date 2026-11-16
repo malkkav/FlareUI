@@ -121,7 +121,7 @@ local function Unit(c, id, style, unit, y, width, palette, x, maxHeight, opts)
     return f, e.height * k
 end
 
--- 11-10 (Marcus): only what the option changes. Frame Style, Colour Palette, Full Player Names and
+-- 11-10 (Malkkav): only what the option changes. Frame Style, Colour Palette, Full Player Names and
 -- the page: the player. Simple Pet Frame: the pet. Simple "Target Of": target of target and of focus.
 function R.unit(c, spec)
     local style = spec.key == 'uf.frameStyle' and spec.value or (ns.UFRing and ns.UFRing.Style() or 'addon')
@@ -143,7 +143,7 @@ function R.unit(c, spec)
         Unit(c, 'tofSample', s, 'focustarget', 4 + h + 12, c.width - 16)
     else
         local frame = Unit(c, 'playerSample', style, 'player', 4, c.width - 16)
-        -- Colour Palette (11-11 Marcus): FlareUI's colours shown washed, Blizzard's bright
+        -- Colour Palette (11-11 Malkkav): FlareUI's colours shown washed, Blizzard's bright
         if frame and spec.key == 'uf.pickColors' and Get('unitframes.palette', 'flareui') ~= 'custom' then
             local flare = Get('unitframes.palette', 'flareui') ~= 'blizzard'
             for _, bar in ipairs({ frame.Health, frame.Power }) do
@@ -562,7 +562,7 @@ function R.meter(c, spec)
     Note(c)
 end
 
--- Action Bars (11-10 Marcus): a few real buttons, as FlareUI styles them, and an empty slot (Show
+-- Action Bars (11-10 Malkkav): a few real buttons, as FlareUI styles them, and an empty slot (Show
 -- Button Art shows there). Status Colouring: out of range and out of mana; Dim on Cooldown; the proc glow.
 local ACTION_ICONS = { 'Spell_Frost_FrostBolt02', 'Spell_Fire_FireBolt02', 'Spell_Holy_Heal', 'Spell_Nature_Lightning' }
 function R.actions(c, spec)
@@ -612,7 +612,7 @@ function R.actions(c, spec)
     end, 4)
 end
 
--- Skin Action Bars (11-11 Marcus): the same buttons twice, Blizzard's bronze frame above and FlareUI's
+-- Skin Action Bars (11-11 Malkkav): the same buttons twice, Blizzard's bronze frame above and FlareUI's
 -- border below, the one in use named in gold; two hold spells, the next is empty (its slot art shows)
 local SKIN_ICONS = { 'Spell_Frost_FrostBolt02', 'Spell_Holy_Heal', false, 'Spell_Nature_Lightning' }
 function R.actionSkin(c, spec)
@@ -781,7 +781,7 @@ function R.radial(c, spec)
     Note(c)
 end
 
--- a font setting: one line in that font, in a FlareUI border (11-10, Marcus)
+-- a font setting: one line in that font, in a FlareUI border (11-10, Malkkav)
 function R.font(c, spec)
     local cfg = Font(spec.font)
     local text = c:Text('fontSample', L["The quick brown fox jumps over the lazy dog"], 16, 16, c.width - 32, cfg)

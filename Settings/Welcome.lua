@@ -6,7 +6,7 @@ local L = ns.L
 -- Every module ships off. The first login with none on opens the setup tour: ten pages that show
 -- each module and collect the player's choices, written only by the last page's reload. Closing the
 -- tour changes nothing. The Gamepad UI keeps a small pop-up instead (its navigation is still alpha).
--- 11-11 (Marcus): the settings window's look throughout: its stone and heavy bronze frame, Friz
+-- 11-11 (Malkkav): the settings window's look throughout: its stone and heavy bronze frame, Friz
 -- Quadrata titles over Roboto Condensed, section boxes, stone switches, the real previews of the Info
 -- Panel (each module's own sample) and the round game icons.
 --------------------------------------------------

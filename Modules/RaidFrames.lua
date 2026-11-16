@@ -471,7 +471,7 @@ end
 --------------------------------------------------
 -- 5. LAYOUT
 --------------------------------------------------
--- Spacing, Group Spacing and the main tanks' Spacing are measured between the bars (11-13, Marcus): 0
+-- Spacing, Group Spacing and the main tanks' Spacing are measured between the bars (11-13, Malkkav): 0
 -- makes the bars touch (the tiles' margins, where the borders sit, overlap). Saved values gain the
 -- two margins once, so a setup looks as it did (raid.barSpacing).
 local function Gaps(db)

@@ -17,6 +17,10 @@ end
 S:Module{
     key = "dm", group = "interface", order = 15, enabled = "damagemeter.enabled",
     tabs = { { key = "settings" }, { key = "threat" }, { key = "fonts" } },   -- "settings" is the Damage tab
+    -- its Fading rows sit in Blizzard's meter dialog and the threat window's dialog in Edit Mode
+    -- (Modules/Visibility.lua): found by search
+    editSystems = function() return ns.Visibility and ns.Visibility.EditSystems and ns.Visibility:EditSystems("dm") or {} end,
+    editFrames = { function() return _G.FlareUI_ThreatMeter end },
     -- FlareUI's meter restyles Blizzard's, which needs "Enable Damage Meter" on
     banner = function()
         if not BlizzardMeterOn() then
@@ -51,36 +55,23 @@ local function ApplyVisibility()
     if ns.DamageMeter and ns.DamageMeter.ApplyVisibility then ns.DamageMeter:ApplyVisibility() end
 end
 -- Meter Tab in the Chat needs the Chat module; the meter then has the chat's size, the tab shows
--- it and Open the Meter Tab picks it, so Visibility, Match Chat Size and Show on Mouseover wait
+-- it and Open the Meter Tab picks it, so Match Chat Size waits (and the meter's Edit Mode Fading)
 local function ChatOff() return not S:GetPath("chat.enabled") end
 local function InChat() return S:GetPath("damagemeter.chatTab") and not ChatOff() or false end
 local function NotInChat() return not InChat() end
 
-S:Row{ key = "dm.visibility", kind = "choice", path = "damagemeter.visibility",
-    choices = { "always", "combat", "group", "instance", "hidden" }, apply = ApplyVisibility, disabled = InChat, section = "dm.frame" }
-local function AlwaysVisible() return (S:GetPath("damagemeter.visibility") or "always") == "always" end
--- Fade In Speed / Fade Out Speed (11-15: the one Fade Speed split in two; in the chat the tab fades
--- the meter in and out at these speeds): an unset one reads the old damagemeter.fadeSpeed
--- (ns.DamageMeter.FadeSpeed), so saved setups stay as they were until a player picks
-local function FadeRow(key, field)
-    S:Row{ key = key, kind = "choice", path = "damagemeter." .. field, choices = { "instant", "fast", "slow" },
-        get = function() return ns.DamageMeter and ns.DamageMeter.FadeSpeed and ns.DamageMeter.FadeSpeed(S:GetPath("damagemeter"), field) or "instant" end,
-        resetValue = function() return S:DefaultPath("damagemeter.fadeSpeed") or "instant" end,
-        apply = ApplyVisibility, disabled = function() return AlwaysVisible() and not InChat() end, section = "dm.frame" }
-end
-FadeRow("dm.fadeIn", "fadeIn")
-FadeRow("dm.fadeOut", "fadeOut")
--- how far it fades: 0% to 90%. Not in the chat, where the meter tab takes the chat's fade
-S:Row{ key = "dm.minAlpha", kind = "choice", path = "damagemeter.minAlpha", choices = S:MinAlphaChoices(),
-    apply = ApplyVisibility, disabled = function() return AlwaysVisible() or InChat() end, section = "dm.frame" }
--- how long it stays before it fades (11-11, as the chat's Fade Delay)
-S:Row{ key = "dm.fadeDelay", kind = "choice", path = "damagemeter.fadeDelay", choices = { 0, 5, 10, 15, 30 },
-    apply = ApplyVisibility, disabled = function() return AlwaysVisible() or InChat() end, section = "dm.frame" }
+-- (11-15, Malkkav) Visibility (with the old Show on Mouseover), the fade speeds, Faded Opacity, Fade
+-- Delay and a fade group moved into the meter's Edit Mode dialog, and the threat window's into its own
+-- (Modules/Visibility.lua, elements "meter" and "threat"); this opens Edit Mode
+S:Row{ key = "dm.fading", kind = "button", center = true, section = "dm.frame",
+    apply = function()
+        if not S:OpenEditMode("dm") and InCombatLockdown() then
+            print("|cffff9900FlareUI:|r " .. L["Edit Mode can't open during a fight."])
+        end
+    end }
 S:Row{ key = "dm.border", kind = "choice", path = "damagemeter.borderTexture", choices = S.BorderChoices,
     apply = Refresh, section = "dm.frame" }
 
-S:Row{ key = "dm.mouseover", path = "damagemeter.showOnMouseover", apply = ApplyVisibility,
-    disabled = function() return AlwaysVisible() or InChat() end, section = "dm.tweaks", half = true }
 S:Row{ key = "dm.matchChat", path = "damagemeter.matchChatSize", apply = Refresh, section = "dm.tweaks", half = true,
     hidden = ChatOff, disabled = InChat }
 S:Row{ key = "dm.resetOnInstance", path = "damagemeter.resetOnInstance", section = "dm.tweaks", half = true }
@@ -105,10 +96,6 @@ S:Row{ key = "dm.threatWindow", path = "damagemeter.threatWindow", tab = "threat
         Refresh()
         if on and ns.DamageMeter and ns.DamageMeter.PlaceThreatWindow then ns.DamageMeter.PlaceThreatWindow() end
     end }
--- the separate window's own Visibility (11-13, a player's request): only less often than the meter
-S:Row{ key = "dm.threatVisibility", kind = "choice", path = "damagemeter.threatVisibility",
-    choices = { "meter", "instance", "group", "combat" }, apply = Refresh, tab = "threat", section = "dm.threat",
-    disabled = function() return not S:GetPath("damagemeter.threatWindow") end }
 S:Row{ key = "dm.threatValue", kind = "choice", path = "damagemeter.threatValueDisplay",
     choices = { "both", "percent", "value" }, apply = PreviewThreat, tab = "threat", section = "dm.threat" }
 S:Row{ key = "dm.threatCombat", path = "damagemeter.autoThreat", apply = Refresh, tab = "threat", section = "dm.threat", half = true,

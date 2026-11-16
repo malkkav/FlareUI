@@ -365,11 +365,19 @@ local function onMouseDown(self) -- replacement for EditModeSystemMixin:SelectSy
 		self.parent:SetMovable(true)
 		self:ShowSelected(true)
 
-		if internal.dialog.selection ~= self then
+		local newSelection = internal.dialog.selection ~= self
+		if newSelection then
 			internal.dialog:Reset()
 		end
 
 		internal.dialog:Update(self)
+		-- (FlareUI, 11-15) next to the selected frame, once it has its size
+		if newSelection then
+			local selection = self
+			C_Timer.After(0, function()
+				if internal.dialog.selection == selection then internal.PlaceNear(internal.dialog, selection.parent, 0) end
+			end)
+		end
 		fireSelect(self.parent)
 	end
 end
@@ -552,6 +560,14 @@ do -- deal with hooks and events
 			if isKnownSystem or isKnownSubSystem then
 				internal.extension:Update(systemID, isKnownSubSystem and subSystemID or nil)
 			end
+			-- (FlareUI, 11-15) Blizzard's dialog (and FlareUI's box under it) next to the selected frame,
+			-- once both have their size
+			C_Timer.After(0, function()
+				if EditModeSystemSettingsDialog.attachedToSystem ~= systemFrame then return end
+				local ext = internal.extension
+				local below = (ext and ext:IsShown()) and ext:GetHeight() * ext:GetEffectiveScale() or 0
+				internal.PlaceNear(EditModeSystemSettingsDialog, systemFrame, below)
+			end)
 		end
 	end)
 

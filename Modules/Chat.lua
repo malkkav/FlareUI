@@ -1199,11 +1199,11 @@ local function EnableHeaderDrag(btn, key)
     btn:SetScript("OnDragStop", StopHeaderDrag)
 end
 
--- a header button's hover fades the chat in; its icon lightens
+-- a header button's hover fades the chat in (with Mouseover ticked); its icon lightens
 local function HeaderButtonEnter(btn)
     ns.BronzeIcon.Paint(btn.FlareUI_Icon, btn.FlareUI_Color, true)
     GameTooltip:Hide()
-    Chat:ShowChatFrame(SELECTED_CHAT_FRAME or ChatFrame1, GetDb())
+    Chat:HoverChat()
 end
 
 local function HeaderButtonLeave(btn)
@@ -1777,22 +1777,8 @@ local function SetDockedTextShown(shown)
     if bar then bar:SetAlpha(alpha) end
 end
 
--- With the chat fading (Visibility), the meter takes the mouse the window would see: a hover over it
--- brings a fading or faded window back, checked ten times a second while the Meter tab is selected.
--- A window fully up needs no check: its hold asks CheckChatVisibility when it runs out.
-local meterHover = CreateFrame("Frame")
-meterHover:Hide()
-meterHover.elapsed = 0
-meterHover:SetScript("OnUpdate", function(self, elapsed)
-    self.elapsed = self.elapsed + elapsed
-    if self.elapsed < 0.1 then return end
-    self.elapsed = 0
-    local frame = SelectedDocked()
-    if not frame or (frame.FlareUI_TargetAlpha or 1) >= 1 then return end
-    local dm, db = ns.DamageMeter, GetDb()
-    if not (db and dm and dm.ChatTabMouseOver and dm:ChatTabMouseOver()) then return end
-    Chat:ShowChatFrame(frame, db)
-end)
+-- With the chat fading (Visibility), the meter takes the mouse the window would see: the fader counts
+-- a hover over it as one over the chat (Chat.MouseOverChat, section 16).
 
 -- Called by the Damage Meter module whenever the tab's state may have changed: a click, Visibility,
 -- the options, Blizzard's switch. Its Refresh asks often, so an unchanged state is left alone.
@@ -1811,8 +1797,7 @@ function Chat:RefreshMeterTab()
     for _, cf in Windows() do
         if cf and cf.FlareUI_TabBar then Chat:UpdateCustomTabs(cf, db) end
     end
-    meterHover:SetShown(active and fades and not ignore)
-    -- Ignore Chat Fade: a faded window comes up with the tab (CheckChatVisibility holds it)
+    -- Ignore Chat Fade: a faded window comes up with the tab (Chat.ChatWanted holds it)
     if active and fades and ignore then Chat:ShowChatFrame(SelectedDocked(), db) end
 end
 
@@ -2044,17 +2029,17 @@ end
 local TAB_IDLE_ALPHA = 0.6
 local SECRET_TAB_WIDTH = 90   -- Blizzard's own docked width for these tabs
 
--- UNREAD MARKER (11-14; a glow since 11-15, Marcus: the dot didn't look good): Blizzard's own new-message
+-- UNREAD MARKER (11-14; a glow since 11-15, Malkkav: the dot didn't look good): Blizzard's own new-message
 -- glow behind the name of a tab with lines you haven't seen (another tab was selected when they came),
 -- gold, or the whisper pink on whisper tabs and whisper alerts, pulsing softly. It goes when the tab is
 -- selected. On FlareUI's tab bar, and on Blizzard's tabs in the Gamepad UI.
 -- (fields, not locals: the file is near the main chunk's 200 locals)
 Chat.unread = {}   -- chat frame -> true
--- (11-15, Marcus: too strong) faint and short: its strength, and the pulse between full and half of it
-Chat.UNREAD_GLOW_ALPHA = 0.12   -- (11-15, Marcus: half again, then more subtle still)
+-- (11-15, Malkkav: too strong) faint and short: its strength, and the pulse between full and half of it
+Chat.UNREAD_GLOW_ALPHA = 0.12   -- (11-15, Malkkav: half again, then more subtle still)
 Chat.UNREAD_GLOW = "Interface\\ChatFrame\\ChatFrameTab-NewMessage"
 
--- TAB GLOW (11-15, Marcus): chat.unreadGlow picks which kinds of lines light a tab (toggles; nothing
+-- TAB GLOW (11-15, Malkkav): chat.unreadGlow picks which kinds of lines light a tab (toggles; nothing
 -- ticked, "none", lights none), and Mute Tab on a tab's right click keeps one window's tab dark
 -- whatever comes (chat.mutedTabs[window ID] = true; cleared when the window closes, as Blizzard
 -- reuses the ID). The kinds: Chat.GLOW_KIND (section 18).
@@ -2135,7 +2120,7 @@ function Chat.ShowUnreadDot(owner, text, shown, whisper)
         local c = ChatTypeInfo[whisper] or ChatTypeInfo.WHISPER
         glow:SetVertexColor(c.r or 1, c.g or 0.5, c.b or 1, Chat.UNREAD_GLOW_ALPHA)
     else
-        -- FlareUI's bronze (the selected tab's colour), not Blizzard's yellow (11-15, Marcus)
+        -- FlareUI's bronze (the selected tab's colour), not Blizzard's yellow (11-15, Malkkav)
         glow:SetVertexColor(TAB_ACTIVE_COLOR.r, TAB_ACTIVE_COLOR.g, TAB_ACTIVE_COLOR.b, Chat.UNREAD_GLOW_ALPHA)
     end
     glow:Show()
@@ -2548,7 +2533,7 @@ function Chat:UpdateCustomTabs(chatFrame, db)
                 btn:SetScript("OnEnter", function(self)
                     self.Text:SetAlpha(1)
                     GameTooltip:Hide()
-                    Chat:ShowChatFrame(chatFrame, GetDb())
+                    Chat:HoverChat()
                 end)
 
                 btn:SetScript("OnLeave", function(self) if not (self.isSelected or self.isFlashing or self.isUnread) then self.Text:SetAlpha(TAB_IDLE_ALPHA) end end)
@@ -2639,7 +2624,7 @@ function Chat:UpdateCustomTabs(chatFrame, db)
             meterBtn:SetScript("OnEnter", function(self)
                 self.Text:SetAlpha(1)
                 GameTooltip:Hide()
-                Chat:ShowChatFrame(chatFrame, GetDb())
+                Chat:HoverChat()
             end)
             meterBtn:SetScript("OnLeave", function(self) if not self.isSelected then self.Text:SetAlpha(TAB_IDLE_ALPHA) end end)
             scrollFrame.meterButton = meterBtn
@@ -2756,6 +2741,86 @@ function Chat:UpdateTabFonts(db)
         end
     end
     FCF_DockUpdate()
+end
+
+-- TAB SETS CHANNEL (11-15, Haisen's idea; chat.tabChannel, off by default). Picking a tab (a click on
+-- FlareUI's or Blizzard's tab, LB / RB on a pad) makes what the tab shows the kind you type in. Read
+-- from the window's chat settings, never its name: exactly one kind you can talk in switches to it,
+-- several keep the current one, one that can't be used right now (Party out of a group) gives Say.
+-- Whisper windows, the Combat Log and voice text are left to Blizzard. Set only on selection; a group
+-- change later doesn't touch it (Blizzard's own open turns a sticky Party / Raid into Say).
+-- Blizzard writes these same attributes from its Lua (ChatFrameMixin:UpdateDefaultChatTarget), and its
+-- send path runs secure commands before it reads chatType, so an addon write here can't block /target.
+Chat.TAB_KIND = {
+    SAY = "SAY", YELL = "SAY", EMOTE = "SAY",   -- local chat: one kind, typed as Say
+    GUILD = "GUILD",
+    OFFICER = "OFFICER",
+    PARTY = "PARTY", PARTY_LEADER = "PARTY",
+    RAID = "RAID", RAID_LEADER = "RAID", RAID_WARNING = "RAID",
+    INSTANCE_CHAT = "INSTANCE_CHAT", INSTANCE_CHAT_LEADER = "INSTANCE_CHAT",
+}
+
+-- What a window shows, as the one kind to type in: chatType, channel number (or nil: leave it)
+function Chat.TabChatTarget(chatFrame)
+    local kinds, count = {}, 0
+    for _, group in ipairs(chatFrame.messageTypeList or {}) do
+        local kind = canaccessvalue(group) and Chat.TAB_KIND[group]
+        if kind and not kinds[kind] then kinds[kind] = true; count = count + 1 end
+    end
+    -- Instance chat beside Party or Raid is the same group seen from a dungeon or a queued raid
+    local withInstance = kinds.INSTANCE_CHAT and (kinds.PARTY or kinds.RAID)
+    if withInstance then kinds.INSTANCE_CHAT = nil; count = count - 1 end
+    -- Officer beside Guild is still a guild tab
+    if kinds.GUILD and kinds.OFFICER then kinds.OFFICER = nil; count = count - 1 end
+    local channel
+    for _, name in pairs(chatFrame.channelList or {}) do
+        if canaccessvalue(name) and name ~= "" then
+            count = count + 1
+            channel = name
+        end
+    end
+    if count ~= 1 then return nil end
+
+    if channel then
+        local id = GetChannelName(channel)
+        if id and id ~= 0 then return "CHANNEL", id end
+        return "SAY"
+    end
+    local kind = next(kinds)
+    local home, instance = LE_PARTY_CATEGORY_HOME, LE_PARTY_CATEGORY_INSTANCE
+    if kind == "PARTY" then
+        if IsInGroup(home) then return "PARTY" end
+        if withInstance and IsInGroup(instance) then return "INSTANCE_CHAT" end
+        return "SAY"
+    elseif kind == "RAID" then
+        if IsInRaid(home) then return "RAID" end
+        if withInstance and IsInRaid(instance) then return "INSTANCE_CHAT" end
+        return "SAY"
+    elseif kind == "INSTANCE_CHAT" then
+        return IsInGroup(instance) and "INSTANCE_CHAT" or "SAY"
+    elseif kind == "GUILD" or kind == "OFFICER" then
+        return IsInGuild() and kind or "SAY"
+    end
+    return kind
+end
+
+function Chat.ApplyTabChannel(chatFrame)
+    local db = GetDb()
+    if not (db and db.tabChannel and chatFrame and chatFrame.messageTypeList) then return end
+    if chatFrame.isTemporary then return end   -- whisper and pet battle windows: Blizzard's own
+    if (IsCombatLog and IsCombatLog(chatFrame)) or (IsVoiceTranscription and IsVoiceTranscription(chatFrame)) then return end
+    local chatType, channelTarget = Chat.TabChatTarget(chatFrame)
+    if not chatType then return end
+    -- the box the next line goes out from (Blizzard's ChooseBoxForSend for this window): classic
+    -- style shares the main window's box, IM style (and the Gamepad UI) uses the window's own
+    local editBox = C_CVar.GetCVar("chatStyle") == "classic" and DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.editBox
+        or chatFrame.editBox
+    if not (editBox and editBox.SetChatType) then return end
+    if editBox:IsProtected() and InCombatLockdown() then return end
+    editBox:SetChatType(chatType)
+    editBox:SetStickyType(chatType)
+    if channelTarget then editBox:SetChannelTarget(channelTarget) end
+    if editBox.UpdateHeader then editBox:UpdateHeader() end
 end
 
 --------------------------------------------------
@@ -3069,7 +3134,7 @@ function Chat:SetupVolumeButton(chatFrame, db)
             end
             GameTooltip:AddLine(string_format("%d%%", vol * 100), r, g, 0)
             GameTooltip:Show()
-            if SELECTED_CHAT_FRAME then Chat:ShowChatFrame(SELECTED_CHAT_FRAME, GetDb()) end
+            Chat:HoverChat()
             UpdateIcon()
         end)
 
@@ -3340,39 +3405,33 @@ function Chat:DockWindow(chatFrame)
 end
 
 --------------------------------------------------
--- 16. AUTO-HIDE
--- With a Visibility other than Always, a window stays up autoHideDelay seconds (Fade Delay) after
--- the last message, hover, edit (or combat), then fades out at the Fade Out Speed (and comes back at the Fade In Speed). A message only
--- moves hideAt; one timer per window waits for it. Fades run on one shared OnUpdate that stops when
--- nothing is fading.
+-- 16. FADING
+-- (11-15, Malkkav) The chat's Visibility, fade speeds, Faded Opacity, fade group and Fade Delay are set
+-- in its Edit Mode dialog and run by the Visibility module's fader (Modules/Visibility.lua, element
+-- "chat"), which gives every chat window one alpha through FadeApply. The chat's own reasons to show
+-- (FadeHold): typing (always), the pointer (with Mouseover ticked), New Messages, a window with the
+-- gamepad, the Meter tab's Ignore Chat Fade and the settings page; it stays Fade Delay seconds after
+-- the last one. ShowChatFrame is every caller's "show it now" (a tab click, a flashing invite).
 --------------------------------------------------
-local autoHide = {}   -- chat frame -> { frame, hideAt, timer, expire, fadeFrom, fadeTo, fadeStart, fadeTime }
+Chat.fadeAlpha = 1   -- the fader's last alpha, which a window new to the chat starts at
+Chat.holdUntil = 0   -- GetTime() until which the chat stays up (Fade Delay)
 
--- Visibility: always | interactions (new messages and typing wake it) | combat (that, and up in a
--- fight). A test build saved ticked toggles ("messages,incombat"): read as the nearest choice.
-Chat.VISIBILITY_SPEC = { exclusive = { "always", "mouseover" }, tokens = { "messages", "incombat" }, empty = "mouseover",
-    legacy = { interactions = "messages", combat = "messages,incombat" } }
-function Chat.VisibilityHas(db, token)
-    if not db then return false end
-    local v = db.visibility
-    if v ~= nil and v ~= "always" and v ~= "interactions" and v ~= "combat" then
-        db.visibility = ns.Conditions.Has(v, "incombat") and "combat" or "interactions"
-    end
-    return ns.Conditions.Has(db.visibility, token, Chat.VISIBILITY_SPEC)
-end
-
--- The chat fades away with any Visibility but Always
+-- The chat fades away with any Visibility but Always (its fade group's, in one)
 local function Fades(db)
-    return db and (db.visibility or "always") ~= "always" or false
+    local V = db and ns.Visibility
+    return V ~= nil and V.GetShow ~= nil and V:GetShow("chat") ~= "always"
 end
 Chat.Fades = Fades
 
--- Fade In Speed (coming back) / Fade Out Speed (fading away), 11-15: the one fadeSpeed split in two;
--- an unset fadeIn / fadeOut reads the old fadeSpeed, so nothing changes until a player picks.
-function Chat.FadeSpeed(db, field) return (db and (db[field] or db.fadeSpeed)) or "instant" end
-local function FadeDuration(db, field) return ns.FadeTime(Chat.FadeSpeed(db, field)) end
-local fadeDriver = CreateFrame("Frame")
-fadeDriver:Hide()
+-- Fade Delay, and whether New Messages is ticked (Edit Mode)
+function Chat.FadeDelay()
+    local V = ns.Visibility
+    return V and V.GetFadeDelay and V:GetFadeDelay("chat") or 0
+end
+function Chat.ShowsMessages()
+    local V = ns.Visibility
+    return V and V.HasToken and V:HasToken("chat", "messages") or false
+end
 
 function Chat:SetChatFrameAlpha(chatFrame, alpha)
     if not chatFrame or chatFrame:IsForbidden() then return end
@@ -3385,137 +3444,89 @@ function Chat:SetChatFrameAlpha(chatFrame, alpha)
     if Chat:MeterTabActive() and chatFrame == SelectedDocked() then ns.DamageMeter:SetChatTabAlpha(alpha) end
 end
 
--- true while something keeps the window up: the mouse, a focused edit box, combat, Edit Mode
-function Chat:CheckChatVisibility(chatFrame, db)
-    if chatFrame:IsMouseOver() then return true end
-    if chatFrame.FlareUI_Skin and chatFrame.FlareUI_Skin:IsMouseOver() then return true end
-    if chatFrame == (SELECTED_CHAT_FRAME or ChatFrame1) then
-        for _, name in pairs(HEADER_BLIZZARD) do
-            local btn = _G[name]
-            if btn and btn:IsMouseOver() then return true end
+-- The fader's alpha (Visibility.lua) onto every chat window FlareUI skins, docked or not
+function Chat:FadeApply(alpha)
+    Chat.fadeAlpha = alpha
+    if not GetDb() then return end
+    for _, cf in Windows() do
+        if cf and cf.FlareUI_Skin and not cf:IsForbidden() then Chat:SetChatFrameAlpha(cf, alpha) end
+    end
+end
+
+-- The pointer on a shown chat window, its skin or tab bar, a header button, or the meter in the Meter tab
+function Chat.MouseOverChat()
+    for _, cf in Windows() do
+        if cf and not cf:IsForbidden() and cf:IsVisible() then
+            if cf:IsMouseOver() then return true end
+            if cf.FlareUI_Skin and cf.FlareUI_Skin:IsMouseOver() then return true end
+            if cf.FlareUI_TabBar and cf.FlareUI_TabBar:IsVisible() and cf.FlareUI_TabBar:IsMouseOver() then return true end
         end
     end
-    if Chat:MeterTabActive() and (ns.DamageMeter:ChatTabIgnoresFade() or ns.DamageMeter:ChatTabMouseOver()) then return true end
-    local editBox = chatFrame.editBox
-    if editBox and editBox:HasFocus() then return true end
-    if Chat.VisibilityHas(db, "incombat") and InCombatLockdown() then return true end
+    for _, name in pairs(HEADER_BLIZZARD) do
+        local btn = _G[name]
+        if btn and btn:IsVisible() and btn:IsMouseOver() then return true end
+    end
+    if Chat:MeterTabActive() and ns.DamageMeter:ChatTabMouseOver() then return true end
+    return false
+end
+
+-- Reasons that show the chat whatever its Visibility: an open edit box (typing), a window with the
+-- gamepad (the Gamepad UI's chat), Ignore Chat Fade on the Meter tab, Settings > Chat open
+function Chat.ChatWanted()
     if Chat.settingsPreview then return true end
-    return _G.EditModeManagerFrame ~= nil and _G.EditModeManagerFrame:IsShown()
-end
-
-local function FadeTo(state, alpha, duration)
-    local from = state.frame:GetAlpha()
-    if duration <= 0 or math_abs(alpha - from) <= 0.05 then
-        state.fadeTo = nil
-        Chat:SetChatFrameAlpha(state.frame, alpha)
-        return
-    end
-    state.fadeFrom, state.fadeTo, state.fadeStart, state.fadeTime = from, alpha, GetTime(), duration
-    fadeDriver:Show()
-end
-
-fadeDriver:SetScript("OnUpdate", function(self)
-    local db, now, busy = GetDb(), GetTime(), false
-    for frame, state in pairs(autoHide) do
-        local to = state.fadeTo
-        if to then
-            if to < state.fadeFrom and db and Chat:CheckChatVisibility(frame, db) then
-                Chat:ShowChatFrame(frame, db)   -- a fade-out interrupted
-            else
-                local t = (now - state.fadeStart) / state.fadeTime
-                if t >= 1 then
-                    state.fadeTo = nil
-                    Chat:SetChatFrameAlpha(frame, to)
-                else
-                    Chat:SetChatFrameAlpha(frame, state.fadeFrom + (to - state.fadeFrom) * t)
-                end
-            end
-            busy = busy or state.fadeTo ~= nil
+    for _, cf in Windows() do
+        if cf and not cf:IsForbidden() then
+            local box = cf.editBox
+            if box and box:HasFocus() then return true end
+            if cf.HasGamepadFocus and cf:IsVisible() and cf:HasGamepadFocus() then return true end
         end
     end
-    if not busy then self:Hide() end
-end)
-
-local function OnHoldExpired(state)
-    state.timer = nil
-    local db = GetDb()
-    if not (db and db.enabled and Fades(db)) then return end
-    local remaining = state.hideAt - GetTime()
-    if remaining <= 0 and Chat:CheckChatVisibility(state.frame, db) then
-        remaining = (db.autoHideDelay or 10) > 0.5 and 1 or 0.1
-    end
-    if remaining > 0 then
-        state.timer = C_Timer.NewTimer(remaining, state.expire)
-    else
-        -- Faded Opacity: how far the window fades out (0 = gone)
-        FadeTo(state, math_max(0, math_min(0.9, tonumber(db.minAlpha) or 0)), FadeDuration(db, "fadeOut"))
-    end
+    if Chat:MeterTabActive() and ns.DamageMeter:ChatTabIgnoresFade() then return true end
+    return false
 end
 
-local function AutoHideState(chatFrame)
-    local state = autoHide[chatFrame]
-    if not state then
-        state = { frame = chatFrame }
-        state.expire = function() OnHoldExpired(state) end
-        autoHide[chatFrame] = state
+-- The fader asks this for the chat (ruled: its ticked conditions hold; mouseOK: Mouseover ticked).
+-- Any reason holds it Fade Delay seconds from now; with none left, it shows until that runs out.
+function Chat.FadeHold(ruled, mouseOK)
+    if not GetDb() then return true end
+    local now = GetTime()
+    if ruled or Chat.ChatWanted() or (mouseOK and Chat.MouseOverChat()) then
+        Chat.holdUntil = math_max(Chat.holdUntil, now + Chat.FadeDelay())
+        return true
     end
-    return state
+    return now < Chat.holdUntil
 end
 
--- Shows the window (fading in) and restarts its hold
+-- Shows the chat (fading in) and restarts its hold
 function Chat:ShowChatFrame(chatFrame, db)
     if not (chatFrame and db) or chatFrame:IsForbidden() then return end
     if not Fades(db) then
-        if autoHide[chatFrame] then autoHide[chatFrame].fadeTo = nil end
         Chat:SetChatFrameAlpha(chatFrame, 1)
         return
     end
-    local state = AutoHideState(chatFrame)
-    if state.fadeTo ~= 1 and not (state.fadeTo == nil and chatFrame.FlareUI_TargetAlpha == 1) then
-        FadeTo(state, 1, FadeDuration(db, "fadeIn"))
-    end
-    local delay = math_max(0, db.autoHideDelay or 10)
-    state.hideAt = GetTime() + (state.fadeTo and state.fadeTime or 0) + delay
-    if not state.timer then
-        state.timer = C_Timer.NewTimer(state.hideAt - GetTime(), state.expire)
-    end
+    -- a window new to the chat (a whisper window) starts where the others are
+    if chatFrame.FlareUI_TargetAlpha == nil then Chat:SetChatFrameAlpha(chatFrame, Chat.fadeAlpha) end
+    Chat.holdUntil = math_max(Chat.holdUntil, GetTime() + Chat.FadeDelay())
+    if ns.Visibility and ns.Visibility.Wake then ns.Visibility:Wake() end
 end
 
--- Switching tabs: the window shown takes the opacity and hold of the one it replaces, at once. A hidden
--- tab's window fades out on its own timer, so it would show faded for an instant and fade back in.
+-- A hover on a tab, a header button or the volume: the fader sees the pointer (with Mouseover
+-- ticked) on its next check; woken now so it doesn't wait for it
+function Chat:HoverChat()
+    if ns.Visibility and ns.Visibility.Wake and Fades(GetDb()) then ns.Visibility:Wake() end
+end
+
+-- Switching tabs: the window shown takes the chat's alpha at once (a hidden tab's window could still
+-- hold an older one)
 function Chat:TakeOverFromDock(chatFrame)
     local db = GetDb()
     if not (db and chatFrame and chatFrame.FlareUI_Skin) or chatFrame:IsForbidden() then return end
-    local from = self.shownDocked or _G.ChatFrame1
-    self.shownDocked = chatFrame
-    if not from or from == chatFrame or from:IsForbidden() then return end
-    local state = AutoHideState(chatFrame)
-    local src = autoHide[from]
-    state.fadeTo = nil
-    Chat:SetChatFrameAlpha(chatFrame, from.FlareUI_TargetAlpha or from:GetAlpha())
-    if src and src.fadeTo then   -- mid fade: it carries on from where it is
-        state.fadeFrom, state.fadeTo, state.fadeStart, state.fadeTime = src.fadeFrom, src.fadeTo, src.fadeStart, src.fadeTime
-        fadeDriver:Show()
-    end
-    if Fades(db) then
-        state.hideAt = (src and src.hideAt) or (GetTime() + math_max(0, db.autoHideDelay or 10))
-        if not state.timer then state.timer = C_Timer.NewTimer(math_max(0, state.hideAt - GetTime()), state.expire) end
-    end
+    Chat:SetChatFrameAlpha(chatFrame, Fades(db) and Chat.fadeAlpha or 1)
 end
 
 --------------------------------------------------
 -- 17. EVENT HANDLERS
 --------------------------------------------------
-function Chat:OnCombatStateChange()
-    local db = GetDb()
-    if not (db and db.enabled and Fades(db) and Chat.VisibilityHas(db, "incombat")) then return end
-    for _, cf in Windows() do
-        if cf and cf:IsShown() and not cf:IsForbidden() then
-            self:ShowChatFrame(cf, db)
-        end
-    end
-end
-
 function Chat:RefreshForEditMode()
     local db = GetDb()
     if not db or not db.enabled then return end
@@ -3535,9 +3546,9 @@ function Chat:SetSettingsPreview(on)
     self:RefreshForEditMode()   -- shown, their hold restarted
 end
 
--- the chat comes back after a quest or gossip window
+-- the chat comes back after a quest or gossip window (with New Messages ticked)
 function Chat:OnNPCInteractionEnd()
-    if SELECTED_CHAT_FRAME then self:ShowChatFrame(SELECTED_CHAT_FRAME, GetDb()) end
+    if SELECTED_CHAT_FRAME and Chat.ShowsMessages() then self:ShowChatFrame(SELECTED_CHAT_FRAME, GetDb()) end
 end
 
 --------------------------------------------------
@@ -3584,7 +3595,8 @@ local function OnChatMessage(chatFrame, text, r, g, b, typeID)
         Chat.UnreadChangedSoon()
     end
     -- a line into a window that isn't shown (another tab) doesn't wake the chat: its tab lights up
-    if db and Fades(db) and Chat.VisibilityHas(db, "messages") and chatFrame:IsVisible() then Chat:ShowChatFrame(chatFrame, db) end
+    -- (New Messages ticked: the chat fades, as Always can't be ticked with it)
+    if db and chatFrame:IsVisible() and Chat.ShowsMessages() then Chat:ShowChatFrame(chatFrame, db) end
     -- a line under the Meter tab lights its window's tab (not the Combat Log's, which never stops)
     if Chat:MeterTabActive() and not meterUnread[chatFrame] and chatFrame ~= _G.ChatFrame2 and chatFrame == SelectedDocked()
         and Chat.LineGlows(chatFrame, typeID, db) then
@@ -3593,18 +3605,12 @@ local function OnChatMessage(chatFrame, text, r, g, b, typeID)
     end
 end
 
-local function OnChatEnter(chatFrame)
-    Chat:ShowChatFrame(chatFrame, GetDb())
+local function OnChatEnter()
+    Chat:HoverChat()
 end
 
 function Chat:SetupAutoHide(db)
     if not db then return end
-    if not Chat.autoHideEventsRegistered then
-        self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatStateChange")
-        self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatStateChange")
-        Chat.autoHideEventsRegistered = true
-    end
-
     -- CHAT_FRAMES also lists the whisper windows (ChatFrame11 and up)
     for _, name in ipairs(CHAT_FRAMES or {}) do
         local frame = _G[name]
@@ -3769,7 +3775,16 @@ function Chat:Init()
     end)
     -- a tab switch shows the new window as the old one was
     hooksecurefunc("FCFDock_SelectWindow", function(dock, chatFrame)
-        if dock == _G.GENERAL_CHAT_DOCK then Chat:TakeOverFromDock(chatFrame) end
+        if dock == _G.GENERAL_CHAT_DOCK then
+            Chat:TakeOverFromDock(chatFrame)
+            Chat.ApplyTabChannel(chatFrame)   -- Tab Sets Channel: tab clicks and LB / RB
+        end
+    end)
+    -- Tab Sets Channel for a popped-out window's tab (no dock selection behind its click)
+    hooksecurefunc("FCF_Tab_OnClick", function(tab, button)
+        if button == "RightButton" or button == "MiddleButton" then return end
+        local chatFrame = tab and tab.GetID and FCF_GetChatFrameByID(tab:GetID())
+        if chatFrame and not chatFrame.isDocked then Chat.ApplyTabChannel(chatFrame) end
     end)
 
     Chat:KillGeneralDockManager()

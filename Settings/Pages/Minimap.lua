@@ -17,7 +17,7 @@ S:Module{ key = "mm", group = "map", order = 10, enabled = "minimap.enabled",
         return Enum.EditModeSystem and { { system = Enum.EditModeSystem.Minimap, name = _G.MINIMAP_LABEL or "Minimap" } } or {}
     end }
 
--- Style (11-13 Marcus): three cards. Headerless and Bordered are the square map's two tops
+-- Style (11-13 Malkkav): three cards. Headerless and Bordered are the square map's two tops
 -- (minimap.squareHeader, live); Round is Forever's own map (minimap.style, a reload to or from it)
 local startRound
 local function StyleNow()
@@ -45,13 +45,13 @@ S:Row{ key = "mm.coords", kind = "choice", choices = { "off", "always", "hover" 
     resetValue = function() return "hover" end, apply = Refresh }
 S:Row{ key = "mm.fps", kind = "choice", path = "minimap.fps", choices = { "off", "always", "hover" },
     apply = function() if ns.Minimap and ns.Minimap.SetupFps then ns.Minimap.SetupFps() end end }
--- Latency (11-13 Marcus): home over world, under the framerate or in its place (MM.SetupFps)
+-- Latency (11-13 Malkkav): home over world, under the framerate or in its place (MM.SetupFps)
 S:Row{ key = "mm.latency", kind = "choice", path = "minimap.latency", choices = { "off", "always", "hover" },
     apply = function() if ns.Minimap and ns.Minimap.SetupFps then ns.Minimap.SetupFps() end end }
 S:Row{ key = "mm.clockStats", path = "minimap.clockStats" }
 S:Row{ key = "mm.microMenu", path = "minimap.microMenu",
     apply = function() if ns.Minimap and ns.Minimap.UpdateMapMouse then ns.Minimap.UpdateMapMouse() end end }
--- FlareUI Minimap Button (11-14, Marcus): FlareUI's own button, on the minimap or in the drawer
+-- FlareUI Minimap Button (11-14, Malkkav): FlareUI's own button, on the minimap or in the drawer
 -- (live; its right-click turns it off)
 S:Row{ key = "mm.flareButton", path = "minimap.flareButton",
     apply = function() if ns.MinimapBag and ns.MinimapBag.FlareChanged then ns.MinimapBag.FlareChanged() end end }

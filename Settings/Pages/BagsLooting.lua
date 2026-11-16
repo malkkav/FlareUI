@@ -41,7 +41,6 @@ S:Row{ key = "bl.bagButtons", half = true, tab = "bags", path = "tweaks.bagButto
 -- the keyring and the crafting bag as sections of the combined backpack (Bags.lua 0)
 S:Row{ key = "bl.bagKeyring", half = true, tab = "bags", path = "tweaks.bagKeyring", apply = RefreshBags, disabled = NotCombined }
 S:Row{ key = "bl.bagReagent", half = true, tab = "bags", path = "tweaks.bagReagent", apply = RefreshBags, disabled = NotCombined }
-S:Row{ key = "bl.bagAutoSort", half = true, tab = "bags", path = "tweaks.bagAutoSort", disabled = BagAddon }
 
 -- BAGS: the item slots --------------------------
 -- Skin Item Slots (11-14): FlareUI's slot border on or off; the two border looks grey out with it
@@ -75,6 +74,8 @@ S:Row{ key = "bl.bagFilters", kind = "choice", tab = "bags", path = "tweaks.bagF
 S:Row{ key = "bl.delete", half = true, tab = "bags", path = "tweaks.autoDelete", apply = Refresh }
 -- the bags open and close with the character window (Bags.lua 4c; the bank and guild bank always do)
 S:Row{ key = "bl.bagWithCharacter", half = true, tab = "bags", path = "tweaks.bagWithCharacter" }
+-- (11-15, PR #69 by ronborens) Blizzard's clean-up each time the bags open: a tool, so in Tools
+S:Row{ key = "bl.bagAutoSort", half = true, tab = "bags", path = "tweaks.bagAutoSort", disabled = BagAddon }
 
 -- LOOTING ----------------------------------------
 S:Row{ key = "bl.fastLoot", half = true, tab = "looting", path = "tweaks.fasterLoot", apply = Refresh }
@@ -106,12 +107,12 @@ S:Row{ key = "bl.lootFeedAlign", kind = "choice", tab = "looting", parent = "bl.
 S:FontRows{ module = "bl", tab = "fonts", section = "bl.fonts", fonts = {
     -- the stack counts and cooldown numbers on the bag icons (Bags.lua StyleIconTexts)
     { key = "bagItems", path = "tweaks.bagItemFont", optional = true, disabled = BagAddon },
-    -- Item Level's numbers, in the bags and on the character sheet (11-14, Marcus): shown while it's on
+    -- Item Level's numbers, in the bags and on the character sheet (11-14, Malkkav): shown while it's on
     { key = "itemLevel", path = "tweaks.bagItemLevelFont", optional = true,
       hidden = function() return not S:GetPath("tweaks.bagItemLevel") end },
     -- the free bag slots on the backpack button (11-12, a player asked: too small to read)
     { key = "freeSlots", path = "tweaks.bagFreeSlotsFont", optional = true },
-    -- the gold, silver and copper at the bags' foot (11-13, Marcus)
+    -- the gold, silver and copper at the bags' foot (11-13, Malkkav)
     { key = "money", path = "tweaks.bagMoneyFont", optional = true, disabled = BagAddon },
 }, apply = function()
     if ns.Bags and ns.Bags.Refresh then ns.Bags:Refresh() end

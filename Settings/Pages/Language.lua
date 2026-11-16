@@ -2,7 +2,7 @@ local _, ns = ...
 local L = ns.L
 local S = ns.Settings
 
--- 11-11 (Marcus): the Language page became Settings, the whole interface's own options: Sync Blizz UI,
+-- 11-11 (Malkkav): the Language page became Settings, the whole interface's own options: Sync Blizz UI,
 -- Move Any Window and UI Scale (from Quality of Life's Advanced tab), then the language
 ns.Copy.modules.language = {
     title = L["Settings"],

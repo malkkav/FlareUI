@@ -74,7 +74,7 @@ function ns.AuraOrder.Options(sort, reverse, mineFirst)
 end
 
 -- The Edit Mode "Aura Ordering" rows; get(key) / set(key) are the dialog's own accessors
--- (6.3.3, Marcus) no Aura Ordering section any more: its rows join the Auras section (Sort By below
+-- (6.3.3, Malkkav) no Aura Ordering section any more: its rows join the Auras section (Sort By below
 -- Debuffs, Reverse Order and Your Auras First below Only My Buffs / Debuffs: ns.OrderEditSettings)
 function ns.AuraOrder.With(items, get, set, defaultSort)
     for _, item in ipairs(ns.AuraOrder.Items(get, set, defaultSort)) do items[#items + 1] = item end
@@ -110,15 +110,14 @@ function ns.UnitLevelColor(unit, level)
 end
 
 -- A unit's name on the frames. Forever's UnitName returns first name and surname apart; "Full Player
--- Names" joins them as NameUtil.FormatUnitNameForDisplay does. Party and focus frames show the first
--- name only outside Forever Style, target of target and target of focus ("targetof") always.
+-- Names" joins them as NameUtil.FormatUnitNameForDisplay does. (11-15, Malkkav) party frames take it in
+-- every style; the focus frame, target of target, target of focus and the party target tiles
+-- ("targetof") always show the first name only.
 -- A secret name or surname leaves the first name alone.
-local SHORT_NAME_FRAMES = { party = true, focus = true }
 function ns.UnitDisplayName(unit, frameKind)
     local name, surname = UnitName(unit)
     local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
-    if (uf and uf.fullNames == false) or frameKind == "targetof" then return name end
-    if frameKind and SHORT_NAME_FRAMES[frameKind] and not (ns.UFRing and ns.UFRing.PlateOn()) then return name end
+    if (uf and uf.fullNames == false) or frameKind == "targetof" or frameKind == "focus" then return name end
     if not (canaccessvalue(name) and canaccessvalue(surname)) then return name end
     if type(name) ~= "string" or type(surname) ~= "string" or surname == "" then return name end
     local consts = Constants and Constants.CharacterNameSeparatorConsts
@@ -407,6 +406,7 @@ local defaults = {
             borderTexture = "FlareUI Frames",
             opacity = 0.6,
             unreadGlow = "say,yell,party,raid,guild,whisper,channel",  -- Tab Glow: kinds of lines that light an unseen tab ("none" = none)
+            tabChannel = false,         -- Tab Sets Channel: picking a tab that shows one kind of chat makes it the kind you type in
 
             -- Edit Box (fixed look: black background + tooltip border tinted ns.BORDER_COLOR)
             editBoxOpacity = 1.0,
@@ -418,9 +418,9 @@ local defaults = {
             menuHide = false,
             channelHide = false,
 
-            -- Visibility: always | mouseover | toggles of messages, incombat (Chat.VISIBILITY_SPEC; the
-            -- old interactions and combat still read); pointing at the chat or typing always shows it.
-            -- fadeSpeed: instant | fast | slow
+            -- (11-15) the chat's Visibility, fade speeds, Faded Opacity and Fade Delay moved into its Edit Mode
+            -- dialog (visibility.elements.chat, Modules/Visibility.lua). These four are only read once per
+            -- profile to copy them over (MigrateMovedFades), so they keep their old defaults.
             visibility = "always",
             fadeSpeed = "instant",
             autoHideDelay = 5,          -- Fade Delay: seconds the chat stays after showing (0 = at once)
@@ -481,6 +481,9 @@ local defaults = {
         -- [[ DAMAGE METER MODULE ]]
         damagemeter = {
             enabled = false,
+            -- (11-15) fadeSpeed, minAlpha, fadeDelay, visibility, showOnMouseover and threatVisibility moved into
+            -- the meter's and the threat window's Edit Mode dialogs (visibility.elements.meter / .threat,
+            -- Modules/Visibility.lua): only read once per profile to copy them over (MigrateMovedFades)
             fadeSpeed = "instant",      -- instant | fast | slow: every show and hide (Visibility, mouseover)
             minAlpha = 0,               -- Faded Opacity: how far the meter fades out (0 to 0.9)
             fadeDelay = 0,              -- Fade Delay: seconds it stays up before fading (0 = Instant)
@@ -688,7 +691,7 @@ local defaults = {
             elements = VisibilityElements(),
             groups = { { show = "combat,mouseover" }, { show = "combat,mouseover" }, { show = "combat,mouseover" },
                        { show = "combat,mouseover" }, { show = "combat,mouseover" } },
-            fadeSpeed = "instant",      -- instant | fast | slow (ns.FadeTime). (11-15) Fade In / Fade Out Speed read this while
+            fadeSpeed = "instant",      -- instant | fast | slow (ns.FadeTime). (11-15) Fade In / Hide Speed read this while
                                         -- their own fadeIn / fadeOut are unset: no defaults for those, AceDB would fill them
             hideBagBar = false,
             hideMicroMenu = false,
@@ -716,6 +719,7 @@ local defaults = {
             reminders = false,
             reminder = { group = "all", size = 36, before = 2, orientation = "HORIZONTAL", grow = "FORWARD",
                          blessing = "auto", consumables = "off", pets = true, thorns = "tank", camping = false, gathering = false,
+                         food = true, flask = true, elixirSource = "ticked", elixirMode = "each",   -- Food, Flask, Elixirs to Watch / to Keep Up (11-14)
                          weaponOil = false,   -- Weapon Oil / Stone (11-12)
                          elixirs = "none", weaponScope = "always", petScope = "always", readyCheck = false,   -- 11-12
                          classScope = "always", timeLeft = true,   -- Where > Class Buffs; Edit Mode > Alerts > Time Left (11-12)
@@ -752,7 +756,7 @@ local defaults = {
             cursorX = 0,                -- Offset X / Offset Y: a mouseover tooltip's distance from the pointer (11-14)
             cursorY = 0,
             corner = "auto",            -- Tooltip Corner: auto (Blizzard's nearest corner) | TOPLEFT | TOPRIGHT | BOTTOMLEFT | BOTTOMRIGHT (11-14)
-            opacity = 1,                -- Frame Opacity: the background's (11-13, a player asked; Marcus: 100% by default, was a fixed 0.9)
+            opacity = 1,                -- Frame Opacity: the background's (11-13, a player asked; Malkkav: 100% by default, was a fixed 0.9)
             borderByReaction = true,
             borderByClass = true,
             borderByQuality = true,
@@ -770,7 +774,7 @@ local defaults = {
             hideFaction = false,
             shortItemStats = false,     -- "+12 Spell Power" for the long Equip: stat lines (ItemStats.lua)
             itemLevel = false,          -- Show Item Level: weapons' and armour's level on their tooltip (11-13)
-            compareShift = false,       -- comparison tooltips only while Shift is held (off since 11-10, Marcus)
+            compareShift = false,       -- comparison tooltips only while Shift is held (off since 11-10, Malkkav)
             showItemID = false,
             showSpellID = false,
 
@@ -792,7 +796,7 @@ local defaults = {
                 actionBars = "always",
                 other = "always",       -- Everything Else (11-12)
                 auras = "always",       -- every buff and debuff icon's tooltip
-                groupAuras = "always",  -- party and raid aura icons show their tooltip (11-15, Marcus: players got confused with "never", where the icons let the mouse through to the frame; PartyFrames.lua)
+                groupAuras = "always",  -- party and raid aura icons show their tooltip (11-15, Malkkav: players got confused with "never", where the icons let the mouse through to the frame; PartyFrames.lua)
             },
         },
 
@@ -841,6 +845,10 @@ local defaults = {
             showTags = true,
             wrapText = true,
             showRecipes = true,
+            showCompleteTag = true,     -- Show Complete Tag: green title + "(Complete)" on finished quests
+            questIcons = false,         -- Quest Icons: Blizzard's round quest button before each title; click focuses
+            showUntracked = false,      -- Show Untracked Quests: with zone headings, this zone's untracked quests too (dimmed)
+            collapsibleZones = true,    -- Collapsible Zones: a zone heading click folds it (always did), with Blizzard's arrow
             -- on the way in, and open again on the way out: "minimize" or "none"
             autoMinimize = { dungeon = "none", raid = "none", pvp = "none", arena = "none", combat = "none" },   -- (none since 11-11)
             headerFont = { face = "__global", size = 13, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -858,8 +866,8 @@ local defaults = {
             sellJunk = false,
             autoRepair = false,
             durabilityWarning = false,
-            maxCameraZoom = false,
-            fasterCameraZoom = false,
+            maxCameraZoom = false,      -- Better Camera's old switch: on becomes cameraMaxZoom 2.6 (Tweaks.lua ApplyCamera)
+            fasterCameraZoom = false,   -- ...and cameraZoomSpeed 50. The two sliders have no default: nil = Blizzard's own
             fasterLoot = false,
             lootFeed = false,           -- Loot Feed: what you loot floats up beside you (LootFeed.lua)
             lootFeedQuality = 0,        -- items below this quality are left out (0 = Poor: all)
@@ -908,7 +916,7 @@ local defaults = {
             merchantWide = false,       -- Wider Vendor Window: 20 items a page
             petFood = false,            -- Pet Food in Bags: a paw on food the hunter pet eats
             skipLootConfirm = false,    -- Skip Loot Confirmations: bind-on-loot and roll dialogs
-            lootRollsOpacity = 1,       -- its Frame Opacity: the background's (11-15; 100% by default, Marcus: 60% was hard to read)
+            lootRollsOpacity = 1,       -- its Frame Opacity: the background's (11-15; 100% by default, Malkkav: 60% was hard to read)
             lootRolls = false,          -- Loot Roll Window: FlareUI's loot roll window in place of Blizzard's roll frames (LootRolls.lua); on and off need a reload
             lootRollFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },   -- Fonts > Loot Rolls: the item names; the small lines two smaller
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
@@ -1680,7 +1688,7 @@ do
     end
 end
 
--- "Fade In Speed" / "Fade Out Speed" choices: seconds per fade
+-- "Show Speed" / "Hide Speed" choices: seconds per fade
 local FADE_TIMES = { instant = 0, fast = 0.2, slow = 0.4 }
 function ns.FadeTime(speed) return FADE_TIMES[speed] or 0 end
 
@@ -1730,7 +1738,7 @@ do
         -- dropdowns
         "Style", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
         -- a Fade Group decides the rows after it (Fading: Fade Group, Visibility, Fade Speed)
-        "Fade Group", "Visibility", "Fade In Speed", "Fade Out Speed", "Portrait", "Health Text", "Power Text", "Text", "Combo Points",
+        "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Text", "Combo Points",
         "Bar Texture", "Border", "Absorb Texture",
         "Cast Bar Position", "Cast Bar Texture", "Cast Bar Border",
         "Buffs", "Debuffs", "@Aura Sort By", "Hide Buffs", "Dispel Highlight", "Dispel Icons", "Aura Swipe", "Aura Timer",
@@ -1740,8 +1748,10 @@ do
         "Pet Frame Width", "Pet Frame Height", "Target Frame Width", "Target Frame Height",
         "Icon Size", "Icons per Row", "Totems per Row", "Max Icons", "Spacing", "Group Spacing", "Quest Spacing",
         "Background Opacity", "Cast Bar Height", "Buff Size", "Debuff Size",
+        -- (11-15) the Fading sections' sliders: Fade Delay (the chat and the meter) after Faded Opacity
+        "Faded Opacity", "Fade Delay",
         -- switches
-        -- (11-11 Marcus) first of their sections' switches: Range Check (Look) and Show Level (Frame)
+        -- (11-11 Malkkav) first of their sections' switches: Range Check (Look) and Show Level (Frame)
         "Range Check", "Show Level",
         "Sort by Role", "Show Player", "Hide Player Frame in a Party", "Group Numbers", "Main Tank Frames",
         "Show Threat", "Combo Points@switch", "Flip Portrait", "Mirror Bars", "Portrait@switch", "Power Bar for Mana Users Only",
@@ -1756,6 +1766,8 @@ do
     local canon, lead   -- localized name -> place, built on first use (the locale is loaded by then)
     local function KindRank(kind)
         local T = LibStub("FlareEditMode").SettingType
+        -- a note line (an Expander with no rows, e.g. Bar Visible above, the meter in the chat tab) stays first
+        if kind == T.Expander then return 0 end
         if kind == T.Dropdown then return 1 end
         if kind == T.Slider then return 2 end
         return 3
@@ -1910,9 +1922,10 @@ do
 
     -- The bars' conditions (action bars and the frames faded with them, Fake CM, resource bars). The
     -- single choices from before the toggles each meant "in combat, or ...".
-    C.BAR_TOKENS = { "combat", "hastarget", "attackable", "ingroup", "unmounted" }
+    -- (11-15, Malkkav) In an Instance on every Visibility list, under In a Group
+    C.BAR_TOKENS = { "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted" }
     -- the faded elements' and Fake CM's: Mouseover is a condition ticked with the others (11-12)
-    C.MOUSE_TOKENS = { "mouseover", "combat", "hastarget", "attackable", "ingroup", "unmounted" }
+    C.MOUSE_TOKENS = { "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted" }
     C.BAR_LEGACY = { target = "combat,hastarget", harm = "combat,attackable", nomount = "combat,unmounted", group = "combat,ingroup" }
 end
 
@@ -2453,7 +2466,7 @@ ns.Dialogs["FLAREUI_SYNC_RELOAD"] = {
     reloads = true,   -- in combat the macro can't run: yes says how to reload
     hideOnEscape = true,
     padSecure = true,
-    -- (11-13, Marcus) no more of these pop-ups on any character: syncs still apply and finish at the next
+    -- (11-13, Malkkav) no more of these pop-ups on any character: syncs still apply and finish at the next
     -- reload. Settings > Sync Blizz UI > Hide Pop-up Alerts (global.syncHideAlerts) is the same switch
     button3 = L["Hide These Alerts"],
     OnAlt = function() if ns.db and ns.db.global then ns.db.global.syncHideAlerts = true end end,

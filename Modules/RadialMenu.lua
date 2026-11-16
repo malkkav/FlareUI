@@ -661,7 +661,7 @@ ACTIONS.partycast = function(entry)
         end
     end
     if #spread == 0 then return nil end
-    -- alone there is no one to aim at: the spell's own name, not yours (11-11, Marcus)
+    -- alone there is no one to aim at: the spell's own name, not yours (11-11, Malkkav)
     if #spread == 1 then spread[1].name = name end
     local first = spread[1]
     return name, first.icon, first.attributes, { spread = spread }
@@ -2421,7 +2421,7 @@ function RM:GetRadialOrder()
     return store and store.radialOrder or {}
 end
 
--- GROUPS (11-12, Marcus): radials gathered under a named, foldable row in the editor's list. A
+-- GROUPS (11-12, Malkkav): radials gathered under a named, foldable row in the editor's list. A
 -- radial's group is radial.group (store.groups[gid] = { name }); a group's radials stay next to each
 -- other in radialOrder, where its first one is, so the list order (and which radial a shared key
 -- opens) is the order seen. A group with no radial left is gone. Folded or open: per character
@@ -2524,7 +2524,7 @@ function RM:SetRadialGroup(id, gid)
     GroupsChanged(self)
 end
 
--- the radials list's drag (11-12, Marcus): id moves to where target is, and into target's group
+-- the radials list's drag (11-12, Malkkav): id moves to where target is, and into target's group
 -- (or out of its own, onto a radial outside one)
 function RM:MoveRadial(id, target)
     local store = GetStore()

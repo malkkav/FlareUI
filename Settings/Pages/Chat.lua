@@ -10,6 +10,8 @@ local function Refresh()
 end
 
 S:Module{ key = "ch", group = "interface", order = 10, enabled = "chat.enabled", tabs = { { key = "frame" }, { key = "tweaks" }, { key = "fonts" } },
+    -- its Fading rows sit in Blizzard's chat frame dialog in Edit Mode (Modules/Visibility.lua): found by search
+    editSystems = function() return ns.Visibility and ns.Visibility.EditSystems and ns.Visibility:EditSystems("ch") or {} end,
     -- another chat addon is loaded: FlareUI's chat stays off and says why
     banner = function()
         local other = ns.Chat and ns.Chat.GetOtherChatAddon and ns.Chat:GetOtherChatAddon()
@@ -22,31 +24,24 @@ S:On("PageShown", function(key)
     if ns.Chat and ns.Chat.SetSettingsPreview then ns.Chat:SetSettingsPreview(key == "ch") end
 end)
 
-local function AlwaysVisible() return (S:GetPath("chat.visibility") or "always") == "always" end
 S:Row{ key = "ch.opacity", kind = "range", path = "chat.opacity", choices = S:OpacityChoices(), apply = Refresh, section = "ch.frame" }
-S:Row{ key = "ch.visibility", kind = "choice", path = "chat.visibility",
-    choices = { "always", "interactions", "combat" }, apply = Refresh, section = "ch.frame" }
--- Fade In Speed / Fade Out Speed (11-15: the one Fade Speed split in two): an unset one reads the
--- old chat.fadeSpeed (ns.Chat.FadeSpeed), so saved setups stay as they were until a player picks
-local function FadeRow(key, field)
-    S:Row{ key = key, kind = "choice", path = "chat." .. field, choices = { "instant", "fast", "slow" },
-        get = function() return ns.Chat and ns.Chat.FadeSpeed and ns.Chat.FadeSpeed(S:GetPath("chat"), field) or "instant" end,
-        resetValue = function() return S:DefaultPath("chat.fadeSpeed") or "instant" end,
-        apply = Refresh, disabled = AlwaysVisible, section = "ch.frame" }
-end
-FadeRow("ch.fadeIn", "fadeIn")
-FadeRow("ch.fadeOut", "fadeOut")
-S:Row{ key = "ch.minAlpha", kind = "choice", path = "chat.minAlpha", choices = S:MinAlphaChoices(),
-    apply = Refresh, disabled = AlwaysVisible, section = "ch.frame" }
-S:Row{ key = "ch.fadeDelay", kind = "choice", path = "chat.autoHideDelay", choices = { 0, 5, 10, 15, 30 },
-    apply = Refresh, disabled = AlwaysVisible, section = "ch.frame" }
+-- (11-15, Malkkav) Visibility, the fade speeds, Faded Opacity, Fade Delay and a fade group moved into the
+-- chat's Edit Mode dialog (Modules/Visibility.lua, element "chat"); this opens Edit Mode
+S:Row{ key = "ch.fading", kind = "button", center = true, section = "ch.frame",
+    apply = function()
+        if not S:OpenEditMode("ch") and InCombatLockdown() then
+            print("|cffff9900FlareUI:|r " .. ns.L["Edit Mode can't open during a fight."])
+        end
+    end }
 S:Row{ key = "ch.border", kind = "choice", path = "chat.borderTexture", choices = S.BorderChoices,
     apply = Refresh, section = "ch.frame" }
--- Tab Glow (11-15, Marcus): which kinds of lines light an unseen tab; None (or nothing ticked) lights
+-- Tab Glow (11-15, Malkkav): which kinds of lines light an unseen tab; None (or nothing ticked) lights
 -- none. Mute Tab on a tab's right click keeps one tab dark (Modules/Chat.lua TAB GLOW).
 S:Row{ key = "ch.unreadGlow", kind = "dropdown", path = "chat.unreadGlow", apply = Refresh, section = "ch.frame",
     choices = { "none", { divider = true }, "say", "yell", "party", "raid", "guild", "whisper", "channel" },
     toggles = { exclusive = { "none" }, tokens = { "say", "yell", "party", "raid", "guild", "whisper", "channel" }, empty = "none" } }
+-- Tab Sets Channel (11-15, Haisen): picking a tab that shows one kind of chat makes it the kind you
+-- type in (Modules/Chat.lua TAB SETS CHANNEL). Read on each tab pick, so no apply needed.
 
 S:Row{ key = "ch.editBoxOpacity", kind = "range", path = "chat.editBoxOpacity", choices = S:OpacityChoices(), apply = Refresh, section = "ch.editBoxSection" }
 S:Row{ key = "ch.editBox", kind = "choice", path = "chat.editBoxPosition",
@@ -60,6 +55,8 @@ S:Row{ key = "ch.history", tab = "tweaks", path = "chat.saveHistory", apply = Re
 S:Row{ key = "ch.combatLog", tab = "tweaks", path = "chat.hideCombatLog", reload = true, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.noBubbles", tab = "tweaks", path = "chat.hideBubblesInInstance", apply = Refresh, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.lineHeight", tab = "tweaks", path = "chat.increaseLineHeight", apply = Refresh, section = "ch.tweaks", half = true }
+-- (11-15, Malkkav) Tab Sets Channel lives here, with the other chat tweaks
+S:Row{ key = "ch.tabChannel", tab = "tweaks", path = "chat.tabChannel", section = "ch.tweaks", half = true }
 
 -- Formatting (never applied in instances, where chat lines are unreadable)
 local function Format(key, path)
@@ -77,7 +74,7 @@ S:Row{ key = "ch.channelNames", kind = "choice", tab = "tweaks", section = "ch.f
         S:SetPath("chat.shortChannels", mode ~= "full")
     end,
     apply = Refresh }
--- in pairs (Marcus, 11-10): names | colon, NPCs | whispers, time | link icons, race | class icons;
+-- in pairs (Malkkav, 11-10): names | colon, NPCs | whispers, time | link icons, race | class icons;
 -- the level last
 Format("formatPlayer", "formatPlayer")
 Format("nameColon", "nameColon")

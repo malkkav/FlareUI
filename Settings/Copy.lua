@@ -106,12 +106,12 @@ ns.Copy = {
         },
         ["ab.bar.group"] = {
             choices = { L["None"], L["1"], L["2"], L["3"], L["4"], L["5"] },
-            desc = L["Bars and frames in the same fade group:\n* Fade together\n* Share their Visibility, Fade In Speed, Fade Out Speed and Faded Opacity"],
+            desc = L["Bars and frames in the same fade group:\n* Fade together\n* Share their Visibility, Show Speed, Hide Speed and Faded Opacity"],
             label = L["Fade Group"],
             tip = L["For example: one group for your bottom bars, another for your side bars."],
         },
         ["ab.bar.show"] = {
-            choices = { L["Always"], L["Mouseover"], L["In Combat"], L["Has a Target"], L["Has an Attackable Target"], L["In a Group"], L["Not Mounted"] },
+            choices = { L["Always"], L["Mouseover"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["Not Mounted"] },
             desc = L["When this bar shows. Any ticked condition shows it."],
             label = L["Visibility"],
             tags = { "show condition", "show", "view conditions", "show when" },
@@ -215,7 +215,7 @@ ns.Copy = {
             tip = L["`/fui cm` does the same. A reload ends it."],
         },
         ["ab.fcmShow"] = {
-            choices = { L["Always"], L["Mouseover"], L["In Combat"], L["Has a Target"], L["Has an Attackable Target"], L["In a Group"], L["Not Mounted"] },
+            choices = { L["Always"], L["Mouseover"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["Not Mounted"] },
             desc = L["When the Fake CM bars show. Any ticked condition shows them."],
             label = L["Visibility"],
             section = "ab.fakeCooldownManager",
@@ -507,8 +507,8 @@ ns.Copy = {
         ["bl.bagAutoSort"] = {
             desc = L["Tidies your bags each time you open them, as the broom button does. Bags set to Ignore This Bag are left alone."],
             label = L["Sort Bags on Open"],
-            section = "bl.bagWindow",
-            tags = { "auto sort", "clean up bags" },
+            section = "bl.tools",
+            tags = { "auto sort", "clean up bags", "tidy", "sort bags" },
             tip = L["Not in combat, and not at a vendor, mailbox, bank, auction house or in a trade."],
         },
         ["bl.bagButtons"] = {
@@ -749,6 +749,22 @@ ns.Copy = {
             section = "br.upkeep",
             tags = { "repair", "durability", "broken" },
         },
+        ["br.elixirMode"] = {
+            choices = { L["Each of Them"], L["Any One of Them"] },
+            desc = L["How many of them you want up:\n* Each of Them: an icon for every one you lack\n* Any One of Them: one icon, gone as soon as one is on you"],
+            label = L["Elixirs to Keep Up"],
+            section = "br.consumablesSection",
+            tags = { "elixir", "any", "each", "levelling" },
+            tip = L["A click drinks one from your bags. Any rank of an elixir counts."],
+        },
+        ["br.elixirSource"] = {
+            choices = { L["Ticked Ones"], L["Those in Your Bags"] },
+            desc = L["Which elixirs the reminders look for:\n* Ticked Ones: the ones ticked in Elixirs and More\n* Those in Your Bags: every elixir you carry, nothing to tick"],
+            label = L["Elixirs to Watch"],
+            section = "br.consumablesSection",
+            tags = { "elixir", "bags", "levelling" },
+            tip = L["With Those in Your Bags, one icon shows while you carry none and have none on."],
+        },
         ["br.elixirs"] = {
             desc = L["The elixirs, Zanza, juju and Blasted Lands buffs you want kept up. Click an icon to use one from your bags."],
             label = L["Elixirs and More"],
@@ -906,26 +922,37 @@ ns.Copy = {
             label = L["Edit Box Opacity"],
             section = "ch.editBoxSection",
         },
-        ["ch.fadeDelay"] = {
-            choices = { L["Instant"], L["5 Seconds"], L["10 Seconds"], L["15 Seconds"], L["30 Seconds"] },
-            desc = L["How long the chat stays before it fades."],
+        ["ch.em.fadeDelay"] = {
+            desc = L["How long the chat stays, in seconds, after it was last needed. Then it fades."],
             label = L["Fade Delay"],
-            section = "ch.frame",
-            tip = L["Needs a Visibility other than Always."],
+            tags = { "auto hide", "delay" },
         },
-        ["ch.fadeIn"] = {
-            choices = { L["Instant"], L["Fast"], L["Slow"] },
-            desc = L["How fast the chat comes back.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
-            label = L["Fade In Speed"],
-            section = "ch.frame",
-            tags = { "fade speed" },
+        ["ch.em.fadeIn"] = {
+            desc = L["How the chat fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"],
+            label = L["Show Speed"],
+            tags = { "fade speed", "min alpha", "transparency" },
         },
-        ["ch.fadeOut"] = {
-            choices = { L["Instant"], L["Fast"], L["Slow"] },
-            desc = L["How fast the chat fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
-            label = L["Fade Out Speed"],
+        ["ch.em.fadeOut"] = {
+            desc = L["How the chat fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"],
+            label = L["Hide Speed"],
+            tags = { "fade speed", "min alpha", "transparency" },
+        },
+        ["ch.em.minAlpha"] = {
+            desc = L["How the chat fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"],
+            label = L["Faded Opacity"],
+            tags = { "fade speed", "min alpha", "transparency" },
+        },
+        ["ch.em.show"] = {
+            desc = L["When the chat shows. Any ticked condition shows it.\n* New Messages: a new line, or closing a quest or vendor window, brings it back"],
+            label = L["Visibility"],
+            tags = { "show", "view conditions", "chat interactions", "new messages", "hide chat" },
+            tip = L["Typing always shows the chat."],
+        },
+        ["ch.fading"] = {
+            desc = L["The chat's Visibility, fade speeds, Faded Opacity, Fade Delay and fade group are set in Edit Mode. Click the chat there to change them."],
+            label = L["Fading in Edit Mode"],
             section = "ch.frame",
-            tags = { "fade speed" },
+            tags = { "visibility", "fade", "fade speed", "faded opacity", "fade delay", "fade group", "hide chat", "chat interactions" },
         },
         ["ch.font.editBox"] = {
             desc = L["What you type."],
@@ -984,12 +1011,6 @@ ns.Copy = {
             label = L["Chat Menu"],
             section = "ch.header",
         },
-        ["ch.minAlpha"] = {
-            desc = L["How far the chat fades out. At 0% it disappears."],
-            label = L["Faded Opacity"],
-            section = "ch.frame",
-            tags = { "min alpha", "alpha", "transparency" },
-        },
         ["ch.nameColon"] = {
             desc = L["With Better Player Names, a colon after the name, like \"[Aria]: hello\"."],
             label = L["Colon After Names"],
@@ -1016,6 +1037,13 @@ ns.Copy = {
             label = L["Social"],
             section = "ch.header",
         },
+        ["ch.tabChannel"] = {
+            desc = L["Clicking a chat tab that shows only one kind of chat, like Guild or Party, makes it the kind you type in."],
+            label = L["Tab Sets Channel"],
+            section = "ch.tweaks",
+            tags = { "chat type", "channel", "tab", "guild", "party", "raid", "say", "talk", "edit box" },
+            tip = L["A tab that shows several kinds keeps your current one. Party or Raid when you're not in one: Say."],
+        },
         ["ch.timestamps"] = {
             desc = L["A short time in blue before each message, like <12:30>."],
             label = L["Better Timestamps"],
@@ -1028,14 +1056,6 @@ ns.Copy = {
             section = "ch.frame",
             tags = { "unread", "new message", "tab glow", "highlight", "flash", "mute tab", "notification" },
             tip = L["None turns the glow off. Right-click a tab and pick Mute Tab to keep just that tab from glowing."],
-        },
-        ["ch.visibility"] = {
-            choices = { L["Always"], L["Chat Interactions"], L["Chat Interactions + In Combat"] },
-            desc = L["When the chat stays on screen.\n* Always: never fades\n* Chat Interactions: new messages and typing\n* Chat Interactions + In Combat: also during fights"],
-            label = L["Visibility"],
-            section = "ch.frame",
-            tags = { "show", "view conditions" },
-            tip = L["Pointing at the chat always shows it."],
         },
         ["ch.volume"] = {
             desc = L["A button for the game's master volume:\n* Click: mute or unmute\n* Mouse wheel: louder or quieter"],
@@ -1082,26 +1102,38 @@ ns.Copy = {
             section = "dm.tweaks",
             tip = L["Shows while you're in a group."],
         },
-        ["dm.fadeDelay"] = {
-            choices = { L["Instant"], L["5 Seconds"], L["10 Seconds"], L["15 Seconds"], L["30 Seconds"] },
-            desc = L["How long the meter stays before it fades."],
+        ["dm.em.fadeDelay"] = {
+            desc = L["How long the meter stays, in seconds, after it was last needed. Then it fades."],
             label = L["Fade Delay"],
-            section = "dm.frame",
-            tip = L["Needs a Visibility other than Always."],
+            tags = { "delay" },
         },
-        ["dm.fadeIn"] = {
-            choices = { L["Instant"], L["Fast"], L["Slow"] },
-            desc = L["How fast the meter comes back.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
-            label = L["Fade In Speed"],
-            section = "dm.frame",
-            tags = { "fade speed" },
+        ["dm.em.fadeIn"] = {
+            desc = L["How the meter or the threat window fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"],
+            label = L["Show Speed"],
+            tags = { "fade speed", "min alpha", "transparency" },
         },
-        ["dm.fadeOut"] = {
-            choices = { L["Instant"], L["Fast"], L["Slow"] },
-            desc = L["How fast the meter fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
-            label = L["Fade Out Speed"],
+        ["dm.em.fadeOut"] = {
+            desc = L["How the meter or the threat window fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"],
+            label = L["Hide Speed"],
+            tags = { "fade speed", "min alpha", "transparency" },
+        },
+        ["dm.em.minAlpha"] = {
+            desc = L["How the meter or the threat window fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"],
+            label = L["Faded Opacity"],
+            tags = { "fade speed", "min alpha", "transparency" },
+        },
+        ["dm.em.show"] = {
+            desc = L["When the meter or the threat window shows. Any ticked condition shows it.\n* Never: the meter shows only in Edit Mode, or at its Faded Opacity\n* In an Instance: in dungeons, raids, battlegrounds and arenas\n* Same as Meter: the threat window shows and fades with the meter"],
+            label = L["Visibility"],
+            tags = { "show", "view conditions", "show on mouseover", "hidden", "threat visibility" },
+            tip = L["With the Meter tab in the chat, the meter fades with the chat."],
+        },
+        ["dm.fading"] = {
+            desc = L["The meter's Visibility, fade speeds, Faded Opacity, Fade Delay and fade group are set in Edit Mode. So are the separate threat window's."],
+            label = L["Fading in Edit Mode"],
             section = "dm.frame",
-            tags = { "fade speed" },
+            tags = { "visibility", "show on mouseover", "mouseover", "fade", "fade speed", "faded opacity", "fade delay", "fade group", "threat visibility" },
+            tip = L["Show on Mouseover is now Mouseover in the meter's Visibility."],
         },
         ["dm.font.bars"] = {
             desc = L["Names and numbers on the bars."],
@@ -1116,18 +1148,6 @@ ns.Copy = {
         ["dm.matchChat"] = {
             desc = L["The meter takes the chat's width and height. Off: it goes back to its Edit Mode size."],
             label = L["Match Chat Size"],
-            section = "dm.tweaks",
-        },
-        ["dm.minAlpha"] = {
-            desc = L["How far the meter fades out. At 0% it disappears."],
-            label = L["Faded Opacity"],
-            section = "dm.frame",
-            tags = { "min alpha", "alpha", "transparency" },
-            tip = L["With the Meter tab in the chat, the meter fades with the chat."],
-        },
-        ["dm.mouseover"] = {
-            desc = L["Shows the meter while you point at its spot."],
-            label = L["Show on Mouseover"],
             section = "dm.tweaks",
         },
         ["dm.opacity"] = {
@@ -1176,27 +1196,11 @@ ns.Copy = {
             section = "dm.threat",
             tags = { "threat value display" },
         },
-        ["dm.threatVisibility"] = {
-            choices = { L["With the Meter"], L["In an Instance"], L["In a Group"], L["In Combat"] },
-            desc = L["When the threat window shows.\n* With the Meter: whenever the Damage Meter shows\n* In an Instance: in dungeons, raids, battlegrounds and arenas\n* In a Group: while you're in a group\n* In Combat: during fights"],
-            label = L["Visibility"],
-            section = "dm.threat",
-            tags = { "threat visibility", "show threat", "threat in instance", "dungeon" },
-            tip = L["Needs Separate Window. It never shows while the Damage Meter is hidden."],
-        },
         ["dm.threatWindow"] = {
             desc = L["Threat in its own window instead of a tab on the Damage Meter. Move and size it in Edit Mode."],
             label = L["Separate Window"],
             section = "dm.threat",
             tags = { "threat window", "threat meter", "separate threat" },
-        },
-        ["dm.visibility"] = {
-            choices = { L["Always"], L["In Combat"], L["In a Group"], L["In an Instance"], L["Hidden"] },
-            desc = L["When the meter shows.\n* Always: all the time\n* In Combat: during fights\n* In a Group: while you're in a group\n* In an Instance: in dungeons, raids, battlegrounds and arenas\n* Hidden: never on its own"],
-            label = L["Visibility"],
-            section = "dm.frame",
-            tags = { "show", "view conditions" },
-            tip = L["Works with Show on Mouseover. With Meter Tab in the Chat on, Open the Meter Tab decides instead."],
         },
         ["font.face"] = {
             desc = L["The typeface. Global follows the Global Font on the Settings page."],
@@ -1243,10 +1247,11 @@ ns.Copy = {
             tags = { "global font", "all text", "every font", "typeface" },
         },
         ["fonts.nameplate.face"] = {
-            desc = L["The names on Blizzard's nameplates. Default keeps their font (or the Global Font, with Game Text on)."],
+            desc = L["The names on Blizzard's nameplates and over characters in the world. Default keeps their font (or the Global Font, with Game Text on)."],
             label = L["Nameplate Font"],
             section = "language.fonts",
-            tags = { "nameplate font", "plate names" },
+            tags = { "nameplate font", "plate names", "unit names", "names over heads" },
+            tip = L["The names over characters change after a full restart of the game, not a /reload."],
         },
         ["mm.bag"] = {
             desc = L["Every addon's minimap button in one drawer. Click the day/night badge to open it."],
@@ -1382,10 +1387,18 @@ ns.Copy = {
             tags = { "buy more than one stack", "bulk buy" },
             tip = L["Buys a stack at a time, as far as your gold, bag space and the vendor's stock allow."],
         },
-        ["qol.camera"] = {
-            desc = L["The camera zooms out further, and faster."],
-            label = L["Better Camera"],
+        ["qol.cameraMaxZoom"] = {
+            desc = L["How far the camera can zoom out. It starts at Blizzard's own limit."],
+            label = L["Max Zoom"],
             section = "qol.camera",
+            tags = { "better camera", "camera distance", "zoom out", "max camera distance" },
+        },
+        ["qol.cameraZoomSpeed"] = {
+            desc = L["How fast the camera zooms with the mouse wheel. It starts at Blizzard's own speed."],
+            label = L["Zoom Speed"],
+            section = "qol.camera",
+            tags = { "better camera", "camera speed", "zoom faster", "mouse wheel" },
+            tip = L["Faster speeds also move the camera further with each turn of the wheel. In Gamepad mode the camera keeps Blizzard's speed."],
         },
         ["qol.deleteJunkFull"] = {
             desc = L["With your bags full, clicking an item in the loot window first deletes your cheapest grey item to make room."],
@@ -1637,10 +1650,23 @@ ns.Copy = {
             section = "qt.quests",
             tip = L["Middle-click a folded quest to open it. It stays open."],
         },
+        ["qt.collapsibleZones"] = {
+            desc = L["Click a zone heading to fold its quests. Click again to open them."],
+            label = L["Collapsible Zones"],
+            section = "qt.quests",
+            tags = { "fold", "collapse", "expand", "zone heading" },
+            tip = L["Needs Zone Headings. Folded zones are saved for each character."],
+        },
         ["qt.colorNames"] = {
             desc = L["Quest names in their difficulty colour. Completed and focused quests stay green and blue."],
             label = L["Colour by Difficulty"],
             section = "qt.display",
+        },
+        ["qt.completeTag"] = {
+            desc = L["Finished quests get a green name and \"(Complete)\". Turn it off and they look like any other quest."],
+            label = L["Show Complete Tag"],
+            section = "qt.display",
+            tags = { "complete", "finished", "green", "ready to turn in" },
         },
         ["qt.completedLast"] = {
             desc = L["Quests ready to turn in move to the bottom."],
@@ -1656,6 +1682,7 @@ ns.Copy = {
             desc = L["A dot before each quest: click it to focus the quest on the map."],
             label = L["Focus Buttons"],
             section = "qt.display",
+            tip = L["Off while Quest Icons is on."],
         },
         ["qt.focusedFirst"] = {
             desc = L["The quest you focus on the map moves to the top. With zone headings, its zone moves up with it."],
@@ -1739,6 +1766,13 @@ ns.Copy = {
             section = "qt.display",
             tip = L["Needs the Spoken addon."],
         },
+        ["qt.questIcons"] = {
+            desc = L["A round icon before each quest, as on Blizzard's tracker: \"…\" while in progress, \"?\" when ready to turn in. Click it to focus the quest."],
+            label = L["Quest Icons"],
+            section = "qt.display",
+            tags = { "quest icon", "question mark", "focus", "super track" },
+            tip = L["The focused quest's icon looks pressed in. Focus Buttons are off while this is on."],
+        },
         ["qt.recipes"] = {
             desc = L["Tracked recipes, with the reagents you carry."],
             label = L["Tracked Recipes"],
@@ -1759,6 +1793,13 @@ ns.Copy = {
             desc = L["A short tag after the quest name:\n* + for elite\n* g3 for a group of 3\n* d for dungeon, r for raid\n* pvp for PvP"],
             label = L["Quest Tags"],
             section = "qt.display",
+        },
+        ["qt.untracked"] = {
+            desc = L["Quests in your zone that you don't track show too, dimmed. Shift-click one to track it."],
+            label = L["Show Untracked Quests"],
+            section = "qt.quests",
+            tags = { "untracked", "all quests", "zone quests", "quest log" },
+            tip = L["Needs Zone Headings."],
         },
         ["qt.width"] = {
             desc = L["The tracker's size:\n* Width\n* Max Height: how tall it grows before it scrolls\n* Quest Spacing: the gap between quests"],
@@ -1784,7 +1825,7 @@ ns.Copy = {
             label = L["Height"],
         },
         ["rb.*.show"] = {
-            choices = { L["Always"], L["In Combat"], L["Has a Target"], L["Has an Attackable Target"], L["In a Group"], L["Not Mounted"] },
+            choices = { L["Always"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["Not Mounted"] },
             desc = L["When the bar shows. Any ticked condition shows it."],
             label = L["Visibility"],
             tags = { "show condition", "show", "view conditions", "show when" },
@@ -2321,10 +2362,10 @@ ns.Copy = {
             tip = L["Each style keeps its own setup."],
         },
         ["uf.fullNames"] = {
-            desc = L["Surnames after first names on:\n* Player and target frames\n* Party and focus frames, in Forever Style"],
+            desc = L["Surnames after first names on the player, target and party frames."],
             label = L["Full Player Names"],
             section = "uf.look",
-            tip = L["Target of target and target of focus always show first names."],
+            tip = L["The focus frame, target of target and target of focus always show first names."],
         },
         ["uf.main"] = {
             desc = L["Your player, pet, target and focus frames."],

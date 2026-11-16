@@ -196,7 +196,7 @@ end
 
 --------------------------------------------------
 -- 6b. FLAREUI BORDERS (Bar Appearance, actionbars.flareBorders, off; 11-11, a player's request)
--- Only the frame changes (11-11 Marcus): Blizzard's bronze frame goes invisible and FlareUI Frames, the
+-- Only the frame changes (11-11 Malkkav): Blizzard's bronze frame goes invisible and FlareUI Frames, the
 -- chat and meter windows' border, goes where it was. The icon, its rounded corners, the slot art and every other
 -- part of the button stay Blizzard's. Off shows Blizzard's frame again.
 --------------------------------------------------
@@ -1429,7 +1429,7 @@ local CLASS_PAGING = {
     -- Shadowmeld too; a rogue's stealth page is bonus bar 1 (held too, should it outlast Stealth).
     ROGUE = { key = "keepStealthPage", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth] 1; [actionbar:1,bonusbar:1] 1; default" },
     -- Druids: Prowl keeps Cat Form's page (7, Blizzard's), Shadowmeld in caster form page 1.
-    -- offDriver (11-13, Marcus): Forever stopped paging Prowl (rogues' Stealth still pages), which was
+    -- offDriver (11-13, Malkkav): Forever stopped paging Prowl (rogues' Stealth still pages), which was
     -- confusing, so with the toggle off FlareUI pages it itself: Prowl turns bar 1 to the prowl page
     -- (8, bonus bar 2, the page Forever used), only from page 1 (page keys still turn pages)
     DRUID = { key = "keepStealthPage", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth,form] 7; [actionbar:1,stealth] 1; default",

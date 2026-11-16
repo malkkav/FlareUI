@@ -89,14 +89,14 @@ local customHosts = {}  -- "module.tab" -> a custom tab's frame
 --------------------------------------------------
 -- 1. SMALL HELPERS
 --------------------------------------------------
--- (11-13, Marcus) Blizzard's own scroll bar (MinimalScrollBar: the thin track, its thumb and the
+-- (11-13, Malkkav) Blizzard's own scroll bar (MinimalScrollBar: the thin track, its thumb and the
 -- up / down arrows), shown only when there is something to scroll. The API stays FlareUI's:
 -- line:SetValues(visible, position) takes 0..1 shares; line.onScroll(position) fires when the player
 -- drags it, clicks its track or arrows.
 local SCROLL_SCALE = 0.7
 function Panel.ScrollLine(parent)
     local line = CreateFrame("EventFrame", nil, parent, "MinimalScrollBar")
-    -- (11-13, Marcus: squished between the borders) drawn at 70%: thinner, arrows too
+    -- (11-13, Malkkav: squished between the borders) drawn at 70%: thinner, arrows too
     line:SetScale(SCROLL_SCALE)
     line.visible, line.position = 1, 0
     local setting = false
@@ -207,7 +207,7 @@ local function Line(parent, layer)
     return t
 end
 
--- The window's fonts (11-13, Marcus): Blizzard's Friz Quadrata for everything, as the 5.x window and
+-- The window's fonts (11-13, Malkkav): Blizzard's Friz Quadrata for everything, as the 5.x window and
 -- Forever's own windows, in full white with Blizzard's solid shadow. A Russian client takes Friz's
 -- Cyrillic file. Roboto Condensed (11-10 to 11-13) read too sharp to players; it and Marcellus still
 -- ship, for the players' font choices.
@@ -267,6 +267,12 @@ Panel.FONT = PANEL_FONT
 -- the button text: Blizzard's yellow, as its buttons' (11-13)
 local BUTTON_FONT = PanelFont("FlareUI_PanelButton", BODY_FONT, 13, GOLD)
 local BUTTON_FONT_SMALL = PanelFont("FlareUI_PanelButtonSmall", BODY_FONT, 11, GOLD)
+-- (11-15, MunchieDog) hover (white, as Blizzard's buttons) and greyed text at the button's own size: the
+-- small buttons' text grew on hover
+local BUTTON_FONTS = {
+    [false] = { BUTTON_FONT, PanelFont("FlareUI_PanelButtonHover", BODY_FONT, 13, TEXT_WHITE), PanelFont("FlareUI_PanelButtonOff", BODY_FONT, 13, GREY) },
+    [true] = { BUTTON_FONT_SMALL, PanelFont("FlareUI_PanelButtonSmallHover", BODY_FONT, 11, TEXT_WHITE), PanelFont("FlareUI_PanelButtonSmallOff", BODY_FONT, 11, GREY) },
+}
 -- (kept for its callers: the titles are made at their sizes above)
 local function ApplyTitleFont() end
 -- at load too: the setup tour can show before the settings window is ever built
@@ -311,7 +317,7 @@ local function FitText(fs, width, maxLines)
 end
 
 -- A dark box with a bronze edge: the left list, the page and the right column
--- FlareUI Thin (8 px edge) for every box, button and tab in the window (11-10, Marcus)
+-- FlareUI Thin (8 px edge) for every box, button and tab in the window (11-10, Malkkav)
 local THIN = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thin.tga"
 local THIN_EDGE, THIN_INSET = 8, 4   -- fills start 4 px in: under the border's rounded corners
 local EDGE_COLOR = { 0.55, 0.42, 0.24 }       -- resting
@@ -334,7 +340,7 @@ local function ThinEdge(f)
 end
 
 -- FlareUI Thick (12 px edge), on its own frame over f as ThinEdge: tabs, buttons and dropdowns (11-11
--- Marcus: heavier, closer to Forever's own panels)
+-- Malkkav: heavier, closer to Forever's own panels)
 local THICK = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thick.tga"
 local THICK_EDGE, THICK_INSET = 12, 3
 local function ThickEdge(f)
@@ -368,7 +374,7 @@ end
 Panel.Box = Box
 
 -- A bronze plate button: the page's tabs and the window's Settings / What's New. Lit when selected.
--- (11-13, Marcus: "all buttons in the grey Blizzard style, bronze borders on all") every button and tab
+-- (11-13, Malkkav: "all buttons in the grey Blizzard style, bronze borders on all") every button and tab
 -- wears the face of Blizzard's own dropdown box (WowStyle2: common-dropdown-c-button), its grey with the
 -- bronze rim, in Blizzard's states: hover, pressed, pressed under the pointer, disabled; a selected tab
 -- (b.fSelected) takes the open box's. The art reaches 7 px past the button, as on the dropdown.
@@ -426,7 +432,7 @@ Panel.Plate = Plate
 -- The controls kit (11-10, batch B), drawn from one smooth disc (tools/panelart.js)
 local CIRCLE = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Circle.tga"
 local GOLD = { 0.91, 0.77, 0.42 }
--- (11-13, Marcus: more Blizzard-like) titles in WoW's own yellow (NORMAL_FONT_COLOR): the window's name,
+-- (11-13, Malkkav: more Blizzard-like) titles in WoW's own yellow (NORMAL_FONT_COLOR): the window's name,
 -- page titles, section headers and the Info Panel's titles; buttons and sliders keep the bronze gold
 local TITLE_YELLOW = { 1, 0.82, 0 }
 Panel.TITLE_YELLOW = TITLE_YELLOW
@@ -466,9 +472,9 @@ local function Pill(parent, layer, sub, inset, height)
 end
 Panel.Pill = Pill
 
--- The toggles (11-13, Marcus): Blizzard's checkbox with its gold checkmark, as players asked; the stone
+-- The toggles (11-13, Malkkav): Blizzard's checkbox with its gold checkmark, as players asked; the stone
 -- switch (11-10 to 11-13) is retired. A plain CheckButton: SetChecked / GetChecked / Click as before.
--- (11-13, Marcus) the art of Blizzard's own settings checkbox (SettingsCheckboxTemplate): the
+-- (11-13, Malkkav) the art of Blizzard's own settings checkbox (SettingsCheckboxTemplate): the
 -- bronze-rimmed box and its tick, by atlas (the template's mixin wants Blizzard's setting data)
 local function Switch(parent)
     local s = CreateFrame("CheckButton", nil, parent)
@@ -500,12 +506,15 @@ local function SkinButton(b)
     b:SetHighlightTexture(b:CreateTexture())
     GreyFace(b)
     b:SetNormalFontObject(BUTTON_FONT)
-    -- (the short ones, 22 px and under, a size smaller: 11-11 Marcus)
+    -- (the short ones, 22 px and under, a size smaller: 11-11 Malkkav)
     local function FitFont(self)
         local small = (self:GetHeight() or 0) <= 22.5
         if self.ftSmallFont ~= small then
             self.ftSmallFont = small
-            self:SetNormalFontObject(small and BUTTON_FONT_SMALL or BUTTON_FONT)
+            local set = BUTTON_FONTS[small]
+            self:SetNormalFontObject(set[1])
+            self:SetHighlightFontObject(set[2])
+            self:SetDisabledFontObject(set[3])
         end
     end
     b:HookScript("OnSizeChanged", FitFont)
@@ -518,8 +527,6 @@ local function SkinButton(b)
     hooksecurefunc(b, "SetText", FitLabel)
     b:HookScript("OnSizeChanged", FitLabel)
     FitLabel(b)
-    b:SetHighlightFontObject(_G[PANEL_FONT.GameFontHighlight])
-    b:SetDisabledFontObject(_G[PANEL_FONT.GameFontDisable])
     return b
 end
 Panel.SkinButton = SkinButton
@@ -534,7 +541,7 @@ local function SkinDropdown(dd)
     for _, r in ipairs({ dd:GetRegions() }) do
         if r:IsObjectType("Texture") and r ~= dd.Arrow then r:SetAlpha(0) end
     end
-    -- (11-11 Marcus: squared and heavier, its middle the buttons' brown, as Forever's own dropdowns)
+    -- (11-11 Malkkav: squared and heavier, its middle the buttons' brown, as Forever's own dropdowns)
     dd.fEdge = ThickEdge(dd)
     dd.fFill = dd:CreateTexture(nil, "BACKGROUND", nil, 2)
     dd.fFill:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
@@ -557,7 +564,7 @@ local function SkinDropdown(dd)
     end
     if dd.Text then
         dd.Text:SetFontObject(_G[PANEL_FONT.GameFontHighlightSmall])
-        -- the buttons' gold (11-11 Marcus); Blizzard's template sets its own colour on each state change
+        -- the buttons' gold (11-11 Malkkav); Blizzard's template sets its own colour on each state change
         local function TextColor(self)
             if self:IsEnabled() then self.Text:SetTextColor(TITLE_YELLOW[1], TITLE_YELLOW[2], TITLE_YELLOW[3]) else self.Text:SetTextColor(0.5, 0.5, 0.5) end
         end
@@ -619,7 +626,7 @@ local function PageSpec()
     return ns.SettingsPreview.Module(current)
 end
 
--- 11-10 (Marcus): a picture shows the current settings only; hovering never tries a value on
+-- 11-10 (Malkkav): a picture shows the current settings only; hovering never tries a value on
 local function ShowVisual(row)
     if not preview.canvas then return end
     if preview.module ~= current or preview.tab ~= currentTab[current] then
@@ -719,7 +726,7 @@ local Fill = {}      -- kind -> function(f, row): shows the row's values
 
 local function RowEnter(self)
     if self.row then ShowRowPreview(self.row) end
-    -- (11-13, Marcus) the style cards light up on their own: no row highlight behind them
+    -- (11-13, Malkkav) the style cards light up on their own: no row highlight behind them
     if self.kind ~= "styles" then self.hover:Show() end
 end
 
@@ -740,7 +747,7 @@ local function NewRowFrame(parent, kind)
     f.plate = f:CreateTexture(nil, "BACKGROUND", nil, -1)
     f.plate:SetAllPoints()
     f.plate:SetColorTexture(0, 0, 0, 0.26)
-    f.plate:SetAlpha(0)   -- (11-11 Marcus: no dark box at rest; only the hover shows the row)
+    f.plate:SetAlpha(0)   -- (11-11 Malkkav: no dark box at rest; only the hover shows the row)
     f.hover = f:CreateTexture(nil, "BACKGROUND")
     f.hover:SetAllPoints()
     -- a rounded box: our own 32 px art, 8 px corners kept as a nine-slice
@@ -909,11 +916,11 @@ Build.choice = function(f)
     stepper.IncrementButton:ClearAllPoints()
     stepper.IncrementButton:SetPoint("RIGHT", f, "RIGHT", -6, 0)
     stepper.Dropdown:ClearAllPoints()
-    -- (11-13, Marcus: the arrows close to the box)
+    -- (11-13, Malkkav: the arrows close to the box)
     stepper.Dropdown:SetPoint("RIGHT", stepper.IncrementButton, "LEFT", -1, 0)
     stepper.DecrementButton:ClearAllPoints()
     stepper.DecrementButton:SetPoint("RIGHT", stepper.Dropdown, "LEFT", -1, 0)
-    -- (11-13, Marcus) Blizzard's own look, colours and all: the box and its arrows are left unskinned
+    -- (11-13, Malkkav) Blizzard's own look, colours and all: the box and its arrows are left unskinned
     ForwardHover(stepper.Dropdown, f)
     ForwardHover(stepper.IncrementButton, f)
     ForwardHover(stepper.DecrementButton, f)
@@ -933,11 +940,11 @@ end
 -- Discrete numeric settings keep their registered choices, including Default/Auto.
 -- Dragging previews without writes; releasing commits once. Keyboard changes commit directly.
 Build.range = function(f)
-    -- (11-13, Marcus) Blizzard's own settings slider (MinimalSliderWithSteppersTemplate): its bar,
+    -- (11-13, Malkkav) Blizzard's own settings slider (MinimalSliderWithSteppersTemplate): its bar,
     -- diamond thumb and ‹ › steppers. FlareUI's handling stays: one step per choice, a live preview
     -- while dragging, saved on release, the value text on the right.
     local holder = CreateFrame("Frame", nil, f, "MinimalSliderWithSteppersTemplate")
-    holder:SetSize(234, 20)   -- (11-13, Marcus: longer: as wide as a choice stepper or a dropdown)
+    holder:SetSize(234, 20)   -- (11-13, Malkkav: longer: as wide as a choice stepper or a dropdown)
     holder:SetPoint("RIGHT", -58, 0)
     local slider = holder.Slider
     slider:SetValueStep(1)
@@ -1027,7 +1034,7 @@ Fill.styles = function(f, row)
             b = CreateFrame("Button", nil, f, "BackdropTemplate")
             local edgeFile = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thick.tga"
             b:SetBackdrop({ edgeFile = edgeFile, edgeSize = ns.BorderEdgeSize(edgeFile, 12) })
-            -- (11-13, Marcus) the window's natural stone, darkened; 5 px in, so its square corners stay
+            -- (11-13, Malkkav) the window's natural stone, darkened; 5 px in, so its square corners stay
             -- under the border's round ones. Paint lightens it under the pointer and when chosen.
             b.plate = b:CreateTexture(nil, "BACKGROUND")
             b.plate:SetPoint("TOPLEFT", 5, -5)
@@ -1108,7 +1115,7 @@ local function SideButton(f, side)
     return f[key]
 end
 Build.dropdown = function(f)
-    -- (11-13, Marcus) Blizzard's own box, as the choice steppers' (WowStyle2), unskinned
+    -- (11-13, Malkkav) Blizzard's own box, as the choice steppers' (WowStyle2), unskinned
     local dd = CreateFrame("DropdownButton", nil, f, "WowStyle2DropdownTemplate")
     dd:SetWidth(234)
     dd:SetPoint("RIGHT", -4, 0)
@@ -1120,7 +1127,7 @@ local function PlaceSideButtons(f, row)
     local sides = row.sideButtons or {}
     local dd = f.control
     dd:ClearAllPoints()
-    -- (11-13, Marcus) as wide as a choice stepper with its arrows (box 180 + two arrow buttons), and its
+    -- (11-13, Malkkav) as wide as a choice stepper with its arrows (box 180 + two arrow buttons), and its
     -- right edge where theirs is; half rows as a half stepper
     dd:SetWidth(row.dropdownWidth or (row.half and 150 or 234))
     for _, side in ipairs({ "right", "left" }) do
@@ -1488,7 +1495,7 @@ Build.expander = function(f)
     end)
     ForwardHover(b, f)
     f.control = b
-    -- a font heading's Reset (11-13, Marcus): as on the section headings, beside the sign; one font,
+    -- a font heading's Reset (11-13, Malkkav): as on the section headings, beside the sign; one font,
     -- so no question first
     local reset = CreateFrame("Button", nil, b)
     reset:SetPoint("RIGHT", b.sign, "LEFT", -12, 0)
@@ -1630,7 +1637,7 @@ end
 local page = {}
 
 -- clicking a section heading folds it; kept for the session
--- (true closed, false opened by hand; a Fonts tab's sections start closed, 11-13 Marcus)
+-- (true closed, false opened by hand; a Fonts tab's sections start closed, 11-13 Malkkav)
 local closedSections = {}   -- section key -> true / false
 
 local function SectionClick(h)
@@ -1678,7 +1685,7 @@ local function SectionHeader(parent, text, y, sectionKey)
         h.line:SetPoint("BOTTOMLEFT", 0, 2)
         h.line:SetPoint("BOTTOMRIGHT", 0, 2)
         h:EnableMouse(true)
-        -- (11-13, Marcus: "headers should not have highlights on hover") no light; the click still folds it
+        -- (11-13, Malkkav: "headers should not have highlights on hover") no light; the click still folds it
         h:SetScript("OnMouseUp", SectionClick)
     end
     h:SetParent(parent)
@@ -1700,7 +1707,7 @@ local function SectionHeader(parent, text, y, sectionKey)
     return SECTION_H
 end
 
--- A red line: these settings do nothing in Gamepad mode (11-13, Marcus); returns its height
+-- A red line: these settings do nothing in Gamepad mode (11-13, Malkkav); returns its height
 local function GamepadNote(parent, y)
     local key = "padnote"
     pools[key] = pools[key] or {}
@@ -1789,7 +1796,7 @@ local function PlaceRows(parent, rows, y, crumbOf)
     return y
 end
 
--- 11-11 (Marcus): the pages' icons as Blizzard's own, in the round aura look (the talent node mask and
+-- 11-11 (Malkkav): the pages' icons as Blizzard's own, in the round aura look (the talent node mask and
 -- ring, tinted bronze, as Auras.lua's round style); /fui icons switches back to the line icons
 local GAME_ICONS = {
     about = "INV_Misc_Book_09", adv = "INV_Scroll_03", language = "Trade_Engineering",
@@ -1901,7 +1908,7 @@ local function UpdateHeader(module)
     local active = Panel:ActiveTab(module)
     -- the row must fit the page: each tab is its name and some padding; too wide, the padding shrinks
     -- (down to TAB_PAD_MIN). A tab's NEW badge sits on its top edge, centred, over the border (11-11
-    -- Marcus: beside the name it looked bad), so it takes no width.
+    -- Malkkav: beside the name it looked bad), so it takes no width.
     local TAB_PAD, TAB_PAD_MIN, TAB_GAP, TAB_LEFT = 28, 12, 4, 4   -- (TAB_LEFT: the first tab sits 4 in, 11-13)
     local shown, textW, isNew = {}, {}, {}
     for i, b in ipairs(page.tabButtons) do
@@ -1943,7 +1950,7 @@ local function UpdateHeader(module)
         b:SetWidth(textW[i] + pad)
     end
     local tabbed = module.tabs and module:IsOn()
-    page.tabLine:SetShown(false)   -- (11-11 Marcus: no line between the tabs and the boxes)
+    page.tabLine:SetShown(false)   -- (11-11 Malkkav: no line between the tabs and the boxes)
     if tabbed then height = height + 32 end
     page.header:SetHeight(height)
 end
@@ -2288,7 +2295,7 @@ local function BuildNav(left)
             b.text:SetText(module:Title())
             FitText(b.text, buttonWidth - NAV_TEXT_INSET - b.rightInset, 2)
             b.newBadge = NewBadge(b)
-            -- (11-13, Marcus) no quick checkbox in the list (11-11 to 11-13): a module is turned on or off
+            -- (11-13, Malkkav) no quick checkbox in the list (11-11 to 11-13): a module is turned on or off
             -- by the checkbox beside its page title; an off one still shows greyed here
             b.newBadge:SetPoint("RIGHT", -NAV_RIGHT_INSET / NEW_SCALE, 0)
             b:SetScript("OnClick", function()
@@ -2491,12 +2498,12 @@ function Panel.RimPicture(parent, tex, pad)
 end
 
 --------------------------------------------------
--- 6b. THE WINDOW'S STONE AND FRAME (11-11): Marcus picked the natural rock and the character select's
+-- 6b. THE WINDOW'S STONE AND FRAME (11-11): Malkkav picked the natural rock and the character select's
 -- heavy bronze frame (rivets top left and bottom right), from look tests since retired
 --------------------------------------------------
 local LOOK_BG = {
     { "Rock, bronze tint", file = "Interface\\FrameGeneral\\UI-Background-Rock", tile = true, desat = true, tint = { 0.85, 0.68, 0.47 }, wash = 0.3 },
-    -- (11-13 Marcus: plain, as previewed: no brown wash, no bronze glow; the wash was 0.35, then 0.12)
+    -- (11-13 Malkkav: plain, as previewed: no brown wash, no bronze glow; the wash was 0.35, then 0.12)
     { "Rock, natural", file = "Interface\\FrameGeneral\\UI-Background-Rock", tile = true, wash = 0, plain = true },
 }
 local LOOK_FRAME = { "Tooltip edge (now)", "FlareUI Thick", "Heavy bronze (character select)" }
@@ -2555,7 +2562,7 @@ local function TryFrame(n)
             -- where the character select list draws it, stretched (11-11: the nine-slice try broke it)
             b.edge:SetPoint("TOPLEFT", -9, 15)
             b.edge:SetPoint("BOTTOMRIGHT", 9, -15)
-            -- the rivets top left and bottom right; the close button takes the top right corner (11-11 Marcus)
+            -- the rivets top left and bottom right; the close button takes the top right corner (11-11 Malkkav)
             for _, c in ipairs({ { "TL", "TOPLEFT" }, { "BR", "BOTTOMRIGHT" } }) do
                 local t = b:CreateTexture(nil, "ARTWORK")
                 t:SetAtlas("heavybronze-horz-cornerbracket-" .. c[1], true)
@@ -2572,7 +2579,7 @@ end
 local function BuildWindow()
     local style = ns.WINDOW_STYLE
     ApplyTitleFont()
-    -- (11-11 Marcus: after a reload each page opens on its first tab; the tabs once kept go)
+    -- (11-11 Malkkav: after a reload each page opens on its first tab; the tabs once kept go)
     if ns.db and ns.db.global then ns.db.global.settingsTabs = nil end
     frame = CreateFrame("Frame", "FlareUI_SettingsPanel", UIParent, "BackdropTemplate")
     frame:SetSize(WIDTH, HEIGHT)
@@ -2652,12 +2659,12 @@ local function BuildWindow()
     end)
 
     -- header (56): the logo, name and version, the Settings / What's New plates; search and close right
-    -- (11-13, Marcus: a colour line showed under the header) no header band of its own: the stone and
+    -- (11-13, Malkkav: a colour line showed under the header) no header band of its own: the stone and
     -- its soft top glow run on under the header row
     local logo = frame:CreateTexture(nil, "ARTWORK", nil, 2)
     logo:SetTexture(LOGO)
     logo:SetSize(38, 38)
-    -- centred on the header row; its rim's outer edge on the left list's border line (11-11 Marcus)
+    -- centred on the header row; its rim's outer edge on the left list's border line (11-11 Malkkav)
     logo:SetPoint("TOPLEFT", EDGE + 6, -(HEADER_ROW_Y - 19))
     local logoMask = frame:CreateMaskTexture()
     logoMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
@@ -2681,7 +2688,7 @@ local function BuildWindow()
     version:SetPoint("LEFT", title, "RIGHT", 8, -2)
     version:SetTextColor(0.64, 0.6, 0.54)
     version:SetText(C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "")
-    -- on the frame's top right corner, above the frame art (11-11 Marcus)
+    -- on the frame's top right corner, above the frame art (11-11 Malkkav)
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     -- in the frame art's own top right corner (the heavy bronze frame), else the window's
     if frame.ftBronze and frame.ftBronze:IsShown() then
@@ -2711,8 +2718,8 @@ local function BuildWindow()
         end)
         frame.topTabs[i] = b
     end
-    -- Settings / What's New start at the middle box's left edge (11-11 Marcus)
-    -- (+4, 11-13 Marcus: the grey face reaches past the button; its visible edge on the box's)
+    -- Settings / What's New start at the middle box's left edge (11-11 Malkkav)
+    -- (+4, 11-13 Malkkav: the grey face reaches past the button; its visible edge on the box's)
     frame.topTabs[1]:SetPoint("LEFT", frame, "TOPLEFT", EDGE + LEFT_W + GAP + 4, -HEADER_ROW_Y)
     frame.topTabs[2]:SetPoint("LEFT", frame.topTabs[1], "RIGHT", 6, 0)
 
@@ -2720,11 +2727,11 @@ local function BuildWindow()
     local news = CreateFrame("Frame", nil, frame)
     news:SetAllPoints(body)
     news:Hide()
-    -- (11-13, Marcus) the footer: Don't Show on Login (account-wide, off). Releases come often, and the
+    -- (11-13, Malkkav) the footer: Don't Show on Login (account-wide, off). Releases come often, and the
     -- notes opened at every login after an update
     local NEWS_FOOT = 20   -- the notes stop this far above the switch row
     local quiet = Switch(news)
-    quiet:SetPoint("BOTTOMLEFT", PAD, PAD - 12)   -- (11-13 Marcus) low, near the frame's bottom edge
+    quiet:SetPoint("BOTTOMLEFT", PAD, PAD - 12)   -- (11-13 Malkkav) low, near the frame's bottom edge
     quiet:SetScript("OnShow", function(self)
         local global = ns.db and ns.db.global
         self:SetChecked(global and global.whatsNewQuiet == true or false)
@@ -2743,7 +2750,7 @@ local function BuildWindow()
     local newsScroll = CreateFrame("ScrollFrame", nil, news)
     newsScroll:SetPoint("TOPLEFT", PAD, -PAD)
     newsScroll:SetPoint("BOTTOMRIGHT", -PAD - 28, PAD + NEWS_FOOT)
-    -- (11-11 Marcus) each version in a box of its own, as the settings' sections, clear of the scroll line
+    -- (11-11 Malkkav) each version in a box of its own, as the settings' sections, clear of the scroll line
     local NEWS_W, NEWS_PAD = WIDTH - 2 * EDGE - 2 * PAD - 40, 16
     local newsContent = CreateFrame("Frame", nil, newsScroll)
     newsContent:SetSize(NEWS_W, 1)
@@ -2775,7 +2782,7 @@ local function BuildWindow()
     left:SetPoint("TOPLEFT")
     left:SetPoint("BOTTOMLEFT")
     left:SetWidth(LEFT_W)
-    Box(left, 0.40)   -- (11-13, Marcus: the stone stays light, the boxes darker to read; were 0.18 / 0.18 / 0.10)
+    Box(left, 0.40)   -- (11-13, Malkkav: the stone stays light, the boxes darker to read; were 0.18 / 0.18 / 0.10)
 
     local right = CreateFrame("Frame", nil, body, "BackdropTemplate")
     right:SetPoint("TOPRIGHT")
@@ -2975,7 +2982,7 @@ local function BuildWindow()
     preview.picture:SetPoint("TOP", 0, -PAD)
     preview.picture:SetTexture(PICTURE)
     preview.picture:SetSize(RIGHT_W - 2 * PAD, RIGHT_W - 2 * PAD)
-    -- the dog's bronze rim and soft shade, as the header logo's (11-11 Marcus); they come and go with it
+    -- the dog's bronze rim and soft shade, as the header logo's (11-11 Malkkav); they come and go with it
     local pictureRim = right:CreateTexture(nil, "ARTWORK", nil, -2)
     -- (our 256 px ring, shown near its own size: smooth, 11-11)
     pictureRim:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PictureRim.tga")

@@ -45,15 +45,28 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }   -- 11-10 regr
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["bl.bagCombined"] = "6.8",
-    ["ch.fadeIn"] = "6.8",
-    ["ch.fadeOut"] = "6.8",
-    ["ch.unreadGlow"] = "6.8",
-    ["dm.fadeIn"] = "6.8",
-    ["dm.fadeOut"] = "6.8",
-    ["qt.keepFocus"] = "6.8",
-    ["uf.flagCarriers"] = "6.8",
-    ["uf.party.damageTrail"] = "6.8",
+    ["bl.bagAutoSort"] = "6.9",
+    ["br.elixirMode"] = "6.9",
+    ["br.elixirSource"] = "6.9",
+    ["ch.em.fadeDelay"] = "6.9",
+    ["ch.em.fadeIn"] = "6.9",
+    ["ch.em.fadeOut"] = "6.9",
+    ["ch.em.minAlpha"] = "6.9",
+    ["ch.em.show"] = "6.9",
+    ["ch.fading"] = "6.9",
+    ["ch.tabChannel"] = "6.9",
+    ["dm.em.fadeDelay"] = "6.9",
+    ["dm.em.fadeIn"] = "6.9",
+    ["dm.em.fadeOut"] = "6.9",
+    ["dm.em.minAlpha"] = "6.9",
+    ["dm.em.show"] = "6.9",
+    ["dm.fading"] = "6.9",
+    ["qol.cameraMaxZoom"] = "6.9",
+    ["qol.cameraZoomSpeed"] = "6.9",
+    ["qt.collapsibleZones"] = "6.9",
+    ["qt.completeTag"] = "6.9",
+    ["qt.questIcons"] = "6.9",
+    ["qt.untracked"] = "6.9",
 }
 
 --------------------------------------------------
@@ -302,7 +315,7 @@ function Row:IsHidden()
     return self.hidden and self.hidden() or false
 end
 
--- (11-13, Marcus: "anything that has restrictions on gamepad should get this warning") what Blizzard's
+-- (11-13, Malkkav: "anything that has restrictions on gamepad should get this warning") what Blizzard's
 -- Gamepad UI keeps FlareUI from doing: the modules and rows the code itself turns off there (Bags.lua
 -- layout and filters, Auras / BuffReminders ShouldLoad, Tweaks' quest, mail, merchant and camera
 -- helpers, Tooltips' visibility and mouseover, the meter's chat tab...). Greyed there, and their
@@ -313,7 +326,7 @@ Settings.GAMEPAD_OFF = {
     ["bl.bagFilters"] = true, ["bl.bagWithCharacter"] = true,
     ["ab.skinCDM"] = true, ["dm.chatTab"] = true, ["dm.chatTabIgnoreFade"] = true, ["tt.mouseover"] = true, ["qt.autoButtons"] = true,
     ["qol.autoAcceptQuests"] = true, ["qol.autoTurnInQuests"] = true, ["qol.mailBook"] = true,
-    ["qol.bulkBuy"] = true, ["qol.merchantWide"] = true, ["qol.fishCast"] = true, ["qol.camera"] = true,
+    ["qol.bulkBuy"] = true, ["qol.merchantWide"] = true, ["qol.fishCast"] = true, ["qol.cameraZoomSpeed"] = true,
     ["qol.move"] = true,
 }
 function Settings:GamepadOff(row)
@@ -383,7 +396,7 @@ end
 local resetPaths = {
     ['uf.main']='unitframes.units.player.enabled',
     ['ab.statusColours']='actionbars.colors.enableRange',
-    ['qol.move']='tweaks.moveAnyFrame', ['qol.camera']='tweaks.maxCameraZoom',
+    ['qol.move']='tweaks.moveAnyFrame',
     ['tt.anchor']='tooltips.anchor', ['tt.posWorld']='tooltips.anchor', ['tt.posFrames']='tooltips.anchorFrames',
     ['tt.posBars']='tooltips.anchorBars', ['tt.posOther']='tooltips.anchorOther', ['tt.posAuras']='tooltips.anchorAuras', ['tt.posGroupAuras']='tooltips.anchorGroupAuras', ['tt.borders']='tooltips.borderByReaction',
     ['tt.ids']='tooltips.showItemID', ['tt.showWorld']='tooltips.visibility.worldUnits',

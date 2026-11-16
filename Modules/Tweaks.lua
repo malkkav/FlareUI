@@ -566,7 +566,7 @@ local function IsSource(store)
     return type(source) == "table" and guid ~= nil and source.guid == guid
 end
 
--- the character's name for display (first and second name; no realm, 11-10 Marcus)
+-- the character's name for display (first and second name; no realm, 11-10 Malkkav)
 local function SourceLabel(source)
     if type(source) ~= "table" then return nil end
     return source.full or source.name or "?"
@@ -1217,33 +1217,47 @@ function Tweaks.RestoreTips(stored)
     pcall(SetCVar, "showNPETutorials", saved.npe or 1)
 end
 
+-- (11-15, Malkkav) Better Camera became two sliders, Max Zoom and Zoom Speed: nil = Blizzard's own (left
+-- alone); Better Camera's old switch carries over as FlareUI's values (2.6 and 50)
+function Tweaks.CameraDefault(cvar)
+    local ok, v = pcall(C_CVar.GetCVarDefault, cvar)
+    return ok and tonumber(v) or nil
+end
 local function ApplyCamera()
     local db = GetDb()
     if not db then return end
+    if db.maxCameraZoom then db.cameraMaxZoom = db.cameraMaxZoom or 2.6; db.maxCameraZoom = false end
+    if db.fasterCameraZoom then db.cameraZoomSpeed = db.cameraZoomSpeed or 50; db.fasterCameraZoom = false end
     local forced = ForcedCVars("maxZoom")
-    if db.maxCameraZoom then
+    if db.cameraMaxZoom then
         forced.maxZoom = forced.maxZoom or GetCVar("cameraDistanceMaxZoomFactor") or true
-        pcall(SetCVar, "cameraDistanceMaxZoomFactor", 2.6)
+        pcall(SetCVar, "cameraDistanceMaxZoomFactor", db.cameraMaxZoom)
     elseif forced.maxZoom then
         pcall(SetCVar, "cameraDistanceMaxZoomFactor", Tweaks.StoredCVar(forced.maxZoom, "cameraDistanceMaxZoomFactor"))
         forced.maxZoom = nil
     end
     -- The gamepad's stick zoom calls the same functions every frame with a small step of its own:
     -- with the Gamepad UI on they stay Blizzard's, and otherwise only the bindings' step of 1 grows
-    if db.fasterCameraZoom and not ns.IsGamepadUI() then
+    if db.cameraZoomSpeed and not ns.IsGamepadUI() then
+        -- each wheel step also travels further as the speed rises: 1 at Blizzard's speed, ZOOM_STEP at 50
+        local base = Tweaks.CameraDefault("cameraZoomSpeed") or 20
+        local wheel = 1
+        if db.cameraZoomSpeed > base then
+            wheel = 1 + (ZOOM_STEP - 1) * math.min(1, (db.cameraZoomSpeed - base) / math.max(1, 50 - base))
+        end
         origZoomIn = origZoomIn or _G.CameraZoomIn
         origZoomOut = origZoomOut or _G.CameraZoomOut
         _G.CameraZoomIn = function(step, ...)
-            if step == 1 then step = ZOOM_STEP end
+            if step == 1 then step = wheel end
             return origZoomIn(step, ...)
         end
         _G.CameraZoomOut = function(step, ...)
-            if step == 1 then step = ZOOM_STEP end
+            if step == 1 then step = wheel end
             return origZoomOut(step, ...)
         end
         forced = ForcedCVars("zoomSpeed")
         forced.zoomSpeed = forced.zoomSpeed or GetCVar("cameraZoomSpeed") or true
-        pcall(SetCVar, "cameraZoomSpeed", 50)
+        pcall(SetCVar, "cameraZoomSpeed", db.cameraZoomSpeed)
     else
         if origZoomIn then _G.CameraZoomIn, _G.CameraZoomOut = origZoomIn, origZoomOut end
         forced = ForcedCVars("zoomSpeed")

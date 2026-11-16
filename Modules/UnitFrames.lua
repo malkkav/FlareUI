@@ -294,13 +294,13 @@ local CAST_EVENTS = {
 }
 
 -- Health Text and Power Text share these (Power Text has no Health Lost options). Naming (11-13,
--- Marcus): "Value" is always the current amount, "Max" the maximum, and the percent comes first, as
+-- Malkkav): "Value" is always the current amount, "Max" the maximum, and the percent comes first, as
 -- on Blizzard's frames. Order: the percent options, then the value options, then Health Lost.
 -- Saved names: "both" is Percent | Value, "valuemax" Value [Max], "valuelost" Value | Health Lost.
 -- "valuemaxpct" (Current (Max) | Percent, removed 11-13) reads as Value [Max] (UF.MigrateTextModes).
 -- "valuepct" is Value | Percent (11-14, a player missed the value-first order).
 local SPLIT_MODE = { text = L["Percent <  > Value"], value = "split", isRadio = true }
--- Value <  > Percent (11-14, Marcus): the same two ends the other way round, after Value | Percent
+-- Value <  > Percent (11-14, Malkkav): the same two ends the other way round, after Value | Percent
 local SPLIT_VP_MODE = { text = L["Value <  > Percent"], value = "splitvp", isRadio = true }
 -- the two Forever Style split modes; off the plate each reads as its | mode
 local SPLIT_MODES = { split = "both", splitvp = "valuepct" }
@@ -702,7 +702,7 @@ local function GetBarTexture(name, mirrored)
 end
 
 -- An unknown border name falls back to the default
--- "None" (11-13, Marcus: first in every Border list): no border file; ApplyBorderStyle then clears the
+-- "None" (11-13, Malkkav: first in every Border list): no border file; ApplyBorderStyle then clears the
 -- edge and the bars keep their place
 UF.NO_BORDER = "None"
 local function GetBorderFile(name)
@@ -721,7 +721,7 @@ local function SetBorderTint(border, r, g, b)
     border:SetBackdropBorderColor(r, g, b, 1)
 end
 
--- Threat Glow / Combat Glow (11-15, Marcus): the frame's own border in a colour, pulsing (the soft
+-- Threat Glow / Combat Glow (11-15, Malkkav): the frame's own border in a colour, pulsing (the soft
 -- pulse of the portrait ring's tint); no colour stops it and gives the border back its bronze. An
 -- alpha animation on the border's own frame (no children, not secure): fine in a fight.
 UF.GLOW_PULSE = { 0.5, 1, 1.2 }   -- alpha from, to, seconds each way: the ring tint's beat and direction (STATUS_PULSE, dim to bright), so both pulse together
@@ -1000,7 +1000,7 @@ end
 -- 5. UPDATERS (all secret-safe: values go straight into widgets)
 --------------------------------------------------
 local function UpdateName(f)
-    -- focus: first name only outside Forever Style; target of target and of focus: always
+    -- focus, target of target and target of focus: first name only (11-15, Malkkav)
     local unit = f.fuiUnit
     local kind = (unit == "focus" and "focus") or ((unit == "targettarget" or unit == "focustarget") and "targetof") or nil
     local name = ns.UnitDisplayName(unit, kind)
@@ -1988,7 +1988,7 @@ local function UpdateCastBar(cast, enabled, event, by, barID)
         color = channeling and CAST_CHANNEL or CAST_COLOR
     end
     color = KICK.Color(cast) or color
-    -- (11-13, Marcus: grey on a cooking cast, targeting himself) your own cast on the target or focus
+    -- (11-13, Malkkav: grey on a cooking cast, targeting himself) your own cast on the target or focus
     -- bar, and any profession cast, are no kick either: they skip the grey as the player bar's do
     local own = cast.unit and cast.unit ~= "player" and UnitIsUnit(cast.unit, "player")
     own = (canaccessvalue(own) and own) or (canaccessvalue(isTradeskill) and isTradeskill) or false
@@ -5190,7 +5190,7 @@ local function BuildSettings(unit)
             desc = L["Druids: a thin mana bar under the power bar, in forms without mana. The health bar gets shorter to make room."],
             hidden = onPlate }
     end
-    -- Range Check: the frames that fade out of range (target and focus); in Frame since 6.3.3 (Marcus:
+    -- Range Check: the frames that fade out of range (target and focus); in Frame since 6.3.3 (Malkkav:
     -- it changes how the frame behaves, not how it looks)
     if tContains(UF.RANGE_UNITS, unit) then
         settings[#settings + 1] = { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
@@ -5220,7 +5220,7 @@ local function BuildSettings(unit)
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = defaults.border or DEFAULT_BORDER, values = BuildBorderValues(false),
           get = function() local u = GetUnitDb(unit); return u and u.border or DEFAULT_BORDER end, set = set("border"),
           -- Forever Style's plate has its own frame; every other frame (simple pet, simple target of
-          -- target) picks a border in every style (11-13, Marcus)
+          -- target) picks a border in every style (11-13, Malkkav)
           hidden = onPlate },
     }
     -- the absorb overlay, on frames with heal prediction; "" is the frame's own texture

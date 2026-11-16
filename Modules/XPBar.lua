@@ -552,7 +552,7 @@ local function LayoutFlare(target)
     local db = GetDb()
     local texture = GetTexture()
     flare:SetSize((flare.sampleWidth or db.width or 560) + 2 * FLARE_INSET, (flare.sampleHeight or db.height or 14) + 2 * FLARE_INSET)
-    -- Border (11-13, Marcus): its own choice, None first; an unknown name falls back to FlareUI Thin
+    -- Border (11-13, Malkkav): its own choice, None first; an unknown name falls back to FlareUI Thin
     local name = db.border or BORDER_NAME
     if name ~= "None" and not LSM:IsValid("border", name) then name = BORDER_NAME end
     if name == "None" then

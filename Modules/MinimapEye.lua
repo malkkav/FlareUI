@@ -36,7 +36,7 @@ local BUTTON_SIZE = 31
 local GROUND_SIZE = 24
 local ICON_SIZE   = 20
 local RING_SIZE   = 50
-local SUN_GAP     = -4     -- square style: the day/night badge's top to the eye's bottom (11-15, Marcus: closer; the ring art has empty room)
+local SUN_GAP     = -4     -- square style: the day/night badge's top to the eye's bottom (11-15, Malkkav: closer; the ring art has empty room)
 -- Blizzard's eye picture is 43 wide and its green part about 62 percent of that: at this scale the
 -- green part fills ICON_SIZE, and the gray rim falls outside the round mask
 local EYE_SCALE = ICON_SIZE / (43 * 0.62)
@@ -151,8 +151,8 @@ local function Dress()
     local ring = front:CreateTexture(nil, "OVERLAY")
     ring:SetSize(RING_SIZE, RING_SIZE)
     ring:SetPoint("TOPLEFT")
-    -- (11-15, Marcus: too bright) the gold ring greyed and tinted FlareUI's bronze, as the day/night badge's frame
-    -- (11-15, Marcus: then too dark) the bronze brightened by a third: a greyed texture tinted at
+    -- (11-15, Malkkav: too bright) the gold ring greyed and tinted FlareUI's bronze, as the day/night badge's frame
+    -- (11-15, Malkkav: then too dark) the bronze brightened by a third: a greyed texture tinted at
     -- full bronze came out darker than the badge's frame
     ring:SetDesaturated(true)
     local c = ns.BORDER_COLOR
@@ -182,7 +182,7 @@ button:SetScript("OnEnter", function(self)
         QueueStatusFrame:SetPoint("RIGHT", self, "LEFT", 0, 28)
         QueueStatusFrame:Show()
     end
-    -- (11-15, Marcus) out of a queue no tooltip: the icon says what it is
+    -- (11-15, Malkkav) out of a queue no tooltip: the icon says what it is
 end)
 -- also on hide: a button that hides under the pointer gets no leave
 local function Leave(self)
@@ -196,7 +196,7 @@ button:SetScript("OnHide", Leave)
 --------------------------------------------------
 -- 6. PLACE AND STATE
 --------------------------------------------------
--- (11-15, Marcus: Blizzard's behaviour, all of it) in a queue both clicks are Blizzard's eye's own: the
+-- (11-15, Malkkav: Blizzard's behaviour, all of it) in a queue both clicks are Blizzard's eye's own: the
 -- left one opens what it opens (the scoreboard in a battleground, your listing, your applications), the
 -- right one its queue menu. Out of a queue the left click opens the group finder.
 local function SyncRightClick()
@@ -261,9 +261,9 @@ end
 local function UpdateShown()
     if not CanChange(UpdateShown) then return end
     -- the map too: the Toggle Minimap key hides it and leaves the cluster shown
-    -- (11-15, Marcus) ours shows in Edit Mode too. Round style: it sits on Blizzard's eye, which is the one
+    -- (11-15, Malkkav) ours shows in Edit Mode too. Round style: it sits on Blizzard's eye, which is the one
     -- dragged there, so ours lets the mouse through and follows it while Edit Mode is open
-    -- (11-15, Marcus, GitHub #57) only while Blizzard's eye would show (a queue, a listing, a
+    -- (11-15, Malkkav, GitHub #57) only while Blizzard's eye would show (a queue, a listing, a
     -- battleground), as Blizzard's; Edit Mode shows it to be placed
     local show = Wanted() and (InQueue() or Editing()) and MinimapCluster:IsShown() and Minimap:IsShown()
     local follow = show and Editing() and not ns.Minimap.IsSquare()

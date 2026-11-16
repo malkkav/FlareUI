@@ -4,8 +4,11 @@ local L = ns.L
 --------------------------------------------------
 -- VISIBILITY
 -- Show conditions (always | mouseover | any of combat, hastarget, attackable, ingroup, unmounted), fade groups 1-5,
--- Fade In Speed, Fade Out Speed and Faded Opacity for the action bars, bag bar, micro menu, XP bar, minimap, buffs, debuffs,
+-- Show Speed, Hide Speed and Faded Opacity for the action bars, bag bar, micro menu, XP bar, minimap, buffs, debuffs,
 -- quest tracker and the player, pet, target, focus and target-of unit frames (fade groups: the player and pet only), set in each element's Edit Mode dialog, plus the Blizzard pieces hidden for good. Fake CM bars follow profile.fcm.show and never the mouse.
+-- (11-15) Also the chat (every chat window, with New Messages and a Fade Delay), the damage meter (which fades
+-- itself: this module says when it is wanted) and the separate threat window, their fading moved out of the
+-- settings window.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -72,7 +75,7 @@ local ELEMENTS = {
     -- The unit frames (UnitFrames.lua section 14). own: the fader keeps the value and sets it through
     -- apply (an alpha left by the health curve can't be read back); health: Missing Health, from that unit
     -- instant: no fade speeds (always instant); noOpacity: no Faded Opacity (faded right out)
-    -- noGroup: never in a fade group. The player and pet frames can join one (11-15, Marcus): they then
+    -- noGroup: never in a fade group. The player and pet frames can join one (11-15, Malkkav): they then
     -- fade at the group's speeds, and pointing at either brings the whole group back.
     -- mana: Missing Mana too (the player frame only, 11-11)
     { key = "uf_player", unit = "player", module = "unitframes", own = true, instant = true, health = "player", mana = true },
@@ -102,6 +105,20 @@ local ELEMENTS = {
     { key = "rb_flight", bar = "flight", own = true },   -- the Flight Timer: it shows only in flight itself
     { key = "rb_timer", bar = "timer", own = true },     -- Timer Bars: they show only while a timer runs
     { key = "rb_seal", bar = "seal", own = true },       -- Seals: a seal's bar shows only while that seal is up
+    -- (11-15, Malkkav) the chat, the damage meter and the separate threat window: their fading moved
+    -- out of the settings window into their Edit Mode dialogs. page: the settings page whose search
+    -- lists the rows (EditSystems). delay: a Fade Delay row and its default, in seconds.
+    -- chat: the fader sets every chat window's alpha (Chat.lua FadeApply); typing always shows it, and
+    -- New Messages ("messages") is the chat's own condition (Chat.lua section 16)
+    { key = "chat", system = "ChatFrame", module = "chat", chat = true, messages = true, delay = 5, page = "ch" },
+    -- external: the meter fades itself (DamageMeter.lua section 22: Blizzard shows and hides it, and it
+    -- can't be shown in a fight); the fader only says when it is wanted (ElementShown). Never: the old
+    -- Hidden; In an Instance ("instance"): the meter's and the threat window's own condition
+    { key = "meter", system = "DamageMeter", module = "damagemeter", external = true, never = true, instance = true,
+      delay = 0, page = "dm" },
+    -- the separate threat window: Same as Meter ("meter") by default, as a child of the meter it fades with
+    -- it; any other choice, or a fade group, detaches it (DamageMeter.AttachThreatWindow)
+    { key = "threat", threat = true, module = "damagemeter", instance = true, defaultShow = "meter" },
 }
 local ELEMENT_BY_KEY = {}
 for _, e in ipairs(ELEMENTS) do ELEMENT_BY_KEY[e.key] = e end
@@ -127,6 +144,12 @@ local function GetFrame(key)
         return caps and caps[ELEMENT_BY_KEY[key].cap] or nil
     elseif key == "uf_totems" then
         return ns.Totems and ns.Totems.initialized and _G.FlareUI_Totems or nil
+    elseif key == "chat" then
+        return _G.ChatFrame1
+    elseif key == "meter" then
+        return _G.DamageMeter
+    elseif key == "threat" then
+        return _G.FlareUI_ThreatMeter
     elseif key == "uf_playercastbar" then
         local UF = ns.UnitFrames
         return UF and UF.initialized and UF.GetPlayerCastHolder and UF.GetPlayerCastHolder() or nil
@@ -239,6 +262,11 @@ local function ButtonsTaken(frame)
 end
 
 local function ApplyElementAlpha(frame, key, alpha)
+    -- the chat: every window FlareUI skins, not only the first (Chat.lua)
+    if key == "chat" then
+        if ns.Chat and ns.Chat.FadeApply then ns.Chat:FadeApply(alpha) end
+        return
+    end
     if frame.actionButtons and ButtonsTaken(frame) then
         frame.FlareUI_FadeAlpha = alpha
         frame:SetAlpha(1)
@@ -278,7 +306,7 @@ local function MigrateMouseToken(db)
     local C = ns.Conditions
     local function Add(show)
         show = type(show) == "string" and (C.BAR_LEGACY[show] or show) or show
-        if type(show) ~= "string" or show == "always" or show == "inuse" or show == "bar1" or show == "" then return nil end
+        if type(show) ~= "string" or show == "always" or show == "inuse" or show == "bar1" or show == "meter" or show == "never" or show == "" then return nil end
         local set = C.Set(show)
         if set.mouseover then return nil end
         local list = { "mouseover" }
@@ -294,9 +322,71 @@ local function MigrateMouseToken(db)
     end
 end
 
+-- (11-15) The chat's, the damage meter's and the threat window's fading moved from their settings pages
+-- into Edit Mode: once per profile, their old settings become their entries here, so nothing changes
+-- for anyone. The old values stay where they were, unused. Runs after MigrateMouseToken, which must
+-- not add Mouseover to these (the old chat and meter said themselves when the mouse counts).
+local function MigrateMovedFades(db)
+    db.fadesMoved = true
+    local profile = ns.db.profile
+    local elements = db.elements
+    if not (profile and elements) then return end
+    local C = ns.Conditions
+    local function Percent(v) return math.floor(math_max(0, math_min(0.9, tonumber(v) or 0)) * 100 + 0.5) end
+    local function Speed(old, field) return old[field] or old.fadeSpeed or "instant" end
+    -- the chat: Chat Interactions (new messages, typing, pointing at it) and + In Combat; a test build
+    -- saved toggles ("messages,incombat"), read as the nearest of the two (as Chat.VisibilityHas did)
+    local chat = profile.chat
+    if chat and elements.chat == nil then
+        local v = chat.visibility or "always"
+        local show = "always"
+        if v ~= "always" then
+            local combat = v == "combat" or (v ~= "interactions" and C.Has(v, "incombat"))
+            show = combat and "mouseover,combat,messages" or "mouseover,messages"
+        end
+        local delay = tonumber(chat.autoHideDelay) or 5
+        if show ~= "always" or chat.fadeIn or chat.fadeOut or Speed(chat, "fadeIn") ~= "instant"
+                or Percent(chat.minAlpha) > 0 or delay ~= 5 then
+            elements.chat = { show = show, group = 0, fadeIn = Speed(chat, "fadeIn"), fadeOut = Speed(chat, "fadeOut"),
+                              minAlpha = Percent(chat.minAlpha), fadeDelay = delay }
+        end
+    end
+    -- the meter: Always / In Combat / In a Group / In an Instance / Hidden, and Show on Mouseover; a test
+    -- build saved toggles ("combat,group", "mouseover"), read as DamageMeter.lua's NormalizeChoices did
+    local dm = profile.damagemeter
+    if dm and elements.meter == nil then
+        local v = dm.visibility or "always"
+        local mouse = dm.showOnMouseover and true or false
+        if v ~= "always" and v ~= "combat" and v ~= "group" and v ~= "instance" and v ~= "hidden" then
+            local set = C.Set(v)
+            if set.mouseover then mouse = true end
+            v = (set.combat and "combat") or (set.group and "group") or "hidden"
+        end
+        local show = ({ always = "always", combat = "combat", group = "ingroup", instance = "instance" })[v]
+        if v == "hidden" then show = mouse and "mouseover" or "never"
+        elseif mouse and show ~= "always" then show = "mouseover," .. show end
+        local delay = tonumber(dm.fadeDelay) or 0
+        if show ~= "always" or dm.fadeIn or dm.fadeOut or Speed(dm, "fadeIn") ~= "instant"
+                or Percent(dm.minAlpha) > 0 or delay ~= 0 then
+            elements.meter = { show = show, group = 0, fadeIn = Speed(dm, "fadeIn"), fadeOut = Speed(dm, "fadeOut"),
+                               minAlpha = Percent(dm.minAlpha), fadeDelay = delay }
+        end
+    end
+    -- the threat window: With the Meter stays Same as Meter; its own In an Instance / In a Group /
+    -- In Combat detach it, fading at the meter's speeds and to its Faded Opacity as before
+    if dm and elements.threat == nil then
+        local show = ({ instance = "instance", group = "ingroup", combat = "combat" })[dm.threatVisibility or "meter"]
+        if show then
+            elements.threat = { show = show, group = 0, fadeIn = Speed(dm, "fadeIn"), fadeOut = Speed(dm, "fadeOut"),
+                                minAlpha = Percent(dm.minAlpha) }
+        end
+    end
+end
+
 local function GetDb()
     local db = ns.db and ns.db.profile and ns.db.profile.visibility
     if db and not db.mouseToken then MigrateMouseToken(db) end
+    if db and not db.fadesMoved then MigrateMovedFades(db) end
     return db
 end
 
@@ -321,6 +411,12 @@ local function ElementOn(e)
         if C_AddOns.IsAddOnLoaded("Cinematic") then return false end
         local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
         return uf and uf.enabled and uf.playerCastbar and uf.playerCastbar.enabled or false
+    end
+    -- the chat steps back while another chat addon runs (Chat.lua GetOtherChatAddon)
+    if e.chat and ns.Chat and ns.Chat.GetOtherChatAddon and ns.Chat:GetOtherChatAddon() then return false end
+    if e.threat then
+        local dm = ns.db and ns.db.profile and ns.db.profile.damagemeter
+        return dm and dm.enabled and dm.threatWindow and true or false
     end
     if e.module then
         local db = ns.db and ns.db.profile and ns.db.profile[e.module]
@@ -375,7 +471,7 @@ local function ElementGroup(key)
     return cfg and cfg.group and cfg.group > 0 and db.groups and db.groups[cfg.group] or nil
 end
 
--- Fade In Speed (coming back) and Fade Out Speed (fading away), 11-15: the one Fade Speed before
+-- Show Speed (coming back) and Hide Speed (fading away), 11-15: the one Fade Speed before
 -- (fadeSpeed) became two. Nothing is rewritten: an owner without its own fadeIn / fadeOut reads its old
 -- fadeSpeed for both, then the profile-wide ones, so nothing changes until a player picks a new speed.
 local function FadeSpeedOf(key, field)
@@ -389,6 +485,25 @@ function Visibility:GetFadeOut(key) return FadeSpeedOf(key, "fadeOut") end
 function Visibility:GetMinAlpha(key)
     local owner = ElementGroup(key) or ElementConfig(key)
     return owner and owner.minAlpha or 0
+end
+
+-- Fade Delay (the chat and the meter): seconds it stays after its last reason to show. The element's
+-- own, also in a fade group (the group's members have none)
+function Visibility:GetFadeDelay(key)
+    local cfg, e = ElementConfig(key), ELEMENT_BY_KEY[key]
+    return math_max(0, tonumber(cfg and cfg.fadeDelay) or (e and e.delay) or 0)
+end
+
+function Visibility:SetFadeDelay(key, value)
+    local cfg = ElementConfig(key, true)
+    if not cfg then return end
+    cfg.fadeDelay = value
+    self:Refresh()
+end
+
+-- a condition ticked in the element's Visibility (its group's, in a group)
+function Visibility:HasToken(key, token)
+    return ns.Conditions.Has(self:GetShow(key), token, self.SpecOf and self.SpecOf(key) or nil)
 end
 
 function Visibility:SetElementFade(key, field, value)
@@ -416,6 +531,9 @@ function Visibility:SetGroup(key, group)
     local show, fadeIn, fadeOut, minAlpha = self:GetShow(key), self:GetFadeIn(key), self:GetFadeOut(key), self:GetMinAlpha(key)
     -- a gryphon on Same as Action Bar 1 brings bar 1's own choice: a group can't follow bar 1
     if show == "bar1" then show = self:GetShow("bar1") end
+    -- (the threat window on Same as Meter brings the meter's; the meter's Never can't lead a group)
+    if show == "meter" then show = self:GetShow("meter") end
+    if show == "never" and (key == "meter" or key == "threat") then show = "always" end
     local target = db.groups and db.groups[group]
     if group == 0 then
         target = cfg
@@ -546,6 +664,7 @@ end
 --------------------------------------------------
 local Fader = CreateFrame("Frame")
 Fader.groups = {}
+Fader.groupOf = {}         -- element key -> its group's name in Fader.groups (ElementShown)
 Fader.delays = {}
 Fader.updateTimer = 0
 Fader.dirty = {}
@@ -607,8 +726,19 @@ local INUSE_SPEC = { exclusive = { "always", "inuse" }, tokens = Conditions.MOUS
 local CAP_SPEC = { exclusive = { "bar1", "always" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 -- Never (the totems) clears the rest too: out for good, outside Edit Mode
 local NEVER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
+-- (11-15) the chat's New Messages; the meter's Never (the old Hidden) and In an Instance; the threat
+-- window's Same as Meter and In an Instance. Kept in table fields: the main chunk is near its limit.
+-- (11-15, Malkkav) New Messages right under Mouseover
+Visibility.CHAT_SPEC = { exclusive = { "always" }, tokens = { "mouseover", "messages", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted" },
+                         legacy = SHOW_SPEC.legacy, empty = "always" }
+Visibility.METER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS,
+                          legacy = SHOW_SPEC.legacy, empty = "always" }
+Visibility.THREAT_SPEC = { exclusive = { "meter", "always" }, tokens = Visibility.METER_SPEC.tokens, legacy = SHOW_SPEC.legacy, empty = "always" }
 local function SpecOf(key)
     local e = ELEMENT_BY_KEY[key]
+    if e and e.chat then return Visibility.CHAT_SPEC end
+    if e and e.external then return Visibility.METER_SPEC end
+    if e and e.threat then return Visibility.THREAT_SPEC end
     if e and e.cap then return CAP_SPEC end
     if e and e.mana then return MANA_SPEC end
     if e and e.health then return HEALTH_SPEC end
@@ -616,6 +746,7 @@ local function SpecOf(key)
     if e and e.never then return NEVER_SPEC end
     return SHOW_SPEC
 end
+Visibility.SpecOf = SpecOf
 
 -- also the resource bars' and Fake CM's rule (ns.Visibility.ShowRule)
 local function EvaluateShowRule(show)
@@ -629,6 +760,8 @@ local function EvaluateShowRule(show)
     if set.attackable and TargetIsHostile() then return true end
     if set.ingroup and IsInGroup() then return true end
     if set.unmounted and not Riding() then return true end
+    -- the meter's and the threat window's: dungeons, raids, battlegrounds and arenas
+    if set.instance and IsInInstance() then return true end
     return false
 end
 local function ShowRule(show, cache)
@@ -648,6 +781,8 @@ end
 -- editMode, spellbook: read once per pass by the caller, not once per member
 local function CheckMember(data, editMode, spellbook, ruleCache)
     if editMode then return true end
+    -- the chat decides with its own reasons (typing, New Messages, its Fade Delay): Chat.lua FadeHold
+    if data.hold then return data.hold(ShowRule(data.show, ruleCache), data.mouseOK) end
     local fcmState = ns.ActionBars and ns.ActionBars.fcm
     -- every action bar shows while something is dragged onto them, or the spellbook is open
     if data.isBar and ((fcmState and fcmState.wasDragging) or spellbook) then return true end
@@ -748,18 +883,26 @@ Fader.UpdateScript = function(self, elapsed)
             for _, data in ipairs(members) do
                 local frame = data.frame
                 local targetAlpha = effectiveShow and 1 or data.minAlpha
-                -- (a member with its own apply keeps its value: its alpha can be secret)
-                -- (a bar whose buttons another addon took keeps its fade in FlareUI_FadeAlpha, see ButtonsTaken)
-                local currentAlpha = data.apply and data.value or frame.FlareUI_FadeAlpha or frame:GetAlpha()
-                if math_abs(currentAlpha - targetAlpha) > 0.005 then
-                    groupFading = true
-                    -- coming back at Fade In Speed, fading away at Fade Out Speed
-                    local fadeTime = (currentAlpha < targetAlpha) and data.fadeIn or data.fadeOut
-                    local change = fadeTime > 0 and elapsed / fadeTime or 1
-                    local newAlpha = (currentAlpha < targetAlpha) and math_min(targetAlpha, currentAlpha + change) or math_max(targetAlpha, currentAlpha - change)
-                    if data.apply then data.apply(newAlpha) else ApplyElementAlpha(frame, data.key, newAlpha) end
-                elseif data.apply and repair then
-                    data.apply(currentAlpha)
+                if data.external then
+                    -- the meter fades itself: told only when its group's answer changes
+                    if data.told ~= effectiveShow then
+                        data.told = effectiveShow
+                        data.notify()
+                    end
+                else
+                    -- (a member with its own apply keeps its value: its alpha can be secret)
+                    -- (a bar whose buttons another addon took keeps its fade in FlareUI_FadeAlpha, see ButtonsTaken)
+                    local currentAlpha = data.apply and data.value or frame.FlareUI_FadeAlpha or frame:GetAlpha()
+                    if math_abs(currentAlpha - targetAlpha) > 0.005 then
+                        groupFading = true
+                        -- coming back at Show Speed, fading away at Hide Speed
+                        local fadeTime = (currentAlpha < targetAlpha) and data.fadeIn or data.fadeOut
+                        local change = fadeTime > 0 and elapsed / fadeTime or 1
+                        local newAlpha = (currentAlpha < targetAlpha) and math_min(targetAlpha, currentAlpha + change) or math_max(targetAlpha, currentAlpha - change)
+                        if data.apply then data.apply(newAlpha) else ApplyElementAlpha(frame, data.key, newAlpha) end
+                    elseif data.apply and repair then
+                        data.apply(currentAlpha)
+                    end
                 end
             end
             if groupFading then
@@ -789,7 +932,7 @@ end
 -- 7. EDIT MODE SETTINGS
 --------------------------------------------------
 -- Always clears the rest; the conditions after the line (Mouseover first) are toggles
-local SHOW_VALUES = { "always", "mouseover", "combat", "hastarget", "attackable", "ingroup", "unmounted" }
+local SHOW_VALUES = { "always", "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted" }
 local GROUP_VALUES = { 0, 1, 2, 3, 4, 5 }
 
 local function Values(copyKey, list, fallback)
@@ -805,6 +948,8 @@ end
 -- what the Show dropdown ticks, and a click in it (no condition left ticked is Mouseover)
 local function ShowSelection(key) return Conditions.Selection(Visibility:GetShow(key), SpecOf(key)) end
 local function ToggleShow(key, value)
+    -- Never can't lead a fade group: the other members would be out for good too
+    if value == "never" and Visibility:GetGroup(key) > 0 then return end
     Visibility:SetShow(key, Conditions.Toggle(Visibility:GetShow(key), value, SpecOf(key)))
 end
 
@@ -818,11 +963,13 @@ local SPEED_VALUES = { { text = L["Instant"], value = "instant", isRadio = true 
 
 local function BuildElementSettings(key)
     -- nothing fades while it's always shown (or a swing bar shows and hides itself)
+    -- (the meter's Never still fades it to its Faded Opacity, as the old Hidden did)
+    local external = ELEMENT_BY_KEY[key] and ELEMENT_BY_KEY[key].external
     local function AlwaysShown()
         local show = Visibility:GetShow(key)
-        return show == "always" or show == "inuse" or show == "bar1" or show == "never"
+        return show == "always" or show == "inuse" or show == "bar1" or show == "meter" or (show == "never" and not external)
     end
-    return {
+    local rows = {
         {
             name = Label("ab.bar.group", L["Fade Group"]), kind = LEM.SettingType.Dropdown, default = 0,
             values = Values("ab.bar.group", GROUP_VALUES, function(v) return v == 0 and L["None"] or tostring(v) end),
@@ -835,12 +982,19 @@ local function BuildElementSettings(key)
             values = (function()
                 local values = Values("ab.bar.show", SHOW_VALUES, function(v) return v end)
                 local e = ELEMENT_BY_KEY[key]
-                -- (11-13, Marcus) a line above the pair that can't be ticked together (the player frame)
+                -- (11-13, Malkkav) a line above the pair that can't be ticked together (the player frame)
                 if e and e.health and e.mana then values[#values + 1] = { isDivider = true } end
                 if e and e.health then values[#values + 1] = { text = L["Missing Health"], value = "health", isRadio = true } end
                 if e and e.mana then values[#values + 1] = { text = L["Missing Mana"], value = "mana", isRadio = true } end
                 if e and e.never then table_insert(values, 2, { text = L["Never"], value = "never", isRadio = true }) end
                 if e and e.cap then table_insert(values, 1, { text = L["Same as Action Bar 1"], value = "bar1", isRadio = true }) end
+                if e and e.threat then table_insert(values, 1, { text = L["Same as Meter"], value = "meter", isRadio = true }) end
+                -- the chat's New Messages, right under Mouseover
+                if e and e.messages then
+                    for i, v in ipairs(values) do
+                        if v.value == "mouseover" then table_insert(values, i + 1, { text = L["New Messages"], value = "messages", isRadio = true }) break end
+                    end
+                end
                 if e and e.inuse then
                     -- with the two that clear the rest, above the line
                     for i, v in ipairs(values) do
@@ -855,18 +1009,23 @@ local function BuildElementSettings(key)
                 and L["Only When In Use: the bar appears when this weapon swings and leaves soon after the swings stop."])
                 or (ELEMENT_BY_KEY[key] and ELEMENT_BY_KEY[key].mana
                 and L["Missing Health and Missing Mana can't be ticked together: the game hides both from addons, so they can't be combined."])
+                or (ELEMENT_BY_KEY[key] and ELEMENT_BY_KEY[key].chat
+                and L["Typing always shows the chat.\nNew Messages: a new line, or closing a quest or vendor window, brings it back."])
+                or (external and L["Never: it shows only in Edit Mode, or at its Faded Opacity."])
+                or (ELEMENT_BY_KEY[key] and ELEMENT_BY_KEY[key].threat
+                and L["Same as Meter: it shows and fades with the Damage Meter."])
                 or nil,
         },
-        -- Fade In Speed and Fade Out Speed (11-15, Marcus: the one Fade Speed split in two)
+        -- Show Speed and Hide Speed (11-15, Malkkav: the one Fade Speed split in two)
         {
-            name = L["Fade In Speed"], kind = LEM.SettingType.Dropdown, default = "instant", values = SPEED_VALUES,
+            name = L["Show Speed"], kind = LEM.SettingType.Dropdown, default = "instant", values = SPEED_VALUES,
             get = function() return Visibility:GetFadeIn(key) end,
             set = function(_, value) Visibility:SetElementFade(key, "fadeIn", value) end,
             hidden = AlwaysShown,
             desc = L["How fast it comes back.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
         },
         {
-            name = L["Fade Out Speed"], kind = LEM.SettingType.Dropdown, default = "instant", values = SPEED_VALUES,
+            name = L["Hide Speed"], kind = LEM.SettingType.Dropdown, default = "instant", values = SPEED_VALUES,
             get = function() return Visibility:GetFadeOut(key) end,
             set = function(_, value) Visibility:SetElementFade(key, "fadeOut", value) end,
             hidden = AlwaysShown,
@@ -881,12 +1040,19 @@ local function BuildElementSettings(key)
             desc = L["How see-through it gets when faded. 0% is invisible."],
         },
     }
-end
-
--- The rows under a Fading title that always stays open
-local function WithVisibilityTitle(rows)
-    table_insert(rows, 1, { name = "|cffffd100" .. L["Fading"] .. "|r", kind = LEM.SettingType.Expander,
-        static = true, hideArrow = true, get = function() return true end, set = function() end })
+    -- Fade Delay (the chat and the meter): how long it stays before it fades
+    local e = ELEMENT_BY_KEY[key]
+    if e and e.delay then
+        rows[#rows + 1] = {
+            name = L["Fade Delay"], kind = LEM.SettingType.Slider, default = e.delay, minValue = 0, maxValue = 30, valueStep = 1,
+            -- (11-15, Malkkav: "Instant" clipped the dialog's edge) seconds, short
+            formatter = function(value) return value .. "s" end,   -- 0s, not Off: at 0 it still fades (terminology.md)
+            get = function() return Visibility:GetFadeDelay(key) end,
+            set = function(_, value) Visibility:SetFadeDelay(key, value) end,
+            hidden = AlwaysShown,
+            desc = L["How long it stays after it was last needed, in seconds, before it fades."],
+        }
+    end
     return rows
 end
 
@@ -904,7 +1070,7 @@ function Visibility:UnitFrameSettings(unit)
     local key = "uf_" .. unit
     local rows = BuildElementSettings(key)
     local e = ELEMENT_BY_KEY[key]
-    -- rows: 1 Fade Group, 2 Visibility, 3 Fade In Speed, 4 Fade Out Speed, 5 Faded Opacity
+    -- rows: 1 Fade Group, 2 Visibility, 3 Show Speed, 4 Hide Speed, 5 Faded Opacity
     local kept = {}
     if not (e and e.noGroup) then
         kept[1] = rows[1]
@@ -974,16 +1140,18 @@ function Visibility:MinimapSettings()
     local rows = BuildElementSettings("minimap")
     table.remove(rows, 5)   -- Faded Opacity
     table.remove(rows, 1)   -- Fade group
-    -- a Fading section that opens and closes like the other dialogs' (11-13, Marcus: starts closed)
+    -- a Fading section that opens and closes like the other dialogs' (11-13, Malkkav: starts closed)
     return ns.EditSection("Fading", rows)
 end
 
--- The Blizzard systems these settings go into, for the settings search (Settings/Registry.lua)
-function Visibility:EditSystems()
+-- The Blizzard systems these settings go into, for the settings search (Settings/Registry.lua): page
+-- picks the settings page's ("ab", the default: the bars; "ch" the chat, "dm" the meter)
+function Visibility:EditSystems(page)
     local list = {}
-    if not (Enum.EditModeSystem and Enum.EditModeActionBarSystemIndices) then return list end
+    if not Enum.EditModeSystem then return list end
+    page = page or "ab"
     for _, e in ipairs(ELEMENTS) do
-        local system = e.system and Enum.EditModeSystem[e.system]
+        local system = e.system and (e.page or "ab") == page and Enum.EditModeSystem[e.system]
         local indices = Enum[e.indices or "EditModeActionBarSystemIndices"]
         local index = e.index and indices and indices[e.index]
         if system and (index or not e.index) then
@@ -996,44 +1164,71 @@ function Visibility:EditSystems()
     return list
 end
 
-local systemsAdded, frameAdded = false, {}
+-- the meter in the chat's Meter tab (Settings > Meters): it fades with the chat, so its Fading says so
+-- and keeps only the two speeds, which still fade it in and out as the tabs switch
+local function MeterInChat()
+    local dm = ns.DamageMeter
+    return dm ~= nil and dm.ChatTabAvailable ~= nil and dm:ChatTabAvailable()
+end
+local function MeterRowsInChat(rows)
+    for _, row in ipairs(rows) do
+        local own, speed = row.hidden, row.name == L["Show Speed"] or row.name == L["Hide Speed"]
+        row.hidden = function(...)
+            if MeterInChat() then return not speed end
+            if type(own) == "function" then return own(...) end
+            return own and true or false
+        end
+    end
+    table_insert(rows, 1, {
+        name = "|cffff9933" .. L["The meter is in the chat's Meter tab: it fades with the chat."] .. "|r",
+        kind = LEM.SettingType.Expander, static = true, hideArrow = true,
+        get = function() return true end, set = function() end,
+        hidden = function() return not MeterInChat() end,
+    })
+    return rows
+end
+
+-- added once each, as its module and frame exist (Blizzard's systems at once, FlareUI's frames on
+-- entering Edit Mode)
+local frameAdded = {}
 local function AddEditModeSettings()
-    if not systemsAdded and ActionBarsOn() and Enum.EditModeSystem and Enum.EditModeActionBarSystemIndices then
-        systemsAdded = true
-        for _, e in ipairs(ELEMENTS) do
-            local system = e.system and Enum.EditModeSystem[e.system]
-            if system then
-                local indices = Enum[e.indices or "EditModeActionBarSystemIndices"]
-                local index = e.index and indices and indices[e.index]
-                if not e.index or index then
-                    local rows = BuildElementSettings(e.key)
-                    -- Blizzard's own Bar Visible, higher up in the same dialog, hides the bar for good
-                    -- whatever Show says: a line says so while it's set to anything but Always
-                    if e.system == "ActionBar" then
-                        local key = e.key
-                        table_insert(rows, 1, {
-                            name = "|cffff9933" .. L["Bar Visible above also hides this bar"] .. "|r",
-                            kind = LEM.SettingType.Expander, static = true, hideArrow = true,
-                            get = function() return true end, set = function() end,
-                            hidden = function()
-                                local frame = GetFrame(key)
-                                local setting = frame and frame.visibility
-                                return setting == nil or setting == "Always"
-                            end,
-                        })
-                    end
-                    rows = WithVisibilityTitle(rows)
-                    -- the totem bar: Blizzard gives it no Size, FlareUI does (above Fading)
-                    if e.key == "totem" and ns.ActionBars and ns.ActionBars.TotemSizeSetting then
-                        table_insert(rows, 1, ns.ActionBars.TotemSizeSetting())
-                    end
-                    LEM:AddSystemSettings(system, rows, index)
+    for _, e in ipairs(Enum.EditModeSystem and ELEMENTS or {}) do
+        local system = e.system and not frameAdded[e.key] and ElementOn(e) and Enum.EditModeSystem[e.system]
+        if system then
+            local indices = Enum[e.indices or "EditModeActionBarSystemIndices"]
+            local index = e.index and indices and indices[e.index]
+            if not e.index or index then
+                frameAdded[e.key] = true
+                local rows = BuildElementSettings(e.key)
+                -- Blizzard's own Bar Visible, higher up in the same dialog, hides the bar for good
+                -- whatever Show says: a line says so while it's set to anything but Always
+                if e.system == "ActionBar" then
+                    local key = e.key
+                    table_insert(rows, 1, {
+                        name = "|cffff9933" .. L["Bar Visible above also hides this bar"] .. "|r",
+                        kind = LEM.SettingType.Expander, static = true, hideArrow = true,
+                        get = function() return true end, set = function() end,
+                        hidden = function()
+                            local frame = GetFrame(key)
+                            local setting = frame and frame.visibility
+                            return setting == nil or setting == "Always"
+                        end,
+                    })
                 end
+                if e.external then rows = MeterRowsInChat(rows) end
+                -- (11-15, Malkkav) a Fading section that opens and closes, starting closed, like every other
+                rows = ns.EditSection("Fading", rows)
+                -- the totem bar: Blizzard gives it no Size, FlareUI does (above Fading)
+                if e.key == "totem" and ns.ActionBars and ns.ActionBars.TotemSizeSetting then
+                    table_insert(rows, 1, ns.ActionBars.TotemSizeSetting())
+                end
+                LEM:AddSystemSettings(system, rows, index)
             end
         end
     end
-    -- FlareUI's own frames (XP bar, buffs, debuffs, quest tracker): their rows go after their own
-    for _, key in ipairs({ "xp", "buffs", "debuffs", "quest", "uf_totems" }) do
+    -- FlareUI's own frames (XP bar, buffs, debuffs, quest tracker, totems, the separate threat window):
+    -- their rows go after their own
+    for _, key in ipairs({ "xp", "buffs", "debuffs", "quest", "uf_totems", "threat" }) do
         local frame = not frameAdded[key] and ElementOn(ELEMENT_BY_KEY[key]) and GetFrame(key)
         local settings = frame and LEM.GetFrameSettings and LEM:GetFrameSettings(frame)
         if settings then
@@ -1051,6 +1246,7 @@ local function AddEditModeSettings()
         end
     end
 end
+Visibility.AddEditModeSettings = AddEditModeSettings
 
 --------------------------------------------------
 -- 8. PUBLIC API
@@ -1198,6 +1394,33 @@ end
 local function AddMember(groupName, data)
     Fader.groups[groupName] = Fader.groups[groupName] or {}
     table_insert(Fader.groups[groupName], data)
+    Fader.groupOf[data.key] = groupName
+end
+
+-- Whether the element is wanted now: its Visibility, or its fade group's (any member's reason, and the
+-- group's short wait). For the meter, which fades itself (DamageMeter.lua ApplyVisibility). Edit Mode
+-- shows everything.
+function Visibility:ElementShown(key)
+    local show = self:GetShow(key)
+    if show == "always" or show == "meter" then return true end
+    if show == "never" then return false end
+    local groupName = Fader.groupOf[key]
+    local members = groupName and Fader.groups[groupName]
+    if not members then return ShowRule(show) end
+    if Fader.shows[groupName] then return true end
+    local editMode = (_G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()) or false
+    local spellbook = SpellbookOpen()
+    for _, data in ipairs(members) do
+        if CheckMember(data, editMode, spellbook) then return true end
+    end
+    return false
+end
+
+-- the meter's (DamageMeter.lua), a frame later: Refresh can run inside its own checks
+local function TellMeter()
+    C_Timer.After(0, function()
+        if ns.DamageMeter and ns.DamageMeter.ApplyVisibility then ns.DamageMeter:ApplyVisibility() end
+    end)
 end
 
 function Visibility:Refresh()
@@ -1246,6 +1469,7 @@ function Visibility:Refresh()
     end
 
     Fader.groups = {}
+    Fader.groupOf = {}
     Fader.delays = {}
     Fader.dirty = {}
     Fader.shows = {}
@@ -1261,11 +1485,33 @@ function Visibility:Refresh()
     for _, e in ipairs(ELEMENTS) do
         local key = e.key
         local frame = GetFrame(key)
+        -- the threat window: under the meter on Same as Meter, on its own otherwise (DamageMeter.lua 16b)
+        if e.threat and ElementOn(e) and ns.DamageMeter and ns.DamageMeter.AttachThreatWindow then
+            ns.DamageMeter.AttachThreatWindow(self:GetShow(key) == "meter")
+        end
         if e.cap and frame and ElementOn(e) and self:GetShow(key) == "bar1" then
             capsFollowBar1[frame] = true
             local bar1 = GetFrame("bar1")
             local alpha = bar1 and (bar1.FlareUI_FadeAlpha or bar1:GetAlpha())
             frame:SetAlpha(type(alpha) == "number" and canaccessvalue(alpha) and alpha or 1)
+        elseif e.threat and self:GetShow(key) == "meter" then
+            -- a child of the meter: the meter's own fade is its fade
+            if frame then frame:SetAlpha(1) end
+        elseif e.external then
+            -- the meter fades itself: the fader only tells it when its answer changes (ElementShown)
+            local show = self:GetShow(key)
+            if ElementOn(e) and show ~= "always" and show ~= "never" then
+                local group = self:GetGroup(key)
+                -- on its own, its own driver shows it under the pointer (Mouseover); in a group,
+                -- pointing at it brings the whole group back too
+                AddMember(group > 0 and ("group" .. group) or key, {
+                    key = key, frame = frame, external = true, show = show, fadeIn = 0, fadeOut = 0, minAlpha = 0,
+                    mouseOK = group > 0 and Conditions.Has(show, "mouseover", SpecOf(key)) or false,
+                    mouse = function() local dm = ns.DamageMeter; return dm and dm.FadeMouse and dm.FadeMouse() or false end,
+                    notify = TellMeter })
+                Fader.watchesMouseover = true
+            end
+            if ElementOn(e) then TellMeter() end
         elseif ElementOn(e) and frame and frame.GetAlpha then
             local isBar = key:match("^bar[1-8]$") ~= nil
             local fcmBar = isBar and fcm and fcm.bars and fcm.bars[key]
@@ -1293,7 +1539,8 @@ function Visibility:Refresh()
                     if e.own then unitValues[key] = 1 end
                 else
                     local group = self:GetGroup(key)
-                    local owner = (key == "quest" and ns.ObjectiveTracker) or ((key == "buffs" or key == "debuffs") and ns.Auras) or nil
+                    local owner = (key == "quest" and ns.ObjectiveTracker) or ((key == "buffs" or key == "debuffs") and ns.Auras)
+                        or (key == "threat" and ns.DamageMeter) or nil
                     local unit = e.unit
                     local mouse = unit and function() return ns.UnitFrames:IsMouseOverUnit(unit) end or nil
                     if e.noGroup then group = 0 end
@@ -1307,6 +1554,13 @@ function Visibility:Refresh()
                                    minAlpha = e.noOpacity and 0 or self:GetMinAlpha(settingsKey) / 100 }
                     -- the pointer shows it only with Mouseover ticked
                     data.mouseOK = Conditions.Has(show, "mouseover", SpecOf(settingsKey))
+                    if e.chat then
+                        -- every chat window at one alpha (Chat.lua FadeApply); the chat's own reasons,
+                        -- the pointer among them, in its hold (Chat.lua FadeHold)
+                        data.value = ns.Chat.fadeAlpha or 1
+                        data.apply = function(alpha) data.value = alpha; ApplyElementAlpha(frame, key, alpha) end
+                        data.hold = ns.Chat.FadeHold
+                    end
                     if e.own then
                         -- (a linked pet: the player's Missing Health / Mana show the pair; the pet's own health doesn't)
                         local health = not linkPet and e.health and Conditions.Has(show, "health", SpecOf(key)) or false

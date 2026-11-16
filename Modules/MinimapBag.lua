@@ -82,7 +82,7 @@ end
 local function LibDBIcon() return LibStub and LibStub("LibDBIcon-1.0", true) end
 local function LibDataBroker() return LibStub and LibStub("LibDataBroker-1.1", true) end
 
--- Addons in the Drawer (11-13, Marcus: replaces Shift+Right-Click "Keep on the Minimap", which clashed
+-- Addons in the Drawer (11-13, Malkkav: replaces Shift+Right-Click "Keep on the Minimap", which clashed
 -- with addons' own right-click menus): a list on the Minimap page. An addon unticked there
 -- (minimap.bagLeave[id], id "ldb:<name>" / "frame:<name>" / "compartment:<title>") is left alone: its
 -- button isn't parked, moved or redrawn, and it has no icon in the drawer. Ticked is the default, so a
@@ -381,7 +381,7 @@ function Bag.AddonChoices()
     -- (11-14, a player) while OneForAll collects the minimap buttons, only compartment entries can go in:
     -- the buttons it takes are not offered (ticking them did nothing)
     local other = Bag.OtherCollector()
-    -- one row per addon (11-13, Marcus: BtWQuests listed twice): its compartment entry, data object and
+    -- one row per addon (11-13, Malkkav: BtWQuests listed twice): its compartment entry, data object and
     -- own button are matched loosely by name (NameKey: "BtWQuests" = "BtWQuestsMinimapButton"), shown by
     -- the shortest of their labels
     for id, label in pairs(known) do
@@ -427,7 +427,7 @@ function Bag.SetInDrawer(value)
     if ns.Minimap and ns.Minimap.UpdateFlareButton then ns.Minimap.UpdateFlareButton() end
 end
 
--- FlareUI itself (its compartment entry). (11-14, Marcus) FlareUI Minimap Button (minimap.flareButton,
+-- FlareUI itself (its compartment entry). (11-14, Malkkav) FlareUI Minimap Button (minimap.flareButton,
 -- on) says whether FlareUI has a button at all; the drawer only says where: in it, unless unticked in
 -- Addons in the Drawer, then on the minimap (Minimap.lua MM.UpdateFlareButton). Off, it is in neither.
 local FLARE_ID = "compartment:FlareUI"   -- (the TOC title, as the compartment lists it)
@@ -793,7 +793,7 @@ end
 
 -- Hover mode: how long the pointer may be away from the badge and the drawer before it closes. A
 -- menu an icon opened, or an icon being dragged, keeps it open.
-local HOVER_CLOSE = 0.15   -- (0.5 until 11-11: too slow, Marcus)
+local HOVER_CLOSE = 0.15   -- (0.5 until 11-11: too slow, Malkkav)
 local hoverWatch = CreateFrame("Frame")
 hoverWatch:Hide()
 hoverWatch:SetScript("OnUpdate", function(self, elapsed)
