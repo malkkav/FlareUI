@@ -949,6 +949,28 @@ local function ToggleZoneQuests(zone)
     OT:RequestRender()
 end
 
+local function TryInsertQuestLink(link)
+    if ChatFrameUtil.GetActiveWindow() then
+        ChatFrameUtil.InsertLink(link)
+        return true
+    end
+
+    local editBox = GetCurrentKeyBoardFocus()
+    -- Blizzard also accepts links in the macro editor. Keep Shift-click tracking there.
+    if not canaccessvalue(editBox) or not editBox or editBox == MacroFrameText
+        or editBox:IsForbidden() or not editBox:IsObjectType("EditBox") then
+        return false
+    end
+
+    local before = editBox:GetText()
+    if not canaccessvalue(before) then return false end
+    if ChatFrameUtil.InsertLink(link) then return true end
+
+    -- A post-hook can insert into the focused box without changing Blizzard's return value.
+    local after = editBox:GetText()
+    return canaccessvalue(after) and after ~= before
+end
+
 local function OnLineClick(self, button)
     if state.editMode then return end
     -- a quest offered from an item or an area, or one that completes on a click
@@ -997,12 +1019,10 @@ local function OnLineClick(self, button)
         GameTooltip:Hide()
         ShowQuestMenu(self, questID)
     elseif IsShiftKeyDown() then
-        -- while typing in chat it links the quest; otherwise it untracks it, or tracks an untracked
-        -- one (Show Untracked Quests), as a shift-click in the quest log does
         local link = GetQuestLink(questID)
-        if link and ChatFrameUtil.GetActiveWindow() then
-            ChatFrameUtil.InsertLink(link)
-        elseif C_QuestLog.GetQuestWatchType(questID) == nil then
+        if link and TryInsertQuestLink(link) then return end
+
+        if C_QuestLog.GetQuestWatchType(questID) == nil then
             C_QuestLog.AddQuestWatch(questID)
         elseif QuestUtil.CanRemoveQuestWatch() then
             C_QuestLog.RemoveQuestWatch(questID)
