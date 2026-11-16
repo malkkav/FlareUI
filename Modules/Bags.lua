@@ -1596,7 +1596,7 @@ end
 -- 5. SETTINGS PREVIEW SAMPLE
 -- A made-up combined backpack: Blizzard's bag frame art, plain item buttons with made-up items laid
 -- out and decorated by the code above (columns, gaps, borders, junk coin), the
--- keyring and crafting bag sections, the round bag buttons down the side and the money line.
+-- keyring and crafting bag sections, the header tools, round bag buttons and the money line.
 -- No secure buttons, no events, nothing in the module's lists.
 --------------------------------------------------
 do
@@ -1626,6 +1626,7 @@ do
     local SLOT_SIZE = 37                 -- an item button's own size
     -- Blizzard's combined backpack paddings (ContainerFrameCombinedBagsMixin), the money box's height
     local PAD_W, PAD_H, MONEY_H = 15, 75, 17
+    local SEARCH_X, SEARCH_WIDTH = 62, 330
     -- the frame art spills past the frame: the portrait corner left and up, the metal edges
     local SPILL_L, SPILL_T, SPILL_R, SPILL_B = 13, 16, 4, 3
     local PORTRAIT_BOTTOM = -55          -- the portrait's bottom edge, where the bag buttons start
@@ -1666,6 +1667,32 @@ do
         b:Show()
     end
 
+    local function DrawSampleTools(panel, width)
+        local mode = Filter.On() and Filter.Mode() or "off"
+        local step = Filter.W + Filter.GAP
+        local room = width + Filter.SORT_X - Filter.W - Filter.SEARCH_GAP - SEARCH_X
+        local showRow = mode == "buttons" and Bags:IsCombined()
+            and room - #Filter.CATEGORIES * step >= Filter.MIN_SEARCH
+        local count = showRow and #Filter.CATEGORIES or (mode == "off" and 0 or 1)
+        local buttons = panel.filterButtons
+        for i = 1, count do
+            local icon = showRow and Filter.CATEGORIES[i].icon or Filter.MAIN_ICON
+            local b = buttons[i]
+            if not b then
+                b = Filter.NewButton(panel.header, icon)
+                b:EnableMouse(false)
+                buttons[i] = b
+            else
+                b.icon:SetTexture(icon)
+            end
+            b:ClearAllPoints()
+            b:SetPoint("TOPRIGHT", panel.sortButton, "TOPLEFT", -Filter.GAP - (count - i) * step, 0)
+            b:Show()
+        end
+        for i = count + 1, #buttons do buttons[i]:Hide() end
+        panel.searchBox:SetWidth(math_max(40, math.min(SEARCH_WIDTH, room - (count > 0 and count * step or 4))))
+    end
+
     function Bags.CreateSample(parent)
         local f = CreateFrame("Frame", nil, parent)
         f.fuiSample = true
@@ -1692,6 +1719,7 @@ do
         local top = CreateFrame("Frame", nil, panel)
         top:SetAllPoints()
         top:SetFrameLevel(level + 3)
+        panel.header = top
         panel.portrait = top:CreateTexture(nil, "OVERLAY")
         panel.portrait:SetSize(62, 62)
         panel.portrait:SetPoint("TOPLEFT", -5, 7)
@@ -1705,6 +1733,20 @@ do
         panel.title:SetPoint("TOPLEFT", 58, -6)
         panel.title:SetPoint("TOPRIGHT", -24, -6)
         panel.title:SetText(_G.COMBINED_BAG_TITLE or _G.BACKPACK_TOOLTIP or "")
+
+        local search = CreateFrame("EditBox", nil, top, "SearchBoxTemplate")
+        search:EnableMouse(false)
+        search:EnableKeyboard(false)
+        search:SetHeight(18)
+        search:SetPoint("TOPLEFT", SEARCH_X, -37)
+        panel.searchBox = search
+
+        local sort = CreateFrame("Button", nil, top)
+        sort:EnableMouse(false)
+        sort:SetNormalAtlas("bags-button-autosort-up")
+        sort:SetSize(Filter.W, Filter.H)
+        sort:SetPoint("TOPRIGHT", Filter.SORT_X, Filter.SORT_Y)
+        panel.sortButton, panel.filterButtons = sort, {}
 
         -- the money line in Blizzard's coin box
         local money = CreateFrame("Frame", nil, panel)
@@ -1777,6 +1819,7 @@ do
         local height = rows * h + (rows - 1) * ITEM_SPACING + gapCount * BAG_GAP + PAD_H + MONEY_H + 12
         panel:SetSize(width, height)
         if NineSliceUtil and NineSliceUtil.UpdateCornerCropping then pcall(NineSliceUtil.UpdateCornerCropping, panel, height) end
+        DrawSampleTools(panel, width)
 
         local cash = GetMoney and GetMoney() or 0
         panel.money.text:SetText((GetMoneyString and GetMoneyString(cash, true))
