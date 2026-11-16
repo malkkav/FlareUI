@@ -38,65 +38,69 @@ local function Gold(text) return (text or ""):gsub("|cffffd100", GOLD) end
 local function Link(text, url) return "|Hurl:" .. url .. "|h" .. LINK .. text .. "|r|h" end
 
 local CARD_PAD, CARD_GAP, PAGE_PAD = 14, 10, 2
+local TITLE_Y = -12
 
--- a box with a gold title and a rule; returns it and the y where its content starts
-local function Card(host, title, width)
+local function Card(host, title, text)
     local card = CreateFrame("Frame", nil, host, "BackdropTemplate")
     ns.SettingsPanel.Box(card, 0.34)
-    card:SetWidth(width)
     local t = card:CreateFontString(nil, "OVERLAY", "FlareUI_PanelTitle")
-    local titleY = -12
-    t:SetPoint("TOPLEFT", CARD_PAD, titleY)
-    t:SetWidth(width - 2 * CARD_PAD)
+    t:SetPoint("TOPLEFT", CARD_PAD, TITLE_Y)
     t:SetJustifyH("LEFT")
     t:SetWordWrap(true)
     t:SetTextColor(1, 0.82, 0)   -- card titles in WoW yellow (11-13)
     t:SetText(title or "")
-    local ruleY = math.min(-38, titleY - math.ceil(t:GetStringHeight()) - 8)
+    card.title = t
     local rule = card:CreateTexture(nil, "ARTWORK")
     rule:SetColorTexture(0.47, 0.36, 0.22, 0.8)
     rule:SetHeight(1)
-    rule:SetPoint("TOPLEFT", CARD_PAD, ruleY)
-    rule:SetPoint("TOPRIGHT", -CARD_PAD, ruleY)
+    card.rule = rule
+    -- (11-11 Malkkav: a little smaller than the rows' text)
+    local body = card:CreateFontString(nil, "OVERLAY", "FlareUI_PanelTextSmall")
+    body:SetJustifyH("LEFT")
+    body:SetSpacing(4)
+    body:SetText(text or "")
+    card.body = body
     card:SetHyperlinksEnabled(true)
     card:SetScript("OnHyperlinkClick", function(_, link)
         local url = link:match("^url:(.+)$")
         if url then ns.ButtonSound() CopyLink(url) end
     end)
-    return card, ruleY - 12
+    return card
 end
 
-local function Body(card, text, y, font)
-    -- (11-11 Malkkav: a little smaller than the rows' text)
-    local fs = card:CreateFontString(nil, "OVERLAY", font or "FlareUI_PanelTextSmall")
-    fs:SetPoint("TOPLEFT", CARD_PAD, y)
-    fs:SetWidth(card:GetWidth() - 2 * CARD_PAD)
-    fs:SetJustifyH("LEFT")
-    fs:SetSpacing(4)
-    fs:SetText(text or "")
-    return fs, y - math.ceil(fs:GetStringHeight() or 0)
+-- Rewrap both strings at the new width and return the bottom of the body.
+local function LayoutCard(card, width)
+    card:SetWidth(width)
+    local textWidth = width - 2 * CARD_PAD
+    card.title:SetWidth(textWidth)
+    local ruleY = math.min(-38, TITLE_Y - math.ceil(card.title:GetStringHeight()) - 8)
+    card.rule:ClearAllPoints()
+    card.rule:SetPoint("TOPLEFT", CARD_PAD, ruleY)
+    card.rule:SetPoint("TOPRIGHT", -CARD_PAD, ruleY)
+    local bodyY = ruleY - 12
+    card.body:ClearAllPoints()
+    card.body:SetPoint("TOPLEFT", CARD_PAD, bodyY)
+    card.body:SetWidth(textWidth)
+    return bodyY - math.ceil(card.body:GetStringHeight() or 0)
 end
 
 local function Build(host)
     local panel = ns.SettingsPanel
-    local width = panel.MIDDLE_W or host:GetWidth()
-    local half = math.floor((width - CARD_GAP) / 2)
-
     local scroll = CreateFrame("ScrollFrame", nil, host)
-    scroll:SetAllPoints(host)
+    scroll:SetPoint("TOPLEFT", host, "TOPLEFT")
+    scroll:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT")
     local content = CreateFrame("Frame", nil, scroll)
-    content:SetWidth(width)
+    content:SetSize(1, 1)
     scroll:SetScrollChild(content)
 
     -- thanks and the links
-    local thanks, y = Card(content, S:SectionText("about.yourFriendlyUiOverhowl"), width)
-    thanks:SetPoint("TOPLEFT", 0, -PAGE_PAD)
     local note = S:Text("about.links", "text", true) or ""
     -- the links' note on a line of its own (11-11)
-    local _, after = Body(thanks, (S:Text("about.thanks", "text", true) or "") .. ".\n"
-        .. GRAY_FONT_COLOR:WrapTextInColorCode("(" .. note .. ")"), y)
-    y = after - 14
-    local previous
+    local thanks = Card(content, S:SectionText("about.yourFriendlyUiOverhowl"),
+        (S:Text("about.thanks", "text", true) or "") .. ".\n"
+        .. GRAY_FONT_COLOR:WrapTextInColorCode("(" .. note .. ")"))
+    thanks:SetPoint("TOPLEFT", 0, -PAGE_PAD)
+    local first, previous
     for _, net in ipairs(NETWORKS) do
         local b = CreateFrame("Button", nil, thanks, "UIPanelButtonTemplate")
         ns.SkinButton(b)
@@ -108,46 +112,66 @@ local function Build(host)
         end)
         -- centred in the card (11-11 Malkkav)
         if previous then b:SetPoint("LEFT", previous, "RIGHT", 8, 0)
-        else b:SetPoint("TOPLEFT", (width - (#NETWORKS * 112 + (#NETWORKS - 1) * 8)) / 2, y) end
+        else first = b end
         previous = b
     end
-    thanks:SetHeight(-(y - 26) + CARD_PAD)
+    local buttonsWidth = #NETWORKS * 112 + (#NETWORKS - 1) * 8
 
     -- credits (left) and the Edit Mode layout (right), side by side
-    local credits, cy = Card(content, S:SectionText("about.credits"), half)
-    credits:SetPoint("TOPLEFT", thanks, "BOTTOMLEFT", 0, -CARD_GAP)
     local text = Gold(S:Text("about.credits", "text", true))
     text = text:gsub(GOLD .. "Clari Turela|r", Link("Clari Turela", CREDIT_LINKS.clari))
     text = text:gsub(GOLD .. "sampconrad|r", Link("sampconrad", CREDIT_LINKS.sampconrad))
     text = text:gsub(GOLD .. "Jeor|r", Link("Jeor", CREDIT_LINKS.jeor))
     text = text:gsub(GOLD .. "parchinskiy|r", Link("parchinskiy", CREDIT_LINKS.parchinskiy))
-    local _, creditsEnd = Body(credits, text, cy)
+    local credits = Card(content, S:SectionText("about.credits"), text)
+    credits:SetPoint("TOPLEFT", thanks, "BOTTOMLEFT", 0, -CARD_GAP)
 
-    local layout, ly = Card(content, S:SectionText("about.editModeLayout"), width - half - CARD_GAP)
+    local layout = Card(content, S:SectionText("about.editModeLayout"),
+        Gold(S:Format(S:Text("about.layout", "text", true))))
     layout:SetPoint("TOPLEFT", credits, "TOPRIGHT", CARD_GAP, 0)
-    local _, layoutEnd = Body(layout, Gold(S:Format(S:Text("about.layout", "text", true))), ly)
     local copy = ns.EditModeLayout.Button(layout)
-    copy:SetPoint("TOP", layout, "TOP", 0, layoutEnd - 14)
-    layoutEnd = layoutEnd - 14 - 24
-
-    local pairH = math.max(-creditsEnd, -layoutEnd) + CARD_PAD
-    credits:SetHeight(pairH)
-    layout:SetHeight(pairH)
 
     -- slash commands
-    local commands, sy = Card(content, S:Text("about.commands", "label") or "", width)
+    local commands = Card(content, S:Text("about.commands", "label"),
+        Gold(S:Format(S:Text("about.commands", "text", true))))
     commands:SetPoint("TOPLEFT", credits, "BOTTOMLEFT", 0, -CARD_GAP)
-    local _, commandsEnd = Body(commands, Gold(S:Format(S:Text("about.commands", "text", true))), sy, "FlareUI_PanelTextSmall")
-    commands:SetHeight(-commandsEnd + CARD_PAD)
 
-    content:SetHeight(thanks:GetHeight() + pairH + commands:GetHeight() + 2 * (CARD_GAP + PAGE_PAD))
+    local function RenderCards(width)
+        local y = LayoutCard(thanks, width) - 14
+        first:ClearAllPoints()
+        first:SetPoint("TOPLEFT", (width - buttonsWidth) / 2, y)
+        local thanksHeight = -(y - 26) + CARD_PAD
+        thanks:SetHeight(thanksHeight)
+
+        local half = math.floor((width - CARD_GAP) / 2)
+        local creditsEnd = LayoutCard(credits, half)
+        local layoutEnd = LayoutCard(layout, width - half - CARD_GAP)
+        copy:ClearAllPoints()
+        copy:SetPoint("TOP", layout, "TOP", 0, layoutEnd - 14)
+        layoutEnd = layoutEnd - 14 - 24
+        local pairH = math.max(-creditsEnd, -layoutEnd) + CARD_PAD
+        credits:SetHeight(pairH)
+        layout:SetHeight(pairH)
+
+        local commandsHeight = -LayoutCard(commands, width) + CARD_PAD
+        commands:SetHeight(commandsHeight)
+        return thanksHeight + pairH + commandsHeight + 2 * (CARD_GAP + PAGE_PAD)
+    end
+
     panel.AttachScrollLine(scroll, host)
+    function host:RefreshAboutLayout()
+        local width, height = self:GetSize()
+        if not self:IsVisible() or width <= 0 or height <= 0 then return end
+        local inset = panel.LayoutScrollContent(scroll, width, RenderCards)
+        scroll:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -inset, 0)
+    end
+    host:HookScript("OnSizeChanged", host.RefreshAboutLayout)
 end
 
 S:Module{
     key = "about", group = "top", order = 1,
     navIcon = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png",
-    custom = { key = "main", custom = Build },
+    custom = { key = "main", custom = Build, refresh = function(host) host:RefreshAboutLayout() end },
     -- the setup tour again (the Gamepad UI has no tour)
     headerButton = function()
         if ns.IsGamepadUI() then return nil end
