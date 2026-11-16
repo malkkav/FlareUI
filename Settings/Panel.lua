@@ -635,10 +635,14 @@ local function ShowVisual(row)
     if preview.dirty and not row and preview.spec and S.rows and S.rows[preview.spec.key] then
         preview.spec = ns.SettingsPreview.Resolve(S.rows[preview.spec.key]) or preview.spec
     end
-    -- a row without a picture shows the page's
+    local textOnly = searchText == "" and current == "ab" and currentTab[current] == "visibility"
+        and S.modules[current]:IsOn()
     local spec
-    if row then spec = ns.SettingsPreview.Resolve(row) or PageSpec()
-    else spec = preview.spec or PageSpec() end
+    if not textOnly then
+        -- a row without a picture shows the page's
+        if row then spec = ns.SettingsPreview.Resolve(row) or PageSpec()
+        else spec = preview.spec or PageSpec() end
+    end
     local value
     -- One stable composition for the whole Action Bars page. Only dropdown exploration carries
     -- a temporary value; ordinary hover changes the explanation, not the scene or animation.
@@ -651,7 +655,7 @@ local function ShowVisual(row)
     if same and not preview.dirty and not preview.canvas.invalidated and preview.canvas.frame:IsShown() then shown = true
     else shown = ns.SettingsPreview.Show(preview.canvas, spec) end
     preview.dirty = nil
-    preview.picture:SetShown(not shown)
+    preview.picture:SetShown(not textOnly and not shown)
     -- as tall as what it shows; a frame shown this moment has no place on screen until the next
     -- frame, so it is measured again then
     if shown then
@@ -666,7 +670,11 @@ local function ShowVisual(row)
         C_Timer.After(0, Fit)
     end
     preview.title:ClearAllPoints()
-    preview.title:SetPoint("TOPLEFT", shown and preview.canvas.frame or preview.picture, "BOTTOMLEFT", 0, -12)
+    if textOnly then
+        preview.title:SetPoint("TOPLEFT", PAD, -PAD)
+    else
+        preview.title:SetPoint("TOPLEFT", shown and preview.canvas.frame or preview.picture, "BOTTOMLEFT", 0, -12)
+    end
     preview.title:SetPoint("RIGHT", -PAD, 0)
 end
 
