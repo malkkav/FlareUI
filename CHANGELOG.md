@@ -1,3 +1,151 @@
+# FlareUI 6.10
+
+**Restart the game fully after updating** (not just /reload): this version adds new files.
+
+The big tidy-up. Edit Mode dialogs now open one section at a time, in the same order on every frame, so no more scrolling through 40 rows. The settings window got the same care: a **General** page, clearer tabs, dropdowns that look like dropdowns, and notes that tell you why something is greyed. We cut options nobody needed, merged the ones that belonged together, and added a few you asked for. Every new option starts off. Thanks to Kabaday for the help on the loot roll window!
+
+## Highlights
+- **Edit Mode:** one section open at a time, and the same sections in the same order on every frame.
+- **Settings window:** a new **General** page, tidier tabs, and dropdowns with a proper arrow.
+- **Loot rolls:** each open roll gets its own card, with Need above Greed. By Nico-Mayer.
+- **New options** for vendors, resurrections, bags, the meter and tooltips. All off until you turn them on.
+
+## New
+
+### Unit Frames
+- **Bar Edge Glow** (off), in each frame's Look section in Edit Mode: a bright line and a soft glow at the front of the health bar. It flashes when health changes.
+- **Damage Trail** on the Resource Bars' health bar too.
+- Works with **Smooth Animated Bars**: with its option for other addons' bars on, its fill shows on FlareUI's health and power bars.
+- Edit Mode samples:
+  - The **Five-Second Rule** spark runs across your mana bar.
+  - Rogues and druids see sample combo gems in the ring styles.
+- Party and raid frames: **Dispel Highlight** pulses fast. In the ring styles, the portrait ring pulses too, in the debuff's colour.
+- Resource Bars: **Absorb Texture** for the health bar. Its Edit Mode sample shows incoming heals and a shield.
+- Forever Style: a frame's **Scale** is saved per Edit Mode layout.
+
+### Bags & Looting
+- **Bank Window** section: **Columns** (Default), **Gaps Between Bags** (off) and **Tight Spacing** (off).
+- **Combine Empty Slots** (off), in Bag Window: your empty slots show as one, after your items, with the number of free slots on it.
+- **Auto Open Containers** (off), in Tools: clams, loot bags and lockboxes you've unlocked open by themselves.
+  - Not in combat, and not at a vendor, mailbox, bank, auction house or in a trade.
+- A note at the top of the Bags tab says why the options are greyed: another bag addon, or combined bags off.
+- Works with **Syndicator**: pointing at your gold lists every character's gold.
+- Works with **Hide 2FA Bag Slots**.
+
+### Meters
+- **Report to Chat**, in a meter window's right-click and gear menus: your top 3, 5 or 10 to Party, Raid, Instance, Guild, a whisper, or Say in instances. After combat only.
+- **Close Tab** and **Close Window** in the same menus.
+- **Reset on Leaving a Group** (off), in Tweaks.
+- **Pull Warning Sound** (off), in Threat Bars: a sound as Pull Warning starts. Never while you hold the mob.
+
+### Tooltips
+- **Health Bar** in FlareUI's look: the FlareUI Forever texture in a thin border that takes the tooltip's border colour.
+  - Now a choice, on the Content tab: **Off** (as before), **Below** the tooltip or **Inside** it.
+
+### Quality of Life
+- **Repair with Guild Funds** (off), in Vendor: Auto Repair uses your guild bank first, when your rank allows it.
+- **Accept Resurrections** (off), in Other: never while you or the caster is in combat.
+- **Coordinates on the World Map**, in Map & Mail: your coordinates and the cursor's. It's the same as Blizzard's own two options.
+
+### Chat
+- A tab's glow takes the colour of its newest message: green for guild, blue for party, and so on.
+- Gamepad mode: Blizzard's chat tabs look like FlareUI's.
+- Works with **Misspelled: Forever**: its highlights stay on the words.
+
+### Action Bars
+- **How Fake CM Works**: a short note at the top of the Fake CM tab.
+- With **Skin Action Bars** on, a pet spell set to autocast gets a slowly pulsing gold border.
+
+### Other
+- Battleground Objectives: a **Scale** slider in its Edit Mode dialog.
+- Loot rolls: each roll shows your choice, your roll and who leads, plus item level and slot. By Nico-Mayer.
+- The chat preview shows item and spell link icons when you point at **Item and Spell Icons**. By parchinskiy.
+
+## Changed
+
+### Edit Mode
+- One section opens at a time. Each frame remembers the last one you opened.
+- Every unit frame, party, raid, boss and resource bar dialog uses the same sections in the same order: Size, Text, Look, Behaviour, Cast Bar, Auras, Icons, Fading.
+- Dialogs grow taller, up to about two thirds of your screen.
+- Shorter labels: **Power Height**, **Background**, **Bar Animations**, **Frame Gap**, **Group Gap**, **Group Order**. Search still finds the old names.
+- Party: **Pets & Targets** section with the Pets and Party Targets choices.
+- Classic party frames: **Dispel Icons** can sit anywhere the auras can.
+- **Pet Happiness** is one choice: Off or where it sits.
+- The first-time hint stays until you pick a FlareUI frame.
+
+### Settings window
+- **General** page (was Settings), with two tabs:
+  - **Interface:** UI Scale, Global Font. Custom Scale and Text Scale are sliders now.
+  - **Advanced:** Sync Blizz UI, Blizzard Frames (Move Any Window) and Language.
+- Move Any Window, Sync Blizz UI and UI Scale work with Quality of Life off.
+- Dropdowns lost their two side arrows and show a down arrow inside the box.
+- Fold sections with the arrow left of their title. **Reset** shows only when something differs from its default.
+- A module that's off lists what it gives. After **Turn On**, a banner offers the reload it needs.
+- Pages that keep options in Edit Mode say so under their description.
+- Tabs renamed or merged:
+  - Action Bars: **Other Bars** (XP Bar and Hide Bars together).
+  - Chat: **Behaviour**. Tooltips: **Content**.
+  - Minimap: **Map** and **Addon Buttons**. Quest Tracker: **Look** and **Behaviour**.
+- Unit Frames › Fonts: pick a **Frame** to see its fonts, and **Copy to All Frames**.
+- Quality of Life: Convenience is now **Quests & NPCs**, **Map & Mail** and **Other**. The nameplate section is **Enemy Plates**.
+- Profiles: **What a Profile Saves** opens the page, and Reset FlareUI sits in the Profile section.
+- The setup tour offers Buff Reminders and has its own switch for Bags & Looting.
+
+### Options merged
+- **Automate Quests** (was Auto Accept Quests and Auto Turn-In Quests). If you had either one on, you get both.
+- **Collapsible Bag Bar** now also removes the bag bar's frame (was two options). Either one on gives you this one on.
+- **Gryphons** in Quality of Life › Hide Clutter: **Shown**, **Behind Bars** or **Hidden** (was Hide Gryphons and Gryphons Behind Bars). **Raid Manager** moved there too.
+- **Skin Item Slots**: **Off**, **Thin Borders** or **Thick Borders**. Skinned slots always use rarity colours.
+- **Meter Tab in the Chat**: one dropdown. **Disable** (the default), **Open When Clicked**, or tick **Open In Combat**, **Open In a Group** and **Open At Login** together.
+- **Addons in the Drawer**: **None** turns the addon button drawer off (its own switch is gone).
+- Separate Window and Threat View in Combat: turning one on turns the other off.
+
+### Always on now (switches removed)
+- **Damage Trail** on every frame.
+- **Highlight Purgeable Buffs**, on enemy targets and boss frames.
+- **Threat Glow** and **Combat Glow**.
+- **Timer Colour**, **Latency Zone** and the spell rank on cast bars (lower ranks only, like "R2").
+- Quest Tracker: **Quest Count**, **Hide When Empty**, **Wrap Long Text** and **Collapsible Zones**.
+- Chat: link tooltips on mouseover and copyable links.
+- Meters: the **Ready Check** and **Countdown** buttons.
+- Buff Reminders: **Ignore Members Out of Range**.
+
+### Other changes
+- Action Bars: **Dim on Cooldown** is part of **Status Colouring**.
+- Action Bars: **Bar Scale** is now **Button Scale**, in Button Appearance. Button Text joined Button Appearance.
+- Buffs & Debuffs: weapon enchants get their own row under your buffs, so every buff row lines up.
+- Meters: **Tank's Lead** shows after the numbers, like "100% (+25%)".
+- Loot rolls: each roll still to decide gets its own card, with Need above Greed and Pass beside them. By Nico-Mayer.
+- Chat: Formatting's note says it only works outside dungeons, raids and battlegrounds.
+
+## Defaults
+- Buffs & Debuffs › Buffs: **Size** 30, **Icons per Row** 8, **Max Icons** 16.
+- Meters: **Tank's Lead** on.
+- Resource Bars: **Queued Attack Colour**, **Stand-Still Zone** and **Waiting State** on.
+- Only settings you never changed take the new defaults.
+
+## Removed
+- Quality of Life: **Flag Carrier Frames** and **Durability Warning** (Buff Reminders' Low Durability covers it).
+- Cast bars: **Channel Ticks** and **Spell Queue Window**.
+- Quest Tracker: **Focus Buttons** and **Auto Quest Buttons**. Quest Icons still focus a quest when clicked.
+- Chat: **Colon After Names**.
+- Tooltips: **Show Guild Ranks**.
+
+## Fixed
+- Target frame: a friendly target's buffs no longer show twice, once with a white border.
+- Gamepad: D-pad Up and Down work on the action bar again with the quest tracker on. The tracker list scrolls with the right stick.
+- Click-cast addons work on the player, target, focus and other single frames again.
+- Action bar 1 shows its keybinds right after logging in.
+- Quest tracker: Shift-click links a quest into any open chat box, like Whisper Messenger's. By parchinskiy.
+- Action bars: a stance, pet or possess bar left 1 pixel wide is sized again, so Edit Mode can select it.
+- Chat: tab glow works again.
+- Gamepad mode: the chat tabs are no longer dim and fade with the chat.
+- Settings: lists only make room for a scrollbar when they need one. By parchinskiy.
+- Settings: the Bags & Looting preview shows the search box, sort button and Category Filters. By parchinskiy.
+
+## Translations
+- French: the 6.9 text. By Braincell1980.
+
 # FlareUI 6.9
 
 Version 6.9. (Nice!) All your fading now lives in Edit Mode. The chat, the Damage Meter and the threat window can join fade groups at last, every Visibility list learns **In an Instance**, and Edit Mode's settings open right next to the frame you clicked. Also new: Chinese, by AreChen, and a pile of quest tracker and chat options you asked for.
