@@ -41,6 +41,7 @@ S:Row{ key = "bl.bagButtons", half = true, tab = "bags", path = "tweaks.bagButto
 -- the keyring and the crafting bag as sections of the combined backpack (Bags.lua 0)
 S:Row{ key = "bl.bagKeyring", half = true, tab = "bags", path = "tweaks.bagKeyring", apply = RefreshBags, disabled = NotCombined }
 S:Row{ key = "bl.bagReagent", half = true, tab = "bags", path = "tweaks.bagReagent", apply = RefreshBags, disabled = NotCombined }
+S:Row{ key = "bl.bagAutoSort", half = true, tab = "bags", path = "tweaks.bagAutoSort", disabled = BagAddon }
 
 -- BAGS: the item slots --------------------------
 -- Skin Item Slots (11-14): FlareUI's slot border on or off; the two border looks grey out with it

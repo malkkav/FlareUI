@@ -885,6 +885,7 @@ local defaults = {
             bagReagent = false,         -- Crafting Bag in Backpack: the crafting (reagent) bag there too
             bagFilters = "off",         -- Category Filters: "off" | "drawer" (button + drawer) | "buttons" (row in a wide combined backpack) (Bags.lua 4b)
             bagWithCharacter = false,   -- Open with Character Window: the bags open and close with it (Bags.lua 4c)
+            bagAutoSort = false,        -- Sort Bags on Open: Blizzard's clean-up each time the bags open (Bags.lua 4d)
             -- Bag Items font (Bags.lua StyleIconTexts): stack counts and cooldown numbers; face "" keeps Blizzard's
             bagItemFont = { face = "", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             -- Free Bag Slots font: the count on the backpack button; face "" keeps Blizzard's (11-12)
