@@ -22,7 +22,8 @@ function entries(locale) {
   return values;
 }
 
-const english = entries('enUS');
+// Check the English catalog for duplicates. Locale files can retain retired phrases.
+entries('enUS');
 const required = new Set([
   'Welcome to FlareUI!',
   'Everything starts switched off. This short tour shows you what each part does, and you choose the ones you want as you go.',
@@ -91,7 +92,6 @@ for (const locale of ['zhCN', 'zhTW']) {
     errors.push(`${locale}: Power Bar must describe the general resource bar, not a specific class resource`);
   }
   for (const [key, value] of values) {
-    if (!english.has(key)) errors.push(`${locale}: unknown English key ${JSON.stringify(key)}`);
     if (typeof value !== 'string' || value.length === 0) {
       errors.push(`${locale}: empty or non-string translation for ${JSON.stringify(key)}`);
       continue;
