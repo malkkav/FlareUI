@@ -752,6 +752,7 @@ local defaults = {
             scale = 1,
             cursorX = 0,                -- Offset X / Offset Y: a mouseover tooltip's distance from the pointer (11-14)
             cursorY = 0,
+            screenCorner = false,       -- Screen Corner: the screen's own corner instead of the HUD Tooltip box (11-17)
             corner = "auto",            -- Tooltip Corner: auto (Blizzard's nearest corner) | TOPLEFT | TOPRIGHT | BOTTOMLEFT | BOTTOMRIGHT (11-14)
             opacity = 1,                -- Frame Opacity: the background's (11-13, a player asked; Malkkav: 100% by default, was a fixed 0.9)
             borderByReaction = true,
@@ -774,6 +775,19 @@ local defaults = {
             compareShift = false,       -- comparison tooltips only while Shift is held (off since 11-10, Malkkav)
             showItemID = false,
             showSpellID = false,
+            -- PrettyTooltip's ideas (11-17), all off: Content tab. Always on with the module: a guild
+            -- in its class colour (with Class-Coloured Names), finished quest objectives in green, worn
+            -- gear's durability and a debuff's dispel type in colour.
+            gatheringLevels = false,    -- the skill a skinnable creature, herb or ore needs, and yours
+            disenchant = false,         -- Disenchant Info (TooltipsData.lua)
+            stackPrice = false,         -- Price per Item under a stack's sell price
+            hideSellPrice = false,      -- Hide Sell Price: no sell price line on items (11-17)
+            auraCaster = false,         -- Show Caster on buffs and debuffs
+            detailsShift = false,       -- IDs and disenchant info only while Shift is held
+            -- Layout tab (TooltipsLayout.lua)
+            headerIcon = false,         -- the icon or portrait beside the name, a level plate for units
+            badges = false,             -- Badges: Elite / PvP / AFK ..., a spell's school and rank
+            spellStrip = false,         -- cost, cast, cooldown and range in four cells
 
             -- anchor: default | cursorOffset (shown as "Cursor"); Blizzard's corner by default
             anchor = "default",
@@ -784,6 +798,7 @@ local defaults = {
             -- Mouseover (11-12): the main switch; mouseoverKinds[kind] = an exception; the anchors above
             -- convert into these once (mouseoverSet), Tooltips.lua TIP.Mouseover
             mouseover = false,
+            cursorCombat = false,       -- Off in Combat: mouseover tooltips stay in Blizzard's spot in fights (11-17)
 
             -- visibility: always | combat | never; every tooltip shows by default, as with Blizzard
             visibility = {

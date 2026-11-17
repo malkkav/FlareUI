@@ -21,7 +21,7 @@ ordinary hover updates help text without redrawing the specimen or restarting it
 | Minimap | Interior terrain specimen with separately rendered square/round borders, coordinates and overlay buttons; the complete canonical layout scales down for cards |
 | Buffs & Debuffs / unit auras | Production aura renderer: shapes, timers, swipe; sample arrival and cooldown bar |
 | Chat | Border, background opacity, input position, formatting, header buttons and faded opacity |
-| Tooltips | Character/item sample, client tooltip art, colours, health bar, details, scale and anchor diagram |
+| Tooltips | Character/item sample, client tooltip art, colours, health bar, details, scale and anchor diagram; creature, stack, spell and aura samples with the Layout tab's icon, badges, strip and dragon |
 | Quest Tracker | Sample quests, borders, zone headers, tags, wrapping, counts, buttons and minimized form |
 | Damage Meter | Three sample rows, frame styling, chat tab/header controls, threat text, line and warning |
 | Action Bars | Sample buttons with artwork, bindings, macro labels, status colours, end caps and proc glow |

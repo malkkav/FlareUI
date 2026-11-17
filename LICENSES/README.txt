@@ -29,6 +29,10 @@ Code
   The buff proc spell IDs and the Cooldown Manager reading idea in Modules/ProcGlow.lua
       ProcDoc by wsmaxcy, free to use, modify or share (its README)
       https://github.com/wsmaxcy/ProcDoc
+  The spell school, herb and ore level and disenchant tables in Modules/TooltipsData.lua, the aura
+  lookup in Modules/Tooltips.lua, and the ideas behind Tooltips > Layout (Modules/TooltipsLayout.lua)
+      PrettyTooltip by FallenShard, MIT License
+      https://github.com/FallenShard/PrettyTooltip ............ PrettyTooltip.txt
   The idea behind Bar Edge Glow in Modules/UnitFrames.lua (a line and glow at the fill's
   front); FlareUI's own code and art, no files copied
       Smooth Animated Bars by Jordan, MIT License

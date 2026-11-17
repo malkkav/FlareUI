@@ -87,6 +87,8 @@ Modules\LootFeed.lua
 Modules\LootRolls.lua
 Modules\ZoneText.lua
 Modules\Tooltips.lua
+Modules\TooltipsData.lua
+Modules\TooltipsLayout.lua
 Modules\ItemStats.lua
 Modules\ObjectiveTracker.lua
 Modules\RadialMenu.lua

@@ -28,6 +28,9 @@ S:Row{ key = "tt.corner", kind = "choice", path = "tooltips.corner", apply = Ref
 local SCALES = {}
 for i = 5, 15 do SCALES[#SCALES + 1] = { i / 10, (i * 10) .. "%" } end
 S:Row{ key = "tt.scale", kind = "range", path = "tooltips.scale", choices = SCALES, apply = Refresh }
+-- Screen Corner (11-17): tooltips in Blizzard's spot go to the screen's corner (Tooltip Corner's, or the
+-- bottom right) instead of the HUD Tooltip box
+S:Row{ key = "tt.screenCorner", path = "tooltips.screenCorner", apply = Refresh }
 S:Row{ key = "tt.opacity", kind = "range", path = "tooltips.opacity", choices = S:OpacityChoices(), apply = Refresh }
 -- (Health Bar is content: on the Content tab since 11-16, Malkkav; see Tweak below)
 -- Off, Below the tooltip or Inside it (11-16, Malkkav; a switch before): over hideHealthBar + healthBarPlace
@@ -72,6 +75,14 @@ local OFFSETS = {}
 for i = -50, 50, 2 do OFFSETS[#OFFSETS + 1] = { i, tostring(i) } end
 S:Row{ key = "tt.cursorX", kind = "range", half = true, rank = 3.5, path = "tooltips.cursorX", choices = OFFSETS, apply = Refresh }
 S:Row{ key = "tt.cursorY", kind = "range", half = true, rank = 3.5, path = "tooltips.cursorY", choices = OFFSETS, apply = Refresh }
+-- Off in Combat (11-17): greyed while no kind of tooltip follows the mouse
+S:Row{ key = "tt.cursorCombat", path = "tooltips.cursorCombat", rank = 3.6,
+    disabled = function()
+        local TIP = ns.Tooltips
+        if not (TIP and TIP.Mouseover) then return true end
+        for _, kind in ipairs(KINDS) do if TIP.Mouseover(kind) then return false end end
+        return true
+    end }
 
 -- VISIBILITY (11-12): when each kind of tooltip shows; never greyed: Shift shows a hidden tooltip.
 -- Two columns, the same order as the Mouseover switches.
@@ -91,11 +102,19 @@ Show("tt.showGroupAuras", "tooltips.visibility.groupAuras",
     function() if ns.PartyFrames and ns.PartyFrames.ApplyAuraMouse then ns.PartyFrames.ApplyAuraMouse() end end)
 Show("tt.showOther", "tooltips.visibility.other")
 
--- TWEAKS TAB: in pairs: units (borders, names, target and threat, guild, faction), then IDs, then items
-local ids = Both({ "tooltips.showItemID", "tooltips.showSpellID" })
+-- Coloured Borders is look: in Look, under Frame Opacity (11-17, was on the Content tab)
 local borders = Both({ "tooltips.borderByReaction", "tooltips.borderByClass", "tooltips.borderByQuality" })
+S:Row{ key = "tt.borders", get = borders.get, set = borders.set, apply = Refresh }
+
+-- CONTENT TAB (11-17, sorted): Layout, Units, Items, then Details (IDs and when they show). The copy
+-- gives each row its section.
+-- Layout (11-17, after PrettyTooltip): the top of the tooltip (TooltipsLayout.lua), first on the Content tab
+local function Layout(row) row.half = true; row.tab = "tweaks"; S:Row(row) end
+Layout{ key = "tt.headerIcon", path = "tooltips.headerIcon" }
+Layout{ key = "tt.badges", path = "tooltips.badges" }
+Layout{ key = "tt.spellStrip", path = "tooltips.spellStrip" }
+local ids = Both({ "tooltips.showItemID", "tooltips.showSpellID" })
 local function Tweak(row) row.half = true; row.tab = "tweaks"; S:Row(row) end
-Tweak{ key = "tt.borders", get = borders.get, set = borders.set, apply = Refresh }
 Tweak{ key = "tt.classNames", apply = Refresh,
     get = function() return S:GetPath("tooltips.nameColor") == "class" end,
     set = function(on) S:SetPath("tooltips.nameColor", on and "class" or "none") end }
@@ -107,6 +126,13 @@ Tweak{ key = "tt.ids", get = ids.get, set = ids.set, apply = Refresh }
 Tweak{ key = "tt.shortItemStats", path = "tooltips.shortItemStats" }
 Tweak{ key = "tt.itemLevel", path = "tooltips.itemLevel" }
 Tweak{ key = "tt.compareShift", path = "tooltips.compareShift", apply = Refresh }
+-- (11-17) after PrettyTooltip
+Tweak{ key = "tt.gatheringLevels", path = "tooltips.gatheringLevels" }
+Tweak{ key = "tt.auraCaster", path = "tooltips.auraCaster" }
+Tweak{ key = "tt.disenchant", path = "tooltips.disenchant" }
+Tweak{ key = "tt.stackPrice", path = "tooltips.stackPrice", disabled = function() return S:GetPath("tooltips.hideSellPrice") end }
+Tweak{ key = "tt.hideSellPrice", path = "tooltips.hideSellPrice" }
+Tweak{ key = "tt.detailsShift", path = "tooltips.detailsShift" }
 
 S:FontRows{ module = "tt", tab = "fonts", section = "tt.fonts", apply = Refresh, fonts = {
     { key = "title", path = "tooltips.titleFont" },
