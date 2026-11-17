@@ -105,7 +105,6 @@ L["60%"] = true
 L["70%"] = true
 L["80%"] = true
 L["90%"] = true
-L["A bar inside the square minimap, along its bottom edge, with up to three values of your choice."] = true
 L["A bar while you're on a flight path: where you're going and the time left."] = true
 L["A bright line and a soft glow at the front of the health bar. It flashes when health changes."] = true
 L["A button before each quest that plays its voice line."] = true

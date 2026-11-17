@@ -1853,7 +1853,6 @@ L["No elixir in your bags."] = "No tienes ningún elixir en las bolsas."
 
 L["Info Bar"] = "Barra de información"
 L["Durability"] = "Durabilidad"
-L["A bar inside the square minimap, along its bottom edge, with up to three values of your choice."] = "Una barra dentro del minimapa cuadrado, a lo largo de su borde inferior, con hasta tres valores a tu elección."
 L["Bags counts used and total slots. Durability is your most worn piece."] = "«Bolsas» muestra los espacios ocupados y el total. «Durabilidad» muestra la de la pieza de equipo más desgastada."
 L["What the left side of the Info Bar shows."] = "Lo que muestra el lado izquierdo de la barra de información."
 L["What the middle of the Info Bar shows."] = "Lo que muestra el centro de la barra de información."

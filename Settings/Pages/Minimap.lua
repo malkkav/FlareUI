@@ -44,12 +44,10 @@ S:Row{ key = "mm.coords", kind = "choice", choices = { "off", "always", "hover" 
     get = function() return ns.Minimap and ns.Minimap.CoordsMode and ns.Minimap.CoordsMode() or "hover" end,
     set = function(value) if ns.Minimap and ns.Minimap.SetCoordsMode then ns.Minimap.SetCoordsMode(value) end end,
     resetValue = function() return "hover" end, apply = Refresh }
-local function BarOff() return S:GetPath("minimap.style") == "round" or not S:GetPath("minimap.infoBar.enabled") end
-S:Row{ key = "mm.bar", path = "minimap.infoBar.enabled", apply = Refresh,
-    disabled = function() return S:GetPath("minimap.style") == "round" end }
+local function BarOff() return S:GetPath("minimap.style") == "round" end
 local BAR_VALUES = { "none", "gold", "bags", "durability", "fps", "latency", "coords" }
 for _, side in ipairs({ "Left", "Center", "Right" }) do
-    S:Row{ key = "mm.bar" .. side, kind = "choice", half = true, parent = "mm.bar",
+    S:Row{ key = "mm.bar" .. side, kind = "choice", half = true,
         path = "minimap.infoBar." .. side:lower(), choices = BAR_VALUES, apply = Refresh, disabled = BarOff }
 end
 S:Row{ key = "mm.clockStats", path = "minimap.clockStats" }

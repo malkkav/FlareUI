@@ -523,7 +523,7 @@ local defaults = {
             microMenu = false,          -- middle-click the map: a list of Blizzard's panels (off since 11-11)
             finderEye = false,          -- Group Finder Icon: a small icon in place of Blizzard's queue eye (MinimapEye.lua)
             coords = "hover",           -- Coordinates: off | always | hover (with Blizzard's own option, Minimap.lua MM.CoordsMode)
-            infoBar = { enabled = false, left = "bags", center = "gold", right = "durability" },
+            infoBar = { left = "none", center = "none", right = "none" },
             -- Fonts tab: the zone name and the clock (Forever's own look by default)
             zoneFont  = { face = "__global", size = 10, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             clockFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },

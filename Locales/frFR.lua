@@ -2229,7 +2229,6 @@ L["Your player and pet frames hide while you're in a raid, and come back solo an
 
 L["Info Bar"] = "Barre d'infos"
 L["Durability"] = "Durabilité"
-L["A bar inside the square minimap, along its bottom edge, with up to three values of your choice."] = "Une barre dans la minicarte carrée, le long de son bord inférieur, avec jusqu'à trois valeurs de votre choix."
 L["Bags counts used and total slots. Durability is your most worn piece."] = "Sacs compte les emplacements utilisés sur le total. Durabilité est celle de votre pièce la plus usée."
 L["What the left side of the Info Bar shows."] = "Ce qu'affiche le côté gauche de la barre d'infos."
 L["What the middle of the Info Bar shows."] = "Ce qu'affiche le milieu de la barre d'infos."

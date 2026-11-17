@@ -649,7 +649,7 @@ function Bar.Update()
     local picks = db and db.infoBar or {}
     local shown, every = false, nil
     for _, side in ipairs(Bar.SIDES) do
-        local source = squareStyle and MM.Frame and picks.enabled and Bar.sources[picks[side]]
+        local source = squareStyle and MM.Frame and Bar.sources[picks[side]]
         Bar.picks[side] = source and picks[side] or nil
         if source then
             shown = true
@@ -1955,14 +1955,10 @@ function MM:Init()
         end
         local bar = db.infoBar
         if #had > 0 and type(bar) == "table" then
-            if not bar.enabled then
-                bar.enabled, bar.left, bar.center, bar.right = true, had[1], had[2] or "none", "none"
-            else
-                for _, key in ipairs(had) do
-                    local shown = bar.left == key or bar.center == key or bar.right == key
-                    for _, side in ipairs(Bar.SIDES) do
-                        if not shown and (bar[side] or "none") == "none" then bar[side] = key; shown = true end
-                    end
+            for _, key in ipairs(had) do
+                local shown = bar.left == key or bar.center == key or bar.right == key
+                for _, side in ipairs(Bar.SIDES) do
+                    if not shown and (bar[side] or "none") == "none" then bar[side] = key; shown = true end
                 end
             end
         end
