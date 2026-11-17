@@ -285,18 +285,24 @@ local function MissingMedia(profile, roots)
     return missing
 end
 
--- "4.3.2" against this FlareUI's: true when the string's is newer
+-- "4.3.2" against this FlareUI's: true when the string's is newer. A beta ("6.11-beta2") is
+-- compared by its number before the "-" and counts as older than that release itself.
 local function Newer(theirs)
     local mine = C_AddOns.GetAddOnMetadata("FlareUI", "Version") or ""
     if type(theirs) ~= "string" then return false end
+    local theirBase, theirTest = theirs:match("^([^-]*)(.*)$")
+    local myBase, myTest = mine:match("^([^-]*)(.*)$")
     local a, b = {}, {}
-    for n in theirs:gmatch("%d+") do a[#a + 1] = tonumber(n) end
-    for n in mine:gmatch("%d+") do b[#b + 1] = tonumber(n) end
+    for n in theirBase:gmatch("%d+") do a[#a + 1] = tonumber(n) end
+    for n in myBase:gmatch("%d+") do b[#b + 1] = tonumber(n) end
     for i = 1, math.max(#a, #b) do
         local x, y = a[i] or 0, b[i] or 0
         if x ~= y then return x > y end
     end
-    return false
+    if theirTest == myTest then return false end
+    if theirTest == "" or myTest == "" then return theirTest == "" end
+    -- two betas of one version: "-beta2" against "-beta10"
+    return (tonumber(theirTest:match("%d+")) or 0) > (tonumber(myTest:match("%d+")) or 0)
 end
 
 local picker

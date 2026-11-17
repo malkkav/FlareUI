@@ -299,7 +299,8 @@ local addonVersion   -- read once
 function Row:IsNew()
     local since = Settings.NEW[self.key]
     if not since then return false end
-    addonVersion = addonVersion or C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or ""
+    -- a beta ("6.11-beta2") shows the NEW badges of the version it leads to ("6.11")
+    addonVersion = addonVersion or (C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or ""):match("^[^-]*")
     local version = addonVersion
     if not (version == since or version:sub(1, #since + 1) == since .. ".") then return false end
     if newShowing[self.key] then return true end

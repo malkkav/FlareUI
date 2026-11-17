@@ -16,7 +16,7 @@ const line = version.split('.').slice(0, 2).join('.');
 const inLine = (tag) => tag === line || tag.startsWith(line + '.');
 
 // tags newest first: the first one outside this line, and older than it
-const tags = git('tag --sort=-v:refname').split(/\r?\n/).filter((t) => /^\d+\.\d+/.test(t));
+const tags = git('tag --sort=-v:refname').split(/\r?\n/).filter((t) => /^\d+(\.\d+)+$/.test(t));   // betas ("6.11-beta1") never count as a base
 const start = tags.findIndex(inLine);
 const base = start === -1
   ? tags.find((t) => t.localeCompare(version, undefined, { numeric: true }) < 0)
