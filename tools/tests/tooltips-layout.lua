@@ -12,6 +12,7 @@ _G.C_Item = { GetItemNameByID = function() return nil end }
 _G.C_Texture = { GetAtlasInfo = function() return { width = 80, height = 100 } end }
 _G.C_Spell = { GetSpellTexture = function() return 135846 end }
 _G.SetPortraitTexture = function() end
+_G.UnitGUID = function() return 'Creature-0-1-2-3-1748-0' end
 _G.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 _G.ITEM_BIND_ON_EQUIP = 'Binds when equipped'
 _G.strsplit = function(sep, s) local t = {} for p in (s .. sep):gmatch('(.-)%' .. sep) do t[#t + 1] = p end return unpack(t) end
@@ -80,6 +81,14 @@ end
 local function NewTooltip(name, lines)
     local tip = Stub()
     rawset(tip, 'n', 0)
+    rawset(tip, 'hooks', {})
+    function tip:HookScript(event, fn) local h = rawget(self, 'hooks'); h[event] = h[event] or {}; table.insert(h[event], fn) end
+    -- the game clearing the tooltip for its next fill
+    function tip:Clear()
+        for _, fn in ipairs(rawget(self, 'hooks').OnTooltipCleared or {}) do fn(self) end
+        for i = 1, rawget(self, 'n') do _G[name .. 'TextLeft' .. i].text = nil; _G[name .. 'TextRight' .. i].text = nil end
+        rawset(self, 'n', 0)
+    end
     function tip:GetName() return name end
     function tip:NumLines() return rawget(self, 'n') end
     function tip:GetHeight() return 120 end
@@ -109,6 +118,7 @@ ns.Tooltips = { borderColorOf = {}, util = {
     ColorToHex = function(r, g, b) return ('|cff%02x%02x%02x'):format(r * 255, g * 255, b * 255) end,
     UnitLevelColor = function() return { r = 1, g = 0.82, b = 0 } end,
     DEFAULT_BORDER_COLOR = { 0.8, 0.6, 0.34 },
+    PATTERN_MAGIC = '[%^%$%(%)%%%.%[%]%*%+%-%?]',
 } }
 local tooltips = H.read('Modules/Tooltips.lua')
 local format = H.load(H.section(tooltips, 'local PATTERN_MAGIC', '-- 5. COLOURS') .. ' return FormatPattern')
@@ -277,7 +287,27 @@ db = { spellStrip = true }
 GameTooltip = Frostbolt()
 Layout.Spell(GameTooltip, { id = 116 })
 assert(Left(3).text == nil and Left(3).height == 1, 'the cast line collapses')
-Layout.Spell(NewTooltip('GameTooltip', { { 'Life Tap' }, { 'Instant' } }), { id = 1456 })
-assert(_G.GameTooltipTextLeft3 == nil or _G.GameTooltipTextLeft3.height ~= 1, 'and is given back on the next pass')
+local collapsedLine = Left(3)
+GameTooltip:Clear()
+assert(collapsedLine.height == 0, 'and gets its height back when the tooltip clears')
+
+-- a second post-call on the same fill doesn't lay it out again
+db = { badges = true }
+GameTooltip = Frostbolt()
+Layout.Spell(GameTooltip, { id = 116 })
+local once = Right(1).text
+Layout.Spell(GameTooltip, { id = 116 })
+assert(Right(1).text == once and select(2, once:gsub('Frost', '')) == 1, 'laid out once per fill')
+GameTooltip:Clear()
+GameTooltip:AddLine('Frostbolt'); Right(1):SetText('Rank 3'); Right(1):Show()
+Layout.Spell(GameTooltip, { id = 116 })
+assert(Right(1).text:find('Rank 3', 1, true) and Right(1).text:find('Frost', 1, true), 'and again after the next clear')
+
+-- a strip line with nothing on the left: the right side read once
+db = { spellStrip = true }
+GameTooltip = NewTooltip('GameTooltip', { { 'Shoot' }, { nil, '30 yd range' }, { 'Shoots at the enemy with a wand.' } })
+Layout.Spell(GameTooltip, { id = 5019 })
+local stripRow = Left(2).text
+assert(stripRow and select(2, stripRow:gsub('30 yd range', '')) == 1, 'the range once: ' .. tostring(stripRow))
 
 print('PASS: tooltips layout and data')

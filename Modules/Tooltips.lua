@@ -108,15 +108,28 @@ local function Mute(r, g, b)
 end
 
 -- halfway to white: a colour that reads on the dark background next to its full self
-local function Lighten(c, amount)
-    amount = amount or 0.5
+local function Lighten(c)
+    local amount = 0.5
     return { c[1] + (1 - c[1]) * amount, c[2] + (1 - c[2]) * amount, c[3] + (1 - c[3]) * amount }
 end
 
--- Any named tooltip's line ("Left" or "Right"): GameTooltip, ItemRefTooltip, a comparison
+-- Any named tooltip's line ("Left" or "Right"): GameTooltip, ItemRefTooltip, a comparison. The global
+-- names are built once per tooltip and line: the line walks run on every fill.
+local lineNames = setmetatable({}, { __mode = "k" })
 local function Line(tip, side, i)
-    local name = tip and tip.GetName and tip:GetName()
-    return name and _G[name .. "Text" .. side .. i]
+    local names = lineNames[tip]
+    if not names then
+        local name = tip and tip.GetName and tip:GetName()
+        if not name then return nil end
+        names = { prefix = name .. "Text", Left = {}, Right = {} }
+        lineNames[tip] = names
+    end
+    local key = names[side][i]
+    if not key then
+        key = names.prefix .. side .. i
+        names[side][i] = key
+    end
+    return _G[key]
 end
 
 -- Details on Shift (11-17): IDs and disenchant info only while Shift is held
@@ -271,7 +284,9 @@ local function SetInsidePadding(tip, on)
     -- (never on a tooltip FlareUI leaves alone: SetPadding there would poison Blizzard's layout, section 4)
     if on and not SafeToTouch(tip) then on = false end
     if on then
-        if paddedTip ~= tip then pcall(tip.SetPadding, tip, 0, INSIDE_PAD); paddedTip = tip end
+        -- (every fill: the game clears the padding on its own, 11-17)
+        pcall(tip.SetPadding, tip, 0, INSIDE_PAD)
+        paddedTip = tip
     elseif paddedTip == tip then
         pcall(tip.SetPadding, tip, 0, 0); paddedTip = nil
     end
@@ -288,7 +303,7 @@ local function SetupHealthOverlay()
     TIP.healthOverlay = bar
     -- the Inside room goes with the tooltip (a plain text tooltip after it has none)
     tip:HookScript("OnHide", function() SetInsidePadding(tip, false) end)
-    local watcher, wait, lastMode, lastColor, lastFix = CreateFrame("Frame", nil, tip), 0, nil, nil, 0
+    local watcher, wait, lastMode, lastColor = CreateFrame("Frame", nil, tip), 0, nil, nil
     watcher:SetScript("OnUpdate", function(_, elapsed)
         wait = wait + elapsed
         if wait < 0.05 then return end
@@ -301,26 +316,6 @@ local function SetupHealthOverlay()
             return
         end
         if mode ~= lastMode then lastMode = mode; TIP.PlaceHealthBar(bar, tip, mode) end
-        -- (11-17, screenshots) the bar covered the last line: the game names the unit after the post-call
-        -- that makes the Inside room, and clears the tooltip's padding on its own. The room is checked
-        -- here on every tick and made again, then the tooltip re-laid.
-        if mode == "inside" and SafeToTouch(tip) then
-            local ok, _, bottom = pcall(tip.GetPadding, tip)
-            local missing
-            if ok and canaccessvalue(bottom) and type(bottom) == "number" then
-                missing = bottom < INSIDE_PAD - 0.5
-            else
-                missing = paddedTip ~= tip
-            end
-            -- (at most twice a second: a client that reads its padding back otherwise never re-lays forever)
-            local now = GetTime()
-            if missing and now - lastFix > 0.5 then
-                lastFix = now
-                pcall(tip.SetPadding, tip, 0, INSIDE_PAD)
-                paddedTip = tip
-                tip:Show()
-            end
-        end
         local value = UnitPercentHealthFromGUID and UnitPercentHealthFromGUID(guid)
         if value ~= nil then
             pcall(bar.SetValue, bar, value)
@@ -331,7 +326,15 @@ local function SetupHealthOverlay()
             lastColor = c
             bar.fuiBorder:SetBackdropBorderColor(c[1], c[2], c[3], 1)
         end
-        if not bar:IsShown() then bar:Show() end
+        if not bar:IsShown() then
+            bar:Show()
+            -- (11-17, screenshots) the game can name the unit after the post-call that makes the Inside
+            -- room, and the bar then covered the last line: the room is made as the bar first shows
+            if mode == "inside" then
+                SetInsidePadding(tip, true)
+                tip:Show()
+            end
+        end
         -- Screen Corner: lifted exactly while the bar hangs under the tooltip
         local lift = mode == "below" and tip.fuiCorner and tip.fuiCorner:find("^BOTTOM") and true or false
         if tip.fuiCorner and (tip.fuiLifted or false) ~= lift then TIP.PlaceInCorner(tip, lift) end
@@ -616,13 +619,14 @@ end
 local QUEST_OBJECTIVE = Enum.TooltipDataLineType and Enum.TooltipDataLineType.QuestObjective
 local QUEST_DONE = { 0.25, 0.75, 0.25 }
 local function ColorQuestProgress(tip, data)
-    local done = {}
+    local done
     local lines = data and data.lines
     if QUEST_OBJECTIVE and canaccessvalue(lines) and type(lines) == "table" then
         for _, line in ipairs(lines) do
             if canaccessvalue(line) and type(line) == "table" and line.type == QUEST_OBJECTIVE then
                 local text, completed = line.leftText, line.completed
                 if canaccessvalue(text) and canaccessvalue(completed) and completed and type(text) == "string" then
+                    done = done or {}
                     done[text] = true
                 end
             end
@@ -633,7 +637,7 @@ local function ColorQuestProgress(tip, data)
         local text = line and line:GetText()
         if canaccessvalue(text) and type(text) == "string" then
             local have, need = text:match(":%s*(%d+)%s*/%s*(%d+)%s*$")
-            if done[text] or (have and have == need) then line:SetTextColor(QUEST_DONE[1], QUEST_DONE[2], QUEST_DONE[3]) end
+            if (done and done[text]) or (have and have == need) then line:SetTextColor(QUEST_DONE[1], QUEST_DONE[2], QUEST_DONE[3]) end
         end
     end
 end
@@ -708,10 +712,15 @@ end
 -- A herb or ore node: its name on line 1, "Requires Herbalism" / "Requires Mining" under it (the
 -- game's LOCKED_WITH_SPELL; Herbalism's spell is called Herb Gathering, so the line is matched by its
 -- start). The node table says which skill it is.
+local requiresPrefix
 local function IsRequirement(text)
-    local format = _G.LOCKED_WITH_SPELL
-    local prefix = type(format) == "string" and format:match("^(.-)%%s")
-    if prefix and prefix ~= "" and text:sub(1, #prefix) == prefix then return true end
+    if requiresPrefix == nil then
+        local format = _G.LOCKED_WITH_SPELL
+        requiresPrefix = type(format) == "string" and format:match("^(.-)%%s") or false
+        if requiresPrefix == "" then requiresPrefix = false end
+    end
+    local prefix = requiresPrefix
+    if prefix and text:sub(1, #prefix) == prefix then return true end
     return text == _G.UNIT_SKINNABLE_HERB or text == _G.UNIT_SKINNABLE_ROCK
 end
 local function AddNodeSkill(tip)
@@ -781,7 +790,9 @@ local function AddStackPriceLine(tip, data)
     if not (db and db.stackPrice and data) or db.hideSellPrice then return end
     local guid = data.guid
     if not (canaccessvalue(guid) and type(guid) == "string" and C_Item.GetItemLocation and C_Item.GetStackCount) then return end
-    local ok, count = pcall(function() return C_Item.GetStackCount(C_Item.GetItemLocation(guid)) end)
+    local found, location = pcall(C_Item.GetItemLocation, guid)
+    if not (found and location) then return end
+    local ok, count = pcall(C_Item.GetStackCount, location)
     if not (ok and canaccessvalue(count) and type(count) == "number" and count > 1) then return end
     -- only where the game shows a sell price (not at a vendor, which shows its own)
     local lines = data.lines
@@ -854,10 +865,8 @@ end
 
 -- for TooltipsLayout.lua (loaded after this file)
 TIP.util = {
-    GetDb = GetDb, Readable = Readable, SafeToTouch = SafeToTouch, Line = Line, ColorToHex = ColorToHex,
-    Lighten = Lighten, GetClassColor = GetClassColor, GetReactionColor = GetReactionColor,
-    UnitLevelColor = UnitLevelColor, FormatPattern = FormatPattern, SpellName = SpellName,
-    DEFAULT_BORDER_COLOR = DEFAULT_BORDER_COLOR,
+    GetDb = GetDb, Readable = Readable, Line = Line, ColorToHex = ColorToHex, UnitLevelColor = UnitLevelColor,
+    FormatPattern = FormatPattern, PATTERN_MAGIC = PATTERN_MAGIC, DEFAULT_BORDER_COLOR = DEFAULT_BORDER_COLOR,
 }
 
 --------------------------------------------------
@@ -891,9 +900,7 @@ local function ShouldHide(category)
     if mode == "always" then return false end
     if IsShiftKeyDown() then return false end
     if mode == "never" then return true end
-    local inCombat = UnitAffectingCombat("player")
-    if not canaccessvalue(inCombat) then inCombat = InCombatLockdown() end
-    return inCombat and true or false
+    return InCombat()
 end
 
 -- Tooltips > On action/data bars, for FlareUI's own bars (the XP bar): true while it hides them (Hold
@@ -959,7 +966,6 @@ local function OnTooltipSetUnit(tip, data)
     ApplyColors(tip, GetUnitBorderColor(unit))
     -- (TooltipsLayout.lua: the portrait and badges, last: they need the final lines and border)
     if TIP.Layout then TIP.Layout.Unit(tip, unit, levelLine) end
-    if tip:IsShown() then tip:Show() end
 end
 
 -- "Action bars": every tooltip type an action button shows (spells and items, but also pet actions,
@@ -990,7 +996,6 @@ local function OnTooltipSetItem(tip, data)
     AddDisenchantLine(tip)
     AddIdLine(tip, "showItemID", L["Item ID"], data)
     if TIP.Layout then TIP.Layout.Item(tip, data) end
-    if tip:IsShown() then tip:Show() end
 end
 
 local function OnTooltipSetSpell(tip, data)
@@ -998,7 +1003,6 @@ local function OnTooltipSetSpell(tip, data)
     ApplyColors(tip, nil)
     AddIdLine(tip, "showSpellID", L["Spell ID"], data)
     if TIP.Layout then TIP.Layout.Spell(tip, data) end
-    if tip:IsShown() then tip:Show() end
 end
 
 local function OnTooltipSetAura(tip, data)
@@ -1010,7 +1014,6 @@ local function OnTooltipSetAura(tip, data)
     AddCasterLine(tip, aura)
     AddIdLine(tip, "showSpellID", L["Spell ID"], data)
     if TIP.Layout then TIP.Layout.Aura(tip, data) end
-    if tip:IsShown() then tip:Show() end
 end
 
 -- (11-17) A macro with #showtooltip shows its spell's or item's tooltip: the data names it
@@ -1024,10 +1027,14 @@ local function OnTooltipSetMacro(tip, data)
         if line.type == NESTED then
             local id, kind = line.tooltipID, line.tooltipType
             if not (canaccessvalue(id) and canaccessvalue(kind) and type(id) == "number") then return end
-            local shown = { id = id, lines = {} }
-            for after = index + 1, #lines do shown.lines[#shown.lines + 1] = lines[after] end
-            if kind == Enum.TooltipDataType.Spell then OnTooltipSetSpell(tip, shown)
-            elseif kind == Enum.TooltipDataType.Item then OnTooltipSetItem(tip, shown) end
+            if kind == Enum.TooltipDataType.Spell then
+                OnTooltipSetSpell(tip, { id = id })
+            elseif kind == Enum.TooltipDataType.Item then
+                -- (the item's own lines: the sell price and item level checks read them)
+                local shown = { id = id, lines = {} }
+                for after = index + 1, #lines do shown.lines[#shown.lines + 1] = lines[after] end
+                OnTooltipSetItem(tip, shown)
+            end
             return
         end
     end
@@ -1157,9 +1164,10 @@ function TIP.PlaceInCorner(tooltip, barBelow)
     tooltip.fuiLifted = lift
 end
 -- the health bar under the tooltip, as it is now
-local function BarBelowShown()
-    local bar = TIP.healthOverlay
-    return bar and bar:IsShown() and TIP.HealthBarMode() == "below" or false
+-- a unit's tooltip is coming (a unit frame's, or the world's over a unit): its bar will hang under it
+local function BarBelowComing(kind)
+    if TIP.HealthBarMode() ~= "below" then return false end
+    return kind == "frames" or (kind == "world" and Readable(UnitExists("mouseover")) and true) or false
 end
 local function ApplyAnchor(tooltip, parent)
     local db = GetDb()
@@ -1168,6 +1176,8 @@ local function ApplyAnchor(tooltip, parent)
     local kind = AnchorKind(tooltip, parent)
     -- Everything Else's Show is checked as it shows (OnTooltipShow)
     tooltip.fuiOther = kind == "other" or nil
+    -- (Screen Corner below: only while this anchor puts it there, 11-17)
+    tooltip.fuiCorner, tooltip.fuiLifted = nil, nil
 
     -- the Gamepad UI has no cursor to follow
     if not ns.IsGamepadUI() and MouseoverNow(kind) then
@@ -1183,11 +1193,10 @@ local function ApplyAnchor(tooltip, parent)
     -- a health bar under the tooltip keeps on screen.
     if db.screenCorner then
         tooltip.fuiCorner = (corner and corner ~= "auto") and corner or "BOTTOMRIGHT"
-        -- (11-17, from one mob straight to the next the bar never hides: the lift stays)
-        TIP.PlaceInCorner(tooltip, BarBelowShown())
+        -- (lifted at once for a unit, 11-17: no 14 px jump when the bar shows)
+        TIP.PlaceInCorner(tooltip, BarBelowComing(kind))
         return
     end
-    tooltip.fuiCorner = nil
     local box = _G.GameTooltipDefaultContainer or _G.SharedTooltipDefaultContainer
     if corner and corner ~= "auto" and box then
         tooltip:ClearAllPoints()
@@ -1298,7 +1307,7 @@ function TIP:Init()
     end
 
     GameTooltip:HookScript("OnShow", OnTooltipShow)
-    GameTooltip:HookScript("OnHide", function(tip) tip.fuiOther = nil end)
+    GameTooltip:HookScript("OnHide", function(tip) tip.fuiOther, tip.fuiCorner, tip.fuiLifted = nil, nil, nil end)
 
     -- Blizzard restyles tooltips often: the colours go back on after each restyle
     hooksecurefunc("SharedTooltip_SetBackdropStyle", function(tip)

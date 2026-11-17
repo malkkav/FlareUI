@@ -109,12 +109,18 @@ end
 
 -- source: { texture = fileID or path } or { unit = token } (a portrait); plate: { text, color, dragon }
 -- or nil (dragon: "gold", "silver" or nil)
+-- (a hovered unit frame's tooltip refills five times a second: the portrait, a model render, is drawn
+-- again only for another unit, by its GUID, 11-17)
+local atlasKnown = {}
 function Layout.PaintIcon(f, source, borderColor, plate)
-    f.tex:SetTexture(nil)
     if source.unit and SetPortraitTexture then
-        pcall(SetPortraitTexture, f.tex, source.unit)
+        if not (source.guid and f.portrait == source.guid) then
+            pcall(SetPortraitTexture, f.tex, source.unit)
+            f.portrait = source.guid
+        end
         f.tex:SetTexCoord(0.12, 0.88, 0.12, 0.88)
     else
+        f.portrait = nil
         f.tex:SetTexture(source.texture)
         f.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     end
@@ -128,7 +134,11 @@ function Layout.PaintIcon(f, source, borderColor, plate)
         local art = plate.dragon and ELITE_ART[plate.dragon]
         local dragon = f.plate.dragon
         if art then
-            local atlas = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(art.atlas)
+            local atlas = atlasKnown[art.atlas]
+            if atlas == nil then
+                atlas = (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(art.atlas)) and true or false
+                atlasKnown[art.atlas] = atlas
+            end
             if atlas then
                 dragon:SetAtlas(art.atlas)
                 dragon:SetDesaturated(false)
@@ -148,35 +158,37 @@ function Layout.PaintIcon(f, source, borderColor, plate)
     f:Show()
 end
 
-local parts = setmetatable({}, { __mode = "k" })
--- right-hand texts FlareUI put there this pass (badges, a binding): the header may hold them
-local ownRight = setmetatable({}, { __mode = "k" })
+-- Per tooltip: its icon, the right-hand texts FlareUI put there this fill (badges, a binding: the
+-- header may hold them), the lines it emptied, and whether this fill is laid out. Reset when the
+-- tooltip clears or hides.
+local states = setmetatable({}, { __mode = "k" })
+
+local function Reset(tip)
+    local st = states[tip]
+    if not st then return end
+    for line in pairs(st.collapsed) do line:SetHeight(0) end
+    wipe(st.collapsed)
+    wipe(st.own)
+    st.laid = false
+    if st.icon then st.icon:Hide() end
+end
+
+local function State(tip)
+    local st = states[tip]
+    if st then return st end
+    st = { own = {}, collapsed = {}, laid = false }
+    states[tip] = st
+    tip:HookScript("OnTooltipCleared", Reset)
+    tip:HookScript("OnHide", Reset)
+    return st
+end
+
 -- An emptied line still takes a row of height (11-17, a screenshot: the strip's emptied cast line left a
 -- gap over the description), so it's made 1 px tall, and back to its own height when the tooltip clears.
-local collapsed = setmetatable({}, { __mode = "k" })
-local function Collapse(line)
+local function Collapse(tip, line)
     line:SetText(nil)
     line:SetHeight(1)
-    collapsed[line] = true
-end
-
-local function HideParts(tip)
-    wipe(ownRight)
-    for line in pairs(collapsed) do line:SetHeight(0) end
-    wipe(collapsed)
-    local p = parts[tip]
-    if not p then return end
-    if p.icon then p.icon:Hide() end
-end
-
-local function Parts(tip)
-    local p = parts[tip]
-    if p then return p end
-    p = {}
-    parts[tip] = p
-    tip:HookScript("OnTooltipCleared", HideParts)
-    tip:HookScript("OnHide", HideParts)
-    return p
+    State(tip).collapsed[line] = true
 end
 
 local function BorderColor(tip)
@@ -234,7 +246,7 @@ local function SetRight(tip, i, text)
     right:SetText(text)
     right:SetTextColor(1, 1, 1)
     right:Show()
-    ownRight[right] = true
+    State(tip).own[right] = true
     return true
 end
 
@@ -262,15 +274,16 @@ local function MakeRoom(tip, need, below, size)
         if y >= need then break end
         local line, right = Line(tip, "Left", i), Line(tip, "Right", i)
         local text, h, w = line:GetText(), line:GetStringHeight(), line:GetStringWidth()
-        local side = right:IsShown() and right:GetText() or nil
+        local side = right:GetText()
         if not (canaccessvalue(text) and canaccessvalue(h) and canaccessvalue(w) and canaccessvalue(side)) then return false end
+        if not right:IsShown() then side = nil end
         text = text or ""
         local rows = Rows(text)
         -- (an emptied line, as the strip's second, takes no room and stays empty)
         local empty = i > 1 and text == ""
         if i > 1 and not empty then
             local long = type(w) == "number" and w > SHORT and #rows == 1
-            local content = type(side) == "string" and side ~= "" and #rows == 1 and not ownRight[right]
+            local content = type(side) == "string" and side ~= "" and #rows == 1 and not State(tip).own[right]
             if long or content then break end
         end
         if not empty then
@@ -325,13 +338,13 @@ local function ShowIcon(tip, source, plate)
     local need = size + (plate and (PLATE_GAP + PLATE_H) or 0)
     local below = plate and TIP.HealthBarMode and TIP.HealthBarMode() == "inside" and ROOM_BELOW or 0
     if not MakeRoom(tip, need, below, size) then return false end
-    local p = Parts(tip)
-    p.icon = p.icon or Layout.NewIcon(tip)
-    p.icon:SetSize(size, size)
-    p.icon.plate:SetWidth(size)
-    p.icon:ClearAllPoints()
-    p.icon:SetPoint("TOPLEFT", Line(tip, "Left", 1), "TOPLEFT", 0, 0)
-    Layout.PaintIcon(p.icon, source, BorderColor(tip), plate)
+    local st = State(tip)
+    st.icon = st.icon or Layout.NewIcon(tip)
+    st.icon:SetSize(size, size)
+    st.icon.plate:SetWidth(size)
+    st.icon:ClearAllPoints()
+    st.icon:SetPoint("TOPLEFT", Line(tip, "Left", 1), "TOPLEFT", 0, 0)
+    Layout.PaintIcon(st.icon, source, BorderColor(tip), plate)
     return true
 end
 
@@ -343,15 +356,16 @@ local function DropLevelWord(tip, levelLine)
     local line = levelLine and Line(tip, "Left", levelLine)
     local text = line and line:GetText()
     if not (type(word) == "string" and canaccessvalue(text) and type(text) == "string") then return nil end
-    local escaped = word:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")
+    local escaped = word:gsub(U.PATTERN_MAGIC, "%%%0")
     local rest, n = text:gsub("|c%x%x%x%x%x%x%x%x" .. escaped .. "%s+%S+|r", "", 1)
     if n == 0 then return nil end
     -- the space that followed the level, now in front
     rest = rest:gsub("(|c%x%x%x%x%x%x%x%x)%s+", "%1", 1)
     local plain = rest:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-    if plain:find("%S") then line:SetText(rest) else Collapse(line) end
+    if plain:find("%S") then line:SetText(rest) else Collapse(tip, line) end
     return function()
-        if collapsed[line] then line:SetHeight(0); collapsed[line] = nil end
+        local emptied = State(tip).collapsed
+        if emptied[line] then line:SetHeight(0); emptied[line] = nil end
         line:SetText(text)
     end
 end
@@ -410,10 +424,13 @@ local function FindStrip(tip, first)
     local found, count = {}, 0
     for i = first, math.min(first + 2, tip:NumLines()) do
         local left, right = Line(tip, "Left", i), Line(tip, "Right", i)
-        local texts = { left:GetText(), right:IsShown() and right:GetText() or nil }
+        local leftText, rightText = left:GetText(), right:GetText()
+        if not (canaccessvalue(leftText) and canaccessvalue(rightText)) then return nil end
+        if not right:IsShown() then rightText = nil end
         local any, ok = false, true
-        for _, text in pairs(texts) do
-            if not canaccessvalue(text) then return nil end
+        for side = 1, 2 do
+            local text = rightText
+            if side == 1 then text = leftText end
             if type(text) == "string" and text ~= "" then
                 any = true
                 local kind, color = Parse(text)
@@ -436,7 +453,7 @@ end
 -- the row in the strip's first line, the other lines emptied
 local function ShowStrip(tip, first, count, row)
     for i = first, first + count - 1 do
-        if i == first then Line(tip, "Left", i):SetText(row) else Collapse(Line(tip, "Left", i)) end
+        if i == first then Line(tip, "Left", i):SetText(row) else Collapse(tip, Line(tip, "Left", i)) end
         local right = Line(tip, "Right", i)
         right:SetText(nil)
         right:Hide()
@@ -457,19 +474,22 @@ local RANK_DRAGON = { boss = "gold", elite = "gold", rare = "silver", rareelite 
 --------------------------------------------------
 -- 7. PER KIND
 --------------------------------------------------
-local function Db()
-    return U.GetDb()
-end
-
 -- the main tooltip and a clicked link's; for items also the comparisons beside them (11-17)
 local COMPARISONS = { ShoppingTooltip1 = true, ShoppingTooltip2 = true, ItemRefShoppingTooltip1 = true,
     ItemRefShoppingTooltip2 = true }
-local function Eligible(tip, db, comparisons)
-    if not db then return false end
+-- True when this tooltip gets a layout now: the right tooltip, an option on, and not laid out yet this
+-- fill (a second post-call on the same fill would lay it out twice). The post-calls have already
+-- checked SafeToTouch.
+local function Begin(tip, db, comparisons)
+    if not (db and (db.headerIcon or db.badges or db.spellStrip)) then return false end
     local name = tip and tip.GetName and tip:GetName()
     local known = tip == GameTooltip or tip == _G.ItemRefTooltip or (comparisons and name and COMPARISONS[name])
-    if not (known and U.SafeToTouch(tip)) then return false end
-    return db.headerIcon or db.badges or db.spellStrip
+    if not known then return false end
+    local st = State(tip)
+    if st.laid then return false end
+    Reset(tip)
+    st.laid = true
+    return true
 end
 
 -- Boss / Rare Elite / Rare / Elite, then PvP, AFK, DND and Dead
@@ -489,9 +509,8 @@ local function UnitBadges(unit)
 end
 
 function Layout.Unit(tip, unit, levelLine)
-    HideParts(tip)
-    local db = Db()
-    if not Eligible(tip, db) then return end
+    local db = U.GetDb()
+    if not Begin(tip, db) then return end
     if db.badges then
         local badges = UnitBadges(unit)
         if #badges > 0 then SetRight(tip, 1, table.concat(badges, DOT)) end
@@ -506,7 +525,7 @@ function Layout.Unit(tip, unit, levelLine)
         end
         -- (the level goes first, so the room is measured on the lines as they'll be; back if no icon)
         local putBack = plate and DropLevelWord(tip, levelLine)
-        if not ShowIcon(tip, { unit = unit }, plate) and putBack then putBack() end
+        if not ShowIcon(tip, { unit = unit, guid = Readable(UnitGUID(unit)) }, plate) and putBack then putBack() end
     end
 end
 
@@ -539,17 +558,16 @@ local function BindingToSlot(tip)
             right:SetText(text)
             right:SetTextColor(BIND_COLOR[1], BIND_COLOR[2], BIND_COLOR[3])
             right:Show()
-            ownRight[right] = true
-            Collapse(slot)
+            State(tip).own[right] = true
+            Collapse(tip, slot)
             return
         end
     end
 end
 
 function Layout.Item(tip, data)
-    HideParts(tip)
-    local db = Db()
-    if not Eligible(tip, db, true) then return end
+    local db = U.GetDb()
+    if not Begin(tip, db, true) then return end
     if db.badges then BindingToSlot(tip) end
     if not db.headerIcon then return end
     -- (a macro's item has no displayed item: its ID comes with the data)
@@ -583,9 +601,8 @@ local function SpellBadges(tip, spellID)
 end
 
 function Layout.Spell(tip, data)
-    HideParts(tip)
-    local db = Db()
-    if not Eligible(tip, db) then return end
+    local db = U.GetDb()
+    if not Begin(tip, db) then return end
     local spellID = data and data.id
     if not (canaccessvalue(spellID) and type(spellID) == "number") then return end
     if db.spellStrip then
@@ -601,9 +618,8 @@ function Layout.Spell(tip, data)
 end
 
 function Layout.Aura(tip, data)
-    HideParts(tip)
-    local db = Db()
-    if not (Eligible(tip, db) and db.headerIcon) then return end
+    local db = U.GetDb()
+    if not (db and db.headerIcon and Begin(tip, db)) then return end
     local spellID = data and data.id
     if not (canaccessvalue(spellID) and type(spellID) == "number") then return end
     local icon = SpellIcon(spellID)
