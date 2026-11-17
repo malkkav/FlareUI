@@ -48,7 +48,7 @@ function BR.ShowFaded(shows)
  result = {}
  for _, v in ipairs(shows) do result[v.entry.key] = {missing = v.missing, running = v.running} end
 end
-]] .. H.section(s, 'local shows, pool =', '-- Fade Speed (Fading section)')
+]] .. H.section(s, 'local shows, pool =', 'function BR.FadeSpeed(')
     .. H.section(s, 'local pending = false\nlocal function Soon(unit)', '--------------------------------------------------\n-- 6. POSITION') .. [[
 local function flush()
  assert(#timers == 1)
