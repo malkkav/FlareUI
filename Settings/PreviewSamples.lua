@@ -858,7 +858,7 @@ function R.lootRolls(c, spec)
     Heading(c,L["Loot Rolls"])
     if spec.key == 'bl.lootRolls' and not Get('tweaks.lootRolls') then c:Text('rollsOff',L["Disabled"],12,90); return end
     local x, w = 8, c.width - 16
-    local left, right = x + 12, x + w - 12
+    local left, right = x + 8, x + w - 8
     local function Line(id, text, tx, ty, width, size)
         local t = c:Text(id, text, tx, ty, width, {size=size})
         t:SetWordWrap(false)
@@ -867,10 +867,10 @@ function R.lootRolls(c, spec)
     local function Mark(choice) return '|A:lootroll-toast-icon-' .. choice .. '-up:11:11|a ' end
 
     -- the window's own sizes (LootRolls.lua): only the width is the canvas's
-    local cy = 66
+    local cy = 64
     local ry = cy + 86
     local STEP = 36
-    local box = c:Box('rollsWin', x, 30, w, ry + STEP + 32 + 12 - 30, 'FlareUI Thin', 0)
+    local box = c:Box('rollsWin', x, 30, w, ry + STEP + 32 + 8 - 30, 'FlareUI Thin', 0)
     if not box.rock then
         box.rock = box:CreateTexture(nil, 'BACKGROUND', nil, 1)
         box.rock:SetPoint('TOPLEFT', 3, -3)
@@ -891,8 +891,8 @@ function R.lootRolls(c, spec)
         t:SetAtlas('lootroll-toast-icon-' .. choice .. '-up')
         return t
     end
-    c:Text('rollsTitle', '|cffcc9957' .. L["Loot Rolls"] .. '|r |cff808080(2)|r', left + 2, 39, w - 50, {size=11})
-    local hist = c:Texture('rollsHist', P.MEDIA .. 'Icons\\DMSegments.tga', right - 14, 36, 14, 14, true)
+    c:Text('rollsTitle', '|cffcc9957' .. L["Loot Rolls"] .. '|r |cff808080(2)|r', left + 6, 39, w - 50, {size=11})
+    local hist = c:Texture('rollsHist', P.MEDIA .. 'Icons\\DMSegments.tga', right - 18, 36, 14, 14, true)
     hist:SetVertexColor(0.61, 0.48, 0.29)
     c:Texture('rollsLine', 'Interface\\Common\\UI-TooltipDivider-Transparent', x + 3, 52, w - 6, 8, true)
 

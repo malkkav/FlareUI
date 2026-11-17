@@ -29,7 +29,7 @@ local function Tip(owner, anchor)
     return true
 end
 
-local W, PAD, HEADER = 300, 12, 26
+local W, PAD, HEADER = 300, 8, 26
 local BOX_PAD = 8            -- inside the box of a card or row
 local TEXT_W = W - 2 * PAD - 2 * BOX_PAD - 49   -- right of the icon, to the card's right edge
 -- Need over Greed, Pass apart beside the two: side by side, a player rolled Need by mistake
@@ -1064,7 +1064,7 @@ function Refresh()
 
     local instant = LR.previewing or not win:IsShown()
     local used = {}
-    local y, tail = HEADER + 10, 0   -- tail: the gap under the last piece
+    local y, tail = HEADER + PAD - 2, 0   -- tail: the gap under the last piece
     for i = 1, math_min(#open, MAX_CARDS) do
         used[Place(open[i], true, y, instant)] = true
         y = y + CARD_H + CARD_GAP
