@@ -1,0 +1,41 @@
+name: Tests
+
+# Runs every Lua test in tools/tests with LuaJIT (Lua 5.1, like WoW): on pull requests, on pushes
+# to main, and before each release (release.yml calls it; a failing test stops the upload).
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Lua tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install LuaJIT
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends luajit
+
+      - name: Run tests
+        shell: bash
+        run: |
+          status=0
+          for test in tools/tests/*.lua; do
+            if [[ "$test" == tools/tests/perf-helpers.lua ]]; then
+              continue
+            fi
+            printf '\nRunning %s\n' "$test"
+            luajit "$test" || status=1
+          done
+          exit "$status"
