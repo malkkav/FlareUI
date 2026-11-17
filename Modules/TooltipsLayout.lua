@@ -34,6 +34,7 @@ local function Room(height, width)
 end
 local ROOM_START = "|T" .. BLANK .. ":"
 local ROOM_BELOW = 4   -- under the plate's border, before an Inside health bar
+local ICON_BELOW = 6   -- under the icon, before the text that follows the header (11-17, a screenshot: 2 px was tight)
 
 -- lighter than the game's, to read on the dark background
 local BADGE_COLORS = {
@@ -65,6 +66,7 @@ local function ThinBorder(frame)
     local LSM = LibStub("LibSharedMedia-3.0", true)
     local edge = LSM and LSM:Fetch("border", "FlareUI Thin", true)
     local border = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    if TIP.GuardBackdropSize then TIP.GuardBackdropSize(border) end   -- (on a tooltip line: its position can be secret)
     border:SetPoint("TOPLEFT", -2, 2)
     border:SetPoint("BOTTOMRIGHT", 2, -2)
     border:SetFrameLevel(frame:GetFrameLevel() + 1)
@@ -119,18 +121,24 @@ function Layout.PaintIcon(f, source, borderColor, plate)
             f.portrait = source.guid
         end
         f.tex:SetTexCoord(0.12, 0.88, 0.12, 0.88)
-    else
+    elseif f.portrait or f.texture ~= source.texture then
         f.portrait = nil
         f.tex:SetTexture(source.texture)
         f.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     end
-    SetBorderColor(f.border, borderColor)
-    if plate then
+    f.texture = not f.portrait and source.texture or nil
+    if f.borderColor ~= borderColor then
+        f.borderColor = borderColor
+        SetBorderColor(f.border, borderColor)
+    end
+    -- (the plate is painted again only when it changes: a refill draws the same one)
+    local key = plate and (plate.text .. (plate.dragon or "") .. ("%.3f%.3f%.3f"):format(plate.color[1], plate.color[2], plate.color[3]))
+    if key and key ~= f.plateKey then
         local c = plate.color
         f.plate.text:SetText(plate.text)
         f.plate.text:SetTextColor(c[1], c[2], c[3])
         f.plate.back:SetColorTexture(c[1] * 0.16, c[2] * 0.16, c[3] * 0.16, 0.95)
-        SetBorderColor(f.plate.border, { c[1] * 0.75, c[2] * 0.75, c[3] * 0.75 })
+        f.plate.border:SetBackdropBorderColor(c[1] * 0.75, c[2] * 0.75, c[3] * 0.75, 1)
         local art = plate.dragon and ELITE_ART[plate.dragon]
         local dragon = f.plate.dragon
         if art then
@@ -151,23 +159,22 @@ function Layout.PaintIcon(f, source, borderColor, plate)
         else
             dragon:Hide()
         end
-        f.plate:Show()
-    else
-        f.plate:Hide()
     end
+    f.plateKey = key
+    f.plate:SetShown(plate and true or false)
     f:Show()
 end
 
 -- Per tooltip: its icon, the right-hand texts FlareUI put there this fill (badges, a binding: the
--- header may hold them), the lines it emptied, and whether this fill is laid out. Reset when the
--- tooltip clears or hides.
+-- header may hold them), the lines it gave a height (emptied, or padded under the icon; with their
+-- own vertical justify), and whether this fill is laid out. Reset when the tooltip clears or hides.
 local states = setmetatable({}, { __mode = "k" })
 
 local function Reset(tip)
     local st = states[tip]
     if not st then return end
-    for line in pairs(st.collapsed) do line:SetHeight(0) end
-    wipe(st.collapsed)
+    for line, justify in pairs(st.sized) do line:SetHeight(0); line:SetJustifyV(justify) end
+    wipe(st.sized)
     wipe(st.own)
     st.laid = false
     if st.icon then st.icon:Hide() end
@@ -176,7 +183,7 @@ end
 local function State(tip)
     local st = states[tip]
     if st then return st end
-    st = { own = {}, collapsed = {}, laid = false }
+    st = { own = {}, sized = {}, laid = false }
     states[tip] = st
     tip:HookScript("OnTooltipCleared", Reset)
     tip:HookScript("OnHide", Reset)
@@ -185,10 +192,15 @@ end
 
 -- An emptied line still takes a row of height (11-17, a screenshot: the strip's emptied cast line left a
 -- gap over the description), so it's made 1 px tall, and back to its own height when the tooltip clears.
+local function SetLineHeight(tip, line, height)
+    local sized = State(tip).sized
+    if sized[line] == nil then sized[line] = line:GetJustifyV() or "MIDDLE" end
+    line:SetJustifyV("TOP")
+    line:SetHeight(height)
+end
 local function Collapse(tip, line)
     line:SetText(nil)
-    line:SetHeight(1)
-    State(tip).collapsed[line] = true
+    SetLineHeight(tip, line, 1)
 end
 
 local function BorderColor(tip)
@@ -263,13 +275,26 @@ end
 -- a blank row as tall as what's missing, so everything after it starts under the icon. false when a
 -- line can't be read.
 --------------------------------------------------
+local rowBySize = {}
+local function RowHeight(tip, line)
+    local _, size = line:GetFont()
+    size = canaccessvalue(size) and type(size) == "number" and size or 12
+    if not rowBySize[size] then
+        local m = Measure(tip, line)
+        m:SetText("Xg")
+        local h = m:GetStringHeight()
+        m:SetText(nil)
+        rowBySize[size] = (canaccessvalue(h) and type(h) == "number" and h > 0) and h or size + 2
+    end
+    return rowBySize[size]
+end
 local SHORT = 300        -- narrower than this, unwrapped, a line doesn't wrap ("Level 27 High Order Skyborne Hunter" is ~270)
 local HEADER_LINES = 4
 -- below: room wanted under the icon (the Inside health bar's); size: the icon's
 local function MakeRoom(tip, need, below, size)
     need = need + (below or 0)
     size = size or ICON
-    local y, edits, last = 0, {}, nil
+    local y, edits, last, lastI = 0, {}, nil, 0
     for i = 1, math.min(tip:NumLines(), HEADER_LINES) do
         if y >= need then break end
         local line, right = Line(tip, "Left", i), Line(tip, "Right", i)
@@ -293,19 +318,24 @@ local function MakeRoom(tip, need, below, size)
                 -- (rows that are room themselves stay as they are)
                 if y + (r - 1) * rowH < need and row:sub(1, #ROOM_START) ~= ROOM_START then rows[r] = room .. row end
             end
-            edits[#edits + 1] = { line, table.concat(rows, "\n") }
-            last = #edits
+            edits[#edits + 1] = { line, table.concat(rows, "\n"), h or 0 }
+            last, lastI = #edits, i
             y = y + (h or 0) + LINE_GAP
         end
     end
     if not last then return false end
-    -- too short: a blank row under the header (never shorter than a line of text; the icon is sized to
-    -- the header where it can be, ShowIcon, so this is for units' plates and one-line headers)
-    if need - y > 3 then
-        local edit = edits[last]
-        edit[2] = edit[2] .. "\n" .. RoomFor(tip, edit[1], need - y, 1)
+    -- room under the icon when text follows the header (the tooltip's own padding does at its end)
+    if lastI < tip:NumLines() then need = need + math.max(0, ICON_BELOW - (below or 0)) end
+    -- too short: a blank row under the header where a text row's missing (a blank row is never shorter
+    -- than one: units' plates, one-line headers), else the last line made that much taller, its text at
+    -- the top (the icon is sized to a two-line header, ShowIcon)
+    local edit, missing = edits[last], need - y
+    local blankRow = missing >= RowHeight(tip, edit[1])
+    if blankRow then edit[2] = edit[2] .. "\n" .. RoomFor(tip, edit[1], missing, 1) end
+    for _, e in ipairs(edits) do e[1]:SetText(e[2]) end
+    if missing > 0.5 and not blankRow then
+        SetLineHeight(tip, edit[1], edit[3] + missing)
     end
-    for _, edit in ipairs(edits) do edit[1]:SetText(edit[2]) end
     return true
 end
 
@@ -313,19 +343,6 @@ end
 -- line of text under it, in the tooltip's fonts, between 24 and 40 px. A two-line header fits it exactly
 -- (11-17, screenshots: a fixed 34 px icon was a few pixels taller than "Life Tap / Instant", and no blank
 -- row can be that small).
-local rowBySize = {}
-local function RowHeight(tip, line)
-    local _, size = line:GetFont()
-    size = canaccessvalue(size) and type(size) == "number" and size or 12
-    if not rowBySize[size] then
-        local m = Measure(tip, line)
-        m:SetText("Xg")
-        local h = m:GetStringHeight()
-        m:SetText(nil)
-        rowBySize[size] = (canaccessvalue(h) and type(h) == "number" and h > 0) and h or size + 2
-    end
-    return rowBySize[size]
-end
 local function IconSize(tip)
     local title = Line(tip, "Left", 1)
     local text = Line(tip, "Left", 2) or title
@@ -339,11 +356,15 @@ local function ShowIcon(tip, source, plate)
     local below = plate and TIP.HealthBarMode and TIP.HealthBarMode() == "inside" and ROOM_BELOW or 0
     if not MakeRoom(tip, need, below, size) then return false end
     local st = State(tip)
-    st.icon = st.icon or Layout.NewIcon(tip)
-    st.icon:SetSize(size, size)
-    st.icon.plate:SetWidth(size)
-    st.icon:ClearAllPoints()
-    st.icon:SetPoint("TOPLEFT", Line(tip, "Left", 1), "TOPLEFT", 0, 0)
+    if not st.icon then
+        st.icon = Layout.NewIcon(tip)
+        st.icon:SetPoint("TOPLEFT", Line(tip, "Left", 1), "TOPLEFT", 0, 0)
+    end
+    if st.icon.size ~= size then
+        st.icon.size = size
+        st.icon:SetSize(size, size)
+        st.icon.plate:SetWidth(size)
+    end
     Layout.PaintIcon(st.icon, source, BorderColor(tip), plate)
     return true
 end
@@ -364,8 +385,8 @@ local function DropLevelWord(tip, levelLine)
     local plain = rest:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
     if plain:find("%S") then line:SetText(rest) else Collapse(tip, line) end
     return function()
-        local emptied = State(tip).collapsed
-        if emptied[line] then line:SetHeight(0); emptied[line] = nil end
+        local sized = State(tip).sized
+        if sized[line] ~= nil then line:SetHeight(0); line:SetJustifyV(sized[line]); sized[line] = nil end
         line:SetText(text)
     end
 end
@@ -533,11 +554,15 @@ end
 -- when that line has nothing on its right (a weapon's "Sword", armour's "Cloth": the binding stays).
 local BINDS = { "ITEM_BIND_ON_EQUIP", "ITEM_BIND_ON_PICKUP", "ITEM_BIND_ON_USE", "ITEM_SOULBOUND", "ITEM_BIND_QUEST",
     "ITEM_BIND_TO_ACCOUNT", "ITEM_BIND_TO_BNETACCOUNT", "ITEM_ACCOUNTBOUND" }
+local bindings
 local function IsBinding(text)
-    for _, global in ipairs(BINDS) do
-        if _G[global] and text == _G[global] then return true end
+    if not bindings then
+        bindings = {}
+        for _, global in ipairs(BINDS) do
+            if type(_G[global]) == "string" then bindings[_G[global]] = true end
+        end
     end
-    return false
+    return bindings[text] or false
 end
 local BIND_COLOR = { 0.72, 0.72, 0.72 }
 local function BindingToSlot(tip)

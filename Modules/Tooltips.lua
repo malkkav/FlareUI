@@ -223,6 +223,19 @@ local function ApplyScaleToAll()
     end
 end
 
+-- A backdrop on a frame whose size can be secret: the health bar spans the tooltip, and a tooltip with
+-- secret text (a player's) has a secret width. Blizzard's size handler does arithmetic on it and errors
+-- under FlareUI's taint, on every resize (11-17: thousands in Logs/General.log, then the game's "large
+-- number of errors" warning). A secret size keeps the coordinates it had.
+local function OnBackdropSize(frame)
+    local w, h = frame:GetSize()
+    if issecretvalue(w) or issecretvalue(h) then return end
+    frame:OnBackdropSizeChanged()
+end
+function TIP.GuardBackdropSize(frame)
+    frame:SetScript("OnSizeChanged", OnBackdropSize)
+end
+
 -- (11-16, Malkkav) FlareUI's look for the unit health bar: the FlareUI Forever texture in a thin FlareUI
 -- border, on a dark back. Used on FlareUI's own bars only (the overlay below, the settings sample).
 function TIP.StyleHealthBar(bar)
@@ -236,6 +249,7 @@ function TIP.StyleHealthBar(bar)
     local edge = LSM and LSM:Fetch("border", "FlareUI Thin", true)
     if not edge then return end
     local border = CreateFrame("Frame", nil, bar, "BackdropTemplate")
+    TIP.GuardBackdropSize(border)
     border:SetPoint("TOPLEFT", -2, 2)
     border:SetPoint("BOTTOMRIGHT", 2, -2)
     border:SetFrameLevel(bar:GetFrameLevel() + 1)
@@ -303,7 +317,7 @@ local function SetupHealthOverlay()
     TIP.healthOverlay = bar
     -- the Inside room goes with the tooltip (a plain text tooltip after it has none)
     tip:HookScript("OnHide", function() SetInsidePadding(tip, false) end)
-    local watcher, wait, lastMode, lastColor = CreateFrame("Frame", nil, tip), 0, nil, nil
+    local watcher, wait, lastMode, lastColor, lastValue = CreateFrame("Frame", nil, tip), 0, nil, nil, nil
     watcher:SetScript("OnUpdate", function(_, elapsed)
         wait = wait + elapsed
         if wait < 0.05 then return end
@@ -317,7 +331,10 @@ local function SetupHealthOverlay()
         end
         if mode ~= lastMode then lastMode = mode; TIP.PlaceHealthBar(bar, tip, mode) end
         local value = UnitPercentHealthFromGUID and UnitPercentHealthFromGUID(guid)
-        if value ~= nil then
+        -- (a readable value that hasn't changed: the bar already shows it)
+        local same = canaccessvalue(value) and value == lastValue and bar:IsShown()
+        lastValue = canaccessvalue(value) and value or nil
+        if value ~= nil and not same then
             pcall(bar.SetValue, bar, value)
             bar:SetStatusBarColor(HealthColor(value))
         end
@@ -1326,7 +1343,9 @@ function TIP:Init()
     shift:SetScript("OnEvent", function(_, _, key)
         local now = GetDb()
         if not (now and now.detailsShift) or (key ~= "LSHIFT" and key ~= "RSHIFT") then return end
-        if GameTooltip:IsShown() and not GameTooltip:IsForbidden() and GameTooltip.RefreshData then
+        -- (only a tooltip FlareUI may touch: a player's, rebuilt from here, runs Blizzard's code under
+        -- FlareUI's taint on its secret line colours and errors, 11-17 Logs/General.log)
+        if GameTooltip:IsShown() and SafeToTouch(GameTooltip) and GameTooltip.RefreshData then
             pcall(GameTooltip.RefreshData, GameTooltip)
         end
     end)

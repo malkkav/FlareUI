@@ -15,6 +15,7 @@ _G.SetPortraitTexture = function() end
 _G.UnitGUID = function() return 'Creature-0-1-2-3-1748-0' end
 _G.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 _G.ITEM_BIND_ON_EQUIP = 'Binds when equipped'
+_G.ITEM_BIND_ON_PICKUP = 'Binds when picked up'
 _G.strsplit = function(sep, s) local t = {} for p in (s .. sep):gmatch('(.-)%' .. sep) do t[#t + 1] = p end return unpack(t) end
 
 -- the game's strings, as on an English client
@@ -63,6 +64,8 @@ local function NewLine(text, font)
         return #plain * 6
     end
     function fs:SetHeight(h) self.height = h end
+    function fs:SetJustifyV(j) self.justifyV = j end
+    function fs:GetJustifyV() return self.justifyV or 'MIDDLE' end
     function fs:GetFont() return 'Fonts\\FRIZQT__.TTF', self.font == 'GameTooltipHeaderText' and 14 or 12, '' end
     -- each row as tall as its font, or its tallest inline texture
     function fs:GetStringHeight()
@@ -240,6 +243,10 @@ GameTooltip = NewTooltip('GameTooltip', { { 'Red Wolf Meat' }, { 'Crafting Reage
 Layout.Item(GameTooltip, {})
 assert(Left(2).text:find('Empty:1:', 1, true) and #Rows(Left(2).text) == 1, 'the icon fits the two-line header: no blank row')
 assert(Left(3).text == 'Vendor' and Left(4).text == 'Auction', 'the addon lines are left alone')
+assert(Left(2).height == 12 + 6 and Left(2).justifyV == 'TOP', 'the last header line is made taller: ' .. tostring(Left(2).height))
+local padded = Left(2)
+GameTooltip:Clear()
+assert(padded.height == 0 and padded.justifyV == 'MIDDLE', 'and gets its height back when the tooltip clears')
 
 -- a comparison gets the item's icon too
 local compare = NewTooltip('ShoppingTooltip1', { { 'Vine Pruner\'s Cloak' }, { 'Soulbound' }, { 'Back' } })
