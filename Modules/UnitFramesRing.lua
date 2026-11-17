@@ -172,8 +172,10 @@ local TILE_KEYS = { party = true, boss = true }
 local PLATE = {
     atlas = "UI-HUD-UnitFrame-Target-PortraitOn", artW = 194, artH = 68,
     x0 = 1, x1 = 131, y0 = 8, y1 = 57,
-    -- the second row stretches with the height; rowDelta resizes a row by that many art pixels
-    cutX = { 0, 8, 120, 145 }, cutY = { 6, 14, 24, 32, 39, 47, 51, 59 },
+    -- the second row stretches with the height; rowDelta resizes a row by that many art pixels.
+    -- (11-16) the last column (127 on) is Blizzard's ring rim: it keeps rowDelta whatever Power Height
+    -- does to the rows, so the rim never bends (Ring.LayoutPlate)
+    cutX = { 0, 8, 120, 127, 145 }, cutY = { 6, 14, 24, 32, 39, 47, 51, 59 },
     rowDelta = { 0, -3, 0, 2, 0, 1, 0 },
     defaultScale = { player = 130, target = 130, focus = 100, party = 100, boss = 100, pet = 65,
                      targettarget = 65, focustarget = 65 },   -- percent of Blizzard's size
@@ -1121,12 +1123,14 @@ local function EdgeY(y, s, rows)
     return "BOTTOM", (RowY(PLATE.y1, rows) - RowY(y, rows)) * s
 end
 
--- Puts a region over art rect x1..x2, y1..y2 of the plate (flip: mirrored, ring on the left)
-local function PlaceOnPlate(region, f, s, flip, x1, x2, y1, y2)
+-- Puts a region over art rect x1..x2, y1..y2 of the plate (flip: mirrored, ring on the left;
+-- rows: the row sizes to use, else the frame's)
+local function PlaceOnPlate(region, f, s, flip, x1, x2, y1, y2, rows)
+    rows = rows or f.plateRows
     local lSide, lx = EdgeX(x1, s)
     local rSide, rx = EdgeX(x2, s)
-    local tSide, ty = EdgeY(y1, s, f.plateRows)
-    local bSide, by = EdgeY(y2, s, f.plateRows)
+    local tSide, ty = EdgeY(y1, s, rows)
+    local bSide, by = EdgeY(y2, s, rows)
     if flip then
         -- the art's left edge becomes the frame's right edge
         local function other(side) return side == "LEFT" and "RIGHT" or "LEFT" end
@@ -1142,7 +1146,7 @@ local function BuildPlate(f)
     local plate = CreateFrame("Frame", nil, f)
     plate:SetAllPoints(f)
     plate.pieces = {}
-    for i = 1, 3 * (#PLATE.cutY - 1) do plate.pieces[i] = plate:CreateTexture(nil, "BACKGROUND") end
+    for i = 1, (#PLATE.cutX - 1) * (#PLATE.cutY - 1) do plate.pieces[i] = plate:CreateTexture(nil, "BACKGROUND") end
     -- (11-15, Malkkav) Threat / Combat Glow on the plate: a lit copy of its art over it, tinted and
     -- pulsing with the ring's tint (one animation group, so every piece beats together). Added
     -- light: the bright metal glows, the dark slots stay dark.
@@ -1202,8 +1206,9 @@ function Ring.LayoutPlate(f)
     if info and info.file then
         local du, dv = info.rightTexCoord - info.leftTexCoord, info.bottomTexCoord - info.topTexCoord
         local cx, cy, i = PLATE.cutX, PLATE.cutY, 0
+        local cols = #cx - 1
         for row = 1, #cy - 1 do
-            for col = 1, 3 do
+            for col = 1, cols do
                 i = i + 1
                 local tex = plate.pieces[i]
                 local x1, x2, y1, y2 = cx[col], cx[col + 1], cy[row], cy[row + 1]
@@ -1212,13 +1217,15 @@ function Ring.LayoutPlate(f)
                 if flip then u1, u2 = u2, u1 end
                 tex:SetTexture(info.file)
                 tex:SetTexCoord(u1, u2, info.topTexCoord + y1 / PLATE.artH * dv, info.topTexCoord + y2 / PLATE.artH * dv)
-                PlaceOnPlate(tex, f, s, flip, x1, x2, y1, y2)
+                -- the ring rim's column keeps the art's own rows (Power Height moves only the bars' line)
+                local rows = col == cols and PLATE.rowDelta or f.plateRows
+                PlaceOnPlate(tex, f, s, flip, x1, x2, y1, y2, rows)
                 -- (a row folded away by Power Height Off has no height)
-                tex:SetShown((y2 - y1) + (f.plateRows[row] or 0) > 0)
+                tex:SetShown((y2 - y1) + (rows[row] or 0) > 0)
                 local g = plate.glow[i]
                 g:SetTexture(info.file)
                 g:SetTexCoord(u1, u2, info.topTexCoord + y1 / PLATE.artH * dv, info.topTexCoord + y2 / PLATE.artH * dv)
-                PlaceOnPlate(g, f, s, flip, x1, x2, y1, y2)
+                PlaceOnPlate(g, f, s, flip, x1, x2, y1, y2, rows)
             end
         end
     end
