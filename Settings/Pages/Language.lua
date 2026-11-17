@@ -116,6 +116,15 @@ S:Row{
     set = function(percent) local g = Global(); if g then g.textScale = percent ~= 100 and percent / 100 or nil end end,
 }
 
+-- ESC Menu (11-17, Malkkav): a FlareUI button in the game menu, under Shop (Launcher.lua 4b); off,
+-- for every character
+S:Row{
+    key = "language.escButton", module = "language", section = "language.escMenu",
+    get = function() local g = ns.db and ns.db.global; return g and g.escMenuButton == true or false end,
+    set = function(on) local g = ns.db and ns.db.global; if g then g.escMenuButton = on and true or nil end end,
+    resetValue = function() return false end,
+}
+
 -- Global Font (11-13): the face of every font set to Global (Core.lua ns.GlobalFontFace), then the
 -- two all-font buttons side by side (Settings/Fonts.lua)
 S:Row{

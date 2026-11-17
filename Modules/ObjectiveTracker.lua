@@ -562,9 +562,11 @@ end
 local function QuestTags(q)
     local tags = ""
     local tag = C_QuestLog.GetQuestTagInfo(q.questID)
-    if tag and tag.isElite then tags = tags .. "+" end
     local id = tag and tag.tagID
     local T = Enum.QuestTag
+    -- (11-17, issue #90, ambonif's fix) Forever marks elite quests with the Group tag (named Elite), not
+    -- isElite: either one, or the quest's own isElite, gives the +
+    if (tag and (tag.isElite or tag.tagName == _G.ELITE or (T and id == T.Group))) or q.isElite then tags = tags .. "+" end
     if id == T.Dungeon then tags = tags .. " d"
     elseif id == T.Raid or id == T.Raid10 or id == T.Raid25 then tags = tags .. " r"
     elseif id == T.PvP then tags = tags .. " pvp"

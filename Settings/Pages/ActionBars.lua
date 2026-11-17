@@ -37,8 +37,8 @@ for tenths = 700, 1500, 5 do
     local percent = tenths / 10
     SCALES[#SCALES + 1] = { tenths / 1000, (percent % 1 == 0 and ("%d"):format(percent) or ("%.1f"):format(percent)) .. "%" }
 end
--- (11-16, Malkkav: "Button Scale" in Button Appearance; it was Bar Scale in Bars Appearance)
-S:Row{ key = "ab.buttonScale", kind = "range", section = "ab.buttonAppearance", choices = SCALES, apply = Refresh,
+-- (11-16, Malkkav: "Button Scale"; 11-17 back in Bars Appearance, where Bar Scale was)
+S:Row{ key = "ab.buttonScale", kind = "range", section = "ab.barAppearance", choices = SCALES, apply = Refresh,
     get = function()
         local v = tonumber(S:GetPath("actionbars.buttonScale")) or 1.11
         return math.floor(v * 200 + 0.5) * 5 / 1000

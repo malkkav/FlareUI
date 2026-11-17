@@ -400,7 +400,8 @@ end
 -- 4. FLAREUI PANEL PIECES
 --------------------------------------------------
 local function Panel(frame)
-    local edge = LSM:Fetch("border", "FlareUI Thin")   -- (11-15, Malkkav: thin, not thick)
+    -- (11-17, Malkkav: trying FlareUI Thick again, with a darker wash; 11-15 it was thin)
+    local edge = LSM:Fetch("border", "FlareUI Thick")
     frame:SetBackdrop({ edgeFile = edge, edgeSize = ns.BorderEdgeSize(edge, 16) })
     local c = ns.BORDER_COLOR
     frame:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
@@ -413,7 +414,7 @@ local function Panel(frame)
         rock:SetVertTile(true)
         local wash = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
         wash:SetAllPoints(rock)
-        wash:SetColorTexture(0.05, 0.038, 0.026, 0.45)
+        wash:SetColorTexture(0.05, 0.038, 0.026, 0.62)   -- (11-17: darker, it was 0.45)
         local glow = frame:CreateTexture(nil, "BACKGROUND", nil, 3)
         glow:SetPoint("TOPLEFT", rock)
         glow:SetPoint("TOPRIGHT", rock)
@@ -1331,6 +1332,23 @@ end
 --------------------------------------------------
 function LR:Refresh()
     Refresh()
+    LR.StyleTitle()
+end
+
+-- the title in the chat's and Damage Meter's header font (Damage Meter > Fonts > Header) and gold
+function LR.StyleTitle()
+    local title = win and win.title
+    if not title then return end
+    local DM = ns.DamageMeter
+    local dm = ns.db and ns.db.profile and ns.db.profile.damagemeter
+    local font = DM and DM.HeaderFontDb and DM.HeaderFontDb(dm)
+    if not font then return end
+    local flags = font.flags or "NONE"
+    if flags == "NONE" then flags = "" end
+    ns.SetFont(title, ns.GetFontPath(font.face or "Friz Quadrata TT"), font.size or 12, flags)
+    if ns.ApplyShadow then ns.ApplyShadow(title, font) end
+    local c = font.color or { r = 0.80, g = 0.60, b = 0.34 }
+    title:SetTextColor(c.r, c.g, c.b, c.a or 1)
 end
 
 -- Bags & Looting > Fonts > Loot Rolls changed: every text in the window, live
@@ -1369,11 +1387,14 @@ function LR:Init()
     win:SetClampedToScreen(true)
     Panel(win)
     win:Hide()
-    local title = Text(win, "GameFontNormal")
-    title:SetPoint("TOPLEFT", PAD + 2, -9)
+    -- (11-17, Malkkav) the header as the chat's and Damage Meter's: their title font and gold, the
+    -- title and icon on one row centred 15 px down, the title 17 px in, the icon 21.5 px from the
+    -- right edge, the separator at 24 px (DamageMeter.lua's TITLE_LEFT, ROW_CENTER_Y, ICON_RIGHT)
+    local title = win:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("LEFT", win, "TOPLEFT", 17, -15)
     title:SetText(L["Loot Rolls"])
-    -- (11-15, Malkkav) FlareUI's bronze, as a selected chat tab, not Blizzard's yellow
-    title:SetTextColor(0.80, 0.60, 0.34)
+    win.title = title
+    LR.StyleTitle()
     win.count = Text(win, "GameFontDisableSmall", true)
     win.count:SetPoint("LEFT", title, "RIGHT", 5, 0)
     -- Blizzard's loot history window (/loot): every roll and its winner (FlareUI keeps no history)
@@ -1381,14 +1402,16 @@ function LR:Init()
         local historyButton = HeaderButton(win, HISTORY_ICON, function()
             if ToggleLootHistoryFrame then ToggleLootHistoryFrame() end
         end, L["Loot History"])
-        historyButton:SetPoint("TOPRIGHT", -PAD + 2, -5)
+        historyButton:SetSize(22, 22)
+        historyButton.icon:SetSize(11, 11)   -- the meter's segments icon, drawn as there
+        historyButton:SetPoint("CENTER", win, "TOPRIGHT", -21.5, -15)
     end
     -- (11-15, Malkkav) the chat's and Damage Meter's header separator (Blizzard's tooltip divider)
     local line = win:CreateTexture(nil, "OVERLAY")
     line:SetTexture("Interface\\Common\\UI-TooltipDivider-Transparent")
     line:SetHeight(8)
-    line:SetPoint("TOPLEFT", 3, -HEADER + 4)
-    line:SetPoint("TOPRIGHT", -3, -HEADER + 4)
+    line:SetPoint("TOPLEFT", 3, -24)
+    line:SetPoint("TOPRIGHT", -3, -24)
     more = Text(win, "GameFontDisableSmall", true)
     queued = Text(win, "GameFontDisableSmall", true)
     win.split = Line(win, 0.35)

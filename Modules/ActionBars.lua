@@ -972,6 +972,18 @@ local function CooldownDims(button)
     return DimsOnCooldown(GetBarConfig())
 end
 
+-- (11-17, Malkkav, testing in the beta; the partial grey is langee99's idea, PR #91) a button on cooldown
+-- is half greyed, so its colour still shows: Judgement greyed for no seal and Judgement on cooldown no
+-- longer look the same. Range, mana and unusable stay fully grey under their tint.
+ActionBars.COOLDOWN_DESATURATION = 0.5
+function ActionBars.PaintCooldownGrey(icon, dim)
+    if icon.SetDesaturation then
+        icon:SetDesaturation(dim and ActionBars.COOLDOWN_DESATURATION or 0)
+    else
+        icon:SetDesaturated(dim and true or false)
+    end
+end
+
 local function ApplyStateColor(button, state)
     if button.FlareUI_ColorState == state then return end
     button.FlareUI_ColorState = state
@@ -993,7 +1005,7 @@ local function ApplyStateColor(button, state)
         local db = GetBarConfig()
         desaturate = db and db.colors and db.colors.unusable and db.colors.unusable.desaturate or false
     end
-    icon:SetDesaturated(desaturate or CooldownDims(button))
+    if desaturate then icon:SetDesaturated(true) else ActionBars.PaintCooldownGrey(icon, CooldownDims(button)) end
 end
 
 local OnUpdateUsable
@@ -1006,7 +1018,7 @@ local function RefreshButtonColor(button)
             if button.FlareUI_ColorState ~= "locked" and button.icon then
                 local tint = BLIZZARD_TINT[button.FlareUI_Usable] or STATE_TINT.normal
                 button.icon:SetVertexColor(tint[1], tint[2], tint[3], 1)
-                button.icon:SetDesaturated(CooldownDims(button))
+                ActionBars.PaintCooldownGrey(button.icon, CooldownDims(button))
             end
             button.FlareUI_ColorState = nil
         end
@@ -1128,7 +1140,7 @@ end
 
 --------------------------------------------------
 -- 8b. COOLDOWNS: DIM ON COOLDOWN, READY BURST
--- A real cooldown (not the global one) is read from isActive / isOnGCD, which are never secret, after
+-- A real cooldown (not the global one: ActionBars.IsGlobalLock) is read from isActive, never secret, after
 -- each of Blizzard's cooldown updates. Dim on cooldown greys the icon meanwhile; on Fake CM bars the end
 -- of one plays the proc alert's opening burst. The game sends no event when a cooldown ends, so the
 -- cooldown frame's OnCooldownDone reads it again.
@@ -1136,6 +1148,22 @@ end
 local fcmButtons = {}        -- button -> on a Fake CM bar (Refresh)
 local burstQuietUntil = 0    -- no bursts just after a loading screen: every cooldown is read anew
 local GCD_SPAN = 1.5         -- a shorter arm span is a global cooldown read as a real one
+
+-- (11-17, Malkkav / loraethil: every wand shot greyed the whole bar) Dim on Cooldown never dims for
+-- the global cooldown. isOnGCD alone misses it (Blizzard: only trustworthy inside the cooldown
+-- event, and a wand shot's lockout comes as its own short cooldown), so a cooldown of 2 seconds or
+-- less, or one that started with the global cooldown, counts as the GCD too. Durations and start times
+-- can be secret: then only isOnGCD decides.
+ActionBars.GCD_LOCK = 2
+function ActionBars.IsGlobalLock(info)
+    if info.isOnGCD then return true end
+    local duration, start = info.duration, info.startTime
+    if not (canaccessvalue(duration) and canaccessvalue(start)) then return false end
+    if type(duration) == "number" and duration > 0 and duration <= ActionBars.GCD_LOCK then return true end
+    local ok, gcd = pcall(C_Spell.GetSpellCooldown, 61304)   -- the global cooldown's own spell
+    if ok and gcd and gcd.isActive and canaccessvalue(gcd.startTime) and gcd.startTime == start then return true end
+    return false
+end
 
 local function BurstDone(anim) anim:GetParent():Hide() end
 
@@ -1167,7 +1195,7 @@ local function PaintDim(button)
             RefreshButtonColor(button)
         end
     elseif (dim or changed) and not C_LevelLink.IsActionLocked(button.action) then
-        button.icon:SetDesaturated(dim)
+        ActionBars.PaintCooldownGrey(button.icon, dim)
     end
 end
 
@@ -1182,7 +1210,7 @@ local function OnUpdateCooldown(button)
     local has = watch and C_ActionBar.HasAction(slot)
     if canaccessvalue(has) and has then
         local info = C_ActionBar.GetActionCooldown(slot)
-        onCD = (info and info.isActive and not info.isOnGCD) or false
+        onCD = (info and info.isActive and not ActionBars.IsGlobalLock(info)) or false
         local _, actionID = GetActionInfo(slot)
         id = canaccessvalue(actionID) and actionID or nil
     end
@@ -1799,7 +1827,7 @@ function ActionBars:Init()
     end
 
     self:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", "Refresh")
-    self:RegisterEvent("PLAYER_ENTERING_WORLD", "Refresh")
+    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnEnteringWorld")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatEnd")
     self:RegisterEvent("UPDATE_EXTRA_ACTIONBAR", "OnExtraActionBarUpdate")
     self:RegisterEvent("UPDATE_BINDINGS", "OnBindingsUpdate")
@@ -1809,6 +1837,20 @@ end
 --------------------------------------------------
 -- 14. EVENT HANDLERS
 --------------------------------------------------
+-- (11-17, SadSeagull: bar 1 and then bar 2 still had no keys after logging in on 6.10, back after a
+-- reload) the button texts are set again 3 and 10 seconds after a loading screen: by then the key
+-- bindings are in and the Keybinds font's file has loaded, whichever of the two was late
+function ActionBars:OnEnteringWorld(event)
+    self:Refresh(event)
+    for _, delay in ipairs({ 3, 10 }) do
+        C_Timer.After(delay, function()
+            local db = GetBarConfig()
+            if not (db and db.enabled) then return end
+            for _, btn in ipairs(GetAllActionButtons()) do UpdateButtonText(btn) end
+        end)
+    end
+end
+
 function ActionBars:OnCombatEnd()
     if self._pendingRefresh then
         self:Refresh()

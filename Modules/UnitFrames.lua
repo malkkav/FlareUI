@@ -219,6 +219,9 @@ local UNITS = {
         castbar = true,
         -- Hide Player Frame while in party: when the party frames show, so a raid brings it back
         partyDriver = "[group:raid] show; [@raid1,exists] show; [group:party] hide; [@party1,exists] hide; show",
+        -- Hide Player Frame in a Raid (11-17, pkecerski), alone or with the party one
+        raidDriver = "[group:raid] hide; [@raid1,exists] hide; show",
+        groupDriver = "[group:raid] hide; [@raid1,exists] hide; [group:party] hide; [@party1,exists] hide; show",
         events = { "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE" },
         globalEvents = { PLAYER_UPDATE_RESTING = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true,
                          PLAYER_FLAGS_CHANGED = "player", PVP_TIMER_UPDATE = true,
@@ -271,6 +274,8 @@ local UNITS = {
         blizzard = { "PetFrame" },
         driver = "[@pet,exists] show; hide",
         partyDriver = "[group:raid,@pet,exists] show; [group:raid] hide; [group:party] hide; [@party1,exists] hide; [@pet,exists] show; hide",
+        raidDriver = "[group:raid] hide; [@raid1,exists] hide; [@pet,exists] show; hide",
+        groupDriver = "[group:raid] hide; [@raid1,exists] hide; [group:party] hide; [@party1,exists] hide; [@pet,exists] show; hide",
         indicators = { heals = true },
         globalEvents = { UNIT_PET = "player" },
     },
@@ -305,6 +310,10 @@ local SPLIT_VP_MODE = { text = L["Value <  > Percent"], value = "splitvp", isRad
 -- the two Forever Style split modes; off the plate each reads as its | mode
 local SPLIT_MODES = { split = "both", splitvp = "valuepct" }
 function UF.IsSplitMode(mode) return SPLIT_MODES[mode] ~= nil end
+-- (11-17, Malkkav / thetroll3k) Forever Style's power text can sit at the bar's right end, as on
+-- Blizzard's frame: > Value and > Percent, power only, the last two text choices. Each reads as its
+-- plain mode for the text itself, and off the plate.
+UF.RIGHT_MODES = { rvalue = "value", rpercent = "percent" }
 local HEALTH_TEXT_MODES = {
     { text = L["Off"],                      value = "none",        isRadio = true },
     { text = L["Percent"],                  value = "percent",     isRadio = true },
@@ -351,6 +360,7 @@ end
 -- The text for every mode but Health Lost. cur and max go through ns.ShortNumber (in full up to 9999) and percent is
 -- 0-100; all three can be secret, which SetFormattedText takes as they are.
 function UF.FormatBarText(fs, mode, cur, percent, max, unit)
+    mode = UF.RIGHT_MODES[mode] or mode
     if mode == "percent" then
         fs:SetFormattedText("%.0f%%", percent)
     elseif mode == "value" then
@@ -383,13 +393,17 @@ end
 -- Health Lost: "-1234" or "-12K" from UnitHealthMissing. The value can be secret, so "-0" at full health can't
 -- be caught in Lua: a step curve turns the health percent into the text's alpha (1 below full, 0 at
 -- full). Every other mode puts the alpha back to 1.
-function UF.SetHealthLost(fs, unit)
+function UF.LostCurve()
     if not UF.lostCurve then
         UF.lostCurve = C_CurveUtil.CreateCurve()
         UF.lostCurve:SetType(Enum.LuaCurveType.Step)
         UF.lostCurve:AddPoint(0, 1)
         UF.lostCurve:AddPoint(1, 0)
     end
+    return UF.lostCurve
+end
+function UF.SetHealthLost(fs, unit)
+    UF.LostCurve()
     fs:SetFormattedText("-%s", ns.ShortNumber(UnitHealthMissing(unit, true)))
     fs:SetAlpha(UnitHealthPercent(unit, true, UF.lostCurve))
 end
@@ -406,7 +420,17 @@ for _, mode in ipairs(HEALTH_TEXT_MODES) do
     if mode.value ~= "lost" and mode.value ~= "valuelost" then UF.POWER_TEXT_MODES[#UF.POWER_TEXT_MODES + 1] = mode end
 end
 local PLATE_POWER_TEXT_MODES = WithSplit(UF.POWER_TEXT_MODES)
-local POWER_MODE = { none = true, percent = true, value = true, both = true, valuepct = true, valuemax = true, valuemaxpct = true, split = true, splitvp = true }
+-- > Percent below Percent <  > Value, > Value below Value <  > Percent (Malkkav, 11-17)
+for i = #PLATE_POWER_TEXT_MODES, 1, -1 do
+    local v = PLATE_POWER_TEXT_MODES[i].value
+    if v == "split" then
+        table.insert(PLATE_POWER_TEXT_MODES, i + 1, { text = L["> Percent"], value = "rpercent", isRadio = true })
+    elseif v == "splitvp" then
+        table.insert(PLATE_POWER_TEXT_MODES, i + 1, { text = L["> Value"], value = "rvalue", isRadio = true })
+    end
+end
+local POWER_MODE = { none = true, percent = true, value = true, both = true, valuepct = true, valuemax = true, valuemaxpct = true, split = true, splitvp = true,
+                     rvalue = true, rpercent = true }
 function UF.IsPowerTextMode(v) return POWER_MODE[v] or false end
 function UF.PowerTextMode(v)
     if v == "valuemaxpct" then return "valuemax" end
@@ -641,6 +665,11 @@ function ICON_UI.HappinessPlace(unit)
     if ns.UFRing.PlateOn() or place ~= "CENTER" then return "RIGHT" end
     return place
 end
+
+-- the pet's Happiness Position and switch, for the party frames (their player tile shows the face
+-- while Hide Player Frame in a Party hides the pet frame, PartyFrames.lua PF.LayoutPetHappiness)
+function UF.PetHappinessPlace() return ICON_UI.HappinessPlace("pet") end
+function UF.PetHappinessShown() return ICON_UI.Shown("pet", "happiness") end
 
 -- every icon starts shown except those with default = false
 function ICON_UI.Shown(unit, key)
@@ -2373,6 +2402,45 @@ local function PrecreateAuraContainers(f)
     end
 end
 
+-- Buff Amount / Debuff Amount (11-17, Malkkav; sadbrian and others: only 4 debuffs fit on the target):
+-- how many icons a frame shows, 1 to 12, in as many rows as they need (each row as many as fit in the
+-- corner). Unset: 8 in Addon Style, 6 in FlareUI and Forever Style; the focus frame 4 and the pet 3 in
+-- every style (11-17, Malkkav). (It was 2 rows, however many fit.)
+UF.AURA_AMOUNT = { min = 1, max = 12, addon = 8, ring = 6, units = { focus = 4, pet = 3 } }
+function UF.AuraAmountDefault(unit)
+    local own = unit and UF.AURA_AMOUNT.units[unit]
+    if own then return own end
+    local style = ns.UFRing and ns.UFRing.Style and ns.UFRing.Style()
+    return style == "addon" and UF.AURA_AMOUNT.addon or UF.AURA_AMOUNT.ring
+end
+function UF.AuraAmount(udb, isDebuff, unit)
+    local v = udb and (isDebuff and udb.debuffAmount or udb.buffAmount)
+    if type(v) ~= "number" then return UF.AuraAmountDefault(unit) end
+    return math.max(UF.AURA_AMOUNT.min, math.min(UF.AURA_AMOUNT.max, math_floor(v + 0.5)))
+end
+
+-- (11-17, Malkkav: only 7 buffs and 4 debuffs showed in Edit Mode) Blizzard's sample auras are a fixed
+-- set: 7 helpful, 4 harmful. In Edit Mode a lane is followed by copies of itself, on the same rows, until
+-- the samples reach Buff / Debuff Amount; each copy shows the same samples again.
+UF.SAMPLE_AURAS = { helpful = 7, harmful = 4 }
+-- amount: the lane's Buff / Debuff Amount (the party and boss tiles use this too)
+function UF.PreviewFillLanes(list, lane, amount)
+    local per = lane.isDebuff and UF.SAMPLE_AURAS.harmful or UF.SAMPLE_AURAS.helpful
+    local left = amount - per
+    local n = 0
+    while left > 0 do
+        n = n + 1
+        local copy = {}
+        for k, v in pairs(lane) do copy[k] = v end
+        copy.key = lane.key .. "#fill" .. n
+        copy.joinPrevious = true
+        copy.fillCount = math.min(per, left)
+        list[#list + 1] = copy
+        left = left - per
+    end
+    if n > 0 then lane.fillCount = per end
+end
+
 -- corner: TOPLEFT | TOPRIGHT | BOTTOMLEFT | BOTTOMRIGHT; lanes: ns.AuraPolicy lanes
 local function ConfigureAuraCorner(f, corner, lanes)
     local entry = f.Auras and f.Auras[corner]
@@ -2393,7 +2461,7 @@ local function ConfigureAuraCorner(f, corner, lanes)
     -- Buffs Size and Debuffs Size: each lane its own; the line holds the larger of the corner's lanes
     local largest = 0
     for _, lane in ipairs(lanes) do largest = math.max(largest, ns.AuraSize(udb, lane.isDebuff, 20)) end
-    -- a corner wraps before the frame's middle, at most two rows (an even count, 4+); Top / Bottom:
+    -- a corner wraps before the frame's middle, in as many rows as Buff / Debuff Amount needs; Top / Bottom:
     -- the whole width less the ring's room
     local lineSize
     if AURA.FULL[corner] then
@@ -2409,8 +2477,9 @@ local function ConfigureAuraCorner(f, corner, lanes)
     for index, lane in ipairs(lanes) do
         local isDebuff = lane.isDebuff
         local size = ns.AuraSize(udb, isDebuff, 20)
-        -- as many per row as fit at this lane's size
-        local max = 2 * math.max(2, math_floor((lineSize + AURA_SPACING) / (size + AURA_SPACING)))
+        -- Buff Amount / Debuff Amount (a preview fill lane: its own share); each row holds as many as
+        -- fit at this lane's size
+        local max = lane.fillCount or UF.AuraAmount(udb, isDebuff, unit)
         local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, unit == "player", db and db.auraStyle or "square", "both", auraTimer, unit)
         if look and lane.stealable then look.stealable = true end   -- Highlight Purgeable Buffs
         local key, err = ns.AuraGroups.Add(container, entry, lane.key, ns.AuraGroups.Sig(size, isDebuff, font, showTimer, look), ns.AuraPolicy.FilterFor(lane, unit), {
@@ -2530,9 +2599,13 @@ LayoutAuras = function(f)
     for _, corner in ipairs(AURA_CORNERS) do perCorner[corner] = {} end
     -- what each lane shows comes from ns.AuraPolicy (filters, Hide Buffs, Only My Debuffs / Buffs);
     -- the corners and sizes are this module's
-    for _, lane in ipairs(ns.AuraPolicy.UnitLanes(f.fuiUnit, udb, ns.EditPreviewing())) do
+    local editing = ns.EditPreviewing()
+    for _, lane in ipairs(ns.AuraPolicy.UnitLanes(f.fuiUnit, udb, editing)) do
         local list = lane.place and perCorner[lane.place]
-        if list then list[#list + 1] = lane end
+        if list then
+            list[#list + 1] = lane
+            if editing then UF.PreviewFillLanes(list, lane, UF.AuraAmount(udb, lane.isDebuff, f.fuiUnit)) end
+        end
     end
     ns.AuraPolicy.Begin(f)
     for _, corner in ipairs(AURA_CORNERS) do
@@ -3541,7 +3614,13 @@ function UF.BarLookUpdate(bar, unit, changed, dead)
     if not (look and look.edgeClip:IsShown()) then return end
     if unit then dead = UF.IsDead(unit) end
     if not canaccessvalue(dead) then dead = false end
-    look.edge:SetAlpha(dead and 0 or 1)
+    -- (11-17, issue #86) none at full health: the bar has no front to show then. The same step curve as
+    -- Health Lost (1 below full, 0 at full), so a secret health works too
+    if unit and not dead then
+        look.edge:SetAlpha(UnitHealthPercent(unit, true, UF.LostCurve()))
+    else
+        look.edge:SetAlpha(dead and 0 or 1)
+    end
     if changed and not dead and look.edge:IsVisible() then
         look.pulse:Stop()
         look.pulse:Play()
@@ -4424,6 +4503,10 @@ local function LayoutFrame(f)
             pleft:ClearAllPoints()
             pleft:SetPoint("LEFT", power, "LEFT", TEXT_INSET, 0)
             pleft:Show()
+        elseif UF.RIGHT_MODES[UF.PowerTextMode(udb.powerText)] then
+            -- > Value / > Percent: at the bar's right end
+            f.PowerText:SetPoint("RIGHT", power, "RIGHT", -TEXT_INSET, 0)
+            f.PowerText:SetJustifyH("RIGHT")
         else
             f.PowerText:SetPoint("CENTER", power, "CENTER", 0, 0)
             f.PowerText:SetJustifyH("CENTER")
@@ -4569,7 +4652,13 @@ local function ApplyVisibility(f)
     local party = GetDb() and GetDb().party
     -- the party frames must be on and showing the player, or there'd be no frame of yours left
     local hideInParty = info.partyDriver and party and party.enabled and party.showPlayer and party.hidePlayerInParty
-    local driver = hideInParty and info.partyDriver or info.driver
+    -- (11-17) and in a raid: the raid frames must be on (they always show you)
+    local raid = GetDb() and GetDb().raid
+    local hideInRaid = info.raidDriver and raid and raid.enabled and raid.hidePlayerInRaid
+    local driver = info.driver
+    if hideInParty and hideInRaid then driver = info.groupDriver
+    elseif hideInRaid then driver = info.raidDriver
+    elseif hideInParty then driver = info.partyDriver end
     if ns.EditPreviewing() then
         UnregisterStateDriver(f, "visibility")
         f:Show()
@@ -5584,8 +5673,16 @@ local function BuildSettings(unit)
               generator = Corner("debuffs", "buffs"), get = get("debuffs"), set = set("debuffs") },
             { name = L["Buff Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1,
               get = function() return ns.AuraSize(GetUnitDb(unit), false, defaults.auraSize or 22) end, set = set("buffSize") },
+            { name = L["Buff Amount"], kind = LEM.SettingType.Slider, default = UF.AuraAmountDefault(unit),
+              minValue = UF.AURA_AMOUNT.min, maxValue = UF.AURA_AMOUNT.max, valueStep = 1,
+              get = function() return UF.AuraAmount(GetUnitDb(unit), false, unit) end, set = set("buffAmount"),
+              desc = L["How many buffs show. They take as many rows as they need."] },
             { name = L["Debuff Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1,
               get = function() return ns.AuraSize(GetUnitDb(unit), true, defaults.auraSize or 22) end, set = set("debuffSize") },
+            { name = L["Debuff Amount"], kind = LEM.SettingType.Slider, default = UF.AuraAmountDefault(unit),
+              minValue = UF.AURA_AMOUNT.min, maxValue = UF.AURA_AMOUNT.max, valueStep = 1,
+              get = function() return UF.AuraAmount(GetUnitDb(unit), true, unit) end, set = set("debuffAmount"),
+              desc = L["How many debuffs show. They take as many rows as they need."] },
         }
         table.insert(auraItems, 3, UF.HideBuffsSetting("PERMANENT",
             function() local u = GetUnitDb(unit); return u and u.hideBuffs or "PERMANENT" end, set("hideBuffs")))
@@ -5765,6 +5862,8 @@ function UF:RefreshPartyHide()
     for _, unit in ipairs({ "player", "pet" }) do
         if frames[unit] then ApplyVisibility(frames[unit]) end
     end
+    -- the pet's happiness moves to the party frames, or back
+    if ns.PartyFrames and ns.PartyFrames.Refresh then ns.PartyFrames:Refresh() end
 end
 
 function UF:PLAYER_REGEN_ENABLED()

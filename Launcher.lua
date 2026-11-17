@@ -192,6 +192,43 @@ loader:SetScript("OnEvent", function(self)
 end)
 
 --------------------------------------------------
+-- 4b. ESC MENU BUTTON (11-17, Malkkav): a FlareUI button in the game menu, right under Shop
+-- (General > Interface > ESC Menu, off, account-wide: db.global.escMenuButton). Blizzard rebuilds the
+-- menu each time it opens (GameMenuFrameMixin:InitButtons); the button is added after that, and its
+-- layout index puts it after Shop (Options when the shop is off). Read each time: no reload needed.
+--------------------------------------------------
+ns.EscMenu = {}
+function ns.EscMenu.Add(menu)
+    if not (ns.db and ns.db.global and ns.db.global.escMenuButton) then return end
+    local after
+    for _, b in ipairs(menu.buttons or {}) do
+        local text = b:GetText()
+        if text == _G.BLIZZARD_STORE then after = b break end
+        if text == _G.GAMEMENU_OPTIONS then after = b end
+    end
+    local button = menu:AddButton(L["FlareUI"], function()
+        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION)
+        HideUIPanel(menu)
+        if ns.SettingsPanel then ns.SettingsPanel:Open() end
+    end)
+    if button and after and after.layoutIndex then
+        button.layoutIndex = after.layoutIndex + 0.5
+        button.topPadding = nil
+    end
+    if menu.MarkDirty then menu:MarkDirty() end
+end
+function ns.EscMenu.Hook()
+    local menu = _G.GameMenuFrame
+    if ns.EscMenu.hooked or not (menu and menu.InitButtons) then return end
+    ns.EscMenu.hooked = true
+    hooksecurefunc(menu, "InitButtons", ns.EscMenu.Add)
+end
+ns.EscMenu.Hook()
+if not ns.EscMenu.hooked and EventUtil and EventUtil.ContinueOnAddOnLoaded then
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_GameMenu", ns.EscMenu.Hook)
+end
+
+--------------------------------------------------
 -- 5. ADDON COMPARTMENT (## AddonCompartmentFunc* in the TOC)
 --------------------------------------------------
 function FlareUI_OnAddonCompartmentClick(_, buttonName)

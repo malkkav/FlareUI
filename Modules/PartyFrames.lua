@@ -124,17 +124,17 @@ local ICON_LABELS = { role = L["Role"], leader = L["Leader"], raidIcon = L["Raid
 local ICON_SCALE = { raidIcon = 1.25, readyCheck = 1.25, status = 1.25 }
 local RAID_ROLE_SCALE = 1.2
 
--- Edit Mode samples: a tank, a healer and three damage dealers
+-- Edit Mode samples: a tank, a healer and three damage dealers (surname: shown with Full Player Names)
 local PREVIEW = {
-    { name = "Thalorien", class = "WARRIOR", role = "TANK",    health = 0.92, power = 0.35, leader = true,
+    { name = "Thalorien", surname = "Dawnward", class = "WARRIOR", role = "TANK",    health = 0.92, power = 0.35, leader = true,
       portrait = "Interface\\Icons\\INV_Misc_Head_Human_01" },
-    { name = "Elysande",  class = "PRIEST",  role = "HEALER",  health = 0.64, power = 0.85, ready = "ready",
+    { name = "Elysande", surname = "Brightvale", class = "PRIEST",  role = "HEALER",  health = 0.64, power = 0.85, ready = "ready",
       portrait = "Interface\\Icons\\INV_Misc_Head_Elf_02" },
-    { name = "Morwen",    class = "WARLOCK", role = "DAMAGER", health = 0.48, power = 0.60, marker = 8, highlight = "Magic", pet = "Voidwalker",
+    { name = "Morwen", surname = "Ashgrove", class = "WARLOCK", role = "DAMAGER", health = 0.48, power = 0.60, marker = 8, highlight = "Magic", pet = "Voidwalker",
       portrait = "Interface\\Icons\\INV_Misc_Head_Undead_02" },
-    { name = "Sylvara",   class = "HUNTER",  role = "DAMAGER", health = 0.81, power = 0.72, pet = "Wolf", status = "IncomingResurrection",
+    { name = "Sylvara", surname = "Thornfield", class = "HUNTER",  role = "DAMAGER", health = 0.81, power = 0.72, pet = "Wolf", status = "IncomingResurrection",
       portrait = "Interface\\Icons\\INV_Misc_Head_Troll_02" },
-    { name = "Kestrel",   class = "ROGUE",   role = "DAMAGER", health = 0.27, power = 0.90, status = "IncomingSummonPending",
+    { name = "Kestrel", surname = "Blackmoor", class = "ROGUE",   role = "DAMAGER", health = 0.27, power = 0.90, status = "IncomingSummonPending",
       portrait = "Interface\\Icons\\INV_Misc_Head_Gnome_01" },
 }
 -- the samples' targets: the healer on the tank, the rest on an enemy
@@ -257,6 +257,34 @@ local function PlaceAuraSize(st, pos)
     return math_max(buff, debuff)
 end
 
+-- Buff Amount / Debuff Amount on the party and boss frames (11-17, Malkkav): beside the frame, how many
+-- show, in as many rows as they need. Unset: 4 in FlareUI and Forever Style, 6 in Addon Style. Not
+-- inside the bars (a fixed grid) and not on the raid frames.
+PF.TILE_AMOUNT = { ring = 4, addon = 6 }
+function PF.AmountTile(st)
+    if not st then return false end
+    if st.amountTile then return true end   -- the boss frames' view (BossFrames.lua FIXED)
+    local party = GetPartyDb()
+    return (party and (st == party.classic or st == party.raid)) or false
+end
+function PF.TileAmountDefault()
+    local style = ns.UFRing and ns.UFRing.Style and ns.UFRing.Style()
+    return style == "addon" and PF.TILE_AMOUNT.addon or PF.TILE_AMOUNT.ring
+end
+function PF.TileAmount(st, isDebuff)
+    local v = st and (isDebuff and st.debuffAmount or st.buffAmount)
+    if type(v) ~= "number" then return PF.TileAmountDefault() end
+    return math_max(1, math.min(12, math_floor(v + 0.5)))
+end
+function PF.AmountSetting(getS, setS, isDebuff)
+    return { name = isDebuff and L["Debuff Amount"] or L["Buff Amount"], kind = LEM.SettingType.Slider,
+             default = PF.TileAmountDefault(), minValue = 1, maxValue = 12, valueStep = 1,
+             get = function() return PF.TileAmount({ buffAmount = getS("buffAmount")(), debuffAmount = getS("debuffAmount")() }, isDebuff) end,
+             set = setS(isDebuff and "debuffAmount" or "buffAmount"),
+             desc = isDebuff and L["How many debuffs show. They take as many rows as they need."]
+                 or L["How many buffs show. They take as many rows as they need."] }
+end
+
 local function AuraFit(st, pos, f)
     local size = PlaceAuraSize(st, pos)
     local function PerRow(lineSize)
@@ -278,6 +306,9 @@ local function AuraFit(st, pos, f)
         lineSize = math_floor((st.width or 200) / 2) - K.INSET - 4
     end
     local perRow = PerRow(lineSize)
+    if PF.AmountTile(st) and (st.buffs == pos or st.debuffs == pos) then
+        return PF.TileAmount(st, st.debuffs == pos), perRow
+    end
     return perRow, perRow
 end
 
@@ -1226,7 +1257,7 @@ local function ConfigurePosition(f, pos, lanes)
         if look and lane.stealable then look.stealable = true end   -- Highlight Purgeable Buffs (boss tiles)
         local lookSig = ns.AuraGroups.Sig(kind, size, isDebuff, inside, font, showTimer, look)
         local key, err = ns.AuraGroups.Add(container, entry, lane.key, lookSig, lane.filter, {
-            maxFrameCount = kind == "dispels" and not portrait and math_min(max, 3) or max,
+            maxFrameCount = kind == "dispels" and not portrait and math_min(max, 3) or (lane.fillCount or max),
             candidateFilters = lane.candidates,
             sortMethod = sorted and sortMethod or nil, sortDirection = sorted and sortDirection or nil,
             initializeFrame = function(button)
@@ -1286,6 +1317,7 @@ local function ConfigureAuras(f)
     -- look as computed, so a new aura rule or look setting can't be missed here
     local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.buffSize, st.debuffSize, st.width, st.height, st.powerHeight, st.portrait, st.ringSize, (DispelGrid(f)), f.ringKind, AuraGrid(st),
         ns.AuraGroups.Sig(K.Font(PF.FontKey(f), "auras")), st.castbar, st.castHeight, OnPlate(f), IsEditing(), st.auraSort, st.auraReverse, st.auraMineFirst,
+        st.buffAmount, st.debuffAmount, PF.TileAmountDefault(),
         ns.AuraGroups.Sig(lanes), ns.AuraGroups.Sig(LaneLook(10, false, false, f)))
     if f.auraSignature == sig then return end
     f.auraSignature = sig
@@ -1295,7 +1327,13 @@ local function ConfigureAuras(f)
     local plate = OnPlate(f)
     for _, lane in ipairs(lanes) do
         local pos = lane.place
-        if pos and perPos[pos] and not (plate and IsInsidePlace(pos)) then perPos[pos][#perPos[pos] + 1] = lane end
+        if pos and perPos[pos] and not (plate and IsInsidePlace(pos)) then
+            perPos[pos][#perPos[pos] + 1] = lane
+            -- Edit Mode: Blizzard's 7 sample buffs / 4 debuffs repeated up to the Amount (UnitFrames.lua)
+            if IsEditing() and EDGE_PLACES[pos] and PF.AmountTile(st) and (lane.key == "buffs" or lane.key == "debuffs") then
+                ns.UnitFrames.PreviewFillLanes(perPos[pos], lane, PF.TileAmount(st, lane.isDebuff))
+            end
+        end
     end
     -- the processing policy is per container: set before its groups are built
     for _, pos in ipairs(AURA_POSITIONS) do
@@ -1343,6 +1381,12 @@ function PF.DispelPulse(frame, tile)
             if not owner or owner:IsVisible() then pcall(setAlpha, piece, alpha) end
         end
     end)
+end
+-- a piece that no longer pulses (reused after a style change): back to full and steady
+function PF.DispelSteady(frame)
+    if not frame then return end
+    PF.dispelPulsing[frame] = nil
+    pcall(PF.dispelSetAlpha, frame, 1)
 end
 
 -- The dispel highlight: a slot in its own container, showing the first aura of its filter (never given
@@ -1413,7 +1457,17 @@ local function ConfigureDispelHighlight(f)
                     pcall(button.AddDispelTypeTexture, button, glow, {
                         style = styles.PreserveAsset, showWhenHarmful = true, showWhenHelpful = false,
                     })
+                    -- (11-17, Malkkav) the plate's bronze border lights up in the same colour
+                    local lit = ns.UFRing.DispelPlate and ns.UFRing.DispelPlate(f, button.FlareUI_StripHolder)
+                    for _, tex in ipairs(lit or {}) do
+                        tex:Hide()   -- until Blizzard shows it for a dispellable debuff
+                        pcall(button.AddDispelTypeTexture, button, tex, {
+                            style = styles.PreserveAsset, showWhenHarmful = true, showWhenHelpful = false,
+                        })
+                    end
                     AddPortraitDispel(button)
+                    -- (11-17, Malkkav: back as in 6.10) the name box glow and the lit border pulse
+                    -- with the portrait ring
                     PF.DispelPulse(button.FlareUI_StripHolder, f)
                     return
                 end
@@ -1658,7 +1712,50 @@ local function LayoutTexts(f)
     end
 end
 
+-- (11-17, Malkkav / punkie) Hide Player Frame in a Party hides the pet frame, and its happiness face
+-- with it: your own party tile shows the face then, where the pet frame puts it (Happiness Position:
+-- beside the frame, or mid health bar). Blizzard's indicator, as on the pet frame; it hides itself
+-- without a pet that has a mood. Edit Mode shows the happy face.
+function PF.LayoutPetHappiness(f)
+    local party = GetPartyDb()
+    local UFM = ns.UnitFrames
+    local want = f.fuiUnit == "player" and not f.ctx and party and party.showPlayer and party.hidePlayerInParty
+        and UFM and UFM.PetHappinessShown and UFM.PetHappinessShown()
+    local face = f.PetHappiness
+    if not want then
+        if face then
+            face:UnregisterAllEvents()
+            face:Hide()
+        end
+        return
+    end
+    if not face then
+        face = CreateFrame("Frame", nil, f.Overlay or f, "PetFrameHappinessTemplate")
+        pcall(face.SetPropagateMouseClicks, face, true)
+        f.PetHappiness = face
+    end
+    local size, gap = 20, 4   -- as beside the pet frame (UnitFrames.lua HAPPINESS_PLATE_SIZE, HAPPINESS_GAP)
+    local place = UFM.PetHappinessPlace and UFM.PetHappinessPlace() or "RIGHT"
+    face:ClearAllPoints()
+    face:SetSize(size, size)
+    if place == "LEFT" then
+        face:SetPoint("RIGHT", f, "LEFT", -gap, 0)
+    elseif place == "CENTER" then
+        face:SetPoint("CENTER", f.Health, "CENTER", 0, 0)
+    else
+        face:SetPoint("LEFT", f, "RIGHT", gap, 0)
+    end
+    face:RegisterEvent("UNIT_HAPPINESS")
+    face:RegisterEvent("UNIT_PET")
+    face:UpdateHappiness()
+    if IsEditing() and not face:IsShown() then
+        face.Texture:SetAtlas("UI-PetHappiness")
+        face:Show()
+    end
+end
+
 local function LayoutIcons(f)
+    PF.LayoutPetHappiness(f)
     local st, raid = TS(f), RaidTile(f)
     local health = f.Health
     local wantsPower = f.powerShown
@@ -2309,8 +2406,15 @@ local function ApplyPreviewExtras(f, data)
             pcall(hl.Glow.SetAtlas, hl.Glow, ns.UFRing.STRIP_ATLAS, false)
             hl.Glow:SetVertexColor(c[1], c[2], c[3], 1)
             hl.Glow:Show()
+            -- the plate's bronze border lit in the same colour (as the real one)
+            local lit = ns.UFRing.DispelPlate and ns.UFRing.DispelPlate(f, hl)
+            for _, tex in ipairs(lit or {}) do
+                tex:SetVertexColor(c[1], c[2], c[3], 1)
+                tex:Show()
+            end
         else
             if hl.Glow then hl.Glow:Hide() end
+            if hl.FlareUI_PlateDispel then hl.FlareUI_PlateDispel:Hide() end
             hl:SetAllPoints(f.Border)
             hl:SetFrameLevel(f.Border:GetFrameLevel() + 1)
             hl:SetBackdrop(PF.EdgeBackdrop(f))
@@ -2319,6 +2423,8 @@ local function ApplyPreviewExtras(f, data)
         -- (11-16) the portrait's ring border too, and the fast pulse, as the real one
         local tint = ns.UFRing and ns.UFRing.DispelTint and ns.UFRing.DispelTint(f, hl)
         if tint then tint:SetVertexColor(c[1], c[2], c[3], 1); tint:Show() end
+        -- the whole sample pulses: the ring's tint is a child of it, so it beats along
+        PF.DispelSteady(hl.FlareUI_RingDispel)
         PF.DispelPulse(hl, f)
         hl:Show()
     end
@@ -2336,7 +2442,13 @@ ApplyPreview = function(f)
     f.powerShown = nil
     local st = TS(f)
     local class = data.class
-    f.Name:SetText(data.name)
+    -- (11-17, Malkkav) Full Player Names on: the sample's surname too, as ns.UnitDisplayName joins them
+    local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
+    if data.surname and not (uf and uf.fullNames == false) then
+        f.Name:SetText(data.name .. " " .. data.surname)
+    else
+        f.Name:SetText(data.name)
+    end
     if st.showLevel and data.level == -1 then
         f.Level:SetText("??")
         f.Level:SetTextColor(1, 0.1, 0.1)
@@ -2864,7 +2976,7 @@ local function BuildSettings()
               if ns.UnitFrames.RefreshPartyHide then ns.UnitFrames:RefreshPartyHide() end
           end,
           hidden = function() return not getP("showPlayer", showPlayerDefault)() end,
-          desc = L["Your player and pet frames hide while you're in a party, and come back solo and in a raid. Your frame in the party has the same right-click menu."] },
+          desc = L["Your player and pet frames hide while you're in a party, and come back solo and in a raid. Your frame in the party has the same right-click menu, and your pet's happiness."] },
     })
 
     -- Forever Style (classic look): the plate keeps Blizzard's proportions; Scale sizes it
@@ -3040,6 +3152,8 @@ local function BuildSettings()
           get = function() return ns.AuraSize(S(), false, D.auraSize) end, set = setS("buffSize") },
         { name = L["Debuff Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
           get = function() return ns.AuraSize(S(), true, D.auraSize) end, set = setS("debuffSize") },
+        PF.AmountSetting(getS, setS, false),
+        PF.AmountSetting(getS, setS, true),
         { name = L["Only My Buffs"], kind = LEM.SettingType.Checkbox, default = true,
           get = function() return getS("onlyMyBuffs")() ~= false end, set = setS("onlyMyBuffs"),
           desc = L["Only the buffs you cast (your heals over time, your blessings). Off: everyone's buffs."] },

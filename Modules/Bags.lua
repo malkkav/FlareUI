@@ -876,6 +876,18 @@ local function GetOverlay(button)
     ov.eye:SetSize(14, 14)
     ov.eye:SetPoint("TOPRIGHT", -1, -1)
     ov.eye:Hide()
+    -- (11-17) BoE Text, top left (the junk coin's corner: grey items don't bind), and Plain Empty Slots:
+    -- Blizzard's plain slot over an empty one, so the combined backpack's slots don't show each bag's
+    -- picture (drawn on FlareUI's overlay: Blizzard's buttons are left alone)
+    ov.boe = ov:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    ov.boe:SetPoint("TOPLEFT", 2, -2)
+    ov.boe:SetText(L["BoE"])
+    ov.boe:SetTextColor(0.12, 1, 0.12)
+    ov.boe:Hide()
+    ov.plain = ov:CreateTexture(nil, "BACKGROUND")
+    ov.plain:SetAllPoints()
+    ov.plain:SetAtlas("bags-item-slot64")
+    ov.plain:Hide()
     if button.fuiSample then button.fuiOverlay = ov else overlays[button] = ov end
     return ov
 end
@@ -989,12 +1001,17 @@ end
 
 -- what needs the item's data: its level, its appearance. (11-14, Malkkav) The Upgrade Arrow is gone:
 -- its stat guesses made bad suggestions; Pawn and other addons do it properly.
-local function ShowItemData(ov, db, bagID, slotID, link, quality)
+local BIND_ON_EQUIP = Enum.ItemBind and Enum.ItemBind.OnEquip or 2
+local function ShowItemData(ov, db, bagID, slotID, link, quality, isBound)
     if db.bagItemLevel then
         local level = ItemLevelOf(link)
         if level then ShowItemLevel(ov, level, quality) end
     end
     if db.bagUncollected and Uncollected(link) then ov.eye:Show() end
+    if db.bagBoE and not isBound then
+        local ok, bind = pcall(function() return select(14, C_Item.GetItemInfo(link)) end)
+        if ok and bind == BIND_ON_EQUIP then ov.boe:Show() end
+    end
 end
 
 local function UpdateButton(button, db)
@@ -1168,7 +1185,7 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
     ov.itemDataDb = db
     local pending = ov.itemLoad
     if pending and (button.fuiSample or not info or pending.link ~= info.hyperlink
-        or pending.bagID ~= bagID or pending.slotID ~= slotID or not (db.bagItemLevel or db.bagUncollected)
+        or pending.bagID ~= bagID or pending.slotID ~= slotID or not (db.bagItemLevel or db.bagUncollected or db.bagBoE)
         or GetTime() - pending.requestedAt >= 5) then
         ov.itemLoad = nil
     end
@@ -1177,6 +1194,8 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
     ov.junk:Hide()
     ov.ilvl:Hide()
     ov.eye:Hide()
+    ov.boe:Hide()
+    ov.plain:SetShown(db.bagPlainEmpty and not info or false)
 
     if not button.fuiSample then UpdateItemFilter(button, ov, bagID, slotID, info) end
     local quality = info and info.quality
@@ -1198,12 +1217,12 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
             ShowItemLevel(ov, info.sampleItemLevel, quality)
         end
         if db.bagUncollected and info.sampleUncollected then ov.eye:Show() end
-    elseif (db.bagItemLevel or db.bagUncollected) and info.hyperlink then
+    elseif (db.bagItemLevel or db.bagUncollected or db.bagBoE) and info.hyperlink then
         if db.bagItemLevel then StyleIconText(ov.ilvl, db.bagItemLevelFont) end
         local link = info.hyperlink
         if C_Item.IsItemDataCachedByID(info.itemID) then
             ov.itemLoad = nil
-            ShowItemData(ov, db, bagID, slotID, link, quality)
+            ShowItemData(ov, db, bagID, slotID, link, quality, info.isBound)
         elseif not ov.itemLoad then
             -- One request per slot generation: an older A -> B -> A callback cannot clear or
             -- paint a newer request, even when the hyperlink happens to match again.
@@ -1215,7 +1234,7 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
                 ov.itemLoad = nil
                 local now = C_Container.GetContainerItemInfo(bagID, slotID)
                 if now and now.hyperlink == link and button:GetBagID() == bagID and button:GetID() == slotID then
-                    ShowItemData(ov, ov.itemDataDb, bagID, slotID, link, now.quality)
+                    ShowItemData(ov, ov.itemDataDb, bagID, slotID, link, now.quality, now.isBound)
                 end
             end)
         end

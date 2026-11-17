@@ -959,6 +959,16 @@ local function BuildSettings()
               Refresh()
           end,
           desc = L["The raid's main tanks in a small frame of their own (set by the raid leader)."] },
+        -- (11-17, pkecerski) as the party frames' Hide Player Frame in a Party
+        { name = L["Hide Player Frame in a Raid"], kind = LEM.SettingType.Checkbox, default = false,
+          get = get("hidePlayerInRaid", false),
+          set = function(_, value)
+              local db = GetDb()
+              if not db then return end
+              db.hidePlayerInRaid = value
+              if ns.UnitFrames.RefreshPartyHide then ns.UnitFrames:RefreshPartyHide() end
+          end,
+          desc = L["Your player and pet frames hide while you're in a raid, and come back solo and in a party."] },
     })
 
     -- (11-16) the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)

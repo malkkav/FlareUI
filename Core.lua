@@ -617,6 +617,7 @@ local defaults = {
             -- frames
             raid = {
                 enabled = true,             -- (11-11) on with the Unit Frames module
+                hidePlayerInRaid = false,   -- Hide Player Frame in a Raid (11-17, pkecerski): player and pet frames hide in a raid
                 layouts = {}, tankLayouts = {},
                 sort = "GROUP",            -- GROUP | ROLE | CLASS
                 orientation = "ROWS",      -- ROWS (each group a row, stacked) | COLUMNS
@@ -901,6 +902,8 @@ local defaults = {
             bagJunkIcon = false,        -- the junk coin on grey items always, not only at a vendor
             bagItemLevel = false,       -- Item Level: weapons' and armour's level, bottom left (11-13)
             bagUncollected = false,     -- Uncollected Appearance: an eye, top right (11-13)
+            bagBoE = false,             -- BoE Text: "BoE" top left on items that bind when equipped, until bound (11-17)
+            bagPlainEmpty = false,      -- Plain Empty Slots: one plain look for every empty slot, not its bag's picture (11-17)
             hideErrors = false,
             hideZoneText = false,
             hidePortraitNumbers = false,
@@ -1584,6 +1587,21 @@ do
                               filter = onlyMine and "HELPFUL|PLAYER" or "HELPFUL",
                               candidates = AP.HideBuffs(st.hideBuffs, opts.editing,
                                   (onlyMine and processed) and { processedAuraType = processed.Buff } or nil) }
+        -- (11-17, Malkkav: Buff / Debuff Amount didn't change the party preview) Blizzard's raid rules keep
+        -- only a sample or two of Edit Mode's auras: there the buffs and debuffs take plain rules, so all
+        -- of Blizzard's samples show and the Amount can be seen. The dispel icons keep theirs.
+        if opts.editing then
+            for _, lane in ipairs(lanes) do
+                if lane.kind ~= "dispels" then
+                    lane.policy = "none"
+                    if lane.candidates and lane.candidates.processedAuraType then
+                        local plain = CopyTable(lane.candidates)
+                        plain.processedAuraType = nil
+                        lane.candidates = next(plain) and plain or nil
+                    end
+                end
+            end
+        end
         return AP.ApplyHidden(lanes, opts.place)
     end
 

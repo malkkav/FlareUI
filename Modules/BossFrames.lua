@@ -70,7 +70,8 @@ end
 -- auras to a row)
 local ICONS = { role = { shown = false }, leader = { shown = false }, readyCheck = { shown = false },
                 status = { shown = false }, raidIcon = {} }
-local FIXED = { dispelHighlight = "off", dispels = "OFF", auraMax = 5, auraPerRow = 5 }
+-- (amountTile: Buff / Debuff Amount apply, PartyFrames.lua PF.AmountTile)
+local FIXED = { dispelHighlight = "off", dispels = "OFF", auraMax = 5, auraPerRow = 5, amountTile = true }
 local view = setmetatable({}, { __index = function(_, key)
     local db = GetDb()
     if not db then return nil end
@@ -457,6 +458,8 @@ local function BuildSettings()
           get = function() return ns.AuraSize(GetDb(), false, D.auraSize) end, set = set("buffSize") },
         { name = L["Debuff Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
           get = function() return ns.AuraSize(GetDb(), true, D.auraSize) end, set = set("debuffSize") },
+        PF.AmountSetting(get, set, false),
+        PF.AmountSetting(get, set, true),
         { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = D.onlyMyDebuffs ~= false,
           get = function() return get("onlyMyDebuffs")() ~= false end, set = set("onlyMyDebuffs") },
     }, get, set))
@@ -592,7 +595,10 @@ function BF:Init()
         ApplyPosition(layoutName)
     end)
     local function ShowPreview()
-        if not InCombatLockdown() then LayoutHolder() end   -- the samples in all five places
+        -- (11-17, Malkkav: no sample buffs after a reload until a setting changed) the aura rows are built
+        -- again for Edit Mode: the fight's purge split filters by RAID_PLAYER_DISPELLABLE, and Blizzard's
+        -- sample list reads any "RAID" in a filter as raid auras only, so the buffs row had no samples
+        if not InCombatLockdown() then LayoutHolder(); Refresh() end   -- the samples in all five places
         ApplyVisibility()
         SetAuraPreview(true)
         for _, f in ipairs(tiles) do Tile.UpdateAll(f) end

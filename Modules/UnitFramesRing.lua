@@ -1012,7 +1012,8 @@ function Ring.Layout(f)
     ring.Tint:ClearAllPoints()
     for i = 1, ring.Art:GetNumPoints() do ring.Tint:SetPoint(ring.Art:GetPoint(i)) end
     ring.TintMask:SetSize(g.D * TINT_RIM_SHARE, g.D * TINT_RIM_SHARE)
-    for holder in pairs(ring.DispelTints or {}) do Ring.SyncDispelTint(ring, holder) end
+    -- (pcall: a copy inside Blizzard's aura button is locked to addon code while a secret aura is in it)
+    for holder in pairs(ring.DispelTints or {}) do pcall(Ring.SyncDispelTint, ring, holder) end
     if ring.Hit then
         SetHit(ring.Hit, true, f, g, 0, 0, g.D, g.D)
     end
@@ -1229,6 +1230,7 @@ function Ring.LayoutPlate(f)
             end
         end
     end
+    for holder in pairs(plate.dispelCopies or {}) do Ring.SyncPlateDispel(plate, holder) end
     local n = PLATE.name
     PlaceOnPlate(plate.NameBox, f, s, flip, n[1], n[2], n[3], n[4])
     -- the glow's atlas has clear edges round its colour: they hang outside the name box, as on
@@ -1262,6 +1264,53 @@ function Ring.LayoutPlate(f)
     Ring.UpdatePlate(f)
 end
 
+-- (11-17, Malkkav) the dispel highlight tints the plate's bronze too: a grey copy of the plate's art
+-- over it in the debuff type's colour, drawn as the portrait ring's dispel tint (DispelTint) so both
+-- read as one colour and beat as one (added light washed blue out to white on the bronze). Its own
+-- copy: Blizzard shows and tints these for a dispellable debuff. At the plate's own level, under the
+-- bars (the frame's children, one level up). parent: the highlight's frame, which pulses. Each piece
+-- sits on its plate piece; LayoutPlate keeps their art in step.
+function Ring.DispelPlate(f, parent)
+    local plate = f.PlateFrame
+    local holder = parent and parent.FlareUI_PlateDispel
+    if not (plate and plate.pieces and parent) then
+        if holder then holder:Hide() end
+        return nil
+    end
+    if not holder then
+        holder = CreateFrame("Frame", nil, parent)
+        holder.tex = {}
+        for i, piece in ipairs(plate.pieces) do
+            local tex = holder:CreateTexture(nil, "OVERLAY")
+            tex:SetAllPoints(piece)
+            tex:SetBlendMode("BLEND")
+            tex:SetDesaturated(true)
+            holder.tex[i] = tex
+        end
+        parent.FlareUI_PlateDispel = holder
+        plate.dispelCopies = plate.dispelCopies or setmetatable({}, { __mode = "k" })
+        plate.dispelCopies[holder] = true
+    end
+    holder:SetAllPoints(plate)
+    holder:SetFrameLevel(plate:GetFrameLevel())
+    holder:Show()
+    Ring.SyncPlateDispel(plate, holder)
+    return holder.tex
+end
+-- the copy takes each piece's art and cut (pcall: a copy inside Blizzard's aura button is locked to
+-- addon code while a secret aura is in it)
+function Ring.SyncPlateDispel(plate, holder)
+    for i, tex in ipairs(holder.tex) do
+        local piece = plate.pieces[i]
+        if piece then
+            pcall(function()
+                tex:SetTexture(piece:GetTexture())
+                tex:SetTexCoord(piece:GetTexCoord())
+            end)
+        end
+    end
+end
+
 -- Forever Style's Power Height (art pixels, 0 = Off) for this frame
 function Ring.PlatePower(f)
     local udb = Db(f)
@@ -1279,13 +1328,23 @@ function Ring.PlatePowerText(f)
     return Ring.PlatePower(f) >= 6
 end
 
--- the name box's glow in the unit's reaction colour (none on the player's)
+-- the name box's glow in the unit's reaction colour. (11-17, Malkkav / avnerstitch) Another player
+-- character's in their class colour while the frame's Class Colours is on. None on your own frame
+-- (Malkkav: left out) and the pet's.
 function Ring.UpdatePlate(f)
     local plate = f.PlateFrame
     if not (plate and plate:IsShown()) then return end
     local unit = f.fuiUnit
     if unit == "player" or unit == "pet" or f.fuiSample or not UnitExists(unit) then
         plate.Strip:Hide()
+        return
+    end
+    local isPlayer = UnitIsPlayer(unit)
+    local K = ns.UnitFrames and ns.UnitFrames.Kit
+    if canaccessvalue(isPlayer) and isPlayer and K and K.GetHealthColor and ns.ClassColorsOn(Db(f)) then
+        local r, g, b = K.GetHealthColor(unit, true)
+        plate.Strip:SetVertexColor(r, g, b, 1)
+        plate.Strip:Show()
         return
     end
     local r, g, b = UnitSelectionColor(unit)

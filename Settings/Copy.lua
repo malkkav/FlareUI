@@ -150,7 +150,7 @@ ns.Copy = {
         ["ab.buttonScale"] = {
             desc = L["The size of every action button. 111% is FlareUI's default."],
             label = L["Button Scale"],
-            section = "ab.buttonAppearance",
+            section = "ab.barAppearance",
             tags = { "bar scale", "action bar size", "button size" },
             tip = L["Edit Mode's Icon Size still changes each bar's size on top of this."],
         },
@@ -553,6 +553,12 @@ ns.Copy = {
             tags = { "auto sort", "clean up bags", "tidy", "sort bags" },
             tip = L["Not in combat, and not at a vendor, mailbox, bank, auction house or in a trade."],
         },
+        ["bl.bagBoE"] = {
+            desc = L["Items that bind when equipped show BoE in the top left corner, until they're bound."],
+            label = L["BoE Text"],
+            section = "bl.itemSlots",
+            tags = { "bind on equip", "boe", "soulbound" },
+        },
         ["bl.bagButtons"] = {
             desc = L["Your bag slots down the side of the combined backpack:\n* Drag bags in and out\n* Point at one to highlight its items"],
             label = L["Integrated Bag Buttons"],
@@ -609,6 +615,12 @@ ns.Copy = {
             label = L["Keyring in Backpack"],
             section = "bl.bagWindow",
             tip = L["Needs Combined Bags on in Blizzard's options (Controls). Shows once you've had a key."],
+        },
+        ["bl.bagPlainEmpty"] = {
+            desc = L["Every empty slot in the combined backpack looks the same, instead of showing its bag's picture."],
+            label = L["Plain Empty Slots"],
+            section = "bl.itemSlots",
+            tags = { "empty slots", "bag icon", "uniform slots" },
         },
         ["bl.bagReagent"] = {
             desc = L["Your crafting material bag sits at the bottom of the combined backpack instead of in its own window."],
@@ -1302,6 +1314,13 @@ ns.Copy = {
             section = "language.fonts",
             tags = { "nameplate font", "plate names", "unit names", "names over heads" },
             tip = L["The names over characters change after a full restart of the game, not a /reload."],
+        },
+        ["language.escButton"] = {
+            desc = L["A FlareUI button in the game menu (Esc), right under Shop. It opens FlareUI's settings."],
+            label = L["FlareUI Button"],
+            section = "language.escMenu",
+            tags = { "esc menu", "game menu", "escape", "menu button", "open settings" },
+            tip = L["For every character."],
         },
         ["mm.bagAddons"] = {
             desc = L["A drawer for addons' minimap buttons: click the day/night badge to open it. Tick the addons whose buttons go in it; the others stay on the minimap. None turns the drawer off."],
@@ -2560,6 +2579,7 @@ ns.Copy = {
         ["dm.threat"] = L["Threat Meter"],
         ["dm.threatBars"] = L["Threat Bars"],
         ["dm.tweaks"] = L["Tweaks"],
+        ["language.escMenu"] = L["ESC Menu"],
         ["language.fonts"] = L["Global Font"],
         ["mm.addonButtons"] = L["Addon Buttons"],
         ["mm.fonts"] = L["Minimap"],

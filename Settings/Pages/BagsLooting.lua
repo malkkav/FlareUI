@@ -83,6 +83,9 @@ S:Row{ key = "bl.bagItemLevel", half = true, tab = "bags", path = "tweaks.bagIte
 S:Row{ key = "bl.bagUncollected", half = true, tab = "bags", path = "tweaks.bagUncollected", apply = RefreshBags, disabled = BagAddon }
 -- (Tweaks.lua's, so no bag addon greys it)
 S:Row{ key = "bl.petFood", half = true, tab = "bags", path = "tweaks.petFood", apply = Refresh }
+-- (11-17, artikod1 and luuksen's ideas) the last pair of Item Slots
+S:Row{ key = "bl.bagBoE", half = true, tab = "bags", path = "tweaks.bagBoE", apply = RefreshBags, disabled = BagAddon }
+S:Row{ key = "bl.bagPlainEmpty", half = true, tab = "bags", path = "tweaks.bagPlainEmpty", apply = RefreshBags, disabled = BagAddon }
 
 -- BAGS: tools ------------------------------------
 -- Category Filters (11-15, issue #26): Off, Drawer (a filter button and drawer by the search box) or

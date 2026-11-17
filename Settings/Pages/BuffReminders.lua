@@ -92,7 +92,8 @@ ListRow("br.hidden", "HiddenChoices", "HiddenTokens", "HiddenValue", "SetHidden"
 
 -- WHEN AND WHERE ------------------------------
 -- Timing: before it ends, and apart for dungeons and raids ("same": the main one)
-local BEFORE = { { 0, L["Only When Missing"] }, { 1, "1 min" }, { 2, "2 min" }, { 3, "3 min" }, { 5, "5 min" }, { 10, "10 min" } }
+-- (11-17, Venu: "15 seconds before Battle Shout runs out") seconds too, as fractions of a minute
+local BEFORE = { { 0, L["Only When Missing"] }, { 0.25, "15 s" }, { 0.5, "30 s" }, { 0.75, "45 s" }, { 1, "1 min" }, { 2, "2 min" }, { 3, "3 min" }, { 5, "5 min" }, { 10, "10 min" } }
 Row{ key = "br.before", kind = "choice", tab = "when", path = "auras.reminder.before", choices = BEFORE }
 local function BeforeFor(key, path)
     local choices = { { "same", L["Same as Above"] } }

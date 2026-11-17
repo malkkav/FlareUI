@@ -75,6 +75,9 @@ local PREVIEW_ICONS = {
 }
 local PREVIEW_DEBUFF_TYPES = { "Magic", "Curse", "Disease", "Poison", "None" }
 local PREVIEW_TIMES = { "5m", "32s", "1h", "12s", "2m", "45m", "8s" }
+-- (11-17, Malkkav) the weapon enchant row under the buffs: a sharpening stone and a poison with charges
+AU.PREVIEW_ENCHANTS = { { icon = "INV_Stone_SharpeningStone_01", time = "28m" },
+                        { icon = "Ability_Poisons", time = "52m", count = "36" } }
 
 local KINDS = {
     buffs   = { label = L["FlareUI Buffs"],   isDebuff = false,
@@ -578,6 +581,41 @@ function UpdatePreview(kind)
             local col, row = (i - 1) % perRow, math_floor((i - 1) / perRow)
             sample:ClearAllPoints()
             sample:SetPoint(corner, holder, corner, col * stepX, row * stepY)
+            sample:Show()
+        elseif sample then
+            sample:Hide()
+        end
+    end
+    AU.PreviewEnchants(kind, holder, kdb, editing and look, count)
+end
+
+-- The weapon enchant row's samples, under the sample buffs, placed as AU.PlaceEnchants places the
+-- real ones (under the last row; under the first with Wrap: Up)
+function AU.PreviewEnchants(kind, holder, kdb, look, count)
+    holder.previewEnchants = holder.previewEnchants or {}
+    local list = (look and not KINDS[kind].isDebuff) and AU.PREVIEW_ENCHANTS or {}
+    local corner = StartCorner(kdb)
+    local size, spacing = kdb.size or 30, kdb.spacing or 6
+    local step = (size + spacing) * ((kdb.grow == "RIGHT") and 1 or -1)
+    local stepY = CellHeight(size) + spacing
+    local perRow = math_max(1, kdb.perRow or 12)
+    local y = (kdb.wrap == "UP") and -stepY or -math_ceil(count / perRow) * stepY
+    local now = GetTime()
+    for i = 1, math_max(#list, #holder.previewEnchants) do
+        local e, sample = list[i], holder.previewEnchants[i]
+        if e then
+            if not sample then
+                sample = CreateFrame("Frame", nil, holder)
+                holder.previewEnchants[i] = sample
+            end
+            StyleButton(sample, look)
+            sample.FlareUI_Icon:SetTexture("Interface\\Icons\\" .. e.icon)
+            sample.FlareUI_Border:SetVertexColor(look.colors.None:GetRGBA())
+            sample.FlareUI_Count:SetText(e.count or "")
+            sample.FlareUI_Duration:SetText(e.time)
+            sample.FlareUI_Cooldown:SetCooldown(now - 600 * i, 3600)
+            sample:ClearAllPoints()
+            sample:SetPoint(corner, holder, corner, (i - 1) * step, y)
             sample:Show()
         elseif sample then
             sample:Hide()

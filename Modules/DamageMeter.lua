@@ -3930,3 +3930,21 @@ function DamageMeter.DrawSample(f, kind)
     f:Show()
     return width, height
 end
+
+-- (11-17, Malkkav) no sizing corner on the meter windows while Edit Mode is open (Blizzard fades it in
+-- on mouseover, which there reads as a stray tab): back after, except on a window docked as a tab
+do
+    local LEM = LibStub("FlareEditMode")
+    local function Corners(editing)
+        local db = GetDb()
+        if not (db and db.enabled) then return end
+        for _, w in ipairs(GetSessionWindows()) do
+            local resize = w.GetResizeButton and w:GetResizeButton()
+            if resize then
+                if editing then resize:Hide() elseif not w.FlareUI_Docked then resize:Show() end
+            end
+        end
+    end
+    LEM:RegisterCallback("enter", function() Corners(true) end)
+    LEM:RegisterCallback("exit", function() Corners(false) end)
+end
