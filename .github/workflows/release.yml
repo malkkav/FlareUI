@@ -1,6 +1,12 @@
 # Packages FlareUI and uploads it to CurseForge, Wago and a GitHub release whenever a version tag
 # is pushed, e.g. "1.1". The packager reads .pkgmeta, names the zip, attaches CHANGELOG.md
 # and maps Interface 16001 to the WoW: Forever game version on both sites.
+#
+# Beta builds: a tag with "beta" in it (e.g. "6.11-beta1") uploads as Beta on CurseForge and Wago
+# and as a pre-release on GitHub; "alpha" works the same way. Players only get these if they set
+# FlareUI to Beta in the CurseForge or Wago app. Beta tags are not posted to the Discord changelog
+# forum. Flow: TOC "## Version: 6.11-beta1", CHANGELOG heading "# FlareUI 6.11-beta1", tag
+# 6.11-beta1. At release, rename both to "6.11", run newtags.js, tag 6.11.
 name: Package and release
 
 on:
@@ -28,10 +34,10 @@ jobs:
         uses: BigWigsMods/packager@v2
 
       # The tag's CHANGELOG.md section becomes a post in the Discord changelog forum
-      # (tools/discord-changelog.js). Skipped without the webhook secret; a Discord failure never
-      # marks the release as failed.
+      # (tools/discord-changelog.js). Skipped without the webhook secret and for beta/alpha tags; a
+      # Discord failure never marks the release as failed.
       - name: Post the changelog to Discord
-        if: ${{ env.DISCORD_CHANGELOG_WEBHOOK != '' }}
+        if: ${{ env.DISCORD_CHANGELOG_WEBHOOK != '' && !contains(github.ref_name, 'beta') && !contains(github.ref_name, 'alpha') }}
         continue-on-error: true
         run: node tools/discord-changelog.js "$GITHUB_REF_NAME"
         env:
