@@ -1,6 +1,33 @@
 # FlareUI changelog history
 
-Versions 6.8 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 6.8.1 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 6.8.1
+
+A quick follow-up to 6.8: the Damage Meter settings open again, party frames show the debuffs you can dispel, and paladins pick which aura the reminder casts.
+
+## New
+
+### Buff Reminders
+- Right-click the paladin aura reminder for **Aura to Cast**.
+  - **Last Used** (the default): a click casts the last aura you had up, such as Retribution or Concentration after you die.
+  - Or pick one aura to always cast: Devotion, Retribution, Concentration, a resistance aura or Sanctity.
+- Custom reminders: type a food's or potion's name while it's in your bags, and the reminder gets its icon and a click uses it.
+  - To track a food's buff, add the buff's name too, for example `item:4593, Well Fed`.
+
+### Translations
+- French: all the 6.8 text is translated. By Braincell1980.
+
+## Fixed
+
+### Damage Meter
+- The Damage Meter settings page opens again. 6.8 showed an error there.
+- A meter window on its own no longer gets its Threat tab back.
+
+### Party and Raid Frames
+- Debuffs you can dispel show in your **Debuffs** place again while **Dispel Icons** are on.
+  - Before, they only showed as the small type symbol in the middle of the bar.
+  - This affected every party style, the raid frames and the main tank frames.
 
 # FlareUI 6.8
 

@@ -1,3 +1,53 @@
+# FlareUI 6.11-beta1
+
+The first beta! Hide the auras you never want to see, pick how many buffs and debuffs each frame shows, and a pile of smaller things you asked for. This is a test build: please report anything odd in the beta thread on Discord.
+
+**Your unit frames may show fewer buffs and debuffs.** Each frame now shows a set number: 6 (8 in Addon Style; 4 on focus, party and boss frames; 3 on the pet). Wide frames used to show more. Raise **Buff Amount** and **Debuff Amount** in each frame's Edit Mode settings.
+
+## New
+
+### Buffs & Debuffs
+- **Hide Auras** tab: hide any aura on any frame.
+  - Pick one of your buffs or debuffs, or add one by its spell ID.
+  - Each hidden aura has a **Hide On** list: Buffs & Debuffs, Player, Pet, Target, Focus, Party, Raid, Boss.
+  - The game allows hiding buffs on you, your pet and your group, and debuffs on enemies. Debuffs on you or a friend only hide for a few spells, such as Sated.
+- Edit Mode: the Buffs sample shows the weapon enchant row too.
+
+### Unit Frames
+- **Buff Amount** and **Debuff Amount** (1 to 12), under Buff Size and Debuff Size in Edit Mode: how many show. They take as many rows as they need.
+  - On the unit frames, and on the party and boss frames when their auras sit above or below the frame.
+- Forever Style:
+  - **Power Height** in Edit Mode: moves the line between health and power. The lowest step hides the power bar.
+  - Power Text: **> Value** and **> Percent** put the number at the bar's right end, as on Blizzard's frame.
+  - Another player's name box takes their class colour while the frame's **Class Colours** is on.
+  - **Dispel Highlight**: the plate's border lights up in the debuff's colour, and pulses with the name box and the portrait.
+- **Hide Player Frame in a Raid** (off), in the raid frames' Edit Mode settings: your player and pet frames hide in a raid.
+- With **Hide Player Frame in a Party** on, your pet's happiness shows beside your own party frame.
+- Edit Mode: the party samples show surnames with **Full Player Names** on.
+
+### Bags & Looting
+- Item Slots: **BoE Text** (off): items that bind when equipped show BoE until bound.
+- Item Slots: **Plain Empty Slots** (off): every empty slot in the combined backpack looks the same.
+- Loot Rolls: the header matches the chat's and the meter's, with a thicker border and a darker background.
+
+### Other
+- **FlareUI Button** (off), in General › Interface › ESC Menu: a FlareUI button in the game menu, under Shop.
+- Buff Reminders: **Remind Before It Ends** also offers 15, 30 and 45 seconds.
+
+## Changed
+- Action Bars: **Status Colouring** never dims a button for the global cooldown, so wand shots no longer grey the whole bar.
+- Action Bars: a button on cooldown is now half grey, not fully grey, so its colour still shows. This is a test: tell us if you prefer the old look. Thanks to langee99 for the idea!
+- Action Bars: **Button Scale** is back in Bars Appearance.
+- Damage Meter: no sizing corner while Edit Mode is open.
+
+## Fixed
+- Action Bars: keybind text shows right after logging in, on every bar.
+- Quest Tracker: elite quests show their **+** again.
+- Unit Frames: **Bar Edge Glow** no longer shows on a full health bar.
+- Edit Mode: the boss frames' sample buffs show right after a reload.
+- Edit Mode: Buff Amount and Debuff Amount show in the party and boss samples.
+- Forever Style: the portrait ring no longer bends when Power Height changes.
+
 # FlareUI 6.10.1
 
 A quick fix for the error spam some of you hit after 6.10, mostly in Gnomeregan.
@@ -271,30 +321,3 @@ A round of fixes from your reports: chat tabs you can see in Gamepad mode, no mo
 ### Other
 - Flight Timer: a route timed for the first time reads **New Route** and counts up. It used to say "Learning".
 - Quest Tracker: "(Complete)" uses the game's own word in languages FlareUI isn't translated into yet.
-
-# FlareUI 6.8.1
-
-A quick follow-up to 6.8: the Damage Meter settings open again, party frames show the debuffs you can dispel, and paladins pick which aura the reminder casts.
-
-## New
-
-### Buff Reminders
-- Right-click the paladin aura reminder for **Aura to Cast**.
-  - **Last Used** (the default): a click casts the last aura you had up, such as Retribution or Concentration after you die.
-  - Or pick one aura to always cast: Devotion, Retribution, Concentration, a resistance aura or Sanctity.
-- Custom reminders: type a food's or potion's name while it's in your bags, and the reminder gets its icon and a click uses it.
-  - To track a food's buff, add the buff's name too, for example `item:4593, Well Fed`.
-
-### Translations
-- French: all the 6.8 text is translated. By Braincell1980.
-
-## Fixed
-
-### Damage Meter
-- The Damage Meter settings page opens again. 6.8 showed an error there.
-- A meter window on its own no longer gets its Threat tab back.
-
-### Party and Raid Frames
-- Debuffs you can dispel show in your **Debuffs** place again while **Dispel Icons** are on.
-  - Before, they only showed as the small type symbol in the middle of the bar.
-  - This affected every party style, the raid frames and the main tank frames.
