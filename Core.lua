@@ -451,10 +451,10 @@ local defaults = {
             keepStealthPage = false,    -- Keep Page 1 in Stealth: bar 1 holds page 1 (druids: Cat Form's) in Stealth / Prowl
             noStancePaging = false,     -- No Auto-Paging for Stances: warriors' bar 1 stays on its page
 
-            -- Status colouring (one row sets both)
+            -- Status colouring
             colors = {
                 enableRange = true,
-                unusable = { desaturate = true },
+                cooldownDimStrength = 1, -- Dim Strength: how much colour a button on cooldown loses (100%: fully grey, as before)
             },
 
             -- the FlareUI XP Bar (Modules/XPBar.lua), placed in Edit Mode; off leaves Blizzard's bars alone

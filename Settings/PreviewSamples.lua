@@ -587,7 +587,7 @@ function R.actions(c, spec)
         -- the second on cooldown (dimmed with Status Colouring), the third out of range, the fourth out of mana
         local cd = box.buttons[2]
         if cd.cooldown then cd.cooldown:SetCooldown(GetTime() - 4, 12) end
-        if range then cd.icon:SetDesaturated(true); cd.icon:SetVertexColor(0.5, 0.5, 0.5) end
+        if range then cd.icon:SetDesaturation(tonumber(Get('actionbars.colors.cooldownDimStrength')) or 1) end
         if range then
             box.buttons[3].icon:SetVertexColor(1, 0.25, 0.25)
             box.buttons[4].icon:SetVertexColor(0.35, 0.45, 1)

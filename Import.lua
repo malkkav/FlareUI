@@ -13,7 +13,7 @@ local _, ns = ...
 -- settings panel options, by path
 local PATHS = {}
 for _, path in ipairs({
-    "actionbars.colors.enableRange", "actionbars.colors.unusable.desaturate", "actionbars.enabled",
+    "actionbars.colors.enableRange", "actionbars.enabled",
     "actionbars.hideHotkeys", "actionbars.hideMacroText", "actionbars.procGlow", "actionbars.xpbar.enabled", "actionbars.xpbar.textMode",
     "actionbars.buttonArt", "actionbars.stopAutoAddSpells",
     "auras.enabled", "auras.style", "auras.timer",

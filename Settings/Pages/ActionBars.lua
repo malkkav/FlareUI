@@ -51,25 +51,32 @@ S:Row{ key = "ab.borderlessMenu", section = "ab.barAppearance", path = "actionba
 -- (11-16, Malkkav: Borderless Bag Bar merged in; a folded bar needs the frame gone anyway)
 S:Row{ key = "ab.collapsibleBags", section = "ab.barAppearance", path = "actionbars.collapsibleBags", apply = Refresh, half = true }
 
--- in pairs (half rows, 11-11 Malkkav): Show Button Art | Proc Glow, Status Colouring | Active Highlight
--- (Dim on Cooldown is part of Status Colouring since 11-16); then the text (Show Keybind Text | Show
--- Macro Text), the spells, paging
+-- in pairs (half rows, 11-11 Malkkav): Show Button Art | Proc Glow, Show Keybind Text | Show Macro Text,
+-- Active Highlight; then Button Status, the spells, paging
 S:Row{ key = "ab.buttonArt", section = "ab.buttonAppearance", path = "actionbars.buttonArt", apply = Refresh, half = true }
 S:Row{ key = "ab.procGlow", section = "ab.buttonAppearance", path = "actionbars.procGlow", half = true,
     apply = function() if ns.ProcGlow then ns.ProcGlow:Refresh() end end }
-S:Row{
-    key = "ab.statusColours", section = "ab.buttonAppearance", apply = Refresh, half = true,
-    get = function() return S:GetPath("actionbars.colors.enableRange") end,
-    set = function(on)
-        S:SetPath("actionbars.colors.enableRange", on)
-        S:SetPath("actionbars.colors.unusable.desaturate", on)
-    end,
-}
-S:Row{ key = "ab.activeHighlight", section = "ab.buttonAppearance", path = "actionbars.activeHighlight", apply = Refresh, half = true }
 -- Show Keybind Text / Show Macro Text (11-13, were Hide ...): on by default, over the saved hide values
-S:Row{ key = "ab.hideKeybinds", section = "ab.buttonAppearance",   -- (Button Text merged in, last two rows, 11-16 Malkkav)
+S:Row{ key = "ab.hideKeybinds", section = "ab.buttonAppearance",   -- (Button Text merged in, 11-16 Malkkav)
     path = "actionbars.hideHotkeys", invert = true, apply = Refresh, half = true }
 S:Row{ key = "ab.hideMacroText", section = "ab.buttonAppearance", path = "actionbars.hideMacroText", invert = true, apply = Refresh, half = true }
+S:Row{ key = "ab.activeHighlight", section = "ab.buttonAppearance", path = "actionbars.activeHighlight", apply = Refresh, half = true }
+-- BUTTON STATUS (11-16): Status Colouring | Dim Strength, a section of their own so the slider sits with
+-- its switch without an indent. Dim Strength: how much colour a button on cooldown loses, 0% full colour
+-- to 100% grey (the default: the full grey Status Colouring gave before). Greyed while Status Colouring
+-- is off; lead keeps the switch first (a slider ranks above a switch).
+S:Row{ key = "ab.statusColours", section = "ab.buttonStatus", path = "actionbars.colors.enableRange", apply = Refresh,
+    half = true, lead = true }
+local DESATS = {}
+for pct = 0, 100, 5 do DESATS[#DESATS + 1] = { pct / 100, pct .. "%" } end
+S:Row{ key = "ab.cooldownDimStrength", kind = "range", section = "ab.buttonStatus", choices = DESATS, apply = Refresh,
+    half = true,
+    disabled =function() return not S:GetPath("actionbars.colors.enableRange") end,
+    get = function()
+        local v = tonumber(S:GetPath("actionbars.colors.cooldownDimStrength")) or 1
+        return math.floor(v * 20 + 0.5) / 20
+    end,
+    set = function(v) S:SetPath("actionbars.colors.cooldownDimStrength", v) end }
 S:Row{ key = "ab.autoRanks", section = "ab.spellBehavior", path = "actionbars.autoRanks", half = true,
     apply = function() if ns.ActionBars.CatchUpRanks then ns.ActionBars:CatchUpRanks() end end }
 S:Row{ key = "ab.stopAutoAdd", section = "ab.spellBehavior", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }

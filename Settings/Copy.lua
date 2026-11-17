@@ -161,6 +161,13 @@ ns.Copy = {
             tags = { "bag bar", "collapse bags", "fold bags", "expand bags", "borderless bag bar", "bag bar border", "bag frame" },
             tip = L["Edit Mode's Orientation and Direction for the bag bar turn the arrow too."],
         },
+        ["ab.cooldownDimStrength"] = {
+            desc = L["How much colour a button loses while its spell is on cooldown. 0% keeps full colour, 100% turns it grey."],
+            label = L["Dim Strength"],
+            section = "ab.buttonStatus",
+            tags = { "dim on cooldown", "cooldown grey", "desaturate", "desaturation" },
+            tip = L["Needs Status Colouring on."],
+        },
         ["ab.fcmBar1"] = {
             desc = L["Turns this bar into part of a cooldown display:\n* Not clickable\n* Shows only by the Fake CM Visibility"],
             label = L["Action Bar 1"],
@@ -337,9 +344,9 @@ ns.Copy = {
             tip = L["Needs Buffs & Debuffs on. Size, layout and tracking stay in Blizzard's Cooldown Manager."],
         },
         ["ab.statusColours"] = {
-            desc = L["Buttons change colour when you can't use them:\n* Red: target out of range\n* Blue: not enough mana or energy\n* Grey: unusable right now\n* Dim: on cooldown"],
+            desc = L["Buttons change colour when you can't use them:\n* Red: target out of range\n* Blue: not enough mana or energy\n* Grey: unusable right now\n* Dim: on cooldown, controlled by Dim Strength"],
             label = L["Status Colouring"],
-            section = "ab.buttonAppearance",
+            section = "ab.buttonStatus",
             tags = { "dim on cooldown", "range colour", "out of range", "out of mana" },
             tip = L["The global cooldown doesn't dim them."],
         },
@@ -2485,6 +2492,7 @@ ns.Copy = {
     sections = {
         ["ab.barAppearance"] = L["Bars Appearance"],
         ["ab.buttonAppearance"] = L["Button Appearance"],
+        ["ab.buttonStatus"] = L["Button Status"],
         ["ab.experience"] = L["XP Bar"],
         ["ab.fakeCooldownManager"] = L["Fake Cooldown Manager (FCM)"],
         ["ab.fcmAbout"] = L["How Fake CM Works"],

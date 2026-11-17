@@ -948,7 +948,7 @@ end
 -- Post-hooks on UpdateUsable and ActionButton_UpdateRangeIndicator reuse the values Blizzard passed,
 -- so nothing is polled; a repeated colour writes nothing.
 --------------------------------------------------
--- range and mana also desaturate
+-- range, mana and unusable also desaturate
 local STATE_TINT = {
     normal   = { 1, 1, 1 },
     range    = { 1, 0.25, 0.25 },
@@ -972,6 +972,15 @@ local function CooldownDims(button)
     return DimsOnCooldown(GetBarConfig())
 end
 
+-- on cooldown the icon is muted, not greyed: part desaturated (Dim Strength, 0 to 1, 1 by default) so
+-- its colour still shows
+local function CooldownDesat(dim)
+    if not dim then return 0 end
+    local db = GetBarConfig()
+    local v = tonumber(db and db.colors and db.colors.cooldownDimStrength) or 1
+    return math.max(0, math.min(1, v))
+end
+
 local function ApplyStateColor(button, state)
     if button.FlareUI_ColorState == state then return end
     button.FlareUI_ColorState = state
@@ -988,12 +997,12 @@ local function ApplyStateColor(button, state)
     local tint = STATE_TINT[state] or STATE_TINT.normal
     icon:SetVertexColor(tint[1], tint[2], tint[3], 1)
 
-    local desaturate = state == "range" or state == "mana"
-    if state == "unusable" then
-        local db = GetBarConfig()
-        desaturate = db and db.colors and db.colors.unusable and db.colors.unusable.desaturate or false
+    -- range / mana / unusable grey the icon under their tint; otherwise a cooldown dims it by Dim Strength
+    if state == "range" or state == "mana" or state == "unusable" then
+        icon:SetDesaturated(true)
+    else
+        icon:SetDesaturation(CooldownDesat(CooldownDims(button)))
     end
-    icon:SetDesaturated(desaturate or CooldownDims(button))
 end
 
 local OnUpdateUsable
@@ -1006,7 +1015,7 @@ local function RefreshButtonColor(button)
             if button.FlareUI_ColorState ~= "locked" and button.icon then
                 local tint = BLIZZARD_TINT[button.FlareUI_Usable] or STATE_TINT.normal
                 button.icon:SetVertexColor(tint[1], tint[2], tint[3], 1)
-                button.icon:SetDesaturated(CooldownDims(button))
+                button.icon:SetDesaturation(CooldownDesat(CooldownDims(button)))
             end
             button.FlareUI_ColorState = nil
         end
@@ -1167,7 +1176,7 @@ local function PaintDim(button)
             RefreshButtonColor(button)
         end
     elseif (dim or changed) and not C_LevelLink.IsActionLocked(button.action) then
-        button.icon:SetDesaturated(dim)
+        button.icon:SetDesaturation(CooldownDesat(dim))
     end
 end
 
