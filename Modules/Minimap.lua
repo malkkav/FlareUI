@@ -502,11 +502,10 @@ local function RestyleCoordText(text)
 end
 
 local Bar = { cells = {}, lines = {}, picks = {}, BOTTOM = 8, SUN_ROOM = 30, shown = false }
-local BAR_SIDES = { "left", "center", "right" }
-local BAR_ICONS = { bags = "Interface\\Buttons\\Button-Backpack-Up", durability = "Interface\\Minimap\\Tracking\\Repair" }
-local COIN_COLORS = { "ffffd700", "ffc7c7cf", "ffeda55f" }
-local BAR_WARN, BAR_ALERT = "|cffff9933", "|cffff4040"
-local BAGS_WARN = 0.85
+Bar.SIDES = { "left", "center", "right" }
+Bar.ICONS = { bags = "Interface\\Buttons\\Button-Backpack-Up", durability = "Interface\\Minimap\\Tracking\\Repair" }
+Bar.COINS = { "ffffd700", "ffc7c7cf", "ffeda55f" }
+Bar.WARN, Bar.ALERT, Bar.BAGS_WARN = "|cffff9933", "|cffff4040", 0.85
 
 local function BarMoney()
     local cash = GetMoney() or 0
@@ -516,7 +515,7 @@ local function BarMoney()
     local parts = {}
     for i = 1, last do
         if coins[i] > 0 or #parts > 0 or i == last then
-            parts[#parts + 1] = ("|c%s%d%s|r"):format(COIN_COLORS[i], coins[i], symbols[i])
+            parts[#parts + 1] = ("|c%s%d%s|r"):format(Bar.COINS[i], coins[i], symbols[i])
         end
     end
     return table.concat(parts, " ")
@@ -532,8 +531,8 @@ local function BarBags()
             used = used + slots - (free or 0)
         end
     end
-    local color = (total > 0 and used >= total) and BAR_ALERT or (total > 0 and used / total >= BAGS_WARN) and BAR_WARN or ""
-    return ("|T%s:0:0:0:-1|t %s%d/%d%s"):format(BAR_ICONS.bags, color, used, total, color ~= "" and "|r" or "")
+    local color = (total > 0 and used >= total) and Bar.ALERT or (total > 0 and used / total >= Bar.BAGS_WARN) and Bar.WARN or ""
+    return ("|T%s:0:0:0:-1|t %s%d/%d%s"):format(Bar.ICONS.bags, color, used, total, color ~= "" and "|r" or "")
 end
 
 local function BarDurability()
@@ -547,9 +546,9 @@ local function BarDurability()
             if status > alert then alert = status end
         end
     end
-    if not low then return ("|T%s:0|t -"):format(BAR_ICONS.durability) end
-    local color = alert >= 2 and BAR_ALERT or alert == 1 and BAR_WARN or "|cffffffff"
-    return ("|T%s:0|t %s%d%%|r"):format(BAR_ICONS.durability, color, math.floor(low * 100 + 0.5))
+    if not low then return ("|T%s:0|t -"):format(Bar.ICONS.durability) end
+    local color = alert >= 2 and Bar.ALERT or alert == 1 and Bar.WARN or "|cffffffff"
+    return ("|T%s:0|t %s%d%%|r"):format(Bar.ICONS.durability, color, math.floor(low * 100 + 0.5))
 end
 
 local function BarCoords()
@@ -577,7 +576,7 @@ function Bar.Lift()
 end
 
 function Bar.Fill(timedOnly)
-    for i, side in ipairs(BAR_SIDES) do
+    for i, side in ipairs(Bar.SIDES) do
         local source = Bar.sources[Bar.picks[side]]
         if not source then
             Bar.cells[i]:SetText("")
@@ -593,7 +592,7 @@ local function CreateBar()
     f.Plate = f:CreateTexture(nil, "BACKGROUND")
     Plate(f.Plate, f)
     local c = NORMAL_FONT_COLOR
-    for i = 1, #BAR_SIDES do
+    for i = 1, #Bar.SIDES do
         local fs = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         fs:SetWordWrap(false)
         fs:SetTextColor(c.r, c.g, c.b)
@@ -632,7 +631,7 @@ function Bar.Place()
     f:SetPoint("BOTTOMLEFT", MM.Frame, "BOTTOMLEFT", left + shift, Bar.BOTTOM)
     f:SetPoint("BOTTOMRIGHT", MM.Frame, "BOTTOMRIGHT", -side + shift, Bar.BOTTOM)
     Raise(f)
-    local cell = (MAP_SIZE - left - side) / #BAR_SIDES
+    local cell = (MAP_SIZE - left - side) / #Bar.SIDES
     for i, fs in ipairs(Bar.cells) do
         fs:ClearAllPoints()
         fs:SetPoint("CENTER", f, "LEFT", cell * (i - 0.5), 0)
@@ -649,7 +648,7 @@ function Bar.Update()
     local db = GetDb()
     local picks = db and db.infoBar or {}
     local shown, every = false, nil
-    for _, side in ipairs(BAR_SIDES) do
+    for _, side in ipairs(Bar.SIDES) do
         local source = squareStyle and MM.Frame and picks.enabled and Bar.sources[picks[side]]
         Bar.picks[side] = source and picks[side] or nil
         if source then
@@ -664,7 +663,7 @@ function Bar.Update()
         local f = Bar.frame
         f:UnregisterAllEvents()
         f:RegisterEvent("PLAYER_ENTERING_WORLD")
-        for _, side in ipairs(BAR_SIDES) do
+        for _, side in ipairs(Bar.SIDES) do
             for _, event in ipairs(Bar.sources[Bar.picks[side]] and Bar.sources[Bar.picks[side]].events or {}) do
                 f:RegisterEvent(event)
             end
@@ -1961,7 +1960,7 @@ function MM:Init()
             else
                 for _, key in ipairs(had) do
                     local shown = bar.left == key or bar.center == key or bar.right == key
-                    for _, side in ipairs(BAR_SIDES) do
+                    for _, side in ipairs(Bar.SIDES) do
                         if not shown and (bar[side] or "none") == "none" then bar[side] = key; shown = true end
                     end
                 end
