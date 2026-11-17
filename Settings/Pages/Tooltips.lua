@@ -100,6 +100,7 @@ Tweak{ key = "tt.classNames", apply = Refresh,
     get = function() return S:GetPath("tooltips.nameColor") == "class" end,
     set = function(on) S:SetPath("tooltips.nameColor", on and "class" or "none") end }
 Tweak{ key = "tt.showGuild", path = "tooltips.showGuild", apply = Refresh }
+Tweak{ key = "tt.showPvP", path = "tooltips.showPvP", apply = Refresh }
 Tweak{ key = "tt.showTarget", path = "tooltips.showTarget", apply = Refresh }
 Tweak{ key = "tt.showThreat", path = "tooltips.showThreat" }
 Tweak{ key = "tt.hideFaction", path = "tooltips.hideFaction", apply = Refresh }

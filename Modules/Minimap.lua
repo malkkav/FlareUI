@@ -124,7 +124,8 @@ function MM:ApplyFonts()
         ApplyFont(coords.CoordText, db.infoFont)
         coords:SetHeight((db.infoFont and db.infoFont.size or 11) * (ns.TEXT_SCALE or 1) + 2)
     end
-    for fontString in pairs(MM.infoTexts) do ApplyFont(fontString, db.infoFont) end
+    -- (11-17, Malkkav) the Info Bar has its own font now (barFont: Info Text's look, shadow on)
+    for fontString in pairs(MM.infoTexts) do ApplyFont(fontString, db.barFont or db.infoFont) end
 end
 -- the Info Bar's cells, made when first shown (CreateBar)
 MM.infoTexts = {}
@@ -511,7 +512,8 @@ local function BarMoney()
     local cash = GetMoney() or 0
     local coins = { math.floor(cash / 10000), math.floor(cash / 100) % 100, cash % 100 }
     local symbols = { _G.GOLD_AMOUNT_SYMBOL or "g", _G.SILVER_AMOUNT_SYMBOL or "s", _G.COPPER_AMOUNT_SYMBOL or "c" }
-    local last = coins[1] >= 1000 and 1 or coins[1] >= 100 and 2 or 3
+    -- (11-17, Malkkav) copper only below 1 gold (it was below 100); silver dropped from 1000 gold
+    local last = coins[1] >= 1000 and 1 or coins[1] >= 1 and 2 or 3
     local parts = {}
     for i = 1, last do
         if coins[i] > 0 or #parts > 0 or i == last then
@@ -566,7 +568,8 @@ Bar.sources = {
     fps        = { text = function() return ("%.0f fps"):format(GetFramerate()) end, every = 1 },
     latency    = { text = function()
         local _, _, home, world = GetNetStats()
-        return ("%d / %d ms"):format(home or 0, world or 0)
+        -- (11-17, Malkkav) just the numbers, home / world: "ms" didn't fit a cell
+        return ("%d / %d"):format(home or 0, world or 0)
     end, every = 1 },
     coords     = { text = BarCoords, every = 0.2 },
 }
@@ -589,17 +592,24 @@ function Bar.Fill(timedOnly)
 end
 
 local function CreateBar()
-    local f = CreateFrame("Frame", nil, MM.Frame)
+    -- (11-17, Malkkav) the round map has no frame of FlareUI's: the bar hangs on Blizzard's cluster
+    local f = CreateFrame("Frame", nil, MM.Frame or Cluster)
     f:SetHeight(HEADER_HEIGHT)
-    f.Plate = f:CreateTexture(nil, "BACKGROUND")
-    Plate(f.Plate, f)
+    -- (11-17, Malkkav) a plate only under the cells in use: one per run of neighbouring cells (all three
+    -- used: one plate over the whole bar, as before). Bar.Place sizes them.
+    -- (11-17, Malkkav) the zone plate's own look, as the header (a darker ground was tried and taken back)
+    f.Plates = {}
+    for i = 1, #Bar.SIDES do
+        f.Plates[i] = f:CreateTexture(nil, "BACKGROUND")
+        Plate(f.Plates[i], f)
+    end
     local c = NORMAL_FONT_COLOR
     for i = 1, #Bar.SIDES do
         local fs = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         fs:SetWordWrap(false)
         fs:SetTextColor(c.r, c.g, c.b)
         local db = GetDb()
-        if db and db.infoFont then ApplyFont(fs, db.infoFont) end
+        if db and (db.barFont or db.infoFont) then ApplyFont(fs, db.barFont or db.infoFont) end
         MM.infoTexts[fs] = true
         Bar.cells[i] = fs
         if i > 1 then
@@ -623,27 +633,74 @@ function Bar.Tick()
     end
 end
 
+-- (11-17, Malkkav) Round style: the Center cell alone, inside the circle at its bottom, the size of a
+-- square map's cell (its bar's height; its width with the sundial: (MAP_SIZE - SUN_ROOM - HEADER_SIDE) / 3),
+-- raised clear of the circle's curve. The frame is three cells wide so the Center cell lands in the middle.
+Bar.ROUND_UP = 14
+function Bar.PlaceRound(f)
+    Bar.ROUND_CELL = Bar.ROUND_CELL or math.floor((MAP_SIZE - Bar.SUN_ROOM - HEADER_SIDE) / #Bar.SIDES)
+    f:SetHeight(HEADER_HEIGHT)
+    local width = Bar.ROUND_CELL * #Bar.SIDES
+    f:ClearAllPoints()
+    f:SetWidth(width)
+    f:SetPoint("BOTTOM", MinimapFrame, "BOTTOM", 0, Bar.ROUND_UP)
+    return width
+end
+
 function Bar.Place()
     local f = Bar.frame
     local style = HeaderStyle()
     local side, shift = style.barSide or style.side or HEADER_SIDE, style.shift or 0
     local sun = Cluster.DielFrame
-    local left = (sun and sun:IsShown()) and Bar.SUN_ROOM or side
-    f:ClearAllPoints()
-    f:SetPoint("BOTTOMLEFT", MM.Frame, "BOTTOMLEFT", left + shift, Bar.BOTTOM)
-    f:SetPoint("BOTTOMRIGHT", MM.Frame, "BOTTOMRIGHT", -side + shift, Bar.BOTTOM)
+    -- (11-17, Malkkav) the room for the sundial only while it shows: the Sundial switch (Map Tools) hides
+    -- it by its look, so the frame still counts as shown
+    local bag = ns.MinimapBag
+    local sunShown = sun and sun:IsShown() and not (bag and bag.SundialShown and not bag.SundialShown())
+    local left = sunShown and Bar.SUN_ROOM or side
+    local inner
+    if squareStyle then
+        f:ClearAllPoints()
+        f:SetPoint("BOTTOMLEFT", MM.Frame, "BOTTOMLEFT", left + shift, Bar.BOTTOM)
+        f:SetPoint("BOTTOMRIGHT", MM.Frame, "BOTTOMRIGHT", -side + shift, Bar.BOTTOM)
+        inner = MAP_SIZE - left - side
+    else
+        inner = Bar.PlaceRound(f)
+    end
     Raise(f)
-    local cell = (MAP_SIZE - left - side) / #Bar.SIDES
+    local cell = inner / #Bar.SIDES
     for i, fs in ipairs(Bar.cells) do
         fs:ClearAllPoints()
         fs:SetPoint("CENTER", f, "LEFT", cell * (i - 0.5), 0)
         fs:SetWidth(cell - 4)
     end
+    -- a divider only between two cells in use (they share a plate). Show Box off (minimap.infoBarBox,
+    -- 11-17 Malkkav): no plates or dividers, the text alone
+    local used = {}
+    for i, sideName in ipairs(Bar.SIDES) do used[i] = Bar.picks[sideName] ~= nil end
+    local db = GetDb()
+    local box = not (db and db.infoBarBox == false)
     for i, line in ipairs(Bar.lines) do
         line:ClearAllPoints()
-        line:SetSize(1, HEADER_HEIGHT - 8)
+        line:SetSize(1, f:GetHeight() - 8)
         line:SetPoint("CENTER", f, "LEFT", cell * i, 0)
+        line:SetShown(box and used[i] and used[i + 1] or false)
     end
+    -- the plates: one per run of cells in use, from its first cell's left edge to its last one's right
+    local n, i = 0, 1
+    while i <= #Bar.SIDES do
+        if box and used[i] then
+            local first = i
+            while i < #Bar.SIDES and used[i + 1] do i = i + 1 end
+            n = n + 1
+            local plate = f.Plates[n]
+            plate:ClearAllPoints()
+            plate:SetPoint("TOPLEFT", f, "TOPLEFT", cell * (first - 1), 0)
+            plate:SetPoint("BOTTOMRIGHT", f, "BOTTOMLEFT", cell * i, 0)
+            plate:Show()
+        end
+        i = i + 1
+    end
+    for k = n + 1, #f.Plates do f.Plates[k]:Hide() end
 end
 
 function Bar.Update()
@@ -651,7 +708,8 @@ function Bar.Update()
     local picks = db and db.infoBar or {}
     local shown, every = false, nil
     for _, side in ipairs(Bar.SIDES) do
-        local source = squareStyle and MM.Frame and Bar.sources[picks[side]]
+        -- (the round map: the Center cell only)
+        local source = (MM.Frame or (not squareStyle and side == "center")) and Bar.sources[picks[side]]
         Bar.picks[side] = source and picks[side] or nil
         if source then
             shown = true
@@ -839,6 +897,7 @@ function MM:UpdateLayout()
     -- (the minimap and its cluster are not protected on Forever: this runs in a fight too)
     if not squareStyle then
         StyleCoords()
+        Bar.Update()   -- (11-17) the Info Bar under the round map
         return
     end
     -- a gathering addon's secure button on the map (Gathercraft) makes it protected: after the fight
@@ -932,33 +991,23 @@ local function ShowCoords(shown)
     if coords then coords:SetAlpha(shown and 1 or 0) end
 end
 
--- Coordinates (11-11): Off, Always or On Mouseover, one with Blizzard's own option (the
--- minimapShowPlayerCoords CVar): off here turns it off there, and off there reads as Off here.
--- Up to 11-11 a switch (coordsOnHover): off was Always.
-local function CoordsCVarOn()
-    local value = C_CVar and C_CVar.GetCVar and C_CVar.GetCVar("minimapShowPlayerCoords")
-    return value ~= "0"
-end
-function MM.CoordsMode()
+-- (11-17, Malkkav) the Coordinates option is gone: the map's own coordinates text stays hidden, and
+-- coordinates are an Info Bar cell. Blizzard's own option (minimapShowPlayerCoords) is left alone.
+
+-- Info Bar On Mouseover (11-17, Malkkav; minimap.infoBarHover, off): the bar shows only while you
+-- point at the map, as the coordinates set to On Mouseover
+function MM.BarHover()
     local db = GetDb()
-    if not CoordsCVarOn() then return "off" end
-    local mode = db and db.coords
-    if mode ~= "always" and mode ~= "hover" then mode = "hover" end
-    return mode
-end
-function MM.SetCoordsMode(mode)
-    local db = GetDb()
-    if not db then return end
-    db.coords = mode
-    if C_CVar and C_CVar.SetCVar then pcall(C_CVar.SetCVar, "minimapShowPlayerCoords", mode == "off" and "0" or "1") end
+    return db and db.infoBarHover == true and Bar.shown or false
 end
 
--- what pointing at the map shows: the coordinates set to On Mouseover
+-- what pointing at the map shows: the Info Bar on mouseover (the coordinates text: never)
 local function HoverWanted()
-    return GetDb() and MM.CoordsMode() == "hover" or false
+    return GetDb() and MM.BarHover() or false
 end
 local function ShowHovered(over)
-    ShowCoords(MM.CoordsMode() ~= "hover" or over)
+    ShowCoords(false)
+    if Bar.frame then Bar.frame:SetAlpha((not MM.BarHover() or over) and 1 or 0) end
 end
 
 local function UpdateCoordsHover()
@@ -1224,7 +1273,35 @@ end
 Scan.OnAway = function() if not Scan.hidden then HideMapDirect() end end
 -- A scan over: the wanted mask goes back on, whatever the scan put back (Lueur restores the last one
 -- it saw set, which can be stale)
-Scan.OnEnd = function() SetMask() end
+-- (11-17, Malkkav) The game draws the blips (player arrow, quest marks, party dots, gathering nodes) at
+-- full strength whatever the map's alpha. While the map is faded at all they are scaled to nothing
+-- (Minimap:SetIconScale, as the node scanners do; nothing of Blizzard's sets it, so 1 is its own size),
+-- and full size again once it shows fully. Through the frame's own method, and again after a scan (the
+-- scanners put their own scale back at the end).
+-- (11-17) 0, so nothing is left: at 0.001 the player arrow still drew a one-pixel dot in the middle. If the
+-- client refuses 0, the smallest size it takes.
+MM.ICONS_FADED = { 0, 0.001 }
+local function SetIcons()
+    local meta = getmetatable(MinimapFrame)
+    local set = meta and meta.__index and meta.__index.SetIconScale or MinimapFrame.SetIconScale
+    if not set then return end
+    if not MM.iconsFaded then pcall(set, MinimapFrame, 1) return end
+    for _, scale in ipairs(MM.ICONS_FADED) do
+        if pcall(set, MinimapFrame, scale) then return end
+    end
+end
+function MM:SetIconsFaded(faded)
+    if not self.initialized then return end
+    faded = faded and true or false
+    if (self.iconsFaded or false) == faded then return end
+    self.iconsFaded = faded
+    if Scan.Busy() then Scan.Later("icons", SetIcons) else SetIcons() end
+end
+
+Scan.OnEnd = function()
+    SetMask()
+    if MM.iconsFaded then SetIcons() end
+end
 
 local function KeepMask(_, texture)
     if texture ~= MASKS.EMPTY then Scan.hidden = false end
@@ -1833,6 +1910,8 @@ function MM:Refresh()
     self:ApplyFonts()
     UpdateCoordsHover()
     if ns.MinimapEye then ns.MinimapEye.Place() end
+    if ns.MinimapVehicle then ns.MinimapVehicle.Place() end
+    if ns.MinimapDurability then ns.MinimapDurability.Place() end
 end
 
 -- The style in use until the next reload (minimap.style is latched at startup)
@@ -1979,9 +2058,16 @@ function MM:Init()
     else
         -- Rotation can change the native frame's width.
         Cluster.MinimapContainer:HookScript("OnSizeChanged", function() self:UpdateTrackerScale() end)
+        -- (11-17, stiles' report) the quest, task and dig-site areas' edge arcs drew past the round map's
+        -- edge (at its square frame's): off, as on the square map. The areas themselves still show.
+        for _, method in ipairs({ "SetQuestBlobRingScalar", "SetTaskBlobRingScalar", "SetArchBlobRingScalar" }) do
+            if MinimapFrame[method] then pcall(MinimapFrame[method], MinimapFrame, 0) end
+        end
     end
     KeepSunPlaced()   -- both styles
     if ns.MinimapEye then ns.MinimapEye.Init() end   -- Group Finder Icon, above the badge (MinimapEye.lua)
+    if ns.MinimapVehicle then ns.MinimapVehicle.Init() end   -- Vehicle Exit Icon, at the bottom (MinimapVehicle.lua)
+    if ns.MinimapDurability then ns.MinimapDurability.Init() end   -- Durability Icon, above them (MinimapDurability.lua)
     AddEditModeSettings()
     Scan.Watch()
     WatchMask()   -- the round style too: a faded-out map keeps its empty mask
@@ -2004,6 +2090,7 @@ function MM:Init()
     C_Timer.After(0, function() self:Refresh() end)
     -- last: it reads other addons' buttons, and the map doesn't depend on it
     local bag = ns.MinimapBag
+    if bag and bag.ApplyStyle then bag.ApplyStyle() end   -- Drawer Style Disabled hides the badge (11-17)
     if bag then bag:Init() end
     local drawer = _G.AddonCompartmentFrame
     if drawer and bag and bag.initialized then
@@ -2263,12 +2350,13 @@ do
             badge:SetScale(1)
             badge:SetPoint("CENTER", f.Round.Box, "CENTER", SUN_ROUND_X, SUN_ROUND_Y)
         end
-        badge:SetShown(not EQoLHidesSun())
+        -- (11-17) and the Sundial switch (Map Tools)
+        local bag = ns.MinimapBag
+        badge:SetShown(not EQoLHidesSun() and not (bag and bag.SundialShown and not bag.SundialShown()))
 
-        -- Blizzard shows coordinates unless its own option is off; FlareUI only on hover with Coordinates on Hover
+        -- (11-17) the map's coordinates text is always hidden now (an Info Bar cell instead)
         local coords = f.Coords
-        local cvar = C_CVar and C_CVar.GetCVar and C_CVar.GetCVar("minimapShowPlayerCoords")
-        coords:SetShown((db.coords == "always") and cvar ~= "0")
+        coords:SetShown(false)
         coords:SetText(CoordsText())
         coords:ClearAllPoints()
         if square then

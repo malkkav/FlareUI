@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: FlareUI
-## Version: 6.11-beta1
+## Version: 6.11
 ## Author: Malkkav
 ## X-Curse-Project-ID: 1718307
 ## X-Wago-ID: O67bb0N3
@@ -63,6 +63,7 @@ Modules\ActionBars.lua
 Modules\ProcGlow.lua
 Modules\XPBar.lua
 Modules\Visibility.lua
+Modules\BarText.lua
 Modules\UnitFrames.lua
 Modules\UnitFramesRing.lua
 Modules\UnitFramesDoesItDie.lua
@@ -77,6 +78,8 @@ Modules\BuffReminders.lua
 Modules\Minimap.lua
 Modules\MinimapBag.lua
 Modules\MinimapEye.lua
+Modules\MinimapVehicle.lua
+Modules\MinimapDurability.lua
 Modules\TweaksCVars.lua
 Modules\Tweaks.lua
 Modules\JunkDelete.lua

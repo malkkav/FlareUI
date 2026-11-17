@@ -576,10 +576,11 @@ function R.actions(c, spec)
         -- the second on cooldown (dimmed with Status Colouring), the third out of range, the fourth out of mana
         local cd = box.buttons[2]
         if cd.cooldown then cd.cooldown:SetCooldown(GetTime() - 4, 12) end
-        if range then cd.icon:SetDesaturated(true); cd.icon:SetVertexColor(0.5, 0.5, 0.5) end
+        if range then AB.PaintStatus(cd.icon, 'cooldown', true) end
         if range then
-            box.buttons[3].icon:SetVertexColor(1, 0.25, 0.25)
-            box.buttons[4].icon:SetVertexColor(0.35, 0.45, 1)
+            -- (11-17) in the colours Status Colouring paints now (palette or your own)
+            AB.PaintStatus(box.buttons[3].icon, 'range', true)
+            AB.PaintStatus(box.buttons[4].icon, 'mana', true)
         end
         -- Proc Glow on the first
         local first = box.buttons[1]
@@ -869,7 +870,8 @@ function R.lootRolls(c, spec)
         box.rock:SetVertTile(true)
         box.wash = box:CreateTexture(nil, 'BACKGROUND', nil, 2)
         box.wash:SetAllPoints(box.rock)
-        box.wash:SetColorTexture(0.05, 0.038, 0.026, 0.45)
+        -- (11-17) as the window: the settings window's plain rock, no brown wash (LootRolls.lua Panel)
+        box.wash:SetColorTexture(0.05, 0.038, 0.026, 0)
     end
     local opacity = Get('tweaks.lootRollsOpacity', 1)
     box.rock:SetAlpha(opacity)

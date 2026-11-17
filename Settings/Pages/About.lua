@@ -12,6 +12,7 @@ local CREDIT_LINKS = {
     sampconrad = "https://www.curseforge.com/members/sampconrad/projects",
     jeor = "https://github.com/Jeor",
     parchinskiy = "https://github.com/parchinskiy",
+    celbrund = "https://github.com/GregDuhamel",   -- (11-17) Celbrund on Discord, GregDuhamel on GitHub
 }
 
 -- the buttons under the thanks
@@ -123,8 +124,14 @@ local function Build(host)
     text = text:gsub(GOLD .. "sampconrad|r", Link("sampconrad", CREDIT_LINKS.sampconrad))
     text = text:gsub(GOLD .. "Jeor|r", Link("Jeor", CREDIT_LINKS.jeor))
     text = text:gsub(GOLD .. "parchinskiy|r", Link("parchinskiy", CREDIT_LINKS.parchinskiy))
+    text = text:gsub(GOLD .. "Celbrund|r", Link("Celbrund", CREDIT_LINKS.celbrund))
     local credits = Card(content, S:SectionText("about.credits"), text)
     credits:SetPoint("TOPLEFT", thanks, "BOTTOMLEFT", 0, -CARD_GAP)
+    -- (11-17, Malkkav) the licences note: small, grey, always at the card's bottom
+    local licences = credits:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    licences:SetJustifyH("LEFT")
+    licences:SetText(S:Text("about.licenses", "text", true) or "")
+    licences:SetPoint("BOTTOMLEFT", CARD_PAD, CARD_PAD)
 
     local layout = Card(content, S:SectionText("about.editModeLayout"),
         Gold(S:Format(S:Text("about.layout", "text", true))))
@@ -145,6 +152,9 @@ local function Build(host)
 
         local half = math.floor((width - CARD_GAP) / 2)
         local creditsEnd = LayoutCard(credits, half)
+        -- room under the credits for the licences note pinned to the card's bottom
+        licences:SetWidth(half - 2 * CARD_PAD)
+        creditsEnd = creditsEnd - 10 - math.ceil(licences:GetStringHeight())
         local layoutEnd = LayoutCard(layout, width - half - CARD_GAP)
         copy:ClearAllPoints()
         copy:SetPoint("TOP", layout, "TOP", 0, layoutEnd - 14)

@@ -51,9 +51,34 @@ local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.minimap
 end
 
+-- Drawer Style (11-17, Malkkav; minimap.drawerStyle, needs a reload):
+--   "disabled"  no drawer (Blizzard's own addon compartment is back); the badge stays, a plain badge
+--   "sundial"   the badge opens the drawer (the default, as before)
+--   "blizzard"  Blizzard's little addon compartment button under the calendar opens it, with the count
+-- Addons in the Drawer on None (minimap.buttonBag false) still turns the drawer off and keeps the badge
+-- (players who chose None before keep their look).
+Bag.STYLES = { "disabled", "sundial", "blizzard" }
+function Bag.Style()
+    local db = GetDb()
+    local style = db and db.drawerStyle
+    if style == "disabled" or style == "blizzard" then return style end
+    -- (11-17) Sundial off: the drawer can't open from it (the switch moves a saved Sundial to Blizzard)
+    if db and db.sundial == false then return "blizzard" end
+    return "sundial"
+end
+
+-- Sundial (Map Tools, 11-17, Malkkav; minimap.sundial, on): the day/night badge shown. Only this switch
+-- hides it (Drawer Style Disabled no longer does, Malkkav); Group Finder Icon and Vehicle Exit Icon then
+-- move to the map's bottom corners (MinimapEye.lua, MinimapVehicle.lua)
+function Bag.SundialShown()
+    local db = GetDb()
+    return not (db and db.sundial == false)
+end
+-- (without it: Group Finder Icon on the bottom-left corner, Vehicle Exit Icon on the bottom-right one)
+
 function Bag:IsOn()
     local db = GetDb()
-    return db and db.buttonBag ~= false or false
+    return db and db.buttonBag ~= false and Bag.Style() ~= "disabled" or false
 end
 
 -- Open on Mouseover (minimap.bagHover, off): pointing at the badge opens the drawer, and it closes a
@@ -586,7 +611,8 @@ end
 
 -- Beside the badge, towards the middle of the screen
 local function AnchorPanel()
-    local badge = MinimapCluster and MinimapCluster.DielFrame
+    -- (11-17) Blizzard style: beside the compartment button; else beside the badge
+    local badge = (Bag.Style() == "blizzard" and badgeButton) or (MinimapCluster and MinimapCluster.DielFrame)
     if not badge then return end
     -- the badge's own units (its scale and Edit Mode's) to UIParent's
     local x, y = badge:GetCenter()
@@ -875,12 +901,73 @@ local function CreateBadgeButton()
     badgeButton:SetScript("OnEnter", OpenOnHover)
 end
 
+-- (11-17, Malkkav) Blizzard style: Blizzard's addon compartment button as it looks (its atlas, its count
+-- of addons, its hover light), our own button in its place under the calendar (Blizzard's stays hidden
+-- while the drawer is on, Minimap.lua). The count is the drawer's addons.
+local function CreateCompartmentButton()
+    local calendar = GameTimeFrame
+    if not (MinimapCluster and calendar) then return end
+    badgeButton = CreateFrame("Button", "FlareUI_DrawerButton", MinimapCluster)
+    badgeButton:SetSize(23, 22)
+    badgeButton:SetFrameStrata(calendar:GetFrameStrata())
+    badgeButton:SetFrameLevel(calendar:GetFrameLevel() + 1)
+    -- under the calendar, as Blizzard's (Camelot Minimap.lua: TOP to the calendar's BOTTOM, 1 up)
+    badgeButton:SetPoint("TOP", calendar, "BOTTOM", 0, 1)
+    local state = badgeButton:CreateTexture(nil, "ARTWORK")
+    state:SetAtlas("ui-hud-minimap-addon-indicator", true)
+    state:SetPoint("CENTER")
+    local add = badgeButton:CreateTexture(nil, "ARTWORK", nil, 1)
+    add:SetAtlas("ui-hud-minimap-addon-indicator", true)
+    add:SetPoint("CENTER")
+    add:SetBlendMode("ADD")
+    add:SetAlpha(0.1)
+    add:Hide()
+    local text = badgeButton:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    text:SetPoint("CENTER")
+    text:SetScale(0.9)
+    text:SetText("0")
+    badgeButton.Text, badgeButton.Add = text, add
+    badgeButton:RegisterForClicks("LeftButtonUp")
+    badgeButton:SetScript("OnClick", function() Bag:Toggle() end)
+    badgeButton:SetScript("OnEnter", function(self)
+        self.Add:SetAlpha(0.1)
+        self.Add:Show()
+        OpenOnHover()
+    end)
+    badgeButton:SetScript("OnLeave", function(self) self.Add:Hide() end)
+    badgeButton:SetScript("OnMouseDown", function(self) self.Add:SetAlpha(0.2) end)
+    badgeButton:SetScript("OnMouseUp", function(self) self.Add:SetAlpha(0.1) end)
+end
+
+-- the compartment button's number: how many addons the drawer holds
+function Bag.UpdateCount()
+    if badgeButton and badgeButton.Text then badgeButton.Text:SetText(#entries) end
+end
+
+-- Sundial off hides the day/night badge (its look only: the game still runs it). The game or another addon setting its opacity again
+-- puts it straight back to unseen.
+function Bag.ApplyStyle()
+    local sun = MinimapCluster and MinimapCluster.DielFrame
+    if not sun or Bag.SundialShown() then return end
+    local function Keep()
+        if sun:GetAlpha() ~= 0 then sun:SetAlpha(0) end
+    end
+    hooksecurefunc(sun, "SetAlpha", Keep)
+    sun:HookScript("OnShow", Keep)
+    Keep()
+end
+
 function Bag:Init()
     if self.initialized or not self:IsOn() then return end
-    if not (MinimapCluster and MinimapCluster.DielFrame) then return end
+    local blizzard = Bag.Style() == "blizzard"
+    if blizzard then
+        if not GameTimeFrame then return end
+    elseif not (MinimapCluster and MinimapCluster.DielFrame) then
+        return
+    end
     self.initialized = true
     CreatePanel()
-    CreateBadgeButton()
+    if blizzard then CreateCompartmentButton() else CreateBadgeButton() end
     -- LibDBIcon buttons are parked as they are made; other buttons have no signal, so a few sweeps
     -- run while addons finish loading
     local lib = LibDBIcon()
@@ -891,6 +978,7 @@ function Bag:Init()
         ParkAllIcons()
         CollectEntries()
         KeepAdoptedInBag()
+        Bag.UpdateCount()
     end
     Sweep()
     for _, delay in ipairs({ 0, 0.5, 1.5, 4 }) do C_Timer.After(delay, Sweep) end

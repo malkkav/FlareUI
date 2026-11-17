@@ -55,21 +55,19 @@ S:Row{ key = "ab.collapsibleBags", section = "ab.barAppearance", path = "actionb
 -- (Dim on Cooldown is part of Status Colouring since 11-16); then the text (Show Keybind Text | Show
 -- Macro Text), the spells, paging
 S:Row{ key = "ab.buttonArt", section = "ab.buttonAppearance", path = "actionbars.buttonArt", apply = Refresh, half = true }
+-- (11-17, Malkkav) Equipped Item Border: beside Show Button Art
+S:Row{ key = "ab.equippedBorder", section = "ab.buttonAppearance", path = "actionbars.equippedBorder", apply = Refresh, half = true }
 S:Row{ key = "ab.procGlow", section = "ab.buttonAppearance", path = "actionbars.procGlow", half = true,
     apply = function() if ns.ProcGlow then ns.ProcGlow:Refresh() end end }
-S:Row{
-    key = "ab.statusColours", section = "ab.buttonAppearance", apply = Refresh, half = true,
-    get = function() return S:GetPath("actionbars.colors.enableRange") end,
-    set = function(on)
-        S:SetPath("actionbars.colors.enableRange", on)
-        S:SetPath("actionbars.colors.unusable.desaturate", on)
-    end,
-}
+-- (Status Colouring's switch: gone 11-17; Pick Your Colours' Disabled palette turns it off)
 S:Row{ key = "ab.activeHighlight", section = "ab.buttonAppearance", path = "actionbars.activeHighlight", apply = Refresh, half = true }
 -- Show Keybind Text / Show Macro Text (11-13, were Hide ...): on by default, over the saved hide values
 S:Row{ key = "ab.hideKeybinds", section = "ab.buttonAppearance",   -- (Button Text merged in, last two rows, 11-16 Malkkav)
     path = "actionbars.hideHotkeys", invert = true, apply = Refresh, half = true }
 S:Row{ key = "ab.hideMacroText", section = "ab.buttonAppearance", path = "actionbars.hideMacroText", invert = true, apply = Refresh, half = true }
+-- (11-17, Malkkav) Status Colouring's colours and their strength, in the colour window
+S:Row{ key = "ab.statusPick", section = "ab.buttonAppearance", kind = "button", buttonText = L["Pick Your Colours"],
+    apply = function() if ns.ColorPicker then ns.ColorPicker.Open("ab") end end }
 S:Row{ key = "ab.autoRanks", section = "ab.spellBehavior", path = "actionbars.autoRanks", half = true,
     apply = function() if ns.ActionBars.CatchUpRanks then ns.ActionBars:CatchUpRanks() end end }
 S:Row{ key = "ab.stopAutoAdd", section = "ab.spellBehavior", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
@@ -105,6 +103,9 @@ S:Row{ key = "ab.xpBubbles", tab = "xp", kind = "choice", choices = { "off", "10
     end,
     set = function(v) S:SetPath("actionbars.xpbar.bubbles", tonumber(v) or false) end,
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
+-- (11-17, Malkkav) every colour the XP bar paints, in the colour window
+S:Row{ key = "ab.xpColors", tab = "xp", kind = "button", buttonText = L["Pick Your Colours"], parent = "ab.xpBar",
+    apply = function() if ns.ColorPicker then ns.ColorPicker.Open("xp") end end }
 
 -- Hide Blizzard elements (also removed from Edit Mode)
 local function Hide(key, path)

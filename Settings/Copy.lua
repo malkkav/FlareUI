@@ -71,7 +71,7 @@ ns.Copy = {
         qol = {
             desc = L["Small helpers that save you clicks."],
             offCard = L["* Auto quests, auto repair and junk selling\n* Camera, nameplate and vendor helpers\n* Hides clutter like error and zone text"],
-            tabs = { L["Gameplay"], L["Nameplates"], L["Interface"], L["Fonts"] },
+            tabs = { L["Gameplay"], L["Nameplates"], L["Interface"], L["Systems"], L["Fonts"] },
             title = L["Quality of Life"],
         },
         qt = {
@@ -160,6 +160,12 @@ ns.Copy = {
             section = "ab.barAppearance",
             tags = { "bag bar", "collapse bags", "fold bags", "expand bags", "borderless bag bar", "bag bar border", "bag frame" },
             tip = L["Edit Mode's Orientation and Direction for the bag bar turn the arrow too."],
+        },
+        ["ab.equippedBorder"] = {
+            desc = L["Buttons with an item you wear (a trinket, a helmet you use) get a border in the item's quality colour, instead of Blizzard's faint green."],
+            label = L["Equipped Item Border"],
+            section = "ab.buttonAppearance",
+            tags = { "equipped items", "trinkets", "quality colour", "rarity", "green border" },
         },
         ["ab.fcmBar1"] = {
             desc = L["Turns this bar into part of a cooldown display:\n* Not clickable\n* Shows only by the Fake CM Visibility"],
@@ -336,12 +342,12 @@ ns.Copy = {
             tags = { "cooldown manager", "tracked bars", "tracked buffs", "cdm" },
             tip = L["Needs Buffs & Debuffs on. Size, layout and tracking stay in Blizzard's Cooldown Manager."],
         },
-        ["ab.statusColours"] = {
-            desc = L["Buttons change colour when you can't use them:\n* Red: target out of range\n* Blue: not enough mana or energy\n* Grey: unusable right now\n* Dim: on cooldown"],
-            label = L["Status Colouring"],
+        ["ab.statusPick"] = {
+            desc = L["The colours Status Colouring paints, next to sample buttons:\n* Out of Range\n* Out of Mana\n* Unusable\n* On Cooldown (not the global cooldown)\nPalettes: FlareUI (default), Blizzard, or Disabled to leave the buttons as the game colours them. Change any colour and it becomes Custom."],
+            label = L["Status Colours"],
             section = "ab.buttonAppearance",
-            tags = { "dim on cooldown", "range colour", "out of range", "out of mana" },
-            tip = L["The global cooldown doesn't dim them."],
+            tags = { "status colouring colors range mana unusable red blue tint opacity" },
+            tip = L["The picker's opacity slider sets how strong a colour is. Lower it for a softer tint; at 0 On Cooldown leaves the icon alone."],
         },
         ["ab.stopAutoAdd"] = {
             desc = L["New spells you learn aren't placed on your bars."],
@@ -361,6 +367,12 @@ ns.Copy = {
             label = L["Bubbles"],
             section = "ab.experience",
             tags = { "xp bar dividers", "ticks", "segments", "show bubbles" },
+        },
+        ["ab.xpColors"] = {
+            desc = L["Every colour the XP bar paints, next to a sample bar:\n* XP, Rested XP, Rested Bonus, Quest XP\n* Reputation by standing, and Renown\n* Honor\nChange any colour and the palette becomes Custom."],
+            label = L["XP Bar Colours"],
+            section = "ab.experience",
+            tags = { "xp bar color colour experience rested reputation honor purple" },
         },
         ["ab.xpNumbers"] = {
             choices = { L["Current / Max"], L["Current / Max (Percent)"], L["Percent"], L["Remaining"] },
@@ -392,13 +404,19 @@ ns.Copy = {
             kind = "text",
             label = L["Credits"],
             section = "about.credits",
-            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings' new look idea.\n* |cffffd100parchinskiy|r for the round minimap.\n* |cffffd100Kabaday|r for the help with the loot roll window.\n* Licences for the libraries and code FlareUI builds on are in its LICENSES folder."],
+            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings' new look idea.\n* |cffffd100parchinskiy|r for the round minimap.\n* |cffffd100Kabaday|r for the loot roll window.\n* |cffffd100Celbrund|r for the minimap Info Bar."],
         },
         ["about.layout"] = {
             kind = "text",
             label = L["Edit Mode Layout"],
             section = "about.editModeLayout",
             text = L["Want your screen set up like ours? Import the FlareUI layout into Edit Mode:\n\n`1.` Click `Copy Layout Code` and press `Ctrl+C`.\n`2.` Press `Esc` and choose `Edit Mode`.\n`3.` Open the `Layout` menu and choose `Import`.\n`4.` Paste with `Ctrl+V`, name it and click `Import`."],
+        },
+        ["about.licenses"] = {
+            kind = "text",
+            label = L["Licences"],
+            section = "about.credits",
+            text = L["Check the LICENSES for all Licenses used."],
         },
         ["about.links"] = {
             kind = "text",
@@ -521,13 +539,13 @@ ns.Copy = {
             tip = L["Time Left puts auras about to end first, permanent ones last."],
         },
         ["au.swipe"] = {
-            choices = { L["Over the Icon"], L["Around the Border"], L["Both"], L["Off"] },
+            choices = { L["Off"], L["Over the Icon"], L["Around the Border"], L["Both"] },
             desc = L["How aura icons show their time left."],
             label = L["Aura Swipe"],
             section = "au.general",
         },
         ["au.timer"] = {
-            choices = { L["Under the Icon"], L["Bottom of the Icon"], L["Middle of the Icon"], L["Off"] },
+            choices = { L["Off"], L["Under the Icon"], L["Bottom of the Icon"], L["Middle of the Icon"] },
             desc = L["Where the time left shows. It turns yellow under 10 seconds and red under 5."],
             label = L["Aura Timer"],
             section = "au.general",
@@ -1295,6 +1313,12 @@ ns.Copy = {
             tags = { "damage font", "damage numbers", "floating combat text", "sct" },
             tip = L["It changes the next time you log in."],
         },
+        ["fonts.combatSize"] = {
+            desc = L["How big the damage and healing numbers are. It's the game's own setting."],
+            label = L["Combat Text Size"],
+            section = "language.fonts",
+            tags = { "combat text size", "damage numbers", "scale", "sct", "floating text" },
+        },
         ["fonts.gameText"] = {
             desc = L["Blizzard's own text takes the Global Font too: menus, windows, quest text, nameplates, combat text and more. Sizes and outlines stay as they are."],
             label = L["Game Text"],
@@ -1340,12 +1364,24 @@ ns.Copy = {
             label = L["Open on Mouseover"],
             section = "mm.addonButtons",
         },
+        ["mm.barBox"] = {
+            desc = L["The plate behind the Info Bar's text. Off shows the text alone, straight on the map."],
+            label = L["Show Box"],
+            section = "mm.infoBar",
+            tags = { "info bar border", "info bar background", "data panel box" },
+        },
         ["mm.barCenter"] = {
             choices = { L["None"], L["Gold"], L["Bags"], L["Durability"], L["Framerate"], L["Latency"], L["Coordinates"] },
             desc = L["What the middle of the Info Bar shows."],
             label = L["Center"],
             section = "mm.infoBar",
             tip = L["Bags counts used and total slots. Durability is your most worn piece."],
+        },
+        ["mm.barHover"] = {
+            desc = L["The Info Bar shows only while you point at the minimap."],
+            label = L["On Mouseover"],
+            section = "mm.infoBar",
+            tags = { "info bar on hover", "hide info bar", "data panel mouseover" },
         },
         ["mm.barLeft"] = {
             choices = { L["None"], L["Gold"], L["Bags"], L["Durability"], L["Framerate"], L["Latency"], L["Coordinates"] },
@@ -1364,16 +1400,25 @@ ns.Copy = {
         },
         ["mm.clockStats"] = {
             desc = L["Your framerate and latency in the clock's tooltip."],
-            label = L["FPS and Latency on Clock"],
-            section = "mm.mapInfo",
+            label = L["FPS/Ping on Clock"],
+            section = "mm.mapTools",
+            tags = { "fps", "latency", "ping", "clock tooltip" },
         },
-        ["mm.coords"] = {
-            choices = { L["Off"], L["Always"], L["On Mouseover"] },
-            desc = L["Your coordinates under the minimap."],
-            label = L["Coordinates"],
-            section = "mm.mapInfo",
-            tags = { "coordinates on hover" },
-            tip = L["Linked to Blizzard's own Coordinates option: turning one off turns off the other."],
+        ["mm.drawerStyle"] = {
+            choices = { L["Disabled"], L["Sundial"], L["Blizzard"] },
+            desc = L["How you open the addon button drawer:\n* Disabled: no drawer. Addon buttons stay on the minimap\n* Sundial: click the day/night sundial\n* Blizzard: click the small addon button under the calendar. Its number is how many addons are in the drawer"],
+            label = L["Drawer Style"],
+            reload = true,
+            section = "mm.addonButtons",
+            tags = { "drawer", "addon drawer", "sundial", "day night badge", "addon compartment", "minimap buttons" },
+            tip = L["Disabled turns off the other options in this section. Changing it reloads the interface."],
+        },
+        ["mm.durability"] = {
+            desc = L["Blizzard's equipment durability figure as one small icon on the minimap's left edge, above the other icons. It turns yellow when something is about to break and red when something is broken, and hides while your gear is fine."],
+            label = L["Durability Warning"],
+            section = "mm.mapTools",
+            tags = { "durability", "repair", "armor", "broken", "damaged", "equipment" },
+            tip = L["Point at it for Blizzard's repair reminder. While it's on, Blizzard's figure and its Edit Mode box are hidden."],
         },
         ["mm.finderEye"] = {
             desc = L["A small icon on the minimap in place of Blizzard's large queue eye. Like Blizzard's eye, it only shows while you're in a queue, listed or in a battleground."],
@@ -1387,6 +1432,11 @@ ns.Copy = {
             label = L["FlareUI Minimap Button"],
             section = "mm.addonButtons",
             tip = L["Right-click the button to hide it. Untick FlareUI in Addons in the Drawer to keep it on the minimap."],
+        },
+        ["mm.font.bar"] = {
+            desc = L["The text in the Info Bar at the bottom of the map."],
+            label = L["Info Bar"],
+            section = "mm.fonts",
         },
         ["mm.font.clock"] = {
             desc = L["The time on the map's clock."],
@@ -1427,6 +1477,21 @@ ns.Copy = {
             label = L["Style"],
             section = "mm.styleSection",
         },
+        ["mm.sundial"] = {
+            desc = L["The day/night sundial at the minimap's bottom-left corner. Off hides it, and Group Finder Icon and Vehicle Exit Button start from the bottom-left corner instead."],
+            label = L["Sundial Icon"],
+            reload = true,
+            section = "mm.mapTools",
+            tags = { "sundial", "day night badge", "day/night", "moon", "sun" },
+            tip = L["With the addon drawer opening from the sundial, turning it off moves the drawer to the small addon button under the calendar (Drawer Style: Blizzard). Changing it reloads the interface."],
+        },
+        ["mm.vehicleExit"] = {
+            desc = L["The button for leaving a vehicle, as a small icon on the minimap's left edge, in place of Blizzard's. It sits where the Group Finder Icon goes, or just above it while that icon shows. Like Blizzard's, it only shows while you can leave a vehicle or end a flight early."],
+            label = L["Vehicle Exit Button"],
+            section = "mm.mapTools",
+            tags = { "vehicle", "leave vehicle", "exit", "taxi", "flight path", "land" },
+            tip = L["Click it to leave the vehicle. On a flight path it lands you at the next stop."],
+        },
         ["mm.zoom"] = {
             choices = { L["Off"], L["5 Seconds"], L["10 Seconds"], L["30 Seconds"] },
             desc = L["Zooms the minimap back out a while after you zoom in."],
@@ -1439,6 +1504,13 @@ ns.Copy = {
             section = "qol.other",
             tags = { "auto accept res", "resurrect", "rez" },
             tip = L["Never while you or the one casting it is in a fight: then the choice stays yours."],
+        },
+        ["qol.acceptSummon"] = {
+            desc = L["Summons are taken for you after 10 seconds. A small window says where to, so you can cancel or go at once."],
+            label = L["Accept Summons"],
+            section = "qol.other",
+            tags = { "summon", "warlock", "meeting stone", "ritual of summoning", "auto accept" },
+            tip = L["In a fight, it waits until the fight ends."],
         },
         ["qol.alerts"] = {
             desc = L["Flashes the taskbar and plays a sound for:\n* Ready checks\n* Summons and resurrections\n* Group invites\n* Dungeon queues"],
@@ -1472,6 +1544,12 @@ ns.Copy = {
             section = "qol.camera",
             tags = { "better camera", "camera speed", "zoom faster", "mouse wheel" },
             tip = L["Faster speeds also move the camera further with each turn of the wheel. In Gamepad mode the camera keeps Blizzard's speed."],
+        },
+        ["qol.craftTotal"] = {
+            desc = L["When you craft several of the same item, your cast bar shows the time left for all of them in brackets after the timer, like 0:12 (1:02)."],
+            label = L["Craft Batch Time"],
+            section = "qol.other",
+            tags = { "crafting", "craft all", "create all", "profession", "batch", "total time", "cast bar" },
         },
         ["qol.deleteJunkFull"] = {
             desc = L["With your bags full, clicking an item in the loot window first deletes your cheapest grey item to make room."],
@@ -1589,6 +1667,13 @@ ns.Copy = {
             section = "qol.nameplates",
             tip = L["Turning it off restores your own setting."],
         },
+        ["qol.npCombatFriendly"] = {
+            desc = L["Friendly players' nameplates show only during a fight, so you can see who is low without them cluttering the world."],
+            label = L["Combat Friendly Plates"],
+            section = "qol.nameplates",
+            tags = { "friendly nameplates", "friends", "health bars", "combat only" },
+            tip = L["Out of combat your own setting comes back when you turn this off."],
+        },
         ["qol.npCombo"] = {
             desc = L["Combo point gems under your target's nameplate."],
             label = L["Combo Points"],
@@ -1695,11 +1780,11 @@ ns.Copy = {
         },
         ["qol.uiScale"] = {
             choices = { L["Off"], L["Pixel Perfect"], L["Custom"], L["4K"], L["1440p"], L["1440p at 125%"], L["1080p"], L["1080p at 125%"] },
-            desc = L["The size of the whole interface, for every character:\n* Off: FlareUI leaves it alone, and Blizzard's UI Scale setting works\n* Pixel Perfect: one interface pixel per screen pixel\n* 4K, 1440p, 1080p: pixel perfect for that screen (at 125% for Windows' 125% scaling)\n* Custom: any scale, beyond Blizzard's slider\nAny choice but Off replaces Blizzard's UI Scale each time you log in."],
+            desc = L["The size of the whole interface, for every character:\n* Off: FlareUI leaves it alone, and Blizzard's UI Scale setting works\n* Pixel Perfect: one interface pixel per screen pixel. Very small on a 4K screen\n* 4K, 1440p, 1080p: pixel perfect for that screen (at 125% for Windows' 125% scaling)\n* Custom: any scale, beyond Blizzard's slider\nAny choice but Off replaces Blizzard's UI Scale each time you log in. After a change, you have 15 seconds to keep it, or the old scale comes back."],
             label = L["UI Scale"],
             reload = true,
             section = "qol.scale",
-            tip = L["Pixel Perfect keeps borders and thin lines sharpest. Text is sharp at any scale. Changing it reloads the interface."],
+            tip = L["On a 4K screen, choose 1080p: everything is a normal size and stays just as sharp. Too small to click? Type /fui scale reset in chat."],
         },
         ["qol.uiScaleCustom"] = {
             desc = L["The scale Custom uses. 100% is Blizzard's default size."],
@@ -2208,6 +2293,12 @@ ns.Copy = {
             section = "tt.visibilitySection",
             tip = L["Hold Shift to see a hidden tooltip."],
         },
+        ["tt.showPvP"] = {
+            desc = L["The \"PvP\" line on players and creatures flagged for PvP, like enemy city guards."],
+            label = L["Show PvP"],
+            section = "tt.tweaks",
+            tags = { "pvp flag", "flagged" },
+        },
         ["tt.showTarget"] = {
             desc = L["Adds \"Target: Name\" to unit tooltips."],
             label = L["Show Target"],
@@ -2260,7 +2351,7 @@ ns.Copy = {
             label = L["Cast Bar Position"],
         },
         ["uf.*.comboPoints"] = {
-            desc = L["The target's combo points:\n* Addon Style: a bar along the top of the health bar\n* FlareUI Style: Classic, Modern or Off"],
+            desc = L["The target's combo points:\n* Addon Style: a bar along the top of the health bar\n* FlareUI Style: Off, Classic or Modern"],
             label = L["Combo Points"],
         },
         ["uf.*.debuffSize"] = {
@@ -2321,13 +2412,13 @@ ns.Copy = {
             section = "uf.auras",
         },
         ["uf.auraSwipe"] = {
-            choices = { L["Over the Icon"], L["Around the Border"], L["Both"], L["Off"] },
+            choices = { L["Off"], L["Over the Icon"], L["Around the Border"], L["Both"] },
             desc = L["How aura icons show their time left, on every unit frame."],
             label = L["Aura Swipe"],
             section = "uf.auras",
         },
         ["uf.auraTimer"] = {
-            choices = { L["Under the Icon"], L["Bottom of the Icon"], L["Middle of the Icon"], L["Off"] },
+            choices = { L["Off"], L["Under the Icon"], L["Bottom of the Icon"], L["Middle of the Icon"] },
             desc = L["Where the time left shows on unit frame auras. It turns yellow under 10 seconds and red under 5."],
             label = L["Aura Timer"],
             section = "uf.auras",
@@ -2346,11 +2437,11 @@ ns.Copy = {
             tip = L["To put it on the player frame instead, turn on Cast Bar in the player frame's Edit Mode options, and set this bar's Visibility to Never in Edit Mode. Never hides Blizzard's cast bar too."],
         },
         ["uf.flagCarriers"] = {
-            desc = L["Blizzard's frames for the flag carriers in battlegrounds. Move them in Edit Mode."],
+            desc = L["The flag carriers in battlegrounds, in your frame style: their name, health, power, class and faction. Click one to target it, right-click to make it your focus."],
             label = L["Flag Carrier Frames"],
             section = "uf.frames",
             tags = { "pvp target frames", "arena frames", "enemy frames", "battleground", "flag carrier", "wsg" },
-            tip = L["Off: they stay under the minimap."],
+            tip = L["Off: Blizzard's frames show under the minimap."],
         },
         ["uf.font.auraCount"] = {
             desc = L["The stack count on buffs and debuffs. Auto sizes it to the icon."],
@@ -2418,12 +2509,6 @@ ns.Copy = {
             label = L["Frame Style"],
             section = "uf.frameStyleSection",
             tip = L["Each style keeps its own setup."],
-        },
-        ["uf.fullNames"] = {
-            desc = L["Surnames after first names on the player, target and party frames."],
-            label = L["Full Player Names"],
-            section = "uf.look",
-            tip = L["The focus frame, target of target and target of focus always show first names."],
         },
         ["uf.main"] = {
             desc = L["Your player, pet, target and focus frames."],
@@ -2592,7 +2677,6 @@ ns.Copy = {
         ["mm.addonButtons"] = L["Addon Buttons"],
         ["mm.fonts"] = L["Minimap"],
         ["mm.infoBar"] = L["Info Bar"],
-        ["mm.mapInfo"] = L["Map Info"],
         ["mm.mapTools"] = L["Map Tools"],
         ["mm.styleSection"] = L["Style"],
         ["qol.camera"] = L["Camera"],
@@ -2601,7 +2685,7 @@ ns.Copy = {
         ["qol.hideClutter"] = L["Hide Clutter"],
         ["qol.mapMail"] = L["Map & Mail"],
         ["qol.nameplates"] = L["Enemy Plates"],
-        ["qol.other"] = L["Other"],
+        ["qol.other"] = L["Convenience"],
         ["qol.questsNpcs"] = L["Quests & NPCs"],
         ["qol.scale"] = L["Interface Scale"],
         ["qol.syncBlizzUi"] = L["Sync Blizz UI"],
@@ -2628,6 +2712,7 @@ ns.Copy = {
         ["uf.auras"] = L["Auras"],
         ["uf.fontsBoss"] = L["Boss"],
         ["uf.fontsCast"] = L["Player Cast Bar"],
+        ["uf.fontsFlag"] = L["Flag Carriers"],
         ["uf.fontsFocus"] = L["Focus"],
         ["uf.fontsParty"] = L["Party"],
         ["uf.fontsPet"] = L["Pet"],

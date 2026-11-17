@@ -43,7 +43,8 @@ local function ResourceRows()
         { L["Health"], { { "health", L["Default Health"] }, { "classHealth", L["Your Class"] }, { "low", L["Low Health Colour"] } } },
         { L["Power"], { { "mana", _G.MANA or L["Mana"] }, { "rage", _G.RAGE or "Rage" }, { "energy", _G.ENERGY or "Energy" },
             { "druidMana", L["Druid Mana"] } } },
-        { L["Combo Points"], { { "combo", L["Combo Points"] } } },
+        -- (11-17, Malkkav) the bar only: the gems of FlareUI and Forever Style are Blizzard's own art, in its colours
+        { L["Combo Points"], { { "combo", L["Combo Points (Bar Only)"] } } },
         { L["Swing Timers"], (function()
             local list = { { "swingMain", L["Main-Hand Swing"] }, { "swingOff", L["Off-Hand Swing"] }, { "swingRanged", L["Ranged Swing"] },
                 { "outOfRange", L["Out of Range"] }, { "waiting", L["Waiting State"] }, { "zone", L["Stand-Still Zone"] } }
@@ -75,6 +76,60 @@ end
 
 -- where a module's custom colours live, and how they are put to use
 local KINDS = {
+    -- (11-17, Malkkav, for a player) the XP bar's colours; FlareUI's are Blizzard's own, so no Blizzard palette
+    xp = {
+        title = function() return L["XP Bar"] end,
+        store = function()
+            local db = ns.db.profile.actionbars.xpbar
+            db.customColors = db.customColors or {}
+            return db.customColors
+        end,
+        color = function(key) return ns.XPBar.Color(key) end,
+        palette = function() return ns.XPBar.Palette() end,
+        base = function() return "flareui" end,
+        setPalette = function(p) ns.db.profile.actionbars.xpbar.palette = p ~= "flareui" and p or nil end,
+        palettes = { "flareui", "custom" },
+        apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end,
+        rows = function()
+            return {
+                { L["Experience"], { { "xp", L["XP"] }, { "rested", L["Rested XP"] }, { "restBonus", L["Rested Bonus"] },
+                    { "quest", L["Quest XP"] } } },
+                { _G.REPUTATION or L["Reputation"], { { "repHostile", _G.FACTION_STANDING_LABEL2 or "Hostile" },
+                    { "repUnfriendly", _G.FACTION_STANDING_LABEL3 or "Unfriendly" }, { "repNeutral", _G.FACTION_STANDING_LABEL4 or "Neutral" },
+                    { "repFriendly", L["Friendly and Up"] }, { "renown", L["Renown"] } } },
+                { _G.HONOR or L["Honor"], { { "honor", _G.HONOR or L["Honor"] } } },
+            }
+        end,
+    },
+    -- (11-17, Malkkav) Status Colouring's colours, each with its strength (alpha)
+    ab = {
+        title = function() return L["Action Bars"] end,
+        alpha = true,
+        store = function()
+            local db = ns.db.profile.actionbars
+            db.colors = db.colors or {}
+            db.colors.custom = db.colors.custom or {}
+            return db.colors.custom
+        end,
+        color = function(key) return ns.ActionBars.StatusColor(key) end,
+        palette = function() return ns.ActionBars.StatusPalette() end,
+        base = function() return ns.db.profile.actionbars.colors.customBase end,
+        setPalette = function(p, base)
+            -- (a colour changed while Disabled: Custom from FlareUI's)
+            if base == "disabled" then base = "flareui" end
+            ns.ActionBars.SetStatusPalette(p, base)
+        end,
+        -- Disabled (11-17, Malkkav): FlareUI leaves the buttons' colours alone (the old switch off)
+        palettes = { "flareui", "blizzard", "disabled", "custom" },
+        apply = function()
+            ns.ActionBars.RepaintStatus()
+            if ns.ActionBars.Refresh then ns.ActionBars:Refresh() end
+        end,
+        rows = function()
+            return { { L["Status Colouring"], { { "range", L["Out of Range"] }, { "mana", L["Out of Mana"] },
+                { "unusable", L["Unusable"] }, { "cooldown", L["On Cooldown"] } } } }
+        end,
+    },
     uf = {
         title = function() return L["Unit Frames"] end,
         store = function()
@@ -344,9 +399,50 @@ local function DrawResourcePreviews()
     LayRows(rows)
 end
 
+-- the Action Bars window: a button for each state, in the list's order (11-17, Malkkav)
+local function DrawActionPreviews()
+    local AB = ns.ActionBars
+    if not (AB and AB.CreateSampleButton) then return end
+    local states = { "range", "mana", "unusable", "cooldown" }
+    local icons = { "Spell_Fire_FireBolt02", "Spell_Holy_Heal", "Spell_Nature_Lightning", "Spell_Holy_HolyBolt" }
+    local items = {}
+    for i, state in ipairs(states) do
+        local b = samples["ab:" .. state]
+        if not b then b = AB.CreateSampleButton(window.preview, i); samples["ab:" .. state] = b end
+        if b then
+            b:SetScale(1)
+            AB.DrawSampleButton(b, "Interface\\Icons\\" .. icons[i], L["Spell"])
+            if b.cooldown then b.cooldown:Clear() end
+            b.icon:SetDesaturated(false)
+            if state == "normal" or AB.StatusPalette() == "disabled" then
+                b.icon:SetVertexColor(1, 1, 1, 1)
+            else
+                AB.PaintStatus(b.icon, state, true)
+            end
+            b:Show()
+            items[#items + 1] = Item(b)
+        end
+    end
+    LayRows({ Row(items, 0.9, 2.5) })
+end
+
+-- the XP Bar window: the bar's own sample (XP with rested bonus, and a reputation) (11-17)
+local function DrawXPPreviews()
+    local XPB = ns.XPBar
+    if not (XPB and XPB.CreateSample) then return end
+    local f = samples["xp"]
+    if not f then f = XPB.CreateSample(window.preview); samples["xp"] = f end
+    f:SetScale(1)
+    XPB.DrawSample(f)
+    f:Show()
+    LayRows({ Row({ Item(f) }, 0.9, 2) })
+end
+
 local function DrawPreviews()
     for _, s in pairs(samples) do s:Hide() end
-    local ok, err = pcall(kindNow == "rb" and DrawResourcePreviews or DrawUnitPreviews)
+    local draw = (kindNow == "rb" and DrawResourcePreviews) or (kindNow == "ab" and DrawActionPreviews)
+        or (kindNow == "xp" and DrawXPPreviews) or DrawUnitPreviews
+    local ok, err = pcall(draw)
     if not ok and geterrorhandler then geterrorhandler()(err) end
 end
 
@@ -360,8 +456,9 @@ local function Repaint()
     for _, row in ipairs(window.rows) do
         if row.key then
             local c = kind.color(row.key)
-            row.swatch:SetColorTexture(c[1], c[2], c[3])
-            row.hex:SetText(Hex(c))
+            row.swatch:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
+            -- (11-17) a colour with a strength under 100% says so after its code
+            if c[4] and c[4] < 1 then row.hex:SetText(("%s  %d%%"):format(Hex(c), c[4] * 100 + 0.5)) else row.hex:SetText(Hex(c)) end
             row.own:SetShown(kind.palette() == "custom" and kind.store()[row.key] ~= nil)
         end
     end
@@ -375,7 +472,7 @@ end
 -- window opened with.
 local PALETTES = { "flareui", "blizzard", "custom" }
 local function PaletteText(p)
-    return p == "blizzard" and L["Blizzard"] or p == "custom" and L["Custom"] or L["FlareUI"]
+    return p == "blizzard" and L["Blizzard"] or p == "custom" and L["Custom"] or p == "disabled" and L["Disabled"] or L["FlareUI"]
 end
 -- the palette in use for the open window (none yet while it is being built: the dropdown builds its
 -- menu as it is set up)
@@ -397,7 +494,7 @@ end
 local function SetColor(key, c)
     local kind = KINDS[kindNow]
     Show(key)
-    kind.store()[key] = c and { c[1], c[2], c[3] } or nil
+    kind.store()[key] = c and { c[1], c[2], c[3], c[4] } or nil
     if c and kind.palette() ~= "custom" then kind.setPalette("custom", kind.palette()) end
     Changed()
 end
@@ -418,7 +515,7 @@ end
 local function Snapshot()
     local kind = KINDS[kindNow]
     local copy = {}
-    for key, c in pairs(kind.store()) do copy[key] = { c[1], c[2], c[3] } end
+    for key, c in pairs(kind.store()) do copy[key] = { c[1], c[2], c[3], c[4] } end
     window.saved = { kind = kindNow, palette = kind.palette(), base = kind.base(), store = copy }
 end
 local function Restore()
@@ -442,7 +539,7 @@ local function Dirty()
     local store = kind.store()
     for key, c in pairs(store) do
         local o = s.store[key]
-        if not o or o[1] ~= c[1] or o[2] ~= c[2] or o[3] ~= c[3] then return true end
+        if not o or o[1] ~= c[1] or o[2] ~= c[2] or o[3] ~= c[3] or o[4] ~= c[4] then return true end
     end
     for key in pairs(s.store) do if not store[key] then return true end end
     return false
@@ -473,12 +570,17 @@ local function PickColor(row)
     local kind = KINDS[kindNow]
     local start = kind.color(row.key)
     local before = kind.store()[row.key]
+    -- (11-17) kinds with a strength (Action Bars) get Blizzard's opacity slider
+    local function Picked()
+        local r, g, b = ColorPickerFrame:GetColorRGB()
+        local a = kind.alpha and ColorPickerFrame:GetColorAlpha() or nil
+        SetColor(row.key, { r, g, b, a })
+    end
     local info = {
-        r = start[1], g = start[2], b = start[3], hasOpacity = false,
-        swatchFunc = function()
-            local r, g, b = ColorPickerFrame:GetColorRGB()
-            SetColor(row.key, { r, g, b })
-        end,
+        r = start[1], g = start[2], b = start[3], hasOpacity = kind.alpha and true or false,
+        opacity = kind.alpha and (start[4] or 1) or nil,
+        swatchFunc = Picked,
+        opacityFunc = kind.alpha and Picked or nil,
         cancelFunc = function() SetColor(row.key, before) end,
     }
     Show(row.key)
@@ -628,7 +730,7 @@ local function Build()
     f.palette:SetPoint("RIGHT", f.apply, "LEFT", -8, 0)
     local function Picked(p) return CurrentPalette() == p end
     f.palette:SetupMenu(function(_, root)
-        for _, p in ipairs(PALETTES) do
+        for _, p in ipairs((kindNow and KINDS[kindNow].palettes) or PALETTES) do
             root:CreateRadio(PaletteText(p), function() return Picked(p) end, function() PickPalette(p) end)
         end
     end)
@@ -643,7 +745,7 @@ local function Build()
     if ns.PadNav and ns.PadNav.GuardDropdown then
         ns.PadNav.GuardDropdown(f.palette, function()
             local entries = {}
-            for _, p in ipairs(PALETTES) do
+            for _, p in ipairs((kindNow and KINDS[kindNow].palettes) or PALETTES) do
                 entries[#entries + 1] = { text = PaletteText(p), checked = function() return Picked(p) end,
                                           pick = function() PickPalette(p) end }
             end
@@ -676,7 +778,7 @@ local function Build()
     return f
 end
 
--- kind: "uf" or "rb"
+-- kind: "uf", "rb" or "ab"
 function CP.Open(kind)
     if not KINDS[kind] then return end
     window = window or Build()

@@ -42,9 +42,9 @@ local MAX_MEMBERS = 4
 local SLOT_UNITS = { [0] = "player", "party1", "party2", "party3", "party4" }
 local PET_UNITS  = { [0] = "pet", "partypet1", "partypet2", "partypet3", "partypet4" }
 local TARGET_UNITS = { [0] = "target", "party1target", "party2target", "party3target", "party4target" }
-local BASE_POSITION = { point = "LEFT", x = 3, y = 0 }
+local BASE_POSITION = { point = "LEFT", x = 10, y = 0 }   -- (11-17: Malkkav's, was x 3)
 -- Edit Mode keeps a reference to this table: ApplyPosition refills it for the style in use
-local DEFAULT_POSITION = { point = "LEFT", x = 3, y = 0 }
+local DEFAULT_POSITION = { point = "LEFT", x = 10, y = 0 }
 local PET_GAP = 2
 local TARGET_GAP = 6                 -- gap between a party frame and its target
 local TARGET_INTERVAL = 0.2          -- a member's target sends no health events: re-read this often
@@ -118,8 +118,11 @@ local ROLE_ATLAS = { TANK = "UI-LFG-RoleIcon-Tank-Micro-GroupFinder", HEALER = "
                      DAMAGER = "UI-LFG-RoleIcon-DPS-Micro-GroupFinder" }
 
 -- The frame icons, switched per style in Edit Mode: style.icons[key] = { shown }
-local ICON_ORDER  = { "role", "leader", "raidIcon", "readyCheck", "status" }
-local ICON_LABELS = { role = L["Role"], leader = L["Leader"], raidIcon = L["Raid Markers"], readyCheck = L["Ready Check"], status = L["Summon / Resurrect / Phase"] }
+-- (11-17, Malkkav, for a player) PvP Flag: the member's faction crest while flagged; off by default (ICON_OFF)
+local ICON_ORDER  = { "role", "leader", "raidIcon", "readyCheck", "status", "pvp" }
+local ICON_LABELS = { role = L["Role"], leader = L["Leader"], raidIcon = L["Raid Markers"], readyCheck = L["Ready Check"], status = L["Summon / Resurrect / Phase"],
+                      pvp = L["PvP Flag"] }
+PF.ICON_OFF = { pvp = true }
 -- the icons drawn larger than their base size (the role icon also on Raid-Style tiles: RAID_ROLE_SCALE)
 local ICON_SCALE = { raidIcon = 1.25, readyCheck = 1.25, status = 1.25 }
 local RAID_ROLE_SCALE = 1.2
@@ -393,7 +396,7 @@ end
 local function IconShown(key, f)
     local store = IconStore(key, nil, f)
     if store and store.shown ~= nil then return store.shown end
-    return true
+    return not PF.ICON_OFF[key]
 end
 
 local function PlaceIcon(f, key, region, width, height, point, relativeTo, relativePoint, x, y)
@@ -426,11 +429,10 @@ end
 local function UpdateLevel(f)
     local st = TS(f)
     if not (st and st.showLevel) then f.Level:SetText("") return end
-    local level = UnitLevel(f.fuiUnit)
+    local level = ns.UnitShownLevel(f.fuiUnit)
     if canaccessvalue(level) and level then
-        if level < 0 then
-            f.Level:SetText("??")
-            f.Level:SetTextColor(1, 0.1, 0.1)
+        if level <= 0 then
+            ns.SetHighLevelText(f.Level, st.icons)
         else
             f.Level:SetFormattedText("%d", level)
             -- friendly: Blizzard's gold; neutral and hostile: by difficulty
@@ -448,7 +450,7 @@ local function UpdateHealth(f, glide)
     local bar = f.Health
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     ns.SetBarValue(bar, UnitHealth(unit), glide and st and st.smoothBars and not UnitIsDead(unit))
-    K.SetDamageTrail(f.DamageTrail, unit, glide, true)
+    K.SetDamageTrail(f.DamageTrail, unit, glide, K.DamageTrailOn(st and st.damageTrail))
     -- Bar Edge Glow: hidden on the dead, a bump on each change (UnitFrames.lua UF.BarLook)
     K.BarLookUpdate(bar, unit, glide)
     -- (a plain health change has the same colour, but for a hostile tile going grey when tapped)
@@ -587,11 +589,64 @@ local function UpdateLeader(f)
     end
 end
 
+-- (11-17, Malkkav) the flag carriers (ctx.factionIcon): the unit's faction crest in the role icon's place,
+-- the art FlareUI's target frame uses for its PvP flag (UnitFrames.lua)
+PF.FACTION_ART = {
+    Horde = { "UI-HUD-UnitFrame-SmallCircle-Horde", "Interface\\TargetingFrame\\UI-PVP-Horde" },
+    Alliance = { "UI-HUD-UnitFrame-SmallCircle-Alliance", "Interface\\TargetingFrame\\UI-PVP-Alliance" },
+}
+function PF.PaintFaction(icon, faction)
+    local art = faction and PF.FACTION_ART[faction]
+    if art then
+        K.SetIconArt(icon, art[1], art[2])
+        icon:Show()
+        return true
+    end
+    icon:Hide()
+    return false
+end
+
+-- PvP Flag (party and raid; off by default): the member's faction crest while flagged for PvP
+function PF.UpdatePvP(f)
+    local icon = f.PvPIcon
+    if not icon then return end
+    -- the boss and flag carrier frames have their own icon lists (no PvP Flag)
+    if not IconShown("pvp", f) or not f.fuiUnit then icon:Hide() return end
+    local unit = f.fuiUnit
+    local ffa, pvp = UnitIsPVPFreeForAll(unit), UnitIsPVP(unit)
+    if canaccessvalue(ffa) and ffa and K.HasAtlas("UI-HUD-UnitFrame-Player-PVP-FFAIcon") then
+        icon:SetAtlas("UI-HUD-UnitFrame-Player-PVP-FFAIcon", false)
+        icon:Show()
+        return
+    end
+    if not (canaccessvalue(pvp) and pvp) then icon:Hide() return end
+    local faction = UnitFactionGroup(unit)
+    PF.PaintFaction(icon, canaccessvalue(faction) and faction or nil)
+end
+
+-- the Elite & Rare skull (ctx.classIcon; Addon Style)
+function PF.ClassKind(c)
+    return (c == "elite" or c == "worldboss") and "elite" or (c == "rare" or c == "rareelite") and "rare" or nil
+end
+function PF.UpdateClassIcon(f)
+    local icon = f.ClassIcon
+    if not icon then return end
+    if f.ringKind or not IconShown("classification", f) then icon:Hide() return end
+    local c = UnitClassification(f.fuiUnit)
+    local kind = canaccessvalue(c) and PF.ClassKind(c) or nil
+    icon:SetShown(kind ~= nil and K.ClassArt(icon, kind) or false)
+end
+
 -- Blizzard's role icon routine (keeps a secret role secret), handed a stand-in frame; the plain
 -- role lookup is the fallback
 local function UpdateRole(f)
     local icon = f.RoleIcon
     if not IconShown("role", f) then icon:Hide() return end
+    if f.ctx and f.ctx.factionIcon then
+        local faction = UnitFactionGroup(f.fuiUnit)
+        PF.PaintFaction(icon, canaccessvalue(faction) and faction or nil)
+        return
+    end
     local util = _G.UnitFrameUtil and _G.UnitFrameUtil.UpdateUnitFrameRoleIcon
     if util then
         f.roleProxy = f.roleProxy or { optionTable = { displayRoleIcon = true } }
@@ -768,7 +823,7 @@ end
 -- Edit Mode, but for the aggro test.
 local function UpdateThreat(f)
     local st = TS(f)
-    local on = true   -- (always since 11-16, Malkkav: no Threat Glow switch)
+    local on = not (st and st.threatGlow == false)   -- (a switch again since 11-17)
     local status
     if f.fuiUnit then
         if on and not IsEditing() then
@@ -860,6 +915,8 @@ local function UpdateAll(f)
     UpdatePower(f)
     UpdateHealPrediction(f)
     UpdateRaidIcon(f)
+    PF.UpdateClassIcon(f)
+    PF.UpdatePvP(f)
     UpdateLeader(f)
     UpdateRole(f)
     UpdateReadyCheck(f)
@@ -963,7 +1020,8 @@ local function OnMemberEvent(f, event, _, _, _, by, barID)
         -- for charm and tapped, Dead and Ghost with the power text after it)
         MarkDirty(f, 3)
     elseif event == "UNIT_FACTION" or event == "UNIT_CONNECTION" then
-        -- no aura rebuild for these
+        -- no aura rebuild for these (UNIT_FACTION also fires when the PvP flag changes)
+        PF.UpdatePvP(f)
         UpdateHealth(f)
         UpdatePower(f)
         UpdateStatus(f)
@@ -1651,12 +1709,15 @@ local function LayoutTexts(f)
     -- FlareUI Style: the level is in the ring's disc (UnitFramesRing.lua lays it out)
     local levelOnRing = f.ringKind ~= nil
     K.ApplyFont(f.Name, K.Font(key, "names"))
-    if not levelOnRing then K.ApplyFont(f.Level, K.Font(key, "level")) end
+    -- (11-17) the level at the name's size (UnitFrames.lua UF.LevelFont)
+    if not levelOnRing then K.ApplyFont(f.Level, K.LevelFont(key)) end
     K.ApplyFont(f.HealthText, K.Font(key, "health"))
     K.ApplyFont(f.PowerText, K.Font(key, "power"))
     local health, power = f.Health, f.Power
     local T = K.TEXT_INSET
     f.Name:ClearAllPoints()
+    -- Show Name (11-17, Malkkav): off hides it on the party, raid and boss frames
+    f.Name:SetShown(st.showName ~= false)
     if not levelOnRing then f.Level:ClearAllPoints() end
     f.HealthText:ClearAllPoints()
     f.PowerText:ClearAllPoints()
@@ -1713,15 +1774,24 @@ local function LayoutTexts(f)
 end
 
 -- (11-17, Malkkav / punkie) Hide Player Frame in a Party hides the pet frame, and its happiness face
--- with it: your own party tile shows the face then, where the pet frame puts it (Happiness Position:
--- beside the frame, or mid health bar). Blizzard's indicator, as on the pet frame; it hides itself
--- without a pet that has a mood. Edit Mode shows the happy face.
+-- with it: the face moves to your pet's own party pet frame (Pets on), where the pet frame puts it
+-- (Happiness Position: beside the frame, or mid health bar). Never on a party member's frame. Blizzard's
+-- indicator, as on the pet frame; it hides itself without a pet that has a mood. Edit Mode shows the
+-- happy face while your sample pet frame shows. f: any party tile (its pet frame is the one used).
 function PF.LayoutPetHappiness(f)
+    if not f or f.ctx or f.index ~= 0 then return end
+    local p = pets[0]
+    -- (11-17) an old face on your party tile itself (before it moved to the pet frame)
+    if f.PetHappiness then
+        f.PetHappiness:UnregisterAllEvents()
+        f.PetHappiness:Hide()
+    end
+    if not p then return end
     local party = GetPartyDb()
     local UFM = ns.UnitFrames
-    local want = f.fuiUnit == "player" and not f.ctx and party and party.showPlayer and party.hidePlayerInParty
+    local want = party and party.showPlayer and party.hidePlayerInParty and party.pets
         and UFM and UFM.PetHappinessShown and UFM.PetHappinessShown()
-    local face = f.PetHappiness
+    local face = p.PetHappiness
     if not want then
         if face then
             face:UnregisterAllEvents()
@@ -1730,20 +1800,25 @@ function PF.LayoutPetHappiness(f)
         return
     end
     if not face then
-        face = CreateFrame("Frame", nil, f.Overlay or f, "PetFrameHappinessTemplate")
+        face = CreateFrame("Frame", nil, p, "PetFrameHappinessTemplate")
+        face:SetFrameLevel(p:GetFrameLevel() + 6)
         pcall(face.SetPropagateMouseClicks, face, true)
-        f.PetHappiness = face
+        p.PetHappiness = face
     end
-    local size, gap = 20, 4   -- as beside the pet frame (UnitFrames.lua HAPPINESS_PLATE_SIZE, HAPPINESS_GAP)
+    -- as beside the pet frame (UnitFrames.lua HAPPINESS_PLATE_SIZE, HAPPINESS_GAP); mid bar no taller
+    -- than the small pet frame
+    local gap = 4
     local place = UFM.PetHappinessPlace and UFM.PetHappinessPlace() or "RIGHT"
+    local height = p:GetHeight() or 0
+    local size = place == "CENTER" and math_max(12, math_min(20, height + 4)) or 20
     face:ClearAllPoints()
     face:SetSize(size, size)
     if place == "LEFT" then
-        face:SetPoint("RIGHT", f, "LEFT", -gap, 0)
+        face:SetPoint("RIGHT", p, "LEFT", -gap, 0)
     elseif place == "CENTER" then
-        face:SetPoint("CENTER", f.Health, "CENTER", 0, 0)
+        face:SetPoint("CENTER", p.Health, "CENTER", 0, 0)
     else
-        face:SetPoint("LEFT", f, "RIGHT", gap, 0)
+        face:SetPoint("LEFT", p, "RIGHT", gap, 0)
     end
     face:RegisterEvent("UNIT_HAPPINESS")
     face:RegisterEvent("UNIT_PET")
@@ -1780,11 +1855,31 @@ local function LayoutIcons(f)
         end
         PlaceIcon(f, "leader", f.LeaderIcon, 14, 14, "CENTER", f, "TOPLEFT", 8, -2)
         PlaceIcon(f, "raidIcon", f.RaidIcon, 14, 14, "CENTER", f, "TOP", 0, -3)
+        if f.PvPIcon then PlaceIcon(f, "pvp", f.PvPIcon, 16, 16, "CENTER", f, "TOPRIGHT", -8, -2) end
     else
-        -- leader where the player frame has it, role in the bottom-right corner
+        -- leader where the player frame has it, role in the bottom-left corner
         PlaceIcon(f, "leader", f.LeaderIcon, 20, 20, "CENTER", f, "TOPLEFT", 16, -2)
-        PlaceIcon(f, "role", f.RoleIcon, 24, 24, "CENTER", f, "BOTTOMRIGHT", -4, 2)
+        if f.ctx and f.ctx.factionIcon then
+            -- (11-17, Malkkav) the flag carriers' faction crest: the frame's height, centred on its
+            -- right edge and a little past it (as on the ring styles' ring)
+            local size = st.height or 40
+            PlaceIcon(f, "role", f.RoleIcon, size, size, "CENTER", f, "RIGHT", size * 0.2, 0)
+        else
+            -- (11-17, Malkkav) the bottom-left corner (was bottom-right)
+            PlaceIcon(f, "role", f.RoleIcon, 24, 24, "CENTER", f, "BOTTOMLEFT", 4, 2)
+        end
         PlaceIcon(f, "raidIcon", f.RaidIcon, 16, 16, "CENTER", f, "TOP", 0, -2)
+        if f.PvPIcon then PlaceIcon(f, "pvp", f.PvPIcon, 24, 24, "CENTER", f, "BOTTOMRIGHT", -4, 2) end
+        if f.ClassIcon then
+            local info = C_Texture.GetAtlasInfo(K.CLASS_SKULL)
+            local aspect = (info and info.width > 0 and info.height > 0) and (info.width / info.height) or 1
+            local size = K.CLASS_ICON_SIZE or 24
+            if Mirrored(f) then
+                PlaceIcon(f, "classification", f.ClassIcon, size * aspect, size, "CENTER", f, "TOPRIGHT", -4, -2)
+            else
+                PlaceIcon(f, "classification", f.ClassIcon, size * aspect, size, "CENTER", f, "TOPLEFT", 4, -2)
+            end
+        end
     end
     local readyAnchor = PortraitSpace(f) > 0 and f.Portrait or health
     PlaceIcon(f, "readyCheck", f.ReadyIcon, mid, mid, "CENTER", readyAnchor, "CENTER", 0, 0)
@@ -1966,6 +2061,7 @@ local function LayoutPet(p)
     local height = outer - 2 * PADDING
     p:SetSize(st.petWidth or 120, outer)
     K.ApplyBorderStyle(p.Border, K.GetBorderFile(st.petBorder or "FlareUI Thin"), outer)
+    if p.index == 0 then PF.LayoutPetHappiness(members[0]) end
     local texture = K.GetBarTexture(st.texture)
     p.Health:SetStatusBarTexture(texture)
     p.Health.bg:SetTexture(texture)
@@ -2205,7 +2301,9 @@ local function ApplyVisibility()
     else
         -- [group:party] can stay false through a fight after joining one (party1 already exists):
         -- the unit checks cover it, and raid1 hides it in a raid the same way
-        RegisterStateDriver(holder, "visibility", "[group:raid] hide; [@raid1,exists] hide; [group:party] show; [@party1,exists] show; hide")
+        -- (11-17, Jereth) Show When Solo: your own tile, alone, for click-casting healers
+        local solo = party.showSolo and party.showPlayer and "show" or "hide"
+        RegisterStateDriver(holder, "visibility", "[group:raid] hide; [@raid1,exists] hide; [group:party] show; [@party1,exists] show; " .. solo)
     end
     for i = 0, MAX_MEMBERS do
         local f, p = members[i], pets[i]
@@ -2460,7 +2558,7 @@ ApplyPreview = function(f)
     end
     f.Health:SetMinMaxValues(0, 1)
     f.Health:SetValue(data.health or 1)
-    K.SampleDamageTrail(f.DamageTrail, data.health or 1, not data.dead)
+    K.SampleDamageTrail(f.DamageTrail, data.health or 1, not data.dead and K.DamageTrailOn(st and st.damageTrail))
     K.BarLookUpdate(f.Health, nil, false, data.dead)
     if data.rgb then
         f.Health:SetStatusBarColor(data.rgb[1], data.rgb[2], data.rgb[3])
@@ -2511,6 +2609,8 @@ ApplyPreview = function(f)
         if IconShown(key, f) and fn() then region:Show() else region:Hide() end
     end
     ShowIcon("role", f.RoleIcon, function()
+        -- the flag carriers' samples: their faction crest
+        if f.ctx and f.ctx.factionIcon then return PF.PaintFaction(f.RoleIcon, data.faction) end
         local atlas = ROLE_ATLAS[data.role or "DAMAGER"]
         if not (atlas and K.HasAtlas(atlas)) then return false end
         f.RoleIcon:SetAtlas(atlas, false)
@@ -2521,6 +2621,18 @@ ApplyPreview = function(f)
         K.SetIconArt(f.LeaderIcon, "UI-HUD-UnitFrame-Player-Group-LeaderIcon", "Interface\\GroupFrame\\UI-Group-LeaderIcon")
         return true
     end)
+    if f.PvPIcon then
+        ShowIcon("pvp", f.PvPIcon, function()
+            local faction = data.faction or UnitFactionGroup("player")
+            return PF.PaintFaction(f.PvPIcon, canaccessvalue(faction) and faction or nil)
+        end)
+    end
+    if f.ClassIcon then
+        ShowIcon("classification", f.ClassIcon, function()
+            local kind = not f.ringKind and PF.ClassKind(data.classification)
+            return kind and K.ClassArt(f.ClassIcon, kind) or false
+        end)
+    end
     ShowIcon("raidIcon", f.RaidIcon, function()
         if not data.marker then return false end
         SetRaidTargetIconTexture(f.RaidIcon, data.marker)
@@ -2670,6 +2782,14 @@ local function BuildTile(f, unit)
     f.RaidIcon:Hide()
     f.LeaderIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 3)
     f.LeaderIcon:Hide()
+    f.PvPIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 3)
+    f.PvPIcon:Hide()
+    -- (11-17, Malkkav) the boss frames' Elite & Rare skull (ctx.classIcon), Addon Style only: the ring
+    -- styles show the rank with the ring's dragon
+    if f.ctx and f.ctx.classIcon then
+        f.ClassIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 3)
+        f.ClassIcon:Hide()
+    end
     f.RoleIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 3)
     f.RoleIcon:Hide()
 
@@ -2963,10 +3083,18 @@ local function BuildSettings()
         { name = L["Show Player"], kind = LEM.SettingType.Checkbox, default = showPlayerDefault, get = getP("showPlayer", showPlayerDefault),
           set = function(layoutName, value)
               setP("showPlayer")(layoutName, value)
+              -- (11-17) Show When Solo shows your own frame: off with it
+              if not value then local party = GetPartyDb(); if party then party.showSolo = false end end
               LEM:RefreshFrameSettings(holder)
               if ns.UnitFrames.RefreshPartyHide then ns.UnitFrames:RefreshPartyHide() end
           end,
           desc = L["Your own frame first, with the party."] },
+        { name = L["Show When Solo"], kind = LEM.SettingType.Checkbox, default = false,
+          get = getP("showSolo", false),
+          set = function(layoutName, value) setP("showSolo")(layoutName, value); ApplyVisibility() end,
+          -- (11-17, Malkkav) only with Show Player, as Hide Player Frame in a Party: without it, your own frame could vanish
+          hidden = function() return not getP("showPlayer", showPlayerDefault)() end,
+          desc = L["Your party frame shows even when you're not in a group, so you can click-cast on yourself."] },
         { name = L["Hide Player Frame in a Party"], kind = LEM.SettingType.Checkbox, default = false,
           get = getP("hidePlayerInParty", false),
           set = function(_, value)
@@ -2984,7 +3112,7 @@ local function BuildSettings()
     -- (11-16) the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
     local frameItems = {
         { name = L["Scale"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.PlateDefaultScale("party") or 100,
-          minValue = 75, maxValue = 250, valueStep = 5, formatter = function(value) return value .. "%" end,
+          minValue = 75, maxValue = 250, valueStep = 5, formatter = function(value) return value end,   -- plain: "100%" clips the value box (11-17)
           get = function() local st = S(); return st and st.plateScale or (ns.UFRing and ns.UFRing.PlateDefaultScale("party")) or 100 end,
           set = function(layoutName, value)
               -- (a reset that just switched from Raid Style must not size the Classic plate)
@@ -3002,7 +3130,7 @@ local function BuildSettings()
           end,
           hidden = function() return not onPlate() end,
           desc = L["Each Edit Mode layout keeps its own Scale."] },
-        { name = L["Width"], kind = LEM.SettingType.Slider, default = D.width, minValue = 60, maxValue = 400, valueStep = 2, get = getS("width"), set = setS("width") },
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = D.width, minValue = 60, maxValue = 400, valueStep = 1, get = getS("width"), set = setS("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = getS("height"), set = setS("height"),
           hidden = onPlate },
         { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
@@ -3021,10 +3149,6 @@ local function BuildSettings()
           get = function() return getS("powerManaOnly")() and true or false end, set = setS("powerManaOnly"),
           desc = L["Power bars only for classes that use mana. Warriors and rogues get the room for health instead."],
           hidden = function() return not IsRaidStyle() end },
-        { name = L["Portrait Size"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.DefaultSize("party") or 80,
-          minValue = 36, maxValue = 120, valueStep = 1,
-          get = function() local st = S(); return st and st.ringSize or (ns.UFRing and ns.UFRing.DefaultSize("party")) or 80 end,
-          set = setS("ringSize"), hidden = function() return not RingKind({}) or onPlate() end },
         -- the ring always holds a portrait (no None; 2D by default)
         -- "3d" is the stored name of the 2D picture (kept for saved setups)
         { name = L["Portrait"], kind = LEM.SettingType.Dropdown, default = ringPortrait and "3d" or D.portrait or "none",
@@ -3049,6 +3173,7 @@ local function BuildSettings()
               return K.PowerTextMode(st and st.powerText)
           end,
           set = setS("powerText") },
+        { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return getS("showName")() ~= false end, set = setS("showName") },
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = getS("showLevel"), set = setS("showLevel") },
         -- (in Frame since 6.3.3: it changes how the frame behaves, not how it looks)
         { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
@@ -3107,7 +3232,11 @@ local function BuildSettings()
         K.SmoothBarsSetting(getS("smoothBars"), setS("smoothBars")),
         -- (11-16, Marcus: per style, off)
         K.BarEdgeGlowSetting(getS("barEdgeGlow"), setS("barEdgeGlow")),
-        -- (Threat Glow is always on since 11-16, Malkkav)
+        K.DamageTrailSetting(getS("damageTrail"), setS("damageTrail")),
+        -- (11-17, Malkkav) Threat Glow: in Look, right after Class Colours (Core.lua order)
+        { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The border pulses in the threat colour while this member has aggro."],
+          get = function() return getS("threatGlow")() ~= false end, set = setS("threatGlow") },
     })
     Section("Behaviour", behaviourItems)
 
@@ -3115,9 +3244,9 @@ local function BuildSettings()
     Section("Cast Bar", {
         { name = L["Cast Bar"], kind = LEM.SettingType.Checkbox, default = D.castbar or false, get = getS("castbar"),
           set = function(layoutName, value) setS("castbar")(layoutName, value); LEM:RefreshFrameSettings(holder) end },
-        { name = L["Texture"], canon = "Cast Bar Texture", search = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
+        { name = L["Bar Texture"], canon = "Cast Bar Texture", search = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
           get = getS("castTexture"), set = setS("castTexture"), hidden = noCast, },
-        { name = L["Border"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
+        { name = L["Border Texture"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
           get = getS("castBorderTexture"), set = setS("castBorderTexture"),
           hidden = function() return noCast() or onPlate() end,
           desc = L["The cast bar's border. Frame Border matches the frame's own border."] },
@@ -3176,7 +3305,7 @@ local function BuildSettings()
     -- one switch per icon; where they sit is fixed
     local iconItems = {}
     for _, key in ipairs(ICON_ORDER) do
-        iconItems[#iconItems + 1] = { name = ICON_LABELS[key], kind = LEM.SettingType.Checkbox, default = true,
+        iconItems[#iconItems + 1] = { name = ICON_LABELS[key], kind = LEM.SettingType.Checkbox, default = not PF.ICON_OFF[key],
             get = function() return IconShown(key) end,
             set = function(_, value)
                 local store = IconStore(key, true)
@@ -3198,13 +3327,13 @@ local function BuildSettings()
         { name = L["Party Targets"], kind = LEM.SettingType.Dropdown, default = "OFF", values = SIDE_PLACES,
           get = TargetPlace, set = SetPlace("targetPlace", "targets"),
           desc = L["What each member is targeting, in a small frame under theirs or beside it. Click one to target it too."] },
-        { name = L["Pet Frame Width"], kind = LEM.SettingType.Slider, default = D.petWidth, minValue = 40, maxValue = 300, valueStep = 2,
+        { name = L["Pet Frame Width"], kind = LEM.SettingType.Slider, default = D.petWidth, minValue = 40, maxValue = 300, valueStep = 1,
           get = getS("petWidth"), set = setS("petWidth"), hidden = noPets },
         { name = L["Pet Frame Height"], kind = LEM.SettingType.Slider, default = D.petHeight, minValue = 10, maxValue = 40, valueStep = 1,
           get = getS("petHeight"), set = setS("petHeight"), hidden = noPets },
         { name = L["Pet Border"], kind = LEM.SettingType.Dropdown, default = D.petBorder, values = K.BuildBorderValues(false),
           get = getS("petBorder"), set = setS("petBorder"), hidden = noPets },
-        { name = L["Target Frame Width"], kind = LEM.SettingType.Slider, default = D.targetWidth, minValue = 40, maxValue = 300, valueStep = 2,
+        { name = L["Target Frame Width"], kind = LEM.SettingType.Slider, default = D.targetWidth, minValue = 40, maxValue = 300, valueStep = 1,
           get = getS("targetWidth"), set = setS("targetWidth"), hidden = noTargets },
         { name = L["Target Frame Height"], kind = LEM.SettingType.Slider, default = D.targetHeight, minValue = 12, maxValue = 60, valueStep = 1,
           get = getS("targetHeight"), set = setS("targetHeight"), hidden = noTargets },

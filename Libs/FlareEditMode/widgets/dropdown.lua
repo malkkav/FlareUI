@@ -51,6 +51,9 @@ function dropdownMixin:Setup(data)
 	self.Label:SetWidth(lib.internal.LabelWidth(self))   -- FlareUI (dialog.lua LabelWidth)
 	self.Label:SetText(data.name)
 	self:Refresh()
+	-- FlareUI (11-17): pooled boxes drop a text another setting fixed with OverrideText (Bar Text's
+	-- summaries), so they show their own selection again
+	self.Dropdown.disableSelectionText = nil
 
 	if data.generator then
 		-- let the user have full control

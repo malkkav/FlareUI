@@ -12,7 +12,7 @@ local routes = {}
 local function Route(kind, prefix, keys)
     for key in keys:gmatch('%S+') do routes[prefix .. '.' .. key] = kind end
 end
-Route('unit', 'uf', 'frameStyle palette fullNames simplePet simpleTargetOf')
+Route('unit', 'uf', 'frameStyle palette simplePet simpleTargetOf')
 Route('unitAuras', 'uf', 'auraShape auraSwipe auraTimer')
 Route('auras', 'au', 'shape swipe timer arrive')
 Route('minimap', 'mm', 'style bagAddons clockStats microMenu coords fps bagHover')
@@ -22,7 +22,7 @@ Route('tracker', 'qt', 'opacity border zoneHeaders tags wrap count hideLevel pla
 Route('meter', 'dm', 'opacity border minAlpha chatTab combatTimer readyCheck countdown threatValue pullLine pullFlash tankLead')
 Route('actions', 'ab', 'skinCDM buttonScale')
 Route('actionSkin', 'ab', 'flareBorders')
-Route('actions', 'ab', 'statusColours procGlow hideMacroText hideKeybinds buttonArt')
+Route('actions', 'ab', 'statusPick procGlow hideMacroText hideKeybinds buttonArt')
 Route('actions', 'qol', 'gryphons')   -- (Gryphons moved to QoL > Hide Clutter, 11-16)
 Route('xp', 'ab', 'xpBar xpText xpNumbers xpQuest xpBubbles')
 Route('frames', 'uf', 'main party raid boss castbar tot tof')

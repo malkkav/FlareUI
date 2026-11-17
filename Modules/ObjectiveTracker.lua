@@ -2535,9 +2535,9 @@ local function BuildSettings()
     -- Fonts section, always last (11-13)
     local Section, settings = ns.EditSections()
     Section("Frame", {
-        { name = L["Width"], kind = LEM.SettingType.Slider, default = C.WIDTH, minValue = 180, maxValue = 500, valueStep = 5,
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = C.WIDTH, minValue = 180, maxValue = 500, valueStep = 1,
           get = get("width", C.WIDTH), set = set("width") },
-        { name = L["Max Height"], kind = LEM.SettingType.Slider, default = C.MAX_HEIGHT, minValue = 150, maxValue = 1000, valueStep = 10,
+        { name = L["Max Height"], kind = LEM.SettingType.Slider, default = C.MAX_HEIGHT, minValue = 150, maxValue = 1000, valueStep = 1,
           get = get("maxHeight", C.MAX_HEIGHT), set = set("maxHeight") },
         { name = L["Quest Spacing"], kind = LEM.SettingType.Slider, default = C.QUEST_GAP, minValue = 2, maxValue = 20, valueStep = 1,
           get = get("questGap", C.QUEST_GAP), set = set("questGap") },
@@ -2708,6 +2708,9 @@ end
 -- and a cursor left over the list took them from the gamepad action bar: the D-pad stays the bar's) A listener of FlareUI's own
 -- takes those buttons only then, passes every other button on, and goes off when the cursor
 -- leaves or hides, the list fits, Edit Mode opens or a fight starts (never on in a fight).
+-- (11-17, GitHub #93 thelazysheen; Malkkav: focused on the tracker means focused there) Only once you
+-- click the tracker (the pad's cursor click too): a cursor that just rests on the list while the right
+-- stick turns the camera no longer scrolls it. Moving the cursor off the list ends it.
 local PAD_SCROLL = { PADRSTICKUP = 1, PADRSTICKDOWN = -1 }
 local PAD_REPEAT_DELAY, PAD_REPEAT_RATE = 0.35, 0.08
 
@@ -2725,6 +2728,11 @@ function OT.BuildPadScroll()
     local f = CreateFrame("Frame", nil, holder)
     f.smartNavigationIgnored = true
     OT.padScroll = f
+    -- a click on the list engages it (GLOBAL_MOUSE_DOWN: any click, the list's own buttons too)
+    f:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    f:SetScript("OnEvent", function(self)
+        if scroll:IsVisible() and scroll:IsMouseOver() then self.engaged = true end
+    end)
     f:SetScript("OnGamePadButtonDown", function(self, key)
         local dir = PAD_SCROLL[key]
         if not InCombatLockdown() then self:SetPropagateKeyboardInput(not dir) end
@@ -2745,9 +2753,10 @@ function OT.BuildPadScroll()
         elapsed = elapsed + dt
         if elapsed < 0.1 then return end
         elapsed = 0
-        OT.SetPadScroll(not InCombatLockdown() and not state.editMode and not Char().minimized
-            and IsCursorVisible() and scroll:IsVisible() and scroll:IsMouseOver()
-            and content:GetHeight() > scroll:GetHeight() + 1)
+        local over = IsCursorVisible() and scroll:IsVisible() and scroll:IsMouseOver()
+        if not over or InCombatLockdown() then self.engaged = nil end
+        OT.SetPadScroll(self.engaged and over and not InCombatLockdown() and not state.editMode and not Char().minimized
+            and content:GetHeight() > scroll:GetHeight() + 1 or false)
     end)
     f:SetScript("OnHide", function() OT.SetPadScroll(false) end)
 end

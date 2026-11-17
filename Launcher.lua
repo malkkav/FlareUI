@@ -22,6 +22,7 @@ local function PrintCommands()
     Line("/fui errors", L["Errors FlareUI caught, to copy into a bug report (\"/fui errors clear\" empties the list)."])
     local qol = ns.db and ns.db.profile.tweaks
     if qol and qol.enabled and qol.way then Line("/way", L["Place a map pin (type it alone for the formats)."]) end
+    Line("/fui scale reset", L["Turns FlareUI's UI Scale off, back to Blizzard's own scale."])
     Line("/rl", L["Reload UI shortcut."])
 end
 
@@ -173,6 +174,9 @@ loader:SetScript("OnEvent", function(self)
         elseif msg == "mapdebug" then
             -- a developer's probe: the square map's border and every button around it (Minimap.lua)
             if ns.Minimap and ns.Minimap.DebugLayers then ns.Minimap.DebugLayers() end
+        elseif msg == "scale reset" then
+            -- (11-17) UI Scale back to Off, for an interface too small to use (Tweaks.lua 17b)
+            if ns.Tweaks and ns.Tweaks.UIScale then ns.Tweaks.UIScale.Reset() end
         elseif msg == "errors" or msg:find("^errors%s") then
             ns.ErrorsCommand(msg:sub(8))
         elseif msg == "taint" or msg:find("^taint%s") then

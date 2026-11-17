@@ -347,17 +347,17 @@ local function BuildSettings()
           get = get("perRow", perRow), set = set("perRow") },
         { name = L["Aura Swipe"], kind = LEM.SettingType.Dropdown, default = "both", get = get("swipe", "both"), set = set("swipe"),
           values = {
+              { text = L["Off"], value = "none", isRadio = true },
               { text = L["Over the Icon"], value = "icon", isRadio = true },
               { text = L["Around the Border"], value = "border", isRadio = true },
               { text = L["Both"], value = "both", isRadio = true },
-              { text = L["Off"], value = "none", isRadio = true },
           } },
         { name = L["Aura Timer"], kind = LEM.SettingType.Dropdown, default = "none", get = get("timer", "none"), set = set("timer"),
           values = {
+              { text = L["Off"], value = "none", isRadio = true },
               { text = L["Under the Icon"], value = "below", isRadio = true },
               { text = L["Bottom of the Icon"], value = "bottom", isRadio = true },
               { text = L["Middle of the Icon"], value = "middle", isRadio = true },
-              { text = L["Off"], value = "none", isRadio = true },
           } },
     })
 end

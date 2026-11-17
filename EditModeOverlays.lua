@@ -61,6 +61,15 @@ local SWITCHES = {
     { setter = "SetPetFrameShown", setting = "ShowPetFrame", frames = { "FlareUI_UF_Pet" } },
     { setter = "SetCastBarShown", setting = "ShowCastBar", frames = { "FlareUI_UF_PlayerCastBar" } },
     { setter = "SetBuffsAndDebuffsShown", setting = "ShowBuffsAndDebuffs", frames = { "FlareUI_Buffs", "FlareUI_Debuffs" } },
+    -- (11-17, Malkkav) Resource Bars takes over Duration Bars, Swing Timer and Personal Resource Display
+    -- while it runs the matching bars (Blizzard's own are parked then, ResourceBars.lua). box: the
+    -- checkbox, enabled here while ours (Blizzard greys Swing Timer and Personal Resource Display
+    -- without their CVars, which FlareUI's bars don't need)
+    { setter = "SetTimerBarsShown", setting = "ShowTimerBars", box = "TimerBars", frames = { "FlareUI_Resource_timer" } },
+    { setter = "SetSwingTimerShown", setting = "ShowSwingTimer", box = "SwingTimer",
+      frames = { "FlareUI_Resource_swingMain", "FlareUI_Resource_swingOff", "FlareUI_Resource_swingRanged" } },
+    { setter = "SetPersonalResourceDisplayShown", setting = "ShowPersonalResourceDisplay", box = "PersonalResourceDisplay",
+      frames = { "FlareUI_Resource_health", "FlareUI_Resource_power", "FlareUI_Resource_mana" } },
 }
 
 local switchedOnNow = {}   -- switch -> turned on below: Blizzard's checkbox can't show it until a reload
@@ -111,11 +120,24 @@ end
 -- the checkboxes of hidden bars are hidden and the list laid out again with the same two calls
 -- LayoutSettings ends with. Nothing runs while no bar is hidden, so nothing of Blizzard's is touched.
 --------------------------------------------------
+-- (11-17, Malkkav) the same for Blizzard's minimap pieces FlareUI's minimap icons replace (Minimap >
+-- Map Tools): Vehicle Exit Button, Equipment Durability and Group Finder go from the list while ours is
+-- on (Blizzard's own are hidden then, MinimapVehicle.lua / MinimapDurability.lua / MinimapEye.lua)
+local function MinimapIconOn(key)
+    return function()
+        local profile = ns.db and ns.db.profile
+        local mm = profile and profile.minimap
+        return mm and mm.enabled and mm[key] and true or false
+    end
+end
 local HIDDEN_BAR_BOXES = {
     { box = "StanceBar", setting = "hideStanceBar" },
     { box = "PetActionBar", setting = "hidePetBar" },
     { box = "PossessActionBar", setting = "hidePossessBar" },
     { box = "TotemActionBar", setting = "hideTotemBar" },
+    { box = "VehicleLeaveButton", hidden = MinimapIconOn("vehicleExit") },
+    { box = "DurabilityFrame", hidden = MinimapIconOn("durability") },
+    { box = "GroupFinder", hidden = MinimapIconOn("finderEye") },
 }
 local boxesHidden = {}   -- checkbox -> hidden here
 
@@ -133,7 +155,9 @@ local function ApplyHiddenBarBoxes()
     for _, entry in ipairs(HIDDEN_BAR_BOXES) do
         local box = boxes[entry.box]
         if box then
-            if BarHidden(entry.setting) then
+            local hide
+            if entry.hidden then hide = entry.hidden() else hide = BarHidden(entry.setting) end
+            if hide then
                 if box:IsShown() then box:Hide(); changed = true end
                 boxesHidden[box] = true
             elseif boxesHidden[box] then
@@ -143,6 +167,24 @@ local function ApplyHiddenBarBoxes()
                 local show = not box.shouldHide and (advanced or box.isBasicOption) or false
                 if show ~= box:IsShown() then box:SetShown(show); changed = true end
             end
+        end
+    end
+    -- the taken-over boxes: clickable while FlareUI's bars are theirs (Blizzard's greying is about its
+    -- own frames' CVars); the next UpdateDisplay of Blizzard's is followed by this again
+    for _, switch in ipairs(SWITCHES) do
+        local box = switch.box and boxes[switch.box]
+        if box and box.Button and HasFrame(switch) then
+            if not box.FlareUI_Owned then
+                box.FlareUI_Owned = true
+                hooksecurefunc(box, "UpdateDisplay", function(b)
+                    if b.FlareUI_Owned and HasFrame(switch) then
+                        b.Button:SetEnabled(true)
+                        b.Label:SetFontObject("GameFontHighlightMedium")
+                    end
+                end)
+            end
+            box.Button:SetEnabled(true)
+            box.Label:SetFontObject("GameFontHighlightMedium")
         end
     end
     if not changed then return end

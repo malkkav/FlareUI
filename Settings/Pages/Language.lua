@@ -10,7 +10,8 @@ local S = ns.Settings
 ns.Copy.modules.language = {
     title = L["General"],
     desc = L["Options for the whole interface: your characters, windows, scale and language."],
-    tabs = { L["Interface"], L["Advanced"] },
+    -- (11-17, Malkkav) Advanced renamed General and first, ESC Menu on top of it
+    tabs = { L["General"], L["Interface"] },
 }
 ns.Copy.sections["language.main"] = L["Language"]
 ns.Copy.rows["language.useGame"] = {
@@ -37,9 +38,18 @@ end
 
 S:Module{
     key = "language", group = "top", order = 3,
-    tabs = { { key = "interface" }, { key = "account" } },
+    tabs = { { key = "account" }, { key = "interface" } },
     -- no Reset on its sections (one-off choices, most of them reloading)
     noReset = true,
+}
+
+-- ESC Menu (11-17, Malkkav): a FlareUI button in the game menu, under Shop (Launcher.lua 4b); off,
+-- for every character
+S:Row{
+    key = "language.escButton", module = "language", tab = "account", section = "language.escMenu",
+    get = function() local g = ns.db and ns.db.global; return g and g.escMenuButton == true or false end,
+    set = function(on) local g = ns.db and ns.db.global; if g then g.escMenuButton = on and true or nil end end,
+    resetValue = function() return false end,
 }
 
 -- Sync Blizz UI: copies one character's Blizzard settings to the others
@@ -83,11 +93,13 @@ local CUSTOM_CHOICES = {}
 for percent = 30, 200, 5 do CUSTOM_CHOICES[#CUSTOM_CHOICES + 1] = { percent, percent .. "%" } end
 local function Global() return ns.db and ns.db.global end
 S:Row{
-    key = "qol.uiScale", kind = "choice", module = "language", choices = SCALE_PRESETS, reload = true,
+    key = "qol.uiScale", kind = "choice", module = "language", tab = "interface", choices = SCALE_PRESETS, reload = true,
     get = function() local g = Global(); return g and g.uiScale or "blizzard" end,
     set = function(preset)
         local g = Global()
         if not g then return end
+        -- (11-17) the scale before, for the keep-or-go-back question after the reload (Tweaks.lua 17b)
+        if ns.Tweaks and ns.Tweaks.UIScale then ns.Tweaks.UIScale.Remember() end
         g.uiScale = preset ~= "blizzard" and preset or nil
         -- Custom starts from the scale in use, as EnhanceQoL's
         if preset == "custom" and not g.uiScaleCustom then g.uiScaleCustom = UIParent:GetScale() end
@@ -95,20 +107,25 @@ S:Row{
 }
 S:Row{
     -- (a slider since 11-16; right under UI Scale, shown only on Custom, not indented)
-    key = "qol.uiScaleCustom", kind = "range", module = "language", choices = CUSTOM_CHOICES, reload = true,
+    key = "qol.uiScaleCustom", kind = "range", module = "language", tab = "interface", choices = CUSTOM_CHOICES, reload = true,
     hidden = function() local g = Global(); return not (g and g.uiScale == "custom") end,
     get = function()
         local g = Global()
         local value = g and tonumber(g.uiScaleCustom) or 1
         return math.max(30, math.min(200, math.floor(value * 20 + 0.5) * 5))
     end,
-    set = function(percent) local g = Global(); if g then g.uiScaleCustom = percent / 100 end end,
+    set = function(percent)
+        local g = Global()
+        if not g then return end
+        if ns.Tweaks and ns.Tweaks.UIScale then ns.Tweaks.UIScale.Remember() end
+        g.uiScaleCustom = percent / 100
+    end,
 }
 -- Text Scale: all text larger or smaller, frames as they are (Core.lua ns.TEXT_SCALE), account-wide
 local TEXT_CHOICES = {}
 for percent = 80, 150, 5 do TEXT_CHOICES[#TEXT_CHOICES + 1] = { percent, percent .. "%" } end
 S:Row{
-    key = "qol.textScale", kind = "range", module = "language", choices = TEXT_CHOICES, reload = true,   -- (a slider, 11-16)
+    key = "qol.textScale", kind = "range", module = "language", tab = "interface", choices = TEXT_CHOICES, reload = true,   -- (a slider, 11-16)
     get = function()
         local g = Global()
         return math.floor((g and tonumber(g.textScale) or 1) * 20 + 0.5) * 5
@@ -116,19 +133,11 @@ S:Row{
     set = function(percent) local g = Global(); if g then g.textScale = percent ~= 100 and percent / 100 or nil end end,
 }
 
--- ESC Menu (11-17, Malkkav): a FlareUI button in the game menu, under Shop (Launcher.lua 4b); off,
--- for every character
-S:Row{
-    key = "language.escButton", module = "language", section = "language.escMenu",
-    get = function() local g = ns.db and ns.db.global; return g and g.escMenuButton == true or false end,
-    set = function(on) local g = ns.db and ns.db.global; if g then g.escMenuButton = on and true or nil end end,
-    resetValue = function() return false end,
-}
 
 -- Global Font (11-13): the face of every font set to Global (Core.lua ns.GlobalFontFace), then the
 -- two all-font buttons side by side (Settings/Fonts.lua)
 S:Row{
-    key = "fonts.global.face", kind = "dropdown", module = "language", dropdownWidth = 150,
+    key = "fonts.global.face", kind = "dropdown", module = "language", tab = "interface", dropdownWidth = 150,
     path = "fonts.global.face", previewFont = "fonts.global",
     choices = function() return S.FontFaces() end,
     apply = function() S:ApplyAllFonts() end,
@@ -141,19 +150,45 @@ local function BlizzardFaces()
     return list
 end
 S:Row{
-    key = "fonts.gameText", module = "language", path = "fonts.gameText",
+    key = "fonts.gameText", module = "language", tab = "interface", path = "fonts.gameText",
     apply = function() S:ApplyAllFonts() end,
 }
 S:Row{
-    key = "fonts.nameplate.face", kind = "dropdown", module = "language", dropdownWidth = 150,
+    key = "fonts.nameplate.face", kind = "dropdown", module = "language", tab = "interface", dropdownWidth = 150,
     path = "fonts.nameplate.face", previewFont = "fonts.nameplate", choices = BlizzardFaces,
     apply = function() S:ApplyAllFonts() end,
 }
 S:Row{
-    key = "fonts.combat.face", kind = "dropdown", module = "language", dropdownWidth = 150,
+    key = "fonts.combat.face", kind = "dropdown", module = "language", tab = "interface", dropdownWidth = 150,
     path = "fonts.combat.face", previewFont = "fonts.combat", choices = BlizzardFaces,
     -- the game reads it as you log in: the file is saved now, for then
     apply = function() if ns.GameFonts then ns.GameFonts.SaveCombatPath() end end,
+}
+-- (11-17, Malkkav; AstroFox) Combat Text Size: the game's own scale of the damage numbers, shown only
+-- where the client has it (WorldTextScale_v2, else WorldTextScale). Nothing is written until you move it.
+local function CombatTextCVar()
+    if not (C_CVar and C_CVar.GetCVarInfo) then return nil end
+    for _, name in ipairs({ "WorldTextScale_v2", "WorldTextScale" }) do
+        local ok, value = pcall(C_CVar.GetCVarInfo, name)
+        if ok and value ~= nil then return name end
+    end
+    return nil
+end
+local COMBAT_TEXT_CHOICES = {}
+for percent = 50, 200, 10 do COMBAT_TEXT_CHOICES[#COMBAT_TEXT_CHOICES + 1] = { percent, percent .. "%" } end
+S:Row{
+    key = "fonts.combatSize", kind = "range", module = "language", tab = "interface", choices = COMBAT_TEXT_CHOICES,
+    hidden = function() return CombatTextCVar() == nil end,
+    get = function()
+        local name = CombatTextCVar()
+        local value = name and tonumber(C_CVar.GetCVar(name)) or 1
+        return math.floor(value * 10 + 0.5) * 10
+    end,
+    set = function(percent)
+        local name = CombatTextCVar()
+        if name then pcall(C_CVar.SetCVar, name, percent / 100) end
+    end,
+    resetValue = function() return 100 end,
 }
 ns.Dialogs["FLAREUI_FONTS_USE_GLOBAL"] = {
     text = L["Set every FlareUI font to the Global Font?\n\nEach font keeps its size, outline and shadow."],
@@ -170,7 +205,7 @@ ns.Dialogs["FLAREUI_FONTS_RESET"] = {
     hideOnEscape = true,
 }
 S:Row{
-    key = "fonts.buttons", kind = "buttons", module = "language", labelFn = function() return "" end,
+    key = "fonts.buttons", kind = "buttons", module = "language", tab = "interface", labelFn = function() return "" end,
     center = true, buttonGap = 16,
     buttons = {
         { text = L["Use Global Font Everywhere"], width = 220,

@@ -4,7 +4,7 @@ local S = ns.Settings
 
 --------------------------------------------------
 -- QUALITY OF LIFE
--- Settings for Modules/Tweaks.lua in Gameplay, Nameplates and Interface tabs (Bags and Looting became
+-- Settings for Modules/Tweaks.lua in Gameplay, Nameplates, Interface and Systems (11-17: Camera, Gamepad) tabs (Bags and Looting became
 -- its own module, BagsLooting.lua, 11-12). Options that replace
 -- Blizzard scripts ask for a reload; the rest apply live.
 --------------------------------------------------
@@ -29,14 +29,14 @@ end
 
 S:Module{
     key = "qol", group = "interface", order = 40, enabled = "tweaks.enabled",
-    tabs = { { key = "gameplay" }, { key = "nameplates" }, { key = "interface" }, { key = "fonts" } },
+    tabs = { { key = "gameplay" }, { key = "nameplates" }, { key = "interface" }, { key = "systems" }, { key = "fonts" } },
 }
 
 -- (Sync Blizz UI, Move Any Window and UI Scale moved to the Settings page, Language.lua, 11-11)
 
 -- GAMEPLAY ---------------------------------------
--- (11-16, UX audit batch 4) three sections, in pairs: Quests & NPCs, Map & Mail, Other (junk, alerts,
--- fishing, key press); a section shows where its first row registers, so keep this order
+-- (11-16, UX audit batch 4) three sections, in pairs: Quests & NPCs, Map & Mail, Convenience (was Other,
+-- 11-17); a section shows where its first row registers, so keep this order
 -- (11-16, Malkkav) Automate Quests: Auto Accept Quests and Auto Turn-In Quests in one switch; both saved
 -- flags follow it (Tweaks.lua reads them as before)
 S:Row{ key = "qol.autoAcceptQuests", half = true, tab = "gameplay",
@@ -48,11 +48,12 @@ S:Row{ key = "qol.autoAcceptQuests", half = true, tab = "gameplay",
     resetValue = function() return false end }
 -- (11-14, a player's request) the lone banker / vendor / trainer option, and room for loot when the bags are full
 S:Row{ key = "qol.skipGossip", half = true, tab = "gameplay", path = "tweaks.skipGossip" }
-S:Row{ key = "qol.way", half = true, tab = "gameplay", path = "tweaks.way", reload = true, disabled = WayTaken }
-S:Row{ key = "qol.mapFade", half = true, tab = "gameplay", path = "tweaks.mapFade", apply = Refresh }
 S:Row{ key = "qol.taxiMap", half = true, tab = "gameplay", path = "tweaks.taxiMap" }
 S:Row{ key = "qol.trainAll", half = true, tab = "gameplay", path = "tweaks.trainAll", apply = Refresh }
-S:Row{ key = "qol.mailBook", half = true, tab = "gameplay", path = "tweaks.mailBook", apply = Refresh }
+-- Map & Mail (11-17, Malkkav: back from Interface), above Convenience
+S:Row{ key = "qol.way", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.way", reload = true, disabled = WayTaken }
+S:Row{ key = "qol.mapFade", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.mapFade", apply = Refresh }
+S:Row{ key = "qol.mailBook", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.mailBook", apply = Refresh }
 -- (11-16, Malkkav) Coordinates on the World Map: Blizzard's own two options (your position and the
 -- cursor's) behind one switch, nothing of FlareUI's drawn. Its Interface options show the same values.
 local MAP_COORDS = { "worldMapShowPlayerCoords", "worldMapShowCursorCoords" }
@@ -65,18 +66,20 @@ S:Row{ key = "qol.mapCoords", half = true, tab = "gameplay", section = "qol.mapM
         for _, cvar in ipairs(MAP_COORDS) do pcall(C_CVar.SetCVar, cvar, on and "1" or "0") end
     end,
     resetValue = function() return false end }
-S:Row{ key = "qol.deleteJunkFull", half = true, tab = "gameplay", path = "tweaks.deleteJunkWhenFull" }
-S:Row{ key = "qol.alerts", half = true, tab = "gameplay", path = "tweaks.alertSounds" }
-S:Row{ key = "qol.fishCast", half = true, tab = "gameplay", path = "tweaks.fishCast", apply = Refresh }
-S:Row{ key = "qol.fishSound", half = true, tab = "gameplay", path = "tweaks.fishSound", apply = Refresh }
-S:Row{ key = "qol.keyDown", half = true, tab = "gameplay", path = "tweaks.keyDown", apply = Refresh }
--- (11-16) pairs with Cast on Key Press, last in Other
+-- Convenience (11-17, Malkkav: was Other), in pairs: accepting for you, casting, fishing, bags and sounds
 S:Row{ key = "qol.acceptRes", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.acceptRes" }
+S:Row{ key = "qol.acceptSummon", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.acceptSummon" }
+S:Row{ key = "qol.keyDown", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.keyDown", apply = Refresh }
+S:Row{ key = "qol.craftTotal", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.craftTotal" }
+S:Row{ key = "qol.fishCast", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.fishCast", apply = Refresh }
+S:Row{ key = "qol.fishSound", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.fishSound", apply = Refresh }
+S:Row{ key = "qol.deleteJunkFull", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.deleteJunkWhenFull" }
+S:Row{ key = "qol.alerts", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.alertSounds" }
 -- (11-15, Malkkav) Better Camera became two sliders. Each starts at Blizzard's own value; back on it,
 -- FlareUI leaves the game's setting alone (nil). Better Camera's old switch carried over as 2.6 and 50.
 local function CameraSlider(key, path, cvar, choices)
     local default = ns.Tweaks and ns.Tweaks.CameraDefault and ns.Tweaks.CameraDefault(cvar)
-    S:Row{ key = key, kind = "range", tab = "gameplay", choices = choices,
+    S:Row{ key = key, kind = "range", tab = "systems", choices = choices,
         get = function() return S:GetPath(path) or default or choices[1][1] end,
         set = function(value)
             if default and math.abs(value - default) < 0.001 then value = nil end
@@ -98,18 +101,20 @@ S:FontRows{ module = "qol", tab = "fonts", section = "qol.fonts", fonts = {
 end }
 
 -- Controller: the Gamepad mode prompt and rumble (GamepadMode.lua)
-S:Row{ key = "qol.gamepadPrompt", half = true, tab = "gameplay", path = "tweaks.gamepadPrompt" }
+S:Row{ key = "qol.gamepadPrompt", half = true, tab = "systems", path = "tweaks.gamepadPrompt" }
 -- the quest tracker's own switch (ObjectiveTracker.lua OT.WantedInMode), with the other gamepad ones;
 -- greyed while FlareUI's tracker is off, since then Blizzard's shows anyway
-S:Row{ key = "qol.padTracker", half = true, tab = "gameplay", path = "objectivetracker.padBlizzard", reload = true,
+S:Row{ key = "qol.padTracker", half = true, tab = "systems", path = "objectivetracker.padBlizzard", reload = true,
     disabled = function() return not S:GetPath("objectivetracker.enabled") end }
-S:Row{ key = "qol.rumbleAlerts", half = true, tab = "gameplay", path = "tweaks.rumbleAlerts" }
-S:Row{ key = "qol.rumbleProcs", half = true, tab = "gameplay", path = "tweaks.rumbleProcs" }
+S:Row{ key = "qol.rumbleAlerts", half = true, tab = "systems", path = "tweaks.rumbleAlerts" }
+S:Row{ key = "qol.rumbleProcs", half = true, tab = "systems", path = "tweaks.rumbleProcs" }
 
 -- INTERFACE --------------------------------------
 -- whether enemy plates show at all first, then what goes on them, then their text
 -- (Blizzard's own enemy plates, so another nameplate addon does not grey it out)
 S:Row{ key = "qol.npCombat", tab = "nameplates", path = "tweaks.combatPlates", apply = Refresh }
+-- (11-17, Malkkav; AstroFox) friendly players' plates only in a fight (Blizzard's plates too)
+S:Row{ key = "qol.npCombatFriendly", tab = "nameplates", path = "tweaks.combatFriendly", apply = Refresh }
 S:Row{ key = "qol.npCombo", tab = "nameplates", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon }
 S:Row{ key = "qol.npQuest", tab = "nameplates", path = "tweaks.nameplateQuest", apply = Refresh, disabled = QuestBadgeTaken }
 S:Row{ key = "qol.npNames", tab = "nameplates", path = "tweaks.nameplateHideNames", apply = Refresh, disabled = NameplateAddon }
@@ -134,6 +139,7 @@ S:Row{ key = "qol.repairGuild", half = true, tab = "interface", path = "tweaks.r
 S:Row{ key = "qol.merchantKnown", half = true, tab = "interface", path = "tweaks.merchantKnown", apply = Refresh }
 S:Row{ key = "qol.bulkBuy", half = true, tab = "interface", path = "tweaks.bulkBuy", apply = Refresh }
 S:Row{ key = "qol.merchantWide", half = true, tab = "interface", path = "tweaks.merchantWide", reload = true }
+
 
 S:Row{ key = "qol.hideErrors", half = true, tab = "interface", path = "tweaks.hideErrors", reload = true }
 S:Row{ key = "qol.hideZoneText", half = true, tab = "interface", path = "tweaks.hideZoneText", reload = true }

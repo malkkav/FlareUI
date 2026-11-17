@@ -19,6 +19,8 @@ local _, ns = ...
 --   macro                 the secure button runs this macro (or function(data)); PreClick calls
 --                         OnMacro, OnAccept stays the pad's and combat's answer
 --   padSecure             with macro: pad yes / no are bound to the secure buttons
+--   readable              (11-17) never smaller than at the 1080p scale: asked right after a UI Scale
+--                         change, when the whole interface may be tiny (not with reloads / macro)
 ns.Dialogs = ns.Dialogs or {}
 
 --------------------------------------------------
@@ -328,6 +330,8 @@ function ns.ShowDialog(key, textArg, data)
     if not def then return end
     if not frame then Build() end
     current, currentData = def, data
+    -- (11-17) readable: counters a tiny UIParent (0.71 is 768 / 1080)
+    frame:SetScale(def.readable and math.max(1, 0.71 / math.max(0.1, UIParent:GetScale())) or 1)
     local text = def.text or ""
     if textArg ~= nil then text = text:format(textArg) end
     Layout(def, text)
@@ -384,6 +388,11 @@ function ns.ShowDialog(key, textArg, data)
         frame.EditBox:SetFocus()
         frame.EditBox:HighlightText()
     end
+end
+
+-- (11-17) answers no for the player when that dialog is still up (a timer running out)
+function ns.CancelDialog(key)
+    if frame and frame:IsShown() and current and current == ns.Dialogs[key] then Answer(false) end
 end
 
 function ns.AnyDialogShown()

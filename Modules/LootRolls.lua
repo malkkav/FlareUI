@@ -403,8 +403,9 @@ local function Panel(frame)
     -- (11-17, Malkkav: trying FlareUI Thick again, with a darker wash; 11-15 it was thin)
     local edge = LSM:Fetch("border", "FlareUI Thick")
     frame:SetBackdrop({ edgeFile = edge, edgeSize = ns.BorderEdgeSize(edge, 16) })
-    local c = ns.BORDER_COLOR
-    frame:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
+    -- (11-17, Malkkav) a little darker than FlareUI's bronze, on the plain rock
+    local c, dim = ns.BORDER_COLOR, 0.75
+    frame:SetBackdropBorderColor(c.r * dim, c.g * dim, c.b * dim, c.a)
     if not frame.skin then
         local rock = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
         rock:SetPoint("TOPLEFT", 3, -3)
@@ -412,15 +413,20 @@ local function Panel(frame)
         rock:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
         rock:SetHorizTile(true)
         rock:SetVertTile(true)
+        -- (11-17, Malkkav: a test) the settings window's ground, "Rock, natural" (Settings/Panel.lua LOOK_BG):
+        -- the rock as it is, no brown wash, no bronze glow; the shade toward the bottom stays. Back to the
+        -- bronze look: the wash at 0.62 and the glow shown.
         local wash = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
         wash:SetAllPoints(rock)
-        wash:SetColorTexture(0.05, 0.038, 0.026, 0.62)   -- (11-17: darker, it was 0.45)
+        wash:SetColorTexture(0.05, 0.038, 0.026, 0)
+        wash:Hide()
         local glow = frame:CreateTexture(nil, "BACKGROUND", nil, 3)
         glow:SetPoint("TOPLEFT", rock)
         glow:SetPoint("TOPRIGHT", rock)
         glow:SetHeight(2 * HEADER)
         glow:SetColorTexture(1, 1, 1)
         glow:SetGradient("VERTICAL", CreateColor(0.55, 0.41, 0.22, 0), CreateColor(0.55, 0.41, 0.22, 0.20))
+        glow:Hide()
         local shade = frame:CreateTexture(nil, "BACKGROUND", nil, 3)
         shade:SetAllPoints(rock)
         shade:SetColorTexture(1, 1, 1)

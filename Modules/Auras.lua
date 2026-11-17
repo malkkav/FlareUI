@@ -945,16 +945,16 @@ local WRAP_VALUES = {
     { text = L["Up"],   value = "UP",   isRadio = true },
 }
 local SWIPE_VALUES = {
+    { text = L["Off"], value = "none", isRadio = true },
     { text = L["Over the Icon"], value = "icon", isRadio = true },
     { text = L["Around the Border"], value = "border", isRadio = true },
     { text = L["Both"], value = "both", isRadio = true },
-    { text = L["Off"], value = "none", isRadio = true },
 }
 local TIMER_VALUES = {
+    { text = L["Off"], value = "none", isRadio = true },
     { text = L["Under the Icon"], value = "below", isRadio = true },
     { text = L["Bottom of the Icon"], value = "bottom", isRadio = true },
     { text = L["Middle of the Icon"], value = "middle", isRadio = true },
-    { text = L["Off"], value = "none", isRadio = true },
 }
 
 local function BuildSettings(kind)

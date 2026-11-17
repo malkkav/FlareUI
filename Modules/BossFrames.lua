@@ -28,9 +28,9 @@ local PF = ns.PartyFrames
 local Tile = PF and PF.Tile
 
 local MAX_BOSSES = 5
-local BASE_POSITION = { point = "RIGHT", x = -3, y = -11 }
+local BASE_POSITION = { point = "RIGHT", x = -10, y = -11 }   -- (11-17: Malkkav's, was x -3)
 -- Edit Mode keeps a reference to this table: ApplyPosition refills it for the style in use
-local DEFAULT_POSITION = { point = "RIGHT", x = -3, y = -11 }
+local DEFAULT_POSITION = { point = "RIGHT", x = -10, y = -11 }
 local TILE_TEMPLATE = "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate"
 
 local HOSTILE_RGB = { 0.87, 0.27, 0.27 }
@@ -47,7 +47,7 @@ local SAMPLES = {
     { name = "Core Hound", level = -1, health = 0.66, power = 0.25,
       portrait = "Interface\\Icons\\Ability_Hunter_Pet_Wolf" },
 }
-for _, s in ipairs(SAMPLES) do s.rgb = HOSTILE_RGB end
+for _, s in ipairs(SAMPLES) do s.rgb = HOSTILE_RGB; s.classification = "worldboss" end
 
 --------------------------------------------------
 -- 3. SETTINGS ACCESS
@@ -69,7 +69,7 @@ end
 -- The tile settings: the boss db plus fixed values (no party icons or dispels; five
 -- auras to a row)
 local ICONS = { role = { shown = false }, leader = { shown = false }, readyCheck = { shown = false },
-                status = { shown = false }, raidIcon = {} }
+                status = { shown = false }, raidIcon = {}, classification = {} }
 -- (amountTile: Buff / Debuff Amount apply, PartyFrames.lua PF.AmountTile)
 local FIXED = { dispelHighlight = "off", dispels = "OFF", auraMax = 5, auraPerRow = 5, amountTile = true }
 local view = setmetatable({}, { __index = function(_, key)
@@ -86,6 +86,7 @@ local view = setmetatable({}, { __index = function(_, key)
     end
     if key == "icons" then
         ICONS.raidIcon.shown = db.raidIcon ~= false
+        ICONS.classification.shown = db.classIcon ~= false
         return ICONS
     end
     return db[key]
@@ -101,6 +102,7 @@ local ctx = {
     ReadyHold = function() return nil end,
     classic = true, mirror = true, hostile = true, castbar = true,
     ringKind = "boss",   -- the portrait ring in the ring styles (PartyFrames.lua RingKind)
+    classIcon = true,    -- the Elite & Rare skull in Addon Style (PartyFrames.lua PF.UpdateClassIcon)
     fontKey = "boss",    -- the boss frames' fonts (PartyFrames.lua PF.FontKey)
 }
 -- for the settings previews' sample tiles
@@ -269,7 +271,9 @@ local function Refresh()
     local db = GetDb()
     -- the ring styles keep the target frame's layout: Mirror turns only the bars there
     ctx.fillMirror = not (db and db.mirror == false)
-    ctx.mirror = RingStyle() or ctx.fillMirror
+    -- (11-17, Malkkav) the ring styles: Flip Portrait (db.portraitRight, on by default) puts the portrait
+    -- on the right, as the target frame; off, on the left. Addon Style: Mirror Bars lays it out.
+    if RingStyle() then ctx.mirror = not (db and db.portraitRight == false) else ctx.mirror = ctx.fillMirror end
     for _, f in ipairs(tiles) do
         local ok, err = pcall(Tile.Layout, f)
         if not ok then geterrorhandler()(err) end
@@ -328,7 +332,7 @@ local function BuildSettings()
     -- (11-16) the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
     local frameItems = {
         { name = L["Scale"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.PlateDefaultScale("boss") or 100,
-          minValue = 75, maxValue = 250, valueStep = 5, formatter = function(value) return value .. "%" end,
+          minValue = 75, maxValue = 250, valueStep = 5, formatter = function(value) return value end,   -- plain: "100%" clips the value box (11-17)
           get = function() local db = GetDb(); return db and db.plateScale or (ns.UFRing and ns.UFRing.PlateDefaultScale("boss")) or 100 end,
           set = function(layoutName, value)
               if not onPlate() then return end
@@ -345,7 +349,7 @@ local function BuildSettings()
           end,
           hidden = function() return not onPlate() end,
           desc = L["Each Edit Mode layout keeps its own Scale."] },
-        { name = L["Width"], kind = LEM.SettingType.Slider, default = D.width, minValue = 80, maxValue = 400, valueStep = 2, get = get("width"), set = set("width") },
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = D.width, minValue = 80, maxValue = 400, valueStep = 1, get = get("width"), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = get("height"), set = set("height"),
           hidden = onPlate },
         { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
@@ -359,14 +363,18 @@ local function BuildSettings()
                 db.platePower = value
                 Refresh()
             end, onPlate),
-        { name = L["Portrait Size"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.DefaultSize("boss") or 80,
-          minValue = 36, maxValue = 120, valueStep = 1,
-          get = function() local db = GetDb(); return db and db.ringSize or (ns.UFRing and ns.UFRing.DefaultSize("boss")) or 80 end,
-          set = set("ringSize"), hidden = function() return not RingStyle() or onPlate() end },
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") },
         { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "value", values = K.POWER_TEXT_MODES,
           get = function() local db = GetDb(); return K.PowerTextMode(db and db.powerText) end, set = set("powerText") },
+        { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName")() ~= false end, set = set("showName") },
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = get("showLevel"), set = set("showLevel") },
+        -- (11-17, Malkkav) Flip Portrait, as on target and focus: on, the portrait on the right (default);
+        -- off, on the left (db.portraitRight); the ring styles only, as there
+        { name = L["Flip Portrait"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The portrait on the right, as on the target frame. Off: on the left, as on the player frame."],
+          get = function() local db = GetDb(); return not (db and db.portraitRight == false) end,
+          set = function(layoutName, value) if value then set("portraitRight")(layoutName, nil) else set("portraitRight")(layoutName, false) end end,
+          hidden = function() return not RingStyle() end },
         { name = L["Mirror Bars"], kind = LEM.SettingType.Checkbox, default = D.mirror ~= false,
           get = function() return get("mirror")() ~= false end, set = set("mirror"),
           desc = L["Laid out like the target frame: portrait on the right, bars filling from the right. In FlareUI and Forever Style, only the bars flip."] },
@@ -402,7 +410,11 @@ local function BuildSettings()
         K.SmoothBarsSetting(get("smoothBars"), set("smoothBars")),
         -- (11-16, Marcus)
         K.BarEdgeGlowSetting(get("barEdgeGlow"), set("barEdgeGlow")),
-        -- (Threat Glow is always on since 11-16, Malkkav)
+        K.DamageTrailSetting(get("damageTrail"), set("damageTrail")),
+        -- (11-17, Malkkav) Threat Glow: in Look, right after Class Colours (Core.lua order)
+        { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The border pulses in the threat colour while you have threat on it."],
+          get = function() return get("threatGlow")() ~= false end, set = set("threatGlow") },
     })
     Section("Behaviour", behaviourItems)
 
@@ -410,9 +422,9 @@ local function BuildSettings()
     Section("Cast Bar", {
         { name = L["Cast Bar"], kind = LEM.SettingType.Checkbox, default = D.castbar ~= false, get = get("castbar"),
           set = function(layoutName, value) set("castbar")(layoutName, value); if holder then LEM:RefreshFrameSettings(holder) end end },
-        { name = L["Texture"], canon = "Cast Bar Texture", search = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
+        { name = L["Bar Texture"], canon = "Cast Bar Texture", search = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
           get = get("castTexture"), set = set("castTexture"), hidden = noCast, },
-        { name = L["Border"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
+        { name = L["Border Texture"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
           get = get("castBorderTexture"), set = set("castBorderTexture"),
           hidden = function() return noCast() or K.NoBorderOptions() end,
           desc = L["The cast bar's border. Frame Border matches the frame's own border."] },
@@ -465,6 +477,10 @@ local function BuildSettings()
     }, get, set))
 
     Section("Icons", {
+        -- (11-17, Malkkav) as on the target frame; the ring styles show the rank with the ring's dragon
+        { name = L["Elite & Rare"], kind = LEM.SettingType.Checkbox, default = true,
+          get = function() return get("classIcon")() ~= false end, set = set("classIcon"),
+          hidden = RingStyle },
         { name = L["Raid Markers"], kind = LEM.SettingType.Checkbox, default = D.raidIcon ~= false, get = get("raidIcon"), set = set("raidIcon") },
     })
     return settings

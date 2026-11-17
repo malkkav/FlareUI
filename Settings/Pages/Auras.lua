@@ -27,8 +27,8 @@ S:On("PageShown", function(key)
 end)
 
 S:Row{ key = "au.shape", kind = "choice", path = "auras.style", choices = { "square", "round" }, apply = Refresh }   -- (as Unit Frames', 11-16)
-S:Row{ key = "au.swipe", kind = "choice", path = "auras.swipe", choices = { "icon", "border", "both", "none" }, apply = Refresh }
-S:Row{ key = "au.timer", kind = "choice", path = "auras.timer", choices = { "below", "bottom", "middle", "none" }, apply = Refresh }
+S:Row{ key = "au.swipe", kind = "choice", path = "auras.swipe", choices = { "none", "icon", "border", "both" }, apply = Refresh }
+S:Row{ key = "au.timer", kind = "choice", path = "auras.timer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }
 S:Row{ key = "au.arrive", path = "auras.arrive", apply = Refresh }
 
 local function NoMineFirst()

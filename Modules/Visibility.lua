@@ -74,7 +74,7 @@ local ELEMENTS = {
     { key = "quest", module = "objectivetracker" },
     -- The unit frames (UnitFrames.lua section 14). own: the fader keeps the value and sets it through
     -- apply (an alpha left by the health curve can't be read back); health: Missing Health, from that unit
-    -- instant: no fade speeds (always instant); noOpacity: no Faded Opacity (faded right out)
+    -- instant: a unit frame (own speeds only, Instant until picked, 11-17); noOpacity: no Faded Opacity (faded right out)
     -- noGroup: never in a fade group. The player and pet frames can join one (11-15, Malkkav): they then
     -- fade at the group's speeds, and pointing at either brings the whole group back.
     -- mana: Missing Mana too (the player frame only, 11-11)
@@ -186,6 +186,9 @@ local function SetFollowingCapAlpha(cap, alpha) if capsFollowBar1[cap] then cap:
 local minimapFadedOut = false
 local function SetMinimapDrawn(alpha)
     local map = _G.Minimap
+    -- (11-17, Malkkav) the blips go while the map is faded at all (they ignore alpha), so a Faded Opacity
+    -- and a fade group work for the minimap too
+    if ns.Minimap and ns.Minimap.SetIconsFaded then ns.Minimap:SetIconsFaded(alpha < 0.99) end
     if not minimapFadedOut and ns.Minimap and ns.Minimap.SetMapFaded and ns.Minimap:SetMapFaded(alpha <= 0.01) then return end
     if not map or (InCombatLockdown() and map:IsProtected()) then return end
     if alpha <= 0.01 then
@@ -475,7 +478,12 @@ end
 -- (fadeSpeed) became two. Nothing is rewritten: an owner without its own fadeIn / fadeOut reads its old
 -- fadeSpeed for both, then the profile-wide ones, so nothing changes until a player picks a new speed.
 local function FadeSpeedOf(key, field)
-    local db, owner = GetDb(), ElementGroup(key) or ElementConfig(key)
+    local db, group = GetDb(), ElementGroup(key)
+    local owner = group or ElementConfig(key)
+    -- (11-17, Malkkav, for a player) a unit frame on its own has its own speeds now: only what was
+    -- picked for it, never the profile-wide speeds, so it stays Instant until a player picks one
+    local e = ELEMENT_BY_KEY[key]
+    if e and e.instant and not group then return (owner and (owner[field] or owner.fadeSpeed)) or "instant" end
     return (owner and (owner[field] or owner.fadeSpeed)) or (db and (db[field] or db.fadeSpeed)) or "instant"
 end
 function Visibility:GetFadeIn(key) return FadeSpeedOf(key, "fadeIn") end
@@ -1033,7 +1041,7 @@ local function BuildElementSettings(key)
         },
         {
             name = L["Faded Opacity"], kind = LEM.SettingType.Slider, default = 0, minValue = 0, maxValue = 100, valueStep = 5,
-            formatter = function(value) return value .. "%" end,
+            formatter = function(value) return value end,   -- plain: "100%" clips the value box (11-17)
             get = function() return Visibility:GetMinAlpha(key) end,
             set = function(_, value) Visibility:SetElementFade(key, "minAlpha", value) end,
             hidden = AlwaysShown,
@@ -1057,8 +1065,8 @@ local function BuildElementSettings(key)
 end
 
 -- for the unit frames' Fading section (UnitFrames.lua BuildSettings): no title, Faded Opacity on the
--- player and pet only. A fade group on the player and pet only (11-15): on their own they fade at once,
--- so the two speeds show only while they're in a group (they then fade at the group's speeds).
+-- player and pet only. A fade group on the player and pet only (11-15); every unit frame has its own
+-- Show Speed and Hide Speed (11-17), the group's while in one.
 -- Link Pet Frame (the player frame's Fading, 11-12, a player's idea): the pet frame fades with the
 -- player frame, on the player's settings; pointing at either shows both. The pet's own Fading hides.
 function Visibility:PetLinked()
@@ -1071,22 +1079,12 @@ function Visibility:UnitFrameSettings(unit)
     local rows = BuildElementSettings(key)
     local e = ELEMENT_BY_KEY[key]
     -- rows: 1 Fade Group, 2 Visibility, 3 Show Speed, 4 Hide Speed, 5 Faded Opacity
+    -- (11-17, Malkkav) the two speeds on every unit frame, in a fade group or not
     local kept = {}
-    if not (e and e.noGroup) then
-        kept[1] = rows[1]
-        for i = 3, 4 do
-            local own = rows[i].hidden
-            rows[i].hidden = function(...)
-                if Visibility:GetGroup(key) == 0 then return true end
-                return own(...)
-            end
-        end
-        kept[2] = rows[2]
-        kept[3] = rows[3]
-        kept[4] = rows[4]
-    else
-        kept[1] = rows[2]
-    end
+    if not (e and e.noGroup) then kept[#kept + 1] = rows[1] end
+    kept[#kept + 1] = rows[2]
+    kept[#kept + 1] = rows[3]
+    kept[#kept + 1] = rows[4]
     if not (e and e.noOpacity) then kept[#kept + 1] = rows[5] end
     if unit == "pet" then
         local function Linked() return Visibility:PetLinked() end
@@ -1137,9 +1135,9 @@ end
 
 -- for the Minimap module
 function Visibility:MinimapSettings()
+    -- (11-17, Malkkav) with its fade group and Faded Opacity again: the blips now go while it's faded
+    -- (SetMinimapDrawn), so a part-faded map no longer keeps them at full strength
     local rows = BuildElementSettings("minimap")
-    table.remove(rows, 5)   -- Faded Opacity
-    table.remove(rows, 1)   -- Fade group
     -- a Fading section that opens and closes like the other dialogs' (11-13, Malkkav: starts closed)
     return ns.EditSection("Fading", rows)
 end
@@ -1221,6 +1219,10 @@ local function AddEditModeSettings()
                 -- the totem bar: Blizzard gives it no Size, FlareUI does (above Fading)
                 if e.key == "totem" and ns.ActionBars and ns.ActionBars.TotemSizeSetting then
                     table_insert(rows, 1, ns.ActionBars.TotemSizeSetting())
+                end
+                -- the bag buttons: below Blizzard's 75% (11-17)
+                if e.key == "bags" and ns.ActionBars and ns.ActionBars.BagBarSizeSetting then
+                    table_insert(rows, 1, ns.ActionBars.BagBarSizeSetting())
                 end
                 LEM:AddSystemSettings(system, rows, index)
             end
@@ -1425,9 +1427,8 @@ function Visibility:Refresh()
     self.refreshPending = inCombat or nil
     local db = GetDb()
     if not db then return end
-    -- the minimap fades on its own, right out (SetMinimapDrawn), whatever an earlier setup stored
-    local minimapCfg = db.elements and db.elements.minimap
-    if minimapCfg then minimapCfg.group, minimapCfg.minAlpha = 0, nil end
+    -- (11-17) the minimap's fade group and Faded Opacity are its own again (they were forced off while
+    -- its blips couldn't fade)
     -- A frame hidden for good stays hidden in Edit Mode, its selection made invisible; lifting the hide
     -- would lose whether the frame comes back when the option goes off.
     -- (11-15, a warrior's report: the stance bar showed but couldn't be picked in Edit Mode) whatever is
@@ -1540,11 +1541,11 @@ function Visibility:Refresh()
                     if e.noGroup then group = 0 end
                     -- a linked pet fades in the player frame's group, if it has one
                     if linkPet then group = self:GetGroup("uf_player") end
-                    -- a unit frame fades at once on its own, at its group's speeds in one (11-15)
-                    local instant = e.instant and group == 0
+                    -- a unit frame fades at its own speeds on its own (Instant until picked, 11-17), at its
+                    -- group's speeds in one (11-15)
                     local data = { key = key, frame = frame, isBar = isBar, show = show, owner = owner, mouse = mouse,
-                                   fadeIn = instant and 0 or ns.FadeTime(self:GetFadeIn(settingsKey)),
-                                   fadeOut = instant and 0 or ns.FadeTime(self:GetFadeOut(settingsKey)),
+                                   fadeIn = ns.FadeTime(self:GetFadeIn(settingsKey)),
+                                   fadeOut = ns.FadeTime(self:GetFadeOut(settingsKey)),
                                    minAlpha = e.noOpacity and 0 or self:GetMinAlpha(settingsKey) / 100 }
                     -- the pointer shows it only with Mouseover ticked
                     data.mouseOK = Conditions.Has(show, "mouseover", SpecOf(settingsKey))

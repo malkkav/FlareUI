@@ -4,7 +4,7 @@ local L = ns.L
 --------------------------------------------------
 -- GROUP FINDER EYE
 -- With Group Finder Icon on (minimap.finderEye), a small icon on the minimap in place of Blizzard's
--- large queue eye. Square style: above the day/night badge. Round style: on Blizzard's eye.
+-- large queue eye. Square style: above the day/night badge. Round style (11-17): on the circle's bottom-left.
 -- Out of a queue, a left-click opens the group finder. In a queue it clicks Blizzard's eye, so both
 -- buttons do the same (the battleground scoreboard, your listing...); the eye moves as Blizzard's does,
 -- pointing at it shows the queue and a right-click opens Blizzard's queue menu.
@@ -216,32 +216,69 @@ local function ScreenRect(frame)
     return x * s, y * s, top * s
 end
 
--- Square style: just above the day/night badge (Minimap.lua PlaceSun). Round style, or without the
--- badge: on Blizzard's eye.
+-- Square style: the icon's centre in screen pixels, own = the icon's effective scale. With the sundial:
+-- centred on the map's left edge, just above it. Without it (Sundial off, 11-17 Malkkav): on the map's
+-- bottom-left corner. Measured from the border's frame, which sits where the map sits but stays still:
+-- node addons slide the map under the cursor while they scan (11-15: its own left edge, not the real
+-- map's width: farming HUDs resize the real map). Also the Vehicle Exit Icon's base, which stacks above
+-- it (MinimapVehicle.lua). STEP: one icon to the next above it, as the eye sits above the badge.
+-- (11-17, Malkkav) a few pixels more between the two, and both a few pixels in from the map's edge
+Eye.STACK_GAP, Eye.INSET, Eye.SUN_LIFT = 3, 3, 3
+Eye.BUTTON_SIZE, Eye.STEP = BUTTON_SIZE, BUTTON_SIZE + SUN_GAP + Eye.STACK_GAP
+function Eye.SquareSpot(own)
+    local art = ns.Minimap.Frame or Minimap
+    local artLeft, artBottom = art:GetLeft(), art:GetBottom()
+    if not (artLeft and artBottom) then return nil end
+    local s = art:GetEffectiveScale()
+    local bag = ns.MinimapBag
+    local sunShown = not (bag and bag.SundialShown) or bag.SundialShown()
+    local sun = MinimapCluster.DielFrame
+    if sunShown and sun then
+        local _, _, sunTop = ScreenRect(sun)
+        if not sunTop then return nil end
+        -- (11-17, Malkkav) a few pixels more above the sundial: the whole stack moves up with it
+        return artLeft * s + Eye.INSET * own, sunTop + (SUN_GAP + Eye.SUN_LIFT + BUTTON_SIZE / 2) * own
+    end
+    return artLeft * s + Eye.INSET * own, artBottom * s + Eye.INSET * own
+end
+
+-- (11-17, Malkkav) Round style: the icons sit along the circle's lower left, the Group Finder Icon at
+-- its bottom-left (225 degrees), each next one a step further up the edge (n: how many shown icons sit
+-- below it), as they stack up the square map's left edge. Centred on the bronze border, a few pixels
+-- past the map's edge (11-17, Malkkav: they sat too far inside, then too far out). Roomier than the
+-- square stack (ROUND_SPREAD) and a little larger (ROUND_SCALE), so they round the border.
+Eye.ROUND_START, Eye.ROUND_OUT, Eye.ROUND_SPREAD, Eye.ROUND_SCALE = 225, 1, 1.35, 1.15
+-- the icons' scale: the map's, a little larger on the round map
+function Eye.IconScale()
+    local scale = Minimap:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    if ns.Minimap and ns.Minimap.IsSquare and not ns.Minimap.IsSquare() then scale = scale * Eye.ROUND_SCALE end
+    return scale
+end
+function Eye.RoundSpot(own, n)
+    local map = Minimap
+    local cx, cy = map:GetCenter()
+    local w = map:GetWidth()
+    if not (cx and cy and w and w > 0) then return nil end
+    local s = map:GetEffectiveScale()
+    local r = w / 2 * s + Eye.ROUND_OUT * own
+    if r <= 0 then return nil end
+    local a = math.rad(Eye.ROUND_START) - (n or 0) * (Eye.STEP * Eye.ROUND_SPREAD * own / r)
+    return cx * s + r * math.cos(a), cy * s + r * math.sin(a)
+end
+
+-- Square style: Eye.SquareSpot. Round style: Eye.RoundSpot.
 local function Place()
     if not CanChange(Place) then return end
-    local scale = Minimap:GetEffectiveScale() / UIParent:GetEffectiveScale()
-    button:SetScale(scale)
+    button:SetScale(Eye.IconScale())
     local own = button:GetEffectiveScale()
-    local sun = MinimapCluster.DielFrame
     local x, y
-    if ns.Minimap.IsSquare() and sun then
-        -- centred on the map's left edge, as Minimap.lua PlaceButton puts the addon buttons. Measured
-        -- from the border's frame, which sits where the map sits but stays still: node addons slide
-        -- the map under the cursor while they scan
-        -- (11-15) its own left edge, not the real map's width: farming HUDs resize the real map
-        local art = ns.Minimap.Frame or Minimap
-        local _, _, sunTop = ScreenRect(sun)
-        local artLeft = art:GetLeft()
-        if sunTop and artLeft then
-            x = artLeft * art:GetEffectiveScale()
-            y = sunTop + (SUN_GAP + BUTTON_SIZE / 2) * own
-        end
+    if ns.Minimap.IsSquare() then
+        x, y = Eye.SquareSpot(own)
     else
-        -- (11-15) Blizzard's eye hangs on the map, which node addons slide while they scan: wait for
-        -- the map to be home, or a moved spot would be kept
+        -- (11-15) node addons slide the map while they scan: wait for it to be home, or a moved spot
+        -- would be kept
         if ns.Minimap.AfterScan and ns.Minimap.AfterScan("finderEye", Place) then return end
-        x, y = ScreenRect(QueueStatusButton)
+        x, y = Eye.RoundSpot(own, 0)
     end
     if not (x and y) then return end
     button:ClearAllPoints()
@@ -266,7 +303,8 @@ local function UpdateShown()
     -- (11-15, Malkkav, GitHub #57) only while Blizzard's eye would show (a queue, a listing, a
     -- battleground), as Blizzard's; Edit Mode shows it to be placed
     local show = Wanted() and (InQueue() or Editing()) and MinimapCluster:IsShown() and Minimap:IsShown()
-    local follow = show and Editing() and not ns.Minimap.IsSquare()
+    -- (11-17, Malkkav) ours on both styles now: it never follows Blizzard's eye
+    local follow = false
     button:SetShown(show)
     button:EnableMouse(not follow)
     Eye.follower = Eye.follower or CreateFrame("Frame")
@@ -284,11 +322,31 @@ local eyeTaken = false
 local function UpdateGameEye()
     -- (11-15) in Edit Mode Blizzard's eye comes back only on the round style, to be dragged: on the
     -- square style ours sits by the day/night badge and Blizzard's spot means nothing
-    local seen = not Wanted() or (Editing() and not ns.Minimap.IsSquare())
+    -- (11-17, Malkkav) the round style too: ours replaces it everywhere while the option is on
+    local seen = not Wanted()
     if seen and not eyeTaken then return end
     eyeTaken = not seen
     QueueStatusButton:SetAlpha(seen and 1 or 0)
     QueueStatusButton:EnableMouse(seen)
+    -- (11-17, Malkkav) its Edit Mode box ignores the eye's opacity (ignoreParentAlpha): hidden and
+    -- ungrabbable with it, so square-style Edit Mode shows no stray Group Finder box
+    local selection = QueueStatusButton.Selection
+    if selection then
+        selection:SetAlpha(seen and 1 or 0)
+        selection:EnableMouse(seen)
+        if not Eye.selectionHooked then
+            Eye.selectionHooked = true
+            local function Keep()
+                if eyeTaken then
+                    if selection:GetAlpha() ~= 0 then selection:SetAlpha(0) end
+                    if selection:IsMouseEnabled() then selection:EnableMouse(false) end
+                end
+            end
+            selection:HookScript("OnShow", Keep)
+            hooksecurefunc(selection, "SetAlpha", Keep)
+            hooksecurefunc(selection, "EnableMouse", Keep)
+        end
+    end
     -- Blizzard's one-time tip about the queue eye points at an eye that is no longer seen, and its
     -- invisible box would catch clicks on the map
     if not seen and LE_FRAME_TUTORIAL_HUD_REVAMP_LFG_QUEUE_CHANGES then

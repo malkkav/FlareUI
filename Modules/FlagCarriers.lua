@@ -4,15 +4,13 @@ local L = ns.L
 --------------------------------------------------
 -- FLAG CARRIERS
 -- Edit Mode frame "FlareUI Flag Carriers" (Unit Frames > Flag Carrier Frames, off; 11-15, a player's
--- request: "the pvp target frames"). In a battleground Blizzard shows the flag carriers on its old
--- arena frames (Blizzard_Deprecated_ArenaUI: ArenaEnemyFramesContainer > ArenaEnemyMatchFrame1-5),
--- in its right-hand column under the minimap. Forever's Edit Mode has no system for them (Camelot
--- hides its Arena Frames checkbox; CompactArenaFrame isn't loaded there).
--- Hooks only: ArenaEnemyFramesContainer is a right-hand managed frame with secure unit buttons in it.
--- Whenever Blizzard hands it back to its column (SetParent in ManagedFrameContainerMixin:UpdateFrame)
--- it goes on our holder instead, out of combat only (it is protected through its buttons); a
--- placement held back by combat waits for the fight to end. On the holder it is no longer a child of
--- the column, so the column leaves no gap for it.
+-- request). In a battleground Blizzard shows the flag carriers on its old arena frames
+-- (Blizzard_Deprecated_ArenaUI: arena1 and arena2). (11-17, Malkkav) FlareUI's own frames now, on the
+-- boss frames' tile kit (PartyFrames.lua), in the player's frame style: the carrier's name, health and
+-- power, a class portrait (always), the faction crest FlareUI's target frame uses, a cast bar. No
+-- auras (Blizzard's show none). Clicks as Blizzard's: left targets, right sets the focus.
+-- Blizzard's container is parked on a hidden frame, out of combat only (it holds secure buttons); a
+-- move held back by combat waits for the fight to end. Ours show and hide by a unit watch.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -22,52 +20,142 @@ ns.FlagCarriers = ns.FlagCarriers or {}
 local FC = ns.FlagCarriers
 ns.modules["FlagCarriers"] = FC
 
+LibStub("AceEvent-3.0"):Embed(FC)
+
 --------------------------------------------------
 -- 2. UPVALUES / CONSTANTS
 --------------------------------------------------
-local _G = _G
-local math_floor = math.floor
+local pairs, ipairs, pcall, type = pairs, ipairs, pcall, type
+local math_floor, math_max = math.floor, math.max
 local CreateFrame, InCombatLockdown = CreateFrame, InCombatLockdown
 local LEM = LibStub("FlareEditMode")
+local K = ns.UnitFrames and ns.UnitFrames.Kit
+local PF = ns.PartyFrames
+local Tile = PF and PF.Tile
 
--- Blizzard's geometry (Deprecated_ArenaUI.xml): a carrier frame is 112 x 32, 10 apart, its right edge
--- 28 in from the container's (the column's -10 plus the faction icon's -18); the faction icon reaches
--- the container's right edge, the name sits a few pixels over the frame's top
-local FRAME_W, FRAME_H, SPACING, NAME_H = 112, 32, 10, 4
-local RIGHT_IN = 28
-local CARRIERS = 2   -- the holder and the sample: two carriers, one per side
-local HOLDER_W = FRAME_W + RIGHT_IN
-local HOLDER_H = NAME_H + CARRIERS * FRAME_H + (CARRIERS - 1) * SPACING
+local CARRIERS = 2   -- a battleground's flag carriers: one per side
+local TILE_TEMPLATE = "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate"
+-- Edit Mode keeps a reference to this table: ApplyPosition refills it for the style in use
+-- (11-17, Malkkav's spots: Addon Style here, the ring styles' in UnitFramesRing.lua TILE_POSITIONS.flag)
+local BASE_POSITION = { point = "RIGHT", x = -36, y = 173 }
+local DEFAULT_POSITION = { point = "RIGHT", x = -36, y = 173 }
 
--- Edit Mode keeps a reference to this table: ApplyPosition refills it (the boss frames' spot)
-local DEFAULT_POSITION = { point = "RIGHT", x = -3, y = -11 }
+-- Edit Mode samples: two carriers, one per side
+local SAMPLES = {
+    { name = "Kaelith", class = "WARRIOR", faction = "Alliance", health = 0.72, power = 0.35, level = 60 },
+    { name = "Zorgath", class = "ROGUE",   faction = "Horde",    health = 0.41, power = 0.80, level = 60 },
+}
 
-local holder
-local pending = false   -- a placement held back by combat
+--------------------------------------------------
+-- 3. SETTINGS ACCESS
+--------------------------------------------------
+local holder, hidden
+local tiles = {}
+local pendingLayout = false
 
 local function GetDb()
-    local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
-    return uf and uf.flagCarriers
+    local db = K and K.GetDb()
+    return db and db.flagCarriers
+end
+
+local function IsEditing()
+    return ns.EditPreviewing()
+end
+
+-- the tile settings: the flag carriers' db plus fixed values (no auras, no party icons; the role
+-- icon's place holds the faction crest, ctx.factionIcon)
+-- (11-17, Malkkav: on the safe side) no range fading and no raid markers: Blizzard's own flag
+-- carrier frames show neither, so FlareUI's show nothing more than they do
+local ICONS = { role = { shown = true }, leader = { shown = false }, readyCheck = { shown = false },
+                status = { shown = false }, raidIcon = { shown = false } }
+local FIXED = { buffs = "OFF", debuffs = "OFF", dispels = "OFF", dispelHighlight = "off", portrait = "class",
+                auraMax = 5, auraPerRow = 5, rangeCheck = false, raidIcon = false }
+-- (11-17, Malkkav) in FlareUI and Forever Style the boss frames' size preset (UnitFramesRing.lua
+-- FOREVER_TILES.boss) where the player set nothing, so both kinds start the same size
+local SIZE_KEYS = { width = true, height = true, powerHeight = true, ringSize = true, castHeight = true, spacing = true }
+local function RingSize(db, key)
+    if not SIZE_KEYS[key] or rawget(db, key) ~= nil then return nil end
+    local preset = ns.UFRing and ns.UFRing.TileDefaults("boss")
+    return preset and preset[key]
+end
+local view = setmetatable({}, { __index = function(_, key)
+    local db = GetDb()
+    if not db then return nil end
+    if FIXED[key] ~= nil then return FIXED[key] end
+    if key == "icons" then return ICONS end
+    local ring = RingSize(db, key)
+    if ring ~= nil then return ring end
+    return db[key]
+end, __newindex = function(_, key, value)
+    -- writes land in the db (Forever Style's Scale sets the height through the view)
+    local db = GetDb()
+    if db then db[key] = value end
+end })
+
+local ctx = {
+    Settings = function() return view end,
+    PreviewData = function(f) return f.sample or SAMPLES[1] end,
+    ReadyHold = function() return nil end,
+    classic = true, mirror = true, hostile = true, castbar = true,
+    ringKind = "boss",       -- the target frame's ring in the ring styles (PartyFrames.lua RingKind)
+    fontKey = "flag",        -- their own fonts (Unit Frames > Fonts > Flag Carriers)
+    factionIcon = true,      -- the faction crest in the role icon's place (PartyFrames.lua UpdateRole)
+    noRank = true,           -- no elite / boss art around the ring (UnitFramesRing.lua)
+}
+
+local function RingStyle()
+    return ns.UFRing and ns.UFRing.Style() ~= "addon" or false
 end
 
 --------------------------------------------------
--- 3. POSITION (per Edit Mode layout), by default where the boss frames start
+-- 4. TILES AND LAYOUT
+--------------------------------------------------
+local function CreateTile(i)
+    local unit = "arena" .. i
+    local f = CreateFrame("Button", "FlareUI_FlagCarrier" .. i, holder, TILE_TEMPLATE)
+    f.ctx = ctx
+    f.index = i
+    f.sample = SAMPLES[i]
+    f.fuiUnit = unit
+    -- Blizzard's clicks (SecureUnitButton_OnLoad with FocusUnit as its menu): left targets, right
+    -- sets the focus; the game's own secure actions, nothing of FlareUI's runs on a click
+    f:SetAttribute("unit", unit)
+    f:SetAttribute("*type1", "target")
+    f:SetAttribute("*type2", "focus")
+    f:RegisterForClicks("AnyUp")
+    if type(f.SetRolesets) == "function" then pcall(f.SetRolesets, f, "unitFrames") end
+    f:SetScript("OnEnter", Tile.OnEnter)
+    f:SetScript("OnLeave", Tile.OnLeave)
+    _G.ClickCastFrames = _G.ClickCastFrames or {}
+    _G.ClickCastFrames[f] = true
+    Tile.Build(f, unit)
+    tiles[i] = f
+    return f
+end
+
+local function Step()
+    local h = view.height or 50
+    if view.castbar then h = h + (view.castHeight or 12) + K.CAST_GAP + K.INSET end
+    return 0, h + (view.spacing or 10)
+end
+
+local function LayoutHolder()
+    if not holder then return end
+    local above, step = Step()
+    local up = view.grow == "UP"
+    for i, f in ipairs(tiles) do
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -(above + (up and (CARRIERS - i) or (i - 1)) * step))
+    end
+    holder:SetSize(view.width or 180, math_max(1, CARRIERS * step - (view.spacing or 10)))
+end
+
+--------------------------------------------------
+-- 5. POSITION (per Edit Mode layout)
 --------------------------------------------------
 local function RefillDefault()
-    local point, x, y, bossH = "RIGHT", -3, -11, nil
-    if ns.BossFrames and ns.BossFrames.DefaultSpot then
-        local ok, p, bx, by, h = pcall(ns.BossFrames.DefaultSpot)
-        if ok and p then point, x, y, bossH = p, bx or 0, by or 0, h end
-    end
-    -- the same top as the first boss frame
-    if bossH and bossH > 0 and not point:find("TOP") then
-        if point:find("BOTTOM") then
-            y = y + bossH - HOLDER_H
-        else
-            y = y + (bossH - HOLDER_H) / 2
-        end
-    end
-    DEFAULT_POSITION.point, DEFAULT_POSITION.x, DEFAULT_POSITION.y = point, math_floor(x + 0.5), math_floor(y + 0.5)
+    local base = (RingStyle() and ns.UFRing.TilePosition("flag")) or BASE_POSITION
+    DEFAULT_POSITION.point, DEFAULT_POSITION.x, DEFAULT_POSITION.y = base.point, base.x, base.y
 end
 
 local function LayoutStore(layoutName)
@@ -75,14 +163,12 @@ local function LayoutStore(layoutName)
     if not db then return nil end
     layoutName = layoutName or LEM:GetActiveLayoutName() or "Modern"
     db.layouts = db.layouts or {}
-    -- (a layout with no spot of its own reads the profile's home layout's: ProfileLayout.lua)
     return ns.LayoutHome(db.layouts, layoutName)
 end
 
 local function ApplyPosition(layoutName)
     if not holder then return end
-    -- Blizzard's protected buttons hang from the holder once it carries them
-    if InCombatLockdown() then pending = true return end
+    if InCombatLockdown() then pendingLayout = true return end
     RefillDefault()
     local store = LayoutStore(layoutName)
     local pos = (store and store.point) and store or DEFAULT_POSITION
@@ -96,152 +182,308 @@ local function OnFrameMoved(_, layoutName, point, x, y)
 end
 
 --------------------------------------------------
--- 4. BLIZZARD'S FRAMES ON THE HOLDER
+-- 6. VISIBILITY: each frame follows its carrier (unit watch, combat-safe); Edit Mode shows both
 --------------------------------------------------
-local placing = false
-local function Place()
+-- (11-17, Malkkav) on top of the boss, party and raid frames when placed over them: the same LOW
+-- strata as theirs but far above their frame levels (HOLDER_LEVEL); in Edit Mode, where the party
+-- frames rise to MEDIUM (RaidFrames.lua GROUP_LAYERS), one strata higher than that. Children keep
+-- the strata they were made with, hence the recursion; out of combat only (secure buttons).
+local HOLDER_LEVEL = 200
+local function SetLayer(frame, strata)
+    frame:SetFrameStrata(strata)
+    for _, child in ipairs({ frame:GetChildren() }) do SetLayer(child, strata) end
+end
+local function ApplyLayer(editing)
+    local strata = editing and "HIGH" or "LOW"
+    if holder.fuiStrata ~= strata then
+        holder.fuiStrata = strata
+        SetLayer(holder, strata)
+    end
+end
+
+local function ApplyVisibility()
+    if not holder then return end
+    if InCombatLockdown() then pendingLayout = true return end
+    local editing = IsEditing()
+    ApplyLayer(editing)
+    for _, f in ipairs(tiles) do
+        if editing then
+            UnregisterUnitWatch(f)
+            f:Show()
+        else
+            RegisterUnitWatch(f)
+        end
+    end
+end
+
+local function Refresh()
+    if not holder then return end
+    if InCombatLockdown() then pendingLayout = true return end
+    pendingLayout = false
+    local db = GetDb()
+    -- as the boss frames: Mirror Bars turns the bars; in the ring styles Flip Portrait picks the side
+    ctx.fillMirror = not (db and db.mirror == false)
+    if RingStyle() then ctx.mirror = not (db and db.portraitRight == false) else ctx.mirror = ctx.fillMirror end
+    for _, f in ipairs(tiles) do
+        local ok, err = pcall(Tile.Layout, f)
+        if not ok then geterrorhandler()(err) end
+    end
+    LayoutHolder()
+    ApplyPosition()
+    ApplyVisibility()
+    for _, f in ipairs(tiles) do
+        if f:IsShown() then Tile.UpdateAll(f) end
+    end
+end
+
+--------------------------------------------------
+-- 7. BLIZZARD'S FRAMES: parked on a hidden frame, out of combat only
+--------------------------------------------------
+local parking = false
+local function Park()
     local container = _G.ArenaEnemyFramesContainer
-    if placing or not (container and holder) then return end
-    if InCombatLockdown() then pending = true return end
-    pending = false
-    placing = true
-    if container:GetParent() ~= holder then container:SetParent(holder) end
-    container:ClearAllPoints()
-    container:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, -NAME_H)
-    placing = false
+    if parking or not (container and hidden) then return end
+    if InCombatLockdown() then pendingLayout = true return end
+    parking = true
+    if container:GetParent() ~= hidden then container:SetParent(hidden) end
+    parking = false
 end
 
 --------------------------------------------------
--- 5. EDIT MODE SAMPLE: two carriers in Blizzard's art, shown while no real one is up
+-- 8. EDIT MODE SETTINGS
 --------------------------------------------------
-local SAMPLES = {
-    { class = "WARRIOR", faction = "Alliance", health = 0.72, power = 0.35, powerColor = { 1, 0, 0 } },
-    { class = "ROGUE",   faction = "Horde",    health = 0.41, power = 0.80, powerColor = { 1, 1, 0 } },
-}
-
-local function CreateSampleFrame(parent, index, data)
-    local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(FRAME_W, FRAME_H)
-    f:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -RIGHT_IN, -(NAME_H + (index - 1) * (FRAME_H + SPACING)))
-
-    local portrait = f:CreateTexture(nil, "BACKGROUND")
-    portrait:SetSize(30, 30)
-    portrait:SetPoint("TOPRIGHT", -11, -4)
-    portrait:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
-    local coords = _G.CLASS_ICON_TCOORDS and _G.CLASS_ICON_TCOORDS[data.class]
-    if coords then portrait:SetTexCoord(coords[1], coords[2], coords[3], coords[4]) end
-
-    local bg = f:CreateTexture(nil, "BACKGROUND")
-    bg:SetSize(72, 17)
-    bg:SetPoint("TOPLEFT", 2, -10)
-    bg:SetColorTexture(0, 0, 0, 0.5)
-
-    local function Bar(y, value, r, g, b)
-        local bar = CreateFrame("StatusBar", nil, f)
-        bar:SetSize(70, 8)
-        bar:SetPoint("TOPLEFT", 2, y)
-        bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-        bar:SetStatusBarColor(r, g, b)
-        bar:SetMinMaxValues(0, 1)
-        bar:SetValue(value)
-        return bar
+local function BuildSettings()
+    local base = (ns.defaults and ns.defaults.profile.unitframes.flagCarriers) or {}
+    -- the ring styles' sizes first, as the boss frames' settings do
+    local D = setmetatable({}, { __index = function(_, k)
+        local preset = SIZE_KEYS[k] and ns.UFRing and ns.UFRing.TileDefaults("boss")
+        if preset and preset[k] ~= nil then return preset[k] end
+        return base[k]
+    end })
+    local function get(key)
+        return function()
+            local v = view[key]
+            if v == nil then return D[key] end
+            return v
+        end
     end
-    Bar(-12, data.health, 0, 1, 0)
-    Bar(-20, data.power, data.powerColor[1], data.powerColor[2], data.powerColor[3])
-
-    -- the frame art over the bars (Blizzard's nested frames do the same)
-    local over = CreateFrame("Frame", nil, f)
-    over:SetAllPoints()
-    over:SetFrameLevel(f:GetFrameLevel() + 5)
-    local art = over:CreateTexture(nil, "BACKGROUND")
-    art:SetSize(102, 32)
-    art:SetPoint("TOPLEFT", 0, -2)
-    art:SetTexture("Interface\\ArenaEnemyFrame\\UI-ArenaTargetingFrame")
-    art:SetTexCoord(0, 0.796, 0, 0.5)
-
-    local name = over:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    name:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 3, 24)
-    name:SetJustifyH("LEFT")
-    name:SetText((_G.LOCALIZED_CLASS_NAMES_MALE and _G.LOCALIZED_CLASS_NAMES_MALE[data.class]) or data.class)
-
-    local icon = over:CreateTexture(nil, "OVERLAY")
-    icon:SetSize(40, 40)
-    icon:SetPoint("LEFT", f, "RIGHT", -12, -10)
-    icon:SetTexture("Interface\\TargetingFrame\\UI-PVP-" .. data.faction)
-    return f
-end
-
-local function CreatePreview()
-    holder.preview = CreateFrame("Frame", nil, holder)
-    holder.preview:SetAllPoints()
-    holder.preview:Hide()
-    for i, data in ipairs(SAMPLES) do CreateSampleFrame(holder.preview, i, data) end
-end
-
--- a real carrier on show: no sample over it
-local function RealCarrierShown()
-    local container = _G.ArenaEnemyMatchFramesContainer
-    if not (container and container:IsVisible()) then return false end
-    for i = 1, (_G.MAX_ARENA_ENEMIES or 5) do
-        local f = _G["ArenaEnemyMatchFrame" .. i]
-        if f and f:IsShown() then return true end
+    local function set(key)
+        return function(_, value)
+            local db = GetDb()
+            if not db then return end
+            db[key] = value
+            Refresh()
+        end
     end
-    return false
-end
+    local Section, settings = K.EditSections()
 
-local function ShowPreview()
-    if holder then holder.preview:SetShown(not RealCarrierShown()) end
-end
+    Section("Flag Carriers", {
+        { name = L["Growth"], kind = LEM.SettingType.Dropdown, default = D.grow,
+          values = { { text = L["Down"], value = "DOWN", isRadio = true }, { text = L["Up"], value = "UP", isRadio = true } },
+          desc = L["Which way the second frame goes from the first."],
+          get = get("grow"), set = set("grow") },
+        { name = L["Frame Gap"], search = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing or 10, minValue = 0, maxValue = 80, valueStep = 1,
+          get = get("spacing"), set = set("spacing"),
+          desc = L["The gap between the two frames."] },
+    })
 
-local function HidePreview()
-    if holder then holder.preview:Hide() end
+    local function onPlate() return ns.UFRing and ns.UFRing.PlateOn() or false end
+    local frameItems = {
+        { name = L["Scale"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.PlateDefaultScale("boss") or 100,
+          minValue = 50, maxValue = 250, valueStep = 5, formatter = function(value) return value end,   -- plain: "100%" clips the value box (11-17)
+          get = function() local db = GetDb(); return db and db.plateScale or (ns.UFRing and ns.UFRing.PlateDefaultScale("boss")) or 100 end,
+          set = function(layoutName, value)
+              if not onPlate() then return end
+              local db = GetDb()
+              if db and ns.SetLayoutPlateScale then
+                  db.layouts = db.layouts or {}
+                  ns.SetLayoutPlateScale(db.layouts, layoutName or LEM:GetActiveLayoutName() or "Modern", "scale",
+                      db, value, ns.UFRing.PlateDefaultScale("boss"))
+              elseif db then
+                  ns.UFRing.ApplyPlateScale(db, value)
+              end
+              Refresh()
+          end,
+          hidden = function() return not onPlate() end,
+          desc = L["Each Edit Mode layout keeps its own Scale."] },
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = D.width, minValue = 80, maxValue = 400, valueStep = 1, get = get("width"), set = set("width") },
+        { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = get("height"), set = set("height"),
+          hidden = onPlate },
+        { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
+          get = get("powerHeight"), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end,
+          hidden = onPlate },
+        K.PlatePowerSetting(function() local db = GetDb(); return db and db.platePower end,
+            function(value)
+                local db = GetDb()
+                if not onPlate() or not db then return end
+                db.platePower = value
+                Refresh()
+            end, onPlate),
+        { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") },
+        { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = D.powerText or "value", values = K.POWER_TEXT_MODES,
+          get = function() local db = GetDb(); return K.PowerTextMode(db and db.powerText) end, set = set("powerText") },
+        { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName")() ~= false end, set = set("showName") },
+        { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel == true, get = function() return get("showLevel")() == true end, set = set("showLevel") },
+        -- Flip Portrait (on: the portrait on the right) and Mirror Bars, as on the boss frames
+        { name = L["Flip Portrait"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The portrait on the right, as on the target frame. Off: on the left, as on the player frame."],
+          get = function() local db = GetDb(); return not (db and db.portraitRight == false) end,
+          set = function(layoutName, value) if value then set("portraitRight")(layoutName, nil) else set("portraitRight")(layoutName, false) end end,
+          hidden = function() return not RingStyle() end },
+        { name = L["Mirror Bars"], kind = LEM.SettingType.Checkbox, default = D.mirror ~= false,
+          get = function() return get("mirror")() ~= false end, set = set("mirror"),
+          desc = L["Laid out like the target frame: portrait on the right, bars filling from the right. In FlareUI and Forever Style, only the bars flip."] },
+    }
+    local sizeItems, textItems, behaviourItems = ns.SplitFrameItems(frameItems)
+    Section("Size", sizeItems)
+    Section("Text", textItems)
+
+    Section("Look", {
+        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.texture, values = K.BuildTextureValues(),
+          get = get("texture"), set = set("texture") },
+        { name = L["Border"], kind = LEM.SettingType.Dropdown, default = D.border, values = K.BuildBorderValues(false),
+          get = get("border"), set = set("border"), hidden = K.NoBorderOptions },
+        { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildAbsorbValues(),
+          get = get("absorbTexture"), set = set("absorbTexture"),
+          desc = L["The texture of the shield (absorb) over the health bar."] },
+        (function()
+            local item = K.BgOpacitySetting(K.BAR_BG_OPACITY,
+                function() local v = get("bgOpacity")(); if v == nil then return K.BAR_BG_OPACITY end; return v end,
+                set("bgOpacity"))
+            item.hidden = K.NoBorderOptions
+            return item
+        end)(),
+        K.SmoothBarsSetting(get("smoothBars"), set("smoothBars")),
+        K.BarEdgeGlowSetting(get("barEdgeGlow"), set("barEdgeGlow")),
+        K.DamageTrailSetting(get("damageTrail"), set("damageTrail")),
+    })
+    Section("Behaviour", behaviourItems)
+
+    local function noCast() return get("castbar")() == false end
+    Section("Cast Bar", {
+        { name = L["Cast Bar"], kind = LEM.SettingType.Checkbox, default = D.castbar ~= false, get = get("castbar"),
+          set = function(layoutName, value) set("castbar")(layoutName, value); if holder then LEM:RefreshFrameSettings(holder) end end },
+        { name = L["Bar Texture"], canon = "Cast Bar Texture", search = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
+          get = get("castTexture"), set = set("castTexture"), hidden = noCast },
+        { name = L["Border Texture"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
+          get = get("castBorderTexture"), set = set("castBorderTexture"),
+          hidden = function() return noCast() or K.NoBorderOptions() end,
+          desc = L["The cast bar's border. Frame Border matches the frame's own border."] },
+        { name = L["Height"], canon = "Cast Bar Height", search = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight or 12, minValue = 8, maxValue = 30, valueStep = 1,
+          get = get("castHeight"), set = set("castHeight"), hidden = noCast },
+        { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true,
+          get = function() return get("castIcon")() ~= false end,
+          set = function(layoutName, value) set("castIcon")(layoutName, value and true or false) end,
+          hidden = noCast, desc = L["The spell's icon, left of the bar."] },
+        { name = L["Show Spell Timer"], kind = LEM.SettingType.Checkbox, default = true,
+          get = function() return get("castTimer")() ~= false end,
+          set = function(layoutName, value) set("castTimer")(layoutName, value and true or false) end,
+          hidden = noCast, desc = L["The time left, at the right end of the bar."] },
+    })
+
+    return settings
 end
 
 --------------------------------------------------
--- 6. SETUP
+-- 9. PUBLIC
 --------------------------------------------------
+function FC:Refresh()
+    Refresh()
+end
+
 function FC:ShouldLoad()
     local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
-    return uf and uf.enabled and uf.flagCarriers and uf.flagCarriers.enabled and true or false
+    return uf and uf.enabled and uf.flagCarriers and uf.flagCarriers.enabled and Tile and K and true or false
 end
 
+function FC:OnGlobalEvent(event)
+    if event == "PLAYER_REGEN_ENABLED" then
+        if pendingLayout then Refresh(); Park() end
+        return
+    end
+    if IsEditing() then return end
+    for _, f in ipairs(tiles) do
+        if f:IsShown() then
+            if event == "PLAYER_TARGET_CHANGED" then
+                Tile.UpdateTarget(f)
+            else
+                Tile.UpdateAll(f)   -- the carriers changed
+            end
+        end
+    end
+end
+
+local GLOBAL_EVENTS = {
+    "ARENA_OPPONENT_UPDATE", "PLAYER_TARGET_CHANGED",
+    "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED",
+}
+
 function FC:Init()
-    if self.initialized then return end
-    local container = _G.ArenaEnemyFramesContainer
-    if not container then return end
+    if self.initialized or not (K and Tile) then return end
+    if InCombatLockdown() then
+        -- secure frames cannot be created in combat (a /reload mid-fight): wait for it to end
+        self:RegisterEvent("PLAYER_REGEN_ENABLED", function()
+            self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+            self:Init()
+        end)
+        return
+    end
     self.initialized = true
 
+    hidden = CreateFrame("Frame")
+    hidden:Hide()
     holder = CreateFrame("Frame", "FlareUI_FlagCarriers", UIParent)
-    holder:SetSize(HOLDER_W, HOLDER_H)
+    holder:SetFrameStrata("LOW")
+    holder.fuiStrata = "LOW"
+    holder:SetFrameLevel(HOLDER_LEVEL)   -- before the tiles: their parts are levelled from it
     holder:SetClampedToScreen(true)
+    holder:SetSize(180, 100)
     holder.editModeName = "FlareUI Flag Carriers"
-    CreatePreview()
+    for i = 1, CARRIERS do CreateTile(i) end
 
     RefillDefault()
     LEM:AddFrame(holder, OnFrameMoved, DEFAULT_POSITION, "FlareUI Flag Carriers")
-    if not pcall(ApplyPosition) then
-        holder:ClearAllPoints()
-        holder:SetPoint(DEFAULT_POSITION.point, UIParent, DEFAULT_POSITION.point, DEFAULT_POSITION.x, DEFAULT_POSITION.y)
+    LEM:AddFrameSettings(holder, BuildSettings())
+
+    -- Blizzard hands its container back to its column on every show: parked again each time
+    local container = _G.ArenaEnemyFramesContainer
+    if container then
+        hooksecurefunc(container, "SetParent", Park)
+        Park()
     end
-    -- the selection box over the sample
-    local selection = LEM.frameSelections and LEM.frameSelections[holder]
-    if selection then selection:SetFrameLevel(holder.preview:GetFrameLevel() + 10) end
 
-    -- Blizzard hands the container back to its column on every show (and when the UI comes back)
-    hooksecurefunc(container, "SetParent", Place)
-    Place()
-
-    local regen = CreateFrame("Frame")
-    regen:RegisterEvent("PLAYER_REGEN_ENABLED")
-    regen:SetScript("OnEvent", function()
-        if not pending then return end
-        ApplyPosition()
-        Place()
+    for _, event in ipairs(GLOBAL_EVENTS) do self:RegisterEvent(event, "OnGlobalEvent") end
+    -- a carrier changing hands with no event: a new readable GUID repaints
+    C_Timer.NewTicker(0.25, function()
+        if not holder:IsShown() then return end
+        for _, f in ipairs(tiles) do
+            if f.fuiUnit and f:IsVisible() then
+                local guid = not IsEditing() and UnitGUID(f.fuiUnit)
+                if canaccessvalue(guid) and guid and guid ~= f.carrierGuid then
+                    f.carrierGuid = guid
+                    Tile.UpdateAll(f)
+                end
+            end
+        end
     end)
 
-    LEM:RegisterCallback("layout", function(layoutName) ApplyPosition(layoutName) end)
+    LEM:RegisterCallback("layout", function(layoutName)
+        local db = GetDb()
+        if db and db.layouts and ns.ApplyLayoutPlateScale and ns.UFRing and ns.UFRing.PlateOn()
+            and ns.ApplyLayoutPlateScale(db.layouts, layoutName, "scale", db) then
+            Refresh()
+        end
+        ApplyPosition(layoutName)
+    end)
+    local function ShowPreview()
+        if not InCombatLockdown() then LayoutHolder(); Refresh() end
+        ApplyVisibility()
+        for _, f in ipairs(tiles) do Tile.UpdateAll(f) end
+    end
     LEM:RegisterCallback("enter", ShowPreview)
-    LEM:RegisterCallback("exit", HidePreview)
-    -- the boss frames' spot can change after login (frame style, their layout)
-    C_Timer.After(0, function() ApplyPosition() end)
+    LEM:RegisterCallback("exit", Refresh)
+    ns.OnEditFight(function() if IsEditing() then ShowPreview() else Refresh() end end)
+
+    Refresh()
+    C_Timer.After(0, Refresh)
 end

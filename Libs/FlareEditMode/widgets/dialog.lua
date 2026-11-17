@@ -100,9 +100,60 @@ function dialogMixin:SectionClicked(widget, expanded)
 	internal.SectionClicked(self, widget, expanded, self.selection and self.selection.parent)
 end
 
+-- FlareUI (11-17, Malkkav): switches in two columns. Switches that follow one another (hidden rows
+-- skipped; a shown row of any other kind, a section title included, ends the run) are paired: the
+-- second leaves the list's layout and sits beside the first, each half wide, a long label on two
+-- lines. Worked out again at every layout, so a row that hides or shows never leaves a gap. An odd
+-- one out keeps its full row.
+internal.PAIR = { column = 165, label = 124, labelFull = 300 }
+local function Unpair(widget)
+	if not widget.flarePaired then return end
+	widget.flarePaired = nil
+	widget.ignoreInLayout = nil
+	widget.Label:SetWidth(internal.PAIR.labelFull)
+	widget.Label:SetMaxLines(0)
+	if widget.MarkDirty then widget:MarkDirty() end
+end
+internal.UnpairCheckbox = Unpair
+local function Half(widget)
+	widget.flarePaired = true
+	widget.Label:SetWidth(internal.PAIR.label)
+	widget.Label:SetWordWrap(true)
+	widget.Label:SetMaxLines(2)
+	if widget.MarkDirty then widget:MarkDirty() end
+end
+function internal.PairCheckboxes(settings)
+	local list = {}
+	for _, widget in ipairs(settings.widgets or {}) do list[#list + 1] = widget end
+	table.sort(list, function(a, b) return (a.layoutIndex or 0) < (b.layoutIndex or 0) end)
+	for _, widget in ipairs(list) do
+		if widget.setting and widget.setting.kind == lib.SettingType.Checkbox then Unpair(widget) end
+	end
+	local first
+	for _, widget in ipairs(list) do
+		if widget:IsShown() then
+			if widget.setting and widget.setting.kind == lib.SettingType.Checkbox then
+				if first then
+					Half(first)
+					Half(widget)
+					widget.ignoreInLayout = true
+					widget:ClearAllPoints()
+					widget:SetPoint('TOPLEFT', first, 'TOPLEFT', internal.PAIR.column, 0)
+					first = nil
+				else
+					first = widget
+				end
+			else
+				first = nil
+			end
+		end
+	end
+end
+
 function dialogMixin:UpdateScroll(resetScroll, offset)
 	local settings = self.Settings
 	local width, height
+	if self == internal.dialog then internal.PairCheckboxes(settings) end
 	if #(settings.widgets or {}) == 0 then
 		-- (11-16) no settings: an empty list as wide as the buttons under it
 		settings:SetSize(330, 1)

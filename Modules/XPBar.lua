@@ -31,9 +31,7 @@ local BORDER_SIZE   = 16
 local BORDER_COLOR  = { 0.80, 0.60, 0.34 }         -- #CC9957
 local TRACK_COLOR   = { 0.15, 0.15, 0.15, 0.9 }
 
--- Blizzard's XP purple and rested blue
-local COLOR_XP     = { 0.58, 0.00, 0.55 }          -- #94008C
-local COLOR_RESTED = { 0.00, 0.39, 0.88 }          -- #0063E0
+-- (11-17) the XP and rested colours: XPB.DefaultColor / XPB.Color (XP Bar Colours)
 -- the rested bonus ahead of the fill: light blue, apart from the fill's own blue (11-13, a player)
 local COLOR_REST_BONUS = { 0.40, 0.80, 1.00 }      -- #66CCFF
 -- Quest XP: what the quests ready to hand in would give
@@ -95,9 +93,48 @@ local REST_ALPHA    = 0.4
 -- Bubbles: the classic XP bar's 20 bubbles of 5% (or 10 of 10%), each divider a dark line with a light edge
 local BUBBLES       = 20                           -- the most bubbles; the dropdown picks 0, 10 or 20
 local BUBBLE_DARK, BUBBLE_LIGHT = 0.85, 0.28           -- the two lines' alpha
-local COLOR_MAJOR   = COLOR_RESTED                      -- renown factions: Blizzard's blue bar
-local STANDING_BY_REACTION = { "FACTION_RED_COLOR", "FACTION_RED_COLOR", "FACTION_ORANGE_COLOR",
-    "FACTION_YELLOW_COLOR", "FACTION_GREEN_COLOR", "FACTION_GREEN_COLOR", "FACTION_GREEN_COLOR", "FACTION_GREEN_COLOR" }
+-- each reaction's colour key (Blizzard's FACTION_*_COLOR: Hated and Hostile red ... Friendly up green)
+local STANDING_BY_REACTION = { "repHostile", "repHostile", "repUnfriendly", "repNeutral",
+    "repFriendly", "repFriendly", "repFriendly", "repFriendly" }
+
+-- XP Bar Colours (11-17, Malkkav, for a player): every colour the bar paints, FlareUI's (Blizzard's own)
+-- or yours (actionbars.xpbar.palette "custom", actionbars.xpbar.customColors), picked in the colour
+-- window (Settings/ColorPicker.lua "xp"). Honor: your faction's colour unless you pick one.
+XPB.COLOR_KEYS = { "xp", "rested", "restBonus", "quest", "repHostile", "repUnfriendly", "repNeutral",
+    "repFriendly", "renown", "honor" }
+function XPB.DefaultColor(key)
+    if key == "xp" then return { 0.58, 0.00, 0.55 }
+    elseif key == "rested" or key == "renown" then return { 0.00, 0.39, 0.88 }
+    elseif key == "restBonus" then return { 0.40, 0.80, 1.00 }
+    elseif key == "quest" then return { 1.00, 0.76, 0.10 }
+    elseif key == "honor" then
+        local faction = UnitFactionGroup("player")
+        local named = (faction == "Alliance" and PLAYER_FACTION_COLOR_ALLIANCE) or (faction == "Horde" and PLAYER_FACTION_COLOR_HORDE)
+        if named then return { named:GetRGB() } end
+        return { 0.00, 0.39, 0.88 }
+    end
+    local global = (key == "repHostile" and "FACTION_RED_COLOR") or (key == "repUnfriendly" and "FACTION_ORANGE_COLOR")
+        or (key == "repNeutral" and "FACTION_YELLOW_COLOR") or "FACTION_GREEN_COLOR"
+    local named = _G[global]
+    if named then return { named:GetRGB() } end
+    return { 1, 1, 1 }
+end
+function XPB.Palette()
+    local db = GetDb()
+    return db and db.palette == "custom" and "custom" or "flareui"
+end
+function XPB.Color(key)
+    local db = GetDb()
+    local own = XPB.Palette() == "custom" and db.customColors and db.customColors[key]
+    if type(own) == "table" and own[1] then return own end
+    return XPB.DefaultColor(key)
+end
+-- the overlays keep their tables: refilled in place
+function XPB.ApplyColors()
+    local bonus, quest = XPB.Color("restBonus"), XPB.Color("quest")
+    COLOR_REST_BONUS[1], COLOR_REST_BONUS[2], COLOR_REST_BONUS[3] = bonus[1], bonus[2], bonus[3]
+    COLOR_QUEST[1], COLOR_QUEST[2], COLOR_QUEST[3] = quest[1], quest[2], quest[3]
+end
 
 local flare                                    -- the bar frame
 local LEM
@@ -154,7 +191,7 @@ function Read.xp()
     local value, maxValue = UnitXP("player"), UnitXPMax("player")
     if not maxValue or maxValue <= 0 then value, maxValue = 0, 1 end
     local rested = GetXPExhaustion() or 0
-    local color = rested > 0 and COLOR_RESTED or COLOR_XP
+    local color = rested > 0 and XPB.Color("rested") or XPB.Color("xp")
     local db = GetDb()
     local format = db and db.textFormat
     local text
@@ -182,7 +219,7 @@ function Read.rep(data)
     elseif C_Reputation.IsMajorFaction and C_Reputation.IsMajorFaction(factionID) then
         local major = C_MajorFactions.GetMajorFactionData(factionID)
         low, high, value = 0, major and major.renownLevelThreshold or 1, major and major.renownReputationEarned or 0
-        color = COLOR_MAJOR
+        color = XPB.Color("renown")
     else
         local friend = C_GossipInfo.GetFriendshipReputation(factionID)
         if friend and friend.friendshipFactionID and friend.friendshipFactionID > 0 then
@@ -199,10 +236,7 @@ function Read.rep(data)
     local maxValue = high - low
     value = value - low
     if capped or maxValue <= 0 then value, maxValue = 1, 1 end
-    if not color then
-        local named = _G[STANDING_BY_REACTION[reaction] or "FACTION_YELLOW_COLOR"]
-        color = named and { named:GetRGB() } or COLOR_RESTED
-    end
+    if not color then color = XPB.Color(STANDING_BY_REACTION[reaction] or "repNeutral") end
     -- the standing's name, as Blizzard's reputation panel shows it
     local standing
     local friend = C_GossipInfo.GetFriendshipReputation(factionID)
@@ -221,9 +255,7 @@ end
 function Read.honor()
     local value, maxValue = UnitHonor("player") or 0, UnitHonorMax("player") or 1
     if maxValue <= 0 then maxValue = 1 end
-    local faction = UnitFactionGroup("player")
-    local named = (faction == "Alliance" and PLAYER_FACTION_COLOR_ALLIANCE) or (faction == "Horde" and PLAYER_FACTION_COLOR_HORDE)
-    local color = named and { named:GetRGB() } or COLOR_RESTED
+    local color = XPB.Color("honor")
     return {
         kind = "honor", level = UnitHonorLevel and UnitHonorLevel("player") or nil,
         value = value, max = maxValue, rested = 0, color = color,
@@ -337,8 +369,8 @@ end
 
 -- Edit Mode samples, so the frame can be placed whatever is tracked
 local function SampleSections()
-    return { value = 6, max = 10, rested = 2, quest = GetDb().questXP and 1 or 0, color = COLOR_RESTED, text = L["XP"] },
-           { value = 4, max = 10, rested = 0, color = FACTION_GREEN_COLOR and { FACTION_GREEN_COLOR:GetRGB() } or COLOR_RESTED, text = REPUTATION }
+    return { value = 6, max = 10, rested = 2, quest = GetDb().questXP and 1 or 0, color = XPB.Color("rested"), text = L["XP"] },
+           { value = 4, max = 10, rested = 0, color = XPB.Color("repFriendly"), text = REPUTATION }
 end
 
 local function CreateSection(parent)
@@ -708,7 +740,7 @@ local function BuildFlare()
     LEM:AddFrame(flare, OnFlareMoved, FLARE_DEFAULT, FLARE_LABEL)
     -- one Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua)
     LEM:AddFrameSettings(flare, ns.EditSection("Frame", {
-        { name = L["Width"], kind = LEM.SettingType.Slider, default = 560, minValue = 200, maxValue = 1200, valueStep = 2,
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = 560, minValue = 200, maxValue = 1200, valueStep = 1,
           get = function() return GetDb().width or 560 end, set = function(_, value) GetDb().width = value; LayoutFlare() end },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 14, minValue = 6, maxValue = 30, valueStep = 1,
           get = function() return GetDb().height or 14 end, set = function(_, value) GetDb().height = value; LayoutFlare() end },
@@ -742,6 +774,7 @@ end
 
 function XPB:Refresh()
     questXPStale = true   -- Quest XP Counts may have changed
+    XPB.ApplyColors()
     if flare then
         PlaceFlare()
         LayoutFlare()
@@ -751,6 +784,7 @@ end
 function XPB:Init()
     if self.initialized or not GetDb() then return end
     self.initialized = true
+    XPB.ApplyColors()
     BuildFlare()
     C_Timer.After(0, function()
         if ns.Visibility and ns.Visibility.Refresh then ns.Visibility:Refresh() end

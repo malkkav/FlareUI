@@ -311,9 +311,11 @@ local function ClassTag(unit, level)
     return nil
 end
 
--- Drops the PvP and "right click for frame settings" lines
+-- Drops the "right click for frame settings" line, and the PvP line with Show PvP off (11-17)
 local function ScrubLines(tip)
-    local rightClick, pvp = _G.UNIT_POPUP_RIGHT_CLICK, _G.PVP_ENABLED
+    local db = GetDb()
+    local rightClick = _G.UNIT_POPUP_RIGHT_CLICK
+    local pvp = db and db.showPvP == false and _G.PVP_ENABLED or nil
     for i = 2, tip:NumLines() do
         local line = LeftLine(i)
         local text = line and line:GetText()

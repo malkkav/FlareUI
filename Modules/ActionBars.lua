@@ -254,8 +254,25 @@ local function SkinBorder(button, on)
         b:Show()
         ActionBars.LiftCountdown(button, true)
         button.NormalTexture:SetAlpha(0)
+        -- (11-17, a player's report: stance buttons showed a second, inner border) the 30 px buttons
+        -- (stance, pet, possess) keep Blizzard's 45 px icon mask (SmallActionButtonMixin_OnLoad), so
+        -- the icon's own edge stayed inside our border once Blizzard's frame was hidden: the mask
+        -- takes the icon's size
+        local mask = button.IconMask
+        if mask then
+            local iw, ih = icon:GetSize()
+            if not (iw and iw > 0) then iw, ih = button:GetSize() end
+            if iw and iw > 0 and iw < 44 then
+                if not button.FlareUI_MaskW then button.FlareUI_MaskW, button.FlareUI_MaskH = mask:GetSize() end
+                mask:SetSize(iw, ih)
+            end
+        end
         button.FlareUI_Bordered = true
     elseif button.FlareUI_Bordered then
+        if button.FlareUI_MaskW and button.IconMask then
+            button.IconMask:SetSize(button.FlareUI_MaskW, button.FlareUI_MaskH)
+            button.FlareUI_MaskW, button.FlareUI_MaskH = nil, nil
+        end
         if button.FlareUI_Border then button.FlareUI_Border:Hide() end
         ActionBars.LiftCountdown(button, false)
         button.NormalTexture:SetAlpha(1)
@@ -975,18 +992,92 @@ end
 -- (11-17, Malkkav, testing in the beta; the partial grey is langee99's idea, PR #91) a button on cooldown
 -- is half greyed, so its colour still shows: Judgement greyed for no seal and Judgement on cooldown no
 -- longer look the same. Range, mana and unusable stay fully grey under their tint.
-ActionBars.COOLDOWN_DESATURATION = 0.5
+ActionBars.COOLDOWN_DESATURATION = 0.25
 function ActionBars.PaintCooldownGrey(icon, dim)
+    -- (11-17) by On Cooldown's strength (Status Colours), once the colours are loaded
+    local amount = ActionBars.COOLDOWN_DESATURATION
+    if dim and ActionBars.StatusColor then amount = ActionBars.StatusColor("cooldown")[4] or amount end
     if icon.SetDesaturation then
-        icon:SetDesaturation(dim and ActionBars.COOLDOWN_DESATURATION or 0)
+        icon:SetDesaturation(dim and amount or 0)
     else
-        icon:SetDesaturated(dim and true or false)
+        icon:SetDesaturated((dim and amount > 0) and true or false)
+    end
+end
+
+-- STATUS COLOURS (11-17, Malkkav): Status Colouring's tints come from a palette (FlareUI, Blizzard) or
+-- your own (Custom, picked in the Action Bars colour window, Settings/ColorPicker.lua). Each colour has
+-- a strength (its alpha in the picker): 100% paints the full colour and greys the icon fully, less
+-- mixes the icon's own colours back in. actionbars.colors.palette / customBase / custom.
+-- On Cooldown: a real cooldown (never the global one) greys the icon by its strength, and tints it;
+-- FlareUI's is no tint at a quarter grey (11-17, Malkkav: was half in the beta), Blizzard's none at all
+ActionBars.STATUS_KEYS = { "range", "mana", "unusable", "cooldown" }
+ActionBars.STATUS_PALETTES = {
+    flareui = { range = { 1, 0.25, 0.25, 1 }, mana = { 0.25, 0.25, 1, 1 }, unusable = { 0.5, 0.5, 0.5, 1 },
+                cooldown = { 1, 1, 1, 0.25 } },
+    -- Blizzard's own tints (ActionButton.lua UpdateUsable); its out-of-range red is the keybind's
+    blizzard = { range = { 0.8, 0.1, 0.1, 1 }, mana = { 0.5, 0.5, 1, 1 }, unusable = { 0.4, 0.4, 0.4, 1 },
+                 cooldown = { 1, 1, 1, 0 } },
+}
+-- (11-17, Malkkav) Disabled leaves the buttons' colours to Blizzard: it stands for the old Status
+-- Colouring switch off (colors.enableRange false), which a setup from before the palettes reads as
+function ActionBars.StatusPalette()
+    local db = GetBarConfig()
+    local colors = db and db.colors
+    local p = colors and colors.palette
+    if p == "blizzard" or p == "custom" or p == "disabled" then return p end
+    if colors and colors.enableRange == false then return "disabled" end
+    return "flareui"
+end
+-- picks a palette: the colours paint on any but Disabled
+function ActionBars.SetStatusPalette(p, base)
+    local db = GetBarConfig()
+    if not db then return end
+    db.colors = db.colors or {}
+    local colors = db.colors
+    colors.palette = p
+    if base then colors.customBase = base end
+    local on = p ~= "disabled"
+    colors.enableRange = on
+    colors.unusable = colors.unusable or {}
+    colors.unusable.desaturate = on
+end
+function ActionBars.StatusColor(state)
+    local db = GetBarConfig()
+    local colors = db and db.colors
+    local palette = ActionBars.StatusPalette()
+    local base = palette
+    if palette == "disabled" then base = "flareui" end   -- (what the window lists meanwhile)
+    if palette == "custom" then
+        base = (colors and colors.customBase == "blizzard") and "blizzard" or "flareui"
+        local own = colors and colors.custom and colors.custom[state]
+        if own then return own end
+    end
+    return ActionBars.STATUS_PALETTES[base][state] or { 1, 1, 1, 1 }
+end
+-- every coloured button paints again (a colour or the palette changed)
+ActionBars.painted = setmetatable({}, { __mode = "k" })
+function ActionBars.RepaintStatus()
+    for button in pairs(ActionBars.painted) do
+        if button.FlareUI_ColorState then
+            button.FlareUI_ColorState = nil
+            ActionBars.RefreshStatus(button)
+        end
+    end
+end
+-- the tint and grey of a state on an icon (also the colour window's samples)
+function ActionBars.PaintStatus(icon, state, desaturate)
+    local c = ActionBars.StatusColor(state)
+    local a = c[4] or 1
+    icon:SetVertexColor(1 - a * (1 - c[1]), 1 - a * (1 - c[2]), 1 - a * (1 - c[3]), 1)
+    if desaturate then
+        if icon.SetDesaturation then icon:SetDesaturation(a) else icon:SetDesaturated(true) end
     end
 end
 
 local function ApplyStateColor(button, state)
     if button.FlareUI_ColorState == state then return end
     button.FlareUI_ColorState = state
+    ActionBars.painted[button] = true
 
     local icon = button.icon
     if not icon then return end
@@ -997,15 +1088,25 @@ local function ApplyStateColor(button, state)
         return
     end
 
-    local tint = STATE_TINT[state] or STATE_TINT.normal
-    icon:SetVertexColor(tint[1], tint[2], tint[3], 1)
-
     local desaturate = state == "range" or state == "mana"
     if state == "unusable" then
         local db = GetBarConfig()
         desaturate = db and db.colors and db.colors.unusable and db.colors.unusable.desaturate or false
     end
-    if desaturate then icon:SetDesaturated(true) else ActionBars.PaintCooldownGrey(icon, CooldownDims(button)) end
+    if state == "normal" or not ActionBars.STATUS_PALETTES.flareui[state] then
+        local tint = STATE_TINT[state] or STATE_TINT.normal
+        icon:SetVertexColor(tint[1], tint[2], tint[3], 1)
+    else
+        ActionBars.PaintStatus(icon, state, desaturate)
+    end
+    if not desaturate then
+        local dim = CooldownDims(button)
+        if dim and state == "normal" then
+            ActionBars.PaintStatus(icon, "cooldown", true)
+        else
+            ActionBars.PaintCooldownGrey(icon, dim)
+        end
+    end
 end
 
 local OnUpdateUsable
@@ -1032,6 +1133,67 @@ local function RefreshButtonColor(button)
     local usable = button.FlareUI_Usable or "normal"
     if usable == "normal" and button.FlareUI_OutOfRange then usable = "range" end
     ApplyStateColor(button, usable)
+end
+
+ActionBars.RefreshStatus = RefreshButtonColor
+
+-- EQUIPPED ITEM BORDER (11-17, Malkkav; EllesmereUI's idea): a button holding an item you wear (a
+-- trinket, an engineering helmet) gets a border in the item's quality colour: FlareUI's border with
+-- FlareUI Borders on, else Blizzard's own (a faint green by default, made full and coloured). Off:
+-- Blizzard's green as before. Blizzard's Update shows its border again: painted after it.
+ActionBars.EQUIP_GREEN = { 0, 1, 0, 0.5 }   -- Blizzard's (ActionButton.lua Update)
+function ActionBars.PaintEquipped(button)
+    local db = GetBarConfig()
+    local on = db and db.enabled and db.equippedBorder
+    local slot = button.action
+    local r, g, b
+    if on and canaccessvalue(slot) and type(slot) == "number" then
+        local worn = C_ActionBar.IsEquippedAction(slot)
+        if canaccessvalue(worn) and worn then
+            local kind, id = GetActionInfo(slot)
+            if canaccessvalue(kind) and kind == "item" and canaccessvalue(id) and id then
+                local quality = C_Item.GetItemQualityByID(id)
+                if quality then r, g, b = C_Item.GetItemQualityColor(quality) end
+            end
+            if not r then r, g, b = 0, 1, 0 end
+        end
+    end
+    local was = button.FlareUI_EquipPainted
+    button.FlareUI_EquipPainted = r and true or nil
+    local own = button.FlareUI_Bordered and button.FlareUI_Border
+    if own then
+        if r then
+            own:SetBackdropBorderColor(r, g, b, 1)
+            if button.Border then button.Border:Hide() end
+        elseif was then
+            local c = ns.BORDER_COLOR
+            own:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
+        end
+    elseif button.Border then
+        if r then
+            button.Border:SetVertexColor(r, g, b, 1)
+            button.Border:Show()
+        elseif was then
+            local e = ActionBars.EQUIP_GREEN
+            button.Border:SetVertexColor(e[1], e[2], e[3], e[4])
+        end
+    end
+end
+function ActionBars.PaintEquippedAll()
+    for _, button in ipairs(GetAllActionButtons()) do ActionBars.PaintEquipped(button) end
+end
+-- wearing or taking off an item, a slot changing: every button again
+do
+    local watch = CreateFrame("Frame")
+    watch:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+    watch:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
+    watch:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+    watch:SetScript("OnEvent", function(_, event)
+        local db = GetBarConfig()
+        -- (an item's quality arriving late only matters while the border is on)
+        if event == "GET_ITEM_INFO_RECEIVED" and not (db and db.equippedBorder) then return end
+        C_Timer.After(0, ActionBars.PaintEquippedAll)
+    end)
 end
 
 -- Blizzard has just rewritten the tint (and its Update the desaturation): a repeated state paints again
@@ -1199,9 +1361,22 @@ local function PaintDim(button)
     end
 end
 
+-- (11-17, a player's Lua error) the global ActionButton_UpdateCooldown hook also runs for Blizzard's
+-- gamepad buttons (Blizzard_GamepadActionBars, all named Gamepad...): FlareUI keeps off them, as
+-- fields it wrote there sat on buttons Blizzard's tainted flyout code then ran over
+ActionBars.notOwnCD = setmetatable({}, { __mode = "k" })
+local function OwnsButton(button)
+    local known = ActionBars.notOwnCD[button]
+    if known ~= nil then return not known end
+    local name = button.GetName and button:GetName()
+    local gamepad = type(name) == "string" and name:find("^Gamepad") ~= nil
+    ActionBars.notOwnCD[button] = gamepad
+    return not gamepad
+end
+
 local function OnUpdateCooldown(button)
     local slot = button.action
-    if not (button.icon and canaccessvalue(slot) and type(slot) == "number") then return end
+    if not (button.icon and OwnsButton(button) and canaccessvalue(slot) and type(slot) == "number") then return end
     local db = GetBarConfig()
     local watch = db and db.enabled and (fcmButtons[button] or DimsOnCooldown(db))
     if not watch and not button.FlareUI_OnCD then return end
@@ -1724,6 +1899,7 @@ function ActionBars:Refresh(event)
 
     UpdateAutoPushSpells(db)
     ApplyClassPaging()
+    if ActionBars.PaintEquippedAll then ActionBars.PaintEquippedAll() end
 
     UpdateGryphonLayer(db)
     if ActionBars.ApplyTotemScale then ActionBars.ApplyTotemScale() end   -- a profile's totem bar Size
@@ -1790,7 +1966,7 @@ function ActionBars.TotemSizeSetting()
     local LEM = LibStub("FlareEditMode")
     return {
         name = L["Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
-        formatter = function(value) return value .. "%" end,
+        formatter = function(value) return value end,   -- plain: "100%" clips the value box (11-17)
         get = function() local db = GetBarConfig(); return db and db.totemScale or 100 end,
         set = function(_, value)
             local db = GetBarConfig()
@@ -1801,11 +1977,60 @@ function ActionBars.TotemSizeSetting()
     }
 end
 
+--------------------------------------------------
+-- 13c. BAG BAR SMALLER SIZE (11-17, a player: the bag buttons beside the menu stop at Blizzard's 75%)
+-- Blizzard's Bags Size runs 75-200%. Smaller Size (Off, 50-70%) sits in the same dialog (Visibility.lua
+-- puts it above Fading) and wins over Blizzard's Size while set; Off hands the bar back to it. A hook
+-- on the bar's own size update keeps it after Edit Mode applies a layout.
+--------------------------------------------------
+ActionBars.BAG_SMALL_OFF = 45   -- the slider's Off step, under its 50% minimum
+local function ApplyBagBarSize()
+    local bar, db = _G.BagsBar, GetBarConfig()
+    if not (bar and db and db.enabled) then return end
+    if not ActionBars.bagSizeHooked and bar.UpdateSystemSettingSize then
+        ActionBars.bagSizeHooked = true
+        hooksecurefunc(bar, "UpdateSystemSettingSize", function() ActionBars.ApplyBagBarSize() end)
+    end
+    local small = db.bagBarSmall
+    if not small and not ActionBars.bagSizeSet then return end
+    if InCombatLockdown() and bar:IsProtected() then ActionBars._pendingBagSize = true return end
+    ActionBars._pendingBagSize = nil
+    if small then
+        bar:SetScale(small / 100)
+        ActionBars.bagSizeSet = true
+    else
+        -- back to Blizzard's own Size
+        ActionBars.bagSizeSet = nil
+        local ok, size = pcall(bar.GetSettingValue, bar, Enum.EditModeBagsSetting.Size)
+        bar:SetScale((ok and type(size) == "number" and size or 100) / 100)
+    end
+end
+ActionBars.ApplyBagBarSize = ApplyBagBarSize
+
+function ActionBars.BagBarSizeSetting()
+    local LEM = LibStub("FlareEditMode")
+    local OFF = ActionBars.BAG_SMALL_OFF
+    return {
+        name = L["Smaller Size"], kind = LEM.SettingType.Slider, default = OFF, minValue = OFF, maxValue = 70, valueStep = 5,
+        formatter = function(value) return value <= OFF and _G.OFF or value end,
+        desc = L["Shrinks the bag buttons below Blizzard's smallest Size (75). Off: Blizzard's Size above sets it."],
+        get = function() local db = GetBarConfig(); return db and db.bagBarSmall or OFF end,
+        set = function(_, value)
+            local db = GetBarConfig()
+            if not db then return end
+            db.bagBarSmall = value > OFF and value or nil
+            ApplyBagBarSize()
+        end,
+        hidden = function() local db = GetBarConfig(); return not (db and db.enabled) end,
+    }
+end
+
 function ActionBars:Init()
     local db = GetBarConfig()
     if not db or not db.enabled then return end
 
     self:Refresh()
+    ApplyBagBarSize()
     HookEndCaps()
 
     -- hooked per button: the mixin's functions are copied onto each frame
@@ -1817,6 +2042,8 @@ function ActionBars:Init()
             if btn.SetHotkeys and not btn.UpdateHotkeys then ActionBars:SecureHook(btn, "SetHotkeys", ActionBars.PetRangeDot) end
             if btn.UpdateUsable then ActionBars:SecureHook(btn, "UpdateUsable", OnUpdateUsable) end
             if btn.UpdateAction then ActionBars:SecureHook(btn, "UpdateAction", OnUpdateAction) end
+            -- Equipped Item Border: after Blizzard's own green
+            if btn.Update then hooksecurefunc(btn, "Update", ActionBars.PaintEquipped) end
         end
     end
 
@@ -1857,6 +2084,7 @@ function ActionBars:OnCombatEnd()
     end
     if #pendingRanks > 0 then FlushRanks() end
     if self._pendingTotemScale then ApplyTotemScale() end
+    if self._pendingBagSize then ApplyBagBarSize() end
 end
 
 -- after Blizzard's own hotkey update

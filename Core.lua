@@ -101,6 +101,27 @@ function ns.AuraOrder.Items(get, set, defaultSort)
     }
 end
 
+-- (11-17, Malkkav; Skrape's report) The level the frames show, as Blizzard's target frame reads it:
+-- Forever's UnitLevel gives a far higher mob its real level (53), while UnitEffectiveLevel gives -1,
+-- the "too high to tell" that Blizzard draws as the skull. UnitLevel only when that can't be read.
+function ns.UnitShownLevel(unit)
+    local level = UnitEffectiveLevel and UnitEffectiveLevel(unit)
+    if canaccessvalue(level) and type(level) == "number" then return level end
+    return UnitLevel(unit)
+end
+-- "Too high to tell": Blizzard's skull, sized to the level text (a frame's High Level Skull switch off: a red ??)
+ns.HIGH_LEVEL_SKULL = "|A:UI-HUD-UnitFrame-Target-HighLevelTarget_Icon:0:0|a"
+function ns.SetHighLevelText(fontString, icons)
+    local store = icons and icons.highSkull
+    if store and store.shown == false then
+        fontString:SetText("??")
+        fontString:SetTextColor(1, 0.1, 0.1)
+    else
+        fontString:SetText(ns.HIGH_LEVEL_SKULL)
+        fontString:SetTextColor(1, 1, 1)
+    end
+end
+
 -- A level on the frames: friendly units in Blizzard's gold, neutral and hostile ones by difficulty
 local LEVEL_GOLD = { r = 1, g = 0.82, b = 0 }
 function ns.UnitLevelColor(unit, level)
@@ -109,15 +130,19 @@ function ns.UnitLevelColor(unit, level)
     return ns.LevelDifficultyColor(unit, level)
 end
 
--- A unit's name on the frames. Forever's UnitName returns first name and surname apart; "Full Player
--- Names" joins them as NameUtil.FormatUnitNameForDisplay does. (11-15, Malkkav) party frames take it in
--- every style; the focus frame, target of target, target of focus and the party target tiles
--- ("targetof") always show the first name only.
+-- A unit's name on the frames. Forever's UnitName returns first name and surname apart; the full name
+-- joins them as NameUtil.FormatUnitNameForDisplay does. (11-17, Malkkav) Full Player Names is gone: a
+-- unit frame's text slot picks First Name or Full Name (full false: first only); "focus" and "targetof"
+-- (the party target tiles) always show the first name only.
 -- A secret name or surname leaves the first name alone.
-function ns.UnitDisplayName(unit, frameKind)
+function ns.UnitDisplayName(unit, frameKind, full)
     local name, surname = UnitName(unit)
-    local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
-    if (uf and uf.fullNames == false) or frameKind == "targetof" or frameKind == "focus" then return name end
+    -- (frames without a pick yet: party, raid; the saved Full Player Names choice)
+    if full == nil then
+        local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
+        full = not (uf and uf.fullNames == false)
+    end
+    if not full or frameKind == "targetof" or frameKind == "focus" then return name end
     if not (canaccessvalue(name) and canaccessvalue(surname)) then return name end
     if type(name) ~= "string" or type(surname) ~= "string" or surname == "" then return name end
     local consts = Constants and Constants.CharacterNameSeparatorConsts
@@ -367,6 +392,28 @@ do
         names = Font(12), health = Font(12), level = Font(12), power = Font(10), cast = Font(12), castTime = Font(12),
         auras = Font(0), auraCount = Font(0),   -- 0: Auto, sized to the icon
     }
+    -- the raid frames' own: health and power one size smaller (11-17, Malkkav); the rest as above
+    -- (11-17, Malkkav) the pet frame's name and health two sizes smaller, its power two (8); every cast bar but
+    -- the player's (its frame's and the FlareUI Player Cast Bar) two smaller in the spell name and timer
+    ns.UF_FONT_FRAME_DEFAULTS = {
+        -- (11-17, Malkkav) raid 10 / 8 / 6 in every style (the tiles draw the set size)
+        raid = { names = Font(10), health = Font(8), power = Font(6) },
+        -- target of target / of focus: 8 / 8 / 6 in every style (drawn at their set size)
+        targettarget = { names = Font(8), health = Font(8), power = Font(6) },
+        focustarget = { names = Font(8), health = Font(8), power = Font(6) },
+        pet = { names = Font(10), health = Font(10), power = Font(8) },
+        -- (11-17, Malkkav) focus 10 / 10 / 8 (every style draws the set size)
+        focus = { names = Font(10), health = Font(10), power = Font(8) },
+    }
+    for _, key in ipairs({ "target", "focus", "pet", "targettarget", "focustarget", "party", "raid", "boss", "flag" }) do
+        local own = ns.UF_FONT_FRAME_DEFAULTS[key] or {}
+        own.cast, own.castTime = Font(10), Font(10)
+        ns.UF_FONT_FRAME_DEFAULTS[key] = own
+    end
+    function ns.UFFontDefault(key, element)
+        local own = ns.UF_FONT_FRAME_DEFAULTS[key]
+        return (own and own[element]) or ns.UF_FONT_DEFAULTS[element]
+    end
 end
 
 local defaults = {
@@ -446,6 +493,7 @@ local defaults = {
             -- Collapsible Bag Bar: no frame art or dividers on the bag bar, and an arrow folds the bag slots
             -- away (11-13; Borderless Bag Bar merged into it 11-16, Malkkav)
             collapsibleBags = false,
+            equippedBorder = false,     -- Equipped Item Border (11-17): a worn item's button bordered in its quality colour
             activeHighlight = false,    -- Active Highlight: the checked button (stance, queued attack) drawn plainly
             autoRanks = false,          -- Update Spell Ranks: a new rank replaces the old one on the bars
             keepStealthPage = false,    -- Keep Page 1 in Stealth: bar 1 holds page 1 (druids: Cat Form's) in Stealth / Prowl
@@ -517,12 +565,18 @@ local defaults = {
             autoZoom = 5,               -- seconds before zooming back out (0 = off)
             flareButton = true,         -- FlareUI Minimap Button: FlareUI's own button, on the map or in the drawer (Minimap.lua MM.UpdateFlareButton)
             buttonBag = true,           -- the badge opens a bag with every addon's minimap button (MinimapBag.lua)
+            drawerStyle = "sundial",    -- Drawer Style (11-17): disabled / sundial / blizzard (MinimapBag.lua)
+            sundial = true,             -- Sundial (11-17, Map Tools): the day/night badge shown (MinimapBag.lua)
+            infoBarHover = false,       -- Info Bar On Mouseover (11-17): the bar only while pointing at the map
+            infoBarBox = true,          -- Info Bar Show Box (11-17): the plates behind the cells
+            barFont = { face = "__global", size = 11, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },   -- Info Bar font (11-17), as Info Text
             bagHover = false,           -- Open on Mouseover: pointing at the badge opens the bag (MinimapBag.lua)
             bagButtonSize = 100,        -- Drawer Button Size: 100..150 percent of the drawer's buttons (MinimapBag.lua Bag.ButtonSize)
             clockStats = true,          -- framerate and latency in the clock's tooltip
             microMenu = false,          -- middle-click the map: a list of Blizzard's panels (off since 11-11)
             finderEye = false,          -- Group Finder Icon: a small icon in place of Blizzard's queue eye (MinimapEye.lua)
-            coords = "hover",           -- Coordinates: off | always | hover (with Blizzard's own option, Minimap.lua MM.CoordsMode)
+            durability = false,         -- Durability Icon (11-17): one icon for Blizzard's durability figure (MinimapDurability.lua)
+            vehicleExit = false,        -- Vehicle Exit Icon (11-17): the exit button at the map's bottom (MinimapVehicle.lua)
             infoBar = { left = "none", center = "none", right = "none" },
             -- Fonts tab: the zone name and the clock (Forever's own look by default)
             zoneFont  = { face = "__global", size = 10, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -536,7 +590,7 @@ local defaults = {
             enabled = false,
             simplePet = false,          -- Simple Pet Frame: the plain pet frame in every style; off, it follows the style
             simpleTargetOf = false,     -- Simple "Target Of": the same for target of target and target of focus
-            fullNames = true,           -- Full Player Names: "First Surname" on every frame, not the first name only
+            fullNames = true,           -- (Full Player Names, removed 11-17: its saved "off" makes a setup's names start as First Name)
             palette = "flareui",        -- the bars' colours: flareui (FlareUI's softer tones) | blizzard (UnitFrames' ApplyPalette)
             foreverStyle = true,        -- Forever's bronze portrait ring on player / target / focus; off = Addon style (UnitFramesRing.lua)
             auraStyle = "square",       -- the unit frames' aura icons: square | round
@@ -556,7 +610,12 @@ local defaults = {
             auraFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             auraCountFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- each frame's fonts (above: the shared ones they started from, kept for the first copy)
-            frameFonts = { ["**"] = ns.UF_FONT_DEFAULTS },
+            -- (each frame's own defaults over the shared ones: ns.UF_FONT_FRAME_DEFAULTS)
+            frameFonts = (function()
+                local t = { ["**"] = ns.UF_FONT_DEFAULTS }
+                for key, own in pairs(ns.UF_FONT_FRAME_DEFAULTS) do t[key] = own end
+                return t
+            end)(),
             editSections = {},          -- (unused since 11-11: open sections are per session, Core.lua ns.EditSections)
             -- resource bars (Modules/ResourceBars.lua); positions in layouts[layout][bar]
             resource = {
@@ -585,6 +644,7 @@ local defaults = {
                 style = "classic",          -- classic | raid
                 showPlayer = true, pets = false, sortByRole = true,
                 hidePlayerInParty = false,  -- Hide Player Frame while in party (with Show Player)
+                showSolo = false,           -- Show When Solo (11-17, Jereth): your own tile shows with no group (with Show Player)
                 targets = false,                 -- Show Party Targets: each member's target beside its frame
                 orientation = "VERTICAL",   -- VERTICAL | HORIZONTAL
                 layouts = {},
@@ -626,7 +686,7 @@ local defaults = {
                 mainTanks = { enabled = false, w = 182, h = 60, spacing = 10,
                               buffs = "INSIDE_LEFT", debuffs = "INSIDE_RIGHT", auraSize = 14,
                               hideBuffs = "PERMANENT", onlyMyBuffs = true, dispellableOnly = false },
-                powerHeight = 6, healthText = "none", texture = "FlareUI Forever", border = "FlareUI Thin",
+                powerHeight = 10, healthText = "none", texture = "FlareUI Forever", border = "FlareUI Thin",
                 debuffs = "INSIDE_RIGHT", buffs = "INSIDE_LEFT", dispels = "INSIDE_BOTTOMRIGHT",
                 auraSize = 12, dispelHighlight = "mine",
                 icons = {},
@@ -645,7 +705,15 @@ local defaults = {
                 threatGlow = true,          -- Threat Glow (Look): the player's threat on the boss
             },
             -- Flag Carrier Frames (off; Modules/FlagCarriers.lua): Blizzard's battleground flag carrier frames on an Edit Mode frame
-            flagCarriers = { enabled = false, layouts = {} },
+            -- (11-17, Malkkav) FlareUI's own frames now (arena1 / arena2, the boss frames' kit)
+            flagCarriers = {
+                enabled = false, layouts = {},
+                width = 180, height = 50, powerHeight = 8, grow = "DOWN", spacing = 10,   -- (11-17: height 50, Malkkav's)
+                healthText = "percent", powerText = "value", showLevel = true,   -- (11-17, Malkkav: on in every style)
+                mirror = true, absorbTexture = "FlareUI Striped", texture = "FlareUI Forever", border = "FlareUI Thin",
+                castbar = true, castHeight = 12, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin",
+                castIcon = true, castTimer = true,
+            },
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
             playerCastbar = { enabled = true, width = 250, height = 25, texture = "FlareUI Forever", borderTexture = "FlareUI Thin", icon = true, timer = true, pushback = false },
             units = {
@@ -663,7 +731,7 @@ local defaults = {
                                  castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24, onlyMyDebuffs = true,
                                  threatGlow = true },   -- Threat Glow (Look)
-                targettarget = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
+                targettarget = { mirror = true, enabled = true, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin" },
                 focus        = { enabled = true, width = 160, height = 35, powerHeight = 0, healthText = "percent", powerText = "value", showLevel = true, mirror = true,
                                  texture = "FlareUI Forever", border = "FlareUI Thick",
@@ -671,7 +739,7 @@ local defaults = {
                                  castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 18, onlyMyDebuffs = true,
                                  threatGlow = true },   -- Threat Glow (Look)
-                focustarget  = { enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
+                focustarget  = { mirror = true, enabled = true, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin" },
                 pet          = { enabled = true, width = 120, height = 30, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin",
@@ -769,6 +837,7 @@ local defaults = {
             showThreat = false,         -- Blizzard's threat line on enemy tooltips (off since 11-11)
             showTarget = false,
             showGuild = true,           -- Blizzard's guild line on players
+            showPvP = true,             -- Show PvP: Blizzard's "PvP" line on flagged units (11-17, Manu; FlareUI dropped it before)
             hideFaction = false,
             shortItemStats = false,     -- "+12 Spell Power" for the long Equip: stat lines (ItemStats.lua)
             itemLevel = false,          -- Show Item Level: weapons' and armour's level on their tooltip (11-13)
@@ -851,6 +920,9 @@ local defaults = {
 
         -- [[ TWEAKS MODULE ]]
         tweaks = {
+            acceptSummon = false,
+            combatFriendly = false,     -- Combat Friendly Plates (11-17): friendly players' plates only in a fight       -- Accept Summons (11-17): taken after 10 seconds unless cancelled
+            craftTotal = false,         -- Craft Batch Time (11-17): the batch's time left after the cast bar's timer
             enabled = false,
             moveAnyFrame = true,        -- drag any Blizzard panel by its header; positions in frames{}
             way = false,                -- /way map pins (off since 11-11)
@@ -1845,7 +1917,7 @@ do
         -- dropdowns
         "Style", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Group Order", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
         -- a Fade Group decides the rows after it (Fading: Fade Group, Visibility, Show Speed, Hide Speed)
-        "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Text", "Combo Points",
+        "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Druid Mana Text", "Text", "Combo Points",
         "Bar Texture", "Border", "Absorb Texture",
         -- (11-16) the Cast Bar section's rows dropped the prefix: placed by their canon names
         "@Cast Bar Position", "@Cast Bar Texture", "@Cast Bar Border",
@@ -1855,19 +1927,19 @@ do
         "Scale", "Size", "Width", "Height", "Max Height", "Power Height", "Portrait Size",
         "Pet Frame Width", "Pet Frame Height", "Target Frame Width", "Target Frame Height",
         "Icon Size", "Icons per Row", "Totems per Row", "Max Icons", "Frame Gap", "Group Gap", "Spacing", "Quest Spacing",
-        "Background", "@Cast Bar Height", "Buff Size", "Debuff Size",
+        "Background", "@Cast Bar Background", "@Cast Bar Height", "Buff Size", "Debuff Size",
         -- (11-15) the Fading sections' sliders: Fade Delay (the chat and the meter) after Faded Opacity
         "Faded Opacity", "Fade Delay",
         -- switches
         -- (11-11 Malkkav) first of their sections' switches: Range Check (Look) and Show Level (Frame)
         -- (11-16 Malkkav) the resource bars' two texts right under the sliders, before Range Check
         "Bar Text", "Show Timer",
-        "Range Check", "Show Level",
-        "Sort by Role", "Show Player", "Hide Player Frame in a Party", "Group Numbers", "Main Tank Frames",
+        "Range Check", "Show Name", "Show Level",
+        "Sort by Role", "Show Player", "Show When Solo", "Hide Player Frame in a Party", "Group Numbers", "Main Tank Frames",
         "Show Threat", "Combo Points@switch", "Flip Portrait", "Mirror Bars", "Portrait@switch", "Power Bar for Mana Users Only",
         "Five-Second Rule", "Mana on Shapeshift", "GCD Spark", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
-        "Show Icon", "Show Spell Timer", "Spell Pushback",
-        "Class Colours", "Low Health Colour", "Bar Animations", "Bar Edge Glow",
+        "Show Icon", "Show Spell Timer", "Show Spell Pushback",
+        "Class Colours", "Threat Glow", "Combat Glow", "Low Health Colour", "Bar Animations", "Bar Edge Glow", "Damage Trail",
         "Only My Buffs", "Only My Debuffs", "Reverse Order", "Your Auras First",
         "Dispellable Debuffs Only",
     }
@@ -1967,7 +2039,7 @@ do
     local PARTS = {
         size = { "Scale", "Width", "Height", "Power Height", "Portrait Size", "Portrait", "Size",
                  "Power Bar for Mana Users Only" },
-        text = { "Health Text", "Power Text", "Text", "Show Level", "Bar Text", "Show Timer" },
+        text = { "Health Text", "Power Text", "Druid Mana Text", "Text", "Show Name", "Show Level", "Bar Text", "Show Timer" },
     }
     -- the section titles reach ns.L as variables (EditSections): listed here for the phrase list
     -- (tools/enus.js reads L["..."] literals)

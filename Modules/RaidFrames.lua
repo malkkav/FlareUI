@@ -983,6 +983,7 @@ local function BuildSettings()
           get = get("healthText", "none"), set = set("healthText") },
         { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "none", values = K.POWER_TEXT_MODES,
           get = get("powerText", "none"), set = set("powerText") },
+        { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName", true)() ~= false end, set = set("showName") },
         { name = L["Power Bar for Mana Users Only"], kind = LEM.SettingType.Checkbox, default = false,
           get = get("powerManaOnly", false), set = set("powerManaOnly"),
           desc = L["Power bars only for classes that use mana. Warriors and rogues get the room for health instead."] },
@@ -1011,7 +1012,11 @@ local function BuildSettings()
         K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars")),
         -- (11-16, Marcus; main tanks follow it)
         K.BarEdgeGlowSetting(get("barEdgeGlow", false), set("barEdgeGlow")),
-        -- (Threat Glow is always on since 11-16, Malkkav)
+        K.DamageTrailSetting(get("damageTrail"), set("damageTrail")),
+        -- (11-17, Malkkav) Threat Glow: in Look, right after Class Colours (Core.lua order) (main tanks follow it)
+        { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
+          desc = L["The border pulses in the threat colour while this member has aggro."],
+          get = function() return get("threatGlow", true)() ~= false end, set = set("threatGlow") },
     })
     Section("Behaviour", behaviourItems)
 
@@ -1020,7 +1025,7 @@ local function BuildSettings()
     local iconItems = {}
     local sample = { ctx = raidCtx }   -- the icon switches read the raid settings through it
     for _, key in ipairs(Tile.ICON_ORDER) do
-        iconItems[#iconItems + 1] = { name = Tile.ICON_LABELS[key], kind = LEM.SettingType.Checkbox, default = true,
+        iconItems[#iconItems + 1] = { name = Tile.ICON_LABELS[key], kind = LEM.SettingType.Checkbox, default = not (ns.PartyFrames.ICON_OFF or {})[key],
             get = function() return Tile.IconShown(key, sample) end,
             set = function(_, value)
                 local store = Tile.IconStore(key, true, sample)

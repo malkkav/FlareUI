@@ -246,7 +246,7 @@ local UNITS = {
         threatGlow = true,   -- Threat Glow (Look): the player's threat on it
     },
     targettarget = {
-        key = "TargetOfTarget", label = L["Target of Target"], order = 3, noRaidIcon = true,
+        key = "TargetOfTarget", label = L["Target of Target"], order = 3, noRaidIcon = true, mirrorOption = true,
         driver = "[@targettarget,exists] show; hide",
         globalEvents = { PLAYER_TARGET_CHANGED = true, UNIT_TARGET = "target" },
         poll = true,
@@ -262,7 +262,7 @@ local UNITS = {
         threatGlow = true,   -- Threat Glow (Look): the player's threat on it
     },
     focustarget = {
-        key = "TargetOfFocus", label = L["Target of Focus"], order = 6, noRaidIcon = true,
+        key = "TargetOfFocus", label = L["Target of Focus"], order = 6, noRaidIcon = true, mirrorOption = true,
         driver = "[@focustarget,exists] show; hide",
         globalEvents = { PLAYER_FOCUS_CHANGED = true, UNIT_TARGET = "focus" },
         poll = true,
@@ -485,7 +485,7 @@ end
 -- Each frame's fonts (11-13, fonts phase 3), set in its Edit Mode Fonts section and saved per frame
 -- style (unitframes.frameFonts). Keys: the single frames' units, then party, raid and boss.
 -- Elements: names, health, level, power, cast, auras, auraCount (Core.lua ns.UF_FONT_DEFAULTS).
-UF.FONT_KEYS = { "player", "target", "focus", "pet", "targettarget", "focustarget", "party", "raid", "boss", "playercast" }
+UF.FONT_KEYS = { "player", "target", "focus", "pet", "targettarget", "focustarget", "party", "raid", "boss", "flag", "playercast" }
 local SEED_FROM = { names = "font", health = "font", level = "font", power = "fontPower", cast = "fontCast",
                     castTime = "fontCast", auras = "auraFont", auraCount = "auraCountFont" }
 -- Once per profile: every frame, in every saved frame style, starts from the shared fonts it used
@@ -555,6 +555,19 @@ function UF.FontDb(key, element)
 end
 -- the font of one text on one frame (key: a unit, "party", "raid", "boss" or "playercast": the
 -- FlareUI Player Cast Bar, 11-13)
+-- (11-17, Malkkav) the level's font at the name's size (Addon Style: the level sits before the name, so
+-- they match); the ring styles size it to their disc themselves (UnitFramesRing.lua LayoutLevel)
+UF.levelFonts = {}
+function UF.LevelFont(key)
+    local level, name = UF.Font(key, "level"), UF.Font(key, "names")
+    if not (level and name) then return level end
+    local t = UF.levelFonts[key] or {}
+    UF.levelFonts[key] = t
+    for k, v in pairs(level) do t[k] = v end
+    t.size = name.size
+    return t
+end
+
 function UF.Font(key, element)
     if not UF.fontsSeeded then
         UF.fontsSeeded = GetDb() ~= nil
@@ -573,7 +586,7 @@ function UF.Font(key, element)
         end
     end
     local frame = fonts and fonts[key or "player"]
-    return frame and frame[element] or ns.UF_FONT_DEFAULTS[element]
+    return frame and frame[element] or ns.UFFontDefault(key or "player", element)
 end
 
 local function GetUnitDb(unit)
@@ -661,7 +674,8 @@ end
 function ICON_UI.HappinessPlace(unit)
     local store = ICON_UI.Store(unit, "happiness")
     local place = store and store.place
-    if not UNITS[unit].styledPet then return place or "CENTER" end
+    -- (11-17, Malkkav) beside the frame on the right by default, in Addon Style too
+    if not UNITS[unit].styledPet then return place or "RIGHT" end
     if ns.UFRing.PlateOn() or place ~= "CENTER" then return "RIGHT" end
     return place
 end
@@ -678,10 +692,11 @@ function ICON_UI.Shown(unit, key)
     return ICON_UI.defs[key].default ~= false
 end
 
--- Threat Glow / Combat Glow: always on since 11-16 (Malkkav; they were Look switches, udb.threatGlow /
--- udb.combatGlow, and a saved "off" no longer counts)
-function UF.GlowOn()
-    return true
+-- Threat Glow / Combat Glow (Look; udb.threatGlow, udb.combatGlow): on unless saved off. (Always on
+-- 11-16 to 11-17; back as switches 11-17, Malkkav: players asked. A frame turned off before stays off.)
+function UF.GlowOn(unit, key)
+    local udb = GetUnitDb(unit)
+    return not (udb and udb[key] == false)
 end
 
 -- (11-15) Threat Glow and Rest & Combat Glow were Icons switches (udb.icons[key].shown): one saved off
@@ -844,7 +859,7 @@ function UF.BgOpacitySetting(default, get, set)
     -- (11-16, Malkkav: "Background Opacity" wrapped onto two lines in Edit Mode)
     return { name = L["Background"], search = L["Background Opacity"], kind = LEM.SettingType.Slider, default = default,
         minValue = 0, maxValue = 100, valueStep = 5,
-        formatter = function(value) return value .. "%" end,
+        formatter = function(value) return value end,   -- plain: "100%" clips the value box (11-17)
         get = get, set = set,
         desc = L["How dark the empty part of the bars is."] }
 end
@@ -1047,19 +1062,194 @@ end
 -- 5. UPDATERS (all secret-safe: values go straight into widgets)
 --------------------------------------------------
 local function UpdateName(f)
-    -- focus, target of target and target of focus: first name only (11-15, Malkkav)
+    -- (11-17, Malkkav) First Name or Full Name by the frame's pick (UF.ShowsFullName)
     local unit = f.fuiUnit
-    local kind = (unit == "focus" and "focus") or ((unit == "targettarget" or unit == "focustarget") and "targetof") or nil
-    local name = ns.UnitDisplayName(unit, kind)
+    local name = ns.UnitDisplayName(unit, nil, UF.ShowsFullName(f))
     if canaccessvalue(name) and not name then name = "" end
     f.Name:SetText(name)
+end
+
+-- BAR TEXT (11-17, Malkkav; BarText.lua): each bar's Left, Middle and Right slot texts. The Right slot
+-- keeps the bar's old text (HealthText, PowerText, ShiftManaText); Left and Middle are its "Left" and
+-- "Mid". Off the plate Left is the name side (Mirror puts it on the right), on the plate the bar's end.
+UF.SLOT_KEYS = { health = "HealthText", power = "PowerText", mana = "ShiftManaText" }
+UF.STATUS_ORDER = { "right", "middle", "left" }   -- Dead / Offline: in the first of these with numbers
+function UF.SlotTexts(f, bar)
+    local key = UF.SLOT_KEYS[bar]
+    if not (key and f[key]) then return nil end
+    return { left = f[key .. "Left"], middle = f[key .. "Mid"], right = f[key] }
+end
+-- the bar's slots for this layout (read again at each layout: f.btSlots = nil)
+function UF.TextSlots(f, bar)
+    f.btSlots = f.btSlots or {}
+    if not f.btSlots[bar] then f.btSlots[bar] = ns.BarText.Slots(GetUnitDb(f.fuiUnit), bar, f.btStyle or "plain", UF.FirstNameOnly(f.fuiUnit), nil, f.fuiUnit) end
+    return f.btSlots[bar]
+end
+-- a "name" from the defaults or an old setup: First Name on the focus and target-of frames (as before),
+-- and everywhere for a setup that had Full Player Names off
+function UF.FirstNameOnly(unit)
+    local uf = GetDb()
+    if uf and uf.fullNames == false then return true end
+    return unit == "focus" or unit == "targettarget" or unit == "focustarget"
+end
+-- whether the frame shows the full name: Forever Style everywhere but the focus frame; the others by
+-- the health bar's name pick
+function UF.ShowsFullName(f)
+    -- (11-17, Malkkav) the focus and target-of frames show the first name in every style
+    if f.btStyle == "plate" then
+        local unit = f.fuiUnit
+        return unit ~= "focus" and unit ~= "targettarget" and unit ~= "focustarget"
+    end
+    local slots = UF.TextSlots(f, "health")
+    for _, slot in ipairs(ns.BarText.SLOTS) do
+        local pick = ns.BarText.NameOf(slots[slot])
+        if pick then return pick == "fullname" end
+    end
+    return false
+end
+-- what the slots read: the unit's numbers (secret ones as they are), or a sample's share of max
+function UF.HealthSource(unit)
+    local src = UF.healthSrc or {}
+    UF.healthSrc = src
+    src.cur, src.max = UnitHealth(unit), UnitHealthMax(unit)
+    src.percent = UnitHealthPercent(unit, true, percentCurve)
+    src.lost = UnitHealthMissing(unit, true)
+    src.lostAlpha = UnitHealthPercent(unit, true, UF.LostCurve())
+    return src
+end
+function UF.PowerSource(unit, powerType)
+    local src = UF.powerSrc or {}
+    UF.powerSrc = src
+    src.cur, src.max = UnitPower(unit, powerType), UnitPowerMax(unit, powerType)
+    src.percent = UnitPowerPercent(unit, powerType, false, CurveConstants.ScaleTo100)
+    src.lost, src.lostAlpha = nil, nil
+    return src
+end
+function UF.SampleSource(share, max)
+    local src = UF.sampleSrc or {}
+    UF.sampleSrc = src
+    src.cur, src.max, src.percent = math_floor(share * max), max, share * 100
+    src.lost = max - src.cur
+    src.lostAlpha = src.lost > 0 and 1 or 0
+    return src
+end
+-- fills a bar's slots; status (Dead, Offline) instead of the numbers, in the slot that has them
+function UF.FillSlots(f, bar, src, status)
+    local texts = UF.SlotTexts(f, bar)
+    if not texts then return end
+    local slots = UF.TextSlots(f, bar)
+    local BT = ns.BarText
+    local statusSlot = "middle"
+    if status then
+        for _, slot in ipairs(UF.STATUS_ORDER) do
+            if BT.HasNumbers(slots[slot]) then statusSlot = slot break end
+        end
+    end
+    for _, slot in ipairs(BT.SLOTS) do
+        local fs = texts[slot]
+        -- the name (or the level standing for it) shares this slot: "/ " between them
+        local prefix = (bar == "health" and f.btPrefixSlot == slot) and "/ " or nil
+        if status then
+            fs:SetAlpha(1)
+            fs:SetText(slot == statusSlot and ((prefix or "") .. status) or "")
+        elseif src then
+            BT.Fill(fs, slots[slot], src, prefix)
+        else
+            fs:SetText("")
+        end
+    end
+end
+
+-- Places a bar's slot texts; on the health bar off the plate, the name and the level before it too.
+-- pad: more room at the name side's end (the ring's portrait overlaps it).
+function UF.PlaceSlots(f, bar, barFrame, mirror, plate, pad, levelInRow)
+    local texts = UF.SlotTexts(f, bar)
+    if not texts then return end
+    local BT = ns.BarText
+    local slots = UF.TextSlots(f, bar)
+    local swap = mirror and not plate
+    local side = { left = swap and "RIGHT" or "LEFT", middle = "CENTER", right = swap and "LEFT" or "RIGHT" }
+    local function Inset(at)
+        local inset = TEXT_INSET + ((not plate and at == side.left) and (pad or 0) or 0)
+        return (at == "LEFT" and inset) or (at == "RIGHT" and -inset) or 0
+    end
+    for _, slot in ipairs(BT.SLOTS) do
+        local fs, at = texts[slot], side[slot]
+        fs:ClearAllPoints()
+        fs:SetJustifyH(at)
+        fs:SetWordWrap(false)
+        fs:SetPoint(at, barFrame, at, Inset(at), 0)
+    end
+    if bar ~= "health" then return end
+    f.btPrefixSlot, f.btNameNextTo = nil, nil
+    if plate then return end
+
+    -- the name: in the first slot holding a name pick, alone there. Show Level puts the level before
+    -- it (Addon Style); a mirrored frame keeps it after the name, at the bar's end, as before (11-17)
+    local udb = GetUnitDb(f.fuiUnit)
+    local nameSlot
+    for _, slot in ipairs(BT.SLOTS) do
+        if BT.NameOf(slots[slot]) then nameSlot = slot break end
+    end
+    local showName = udb and udb.showName ~= false
+    local lead = levelInRow and f.Level or nil
+    local piece = (showName and f.Name) or lead
+    if piece == lead then lead = nil end
+    f.Name:SetShown((showName and nameSlot) and true or false)
+    if levelInRow then f.Level:SetShown(nameSlot and true or false) end
+    if not (nameSlot and piece) then return end
+    local at = side[nameSlot]
+    local after = swap
+    -- the next text across the bar, which the name stops short of
+    local other = nameSlot == "left" and "right" or "left"
+    local nextTo = (nameSlot ~= "middle") and ((BT.HasNumbers(slots.middle) and texts.middle)
+        or (BT.HasNumbers(slots[other]) and texts[other])) or nil
+    piece:SetJustifyH(at == "RIGHT" and "RIGHT" or (at == "CENTER" and "CENTER" or "LEFT"))
+    if at == "LEFT" then
+        if lead and not after then
+            lead:SetPoint("LEFT", barFrame, "LEFT", Inset("LEFT"), 0)
+            piece:SetPoint("LEFT", lead, "RIGHT", 3, 0)
+        else
+            piece:SetPoint("LEFT", barFrame, "LEFT", Inset("LEFT"), 0)
+            if lead then lead:SetPoint("LEFT", piece, "RIGHT", 3, 0) end
+        end
+        if piece == f.Name and not (lead and after) then
+            if nextTo then
+                f.Name:SetPoint("RIGHT", nextTo, "LEFT", -4, 0)
+                f.btNameNextTo = nextTo
+            else
+                f.Name:SetPoint("RIGHT", barFrame, "RIGHT", -TEXT_INSET, 0)
+            end
+        end
+    elseif at == "RIGHT" then
+        if lead and after then
+            lead:SetPoint("RIGHT", barFrame, "RIGHT", Inset("RIGHT"), 0)
+            piece:SetPoint("RIGHT", lead, "LEFT", -3, 0)
+        else
+            piece:SetPoint("RIGHT", barFrame, "RIGHT", Inset("RIGHT"), 0)
+            if lead then lead:SetPoint("RIGHT", piece, "LEFT", -3, 0) end
+        end
+        if piece == f.Name and not (lead and not after) then
+            if nextTo then
+                f.Name:SetPoint("LEFT", nextTo, "RIGHT", 4, 0)
+                f.btNameNextTo = nextTo
+            else
+                f.Name:SetPoint("LEFT", barFrame, "LEFT", TEXT_INSET, 0)
+            end
+        end
+    else
+        piece:SetPoint("CENTER", barFrame, "CENTER", 0, 0)
+        if lead then
+            if after then lead:SetPoint("LEFT", piece, "RIGHT", 3, 0) else lead:SetPoint("RIGHT", piece, "LEFT", -3, 0) end
+        end
+    end
 end
 
 local function UpdateLevel(f)
     local unit = f.fuiUnit
     local udb = GetUnitDb(unit)
     if not (udb and udb.showLevel) then f.Level:SetText("") return end
-    local level = UnitLevel(unit)
+    local level = ns.UnitShownLevel(unit)
     local classification = Readable(UnitClassification(unit))
     -- a ring that shows the rank (the dragon, the star): the number only, as on Blizzard's frame, and
     -- "21+" does not fit the disc
@@ -1068,9 +1258,8 @@ local function UpdateLevel(f)
     if not ring and (classification == "elite" or classification == "rareelite") then suffix = "+" end
     if not ring and (classification == "rare" or classification == "rareelite") then suffix = "R" .. suffix end
     if canaccessvalue(level) and level then
-        if level < 0 then
-            f.Level:SetText("??")
-            f.Level:SetTextColor(1, 0.1, 0.1)
+        if level <= 0 then
+            ns.SetHighLevelText(f.Level, udb.icons)
         else
             f.Level:SetFormattedText("%d%s", level, suffix)
             -- friendly: Blizzard's gold; neutral and hostile: by difficulty
@@ -1101,7 +1290,7 @@ local function UpdateHealth(f, glide)
         local health = (UNITS[unit].sample or {}).health or 0.75
         bar:SetMinMaxValues(0, 1)
         bar:SetValue(health)
-        UF.SampleDamageTrail(f.DamageTrail, health, not UNITS[unit].poll)
+        UF.SampleDamageTrail(f.DamageTrail, health, not UNITS[unit].poll and UF.DamageTrailOn(udb and udb.damageTrail))
         UF.BarLookUpdate(bar, nil, false, false)
         if UnitExists(unit) and not f.fuiSample then
             bar:SetStatusBarColor(GetHealthColor(unit, ns.ClassColorsOn(udb)))
@@ -1112,29 +1301,14 @@ local function UpdateHealth(f, glide)
             -- no unit: yours, so Class Colours shows here too
             bar:SetStatusBarColor(GetHealthColor("player", ns.ClassColorsOn(udb)))
         end
-        local mode = udb and udb.healthText or "percent"
-        f.HealthText:SetAlpha(1)
-        local left = f.HealthTextLeft
-        if mode == "lost" then
-            UF.SetSampleHealthLost(f.HealthText, health)
-        elseif mode == "split" and left and left:IsShown() then
-            left:SetFormattedText("%.0f%%", health * 100)
-            f.HealthText:SetFormattedText("%d", math_floor(health * 24000))
-        elseif mode == "splitvp" and left and left:IsShown() then
-            left:SetFormattedText("%d", math_floor(health * 24000))
-            f.HealthText:SetFormattedText("%.0f%%", health * 100)
-        elseif UF.IsSplitMode(mode) then
-            UF.FormatBarText(f.HealthText, SPLIT_MODES[mode], math_floor(health * 24000), health * 100, 24000)
-        else
-            UF.FormatBarText(f.HealthText, mode, math_floor(health * 24000), health * 100, 24000)
-        end
+        UF.FillSlots(f, "health", UF.SampleSource(health, 24000))
         return
     end
 
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     -- a corpse gets no more health ticks, so a glide could stop short of empty
     ns.SetBarValue(bar, UnitHealth(unit), glide and udb and udb.smoothBars and not UNITS[unit].poll and not UnitIsDead(unit))
-    UF.SetDamageTrail(f.DamageTrail, unit, glide, not UNITS[unit].poll)
+    UF.SetDamageTrail(f.DamageTrail, unit, glide, not UNITS[unit].poll and UF.DamageTrailOn(udb and udb.damageTrail))
     -- (the polled frames update on a timer: no change to bump the edge glow for)
     UF.BarLookUpdate(bar, unit, glide and not UNITS[unit].poll)
     -- The player is always connected and a player, so a health tick keeps its colour unless the class
@@ -1150,32 +1324,14 @@ local function UpdateHealth(f, glide)
         f.colorClass, f.colorPalette, f.colorClassOn = classFile, UF.paletteVersion, classOn
     end
 
-    local mode = udb and udb.healthText or "percent"
-    local text = f.HealthText
-    text:SetAlpha(1)
-    local left = f.HealthTextLeft
-    if left then left:SetText("") end
+    -- Bar Text (11-17): the slots, or Dead / Offline in the slot of the numbers
+    local status
     if not UnitIsConnected(unit) then
-        text:SetText(OFFLINE_TEXT)
+        status = OFFLINE_TEXT
     elseif UF.IsDead(unit) then
-        text:SetText(UnitIsGhost(unit) and GHOST_TEXT or DEAD_TEXT)
-    elseif mode == "lost" then
-        UF.SetHealthLost(text, unit)
-    elseif mode == "none" then
-        text:SetText("")
-    elseif mode == "split" and left and left:IsShown() then
-        -- (secret numbers go into the text as they are)
-        left:SetFormattedText("%.0f%%", UnitHealthPercent(unit, true, percentCurve))
-        text:SetFormattedText("%d", UnitHealth(unit))
-    elseif mode == "splitvp" and left and left:IsShown() then
-        left:SetFormattedText("%d", UnitHealth(unit))
-        text:SetFormattedText("%.0f%%", UnitHealthPercent(unit, true, percentCurve))
-    elseif UF.IsSplitMode(mode) then
-        -- off the plate (another style): Percent | Value or Value | Percent
-        UF.FormatBarText(text, SPLIT_MODES[mode], UnitHealth(unit), UnitHealthPercent(unit, true, percentCurve), UnitHealthMax(unit))
-    else
-        UF.FormatBarText(text, mode, UnitHealth(unit), UnitHealthPercent(unit, true, percentCurve), UnitHealthMax(unit), unit)
+        status = UnitIsGhost(unit) and GHOST_TEXT or DEAD_TEXT
     end
+    UF.FillSlots(f, "health", not status and UF.HealthSource(unit) or nil, status)
 end
 
 local function UpdatePower(f, glide)
@@ -1188,22 +1344,11 @@ local function UpdatePower(f, glide)
     bar:SetStatusBarColor(GetPowerColor(unit))
     if f.ManaCost then f.ManaCost:Refresh(powerType) end
     if f.ShiftMana then UF.UpdateShiftMana(f) end
-    local pleft = f.PowerTextLeft
-    if pleft then pleft:SetText("") end
-    local pmode = udb and UF.PowerTextMode(udb.powerText)
+    -- Bar Text (11-17): the power bar's slots
     if udb and UnitIsConnected(unit) and not UF.IsDead(unit) then
-        if pmode == "split" and pleft and pleft:IsShown() then
-            -- Percent <  > Value on the plate (secret numbers go in as they are)
-            pleft:SetFormattedText("%.0f%%", UnitPowerPercent(unit, powerType, false, CurveConstants.ScaleTo100))
-            f.PowerText:SetFormattedText("%d", UnitPower(unit, powerType))
-        elseif pmode == "splitvp" and pleft and pleft:IsShown() then
-            pleft:SetFormattedText("%d", UnitPower(unit, powerType))
-            f.PowerText:SetFormattedText("%.0f%%", UnitPowerPercent(unit, powerType, false, CurveConstants.ScaleTo100))
-        else
-            UF.SetPowerText(f.PowerText, unit, powerType, pmode)
-        end
+        UF.FillSlots(f, "power", UF.PowerSource(unit, powerType))
     else
-        f.PowerText:SetText("")
+        UF.FillSlots(f, "power")
     end
 end
 
@@ -1304,7 +1449,9 @@ local function GetCastStyle(udb, standalone, plate)
         icon = udb.castIcon ~= false, timer = udb.castTimer ~= false, name = true,
         texture = castTexture, border = true,
         borderTexture = plate and ns.UFRing and ns.UFRing.Border(castBorder) or castBorder,
-        bgOpacity = udb.bgOpacity,
+        -- (11-17, Malkkav) on the plate the frame's Background is 0 (its slots are the bars' background),
+        -- but the cast bar hangs outside the plate: its own Background there (the Cast Bar section)
+        bgOpacity = udb.castBgOpacity or (plate and UF.BAR_BG_OPACITY) or udb.bgOpacity,
     }
 end
 
@@ -1604,6 +1751,76 @@ function UF.HideCastExtras(cast)
     if cast.LagZone then cast.LagZone:Hide() end
     if cast.Delay then cast.Delay:Hide() end
     if cast.KickHost then cast.KickHost:Hide() end
+    if UF.HideCraftTotal then UF.HideCraftTotal(cast) end
+end
+
+-- CRAFT TOTAL (11-17, Malkkav; Niklas's idea; Quality of Life > Other > Craft Batch Time, off): while
+-- you craft several of the same thing ("Create 3"), your cast bar's timer is followed by the whole
+-- batch's time left, "0:12 (1:02)". The game knows how many crafts follow this one
+-- (C_TradeSkillUI.GetRemainingRecasts, as Blizzard's Create box refills from it); each craft takes the
+-- current one's time. The timer itself is the client's text binding, so the total is its own text in
+-- the timer's place, and the timer moves to its left while it shows.
+local function CraftTotalOn()
+    local t = ns.db and ns.db.profile and ns.db.profile.tweaks
+    return t and t.enabled and t.craftTotal and true or false
+end
+
+local function FormatTime(seconds)
+    seconds = math.max(0, math.floor(seconds + 0.5))
+    return ("%d:%02d"):format(math.floor(seconds / 60), seconds % 60)
+end
+
+function UF.HideCraftTotal(cast)
+    local text = cast.CraftTotal
+    if not (text and text:IsShown()) then return end
+    text:Hide()
+    if cast.craftTicker then cast.craftTicker:Cancel(); cast.craftTicker = nil end
+    -- the timer back where its layout put it
+    if cast.craftTimePoint then
+        cast.Time:ClearAllPoints()
+        cast.Time:SetPoint(unpack(cast.craftTimePoint))
+        cast.craftTimePoint = nil
+    end
+end
+
+function UF.UpdateCraftTotal(cast, isTradeskill, startMs, endMs)
+    local remaining = 0
+    if CraftTotalOn() and isTradeskill == true and C_TradeSkillUI and C_TradeSkillUI.GetRemainingRecasts
+        and canaccessvalue(startMs) and canaccessvalue(endMs) and type(startMs) == "number" and type(endMs) == "number" then
+        local ok, n = pcall(C_TradeSkillUI.GetRemainingRecasts)
+        if ok and type(n) == "number" then remaining = n end
+    end
+    if remaining <= 0 then UF.HideCraftTotal(cast) return end
+    local each = (endMs - startMs) / 1000
+    cast.craftEnd = endMs / 1000 + remaining * each
+    local text = cast.CraftTotal
+    if not text then
+        text = cast.Time:GetParent():CreateFontString(nil, "OVERLAY")
+        text:SetJustifyH("RIGHT")
+        cast.CraftTotal = text
+    end
+    local face, size, flags = cast.Time:GetFont()
+    if face then text:SetFont(face, size, flags or "") end
+    text:SetTextColor(cast.Time:GetTextColor())
+    if not text:IsShown() then
+        -- the total takes the timer's place; the timer moves to its left
+        local point, rel, relPoint, x, y = cast.Time:GetPoint(1)
+        if point then
+            cast.craftTimePoint = { point, rel, relPoint, x, y }
+            text:ClearAllPoints()
+            text:SetPoint(point, rel, relPoint, x, y)
+            cast.Time:ClearAllPoints()
+            cast.Time:SetPoint("RIGHT", text, "LEFT", -3, 0)
+        end
+        text:Show()
+    end
+    local function Tick()
+        local left = cast.craftEnd and cast.craftEnd - GetTime() or 0
+        if left <= 0 then UF.HideCraftTotal(cast) return end
+        text:SetText("(" .. FormatTime(left) .. ")")
+    end
+    Tick()
+    if not cast.craftTicker then cast.craftTicker = C_Timer.NewTicker(0.25, Tick) end
 end
 
 -- Your own cast's times are readable. Latency zone: the end of the bar your world latency covers
@@ -1925,6 +2142,9 @@ local function UpdateCastBar(cast, enabled, event, by, barID)
     local direction = channeling and Enum.StatusBarTimerDirection.RemainingTime or Enum.StatusBarTimerDirection.ElapsedTime
     cast:SetTimerDuration(duration, Enum.StatusBarInterpolation.Immediate, direction)
     SetCastTimer(cast, duration)
+    -- (11-17) Craft Batch Time: the whole batch's time after the timer
+    if unit == "player" and not channeling then UF.UpdateCraftTotal(cast, isTradeskill, startMs, endMs)
+    elseif cast.CraftTotal then UF.HideCraftTotal(cast) end
 
     -- `text or name` would boolean-test a secret; only pick when the value is readable
     local label = text
@@ -2124,8 +2344,6 @@ local function UpdatePortrait(f)
         SetPortraitTexture(tex, unit, true)
         local udb = GetUnitDb(f.fuiUnit)
         local flip = udb and UF.LayoutMirrored(f) and PortraitFacesRight(unit) or false
-        -- Flip Portrait (target and focus, the ring styles): the other way round
-        if udb and udb.flipPortrait and ns.UFRing and ns.UFRing.Style() ~= "addon" then flip = not flip end
         if flip then
             tex:SetTexCoord(1, 0, 0, 1)
             portrait.flipUntil = GetTime() + 1
@@ -2155,8 +2373,7 @@ local function ApplySample(f)
     f.Power:SetValue(power)
     local r, g, b = ns.PowerColor(s.powerToken or "MANA")
     f.Power:SetStatusBarColor(r or ns.MANA_BLUE[1], g or ns.MANA_BLUE[2], b or ns.MANA_BLUE[3])
-    local ptMode = UF.PowerTextMode(udb and udb.powerText)
-    UF.FormatBarText(f.PowerText, ptMode, math_floor(power * 3000), math_floor(power * 100), 3000)
+    UF.FillSlots(f, "power", UF.SampleSource(power, 3000))
 end
 
 local function UpdateAll(f)
@@ -3178,7 +3395,9 @@ end
 -- turns the bars' fill, so target and focus keep that layout; the fill always follows udb.mirror.
 function UF.LayoutMirrored(f)
     local info = UNITS[f.fuiUnit]
-    if info and info.mirrorable and ns.UFRing and ns.UFRing.Applies(f) then return true end
+    -- (11-17, Malkkav) the ring styles: the texts follow the ring's side (Flip Portrait); Mirror Bars
+    -- turns only the bars' fill there
+    if info and ns.UFRing and ns.UFRing.Applies(f) then return ns.UFRing.Side(f) == "RIGHT" end
     local udb = GetUnitDb(f.fuiUnit)
     return udb and udb.mirror and true or false
 end
@@ -3634,6 +3853,16 @@ function UF.BarEdgeGlowSetting(get, set)
         desc = L["A bright line and a soft glow at the front of the health bar. It flashes when health changes."] }
 end
 
+-- Damage Trail switch (back 11-17, Malkkav; always on 11-16 to 11-17): on by default, so nothing changes
+-- look; the old "damageTrail" key, so a frame someone turned off before 11-16 stays off. Right under
+-- Bar Edge Glow in the Look section. on(v): the saved value -> shown.
+function UF.DamageTrailOn(v) return v ~= false end
+function UF.DamageTrailSetting(get, set)
+    return { name = L["Damage Trail"], kind = LEM.SettingType.Checkbox, default = true,
+        get = function() return UF.DamageTrailOn(get()) end, set = set,
+        desc = L["Health you lose stays a moment in a light colour, then shrinks away. It isn't one of the Bar Animations."] }
+end
+
 -- SMOOTH ANIMATED BARS SUPPORT (11-16, Marcus approved). Smooth Animated Bars (SAB, MIT, its own
 -- addon) puts its liquid on other addons' bars through its public API (SmoothAnimatedBars.AddBar /
 -- RemoveBar / IsEnabled / RegisterCallback, its SmoothAnimatedBars.lua "For other addons"). While SAB
@@ -3846,7 +4075,7 @@ function UF.UpdateThreatPercent(f)
             if mirrored then
                 text:SetJustifyH("LEFT")
                 text:SetPoint("LEFT", f.HealthText, "RIGHT", 0, 0)
-                f.Name:SetPoint("LEFT", text, "RIGHT", 4, 0)
+                if f.btNameNextTo == f.HealthText then f.Name:SetPoint("LEFT", text, "RIGHT", 4, 0) end
             else
                 text:SetJustifyH("RIGHT")
                 text:SetPoint("RIGHT", f.Health, "RIGHT", -TEXT_INSET, 0)
@@ -4165,11 +4394,32 @@ end
 function UF.ShiftManaShown(f)
     if not f.ShiftMana then return false end
     local udb = GetUnitDb(f.fuiUnit)
-    if not (udb and udb.shiftMana) or (ns.UFRing and ns.UFRing.Plate(f)) then return false end
+    if not (udb and udb.shiftMana) then return false end
+    -- (11-17, Malkkav) Forever Style: the power slot splits in two, so it needs a power slot
+    if ns.UFRing and ns.UFRing.Plate(f) and ns.UFRing.PlatePower(f) == 0 then return false end
     if ns.EditPreviewing() then return true end
     local powerType = UnitPowerType("player")
     if not canaccessvalue(powerType) then return f.ShiftMana:IsShown() end
     return powerType ~= Enum.PowerType.Mana
+end
+
+-- (11-17, Malkkav) Forever Style with Mana on Shapeshift: while the power slot is split, its power and
+-- mana numbers use the strip's small size, and show only on a power slot of 10 or more; whole again,
+-- the power numbers get their size back. In combat too (shifting re-lays the bars).
+function UF.PlateSplitText(f)
+    local split = UF.ShiftManaShown(f)
+    local room = ns.UFRing.PlatePowerText(f)
+    if split then room = ns.UFRing.PlatePower(f) >= 10 end
+    local font = UF.Font(f.fuiUnit, "power")
+    local small = UF.SHIFT_MANA_TEXT_SIZE - (font and font.size or 12)
+    for _, fs in pairs(UF.SlotTexts(f, "power")) do
+        ApplyFont(fs, font, split and small or 0)
+        fs:SetShown(room and true or false)
+    end
+    for _, fs in pairs(UF.SlotTexts(f, "mana")) do
+        ApplyFont(fs, font, small)
+        fs:SetShown((split and room) and true or false)
+    end
 end
 
 -- Anchors health / power and the divider on their seam; the combo strip lies over the health bar's
@@ -4188,14 +4438,12 @@ local function LayoutBars(f)
     if f.Portrait and ns.UFRing and ns.UFRing.Plate(f) then
         -- Forever Style: the bars sit in the frame plate's slots, the ring beside it
         f.Separator:Hide()
-        if f.ShiftMana then
-            f.ShiftMana:Hide()
-            f.ShiftManaSeparator:Hide()
-        end
         if f.Combo then f.Combo:Hide() end
+        -- (Mana on Shapeshift: LayoutPlate splits the power slot between power and the strip)
         ns.UFRing.LayoutPlate(f)
         ns.UFRing.Layout(f)
         UpdatePortrait(f)
+        if f.ShiftMana then UF.PlateSplitText(f) end
         return
     end
 
@@ -4303,11 +4551,11 @@ function UF.UpdateShiftMana(f)
     ns.SetBarValue(bar, UnitPower("player", mana), not appeared and udb and udb.smoothBars)
     local r, g, b = ns.PowerColor("MANA", mana)
     bar:SetStatusBarColor(r or ns.MANA_BLUE[1], g or ns.MANA_BLUE[2], b or ns.MANA_BLUE[3])
-    -- the number follows Power Text, as on the power bar
+    -- Bar Text (11-17): the strip's own Druid Mana slots
     if udb and not UnitIsDeadOrGhost("player") then
-        UF.SetPowerText(f.ShiftManaText, "player", mana, UF.PowerTextMode(udb.powerText))
+        UF.FillSlots(f, "mana", UF.PowerSource("player", mana))
     else
-        f.ShiftManaText:SetText("")
+        UF.FillSlots(f, "mana")
     end
 end
 
@@ -4411,111 +4659,55 @@ local function LayoutFrame(f)
 
     -- ring styles: text one point smaller
     local fontDelta = (ns.UFRing and ns.UFRing.Applies(f)) and -1 or 0
-    -- the small plate of target of target and target of focus: smaller still
-    if UNITS[f.fuiUnit].poll and ns.UFRing and ns.UFRing.Plate(f) then fontDelta = -3 end
+    -- (11-17, Malkkav) target of target and target of focus: their set size in every style (was one under
+    -- in FlareUI Style and three on Forever Style's small plate)
+    if UNITS[f.fuiUnit].poll then fontDelta = 0 end
     local key = f.fuiUnit
+    -- (11-17, Malkkav) the name and the bar texts at their set size in every style (the ring styles drew
+    -- them one under); the level keeps the ring's smaller disc size
+    local levelDelta = fontDelta
+    fontDelta = 0
     ApplyFont(f.Name, UF.Font(key, "names"), fontDelta)
-    ApplyFont(f.Level, UF.Font(key, "level"), fontDelta)
-    ApplyFont(f.HealthText, UF.Font(key, "health"), fontDelta)
-    ApplyFont(f.PowerText, UF.Font(key, "power"), fontDelta)
+    ApplyFont(f.Level, UF.LevelFont(key), levelDelta)
+    -- (every slot of each bar: Bar Text, 11-17)
+    for _, fs in pairs(UF.SlotTexts(f, "health")) do ApplyFont(fs, UF.Font(key, "health"), fontDelta) end
+    for _, fs in pairs(UF.SlotTexts(f, "power")) do ApplyFont(fs, UF.Font(key, "power"), fontDelta) end
     if f.ShiftManaText then
         -- the power text's font and size; a small one on the thin strip (power bar off)
         local font = UF.Font(key, "power")
-        if UF.ShiftManaHeight(f) > UF.SHIFT_MANA_HEIGHT then
-            ApplyFont(f.ShiftManaText, font, fontDelta)
-        else
-            ApplyFont(f.ShiftManaText, font, UF.SHIFT_MANA_TEXT_SIZE - (font and font.size or 12))
-        end
-        f.ShiftManaText:ClearAllPoints()
-        f.ShiftManaText:SetPoint(mirror and "LEFT" or "RIGHT", f.ShiftMana, mirror and "LEFT" or "RIGHT",
-            mirror and TEXT_INSET or -TEXT_INSET, 0)
-        f.ShiftManaText:SetJustifyH(mirror and "LEFT" or "RIGHT")
+        local delta = UF.ShiftManaHeight(f) > UF.SHIFT_MANA_HEIGHT and fontDelta or (UF.SHIFT_MANA_TEXT_SIZE - (font and font.size or 12))
+        for _, fs in pairs(UF.SlotTexts(f, "mana")) do ApplyFont(fs, font, delta) end
     end
 
     f.Level:ClearAllPoints()
     f.Name:ClearAllPoints()
-    f.HealthText:ClearAllPoints()
-    f.PowerText:ClearAllPoints()
-    -- (Percent <  > Value shows them on the plate)
-    if f.HealthTextLeft then f.HealthTextLeft:Hide() end
-    if f.PowerTextLeft then f.PowerTextLeft:Hide() end
     f.threatLaid = nil   -- Show Threat's text is placed again against the new anchors
     -- ring styles: the level is in the ring's disc
     local ringOn = ns.UFRing and ns.UFRing.Applies(f)
     local levelInRow = udb.showLevel and not ringOn
-    -- the name is always on the ring's side: it starts past the portrait
+    -- the name side's end starts past the portrait
     local namePad = ringOn and ns.UFRing.TextPad(f) or 0
-    if mirror then
-        f.Level:SetJustifyH("RIGHT")
-        f.Name:SetJustifyH("RIGHT")
-        f.HealthText:SetJustifyH("LEFT")
-        f.PowerText:SetJustifyH("LEFT")
-        f.Level:SetPoint("RIGHT", health, "RIGHT", -TEXT_INSET, 0)
-        if levelInRow then
-            f.Name:SetPoint("RIGHT", f.Level, "LEFT", -3, 0)
-        else
-            f.Name:SetPoint("RIGHT", health, "RIGHT", -TEXT_INSET - namePad, 0)
-        end
-        f.HealthText:SetPoint("LEFT", health, "LEFT", TEXT_INSET, 0)
-        f.Name:SetPoint("LEFT", f.HealthText, "RIGHT", 4, 0)
-        f.PowerText:SetPoint("LEFT", power, "LEFT", TEXT_INSET, 0)
-    else
-        f.Level:SetJustifyH("LEFT")
-        f.Name:SetJustifyH("LEFT")
-        f.HealthText:SetJustifyH("RIGHT")
-        f.PowerText:SetJustifyH("RIGHT")
-        f.Level:SetPoint("LEFT", health, "LEFT", TEXT_INSET, 0)
-        if levelInRow then
-            f.Name:SetPoint("LEFT", f.Level, "RIGHT", 3, 0)
-        else
-            f.Name:SetPoint("LEFT", health, "LEFT", TEXT_INSET + namePad, 0)
-        end
-        f.HealthText:SetPoint("RIGHT", health, "RIGHT", -TEXT_INSET, 0)
-        f.Name:SetPoint("RIGHT", f.HealthText, "LEFT", -4, 0)
-        f.PowerText:SetPoint("RIGHT", power, "RIGHT", -TEXT_INSET, 0)
-    end
-    -- Forever Style: the name centred in the plate's name box, the numbers centred in their bars
+    -- Forever Style: the name centred in the plate's name box
     local nameBox = ringOn and ns.UFRing.NameBox(f)
+    -- Bar Text (11-17, Malkkav): each bar's Left / Middle / Right slots (BarText.lua), read again for
+    -- this layout; off the plate the health bar's slots place the name (and the level before it) too
+    f.btStyle, f.btSlots = nameBox and "plate" or "plain", nil
+    local onPlate = nameBox and true or false
+    UF.PlaceSlots(f, "health", health, mirror, onPlate, namePad, levelInRow)
+    UF.PlaceSlots(f, "power", power, mirror, onPlate, namePad, false)
+    if f.ShiftManaText then UF.PlaceSlots(f, "mana", f.ShiftMana, mirror, onPlate, 0, false) end
     if nameBox then
-        f.Name:ClearAllPoints()
+        -- Show Name (11-17, Malkkav; jams: a cut-off pet name): off hides it
+        f.Name:SetShown(udb.showName ~= false)
         f.Name:SetPoint("LEFT", nameBox, "LEFT", TEXT_INSET, 0)
         f.Name:SetPoint("RIGHT", nameBox, "RIGHT", -TEXT_INSET, 0)
         f.Name:SetJustifyH("CENTER")
-        f.HealthText:ClearAllPoints()
-        if UF.IsSplitMode(udb.healthText) then
-            -- Percent <  > Value: the percent at the left end, the value at the right end (Value <  >
-            -- Percent the other way round: the same two texts, filled the other way)
-            f.HealthText:SetPoint("RIGHT", health, "RIGHT", -TEXT_INSET, 0)
-            f.HealthText:SetJustifyH("RIGHT")
-            local left = UF.SplitText(f)
-            left:ClearAllPoints()
-            left:SetPoint("LEFT", health, "LEFT", TEXT_INSET, 0)
-            left:Show()
-        else
-            f.HealthText:SetPoint("CENTER", health, "CENTER", 0, 0)
-            f.HealthText:SetJustifyH("CENTER")
-        end
-        f.PowerText:ClearAllPoints()
-        if UF.IsSplitMode(UF.PowerTextMode(udb.powerText)) then
-            f.PowerText:SetPoint("RIGHT", power, "RIGHT", -TEXT_INSET, 0)
-            f.PowerText:SetJustifyH("RIGHT")
-            local pleft = UF.SplitText(f, "PowerText")
-            pleft:ClearAllPoints()
-            pleft:SetPoint("LEFT", power, "LEFT", TEXT_INSET, 0)
-            pleft:Show()
-        elseif UF.RIGHT_MODES[UF.PowerTextMode(udb.powerText)] then
-            -- > Value / > Percent: at the bar's right end
-            f.PowerText:SetPoint("RIGHT", power, "RIGHT", -TEXT_INSET, 0)
-            f.PowerText:SetJustifyH("RIGHT")
-        else
-            f.PowerText:SetPoint("CENTER", power, "CENTER", 0, 0)
-            f.PowerText:SetJustifyH("CENTER")
-        end
     end
     -- (on the plate: by its own Power Height, which may be Off)
     local roomForText
     if nameBox then roomForText = ns.UFRing.PlatePowerText(f) else roomForText = powerHeight >= 10 end
-    f.PowerText:SetShown(UF.PowerTextMode(udb.powerText) ~= "none" and roomForText and true or false)
+    for _, fs in pairs(UF.SlotTexts(f, "power")) do fs:SetShown(roomForText and true or false) end
+    if nameBox and f.ShiftMana then UF.PlateSplitText(f) end
     if ringOn then
         ns.UFRing.LayoutLevel(f)
         -- the classic gems follow the ring's size and side
@@ -4907,6 +5099,11 @@ local function BuildBody(f)
     f.HealthText:SetJustifyH("RIGHT")
     f.PowerText = overlay:CreateFontString(nil, "OVERLAY")
     f.PowerText:SetJustifyH("RIGHT")
+    -- Bar Text (11-17): the Left and Middle slots (HealthText / PowerText are the Right ones)
+    f.HealthTextLeft = overlay:CreateFontString(nil, "OVERLAY")
+    f.HealthTextMid = overlay:CreateFontString(nil, "OVERLAY")
+    f.PowerTextLeft = overlay:CreateFontString(nil, "OVERLAY")
+    f.PowerTextMid = overlay:CreateFontString(nil, "OVERLAY")
 
     f.RaidIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 4)   -- above the quest "!" it shares a spot with
     f.RaidIcon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
@@ -4970,6 +5167,8 @@ local function CreateUnitFrame(unit)
         textLayer:SetAllPoints()
         textLayer:SetFrameLevel(level + 5)
         f.ShiftManaText = textLayer:CreateFontString(nil, "OVERLAY")
+        f.ShiftManaTextLeft = textLayer:CreateFontString(nil, "OVERLAY")
+        f.ShiftManaTextMid = textLayer:CreateFontString(nil, "OVERLAY")
     end
 
     if info.portrait then
@@ -5120,7 +5319,7 @@ function UF.DrawSample(f, style, opts)
     local ok, result = pcall(function()
         LayoutFrame(f)
         ApplySample(f)
-        if unit == "player" then f.Name:SetText(ns.UnitDisplayName("player") or "") end
+        if unit == "player" then f.Name:SetText(ns.UnitDisplayName("player", nil, UF.ShowsFullName(f)) or "") end
         UpdatePortrait(f)
         local w, h = f:GetSize()
         local left, right, top = 0, 0, 0
@@ -5312,7 +5511,7 @@ local function BuildPlayerCastSettings()
     -- frames (Show Icon, Show Spell Timer and Spell Pushback are their Cast Bar section's rows too)
     local Section, settings = EditSections()
     Section("Size", {
-        { name = L["Width"], kind = LEM.SettingType.Slider, default = 250, minValue = 100, maxValue = 600, valueStep = 2, get = get("width", 250), set = set("width") },
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = 250, minValue = 100, maxValue = 600, valueStep = 1, get = get("width", 250), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 25, minValue = 8, maxValue = 48, valueStep = 1, get = get("height", 25), set = set("height") },
     })
     local castItems = {
@@ -5320,7 +5519,7 @@ local function BuildPlayerCastSettings()
           desc = L["The spell's icon, left of the bar."] },
         { name = L["Show Spell Timer"], kind = LEM.SettingType.Checkbox, default = true, get = getShowTimer, set = setShowTimer,
           desc = L["The time left, at the right end of the bar."] },
-        { name = L["Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = get("pushback", false), set = set("pushback"),
+        { name = L["Show Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = get("pushback", false), set = set("pushback"),
           desc = L["Next to the timer: how far hits pushed your cast back or cut your channel short, like \"+0.5\"."] },
     }
     Section("Look", {
@@ -5328,12 +5527,33 @@ local function BuildPlayerCastSettings()
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
         UF.BgOpacitySetting(UF.BAR_BG_OPACITY, get("bgOpacity", UF.BAR_BG_OPACITY), set("bgOpacity")),
     })
-    Section("Cast Bar", castItems)
+    -- (11-17, Malkkav) the bar is the frame here: no Cast Bar section, its rows are Behaviour
+    Section("Behaviour", castItems)
     -- last: Visibility and Faded Opacity (Visibility.lua; Always by default)
     if ns.Visibility and ns.Visibility.PlayerCastSettings then
         Section("Fading", ns.Visibility:PlayerCastSettings())
     end
     return settings
+end
+
+-- Bar Text's dropdowns for a unit frame (11-17, Malkkav): one per bar (Health Text, Power Text, the
+-- player's Druid Mana Text), Left / Middle / Right submenus (BarText.lua BT.Setting)
+UF.BAR_TEXT_NAMES = { health = L["Health Text"], power = L["Power Text"], mana = L["Druid Mana Text"] }
+function UF.BarTextSettings(unit, style)
+    local BT = ns.BarText
+    local out = {}
+    for _, bar in ipairs(unit == "player" and BT.BARS or { "health", "power" }) do
+        out[#out + 1] = BT.Setting({
+            name = UF.BAR_TEXT_NAMES[bar], bar = bar, style = style, unit = unit,
+            db = function() return GetUnitDb(unit) end,
+            firstOnly = function() return UF.FirstNameOnly(unit) end,
+            changed = function()
+                local f = frames[unit]
+                if f then LayoutFrame(f); UpdateAll(f) end
+            end,
+        })
+    end
+    return out
 end
 
 local function BuildSettings(unit)
@@ -5365,7 +5585,7 @@ local function BuildSettings(unit)
     if info.portrait and ns.UFRing and ns.UFRing.PLATE_UNITS[unit] then
         settings[#settings + 1] = { name = L["Scale"], kind = LEM.SettingType.Slider, default = ns.UFRing.PlateDefaultScale(unit),
             minValue = info.styledPet and 40 or 75, maxValue = 250, valueStep = 5,
-            formatter = function(value) return value .. "%" end,
+            formatter = function(value) return value end,   -- plain: "100%" clips the value box (11-17)
             get = function() return ns.UFRing.GetPlateScale(unit) end,
             set = function(layoutName, value)
                 -- Forever Style only (Edit Mode's reset runs hidden settings too)
@@ -5387,7 +5607,7 @@ local function BuildSettings(unit)
     end
     -- the ring styles' presets have their own widths
     local width = ns.UFRing and ns.UFRing.On() and ns.UFRing.PresetValue(unit, "width") or defaults.width or 220
-    settings[#settings + 1] = { name = L["Width"], kind = LEM.SettingType.Slider, default = width, minValue = 60, maxValue = 500, valueStep = 2, get = get("width"), set = set("width") }
+    settings[#settings + 1] = { name = L["Width"], kind = LEM.SettingType.Slider, default = width, minValue = 60, maxValue = 500, valueStep = 1, get = get("width"), set = set("width") }
     settings[#settings + 1] = { name = L["Height"], kind = LEM.SettingType.Slider, default = defaults.height or 44, minValue = 16, maxValue = 120, valueStep = 1, get = get("height"), set = setOffPlate("height"),
         hidden = onPlate }
     settings[#settings + 1] = { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = defaults.powerHeight or 8, minValue = 0, maxValue = 40, valueStep = 1, get = get("powerHeight"), set = set("powerHeight"),
@@ -5407,14 +5627,7 @@ local function BuildSettings(unit)
                 if f then LayoutFrame(f); UpdateAll(f) end
             end, onPlate)
     end
-    if info.portrait and ns.UFRing then
-        -- FlareUI Style's ring (and the portrait in it)
-        settings[#settings + 1] = { name = L["Portrait Size"], kind = LEM.SettingType.Slider, default = ns.UFRing.DefaultSize(unit),
-            minValue = 36, maxValue = 120, valueStep = 1,
-            get = function() local u = GetUnitDb(unit); return u and u.ringSize or ns.UFRing.DefaultSize(unit) end,
-            set = setOffPlate("ringSize"),
-            hidden = function() return not ns.UFRing.On() or onPlate() end }
-    end
+    -- (Portrait Size went 11-17: FlareUI Style's ring follows the frame's height, UnitFramesRing.lua RingDiameter)
     -- (the styled pet always shows its own portrait)
     if info.portrait and not info.styledPet then
         -- "3d" is the stored name of the 2D picture (kept for saved setups)
@@ -5438,12 +5651,11 @@ local function BuildSettings(unit)
             end,
             get = function() local u = GetUnitDb(unit); local v = u and u.portrait or "none"; if v == "model" then v = "3d" end; return v end, set = set("portrait") }
     end
-    -- Percent <  > Value only in Forever Style (a style change reloads, so this list is fixed for the session)
-    local healthModes = (ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and PLATE_HEALTH_TEXT_MODES or HEALTH_TEXT_MODES
-    settings[#settings + 1] = { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = defaults.healthText or "percent", values = healthModes, get = get("healthText"), set = set("healthText") }
-    settings[#settings + 1] = { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "value", values = UF.POWER_TEXT_MODES,
-        get = function() local u = GetUnitDb(unit); return UF.PowerTextMode(u and u.powerText) end, set = set("powerText") }
-    settings[#settings].values = (ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and PLATE_POWER_TEXT_MODES or UF.POWER_TEXT_MODES
+    -- Bar Text (11-17, Malkkav): Left, Middle and Right on each bar, several picks each (BarText.lua);
+    -- Druid Mana for the player (shown for every class, as class options are)
+    for _, item in ipairs(UF.BarTextSettings(unit, function() return (ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and "plate" or "plain" end)) do
+        settings[#settings + 1] = item
+    end
     if info.comboPoints then
         local function refreshCombo()
             local f = frames[unit]
@@ -5468,9 +5680,9 @@ local function BuildSettings(unit)
         -- FlareUI Style: gems round the portrait, the strip, or none
         settings[#settings + 1] = { name = L["Combo Points"], kind = LEM.SettingType.Dropdown, default = "classic",
             values = {
+                { text = L["Off"],     value = "off",     isRadio = true },
                 { text = L["Classic"], value = "classic", isRadio = true },
                 { text = L["Modern"],  value = "modern",  isRadio = true },
-                { text = L["Off"],     value = "off",     isRadio = true },
             },
             get = function() return UF.RingComboMode(GetUnitDb(unit)) end,
             set = function(_, value)
@@ -5495,23 +5707,27 @@ local function BuildSettings(unit)
             end }
     end
     -- (the ring styles show it in the ring's disc, which goes with it)
+    settings[#settings + 1] = { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true,
+        get = function() return get("showName")() ~= false end, set = set("showName") }
     settings[#settings + 1] = { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = defaults.showLevel ~= false, get = get("showLevel"), set = set("showLevel") }
-    -- Flip Portrait (6.3.3, a player's request): the portrait faces the other way, in the ring styles
-    -- (Addon Style's Mirror already turns it); above Mirror
-    if unit == "target" or unit == "focus" then
-        settings[#settings + 1] = { name = L["Flip Portrait"], kind = LEM.SettingType.Checkbox, default = false,
-            desc = L["The portrait faces the other way."],
-            get = function() local u = GetUnitDb(unit); return u and u.flipPortrait == true or false end,
+    -- Flip Portrait (11-17, Malkkav, reworked): the portrait on the right, the whole frame laid out as the
+    -- target frame; off, on the left as the player frame. Target, focus and the target-of frames, on by
+    -- default; the ring styles (Addon Style's Mirror Bars lays its frames out). Above Mirror.
+    if ns.UFRing and ns.UFRing.FLIP_UNITS[unit] then
+        settings[#settings + 1] = { name = L["Flip Portrait"], kind = LEM.SettingType.Checkbox, default = true,
+            desc = L["The portrait on the right, as on the target frame. Off: on the left, as on the player frame."],
+            get = function() local u = GetUnitDb(unit); return not (u and u.portraitRight == false) end,
             set = function(_, value)
                 local u = GetUnitDb(unit)
                 if not u then return end
-                u.flipPortrait = value or nil
+                if value then u.portraitRight = nil else u.portraitRight = false end
                 local f = frames[unit]
-                if f then UpdatePortrait(f) end
+                if f then LayoutFrame(f); AttachExtras(f); UpdateAll(f) end
             end,
             hidden = function() return not (ns.UFRing and ns.UFRing.Style() ~= "addon") end }
     end
-    if info.mirrorable then
+    -- (11-17, Malkkav) target of target and target of focus offer it too (info.mirrorOption)
+    if info.mirrorable or info.mirrorOption then
         -- flips text order and bar fill so the frame faces the player frame
         settings[#settings + 1] = { name = L["Mirror Bars"], kind = LEM.SettingType.Checkbox, default = defaults.mirror or false, get = function() local u = GetUnitDb(unit); return u and u.mirror or false end,
             set = function(_, value) local u = GetUnitDb(unit); if not u then return end; u.mirror = value; local f = frames[unit]; if f then LayoutFrame(f); AttachExtras(f); UpdateAll(f) end end }
@@ -5529,8 +5745,7 @@ local function BuildSettings(unit)
                 local f = frames[unit]
                 if f and f.ShiftMana then UF.UpdateShiftMana(f) end
             end,
-            desc = L["Druids: a thin mana bar under the power bar, in forms without mana. The health bar gets shorter to make room."],
-            hidden = onPlate }
+            desc = L["Druids: a thin mana bar under the power bar, in forms without mana. The health bar gets shorter to make room; in Forever Style the power bar splits in two."] }
     end
     -- Range Check: the frames that fade out of range (target and focus); in Frame since 6.3.3 (Malkkav:
     -- it changes how the frame behaves, not how it looks)
@@ -5592,7 +5807,19 @@ local function BuildSettings(unit)
     end
     -- (11-16, Marcus: per frame, off)
     lookItems[#lookItems + 1] = UF.BarEdgeGlowSetting(get("barEdgeGlow"), set("barEdgeGlow"))
-    -- (Threat Glow and Combat Glow are always on since 11-16, Malkkav: no switches)
+    if not info.poll then lookItems[#lookItems + 1] = UF.DamageTrailSetting(get("damageTrail"), set("damageTrail")) end
+    -- (11-17, back: Threat Glow, and the player's Combat Glow; Look, right after Class Colours, Malkkav)
+    if info.threatGlow then
+        lookItems[#lookItems + 1] = { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
+            desc = unit == "pet" and L["The border pulses in the threat colour while the unit has aggro."]
+                or L["The border pulses in the threat colour while you have threat on it."],
+            get = function() return UF.GlowOn(unit, "threatGlow") end, set = set("threatGlow") }
+    end
+    if info.combatGlow then
+        lookItems[#lookItems + 1] = { name = L["Combat Glow"], kind = LEM.SettingType.Checkbox, default = true,
+            desc = L["In a fight, the border and portrait pulse red. With aggro, the threat colour shows instead."],
+            get = function() return UF.GlowOn(unit, "combatGlow") end, set = set("combatGlow") }
+    end
     Section("Look", lookItems)
     Section("Behaviour", behaviourItems)
 
@@ -5609,14 +5836,30 @@ local function BuildSettings(unit)
             { name = L["Position"], canon = "Cast Bar Position", search = L["Cast Bar Position"], kind = LEM.SettingType.Dropdown, default = defaults.castbarPosition or "BOTTOM",
               values = { { text = L["Above"], value = "TOP", isRadio = true }, { text = L["Below"], value = "BOTTOM", isRadio = true } },
               get = get("castbarPosition"), set = set("castbarPosition"), hidden = noCast },
-            { name = L["Texture"], canon = "Cast Bar Texture", search = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(),
+            { name = L["Bar Texture"], canon = "Cast Bar Texture", search = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(),
               get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture"), hidden = noCast },
-            { name = L["Border"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
+            { name = L["Border Texture"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
               get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture"),
               desc = L["The cast bar's border. Frame Border matches the frame's own border."],
               hidden = function() return noCast() or onPlate() end },
             { name = L["Height"], canon = "Cast Bar Height", search = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = defaults.castHeight or CAST_HEIGHT, minValue = 8, maxValue = 40, valueStep = 1,
               get = function() local u = GetUnitDb(unit); return u and u.castHeight or CAST_HEIGHT end, set = set("castHeight"), hidden = noCast },
+            -- (11-17, Malkkav) the cast bar's own Background, every style. Until set: the frame's
+            -- Background off the plate (as before), the default on it (the plate's slots are the bars' there)
+            (function()
+                local item = UF.BgOpacitySetting(UF.BAR_BG_OPACITY,
+                    function()
+                        local u = GetUnitDb(unit)
+                        local v = u and u.castBgOpacity
+                        if v ~= nil then return v end
+                        if not onPlate() and u and u.bgOpacity ~= nil then return u.bgOpacity end
+                        return UF.BAR_BG_OPACITY
+                    end,
+                    set("castBgOpacity"))
+                item.canon, item.search = "Cast Bar Background", L["Cast Bar Background"]
+                item.hidden = noCast
+                return item
+            end)(),
             { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true,
               get = function() local u = GetUnitDb(unit); return not (u and u.castIcon == false) end,
               set = set("castIcon"),
@@ -5634,7 +5877,7 @@ local function BuildSettings(unit)
                 return function() local u = GetUnitDb(unit); local v = u and u[key]; if v == nil then return default end; return v end
             end
             local extras = {
-                { name = L["Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = flag("pushback", false), set = set("pushback"),
+                { name = L["Show Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = flag("pushback", false), set = set("pushback"),
                   desc = L["Next to the timer: how far hits pushed your cast back or cut your channel short, like \"+0.5\"."] },
             }
             for _, item in ipairs(extras) do
@@ -5733,7 +5976,7 @@ local function BuildSettings(unit)
                     return list
                 end
                 items[#items + 1] = { name = def.label, kind = LEM.SettingType.Dropdown,
-                    default = def.default == false and "OFF" or (info.styledPet and "RIGHT" or "CENTER"),
+                    default = def.default == false and "OFF" or "RIGHT",
                     values = Places,
                     desc = L["Your pet's happiness face, and where it sits."],
                     get = function()
@@ -5765,7 +6008,8 @@ end
 UF.FONT_TEXTS = { names = L["Names"], health = L["Health Text"], level = L["Level"], power = L["Power Text"],
                   cast = L["Cast Name"], castTime = L["Cast Countdown"], auras = L["Aura Timers"], auraCount = L["Aura Stacks"] }
 -- the texts a frame has, in order (key: a unit, "party", "raid", "boss" or "playercast")
-local FRAME_TEXTS = { party = { castbar = true, auras = true }, raid = { auras = true }, boss = { castbar = true, auras = true } }
+local FRAME_TEXTS = { party = { castbar = true, auras = true }, raid = { auras = true }, boss = { castbar = true, auras = true },
+                      flag = { castbar = true } }
 function UF.FontElements(key)
     if key == "playercast" then return { "cast", "castTime" } end
     local info = UNITS[key] or FRAME_TEXTS[key] or {}
@@ -5790,7 +6034,7 @@ UF.Kit = {
     -- Background Opacity's bar background and its Edit Mode slider
     Border = function(name) return ns.UFRing and ns.UFRing.Border(name) or name end,
     NoBorderOptions = function() return ns.UFRing and ns.UFRing.PlateOn() or false end,
-    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting, PlatePowerSetting = UF.PlatePowerSetting, SmoothBarsSetting = UF.SmoothBarsSetting, BarEdgeGlowSetting = UF.BarEdgeGlowSetting, HideBuffsSetting = UF.HideBuffsSetting, ClassColorSetting = UF.ClassColorSetting,
+    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting, PlatePowerSetting = UF.PlatePowerSetting, SmoothBarsSetting = UF.SmoothBarsSetting, BarEdgeGlowSetting = UF.BarEdgeGlowSetting, DamageTrailSetting = UF.DamageTrailSetting, DamageTrailOn = UF.DamageTrailOn, HideBuffsSetting = UF.HideBuffsSetting, ClassColorSetting = UF.ClassColorSetting,
     INSET = INSET, BG_OPACITY = BG_OPACITY, BACKDROP_FILE = BACKDROP_FILE,
     SEPARATOR_TEXTURE = SEPARATOR_TEXTURE, SEPARATOR_HEIGHT = SEPARATOR_HEIGHT, TEXT_INSET = TEXT_INSET,
     CAST_GAP = CAST_GAP, AURA_GAP = AURA_GAP,
@@ -5800,8 +6044,9 @@ UF.Kit = {
     SetHealthLost = UF.SetHealthLost, SetSampleHealthLost = UF.SetSampleHealthLost,
     POWER_TEXT_MODES = UF.POWER_TEXT_MODES, PowerTextMode = UF.PowerTextMode, SetPowerText = UF.SetPowerText,
     IsPowerTextMode = UF.IsPowerTextMode, FormatBarText = UF.FormatBarText,
+    HealthSource = UF.HealthSource, PowerSource = UF.PowerSource, SampleSource = UF.SampleSource,
     DEAD_TEXT = DEAD_TEXT, GHOST_TEXT = GHOST_TEXT, OFFLINE_TEXT = OFFLINE_TEXT,
-    percentCurve = percentCurve,
+    percentCurve = percentCurve, LevelFont = UF.LevelFont,
     GetDb = GetDb,
     GetBarTexture = GetBarTexture, GetBorderFile = GetBorderFile, BorderFit = BorderFit,
     ApplyBorderStyle = ApplyBorderStyle, ResetBorderTint = ResetBorderTint, SetBorderTint = SetBorderTint,
@@ -5810,6 +6055,7 @@ UF.Kit = {
     HardHide = HardHide, SetIconArt = SetIconArt, HasAtlas = HasAtlas,
     CreateCastBar = CreateCastBar, LayoutCastBar = LayoutCastBar, UpdateCastBar = UpdateCastBar,
     ShowSampleCast = ShowSampleCast,
+    ClassArt = ICON_UI.ClassArt, CLASS_SKULL = ICON_UI.CLASS_SKULL, CLASS_ICON_SIZE = ICON_SIZE.pvp,
     InitAuraButton = InitAuraButton, HasAuraSupport = HasAuraSupport,
     ApplyRangeAlpha = UF.ApplyRangeAlpha,
     CreateManaCost = UF.CreateManaCost, CostsMana = CostsMana, GetTimerFormatter = GetTimerFormatter,

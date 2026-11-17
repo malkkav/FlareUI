@@ -75,13 +75,12 @@ S:Row{
     apply = function() if ns.ColorPicker then ns.ColorPicker.Open("uf") end end,
 }
 -- (each frame's fading is in its Edit Mode dialog: Visibility.lua, UnitFrames.lua section 14)
-S:Row{ key = "uf.fullNames", path = "unitframes.fullNames", apply = Refresh }
 -- frames are made at login: the pet's style applies on reload
 S:Row{ key = "uf.simplePet", path = "unitframes.simplePet", reload = true }
 S:Row{ key = "uf.simpleTargetOf", path = "unitframes.simpleTargetOf", reload = true }
 S:Row{ key = "uf.auraShape", kind = "choice", path = "unitframes.auraStyle", choices = { "square", "round" }, apply = Refresh }
-S:Row{ key = "uf.auraSwipe", kind = "choice", path = "unitframes.auraSwipe", choices = { "icon", "border", "both", "none" }, apply = Refresh }
-S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "below", "bottom", "middle", "none" }, apply = Refresh }   -- (Off last, as Buffs & Debuffs' and every Swipe, 11-16)
+S:Row{ key = "uf.auraSwipe", kind = "choice", path = "unitframes.auraSwipe", choices = { "none", "icon", "border", "both" }, apply = Refresh }
+S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }   -- (11-17, Malkkav: Off first in every dropdown)
 
 -- FONTS (11-13, back from Edit Mode): a section per frame, each text a heading; saved per frame
 -- style (UnitFrames.lua UF.FontDb).
@@ -93,7 +92,7 @@ end
 local FONT_FRAMES = {
     { "player", "uf.fontsPlayer" }, { "target", "uf.fontsTarget" }, { "focus", "uf.fontsFocus" },
     { "pet", "uf.fontsPet" }, { "targettarget", "uf.fontsTot" }, { "focustarget", "uf.fontsTof" },
-    { "playercast", "uf.fontsCast" }, { "party", "uf.fontsParty" }, { "raid", "uf.fontsRaid" }, { "boss", "uf.fontsBoss" },
+    { "playercast", "uf.fontsCast" }, { "party", "uf.fontsParty" }, { "raid", "uf.fontsRaid" }, { "boss", "uf.fontsBoss" }, { "flag", "uf.fontsFlag" },
 }
 local UFM = ns.UnitFrames
 -- (11-16, UX audit batch 4) one frame at a time: a Frame picker, then that frame's section only (it was
@@ -153,7 +152,7 @@ for _, frame in ipairs(FONT_FRAMES) do
         fonts[#fonts + 1] = {
             key = element, autoSize = element == "auras" or element == "auraCount",
             font = function() return UFM.FontDb(key, element) end,
-            default = function() return ns.UF_FONT_DEFAULTS[element] end,
+            default = function() return ns.UFFontDefault(key, element) end,
         }
     end
     S:FontRows{ module = "uf", tab = "fonts", section = frame[2], prefix = key, apply = FontsApply, fonts = fonts,

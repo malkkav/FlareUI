@@ -613,6 +613,10 @@ local function SaveSync()
     if forced and forced.combatPlates ~= nil and store.cvars.nameplateShowEnemies ~= nil then
         store.cvars.nameplateShowEnemies = forced.combatPlates
     end
+    local forcedFriendly = ns.db.global and Tweaks.ForcedCVars("combatFriendly")
+    if forcedFriendly and forcedFriendly.combatFriendly ~= nil and store.cvars.nameplateShowFriends ~= nil then
+        store.cvars.nameplateShowFriends = forcedFriendly.combatFriendly
+    end
 
     -- Edit Mode layout, by name and kind, from the manager's presets-then-saved list (the only place
     -- where the active index and the names agree)
@@ -799,6 +803,8 @@ local function LoadSync()
         elseif name == "nameplateShowEnemies" and forced and forced.combatPlates ~= nil then
             -- Enemy Nameplates in Combat Only holds the CVar: the source's value is what comes back later
             forced.combatPlates = tostring(value)
+        elseif name == "nameplateShowFriends" and ns.db.global and Tweaks.ForcedCVars("combatFriendly").combatFriendly ~= nil then
+            Tweaks.ForcedCVars("combatFriendly").combatFriendly = tostring(value)
         elseif CVarKnown(name) then
             local ok, current = pcall(GetCVar, name)
             if ok and not SameCVar(current, value) then
@@ -971,7 +977,7 @@ local function InitSyncUI()
     local watched = {}
     for _, n in ipairs(SYNC_CVARS) do watched[n:lower()] = true end
     SyncEvents:RegisterEvent("CVAR_UPDATE", function(_, name)
-        if type(name) == "string" and name ~= "nameplateShowEnemies" and watched[name:lower()] then QueueSaveSync() end
+        if type(name) == "string" and name ~= "nameplateShowEnemies" and name ~= "nameplateShowFriends" and watched[name:lower()] then QueueSaveSync() end
     end)
     SyncEvents:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", QueueSaveSync)
     SyncEvents:RegisterEvent("UPDATE_CHAT_WINDOWS", QueueSaveSync)
@@ -1133,6 +1139,7 @@ local origZoomIn, origZoomOut
 Tweaks.FORCED_KEYS = {
     maxZoom = "cameraDistanceMaxZoomFactor", zoomSpeed = "cameraZoomSpeed",
     tips = "showTutorials", combatPlates = "nameplateShowEnemies", mapFade = "mapFade",
+    combatFriendly = "nameplateShowFriends",   -- Combat Friendly Plates (11-17)
     compare = "alwaysCompareItems",   -- the Tooltips module's Compare with Shift
     keyDown = "ActionButtonUseKeyDown",   -- Cast on Key Press
 }
@@ -3046,6 +3053,21 @@ local function ApplyCombatPlates()
     end
 end
 
+-- (11-17, Malkkav; AstroFox) Friendly Nameplates in Combat Only: the same for friendly players' plates
+-- (nameplateShowFriends), so you see who is low in a fight without them cluttering the world after
+function Tweaks.ApplyCombatFriendly()
+    local db = GetDb()
+    local forced = ForcedCVars("combatFriendly")
+    if InCombatLockdown() then return end
+    if db and db.combatFriendly then
+        if forced.combatFriendly == nil then forced.combatFriendly = GetCVar("nameplateShowFriends") or "0" end
+        pcall(SetCVar, "nameplateShowFriends", 0)
+    elseif forced.combatFriendly ~= nil then
+        pcall(SetCVar, "nameplateShowFriends", forced.combatFriendly)
+        forced.combatFriendly = nil
+    end
+end
+
 local function InitCombatPlates()
     local frame = CreateFrame("Frame")
     frame:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -3055,11 +3077,14 @@ local function InitCombatPlates()
         if event == "PLAYER_REGEN_DISABLED" then
             -- still allowed: combat lockdown begins right after this event
             if db and db.combatPlates then SetEnemyPlates(true) end
+            if db and db.combatFriendly then pcall(SetCVar, "nameplateShowFriends", 1) end
         else
             ApplyCombatPlates()
+            Tweaks.ApplyCombatFriendly()
         end
     end)
     ApplyCombatPlates()
+    Tweaks.ApplyCombatFriendly()
 end
 
 --------------------------------------------------
@@ -3119,10 +3144,63 @@ do
         end
     end
 
+    -- KEEP OR GO BACK (11-17, Malkkav; a 4K player's Pixel Perfect was too tiny to use): a change in
+    -- the settings remembers the scale before it (g.uiScalePrev, the first one until answered). After
+    -- the reload a dialog asks to keep it; no answer in 15 seconds puts the old one back, as Windows
+    -- does with display settings. Scales saved before this never ask: only a new change does.
+    UIScale.CONFIRM_SECONDS = 15
+    function UIScale.Remember()
+        local g = ns.db and ns.db.global
+        if not g or g.uiScalePrev then return end
+        g.uiScalePrev = { preset = g.uiScale or "blizzard", custom = g.uiScaleCustom }
+    end
+    -- the scale is set back to what it was before the change, at once (no reload)
+    function UIScale.GoBack()
+        local g = ns.db and ns.db.global
+        local prev = g and g.uiScalePrev
+        if not prev then return end
+        g.uiScalePrev = nil
+        g.uiScale = prev.preset ~= "blizzard" and prev.preset or nil
+        g.uiScaleCustom = prev.custom
+        UIScale.Apply()
+    end
+    -- /fui scale reset: Off, Blizzard's own scale, from chat when the settings are too small to use
+    function UIScale.Reset()
+        local g = ns.db and ns.db.global
+        if not g then return end
+        if InCombatLockdown() then print("|cff00ccffFlareUI:|r " .. L["Try again after the fight."]) return end
+        g.uiScalePrev, g.uiScale = nil, nil
+        UIScale.Apply()
+        print("|cff00ccffFlareUI:|r " .. L["UI Scale is Off: Blizzard's own scale is back."])
+    end
+    ns.Dialogs.FLAREUI_KEEP_SCALE = {
+        text = L["Keep this interface scale?"] .. "\n\n" .. L["Without an answer, the old scale comes back in 15 seconds."],
+        button1 = L["Keep"], button2 = L["Go Back"], hideOnEscape = true, readable = true, padInput = true,
+        OnAccept = function() local g = ns.db and ns.db.global; if g then g.uiScalePrev = nil end end,
+        OnCancel = function() UIScale.GoBack() end,
+    }
+    function UIScale.AskToKeep()
+        local g = ns.db and ns.db.global
+        local prev = g and g.uiScalePrev
+        if not prev then return end
+        -- nothing changed after all (picked, then picked back before the reload)
+        if (prev.preset ~= "blizzard" and prev.preset or nil) == g.uiScale
+            and (g.uiScale ~= "custom" or prev.custom == g.uiScaleCustom) then
+            g.uiScalePrev = nil
+            return
+        end
+        ns.ShowDialog("FLAREUI_KEEP_SCALE")
+        C_Timer.After(UIScale.CONFIRM_SECONDS, function() ns.CancelDialog("FLAREUI_KEEP_SCALE") end)
+    end
+
     -- once, as you log in (a change asks for a reload)
     local events = CreateFrame("Frame")
     events:RegisterEvent("PLAYER_LOGIN")
-    events:SetScript("OnEvent", function() UIScale.Apply() end)
+    events:SetScript("OnEvent", function()
+        UIScale.Apply()
+        -- a moment after the loading screen, so the player sees the new scale first
+        C_Timer.After(1, UIScale.AskToKeep)
+    end)
 end
 
 --------------------------------------------------
@@ -3146,6 +3224,7 @@ function Tweaks:Refresh()
     UpdateTrainAll()
     ApplyMailBook()
     ApplyCombatPlates()
+    Tweaks.ApplyCombatFriendly()
     UpdatePetFood()
     if MerchantFrame and MerchantFrame:IsShown() and MerchantFrame_UpdateMerchantInfo then MerchantFrame_UpdateMerchantInfo() end
     -- Blizzard's merchant update above shows the button again when Sell Junk goes off
@@ -3174,6 +3253,8 @@ function Tweaks:ShouldLoad()
         if zoomSpeed then pcall(SetCVar, "cameraZoomSpeed", Tweaks.StoredCVar(zoomSpeed, "cameraZoomSpeed")) end
         if tips then Tweaks.RestoreTips(tips) end
         if plates ~= nil then pcall(SetCVar, "nameplateShowEnemies", plates) end
+        local friendly = Take("combatFriendly")
+        if friendly ~= nil then pcall(SetCVar, "nameplateShowFriends", friendly) end
         -- (11-16, UX audit J4) Move Any Window and Sync Blizz UI are General page options: they start
         -- with Quality of Life off too (with it on, Init starts them)
         if not Tweaks.accountStarted then
@@ -3197,6 +3278,66 @@ function Tweaks.InitAcceptRes()
         local fighting = type(inviter) == "string" and select(2, pcall(UnitAffectingCombat, inviter))
         if canaccessvalue(fighting) and fighting then return end
         AcceptResurrect()
+    end)
+end
+
+-- (11-17, Malkkav) Accept Summons: a summon is taken 10 seconds after it comes, unless you cancel. A
+-- small window says where to and counts for you: Go Now takes it at once, Cancel leaves Blizzard's own
+-- pop-up to answer. Never in a fight or where you can't teleport (Blizzard greys Accept then too): it
+-- waits for that to end. Answering Blizzard's pop-up, or the summon running out, closes the window.
+Tweaks.SUMMON_SECONDS = 10
+function Tweaks.InitAcceptSummon()
+    local S = { listener = CreateFrame("Frame") }
+    Tweaks.summon = S
+    local function Pending() return C_SummonInfo and (C_SummonInfo.GetSummonConfirmTimeLeft() or 0) > 0 end
+    local function Stop()
+        S.pending = nil
+        if S.ticker then S.ticker:Cancel(); S.ticker = nil end
+        S.listener:UnregisterEvent("PLAYER_REGEN_ENABLED")
+        S.closing = true
+        ns.CancelDialog("FLAREUI_ACCEPT_SUMMON")
+        S.closing = nil
+    end
+    local function Take()
+        if not (S.pending and Pending()) then Stop() return end
+        if UnitAffectingCombat("player") or (PlayerCanTeleport and not PlayerCanTeleport()) then
+            -- a fight (or a place you can't leave): once it's over
+            S.listener:RegisterEvent("PLAYER_REGEN_ENABLED")
+            return
+        end
+        C_SummonInfo.ConfirmSummon()
+        StaticPopup_Hide("CONFIRM_SUMMON")
+        Stop()
+    end
+    ns.Dialogs.FLAREUI_ACCEPT_SUMMON = {
+        text = "%s", button1 = L["Go Now"], button2 = CANCEL or L["Cancel"], hideOnEscape = true, readable = true, padInput = true,
+        OnAccept = function() Take() end,
+        -- Cancel: no more counting; Blizzard's pop-up stays for you to answer
+        OnCancel = function() if not S.closing then Stop() end end,
+    }
+    S.listener:RegisterEvent("CONFIRM_SUMMON")
+    S.listener:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_ENABLED" then
+            -- (a beat later: the client clears the fight first)
+            C_Timer.After(0.5, Take)
+            return
+        end
+        local db = GetDb()
+        if not (db and db.acceptSummon) or not C_SummonInfo or S.pending then return end
+        S.pending = true
+        local area = C_SummonInfo.GetSummonConfirmAreaName and C_SummonInfo.GetSummonConfirmAreaName()
+        if not (canaccessvalue(area) and type(area) == "string" and area ~= "") then area = L["your summoner"] end
+        ns.ShowDialog("FLAREUI_ACCEPT_SUMMON", L["Taking the summon to %s in 10 seconds."]:format(area))
+        local left = Tweaks.SUMMON_SECONDS
+        S.ticker = C_Timer.NewTicker(1, function()
+            -- answered on Blizzard's pop-up, or run out: nothing left to wait for
+            if not Pending() then Stop() return end
+            left = left - 1
+            if left <= 0 and S.ticker then
+                S.ticker:Cancel(); S.ticker = nil
+                Take()
+            end
+        end)
     end)
 end
 
@@ -3229,6 +3370,7 @@ function Tweaks:Init()
     Tweaks.WideMerchant.Init()
     InitAlerts()
     Tweaks.InitAcceptRes()
+    Tweaks.InitAcceptSummon()
     InitPetFood()
     InitLootConfirm()
     InitCombatPlates()

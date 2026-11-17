@@ -256,6 +256,15 @@ local function EntryTooltip(owner, entry, hint)
     if entry.kind == "macro" and RM() and RM().MacroAction then macroKind, macroID = RM().MacroAction(entry) end
     if entry.kind == "spell" and entry.id then
         GameTooltip:SetSpellByID(entry.id)
+        -- (11-17, AstroFox) the rank in the top-right corner, as Classic's spell tooltips: Forever's
+        -- leaves it out, and a long name's "(Rank 2)" is cut off in the catalog
+        local subtext = C_Spell.GetSpellSubtext(entry.id)
+        local right = _G.GameTooltipTextRight1
+        if right and type(subtext) == "string" and subtext:find("%d") then
+            right:SetText(subtext)
+            right:SetTextColor(0.5, 0.5, 0.5)
+            right:Show()
+        end
     elseif entry.kind == "item" and entry.id then
         GameTooltip:SetItemByID(entry.id)
     elseif macroKind == "spell" or macroKind == "item" then
@@ -339,6 +348,19 @@ local function ForEachBookSpell(callback)
                 if info and info.spellID and not info.isPassive and info.itemType ~= Enum.SpellBookItemType.FutureSpell then
                     callback(info.actionID or info.spellID)
                 end
+            end
+        end
+    end
+    -- (11-17, Malkkav; Rivax) then your pet's spells (Growl, Bite, Prowl...), from the pet's own book
+    local petBank = Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Pet
+    local numPet = petBank and C_SpellBook.HasPetSpells and C_SpellBook.HasPetSpells()
+    if type(numPet) == "number" then
+        for slot = 1, numPet do
+            local info = C_SpellBook.GetSpellBookItemInfo(slot, petBank)
+            -- (pet commands like Attack and Follow have no spell of their own: skipped)
+            if info and info.spellID and info.spellID > 0 and not info.isPassive
+                and info.itemType == Enum.SpellBookItemType.PetAction and C_Spell.GetSpellName(info.spellID) then
+                callback(info.spellID)
             end
         end
     end

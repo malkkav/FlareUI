@@ -960,8 +960,16 @@ Build.choice = function(f)
     SetupChoiceMenu(dd, f)
 end
 Fill.choice = function(f, row)
-    -- narrower on half rows
-    f.control:SetWidth(row.half and BOX_HALF_W or BOX_W)
+    f.control:ClearAllPoints()
+    if f.bare then
+        -- (11-17) a bare row: the box fills the row, centred
+        f.control:SetPoint("CENTER")
+        f.control:SetWidth(math.max(60, f:GetWidth() - 12))
+    else
+        f.control:SetPoint("RIGHT", -6, 0)
+        -- narrower on half rows
+        f.control:SetWidth(row.half and BOX_HALF_W or BOX_W)
+    end
     f.control:GenerateMenu()
     f:SetHeight(ROW_H)
 end
@@ -1633,7 +1641,9 @@ end
 
 local function FillRow(f, row, crumb)
     f.row = row
-    f.label:SetText(row:Label() or "")
+    -- (11-17) row.bare: the control alone, no label (the Info Bar's three cells); search results keep it
+    f.bare = row.bare and not crumb or nil
+    f.label:SetText(not f.bare and row:Label() or "")
     f.crumb:SetText(crumb or "")
     f.crumb:SetTextColor(GRAY_FONT_COLOR:GetRGB())
     f.crumbLink:SetShown(crumb ~= nil)
@@ -1823,40 +1833,39 @@ local function SectionBox(parent, top, bottom)
 end
 
 local function PlaceRows(parent, rows, y, crumbOf)
-    local firstHalf
+    -- group: the rows sharing the line being filled (half rows two to a line; third rows, 11-17
+    -- Malkkav: the Info Bar's three cells, three to a line)
+    local group, groupCols, groupIndent = {}, 0, 0
     local width = parent:GetWidth() - 2 * rowInset
+    local function CloseGroup()
+        if #group == 0 then return end
+        local height = 0
+        for _, g in ipairs(group) do height = math.max(height, g:GetHeight()) end
+        for _, g in ipairs(group) do g:SetHeight(height) end
+        y = y - height - ROW_GAP
+        wipe(group)
+    end
     for _, row in ipairs(rows) do
         local f = Acquire(parent, row.kind)
         f:ClearAllPoints()
-        if row.half and not crumbOf then
+        local cols = (row.third and 3) or (row.half and 2) or nil
+        if cols and not crumbOf then
             -- (11-16, UX audit 4.2.3) under a parent the pair indents as a full row does; a dependent
             -- pairs only with rows at its own indent (its master's other dependents)
             local indent = row.parent and INDENT or 0
-            if firstHalf and firstHalf.halfIndent ~= indent then
-                y = y - firstHalf:GetHeight() - ROW_GAP
-                firstHalf = nil
-            end
+            if #group > 0 and (groupIndent ~= indent or groupCols ~= cols) then CloseGroup() end
+            groupIndent, groupCols = indent, cols
             f.halfIndent = indent
-            local col = firstHalf and 1 or 0
-            local w = math.floor((width - indent - HALF_GAP) / 2)
+            local col = #group
+            local w = math.floor((width - indent - (cols - 1) * HALF_GAP) / cols)
             f:SetPoint("TOPLEFT", rowInset + indent + col * (w + HALF_GAP), y)
             f:SetWidth(w)
             FillRow(f, row)
             if row == page.jumpRow then page.jumpFrame, page.jumpTop = f, -y end
-            if firstHalf then
-                local height = math.max(firstHalf:GetHeight(), f:GetHeight())
-                firstHalf:SetHeight(height)
-                f:SetHeight(height)
-                y = y - height - ROW_GAP
-                firstHalf = nil
-            else
-                firstHalf = f
-            end
+            group[#group + 1] = f
+            if #group == cols then CloseGroup() end
         else
-            if firstHalf then
-                y = y - firstHalf:GetHeight() - ROW_GAP
-                firstHalf = nil
-            end
+            CloseGroup()
             if row.gapAbove and not crumbOf then y = y - row.gapAbove end
             local indent = row.parent and INDENT or 0
             f:SetPoint("TOPLEFT", rowInset + indent, y)
@@ -1866,7 +1875,7 @@ local function PlaceRows(parent, rows, y, crumbOf)
             y = y - f:GetHeight() - ROW_GAP
         end
     end
-    if firstHalf then y = y - firstHalf:GetHeight() - ROW_GAP end
+    CloseGroup()
     return y
 end
 

@@ -106,8 +106,12 @@ local function GetResourceDb()
     return db and db.resource
 end
 
--- Classic combo gems: on in the ring styles, off in Addon Style
+-- Classic combo gems: on in the ring styles, off in Addon Style, unless the bar's Style says
+-- otherwise (11-17, Malkkav, for a player: "classic" gems or the "modern" bar in any frame style)
 local function ClassicCombo()
+    local rdb = GetResourceDb()
+    local look = rdb and rdb.bars and rdb.bars.combo and rdb.bars.combo.look
+    if look == "classic" then return true elseif look == "modern" then return false end
     return ns.UFRing and ns.UFRing.On() and true or false
 end
 
@@ -368,7 +372,18 @@ end
 --------------------------------------------------
 -- 5. UPDATERS
 --------------------------------------------------
--- max: only the health bar's Value [Max] uses it (the unit frames' formats)
+-- Bar Text (11-17, Malkkav; BarText.lua): health, power and mana have Left / Middle / Right texts
+-- (Text is the Right one); their old Text choice becomes the Middle slot once
+RB.SLOT_BARS = { health = "health", power = "power", mana = "mana" }
+function RB.SlotTexts(holder)
+    return { left = holder.TextLeft, middle = holder.TextMid, right = holder.Text }
+end
+function RB.FillSlots(holder, src, status)
+    local bar = RB.SLOT_BARS[holder.key]
+    if not (bar and holder.TextLeft) then return end
+    ns.BarText.FillAll(RB.SlotTexts(holder), ns.BarText.Slots(Cfg(holder.key), bar, "bar", nil, "text"), src, status)
+end
+-- (the swing, timer and other bars keep their single text)
 local function SetText(holder, mode, value, percent, max)
     K.FormatBarText(holder.Text, mode, value, percent, max)
 end
@@ -401,13 +416,13 @@ local function UpdateHealthValue(holder, glide)
     local cfg = Cfg("health")
     ns.SetBarValue(holder.Bar, UnitHealth("player"), glide and cfg and cfg.smoothBars)
     -- Damage Trail (UnitFrames.lua UF.SetDamageTrail): holds, then glides; lands at once on a full update
-    K.SetDamageTrail(holder.DamageTrail, "player", glide, true)
+    K.SetDamageTrail(holder.DamageTrail, "player", glide, K.DamageTrailOn(cfg and cfg.damageTrail))
     -- Bar Edge Glow: hidden while dead, a bump on each change (UnitFrames.lua UF.BarLook)
     K.BarLookUpdate(holder.Bar, "player", glide)
     if UnitIsDeadOrGhost("player") then
-        holder.Text:SetText(UnitIsGhost("player") and K.GHOST_TEXT or K.DEAD_TEXT)
+        RB.FillSlots(holder, nil, UnitIsGhost("player") and K.GHOST_TEXT or K.DEAD_TEXT)
     else
-        SetText(holder, cfg.text or "both", UnitHealth("player"), UnitHealthPercent("player", true, K.percentCurve), UnitHealthMax("player"))
+        RB.FillSlots(holder, K.HealthSource("player"))
     end
     UpdateHealPrediction(holder)   -- the amounts are clamped by the health missing
     local low = holder.LowHealth
@@ -452,10 +467,7 @@ local function SetPowerValue(holder, powerType, glide, full)
     end
     holder.valueTime, holder.valueType, holder.lastValue = now, t, v
     ns.SetBarValue(holder.Bar, value, glide and cfg and cfg.smoothBars)
-    local mode = cfg.text or "value"
-    local percent   -- may be secret
-    if mode == "percent" then percent = UnitPowerPercent("player", powerType, false, K.percentCurve) end
-    SetText(holder, mode, value, percent)
+    RB.FillSlots(holder, K.PowerSource("player", powerType))
 end
 
 -- holder.powerType: the type the max and colour were set for, so a tick that finds another type
@@ -661,9 +673,9 @@ local function ApplyPreview(holder)
         bar:SetValue(low and 0.25 or 0.75)
         bar:SetStatusBarColor(RB.HealthColor())
         -- a sample hit just taken, 15% past the sample health
-        K.SampleDamageTrail(holder.DamageTrail, low and 0.25 or 0.75, true)
+        K.SampleDamageTrail(holder.DamageTrail, low and 0.25 or 0.75, K.DamageTrailOn(cfg.damageTrail))
         K.BarLookUpdate(bar, nil, false, false)
-        SetText(holder, cfg.text or "both", low and 6000 or 18000, low and 25 or 75, 24000)
+        RB.FillSlots(holder, K.SampleSource(low and 0.25 or 0.75, 24000))
         -- (11-16, Malkkav) a sample incoming heal and shield, as on the unit frames' samples
         if holder.HealBar then
             holder.HealBar:SetMinMaxValues(0, 1)
@@ -684,7 +696,7 @@ local function ApplyPreview(holder)
     elseif kind == "power" then
         bar:SetValue(0.6)
         bar:SetStatusBarColor(RB.PowerColor())
-        SetText(holder, cfg.text or "value", 60, 60)
+        RB.FillSlots(holder, K.SampleSource(0.6, 100))
         if holder.ManaCost then holder.ManaCost:Refresh(UnitPowerType("player")) end   -- the sample cost
         -- GCD Spark: a still sample
         if holder.Gcd then
@@ -694,7 +706,7 @@ local function ApplyPreview(holder)
     elseif kind == "mana" then
         bar:SetValue(0.4)
         bar:SetStatusBarColor(DruidManaColor())
-        SetText(holder, cfg.text or "value", 1600, 40)
+        RB.FillSlots(holder, K.SampleSource(0.4, 4000))
         if holder.ManaCost then holder.ManaCost:Refresh(MANA) end
     elseif kind == "seal" then
         -- a sample Seal of Righteousness, half run out (the real seals' bars wait in their container)
@@ -868,6 +880,7 @@ local function LayoutBar(holder)
     if kind == "combo" then
         holder.count = ComboCount()
         LayoutCombo(holder)
+        UpdateCombo(holder)   -- (11-17) a Style switch repaints the points in the new look at once
         return
     end
 
@@ -895,6 +908,16 @@ local function LayoutBar(holder)
         spark:ClearAllPoints()
         spark:SetSize(math_max(8, (cfg.height or 10)), math_max(18, (cfg.height or 10) * 2.2))
         spark:SetPoint("CENTER", bar:GetStatusBarTexture(), "RIGHT", 0, 0)
+    elseif holder.TextLeft then
+        -- Bar Text: Left, Middle and Right at the bar's ends and centre
+        local texts = RB.SlotTexts(holder)
+        for slot, at in pairs({ left = "LEFT", middle = "CENTER", right = "RIGHT" }) do
+            local fs = texts[slot]
+            if fs ~= holder.Text then K.ApplyFont(fs, font) end
+            fs:ClearAllPoints()
+            fs:SetJustifyH(at)
+            fs:SetPoint(at, bar, at, (at == "LEFT" and K.TEXT_INSET) or (at == "RIGHT" and -K.TEXT_INSET) or 0, 0)
+        end
     else
         holder.Text:SetJustifyH("CENTER")
         holder.Text:SetPoint("CENTER", bar, "CENTER", 0, 0)
@@ -1029,6 +1052,13 @@ local function CreateHolder(key, parent)
     overlay:SetFrameLevel(level + 4)
     holder.Text = overlay:CreateFontString(nil, "OVERLAY")
     holder.Text:SetWordWrap(false)
+    if RB.SLOT_BARS[key] then
+        -- Bar Text (11-17): the Left and Middle texts (Text is the Right one)
+        holder.TextLeft = overlay:CreateFontString(nil, "OVERLAY")
+        holder.TextLeft:SetWordWrap(false)
+        holder.TextMid = overlay:CreateFontString(nil, "OVERLAY")
+        holder.TextMid:SetWordWrap(false)
+    end
 
     if info.kind == "combo" then
         holder.segments, holder.separators, holder.gems = {}, {}, {}
@@ -1218,20 +1248,32 @@ local function BuildSettings(key)
     local function classicOn() return info.kind == "combo" and ClassicCombo() end
     local function classicOff() return not classicOn() end
     local frameItems = {
-        { name = L["Width"], kind = LEM.SettingType.Slider, default = defaults.width or 220, minValue = 40, maxValue = 600, valueStep = 2, get = get("width", 220), set = set("width"), hidden = classicOn },
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = defaults.width or 220, minValue = 40, maxValue = 600, valueStep = 1, get = get("width", 220), set = set("width"), hidden = classicOn },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = defaults.height or 14, minValue = 4, maxValue = 48, valueStep = 1, get = get("height", defaults.height or 14), set = set("height"), hidden = classicOn },
     }
     local function add(item) frameItems[#frameItems + 1] = item end
     if info.kind == "combo" then
+        -- Style (11-17): the gems or the bar, whatever the frame style (FlareUI Style's target has the same)
+        table.insert(frameItems, 1, { name = L["Style"], kind = LEM.SettingType.Dropdown,
+            default = (ns.UFRing and ns.UFRing.On()) and "classic" or "modern",
+            values = {
+                { text = L["Classic"], value = "classic", isRadio = true },
+                { text = L["Modern"],  value = "modern",  isRadio = true },
+            },
+            get = function() return ClassicCombo() and "classic" or "modern" end,
+            set = set("look"),
+            desc = L["Classic: Blizzard's combo point gems. Modern: a bar split into points, which takes the Combo Points colour."] })
         add({ name = L["Size"], kind = LEM.SettingType.Slider, default = 24, minValue = 12, maxValue = 48, valueStep = 1,
               get = get("classicSize", 24), set = set("classicSize"), hidden = classicOff })
     end
-    if info.kind == "power" or info.kind == "mana" then
-        add({ name = L["Text"], kind = LEM.SettingType.Dropdown, default = defaults.text or "value", values = POWER_TEXT_VALUES,
-              get = get("text", defaults.text or "value"), set = set("text") })
-    end
-    if info.kind == "health" then
-        add({ name = L["Text"], kind = LEM.SettingType.Dropdown, default = defaults.text or "both", values = TEXT_VALUES, get = get("text", defaults.text or "both"), set = set("text") })
+    -- Bar Text (11-17, Malkkav): Left / Middle / Right, as on the unit frames (BarText.lua)
+    if RB.SLOT_BARS[key] then
+        add(ns.BarText.Setting({
+            name = L["Text"], bar = RB.SLOT_BARS[key], oldKey = "text",
+            style = function() return "bar" end,
+            db = function() return Cfg(key) end,
+            changed = function() Relayout(key) end,
+        }))
     end
     if info.kind == "power" or info.kind == "mana" then
         add({ name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false, get = get("fsr", false), set = set("fsr"),
@@ -1312,6 +1354,11 @@ local function BuildSettings(key)
         -- (11-16, Marcus) the health bar's Bar Edge Glow, as on the unit frames (default off)
         (function()
             local item = K.BarEdgeGlowSetting(get("barEdgeGlow", false), set("barEdgeGlow"))
+            item.hidden = function() return info.kind ~= "health" end
+            return item
+        end)(),
+        (function()
+            local item = K.DamageTrailSetting(get("damageTrail"), set("damageTrail"))
             item.hidden = function() return info.kind ~= "health" end
             return item
         end)(),
