@@ -44,9 +44,6 @@ S:Row{ key = "mm.coords", kind = "choice", choices = { "off", "always", "hover" 
     get = function() return ns.Minimap and ns.Minimap.CoordsMode and ns.Minimap.CoordsMode() or "hover" end,
     set = function(value) if ns.Minimap and ns.Minimap.SetCoordsMode then ns.Minimap.SetCoordsMode(value) end end,
     resetValue = function() return "hover" end, apply = Refresh }
--- Info Bar (11-16, Ahlen's idea): a bar inside the square map's bottom (Minimap.lua Bar), and under
--- its switch what each of its three cells shows. The framerate and latency are two of its values:
--- their own rows (mm.fps, mm.latency) left with it (11-16, Malkkav)
 local function BarOff() return S:GetPath("minimap.style") == "round" or not S:GetPath("minimap.infoBar.enabled") end
 S:Row{ key = "mm.bar", path = "minimap.infoBar.enabled", apply = Refresh,
     disabled = function() return S:GetPath("minimap.style") == "round" end }

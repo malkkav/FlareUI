@@ -1852,7 +1852,6 @@ L["Any One of Them"] = "Любой один"
 L["Each of Them: an icon for every watched elixir you lack. Any One of Them: one icon while none of them is on you, gone as soon as one is. A click drinks one from your bags."] = "Каждый: значок для каждого отслеживаемого эликсира, которого не хватает. Любой один: один значок, пока не действует ни один, он исчезает, как только выпит любой. Щелчок — выпить из сумок."
 L["No elixir in your bags."] = "В сумках нет эликсиров."
 
--- (11-16) Minimap: the Info Bar
 L["Info Bar"] = "Инфопанель"
 L["Durability"] = "Прочность"
 L["A bar inside the square minimap, along its bottom edge, with up to three values of your choice."] = "Панель внутри квадратной миникарты, вдоль её нижнего края, с тремя значениями на ваш выбор."

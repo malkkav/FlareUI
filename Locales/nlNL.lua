@@ -1839,7 +1839,6 @@ L["Any One of Them"] = "Eén ervan"
 L["Each of Them: an icon for every watched elixir you lack. Any One of Them: one icon while none of them is on you, gone as soon as one is. A click drinks one from your bags."] = "Elk ervan: een icoon voor elk gevolgd elixer dat je mist. Eén ervan: één icoon zolang er geen actief is, dat verdwijnt zodra er één actief is. Een klik drinkt er een uit je tassen."
 L["No elixir in your bags."] = "Geen elixer in je tassen."
 
--- (11-16) Minimap: the Info Bar
 L["Info Bar"] = "Infobalk"
 L["Durability"] = "Duurzaamheid"
 L["A bar inside the square minimap, along its bottom edge, with up to three values of your choice."] = "Een balk in de vierkante minimap, langs de onderrand, met maximaal drie waarden naar keuze."

@@ -2227,7 +2227,6 @@ L["Your Auras"] = "Vos auras"
 L["Your player and pet frames hide while you're in a party, and come back solo and in a raid. Your frame in the party has the same right-click menu, and your pet's happiness."] = "Vos cadres de joueur et de familier se masquent quand vous êtes en groupe, et reviennent en solo et en raid. Votre cadre dans le groupe a le même menu clic droit, et le bonheur de votre familier."
 L["Your player and pet frames hide while you're in a raid, and come back solo and in a party."] = "Vos cadres de joueur et de familier se masquent quand vous êtes en raid, et reviennent en solo et en groupe."
 
--- (11-16) Minimap: the Info Bar
 L["Info Bar"] = "Barre d'infos"
 L["Durability"] = "Durabilité"
 L["A bar inside the square minimap, along its bottom edge, with up to three values of your choice."] = "Une barre dans la minicarte carrée, le long de son bord inférieur, avec jusqu'à trois valeurs de votre choix."

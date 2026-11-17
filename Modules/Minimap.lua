@@ -64,8 +64,6 @@ local MASKS = { EMPTY = "Interface\\AddOns\\FlareUI\\Media\\Art\\Empty", FOREVER
 -- to measure the Edit Mode box, and come back if the client lacks the atlas.
 local HEADER_STYLES = {
     headerless = { band = 27, headerTop = 7, drop = 3, over = false, bronze = true, side = 10, shift = -1 },
-    -- barSide (11-16): the Info Bar's inset from the frame's right; Bordered's header row lies in the
-    -- title bar, wider than the map, so its bar has an inset of its own
     art        = { band = 22, headerTop = 2, drop = 0, over = true, side = 6, barSide = 10 },
 }
 local BRONZE_ATLAS = "heavybronze-frame-basic"
@@ -503,22 +501,13 @@ local function RestyleCoordText(text)
     text:SetTextColor(c.r, c.g, c.b)
 end
 
--- INFO BAR (11-16, Ahlen's idea on Discord): a plate along the map's bottom, inside the frame, the
--- header's mirror. Three cells (left, centre, right), each one value picked in Settings > Minimap
--- (minimap.infoBar), under the Info Bar switch, off by default. Square styles only. It takes no clicks:
--- the map's own go through. The coordinates at the map's bottom move up above it. The framerate and
--- latency are its values since 11-16 (Malkkav): their own options and corner texts are gone (MM:Init
--- moves whoever showed them to the bar).
 local Bar = { cells = {}, lines = {}, picks = {}, BOTTOM = 8, SUN_ROOM = 30, shown = false }
 local BAR_SIDES = { "left", "center", "right" }
 local BAR_ICONS = { bags = "Interface\\Buttons\\Button-Backpack-Up", durability = "Interface\\Minimap\\Tracking\\Repair" }
-local COIN_COLORS = { "ffffd700", "ffc7c7cf", "ffeda55f" }   -- gold, silver, copper
--- A value in the cell's own colour while all is well, then a warning and an alert (11-16; orange, as
--- yellow reads as the cells' gold)
+local COIN_COLORS = { "ffffd700", "ffc7c7cf", "ffeda55f" }
 local BAR_WARN, BAR_ALERT = "|cffff9933", "|cffff4040"
-local BAGS_WARN = 0.85   -- of the slots used; the alert: no slot left
+local BAGS_WARN = 0.85
 
--- the coins that fit a cell: copper goes from 100 gold, silver from 1000
 local function BarMoney()
     local cash = GetMoney() or 0
     local coins = { math.floor(cash / 10000), math.floor(cash / 100) % 100, cash % 100 }
@@ -533,7 +522,6 @@ local function BarMoney()
     return table.concat(parts, " ")
 end
 
--- used / total over the backpack and the plain bags (a quiver or a herb bag is not room for loot)
 local function BarBags()
     local used, total = 0, 0
     for bag = 0, _G.NUM_BAG_SLOTS or 4 do
@@ -544,18 +532,14 @@ local function BarBags()
             used = used + slots - (free or 0)
         end
     end
-    -- (the backpack's art fills its square: a pixel down, off the plate's top edge)
     local color = (total > 0 and used >= total) and BAR_ALERT or (total > 0 and used / total >= BAGS_WARN) and BAR_WARN or ""
     return ("|T%s:0:0:0:-1|t %s%d/%d%s"):format(BAR_ICONS.bags, color, used, total, color ~= "" and "|r" or "")
 end
 
--- the most worn piece you wear, in the colour of Blizzard's own durability warning (the armoured
--- figure: a piece yellow, then red); without that API, under a fifth (Buff Reminders' line) and broken
 local function BarDurability()
     local low, alert = nil, 0
     for slot = 1, 18 do
         local cur, max = GetInventoryItemDurability(slot)
-        -- (readable first, as Buff Reminders' durability check)
         if canaccessvalue(cur) and canaccessvalue(max) and cur and max and max > 0 then
             if not low or cur / max < low then low = cur / max end
             local status = GetInventoryAlertStatus and GetInventoryAlertStatus(slot)
@@ -571,12 +555,11 @@ end
 local function BarCoords()
     local map = C_Map.GetBestMapForUnit("player")
     local pos = map and C_Map.GetPlayerMapPosition(map, "player")
-    if not pos then return "-" end   -- (an instance has none)
+    if not pos then return "-" end
     local x, y = pos:GetXY()
     return ("%.1f, %.1f"):format(x * 100, y * 100)
 end
 
--- every: seconds between two reads of a value no event tells about
 Bar.sources = {
     gold       = { text = BarMoney, events = { "PLAYER_MONEY" } },
     bags       = { text = BarBags, events = { "BAG_UPDATE_DELAYED" } },
@@ -589,7 +572,6 @@ Bar.sources = {
     coords     = { text = BarCoords, every = 0.2 },
 }
 
--- how far the texts at the map's bottom move up while the bar is there
 function Bar.Lift()
     return Bar.shown and (Bar.BOTTOM + HEADER_HEIGHT - 4) or 0
 end
@@ -617,7 +599,7 @@ local function CreateBar()
         fs:SetTextColor(c.r, c.g, c.b)
         local db = GetDb()
         if db and db.infoFont then ApplyFont(fs, db.infoFont) end
-        MM.infoTexts[fs] = true   -- Info Text font (MM:ApplyFonts)
+        MM.infoTexts[fs] = true
         Bar.cells[i] = fs
         if i > 1 then
             local line = f:CreateTexture(nil, "ARTWORK")
@@ -626,14 +608,11 @@ local function CreateBar()
         end
     end
     f:SetScript("OnEvent", function() Bar.Fill() end)
-    -- a hidden map (the Toggle Minimap key) hides its frame and the bar with it: no reads meanwhile
     f:SetScript("OnShow", function() Bar.Fill(); Bar.Tick() end)
     f:SetScript("OnHide", function() Bar.Tick() end)
     Bar.frame = f
 end
 
--- The ticker of the timed values (Bar.every: the shortest wait among the cells), only while the bar
--- is on screen
 function Bar.Tick()
     local every = Bar.frame and Bar.frame:IsVisible() and Bar.every or nil
     if Bar.ticker and every ~= Bar.ticking then Bar.ticker:Cancel(); Bar.ticker = nil end
@@ -643,8 +622,6 @@ function Bar.Tick()
     end
 end
 
--- Right of the sundial when it is there (11-16: tried under it, its left end cut by the badge: ugly),
--- the header row's inset otherwise; three equal cells
 function Bar.Place()
     local f = Bar.frame
     local style = HeaderStyle()
@@ -668,7 +645,6 @@ function Bar.Place()
     end
 end
 
--- The picks can change at any time (Settings > Minimap): events and the ticker follow them
 function Bar.Update()
     local db = GetDb()
     local picks = db and db.infoBar or {}
@@ -721,7 +697,7 @@ local function PlaceCoords()
     if not coords then return end
     Raise(coords)
     coords:ClearAllPoints()
-    coords:SetPoint("BOTTOM", MM.Frame, "BOTTOM", 0, COORDS.GAP + Bar.Lift())   -- (above the Info Bar, 11-16)
+    coords:SetPoint("BOTTOM", MM.Frame, "BOTTOM", 0, COORDS.GAP + Bar.Lift())
 end
 
 -- The world map's coordinates in the same style; one anchor per label so the bigger font is not cut
@@ -895,7 +871,7 @@ function MM:UpdateLayout()
     PlaceHeader()
     PlaceIndicators()
     PlaceSun()
-    Bar.Update()    -- Info Bar (11-16): after the sundial it starts from, before the coordinates it lifts
+    Bar.Update()
     PlaceCoords()
 end
 
@@ -1971,9 +1947,6 @@ function MM:Init()
     -- Coordinates on Mouseover (a switch up to 11-11) set off: Always
     if db and rawget(db, "coords") == nil and rawget(db, "coordsOnHover") == false then db.coords = "always" end
     if db then db.coordsOnHover = nil end
-    -- Framerate and Latency at the map's corner (up to 11-16) are Info Bar values now: whoever showed
-    -- them gets them in the bar. The bar was off: it comes on with those alone; it was on: they take
-    -- its empty cells.
     if db then
         local had = {}
         for _, key in ipairs({ "fps", "latency" }) do
