@@ -501,7 +501,7 @@ local function RestyleCoordText(text)
     text:SetTextColor(c.r, c.g, c.b)
 end
 
-local Bar = { cells = {}, lines = {}, picks = {}, BOTTOM = 8, SUN_ROOM = 30, shown = false }
+local Bar = { cells = {}, lines = {}, picks = {}, at = {}, BOTTOM = 8, SUN_ROOM = 30, shown = false }
 Bar.SIDES = { "left", "center", "right" }
 Bar.ICONS = { bags = "Interface\\Buttons\\Button-Backpack-Up", durability = "Interface\\Minimap\\Tracking\\Repair" }
 Bar.COINS = { "ffffd700", "ffc7c7cf", "ffeda55f" }
@@ -576,12 +576,14 @@ function Bar.Lift()
 end
 
 function Bar.Fill(timedOnly)
+    local now = GetTime()
     for i, side in ipairs(Bar.SIDES) do
         local source = Bar.sources[Bar.picks[side]]
         if not source then
             Bar.cells[i]:SetText("")
-        elseif not timedOnly or source.every then
+        elseif not timedOnly or (source.every and now - (Bar.at[i] or 0) >= source.every - 0.05) then
             Bar.cells[i]:SetText(source.text())
+            Bar.at[i] = now
         end
     end
 end
