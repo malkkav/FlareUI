@@ -270,17 +270,6 @@ function R.minimap(outer, spec)
     c:Text('zoneName', L["Deathknell"], round and 76 or x + 12, round and 48 or y + 8, round and 128 or size - 80, { size = 12 })
     c:Text('stats', '17:49', round and 108 or x + size - 60, round and 224 or y + 8, 65, { size = 11 })
     if Get('minimap.coords', 'hover') == 'always' then c:Text('coords', '48.2, 36.7', x + 65, y + size - 20, 130, { size = 12 }) end
-    -- framerate and latency, stacked as on the map (the one shown always at the bottom)
-    local fps, lat = Get('minimap.fps', 'off'), Get('minimap.latency', 'off')
-    local lines = {}
-    local function Latency() lines[#lines + 1] = '36 (w) ms'; lines[#lines + 1] = '32 (h) ms' end
-    if fps ~= 'off' and lat ~= 'off' then
-        if fps == 'always' and lat == 'hover' then lines[1] = '60 fps'; Latency() else Latency(); lines[#lines + 1] = '60 fps' end
-    elseif fps ~= 'off' then lines[1] = '60 fps'
-    elseif lat ~= 'off' then Latency() end
-    for i, text in ipairs(lines) do
-        c:Text('stat' .. i, text, x + size - 86, y + size - 20 - (i - 1) * 15, 76, { size = 12 }):SetJustifyH('RIGHT')
-    end
     -- Icons live on the overlay frame, above every border/backdrop frame.
     c:Texture('dayNight', P.MEDIA .. 'Previews\\Sun.tga', 10, 237, 32, 32, true)
     if spec.key == 'mm.bagHover' and not card then c:Texture('drawerPointer',P.MEDIA..'Previews\\Cursor.tga',20,243,24,32,true) end
