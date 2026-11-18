@@ -818,6 +818,8 @@ local defaults = {
             stackFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             cooldownFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             barFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            -- Icon Shape in each icon viewer's Edit Mode dialog: blizzard | rect
+            shape = { essential = "blizzard", utility = "blizzard", buffs = "blizzard" },
         },
 
         -- [[ AURAS MODULE ]] the player's buffs and debuffs (Modules/Auras.lua)

@@ -1,14 +1,16 @@
 local _, ns = ...
+local L = ns.L
 
 --------------------------------------------------
 -- COOLDOWN MANAGER
--- Blizzard's Cooldown Manager in FlareUI's look. The Tracked Bars as FlareUI's cast bars (the unit
--- frames' bar texture, a thin bronze border), their icons as FlareUI's buffs, the Essential / Utility /
--- Tracked Buffs icons with the action buttons' FlareUI Borders, all with the Fonts tab's fonts. Blizzard
--- keeps driving its own pooled frames; it sets only values, text and the spark after a frame is made, so
--- each one is styled once as it is acquired. Its aura data is kept from addons
--- (CooldownViewerSecure.lua): nothing here reads it, re-parents its frames or calls their layout.
--- FlareUI's pieces live in a weak table. The viewers' fading is Visibility.lua's (cdm_ keys).
+-- Blizzard's Cooldown Manager in FlareUI's look, with an Icon Shape for its icon viewers. The
+-- Tracked Bars as FlareUI's cast bars (the unit frames' bar texture, a thin bronze border), their icons
+-- as FlareUI's buffs, the Essential / Utility / Tracked Buffs icons with the action buttons' FlareUI
+-- Borders, all with the Fonts tab's fonts. Blizzard keeps driving its own pooled frames; it sets only
+-- values, text and the spark after a frame is made, so each one is styled once as it is acquired. Its
+-- aura data is kept from addons (CooldownViewerSecure.lua): nothing here reads it, re-parents its frames
+-- or calls their layout. FlareUI's pieces live in a weak table. The viewers' fading is Visibility.lua's
+-- (cdm_ keys).
 --------------------------------------------------
 ns.CooldownManager = ns.CooldownManager or {}
 local CM = ns.CooldownManager
@@ -196,7 +198,58 @@ local VIEWERS = { BuffBarCooldownViewer = StyleBar, BuffIconCooldownViewer = Sty
                   EssentialCooldownViewer = StyleIcon, UtilityCooldownViewer = StyleIcon }
 
 --------------------------------------------------
--- 2. ACTIVE OVERLAY
+-- 2. ICON SHAPE
+-- Icon Shape, for each icon viewer in its Edit Mode dialog (Visibility.lua adds the row). Default
+-- leaves the icon as Blizzard made it. Rectangle keeps Blizzard's width and takes a quarter off the
+-- height, so Blizzard's own Icon Size still scales it; the art is cut to the new shape, not squeezed.
+-- An icon is touched only when its shape changes.
+--------------------------------------------------
+local SHAPE_KEYS = { EssentialCooldownViewer = "essential", UtilityCooldownViewer = "utility", BuffIconCooldownViewer = "buffs" }
+local RECT_HEIGHT = 0.75
+
+local function ApplyShape(item, shape)
+    local p = Pieces(item)
+    if (p.shape or "blizzard") == shape then return end
+    local icon = item.Icon
+    local width = item:GetWidth()
+    -- (a width that cannot be read: tried again at the next pass)
+    if not (icon and icon.SetTexCoord and Readable(width) and width > 0) then return end
+    local rect = shape == "rect"
+    p.shape = shape
+    -- Blizzard's icons are square: its width is the height to give back
+    item:SetSize(width, width * (rect and RECT_HEIGHT or 1))
+    local cut = rect and (1 - RECT_HEIGHT) / 2 or 0
+    icon:SetTexCoord(0, 1, cut, 1 - cut)
+end
+
+-- The Icon Shape row of a viewer's Edit Mode dialog; key: essential / utility / buffs. In Edit Mode
+-- the viewer's box follows a new height only at Blizzard's next layout: asking for one from addon code
+-- could taint the viewer, so it is left to Blizzard.
+function CM.ShapeSetting(key)
+    local LEM = LibStub("FlareEditMode")
+    return {
+        name = L["Icon Shape"], kind = LEM.SettingType.Dropdown, default = "blizzard",
+        values = function()
+            return { { text = L["Default"], value = "blizzard", isRadio = true },
+                     { text = L["Rectangle"], value = "rect", isRadio = true } }
+        end,
+        desc = L["The shape of this bar's icons. Default is Blizzard's own square icon."],
+        get = function()
+            local db = GetDb()
+            return db and db.shape and db.shape[key] or "blizzard"
+        end,
+        set = function(_, value)
+            local db = GetDb()
+            if not db then return end
+            db.shape = db.shape or {}
+            db.shape[key] = value
+            CM:Refresh()
+        end,
+    }
+end
+
+--------------------------------------------------
+-- 3. ACTIVE OVERLAY
 -- Soften Active Overlay, for the Essential and Utility icons. While an ability's effect runs (Serpent
 -- Sting on the target), Blizzard shows the effect's time on the icon under a strong yellow swipe
 -- (CooldownViewerConstants.ITEM_AURA_COLOR). Only the swipe's strength changes: the time, the edge and
@@ -303,10 +356,12 @@ local function HookSwipe(item)
 end
 
 --------------------------------------------------
--- 3. APPLYING
+-- 4. APPLYING
 --------------------------------------------------
 local function ApplyItem(name, item)
     local db = GetDb()
+    local shapeKey = SHAPE_KEYS[name]
+    if shapeKey then ApplyShape(item, db.shape and db.shape[shapeKey] or "blizzard") end
     if db.skin then VIEWERS[name](item) end
     if SOFT_VIEWERS[name] then
         if db.softOverlay or db.effectCooldown then HookSwipe(item) end
@@ -348,7 +403,7 @@ local function Hook()
 end
 
 --------------------------------------------------
--- 4. EDIT MODE
+-- 5. EDIT MODE
 -- Blizzard's own Visibility and Opacity rows leave the viewers' dialogs: FlareUI's Fading section does
 -- both. A row whose stored value is not Blizzard's default stays, or a viewer hidden by it could never
 -- be brought back. Done on the dialog's own rows after Blizzard builds them (as Minimap.lua trims the
