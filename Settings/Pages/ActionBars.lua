@@ -25,11 +25,6 @@ S:Module{
 
 -- BAR APPEARANCE: the bars as a whole, above the buttons' own look
 S:Row{ key = "ab.flareBorders", section = "ab.barAppearance", path = "actionbars.flareBorders", apply = Refresh, half = true }
--- Blizzard's Cooldown Manager restyled (Auras.lua 9b, so it needs Buffs & Debuffs on); off needs a
--- reload to give Blizzard's look back
-S:Row{ key = "ab.skinCDM", section = "ab.barAppearance", path = "auras.skinCDM", reload = true, half = true,
-    -- (greyed while Blizzard's own Cooldown Manager is off: it is left alone then)
-    disabled = function() return not S:GetPath("auras.enabled") or not (ns.CooldownManagerOn and ns.CooldownManagerOn()) end }
 -- every button's scale
 local SCALES = {}
 -- in half-percent steps; kept as tenths of a percent so no float drifts

@@ -2064,6 +2064,7 @@ local GAME_ICONS = {
     bl = "INV_Misc_Bag_08",   -- Bags & Looting
     br = "Ability_Warrior_BattleShout",   -- Buff Reminders, its own page: a shout for the buffs you lack
     np = "Ability_Hunter_SniperShot",   -- Nameplates: Hunter's Mark, a target in the crosshairs
+    cdm = "Spell_Nature_TimeStop",   -- Cooldown Manager, its own page
 }
 -- an icon name under Interface\Icons, or a file ID as it is
 function Panel.IconPath(icon) return type(icon) == "number" and icon or ("Interface\\Icons\\" .. icon) end
