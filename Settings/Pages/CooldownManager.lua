@@ -42,6 +42,7 @@ S:Row{ key = "cdm.barColor", section = "cdm.look", kind = "button", buttonText =
     end }
 S:Row{ key = "cdm.softOverlay", section = "cdm.icons", path = "cooldownmanager.softOverlay", apply = Refresh, disabled = BlizzardOff }
 S:Row{ key = "cdm.effectCooldown", section = "cdm.icons", path = "cooldownmanager.effectCooldown", apply = Refresh, disabled = BlizzardOff }
+S:Row{ key = "cdm.keybinds", section = "cdm.icons", path = "cooldownmanager.keybinds", apply = Refresh, disabled = BlizzardOff }
 
 -- with Skin Cooldown Manager on; Auto keeps Blizzard's size
 S:FontRows{ module = "cdm", tab = "fonts", section = "cdm.fonts", apply = Refresh,
@@ -49,4 +50,9 @@ S:FontRows{ module = "cdm", tab = "fonts", section = "cdm.fonts", apply = Refres
     { key = "stacks", path = "cooldownmanager.stackFont", autoSize = true },
     { key = "cooldown", path = "cooldownmanager.cooldownFont", autoSize = true },
     { key = "bar", path = "cooldownmanager.barFont", autoSize = true },
+} }
+-- (its own switch, not the skin's)
+S:FontRows{ module = "cdm", tab = "fonts", section = "cdm.fonts", apply = Refresh,
+    disabled = function() return BlizzardOff() or not S:GetPath("cooldownmanager.keybinds") end, fonts = {
+    { key = "keybinds", path = "cooldownmanager.keybindFont", autoSize = true },
 } }

@@ -843,6 +843,13 @@ function R.cdm(c)
         elseif i == 4 then
             c:Text('cdmStack', '3', x, top + size - 14, size - 3, Sized('cooldownmanager.stackFont', 12)):SetJustifyH('RIGHT')
         end
+        if on and Get('cooldownmanager.keybinds', false) then
+            local font = Font('cooldownmanager.keybindFont')
+            local copy = {}
+            for k, v in pairs(font) do copy[k] = v end
+            if (copy.size or 0) == 0 then copy.size = 12 end
+            c:Text('cdmKey' .. i, tostring(i), x, top + 2, size - 2, copy):SetJustifyH('RIGHT')
+        end
         if skin then
             -- (over the swipe, as in game)
             c:Box('cdmEdge' .. i, x - 3, top - 3, size + 6, size + 6, 'FlareUI Frames', 0):SetFrameLevel(c.frame:GetFrameLevel() + 2)
