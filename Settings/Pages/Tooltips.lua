@@ -19,7 +19,7 @@ end
 
 S:Module{ key = "tt", group = "interface", order = 20, enabled = "tooltips.enabled", tabs = { { key = "settings" }, { key = "tweaks" }, { key = "fonts" } } }
 
--- SETTINGS TAB (11-14, Malkkav): Look, then Mouseover (where each kind sits), then Visibility (when each
+-- SETTINGS TAB: Look, then Mouseover (where each kind sits), then Visibility (when each
 -- kind shows). The Tweaks tab holds the content switches.
 
 -- LOOK: Tooltip Corner first (which corner of the HUD Tooltip box the tooltip grows from, ApplyAnchor)
@@ -29,8 +29,8 @@ local SCALES = {}
 for i = 5, 15 do SCALES[#SCALES + 1] = { i / 10, (i * 10) .. "%" } end
 S:Row{ key = "tt.scale", kind = "range", path = "tooltips.scale", choices = SCALES, apply = Refresh }
 S:Row{ key = "tt.opacity", kind = "range", path = "tooltips.opacity", choices = S:OpacityChoices(), apply = Refresh }
--- (Health Bar is content: on the Content tab since 11-16, Malkkav; see Tweak below)
--- Off, Below the tooltip or Inside it (11-16, Malkkav; a switch before): over hideHealthBar + healthBarPlace
+-- (Health Bar is content: on the Content tab; see Tweak below)
+-- Off, Below the tooltip or Inside it: over hideHealthBar + healthBarPlace
 S:Row{ key = "tt.healthBar", kind = "choice", apply = Refresh, tab = "tweaks", choices = { "off", "below", "inside" },
     get = function()
         if S:GetPath("tooltips.hideHealthBar") then return "off" end
@@ -41,7 +41,7 @@ S:Row{ key = "tt.healthBar", kind = "choice", apply = Refresh, tab = "tweaks", c
         if value ~= "off" then S:SetPath("tooltips.healthBarPlace", value) end
     end }
 
--- MOUSEOVER (11-14, Malkkav): one dropdown of toggles. All Tooltips or None clear the rest; ticking kinds
+-- MOUSEOVER: one dropdown of toggles. All Tooltips or None clear the rest; ticking kinds
 -- picks only those (each an exception to the main switch, Tooltips.lua TIP.SetKindMouseover); all six
 -- ticked is All Tooltips again. Saved as before: tooltips.mouseover + tooltips.mouseoverKinds.
 local KINDS = { "world", "frames", "bars", "auras", "groupAuras", "other" }
@@ -70,10 +70,17 @@ S:Row{ key = "tt.mouseover", kind = "dropdown", apply = Refresh, toggles = MOUSE
 -- how far from the pointer a mouseover tooltip sits, in pixels (TIP.CursorOffset); rank: under the switches
 local OFFSETS = {}
 for i = -50, 50, 2 do OFFSETS[#OFFSETS + 1] = { i, tostring(i) } end
-S:Row{ key = "tt.cursorX", kind = "range", half = true, rank = 3.5, path = "tooltips.cursorX", choices = OFFSETS, apply = Refresh }
-S:Row{ key = "tt.cursorY", kind = "range", half = true, rank = 3.5, path = "tooltips.cursorY", choices = OFFSETS, apply = Refresh }
+-- hidden while Mouseover is None: no tooltip sits at the pointer then
+local function NoMouseover()
+    local TIP = ns.Tooltips
+    if not (TIP and TIP.Mouseover) then return true end
+    for _, kind in ipairs(KINDS) do if TIP.Mouseover(kind) then return false end end
+    return true
+end
+S:Row{ key = "tt.cursorX", kind = "range", half = true, rank = 3.5, path = "tooltips.cursorX", choices = OFFSETS, apply = Refresh, hidden = NoMouseover }
+S:Row{ key = "tt.cursorY", kind = "range", half = true, rank = 3.5, path = "tooltips.cursorY", choices = OFFSETS, apply = Refresh, hidden = NoMouseover }
 
--- VISIBILITY (11-12): when each kind of tooltip shows; never greyed: Shift shows a hidden tooltip.
+-- VISIBILITY: when each kind of tooltip shows; never greyed: Shift shows a hidden tooltip.
 -- Two columns, the same order as the Mouseover switches.
 local SHOW = { "always", "combat", "never" }
 local function Show(key, path, apply)
@@ -100,14 +107,17 @@ Tweak{ key = "tt.classNames", apply = Refresh,
     get = function() return S:GetPath("tooltips.nameColor") == "class" end,
     set = function(on) S:SetPath("tooltips.nameColor", on and "class" or "none") end }
 Tweak{ key = "tt.showGuild", path = "tooltips.showGuild", apply = Refresh }
+-- greyed while the guild line is off (no indent)
+Tweak{ key = "tt.showGuildRank", path = "tooltips.showGuildRank", apply = Refresh,
+    disabled = function() return S:GetPath("tooltips.showGuild") == false end }
 Tweak{ key = "tt.showPvP", path = "tooltips.showPvP", apply = Refresh }
+Tweak{ key = "tt.showFaction", path = "tooltips.showFaction", apply = Refresh }
 Tweak{ key = "tt.showTarget", path = "tooltips.showTarget", apply = Refresh }
 Tweak{ key = "tt.showThreat", path = "tooltips.showThreat" }
-Tweak{ key = "tt.hideFaction", path = "tooltips.hideFaction", apply = Refresh }
 Tweak{ key = "tt.ids", get = ids.get, set = ids.set, apply = Refresh }
-Tweak{ key = "tt.shortItemStats", path = "tooltips.shortItemStats" }
 Tweak{ key = "tt.itemLevel", path = "tooltips.itemLevel" }
 Tweak{ key = "tt.compareShift", path = "tooltips.compareShift", apply = Refresh }
+Tweak{ key = "tt.shortItemStats", path = "tooltips.shortItemStats" }
 
 S:FontRows{ module = "tt", tab = "fonts", section = "tt.fonts", apply = Refresh, fonts = {
     { key = "title", path = "tooltips.titleFont" },

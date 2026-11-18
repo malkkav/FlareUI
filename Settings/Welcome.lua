@@ -6,17 +6,16 @@ local L = ns.L
 -- Every module ships off. The first login with none on opens the setup tour: ten pages that show
 -- each module and collect the player's choices, written only by the last page's reload. Closing the
 -- tour changes nothing. The Gamepad UI keeps a small pop-up instead (its navigation is still alpha).
--- 11-11 (Malkkav): the settings window's look throughout: its stone and heavy bronze frame, Friz
--- Quadrata titles over Roboto Condensed, section boxes, stone switches, the real previews of the Info
--- Panel (each module's own sample) and the round game icons.
+-- The settings window's look throughout: its stone and heavy bronze frame, Friz Quadrata titles,
+-- section boxes, the real previews of the Info Panel (each module's own sample) and the round game icons.
 --------------------------------------------------
 local BANNER = "Interface\\AddOns\\FlareUI\\Media\\Art\\Banner.png"
 local LOGO = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png"
 local CIRCLE = "Interface\\AddOns\\FlareUI\\Media\\Panel\\Circle.tga"
 local WHITE = "Interface\\Buttons\\WHITE8x8"
 
-local TITLE_GOLD = { 1, 0.82, 0 }         -- page titles: WoW's yellow, as the settings window's (11-13)
-local SECTION_GOLD = { 1, 0.82, 0 }       -- card titles, as its section titles (11-13)
+local TITLE_GOLD = { 1, 0.82, 0 }         -- page titles: WoW's yellow, as the settings window's
+local SECTION_GOLD = { 1, 0.82, 0 }       -- card titles, as its section titles
 local MUTED = { 0.72, 0.68, 0.61 }
 
 local function Kit() return ns.SettingsPanel end
@@ -170,7 +169,6 @@ local ART = {
 local tour = { step = 1, ticks = {}, choices = {} }
 
 -- The module switches the tour sets, in the finish page's order
--- (11-16, UX audit J6: Buff Reminders offered, Bags & Looting its own switch, no longer Quality of Life's)
 local MODULE_KEYS = { "uf", "ab", "au", "br", "rb", "rm", "qol", "bl", "ch", "dm", "mm", "qt", "tt" }
 
 local function Title(key)
@@ -276,7 +274,7 @@ local function RefreshTicks()
     if tour.RefreshStyles then tour.RefreshStyles() end
 end
 
--- A switch for tour.choices[key] (the settings window's stone switch), its label to the right; needs:
+-- A switch for tour.choices[key] (the settings window's switch), its label to the right; needs:
 -- greyed while that other choice is off
 local function Tick(parent, key, label, needs)
     local tick = Kit().Switch(parent)
@@ -463,7 +461,7 @@ function BuildPage.bars(page)
     local entries = {
         { key = "ab", text = L["Blizzard's bars, sharpened: red when out of range, blue with no mana, glows on procs."] },
         { key = "au", kind = "auras", sample = "au.overview", height = 70, text = L["Your buffs and debuffs in FlareUI's style, with clear timers."],
-          -- (J6) Buff Reminders in the same card, its own switch over Use It
+          -- Buff Reminders in the same card, its own switch over Use It
           extra = { key = "br", label = L["Buff Reminders"], text = L["Buff Reminders: an icon for each buff you or your group are missing."] } },
         { key = "rb", kind = "resources", sample = "rb.health", height = 40, text = L["Extra health, power, combo point and swing bars to place anywhere. Off to begin with: choose your bars in /fui."] },
     }
@@ -599,14 +597,14 @@ end
 function BuildPage.qol(page)
     local tick = Tick(page, "qol", L["Use Quality of Life"])
     tick:SetPoint("TOPLEFT", 0, -2)
-    -- (J6) Bags & Looting: its own switch (it followed this one before)
+    -- Bags & Looting: its own switch
     local bags = Tick(page, "bl", L["Use Bags & Looting"])
     bags:SetPoint("TOPLEFT", CARD_W2 + GAP, -2)
     local height = BODY_H - 38
 
     local left = Card(page, 0, -38, CARD_W2, height, L["Move Any Window"])
     Stack(left, Say(left, "GameFontHighlight", L["Drag a Blizzard window by its header to move it. |cffffd100Ctrl|r + mouse wheel resizes it, and |cffffd100Shift|r + right-click puts it back."], left.inner))
-    -- (Move Any Window and Sync Blizz UI work with Quality of Life off since 11-16, UX audit J4)
+    -- (Move Any Window and Sync Blizz UI work with Quality of Life off)
     local move = Tick(left, "move", L["Use It"])
     Stack(left, move, 10)
     local syncName = Say(left, "GameFontNormalLarge", L["Sync Blizz UI"], left.inner)
@@ -635,7 +633,7 @@ end
 
 -- 10: the choices (each module with its round icon, lit when on), and what to try after the reload
 function BuildPage.finish(page)
-    local summary = Card(page, 0, 0, BODY_W, 244, L["What you turned on"])   -- (13 modules, 11-16)
+    local summary = Card(page, 0, 0, BODY_W, 244, L["What you turned on"])   -- (13 modules)
     local rows = {}
     local columnW = summary.inner / 2
     for i, key in ipairs(MODULE_KEYS) do
@@ -712,7 +710,7 @@ local function ApplyChoices()
         local module = S.modules[key]
         if module then module:SetOn(c[key]) end
     end
-    -- (Bags & Looting has its own switch since 11-16; Move and Sync no longer need Quality of Life)
+    -- (Bags & Looting has its own switch; Move and Sync work without Quality of Life)
     if c.uf then S.rows["uf.frameStyle"]:Set(c.style) end
     -- only what changed is written: a re-run never turns off what the player didn't touch
     local move, sync = c.move and true or false, c.sync and true or false
@@ -724,9 +722,9 @@ local function ApplyChoices()
     end
 end
 
--- ReloadUI is protected on Forever: as on the settings panel, a secure /reload button on UIParent
--- covers the last page's button, placed out of combat only. In combat it can't hide or move: it
--- turns invisible, and its macro stops itself.
+-- ReloadUI is protected on Forever: as on the settings panel, a secure /reload button covers the
+-- last page's button, placed out of combat only. In combat it can't hide or move: its secure parent
+-- hides it (ns.SecureReloadParent), and its macro stops itself.
 local secureReload
 local function PlaceSecureReload()
     local show = tour.window and tour.window:IsShown() and tour.step == #PAGES
@@ -739,7 +737,7 @@ local function PlaceSecureReload()
         return
     end
     if not secureReload then
-        secureReload = CreateFrame("Button", "FlareUI_TourReload", UIParent, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+        secureReload = CreateFrame("Button", "FlareUI_TourReload", ns.SecureReloadParent(), "SecureActionButtonTemplate, UIPanelButtonTemplate")
         if ns.SkinButton then ns.SkinButton(secureReload) end
         secureReload:SetFrameStrata("FULLSCREEN_DIALOG")
         -- acts on the press, whatever ActionButtonUseKeyDown says, so PreClick runs once and in step

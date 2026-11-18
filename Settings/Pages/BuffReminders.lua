@@ -3,7 +3,7 @@ local S = ns.Settings
 local L = ns.L
 
 --------------------------------------------------
--- BUFF REMINDERS (11-12: its own page, out of Buffs & Debuffs)
+-- BUFF REMINDERS (its own page, out of Buffs & Debuffs)
 -- Modules/BuffReminders.lua. Three tabs: what it watches (Reminders), when and where (When and Where),
 -- how it warns you (Alerts). What is judged by eye lives in its Edit Mode window instead: size,
 -- direction, count text, the glows, the time left, and when the frame shows (Fading). The saved values
@@ -26,13 +26,13 @@ end
 -- REMINDERS: what it watches ------------------
 -- Class Buffs
 Row{ key = "br.group", kind = "choice", tab = "reminders", path = "auras.reminder.group", choices = { "all", "party", "self" } }
--- (full rows since 11-16: a dropdown and a choice side by side were cramped)
+-- (full rows: a dropdown and a choice side by side were cramped)
 Row{ key = "br.extras", kind = "dropdown", tab = "reminders", path = "auras.reminder.extras",
     choices = function() return BR() and BR().ExtraChoices() or {} end,
     toggles = { exclusive = { "none" }, tokens = BR() and BR().ExtraKeys() or {}, empty = "none" } }
 Row{ key = "br.playstyle", kind = "choice", tab = "reminders", path = "auras.reminder.playstyle",
     choices = { "auto", "melee", "caster", "healer", "tank" } }
--- Weapons: in Consumables & Weapons since 11-16 (its own one-row section before)
+-- Weapons: in Consumables & Weapons
 Row{ key = "br.weaponOil", tab = "reminders", path = "auras.reminder.weaponOil" }
 -- Consumables: Food and Flask on or off (where it shows is on the When and Where tab), then the elixirs
 local function ConsumablesOn() return (S:GetPath("auras.reminder.consumables") or "off") ~= "off" end
@@ -46,7 +46,7 @@ Row{ key = "br.elixirs", kind = "dropdown", tab = "reminders", path = "auras.rem
     toggles = { exclusive = { "none" }, tokens = BR() and BR().ElixirKeys() or {}, empty = "none" },
     -- (with Those in Your Bags the ticks don't count)
     disabled = function() return not ConsumablesOn() or S:GetPath("auras.reminder.elixirSource") == "bags" end }
--- (11-15, PR #63 by GregDuhamel, Celbrund's idea) which elixirs are watched, and each or any one of them
+-- which elixirs are watched, and each or any one of them
 Row{ key = "br.elixirSource", kind = "choice", half = true, tab = "reminders", path = "auras.reminder.elixirSource", parent = "br.consumables",
     choices = { "ticked", "bags" }, disabled = function() return not ConsumablesOn() end }
 Row{ key = "br.elixirMode", kind = "choice", half = true, tab = "reminders", path = "auras.reminder.elixirMode", parent = "br.consumables",
@@ -58,11 +58,10 @@ Row{ key = "br.trinkets", half = true, tab = "reminders", path = "auras.reminder
 Row{ key = "br.camping", half = true, tab = "reminders", path = "auras.reminder.camping" }
 Row{ key = "br.gathering", half = true, tab = "reminders", path = "auras.reminder.gathering" }
 -- Your Own: add a custom reminder, remove this class's, bring back the hidden ones
--- (11-16: leads Your Own; it is the way in while the lists under it are empty)
+-- (leads Your Own; it is the way in while the lists under it are empty)
 Row{ key = "br.custom", kind = "button", center = true, tab = "reminders", lead = true,
     apply = function() ns.ShowDialog("FLAREUI_BR_CUSTOM") end }
--- (11-13, a player: "just a single button that removes them all") one by one: each list ticks what's
--- there; unticking one removes that custom reminder or brings that hidden one back. None: all of them.
+-- one by one: each list ticks what's there; unticking one removes that custom reminder or brings that hidden one back. None: all of them.
 local customTokens, hiddenTokens = {}, {}
 local function ListRow(key, choicesFn, tokensFn, valueFn, setFn)
     Row{ key = key, kind = "dropdown", tab = "reminders",
@@ -92,7 +91,7 @@ ListRow("br.hidden", "HiddenChoices", "HiddenTokens", "HiddenValue", "SetHidden"
 
 -- WHEN AND WHERE ------------------------------
 -- Timing: before it ends, and apart for dungeons and raids ("same": the main one)
--- (11-17, Venu: "15 seconds before Battle Shout runs out") seconds too, as fractions of a minute
+-- (Venu: "15 seconds before Battle Shout runs out") seconds too, as fractions of a minute
 local BEFORE = { { 0, L["Only When Missing"] }, { 0.25, "15 s" }, { 0.5, "30 s" }, { 0.75, "45 s" }, { 1, "1 min" }, { 2, "2 min" }, { 3, "3 min" }, { 5, "5 min" }, { 10, "10 min" } }
 Row{ key = "br.before", kind = "choice", tab = "when", path = "auras.reminder.before", choices = BEFORE }
 local function BeforeFor(key, path)
@@ -144,7 +143,7 @@ Row{ key = "br.sound", kind = "choice", tab = "alerts", path = "auras.reminder.s
     apply = function() Refresh(); if BR() and BR().PlayAlert then BR().PlayAlert(true) end end }
 Row{ key = "br.readyCheck", tab = "alerts", path = "auras.reminder.readyCheck" }
 
--- FONTS (11-13, back from Edit Mode): the counts and the time left on each icon
+-- FONTS (back from Edit Mode): the counts and the time left on each icon
 local function FontsApply() if BR() and BR().Refresh then BR():Refresh() end end
 local function ReminderFont(key, name)
     return {

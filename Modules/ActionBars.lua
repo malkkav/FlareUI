@@ -36,12 +36,12 @@ local canaccessvalue = canaccessvalue
 -- 3. CONSTANTS & DATA
 --------------------------------------------------
 local RANGE_INDICATOR = _G.RANGE_INDICATOR
-local BUTTON_SCALE = 1.11   -- Button Scale's default (actionbars.buttonScale; 1.06 until 11-11)
+local BUTTON_SCALE = 1.11   -- Button Scale's default (actionbars.buttonScale)
 
 -- text offsets from the button's corner: hotkey top right, count bottom right, macro name bottom
 local HOTKEY_X, HOTKEY_Y = -4, -4
 local COUNT_X, COUNT_Y = -4, 4
-local MACRO_X, MACRO_Y = -6, 4
+local MACRO_X, MACRO_Y = 0, 4   -- centred under the icon, as Blizzard's
 
 local BAR_DATA = {
     { key = "bar1",    prefix = "ActionButton",              count = 12 },
@@ -195,17 +195,17 @@ local function ApplyButtonArt(button)
 end
 
 --------------------------------------------------
--- 6b. FLAREUI BORDERS (Bar Appearance, actionbars.flareBorders, off; 11-11, a player's request)
--- Only the frame changes (11-11 Malkkav): Blizzard's bronze frame goes invisible and FlareUI Frames, the
--- chat and meter windows' border, goes where it was. The icon, its rounded corners, the slot art and every other
--- part of the button stay Blizzard's. Off shows Blizzard's frame again.
+-- 6b. FLAREUI BORDERS (Bar Appearance, actionbars.flareBorders, off)
+-- Only the frame changes: Blizzard's bronze frame goes invisible and FlareUI Frames, the chat and
+-- meter windows' border, goes where it was. The icon, its rounded corners, the slot art and every
+-- other part of the button stay Blizzard's. Off shows Blizzard's frame again.
 --------------------------------------------------
--- the border's fit, tuned by eye (11-11): how far it reaches past the button's edge (negative: in),
--- and its thickness. Neighbouring buttons' borders met in the gap between them at 3 px out.
+-- the border's fit, tuned by eye: how far it reaches past the button's edge (negative: in), and its
+-- thickness. Neighbouring buttons' borders meet in the gap between them at 3 px out.
 local FLARE_BORDER_OUT, FLARE_BORDER_EDGE = 0, 16
 
--- (11-15, a player's report) the cooldown numbers are drawn by the cooldown frame, which sits under the
--- border, so the border hid part of them and long ones ("20 min") slid under the next button's border.
+-- The cooldown numbers are drawn by the cooldown frame, which sits under the border, so the border
+-- would hide part of them and long ones ("20 min") would slide under the next button's border.
 -- The numbers move to a frame of ours made on the cooldown frame (shown and hidden with it), above every
 -- button's border and just under the hotkey and count texts; the swipe stays under the border.
 function ActionBars.LiftCountdown(button, on)
@@ -242,6 +242,26 @@ function ActionBars.UpdatePetChecked(button)
     light:SetShown(on)
 end
 
+-- The checked art (the active stance, a pet's mode) and the hover art are Blizzard's frame atlases,
+-- anchored TOPLEFT and sized past the button's right and bottom edges: 31.6 x 30.9 on the 30 px
+-- buttons, 46 x 45 on every other one. With Blizzard's frame hidden, the part past the edge showed as
+-- a gold sliver beside FlareUI's border, so while the border is on they cover the border's box.
+function ActionBars.FitStateArt(button, on)
+    local b = button.FlareUI_Border
+    for i = 1, 2 do
+        local tex = i == 1 and button.CheckedTexture or button.HighlightTexture
+        if tex and tex.ClearAllPoints then
+            tex:ClearAllPoints()
+            if on and b then
+                tex:SetPoint("TOPLEFT", b, "TOPLEFT")
+                tex:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT")
+            else
+                tex:SetPoint("TOPLEFT", button, "TOPLEFT")
+            end
+        end
+    end
+end
+
 local function SkinBorder(button, on)
     local icon = button.icon or button.Icon
     if not (icon and button.NormalTexture) then return end
@@ -260,12 +280,20 @@ local function SkinBorder(button, on)
         end
         local b = button.FlareUI_Border
         b:ClearAllPoints()
-        -- (11-15, a player's report) round the icon, not the button: the pet bar's icon is larger than
-        -- its 30 px button and showed past a border fitted to the button
-        b:SetPoint("TOPLEFT", icon, "TOPLEFT", -FLARE_BORDER_OUT, FLARE_BORDER_OUT)
-        b:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", FLARE_BORDER_OUT, -FLARE_BORDER_OUT)
+        local iw, ih
+        if icon.GetSize then iw, ih = icon:GetSize() end
+        if not (iw and iw > 0) and button.GetSize then iw, ih = button:GetSize() end
+        -- The border's band reaches about 5.5 px into the icon, the same on every size: on the 30 px
+        -- icons (stance, pet, possess, totem) it hid a third more of the picture than on the 45 px
+        -- main bars. A smaller icon's border sits further out, so the same share of the icon shows.
+        local out = FLARE_BORDER_OUT
+        if iw and iw > 0 and iw < 44 then out = out + math.floor(5.5 * (45 - iw) / 45 + 0.5) end
+        -- round the icon, not the button: the pet bar's icon is larger than its 30 px button and would
+        -- show past a border fitted to the button
+        b:SetPoint("TOPLEFT", icon, "TOPLEFT", -out, out)
+        b:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", out, -out)
         local LSM = LibStub("LibSharedMedia-3.0")
-        -- (11-11: FlareUI Frames, the chat and meter windows' border; FlareUI Thin looked too faint here)
+        -- FlareUI Frames, the chat and meter windows' border (FlareUI Thin is too faint here)
         local file = LSM:Fetch("border", "FlareUI Frames")
         b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, FLARE_BORDER_EDGE) })
         local c = ns.BORDER_COLOR
@@ -303,19 +331,16 @@ local function SkinBorder(button, on)
         end
         ActionBars.LiftCountdown(button, true)
         button.NormalTexture:SetAlpha(0)
-        -- (11-17, a player's report: stance buttons showed a second, inner border) the 30 px buttons
-        -- (stance, pet, possess) keep Blizzard's 45 px icon mask (SmallActionButtonMixin_OnLoad), so
-        -- the icon's own edge stayed inside our border once Blizzard's frame was hidden: the mask
-        -- takes the icon's size
+        -- the 30 px buttons (stance, pet, possess) keep Blizzard's 45 px icon mask
+        -- (SmallActionButtonMixin_OnLoad), so the icon's own edge would show as a second, inner border
+        -- once Blizzard's frame is hidden: the mask takes the border's box, so its rounded corners
+        -- follow the border's as they do on the main bars
         local mask = button.IconMask
-        if mask then
-            local iw, ih = icon:GetSize()
-            if not (iw and iw > 0) then iw, ih = button:GetSize() end
-            if iw and iw > 0 and iw < 44 then
-                if not button.FlareUI_MaskW then button.FlareUI_MaskW, button.FlareUI_MaskH = mask:GetSize() end
-                mask:SetSize(iw, ih)
-            end
+        if mask and iw and iw > 0 and iw < 44 then
+            if not button.FlareUI_MaskW then button.FlareUI_MaskW, button.FlareUI_MaskH = mask:GetSize() end
+            mask:SetSize(iw + 2 * out, ih + 2 * out)
         end
+        ActionBars.FitStateArt(button, true)
         button.FlareUI_Bordered = true
     elseif button.FlareUI_Bordered then
         if button.FlareUI_MaskW and button.IconMask then
@@ -323,6 +348,7 @@ local function SkinBorder(button, on)
             button.FlareUI_MaskW, button.FlareUI_MaskH = nil, nil
         end
         if button.FlareUI_Border then button.FlareUI_Border:Hide() end
+        ActionBars.FitStateArt(button, false)
         ActionBars.LiftCountdown(button, false)
         button.NormalTexture:SetAlpha(1)
         button.FlareUI_Bordered = nil
@@ -384,7 +410,7 @@ local function UpdateButtonArtAll()
 end
 
 --------------------------------------------------
--- 6b. ACTIVE HIGHLIGHT (Button Appearance, off; 11-12, a player's request)
+-- 6b. ACTIVE HIGHLIGHT (Button Appearance, off)
 -- The active stance or form, a queued Heroic Strike / Cleave / Maul / Raptor Strike, auto attack and a
 -- repeating Auto Shot or wand, drawn plainly: a gold edge and a light over the icon, pulsing while an
 -- attack waits for the next swing. Worked out on events and on each SetChecked (IsActiveButton below).
@@ -426,10 +452,10 @@ local function ActiveFormName()
     return spellID and C_Spell.GetSpellName(spellID) or nil
 end
 
--- What the highlight shows, worked out here rather than read from Blizzard's checked state (11-12, a
--- player report). That state also marks a spell for the moment it's cast, and on Forever it is
--- sometimes left on until the button is refreshed (pointing at it): Rend, Thunder Clap and others stayed
--- lit. As LibActionButton does, the action is asked directly, on events: the active stance or form, a
+-- What the highlight shows, worked out here rather than read from Blizzard's checked state. That
+-- state also marks a spell for the moment it's cast, and on Forever it is sometimes left on until the
+-- button is refreshed (pointing at it): Rend, Thunder Clap and others would stay lit. The action
+-- is asked directly, on events: the active stance or form, a
 -- queued on-next-swing attack, auto attack and a repeating Auto Shot or wand. The stance and pet bars
 -- (no action slot) keep Blizzard's checked state, which follows the form and the pet's mode.
 local function ActionActive(action, state)
@@ -457,8 +483,8 @@ end
 local function ActiveOverlay(button)
     local ov = button.FlareUI_Active
     if ov then return ov end
-    -- (11-13, a player report: the square edge didn't match the frame) the edge is the button's own
-    -- frame in gold, set in UpdateActive; the light takes the icon's rounded mask
+    -- the edge is the button's own frame in gold (a square edge wouldn't match it), set in
+    -- UpdateActive; the light takes the icon's rounded mask
     ov = CreateFrame("Frame", nil, button, "BackdropTemplate")
     ov:SetAllPoints(button)
     ov:SetFrameLevel(button:GetFrameLevel() + 3)
@@ -492,9 +518,8 @@ local function UpdateActive(button, state)
         return
     end
     local ov = ActiveOverlay(button)
-    -- (11-13 performance pass) already lit the same way: nothing to redo. The events behind this fire
-    -- dozens of times a second in a fight, and each pass rebuilt every lit button's border.
-    -- UpdateActiveAll clears fuiAtlas so a settings or scale change repaints.
+    -- already lit the same way: nothing to redo. The events behind this fire dozens of times a second
+    -- in a fight. UpdateActiveAll clears fuiAtlas so a settings or scale change repaints.
     local bordered = button.FlareUI_Bordered or false
     local normalTex = button.NormalTexture
     local atlasNow = not bordered and normalTex and normalTex.GetAtlas and normalTex:GetAtlas() or nil
@@ -503,6 +528,9 @@ local function UpdateActive(button, state)
     ov.fuiBordered, ov.fuiAtlas, ov.fuiQueued = bordered, atlasNow, queued
     -- the edge: the frame the button wears right now, in gold
     local c = ACTIVE_COLOR
+    -- the gold edge lies on FlareUI's border, which can sit outside the button on the small bars
+    ov:ClearAllPoints()
+    ov:SetAllPoints(bordered and button.FlareUI_Border or button)
     if button.FlareUI_Bordered then
         local LSM = LibStub("LibSharedMedia-3.0")
         local file = LSM:Fetch("border", "FlareUI Frames")
@@ -526,7 +554,7 @@ local function UpdateActive(button, state)
         end
     end
     ov:Show()
-    if HoldsQueuedAttack(button) then
+    if queued then
         if not ov.pulse:IsPlaying() then ov.pulse:Play() end
     else
         ov.pulse:Stop()
@@ -583,19 +611,19 @@ local function UpdateActiveAll()
 end
 
 --------------------------------------------------
--- 6b2. PET AUTOCAST EDGE (no switch: a readability fix; 11-16, a player's report)
+-- 6b2. PET AUTOCAST EDGE (no switch: a readability fix)
 -- Blizzard marks an autocast-on pet spell (Lash of Pain) with "ants" circling inside the button. On the
 -- 30 px pet button they are a 31 px ring a few pixels thick, so on a small pet bar they all but vanish,
--- while the same spell on a 45 px action button shows plainly. With FlareUI Borders on, autocast on now
--- also lights that border in gold, breathing slowly (the Active Highlight edge is steady, so the two read
--- apart); without them the button keeps Blizzard's own look (11-16, Malkkav: never a plain square). It hangs on
+-- while the same spell on a 45 px action button shows plainly. With FlareUI Borders on, autocast on
+-- also lights that border in gold, breathing slowly (the Active Highlight edge is steady, so the two
+-- read apart); without them the button keeps Blizzard's own look (never a plain square). It hangs on
 -- Blizzard's AutoCastOverlay (shown and hidden with it) and follows its ants: looks only, nothing secure.
 --------------------------------------------------
 function ActionBars.PetAutoCastEdge(overlay)
     local button = overlay:GetParent()
     local edge = overlay.FlareUI_Edge
     local db = GetBarConfig()
-    -- (11-16, Malkkav) only FlareUI's own border glows; without FlareUI Borders, Blizzard's ants alone
+    -- only FlareUI's own border glows; without FlareUI Borders, Blizzard's ants alone
     local border = button.FlareUI_Bordered and button.FlareUI_Border
     local on = db and db.enabled and border and overlay.Shine and overlay.Shine:IsShown() or false
     if not on then
@@ -644,7 +672,7 @@ function ActionBars.SetupPetAutoCast()
 end
 
 --------------------------------------------------
--- 6c. MICRO MENU AND BAG BAR (Bars Appearance, 11-13, a player's request)
+-- 6c. MICRO MENU AND BAG BAR (Bars Appearance)
 -- Borderless Micro Menu / Borderless Bag Bar: Forever's frame art round each (and the bag bar's
 -- dividers) goes invisible; that art only fits the bars' default places.
 -- Collapsible Bag Bar (needs Borderless Bag Bar: the frame would stay at full length round a folded
@@ -791,12 +819,12 @@ do
     function ActionBars.ApplyMenuBags()
         local db = GetBarConfig()
         local on = db and db.enabled
-        -- (11-13: Borderless Menu and Bags split in two)
+        -- the older Borderless Menu and Bags switch, split in two
         if db and db.borderlessMenuBags ~= nil then
             if db.borderlessMenuBags then db.borderlessMenu, db.borderlessBags = true, true end
             db.borderlessMenuBags = nil
         end
-        -- (11-16, Malkkav: Borderless Bag Bar merged into Collapsible Bag Bar) either one on: on
+        -- the older Borderless Bag Bar, merged into Collapsible Bag Bar: either one on, on
         if db and db.borderlessBags ~= nil then
             if db.borderlessBags then db.collapsibleBags = true end
             db.borderlessBags = nil
@@ -866,9 +894,9 @@ local function GetBindingKeyForButton(button)
 end
 
 -- Blizzard's range dot: the "●" a button without a key shows while you have a target, red out of
--- range (6.3.2). Status Colouring on: no dot, the button's own red says it. Off: Blizzard's dot, in
--- Arial Narrow (Blizzard's keybind font) at the Keybinds size, as a chosen face may have no "●" and
--- draw a "?" box (a player's screenshot).
+-- range. Status Colouring on: no dot, the button's own red says it. Off: Blizzard's dot, in Arial
+-- Narrow (Blizzard's keybind font) at the Keybinds size, as a chosen face may have no "●" and draw a
+-- "?" box.
 local function RangeDotWanted(db)
     return not (db and db.colors and db.colors.enableRange)
 end
@@ -916,8 +944,7 @@ local function UpdateHotkeyText(button)
         hotkey:Hide()
         return
     end
-    -- short key names, always (11-16, Malkkav; it was the Clean Keybind Text switch); a controller
-    -- button keeps Blizzard's icon
+    -- short key names, always; a controller button keeps Blizzard's icon
     local pad = IsBindingForGamePad and IsBindingForGamePad(key)
     local clean = not pad
     if clean then hotkey:SetText(ShortenKey(key)) else hotkey:SetText(GetBindingText(key, 1)) end
@@ -925,8 +952,8 @@ local function UpdateHotkeyText(button)
     hotkey:ClearAllPoints()
     hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", HOTKEY_X, HOTKEY_Y)
     -- Blizzard's box fits its own small font: the button's width and the text's own height, so a
-    -- larger keybind font isn't cut off. Off (11-11): one line inside the border, as Blizzard's own
-    -- box, so a long name ("Middle Mouse") is cut short instead of wrapping over the icon
+    -- larger keybind font isn't cut off. One line inside the border, as Blizzard's own box, so a long
+    -- name ("Middle Mouse") is cut short instead of wrapping over the icon
     hotkey:SetWordWrap(false)
     hotkey:SetSize(math.max(1, button:GetWidth() - (clean and 2 or 8)), 0)
 end
@@ -966,7 +993,7 @@ local function UpdateButtonText(button)
     end
 end
 
--- A settings preview's sample button (11-10): Blizzard's own action button look (ActionButtonTemplate,
+-- A settings preview's sample button: Blizzard's own action button look (ActionButtonTemplate,
 -- not secure), styled by FlareUI as the bars are, with action slot i's real keybind. No mouse.
 local sampleButtons = 0
 function ActionBars.CreateSampleButton(parent, slot)
@@ -1014,12 +1041,9 @@ end
 -- Post-hooks on UpdateUsable and ActionButton_UpdateRangeIndicator reuse the values Blizzard passed,
 -- so nothing is polled; a repeated colour writes nothing.
 --------------------------------------------------
--- range and mana also desaturate
+-- the untinted look (the states' tints come from the Status Colours palette: ActionBars.PaintStatus)
 local STATE_TINT = {
     normal   = { 1, 1, 1 },
-    range    = { 1, 0.25, 0.25 },
-    mana     = { 0.25, 0.25, 1 },
-    unusable = { 0.5, 0.5, 0.5 },
 }
 
 -- what Blizzard's UpdateUsable paints (ActionButton.lua), for switching the colours off
@@ -1029,7 +1053,7 @@ local BLIZZARD_TINT = {
 }
 
 -- Dimming on cooldown (section 8b) adds to the desaturation: button.FlareUI_OnCD is set while a real
--- cooldown runs. Part of Status Colouring since 11-16 (Malkkav; it was the Dim on Cooldown switch).
+-- cooldown runs. Part of Status Colouring.
 local function DimsOnCooldown(db)
     return db and db.enabled and db.colors and db.colors.enableRange or false
 end
@@ -1038,12 +1062,12 @@ local function CooldownDims(button)
     return DimsOnCooldown(GetBarConfig())
 end
 
--- (11-17, Malkkav, testing in the beta; the partial grey is langee99's idea, PR #91) a button on cooldown
--- is half greyed, so its colour still shows: Judgement greyed for no seal and Judgement on cooldown no
--- longer look the same. Range, mana and unusable stay fully grey under their tint.
+-- A button on cooldown is partly greyed, so its colour still shows:
+-- Judgement greyed for no seal and Judgement on cooldown look different. Range, mana and unusable
+-- stay fully grey under their tint.
 ActionBars.COOLDOWN_DESATURATION = 0.25
 function ActionBars.PaintCooldownGrey(icon, dim)
-    -- (11-17) by On Cooldown's strength (Status Colours), once the colours are loaded
+    -- by On Cooldown's strength (Status Colours), once the colours are loaded
     local amount = ActionBars.COOLDOWN_DESATURATION
     if dim and ActionBars.StatusColor then amount = ActionBars.StatusColor("cooldown")[4] or amount end
     if icon.SetDesaturation then
@@ -1053,13 +1077,12 @@ function ActionBars.PaintCooldownGrey(icon, dim)
     end
 end
 
--- STATUS COLOURS (11-17, Malkkav): Status Colouring's tints come from a palette (FlareUI, Blizzard) or
+-- STATUS COLOURS: Status Colouring's tints come from a palette (FlareUI, Blizzard) or
 -- your own (Custom, picked in the Action Bars colour window, Settings/ColorPicker.lua). Each colour has
 -- a strength (its alpha in the picker): 100% paints the full colour and greys the icon fully, less
 -- mixes the icon's own colours back in. actionbars.colors.palette / customBase / custom.
 -- On Cooldown: a real cooldown (never the global one) greys the icon by its strength, and tints it;
--- FlareUI's is no tint at a quarter grey (11-17, Malkkav: was half in the beta), Blizzard's none at all
-ActionBars.STATUS_KEYS = { "range", "mana", "unusable", "cooldown" }
+-- FlareUI's is no tint at a quarter grey, Blizzard's none at all
 ActionBars.STATUS_PALETTES = {
     flareui = { range = { 1, 0.25, 0.25, 1 }, mana = { 0.25, 0.25, 1, 1 }, unusable = { 0.5, 0.5, 0.5, 1 },
                 cooldown = { 1, 1, 1, 0.25 } },
@@ -1067,8 +1090,8 @@ ActionBars.STATUS_PALETTES = {
     blizzard = { range = { 0.8, 0.1, 0.1, 1 }, mana = { 0.5, 0.5, 1, 1 }, unusable = { 0.4, 0.4, 0.4, 1 },
                  cooldown = { 1, 1, 1, 0 } },
 }
--- (11-17, Malkkav) Disabled leaves the buttons' colours to Blizzard: it stands for the old Status
--- Colouring switch off (colors.enableRange false), which a setup from before the palettes reads as
+-- Disabled leaves the buttons' colours to Blizzard: it is saved as colors.enableRange false (the
+-- older Status Colouring switch off), which a setup from before the palettes reads as
 function ActionBars.StatusPalette()
     local db = GetBarConfig()
     local colors = db and db.colors
@@ -1186,10 +1209,10 @@ end
 
 ActionBars.RefreshStatus = RefreshButtonColor
 
--- EQUIPPED ITEM BORDER (11-17, Malkkav; EllesmereUI's idea): a button holding an item you wear (a
--- trinket, an engineering helmet) gets a border in the item's quality colour: FlareUI's border with
--- FlareUI Borders on, else Blizzard's own (a faint green by default, made full and coloured). Off:
--- Blizzard's green as before. Blizzard's Update shows its border again: painted after it.
+-- EQUIPPED ITEM BORDER: a button holding an item you wear (a trinket, an engineering helmet) gets a
+-- border in the item's quality colour: FlareUI's border with FlareUI Borders on, else Blizzard's own
+-- (a faint green by default, made full and coloured). Off: Blizzard's green. Blizzard's Update shows
+-- its border again: painted after it.
 ActionBars.EQUIP_GREEN = { 0, 1, 0, 0.5 }   -- Blizzard's (ActionButton.lua Update)
 function ActionBars.PaintEquipped(button)
     local db = GetBarConfig()
@@ -1227,6 +1250,31 @@ function ActionBars.PaintEquipped(button)
             button.Border:SetVertexColor(e[1], e[2], e[3], e[4])
         end
     end
+    ActionBars.PaintEquipGlow(button, r, g, b)
+end
+
+-- a soft inner glow in the border's colour, so a worn item reads as worn rather than as one waiting
+-- to be put on: a faint additive light over the icon, cut by the icon's own mask so it takes the
+-- button's shape with either skin. Made on first use, then only shown, tinted and hidden.
+ActionBars.EQUIP_GLOW_ALPHA = 0.3
+function ActionBars.PaintEquipGlow(button, r, g, b)
+    local glow = button.FlareUI_EquipGlow
+    if not r then
+        if glow then glow:Hide() end
+        return
+    end
+    if not glow then
+        local icon = button.icon or button.Icon
+        if not icon then return end
+        glow = button:CreateTexture(nil, "ARTWORK", nil, 7)
+        glow:SetTexture("Interface\\Buttons\\CheckButtonHilight")
+        glow:SetBlendMode("ADD")
+        glow:SetAllPoints(icon)
+        if button.IconMask then pcall(glow.AddMaskTexture, glow, button.IconMask) end
+        button.FlareUI_EquipGlow = glow
+    end
+    glow:SetVertexColor(r, g, b, ActionBars.EQUIP_GLOW_ALPHA)
+    glow:Show()
 end
 function ActionBars.PaintEquippedAll()
     for _, button in ipairs(GetAllActionButtons()) do ActionBars.PaintEquipped(button) end
@@ -1237,11 +1285,19 @@ do
     watch:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
     watch:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
     watch:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+    -- (a stance or page change sends a slot change per button: one pass next frame for the lot)
+    local queued = false
+    local function PaintQueued()
+        queued = false
+        ActionBars.PaintEquippedAll()
+    end
     watch:SetScript("OnEvent", function(_, event)
         local db = GetBarConfig()
         -- (an item's quality arriving late only matters while the border is on)
         if event == "GET_ITEM_INFO_RECEIVED" and not (db and db.equippedBorder) then return end
-        C_Timer.After(0, ActionBars.PaintEquippedAll)
+        if queued then return end
+        queued = true
+        C_Timer.After(0, PaintQueued)
     end)
 end
 
@@ -1360,11 +1416,11 @@ local fcmButtons = {}        -- button -> on a Fake CM bar (Refresh)
 local burstQuietUntil = 0    -- no bursts just after a loading screen: every cooldown is read anew
 local GCD_SPAN = 1.5         -- a shorter arm span is a global cooldown read as a real one
 
--- (11-17, Malkkav / loraethil: every wand shot greyed the whole bar) Dim on Cooldown never dims for
--- the global cooldown. isOnGCD alone misses it (Blizzard: only trustworthy inside the cooldown
--- event, and a wand shot's lockout comes as its own short cooldown), so a cooldown of 2 seconds or
--- less, or one that started with the global cooldown, counts as the GCD too. Durations and start times
--- can be secret: then only isOnGCD decides.
+-- Dim on Cooldown never dims for the global cooldown (or every wand shot would grey the whole bar).
+-- isOnGCD alone misses it (Blizzard: only trustworthy inside the cooldown event, and a wand shot's
+-- lockout comes as its own short cooldown), so a cooldown of 2 seconds or less, or one that started
+-- with the global cooldown, counts as the GCD too. Durations and start times can be secret: then only
+-- isOnGCD decides.
 ActionBars.GCD_LOCK = 2
 function ActionBars.IsGlobalLock(info)
     if info.isOnGCD then return true end
@@ -1410,9 +1466,9 @@ local function PaintDim(button)
     end
 end
 
--- (11-17, a player's Lua error) the global ActionButton_UpdateCooldown hook also runs for Blizzard's
--- gamepad buttons (Blizzard_GamepadActionBars, all named Gamepad...): FlareUI keeps off them, as
--- fields it wrote there sat on buttons Blizzard's tainted flyout code then ran over
+-- The global ActionButton_UpdateCooldown hook also runs for Blizzard's gamepad buttons
+-- (Blizzard_GamepadActionBars, all named Gamepad...): FlareUI keeps off them, as fields it writes
+-- there would sit on buttons Blizzard's flyout code then runs over (a Lua error from taint)
 ActionBars.notOwnCD = setmetatable({}, { __mode = "k" })
 local function OwnsButton(button)
     local known = ActionBars.notOwnCD[button]
@@ -1435,8 +1491,11 @@ local function OnUpdateCooldown(button)
     if canaccessvalue(has) and has then
         local info = C_ActionBar.GetActionCooldown(slot)
         onCD = (info and info.isActive and not ActionBars.IsGlobalLock(info)) or false
-        local _, actionID = GetActionInfo(slot)
-        id = canaccessvalue(actionID) and actionID or nil
+        -- the action's ID only tells a cooldown ending from a new action: unarmed and off cooldown, no need
+        if onCD or button.FlareUI_OnCD then
+            local _, actionID = GetActionInfo(slot)
+            id = canaccessvalue(actionID) and actionID or nil
+        end
     end
     -- a new action on the button (page, form, a spell dragged in) is no cooldown ending
     local same = id ~= nil and button.FlareUI_CDSlot == slot and button.FlareUI_CDID == id
@@ -1743,15 +1802,15 @@ end)
 -- would swap it, so page keys and vehicle, override or temporary shapeshift bars stay Blizzard's.
 --------------------------------------------------
 local CLASS_PAGING = {
-    -- Keep Page 1 in Stealth (11-11): Forever now pages bar 1 in Stealth itself, so the old Auto
-    -- Paging for Stealth is turned round: the toggle holds page 1 while the game would swap it. Only
+    -- Keep Page 1 in Stealth: Forever pages bar 1 in Stealth itself, so the toggle holds page 1 while
+    -- the game would swap it. Only
     -- while bar 1 shows page 1: Shift+number (or the page keys) still turn pages. [stealth] is
     -- Shadowmeld too; a rogue's stealth page is bonus bar 1 (held too, should it outlast Stealth).
     ROGUE = { key = "keepStealthPage", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth] 1; [actionbar:1,bonusbar:1] 1; default" },
     -- Druids: Prowl keeps Cat Form's page (7, Blizzard's), Shadowmeld in caster form page 1.
-    -- offDriver (11-13, Malkkav): Forever stopped paging Prowl (rogues' Stealth still pages), which was
-    -- confusing, so with the toggle off FlareUI pages it itself: Prowl turns bar 1 to the prowl page
-    -- (8, bonus bar 2, the page Forever used), only from page 1 (page keys still turn pages)
+    -- offDriver: Forever doesn't page Prowl (rogues' Stealth does), so with the toggle off FlareUI
+    -- pages it itself: Prowl turns bar 1 to the prowl page (8, bonus bar 2), only from page 1 (page
+    -- keys still turn pages)
     DRUID = { key = "keepStealthPage", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth,form] 7; [actionbar:1,stealth] 1; default",
               offDriver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth,form] 8; default" },
     WARRIOR = { key = "noStancePaging", driver = "[possessbar][overridebar][vehicleui][shapeshift] default; [actionbar:1,bonusbar:1/2/3] 1; default" },
@@ -1780,8 +1839,8 @@ local function ApplyClassPaging()
         if db.autoPagingBar ~= 1 then db.noStancePaging = true end
         db.autoPagingBar = nil
     end
-    -- Auto Paging for Stealth turned off (bar 1 stayed put in stealth) becomes Keep Page 1 in
-    -- Stealth on, now that the game pages it (11-11)
+    -- the older Auto Paging for Stealth, saved off (bar 1 stayed put in stealth), becomes Keep Page 1
+    -- in Stealth on, as the game pages it
     if db.stealthPaging ~= nil then
         if db.stealthPaging == false then db.keepStealthPage = true end
         db.stealthPaging = nil
@@ -1801,11 +1860,10 @@ local function ApplyClassPaging()
     if classPager then RegisterStateDriver(classPager, "page", driver or "default") end
 end
 
--- The spellbook's "not on your bars" glow (11-11, a player's report): in a stance Blizzard counts the
--- stance's page as bar 1 and page 1 as hidden. While Keep Bar 1 in Stances holds page 1 it's the other
--- way round, so a spell put on bar 1 kept glowing and one left on the hidden stance page didn't. The
--- same for a rogue's Keep Page 1 in Stealth (11-14, a player's report): Stealth's page is a bonus bar
--- too. Druids are left out: Prowl holds Cat Form's page, the one Blizzard counts already. After
+-- The spellbook's "not on your bars" glow: in a stance Blizzard counts the stance's page as bar 1 and
+-- page 1 as hidden. While Keep Bar 1 in Stances holds page 1 it's the other way round, so a spell put
+-- on bar 1 would keep glowing and one left on the hidden stance page wouldn't. The same for a rogue's
+-- Keep Page 1 in Stealth: Stealth's page is a bonus bar too. Druids are left out: Prowl holds Cat Form's page, the one Blizzard counts already. After
 -- Blizzard's own answer each spell's glow is put right; Blizzard's functions are left alone (taint).
 do
     local NOT_MISSING = 1
@@ -1994,7 +2052,7 @@ function ActionBars:Refresh(event)
 end
 
 --------------------------------------------------
--- 13b. TOTEM BAR SIZE (11-11, a shaman asked)
+-- 13b. TOTEM BAR SIZE
 -- Blizzard's Totem Bar has no Edit Mode settings, so no Size: FlareUI adds one to its dialog (Visibility.lua
 -- puts it above Fading). 100% never touches the bar; its buttons are secure, so out of a fight only
 -- (OnCombatEnd tries again).
@@ -2015,7 +2073,7 @@ function ActionBars.TotemSizeSetting()
     local LEM = LibStub("FlareEditMode")
     return {
         name = L["Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
-        formatter = function(value) return value end,   -- plain: "100%" clips the value box (11-17)
+        formatter = function(value) return value end,   -- plain: "100%" clips the value box
         get = function() local db = GetBarConfig(); return db and db.totemScale or 100 end,
         set = function(_, value)
             local db = GetBarConfig()
@@ -2027,7 +2085,7 @@ function ActionBars.TotemSizeSetting()
 end
 
 --------------------------------------------------
--- 13c. BAG BAR SMALLER SIZE (11-17, a player: the bag buttons beside the menu stop at Blizzard's 75%)
+-- 13c. BAG BAR SMALLER SIZE (the bag buttons beside the menu stop at Blizzard's 75%)
 -- Blizzard's Bags Size runs 75-200%. Smaller Size (Off, 50-70%) sits in the same dialog (Visibility.lua
 -- puts it above Fading) and wins over Blizzard's Size while set; Off hands the bar back to it. A hook
 -- on the bar's own size update keeps it after Edit Mode applies a layout.
@@ -2113,9 +2171,9 @@ end
 --------------------------------------------------
 -- 14. EVENT HANDLERS
 --------------------------------------------------
--- (11-17, SadSeagull: bar 1 and then bar 2 still had no keys after logging in on 6.10, back after a
--- reload) the button texts are set again 3 and 10 seconds after a loading screen: by then the key
--- bindings are in and the Keybinds font's file has loaded, whichever of the two was late
+-- The button texts are set again 3 and 10 seconds after a loading screen: by then the key bindings
+-- are in and the Keybinds font's file has loaded, whichever of the two was late (else a bar can have
+-- no keys after logging in until a reload)
 function ActionBars:OnEnteringWorld(event)
     self:Refresh(event)
     for _, delay in ipairs({ 3, 10 }) do
@@ -2136,10 +2194,9 @@ function ActionBars:OnCombatEnd()
     if self._pendingBagSize then ApplyBagBarSize() end
 end
 
--- after Blizzard's own hotkey update
--- (11-16, SadSeagull's report: action bar 1's keys missing after logging in, back after a reload) the
--- key bindings can load after the bars were styled, when no key was found yet and the text went
--- blank: every button reads its key again once the bindings change (the extra button too)
+-- after Blizzard's own hotkey update: the key bindings can load after the bars were styled, when no
+-- key was found yet and the text went blank, so every button reads its key again once the bindings
+-- change (the extra button too)
 function ActionBars:OnBindingsUpdate()
     self:OnExtraActionBarUpdate()
     C_Timer.After(0, function()

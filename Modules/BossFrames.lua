@@ -28,7 +28,7 @@ local PF = ns.PartyFrames
 local Tile = PF and PF.Tile
 
 local MAX_BOSSES = 5
-local BASE_POSITION = { point = "RIGHT", x = -10, y = -11 }   -- (11-17: Malkkav's, was x -3)
+local BASE_POSITION = { point = "RIGHT", x = -10, y = -11 }
 -- Edit Mode keeps a reference to this table: ApplyPosition refills it for the style in use
 local DEFAULT_POSITION = { point = "RIGHT", x = -10, y = -11 }
 local TILE_TEMPLATE = "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate"
@@ -76,8 +76,8 @@ local view = setmetatable({}, { __index = function(_, key)
     local db = GetDb()
     if not db then return nil end
     if FIXED[key] ~= nil then return FIXED[key] end
-    -- (11-15) Portrait: None / 2D ("3d"); the old switch saved true / false, and the dropped 3D model
-    -- ("model") draws as 2D
+    -- Portrait: None / 2D ("3d"); an older switch saved true / false, and a saved 3D model ("model")
+    -- draws as 2D
     if key == "portrait" then
         local v = db.portrait
         if v == "model" then return "3d" end
@@ -265,13 +265,15 @@ local function SetAuraPreview(enabled)
 end
 
 local function Refresh()
+    -- (a Reset Settings in Edit Mode runs this once, after its last setting: LEM:Defer)
+    if LEM:Defer(Refresh) then return end
     if not holder then return end
     if InCombatLockdown() then pendingLayout = true return end
     pendingLayout = false
     local db = GetDb()
     -- the ring styles keep the target frame's layout: Mirror turns only the bars there
     ctx.fillMirror = not (db and db.mirror == false)
-    -- (11-17, Malkkav) the ring styles: Flip Portrait (db.portraitRight, on by default) puts the portrait
+    -- the ring styles: Flip Portrait (db.portraitRight, on by default) puts the portrait
     -- on the right, as the target frame; off, on the left. Addon Style: Mirror Bars lays it out.
     if RingStyle() then ctx.mirror = not (db and db.portraitRight == false) else ctx.mirror = ctx.fillMirror end
     for _, f in ipairs(tiles) do
@@ -321,7 +323,7 @@ local function BuildSettings()
           values = { { text = L["Down"], value = "DOWN", isRadio = true }, { text = L["Up"], value = "UP", isRadio = true } },
           desc = L["Which way the frames go from the first boss."],
           get = get("grow"), set = set("grow") },
-        -- (11-16, Malkkav: "Frame Gap", as on the party and raid frames; it was "Spacing")
+        -- ("Frame Gap", as on the party and raid frames; found by "Spacing" too)
         { name = L["Frame Gap"], search = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing or 14, minValue = 0, maxValue = 80, valueStep = 1,
           get = get("spacing"), set = set("spacing"),
           desc = L["The gap between the boss frames."] },
@@ -329,10 +331,10 @@ local function BuildSettings()
 
     -- Forever Style's plate: sized by Scale
     local function onPlate() return ns.UFRing and ns.UFRing.PlateOn() or false end
-    -- (11-16) the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
+    -- the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
     local frameItems = {
         { name = L["Scale"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.PlateDefaultScale("boss") or 100,
-          minValue = 75, maxValue = 250, valueStep = 5, formatter = function(value) return value end,   -- plain: "100%" clips the value box (11-17)
+          minValue = 75, maxValue = 250, valueStep = 5, formatter = function(value) return value end,   -- plain: "100%" clips the value box
           get = function() local db = GetDb(); return db and db.plateScale or (ns.UFRing and ns.UFRing.PlateDefaultScale("boss")) or 100 end,
           set = function(layoutName, value)
               if not onPlate() then return end
@@ -368,7 +370,7 @@ local function BuildSettings()
           get = function() local db = GetDb(); return K.PowerTextMode(db and db.powerText) end, set = set("powerText") },
         { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName")() ~= false end, set = set("showName") },
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = get("showLevel"), set = set("showLevel") },
-        -- (11-17, Malkkav) Flip Portrait, as on target and focus: on, the portrait on the right (default);
+        -- Flip Portrait, as on target and focus: on, the portrait on the right (default);
         -- off, on the left (db.portraitRight); the ring styles only, as there
         { name = L["Flip Portrait"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The portrait on the right, as on the target frame. Off: on the left, as on the player frame."],
@@ -383,10 +385,12 @@ local function BuildSettings()
           values = { { text = L["None"], value = "none", isRadio = true }, { text = L["2D"], value = "3d", isRadio = true } },
           get = function() return view.portrait end,
           set = set("portrait"), hidden = RingStyle },
-        -- (in Frame since 6.3.3: it changes how the frame behaves, not how it looks)
+        -- (in Frame: it changes how the frame behaves, not how it looks)
         { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The frame fades while the unit is out of range."],
           get = function() return get("rangeCheck")() ~= false end, set = set("rangeCheck") },
+        -- Behaviour
+        K.HealthColorSetting(get("healthColor"), set("healthColor")),
     }
     local sizeItems, textItems, behaviourItems = ns.SplitFrameItems(frameItems)
     Section("Size", sizeItems)
@@ -408,10 +412,9 @@ local function BuildSettings()
             return item
         end)(),
         K.SmoothBarsSetting(get("smoothBars"), set("smoothBars")),
-        -- (11-16, Marcus)
         K.BarEdgeGlowSetting(get("barEdgeGlow"), set("barEdgeGlow")),
         K.DamageTrailSetting(get("damageTrail"), set("damageTrail")),
-        -- (11-17, Malkkav) Threat Glow: in Look, right after Class Colours (Core.lua order)
+        -- Threat Glow: in Look (Core.lua orders the section)
         { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The border pulses in the threat colour while you have threat on it."],
           get = function() return get("threatGlow")() ~= false end, set = set("threatGlow") },
@@ -465,7 +468,7 @@ local function BuildSettings()
           get = get("buffs"), set = set("buffs"), desc = L["Every buff on the boss, such as enrages and shields."] },
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = places, generator = Place("debuffs", "buffs"),
           get = get("debuffs"), set = set("debuffs"), desc = L["Debuffs on the boss. With Only My Debuffs, just yours."] },
-        K.HideBuffsSetting("PERMANENT", function() return get("hideBuffs")() or "PERMANENT" end, set("hideBuffs")),
+        K.HideBuffsSetting("OFF", function() return get("hideBuffs")() or "OFF" end, set("hideBuffs")),
         { name = L["Buff Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
           get = function() return ns.AuraSize(GetDb(), false, D.auraSize) end, set = set("buffSize") },
         { name = L["Debuff Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
@@ -477,7 +480,7 @@ local function BuildSettings()
     }, get, set))
 
     Section("Icons", {
-        -- (11-17, Malkkav) as on the target frame; the ring styles show the rank with the ring's dragon
+        -- as on the target frame; the ring styles show the rank with the ring's dragon
         { name = L["Elite & Rare"], kind = LEM.SettingType.Checkbox, default = true,
           get = function() return get("classIcon")() ~= false end, set = set("classIcon"),
           hidden = RingStyle },
@@ -611,13 +614,16 @@ function BF:Init()
         ApplyPosition(layoutName)
     end)
     local function ShowPreview()
-        -- (11-17, Malkkav: no sample buffs after a reload until a setting changed) the aura rows are built
-        -- again for Edit Mode: the fight's purge split filters by RAID_PLAYER_DISPELLABLE, and Blizzard's
-        -- sample list reads any "RAID" in a filter as raid auras only, so the buffs row had no samples
+        -- the aura rows are built again for Edit Mode: the fight's purge split filters by
+        -- RAID_PLAYER_DISPELLABLE, and Blizzard's sample list reads any "RAID" in a filter as raid auras
+        -- only, so the buffs row would have no samples
         if not InCombatLockdown() then LayoutHolder(); Refresh() end   -- the samples in all five places
         ApplyVisibility()
         SetAuraPreview(true)
-        for _, f in ipairs(tiles) do Tile.UpdateAll(f) end
+        -- (out of a fight Refresh already drew all five)
+        if InCombatLockdown() then
+            for _, f in ipairs(tiles) do Tile.UpdateAll(f) end
+        end
     end
     local function EndPreview()
         SetAuraPreview(false)

@@ -4,7 +4,6 @@ local L = ns.LocaleStrings("ruRU")
 --@localization(locale="ruRU", format="lua_additive_table", handle-unlocalized="ignore")@
 
 -- Maintained translations take precedence over any CurseForge imports above.
--- Russian by parchinskiy (5.0.5 CurseForge export, merged 2026-11-10).
 L["(current zone)"] = "(текущая зона)"
 L["(first %d shown)"] = "(показаны первые %d)"
 L["(map ID)"] = "(ID карты)"

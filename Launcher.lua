@@ -128,7 +128,7 @@ local function RegisterOptionsPage()
         open:SetText(L["Open Configuration"])
         -- a family: GameFontNormal's file alone draws Russian as boxes on an English client
         ns.SetFontFamily(open:GetFontString(), (GameFontNormal:GetFont()), 14, "OUTLINE")
-        -- (11-11 Malkkav) Blizzard's Options closes as FlareUI's window opens: its own Close, which keeps
+        -- Blizzard's Options closes as FlareUI's window opens: its own Close, which keeps
         -- the settings (asking first if some are unapplied) and skips going back to the game menu
         open:SetScript("OnClick", function()
             ns.SettingsPanel:Open()
@@ -139,6 +139,21 @@ local function RegisterOptionsPage()
     local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
     Settings.RegisterAddOnCategory(category)
     if not ns.IsGamepadUI() then AddListTag(category) end
+end
+
+-- Blizzard's Quick Keybind Mode: point at a button and press a key to bind it. Not in a fight.
+function ns.OpenQuickKeybind()
+    if InCombatLockdown() then
+        UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT, 1, 0.1, 0.1)
+        return
+    end
+    if not QuickKeybindFrame and C_AddOns and C_AddOns.LoadAddOn then
+        C_AddOns.LoadAddOn("Blizzard_QuickKeybind")
+    end
+    if QuickKeybindFrame then
+        if ns.SettingsPanel and ns.SettingsPanel.Hide then ns.SettingsPanel:Hide() end
+        QuickKeybindFrame:Show()
+    end
 end
 
 --------------------------------------------------
@@ -153,6 +168,20 @@ loader:SetScript("OnEvent", function(self)
     SLASH_FLARERL1 = "/rl"
     SlashCmdList.FLARERL = ns.Reload
 
+    -- /kb opens Blizzard's Quick Keybind Mode, unless another addon already owns /kb
+    local kbTaken = false
+    for name in pairs(SlashCmdList) do
+        for i = 1, 9 do
+            local cmd = _G["SLASH_" .. name .. i]
+            if not cmd then break end
+            if cmd:lower() == "/kb" then kbTaken = true end
+        end
+    end
+    if not kbTaken then
+        SLASH_FLAREKB1 = "/kb"
+        SlashCmdList.FLAREKB = function() ns.OpenQuickKeybind() end
+    end
+
     SLASH_FLAREUI1 = "/flareui"
     SLASH_FLAREUI2 = "/fui"
     SlashCmdList.FLAREUI = function(msg)
@@ -166,6 +195,8 @@ loader:SetScript("OnEvent", function(self)
             ns.ToggleGamepadMode()
         elseif msg == "tour" then
             ns.ShowTour()
+        elseif msg == "kb" then
+            ns.OpenQuickKeybind()
         elseif msg == "perf" or msg:find("^perf%s") then
             ns.Perf.Command(raw:sub(5))   -- keeps the recording name's case
         elseif msg == "fadedebug" then
@@ -175,7 +206,7 @@ loader:SetScript("OnEvent", function(self)
             -- a developer's probe: the square map's border and every button around it (Minimap.lua)
             if ns.Minimap and ns.Minimap.DebugLayers then ns.Minimap.DebugLayers() end
         elseif msg == "scale reset" then
-            -- (11-17) UI Scale back to Off, for an interface too small to use (Tweaks.lua 17b)
+            -- UI Scale back to Off, for an interface too small to use (Tweaks.lua 17b)
             if ns.Tweaks and ns.Tweaks.UIScale then ns.Tweaks.UIScale.Reset() end
         elseif msg == "errors" or msg:find("^errors%s") then
             ns.ErrorsCommand(msg:sub(8))
@@ -196,7 +227,7 @@ loader:SetScript("OnEvent", function(self)
 end)
 
 --------------------------------------------------
--- 4b. ESC MENU BUTTON (11-17, Malkkav): a FlareUI button in the game menu, right under Shop
+-- 4b. ESC MENU BUTTON: a FlareUI button in the game menu, right under Shop
 -- (General > Interface > ESC Menu, off, account-wide: db.global.escMenuButton). Blizzard rebuilds the
 -- menu each time it opens (GameMenuFrameMixin:InitButtons); the button is added after that, and its
 -- layout index puts it after Shop (Options when the shop is off). Read each time: no reload needed.

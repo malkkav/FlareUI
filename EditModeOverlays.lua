@@ -14,7 +14,7 @@ local EYE_TEXTURE_W, EYE_TEXTURE_H = 512, 256
 
 local eyeButton
 local LEM = LibStub("FlareEditMode")
--- (11-16) the dialogs' Reset Settings button, beside FlareUI Settings and Reset Position (dialog.lua)
+-- the dialogs' Reset Settings button, beside FlareUI Settings and Reset Position (dialog.lua)
 LEM.resetSettingsText = L["Reset Settings"]
 
 --------------------------------------------------
@@ -61,7 +61,7 @@ local SWITCHES = {
     { setter = "SetPetFrameShown", setting = "ShowPetFrame", frames = { "FlareUI_UF_Pet" } },
     { setter = "SetCastBarShown", setting = "ShowCastBar", frames = { "FlareUI_UF_PlayerCastBar" } },
     { setter = "SetBuffsAndDebuffsShown", setting = "ShowBuffsAndDebuffs", frames = { "FlareUI_Buffs", "FlareUI_Debuffs" } },
-    -- (11-17, Malkkav) Resource Bars takes over Duration Bars, Swing Timer and Personal Resource Display
+    -- Resource Bars takes over Duration Bars, Swing Timer and Personal Resource Display
     -- while it runs the matching bars (Blizzard's own are parked then, ResourceBars.lua). box: the
     -- checkbox, enabled here while ours (Blizzard greys Swing Timer and Personal Resource Display
     -- without their CVars, which FlareUI's bars don't need)
@@ -113,14 +113,14 @@ end
 
 --------------------------------------------------
 -- 2b. CHECKBOXES OF HIDDEN BARS
--- (11-16, Malkkav) Action Bars > Hide Bars is for bars a player never wants to see, Edit Mode included:
--- the bar already stays hidden there (Visibility.lua), and now its checkbox in Edit Mode's list goes
+-- Action Bars > Hide Bars is for bars a player never wants to see, Edit Mode included:
+-- the bar already stays hidden there (Visibility.lua), and its checkbox in Edit Mode's list goes
 -- too. Only Blizzard's stance, pet, possess and totem bars have one (the micro menu and bag bar don't).
 -- Blizzard lays the list out in LayoutSettings (on load and when Advanced Options changes); after it,
 -- the checkboxes of hidden bars are hidden and the list laid out again with the same two calls
 -- LayoutSettings ends with. Nothing runs while no bar is hidden, so nothing of Blizzard's is touched.
 --------------------------------------------------
--- (11-17, Malkkav) the same for Blizzard's minimap pieces FlareUI's minimap icons replace (Minimap >
+-- the same for Blizzard's minimap pieces FlareUI's minimap icons replace (Minimap >
 -- Map Tools): Vehicle Exit Button, Equipment Durability and Group Finder go from the list while ours is
 -- on (Blizzard's own are hidden then, MinimapVehicle.lua / MinimapDurability.lua / MinimapEye.lua)
 local function MinimapIconOn(key)
@@ -217,8 +217,41 @@ local function SetEyeFrame(texture, index)
 end
 
 -- Every selection overlay: Blizzard's systems plus addon frames with the selection mixin. The addon
--- ones are found by a walk over every frame in the UI once per Edit Mode visit, not per selection.
-local addonSelections
+-- ones come from the Edit Mode libraries that made them (FlareEditMode and its LibStub relatives,
+-- each with a frameSelections table), read on each visit, plus a walk over every frame in the UI for
+-- boxes made any other way. The walk is costly, so it runs once per session, the first time the
+-- overlays are hidden.
+local addonSelections, walkedSelections
+local function WalkedSelections()
+    if not walkedSelections then
+        walkedSelections = {}
+        local frame = EnumerateFrames()
+        while frame do
+            if frame.ShowHighlighted and frame.ShowSelected and frame.MouseOverHighlight and frame.parent then
+                walkedSelections[#walkedSelections + 1] = frame
+            end
+            frame = EnumerateFrames(frame)
+        end
+    end
+    return walkedSelections
+end
+local function LibrarySelections(list)
+    local libs = { LEM }
+    if LibStub and LibStub.IterateLibraries then
+        for _, lib in LibStub:IterateLibraries() do libs[#libs + 1] = lib end
+    end
+    local seen = {}
+    for _, lib in ipairs(libs) do
+        local selections = type(lib) == "table" and rawget(lib, "frameSelections")
+        if type(selections) == "table" and not seen[selections] then
+            seen[selections] = true
+            for _, selection in pairs(selections) do
+                if type(selection) == "table" and selection.SetAlpha then list[#list + 1] = selection end
+            end
+        end
+    end
+    return list
+end
 local function ForEachSelection(fn)
     local seen = {}
     local manager = EditModeManagerFrame
@@ -231,20 +264,13 @@ local function ForEachSelection(fn)
             end
         end
     end
-    if not addonSelections then
-        addonSelections = {}
-        local frame = EnumerateFrames()
-        while frame do
-            if not seen[frame] and frame.ShowHighlighted and frame.ShowSelected and frame.MouseOverHighlight and frame.parent then
-                addonSelections[#addonSelections + 1] = frame
+    if not addonSelections then addonSelections = LibrarySelections({}) end
+    for _, list in ipairs({ addonSelections, WalkedSelections() }) do
+        for _, frame in ipairs(list) do
+            if not seen[frame] then
+                seen[frame] = true
+                fn(frame)
             end
-            frame = EnumerateFrames(frame)
-        end
-    end
-    for _, frame in ipairs(addonSelections) do
-        if not seen[frame] then
-            seen[frame] = true
-            fn(frame)
         end
     end
 end
@@ -265,6 +291,9 @@ local function ToggleEditModeOverlays()
     ns.db.profile.editModeOverlaysHidden = not ns.db.profile.editModeOverlaysHidden
     ApplyOverlays()
     UpdateEye()
+    -- the minimap edge icons' grab glow follows the boxes
+    local moves = ns.Minimap and ns.Minimap.Moves
+    if moves and moves.UpdateHandles then moves.UpdateHandles() end
 end
 
 local function CreateEye()
@@ -293,8 +322,8 @@ end
 --------------------------------------------------
 -- 3b. FIRST-TIME HINT
 -- Says where the options are, until the first FlareUI frame is clicked (per account, never again after
--- that). (11-16, UX audit J8) A Blizzard frame without FlareUI options no longer ends it: an action bar
--- (FlareUI's options in its dialog while Action Bars is on) does, as FlareUI's own frames.
+-- that). A Blizzard frame without FlareUI options doesn't end it: an action bar (FlareUI's options
+-- in its dialog while Action Bars is on) does, as FlareUI's own frames do.
 --------------------------------------------------
 local hint
 
@@ -329,8 +358,8 @@ end
 
 --------------------------------------------------
 -- 3c. HUD TOOLTIP SAMPLE
--- (11-14, a player) Blizzard's HUD Tooltip mover is an empty box: with the overlays hidden (eye) there
--- was nothing to see or grab. A sample tooltip fills it while it shows. Our own frame anchored to it
+-- Blizzard's HUD Tooltip mover is an empty box: with the overlays hidden (eye) there is nothing to
+-- see or grab. A sample tooltip fills it while it shows. Our own frame anchored to it
 -- (nothing added to Blizzard's), drawn under the mover's selection and deaf to the mouse, so drags
 -- still reach the mover.
 --------------------------------------------------
@@ -356,7 +385,7 @@ local function MakeTooltipSample()
     f:EnableMouse(false)
     f:Hide()
 
-    -- (11-15) FlareUI's look: the chat window's background (Chat.WindowBackdrop: dark dialog texture,
+    -- FlareUI's look: the chat window's background (Chat.WindowBackdrop: dark dialog texture,
     -- white tint, at the chat's Background Opacity, default 0.6) inside FlareUI Thin
     f.backdrop = CreateFrame("Frame", nil, f, "BackdropTemplate")
     f.backdrop:SetAllPoints()

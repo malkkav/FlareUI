@@ -44,12 +44,12 @@ ART.focustarget = ART.target
 local CIRCLE_MASK   = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 local SMALL_CIRCLE  = "UI-HUD-UnitFrame-SmallCircle"
 local PORTRAIT_SHARE = 0.86   -- the portrait inside the ring, of its diameter
--- A dark disc behind the portrait, out under the rim (11-11, seen on a green screen): the art's
+-- A dark disc behind the portrait, out under the rim: the art's
 -- opening is off-centre and wider than the portrait at the bottom and outer side (0.84-0.90 of the
 -- radius), so the world showed through a thin crescent there
 local PORTRAIT_BACK_SHARE = 0.94
 -- FlareUI Style (no plate): the whole art, cut to a circle so the art's join to the plate (a tail
--- on the bars' side) doesn't show (11-11). The art's rim reaches further out on the outer side, so
+-- on the bars' side) doesn't show. The art's rim reaches further out on the outer side, so
 -- the circle is larger and moved outwards: its edge stays CLEAN_RING_BARS of the ring's diameter
 -- from the centre on the bars' side and reaches CLEAN_RING_OUTER on the outer side (rim and shadow)
 local CLEAN_RING_BARS, CLEAN_RING_OUTER = 0.49, 0.585
@@ -106,7 +106,7 @@ BLIZZ.party = {
 BLIZZ.boss = {
     centre = BLIZZ.target.centre, D = BLIZZ.target.D, side = "RIGHT", boss = true,
     level = BLIZZ.target.level, raidIcon = BLIZZ.target.raidIcon, readyCheck = BLIZZ.target.readyCheck,
-    -- (11-17) the target's PvP crest spot: the flag carriers' faction crest (the boss frames show none)
+    -- the target's PvP crest spot: the flag carriers' faction crest (the boss frames show none)
     pvp = BLIZZ.target.pvp,
 }
 -- The styled pet: the player frame, small, with no icons on its ring
@@ -115,8 +115,8 @@ BLIZZ.pet = {
     level = BLIZZ.player.level,
 }
 -- The styled target of target and target of focus: small, with no icons on the ring. The ring on the
--- left, as Blizzard's own and the pet's (11-12, a player report): their bars and texts are laid out for
--- a portrait on the left, so a ring on the right covered the bar's end and its text
+-- left, as Blizzard's own and the pet's: their bars and texts are laid out for a portrait on the
+-- left, so a ring on the right would cover the bar's end and its text
 BLIZZ.targettarget = {
     centre = BLIZZ.player.centre, D = BLIZZ.player.D, side = "LEFT",
     level = BLIZZ.player.level,
@@ -175,11 +175,11 @@ local PLATE = {
     atlas = "UI-HUD-UnitFrame-Target-PortraitOn", artW = 194, artH = 68,
     x0 = 1, x1 = 131, y0 = 8, y1 = 57,
     -- the second row stretches with the height; rowDelta resizes a row by that many art pixels.
-    -- (11-16) the last column (127 on) is Blizzard's ring rim: it keeps rowDelta whatever Power Height
+    -- the last column (127 on) is Blizzard's ring rim: it keeps rowDelta whatever Power Height
     -- does to the rows, so the rim never bends (Ring.LayoutPlate)
     cutX = { 0, 8, 120, 127, 145 }, cutY = { 6, 14, 24, 32, 39, 47, 51, 59 },
     rowDelta = { 0, -3, 0, 2, 0, 1, 0 },
-    defaultScale = { player = 130, target = 130, focus = 100, party = 100, boss = 100, pet = 75,   -- (11-17: pet 75, was 65)
+    defaultScale = { player = 130, target = 130, focus = 100, party = 100, boss = 100, pet = 75,
                      targettarget = 65, focustarget = 65 },   -- percent of Blizzard's size
     ringD = 61.8, ringX = 158.6,           -- Blizzard's ring on this art: its diameter and centre
     ringRise = 0.64,                       -- its centre above the plate's, in art pixels
@@ -198,14 +198,14 @@ local PLATE = {
 Ring.PLATE_UNITS = { player = true, target = true, focus = true, party = true, boss = true, pet = true,
                      targettarget = true, focustarget = true }
 Ring.STRIP_ATLAS = PLATE.strip
--- (11-16, Malkkav) Power Height on the plate: the power slot's height in art pixels; 0 = no power
+-- Power Height on the plate: the power slot's height in art pixels; 0 = no power
 -- bar. The separator moves: row 4 (inside the health slot) gives or takes what row 6 (inside the
 -- power slot) takes or gives. Off folds the separator's row (5) and row 6 into row 4, and the power
 -- slot's bottom edge (row 7) closes the health slot.
 Ring.PLATE_POWER = { default = 9, min = 4, max = 15 }
 PLATE.healthFull = { PLATE.health[1], PLATE.health[2], PLATE.health[3], 53, tex = PLATE.health.tex,
                      mirrored = PLATE.health.mirrored }
--- Mana on Shapeshift (11-17): the power slot's two halves, split in the middle of its stretching row
+-- Mana on Shapeshift: the power slot's two halves, split in the middle of its stretching row
 PLATE.powerTop = { PLATE.power[1], PLATE.power[2], PLATE.power[3], 49, tex = PLATE.power.tex, mirrored = PLATE.power.mirrored }
 PLATE.powerBottom = { PLATE.power[1], PLATE.power[2], 49, PLATE.power[4], tex = PLATE.power.tex, mirrored = PLATE.power.mirrored }
 local plateRows = {}
@@ -242,7 +242,7 @@ end
 local FOREVER = {
     player = { border = "FlareUI Thin", portrait = "3d", width = 200, height = 60, powerHeight = 15, ringSize = 80 },
     target = { border = "FlareUI Thin", portrait = "3d", width = 200, height = 60, powerHeight = 15, ringSize = 80 },
-    focus  = { border = "FlareUI Thin", portrait = "3d", width = 136, height = 35, ringSize = 47 },   -- (11-17: 136, was 110)
+    focus  = { border = "FlareUI Thin", portrait = "3d", width = 136, height = 35, ringSize = 47 },
     pet    = { height = 30 },
 }
 local FOREVER_TOTEMS = { size = 90, perRow = 2 }
@@ -268,13 +268,13 @@ end
 Ring.TILE_POSITIONS = {
     party = { point = "LEFT",  x = 64,  y = 0 },
     boss  = { point = "RIGHT", x = -88, y = 10 },
-    flag  = { point = "RIGHT", x = -88, y = 204 },   -- (11-17: Malkkav's)
+    flag  = { point = "RIGHT", x = -88, y = 204 },
 }
 -- Forever Style's
 Ring.PLATE_TILE_POSITIONS = {
     party = { point = "LEFT",  x = 75,  y = 0 },
     boss  = { point = "RIGHT", x = -93, y = 10 },
-    flag  = { point = "RIGHT", x = -93, y = 203 },   -- (11-17: Malkkav's)
+    flag  = { point = "RIGHT", x = -93, y = 203 },
 }
 function Ring.TilePosition(kind)
     if Ring.PlateOn() then return Ring.PLATE_TILE_POSITIONS[kind] end
@@ -290,8 +290,8 @@ Ring.POSITIONS = {
     pet           = { point = "BOTTOM",      x = -236, y = 258 },
     playercastbar = { point = "CENTER",      x = 0,    y = -221 },
 }
-Ring.TOTEM_POSITION = { point = "BOTTOM", x = -357, y = 241 }   -- (11-17: Malkkav's layout)
--- the styled pet's size (11-17, Malkkav's setup): FlareUI Style's height, Forever Style's Scale
+Ring.TOTEM_POSITION = { point = "BOTTOM", x = -357, y = 241 }
+-- the styled pet's size: FlareUI Style's height, Forever Style's Scale
 Ring.PET_RING_HEIGHT, Ring.PET_PLATE_SCALE = 35, 75
 -- the styled pet's (Simple Pet Frame off; the simple one keeps POSITIONS' pet)
 Ring.PET_POSITION = { point = "BOTTOM", x = -236, y = 258 }
@@ -306,7 +306,7 @@ Ring.TARGET_OF_POSITIONS = {
 local PLATE_PRESET = {
     player = { portrait = "class" },
     target = { portrait = "class" },
-    focus  = { portrait = "3d", powerText = "value", width = 146 },   -- (11-17: Malkkav's width)
+    focus  = { portrait = "3d", powerText = "value", width = 146 },
 }
 local PLATE_TOTEMS = { size = 95, perRow = 2 }
 Ring.PLATE_POSITIONS = {
@@ -318,7 +318,7 @@ Ring.PLATE_POSITIONS = {
     pet           = { point = "BOTTOM",      x = -238, y = 253 },
     playercastbar = { point = "CENTER",      x = 0,    y = -221 },
 }
-Ring.PLATE_TOTEM_POSITION = { point = "BOTTOM", x = -369, y = 237 }   -- (11-17: Malkkav's layout)
+Ring.PLATE_TOTEM_POSITION = { point = "BOTTOM", x = -369, y = 237 }
 Ring.PLATE_PET_POSITION = { point = "BOTTOM", x = -238, y = 253 }
 Ring.PLATE_TARGET_OF_POSITIONS = {
     targettarget = { point = "BOTTOM",      x = 238,  y = 236 },
@@ -327,7 +327,7 @@ Ring.PLATE_TARGET_OF_POSITIONS = {
 
 -- a FlareUI Style preset value, for Edit Mode's defaults
 function Ring.PresetValue(unit, key)
-    -- (11-17) Forever Style's own values over FlareUI Style's (its preset starts from that one)
+    -- Forever Style's own values over FlareUI Style's (its preset starts from that one)
     local plate = Ring.PlateOn() and PLATE_PRESET[unit]
     if plate and plate[key] ~= nil then return plate[key] end
     return FOREVER[unit] and FOREVER[unit][key]
@@ -407,7 +407,6 @@ end
 
 -- Threat Glow / Combat Glow (Look; udb.threatGlow, udb.combatGlow, a tile's in its own settings): on
 -- unless saved off
--- (always on 11-16 to 11-17; switches again since 11-17, Malkkav)
 function Ring.GlowOn(f, key)
     local udb = Db(f)
     return not (udb and udb[key] == false)
@@ -455,7 +454,7 @@ end
 -- small target of target
 function Ring.ShowsRank(f)
     local blizz = BLIZZ[Kind(f)]
-    if f.ctx and f.ctx.noRank then return false end   -- the flag carriers (11-17): never the boss art
+    if f.ctx and f.ctx.noRank then return false end   -- the flag carriers: never the boss art
     return Ring.Applies(f) and blizz and blizz.boss or false
 end
 
@@ -485,7 +484,7 @@ function Ring.Plate(f)
     return Ring.Applies(f) and Ring.PLATE_UNITS[Kind(f)] and Ring.PlateOn() or false
 end
 
--- the ring's side (a tile: f.ringSide); Mirror only turns the bars here. (11-17, Malkkav) Flip Portrait
+-- the ring's side (a tile: f.ringSide); Mirror only turns the bars here. Flip Portrait
 -- (udb.portraitRight, on by default) picks it on target, focus and the target-of frames: on, the portrait
 -- on the right as the target frame; off, on the left as the player frame. The geometry mirrors the
 -- frame's Blizzard layout for the other side.
@@ -545,9 +544,9 @@ function Ring.PlateMinSize(f)
     return math.ceil((fixedW + 12) * s), math.ceil((fixedH + 4) * s)
 end
 
--- (11-17, Malkkav) FlareUI Style: the ring's size follows the frame's height, 80 for 60 as the player and
--- target presets (every preset already keeps it: focus 35 -> 47, party and boss 50 -> 66, pet 30 -> 40);
--- the Portrait Size slider is gone. Forever Style's ring follows its Scale (udb.ringSize), as before.
+-- FlareUI Style: the ring's size follows the frame's height, 80 for 60 as the player and target
+-- presets (every preset keeps it: focus 35 -> 47, party and boss 50 -> 66, pet 30 -> 40). Forever
+-- Style's ring follows its Scale (udb.ringSize).
 Ring.RING_RATIO = 80 / 60
 function Ring.RingDiameter(udb, f)
     if f and Ring.Plate(f) then return udb.ringSize or Ring.DefaultSize(Kind(f)) end
@@ -663,15 +662,12 @@ local function Crop(tex, artInfo, side, box)
     return true
 end
 
--- Settings specimens use the same atlas coordinates as live frames, without registering units,
--- changing the active style, or borrowing any protected frame.
-function Ring.SampleArt(tex, side, plate)
-    return Crop(tex, ART.target, side, plate and { 0, 1, 0, 1 } or nil)
-end
-Ring.SamplePlate = PLATE
-
+-- (an atlas found is remembered: GetAtlasInfo makes a new table on each call, and Ring.Update asks often)
+Ring.atlasFound = {}
 local function SetAtlasSafe(tex, atlas)
-    if atlas and C_Texture.GetAtlasInfo(atlas) then
+    if not (canaccessvalue(atlas) and atlas) then return false end
+    if Ring.atlasFound[atlas] or C_Texture.GetAtlasInfo(atlas) then
+        Ring.atlasFound[atlas] = true
         tex:SetAtlas(atlas, false)
         return true
     end
@@ -703,7 +699,7 @@ local function NewHitButton(f)
         local script = f:GetScript("OnLeave")
         if script then script(f) end
     end)
-    -- after the scripts, as the frames' own (11-16, luuksen's report)
+    -- after the scripts, as the frames' own (a click-cast addon wraps OnEnter / OnLeave as it registers)
     _G.ClickCastFrames = _G.ClickCastFrames or {}
     _G.ClickCastFrames[hit] = true
     return hit
@@ -721,8 +717,8 @@ local function PlaceHitButton(hit, f, g, dx, dy, w, h)
 end
 
 -- A hit button placed (when f is given) and shown or hidden. They are secure: in a fight the change waits
--- for its end (a druid's shapeshift re-lays the bars in combat when Shift Mana comes or goes: blocked
--- ClearAllPoints, a player's report 11-11). The ring itself doesn't move then, so nothing is missed.
+-- for its end (a druid's shapeshift re-lays the bars in combat when Shift Mana comes or goes, and a
+-- secure ClearAllPoints is blocked then). The ring itself doesn't move then, so nothing is missed.
 local hitWaiting, hitEvents = {}, nil
 local function SetHit(hit, shown, f, g, dx, dy, w, h)
     if InCombatLockdown() then
@@ -972,8 +968,8 @@ function Ring.Layout(f)
     ring.Icons:SetFrameLevel(level + 12)
     ring.Disc:SetFrameLevel(level + 13)
     ring.PvP:SetFrameLevel(level + 14)
-    -- (11-14, a CurseForge report) FlareUI Style: the auras and the cast bar over the ring, the elite / rare frame and
-    -- the combo gems (+15), so the bottom corners' icons aren't hidden under the dragon. Forever
+    -- FlareUI Style: the auras and the cast bar over the ring, the elite / rare frame and the combo
+    -- gems (+15), so the bottom corners' icons aren't hidden under the dragon. Forever
     -- Style keeps them under: its plate holds the art clear of them.
     f.auraLift = not Ring.Plate(f) and 16 or nil
     if ns.UnitFrames and ns.UnitFrames.RestackAuras then ns.UnitFrames.RestackAuras(f) end
@@ -989,9 +985,9 @@ function Ring.Layout(f)
 
     ring:ClearAllPoints()
     ring:SetSize(g.D, g.D)
-    -- Both styles: Blizzard's whole ring, shadow and all, cut to the ring only where the plate's band
-    -- meets it (PLATE.maskLeft / maskRight). FlareUI Style had a clean circle, which cut the art's
-    -- own join on the bars' side and left the rim thin there (11-11): it now crops as Forever Style.
+    -- Blizzard's whole ring, shadow and all, out to the atlas's edges. Forever Style cuts it to the
+    -- ring only where the plate's band meets it (PLATE.maskLeft / maskRight); FlareUI Style cuts it to
+    -- a circle (CLEAN_RING_BARS / CLEAN_RING_OUTER).
     local plate = Ring.Plate(f)
     ring:SetPoint("CENTER", f, left and "LEFT" or "RIGHT", left and g.centre or -g.centre, plate and PLATE.ringRise * g.s or 0)
     local art = ART[Kind(f)]
@@ -1005,7 +1001,7 @@ function Ring.Layout(f)
         ring.Art:SetPoint("BOTTOMRIGHT", ring, "BOTTOMRIGHT", left and 0 or out, -(1 - box[4]) * h)
         ring.hasArt = Crop(ring.Art, art, g.side, { box[1], 1, 0, 1 })
     end
-    -- (11-15, Malkkav) FlareUI Style: Blizzard's gold ring toned down towards the frame's bronze border
+    -- FlareUI Style: Blizzard's gold ring toned down towards the frame's bronze border
     -- (ns.BORDER_COLOR #A67D45), still a little brighter than it; Forever Style keeps Blizzard's ring
     if plate then
         ring.Art:SetVertexColor(1, 1, 1)
@@ -1118,7 +1114,7 @@ function Ring.LayoutLevel(f, g)
     f.Level:ClearAllPoints()
     f.Level:SetJustifyH("CENTER")
     f.Level:SetPoint("CENTER", ring.Disc, "CENTER", 0, 0)
-    -- (11-14) through FlareUI's font setter: a file not loaded yet falls back to the client's font and
+    -- through FlareUI's font setter: a file not loaded yet falls back to the client's font and
     -- retries; a raw SetFont left the party tiles' level (no font of its own) blank
     ns.SetFontUnscaled(f.Level, LEVEL_FONT, math.max(8, math.floor(LEVEL_FONT_SIZE * k + 0.5)), "")
     f.Level:SetShadowOffset(1, -1)
@@ -1179,7 +1175,7 @@ local function BuildPlate(f)
     plate:SetAllPoints(f)
     plate.pieces = {}
     for i = 1, (#PLATE.cutX - 1) * (#PLATE.cutY - 1) do plate.pieces[i] = plate:CreateTexture(nil, "BACKGROUND") end
-    -- (11-15, Malkkav) Threat / Combat Glow on the plate: a lit copy of its art over it, tinted and
+    -- Threat / Combat Glow on the plate: a lit copy of its art over it, tinted and
     -- pulsing with the ring's tint (one animation group, so every piece beats together). Added
     -- light: the bright metal glows, the dark slots stay dark.
     plate.glow = {}
@@ -1261,6 +1257,7 @@ function Ring.LayoutPlate(f)
             end
         end
     end
+    plate.glowOn = nil   -- the lit copy's art was set again: Ring.PlateGlow redoes its colour
     for holder in pairs(plate.dispelCopies or {}) do Ring.SyncPlateDispel(plate, holder) end
     local n = PLATE.name
     PlaceOnPlate(plate.NameBox, f, s, flip, n[1], n[2], n[3], n[4])
@@ -1287,7 +1284,7 @@ function Ring.LayoutPlate(f)
     local UF = ns.UnitFrames
     local split = power > 0 and strip and UF and UF.ShiftManaShown and UF.ShiftManaShown(f)
     if split then
-        -- (11-17, Malkkav) Mana on Shapeshift: the power slot split in half, power above, mana below,
+        -- Mana on Shapeshift: the power slot split in half, power above, mana below,
         -- with the other styles' line between
         PlaceBar(f.Health, f, s, flip, PLATE.health)
         PlaceBar(f.Power, f, s, flip, PLATE.powerTop)
@@ -1316,7 +1313,7 @@ function Ring.LayoutPlate(f)
     Ring.UpdatePlate(f)
 end
 
--- (11-17, Malkkav) the dispel highlight tints the plate's bronze too: a grey copy of the plate's art
+-- the dispel highlight tints the plate's bronze too: a grey copy of the plate's art
 -- over it in the debuff type's colour, drawn as the portrait ring's dispel tint (DispelTint) so both
 -- read as one colour and beat as one (added light washed blue out to white on the bronze). Its own
 -- copy: Blizzard shows and tints these for a dispellable debuff. At the plate's own level, under the
@@ -1380,9 +1377,8 @@ function Ring.PlatePowerText(f)
     return Ring.PlatePower(f) >= 6
 end
 
--- the name box's glow in the unit's reaction colour. (11-17, Malkkav / avnerstitch) Another player
--- character's in their class colour while the frame's Class Colours is on. None on your own frame
--- (Malkkav: left out) and the pet's.
+-- the name box's glow in the unit's reaction colour; another player character's in their class
+-- colour while the frame's Class Colours is on. None on your own frame and the pet's.
 function Ring.UpdatePlate(f)
     local plate = f.PlateFrame
     if not (plate and plate:IsShown()) then return end
@@ -1479,7 +1475,7 @@ function Ring.IconSpot(f, key)
     if key == "leader" then dy = g.H / 2 - 2 end
     -- the raid marker: smaller than Blizzard's and a little lower, clear of Show Threat's number
     if key == "raidIcon" then w, h, dy = w * 0.75, h * 0.75, dy - 3 end
-    -- (11-17, Malkkav) the flag carriers' faction crest: big, centred on the ring's outer edge
+    -- the flag carriers' faction crest: big, centred on the ring's outer edge
     if key == "role" and f.ctx and f.ctx.factionIcon then
         local size = g.D * 0.75   -- three quarters of the ring's width
         dx, dy, w, h = (g.side == "RIGHT" and 1 or -1) * (g.R + size * 0.2), 0, size, size
@@ -1575,7 +1571,7 @@ function Ring.Update(f)
 
     -- the elite / rare frame, as Forever picks it (gold elite, silver rare, winged gold boss)
     ring.Boss:Hide()
-    -- (11-17, Malkkav) not on the flag carriers (ctx.noRank): they borrow the boss ring, not its art
+    -- not on the flag carriers (ctx.noRank): they borrow the boss ring, not its art
     if blizz.boss and not (f.ctx and f.ctx.noRank) and (exists or sample) and GetBossPortraitFrameData then
         local ok, atlas, ox, oy
         if sample then
@@ -1609,7 +1605,7 @@ function Ring.Update(f)
     f.Level:SetAlpha(skull and 0 or 1)
 
     -- the player: the ring tinted red and swords in combat, else gold and the corner piece resting.
-    -- (11-15) The red with Combat Glow (Look), the gold with the Resting icon's Show switch.
+    -- The red with Combat Glow (Look), the gold with the Resting icon's Show switch.
     if kind == "player" then
         local combat = Readable(UnitAffectingCombat("player"))
         local resting = not combat and Readable(IsResting())
@@ -1633,14 +1629,18 @@ function Ring.Update(f)
     Ring.UpdateThreat(f)
 end
 
--- Threat: the ring's border tinted in Blizzard's colours, pulsing (was a separate flash line). Tiles off the plate use their border instead; on
--- it a party member flashes for its own aggro, a boss for the player's threat on it.
--- The ring's border tinted and pulsing: the threat colour, else the player's rest / combat colour
--- the plate's lit copy (Forever Style): shown in the tint's colour, or hidden
+-- Threat: the ring's border tinted in Blizzard's colours, pulsing; else the player's rest / combat
+-- colour. Tiles off the plate use their border instead; on it a party member flashes for its own
+-- aggro, a boss for the player's threat on it.
+-- The plate's lit copy (Forever Style): shown in the tint's colour, or hidden
 function Ring.PlateGlow(f, color)
     local plate = f and f.PlateFrame
     if not (plate and plate.glow) then return end
     local on = color and plate:IsShown()
+    -- (threat events come often in a fight: the same state again leaves the pieces as they are)
+    local r, gg, b = on and color[1], on and color[2], on and color[3]
+    if plate.glowOn == (on and true or false) and plate.glowR == r and plate.glowG == gg and plate.glowB == b then return end
+    plate.glowOn, plate.glowR, plate.glowG, plate.glowB = on and true or false, r, gg, b
     for _, g in ipairs(plate.glow) do
         if on then g:SetVertexColor(color[1], color[2], color[3]) end
         g:SetShown(on and true or false)
@@ -1648,15 +1648,18 @@ function Ring.PlateGlow(f, color)
     if not on then plate.GlowPulse:Stop() end
 end
 
--- (11-15) every pulse of one frame starts together, so the ring, the plate and the border (Threat /
--- Combat Glow, UnitFrames.lua UF.SetBorderGlow) are bright at the same moment
+-- every pulse of one frame starts together, so the ring, the plate and the border (Threat / Combat
+-- Glow, UnitFrames.lua UF.SetBorderGlow) are bright at the same moment
+-- (a numeric loop: a frame without a ring or plate leaves nil holes, where ipairs would stop)
 function Ring.SyncPulses(f)
     local ring = f and f.RingFrame
     local plate = f and f.PlateFrame
     local border = f and f.Border and f.Border.FlareUI_Pulse
-    for _, group in ipairs({ ring and ring.Tint and ring.Tint:IsShown() and ring.Pulse,
-                             plate and plate.glow and plate.glow[1] and plate.glow[1]:IsShown() and plate.GlowPulse,
-                             border and border:IsPlaying() and border }) do
+    local groups = { ring and ring.Tint and ring.Tint:IsShown() and ring.Pulse,
+                     plate and plate.glow and plate.glow[1] and plate.glow[1]:IsShown() and plate.GlowPulse,
+                     border and border:IsPlaying() and border }
+    for i = 1, 3 do
+        local group = groups[i]
         if group then group:Stop(); group:Play() end
     end
 end
@@ -1675,7 +1678,7 @@ local function ApplyTint(ring, color)
     end
 end
 
--- (11-16, Malkkav) Dispel Highlight on a ring tile: the portrait border again, in grey, for Blizzard to
+-- Dispel Highlight on a ring tile: the portrait border again, in grey, for Blizzard to
 -- show and colour with a dispellable debuff (the type can be secret: only Blizzard knows the colour).
 -- parent: the highlight's button, or Edit Mode's sample. It follows the ring's layout.
 function Ring.SyncDispelTint(ring, holder)
@@ -1685,7 +1688,7 @@ function Ring.SyncDispelTint(ring, holder)
     tex:ClearAllPoints()
     for i = 1, ring.Art:GetNumPoints() do tex:SetPoint(ring.Art:GetPoint(i)) end
     holder.Mask:SetSize(ring.TintMask:GetSize())
-    -- over the ring's art, under its icons, disc and crest (as the threat tint, 11-16 Malkkav)
+    -- over the ring's art, under its icons, disc and crest (as the threat tint)
     holder:SetFrameLevel(ring:GetFrameLevel() + 1)
     holder:SetShown(ring.hasArt and true or false)
 end
@@ -1716,7 +1719,7 @@ function Ring.DispelTint(f, parent)
     return holder.Tex
 end
 
--- (11-15) Threat Glow (Look) on every frame with a ring, tiles too (their border pulses with it,
+-- Threat Glow (Look) on every frame with a ring, tiles too (their border pulses with it,
 -- PartyFrames.lua UpdateThreat); the player's threat goes with Combat Glow. None in Edit Mode.
 function Ring.UpdateThreat(f)
     local ring = f.RingFrame
@@ -1904,7 +1907,7 @@ local function ApplySmallPreset(db, pet, unit)
         pet.height = Half(player.height, 60)
         pet.ringSize = Half(player.ringSize, FOREVER[from].ringSize)
     end
-    -- (11-17, Malkkav's setup) the pet a little bigger than half the player frame
+    -- the pet a little bigger than half the player frame
     if unit == "pet" then
         if db.plateStyle then ApplyPlateScale(pet, Ring.PET_PLATE_SCALE) else pet.height = Ring.PET_RING_HEIGHT end
     end
@@ -2137,11 +2140,10 @@ function Ring.SetStyle(style)
     db.plateStyle = style == "forever"
 end
 
--- 11-10: a style's setup for a unit, for a settings preview's sample. Never written to the profile:
+-- A style's setup for a unit, for a settings preview's sample. Never written to the profile:
 -- writes land on the returned table. The setup in use for the style in use; else the style's stored
 -- setup, or the preset a first switch would apply, over the defaults.
--- preset: the style's own look only (the Frame Style cards, 11-11): the card picked drew the player's
--- live setup and changed shape as it was picked
+-- preset: the style's own look only (the Frame Style cards), never the player's live setup
 function Ring.SampleUnitDb(style, unit, preset)
     local db = GetDb()
     if not db or not STYLE_SLOT[style] then return nil end
@@ -2189,12 +2191,12 @@ function Ring.PetDefaults(unit)
     local player = FOREVER.player
     return {
         width = math.floor(player.width * PET_SHARE + 0.5),
-        -- (11-17) the pet's own height (Ring.PET_RING_HEIGHT), the target-of frames half the player's
+        -- the pet's own height (Ring.PET_RING_HEIGHT), the target-of frames half the player's
         height = unit == "pet" and Ring.PET_RING_HEIGHT or math.floor(player.height * PET_SHARE + 0.5),
         powerHeight = math.floor(player.powerHeight * PET_SHARE + 0.5), healthText = "percent", showLevel = unit == "pet",
         powerText = "value", texture = "FlareUI Forever", border = player.border, absorbTexture = "FlareUI Striped",
         buffs = "OFF", debuffs = "OFF", auraSize = 12, castbar = false,
-        -- (11-17, Malkkav) Mirror Bars on for the target-of frames, in every style
+        -- Mirror Bars on for the target-of frames, in every style
         mirror = unit ~= "pet" or nil,
     }
 end

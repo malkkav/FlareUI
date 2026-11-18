@@ -51,39 +51,35 @@ local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.minimap
 end
 
--- Drawer Style (11-17, Malkkav; minimap.drawerStyle, needs a reload):
+-- Drawer Style (minimap.drawerStyle, needs a reload):
 --   "disabled"  no drawer (Blizzard's own addon compartment is back); the badge stays, a plain badge
---   "sundial"   the badge opens the drawer (the default, as before)
+--   "sundial"   the badge opens the drawer (the default)
 --   "blizzard"  Blizzard's little addon compartment button under the calendar opens it, with the count
--- Addons in the Drawer on None (minimap.buttonBag false) still turns the drawer off and keeps the badge
--- (players who chose None before keep their look).
-Bag.STYLES = { "disabled", "sundial", "blizzard" }
+-- A saved minimap.buttonBag false (Addons in the Drawer on None) also turns the drawer off and keeps
+-- the badge.
 function Bag.Style()
     local db = GetDb()
     local style = db and db.drawerStyle
     if style == "disabled" or style == "blizzard" then return style end
-    -- (11-17) Sundial off: the drawer can't open from it (the switch moves a saved Sundial to Blizzard)
+    -- Sundial off: the drawer can't open from it (the switch moves a saved Sundial to Blizzard)
     if db and db.sundial == false then return "blizzard" end
     return "sundial"
 end
 
--- Sundial (Map Tools, 11-17, Malkkav; minimap.sundial, on): the day/night badge shown. Only this switch
--- hides it (Drawer Style Disabled no longer does, Malkkav); Group Finder Icon and Vehicle Exit Icon then
--- move to the map's bottom corners (MinimapEye.lua, MinimapVehicle.lua)
+-- Sundial (Map Tools; minimap.sundial, on): the day/night badge shown. Only this switch hides it
+-- (Drawer Style Disabled keeps it); without it the minimap icons stack up from the map's bottom-left
+-- corner (MinimapEye.lua SquareSpot)
 function Bag.SundialShown()
     local db = GetDb()
     return not (db and db.sundial == false)
 end
--- (without it: Group Finder Icon on the bottom-left corner, Vehicle Exit Icon on the bottom-right one)
 
 function Bag:IsOn()
     local db = GetDb()
     return db and db.buttonBag ~= false and Bag.Style() ~= "disabled" or false
 end
 
--- Open on Mouseover (minimap.bagHover, off): pointing at the badge opens the drawer, and it closes a
--- moment after the pointer leaves both, as EnhanceQoL's button sink does
--- Drawer Button Size (11-14): 100..150 percent of C.BUTTON; the panel grows to fit
+-- Drawer Button Size: 100..150 percent of C.BUTTON; the panel grows to fit
 function Bag.ButtonSize()
     local db = GetDb()
     local pct = tonumber(db and db.bagButtonSize) or 100
@@ -91,6 +87,8 @@ function Bag.ButtonSize()
     return math.floor(C.BUTTON * pct / 100 + 0.5)
 end
 
+-- Open on Mouseover (minimap.bagHover, off): pointing at the badge opens the drawer, and it closes a
+-- moment after the pointer leaves both
 local function HoverOn()
     local db = GetDb()
     return db and db.bagHover == true or false
@@ -101,22 +99,32 @@ local function StripText(text)
     return (text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", ""):gsub("|A.-|a", ""))
 end
 
+-- A data object's name in the list: its label, else a launcher's text. A data source's text is what
+-- it shows right now, as a quest objective ("Whitestone Oak Lumber: 1/1"), so a data source without a
+-- label goes by its registered name instead
+function Bag.ObjectLabel(object, name)
+    local label = StripText(object.label)
+    if label == "" and object.type ~= "data source" then label = StripText(object.text) end
+    if label == "" then label = StripText(name) end
+    return label
+end
+
 --------------------------------------------------
 -- 2. SOURCES
 --------------------------------------------------
 local function LibDBIcon() return LibStub and LibStub("LibDBIcon-1.0", true) end
 local function LibDataBroker() return LibStub and LibStub("LibDataBroker-1.1", true) end
 
--- Addons in the Drawer (11-13, Malkkav: replaces Shift+Right-Click "Keep on the Minimap", which clashed
--- with addons' own right-click menus): a list on the Minimap page. An addon unticked there
+-- Addons in the Drawer: a list on the Minimap page. An addon unticked there
 -- (minimap.bagLeave[id], id "ldb:<name>" / "frame:<name>" / "compartment:<title>") is left alone: its
 -- button isn't parked, moved or redrawn, and it has no icon in the drawer. Ticked is the default, so a
--- new addon goes in. The old bagKeep choices become left-alone ones, once.
+-- new addon goes in. Saved bagKeep choices (an older Shift+Right-Click option) become left-alone
+-- ones, once.
 local known = {}   -- id -> label, every addon the drawer has seen (for the settings list)
 
 -- OneForAll's "Collect minimap buttons" (OneForAllDB.qol.mmCollect) gathers the same buttons, but only
--- from the minimap: while it is on, the addon buttons stay there for it (6.4.1, a player: its bar
--- was empty). The drawer keeps the addon compartment entries. Read as the drawer builds: a change
+-- from the minimap: while it is on, the addon buttons stay there for it, or its bar would be empty.
+-- The drawer keeps the addon compartment entries. Read as the drawer builds: a change
 -- in OneForAll applies at the next reload.
 function Bag.OtherCollector()
     local loaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("OneForAll")
@@ -159,13 +167,24 @@ local function IsLibDBIconButton(frame, name)
     return id ~= nil and lib ~= nil and lib:GetMinimapButton(id) == frame
 end
 
--- A minimap pin registered with HereBeDragons
-local function IsMapPin(frame)
+-- HereBeDragons' pin lookup tables, read once per sweep rather than once per child
+local function PinSets()
+    local sets = {}
     for _, major in ipairs(C.PIN_LIBS) do
         local pins = LibStub and LibStub(major, true)
-        if pins and ((pins.minimapPins and pins.minimapPins[frame]) or (pins.activeMinimapPins and pins.activeMinimapPins[frame])) then
-            return true
+        if pins then
+            if pins.minimapPins then sets[#sets + 1] = pins.minimapPins end
+            if pins.activeMinimapPins then sets[#sets + 1] = pins.activeMinimapPins end
         end
+    end
+    return sets
+end
+
+-- A minimap pin registered with HereBeDragons
+local function IsMapPin(frame, sets)
+    sets = sets or PinSets()
+    for i = 1, #sets do
+        if sets[i][frame] then return true end
     end
     return false
 end
@@ -183,10 +202,10 @@ end
 
 -- An addon's minimap button: named or wearing the button border, unprotected, small, clickable, and not
 -- Blizzard's, LibDBIcon's, FlareUI's or a map pin
-local function IsForeignButton(frame)
+local function IsForeignButton(frame, sets)
     if not (frame and frame.IsObjectType and frame:IsObjectType("Button")) then return false end
-    -- (11-13 performance pass) pins first: the cheapest test, and gathering addons add thousands
-    if frame:IsForbidden() or frame:IsProtected() or IsMapPin(frame) then return false end
+    -- pins first: the cheapest test, and gathering addons add thousands
+    if frame:IsForbidden() or frame:IsProtected() or IsMapPin(frame, sets) then return false end
     local name = frame:GetName()
     if name then
         if IsLibDBIconButton(frame, name) then return false end
@@ -204,6 +223,17 @@ local function IsForeignButton(frame)
     if not (frame:GetScript("OnClick") or frame:GetScript("OnMouseUp")) then return false end
     local w, h = frame:GetSize()
     return (w or 0) > 8 and (w or 0) <= 48 and (h or 0) > 8 and (h or 0) <= 48
+end
+
+-- Other addons' buttons on one of the map's frames (not LibDBIcon's): for Minimap.lua, which lifts the
+-- ones left out of the drawer above the border. None when there are too many (some addon's pins).
+function Bag.ForeignButtons(parent, sets)
+    local found = {}
+    for _, child in ipairs(parent and { parent:GetChildren() } or {}) do
+        if IsForeignButton(child, sets) then found[#found + 1] = child end
+    end
+    if #found > C.MAX_FOREIGN then wipe(found) end
+    return found
 end
 
 -- The addon folder that made a button with no name, from where the client says it was created
@@ -229,13 +259,13 @@ end
 -- An adopted button's label: its data object's text, else its frame name or its addon's title
 local function FrameLabel(frame)
     local object = type(frame.dataObject) == "table" and frame.dataObject or nil
-    local label = object and StripText(object.label or object.text) or ""
+    local label = object and Bag.ObjectLabel(object) or ""
     if label ~= "" then return label end
     local name = frame:GetName()
     local addon = SourceAddon(frame)
     if name then
         name = name:gsub("^LibDBIcon10_", "")
-        -- (11-13) its addon's title when it names the same addon: "Social Diary", not "SocialDiaryMinimapButton"
+        -- its addon's title when it names the same addon: "Social Diary", not "SocialDiaryMinimapButton"
         local title = addon and StripText(C_AddOns.GetAddOnTitle(addon) or "") or ""
         if title ~= "" and NameKey(title) ~= "" and NameKey(title) == NameKey(name) then return title end
         return name
@@ -305,11 +335,11 @@ local function CollectEntries()
     if lib and ldb then
         for _, name in ipairs(lib:GetButtonList() or {}) do
             local frame = lib:GetMinimapButton(name)
-            -- (11-13, the research: an addon can register its button under another name than its data
-            -- object, RareScanner's "RareScannerMinimapIcon" for "RareScannerLDB": the button carries it)
+            -- an addon can register its button under another name than its data object
+            -- ("RareScannerMinimapIcon" for "RareScannerLDB"): the button carries it
             local object = ldb:GetDataObjectByName(name) or (frame and type(frame.dataObject) == "table" and frame.dataObject)
             if object and frame then
-                local label = StripText(object.label or object.text or name)
+                local label = Bag.ObjectLabel(object, name)
                 label = label ~= "" and label or name
                 known["ldb:" .. name] = label
                 -- one unticked by the name of its compartment entry (the list had both) is left alone too
@@ -340,9 +370,11 @@ local function CollectEntries()
     -- other addons' buttons; a flood of them, hidden ones included, is some addon's pins, so none are
     -- taken. One its addon or player has hidden waits on the minimap until it's shown
     local found = {}
-    for _, parent in ipairs({ Minimap, MinimapBackdrop, MinimapCluster }) do
+    local sets = PinSets()
+    -- (the button holder: left-out buttons Minimap.lua lifted above the border)
+    for _, parent in ipairs({ Minimap, MinimapBackdrop, MinimapCluster, ns.Minimap and ns.Minimap.ButtonHolder }) do
         for _, child in ipairs(parent and { parent:GetChildren() } or {}) do
-            if not adopted[child] and IsForeignButton(child) then found[#found + 1] = child end
+            if not adopted[child] and IsForeignButton(child, sets) then found[#found + 1] = child end
         end
     end
     if #found <= C.MAX_FOREIGN then
@@ -396,19 +428,18 @@ local function EntryId(e) return e.kind .. ":" .. e.name end
 
 -- Addons in the Drawer's list: every addon seen, A to Z, as { token, label } (a comma in an id would
 -- split the saved list, so tokens have none), and the drawer's choice for each
--- (11-13: one addon can be there twice, its button and its compartment entry, e.g. RareScanner: one tick
--- box per name covers both, so unticking it really leaves the button alone)
+-- (one addon can be there twice, its button and its compartment entry: one tick box per name covers
+-- both, so unticking it really leaves the button alone)
 local tokenIds = {}   -- token -> { id, ... }
 function Bag.AddonChoices()
     if not next(known) then pcall(CollectEntries) end
     local list, byKey = {}, {}
     wipe(tokenIds)
-    -- (11-14, a player) while OneForAll collects the minimap buttons, only compartment entries can go in:
-    -- the buttons it takes are not offered (ticking them did nothing)
+    -- while OneForAll collects the minimap buttons, only compartment entries can go in: the buttons it
+    -- takes are not offered (ticking them would do nothing)
     local other = Bag.OtherCollector()
-    -- one row per addon (11-13, Malkkav: BtWQuests listed twice): its compartment entry, data object and
-    -- own button are matched loosely by name (NameKey: "BtWQuests" = "BtWQuestsMinimapButton"), shown by
-    -- the shortest of their labels
+    -- one row per addon: its compartment entry, data object and own button are matched loosely by
+    -- name (NameKey: "BtWQuests" = "BtWQuestsMinimapButton"), shown by the shortest of their labels
     for id, label in pairs(known) do
       if not (other and (id:find("^ldb:") or id:find("^frame:"))) then
         local key = NameKey(label)
@@ -452,8 +483,7 @@ function Bag.SetInDrawer(value)
     if ns.Minimap and ns.Minimap.UpdateFlareButton then ns.Minimap.UpdateFlareButton() end
 end
 
--- FlareUI itself (its compartment entry). (11-14, Malkkav) FlareUI Minimap Button (minimap.flareButton,
--- on) says whether FlareUI has a button at all; the drawer only says where: in it, unless unticked in
+-- FlareUI itself (its compartment entry). FlareUI Minimap Button (minimap.flareButton, on) says whether FlareUI has a button at all; the drawer only says where: in it, unless unticked in
 -- Addons in the Drawer, then on the minimap (Minimap.lua MM.UpdateFlareButton). Off, it is in neither.
 local FLARE_ID = "compartment:FlareUI"   -- (the TOC title, as the compartment lists it)
 function Bag.FlareOn()
@@ -611,7 +641,7 @@ end
 
 -- Beside the badge, towards the middle of the screen
 local function AnchorPanel()
-    -- (11-17) Blizzard style: beside the compartment button; else beside the badge
+    -- Blizzard style: beside the compartment button; else beside the badge
     local badge = (Bag.Style() == "blizzard" and badgeButton) or (MinimapCluster and MinimapCluster.DielFrame)
     if not badge then return end
     -- the badge's own units (its scale and Edit Mode's) to UIParent's
@@ -679,9 +709,8 @@ function Bag:Layout()
             -- the addon's own button, moved into the cell
             frame = e.frame
             frame:SetParent(panel)
-            -- (11-13, a player: Social Diary's button dimmed and dead in the drawer) a button that fixed
-            -- its own strata and level (Social Diary: MEDIUM 8, SetFixedFrameStrata/Level) kept them
-            -- under the panel; the drawer holds it until a reload, so they're unfixed while it's here
+            -- a button that fixed its own strata and level (SetFixedFrameStrata/Level) would stay under
+            -- the panel, dimmed and dead; the drawer holds it until a reload, so they're unfixed here
             if frame.HasFixedFrameStrata and frame:HasFixedFrameStrata() then frame:SetFixedFrameStrata(false) end
             if frame.HasFixedFrameLevel and frame:HasFixedFrameLevel() then frame:SetFixedFrameLevel(false) end
             -- its own strata or a lower level would put it under the panel
@@ -702,7 +731,6 @@ function Bag:Layout()
             Bag.SizeIconButton(frame, size)
             frame.entry = e
             SetIcon(frame.icon, e.kind == "ldb" and e.object.icon or e.data.icon, e.kind == "ldb" and e.object or nil)
-            -- kept on the minimap: dimmed here
             frame:SetAlpha(1)
             frame:ClearAllPoints()
             frame:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y)
@@ -819,7 +847,7 @@ end
 
 -- Hover mode: how long the pointer may be away from the badge and the drawer before it closes. A
 -- menu an icon opened, or an icon being dragged, keeps it open.
-local HOVER_CLOSE = 0.15   -- (0.5 until 11-11: too slow, Malkkav)
+local HOVER_CLOSE = 0.15
 local hoverWatch = CreateFrame("Frame")
 hoverWatch:Hide()
 hoverWatch:SetScript("OnUpdate", function(self, elapsed)
@@ -901,7 +929,7 @@ local function CreateBadgeButton()
     badgeButton:SetScript("OnEnter", OpenOnHover)
 end
 
--- (11-17, Malkkav) Blizzard style: Blizzard's addon compartment button as it looks (its atlas, its count
+-- Blizzard style: Blizzard's addon compartment button as it looks (its atlas, its count
 -- of addons, its hover light), our own button in its place under the calendar (Blizzard's stays hidden
 -- while the drawer is on, Minimap.lua). The count is the drawer's addons.
 local function CreateCompartmentButton()
@@ -939,13 +967,19 @@ local function CreateCompartmentButton()
     badgeButton:SetScript("OnMouseUp", function(self) self.Add:SetAlpha(0.1) end)
 end
 
+-- the open drawer beside the badge again after the player slid or resized the sundial along the map's
+-- edge (Minimap.lua MM.Moves): it may now be past the screen's middle
+function Bag.Reanchor()
+    if panel and panel:IsShown() then AnchorPanel() end
+end
+
 -- the compartment button's number: how many addons the drawer holds
 function Bag.UpdateCount()
     if badgeButton and badgeButton.Text then badgeButton.Text:SetText(#entries) end
 end
 
--- Sundial off hides the day/night badge (its look only: the game still runs it). The game or another addon setting its opacity again
--- puts it straight back to unseen.
+-- Sundial off hides the day/night badge (its look only: the game still runs it). The game or another
+-- addon setting its opacity again puts it straight back to unseen.
 function Bag.ApplyStyle()
     local sun = MinimapCluster and MinimapCluster.DielFrame
     if not sun or Bag.SundialShown() then return end

@@ -6,9 +6,8 @@ local L = ns.L
 -- Show conditions (always | mouseover | any of combat, hastarget, attackable, ingroup, unmounted), fade groups 1-5,
 -- Show Speed, Hide Speed and Faded Opacity for the action bars, bag bar, micro menu, XP bar, minimap, buffs, debuffs,
 -- quest tracker and the player, pet, target, focus and target-of unit frames (fade groups: the player and pet only), set in each element's Edit Mode dialog, plus the Blizzard pieces hidden for good. Fake CM bars follow profile.fcm.show and never the mouse.
--- (11-15) Also the chat (every chat window, with New Messages and a Fade Delay), the damage meter (which fades
--- itself: this module says when it is wanted) and the separate threat window, their fading moved out of the
--- settings window.
+-- Also the chat (every chat window, with New Messages and a Fade Delay), the damage meter (which fades
+-- itself: this module says when it is wanted) and the separate threat window.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -56,7 +55,7 @@ local ELEMENTS = {
     { key = "bar8", frame = "MultiBar7", system = "ActionBar", index = "ExtraBar3" },
     { key = "pet", frame = "PetActionBar", system = "ActionBar", index = "PetActionBar" },
     { key = "stance", frame = "StanceBar", system = "ActionBar", index = "StanceBar" },
-    -- Blizzard's shaman Totem Bar (11-11, a shaman asked): fade groups, and a Size row (ActionBars.lua)
+    -- Blizzard's shaman Totem Bar: fade groups, and a Size row (ActionBars.lua)
     { key = "totem", frame = "MultiCastActionBarFrame", system = "TotemActionBar" },
     -- The gryphons: on Forever each is its own Edit Mode system and ignores bar 1's alpha. By default
     -- each follows bar 1 (Same as Action Bar 1, "bar1"); any other choice, or a fade group, detaches it.
@@ -74,10 +73,10 @@ local ELEMENTS = {
     { key = "quest", module = "objectivetracker" },
     -- The unit frames (UnitFrames.lua section 14). own: the fader keeps the value and sets it through
     -- apply (an alpha left by the health curve can't be read back); health: Missing Health, from that unit
-    -- instant: a unit frame (own speeds only, Instant until picked, 11-17); noOpacity: no Faded Opacity (faded right out)
-    -- noGroup: never in a fade group. The player and pet frames can join one (11-15, Malkkav): they then
-    -- fade at the group's speeds, and pointing at either brings the whole group back.
-    -- mana: Missing Mana too (the player frame only, 11-11)
+    -- instant: a unit frame (own speeds only, Instant until picked); noOpacity: no Faded Opacity (faded right out)
+    -- noGroup: never in a fade group. The player and pet frames can join one: they then fade at the
+    -- group's speeds, and pointing at either brings the whole group back.
+    -- mana: Missing Mana too (the player frame only)
     { key = "uf_player", unit = "player", module = "unitframes", own = true, instant = true, health = "player", mana = true },
     { key = "uf_pet", unit = "pet", module = "unitframes", own = true, instant = true, health = "pet" },
     { key = "uf_target", unit = "target", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
@@ -86,10 +85,10 @@ local ELEMENTS = {
     { key = "uf_focustarget", unit = "focustarget", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
     -- the FlareUI Player Cast Bar: Visibility and Faded Opacity only. Not with Cinematic, which fades it
     -- between fights itself (its bar then ignores the holder's alpha)
-    -- never (11-15, Sam): a Never choice, so neither FlareUI's bar nor Blizzard's shows (the player frame's
+    -- never: a Never choice, so neither FlareUI's bar nor Blizzard's shows (the player frame's
     -- own Cast Bar can take over); Edit Mode still shows it
     { key = "uf_playercastbar", castbar = true, module = "unitframes", own = true, noGroup = true, instant = true, never = true },
-    -- FlareUI Totems (Totems.lua, 11-15, a player asked): fade groups, and never: a Never choice that
+    -- FlareUI Totems (Totems.lua): fade groups, and never: a Never choice that
     -- keeps them out for good (Edit Mode still shows them)
     { key = "uf_totems", totems = true, module = "unitframes", never = true },
     -- The resource bars (ResourceBars.lua), fade groups allowed. They still hide on their own where they
@@ -105,15 +104,16 @@ local ELEMENTS = {
     { key = "rb_flight", bar = "flight", own = true },   -- the Flight Timer: it shows only in flight itself
     { key = "rb_timer", bar = "timer", own = true },     -- Timer Bars: they show only while a timer runs
     { key = "rb_seal", bar = "seal", own = true },       -- Seals: a seal's bar shows only while that seal is up
-    -- (11-15, Malkkav) the chat, the damage meter and the separate threat window: their fading moved
-    -- out of the settings window into their Edit Mode dialogs. page: the settings page whose search
-    -- lists the rows (EditSystems). delay: a Fade Delay row and its default, in seconds.
+    -- The chat, the damage meter and the separate threat window, faded from their Edit Mode dialogs.
+    -- page: the settings page whose search lists the rows (EditSystems). delay: a Fade Delay row and
+    -- its default, in seconds.
     -- chat: the fader sets every chat window's alpha (Chat.lua FadeApply); typing always shows it, and
     -- New Messages ("messages") is the chat's own condition (Chat.lua section 16)
     { key = "chat", system = "ChatFrame", module = "chat", chat = true, messages = true, delay = 5, page = "ch" },
     -- external: the meter fades itself (DamageMeter.lua section 22: Blizzard shows and hides it, and it
-    -- can't be shown in a fight); the fader only says when it is wanted (ElementShown). Never: the old
-    -- Hidden; In an Instance ("instance"): the meter's and the threat window's own condition
+    -- can't be shown in a fight); the fader only says when it is wanted (ElementShown). Never: only in
+    -- Edit Mode or at its Faded Opacity; In an Instance ("instance"): the meter's and the threat
+    -- window's own condition
     { key = "meter", system = "DamageMeter", module = "damagemeter", external = true, never = true, instance = true,
       delay = 0, page = "dm" },
     -- the separate threat window: Same as Meter ("meter") by default, as a child of the meter it fades with
@@ -172,22 +172,20 @@ local function ForEachEndCap(func, ...)
     if caps.RightEndCap then func(caps.RightEndCap, ...) end
 end
 
-local function SetCapAlpha(cap, alpha) cap:SetAlpha(alpha) end
 -- the gryphons on Same as Action Bar 1, rebuilt by Refresh: cap frame -> true
 local capsFollowBar1 = {}
 local function SetFollowingCapAlpha(cap, alpha) if capsFollowBar1[cap] then cap:SetAlpha(alpha) end end
 
 -- The game draws the minimap's player arrow, quest marks and other blips itself, at full strength
 -- whatever the alpha, and has no API for them: only an empty mask or hiding removes them. So the map goes once
--- it has faded right out (the cluster stays, so pointing at it still brings it back), which is why it
--- has no Faded Opacity, and no fade group that could give it one.
+-- it has faded right out (the cluster stays, so pointing at it still brings it back).
 -- With the Minimap module running, the map is masked empty instead (Minimap.lua MM:SetMapFaded):
 -- gathering addons stop scanning a hidden map. Hiding stays the fallback.
 local minimapFadedOut = false
 local function SetMinimapDrawn(alpha)
     local map = _G.Minimap
-    -- (11-17, Malkkav) the blips go while the map is faded at all (they ignore alpha), so a Faded Opacity
-    -- and a fade group work for the minimap too
+    -- the blips go while the map is faded at all (they ignore alpha), so a Faded Opacity and a fade
+    -- group work for the minimap too
     if ns.Minimap and ns.Minimap.SetIconsFaded then ns.Minimap:SetIconsFaded(alpha < 0.99) end
     if not minimapFadedOut and ns.Minimap and ns.Minimap.SetMapFaded and ns.Minimap:SetMapFaded(alpha <= 0.01) then return end
     if not map or (InCombatLockdown() and map:IsProtected()) then return end
@@ -227,8 +225,8 @@ end
 
 -- The cooldown-finished flash draws at full strength whatever the bar's alpha: a bar faded below
 -- half has it off on its buttons, set again only when the alpha crosses half. Back up, a button gets
--- its own setting back, never the flash forced on (6.4.1, a player: every button flashed as the
--- global cooldown ended; Blizzard's action buttons have it off)
+-- its own setting back, never the flash forced on (Blizzard's action buttons have it off: forced on,
+-- every button flashed as the global cooldown ended)
 local blingOn = setmetatable({}, { __mode = "k" })
 local ownBling = setmetatable({}, { __mode = "k" })   -- cooldown -> its setting before FlareUI's first change
 local function SetBarBling(frame, alpha)
@@ -247,7 +245,7 @@ local function SetBarBling(frame, alpha)
     end
 end
 
--- (11-14, a player's report) ClassicUI Forever moves each bar's buttons out of the bar into its own
+-- ClassicUI Forever moves each bar's buttons out of the bar into its own
 -- holder frames, and copies the bar's alpha onto the holder only now and then (its layout and fade
 -- passes). A faded bar then showed whatever alpha was copied last: bars 4 and 5 popped up on a stance
 -- bar hover. With the buttons taken, FlareUI fades the buttons themselves and leaves the bar at 1, so
@@ -301,8 +299,8 @@ local function ForEachFrameOfKey(key, func, ...)
     end
 end
 
--- 11-12: Mouseover became a condition ticked with the others. Before, any condition also showed the
--- element under the pointer: once per profile, every condition choice gets Mouseover ticked, so
+-- Mouseover is a condition ticked with the others; in older profiles any condition also showed the
+-- element under the pointer. Once per profile, every condition choice gets Mouseover ticked, so
 -- nothing changes until the player unticks it (Fake CM never followed the pointer: left alone)
 local function MigrateMouseToken(db)
     db.mouseToken = true
@@ -325,8 +323,8 @@ local function MigrateMouseToken(db)
     end
 end
 
--- (11-15) The chat's, the damage meter's and the threat window's fading moved from their settings pages
--- into Edit Mode: once per profile, their old settings become their entries here, so nothing changes
+-- The chat's, the damage meter's and the threat window's fading, once set on their settings pages:
+-- once per profile, those old settings become their entries here, so nothing changes
 -- for anyone. The old values stay where they were, unused. Runs after MigrateMouseToken, which must
 -- not add Mouseover to these (the old chat and meter said themselves when the mouse counts).
 local function MigrateMovedFades(db)
@@ -474,14 +472,14 @@ local function ElementGroup(key)
     return cfg and cfg.group and cfg.group > 0 and db.groups and db.groups[cfg.group] or nil
 end
 
--- Show Speed (coming back) and Hide Speed (fading away), 11-15: the one Fade Speed before
--- (fadeSpeed) became two. Nothing is rewritten: an owner without its own fadeIn / fadeOut reads its old
--- fadeSpeed for both, then the profile-wide ones, so nothing changes until a player picks a new speed.
+-- Show Speed (coming back) and Hide Speed (fading away). Nothing is rewritten: an owner without its
+-- own fadeIn / fadeOut reads the single fadeSpeed of older profiles for both, then the profile-wide
+-- ones, so nothing changes until a player picks a new speed.
 local function FadeSpeedOf(key, field)
     local db, group = GetDb(), ElementGroup(key)
     local owner = group or ElementConfig(key)
-    -- (11-17, Malkkav, for a player) a unit frame on its own has its own speeds now: only what was
-    -- picked for it, never the profile-wide speeds, so it stays Instant until a player picks one
+    -- a unit frame on its own has its own speeds: only what was picked for it, never the profile-wide
+    -- speeds, so it stays Instant until a player picks one
     local e = ELEMENT_BY_KEY[key]
     if e and e.instant and not group then return (owner and (owner[field] or owner.fadeSpeed)) or "instant" end
     return (owner and (owner[field] or owner.fadeSpeed)) or (db and (db[field] or db.fadeSpeed)) or "instant"
@@ -576,7 +574,7 @@ local function RestoreMoverOfFrame(frame)
     end
 end
 
--- (11-15) only on a frame that really is hidden: a bar left on screen (a hide that didn't take) keeps a
+-- only on a frame that really is hidden: a bar left on screen (a hide that didn't take) keeps a
 -- selection that can be picked, never a visible bar that Edit Mode can't move
 local function HideMoverOfFrame(frame)
     if not (frame and frame.Selection) then return end
@@ -607,7 +605,7 @@ local function KeepHiddenInEditMode(frame, settingKey)
     frame:HookScript("OnShow", function(f)
         local db = GetDb()
         local editing = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
-        -- (11-15) only while FlareUI still hides it: not after Action Bars went off without a reload
+        -- only while FlareUI still hides it: not after Action Bars went off without a reload
         if db and db[editHideHooked[f]] and f.FlareUI_Hidden and ActionBarsOn() and editing and not InCombatLockdown() then ns.RawHide(f) end
     end)
 end
@@ -713,7 +711,7 @@ end
 
 -- A Visibility is "always", or the conditions ticked in its dropdown joined by commas
 -- ("mouseover,combat"): any one of them shows the element (ns.Conditions). Mouseover is one of those
--- conditions (11-12): nothing shows under the pointer unless it is ticked. Nothing ticked is Always.
+-- conditions: nothing shows under the pointer unless it is ticked. Nothing ticked is Always.
 local Conditions = ns.Conditions
 local SHOW_SPEC = { exclusive = { "always" }, tokens = Conditions.MOUSE_TOKENS, legacy = Conditions.BAR_LEGACY, empty = "always" }
 -- the player and pet frames also show while their unit is missing health (section 6b)
@@ -723,7 +721,7 @@ local HEALTH_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = HEALTH_TOKENS, l
 -- and the player frame while you're missing mana (ticked with Missing Health: either bar under full)
 local MANA_TOKENS = { unpack(HEALTH_TOKENS) }
 MANA_TOKENS[#MANA_TOKENS + 1] = "mana"
--- (11-13) Missing Health and Missing Mana can't be ticked together: Forever hides both values from
+-- Missing Health and Missing Mana can't be ticked together: Forever hides both values from
 -- addons, and two hidden values can't be combined into "either is missing" (/fui fadedebug showed both
 -- hidden out of combat, so the frame stayed shown). Ticking one unticks the other.
 local MANA_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = MANA_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always",
@@ -734,9 +732,8 @@ local INUSE_SPEC = { exclusive = { "always", "inuse" }, tokens = Conditions.MOUS
 local CAP_SPEC = { exclusive = { "bar1", "always" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 -- Never (the totems) clears the rest too: out for good, outside Edit Mode
 local NEVER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
--- (11-15) the chat's New Messages; the meter's Never (the old Hidden) and In an Instance; the threat
+-- the chat's New Messages (right under Mouseover); the meter's Never and In an Instance; the threat
 -- window's Same as Meter and In an Instance. Kept in table fields: the main chunk is near its limit.
--- (11-15, Malkkav) New Messages right under Mouseover
 Visibility.CHAT_SPEC = { exclusive = { "always" }, tokens = { "mouseover", "messages", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted" },
                          legacy = SHOW_SPEC.legacy, empty = "always" }
 Visibility.METER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS,
@@ -802,7 +799,7 @@ local function CheckMember(data, editMode, spellbook, ruleCache)
     if data.owner and data.owner.IsSettingsPreview and data.owner:IsSettingsPreview() then return true end
     -- the totem bar's flyout (a totem's list) stands above the bar: shown while it's open
     if data.key == "totem" and _G.MultiCastFlyoutFrame and _G.MultiCastFlyoutFrame:IsShown() then return true end
-    -- the pointer counts only with Mouseover ticked (11-12: some players don't want it)
+    -- the pointer counts only with Mouseover ticked
     if not data.mouseOK then return false end
     if data.key == "quest" and ns.ObjectiveTracker.IsMouseOverExtras and ns.ObjectiveTracker:IsMouseOverExtras() then return true end
     -- a unit frame's holder has no size: its frame (and a ring style's portrait) is what's pointed at
@@ -953,7 +950,7 @@ local function Values(copyKey, list, fallback)
     return values
 end
 
--- what the Show dropdown ticks, and a click in it (no condition left ticked is Mouseover)
+-- what the Show dropdown ticks, and a click in it (no condition left ticked is Always)
 local function ShowSelection(key) return Conditions.Selection(Visibility:GetShow(key), SpecOf(key)) end
 local function ToggleShow(key, value)
     -- Never can't lead a fade group: the other members would be out for good too
@@ -971,7 +968,7 @@ local SPEED_VALUES = { { text = L["Instant"], value = "instant", isRadio = true 
 
 local function BuildElementSettings(key)
     -- nothing fades while it's always shown (or a swing bar shows and hides itself)
-    -- (the meter's Never still fades it to its Faded Opacity, as the old Hidden did)
+    -- (the meter's Never still fades it to its Faded Opacity)
     local external = ELEMENT_BY_KEY[key] and ELEMENT_BY_KEY[key].external
     local function AlwaysShown()
         local show = Visibility:GetShow(key)
@@ -990,7 +987,7 @@ local function BuildElementSettings(key)
             values = (function()
                 local values = Values("ab.bar.show", SHOW_VALUES, function(v) return v end)
                 local e = ELEMENT_BY_KEY[key]
-                -- (11-13, Malkkav) a line above the pair that can't be ticked together (the player frame)
+                -- a line above the pair that can't be ticked together (the player frame)
                 if e and e.health and e.mana then values[#values + 1] = { isDivider = true } end
                 if e and e.health then values[#values + 1] = { text = L["Missing Health"], value = "health", isRadio = true } end
                 if e and e.mana then values[#values + 1] = { text = L["Missing Mana"], value = "mana", isRadio = true } end
@@ -1024,7 +1021,7 @@ local function BuildElementSettings(key)
                 and L["Same as Meter: it shows and fades with the Damage Meter."])
                 or nil,
         },
-        -- Show Speed and Hide Speed (11-15, Malkkav: the one Fade Speed split in two)
+        -- Show Speed and Hide Speed
         {
             name = L["Show Speed"], kind = LEM.SettingType.Dropdown, default = "instant", values = SPEED_VALUES,
             get = function() return Visibility:GetFadeIn(key) end,
@@ -1041,7 +1038,7 @@ local function BuildElementSettings(key)
         },
         {
             name = L["Faded Opacity"], kind = LEM.SettingType.Slider, default = 0, minValue = 0, maxValue = 100, valueStep = 5,
-            formatter = function(value) return value end,   -- plain: "100%" clips the value box (11-17)
+            formatter = function(value) return value end,   -- plain: "100%" clips the value box
             get = function() return Visibility:GetMinAlpha(key) end,
             set = function(_, value) Visibility:SetElementFade(key, "minAlpha", value) end,
             hidden = AlwaysShown,
@@ -1053,7 +1050,7 @@ local function BuildElementSettings(key)
     if e and e.delay then
         rows[#rows + 1] = {
             name = L["Fade Delay"], kind = LEM.SettingType.Slider, default = e.delay, minValue = 0, maxValue = 30, valueStep = 1,
-            -- (11-15, Malkkav: "Instant" clipped the dialog's edge) seconds, short
+            -- seconds, short (a word clips the dialog's edge)
             formatter = function(value) return value .. "s" end,   -- 0s, not Off: at 0 it still fades (terminology.md)
             get = function() return Visibility:GetFadeDelay(key) end,
             set = function(_, value) Visibility:SetFadeDelay(key, value) end,
@@ -1065,9 +1062,9 @@ local function BuildElementSettings(key)
 end
 
 -- for the unit frames' Fading section (UnitFrames.lua BuildSettings): no title, Faded Opacity on the
--- player and pet only. A fade group on the player and pet only (11-15); every unit frame has its own
--- Show Speed and Hide Speed (11-17), the group's while in one.
--- Link Pet Frame (the player frame's Fading, 11-12, a player's idea): the pet frame fades with the
+-- player and pet only. A fade group on the player and pet only; every unit frame has its own
+-- Show Speed and Hide Speed, the group's while in one.
+-- Link Pet Frame (the player frame's Fading): the pet frame fades with the
 -- player frame, on the player's settings; pointing at either shows both. The pet's own Fading hides.
 function Visibility:PetLinked()
     local db = GetDb()
@@ -1079,7 +1076,7 @@ function Visibility:UnitFrameSettings(unit)
     local rows = BuildElementSettings(key)
     local e = ELEMENT_BY_KEY[key]
     -- rows: 1 Fade Group, 2 Visibility, 3 Show Speed, 4 Hide Speed, 5 Faded Opacity
-    -- (11-17, Malkkav) the two speeds on every unit frame, in a fade group or not
+    -- the two speeds on every unit frame, in a fade group or not
     local kept = {}
     if not (e and e.noGroup) then kept[#kept + 1] = rows[1] end
     kept[#kept + 1] = rows[2]
@@ -1135,10 +1132,9 @@ end
 
 -- for the Minimap module
 function Visibility:MinimapSettings()
-    -- (11-17, Malkkav) with its fade group and Faded Opacity again: the blips now go while it's faded
-    -- (SetMinimapDrawn), so a part-faded map no longer keeps them at full strength
+    -- with its fade group and Faded Opacity: the blips go while it's faded (SetMinimapDrawn)
     local rows = BuildElementSettings("minimap")
-    -- a Fading section that opens and closes like the other dialogs' (11-13, Malkkav: starts closed)
+    -- a Fading section that opens and closes like the other dialogs' (starts closed)
     return ns.EditSection("Fading", rows)
 end
 
@@ -1214,13 +1210,13 @@ local function AddEditModeSettings()
                     })
                 end
                 if e.external then rows = MeterRowsInChat(rows) end
-                -- (11-15, Malkkav) a Fading section that opens and closes, starting closed, like every other
+                -- a Fading section that opens and closes, starting closed, like every other
                 rows = ns.EditSection("Fading", rows)
                 -- the totem bar: Blizzard gives it no Size, FlareUI does (above Fading)
                 if e.key == "totem" and ns.ActionBars and ns.ActionBars.TotemSizeSetting then
                     table_insert(rows, 1, ns.ActionBars.TotemSizeSetting())
                 end
-                -- the bag buttons: below Blizzard's 75% (11-17)
+                -- the bag buttons: sizes below Blizzard's 75%
                 if e.key == "bags" and ns.ActionBars and ns.ActionBars.BagBarSizeSetting then
                     table_insert(rows, 1, ns.ActionBars.BagBarSizeSetting())
                 end
@@ -1266,13 +1262,13 @@ local HIDE_KEYS = {
 -- 8b. UNIT FRAMES AND MISSING HEALTH
 -- The fader keeps each unit frame's value itself and sets it through apply: with Missing Health the
 -- holder's alpha comes from the unit's (secret) health, which Lua can't compare. A step curve turns
--- the health percent into the alpha: 1 below full, the fader's value at full (as the old Fade Player
--- and Pet did). Health changes apply it again.
+-- the health percent into the alpha: 1 below full, the fader's value at full. Health changes apply it
+-- again.
 --------------------------------------------------
 local unitValues, healthCurves = {}, {}   -- key -> the fader's last value; key -> its curve
 local healthMembers = {}                  -- members applied through the curve, rebuilt by Refresh
 
--- Missing Mana (the player frame, 11-11) the same way, through UnitPowerPercent: mana can be secret
+-- Missing Mana (the player frame) the same way, through UnitPowerPercent: mana can be secret
 -- too. With both ticked the frame shows while either is under full. Two secret answers can't be
 -- joined in Lua, so a readable one decides (missing: shown; full: the other's answer counts), and with
 -- both secret the frame shows.
@@ -1300,7 +1296,7 @@ local function StepCurve(store, key, alpha)
         curve:SetType(Enum.LuaCurveType.Step)
         store[key] = curve
     end
-    -- (11-13 performance pass) rebuilt only when the alpha changes, not on every health tick
+    -- rebuilt only when the alpha changes, not on every health tick
     -- (the alpha kept in FlareUI's own table: the curve is Blizzard's object)
     local seen = key .. "_alpha"
     if store[seen] ~= alpha then
@@ -1420,6 +1416,8 @@ local function TellMeter()
 end
 
 function Visibility:Refresh()
+    -- (a Reset Settings in Edit Mode runs this once, after its last setting: LEM:Defer)
+    if LEM:Defer(Visibility.Refresh, Visibility) then return end
     -- In a fight only the fader is rebuilt (alpha, allowed on protected frames), so a Show or fade
     -- change counts at once; hiding for good waits, and the whole pass runs again when the fight
     -- ends (OnVisibilityStateChange)
@@ -1427,14 +1425,12 @@ function Visibility:Refresh()
     self.refreshPending = inCombat or nil
     local db = GetDb()
     if not db then return end
-    -- (11-17) the minimap's fade group and Faded Opacity are its own again (they were forced off while
-    -- its blips couldn't fade)
     -- A frame hidden for good stays hidden in Edit Mode, its selection made invisible; lifting the hide
     -- would lose whether the frame comes back when the option goes off.
-    -- (11-15, a warrior's report: the stance bar showed but couldn't be picked in Edit Mode) whatever is
-    -- not hidden, or everything with Action Bars off (or every element off), comes back at once, in Edit
-    -- Mode or not: its parent, its selection and its mouse. Both steps only undo what FlareUI did this
-    -- session, so nothing of Blizzard's is forced. Runs before the ShouldLoad return below.
+    -- Whatever is not hidden, or everything with Action Bars off (or every element off), comes back at
+    -- once, in Edit Mode or not: its parent, its selection and its mouse (a bar left showing must stay
+    -- pickable in Edit Mode). Both steps only undo what FlareUI did this session, so nothing of
+    -- Blizzard's is forced. Runs before the ShouldLoad return below.
     local inEditMode = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
     local barsOn = ActionBarsOn() and self:ShouldLoad()
     for _, pair in ipairs(not inCombat and HIDE_KEYS or {}) do
@@ -1541,8 +1537,8 @@ function Visibility:Refresh()
                     if e.noGroup then group = 0 end
                     -- a linked pet fades in the player frame's group, if it has one
                     if linkPet then group = self:GetGroup("uf_player") end
-                    -- a unit frame fades at its own speeds on its own (Instant until picked, 11-17), at its
-                    -- group's speeds in one (11-15)
+                    -- a unit frame fades at its own speeds on its own (Instant until picked), at its
+                    -- group's speeds in one
                     local data = { key = key, frame = frame, isBar = isBar, show = show, owner = owner, mouse = mouse,
                                    fadeIn = ns.FadeTime(self:GetFadeIn(settingsKey)),
                                    fadeOut = ns.FadeTime(self:GetFadeOut(settingsKey)),
@@ -1560,7 +1556,7 @@ function Visibility:Refresh()
                         -- (a linked pet: the player's Missing Health / Mana show the pair; the pet's own health doesn't)
                         local health = not linkPet and e.health and Conditions.Has(show, "health", SpecOf(key)) or false
                         local mana = not linkPet and e.mana and Conditions.Has(show, "mana", SpecOf(key)) or false
-                        -- a setup from before they were exclusive with both: Missing Mana stays
+                        -- both ticked (an older profile; they are exclusive): Missing Mana stays
                         if health and mana then health = false end
                         data.healthUnit = health and e.health or nil
                         data.manaWatch = mana or nil
@@ -1632,10 +1628,22 @@ end
 --------------------------------------------------
 -- 9. EVENT HANDLERS
 --------------------------------------------------
--- A condition changed (a drag began or ended): every fade group is checked again, without the
--- full rebuild of Refresh
+-- A condition changed (a drag began or ended, a chat line arrived): every fade group is checked
+-- again, without the full rebuild of Refresh. One check on the spot per frame: further wakes in the
+-- same frame (a burst of chat lines) only mark the groups for the next frame's check.
 function Visibility:Wake()
-    MarkAllDirty()
+    local now = GetTime()
+    if self.wokeAt ~= now then
+        self.wokeAt = now
+        MarkAllDirty()
+        return
+    end
+    for groupName in pairs(Fader.groups) do Fader.dirty[groupName] = true end
+    if next(Fader.dirty) and not Fader.updateEnabled then
+        Fader:SetScript("OnUpdate", Fader.UpdateScript)
+        Fader.updateEnabled = true
+        Fader.updateTimer = 0
+    end
 end
 
 function Visibility:OnVisibilityStateChange(event)

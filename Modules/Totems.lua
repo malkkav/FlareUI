@@ -167,7 +167,7 @@ local function StyleTotem(button, cd, text, ring)
             text:SetPoint("TOP", button, "BOTTOM", 0, 5)
         end
         text:SetAlpha(timer == "none" and 0 or 1)
-        -- the Unit Frames' Aura Timers font (11-13): its face, outline and shadow; Auto keeps Blizzard's size
+        -- the Unit Frames' Aura Timers font: its face, outline and shadow; Auto keeps Blizzard's size
         -- (the player frame's: totems are the player's)
         local font = ns.UnitFrames and ns.UnitFrames.Font and ns.UnitFrames.Font("player", "auras")
         if font then
@@ -318,7 +318,7 @@ local function ApplyLayout()
         ArrangeTotems()
     end
 end
-TOT.ApplyLayout = ApplyLayout   -- the Unit Frames' Fonts tab restyles the timers (11-13)
+TOT.ApplyLayout = ApplyLayout   -- the Unit Frames' Fonts tab restyles the timers
 
 local function BuildSettings()
     local function get(key, default)
@@ -333,7 +333,8 @@ local function BuildSettings()
             if not db then return end
             db.totems = db.totems or {}
             db.totems[key] = value
-            ApplyLayout()
+            -- (a Reset Settings in Edit Mode lays out once, after its last setting: LEM:Defer)
+            if not LEM:Defer(ApplyLayout) then ApplyLayout() end
         end
     end
     -- the ring styles have their own defaults

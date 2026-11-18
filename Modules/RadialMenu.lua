@@ -118,6 +118,9 @@ local PING = {
     INTRO = 0.2, OUTRO = 0.13, SLIDE = 20,
     LABEL_GAP = 4,
     LABEL_WRAP = 16,                    -- a name of several words this long goes on two lines
+    -- Button Names, Always: a name above or below its button takes this share of the gap to the
+    -- next button; one to the side is at most SIDE_WIDTH wide
+    ALWAYS_WIDTH = 0.8, SIDE_WIDTH = 120,
     -- a sub-radial's page dots along the bottom of the rim
     DOT = MEDIA .. "Dot.tga",
     DOT_SIZE = 6, DOT_SIZE_ON = 7,
@@ -179,9 +182,12 @@ local function RoundStyle()
 end
 
 -- profile options; the radials themselves are account-wide, in global
+-- Button Names: "off", "hover" (the button you point at) or "always" (every button). The settings
+-- row writes showNames (false for Off) and buttonNames together; showNames false alone reads as Off.
 local function ShowNames()
     local db = ns.db and ns.db.profile and ns.db.profile.radialmenu
-    return not (db and db.showNames == false)
+    if db and db.showNames == false then return "off" end
+    return (db and db.buttonNames == "always") and "always" or "hover"
 end
 
 -- the secure layer reads its own copy ("flare-center" / "flare-toggle", set by SyncSecure)
@@ -470,7 +476,7 @@ local EMOTES = {
     { token = "SLEEP",   icon = "Spell_Nature_Sleep" },
     { token = "KNEEL",   icon = "Ability_Paladin_BlessedHands" },
     { token = "LEAN",    icon = "Ability_Rogue_Disguise" },
-    -- the chat menu's voice emotes (11-14)
+    -- the chat menu's voice emotes
     { token = "OOM",            icon = "Spell_Shadow_ManaBurn", upper = true },
     { token = "THANK",          icon = "Spell_Holy_HolyBolt" },
     { token = "CHEER",          icon = "Achievement_BG_winAB" },
@@ -483,8 +489,231 @@ local EMOTES = {
     { token = "ATTACKMYTARGET", icon = "Ability_SteelMelee" },
     { token = "CHARGE",         icon = "Ability_Warrior_Charge" },
     { token = "FLEE",           icon = "Ability_Rogue_Sprint" },
-    -- last: asks for any emote command when put on a radial (saved as entry.command)
-    { token = "CUSTOM",         icon = "INV_Misc_Note_01", custom = true },
+    { token = "WAIT",            icon = "Spell_Holy_BorrowedTime" },
+    { token = "OPENFIRE",        icon = "Ability_Marksmanship" },
+    { token = "RASP",            icon = "Spell_Misc_EmotionAngry" },
+    { token = "NOD",             icon = "Spell_Holy_SealOfWisdom" },
+    { token = "NO",              icon = "Spell_Holy_Silence" },
+    { token = "WELCOME",         icon = "Achievement_Reputation_01" },
+    { token = "CONGRATULATE",    icon = "INV_Misc_Gift_01" },
+    { token = "FLIRT",           icon = "Spell_Shadow_SoothingKiss" },
+    { token = "JOKE",            icon = "Spell_Misc_EmotionHappy" },
+    { token = "TRAIN",           icon = "INV_Misc_Toy_10" },
+    -- (each faction's cry is offered to that faction only)
+    { token = "FORTHEALLIANCE",  icon = "INV_BannerPVP_02", faction = "Alliance" },
+    { token = "FORTHEHORDE",     icon = "INV_BannerPVP_01", faction = "Horde" },
+    -- every other slash emote, A to Z (one the client has no command for is left out of the picker)
+    { token = "ABSENT",          icon = "Spell_Magic_LesserInvisibilty" },
+    { token = "AGREE",           icon = "Spell_Holy_SealOfWisdom" },
+    { token = "AMAZE",           icon = "Spell_Holy_MindVision" },
+    { token = "ANGRY",           icon = "Spell_Misc_EmotionAngry" },
+    { token = "APOLOGIZE",       icon = "Spell_Holy_Restoration" },
+    { token = "ARM",             icon = "Ability_Warrior_StrengthOfArms" },
+    { token = "AWE",             icon = "Spell_Holy_MindVision" },
+    { token = "BACKPACK",        icon = "INV_Misc_Bag_08" },
+    { token = "BADFEELING",      icon = "Spell_Shadow_Charm" },
+    { token = "BARK",            icon = "Ability_Hunter_Pet_Wolf" },
+    { token = "BASHFUL",         icon = "Ability_Druid_Cower" },
+    { token = "BECKON",          icon = "Spell_Holy_Restoration" },
+    { token = "BITE",            icon = "Ability_Druid_Ferociousbite" },
+    { token = "BLAME",           icon = "Ability_Hunter_SniperShot" },
+    { token = "BLANK",           icon = "Spell_Magic_LesserInvisibilty" },
+    { token = "BLEED",           icon = "Ability_Gouge" },
+    { token = "BLINK",           icon = "Spell_Arcane_Blink" },
+    { token = "BLUSH",           icon = "Spell_Misc_EmotionHappy" },
+    { token = "BOGGLE",          icon = "Spell_Shadow_MindSteal" },
+    { token = "BONK",            icon = "INV_Mace_01" },
+    { token = "BOOP",            icon = "Ability_Hunter_Pet_Cat" },
+    { token = "BORED",           icon = "Spell_Nature_Sleep" },
+    { token = "BOUNCE",          icon = "Ability_Rogue_Sprint" },
+    { token = "BRANDISH",        icon = "INV_Sword_04" },
+    { token = "BRB",             icon = "Spell_Holy_BorrowedTime", upper = true },
+    { token = "BREATH",          icon = "Spell_Frost_SummonWaterElemental" },
+    { token = "BURP",            icon = "INV_Drink_05" },
+    { token = "CACKLE",          icon = "Spell_Shadow_Possession" },
+    { token = "CALM",            icon = "Spell_Nature_Tranquility" },
+    { token = "CHALLENGE",       icon = "Ability_Warrior_Challange" },
+    { token = "CHARM",           icon = "Spell_Shadow_Charm" },
+    { token = "CHUCKLE",         icon = "Spell_Misc_EmotionHappy" },
+    { token = "CHUG",            icon = "INV_Drink_05" },
+    { token = "CLAP",            icon = "Achievement_BG_winWSG" },
+    { token = "COLD",            icon = "Spell_Frost_FrostArmor02" },
+    { token = "COMFORT",         icon = "Spell_Holy_Renew" },
+    { token = "COMMEND",         icon = "Achievement_Reputation_01" },
+    { token = "CONFUSED",        icon = "Spell_Shadow_MindSteal" },
+    { token = "COUGH",           icon = "Spell_Nature_NullifyDisease" },
+    { token = "COVEREARS",       icon = "Spell_Holy_Silence" },
+    { token = "COWER",           icon = "Ability_Druid_Cower" },
+    { token = "CRACK",           icon = "Ability_Warrior_Punishingblow" },
+    { token = "CRINGE",          icon = "Spell_Misc_EmotionAfraid" },
+    { token = "CROSSARMS",       icon = "Ability_Warrior_DefensiveStance" },
+    { token = "CUDDLE",          icon = "Spell_Holy_Heal" },
+    { token = "CURIOUS",         icon = "Spell_Holy_MindVision" },
+    { token = "CURTSEY",         icon = "Spell_Holy_PrayerofSpirit" },
+    { token = "DING",            icon = "Achievement_Level_10" },
+    { token = "DISAGREE",        icon = "Spell_Holy_Silence" },
+    { token = "DOUBT",           icon = "Spell_Shadow_MindSteal" },
+    { token = "DRINK",           icon = "INV_Drink_07" },
+    { token = "DROOL",           icon = "INV_Misc_Food_95_Grainbread" },
+    { token = "DUCK",            icon = "Ability_Rogue_Feint" },
+    { token = "EMBARRASS",       icon = "Ability_Druid_Cower" },
+    { token = "ENCOURAGE",       icon = "Ability_Warrior_BattleShout" },
+    { token = "ENEMY",           icon = "Ability_DualWield" },
+    { token = "EYE",             icon = "Ability_Hunter_EagleEye" },
+    { token = "EYEBROW",         icon = "Ability_Hunter_EagleEye" },
+    { token = "FACEPALM",        icon = "Spell_Misc_EmotionSad" },
+    { token = "FAINT",           icon = "Spell_Nature_Sleep" },
+    { token = "FART",            icon = "Spell_Nature_NullifyDisease" },
+    { token = "FIDGET",          icon = "Spell_Nature_Polymorph" },
+    { token = "FLOP",            icon = "Ability_Rogue_FeignDeath" },
+    { token = "FROWN",           icon = "Spell_Misc_EmotionSad" },
+    { token = "GASP",            icon = "Spell_Misc_EmotionAfraid" },
+    { token = "GAZE",            icon = "Ability_Hunter_EagleEye" },
+    { token = "GIGGLE",          icon = "Spell_Misc_EmotionHappy" },
+    { token = "GLARE",           icon = "Spell_Misc_EmotionAngry" },
+    { token = "GLOAT",           icon = "Achievement_BG_winAB" },
+    { token = "GLOWER",          icon = "Spell_Misc_EmotionAngry" },
+    { token = "GO",              icon = "Ability_Rogue_Sprint" },
+    { token = "GOING",           icon = "Ability_Rogue_Sprint" },
+    { token = "GOLFCLAP",        icon = "Achievement_BG_winWSG" },
+    { token = "GREET",           icon = "Achievement_Reputation_01" },
+    { token = "GRIN",            icon = "Spell_Misc_EmotionHappy" },
+    { token = "GROAN",           icon = "Spell_Misc_EmotionSad" },
+    { token = "GROVEL",          icon = "Ability_Druid_Cower" },
+    { token = "GROWL",           icon = "Ability_Druid_DemoralizingRoar" },
+    { token = "GUFFAW",          icon = "Spell_Misc_EmotionHappy" },
+    { token = "HAIL",            icon = "Ability_Warrior_BattleShout" },
+    { token = "HAPPY",           icon = "Spell_Misc_EmotionHappy" },
+    { token = "HEADACHE",        icon = "Spell_Shadow_Charm" },
+    { token = "HICCUP",          icon = "INV_Drink_05" },
+    { token = "HIGHFIVE",        icon = "Spell_Holy_SealOfMight" },
+    { token = "HISS",            icon = "Ability_Hunter_Pet_Cat" },
+    { token = "HOLDHAND",        icon = "Spell_Holy_Heal" },
+    { token = "HUG",             icon = "Spell_Holy_Heal" },
+    { token = "HUNGRY",          icon = "INV_Misc_Food_95_Grainbread" },
+    { token = "HURRY",           icon = "Ability_Rogue_Sprint" },
+    { token = "HUZZAH",          icon = "Achievement_BG_winAB" },
+    { token = "IDEA",            icon = "Spell_Holy_HolyGuidance" },
+    { token = "IMPRESSED",       icon = "Spell_Holy_MindVision" },
+    { token = "INSULT",          icon = "Spell_Misc_EmotionAngry" },
+    { token = "INTRODUCE",       icon = "Achievement_Reputation_01" },
+    { token = "JEALOUS",         icon = "Spell_Shadow_Charm" },
+    { token = "JK",              icon = "Spell_Misc_EmotionHappy", upper = true },
+    { token = "LAYDOWN",         icon = "Spell_Nature_Sleep" },
+    { token = "LICK",            icon = "INV_Misc_Food_95_Grainbread" },
+    { token = "LISTEN",          icon = "Spell_Holy_HolyGuidance" },
+    { token = "LOOK",            icon = "Ability_Hunter_EagleEye" },
+    { token = "LOST",            icon = "INV_Misc_Map_01" },
+    { token = "LOVE",            icon = "Spell_Shadow_SoothingKiss" },
+    { token = "LUCK",            icon = "INV_Misc_Coin_02" },
+    { token = "MAGNIFICENT",     icon = "Achievement_BG_winAB" },
+    { token = "MAP",             icon = "INV_Misc_Map_01" },
+    { token = "MASSAGE",         icon = "Spell_Holy_Renew" },
+    { token = "MEOW",            icon = "Ability_Hunter_Pet_Cat" },
+    { token = "MERCY",           icon = "Spell_Holy_DivineIntervention" },
+    { token = "MOCK",            icon = "Spell_Misc_EmotionHappy" },
+    { token = "MOO",             icon = "INV_Misc_Food_95_Grainbread" },
+    { token = "MOON",            icon = "Spell_Nature_StarFall" },
+    { token = "MOUNTSPECIAL",    icon = "Ability_Mount_RidingHorse" },
+    { token = "MOURN",           icon = "Spell_Misc_EmotionSad" },
+    { token = "MUTTER",          icon = "Spell_Holy_HolyGuidance" },
+    { token = "NERVOUS",         icon = "Spell_Misc_EmotionAfraid" },
+    { token = "NOSEPICK",        icon = "Spell_Misc_EmotionSad" },
+    { token = "OBJECT",          icon = "Spell_Holy_Silence" },
+    { token = "OFFER",           icon = "INV_Misc_Coin_02" },
+    { token = "OOPS",            icon = "Spell_Misc_EmotionAfraid" },
+    { token = "PANIC",           icon = "Spell_Misc_EmotionAfraid" },
+    { token = "PAT",             icon = "Spell_Holy_Renew" },
+    { token = "PEER",            icon = "Ability_Hunter_EagleEye" },
+    { token = "PET",             icon = "Ability_Hunter_BeastTraining" },
+    { token = "PINCH",           icon = "Ability_Gouge" },
+    { token = "PITY",            icon = "Spell_Misc_EmotionSad" },
+    { token = "PLEAD",           icon = "Spell_Holy_PrayerofSpirit" },
+    { token = "POKE",            icon = "Ability_Hunter_SniperShot" },
+    { token = "PONDER",          icon = "Spell_Holy_HolyGuidance" },
+    { token = "POUNCE",          icon = "Ability_Druid_SupriseAttack" },
+    { token = "POUT",            icon = "Spell_Misc_EmotionSad" },
+    { token = "PRAISE",          icon = "Spell_Holy_HolyBolt" },
+    { token = "PRAY",            icon = "Spell_Holy_PrayerofSpirit" },
+    { token = "PROMISE",         icon = "Spell_Holy_SealOfWisdom" },
+    { token = "PROUD",           icon = "Achievement_BG_winAB" },
+    { token = "PULSE",           icon = "Spell_Holy_FlashHeal" },
+    { token = "PUNCH",           icon = "Ability_Warrior_Punishingblow" },
+    { token = "PURR",            icon = "Ability_Hunter_Pet_Cat" },
+    { token = "PUZZLE",          icon = "Spell_Shadow_MindSteal" },
+    { token = "QUACK",           icon = "INV_Misc_Food_95_Grainbread" },
+    { token = "RAISE",           icon = "Ability_Paladin_BlessedHands" },
+    { token = "READ",            icon = "INV_Misc_Book_09" },
+    { token = "READY",           icon = "Ability_Warrior_BattleShout" },
+    { token = "REGRET",          icon = "Spell_Misc_EmotionSad" },
+    { token = "REVENGE",         icon = "Ability_Warrior_Revenge" },
+    { token = "ROFL",            icon = "Spell_Misc_EmotionHappy", upper = true },
+    { token = "ROLLEYES",        icon = "Spell_Misc_EmotionSad" },
+    { token = "RUFFLE",          icon = "Spell_Holy_Renew" },
+    { token = "SAD",             icon = "Spell_Misc_EmotionSad" },
+    { token = "SCARED",          icon = "Spell_Misc_EmotionAfraid" },
+    { token = "SCOFF",           icon = "Spell_Misc_EmotionAngry" },
+    { token = "SCOLD",           icon = "Spell_Misc_EmotionAngry" },
+    { token = "SCOWL",           icon = "Spell_Misc_EmotionAngry" },
+    { token = "SCRATCH",         icon = "Ability_Druid_Rake" },
+    { token = "SEARCH",          icon = "INV_Misc_Spyglass_02" },
+    { token = "SEXY",            icon = "Spell_Shadow_SoothingKiss" },
+    { token = "SHAKEFIST",       icon = "Spell_Misc_EmotionAngry" },
+    { token = "SHIFTY",          icon = "Ability_Stealth" },
+    { token = "SHIMMY",          icon = "Ability_Rogue_ShadowDance" },
+    { token = "SHIVER",          icon = "Spell_Frost_FrostArmor02" },
+    { token = "SHOO",            icon = "Ability_Rogue_Sprint" },
+    { token = "SHOUT",           icon = "Ability_Warrior_BattleShout" },
+    { token = "SHRUG",           icon = "Spell_Shadow_MindSteal" },
+    { token = "SHUDDER",         icon = "Spell_Misc_EmotionAfraid" },
+    { token = "SIGH",            icon = "Spell_Misc_EmotionSad" },
+    { token = "SIGNAL",          icon = "Ability_Hunter_SniperShot" },
+    { token = "SILENCE",         icon = "Spell_Holy_Silence" },
+    { token = "SING",            icon = "INV_Misc_Drum_01" },
+    { token = "SLAP",            icon = "Ability_Warrior_Punishingblow" },
+    { token = "SMACK",           icon = "Ability_Warrior_Punishingblow" },
+    { token = "SMILE",           icon = "Spell_Misc_EmotionHappy" },
+    { token = "SMIRK",           icon = "Spell_Misc_EmotionHappy" },
+    { token = "SNAP",            icon = "Spell_Holy_HolyGuidance" },
+    { token = "SNARL",           icon = "Ability_Druid_DemoralizingRoar" },
+    { token = "SNEAK",           icon = "Ability_Stealth" },
+    { token = "SNEEZE",          icon = "Spell_Nature_NullifyDisease" },
+    { token = "SNICKER",         icon = "Spell_Misc_EmotionHappy" },
+    { token = "SNIFF",           icon = "Ability_Tracking" },
+    { token = "SNORT",           icon = "Spell_Misc_EmotionAngry" },
+    { token = "SNUB",            icon = "Spell_Misc_EmotionAngry" },
+    { token = "SOOTHE",          icon = "Spell_Nature_Tranquility" },
+    { token = "SPIT",            icon = "Spell_Nature_NullifyDisease" },
+    { token = "SQUEAL",          icon = "Spell_Misc_EmotionAfraid" },
+    { token = "STARE",           icon = "Ability_Hunter_EagleEye" },
+    { token = "SURPRISED",       icon = "Spell_Misc_EmotionAfraid" },
+    { token = "SURRENDER",       icon = "INV_Misc_Bandage_15" },
+    { token = "SUSPICIOUS",      icon = "Ability_Hunter_EagleEye" },
+    { token = "SWEAT",           icon = "Spell_Fire_Fire" },
+    { token = "TALKEX",          icon = "Spell_Holy_HolyGuidance" },
+    { token = "TALKQ",           icon = "Spell_Holy_HolyGuidance" },
+    { token = "TAP",             icon = "Spell_Holy_BorrowedTime" },
+    { token = "TAUNT",           icon = "Spell_Nature_Reincarnation" },
+    { token = "TEASE",           icon = "Spell_Misc_EmotionHappy" },
+    { token = "THINK",           icon = "Spell_Holy_HolyGuidance" },
+    { token = "THIRSTY",         icon = "INV_Drink_07" },
+    { token = "THREATEN",        icon = "Ability_Warrior_Punishingblow" },
+    { token = "TICKLE",          icon = "Spell_Misc_EmotionHappy" },
+    { token = "TIRED",           icon = "Spell_Nature_Sleep" },
+    { token = "TRUCE",           icon = "INV_Misc_Bandage_15" },
+    { token = "TWIDDLE",         icon = "Spell_Holy_BorrowedTime" },
+    { token = "VETO",            icon = "Spell_Holy_Silence" },
+    { token = "VICTORY",         icon = "Achievement_BG_winAB" },
+    { token = "VIOLIN",          icon = "INV_Misc_Drum_01" },
+    { token = "WARN",            icon = "Ability_Hunter_EagleEye" },
+    { token = "WHINE",           icon = "Spell_Misc_EmotionSad" },
+    { token = "WHISTLE",         icon = "Spell_Holy_HolyGuidance" },
+    { token = "WHOA",            icon = "Spell_Misc_EmotionAfraid" },
+    { token = "WINCE",           icon = "Spell_Misc_EmotionAfraid" },
+    { token = "WINK",            icon = "Spell_Misc_EmotionHappy" },
+    { token = "WORK",            icon = "INV_Pick_02" },
+    { token = "YAWN",            icon = "Spell_Nature_Sleep" },
+    { token = "YW",              icon = "Achievement_Reputation_01", upper = true },
 }
 RM.EMOTES = EMOTES
 local emoteByToken
@@ -496,94 +725,84 @@ local function EmoteInfo(token)
     return emoteByToken[token]
 end
 
--- an emote token's slash command ("/wave"), found as Blizzard's chat menu does
-local emoteCommands = {}
+-- an emote token's slash command in the client's language ("/wave"), found as Blizzard's chat menu
+-- does: every token's first command, read once
+local emoteCommands
 local function EmoteCommand(token)
-    if emoteCommands[token] then return emoteCommands[token] end
-    local command
-    for i = 1, (MAXEMOTEINDEX or 1000) do
-        local t = _G["EMOTE" .. i .. "_TOKEN"]
-        if t == token then command = _G["EMOTE" .. i .. "_CMD1"] break end
+    if not emoteCommands then
+        emoteCommands = {}
+        for i = 1, (MAXEMOTEINDEX or 1000) do
+            local t, command = _G["EMOTE" .. i .. "_TOKEN"], _G["EMOTE" .. i .. "_CMD1"]
+            if t and command and not emoteCommands[t] then emoteCommands[t] = command end
+        end
     end
-    command = command or ("/" .. token:lower())
-    emoteCommands[token] = command
-    return command
+    return emoteCommands[token]
+end
+-- the picker offers an emote only when this client has a command for it (and a faction cry to its faction)
+function RM.EmoteOffered(e)
+    if e.faction and e.faction ~= UnitFactionGroup("player") then return false end
+    return EmoteCommand(e.token) ~= nil
 end
 
-ACTIONS.emote = function(entry)
-    local info = entry.emote and EmoteInfo(entry.emote)
-    if not info then return nil end
-    local icon = { texture = "Interface\\Icons\\" .. info.icon }
-    local CE = RM.CustomEmote
-    if info.custom then
-        -- the catalog's entry, or a button whose command is still being asked for: does nothing
-        if not entry.command then return L["Custom Emote"], icon, { type = "macro", macrotext = "" } end
-        return CE.Label(entry.command), icon, { type = "macro", macrotext = entry.command }
-    end
-    local command = EmoteCommand(info.token)
-    return CE.Label(command, info.upper), icon, { type = "macro", macrotext = command }
-end
-
--- Custom Emote: put on a radial, it asks for the command; no answer takes the button off again.
--- It runs as macro text on the radial's secure button, like the emotes above.
+-- Emote helpers. A button saved as a typed emote (emote "CUSTOM", its command in entry.command)
+-- becomes the listed emote with that command (EmoteKit.Upgrade, at load); one with no listed match
+-- keeps running its command, and one never given a command is dropped.
 -- (a table, not locals: the file is near the main chunk's 200 locals)
-RM.CustomEmote = { MAX = 100 }
--- "/wave" -> "Wave", "/oom" -> "OOM"; only the first word of a custom command
-function RM.CustomEmote.Label(command, upper)
+RM.EmoteKit = { TYPED = "CUSTOM", TYPED_ICON = "Interface\\Icons\\INV_Misc_Note_01" }
+-- "/wave" -> "Wave", "/oom" -> "OOM": the command's first word
+function RM.EmoteKit.Label(command, upper)
     local name = command:match("^/(%S+)") or command:gsub("^/", "")
     if upper then return name:upper() end
     return name:sub(1, 1):upper() .. name:sub(2)
 end
-function RM.CustomEmote.Drop(data)
-    local radial = data and RM:GetRadial(data.id)
-    if not radial then return end
-    for i = #radial.buttons, 1, -1 do
-        if radial.buttons[i] == data.entry then table.remove(radial.buttons, i) end
+-- the listed emote a typed command stands for (any of its slash commands, any case), or nil
+function RM.EmoteKit.TokenFor(command)
+    local typed = type(command) == "string" and command:match("^%s*(/%S+)%s*$")
+    if not typed then return nil end
+    typed = typed:lower()
+    for i = 1, (MAXEMOTEINDEX or 1000) do
+        local token = _G["EMOTE" .. i .. "_TOKEN"]
+        if token and EmoteInfo(token) then
+            for j = 1, 10 do
+                local cmd = _G["EMOTE" .. i .. "_CMD" .. j]
+                if not cmd then break end
+                if cmd:lower() == typed then return token end
+            end
+        end
     end
-    RM:RadialChanged(data.id)
-    if ns.RadialEditorEmbed then ns.RadialEditorEmbed.Refresh() end
+    return nil
 end
-ns.Dialogs = ns.Dialogs or {}
-ns.Dialogs["FLAREUI_RADIAL_CUSTOM_EMOTE"] = {
-    text = "%s",
-    button1 = _G.ACCEPT or "Accept",
-    button2 = L["Cancel"],
-    hasEditBox = true,
-    maxLetters = RM.CustomEmote.MAX,
-    editText = function() return "/" end,
-    OnAccept = function(data, text)
-        RM.CustomEmote.asking = nil
-        text = text and strtrim(text) or ""
-        -- one line: a slash, then a command
-        if text:find("[\r\n]") or not text:find("^/%S") then
-            print("|cffff9900FlareUI:|r " .. L["an emote must start with / (like /oom)."])
-            RM.CustomEmote.Drop(data)
-            return
-        end
-        data.entry.command = text:sub(1, RM.CustomEmote.MAX)
-        RM:RadialChanged(data.id)
-        if ns.RadialEditorEmbed then ns.RadialEditorEmbed.Refresh() end
-    end,
-    OnCancel = function(data)
-        RM.CustomEmote.asking = nil
-        RM.CustomEmote.Drop(data)
-    end,
-    hideOnEscape = true,
-}
--- run after an edit: the first Custom Emote on the radial without a command asks for one
-function RM.CustomEmote.Ask(radialID)
-    local CE = RM.CustomEmote
-    if not radialID or (CE.asking and ns.AnyDialogShown and ns.AnyDialogShown()) then return end
-    local radial = RM:GetRadial(radialID)
-    if not radial then return end
-    for _, entry in ipairs(radial.buttons) do
-        if entry.kind == "emote" and entry.emote == "CUSTOM" and not entry.command then
-            CE.asking = true
-            ns.ShowDialog("FLAREUI_RADIAL_CUSTOM_EMOTE", L["Type an emote command, like /oom or /cheer."],
-                { id = radialID, entry = entry })
-            return
+-- every radial's typed emotes, once per load (RM:Init)
+function RM.EmoteKit.Upgrade(store)
+    local EK = RM.EmoteKit
+    for _, data in pairs(store and store.radials or {}) do
+        local list = data.buttons or {}
+        for i = #list, 1, -1 do
+            local entry = list[i]
+            if type(entry) == "table" and entry.kind == "emote" and entry.emote == EK.TYPED then
+                local token = EK.TokenFor(entry.command)
+                if token then
+                    entry.emote, entry.command = token, nil
+                elseif not entry.command then
+                    table.remove(list, i)
+                end
+            end
         end
     end
+end
+
+ACTIONS.emote = function(entry)
+    local EK = RM.EmoteKit
+    -- a typed command with no listed emote: it runs as it was typed
+    if entry.emote == EK.TYPED then
+        if type(entry.command) ~= "string" or entry.command == "" then return nil end
+        return EK.Label(entry.command), { texture = EK.TYPED_ICON }, { type = "macro", macrotext = entry.command }
+    end
+    local info = entry.emote and EmoteInfo(entry.emote)
+    if not info then return nil end
+    local icon = { texture = "Interface\\Icons\\" .. info.icon }
+    local command = EmoteCommand(info.token) or ("/" .. info.token:lower())
+    return EK.Label(command, info.upper), icon, { type = "macro", macrotext = command }
 end
 
 -- A button standing for another radial: it shows one resolved child at a time and the mouse wheel
@@ -613,7 +832,7 @@ end
 -- Quest Items: the usable items of the quests in your log, tracked quests first, as one button whose
 -- choices are the items (LB / RB or the mouse wheel step through them, as a sub-radial's). It is gone
 -- while no quest has an item, and comes back with one.
--- (the scroll the bags' Quest Items filter uses; the gossip "!" looked bad in the round frame, 11-12)
+-- (the scroll the bags' Quest Items filter uses; the gossip "!" looks bad in the round frame)
 RM.QUEST_ITEMS_ICON = "Interface\\Icons\\INV_Scroll_03"
 ACTIONS.questitems = function(entry)
     local children, taken = {}, {}
@@ -661,7 +880,7 @@ ACTIONS.partycast = function(entry)
         end
     end
     if #spread == 0 then return nil end
-    -- alone there is no one to aim at: the spell's own name, not yours (11-11, Malkkav)
+    -- alone there is no one to aim at: the spell's own name, not yours
     if #spread == 1 then spread[1].name = name end
     local first = spread[1]
     return name, first.icon, first.attributes, { spread = spread }
@@ -701,7 +920,7 @@ RM.MAX_BUTTONS = MAX_BUTTONS
 -- 6. RADIAL FRAME
 --------------------------------------------------
 -- parent: a settings preview's wheel (the radial otherwise)
--- Radial Menu > Fonts (11-13): the hovered button's name (a family: spell names in any alphabet) and
+-- Radial Menu > Fonts: the hovered button's name (a family: spell names in any alphabet) and
 -- the counts. Table fields, not locals: this file is near Lua's 200-locals limit.
 RM.fontButtons = setmetatable({}, { __mode = "k" })
 function RM.StyleButtonFonts(button)
@@ -786,32 +1005,50 @@ local function CreateRadialButton(index, parent)
     return button
 end
 
--- Blizzard_RadialWheel.lua's rule: the name sits on the button's outer side
-local function PlaceLabel(button, angle)
+-- Blizzard_RadialWheel.lua's rule: the name sits on the button's outer side. chord: the gap between
+-- two neighbouring buttons' centres; with Button Names on Always every name shows at once, so each
+-- is one line, cut short with "..." to fit: above or below a button as wide as the gap allows, to
+-- the side up to SIDE_WIDTH (the Fonts tab's Button Names size makes them smaller).
+local function PlaceLabel(button, angle, chord)
     local a = angle % TAU
     local q, gap = math_pi / 4, PING.LABEL_GAP
     local label = button.Label
+    local always = ShowNames() == "always"
+    local width
     label:ClearAllPoints()
     if a > q and a <= math_pi - q then
         label:SetPoint("BOTTOM", button, "TOP", 0, gap)
         label:SetJustifyH("CENTER")
+        width = chord and math_max(ICON_SIZE, chord * PING.ALWAYS_WIDTH)
     elseif a > math_pi - q and a <= math_pi + q then
         label:SetPoint("RIGHT", button, "LEFT", -gap, 0)
         label:SetJustifyH("RIGHT")
+        width = PING.SIDE_WIDTH
     elseif a > math_pi + q and a <= TAU - q then
         label:SetPoint("TOP", button, "BOTTOM", 0, -gap - 8)   -- clear of the page dots
         label:SetJustifyH("CENTER")
+        width = chord and math_max(ICON_SIZE, chord * PING.ALWAYS_WIDTH)
     else
         label:SetPoint("LEFT", button, "RIGHT", gap, 0)
         label:SetJustifyH("LEFT")
+        width = PING.SIDE_WIDTH
+    end
+    if always and width then
+        label:SetWordWrap(false)
+        label:SetMaxLines(1)
+        label:SetWidth(width)
+    else
+        label:SetWordWrap(true)
+        label:SetMaxLines(0)
+        label:SetWidth(0)
     end
 end
 
 -- A long multi-word name splits at the most even space. By length, not measured: the first layout
--- after a reload can run before the font is ready.
+-- after a reload can run before the font is ready. Always keeps every name on one line.
 local function SetLabelText(button, text)
     text = text or ""
-    if #text >= PING.LABEL_WRAP then
+    if #text >= PING.LABEL_WRAP and ShowNames() ~= "always" then
         local best, bestCost
         for pos in text:gmatch("() ") do
             local cost = math_max(pos - 1, #text - pos)
@@ -885,7 +1122,8 @@ end
 
 local function SetButtonSelected(button, selected)
     button:SetScale(selected and 1 or ICON_SCALE_IDLE)
-    button.Label:SetShown(selected and ShowNames() and (button.Label:GetText() or "") ~= "")
+    local mode = ShowNames()
+    button.Label:SetShown((mode == "always" or (selected and mode == "hover")) and (button.Label:GetText() or "") ~= "")
 end
 
 -- Cooldown swipe and usable tint for what a button fires now. Spell cooldowns go through a duration
@@ -1091,7 +1329,8 @@ function RM.PlaceRadialButtons(frame, list, entries)
                 ApplyButtonShape(button)
                 SetButtonIcon(button, entry.icon)
                 SetLabelText(button, entry.name)
-                PlaceLabel(button, angle)
+                -- one button alone has no neighbour: the side width
+                PlaceLabel(button, angle, count > 1 and 2 * radius * math_sin(interval / 2) or PING.SIDE_WIDTH)
                 SetPageDots(button, entry.children and #entry.children, entry.childIndex or 1)
                 SetButtonSelected(button, false)
                 button:Show()
@@ -1236,9 +1475,9 @@ end
 -- While the controller radial is open the right stick aims it, so the camera holds still. A frame
 -- of FlareUI's own takes the camera stick's input while a radial is aimed (returning false: handled)
 -- and passes the rest on. It listens ONLY while a controller radial is open, as Blizzard's radial
--- wheel does: left on for good, it took both sticks from the game on some setups (5.0 report: "can't
--- use the joysticks"). Turning stick input on is protected, so the secure open / close snippets do
--- it (frame ref "stickguard"), which works in a fight too. Made with the secure layer, out of combat.
+-- wheel does: left on for good, it takes both sticks from the game on some setups. Turning stick
+-- input on is protected, so the secure open / close snippets do it (frame ref "stickguard"), which
+-- works in a fight too. Made with the secure layer, out of combat.
 local cameraHeld = false
 local stickGuard
 
@@ -1772,6 +2011,8 @@ local AIM_SNIPPET = ([[
 -- uses a button.
 local CLICK_SNIPPET = [[
     local screen = control:GetFrameRef("wheel")
+    -- only a Target Mouseover press runs on the press (below)
+    self:SetAttribute("useOnKeyDown", false)
     if down then
         -- an extra keybind clicks with its radial's id as the button; the main one with LeftButton
         local id = button
@@ -1786,27 +2027,43 @@ local CLICK_SNIPPET = [[
         control:RunAttribute("flare-closeclick", true)
         control:RunAttribute("flare-closepad", true)
         for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do self:SetAttribute(key, nil) end
+        -- Target Mouseover: the unit under the mouse becomes the target as the radial opens ("on"),
+        -- or only with the kept modifier held
+        local aim = control:GetAttribute("flare-mouseover")
+        local target = aim and id and (control:GetAttribute(id .. "-count") or 0) > 0 and UnitExists("mouseover")
+            and (aim == "on" or (aim == "alt" and IsAltKeyDown()) or (aim == "ctrl" and IsControlKeyDown())
+                or (aim == "shift" and IsShiftKeyDown()))
         if toggle then
             -- nothing to open: the art of the radial just closed quietly goes too
-            if not control:RunAttribute("flare-openclick", id) then control:CallMethod("OnSecureClose") end
-            return false
-        end
-        if control:GetAttribute("flare-subreset") then CHILD = newtable() end
-        ACTIVE, MODE, HOLD = id, "hold", id
-        -- for the length of the hold: the key with a modifier pressed since still lets go of it,
-        -- and Escape cancels
-        local variants = control:GetAttribute(id .. "-holdkeys")
-        if variants then
-            for key in gmatch(variants, "%S+") do
-                control:SetBindingClick(true, key, "]] .. CASTER_NAME .. [[", id)
+            if not control:RunAttribute("flare-openclick", id) then
+                control:CallMethod("OnSecureClose")
+                return false
             end
+            if not target then return false end
+        else
+            if control:GetAttribute("flare-subreset") then CHILD = newtable() end
+            ACTIVE, MODE, HOLD = id, "hold", id
+            -- for the length of the hold: the key with a modifier pressed since still lets go of it,
+            -- and Escape cancels
+            local variants = control:GetAttribute(id .. "-holdkeys")
+            if variants then
+                for key in gmatch(variants, "%S+") do
+                    control:SetBindingClick(true, key, "]] .. CASTER_NAME .. [[", id)
+                end
+            end
+            control:SetBindingClick(true, "ESCAPE", "]] .. CATCHER_NAME .. [[", "RightButton")
+            screen:Show()
+            control:RunAttribute("flare-openpoint")
+            -- the catcher takes the mouse while the key is held: right-click cancels
+            control:GetFrameRef("catcher"):Show()
+            if not target then return false end
         end
-        control:SetBindingClick(true, "ESCAPE", "]] .. CATCHER_NAME .. [[", "RightButton")
-        screen:Show()
-        control:RunAttribute("flare-openpoint")
-        -- the catcher takes the mouse while the key is held: right-click cancels
-        control:GetFrameRef("catcher"):Show()
-        return false
+        -- the press itself targets (the caster's actions run on the release otherwise); the
+        -- post-click puts it back, and the release writes every action key from the aimed button
+        self:SetAttribute("useOnKeyDown", true)
+        self:SetAttribute("type", "target")
+        self:SetAttribute("unit", "mouseover")
+        return nil, "targeted"
     end
     if FIRE then
         local prefix = FIRE
@@ -2096,7 +2353,9 @@ local function CreateSecureLayer()
     macroButton:SetAttribute("useOnKeyDown", false)
     macroButton:SetAttribute("pressAndHoldAction", false)
 
-    SecureHandlerWrapScript(caster, "OnClick", header, CLICK_SNIPPET, CLEAR_SNIPPET)
+    -- (the caster's post-click also ends a Target Mouseover press's run-on-press)
+    SecureHandlerWrapScript(caster, "OnClick", header, CLICK_SNIPPET,
+        CLEAR_SNIPPET .. [[ self:SetAttribute("useOnKeyDown", false) ]])
     SecureHandlerWrapScript(wheel, "OnMouseWheel", header, WHEEL_SNIPPET)
     SecureHandlerWrapScript(catcher, "OnClick", header, CATCHER_SNIPPET, CLEAR_SNIPPET)
     SecureHandlerWrapScript(catcher, "OnMouseWheel", header, WHEEL_SNIPPET)
@@ -2117,7 +2376,7 @@ local function CreateSecureLayer()
     aimButton:SetAttribute("pressAndHoldAction", false)
     SecureHandlerWrapScript(aimButton, "OnClick", header, AIM_SNIPPET, CLEAR_SNIPPET)
     header.OnSecureSticky = function(_, index) padSticky = index end
-    -- /fui padlog (11-14): each right-stick direction event while a controller radial is open, for
+    -- /fui padlog: each right-stick direction event while a controller radial is open, for
     -- "Release the stick to use" reports: which key, press or release, how far out, what is still held
     header.OnSecureAimLog = function(_, button, down, len, held, sticky)
         print(("FlareUI pad: %s %s  stick %.2f  held %s  aim %s  release-to-use %s"):format(tostring(button),
@@ -2421,7 +2680,7 @@ function RM:GetRadialOrder()
     return store and store.radialOrder or {}
 end
 
--- GROUPS (11-12, Malkkav): radials gathered under a named, foldable row in the editor's list. A
+-- GROUPS: radials gathered under a named, foldable row in the editor's list. A
 -- radial's group is radial.group (store.groups[gid] = { name }); a group's radials stay next to each
 -- other in radialOrder, where its first one is, so the list order (and which radial a shared key
 -- opens) is the order seen. A group with no radial left is gone. Folded or open: per character
@@ -2524,7 +2783,7 @@ function RM:SetRadialGroup(id, gid)
     GroupsChanged(self)
 end
 
--- the radials list's drag (11-12, Malkkav): id moves to where target is, and into target's group
+-- the radials list's drag: id moves to where target is, and into target's group
 -- (or out of its own, onto a radial outside one)
 function RM:MoveRadial(id, target)
     local store = GetStore()
@@ -2806,7 +3065,7 @@ function RM:SetOwnKey(id, on)
 end
 
 -- Every key on this character. Returns key -> the radial it opens, and per available radial with a
--- key { key, own, rank, beatenBy, tie }: a character's own key beats This character, class,
+-- key { key, own, rank, beatenBy, tie, reserved }: a character's own key beats This character, class,
 -- faction and every character, in that order; a tie goes to the radial listed first.
 function RM:ResolveKeys()
     local winner, perRadial = {}, {}
@@ -2816,14 +3075,19 @@ function RM:ResolveKeys()
             if key then
                 local rank = own and OWN_KEY_RANK or SCOPE_RANK[SplitScope(self:GetRadial(id).scope) or ""] or 0
                 perRadial[id] = { key = key, own = own, rank = rank }
-                local holder = winner[key]
-                if not holder or rank > perRadial[holder].rank then winner[key] = id end
+                -- a key with the modifier Target Mouseover keeps opens nothing while it is kept
+                if RM.UsesReservedModifier(key) then
+                    perRadial[id].reserved = true
+                else
+                    local holder = winner[key]
+                    if not holder or rank > perRadial[holder].rank then winner[key] = id end
+                end
             end
         end
     end
     for id, info in pairs(perRadial) do
         local holder = winner[info.key]
-        if holder ~= id then
+        if holder ~= id and not info.reserved then
             info.beatenBy = holder
             info.tie = perRadial[holder].rank == info.rank
         end
@@ -2871,7 +3135,7 @@ function RM:GetDefaultRadialID()
     for _, id in ipairs(self:GetRadialOrder()) do
         if self:IsRadialAvailable(id) then
             local info = perRadial[id]
-            if info and not info.beatenBy then return id end
+            if info and not info.beatenBy and not info.reserved then return id end
             first = first or id
         end
     end
@@ -2915,6 +3179,51 @@ function RM.HoldVariants(key, taken)
     return table.concat(out, " ")
 end
 
+-- Target Mouseover (radialmenu.targetMouseover): "off", "on" (every keybind open), or "shift" /
+-- "ctrl" / "alt" (only with that modifier held). A picked modifier is kept for it: a radial key
+-- that uses it is not bound, and the key with it added opens the same radial and targets.
+RM.MOUSEOVER_MODIFIERS = { shift = "SHIFT", ctrl = "CTRL", alt = "ALT" }
+function RM.TargetMouseoverMode()
+    local mode = Option("targetMouseover", "off")
+    if mode == "on" or RM.MOUSEOVER_MODIFIERS[mode] then return mode end
+    return "off"
+end
+-- the modifier kept for Target Mouseover ("ALT" ...), or nil
+function RM.ReservedModifier()
+    return RM.MOUSEOVER_MODIFIERS[RM.TargetMouseoverMode()]
+end
+-- a key's own modifiers ({ ALT = true ... }) and the key without them
+function RM.SplitModifiers(key)
+    local own, base = {}, key
+    while true do
+        local mod, rest = base:match("^(%u+)%-(.+)$")
+        if not (mod == "ALT" or mod == "CTRL" or mod == "SHIFT") then break end
+        own[mod], base = true, rest
+    end
+    return own, base
+end
+-- "ALT" -> "Alt", for player text
+function RM.ModifierText(mod)
+    return (mod == "ALT" and L["Alt"]) or (mod == "CTRL" and L["Ctrl"]) or (mod == "SHIFT" and L["Shift"]) or tostring(mod)
+end
+-- true when the key uses the modifier Target Mouseover keeps
+function RM.UsesReservedModifier(key)
+    local mod = RM.ReservedModifier()
+    if not (mod and key) then return false end
+    return RM.SplitModifiers(key)[mod] == true
+end
+-- the key with a modifier added, in the client's order (ALT-CTRL-SHIFT-key)
+function RM.KeyWithModifier(key, mod)
+    local own, base = RM.SplitModifiers(key)
+    own[mod] = true
+    local parts = {}
+    for _, m in ipairs(MODIFIERS) do
+        if own[m] then parts[#parts + 1] = m end
+    end
+    parts[#parts + 1] = base
+    return table.concat(parts, "-")
+end
+
 -- each key clicks the caster with its radial's id as the mouse button
 local function ApplyBinding()
     if not (radial and caster) then return end
@@ -2953,10 +3262,17 @@ local function ApplyBinding()
             end
         end
     end
+    -- Target Mouseover: the secure click reads the mode; a kept modifier binds each key with it too
+    -- (ResolveKeys leaves out the keys that use it, so the pair never clashes with a radial's own key)
+    local mouseoverMode = RM.TargetMouseoverMode()
+    local reservedMod = RM.ReservedModifier()
+    if header then header:SetAttribute("flare-mouseover", mouseoverMode ~= "off" and mouseoverMode or nil) end
     for key, id in pairs(winner) do
         -- a controller combo saved as a key is never bound as one
         if not ns.ParsePadCombo(key) then
             SetOverrideBindingClick(radial, true, key, CASTER_NAME, id)
+            local withMod = reservedMod and RM.KeyWithModifier(key, reservedMod)
+            if withMod and not winner[withMod] then SetOverrideBindingClick(radial, true, withMod, CASTER_NAME, id) end
             if header then
                 if key == "BUTTON3" or key == "BUTTON4" or key == "BUTTON5" then
                     header:SetAttribute(id .. "-mousekey", key)
@@ -3047,7 +3363,6 @@ function RM.UpdateTriggerSticks()
     end
 end
 
--- Release the stick to use (store.padRelease): on unless switched off
 -- /fui padlog: the aim log on or off (out of combat: a secure attribute)
 function RM.PadLogCommand()
     if not header or InCombatLockdown() then print("FlareUI: try again out of combat.") return end
@@ -3056,6 +3371,7 @@ function RM.PadLogCommand()
     print("FlareUI pad log " .. (on and "on" or "off"))
 end
 
+-- Release the stick to use (store.padRelease): on unless switched off
 function RM:IsPadReleaseOn()
     local store = GetStore()
     return store ~= nil and store.padRelease ~= false
@@ -3200,6 +3516,12 @@ function RM:Refresh()
     self:LayoutRadial()
 end
 
+-- Button Names changed: the names are placed again (the editor's preview, or the radial)
+function RM:ApplyNames()
+    if not radial then return end
+    if previewID then self:RefreshPreview() else self:LayoutRadial() end
+end
+
 function RM:Init()
     if self.initialized then return end
     self.initialized = true
@@ -3220,6 +3542,7 @@ function RM:Init()
     for _, data in pairs(GetStore() and GetStore().radials or {}) do
         if ns.ParsePadCombo(data.key) then data.padKey, data.key = data.padKey or data.key, nil end
     end
+    RM.EmoteKit.Upgrade(GetStore())
     -- first run: one radial, so the library is never empty
     local store = GetStore()
     if store and not next(store.radials) then
@@ -3272,8 +3595,6 @@ dirtyEvents:SetScript("OnEvent", RM.MarkDirty)
 
 function RM:RadialChanged(radialID)
     syncDirty = true
-    -- a Custom Emote just put on the radial asks for its command, once the editor has redrawn
-    if radialID then C_Timer.After(0, function() RM.CustomEmote.Ask(radialID) end) end
     if previewID and (radialID == nil or radialID == previewID) then
         self:RefreshPreview()
         return

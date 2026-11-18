@@ -256,7 +256,7 @@ local function EntryTooltip(owner, entry, hint)
     if entry.kind == "macro" and RM() and RM().MacroAction then macroKind, macroID = RM().MacroAction(entry) end
     if entry.kind == "spell" and entry.id then
         GameTooltip:SetSpellByID(entry.id)
-        -- (11-17, AstroFox) the rank in the top-right corner, as Classic's spell tooltips: Forever's
+        -- the rank in the top-right corner, as Classic's spell tooltips: Forever's
         -- leaves it out, and a long name's "(Rank 2)" is cut off in the catalog
         local subtext = C_Spell.GetSpellSubtext(entry.id)
         local right = _G.GameTooltipTextRight1
@@ -323,7 +323,7 @@ end
 --------------------------------------------------
 local CATEGORIES = {}
 
--- empty: what the grid says when the category has nothing for this character (11-12)
+-- empty: what the grid says when the category has nothing for this character
 local function AddCategory(key, label, build, note, empty)
     CATEGORIES[#CATEGORIES + 1] = { key = key, label = label, build = build, note = note, empty = empty }
 end
@@ -351,7 +351,7 @@ local function ForEachBookSpell(callback)
             end
         end
     end
-    -- (11-17, Malkkav; Rivax) then your pet's spells (Growl, Bite, Prowl...), from the pet's own book
+    -- then your pet's spells (Growl, Bite, Prowl...), from the pet's own book
     local petBank = Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Pet
     local numPet = petBank and C_SpellBook.HasPetSpells and C_SpellBook.HasPetSpells()
     if type(numPet) == "number" then
@@ -399,7 +399,7 @@ AddCategory("items", L["Items"], function()
     return out
 end)
 
--- Professions (11-12, Malkkav): every profession you know, at its best rank (each opens its window),
+-- Professions: every profession you know, at its best rank (each opens its window),
 -- then the profession spells around them: Smelting, Disenchant, the tracking, a campfire, Pick Lock.
 -- Ranks highest first; a spell you don't know is left out.
 local PROFESSION_SPELLS = {
@@ -419,8 +419,8 @@ local PROFESSION_SPELLS = {
     { 818 },                         -- Basic Campfire
     { 1804 },                        -- Pick Lock
 }
--- (11-12: the IDs alone found nothing on Forever, whose profession spells can carry other IDs: each one
--- is also looked up by its name in your spellbook, which answers with the rank you have)
+-- (the IDs alone find nothing on Forever, whose profession spells can carry other IDs: each one is
+-- also looked up by its name in your spellbook, which answers with the rank you have)
 local function KnownProfessionSpell(ranks)
     for _, id in ipairs(ranks) do
         if ns.IsPlayerSpell(id) then return id end
@@ -482,7 +482,10 @@ end)
 
 AddCategory("emotes", L["Emotes"], function()
     local out = {}
-    for _, e in ipairs(RM().EMOTES or {}) do out[#out + 1] = { kind = "emote", emote = e.token } end
+    local rm = RM()
+    for _, e in ipairs(rm.EMOTES or {}) do
+        if not rm.EmoteOffered or rm.EmoteOffered(e) then out[#out + 1] = { kind = "emote", emote = e.token } end
+    end
     return out
 end)
 
@@ -636,7 +639,7 @@ end
 
 --------------------------------------------------
 -- 7. UNDOING CHANGES
--- The radials (buttons, names, who gets them, shared keys) and this character's own keys.
+-- The radials (buttons, names, groups, who gets them, shared keys) and this character's own keys.
 --------------------------------------------------
 local function TakeSnapshot()
     local store = RM().GetStore()
@@ -646,6 +649,8 @@ local function TakeSnapshot()
         radials      = CopyTable(store.radials),
         radialOrder  = CopyTable(store.radialOrder),
         nextRadialID = store.nextRadialID,
+        groups       = CopyTable(store.groups or {}),
+        nextGroupID  = store.nextGroupID,
         ownKeys      = CopyTable(ns.CharDB().radialKeyOverride or {}),
     }
 end
@@ -657,6 +662,8 @@ local function RestoreSnapshot()
     store.radials      = CopyTable(snapshot.radials)
     store.radialOrder  = CopyTable(snapshot.radialOrder)
     store.nextRadialID = snapshot.nextRadialID
+    store.groups       = CopyTable(snapshot.groups)
+    store.nextGroupID  = snapshot.nextGroupID
     ns.CharDB().radialKeyOverride = CopyTable(snapshot.ownKeys)
     dirty = false
     RM():RadialChanged()
@@ -814,7 +821,7 @@ local function ShowNamePopup(renaming)
     if not popup then
         popup = CreateFrame("Frame", "FlareUI_RadialEditorNewRadial", UIParent, "BackdropTemplate")
         -- FULLSCREEN: over the settings window (DIALOG) and under Blizzard's menus (FULLSCREEN_DIALOG),
-        -- so the Available To list opens over it (it opened under it, 11-12)
+        -- so the Available To list opens over it
         popup:SetFrameStrata("FULLSCREEN")
         popup:SetToplevel(true)
         popup:EnableMouse(true)
@@ -893,7 +900,7 @@ local function ShowNamePopup(renaming)
     popup.renaming = renaming and true or nil
     popup.label:SetText(renaming and L["Rename the radial"] or L["Name the new radial"])
     popup.accept:SetText(renaming and L["Rename"] or L["Create"])
-    -- a new radial starts on every character (11-12, Malkkav: All, not only this one)
+    -- a new radial starts on every character (All, not only this one)
     local choices = RM():GetScopeChoices()
     popup.scope = choices[1]
     popup.scopeLabel:SetShown(not renaming)
@@ -953,7 +960,7 @@ local BUTTON_LIST_W = 64         -- the radial's buttons
 local BUTTON_ROW_H = 36
 local BUTTON_RIM = 30            -- a button's round icon in the list
 local GRID_ROW_H = 30            -- the Catalog's rows (three columns)
-local BOX_PAD = 8                -- (11-11) a section box reaches this far round its contents
+local BOX_PAD = 8                -- a section box reaches this far round its contents
 local BOX_GAP = 4                -- half the space between two boxes
 local GRID_RIM = 24              -- a Catalog entry's round icon
 local PREVIEW_H = 206            -- RadialMenu's PREVIEW_BOX (200) and a margin
@@ -963,8 +970,7 @@ local FORM_TOP = 34              -- labels; their controls sit 14 lower
 -- (switching modes reloads, so this holds for the session)
 local PAD_ROW = ns.IsGamepadUI()
 local PAD_TOP = 82               -- its labels
-local LOWER_TOP = PAD_ROW and 150 or 104  -- Catalog and buttons start here (room under the form, 11-11)
-local LINE_ABOVE = 13                       -- the line under the form sits this far above them
+local LOWER_TOP = PAD_ROW and 150 or 104  -- Catalog and buttons start here (room under the form)
 
 -- a tooltip from the copy document: label, description, tip
 local function Hover(control, rowKey)
@@ -987,7 +993,7 @@ local function Text(parent, font, text)
     return fs
 end
 
--- a section box behind the contents, as the settings pages' (11-11 Malkkav): on the host's parent, under it
+-- a section box behind the contents, as the settings pages': on the host's parent, under it
 local sectionBoxes = {}
 -- the page's middle and right boxes step aside while the editor shows: its own boxes take their place
 local function PageBoxes(hide)
@@ -1019,20 +1025,6 @@ end
 local function Divider(parent)
     local t = parent:CreateTexture(nil, "ARTWORK")
     t:SetColorTexture(BRONZE_MUTED[1], BRONZE_MUTED[2], BRONZE_MUTED[3], 0.45)
-    return t
-end
-
--- the panel's padding: the host ends this far above the window's bottom line
-local PANEL_PAD = 12
-
--- a column divider between two sections, clear of the line under the form and of the window's
--- bottom line
-local VLINE_GAP = 10
-local function VLine(parent, x)
-    local t = Divider(parent)
-    t:SetWidth(1)
-    t:SetPoint("TOPLEFT", x, -LOWER_TOP + LINE_ABOVE - VLINE_GAP)
-    t:SetPoint("BOTTOMLEFT", x, VLINE_GAP - PANEL_PAD)
     return t
 end
 
@@ -1109,7 +1101,7 @@ function RadialDrag.Stop(list)
     end
 end
 
--- GROUP MENUS (11-12): a radial's right-click puts it in a new group, another group, or out of its
+-- GROUP MENUS: a radial's right-click puts it in a new group, another group, or out of its
 -- own; a group's renames or ungroups it. Blizzard's menu, FlareUI's own list in the Gamepad UI.
 local function ShowRowMenu(owner, title, entries)
     if ns.IsGamepadUI() and ns.PadNav and ns.PadNav.OpenList then
@@ -1246,10 +1238,14 @@ local function BuildRadialColumn(host, column)
                 if not RM():IsRadialAvailable(id) then GameTooltip:AddLine(L["Not available on this character."], 0.6, 0.6, 0.6) end
                 local winner = self.item.beatenBy and RM():GetRadial(self.item.beatenBy)
                 if winner then GameTooltip:AddLine(L["%s opens %s on this character."]:format(KeyText(self.item.key), winner.name), 1, 0.6, 0) end
+                if self.item.reserved then
+                    GameTooltip:AddLine(L["%s is kept for Target Mouseover. Pick a key without it."]:format(
+                        RM().ModifierText(RM().ReservedModifier())), 1, 0.6, 0, true)
+                end
                 GameTooltip:Show()
             end)
             cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            -- drag a radial over another to put it there (11-12, Malkkav); a name follows the cursor
+            -- drag a radial over another to put it there; a name follows the cursor
             cell:RegisterForDrag("LeftButton")
             cell:SetScript("OnDragStart", function(self)
                 local item = self.item
@@ -1271,7 +1267,7 @@ local function BuildRadialColumn(host, column)
                 return
             end
             cell:EnableMouse(true)
-            -- a group: its name and count, + / − at the right (11-12)
+            -- a group: its name and count, + / − at the right
             if item.group then
                 local group = RM():GetGroup(item.group)
                 cell.Icon:Hide()
@@ -1327,8 +1323,8 @@ local function BuildRadialColumn(host, column)
         Refresh()
     end)
     host.undoButton:SetPoint("BOTTOMRIGHT", previewArea, "TOPRIGHT", 0, 1)
-    -- two boxes: the radials (and what opens here), and the live preview with its title
-    -- (11-11 Malkkav: they take the column box's place, edge to edge, top to bottom)
+    -- two boxes: the radials (and what opens here), and the live preview with its title (they take
+    -- the column box's place, edge to edge, top to bottom)
     local listBox = SectionBox(col)
     listBox:SetPoint("TOPLEFT", column, "TOPLEFT")
     listBox:SetPoint("TOPRIGHT", column, "TOPRIGHT")
@@ -1427,6 +1423,15 @@ local function BuildDetails(host, width)
     host.keyLabel:SetPoint("TOPLEFT", keyX + 2, -FORM_TOP)
     host.keyButton = ns.SettingsPanel.KeyButton(host, function(key)
         if not editingID then return end
+        -- the modifier Target Mouseover keeps can't be part of a radial key: the key stays as it was
+        if RM().UsesReservedModifier and RM().UsesReservedModifier(key) then
+            if UIErrorsFrame then
+                UIErrorsFrame:AddMessage(L["%s is kept for Target Mouseover. Pick a key without it."]:format(
+                    RM().ModifierText(RM().ReservedModifier())), 1, 0.25, 0.25)
+            end
+            host.keyButton:ShowKey(RM():GetRadialKey(editingID) or "")
+            return
+        end
         local taken = GameAction(key)
         if taken then
             ns.ShowDialog("FLAREUI_RADIAL_KEY_TAKEN",
@@ -1495,8 +1500,6 @@ local function BuildDetails(host, width)
         Hover(host.barButton, "rm.padBar")
     end
 
-    -- (11-11: the form has its own box, BuildLower; no line under it)
-
     -- nothing to show: every radial deleted
     local empty = Text(host, "GameFontDisable", L["No radials yet. Create one with + New radial."])
     empty:SetPoint("TOPLEFT", x + 2, -10)
@@ -1513,8 +1516,8 @@ local function BuildLower(host, height, width)
 
     -- the radial's buttons, in order; the title and icons centred in the section, which runs on to the
     -- window's column line (BUTTONS_NUDGE past the host's edge)
-    -- three boxes: the radial's form on top, the Catalog and the buttons below (11-11 Malkkav)
-    -- a line between the tabs and the radial's name (11-11 Malkkav: this tab only)
+    -- three boxes: the radial's form on top, the Catalog and the buttons below
+    -- a line between the tabs and the radial's name (this tab only)
     local tabLine = Divider(host)
     tabLine:SetHeight(1)
     tabLine:SetPoint("TOPLEFT", host, "TOPLEFT", x, 6)
@@ -1546,8 +1549,7 @@ local function BuildLower(host, height, width)
             cell.Text:Hide()
             cell.Icon:ClearAllPoints()
             cell.Icon:SetPoint("CENTER", cell, "LEFT", (x + width - buttonsX - 8) / 2 + BUTTONS_NUDGE, 0)
-            -- the selected and hover highlights centred on the icon, across the box (they hugged the
-            -- cell's left side, 11-12 Malkkav)
+            -- the selected and hover highlights centred on the icon, across the box
             local across = math.max(BUTTON_ROW_H, (x + width - buttonsX - 8) - 16)
             for _, hl in ipairs({ cell.Highlight, cell:GetHighlightTexture() }) do
                 hl:ClearAllPoints()
@@ -1616,9 +1618,9 @@ local function BuildLower(host, height, width)
     end)
     host.dropZone = dropZone
 
-    -- the Catalog: its categories as small text links right of the title (11-11 Malkkav, instead of a
-    -- dropdown): right-aligned, split by slashes in the page title's gold, the open one yellow and the
-    -- rest grey, always on one line; then a three-column grid, search at the bottom
+    -- the Catalog: its categories as small text links right of the title, right-aligned, split by
+    -- slashes in WoW yellow, the open one yellow and the rest grey, always on one line; then a
+    -- three-column grid, search at the bottom
     local catalogTitle = Text(host, "GameFontNormal", L["Catalog"])
     catalogTitle:SetPoint("TOPLEFT", catX + 4, -top)
     local LINK_H, SLASH_W = 16, 14
@@ -1643,11 +1645,11 @@ local function BuildLower(host, height, width)
         links[i] = link
         -- the slash before it (between it and the one on its left)
         local slash = Text(host, "GameFontNormalSmall", "/")
-        slash:SetTextColor(1, 0.82, 0)   -- (WoW yellow, 11-13)
+        slash:SetTextColor(1, 0.82, 0)   -- (WoW yellow)
         slashes[i] = slash
     end
-    -- one line always (11-12 Malkkav), right up to the title: the slashes' gaps close in first, then the
-    -- links' text gets smaller until they fit
+    -- one line always, right up to the title: the slashes' gaps close in first, then the links' text
+    -- gets smaller until they fit
     local room = rightX - (catX + 4 + catalogTitle:GetStringWidth() + 6)
     local function Total(gap)
         local sum = 0
@@ -1664,27 +1666,20 @@ local function BuildLower(host, height, width)
             link:SetSize(fs:GetStringWidth() + 2, LINK_H)
         end
     end
-    local x, line, lineOf = rightX, 0, {}
+    local linkX = rightX
     for i = #links, 1, -1 do
         local w = links[i]:GetWidth()
         local gap = i < #links and SLASH_W or 0
-        x = x - gap
-        links[i]:SetPoint("TOPRIGHT", host, "TOPLEFT", x, -top)
-        lineOf[i] = line
-        x = x - w
+        linkX = linkX - gap
+        links[i]:SetPoint("TOPRIGHT", host, "TOPLEFT", linkX, -top)
+        linkX = linkX - w
     end
+    -- a slash between links i - 1 and i
     for i = 2, #links do
-        local slash = slashes[i]
-        -- shown between links i - 1 and i when they share a line
-        if lineOf[i - 1] == lineOf[i] then
-            slash:SetPoint("CENTER", links[i], "LEFT", -SLASH_W / 2, 0)
-            slash:Show()
-        else
-            slash:Hide()
-        end
+        slashes[i]:SetPoint("CENTER", links[i], "LEFT", -SLASH_W / 2, 0)
+        slashes[i]:Show()
     end
     slashes[1]:Hide()
-    local extra = line * LINK_H   -- the grid starts lower by the extra lines
     host.PaintCategories = function()
         for _, link in ipairs(links) do
             local on = link.key == activeCategory
@@ -1693,7 +1688,7 @@ local function BuildLower(host, height, width)
     end
 
     -- below the grid: how to edit (left) and the search (right)
-    local gridRows = math.max(4, math.floor((height - top - 26 - extra - 44) / GRID_ROW_H))
+    local gridRows = math.max(4, math.floor((height - top - 26 - 44) / GRID_ROW_H))
     local browseList = CreateList(host, gridW, 3, gridRows, GRID_ROW_H,
         function(cell)
             MakeRound(cell, GRID_RIM)
@@ -1721,7 +1716,7 @@ local function BuildLower(host, height, width)
             ApplyIcon(cell, icon)
             cell.Text:SetText(name)
         end)
-    browseList:SetPoint("TOPLEFT", catX, -top - 26 - extra)
+    browseList:SetPoint("TOPLEFT", catX, -top - 26)
     host.browseList = browseList
 
     local search = CreateFrame("EditBox", nil, host, "SearchBoxTemplate")
@@ -1819,7 +1814,7 @@ end
 local function RefreshRadialColumn(perRadial)
     local rm = RM()
     local here, other = {}, {}
-    -- groups (11-12): a row before their first radial here, then their radials unless folded; the
+    -- groups: a row before their first radial here, then their radials unless folded; the
     -- radials not on this character stay ungrouped under the header
     local counts, placed = {}, {}
     for _, id in ipairs(rm:GetRadialOrder()) do
@@ -1832,7 +1827,9 @@ local function RefreshRadialColumn(perRadial)
             local available = rm:IsRadialAvailable(id)
             local key = available and rm:GetRadialKey(id) or rm:GetSharedKey(id)
             local beatenBy = perRadial[id] and perRadial[id].beatenBy
-            local item = { id = id, available = available, key = key, beaten = beatenBy ~= nil, beatenBy = beatenBy }
+            local reserved = perRadial[id] and perRadial[id].reserved
+            local item = { id = id, available = available, key = key, beaten = beatenBy ~= nil or reserved == true,
+                           beatenBy = beatenBy, reserved = reserved }
             local gid = available and data.group and rm:GetGroup(data.group) and data.group
             if gid then
                 local open = rm:IsGroupOpen(gid)
@@ -1863,7 +1860,11 @@ local function RefreshRadialColumn(perRadial)
         local info = perRadial[id]
         if info then
             local name = rm:GetRadial(id).name
-            if not info.beatenBy then
+            if info.reserved then
+                -- its key uses the modifier Target Mouseover keeps: not bound while it is kept
+                clashes[#clashes + 1] = "|cffff9933" .. KeyText(info.key) .. "  " .. name .. " ("
+                    .. L["%s is kept for Target Mouseover"]:format(rm.ModifierText(rm.ReservedModifier())) .. ")|r"
+            elseif not info.beatenBy then
                 local taken = GameAction(info.key)
                 lines[#lines + 1] = "|cffffd100" .. KeyText(info.key) .. "|r  " .. name
                     .. (taken and ("  |cffff9933" .. L["also bound to %s"]:format(taken) .. "|r") or "")

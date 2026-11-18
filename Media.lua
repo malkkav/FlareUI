@@ -40,7 +40,7 @@ local ASSETS = {
         ["Barlow Condensed"] = "Fonts/BarlowCondensed-Regular.ttf",
         ["Roboto Condensed"] = "Fonts/RobotoCondensed-Regular.ttf",
         ["Roboto Condensed Bold"] = "Fonts/RobotoCondensed-Bold.ttf",
-        -- the settings window's titles (11-10 panel rework); Latin only
+        -- the settings window's titles; Latin only
         ["Marcellus"]        = "Fonts/Marcellus-Regular.ttf",
     },
 }

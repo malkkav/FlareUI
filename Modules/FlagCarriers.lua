@@ -3,12 +3,11 @@ local L = ns.L
 
 --------------------------------------------------
 -- FLAG CARRIERS
--- Edit Mode frame "FlareUI Flag Carriers" (Unit Frames > Flag Carrier Frames, off; 11-15, a player's
--- request). In a battleground Blizzard shows the flag carriers on its old arena frames
--- (Blizzard_Deprecated_ArenaUI: arena1 and arena2). (11-17, Malkkav) FlareUI's own frames now, on the
--- boss frames' tile kit (PartyFrames.lua), in the player's frame style: the carrier's name, health and
--- power, a class portrait (always), the faction crest FlareUI's target frame uses, a cast bar. No
--- auras (Blizzard's show none). Clicks as Blizzard's: left targets, right sets the focus.
+-- Edit Mode frame "FlareUI Flag Carriers" (Unit Frames > Flag Carrier Frames, off). In a battleground
+-- Blizzard shows the flag carriers on its old arena frames (Blizzard_Deprecated_ArenaUI: arena1 and
+-- arena2). FlareUI's own frames replace them, on the boss frames' tile kit (PartyFrames.lua), in the
+-- player's frame style: the carrier's name, health and power, a class portrait (always), the faction
+-- crest FlareUI's target frame uses, a cast bar. No auras (Blizzard's show none). Clicks as Blizzard's: left targets, right sets the focus.
 -- Blizzard's container is parked on a hidden frame, out of combat only (it holds secure buttons); a
 -- move held back by combat waits for the fight to end. Ours show and hide by a unit watch.
 --------------------------------------------------
@@ -25,7 +24,7 @@ LibStub("AceEvent-3.0"):Embed(FC)
 --------------------------------------------------
 -- 2. UPVALUES / CONSTANTS
 --------------------------------------------------
-local pairs, ipairs, pcall, type = pairs, ipairs, pcall, type
+local ipairs, pcall, type = ipairs, pcall, type
 local math_floor, math_max = math.floor, math.max
 local CreateFrame, InCombatLockdown = CreateFrame, InCombatLockdown
 local LEM = LibStub("FlareEditMode")
@@ -36,7 +35,7 @@ local Tile = PF and PF.Tile
 local CARRIERS = 2   -- a battleground's flag carriers: one per side
 local TILE_TEMPLATE = "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate"
 -- Edit Mode keeps a reference to this table: ApplyPosition refills it for the style in use
--- (11-17, Malkkav's spots: Addon Style here, the ring styles' in UnitFramesRing.lua TILE_POSITIONS.flag)
+-- (Addon Style's spot here, the ring styles' in UnitFramesRing.lua TILE_POSITIONS.flag)
 local BASE_POSITION = { point = "RIGHT", x = -36, y = 173 }
 local DEFAULT_POSITION = { point = "RIGHT", x = -36, y = 173 }
 
@@ -64,13 +63,13 @@ end
 
 -- the tile settings: the flag carriers' db plus fixed values (no auras, no party icons; the role
 -- icon's place holds the faction crest, ctx.factionIcon)
--- (11-17, Malkkav: on the safe side) no range fading and no raid markers: Blizzard's own flag
+-- No range fading and no raid markers, to stay on the safe side: Blizzard's own flag
 -- carrier frames show neither, so FlareUI's show nothing more than they do
 local ICONS = { role = { shown = true }, leader = { shown = false }, readyCheck = { shown = false },
                 status = { shown = false }, raidIcon = { shown = false } }
 local FIXED = { buffs = "OFF", debuffs = "OFF", dispels = "OFF", dispelHighlight = "off", portrait = "class",
                 auraMax = 5, auraPerRow = 5, rangeCheck = false, raidIcon = false }
--- (11-17, Malkkav) in FlareUI and Forever Style the boss frames' size preset (UnitFramesRing.lua
+-- In FlareUI and Forever Style the boss frames' size preset (UnitFramesRing.lua
 -- FOREVER_TILES.boss) where the player set nothing, so both kinds start the same size
 local SIZE_KEYS = { width = true, height = true, powerHeight = true, ringSize = true, castHeight = true, spacing = true }
 local function RingSize(db, key)
@@ -184,20 +183,23 @@ end
 --------------------------------------------------
 -- 6. VISIBILITY: each frame follows its carrier (unit watch, combat-safe); Edit Mode shows both
 --------------------------------------------------
--- (11-17, Malkkav) on top of the boss, party and raid frames when placed over them: the same LOW
+-- On top of the boss, party and raid frames when placed over them: the same LOW
 -- strata as theirs but far above their frame levels (HOLDER_LEVEL); in Edit Mode, where the party
 -- frames rise to MEDIUM (RaidFrames.lua GROUP_LAYERS), one strata higher than that. Children keep
 -- the strata they were made with, hence the recursion; out of combat only (secure buttons).
 local HOLDER_LEVEL = 200
-local function SetLayer(frame, strata)
+-- (siblings as varargs: no table per frame)
+local function SetLayer(strata, frame, ...)
+    if not frame then return end
     frame:SetFrameStrata(strata)
-    for _, child in ipairs({ frame:GetChildren() }) do SetLayer(child, strata) end
+    SetLayer(strata, frame:GetChildren())
+    return SetLayer(strata, ...)
 end
 local function ApplyLayer(editing)
     local strata = editing and "HIGH" or "LOW"
     if holder.fuiStrata ~= strata then
         holder.fuiStrata = strata
-        SetLayer(holder, strata)
+        SetLayer(strata, holder)
     end
 end
 
@@ -217,6 +219,8 @@ local function ApplyVisibility()
 end
 
 local function Refresh()
+    -- (a Reset Settings in Edit Mode runs this once, after its last setting: LEM:Defer)
+    if LEM:Defer(Refresh) then return end
     if not holder then return end
     if InCombatLockdown() then pendingLayout = true return end
     pendingLayout = false
@@ -290,7 +294,7 @@ local function BuildSettings()
     local function onPlate() return ns.UFRing and ns.UFRing.PlateOn() or false end
     local frameItems = {
         { name = L["Scale"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.PlateDefaultScale("boss") or 100,
-          minValue = 50, maxValue = 250, valueStep = 5, formatter = function(value) return value end,   -- plain: "100%" clips the value box (11-17)
+          minValue = 50, maxValue = 250, valueStep = 5, formatter = function(value) return value end,   -- plain: "100%" clips the value box
           get = function() local db = GetDb(); return db and db.plateScale or (ns.UFRing and ns.UFRing.PlateDefaultScale("boss")) or 100 end,
           set = function(layoutName, value)
               if not onPlate() then return end
@@ -333,6 +337,8 @@ local function BuildSettings()
         { name = L["Mirror Bars"], kind = LEM.SettingType.Checkbox, default = D.mirror ~= false,
           get = function() return get("mirror")() ~= false end, set = set("mirror"),
           desc = L["Laid out like the target frame: portrait on the right, bars filling from the right. In FlareUI and Forever Style, only the bars flip."] },
+        -- Behaviour
+        K.HealthColorSetting(get("healthColor"), set("healthColor")),
     }
     local sizeItems, textItems, behaviourItems = ns.SplitFrameItems(frameItems)
     Section("Size", sizeItems)
@@ -476,7 +482,8 @@ function FC:Init()
         ApplyPosition(layoutName)
     end)
     local function ShowPreview()
-        if not InCombatLockdown() then LayoutHolder(); Refresh() end
+        -- (out of a fight Refresh already shows and draws both samples)
+        if not InCombatLockdown() then LayoutHolder(); Refresh() return end
         ApplyVisibility()
         for _, f in ipairs(tiles) do Tile.UpdateAll(f) end
     end

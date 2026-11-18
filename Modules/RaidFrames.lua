@@ -75,7 +75,7 @@ local LAYOUT_SNIPPET = [[
     local room = rows and (self:GetAttribute("labelRoom") or 0) or 0
     h = h + room
     -- Growth: from the middle, or from one end of the frame (its full size). Rows: DOWN from the top,
-    -- UP from the bottom; columns (6.4.1, a player: stuck in the middle): DOWN from the left (Right),
+    -- UP from the bottom; columns: DOWN from the left (Right),
     -- UP from the right (Left)
     local grow = self:GetAttribute("grow") or "CENTER"
     local used = 0
@@ -262,7 +262,7 @@ function TT.Update(t)
     if not unit or not UnitExists(unit) then return end
     t.Health:SetMinMaxValues(0, UnitHealthMax(unit))
     t.Health:SetValue(UnitHealth(unit))
-    t.Health:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn(GetDb())))
+    t.Health:SetStatusBarColor(K.HealthBarColor(unit, ns.ClassColorsOn(GetDb()), GetDb()))   -- (Health Colour: the raid's)
     t.Name:SetText(ns.UnitDisplayName(unit))
 end
 
@@ -318,7 +318,7 @@ function TT.PlaceSample(f, w, hh)
         s.Name:SetText(L["Target"])
         f.SampleTarget = s
     end
-    local db, kdb = GetDb(), K.GetDb()
+    local db = GetDb()
     s.Health:SetStatusBarTexture(K.GetBarTexture(db and db.texture))
     K.ApplyFont(s.Name, K.Font("raid", "names"), -2)
     s:ClearAllPoints()
@@ -338,7 +338,6 @@ function TT.Layout()
     local db = GetDb()
     local w, hh = TankSize()
     local tex = K.GetBarTexture(db and db.texture)
-    local kdb = K.GetDb()
     for _, t in ipairs(TT.frames) do
         local f = t:GetParent()
         t:ClearAllPoints()
@@ -384,6 +383,9 @@ local function InitTile(header, name)
         end
     end)
     tiles[#tiles + 1] = f
+    -- LB + D-pad group targeting in the Gamepad UI (PadGroupTargeting.lua); the main tanks are
+    -- already in their groups
+    if header.ctx ~= tankCtx and ns.PadGroupTargeting then ns.PadGroupTargeting.Add(f) end
     if not InCombatLockdown() then pcall(Tile.Layout, f) end
 end
 
@@ -471,7 +473,7 @@ end
 --------------------------------------------------
 -- 5. LAYOUT
 --------------------------------------------------
--- Spacing, Group Spacing and the main tanks' Spacing are measured between the bars (11-13, Malkkav): 0
+-- Spacing, Group Spacing and the main tanks' Spacing are measured between the bars: 0
 -- makes the bars touch (the tiles' margins, where the borders sit, overlap). Saved values gain the
 -- two margins once, so a setup looks as it did (raid.barSpacing).
 local function Gaps(db)
@@ -541,8 +543,11 @@ local function LayoutGroups()
     for k = 1, MAX_GROUPS do
         local h = headers[k]
         if h then
+            -- a header that won't show is hidden first: a visible one lays its tiles out on every change
+            local show = mode == "group" and not IsEditing()
+            if not show then h:Hide() end
             ConfigureHeader(h, w, hh, gap, ggap)
-            h:SetShown(mode == "group" and not IsEditing())
+            h:SetShown(show)
             StyleGroupLabel(h.Label, k)
             h.Label:ClearAllPoints()
             h.Label:SetPoint("BOTTOMLEFT", h, "TOPLEFT", 1, 2)
@@ -552,6 +557,8 @@ local function LayoutGroups()
     end
     local all = headers.all
     if all then
+        local showAll = mode == "flat" and not IsEditing()
+        if not showAll then all:Hide() end
         ConfigureHeader(all, w, hh, gap, ggap)
         local sort = db.sort or "GROUP"
         all:SetAttribute("groupBy", sort == "CLASS" and "CLASS" or "ASSIGNEDROLE")
@@ -568,7 +575,7 @@ local function LayoutGroups()
         else
             all:SetPoint("CENTER", holder, "CENTER")
         end
-        all:SetShown(mode == "flat" and not IsEditing())
+        all:SetShown(showAll)
     end
     holder:SetSize(HolderSize())
     holder:Execute([[ self:RunAttribute("layout") ]])
@@ -582,6 +589,8 @@ local function LayoutTanks()
     -- Tank Targets below the frames: the room for them between the tanks
     if TT.Place() == "BOTTOM" then gap = gap + TT.HEIGHT + TT.GAP end
     local h = headers.tanks
+    -- (hidden first in Edit Mode, as the groups' headers)
+    if IsEditing() then h:Hide() end
     h:SetAttribute("_ignore", "batch")
     h:SetAttribute("tileWidth", w)
     h:SetAttribute("tileHeight", hh)
@@ -792,6 +801,8 @@ end
 -- 7. REFRESH
 --------------------------------------------------
 local function Refresh()
+    -- (a Reset Settings in Edit Mode runs this once, after its last setting: LEM:Defer)
+    if LEM:Defer(Refresh) then return end
     if not holder then return end
     if InCombatLockdown() then pendingLayout = true return end
     pendingLayout = false
@@ -834,7 +845,6 @@ end
 --------------------------------------------------
 -- 8. EDIT MODE SETTINGS
 --------------------------------------------------
-local RebuildSettings
 
 -- The Auras section for the raid and main tank frames (each with its get / set and view); a place
 -- that clashes with another kind's is greyed out
@@ -861,8 +871,8 @@ local function AuraItems(get, set, d, view)
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = d.debuffs, values = RAID_PLACES, generator = Place("debuffs"),
           get = get("debuffs"), set = set("debuffs"),
           desc = L["Debuffs as Blizzard's raid frames pick them: boss and role debuffs, priority debuffs, and the ones you can dispel."] },
-        -- (11-16: the shared Hide Buffs, as on every other frame)
-        K.HideBuffsSetting("PERMANENT", get("hideBuffs", "PERMANENT"), set("hideBuffs")),
+        -- (the shared Hide Buffs, as on every other frame)
+        K.HideBuffsSetting("OFF", get("hideBuffs", "OFF"), set("hideBuffs")),
         { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = d.dispelHighlight or "mine",
           values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
                      { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
@@ -914,7 +924,7 @@ local function BuildSettings()
               sampleRaid = value
               Refresh()
           end },
-        -- (columns too since 6.4.1; there Down / Up read as Right / Left, as on the party frames in a row)
+        -- (for columns Down / Up read as Right / Left, as on the party frames in a row)
         { name = L["Growth"], kind = LEM.SettingType.Dropdown, default = "CENTER",
           values = function()
               if not Rows() then
@@ -926,7 +936,7 @@ local function BuildSettings()
           end,
           desc = L["Which way the raid grows as groups join. Rows grow down or up, columns right or left. The main tank frames follow rows."],
           get = get("grow", "CENTER"), set = set("grow") },
-        -- ("Group Order" since 11-16: "Sort By" is the aura order everywhere else)
+        -- ("Group Order": "Sort By" is the aura order everywhere else; found by "Sort By" too)
         { name = L["Group Order"], search = L["Sort By"], kind = LEM.SettingType.Dropdown, default = "GROUP",
           values = { { text = L["Group"], value = "GROUP", isRadio = true }, { text = L["Role"], value = "ROLE", isRadio = true },
                      { text = L["Class"], value = "CLASS", isRadio = true } },
@@ -959,7 +969,7 @@ local function BuildSettings()
               Refresh()
           end,
           desc = L["The raid's main tanks in a small frame of their own (set by the raid leader)."] },
-        -- (11-17, pkecerski) as the party frames' Hide Player Frame in a Party
+        -- as the party frames' Hide Player Frame in a Party
         { name = L["Hide Player Frame in a Raid"], kind = LEM.SettingType.Checkbox, default = false,
           get = get("hidePlayerInRaid", false),
           set = function(_, value)
@@ -971,7 +981,7 @@ local function BuildSettings()
           desc = L["Your player and pet frames hide while you're in a raid, and come back solo and in a party."] },
     })
 
-    -- (11-16) the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
+    -- the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
     local frameItems = {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = DEFAULT_W, minValue = 40, maxValue = 200, valueStep = 1,
           get = get("width", DEFAULT_W), set = set("width") },
@@ -987,10 +997,12 @@ local function BuildSettings()
         { name = L["Power Bar for Mana Users Only"], kind = LEM.SettingType.Checkbox, default = false,
           get = get("powerManaOnly", false), set = set("powerManaOnly"),
           desc = L["Power bars only for classes that use mana. Warriors and rogues get the room for health instead."] },
-        -- (in Frame since 6.3.3: it changes how the frame behaves, not how it looks; main tanks follow it)
+        -- (in Frame: it changes how the frame behaves, not how it looks; main tanks follow it)
         { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The frame fades while the unit is out of range."],
           get = get("rangeCheck", true), set = set("rangeCheck") },
+        -- Behaviour; main tanks and their targets follow it
+        K.HealthColorSetting(get("healthColor", "off"), set("healthColor")),
     }
     local sizeItems, textItems, behaviourItems = ns.SplitFrameItems(frameItems)
     Section("Size", sizeItems)
@@ -1000,9 +1012,9 @@ local function BuildSettings()
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = d.texture, values = K.BuildTextureValues(),
           get = get("texture", d.texture), set = set("texture") },
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = d.border, values = K.BuildBorderValues(false),
-          -- (every style, Forever Style too: raid tiles are never on its plate, 11-13)
+          -- (every style, Forever Style too: raid tiles are never on its plate)
           get = get("border", d.border), set = set("border") },
-        -- (11-13, was always striped; the main tanks follow it)
+        -- (the main tanks follow it)
         { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = d.absorbTexture or "FlareUI Striped", values = K.BuildAbsorbValues(),
           get = get("absorbTexture", "FlareUI Striped"), set = set("absorbTexture"),
           desc = L["The texture of the shield (absorb) over the health bar."] },
@@ -1010,10 +1022,10 @@ local function BuildSettings()
         K.BgOpacitySetting(K.BAR_BG_OPACITY, get("bgOpacity", K.BAR_BG_OPACITY), set("bgOpacity")),
         K.ClassColorSetting(function() return ns.ClassColorsOn(GetDb()) end, set("classColor")),
         K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars")),
-        -- (11-16, Marcus; main tanks follow it)
+        -- (main tanks follow it)
         K.BarEdgeGlowSetting(get("barEdgeGlow", false), set("barEdgeGlow")),
         K.DamageTrailSetting(get("damageTrail"), set("damageTrail")),
-        -- (11-17, Malkkav) Threat Glow: in Look, right after Class Colours (Core.lua order) (main tanks follow it)
+        -- Threat Glow: in Look, right after Class Colours (Core.lua order); main tanks follow it
         { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The border pulses in the threat colour while this member has aggro."],
           get = function() return get("threatGlow", true)() ~= false end, set = set("threatGlow") },
@@ -1066,7 +1078,7 @@ local function BuildTankSettings()
         return raidD[k]
     end })
     local Section, settings = K.EditSections()
-    -- (11-16) a group section and Size, as on the raid frames (the rest of their look follows the raid's)
+    -- a group section and Size, as on the raid frames (the rest of their look follows the raid's)
     Section("Main Tanks", {
         -- (between the bars, as the raid's Frame Gap: 0 makes them touch)
         { name = L["Frame Gap"], search = L["Spacing"], kind = LEM.SettingType.Slider, default = 10, minValue = 0, maxValue = 40, valueStep = 1,
@@ -1087,11 +1099,6 @@ local function BuildTankSettings()
     })
     Section("Auras", ns.AuraOrder.With(AuraItems(get, set, d, tankView), get, set))
     return settings
-end
-
-RebuildSettings = function()
-    if not holder then return end
-    LEM:AddFrameSettings(holder, BuildSettings())
 end
 
 --------------------------------------------------
@@ -1184,16 +1191,19 @@ end
 -- Edit Mode: the party and raid frames overlap, so each gets its own strata (party on top) and their
 -- tiles never interleave. Children keep the strata they were created with, hence the recursion.
 local GROUP_LAYERS = { FlareUI_Party = "MEDIUM", FlareUI_Raid = "LOW", FlareUI_RaidTanks = "LOW" }
-local function SetLayer(frame, strata)
+-- (frames and their siblings as varargs: no table per frame over thousands of tile parts)
+local function SetLayer(strata, frame, ...)
+    if not frame then return end
     frame:SetFrameStrata(strata)
-    for _, child in ipairs({ frame:GetChildren() }) do SetLayer(child, strata) end
+    SetLayer(strata, frame:GetChildren())
+    return SetLayer(strata, ...)
 end
 local function StackGroupFrames()
     if InCombatLockdown() then return end
     local editing = IsEditing()
     for name, strata in pairs(GROUP_LAYERS) do
         local frame = _G[name]
-        if frame then SetLayer(frame, editing and strata or "LOW") end
+        if frame then SetLayer(editing and strata or "LOW", frame) end
     end
 end
 
@@ -1255,7 +1265,6 @@ function RF:Init()
     LEM:RegisterCallback("layout", function(layoutName) ApplyPosition(layoutName) end)
     LEM:RegisterCallback("enter", function()
         Refresh()
-        RebuildSettings()
         StackGroupFrames()
     end)
     local function EndPreview()

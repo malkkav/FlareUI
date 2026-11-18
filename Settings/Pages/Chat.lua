@@ -25,22 +25,15 @@ S:On("PageShown", function(key)
 end)
 
 S:Row{ key = "ch.opacity", kind = "range", path = "chat.opacity", choices = S:OpacityChoices(), apply = Refresh, section = "ch.frame" }
--- (11-15, Malkkav) Visibility, the fade speeds, Faded Opacity, Fade Delay and a fade group moved into the
--- chat's Edit Mode dialog (Modules/Visibility.lua, element "chat"); this opens Edit Mode
-S:Row{ key = "ch.fading", kind = "button", center = true, section = "ch.frame",
-    apply = function()
-        if not S:OpenEditMode("ch") and InCombatLockdown() then
-            print("|cffff9900FlareUI:|r " .. ns.L["Edit Mode can't open during a fight."])
-        end
-    end }
+-- (the chat's fading is set in its Edit Mode dialog)
 S:Row{ key = "ch.border", kind = "choice", path = "chat.borderTexture", choices = S.BorderChoices,
     apply = Refresh, section = "ch.frame" }
--- Tab Glow (11-15, Malkkav): which kinds of lines light an unseen tab; None (or nothing ticked) lights
+-- Tab Glow: which kinds of lines light an unseen tab; None (or nothing ticked) lights
 -- none. Mute Tab on a tab's right click keeps one tab dark (Modules/Chat.lua TAB GLOW).
 S:Row{ key = "ch.unreadGlow", kind = "dropdown", path = "chat.unreadGlow", apply = Refresh, section = "ch.frame",
     choices = { "none", { divider = true }, "say", "yell", "party", "raid", "guild", "whisper", "channel" },
     toggles = { exclusive = { "none" }, tokens = { "say", "yell", "party", "raid", "guild", "whisper", "channel" }, empty = "none" } }
--- Tab Sets Channel (11-15, Haisen): picking a tab that shows one kind of chat makes it the kind you
+-- Tab Sets Channel (Haisen): picking a tab that shows one kind of chat makes it the kind you
 -- type in (Modules/Chat.lua TAB SETS CHANNEL). Read on each tab pick, so no apply needed.
 
 S:Row{ key = "ch.editBoxOpacity", kind = "range", path = "chat.editBoxOpacity", choices = S:OpacityChoices(), apply = Refresh, section = "ch.editBoxSection" }
@@ -48,13 +41,13 @@ S:Row{ key = "ch.editBox", kind = "choice", path = "chat.editBoxPosition",
     choices = { "inside", "below", "above" }, apply = Refresh, section = "ch.editBoxSection" }
 
 -- in pairs: copying and history, what's hidden, the lines (Copy Chat Links and Link Tooltips on
--- Mouseover are always on since 11-16)
+-- Mouseover are always on)
 S:Row{ key = "ch.copyButton", tab = "tweaks", path = "chat.copyButton", apply = Refresh, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.history", tab = "tweaks", path = "chat.saveHistory", apply = Refresh, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.combatLog", tab = "tweaks", path = "chat.hideCombatLog", reload = true, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.noBubbles", tab = "tweaks", path = "chat.hideBubblesInInstance", apply = Refresh, section = "ch.tweaks", half = true }
 S:Row{ key = "ch.lineHeight", tab = "tweaks", path = "chat.increaseLineHeight", apply = Refresh, section = "ch.tweaks", half = true }
--- (11-15, Malkkav) Tab Sets Channel lives here, with the other chat tweaks
+-- Tab Sets Channel lives here, with the other chat tweaks
 S:Row{ key = "ch.tabChannel", tab = "tweaks", path = "chat.tabChannel", section = "ch.tweaks", half = true }
 
 -- Formatting (never applied in instances, where chat lines are unreadable)
@@ -62,7 +55,7 @@ local function Format(key, path)
     S:Row{ key = "ch." .. key, tab = "tweaks", path = "chat." .. path, apply = Refresh, section = "ch.formatting", half = true }
 end
 -- Channel Names (the old Short Channel Names switch: on was Number)
--- (11-16, UX audit 4.1: it was red text in the section title, which read as an error)
+-- (a note row: red text in the section title reads as an error)
 S:Row{ key = "ch.formattingNote", kind = "text", noTitle = true, tab = "tweaks", section = "ch.formatting" }
 S:Row{ key = "ch.channelNames", kind = "choice", tab = "tweaks", section = "ch.formatting", choices = { "full", "short", "number" },
     get = function()
@@ -75,7 +68,7 @@ S:Row{ key = "ch.channelNames", kind = "choice", tab = "tweaks", section = "ch.f
         S:SetPath("chat.shortChannels", mode ~= "full")
     end,
     apply = Refresh }
--- in pairs (Malkkav, 11-10; Colon After Names removed 11-16): names | NPCs, whispers | time, ...;
+-- in pairs: names | NPCs, whispers | time, ...;
 -- the level last
 Format("formatPlayer", "formatPlayer")
 Format("formatNPC", "formatNPC")

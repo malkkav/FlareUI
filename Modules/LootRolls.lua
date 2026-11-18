@@ -2,7 +2,7 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- LOOT ROLLS (Bags & Looting > Looting > Loot Roll Window, off; PR #43 by Nico-Mayer, 11-15)
+-- LOOT ROLLS (Bags & Looting > Looting > Loot Roll Window, off)
 -- FlareUI's loot roll window in place of Blizzard's roll frames. Every roll still to decide gets a
 -- card (Need / Greed / Pass, timer, the leader); the ones you chose on are one-line rows below, and
 -- everyone's roll shows on hover. A roll you passed on or let run out leaves at once; the others hide
@@ -22,7 +22,7 @@ local canaccessvalue, issecretvalue = canaccessvalue, issecretvalue
 local LEM = LibStub("FlareEditMode")
 local LSM = LibStub("LibSharedMedia-3.0")
 
--- (11-15, Malkkav) no tooltips on the Edit Mode samples: LR.previewing while they show
+-- no tooltips on the Edit Mode samples: LR.previewing while they show
 local function Tip(owner, anchor)
     if LR.previewing then return false end
     ns.OwnGameTooltip(owner, anchor)
@@ -32,7 +32,7 @@ end
 local W, PAD, HEADER = 300, 8, 26
 local BOX_PAD = 8            -- inside the box of a card or row
 local TEXT_W = W - 2 * PAD - 2 * BOX_PAD - 49   -- right of the icon, to the card's right edge
--- Need over Greed, Pass apart beside the two: side by side, a player rolled Need by mistake
+-- Need over Greed, Pass apart beside the two: side by side, Need is easy to click by mistake
 local ICON, CARD_H, BUTTON, ROW, CARD_GAP = 40, 72, 21, 15, 6
 local BUTTON_GAP, PASS_GAP = 4, 8
 local BUTTON_COL = 2 * BUTTON + PASS_GAP + 8
@@ -41,7 +41,7 @@ local GUARD = 0.2            -- seconds a card's roll buttons ignore clicks afte
 local URGENT = 5             -- the last seconds of a roll you have not chosen on: its timer pulses
 local RESULT_GRACE = 30     -- seconds after the roll's end to wait for its result
 local ITEM_RETRY_DELAY = 0.25
--- (11-15) Malkkav's spot, the same as the Movers' loot default (one Edit Mode frame)
+-- the same as the Movers' loot default (one Edit Mode frame)
 local DEFAULTS = { point = "TOP", x = 0, y = -221 }
 local MOVER_KEY = "loot"     -- tweaks.moverLayouts[layout].loot: the Movers' "FlareUI Loot Rolls" spot
 local HISTORY_ICON = "Interface\\AddOns\\FlareUI\\Media\\Icons\\DMSegments.tga"
@@ -400,10 +400,9 @@ end
 -- 4. FLAREUI PANEL PIECES
 --------------------------------------------------
 local function Panel(frame)
-    -- (11-17, Malkkav: trying FlareUI Thick again, with a darker wash; 11-15 it was thin)
     local edge = LSM:Fetch("border", "FlareUI Thick")
     frame:SetBackdrop({ edgeFile = edge, edgeSize = ns.BorderEdgeSize(edge, 16) })
-    -- (11-17, Malkkav) a little darker than FlareUI's bronze, on the plain rock
+    -- a little darker than FlareUI's bronze, on the plain rock
     local c, dim = ns.BORDER_COLOR, 0.75
     frame:SetBackdropBorderColor(c.r * dim, c.g * dim, c.b * dim, c.a)
     if not frame.skin then
@@ -413,9 +412,9 @@ local function Panel(frame)
         rock:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
         rock:SetHorizTile(true)
         rock:SetVertTile(true)
-        -- (11-17, Malkkav: a test) the settings window's ground, "Rock, natural" (Settings/Panel.lua LOOK_BG):
-        -- the rock as it is, no brown wash, no bronze glow; the shade toward the bottom stays. Back to the
-        -- bronze look: the wash at 0.62 and the glow shown.
+        -- the settings window's ground, "Rock, natural" (Settings/Panel.lua LOOK_BG): the rock as it is,
+        -- the wash and glow kept hidden; the shade toward the bottom stays. For the bronze look: the wash
+        -- at 0.62 and the glow shown.
         local wash = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
         wash:SetAllPoints(rock)
         wash:SetColorTexture(0.05, 0.038, 0.026, 0)
@@ -433,7 +432,7 @@ local function Panel(frame)
         shade:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0.45), CreateColor(0, 0, 0, 0))
         frame.skin = { rock, wash, glow, shade }
     end
-    -- Frame Opacity (Bags & Looting, tweaks.lootRollsOpacity; 11-15, Malkkav: as the chat and meter)
+    -- Frame Opacity (Bags & Looting, tweaks.lootRollsOpacity), as on the chat and meter
     local db = GetDb()
     local opacity = (db and tonumber(db.lootRollsOpacity)) or 1
     for _, texture in ipairs(frame.skin) do texture:SetAlpha(opacity) end
@@ -460,7 +459,7 @@ local function HeaderButton(parent, iconPath, onClick, tooltip)
     b:SetSize(16, 16)
     b.icon = b:CreateTexture(nil, "OVERLAY")
     b.icon:SetPoint("CENTER")
-    b.icon:SetSize(12, 12)   -- (11-15, Malkkav: was 16, too big)
+    b.icon:SetSize(12, 12)
     ns.BronzeIcon.Apply(b.icon, iconPath, ICON_COLOR)
     b:SetScript("OnClick", onClick)
     b:SetScript("OnEnter", function(self)
@@ -497,7 +496,7 @@ end
 -- 5. CARDS AND ROWS
 -- Every roll still to decide gets a card, up to MAX_CARDS (the rest wait their turn); a roll you
 -- chose on is a one-line row with the leader or winner and no buttons. A row can be closed (X); a
--- roll you passed on or let run out leaves at once (always: the Hide Passed Rolls switch went, 11-15).
+-- roll you passed on or let run out leaves at once.
 --------------------------------------------------
 local ROW_H, ROW_GAP, ROW_ICON, MAX_CARDS, MAX_ROWS = 32, 4, 20, 4, 5
 local ROW_PAD = (ROW_H - ROW_ICON) / 2   -- left of a row's icon as above and below it
@@ -1167,16 +1166,17 @@ local function SampleSession(itemID)
     return s
 end
 
-local function HideSamples()
+-- quiet: no redraw (ShowSamples redraws once with the new samples)
+local function HideSamples(quiet)
     LR.previewing = nil
     for i = #order, 1, -1 do
         if order[i].sample then RemoveQuiet(order[i]) end
     end
-    Refresh()
+    if not quiet then Refresh() end
 end
 
 local function ShowSamples()
-    HideSamples()
+    HideSamples(true)
     LR.previewing = true
     GameTooltip:Hide()
     local _, class = UnitClass("player")
@@ -1220,8 +1220,8 @@ local function GetLayoutStore(layoutName)
     return store[MOVER_KEY]
 end
 
--- (11-15) The holder is the Edit Mode box. Outside Edit Mode it is the header (W x HEADER): the saved
--- spot is that box's, as before. While the samples show it covers the whole window, so the selection
+-- The holder is the Edit Mode box. Outside Edit Mode it is the header (W x HEADER): the saved spot is
+-- that box's. While the samples show it covers the whole window, so the selection
 -- and the snapping take all of it; it keeps its top left, where the window hangs from (the window
 -- grows down). Re-fitted after every Refresh (samples in or out, rows coming and going).
 function FitHolder()
@@ -1291,7 +1291,7 @@ end
 
 --------------------------------------------------
 -- 8. BLIZZARD'S ROLL FRAMES
--- START_LOOT_ROLL no longer reaches them (Init), but Blizzard still opens them for every open roll
+-- START_LOOT_ROLL doesn't reach them (Init), but Blizzard still opens them for every open roll
 -- after a loading screen or /reload (GameEvent.HandlePlayerEnteringWorld -> GroupLootContainer_RefreshRolls)
 -- and on leaving the Gamepad UI (GroupLootContainer_UninitGamepad). They are left to Blizzard's own
 -- bookkeeping (shown, removed on CANCEL_LOOT_ROLL) but drawn invisible and click-through, and their
@@ -1357,12 +1357,12 @@ function LR.StyleTitle()
     title:SetTextColor(c.r, c.g, c.b, c.a or 1)
 end
 
--- Bags & Looting > Fonts > Loot Rolls changed: every text in the window, live
 -- Frame Opacity, live
 function LR:ApplyOpacity()
     if win then Panel(win) end
 end
 
+-- Bags & Looting > Fonts > Loot Rolls changed: every text in the window, live
 function LR:ApplyFont()
     for fs, small in pairs(texts) do StyleText(fs, small) end
 end
@@ -1393,7 +1393,7 @@ function LR:Init()
     win:SetClampedToScreen(true)
     Panel(win)
     win:Hide()
-    -- (11-17, Malkkav) the header as the chat's and Damage Meter's: their title font and gold, the
+    -- the header as the chat's and Damage Meter's: their title font and gold, the
     -- title and icon on one row centred 15 px down, the title 17 px in, the icon 21.5 px from the
     -- right edge, the separator at 24 px (DamageMeter.lua's TITLE_LEFT, ROW_CENTER_Y, ICON_RIGHT)
     local title = win:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1412,7 +1412,7 @@ function LR:Init()
         historyButton.icon:SetSize(11, 11)   -- the meter's segments icon, drawn as there
         historyButton:SetPoint("CENTER", win, "TOPRIGHT", -21.5, -15)
     end
-    -- (11-15, Malkkav) the chat's and Damage Meter's header separator (Blizzard's tooltip divider)
+    -- the chat's and Damage Meter's header separator (Blizzard's tooltip divider)
     local line = win:CreateTexture(nil, "OVERLAY")
     line:SetTexture("Interface\\Common\\UI-TooltipDivider-Transparent")
     line:SetHeight(8)

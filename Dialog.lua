@@ -8,7 +8,7 @@ local _, ns = ...
 -- ns.Dialogs[key] fields:
 --   text                  "%s" takes ns.ShowDialog's textArg
 --   button1, button2      yes / no labels (button2 optional)
---   button3, OnAlt(data)  an optional third answer after the two (11-13)
+--   button3, OnAlt(data)  an optional third answer after the two
 --   OnAccept(data, text)  on yes; text is the edit box's
 --   OnCancel(data)        on no, Escape or the right face button
 --   hasEditBox, maxLetters, editText(data)
@@ -19,7 +19,7 @@ local _, ns = ...
 --   macro                 the secure button runs this macro (or function(data)); PreClick calls
 --                         OnMacro, OnAccept stays the pad's and combat's answer
 --   padSecure             with macro: pad yes / no are bound to the secure buttons
---   readable              (11-17) never smaller than at the 1080p scale: asked right after a UI Scale
+--   readable              never smaller than at the 1080p scale: asked right after a UI Scale
 --                         change, when the whole interface may be tiny (not with reloads / macro)
 ns.Dialogs = ns.Dialogs or {}
 
@@ -330,7 +330,7 @@ function ns.ShowDialog(key, textArg, data)
     if not def then return end
     if not frame then Build() end
     current, currentData = def, data
-    -- (11-17) readable: counters a tiny UIParent (0.71 is 768 / 1080)
+    -- readable: counters a tiny UIParent (0.71 is 768 / 1080)
     frame:SetScale(def.readable and math.max(1, 0.71 / math.max(0.1, UIParent:GetScale())) or 1)
     local text = def.text or ""
     if textArg ~= nil then text = text:format(textArg) end
@@ -390,7 +390,7 @@ function ns.ShowDialog(key, textArg, data)
     end
 end
 
--- (11-17) answers no for the player when that dialog is still up (a timer running out)
+-- answers no for the player when that dialog is still up (a timer running out)
 function ns.CancelDialog(key)
     if frame and frame:IsShown() and current and current == ns.Dialogs[key] then Answer(false) end
 end

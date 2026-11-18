@@ -42,7 +42,7 @@ local AVOIDED = { BLOCK = true, DODGE = true, PARRY = true }
 -- three ways (BP below): the game's own proc alert (SPELL_ACTIVATION_OVERLAY_SHOW names the buff), your
 -- buffs while they can be read (out of combat), and Blizzard's Cooldown Manager icons, which stay live in
 -- combat when you track the buff there yourself (read only: FlareUI never changes its setup).
--- Forever's buff IDs come from ProcDoc by wsmaxcy (credited in LICENSES); `name` is the English name, used
+-- Forever's buff IDs: sources in LICENSES; `name` is the English name, used
 -- when an ID is unknown or doesn't resolve. glows: { spellID, English name } of the spells it lights.
 -- The rune procs' IDs were read from the client. Forever has one Eclipse, from Wrath, empowering
 -- Starfire (no Solar half). Searing Light's free Holy Nova buff has another name, still unknown: by name only.
@@ -490,7 +490,8 @@ local function UpdateButton(button, enabled)
 end
 
 local function UpdateAll()
-    local enabled = Enabled()
+    -- nothing flagged, empowered or reactive: every button ends dark, so no slot needs reading
+    local enabled = Enabled() and (next(flagged) or next(boosted) or next(reactive)) ~= nil
     for _, button in ipairs(buttons) do UpdateButton(button, enabled) end
 end
 

@@ -45,18 +45,13 @@ local STATS = {
 
 local MAGIC = "[%^%$%(%)%%%.%[%]%*%+%-%?]"
 
--- A format string as a Lua pattern: each %d / %1$d / %.1f becomes a capture of the figure. The
--- figure's position among the arguments is kept, since a language may put them in another order.
+-- A format string as a Lua pattern: each %d / %1$d / %.1f becomes a capture of the figure (the rules
+-- take formats with one figure only, so its position among the arguments doesn't matter)
 local function ToPattern(format)
-    local order, n = {}, 0
-    local marked = format:gsub("%%(%d?)%$?[%d%.]*[dfs]", function(position)
-        n = n + 1
-        order[n] = tonumber(position) or n
-        return "\001"
-    end)
+    local marked = format:gsub("%%%d?%$?[%d%.]*[dfs]", "\001")
     marked = marked:gsub("%%%%", "\002")
     local pattern = marked:gsub(MAGIC, "%%%0"):gsub("\001", "([%%d%%.,]+)"):gsub("\002", "%%%%")
-    return "^" .. pattern .. "$", order
+    return "^" .. pattern .. "$"
 end
 
 -- rules: { pattern, sign, label, percent }, read once, the first time a tooltip needs them
@@ -122,14 +117,26 @@ local function Rewrite(text)
     return result or false
 end
 
+-- "<tooltip>TextLeft<i>" names built once per tooltip and line (item tooltips refresh several times a second)
+local lineNames = setmetatable({}, { __index = function(t, name)
+    local names = setmetatable({}, { __index = function(u, i)
+        local s = name .. "TextLeft" .. i
+        u[i] = s
+        return s
+    end })
+    t[name] = names
+    return names
+end })
+
 TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tip)
     if not (tip and tip.GetName and tip.NumLines) or not Enabled() then return end
     local name = tip:GetName()
     if not name then return end
     if not rules then BuildRules() end
     if #rules == 0 then return end
+    local names = lineNames[name]
     for i = 2, tip:NumLines() do
-        local line = _G[name .. "TextLeft" .. i]
+        local line = _G[names[i]]
         local text = line and line:GetText()
         if text and canaccessvalue(text) then
             local short = Rewrite(text)

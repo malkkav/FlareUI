@@ -31,8 +31,8 @@ local BORDER_SIZE   = 16
 local BORDER_COLOR  = { 0.80, 0.60, 0.34 }         -- #CC9957
 local TRACK_COLOR   = { 0.15, 0.15, 0.15, 0.9 }
 
--- (11-17) the XP and rested colours: XPB.DefaultColor / XPB.Color (XP Bar Colours)
--- the rested bonus ahead of the fill: light blue, apart from the fill's own blue (11-13, a player)
+-- the XP and rested colours: XPB.DefaultColor / XPB.Color (XP Bar Colours)
+-- the rested bonus ahead of the fill: light blue, apart from the fill's own blue
 local COLOR_REST_BONUS = { 0.40, 0.80, 1.00 }      -- #66CCFF
 -- Quest XP: what the quests ready to hand in would give
 local COLOR_QUEST  = { 1.00, 0.76, 0.10 }
@@ -66,7 +66,7 @@ local function TextureValues()
     return values
 end
 
--- Action Bars > Fonts > XP Bar (11-13): its own font, first a copy of the Keybinds font it used
+-- Action Bars > Fonts > XP Bar: its own font, seeded once from the Keybinds font
 local function ApplyFont(fontString)
     local ab = ns.db and ns.db.profile.actionbars
     if ab then ns.SeedFont(ab, "hotkeyFont", "xpFont", "xpFontSeeded") end
@@ -82,6 +82,10 @@ end
 -- Two sections in one border under Blizzard's rested pip. Below max level: XP, then the watched
 -- reputation or Honor; at max level: reputation, then Honor. An empty section yields its room;
 -- values are read as Blizzard_StatusTrackingBar reads them.
+-- Style (actionbars.xpbar.style; Off saves enabled = false and never loads the bar):
+--   single: the first section only, the whole width
+--   split : both side by side (the default)
+--   double: both the whole width, the second below the first, as Blizzard stacks its two bars
 --------------------------------------------------
 local FLARE_NAME    = "FlareUI_XPBar"
 local FLARE_LABEL   = "FlareUI XP Bar"
@@ -93,15 +97,14 @@ local REST_ALPHA    = 0.4
 -- Bubbles: the classic XP bar's 20 bubbles of 5% (or 10 of 10%), each divider a dark line with a light edge
 local BUBBLES       = 20                           -- the most bubbles; the dropdown picks 0, 10 or 20
 local BUBBLE_DARK, BUBBLE_LIGHT = 0.85, 0.28           -- the two lines' alpha
+local DOUBLE_GAP    = 3                            -- Double: the dark gap between the two bars
 -- each reaction's colour key (Blizzard's FACTION_*_COLOR: Hated and Hostile red ... Friendly up green)
 local STANDING_BY_REACTION = { "repHostile", "repHostile", "repUnfriendly", "repNeutral",
     "repFriendly", "repFriendly", "repFriendly", "repFriendly" }
 
--- XP Bar Colours (11-17, Malkkav, for a player): every colour the bar paints, FlareUI's (Blizzard's own)
--- or yours (actionbars.xpbar.palette "custom", actionbars.xpbar.customColors), picked in the colour
--- window (Settings/ColorPicker.lua "xp"). Honor: your faction's colour unless you pick one.
-XPB.COLOR_KEYS = { "xp", "rested", "restBonus", "quest", "repHostile", "repUnfriendly", "repNeutral",
-    "repFriendly", "renown", "honor" }
+-- XP Bar Colours: every colour the bar paints, FlareUI's (Blizzard's own) or yours
+-- (actionbars.xpbar.palette "custom", actionbars.xpbar.customColors), picked in the colour window
+-- (Settings/ColorPicker.lua "xp"). Honor: your faction's colour unless you pick one.
 function XPB.DefaultColor(key)
     if key == "xp" then return { 0.58, 0.00, 0.55 }
     elseif key == "rested" or key == "renown" then return { 0.00, 0.39, 0.88 }
@@ -139,17 +142,62 @@ end
 local flare                                    -- the bar frame
 local LEM
 
--- The numbers, as "XP Bar Numbers" asks; the default is "current / max", as Blizzard's bars show it
-local function FormatValues(value, maxValue)
+-- XP Text (actionbars.xpbar.text): one dropdown, as the unit frames' Bar Text but one spot, in the
+-- middle. Show Always or Show On Mouseover (one of the two), then any of Percent, Value,
+-- Max and Remaining, joined by " / ". Saved as an ns.Conditions value ("hover,value,max"). Until set
+-- it reads the old XP Text Visibility (textMode) and XP Text (textFormat) choices.
+XPB.TEXT_SPEC = { tokens = { "always", "hover", "percent", "value", "max", "remaining" },
+    rivals = { always = "hover", hover = "always" }, exclusive = {}, empty = "hover" }
+XPB.TEXT_PARTS = { "percent", "value", "max", "remaining" }
+XPB.OLD_TEXT_FORMAT = { VALUES = "value,max", BOTH = "percent,value,max", PERCENT = "percent", REMAINING = "remaining" }
+function XPB.TextValue()
     local db = GetDb()
-    local format = db and db.textFormat
+    if not db then return "hover,value,max" end
+    if type(db.text) == "string" then return db.text end
+    local mode = db.textMode == "ALWAYS" and "always" or "hover"
+    return mode .. "," .. (XPB.OLD_TEXT_FORMAT[db.textFormat] or "value,max")
+end
+-- one of the two is always ticked: unticking it picks the other
+function XPB.SetTextValue(value)
+    local db = GetDb()
+    if not db then return end
+    local C = ns.Conditions
+    if type(value) ~= "string" then value = "" end
+    if not (C.Has(value, "always") or C.Has(value, "hover")) then
+        local other = C.Has(XPB.TextValue(), "always") and "hover" or "always"
+        value = value == "" and other or (other .. "," .. value)
+    end
+    db.text = value
+end
+function XPB.TextAlways() return ns.Conditions.Has(XPB.TextValue(), "always") end
+
+-- The numbers the XP Text picks, joined by " / " ("" when none is ticked)
+local function FormatValues(value, maxValue)
+    local C, picked, parts = ns.Conditions, XPB.TextValue(), {}
     -- a paragon reward waiting takes the value past the max
     local percent = maxValue > 0 and math.min(100, math.floor(value / maxValue * 100)) or 0
-    if format == "PERCENT" then return percent .. "%" end
-    if format == "REMAINING" then return L["%s to go"]:format(BreakUpLargeNumbers(math.max(0, maxValue - value))) end
-    local values = ("%s / %s"):format(BreakUpLargeNumbers(value), BreakUpLargeNumbers(maxValue))
-    if format == "BOTH" then return ("%s (%d%%)"):format(values, percent) end
-    return values
+    for _, part in ipairs(XPB.TEXT_PARTS) do
+        if C.Has(picked, part) then
+            if part == "percent" then parts[#parts + 1] = percent .. "%"
+            elseif part == "value" then parts[#parts + 1] = BreakUpLargeNumbers(value)
+            elseif part == "max" then parts[#parts + 1] = BreakUpLargeNumbers(maxValue)
+            else parts[#parts + 1] = L["%s to go"]:format(BreakUpLargeNumbers(math.max(0, maxValue - value))) end
+        end
+    end
+    return table.concat(parts, " / ")
+end
+-- a section's text: its name, then the numbers (the name alone when none is ticked)
+local function Labelled(name, value, maxValue)
+    local numbers = FormatValues(value, maxValue)
+    if numbers == "" then return name end
+    return name .. "  " .. numbers
+end
+-- Style: single, split or double (Off never loads the bar)
+function XPB.Style()
+    local db = GetDb()
+    local v = db and db.style
+    if v == "single" or v == "double" then return v end
+    return "split"
 end
 
 -- The reward XP of the quests in the log: those ready to hand in, and (Quest XP Counts "all" or
@@ -193,13 +241,7 @@ function Read.xp()
     local rested = GetXPExhaustion() or 0
     local color = rested > 0 and XPB.Color("rested") or XPB.Color("xp")
     local db = GetDb()
-    local format = db and db.textFormat
-    local text
-    if (not format or format == "VALUES") and XP_STATUS_BAR_TEXT then
-        text = XP_STATUS_BAR_TEXT:format(value, maxValue)   -- Blizzard's own text ("XP: 1234/5000")
-    else
-        text = L["XP"] .. "  " .. FormatValues(value, maxValue)
-    end
+    local text = Labelled(L["XP"], value, maxValue)
     local quest, questOpen = 0, 0
     if db and db.questXP then quest, questOpen = QuestXPTotals() end
     if quest > 0 then text = text .. "  " .. L["+%s quest XP"]:format(BreakUpLargeNumbers(quest)) end
@@ -248,7 +290,7 @@ function Read.rep(data)
     return {
         kind = "rep", name = data.name, standing = standing, capped = capped,
         value = value, max = maxValue, rested = 0, color = color,
-        text = capped and data.name or (data.name .. "  " .. FormatValues(value, maxValue)),
+        text = capped and data.name or Labelled(data.name, value, maxValue),
     }
 end
 
@@ -259,7 +301,7 @@ function Read.honor()
     return {
         kind = "honor", level = UnitHonorLevel and UnitHonorLevel("player") or nil,
         value = value, max = maxValue, rested = 0, color = color,
-        text = HONOR .. "  " .. FormatValues(value, maxValue),
+        text = Labelled(HONOR, value, maxValue),
     }
 end
 
@@ -416,14 +458,12 @@ local function CreateSection(parent)
 
     -- the numbers on mouseover, and the tooltip (Shift pressed or let go while hovering redraws it)
     section:SetScript("OnEnter", function(self)
-        local db = GetDb()
-        if not (db and db.textMode == "ALWAYS") then self.Text:Show() end
+        if not XPB.TextAlways() then self.Text:Show() end
         ShowSectionTooltip(self)
         self:RegisterEvent("MODIFIER_STATE_CHANGED")
     end)
     section:SetScript("OnLeave", function(self)
-        local db = GetDb()
-        if not (db and db.textMode == "ALWAYS") then self.Text:Hide() end
+        if not XPB.TextAlways() then self.Text:Hide() end
         self:UnregisterEvent("MODIFIER_STATE_CHANGED")
         if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
     end)
@@ -443,7 +483,7 @@ local function CreateSection(parent)
     flash.anim = anim
     section.Flash = flash
 
-    -- the bubble dividers (Bubbles): over the fill and the gain flash, under the text
+    -- the bubble dividers (the Separators option): over the fill and the gain flash, under the text
     section.Bubbles = {}
     for i = 1, BUBBLES - 1 do
         local dark = section:CreateTexture(nil, "OVERLAY", nil, 1)
@@ -457,8 +497,8 @@ local function CreateSection(parent)
     return section
 end
 
--- How many bubbles a saved value asks for: 10 or 20, else none. Before the dropdown it was a switch,
--- so a saved true still means 20
+-- How many bubbles a saved value asks for: 10 or 20, else none. A saved true (from the older switch)
+-- means 20
 local function BubbleCount(value)
     if value == true then return BUBBLES end
     local n = tonumber(value)
@@ -509,7 +549,7 @@ local function FillSection(section, info, width)
     if smooth and forward and section:IsShown() then section:SetValue(fraction, smooth) else section:SetValue(fraction) end
     local r, g, b = info.color[1], info.color[2], info.color[3]
     section:SetStatusBarColor(r, g, b, 1)
-    -- rested after the quest XP (11-13, a player: from the fill it hid behind the quests)
+    -- rested reaches past the quest XP, or the quest layers would hide it
     if info.rested and info.rested > 0 then
         local reach = math.min(1, (info.value + (info.quest or 0) + (info.questOpen or 0) + info.rested) / info.max)
         section.Rested:SetWidth(math.max(1, reach * width))
@@ -555,13 +595,23 @@ local function UpdateFlare(target)
     end
     if not left then flare:Hide() return end
 
+    local style = XPB.Style()
+    if style == "single" then right = nil end
     local width, height = flare.sampleWidth or db.width or 560, flare.sampleHeight or db.height or 14
-    local leftWidth = right and width / 2 or width
+    local double = style == "double" and right ~= nil
+    local leftWidth = (right and not double) and width / 2 or width
+    -- Double grows the frame down for the second bar (and back when it goes)
+    local frameHeight = double and (2 * height + DOUBLE_GAP) or height
+    flare:SetSize(width + 2 * FLARE_INSET, frameHeight + 2 * FLARE_INSET)
     flare.Left:ClearAllPoints()
     flare.Left:SetPoint("TOPLEFT", flare, "TOPLEFT", FLARE_INSET, -FLARE_INSET)
     flare.Left:SetSize(leftWidth, height)
     flare.Right:ClearAllPoints()
-    flare.Right:SetPoint("TOPRIGHT", flare, "TOPRIGHT", -FLARE_INSET, -FLARE_INSET)
+    if double then
+        flare.Right:SetPoint("TOPLEFT", flare.Left, "BOTTOMLEFT", 0, -DOUBLE_GAP)
+    else
+        flare.Right:SetPoint("TOPRIGHT", flare, "TOPRIGHT", -FLARE_INSET, -FLARE_INSET)
+    end
     flare.Right:SetSize(leftWidth, height)
     FillSection(flare.Left, left, leftWidth)
     FillSection(flare.Right, right, leftWidth)
@@ -574,7 +624,7 @@ local function UpdateFlare(target)
     end
     local pipHeight = height + 2 * PIP_OVERHANG
     flare.Pip:SetSize(math.max(4, math.floor(pipHeight * PIP_RATIO + 0.5)), pipHeight)
-    flare.Pip:SetShown(right ~= nil)
+    flare.Pip:SetShown(right ~= nil and not double)   -- (the pip sits between two halves: Split only)
     flare:Show()
 end
 
@@ -584,15 +634,15 @@ local function LayoutFlare(target)
     local db = GetDb()
     local texture = GetTexture()
     flare:SetSize((flare.sampleWidth or db.width or 560) + 2 * FLARE_INSET, (flare.sampleHeight or db.height or 14) + 2 * FLARE_INSET)
-    -- Border (11-13, Malkkav): its own choice, None first; an unknown name falls back to FlareUI Thin
+    -- Border: its own choice, None first; an unknown name falls back to FlareUI Thin
     local name = db.border or BORDER_NAME
     if name ~= "None" and not LSM:IsValid("border", name) then name = BORDER_NAME end
     if name == "None" then
         flare.Border:SetBackdrop(nil)
     else
         local file = LSM:Fetch("border", name)
-        -- the edge only: it draws over the fill (whose square corners showed past its rounded ones, a
-        -- player's report 11-11); the dark background is its own texture under the sections (BuildParts)
+        -- the edge only: it draws over the fill (whose square corners would show past its rounded
+        -- ones); the dark background is its own texture under the sections (BuildParts)
         flare.Border:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, BORDER_SIZE) })
         flare.Border:SetBackdropBorderColor(BORDER_COLOR[1], BORDER_COLOR[2], BORDER_COLOR[3], 1)
     end
@@ -606,7 +656,7 @@ local function LayoutFlare(target)
         section.Quest:SetTexture(texture)
         section.QuestOpen:SetTexture(texture)
         ApplyFont(section.Text)
-        section.Text:SetShown(db.textMode == "ALWAYS")
+        section.Text:SetShown(XPB.TextAlways())
     end
     -- the quest log only matters with Show Quest XP on (it changes often)
     if not flare.fuiSample then
@@ -746,7 +796,7 @@ local function BuildFlare()
           get = function() return GetDb().height or 14 end, set = function(_, value) GetDb().height = value; LayoutFlare() end },
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = TEXTURE_NAME, values = TextureValues(),
           get = function() return GetDb().texture or TEXTURE_NAME end, set = function(_, value) GetDb().texture = value; LayoutFlare() end },
-        -- (11-13: None first, then FlareUI's and other addons' borders, as on the unit frames)
+        -- None first, then FlareUI's and other addons' borders, as on the unit frames
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = BORDER_NAME, values = ns.UnitFrames.Kit.BuildBorderValues(false),
           get = function() return GetDb().border or BORDER_NAME end, set = function(_, value) GetDb().border = value; LayoutFlare() end },
     }))

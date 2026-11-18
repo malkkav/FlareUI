@@ -1,5 +1,5 @@
 local ADDON_NAME, ns = ...
-local S, L = ns.Settings, ns.L
+local L = ns.L
 
 -- A visual companion to the row's explanation. These are ordinary, mouse-free frames with sample
 -- data: no unit buttons, saved-variable writes, live-frame reparenting or protected templates.
@@ -13,17 +13,17 @@ local function Route(kind, prefix, keys)
     for key in keys:gmatch('%S+') do routes[prefix .. '.' .. key] = kind end
 end
 Route('unit', 'uf', 'frameStyle palette simplePet simpleTargetOf')
-Route('unitAuras', 'uf', 'auraShape auraSwipe auraTimer')
-Route('auras', 'au', 'shape swipe timer arrive')
-Route('minimap', 'mm', 'style bagAddons clockStats microMenu coords fps bagHover')
+Route('unitAuras', 'uf', 'auraShape auraSwipe auraTimer auraTimerColor')
+Route('auras', 'au', 'shape swipe timer timerColor arrive')
+Route('minimap', 'mm', 'style squareBorder bagAddons clockStats microMenu coords fps bagHover')
 Route('chat', 'ch', 'opacity border editBoxOpacity editBox lineHeight formatNPC formatPlayer timestamps channelNames raceIcons classIcons linkIcons whisperMarkers levels social channels menu volume copyButton combatLog minAlpha')
-Route('tooltip', 'tt', 'scale anchor healthBar borders classNames showThreat showTarget showGuild hideFaction shortItemStats ids compareShift showWorld showFrames showBars')
-Route('tracker', 'qt', 'opacity border zoneHeaders tags wrap count hideLevel playButtons minimizeButton colorNames')
+Route('tooltip', 'tt', 'scale anchor healthBar borders classNames showThreat showTarget showGuild showGuildRank showPvP showFaction shortItemStats itemLevel ids compareShift showWorld showFrames showBars')
+Route('tracker', 'qt', 'opacity border frameStyle zoneHeaders tags wrap count hideLevel questButtons minimizeButton colorNames')
 Route('meter', 'dm', 'opacity border minAlpha chatTab combatTimer readyCheck countdown threatValue pullLine pullFlash tankLead')
 Route('actions', 'ab', 'skinCDM buttonScale')
 Route('actionSkin', 'ab', 'flareBorders')
 Route('actions', 'ab', 'statusPick procGlow hideMacroText hideKeybinds buttonArt')
-Route('actions', 'qol', 'gryphons')   -- (Gryphons moved to QoL > Hide Clutter, 11-16)
+Route('actions', 'qol', 'gryphons')   -- (QoL > Hide Clutter)
 Route('xp', 'ab', 'xpBar xpText xpNumbers xpQuest xpBubbles')
 Route('frames', 'uf', 'main party raid boss castbar tot tof')
 Route('resources', 'rb', 'health power mana combo swingMain swingOff swingRanged seal flight timer')

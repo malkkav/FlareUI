@@ -14,8 +14,7 @@ ns.Fishing = Fishing
 
 local BUTTON_NAME = "FlareUI_FishingCast"
 local FISHING_SPELL = 7620          -- Fishing, for its name in the client's language
-local DOUBLE_CLICK = 0.4            -- seconds at most between the two right-clicks
-local DISARM_AFTER = 1              -- the binding goes back if no click came by then
+local DOUBLE_CLICK = 0.4            -- seconds at most between the two right-clicks: the binding goes back after
 local SESSION_IDLE = 30             -- no new cast this long after the line came in: the session ends
 
 -- the volumes while fishing, from the player's own
@@ -135,10 +134,10 @@ local function CanCast(db)
         and not UnitExists("mouseover") and not IsModifierKeyDown() and PoleInHand()
 end
 
--- (6.3.3, "it's actually not working") The first quick right-click on the world arms the cast: for
--- DOUBLE_CLICK seconds the right button is bound to the cast button, so the second click goes to it
--- whole, press and release. Before, the binding was set during the second press itself, which the
--- game doesn't always hand over (Forever Fishing's way of arming, written anew)
+-- The first quick right-click on the world arms the cast: for DOUBLE_CLICK seconds the right button is
+-- bound to the cast button, so the second click goes to it whole, press and release. A binding set
+-- during the second press itself isn't always handed over by the game (Forever Fishing's way of
+-- arming, written anew)
 local function OnRightMouse(event)
     local db = GetDb()
     if event == "GLOBAL_MOUSE_DOWN" then

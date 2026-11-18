@@ -5,7 +5,6 @@ local _, ns = ...
 -- The big zone and subzone names that appear as you enter a new area (and the PvP line under them)
 -- in a font of your choice. Only the face changes: Blizzard's sizes and thick outline stay (the zone
 -- name is far past the Fonts tab's 8-24 sizes). Default (face "") leaves Blizzard's font alone.
--- (11-11, a player's request)
 --------------------------------------------------
 local ZT = {}
 ns.ZoneText = ZT

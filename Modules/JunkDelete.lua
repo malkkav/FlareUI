@@ -2,8 +2,7 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- DELETE JUNK WHEN FULL (Quality of Life > Convenience, tweaks.deleteJunkWhenFull, off; 11-14, a player's
--- request after EnhanceQoL and EllesmereUI: the idea only, both are all rights reserved)
+-- DELETE JUNK WHEN FULL (Quality of Life > Convenience, tweaks.deleteJunkWhenFull, off)
 -- With the bags full, clicking an item in the loot window first deletes the grey item worth the least at a
 -- vendor (its whole stack), so the click loots into the freed slot. The game takes an item delete from
 -- addon code only inside a click, never from an event or a timer, so this runs in the loot button's
@@ -93,9 +92,10 @@ end
 
 -- each loot button once, as the loot window's list makes it
 local hooked = setmetatable({}, { __mode = "k" })
--- (the list's own callback passes its owner first; the walk over frames already made passes the frame)
+-- (the list's own callback passes its owner, then the frame; the walk over frames already made passes
+-- the frame, then its element data: the frame is the one with an Item)
 local function OnAcquired(a, b)
-    local frame = b ~= nil and b or a
+    local frame = (type(b) == "table" and b.Item) and b or a
     local item = type(frame) == "table" and frame.Item
     if not item or hooked[item] then return end
     hooked[item] = true

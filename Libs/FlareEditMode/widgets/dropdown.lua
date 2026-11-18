@@ -46,22 +46,36 @@ local function set(data)
 end
 
 local dropdownMixin = {}
+-- FlareUI: the menu (and the box's text) is built only when the box can be seen. A hidden row (a
+-- closed section) or a dialog not shown yet builds it as the box shows: the dropdown's own OnShow
+-- runs GenerateMenu. Saves building long lists (textures, fonts) that are never looked at.
+function dropdownMixin:SetupMenu(generator)
+	if self.Dropdown:IsVisible() then
+		self.Dropdown:SetupMenu(generator)
+	else
+		self.Dropdown.menuGenerator = generator
+	end
+end
+
 function dropdownMixin:Setup(data)
 	self.setting = data
+	-- FlareUI: a pooled box showing again (Refresh) runs its OnShow, which would build the previous
+	-- setting's menu first
+	if data.generator or data.values then self.Dropdown.menuGenerator = nil end
 	self.Label:SetWidth(lib.internal.LabelWidth(self))   -- FlareUI (dialog.lua LabelWidth)
 	self.Label:SetText(data.name)
 	self:Refresh()
-	-- FlareUI (11-17): pooled boxes drop a text another setting fixed with OverrideText (Bar Text's
+	-- FlareUI: pooled boxes drop a text another setting fixed with OverrideText (Bar Text's
 	-- summaries), so they show their own selection again
 	self.Dropdown.disableSelectionText = nil
 
 	if data.generator then
 		-- let the user have full control
-		self.Dropdown:SetupMenu(function(owner, rootDescription)
+		self:SetupMenu(function(owner, rootDescription)
 			pcall(data.generator, owner, rootDescription, data)
 		end)
 	elseif data.values then
-		self.Dropdown:SetupMenu(function(_, rootDescription)
+		self:SetupMenu(function(_, rootDescription)
 			local values = data.values
 			if type(values) == 'function' then
 				values = values()

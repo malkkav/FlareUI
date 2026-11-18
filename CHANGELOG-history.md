@@ -1,6 +1,41 @@
 # FlareUI changelog history
 
-Versions 6.8.1 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 6.8.2 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 6.8.2
+
+A round of fixes from your reports: chat tabs you can see in Gamepad mode, no more reload prompts when you switch to an alt, and two small options from the general chat.
+
+## New
+
+### Bags & Looting
+- Bag Window: **Combined Backpack**, the same as Blizzard's **Use Combined Bags**.
+  - The options below it need it on, so you no longer have to find Blizzard's option to use them.
+
+### Player Cast Bar
+- Its **Visibility** in Edit Mode has a new **Never** choice.
+  - It hides FlareUI's cast bar and keeps Blizzard's hidden too, so only the player frame's own **Cast Bar** shows.
+
+## Fixed
+
+### Chat
+- Gamepad mode: the chat tabs stay fully visible. They faded out each time the controller left the chat.
+
+### Sync Blizz UI
+- Switching from your main to an alt no longer asks for a reload when nothing changed.
+  - An alt only copies settings your main really changed.
+  - It only asks for a reload when one of those needs it.
+
+### Buff Reminders
+- Fortitude: a player with Forever's **First Aid Kit** buff from a campfire counts as having it. The two can't stack.
+- A new custom reminder shows in the settings list right away.
+
+### Unit Frames
+- **Highlight Purgeable Buffs** only applies to enemies. A friendly target's buffs show normally, with no white border.
+
+### Other
+- Flight Timer: a route timed for the first time reads **New Route** and counts up. It used to say "Learning".
+- Quest Tracker: "(Complete)" uses the game's own word in languages FlareUI isn't translated into yet.
 
 # FlareUI 6.8.1
 

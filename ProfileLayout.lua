@@ -2,8 +2,7 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- PROFILES AND EDIT MODE LAYOUTS (11-11, a player's report: a profile loaded on another character
--- "changed nothing")
+-- PROFILES AND EDIT MODE LAYOUTS
 -- FlareUI's frames save their spots per Edit Mode layout name, and Blizzard's layout is per
 -- character, so on a character using another layout a profile's frames sat at their defaults.
 -- 1. Each profile remembers its home layout: the one its frames were last moved in. A layout with no
@@ -73,11 +72,10 @@ local function FullestOther(layouts, name)
 end
 
 -- A layout's store (layouts[name], made if missing), reading the home layout's for what it lacks.
--- (11-14, a player's report: switching between two layouts sent the XP bar and party frames back to
--- their defaults) Moving one frame in a second layout made it the home, and the home read nothing:
--- every frame never moved there sat at its default. The home now reads the previous home's spots
--- (or, when no previous home was kept, the fullest other layout's). Reads go one level only (rawget),
--- so two layouts reading each other never loop.
+-- The home layout itself reads the previous home's spots (or, when no previous home was kept, the
+-- fullest other layout's): moving one frame in a second layout makes it the home, and every frame
+-- never moved there would otherwise sit at its default. Reads go one level only (rawget), so two
+-- layouts reading each other never loop.
 local fallbackMeta = setmetatable({}, { __mode = "k" })   -- source store -> its metatable
 function ns.LayoutHome(layouts, name)
     layouts[name] = layouts[name] or {}
@@ -114,8 +112,7 @@ LEM.onAnyMove = function(layoutName)
 end
 
 --------------------------------------------------
--- VALUES PER LAYOUT (11-16, a player's request: a PC layout and a Steam Deck layout at two UI scales
--- want two frame Scales)
+-- VALUES PER LAYOUT (so two layouts at two UI scales can keep two frame Scales)
 -- A frame's Edit Mode value (its Scale) is saved in the layout's own store, beside its spot:
 -- store.values[key]. Unlike spots these never follow the home layout: a layout with no value of its
 -- own uses the frame's base, the value it had before any layout kept its own (saved the first time one
@@ -186,7 +183,7 @@ end
 local SWITCH_TEXT = L["The profile |cffffff00%s|r was set up on the Edit Mode layout |cffffff00%s|r. Switch to it?"]
     .. "\n\n" .. L["This reloads your interface."]
 local MISSING_TEXT = L["The profile |cffffff00%s|r was set up on the Edit Mode layout |cffffff00%s|r, which this character doesn't have. FlareUI's frames follow the profile anyway. For Blizzard's bars, export that layout in Edit Mode on the other character, or turn on Sync Blizz UI (General page)."]
--- (11-16, UX audit J7) FlareUI's own layout missing: its code is one click away
+-- FlareUI's own layout missing: its code is one click away
 local MISSING_FLAREUI_TEXT = L["The profile |cffffff00%s|r was set up on the Edit Mode layout |cffffff00%s|r, which this character doesn't have. FlareUI's frames follow the profile anyway. For Blizzard's bars, copy FlareUI's layout code and import it in Edit Mode (Layout > Import)."]
 
 ns.Dialogs["FLAREUI_PROFILE_LAYOUT"] = {

@@ -11,7 +11,7 @@ local L = ns.L
 --   * Hide 2FA Bag Slots and Syndicator work alongside (sections 1b and 3, the gold list)
 --   * Sort Bags on Open: Blizzard's clean-up each time the bags open (section 4d)
 --   * Category Filters: a button beside the cleanup button opens a drawer of categories; the one
---     picked dims every other item (section 4b; the dimming after parchinskiy's PR #22)
+--     picked dims every other item (section 4b)
 --   * Thicker borders, Rarity colours and Junk coin: drawn on an overlay of each item
 -- Every option is off by default, and off leaves Blizzard's windows as they are, except the slot
 -- borders: FlareUI Thin round every slot always. When another bag addon owns the windows, nothing
@@ -29,8 +29,8 @@ local BAG_GAP = 12                  -- Gaps between bags: the extra space above 
 local DEFAULT_COLUMNS = 10          -- Blizzard's combined backpack
 local BAG_BUTTON_SIZE = 26
 local BAG_BUTTON_GAP  = 0           -- vertical offset between bag buttons: the rims touch
--- Bag addons FlareUI's bag code stands down for (11-13: Bags:ShouldLoad, a player's Bagnon cleanup
--- report): the ones in Research plus the other big bag replacements
+-- Bag addons FlareUI's bag code stands down for (Bags:ShouldLoad): their own layout and cleanup are
+-- left alone
 local OTHER_BAG_ADDONS = { "LiteBag", "Bagnon", "Bagnonium", "Baganator", "ArkInventory", "AdiBags", "BetterBags",
                            "EnhanceQoLBags", "EllesmereUIBags", "Inventorian", "Combuctor", "cargBags_Nivaya",
                            "BagSmith", "Sorted", "BaudBag", "OneBag3", "Bagshui", "DJBags" }
@@ -87,7 +87,7 @@ end
 -- button's ID is its slot. Blizzard's GetBagID reads the parent's ID, so clicking, dragging, splitting
 -- and using items run Blizzard's own code untainted (the bag list globals are never touched).
 -- Blizzard still opens its crafting bag window with the others (the bag key counts it): it is kept
--- open but moved off the screen, so the key opens and closes everything as before.
+-- open but moved off the screen, so the key opens and closes everything as usual.
 --------------------------------------------------
 local extras = {}   -- bagID -> { holder = frame, buttons = { [slot] = button } }
 local highlightedExtraBag
@@ -396,7 +396,7 @@ local function Relayout(frame)
         if #items == 0 then return end
     end
 
-    -- (11-16) Combine Empty Slots: the filled slots, then one empty slot showing how many are free
+    -- Combine Empty Slots: the filled slots, then one empty slot showing how many are free
     local combine = Bags.CombineEmptyOn()
     layingOut = true   -- (its shows and hides must not lay out again)
     items = Bags.CombineEmpty(items, combine)
@@ -481,13 +481,12 @@ local function ExtraLayoutChanged(event)
 end
 
 --------------------------------------------------
--- 1b. HIDE 2FA BAG SLOTS (11-16, a player's report)
+-- 1b. HIDE 2FA BAG SLOTS
 -- That addon hides the padlocked slots of an account without an authenticator and lays the rest out
 -- again with Blizzard's grid, on the same Blizzard calls FlareUI's layout follows. With a FlareUI
--- layout on, FlareUI's grid kept a place for each hidden slot (blank rows), or that addon's grid
--- (Blizzard's columns and height) came after FlareUI's. Now FlareUI's grid leaves the locked slots
--- out (hidden, as that addon wants), follows its Compact View order (empty slots first from the
--- bottom right, so the filled ones read first), and its hooks run after that addon's.
+-- layout on, FlareUI's grid leaves the locked slots out (hidden, as that addon wants), follows its
+-- Compact View order (empty slots first from the bottom right, so the filled ones read first), and
+-- its hooks run after that addon's, so FlareUI's grid is the one shown.
 --------------------------------------------------
 Bags.H2FA = {}
 
@@ -522,7 +521,7 @@ function Bags.H2FA.Items(items)
 end
 
 --------------------------------------------------
--- 1c. COMBINE EMPTY SLOTS (11-16, Malkkav; an idea from EnhanceQoL's bags, built from scratch)
+-- 1c. COMBINE EMPTY SLOTS
 -- The backpack shows its filled slots, then a single empty slot with the number of free slots on it;
 -- the other empty slots hide. Off (or the Gamepad UI), every slot shows again. Blizzard's item buttons
 -- are no secure template, but a hide or show is skipped in a fight if one turns out protected: the
@@ -592,7 +591,7 @@ function Bags.CombineEmpty(items, combine)
 end
 
 --------------------------------------------------
--- 1d. AUTO OPEN CONTAINERS (11-16, Malkkav; as EllesmereUI and EnhanceQoL offer, built from scratch)
+-- 1d. AUTO OPEN CONTAINERS
 -- Clams, loot bags and opened lockboxes in your bags open themselves, one at a time with a short wait,
 -- out of a fight and while no vendor, bank, mail, trade, auction or loot window is open. One that
 -- doesn't open (a locked box) is left alone for the session, so it can't loop.
@@ -655,7 +654,7 @@ function BagButton:GetIsBarExpanded() return true end
 function BagButton:OnEnter()
     if not self.slotID then self:Update() end
     EventRegistry:TriggerEvent("BagSlot.OnEnter", self)
-    -- the bag's own tooltip; an empty slot shows none (11-11: no "Equip Container")
+    -- the bag's own tooltip; an empty slot shows none (no "Equip Container")
     if GetInventoryItemTexture("player", self.slotID) then
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetInventoryItem("player", self.slotID)
@@ -760,8 +759,7 @@ function Bags:PlaceBagButtons()
     local frame = Combined()
     if not frame then return end
     local db = GetDb()
-    local show = db and db.bagButtons and Bags:IsCombined() and not Bags:GetOtherBagAddon()
-        and not (InputUtil and InputUtil.IsGamepadUIEnabled and InputUtil.IsGamepadUIEnabled())
+    local show = db and db.bagButtons and Bags:IsCombined() and not Bags:GetOtherBagAddon() and not GamepadUI()
     if not show then
         for _, b in ipairs(bagButtons) do b:Hide() end
         return
@@ -876,7 +874,7 @@ local function GetOverlay(button)
     ov.eye:SetSize(14, 14)
     ov.eye:SetPoint("TOPRIGHT", -1, -1)
     ov.eye:Hide()
-    -- (11-17) BoE Text, top left (the junk coin's corner: grey items don't bind), and Plain Empty Slots:
+    -- BoE Text, top left (the junk coin's corner: grey items don't bind), and Plain Empty Slots:
     -- Blizzard's plain slot over an empty one, so the combined backpack's slots don't show each bag's
     -- picture (drawn on FlareUI's overlay: Blizzard's buttons are left alone)
     ov.boe = ov:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
@@ -912,7 +910,7 @@ end
 
 local function UpdateItemBorder(ov, db, quality, dimmed)
     local style = db.bagThickBorders and "thick" or "thin"
-    if quality and not dimmed then   -- (rarity colours always on, 11-16)
+    if quality and not dimmed then   -- (rarity colours always on)
         local r, g, b = C_Item.GetItemQualityColor(quality)
         ShowBorder(ov, style, r, g, b)
     else
@@ -937,7 +935,7 @@ local function RefreshItemFilter()
     end
 end
 
--- ITEM LEVEL AND UNCOLLECTED APPEARANCE (11-13, a player's request): read once per item link, the
+-- ITEM LEVEL AND UNCOLLECTED APPEARANCE: read once per item link, the
 -- appearances again when the collection changes (Bags:Init). Item level on weapons and armour only,
 -- not on shirts and tabards (level 1). An appearance counts as collected when this item's source or
 -- any other with the same look is; the eye shows only where this character could learn it.
@@ -959,9 +957,8 @@ local function ItemLevelOf(link)
     return level or nil
 end
 
--- (6.3.2, a player's screenshot: the mark showed on potions, scrolls and spells' items) only weapons
--- and armour worn where it shows can have an appearance; Forever's appearance lookup answers for
--- anything, so the item's kind is checked first
+-- only weapons and armour worn where it shows can have an appearance; Forever's appearance lookup
+-- answers for anything (potions, scrolls), so the item's kind is checked first
 local NO_APPEARANCE = { [""] = true, INVTYPE_NECK = true, INVTYPE_FINGER = true, INVTYPE_TRINKET = true,
     INVTYPE_BAG = true, INVTYPE_QUIVER = true, INVTYPE_AMMO = true, INVTYPE_RELIC = true, INVTYPE_NON_EQUIP_IGNORE = true }
 local function Uncollected(link)
@@ -999,8 +996,7 @@ local function ShowItemLevel(ov, level, quality)
     ov.ilvl:Show()
 end
 
--- what needs the item's data: its level, its appearance. (11-14, Malkkav) The Upgrade Arrow is gone:
--- its stat guesses made bad suggestions; Pawn and other addons do it properly.
+-- what needs the item's data: its level, its appearance, its BoE text
 local BIND_ON_EQUIP = Enum.ItemBind and Enum.ItemBind.OnEquip or 2
 local function ShowItemData(ov, db, bagID, slotID, link, quality, isBound)
     if db.bagItemLevel then
@@ -1009,8 +1005,9 @@ local function ShowItemData(ov, db, bagID, slotID, link, quality, isBound)
     end
     if db.bagUncollected and Uncollected(link) then ov.eye:Show() end
     if db.bagBoE and not isBound then
-        local ok, bind = pcall(function() return select(14, C_Item.GetItemInfo(link)) end)
-        if ok and bind == BIND_ON_EQUIP then ov.boe:Show() end
+        -- GetItemInfo's 14th value, after pcall's status (nil if it failed): no closure per item
+        local bind = select(15, pcall(C_Item.GetItemInfo, link))
+        if bind == BIND_ON_EQUIP then ov.boe:Show() end
     end
 end
 
@@ -1020,7 +1017,7 @@ local function UpdateButton(button, db)
     Bags.DecorateButton(button, db, info, bagID, slotID)
 end
 
--- Bag Items font (Quality of Life > Fonts, 11-11): the text on the bag icons, the stack count and
+-- Bag Items font (Quality of Life > Fonts): the text on the bag icons, the stack count and
 -- the cooldown's number. Default ("") keeps Blizzard's; going back to Default restores the font object
 -- FlareUI replaced.
 local blizzardFont = {}   -- font string -> Blizzard's font object
@@ -1050,9 +1047,8 @@ local function StyleIconText(fs, font)
     ns.ApplyShadow(fs, font)
     fs.fuiFont = { path = path, size = size, flags = flags, sh = font.enableShadow, x = font.shadowX, y = font.shadowY, got = fs:GetFont() }
 end
--- the free bag slots on the backpack button (Bags and Looting > Fonts > Free Bag Slots, 11-12)
--- the money at the bags' foot (Bags and Looting > Fonts > Gold, 11-13): Blizzard's gold, silver and
--- copper texts on the combined bags and the backpack; their widths follow the new text
+-- the money at the bags' foot (Bags and Looting > Fonts > Gold): Blizzard's gold, silver and copper
+-- texts on the combined bags and the backpack; their widths follow the new text
 function Bags.StyleMoney()
     local db = GetDb()
     if not db then return end
@@ -1069,11 +1065,10 @@ function Bags.StyleMoney()
     end
 end
 
--- Your gold on other characters (11-16, a player's report): with Syndicator installed, pointing at the
--- money at the bags' foot lists the gold of your characters on this realm (and connected ones), from
--- Syndicator's saved data, as Baganator does with it. Syndicator only keeps the data: the list was
--- Baganator's, so with FlareUI's bags (Blizzard's money line, untouched) there was none. Blizzard's
--- own scripts still run first (a click still opens the currency tab); nothing shows without Syndicator.
+-- Your gold on other characters: with Syndicator installed, pointing at the money at the bags' foot
+-- lists the gold of your characters on this realm (and connected ones), from Syndicator's saved data,
+-- as Baganator does with it (Syndicator only keeps the data; the list is Baganator's). Blizzard's own
+-- scripts still run first (a click still opens the currency tab); nothing shows without Syndicator.
 Bags.GoldList = {}
 
 function Bags.GoldList.Show(owner)
@@ -1145,6 +1140,7 @@ function Bags.GoldList.Hook()
     end
 end
 
+-- the free bag slots on the backpack button (Bags and Looting > Fonts > Free Bag Slots)
 function Bags.StyleFreeSlots()
     local db = GetDb()
     local backpack = _G.MainMenuBarBackpackButton
@@ -1160,9 +1156,9 @@ function Bags.StyleIconTexts(button, db)
     end
 end
 
--- (11-15, a player's report) the cooldown numbers are drawn by the cooldown frame, under our slot overlay
--- (border, junk coin, item level), which hid them. They move to a frame of ours made on the cooldown frame
--- (shown and hidden with it), above every slot's overlay so long ones can spill over the next slot.
+-- The cooldown numbers are drawn by the cooldown frame, under our slot overlay (border, junk coin,
+-- item level), which would hide them. They move to a frame of ours made on the cooldown frame (shown
+-- and hidden with it), above every slot's overlay so long ones can spill over the next slot.
 function Bags.LiftCountdown(button, cooldown, fs)
     if not fs then return end
     local ov = overlays[button] or button.fuiOverlay
@@ -1190,7 +1186,6 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
         ov.itemLoad = nil
     end
     ov:Show()
-    ov.border:Hide()
     ov.junk:Hide()
     ov.ilvl:Hide()
     ov.eye:Hide()
@@ -1200,13 +1195,15 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
     if not button.fuiSample then UpdateItemFilter(button, ov, bagID, slotID, info) end
     local quality = info and info.quality
 
-    -- Skin Item Slots (tweaks.bagSkinSlots, on; 11-14, a player whose bag skin's slots the border
-    -- didn't fit): off, Blizzard's own quality border stays and FlareUI draws none
+    -- Skin Item Slots (tweaks.bagSkinSlots, on): off, Blizzard's own quality border stays and FlareUI
+    -- draws none
+    -- (the border is shown here or hidden, never hidden first and shown again)
     if db.bagSkinSlots ~= false then
         if button.IconBorder then button.IconBorder:SetAlpha(0) end
         UpdateItemBorder(ov, db, quality, dimmedIcons[button])
-    elseif button.IconBorder then
-        button.IconBorder:SetAlpha(1)
+    else
+        ov.border:Hide()
+        if button.IconBorder then button.IconBorder:SetAlpha(1) end
     end
 
     if not info then return end
@@ -1262,28 +1259,27 @@ local function BagFrames()
 end
 
 --------------------------------------------------
--- 4b. CATEGORY FILTERS (Bags and Looting > Category Filters, off; 11-11, after parchinskiy's PR #22)
--- One button left of Blizzard's cleanup button, in the cleanup button's
--- own frame. A click opens a drawer upward: Quest Items, Equipment, Materials and Consumables, the
--- same buttons stacked. Picking one dims every other item (section 3, UpdateItemFilter) and the button
--- takes that category's icon with a gold edge. Right-click clears the filter. Off, the cleanup button
--- and the search box go back to Blizzard's spots.
--- (11-15, parchinskiy's issue #26) The setting is a choice now: Off, Drawer (the above) or Buttons, the
--- PR's first design: the four category buttons in a row left of the cleanup button, one click to pick,
--- a click on the lit one clears. Buttons only in the combined backpack, and only while the search box
+-- 4b. CATEGORY FILTERS (Bags and Looting > Category Filters, off)
+-- Off, Drawer or Buttons. Drawer: one button left of Blizzard's cleanup button, in the cleanup
+-- button's own frame. A click opens a drawer upward: Quest Items, Equipment, Materials and
+-- Consumables, the same buttons stacked. Picking one dims every other item (section 3,
+-- UpdateItemFilter) and the button takes that category's icon with a gold edge. Right-click clears
+-- the filter. Buttons: the four category buttons in a row left of the cleanup button, one click to
+-- pick, a click on the lit one clears; only in the combined backpack, and only while the search box
 -- keeps at least Filter.MIN_SEARCH beside them; otherwise (narrow window, separate bags) the drawer.
--- The saved value: "off" | "drawer" | "buttons"; the old switch's true reads as "drawer".
+-- Off, the cleanup button and the search box go back to Blizzard's spots.
+-- The saved value: "off" | "drawer" | "buttons"; a saved true (the older switch) reads as "drawer".
 --------------------------------------------------
 local Filter = {
     W = 28, H = 26,         -- Blizzard's cleanup button
     ICON_W = 17, ICON_H = 16,   -- the broom's area inside its frame
     GAP = 2,                -- between the filter and cleanup buttons
-    STACK = -5,             -- between the drawer's buttons: their frames' clear edges overlap, a sliver apart (11-11)
+    STACK = -5,             -- between the drawer's buttons: their frames' clear edges overlap, a sliver apart
     SORT_X = -9, SORT_Y = -34,  -- Blizzard's spot for the cleanup button (ContainerFrame.lua)
     SEARCH_GAP = 6,         -- the search box's right art reaches past its edge
     MIN_SEARCH = 120,       -- Buttons: the search box keeps at least this width, else the drawer (about 12 letters)
     MAIN_ICON = "Interface\\Icons\\INV_Misc_Spyglass_03",
-    -- (11-11 Malkkav) shapes that read at the small size: a quest scroll, a sword, a hammer, a green potion
+    -- shapes that read at the small size: a quest scroll, a sword, a hammer, a green potion
     CATEGORIES = {
         { key = "quest", icon = "Interface\\Icons\\INV_Scroll_03", label = L["Quest Items"] },
         { key = "equipment", icon = "Interface\\Icons\\INV_Sword_27", label = L["Equipment"] },
@@ -1315,8 +1311,8 @@ function Filter.NewButton(parent, iconFile)
     b:SetSize(Filter.W, Filter.H)
     b:SetNormalAtlas("bags-button-autosort-up")
     b:SetPushedAtlas("bags-button-autosort-down")
-    -- (11-11 Malkkav: the same look as the cleanup button) the icon only fills the broom's area,
-    -- rounded like it, so the frame's dark rim shows all round
+    -- the same look as the cleanup button: the icon only fills the broom's area, rounded like it, so
+    -- the frame's dark rim shows all round
     b.icon = b:CreateTexture(nil, "OVERLAY")
     b.icon:SetSize(Filter.ICON_W, Filter.ICON_H)
     b.icon:SetPoint("CENTER", 0, 0)
@@ -1439,7 +1435,7 @@ function Filter.Create(frame)
     drawer:SetScript("OnShow", function() watch:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
     drawer:SetScript("OnHide", function() watch:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
 
-    -- Buttons (issue #26): the same category buttons in a row, left to right, the last one beside the
+    -- Buttons: the same category buttons in a row, left to right, the last one beside the
     -- cleanup button. A click picks that category, a click on the lit one (or a right-click) clears.
     local row = CreateFrame("Frame", nil, frame)
     row:SetSize(n * Filter.W + (n - 1) * Filter.GAP, Filter.H)
@@ -1519,7 +1515,7 @@ function Filter.Place(frame, searchUpdated)
         Filter.bases[frame] = { x = x, y = y, width = search:GetWidth() }
     end
     local base = Filter.bases[frame]
-    -- the cleanup button in Blizzard's spot, the filter button just left of it (11-11 Malkkav)
+    -- the cleanup button in Blizzard's spot, the filter button just left of it
     if not Filter.main then Filter.Create(frame) end
     local main = Filter.main
     if main:GetParent() ~= frame then main:SetParent(frame) end
@@ -1564,8 +1560,8 @@ function Filter.Place(frame, searchUpdated)
     Filter.Paint()
 end
 
--- The search box fitted to the window (6.3.3, a player's report): Blizzard gives the combined backpack's
--- a fixed 330 width, so with fewer Columns it ran past the window, over the cleanup button. It keeps
+-- The search box fitted to the window: Blizzard gives the combined backpack's a fixed 330 width, so
+-- with fewer Columns it would run past the window, over the cleanup button. It keeps
 -- Blizzard's width when there's room, else ends before the cleanup button. (Category Filters fit it
 -- themselves, before their filter button: Filter.Place.) searchUpdated: Blizzard just placed it.
 function Bags.FitSearchBox(frame, searchUpdated)
@@ -1600,8 +1596,7 @@ function Filter.Refresh()
     end
 end
 
--- with Bags & Looting on (its own module since 11-12), and no bag addon of another kind (11-13): then
--- FlareUI never touches the bags, so the addon's own layout and cleanup are left alone. The looting
+-- with Bags & Looting on, and no bag addon of another kind: then FlareUI never touches the bags, so the addon's own layout and cleanup are left alone. The looting
 -- side (Fast Auto-Loot, Loot Feed, loot confirms) is elsewhere and keeps working.
 function Bags:ShouldLoad()
     return ns.BagModuleOn() and not self:GetOtherBagAddon()
@@ -1692,8 +1687,8 @@ function Bags:Init()
             end
         end)
     end
-    -- (11-15, a player) Blizzard's Use Combined Bags switched: it closes and reopens the bags with its
-    -- own layout, so FlareUI's goes back on a frame later (it came back only on the next relayout)
+    -- Blizzard's Use Combined Bags switched: it closes and reopens the bags with its own layout, so
+    -- FlareUI's goes back on a frame later
     local combinedSwitch = CreateFrame("Frame")
     combinedSwitch:RegisterEvent("USE_COMBINED_BAGS_CHANGED")
     combinedSwitch:SetScript("OnEvent", function() C_Timer.After(0, function() Bags:Refresh() end) end)
@@ -1725,12 +1720,14 @@ function Bags:Init()
             end
             return
         end
-        -- (11-16) Auto Open Containers, and Combine Empty Slots: a filled or emptied slot moves the grid
+        -- Auto Open Containers, and Combine Empty Slots: a filled or emptied slot moves the grid
         if event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED" then
-            C_Timer.After(0.3, Bags.AutoOpen.Next)
+            -- (turning the option on runs it from the settings)
+            local db = GetDb()
+            if db and db.bagAutoOpen then C_Timer.After(0.3, Bags.AutoOpen.Next) end
             if Bags.CombineEmptyOn() or next(Bags.combineHidden) then
-                local combined = Combined()
-                if combined and combined:IsShown() then Relayout(combined) end
+                local backpack = Combined()
+                if backpack and backpack:IsShown() then Relayout(backpack) end
             end
         end
         -- Slot counts can arrive after login or grow when a bag is replaced.
@@ -1795,7 +1792,7 @@ function Bags:Refresh()
 end
 
 --------------------------------------------------
--- 4c. BAGS WITH OTHER WINDOWS (11-12, a player's request)
+-- 4c. BAGS WITH OTHER WINDOWS
 -- Forever's bank and guild bank don't open the bags as the vendor and mailbox do: with this module
 -- on they always do. The character window does with Open with Character Window (off). Blizzard's own
 -- OpenAllBags / CloseAllBags(frame): bags that were open already stay open when the window closes.
@@ -1833,7 +1830,7 @@ function Bags.FollowWindows()
 end
 
 --------------------------------------------------
--- 4d. SORT ON OPEN (Bags and Looting > Sort Bags on Open, off; 11-15, a player's request)
+-- 4d. SORT ON OPEN (Bags and Looting > Sort Bags on Open, off)
 -- Opening the bags runs Blizzard's own clean-up (C_Container.SortBags, the broom button), so its
 -- rules hold: bags set to Ignore This Bag stay as they are. Bags already in order don't move.
 -- Not in a fight, not with something on the cursor, and not at a vendor, the mailbox, the bank, the
@@ -1880,7 +1877,7 @@ function Sort.Hook()
 end
 
 --------------------------------------------------
--- 4e. BANK WINDOW (Bags and Looting > Bank Window; 11-16, a player's request)
+-- 4e. BANK WINDOW (Bags and Looting > Bank Window)
 -- Forever's bank is one window: every bank bag in one grid of 8 columns, in pages of 88 slots, with
 -- wide spaces between the slots. Columns, Gaps Between Bags and Tight Spacing lay the shown page out
 -- again after Blizzard's (hooksecurefunc on its GenerateItemSlotsForSelectedTab), and size the window
@@ -2244,7 +2241,7 @@ do
 end
 
 --------------------------------------------------
--- CHARACTER SHEET ITEM LEVEL (11-13, a player's request): Item Level also puts each worn item's
+-- CHARACTER SHEET ITEM LEVEL: Item Level also puts each worn item's
 -- level in the bottom left of its slot. On its own, outside Bags:Init, so it works beside a bag addon.
 --------------------------------------------------
 do

@@ -1,7 +1,7 @@
 local _, ns = ...
 
 --------------------------------------------------
--- DURABILITY ICON (11-17, Malkkav)
+-- DURABILITY ICON
 -- With Durability Icon on (minimap.durability), Blizzard's equipment durability figure as one small
 -- round icon on the minimap, dressed like the Group Finder Icon (MinimapEye.lua): dark ground, the
 -- minimap's repair icon cut round and tinted, FlareUI's bronze ring. Yellow while any piece is about to
@@ -9,7 +9,7 @@ local _, ns = ...
 -- while nothing is. Pointing at it shows Blizzard's own tooltip text.
 -- Square style: on the map's left edge, the next spot up the stack the Group Finder Icon starts (above
 -- it and the Vehicle Exit Icon, each only while shown; MinimapEye.lua SquareSpot / STEP). Round style:
--- centred on the map's bottom edge, a step up while the Vehicle Exit Icon shows.
+-- up the circle's lower left, above the same icons (MinimapEye.lua RoundSpot).
 -- Blizzard's figure stays where it is, unseen and without the mouse (its Edit Mode mover too, so its
 -- Edit Mode dialog can't open) while the option is on. A plain button: it may move in a fight.
 --------------------------------------------------
@@ -109,27 +109,14 @@ button:SetScript("OnHide", Leave)
 --------------------------------------------------
 -- PLACE, SHOWN, FADE
 --------------------------------------------------
-local function Shown(name)
-    local f = _G[name]
-    return f and f:IsShown() and true or false
-end
-
+-- a step up for each icon below it that shows and is still in the stack; moved along the edge, at
+-- its own angle (MinimapEye.lua Spot)
 local function Place()
-    local eyeMod = ns.MinimapEye
-    button:SetScale(eyeMod and eyeMod.IconScale and eyeMod.IconScale() or (Minimap:GetEffectiveScale() / UIParent:GetEffectiveScale()))
-    local own = button:GetEffectiveScale()
     local eye = ns.MinimapEye
-    local x, y
-    if ns.Minimap and ns.Minimap.IsSquare and ns.Minimap.IsSquare() and eye and eye.SquareSpot then
-        x, y = eye.SquareSpot(own)
-        -- a step up for each icon below it that shows
-        local below = (Shown("FlareUIFinderEye") and 1 or 0) + (Shown("FlareUIVehicleExit") and 1 or 0)
-        if y then y = y + below * eye.STEP * own end
-    else
-        -- (11-17, Malkkav) round: up the circle, above the icons below it that show
-        local below = (Shown("FlareUIFinderEye") and 1 or 0) + (Shown("FlareUIVehicleExit") and 1 or 0)
-        if eye and eye.RoundSpot then x, y = eye.RoundSpot(own, below) end
-    end
+    if not (eye and eye.Spot) then return end
+    button:SetScale(eye.ScaleFor("durability"))
+    local own = button:GetEffectiveScale()
+    local x, y = eye.Spot("durability", own)
     if not (x and y) then return end
     button:ClearAllPoints()
     button:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / own, y / own)
@@ -140,8 +127,10 @@ local function Fade()
 end
 
 local function Update()
+    -- (the option off: the equipment isn't read on every durability change)
+    if not Wanted() then button:Hide() return end
     local level = Alert()
-    local show = Wanted() and MinimapCluster:IsShown() and Minimap:IsShown() and (level > 0 or Editing())
+    local show = MinimapCluster:IsShown() and Minimap:IsShown() and (level > 0 or Editing())
     button.level = level > 0 and level or 1
     if show then
         Colour(button.level)
@@ -160,7 +149,7 @@ local function KeepHidden()
     if not (taken and game) then return end
     if game:GetAlpha() ~= 0 then game:SetAlpha(0) end
     if game:IsMouseEnabled() then game:EnableMouse(false) end
-    -- (11-17) the Edit Mode box ignores its button's opacity (ignoreParentAlpha): its own, then
+    -- the Edit Mode box ignores its button's opacity (ignoreParentAlpha): its own, then
     local selection = game.Selection
     if selection then
         if selection:GetAlpha() ~= 0 then selection:SetAlpha(0) end
@@ -204,6 +193,11 @@ end
 -- the map moved, or an icon below it came or went
 function Dur.Place()
     C_Timer.After(0, function() if button:IsShown() then Place() end end)
+end
+
+-- at once, while the player drags it along the edge (Minimap.lua MM.Moves)
+function Dur.PlaceNow()
+    if button:IsShown() then Place() end
 end
 
 -- from Minimap.lua MM:Init

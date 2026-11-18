@@ -330,9 +330,7 @@ local function StyleButtonFrame()
         local bf = _G["ChatFrame" .. i .. "ButtonFrame"]
         if bf then
             if bf.GetNumRegions then
-                local nr = bf:GetNumRegions()
-                for ri = 1, nr do
-                    local region = select(ri, bf:GetRegions())
+                for _, region in ipairs({ bf:GetRegions() }) do
                     if region and region:GetObjectType() == "Texture" then
                         region:SetTexture(nil); region:SetAlpha(0)
                     end
@@ -488,17 +486,15 @@ end
 -- own line (player link, report ID, flash, censoring) stays. Replacing AddMessage or the CHAT_*_GET
 -- strings would taint Blizzard's handler. Secret lines pass untouched.
 --   Channel Names         Full; Short: [2. Trade - City] -> [2. Trade], [Guild] -> [G], [Say] -> [S];
---                         Number: [2] (the old Short Channel Names switch, chat.shortChannels)
+--                         Number: [2] (Short and Number set chat.shortChannels, chat.channelNames picks)
 --   Better Player Names   "[Name] says:" -> the class-coloured [Name] without realm or "says:";
---                         a Say line also starts with a clickable [Say] (PR #17, parchinskiy)
+--                         a Say line also starts with a clickable [Say]
 --   Better NPC Names      "Thrall says:" -> an orange [Thrall]
 --   Level Before Names    "(42)" in front of a player's name
 --   Better Timestamps     Blizzard's timestamp in FlareUI's colour, or one added where it has none
 --   Race / Class Icons    the sender's race and class icons before the name (from the line's GUID)
 --   Item and Spell Icons  the icon inside item and spell links
 --   Whisper Markers       a green ">" before whispers you get, a red "<" before ones you send
---   Colon After Names     "[Name]: text" where Better Player Names drops "says:"
--- (Race/class icons, link icons, markers and the colon after Better Forever Chat's: the ideas only.)
 --------------------------------------------------
 -- Chat type -> short tag and Blizzard's channel link keyword (raid warnings have no link).
 -- Numbered channels become just their number.
@@ -797,7 +793,7 @@ function Lines.RewriteSender(body, chatType)
     local ally, rest = after:match("^( |A[^|]*|a)(.*)$")
     local tail = rest or after
     if suffix and suffix ~= "" and tail:sub(1, #suffix) == suffix then
-        -- the name, then a space (Colon After Names was removed 11-16, Malkkav)
+        -- the name, then a space
         return body:sub(1, e) .. (ally or "") .. " " .. tail:sub(#suffix + 1)
     end
     return body
@@ -1276,9 +1272,7 @@ function Chat:StyleHeaderButtonsBody(chatFrame)
         btn:SetSize(22, 22)
 
         if btn.GetNumRegions then
-            local nr = btn:GetNumRegions()
-            for ri = 1, nr do
-                local reg = select(ri, btn:GetRegions())
+            for _, reg in ipairs({ btn:GetRegions() }) do
                 if reg and reg:GetObjectType() == "Texture" then reg:SetAlpha(0) end
             end
         end
@@ -1512,7 +1506,7 @@ end
 
 local urlFilterActive = false
 
--- (always on with the chat since 11-16, Malkkav; it was the Copy Chat Links switch)
+-- Always on with the chat
 function Chat:SetupCopyLinks()
     local db = GetDb()
     if not db or urlFilterActive then return end
@@ -1537,7 +1531,7 @@ local hover = { owner = nil, registered = false }
 
 function hover.Enter(_, chatFrame, link)
     local db = GetDb()
-    -- (always on with the chat since 11-16; it was the Link Tooltips on Mouseover switch)
+    -- always on with the chat
     if not (db and db.enabled) then return end
     if not (canaccessvalue(link) and type(link) == "string") then return end
     local kind = link:match("^(%a+):")
@@ -1624,7 +1618,7 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
             end)
         end
 
-        -- Mute Tab (11-15): this window's tab never glows for new lines (the Combat Log's never does)
+        -- Mute Tab: this window's tab never glows for new lines (the Combat Log's never does)
         if chatFrame ~= _G.ChatFrame2 then
             local muted = Chat.TabMuted(chatFrame)
             rootDescription:CreateButton(muted and L["Unmute Tab"] or L["Mute Tab"], function()
@@ -1680,16 +1674,15 @@ local function ParkDock(dock)
     dock:ClearAllPoints()
     local host = _G.ChatFrame1 and _G.ChatFrame1.FlareUI_Skin
     if ns.IsGamepadUI() and host then
-        -- (6.4.1) the Gamepad UI uses Blizzard's own tabs, clickable: a tab FlareUI selected from its
-        -- own button left the game's chat state marked as an addon's, and closing a chat box with Esc
-        -- then broke the controller (a player's report: ADDON FORBIDDEN SetPreferredGamepadInteractTarget)
+        -- the Gamepad UI uses Blizzard's own tabs, clickable: a tab FlareUI selected from its own
+        -- button leaves the game's chat state marked as an addon's, and closing a chat box with Esc
+        -- then breaks the controller (ADDON FORBIDDEN SetPreferredGamepadInteractTarget)
         dock:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
         dock:SetPoint("TOPRIGHT", host, "TOPRIGHT", 0, 0)
-        -- (11-16, a player's screenshot: "as if the tabs are behind the chat frame") the dock is LOW,
-        -- as are the chat windows, which are toplevel and rise above it; the tabs it now holds over the
-        -- header drew under the window's skin and its dark background. MEDIUM, as Blizzard's own
-        -- undocked tabs are (FCF_UnDockFrame); docked tabs take the dock's strata (FCFDock_UpdateTabs
-        -- re-parents them on every update), and the ones docked now are set too.
+        -- MEDIUM, as Blizzard's own undocked tabs are (FCF_UnDockFrame): at LOW the toplevel chat
+        -- windows rise above the dock, so its tabs over the header would draw under the window's skin.
+        -- Docked tabs take the dock's strata (FCFDock_UpdateTabs re-parents them on every update);
+        -- the ones docked now are set too.
         dock:SetFrameStrata("MEDIUM")
         local scrollChild = dock.scrollFrame and dock.scrollFrame:GetScrollChild()
         for i = 1, NUM_CHAT_WINDOWS do
@@ -1706,9 +1699,9 @@ local function ParkDock(dock)
     end
 end
 
--- (11-16, a Gamepad UI screenshot with "Interface action failed because of an AddOn") a dock or tab made
--- protected (a protected frame tied to the chat) can't be moved, re-layered or given the mouse in a
--- fight: that is left for the fight's end instead of being blocked. Looks (alpha, colours) still apply.
+-- A dock or tab made protected (a protected frame tied to the chat) can't be moved, re-layered or
+-- given the mouse in a fight ("Interface action failed because of an AddOn"): that is left for the
+-- fight's end instead. Looks (alpha, colours) still apply.
 function Chat.DockBusy(frame)
     if not (frame and InCombatLockdown() and frame:IsProtected()) then return false end
     local retry = Chat.dockRetry
@@ -1738,9 +1731,9 @@ function Chat:KillGeneralDockManager()
         else
             dock:SetWidth(1); dock:SetHeight(1)
         end
-        -- (11-14, a player's report) the Gamepad UI's tab bar is Blizzard's own tabs (6.4.1), which sit
-        -- in this dock: at alpha 0 they were still clickable but invisible. Hidden outside the Gamepad UI only.
-        -- (11-16, Malkkav) in the Gamepad UI the tabs fade with the chat (Chat:FadeApply)
+        -- the Gamepad UI's tab bar is Blizzard's own tabs, which sit in this dock (at alpha 0 they would
+        -- be clickable but invisible): hidden outside the Gamepad UI only. In the Gamepad UI the tabs
+        -- fade with the chat (Chat:FadeApply).
         dock:SetAlpha(ns.IsGamepadUI() and (Chat.fadeAlpha or 1) or 0)
         dock:EnableMouse(false)
         dock:SetScript("OnUpdate", nil); dock:SetScript("OnEnter", nil); dock:SetScript("OnLeave", nil)
@@ -2057,19 +2050,17 @@ end
 local TAB_IDLE_ALPHA = 0.6
 local SECRET_TAB_WIDTH = 90   -- Blizzard's own docked width for these tabs
 
--- UNREAD MARKER (11-14; a glow since 11-15, Malkkav: the dot didn't look good): Blizzard's own new-message
--- glow behind the name of a tab with lines you haven't seen (another tab was selected when they came),
--- gold, or the whisper pink on whisper tabs and whisper alerts, pulsing softly. It goes when the tab is
--- selected. On FlareUI's tab bar, and on Blizzard's tabs in the Gamepad UI.
+-- UNREAD MARKER: Blizzard's own new-message glow behind the name of a tab with lines you haven't seen
+-- (another tab was selected when they came), pulsing softly. It goes when the tab is selected. On
+-- FlareUI's tab bar, and on Blizzard's tabs in the Gamepad UI.
 -- (fields, not locals: the file is near the main chunk's 200 locals)
 Chat.unread = {}   -- chat frame -> true
--- (11-15, Malkkav: too strong) faint and short: its strength, and the pulse between full and half of it
-Chat.UNREAD_GLOW_ALPHA = 0.12   -- (11-15, Malkkav: half again, then more subtle still)
+-- the bronze glow's strength (no line colour known); it pulses between full and half of it
+Chat.UNREAD_GLOW_ALPHA = 0.12
 Chat.UNREAD_GLOW = "Interface\\ChatFrame\\ChatFrameTab-NewMessage"
--- GLOW COLOURS (11-16, Shweep's feedback, Malkkav approved): the glow takes the colour of the newest
--- line that lit it, the colour the chat draws that line in (Blizzard's chat colours: guild green, party
--- blue, whisper pink, each channel its own), so a glance tells which kind came. The faint bronze
--- strength (0.12) couldn't be seen; a coloured glow is stronger, still soft (it pulses down to half).
+-- GLOW COLOURS: the glow takes the colour the chat draws the newest line that lit it in (Blizzard's
+-- chat colours: guild green, party blue, whisper pink, each channel its own), so a glance tells which
+-- kind came. A coloured glow needs more strength than the bronze one to be seen.
 Chat.UNREAD_GLOW_COLOR_ALPHA = 0.3
 Chat.unreadColor = {}   -- chat frame -> { r, g, b } of the newest line that lights its tab
 
@@ -2088,11 +2079,10 @@ function Chat.SetUnreadColor(frame, r, g, b, event)
     return true
 end
 
--- TAB GLOW (11-15, Malkkav): chat.unreadGlow picks which kinds of lines light a tab (toggles; nothing
--- ticked, "none", lights none), and Mute Tab on a tab's right click keeps one window's tab dark
--- whatever comes (chat.mutedTabs[window ID] = true; cleared when the window closes, as Blizzard
--- reuses the ID). The kinds: Chat.GLOW_KIND (section 18).
-Chat.GLOW_TOKENS = { "say", "yell", "party", "raid", "guild", "whisper", "channel" }
+-- TAB GLOW: chat.unreadGlow picks which kinds of lines light a tab (toggles; nothing ticked, "none",
+-- lights none), and Mute Tab on a tab's right click keeps one window's tab dark whatever comes
+-- (chat.mutedTabs[window ID] = true; cleared when the window closes, as Blizzard reuses the ID).
+-- The kinds: Chat.GLOW_KIND (section 18).
 Chat.GLOW_ALL = "say,yell,party,raid,guild,whisper,channel"
 
 function Chat.GlowKindOn(db, kind)
@@ -2172,7 +2162,7 @@ function Chat.ShowUnreadDot(owner, text, shown, whisper, color)
         local c = ChatTypeInfo[whisper] or ChatTypeInfo.WHISPER
         glow:SetVertexColor(c.r or 1, c.g or 0.5, c.b or 1, Chat.UNREAD_GLOW_COLOR_ALPHA)
     else
-        -- FlareUI's bronze (the selected tab's colour), not Blizzard's yellow (11-15, Malkkav)
+        -- FlareUI's bronze (the selected tab's colour), not Blizzard's yellow
         glow:SetVertexColor(TAB_ACTIVE_COLOR.r, TAB_ACTIVE_COLOR.g, TAB_ACTIVE_COLOR.b, Chat.UNREAD_GLOW_ALPHA)
     end
     glow:Show()
@@ -2199,14 +2189,13 @@ function Chat.UnreadChangedSoon()
     end)
 end
 
--- GAMEPAD TAB LOOK (11-16, Malkkav: "It looks awful with the WoW default style"). The Gamepad UI keeps
--- Blizzard's own tabs as the tab bar (6.4.1: LB / RB, Tab Settings (Y) and a pad press select a window
--- the game's own way; FlareUI's tab bar and its right-click menus stay off there). They now wear
--- FlareUI's tab look instead of Blizzard's grey boxes: their art is see-through (region alpha 0, which
--- Blizzard's Show / Hide / SetVertexColor never touch), Blizzard's alert glow and new-message flash
--- draw nothing (FlareUI's unread glow takes their place), and the name is painted as FlareUI's tabs
--- are (bronze when selected, dim grey at rest, full strength while it glows). Looks only: no tab is
--- moved, re-parented or given new clicks.
+-- GAMEPAD TAB LOOK. The Gamepad UI keeps Blizzard's own tabs as the tab bar (LB / RB, Tab Settings
+-- (Y) and a pad press select a window the game's own way; FlareUI's tab bar and its right-click menus
+-- stay off there). They wear FlareUI's tab look instead of Blizzard's grey boxes: their art is
+-- see-through (region alpha 0, which Blizzard's Show / Hide / SetVertexColor never touch), Blizzard's
+-- alert glow and new-message flash draw nothing (FlareUI's unread glow takes their place), and the
+-- name is painted as FlareUI's tabs are (bronze when selected, dim grey at rest, full strength while
+-- it glows). Looks only: no tab is moved, re-parented or given new clicks.
 Chat.TAB_ART = { "Left", "Middle", "Right", "ActiveLeft", "ActiveMiddle", "ActiveRight",
     "HighlightLeft", "HighlightMiddle", "HighlightRight" }
 
@@ -2365,15 +2354,15 @@ local function OnTabDragStop(self)
     MoveDockedWindow(self.chatFrame, target and target.chatFrame)
 end
 
--- SECURE TAB CLICKS (11-14). A FlareUI tab used to call FCF_Tab_OnClick from addon code. That tainted
--- the dock's selected window, so Blizzard's own dock update (a whisper window opening, a tab switch)
--- later ran tainted in a fight and its ChatFrame1:Hide was blocked: chat vanished until /reload. The
--- chat window is protected only when a protected frame is tied to it (an Edit Mode frame snapped to
--- it), so few players saw it. Each docked tab now has an invisible secure button over it that clicks
--- Blizzard's real tab, so the switch runs as Blizzard's code. The boxes sit on UIParent at fixed spots
--- (anchored to the tab bar they would make it protected), move only out of combat, and pass hover, drag
--- and right click on to the FlareUI tab under them.
-local TabHit = { bars = {}, dirty = false }
+-- SECURE TAB CLICKS. FCF_Tab_OnClick called from addon code taints the dock's selected window, so
+-- Blizzard's own dock update (a whisper window opening, a tab switch) later runs tainted in a fight
+-- and its ChatFrame1:Hide is blocked: chat vanishes until /reload. (The chat window is protected only
+-- when a protected frame is tied to it, such as an Edit Mode frame snapped to it.) Each docked tab has
+-- an invisible secure button over it that clicks Blizzard's real tab, so the switch runs as Blizzard's
+-- code. The boxes sit on UIParent at fixed spots (anchored to the tab bar they would make it
+-- protected), move only out of combat, and pass hover, drag and right click on to the FlareUI tab
+-- under them.
+local TabHit = { bars = {} }
 
 local function TabSwitchAllowed(btn)
     return btn and btn.realTab and btn.chatFrame and not btn.justDragged and not IsPopped(btn.chatFrame)
@@ -2400,7 +2389,7 @@ local function DockProtected()
     return false
 end
 
--- A tab with no box over it (made in a fight): the old addon-code switch, after the fight if the chat
+-- A tab with no box over it (made in a fight): the addon-code switch, after the fight if the chat
 -- window is protected now
 function TabHit.Fallback(btn, button)
     if InCombatLockdown() and DockProtected() then
@@ -2462,11 +2451,8 @@ end
 
 -- Puts every box over its tab, cut to the part of the tab the bar shows. Out of combat only.
 function TabHit.Sync()
-    if InCombatLockdown() then
-        TabHit.dirty = true
-        return
-    end
-    TabHit.dirty = false
+    -- (PLAYER_REGEN_ENABLED syncs again after the fight)
+    if InCombatLockdown() then return end
     local uiScale = UIParent:GetEffectiveScale()
     for scrollFrame in pairs(TabHit.bars) do
         local barShown = scrollFrame.FlareUI_Docked and scrollFrame:IsVisible() and not ns.IsGamepadUI()
@@ -2575,7 +2561,7 @@ function Chat:UpdateCustomTabs(chatFrame, db)
 
     for _, btn in ipairs(scrollFrame.buttons) do btn:Hide() end
     if scrollFrame.meterButton then scrollFrame.meterButton:Hide() end
-    -- Gamepad UI (6.4.1): Blizzard's own tabs take the clicks (HideBlizzardTabs); no FlareUI bar
+    -- Gamepad UI: Blizzard's own tabs take the clicks (HideBlizzardTabs); no FlareUI bar
     Chat.UpdateBlizzardTabDots()
     if ns.IsGamepadUI() then scrollFrame:Hide() return end
 
@@ -2613,10 +2599,10 @@ function Chat:UpdateCustomTabs(chatFrame, db)
                     if not self.realTab or self.justDragged then return end
                     if button == "RightButton" then
                         Chat:OpenContextMenu(self, self.chatFrame)
-                    -- a popped window has only its own tab. In Edit Mode the main window stays shown:
-                    -- its selection box and size options hide with it, and docked windows share its size
                     -- a docked tab is clicked through its secure box (SECURE TAB CLICKS); this runs
-                    -- only for a tab made in a fight, before its box exists
+                    -- only for a tab made in a fight, before its box exists. No switch on a popped
+                    -- window (it has only its own tab) or in Edit Mode, where the main window stays
+                    -- shown: its selection box and size options hide with it (TabSwitchAllowed).
                     elseif TabSwitchAllowed(self) then
                         TabHit.Fallback(self, button)
                     end
@@ -2749,15 +2735,13 @@ function Chat:UpdateCustomTabs(chatFrame, db)
     end
 end
 
--- (11-14, a player's screenshot) an undocked window showed Blizzard's tab over FlareUI's: Blizzard fades
--- that tab in and out on mouse-over and new lines (UIFrameFadeIn / Out) and sets it to full on undocking.
--- Docked tabs sit in the parked dock, so theirs never showed. Any alpha Blizzard gives a tab goes
--- straight back to 0 (looks only).
--- (11-15, a player's report: "still no chat tabs" in the Gamepad UI) the Gamepad UI keeps Blizzard's
--- tabs as the tab bar, so there any alpha goes straight back to 1 instead. Blizzard's FCF_OnUpdate
--- fades a chat in while it has the pad and out when the pad leaves (FCF_FadeOutChatFrame), and that
--- fade-out runs UIFrameFadeOut on the tab down to 0.4 (selected) / 0.2 (others) over two seconds.
--- The FCFTab_UpdateAlpha hook only caught the one-off set, never the fade's per-frame SetAlpha.
+-- Blizzard fades an undocked window's tab in and out on mouse-over and new lines (UIFrameFadeIn / Out)
+-- and sets it to full on undocking, which would show it over FlareUI's tab (docked tabs sit in the
+-- parked dock). Any alpha Blizzard gives a tab goes straight back to 0 (looks only).
+-- The Gamepad UI keeps Blizzard's tabs as the tab bar, so there any alpha goes straight back to 1
+-- instead. Blizzard's FCF_OnUpdate fades a chat in while it has the pad and out when the pad leaves
+-- (FCF_FadeOutChatFrame), and that fade-out runs UIFrameFadeOut on the tab down to 0.4 (selected) /
+-- 0.2 (others) over two seconds: a per-frame SetAlpha the FCFTab_UpdateAlpha hook never sees.
 local function KeepTabAlpha(tab)
     if tab.FlareUI_AlphaKept then return end
     tab.FlareUI_AlphaKept = true
@@ -2774,7 +2758,7 @@ local function KeepTabAlpha(tab)
 end
 
 function Chat:HideBlizzardTabs()
-    -- Gamepad UI (6.4.1): Blizzard's tabs are the tab bar, so a click selects a window the game's own
+    -- Gamepad UI: Blizzard's tabs are the tab bar, so a click selects a window the game's own
     -- way (see ParkDock); FlareUI's bar stays hidden (UpdateCustomTabs)
     if ns.IsGamepadUI() then
         local gdock = _G.GeneralDockManager
@@ -2796,8 +2780,8 @@ function Chat:HideBlizzardTabs()
 
     -- The dock's tabs stay shown but invisible and deaf to the mouse (the dock itself is parked off
     -- screen outside the Gamepad UI, see ParkDock). In the Gamepad UI Tab Settings (Y) opens on them.
-    -- (11-13) Never Hide() them: other addons list chat windows by their visible tabs, and TSM's
-    -- settings asserted when its saved "General" tab was missing from that list.
+    -- Never Hide() them: other addons list chat windows by their visible tabs (TSM's settings assert
+    -- when its saved "General" tab is missing from that list).
     local dock = _G.GeneralDockManager
     if dock and dock.scrollFrame then
         dock.scrollFrame:SetAlpha(0)
@@ -2839,7 +2823,7 @@ function Chat:UpdateTabFonts(db)
     FCF_DockUpdate()
 end
 
--- TAB SETS CHANNEL (11-15, Haisen's idea; chat.tabChannel, off by default). Picking a tab (a click on
+-- TAB SETS CHANNEL (chat.tabChannel, off by default). Picking a tab (a click on
 -- FlareUI's or Blizzard's tab, LB / RB on a pad) makes what the tab shows the kind you type in. Read
 -- from the window's chat settings, never its name: exactly one kind you can talk in switches to it,
 -- several keep the current one, one that can't be used right now (Party out of a group) gives Say.
@@ -3092,15 +3076,14 @@ function EditExtras.Setup(eb)
     end, EditExtras)
 end
 
--- MISSPELLED: FOREVER (11-16, Vannozza's report: its blue marks drifted off the words and couldn't be
--- right-clicked). Misspelled paints each wrong word as a blue copy over the edit box, placed from the
--- box's width, text insets and font as they were at the last key press, and it redraws only when the
--- text changes. FlareUI changes the box without changing its text: Edit Box Position and the chat's
--- size move or resize it, its font is set (and set again once a font file finishes loading), the
--- window it covers changes. The marks then sat where the words used to be, and Misspelled's right
--- click menu (which reads the word under the text cursor) no longer lined up with them. Each such
--- change now asks Misspelled to redraw the marks for the box as it is. Read-only on its side: only its
--- own public redraw is called, never its files or settings.
+-- MISSPELLED: FOREVER. Misspelled paints each wrong word as a blue copy over the edit box, placed from
+-- the box's width, text insets and font as they were at the last key press, and it redraws only when
+-- the text changes. FlareUI changes the box without changing its text: Edit Box Position and the
+-- chat's size move or resize it, its font is set (and set again once a font file finishes loading),
+-- the window it covers changes. The marks would then sit where the words used to be, out of line with
+-- Misspelled's right click menu (which reads the word under the text cursor). Each such change asks
+-- Misspelled to redraw the marks for the box as it is. Read-only on its side: only its own public
+-- redraw is called, never its files or settings.
 function Chat.MisspelledRedraw(eb)
     local m = _G.Misspelled
     if not (m and type(m.UpdateVisualHighlights) == "function" and eb and eb:IsShown()) then return end
@@ -3280,7 +3263,7 @@ function Chat:SetupVolumeButton(chatFrame, db)
         end)
 
         btn:RegisterEvent("CVAR_UPDATE")
-        btn:SetScript("OnEvent", function(self, event, cvar, value)
+        btn:SetScript("OnEvent", function(self, event, cvar)
             if event == "CVAR_UPDATE" and cvar == "Sound_MasterVolume" then UpdateIcon() end
         end)
 
@@ -3542,7 +3525,7 @@ end
 
 --------------------------------------------------
 -- 16. FADING
--- (11-15, Malkkav) The chat's Visibility, fade speeds, Faded Opacity, fade group and Fade Delay are set
+-- The chat's Visibility, fade speeds, Faded Opacity, fade group and Fade Delay are set
 -- in its Edit Mode dialog and run by the Visibility module's fader (Modules/Visibility.lua, element
 -- "chat"), which gives every chat window one alpha through FadeApply. The chat's own reasons to show
 -- (FadeHold): typing (always), the pointer (with Mouseover ticked), New Messages, a window with the
@@ -3587,7 +3570,7 @@ function Chat:FadeApply(alpha)
     for _, cf in Windows() do
         if cf and cf.FlareUI_Skin and not cf:IsForbidden() then Chat:SetChatFrameAlpha(cf, alpha) end
     end
-    -- (11-16, Malkkav) the Gamepad UI's tab bar is Blizzard's tabs in the dock: they fade with the chat
+    -- the Gamepad UI's tab bar is Blizzard's tabs in the dock: they fade with the chat
     local dock = _G.GeneralDockManager
     if dock and ns.IsGamepadUI() and not dock:IsForbidden() then dock:SetAlpha(alpha) end
 end
@@ -3646,7 +3629,25 @@ function Chat:ShowChatFrame(chatFrame, db)
     -- a window new to the chat (a whisper window) starts where the others are
     if chatFrame.FlareUI_TargetAlpha == nil then Chat:SetChatFrameAlpha(chatFrame, Chat.fadeAlpha) end
     Chat.holdUntil = math_max(Chat.holdUntil, GetTime() + Chat.FadeDelay())
-    if ns.Visibility and ns.Visibility.Wake then ns.Visibility:Wake() end
+    if Chat.wakeHeld then
+        Chat.wakeWanted = true
+    elseif ns.Visibility and ns.Visibility.Wake then
+        ns.Visibility:Wake()
+    end
+end
+
+-- Several windows shown together: one fader wake after the last, not one per window (each wake
+-- re-checks every faded frame on the spot). An error inside is reported and never leaves wakes held.
+function Chat.WithOneWake(fn, ...)
+    if Chat.wakeHeld then return fn(...) end
+    Chat.wakeHeld, Chat.wakeWanted = true, nil
+    local ok, err = pcall(fn, ...)
+    Chat.wakeHeld = nil
+    if Chat.wakeWanted then
+        Chat.wakeWanted = nil
+        if ns.Visibility and ns.Visibility.Wake then ns.Visibility:Wake() end
+    end
+    if not ok then geterrorhandler()(err) end
 end
 
 -- A hover on a tab, a header button or the volume: the fader sees the pointer (with Mouseover
@@ -3669,11 +3670,13 @@ end
 function Chat:RefreshForEditMode()
     local db = GetDb()
     if not db or not db.enabled then return end
-    for _, cf in Windows() do
-        if cf and cf.FlareUI_Skin and not cf:IsForbidden() then
-            self:ShowChatFrame(cf, db)
+    Chat.WithOneWake(function()
+        for _, cf in Windows() do
+            if cf and cf.FlareUI_Skin and not cf:IsForbidden() then
+                self:ShowChatFrame(cf, db)
+            end
         end
-    end
+    end)
 end
 
 -- Settings > Chat open: the windows stay fully shown (Frame Opacity can be seen); afterwards they
@@ -3693,32 +3696,26 @@ end
 --------------------------------------------------
 -- 18. APPLY
 --------------------------------------------------
--- every message (combat log lines included) lands here, so it returns early when auto-hide is off
--- (11-15, a player: General glowed for NPC yells and loot lines) only lines people write light a tab:
--- said, yelled, party, raid, guild, whispers, channels, instance; never NPCs, loot, money or the system.
--- Blizzard passes the line's chat type as ChatTypeInfo[type].id (AddMessage's 5th value)
--- Each people line's Tab Glow kind (chat.unreadGlow): Say also has emotes, Party the instance chat,
--- Guild the officer chat; CHANNEL1..n count as channel (Chat.LineKind)
+-- Only lines people write light a tab: said, yelled, party, raid, guild, whispers, channels,
+-- instance; never NPCs, loot, money or the system. Each people line's Tab Glow kind
+-- (chat.unreadGlow): Say also has emotes, Party the instance chat, Guild the officer chat;
+-- CHANNEL1..n count as channel (Chat.LineKind)
 Chat.GLOW_KIND = { SAY = "say", EMOTE = "say", TEXT_EMOTE = "say", YELL = "yell",
     PARTY = "party", PARTY_LEADER = "party", INSTANCE_CHAT = "party", INSTANCE_CHAT_LEADER = "party",
     RAID = "raid", RAID_LEADER = "raid", RAID_WARNING = "raid", GUILD = "guild", OFFICER = "guild",
     WHISPER = "whisper", BN_WHISPER = "whisper", CHANNEL = "channel",
-    -- (11-16) community channels shown in the chat come as CHAT_MSG_COMMUNITIES_CHANNEL; Discord guild chat
+    -- community channels shown in the chat come as CHAT_MSG_COMMUNITIES_CHANNEL; Discord guild chat
     COMMUNITIES_CHANNEL = "channel", GUILD_DISCORD = "guild" }
-function Chat.IsPeopleLine(typeID, event)
-    return Chat.LineKind(typeID, event) ~= nil
-end
 -- a chat type's Tab Glow kind by its name ("GUILD", "CHANNEL5"), nil for lines no person wrote
 function Chat.KindOfType(name)
     if type(name) ~= "string" then return nil end
     return Chat.GLOW_KIND[name] or (name:find("^CHANNEL%d") and "channel") or nil
 end
--- the line's Tab Glow kind, nil for lines no person wrote.
--- (11-16, a player: no tab glowed at all since 6.8) Every line people write reaches AddMessage with
--- its event (CHAT_MSG_GUILD, CHAT_MSG_CHANNEL...) as the 9th value, which names the kind for sure;
--- the chat type number (5th) is only the fallback. The numbers map to kinds through the people types
--- alone: the old map took every ChatTypeInfo entry, so any other entry sharing an id (a table
--- copied with CopyTable, as Blizzard's SMART_WHISPER is, or another addon's) could take the number over.
+-- the line's Tab Glow kind, nil for lines no person wrote. Every line people write reaches AddMessage
+-- with its event (CHAT_MSG_GUILD, CHAT_MSG_CHANNEL...) as the 8th value, which names the kind for
+-- sure; the chat type number (ChatTypeInfo[type].id, the 5th) is only the fallback. The numbers map
+-- to kinds through the people types alone: other ChatTypeInfo entries can share an id (a table copied
+-- with CopyTable, as Blizzard's SMART_WHISPER is, or another addon's) and would take the number over.
 function Chat.LineKind(typeID, event)
     if event ~= nil and canaccessvalue(event) and type(event) == "string" and event:sub(1, 9) == "CHAT_MSG_" then
         return Chat.KindOfType(event:sub(10))
@@ -3738,14 +3735,15 @@ function Chat.LineKind(typeID, event)
     return byID[typeID] or nil
 end
 
+-- every message (combat log lines included) lands here, so it returns early where it can
 local function OnChatMessage(chatFrame, text, r, g, b, typeID, _, _, event)
     local db = GetDb()
     -- Hide Combat Log: the hidden log still gets every combat line, with nothing to show or wake
     if chatFrame == _G.ChatFrame2 and db and db.hideCombatLog then return end
     UpdateScrollToBottomVisibility(chatFrame)
-    -- a line into a hidden window (another tab is selected) marks its tab unread, once; never the
-    -- Combat Log's, which never stops; only the kinds ticked in Tab Glow, never on a muted tab
-    -- (11-16) every such line, not only the first: the glow takes the newest one's colour (GLOW COLOURS)
+    -- a line into a hidden window (another tab is selected) marks its tab unread; never the Combat
+    -- Log's, which never stops; only the kinds ticked in Tab Glow, never on a muted tab. Every such
+    -- line, not only the first: the glow takes the newest one's colour (GLOW COLOURS)
     if chatFrame ~= _G.ChatFrame2 and not chatFrame:IsShown() and Chat.LineGlows(chatFrame, typeID, db, event) then
         local recoloured = Chat.SetUnreadColor(chatFrame, r, g, b, event)
         if not Chat.unread[chatFrame] or recoloured then
@@ -3776,14 +3774,17 @@ end
 
 function Chat:SetupAutoHide(db)
     if not db then return end
+    Chat.SetupLineWake()
     -- CHAT_FRAMES also lists the whisper windows (ChatFrame11 and up)
-    for _, name in ipairs(CHAT_FRAMES or {}) do
-        local frame = _G[name]
-        if frame and not frame:IsForbidden() then
-            Chat:HookAutoHide(frame)
-            Chat:ShowChatFrame(frame, db)
+    Chat.WithOneWake(function()
+        for _, name in ipairs(CHAT_FRAMES or {}) do
+            local frame = _G[name]
+            if frame and not frame:IsForbidden() then
+                Chat:HookAutoHide(frame)
+                Chat:ShowChatFrame(frame, db)
+            end
         end
-    end
+    end)
 end
 
 function Chat:HookAutoHide(frame)
@@ -3792,6 +3793,61 @@ function Chat:HookAutoHide(frame)
     Chat:SecureHookScript(frame, "OnEnter", OnChatEnter)
     Chat:SecureHook(frame, "AddMessage", OnChatMessage)
     -- its edit box keeps it shown while open: see EditExtras.Setup (Blizzard's focus announcement)
+end
+
+-- New Messages from the chat events as well: a line people write (say, party, raid, instance, guild,
+-- officer, whispers, channels) wakes the chat when a shown window takes it. A window takes a chat type
+-- when it is registered for its event, which is how Blizzard's chat picks the lines each window shows
+-- (party = CHAT_MSG_PARTY and CHAT_MSG_PARTY_LEADER, two message groups); numbered and community
+-- channels go by the window's channel list, as in Blizzard's handler. This wake doesn't depend on
+-- the AddMessage hook above, which sits in a chain with every other hook on the window's AddMessage.
+Chat.WAKE_GROUPS = { "SAY", "EMOTE", "YELL", "WHISPER", "BN_WHISPER", "PARTY", "PARTY_LEADER", "RAID",
+    "RAID_LEADER", "RAID_WARNING", "INSTANCE_CHAT", "INSTANCE_CHAT_LEADER", "GUILD", "OFFICER",
+    "GUILD_DISCORD", "COMMUNITIES_CHANNEL" }
+Chat.WAKE_CHANNEL = { CHAT_MSG_CHANNEL = true, CHAT_MSG_COMMUNITIES_CHANNEL = true }
+
+-- whether a window shows this channel's lines (Blizzard's test: the zone channel's ID, or the name
+-- without its number); a secret channel can't be checked, so it counts
+function Chat.WindowHasChannel(cf, zoneID, name)
+    if not (canaccessvalue(zoneID) and canaccessvalue(name)) then return true end
+    local upper = type(name) == "string" and name:upper() or nil
+    local zones = cf.zoneChannelList
+    for index, value in pairs(cf.channelList or {}) do
+        if type(zoneID) == "number" and zoneID > 0 and zones and zones[index] == zoneID then return true end
+        if upper and type(value) == "string" and value:upper() == upper then return true end
+    end
+    return false
+end
+
+function Chat.OnPeopleLine(_, event, ...)
+    local db = GetDb()
+    if not (db and db.enabled and Chat.ShowsMessages()) then return end
+    -- a sender hidden in a cinematic's letterbox: Blizzard shows the line only there
+    local letterbox = select(16, ...)
+    if canaccessvalue(letterbox) and letterbox then return end
+    local channel = Chat.WAKE_CHANNEL[event]
+    for _, cf in Windows() do
+        if cf and cf.FlareUI_AutoHideHooked and not cf:IsForbidden() and cf:IsVisible() and cf:IsEventRegistered(event)
+                and (not channel or Chat.WindowHasChannel(cf, select(7, ...), select(9, ...))) then
+            Chat:ShowChatFrame(cf, db)
+            return
+        end
+    end
+end
+
+-- once: every event of those message groups (an event this client lacks is skipped)
+function Chat.SetupLineWake()
+    if Chat.lineWaker then return end
+    local f = CreateFrame("Frame")
+    Chat.lineWaker = f
+    local events = { CHAT_MSG_CHANNEL = true }
+    for _, group in ipairs(Chat.WAKE_GROUPS) do
+        for _, event in ipairs(ChatTypeGroup and ChatTypeGroup[group] or {}) do
+            if type(event) == "string" and event:sub(1, 9) == "CHAT_MSG_" then events[event] = true end
+        end
+    end
+    for event in pairs(events) do pcall(f.RegisterEvent, f, event) end
+    f:SetScript("OnEvent", Chat.OnPeopleLine)
 end
 
 -- Formatting lives in the line rewriter, which reads the options on every line
@@ -3874,6 +3930,8 @@ local function SetupGamepadTabHints()
     local left = MakeIcon(GAMEPAD_SHOULDER_LEFT or "PADLSHOULDER")
     local right = MakeIcon(GAMEPAD_SHOULDER_RIGHT or "PADRSHOULDER")
     local shownFor, elapsed = nil, 0
+    local names = {}   -- the windows' global names, built once for the poll
+    for i = 1, NUM_CHAT_WINDOWS do names[i] = "ChatFrame" .. i end
     local poll = CreateFrame("Frame")
     poll:SetScript("OnUpdate", function(_, dt)
         elapsed = elapsed + dt
@@ -3881,7 +3939,7 @@ local function SetupGamepadTabHints()
         elapsed = 0
         local focused
         for i = 1, NUM_CHAT_WINDOWS do
-            local cf = _G["ChatFrame" .. i]
+            local cf = _G[names[i]]
             if cf and cf.HasGamepadFocus and cf:IsVisible() and cf:HasGamepadFocus() then
                 focused = cf
                 break
@@ -4082,12 +4140,12 @@ function Chat:Init()
         Chat:SecureHook("FCFTab_UpdateAlpha", function(chatFrame)
             local tab = chatFrame and _G[chatFrame:GetName() .. "Tab"]
             if not tab or tab:IsForbidden() then return end
-            -- (11-14, a player's report) the Gamepad UI's tabs stay at full strength: Blizzard's
-            -- mouse fade left them faint over a dark window
+            -- the Gamepad UI's tabs stay at full strength: Blizzard's mouse fade would leave them
+            -- faint over a dark window
             tab:SetAlpha(ns.IsGamepadUI() and 1 or 0)
         end)
 
-        -- (11-16) Gamepad UI: Blizzard paints a tab's name gold on every selection and dock update;
+        -- Gamepad UI: Blizzard paints a tab's name gold on every selection and dock update;
         -- FlareUI's colours go straight back (GAMEPAD TAB LOOK), the glows on the next frame
         Chat:SecureHook("FCFTab_UpdateColors", function(tab, selected)
             if not ns.IsGamepadUI() or not tab or tab:IsForbidden() or not GetDb() then return end
@@ -4329,10 +4387,12 @@ function Chat:RefreshAll()
     Chat:SetupImprovements()
     Chat:UpdateFilters()
 
-    for i = 1, NUM_CHAT_WINDOWS do
-        local cf = _G["ChatFrame" .. i]
-        if cf then Chat:ShowChatFrame(cf, db) end
-    end
+    Chat.WithOneWake(function()
+        for i = 1, NUM_CHAT_WINDOWS do
+            local cf = _G["ChatFrame" .. i]
+            if cf then Chat:ShowChatFrame(cf, db) end
+        end
+    end)
     Chat:RefreshMeterTab()   -- its hover watch follows a changed Visibility
     -- the meter takes the skin's size and place: its own pass at login may have come first
     if ns.DamageMeter and ns.DamageMeter.Refresh then ns.DamageMeter:Refresh() end

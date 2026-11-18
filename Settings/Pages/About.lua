@@ -12,7 +12,7 @@ local CREDIT_LINKS = {
     sampconrad = "https://www.curseforge.com/members/sampconrad/projects",
     jeor = "https://github.com/Jeor",
     parchinskiy = "https://github.com/parchinskiy",
-    celbrund = "https://github.com/GregDuhamel",   -- (11-17) Celbrund on Discord, GregDuhamel on GitHub
+    celbrund = "https://github.com/GregDuhamel",   -- Celbrund on Discord, GregDuhamel on GitHub
 }
 
 -- the buttons under the thanks
@@ -31,10 +31,10 @@ local function CopyLink(url)
     end
 end
 
--- 11-10 rework: the page as bronze cards in the window's fonts; highlights in WoW yellow (11-13),
+-- The page as bronze cards in the window's fonts; highlights in WoW yellow,
 -- names that copy a link too
-local GOLD = "|cffffd100"   -- (11-13, Malkkav: WoW's yellow, as the window's titles; was e9c46a)
-local LINK = "|cffffd100"   -- (11-13: yellow too)
+local GOLD = "|cffffd100"   -- (WoW's yellow, as the window's titles)
+local LINK = "|cffffd100"   -- (yellow too)
 local function Gold(text) return (text or ""):gsub("|cffffd100", GOLD) end
 local function Link(text, url) return "|Hurl:" .. url .. "|h" .. LINK .. text .. "|r|h" end
 
@@ -48,14 +48,14 @@ local function Card(host, title, text)
     t:SetPoint("TOPLEFT", CARD_PAD, TITLE_Y)
     t:SetJustifyH("LEFT")
     t:SetWordWrap(true)
-    t:SetTextColor(1, 0.82, 0)   -- card titles in WoW yellow (11-13)
+    t:SetTextColor(1, 0.82, 0)   -- card titles in WoW yellow
     t:SetText(title or "")
     card.title = t
     local rule = card:CreateTexture(nil, "ARTWORK")
     rule:SetColorTexture(0.47, 0.36, 0.22, 0.8)
     rule:SetHeight(1)
     card.rule = rule
-    -- (11-11 Malkkav: a little smaller than the rows' text)
+    -- a little smaller than the rows' text
     local body = card:CreateFontString(nil, "OVERLAY", "FlareUI_PanelTextSmall")
     body:SetJustifyH("LEFT")
     body:SetSpacing(4)
@@ -96,7 +96,7 @@ local function Build(host)
 
     -- thanks and the links
     local note = S:Text("about.links", "text", true) or ""
-    -- the links' note on a line of its own (11-11)
+    -- the links' note on a line of its own
     local thanks = Card(content, S:SectionText("about.yourFriendlyUiOverhowl"),
         (S:Text("about.thanks", "text", true) or "") .. ".\n"
         .. GRAY_FONT_COLOR:WrapTextInColorCode("(" .. note .. ")"))
@@ -111,7 +111,7 @@ local function Build(host)
             ns.ButtonSound()
             CopyLink(net.url)
         end)
-        -- centred in the card (11-11 Malkkav)
+        -- centred in the card
         if previous then b:SetPoint("LEFT", previous, "RIGHT", 8, 0)
         else first = b end
         previous = b
@@ -127,7 +127,7 @@ local function Build(host)
     text = text:gsub(GOLD .. "Celbrund|r", Link("Celbrund", CREDIT_LINKS.celbrund))
     local credits = Card(content, S:SectionText("about.credits"), text)
     credits:SetPoint("TOPLEFT", thanks, "BOTTOMLEFT", 0, -CARD_GAP)
-    -- (11-17, Malkkav) the licences note: small, grey, always at the card's bottom
+    -- the licences note: small, grey, always at the card's bottom
     local licences = credits:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     licences:SetJustifyH("LEFT")
     licences:SetText(S:Text("about.licenses", "text", true) or "")

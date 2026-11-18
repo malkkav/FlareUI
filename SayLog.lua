@@ -1,7 +1,7 @@
 local _, ns = ...
 
 --------------------------------------------------
--- SAY LOG (/fui saylog), for chasing "a Say line never showed" reports (11-13)
+-- SAY LOG (/fui saylog), for chasing "a Say line never showed" reports
 -- While on, every Say and Yell the game sends is noted, and a moment later every chat window that
 -- shows that chat type is checked for the line. A line the game sent that no such window shows is
 -- printed at once in red, so the player knows when to report it. It only reads, stays on across

@@ -91,7 +91,7 @@ local function Sample(c, id, create, draw, y, width, maxHeight)
     return f, h * k
 end
 
--- 11-10 pilot: the unit frames' own code draws the frame (UnitFrames' UF.CreateSample and DrawSample),
+-- The unit frames' own code draws the frame (UnitFrames' UF.CreateSample and DrawSample),
 -- in the style given, scaled to width (and to maxHeight); centred unless x is given. Returns the
 -- frame and the height it takes. (palette: the live one is the frames' own)
 local function Unit(c, id, style, unit, y, width, palette, x, maxHeight, opts)
@@ -122,8 +122,7 @@ local function Unit(c, id, style, unit, y, width, palette, x, maxHeight, opts)
     return f, e.height * k
 end
 
--- 11-10 (Malkkav): only what the option changes. Frame Style, Colour Palette, Full Player Names and
--- the page: the player. Simple Pet Frame: the pet. Simple "Target Of": target of target and of focus.
+-- Only what the option changes. Frame Style, Colour Palette and the page: the player. Simple Pet Frame: the pet. Simple "Target Of": target of target and of focus.
 function R.unit(c, spec)
     local style = spec.key == 'uf.frameStyle' and spec.value or (ns.UFRing and ns.UFRing.Style() or 'addon')
     if c.height < 120 then
@@ -144,7 +143,7 @@ function R.unit(c, spec)
         Unit(c, 'tofSample', s, 'focustarget', 4 + h + 12, c.width - 16)
     else
         local frame = Unit(c, 'playerSample', style, 'player', 4, c.width - 16)
-        -- Colour Palette (11-11 Malkkav): FlareUI's colours shown washed, Blizzard's bright
+        -- Colour Palette: FlareUI's colours shown washed, Blizzard's bright
         if frame and spec.key == 'uf.pickColors' and Get('unitframes.palette', 'flareui') ~= 'custom' then
             local flare = Get('unitframes.palette', 'flareui') ~= 'blizzard'
             for _, bar in ipairs({ frame.Health, frame.Power }) do
@@ -162,20 +161,8 @@ function R.unit(c, spec)
     end
 end
 
--- Compact frame specimens: inset fills and a foreground border keep the art legible
--- at card size instead of laying full-size border pieces beneath tiny health bars.
-local function CardBorder(c, id, x, y, width, height)
-    local border = c:Box(id, x, y, width, height, 'FlareUI Thin', 0)
-    border:SetBackdrop({ edgeFile = LibStub('LibSharedMedia-3.0'):Fetch('border', 'FlareUI Thin'), edgeSize = 8 })
-    border:SetFrameLevel(c.frame:GetFrameLevel() + 4)
-    local bg = c:Texture(id .. 'Background', 'Interface\\Buttons\\WHITE8X8', x + 4, y + 4, width - 8, height - 8)
-    bg:SetVertexColor(0.035, 0.035, 0.04, 1)
-    bg:SetDrawLayer('BACKGROUND')
-end
 function R.frames(c, spec)
     local key = spec.key:match('uf%.(.+)')
-    local colors = { { 0.41, 0.8, 0.94 }, { 0.77, 0.12, 0.23 }, { 1, 0.49, 0.04 }, { 0.67, 0.83, 0.45 }, { 0.8, 0.8, 0.82 } }
-    local palette = ns.UnitFrames.PALETTES[Get('unitframes.palette', 'flareui')] or ns.UnitFrames.PALETTES.flareui
     if key == 'main' or key == 'tot' or key == 'tof' then
         -- the real frames, in the style in use
         local style = ns.UFRing and ns.UFRing.Style() or 'addon'
@@ -244,11 +231,11 @@ function R.minimap(outer, spec)
     local scale = math.min((outer.width - 12) / 280, (outer.height - (card and 4 or 36)) / 280)
     c.frame:SetScale(scale); c.frame:ClearAllPoints()
     c.frame:SetPoint('TOPLEFT', outer.frame, 'TOPLEFT', (outer.width - 280 * scale) / (2 * scale), 0)
-    -- (11-13) three looks: Headerless and Bordered (the square map's two tops) and Round
-    local look = spec.key == 'mm.style' and spec.value
-    if not look then
-        look = Get('minimap.style', 'square') == 'round' and 'round' or (Get('minimap.squareHeader', 'headerless') == 'art' and 'bordered' or 'headerless')
-    end
+    -- Square or Round (the style cards), and the square map's Border: Header is the title-bar look
+    local border = spec.key == 'mm.squareBorder' and spec.value
+        or (Get('minimap.squareHeader', 'headerless') == 'art' and 'header' or Get('minimap.squareBorder', 'bronze'))
+    local round = (spec.key == 'mm.style' and spec.value or Get('minimap.style', 'square')) == 'round'
+    local look = round and 'round' or (border == 'header' and 'bordered' or 'headerless')
     local style = look == 'round' and 'round' or 'square'
     local size, x, y = 244, 18, 18
     local terrain = c:Texture(style == 'round' and 'roundTerrain' or 'squareTerrain', P.MEDIA .. 'Art\\Tour\\Minimap.png', x, y, size, size)
@@ -259,7 +246,9 @@ function R.minimap(outer, spec)
         c:Box('mapBorder', x - 4, y - 4, size + 8, size + 8, 'FlareUI Frames', 0)
         c:Box('mapHeader', x - 2, y - 2, size + 4, 29, 'FlareUI Frames', 1)
     elseif style == 'square' then
-        c:Box('mapBorder', x - 4, y - 4, size + 8, size + 8, 'FlareUI Frames', 0)
+        -- the square map's Border: the bronze drawn as FlareUI Frames here, or FlareUI Thick / Thin
+        local edge = ({ thick = 'FlareUI Thick', thin = 'FlareUI Thin' })[border] or 'FlareUI Frames'
+        c:Box('mapBorder', x - 4, y - 4, size + 8, size + 8, edge, 0)
         c:Box('mapHeader', x + 2, y + 2, size - 4, 25, 'FlareUI Thin', 0.9)
     else
         Round(c, 'mapTerrain', terrain)
@@ -269,7 +258,6 @@ function R.minimap(outer, spec)
     local round = style == 'round'
     c:Text('zoneName', L["Deathknell"], round and 76 or x + 12, round and 48 or y + 8, round and 128 or size - 80, { size = 12 })
     c:Text('stats', '17:49', round and 108 or x + size - 60, round and 224 or y + 8, 65, { size = 11 })
-    if Get('minimap.coords', 'hover') == 'always' then c:Text('coords', '48.2, 36.7', x + 65, y + size - 20, 130, { size = 12 }) end
     -- Icons live on the overlay frame, above every border/backdrop frame.
     c:Texture('dayNight', P.MEDIA .. 'Previews\\Sun.tga', 10, 237, 32, 32, true)
     if spec.key == 'mm.bagHover' and not card then c:Texture('drawerPointer',P.MEDIA..'Previews\\Cursor.tga',20,243,24,32,true) end
@@ -320,7 +308,7 @@ local function Auras(c, unit, spec)
     font.size = (font.size or 0) > 0 and font.size or autoSize
     countFont.size = (countFont.size or 0) > 0 and countFont.size or autoSize
     local timerSize = (fontConfig.size or 0) > 0 and fontConfig.size or math.max(8, autoSize - 1)
-    local colored = true   -- Timer Colour is always on (11-16)
+    local colored = true   -- Timer Colour is always on
     for i, name in ipairs(auraIcons) do
         local b = c:Object('aura' .. i, 'Frame')
         b:SetPoint('TOPLEFT', (c.width - (unit and 2 * 42 + 30 or 2 * 66 + 46)) / 2 + (i - 1) * (unit and 42 or 66), -16)
@@ -357,7 +345,7 @@ function R.unitAuras(c, spec) Auras(c, true, spec) end
 
 function R.chat(c, spec)
     local top, height = 43, 125
-    c:Box('chatBox', 4, top, c.width - 8, height, Get('chat.borderTexture'), Get('chat.opacity', 0.5))
+    c:Box('chatBox', 4, top, c.width - 8, height, Get('chat.borderTexture'), Get('chat.opacity', 0.75))
     c:Text('chatTab', L["General"], 12, top + 8, c.width - 24, Font('chat.tabFont'))
     local stamp = Get('chat.betterTimestamps') and '[12:30] ' or ''
     local channelMode = Get('chat.channelNames', Get('chat.shortChannels') and 'number' or 'full')
@@ -439,10 +427,12 @@ function R.tooltip(c, spec)
             '+10 ' .. L["Stamina"], L["Requires Level 57"], '|cff1eff00' .. L["Increases spell damage by 40."] .. '|r' }
         if Get('tooltips.showItemID') then lines[#lines + 1] = 'ID: 14152' end
     else
-        if Get('tooltips.showGuild') then lines[#lines + 1] = '<Dawnwatch>' end
+        if Get('tooltips.showGuild') then
+            lines[#lines + 1] = '<Dawnwatch>' .. (Get('tooltips.showGuildRank') and (' (' .. (_G.GUILD_RANK1_DESC or "Officer") .. ')') or '')
+        end
         lines[#lines + 1] = L["Level 60 Mage"]
         -- in the faction's colour, as the tooltip shows it
-        if not Get('tooltips.hideFaction') then lines[#lines + 1] = '|cffff3333' .. L["Horde"] .. '|r' end
+        if Get('tooltips.showFaction') ~= false then lines[#lines + 1] = '|cffff3333' .. L["Horde"] .. '|r' end
         if Get('tooltips.showTarget') then lines[#lines + 1] = L["Target"] .. ': Aeloria' end
         if Get('tooltips.showThreat') then lines[#lines + 1] = L["Threat"] .. ': 65%' end
     end
@@ -455,7 +445,7 @@ function R.tooltip(c, spec)
         content = c:Text('tooltipText', table.concat(lines, '\n'), 16, 42, c.width - 32, displayFont)
     end
     local bottom = 48 + math.max(content:GetStringHeight(), #lines * (displayFont.size + 1))
-    -- (11-16) Health Bar: FlareUI Forever in a thin FlareUI border, inside the tooltip's bottom or under it
+    -- Health Bar: FlareUI Forever in a thin FlareUI border, inside the tooltip's bottom or under it
     local barOn = not item and not Get('tooltips.hideHealthBar')
     local inside = barOn and Get('tooltips.healthBarPlace') == 'inside'
     box:SetHeight(bottom + (inside and 22 or 4))
@@ -488,7 +478,9 @@ end
 
 function R.tracker(c, spec)
     local colors = ns.ObjectiveTracker.SampleColors
-    c:Box('trackerBox', 4, 12, c.width - 8, 184, Get('objectivetracker.borderTexture'), Get('objectivetracker.opacity', 0.5))
+    local style = Get('objectivetracker.frameStyle') or 'flareui'
+    local border = (style == 'blizzard' and 'None') or (style == 'flareui' and 'FlareUI Frames') or Get('objectivetracker.borderTexture')
+    c:Box('trackerBox', 4, 12, c.width - 8, 184, border, style == 'blizzard' and 0 or Get('objectivetracker.opacity', 0.75))
     c:Text('trackerTitle', L["Quests"] .. ' (2)', 12, 22, c.width - 24, Font('objectivetracker.headerFont')):SetTextColor(unpack(colors.TITLE))
     if spec.key == 'qt.minimizeButton' then
         c.objects.trackerBox:SetHeight(35)
@@ -499,13 +491,27 @@ function R.tracker(c, spec)
     if Get('objectivetracker.zoneHeaders') then c:Text('zone', L["Elwynn Forest"], 12, y, c.width - 24):SetTextColor(unpack(colors.ZONE)); y = y + 22 end
     for i, title in ipairs({ L["A Threat Within"], L["Kobold Camp Cleanup"] }) do
         local text = (Get('objectivetracker.hideLevel') and '' or '[5] ') .. title .. (Get('objectivetracker.showTags') and ' [G]' or '')
-        local indent = 12
+        local indent, right = 12, 12
+        -- the voice button at the title's right end, as the tracker draws it (box, then Play inside)
         if Get('objectivetracker.playButtons') then
-            c:Texture('questVoice' .. i, P.MEDIA .. 'Previews\\Voice.tga', indent, y + 2, 10, 10, true)
-            indent = indent + 13
+            local art, size = ns.ObjectiveTracker.VoiceArt, 12
+            local x = c.width - right - size
+            local box = c:Texture('questVoice' .. i, art.BOX_FILE, x, y + 1, size, size, true)
+            if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(art.BOX) then box:SetAtlas(art.BOX) end
+            box:SetDrawLayer('OVERLAY', 1)
+            local play = art.play
+            local h = math.floor(size * art.GLYPH + 0.5)
+            local w = math.floor(h * (play.wide or 1) + 0.5)
+            local glyph = c:Texture('questVoiceGlyph' .. i, play.file, x + (size - w) / 2, y + 1 + (size - h) / 2, w, h, true)
+            glyph:SetTexCoord(unpack(play.coords))
+            glyph:SetDrawLayer('OVERLAY', 2)
+            glyph:SetAlpha(art.DIM)
+            right = right + size + art.GAP
         end
-        local t = c:Text('quest' .. i, text, indent, y, c.width - indent - 12, Font('objectivetracker.titleFont'))
-        t:SetTextColor(unpack(i == 1 and colors.TITLE_FOCUS or Get('objectivetracker.colorNames') and {1,0.5,0.25} or colors.TITLE))
+        local t = c:Text('quest' .. i, text, indent, y, c.width - indent - right, Font('objectivetracker.titleFont'))
+        -- the first sample is the focused quest: blue only with no Quest Icon or Focus Button
+        local focusBlue = i == 1 and not (Get('objectivetracker.questIcons') or Get('objectivetracker.focusButtons'))
+        t:SetTextColor(unpack(focusBlue and colors.TITLE_FOCUS or Get('objectivetracker.colorNames') and {1,0.5,0.25} or colors.TITLE))
         t:SetWordWrap(true); t:SetMaxLines(2)
         local h = math.max(18, t:GetStringHeight())
         if y + h + (Font('objectivetracker.objectiveFont').size or 12) > 190 then t:Hide(); break end
@@ -518,7 +524,7 @@ function R.tracker(c, spec)
 end
 
 function R.meter(c, spec)
-    c:Box('meterBox', 4, 25, c.width - 8, 151, Get('damagemeter.borderTexture'), Get('damagemeter.opacity', 0.5))
+    c:Box('meterBox', 4, 25, c.width - 8, 151, Get('damagemeter.borderTexture'), Get('damagemeter.opacity', 0.75))
     local threat = spec.key:find('threat') or spec.key:find('pull') or spec.key == 'dm.tankLead'
     c:Text('meterTitle', threat and L["Threat"] or L["Damage"], 12, 34, c.width - 24, Font('damagemeter.headerFont'))
     for i, name in ipairs({ 'Flareui', 'Aeloria', 'Thorne' }) do
@@ -550,7 +556,7 @@ function R.meter(c, spec)
     Note(c)
 end
 
--- Action Bars (11-10 Malkkav): a few real buttons, as FlareUI styles them, and an empty slot (Show
+-- Action Bars: a few real buttons, as FlareUI styles them, and an empty slot (Show
 -- Button Art shows there). Status Colouring: out of range and out of mana; Dim on Cooldown; the proc glow.
 local ACTION_ICONS = { 'Spell_Frost_FrostBolt02', 'Spell_Fire_FireBolt02', 'Spell_Holy_Heal', 'Spell_Nature_Lightning' }
 function R.actions(c, spec)
@@ -578,7 +584,7 @@ function R.actions(c, spec)
         if cd.cooldown then cd.cooldown:SetCooldown(GetTime() - 4, 12) end
         if range then AB.PaintStatus(cd.icon, 'cooldown', true) end
         if range then
-            -- (11-17) in the colours Status Colouring paints now (palette or your own)
+            -- in the colours Status Colouring paints now (palette or your own)
             AB.PaintStatus(box.buttons[3].icon, 'range', true)
             AB.PaintStatus(box.buttons[4].icon, 'mana', true)
         end
@@ -601,7 +607,7 @@ function R.actions(c, spec)
     end, 4)
 end
 
--- Skin Action Bars (11-11 Malkkav): the same buttons twice, Blizzard's bronze frame above and FlareUI's
+-- Skin Action Bars: the same buttons twice, Blizzard's bronze frame above and FlareUI's
 -- border below, the one in use named in gold; two hold spells, the next is empty (its slot art shows)
 local SKIN_ICONS = { 'Spell_Frost_FrostBolt02', 'Spell_Holy_Heal', false, 'Spell_Nature_Lightning' }
 function R.actionSkin(c, spec)
@@ -615,7 +621,7 @@ function R.actionSkin(c, spec)
             local row = { buttons = {} }
             for i = 1, #SKIN_ICONS do row.buttons[i] = AB.CreateSampleButton(box, i) end
             if #row.buttons < #SKIN_ICONS then return nil end
-            -- the settings window's own font (Roboto Condensed)
+            -- the settings window's own font
             local font = ns.SettingsPanel and ns.SettingsPanel.FONT and ns.SettingsPanel.FONT.GameFontNormal
             row.label = box:CreateFontString(nil, 'OVERLAY', font or 'GameFontNormal')
             row.label:SetJustifyH('LEFT')
@@ -752,7 +758,20 @@ function R.radial(c, spec)
     end
     local names = { L["Frostbolt"], L["Heal"], L["Bags"], L["Mount"] }
     local showNames = Get('radialmenu.showNames', true)
-    if showNames then c:Text('radialName', names[1], 12, size + 15, c.width - 24, { size = 10 }):SetJustifyH('CENTER') end
+    local always = showNames and Get('radialmenu.buttonNames', 'hover') == 'always'
+    if always then
+        -- every button names itself, under its icon
+        showNames = false
+        local s = size * 0.17
+        for i = 1, 4 do
+            local a = (i - 1) * math.pi / 2
+            local px = c.width / 2 + math.sin(a) * size * 0.30
+            local py = 12 + size / 2 - math.cos(a) * size * 0.30 + s / 2 + 2
+            c:Text('radialName' .. i, names[i], px - s * 1.2, py, s * 2.4, { size = 9 }):SetJustifyH('CENTER')
+        end
+    elseif showNames then
+        c:Text('radialName', names[1], 12, size + 15, c.width - 24, { size = 10 }):SetJustifyH('CENTER')
+    end
     local pointer = c:Texture('wheelPointer', P.MEDIA .. 'Previews\\Cursor.tga', c.width / 2, 12 + size / 2, 20, 24, true)
     local elapsed = 0
     c:Animate(function(_, dt)
@@ -770,7 +789,7 @@ function R.radial(c, spec)
     Note(c)
 end
 
--- a font setting: one line in that font, in a FlareUI border (11-10, Malkkav)
+-- a font setting: one line in that font, in a FlareUI border
 function R.font(c, spec)
     local cfg = Font(spec.font)
     local text = c:Text('fontSample', L["The quick brown fox jumps over the lazy dog"], 16, 16, c.width - 32, cfg)
@@ -780,13 +799,13 @@ function R.font(c, spec)
 end
 
 
--- Examples for the 5.1 visual additions; no protected actions or live settings are used.
+-- Examples only: no protected actions or live settings are used.
 function R.reminders(c, spec)
     Heading(c, L["Buff Reminders"])
     if not Get('auras.reminders') then
         c:Text('remindersOff', L["Disabled"], 12, 90); return
     end
-    -- pets and the blessing are picked in the icon's right-click menu now, so a pet always shows
+    -- pets and the blessing are picked in the icon's right-click menu, so a pet always shows
     local names = {'Spell_Holy_WordFortitude', 'Spell_Holy_MagicalSentry', 'Ability_Hunter_BeastCall'}
     if Get('auras.reminder.consumables', 'off') ~= 'off' then names[#names+1]='INV_Potion_41' end
     if Get('auras.reminder.camping', false) then names[#names+1]='Spell_Fire_Fire' end
@@ -870,7 +889,7 @@ function R.lootRolls(c, spec)
         box.rock:SetVertTile(true)
         box.wash = box:CreateTexture(nil, 'BACKGROUND', nil, 2)
         box.wash:SetAllPoints(box.rock)
-        -- (11-17) as the window: the settings window's plain rock, no brown wash (LootRolls.lua Panel)
+        -- as the window: the settings window's plain rock, no brown wash (LootRolls.lua Panel)
         box.wash:SetColorTexture(0.05, 0.038, 0.026, 0)
     end
     local opacity = Get('tweaks.lootRollsOpacity', 1)
@@ -955,7 +974,7 @@ function R.lootRolls(c, spec)
 end
 
 --------------------------------------------------
--- MODULES' OWN SAMPLES (11-11)
+-- MODULES' OWN SAMPLES
 -- A module that builds its own sample (M.CreateSample(parent, kind) / M.DrawSample(f, kind), as the
 -- unit frames, bars and action buttons do) is shown that way; until it does, its drawing above stays.
 --------------------------------------------------
@@ -977,12 +996,13 @@ local OWN = {
     chat = { 'Chat', function() return 'chat' end },
     meter = { 'DamageMeter', function(spec) return THREAT_KEYS[spec.key] and 'threat' or 'damage' end },
     nameplate = { 'Tweaks', function() return 'plate' end },
-    -- the style cards keep their drawing (they show a style that may not be the one in use)
-    -- a style card shows its own style
+    -- a style card shows its own style (which may not be the one in use)
     minimap = { 'Minimap', function(spec, c)
         if c.isStyleCard or c.height < 120 then
             local v = spec.value
-            return (v == 'round' or v == 'bordered' or v == 'headerless') and v or 'square'
+            if v == 'round' then return 'round' end
+            -- the Square card shows the square map in the Border in use
+            return Get('minimap.squareHeader', 'headerless') == 'art' and 'bordered' or 'headerless'
         end
         return spec.key == 'mm.microMenu' and 'menu' or 'map'
     end },

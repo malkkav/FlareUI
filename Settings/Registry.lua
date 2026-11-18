@@ -39,37 +39,22 @@ function Settings.ButtonWidthForText(button, minWidth, padding)
     return math.max(minWidth, math.ceil(textWidth) + (padding or 24))
 end
 
-local GROUPS = { "top", "combat", "map", "interface", "bottom" }   -- 11-10 regrouping
+local GROUPS = { "top", "combat", "map", "interface", "bottom" }
 
 -- Rows that get a NEW badge, by row key -> the version that added them ("2.5"). The badge shows while
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["ab.equippedBorder"] = "6.11",
-    ["ab.statusPick"] = "6.11",
-    ["ab.xpColors"] = "6.11",
-    ["about.licenses"] = "6.11",
-    ["au.hideById"] = "6.11",
-    ["au.hideEmpty"] = "6.11",
-    ["au.hidePick"] = "6.11",
-    ["bl.bagBoE"] = "6.11",
-    ["bl.bagPlainEmpty"] = "6.11",
-    ["fonts.combatSize"] = "6.11",
-    ["language.escButton"] = "6.11",
-    ["mm.barBox"] = "6.11",
-    ["mm.barCenter"] = "6.11",
-    ["mm.barHover"] = "6.11",
-    ["mm.barLeft"] = "6.11",
-    ["mm.barRight"] = "6.11",
-    ["mm.drawerStyle"] = "6.11",
-    ["mm.durability"] = "6.11",
-    ["mm.font.bar"] = "6.11",
-    ["mm.sundial"] = "6.11",
-    ["mm.vehicleExit"] = "6.11",
-    ["qol.acceptSummon"] = "6.11",
-    ["qol.craftTotal"] = "6.11",
-    ["qol.npCombatFriendly"] = "6.11",
-    ["tt.showPvP"] = "6.11",
+    ["au.timerColor"] = "6.12",
+    ["mm.resetButtonMoves"] = "6.12",
+    ["mm.squareBorder"] = "6.12",
+    ["qol.autoTurnInQuests"] = "6.12",
+    ["qol.zoneLevels"] = "6.12",
+    ["qt.frameStyle"] = "6.12",
+    ["qt.questButtons"] = "6.12",
+    ["rm.targetMouseover"] = "6.12",
+    ["tt.showGuildRank"] = "6.12",
+    ["uf.auraTimerColor"] = "6.12",
 }
 
 --------------------------------------------------
@@ -91,7 +76,7 @@ function Settings:Text(key, field, optional)
         local control = key:match("%.font%.[^.]+%.(%w+)$")
         if control then row = CopyRow("font." .. control) end
     end
-    -- a section's own copy of a shared text ("uf.font.player_names" -> "uf.font.names", 11-13)
+    -- a section's own copy of a shared text ("uf.font.player_names" -> "uf.font.names")
     if not (row and row[field]) then
         local base, name = key:match("^(.-%.font%.)[^._]+_([^._]+)$")
         if base then row = CopyRow(base .. name) end
@@ -179,7 +164,7 @@ function Module:Sections(tabKey)
         local rows = {}
         for _, row in ipairs(section.rows) do
             -- a row without a tab belongs to the first one
-            -- (pageHidden, 11-16: off the page but still found by search, as the Unit Frames fonts of
+            -- (pageHidden: off the page but still found by search, as the Unit Frames fonts of
             -- frames other than the picked one)
             if not row:IsHidden() and not (row.pageHidden and row.pageHidden())
                 and (not self.tabs or (row.tab or self.tabs[1].key) == tabKey) then rows[#rows + 1] = row end
@@ -322,18 +307,17 @@ function Row:IsHidden()
     return self.hidden and self.hidden() or false
 end
 
--- (11-13, Malkkav: "anything that has restrictions on gamepad should get this warning") what Blizzard's
--- Gamepad UI keeps FlareUI from doing: the modules and rows the code itself turns off there (Bags.lua
--- layout and filters, Auras / BuffReminders ShouldLoad, Tweaks' quest, mail, merchant and camera
--- helpers, Tooltips' visibility and mouseover, the meter's chat tab...). Greyed there, and their
--- section or page says why (Panel.lua GamepadNote).
+-- What Blizzard's Gamepad UI keeps FlareUI from doing: the modules and rows the code itself turns
+-- off there (Bags.lua layout and filters, Auras / BuffReminders ShouldLoad, Tweaks' quest, mail,
+-- merchant and camera helpers, Tooltips' visibility and mouseover, the meter's chat tab...). Greyed
+-- there, and their section or page says why (Panel.lua GamepadNote).
 Settings.GAMEPAD_OFF_MODULES = { au = true, br = true }
 Settings.GAMEPAD_OFF = {
     ["bl.bagColumns"] = true, ["bl.bagGaps"] = true, ["bl.bagKeyring"] = true, ["bl.bagReagent"] = true,
     ["bl.bagFilters"] = true, ["bl.bagWithCharacter"] = true,
     ["bl.bankColumns"] = true, ["bl.bankGaps"] = true, ["bl.bankTight"] = true,
     ["ab.skinCDM"] = true, ["dm.chatTab"] = true, ["dm.chatTabIgnoreFade"] = true, ["tt.mouseover"] = true,
-    ["qol.autoAcceptQuests"] = true, ["qol.mailBook"] = true,
+    ["qol.autoAcceptQuests"] = true, ["qol.autoTurnInQuests"] = true, ["qol.mailBook"] = true,
     ["qol.bulkBuy"] = true, ["qol.merchantWide"] = true, ["qol.fishCast"] = true, ["qol.cameraZoomSpeed"] = true,
     ["qol.move"] = true,
 }
@@ -356,17 +340,17 @@ function Row:IsDisabled()
     if self.disabled and self.disabled() then return true end
     if ns.IsGamepadUI and ns.IsGamepadUI() and Settings:GamepadOff(self) then return true end
     -- a row of a module that is off (found by search) does nothing until the module is on
-    -- (ignoreModule: a row drawn by another module works with its page's module off, 11-16)
+    -- (ignoreModule: a row drawn by another module works with its page's module off)
     local module = not self.ignoreModule and Settings.modules[self.module]
     if module and module.IsOn and not module:IsOn() then return true end
-    -- (inverseParent, 11-16: a row that greys while its parent is ON sits under it too; its own
+    -- (inverseParent: a row that greys while its parent is ON sits under it too; its own
     -- disabled check decides)
     local parent = not self.inverseParent and self.parent and Settings.rows[self.parent]
     if parent and not parent:Get() then return true end
     return false
 end
 
--- invert (11-13): a Show switch over a saved "hide" value (Show Keybind Text over hideHotkeys): the
+-- invert: a Show switch over a saved "hide" value (Show Keybind Text over hideHotkeys): the
 -- switch reads and writes the opposite, so saved setups stay as they were
 function Row:Get()
     if self.get then return self.get() end
@@ -443,7 +427,7 @@ function Row:ResetValue()
 end
 -- What a section's Reset changes: only rows the player can see and use, that differ from their
 -- default. Never a keybind (it would unbind a key), a row that needs a reload (a frame switch, the
--- frame style, UI Scale: too big for a one-click reset), or one marked noReset. (11-10 review of PR #19)
+-- frame style, UI Scale: too big for a one-click reset), or one marked noReset.
 local NO_RESET_KINDS = { expander = true, button = true, buttons = true, text = true, legend = true, keybind = true }
 function Settings:SectionDefaults(moduleKey, sectionKey, tab)
     local module = self.modules[moduleKey]
@@ -472,7 +456,9 @@ end
 
 -- Frame Border choices: None, FlareUI's border, then other addons' borders; rebuilt on each open
 function Settings:BorderChoices()
-    local list = { { "None", L["None"] }, { "FlareUI Frames", "FlareUI Frames" } }
+    -- (Chat, Damage Meter and Quest Tracker only) FlareUI Frames and the Thick art share 16 px corners:
+    -- shown as FlareUI Frames Thin / Thick; "FlareUI Frames" stays the saved name
+    local list = { { "None", L["None"] }, { "FlareUI Frames", "FlareUI Frames Thin" }, { "FlareUI Thick", "FlareUI Frames Thick" } }
     local others = ns.AddonMedia("border")
     if #others > 0 then
         list[#list + 1] = { divider = true }
@@ -481,17 +467,11 @@ function Settings:BorderChoices()
     return list
 end
 
--- Faded Opacity: how far a fading frame fades, 0% to 90%
-function Settings:MinAlphaChoices()
-    local list = {}
-    for i = 0, 9 do list[#list + 1] = { i / 10, (i * 10) .. "%" } end
-    return list
-end
-
 -- Frame Opacity choices: 0% to 100% in tens, stored as 0..1
+-- every background opacity, in steps of 1%
 function Settings:OpacityChoices()
     local list = {}
-    for i = 0, 10 do list[#list + 1] = { i / 10, (i * 10) .. "%" } end
+    for i = 0, 100 do list[#list + 1] = { i / 100, i .. "%" } end
     return list
 end
 
@@ -540,10 +520,9 @@ end
 -- rank = n places a row by hand (Fake CM's Visibility: 3.5, between the bar switches and the button).
 local KIND_RANK = { text = 0, styles = 1, choice = 1, range = 1, dropdown = 1, toggle = 3, frame = 3, keybind = 4, button = 4, buttons = 4,
                     editmode = 4, legend = 5, expander = 5 }
--- (11-16, UX audit batch 3, layout rule 2.3) a master, the row others name as parent, comes before
--- the options it turns on: it moves up to the rank of its highest dependent (Combined Backpack over
--- Columns), never further, so a master among peers stays among them. Its dependents follow it
--- straight away, indented. The order is rebuilt from the registration order on every new row, so a
+-- A master, the row others name as parent, comes before the options it turns on: it moves up to
+-- the rank of its highest dependent (Combined Backpack over Columns), never further, so a master
+-- among peers stays among them. Its dependents follow it straight away, indented. The order is rebuilt from the registration order on every new row, so a
 -- master registered after its dependents still comes first.
 local function RowRank(row, masters)
     if row.lead then return -1 end

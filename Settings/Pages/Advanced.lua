@@ -490,7 +490,7 @@ ns.Dialogs["FLAREUI_IMPORT_PROFILE"] = {
     OnAccept = function(_, text)
         local payload = ReadString(text)
         if not (payload and ns.db and ns.db.sv) then
-            -- (11-14, a player) the About page's Edit Mode layout code pasted here: say where it goes.
+            -- the About page's Edit Mode layout code pasted here: say where it goes.
             -- Blizzard's layout code is plain text: "5 0 59 ..." then each system anchored to UIParent
             local raw = type(text) == "string" and strtrim(text) or ""
             if raw:match("^%d+ %d+ %d+ ") and raw:find("UIParent", 1, true) then
@@ -536,7 +536,7 @@ local PROFILE_W = BUTTON_W * 3 + BUTTON_GAP * 2
 local MANAGE_W = (PROFILE_W - BUTTON_GAP * 2) / 3
 
 -- what a profile saves, and where the rest comes from (ProfileLayout.lua): a section of its own above
--- Profile, its title the section's (11-16, Malkkav); registered first so the section comes first
+-- Profile, its title the section's; registered first so the section comes first
 S:Row{ key = "adv.holds", kind = "text", noTitle = true, section = "adv.saves" }
 
 S:Row{
@@ -585,5 +585,5 @@ S:Row{
     },
 }
 
-S:Row{ key = "adv.reset", kind = "button", center = true, section = "adv.profile",   -- (last row of Profile, 11-16)
+S:Row{ key = "adv.reset", kind = "button", center = true, section = "adv.addonReset",   -- (its own section, so players see it matters)
     apply = function() ns.ShowDialog("FLAREUI_RESET") end }

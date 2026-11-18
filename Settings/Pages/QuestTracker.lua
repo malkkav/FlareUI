@@ -1,5 +1,4 @@
 local _, ns = ...
-local L = ns.L
 local S = ns.Settings
 
 --------------------------------------------------
@@ -13,7 +12,7 @@ end
 local function Holder() return _G.FlareUI_ObjectiveTracker end
 
 S:Module{ key = "qt", group = "map", order = 20, enabled = "objectivetracker.enabled", editMode = Holder,
-    -- (11-16, UX audit batch 4) Look (Frame, Display) and Behaviour (Quests with Sort By, Minimize)
+    -- Look (Frame, Display) and Behaviour (Quests with Sort By, Minimize)
     tabs = { { key = "settings" }, { key = "behaviour" }, { key = "fonts" } } }
 
 -- the tracker stays shown on this page (sample quests when empty) so Frame Opacity can be seen
@@ -22,9 +21,16 @@ S:On("PageShown", function(key)
 end)
 
 -- (Blizzard's Tracker in Gamepad Mode is on the Quality of Life page, under Gamepad)
-S:Row{ key = "qt.opacity", kind = "range", path = "objectivetracker.opacity", choices = S:OpacityChoices(), apply = Refresh }
+-- Frame Style first: Blizzard (strips, no background or border), FlareUI (strips on FlareUI's frame,
+-- the default) or Custom (Frame Opacity and Border as chosen). Opacity hides with Blizzard, Border with
+-- both Blizzard and FlareUI.
+local function Style() return S:GetPath("objectivetracker.frameStyle") or "flareui" end
+S:Row{ key = "qt.frameStyle", kind = "choice", path = "objectivetracker.frameStyle",
+    choices = { "blizzard", "flareui", "custom" }, apply = Refresh }
+S:Row{ key = "qt.opacity", kind = "range", path = "objectivetracker.opacity", choices = S:OpacityChoices(), apply = Refresh,
+    hidden = function() return Style() == "blizzard" end }
 S:Row{ key = "qt.border", kind = "choice", path = "objectivetracker.borderTexture", choices = S.BorderChoices,
-    apply = Refresh }
+    apply = Refresh, hidden = function() return Style() ~= "custom" end }
 
 -- one choice over four saved flags: zone (current zone first), distance, level, progress
 S:Row{
@@ -43,24 +49,41 @@ S:Row{
     end,
 }
 
--- invert: a Show switch over a saved "hide" value (Show Quest Level, 11-13)
+-- invert: a Show switch over a saved "hide" value (Show Quest Level)
 local function Display(key, path, invert)
     S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, invert = invert, apply = Refresh, section = "qt.display", half = true }
 end
--- in pairs (11-11, Malkkav; 11-16 Quest Count, Hide When Empty and Wrap Long Text became always on):
+-- in pairs:
 -- Zone Headings | Show Quest Level, Colour by Difficulty | Quest Tags, Tracked Recipes | Show Complete
--- Tag, Quest Icons | Voice Buttons, Auto Quest Buttons (Focus Buttons removed 11-16, Malkkav)
+-- Tag; then Quest Buttons on its own row
 Display("zoneHeaders", "zoneHeaders")
 Display("hideLevel", "hideLevel", true)
 Display("colorNames", "colorNames")
 Display("tags", "showTags")
 Display("recipes", "showRecipes")
--- (11-15, vyf) on by default: off, finished quests look like any other
+-- on by default: off, finished quests look like any other
 Display("completeTag", "showCompleteTag")
--- (11-15, Haisen) Blizzard's round quest buttons; the focus dots step aside while they are on
-Display("questIcons", "questIcons")
-S:Row{ key = "qt.playButtons", path = "objectivetracker.playButtons", apply = Refresh, section = "qt.display", half = true,
-    hidden = function() return not _G.Spoken end }
+-- Quest Buttons: the buttons before each title, as many as you like; each its own saved switch
+local QUEST_BUTTONS = { { "icon", "questIcons" }, { "focus", "focusButtons" }, { "voice", "playButtons" } }
+S:Row{ key = "qt.questButtons", kind = "dropdown", section = "qt.display",
+    choices = { "none", { divider = true }, "icon", "focus", "voice" },
+    -- (Quest Icon and Focus Button both focus the quest: ticking one unticks the other)
+    toggles = { exclusive = { "none" }, tokens = { "icon", "focus", "voice" }, empty = "none",
+        rivals = { icon = "focus", focus = "icon" } },
+    get = function()
+        local list = {}
+        for _, b in ipairs(QUEST_BUTTONS) do
+            if S:GetPath("objectivetracker." .. b[2]) then list[#list + 1] = b[1] end
+        end
+        return #list > 0 and table.concat(list, ",") or "none"
+    end,
+    set = function(value)
+        local on = {}
+        for token in tostring(value or ""):gmatch("[^,]+") do on[token] = true end
+        for _, b in ipairs(QUEST_BUTTONS) do S:SetPath("objectivetracker." .. b[2], on[b[1]] and true or false) end
+    end,
+    resetValue = function() return "none" end,
+    apply = Refresh }
 
 local function Quests(key, path, invert)
     S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, invert = invert, apply = Refresh, section = "qt.quests", half = true,
@@ -71,15 +94,14 @@ Quests("completedLast", "completedLast")
 Quests("focusedFirst", "focusedFirst")
 Quests("collapseCompleted", "collapseCompleted")
 Quests("hideFinished", "hideFinished", true)   -- Show Completed Objectives
--- (11-15) Show Untracked Quests (jams) needs zone headings (none by level or by progress either).
--- (Collapsible Zones, its pair, is always on since 11-16.)
+-- Show Untracked Quests needs zone headings (none by level or by progress either).
 local function NoHeadings()
     return not S:GetPath("objectivetracker.zoneHeaders") or S:GetPath("objectivetracker.sortByLevel")
         or S:GetPath("objectivetracker.sortByProgress")
 end
 S:Row{ key = "qt.untracked", path = "objectivetracker.showUntracked", apply = Refresh, section = "qt.quests", half = true, tab = "behaviour",
     disabled = NoHeadings }
--- (11-15, Archy) a newly accepted quest gives the focus back; paired with Show Untracked Quests
+-- (Archy) a newly accepted quest gives the focus back; paired with Show Untracked Quests
 Quests("keepFocus", "keepFocus")
 -- Minimize: one switch sets every instance type
 local INSTANCES = { "dungeon", "raid", "pvp", "arena" }
@@ -106,7 +128,7 @@ S:Row{
 local trackerKey = S:BindingAccessors("FLAREUI_TRACKER")
 S:Row{ key = "qt.minimizeKey", kind = "keybind", get = trackerKey.get, set = trackerKey.set, section = "qt.minimizeIn", tab = "behaviour" }
 
--- FONTS (11-13, back from Edit Mode)
+-- FONTS (back from Edit Mode)
 S:FontRows{ module = "qt", tab = "fonts", section = "qt.fonts", apply = Refresh, fonts = {
     { key = "header", path = "objectivetracker.headerFont" },
     { key = "titles", path = "objectivetracker.titleFont" },

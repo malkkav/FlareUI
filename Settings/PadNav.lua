@@ -469,7 +469,7 @@ function PadNav.Attach(window, options)
 end
 
 --------------------------------------------------
--- LISTS IN THE GAMEPAD UI (11-11, a player's ADDON_ACTION_FORBIDDEN)
+-- LISTS IN THE GAMEPAD UI
 -- Blizzard's menus can't be opened from addon code in the Gamepad UI: showing one hands the
 -- controller navigation an untrusted call, which ends in a blocked protected call blamed on FlareUI
 -- (SetPreferredGamepadInteractTarget). A dropdown's own mouse handler can't be replaced, so a catcher

@@ -15,7 +15,7 @@ lib.SettingType.Expander = 'expander'
 local ARROW_UP = ' |A:editmode-up-arrow:16:11:0:3|a'
 local ARROW_DOWN = ' |A:editmode-down-arrow:16:11:0:-4|a'
 
--- FlareUI (11-16, Malkkav): the dialog decides which section is open before the widgets are set up
+-- FlareUI: the dialog decides which section is open before the widgets are set up
 -- (one at a time, dialog.lua / extension.lua OpenSections). A section that is the only one in its box
 -- (self.single) is a plain title, always open. A line runs above every title but the first.
 local function Value(data)

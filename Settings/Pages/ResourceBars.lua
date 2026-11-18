@@ -5,7 +5,7 @@ local L = ns.L
 --------------------------------------------------
 -- RESOURCE BARS
 -- One switch + Edit row per bar (Modules/ResourceBars.lua); bars are made at login, so switching
--- asks for a reload. Druid mana and Seals are on every class (11-15), for Edit Mode.
+-- asks for a reload. Druid mana and Seals are on every class, for Edit Mode.
 --------------------------------------------------
 local function Bar(key, extra)
     local row = {
@@ -32,14 +32,14 @@ S:Module{
 
 Bar("health")
 Bar("power")
-Bar("mana")   -- every class (11-15): its Edit Mode frame can be placed without a druid
+Bar("mana")   -- every class: its Edit Mode frame can be placed without a druid
 Bar("combo")
 Bar("swingMain")
 Bar("swingOff")
 Bar("swingRanged")
-Bar("seal")   -- every class (11-15): its Edit Mode frame can be placed without a paladin
+Bar("seal")   -- every class: its Edit Mode frame can be placed without a paladin
 Bar("flight")
--- Timer Bars (11-14): off works at once (Blizzard's timers come back); on needs the reload
+-- Timer Bars: off works at once (Blizzard's timers come back); on needs the reload
 Bar("timer", {
     set = function(value)
         S:SetPath("unitframes.resource.bars.timer.enabled", value)
@@ -51,19 +51,19 @@ local function Refresh()
     if ns.ResourceBars and ns.ResourceBars.Refresh then ns.ResourceBars:Refresh() end
 end
 
--- Colour Palette, Resource Bars' own (11-11): until set, the unit frames' (ResourceBars.lua RB.PaletteName)
--- (11-11) only the button, always shown; the palettes are picked in its window (Settings/ColorPicker.lua)
+-- Colour Palette, Resource Bars' own: until set, the unit frames' (ResourceBars.lua RB.PaletteName)
+-- only the button, always shown; the palettes are picked in its window (Settings/ColorPicker.lua)
 S:Row{
     key = "rb.pickColors", kind = "button", buttonText = L["Pick Your Colours"],
     apply = function() if ns.ColorPicker then ns.ColorPicker.Open("rb") end end,
 }
 
--- FONTS (11-13, back from Edit Mode): each bar's text font under the bar's name
--- (the Bars section's own names, 11-16: it was "Health Bar" / "Power Bar" here)
+-- FONTS: each bar's text font under the bar's name
+-- (the Bars section's own names)
 local BAR_NAMES = { health = L["Health"], power = L["Power"], mana = L["Druid Mana"],
     swingMain = L["Main-Hand Swing"], swingOff = L["Off-Hand Swing"], swingRanged = L["Ranged Swing"],
     seal = L["Paladin Seals"], flight = L["Flight Timer"], timer = L["Duration Bars"] }
-local BAR_HIDDEN = {}   -- (11-15) no bar is hidden by class any more
+local BAR_HIDDEN = {}   -- no bar is hidden by class any more
 local barFonts = {}
 for _, key in ipairs(BARS) do
     -- (the combo points have no text)

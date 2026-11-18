@@ -1,10 +1,9 @@
 local _, ns = ...
-local L = ns.L
 
 --------------------------------------------------
--- VEHICLE EXIT ICON (11-17, Malkkav)
--- With Vehicle Exit Icon on (minimap.vehicleExit), the vehicle exit button as a small round icon at the
--- bottom of the minimap, dressed like the Group Finder Icon (MinimapEye.lua): dark ground, Blizzard's
+-- VEHICLE EXIT ICON
+-- With Vehicle Exit Icon on (minimap.vehicleExit), the vehicle exit button as a small round icon on
+-- the minimap, dressed like the Group Finder Icon (MinimapEye.lua): dark ground, Blizzard's
 -- red exit arrow cut round, FlareUI's bronze ring. It shows while you can leave a vehicle or cut a
 -- flight short, as Blizzard's button does, and a click clicks Blizzard's button, which knows which one
 -- to do (VehicleExit, or TaxiRequestEarlyLanding on a flight path).
@@ -130,27 +129,19 @@ button:SetScript("OnHide", Leave)
 --------------------------------------------------
 -- PLACE, SHOWN, FADE
 --------------------------------------------------
--- Square style (11-17, Malkkav): on the map's left edge, in the Group Finder Icon's spot (above the
--- sundial, or on the bottom-left corner without it: MinimapEye.lua SquareSpot). While the Group Finder
--- Icon shows, one step higher, right above it; it comes down again when that icon hides (both move only
--- out of combat, the eye's own showing waits for that too). Round style: centred on the map's bottom edge.
--- (11-17) Round style: up the circle's lower left, above the Group Finder Icon (MinimapEye.lua RoundSpot).
+-- Square style: on the map's left edge, in the Group Finder Icon's spot (above the sundial, or on the
+-- bottom-left corner without it: MinimapEye.lua SquareSpot). While the Group Finder Icon shows, one
+-- step higher, right above it; it comes down again when that icon hides (both move only out of combat,
+-- the eye's own showing waits for that too). Round style: up the circle's lower left, the next spot
+-- above the Group Finder Icon (MinimapEye.lua RoundSpot). A Group Finder Icon moved along the edge
+-- leaves the stack; this one moved sits at its own angle on the edge (MinimapEye.lua Spot).
 local function Place()
     if not CanChange(Place) then return end
-    local eyeMod = ns.MinimapEye
-    button:SetScale(eyeMod and eyeMod.IconScale and eyeMod.IconScale() or (Minimap:GetEffectiveScale() / UIParent:GetEffectiveScale()))
-    local own = button:GetEffectiveScale()
-    local x, y
     local eye = ns.MinimapEye
-    if ns.Minimap and ns.Minimap.IsSquare and ns.Minimap.IsSquare() and eye and eye.SquareSpot then
-        x, y = eye.SquareSpot(own)
-        local eyeButton = _G.FlareUIFinderEye
-        if y and eyeButton and eyeButton:IsShown() then y = y + eye.STEP * own end
-    else
-        -- (11-17, Malkkav) round: the next spot up the circle from the Group Finder Icon's
-        local eyeButton = _G.FlareUIFinderEye
-        if eye and eye.RoundSpot then x, y = eye.RoundSpot(own, (eyeButton and eyeButton:IsShown()) and 1 or 0) end
-    end
+    if not (eye and eye.Spot) then return end
+    button:SetScale(eye.ScaleFor("vehicle"))
+    local own = button:GetEffectiveScale()
+    local x, y = eye.Spot("vehicle", own)
     if not (x and y) then return end
     button:ClearAllPoints()
     button:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / own, y / own)
@@ -178,16 +169,15 @@ end
 -- Blizzard's button: unseen while ours is on, back in Edit Mode or with the option off. Only a button
 -- this file took is given back (quiet defaults: another addon's way with it is kept)
 local taken = false
--- (11-17, Malkkav: it still showed) the game or its layout sets the button's opacity again after us:
--- while taken, any show or new opacity puts it straight back to unseen and without the mouse
--- (11-17, Malkkav) in Edit Mode too, its mover with it: the Selection is a child, so the alpha hides it,
--- and it loses the mouse so an unseen mover can't be grabbed
+-- The game or its layout sets the button's opacity again after us: while taken, any show or new
+-- opacity puts it straight back to unseen and without the mouse. In Edit Mode too, its mover with it:
+-- it loses the mouse so an unseen mover can't be grabbed
 local function KeepHidden()
     local game = MainMenuBarVehicleLeaveButton
     if not (taken and game) then return end
     if game:GetAlpha() ~= 0 then game:SetAlpha(0) end
     if game:IsMouseEnabled() then game:EnableMouse(false) end
-    -- (11-17) the Edit Mode box ignores its button's opacity (ignoreParentAlpha): its own, then
+    -- the Edit Mode box ignores its button's opacity (ignoreParentAlpha): its own, then
     local selection = game.Selection
     if selection then
         if selection:GetAlpha() ~= 0 then selection:SetAlpha(0) end
@@ -208,7 +198,7 @@ local function UpdateGameButton()
             hooksecurefunc(game.Selection, "SetAlpha", KeepHidden)
         end
     end
-    -- (11-17, Malkkav) hidden in Edit Mode as well: with the option on, ours is the button
+    -- hidden in Edit Mode as well: with the option on, ours is the button
     local seen = not Wanted()
     if seen and not taken then return end
     taken = not seen
@@ -233,6 +223,11 @@ end
 -- the map's place or size changed (Minimap.lua MM:Refresh)
 function Exit.Place()
     C_Timer.After(0, Place)
+end
+
+-- at once, while the player drags it along the edge (Minimap.lua MM.Moves)
+function Exit.PlaceNow()
+    Place()
 end
 
 -- from Minimap.lua MM:Init, after the map's layout

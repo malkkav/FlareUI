@@ -335,9 +335,7 @@ local function UpdateSourceWindowSkin(window, db)
     ns.CopyStrata(skin, sw)
     skin:SetFrameLevel(math_max((sw:GetFrameLevel() or 1) - 1, 0))
 
-    local bgTexture     = LSM:Fetch("background", "Blizzard Dialog Background Dark") or "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
-    local borderTexture = GetBorderFile(db)
-    skin:SetBackdrop({ bgFile = bgTexture, edgeFile = borderTexture, tile = false, tileSize = 0, edgeSize = ns.BorderEdgeSize(borderTexture, 16), insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+    DamageMeter.SkinBackdrop(skin, db)
     skin:SetBackdropColor(1, 1, 1, db.opacity or 0.85)
     skin:SetBackdropBorderColor(BORDER_TINT.r, BORDER_TINT.g, BORDER_TINT.b, BORDER_TINT.a)
 
@@ -372,7 +370,6 @@ function GROUP_BUTTONS.Shown(db)
     local canReady = GROUP_BUTTONS.CanReadyCheck()
     local applies = { countdown = IsInGroup() and (not IsInRaid() or canReady), ready = canReady }
     for _, key in ipairs(GROUP_BUTTONS.order) do
-        -- (always since 11-16, Malkkav; they were the Ready Check Button and Countdown Button switches)
         if db and applies[key] then list[#list + 1] = key end
     end
     return list
@@ -465,9 +462,9 @@ end
 --------------------------------------------------
 local AttachHeaderButtonHooks   -- defined in section 10
 
--- (11-14, a player's report) the title's click area ends at its text: stretched over the header it
--- opened its menu on every press, and a second window (which moves outside Edit Mode) had a 3 px drag
--- spot left. The rest of the header is Blizzard's own drag again.
+-- The title's click area ends at its text: stretched over the header it would open its menu on every
+-- press, and leave a second window (which moves outside Edit Mode) a 3 px drag spot. The rest of the
+-- header stays Blizzard's own drag.
 local function FitTitleButton(window)
     local dd = GetWindowTypeDropdown(window)
     local ref = window.FlareUI_DMSkin or GetWindowHeader(window)
@@ -600,9 +597,8 @@ local function HideBlizzardButtonVisuals(btn, hideSessionName)
     if hideSessionName and btn.SessionName and btn.SessionName.SetAlpha then
         btn.SessionName:SetAlpha(0)
     end
-    local nr = btn.GetNumRegions and btn:GetNumRegions() or 0
-    for i = 1, nr do
-        local r = select(i, btn:GetRegions())
+    if not btn.GetRegions then return end
+    for _, r in ipairs({ btn:GetRegions() }) do
         if r and r.IsObjectType and r:IsObjectType("Texture") and r.SetAlpha then
             r:SetAlpha(0)
         end
@@ -906,15 +902,21 @@ end
 -- The threat list, its entries and the shown rows are reused: they are redrawn up to five times a
 -- second in a fight. Each redraw fills them anew before reading them.
 -- classOf / isMe: per unit token, until the group or a pet changes (a hidden answer is not kept)
-local threatScratch = { list = {}, pool = {}, shown = {}, classOf = {}, isMe = {} }
+-- party / partypet / raid / raidpet: the unit tokens by index, built once; owner: pet token -> its owner
+local threatScratch = { list = {}, pool = {}, shown = {}, classOf = {}, isMe = {},
+    party = {}, partypet = {}, raid = {}, raidpet = {}, owner = { pet = "player" } }
+for i = 1, 40 do
+    threatScratch.raid[i], threatScratch.raidpet[i] = "raid" .. i, "raidpet" .. i
+    threatScratch.owner["raidpet" .. i] = "raid" .. i
+end
+for i = 1, 4 do
+    threatScratch.party[i], threatScratch.partypet[i] = "party" .. i, "partypet" .. i
+    threatScratch.owner["partypet" .. i] = "party" .. i
+end
 
 -- A pet row takes its owner's class colour (a pet's own class belongs to nobody in the group)
 local function PetOwner(unit)
-    if unit == "pet" then return "player" end
-    local n = unit:match("^partypet(%d+)$")
-    if n then return "party" .. n end
-    n = unit:match("^raidpet(%d+)$")
-    if n then return "raid" .. n end
+    return threatScratch.owner[unit]
 end
 
 local function AddThreat(unit)
@@ -963,10 +965,10 @@ local function CollectThreat(mob)
     wipe(list)
     s.mob, s.secret = mob, false
     if IsInRaid() then
-        for i = 1, GetNumGroupMembers() do AddThreat("raid" .. i); AddThreat("raidpet" .. i) end
+        for i = 1, math_min(GetNumGroupMembers(), 40) do AddThreat(s.raid[i]); AddThreat(s.raidpet[i]) end
     else
         AddThreat("player"); AddThreat("pet")
-        for i = 1, GetNumSubgroupMembers() do AddThreat("party" .. i); AddThreat("partypet" .. i) end
+        for i = 1, math_min(GetNumSubgroupMembers(), 4) do AddThreat(s.party[i]); AddThreat(s.partypet[i]) end
     end
     table.sort(list, ByThreat)
     for i, data in ipairs(list) do data.rank = i end
@@ -990,13 +992,12 @@ local function LayoutTabs(window, view)
         fs:SetShadowColor(dd.TypeName:GetShadowColor())
     end
     Style(view.tab.Text)
-    -- (11-16, Malkkav: the title moved a few pixels as its tab was picked) the window's own title is drawn
-    -- by FlareUI too, as every other tab: Blizzard's title text goes invisible and its button stays the
-    -- click area (and the type menu). The same kind of text in every state, so nothing shifts.
-    -- (placed exactly as the other tabs and Threat: a box from 4 px before the text, the text 4 px in;
-    -- a text placed straight on the header landed a pixel or two off on the first tab, 11-16)
-    -- (the settings preview's sample window is a stand-in table, not a frame, with a plain title text:
-    -- it keeps drawing that title itself)
+    -- The window's own title is drawn by FlareUI too, as every other tab, so it doesn't move a few
+    -- pixels as its tab is picked: Blizzard's title text goes invisible and its button stays the click
+    -- area (and the type menu). It is placed exactly as the other tabs and Threat: a box from 4 px
+    -- before the text, the text 4 px in (a text placed straight on the header lands a pixel or two off).
+    -- The settings preview's sample window is a stand-in table, not a frame, with a plain title text:
+    -- it keeps drawing that title itself.
     local realWindow = type(window.GetObjectType) == "function" and type(dd.GetFrameLevel) == "function"
     local own = realWindow and view.ownTitle or dd.TypeName
     if realWindow and not view.ownTitle then
@@ -1056,7 +1057,7 @@ local function LayoutTabs(window, view)
     view.tab:ClearAllPoints()
     view.tab:SetPoint("LEFT", ref, "TOPLEFT", x - 4, ROW_CENTER_Y)
     view.tab:SetSize(threatWidth + 8, HEADER_HEIGHT)
-    -- (11-15, Malkkav) a window on its own has no Threat tab: the threat list stays with the first window
+    -- a window on its own has no Threat tab: the threat list stays with the first window
     -- (only a real meter window's view: the settings sample has no hit area and keeps its own tab)
     if views[window] == view and view.hit then
         local db = GetDb()
@@ -1143,7 +1144,6 @@ local function FillRow(row, data, top, window, db, index, height, spacing)
         row:GetName():SetText(("%d. %s"):format(data.rank, data.name))
     end
     -- Tank's Lead: after the tank's own numbers, how far it is ahead of second place, as "(+25%)"
-    -- (11-16, Malkkav: beside the percent, not in its place; on by default since)
     local percent = math.floor(data.scaled + 0.5)
     local display = db.threatValueDisplay or "percent"
     if row.ftValue ~= data.value or row.ftPercent ~= percent or row.ftLead ~= data.lead or row.ftDisplay ~= display then
@@ -1264,9 +1264,10 @@ local function UpdateThreatView(window, view)
         pull = me.value * 100 / me.scaled
         if db.threatPullFlash and me.scaled >= PULL_WARN then me.warn = true end
     end
-    -- (11-16, Malkkav) Pull Warning Sound: once as the warning starts, in a fight only (not for the
-    -- settings' sample rows); never while you hold the mob, as the warning itself
-    local warning = me and me.warn and UnitAffectingCombat("player") or false
+    -- Pull Warning Sound: once as the warning starts, in a fight only (not for the settings' sample
+    -- rows); never while you hold the mob, as the warning itself. The combat flag may be secret (InFight).
+    local fighting = UnitAffectingCombat("player")
+    local warning = me and me.warn and canaccessvalue(fighting) and fighting or false
     if warning and not DamageMeter.pullWarned and db.threatPullSound then
         PlaySound(SOUNDKIT.RAID_WARNING or 8959, "Master")
     end
@@ -1419,7 +1420,7 @@ local function SetView(window, showThreat)
     local db = GetDb()
     if db and db.threatWindow then showThreat = false end
     -- a docked window shows no threat list: the first window has it, on top (23b); nor does a window
-    -- on its own (11-15)
+    -- on its own (23c)
     if window ~= _G.DamageMeterSessionWindow1 then showThreat = false end
     view.showing = showThreat and true or false
     view.frame:SetShown(view.showing)
@@ -1531,7 +1532,7 @@ local function CreateThreatView(window)
     hit:SetScript("OnClick", function()
         if Dock.Row(window) then Dock.Select(window) else PickView(window, false) end
     end)
-    -- (11-16) a docked window that isn't up lends its title to the tab in the shown window's row
+    -- a docked window that isn't up lends its title to the tab in the shown window's row
     -- (Dock.LiftTitle): pointing at it lights that tab, as pointing at the tab itself did
     hit:SetScript("OnEnter", function()
         local label = Dock.ShownLabel(window)
@@ -1765,7 +1766,7 @@ local function ApplyThreatTab(window)
     end
     -- Separate Window: no Threat tab on the meter (its list has a window of its own)
     local separate = db and db.threatWindow and true or false
-    -- nor on a window on its own (11-15): the threat list stays with the first window
+    -- nor on a window on its own: the threat list stays with the first window
     local noTab = separate or (window ~= _G.DamageMeterSessionWindow1 and not Dock.Row(window))
     view.tab:SetShown(not noTab)
     view.hit:SetShown(not noTab)
@@ -1773,11 +1774,12 @@ local function ApplyThreatTab(window)
 end
 
 --------------------------------------------------
--- 16b. SEPARATE THREAT WINDOW (Threat > Separate Window, 11-13, a player's request)
+-- 16b. SEPARATE THREAT WINDOW (Threat > Separate Window)
 -- The threat list in a window of its own, in the meter's look: moved and sized in Edit Mode, with
 -- sample rows there. On Same as Meter (its Edit Mode Fading) a child of Blizzard's meter, so it shows,
--- hides and fades with it; on its own otherwise (AttachThreatWindow). Its bars follow the first meter window's bar settings (height, spacing,
--- icons, style, class colours); its size starts as that window's.
+-- hides and fades with it; on its own otherwise (AttachThreatWindow). Its bars follow the first meter
+-- window's bar settings (height, spacing, icons, style, class colours); its size starts as that
+-- window's.
 --------------------------------------------------
 do
     local LEM = LibStub("FlareEditMode")
@@ -1827,6 +1829,9 @@ do
         if not db.threatWindowWidth then
             local w = Source()
             local width, height = w and w:GetWidth(), w and w:GetHeight()
+            -- a size the game hides (see TextWidth) is never compared: the defaults stand in
+            if not canaccessvalue(width) then width = nil end
+            if not canaccessvalue(height) then height = nil end
             db.threatWindowWidth = (width and width > 0) and math.floor(width + 0.5) or 300
             db.threatWindowHeight = (height and height > 0) and math.floor(height + 0.5) or 150
         end
@@ -1873,10 +1878,10 @@ do
         local meter = _G.DamageMeter
         if Solo.frame then return true end
         if not (meter and Source()) then return false end
-        -- (11-14, a player's report: it snapped with Snap off, the arrow keys moved it diagonally, and
-        -- it moved after /reload) Edit Mode measures and anchors a frame against its parent, and the
-        -- meter is far smaller than the screen it was placed on. A screen-sized holder under the meter
-        -- keeps it hiding with the meter and gives Edit Mode the whole screen.
+        -- Edit Mode measures and anchors a frame against its parent, and the meter is far smaller than
+        -- the screen it is placed on (it would snap with Snap off, move diagonally with the arrow keys
+        -- and move after /reload). A screen-sized holder under the meter keeps it hiding with the meter
+        -- and gives Edit Mode the whole screen.
         local holder = CreateFrame("Frame", nil, meter)
         holder:SetAllPoints(UIParent)
         Solo.holder = holder
@@ -1945,7 +1950,7 @@ do
         return true
     end
 
-    -- Separate Window switched on (11-13, Malkkav): the window right above the meter's first window
+    -- Separate Window switched on: the window right above the meter's first window
     -- when that sits in the lower half of the screen, else right below it; saved as its spot in this
     -- Edit Mode layout, so Edit Mode can move it from there
     local BESIDE_GAP = 8   -- between the two windows' borders (each reaches 2 px out)
@@ -1972,9 +1977,9 @@ do
         Place()
     end
 
-    -- Visibility (11-15, Malkkav: in its Edit Mode dialog's Fading, Modules/Visibility.lua element
-    -- "threat"; before, damagemeter.threatVisibility on the Threat tab). Same as Meter: the holder sits
-    -- under the meter, so the window shows, hides and fades with it. Any other choice or a fade group:
+    -- Visibility (in its Edit Mode dialog's Fading, Modules/Visibility.lua element "threat"). Same as
+    -- Meter: the holder sits under the meter, so the window shows, hides and fades with it. Any other
+    -- choice or a fade group:
     -- the holder sits on UIParent and the Visibility module fades the window on its own (an addon
     -- frame: re-parented in a fight too).
     function DamageMeter.AttachThreatWindow(withMeter)
@@ -2168,6 +2173,7 @@ function DamageMeter:Refresh()
         self._pendingRefresh = true
         return
     end
+    self._refreshes = (self._refreshes or 0) + 1
 
     local db = GetDb()
     if not db or not db.enabled then return end
@@ -2229,8 +2235,13 @@ function DamageMeter:PLAYER_REGEN_ENABLED()
     end
 end
 
+-- (leaving Edit Mode saves the layout too: skip when a refresh already ran after this event)
 function DamageMeter:EDIT_MODE_LAYOUTS_UPDATED()
-    C_Timer.After(0.25, function() self:Refresh() end)
+    local seen = self._refreshes
+    C_Timer.After(0.25, function()
+        if self._refreshes ~= seen then return end
+        self:Refresh()
+    end)
 end
 
 function DamageMeter:ADDON_LOADED(event, addonName)
@@ -2281,7 +2292,7 @@ function DamageMeter:CheckInstanceReset(isReload)
     if C_DamageMeter and C_DamageMeter.ResetAllCombatSessions then pcall(C_DamageMeter.ResetAllCombatSessions) end
 end
 
--- (11-16, Malkkav) Reset on Leaving a Group: leaving a party or raid clears the meter, as entering a new
+-- Reset on Leaving a Group: leaving a party or raid clears the meter, as entering a new
 -- dungeon does (Reset on Entering a Dungeon)
 function DamageMeter:GROUP_LEFT()
     local db = GetDb()
@@ -2353,11 +2364,10 @@ showRetry:SetScript("OnEvent", function()
     C_Timer.After(0.5, function() DamageMeter:ApplyVisibility() end)
 end)
 
--- (11-15, Malkkav) The meter's Visibility, fade speeds, Faded Opacity, fade group and Fade Delay are set
--- in its Edit Mode dialog (Modules/Visibility.lua, element "meter"). The meter still fades itself
--- here; Visibility only says when it is wanted, in its fade group too, and tells ApplyVisibility when
--- that changes. Before 11-15 these were damagemeter.visibility, showOnMouseover, fadeSpeed / fadeIn /
--- fadeOut, minAlpha and fadeDelay (copied over once, Visibility.lua MigrateMovedFades).
+-- The meter's Visibility, fade speeds, Faded Opacity, fade group and Fade Delay are set in its Edit
+-- Mode dialog (Modules/Visibility.lua, element "meter"). The meter fades itself here; Visibility only
+-- says when it is wanted, in its fade group too, and tells ApplyVisibility when that changes. (The
+-- old damagemeter.* fade keys are copied over once by Visibility.lua MigrateMovedFades.)
 
 -- Faded Opacity: how far the meter fades out (0 = gone). Not for the Meter tab in the chat, where the
 -- tab decides and a faded meter sits under the chat.
@@ -2409,9 +2419,8 @@ local function FadeStep(self, meter, elapsed)
         self.atRest = false
         return
     end
-    local db = GetDb()
-    -- Show Speed while coming back, Hide Speed while fading away
-    local time = ns.FadeTime(DamageMeter.FadeSpeed(db, alpha < target and "fadeIn" or "fadeOut"))
+    -- Show Speed while coming back, Hide Speed while fading away (at rest there is nothing to time)
+    local time = alpha == target and 0 or ns.FadeTime(DamageMeter.FadeSpeed(GetDb(), alpha < target and "fadeIn" or "fadeOut"))
     if time <= 0 then
         alpha = target
     elseif alpha < target then
@@ -2467,11 +2476,7 @@ function MeterAllowed()
     return true
 end
 
--- (11-16, Malkkav) the Meter Tab's opening conditions are ticked toggles again (Meter Tab in the Chat):
--- In Combat, In a Group and At Login together, or When Clicked alone. Nothing to tidy any more.
-local function NormalizeChoices() end
-
--- Fade Delay (11-11, as the chat's): the meter stays up this many seconds after its Visibility stops
+-- Fade Delay (as the chat's): the meter stays up this many seconds after its Visibility stops
 -- showing it, then fades. Back to showing in the meantime: the wait is dropped.
 local function CancelFadeDelay()
     if DamageMeter.fadeDelayTimer then DamageMeter.fadeDelayTimer:Cancel() end
@@ -2485,7 +2490,6 @@ end
 local function ApplyVisibilityBody(meter)
     local db = GetDb()
     if applying or not (db and db.enabled) then return end
-    NormalizeChoices(db)
     applying = true
     -- in the chat the tab decides (Blizzard's switch off: hidden below, as ever). Switching in or
     -- out of the chat is noted here, whichever check brings it: Refresh, a click, Blizzard's own
@@ -2691,11 +2695,11 @@ function ApplyChatTabStrata(meter, raised)
 end
 
 --------------------------------------------------
--- 23b. METER WINDOWS AS TABS (11-15, Malkkav: like the chat's tabs)
+-- 23b. METER WINDOWS AS TABS (like the chat's tabs)
 -- Blizzard's extra meter windows (the gear menu's "Show New Window") sit in the first window's place
 -- as tabs in its title row, before the Threat tab, which stays last. Two meter windows at most: at
--- two the gear menu's "Show New Window" is greyed out (Blizzard allows three; a player who already
--- has three keeps them, as tabs). Windows open and close only through Blizzard's own menu entries
+-- two the gear menu's "Show New Window" is greyed out (Blizzard allows three; a third window that
+-- is already open stays, as a tab). Windows open and close only through Blizzard's own menu entries
 -- ("Show New Window", "Hide Window"): run from addon code they would taint the window, whose list
 -- reads secret values in a fight. The first window can't be closed (Blizzard's rule).
 -- Each docked window covers the first. The one shown is up (Blizzard's window alpha, the meter's
@@ -2775,12 +2779,12 @@ function Dock.Raise(window, up)
     window.FlareUI_DockUp = up and true or false
 end
 
--- (11-16, Malkkav: right-clicking a tab that wasn't up only offered Move to Own Window) A docked window
--- that isn't up keeps its own title (Blizzard's type button, placed where its tab is, Dock.PlaceTitle)
--- and its left-click area (view.hit) above the tab in the shown window's row: invisible (the window is
--- at alpha 0) but there for the mouse. Left-click picks the tab as before; right-click reaches
--- Blizzard's own type menu from Blizzard's own button, so nothing of the meter is opened or set by
--- FlareUI (taint). Only the strata and frame levels change, and they go back when it is up again.
+-- A docked window that isn't up keeps its own title (Blizzard's type button, placed where its tab is,
+-- Dock.PlaceTitle) and its left-click area (view.hit) above the tab in the shown window's row:
+-- invisible (the window is at alpha 0) but there for the mouse. Left-click picks the tab;
+-- right-click reaches Blizzard's own type menu from Blizzard's own button, so nothing of the meter is
+-- opened or set by FlareUI (taint). Only the strata and frame levels change, and they go back when it
+-- is up again.
 function Dock.LiftTitle(window, lift, top)
     local dd = GetWindowTypeDropdown(window)
     if not dd or dd:IsForbidden() then return end
@@ -3020,7 +3024,7 @@ function Dock.Hook(meter)
 end
 
 --------------------------------------------------
--- 23c. A METER WINDOW ON ITS OWN (11-15, Malkkav: players must still be able to use windows apart)
+-- 23c. A METER WINDOW ON ITS OWN
 -- Right-click another window's tab (or a window's own title, or its gear menu): Move to Own Window.
 -- The window leaves the row and is Blizzard's own again (dragged by its header, sized by its corner),
 -- first placed beside the first window, inside the screen. Kept per window number with its spot and
@@ -3079,7 +3083,7 @@ function Dock.SaveSpot(window)
 end
 
 -- first time on its own: the first window's size, under it when the first window sits in the top half
--- of the screen, else above it (11-15, Malkkav); the other side when there's no room, then inside the screen
+-- of the screen, else above it; the other side when there's no room, then inside the screen
 function Dock.SpotBeside(window, spot)
     local primary = _G.DamageMeterSessionWindow1
     if not primary then return end
@@ -3168,7 +3172,7 @@ function Dock.AddEntries(root, window, divider)
         if free then Dock.MoveIn(window) else Dock.MoveOut(window) end
     end)
     Dock.FightTip(button, label)
-    -- (11-16, Malkkav) Close Tab / Close Window: Blizzard's Hide Window (in the window's gear menu,
+    -- Close Tab / Close Window: Blizzard's Hide Window (in the window's gear menu,
     -- out of reach on a tab). Blizzard's call only hides the window and saves that it is hidden; the
     -- next window opened in its place starts as a tab again (Dock.Hook).
     local meter = _G.DamageMeter
@@ -3207,7 +3211,7 @@ function Dock.OpenThreatMenu(owner, out)
     end)
 end
 
--- Report to Chat (Limoï's idea): the window's top names sent to a chat channel from the menu click
+-- Report to Chat: the window's top names sent to a chat channel from the menu click
 -- itself (a hardware event, no timers). Out of a fight only: in a fight the meter's values are secret
 -- and the chat may be locked down. A row whose name or number can't be read is left out.
 -- Table fields, not main-chunk locals (near Lua's 200 limit).
@@ -3534,12 +3538,12 @@ function DamageMeter:LeaveChatTab()
 end
 
 --------------------------------------------------
--- 23b. EDIT MODE DIALOG
+-- 23d. EDIT MODE DIALOG
 -- Visibility, Transparency and Background leave the meter's Edit Mode dialog: FlareUI's own
--- Visibility overrules the first (VISIBILITY above) and its skin replaces the other two, so they did
--- nothing there and players set them in vain (11-11). Done on the dialog's own rows after Blizzard
--- builds them (as Minimap.lua trims the minimap's), never in Blizzard's table: addon-written entries
--- there would taint Edit Mode. Their stored values are left as they are, unused.
+-- Visibility overrules the first (section 22) and its skin replaces the other two, so they would do
+-- nothing there. Done on the dialog's own rows after Blizzard builds them (as Minimap.lua trims the
+-- minimap's), never in Blizzard's table: addon-written entries there would taint Edit Mode. Their
+-- stored values are left as they are, unused.
 --------------------------------------------------
 local function TrimMeterDialog(dialog)
     local system = dialog and dialog.attachedToSystem
@@ -3552,7 +3556,7 @@ local function TrimMeterDialog(dialog)
         [setting.Transparency] = true,
         [setting.BackgroundTransparency] = true,
     }
-    -- (11-15, Malkkav) Text Size too: the meter's fonts are in FlareUI's settings (Meters › Fonts)
+    -- Text Size too: the meter's fonts are in FlareUI's settings (Meters › Fonts)
     if setting.TextSize then hidden[setting.TextSize] = true end
     local changed = false
     for _, row in ipairs({ dialog.Settings:GetChildren() }) do
@@ -3579,7 +3583,7 @@ end
 --------------------------------------------------
 function DamageMeter:Init()
     HookMeterDialog()
-    -- EDIT_MODE_LAYOUTS_UPDATED fires while Edit Mode is open, where Refresh does nothing
+    -- leaving Edit Mode restyles the windows (ApplyToWindow skips them while Edit Mode is open)
     if _G.EditModeManagerFrame and not self._editModeHooked then
         self._editModeHooked = true
         _G.EditModeManagerFrame:HookScript("OnHide", function()
@@ -3873,8 +3877,6 @@ function DamageMeter.DrawSample(f, kind)
             extra = extra + 1
             Place(btn, -(ICON_RIGHT + ICON_SIZE / 2 + (extra + 1) * ICON_SPACING))
             DamageMeter.HeaderIcon(btn, GROUP_BUTTONS[key].icon, ICON_DRAW_SIZE[key])
-        else
-            btn:Hide()
         end
     end
     local iconsWidth = ICON_SIZE + (1 + extra) * ICON_SPACING
@@ -3931,7 +3933,7 @@ function DamageMeter.DrawSample(f, kind)
     return width, height
 end
 
--- (11-17, Malkkav) no sizing corner on the meter windows while Edit Mode is open (Blizzard fades it in
+-- No sizing corner on the meter windows while Edit Mode is open (Blizzard fades it in
 -- on mouseover, which there reads as a stray tab): back after, except on a window docked as a tab
 do
     local LEM = LibStub("FlareEditMode")

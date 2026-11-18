@@ -7,7 +7,6 @@ local S = ns.Settings
 -- The window built from the registry: modules on the left, the page's rows in the middle, the
 -- hovered row's text on the right, the reload bar below. Built on first open.
 --------------------------------------------------
--- 11-10 rework (Development/Research/Settings Panel Report): wider, after EnhanceQoL's layout.
 -- With the reload bar below (42) it fits 768 units; a smaller screen scales it down (FitScale).
 local WIDTH, HEIGHT = 1180, 700
 local HEADER_H, FOOTER_H = 46, 34
@@ -16,7 +15,7 @@ local LEFT_W, RIGHT_W = 200, 280
 local PAD = 12
 local EDGE, GAP, INNER = 14, 8, 10   -- body to window edge, between the three boxes, inside the middle box
 local ROW_H, SECTION_H = 36, 34
--- 11-10 batch C: rows on dark plates with a gap between them, each section in its own box
+-- rows on dark plates with a gap between them, each section in its own box
 local ROW_GAP, HALF_GAP = 4, 8
 local SEC_X, SEC_TOP, SEC_BOTTOM, SEC_GAP = 10, 2, 10, 10   -- inside a section box; between boxes
 local rowInset = 0   -- where rows start: SEC_X inside section boxes, 0 for search results
@@ -24,7 +23,7 @@ local rowInset = 0   -- where rows start: SEC_X inside section boxes, 0 for sear
 local PLATED = { toggle = true, choice = true, dropdown = true, range = true, frame = true, button = true,
     keybind = true, buttons = true, editmode = true }
 local INDENT = 18
--- a choice or dropdown box (11-16: the choices lost their arrows; one width for both kinds)
+-- a choice or dropdown box (the choices lost their arrows; one width for both kinds)
 local BOX_W, BOX_HALF_W = 200, 150
 -- the header row's middle: halfway down the band above the boxes, past the border's 4 px line
 local HEADER_ROW_Y = math.floor((4 + HEADER_H + EDGE) / 2) + 1
@@ -92,14 +91,14 @@ local customHosts = {}  -- "module.tab" -> a custom tab's frame
 --------------------------------------------------
 -- 1. SMALL HELPERS
 --------------------------------------------------
--- (11-13, Malkkav) Blizzard's own scroll bar (MinimalScrollBar: the thin track, its thumb and the
+-- Blizzard's own scroll bar (MinimalScrollBar: the thin track, its thumb and the
 -- up / down arrows), shown only when there is something to scroll. The API stays FlareUI's:
 -- line:SetValues(visible, position) takes 0..1 shares; line.onScroll(position) fires when the player
 -- drags it, clicks its track or arrows.
 local SCROLL_SCALE = 0.7
 function Panel.ScrollLine(parent)
     local line = CreateFrame("EventFrame", nil, parent, "MinimalScrollBar")
-    -- (11-13, Malkkav: squished between the borders) drawn at 70%: thinner, arrows too
+    -- (squished between the borders) drawn at 70%: thinner, arrows too
     line:SetScale(SCROLL_SCALE)
     line.visible, line.position = 1, 0
     local setting = false
@@ -230,14 +229,12 @@ local function Line(parent, layer)
     return t
 end
 
--- The window's fonts (11-13, Malkkav): Blizzard's Friz Quadrata for everything, as the 5.x window and
--- Forever's own windows, in full white with Blizzard's solid shadow. A Russian client takes Friz's
--- Cyrillic file. Roboto Condensed (11-10 to 11-13) read too sharp to players; it and Marcellus still
--- ship, for the players' font choices.
--- (6.3.1) The window's font objects are FlareUI's own, built from scratch: never copies of Blizzard's.
--- A copy (CopyFontObject) shares its letter sets with Blizzard's font, so setting the copy changed
--- GameFontNormal & co. for the whole game (6.3: buff timers, window titles and quest text resized
--- for every player). Each is a font family of its own: Friz for Latin letters, Friz's Cyrillic file
+-- The window's fonts: Blizzard's Friz Quadrata for everything, as Forever's own windows, in full
+-- white with Blizzard's solid shadow. A Russian client takes Friz's Cyrillic file.
+-- The window's font objects are FlareUI's own, built from scratch: never copies of Blizzard's.
+-- A copy (CopyFontObject) shares its letter sets with Blizzard's font, so setting the copy changes
+-- GameFontNormal & co. for the whole game (buff timers, window titles, quest text). Each is a font
+-- family of its own: Friz for Latin letters, Friz's Cyrillic file
 -- for Russian (FlareUI in Russian on any client), Blizzard's faces for Korean and Chinese.
 local RUSSIAN = GetLocale() == "ruRU" or (ns.LoadedLocale and ns.LoadedLocale() == "ruRU")
 local PANEL_FACE = RUSSIAN and "Fonts\\FRIZQT___CYR.TTF" or "Fonts\\FRIZQT__.TTF"
@@ -287,20 +284,15 @@ for blizzard, def in pairs({
     PANEL_FONT[blizzard] = name
 end
 Panel.FONT = PANEL_FONT
--- the button text: Blizzard's yellow, as its buttons' (11-13)
+-- the button text: Blizzard's yellow, as its buttons'
 local BUTTON_FONT = PanelFont("FlareUI_PanelButton", BODY_FONT, 13, GOLD)
 local BUTTON_FONT_SMALL = PanelFont("FlareUI_PanelButtonSmall", BODY_FONT, 11, GOLD)
--- (11-15, MunchieDog) hover (white, as Blizzard's buttons) and greyed text at the button's own size: the
--- small buttons' text grew on hover
+-- hover (white, as Blizzard's buttons) and greyed text at the button's own size, so the small
+-- buttons' text doesn't grow on hover
 local BUTTON_FONTS = {
     [false] = { BUTTON_FONT, PanelFont("FlareUI_PanelButtonHover", BODY_FONT, 13, TEXT_WHITE), PanelFont("FlareUI_PanelButtonOff", BODY_FONT, 13, GREY) },
     [true] = { BUTTON_FONT_SMALL, PanelFont("FlareUI_PanelButtonSmallHover", BODY_FONT, 11, TEXT_WHITE), PanelFont("FlareUI_PanelButtonSmallOff", BODY_FONT, 11, GREY) },
 }
--- (kept for its callers: the titles are made at their sizes above)
-local function ApplyTitleFont() end
--- at load too: the setup tour can show before the settings window is ever built
-ApplyTitleFont()
-
 local function Text(parent, font, justify)
     font = font or "GameFontHighlight"
     local fs = parent:CreateFontString(nil, "OVERLAY", PANEL_FONT[font] or font)
@@ -308,7 +300,7 @@ local function Text(parent, font, justify)
     return fs
 end
 
--- LONG TRANSLATIONS (11-11, Russian ran past buttons, card titles and the left list): a text too
+-- LONG TRANSLATIONS (Russian ran past buttons, card titles and the left list): a text too
 -- wide for its room first wraps onto up to maxLines lines, then shrinks, down to MIN_TEXT_SCALE.
 -- width: the room it has; maxLines: 1 (the default) keeps it on one line. Call again after SetText.
 local MIN_TEXT_SCALE = 0.7
@@ -340,12 +332,11 @@ local function FitText(fs, width, maxLines)
 end
 
 -- A dark box with a bronze edge: the left list, the page and the right column
--- FlareUI Thin (8 px edge) for every box, button and tab in the window (11-10, Malkkav)
+-- FlareUI Thin (8 px edge) for every box, button and tab in the window
 local THIN = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thin.tga"
 local THIN_EDGE, THIN_INSET = 8, 4   -- fills start 4 px in: under the border's rounded corners
 local EDGE_COLOR = { 0.55, 0.42, 0.24 }       -- resting
-local EDGE_HOVER = { 0.98, 0.74, 0.36 }      -- under the pointer (11-13 brighter: was 0.78, 0.6, 0.34)
-local EDGE_LIT = { 1, 0.86, 0.46 }            -- selected
+local EDGE_HOVER = { 0.98, 0.74, 0.36 }      -- under the pointer
 local function ThinBackdrop(f, withFill)
     f:SetBackdrop({ bgFile = withFill and WHITE or nil, edgeFile = THIN, edgeSize = THIN_EDGE,
         insets = { left = THIN_INSET, right = THIN_INSET, top = THIN_INSET, bottom = THIN_INSET } })
@@ -362,8 +353,8 @@ local function ThinEdge(f)
     return edge
 end
 
--- FlareUI Thick (12 px edge), on its own frame over f as ThinEdge: tabs, buttons and dropdowns (11-11
--- Malkkav: heavier, closer to Forever's own panels)
+-- FlareUI Thick (12 px edge), on its own frame over f as ThinEdge: tabs, buttons and dropdowns
+-- (heavier, closer to Forever's own panels)
 local THICK = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thick.tga"
 local THICK_EDGE, THICK_INSET = 12, 3
 local function ThickEdge(f)
@@ -397,8 +388,7 @@ end
 Panel.Box = Box
 
 -- A bronze plate button: the page's tabs and the window's Settings / What's New. Lit when selected.
--- (11-13, Malkkav: "all buttons in the grey Blizzard style, bronze borders on all") every button and tab
--- wears the face of Blizzard's own dropdown box (WowStyle2: common-dropdown-c-button), its grey with the
+-- Every button and tab wears the face of Blizzard's own dropdown box (WowStyle2: common-dropdown-c-button), its grey with the
 -- bronze rim, in Blizzard's states: hover, pressed, pressed under the pointer, disabled; a selected tab
 -- (b.fSelected) takes the open box's. The art reaches 7 px past the button, as on the dropdown.
 local FACE = "common-dropdown-c-button"
@@ -452,10 +442,10 @@ local function Plate(parent, font)
 end
 Panel.Plate = Plate
 
--- The controls kit (11-10, batch B), drawn from one smooth disc (tools/panelart.js)
+-- The controls kit, drawn from one smooth disc (tools/panelart.js)
 local CIRCLE = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Circle.tga"
 local GOLD = { 0.91, 0.77, 0.42 }
--- (11-13, Malkkav: more Blizzard-like) titles in WoW's own yellow (NORMAL_FONT_COLOR): the window's name,
+-- titles in WoW's own yellow (NORMAL_FONT_COLOR): the window's name,
 -- page titles, section headers and the Info Panel's titles; buttons and sliders keep the bronze gold
 local TITLE_YELLOW = { 1, 0.82, 0 }
 Panel.TITLE_YELLOW = TITLE_YELLOW
@@ -495,9 +485,8 @@ local function Pill(parent, layer, sub, inset, height)
 end
 Panel.Pill = Pill
 
--- The toggles (11-13, Malkkav): Blizzard's checkbox with its gold checkmark, as players asked; the stone
--- switch (11-10 to 11-13) is retired. A plain CheckButton: SetChecked / GetChecked / Click as before.
--- (11-13, Malkkav) the art of Blizzard's own settings checkbox (SettingsCheckboxTemplate): the
+-- The toggles: Blizzard's checkbox with its gold checkmark. A plain CheckButton (SetChecked /
+-- GetChecked / Click) with the art of Blizzard's own settings checkbox (SettingsCheckboxTemplate): the
 -- bronze-rimmed box and its tick, by atlas (the template's mixin wants Blizzard's setting data)
 local function Switch(parent)
     local s = CreateFrame("CheckButton", nil, parent)
@@ -529,7 +518,7 @@ local function SkinButton(b)
     b:SetHighlightTexture(b:CreateTexture())
     GreyFace(b)
     b:SetNormalFontObject(BUTTON_FONT)
-    -- (the short ones, 22 px and under, a size smaller: 11-11 Malkkav)
+    -- (the short ones, 22 px and under, a size smaller)
     local function FitFont(self)
         local small = (self:GetHeight() or 0) <= 22.5
         if self.ftSmallFont ~= small then
@@ -564,7 +553,7 @@ local function SkinDropdown(dd)
     for _, r in ipairs({ dd:GetRegions() }) do
         if r:IsObjectType("Texture") and r ~= dd.Arrow then r:SetAlpha(0) end
     end
-    -- (11-11 Malkkav: squared and heavier, its middle the buttons' brown, as Forever's own dropdowns)
+    -- squared and heavier, its middle the buttons' brown, as Forever's own dropdowns
     dd.fEdge = ThickEdge(dd)
     dd.fFill = dd:CreateTexture(nil, "BACKGROUND", nil, 2)
     dd.fFill:SetPoint("TOPLEFT", THICK_INSET, -THICK_INSET)
@@ -587,7 +576,7 @@ local function SkinDropdown(dd)
     end
     if dd.Text then
         dd.Text:SetFontObject(_G[PANEL_FONT.GameFontHighlightSmall])
-        -- the buttons' gold (11-11 Malkkav); Blizzard's template sets its own colour on each state change
+        -- the buttons' gold; Blizzard's template sets its own colour on each state change
         local function TextColor(self)
             if self:IsEnabled() then self.Text:SetTextColor(TITLE_YELLOW[1], TITLE_YELLOW[2], TITLE_YELLOW[3]) else self.Text:SetTextColor(0.5, 0.5, 0.5) end
         end
@@ -606,7 +595,6 @@ Panel.SkinDropdown = SkinDropdown
 -- 2. RIGHT COLUMN
 --------------------------------------------------
 local preview = {}
-local previewRow
 
 -- the page's own picture (its tab's), or nil for the page's art
 local function PageSpec()
@@ -623,7 +611,7 @@ local function PageSpec()
         if tab == 'looting' then return { kind = 'lootFeed', key = 'bl.lootOverview' } end
         return nil
     end
-    -- Buff Reminders (its own page since 11-12): the reminder row on every tab
+    -- Buff Reminders (its own page): the reminder row on every tab
     if current == 'br' then return { kind = 'reminders', key = 'br.remindersOverview' } end
     if current == 'ab' and tab == 'xp' then return { kind = 'xp', key = 'ab.xpOverview' } end
     if current == 'dm' and tab == 'threat' then return { kind = 'meter', key = 'dm.threatOverview' } end
@@ -637,7 +625,7 @@ local function IsRowHovered(rowKey)
     return false
 end
 
--- 11-10 (Malkkav): a picture shows the current settings only; hovering never tries a value on
+-- a picture shows the current settings only; hovering never tries a value on
 local function ShowVisual(row)
     if not preview.canvas then return end
     if preview.module ~= current or preview.tab ~= currentTab[current] then
@@ -653,10 +641,9 @@ local function ShowVisual(row)
     if spec and spec.key == "ch.linkIcons" and not IsRowHovered(spec.key) then
         spec = PageSpec()
     end
-    local value
-    -- One stable composition for the whole Action Bars page. Only dropdown exploration carries
-    -- a temporary value; ordinary hover changes the explanation, not the scene or animation.
-    if spec and spec.kind == 'actions' and value == nil then spec = { kind = 'actions', key = 'ab.overview' } end
+    -- One stable composition for the whole Action Bars page: hover changes the explanation, not
+    -- the scene or animation.
+    if spec and spec.kind == 'actions' then spec = { kind = 'actions', key = 'ab.overview' } end
     local old = preview.spec
     local same = old and spec and old.kind == spec.kind and old.key == spec.key and old.value == spec.value
         and old.path == spec.path and old.font == spec.font
@@ -692,7 +679,6 @@ end
 
 -- nothing hovered: the picture and a hint
 local function ShowModulePreview()
-    previewRow = nil
     ShowVisual(nil)
     local help = preview.helpRow
     if help then
@@ -711,9 +697,8 @@ local function ShowModulePreview()
 end
 
 -- title: the row's info text, else its label, else its section title
-local function ShowRowPreview(row, value)
-    previewRow = row
-    ShowVisual(row, value)
+local function ShowRowPreview(row)
+    ShowVisual(row)
     preview.helpRow = row
     local title = S:Text(row.key, "info")
     if not title or title == "" then title = row:Label() end
@@ -725,7 +710,7 @@ end
 
 -- for custom tabs' own controls
 function Panel:ShowPreview(title, desc, tip)
-    if preview.picture then previewRow = nil; ShowVisual(nil); ShowPreview(title, desc, tip) end
+    if preview.picture then ShowVisual(nil); ShowPreview(title, desc, tip) end
 end
 function Panel:ShowModulePreview()
     if preview.picture then ShowModulePreview() end
@@ -740,7 +725,7 @@ local Fill = {}      -- kind -> function(f, row): shows the row's values
 
 local function RowEnter(self)
     if self.row then ShowRowPreview(self.row) end
-    -- (11-13, Malkkav) the style cards light up on their own: no row highlight behind them
+    -- the style cards light up on their own: no row highlight behind them
     if self.kind ~= "styles" and self.kind ~= "text" then self.hover:Show() end   -- (a note row is never a setting: no light)
 end
 
@@ -761,7 +746,7 @@ local function NewRowFrame(parent, kind)
     f.plate = f:CreateTexture(nil, "BACKGROUND", nil, -1)
     f.plate:SetAllPoints()
     f.plate:SetColorTexture(0, 0, 0, 0.26)
-    f.plate:SetAlpha(0)   -- (11-11 Malkkav: no dark box at rest; only the hover shows the row)
+    f.plate:SetAlpha(0)   -- (no dark box at rest; only the hover shows the row)
     f.hover = f:CreateTexture(nil, "BACKGROUND")
     f.hover:SetAllPoints()
     -- a rounded box: our own 32 px art, 8 px corners kept as a nine-slice
@@ -770,7 +755,7 @@ local function NewRowFrame(parent, kind)
         f.hover:SetTextureSliceMargins(8, 8, 8, 8)
         if Enum.UITextureSliceMode then f.hover:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched) end
     end
-    f.hover:SetVertexColor(0.98, 0.70, 0.30, 0.26)   -- (11-13 brighter bronze: was 0.79, 0.65, 0.35, 0.14)
+    f.hover:SetVertexColor(0.98, 0.70, 0.30, 0.26)   -- (bright bronze)
     f.hover:Hide()
     -- a click anywhere on a switch's row flips it (the switch takes its own clicks)
     f:SetScript("OnMouseUp", function(self, button)
@@ -848,8 +833,8 @@ local function SetupChoiceMenu(dropdown, f)
         local row = f.row
         if not row then return end
         local choices = row:Choices()
-        -- a long list (font packs bring hundreds of fonts) scrolls, 20 entries tall (6.3.2, a player's
-        -- request): without it the menu ran off the screen with no way to reach the rest
+        -- a long list (font packs bring hundreds of fonts) scrolls, 20 entries tall: without it the
+        -- menu runs off the screen with no way to reach the rest
         if #choices > 20 and root.SetScrollMode then root:SetScrollMode(20 * 20) end
         for _, c in ipairs(choices) do
             if c.divider then
@@ -860,7 +845,7 @@ local function SetupChoiceMenu(dropdown, f)
             else
                 c.row = row
                 local option = root:CreateRadio(c.text, IsChoice, PickChoice, c)
-                option:SetOnEnter(function() ShowRowPreview(row, c.value) end)
+                option:SetOnEnter(function() ShowRowPreview(row) end)
                 option:SetOnLeave(function() ShowRowPreview(row) end)
                 if row.previewFont and row.key:match('%.face$') then
                     option:AddInitializer(function(button)
@@ -887,7 +872,7 @@ local function SetupChoiceMenu(dropdown, f)
                         e.checked, e.pick = function() return IsTicked(c) end, function() Tick(c) end
                     else
                         e.checked, e.pick = function() return IsChoice(c) end, function() PickChoice(c) end
-                        e.onEnter = function() ShowRowPreview(row, c.value) end
+                        e.onEnter = function() ShowRowPreview(row) end
                         e.onLeave = function() ShowRowPreview(row) end
                     end
                     if row.previewFont and row.key:match('%.face$') then
@@ -907,7 +892,7 @@ end
 -- toggle
 Build.toggle = function(f)
     local check = Switch(f)
-    check:SetPoint("RIGHT", -4, 0)   -- (its art sits 2 px inside: it ends where the boxes do, 11-16)
+    check:SetPoint("RIGHT", -4, 0)   -- (its art sits 2 px inside: it ends where the boxes do)
     check:SetScript("OnClick", function(self)
         local on = self:GetChecked() and true or false
         PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
@@ -920,7 +905,7 @@ Fill.toggle = function(f, row)
     f.control:SetChecked(row:Get() and true or false)
 end
 
--- (11-16, Malkkav) a down chevron inside a dropdown box, at its right end, so a dropdown never reads as a
+-- a down chevron inside a dropdown box, at its right end, so a dropdown never reads as a
 -- button: FlareUI's gold chevron (as the section headers'), brighter on hover, dim when greyed. The
 -- text keeps its centre, clear of it.
 local function BoxArrow(dd)
@@ -946,7 +931,7 @@ local function BoxArrow(dd)
     Paint(dd)
 end
 
--- choice: Blizzard's dropdown box alone, as a dropdown row (11-16, Malkkav: the stepper's two arrows
+-- choice: Blizzard's dropdown box alone, as a dropdown row (the stepper's two arrows
 -- took room for little use; the box reads better and can be narrower). Same list and preview on hover.
 -- The gamepad still steps it with left / right (PadNav: a dropdown whose row has Choices).
 Build.choice = function(f)
@@ -962,7 +947,7 @@ end
 Fill.choice = function(f, row)
     f.control:ClearAllPoints()
     if f.bare then
-        -- (11-17) a bare row: the box fills the row, centred
+        -- a bare row: the box fills the row, centred
         f.control:SetPoint("CENTER")
         f.control:SetWidth(math.max(60, f:GetWidth() - 12))
     else
@@ -978,11 +963,11 @@ end
 -- Discrete numeric settings keep their registered choices, including Default/Auto.
 -- Dragging previews without writes; releasing commits once. Keyboard changes commit directly.
 Build.range = function(f)
-    -- (11-13, Malkkav) Blizzard's own settings slider (MinimalSliderWithSteppersTemplate): its bar,
+    -- Blizzard's own settings slider (MinimalSliderWithSteppersTemplate): its bar,
     -- diamond thumb and ‹ › steppers. FlareUI's handling stays: one step per choice, a live preview
     -- while dragging, saved on release, the value text on the right.
     local holder = CreateFrame("Frame", nil, f, "MinimalSliderWithSteppersTemplate")
-    holder:SetSize(234, 20)   -- (11-13, Malkkav: longer: as wide as a choice stepper or a dropdown)
+    holder:SetSize(234, 20)   -- (longer: as wide as a choice stepper or a dropdown)
     holder:SetPoint("RIGHT", -58, 0)
     local slider = holder.Slider
     slider:SetValueStep(1)
@@ -990,7 +975,7 @@ Build.range = function(f)
     -- (the steppers dim at the ends)
     function slider:PaintFill() holder:UpdateStepperStates() end
     f.value = Text(f, "GameFontNormal", "RIGHT")
-    f.value:SetPoint("RIGHT", -6, 0); f.value:SetWidth(48); f.value:SetWordWrap(false)   -- (inside the right edge, 11-16)
+    f.value:SetPoint("RIGHT", -6, 0); f.value:SetWidth(48); f.value:SetWordWrap(false)   -- (inside the right edge)
     -- (only a real change is written: a saved value off the list, say from an old import, stays until moved)
     local function Commit()
         if f.row and f.rangeChoice and not f.row:IsDisabled() and f.rangeChoice.value ~= f.row:Get() then
@@ -1006,7 +991,7 @@ Build.range = function(f)
         local choice = choices and choices[math.max(1, math.min(#choices, math.floor(value + 0.5)))]
         if not choice then return end
         f.rangeChoice = choice; f.value:SetText(choice.text); FitText(f.value, f.value:GetWidth())
-        if f.rangeDragging then ShowRowPreview(f.row, choice.value) else Commit() end
+        if f.rangeDragging then ShowRowPreview(f.row) else Commit() end
     end)
     ForwardHover(slider, f)
     ForwardHover(holder.Back, f)
@@ -1029,7 +1014,7 @@ Fill.range = function(f, row)
     f.slider:SetMinMaxValues(1, math.max(1, #f.rangeChoices))
     f.slider:SetValue(selected)
     f.slider:PaintFill()
-    -- (11-11) the value box as wide as the longest choice (Russian "По умолчанию" ran past 48 px),
+    -- the value box as wide as the longest choice (Russian "По умолчанию" ran past 48 px),
     -- 48 to 96 px, the slider moving left to make room; past 96 the text shrinks
     local widest = 0
     for _, choice in ipairs(f.rangeChoices) do
@@ -1072,7 +1057,7 @@ Fill.styles = function(f, row)
             b = CreateFrame("Button", nil, f, "BackdropTemplate")
             local edgeFile = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thick.tga"
             b:SetBackdrop({ edgeFile = edgeFile, edgeSize = ns.BorderEdgeSize(edgeFile, 12) })
-            -- (11-13, Malkkav) the window's natural stone, darkened; 5 px in, so its square corners stay
+            -- the window's natural stone, darkened; 5 px in, so its square corners stay
             -- under the border's round ones. Paint lightens it under the pointer and when chosen.
             b.plate = b:CreateTexture(nil, "BACKGROUND")
             b.plate:SetPoint("TOPLEFT", 5, -5)
@@ -1090,7 +1075,7 @@ Fill.styles = function(f, row)
             b:SetScript("OnEnter", function(self)
                 self.hovered = true
                 if self.Paint then self:Paint() end
-                if f.row then ShowRowPreview(f.row, self.value) end
+                if f.row then ShowRowPreview(f.row) end
             end)
             b:SetScript("OnLeave", function(self)
                 self.hovered = nil
@@ -1153,7 +1138,7 @@ local function SideButton(f, side)
     return f[key]
 end
 Build.dropdown = function(f)
-    -- (11-13, Malkkav) Blizzard's own box (WowStyle2), unskinned, the same as a choice row's
+    -- Blizzard's own box (WowStyle2), unskinned, the same as a choice row's
     local dd = CreateFrame("DropdownButton", nil, f, "WowStyle2DropdownTemplate")
     dd:SetWidth(BOX_W)
     dd:SetPoint("RIGHT", -6, 0)
@@ -1166,7 +1151,7 @@ local function PlaceSideButtons(f, row)
     local sides = row.sideButtons or {}
     local dd = f.control
     dd:ClearAllPoints()
-    -- (11-16) as wide as a choice box (BOX_W), and its
+    -- as wide as a choice box (BOX_W), and its
     -- right edge where theirs is; half rows as a half box
     dd:SetWidth(row.dropdownWidth or (row.half and BOX_HALF_W or BOX_W))
     for _, side in ipairs({ "right", "left" }) do
@@ -1460,7 +1445,7 @@ end
 -- Edit button, greyed in combat
 local function EditButton(f, onClick)
     local b = CreateFrame("Button", nil, f)
-    -- the panel buttons' look: Blizzard's grey face with the bronze rim (11-13)
+    -- the panel buttons' look: Blizzard's grey face with the bronze rim
     GreyFace(b)
     local label = Text(b, "FlareUI_PanelButton", "CENTER")   -- the titles' gold, like the panel buttons
     label:SetAllPoints(); b:SetFontString(label)
@@ -1520,7 +1505,7 @@ Fill.legend = function(f, row)
     f:SetHeight(top + 26 + f.lines:GetStringHeight())
 end
 
--- text: a note row (11-16, UX audit 4.2.4: only the title was drawn). Its title, then the body from
+-- text: a note row. Its title, then the body from
 -- the copy in small grey text, wrapped; bullets ("* ") as dots. Never a setting.
 Build.text = function(f)
     f.body = Text(f, "GameFontHighlightSmall")
@@ -1540,7 +1525,7 @@ Fill.text = function(f, row)
     f.body:ClearAllPoints()
     f.body:SetPoint("TOPLEFT", 6, -top - 20)
     f.body:SetWidth(math.max(1, f:GetWidth() - 12))
-    -- (textFn: a note that names something only known in game, as the bag addon in charge, 11-16)
+    -- (textFn: a note that names something only known in game, as the bag addon in charge)
     local body = (row.textFn and row.textFn()) or S:Text(row.key, "text", true) or ""
     body = ("\n" .. body):gsub("\n%* ", "\n• "):sub(2)
     f.body:SetText(S:Format(body))
@@ -1561,7 +1546,7 @@ Build.expander = function(f)
     end)
     ForwardHover(b, f)
     f.control = b
-    -- a font heading's Reset (11-13, Malkkav): as on the section headings, beside the sign; one font,
+    -- a font heading's Reset: as on the section headings, beside the sign; one font,
     -- so no question first
     local reset = CreateFrame("Button", nil, b)
     reset:SetPoint("RIGHT", b.sign, "LEFT", -12, 0)
@@ -1610,7 +1595,7 @@ end
 
 local function SetRowEnabled(f, enabled)
     -- expanders are gold, like section titles
-    -- (11-13) labels in full white (TEXT_WHITE)
+    -- labels in full white (TEXT_WHITE)
     if enabled and f.kind ~= "expander" then
         f.label:SetTextColor(TEXT_WHITE[1], TEXT_WHITE[2], TEXT_WHITE[3])
     else
@@ -1641,7 +1626,7 @@ end
 
 local function FillRow(f, row, crumb)
     f.row = row
-    -- (11-17) row.bare: the control alone, no label (the Info Bar's three cells); search results keep it
+    -- row.bare: the control alone, no label (the Info Bar's three cells); search results keep it
     f.bare = row.bare and not crumb or nil
     f.label:SetText(not f.bare and row:Label() or "")
     f.crumb:SetText(crumb or "")
@@ -1664,12 +1649,21 @@ local function FillRow(f, row, crumb)
     end
     local height = math.ceil(f.label:GetStringHeight()) + padding
     f:SetHeight(math.max(f:GetHeight(), height))
-    -- Blizzard's NEW label after the name (Settings.NEW)
-    if isNew then
+    -- Blizzard's NEW label after the name (Settings.NEW). A row with no
+    -- name on show takes it above its button, as the tabs do (a button row named by its button), or
+    -- not at all (a note, whose title is hidden)
+    local named = f.label:IsShown() and (f.label:GetText() or "") ~= ""
+    local onButton = not named and row.kind == "button" and f.control
+    if isNew and (named or onButton) then
         if not f.newBadge then f.newBadge = NewBadge(f) end
-        local x = math.min(f.label:GetStringWidth(), labelWidth) + NEW_GAP
         f.newBadge:ClearAllPoints()
-        f.newBadge:SetPoint("LEFT", f.label, "LEFT", x / NEW_SCALE, 0)
+        if onButton then
+            f.newBadge:SetFrameLevel(f.control:GetFrameLevel() + 2)
+            f.newBadge:SetPoint("LEFT", f.control, "TOP", -(f.newBadge.Label:GetStringWidth() or 0) / 2, 1 / NEW_SCALE)
+        else
+            local x = math.min(f.label:GetStringWidth(), labelWidth) + NEW_GAP
+            f.newBadge:SetPoint("LEFT", f.label, "LEFT", x / NEW_SCALE, 0)
+        end
         f.newBadge:Show()
     elseif f.newBadge then
         f.newBadge:Hide()
@@ -1703,7 +1697,7 @@ end
 local page = {}
 
 -- clicking a section heading folds it; kept for the session
--- (true closed, false opened by hand; a Fonts tab's sections start closed, 11-13 Malkkav)
+-- (true closed, false opened by hand; a Fonts tab's sections start closed)
 local closedSections = {}   -- section key -> true / false
 
 local function SectionClick(h)
@@ -1724,8 +1718,7 @@ local function SectionHeader(parent, text, y, sectionKey)
         h.text = Text(h, "GameFontNormalLarge")
         h.text:SetPoint("BOTTOMLEFT", 24, 8)
         h.text:SetTextColor(TITLE_YELLOW[1], TITLE_YELLOW[2], TITLE_YELLOW[3])
-        -- (11-16, UX audit 4.1) a chevron left of the title folds the section: down open, right closed.
-        -- It was a bare "-" / "+" at the far right, beside Reset.
+        -- a chevron left of the title folds the section: down open, right closed
         h.chevron = h:CreateTexture(nil, "OVERLAY")
         h.chevron:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Chevron.tga")
         h.chevron:SetSize(14, 14)
@@ -1741,7 +1734,7 @@ local function SectionHeader(parent, text, y, sectionKey)
         function h.reset:Paint()
             if not self:IsEnabled() then self.label:SetTextColor(0.43, 0.40, 0.34)
             elseif self.hovered then self.label:SetTextColor(1, 1, 1)
-            else self.label:SetTextColor(TITLE_YELLOW[1], TITLE_YELLOW[2], TITLE_YELLOW[3]) end   -- (as its header, 11-13)
+            else self.label:SetTextColor(TITLE_YELLOW[1], TITLE_YELLOW[2], TITLE_YELLOW[3]) end   -- (as its header)
         end
         h.reset:SetScript("OnEnter", function(self) self.hovered = true self:Paint() end)
         h.reset:SetScript("OnLeave", function(self) self.hovered = nil self:Paint() end)
@@ -1756,7 +1749,7 @@ local function SectionHeader(parent, text, y, sectionKey)
         h.line:SetPoint("BOTTOMLEFT", 0, 2)
         h.line:SetPoint("BOTTOMRIGHT", 0, 2)
         h:EnableMouse(true)
-        -- (11-13, Malkkav: "headers should not have highlights on hover") no light; the click still folds it
+        -- no hover light; the click still folds it
         h:SetScript("OnMouseUp", SectionClick)
     end
     h:SetParent(parent)
@@ -1764,7 +1757,7 @@ local function SectionHeader(parent, text, y, sectionKey)
     local active = S.modules[current] and Panel:ActiveTab(S.modules[current])
     h.resetTab = active and active.key
     -- (pages marked noReset have none: Profiles, Settings)
-    -- (11-16, UX audit 4.1) Reset shows only when something in the section differs from its default
+    -- Reset shows only when something in the section differs from its default
     local canReset = sectionKey and S:CanResetSection(current, sectionKey, h.resetTab) or false
     h.reset:SetShown(canReset and not (S.modules[current] and S.modules[current].noReset) or false)
     h.reset:SetEnabled(canReset)
@@ -1784,7 +1777,7 @@ local function SectionHeader(parent, text, y, sectionKey)
     return SECTION_H
 end
 
--- A red line: these settings do nothing in Gamepad mode (11-13, Malkkav); returns its height
+-- A red line: these settings do nothing in Gamepad mode; returns its height
 local function GamepadNote(parent, y)
     local key = "padnote"
     pools[key] = pools[key] or {}
@@ -1833,8 +1826,8 @@ local function SectionBox(parent, top, bottom)
 end
 
 local function PlaceRows(parent, rows, y, crumbOf)
-    -- group: the rows sharing the line being filled (half rows two to a line; third rows, 11-17
-    -- Malkkav: the Info Bar's three cells, three to a line)
+    -- group: the rows sharing the line being filled (half rows two to a line; third rows,
+    -- the Info Bar's three cells, three to a line)
     local group, groupCols, groupIndent = {}, 0, 0
     local width = parent:GetWidth() - 2 * rowInset
     local function CloseGroup()
@@ -1850,7 +1843,7 @@ local function PlaceRows(parent, rows, y, crumbOf)
         f:ClearAllPoints()
         local cols = (row.third and 3) or (row.half and 2) or nil
         if cols and not crumbOf then
-            -- (11-16, UX audit 4.2.3) under a parent the pair indents as a full row does; a dependent
+            -- under a parent the pair indents as a full row does; a dependent
             -- pairs only with rows at its own indent (its master's other dependents)
             local indent = row.parent and INDENT or 0
             if #group > 0 and (groupIndent ~= indent or groupCols ~= cols) then CloseGroup() end
@@ -1879,19 +1872,19 @@ local function PlaceRows(parent, rows, y, crumbOf)
     return y
 end
 
--- 11-11 (Malkkav): the pages' icons as Blizzard's own, in the round aura look (the talent node mask and
--- ring, tinted bronze, as Auras.lua's round style); /fui icons switches back to the line icons
+-- the pages' icons as Blizzard's own, in the round aura look (the talent node mask and
+-- ring, tinted bronze, as Auras.lua's round style)
 local GAME_ICONS = {
     about = "INV_Misc_Book_09", adv = "INV_Scroll_03", language = "Trade_Engineering",
     ab = "INV_Sword_04", uf = "INV_Misc_Head_Human_01", rb = "INV_Potion_54", au = "Spell_Holy_WordFortitude",
     mm = "INV_Misc_Map_01", qt = "INV_Misc_Note_06",
     ch = "INV_Letter_15", dm = "Ability_DualWield", tt = "INV_Misc_Spyglass_03", rm = "INV_Misc_Orb_05", qol = "INV_Misc_Wrench_01",
-    bl = "INV_Misc_Bag_08",   -- (Quality of Life's bag went to Bags & Looting, 11-12)
-    br = "INV_Misc_PocketWatch_01",   -- Buff Reminders, its own page (11-12)
+    bl = "INV_Misc_Bag_08",   -- Bags & Looting
+    br = "INV_Misc_PocketWatch_01",   -- Buff Reminders, its own page
 }
 local RING_MASK, RING_ART, RING_TINT = "talents-node-circle-mask", "talents-node-circle-gray", { 0.72, 0.56, 0.38 }
 local function GameIcons()
-    -- (the look tests' saved switch, 11-11, retired)
+    -- (clears the retired line-icons switch)
     if ns.db and ns.db.global then ns.db.global.panelLineIcons = nil end
     return true
 end
@@ -1922,7 +1915,7 @@ end
 
 local function UpdateHeader(module)
     page.title:SetText(module:Title())
-    -- (11-16, UX audit J3) what is set in Edit Mode, in grey under the description, while the module is on
+    -- what is set in Edit Mode, in grey under the description, while the module is on
     local desc, note = module:Description() or "", S:ModuleText(module.key, "editNote")
     if note and module:IsOn() then desc = desc .. "\n" .. GRAY_FONT_COLOR:WrapTextInColorCode(note) end
     page.desc:SetText(desc)
@@ -1989,7 +1982,7 @@ local function UpdateHeader(module)
             height = height + bannerHeight + 6
         end
     end
-    -- (11-16, UX audit J2) a module just turned on starts after a reload: said on its page, with the button
+    -- a module just turned on starts after a reload: said on its page, with the button
     if not page.banner:IsShown() and module.enabled and module:IsOn() and S.pending["module:" .. module.key] then
         page.banner.text:SetText(L["FlareUI starts %s after a reload."]:format(module:Title()))
         page.banner.button:SetText(S:WindowText("reloadFooter2", L["Reload Now"]))
@@ -2011,9 +2004,9 @@ local function UpdateHeader(module)
     local names = module.tabs and S:ModuleText(module.key, "tabs") or {}
     local active = Panel:ActiveTab(module)
     -- the row must fit the page: each tab is its name and some padding; too wide, the padding shrinks
-    -- (down to TAB_PAD_MIN). A tab's NEW badge sits on its top edge, centred, over the border (11-11
-    -- Malkkav: beside the name it looked bad), so it takes no width.
-    local TAB_PAD, TAB_PAD_MIN, TAB_GAP, TAB_LEFT = 28, 12, 4, 4   -- (TAB_LEFT: the first tab sits 4 in, 11-13)
+    -- (down to TAB_PAD_MIN). A tab's NEW badge sits on its top edge, centred, over the border,
+    -- so it takes no width.
+    local TAB_PAD, TAB_PAD_MIN, TAB_GAP, TAB_LEFT = 28, 12, 4, 4   -- (TAB_LEFT: the first tab sits 4 in)
     local shown, textW, isNew = {}, {}, {}
     for i, b in ipairs(page.tabButtons) do
         local tab = module.tabs and module:IsOn() and module.tabs[i]
@@ -2028,7 +2021,7 @@ local function UpdateHeader(module)
         end
     end
     local room = (page.header:GetWidth() or 0) > 0 and page.header:GetWidth() or CONTENT_W
-    local function RowWidth(pad, badges)
+    local function RowWidth(pad)
         local w = TAB_LEFT + TAB_GAP * math.max(0, #shown - 1)
         for _, i in ipairs(shown) do w = w + textW[i] + pad end
         return w
@@ -2054,7 +2047,7 @@ local function UpdateHeader(module)
         b:SetWidth(textW[i] + pad)
     end
     local tabbed = module.tabs and module:IsOn()
-    page.tabLine:SetShown(false)   -- (11-11 Malkkav: no line between the tabs and the boxes)
+    page.tabLine:SetShown(false)   -- (no line between the tabs and the boxes)
     if tabbed then height = height + 32 end
     page.header:SetHeight(height)
 end
@@ -2083,7 +2076,6 @@ local function SetWide(wide)
     end
     if Panel.OnResize then Panel.OnResize() end
 end
-Panel.WIDE_W = MIDDLE_W + WIDE_EXTRA   -- a wide tab's middle width
 Panel.MIDDLE_W = MIDDLE_W              -- a custom tab's middle width
 Panel.RIGHT_W, Panel.PAD = RIGHT_W, PAD
 
@@ -2107,7 +2099,6 @@ local function ShowCustom(module, tab)
     host:Show()
     if tab.preview then
         if preview.canvas then preview.canvas:Reset(); preview.canvas.frame:Hide() end
-        previewRow = nil
         if preview.pause then preview.pause:Hide() end
         for _, region in ipairs({ preview.picture, preview.title, preview.desc, preview.tip }) do region:Hide() end
         preview.host:Show()
@@ -2152,7 +2143,7 @@ function Panel:Refresh()
         local MAX_RESULTS = 60
         local found = #results
         for i = #results, MAX_RESULTS + 1, -1 do results[i] = nil end
-        -- how many matched (11-11); Enter goes to the first
+        -- how many matched; Enter goes to the first
         page.searchTitle:SetText(L["%d found for \"%s\""]:format(found, searchText)
             .. (found > MAX_RESULTS and ("  " .. GRAY_FONT_COLOR:WrapTextInColorCode(L["(first %d shown)"]:format(MAX_RESULTS))) or "")
             .. (found > 0 and ("  " .. GRAY_FONT_COLOR:WrapTextInColorCode(L["Enter: go to the first"])) or ""))
@@ -2193,7 +2184,7 @@ function Panel:Refresh()
         UpdateHeader(module)
         if module.enabled and not module:IsOn() then
             page.offCard.text:SetText((S:WindowText("moduleOffCard", L["{Module} is off. Its settings appear here once it's on."])):gsub("{Module}", module:Title()))
-            -- (11-16, UX audit J1) what it gives, as bullets, above Turn On
+            -- what it gives, as bullets, above Turn On
             local gives = S:ModuleText(module.key, "offCard")
             if gives then gives = ("\n" .. gives):gsub("\n%* ", "\n• "):sub(2) end
             page.offCard.list:SetText(gives or "")
@@ -2327,7 +2318,7 @@ end
 function Panel:JumpTo(row)
     local module = S.modules[row.module]
     if not module then return end
-    -- (11-16) a row off the page until something is picked (the fonts' Frame picker) picks it first
+    -- a row off the page until something is picked (the fonts' Frame picker) picks it first
     if row.beforeJump then row.beforeJump() end
     PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
     if row.kind ~= "editmode" then
@@ -2356,7 +2347,7 @@ local function BuildNav(left)
     -- Anchor each row to the one above so badge changes can reflow the list.
     local anchor, anchorPoint, x, gap = left, "TOPLEFT", 6, 8
     local buttonWidth = LEFT_W - 12
-    -- groups (11-10): About, Profiles and Language on top without a heading, then these
+    -- groups: About, Profiles and Language on top without a heading, then these
     local GROUP_LABEL = {
         combat = S:WindowText("leftListGroups", L["Combat"]),
         map = S:WindowText("leftListGroups2", L["Map & Quests"]),
@@ -2411,13 +2402,13 @@ local function BuildNav(left)
             b.text = Text(b, "GameFontHighlight")
             b.text:SetPoint("LEFT", NAV_TEXT_INSET, 0)
             -- (room for the module's switch at the right, when it has one)
-            b.rightInset = NAV_RIGHT_INSET   -- (no checkbox here since 11-13: the page title's turns a module on)
+            b.rightInset = NAV_RIGHT_INSET   -- (no checkbox here: the page title's turns a module on)
             b.text:SetWidth(buttonWidth - NAV_TEXT_INSET - b.rightInset)
             b.text:SetWordWrap(true)
             b.text:SetText(module:Title())
             FitText(b.text, buttonWidth - NAV_TEXT_INSET - b.rightInset, 2)
             b.newBadge = NewBadge(b)
-            -- (11-13, Malkkav) no quick checkbox in the list (11-11 to 11-13): a module is turned on or off
+            -- no quick checkbox in the list: a module is turned on or off
             -- by the checkbox beside its page title; an off one still shows greyed here
             b.newBadge:SetPoint("RIGHT", -NAV_RIGHT_INSET / NEW_SCALE, 0)
             b:SetScript("OnClick", function()
@@ -2509,8 +2500,7 @@ function Panel.ScaleStep(delta)
     ApplyPanelScale()
 end
 
--- pending reloads (with the button), else a page notice that lasts until another page shows
-local notice, noticePage
+-- the reload bar: shown while changes wait for a reload
 local function UpdateFooter()
     if not frame then return end
     local n = S:PendingCount()
@@ -2520,29 +2510,12 @@ local function UpdateFooter()
         frame.reload:Show()
         frame.footer.alert:Show()
         frame.footer:Show()
-    elseif notice then
-        frame.footerText:SetText(notice)
-        frame.reload:Hide()
-        frame.footer.alert:Hide()
-        frame.footer:Show()
     else
         frame.footerText:SetText("")
         frame.footer:Hide()
     end
     PlaceSecureReload()
 end
-
-function Panel:SetNotice(text)
-    notice, noticePage = text, current
-    UpdateFooter()
-end
-
-S:On("PageShown", function(key)
-    if notice and key ~= noticePage then
-        notice, noticePage = nil, nil
-        UpdateFooter()
-    end
-end)
 
 --------------------------------------------------
 -- 7. THE WINDOW
@@ -2620,15 +2593,14 @@ function Panel.RimPicture(parent, tex, pad)
 end
 
 --------------------------------------------------
--- 6b. THE WINDOW'S STONE AND FRAME (11-11): Malkkav picked the natural rock and the character select's
--- heavy bronze frame (rivets top left and bottom right), from look tests since retired
+-- 6b. THE WINDOW'S STONE AND FRAME: the natural rock and the character select's heavy bronze
+-- frame (rivets top left and bottom right)
 --------------------------------------------------
 local LOOK_BG = {
     { "Rock, bronze tint", file = "Interface\\FrameGeneral\\UI-Background-Rock", tile = true, desat = true, tint = { 0.85, 0.68, 0.47 }, wash = 0.3 },
-    -- (11-13 Malkkav: plain, as previewed: no brown wash, no bronze glow; the wash was 0.35, then 0.12)
+    -- plain: no brown wash, no bronze glow
     { "Rock, natural", file = "Interface\\FrameGeneral\\UI-Background-Rock", tile = true, wash = 0, plain = true },
 }
-local LOOK_FRAME = { "Tooltip edge (now)", "FlareUI Thick", "Heavy bronze (character select)" }
 local lookBg, lookFrame = 2, 3   -- the picks, drawn as the window is built
 
 local function TryBackground(n)
@@ -2681,10 +2653,10 @@ local function TryFrame(n)
             b:SetFrameLevel(frame:GetFrameLevel() + 30)
             b.edge = b:CreateTexture(nil, "BORDER")
             b.edge:SetAtlas("heavybronze-frame-basic")
-            -- where the character select list draws it, stretched (11-11: the nine-slice try broke it)
+            -- where the character select list draws it, stretched (as a nine-slice it breaks)
             b.edge:SetPoint("TOPLEFT", -9, 15)
             b.edge:SetPoint("BOTTOMRIGHT", 9, -15)
-            -- the rivets top left and bottom right; the close button takes the top right corner (11-11 Malkkav)
+            -- the rivets top left and bottom right; the close button takes the top right corner
             for _, c in ipairs({ { "TL", "TOPLEFT" }, { "BR", "BOTTOMRIGHT" } }) do
                 local t = b:CreateTexture(nil, "ARTWORK")
                 t:SetAtlas("heavybronze-horz-cornerbracket-" .. c[1], true)
@@ -2700,8 +2672,7 @@ end
 
 local function BuildWindow()
     local style = ns.WINDOW_STYLE
-    ApplyTitleFont()
-    -- (11-11 Malkkav: after a reload each page opens on its first tab; the tabs once kept go)
+    -- after a reload each page opens on its first tab: the old saved tabs are dropped
     if ns.db and ns.db.global then ns.db.global.settingsTabs = nil end
     frame = CreateFrame("Frame", "FlareUI_SettingsPanel", UIParent, "BackdropTemplate")
     frame:SetSize(WIDTH, HEIGHT)
@@ -2730,11 +2701,11 @@ local function BuildWindow()
     end)
     frame:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16 })
     frame:SetBackdropBorderColor(style.border[1], style.border[2], style.border[3], 1)
-    -- FlareUI's own ground (11-10): the game's rock tile in warm dark bronze, a glow under the header,
+    -- FlareUI's own ground: the game's rock tile in warm dark bronze, a glow under the header,
     -- a shade toward the bottom. 3 px in, under the border's line, so no gap shows between them.
     local BG_INSET = 3
     local art = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    -- (11-11) up and down under the frame's top and bottom bars, which sit further out than its sides
+    -- up and down under the frame's top and bottom bars, which sit further out than its sides
     art:SetPoint("TOPLEFT", BG_INSET, 8)
     art:SetPoint("BOTTOMRIGHT", -BG_INSET, -8)
     art:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
@@ -2781,12 +2752,12 @@ local function BuildWindow()
     end)
 
     -- header (56): the logo, name and version, the Settings / What's New plates; search and close right
-    -- (11-13, Malkkav: a colour line showed under the header) no header band of its own: the stone and
+    -- no header band of its own: the stone and
     -- its soft top glow run on under the header row
     local logo = frame:CreateTexture(nil, "ARTWORK", nil, 2)
     logo:SetTexture(LOGO)
     logo:SetSize(38, 38)
-    -- centred on the header row; its rim's outer edge on the left list's border line (11-11 Malkkav)
+    -- centred on the header row; its rim's outer edge on the left list's border line
     logo:SetPoint("TOPLEFT", EDGE + 6, -(HEADER_ROW_Y - 19))
     local logoMask = frame:CreateMaskTexture()
     logoMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
@@ -2810,7 +2781,7 @@ local function BuildWindow()
     version:SetPoint("LEFT", title, "RIGHT", 8, -2)
     version:SetTextColor(0.64, 0.6, 0.54)
     version:SetText(C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "")
-    -- on the frame's top right corner, above the frame art (11-11 Malkkav)
+    -- on the frame's top right corner, above the frame art
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     -- in the frame art's own top right corner (the heavy bronze frame), else the window's
     if frame.ftBronze and frame.ftBronze:IsShown() then
@@ -2840,8 +2811,8 @@ local function BuildWindow()
         end)
         frame.topTabs[i] = b
     end
-    -- Settings / What's New start at the middle box's left edge (11-11 Malkkav)
-    -- (+4, 11-13 Malkkav: the grey face reaches past the button; its visible edge on the box's)
+    -- Settings / What's New start at the middle box's left edge
+    -- (+4: the grey face reaches past the button; its visible edge on the box's)
     frame.topTabs[1]:SetPoint("LEFT", frame, "TOPLEFT", EDGE + LEFT_W + GAP + 4, -HEADER_ROW_Y)
     frame.topTabs[2]:SetPoint("LEFT", frame.topTabs[1], "RIGHT", 6, 0)
 
@@ -2849,11 +2820,11 @@ local function BuildWindow()
     local news = CreateFrame("Frame", nil, frame)
     news:SetAllPoints(body)
     news:Hide()
-    -- (11-13, Malkkav) the footer: Don't Show on Login (account-wide, off). Releases come often, and the
+    -- the footer: Don't Show on Login (account-wide, off). Releases come often, and the
     -- notes opened at every login after an update
     local NEWS_FOOT = 20   -- the notes stop this far above the switch row
     local quiet = Switch(news)
-    quiet:SetPoint("BOTTOMLEFT", PAD, PAD - 12)   -- (11-13 Malkkav) low, near the frame's bottom edge
+    quiet:SetPoint("BOTTOMLEFT", PAD, PAD - 12)   -- low, near the frame's bottom edge
     quiet:SetScript("OnShow", function(self)
         local global = ns.db and ns.db.global
         self:SetChecked(global and global.whatsNewQuiet == true or false)
@@ -2872,7 +2843,7 @@ local function BuildWindow()
     local newsScroll = CreateFrame("ScrollFrame", nil, news)
     newsScroll:SetPoint("TOPLEFT", PAD, -PAD)
     newsScroll:SetPoint("BOTTOMRIGHT", -PAD, PAD + NEWS_FOOT)
-    -- (11-11 Malkkav) each version in a box of its own, as the settings' sections, clear of the scroll line
+    -- each version in a box of its own, as the settings' sections, clear of the scroll line
     local NEWS_PAD, NEWS_GUTTER = 16, 40
     local newsContent = CreateFrame("Frame", nil, newsScroll)
     newsContent:SetSize(1, 1)
@@ -2921,7 +2892,7 @@ local function BuildWindow()
     left:SetPoint("TOPLEFT")
     left:SetPoint("BOTTOMLEFT")
     left:SetWidth(LEFT_W)
-    Box(left, 0.40)   -- (11-13, Malkkav: the stone stays light, the boxes darker to read; were 0.18 / 0.18 / 0.10)
+    Box(left, 0.40)   -- (the stone stays light, the boxes darker to read)
 
     local right = CreateFrame("Frame", nil, body, "BackdropTemplate")
     right:SetPoint("TOPRIGHT")
@@ -2986,7 +2957,7 @@ local function BuildWindow()
     header:SetPoint("TOPRIGHT")
     header:SetHeight(64)
     page.header = header
-    -- icon plate, then the title (Marcellus) with the module's switch after it
+    -- icon plate, then the title with the module's switch after it
     local plate = CreateFrame("Frame", nil, header, "BackdropTemplate")
     plate:SetSize(42, 42)
     plate:SetPoint("TOPLEFT", 0, -2)
@@ -3105,11 +3076,11 @@ local function BuildWindow()
     local off = CreateFrame("Frame", nil, middle)
     off:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -20)
     off:SetPoint("RIGHT")
-    off:SetHeight(220)   -- (room for the bullets, J1)
+    off:SetHeight(220)   -- (room for the bullets)
     off.text = Text(off, "GameFontHighlight", "CENTER")
     off.text:SetPoint("TOP", 0, -10)
     off.text:SetWidth(380)
-    -- what the module gives (J1), left-aligned under the line
+    -- what the module gives, left-aligned under the line
     off.list = Text(off, "GameFontHighlight")
     off.list:SetPoint("TOP", off.text, "BOTTOM", 0, -12)
     off.list:SetWidth(380)
@@ -3136,9 +3107,9 @@ local function BuildWindow()
     preview.picture:SetPoint("TOP", 0, -PAD)
     preview.picture:SetTexture(PICTURE)
     preview.picture:SetSize(RIGHT_W - 2 * PAD, RIGHT_W - 2 * PAD)
-    -- the dog's bronze rim and soft shade, as the header logo's (11-11 Malkkav); they come and go with it
+    -- the dog's bronze rim and soft shade, as the header logo's; they come and go with it
     local pictureRim = right:CreateTexture(nil, "ARTWORK", nil, -2)
-    -- (our 256 px ring, shown near its own size: smooth, 11-11)
+    -- (our 256 px ring, shown near its own size: smooth)
     pictureRim:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PictureRim.tga")
     pictureRim:SetPoint("CENTER", preview.picture, "CENTER")
     pictureRim:SetSize(RIGHT_W - 2 * PAD - 2, RIGHT_W - 2 * PAD - 2)   -- about 5 px of bronze past the art
@@ -3157,7 +3128,7 @@ local function BuildWindow()
     hooksecurefunc(preview.picture, "Hide", FollowPicture)
     hooksecurefunc(preview.picture, "SetShown", FollowPicture)
     preview.canvas = ns.SettingsPreview.Create(right, RIGHT_W - 2 * PAD, RIGHT_W - 2 * PAD)   -- 256 square
-    -- (11-10: no "Preview" label or Pause button; the picture starts at the top)
+    -- (no "Preview" label or Pause button; the picture starts at the top)
     preview.canvas.frame:SetPoint("TOP", 0, -PAD)
     preview.canvas.frame:Hide()
     -- the gamepad never stops on the pictures' sample buttons (they are only pictures)

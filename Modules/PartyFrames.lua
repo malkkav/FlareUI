@@ -42,7 +42,7 @@ local MAX_MEMBERS = 4
 local SLOT_UNITS = { [0] = "player", "party1", "party2", "party3", "party4" }
 local PET_UNITS  = { [0] = "pet", "partypet1", "partypet2", "partypet3", "partypet4" }
 local TARGET_UNITS = { [0] = "target", "party1target", "party2target", "party3target", "party4target" }
-local BASE_POSITION = { point = "LEFT", x = 10, y = 0 }   -- (11-17: Malkkav's, was x 3)
+local BASE_POSITION = { point = "LEFT", x = 10, y = 0 }
 -- Edit Mode keeps a reference to this table: ApplyPosition refills it for the style in use
 local DEFAULT_POSITION = { point = "LEFT", x = 10, y = 0 }
 local PET_GAP = 2
@@ -75,7 +75,7 @@ local AURA_POSITION_VALUES = {
     { text = L["Inside, Top"],          value = "INSIDE_TOP",         isRadio = true },
     { text = L["Inside, Top Left"],     value = "INSIDE_TOPLEFT",     isRadio = true },
     { text = L["Inside, Top Right"],    value = "INSIDE_TOPRIGHT",    isRadio = true },
-    -- (Raid Style only, as on the raid frames: 11-13)
+    -- (Raid Style only, as on the raid frames)
     { text = L["Inside, Centre"],       value = "INSIDE_CENTER",      isRadio = true },
     { text = L["Inside, Centre Left"],  value = "INSIDE_LEFT",        isRadio = true },
     { text = L["Inside, Centre Right"], value = "INSIDE_RIGHT",       isRadio = true },
@@ -118,7 +118,7 @@ local ROLE_ATLAS = { TANK = "UI-LFG-RoleIcon-Tank-Micro-GroupFinder", HEALER = "
                      DAMAGER = "UI-LFG-RoleIcon-DPS-Micro-GroupFinder" }
 
 -- The frame icons, switched per style in Edit Mode: style.icons[key] = { shown }
--- (11-17, Malkkav, for a player) PvP Flag: the member's faction crest while flagged; off by default (ICON_OFF)
+-- PvP Flag: the member's faction crest while flagged; off by default (ICON_OFF)
 local ICON_ORDER  = { "role", "leader", "raidIcon", "readyCheck", "status", "pvp" }
 local ICON_LABELS = { role = L["Role"], leader = L["Leader"], raidIcon = L["Raid Markers"], readyCheck = L["Ready Check"], status = L["Summon / Resurrect / Phase"],
                       pvp = L["PvP Flag"] }
@@ -260,7 +260,7 @@ local function PlaceAuraSize(st, pos)
     return math_max(buff, debuff)
 end
 
--- Buff Amount / Debuff Amount on the party and boss frames (11-17, Malkkav): beside the frame, how many
+-- Buff Amount / Debuff Amount on the party and boss frames: beside the frame, how many
 -- show, in as many rows as they need. Unset: 4 in FlareUI and Forever Style, 6 in Addon Style. Not
 -- inside the bars (a fixed grid) and not on the raid frames.
 PF.TILE_AMOUNT = { ring = 4, addon = 6 }
@@ -334,7 +334,7 @@ end
 local function OnPlate(f)
     return f and f.ringKind and ns.UFRing and ns.UFRing.Plate(f) or false
 end
--- A tile's border (11-13, Malkkav): off Forever's plate every tile picks its own (Raid Style, raid, the
+-- A tile's border: off Forever's plate every tile picks its own (Raid Style, raid, the
 -- small pet and target frames), on the plate Forever's fixed one; "None" has no edge
 function PF.TileBorder(f, name)
     if OnPlate(f) then return K.Border(name) end
@@ -348,8 +348,7 @@ local function IsInsidePlace(pos) return type(pos) == "string" and pos:find("^IN
 
 -- The party frames' Dispel Icons: PORTRAIT (the default) puts up to four on the portrait, two to a
 -- row (in Raid Style, or without a portrait: the health bar's middle); any other place lines them up
--- there, as the buffs and debuffs (Raid Style since 11-13, Classic since 11-16, Malkkav). Owned tiles
--- use their place setting.
+-- there, as the buffs and debuffs. Owned tiles use their place setting.
 local function DispelPlace(f, st)
     if f.ctx then return st.dispels end
     if st.dispels and st.dispels ~= "PORTRAIT" then
@@ -453,8 +452,11 @@ local function UpdateHealth(f, glide)
     K.SetDamageTrail(f.DamageTrail, unit, glide, K.DamageTrailOn(st and st.damageTrail))
     -- Bar Edge Glow: hidden on the dead, a bump on each change (UnitFrames.lua UF.BarLook)
     K.BarLookUpdate(bar, unit, glide)
-    -- (a plain health change has the same colour, but for a hostile tile going grey when tapped)
-    if not glide or (f.ctx and f.ctx.hostile) then bar:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn(st))) end
+    -- (a plain health change has the same colour, but for a hostile tile going grey when tapped, or
+    -- with Health Colour on: UnitFrames.lua UF.HealthBarColor)
+    if not glide or (f.ctx and f.ctx.hostile) or K.HealthColorLive(st) then
+        bar:SetStatusBarColor(K.HealthBarColor(unit, ns.ClassColorsOn(st), st))
+    end
 
     local mode = st and st.healthText or "percent"
     local text = f.HealthText
@@ -589,7 +591,7 @@ local function UpdateLeader(f)
     end
 end
 
--- (11-17, Malkkav) the flag carriers (ctx.factionIcon): the unit's faction crest in the role icon's place,
+-- The flag carriers (ctx.factionIcon): the unit's faction crest in the role icon's place,
 -- the art FlareUI's target frame uses for its PvP flag (UnitFrames.lua)
 PF.FACTION_ART = {
     Horde = { "UI-HUD-UnitFrame-SmallCircle-Horde", "Interface\\TargetingFrame\\UI-PVP-Horde" },
@@ -817,13 +819,13 @@ local function UpdateTarget(f)
     end
 end
 
--- Threat Glow (Look, st.threatGlow; 11-15, Malkkav): with threat 1-3 the tile's border pulses in the
+-- Threat Glow (Look, st.threatGlow): with threat 1-3 the tile's border pulses in the
 -- threat colour, and its portrait ring with it (ring styles). A member: its own aggro; an enemy tile
 -- (boss): the player's threat on it. Forever Style's plate has no border: the ring alone. None in
 -- Edit Mode, but for the aggro test.
 local function UpdateThreat(f)
     local st = TS(f)
-    local on = not (st and st.threatGlow == false)   -- (a switch again since 11-17)
+    local on = not (st and st.threatGlow == false)
     local status
     if f.fuiUnit then
         if on and not IsEditing() then
@@ -840,6 +842,64 @@ local function UpdateThreat(f)
         K.SetBorderGlow(f.Border)
     end
     if f.ringKind and ns.UFRing then ns.UFRing.UpdateThreat(f) end
+    -- status 1: this member is above the tank and about to pull aggro, so its health bar flashes as
+    -- well. Never on an enemy tile: there the status is your threat on the boss, not a warning.
+    PF.ThreatFlash(f, status == 1 and not (f.ctx and f.ctx.hostile))
+end
+
+-- The health bar flash for a member about to pull aggro: a red layer over the whole health
+-- bar (any style: the plate and ring styles move f.Health, and the layer follows it), its alpha
+-- going 0 -> 0.6 -> 0 about three times a second. It covers the whole bar, not the fill: the fill's
+-- width can be secret in a fight, and nothing may be anchored to it. Started and stopped only when
+-- the threat status changes, so it costs nothing at rest.
+PF.THREAT_FLASH = { 0.6, 0.16 }   -- peak alpha, seconds each way
+-- red: no class colour is red, so the flash never blends into a class-coloured health bar (yellow did on rogues)
+PF.THREAT_FLASH_COLOR = { 1, 0.1, 0.1 }
+function PF.ThreatFlash(f, on)
+    local flash = f.FlareUI_ThreatFlash
+    if not on then
+        if flash and flash.fuiOn then
+            flash.fuiOn = false
+            flash.Pulse:Stop()
+            flash:Hide()
+        end
+        return
+    end
+    local bar = f.Health
+    if not bar then return end
+    if not flash then
+        flash = CreateFrame("Frame", nil, bar)
+        flash:SetAllPoints(bar)
+        local tex = flash:CreateTexture(nil, "OVERLAY")
+        tex:SetAllPoints()
+        tex:SetColorTexture(1, 1, 1, 1)
+        tex:SetBlendMode("ADD")
+        tex:SetVertexColor(PF.THREAT_FLASH_COLOR[1], PF.THREAT_FLASH_COLOR[2], PF.THREAT_FLASH_COLOR[3])
+        flash.Tex = tex
+        local pulse = flash:CreateAnimationGroup()
+        pulse:SetLooping("REPEAT")
+        local up = pulse:CreateAnimation("Alpha")
+        up:SetFromAlpha(0)
+        up:SetToAlpha(PF.THREAT_FLASH[1])
+        up:SetDuration(PF.THREAT_FLASH[2])
+        up:SetOrder(1)
+        local down = pulse:CreateAnimation("Alpha")
+        down:SetFromAlpha(PF.THREAT_FLASH[1])
+        down:SetToAlpha(0)
+        down:SetDuration(PF.THREAT_FLASH[2])
+        down:SetOrder(2)
+        flash.Pulse = pulse
+        flash:SetAlpha(0)   -- the animation drives it; at rest (and between loops) nothing shows
+        flash:Hide()
+        f.FlareUI_ThreatFlash = flash
+    end
+    if flash.fuiOn then return end
+    flash.fuiOn = true
+    -- above the fill and the heal and shield layers, under the border and the texts (bar +1 is the
+    -- shield clip; the tile's border sits at bar +3)
+    flash:SetFrameLevel(bar:GetFrameLevel() + 2)
+    flash:Show()
+    flash.Pulse:Play()
 end
 
 -- "3d" is the stored name of the 2D picture (party and boss tiles). Edit Mode and the settings
@@ -848,7 +908,7 @@ local function UpdatePortrait(f)
     local portrait = f.Portrait
     local st = TS(f)
     local mode = (not RaidTile(f) and st and st.portrait) or "none"
-    if mode == "model" then mode = "3d" end   -- (11-15) the dropped 3D model draws as 2D
+    if mode == "model" then mode = "3d" end   -- a saved 3D model setting draws as 2D
     -- the ring always holds a portrait
     if f.ringKind and mode == "none" then mode = "3d" end
     if mode == "none" then portrait:Hide() return end
@@ -878,8 +938,7 @@ end
 
 local function UpdateCast(f, event, by, barID)
     if not f.Cast then return end
-    -- a settings preview's sample has no unit: the Edit Mode sample cast
-    -- (a settings preview's sample shows the frame only)
+    -- a settings preview's sample has no unit and shows the frame only
     if f.fuiSample then f.Cast:Hide() return end
     K.UpdateCastBar(f.Cast, f.Cast.isEnabled(), event, by, barID)
 end
@@ -937,7 +996,7 @@ local function UpdatePet(p, glide)
     p.Health:SetMinMaxValues(0, UnitHealthMax(unit))
     local st = TS(p)
     ns.SetBarValue(p.Health, UnitHealth(unit), glide and st and st.smoothBars and not UnitIsDead(unit))
-    p.Health:SetStatusBarColor(K.GetHealthColor(unit, false))
+    p.Health:SetStatusBarColor(K.HealthBarColor(unit, false, st))   -- (Health Colour: the party's)
     p.Name:SetText(SafeName(ns.UnitDisplayName(unit)))
 end
 
@@ -947,7 +1006,7 @@ local function UpdatePartyTarget(t)
     if not UnitExists(unit) then return end
     t.Health:SetMinMaxValues(0, UnitHealthMax(unit))
     t.Health:SetValue(UnitHealth(unit))
-    t.Health:SetStatusBarColor(K.GetHealthColor(unit, ns.ClassColorsOn(TS(t))))
+    t.Health:SetStatusBarColor(K.HealthBarColor(unit, ns.ClassColorsOn(TS(t)), TS(t)))
     t.Name:SetText(SafeName(ns.UnitDisplayName(unit, "targetof")))   -- a party target tile: first name only
 end
 
@@ -1061,6 +1120,12 @@ local function PrecreateAuraContainers(f)
         end
     end
     -- the dispel highlight, kept out of Edit Mode's sample data (ApplyPreview draws its own)
+    PF.NewDispelHighlight(f)
+end
+
+-- The dispel highlight's own container on a frame (tiles, and the player frame: UnitFrames.lua)
+function PF.NewDispelHighlight(f)
+    if f.AuraHighlight then return f.AuraHighlight end
     local okH, hl = pcall(CreateFrame, "AuraContainer", nil, f, AURA_CONTAINER_TEMPLATE)
     if okH and hl then
         pcall(hl.SetUnit, hl, f.fuiUnit or "none")
@@ -1069,6 +1134,7 @@ local function PrecreateAuraContainers(f)
         hl:SetFrameLevel(f:GetFrameLevel() + 3)
         f.AuraHighlight = { container = hl, keys = {}, generation = 0 }
     end
+    return f.AuraHighlight
 end
 
 -- Aura buttons inside the frame pass clicks through to it and keep their tooltip
@@ -1080,7 +1146,7 @@ end
 -- Never (the default): hovering an icon falls through to the tile (its unit tooltip, mouseover
 -- healing). Always: the icons take the mouse. Hide in Combat: only out of a fight, switched as one
 -- starts (PLAYER_REGEN_DISABLED, the last moment before lockdown) and ends, so mouseover healing
--- works in it. Clicks reach the tile either way. Boss tiles keep theirs. (11-11, a player's request)
+-- works in it. Clicks reach the tile either way. Boss tiles keep theirs.
 local groupAuraButtons = setmetatable({}, { __mode = "k" })
 local inFight = false
 local function GroupAuraMouse()
@@ -1131,7 +1197,7 @@ local function InitDispelIcon(button, size, inside)
     NoAuraTooltip(nil, button)   -- (dispel icons: party and raid tiles only)
 end
 
--- a tile's fonts (11-13): its context's (raid, boss), else the party frames'
+-- a tile's fonts: its context's (raid, boss), else the party frames'
 function PF.FontKey(f) return f and f.ctx and f.ctx.fontKey or "party" end
 
 -- inside the frame: no timer, whatever the Aura Timer setting (it would cover the bars and names)
@@ -1293,7 +1359,6 @@ local function ConfigurePosition(f, pos, lanes)
     end
 
     local st = TS(f)
-    local db = K.GetDb()
     local portrait = pos == "PORTRAIT"
     local size = portrait and DispelGrid(f) or PlaceAuraSize(st, pos)
     local max, perRow = AuraFit(st, pos, f)
@@ -1410,7 +1475,7 @@ local function ConfigureAuras(f)
     if not hostile then ns.AuraPolicy.Done(f, f.fuiUnit) end
 end
 
--- (11-16, Malkkav) the dispel highlight pulses like the threat glow, but much faster: it asks for action.
+-- The dispel highlight pulses like the threat glow, but much faster: it asks for action.
 -- Blizzard's aura button and every frame inside it have secret aspects (no scripts, so no animation
 -- restart on show): one driver of FlareUI's own sets the alpha of the highlight's pieces, ~30 times a
 -- second, skipping tiles that are not on screen. frame: a piece; tile: its tile (nil: always).
@@ -1432,15 +1497,15 @@ function PF.DispelPulse(frame, tile)
         local t = (GetTime() % (2 * half)) / half   -- 0 to 2: up, then down
         if t > 1 then t = 2 - t end
         local alpha = low + (high - low) * (0.5 - 0.5 * math.cos(math.pi * t))
-        -- (11-16, jams / Боёк / OX1DAT1ON: 300-700 errors a fight, Gnomeregan) a piece inside Blizzard's
-        -- aura button is locked to addon code while the aura in that slot is secret: skip it that tick
+        -- a piece inside Blizzard's aura button is locked to addon code while the aura in that slot is
+        -- secret: skip it that tick (unguarded, it errors hundreds of times a fight)
         local setAlpha = PF.dispelSetAlpha
         for piece, owner in pairs(PF.dispelPulsing) do
             if not owner or owner:IsVisible() then pcall(setAlpha, piece, alpha) end
         end
     end)
 end
--- a piece that no longer pulses (reused after a style change): back to full and steady
+-- a piece that stops pulsing (reused after a style change): back to full and steady
 function PF.DispelSteady(frame)
     if not frame then return end
     PF.dispelPulsing[frame] = nil
@@ -1450,23 +1515,28 @@ end
 -- The dispel highlight: a slot in its own container, showing the first aura of its filter (never given
 -- Edit Mode's sample data)
 local function ConfigureDispelHighlight(f)
+    local st = TS(f)
+    PF.DispelHighlight(f, st.dispelHighlight or "mine", OnPlate(f), PF.TileBorder(f, st.border), st.height)
+end
+
+-- setting: off | mine | all; plate: the frame sits on Forever Style's plate; border: the frame's
+-- border name; height: the frame's height (the copy's edge shrinks under 22)
+function PF.DispelHighlight(f, setting, plate, border, height)
     local hlEntry = f.AuraHighlight
     if not hlEntry then return end
-    local st = TS(f)
-    local plate = OnPlate(f)
     -- (border and short heights: the highlight copies the backdrop once, and its edge shrinks under 22)
-    -- (and the ring: its portrait border joins the highlight, 11-16)
+    -- (and the ring: its portrait border joins the highlight)
     local ringed = f.ringKind and f.RingFrame and f.RingFrame.hasArt and true or false
-    local sig = Signature(st.dispelHighlight, plate, PF.TileBorder(f, st.border), (st.height and st.height < 22 and st.height or 22), ringed)
+    local sig = Signature(setting, plate, border, (height and height < 22 and height or 22), ringed)
     if hlEntry.signature == sig then return end
     hlEntry.signature = sig
     local hlContainer = hlEntry.container
     -- slots can't be removed and their button is styled once: one slot per look, reused when that
     -- look comes back; the filter (mine / all) changes in place
     for _, key in pairs(hlEntry.keys) do pcall(hlContainer.SetAuraSlotEnabled, hlContainer, key, false) end
-    local highlight = st.dispelHighlight or "mine"
+    local highlight = setting or "mine"
     local styles = Enum.CustomAuraButtonDispelTypeTextureStyle
-    local lookSig = Signature(plate, PF.TileBorder(f, st.border), (st.height and st.height < 22 and st.height or 22), ringed)
+    local lookSig = Signature(plate, border, (height and height < 22 and height or 22), ringed)
     if highlight ~= "off" and styles then
         local filter = highlight == "all" and "HARMFUL|RAID_PLAYER_DISPELLABLE" or "HARMFUL|RAID"
         local reused = hlEntry.keys[lookSig]
@@ -1500,12 +1570,12 @@ local function ConfigureDispelHighlight(f)
                     -- (on a frame of FlareUI's own, for the pulse)
                     local glow = button.FlareUI_HighlightStrip
                     if not glow then
-                        local holder = CreateFrame("Frame", nil, button)
-                        holder:SetAllPoints(button)
-                        glow = holder:CreateTexture(nil, "OVERLAY")
-                        glow:SetAllPoints(holder)
+                        local stripHolder = CreateFrame("Frame", nil, button)
+                        stripHolder:SetAllPoints(button)
+                        glow = stripHolder:CreateTexture(nil, "OVERLAY")
+                        glow:SetAllPoints(stripHolder)
                         button.FlareUI_HighlightStrip = glow
-                        button.FlareUI_StripHolder = holder
+                        button.FlareUI_StripHolder = stripHolder
                     end
                     button.FlareUI_StripHolder:Show()
                     pcall(glow.SetAtlas, glow, ns.UFRing.STRIP_ATLAS, false)
@@ -1515,7 +1585,7 @@ local function ConfigureDispelHighlight(f)
                     pcall(button.AddDispelTypeTexture, button, glow, {
                         style = styles.PreserveAsset, showWhenHarmful = true, showWhenHelpful = false,
                     })
-                    -- (11-17, Malkkav) the plate's bronze border lights up in the same colour
+                    -- the plate's bronze border lights up in the same colour
                     local lit = ns.UFRing.DispelPlate and ns.UFRing.DispelPlate(f, button.FlareUI_StripHolder)
                     for _, tex in ipairs(lit or {}) do
                         tex:Hide()   -- until Blizzard shows it for a dispellable debuff
@@ -1524,8 +1594,7 @@ local function ConfigureDispelHighlight(f)
                         })
                     end
                     AddPortraitDispel(button)
-                    -- (11-17, Malkkav: back as in 6.10) the name box glow and the lit border pulse
-                    -- with the portrait ring
+                    -- the name box glow and the lit border pulse with the portrait ring
                     PF.DispelPulse(button.FlareUI_StripHolder, f)
                     return
                 end
@@ -1709,14 +1778,14 @@ local function LayoutTexts(f)
     -- FlareUI Style: the level is in the ring's disc (UnitFramesRing.lua lays it out)
     local levelOnRing = f.ringKind ~= nil
     K.ApplyFont(f.Name, K.Font(key, "names"))
-    -- (11-17) the level at the name's size (UnitFrames.lua UF.LevelFont)
+    -- the level at the name's size (UnitFrames.lua UF.LevelFont)
     if not levelOnRing then K.ApplyFont(f.Level, K.LevelFont(key)) end
     K.ApplyFont(f.HealthText, K.Font(key, "health"))
     K.ApplyFont(f.PowerText, K.Font(key, "power"))
     local health, power = f.Health, f.Power
     local T = K.TEXT_INSET
     f.Name:ClearAllPoints()
-    -- Show Name (11-17, Malkkav): off hides it on the party, raid and boss frames
+    -- Show Name: off hides it on the party, raid and boss frames
     f.Name:SetShown(st.showName ~= false)
     if not levelOnRing then f.Level:ClearAllPoints() end
     f.HealthText:ClearAllPoints()
@@ -1773,7 +1842,7 @@ local function LayoutTexts(f)
     end
 end
 
--- (11-17, Malkkav / punkie) Hide Player Frame in a Party hides the pet frame, and its happiness face
+-- Hide Player Frame in a Party hides the pet frame, and its happiness face
 -- with it: the face moves to your pet's own party pet frame (Pets on), where the pet frame puts it
 -- (Happiness Position: beside the frame, or mid health bar). Never on a party member's frame. Blizzard's
 -- indicator, as on the pet frame; it hides itself without a pet that has a mood. Edit Mode shows the
@@ -1781,7 +1850,7 @@ end
 function PF.LayoutPetHappiness(f)
     if not f or f.ctx or f.index ~= 0 then return end
     local p = pets[0]
-    -- (11-17) an old face on your party tile itself (before it moved to the pet frame)
+    -- a face left on your party tile itself: the pet frame holds it
     if f.PetHappiness then
         f.PetHappiness:UnregisterAllEvents()
         f.PetHappiness:Hide()
@@ -1860,12 +1929,12 @@ local function LayoutIcons(f)
         -- leader where the player frame has it, role in the bottom-left corner
         PlaceIcon(f, "leader", f.LeaderIcon, 20, 20, "CENTER", f, "TOPLEFT", 16, -2)
         if f.ctx and f.ctx.factionIcon then
-            -- (11-17, Malkkav) the flag carriers' faction crest: the frame's height, centred on its
+            -- the flag carriers' faction crest: the frame's height, centred on its
             -- right edge and a little past it (as on the ring styles' ring)
             local size = st.height or 40
             PlaceIcon(f, "role", f.RoleIcon, size, size, "CENTER", f, "RIGHT", size * 0.2, 0)
         else
-            -- (11-17, Malkkav) the bottom-left corner (was bottom-right)
+            -- the bottom-left corner
             PlaceIcon(f, "role", f.RoleIcon, 24, 24, "CENTER", f, "BOTTOMLEFT", 4, 2)
         end
         PlaceIcon(f, "raidIcon", f.RaidIcon, 16, 16, "CENTER", f, "TOP", 0, -2)
@@ -2126,7 +2195,7 @@ local function LayoutTarget(t)
     end
 end
 
--- The gap between two frames (11-13, Malkkav): in Raid Style Spacing is measured between the bars, so
+-- The gap between two frames: in Raid Style Spacing is measured between the bars, so
 -- 0 makes the bars touch (the tiles' margins, where the borders sit, overlap). Saved Raid Style
 -- spacings gain the two margins once, so a setup looks as it did (party.raid.barSpacing).
 function PF.Gap(st, key)
@@ -2301,7 +2370,7 @@ local function ApplyVisibility()
     else
         -- [group:party] can stay false through a fight after joining one (party1 already exists):
         -- the unit checks cover it, and raid1 hides it in a raid the same way
-        -- (11-17, Jereth) Show When Solo: your own tile, alone, for click-casting healers
+        -- Show When Solo: your own tile, alone, for click-casting healers
         local solo = party.showSolo and party.showPlayer and "show" or "hide"
         RegisterStateDriver(holder, "visibility", "[group:raid] hide; [@raid1,exists] hide; [group:party] show; [@party1,exists] show; " .. solo)
     end
@@ -2518,7 +2587,7 @@ local function ApplyPreviewExtras(f, data)
             hl:SetBackdrop(PF.EdgeBackdrop(f))
             hl:SetBackdropBorderColor(c[1], c[2], c[3], 1)
         end
-        -- (11-16) the portrait's ring border too, and the fast pulse, as the real one
+        -- the portrait's ring border too, and the fast pulse, as the real one
         local tint = ns.UFRing and ns.UFRing.DispelTint and ns.UFRing.DispelTint(f, hl)
         if tint then tint:SetVertexColor(c[1], c[2], c[3], 1); tint:Show() end
         -- the whole sample pulses: the ring's tint is a child of it, so it beats along
@@ -2540,7 +2609,7 @@ ApplyPreview = function(f)
     f.powerShown = nil
     local st = TS(f)
     local class = data.class
-    -- (11-17, Malkkav) Full Player Names on: the sample's surname too, as ns.UnitDisplayName joins them
+    -- Full Player Names on: the sample's surname too, as ns.UnitDisplayName joins them
     local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
     if data.surname and not (uf and uf.fullNames == false) then
         f.Name:SetText(data.name .. " " .. data.surname)
@@ -2560,12 +2629,14 @@ ApplyPreview = function(f)
     f.Health:SetValue(data.health or 1)
     K.SampleDamageTrail(f.DamageTrail, data.health or 1, not data.dead and K.DamageTrailOn(st and st.damageTrail))
     K.BarLookUpdate(f.Health, nil, false, data.dead)
+    -- (Health Colour: the sample's colour at the sample's health)
+    local health = data.health or 1
     if data.rgb then
-        f.Health:SetStatusBarColor(data.rgb[1], data.rgb[2], data.rgb[3])
+        f.Health:SetStatusBarColor(K.SampleHealthColor(st, health, data.rgb[1], data.rgb[2], data.rgb[3]))
     elseif ns.ClassColorsOn(st) then
-        f.Health:SetStatusBarColor(PreviewColor(class))
+        f.Health:SetStatusBarColor(K.SampleHealthColor(st, health, PreviewColor(class)))
     else
-        f.Health:SetStatusBarColor(ns.HEALTH_GREEN[1], ns.HEALTH_GREEN[2], ns.HEALTH_GREEN[3])
+        f.Health:SetStatusBarColor(K.SampleHealthColor(st, health, ns.HEALTH_GREEN[1], ns.HEALTH_GREEN[2], ns.HEALTH_GREEN[3]))
     end
     local mode = st.healthText or "percent"
     f.HealthText:SetAlpha(1)
@@ -2590,8 +2661,8 @@ ApplyPreview = function(f)
     end
     local ptMode = TilePowerMode(f, st)
     K.FormatBarText(f.PowerText, ptMode, math_floor((data.power or 1) * 9000), math_floor((data.power or 1) * 100), 9000)
-    -- a sample incoming heal and shield past the health, as the unit frames' samples show (they read
-    -- as missing on party frames without: a player's question 11-11); none on the dead
+    -- a sample incoming heal and shield past the health, as the unit frames' samples show (without
+    -- them they read as missing); none on the dead
     if f.HealBar then
         local on = not data.dead
         f.HealBar:SetMinMaxValues(0, 1)
@@ -2653,8 +2724,9 @@ ApplyPreview = function(f)
     end)
     f:SetAlpha(1)
     f.TargetHighlight:SetAlpha(0)
-    -- no Threat Glow on a sample
+    -- no Threat Glow on a sample (nor its health bar flash)
     K.SetBorderGlow(f.Border)
+    PF.ThreatFlash(f, false)
     UpdatePortrait(f)
     UpdateCast(f)
     -- the icons and auras of Edit Mode's sample; a settings preview shows the frame alone
@@ -2680,7 +2752,7 @@ ApplyPreview = function(f)
         end
         t.Health:SetMinMaxValues(0, 1)
         t.Health:SetValue(sample.health)
-        t.Health:SetStatusBarColor(r, g, b)
+        t.Health:SetStatusBarColor(K.SampleHealthColor(TS(t), sample.health, r, g, b))
         t.Name:SetText(sample.name)
     end
 end
@@ -2784,7 +2856,7 @@ local function BuildTile(f, unit)
     f.LeaderIcon:Hide()
     f.PvPIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 3)
     f.PvPIcon:Hide()
-    -- (11-17, Malkkav) the boss frames' Elite & Rare skull (ctx.classIcon), Addon Style only: the ring
+    -- the boss frames' Elite & Rare skull (ctx.classIcon), Addon Style only: the ring
     -- styles show the rank with the ring's dragon
     if f.ctx and f.ctx.classIcon then
         f.ClassIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 3)
@@ -2867,9 +2939,9 @@ local function SetTileUnit(f, unit)
         for _, event in ipairs(MEMBER_UNIT_EVENTS) do pcall(f.RegisterUnitEvent, f, event, unit) end
     end
     SetRangeEvent(f, f:IsVisible())
-    local function Retarget(container) pcall(container.SetUnit, container, unit or "none") end   -- no unit: the containers' own null token
-    if f.AuraPos then for _, entry in pairs(f.AuraPos) do Retarget(entry.container) end end
-    if f.AuraHighlight then Retarget(f.AuraHighlight.container) end
+    local token = unit or "none"   -- no unit: the containers' own null token
+    if f.AuraPos then for _, entry in pairs(f.AuraPos) do pcall(entry.container.SetUnit, entry.container, token) end end
+    if f.AuraHighlight then pcall(f.AuraHighlight.container.SetUnit, f.AuraHighlight.container, token) end
     if unit and f:IsVisible() then UpdateAll(f) end
 end
 
@@ -2879,6 +2951,8 @@ local function CreateMember(index)
     f.index = index
     BuildTile(f, unit)
     members[index] = f
+    -- LB + D-pad group targeting in the Gamepad UI (PadGroupTargeting.lua)
+    if ns.PadGroupTargeting then ns.PadGroupTargeting.Add(f) end
     return f
 end
 
@@ -2978,10 +3052,10 @@ local RebuildSettings   -- the dialog is rebuilt when the style changes
 
 local function BuildSettings()
     local D = StyleDefaults()
-    -- the style this list was built for (6.3.3, Malkkav: Reset To Default from Raid Style broke the
-    -- classic frames). Edit Mode's reset runs every row of the list it has, Style first: Style went
-    -- back to Classic, then the other rows wrote Raid Style's defaults into the Classic setup. The
-    -- list is rebuilt whenever the style changes, so each row writes to its own style's setup.
+    -- the style this list was built for. Edit Mode's reset runs every row of the list it has, Style
+    -- first: once Style is back to Classic, the other rows would write Raid Style's defaults into the
+    -- Classic setup. The list is rebuilt whenever the style changes, so each row writes to its own
+    -- style's setup.
     local _, builtKey = S()
     local function OwnS()
         local party = GetPartyDb()
@@ -3072,7 +3146,7 @@ local function BuildSettings()
           end,
           desc = L["Which way the frames go from the first member."],
           get = getP("grow", "DOWN"), set = setP("grow") },
-        -- (11-16, Malkkav: "Frame Gap", as on the raid and boss frames; it was "Spacing")
+        -- ("Frame Gap", as on the raid and boss frames; found by "Spacing" too)
         { name = L["Frame Gap"], search = L["Spacing"], kind = LEM.SettingType.Slider, default = D.spacing, minValue = 0, maxValue = 80, valueStep = 1,
           -- (Raid Style: between the bars, migrated first: PF.Gap)
           get = function() local st, key = S(); if st then PF.Gap(st, key) end; return getS("spacing")() end,
@@ -3083,7 +3157,7 @@ local function BuildSettings()
         { name = L["Show Player"], kind = LEM.SettingType.Checkbox, default = showPlayerDefault, get = getP("showPlayer", showPlayerDefault),
           set = function(layoutName, value)
               setP("showPlayer")(layoutName, value)
-              -- (11-17) Show When Solo shows your own frame: off with it
+              -- Show When Solo shows your own frame: off with it
               if not value then local party = GetPartyDb(); if party then party.showSolo = false end end
               LEM:RefreshFrameSettings(holder)
               if ns.UnitFrames.RefreshPartyHide then ns.UnitFrames:RefreshPartyHide() end
@@ -3091,8 +3165,9 @@ local function BuildSettings()
           desc = L["Your own frame first, with the party."] },
         { name = L["Show When Solo"], kind = LEM.SettingType.Checkbox, default = false,
           get = getP("showSolo", false),
-          set = function(layoutName, value) setP("showSolo")(layoutName, value); ApplyVisibility() end,
-          -- (11-17, Malkkav) only with Show Player, as Hide Player Frame in a Party: without it, your own frame could vanish
+          -- (Refresh applies the visibility)
+          set = setP("showSolo"),
+          -- only with Show Player, as Hide Player Frame in a Party: without it, your own frame could vanish
           hidden = function() return not getP("showPlayer", showPlayerDefault)() end,
           desc = L["Your party frame shows even when you're not in a group, so you can click-cast on yourself."] },
         { name = L["Hide Player Frame in a Party"], kind = LEM.SettingType.Checkbox, default = false,
@@ -3109,10 +3184,10 @@ local function BuildSettings()
 
     -- Forever Style (classic look): the plate keeps Blizzard's proportions; Scale sizes it
     local function onPlate() return PlateStyle() and not IsRaidStyle() end
-    -- (11-16) the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
+    -- the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
     local frameItems = {
         { name = L["Scale"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.PlateDefaultScale("party") or 100,
-          minValue = 75, maxValue = 250, valueStep = 5, formatter = function(value) return value end,   -- plain: "100%" clips the value box (11-17)
+          minValue = 75, maxValue = 250, valueStep = 5, formatter = function(value) return value end,   -- plain: "100%" clips the value box
           get = function() local st = S(); return st and st.plateScale or (ns.UFRing and ns.UFRing.PlateDefaultScale("party")) or 100 end,
           set = function(layoutName, value)
               -- (a reset that just switched from Raid Style must not size the Classic plate)
@@ -3144,7 +3219,7 @@ local function BuildSettings()
                 st.platePower = value
                 Refresh()
             end, onPlate),
-        -- (Raid Style, as on the raid frames: 11-13)
+        -- (Raid Style, as on the raid frames)
         { name = L["Power Bar for Mana Users Only"], kind = LEM.SettingType.Checkbox, default = false,
           get = function() return getS("powerManaOnly")() and true or false end, set = setS("powerManaOnly"),
           desc = L["Power bars only for classes that use mana. Warriors and rogues get the room for health instead."],
@@ -3156,13 +3231,13 @@ local function BuildSettings()
               or { { text = L["None"], value = "none", isRadio = true }, { text = L["2D"], value = "3d", isRadio = true }, { text = L["Class Icon"], value = "class", isRadio = true } },
           get = function()
               local v = getS("portrait")()
-              if v == "model" then return "3d" end   -- (11-15) the dropped 3D model
+              if v == "model" then return "3d" end   -- a saved 3D model setting reads as 2D
               if ringPortrait and (v == nil or v == "none") then return "3d" end
               return v
           end,
           set = setS("portrait"), hidden = classicOnly },
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = getS("healthText"), set = setS("healthText") },
-        -- (Raid Style too since 11-13; its default is None, as on the raid frames: TilePowerMode)
+        -- (Raid Style's default is None, as on the raid frames: TilePowerMode)
         { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = builtKey == "raid" and "none" or "value", values = K.POWER_TEXT_MODES,
           get = function()
               local st = S()
@@ -3175,10 +3250,12 @@ local function BuildSettings()
           set = setS("powerText") },
         { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return getS("showName")() ~= false end, set = setS("showName") },
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = getS("showLevel"), set = setS("showLevel") },
-        -- (in Frame since 6.3.3: it changes how the frame behaves, not how it looks)
+        -- (in Frame: it changes how the frame behaves, not how it looks)
         { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The frame fades while the unit is out of range."],
           get = function() return getS("rangeCheck")() ~= false end, set = setS("rangeCheck") },
+        -- Behaviour; the pets and party targets follow it
+        K.HealthColorSetting(getS("healthColor"), setS("healthColor")),
     }
     local sizeItems, textItems, behaviourItems = ns.SplitFrameItems(frameItems)
     Section("Size", sizeItems)
@@ -3216,7 +3293,7 @@ local function BuildSettings()
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.texture, values = K.BuildTextureValues(),
           get = getS("texture"), set = setS("texture") },
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = D.border, values = K.BuildBorderValues(false),
-          -- (off Forever's plate in every style: Raid Style tiles too, 11-13)
+          -- (off Forever's plate in every style: Raid Style tiles too)
           get = getS("border"), set = setS("border"), hidden = onPlate },
         { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = D.absorbTexture, values = K.BuildAbsorbValues(),
           get = getS("absorbTexture"), set = setS("absorbTexture"),
@@ -3230,10 +3307,10 @@ local function BuildSettings()
         end)(),
         K.ClassColorSetting(function() return ns.ClassColorsOn(S()) end, setS("classColor")),
         K.SmoothBarsSetting(getS("smoothBars"), setS("smoothBars")),
-        -- (11-16, Marcus: per style, off)
+        -- (per style, off)
         K.BarEdgeGlowSetting(getS("barEdgeGlow"), setS("barEdgeGlow")),
         K.DamageTrailSetting(getS("damageTrail"), setS("damageTrail")),
-        -- (11-17, Malkkav) Threat Glow: in Look, right after Class Colours (Core.lua order)
+        -- Threat Glow: in Look, right after Class Colours (Core.lua order)
         { name = L["Threat Glow"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The border pulses in the threat colour while this member has aggro."],
           get = function() return getS("threatGlow")() ~= false end, set = setS("threatGlow") },
@@ -3271,7 +3348,7 @@ local function BuildSettings()
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = PARTY_PLACES, generator = Place("debuffs"),
           get = getS("debuffs"), set = setS("debuffs"),
           desc = L["Debuffs as Blizzard's raid frames pick them: boss and role debuffs, priority debuffs, and the ones you can dispel."] },
-        K.HideBuffsSetting("PERMANENT", function() return getS("hideBuffs")() or "PERMANENT" end, setS("hideBuffs")),
+        K.HideBuffsSetting("OFF", function() return getS("hideBuffs")() or "OFF" end, setS("hideBuffs")),
         { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = D.dispelHighlight,
           values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
                      { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
@@ -3290,8 +3367,8 @@ local function BuildSettings()
           get = function() return getS("dispellableOnly")() and true or false end, set = setS("dispellableOnly"),
           desc = L["Only the debuffs you can dispel, plus boss debuffs and other important ones, as on Blizzard's raid frames."] },
         -- a dispel icon per type you can dispel, on the portrait (or the health bar's middle)
-        -- (11-16, Malkkav) a place in both styles, as the buffs and debuffs: the portrait grid (default) or
-        -- a line anywhere else (Classic was an on / off switch; Raid Style had places since 11-13)
+        -- a place in both styles, as the buffs and debuffs: the portrait grid (default) or a line
+        -- anywhere else
         { name = L["Dispel Icons"], kind = LEM.SettingType.Dropdown, default = D.dispels, generator = Place("dispels"),
           values = (function()
               local list = { PARTY_PLACES[1], { text = L["On the Portrait"], value = "PORTRAIT", isRadio = true } }
@@ -3316,8 +3393,8 @@ local function BuildSettings()
     end
     Section("Icons", iconItems)
 
-    -- (11-16, Malkkav) the pets' and the members' targets' frames in one section, always there: where
-    -- each shows (Pets, Party Targets; they were in the Party section), then their size and border while on
+    -- the pets' and the members' targets' frames in one section, always there: where each shows (Pets,
+    -- Party Targets), then their size and border while on
     local function noPets() return not getP("pets", false)() end
     local function noTargets() return not getP("targets", false)() end
     Section("Pets & Targets", {
@@ -3344,6 +3421,8 @@ local function BuildSettings()
 end
 
 RebuildSettings = function()
+    -- (a Reset Settings in Edit Mode rebuilds once, after its last setting: LEM:Defer)
+    if LEM:Defer(RebuildSettings) then return end
     if not holder then return end
     LEM:AddFrameSettings(holder, BuildSettings())
     C_Timer.After(0, function() if holder then LEM:RefreshFrameSettings(holder) end end)
@@ -3371,6 +3450,8 @@ local function UpdateTargetTicker()
 end
 
 Refresh = function()
+    -- (a Reset Settings in Edit Mode runs this once, after its last setting: LEM:Defer)
+    if LEM:Defer(Refresh) then return end
     if not holder then return end
     if InCombatLockdown() then pendingLayout = true return end
     pendingLayout = false
@@ -3413,7 +3494,7 @@ PF.Tile = {
     IconShown = IconShown, IconStore = IconStore, LanesExtent = LanesExtent,
 }
 
--- A settings preview's sample tile (11-10): a plain button with no unit, mouse or auras, built and laid
+-- A settings preview's sample tile: a plain button with no unit, mouse or auras, built and laid
 -- out by the tile kit, showing the Edit Mode sample. ctx: the owner's (raid, boss), or nil for the
 -- party; index: the party sample's place (PREVIEW)
 function PF.SampleTile(parent, ctx, sample, index)

@@ -27,7 +27,7 @@ local function Faces()
 end
 S.FontFaces = Faces
 
--- a font's faces: Global first, named after the face it stands for (11-13); an optional font
+-- a font's faces: Global first, named after the face it stands for; an optional font
 -- (Default keeps Blizzard's) has Default before it
 local function GlobalChoice()
     return { ns.GLOBAL_FONT, ns.L["Global (%s)"]:format(ns.GlobalFontFace()) }
@@ -85,7 +85,8 @@ function S:AnyFontChanged()
     for _, font in ipairs(self.allFonts) do
         for _, field in ipairs(FIELDS) do
             local default = font.Default(field)
-            if default ~= nil and font.Get(field) ~= default then return true end
+            -- (a font with no size control: a saved size is not a change anyone can see)
+            if default ~= nil and font.Get(field) ~= default and not (font.noSize and field == "size") then return true end
         end
     end
     return false
@@ -108,10 +109,10 @@ end
 --   { key = "text", path = "chat.chatFont" }                    a saved path in the profile
 --   { key = "names", font = fn -> table, default = fn -> table }  a table found when asked (the unit
 --       frames' fonts are saved per frame style; others are seeded first)
--- Font options: autoSize (adds the Auto size, 0), label (fn: a heading the copy hasn't), hidden,
--- optional, faceOnly, disabled. Each heading has its own Reset (11-13, Malkkav: as the sections';
--- no Apply to All: the Global Font gives every font one face).
--- prefix (11-13, fonts back from Edit Mode): several sections of one module with the same texts
+-- Font options: autoSize (adds the Auto size, 0), noSize (no size: the text takes another's), label (fn: a
+-- heading the copy hasn't), hidden, optional, faceOnly, disabled. Each heading has its own Reset, as the sections' (no Apply to All: the
+-- Global Font gives every font one face).
+-- prefix: several sections of one module with the same texts
 -- ("player", "target"...): the row keys become "uf.font.player_names", whose copy falls back to
 -- "uf.font.names".
 function S:FontRows(def)
@@ -127,7 +128,7 @@ function S:FontRows(def)
             Set = function(field, value) S:SetPath(font.path .. "." .. field, value) end
             Default = function(field) return S:DefaultPath(font.path .. "." .. field) end
         end
-        S.allFonts[#S.allFonts + 1] = { def = def, Get = Get, Set = Set, Default = Default }
+        S.allFonts[#S.allFonts + 1] = { def = def, Get = Get, Set = Set, Default = Default, noSize = font.noSize }
         -- the settings preview reads a path, or the table itself (PreviewSamples.lua Font)
         local preview = font.path or font.font
         local heading = RowKey(font.key)
@@ -138,7 +139,7 @@ function S:FontRows(def)
         local function Changed()
             for _, field in ipairs(FIELDS) do
                 local default = Default(field)
-                if default ~= nil and Get(field) ~= default then return true end
+                if default ~= nil and Get(field) ~= default and not (font.noSize and field == "size") then return true end
             end
             return false
         end
@@ -194,7 +195,7 @@ function S:FontRows(def)
             Control("face", { kind = "dropdown", dropdownWidth = 150, choices = OptionalFaces })
         else
         Control("face", { kind = "dropdown", dropdownWidth = 150, choices = font.optional and OptionalFaces or FontFaces })
-        Control("size", { kind = "choice", choices = font.autoSize and AUTO_SIZES or SIZES })
+        if not font.noSize then Control("size", { kind = "choice", choices = font.autoSize and AUTO_SIZES or SIZES }) end
         Control("flags", { kind = "choice", choices = { "NONE", "OUTLINE", "THICKOUTLINE" } })
         -- one choice sets the shadow and its offset
         Control("shadow", { kind = "choice", choices = { "none", "soft", "strong" },
@@ -219,7 +220,7 @@ function S:FontRows(def)
 end
 
 --------------------------------------------------
--- BLIZZARD'S TEXT (11-13, fonts phase 4)
+-- BLIZZARD'S TEXT
 -- The Settings page's Global Font section, all off by default:
 --   Game Text       every Blizzard font object takes the Global Font's face; sizes, outlines and the
 --                   other alphabets' faces stay (Core.lua SetFontObjectFaceRaw)
@@ -281,7 +282,7 @@ end
 
 -- A face's file. A font another addon brings (SharedMedia packs load after FlareUI) isn't registered
 -- yet as FlareUI loads, so the file found at the last login is kept (fonts.files, face -> file) and
--- used until then: the names over heads take their font early (11-15, Discord: Lexend lost).
+-- used until then: the names over heads take their font early.
 local function FacePath(face)
     if face == ns.GLOBAL_FONT then face = ns.GlobalFontFace() end
     local db = FontsDb()
@@ -315,7 +316,7 @@ function GF.Apply(restyle)
     if not GF.original then return end
     if GF.changed then for _, entry in ipairs(GF.original) do Restore(entry) end end
     GF.gamePath, GF.nameplatePath = nil, nil
-    -- (11-15, Ashiya) the names over characters in the world are drawn with UNIT_NAME_FONT, which the game
+    -- the names over characters in the world are drawn with UNIT_NAME_FONT, which the game
     -- reads as it starts: kept with the Nameplate Font (a full restart shows it), Blizzard's own back when cleared
     GF.unitNameOriginal = GF.unitNameOriginal or _G.UNIT_NAME_FONT
     _G.UNIT_NAME_FONT = GF.unitNameOriginal

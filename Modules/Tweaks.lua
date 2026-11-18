@@ -20,14 +20,11 @@ LibStub("AceEvent-3.0"):Embed(Tweaks)
 --------------------------------------------------
 -- 2. UPVALUES
 --------------------------------------------------
-local _G = _G
-local ipairs, pairs, type, tostring = ipairs, pairs, type, tostring
-local pcall = pcall
+local ipairs, pairs, type = ipairs, pairs, type
 local math_floor, math_max, math_min = math.floor, math.max, math.min
 local CreateFrame = CreateFrame
 local InCombatLockdown = InCombatLockdown
 local IsShiftKeyDown, IsControlKeyDown = IsShiftKeyDown, IsControlKeyDown
-local C_Timer = C_Timer
 
 local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.tweaks
@@ -476,7 +473,15 @@ local function InitMoveAnyFrame()
     ScanUIPanels()
     ScanBagFrames()
     -- load-on-demand panels register themselves when their addon loads
-    Tweaks:RegisterEvent("ADDON_LOADED", function() C_Timer.After(0, ScanUIPanels) end)
+    -- (several addons loading in one frame: one scan on the next)
+    Tweaks:RegisterEvent("ADDON_LOADED", function()
+        if Tweaks.panelScanQueued then return end
+        Tweaks.panelScanQueued = true
+        C_Timer.After(0, function()
+            Tweaks.panelScanQueued = nil
+            ScanUIPanels()
+        end)
+    end)
     -- Blizzard's panel manager re-anchors panels as they open / close; saved positions go back after
     hooksecurefunc("UpdateUIPanelPositions", ApplyAllNowAndNext)
     -- bags re-anchor (and re-scale) themselves every time they open or the layout changes
@@ -536,7 +541,7 @@ Tweaks.SYNC_NO_RELOAD = {
     questLogOpen = true, miniWorldMap = true, characterFrameCollapsed = true, closedInfoFrames = true,
     friendsSmallView = true, friendsViewButtons = true, guildRosterView = true,
     miniCommunitiesFrame = true, miniDressUpFrame = true,
-    -- (11-15) tutorials seen, panel tabs and sorts, the raid manager's open state: no reload either
+    -- tutorials seen, panel tabs and sorts, the raid manager's open state: no reload either
     closedExtraAbiltyTutorials = true, lastVoidStorageTutorial = true, covenantMissionTutorial = true,
     orderHallMissionTutorial = true, lastGarrisonMissionTutorial = true, shipyardMissionTutorialAreaBuff = true,
     shipyardMissionTutorialBlockade = true, shipyardMissionTutorialFirst = true,
@@ -555,7 +560,7 @@ local function Me()
     local guid, name = ns.PlayerGUID(), UnitName("player")
     if not (guid and name) then return nil end
     local _, class = UnitClass("player")
-    -- full: first and second name, for the options' label (11-10)
+    -- full: first and second name, for the options' label
     local _, surname = UnitName("player")
     local full = (type(surname) == "string" and surname ~= "") and (name .. " " .. surname) or name
     return { guid = guid, name = name, full = full, realm = GetRealmName(), class = class }
@@ -566,7 +571,7 @@ local function IsSource(store)
     return type(source) == "table" and guid ~= nil and source.guid == guid
 end
 
--- the character's name for display (first and second name; no realm, 11-10 Malkkav)
+-- the character's name for display (first and second name; no realm)
 local function SourceLabel(source)
     if type(source) ~= "table" then return nil end
     return source.full or source.name or "?"
@@ -595,8 +600,8 @@ local function SaveSync(event)
     if not account.source then account.source = Me() end
     if not IsSource(account) then return end
     -- The snapshot is built fresh, then compared with the last one: savedAt (and each part's stamp)
-    -- only moves when a value really changed. Before 11-15 every save got a new savedAt, so each
-    -- session of the source looked like a new snapshot and every alt was asked to reload (Shweep).
+    -- only moves when a value really changed, so a session that changed nothing doesn't ask every
+    -- other character to reload.
     local old = account.snapshot or {}
     local store = {}
 
@@ -1047,7 +1052,7 @@ local function OnMerchantShow()
     local function TryRepair()
         local cost, canRepair = GetRepairAllCost()
         if not (canRepair and cost and cost > 0) then return true end
-        -- (11-16, Malkkav) Repair with Guild Funds: the guild bank pays first when your rank may and its
+        -- Repair with Guild Funds: the guild bank pays first when your rank may and its
         -- daily limit covers it (-1: no limit), as Blizzard's guild repair button; if the bank turns out
         -- short, your own gold pays a moment later
         if db.repairGuild and CanGuildBankRepair and CanGuildBankRepair() then
@@ -1145,7 +1150,7 @@ local origZoomIn, origZoomOut
 Tweaks.FORCED_KEYS = {
     maxZoom = "cameraDistanceMaxZoomFactor", zoomSpeed = "cameraZoomSpeed",
     tips = "showTutorials", combatPlates = "nameplateShowEnemies", mapFade = "mapFade",
-    combatFriendly = "nameplateShowFriends",   -- Combat Friendly Plates (11-17)
+    combatFriendly = "nameplateShowFriends",   -- Combat Friendly Plates
     compare = "alwaysCompareItems",   -- the Tooltips module's Compare with Shift
     keyDown = "ActionButtonUseKeyDown",   -- Cast on Key Press
 }
@@ -1171,7 +1176,6 @@ function Tweaks.ForcedCVars(key)
     global.forcedCVars[key] = nil
     return char.forcedCVars
 end
-local ForcedCVars = Tweaks.ForcedCVars
 
 -- The value to put back; a stored true (no value was read) puts back Blizzard's default
 function Tweaks.StoredCVar(stored, cvar)
@@ -1186,8 +1190,8 @@ function Tweaks.RestoreTips(stored)
     pcall(SetCVar, "showNPETutorials", saved.npe or 1)
 end
 
--- (11-15, Malkkav) Better Camera became two sliders, Max Zoom and Zoom Speed: nil = Blizzard's own (left
--- alone); Better Camera's old switch carries over as FlareUI's values (2.6 and 50)
+-- Max Zoom and Zoom Speed: nil = Blizzard's own (left alone). The old Better Camera switches
+-- (maxCameraZoom, fasterCameraZoom) carry over as FlareUI's values (2.6 and 50)
 function Tweaks.CameraDefault(cvar)
     local ok, v = pcall(C_CVar.GetCVarDefault, cvar)
     return ok and tonumber(v) or nil
@@ -1197,7 +1201,7 @@ local function ApplyCamera()
     if not db then return end
     if db.maxCameraZoom then db.cameraMaxZoom = db.cameraMaxZoom or 2.6; db.maxCameraZoom = false end
     if db.fasterCameraZoom then db.cameraZoomSpeed = db.cameraZoomSpeed or 50; db.fasterCameraZoom = false end
-    local forced = ForcedCVars("maxZoom")
+    local forced = Tweaks.ForcedCVars("maxZoom")
     if db.cameraMaxZoom then
         forced.maxZoom = forced.maxZoom or GetCVar("cameraDistanceMaxZoomFactor") or true
         pcall(SetCVar, "cameraDistanceMaxZoomFactor", db.cameraMaxZoom)
@@ -1224,12 +1228,12 @@ local function ApplyCamera()
             if step == 1 then step = wheel end
             return origZoomOut(step, ...)
         end
-        forced = ForcedCVars("zoomSpeed")
+        forced = Tweaks.ForcedCVars("zoomSpeed")
         forced.zoomSpeed = forced.zoomSpeed or GetCVar("cameraZoomSpeed") or true
         pcall(SetCVar, "cameraZoomSpeed", db.cameraZoomSpeed)
     else
         if origZoomIn then _G.CameraZoomIn, _G.CameraZoomOut = origZoomIn, origZoomOut end
-        forced = ForcedCVars("zoomSpeed")
+        forced = Tweaks.ForcedCVars("zoomSpeed")
         if forced.zoomSpeed then
             pcall(SetCVar, "cameraZoomSpeed", Tweaks.StoredCVar(forced.zoomSpeed, "cameraZoomSpeed"))
             forced.zoomSpeed = nil
@@ -1237,10 +1241,9 @@ local function ApplyCamera()
     end
 end
 
--- LOOT_READY says whether to auto-loot: every slot is taken at once, on the first event only
--- (11-13, a player: "Fast Auto-Loot seems broken") the one go per window was cleared only by
--- LOOT_CLOSED, so one missed close left it used up until a reload. It's now a moment long: the same
--- window's second event (LOOT_OPENED after LOOT_READY) is still skipped, and any later window loots.
+-- LOOT_READY says whether to auto-loot: every slot is taken at once, on the first event only. The one
+-- go is a moment long, not until LOOT_CLOSED (a missed close would use it up until a reload): the same
+-- window's second event (LOOT_OPENED after LOOT_READY) is skipped, and any later window loots.
 local lootTakenAt = 0
 local function FastLoot(_, autoLoot)
     local db = GetDb()
@@ -1256,7 +1259,7 @@ end
 function Tweaks.ApplyMapFade()
     local db = GetDb()
     if not db then return end
-    local forced = ForcedCVars("mapFade")
+    local forced = Tweaks.ForcedCVars("mapFade")
     if db.mapFade then
         if forced.mapFade == nil then forced.mapFade = GetCVar("mapFade") or "0" end
         pcall(SetCVar, "mapFade", 1)
@@ -1271,7 +1274,7 @@ end
 function Tweaks.ApplyKeyDown()
     local db = GetDb()
     if not db then return end
-    local forced = ForcedCVars("keyDown")
+    local forced = Tweaks.ForcedCVars("keyDown")
     if db.keyDown then
         if forced.keyDown == nil then forced.keyDown = GetCVar("ActionButtonUseKeyDown") or "0" end
         pcall(SetCVar, "ActionButtonUseKeyDown", 1)
@@ -1385,7 +1388,7 @@ end
 local function ApplyTips()
     local db = GetDb()
     if not db then return end
-    local forced = ForcedCVars("tips")
+    local forced = Tweaks.ForcedCVars("tips")
     if db.hideTips then
         forced.tips = forced.tips or { tutorials = GetCVar("showTutorials"), npe = GetCVar("showNPETutorials") }
         pcall(SetCVar, "showTutorials", 0)
@@ -1402,7 +1405,7 @@ local function ApplyTips()
     end
 end
 
--- Hide Clutter > Loot Alerts (11-14, a player asked): Blizzard's loot pop-ups (items won or looted,
+-- Hide Clutter > Loot Alerts: Blizzard's loot pop-ups (items won or looted,
 -- upgrades, money) skip their alert while it's on. Each queue's own skip check (the loot one's: the
 -- enableLootToasts CVar) still runs; no CVar is changed, so off leaves nothing to put back.
 local LOOT_ALERT_SYSTEMS = { "LootAlertSystem", "LootUpgradeAlertSystem", "MoneyWonAlertSystem" }
@@ -1454,18 +1457,32 @@ local NAMEPLATE_ADDONS = {
     { "EllesmereUINameplates", "EllesmereUI Nameplates" }, { "nPlates", "nPlates" },
 }
 
--- The name of the nameplate addon in charge, or nil
+-- The name of the nameplate addon in charge, or nil. Asked on every nameplate update, so the answer is
+-- kept until the next addon loads (false: none).
 function Tweaks:GetNameplateAddon()
+    local known = Tweaks.nameplateAddon
+    if known ~= nil then return known or nil end
     for _, entry in ipairs(NAMEPLATE_ADDONS) do
-        if C_AddOns.IsAddOnLoaded(entry[1]) then return entry[2] end
+        if C_AddOns.IsAddOnLoaded(entry[1]) then
+            Tweaks.nameplateAddon = entry[2]
+            return entry[2]
+        end
     end
-    -- a UI suite whose nameplates are a module that can be switched off
-    local E = C_AddOns.IsAddOnLoaded("ElvUI") and _G.ElvUI and _G.ElvUI[1]
-    if type(E) == "table" and type(E.private) == "table" and type(E.private.nameplates) == "table"
-        and E.private.nameplates.enable then
-        return "ElvUI"
+    -- a UI suite whose nameplates are a module that can be switched off: read each time, its
+    -- settings may not be loaded yet on the first ask
+    if C_AddOns.IsAddOnLoaded("ElvUI") then
+        local E = _G.ElvUI and _G.ElvUI[1]
+        if type(E) == "table" and type(E.private) == "table" and type(E.private.nameplates) == "table"
+            and E.private.nameplates.enable then
+            return "ElvUI"
+        end
+        return
     end
+    Tweaks.nameplateAddon = false
 end
+Tweaks.nameplateAddonWatch = CreateFrame("Frame")
+Tweaks.nameplateAddonWatch:RegisterEvent("ADDON_LOADED")
+Tweaks.nameplateAddonWatch:SetScript("OnEvent", function() Tweaks.nameplateAddon = nil end)
 
 local function LayoutComboRow(row, count)
     for i = 1, count do
@@ -1621,11 +1638,8 @@ local function GetQuestTag(plate)
     return tag
 end
 
--- Where the tag sits: the plate's level box when it shows, otherwise the health bar. The second
--- return is what sizes and layers it: the level box whenever there is one (with Hide Level it is only
--- invisible, so the tag keeps its usual size and stays above the plate), otherwise the health bar.
--- the health bar itself (PlateAnchor gives the cast bar's container first, which sits under it even
--- while nothing is cast: with Hide Level the badge sat below the bar, a player's report 11-11)
+-- The health bar itself (PlateAnchor gives the cast bar's container first, which sits under it even
+-- while nothing is cast: with Hide Level the badge would sit below the bar)
 local function QuestTagBar(plate)
     local unitFrame = plate.UnitFrame
     local bar = unitFrame and unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar
@@ -1633,6 +1647,9 @@ local function QuestTagBar(plate)
     return PlateAnchor(plate)
 end
 
+-- Where the tag sits: the plate's level box when it shows, otherwise the health bar. The second
+-- return is what sizes and layers it: the level box whenever there is one (with Hide Level it is only
+-- invisible, so the tag keeps its usual size and stays above the plate), otherwise the health bar.
 local function QuestTagAnchor(plate)
     local unitFrame = plate.UnitFrame
     local level = unitFrame and unitFrame.PlayerLevelDiffFrame
@@ -1770,7 +1787,7 @@ local function StretchHealthBar(unitFrame)
     local spacing = _G.NamePlateSetupOptions and _G.NamePlateSetupOptions.castBarToHealthBarSpacing or 0
     pcall(container.SetPoint, container, "BOTTOMRIGHT", cast, "TOPRIGHT", 0, spacing)
     -- the crowd control and loss-of-control icons right after the bar: Blizzard puts them past the
-    -- level box's width too, which left a gap with the box hidden (a player's report 11-11)
+    -- level box's width too, which would leave a gap with the box hidden
     local auras = unitFrame.AurasFrame
     if auras and not auras:IsForbidden() then
         for _, key in ipairs({ "CrowdControlListFrame", "LossOfControlFrame" }) do
@@ -2217,7 +2234,7 @@ local function InitAutoQuests()
                 end
             end
         end
-        -- Skip Gossip (11-14, a player's request): an NPC with nothing to say but one service (banker,
+        -- Skip Gossip: an NPC with nothing to say but one service (banker,
         -- vendor, trainer, innkeeper...) opens it at once, as Blizzard already does for options it marks.
         -- Not in instances (a lone option there can start an event), never twice in one talk, Shift
         -- talks normally. Only service icons count: a chat option can lead anywhere.
@@ -2584,6 +2601,84 @@ local function HandleWay(msg)
     print(string.format("|cff00ff00FlareUI:|r " .. L["Pin set for %s at %.1f, %.1f"], mapName, tonumber(xStr), tonumber(yStr)))
 end
 
+-- ZONE LEVELS ON THE WORLD MAP (tweaks.zoneLevels, off): on a continent map, the zone under the cursor
+-- gets its level range under its name, coloured by difficulty, as Blizzard's map does where the game
+-- has the numbers (on Forever C_Map.GetMapLevels gives none). The ranges are the original game's, and
+-- the ones known for Forever's own zones; cities and battlegrounds have none.
+Tweaks.ZONE_LEVELS = {
+    -- Kalimdor
+    [1411] = { 1, 10 },  [1412] = { 1, 10 },  [1438] = { 1, 10 },     -- Durotar, Mulgore, Teldrassil
+    [1439] = { 10, 20 }, [1413] = { 10, 25 }, [1442] = { 15, 27 },    -- Darkshore, The Barrens, Stonetalon Mountains
+    [1440] = { 18, 30 }, [1441] = { 25, 35 }, [1443] = { 30, 40 },    -- Ashenvale, Thousand Needles, Desolace
+    [1445] = { 35, 45 }, [1444] = { 40, 50 }, [1446] = { 40, 50 },    -- Dustwallow Marsh, Feralas, Tanaris
+    [1447] = { 45, 55 }, [1448] = { 48, 55 }, [1449] = { 48, 55 },    -- Azshara, Felwood, Un'Goro Crater
+    [1451] = { 55, 60 }, [1452] = { 55, 60 },                         -- Silithus, Winterspring
+    -- Eastern Kingdoms
+    [1429] = { 1, 10 },  [1426] = { 1, 10 },  [1420] = { 1, 10 },     -- Elwynn Forest, Dun Morogh, Tirisfal Glades
+    [1436] = { 10, 20 }, [1432] = { 10, 20 }, [1421] = { 10, 20 },    -- Westfall, Loch Modan, Silverpine Forest
+    [1433] = { 15, 25 }, [1431] = { 18, 30 }, [1437] = { 20, 30 },    -- Redridge Mountains, Duskwood, Wetlands
+    [1424] = { 20, 30 }, [1416] = { 30, 40 }, [1417] = { 30, 40 },    -- Hillsbrad Foothills, Alterac Mountains, Arathi Highlands
+    [1434] = { 30, 45 }, [1418] = { 35, 45 }, [1435] = { 35, 45 },    -- Stranglethorn Vale, Badlands, Swamp of Sorrows
+    [1425] = { 40, 50 }, [1427] = { 43, 50 }, [1419] = { 45, 55 },    -- The Hinterlands, Searing Gorge, Blasted Lands
+    [1428] = { 50, 58 }, [1422] = { 51, 58 }, [1423] = { 53, 60 },    -- Burning Steppes, Western / Eastern Plaguelands
+    [1430] = { 55, 60 },                                              -- Deadwind Pass
+    -- Forever's own zones
+    [2521] = { 1, 12 }, [2665] = { 1, 12 },                           -- Zephras Isle (two map IDs)
+    [2548] = { 35, 45 },                                              -- Riverglades
+    [2482] = { 60, 60 },                                              -- Mount Hyjal
+}
+
+-- " (10-20)" for a zone, in the colour Blizzard's map gives it for your level, or nil
+function Tweaks.ZoneLevelText(mapID)
+    local ok, low, high = pcall(C_Map.GetMapLevels, mapID)
+    if not (ok and low and high and low > 0 and high > 0) then
+        local known = Tweaks.ZONE_LEVELS[mapID]
+        if not known then return nil end
+        low, high = known[1], known[2]
+    end
+    local level = UnitLevel("player") or 1
+    local color
+    if level < low then
+        color = GetQuestDifficultyColor(low)
+    elseif level > high then
+        color = GetQuestDifficultyColor(high - 2)   -- (as Blizzard's: a zone well below you isn't yellow)
+    else
+        color = QuestDifficultyColors and QuestDifficultyColors.difficult
+    end
+    local text = low == high and ("(" .. high .. ")") or ("(" .. low .. "-" .. high .. ")")
+    return color and (RGBTableToColorCode(color) .. text .. FONT_COLOR_CODE_CLOSE) or text
+end
+
+-- Our own line under the map's area label: the label writes the zone's name only when it changes, and
+-- the hook reads which zone is under the cursor then. Nothing of Blizzard's is written to.
+function Tweaks.InitZoneLevels()
+    local map = _G.WorldMapFrame
+    if Tweaks.zoneLevelLine or not (map and map.dataProviders) then return end
+    local label
+    for provider in pairs(map.dataProviders) do
+        if type(provider) == "table" and provider.Label and provider.Label.Name then label = provider.Label break end
+    end
+    if not label then return end
+    local line = label:CreateFontString(nil, "OVERLAY", "SubZoneTextFont")
+    line:SetPoint("TOP", label.Name, "BOTTOM", 0, -2)
+    Tweaks.zoneLevelLine = line
+    hooksecurefunc(label.Name, "SetText", function(_, name)
+        line:SetText("")
+        local db = GetDb()
+        if not (db and db.zoneLevels) or not name or name == "" then return end
+        local ok, info = pcall(function()
+            local mapID = map:GetMapID()
+            local x, y = map:GetNormalizedCursorPosition()
+            local at = mapID and x and C_Map.GetMapInfoAtPosition(mapID, x, y)
+            -- (a zone on the map shown, not the map itself)
+            return at and at.mapID ~= mapID and at.name == name and at or nil
+        end)
+        local text = ok and info and Tweaks.ZoneLevelText(info.mapID)
+        -- (where the game has the numbers, Blizzard's label already shows them)
+        if text and not name:find("%(%d") then line:SetText(text) end
+    end)
+end
+
 -- TomTom keeps /way: two addons on one slash command means either could win
 function Tweaks:TomTomOwnsWay()
     return C_AddOns.IsAddOnLoaded("TomTom")
@@ -2605,8 +2700,7 @@ end
 local function NoteCharacter()
     local me = ns.CharDB and ns.CharDB()
     if not me then return end
-    -- first name and surname: Forever's mail needs both, and UnitName gives them apart (11-14, a
-    -- player's report: Your Characters filled in the first name only)
+    -- first name and surname: Forever's mail needs both, and UnitName gives them apart
     local name, surname = UnitName("player")
     me.mailName = (type(surname) == "string" and surname ~= "") and (name .. " " .. surname) or name
     me.realm = GetRealmName()
@@ -2707,7 +2801,7 @@ local function MarkKnownItems()
     end
 end
 
--- Enhanced Vendor Purchases (tweaks.bulkBuy), after EnhanceQoL's (the idea only): Shift+click on a
+-- Enhanced Vendor Purchases (tweaks.bulkBuy): Shift+click on a
 -- merchant item opens Blizzard's amount box with room for many stacks, or for many of an item that
 -- doesn't stack, capped by gold, stock and bag room. Stack and MAX buttons under the box fill in one
 -- stack or the most you can buy. It buys one stack (or one item) at a time and waits for each to
@@ -2857,7 +2951,7 @@ function Bulk.Init()
         local cap = math.huge
         if info.price and info.price > 0 then cap = math.floor(GetMoney() / (info.price / unit)) end
         if info.numAvailable and info.numAvailable >= 0 then cap = math.min(cap, info.numAvailable * unit) end
-        local stackSize = C_Item.GetItemMaxStackSize(itemID) or perBuy
+        local stackSize = C_Item.GetItemMaxStackSizeByID(itemID) or perBuy
         cap = math.min(cap, Bulk.BagRoom(itemID, stackSize))
         cap = math.floor(cap / unit) * unit
         if cap < unit then return end   -- nothing affordable or no room: Blizzard's box (or nothing) stays
@@ -2873,8 +2967,8 @@ function Bulk.Init()
     end)
 end
 
--- Wider Vendor Window (tweaks.merchantWide, reload): 20 items a page in four columns, after
--- EnhanceQoL's. Blizzard's page size is set before its merchant code first runs; items 13 to 20 are
+-- Wider Vendor Window (tweaks.merchantWide, reload): 20 items a page in four columns.
+-- Blizzard's page size is set before its merchant code first runs; items 13 to 20 are
 -- made from Blizzard's own template; the Buyback tab gets Blizzard's narrow window back. Not in the
 -- Gamepad UI (its own navigation knows Blizzard's layout).
 do
@@ -3048,7 +3142,7 @@ end
 
 local function ApplyCombatPlates()
     local db = GetDb()
-    local forced = ForcedCVars("combatPlates")
+    local forced = Tweaks.ForcedCVars("combatPlates")
     if InCombatLockdown() then return end
     if db and db.combatPlates then
         if forced.combatPlates == nil then forced.combatPlates = GetCVar("nameplateShowEnemies") or "1" end
@@ -3059,11 +3153,11 @@ local function ApplyCombatPlates()
     end
 end
 
--- (11-17, Malkkav; AstroFox) Friendly Nameplates in Combat Only: the same for friendly players' plates
+-- Friendly Nameplates in Combat Only: the same for friendly players' plates
 -- (nameplateShowFriends), so you see who is low in a fight without them cluttering the world after
 function Tweaks.ApplyCombatFriendly()
     local db = GetDb()
-    local forced = ForcedCVars("combatFriendly")
+    local forced = Tweaks.ForcedCVars("combatFriendly")
     if InCombatLockdown() then return end
     if db and db.combatFriendly then
         if forced.combatFriendly == nil then forced.combatFriendly = GetCVar("nameplateShowFriends") or "0" end
@@ -3094,7 +3188,7 @@ local function InitCombatPlates()
 end
 
 --------------------------------------------------
--- 17b. UI SCALE (Quality of Life > Advanced), as EnhanceQoL's "Login UI scaling": a preset applied
+-- 17b. UI SCALE (Quality of Life > Advanced): a preset applied
 -- as you log in, account-wide (db.global.uiScale; db.global.uiScaleCustom for Custom). It sets
 -- useUiScale and uiscale, then UIParent's scale itself (Blizzard's slider stops at 65%). nil or
 -- "blizzard" touches nothing; going back to it puts the two CVars back as they were before.
@@ -3109,7 +3203,7 @@ do
 
     -- the scale the preset asks for, or nil for Blizzard's
     function UIScale.Value()
-        -- (11-16, UX audit J4: a General page option, so Quality of Life off no longer stops it)
+        -- (a General page option: it works with Quality of Life off too)
         local g = ns.db and ns.db.global
         if not g then return nil end
         local preset = g.uiScale
@@ -3150,10 +3244,9 @@ do
         end
     end
 
-    -- KEEP OR GO BACK (11-17, Malkkav; a 4K player's Pixel Perfect was too tiny to use): a change in
-    -- the settings remembers the scale before it (g.uiScalePrev, the first one until answered). After
-    -- the reload a dialog asks to keep it; no answer in 15 seconds puts the old one back, as Windows
-    -- does with display settings. Scales saved before this never ask: only a new change does.
+    -- KEEP OR GO BACK: a change in the settings remembers the scale before it (g.uiScalePrev, the
+    -- first one until answered). After the reload a dialog asks to keep it; no answer in 15 seconds
+    -- puts the old one back, as Windows does with display settings. Only a new change asks.
     UIScale.CONFIRM_SECONDS = 15
     function UIScale.Remember()
         local g = ns.db and ns.db.global
@@ -3245,7 +3338,7 @@ function Tweaks:ShouldLoad()
     local tweaks = ns.db and ns.db.profile and ns.db.profile.tweaks
     if tweaks and tweaks.enabled == false and ns.db.global and not InCombatLockdown() then
         local function Take(key)
-            local forced = ForcedCVars(key)
+            local forced = Tweaks.ForcedCVars(key)
             local value = forced[key]
             forced[key] = nil
             return value
@@ -3261,7 +3354,7 @@ function Tweaks:ShouldLoad()
         if plates ~= nil then pcall(SetCVar, "nameplateShowEnemies", plates) end
         local friendly = Take("combatFriendly")
         if friendly ~= nil then pcall(SetCVar, "nameplateShowFriends", friendly) end
-        -- (11-16, UX audit J4) Move Any Window and Sync Blizz UI are General page options: they start
+        -- Move Any Window and Sync Blizz UI are General page options: they start
         -- with Quality of Life off too (with it on, Init starts them)
         if not Tweaks.accountStarted then
             Tweaks.accountStarted = true
@@ -3272,7 +3365,7 @@ function Tweaks:ShouldLoad()
     return true
 end
 
--- (11-16, Malkkav) Accept Resurrections: a resurrection from another player is taken at once, but never
+-- Accept Resurrections: a resurrection from another player is taken at once, but never
 -- while you or the one casting it is in a fight (then the choice stays yours). Blizzard's pop-up goes
 -- with it as you come back (PLAYER_ALIVE). On the module table: this file is near Lua's local limit.
 function Tweaks.InitAcceptRes()
@@ -3287,7 +3380,7 @@ function Tweaks.InitAcceptRes()
     end)
 end
 
--- (11-17, Malkkav) Accept Summons: a summon is taken 10 seconds after it comes, unless you cancel. A
+-- Accept Summons: a summon is taken 10 seconds after it comes, unless you cancel. A
 -- small window says where to and counts for you: Go Now takes it at once, Cancel leaves Blizzard's own
 -- pop-up to answer. Never in a fight or where you can't teleport (Blizzard greys Accept then too): it
 -- waits for that to end. Answering Blizzard's pop-up, or the summon running out, closes the window.
@@ -3360,14 +3453,12 @@ function Tweaks:Init()
     InitCameraLoot()
     InitHide()
     InitAutoDelete()
-    -- (11-16) Automate Quests is one switch: a setup with only one of the two on gets both
-    if (db.autoAcceptQuests and true or false) ~= (db.autoTurnInQuests and true or false) then
-        db.autoAcceptQuests, db.autoTurnInQuests = true, true
-    end
     InitAutoQuests()
     InitTrainAll()
     InitBagTooltip()
     InitWay()
+    if C_AddOns.IsAddOnLoaded("Blizzard_WorldMap") then Tweaks.InitZoneLevels()
+    else EventUtil.ContinueOnAddOnLoaded("Blizzard_WorldMap", Tweaks.InitZoneLevels) end
     InitLayoutPerMode()
     NoteCharacter()
     InitMailBook()

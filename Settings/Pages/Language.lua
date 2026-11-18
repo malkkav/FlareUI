@@ -2,15 +2,12 @@ local _, ns = ...
 local L = ns.L
 local S = ns.Settings
 
--- 11-11 (Malkkav): the Language page became Settings, the whole interface's own options: Sync Blizz UI,
--- Move Any Window and UI Scale (from Quality of Life's Advanced tab), then the language
--- (11-16, UX audit batch 4) renamed General (no clash with the window's Settings tab), in two tabs:
--- Interface (scale, Global Font) and Advanced (Sync Blizz UI, Move Any Window, language; 11-16 Malkkav:
--- "Account" did not fit Move Any Window)
+-- GENERAL: the whole interface's own options (the page key stays "language"), in two tabs:
+-- General (Sync Blizz UI, Move Any Window, language) and Interface (scale, Global Font)
 ns.Copy.modules.language = {
     title = L["General"],
     desc = L["Options for the whole interface: your characters, windows, scale and language."],
-    -- (11-17, Malkkav) Advanced renamed General and first, ESC Menu on top of it
+    -- General first, ESC Menu on top of it
     tabs = { L["General"], L["Interface"] },
 }
 ns.Copy.sections["language.main"] = L["Language"]
@@ -43,7 +40,7 @@ S:Module{
     noReset = true,
 }
 
--- ESC Menu (11-17, Malkkav): a FlareUI button in the game menu, under Shop (Launcher.lua 4b); off,
+-- ESC Menu: a FlareUI button in the game menu, under Shop (Launcher.lua 4b); off,
 -- for every character
 S:Row{
     key = "language.escButton", module = "language", tab = "account", section = "language.escMenu",
@@ -86,7 +83,7 @@ S:Row{
     end,
 }
 
--- The whole interface's scale (Tweaks.lua 17b), as EnhanceQoL's: a preset applied as you log in,
+-- The whole interface's scale (Tweaks.lua 17b): a preset applied as you log in,
 -- account-wide; Custom opens its own scale row
 local SCALE_PRESETS = { "blizzard", "auto", "custom", "4k", "1440p", "1440p125", "1080p", "1080p125" }
 local CUSTOM_CHOICES = {}
@@ -98,15 +95,15 @@ S:Row{
     set = function(preset)
         local g = Global()
         if not g then return end
-        -- (11-17) the scale before, for the keep-or-go-back question after the reload (Tweaks.lua 17b)
+        -- the scale before, for the keep-or-go-back question after the reload (Tweaks.lua 17b)
         if ns.Tweaks and ns.Tweaks.UIScale then ns.Tweaks.UIScale.Remember() end
         g.uiScale = preset ~= "blizzard" and preset or nil
-        -- Custom starts from the scale in use, as EnhanceQoL's
+        -- Custom starts from the scale in use
         if preset == "custom" and not g.uiScaleCustom then g.uiScaleCustom = UIParent:GetScale() end
     end,
 }
 S:Row{
-    -- (a slider since 11-16; right under UI Scale, shown only on Custom, not indented)
+    -- (a slider; right under UI Scale, shown only on Custom, not indented)
     key = "qol.uiScaleCustom", kind = "range", module = "language", tab = "interface", choices = CUSTOM_CHOICES, reload = true,
     hidden = function() local g = Global(); return not (g and g.uiScale == "custom") end,
     get = function()
@@ -125,7 +122,7 @@ S:Row{
 local TEXT_CHOICES = {}
 for percent = 80, 150, 5 do TEXT_CHOICES[#TEXT_CHOICES + 1] = { percent, percent .. "%" } end
 S:Row{
-    key = "qol.textScale", kind = "range", module = "language", tab = "interface", choices = TEXT_CHOICES, reload = true,   -- (a slider, 11-16)
+    key = "qol.textScale", kind = "range", module = "language", tab = "interface", choices = TEXT_CHOICES, reload = true,   -- (a slider)
     get = function()
         local g = Global()
         return math.floor((g and tonumber(g.textScale) or 1) * 20 + 0.5) * 5
@@ -134,7 +131,7 @@ S:Row{
 }
 
 
--- Global Font (11-13): the face of every font set to Global (Core.lua ns.GlobalFontFace), then the
+-- Global Font: the face of every font set to Global (Core.lua ns.GlobalFontFace), then the
 -- two all-font buttons side by side (Settings/Fonts.lua)
 S:Row{
     key = "fonts.global.face", kind = "dropdown", module = "language", tab = "interface", dropdownWidth = 150,
@@ -142,7 +139,7 @@ S:Row{
     choices = function() return S.FontFaces() end,
     apply = function() S:ApplyAllFonts() end,
 }
--- Blizzard's own text (11-13, Settings/Fonts.lua ns.GameFonts): off / Default leave it as it is
+-- Blizzard's own text (Settings/Fonts.lua ns.GameFonts): off / Default leave it as it is
 local function BlizzardFaces()
     local list = S.FontFaces()
     table.insert(list, 1, { ns.GLOBAL_FONT, L["Global (%s)"]:format(ns.GlobalFontFace()) })
@@ -164,7 +161,7 @@ S:Row{
     -- the game reads it as you log in: the file is saved now, for then
     apply = function() if ns.GameFonts then ns.GameFonts.SaveCombatPath() end end,
 }
--- (11-17, Malkkav; AstroFox) Combat Text Size: the game's own scale of the damage numbers, shown only
+-- Combat Text Size: the game's own scale of the damage numbers, shown only
 -- where the client has it (WorldTextScale_v2, else WorldTextScale). Nothing is written until you move it.
 local function CombatTextCVar()
     if not (C_CVar and C_CVar.GetCVarInfo) then return nil end

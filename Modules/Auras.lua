@@ -42,7 +42,7 @@ local ROUND_BORDER  = "talents-node-circle-gray"
 local ROUND_MASK    = "talents-node-circle-mask"
 local ROUND_TINT    = { 0.72, 0.56, 0.38 }
 -- Border swipe outlines: a swipe takes a file, not an atlas
-local SWIPE_SQUARE  = MEDIA .. "BorderThick"         -- 5 px wider inward than the border art (thickened 11-09)
+local SWIPE_SQUARE  = MEDIA .. "BorderThick"         -- 5 px wider inward than the border art
 local SWIPE_ROUND   = MEDIA .. "BorderRoundThick"
 local BORDER_SATURATION = 1.35   -- Border swipe: the tints a little richer
 local SWIPE_DISC    = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
@@ -75,7 +75,7 @@ local PREVIEW_ICONS = {
 }
 local PREVIEW_DEBUFF_TYPES = { "Magic", "Curse", "Disease", "Poison", "None" }
 local PREVIEW_TIMES = { "5m", "32s", "1h", "12s", "2m", "45m", "8s" }
--- (11-17, Malkkav) the weapon enchant row under the buffs: a sharpening stone and a poison with charges
+-- the weapon enchants leading the first row: a sharpening stone and a poison with charges
 AU.PREVIEW_ENCHANTS = { { icon = "INV_Stone_SharpeningStone_01", time = "28m" },
                         { icon = "Ability_Poisons", time = "52m", count = "36" } }
 
@@ -148,7 +148,7 @@ local function ApplyPreviewTimerNow(button)
     if not (text and preview) then return end
     local on = Previewing() and button.FlareUI_TimerShown
     preview:SetShown(on and true or false)
-    -- the timer's own frame (the text may refuse it), else the text (a button styled before 6.3.3)
+    -- the timer's own frame (the text may refuse it), else the text
     local holder = button.FlareUI_TimerFrame or text
     holder:SetAlpha((button.FlareUI_TimerShown and not on) and 1 or 0)
 end
@@ -159,11 +159,10 @@ end
 -- otherwise stay frozen on a real icon after Edit Mode ends in a fight)
 local lockedButtons = setmetatable({}, { __mode = "k" })
 local retryTicker
--- (11-13, found by /fui perf trace: each failed try is an error, and a lock covers every button,
--- so trying them all cost 6-9 ms a second while it held) the first button still locked ends the
--- round: one try a second while the lock holds. (6.3 also skipped every round while the game called
--- auras secret, which on Forever can be nearly always: the timers Edit Mode hid for its samples
--- never came back, on every unit frame. 6.3.3)
+-- Each failed try is an error, and a lock covers every button: the first button still locked ends
+-- the round, so it is one try a second while the lock holds. Rounds are never skipped while the game
+-- calls auras secret: on Forever that can be nearly always, and the timers Edit Mode hid for its
+-- samples would never come back.
 local function RetryLockedButtons()
     for button in pairs(lockedButtons) do
         if not pcall(ApplyPreviewTimerNow, button) then return end
@@ -232,7 +231,7 @@ local function StyleButton(button, look)
 
         -- the timer on a frame of its own, shown and hidden as a whole (Aura Timer, Edit Mode's samples):
         -- once Blizzard writes a (secret) duration into the text, the text itself refuses addon changes
-        -- such as SetAlpha, so a timer turned on or off later never showed or hid (6.3.3)
+        -- such as SetAlpha
         local timerFrame = CreateFrame("Frame", nil, overlay)
         timerFrame:SetAllPoints(overlay)
         button.FlareUI_TimerFrame = timerFrame
@@ -332,8 +331,7 @@ local function StyleButton(button, look)
     countText:ClearAllPoints()
     countText:SetPoint("TOPRIGHT", area, "TOPRIGHT", round and 1 or -1, round and 1 or -1)
     -- the timer and its Edit Mode sample, placed alike (never read back from the timer: once it holds a
-    -- secret duration, GetPoint on it errors, which stopped every restyle before the timer showed or
-    -- hid, so Aura Timer only changed at a reload; 6.3.3)
+    -- secret duration, GetPoint on it errors and the restyle stops there)
     local function PlaceTimer(text)
         text:ClearAllPoints()
         if look.timer == "below" then
@@ -366,6 +364,8 @@ local function StyleButton(button, look)
     PlaceTimer(preview)
     ApplyPreviewTimer(button)   -- (again: the sample now exists, for its own show / hide)
 
+    AU.StyleDispelIcon(button, look, area, size)
+
     -- Highlight Purgeable Buffs: Blizzard's stealable border round a buff that can be purged
     local glow = button.FlareUI_Stealable
     if look.stealable then
@@ -388,6 +388,43 @@ LEM:RegisterCallback("enter", function() for button in pairs(styledButtons) do A
 LEM:RegisterCallback("exit", function() for button in pairs(styledButtons) do ApplyPreviewTimer(button) end end)
 ns.OnEditFight(function() for button in pairs(styledButtons) do ApplyPreviewTimer(button) end end)
 
+-- The dispel type icon on debuffs of 18 px and up (smaller ones would be all icon)
+AU.DISPEL_ICON_MIN = 18
+function AU.DispelIconWanted(look)
+    return look.isDebuff and (look.size or 0) >= AU.DISPEL_ICON_MIN
+end
+
+-- Makes (or hides) the corner icon; shown by Blizzard's button, or by the samples (AU.SampleDispelIcon)
+function AU.StyleDispelIcon(button, look, area, size)
+    local typeIcon = button.FlareUI_DispelIcon
+    if not AU.DispelIconWanted(look) then
+        if typeIcon then pcall(typeIcon.Hide, typeIcon) end
+        return
+    end
+    if not typeIcon then
+        -- on the text overlay: above the icon, its border and the cooldown swipe in every swipe style
+        typeIcon = button.FlareUI_Overlay:CreateTexture(nil, "OVERLAY", nil, 1)
+        typeIcon:Hide()   -- until Blizzard shows it for a typed debuff
+        button.FlareUI_DispelIcon = typeIcon
+    end
+    local side = math_max(8, math_floor(size * 0.38 + 0.5))
+    pcall(typeIcon.ClearAllPoints, typeIcon)
+    pcall(typeIcon.SetPoint, typeIcon, "TOPRIGHT", area, "TOPRIGHT", 1, 1)
+    pcall(typeIcon.SetSize, typeIcon, side, side)
+end
+
+-- An Edit Mode or settings sample: the icon of the given type ("None": no icon)
+function AU.SampleDispelIcon(sample, dispelType)
+    local typeIcon = sample.FlareUI_DispelIcon
+    if not typeIcon then return end
+    if dispelType and dispelType ~= "None" and AuraUtil and AuraUtil.SetAuraDispelTypeIcon then
+        AuraUtil.SetAuraDispelTypeIcon(typeIcon, dispelType)
+        typeIcon:Show()
+    else
+        typeIcon:Hide()
+    end
+end
+
 -- Hands FlareUI's regions to Blizzard's aura button, which drives them
 local function HookButton(button, look)
     local icon, cd, border = button.FlareUI_Icon, button.FlareUI_Cooldown, button.FlareUI_Border
@@ -409,6 +446,15 @@ local function HookButton(button, look)
             customDispelColorMap = look.colors,
         }
         pcall(button.AddDispelTypeTexture, button, border, options)
+        -- the debuff's type icon in the top right corner (Magic, Curse, Disease, Poison): Blizzard
+        -- picks the icon, so the type is never read by Lua; untyped debuffs show none
+        local typeIcon = button.FlareUI_DispelIcon
+        if typeIcon and AU.DispelIconWanted(look) then
+            pcall(button.AddDispelTypeTexture, button, typeIcon, {
+                style = Enum.CustomAuraButtonDispelTypeTextureStyle.Icon,
+                showWhenHarmful = true, showWhenHelpful = false, showWithoutDispelType = false,
+            })
+        end
     end
     if not look.isDebuff and look.cancel ~= false and button.SetCancelAuraButtons then
         pcall(button.SetCancelAuraButtons, button, "RightButtonUp")
@@ -449,7 +495,7 @@ local function SetArrival(button, on)
     pcall(button.AddAuraShownAnimation, button, g)
 end
 
--- Buffs' and Debuffs' own fonts, for the page's Fonts tab (Settings/Pages/Auras.lua, 11-13):
+-- Buffs' and Debuffs' own fonts, for the page's Fonts tab (Settings/Pages/Auras.lua):
 -- key "font" (timers) or "countFont" (stacks)
 function AU.KindFont(kind, key)
     AU.SeedKindFonts()
@@ -457,7 +503,7 @@ function AU.KindFont(kind, key)
     return k and k[key]
 end
 
--- Each frame's fonts (11-13): once per profile, the buffs and the debuffs start from the shared ones
+-- Each frame's fonts: once per profile, the buffs and the debuffs start from the shared ones
 function AU.SeedKindFonts()
     local db = GetDb()
     if not db or rawget(db, "kindFontsSeeded") then return end
@@ -490,7 +536,7 @@ local function Look(kind)
         isDebuff = KINDS[kind].isDebuff,
         colors = ColorMap(KINDS[kind].isDebuff, db.style == "round", db.swipe == "border"),
         arrive = db.arrive and true or false,
-        timerColor = true,   -- always on since 11-16 (Malkkav; it was the Timer Colour switch)
+        timerColor = db.timerColor ~= false,
     }
 end
 
@@ -499,7 +545,7 @@ end
 ns.AuraLook = {
     Style = StyleButton,
     Hook = HookButton,
-    -- fontKey (11-13): whose Aura Timers and Aura Stacks fonts (UnitFrames.lua UF.Font), player's by default
+    -- fontKey: whose Aura Timers and Aura Stacks fonts (UnitFrames.lua UF.Font), player's by default
     ForUnit = function(size, isDebuff, canCancel, style, swipe, timer, fontKey)
         local uf = ns.db and ns.db.profile and ns.db.profile.unitframes or {}
         local UFM = ns.UnitFrames
@@ -521,7 +567,7 @@ ns.AuraLook = {
             timerSize = timerSize,
             isDebuff = isDebuff,
             cancel = canCancel,
-            timerColor = true,   -- always on since 11-16 (it was the Timer Colour switch)
+            timerColor = uf.auraTimerColor ~= false,
             colors = ColorMap(isDebuff, style == "round", swipe == "border"),
             -- room under the icon: autoSize + 3 on Auto, a chosen size gets its own
             cellHeight = size + ((timer == "below") and ((timerFont.size or 0) > 0 and timerSize + 4 or autoSize + 3) or 0),
@@ -553,7 +599,9 @@ function UpdatePreview(kind)
     local editing = Previewing()
     holder.container:SetShown(not editing)
     holder.preview = holder.preview or {}
-    local count = editing and (kdb.max or 32) or 0
+    -- the sample enchants lead the first row and take places from Max Icons, as the real ones do
+    local leading = (editing and not KINDS[kind].isDebuff) and #AU.PREVIEW_ENCHANTS or 0
+    local count = editing and math_max(0, (kdb.max or 32) - leading) or 0
     local look = editing and Look(kind)
     local size, spacing = kdb.size or 30, kdb.spacing or 6
     local perRow = math_max(1, kdb.perRow or 12)
@@ -574,11 +622,12 @@ function UpdatePreview(kind)
             sample.FlareUI_Icon:SetTexture("Interface\\Icons\\" .. icons[(i - 1) % #icons + 1])
             local key = look.isDebuff and PREVIEW_DEBUFF_TYPES[(i - 1) % #PREVIEW_DEBUFF_TYPES + 1] or "None"
             sample.FlareUI_Border:SetVertexColor(look.colors[key]:GetRGBA())
+            AU.SampleDispelIcon(sample, key)
             sample.FlareUI_Count:SetText(i % 4 == 0 and tostring(i % 9 + 1) or "")
             sample.FlareUI_Duration:SetText(PREVIEW_TIMES[(i - 1) % #PREVIEW_TIMES + 1])
             -- staggered long cooldowns show the swipe
             sample.FlareUI_Cooldown:SetCooldown(now - (i * 37) % 300, 300)
-            local col, row = (i - 1) % perRow, math_floor((i - 1) / perRow)
+            local col, row = (i - 1 + leading) % perRow, math_floor((i - 1 + leading) / perRow)
             sample:ClearAllPoints()
             sample:SetPoint(corner, holder, corner, col * stepX, row * stepY)
             sample:Show()
@@ -586,20 +635,16 @@ function UpdatePreview(kind)
             sample:Hide()
         end
     end
-    AU.PreviewEnchants(kind, holder, kdb, editing and look, count)
+    AU.PreviewEnchants(kind, holder, kdb, editing and look)
 end
 
--- The weapon enchant row's samples, under the sample buffs, placed as AU.PlaceEnchants places the
--- real ones (under the last row; under the first with Wrap: Up)
-function AU.PreviewEnchants(kind, holder, kdb, look, count)
+-- The weapon enchants' samples, at the start of the first row, as AU.PlaceEnchants places the real ones
+function AU.PreviewEnchants(kind, holder, kdb, look)
     holder.previewEnchants = holder.previewEnchants or {}
     local list = (look and not KINDS[kind].isDebuff) and AU.PREVIEW_ENCHANTS or {}
     local corner = StartCorner(kdb)
     local size, spacing = kdb.size or 30, kdb.spacing or 6
     local step = (size + spacing) * ((kdb.grow == "RIGHT") and 1 or -1)
-    local stepY = CellHeight(size) + spacing
-    local perRow = math_max(1, kdb.perRow or 12)
-    local y = (kdb.wrap == "UP") and -stepY or -math_ceil(count / perRow) * stepY
     local now = GetTime()
     for i = 1, math_max(#list, #holder.previewEnchants) do
         local e, sample = list[i], holder.previewEnchants[i]
@@ -615,7 +660,7 @@ function AU.PreviewEnchants(kind, holder, kdb, look, count)
             sample.FlareUI_Duration:SetText(e.time)
             sample.FlareUI_Cooldown:SetCooldown(now - 600 * i, 3600)
             sample:ClearAllPoints()
-            sample:SetPoint(corner, holder, corner, (i - 1) * step, y)
+            sample:SetPoint(corner, holder, corner, (i - 1) * step, 0)
             sample:Show()
         elseif sample then
             sample:Hide()
@@ -676,8 +721,8 @@ end
 --------------------------------------------------
 -- 7. WEAPON ENCHANTS
 -- The aura container reads C_PaperDollInfo.GetTemporaryEnchantmentInfo, which Forever leaves empty:
--- FlareUI's own buttons read C_Item.GetWeaponEnchantInfo and lead the first row, the container
--- shifted along (out of combat; until then a new enchant sits just before the row).
+-- FlareUI's own buttons read C_Item.GetWeaponEnchantInfo and lead the first row of buffs, as in
+-- Blizzard's buff frame. The container's first group, "lead", keeps room for them (AU.UpdateLead).
 --------------------------------------------------
 -- Enum.WeaponSlot -> inventory slot
 local WEAPON_SLOTS = { { slot = 0, inv = 16 }, { slot = 1, inv = 17 }, { slot = 2, inv = 18 } }
@@ -748,75 +793,83 @@ local function EnchantOnUpdate(self, elapsed)
     EnchantTimer(self)
 end
 
--- Shifts the container by one cell per enchant (out of combat only)
--- (11-16, Malkkav after valleyheart's report) the buff grid always starts at its corner: weapon enchants
--- used to take the first cells, which shifted the whole grid, so every row started that many icons in.
--- They now sit on their own row under the last row of buffs (AU.PlaceEnchants).
+-- The buff grid at its corner (out of combat only)
 local function PlaceContainer(holder, kdb, corner, width)
     local container = holder.container
     local step = (kdb.size or 30) + (kdb.spacing or 6)
-    holder.enchantShift = 0
     container:ClearAllPoints()
     container:SetPoint(corner, holder, corner, 0, 0)
     pcall(container.SetFlowLayoutMaximumLineSize, container, math_max(step, width))
 end
 
--- The weapon enchant icons, on a row of their own just under your buffs: below the last buff row
--- (Wrap: Down), or under the first one (Wrap: Up, where the rows climb). The buffs are counted as the
--- grid shows them (HELPFUL, up to Max Icons); moves when they change (UNIT_AURA).
+-- The weapon enchants lead the first row. Moving the container along would move every row, so its
+-- first group, "lead", holds one buff (any the buffs show) as wide as the enchant icons and no height:
+-- the client's flow leaves an empty stretch at the start of the first row only, and the buffs follow
+-- it. Groups filter on their own, so that buff still shows in the buffs' group; the lead's button only
+-- holds room. The container isn't protected, so this works in combat. With no buff at all there's no
+-- stretch, and none is needed.
+local function InitSpacer(button)
+    button:SetSize(0, 0)
+    if button.SetMouseClickEnabled then pcall(button.SetMouseClickEnabled, button, false) end
+    if button.SetMouseMotionEnabled then pcall(button.SetMouseMotionEnabled, button, false) end
+end
+
+-- holder.leadLane: the buffs' lane (LayoutKind); holder.leadCount: the enchant icons shown
+function AU.UpdateLead(holder, kdb)
+    local container, lane = holder and holder.container, holder and holder.leadLane
+    if not (container and lane and kdb) then return end
+    local n = holder.leadCount or 0
+    local size, spacing = kdb.size or 30, kdb.spacing or 6
+    local layout = {
+        elementWidth = math_max(n * (size + spacing) - spacing, 0), elementHeight = 0,
+        elementSpacing = 0, lineSpacing = 0, groupSpacing = 0, groupLineSpacing = 0, forceNewLine = false,
+        layoutIndex = 0,
+    }
+    if not holder.leadMade then
+        -- (layoutIndex 0: first in the flow, before the buffs' group)
+        local ok = pcall(container.AddAuraGroup, container, "lead", lane.filter, {
+            maxFrameCount = 1, layout = layout, candidateFilters = lane.candidates, initializeFrame = InitSpacer,
+        })
+        if not ok then return end
+        holder.leadMade = true
+    else
+        pcall(container.SetAuraGroupFilterString, container, "lead", lane.filter)
+        pcall(container.SetAuraGroupCandidateFilters, container, "lead", lane.candidates)
+        pcall(container.SetAuraGroupLayout, container, "lead", layout)
+    end
+    pcall(container.SetAuraGroupEnabled, container, "lead", n > 0)
+end
+
+-- Each enchant shown takes one place from Max Icons, so the grid keeps its size
+function AU.BuffRoom(holder, kdb)
+    return math_max(1, (kdb.max or 32) - (holder.leadCount or 0))
+end
+
+-- The enchant icons, one step apart from the grid's start corner, in the room the lead group keeps
 function AU.PlaceEnchants(holder, kdb)
     local buttons = holder and holder.enchants
     if not (buttons and kdb) then return end
     local corner = StartCorner(kdb)
-    local step = (kdb.size or 30) + (kdb.spacing or 6)
-    local dir = (kdb.grow == "RIGHT") and 1 or -1
-    local stepY = CellHeight(kdb.size or 30) + (kdb.spacing or 6)
-    local y
-    if kdb.wrap == "UP" then
-        y = -stepY
-    else
-        local count, max = 0, kdb.max or 32
-        -- (11-16, OX1DAT1ON) a secret buff in a fight can't be read by addon code (the call errors):
-        -- the row keeps its last spot until the buffs can be counted again
-        local ok = pcall(function()
-            for i = 1, max do
-                if not C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL") then break end
-                count = i
-            end
-        end)
-        if ok then
-            local perRow = math_max(1, kdb.perRow or 12)
-            y = -math_ceil(count / perRow) * stepY
-            holder.enchantY = y
-        else
-            y = holder.enchantY
-            if not y then return end
-        end
-    end
+    local step = ((kdb.size or 30) + (kdb.spacing or 6)) * ((kdb.grow == "RIGHT") and 1 or -1)
     local n = 0
     for _, b in ipairs(buttons) do
         if b.enchant then
             b:ClearAllPoints()
-            b:SetPoint(corner, holder, corner, n * step * dir, y)
+            b:SetPoint(corner, holder, corner, n * step, 0)
             n = n + 1
         end
     end
 end
 
-local function UpdateEnchants(kind)
-    local holder, kdb = frames[kind], KindDb(kind)
-    if not (holder and kdb) or KINDS[kind].isDebuff then return end
-    local list = Previewing() and {} or ActiveEnchants()
-    local look = Look(kind)
-    local step = (kdb.size or 30) + (kdb.spacing or 6)
-    local corner = StartCorner(kdb)
-    local dir = (kdb.grow == "RIGHT") and 1 or -1
-    local shift = holder.enchantShift or 0
+-- The enchant icons on a holder (the Buffs frame, or the player unit frame's: UnitFrames.lua), filled
+-- from list (AU.ReadEnchants) in look; holder.lookStamp changes when they must be restyled. Placing them
+-- is the caller's.
+function AU.ShowEnchants(holder, list, look)
     for i = 1, math_max(#list, #(holder.enchants or {})) do
         local e = list[i]
         local b = e and EnchantButton(holder, i) or holder.enchants[i]
         if e then
-            -- (11-13 performance pass) restyled only after a layout (a look or size change), not on
+            -- restyled only after a layout (a look or size change), not on
             -- every inventory event: poison charges and durability fire those often in fights
             local stamp = holder.lookStamp or 0
             if b.FlareUI_LookStamp ~= stamp then StyleButton(b, look); b.FlareUI_LookStamp = stamp end
@@ -827,24 +880,28 @@ local function UpdateEnchants(kind)
             b.FlareUI_Count:SetText(e.charges > 1 and tostring(e.charges) or "")
             b.FlareUI_Cooldown:SetCooldown(e.expires - e.duration, e.duration)
             b.enchant = e
-            b:Show()   -- (placed below, AU.PlaceEnchants)
+            b:Show()
         elseif b then
             b.enchant = nil
             b:Hide()
         end
     end
-    AU.PlaceEnchants(holder, kdb)
     holder:SetScript("OnUpdate", #list > 0 and EnchantOnUpdate or nil)
     EnchantTimer(holder)
-    -- the container makes room once combat allows
-    if #list ~= (holder.activeEnchants or 0) then
-        holder.activeEnchants = #list
-        if InCombatLockdown() then
-            pendingLayout = true
-        else
-            PlaceContainer(holder, kdb, corner, (GridSize(kdb)))
-            UpdateEnchants(kind)
-        end
+end
+AU.ReadEnchants = ActiveEnchants
+
+local function UpdateEnchants(kind)
+    local holder, kdb = frames[kind], KindDb(kind)
+    if not (holder and kdb) or KINDS[kind].isDebuff then return end
+    local list = Previewing() and {} or ActiveEnchants()
+    AU.ShowEnchants(holder, list, Look(kind))
+    AU.PlaceEnchants(holder, kdb)
+    -- the buffs make room (combat included)
+    if #list ~= (holder.leadCount or 0) then
+        holder.leadCount = #list
+        AU.UpdateLead(holder, kdb)
+        if holder.groupKey then pcall(holder.container.SetAuraGroupMaxFrameCount, holder.container, holder.groupKey, AU.BuffRoom(holder, kdb)) end
     end
 end
 
@@ -876,12 +933,17 @@ local function LayoutKind(kind)
         elementWidth = look.size, elementHeight = CellHeight(look.size),
         elementSpacing = spacing, lineSpacing = spacing,
         groupSpacing = spacing, groupLineSpacing = spacing,
+        layoutIndex = 1,   -- (after the weapon enchants' lead group)
     }
     local adb = GetDb()
     local sortMethod, sortDirection = ns.AuraOrder.Options(adb and adb.sort or "applied", adb and adb.reverse, adb and adb.mineFirst)
     local lane = ns.AuraPolicy.PlayerListLane(KINDS[kind].isDebuff)
+    if not KINDS[kind].isDebuff then
+        holder.leadLane = lane
+        AU.UpdateLead(holder, kdb)
+    end
     local key, err = ns.AuraGroups.Add(container, holder.auraGroups, kind, ns.AuraGroups.Sig(look), lane.filter, {
-        maxFrameCount = kdb.max or 32,
+        maxFrameCount = AU.BuffRoom(holder, kdb),
         candidateFilters = lane.candidates,   -- Hide Auras
         -- Aura Ordering (Order Applied by default); the container compares, never addon code
         sortMethod = sortMethod, sortDirection = sortDirection,
@@ -894,6 +956,7 @@ local function LayoutKind(kind)
         layout = layout,
     })
     if not key then print("|cffff0000FlareUI:|r aura frame failed: " .. tostring(err)) end
+    holder.groupKey = key
     ns.AuraGroups.Finish(container, holder.auraGroups)
 
     if KINDS[kind].isDebuff then LayoutPrivateAnchors(holder, kdb) end
@@ -965,7 +1028,8 @@ local function BuildSettings(kind)
             local k = KindDb(kind)
             if not k then return end
             k[key] = value
-            LayoutKind(kind)
+            -- (a Reset Settings redraws once, after its last setting: LEM:Defer)
+            if not LEM:Defer(LayoutKind, kind) then LayoutKind(kind) end
         end
     end
     local function shared(key, default) return function() local db = GetDb(); return db and db[key] or default end end
@@ -974,11 +1038,11 @@ local function BuildSettings(kind)
             local db = GetDb()
             if not db then return end
             db[key] = value
-            AU:Refresh()
+            if not LEM:Defer(AU.Refresh, AU) then AU:Refresh() end
         end
     end
     -- the Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua). Fonts are
-    -- on the settings page's Fonts tab (11-13).
+    -- on the settings page's Fonts tab.
     local Section, settings = ns.EditSections()
     Section("Frame", {
         { name = L["Icon Size"], kind = LEM.SettingType.Slider, default = defaults.size or 30, minValue = 16, maxValue = 64, valueStep = 1,
@@ -1005,7 +1069,7 @@ end
 --------------------------------------------------
 -- 9b. BLIZZARD'S COOLDOWN MANAGER (Skin Cooldown Manager, on with this module)
 -- The Tracked Bars and Tracked Buffs icons in FlareUI's look (and the Essential / Utility cooldown
--- icons with the action buttons' FlareUI Borders, 11-11): the bars as FlareUI's cast bars (the
+-- icons with the action buttons' FlareUI Borders): the bars as FlareUI's cast bars (the
 -- unit frames' bar texture, a thin bronze border, the cast bar font), the icons as FlareUI's buffs
 -- (Aura Icon Shape, Aura Swipe, the stack font). Blizzard keeps driving its own pooled frames; it sets
 -- only values, text and the spark after a frame is made, so each one is styled once as it is
@@ -1016,7 +1080,6 @@ local CDM = { pieces = setmetatable({}, { __mode = "k" }), BAR_COLOR = { 1, 0.5,
               OVERLAY = "UI-HUD-CoolDownManager-IconOverlay" }
 
 -- Blizzard's own Cooldown Manager switch (Options): with it off FlareUI leaves the manager alone
--- (11-11, a player turning it off saw it back after a reload)
 function CDM.BlizzardOn()
     return (C_CooldownViewer and GetCVarBool("cooldownViewerEnabled")) and true or false
 end
@@ -1136,7 +1199,7 @@ function CDM.StyleBar(item)
 end
 
 -- An Essential or Utility cooldown icon, as the action buttons with FlareUI Borders (ActionBars.lua
--- 6b, 11-11 Malkkav): Blizzard's ring off and FlareUI Frames on the icon's edge, the rest Blizzard's
+-- 6b): Blizzard's ring off and FlareUI Frames on the icon's edge, the rest Blizzard's
 CDM.BUTTON_BORDER, CDM.BUTTON_EDGE, CDM.BUTTON_SIZE = "FlareUI Frames", 16, 50   -- (Essential's icon size)
 function CDM.StyleCooldownIcon(item)
     local p = CDM.Pieces(item)
@@ -1148,8 +1211,8 @@ function CDM.StyleCooldownIcon(item)
     b:ClearAllPoints()
     b:SetAllPoints(item)
     local file = LibStub("LibSharedMedia-3.0"):Fetch("border", CDM.BUTTON_BORDER)
-    -- (11-14, a player's report: Essential and Utility looked like two borders) the edge follows the
-    -- icon's size: Utility icons are 30 px to Essential's 50, and a 16 px edge covered most of them
+    -- the edge follows the icon's size: Utility icons are 30 px to Essential's 50, and a 16 px edge
+    -- covered most of them
     local width = item:GetWidth()
     local share = (width and width > 0) and math.min(1, width / CDM.BUTTON_SIZE) or 1
     b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, math.floor(CDM.BUTTON_EDGE * share + 0.5)) })
@@ -1159,8 +1222,8 @@ function CDM.StyleCooldownIcon(item)
     b:SetFrameLevel(item:GetFrameLevel() + 2)
 end
 
--- (11-15, a player's report: the Tracked Buffs row had a different border from the cooldowns under it)
--- Tracked Buffs icons take the cooldown icons' frame border, with FlareUI's stack font
+-- Tracked Buffs icons take the cooldown icons' frame border (one border for the rows together), with
+-- FlareUI's stack font
 function CDM.StyleBuffIconFramed(item)
     CDM.StyleCooldownIcon(item)
     local count = item.Applications and item.Applications.Applications
@@ -1320,8 +1383,16 @@ function AU:Init()
     LEM:RegisterCallback("layout", function(layoutName)
         for _, kind in ipairs(KIND_ORDER) do ApplyPosition(kind, layoutName) end
     end)
-    LEM:RegisterCallback("enter", function() SetPreview() AU:Refresh() end)
-    LEM:RegisterCallback("exit", function() SetPreview() AU:Refresh() end)
+    -- Edit Mode opening or closing changes no look: the frames are laid out again (LayoutKind draws the
+    -- samples itself; in a fight it waits, so the samples are drawn here). Buff Reminders restyles and
+    -- redraws on its own enter and exit (BR:Refresh), so AU:Refresh's call to it is left out.
+    local function EditModeToggled()
+        if InCombatLockdown() then SetPreview() end
+        for _, kind in ipairs(KIND_ORDER) do LayoutKind(kind) end
+        CDM.StyleAll()
+    end
+    LEM:RegisterCallback("enter", EditModeToggled)
+    LEM:RegisterCallback("exit", EditModeToggled)
     ns.OnEditFight(function() SetPreview() AU:Refresh() end)
 
     local events = CreateFrame("Frame")
@@ -1331,19 +1402,11 @@ function AU:Init()
         pcall(events.RegisterEvent, events, event)
     end
     pcall(events.RegisterUnitEvent, events, "UNIT_INVENTORY_CHANGED", "player")
-    -- the enchant row follows the number of buff rows (only while an enchant shows)
-    pcall(events.RegisterUnitEvent, events, "UNIT_AURA", "player")
-    -- death and coming back (11-12, a player report: a sharpening stone's icon was gone after dying,
-    -- though the stone was still on): the enchants are read again then, and once more a moment later,
-    -- since no weapon event follows the resurrection
+    -- death and coming back: the enchants are read again then, and once more a moment later, since
+    -- no weapon event follows the resurrection (an enchant still on would lose its icon)
     local AFTER_DEATH = { PLAYER_DEAD = true, PLAYER_ALIVE = true, PLAYER_UNGHOST = true, PLAYER_ENTERING_WORLD = true }
     for event in pairs(AFTER_DEATH) do pcall(events.RegisterEvent, events, event) end
     events:SetScript("OnEvent", function(_, event)
-        if event == "UNIT_AURA" then
-            local holder = frames.buffs
-            if holder and (holder.activeEnchants or 0) > 0 then AU.PlaceEnchants(holder, KindDb("buffs")) end
-            return
-        end
         if AFTER_DEATH[event] then
             UpdateEnchants("buffs")
             C_Timer.After(1, function() UpdateEnchants("buffs") end)

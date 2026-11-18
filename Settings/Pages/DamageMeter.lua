@@ -60,25 +60,17 @@ local function ChatOff() return not S:GetPath("chat.enabled") end
 local function InChat() return S:GetPath("damagemeter.chatTab") and not ChatOff() or false end
 local function NotInChat() return not InChat() end
 
--- (11-15, Malkkav) Visibility (with the old Show on Mouseover), the fade speeds, Faded Opacity, Fade
--- Delay and a fade group moved into the meter's Edit Mode dialog, and the threat window's into its own
--- (Modules/Visibility.lua, elements "meter" and "threat"); this opens Edit Mode
-S:Row{ key = "dm.fading", kind = "button", center = true, section = "dm.frame",
-    apply = function()
-        if not S:OpenEditMode("dm") and InCombatLockdown() then
-            print("|cffff9900FlareUI:|r " .. L["Edit Mode can't open during a fight."])
-        end
-    end }
+-- (the meter's and the threat window's fading is set in their Edit Mode dialogs)
 S:Row{ key = "dm.border", kind = "choice", path = "damagemeter.borderTexture", choices = S.BorderChoices,
     apply = Refresh, section = "dm.frame" }
 
 S:Row{ key = "dm.matchChat", path = "damagemeter.matchChatSize", apply = Refresh, section = "dm.tweaks", half = true,
     hidden = ChatOff, disabled = InChat }
 S:Row{ key = "dm.resetOnInstance", path = "damagemeter.resetOnInstance", section = "dm.tweaks", half = true }
-S:Row{ key = "dm.resetOnGroupLeave", path = "damagemeter.resetOnGroupLeave", section = "dm.tweaks", half = true }   -- (11-16)
+S:Row{ key = "dm.resetOnGroupLeave", path = "damagemeter.resetOnGroupLeave", section = "dm.tweaks", half = true }
 S:Row{ key = "dm.combatTimer", path = "damagemeter.combatTimer", apply = Refresh, section = "dm.tweaks", half = true }
 
--- (11-16, Malkkav) Meter Tab in the Chat: one dropdown of toggles over the old switch (chatTab) and Open the
+-- Meter Tab in the Chat: one dropdown of toggles over the old switch (chatTab) and Open the
 -- Meter Tab (chatTabOpen). Disable (the default) or Open When Clicked stand alone; In Combat, In a Group and
 -- At Login can be ticked together (DamageMeter.lua ApplyChatTab reads them as a set).
 local TAB_OPEN = { "combat", "group", "login" }
@@ -96,7 +88,7 @@ S:Row{ key = "dm.chatTab", kind = "dropdown", section = "dm.meterTab", hidden = 
     end,
     resetValue = function() return "off" end,
     apply = function() Refresh(); ApplyVisibility() end }
--- greyed while the tab is off (no indent, 11-16)
+-- greyed while the tab is off (no indent)
 S:Row{ key = "dm.chatTabIgnoreFade", path = "damagemeter.chatTabIgnoreFade", apply = Refresh, section = "dm.meterTab",
     hidden = ChatOff, disabled = NotInChat }
 
@@ -104,7 +96,7 @@ S:Row{ key = "dm.chatTabIgnoreFade", path = "damagemeter.chatTabIgnoreFade", app
 local function PreviewThreat()
     if ns.DamageMeter and ns.DamageMeter.PreviewThreat then ns.DamageMeter.PreviewThreat() end
 end
--- (11-16, Malkkav) Threat Meter: Threat Text, then Separate Window | Threat View in Combat, side by side
+-- Threat Meter: Threat Text, then Separate Window | Threat View in Combat, side by side
 -- and exclusive: turning one on turns the other off (no indent, no greying). Threat Bars, a section
 -- of their own: Tank's Lead | Pull Warning, Pull Aggro Line
 S:Row{ key = "dm.threatValue", kind = "choice", path = "damagemeter.threatValueDisplay",
@@ -124,7 +116,7 @@ S:Row{ key = "dm.threatCombat", path = "damagemeter.autoThreat", tab = "threat",
 S:Row{ key = "dm.tankLead", path = "damagemeter.threatTankLead", apply = PreviewThreat, tab = "threat", section = "dm.threatBars", half = true }
 S:Row{ key = "dm.pullFlash", path = "damagemeter.threatPullFlash", apply = PreviewThreat, tab = "threat", section = "dm.threatBars", half = true }
 S:Row{ key = "dm.pullLine", path = "damagemeter.threatPullLine", apply = PreviewThreat, tab = "threat", section = "dm.threatBars", half = true }
--- (11-16) a sound as Pull Warning starts; greyed with Pull Warning off
+-- a sound as Pull Warning starts; greyed with Pull Warning off
 S:Row{ key = "dm.pullSound", path = "damagemeter.threatPullSound", tab = "threat", section = "dm.threatBars", half = true,
     disabled = function() return not S:GetPath("damagemeter.threatPullFlash") end }
 

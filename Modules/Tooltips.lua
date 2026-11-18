@@ -59,7 +59,7 @@ local CAT_WORLD_OBJECT = "worldObjects"
 local CAT_FRAME_UNIT   = "frameUnits"
 local CAT_ACTION       = "actionBars"
 local CAT_AURA         = "auras"
-local CAT_OTHER        = "other"   -- Everything Else (11-12)
+local CAT_OTHER        = "other"   -- Everything Else
 
 --------------------------------------------------
 -- 4. SAFETY
@@ -151,7 +151,7 @@ local function ApplyColors(tip, borderColor)
     local bg = BACKGROUND
     local db = GetDb()
     local alpha = db and tonumber(db.opacity) or bg[4]   -- Frame Opacity (Look)
-    -- (11-14, a player's report) Frame Opacity is the background texture's own alpha, not its colour's:
+    -- Frame Opacity is the background texture's own alpha, not its colour's:
     -- ClassicUI Forever's Bronze theme draws a copy of the background that follows the texture's alpha
     -- only, so a colour alpha left that copy solid black
     pcall(tip.NineSlice.SetCenterColor, tip.NineSlice, bg[1], bg[2], bg[3], 1)
@@ -160,7 +160,7 @@ local function ApplyColors(tip, borderColor)
 
     local c = borderColor or DEFAULT_BORDER_COLOR
     pcall(tip.NineSlice.SetBorderColor, tip.NineSlice, c[1], c[2], c[3], 1)
-    if TIP.borderColorOf then TIP.borderColorOf[tip] = c end   -- (the health bar's border follows it, 11-16)
+    if TIP.borderColorOf then TIP.borderColorOf[tip] = c end   -- (the health bar's border follows it)
 
     applyingBackdrop = false
 end
@@ -179,7 +179,7 @@ local function ApplyScaleToAll()
     end
 end
 
--- (11-16, Malkkav) FlareUI's look for the unit health bar: the FlareUI Forever texture in a thin FlareUI
+-- FlareUI's look for the unit health bar: the FlareUI Forever texture in a thin FlareUI
 -- border, on a dark back. Used on FlareUI's own bars only (the overlay below, the settings sample).
 function TIP.StyleHealthBar(bar)
     local LSM = LibStub("LibSharedMedia-3.0", true)
@@ -201,7 +201,7 @@ function TIP.StyleHealthBar(bar)
     bar.fuiBorder = border
 end
 
--- Health Bar (Content tab, 11-16 Malkkav): Off, Below the tooltip or Inside it. FlareUI's own bar does both;
+-- Health Bar (Content tab): Off, Below the tooltip or Inside it. FlareUI's own bar does both;
 -- Blizzard's bar (GameTooltipStatusBar) is only ever hidden: writing to it taints, and its health can be
 -- secret. FlareUI's bar reads the same health Blizzard's does (the unit's GUID it watches), and its
 -- border takes the tooltip's border colour. Inside: the tooltip grows at the bottom to hold it.
@@ -235,15 +235,31 @@ local function HealthColor(value)
     return 1, value * 2, 0
 end
 
+-- The room is checked against the tooltip's real padding, not remembered: Blizzard clears it (OnHide,
+-- backdrop styles, embedded items) and the bar's GUID can arrive after the unit post-call.
+-- Returns whether the room is there; false = the bar must not sit inside (it would cover the last line).
 local paddedTip
 local function SetInsidePadding(tip, on)
     -- (never on a tooltip FlareUI leaves alone: SetPadding there would poison Blizzard's layout, section 4)
     if on and not SafeToTouch(tip) then on = false end
     if on then
-        if paddedTip ~= tip then pcall(tip.SetPadding, tip, 0, INSIDE_PAD); paddedTip = tip end
+        local ok, right, bottom, left, top = pcall(tip.GetPadding, tip)
+        if not (ok and canaccessvalue(bottom) and canaccessvalue(right) and canaccessvalue(left) and canaccessvalue(top)) then
+            return false
+        end
+        if (bottom or 0) < INSIDE_PAD then
+            if not pcall(tip.SetPadding, tip, right or 0, INSIDE_PAD, left or 0, top or 0) then return false end
+        end
+        paddedTip = tip
+        return true
     elseif paddedTip == tip then
-        pcall(tip.SetPadding, tip, 0, 0); paddedTip = nil
+        local ok, right, _, left, top = pcall(tip.GetPadding, tip)
+        if ok and canaccessvalue(right) and canaccessvalue(left) and canaccessvalue(top) then
+            pcall(tip.SetPadding, tip, right or 0, 0, left or 0, top or 0)
+        end
+        paddedTip = nil
     end
+    return false
 end
 TIP.SetInsidePadding = SetInsidePadding
 
@@ -268,6 +284,9 @@ local function SetupHealthOverlay()
             if bar:IsShown() then bar:Hide() end
             return
         end
+        -- Inside only with the room under the lines (made here too: the GUID may come after the
+        -- post-call); without it, Below for this tooltip, so it never covers a line
+        if mode == "inside" and not SetInsidePadding(tip, true) then mode = "below" end
         if mode ~= lastMode then lastMode = mode; TIP.PlaceHealthBar(bar, tip, mode) end
         local value = UnitPercentHealthFromGUID and UnitPercentHealthFromGUID(guid)
         if value ~= nil then
@@ -311,7 +330,7 @@ local function ClassTag(unit, level)
     return nil
 end
 
--- Drops the "right click for frame settings" line, and the PvP line with Show PvP off (11-17)
+-- Drops the "right click for frame settings" line, and the PvP line with Show PvP off
 local function ScrubLines(tip)
     local db = GetDb()
     local rightClick = _G.UNIT_POPUP_RIGHT_CLICK
@@ -389,10 +408,11 @@ local function ColorLevelLine(tip, unit)
     local difficulty = level and ((not Readable(UnitIsFriend("player", unit)) and ns.LevelDifficultyColor(unit, level))
         or LevelColor(level))
     local tag = ClassTag(unit, level)
+    local levelStart = "^" .. levelWord
     for i = 2, tip:NumLines() do
         local line = LeftLine(i)
         local text = line and line:GetText()
-        if canaccessvalue(text) and type(text) == "string" and text:find("^" .. levelWord) then
+        if canaccessvalue(text) and type(text) == "string" and text:find(levelStart) then
             local reaction = ColorToHex(color[1], color[2], color[3])
             local head, rest = text:match("^(" .. levelWord .. "%s+%S+)(.*)$")
             if not head then head, rest = nil, text end
@@ -426,25 +446,29 @@ local function RemoveClassLine(tip, unit)
     end
 end
 
--- Show guild name off: no guild line (Show Guild Ranks was removed 11-16, Malkkav). The line has no type of
+-- Show Guild Name off: no guild line. Show Guild Ranks: the rank after the name. The line has no type of
 -- its own, so it is found by the guild's name, in whatever form the client writes it.
 local function ApplyGuildLine(tip, unit)
     local db = GetDb()
-    if not db or db.showGuild ~= false then return end
+    if not db or (db.showGuild ~= false and not db.showGuildRank) then return end
     if not Readable(UnitIsPlayer(unit)) then return end
-    local guild = GetGuildInfo(unit)
+    local guild, rank = GetGuildInfo(unit)
     if not (canaccessvalue(guild) and type(guild) == "string" and guild ~= "") then return end
     for i = 2, tip:NumLines() do
         local line = LeftLine(i)
         local text = line and line:GetText()
         if canaccessvalue(text) and type(text) == "string" and text:find(guild, 1, true) then
-            line:SetText(nil)
+            if db.showGuild == false then
+                line:SetText(nil)
+            elseif canaccessvalue(rank) and type(rank) == "string" and rank ~= "" then
+                line:SetText(text .. " (" .. rank .. ")")
+            end
             return
         end
     end
 end
 
--- Faction line in Blizzard's faction colours, or gone with Hide faction
+-- Faction line in Blizzard's faction colours, or gone with Show Faction off
 local FACTION_LINE_COLORS = {
     { word = "FACTION_HORDE",    hex = "|cffe60d12" },
     { word = "FACTION_ALLIANCE", hex = "|cff4a9eff" },
@@ -458,7 +482,7 @@ local function ColorFactionLine(tip)
                 local word = _G[f.word]
                 if word and text == word then
                     local db = GetDb()
-                    if db and db.hideFaction then
+                    if db and db.showFaction == false then
                         line:SetText(nil)
                     else
                         line:SetText(f.hex .. text .. "|r")
@@ -493,9 +517,8 @@ local function AddTargetLine(tip, unit)
     tip:AddLine(prefix .. ColorToHex(color[1], color[2], color[3]) .. name .. "|r")
 end
 
--- "Item ID 12345" / "Spell ID 678" in grey; a secret id is left out
--- Show Item Level (11-13, a player's request): weapons and armour, in Blizzard's gold, unless the game
--- already put its own item level line in
+-- Show Item Level: weapons and armour, in Blizzard's gold, unless the game already put its own item
+-- level line in
 local ITEM_LEVEL_LINE = Enum.TooltipDataLineType and Enum.TooltipDataLineType.ItemLevel
 local function AddItemLevelLine(tip, data)
     local db = GetDb()
@@ -517,6 +540,7 @@ local function AddItemLevelLine(tip, data)
     if tip:IsShown() then tip:Show() end
 end
 
+-- "Item ID 12345" / "Spell ID 678" in grey; a secret id is left out
 local function AddIdLine(tip, key, label, data)
     local db = GetDb()
     local id = data and data.id
@@ -614,7 +638,7 @@ local function OnTooltipSetUnit(tip)
     ColorName(tip, unit)
     ApplyGuildLine(tip, unit)
     -- the class line goes only once it is on the level line: on a client whose level line does not
-    -- start with LEVEL (ruRU: "60-го уровня") it stays where it is (11-13, a player report)
+    -- start with LEVEL (ruRU: "60-го уровня") it stays where it is
     if ColorLevelLine(tip, unit) then RemoveClassLine(tip, unit) end
     ColorFactionLine(tip)
     ApplyColors(tip, GetUnitBorderColor(unit))
@@ -622,9 +646,17 @@ end
 
 -- "Action bars": every tooltip type an action button shows (spells and items, but also pet actions,
 -- macros, mounts, toys and flyouts)
+-- (runs for every tooltip of every type: with action bar tips set to "always" nothing is checked)
 local function OnTooltipSetAny(tip)
-    if tip == GameTooltip and SafeToTouch(tip) and OwnerIsActionButton(tip) then HideIfNeeded(tip, CAT_ACTION) end
+    if tip ~= GameTooltip then return end
+    local db = GetDb()
+    local mode = db and db.visibility and db.visibility[CAT_ACTION] or "always"
+    if mode == "always" then return end
+    if SafeToTouch(tip) and OwnerIsActionButton(tip) then HideIfNeeded(tip, CAT_ACTION) end
 end
+
+-- quality -> muted border colour, one table per quality (item tooltips refresh several times a second)
+local qualityBorder = {}
 
 local function OnTooltipSetItem(tip, data)
     if not SafeToTouch(tip) then return end
@@ -636,8 +668,14 @@ local function OnTooltipSetItem(tip, data)
         if canaccessvalue(link) and link then
             local quality = select(3, C_Item.GetItemInfo(link))
             if canaccessvalue(quality) and quality then
-                local r, g, b = C_Item.GetItemQualityColor(quality)
-                if r then color = { Mute(r, g, b) } end
+                color = qualityBorder[quality]
+                if not color then
+                    local r, g, b = C_Item.GetItemQualityColor(quality)
+                    if r then
+                        color = { Mute(r, g, b) }
+                        qualityBorder[quality] = color
+                    end
+                end
             end
         end
     end
@@ -676,9 +714,9 @@ end
 --------------------------------------------------
 -- 10. ANCHORING
 --------------------------------------------------
--- Per kind (11-12, a player asked): the world (anchor), unit frames (anchorFrames), action bars
--- (anchorBars) and everything else in Blizzard's spot (anchorOther); the last two start as the unit
--- frames' choice, which was everything off the world before
+-- Per kind: the world (anchor), unit frames (anchorFrames), action bars (anchorBars) and everything
+-- else in Blizzard's spot (anchorOther); the old anchor settings for the last two default to the unit
+-- frames' one
 local function AnchorKind(tooltip, parent)
     if MouseIsOverWorld() then return "world" end
     if OwnerIsActionButton(tooltip) then return "bars" end
@@ -691,9 +729,9 @@ end
 
 -- Mouseover on Buffs/Debuffs and Party/Raid Auras: an aura icon's tooltip, once Blizzard has given it its
 -- owner, is turned to follow the pointer. Only the anchor type changes, after Blizzard's call.
--- Mouseover (11-12): one main switch (tooltips.mouseover, Settings > Look) for every kind, and per kind
+-- Mouseover: one main switch (tooltips.mouseover, Settings > Look) for every kind, and per kind
 -- an exception (tooltips.mouseoverKinds[kind], Settings tab > Mouseover) while it differs. Kinds: world,
--- frames, bars, auras, groupAuras, other. The per-kind anchors of the day before convert once.
+-- frames, bars, auras, groupAuras, other. The old per-kind anchor settings convert once (ConvertAnchors).
 local MOUSEOVER_KINDS = { "world", "frames", "bars", "auras", "groupAuras", "other" }
 TIP.MOUSEOVER_KINDS = MOUSEOVER_KINDS
 local function ConvertAnchors(db)
@@ -734,7 +772,7 @@ function TIP.SetMouseover(on)
     db.mouseoverKinds = {}
 end
 
--- Offset X / Offset Y (11-14, a player asked): how far a mouseover tooltip sits from the pointer
+-- Offset X / Offset Y: how far a mouseover tooltip sits from the pointer
 function TIP.CursorOffset()
     local db = GetDb()
     if not db then return 0, 0 end
@@ -768,7 +806,7 @@ local function ApplyAnchor(tooltip, parent)
         tooltip:SetOwner(parent, "ANCHOR_CURSOR_RIGHT", TIP.CursorOffset())
         return
     end
-    -- Tooltip Corner (11-14, a player asked): Blizzard grows the tooltip from the HUD Tooltip box's
+    -- Tooltip Corner: Blizzard grows the tooltip from the HUD Tooltip box's
     -- nearest corner when the box isn't snapped to one, so it jumps sides as the box moves. A fixed
     -- corner puts the tooltip's same corner on the box's.
     local corner = db.corner
@@ -852,6 +890,11 @@ function TIP:Init()
     local db = GetDb()
     if not db then return end
     self.initialized = true
+    -- Hide Faction became Show Faction: a saved "hide" turns into "show" off, once
+    if db.hideFaction ~= nil then
+        if db.hideFaction then db.showFaction = false end
+        db.hideFaction = nil
+    end
     SetupHealthOverlay()
 
     -- world object tooltips only fire mouse motion when the world frame tracks it
@@ -914,7 +957,7 @@ do
         bar:SetHeight(8)
         bar:SetPoint("TOPLEFT", tip, "BOTTOMLEFT", 2, -1)
         bar:SetPoint("TOPRIGHT", tip, "BOTTOMRIGHT", -2, -1)
-        TIP.StyleHealthBar(bar)   -- (FlareUI's look, as the live overlay, 11-16)
+        TIP.StyleHealthBar(bar)   -- (FlareUI's look, as the live overlay)
         bar:SetStatusBarColor(0.4, 1, 0)   -- (80%, in Blizzard's green-to-red)
         bar:SetMinMaxValues(0, 1)
         bar:SetValue(0.8)
@@ -933,7 +976,7 @@ do
     end
 
     -- lines: { text, r, g, b, title = true, wrap = true, right = text, rr, rg, rb }
-    -- barMode: the Health Bar's place, "off", "below" or "inside" (11-16)
+    -- barMode: the Health Bar's place, "off", "below" or "inside"
     local function Fill(tip, lines, barMode)
         local db = GetDb() or {}
         local width, height = 0, PAD
@@ -979,7 +1022,8 @@ do
         if mode ~= "off" then TIP.PlaceHealthBar(tip.bar, tip, mode) end
         tip.bar:SetShown(mode ~= "off")
         tip:Show()
-        return width, height + (showBar and 9 or 0)
+        -- a Below bar hangs under the tooltip: 4 px gap, 8 px bar, 2 px border
+        return width, height + (mode == "below" and 14 or 0)
     end
 
     local function ClassColorOf(classFile)
@@ -1001,7 +1045,9 @@ do
         if db.nameColor == "class" then name = ColorToHex(class[1], class[2], class[3]) .. name .. "|r" end
         local lines = { { name, title = true } }
         if db.showGuild ~= false then
-            lines[#lines + 1] = { "<Dawnwatch>" }
+            local guild = "<Dawnwatch>"
+            if db.showGuildRank then guild = guild .. " (" .. (_G.GUILD_RANK1_DESC or "Officer") .. ")" end
+            lines[#lines + 1] = { guild }
         end
         -- "Level N" in the difficulty colour, the rest white with the class name (ColorLevelLine)
         local level = 60
@@ -1010,7 +1056,7 @@ do
         local text = difficulty and (ColorToHex(difficulty.r, difficulty.g, difficulty.b) .. head .. "|r") or head
         local race = horde and RaceName(5, "Undead") or RaceName(1, "Human")
         lines[#lines + 1] = { text .. "|cffffffff " .. race .. " " .. className .. "|r" }
-        if not db.hideFaction then
+        if db.showFaction ~= false then
             local f = FACTION_LINE_COLORS[horde and 1 or 2]
             lines[#lines + 1] = { f.hex .. (_G[f.word] or (horde and "Horde" or "Alliance")) .. "|r" }
         end

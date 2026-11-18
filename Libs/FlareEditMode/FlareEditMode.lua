@@ -220,7 +220,7 @@ local function normalizePosition(frame)
 	return point, x / scale, y / scale
 end
 
-local function updatePosition(selection, xDelta, yDelta)
+local function updatePosition(selection, xDelta, yDelta, soon)
 	if InCombatLockdown() then
 		-- TODO: maybe add a warning?
 		return
@@ -235,8 +235,32 @@ local function updatePosition(selection, xDelta, yDelta)
 	internal:TriggerCallback(parent, point, x, y)
 
 	if selection.isSelected then
-		internal.dialog:Update(selection)
+		if soon then
+			internal.UpdateDialogSoon(selection)
+		else
+			internal.dialog:Update(selection)
+		end
 	end
+end
+
+-- FlareUI: a held arrow key nudges about 30 times a second, and each nudge rebuilt the whole dialog.
+-- A nudge only enables Reset Position at once; the dialog rebuilds once the key is let go.
+local nudgeTimer
+function internal.UpdateDialogSoon(selection)
+	local dialog = internal.dialog
+	local button = dialog.Buttons and dialog.Buttons.ResetPositionButton
+	if not (dialog.selection == selection and dialog:IsShown() and button) then
+		dialog:Update(selection)
+		return
+	end
+	button:SetEnabled(true)
+	if nudgeTimer then nudgeTimer:Cancel() end
+	nudgeTimer = C_Timer.NewTimer(0.2, function()
+		nudgeTimer = nil
+		if selection.isSelected and dialog.selection == selection and dialog:IsShown() then
+			dialog:Update(selection)
+		end
+	end)
 end
 
 -- FlareUI: snapping. Blizzard's EditModeMagnetismManager only understands EditModeSystemMixin
@@ -371,7 +395,7 @@ local function onMouseDown(self) -- replacement for EditModeSystemMixin:SelectSy
 		end
 
 		internal.dialog:Update(self)
-		-- (FlareUI, 11-15) next to the selected frame, once it has its size
+		-- (FlareUI) next to the selected frame, once it has its size
 		if newSelection then
 			local selection = self
 			C_Timer.After(0, function()
@@ -560,7 +584,7 @@ do -- deal with hooks and events
 			if isKnownSystem or isKnownSubSystem then
 				internal.extension:Update(systemID, isKnownSubSystem and subSystemID or nil)
 			end
-			-- (FlareUI, 11-15) Blizzard's dialog (and FlareUI's box under it) next to the selected frame,
+			-- (FlareUI) Blizzard's dialog (and FlareUI's box under it) next to the selected frame,
 			-- once both have their size
 			C_Timer.After(0, function()
 				if EditModeSystemSettingsDialog.attachedToSystem ~= systemFrame then return end
@@ -770,7 +794,77 @@ end
 --[[ FlareEditMode:RefreshFrameSettings(_frame_) ![](https://img.shields.io/badge/function-blue)
 Refresh the dialog attached to the frame.
 --]]
+--[[ FlareUI addition: Reset Settings calls every setter in a row, and a frame's redraw after each one
+made the game hang (a raid's sample tiles rebuilt forty times). A setter's redraw goes through
+lib:Defer(fn, arg): during a reset it is queued once per (fn, arg) and run in order after the last
+setter; otherwise it returns false and the caller redraws at once.
+--]]
+function lib:Defer(fn, arg)
+	local batch = internal.batch
+	if not batch then return false end
+	local key = arg == nil and batch or arg
+	batch.seen[fn] = batch.seen[fn] or {}
+	if not batch.seen[fn][key] then
+		batch.seen[fn][key] = true
+		batch.list[#batch.list + 1] = { fn, arg }
+	end
+	return true
+end
+
+-- runs fn (every setter of a reset) with the redraws held, then each held redraw once, then redraws
+-- the open settings panels
+function internal.Batched(fn)
+	if internal.batch then return fn() end
+	internal.batch = { seen = {}, list = {} }
+	local ok, err = pcall(fn)
+	local batch = internal.batch
+	internal.batch = nil
+	for _, entry in ipairs(batch.list) do
+		local done, problem = pcall(entry[1], entry[2])
+		if not done then geterrorhandler()(problem) end
+	end
+	if not ok then geterrorhandler()(err) end
+	-- every open settings panel (the frame dialog and a Blizzard system's extension) shows the new values
+	lib:RefreshOpenSettings()
+end
+
+-- FlareUI addition: a slider drag sets a value on every step. Its redraws (lib:Defer) and the dialog's
+-- row refresh are held and run once on the next frame, however many steps that frame had.
+local function flushFrameBatch()
+	local batch = internal.frameBatch
+	internal.frameBatch = nil
+	if not batch then return end
+	for _, entry in ipairs(batch.list) do
+		local done, problem = pcall(entry[1], entry[2])
+		if not done then geterrorhandler()(problem) end
+	end
+	if batch.refreshOpen then
+		lib:RefreshOpenSettings()
+	else
+		for dialog in next, batch.dialogs do
+			if dialog:IsShown() then dialog:RefreshWidgets() end
+		end
+	end
+end
+
+function internal.NextFrame(fn, dialog)
+	if internal.batch then return fn() end
+	local batch = internal.frameBatch
+	if not batch then
+		batch = { seen = {}, list = {}, dialogs = {} }
+		internal.frameBatch = batch
+		C_Timer.After(0, flushFrameBatch)
+	end
+	if dialog then batch.dialogs[dialog] = true end
+	internal.batch = batch
+	local ok, err = pcall(fn)
+	internal.batch = nil
+	if not ok then geterrorhandler()(err) end
+end
+
 function lib:RefreshFrameSettings(frame)
+	-- (a held batch redraws the open settings once at the end)
+	if internal.batch then internal.batch.refreshOpen = true return end
 	local selection = lib.frameSelections[frame]
 	if selection and internal.dialog and internal.dialog.selection == selection and internal.dialog:IsVisible() then
 		internal.dialog:Update(selection)
@@ -779,6 +873,7 @@ end
 
 -- FlareUI addition: redraws whichever settings are open, for rows whose values changed from elsewhere
 function lib:RefreshOpenSettings()
+	if internal.batch then internal.batch.refreshOpen = true return end
 	local extension = internal.extension
 	if extension and extension:IsShown() then
 		extension:Update(extension.systemID, extension.subSystemID)
@@ -824,7 +919,9 @@ function lib:AddSystemSettings(systemID, settings, subSystemID)
 	end
 
 	-- fetch layout info in case EDIT_MODE_LAYOUTS_UPDATED already fired
-	if lib.layoutCache then
+	-- (FlareUI: only while the layout is unknown; once known, EDIT_MODE_LAYOUTS_UPDATED keeps it current
+	-- and each GetLayouts call builds every layout's whole table for nothing)
+	if lib.layoutCache and not lib.activeLayout then
 		onEditModeChanged(nil, C_EditMode.GetLayouts()) -- introduces a little latency
 	end
 end
@@ -904,7 +1001,8 @@ function lib:AddSystemSettingsButtons(systemID, buttons, subSystemID)
 	end
 
 	-- fetch layout info in case EDIT_MODE_LAYOUTS_UPDATED already fired
-	if lib.layoutCache then
+	-- (FlareUI: only while the layout is unknown, as in AddSystemSettings)
+	if lib.layoutCache and not lib.activeLayout then
 		onEditModeChanged(nil, C_EditMode.GetLayouts()) -- introduces a little latency
 	end
 end
@@ -1089,7 +1187,7 @@ function internal:GetFrameButtons(frame)
 end
 
 function internal:MoveParent(selection, x, y)
-	updatePosition(selection, x, y)
+	updatePosition(selection, x, y, true)
 end
 
 function internal:GetSystemSettings(systemID, subSystemID)

@@ -46,7 +46,7 @@ function extensionMixin:PlaceSoon()
 	end)
 end
 
--- (FlareUI, 11-15, Malkkav) always right under Blizzard's dialog, so the two read as one panel; when
+-- (FlareUI) always right under Blizzard's dialog, so the two read as one panel; when
 -- the pair would run off the bottom of the screen (a frame near the bottom, like the chat), Blizzard's
 -- dialog moves up just enough for both to fit. The dialog is not protected and players drag it anyway.
 function extensionMixin:Place()
@@ -129,7 +129,7 @@ function extensionMixin:UpdateButtons(numSettings)
 	self.Buttons.ignoreInLayout = isEmpty
 end
 
--- FlareUI (11-16): the box's memory of the last open section, per Blizzard system
+-- FlareUI: the box's memory of the last open section, per Blizzard system
 function extensionMixin:MemoryKey()
 	return 'system:' .. tostring(self.systemID) .. ':' .. tostring(self.subSystemID)
 end
@@ -141,19 +141,20 @@ end
 function extensionMixin:ResetSettings()
 	local settings, num = internal:GetSystemSettings(self.systemID, self.subSystemID)
 	if num > 0 then
-		for _, data in next, settings do
-			-- (FlareUI: section titles keep their open state)
-			if data.set and data.kind ~= lib.SettingType.Expander then
-				-- FlareUI: true = a reset, as the frame dialog's
-				data.set(lib:GetActiveLayoutName(), data.default, true)
+		-- (FlareUI: redraws held until the last setter, as the frame dialog's: lib:Defer)
+		internal.Batched(function()
+			for _, data in next, settings do
+				-- (FlareUI: section titles keep their open state)
+				if data.set and data.kind ~= lib.SettingType.Expander then
+					-- FlareUI: true = a reset, as the frame dialog's
+					data.set(lib:GetActiveLayoutName(), data.default, true)
+				end
 			end
-		end
-
-		self:Update(self.systemID, self.subSystemID)
+		end)
 	end
 end
 
--- (FlareUI, 11-15, Malkkav) an Edit Mode dialog next to the frame it belongs to: to its right when there is
+-- (FlareUI) an Edit Mode dialog next to the frame it belongs to: to its right when there is
 -- room, else to its left, else above or below it; its top level with the frame's; the whole of it on
 -- screen. below: screen pixels that hang under the dialog (FlareUI's box under Blizzard's).
 function internal.PlaceNear(panel, target, below)

@@ -3,11 +3,10 @@ local L = ns.L
 
 --------------------------------------------------
 -- CLASS BUFF REMINDERS (Buffs & Debuffs > Buff Reminders, off)
--- After EnhanceQoL's class buff reminder: an icon for each of your class's buffs that is missing (or
+-- An icon for each of your class's buffs that is missing (or
 -- running out) on you or your group, in FlareUI's buff look. Click an icon to cast it. Out of a fight
 -- only: the row hides itself as a fight starts (a state driver), and it reads auras only while the
--- game lets addons read them. Known spells only, at your highest rank. Also (11-10, after EnhanceQoL's
--- reminder, the idea only): paladin blessings, picked per member (Blessing: Automatic gives warriors,
+-- game lets addons read them. Known spells only, at your highest rank. Also: paladin blessings, picked per member (Blessing: Automatic gives warriors,
 -- rogues and hunters Might and everyone else Wisdom, or one for all); a hunter's or warlock's pet
 -- missing, dead or hurt (Pet Reminders, on); food, flask and elixir buffs (Consumables: off, in dungeons
 -- and raids, or always; Food and Flask each with a box; the elixirs ticked or those in your bags, each
@@ -45,16 +44,16 @@ local function Join(a, b) local t = {} for _, v in ipairs(a) do t[#t + 1] = v en
 
 local REMINDERS = {
     PRIEST = {
-        -- (11-15, loraethil) Forever's camping First Aid Kit (item 279968): +34 Stamina, which can't stack
+        -- Forever's camping First Aid Kit (item 279968): +34 Stamina, which can't stack
         -- with Fortitude, so it counts as having it; matched by the kit's name and its use spell's name
         { key = "fortitude", cast = FORTITUDE, buffs = Join(FORTITUDE, { 21564, 21562 }), group = true, alsoItems = { 279968 } },
         { key = "innerFire", cast = { 10952, 10951, 1006, 602, 7128, 588 } },
-        -- talent spells (11-12, a player asked): once the talent teaches the spell, it is known.
+        -- talent spells: once the talent teaches the spell, it is known.
         -- Divine Spirit as a group buff on mana users; Shadowform not while your role is healer
         { key = "spirit", cast = { 27841, 14819, 14818, 14752 }, buffs = { 27841, 14819, 14818, 14752, 27681 },
           group = true, casters = true },
         { key = "shadowform", cast = { 15473 }, notRole = "HEALER" },
-        -- Shadow Protection on the group: only when ticked in Extra Buffs (11-12)
+        -- Shadow Protection on the group: only when ticked in Extra Buffs
         { key = "shadowProt", cast = { 10958, 10957, 976 }, buffs = { 10958, 10957, 976, 27683 }, group = true, optIn = true },
     },
     MAGE = {
@@ -64,17 +63,17 @@ local REMINDERS = {
     },
     DRUID = {
         { key = "wild", cast = WILD, buffs = Join(WILD, { 21850, 21849 }), group = true },
-        -- Thorns (11-10, a druid asked): kept on whoever the Thorns setting picks, tanks by default
+        -- Thorns: kept on whoever the Thorns setting picks, tanks by default
         { key = "thorns", cast = { 9910, 9756, 8914, 1075, 782, 467 }, group = true, pick = "thorns" },
-        -- (11-13, Malkkav) no Omen of Clarity: on Forever it's a random proc, nothing to keep up
+        -- no Omen of Clarity: on Forever it's a random proc, nothing to keep up
         -- Moonkin Form (talent): only when ticked in Extra Buffs (druids leave it to heal)
         { key = "moonkin", cast = { 24858 }, optIn = true },
     },
     WARLOCK = {
-        -- (11-13: Fel Armor, Forever's, counts as the armor too; EnhanceQoL's Forever data)
+        -- (Fel Armor, Forever's, counts as the armor too)
         { key = "armor", cast = { 11735, 11734, 11733, 1086, 706, 696, 687 },
           buffs = { 403619, 11735, 11734, 11733, 1086, 706, 696, 687 } },
-        -- Firestone / Spellstone on the weapon (11-11, a warlock asked)
+        -- Firestone / Spellstone on the weapon
         { key = "stone", weapon = "stone" },
     },
     SHAMAN = {
@@ -90,8 +89,8 @@ local REMINDERS = {
         -- a tank's threat buff, only while your group role is tank
         { key = "fury", cast = { 25780 }, role = "TANK" },
         -- any aura on (Devotion, Retribution, Concentration, the resistances, Sanctity): Devotion to cast
-        -- (own: another paladin's aura never stands in for yours, 11-13 as EllesmereUI)
-        -- (11-15, Archy) the right-click menu picks the aura a click casts: Last Used (the default) or one aura
+        -- (own: another paladin's aura never stands in for yours)
+        -- the right-click menu picks the aura a click casts: Last Used (the default) or one aura
         { key = "aura", own = true, paladinAura = true, cast = { 10293, 10292, 1032, 10291, 643, 10290, 465 },
           buffs = { 10293, 10292, 1032, 10291, 643, 10290, 465, 10301, 10300, 10299, 10298, 7294, 19746, 19896, 19895,
                     19876, 19898, 19897, 19888, 19900, 19899, 19891, 20218 } },
@@ -105,9 +104,9 @@ local REMINDERS = {
     HUNTER = {
         { key = "pet", pet = "HUNTER" },
         { key = "trueshot", cast = { 20906, 20905, 19506, 1299348, 1299346 } },   -- Trueshot Aura (talent; Forever's ranks too)
-        -- no aspect up (any counts); a click casts the last fighting aspect seen, else Hawk (11-12)
+        -- no aspect up (any counts); a click casts the last fighting aspect seen, else Hawk
         { key = "aspect", aspect = true, cast = { 25296, 14322, 14321, 14320, 14319, 14318, 13165, 13163 },
-          -- (11-13) Forever's own aspects too: Viper (34074, 415423), 469145 and Beast's new ranks
+          -- Forever's own aspects too: Viper (34074, 415423), 469145 and Beast's new ranks
           buffs = { 25296, 14322, 14321, 14320, 14319, 14318, 13165, 13163, 5118, 13159, 20190, 20043, 13161,
                     34074, 415423, 469145, 1299445, 1299446, 1299447 } },
     },
@@ -115,12 +114,12 @@ local REMINDERS = {
 -- the warlock's pet joins its armor, then a healthstone in the bags (Create Healthstone, best rank)
 table.insert(REMINDERS.WARLOCK, { key = "pet", pet = "WARLOCK" })
 table.insert(REMINDERS.WARLOCK, { key = "healthstone", healthstone = true, cast = { 11730, 11729, 5699, 6202, 6201 } })
--- a Soulstone on a healer (or on yourself; the icon's right-click menu), in a group (11-12)
+-- a Soulstone on a healer (or on yourself; the icon's right-click menu), in a group
 table.insert(REMINDERS.WARLOCK, { key = "soulstone", soulstone = true, cast = { 20757, 20756, 20755, 20752, 693 } })
 -- Soul Link (talent): only while a pet is out
 table.insert(REMINDERS.WARLOCK, { key = "soulLink", cast = { 19028 }, needPet = true })
 -- Demonic Sacrifice's buffs (Imp, Voidwalker, Succubus, Felhunter): one up, no pet is wanted, unless
--- Demonic Pact is known (11-13, a warlock's report): with it the buff stays while another pet is
+-- Demonic Pact is known: with it the buff stays while another pet is
 -- summoned, so the buff AND a pet (and Soul Link on it) are all wanted. needSpell: shown only once
 -- that spell is known too.
 local SACRIFICE_BUFFS = { 18789, 18790, 18791, 18792 }
@@ -129,12 +128,12 @@ table.insert(REMINDERS.WARLOCK, { key = "sacrifice", cast = { 18788 }, buffs = S
     needSpell = DEMONIC_PACT, needPet = true })
 local SOULSTONES = { 16896, 16895, 16893, 16892, 5232 }                -- Major to Minor
 local SOULSTONE_BUFFS = { 20707, 20762, 20763, 20764, 20765 }          -- Soulstone Resurrection
--- trinkets for the open world, still worn in a dungeon or raid (11-12): the Argent Dawn ones, Carrot on a Stick
+-- trinkets for the open world, still worn in a dungeon or raid: the Argent Dawn ones, Carrot on a Stick
 local WORLD_TRINKETS = { 12846, 13209, 19812, 11122 }
 -- the aspects a click may put back (Cheetah and Pack are never remembered: they daze)
 local FIGHT_ASPECTS = { { 25296, 14322, 14321, 14320, 14319, 14318, 13165 }, { 13163 }, { 20190, 20043 },
                         { 13161, 1299447, 1299446, 1299445 } }
--- the paladin auras a click may cast, each highest rank first (11-15): Devotion, Retribution,
+-- the paladin auras a click may cast, each highest rank first: Devotion, Retribution,
 -- Concentration, Shadow / Frost / Fire Resistance, Sanctity
 local PALADIN_AURAS = {
     { key = "devotion", ranks = { 10293, 10292, 1032, 10291, 643, 10290, 465 } },
@@ -148,34 +147,33 @@ local PALADIN_AURAS = {
 local HEALTHSTONES = { 5512, 5511, 5509, 5510, 9421, 19004, 19005, 19006, 19007, 19008, 19009, 19010, 19011, 19012, 19013 }
 -- Camping and Rest (Forever, off): Camp Benefits from a campfire, and while levelling with a Cozy
 -- Sleeping Bag in the bags, three Well-Rested stacks (click to use the bag). Gathering Tracking (off):
--- Find Herbs or Find Minerals off while you know one. (IDs from EnhanceQoL's Forever data.)
+-- Find Herbs or Find Minerals off while you know one.
 local CAMP_BUFF, SLEEPING_BAG, WELL_RESTED = 1229741, 211527, 429959
 local EXTRAS = {
     { key = "camp", camp = true, buffs = { CAMP_BUFF }, icon = CAMP_BUFF },
     { key = "sleepingBag", bag = true },
     { key = "gathering", gathering = true, cast = { 2383, 8387, 2580, 8388 } },
-    -- Weapon Oil / Stone (off, every class; 11-12): an oil or stone on each hand
+    -- Weapon Oil / Stone (off, every class): an oil or stone on each hand
     { key = "oil", weapon = "oil" },
 }
 -- food and flask, for every class
 local CONSUMABLES = {
     -- Well Fed, and the foods whose buff has its own name (Grilled Squid, Nightfin Soup, Runn Tum Tuber
     -- Surprise, Dirge's Chimaerok Chops, Blessed Sunfruit and its juice)
-    -- (11-13) Well Fed by name; the six by ID, as their names are shared ("Mana Regeneration" is also
-    -- Elixir of Mageblood's, which hid this reminder)
-    -- switch: its own box under Consumables (11-14, a player levelling with elixirs but no flask yet)
+    -- Well Fed by name; the six by ID, as their names are shared ("Mana Regeneration" is also
+    -- Elixir of Mageblood's, which would hide this reminder)
+    -- switch: its own box under Consumables
     { key = "food", consumable = true, switch = "food", buffs = { 19705 }, icon = 19705,
       ids = { 18192, 18194, 22730, 25661, 18125, 18141 } },
-    -- the four flasks, and their items (11-14): a click drinks the one in your bags
+    -- the four flasks, and their items: a click drinks the one in your bags
     { key = "flask", consumable = true, switch = "flask", buffs = { 17626, 17627, 17628, 17629 }, icon = 17626,
       items = { 13510, 13511, 13512, 13513 } },
 }
 
--- Elixirs and More (11-12): the raid consumables a player ticks in the settings. Items (best first) and
--- the buff each gives: buff, or buffs for an elixir with lower ranks (11-14, a player levelling on the
--- minor ones): any rank counts, and a click drinks the best one in your bags. Classic IDs, unverified
--- on Forever but for the minor elixirs (2378, 673 and 3166 measured there); the items' own spell
--- names count too
+-- Elixirs and More: the raid consumables a player ticks in the settings. Items (best first) and
+-- the buff each gives: buff, or buffs for an elixir with lower ranks: any rank counts, and a click
+-- drinks the best one in your bags. Classic IDs, unverified on Forever but for the minor elixirs
+-- (2378, 673 and 3166 measured there); the items' own spell names count too
 local ELIXIRS = {
     { key = "mongoose", items = { 13452 }, buff = 17538 }, { key = "giants", items = { 9206 }, buff = 11405 },
     { key = "greaterAgility", items = { 9187 }, buff = 11334 }, { key = "bruteForce", items = { 13453 }, buff = 17537 },
@@ -193,7 +191,7 @@ local ELIXIRS = {
     { key = "gizzard", items = { 8424 }, buff = 10693 }, { key = "rumsey", items = { 21151 }, buff = 25804 },
 }
 
--- Low Supplies (11-12, off): a reagent below its minimum, once you know the spell that needs it
+-- Low Supplies (off): a reagent below its minimum, once you know the spell that needs it
 -- (item, minimum, the spells that use it); a hunter's ammo is counted on its own
 local SUPPLIES = {
     WARLOCK = { { item = 6265, min = 3, spells = { 693, 20752, 20755, 20756, 20757, 698, 6201, 11730 } } },   -- Soul Shard
@@ -231,11 +229,10 @@ local GLOW_MISSING, GLOW_EXPIRING = { 1, 0.82, 0.25 }, { 1, 0.45, 0.1 }
 -- classes that never use mana
 local NO_MANA = { WARRIOR = true, ROGUE = true }
 
--- WEAPON BUFFS (11-11, after a warlock's report): a shaman's imbue, a rogue's poison, a warlock's
+-- WEAPON BUFFS: a shaman's imbue, a rogue's poison, a warlock's
 -- Firestone / Spellstone, each checked on the main hand and on an off-hand weapon (shields and held
 -- items skipped). Only the class's own enchants count (a sharpening stone or a permanent enchant never
--- does). Forever's enchant IDs, by family: the shaman and rogue ones after EnhanceQoL's Forever data
--- (game IDs only), the stones from PrettyTooltip's data (MIT). Click: the imbue (the off-hand: cast, then
+-- does). Forever's enchant IDs, by family (sources in LICENSES). Click: the imbue (the off-hand: cast, then
 -- the off-hand), a poison or stone from the bags (use it, then the weapon), or Create Firestone /
 -- Spellstone when none is in the bags. Which one: the icon's right-click menu, per hand; Last Used
 -- (the default) is the one last seen on that hand.
@@ -262,7 +259,7 @@ end
 -- what a click can put on: imbues by their first rank (cast by name: your best rank), poisons and
 -- stones by their items, best first (rank 1's item carries the plain name, for the menu)
 local WEAPON_OPTIONS = {
-    -- (11-13) every rank, as EllesmereUI: knowing any one counts
+    -- every rank: knowing any one counts
     imbue = {
         { key = "windfury", cast = 8232, ranks = { 8232, 8235, 10486, 16362 } },
         { key = "flametongue", cast = 8024, ranks = { 8024, 8027, 8030, 16339, 16341, 16342 } },
@@ -281,18 +278,17 @@ local WEAPON_OPTIONS = {
         { key = "spellstone", items = { 13603, 13602, 5522 }, create = { 17728, 17727, 2362 }, name = 5522 },
     },
 }
--- Oils and stones (11-12, a warlock used wizard oil): offered on every weapon reminder's menu while
--- they are in the bags, and seen as that hand's buff. Item, then Forever's enchant ID (PrettyTooltip's
--- Forever data, via the 11-12 buff reminders research).
+-- Oils and stones: offered on every weapon reminder's menu while they are in the bags, and seen as
+-- that hand's buff. Item, then Forever's enchant ID.
 local WEAPON_OILS = {
     { 20749, 2628, nil, "wizard" }, { 20750, 2627, nil, "wizard" }, { 20746, 2626, nil, "wizard" }, { 20744, 2623, nil, "wizard" },
     { 20748, 2629, nil, "mana" }, { 20747, 2625, nil, "mana" }, { 20745, 2624, nil, "mana" },
     { 23123, 2685, nil, "wizard" }, { 3824, 25 }, { 3829, 26 },           -- Blessed Wizard, Shadow, Frost Oil
-    { 287979, nil, nil, "wizard" },                                       -- (Forever's own wizard oil, 11-13)
-    { 287980, nil, nil, "stone" },                                        -- (Forever's own, 11-13)
+    { 287979, nil, nil, "wizard" },                                       -- (Forever's own wizard oil)
+    { 287980, nil, nil, "stone" },                                        -- (Forever's own)
     { 18262, 2506, nil, "stone" }, { 23122, 2684, nil, "stone" },         -- Elemental, Consecrated stone
     { 12404, 1643, "blade", "stone" }, { 7964, 483, "blade", "stone" }, { 2871, 14, "blade", "stone" }, { 2863, 13, "blade", "stone" },
-    { 287978, nil, "blade", "stone" },                                    -- (Forever's own sharpening stone, 11-13)
+    { 287978, nil, "blade", "stone" },                                    -- (Forever's own sharpening stone)
     { 2862, 40, "blade", "stone" },
     { 12643, 1703, "blunt", "stone" }, { 7965, 484, "blunt", "stone" }, { 3241, 21, "blunt", "stone" }, { 3240, 20, "blunt", "stone" },
     { 3239, 19, "blunt", "stone" },
@@ -310,17 +306,17 @@ for kind, list in pairs(WEAPON_OPTIONS) do WEAPON_CHOICES[kind] = Join(list, OIL
 WEAPON_OPTIONS.oil, WEAPON_CHOICES.oil, WEAPON_ENCHANTS.oil = OIL_OPTIONS, OIL_OPTIONS, OIL_ENCHANTS
 -- maces and staves take weightstones, the rest sharpening stones (Enum.ItemWeaponSubclass)
 local BLUNT = { [4] = true, [5] = true, [10] = true }
--- Playstyle (11-12): which oils the Weapon Oil / Stone reminder reaches for first; Automatic goes by class
+-- Playstyle: which oils the Weapon Oil / Stone reminder reaches for first; Automatic goes by class
 local PLAYSTYLE_OILS = { caster = { "wizard", "mana" }, healer = { "mana", "wizard" }, melee = { "stone" }, tank = { "stone" } }
 local CLASS_PLAYSTYLE = { WARRIOR = "melee", ROGUE = "melee", HUNTER = "melee", PALADIN = "melee",
                           MAGE = "caster", WARLOCK = "caster", PRIEST = "caster", DRUID = "caster", SHAMAN = "caster" }
--- a poison with this few charges left counts as running out (11-13: was 15, a third of a classic
--- poison's 40-60 charges, so a rogue saw it most of every fight)
+-- a poison with this few charges left counts as running out (kept low: a classic poison has 40-60
+-- charges, and a higher line showed the reminder through most of every fight)
 local LOW_CHARGES = 5
 local POISONS = 2842             -- the rogue's Poisons skill: the reminder waits for it
 local PERMANENT = Enum and Enum.ItemEnchantType and Enum.ItemEnchantType.Permanent or 1
 -- Forever gives the class's own weapon buffs (poisons, imbues, Firestone / Spellstone) the Imbue type
--- and oils and stones the Temporary one (11-13, as EllesmereUI reads them): the type says whose a
+-- and oils and stones the Temporary one: the type says whose a
 -- buff is, so a poison counts whatever its enchant ID (new or reworked ones included). The IDs only
 -- name the family (Last Used).
 local IMBUE = Enum and Enum.ItemEnchantType and Enum.ItemEnchantType.Imbue or 3
@@ -333,7 +329,7 @@ local WEAPON_SLOT = { [16] = 0, [17] = 1 }   -- Enum.WeaponSlot MainHand / OffHa
 local holder, row          -- holder: the Edit Mode frame (hidden in a fight); row: the icons' parent
 local icons = {}           -- [i] = secure button
 local active = {}          -- this class's reminders, spell names resolved
-local DEFAULTS = { point = "CENTER", x = -423, y = -140 }   -- Malkkav's own spot (11-11)
+local DEFAULTS = { point = "CENTER", x = -423, y = -140 }
 
 local function Readable(v) return canaccessvalue == nil or canaccessvalue(v) end
 
@@ -363,7 +359,7 @@ local function ElixirInBags(def)
         if ItemCount(item) > 0 then return item end
     end
 end
--- an elixir family the settings watch (Elixirs to Watch, 11-14): ticked in Elixirs and More, or carried
+-- an elixir family the settings watch (Elixirs to Watch): ticked in Elixirs and More, or carried
 local function ElixirWatched(def, db)
     if db.elixirSource == "bags" then return ElixirInBags(def) ~= nil end
     return ns.Conditions.Set(db.elixirs or "")[def.key] == true
@@ -490,7 +486,7 @@ local function Resolve()
                 if not any and OptionKnown(kind, o) then any = o end
             end
             if kind == "poison" and not Known(POISONS) then
-                -- (11-13) the Poisons skill, or a poison in the bags: Forever reworked poisons
+                -- the Poisons skill, or a poison in the bags: Forever reworked poisons
                 local inBags = false
                 for _, o in ipairs(WEAPON_OPTIONS.poison) do
                     for _, item in ipairs(o.items or {}) do
@@ -527,7 +523,8 @@ local function Resolve()
                             if name then names[name] = true end
                         end
                     end
-                    known[key] = { castID = id, names = names, icon = SpellIcon(id) }
+                    -- cast: every rank, so each member gets the one their level can take
+                    known[key] = { castID = id, cast = b.cast, names = names, icon = SpellIcon(id) }
                 end
             end
             if next(known) then
@@ -536,7 +533,7 @@ local function Resolve()
             end
             usable = false
         elseif def.pet then
-            -- (11-15, Alex) a hunter with Forever's Lone Wolf talent (415370) fights without a pet on purpose
+            -- a hunter with Forever's Lone Wolf talent (415370) fights without a pet on purpose
             local any = def.pet == "HUNTER" and (Known(CALL_PET) or Known(REVIVE_PET)) and not Known(415370)
             if def.pet == "WARLOCK" then
                 for _, id in ipairs(WARLOCK_SUMMONS) do if Known(id) then any = true end end
@@ -616,7 +613,7 @@ local function Resolve()
         end
         active[#active + 1] = { def = def, names = names, icon = ItemIcon(def.items[1]) }
     end
-    -- Those in Your Bags with nothing to drink (11-14): one icon while no elixir is carried nor up
+    -- Those in Your Bags with nothing to drink: one icon while no elixir is carried nor up
     active[#active + 1] = { def = { key = "elixirStock", elixirStock = true, label = L["No elixir in your bags."] },
         names = {}, icon = ItemIcon(3383) }
     for _, def in ipairs(CONSUMABLES) do
@@ -638,7 +635,7 @@ local dismissed = {}
 local snoozed = {}   -- Snooze Until Recast: hidden until the buff is seen again
 function BR.HideKey(entry)
     local _, class = UnitClass("player")
-    -- (11-15, PR #63 review) Any One of Them shows one icon on whichever elixir comes first: hiding or
+    -- Any One of Them shows one icon on whichever elixir comes first: hiding or
     -- snoozing it means the whole elixir reminder, so it has a key of its own
     if entry.def and entry.def.elixir and (GetDb() or {}).elixirMode == "any" then
         return (class or "") .. ":elixirAny"
@@ -652,14 +649,14 @@ function BR.HiddenCount()
     for _ in pairs(dismissed) do n = n + 1 end
     return n
 end
--- a reminder's name, kept with it when hidden so the Hidden Reminders list can show it (11-13)
+-- a reminder's name, kept with it when hidden so the Hidden Reminders list can show it
 function BR.EntryLabel(entry, owner)
     local name = owner and owner.spellID and SpellName(owner.spellID)
         or (entry.castID and SpellName(entry.castID)) or next(entry.names or {})
         or (entry.def and entry.def.label)
     return name or (entry.key or (entry.def and entry.def.key)) or "?"
 end
--- Hidden Reminders (11-13, a player: one by one): every hidden one, ticked; unticking brings it back
+-- Hidden Reminders: every hidden one, ticked; unticking brings it back
 local hiddenTokens = {}
 function BR.HiddenTokens() return hiddenTokens end
 function BR.HiddenChoices()
@@ -711,7 +708,7 @@ local function InScope(mode)
     return inInstance and (kind == "party" or kind == "raid") or false
 end
 
--- On Mouseover (6.4.1, a player: poisons out of sight until wanted): the Where choice of this
+-- On Mouseover (out of sight until wanted): the Where choice of this
 -- reminder's kind
 function BR.KindMode(entry, db)
     local def = entry and entry.def
@@ -747,7 +744,7 @@ function BR.HoverLeave()
     end)
 end
 
--- Custom Reminders (11-12): your own, per class (db.custom[class]): spell IDs or names and item IDs,
+-- Custom Reminders: your own, per class (db.custom[class]): spell IDs or names and item IDs,
 -- any one of them counts. A click casts the first spell you know, else uses the first item in your bags.
 local function CustomList(create)
     local db = GetDb()
@@ -779,7 +776,7 @@ function BR.AddCustom(text)
             items[#items + 1] = number
         elseif part ~= "" and not number then
             spells[#spells + 1] = part
-            -- (11-15, SMELTN) a food or potion typed by name: when it's an item the game knows (in your
+            -- a food or potion typed by name: when it's an item the game knows (in your
             -- bags) and not a spell, it's kept as that item too, for its icon and a click to use it
             local spellInfo = C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(part)
             local nameItem = not spellInfo and C_Item.GetItemInfoInstant and C_Item.GetItemInfoInstant(part)
@@ -792,7 +789,7 @@ function BR.AddCustom(text)
     BR.Resolve()
     BR.Update()
 end
--- Custom Reminders (11-13, a player: one by one): this class's own, ticked; unticking removes one
+-- Custom Reminders, one by one: this class's own, ticked; unticking removes one
 local customTokens = {}
 function BR.CustomTokens() return customTokens end
 local function CustomLabel(c)
@@ -886,7 +883,7 @@ function Enabled(entry)
     if entry.def.trinket and db.trinkets ~= true then return false end
     if entry.def.optIn and not ns.Conditions.Set(db.extras or "")[entry.def.key] then return false end
     if entry.def.weapon == "oil" and db.weaponOil ~= true then return false end
-    -- Weapon Buffs, Pets and the class's own buffs: where they show (11-12)
+    -- Weapon Buffs, Pets and the class's own buffs: where they show
     if entry.def.weapon and not InScope(db.weaponScope) then return false end
     if entry.def.pet and not InScope(db.petScope) then return false end
     if entry.classBuff and not entry.def.weapon and not entry.def.pet and not InScope(db.classScope) then return false end
@@ -949,8 +946,7 @@ local function GroupUnits(out)
 end
 
 -- someone a buff can reach: there, alive, online, seen and in your phase, and within the game's group
--- range check (one it can't make, or keeps secret, counts as in range). Always since 11-16 (Malkkav;
--- it was the Ignore Members Out of Range switch).
+-- range check (one it can't make, or keeps secret, counts as in range). Always on.
 local function IsReachable(unit)
     if not UnitExists(unit) or UnitIsDeadOrGhost(unit) or not UnitIsConnected(unit) then return false end
     if unit ~= "player" and not UnitIsUnit(unit, "player") then
@@ -961,7 +957,7 @@ local function IsReachable(unit)
             if ok and Readable(inRange) and Readable(checked) then
                 if checked and not inRange then return false end
             elseif CheckInteractDistance and not InCombatLockdown() then
-                -- (11-15, Sile) Forever keeps UnitInRange secret: the follow distance (about 28 yards,
+                -- Forever keeps UnitInRange secret: the follow distance (about 28 yards,
                 -- near a buff's 30) instead, out of a fight; an answer it hides still counts as in range
                 local ok2, near = pcall(CheckInteractDistance, unit, 4)
                 if ok2 and Readable(near) and near == false then return false end
@@ -969,6 +965,48 @@ local function IsReachable(unit)
         end
     end
     return true
+end
+
+-- false only when the game says the spell can't reach the unit from here (out of its range); any
+-- other answer (in range, can't tell, kept secret) is true. Picks who a click buffs, so one member
+-- out of range doesn't hold up the rest.
+function BR.SpellReaches(castID, unit)
+    if not (castID and C_Spell and C_Spell.IsSpellInRange) or InCombatLockdown() then return true end
+    local ok, inRange = pcall(C_Spell.IsSpellInRange, castID, unit)
+    return not (ok and Readable(inRange) and inRange == false)
+end
+
+-- The rank of a buff a member can take. The game refuses a rank learned more than ten levels
+-- above the target ("target too low level"), so a low-level friend needs a lower rank.
+-- Takes a list of cast IDs (highest first) or something holding one (.cast or .def.cast).
+-- Returns the highest known rank the unit can take, or nil when none fits. A level the game
+-- hides or doesn't give (?? or secret) and a learn level it can't tell both count as able.
+BR.learnLevel = {}   -- [spellID] = level the rank is learned at (spell data doesn't change)
+BR.lowRank = {}      -- [spellID] = true: a known rank below the top known one (cast by ID, not name)
+function BR.RankFor(list, unit)
+    if type(list) == "table" and list.def then list = list.def.cast
+    elseif type(list) == "table" and list.cast then list = list.cast end
+    local level = unit and UnitLevel and UnitLevel(unit)
+    if not Readable(level) or type(level) ~= "number" or level <= 0 then level = nil end
+    local top
+    for _, id in ipairs(list or {}) do
+        if Known(id) then
+            if not level then return id end
+            local learned = BR.learnLevel[id]
+            if not learned then
+                local ok, l = false, nil
+                if C_Spell and C_Spell.GetSpellLevelLearned then ok, l = pcall(C_Spell.GetSpellLevelLearned, id) end
+                learned = ok and Readable(l) and type(l) == "number" and l or 0
+                -- keep only real answers: spell data that hasn't loaded yet may say 0 for now
+                if learned > 0 then BR.learnLevel[id] = learned end
+            end
+            if learned <= 0 or level >= learned - 10 then
+                if top then BR.lowRank[id] = true end
+                return id
+            end
+            top = top or id
+        end
+    end
 end
 
 local function Reachable(unit)
@@ -1001,8 +1039,8 @@ end
 
 -- true when the unit has one of the names with more than `before` seconds left; second: it has it,
 -- but it is running out (Remind Before It Ends)
--- (11-13 performance pass) looked up by name, not walked: walking made a table for every aura on
--- every unit, up to 3 times a second in a raid, and that garbage fed periodic stutters
+-- looked up by name, not walked: walking makes a table for every aura on every unit, up to 3 times
+-- a second in a raid, and that garbage feeds periodic stutters
 -- own: only a buff the player cast counts (a source the game hides counts as yours: quiet)
 local function Mine(a)
     local source = a.sourceUnit
@@ -1040,7 +1078,7 @@ local function HasBuff(unit, names, before, own)
     return fine, not fine, expires - now
 end
 
--- an option of this kind whose icon is the enchant's (11-13: Forever's reworked poisons have enchant
+-- an option of this kind whose icon is the enchant's (Forever's reworked poisons have enchant
 -- IDs FlareUI doesn't list; their icon still says which one it is, for Last Used)
 local iconFamilies = {}
 local function FamilyByIcon(kind, iconID)
@@ -1108,7 +1146,7 @@ local function WeaponMissing(slot, kind, before, mode)
             family = family or (id and (families[id] or OIL_ENCHANTS[id])) or FamilyByIcon(kind, e.enchantIconID)
             local seconds = (left or 0) / 1000
             -- a poison nearly out of charges counts as running out, unless Remind Before It Ends is
-            -- Only When Missing (11-13, a rogue's report: it showed the reminder all along)
+            -- Only When Missing
             local charges = e.charges
             local low = before > 0 and Readable(charges) and charges and charges > 0 and charges <= LOW_CHARGES
             -- (no time given: it's on, and nothing says it ends soon)
@@ -1155,7 +1193,7 @@ end
 -- the blessing a member should have, among the ones you know: the one picked for that player (by
 -- GUID, the right-click menu's Group Members), else for their class (By Class), else the one for
 -- everyone (Automatic: Might for the fighters, Wisdom for the rest), else the first you know
--- (11-15) a pick you no longer know falls through to the next one
+-- (a pick you no longer know falls through to the next one)
 local function BlessingFor(entry, unit)
     local db = GetDb() or {}
     local players, classes = db.blessingPlayer, db.blessingClass
@@ -1197,8 +1235,8 @@ end
 local PET_SETTLE = 2.5   -- seconds the pet's state is left alone after a dismount or a new pet
 local function PetFix(entry)
     if IsMounted() then return nil end
-    -- (11-13, a player: the Passive Pet reminder flashed on dismounting) right after a dismount or a
-    -- pet appearing the pet bar still reads Passive for a moment: quiet until it has caught up
+    -- right after a dismount or a pet appearing the pet bar still reads Passive for a moment: quiet
+    -- until it has caught up (the Passive Pet reminder would flash)
     if GetTime() - (BR.petSettleAt or 0) < PET_SETTLE then return nil end
     local exists = UnitExists("pet")
     if exists and not UnitIsDead("pet") then
@@ -1217,7 +1255,7 @@ local function PetFix(entry)
     if exists then return nil end
     -- a pet given up for Demonic Sacrifice: its buff stands in for it (unreadable: quiet); with
     -- Demonic Pact the buff stays with a new pet out, so a pet is still wanted
-    -- (11-13: by name, so a reworked buff still counts)
+    -- (by name, so a reworked buff still counts)
     if not Known(DEMONIC_PACT) then
         local names = {}
         for _, id in ipairs(SACRIFICE_BUFFS) do
@@ -1246,7 +1284,9 @@ local function IsTank(unit)
 end
 
 -- Only When You're the Only Provider: someone else in the group of your class gives it already
+-- (asked by every group buff: answered once per pass, in scan.provider)
 local function OtherProvider()
+    if scan.active and scan.provider ~= nil then return scan.provider end
     local _, mine = UnitClass("player")
     local list = {}
     if IsInRaid() then
@@ -1254,14 +1294,16 @@ local function OtherProvider()
     elseif IsInGroup() then
         for i = 1, 4 do list[#list + 1] = "party" .. i end
     end
+    local found = false
     for _, unit in ipairs(list) do
-        -- (11-15) only one you can see: a member of your class in another zone gives you nothing
+        -- only one you can see: a member of your class in another zone gives you nothing
         if not UnitIsUnit(unit, "player") and Reachable(unit) then
             local _, class = UnitClass(unit)
-            if class == mine then return true end
+            if class == mine then found = true break end
         end
     end
-    return false
+    if scan.active then scan.provider = found end
+    return found
 end
 
 -- Hunter Aspect: the aspect up now (remembered when it's one to fight with), and the one a click casts
@@ -1284,7 +1326,7 @@ function BR.AspectUp(entry)
         if not ok or not aura then return false end
         local name = aura.name
         if not Readable(name) then return true end
-        -- (11-13) another hunter's Aspect of the Pack is not yours
+        -- another hunter's Aspect of the Pack is not yours
         if entry.names[name] and Mine(aura) then
             local me = ns.CharDB and ns.CharDB()
             if me and fight[name] then me.lastAspect = fight[name] end
@@ -1303,7 +1345,7 @@ function BR.AspectToCast()
     end
 end
 
--- Paladin Aura (11-15, Archy): one of yours up (remembered for Last Used), and the one a click casts
+-- Paladin Aura: one of yours up (remembered for Last Used), and the one a click casts
 local function PaladinAuraOf(name)
     if not BR.paladinAuraNames then
         local names = {}
@@ -1382,9 +1424,9 @@ local function ElixirUp(entry, before)
         end
         entry.itemNames = all or nil
     end
-    -- (11-13) by spell ID where the game knows one: a name can be another buff's too (Elixir of
-    -- Mageblood and Nightfin Soup are both "Mana Regeneration"); by name only when no ID resolves
-    -- (11-15, PR #63 review) the list is kept once every item has loaded: Those in Your Bags checks
+    -- by spell ID where the game knows one: a name can be another buff's too (Elixir of
+    -- Mageblood and Nightfin Soup are both "Mana Regeneration"); by name only when no ID resolves.
+    -- The list is kept once every item has loaded: Those in Your Bags checks
     -- every elixir on each pass
     local ids = entry.elixirIDs
     if not ids then
@@ -1404,7 +1446,7 @@ end
 -- reminder's own: a blessing or a pet's), and whether nothing is missing, only running out
 local function Check(entry, before)
     local def = entry.def
-    -- (11-15) never for blessings: two paladins split them, so another paladin doesn't make yours
+    -- never for blessings: two paladins split them, so another paladin doesn't make yours
     -- needless; the count below only takes members missing the one they should get from you
     if def.group and not def.blessing and (GetDb() or {}).onlyProvider and OtherProvider() then return 0, 0 end
     -- the role filters (When It Shows): your group role hides the group buffs, never your own
@@ -1541,7 +1583,7 @@ local function Check(entry, before)
     end
     if def.elixir then
         local running, left, item
-        -- Any One of Them (11-14, a player levelling on what drops): the watched elixirs make one
+        -- Any One of Them: the watched elixirs make one
         -- reminder, on the first of them, fine while any is up, drinking whichever is in your bags
         local db = GetDb() or {}
         if db.elixirMode == "any" then
@@ -1613,7 +1655,7 @@ local function Check(entry, before)
             for i = 1, C_Minimap.GetNumTrackingTypes() do
                 local info = C_Minimap.GetTrackingInfo(i)
                 if info and info.active and info.spellID and tContains(def.cast, info.spellID) then return 0, 1 end
-                -- (11-13) Forever has one tracking slot for spells: a class tracker on (Track Beasts,
+                -- Forever has one tracking slot for spells: a class tracker on (Track Beasts,
                 -- Sense Undead...) leaves no room, so nothing to remind; Find Treasure stacks with it
                 if info and info.active and info.type == "spell" and info.spellID and info.spellID ~= 2481 then return 0, 1 end
             end
@@ -1621,22 +1663,32 @@ local function Check(entry, before)
         return HasBuff("player", entry.names, 0) and 0 or 1, 1, "player"
     end
     if def.blessing then
-        local missing, total, first, firstBlessing, gone = 0, 0, nil, nil, false
+        local missing, total, first, firstBlessing, firstRank, gone = 0, 0, nil, nil, nil, false
+        local farUnit, farBlessing, farRank   -- the first missing member out of the spell's range, if no one closer
         for _, unit in ipairs(GroupUnits(units)) do
             if Reachable(unit) then
                 local b = BlessingFor(entry, unit)
-                if b then
+                -- the rank this member can take; none (Kings under level 10...) leaves them out
+                local rank = b and BR.RankFor(b.cast, unit)
+                if rank then
                     total = total + 1
                     local fine, running = HasBuff(unit, b.names, before)
                     if not fine then
                         missing = missing + 1
                         if not running then gone = true end
-                        if not first then first, firstBlessing = unit, b end
+                        if not first then
+                            if BR.SpellReaches(rank, unit) then
+                                first, firstBlessing, firstRank = unit, b, rank
+                            elseif not farUnit then
+                                farUnit, farBlessing, farRank = unit, b, rank
+                            end
+                        end
                     end
                 end
             end
         end
-        return missing, total, first, firstBlessing and firstBlessing.castID, firstBlessing and firstBlessing.icon, not gone
+        if not first then first, firstBlessing, firstRank = farUnit, farBlessing, farRank end
+        return missing, total, first, firstRank, firstBlessing and firstBlessing.icon, not gone
     end
     if not def.group then
         -- buffs that can only be told apart by ID (the foods with their own buff): on, or can't tell
@@ -1646,7 +1698,7 @@ local function Check(entry, before)
         end
         local fine, running, left = HasBuff("player", entry.names, before, def.own)
         if fine then return 0, 1 end
-        -- a flask (11-14): a click drinks the one in your bags
+        -- a flask: a click drinks the one in your bags
         local item = def.items and ElixirInBags(def)
         if item then
             return 1, 1, "player", nil, ItemIcon(item), running, { item = "item:" .. item, tipItem = item },
@@ -1655,12 +1707,12 @@ local function Check(entry, before)
         return 1, 1, "player", nil, nil, running, def.items and { text = L["Flask"], none = true } or nil,
             running and left or nil
     end
-    local missing, total, first, gone = 0, 0, nil, false
+    local missing, total, first, firstRank, gone = 0, 0, nil, nil, false
+    local far, farRank   -- the first missing member out of the spell's range, if no one closer
     -- Thorns: tanks (their group role, or the raid's main tanks; alone, yourself), you, or everyone
     local pick = def.pick and ((GetDb() or {})[def.pick] or "tank")
     local list = GroupUnits(units)
-    -- (11-15, a player: reminders gone in an open-world group) Tanks Only with no tank in the group
-    -- (invite groups have no roles): yourself, as alone
+    -- Tanks Only with no tank in the group (invite groups have no roles): yourself, as alone
     local grouped = false
     if pick == "tank" and IsInGroup() then
         for _, unit in ipairs(list) do
@@ -1686,18 +1738,32 @@ local function Check(entry, before)
                 local _, class = UnitClass(unit)
                 caster = not NO_MANA[class]
             end
-            if caster then
+            -- the rank this member can take; none (Divine Spirit under level 20...) leaves them
+            -- out. A shout has no target, so every rank reaches everyone.
+            local takes, rank = caster, entry.castID
+            if caster and def.cast and not def.party then
+                rank = BR.RankFor(def.cast, unit)
+                takes = rank ~= nil
+            end
+            if takes then
                 total = total + 1
                 local fine, running = HasBuff(unit, entry.names, before)
                 if not fine then
                     missing = missing + 1
                     if not running then gone = true end
-                    first = first or unit
+                    if not first then
+                        if BR.SpellReaches(rank, unit) then
+                            first, firstRank = unit, rank
+                        elseif not far then
+                            far, farRank = unit, rank
+                        end
+                    end
                 end
             end
         end
     end
-    return missing, total, first, nil, nil, not gone
+    if not first then first, firstRank = far, farRank end
+    return missing, total, first, firstRank, nil, not gone
 end
 
 --------------------------------------------------
@@ -1802,7 +1868,7 @@ function BR.Menu(owner)
             db.hidden[key] = BR.EntryLabel(entry, owner)
             BR.Update()
         end)
-        -- a reminder's own choice lives here, not in the settings (11-10, Malkkav: no settings bloat)
+        -- a reminder's own choice lives here, not in the settings
         local db = GetDb()
         if not db then return end
         local function Radio(text, field, value)
@@ -1827,7 +1893,7 @@ function BR.Menu(owner)
                 end
             end
         elseif entry.def.paladinAura then
-            -- (11-15, Archy) which aura a click casts
+            -- which aura a click casts
             root:CreateDivider()
             root:CreateTitle(L["Aura to Cast"])
             Radio(L["Last Used"], "paladinAura", "auto")
@@ -1847,14 +1913,14 @@ function BR.Menu(owner)
     end)
 end
 
--- Once per profile: the Counts and Timers fonts start as the Buffs frame's stack font they used
--- the counts' and timers' fonts, for the page's Fonts tab (key "countFont" or "timeFont", 11-13)
+-- the counts' and timers' fonts, for the page's Fonts tab (key "countFont" or "timeFont")
 function BR.Font(key)
     BR.SeedFonts()
     local rdb = GetDb()
     return rdb and rdb[key]
 end
 
+-- Once per profile: the Counts and Timers fonts start as the Buffs frame's stack font
 function BR.SeedFonts()
     local rdb = GetDb()
     if not rdb or rawget(rdb, "fontsSeeded") then return end
@@ -1871,16 +1937,16 @@ end
 
 local function StyleIcon(b, size)
     local db = AurasDb()
-    -- (11-13 performance pass) only when the look changed: Show runs up to 3 times a second in a raid,
-    -- and each restyle made tables and set fonts; BR:Refresh (every look or font change) bumps the stamp
+    -- only when the look changed: Show runs up to 3 times a second in a raid, and each restyle makes
+    -- tables and sets fonts; BR:Refresh (every look or font change) bumps the stamp
     local round = (db and db.style or "round") == "round"
     if b.fuiSize == size and b.fuiRound == round and b.fuiStamp == BR.styleStamp then return end
     b.fuiSize, b.fuiRound, b.fuiStamp = size, round, BR.styleStamp
     b:SetSize(size, size)
     local AU = ns.Auras
     if AU and AU.StyleIcon then
-        AU.StyleIcon(b, b.icon, b.pieces, (db and db.style or "round") == "round")
-        -- the reminders' own Counts and Timers fonts (Edit Mode > Fonts, 11-13)
+        AU.StyleIcon(b, b.icon, b.pieces, round)
+        -- the reminders' own Counts and Timers fonts (the page's Fonts tab)
         BR.SeedFonts()
         local rdb = GetDb()
         for _, part in ipairs({ { b.count, rdb and rdb.countFont }, { b.time, rdb and rdb.timeFont } }) do
@@ -1947,8 +2013,13 @@ local function Show(shows, sample)
             b:SetAttribute("unit", s.action.unit)
         elseif castID then
             b:SetAttribute("type", "spell")
-            -- by name: the game casts your highest rank (imbues list only their first rank's ID)
-            b:SetAttribute("spell", SpellName(castID) or castID)
+            -- by name: the game casts your highest rank (imbues list only their first rank's ID);
+            -- a lower rank picked for a low-level member goes by ID, since a name casts the top rank
+            if BR.lowRank[castID] then
+                b:SetAttribute("spell", castID)
+            else
+                b:SetAttribute("spell", SpellName(castID) or castID)
+            end
             b:SetAttribute("unit", s.unit or "player")
         else
             b:SetAttribute("type", nil)
@@ -1958,7 +2029,7 @@ local function Show(shows, sample)
         local countText = ""
         if s.total > 1 and countMode == "both" then countText = s.missing .. "/" .. s.total
         elseif s.total > 1 and countMode == "missing" then countText = tostring(s.missing) end
-        -- a click that uses an item from the bags: how many are left (11-12)
+        -- a click that uses an item from the bags: how many are left
         local item = s.action and s.action.tipItem
         if countText == "" and item and not sample then
             local n = ItemCount(item)
@@ -2105,7 +2176,7 @@ function BR.Update(context)
     if not holder or InCombatLockdown() then return end
     if context ~= scan then wipe(scan.auras) end
     wipe(scan.reach)
-    scan.active, scan.rosterReady, scan.now = true, false, GetTime()
+    scan.active, scan.rosterReady, scan.now, scan.provider = true, false, GetTime(), nil
     wipe(shows)
     local db = GetDb() or {}
     if ns.EditPreviewing and ns.EditPreviewing() then
@@ -2177,7 +2248,7 @@ end
 -- Show Speed / Hide Speed (Fading section): the row fades in as reminders appear where there
 -- were none, and out as the last goes. The icons are secure buttons: the empty row is drawn after the
 -- fade, out of a fight only (a fight starting meanwhile leaves it to PLAYER_REGEN_ENABLED's update).
--- 11-15: fadeIn / fadeOut replaced the one fadeSpeed; an unset one reads the old fadeSpeed.
+-- An unset fadeIn / fadeOut reads the single fadeSpeed of older profiles.
 function BR.FadeSpeed(db, field)
     return (db and (db[field] or db.fadeSpeed)) or "instant"
 end
@@ -2255,7 +2326,6 @@ local function OnMoved(_, layoutName, point, x, y)
     store.point, store.x, store.y = point, math_floor(x + 0.5), math_floor(y + 0.5)
 end
 
--- the Blessing row's choices (Settings > Buffs & Debuffs): Automatic, then each blessing by its name
 -- Elixirs and More's list: None, then every item by its name in your language
 function BR.ElixirChoices()
     local list = { { "none", L["None"] }, { divider = true } }
@@ -2293,12 +2363,13 @@ ns.Dialogs["FLAREUI_BR_CUSTOM"] = {
     maxLetters = 200,
     OnAccept = function(_, text)
         BR.AddCustom(text)
-        -- (11-15, MunchieDog) the open settings page shows the new one at once (its list stayed "None")
+        -- the open settings page shows the new one at once (its list would stay "None")
         if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
     end,
     hideOnEscape = true,
 }
 
+-- the Blessing row's choices (Settings > Buffs & Debuffs): Automatic, then each blessing by its name
 function BR.BlessingChoices()
     local list = { { "auto", L["Automatic"] } }
     for _, key in ipairs(BLESSING_ORDER) do
@@ -2308,7 +2379,7 @@ function BR.BlessingChoices()
     return list
 end
 
--- the blessing menu's By Class and Group Members (11-15, Malkkav): each class gets Default (the choice
+-- the blessing menu's By Class and Group Members: each class gets Default (the choice
 -- above) or a blessing you know, each member Class Default or a blessing you know. Members are kept
 -- by GUID (UnitName is the first name only) with the name they had, so a pick lasts across sessions.
 function BR.BlessingSubmenus(root, entry, db)
@@ -2411,13 +2482,15 @@ function BR.BlessingSubmenus(root, entry, db)
 end
 
 local function BuildSettings()
+    -- (a Reset Settings redraws once, after its last setting: LEM:Defer)
+    local function Redraw() if not LEM:Defer(BR.Update) then BR.Update() end end
     local function get(key, default) return function() local db = GetDb(); return db and db[key] or default end end
     local function set(key)
         return function(_, value)
             local db = GetDb()
             if not db then return end
             db[key] = value
-            BR.Update()
+            Redraw()
         end
     end
     local function Vertical() local db = GetDb(); return db and db.orientation == "VERTICAL" end
@@ -2451,18 +2524,18 @@ local function BuildSettings()
         { name = L["Spacing"], kind = LEM.SettingType.Slider, default = 6, minValue = 0, maxValue = 20, valueStep = 1,
           get = get("spacing", 6), set = set("spacing") },
     })
-    -- FADING (11-11, from the settings page's When It Shows and Hiding, as the other frames' Fading):
-    -- Visibility ticks where it shows (Solo / In a Party / In a Raid, any of them). It always hides in
-    -- a fight (its icons are secure buttons, and buffs can't be read then). Only Provider and the
-    -- role switches stay on the settings page: they pick group buffs, not where the frame shows.
+    -- FADING, as the other frames' Fading: Visibility ticks where it shows (Solo / In a Party / In a
+    -- Raid, any of them). It always hides in a fight (its icons are secure buttons, and buffs can't
+    -- be read then). Only Provider and the role switches stay on the settings page: they pick group
+    -- buffs, not where the frame shows.
     local SHOW = { { "solo", "showSolo" }, { "party", "showParty" }, { "raid", "showRaid" } }
     local function On(field) local db = GetDb(); return not (db and db[field] == false) end
-    -- Alerts you see on the icons (11-12, from the settings page): the glows and the time left
+    -- Alerts you see on the icons: the glows and the time left
     local function Bool(key, default)
         return function() local db = GetDb(); if not db or db[key] == nil then return default end; return db[key] == true end
     end
     local function SetBool(key)
-        return function(_, value) local db = GetDb(); if db then db[key] = value and true or false end; BR.Update() end
+        return function(_, value) local db = GetDb(); if db then db[key] = value and true or false end; Redraw() end
     end
     Section("Alerts", {
         { name = L["Glow When Missing"], kind = LEM.SettingType.Checkbox, default = false,
@@ -2489,17 +2562,15 @@ local function BuildSettings()
               for _, s in ipairs(SHOW) do
                   if s[1] == value then db[s[2]] = not On(s[2]) end
               end
-              BR.Update()
+              Redraw()
           end },
         { name = L["Hide in Rested Areas"], kind = LEM.SettingType.Checkbox, default = false,
           desc = L["Nothing shows in towns and inns."],
           get = function() local db = GetDb(); return db and db.hideRested or false end, set = set("hideRested") },
-        -- (from the settings page, 11-12: when the frame shows belongs here)
         { name = L["Hide While Mounted"], kind = LEM.SettingType.Checkbox, default = false,
           desc = L["No reminders while you ride."],
           get = function() local db = GetDb(); return db and db.hideMounted or false end, set = set("hideMounted") },
-        -- Show Speed and Hide Speed (11-15: the one Fade Speed split in two; an unset one reads
-        -- the old fadeSpeed, so nothing changes until a player picks)
+        -- Show Speed and Hide Speed (an unset one reads the single fadeSpeed of older profiles)
         { name = L["Show Speed"], kind = LEM.SettingType.Dropdown, default = "instant",
           values = { { text = L["Instant"], value = "instant", isRadio = true }, { text = L["Fast"], value = "fast", isRadio = true },
                      { text = L["Slow"], value = "slow", isRadio = true } },
@@ -2511,7 +2582,7 @@ local function BuildSettings()
           desc = L["How fast it fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
           get = function() return BR.FadeSpeed(GetDb(), "fadeOut") end, set = set("fadeOut") },
         { name = L["Opacity"], kind = LEM.SettingType.Slider, default = 100, minValue = 20, maxValue = 100, valueStep = 5,
-          -- plain numbers, as Faded Opacity: "100%" ran past the dialog's edge (11-10)
+          -- plain numbers, as Faded Opacity: "100%" runs past the dialog's edge
           get = get("alpha", 100), set = set("alpha") },
     })
     return settings
@@ -2522,8 +2593,8 @@ end
 --------------------------------------------------
 function BR:GetFrame() return holder end
 
--- its own page and switch since 11-12, no longer under Buffs & Debuffs' switch: anyone who had the
--- reminders on with Buffs & Debuffs off (so never saw them) keeps them off, once
+-- its own switch, apart from Buffs & Debuffs': once, a profile that had the reminders on with
+-- Buffs & Debuffs off (so never saw them) keeps them off
 function BR:ShouldLoad()
     local db = AurasDb()
     if not db then return false end
@@ -2539,7 +2610,7 @@ function BR:Init()
     local db = AurasDb()
     if not db then return end
     db.reminder = db.reminder or {}
-    -- Pet Reminders off and Thorns Off (their settings rows, gone 11-10) become hidden reminders
+    -- Pet Reminders off and Thorns Off (from older profiles' settings rows) become hidden reminders
     local r = db.reminder
     if r.pets == false or r.thorns == "off" then
         r.hidden = r.hidden or {}
@@ -2560,12 +2631,13 @@ function BR:Init()
     LEM:AddFrame(holder, OnMoved, DEFAULTS, L["Buff Reminders"])
     LEM:AddFrameSettings(holder, BuildSettings())
     LEM:RegisterCallback("layout", function(layoutName) ApplyPosition(layoutName) end)
-    LEM:RegisterCallback("enter", BR.Update)
-    LEM:RegisterCallback("exit", BR.Update)
+    -- (a restyle too: the Buffs & Debuffs module leaves this frame's enter and exit to it)
+    LEM:RegisterCallback("enter", function() BR:Refresh() end)
+    LEM:RegisterCallback("exit", function() BR:Refresh() end)
 
     local events = CreateFrame("Frame")
     for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "GROUP_ROSTER_UPDATE", "SPELLS_CHANGED",
-                             "PLAYER_LEVEL_UP", "UNIT_INVENTORY_CHANGED", "PLAYER_UNGHOST", "PLAYER_ALIVE", "PLAYER_DEAD",
+                             "PLAYER_LEVEL_UP", "PLAYER_UNGHOST", "PLAYER_ALIVE", "PLAYER_DEAD",
                              "UNIT_CONNECTION", "UNIT_PHASE", "PLAYER_CONTROL_GAINED" }) do
         pcall(events.RegisterEvent, events, event)
     end
@@ -2576,6 +2648,8 @@ function BR:Init()
                              "PLAYER_EQUIPMENT_CHANGED" }) do
         pcall(events.RegisterEvent, events, event)
     end
+    -- (only the player's own gear matters: a group member's would run a full check for nothing)
+    pcall(events.RegisterUnitEvent, events, "UNIT_INVENTORY_CHANGED", "player")
     pcall(events.RegisterUnitEvent, events, "UNIT_PET", "player")
     pcall(events.RegisterUnitEvent, events, "UNIT_HEALTH", "pet")
     pcall(events.RegisterUnitEvent, events, "UNIT_SPELLCAST_SUCCEEDED", "player")

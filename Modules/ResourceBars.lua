@@ -43,7 +43,7 @@ local COLORS = {
     swingOff   = { 0.72, 0.54, 0.32 },
     swingRanged = { 0.45, 0.68, 0.40 },
     outOfRange = { 0.78, 0.28, 0.24 },
-    -- (11-15) an on-next-swing attack queued: the main-hand bar takes that attack's colour
+    -- an on-next-swing attack queued: the main-hand bar takes that attack's colour
     queueHeroic = { 1.00, 0.80, 0.10 },   -- Heroic Strike
     queueCleave = { 0.30, 0.60, 1.00 },   -- Cleave
     queueMaul   = { 1.00, 0.42, 0.08 },   -- Maul
@@ -55,12 +55,10 @@ local COLORS = {
 -- textSize: added to the Fonts tab size
 local BAR_ORDER = { "health", "power", "mana", "combo", "swingMain", "swingOff", "swingRanged", "flight", "seal", "timer" }
 local BARS = {
-    -- (11-15) every default spot below is Malkkav's own, from his "FlareUI" layout
     health      = { kind = "health", label = L["Health Bar"],      default = { point = "CENTER", x = 0, y = -128 }, textSize = 2 },
     power       = { kind = "power",  label = L["Power Bar"],       default = { point = "CENTER", x = 0, y = -151 }, textSize = 2 },
-    -- right under the power bar, the health-to-power gap apart (11-11)
+    -- right under the power bar, the health-to-power gap apart
     mana        = { kind = "mana",   label = L["Druid Mana"],      default = { point = "CENTER", x = 0, y = -174 }, textSize = 2 },
-    -- from here on the default spots are Malkkav's own (11-12)
     combo       = { kind = "combo",  label = L["Combo Points"],    default = { point = "CENTER", x = 0, y = -88 } },
     swingMain   = { kind = "swing",  label = L["Main-Hand Swing"], default = { point = "CENTER", x = 0, y = -282 }, textSize = 0,
                     swingType = SWING and SWING.MainHand, text = _G.SWING_TIMER_MAIN_HAND or "Main Hand" },
@@ -81,19 +79,6 @@ local BARS = {
 -- and hide themselves where they don't apply, and a swing bar set to Only When In Use with its swings.
 -- How long a bar in that mode outlasts a finished swing: the next one rarely lands on the same frame
 local SWING_IN_USE_HOLD = 1.5
--- power and mana: the percent comes from the client's curve (UnitPowerPercent), so a secret power works
-local POWER_TEXT_VALUES = {
-    { text = L["Off"],     value = "none",    isRadio = true },
-    { text = L["Value"],   value = "value",   isRadio = true },
-    { text = L["Percent"], value = "percent", isRadio = true },
-}
-local TEXT_VALUES = {
-    { text = L["Off"],             value = "none",    isRadio = true },
-    { text = L["Percent"],         value = "percent", isRadio = true },
-    { text = L["Percent | Value"], value = "both",    isRadio = true },
-    { text = L["Value"],           value = "value",   isRadio = true },
-    { text = L["Value [Max]"],     value = "valuemax", isRadio = true },
-}
 
 local bars = {}            -- key -> holder
 local fsrStart             -- GetTime() of the last mana cast, while the five seconds run
@@ -107,7 +92,7 @@ local function GetResourceDb()
 end
 
 -- Classic combo gems: on in the ring styles, off in Addon Style, unless the bar's Style says
--- otherwise (11-17, Malkkav, for a player: "classic" gems or the "modern" bar in any frame style)
+-- otherwise ("classic" gems or the "modern" bar in any frame style)
 local function ClassicCombo()
     local rdb = GetResourceDb()
     local look = rdb and rdb.bars and rdb.bars.combo and rdb.bars.combo.look
@@ -121,8 +106,8 @@ local function PlayerClassColors()
     return ns.ClassColorsOn(db and db.units and db.units.player)
 end
 
--- Each bar's font (11-13): once per profile, every bar with text starts from the shared font plus its
--- old size step (textSize)
+-- Each bar's font: once per profile, every bar with text starts from the shared font plus its size
+-- step (textSize)
 function RB.SeedFonts()
     local rdb = GetResourceDb()
     if not rdb or rawget(rdb, "barFontsSeeded") then return end
@@ -148,7 +133,7 @@ local function Cfg(key)
     return rdb.bars[key]
 end
 
--- a bar's text font, for the page's Fonts tab (Settings/Pages/ResourceBars.lua, 11-13)
+-- a bar's text font, for the page's Fonts tab (Settings/Pages/ResourceBars.lua)
 function RB.BarFont(key)
     RB.SeedFonts()
     local cfg = Cfg(key)
@@ -166,14 +151,14 @@ end
 -- (health is secret, so no comparison in Lua): shown under LOW_HEALTH of your health
 local LOW_HEALTH = { at = 0.3, color = { 0.85, 0.1, 0.1 } }
 
--- COLOUR PALETTE (Resource Bars' own, 11-11): FlareUI, Blizzard or Custom, as the unit frames' but
+-- COLOUR PALETTE (Resource Bars' own): FlareUI, Blizzard or Custom, as the unit frames' but
 -- kept apart (unitframes.resource.palette; until set, the unit frames' choice). Custom keeps the
 -- picked colours (customColors) over the palette it started from (customBase).
 RB.COLOR_DEFAULTS = {
     low = { 0.85, 0.1, 0.1 }, combo = { ns.COMBO_COLOR[1], ns.COMBO_COLOR[2], ns.COMBO_COLOR[3] },
     swingMain = { 0.86, 0.65, 0.39 }, swingOff = { 0.72, 0.54, 0.32 }, swingRanged = { 0.45, 0.68, 0.40 },
     outOfRange = { 0.78, 0.28, 0.24 }, waiting = { 0.45, 0.45, 0.45 },
-    -- the queued on-next-swing attacks (11-15), each its own colour
+    -- the queued on-next-swing attacks, each its own colour
     queueHeroic = { 1.00, 0.80, 0.10 }, queueCleave = { 0.30, 0.60, 1.00 }, queueMaul = { 1.00, 0.42, 0.08 }, queueRaptor = { 0.30, 0.85, 0.30 },
     zone = { 1, 0.2, 0.15 }, flight = { 0.40, 0.62, 0.86 },
     -- the seals (Seals bar), each its own colour
@@ -217,7 +202,7 @@ function RB.ApplyPalette()
     local palette = RB.PaletteName()
     local base = palette == "custom" and (rdb and rdb.customBase == "blizzard" and "blizzard" or "flareui") or palette
     RB.palette, RB.basePalette = palette, base
-    -- (11-15) the old single Queued Attack Colour, if you picked one, moves to Heroic Strike once
+    -- a saved single Queued Attack Colour (customColors.queued) moves to Heroic Strike once
     local picked = rdb and rdb.customColors
     if picked and picked.queued ~= nil then
         if picked.queueHeroic == nil then picked.queueHeroic = picked.queued end
@@ -229,7 +214,8 @@ function RB.ApplyPalette()
                            "queueHeroic", "queueCleave", "queueMaul", "queueRaptor",
                            "heal", "absorb", "flight", "timerBreath", "timerFatigue", "timerFeign",
                            "sealRighteousness", "sealCrusader", "sealCommand", "sealJustice", "sealLight", "sealWisdom", "sealFury", "sealMartyrdom" }) do
-        local own = custom and custom[key]        local c = (type(own) == "table" and own[1]) and own or RB.PaletteColor(key, base)
+        local own = custom and custom[key]
+        local c = (type(own) == "table" and own[1]) and own or RB.PaletteColor(key, base)
         RBC[key] = RBC[key] or {}
         RBC[key][1], RBC[key][2], RBC[key][3] = c[1], c[2], c[3]
     end
@@ -261,6 +247,14 @@ end
 local function DruidManaColor()
     local c = RBC.druidMana or ns.MANA_BLUE
     return c[1], c[2], c[3]
+end
+-- Health Colour (UnitFrames.lua UF.HealthBarColor): "off", "low" or "health". A saved Low Health
+-- Colour switch (lowHealth = true) reads as "low" until the dropdown is set. "low" keeps the red
+-- layer below (it takes the palette's Low Health colour); "health" colours the fill itself on every
+-- health change.
+function LOW_HEALTH.Mode(cfg)
+    if cfg and cfg.healthColor == nil and cfg.lowHealth then return "low" end
+    return K.HealthColorMode(cfg)
 end
 function LOW_HEALTH.Alpha()
     if not LOW_HEALTH.curve then
@@ -372,22 +366,24 @@ end
 --------------------------------------------------
 -- 5. UPDATERS
 --------------------------------------------------
--- Bar Text (11-17, Malkkav; BarText.lua): health, power and mana have Left / Middle / Right texts
--- (Text is the Right one); their old Text choice becomes the Middle slot once
+-- Bar Text (BarText.lua): health, power and mana have Left / Middle / Right texts (Text is the Right
+-- one); a saved single Text choice becomes the Middle slot once
 RB.SLOT_BARS = { health = "health", power = "power", mana = "mana" }
 function RB.SlotTexts(holder)
     return { left = holder.TextLeft, middle = holder.TextMid, right = holder.Text }
 end
+-- runs on every health and power tick: the texts and slots are kept per holder, the slots read again
+-- after each layout (LayoutBar) or for another profile's settings
 function RB.FillSlots(holder, src, status)
     local bar = RB.SLOT_BARS[holder.key]
     if not (bar and holder.TextLeft) then return end
-    ns.BarText.FillAll(RB.SlotTexts(holder), ns.BarText.Slots(Cfg(holder.key), bar, "bar", nil, "text"), src, status)
+    local cfg = Cfg(holder.key)
+    if not holder.btSlots or holder.btCfg ~= cfg then
+        holder.btSlots, holder.btCfg = ns.BarText.Slots(cfg, bar, "bar", nil, "text"), cfg
+    end
+    holder.slotTexts = holder.slotTexts or RB.SlotTexts(holder)
+    ns.BarText.FillAll(holder.slotTexts, holder.btSlots, src, status)
 end
--- (the swing, timer and other bars keep their single text)
-local function SetText(holder, mode, value, percent, max)
-    K.FormatBarText(holder.Text, mode, value, percent, max)
-end
-
 local function UpdateHealPrediction(holder)
     local heal, absorb = holder.HealBar, holder.AbsorbBar
     if not heal then return end
@@ -427,6 +423,8 @@ local function UpdateHealthValue(holder, glide)
     UpdateHealPrediction(holder)   -- the amounts are clamped by the health missing
     local low = holder.LowHealth
     if low and low:IsShown() and not pcall(low.SetAlpha, low, LOW_HEALTH.Alpha()) then low:SetAlpha(0) end
+    -- Health Colour "By Health": the fill's colour from the health left
+    if LOW_HEALTH.Mode(cfg) == "health" then holder.Bar:SetStatusBarColor(K.HealthBarColor("player", false, cfg)) end
 end
 
 local function UpdateHealth(holder, glide)
@@ -436,7 +434,7 @@ local function UpdateHealth(holder, glide)
     holder.ready = true
     local cfg = Cfg("health")
     if holder.LowHealth then
-        if cfg and cfg.lowHealth then LOW_HEALTH.Place(holder) else holder.LowHealth:Hide() end
+        if LOW_HEALTH.Mode(cfg) == "low" then LOW_HEALTH.Place(holder) else holder.LowHealth:Hide() end
     end
     UpdateHealthValue(holder, glide)
 end
@@ -445,7 +443,7 @@ local function UpdateFsrSpark()
     local power, mana = bars.power, bars.mana
     if fsrStart and GetTime() - fsrStart >= FSR_SECONDS then fsrStart = nil end
     local onPower = PowerTypeNow() == MANA
-    -- Edit Mode's sample loops a window every five seconds (11-16, Malkkav)
+    -- Edit Mode's sample loops a window every five seconds
     local running = fsrStart ~= nil or IsEditing()
     if power and power.FsrSpark then
         power.FsrSpark:SetShown(running and onPower and power:IsShown() and Cfg("power").fsr == true)
@@ -632,7 +630,8 @@ end
 
 local function UpdateSwing(holder)
     local info = BARS[holder.key]
-    if not holder.swingEnd then SwingIdle(holder) end
+    -- (a running swing keeps its fill; its Stand-Still Zone takes a changed colour at once)
+    if not holder.swingEnd then SwingIdle(holder) else SwingZone(holder) end
     holder.Label:SetText(info.text)
     -- Range Check (rangeCheck, on by default) off: the bar never takes the out-of-range colour
     local cfg = Cfg(holder.key)
@@ -668,15 +667,21 @@ local function ApplyPreview(holder)
     bar:SetMinMaxValues(0, 1)
     holder.ready = nil   -- the next update sets the real max and colour again
     if kind == "health" then
-        -- Low Health Colour: the sample is low and red
-        local low = cfg.lowHealth and holder.LowHealth
-        bar:SetValue(low and 0.25 or 0.75)
-        bar:SetStatusBarColor(RB.HealthColor())
+        -- Health Colour: Low Health's sample is low and red; By Health's is at 40%, in its orange
+        local mode = LOW_HEALTH.Mode(cfg)
+        local low = mode == "low" and holder.LowHealth
+        local health = low and 0.25 or mode == "health" and 0.4 or 0.75
+        bar:SetValue(health)
+        if mode == "health" then
+            bar:SetStatusBarColor(K.SampleHealthColor(cfg, health, RB.HealthColor()))
+        else
+            bar:SetStatusBarColor(RB.HealthColor())
+        end
         -- a sample hit just taken, 15% past the sample health
-        K.SampleDamageTrail(holder.DamageTrail, low and 0.25 or 0.75, K.DamageTrailOn(cfg.damageTrail))
+        K.SampleDamageTrail(holder.DamageTrail, health, K.DamageTrailOn(cfg.damageTrail))
         K.BarLookUpdate(bar, nil, false, false)
-        RB.FillSlots(holder, K.SampleSource(low and 0.25 or 0.75, 24000))
-        -- (11-16, Malkkav) a sample incoming heal and shield, as on the unit frames' samples
+        RB.FillSlots(holder, K.SampleSource(health, 24000))
+        -- a sample incoming heal and shield, as on the unit frames' samples
         if holder.HealBar then
             holder.HealBar:SetMinMaxValues(0, 1)
             holder.AbsorbBar:SetMinMaxValues(0, 1)
@@ -742,6 +747,8 @@ local function ApplyPreview(holder)
         -- Stand-Still Zone on a sample 2.5 s swing
         if holder.StandStill then
             if cfg.standStill and not holder.waiting then
+                local z = RBC.zone
+                if z then holder.StandStill:SetColorTexture(z[1], z[2], z[3], 0.35) end
                 holder.StandStill:SetWidth(math_max(1, bar:GetWidth() * STAND_STILL / 2.5))
                 holder.StandStill:Show()
             else
@@ -871,6 +878,7 @@ local function LayoutBar(holder)
     if not cfg then return end
     local info = BARS[holder.key]
     local kind = info.kind
+    holder.btSlots = nil   -- Bar Text's slots, read again on the next fill (RB.FillSlots)
     local PADDING = BarPadding(cfg, cfg.height or 14)
     ApplyFrameLook(holder, cfg)
     -- the bar's own font (Edit Mode > Fonts)
@@ -880,7 +888,7 @@ local function LayoutBar(holder)
     if kind == "combo" then
         holder.count = ComboCount()
         LayoutCombo(holder)
-        UpdateCombo(holder)   -- (11-17) a Style switch repaints the points in the new look at once
+        UpdateCombo(holder)   -- a Style switch repaints the points in the new look at once
         return
     end
 
@@ -943,7 +951,7 @@ local function LayoutBar(holder)
         absorb:SetPoint("TOPLEFT", healFill, "TOPRIGHT", 0, 0)
         absorb:SetPoint("BOTTOMLEFT", healFill, "BOTTOMRIGHT", 0, 0)
         K.PlaceShieldGlow(holder.ShieldGlow, bar, false)
-        -- Absorb Texture (Look, 11-16): "" is the bar's own texture
+        -- Absorb Texture (Look): "" is the bar's own texture
         local absorbTex = cfg.absorbTexture
         if absorbTex == nil then absorbTex = K.ABSORB_TEXTURE end
         if absorbTex == "" then absorbTex = cfg.texture or K.DEFAULT_TEXTURE end
@@ -1053,7 +1061,7 @@ local function CreateHolder(key, parent)
     holder.Text = overlay:CreateFontString(nil, "OVERLAY")
     holder.Text:SetWordWrap(false)
     if RB.SLOT_BARS[key] then
-        -- Bar Text (11-17): the Left and Middle texts (Text is the Right one)
+        -- Bar Text: the Left and Middle texts (Text is the Right one)
         holder.TextLeft = overlay:CreateFontString(nil, "OVERLAY")
         holder.TextLeft:SetWordWrap(false)
         holder.TextMid = overlay:CreateFontString(nil, "OVERLAY")
@@ -1218,6 +1226,8 @@ end
 -- 9. EDIT MODE SETTINGS
 --------------------------------------------------
 local function Relayout(key)
+    -- (a Reset Settings in Edit Mode runs this once, after its last setting: LEM:Defer)
+    if LEM:Defer(Relayout, key) then return end
     local holder = bars[key]
     if not holder then return end
     LayoutBar(holder)
@@ -1253,7 +1263,7 @@ local function BuildSettings(key)
     }
     local function add(item) frameItems[#frameItems + 1] = item end
     if info.kind == "combo" then
-        -- Style (11-17): the gems or the bar, whatever the frame style (FlareUI Style's target has the same)
+        -- Style: the gems or the bar, whatever the frame style (FlareUI Style's target has the same)
         table.insert(frameItems, 1, { name = L["Style"], kind = LEM.SettingType.Dropdown,
             default = (ns.UFRing and ns.UFRing.On()) and "classic" or "modern",
             values = {
@@ -1266,7 +1276,7 @@ local function BuildSettings(key)
         add({ name = L["Size"], kind = LEM.SettingType.Slider, default = 24, minValue = 12, maxValue = 48, valueStep = 1,
               get = get("classicSize", 24), set = set("classicSize"), hidden = classicOff })
     end
-    -- Bar Text (11-17, Malkkav): Left / Middle / Right, as on the unit frames (BarText.lua)
+    -- Bar Text: Left / Middle / Right, as on the unit frames (BarText.lua)
     if RB.SLOT_BARS[key] then
         add(ns.BarText.Setting({
             name = L["Text"], bar = RB.SLOT_BARS[key], oldKey = "text",
@@ -1284,8 +1294,7 @@ local function BuildSettings(key)
         add({ name = L["GCD Spark"], kind = LEM.SettingType.Checkbox, default = false, get = get("gcd", false), set = set("gcd"),
               desc = L["A spark crosses the bar during the global cooldown."] })
     end
-    -- (11-15, Malkkav: togglable; on by default since 11-16) the main-hand bar's colour per queued
-    -- attack, colours in Bar Colours
+    -- the main-hand bar's colour per queued attack (on by default), colours in Bar Colours
     if key == "swingMain" then
         add({ name = L["Queued Attack Colour"], kind = LEM.SettingType.Checkbox, default = true, get = get("queueTint", true), set = set("queueTint"),
               desc = L["While Heroic Strike, Cleave, Maul or Raptor Strike waits for the next swing, the bar takes its colour (set in Bar Colours)."] })
@@ -1295,15 +1304,15 @@ local function BuildSettings(key)
               desc = L["Marks the swing's last half second. Auto Shot and wands need you to stand still then."] })
     end
     if info.kind == "swing" then
-        -- the out-of-range colour, as the unit frames' range fading (in Frame since 11-16, Malkkav: it
-        -- changes what the bar tells you, not how it looks; the unit frames' moved there in 6.3.3)
+        -- the out-of-range colour, as the unit frames' range fading (in Frame: it changes what the
+        -- bar tells you, not how it looks)
         add({ name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true, get = get("rangeCheck", true), set = set("rangeCheck"),
               desc = L["The bar turns red while your target is out of reach of this attack."] })
         add({ name = L["Waiting State"], kind = LEM.SettingType.Checkbox, default = true, get = get("waiting", true), set = set("waiting"),
               desc = L["When auto attack is on but you can't swing (the target is out of reach), the bar shows full and grey, with Waiting."] })
     end
-    -- the swing, flight, seal and duration bars' two texts, each on its own (11-11, a player's request).
-    -- In Frame since 11-16 (Malkkav): what a bar tells you belongs with the bar, not with its look.
+    -- the swing, flight, seal and duration bars' two texts, each on its own. In Frame: what a bar
+    -- tells you belongs with the bar, not with its look.
     if info.kind == "swing" or info.kind == "flight" or info.kind == "seal" or info.kind == "timer" then
         add({ name = L["Bar Text"], kind = LEM.SettingType.Checkbox, default = true, get = get("showLabel", true), set = set("showLabel"),
               desc = info.kind == "flight" and L["Where you're flying, on the left of the bar."]
@@ -1315,7 +1324,17 @@ local function BuildSettings(key)
                   or info.kind == "timer" and L["The time left on the right of the bar."]
                   or L["The seconds left on the right of the bar (and Waiting)."] })
     end
-    -- (11-16, Malkkav) the same sections, in the same order, as the unit frames: Size, Text, Look,
+    -- Health Colour: the health bar's Behaviour, as on the unit frames (a saved Low Health Colour
+    -- switch reads as Low Health: LOW_HEALTH.Mode)
+    if info.kind == "health" then
+        add(K.HealthColorSetting(function() return LOW_HEALTH.Mode(Cfg(key)) end, function(_, value)
+            local cfg = Cfg(key)
+            if not cfg then return end
+            cfg.healthColor, cfg.lowHealth = value, nil
+            Relayout(key)
+        end))
+    end
+    -- the same sections, in the same order, as the unit frames: Size, Text, Look,
     -- Behaviour, Fading (Core.lua ns.SplitFrameItems). Classic gems have no Look.
     local Section, settings = K.EditSections()
     local sizeItems, textItems, behaviourItems = ns.SplitFrameItems(frameItems)
@@ -1331,27 +1350,25 @@ local function BuildSettings(key)
             item.hidden = classicOn
             return item
         end)(),
-        -- the health bar's shields (11-16, Malkkav: as on the unit frames)
+        -- the health bar's shields, as on the unit frames
         { name = L["Absorb Texture"], kind = LEM.SettingType.Dropdown, default = K.ABSORB_TEXTURE, values = K.BuildAbsorbValues(),
           get = get("absorbTexture", K.ABSORB_TEXTURE), set = set("absorbTexture"),
           desc = L["The texture of the shield (absorb) over the health bar."],
           hidden = function() return info.kind ~= "health" end },
-        -- the health bar: Class Colours (until set, the player frame's), then Low Health Colour
+        -- the health bar: Class Colours (until set, the player frame's); Low Health is in Behaviour's
+        -- Health Colour
         (function()
             local item = K.ClassColorSetting(HealthClassColors, set("classColor"))
             item.hidden = function() return info.kind ~= "health" end
             return item
         end)(),
-        { name = L["Low Health Colour"], kind = LEM.SettingType.Checkbox, default = false, get = get("lowHealth", false), set = set("lowHealth"),
-          desc = L["The bar turns red while your health is under 30%."],
-          hidden = function() return info.kind ~= "health" end },
         (function()
             -- only the bars that hold a value: combo points are steps, swing timers already run smoothly
             local item = K.SmoothBarsSetting(get("smoothBars", false), set("smoothBars"))
             item.hidden = function() return info.kind ~= "health" and info.kind ~= "power" and info.kind ~= "mana" end
             return item
         end)(),
-        -- (11-16, Marcus) the health bar's Bar Edge Glow, as on the unit frames (default off)
+        -- the health bar's Bar Edge Glow, as on the unit frames (default off)
         (function()
             local item = K.BarEdgeGlowSetting(get("barEdgeGlow", false), set("barEdgeGlow"))
             item.hidden = function() return info.kind ~= "health" end
@@ -1463,7 +1480,7 @@ end
 --   the ranged swing itself
 local AUTO_SHOT = 75
 
--- Queued attacks (main-hand bar, 11-15, always on): while an on-next-swing attack waits, the bar
+-- Queued attacks (main-hand bar, Queued Attack Colour): while an on-next-swing attack waits, the bar
 -- takes that attack's colour (Bar Colours). Asked on CURRENT_SPELL_CAST_CHANGED /
 -- ACTIONBAR_UPDATE_STATE and when a main-hand swing starts, never per frame; asked by name, so
 -- every rank counts.
@@ -1682,7 +1699,7 @@ local EVENTS = {
 }
 
 --------------------------------------------------
--- 10b. FLIGHT TIMER (11-11, Malkkav; the idea after Leatrix Plus, nothing taken)
+-- 10b. FLIGHT TIMER (the idea after Leatrix Plus, nothing taken)
 -- Forever tells no flight's length, so each route is learned: the first flight counts up, landing
 -- keeps its time (account-wide, db.global.flightTimes, "From > To" by the nodes' names), and every
 -- later flight fills the bar with the time left. A flight is caught as it is picked (TakeTaxiNode on
@@ -1743,7 +1760,7 @@ local function FlightOnUpdate(holder, elapsed)
     if now.total and now.total > 0 then
         holder.Text:SetText(Clock(now.total - flown))
     elseif now.keep then
-        -- (11-15, Shweep: "Learning" read oddly) a route not timed yet: the time so far, counting up
+        -- a route not timed yet: the time so far, counting up
         holder.Text:SetText(string.format(L["New Route %s"], Clock(flown)))
     else
         -- caught mid-air (a login without a record): the time flown, nothing learned
@@ -1867,7 +1884,7 @@ function Flight.Init()
 end
 
 --------------------------------------------------
--- 10c. SEALS (11-11, Malkkav; the idea after SealBar, its seal IDs only: it has no licence)
+-- 10c. SEALS (the idea after SealBar, its seal IDs only: it has no licence)
 -- One bar for the paladin's seal: its name, the time left, the fill running down, each seal in its
 -- own colour (Bar Colours), no icon. A seal's aura is secret in a fight, so the game draws it: an
 -- AuraContainer (as Auras.lua's) holds one group per seal, filtered by the seal's spell IDs, and each
@@ -2058,7 +2075,7 @@ function Seal.Learn()
 end
 
 --------------------------------------------------
--- 10d. TIMER BARS (11-14): Blizzard's mirror timers (breath, fatigue, feign death) in the bars' look.
+-- 10d. TIMER BARS: Blizzard's mirror timers (breath, fatigue, feign death) in the bars' look.
 -- One bar per running timer, in the order they started: the first on the holder's spot, the next ones
 -- under it, flush as the snapper sets bars. Each bar has Blizzard's label on the left and the time left
 -- on the right; a paused timer stands still. The holder is the Edit Mode frame and its sample; the
@@ -2369,8 +2386,8 @@ function RB.InUse(key)
     return ns.Visibility and ns.Visibility.GetShow and ns.Visibility:GetShow("rb_" .. key) == "inuse" or false
 end
 
--- Up to 5.0.6 each bar's Visibility was saved with the bar (resource.bars[key].show, which hid it): each
--- one becomes its Visibility element once, as it was (shown or hidden = faded to 0%, at once)
+-- Older setups saved each bar's Visibility with the bar (resource.bars[key].show, which hid it): each
+-- one becomes its Visibility element once, unchanged (shown, or hidden = faded to 0% at once)
 function RB.SeedVisibility()
     local vis = ns.db and ns.db.profile and ns.db.profile.visibility
     if not (vis and vis.elements) then return end
@@ -2399,7 +2416,7 @@ end
 
 local function BarOn(key)
     local cfg = Cfg(key)
-    -- (11-15, Malkkav) Druid Mana is built on every class, so anyone can place it in Edit Mode; in play it
+    -- Druid Mana is built on every class, so anyone can place it in Edit Mode; in play it
     -- shows only while mana is a second power (ManaIsSecondary: a druid in Bear or Cat Form)
     -- the same for Seals: placed on any class, shown in play only on a paladin with a seal up
     return cfg and cfg.enabled and true or false
@@ -2433,8 +2450,8 @@ local function HideBlizzardCounterparts()
                 local frame = _G[entry.frame]
                 if not frame then return end
                 K.HardHide(entry.frame)
-                -- (11-13, a player report: Blizzard's swing timer showed in busy fights) these bars are
-                -- run by Blizzard's SwingTimerManagerFrame, not their own events, and the bottom frame
+                -- Blizzard's swing timer could show in busy fights: these bars are run by Blizzard's
+                -- SwingTimerManagerFrame, not their own events, and the bottom frame
                 -- manager can take one back under its own parent mid-fight, out of the hidden parent; so
                 -- they are also kept fully transparent and mouse-deaf, which holds in a fight too
                 if entry.addon == "Blizzard_SwingTimer" and not frame.FlareUI_Invisible then
@@ -2498,7 +2515,9 @@ function RB:Init()
     if bars.seal then
         local sealEvents = CreateFrame("Frame")
         sealEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
-        sealEvents:RegisterUnitEvent("UNIT_AURA", "player")
+        -- (the bar is built on every class; only a paladin's auras can teach a seal: Seal.Learn)
+        local class = ClassFile()
+        if class == nil or class == "PALADIN" then sealEvents:RegisterUnitEvent("UNIT_AURA", "player") end
         sealEvents:SetScript("OnEvent", function(_, event)
             if event == "PLAYER_REGEN_ENABLED" and Seal.pendingBuild then ApplyShown(bars.seal) end
             if not Seal.learnPending then

@@ -121,7 +121,7 @@ function transform(src, file) {
   let sites = 0;
   const label = (pos, desc) => JSON.stringify(`${file}:${lineOf(pos) + 1} ${clean(desc)}`.trim());
 
-  const re = /(?<![\w.:])hooksecurefunc\s*\(|:SecureHook\s*\(|:HookScript\s*\(|:SetScript\s*\(|(?<![\w.:])C_Timer\.(?:NewTicker|After|NewTimer)\s*\(/g;
+  const re = /(?<![\w.:])hooksecurefunc\s*\(|:SecureHook\s*\(|:HookScript\s*\(|:SetScript\s*\(|(?<![\w.:])C_Timer\.(?:NewTicker|After|NewTimer)\s*\(|:RegisterCallback\s*\(/g;
   let m;
   while ((m = re.exec(src))) {
     const at = m.index;
@@ -142,6 +142,20 @@ function transform(src, file) {
       const fn = argSpan(src, call, open, 1);
       if (!fn) continue;
       const desc = `Ticker in ${enclosingName(lines, lineOf(at))}${isIdent(fn.text) ? ' -> ' + fn.text : ''}`;
+      edits.push({ pos: fn.start, text: `ns.T.W(${label(at, desc)}, ` });
+      edits.push({ pos: fn.end, text: ')' });
+      sites++;
+      continue;
+    }
+    // Edit Mode library and EventRegistry callbacks: LEM:RegisterCallback("enter", fn) and
+    // EventRegistry:RegisterCallback("EditMode.Enter", fn, owner); the function is the second argument
+    if (head === ':RegisterCallback') {
+      const ev = argSpan(src, call, open, 0), fn = nargs >= 2 ? argSpan(src, call, open, 1) : null;
+      if (!fn || fn.text === 'nil' || /^["']/.test(fn.text)) continue;
+      let r = at - 1;
+      while (r >= 0 && /[\w.\]\["')]/.test(src[r])) r--;
+      const receiver = src.slice(r + 1, at);
+      const desc = `${receiver} ${strContent(ev.text) ?? ev.text}${isIdent(fn.text) ? ' -> ' + fn.text : ''}`;
       edits.push({ pos: fn.start, text: `ns.T.W(${label(at, desc)}, ` });
       edits.push({ pos: fn.end, text: ')' });
       sites++;

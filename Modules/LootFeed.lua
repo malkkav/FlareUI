@@ -10,15 +10,15 @@ local L = ns.L
 -- the rise in your gold paired with the chat's money line, so a split shows only your share. A repeat
 -- of the same item joins its line. Placed in Edit Mode ("FlareUI Loot Feed", samples while it's open).
 -- Its font is in Quality of Life > Fonts (tweaks.lootFeedFont); Show Skill-Ups adds "Mining 76" lines
--- from the chat's skill lines (11-11, a player's request).
+-- from the chat's skill lines.
 --------------------------------------------------
 local LF = {}
 ns.LootFeed = LF
 ns.modules["LootFeed"] = LF
 
-local ipairs, pairs, select, tonumber, type = ipairs, pairs, select, tonumber, type
+local ipairs, select, tonumber, type = ipairs, select, tonumber, type
 local math_floor, math_max, math_min = math.floor, math.max, math.min
-local tinsert, tremove = table.insert, table.remove
+local tremove = table.remove
 local CreateFrame, GetTime = CreateFrame, GetTime
 local LEM = LibStub("FlareEditMode")
 
@@ -32,7 +32,7 @@ local MAX_LINES = 6
 local JOIN = 1.5          -- a repeat this soon joins the line
 local PAIR = 1.5          -- the gold rise and the chat's money line arrive this close together
 local ICON = 18
--- money has no icon: its text is the coins themselves (11-12, a player read the gold icon as gold looted)
+-- money has no icon: its text is the coins themselves (a gold icon reads as gold looted)
 local MONEY_ICON = false
 local DEFAULTS = { point = "CENTER", x = 220, y = 0 }   -- right of your character
 -- At the Cursor (lootFeedPosition "cursor", the default): the feed starts where the pointer is as the
@@ -40,15 +40,15 @@ local DEFAULTS = { point = "CENTER", x = 220, y = 0 }   -- right of your charact
 -- rise; "placed" keeps the Edit Mode spot, and only then does Edit Mode show the frame
 local CURSOR_X, CURSOR_Y = 18, -8
 
--- Alignment (lootFeedAlign, 11-13, a player asked): "right" puts the icon on the right, the text
+-- Alignment (lootFeedAlign): "right" puts the icon on the right, the text
 -- before it, and stacks the lines from the holder's right edge (at the cursor: left of the pointer)
 local function RightAligned()
     local db = ns.db and ns.db.profile and ns.db.profile.tweaks
     return db and db.lootFeedAlign == "right" or false
 end
 
--- (11-15, a player asked) "center": icon and text centred on the line, the lines stacked from the
--- holder's bottom centre (at the cursor: right above the pointer). The default since 11-15.
+-- "center" (the default): icon and text centred on the line, the lines stacked from the holder's
+-- bottom centre (at the cursor: right above the pointer)
 local function Centered()
     local db = ns.db and ns.db.profile and ns.db.profile.tweaks
     return db and db.lootFeedAlign == "center" or false
@@ -146,11 +146,12 @@ end
 local function OnUpdate(self, elapsed)
     -- newest first: each line rises, kept a line's height above the one below it
     local below
+    local spacing = Spacing()
     for i = #lines, 1, -1 do
         local line = lines[i]
         line.age = line.age + elapsed
         line.y = line.y + RISE * elapsed
-        if below then line.y = math_max(line.y, below.y + Spacing()) end
+        if below then line.y = math_max(line.y, below.y + spacing) end
         below = line
     end
     for i = #lines, 1, -1 do
@@ -241,7 +242,6 @@ local function LinkAndCount(...)
     for i = 1, select("#", ...) do
         local v = select(i, ...)
         -- a sentence that did not match gives one nil: skipped, so the next sentence is tried
-        -- (it errored here, so lines without a count, the most common kind, never showed)
         if type(v) == "string" then
             if v:find("|H") then link = v elseif tonumber(v) then count = tonumber(v) end
         end
@@ -257,8 +257,8 @@ local function ItemLine(text)
 end
 
 -- A line the game says is yours (its 12th argument, the looter's GUID, is your own) with an item link:
--- for a client whose loot sentence the patterns miss (11-10, a player in another language saw no
--- items). The count is the number after the link's "x", or 1.
+-- for a client whose loot sentence the patterns miss. The count is the number after the link's "x",
+-- or 1.
 local function OwnLine(text, guid)
     if not (guid and canaccessvalue(guid) and guid == UnitGUID("player")) then return nil end
     local link = text:match("|c%x+|Hitem:.-|h.-|h|r") or text:match("|Hitem:.-|h.-|h")
@@ -430,7 +430,8 @@ end
 function LF:ApplyFont()
     if not holder then return end
     for _, line in ipairs(lines) do
-        Fill(line, line.icon:GetTexture(), line.text:GetText() or "")
+        -- (a line without an icon, money, keeps none)
+        Fill(line, line.icon:IsShown() and (line.icon:GetTexture() or 134400) or false, line.text:GetText() or "")
     end
     if holder.preview and holder.preview:IsShown() then ShowPreview() end
 end

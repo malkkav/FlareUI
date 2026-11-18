@@ -39,7 +39,7 @@ end, function(_, button)
 	button.layoutIndex = nil
 end)
 
--- FlareUI addition (11-13): a row of buttons inside the settings list, centred side by side.
+-- FlareUI addition: a row of buttons inside the settings list, centred side by side.
 -- data.buttons = { { text = "...", click = function() end, disabled = function() return bool end, desc = "..." } }
 lib.SettingType.Buttons = 'buttons'
 

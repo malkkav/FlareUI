@@ -26,9 +26,11 @@ S:On("PageShown", function(key)
     if ns.Auras and ns.Auras.SetSettingsPreview then ns.Auras:SetSettingsPreview(key == "au") end
 end)
 
-S:Row{ key = "au.shape", kind = "choice", path = "auras.style", choices = { "square", "round" }, apply = Refresh }   -- (as Unit Frames', 11-16)
+S:Row{ key = "au.shape", kind = "choice", path = "auras.style", choices = { "square", "round" }, apply = Refresh }   -- (as Unit Frames')
 S:Row{ key = "au.swipe", kind = "choice", path = "auras.swipe", choices = { "none", "icon", "border", "both" }, apply = Refresh }
 S:Row{ key = "au.timer", kind = "choice", path = "auras.timer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }
+S:Row{ key = "au.timerColor", path = "auras.timerColor", apply = Refresh,
+    disabled = function() return S:GetPath("auras.timer") == "none" end }
 S:Row{ key = "au.arrive", path = "auras.arrive", apply = Refresh }
 
 local function NoMineFirst()
@@ -39,9 +41,9 @@ S:Row{ key = "au.sort", kind = "choice", path = "auras.sort", choices = { "defau
 S:Row{ key = "au.reverse", path = "auras.reverse", apply = Refresh }
 S:Row{ key = "au.mineFirst", path = "auras.mineFirst", apply = Refresh, disabled = NoMineFirst }
 
--- (Buff Reminders: its own page since 11-12, Settings/Pages/BuffReminders.lua)
+-- (Buff Reminders: its own page, Settings/Pages/BuffReminders.lua)
 
--- HIDE AURAS (11-16, Malkkav): add one of your auras or a spell ID, then pick where each one hides
+-- HIDE AURAS: add one of your auras or a spell ID, then pick where each one hides
 -- (ns.HiddenAuras in Core.lua does the hiding, on every aura frame)
 local HA = ns.HiddenAuras
 
@@ -140,7 +142,7 @@ for i = 1, 60 do
             onClick = function() local id = Id() if id then HA.Remove(id) end end } } }
 end
 
--- FONTS (11-13, back from Edit Mode): Buffs and Debuffs each in a section
+-- FONTS (back from Edit Mode): Buffs and Debuffs each in a section
 for _, kind in ipairs({ "buffs", "debuffs" }) do
     local function Font(key)
         return {

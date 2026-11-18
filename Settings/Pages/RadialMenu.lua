@@ -33,7 +33,7 @@ end
 
 local function ApplyOpening() if RM() and RM().ApplyOpening then RM():ApplyOpening() end end
 
--- Fonts tab (11-13): the hovered button's name and the counts (RadialMenu.lua RM.StyleButtonFonts)
+-- Fonts tab: the hovered button's name and the counts (RadialMenu.lua RM.StyleButtonFonts)
 S:FontRows{ module = "rm", tab = "fonts", section = "rm.fonts", fonts = {
     { key = "labels", path = "radialmenu.labelFont" },
     { key = "counts", path = "radialmenu.countFont" },
@@ -41,10 +41,30 @@ S:FontRows{ module = "rm", tab = "fonts", section = "rm.fonts", fonts = {
 S:Row{ key = "rm.position", kind = "choice", tab = "options", path = "radialmenu.position", choices = { "cursor", "center" }, apply = ApplyOpening }
 S:Row{ key = "rm.activation", kind = "choice", tab = "options", path = "radialmenu.activation", choices = { "hold", "toggle" }, apply = ApplyOpening }
 S:Row{ key = "rm.subRadials", kind = "choice", tab = "options", path = "radialmenu.subRadials", choices = { "reset", "remember" }, apply = ApplyOpening }
+-- Target Mouseover: a keybind open targets the unit under the mouse first (RadialMenu.lua
+-- CLICK_SNIPPET); Shift / Ctrl / Alt only with that modifier held, which radial keys then can't use
+S:Row{ key = "rm.targetMouseover", kind = "choice", tab = "options", path = "radialmenu.targetMouseover",
+    choices = { "off", "on", "shift", "ctrl", "alt" },
+    apply = function()
+        if RM() and RM().ApplyBindings then RM():ApplyBindings() end
+        if ns.RadialEditorEmbed then ns.RadialEditorEmbed.Refresh() end
+    end }
 local SCALES = {}
 for _, v in ipairs({ 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5 }) do SCALES[#SCALES + 1] = { v, (v * 100) .. "%" } end
 S:Row{ key = "rm.scale", kind = "range", tab = "options", path = "radialmenu.scale", choices = SCALES }
-S:Row{ key = "rm.names", tab = "options", path = "radialmenu.showNames" }
+-- Button Names: Off, On Hover (the button you point at) or Always (every button). Off is saved as
+-- showNames false, as the switch it replaced did; buttonNames holds the rest.
+S:Row{ key = "rm.names", kind = "choice", tab = "options", choices = { "off", "hover", "always" },
+    get = function()
+        if S:GetPath("radialmenu.showNames") == false then return "off" end
+        return S:GetPath("radialmenu.buttonNames") == "always" and "always" or "hover"
+    end,
+    set = function(v)
+        S:SetPath("radialmenu.showNames", v ~= "off")
+        S:SetPath("radialmenu.buttonNames", v)
+    end,
+    resetValue = function() return "hover" end,
+    apply = function() if RM() and RM().ApplyNames then RM():ApplyNames() end end }
 S:Row{
     key = "rm.pad", tab = "options",
     get = function() return RM() and RM():IsControllerEnabled() or false end,

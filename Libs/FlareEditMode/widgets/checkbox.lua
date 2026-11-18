@@ -75,6 +75,6 @@ lib.internal:CreatePool(lib.SettingType.Checkbox, function()
 end, function(_, frame)
 	frame:Hide()
 	frame.layoutIndex = nil
-	-- FlareUI (11-17): back to a full row (two columns, dialog.lua PairCheckboxes)
+	-- FlareUI: back to a full row (two columns, dialog.lua PairCheckboxes)
 	if lib.internal.UnpairCheckbox then lib.internal.UnpairCheckbox(frame) end
 end)

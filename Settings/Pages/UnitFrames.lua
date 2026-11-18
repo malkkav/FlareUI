@@ -56,19 +56,19 @@ Frame("raid", "unitframes.raid.enabled", "FlareUI_Raid")
 Frame("boss", "unitframes.boss.enabled", "FlareUI_Boss")
 Frame("tot", "unitframes.units.targettarget.enabled", "FlareUI_UF_TargetOfTarget")
 Frame("tof", "unitframes.units.focustarget.enabled", "FlareUI_UF_TargetOfFocus")
--- (11-15) Blizzard's battleground flag carrier frames, moved in Edit Mode (FlagCarriers.lua)
+-- Blizzard's battleground flag carrier frames, moved in Edit Mode (FlagCarriers.lua)
 Frame("flagCarriers", "unitframes.flagCarriers.enabled", "FlareUI_FlagCarriers")
 
 -- each style keeps its own unit frames setup (UnitFramesRing.lua), loaded on reload
 S:Row{
-    -- (hideLabel: the row has a section of its own, Frame Style, 11-13)
+    -- (hideLabel: the row has a section of its own, Frame Style)
     key = "uf.frameStyle", kind = "styles", reload = true, hideLabel = true, choices = { "flareui", "forever", "addon" },
     get = function() return ns.UFRing and ns.UFRing.Style() or "addon" end,
     set = function(value)
         if ns.UFRing then ns.UFRing.SetStyle(value) end
     end,
 }
--- (11-11, Malkkav: players missed the button) the row is only Pick Your Colours, always shown; the
+-- the row is only Pick Your Colours, always shown; the
 -- palettes (FlareUI, Blizzard) are picked in its window (Settings/ColorPicker.lua)
 S:Row{
     key = "uf.pickColors", kind = "button", buttonText = L["Pick Your Colours"],
@@ -80,9 +80,11 @@ S:Row{ key = "uf.simplePet", path = "unitframes.simplePet", reload = true }
 S:Row{ key = "uf.simpleTargetOf", path = "unitframes.simpleTargetOf", reload = true }
 S:Row{ key = "uf.auraShape", kind = "choice", path = "unitframes.auraStyle", choices = { "square", "round" }, apply = Refresh }
 S:Row{ key = "uf.auraSwipe", kind = "choice", path = "unitframes.auraSwipe", choices = { "none", "icon", "border", "both" }, apply = Refresh }
-S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }   -- (11-17, Malkkav: Off first in every dropdown)
+S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }   -- (Off first in every dropdown)
+S:Row{ key = "uf.auraTimerColor", path = "unitframes.auraTimerColor", apply = Refresh,
+    disabled = function() return (S:GetPath("unitframes.auraTimer") or "none") == "none" end }
 
--- FONTS (11-13, back from Edit Mode): a section per frame, each text a heading; saved per frame
+-- FONTS (back from Edit Mode): a section per frame, each text a heading; saved per frame
 -- style (UnitFrames.lua UF.FontDb).
 local function FontsApply()
     if ns.UnitFrames and ns.UnitFrames.Refresh then ns.UnitFrames:Refresh() end
@@ -95,8 +97,7 @@ local FONT_FRAMES = {
     { "playercast", "uf.fontsCast" }, { "party", "uf.fontsParty" }, { "raid", "uf.fontsRaid" }, { "boss", "uf.fontsBoss" }, { "flag", "uf.fontsFlag" },
 }
 local UFM = ns.UnitFrames
--- (11-16, UX audit batch 4) one frame at a time: a Frame picker, then that frame's section only (it was
--- ten folded sections). Search still finds every frame's fonts; a jump picks the frame first.
+-- one frame at a time: a Frame picker, then that frame's section only. Search still finds every frame's fonts; a jump picks the frame first.
 local pickedFont = "player"
 local FONT_FIELDS = { "face", "size", "flags", "enableShadow", "shadowX", "shadowY" }
 S:Row{ key = "uf.fontFrame", kind = "choice", tab = "fonts", section = "uf.fontsPick",
@@ -151,6 +152,8 @@ for _, frame in ipairs(FONT_FRAMES) do
     for _, element in ipairs(UFM.FontElements(key)) do
         fonts[#fonts + 1] = {
             key = element, autoSize = element == "auras" or element == "auraCount",
+            -- the level has no size of its own: the name's in Addon Style, the level disc's in the ring styles
+            noSize = element == "level",
             font = function() return UFM.FontDb(key, element) end,
             default = function() return ns.UFFontDefault(key, element) end,
         }

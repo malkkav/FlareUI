@@ -4,8 +4,9 @@ local L = ns.L
 --------------------------------------------------
 -- MOVERS
 -- Edit Mode frames "FlareUI Loot Rolls" (GroupLootContainer), "FlareUI Toasts" (AlertFrame) and
--- "FlareUI Battleground Objectives" (UIWidgetTopCenterContainerFrame), each with a sample in Edit Mode. Hooks only: the loot rolls share a layout with protected frames,
--- so they are re-anchored after Blizzard places them.
+-- "FlareUI Battleground Objectives" (UIWidgetTopCenterContainerFrame), each with a sample in Edit
+-- Mode. Hooks only: the loot rolls share a layout with protected frames, so they are re-anchored
+-- after Blizzard places them.
 --------------------------------------------------
 
 --------------------------------------------------
@@ -29,12 +30,12 @@ local LEM = LibStub("FlareEditMode")
 local ROLL_W, ROLL_H, ROLL_BOTTOM = 277, 67, 16.5
 local TOAST_W, TOAST_H, TOAST_BOTTOM = 312, 89, 20
 -- the battleground scores: Blizzard's container sits at TOP 0,-15 and grows down from its top
-local OBJ_W, OBJ_H = 180, 36   -- (the sample's size: only the scores, 11-11)
+local OBJ_W, OBJ_H = 180, 36   -- the sample's size: only the scores
 -- FlareUI Thick round the scores (the sample and the real ones), PAD out from what they show
 local OBJ_BORDER, OBJ_EDGE, OBJ_PAD = "FlareUI Thick", 16, 6
 
 local DEFAULTS = {
-    -- (11-15) Malkkav's own spots, from his "FlareUI" layout; loot: the Loot Roll Window's header too
+    -- loot: the Loot Roll Window's header uses this spot too
     loot  = { point = "TOP", x = 0, y = -221 },
     toast = { point = "TOP", x = 0, y = -130 },
     objectives = { point = "TOP", x = 0, y = -31 },
@@ -46,23 +47,20 @@ local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.tweaks
 end
 
--- FLAG CARRIER FRAMES: Quality of Life > Hide Clutter > Flag Carrier Frames hid them through
--- Blizzard's CVar showArenaEnemyFrames (11-11). The row was removed 11-16 (Malkkav: the Unit Frames
--- page's Flag Carrier Frames covers them). A player who had it on gets the CVar back once, out of
--- combat; it is theirs again after that (quiet defaults).
+-- FLAG CARRIER FRAMES: an old Hide Clutter option hid them through Blizzard's CVar
+-- showArenaEnemyFrames (the Unit Frames page's Flag Carrier Frames covers them). A player who had it
+-- on gets the CVar back once, out of combat; it is theirs again after that (quiet defaults).
 function ns.ApplyFlagCarriers()
     local global = ns.db and ns.db.global
-    if not global then return end
+    if not (global and global.flagCarriersSet) then return end
     if InCombatLockdown() then
         local wait = CreateFrame("Frame")
         wait:RegisterEvent("PLAYER_REGEN_ENABLED")
         wait:SetScript("OnEvent", function(self) self:UnregisterAllEvents(); ns.ApplyFlagCarriers() end)
         return
     end
-    if global.flagCarriersSet then
-        global.flagCarriersSet = nil
-        C_CVar.SetCVar("showArenaEnemyFrames", "1")
-    end
+    global.flagCarriersSet = nil
+    C_CVar.SetCVar("showArenaEnemyFrames", "1")
 end
 do
     local login = CreateFrame("Frame")
@@ -113,8 +111,7 @@ local function CreateHolder(key, globalName, label, width, height)
     holder.preview:SetAllPoints()
     holder.preview:Hide()
     holders[key] = holder
-    -- in Edit Mode first: a placement that fails (11-12, a player lost the loot rolls' and toasts'
-    -- overlays) must not take the frame out of Edit Mode with it
+    -- in Edit Mode first: a placement that fails must not take the frame out of Edit Mode with it
     LEM:AddFrame(holder, Mover(key), DEFAULTS[key], label)
     if not pcall(ApplyPosition, key) then
         holder:ClearAllPoints()
@@ -149,8 +146,8 @@ local function FlattenLoot(container, height)
     sizingLoot = false
 end
 
--- Blizzard's grey roll-frame edge in the frames' bronze (11-11 Malkkav): greyed, then tinted, so the
--- art keeps its shading. The sample's and every real roll frame's (GroupLootFrame1-4, made at load).
+-- Blizzard's grey roll-frame edge in the frames' bronze: greyed, then tinted, so the art keeps its
+-- shading. The sample's and every real roll frame's (GroupLootFrame1-4, made at load).
 local function BronzeLootBorder(texture)
     if not texture then return end
     local c = ns.BORDER_COLOR
@@ -265,10 +262,10 @@ local function CreateToastPreview(holder)
 end
 
 --------------------------------------------------
--- 5b. SCALE (Edit Mode, 11-11 Malkkav): the loot rolls' and the toasts' size. Blizzard's frames hang
--- from UIParent, so each one takes the scale as it shows; the holder and its sample grow with it.
+-- 5b. SCALE (Edit Mode): the loot rolls', the toasts' and the battleground objectives' size.
+-- Blizzard's frames hang from UIParent, so each one takes the scale as it shows; the holder and its
+-- sample grow with it.
 --------------------------------------------------
--- (11-16, Malkkav) the battleground objectives too (objectivesScale)
 local SCALE_FIELDS = { loot = "lootScale", toast = "toastScale", objectives = "objectivesScale" }
 local function Scale(key)
     local db = GetDb()
@@ -321,12 +318,11 @@ local function HookToastScale()
     ScaleToasts()
 end
 
--- the Edit Mode dialogs' Scale (11-11: a Toast Sample dropdown with Blizzard's other toasts was tried and
--- removed, Forever lacks their pieces)
+-- the Edit Mode dialogs' Scale
 local function ScaleSetting(key, w, h, apply)
     local field = SCALE_FIELDS[key]
     return { name = L["Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
-        -- plain numbers, as the unit frames' Scale: "100%" ran past the dialog's edge (11-13)
+        -- plain numbers, as the unit frames' Scale: "100%" runs past the dialog's edge
         get = function() return math.floor(Scale(key) * 100 + 0.5) end,
         set = function(_, value)
             local db = GetDb()
@@ -370,10 +366,10 @@ local function PlaceObjectives()
     placingObjectives = false
 end
 
--- The dark plate in FlareUI Thick (11-11 Malkkav): the sample's, and the one behind the real scores
+-- The dark plate in FlareUI Thick: the sample's, and the one behind the real scores
 local function ObjectivesBox(frame)
     local file = LibStub("LibSharedMedia-3.0"):Fetch("border", OBJ_BORDER)
-    -- (11-15, Malkkav) the background reaches under the border (a gap showed at 4), fully opaque
+    -- the background reaches under the border (an inset of 4 leaves a gap), fully opaque
     local inset = 2
     frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = file, edgeSize = ns.BorderEdgeSize(file, OBJ_EDGE),
         insets = { left = inset, right = inset, top = inset, bottom = inset } })
@@ -383,7 +379,7 @@ local function ObjectivesBox(frame)
 end
 
 -- a faction emblem and its score, twice, each pair centred in its half, icon and text on one line
--- (the old target-frame emblems sat off-centre in their art: the PvP currency ones are square)
+-- (the PvP currency emblems are square; the target-frame ones sit off-centre in their art)
 local function CreateObjectivesPreview(holder)
     local p = holder.preview
     local box = CreateFrame("Frame", nil, p, "BackdropTemplate")
@@ -435,7 +431,7 @@ end
 -- The Gamepad UI shows its own loot rolls and toasts
 function MOV:ShouldLoad()
     local db = GetDb()
-    -- (Move Any Window's part: a General page option, Quality of Life on or off since 11-16, UX audit J4)
+    -- (a General page option, on whether Quality of Life is on or off)
     return db and db.moveLootToasts ~= false and not ns.IsGamepadUI() or false
 end
 

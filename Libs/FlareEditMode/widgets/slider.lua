@@ -59,9 +59,11 @@ end
 
 function sliderMixin:OnSliderValueChanged(value)
 	if not self.initInProgress then
-		self.setting.set(lib:GetActiveLayoutName(), value, false)
-
-		lib.internal:GetDialogOf(self):RefreshWidgets()
+		-- FlareUI: the frame's redraws and the row refresh run once per frame while dragging
+		local setting = self.setting
+		lib.internal.NextFrame(function()
+			setting.set(lib:GetActiveLayoutName(), value, false)
+		end, lib.internal:GetDialogOf(self))
 	end
 end
 

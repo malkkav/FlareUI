@@ -2,13 +2,13 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- PICK YOUR COLOURS (11-11)
+-- PICK YOUR COLOURS
 -- The Custom Colour Palette's own window: every colour the unit frames (or the resource bars) draw,
 -- each a row with its swatch, and the frames themselves beside them (the modules' settings-preview
 -- samples), repainted on every change. A click opens Blizzard's colour picker; a right-click gives
 -- the row back to the palette Custom started from. The settings' Colour Palette row is only the button
--- that opens it (11-11): the palettes themselves are picked here, in the foot; Apply keeps the changes. The colours: unitframes.customColors and
--- unitframes.resource.customColors (UnitFrames.lua UF.ApplyPalette, ResourceBars.lua RB.ApplyPalette).
+-- that opens it: the palettes themselves are picked here, in the foot; Apply keeps the changes. The
+-- colours: unitframes.customColors and unitframes.resource.customColors (UnitFrames.lua UF.ApplyPalette, ResourceBars.lua RB.ApplyPalette).
 --------------------------------------------------
 local CP = {}
 ns.ColorPicker = CP
@@ -43,12 +43,12 @@ local function ResourceRows()
         { L["Health"], { { "health", L["Default Health"] }, { "classHealth", L["Your Class"] }, { "low", L["Low Health Colour"] } } },
         { L["Power"], { { "mana", _G.MANA or L["Mana"] }, { "rage", _G.RAGE or "Rage" }, { "energy", _G.ENERGY or "Energy" },
             { "druidMana", L["Druid Mana"] } } },
-        -- (11-17, Malkkav) the bar only: the gems of FlareUI and Forever Style are Blizzard's own art, in its colours
+        -- the bar only: the gems of FlareUI and Forever Style are Blizzard's own art, in its colours
         { L["Combo Points"], { { "combo", L["Combo Points (Bar Only)"] } } },
         { L["Swing Timers"], (function()
             local list = { { "swingMain", L["Main-Hand Swing"] }, { "swingOff", L["Off-Hand Swing"] }, { "swingRanged", L["Ranged Swing"] },
                 { "outOfRange", L["Out of Range"] }, { "waiting", L["Waiting State"] }, { "zone", L["Stand-Still Zone"] } }
-            -- (11-15) the main-hand bar while an on-next-swing attack waits: each attack by its own
+            -- the main-hand bar while an on-next-swing attack waits: each attack by its own
             -- name, on every class (ResourceBars.lua RB.QUEUED_SPELLS)
             local RB = ns.ResourceBars
             for _, s in ipairs(RB and RB.QUEUED_SPELLS or {}) do
@@ -76,7 +76,7 @@ end
 
 -- where a module's custom colours live, and how they are put to use
 local KINDS = {
-    -- (11-17, Malkkav, for a player) the XP bar's colours; FlareUI's are Blizzard's own, so no Blizzard palette
+    -- the XP bar's colours; FlareUI's are Blizzard's own, so no Blizzard palette
     xp = {
         title = function() return L["XP Bar"] end,
         store = function()
@@ -101,7 +101,7 @@ local KINDS = {
             }
         end,
     },
-    -- (11-17, Malkkav) Status Colouring's colours, each with its strength (alpha)
+    -- Status Colouring's colours, each with its strength (alpha)
     ab = {
         title = function() return L["Action Bars"] end,
         alpha = true,
@@ -119,7 +119,7 @@ local KINDS = {
             if base == "disabled" then base = "flareui" end
             ns.ActionBars.SetStatusPalette(p, base)
         end,
-        -- Disabled (11-17, Malkkav): FlareUI leaves the buttons' colours alone (the old switch off)
+        -- Disabled: FlareUI leaves the buttons' colours alone (the old switch off)
         palettes = { "flareui", "blizzard", "disabled", "custom" },
         apply = function()
             ns.ActionBars.RepaintStatus()
@@ -190,7 +190,7 @@ local KINDS = {
 
 local window, kindNow
 
--- The colour last picked shows on the samples (11-11): a health colour on the player's and target's
+-- The colour last picked shows on the samples: a health colour on the player's and target's
 -- health bars, a power colour on their power bars, a cast colour on the cast bar, whatever the
 -- class you play (shown: part -> key, per window kind)
 local shown = { uf = {}, rb = {} }
@@ -215,7 +215,7 @@ end
 local samples = {}
 
 
--- The box is filled row by row (11-11): each row's frames sized up to fill its width (no more than
+-- The box is filled row by row: each row's frames sized up to fill its width (no more than
 -- maxK), side by side in equal columns, then the whole stack shrunk if it is too tall and centred.
 -- An item: { frame, ex = { left, top, width, height } } (ex: the drawn extents, the frame's TOPLEFT
 -- inset by left / top inside them)
@@ -399,7 +399,7 @@ local function DrawResourcePreviews()
     LayRows(rows)
 end
 
--- the Action Bars window: a button for each state, in the list's order (11-17, Malkkav)
+-- the Action Bars window: a button for each state, in the list's order
 local function DrawActionPreviews()
     local AB = ns.ActionBars
     if not (AB and AB.CreateSampleButton) then return end
@@ -414,7 +414,7 @@ local function DrawActionPreviews()
             AB.DrawSampleButton(b, "Interface\\Icons\\" .. icons[i], L["Spell"])
             if b.cooldown then b.cooldown:Clear() end
             b.icon:SetDesaturated(false)
-            if state == "normal" or AB.StatusPalette() == "disabled" then
+            if AB.StatusPalette() == "disabled" then
                 b.icon:SetVertexColor(1, 1, 1, 1)
             else
                 AB.PaintStatus(b.icon, state, true)
@@ -426,7 +426,7 @@ local function DrawActionPreviews()
     LayRows({ Row(items, 0.9, 2.5) })
 end
 
--- the XP Bar window: the bar's own sample (XP with rested bonus, and a reputation) (11-17)
+-- the XP Bar window: the bar's own sample (XP with rested bonus, and a reputation)
 local function DrawXPPreviews()
     local XPB = ns.XPBar
     if not (XPB and XPB.CreateSample) then return end
@@ -457,7 +457,7 @@ local function Repaint()
         if row.key then
             local c = kind.color(row.key)
             row.swatch:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
-            -- (11-17) a colour with a strength under 100% says so after its code
+            -- a colour with a strength under 100% says so after its code
             if c[4] and c[4] < 1 then row.hex:SetText(("%s  %d%%"):format(Hex(c), c[4] * 100 + 0.5)) else row.hex:SetText(Hex(c)) end
             row.own:SetShown(kind.palette() == "custom" and kind.store()[row.key] ~= nil)
         end
@@ -465,7 +465,7 @@ local function Repaint()
     DrawPreviews()
 end
 
--- PALETTES (11-11, Malkkav): the foot's dropdown picks FlareUI (the default), Blizzard or Custom, shown
+-- PALETTES: the foot's dropdown picks FlareUI (the default), Blizzard or Custom, shown
 -- at once. FlareUI and Blizzard drop your own colours; Custom with nothing changed draws FlareUI's.
 -- Changing any colour makes it Custom (from the palette shown). Reset (only on Custom with changes)
 -- gives every colour back. Apply keeps it all and closes; closing any other way puts back what the
@@ -570,7 +570,7 @@ local function PickColor(row)
     local kind = KINDS[kindNow]
     local start = kind.color(row.key)
     local before = kind.store()[row.key]
-    -- (11-17) kinds with a strength (Action Bars) get Blizzard's opacity slider
+    -- kinds with a strength (Action Bars) get Blizzard's opacity slider
     local function Picked()
         local r, g, b = ColorPickerFrame:GetColorRGB()
         local a = kind.alpha and ColorPickerFrame:GetColorAlpha() or nil
@@ -725,7 +725,7 @@ local function Build()
         f.saved = nil   -- kept
         f:Hide()
     end)
-    f.palette = CreateFrame("DropdownButton", nil, f, "WowStyle2DropdownTemplate")   -- (Blizzard's own, as the settings window's, 11-13)
+    f.palette = CreateFrame("DropdownButton", nil, f, "WowStyle2DropdownTemplate")   -- (Blizzard's own, as the settings window's)
     f.palette:SetWidth(150)
     f.palette:SetPoint("RIGHT", f.apply, "LEFT", -8, 0)
     local function Picked(p) return CurrentPalette() == p end
@@ -778,7 +778,7 @@ local function Build()
     return f
 end
 
--- kind: "uf", "rb" or "ab"
+-- kind: "uf", "rb", "ab" or "xp"
 function CP.Open(kind)
     if not KINDS[kind] then return end
     window = window or Build()
