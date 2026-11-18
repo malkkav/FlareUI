@@ -412,7 +412,8 @@ end
 -- (CooldownViewerConstants.ITEM_AURA_COLOR). Only the swipe's strength changes: the time, the edge and
 -- the colour stay Blizzard's, and a cooldown's own swipe is never touched.
 --------------------------------------------------
-local SOFT_VIEWERS = { EssentialCooldownViewer = true, UtilityCooldownViewer = true }
+-- (the viewers whose icons are abilities: Show Keybinds too)
+local ABILITY_VIEWERS = { EssentialCooldownViewer = true, UtilityCooldownViewer = true }
 local SOFT_ALPHA = 0.2
 
 local function Soften(item)
@@ -513,7 +514,134 @@ local function HookSwipe(item)
 end
 
 --------------------------------------------------
--- 5. APPLYING
+-- 5. KEYBINDS
+-- Show Keybinds: the key of the action button that holds an Essential or Utility icon's spell, in the
+-- icon's corner as on the action buttons. One table of spell -> key, read from Blizzard's bars and
+-- built again only after a bar or a binding changed. A spell on no bar, or bound without a bar, has
+-- no key to show.
+--------------------------------------------------
+local KEY_BARS = { "ActionButton", "MultiBarBottomLeftButton", "MultiBarBottomRightButton", "MultiBarRightButton",
+                   "MultiBarLeftButton", "MultiBar5Button", "MultiBar6Button", "MultiBar7Button" }
+local KEY_EVENTS = { "UPDATE_BINDINGS", "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR",
+                     "UPDATE_SHAPESHIFT_FORM", "SPELLS_CHANGED", "PLAYER_ENTERING_WORLD" }
+local keys, keysStale, keyWatch, keysQueued = {}, true, nil, false
+
+-- (kept: asked for every icon on each pass and each key press)
+local spellNames = {}
+local function SpellName(id)
+    local name = spellNames[id]
+    if not name then
+        local ok, got = pcall(C_Spell.GetSpellName, id)
+        name = ok and Readable(got) and got or nil
+        spellNames[id] = name
+    end
+    return name
+end
+
+-- the spell in a button's slot (a spell, or a macro that casts one)
+local function ButtonSpell(button)
+    local slot = button.action
+    if not (Readable(slot) and type(slot) == "number") then return nil end
+    local ok, kind, id, subType = pcall(GetActionInfo, slot)
+    if not (ok and Readable(kind) and Readable(id) and type(id) == "number") then return nil end
+    if kind == "spell" or (kind == "macro" and Readable(subType) and subType == "spell") then return id end
+end
+
+local function BuildKeys()
+    wipe(keys)
+    keysStale = false
+    local AB = ns.ActionBars
+    if not (AB and AB.BindingKey and AB.ShortenKey) then return end
+    local text
+    -- the first bar with the spell wins
+    local function Note(spell)
+        if Readable(spell) and keys[spell] == nil then keys[spell] = text end
+    end
+    for _, prefix in ipairs(KEY_BARS) do
+        for i = 1, 12 do
+            local button = _G[prefix .. i]
+            local key = button and AB.BindingKey(button)
+            local id = key and key ~= "" and ButtonSpell(button)
+            if id then
+                text = AB.ShortenKey(key)
+                Note(id)
+                -- the bar may hold another form or rank of the icon's spell
+                if C_SpellBook and C_SpellBook.FindBaseSpellByID then Note(C_SpellBook.FindBaseSpellByID(id)) end
+                if C_Spell.GetOverrideSpell then Note(C_Spell.GetOverrideSpell(id)) end
+                Note(SpellName(id))
+            end
+        end
+    end
+end
+
+local function ItemKey(item)
+    local info = item.cooldownInfo
+    if type(info) ~= "table" then return nil end
+    if keysStale then BuildKeys() end
+    local id, override = info.spellID, info.overrideSpellID
+    local key = (Readable(id) and keys[id]) or (Readable(override) and keys[override])
+    if not key and Readable(id) then
+        local name = SpellName(id)
+        key = name and keys[name]
+    end
+    return key or nil
+end
+
+local function UpdateKey(item)
+    local p = Pieces(item)
+    local db = GetDb()
+    local text = db.keybinds and ItemKey(item)
+    if not text then
+        if p.key then p.key:Hide() end
+        return
+    end
+    if not p.key then
+        local holder = CreateFrame("Frame", nil, item)
+        holder:SetAllPoints(item)
+        -- over the cooldown swipe and the skin's border
+        holder:SetFrameLevel(item:GetFrameLevel() + 3)
+        p.key = holder:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmallGray")
+        p.key:SetPoint("TOPRIGHT", item, "TOPRIGHT", -2, -2)
+    end
+    if p.keyRun ~= styleRun then
+        p.keyRun = styleRun
+        SetFont(p.key, db.keybindFont)
+    end
+    p.key:SetText(text)
+    p.key:Show()
+end
+
+local function UpdateKeys(name)
+    for item in ActiveItems(name) do UpdateKey(item) end
+end
+
+local function WatchKeys()
+    local want = GetDb().keybinds
+    keysStale = true
+    if not want then
+        if keyWatch then keyWatch:UnregisterAllEvents() end
+        return
+    end
+    if not keyWatch then
+        keyWatch = CreateFrame("Frame")
+        -- (the bar events come in bursts: one pass on the next frame)
+        keyWatch:SetScript("OnEvent", function()
+            keysStale = true
+            if keysQueued then return end
+            keysQueued = true
+            C_Timer.After(0, function()
+                keysQueued = false
+                if On() and GetDb().keybinds then
+                    for name in pairs(ABILITY_VIEWERS) do UpdateKeys(name) end
+                end
+            end)
+        end)
+    end
+    for _, event in ipairs(KEY_EVENTS) do keyWatch:RegisterEvent(event) end
+end
+
+--------------------------------------------------
+-- 6. APPLYING
 --------------------------------------------------
 local function ApplyItem(name, item)
     local db = GetDb()
@@ -521,11 +649,12 @@ local function ApplyItem(name, item)
     if shapeKey then ApplyShape(item, db.shape and db.shape[shapeKey] or "blizzard") end
     if db.skin then VIEWERS[name](item) end
     if Grow(name) ~= "blizzard" then HookArrange(name, item) end
-    if SOFT_VIEWERS[name] then
+    if ABILITY_VIEWERS[name] then
         if db.softOverlay or db.effectCooldown then HookSwipe(item) end
         Soften(item)
         EffectCooldown(item)
     end
+    if ABILITY_VIEWERS[name] then UpdateKey(item, true) end
 end
 
 local function ApplyViewer(name)
@@ -537,6 +666,7 @@ function CM:Refresh()
     styleRun = styleRun + 1
     -- (switched on but not started yet: the frames would be styled without the hooks that keep them so)
     if not (self.initialized and On()) then return end
+    WatchKeys()
     for name in pairs(VIEWERS) do ApplyViewer(name) end
     for name in pairs(GROW_KEYS) do Arrange(name) end
 end
@@ -554,6 +684,12 @@ local function Hook()
                 Pieces(item).moved = nil
                 if On() then ApplyItem(name, item) end
             end)
+            -- Blizzard gives a frame its spell after acquiring it, and swaps spells in place
+            if ABILITY_VIEWERS[name] and viewer.RefreshData then
+                hooksecurefunc(viewer, "RefreshData", function()
+                    if On() and GetDb().keybinds then UpdateKeys(name) end
+                end)
+            end
             -- Blizzard's layout gives every frame its slot again (RefreshLayout ends in one)
             if GROW_KEYS[name] and viewer.Layout then
                 hooksecurefunc(viewer, "Layout", function() Arrange(name) end)
@@ -568,7 +704,7 @@ local function Hook()
 end
 
 --------------------------------------------------
--- 6. EDIT MODE
+-- 7. EDIT MODE
 -- Blizzard's own Visibility and Opacity rows leave the viewers' dialogs: FlareUI's Fading section does
 -- both. A row whose stored value is not Blizzard's default stays, or a viewer hidden by it could never
 -- be brought back. Done on the dialog's own rows after Blizzard builds them (as Minimap.lua trims the
