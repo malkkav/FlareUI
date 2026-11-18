@@ -25,7 +25,7 @@ L["* Enemy nameplates in the FlareUI style\n* Threat colours for tanks, damage a
 L["* Export: the profile in use as a text string to share\n* Import: paste a string and pick the parts to take, as a new profile or into the one in use"] = true
 L["* FlareUI's bag and bank windows\n* Category filters and item levels\n* A loot roll window and a loot feed"] = true
 L["* FlareUI's borders, proc glows and status colours on your buttons\n* An XP bar, and hide the bars you don't use\n* Fake CM: spare bars as a cooldown tracker"] = true
-L["* FlareUI's look on the cooldown icons and the Tracked Bars\n* A cleaner icon while an ability's effect runs"] = true
+L["* FlareUI's look on the cooldown icons and the Tracked Bars\n* A cleaner icon while an ability's effect runs\n* Fading for each bar, in Edit Mode"] = true
 L["* FlareUI's own quest tracker\n* Zone headings, quest levels and quest icons\n* Minimizes itself in instances or fights"] = true
 L["* Health, power, combo points and swing timers as bars you place anywhere\n* Paladin seals, flight timers and breath timers\n* Each bar set up in Edit Mode"] = true
 L["* In it: every FlareUI setting, and where FlareUI's frames sit on any Edit Mode layout\n* Not in it: Blizzard's bars and frames, which come with your Edit Mode layout\n* Switching profiles offers the layout the profile was set up on.\n* From another character, copy the layout with Copy Layout Code (About) or Sync Blizzard UI (General)."] = true
@@ -614,6 +614,7 @@ L["Duration Bars"] = true
 L["Duskbat"] = true
 L["Each bag starts a new row in the combined backpack, with a gap above it."] = true
 L["Each bank bag starts a new row in the bank, with a gap above it."] = true
+L["Each bar's fading is set in Edit Mode."] = true
 L["Each bar's size, buttons, rows and fading are set in Edit Mode."] = true
 L["Each bar's size, text and visibility are set in Edit Mode."] = true
 L["Each character keeps its own choice. Switching profiles reloads the interface."] = true
@@ -958,6 +959,7 @@ L["How quests are ordered.\n* By zone: your zone first\n* By distance: nearest f
 L["How see-through it gets when faded. 0% is invisible."] = true
 L["How tall each plate's health bar is."] = true
 L["How tall the cast bar is."] = true
+L["How the bar fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"] = true
 L["How the chat fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"] = true
 L["How the chat's frame looks:\n* FlareUI: the quest tracker's FlareUI look, with Blizzard's title strip behind the tabs, a line along the bottom and the FlareUI Thick border\n* Modern: a plain frame with the border of your choice"] = true
 L["How the lines line up:\n* Left: icon, then the text\n* Center: icon and text centred (at the cursor: right above it)\n* Right: the text, then the icon, lined up on the right (at the cursor: to its left)"] = true

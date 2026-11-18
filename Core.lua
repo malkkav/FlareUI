@@ -809,7 +809,7 @@ local defaults = {
 
         -- [[ COOLDOWN MANAGER ]] Blizzard's Cooldown Manager (Modules/CooldownManager.lua), a module of its own
         cooldownmanager = {
-            enabled = false,            -- the Cooldown Manager page's switch: everything below
+            enabled = false,            -- the Cooldown Manager page's switch: everything below, and the viewers' Edit Mode rows
             skin = false,               -- Skin Cooldown Manager: FlareUI's look on the Tracked Bars and the icons
             softOverlay = false,        -- Soften Active Overlay: a faint swipe while an ability's effect runs
             effectCooldown = false,     -- Show Cooldown During Effect: the ability's own cooldown in the icon's corner
