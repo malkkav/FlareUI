@@ -741,7 +741,7 @@ local defaults = {
                                  threatGlow = true },   -- Threat Glow (Look)
                 focustarget  = { mirror = true, enabled = true, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin" },
-                pet          = { enabled = true, width = 120, height = 30, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
+                pet          = { enabled = true, width = 120, height = 30, powerHeight = 8, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Forever", border = "FlareUI Thin",
                                  absorbTexture = "FlareUI Striped",
                                  castbar = false, castbarPosition = "BOTTOM", castHeight = 12, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
