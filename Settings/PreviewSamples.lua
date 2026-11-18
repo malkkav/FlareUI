@@ -873,6 +873,12 @@ function R.cdm(c)
         font.size = 11
         corner = c:Text('cdmEffect', '', left + 2 * (size + gap) + 2, top + size - 13, size, font)
     end
+    local push
+    if on and Get('cooldownmanager.press', false) then
+        -- the action buttons' pushed frame
+        push = c:Texture('cdmPush', nil, left + 2 * (size + gap), top, size, size, true)
+        if C_Texture.GetAtlasInfo('UI-HUD-ActionBar-IconFrame-Down') then push:SetAtlas('UI-HUD-ActionBar-IconFrame-Down') end
+    end
     local lap
     local phase
     -- (kept on the canvas: pointing at another row doesn't start the loop again)
@@ -896,6 +902,7 @@ function R.cdm(c)
             else
                 cast:Clear()
             end
+            if push then push:SetShown(now == 'hold') end
         end
         castText:SetText(now == 'effect' and math.ceil(EFFECT - e) or now == 'cooldown' and math.ceil(COOLDOWN - e) or '')
         if corner then corner:SetText(now == 'effect' and math.ceil(COOLDOWN - e) or '') end

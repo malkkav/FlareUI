@@ -43,6 +43,7 @@ S:Row{ key = "cdm.barColor", section = "cdm.look", kind = "button", buttonText =
 S:Row{ key = "cdm.softOverlay", section = "cdm.icons", path = "cooldownmanager.softOverlay", apply = Refresh, disabled = BlizzardOff }
 S:Row{ key = "cdm.effectCooldown", section = "cdm.icons", path = "cooldownmanager.effectCooldown", apply = Refresh, disabled = BlizzardOff }
 S:Row{ key = "cdm.keybinds", section = "cdm.icons", path = "cooldownmanager.keybinds", apply = Refresh, disabled = BlizzardOff }
+S:Row{ key = "cdm.press", section = "cdm.icons", path = "cooldownmanager.press", apply = Refresh, disabled = BlizzardOff }
 
 -- with Skin Cooldown Manager on; Auto keeps Blizzard's size
 S:FontRows{ module = "cdm", tab = "fonts", section = "cdm.fonts", apply = Refresh,

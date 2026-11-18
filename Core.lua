@@ -785,6 +785,7 @@ local defaults = {
             barFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             keybinds = false,           -- Show Keybinds: the action button's key on the Essential and Utility icons
             keybindFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            press = false,              -- Show Button Presses: an icon lights up while its spell's key is held
             -- Icon Shape in each icon viewer's Edit Mode dialog: blizzard | rect
             shape = { essential = "blizzard", utility = "blizzard", buffs = "blizzard" },
             -- Grow From in the Tracked Buffs' and Tracked Bars' Edit Mode dialogs: blizzard | CENTER | START | END

@@ -47,7 +47,7 @@ ns.Copy = {
             desc = L["FlareUI's changes to Blizzard's own Cooldown Manager. It has to be switched on in the game's options."],
             editButton = L["Edit Bars in Edit Mode"],
             editNote = L["Each bar's icon shape, growth and fading are set in Edit Mode."],
-            offCard = L["* FlareUI's look on the cooldown icons and the Tracked Bars\n* Keybinds on the icons\n* Icon shape, growth and fading for each bar, in Edit Mode"],
+            offCard = L["* FlareUI's look on the cooldown icons and the Tracked Bars\n* Keybinds and key presses on the icons\n* Icon shape, growth and fading for each bar, in Edit Mode"],
             tabs = { L["Settings"], L["Fonts"] },
             title = L["Cooldown Manager"],
         },
@@ -1032,6 +1032,12 @@ ns.Copy = {
             label = L["Show Keybinds"],
             section = "cdm.icons",
             tags = { "keybind hotkey key text" },
+        },
+        ["cdm.press"] = {
+            desc = L["Lights up an Essential or Utility icon while you hold the key of its spell, as an action button does. Mouse clicks on the bars are not shown."],
+            label = L["Show Button Presses"],
+            section = "cdm.icons",
+            tags = { "key press pushed flash feedback" },
         },
         ["cdm.skin"] = {
             desc = L["Blizzard's Cooldown Manager in FlareUI's look:\n* Tracked Bars like FlareUI's cast bars\n* Icons with FlareUI's borders"],
