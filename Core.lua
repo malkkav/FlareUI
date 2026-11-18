@@ -776,6 +776,7 @@ local defaults = {
         cooldownmanager = {
             enabled = false,            -- the Cooldown Manager page's switch: everything below
             skin = false,               -- Skin Cooldown Manager: FlareUI's look on the Tracked Bars and the icons
+            softOverlay = false,        -- Soften Active Overlay: a faint swipe while an ability's effect runs
             barColor = { 1, 0.5, 0.25 },   -- Bar Colour: the Tracked Bars, with the skin on
             -- size 0: Auto, the size Blizzard gave the text
             stackFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },

@@ -45,7 +45,7 @@ ns.Copy = {
         },
         cdm = {
             desc = L["FlareUI's changes to Blizzard's own Cooldown Manager. It has to be switched on in the game's options."],
-            offCard = L["* FlareUI's look on the cooldown icons and the Tracked Bars"],
+            offCard = L["* FlareUI's look on the cooldown icons and the Tracked Bars\n* A fainter overlay while an ability's effect runs"],
             tabs = { L["Settings"], L["Fonts"] },
             title = L["Cooldown Manager"],
         },
@@ -991,6 +991,12 @@ ns.Copy = {
             section = "cdm.look",
             tags = { "cooldown manager", "tracked bars", "tracked buffs", "cdm" },
             tip = L["Only the look changes. Tracking stays in Blizzard's Cooldown Manager."],
+        },
+        ["cdm.softOverlay"] = {
+            desc = L["While an ability's effect is running, Blizzard covers its icon with a strong yellow swipe. This makes the swipe faint, so you can still see the icon. The timer stays."],
+            label = L["Soften Active Overlay"],
+            section = "cdm.icons",
+            tags = { "aura swipe yellow overlay dot" },
         },
         ["ch.border"] = {
             desc = L["The border around the chat and its edit box. None hides it."],
@@ -2729,6 +2735,7 @@ ns.Copy = {
         ["br.where"] = L["Where"],
         ["br.yourOwn"] = L["Your Own"],
         ["cdm.fonts"] = L["Cooldown Manager"],
+        ["cdm.icons"] = L["Icons"],
         ["cdm.look"] = L["Look"],
         ["ch.editBoxSection"] = L["Edit Box"],
         ["ch.fonts"] = L["Chat"],
