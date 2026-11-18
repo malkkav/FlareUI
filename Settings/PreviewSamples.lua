@@ -804,10 +804,18 @@ function R.cdm(c)
     Heading(c, L["Cooldown Manager"])
     local on = Get('cooldownmanager.enabled', false)
     local skin = on and Get('cooldownmanager.skin', false)
+    -- Auto (0) keeps Blizzard's size: the sample's own
+    local function Sized(path, auto)
+        local cfg, copy = Font(path), {}
+        for k, v in pairs(cfg) do copy[k] = v end
+        if not skin then copy.face, copy.flags = nil, 'OUTLINE' end
+        if not skin or (copy.size or 0) == 0 then copy.size = auto end
+        return copy
+    end
     local icons = { 'INV_Sword_04', 'Ability_DualWield', 'Ability_Hunter_Quickshot', 'Spell_Holy_WordFortitude' }
     local size, gap, top = 40, 10, 36
     local left = math.floor((c.width - (#icons * size + (#icons - 1) * gap)) / 2)
-    local timeFont = { size = 16, flags = 'OUTLINE' }
+    local timeFont = Sized('cooldownmanager.cooldownFont', 16)
     -- the swipe as Blizzard's Cooldown Manager draws it
     local function Swipe(i)
         local cd = c:Object('cdmSwipe' .. i, 'Cooldown', 'CooldownFrameTemplate')
@@ -832,7 +840,7 @@ function R.cdm(c)
         if i == 2 then
             icon:SetDesaturated(true)
         elseif i == 4 then
-            c:Text('cdmStack', '3', x, top + size - 14, size - 3, { size = 12, flags = 'OUTLINE' }):SetJustifyH('RIGHT')
+            c:Text('cdmStack', '3', x, top + size - 14, size - 3, Sized('cooldownmanager.stackFont', 12)):SetJustifyH('RIGHT')
         end
         if skin then
             -- (over the swipe, as in game)
@@ -865,7 +873,7 @@ function R.cdm(c)
     else
         c:Bar('cdmBar', barLeft, barTop, barWidth, 19, 0.6, { 0.9, 0.6, 0.1 }, 'Blizzard')
     end
-    local font = { size = 11, flags = 'OUTLINE' }
+    local font = Sized('cooldownmanager.barFont', 11)
     c:Text('cdmBarName', L["Spell"], barLeft + 5, barTop + 4, barWidth - 10, font)
     c:Text('cdmBarTime', '8', barLeft + 5, barTop + 4, barWidth - 10, font):SetJustifyH('RIGHT')
     c.used = barTop + 32

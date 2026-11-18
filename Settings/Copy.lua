@@ -46,6 +46,7 @@ ns.Copy = {
         cdm = {
             desc = L["FlareUI's changes to Blizzard's own Cooldown Manager. It has to be switched on in the game's options."],
             offCard = L["* FlareUI's look on the cooldown icons and the Tracked Bars"],
+            tabs = { L["Settings"], L["Fonts"] },
             title = L["Cooldown Manager"],
         },
         ch = {
@@ -961,6 +962,21 @@ ns.Copy = {
             label = L["Weapon Buffs"],
             section = "br.where",
             tip = L["On Mouseover keeps the icons hidden until you point at the reminder row."],
+        },
+        ["cdm.font.bar"] = {
+            desc = L["The name and time on the Tracked Bars."],
+            label = L["Bar Text"],
+            section = "cdm.fonts",
+        },
+        ["cdm.font.cooldown"] = {
+            desc = L["The countdown on the cooldown icons."],
+            label = L["Cooldown Numbers"],
+            section = "cdm.fonts",
+        },
+        ["cdm.font.stacks"] = {
+            desc = L["Stacks and charges on the icons."],
+            label = L["Stack Count"],
+            section = "cdm.fonts",
         },
         ["cdm.skin"] = {
             desc = L["Blizzard's Cooldown Manager in FlareUI's look:\n* Tracked Bars like FlareUI's cast bars\n* Icons with FlareUI's borders"],
@@ -2706,6 +2722,7 @@ ns.Copy = {
         ["br.upkeep"] = L["Upkeep"],
         ["br.where"] = L["Where"],
         ["br.yourOwn"] = L["Your Own"],
+        ["cdm.fonts"] = L["Cooldown Manager"],
         ["cdm.look"] = L["Look"],
         ["ch.editBoxSection"] = L["Edit Box"],
         ["ch.fonts"] = L["Chat"],
