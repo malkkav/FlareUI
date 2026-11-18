@@ -820,6 +820,8 @@ local defaults = {
             barFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- Icon Shape in each icon viewer's Edit Mode dialog: blizzard | rect
             shape = { essential = "blizzard", utility = "blizzard", buffs = "blizzard" },
+            -- Grow From in the Tracked Buffs' and Tracked Bars' Edit Mode dialogs: blizzard | CENTER | START | END
+            grow = { buffs = "blizzard", bars = "blizzard" },
         },
 
         -- [[ AURAS MODULE ]] the player's buffs and debuffs (Modules/Auras.lua)

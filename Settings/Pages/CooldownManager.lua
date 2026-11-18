@@ -6,7 +6,7 @@ local L = ns.L
 -- COOLDOWN MANAGER (its own page)
 -- Modules/CooldownManager.lua: FlareUI's changes to Blizzard's own Cooldown Manager, all off until the
 -- page is switched on (cooldownmanager.enabled).
--- What is set for each bar sits in its viewer's Edit Mode dialog (Visibility.lua): icon shape and fading.
+-- What is set for each bar sits in its viewer's Edit Mode dialog (Visibility.lua): icon shape, growth and fading.
 --------------------------------------------------
 local function CM() return ns.CooldownManager end
 local function Refresh() if CM() and CM().Refresh then CM():Refresh() end end

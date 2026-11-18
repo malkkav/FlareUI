@@ -46,8 +46,8 @@ ns.Copy = {
         cdm = {
             desc = L["FlareUI's changes to Blizzard's own Cooldown Manager. It has to be switched on in the game's options."],
             editButton = L["Edit Bars in Edit Mode"],
-            editNote = L["Each bar's icon shape and fading are set in Edit Mode."],
-            offCard = L["* FlareUI's look on the cooldown icons and the Tracked Bars\n* A cleaner icon while an ability's effect runs\n* Icon shape and fading for each bar, in Edit Mode"],
+            editNote = L["Each bar's icon shape, growth and fading are set in Edit Mode."],
+            offCard = L["* FlareUI's look on the cooldown icons and the Tracked Bars\n* A cleaner icon while an ability's effect runs\n* Icon shape, growth and fading for each bar, in Edit Mode"],
             tabs = { L["Settings"], L["Fonts"] },
             title = L["Cooldown Manager"],
         },
@@ -1001,6 +1001,11 @@ ns.Copy = {
             desc = L["How the bar fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"],
             label = L["Hide Speed"],
             tags = { "fade speed", "min alpha", "transparency" },
+        },
+        ["cdm.em.grow"] = {
+            desc = L["Where the shown ones start, with no gaps for the hidden ones. Default keeps Blizzard's slots."],
+            label = L["Grow From"],
+            tags = { "center", "centre", "align", "anchor", "direction" },
         },
         ["cdm.em.minAlpha"] = {
             desc = L["How the bar fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"],

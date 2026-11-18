@@ -123,7 +123,8 @@ local ELEMENTS = {
     { key = "threat", threat = true, module = "damagemeter", instance = true, defaultShow = "meter" },
     -- Blizzard's Cooldown Manager viewers (CooldownManager.lua), behind its switch. keepAlpha: Blizzard's dialog has an
     -- Opacity of its own, so on Always the alpha is left alone unless FlareUI faded the viewer this session.
-    -- cdmShape: an Icon Shape in a Frame section above Fading (CooldownManager.ShapeSetting)
+    -- cdmShape: an Icon Shape in a Frame section above Fading (CooldownManager.ShapeSetting); cdmGrow: a Grow From
+    -- in the same section (CooldownManager.GrowSetting)
     { key = "cdm_essential", page = "cdm", frame = "EssentialCooldownViewer", system = "CooldownViewer", index = "Essential",
       indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true,
       cdmShape = "essential" },
@@ -132,9 +133,9 @@ local ELEMENTS = {
       cdmShape = "utility" },
     { key = "cdm_buffs", page = "cdm", frame = "BuffIconCooldownViewer", system = "CooldownViewer", index = "BuffIcon",
       indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true,
-      cdmShape = "buffs" },
+      cdmShape = "buffs", cdmGrow = "buffs" },
     { key = "cdm_bars", page = "cdm", frame = "BuffBarCooldownViewer", system = "CooldownViewer", index = "BuffBar",
-      indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true },
+      indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true, cdmGrow = "bars" },
 }
 local ELEMENT_BY_KEY = {}
 for _, e in ipairs(ELEMENTS) do ELEMENT_BY_KEY[e.key] = e end
@@ -1263,6 +1264,7 @@ local function AddEditModeSettings()
                 local CM = ns.CooldownManager
                 local layout = {}
                 if e.cdmShape and CM and CM.ShapeSetting then layout[#layout + 1] = CM.ShapeSetting(e.cdmShape) end
+                if e.cdmGrow and CM and CM.GrowSetting then layout[#layout + 1] = CM.GrowSetting(e.cdmGrow) end
                 if #layout > 0 then
                     local Section, settings = ns.EditSections()
                     Section("Frame", layout)
