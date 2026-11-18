@@ -221,12 +221,77 @@ local function Soften(item)
     end
 end
 
--- (after each pass of Blizzard's over the icon's cooldown, where it paints the swipe again)
-local function HookSoften(item)
+-- Show Cooldown During Effect. While the effect runs Blizzard shows only its time, though the ability
+-- itself may be on cooldown as well (Cone of Cold on the target). The ability's cooldown then counts
+-- down in the icon's corner, on a small Cooldown widget of FlareUI's own: the spell's duration object
+-- goes to it as it is, so nothing is read from it. Blizzard's own display is not touched, and shows
+-- the cooldown itself again once the effect ends.
+local EFFECT_FONT_SIZE = 11
+
+local function EffectCooldown(item)
     local p = Pieces(item)
-    if p.softHooked or not item.RefreshSpellCooldownInfo then return end
-    p.softHooked = true
-    hooksecurefunc(item, "RefreshSpellCooldownInfo", Soften)
+    local db = GetDb()
+    local wanted = db and db.effectCooldown and On()
+    if not wanted and not p.effect then return end
+    local fromAura = item.wasSetFromAura
+    -- unreadable: FlareUI cannot tell what the icon shows, the corner stays as it is
+    if fromAura ~= nil and not Readable(fromAura) then return end
+    local info = item.cooldownInfo
+    local id
+    if wanted and fromAura and type(info) == "table" then
+        -- (as Blizzard: the spell an override has put in the base spell's place)
+        id = Readable(info.overrideSpellID) and info.overrideSpellID or info.spellID
+    end
+    local duration
+    if Readable(id) and type(id) == "number" then
+        local ok, cd = pcall(C_Spell.GetSpellCooldown, id)
+        -- (without the global cooldown: the corner would flicker on every cast)
+        if ok and cd and Readable(cd.isActive) and cd.isActive then duration = C_Spell.GetSpellCooldownDuration(id, true) end
+    end
+    if not duration then
+        if p.effect then p.effect:Clear() end
+        return
+    end
+    if not p.effect then
+        local timer = CreateFrame("Cooldown", nil, item, "CooldownFrameTemplate")
+        timer:ClearAllPoints()
+        timer:SetPoint("BOTTOMLEFT", item, "BOTTOMLEFT", 0, 0)
+        timer:SetPoint("TOPRIGHT", item, "CENTER", 0, 0)
+        -- over Blizzard's own cooldown and the skin's border
+        timer:SetFrameLevel(item:GetFrameLevel() + 3)
+        timer:SetDrawSwipe(false)
+        timer:SetDrawEdge(false)
+        timer:SetDrawBling(false)
+        timer:SetHideCountdownNumbers(false)
+        timer:EnableMouse(false)
+        timer:Show()
+        p.effect = timer
+    end
+    -- the Cooldown Numbers font with the skin on, small; set again only after a settings change
+    if p.effectRun ~= styleRun and p.effect.GetCountdownFontString then
+        p.effectRun = styleRun
+        local font = { size = EFFECT_FONT_SIZE }
+        if db.skin and db.cooldownFont then
+            for key, value in pairs(db.cooldownFont) do font[key] = value end
+            font.size = EFFECT_FONT_SIZE
+        end
+        SetFont(p.effect:GetCountdownFontString(), font)
+    end
+    -- (shown again each time, in case the widget hides itself once cleared or done)
+    p.effect:Show()
+    p.effect:SetCooldownFromDurationObject(duration)
+end
+
+-- (after each pass of Blizzard's over the icon's cooldown, where it paints the swipe again or clears
+-- the cooldown: the icon may show another spell, or nothing, by then)
+local function HookSwipe(item)
+    local p = Pieces(item)
+    if p.swipeHooked or not item.RefreshSpellCooldownInfo then return end
+    p.swipeHooked = true
+    hooksecurefunc(item, "RefreshSpellCooldownInfo", function()
+        Soften(item)
+        EffectCooldown(item)
+    end)
 end
 
 --------------------------------------------------
@@ -236,8 +301,9 @@ local function ApplyItem(name, item)
     local db = GetDb()
     if db.skin then VIEWERS[name](item) end
     if SOFT_VIEWERS[name] then
-        if db.softOverlay then HookSoften(item) end
+        if db.softOverlay or db.effectCooldown then HookSwipe(item) end
         Soften(item)
+        EffectCooldown(item)
     end
 end
 
