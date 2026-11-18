@@ -18,7 +18,7 @@ ns.modules["CooldownManager"] = CM
 
 local _G = _G
 local pairs, ipairs = pairs, ipairs
-local math_min, math_max, math_floor = math.min, math.max, math.floor
+local math_min, math_max, math_floor, math_abs = math.min, math.max, math.floor, math.abs
 local CreateFrame = CreateFrame
 local issecretvalue = issecretvalue
 
@@ -249,7 +249,164 @@ function CM.ShapeSetting(key)
 end
 
 --------------------------------------------------
--- 3. ACTIVE OVERLAY
+-- 3. GROW FROM
+-- Blizzard keeps a slot for every tracked buff, so the Tracked Buffs and Tracked Bars show gaps. With
+-- Grow From set, the frames showing now are packed from the chosen edge (or the middle) of the viewer,
+-- in Blizzard's order, after each of Blizzard's layouts and whenever Blizzard shows or hides one. Only the
+-- frames' points change: the viewer and its Edit Mode box stay Blizzard's. Default leaves all of it
+-- alone; back on Default, each frame gets the point Blizzard gave it.
+--------------------------------------------------
+local GROW_KEYS = { BuffIconCooldownViewer = "buffs", BuffBarCooldownViewer = "bars" }
+local showing, arranged = {}, {}
+
+local function Number(v) return Readable(v) and type(v) == "number" and v or nil end
+local function ByLayoutIndex(a, b) return a.layoutIndex < b.layoutIndex end
+
+local function Grow(name)
+    local key = GROW_KEYS[name]
+    local db = GetDb()
+    return key and db and db.grow and db.grow[key] or "blizzard"
+end
+
+-- Where the i-th of count shown frames goes. The edge is the player's choice, the order Blizzard's:
+-- the first frame sits left (in a column: at the bottom), or at the other end when reversed.
+function CM.GrowPoint(grow, i, count, step, horizontal, reversed)
+    local slot = reversed and (count - i) or (i - 1)
+    local point, offset
+    if grow == "CENTER" then
+        point, offset = horizontal and "TOP" or "LEFT", (slot - (count - 1) / 2) * step
+    elseif horizontal then
+        if grow == "END" then
+            point, offset = "TOPRIGHT", -(count - 1 - slot) * step
+        else
+            point, offset = "TOPLEFT", slot * step
+        end
+    elseif grow == "END" then
+        point, offset = "BOTTOMLEFT", slot * step
+    else
+        point, offset = "TOPLEFT", -(count - 1 - slot) * step
+    end
+    return point, horizontal and offset or 0, horizontal and 0 or offset
+end
+
+-- Is the frame still where FlareUI put it (Blizzard's layout has not placed it since)?
+local function Own(p, viewer, point, relative, x, y)
+    return p.moved and point == p.movedPoint and relative == viewer
+        and math_abs(x - p.movedX) < 0.01 and math_abs(y - p.movedY) < 0.01
+end
+
+-- Blizzard's point is kept before FlareUI's first move after each of its layouts. A frame whose point
+-- cannot be read stays where it is: it could not be given back.
+local function Move(item, viewer, point, x, y)
+    local p = Pieces(item)
+    local was, relative, relativePoint, wasX, wasY = item:GetPoint(1)
+    if not (Readable(was) and Number(wasX) and Number(wasY)) then return end
+    if not Own(p, viewer, was, relative, wasX, wasY) then
+        p.b1, p.b2, p.b3, p.b4, p.b5 = was, relative, relativePoint, wasX, wasY
+    end
+    item:ClearAllPoints()
+    item:SetPoint(point, viewer, point, x, y)
+    p.moved, p.movedPoint, p.movedX, p.movedY = true, point, x, y
+end
+
+-- (a frame Blizzard has placed again since is already back)
+local function Restore(name)
+    local viewer = _G[name]
+    for item in ActiveItems(name) do
+        local p = Pieces(item)
+        if p.moved then
+            local point, relative, _, x, y = item:GetPoint(1)
+            if p.b1 and Readable(point) and Number(x) and Number(y) and Own(p, viewer, point, relative, x, y) then
+                item:ClearAllPoints()
+                item:SetPoint(p.b1, p.b2, p.b3, p.b4, p.b5)
+            end
+            p.moved = nil
+        end
+    end
+    arranged[name] = nil
+end
+
+local function Arrange(name)
+    local grow = Grow(name)
+    if grow == "blizzard" then
+        if arranged[name] then Restore(name) end
+        return
+    end
+    if not On() then return end
+    wipe(showing)
+    for item in ActiveItems(name) do
+        local shown = item:IsShown()
+        if Readable(shown) and shown and Number(item.layoutIndex) then showing[#showing + 1] = item end
+    end
+    local count = #showing
+    if count == 0 then return end
+    local viewer = _G[name]
+    table.sort(showing, ByLayoutIndex)
+    local width, height = Number(showing[1]:GetWidth()), Number(showing[1]:GetHeight())
+    if not (width and height and width > 0 and height > 0) then return end
+    local bars = GROW_KEYS[name] == "bars"
+    local horizontal = not bars and viewer.isHorizontal ~= false
+    -- (Blizzard's padding is in the frames' own units, whatever its Icon Size: GridLayoutUtil)
+    local step = (horizontal and width or height) + (Number(horizontal and viewer.childXPadding or viewer.childYPadding) or 0)
+    -- the bars start at the chosen edge
+    local reversed = viewer.iconDirection ~= nil and viewer.iconDirection ~= 1
+    if bars then reversed = grow == "START" end
+    arranged[name] = true
+    for i, item in ipairs(showing) do
+        Move(item, viewer, CM.GrowPoint(grow, i, count, step, horizontal, reversed))
+    end
+end
+
+-- (one function for every frame; Blizzard shows and hides a frame only in UpdateShownState, mostly
+-- with nothing changed)
+local function ItemChanged(item)
+    local p = Pieces(item)
+    local shown = item:IsShown()
+    shown = Readable(shown) and shown and true or false
+    if shown == p.shown then return end
+    p.shown = shown
+    -- (released for a layout, no place yet: Blizzard's layout follows, and the packing with it)
+    local points = item:GetNumPoints()
+    if Readable(points) and points == 0 then return end
+    Arrange(p.viewer)
+end
+
+local function HookArrange(name, item)
+    local p = Pieces(item)
+    if p.arrangeHooked then return end
+    p.arrangeHooked, p.viewer = true, name
+    if item.UpdateShownState then hooksecurefunc(item, "UpdateShownState", ItemChanged) end
+end
+
+-- The Grow From row of a viewer's Edit Mode dialog; key: buffs / bars
+function CM.GrowSetting(key)
+    local LEM = LibStub("FlareEditMode")
+    local name = key == "buffs" and "BuffIconCooldownViewer" or "BuffBarCooldownViewer"
+    return {
+        name = L["Grow From"], kind = LEM.SettingType.Dropdown, default = "blizzard",
+        values = function()
+            local viewer = _G[name]
+            local horizontal = key == "buffs" and not (viewer and viewer.isHorizontal == false)
+            local values = { { text = L["Default"], value = "blizzard", isRadio = true } }
+            if key == "buffs" then values[#values + 1] = { text = L["Centre"], value = "CENTER", isRadio = true } end
+            values[#values + 1] = { text = horizontal and L["Left"] or L["Top"], value = "START", isRadio = true }
+            values[#values + 1] = { text = horizontal and L["Right"] or L["Bottom"], value = "END", isRadio = true }
+            return values
+        end,
+        desc = L["Where the shown ones start, with no gaps for the hidden ones. Default keeps Blizzard's slots."],
+        get = function() return Grow(name) end,
+        set = function(_, value)
+            local db = GetDb()
+            if not db then return end
+            db.grow = db.grow or {}
+            db.grow[key] = value
+            CM:Refresh()
+        end,
+    }
+end
+
+--------------------------------------------------
+-- 4. ACTIVE OVERLAY
 -- Soften Active Overlay, for the Essential and Utility icons. While an ability's effect runs (Serpent
 -- Sting on the target), Blizzard shows the effect's time on the icon under a strong yellow swipe
 -- (CooldownViewerConstants.ITEM_AURA_COLOR). Only the swipe's strength changes: the time, the edge and
@@ -356,13 +513,14 @@ local function HookSwipe(item)
 end
 
 --------------------------------------------------
--- 4. APPLYING
+-- 5. APPLYING
 --------------------------------------------------
 local function ApplyItem(name, item)
     local db = GetDb()
     local shapeKey = SHAPE_KEYS[name]
     if shapeKey then ApplyShape(item, db.shape and db.shape[shapeKey] or "blizzard") end
     if db.skin then VIEWERS[name](item) end
+    if Grow(name) ~= "blizzard" then HookArrange(name, item) end
     if SOFT_VIEWERS[name] then
         if db.softOverlay or db.effectCooldown then HookSwipe(item) end
         Soften(item)
@@ -380,6 +538,7 @@ function CM:Refresh()
     -- (switched on but not started yet: the frames would be styled without the hooks that keep them so)
     if not (self.initialized and On()) then return end
     for name in pairs(VIEWERS) do ApplyViewer(name) end
+    for name in pairs(GROW_KEYS) do Arrange(name) end
 end
 
 -- new frames as Blizzard acquires them (tracking another buff), in a fight too
@@ -391,8 +550,14 @@ local function Hook()
         if viewer and viewer.OnAcquireItemFrame then
             hooked = true
             hooksecurefunc(viewer, "OnAcquireItemFrame", function(_, item)
+                -- (Blizzard cleared the frame's points on release: no place of FlareUI's is left on it)
+                Pieces(item).moved = nil
                 if On() then ApplyItem(name, item) end
             end)
+            -- Blizzard's layout gives every frame its slot again (RefreshLayout ends in one)
+            if GROW_KEYS[name] and viewer.Layout then
+                hooksecurefunc(viewer, "Layout", function() Arrange(name) end)
+            end
         end
     end
     CM:Refresh()
@@ -403,7 +568,7 @@ local function Hook()
 end
 
 --------------------------------------------------
--- 5. EDIT MODE
+-- 6. EDIT MODE
 -- Blizzard's own Visibility and Opacity rows leave the viewers' dialogs: FlareUI's Fading section does
 -- both. A row whose stored value is not Blizzard's default stays, or a viewer hidden by it could never
 -- be brought back. Done on the dialog's own rows after Blizzard builds them (as Minimap.lua trims the
