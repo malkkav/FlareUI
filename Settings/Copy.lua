@@ -45,7 +45,7 @@ ns.Copy = {
         },
         cdm = {
             desc = L["FlareUI's changes to Blizzard's own Cooldown Manager. It has to be switched on in the game's options."],
-            offCard = L["* FlareUI's look on the cooldown icons and the Tracked Bars\n* A fainter overlay while an ability's effect runs"],
+            offCard = L["* FlareUI's look on the cooldown icons and the Tracked Bars\n* A cleaner icon while an ability's effect runs"],
             tabs = { L["Settings"], L["Fonts"] },
             title = L["Cooldown Manager"],
         },
@@ -968,6 +968,12 @@ ns.Copy = {
             label = L["Bar Colour"],
             section = "cdm.look",
             tags = { "tracked bars color colour" },
+        },
+        ["cdm.effectCooldown"] = {
+            desc = L["While an ability's effect is running, Blizzard shows only the effect's time on its icon. This adds the ability's own cooldown as a small number in the icon's corner."],
+            label = L["Show Cooldown During Effect"],
+            section = "cdm.icons",
+            tags = { "cooldown effect aura overlap corner timer" },
         },
         ["cdm.font.bar"] = {
             desc = L["The name and time on the Tracked Bars."],

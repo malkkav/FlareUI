@@ -859,6 +859,13 @@ function R.cdm(c)
     local aura = CooldownViewerConstants and CooldownViewerConstants.ITEM_AURA_COLOR or { r = 1, g = 0.95, b = 0.57, a = 0.7 }
     local soft = on and Get('cooldownmanager.softOverlay', false)
     local cast, castText = Swipe(3), Time('cdmActive', 3)
+    local corner
+    if on and Get('cooldownmanager.effectCooldown', false) then
+        -- (always this small, whatever the Cooldown Numbers size)
+        local font = Sized('cooldownmanager.cooldownFont', 11)
+        font.size = 11
+        corner = c:Text('cdmEffect', '', left + 2 * (size + gap) + 2, top + size - 13, size, font)
+    end
     local lap
     local phase
     -- (kept on the canvas: pointing at another row doesn't start the loop again)
@@ -884,6 +891,7 @@ function R.cdm(c)
             end
         end
         castText:SetText(now == 'effect' and math.ceil(EFFECT - e) or now == 'cooldown' and math.ceil(COOLDOWN - e) or '')
+        if corner then corner:SetText(now == 'effect' and math.ceil(COOLDOWN - e) or '') end
     end
     Update(0)
     c:Animate(function(_, dt) Update(dt) end)

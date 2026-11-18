@@ -37,6 +37,7 @@ S:Row{ key = "cdm.barColor", section = "cdm.look", kind = "button", buttonText =
         })
     end }
 S:Row{ key = "cdm.softOverlay", section = "cdm.icons", path = "cooldownmanager.softOverlay", apply = Refresh, disabled = BlizzardOff }
+S:Row{ key = "cdm.effectCooldown", section = "cdm.icons", path = "cooldownmanager.effectCooldown", apply = Refresh, disabled = BlizzardOff }
 
 -- with Skin Cooldown Manager on; Auto keeps Blizzard's size
 S:FontRows{ module = "cdm", tab = "fonts", section = "cdm.fonts", apply = Refresh,
