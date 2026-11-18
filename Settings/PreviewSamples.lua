@@ -798,6 +798,79 @@ function R.font(c, spec)
     c.used = text:GetStringHeight() + 32
 end
 
+-- Blizzard's Cooldown Manager (its own page): four cooldown icons over a Tracked Bar, in Blizzard's look
+-- until the page and its skin are on. The second icon is on cooldown, the fourth has a stack.
+function R.cdm(c)
+    Heading(c, L["Cooldown Manager"])
+    local on = Get('cooldownmanager.enabled', false)
+    local skin = on and Get('cooldownmanager.skin', false)
+    local icons = { 'INV_Sword_04', 'Ability_DualWield', 'Ability_Hunter_Quickshot', 'Spell_Holy_WordFortitude' }
+    local size, gap, top = 40, 10, 36
+    local left = math.floor((c.width - (#icons * size + (#icons - 1) * gap)) / 2)
+    local timeFont = { size = 16, flags = 'OUTLINE' }
+    -- the swipe as Blizzard's Cooldown Manager draws it
+    local function Swipe(i)
+        local cd = c:Object('cdmSwipe' .. i, 'Cooldown', 'CooldownFrameTemplate')
+        cd:SetPoint('TOPLEFT', left + (i - 1) * (size + gap), -top)
+        cd:SetSize(size, size)
+        cd:SetSwipeTexture('Interface\\HUD\\UI-HUD-CoolDownManager-Icon-Swipe')
+        cd:SetDrawEdge(false)
+        cd:SetDrawBling(false)
+        cd:SetHideCountdownNumbers(true)
+        cd.FlareUI_Cooldown = cd
+        return cd
+    end
+    local function Time(id, i)
+        local text = c:Text(id, '', left + (i - 1) * (size + gap), top + 12, size, timeFont)
+        text:SetJustifyH('CENTER')
+        return text
+    end
+    for i, name in ipairs(icons) do
+        local x = left + (i - 1) * (size + gap)
+        local icon = c:Texture('cdmIcon' .. i, 'Interface\\Icons\\' .. name, x, top, size, size)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        if i == 2 then
+            icon:SetDesaturated(true)
+        elseif i == 4 then
+            c:Text('cdmStack', '3', x, top + size - 14, size - 3, { size = 12, flags = 'OUTLINE' }):SetJustifyH('RIGHT')
+        end
+        if skin then
+            -- (over the swipe, as in game)
+            c:Box('cdmEdge' .. i, x - 3, top - 3, size + 6, size + 6, 'FlareUI Frames', 0):SetFrameLevel(c.frame:GetFrameLevel() + 2)
+        else
+            local ring = c:Texture('cdmRing' .. i, nil, x - 4, top - 4, size + 8, size + 8, true)
+            if C_Texture.GetAtlasInfo('UI-HUD-CoolDownManager-IconOverlay') then ring:SetAtlas('UI-HUD-CoolDownManager-IconOverlay') end
+        end
+    end
+    local LOOP = 14
+    local timer, timerText = Swipe(2), Time('cdmTime', 2)
+    timer:SetSwipeColor(0, 0, 0, 0.7)
+    local lap
+    -- (kept on the canvas: pointing at another row doesn't start the loop again)
+    local function Update(dt)
+        local t = ((c.cdmTime or 3) + dt) % LOOP
+        c.cdmTime = t
+        if not lap or t < lap then timer:SetCooldown(GetTime() - t, LOOP) end
+        lap = t
+        timerText:SetText(math.ceil(LOOP - t))
+    end
+    Update(0)
+    c:Animate(function(_, dt) Update(dt) end)
+    local barTop, barLeft, barWidth = top + size + 16, left + 30, #icons * size + (#icons - 1) * gap - 30
+    Icon(c, 'cdmBarIcon', 'Spell_Holy_WordFortitude', left, barTop, 20)
+    if skin then
+        c:Bar('cdmBar', barLeft, barTop, barWidth, 19, 0.6, { 1, 0.5, 0.25 }, Get('unitframes.units.player.texture'))
+        c:Box('cdmBarEdge', barLeft - 3, barTop - 3, barWidth + 6, 25, 'FlareUI Thin', 0)
+        c:Box('cdmBarIconEdge', left - 3, barTop - 3, 26, 26, 'FlareUI Thin', 0)
+    else
+        c:Bar('cdmBar', barLeft, barTop, barWidth, 19, 0.6, { 0.9, 0.6, 0.1 }, 'Blizzard')
+    end
+    local font = { size = 11, flags = 'OUTLINE' }
+    c:Text('cdmBarName', L["Spell"], barLeft + 5, barTop + 4, barWidth - 10, font)
+    c:Text('cdmBarTime', '8', barLeft + 5, barTop + 4, barWidth - 10, font):SetJustifyH('RIGHT')
+    c.used = barTop + 32
+end
+
 
 -- Examples only: no protected actions or live settings are used.
 function R.reminders(c, spec)

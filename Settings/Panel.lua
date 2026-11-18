@@ -1881,6 +1881,7 @@ local GAME_ICONS = {
     ch = "INV_Letter_15", dm = "Ability_DualWield", tt = "INV_Misc_Spyglass_03", rm = "INV_Misc_Orb_05", qol = "INV_Misc_Wrench_01",
     bl = "INV_Misc_Bag_08",   -- Bags & Looting
     br = "INV_Misc_PocketWatch_01",   -- Buff Reminders, its own page
+    cdm = "Spell_Nature_TimeStop",   -- Cooldown Manager, its own page
 }
 local RING_MASK, RING_ART, RING_TINT = "talents-node-circle-mask", "talents-node-circle-gray", { 0.72, 0.56, 0.38 }
 local function GameIcons()

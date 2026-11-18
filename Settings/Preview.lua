@@ -20,7 +20,8 @@ Route('chat', 'ch', 'opacity border editBoxOpacity editBox lineHeight formatNPC 
 Route('tooltip', 'tt', 'scale anchor healthBar borders classNames showThreat showTarget showGuild showGuildRank showPvP showFaction shortItemStats itemLevel ids compareShift showWorld showFrames showBars')
 Route('tracker', 'qt', 'opacity border frameStyle zoneHeaders tags wrap count hideLevel questButtons minimizeButton colorNames')
 Route('meter', 'dm', 'opacity border minAlpha chatTab combatTimer readyCheck countdown threatValue pullLine pullFlash tankLead')
-Route('actions', 'ab', 'skinCDM buttonScale')
+Route('actions', 'ab', 'buttonScale')
+Route('cdm', 'cdm', 'skin')
 Route('actionSkin', 'ab', 'flareBorders')
 Route('actions', 'ab', 'statusPick procGlow hideMacroText hideKeybinds buttonArt')
 Route('actions', 'qol', 'gryphons')   -- (QoL > Hide Clutter)
@@ -78,7 +79,7 @@ function P.Resolve(row, value)
 end
 
 local defaults = { uf = 'unit', mm = 'minimap', ch = 'chat', tt = 'tooltip', qt = 'tracker',
-    dm = 'meter', ab = 'actions', rb = 'resources', au = 'auras', rm = 'radial' }
+    dm = 'meter', ab = 'actions', rb = 'resources', au = 'auras', rm = 'radial', cdm = 'cdm' }
 function P.Module(module)
     local kind = defaults[module]
     return kind and { kind = kind, key = module .. '.overview' } or nil

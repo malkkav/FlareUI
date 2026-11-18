@@ -1067,44 +1067,19 @@ local function BuildSettings(kind)
 end
 
 --------------------------------------------------
--- 9b. BLIZZARD'S COOLDOWN MANAGER (Skin Cooldown Manager, on with this module)
--- The Tracked Bars and Tracked Buffs icons in FlareUI's look (and the Essential / Utility cooldown
--- icons with the action buttons' FlareUI Borders): the bars as FlareUI's cast bars (the
--- unit frames' bar texture, a thin bronze border, the cast bar font), the icons as FlareUI's buffs
--- (Aura Icon Shape, Aura Swipe, the stack font). Blizzard keeps driving its own pooled frames; it sets
--- only values, text and the spark after a frame is made, so each one is styled once as it is
--- acquired. Its aura data is kept from addons (CooldownViewerSecure.lua): nothing here reads it,
--- writes onto its frames, re-parents them or calls their layout. FlareUI's pieces live in a weak table.
+-- 9b. THE SHARED ICON LOOK (Buff Reminders and the Cooldown Manager module use it too)
 --------------------------------------------------
-local CDM = { pieces = setmetatable({}, { __mode = "k" }), BAR_COLOR = { 1, 0.5, 0.25 }, BORDER = "FlareUI Thin",
-              OVERLAY = "UI-HUD-CoolDownManager-IconOverlay" }
-
--- Blizzard's own Cooldown Manager switch (Options): with it off FlareUI leaves the manager alone
-function CDM.BlizzardOn()
-    return (C_CooldownViewer and GetCVarBool("cooldownViewerEnabled")) and true or false
-end
-ns.CooldownManagerOn = CDM.BlizzardOn
-
-function CDM.On()
-    local db = GetDb()
-    return db and db.enabled and db.skinCDM == true and not ns.IsGamepadUI() and CDM.BlizzardOn() or false
-end
-
-function CDM.Pieces(frame)
-    local p = CDM.pieces[frame]
-    if not p then p = {}; CDM.pieces[frame] = p end
-    return p
-end
+local BLIZZARD_ICON_OVERLAY = "UI-HUD-CoolDownManager-IconOverlay"
 
 -- An icon in FlareUI's buff look: Blizzard's rounded mask and thick ring go, FlareUI's bevel (or rim)
 -- and its cut-corner mask come in. holder: the frame the icon fills.
-function CDM.StyleIcon(holder, texture, p, round)
+function AU.StyleIcon(holder, texture, p, round)
     for i = texture:GetNumMaskTextures(), 1, -1 do
         local mask = texture:GetMaskTexture(i)
         if mask and mask ~= p.mask then texture:RemoveMaskTexture(mask) end
     end
     for _, region in ipairs({ holder:GetRegions() }) do
-        if region ~= p.border and region.GetAtlas and region:GetAtlas() == CDM.OVERLAY then region:SetAlpha(0) end
+        if region ~= p.border and region.GetAtlas and region:GetAtlas() == BLIZZARD_ICON_OVERLAY then region:SetAlpha(0) end
     end
     if not p.border then
         local frame = CreateFrame("Frame", nil, holder)
@@ -1124,7 +1099,10 @@ function CDM.StyleIcon(holder, texture, p, round)
         border:SetAtlas(ROUND_BORDER, TextureKitConstants and TextureKitConstants.IgnoreAtlasSize)
         border:SetVertexColor(ROUND_TINT[1], ROUND_TINT[2], ROUND_TINT[3])
     else
-        local inset = (holder:GetWidth() or 30) * SQUARE_INSET
+        -- (a Tracked Bar's icon made in a fight: its width may be secret)
+        local width = holder:GetWidth()
+        if not width or (issecretvalue and issecretvalue(width)) then width = 30 end
+        local inset = width * SQUARE_INSET
         texture:SetPoint("TOPLEFT", holder, "TOPLEFT", inset, -inset)
         texture:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", -inset, inset)
         mask:SetTexture(SQUARE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
@@ -1136,128 +1114,15 @@ function CDM.StyleIcon(holder, texture, p, round)
     texture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 end
 
-function CDM.StackFont(fontString)
+function AU.StackFont(fontString)
     local db = GetDb()
     AU.SeedKindFonts()
-    -- the Buffs frame's Aura Stacks font (the tracked buffs are buffs)
+    -- the Buffs frame's Aura Stacks font
     local font = (db.buffs and db.buffs.countFont) or db.countFont or {}
     local flags = font.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end
     ns.SetFont(fontString, ns.GetFontPath(font.face or "Friz Quadrata TT"), font.size or 11, flags)
     ns.ApplyShadow(fontString, font)
-end
-
--- the same look for Buff Reminders (BuffReminders.lua)
-AU.StyleIcon, AU.StackFont = CDM.StyleIcon, CDM.StackFont
-
--- A Tracked Bar: the bar as a FlareUI cast bar, its icon as a buff
-function CDM.StyleBar(item)
-    local K = ns.UnitFrames and ns.UnitFrames.Kit
-    local bar = item.Bar
-    if not (K and bar) then return end
-    local uf = ns.db.profile.unitframes or {}
-    local player = uf.units and uf.units.player
-    local p = CDM.Pieces(item)
-    local texture = K.GetBarTexture(player and player.texture)
-    bar:SetStatusBarTexture(texture)
-    bar:SetStatusBarColor(CDM.BAR_COLOR[1], CDM.BAR_COLOR[2], CDM.BAR_COLOR[3])
-    if bar.BarBG then bar.BarBG:SetAlpha(0) end
-    if bar.Pip then bar.Pip:SetAlpha(0) end
-    if not p.bg then
-        p.bg = bar:CreateTexture(nil, "BACKGROUND", nil, -1)
-        p.bg:SetAllPoints(bar)
-        p.backdrop = CreateFrame("Frame", nil, bar, "BackdropTemplate")
-        p.backdrop:SetFrameLevel(math_max(0, bar:GetFrameLevel() - 1))
-        p.barBorder = CreateFrame("Frame", nil, bar, "BackdropTemplate")
-        p.barBorder:SetFrameLevel(bar:GetFrameLevel() + 3)
-    end
-    p.bg:SetTexture(texture)
-    p.bg:SetVertexColor(0.15, 0.15, 0.15, K.BAR_BG_OPACITY / 100)
-    -- the border wraps the bar, as on the cast bars (BorderFit's inset on a thin bar)
-    local height = 19
-    local edgeFile = K.GetBorderFile(CDM.BORDER)
-    local _, wrap = K.BorderFit(height, edgeFile)
-    p.backdrop:ClearAllPoints()
-    p.backdrop:SetPoint("TOPLEFT", bar, "TOPLEFT", -wrap, wrap)
-    p.backdrop:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", wrap, -wrap)
-    p.backdrop:SetBackdrop({ bgFile = K.BACKDROP_FILE, insets = { left = wrap, right = wrap, top = wrap, bottom = wrap } })
-    p.backdrop:SetBackdropColor(0, 0, 0, K.BG_OPACITY)
-    p.barBorder:ClearAllPoints()
-    p.barBorder:SetAllPoints(p.backdrop)
-    K.ApplyBorderStyle(p.barBorder, edgeFile, height + 2 * K.INSET)
-    -- the player frame's Cast Name and Cast Countdown fonts
-    local UFM = ns.UnitFrames
-    local castFont = UFM and UFM.Font and UFM.Font("player", "cast") or uf.fontCast
-    local timeFont = UFM and UFM.Font and UFM.Font("player", "castTime") or uf.fontCast
-    if bar.Name then K.ApplyFont(bar.Name, castFont) end
-    if bar.Duration then K.ApplyFont(bar.Duration, timeFont) end
-    local icon = item.Icon
-    if icon and icon.Icon then
-        CDM.StyleIcon(icon, icon.Icon, CDM.Pieces(icon), GetDb().style == "round")
-        if icon.Applications then CDM.StackFont(icon.Applications) end
-    end
-end
-
--- An Essential or Utility cooldown icon, as the action buttons with FlareUI Borders (ActionBars.lua
--- 6b): Blizzard's ring off and FlareUI Frames on the icon's edge, the rest Blizzard's
-CDM.BUTTON_BORDER, CDM.BUTTON_EDGE, CDM.BUTTON_SIZE = "FlareUI Frames", 16, 50   -- (Essential's icon size)
-function CDM.StyleCooldownIcon(item)
-    local p = CDM.Pieces(item)
-    for _, region in ipairs({ item:GetRegions() }) do
-        if region.GetAtlas and region:GetAtlas() == CDM.OVERLAY then region:SetAlpha(0) end
-    end
-    if not p.frameBorder then p.frameBorder = CreateFrame("Frame", nil, item, "BackdropTemplate") end
-    local b = p.frameBorder
-    b:ClearAllPoints()
-    b:SetAllPoints(item)
-    local file = LibStub("LibSharedMedia-3.0"):Fetch("border", CDM.BUTTON_BORDER)
-    -- the edge follows the icon's size: Utility icons are 30 px to Essential's 50, and a 16 px edge
-    -- covered most of them
-    local width = item:GetWidth()
-    local share = (width and width > 0) and math.min(1, width / CDM.BUTTON_SIZE) or 1
-    b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, math.floor(CDM.BUTTON_EDGE * share + 0.5)) })
-    local c = ns.BORDER_COLOR
-    b:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
-    -- over the cooldown swipe
-    b:SetFrameLevel(item:GetFrameLevel() + 2)
-end
-
--- Tracked Buffs icons take the cooldown icons' frame border (one border for the rows together), with
--- FlareUI's stack font
-function CDM.StyleBuffIconFramed(item)
-    CDM.StyleCooldownIcon(item)
-    local count = item.Applications and item.Applications.Applications
-    if count then CDM.StackFont(count) end
-end
-
-CDM.VIEWERS = { BuffBarCooldownViewer = CDM.StyleBar, BuffIconCooldownViewer = CDM.StyleBuffIconFramed,
-                EssentialCooldownViewer = CDM.StyleCooldownIcon, UtilityCooldownViewer = CDM.StyleCooldownIcon }
-
--- every frame showing now (a settings change, or the viewer was already up)
-function CDM.StyleAll()
-    if not CDM.On() then return end
-    for name, style in pairs(CDM.VIEWERS) do
-        local viewer = _G[name]
-        local pool = viewer and viewer.itemFramePool
-        if pool and pool.EnumerateActive then
-            for item in pool:EnumerateActive() do style(item) end
-        end
-    end
-end
-
--- new frames as Blizzard acquires them (tracking another buff), in a fight too
-function CDM.Hook()
-    if CDM.hooked then return end
-    for name, style in pairs(CDM.VIEWERS) do
-        local viewer = _G[name]
-        if viewer and viewer.OnAcquireItemFrame then
-            CDM.hooked = true
-            hooksecurefunc(viewer, "OnAcquireItemFrame", function(_, item)
-                if CDM.On() then style(item) end
-            end)
-        end
-    end
-    CDM.StyleAll()
 end
 
 --------------------------------------------------
@@ -1313,7 +1178,6 @@ end
 function AU:Refresh()
     if not self.initialized then return end
     for _, kind in ipairs(KIND_ORDER) do LayoutKind(kind) end
-    CDM.StyleAll()   -- Aura Icon Shape, Aura Swipe and the fonts reach the Cooldown Manager too
     if ns.BuffReminders and ns.BuffReminders.Refresh then ns.BuffReminders:Refresh() end
 end
 
@@ -1364,16 +1228,6 @@ function AU:Init()
 
     HideBlizzard("BuffFrame")
     HideBlizzard("DebuffFrame")
-    -- Skin Cooldown Manager (its addon can load after FlareUI)
-    if CDM.On() then EventUtil.ContinueOnAddOnLoaded("Blizzard_CooldownViewer", CDM.Hook) end
-    -- turned on in Blizzard's options later this session: skinned from then on
-    local cvarWatch = CreateFrame("Frame")
-    cvarWatch:RegisterEvent("CVAR_UPDATE")
-    cvarWatch:SetScript("OnEvent", function(_, _, name)
-        if name ~= "cooldownViewerEnabled" then return end
-        if CDM.On() then EventUtil.ContinueOnAddOnLoaded("Blizzard_CooldownViewer", CDM.Hook) end
-        if ns.SettingsPanel and ns.SettingsPanel.Refresh then pcall(ns.SettingsPanel.Refresh, ns.SettingsPanel) end
-    end)
 
     for _, kind in ipairs(KIND_ORDER) do
         ApplyPosition(kind)
@@ -1389,7 +1243,6 @@ function AU:Init()
     local function EditModeToggled()
         if InCombatLockdown() then SetPreview() end
         for _, kind in ipairs(KIND_ORDER) do LayoutKind(kind) end
-        CDM.StyleAll()
     end
     LEM:RegisterCallback("enter", EditModeToggled)
     LEM:RegisterCallback("exit", EditModeToggled)

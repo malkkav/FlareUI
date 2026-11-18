@@ -43,6 +43,11 @@ ns.Copy = {
             tabs = { L["Reminders"], L["When and Where"], L["Alerts"], L["Fonts"] },
             title = L["Buff Reminders"],
         },
+        cdm = {
+            desc = L["FlareUI's changes to Blizzard's own Cooldown Manager. It has to be switched on in the game's options."],
+            offCard = L["* FlareUI's look on the cooldown icons and the Tracked Bars"],
+            title = L["Cooldown Manager"],
+        },
         ch = {
             banner = L["%s is handling your chat, so FlareUI's chat stays off. Turn %s off to use FlareUI's."],
             desc = L["A cleaner chat frame with a customisable header."],
@@ -333,14 +338,6 @@ ns.Copy = {
             section = "ab.buttonAppearance",
             tags = { "ability proc glow" },
             tip = L["In combat, buff procs need the buff in the Cooldown Manager's Tracked Buffs, unless the game shows its own proc alert."],
-        },
-        ["ab.skinCDM"] = {
-            desc = L["Blizzard's Cooldown Manager in FlareUI's look:\n* Tracked Bars like FlareUI's cast bars\n* Tracked Buffs like FlareUI's buffs"],
-            label = L["Skin Cooldown Manager"],
-            reload = true,
-            section = "ab.barAppearance",
-            tags = { "cooldown manager", "tracked bars", "tracked buffs", "cdm" },
-            tip = L["Needs Buffs & Debuffs on. Size, layout and tracking stay in Blizzard's Cooldown Manager."],
         },
         ["ab.statusPick"] = {
             desc = L["The colours Status Colouring paints, next to sample buttons:\n* Out of Range\n* Out of Mana\n* Unusable\n* On Cooldown (not the global cooldown)\nPalettes: FlareUI (default), Blizzard, or Disabled to leave the buttons as the game colours them. Change any colour and it becomes Custom."],
@@ -964,6 +961,14 @@ ns.Copy = {
             label = L["Weapon Buffs"],
             section = "br.where",
             tip = L["On Mouseover keeps the icons hidden until you point at the reminder row."],
+        },
+        ["cdm.skin"] = {
+            desc = L["Blizzard's Cooldown Manager in FlareUI's look:\n* Tracked Bars like FlareUI's cast bars\n* Icons with FlareUI's borders"],
+            label = L["Skin Cooldown Manager"],
+            reload = true,
+            section = "cdm.look",
+            tags = { "cooldown manager", "tracked bars", "tracked buffs", "cdm" },
+            tip = L["Only the look changes. Tracking stays in Blizzard's Cooldown Manager."],
         },
         ["ch.border"] = {
             desc = L["The border around the chat and its edit box. None hides it."],
@@ -2701,6 +2706,7 @@ ns.Copy = {
         ["br.upkeep"] = L["Upkeep"],
         ["br.where"] = L["Where"],
         ["br.yourOwn"] = L["Your Own"],
+        ["cdm.look"] = L["Look"],
         ["ch.editBoxSection"] = L["Edit Box"],
         ["ch.fonts"] = L["Chat"],
         ["ch.formatting"] = L["Formatting"],

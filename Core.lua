@@ -772,6 +772,12 @@ local defaults = {
             petFollowsPlayer = false,   -- Link Pet Frame: the pet frame fades with the player frame
         },
 
+        -- [[ COOLDOWN MANAGER ]] Blizzard's Cooldown Manager (Modules/CooldownManager.lua), a module of its own
+        cooldownmanager = {
+            enabled = false,            -- the Cooldown Manager page's switch: everything below
+            skin = false,               -- Skin Cooldown Manager: FlareUI's look on the Tracked Bars and the icons
+        },
+
         -- [[ AURAS MODULE ]] the player's buffs and debuffs (Modules/Auras.lua)
         auras = {
             enabled = false,
@@ -780,7 +786,6 @@ local defaults = {
             timer = "below",            -- below (under the icon) | bottom (along its bottom edge)
             timerColor = true,          -- Timer Colour: yellow under 10 s, red under 5
             arrive = true,               -- new icons fade in while dropping into place
-            skinCDM = false,            -- (off by default) Skin Cooldown Manager: Blizzard's Tracked Bars and Tracked Buffs in FlareUI's look
             sort = "applied", reverse = false, mineFirst = true,   -- Aura Ordering (both frames)
             hidden = {},                -- Hide Auras: [spellID] = the places it hides on, "auras,player,..." (ns.HiddenAuras)
             -- Buff Reminders (BuffReminders.lua): your class's missing buffs; Group Buffs all / party / self,

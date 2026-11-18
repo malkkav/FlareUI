@@ -75,6 +75,7 @@ Modules\FlagCarriers.lua
 Modules\ResourceBars.lua
 Modules\Totems.lua
 Modules\Auras.lua
+Modules\CooldownManager.lua
 Modules\BuffReminders.lua
 Modules\Minimap.lua
 Modules\MinimapBag.lua
@@ -111,6 +112,7 @@ Settings\PreviewSamples.lua
 Settings\Fonts.lua
 Settings\Pages\About.lua
 Settings\Pages\ActionBars.lua
+Settings\Pages\CooldownManager.lua
 Settings\Pages\UnitFrames.lua
 Settings\Pages\ResourceBars.lua
 Settings\Pages\Chat.lua
