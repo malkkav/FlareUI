@@ -875,7 +875,7 @@ function R.cdm(c)
     local barTop, barLeft, barWidth = top + size + 16, left + 30, #icons * size + (#icons - 1) * gap - 30
     Icon(c, 'cdmBarIcon', 'Spell_Holy_WordFortitude', left, barTop, 20)
     if skin then
-        c:Bar('cdmBar', barLeft, barTop, barWidth, 19, 0.6, { 1, 0.5, 0.25 }, Get('unitframes.units.player.texture'))
+        c:Bar('cdmBar', barLeft, barTop, barWidth, 19, 0.6, Get('cooldownmanager.barColor', { 1, 0.5, 0.25 }), Get('unitframes.units.player.texture'))
         c:Box('cdmBarEdge', barLeft - 3, barTop - 3, barWidth + 6, 25, 'FlareUI Thin', 0)
         c:Box('cdmBarIconEdge', left - 3, barTop - 3, 26, 26, 'FlareUI Thin', 0)
     else
