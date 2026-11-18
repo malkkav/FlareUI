@@ -547,44 +547,60 @@ local function ButtonSpell(button)
     if kind == "spell" or (kind == "macro" and Readable(subType) and subType == "spell") then return id end
 end
 
+-- A bar's spell under every name an icon may know it by: the bar may hold another form or rank of
+-- the icon's spell. An entry already there stays.
+local function NoteSpell(t, id, value)
+    local function Note(spell)
+        if Readable(spell) and t[spell] == nil then t[spell] = value end
+    end
+    Note(id)
+    if C_SpellBook and C_SpellBook.FindBaseSpellByID then Note(C_SpellBook.FindBaseSpellByID(id)) end
+    if C_Spell.GetOverrideSpell then Note(C_Spell.GetOverrideSpell(id)) end
+    Note(SpellName(id))
+end
+
+local function ItemValue(item, t)
+    local info = item.cooldownInfo
+    if type(info) ~= "table" then return nil end
+    local id, override = info.spellID, info.overrideSpellID
+    local value = (Readable(id) and t[id]) or (Readable(override) and t[override])
+    if not value and Readable(id) then
+        local name = SpellName(id)
+        value = name and t[name]
+    end
+    return value or nil
+end
+
+-- FlareUI's pieces on an icon sit over the cooldown swipe and the skin's border
+local function Holder(item)
+    local p = Pieces(item)
+    if not p.holder then
+        p.holder = CreateFrame("Frame", nil, item)
+        p.holder:SetAllPoints(item)
+        p.holder:SetFrameLevel(item:GetFrameLevel() + 3)
+    end
+    return p.holder
+end
+
 local function BuildKeys()
     wipe(keys)
     keysStale = false
     local AB = ns.ActionBars
     if not (AB and AB.BindingKey and AB.ShortenKey) then return end
-    local text
     -- the first bar with the spell wins
-    local function Note(spell)
-        if Readable(spell) and keys[spell] == nil then keys[spell] = text end
-    end
     for _, prefix in ipairs(KEY_BARS) do
         for i = 1, 12 do
             local button = _G[prefix .. i]
             local key = button and AB.BindingKey(button)
             local id = key and key ~= "" and ButtonSpell(button)
-            if id then
-                text = AB.ShortenKey(key)
-                Note(id)
-                -- the bar may hold another form or rank of the icon's spell
-                if C_SpellBook and C_SpellBook.FindBaseSpellByID then Note(C_SpellBook.FindBaseSpellByID(id)) end
-                if C_Spell.GetOverrideSpell then Note(C_Spell.GetOverrideSpell(id)) end
-                Note(SpellName(id))
-            end
+            if id then NoteSpell(keys, id, AB.ShortenKey(key)) end
         end
     end
 end
 
 local function ItemKey(item)
-    local info = item.cooldownInfo
-    if type(info) ~= "table" then return nil end
     if keysStale then BuildKeys() end
-    local id, override = info.spellID, info.overrideSpellID
-    local key = (Readable(id) and keys[id]) or (Readable(override) and keys[override])
-    if not key and Readable(id) then
-        local name = SpellName(id)
-        key = name and keys[name]
-    end
-    return key or nil
+    return ItemValue(item, keys)
 end
 
 local function UpdateKey(item)
@@ -596,11 +612,7 @@ local function UpdateKey(item)
         return
     end
     if not p.key then
-        local holder = CreateFrame("Frame", nil, item)
-        holder:SetAllPoints(item)
-        -- over the cooldown swipe and the skin's border
-        holder:SetFrameLevel(item:GetFrameLevel() + 3)
-        p.key = holder:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmallGray")
+        p.key = Holder(item):CreateFontString(nil, "OVERLAY", "NumberFontNormalSmallGray")
         p.key:SetPoint("TOPRIGHT", item, "TOPRIGHT", -2, -2)
     end
     if p.keyRun ~= styleRun then
@@ -641,7 +653,71 @@ local function WatchKeys()
 end
 
 --------------------------------------------------
--- 6. APPLYING
+-- 6. BUTTON PRESSES
+-- Show Button Presses: an Essential or Utility icon lights up while the key of its spell is held, as
+-- the action button does. Blizzard's bindings call the four functions hooked here, on press and on
+-- release; a mouse click on a bar does not pass through them.
+--------------------------------------------------
+-- (the action buttons' own pushed frame)
+local PUSH_ATLAS = "UI-HUD-ActionBar-IconFrame-Down"
+local lit, pressed, pressHooked = {}, {}, false
+
+local function Press(button, down)
+    if not button then return end
+    local items = lit[button]
+    if items then
+        lit[button] = nil
+        for _, item in ipairs(items) do
+            local push = Pieces(item).push
+            if push then push:Hide() end
+        end
+    end
+    if not (down and On() and GetDb().press) then return end
+    local id = ButtonSpell(button)
+    if not id then return end
+    wipe(pressed)
+    NoteSpell(pressed, id, true)
+    items = nil
+    for name in pairs(ABILITY_VIEWERS) do
+        for item in ActiveItems(name) do
+            if item:IsShown() and ItemValue(item, pressed) then
+                local p = Pieces(item)
+                if not p.push then
+                    p.push = Holder(item):CreateTexture(nil, "ARTWORK")
+                    p.push:SetAllPoints(item)
+                    p.push:SetAtlas(PUSH_ATLAS)
+                end
+                p.push:Show()
+                items = items or {}
+                items[#items + 1] = item
+            end
+        end
+    end
+    lit[button] = items
+end
+
+local function HookPress()
+    if pressHooked or not GetDb().press then return end
+    if not (ActionButtonDown and ActionButtonUp and MultiActionButtonDown and MultiActionButtonUp and GetActionButtonForID) then return end
+    pressHooked = true
+    local function Main(down)
+        return function(id) Press(GetActionButtonForID(id), down) end
+    end
+    local function Multi(down)
+        return function(barName, id)
+            local bar = _G[barName]
+            local buttons = bar and bar.actionButtons
+            Press(buttons and buttons[id], down)
+        end
+    end
+    hooksecurefunc("ActionButtonDown", Main(true))
+    hooksecurefunc("ActionButtonUp", Main(false))
+    hooksecurefunc("MultiActionButtonDown", Multi(true))
+    hooksecurefunc("MultiActionButtonUp", Multi(false))
+end
+
+--------------------------------------------------
+-- 7. APPLYING
 --------------------------------------------------
 local function ApplyItem(name, item)
     local db = GetDb()
@@ -653,8 +729,11 @@ local function ApplyItem(name, item)
         if db.softOverlay or db.effectCooldown then HookSwipe(item) end
         Soften(item)
         EffectCooldown(item)
+        UpdateKey(item)
+        -- (a frame Blizzard hands to another spell while its key is held)
+        local push = Pieces(item).push
+        if push then push:Hide() end
     end
-    if ABILITY_VIEWERS[name] then UpdateKey(item, true) end
 end
 
 local function ApplyViewer(name)
@@ -667,6 +746,7 @@ function CM:Refresh()
     -- (switched on but not started yet: the frames would be styled without the hooks that keep them so)
     if not (self.initialized and On()) then return end
     WatchKeys()
+    HookPress()
     for name in pairs(VIEWERS) do ApplyViewer(name) end
     for name in pairs(GROW_KEYS) do Arrange(name) end
 end
@@ -704,7 +784,7 @@ local function Hook()
 end
 
 --------------------------------------------------
--- 7. EDIT MODE
+-- 8. EDIT MODE
 -- Blizzard's own Visibility and Opacity rows leave the viewers' dialogs: FlareUI's Fading section does
 -- both. A row whose stored value is not Blizzard's default stays, or a viewer hidden by it could never
 -- be brought back. Done on the dialog's own rows after Blizzard builds them (as Minimap.lua trims the

@@ -25,7 +25,7 @@ L["* Enemy nameplates in the FlareUI style\n* Threat colours for tanks, damage a
 L["* Export: the profile in use as a text string to share\n* Import: paste a string and pick the parts to take, as a new profile or into the one in use"] = true
 L["* FlareUI's bag and bank windows\n* Category filters and item levels\n* A loot roll window and a loot feed"] = true
 L["* FlareUI's borders, proc glows and status colours on your buttons\n* An XP bar, and hide the bars you don't use\n* Fake CM: spare bars as a cooldown tracker"] = true
-L["* FlareUI's look on the cooldown icons and the Tracked Bars\n* Keybinds on the icons\n* Icon shape, growth and fading for each bar, in Edit Mode"] = true
+L["* FlareUI's look on the cooldown icons and the Tracked Bars\n* Keybinds and key presses on the icons\n* Icon shape, growth and fading for each bar, in Edit Mode"] = true
 L["* FlareUI's own quest tracker\n* Zone headings, quest levels and quest icons\n* Minimizes itself in instances or fights"] = true
 L["* Health, power, combo points and swing timers as bars you place anywhere\n* Paladin seals, flight timers and breath timers\n* Each bar set up in Edit Mode"] = true
 L["* In it: every FlareUI setting, and where FlareUI's frames sit on any Edit Mode layout\n* Not in it: Blizzard's bars and frames, which come with your Edit Mode layout\n* Switching profiles offers the layout the profile was set up on.\n* From another character, copy the layout with Copy Layout Code (About) or Sync Blizzard UI (General)."] = true
@@ -1107,6 +1107,7 @@ L["Level Before Names"] = true
 L["Level Disc Size"] = true
 L["LF1M tank for Deadmines, must bring snacks"] = true
 L["Licences"] = true
+L["Lights up an Essential or Utility icon while you hold the key of its spell, as an action button does. Mouse clicks on the bars are not shown."] = true
 L["Linen Cloth"] = true
 L["Lines"] = true
 L["Lines that split the XP bar into equal parts, as on the classic XP bar: 20 of 5% each, or 10 of 10%. Reputation and honor get them too."] = true
@@ -1687,6 +1688,7 @@ L["Short item stats, like \"+12 Spell Power\" instead of the long \"Equip: Incre
 L["Show"] = true
 L["Show Box"] = true
 L["Show Button Art"] = true
+L["Show Button Presses"] = true
 L["Show Cast Target"] = true
 L["Show Combat Text"] = true
 L["Show Complete Tag"] = true
