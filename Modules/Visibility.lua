@@ -119,6 +119,16 @@ local ELEMENTS = {
     -- the separate threat window: Same as Meter ("meter") by default, as a child of the meter it fades with
     -- it; any other choice, or a fade group, detaches it (DamageMeter.AttachThreatWindow)
     { key = "threat", threat = true, module = "damagemeter", instance = true, defaultShow = "meter" },
+    -- Blizzard's Cooldown Manager viewers (CooldownManager.lua), behind its switch. keepAlpha: Blizzard's dialog has an
+    -- Opacity of its own, so on Always the alpha is left alone unless FlareUI faded the viewer this session.
+    { key = "cdm_essential", page = "cdm", frame = "EssentialCooldownViewer", system = "CooldownViewer", index = "Essential",
+      indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true },
+    { key = "cdm_utility", page = "cdm", frame = "UtilityCooldownViewer", system = "CooldownViewer", index = "Utility",
+      indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true },
+    { key = "cdm_buffs", page = "cdm", frame = "BuffIconCooldownViewer", system = "CooldownViewer", index = "BuffIcon",
+      indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true },
+    { key = "cdm_bars", page = "cdm", frame = "BuffBarCooldownViewer", system = "CooldownViewer", index = "BuffBar",
+      indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true },
 }
 local ELEMENT_BY_KEY = {}
 for _, e in ipairs(ELEMENTS) do ELEMENT_BY_KEY[e.key] = e end
@@ -404,6 +414,10 @@ end
 -- an element's module is on: the bars' with Action Bars, the minimap with Minimap, the others with theirs
 local function ElementOn(e)
     if e.needsMinimap then return MinimapOn() end
+    if e.system == "CooldownViewer" then
+        local CM = ns.CooldownManager
+        return CM and CM.Started and CM.Started() and CM.Enabled() or false
+    end
     if e.bar then
         local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
         return uf and uf.resource and uf.resource.enabled or false
@@ -1526,7 +1540,15 @@ function Visibility:Refresh()
                     ApplyElementAlpha(frame, key, editing and 1 or 0)
                     if e.own then unitValues[key] = editing and 1 or 0 end
                 elseif show == "always" or show == "inuse" then
-                    ApplyElementAlpha(frame, key, 1)
+                    if not e.keepAlpha then
+                        ApplyElementAlpha(frame, key, 1)
+                    elseif e.faded then
+                        -- Blizzard's own Opacity back: it applies it only when that setting changes
+                        e.faded = nil
+                        local setting = Enum.EditModeCooldownViewerSetting
+                        local ok, opacity = pcall(frame.GetSettingValue, frame, setting and setting.Opacity)
+                        ApplyElementAlpha(frame, key, ok and type(opacity) == "number" and opacity > 0 and opacity / 100 or 1)
+                    end
                     if e.own then unitValues[key] = 1 end
                 else
                     local group = self:GetGroup(key)
@@ -1569,6 +1591,7 @@ function Visibility:Refresh()
                     end
                     -- a fade group's members share one entry: pointing at any of them (a unit frame
                     -- through its mouse check) brings the whole group back
+                    if e.keepAlpha then e.faded = true end
                     AddMember(group > 0 and ("group" .. group) or (linkPet and "uf_player") or key, data)
                     Fader.watchesMouseover = true
                 end

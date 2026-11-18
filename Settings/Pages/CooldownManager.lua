@@ -6,6 +6,7 @@ local L = ns.L
 -- COOLDOWN MANAGER (its own page)
 -- Modules/CooldownManager.lua: FlareUI's changes to Blizzard's own Cooldown Manager, all off until the
 -- page is switched on (cooldownmanager.enabled).
+-- What is set for each bar sits in its viewer's Edit Mode dialog (Visibility.lua): fading.
 --------------------------------------------------
 local function CM() return ns.CooldownManager end
 local function Refresh() if CM() and CM().Refresh then CM():Refresh() end end
@@ -15,6 +16,9 @@ local function BlizzardOff() return not (CM() and CM().BlizzardOn()) end
 S:Module{
     key = "cdm", group = "combat", order = 15, enabled = "cooldownmanager.enabled",
     tabs = { { key = "settings" }, { key = "fonts" } },
+    -- Blizzard's viewers: no FlareUI frame to select, so plain Edit Mode
+    editMode = function() return nil end,
+    editSystems = function() return ns.Visibility and ns.Visibility.EditSystems and ns.Visibility:EditSystems("cdm") or {} end,
 }
 
 -- off needs a reload to give Blizzard's look back

@@ -45,7 +45,9 @@ ns.Copy = {
         },
         cdm = {
             desc = L["FlareUI's changes to Blizzard's own Cooldown Manager. It has to be switched on in the game's options."],
-            offCard = L["* FlareUI's look on the cooldown icons and the Tracked Bars\n* A cleaner icon while an ability's effect runs"],
+            editButton = L["Edit Bars in Edit Mode"],
+            editNote = L["Each bar's fading is set in Edit Mode."],
+            offCard = L["* FlareUI's look on the cooldown icons and the Tracked Bars\n* A cleaner icon while an ability's effect runs\n* Fading for each bar, in Edit Mode"],
             tabs = { L["Settings"], L["Fonts"] },
             title = L["Cooldown Manager"],
         },
@@ -974,6 +976,26 @@ ns.Copy = {
             label = L["Show Cooldown During Effect"],
             section = "cdm.icons",
             tags = { "cooldown effect aura overlap corner timer" },
+        },
+        ["cdm.em.fadeIn"] = {
+            desc = L["How the bar fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"],
+            label = L["Show Speed"],
+            tags = { "fade speed", "min alpha", "transparency" },
+        },
+        ["cdm.em.fadeOut"] = {
+            desc = L["How the bar fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"],
+            label = L["Hide Speed"],
+            tags = { "fade speed", "min alpha", "transparency" },
+        },
+        ["cdm.em.minAlpha"] = {
+            desc = L["How the bar fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"],
+            label = L["Faded Opacity"],
+            tags = { "fade speed", "min alpha", "transparency" },
+        },
+        ["cdm.em.show"] = {
+            desc = L["When the bar shows. Any ticked condition shows it."],
+            label = L["Visibility"],
+            tags = { "show", "view conditions", "hide", "fade" },
         },
         ["cdm.font.bar"] = {
             desc = L["The name and time on the Tracked Bars."],

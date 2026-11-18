@@ -8,7 +8,7 @@ local _, ns = ...
 -- keeps driving its own pooled frames; it sets only values, text and the spark after a frame is made, so
 -- each one is styled once as it is acquired. Its aura data is kept from addons
 -- (CooldownViewerSecure.lua): nothing here reads it, re-parents its frames or calls their layout.
--- FlareUI's pieces live in a weak table.
+-- FlareUI's pieces live in a weak table. The viewers' fading is Visibility.lua's (cdm_ keys).
 --------------------------------------------------
 ns.CooldownManager = ns.CooldownManager or {}
 local CM = ns.CooldownManager
@@ -91,10 +91,18 @@ function CM.BlizzardOn()
     return (C_CooldownViewer and GetCVarBool("cooldownViewerEnabled")) and true or false
 end
 
--- A module of its own (the Cooldown Manager page's switch); never under the Gamepad UI.
+-- A module of its own (the Cooldown Manager page's switch); never under the Gamepad UI. Also for
+-- Visibility.lua: the viewers' Edit Mode rows and fading.
 function CM.Enabled()
     local db = GetDb()
     return db and db.enabled and not ns.IsGamepadUI() or false
+end
+
+-- (the switch as it was at login: one flipped on since takes effect with the reload it asks for)
+local startedOn
+function CM.Started()
+    if startedOn == nil then startedOn = CM.Enabled() end
+    return startedOn
 end
 
 local function On()
@@ -333,10 +341,60 @@ local function Hook()
         end
     end
     CM:Refresh()
+    -- the viewers exist now: their fading (Visibility.lua)
+    C_Timer.After(0, function()
+        if ns.Visibility and ns.Visibility.Refresh then ns.Visibility:Refresh() end
+    end)
+end
+
+--------------------------------------------------
+-- 4. EDIT MODE
+-- Blizzard's own Visibility and Opacity rows leave the viewers' dialogs: FlareUI's Fading section does
+-- both. A row whose stored value is not Blizzard's default stays, or a viewer hidden by it could never
+-- be brought back. Done on the dialog's own rows after Blizzard builds them (as Minimap.lua trims the
+-- minimap's), never in Blizzard's table: addon-written entries there would taint Edit Mode.
+--------------------------------------------------
+local function TrimDialog(dialog)
+    local system = dialog and dialog.attachedToSystem
+    local setting = Enum.EditModeCooldownViewerSetting
+    if not (system and setting and system.system == Enum.EditModeSystem.CooldownViewer and dialog.Settings) then return end
+    if not On() then return end
+    local always = Enum.CooldownViewerVisibleSetting and Enum.CooldownViewerVisibleSetting.Always or 0
+    local defaults = {}
+    if setting.VisibleSetting then defaults[setting.VisibleSetting] = always end
+    if setting.Opacity then defaults[setting.Opacity] = 100 end
+    local changed = false
+    for _, row in ipairs({ dialog.Settings:GetChildren() }) do
+        local default = row:IsShown() and row.setting and defaults[row.setting]
+        if default and system.GetSettingValue then
+            local ok, value = pcall(system.GetSettingValue, system, row.setting)
+            if ok and value == default then
+                row:Hide()
+                changed = true
+            end
+        end
+    end
+    if changed then
+        dialog.Settings:Layout()
+        if dialog.Layout then dialog:Layout() end
+    end
+end
+
+local trimHooked = false
+local function HookDialog()
+    local dialog = _G.EditModeSystemSettingsDialog
+    if not dialog then
+        if not C_AddOns.IsAddOnLoaded("Blizzard_EditMode") then EventUtil.ContinueOnAddOnLoaded("Blizzard_EditMode", HookDialog) end
+        return
+    end
+    if trimHooked or not (Enum.EditModeSystem and Enum.EditModeSystem.CooldownViewer) then return end
+    trimHooked = true
+    hooksecurefunc(dialog, "UpdateSettings", TrimDialog)
 end
 
 function CM:ShouldLoad()
     GetDb()
+    startedOn = CM.Enabled()
     -- Blizzard's Cooldown Manager takes part in the Gamepad UI's controller navigation
     return not ns.IsGamepadUI()
 end
@@ -344,6 +402,7 @@ end
 function CM:Init()
     if self.initialized then return end
     self.initialized = true
+    HookDialog()
     -- (its addon can load after FlareUI)
     if On() then EventUtil.ContinueOnAddOnLoaded("Blizzard_CooldownViewer", Hook) end
     local watch = CreateFrame("Frame")
