@@ -229,9 +229,30 @@ function ActionBars.LiftCountdown(button, on)
     end
 end
 
+function ActionBars.UpdatePetChecked(button)
+    local checked, light = button.FlareUI_PetChecked, button.FlareUI_PetLight
+    local native = button:GetCheckedTexture()
+    if native then
+        local alpha = native:GetAlpha()
+        checked:SetAlpha(alpha)
+        light:SetAlpha(alpha)
+    end
+    local on = button:GetChecked()
+    checked:SetShown(on)
+    light:SetShown(on)
+end
+
 local function SkinBorder(button, on)
     local icon = button.icon or button.Icon
     if not (icon and button.NormalTexture) then return end
+    local petBar = _G.PetActionBar
+    local id = button.GetID and button:GetID()
+    local isPet = petBar and petBar.actionButtons and id and petBar.actionButtons[id] == button
+    -- A pet's checked indicator is created outside combat, then follows Blizzard's SetChecked.
+    if on and isPet and not button.FlareUI_PetChecked and InCombatLockdown() then
+        ActionBars._pendingRefresh = true
+        return
+    end
     if on then
         if not button.FlareUI_Border then
             local b = CreateFrame("Frame", nil, button, "BackdropTemplate")
@@ -252,6 +273,34 @@ local function SkinBorder(button, on)
         -- over the cooldown swipe, under the texts' frame
         b:SetFrameLevel(button:GetFrameLevel() + 2)
         b:Show()
+        if isPet then
+            -- Keep the native checked texture on its button: Blizzard needs GetCheckedTexture().
+            -- Draw the pet state above both the border and the optional Active Highlight overlay.
+            local checked = button.FlareUI_PetChecked
+            if not checked then
+                local state = CreateFrame("Frame", nil, b)
+                state:SetAllPoints(b)
+                button.FlareUI_PetState = state
+                checked = state:CreateTexture(nil, "OVERLAY", nil, 7)
+                checked:SetAtlas("UI-HUD-ActionBar-IconFrame-Mouseover")
+                checked:SetBlendMode("ADD")
+                checked:SetAllPoints(state)
+                button.FlareUI_PetChecked = checked
+                -- The native edge alone is easy to miss on the darker FlareUI border.
+                local light = state:CreateTexture(nil, "OVERLAY", nil, 6)
+                light:SetTexture("Interface\\Buttons\\CheckButtonHilight")
+                light:SetBlendMode("ADD")
+                light:SetVertexColor(1, 1, 1, 0.65)
+                light:SetAllPoints(state)
+                if button.IconMask then pcall(light.AddMaskTexture, light, button.IconMask) end
+                button.FlareUI_PetLight = light
+                hooksecurefunc(button, "SetChecked", ActionBars.UpdatePetChecked)
+            end
+            if not InCombatLockdown() then
+                button.FlareUI_PetState:SetFrameLevel(button:GetFrameLevel() + 4)
+            end
+            ActionBars.UpdatePetChecked(button)
+        end
         ActionBars.LiftCountdown(button, true)
         button.NormalTexture:SetAlpha(0)
         -- (11-17, a player's report: stance buttons showed a second, inner border) the 30 px buttons
